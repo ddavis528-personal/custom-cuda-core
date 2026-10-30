@@ -56,10 +56,10 @@
       "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
     },
     "pw_gname_cq01h": {
-      "arrival": 3.0,
+      "arrival": 20.0,
       "by": "OA",
-      "date": "2026-10-23",
-      "why": "OA's response OI-67 (OA tab rev 185): by 3: the pending group's new names are bound from rename's Rename 1 register by ooe_ren1n (2.5 NGD), the rest of the group's fields straight from its flops."
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): by 20; it reaches only the capture's D (OI-83 (b)), the maps written from the capture an edge later"
     },
     "pw_pdst_cq01h": {
       "arrival": 2.0,
@@ -74,10 +74,10 @@
       "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
     },
     "pw_pname_cq01h": {
-      "arrival": 3.0,
+      "arrival": 20.0,
       "by": "OA",
-      "date": "2026-10-23",
-      "why": "OA's response OI-67 (OA tab rev 185): by 3: the pending group's new names are bound from rename's Rename 1 register by ooe_ren1n (2.5 NGD), the rest of the group's fields straight from its flops."
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): by 20; it reaches only the capture's D (OI-83 (b)), the maps written from the capture an edge later"
     },
     "pw_br_cq01h": {
       "arrival": 2.0,
@@ -168,6 +168,54 @@
       "by": "OA",
       "date": "2026-10-19",
       "why": "OA's response OI-46 (reopened; OA tab, 2026-10-19): with the read in ooe_rename, ooe_rat's flops drive rat straight out, and 4 covers fanout buffering across its flops"
+    },
+    "po_v_cq02h": {
+      "required": 2.0,
+      "by": "OA",
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): straight from the capture's flops, at 2 to match ooe_rename's arrival (a default 12 would not converge)"
+    },
+    "po_slot_cq02h": {
+      "required": 2.0,
+      "by": "OA",
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): straight from the capture's flops, at 2 to match ooe_rename's arrival (a default 12 would not converge)"
+    },
+    "po_dst_cq02h": {
+      "required": 2.0,
+      "by": "OA",
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): straight from the capture's flops, at 2 to match ooe_rename's arrival (a default 12 would not converge)"
+    },
+    "po_gwe_cq02h": {
+      "required": 2.0,
+      "by": "OA",
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): straight from the capture's flops, at 2 to match ooe_rename's arrival (a default 12 would not converge)"
+    },
+    "po_gname_cq02h": {
+      "required": 2.0,
+      "by": "OA",
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): straight from the capture's flops, at 2 to match ooe_rename's arrival (a default 12 would not converge)"
+    },
+    "po_pdst_cq02h": {
+      "required": 2.0,
+      "by": "OA",
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): straight from the capture's flops, at 2 to match ooe_rename's arrival (a default 12 would not converge)"
+    },
+    "po_pwe_cq02h": {
+      "required": 2.0,
+      "by": "OA",
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): straight from the capture's flops, at 2 to match ooe_rename's arrival (a default 12 would not converge)"
+    },
+    "po_pname_cq02h": {
+      "required": 2.0,
+      "by": "OA",
+      "date": "2026-10-26",
+      "why": "OA's response OI-83 (OA tab rev 273): straight from the capture's flops, at 2 to match ooe_rename's arrival (a default 12 would not converge)"
     }
   }
 }

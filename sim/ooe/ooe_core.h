@@ -466,6 +466,10 @@ struct Config {
   /// OI-79 (b)'s control: the take keeps a pair the width splits (its
   /// first slot taken, its second left for the next cycle).
   bool inject_pair_split = false;
+  /// OI-84's control: a pair's second in its warp's next round (OI-79 (b))
+  /// rather than the lane after its first; four warps each with a CAS at
+  /// its head then never rename.
+  bool inject_pair_rounds = false;
   /// OI-80's liveness rule's control (OA's rev 244): the split gives the
   /// warp first in rotation no part of the pool for its head's need first.
   bool inject_no_first_need = false;
@@ -1602,6 +1606,9 @@ private:
   /// the next edge, under the per-warp limit too (CCV_P_DECQ_WARP_MAX).
   std::vector<unsigned> decq_slot_take_;
   std::array<unsigned, 4> ren_tot_{};      ///< RS RCU, RS MIU, GPR, predicate names renamed this cycle
+  /// Per slot, the rows its atomic pair's second slot brings to ren_tot_
+  /// with its lane (OI-80 (d)).
+  std::vector<std::array<unsigned, 3>> pair_tot_;
   std::vector<std::array<unsigned, 4>> ren_slot_;   ///< the same, per slot
   std::vector<uint8_t> ren_serial_;          ///< go_static: a chwidth or barrier uop taken this cycle, per slot
   std::vector<unsigned> go_run_;             ///< go_static: each slot's free ROB run from its tail, as the cycle starts
@@ -1655,6 +1662,8 @@ private:
   /// A head's needs per credit (RCU rows, MIU rows, names, predicates),
   /// from its admission bits.
   static std::array<unsigned, 4> headNeed(uint16_t a);
+  /// Head h's needs with its pair's second slot when h is a first (OI-80 (d)).
+  static std::array<unsigned, 4> pairNeed(const std::vector<uint16_t> &adm, size_t h);
   /// The go's ceiling term (OI-73 (3), OA's rev 207): each slot's room to
   /// its ceiling per class as registered at the last cycle's start, and the
   /// names the slot was charged last cycle. A take is admitted while the

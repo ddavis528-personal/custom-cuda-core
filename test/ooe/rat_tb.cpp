@@ -31,7 +31,8 @@
 // restore reaches the RTL), drop-retire (no retirement write does) and
 // drop-squash (no squash to retirement does), no-pending (last cycle's
 // group never reaches the RTL) and no-lead (rename's takes and
-// restore-allocates are not led).
+// restore-allocates are not led), and pend-over-event (ooe_rat's captured
+// group writes over its slot's whole-map event: OI-83 (b) (3)).
 //
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
@@ -100,6 +101,7 @@ void tick() {
 }
 
 void clearInputs() {
+  dut->ctl_pkeep = control == "pend-over-event";
   clearAll(dut->ren_v_cq01h, A);
   clearAll(dut->pw_v_cq01h, A);
   clearAll(dut->tk_cq00h, S * A);
@@ -123,14 +125,17 @@ unsigned gname(unsigned n) { return n * scale; }
 // ooe_rat writes an edge after the model (OA's response OI-58): the group
 // renamed in a cycle reaches it the next from rename's register, a
 // retirement from the retire-stage register, a whole-map event from its
-// own register. So after each edge its maps are the model's an edge
-// before: the snapshot taken at the last cycle.
+// own register. The group's writes then wait an edge more in ooe_rat's
+// capture (OI-83 (b)). So after each edge its maps, with the captured
+// group over them (the group it was driven as pending), are the model's an
+// edge before, and its checkpoints, written from the capture, the model's
+// two edges before.
 struct Snap {
   std::vector<unsigned> rat, crat, ckpt;   // GPRs then predicates, per slot (and checkpoint)
   std::vector<uint8_t> live;
 };
-Snap snap;
-bool have_snap = false;
+Snap snap, snap2;   // the model an edge before, and two
+bool have_snap = false, have_snap2 = false;
 std::vector<Core::RatLog::Ren> prev_ren;   // last cycle's group, in the order driven
 std::vector<Core::RatLog::Ret> prev_ret;
 
@@ -184,9 +189,12 @@ void hook(const Core &c) {
     const auto &cfg = c.config();
     skip = c.slots() != S || cfg.ckpts != C || cfg.rename_width > A || cfg.retire_per_rob > R ||
            cfg.pred_zero != (1u << PW) - 1;
-    // The last core's pending writes land first: their leads are flopped.
+    // The last core's pending writes land first: their leads are flopped,
+    // and ooe_rat captures them an edge before it writes them.
     clearInputs();
     drivePending();
+    tick();
+    clearInputs();
     tick();
     scale = cfg.sectioned ? 1 : 4;
     clearInputs();
@@ -194,7 +202,7 @@ void hook(const Core &c) {
     tick();
     tick();   // the flopped reset
     dut->ooe_rst_r00h = 0;
-    have_snap = false;
+    have_snap = have_snap2 = false;
     prev_ren.clear();
     prev_ret.clear();
   }
@@ -283,29 +291,45 @@ void hook(const Core &c) {
     }
   }
   tick();
+  // The group ooe_rat captured at this edge: the pending one just driven.
+  const std::vector<Core::RatLog::Ren> captured = control == "no-pending" ? std::vector<Core::RatLog::Ren>{} : prev_ren;
   prev_ren = ren;
   prev_ret = ret;
-  // After it: every map, and every live checkpoint, as the model's an edge
-  // before.
+  // An entry with the captured group's last write over it: the map as the
+  // next edge leaves it (spec: every port; committed: a restore-allocate's).
+  auto over = [&](unsigned s, unsigned a, unsigned flop, bool committed) {
+    unsigned v = flop;
+    for (const auto &r : captured) {
+      if (r.slot != s || (committed && !r.rst)) continue;
+      if (a < NG && r.gwe && r.dst == a) v = gname(r.gname);
+      if (a >= NG && r.pwe && r.pdst == a - NG) v = r.pname;
+    }
+    return v;
+  };
+  // After it: every map, with the captured group over it, as the model's an
+  // edge before; every live checkpoint as the model's two edges before.
   if (have_snap)
-    for (unsigned s = 0; s != S; ++s) {
+    for (unsigned s = 0; s != S; ++s)
       for (unsigned a = 0; a != NG + NP; ++a) {
         const unsigned w0 = a < NG ? GW : PW, lsb = s * MW + (a < NG ? a * GW : NG * GW + (a - NG) * PW);
-        unsigned got = getField(dut->rat_cq02h, lsb, w0);
+        unsigned got = over(s, a, getField(dut->rat_cq02h, lsb, w0), false);
         if (got != snap.rat[s * (NG + NP) + a]) fail("speculative map differs", s, a, got, snap.rat[s * (NG + NP) + a]);
-        got = getField(dut->crat_cq02h, lsb, w0);
+        got = over(s, a, getField(dut->crat_cq02h, lsb, w0), true);
         if (got != snap.crat[s * (NG + NP) + a]) fail("committed map differs", s, a, got, snap.crat[s * (NG + NP) + a]);
       }
+  if (have_snap2)
+    for (unsigned s = 0; s != S; ++s)
       for (unsigned k = 0; k != C; ++k) {
-        if (!snap.live[s * C + k]) continue;
+        if (!snap2.live[s * C + k]) continue;
         for (unsigned a = 0; a != NG + NP; ++a) {
           const unsigned w0 = a < NG ? GW : PW;
           const unsigned lsb = (s * C + k) * MW + (a < NG ? a * GW : NG * GW + (a - NG) * PW);
-          const unsigned got = getField(dut->ckpt_cq02h, lsb, w0), want = snap.ckpt[(s * C + k) * (NG + NP) + a];
+          const unsigned got = getField(dut->ckpt_cq02h, lsb, w0), want = snap2.ckpt[(s * C + k) * (NG + NP) + a];
           if (got != want) fail("checkpoint differs", s * C + k, a, got, want);
         }
       }
-    }
+  snap2 = snap;
+  have_snap2 = have_snap;
   snap = take(c);
   have_snap = true;
 }

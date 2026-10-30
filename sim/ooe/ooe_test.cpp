@@ -187,11 +187,15 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     break;
   case kStore: u.attr_raw = attr(1, 0, 0, 0, 0, 1, 0, 0, 3); break;
   case kAtomic:
-    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined. A
-    // CAS's first slot names no destination; its second does (casSecond).
-    u.attr_raw = attr(1, 0, 0, !o.red && !o.cas, 0, 2, 0, 0, 3);
+    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined. An
+    // atomic is two decode slots (OI-80 (d), DA tab rev 94): the first
+    // carries rbase and rindex and names no destination; the second an
+    // RMW's rs, or a CAS's rs_cmp and rs_swap, and the destination
+    // (atomSecond).
+    u.attr_raw = attr(1, 0, 0, 0, 0, 2, 0, 0, 3) | 1u << 17;
     u.opcode = o.cas ? 0x2B : 0x2A;
-    if (o.cas) u.attr_raw |= 1u << 17;
+    u.src[2] = 0;
+    u.shape.gpr_reads &= 3u;
     break;
   case kBranch:
     u.attr_raw = attr(0, 1, 0, 0, 0, 0, 1, 0, 0);
@@ -225,16 +229,24 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   return u;
 }
 
-/// A CAS's second decode slot (TI-39, AR's rev 156): rs_cmp and rs_swap,
-/// the destination, the first slot's instruction, marked second.
-Uop casSecond(const Op &o, const Uop &first) {
+/// An atomic's second decode slot (TI-39, AR's rev 156; OI-80 (d)): a
+/// CAS's rs_cmp and rs_swap, or an RMW's rs, in src0 and src1; the
+/// destination unless a reduction; the first slot's instruction, marked
+/// second.
+Uop atomSecond(const Op &o, const Uop &first) {
   Uop u = first;
-  u.src[0] = o.csrc[0];
-  u.src[1] = o.csrc[1];
+  if (o.cas) {
+    u.src[0] = o.csrc[0];
+    u.src[1] = o.csrc[1];
+    u.shape.gpr_reads = uint8_t((1u << o.ncsrc) - 1u);
+  } else {
+    u.src[0] = o.src[2];
+    u.src[1] = 0;
+    u.shape.gpr_reads = uint8_t(o.nsrc > 2 ? 1u : 0u);
+  }
   u.src[2] = 0;
-  u.shape.gpr_reads = uint8_t((1u << o.ncsrc) - 1u);
   u.dst = o.dst;
-  u.attr_raw = (first.attr_raw & ~(1u << 17)) | 1u << 18 | 1u << 10;   // writes_gpr: rd
+  u.attr_raw = (first.attr_raw & ~(1u << 17)) | 1u << 18 | (o.red ? 0u : 1u << 10);   // writes_gpr: rd
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
 }
@@ -689,10 +701,9 @@ struct Env {
         correct[tid] = corr;
         Uop u = makeUop(o, x.id, tid, x.epoch, ck);
         fetched.insert({t + fetch_delay, u});
-        // A CAS is two slots of one instruction; nothing of the warp is
+        // An atomic is two slots of one instruction; nothing of the warp is
         // fetched between them (a late second ends the cycle's fetch).
-        const bool cas = o.k == kAtomic && o.cas;
-        if (cas) fetched.insert({t + fetch_delay + (o.late2 ? 1 : 0), casSecond(o, u)});
+        if (o.k == kAtomic) fetched.insert({t + fetch_delay + (o.late2 ? 1 : 0), atomSecond(o, u)});
         if (o.k == kBranch) x.ckpt_of[tid] = ck;
         if (corr) {
           tid_at[{x.id, x.next}] = tid;
@@ -705,7 +716,7 @@ struct Env {
           }
           if (o.k == kExit && o.last) break;
         }
-        if (cas) break;
+        if (o.k == kAtomic) break;
       }
     }
   }
@@ -2370,21 +2381,62 @@ void testFault() {
   EXPECT(e.core.freeGprs() == c.phys_regs, "kill after a fault left %zu free", e.core.freeGprs());
 }
 
+/// OI-84 (OA's rev 264): four warps, each with an atomic pair at its head
+/// again and again, CASes and RMWs, so every round-0 head is a first slot.
+/// Under OI-79 (b)'s rounds each pair's second falls past the width and
+/// the cut takes nothing, cycle after cycle; under (a) a pair's second
+/// takes the lane after its first, and every warp finishes.
+// control: pair-rounds (inject_pair_rounds), which must not finish.
+void testPairHeads(bool control = false) {
+  g_test = "atomic pairs at four heads";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  c.inject_pair_rounds = control;
+  Env e(c, 9);
+  for (unsigned w = 0; w != 4; ++w) {
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 6; ++i) {
+      Op x; x.k = kAtomic; x.dst = 4 + (i & 1); x.src[0] = 5; x.src[1] = 6;
+      if ((i + w) % 2) {
+        x.cas = true; x.nsrc = 2; x.csrc[0] = 7; x.csrc[1] = 8; x.ncsrc = 2;
+      } else {
+        x.src[2] = 7; x.nsrc = 3;
+      }
+      p.push_back(x);
+    }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(w * 5, w, p);
+  }
+  e.finish();
+  if (control) return;
+  EXPECT(e.core.counters["rename.cas_pair"] == 24, "%llu atomic pairs renamed, want 24",
+         (unsigned long long)e.core.counters["rename.cas_pair"]);
+}
+
 /// OI-79 (b)'s cut: two warps, one of predicate writes, one of a lane op
 /// and a CAS again and again, so a CAS's first slot often takes the cycle's
 /// last lane and its second would be the next's; the take stops before the
 /// first. Neither warp writes enough GPRs or MIU rows for the cycle's ports
 /// to bind (OI-80), so go_tb holds the RTL's cut to the model's.
-// control: OI-80's liveness rule dropped (inject_no_first_need), which the
-// core's check must catch: the CAS warp's MIU share sits at one.
+// control: OI-80's liveness rule dropped (inject_no_first_need), which must
+// fail: both warps a CAS stream from two MIU rows in all, so the equal split
+// gives each one and a pair needs two (A1's and A3's, OI-80 (d)); only the
+// rotation's reserve lets a pair through, and without it neither warp moves.
 void testPairCut(bool control = false) {
   g_test = "CAS pair cut";
   Config c = baseConfig();
   c.l1_spec = false;
   c.inject_no_first_need = control;
+  if (control) c.rs_miu = 2;
   Env e(c, 5);
   std::vector<Op> a, b;
-  for (unsigned i = 0; i != 60; ++i) { Op s; s.k = kSetp; s.pdst = 1 + i % 3; s.nsrc = 2; a.push_back(s); }
+  if (control)
+    for (unsigned i = 0; i != 12; ++i) {
+      Op x; x.k = kAtomic; x.cas = true; x.dst = 4; x.src[0] = 5; x.src[1] = 6; x.nsrc = 2;
+      x.csrc[0] = 7; x.csrc[1] = 8; x.ncsrc = 2; a.push_back(x);
+    }
+  else
+    for (unsigned i = 0; i != 60; ++i) { Op s; s.k = kSetp; s.pdst = 1 + i % 3; s.nsrc = 2; a.push_back(s); }
   for (unsigned i = 0; i != 12; ++i) {
     Op l; l.k = kLane; l.dst = 3; l.nsrc = 1; b.push_back(l);
     Op x; x.k = kAtomic; x.cas = true; x.dst = 4; x.src[0] = 5; x.src[1] = 6; x.nsrc = 2;
@@ -3596,7 +3648,7 @@ void testAtomic() {
       for (const Outputs &o : e.log) for (const Issue &i : o.issues) copies += i.tid == at_tid && i.copy;
       EXPECT(copies == (variant == 2 || variant == 3 ? 1u : 0u), "%u copies", copies);
       EXPECT(e.core.histograms["atomic.passes"][3] == 1, "the passes histogram");
-      EXPECT(e.core.counters["rename.cas_pair"] == (variant >= 4 ? 1u : 0u), "%llu CAS pairs renamed",
+      EXPECT(e.core.counters["rename.cas_pair"] == 1u, "%llu atomic pairs renamed",
              (unsigned long long)e.core.counters["rename.cas_pair"]);
       EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "registers lost");
     }
@@ -4781,7 +4833,8 @@ int ooeTestAtomicHookedWith(unsigned seeds, void (*hook)(const Core &), void (*c
   g_cycle_hook = hook;
   g_config_hook = cfg;
   testPairCut();
-  testAtomicRandom(seeds, randomConfig, 0, true);
+  testPairHeads();
+  testAtomicRandom(seeds, randomConfig);
   g_config_hook = nullptr;
   g_cycle_hook = nullptr;
   return g_fail;
@@ -4955,6 +5008,7 @@ int main(int argc, char **argv) {
   testAtomicDemote();
   testAtomicRandom(seeds, randomConfig);
   testPairCut();
+  testPairHeads();
   testSwap();
   testDemoteRefused();
   testParkedLayout();
@@ -4995,6 +5049,16 @@ int main(int argc, char **argv) {
     const char *name = "control no-first-need";
     const int saved = g_fail;
     testPairCut(true);
+    const bool caught = g_fail != saved;
+    g_fail = saved;
+    g_test = name;
+    EXPECT(caught, "the harness missed it");
+    std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
+  }
+  {
+    const char *name = "control pair-rounds";
+    const int saved = g_fail;
+    testPairHeads(true);
     const bool caught = g_fail != saved;
     g_fail = saved;
     g_test = name;

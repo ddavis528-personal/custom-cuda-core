@@ -151,6 +151,54 @@
    "date": "2026-10-23",
    "why": "ooe_rat's rat_cq02h, required there at 4: OA's response OI-46 (reopened; OA tab, 2026-10-19): with the read in ooe_rename, ooe_rat's flops drive rat straight out, and 4 covers fanout buffering across its flops"
   },
+  "po_v_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-26",
+   "why": "OA's response OI-83 (OA tab rev 273): ooe_rat's capture of rename's group (OI-83 (b)), straight from its flops, as pw_* into ooe_rat"
+  },
+  "po_slot_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-26",
+   "why": "OA's response OI-83 (OA tab rev 273): ooe_rat's capture of rename's group (OI-83 (b)), straight from its flops, as pw_* into ooe_rat"
+  },
+  "po_dst_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-26",
+   "why": "OA's response OI-83 (OA tab rev 273): ooe_rat's capture of rename's group (OI-83 (b)), straight from its flops, as pw_* into ooe_rat"
+  },
+  "po_gwe_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-26",
+   "why": "OA's response OI-83 (OA tab rev 273): ooe_rat's capture of rename's group (OI-83 (b)), straight from its flops, as pw_* into ooe_rat"
+  },
+  "po_gname_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-26",
+   "why": "OA's response OI-83 (OA tab rev 273): ooe_rat's capture of rename's group (OI-83 (b)), straight from its flops, as pw_* into ooe_rat"
+  },
+  "po_pdst_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-26",
+   "why": "OA's response OI-83 (OA tab rev 273): ooe_rat's capture of rename's group (OI-83 (b)), straight from its flops, as pw_* into ooe_rat"
+  },
+  "po_pwe_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-26",
+   "why": "OA's response OI-83 (OA tab rev 273): ooe_rat's capture of rename's group (OI-83 (b)), straight from its flops, as pw_* into ooe_rat"
+  },
+  "po_pname_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-26",
+   "why": "OA's response OI-83 (OA tab rev 273): ooe_rat's capture of rename's group (OI-83 (b)), straight from its flops, as pw_* into ooe_rat"
+  },
   "gfree_l_cq00h": {
    "arrival": 8.0,
    "by": "OA",
@@ -230,10 +278,10 @@
    "why": "ooe_rat's pw_ckpt_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
   },
   "q_gname_cq03h": {
-   "required": 3.0,
+   "required": 20.0,
    "by": "OA",
-   "date": "2026-10-23",
-   "why": "OA's response OI-70 (OA tab rev 194): by 3, ooe_rat's pw_gname and pw_pname arrival (rev 185), met with the one-hot name index (measured 2.6); ooe_rat's paths from them are 11.3 and 10.1 NGD"
+   "date": "2026-10-26",
+   "why": "OA's response OI-83 (OA tab rev 273): by 20, ooe_rat's pw_gname arrival, since OI-83 (b) takes it only into ooe_rat's capture, with no logic in front (measured 18.1 at NS 4)"
   },
   "q_pname_cq03h": {
    "required": 3.0,

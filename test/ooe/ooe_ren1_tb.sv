@@ -6,8 +6,8 @@
 // each read's in-group writer as a lane,
 // the Rename 1 register captures the lanes and the free lists'
 // heads, and ooe_ren1n binds the names from it. That register is the
-// pending group: ooe_rat writes it at the next edge and the heads read
-// through it. ooe_rat's other ports (the go's leads, retirement, whole-map
+// pending group: ooe_rat captures it at the next edge and writes it at the
+// one after (OI-83 (b)), and the heads read through both. ooe_rat's other ports (the go's leads, retirement, whole-map
 // events) and the free lists' heads come from the bench.
 //===----------------------------------------------------------------------===//
 module ooe_ren1_tb #(
@@ -80,13 +80,22 @@ module ooe_ren1_tb #(
   logic [S*MW-1:0]   crat_cq02h;
   logic [S*C*MW-1:0] ckpt_cq02h;
   logic [R*4-1:0]    pw_dst;
+  // ooe_rat's capture of the group before last (OI-83 (b)), into the reads.
+  logic [R-1:0]      po_v, po_gwe, po_pwe;
+  logic [R*LS-1:0]   po_slot;
+  logic [R*4-1:0]    po_dst;
+  logic [R*GW-1:0]   po_gname;
+  logic [R*2-1:0]    po_pdst;
+  logic [R*PW-1:0]   po_pname;
   ooe_rat #(.S(S), .A(R), .R(RP), .C(C), .GW(GW), .PW(PW), .GZERO(GZERO), .PZERO(PZERO)) ooe_rat (
     .ooe_core_clk, .ooe_rst_r00h, .tk_cq00h, .hbr_cq00h, .hck_cq00h, .rstl_cq00h,
     .pw_v_cq01h(q_v), .pw_slot_cq01h(q_slot), .pw_rst_cq01h('0), .pw_dst_cq01h(q_dst), .pw_gwe_cq01h(q_gwe),
     .pw_gname_cq01h(q_gname), .pw_pdst_cq01h(q_pdst), .pw_pwe_cq01h(q_pwe), .pw_pname_cq01h(q_pname),
     .pw_br_cq01h(q_br), .pw_ckpt_cq01h(q_ckpt), .rgl_cq00h, .rpl_cq00h, .ret_gwe_cq01h, .ret_dst_cq01h,
     .ret_gname_cq01h, .ret_pwe_cq01h, .ret_pdst_cq01h, .ret_pname_cq01h, .restore_cq00h, .restore_ckpt_cq00h,
-    .squash_cq00h, .release_cq00h, .rat_cq02h, .crat_cq02h, .ckpt_cq02h);
+    .squash_cq00h, .release_cq00h, .po_v_cq02h(po_v), .po_slot_cq02h(po_slot), .po_dst_cq02h(po_dst),
+    .po_gwe_cq02h(po_gwe), .po_gname_cq02h(po_gname), .po_pdst_cq02h(po_pdst), .po_pwe_cq02h(po_pwe),
+    .po_pname_cq02h(po_pname), .rat_cq02h, .crat_cq02h, .ckpt_cq02h);
 
   logic [S*R*4*GW-1:0] c_gv;
   logic [S*R*4*R-1:0]  c_gw;
@@ -110,6 +119,8 @@ module ooe_ren1_tb #(
     ooe_headrd #(.S(S), .SL(s), .R(R), .A(R), .GW(GW), .PW(PW)) ooe_headrd (
       .rat_cq02h(rat_cq02h[s * MW +: MW]), .h_src_cq01h(src), .h_dst_cq01h(dst), .h_gwe_cq01h(gwe),
       .h_pguard_cq01h(pguard), .h_pdst_cq01h(pdst), .h_pwe_cq01h(pwe), .h_pq_cq01h(pq),
+      .po_v_cq02h(po_v), .po_slot_cq02h(po_slot), .po_dst_cq02h(po_dst), .po_gwe_cq02h(po_gwe),
+      .po_gname_cq02h(po_gname), .po_pdst_cq02h(po_pdst), .po_pwe_cq02h(po_pwe), .po_pname_cq02h(po_pname),
       .pw_v_cq01h(q_v), .pw_slot_cq01h(q_slot), .pw_dst_cq01h(q_dst), .pw_gwe_cq01h(q_gwe),
       .pw_gname_cq01h(q_gname), .pw_pdst_cq01h(q_pdst), .pw_pwe_cq01h(q_pwe), .pw_pname_cq01h(q_pname),
       .h_gv_cq01h(c_gv[s * R * 4 * GW +: R * 4 * GW]), .h_gw_cq01h(c_gw[s * R * 4 * R +: R * 4 * R]),
