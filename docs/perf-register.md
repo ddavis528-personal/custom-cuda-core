@@ -68,7 +68,7 @@ it.
 | PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
-| PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted by decision (DA, 2026-10-26: option W), not yet built |
+| PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
 
 ## Entries
 
@@ -1123,3 +1123,9 @@ it.
   512 KiB's lead over 64 KiB grows to 8.4% with frames interleaved, so the
   L1 size still rests on the eight-trace sweep. IS wrote it into the ISA
   as O-84 (compiler 3d9ba61).
+- **Built (TI, 2026-10-30, 5fe7177 on pin d9ddd2c):** srd #3, MIU's
+  decision, cells and F-ADDR, and `local_base` on `ccv_rau_miu_cta` (TI-47
+  (a)), with gate kernel privwin and its two controls. coremark-derived-priv,
+  frames and data in the run as compiled, runs clean at 1,234,051 cycles at
+  one warp and 64 KiB, 1.3% over TI's scratch bound of 1,218,411: the
+  prologue's `srd` and add, which the bound never paid.
