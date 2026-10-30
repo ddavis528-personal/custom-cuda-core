@@ -122,6 +122,21 @@ live doc wins; refresh a copy, never edit it (`docs/design-snapshots/README.md`)
 - Per-block architecture specs: https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35
 - Block partitioning and interface spec (the arch agent's): https://claude.ai/artifact/7n8Uv33XAvxziZ7Xyz9jCz
 
+## Context and handoff (DA, 2026-10-30)
+
+Every agent keeps `.claude/handoff/<PREFIX>.md` current: its working rules
+beyond this file, branch tips, runs in flight, register bookmarks and open
+work, most urgent first, in a few kB. Update it when a task ends, not only
+before a compaction: nothing writes it for you. After every compaction the
+SessionStart hook in `.claude/settings.json` (`.claude/hooks/handoff.sh`)
+prints it, finding the prefix from the session id in
+`docs/register/roster.json`. A session in custom-cuda-complier copies the
+script and hook unchanged, and the script reads this roster from a
+custom-cuda-core checkout beside it (or `$CCV_ROSTER`, or a copy at that
+repo's `docs/register/roster.json`, which CP checks against this one in its
+daily sweep). Instructions given only in conversation do not
+survive a compaction; put them here or in the handoff.
+
 ## Sessions working side by side
 
 - The top-level session owns `schema/`, `params/`, `tools/`, `rtl/top/` and
