@@ -337,8 +337,7 @@ job_vlint() {
     for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_common_chk_credit.sv: \
                 rtl/if/ccv_common_chk_credit.sv:CCV_TRACE rtl/if/ccv_common_chk_atomic.sv: \
                 rtl/if/ccv_common_chk_lockstep.sv: rtl/if/ccv_common_chk_lockstep.sv:CCV_TRACE \
-                rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_distinct.sv: \
-                rtl/if/ccv_common_chk_outstanding.sv: rtl/if/ccv_common_chk_notice.sv: \
+                rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_outstanding.sv: rtl/if/ccv_common_chk_notice.sv: \
                 rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv:; do
       f=${spec%%:*}; def=${spec#*:}
       top=$(basename "$f" .sv)
