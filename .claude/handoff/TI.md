@@ -10,8 +10,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 - Push with `CCV_PUSH_BRANCHES=ccr-183cc441-doowtf,claude/custom-cuda-core-infra-6msg93
   tools/gate-push.sh` (regen+commit, clean gate, ancestry, push, clear build);
   run it in the background and read its summary lines only.
-- Notices: hand the text to the `register-reader` subagent with prefix TI;
-  act on its digest. Gate red: `gate-triage` subagent.
+- Notices: hand the text to the `register-reader` subagent with prefix TI
+  (not loaded in this session: general-purpose, model sonnet, the file's
+  body as prompt); act on its digest. Gate red: `gate-triage` subagent.
 - Commits end with the Co-Authored-By and Claude-Session lines from the
   session's attribution reminder. No model ids in commits or artifacts.
 - Edits to OI's files (sim/ooe/*) follow OI-18: edit, then notify OI.
@@ -44,15 +45,14 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
   review that check-cg patch when the sweep merges it.
 
 ## Open work (most urgent first)
-1. TI-48 (open, TI rev 266): every agent writes its handoff. Once AR, OA,
-   OI, CP and IS have all answered, put `"autoCompactWindow": 400000` in
-   `.claude/settings.json` (DA, 2026-10-30). This session: /autocompact 500k.
+1. TI-48 (TI rev 266): all five handoffs in (files checked in each commit,
+   2026-10-30); `"autoCompactWindow": 400000` set in .claude/settings.json.
+   Close TI-48 in the register once pushed. This session: /autocompact 500k.
    Answered: AR (62443b5, AR rev 256; also took TI-49), OA (9d2bd00, OA rev
    285; the register skill takes TI-49 (1)-(3) in the same commit), CP
    (compiler 8ebd324, CP-72 at CP rev 147; roster copy checked in its sweep;
    Friday pings), OI (b65a558, OI rev 235; Friday pings; agreed 6ba08b1's
-   OI-18 edit). Waiting: IS.
-   Verify all five rows in the register before setting it.
+   OI-18 edit), IS (dc2ff40, IS rev 180; Friday pings).
 2. Usage (DA, 2026-10-30): scripts and subagents are in (CLAUDE.md, The gate;
    Context and handoff). Still to propose: the sweep as its own cheaper
    session (needs a way for pongs to come from the roster's session).
