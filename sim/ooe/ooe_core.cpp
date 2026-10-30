@@ -34,7 +34,7 @@ std::string Config::apply(const std::string &spec) {
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"share_return", &share_return},
-      {"held_late", &held_late}};
+      {"held_late", &held_late}, {"retire_lag", &retire_lag}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
@@ -309,6 +309,7 @@ void Core::alloc(const Alloc &a) { allocs_.push_back(a); }
 void Core::demote(unsigned warp) { demotes_.push_back(warp); }
 void Core::barRelease(uint32_t m) { released_ |= m; }
 void Core::kill(uint32_t mask, unsigned epoch) {
+  robStop("kill");
   kill_pending_ = true;
   kill_mask_ = mask;
   kill_epoch_ = epoch;
@@ -413,6 +414,7 @@ void Core::cycle(uint64_t now) {
   wlog_.hop_dep.clear();
   wlog_.cf_dep.clear();
   rlog_ = RatLog();
+  roblog_ = RobLog();
   golog_ = GoLog();
   out.clear();
   retired.clear();
@@ -942,6 +944,7 @@ void Core::rsFree(unsigned e) {
   for (auto &p : gprod_) for (unsigned &q : p) if (q == e) q = kNoEntry;
   for (auto &p : pprod_) for (unsigned &q : p) if (q == e) q = kNoEntry;
   RobEntry &r = slot_[x.slot].rob[x.rob];
+  roblog_.rsf.push_back(tagOf(x.slot, x.rob));
   if (r.rs_main == e) r.rs_main = kNoEntry;
   if (r.rs_copy == e) r.rs_copy = kNoEntry;
   if (r.rs_a2 == e) r.rs_a2 = kNoEntry;
@@ -1496,6 +1499,7 @@ void Core::advanceWakes() {
       RobEntry &r = slot_[s].rob[i];
       if (r.valid && r.copy_pending && now_ >= r.copy_land) {
         r.copy_pending = false;
+        roblog_.cpl.push_back(tagOf(s, i));
         if (!r.squashed) complete(s, i);
       }
     }
@@ -1532,6 +1536,7 @@ void Core::complete(unsigned slot, unsigned idx) {
             cfg_.inject_complete_early);
   if (!c) return;
   r.complete = true;
+  r.ret_at = now_ + cfg_.retire_lag;
   // A branch acts on its outcome only once confirmed: a resolution read
   // from a cancelled wake would squash on garbage.
   if (r.u.attr.branch && r.resolved) resolveBranch(slot, idx);
@@ -1542,6 +1547,7 @@ void Core::takeCompletions() {
     unsigned s;
     RobEntry *r = byTag(d.rob_tag, &s);
     if (!r) { err("done for rob tag %u, which is not in the ROB", d.rob_tag); continue; }
+    roblog_.done.push_back(d.rob_tag);
     if (r->rcu_dones_owed == 0) {
       err("done for rob tag %u, which owes none", d.rob_tag);
       continue;
@@ -1605,6 +1611,7 @@ void Core::takeCompletions() {
     unsigned s;
     RobEntry *r = byTag(c.rob_tag, &s);
     if (!r) { err("completion for rob tag %u, which is not in the ROB", c.rob_tag); continue; }
+    roblog_.cmpl.push_back(c.rob_tag);
     if (!r->at_miu || r->miu_done) {
       err("V-43: a second completion for rob tag %u", c.rob_tag);
       continue;
@@ -1893,6 +1900,7 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
 /// Squash every entry of the slot younger than keep_idx, in ROB order; with
 /// to_retirement, every entry. The caller restores the RAT.
 void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool discard_all) {
+  robStop("squash");
   if (slot < audit_squash_.size()) audit_squash_[slot] = 1;
   Slot &s = slot_[slot];
   const unsigned first = to_retirement ? 0 : robAge(s, unsigned(keep_idx)) + 1;
@@ -2006,6 +2014,7 @@ void Core::releaseSlot(unsigned slot) {
     err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr - pend, s.held_pred);
   slot_of_[s.warp % kWarpIds] = -1;
   rlog_.release |= 1u << slot;
+  roblog_.release |= 1u << slot;
   const unsigned keep_epoch_warp = s.warp;
   (void)keep_epoch_warp;    // the epoch is per warp_id and survives (A-74)
   Slot fresh;
@@ -2321,11 +2330,12 @@ void Core::retire() {
     unsigned n = 0;
     while (n != cfg_.retire_per_rob && s.count && !s.fault_stop) {
       RobEntry &r = s.rob[s.head];
-      if (!r.complete) break;
+      if (!r.complete || now_ < r.ret_at) break;
       if (r.fault) {
         // Faults are taken at retirement: stop, report, let RAU's kill clean
         // up (Faults; V-24). OOE does not squash.
         s.fault_stop = true;
+        robStop("fault");
         Status st;
         st.warp = s.warp;
         st.fault_taken = true;
@@ -2348,7 +2358,7 @@ void Core::retire() {
         break;
       }
       if (r.is_store && !r.committed) {
-        if (ports == cfg_.retire_msgs) { count("stall.retire_port"); break; }
+        if (ports == cfg_.retire_msgs) { count("stall.retire_port"); robStop("retire port"); break; }
         Commit c;
         c.tid = r.u.tid;
         c.port = ports++;
@@ -2368,6 +2378,22 @@ void Core::retire() {
         w.pdst = r.u.pred_dst & 3;
         w.pname = r.ppnew;
         rlog_.ret.push_back(w);
+      }
+      {
+        RobLog::Ret q;
+        q.slot = si;
+        q.idx = s.head;
+        q.gwe = r.alloc_gpr;
+        q.dst = r.u.dst & 15;
+        q.gname = r.pnew;
+        q.gold = r.alloc_gpr ? r.pold : 0;
+        q.gsec = r.alloc_gpr ? sectionsOf(r.pold) : 0;
+        q.pwe = r.u.pred_we;
+        q.pdst = r.u.pred_dst & 3;
+        q.pname = r.ppnew;
+        q.pold = r.ppold;
+        q.pfree = r.u.pred_we && cfg_.rename_preds && r.ppold != cfg_.pred_zero;
+        roblog_.ret.push_back(q);
       }
       if (r.alloc_gpr) {
         s.crat[r.u.dst & 15] = r.pnew;
@@ -2402,7 +2428,7 @@ void Core::retire() {
       // leaves before it retires, so no report is recalled.
       const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
                            !r.fault && !r.u.cause;
-      if (bar_rep && !out.bars.empty()) { count("stall.bar_port"); break; }
+      if (bar_rep && !out.bars.empty()) { count("stall.bar_port"); robStop("barrier port"); break; }
       if (bar_rep) {
         Bar b;
         b.tid = r.u.tid;
@@ -3062,6 +3088,7 @@ void Core::issueCopy(unsigned slot, unsigned idx, unsigned copy_port) {
   out.issues.push_back(cp);
   r.copy_pending = true;
   r.copy_land = now_ + cfg_.payload_stages + cfg_.lat_lane;
+  roblog_.cpi.push_back(tagOf(slot, idx));
   ev("copy", s.warp, is.rob_tag, 0, u.tid);
   oev(OoeEv::kCopyIssue, s.warp, is.rob_tag, copy_port, u.tid);
   ev("issue", s.warp, copy_port, r.rs_copy, u.tid);
@@ -3097,7 +3124,10 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   is.chwidth = !isZeroName(is.pdst) && is.pdst != noGpr() ? is.dst_w : is.src_w[0];
   out.issues.push_back(is);
   const bool lane_step = x.atom == 2;
-  if (lane_step || !r.is_mem || cfg_.memop_rcu_done) ++r.rcu_dones_owed;
+  if (lane_step || !r.is_mem || cfg_.memop_rcu_done) {
+    ++r.rcu_dones_owed;
+    roblog_.owe.push_back(tagOf(x.slot, x.rob));
+  }
   if (x.atom == 1) {
     // V-69: a read issues only at its warp's head, and each pass's read
     // follows the last pass's write.
@@ -3685,6 +3715,26 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // A fault found here names the lanes that issued the uop, as ccv-sim does
   // (TI, O-81's divchw): only MIU's faults name a subset, from completion.
   if (r.fault) r.fault_lanes = u.group_mask;
+  {
+    RobLog::Alloc q;
+    q.slot = si;
+    q.idx = idx;
+    q.nop = nop;
+    q.gwe = r.alloc_gpr;
+    q.dst = u.dst & 15;
+    q.gname = r.pnew;
+    q.gold = r.alloc_gpr ? r.pold : 0;
+    q.gsec = r.alloc_gpr ? sectionsOf(r.pold) : 0;
+    q.pwe = u.pred_we;
+    q.pdst = u.pred_dst & 3;
+    q.pname = r.ppnew;
+    q.pold = r.ppold;
+    q.mem = r.is_mem;
+    q.pfree = u.pred_we && cfg_.rename_preds && r.ppold != cfg_.pred_zero;
+    q.rs = (r.rs_main != kNoEntry) + (r.rs_copy != kNoEntry) + (r.rs_a2 != kNoEntry) + (r.rs_a3 != kNoEntry);
+    roblog_.alloc.push_back(q);
+    if (r.atomic) robStop("atomic");
+  }
   s.tail = (s.tail + 1) % cfg_.rob_depth;
   ++s.count;
   if (nop) complete(si, idx);

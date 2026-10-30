@@ -111,7 +111,7 @@
 #     active or not                              16-31 use their own window
 #   st.pred's predicate is data, not a guard  pdata-guard (predlane): its clear
 #                                                bits keep memory's ones
-#   a demotion between a cracked              resume-mid (predswap, at:57):
+#   a demotion between a cracked              resume-mid (predswap, at:58):
 #     instruction's uops resumes at its          the warp resumes past it
 #     first uop (AR's response TI-36)
 #   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
@@ -817,7 +817,9 @@ for kb in transp4:held-over-r borrow:borrow-partial; do
 done
 CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --cycles 20000 2>&1 |
   head -c 2000000 >"$B/kernel_warp-cap.log"
-ctl held-over-r "^CHECK ooe: warp 1 holds 3 slots past its held wait, over r = 2 (TI-46 (b))"
+# Re-pinned (OI-85, retire_lag 1): the window's cycle moves which held
+# warp passes r first, warp 1 before, warp 0 (then 2) after.
+ctl held-over-r "^CHECK ooe: warp 0 holds 3 slots past its held wait, over r = 2 (TI-46 (b))"
 ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
 ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
 # A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every
@@ -1129,21 +1131,23 @@ else
   bad "--break pdata-guard" "st.pred's data predicate was taken as a guard unnoticed: $(grep '^KERNEL' "$B/kernel_pdata-guard.log")"
 fi
 # A demotion between a cracked instruction's uops (AR's response TI-36):
-# at cycle 57 predswap's first st.pred has retired its first uop and not
+# at cycle 58 predswap's first st.pred has retired its first uop and not
 # its second, and the warp resumes at the instruction, running its first
 # uop again, which both transfers allow. Resumed past it, the second uop is
 # lost. The cycle comes from a sweep of CCV_RAU_DEMOTE=at:<cycle>: if timing
 # moves it, crack_split falls to 0 here and the cycle is swept again.
-CCV_RAU_DEMOTE=at:57 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at57.log" 2>&1
-if [ "$(cover "$B/kernel_predswap_at57.log" crack_split)" = 1 ] &&
-   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at57.log"; then
-  say "predswap demoted between a st.pred's uops" "PASS (at:57, it resumes at the instruction)"
+# Re-pinned 57 -> 58 (OI-85, retire_lag 1): the window retires a cycle
+# later, and of a sweep of at:40 to at:80, only at:58 splits the crack.
+CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at58.log" 2>&1
+if [ "$(cover "$B/kernel_predswap_at58.log" crack_split)" = 1 ] &&
+   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at58.log"; then
+  say "predswap demoted between a st.pred's uops" "PASS (at:58, it resumes at the instruction)"
 else
-  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at57.log"); crack_split=$(cover "$B/kernel_predswap_at57.log" crack_split)"
+  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at58.log"); crack_split=$(cover "$B/kernel_predswap_at58.log" crack_split)"
 fi
-CCV_RAU_DEMOTE=at:57 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
+CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
 if grep -q "^CHECK fet: restored warp 0 lane 0 at 1014, but it resumes at 1018" "$B/kernel_resume-mid.log"; then
-  say "--break resume-mid: past the split instruction" "PASS (predswap at:57)"
+  say "--break resume-mid: past the split instruction" "PASS (predswap at:58)"
 else
   bad "--break resume-mid" "a mid-instruction resume went unchecked: $(grep '^KERNEL' "$B/kernel_resume-mid.log")"
 fi

@@ -960,6 +960,18 @@ under one warp and 3.1 under two. One more decode-queue entry takes back
 all of it under the interleave, 2.3 points under one warp and 1.9 under
 two.
 
+`retire_lag` (1; OI-85 (a), OA's rev 278): the ROB's head window is a
+register holding what retires this cycle, so retirement decides from
+flops. It takes completions at its edge, so an entry completed in a cycle
+retires from the next. 0 is the earlier retire in the completion's own
+cycle. Measured with the S1 sweep, 45,326 cycles become 45,438 (+0.25%),
+and the audit moves +0.0% / +0.1%, every floor held. check-kernel's
+timing pins moved with it, each re-pinned with its reason: held-over-r's
+first warp past r (warp 1 to warp 0) and predswap's demote cycle (57 to
+58, from a sweep). `Core::robLog()` records each cycle's allocations,
+fills, RS events, completions and retirements, with where a cycle stopped
+retiring, which is what rob_tb drives the RTL from.
+
 `fits_conservative` (3; OA-21, DA 2026-10-20, and OA-22): a go that lets several warps take
 in a cycle forms each warp's fits alone, so their sum can exceed the
 shared credits (RS room per class, GPR and predicate names). The model

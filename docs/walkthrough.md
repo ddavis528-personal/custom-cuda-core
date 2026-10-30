@@ -215,7 +215,7 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
+KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
 XFER events=660 launched=660 match=yes channels_seen=33
 ```
 
@@ -260,7 +260,7 @@ instruction can be followed across every block it touches. Seq 12,
     126  ccv_dcu_miu_rsp                dcu  -> miu       
     128  ccv_miu_ooe_cmpl               miu  -> ooe       
     128  ccv_miu_rcu_data               miu  -> rcu       
-    131  EV_RETIRE                      ooe          
+    132  EV_RETIRE                      ooe          
 ```
 
 - **Fetch to dispatch in 6 cycles:** FET to DEC to OOE, one
@@ -275,7 +275,7 @@ instruction can be followed across every block it touches. Seq 12,
   102. The data comes back at 114, in 2 beats, and returns the
   same way.
 - **Completion:** MIU delivers the data to RCU and completion to OOE, and
-  the instruction retires at 131, 90 cycles after fetch.
+  the instruction retires at 132, 91 cycles after fetch.
 
 Seq 14, `C_ADD`, the add, is the other shape of
 traffic: the lanes. RCU sends 32 lane operations, one per lane instance,
@@ -300,7 +300,7 @@ in the same cycle, and gets 32 results back 4 cycles later:
     136  ccv_rcu_lane_ops               rcu  -> lane   x32
     140  ccv_lane_rcu_res               lane -> rcu    x32
     142  ccv_rcu_ooe_done               rcu  -> ooe       
-    144  EV_RETIRE                      ooe          
+    145  EV_RETIRE                      ooe          
 ```
 
 The trace converts to Perfetto (`tools/trace2perfetto.py`), with a track per
@@ -381,7 +381,7 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
+KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
 TRACES records=734/734 equal=yes byte_identical=no differing_cycles=0
 ```
 
