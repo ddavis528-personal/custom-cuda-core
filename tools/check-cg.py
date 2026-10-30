@@ -1471,6 +1471,9 @@ def elaborate(name, top, files, blackbox=(), known=(), params=None, defines=(), 
                 continue
             for b in v["bits"]:
                 if isinstance(b, int):
+                    # By its name in the module, generate scope kept, and by
+                    # its base name: a finding names one or the other (OI-89).
+                    alias[b].add(re.sub(r"(\[\d+\])+$", "", nn))
                     alias[b].add(re.sub(r"(\[\d+\])+$", "", nn.split(".")[-1]))
         cnt, regs, kids = 0, collections.Counter(), []
         for c in m["cells"].values():
@@ -1587,9 +1590,16 @@ def module_budget(findings, units):
 
 def took_flops(el, f):
     """A finding's flops in an elaborated partition: its registers, by name,
-    in every instance of its module."""
-    lasts = {reg_base(r) for r in f.regs}
-    return sum(m * sum(regs.get(x, 0) for x in lasts)
+    in every instance of its module. A register in a generate is its own
+    way's (g_slot[0].x, not every slot's x, OI-89): the longest suffix of its
+    scoped name the module has, else its base name (a child instance's)."""
+    def key(r, regs):
+        parts = re.sub(r"(\[[\d:,]+\])+$", "", r).split(".")
+        for k in range(len(parts) - 1):
+            if ".".join(parts[k:]) in regs:
+                return ".".join(parts[k:])
+        return parts[-1]
+    return sum(m * sum(regs.get(x, 0) for x in {key(r, regs) for r in f.regs})
                for b, m, regs in el["inst"] if b == f.module)
 
 
@@ -2017,7 +2027,7 @@ def fixture_unit(name, module, scope=None):
 
 
 MEASURED_FIXTURES = ("cg_fx_good", "cg_fx_form", "cg_fx_deep", "cg_fx_dcge", "cg_fx_small",
-                     "cg_fx_wide", "cg_fx_big", "cg_fx_name")
+                     "cg_fx_wide", "cg_fx_big", "cg_fx_name", "cg_fx_gen")
 
 
 def selftest():
@@ -2211,6 +2221,15 @@ def selftest():
     expect(any("unit fx_small" in x and "c_q" in x and "3 flops" in x for x in xf)
            and not any("fx_big" in x for x in xf),
            "a module elaborated with one flop fewer than its replayed netlist passed: %s" % xf)
+    # 15b. A register in a generate, each way on its own enable, its findings
+    #      each taken by the module budget (cg_fx_gen): the kept elaboration
+    #      counts each finding's own way, not every way's (OI-89).
+    _, fs = run_policy(("cg_fx_gen",))
+    took = [f for f in fs if f.module == "cg_fx_gen" and f.status == "module"
+            and any(r.startswith("g_way[") for r in f.regs)]
+    _, xf = crosscheck(fs, [units["cg_fx_gen"]], set(mods))
+    expect(len(took) == 2 and not xf,
+           "a generate's ways were counted together, or not taken apart: %s %s" % ([str(f) for f in took], xf))
     # 16. CG-5 and RST-1, from a netlist (cg_fx_src): a gate enabled
     #     straight from an input, the reset port in a gate's enable, an ICG
     #     enabled from an input; the reset port on a flop's reset pin and
