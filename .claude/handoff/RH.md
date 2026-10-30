@@ -39,4 +39,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-(none)
+- OI-88 (from OI, 2026-10-30 23:12Z): CoreMark under ROB slice 2 knobs at
+  da182a7. Script /home/user/rh-jobs/oi88.sh (worktree /home/user/rh-oi88),
+  progress in ~/ccv-logs/oi88.summary, per-run logs ~/ccv-logs/<k>.<cfg>.{log,time}.
+  Starts after RH's own gate. Reply to OI with one line per run: kernel, config,
+  cycles, from_fetch, gpr/pred/mem mismatches, check_failures, redirects, peak
+  RSS. Report a run that died and go on. No commits.
+- RH's own: the clean gate on 203f04b (roster + handoff), then push
+  ccr-c22116ce-1vzyjg.
