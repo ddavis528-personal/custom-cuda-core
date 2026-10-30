@@ -30,6 +30,8 @@ below); then `CCV_PUSH_BRANCHES=... tools/daily-sweep.sh` in the background
 few lines.
 
 ## Register bookmarks (revs read through)
+Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
+(outside the repo, so the sweep's clean-tree check is not tripped).
 Conventions 15, AR 250, OA 279, IS 176, TI 269, OI 234 (FYI re:OI-85,
 re:OI-89; OI-89 closed), CP 143, DA 96. Latest TI open: TI-49.
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
