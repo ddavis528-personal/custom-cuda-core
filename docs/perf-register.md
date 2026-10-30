@@ -1109,3 +1109,16 @@ it.
   (TI's rev 228), a single-thread trade for AR-20. L1's size is the DCU
   spec's, chosen on the corpus sweep between 64 KiB and 512 KiB (DA tab rev
   95); on interleaved coremark128, 512 KiB saves 7.1% against 64 KiB.
+- **Extended to frames (Daniel, 2026-10-30; DA tab rev 97):** IS-25
+  adopted, in his words "I agree that we should adopt IS-25". O-30's
+  address-taken frames and stack arguments move into the bottom of the
+  thread's O-83 region, with R15 = W, so MIU interleaves them as it does
+  W's data; `__ccv_privbase` data runs down from the top. No gates and no
+  encoding: ISA text and ABI only. On coremark128, frames interleaved save
+  15.7% at 64 KiB and 16.9% at 512 KiB; coremark32 saves 7.1% (TI's revs
+  249 and 251). The eight corpus traces do not move: their frame traffic is
+  all O-69 spills (CP-68). What lost: frame pointers that name the same
+  bytes in every thread, IS's first top-down split, and O-64's frame
+  windows. The fixes add: both together save 22.8% on coremark128, and
+  512 KiB's lead over 64 KiB grows to 8.4% with frames interleaved, so the
+  L1 size still rests on the eight-trace sweep.
