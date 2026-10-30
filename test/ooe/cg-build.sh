@@ -50,7 +50,7 @@ case "$unit" in
       "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" ;;
   ooe_rat)
     read -r g d < <(python3 test/ooe/rat-params.py)
-    vl ooe_rat_read "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
+    vl ooe_rat_read "-DCCV_CHECK_RAT ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
       "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
   ooe_sched)
     # The assembled trio (test/ooe/trio_tb.cpp): ooe_sched's leads are ooe_wake's
@@ -81,9 +81,10 @@ case "$unit" in
       "$PWD/test/ooe/rendep_tb.cpp" ;;
   ooe_rename)
     # Beside the ooe_rat it reads and writes (test/ooe/ooe_rename_tb.sv);
-    # the unit's scope is u_rename.
-    read -r g d < <(python3 test/ooe/rename-params.py)
-    vl ooe_rename_tb "-DCCV_CHECK_RENAME ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" \
+    # the unit's scope is u_rename. Sectioned, as ooe_rename's default (NS 4,
+    # OA rev 273).
+    read -r g d < <(RENAME_SECTIONS=1 python3 test/ooe/rename-params.py)
+    vl ooe_rename_tb "-DCCV_CHECK_RENAME -DCCV_CHECK_RAT ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" \
       "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" \
       "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" \
       "$PWD/test/ooe/rename_tb.cpp" ;;
