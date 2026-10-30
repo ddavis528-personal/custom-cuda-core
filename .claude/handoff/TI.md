@@ -50,7 +50,8 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
    Answered: AR (62443b5, AR rev 256; also took TI-49), OA (9d2bd00, OA rev
    285; the register skill takes TI-49 (1)-(3) in the same commit), CP
    (compiler 8ebd324, CP-72 at CP rev 147; roster copy checked in its sweep;
-   Friday pings). Waiting: OI, IS.
+   Friday pings), OI (b65a558, OI rev 235; Friday pings; agreed 6ba08b1's
+   OI-18 edit). Waiting: IS.
    Verify all five rows in the register before setting it.
 2. Usage (DA, 2026-10-30): scripts and subagents are in (CLAUDE.md, The gate;
    Context and handoff). Still to propose: the sweep as its own cheaper
