@@ -425,7 +425,7 @@ fi
 # range check, a separate obligation from the reserved-field zero checks,
 # must name it, and the instruction must not retire.
 run srd-selector
-if grep -q "^CHECK dec: seq 2 srd selector 3 is unallocated" "$B/kernel_srd-selector.log" &&
+if grep -q "^CHECK dec: seq 2 srd selector 4 is unallocated" "$B/kernel_srd-selector.log" &&
    [ "$(field "$B/kernel_srd-selector.log" retired)" != 17 ]; then
   say "--break srd-selector: DEC's range check" "PASS"
 else

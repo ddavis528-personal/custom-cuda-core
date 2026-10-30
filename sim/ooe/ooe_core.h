@@ -558,7 +558,8 @@ struct UopShape {
   /// TI-27 (OA's rev 170): FET's final-exit mark, on the exit whose fetch
   /// clears the warp's last live lanes. The warp is done when it retires.
   bool final_exit = false;
-  int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid, 2 %lanectx (O-64)
+  int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid, 2 %lanectx (O-64),
+                              ///< 3 %privoff (O-83)
 };
 
 struct Uop {

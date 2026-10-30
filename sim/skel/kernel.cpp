@@ -1555,6 +1555,53 @@ private:
                     (uint64_t(getLane(am, c.rcu_miu, "index_per_lane", l)) << sh) +
                     uint64_t(disp);
       }
+    // O-83 (option W, DA tab rev 95; ISA section 5.9): a .global access in a
+    // form that takes rbase is interleaved when lane d's rbase lies in the
+    // private run, d the lowest lane of the ISSUE mask whether or not its
+    // predicate is set. W = local_base + %privoff, so MIU decides only once
+    // the launch block's first line, holding local_base, is in its table: a
+    // kernel names the run only after its prologue's launch-slot load of
+    // word 24, which fills that line. Each lane's offset b is its own, from
+    // its own rbase; lane l's byte b is at R(ctx) + 128 (b / 4) + 4l + b % 4,
+    // past the run's own windows, and b outside [0, L) is F-ADDR, as is an
+    // ordinary access into the run's own windows, which name logical offsets
+    // only. ld.pred/st.pred: lane d's b with l = 0. The launch-slot and
+    // local forms, and .shared, are never interleaved.
+    // priv-lane0: the decision on lane 0's rbase (ccv-sim's
+    // -ccv-test-priv-lane0), which a diverged group with lane 0 off gets wrong.
+    // priv-no-ctx: R(ctx) taken at ctx 0, so every warp shares one region.
+    uint32_t pbad = 0;
+    const bool lb_valid = win_[cta].valid >> kLocalBase & 1u;
+    if (global && lb_valid && issue) {
+      const uint64_t W = uint64_t(win_[cta].w[kLocalBase]) + 3ull * ccv::prov::kLaneContexts;
+      const unsigned pk = unsigned(__builtin_ctz(ccv::prov::kPrivWindows));
+      const int64_t L = int64_t(ccv::prov::kPrivWindows) << 16;
+      const unsigned d = k_.brk == "priv-lane0" ? 0u : unsigned(__builtin_ctz(issue));
+      const uint64_t rbd = getLane(am, c.rcu_miu, "base_per_lane", d);
+      if (!slot && !local && (rbd >> pk) == (W >> pk)) {
+        const uint64_t pctx = k_.brk == "priv-no-ctx" ? 0 : ctx;
+        const uint64_t R = ((W + ccv::prov::kPrivWindows) << 16) + pctx * 32 * uint64_t(L);
+        auto bOf = [&](unsigned l, bool idx) {
+          const int64_t rb = int64_t(getLane(am, c.rcu_miu, "base_per_lane", l));
+          const int64_t ix = idx ? int64_t(uint64_t(getLane(am, c.rcu_miu, "index_per_lane", l)) << sh) : 0;
+          return ((rb - int64_t(W)) << 16) + ix + disp;
+        };
+        auto cell = [&](int64_t b, unsigned l) {
+          return R + 128 * uint64_t(b / 4) + 4 * uint64_t(l) + uint64_t(b % 4);
+        };
+        const int64_t bd = bOf(d, false);
+        for (unsigned l = 0; l != kLanes; ++l) {
+          if (!((j.active >> l) & 1u)) continue;
+          const int64_t b = j.pxfer ? bd : bOf(l, true);
+          if (b < 0 || b >= L) pbad |= 1u << l;
+          else j.addr[l] = cell(b, j.pxfer ? 0u : l);
+        }
+        k_.hit("priv_form");
+      } else {
+        for (unsigned l = 0; l != kLanes; ++l)
+          if ((j.active >> l & 1u) && !local && (j.addr[l] >> 16 >> pk) == (W >> pk)) pbad |= 1u << l;
+      }
+    }
     // .shared (CP-33): the offset into the CTA's region, modulo 2^32, which
     // ccv-sim names; SPM's byte address is the region's first byte plus it.
     // An SPM access is never an L1 hit. ccv-sim keeps the carry (task: CP-33),
@@ -1634,6 +1681,8 @@ private:
     for (unsigned l = 0; l != kLanes; ++l)
       if ((j.active >> l & 1u) && j.global && j.addr[l] >> ccv::kAddrBits && k_.brk != "addr-wrap")
         bad |= 1u << l;
+    if (pbad) k_.hit("priv_fault");
+    bad |= pbad;
     // F-SHARED (section 12.5): a .shared access with a byte past its CTA's
     // region, after F-ADDR, which no .shared access raises. ccv-sim bounds
     // no .shared access, so no kernel here can reach it yet.
@@ -3236,11 +3285,11 @@ private:
     const OpInfo *op = opByName(r->op);
     // DEC's second illegal-instruction obligation, separate from the
     // reserved-field zero checks: srd's selector is a legal field that may
-    // hold an unallocated value, so this is a range comparison. Selector 2,
-    // %lanectx, is allocated (O-64); 3-15 are not.
+    // hold an unallocated value, so this is a range comparison. Selectors 2,
+    // %lanectx (O-64), and 3, %privoff (O-83), are allocated; 4-15 are not.
     if (op && op->srd_sel >= 0) {
       const int64_t sel = (r->imms.empty() ? 0 : r->imms[0]) +
-                          (k_.brk == "srd-selector" ? 3 : 0);
+                          (k_.brk == "srd-selector" ? 4 : 0);
       op = srdBySel(sel);
       if (!op) {
         k_.fail("dec: seq %llu srd selector %lld is unallocated (a legal field, "

@@ -248,7 +248,9 @@ struct Kernel {
       // Lanes at a barrier wait in FET (TI-40).
       "bar_park", "bar_diverged", "bar_unpark", "bar_syu_wait",
       // Decode-queue credits at FET (TI-46 (b)).
-      "credit_wait", "credit_borrow", "held_ahead_wait"};
+      "credit_wait", "credit_borrow", "held_ahead_wait",
+      // O-83's private run through MIU (option W; DA tab rev 95).
+      "priv_form", "priv_fault"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory
