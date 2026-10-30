@@ -30,14 +30,14 @@ below); then `CCV_PUSH_BRANCHES=... tools/daily-sweep.sh` in the background
 few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 250, OA 279, IS 176, TI 267, OI 234 (FYI re:OI-85,
+Conventions 15, AR 250, OA 279, IS 176, TI 269, OI 234 (FYI re:OI-85,
 re:OI-89; OI-89 closed), CP 143, DA 96. Latest TI open: TI-49.
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Tip of both branches: c69475e (scripts and subagents), on 5bd4397
-  (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
+- Tip of both branches: 63a7bd5 (autoCompactWindow 400k), on c69475e
+  (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
 - Compiler pin d9ddd2c (source f5fa030; O-83, O-84).
 - Frame-interleave experiment done: coremark32 -7.1%, coremark128 -15.7%
   at 64 KiB; at 512 KiB frames -16.9%, both fixes together -22.8%.
@@ -47,7 +47,8 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 ## Open work (most urgent first)
 1. TI-48 (TI rev 266): all five handoffs in (files checked in each commit,
    2026-10-30); `"autoCompactWindow": 400000` set in .claude/settings.json.
-   Close TI-48 in the register once pushed. This session: /autocompact 500k.
+   Pushed 63a7bd5; TI-48 closed (TI rev 269), CP asked to add the key to
+   custom-cuda-complier. This session: /autocompact 500k.
    Answered: AR (62443b5, AR rev 256; also took TI-49), OA (9d2bd00, OA rev
    285; the register skill takes TI-49 (1)-(3) in the same commit), CP
    (compiler 8ebd324, CP-72 at CP rev 147; roster copy checked in its sweep;
