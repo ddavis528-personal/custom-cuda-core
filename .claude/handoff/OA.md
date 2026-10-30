@@ -34,7 +34,7 @@ AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
 CP session_019cSebQ45AT3pSnPU71torg. OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 15, OA 284, AR 255, TI 267, OI 234, IS 176, CP 143, DA 97.
+Conventions 15, OA 286, AR 255, TI 267, OI 236, IS 176, CP 143, DA 97.
 OOE doc rev 347. Pings 2026-10-30: all five ponged ok.
 
 ## Open work (most urgent first)
@@ -46,7 +46,9 @@ OOE doc rev 347. Pings 2026-10-30: all five ponged ok.
 2. OI-85 ROB: slice 1 pushed 9c079f9 (retire_lag 1 taken, rev 278; default
    waits on OI-87's go_tb fix and TI's re-pins). Row-indexed dones (rev 282,
    283) pushed 6ba08b1. Barrier side buffer 2 deep (rev 279): OI counts holds
-   in slice 5; depth 3 if over 0.5%.
+   in slice 5; depth 3 if over 0.5%. OI-90 (rev 286): per-row done counts,
+   2 bits a row, ooe_rs holds a replay at 3 in flight (asserted, control);
+   rev 282's done bit missed A-47 replay.
 3. Overhead review list for DA after the first pass: NGD-7 copies (736, 220,
    340 flops), OI-84's 360 flops, RAT read ~2x, waivers (ooe_go, names' pools
    10 flops, candidates 72), scarce names +0.53%, retire lag +0.25%.
