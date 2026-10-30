@@ -194,7 +194,7 @@ module ooe_rob #(
   logic [S*LD-1:0]     head_cq02h;
   // The head window: per slot and port, it retires this cycle, and what
   // the leads read of it.
-  (* keep *) logic [S*RP-1:0] w_cq02h, wg_cq02h, wp_cq02h, wgf_cq02h, wpf_cq02h;
+  logic [S*RP-1:0]     w_cq02h, wg_cq02h, wp_cq02h, wgf_cq02h, wpf_cq02h;
 
   // One-hot copies of the pointers (bit i: entry i), beside the binary ones,
   // so the window, the allocations and the fills decode without an adder:
@@ -212,7 +212,7 @@ module ooe_rob #(
   // Per entry: the old GPR name frees some section (its gsec nonzero).
   logic [S*D-1:0]      gsn_cq02h;
   // The window's copies that drive the outputs (NGD-7), each (* keep *).
-  (* keep *) logic [S*RP-1:0] w_o_cq02h, wg_o_cq02h, wp_o_cq02h, wgf_o_cq02h, wpf_o_cq02h;
+  logic [S*RP-1:0] w_o_cq02h, wg_o_cq02h, wp_o_cq02h, wgf_o_cq02h, wpf_o_cq02h;
 
   function automatic logic [D-1:0] rotl(input logic [D-1:0] x, input int k);
     logic [D-1:0] r;
@@ -563,32 +563,45 @@ module ooe_rob #(
         rc_cq02h[gs * D * 2 +: D * 2]   <= rc_nx_cq02h[gs * D * 2 +: D * 2];
       end
     end
-    // The window and its copies, on everything its next value reads.
+    // The window and its copies, on everything its next value reads: the
+    // slot's own registers, so every flow counts one gate a slot.
+    (* keep *) logic [RP-1:0] w_s_cq02h, wg_s_cq02h, wp_s_cq02h, wgf_s_cq02h, wpf_s_cq02h;
+    (* keep *) logic [RP-1:0] w_so_cq02h, wg_so_cq02h, wp_so_cq02h, wgf_so_cq02h, wpf_so_cq02h;
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
-        w_cq02h[gs * RP +: RP]     <= '0;
-        wg_cq02h[gs * RP +: RP]    <= '0;
-        wp_cq02h[gs * RP +: RP]    <= '0;
-        wgf_cq02h[gs * RP +: RP]   <= '0;
-        wpf_cq02h[gs * RP +: RP]   <= '0;
-        w_o_cq02h[gs * RP +: RP]   <= '0;
-        wg_o_cq02h[gs * RP +: RP]  <= '0;
-        wp_o_cq02h[gs * RP +: RP]  <= '0;
-        wgf_o_cq02h[gs * RP +: RP] <= '0;
-        wpf_o_cq02h[gs * RP +: RP] <= '0;
+        w_s_cq02h    <= '0;
+        wg_s_cq02h   <= '0;
+        wp_s_cq02h   <= '0;
+        wgf_s_cq02h  <= '0;
+        wpf_s_cq02h  <= '0;
+        w_so_cq02h   <= '0;
+        wg_so_cq02h  <= '0;
+        wp_so_cq02h  <= '0;
+        wgf_so_cq02h <= '0;
+        wpf_so_cq02h <= '0;
       end else if (win_en_cq02h[gs]) begin
-        w_cq02h[gs * RP +: RP]     <= w_nx_cq02h[gs * RP +: RP];
-        wg_cq02h[gs * RP +: RP]    <= wg_nx_cq02h[gs * RP +: RP];
-        wp_cq02h[gs * RP +: RP]    <= wp_nx_cq02h[gs * RP +: RP];
-        wgf_cq02h[gs * RP +: RP]   <= wgf_nx_cq02h[gs * RP +: RP];
-        wpf_cq02h[gs * RP +: RP]   <= wpf_nx_cq02h[gs * RP +: RP];
-        w_o_cq02h[gs * RP +: RP]   <= w_nx_cq02h[gs * RP +: RP];
-        wg_o_cq02h[gs * RP +: RP]  <= wg_nx_cq02h[gs * RP +: RP];
-        wp_o_cq02h[gs * RP +: RP]  <= wp_nx_cq02h[gs * RP +: RP];
-        wgf_o_cq02h[gs * RP +: RP] <= wgf_nx_cq02h[gs * RP +: RP];
-        wpf_o_cq02h[gs * RP +: RP] <= wpf_nx_cq02h[gs * RP +: RP];
+        w_s_cq02h    <= w_nx_cq02h[gs * RP +: RP];
+        wg_s_cq02h   <= wg_nx_cq02h[gs * RP +: RP];
+        wp_s_cq02h   <= wp_nx_cq02h[gs * RP +: RP];
+        wgf_s_cq02h  <= wgf_nx_cq02h[gs * RP +: RP];
+        wpf_s_cq02h  <= wpf_nx_cq02h[gs * RP +: RP];
+        w_so_cq02h   <= w_nx_cq02h[gs * RP +: RP];
+        wg_so_cq02h  <= wg_nx_cq02h[gs * RP +: RP];
+        wp_so_cq02h  <= wp_nx_cq02h[gs * RP +: RP];
+        wgf_so_cq02h <= wgf_nx_cq02h[gs * RP +: RP];
+        wpf_so_cq02h <= wpf_nx_cq02h[gs * RP +: RP];
       end
     end
+    assign w_cq02h[gs * RP +: RP]     = w_s_cq02h;
+    assign wg_cq02h[gs * RP +: RP]    = wg_s_cq02h;
+    assign wp_cq02h[gs * RP +: RP]    = wp_s_cq02h;
+    assign wgf_cq02h[gs * RP +: RP]   = wgf_s_cq02h;
+    assign wpf_cq02h[gs * RP +: RP]   = wpf_s_cq02h;
+    assign w_o_cq02h[gs * RP +: RP]   = w_so_cq02h;
+    assign wg_o_cq02h[gs * RP +: RP]  = wg_so_cq02h;
+    assign wp_o_cq02h[gs * RP +: RP]  = wp_so_cq02h;
+    assign wgf_o_cq02h[gs * RP +: RP] = wgf_so_cq02h;
+    assign wpf_o_cq02h[gs * RP +: RP] = wpf_so_cq02h;
   end
   // Each entry's fields, clocked on a fill candidate (CG-5: from this
   // module's flops). Payload: the window reads the write bits only of a
