@@ -29,13 +29,14 @@ below); then `CCV_PUSH_BRANCHES=... tools/daily-sweep.sh` in the background
 few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 250, OA 279, IS 176, TI 266, OI 234 (FYI re:OI-85,
-re:OI-89; OI-89 closed), CP 143, DA 96. Latest TI open: TI-48.
-Pings 2026-10-30 sent to all five; all ponged ok.
+Conventions 15, AR 250, OA 279, IS 176, TI 267, OI 234 (FYI re:OI-85,
+re:OI-89; OI-89 closed), CP 143, DA 96. Latest TI open: TI-49.
+Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
+pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Tip of both branches: 6ba08b1 (OI-85 row-indexed dones, OA rev 282).
-  Before it: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
+- Tip of both branches: c69475e (scripts and subagents), on 5bd4397
+  (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
 - Compiler pin d9ddd2c (source f5fa030; O-83, O-84).
 - Frame-interleave experiment done: coremark32 -7.1%, coremark128 -15.7%
   at 64 KiB; at 512 KiB frames -16.9%, both fixes together -22.8%.
@@ -48,7 +49,10 @@ Pings 2026-10-30 sent to all five; all ponged ok.
    `.claude/settings.json` (DA, 2026-10-30). This session: /autocompact 500k.
 2. Usage (DA, 2026-10-30): scripts and subagents are in (CLAUDE.md, The gate;
    Context and handoff). Still to propose: the sweep as its own cheaper
-   session; FYI notices not rung; weekly pings (register rows to OA/DA).
+   session (needs a way for pongs to come from the roster's session).
+   TI-49 (open, TI rev 267): Friday pings (DA's); proposals to OA: ring only
+   rows that ask the receiver something, read notices via register-reader.
+   Notices for TI-48 and TI-49 sent to all five 2026-10-30.
 3. AR-24 capacity sweep on CP-64's eight traces (#46): frames in place
    only plus one interleaved equality check; 64 KiB at hit base 7 vs
    512 KiB at bases 7/8/9. Needs CTA queueing past resident slots and
