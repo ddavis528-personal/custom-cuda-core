@@ -558,7 +558,8 @@ struct UopShape {
   /// TI-27 (OA's rev 170): FET's final-exit mark, on the exit whose fetch
   /// clears the warp's last live lanes. The warp is done when it retires.
   bool final_exit = false;
-  int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid, 2 %lanectx (O-64)
+  int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid, 2 %lanectx (O-64),
+                              ///< 3 %privoff (O-83)
 };
 
 struct Uop {
@@ -682,6 +683,10 @@ struct Issue {          ///< ccv_ooe_rcu_issue
   bool pred_neg = false, pred_we = false, merge = false;
   unsigned opcode = 0;
   bool copy = false;    ///< the copy-only op (A-38): opcode CCV_OP_PRF_COPY
+  /// The ROB entry's row this issue is (OI-85, OA's rev 282): 0 the op or an
+  /// atomic's A1, 1 a masked load's copy, 2 an atomic's A2, 3 its A3. RCU
+  /// echoes it on the op's done, so the entry sets that row's done bit.
+  uint8_t row = 0;
   bool send_imm = false;
   uint32_t imm = 0;
   /// Width codes (AR-24 (d)): each source's, the destination's (which the
@@ -704,6 +709,7 @@ struct Memop {          ///< ccv_ooe_miu_memop
   unsigned port = 0;
   unsigned rob_tag = 0, warp = 0;
   unsigned rs_idx = 0;           ///< its RS entry, which MIU echoes (OA-23); 0 on a discard
+  uint8_t row = 0;               ///< its ROB row (OI-85): 0, or 3 for an atomic's A3
   unsigned mem_op = 0;           ///< DEC's (A-68), or 0xF for a bulk discard
   uint32_t issue_mask = 0;
   unsigned pdst = 0, ppred = 0;

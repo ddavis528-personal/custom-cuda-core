@@ -326,7 +326,7 @@ def main():
         sa = c.get("slot_attrs", {})
         why = c.get("slot_attrs_why", {})
         known = ("acceptance", "slot_binding", "binding_group", "ordering",
-                 "lockstep", "binding_key", "fixed_latency", "distinct_key")
+                 "lockstep", "binding_key", "fixed_latency")
         multi_inst = max(blocks[c["src"]]["instances"] if c["src"] in blocks else 1,
                          blocks[c["dst"]]["instances"] if c["dst"] in blocks else 1) > 1
 
@@ -373,9 +373,6 @@ def main():
                     "group for the key to name"); return 1
             if bkey not in c["payload_fields"]:
                 err("binding_key %r is not a payload field" % bkey); return 1
-        dkey = sa.get("distinct_key")
-        if dkey is not None and dkey not in c["payload_fields"]:
-            err("distinct_key %r is not a payload field" % dkey); return 1
         if sa.get("lockstep", False) not in (False, True):
             err("lockstep must be true or false"); return 1
         if sa.get("fixed_latency", False) not in (False, True):

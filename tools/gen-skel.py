@@ -138,7 +138,6 @@ def build(d, pv, blocks):
                           decided=decided, id_classes=c["id_classes"],
                           why=c.get("slot_attrs_why", {}),
                           binding_key=c.get("slot_attrs", {}).get("binding_key"),
-                          distinct_key=c.get("slot_attrs", {}).get("distinct_key"),
                           outstanding=c.get("outstanding"),
                           notice_of=c.get("notice_of"),
                           # A backpressured channel (AR's response TI-22):
@@ -255,8 +254,6 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
     L.append("                       ///< it must equal slot / bind_group")
     L.append("  bool fixed_lat;      ///< receiver never stalls, credits on landing (A-47)")
     L.append("  bool held;           ///< backpressured: its receiver may hold behind a stall (TI-22)")
-    L.append("  int16_t distinct_key; ///< fields[] index of a key no two slots of a cycle")
-    L.append("                        ///< share (OI-85), or -1")
     L.append("};")
     L.append("")
     for c in chans:
@@ -282,9 +279,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
               if c["attrs"]["slot_binding"] == "bound" else 0)
         bk = ([f for f, _, _ in c["fields"]].index(c["binding_key"])
               if c["binding_key"] else -1)
-        dk = ([f for f, _, _ in c["fields"]].index(c["distinct_key"])
-              if c["distinct_key"] else -1)
-        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s, %s, %d},'
+        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s, %s},'
                  % (c["id"], c["name"], c["src"].upper(), c["dst"].upper(),
                     c["rate"], c["bits"], len(c["fields"]), c["name"],
                     c["ninst"],
@@ -292,7 +287,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
                     bg, ok, of,
                     "true" if c["attrs"]["lockstep"] else "false", cls, bk,
                     "true" if c["attrs"]["fixed_latency"] else "false",
-                    "true" if c["held"] else "false", dk))
+                    "true" if c["held"] else "false"))
     L.append("};")
     L.append("constexpr unsigned kNumChans = %d;" % len(chans))
     L.append("")
@@ -454,22 +449,6 @@ def gen_sv(chans, cinst, nslots, pbits):
             for s in reversed(range(c["rate"])))
         L.append("  ccv_common_chk_binding #(.N(%d), .GROUP(%d), .W(%d)) u_%s_binding ("
                  % (c["rate"], c["attrs"]["binding_group"], kw, tag))
-        L.append("    .clk(clk), .rst_n(rst_n), .valid(valid[%d:%d]),"
-                 % (hi, lo))
-        L.append("    .key({%s}));" % keys)
-    for ci in cinst:
-        c = ci["chan"]
-        if not c["distinct_key"] or c["rate"] == 1:
-            continue
-        f, klsb, kw = next(x for x in c["fields"] if x[0] == c["distinct_key"])
-        tag = "%s_i%d" % (c["name"][4:], ci["inst"]) if c["ninst"] > 1 else c["name"][4:]
-        lo, hi = ci["slot_base"], ci["slot_base"] + c["rate"] - 1
-        keys = ", ".join(
-            "payload[%d:%d]" % (ci["payload_base"] + s * c["bits"] + klsb + kw - 1,
-                                ci["payload_base"] + s * c["bits"] + klsb)
-            for s in reversed(range(c["rate"])))
-        L.append("  ccv_common_chk_distinct #(.N(%d), .W(%d)) u_%s_distinct ("
-                 % (c["rate"], kw, tag))
         L.append("    .clk(clk), .rst_n(rst_n), .valid(valid[%d:%d]),"
                  % (hi, lo))
         L.append("    .key({%s}));" % keys)
