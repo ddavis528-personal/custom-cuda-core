@@ -47,8 +47,8 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 ## Open work (most urgent first)
 1. TI-48 (TI rev 266): all five handoffs in (files checked in each commit,
    2026-10-30); `"autoCompactWindow": 400000` set in .claude/settings.json.
-   Pushed 63a7bd5; TI-48 closed (TI rev 269), CP asked to add the key to
-   custom-cuda-complier. This session: /autocompact 500k.
+   Pushed 63a7bd5; TI-48 closed (TI rev 269); CP added the key in
+   custom-cuda-complier 64c36f6 (CP-73). Done. This session: /autocompact 500k.
    Answered: AR (62443b5, AR rev 256; also took TI-49), OA (9d2bd00, OA rev
    285; the register skill takes TI-49 (1)-(3) in the same commit), CP
    (compiler 8ebd324, CP-72 at CP rev 147; roster copy checked in its sweep;
