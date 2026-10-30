@@ -32,9 +32,14 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 - Daily sweep (scheduled task trig_01V1WipqEXd8e7TAaWnKvQGu, 09:04 UTC):
   register section 4 from the bookmarks; fetch; merge every remote branch
   with commits ours lacks except `release` (merge commits only); gate;
-  push; pings per section 6; report in a few lines.
-  TI-49 says DA moved pings to Fridays only; not yet confirmed with Daniel
-  and the task's prompt is unchanged (ask him before editing it).
+  push; report in a few lines. Pings (section 6) on Fridays only; Saturday
+  checks Friday's pongs (TI-49; Daniel confirmed 2026-10-30, task updated).
+- Credit rules (TI-49, Daniel 2026-10-30: "follow changes to optimize our
+  credit usage as described by TI-49"): read a notice's rows, or a sweep's
+  rows since the bookmarks, through the `register-reader` subagent and act
+  on its digest; ring a notice only for a row that asks something of its
+  receiver (an FYI or close-out waits for their sweep); use `gate-triage`
+  for a red gate and `run-tabulate` for an experiment's runs.
 
 ## Register
 - Doc JApHYjaUESeq8tsGMGXMU5. AR tab node bc521c46-9710, responses table
@@ -69,8 +74,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    the RCU-only done's fixed slot (33 flops, no waiver; RCU spec rev 14-18
    says RCU can give it), against (a), resolve_lag 1 (S1 +0.81%, audit
    +1.7%). Waits on OI's coremark32/128 figures; then to Daniel.
-3. TI-48: this file; answer re:TI-48 with its commit. TI-49: the Friday
-   pings question to Daniel.
+3. TI-48: this file; answer re:TI-48 with its pushed commit. TI-49: taken
+   (task updated); answer re:TI-49 in the same row.
 4. OI-85 row-indexed dones: built (TI 6ba08b1); RCU and MIU text done.
 5. Older AR items: AR-4 to AR-10, AR-12, AR-13, AR-15 to AR-17, the AR-20
    table (single-thread trades: 8 checkpoints -4.2%, ROB 48/64
