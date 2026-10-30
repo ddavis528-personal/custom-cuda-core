@@ -43,7 +43,7 @@ if [ ! -x "$SKEL" ] || [ ! -f "$B/oracle/vadd/oracle.jsonl" ]; then
   exit 1
 fi
 
-CHK="rtl/if/ccv_common_chk_credit.sv rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv rtl/if/ccv_common_chk_wake.sv rtl/generated/ccv_common_chk_bank.sv"
+CHK="rtl/if/ccv_common_chk_credit.sv rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_distinct.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv rtl/if/ccv_common_chk_wake.sv rtl/generated/ccv_common_chk_bank.sv"
 GATE="rtl/clk/ccv_common_clk.sv $(python3 tools/ccv_ctech.py | tr '\n' ' ')"
 SV="rtl/ccv_assert_pkg.sv $CHK $GATE rtl/top/dpi/*.sv rtl/phys/ccv_common_rpt.sv rtl/top/wrap/*.sv rtl/top/ccv_top.sv test/top/tb_ext.sv test/top/tb_sv_hosted.sv"
 INC="-Irtl/include -Irtl/generated -Irtl/top/ports"
