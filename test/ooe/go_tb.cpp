@@ -24,8 +24,10 @@
 // retirements never reach the ROB term), adm-shift (each head carries
 // the next head's admission bits), no-write-bits (no head writes a GPR
 // or a predicate), no-room (no slot's room to its ceiling binds) and no-corr
-// (the pool register's correction never reaches the go) and no-pair-bit (no
-// head marks a CAS pair's first slot). GO_DEBUG=1 dumps the first
+// (the pool register's correction never reaches the go), no-pair-bit (no
+// head marks a pair's first slot) and pair-rounds (the model takes a pair's
+// second in the warp's next round, OI-79 (b)'s form, against the go's
+// adjacent lanes, OI-84 (a)). GO_DEBUG=1 dumps the first
 // mismatching cycles: the heads, splits and the model's counter changes.
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
@@ -54,6 +56,7 @@ int ooeTestAtomicHookedWith(unsigned seeds, void (*hook)(const Core &), void (*c
 // build (the go's pool binds).
 void goConfig(Config &c) {
   c.decq_warp_max = 6;
+  if (const char *k = std::getenv("GO_CONTROL"); k && std::string(k) == "pair-rounds") c.inject_pair_rounds = true;
   if (const char *n = std::getenv("GO_NAMES")) {
     unsigned rows = 0, ceil = 0;
     if (std::sscanf(n, "%u,%u", &rows, &ceil) == 2) { c.phys_regs = rows; c.ren_ceil = ceil; }
@@ -317,7 +320,9 @@ int main(int argc, char **argv) {
   dut = std::make_unique<Vooe_go>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
   // The directed tests in the ordinary run; a scenario is the random tests'.
-  // And the random atomics, whose CAS pairs the go takes whole (OI-79 (b)).
+  // And the atomics, each a pair the go takes whole in adjacent lanes (OI-80
+  // (d), OI-84 (a)): four warps of pairs at their heads, and the random
+  // atomics at one warp and at four.
   const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, goConfig) +
                                          ooeTestAtomicHookedWith(seeds ? 4 : 0, hook, goConfig)) +
                           cg.run(seeds, nullptr, hook, goConfig);
