@@ -1142,7 +1142,7 @@ commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   bits of "retires this cycle", is a register, so ooe_rat's and the free
   lists' leads are from flops. It takes the cycle's completions at its
   edge: an entry completed in a cycle retires in the next (the model's
-  retire_lag 1, its default). The retire-stage register then carries what
+  retire_lag 1, its default to be, OI-87; rob_tb sets it). The retire-stage register then carries what
   ooe_rat commits and the free lists' masks.
 - *The room*: entries are held head to tail without a hole, so a slot's
   free run is D less its count and always reaches the head (reach is tied

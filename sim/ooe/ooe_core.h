@@ -407,9 +407,10 @@ struct Config {
   bool memop_rcu_done = false;
   /// The ROB's head window (OI-85 (a)): an entry completed in a cycle
   /// retires from that cycle + retire_lag. 0 is retire in the completion's
-  /// own cycle; 1, the default (OA rev 278), the window taking completions
-  /// at its edge, a cycle late, as the RTL does.
-  unsigned retire_lag = 1;
+  /// own cycle; 1 the window taking completions at its edge, a cycle late,
+  /// as the RTL does (OA's rev 278: to become the default; it waits on
+  /// go_tb's divergence at CAS pairs under the lag, OI-87).
+  unsigned retire_lag = 0;
 
   // -- fault injection: the negative controls the core itself must carry ------
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
