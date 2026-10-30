@@ -30,7 +30,7 @@ Read every tab since the bookmarks; merge every remote branch that is
 ahead (not release) into wt, gate, push; pongs; pings on Fridays only.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 255, OA 284, IS 176, TI 267, OI 234, CP 143, DA 97.
+Conventions 15, AR 255, OA 284, IS 176, TI 267, OI 236, CP 143, DA 97.
 
 ## State
 - Branch tip 9c079f9 (ROB slice 1, check-cg generate-scope fix). The merge
@@ -42,8 +42,15 @@ Conventions 15, AR 255, OA 284, IS 176, TI 267, OI 234, CP 143, DA 97.
   squash_act_lag, held_room_lag. Audit 901 base; rl1 916; rl1+sal 929;
   rl1+sal+hrl 934; sal 912; sal+hrl 920. S1 45,438 base, 45,805 at rl1
   (squash/held lags +0). coremark32 4,663,694 base, 4,693,463 rl1 (sal +0).
-- Runs in flight: coremark128 base, rl, rlsh, sh in wt4
-  (build/bench/coremark128.<n>.log), serially, about 3.6 GB each.
+- coremark128 base 17,612,876 (155,416 redirects). Runs in flight,
+  detached (setsid scratchpad/cm128.sh, results in scratchpad/cm128.out):
+  rl, rlsh, sh in wt4, about 2 h and 3-5 GB each; wt4's skel binary must
+  not be rebuilt meanwhile.
+- wt5 (at b65a558): slice 2's model work moved here (knobs, RobLog
+  extension, Done/Cmpl row from the payload, release fix, swap seed fix);
+  unit tests pass. Slice 2's RTL is built here.
+- OI-90 to OA: rev 282's done bit misses a cancelled issue's done; per-row
+  counts proposed, width OA's.
 
 ## Open work (most urgent first)
 1. coremark128 results to OA (OI-88 package for DA, OA rev 284).

@@ -20,8 +20,10 @@
 // allocation's lead never comes), fill-order (a cycle's fills in reverse
 // lane order: each entry takes another's fields) and nop-real (a no-op is
 // filled as a lane op, never complete at allocation) and two-in-a-cycle
-// (a done sent twice in its cycle, against RCU's one done per rob_tag a
-// cycle, OA's rev 279: the contract's assertion fires).
+// (a done sent twice in its cycle, for the same row, against RCU's one
+// done per rob_tag and row a cycle, OA's rev 282: the assertion fires),
+// and wrong-row (each cycle's first done names the next row: a row's count
+// underflows, or the entry never completes).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: rob_tb [seeds] | rob_tb --cg <scenario> <vcd>
@@ -49,6 +51,7 @@ void ooeTestPredictAll(bool on);
 void robConfig(Config &c) { c.retire_lag = 1; }
 
 namespace {
+constexpr unsigned NR = 4;
 constexpr unsigned S = RB_S, D = RB_D, RP = RB_RP, A = RB_A, ND = RB_ND, NM = RB_NM, GW = RB_GW, GR = RB_GR,
                    NG = RB_NG, NS = RB_NS, PW = RB_PW, NP = RB_NP, LB = 6, LT = 3;
 constexpr unsigned NSB = NS ? NS : 1;
@@ -145,12 +148,13 @@ void clearInputs() {
   clearAll(dut->fl_pname_cq02h, A * PW);
   clearAll(dut->fl_pold_cq02h, A * PW);
   dut->ev_l_cq01h = 0;
-  clearAll(dut->ev_owe_cq02h, S * D);
+  clearAll(dut->ev_owe_cq02h, S * D * NR);
   clearAll(dut->ev_cpi_cq02h, S * D);
   clearAll(dut->ev_cpl_cq02h, S * D);
   clearAll(dut->ev_rsf_cq02h, S * D * 2);
   dut->dn_l_cq01h = 0;
   clearAll(dut->dn_tag_cq02h, ND * TW);
+  clearAll(dut->dn_row_cq02h, ND * 2);
   dut->cm_l_cq01h = 0;
   clearAll(dut->cm_tag_cq02h, NM * TW);
   dut->rel_l_cq01h = 0;
@@ -237,7 +241,10 @@ void drive(const Cyc &c, const Cyc &nx) {
   }
   // The RS's events, per entry.
   unsigned s, i;
-  for (unsigned t : r.owe) if (slotOf(t, s, i)) setBit(dut->ev_owe_cq02h, s * D + i, true);
+  // Each issue owing a done, at its row (OA's rev 282): the log's owe_row
+  // beside owe.
+  for (size_t k = 0; k != r.owe.size(); ++k)
+    if (slotOf(r.owe[k], s, i)) setBit(dut->ev_owe_cq02h, (s * D + i) * NR + (k < r.owe_row.size() ? r.owe_row[k] : 0), true);
   for (unsigned t : r.cpi) if (slotOf(t, s, i) && control != "no-copy") setBit(dut->ev_cpi_cq02h, s * D + i, true);
   for (unsigned t : r.cpl) if (slotOf(t, s, i)) setBit(dut->ev_cpl_cq02h, s * D + i, true);
   bool dropped = false;
@@ -248,9 +255,19 @@ void drive(const Cyc &c, const Cyc &nx) {
     }
   events += r.owe.size() + r.cpi.size() + r.cpl.size() + r.rsf.size();
   // RCU's dones and MIU's completions.
-  for (unsigned p = 0; p != r.done.size() && p != ND; ++p) setField(dut->dn_tag_cq02h, p * TW, TW, r.done[p]);
-  if (control == "two-in-a-cycle" && !r.done.empty() && r.done.size() < ND)
+  // Each done's row is the one RCU echoed (done_row, TI's 6ba08b1).
+  auto drow = [&](size_t p) {
+    const unsigned w = p < r.dpay.size() ? r.dpay[p].row : 0u;
+    return control == "wrong-row" && p == 0 ? (w + 1) % NR : w;
+  };
+  for (unsigned p = 0; p != r.done.size() && p != ND; ++p) {
+    setField(dut->dn_tag_cq02h, p * TW, TW, r.done[p]);
+    setField(dut->dn_row_cq02h, p * 2, 2, drow(p));
+  }
+  if (control == "two-in-a-cycle" && !r.done.empty() && r.done.size() < ND) {
     setField(dut->dn_tag_cq02h, r.done.size() * TW, TW, r.done[0]);
+    setField(dut->dn_row_cq02h, r.done.size() * 2, 2, drow(0));
+  }
   for (unsigned p = 0; p != r.cmpl.size() && p != NM; ++p) setField(dut->cm_tag_cq02h, p * TW, TW, r.cmpl[p]);
   events += r.done.size() + r.cmpl.size();
   // The leads: the next cycle's.

@@ -281,7 +281,7 @@ if out=$("$dir/rob_tb" "$seeds" 2>&1) && grep -q "mismatches=0 model_failures=0"
 else
   say "rob == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle; do
+for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row; do
   if ROB_CONTROL=$c "$dir/rob_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else
