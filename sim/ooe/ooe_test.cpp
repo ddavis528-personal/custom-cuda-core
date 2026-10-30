@@ -44,6 +44,10 @@ void (*g_config_hook)(Config &) = nullptr;   // an RTL bench's settings, over ev
 /// An RTL bench's settings over each random test's own (randomConfig's last
 /// step): what the bench's build is for, whatever the seed and mode chose.
 void (*g_random_config_hook)(Config &) = nullptr;
+/// The random programs predict every branch FET's way (an RTL bench whose
+/// block has no squash yet, test/ooe/rob_tb.cpp): the draws are the same,
+/// only the prediction is the outcome.
+bool g_random_predict_all = false;
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
 void (*g_pre_cycle_hook)(const Core &) = nullptr;
@@ -1386,7 +1390,10 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     else if (c < 66) { o.k = kStore; o.nsrc = 2; }
     else if (c < 74) { o.k = kSetp; o.nsrc = 2; o.pdst = r(4); }
     else if (c < 78 && preds_renamed) { o.k = kPlogic; o.pdst = r(4); o.pq[0] = r(4); o.pq[1] = r(4); }
-    else if (c < 88) { o.k = kBranch; o.pguard = r(4); o.taken = r(2); o.pred_taken = r(3) ? o.taken : !o.taken; }
+    else if (c < 88) {
+      o.k = kBranch; o.pguard = r(4); o.taken = r(2);
+      o.pred_taken = r(3) || g_random_predict_all ? o.taken : !o.taken;
+    }
     else { o.k = kLane; o.nsrc = 2; }
     if ((o.k == kLane || o.k == kLoad || o.k == kSetp) && r(5) == 0) { o.guard = true; o.pguard = r(4); }
     if ((o.k == kLane || o.k == kSfu || o.k == kLoad) && r(6) == 0) o.mask = 0x0000ffffu;
@@ -4795,6 +4802,10 @@ int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*c
 /// demotion, kill, restore, faults, squashes and the rest) with a hook on
 /// every core cycle, for the paths random traffic does not take. Returns
 /// the failure count.
+/// The unit test running, for a bench's diagnostics.
+const char *ooeTestName() { return g_test.c_str(); }
+/// The random programs predict every branch (g_random_predict_all).
+void ooeTestPredictAll(bool on) { g_random_predict_all = on; }
 int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   g_cycle_hook = hook;
   testWakeTimes();

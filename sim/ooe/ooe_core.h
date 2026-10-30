@@ -405,6 +405,12 @@ struct Config {
   /// sends the address, for a load when it writes the data). When set, a
   /// memop completes only after both, so no late done meets a reused tag.
   bool memop_rcu_done = false;
+  /// The ROB's head window (OI-85 (a)): an entry completed in a cycle
+  /// retires from that cycle + retire_lag. 0 is retire in the completion's
+  /// own cycle; 1 the window taking completions at its edge, a cycle late,
+  /// as the RTL does (OA's rev 278: to become the default; it waits on
+  /// go_tb's divergence at CAS pairs under the lag, OI-87).
+  unsigned retire_lag = 0;
 
   // -- fault injection: the negative controls the core itself must carry ------
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
@@ -1143,6 +1149,7 @@ private:
     uint64_t copy_land = 0;        ///< the copy's scheduled landing
     uint64_t rcu_issue_at = 0;     ///< the latest issue to RCU
     bool complete = false;
+    uint64_t ret_at = 0;           ///< retire_lag: the first cycle it may retire
     // branch
     bool resolved = false, taken = false;
     uint32_t taken_mask = 0;
@@ -1486,6 +1493,33 @@ public:
     uint32_t cw_changed = 0;
   };
   const RatLog &ratLog() const { return rlog_; }
+  /// What the ROB saw and did this cycle (ooe_rob, slice 1, OI-85;
+  /// test/ooe/rob_tb.cpp): its allocations with the fields Rename 2 fills
+  /// in, the events that complete an entry (each by rob_tag), and the
+  /// retirements. stop names the first thing slice 1 does not build
+  /// (a squash, a fault taken, a retire port, an atomic): the bench stops
+  /// comparing that core there.
+  struct RobLog {
+    struct Alloc {
+      unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, pdst = 0, pname = 0, pold = 0;
+      unsigned gsec = 0;          ///< the sections gold frees (sectionsOf)
+      unsigned rs = 0;            ///< its RS entries (main, copy)
+      bool nop = false, gwe = false, pwe = false, mem = false;
+      bool pfree = false;         ///< pold is freed at retire (renamed, not the zero one)
+    };
+    struct Ret {
+      unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
+      bool gwe = false, pwe = false, pfree = false;
+    };
+    std::vector<Alloc> alloc;
+    /// rob_tags: issues owing RCU a done, RCU's dones, MIU's completions,
+    /// copies issued and landed, RS entries freed.
+    std::vector<unsigned> owe, done, cmpl, cpi, cpl, rsf;
+    std::vector<Ret> ret;
+    uint32_t release = 0;         ///< slots released (their ROBs empty)
+    const char *stop = nullptr;
+  };
+  const RobLog &robLog() const { return roblog_; }
   /// What rename's go read and did this cycle (slice 4, test/ooe/go_tb.cpp),
   /// as the RTL holds it: per slot, the decode queue's heads in order and
   /// each one's decode-time admission bits (bit 0 RCU, 1 MIU, 2 copy, 3 GPR
@@ -1602,6 +1636,8 @@ public:
 private:
   WakeLog wlog_;
   RatLog rlog_;
+  RobLog roblog_;
+  void robStop(const char *why) { if (!roblog_.stop) roblog_.stop = why; }
   GoLog golog_;
   void goRoomNext();
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
