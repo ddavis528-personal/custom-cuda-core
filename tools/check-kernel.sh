@@ -706,7 +706,7 @@ predspill pred_xfer=7 pred_merge=6 pred_copy=0
 predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
-localsp local_form=12 window_fill=2 pred_xfer=4 frame_lookups=0
+localsp local_form=12 window_fill=0 pred_xfer=4 frame_lookups=0
 privwin priv_form=11 priv_fault=0
 rope local_form=44 frame_lookups=0
 fence fence=1 fence_wait>0
