@@ -306,7 +306,8 @@ private:
         auto r = row_sent_.find(d.rob_tag);
         if (r != row_sent_.end() && r->second != drow)
           k_.fail("ooe: rob tag %u done for row %u, but its issue named row %u", d.rob_tag, drow, r->second);
-        d.row = drow;
+        // Refused once here; the core counts the row its issue named.
+        d.row = r != row_sent_.end() ? r->second : drow;
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
         // TI's d347d2c names the field branch_aux, renamed aux after it.
@@ -347,7 +348,7 @@ private:
         auto cr = cmpl_row_sent_.find(x.rob_tag);
         if (cr != cmpl_row_sent_.end() && cr->second != crow)
           k_.fail("ooe: rob tag %u completed for row %u, but its memop named row %u", x.rob_tag, crow, cr->second);
-        x.row = crow;
+        x.row = cr != cmpl_row_sent_.end() ? cr->second : crow;
         auto e = rs_sent_.find(x.rob_tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u completed for RS entry %u, but its memop "

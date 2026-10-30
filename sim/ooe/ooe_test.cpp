@@ -5063,8 +5063,8 @@ int main(int argc, char **argv) {
     g_test = "control row-no-hold";
     EXPECT(over[0] == 0, "a row passed 3 dones in flight under the hold (%u times)", over[0]);
     EXPECT(over[1] > 0, "the harness missed it");
-    std::printf("  %-24s %s (%u rows past 3 without the hold, %u with)\n", "control row-no-hold",
-                over[1] && !over[0] ? "caught" : "MISSED", over[1], over[0]);
+    std::printf("  row hold (OI-90): %u rows past 3 without the hold, %u with\n", over[1], over[0]);
+    std::printf("  %-24s %s\n", "control row-no-hold", over[1] && !over[0] ? "caught" : "MISSED");
   }
   for (int k : {1, 2, 3, 4, 5}) {
     const char *name = k == 1 ? "control atom-off-head" : k == 2 ? "control atom-early-wake"
