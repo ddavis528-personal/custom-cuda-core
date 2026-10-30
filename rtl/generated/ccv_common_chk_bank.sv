@@ -1349,6 +1349,9 @@ module ccv_common_chk_bank (
   ccv_common_chk_binding #(.N(4), .GROUP(1), .W(2)) u_ooe_fet_decq_credit_binding (
     .clk(clk), .rst_n(rst_n), .valid(valid[11:8]),
     .key({payload[1323:1322], payload[1316:1315], payload[1309:1308], payload[1302:1301]}));
+  ccv_common_chk_distinct #(.N(7), .W(7)) u_rcu_ooe_done_distinct (
+    .clk(clk), .rst_n(rst_n), .valid(valid[97:91]),
+    .key({payload[17106:17100], payload[17034:17028], payload[16962:16956], payload[16890:16884], payload[16818:16812], payload[16746:16740], payload[16674:16668]}));
   // The wake contract (Q-33): valid toward a gated receiver needs this
   // channel instance's wake at least CCV_WAKE_LAT cycles earlier.
   ccv_common_chk_wake u_fet_dec_instr_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[0]), .wake_seen(wake[0]), .valid_seen(|valid[7:0]));

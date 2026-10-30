@@ -109,7 +109,7 @@
   lint clean across rtl/, test/, spike/          PASS
   generated parameter files current              PASS
   C++ and RTL parameter values agree with source PASS
-  [s1d: 13s]
+  [s1d: 8s]
 
 == Interface checker convention ==
   payload structs generated                      55 of 55 channels, 0 field(s) open
@@ -149,8 +149,9 @@
   formal: atomic checker covers reachable        PASS
   formal: lockstep checker covers reachable      PASS
   formal: binding checker covers reachable       PASS
+  formal: distinct checker covers reachable      PASS
   formal: outstanding checker covers reachable   PASS
-  [iface: 11s]
+  [iface: 10s]
 
 == X-propagation ==
   optimistic if-chain: definite, arbitrary answer PASS (=1101, the last branch)
@@ -276,7 +277,7 @@
   block budget: no block has RTL yet (every block top is a generated stub), so none is checked
   13 module(s), 16 unit(s), 81 finding(s) auto-waived by a module budget, 64 waiver(s) in use, 0 on the ratchet
   form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, ratchet, coverage, module and block budgets, kept and replayed flop counts, enable sources and the reset, repeater instantiations, kept copies, the synthesis cache (72 controls)
-  [cg: 3385s]
+  [cg: 2975s]
 
 == Logic depth -- NGD-1 to NGD-7 ==
   unit rpt              ccv_common_rpt flop-flop   1.7  in-flop   1.7  flop-out   0.0  in-out   0.0
@@ -310,13 +311,13 @@
   blocks: none assembled yet (every block top is a generated stub)
   27 unit(s), 206 port budget(s) in 22 module file(s), stage 25 NGD, ports 12 by default
   timing pass against ABC, outputs, inputs, the stage, paths straight through, inner helpers alone and inside a parent, registers shared by an output and the rest, observation ports, budget files, ratchet, coverage, glue, the assembled block from its budgets and whole (57 controls)
-  [ngd: 3666s]
+  [ngd: 3486s]
 
 == Clock gating (exploratory) ==
   enable inferred from the if-enable form        PASS
   one ICG shared across all 8 flops              PASS
   yosys still has no clockgate pass              as expected (F-17)
-  [clockgate: 0s]
+  [clockgate: 1s]
 
 == Stage 3 -- skeleton (S0: plumbing) ==
   skeleton builds (checker bank Verilated in)    PASS
@@ -338,9 +339,10 @@
   --break misorder: caught on the ordered channel PASS (ccv_dec_ooe_uop ccv_fet_dec_instr)
   --break misbind: lane takes another instr      PASS (2 lockstep checkers)
   --break misgroup: slot carries another stream  PASS (2 binding checker)
+  --break dupkey: two slots name one entry       PASS (1 distinct checker)
   --break wrong-class: every channel's set enforced PASS (55 channels)
   trace -> Perfetto JSON, one track per channel  PASS (55)
-  [skel: 30s]
+  [skel: 44s]
 
 == Stage 3 -- skeleton (S1: vadd) ==
   oracle addrhigh from the pinned ccv-sim        PASS (9 records)
@@ -589,7 +591,7 @@
   kernels issue out of order                     PASS (ahead=1444 depth=25 kernels=38 of 56)
   --break dcu-one-miss: the stall bound fails    PASS (warp 1 finished at 575, within 300 of stalled warp 0's 552)
   --in-order: the same traces in program order   PASS (fails the floor: nothing reordered)
-  [kernel: 587s]
+  [kernel: 614s]
 
 == Stage 4b -- OOE model unit tests (sim/ooe/) ==
   OOE unit tests                                       PASS
@@ -633,7 +635,7 @@
   control no-first-need                                caught
   control in-group-follows                             caught
   control pair-rounds                                  caught
-  [ooe_unit: 225s]
+  [ooe_unit: 158s]
 
 == Stage 4c -- OOE RTL (rtl/ooe/) ==
   pick rcu (30 entries, 5 resources) == model          PASS (200000 issued=288854 lost=144063 multi-issue=80523 fails=0)
@@ -791,7 +793,7 @@
     control no-miss-lead (trio)                        caught
     control late-leads (trio)                          caught
     control no-alloc-lead (trio)                       caught
-  [ooe_rtl: 3004s]
+  [ooe_rtl: 2389s]
 
 == SV top -- rtl/top/ (generated, tracked) ==
   verilator -Wall: top (synthesis view)          PASS
@@ -806,7 +808,7 @@
     ...and refuses 12 impure copies: top, wrapper, reuse, gate, units PASS
   SV top wiring == C++ skeleton wiring           PASS (69325 bits)
     ...and rejects a lane swapped in a copy      PASS
-  [top: 125s]
+  [top: 126s]
 
 == Formal proofs -- one credited link, and the block clock gate ==
   safety, N=0: every property, for all time      PASS (proved)
@@ -837,7 +839,7 @@
     ...a latch open on the high phase: the clean-clock properties fail PASS (cex 1)
     ...witness: reach_gated                      PASS (12 frames)
     ...witness: reach_woken                      PASS (18 frames)
-  [formal: 591s]
+  [formal: 579s]
 
 == Physical primitives -- sequential repeater ==
   repeater: verilator -Wall, six shapes          PASS
@@ -850,7 +852,7 @@
     ...lead-late also refused by the netlist check PASS
     ...lead-gated: invisible in sim, refused by netlist PASS
     ...raw-reset: invisible in sim, refused by netlist PASS
-  [phys: 26s]
+  [phys: 25s]
 
 == SV-hosted C++ -- the skeleton's blocks inside the SV top ==
   verilator -Wall: shims, top, testbench         PASS
@@ -976,7 +978,7 @@ cycles=63)
   with OOE's bypass: the same KERNEL line        PASS (57 runs, no-lane-bypass among them)
     ...u_dec one cycle late: caught              PASS (differing_cycles=104)
     ...u_lane_05 one cycle late: caught          PASS (differing_cycles=45)
-  [svh: 181s]
+  [svh: 210s]
 
 == Hardening wrappers -- params/links.json ==
   links.json: malformed configurations refused   PASS (12 cases, each by name)
@@ -988,11 +990,11 @@ cycles=63)
   split: every S1 kernel == ccv-sim              PASS (vadd 183 cycles)
   split: every kernel with OOE's bypass          PASS (CCV_LAT_LANE 11, still forwarded at 4; byp's 3)
   split: SV repeaters == C++ link model          PASS (56 kernels, 39 controls, skew caught)
-  [links: 586s]
+  [links: 569s]
 
 == Walkthrough -- docs/walkthrough.md ==
   walkthrough current
-  [walkthrough: 2s]
+  [walkthrough: 4s]
 
 == Verilator lint ==
   clean
