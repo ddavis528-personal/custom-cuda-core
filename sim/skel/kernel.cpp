@@ -965,6 +965,8 @@ private:
     void clear() { valid = 0; ++gen; }
   };
   std::map<unsigned, Windows> win_;
+  /// Each memop's ROB row (OI-85), echoed on its completion.
+  std::map<unsigned, unsigned> cmpl_row_;
   /// Each CTA slot's local_base, from its ccv_rau_miu_cta (TI-47).
   std::map<unsigned, uint64_t> lbase_;
   /// A window fill's request to DCU, by req_id: its CTA slot and line, and
@@ -1146,6 +1148,7 @@ private:
           }
         }
         memop_[tag] = {s, m.payload, now_, m.tid};
+        cmpl_row_[tag] = unsigned(get(m.payload, c.ooe_miu, "done_row"));   // OI-85
         order_.push_back(tag);
       }
     for (unsigned s = 0; s != kChans[c.rcu_miu].rate; ++s)
@@ -1379,6 +1382,7 @@ private:
     const Ch &c = ch();
     Bits m = msgOf(c.miu_ooe);
     put(m, c.miu_ooe, "rob_tag", tag);
+    put(m, c.miu_ooe, "done_row", cmpl_row_[tag]);   // OI-85
     put(m, c.miu_ooe, "rs_idx", rs_idx);
     put(m, c.miu_ooe, "status", kStatusReplay);
     return m;
@@ -1859,6 +1863,7 @@ private:
     const Ch &c = ch();
     Bits m = msgOf(c.miu_ooe);
     put(m, c.miu_ooe, "rob_tag", j.tag);
+    put(m, c.miu_ooe, "done_row", cmpl_row_[j.tag]);   // the memop's row (OI-85)
     // The RS entry, echoed from the memop as phys_dst is to RCU, so MIU holds
     // no table of it and OOE wakes the entry with no lookup (OA-23).
     put(m, c.miu_ooe, "rs_idx", k_.brk == "rs-echo" ? j.rs_idx ^ 1u : j.rs_idx);
@@ -2441,8 +2446,12 @@ private:
   Bits done(unsigned tag) {
     Bits d = msgOf(ch().rcu_ooe);
     put(d, ch().rcu_ooe, "rob_tag", tag);
+    // The row its issue named (OI-85), so OOE sets that row's done bit.
+    // done-row: the next row instead, a done for a row the entry may not owe.
+    put(d, ch().rcu_ooe, "done_row", (done_row_[tag] + (k_.brk == "done-row" ? 1u : 0u)) & 3u);
     return d;
   }
+  std::map<unsigned, unsigned> done_row_;   ///< each rob_tag's row, from its issue
   /// The first slot of slot s's resource group: S0, P0 or R.
   static unsigned groupOf(unsigned s) {
     return s < kSlotP0 ? kSlotS0 : s < kSlotR ? kSlotP0 : kSlotR;
@@ -2882,6 +2891,8 @@ private:
     const unsigned tag = unsigned(get(m.payload, c.ooe_rcu, "rob_tag"));
     const unsigned opc = unsigned(get(m.payload, c.ooe_rcu, "opcode"));
     const OpInfo *op = opc == kOpCopy ? nullptr : opByCode(opc);
+    // The ROB entry's row (OI-85): the op's done echoes it.
+    done_row_[tag] = unsigned(get(m.payload, c.ooe_rcu, "done_row"));
     if (!op && opc != kOpCopy) { k_.fail("rcu: unknown opcode"); return; }
     // Each class on its own resources: lane ops (the copy among them) on
     // the sections, memops on the pipes, RCU-only ops on R.

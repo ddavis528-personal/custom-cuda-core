@@ -141,6 +141,8 @@
 #     (OA-23, TI-23)                           (vadd): the bank's notice check
 #   a completion echoes its memop's RS      rs-echo (vadd): OOE refuses
 #     entry (OA-23)                            every completion
+#   a done echoes its issue's ROB row       done-row (vadd): OOE refuses
+#     (OI-85)                                  every done
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -1291,6 +1293,16 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_rs-echo.log" check_failures)" = "$n" 
   say "--break rs-echo: OOE refuses the wrong entry" "PASS ($n completions)"
 else
   bad "--break rs-echo" "$n refused: $(grep '^KERNEL' "$B/kernel_rs-echo.log")"
+fi
+# A done echoes its issue's ROB row (OI-85, OA's rev 282), so OOE sets that
+# row's done bit. done-row: RCU echoes the next row, and OOE refuses every
+# done, and nothing else fails.
+"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break done-row >"$B/kernel_done-row.log" 2>&1
+n=$(grep -c "^CHECK ooe: rob tag [0-9]* done for row [0-9], but its issue named row [0-9]" "$B/kernel_done-row.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_done-row.log" check_failures)" = "$n" ]; then
+  say "--break done-row: OOE refuses the wrong row" "PASS ($n dones)"
+else
+  bad "--break done-row" "$n refused: $(grep '^KERNEL' "$B/kernel_done-row.log")"
 fi
 
 # Notices (OA-23; AR's response TI-23): DCU promises a refill

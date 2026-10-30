@@ -101,6 +101,9 @@ private:
   ooe::Core core_;
   bool bad_pos_done_ = false;   ///< the bad-pos control names one register
   std::map<unsigned, unsigned> rs_sent_;   ///< rob tag -> its memop's rs_idx (OA-23)
+  /// rob tag -> the row its last done-owing issue, and its last memop, named
+  /// (OI-85): a done or completion must echo it.
+  std::map<unsigned, unsigned> row_sent_, cmpl_row_sent_;
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   /// TI-46 (b), DA tab rev 96: decode-queue credits back to FET, one slot
   /// a tier-1 warp. A slot's return is what left the queue since the last:
@@ -298,6 +301,11 @@ private:
         Receiver::Msg m = take(c.rcu_ooe, s);
         ooe::Done d;
         d.rob_tag = unsigned(get(m.payload, c.rcu_ooe, "rob_tag"));
+        // The row it completes (OI-85): the one its issue named.
+        const unsigned drow = unsigned(get(m.payload, c.rcu_ooe, "done_row"));
+        auto r = row_sent_.find(d.rob_tag);
+        if (r != row_sent_.end() && r->second != drow)
+          k_.fail("ooe: rob tag %u done for row %u, but its issue named row %u", d.rob_tag, drow, r->second);
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
         // TI's d347d2c names the field branch_aux, renamed aux after it.
@@ -334,6 +342,10 @@ private:
         const unsigned rs = unsigned(get(m.payload, c.miu_ooe, "rs_idx"));
         x.rs_idx = rs;
         x.more = get(m.payload, c.miu_ooe, "more") != 0;   // an atomic's write (AR-21)
+        const unsigned crow = unsigned(get(m.payload, c.miu_ooe, "done_row"));
+        auto cr = cmpl_row_sent_.find(x.rob_tag);
+        if (cr != cmpl_row_sent_.end() && cr->second != crow)
+          k_.fail("ooe: rob tag %u completed for row %u, but its memop named row %u", x.rob_tag, crow, cr->second);
         auto e = rs_sent_.find(x.rob_tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u completed for RS entry %u, but its memop "
@@ -408,6 +420,9 @@ private:
     for (const ooe::Issue &x : o.issues) {
       Bits is = msgOf(c.ooe_rcu);
       put(is, c.ooe_rcu, "rob_tag", x.rob_tag);
+      put(is, c.ooe_rcu, "done_row", x.row);   // OI-85
+      // A copy and a memop's RCU issue owe no done (A-38, OI-4).
+      if (!x.copy && x.res != ooe::Issue::kMemop) row_sent_[x.rob_tag] = x.row;
       put(is, c.ooe_rcu, "warp_id", x.warp);
       put(is, c.ooe_rcu, "issue_mask", x.issue_mask);
       // A name is a row and a position (sectioned; unsectioned the position
@@ -456,6 +471,8 @@ private:
     for (const ooe::Memop &x : o.memops) {
       Bits mo = msgOf(c.ooe_miu);
       put(mo, c.ooe_miu, "rob_tag", x.rob_tag);
+      put(mo, c.ooe_miu, "done_row", x.row);   // OI-85
+      cmpl_row_sent_[x.rob_tag] = x.row;
       put(mo, c.ooe_miu, "warp_id", x.warp);
       put(mo, c.ooe_miu, "mem_op", x.mem_op);
       if (x.mem_op == 0xF) {

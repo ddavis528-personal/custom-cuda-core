@@ -2950,6 +2950,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   is.tid = u.tid;
   is.port = port;
   is.rob_tag = tagOf(slot, idx);
+  is.row = uint8_t(step == 2 ? 2 : step == 3 ? 3 : 0);   // OI-85
   is.warp = s.warp;
   is.issue_mask = u.group_mask;          // V-54: the mask it arrived with
   for (unsigned i = 0; i != 3; ++i) is.psrc[i] = r.psrc[i];
@@ -3053,6 +3054,7 @@ void Core::issueCopy(unsigned slot, unsigned idx, unsigned copy_port) {
   Issue cp = is;
   cp.port = copy_port;
   cp.copy = true;
+  cp.row = 1;                    // the copy's row (OI-85)
   cp.res = Issue::kLaneOp;       // the copy runs through a lane
   cp.footprint = uint8_t(cfg_.sectioned ? resOf(r, true) & 0xFu : 0xFu);
   cp.send_imm = true;
@@ -3134,6 +3136,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.warp = s.warp;
     m.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
     m.rs_idx = e;
+    m.row = uint8_t(x.atom == 3 ? 3 : 0);   // OI-85
     m.mem_op = u.mem_op;                 // DEC's, unexamined (A-68)
     m.issue_mask = u.group_mask;
     m.pdst = r.alloc_gpr ? r.pnew : noGpr();   // TI-37, as the issue
