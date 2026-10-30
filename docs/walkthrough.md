@@ -403,6 +403,7 @@ SV top under `CCV_CHECK`.
 | `ccv_common_chk_notice` | 8 | a notice and the message it promises, slot by slot |
 | `ccv_common_chk_binding` | 2 | a slot's group key stays bound |
 | `ccv_common_chk_lockstep` | 2 | copies of a channel that must move in lockstep across the 32 lanes |
+| `ccv_common_chk_distinct` | 1 | no two slots of a cycle carry one key (one done per ROB entry) |
 | `ccv_common_chk_outstanding` | 1 | request / response pairs across two channels |
 
 One of them: slot 0 of the channel from section 5.
@@ -508,4 +509,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 604635fde004b9fa (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 771faed71aa22a07 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

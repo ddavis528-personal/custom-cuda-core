@@ -459,10 +459,12 @@
         "instr"
       ],
       "slot_attrs": {
-        "fixed_latency": true
+        "fixed_latency": true,
+        "distinct_key": "rob_tag"
       },
       "slot_attrs_why": {
-        "fixed_latency": "completion at the contracted cycle is what OOE retires against; no late or cancel bit exists (A-47)"
+        "fixed_latency": "completion at the contracted cycle is what OOE retires against; no late or cancel bit exists (A-47)",
+        "distinct_key": "at most one done per ROB entry a cycle (OA's rev 279, OI-85): ooe_rob's done count then decrements by one or none, so no adder sits on the retire window's path. Two RCU rows of one entry finishing together (an atomic's A2 and its second slot's copy, or a copy beside its op) are the only case, and RCU holds the second a cycle"
       }
     },
     {

@@ -295,6 +295,7 @@ def build():
         "ccv_common_chk_atomic": "a channel's slots that must move together",
         "ccv_common_chk_lockstep": "copies of a channel that must move in lockstep across the 32 lanes",
         "ccv_common_chk_binding": "a slot's group key stays bound",
+        "ccv_common_chk_distinct": "no two slots of a cycle carry one key (one done per ROB entry)",
         "ccv_common_chk_outstanding": "request / response pairs across two channels",
         "ccv_common_chk_notice": "a notice and the message it promises, slot by slot",
     }
