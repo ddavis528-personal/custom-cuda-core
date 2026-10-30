@@ -14,9 +14,11 @@
 //
 // Each head reads its three GPR sources, its old GPR destination, its guard,
 // its old predicate destination and predicate logic's two sources from the
-// slot's speculative maps as ooe_rat's flops hold them, with the pending
-// group's writes over them (last cycle's group, in rename's Rename 1
-// register, which ooe_rat writes an edge late: OA's response OI-58). The
+// slot's speculative maps as ooe_rat's flops hold them, with the captured
+// group's writes over them (the group before last, in ooe_rat's capture,
+// written into its flops at this edge: OI-83 (b)), then the pending
+// group's (last cycle's, in rename's Rename 1 register, which ooe_rat
+// captures at this edge: OA's response OI-58). The
 // in-group override cannot name its writer's new name here: names are taken
 // in lane order, after the go. So each read also returns its in-group
 // writer, the last lower head writing that register, one-hot over the heads
@@ -48,8 +50,18 @@ module ooe_headrd #(
   input  logic [R*2-1:0]    h_pdst_cq01h,
   input  logic [R-1:0]      h_pwe_cq01h,       // writes its predicate destination
   input  logic [R*2*2-1:0]  h_pq_cq01h,
-  // The pending group: last cycle's, in rename's register, whose writes
-  // reach ooe_rat's flops only at this edge.
+  // The captured group: the one before last, in ooe_rat's capture, written
+  // into its flops at this edge (OI-83 (b)).
+  input  logic [A-1:0]      po_v_cq02h,
+  input  logic [A*LS-1:0]   po_slot_cq02h,
+  input  logic [A*4-1:0]    po_dst_cq02h,
+  input  logic [A-1:0]      po_gwe_cq02h,
+  input  logic [A*GW-1:0]   po_gname_cq02h,
+  input  logic [A*2-1:0]    po_pdst_cq02h,
+  input  logic [A-1:0]      po_pwe_cq02h,
+  input  logic [A*PW-1:0]   po_pname_cq02h,
+  // The pending group: last cycle's, in rename's register, which ooe_rat
+  // captures at this edge.
   input  logic [A-1:0]      pw_v_cq01h,
   input  logic [A*LS-1:0]   pw_slot_cq01h,
   input  logic [A*4-1:0]    pw_dst_cq01h,
@@ -68,35 +80,48 @@ module ooe_headrd #(
   output logic [R*4*R-1:0]  h_pw_cq01h
 );
 
-  // A read: the flops' entry, or the last writer of it among the pending
-  // group's ports, a one-hot AND-OR after the compares; and, apart, the
-  // last lower head writing it.
+  // A read: the flops' entry, or the last writer of it among the captured
+  // group's ports and then the pending group's, a one-hot AND-OR after the
+  // compares; and, apart, the last lower head writing it.
+  localparam int NW = 2 * A;
   function automatic logic [GW-1:0] gval(input logic [3:0] a);
     logic [GW-1:0] f, v;
-    logic [A-1:0] m, later;
+    logic [NW-1:0] m, later;
+    logic [NW*GW-1:0] nm;
     f = '0;
     for (int e = 0; e < NG; e++) f = f | (rat_cq02h[e * GW +: GW] & {GW{a == 4'(e)}});
-    for (int p = 0; p < A; p++)
-      m[p] = pw_v_cq01h[p] && pw_gwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == LS'(SL) &&
-             pw_dst_cq01h[p * 4 +: 4] == a;
-    later[A-1] = 1'b0;
-    for (int p = A - 2; p >= 0; p--) later[p] = later[p + 1] || m[p + 1];
+    for (int p = 0; p < A; p++) begin
+      m[p] = po_v_cq02h[p] && po_gwe_cq02h[p] && po_slot_cq02h[p * LS +: LS] == LS'(SL) &&
+             po_dst_cq02h[p * 4 +: 4] == a;
+      nm[p * GW +: GW] = po_gname_cq02h[p * GW +: GW];
+      m[A + p] = pw_v_cq01h[p] && pw_gwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == LS'(SL) &&
+                 pw_dst_cq01h[p * 4 +: 4] == a;
+      nm[(A + p) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
+    end
+    later[NW-1] = 1'b0;
+    for (int w = NW - 2; w >= 0; w--) later[w] = later[w + 1] || m[w + 1];
     v = {GW{m == '0}} & f;
-    for (int p = 0; p < A; p++) v = v | ({GW{m[p] && !later[p]}} & pw_gname_cq01h[p * GW +: GW]);
+    for (int w = 0; w < NW; w++) v = v | ({GW{m[w] && !later[w]}} & nm[w * GW +: GW]);
     gval = v;
   endfunction
   function automatic logic [PW-1:0] pval(input logic [1:0] a);
     logic [PW-1:0] f, v;
-    logic [A-1:0] m, later;
+    logic [NW-1:0] m, later;
+    logic [NW*PW-1:0] nm;
     f = '0;
     for (int e = 0; e < NP; e++) f = f | (rat_cq02h[NG * GW + e * PW +: PW] & {PW{a == 2'(e)}});
-    for (int p = 0; p < A; p++)
-      m[p] = pw_v_cq01h[p] && pw_pwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == LS'(SL) &&
-             pw_pdst_cq01h[p * 2 +: 2] == a;
-    later[A-1] = 1'b0;
-    for (int p = A - 2; p >= 0; p--) later[p] = later[p + 1] || m[p + 1];
+    for (int p = 0; p < A; p++) begin
+      m[p] = po_v_cq02h[p] && po_pwe_cq02h[p] && po_slot_cq02h[p * LS +: LS] == LS'(SL) &&
+             po_pdst_cq02h[p * 2 +: 2] == a;
+      nm[p * PW +: PW] = po_pname_cq02h[p * PW +: PW];
+      m[A + p] = pw_v_cq01h[p] && pw_pwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == LS'(SL) &&
+                 pw_pdst_cq01h[p * 2 +: 2] == a;
+      nm[(A + p) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
+    end
+    later[NW-1] = 1'b0;
+    for (int w = NW - 2; w >= 0; w--) later[w] = later[w + 1] || m[w + 1];
     v = {PW{m == '0}} & f;
-    for (int p = 0; p < A; p++) v = v | ({PW{m[p] && !later[p]}} & pw_pname_cq01h[p * PW +: PW]);
+    for (int w = 0; w < NW; w++) v = v | ({PW{m[w] && !later[w]}} & nm[w * PW +: PW]);
     pval = v;
   endfunction
   function automatic logic [R-1:0] gwho(input int h, input logic [3:0] a);

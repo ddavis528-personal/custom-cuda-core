@@ -409,24 +409,32 @@ entry and rob_tag:
 - **A3**, MIU class: the write of N and the release, `mem_op` 3
   (atomic-write), with the store data alone.
 
-**A CAS is two decode slots, one instruction** (AR's rev 156, OA's rev
-189, TI-39). DEC marks them in sched_attr, pair_first at bit 17 and
+**An atomic is two decode slots, one instruction** (AR's rev 156, OA's
+rev 189, TI-39; every atomic, an RMW's as a CAS's, since OI-80 (d), DA's
+rev 94). DEC marks them in sched_attr, pair_first at bit 17 and
 pair_second at bit 18. The first slot carries rbase, rindex and the
-displacement and becomes A1. The second carries rs_cmp, rs_swap and the
-destination and becomes A2's operands. The second allocates no ROB entry
+displacement and becomes A1. The second carries rs (an RMW's) or rs_cmp
+and rs_swap (a CAS's) and the destination, and becomes A2's operands. An
+atomic in one slot is an input error. The second allocates no ROB entry
 and no checkpoint, and its steps share the first's rob_tag. Rename joins
 them: the pair is one admission unit, two lanes and one ROB entry, and a
-take stops before it or after it, never between (OI-79 (b), OA's rev 239).
-Under `go_static` the go counts the pair's needs together on its first
-slot (admission bit 8, atomic: one more RCU row, one more MIU row and two
-names), and the second slot carries none. A warp's fits never end on a
-first slot, so a pair whose second falls past the warp's R heads waits
-(`rename.pair_window`). Across warps the cycle's take stops before the
-first pair the width would split: the model takes from a snapshot and,
-if the width cut a pair, takes again capped at the first slot's lane
-(`rename.pair_cut`). The full random atomic set, against the earlier rule
-(a pair with one lane left waits): 653,713 cycles to 652,299 (-0.22%), and
-with every atomic a CAS 665,693 to 666,001 (+0.05%). Control pair-split
+take stops before it or after it, never between. Under `go_static` each
+slot carries its own needs (admission bit 8, an atomic's slot): the first
+A1's MIU row, A2's RCU row and T's name, the second A3's MIU row, the
+copy's RCU row and N's name. A warp's fits never end on a first slot, so
+a pair whose second falls past the warp's R heads waits
+(`rename.pair_window`). Across warps a pair takes adjacent lanes, one
+unit of weight two (OI-84 (a), OA's rev 264): in its warp's turn, its
+second takes the lane after its first. OI-79 (b)'s form put the second in
+the warp's next round; when the width cut a later pair that could split
+an earlier one, and with as many warps at heads as lanes, warps whose
+heads were all pairs deadlocked. It is control pair-rounds
+(`inject_pair_rounds`), which testPairHeads (four warps of pairs) fails.
+Where the width would split a pair (its first at the last lane), the
+model takes again capped at that lane (`rename.pair_cut`); under adjacency
+the cap splits no other pair. Random atomics at four warps against
+single-slot RMWs: 81,455 to 82,020 cycles (+0.7%); the full random atomic
+set 642,025 to 645,269 (+0.5%), no rename port stall. Control pair-split
 (`inject_pair_split`) lets the width split a pair, and the core's checks
 catch it; directed test pair-cut makes the cut bind across two warps,
 which go_tb follows. The shares' liveness (OI-80, OA's revs 244 and 247):
