@@ -1002,6 +1002,13 @@ it.
   of it is the credits removing the cross-warp stall, not the refill.
   What lost: parking with no interface change, and PF-44's unbounded
   fetch-on. FET spec rev 35 carries it.
+- **Share set (TI's revs 242-243, OA's rev 275, 2026-10-26):**
+  `CCV_P_DECQ_WARP_MAX` = 7 in the 13-entry queue, r = 2, under the
+  liveness require `CCV_P_DECQ` > (warps - 1) x r. On the even-stall
+  sweep a stalled warp costs more as its share grows: 901 cycles at 7,
+  921 at 8, 967 at 10; 5 and 6 read lower but fail check-ooo's floors.
+  Against 10, 7 costs S1 0.02%. Built and pushed at 231c29e; the built
+  figures at 7 are owed to OA. FET spec rev 45 carries it.
 
 ### PF-45 Self-timed completion for done-free lane ops
 

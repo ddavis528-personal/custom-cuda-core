@@ -483,10 +483,10 @@ SBY
         "$(grep -m1 -E "ERROR|Unreached|FAIL" <<<"$out" || echo '?')"
   fi
 
-  # The binding and outstanding checkers' covers, run the same way. Legal
+  # The binding, distinct and outstanding checkers' covers, run the same way. Legal
   # traffic by construction; the asserts must hold and every cover must be
   # reachable, or the check could never see the case it exists for.
-  for pair in binding:b outstanding:o; do
+  for pair in binding:b distinct:d outstanding:o; do
     chk=${pair%%:*}; dir="$TMP/f${pair#*:}"
     mkdir -p "$dir"
     cp rtl/ccv_assert_pkg.sv "rtl/if/ccv_common_chk_${chk}.sv" \

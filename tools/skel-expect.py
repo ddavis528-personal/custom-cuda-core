@@ -31,6 +31,8 @@ ordered = " ".join(sorted(c["name"] for c in d["channels"]
                                attr(c, "binding_group", 1) == 1)))
 print("X_FIXED=%d" % sum(c["rate"] * copies(c) for c in d["channels"]
                          if attr(c, "fixed_latency", False)))
+print("X_DISTINCT=%d" % sum(copies(c) for c in d["channels"]
+                             if c["rate"] > 1 and attr(c, "distinct_key", None)))
 print("X_BINDING=%d X_OUTSTANDING=%d" % (
     sum(copies(c) for c in d["channels"] if attr(c, "binding_key", None)),
     sum(1 for c in d["channels"] if "outstanding" in c)))
