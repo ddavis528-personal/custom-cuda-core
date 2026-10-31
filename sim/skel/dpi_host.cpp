@@ -107,6 +107,8 @@ void init() {
   g->trace = plusarg("ccv_trace");
   if (!g->trace.empty() && !ccv::traceWriter().open(g->trace))
     die("cannot open trace %s", g->trace.c_str());
+  // Only a traced run checks launches against the bank's XFER events (OI-92).
+  setLogLaunches(!g->trace.empty() && g->k.brk == "none");
   g->skew_name = plusarg("ccv_shim_delay");
   if (unsigned bad = checkFieldTiling()) die("%s%d broken field table(s)", "", int(bad));
   g->m = std::make_unique<Machine>(

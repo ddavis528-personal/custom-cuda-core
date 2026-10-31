@@ -88,6 +88,10 @@ const std::vector<Launched> &launchedLog();
 /// Append to that log. The exerciser logs its own launches; S1's functional
 /// stubs call this so the same bank-vs-launch comparison covers them.
 void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid);
+/// Only a traced run reads the log (xferCheck), and it grows by every launch,
+/// ~7 a cycle: an untraced CoreMark ran out of memory on it (OI-92). Off by
+/// default; a host turns it on where it opens the trace.
+void setLogLaunches(bool on);
 
 /// The bank's EV_CH_XFER events in `trace` must carry exactly the payloads
 /// the senders launched: same channel, same bits 63:0, same trace identity,

@@ -218,6 +218,8 @@ int main(int argc, char **argv) {
     else if (arg("--dump-wiring")) dump_wiring = argv[++i];
     else if (!std::strcmp(argv[i], "--force-atomic")) force_atomic = true;
   }
+  // Only a traced run checks launches against the bank's XFER events (OI-92).
+  setLogLaunches(!trace.empty() && brk == "none");
   // Wiring controls silence organic traffic so nothing else can fire; the
   // semantic ones (misorder, wrong-class) need traffic to be wrong about.
   const bool breaking = brk == "phantom-all" || brk == "stall-all" ||

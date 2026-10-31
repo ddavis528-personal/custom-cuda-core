@@ -34,6 +34,7 @@ private:
 
 ExerciseTotals g_totals;
 std::vector<Launched> g_launched;
+bool g_log_launches = false;
 bool g_draining = false;
 bool g_class_bad[kNumChans] = {};
 bool g_mismatch_chan[kNumChans] = {};
@@ -415,7 +416,9 @@ ExerciseTotals exerciseTotals() {
 }
 void setDraining(bool on) { g_draining = on; }
 const std::vector<Launched> &launchedLog() { return g_launched; }
+void setLogLaunches(bool on) { g_log_launches = on; }
 void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid) {
+  if (!g_log_launches) return;
   const uint32_t nb = msg.size();
   g_launched.push_back(
       {chan, uint32_t(msg.get(0, nb < 32 ? nb : 32)),
