@@ -30,25 +30,30 @@ Read every tab since the bookmarks; merge every remote branch that is
 ahead (not release) into wt, gate, push; pongs; pings on Fridays only.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 255, OA 284, IS 176, TI 267, OI 236, CP 143, DA 97.
+Conventions 15, AR 256, OA 286, IS 180, TI 271, OI 239, CP 148, DA 97. Pings: Friday 10-30's all
+answered (checked 10-30); next pings Friday 11-06.
 
 ## State
-- Branch tip 9c079f9 (ROB slice 1, check-cg generate-scope fix). The merge
-  of TI's ccr-183cc441-doowtf (row-indexed dones 6ba08b1, handoff
-  mechanism, %privoff) is on wt, with this file.
+- Branch tip: the 10-31 sweep merge on da182a7 (ROB slice 2 part 1). TI's
+  47e2622 (OI-92: ccv-skel's launch log only when traced) arrives with
+  TI's next push; until then coremark128 needs over 11 GB.
 - Model defaults: retire_lag 0 (OI-87: go_tb diverges under 1),
-  release_names_lag 1 and squash_room_lag 1 (OA rev 280) in wt4 only.
+  release_names_lag 1 and squash_room_lag 1 (OA rev 280).
 - Slice 2 knobs in wt4 (all 0 until DA rules, OA rev 284): resolve_lag,
   squash_act_lag, held_room_lag. Audit 901 base; rl1 916; rl1+sal 929;
   rl1+sal+hrl 934; sal 912; sal+hrl 920. S1 45,438 base, 45,805 at rl1
   (squash/held lags +0). coremark32 4,663,694 base, 4,693,463 rl1 (sal +0).
-- coremark128 base 17,612,876 (155,416 redirects). Runs in flight,
-  detached (setsid scratchpad/cm128.sh, results in scratchpad/cm128.out):
-  rl, rlsh, sh in wt4, about 2 h and 3-5 GB each; wt4's skel binary must
-  not be rebuilt meanwhile.
-- wt5 (at b65a558): slice 2's model work moved here (knobs, RobLog
-  extension, Done/Cmpl row from the payload, release fix, swap seed fix);
-  unit tests pass. Slice 2's RTL is built here.
+- coremark128 base 17,612,876 (155,416 redirects, wt4's model). The rest
+  of OI-88's CoreMark runs are on RH (session_01QPk2jvfKM1V5rRfip8FC86,
+  DA's run helper): skeleton da182a7, oracles from 21f7150 (pin d9ddd2c
+  faults, OI-91 to TI); coremark128 base, rl, rlsh, sh, then coremark32
+  sh, rlsh, one at a time, about 12 h from 2026-10-31 02:47 UTC; results
+  by send_message, then the table to OA. Never run coremark128 here
+  (OOM at 11 GB).
+- wt5: slice 2's tree. Part 1 pushed (9be452c, da182a7: per-row done
+  counts, OI-90; the model's knobs and log). Next, part 2's RTL per
+  scratchpad plan-rob2.md: branch records, resolution, squash, held
+  entries, room with holes; and ooe_rs's side of the row hold.
 - OI-90 to OA: rev 282's done bit misses a cancelled issue's done; per-row
   counts proposed, width OA's.
 
