@@ -47,9 +47,10 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
   at 64 KiB; at 512 KiB frames -16.9%, both fixes together -22.8%.
 - OI's check-cg scope fix (9c079f9) is merged as of 3fbb402: review it.
 - Settings: sessions' project dir is /home/user, so the repo's
-  .claude/settings.json (400k window, handoff hook) and .claude/agents do
-  not load (2026-10-31). Proposed to DA: env CLAUDE_CODE_AUTO_COMPACT_WINDOW
-  and a setup-script step writing /home/user/.claude.
+  .claude/settings.json and .claude/agents do not load (2026-10-31). Fix:
+  the session-home skill (tools/setup-session-home.py, 8dd82a6); each agent
+  runs it once with DA's approval (DA chose this, 2026-10-31), and
+  `--check` in its daily sweep. TI-50 asks the other five.
 
 ## Open work (most urgent first)
 0. Disk: a clean gate needs ~11 GB of the session's allowance; keep
