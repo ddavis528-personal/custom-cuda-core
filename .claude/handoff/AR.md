@@ -56,7 +56,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 260, OA 292, TI 275, IS 180, CP 148, OI 244, DA 98,
+  record): AR 260, OA 293, TI 277, IS 180, CP 148, OI 244, DA 98,
   Conventions 15. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
@@ -89,6 +89,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    coremark32 +0.64%. Waiting on TI (schema, per-slot fields, with the
    OI-93 drop), OI (rets at lag 1, the difference), OA (the caveat). If
    the ret cost is material, a ret lead is the next row; bring it to Daniel.
+   Built: TI 80697a3 (lead fields, slot_fields step A, OOE check, control
+   lead-corrupt); step B (port narrowing) deferred until a repeated link,
+   fine by AR. OA rev 293: no RCU branch/call select the cycle after a ret
+   (1 flop) so two resolves never coincide; OI reprices, <0.5% OA's call.
+   Watch: rope +14.7% (6763->7757) under shfl lat_class 5, dependent
+   branches behind shfl; transp4 +2.2%. A PF row if collective latency
+   becomes a lever.
 3. TI-48 closed (all handoffs in; autoCompactWindow 400000 at 63a7bd5).
    TI-49 done (AR rev 256; OA put it into the register skill, rev 285).
 4. OI-85/OI-90 row-indexed dones: built (TI 6ba08b1; OI per-row 2-bit
