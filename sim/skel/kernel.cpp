@@ -2721,7 +2721,9 @@ private:
       const uint32_t on = k_.brk == "ignore-mask" ? 0xffffffffu : a.active;
       k_.pred[a.ppred] = ((a.merge ? k_.pred[a.ppold] : 0u) & ~on) | (po_mask & on);
     }
-    to_ooe_.push_back({kPoolDone, done(a.tag), a.tid});
+    // Its class names its slot, wherever it ran (movi-in-lane's movi stays
+    // RCU-only; OA's response OI-93).
+    to_ooe_.push_back({rcuOnlyDone(a.op) ? kRcuOnlyDone : kPoolDone, done(a.tag), a.tid});
   }
 
   /// This cycle's issues, one slot per select resource: S0-S3, P0-P3, R.
