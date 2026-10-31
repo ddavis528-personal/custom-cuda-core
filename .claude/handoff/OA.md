@@ -26,7 +26,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 ## Daily sweep (trig_017UEX7qaTRGT27eW6yQ1tJo, 02:07 PT)
 Skill section 4 (register-reader digest), then
 `CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf tools/daily-sweep.sh` in the
-background; pings Fridays only (TI-49); report in a few lines.
+background; `python3 tools/setup-session-home.py --check` (exit 1: ask DA to
+approve the install again); pings Fridays only (TI-49); report in a few lines.
+Session home installed 2026-10-31 with DA's approval (TI-50): /home/user/.claude
+holds the 400k window, the handoff hook and the agents link.
 
 ## Sessions
 TI session_01J4Yp3xeV6DJtgCtcoqVsAq, OI session_01DMw4FtFbGoVboMGxWpLBuv,
