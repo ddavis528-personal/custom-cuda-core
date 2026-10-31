@@ -138,7 +138,9 @@ beyond this file, branch tips, runs in flight, register bookmarks and open
 work, most urgent first, in a few kB. Update it when a task ends, not only
 before a compaction: nothing writes it for you. After every compaction the
 SessionStart hook in `.claude/settings.json` (`.claude/hooks/handoff.sh`)
-prints it, finding the prefix from the session id in
+prints it, once the session-home skill (`.claude/skills/session-home/`) has
+installed those settings where a multi-repo session reads them, `/home/user/.claude/`;
+it finds the prefix from the session id in
 `docs/register/roster.json`. A session in custom-cuda-complier copies the
 script and hook unchanged, and the script reads this roster from a
 custom-cuda-core checkout beside it (or `$CCV_ROSTER`, or a copy at that
@@ -160,6 +162,9 @@ the prompt, followed by the task; it works the same.
 
 The session compacts at 400k tokens (`autoCompactWindow` in
 `.claude/settings.json`; DA, 2026-10-30, set once every agent had a handoff).
+None of `.claude/settings.json` or `.claude/agents/` reaches a session that
+runs from `/home/user` until the session-home skill installs it there;
+`tools/setup-session-home.py --check` says whether it has.
 
 ## Sessions working side by side
 
