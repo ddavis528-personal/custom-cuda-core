@@ -37,6 +37,8 @@ namespace {
 
 int g_fail = 0;
 bool g_quiet = false;     ///< a negative control's expected failures
+bool g_row_no_hold = false;   ///< testRowHold: select issues past 3 dones in flight
+unsigned g_row_over = 0;      ///< testRowHold: OI-90's check fired
 /// Called after every core cycle of every Env: an RTL testbench compiled
 /// with OOE_TEST_AS_LIBRARY uses it to check RTL against the live core.
 void (*g_cycle_hook)(const Core &) = nullptr;
@@ -616,7 +618,10 @@ struct Env {
   }
 
   explicit Env(const Config &c, unsigned seed = 1) : cfg(c), core(c), rng(seed) {
-    core.on_error = [this](const std::string &m) { errors.push_back(m); };
+    core.on_error = [this](const std::string &m) {
+      if (m.rfind("OI-90", 0) == 0) ++g_row_over;
+      errors.push_back(m);
+    };
     const char *d = std::getenv("OOE_TEST_TRACE");
     core.on_event = [this, d](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
       // TI-21: a restored warp's first rename ends its slot's gap.
@@ -878,6 +883,7 @@ struct Env {
       const unsigned bound = cfg.issue_link + lat - 1 + cfg.done_link;
       Done d;
       d.rob_tag = is.rob_tag;
+      d.row = is.row;   // RCU echoes the issue's row (OI-85)
       if (o.k == kBranch) {
         d.branch_taken = correct[is.tid] ? o.taken : rnd(2);
         d.branch_mask = d.branch_taken ? (correct[is.tid] ? o.tmask : kFullMask) : 0;
@@ -936,6 +942,7 @@ struct Env {
     landings.insert({t + lat, {is.pdst, is.tid}});
     Done d;
     d.rob_tag = is.rob_tag;
+    d.row = is.row;
     dones.insert({doneRoom(t + (rcu_fast ? 2 : cfg.issue_link + lat - 1 + cfg.done_link)), d});
   }
 
@@ -945,6 +952,7 @@ struct Env {
     Atom &a = atom[m.tid];
     Cmpl c;
     c.rob_tag = m.rob_tag;
+    c.row = m.row;   // MIU echoes the memop's row (OI-85)
     c.rs_idx = m.rs_idx;
     const uint64_t when = cmplRoom(t + 4 + rnd(miss_extra));
     const std::string who = "tid " + std::to_string(m.tid);
@@ -1088,6 +1096,7 @@ struct Env {
     (void)before;
     Cmpl c;
     c.rob_tag = m.rob_tag;
+    c.row = m.row;   // MIU echoes the memop's row (OI-85)
     c.rs_idx = m.rs_idx;
     uint64_t when;
     // TI-21: a load that misses to DRAM, once per program position (its
@@ -3827,6 +3836,7 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       c.inject_a1_base_only = control == 3;
       c.inject_cas_split = control == 4;
       c.inject_pair_split = control == 5;
+      c.inject_row_no_hold = g_row_no_hold;
       std::mt19937 rng(seed * 13 + unsigned(mode));
       Env e(c, seed * 11 + unsigned(mode));
       e.miss_pct = 30;
@@ -4269,7 +4279,17 @@ void testSwap() {
         e.swap.mode = mode;
         e.swap.dram_pm = 40;
         e.replay_spread = 60;
-        for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+        // Warp 0's first load misses to DRAM with the longest fill, while
+        // every parked warp is ready, so each seed demotes whatever the
+        // core's timing (the random misses alone left seed 2 none under
+        // squash_act_lag 1).
+        for (unsigned i = 0; i != 4; ++i) {
+          std::vector<Op> p = randomProgram(rng, 200, true);
+          if (i == 0)
+            for (Op &o : p)
+              if (o.k == kLoad) { o.dram = true; o.fill = e.swap.dram_hi; break; }
+          e.launch(i, i, p);
+        }
         for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
         e.finish(200000);
         EXPECT(e.swaps > 0, "no swap");
@@ -5028,6 +5048,24 @@ int main(int argc, char **argv) {
   testLaneCtx();
   testWidthFromTable();
   testMlcTrigger();
+  {
+    // OI-90 (OA's rev 286): the hold, on the atom-early-wake storm.
+    unsigned over[2];
+    for (int off = 0; off != 2; ++off) {
+      const int saved = g_fail;
+      g_row_no_hold = off == 1;
+      g_row_over = 0;
+      testAtomicRandom(10, randomConfig, 2);
+      over[off] = g_row_over;
+      g_fail = saved;
+    }
+    g_row_no_hold = false;
+    g_test = "control row-no-hold";
+    EXPECT(over[0] == 0, "a row passed 3 dones in flight under the hold (%u times)", over[0]);
+    EXPECT(over[1] > 0, "the harness missed it");
+    std::printf("  row hold (OI-90): %u rows past 3 without the hold, %u with\n", over[1], over[0]);
+    std::printf("  %-24s %s\n", "control row-no-hold", over[1] && !over[0] ? "caught" : "MISSED");
+  }
   for (int k : {1, 2, 3, 4, 5}) {
     const char *name = k == 1 ? "control atom-off-head" : k == 2 ? "control atom-early-wake"
                      : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split" : "control pair-split";
