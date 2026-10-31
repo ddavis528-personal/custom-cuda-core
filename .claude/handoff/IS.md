@@ -11,9 +11,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
   Record his words verbatim; write adopted items as O-n (log, change
   summary, normative text). Notify the agents a decision affects.
 - Branch `ccr-3868632d-p8esoz` in both repos. Merge commits only, never
-  rebase or force-push. Push only after a clean gate: core
-  `tools/regen.sh` then `tools/verify.sh`; compiler `ninja -C build` then
-  `tools/verify.sh`. ISA-only commits: `python3 tools/check-docs.py`, run
+  rebase or force-push. Push only after a green gate. Core (OI-95, DA
+  2026-10-31): a between-sweep push takes the scoped gate
+  (`tools/gate-push.sh`, SCOPED PASS); the sweep's merge takes the full
+  clean gate (`tools/gate-push.sh --full`, PASS). Compiler: `ninja -C
+  build` then `tools/verify.sh`. ISA-only commits: `python3 tools/check-docs.py`, run
   unpiped (a `| tail` once hid a failure).
 - Merge rules (DA tab revs 78, 89; CP-69): merge every peer branch at the
   daily sweep, and between sweeps when a peer's pushed work bears on IS's.
