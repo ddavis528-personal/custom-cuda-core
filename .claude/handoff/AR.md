@@ -29,6 +29,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 - Code merges: tools/regen.sh then tools/verify.sh (about an hour; run in
   the background with timeout 7200000, never the 30-minute default), push
   only on PASS. Doc-only commits: tools/check-docs.sh, check its exit code.
+  Gate rule (OI-95, DA 2026-10-31, TI 5e7c8db): a working-branch push may
+  take the scoped gate (verify.sh --changed <base>, SCOPED PASS); the
+  sweep's merge and releases keep the full clean gate, so AR's sweep is
+  unchanged.
 - Daily sweep (scheduled task trig_01V1WipqEXd8e7TAaWnKvQGu, 09:04 UTC):
   register section 4 from the bookmarks; fetch; merge every remote branch
   with commits ours lacks except `release` (merge commits only); gate;
@@ -56,7 +60,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 260, OA 293, TI 277, IS 180, CP 148, OI 244, DA 98,
+  record): AR 260, OA 293, TI 279, IS 180, CP 148, OI 244, DA 98,
   Conventions 15. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
