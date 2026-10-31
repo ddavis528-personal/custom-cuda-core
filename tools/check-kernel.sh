@@ -21,6 +21,8 @@
 #     restores; the pair lands in send order     for a dead checkpoint (A-58)
 #   OOE schedules on DEC's sched_attr         attr-store-as-load: OOE never
 #     (A-66), never on opcode                    commits the store
+#   a cross-lane op is warp-collective,     attr-coll-as-rcu (ropediv): OOE
+#     lat_class 5 (OA-4; AR's rev 259)         refuses each shfl at 0
 #   branches resolved in RCU, guard negated    drop-negate: RCU's resolution
 #                                                and FET's redirect both wrong
 #   load write-back from MIU's echo            corrupt-echo: C_ADD's lanes see
@@ -395,6 +397,18 @@ if [ "$(field "$B/kernel_attr-store-as-load.log" mem_mismatch)" = 32 ]; then
   say "--break attr-store-as-load: the store never lands" "PASS (32 words)"
 else
   bad "--break attr-store-as-load" "OOE ignored sched_attr's memory kind"
+fi
+
+# A cross-lane op (shfl) is warp-collective: lat_class 5, CCV_LAT_COLLECTIVE
+# (Daniel's responses OA-4; AR's rev 259, TI's rev 274), never RCU's 0.
+# attr-coll-as-rcu: DEC gives it 0, as the skeleton did, and OOE refuses each
+# shfl it decodes, and nothing else fails.
+"$SKEL" --kernel build/oracle/ropediv/oracle.jsonl --break attr-coll-as-rcu >"$B/kernel_attr-coll-as-rcu.log" 2>&1
+n=$(grep -c "^CHECK ooe: seq [0-9]* is cross-lane with lat_class 0; a warp-collective op is lat_class 5" "$B/kernel_attr-coll-as-rcu.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_attr-coll-as-rcu.log" check_failures)" = "$n" ]; then
+  say "--break attr-coll-as-rcu: OOE refuses a shfl at lat_class 0" "PASS ($n shfls)"
+else
+  bad "--break attr-coll-as-rcu" "$n refused: $(grep '^KERNEL' "$B/kernel_attr-coll-as-rcu.log")"
 fi
 
 # RCU keeps no table of outstanding loads: it writes where MIU's echo says.

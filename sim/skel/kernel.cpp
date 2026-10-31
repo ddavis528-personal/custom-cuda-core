@@ -3377,6 +3377,9 @@ private:
     uint32_t attr = schedAttrOf(op);
     if (k_.brk == "attr-store-as-load" && op->cls == kStore)
       attr &= ~(3u << 7);
+    // attr-coll-as-rcu: DEC gives a cross-lane op lat_class 0, RCU's, not
+    // the warp-collective 5 (AR's rev 259).
+    if (k_.brk == "attr-coll-as-rcu" && op->cross) attr = (attr & ~7u) | kLatRcu;
     put(u, c.dec_ooe, "sched_attr", attr);
     // What OOE schedules and renames on instead of opcode (A-75, TI-1).
     // drop-src-valid: DEC calls a two-source op's second source unread, so

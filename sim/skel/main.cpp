@@ -55,6 +55,7 @@
 //   stale-free     as drop-negate, and OOE also frees the checkpoint its
 //                  redirect restores, which FET must refuse (A-58, V-46)
 //   attr-store-as-load  DEC's sched_attr calls a store a load (A-66)
+//   attr-coll-as-rcu    DEC gives a cross-lane op lat_class 0, not 5 (AR rev 259)
 //   dirty-zero     the zero registers read as garbage (merge kernel; A-64)
 //   wrong-merge    RCU sends the second source as merge_data, not the old
 //                  destination (merge kernel; A-33, A-44)
@@ -230,7 +231,7 @@ int main(int argc, char **argv) {
                       brk == "itlb-double" || brk == "corrupt-disp" ||
                       brk == "drop-negate" || brk == "drop-pred-data" ||
                       brk == "corrupt-ckpt" || brk == "stale-free" ||
-                      brk == "attr-store-as-load" || brk == "dirty-zero" ||
+                      brk == "attr-store-as-load" || brk == "attr-coll-as-rcu" || brk == "dirty-zero" ||
                       brk == "wrong-merge" || brk == "skip-copy" ||
                       brk == "late-copy" || brk == "copy-from-new" ||
                       brk == "free-new" || brk == "one-line" ||

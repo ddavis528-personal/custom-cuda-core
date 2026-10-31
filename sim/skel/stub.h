@@ -260,7 +260,12 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
   const bool ctl = op->cls == kExit || isBarrier(op);
   const unsigned ser = op->cls == kExit ? kSerExit : op->cls == kBarWait ? kSerBarrier
                      : op->cls == kBarArrive ? kSerArrive : op->chw ? kSerChwidth : kSerNone;
+  // A cross-lane op (shfl) is RCU's but warp-collective: lat_class 5 at
+  // CCV_LAT_COLLECTIVE (Daniel's responses OA-4; AR's rev 259, TI's rev
+  // 274). RCU may finish it sooner, which V-35 allows; its dependants wake
+  // at 5.
   const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore || op->cls == kFence ? kLatCompletion
+                     : op->cross ? kLatCollective
                      : execRcu(op) || ctl ? kLatRcu : kLatLane;
   return uint32_t(op->ret) << kAttrRetBit |
          uint32_t(bypGroupOf(op)) << 14 |

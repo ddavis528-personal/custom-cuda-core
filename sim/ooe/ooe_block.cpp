@@ -217,6 +217,12 @@ private:
     u.fetch_epoch = unsigned(get(p, c.dec_ooe, "fetch_epoch"));
     u.attr_raw = uint32_t(get(p, c.dec_ooe, "sched_attr"));
     u.attr = ooe::SchedAttr::decode(u.attr_raw);
+    // A cross-lane op is warp-collective: lat_class 5, CCV_LAT_COLLECTIVE
+    // (CCV_P_W_SCHED_ATTR; Daniel's responses OA-4; AR's rev 259). TI's
+    // check, OI-18.
+    if (((u.attr_raw >> 11) & 1u) && (u.attr_raw & 7u) != kLatCollective)
+      k_.fail("ooe: seq %llu is cross-lane with lat_class %u; a warp-collective op is lat_class %u",
+              (unsigned long long)uidSeq(m.tid), u.attr_raw & 7u, unsigned(kLatCollective));
     u.mem_op = unsigned(get(p, c.dec_ooe, "mem_op"));
     u.space = unsigned(get(p, c.dec_ooe, "space"));
     u.ordering = unsigned(get(p, c.dec_ooe, "ordering"));
