@@ -34,8 +34,8 @@ AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
 CP session_019cSebQ45AT3pSnPU71torg. OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 15, OA 286, AR 255, TI 267, OI 237, IS 176, CP 143, DA 97.
-OOE doc rev 347. Pings 2026-10-30: all five ponged ok.
+Conventions 15, OA 286, AR 256, TI 271, OI 239, IS 180, CP 148, DA 97.
+OOE doc rev 347. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
 1. OI-86/OI-88, to DA when OI's runs land: (a) resolve_lag 1 + squash_act_lag 1
