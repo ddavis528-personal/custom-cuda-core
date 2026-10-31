@@ -118,7 +118,6 @@ one that is. So every clean result has a partner that must **not** be clean:
 | Every message's id class is in its channel's set | `--break wrong-class`: all 48 channels report |
 | The trace id exists only under `CCV_TRACE` | asked of Yosys both ways — absent without, present with |
 | Every fet→dec message names its own group (`tier1_id` == slot / 2) | `--break misgroup`: every message names the next group — only `binding_key` fires |
-| No two rcu→ooe dones of a cycle name one ROB entry (`rob_tag`) | `--break dupkey`: every done carries `rob_tag` 0 — only `distinct_key` fires |
 | C++ field offsets == SV packed structs | `--mutate`: every shiftable field must disagree |
 | **163 slots**, re-derived from the schema every run | — (see below) |
 
@@ -185,7 +184,6 @@ rejects any specification that couldn't mean anything:
 | `acceptance` | slots | none atomic yet | `ccv_common_chk_atomic`, all 77 multi-slot instances |
 | `slot_binding` + `binding_group` | slots | fet→dec bound, groups of 2; lane channels bound, groups of 1; ooe→rcu issue free | `lockstep_id` on the lane channels (below) |
 | `binding_key` | slots | fet→dec `tier1_id` | `ccv_common_chk_binding`: the key must equal slot / `binding_group` |
-| `distinct_key` | slots | rcu→ooe done `rob_tag` (OA's rev 279) | `ccv_common_chk_distinct`: no two slots of a cycle carry one key |
 | `ordering` — a **key** | slots | fet→dec `slot_group`; dec→ooe `warp_id`; miu→ooe cmpl `none` | the stubs' in-order consumption, and `--break misorder` |
 | `lockstep` | **instances** | both lane channels | `ccv_common_chk_lockstep`, one per lane channel |
 

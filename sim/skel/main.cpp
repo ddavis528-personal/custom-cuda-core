@@ -34,9 +34,6 @@
 //                 not carry
 //   misgroup      every binding key names the wrong group (fet->dec's
 //                 tier1_id); only the binding checker may fire
-//   dupkey        every distinct key is 0 (rcu->ooe done's rob_tag), so
-//                 two slots of a cycle name one entry; only the distinct
-//                 checker may fire
 //
 // --force-atomic runs every multi-slot channel as atomic (stubs AND checks)
 // with ordinary traffic, which must be clean -- the partner to atomic-all.
@@ -190,8 +187,7 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
 }
 
 /// A payload for a forced valid on `slot` that no payload check objects to:
-/// zero, except a binding key naming the slot's own group and a distinct key
-/// naming the slot itself, so no two slots share one. The wiring
+/// zero, except a binding key naming the slot's own group. The wiring
 /// controls force valids with no message behind them, and each is meant to
 /// trip exactly one property.
 Bits wellFormed(Machine &m, unsigned slot) {
@@ -201,10 +197,6 @@ Bits wellFormed(Machine &m, unsigned slot) {
   if (cd.bind_key >= 0) {
     const FieldDesc &f = cd.fields[cd.bind_key];
     b.set(f.lsb, f.width, (slot - ci.slot_base) / cd.bind_group);
-  }
-  if (cd.distinct_key >= 0) {
-    const FieldDesc &f = cd.fields[cd.distinct_key];
-    b.set(f.lsb, f.width, slot - ci.slot_base);
   }
   return b;
 }
@@ -226,6 +218,8 @@ int main(int argc, char **argv) {
     else if (arg("--dump-wiring")) dump_wiring = argv[++i];
     else if (!std::strcmp(argv[i], "--force-atomic")) force_atomic = true;
   }
+  // Only a traced run checks launches against the bank's XFER events (OI-92).
+  setLogLaunches(!trace.empty() && brk == "none");
   // Wiring controls silence organic traffic so nothing else can fire; the
   // semantic ones (misorder, wrong-class) need traffic to be wrong about.
   const bool breaking = brk == "phantom-all" || brk == "stall-all" ||
@@ -258,6 +252,7 @@ int main(int argc, char **argv) {
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
                       brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
+                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
                       brk == "xfer-unsigned" || brk == "xfer-ignored" || brk == "chw-mark-always" ||
                       brk == "ret-no-stay" || brk == "pred-taken-any" ||
@@ -271,7 +266,6 @@ int main(int argc, char **argv) {
   }
   if (brk != "none" && !breaking && brk != "misorder" &&
       brk != "wrong-class" && brk != "misbind" && brk != "misgroup" &&
-      brk != "dupkey" &&
       brk != "double-pop" &&
       !kbreak) {
     std::fprintf(stderr, "unknown --break mode %s\n", brk.c_str());
@@ -352,7 +346,6 @@ int main(int argc, char **argv) {
   cfg.wrong_class = brk == "wrong-class";
   cfg.misbind = brk == "misbind";
   cfg.misgroup = brk == "misgroup";
-  cfg.dupkey = brk == "dupkey";
   cfg.double_pop = brk == "double-pop";
   bank->force_atomic = cfg.force_atomic;
   // The exerciser's traffic is synthetic: it sends requests and responses

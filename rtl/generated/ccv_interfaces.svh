@@ -211,6 +211,7 @@ typedef struct packed {
 
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
+  logic [2-1:0]                                  done_row;
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    issue_mask;
   logic [2*ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]   phys_src;
@@ -262,6 +263,7 @@ typedef struct packed {
 
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
+  logic [2-1:0]                                  done_row;
   logic                                          branch_taken;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    branch_mask;
   logic [32-1:0]                                 aux;
@@ -289,6 +291,7 @@ typedef struct packed {
 
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
+  logic [2-1:0]                                  done_row;
   logic [ccv_prov_pkg::CCV_P_W_RS_IDX-1:0]       rs_idx;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     phys_dst;
   logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     dst_pos;
@@ -315,6 +318,7 @@ localparam int CCV_OOE_MIU_MEMOP_DISCARD_TAIL_W = ccv_prov_pkg::CCV_P_W_ROB_IDX;
 
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
+  logic [2-1:0]                                  done_row;
   logic [ccv_prov_pkg::CCV_P_W_RS_IDX-1:0]       rs_idx;
   logic [ccv_params_pkg::CCV_W_STATUS-1:0]       status;
   logic [ccv_params_pkg::CCV_W_FAULT_CAUSE-1:0]  cause;
@@ -562,6 +566,7 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_VA-1:0]           launch_block_addr;
   logic [ccv_params_pkg::CCV_W_VA-1:0]           const_base;
   logic [ccv_params_pkg::CCV_W_VA-1:0]           const_limit;
+  logic [ccv_params_pkg::CCV_W_VA - 16-1:0]      local_base;
 } ccv_rau_miu_cta_t;
 
 typedef struct packed {

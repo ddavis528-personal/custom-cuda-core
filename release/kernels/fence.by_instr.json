@@ -1384,7 +1384,7 @@
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 0,
-    "payload_hi": 216
+    "payload_hi": 224
    }
   },
   {
@@ -3208,7 +3208,7 @@
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 0,
-    "payload_hi": 432
+    "payload_hi": 440
    }
   },
   {

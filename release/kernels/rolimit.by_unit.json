@@ -282,8 +282,8 @@
     "instr_uid": 0,
     "unit": "ccv_rau_miu_cta",
     "channel_id": 44,
-    "payload_lo": 327684,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 262144
    }
   },
   {

@@ -34,6 +34,7 @@ private:
 
 ExerciseTotals g_totals;
 std::vector<Launched> g_launched;
+bool g_log_launches = false;
 bool g_draining = false;
 bool g_class_bad[kNumChans] = {};
 bool g_mismatch_chan[kNumChans] = {};
@@ -291,12 +292,6 @@ private:
       const FieldDesc &fd = cd.fields[cd.bind_key];
       msg.set(fd.lsb, fd.width, msg.get(fd.lsb, fd.width) + 1);
     }
-    if (cfg_.dupkey && cd.distinct_key >= 0) {
-      // Every message carries key 0: two slots of a cycle then name one
-      // receiver entry, which distinct_key exists to rule out.
-      const FieldDesc &fd = cd.fields[cd.distinct_key];
-      msg.set(fd.lsb, fd.width, 0);
-    }
     uint64_t tid = expectedTid(*g.ci, st, q);
     if (cfg_.misbind && cd.lockstep && g.ci->inst == 7)
       // Lane 7 carries slot s+1's instruction in slot s -- the SIMD
@@ -389,19 +384,6 @@ Bits expectedPayload(const ChanInst &ci, uint64_t stream, uint64_t seq,
     const FieldDesc &fd = cd.fields[cd.bind_key];
     b.set(fd.lsb, fd.width, stream - kStreamGroup);
   }
-  if (cd.distinct_key >= 0) {
-    // No two slots of a cycle may share the key (OI-85). On an unordered
-    // channel the stream IS the slot, so the key keeps the slot in its
-    // residue mod rate and stays random above it.
-    if (cd.order != Order::kNone) {
-      std::fprintf(stderr, "%s: a distinct key on an ordered channel -- the "
-                   "exerciser does not know its slot\n", cd.name);
-      std::abort();
-    }
-    const FieldDesc &fd = cd.fields[cd.distinct_key];
-    const uint64_t span = (uint64_t(1) << fd.width) / cd.rate;
-    b.set(fd.lsb, fd.width, (b.get(fd.lsb, fd.width) % span) * cd.rate + stream);
-  }
   return b;
 }
 
@@ -434,7 +416,9 @@ ExerciseTotals exerciseTotals() {
 }
 void setDraining(bool on) { g_draining = on; }
 const std::vector<Launched> &launchedLog() { return g_launched; }
+void setLogLaunches(bool on) { g_log_launches = on; }
 void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid) {
+  if (!g_log_launches) return;
   const uint32_t nb = msg.size();
   g_launched.push_back(
       {chan, uint32_t(msg.get(0, nb < 32 ? nb : 32)),

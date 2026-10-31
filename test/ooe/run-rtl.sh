@@ -257,6 +257,38 @@ for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shi
   fi
 done
 
+# ooe_rob, the ROB (slice 1, OI-85), driven from the model's ROB log
+# (Core::robLog) a model cycle behind, with retire_lag 1: its retirements,
+# their leads and frees, and the room rename's go reads compared exactly.
+# A core stops at the first thing slice 1 does not build (a squash, a fault,
+# a retire port, an atomic).
+dir=build/ooe-rtl/rob
+mkdir -p "$dir"
+rv() { sed -n "s/.*localparam int $1 = \([0-9]*\);.*/\1/p" rtl/generated/ccv_params_pkg.sv; }
+rob_p="S=$slots D=$(rv CCV_P_ROB_DEPTH) RP=$(rv CCV_RETIRE_PER_ROB) A=$width ND=7 NM=4"
+rob_p="$rob_p GW=$(( $(rv CCV_P_W_PHYS_REG) + $(rv CCV_W_PHYS_POS) )) GR=$(rv CCV_P_W_PHYS_REG) NG=$(rv CCV_P_PHYS_REGS)"
+rob_p="$rob_p NS=$(( 1 << $(rv CCV_W_PHYS_POS) )) PW=$(rv CCV_P_W_PHYS_PRED) NP=$(rv CCV_P_PRED_REGS)"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace $(for kv in $rob_p; do printf -- '-G%s ' "$kv"; done) --top-module ooe_rob \
+      --Mdir "$dir" -o rob_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe $(for kv in $rob_p; do printf -- '-DRB_%s ' "$kv"; done) -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rob.sv" "$PWD/test/ooe/rob_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "rob: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/rob_tb" "$seeds" 2>&1) && grep -q "mismatches=0 model_failures=0" <<<"$out"; then
+  say "rob ($slots slots) == model, live" "PASS ($(grep '^rob_tb' <<<"$out" | sed 's/.*seeds=//'))"
+else
+  say "rob == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row; do
+  if ROB_CONTROL=$c "$dir/rob_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (rob)" "MISSED"; fail=1
+  else
+    say "  control $c (rob)" "caught"
+  fi
+done
+
 # ooe_wake, driven from the model's wake log after every cycle. Its
 # latencies, bypass points and penalties are the parameters'; the model's
 # payload stages come from its Config. wake_tb skips a core configured

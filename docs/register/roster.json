@@ -9,6 +9,7 @@
     "TI": {"session": "session_01J4Yp3xeV6DJtgCtcoqVsAq", "title": "CCV core integ",                "tab": "e8b1d9d9-df9b", "updated": "2026-10-19"},
     "OI": {"session": "session_01DMw4FtFbGoVboMGxWpLBuv", "title": "OOE block implementation",      "tab": "384bc26c-cef6", "updated": "2026-10-19"},
     "CP": {"session": "session_019cSebQ45AT3pSnPU71torg", "title": "CCV compiler implementation",   "tab": "099ebfed-9eea", "updated": "2026-10-19"},
+    "RH": {"session": "session_01QPk2jvfKM1V5rRfip8FC86", "title": "Run helper (offload worker for OI, TI; no register tab)", "tab": null, "updated": "2026-10-30"},
     "DA": {"session": null,                               "title": "Daniel (a person, not a session)", "tab": "d5076b00-ef1b", "updated": "2026-10-19"}
   },
   "conventions_tab": "55232329-ff5c"

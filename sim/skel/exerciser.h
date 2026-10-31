@@ -53,8 +53,6 @@ struct ExerciseCfg {
                               ///< channel, carry slot k+1's id in slot k
   bool misgroup = false;      ///< negative control: a binding key naming the
                               ///< wrong group, on every keyed channel
-  bool dupkey = false;        ///< negative control: every distinct key 0, so
-                              ///< two slots of a cycle name one entry (OI-85)
   bool double_pop = false;    ///< negative control: a keyed receiver may take
                               ///< one slot twice a cycle -- two consumed, one
                               ///< credit: the leak it had until 2026-09-26
@@ -90,6 +88,10 @@ const std::vector<Launched> &launchedLog();
 /// Append to that log. The exerciser logs its own launches; S1's functional
 /// stubs call this so the same bank-vs-launch comparison covers them.
 void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid);
+/// Only a traced run reads the log (xferCheck), and it grows by every launch,
+/// ~7 a cycle: an untraced CoreMark ran out of memory on it (OI-92). Off by
+/// default; a host turns it on where it opens the trace.
+void setLogLaunches(bool on);
 
 /// The bank's EV_CH_XFER events in `trace` must carry exactly the payloads
 /// the senders launched: same channel, same bits 63:0, same trace identity,

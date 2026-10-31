@@ -405,9 +405,47 @@ struct Config {
   /// sends the address, for a load when it writes the data). When set, a
   /// memop completes only after both, so no late done meets a reused tag.
   bool memop_rcu_done = false;
+  /// The ROB's head window (OI-85 (a)): an entry completed in a cycle
+  /// retires from that cycle + retire_lag. 0 is retire in the completion's
+  /// own cycle; 1 the window taking completions at its edge, a cycle late,
+  /// as the RTL does (OA's rev 278: to become the default; it waits on
+  /// go_tb's divergence at CAS pairs under the lag, OI-87).
+  unsigned retire_lag = 0;
+  /// ROB slice 2's timing (OI-86): a branch's resolution (squash, RAT
+  /// restore, redirect, checkpoint free) acts resolve_lag cycles after it
+  /// completes, the redirect then leaving from flops (with DA, OA's rev
+  /// 280); a squashed entry held for an op in flight releases
+  /// defer_release_lag cycles after the op lands; and a squashed slot's ROB
+  /// room reads 0 for squash_room_lag cycles after its squash cycle (1, the
+  /// default, OA's rev 280: the run's scan after a squash is from flops). 0
+  /// is the same-cycle form.
+  unsigned resolve_lag = 0;
+  unsigned defer_release_lag = 0;
+  unsigned squash_room_lag = 1;
+  /// Measurement arms for resolve_lag (OI-86): lag only mispredicts (a
+  /// correct branch frees its checkpoint at once), and whether a branch
+  /// ends its retire window.
+  unsigned resolve_lag_wrong_only = 0;
+  unsigned branch_ends_window = 1;
+  /// A squashed entry held for an op in flight frees its ROB slot as the op
+  /// lands and its names a cycle later (1, the default, OA's rev 280: the
+  /// free lists' masks from flops).
+  unsigned release_names_lag = 1;
+  /// A mispredict's squash, RAT restore, checkpoint frees, epoch and decode
+  /// queue flush act squash_act_lag cycles after its resolution, the
+  /// redirect still leaving at the resolution (OI-85 slice 2: the ROB's
+  /// registered squash, which RS, RAT, decq and the go take with a lead).
+  /// Meanwhile the slot runs on: rename takes the wrong path, select issues
+  /// it, and the squash takes all of it.
+  unsigned squash_act_lag = 0;
+  /// The go's run from the tail sees a held entry's release a cycle late
+  /// (OI-85 slice 2): the release comes off the done path, too deep for the
+  /// scan that forms the run, so the scan reads it as held one cycle more.
+  unsigned held_room_lag = 0;
 
   // -- fault injection: the negative controls the core itself must carry ------
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
+  bool inject_row_no_hold = false; ///< select issues a row past 3 dones in flight (row-no-hold, OI-90)
   bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
@@ -558,7 +596,8 @@ struct UopShape {
   /// TI-27 (OA's rev 170): FET's final-exit mark, on the exit whose fetch
   /// clears the warp's last live lanes. The warp is done when it retires.
   bool final_exit = false;
-  int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid, 2 %lanectx (O-64)
+  int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid, 2 %lanectx (O-64),
+                              ///< 3 %privoff (O-83)
 };
 
 struct Uop {
@@ -618,6 +657,7 @@ inline bool barNop(const Uop &u) {
 
 struct Done {           ///< ccv_rcu_ooe_done
   unsigned rob_tag = 0;
+  unsigned row = 0;           ///< done_row: the ROB row it completes (OI-85), its issue's echoed
   bool branch_taken = false;
   uint32_t branch_mask = 0;   ///< a branch's, a guarded barrier's: issue mask AND guard
   /// The 32-bit field AR-24 (b) adds (TI names it aux): wait.phase's ps, each
@@ -626,6 +666,7 @@ struct Done {           ///< ccv_rcu_ooe_done
 };
 struct Cmpl {           ///< ccv_miu_ooe_cmpl
   unsigned rob_tag = 0, status = 0, cause = 0;
+  unsigned row = 0;     ///< done_row: the ROB row it completes (OI-85), its memop's echoed
   unsigned rs_idx = 0;  ///< the memop's RS entry, echoed (OA-23): an atomic's A1 or A3
   uint32_t lane_mask = 0;
   uint64_t address = 0;
@@ -682,6 +723,10 @@ struct Issue {          ///< ccv_ooe_rcu_issue
   bool pred_neg = false, pred_we = false, merge = false;
   unsigned opcode = 0;
   bool copy = false;    ///< the copy-only op (A-38): opcode CCV_OP_PRF_COPY
+  /// The ROB entry's row this issue is (OI-85, OA's rev 282): 0 the op or an
+  /// atomic's A1, 1 a masked load's copy, 2 an atomic's A2, 3 its A3. RCU
+  /// echoes it on the op's done, so the entry sets that row's done bit.
+  uint8_t row = 0;
   bool send_imm = false;
   uint32_t imm = 0;
   /// Width codes (AR-24 (d)): each source's, the destination's (which the
@@ -704,6 +749,7 @@ struct Memop {          ///< ccv_ooe_miu_memop
   unsigned port = 0;
   unsigned rob_tag = 0, warp = 0;
   unsigned rs_idx = 0;           ///< its RS entry, which MIU echoes (OA-23); 0 on a discard
+  uint8_t row = 0;               ///< its ROB row (OI-85): 0, or 3 for an atomic's A3
   unsigned mem_op = 0;           ///< DEC's (A-68), or 0xF for a bulk discard
   uint32_t issue_mask = 0;
   unsigned pdst = 0, ppred = 0;
@@ -1131,12 +1177,20 @@ private:
     unsigned rs_main = kNoEntry, rs_copy = kNoEntry;
     // completion
     unsigned rcu_dones_owed = 0;   ///< issues to RCU whose done has not landed
+    /// Of those, per ROB row (OI-90, OA's rev 286): the ROB counts each row
+    /// in 2 bits, so select holds an issue while its row has 3 in flight.
+    uint8_t owed_row[4] = {};
     unsigned stale_dones = 0;      ///< of those, issues a cancel voided
     bool rcu_done = false, miu_done = false, at_miu = false;
     bool copy_pending = false;
     uint64_t copy_land = 0;        ///< the copy's scheduled landing
     uint64_t rcu_issue_at = 0;     ///< the latest issue to RCU
     bool complete = false;
+    uint64_t ret_at = 0;           ///< retire_lag: the first cycle it may retire
+    bool res_pend = false;         ///< resolve_lag: complete and resolve at res_at
+    uint64_t res_at = 0;
+    bool rel_pend = false;         ///< defer_release_lag: release at rel_at
+    uint64_t rel_at = 0;
     // branch
     bool resolved = false, taken = false;
     uint32_t taken_mask = 0;
@@ -1305,6 +1359,10 @@ private:
   bool rowReadySel(unsigned i) const { return cfg_.ready_reg ? bool(ready_q_[i]) : rowReady(i); }
   /// The request register's next value for entry e (req_reg).
   bool requestNext(unsigned e) const;
+  /// OI-90: the ROB row an RS entry's issue owes a done on, and whether
+  /// that row already has 3 in flight (ooe_rs holds it, OA's rev 286).
+  unsigned issueRow(unsigned e) const;
+  bool rowHeld(unsigned e) const;
   void requestRegister();
   /// Producer j's line k at cycle t by its timers alone, from the state
   /// now: what ooe_wake's timers say ahead of time.
@@ -1322,6 +1380,7 @@ private:
   void confirmPass();
   bool predHold(unsigned slot, const RobEntry &r) const;
   void complete(unsigned slot, unsigned idx);
+  void completeNow(unsigned slot, unsigned idx);   ///< resolve_lag: a pending resolution acts
   void resolveBranch(unsigned slot, unsigned idx);
   /// discard_all: send the bulk discard whatever reached MIU (a demotion's,
   /// TI-21), which MIU's replay drain and ready report key on.
@@ -1480,6 +1539,64 @@ public:
     uint32_t cw_changed = 0;
   };
   const RatLog &ratLog() const { return rlog_; }
+  /// What the ROB saw and did this cycle (ooe_rob, slice 1, OI-85;
+  /// test/ooe/rob_tb.cpp): its allocations with the fields Rename 2 fills
+  /// in, the events that complete an entry (each by rob_tag), and the
+  /// retirements. stop names the first thing slice 1 does not build
+  /// (a squash, a fault taken, a retire port, an atomic): the bench stops
+  /// comparing that core there.
+  struct RobLog {
+    struct Alloc {
+      unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, pdst = 0, pname = 0, pold = 0;
+      unsigned gsec = 0;          ///< the sections gold frees (sectionsOf)
+      unsigned rs = 0;            ///< its RS entries (main, copy)
+      bool nop = false, gwe = false, pwe = false, mem = false;
+      bool pfree = false;         ///< pold is freed at retire (renamed, not the zero one)
+      // Slice 2: what a squash frees (the new names, their sections), a
+      // store (a squash's discard), and a branch's checkpoint record: its
+      // prediction, its group's lanes, the fall-through and taken targets.
+      unsigned gnsec = 0;         ///< the sections gname holds (sectionsOf)
+      bool store = false, br = false, ptaken = false, ret = false;
+      unsigned ckpt = 0;
+      uint32_t gmask = 0;
+      uint64_t pcn = 0, tgt = 0;
+    };
+    struct Ret {
+      unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
+      bool gwe = false, pwe = false, pfree = false;
+    };
+    std::vector<Alloc> alloc;
+    /// rob_tags: issues owing RCU a done, RCU's dones, MIU's completions,
+    /// copies issued and landed, RS entries freed.
+    std::vector<unsigned> owe, done, cmpl, cpi, cpl, rsf;
+    /// Slice 2, beside owe and done (one each): the row each owes or
+    /// completes (OA's rev 282: 0 the main entry, 1 the copy, 2 an atomic's
+    /// A2), and a done's outcome (taken, mask, aux).
+    std::vector<unsigned> owe_row;
+    struct DonePay { unsigned row = 0; bool taken = false; uint32_t mask = 0, aux = 0; };
+    std::vector<DonePay> dpay;
+    std::vector<unsigned> miu;    ///< rob_tags: a memop sent to MIU (at_miu)
+    /// Each resolution acting this cycle (rob_tag, right), each squash
+    /// (slot, the branch's index or -1 for all) and what it did to each
+    /// entry (rob_tag, held for an op in flight), each held entry released
+    /// as its op lands, each checkpoint a right branch frees, each redirect
+    /// and each bulk discard (slot, the branch's index, the youngest's).
+    struct Resolve { unsigned tag = 0; bool right = false; };
+    std::vector<Resolve> resolve;
+    struct Squash { unsigned slot = 0; int keep = -1; };
+    std::vector<Squash> squash;
+    std::vector<std::pair<unsigned, bool>> sq_ent;
+    std::vector<unsigned> hrel;
+    std::vector<std::pair<unsigned, unsigned>> ckfree;
+    struct Redir { unsigned slot = 0, ckpt = 0; uint32_t taken_mask = 0; uint64_t target = 0; bool stay = false; };
+    std::vector<Redir> redirect;
+    struct Discard { unsigned slot = 0, branch = 0, disp = 0; };
+    std::vector<Discard> discard;
+    std::vector<Ret> ret;
+    uint32_t release = 0;         ///< slots released (their ROBs empty)
+    const char *stop = nullptr;
+  };
+  const RobLog &robLog() const { return roblog_; }
   /// What rename's go read and did this cycle (slice 4, test/ooe/go_tb.cpp),
   /// as the RTL holds it: per slot, the decode queue's heads in order and
   /// each one's decode-time admission bits (bit 0 RCU, 1 MIU, 2 copy, 3 GPR
@@ -1596,6 +1713,8 @@ public:
 private:
   WakeLog wlog_;
   RatLog rlog_;
+  RobLog roblog_;
+  void robStop(const char *why) { if (!roblog_.stop) roblog_.stop = why; }
   GoLog golog_;
   void goRoomNext();
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
@@ -1625,6 +1744,18 @@ private:
   std::vector<unsigned> audit_room_;      ///< each slot's ROB room as the cycle starts (the settings audit)
   unsigned auditRobRoom(unsigned si) const;
   std::vector<uint8_t> audit_squash_;     ///< a slot squashed this cycle (the settings audit)
+  std::vector<uint64_t> squash_at_;       ///< squash_room_lag: each slot's last squash cycle, plus one
+  /// release_names_lag: names a deferred release frees next cycle (slot,
+  /// name, predicate or GPR).
+  struct NameFree { unsigned slot, name; bool pred; };
+  std::vector<NameFree> name_free_;
+  /// squash_act_lag: per slot, a resolved mispredict whose squash is due:
+  /// the branch's program order, its checkpoint and the RAT it restores.
+  struct SquashDue { bool on = false; unsigned seq = 0, ckpt = 0; uint64_t at = 0; Ckpt cp; };
+  std::vector<SquashDue> squash_due_;
+  /// held_room_lag: held entries released this cycle and last (slot * depth + index).
+  std::vector<uint8_t> hrel_now_, hrel_seen_;
+  void squashDue();
   std::vector<uint8_t> row_conf_prev_;    ///< each row confirmed at the last request register update (copy_conf_late)
   bool req_alloc_q_ = false;              ///< a row was written this cycle (req_alloc_lead's flop)
   bool req_alloc_q2_ = false;             ///< and a cycle before (req_rows_late)

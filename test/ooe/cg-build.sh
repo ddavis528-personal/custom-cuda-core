@@ -88,6 +88,14 @@ case "$unit" in
       "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" \
       "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" \
       "$PWD/test/ooe/rename_tb.cpp" ;;
+  ooe_rob)
+    # The ROB (slice 1, test/ooe/rob_tb.cpp), at the pool's and the
+    # channels' sizes.
+    gw=$(( $(val CCV_P_W_PHYS_REG) + $(val CCV_W_PHYS_POS) )) ns=$(( 1 << $(val CCV_W_PHYS_POS) ))
+    p="S=$(val CCV_TIER1_WARPS) D=$(val CCV_P_ROB_DEPTH) RP=$(val CCV_RETIRE_PER_ROB) A=$width ND=7 NM=4 GW=$gw"
+    p="$p GR=$(val CCV_P_W_PHYS_REG) NG=$(val CCV_P_PHYS_REGS) NS=$ns PW=$(val CCV_P_W_PHYS_PRED) NP=$(val CCV_P_PRED_REGS)"
+    vl ooe_rob "$(for kv in $p; do printf -- '-G%s ' "$kv"; done)" "$(for kv in $p; do printf -- '-DRB_%s ' "$kv"; done)" \
+      "$PWD/rtl/ooe/ooe_rob.sv" "$PWD/test/ooe/rob_tb.cpp" ;;
   ooe_go)
     slots=$(val CCV_TIER1_WARPS)
     vl ooe_go "-GS=$slots -GR=$width" "-DGO_S=$slots -DGO_R=$width" \

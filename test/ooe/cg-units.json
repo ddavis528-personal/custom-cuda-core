@@ -289,6 +289,34 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "u_rename"
       }
+    },
+    {
+      "name": "ooe_rob",
+      "module": "ooe_rob",
+      "files": [
+        "rtl/ooe/ooe_rob.sv"
+      ],
+      "params": {
+        "S": 4,
+        "D": 32,
+        "RP": 2,
+        "A": 4,
+        "ND": 7,
+        "NM": 4,
+        "GW": 10,
+        "GR": 8,
+        "NG": 192,
+        "NS": 4,
+        "PW": 6,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rob {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_rob"
+      }
     }
   ]
 }

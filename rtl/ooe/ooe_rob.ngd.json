@@ -1,0 +1,149 @@
+{
+ "module": "ooe_rob",
+ "ports": {
+  "al_n_cq02h": {
+   "arrival": 14.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): the go's allocation, at its take's 14 (OA's response OI-65, rev 155), as ooe_rat's tk; inside this module it reaches the pointers, the count, the entries' allocation and, apart from the entries, the window's no-op term"
+  },
+  "al_nop_cq02h": {
+   "arrival": 14.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): the go's allocation, at its take's 14 (OA's response OI-65, rev 155), as ooe_rat's tk; inside this module it reaches the pointers, the count, the entries' allocation and, apart from the entries, the window's no-op term"
+  },
+  "cm_tag_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: MIU's completion channel, its repeater's flops"
+  },
+  "dn_row_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 282 (re:OI-85, OA tab): the done's row index rides ccv_rcu_ooe_done with its rob_tag, at the same measured arrival, 2, its repeater's flops"
+  },
+  "dn_tag_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: RCU's done channel, its repeater's flops"
+  },
+  "ev_cpi_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: ooe_rs's grant and free registers, decoded per entry by rob_tag"
+  },
+  "ev_cpl_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: ooe_rs's grant and free registers, decoded per entry by rob_tag"
+  },
+  "ev_owe_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: ooe_rs's grant and free registers, decoded per entry by rob_tag"
+  },
+  "ev_rsf_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: ooe_rs's grant and free registers, decoded per entry by rob_tag"
+  },
+  "fl_dst_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_gname_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_gold_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_gsec_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_gwe_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_mem_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_nop_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_pdst_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_pfree_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_pname_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_pold_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_pwe_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_rs_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_slot_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  },
+  "fl_v_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register"
+  }
+ }
+}

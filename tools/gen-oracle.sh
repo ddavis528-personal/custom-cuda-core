@@ -53,6 +53,8 @@ fair=${CCV_FAIR_N:-$(sed -n 's/.*kFairN = \([0-9]*\);.*/\1/p' sim/generated/ccv_
 [ -n "$fair" ] || { echo "gen-oracle: no CCV_FAIR_N in sim/generated/ccv_params.h" >&2; exit 1; }
 lctx=$(sed -n 's/.*kLaneContexts = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)
 [ -n "$lctx" ] || { echo "gen-oracle: no CCV_LANE_CONTEXTS in sim/generated/ccv_params.h" >&2; exit 1; }
+pwin=$(sed -n 's/.*kPrivWindows = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)
+[ -n "$pwin" ] || { echo "gen-oracle: no CCV_PRIV_WINDOWS in sim/generated/ccv_params.h" >&2; exit 1; }
 for k in "${kdirs[@]}"; do
   k=${k%/}; name=$(basename "$k")
   [ -f "$k/kernel.cfg" ] || continue
@@ -72,6 +74,16 @@ for k in "${kdirs[@]}"; do
   crange=$(sed -n 's/^CONST=//p' "$k/kernel.cfg")
   fault=$(sed -n 's/^FAULT=//p' "$k/kernel.cfg")
   entry=$(sed -n 's/^ENTRY=//p' "$k/kernel.cfg")
+  # A release kernel's launch.txt names its entry, and a pin may move it
+  # (d9ddd2c moved coremark-derived's 0x3330 -> 0x332c, OI-91): run from a
+  # stale ENTRY and ccv-sim starts mid-code. kernel.cfg must say what the
+  # snapshot says.
+  lentry=$(sed -n 's/^entry //p' "$(dirname "$srcpath")/launch.txt" 2>/dev/null)
+  if [ -n "$lentry" ] && [ $(( ${entry:-0} )) -ne $(( lentry )) ]; then
+    printf '  %-46s FAIL (ENTRY %s, but the pinned launch.txt says %s)\n' \
+      "oracle $name from the pinned ccv-sim" "${entry:-0}" "$lentry"
+    rm -rf "${O:?}/$name"; rc=1; continue
+  fi
   maxsteps=$(sed -n 's/^MAXSTEPS=//p' "$k/kernel.cfg")
   ooecfg=$(sed -n 's/^OOE_CONFIG=//p' "$k/kernel.cfg")
   out=$O/$name
@@ -95,6 +107,8 @@ for k in "${kdirs[@]}"; do
     # O-69's spill space starts past the device's lane contexts, not one
     # core's (ccv-sim's default): CCV_LANE_CONTEXTS, as MIU forms it (IS-19).
     cta+=(-lane-contexts "$lctx")
+    # O-83's region per thread, as MIU forms it: CCV_PRIV_WINDOWS windows.
+    cta+=(-priv-windows "$pwin")
     "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" "${cta[@]}" \
       ${threads:+-threads "$threads"} ${crange:+-const-range "$crange"} \
       ${entry:+-entry "$entry"} ${maxsteps:+-max-steps "$maxsteps"} \

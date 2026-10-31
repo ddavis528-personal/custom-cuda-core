@@ -960,6 +960,46 @@ under one warp and 3.1 under two. One more decode-queue entry takes back
 all of it under the interleave, 2.3 points under one warp and 1.9 under
 two.
 
+`retire_lag` (0 for now; 1 by OI-85 (a), OA's rev 278, once go_tb agrees
+with the model under it, OI-87): the ROB's head window is a
+register holding what retires this cycle, so retirement decides from
+flops. It takes completions at its edge, so an entry completed in a cycle
+retires from the next. 0 is the earlier retire in the completion's own
+cycle. Measured with the S1 sweep, 45,326 cycles become 45,438 (+0.25%),
+and the audit moves +0.0% / +0.1%, every floor held. Under it
+check-kernel's timing pins move (held-over-r's first warp past r, warp 1
+to warp 0; predswap's demote cycle, 57 to 58), and go_tb finds the go's
+RTL and the model apart at CAS pairs under the rotation's share reserve:
+the default and the re-pins follow the fix. rob_tb sets it to 1.
+
+ROB slice 2's timing (OI-86, OI-88; OA's revs 280 and 284). The RTL
+resolves a branch the cycle after it completes, from flops, and the
+redirect leaves from a register: `resolve_lag` 1 ((a)), 0 with RCU's
+early outcome ((b), DA's). `squash_act_lag` 1: the squash, the RAT
+restore, the younger branches' checkpoint frees, the epoch and the decode
+queue's flush act a cycle after the resolution, from the ROB's squash
+register, the redirect (with the epoch it moves to) unchanged; meanwhile
+the slot runs on, and a branch younger than a due squash is not resolved.
+`held_room_lag` 1: the go's free run sees a held entry's release a cycle
+late. All three are 0 until DA rules. `release_names_lag` 1 and
+`squash_room_lag` 1 are the defaults (OA's rev 280): a held entry frees
+its ROB slot as its op lands and its names a cycle later (and with its
+slot, if the slot is released first), and a squashed slot's room reads 0
+for a cycle. Measured (S1 / coremark32 / the audit; base 45,438 /
+4,663,694 / 901 at retire_lag 1): resolve_lag 1 is +0.81% / +0.64% /
++1.7%, adding squash_act_lag +0 / +0 / 929, adding held_room_lag +0 / -
+/ 934; at resolve_lag 0, squash_act_lag is +0 / +0 / 912 and with
+held_room_lag 920. Each done names its ROB row (done_row; `Done::row`,
+`Cmpl::row`), and select holds an issue while its row has 3 dones in
+flight (OI-90, `issue.row_hold`), as the ROB's 2-bit count needs.
+`Core::robLog()` also records, for slice 2's bench, each fill's branch
+record and the new name's sections, each owe's and done's row and a done's
+outcome, the memops sent to MIU, and each resolution, squash (and what it
+did to each entry), held release, checkpoint free, redirect and discard.
+`Core::robLog()` records each cycle's allocations,
+fills, RS events, completions and retirements, with where a cycle stopped
+retiring, which is what rob_tb drives the RTL from.
+
 `fits_conservative` (3; OA-21, DA 2026-10-20, and OA-22): a go that lets several warps take
 in a cycle forms each warp's fits alone, so their sum can exceed the
 shared credits (RS room per class, GPR and predicate names). The model
