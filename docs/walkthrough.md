@@ -492,6 +492,7 @@ a script is one. Its sections:
 - Hardening wrappers -- params/links.json
 - Walkthrough -- docs/walkthrough.md
 - Verilator lint
+- scope -- the sections the change since $BASE needs
 
 It includes 29 lint rules (`tools/lint-rtl.py`). Each has a
 counter-example that must fire, and a paragraph in
@@ -508,4 +509,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 708a26c1c0e649c2 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 4847e0ebf902e528 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
