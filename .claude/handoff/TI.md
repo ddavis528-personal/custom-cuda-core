@@ -32,22 +32,24 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 15, AR 250, OA 279, IS 176, TI 271, OI 239 (OI-91 at TI rev 270,
-OI-92 at 271), CP 143, DA 96. Latest TI open: TI-49.
+Conventions 15, AR 256, OA 286, IS 180, TI 271, OI 239, CP 148, DA 97
+(sweep 2026-10-31: nothing new for TI). Latest TI open: TI-49.
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Local, unpushed: 47e2622 (OI-92: launch log only for traced runs) and
-  handoff commits; tonight's sweep gates and pushes them.
-- Tip of both branches: c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
+- Tip of both branches: 3fbb402 (sweep 2026-10-31: 45 commits merged from
+  five branches; release b2f4e58), with 47e2622 (OI-92), on c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
   refuses a stale ENTRY), on 63a7bd5 (autoCompactWindow 400k), on c69475e
   (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
 - Compiler pin d9ddd2c (source f5fa030; O-83, O-84).
 - Frame-interleave experiment done: coremark32 -7.1%, coremark128 -15.7%
   at 64 KiB; at 512 KiB frames -16.9%, both fixes together -22.8%.
-- OI pushed 9c079f9 (ROB slice 1, check-cg scope fix + cg_fx_gen control):
-  review that check-cg patch when the sweep merges it.
+- OI's check-cg scope fix (9c079f9) is merged as of 3fbb402: review it.
+- Settings: sessions' project dir is /home/user, so the repo's
+  .claude/settings.json (400k window, handoff hook) and .claude/agents do
+  not load (2026-10-31). Proposed to DA: env CLAUDE_CODE_AUTO_COMPACT_WINDOW
+  and a setup-script step writing /home/user/.claude.
 
 ## Open work (most urgent first)
 0. Disk: a clean gate needs ~11 GB of the session's allowance; keep
