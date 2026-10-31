@@ -84,7 +84,8 @@ module ooe_rob #(
   localparam int LD = $clog2(D),
   localparam int TW = LS + LD,           // a rob_tag
   localparam int LA = $clog2(A + 1),
-  localparam int OW = 3                  // dones owed, an entry
+  localparam int NR = 4,                 // an entry's rows (OA's rev 282): the op or A1, the copy, A2, A3
+  localparam int RCW = 2                 // dones in flight, a row: 3 at most (OI-90, OA rev 286; ooe_rs holds the fourth)
 ) (
   input  logic                ooe_core_clk,
   input  logic                ooe_rst_r00h,
@@ -112,10 +113,11 @@ module ooe_rob #(
   input  logic [A*PW-1:0]     fl_pold_cq02h,
   input  logic [A-1:0]        fl_pfree_cq02h,  // the old predicate name is freed (not the zero one)
   // The RS's events, decoded per entry (bit s * D + i): an issue owing RCU a
-  // done, a copy issued, a copy landed, and how many of its RS entries
-  // freed. Each slot's lead: some event next cycle.
+  // done (per row, bit (s * D + i) * NR + r), a copy issued, a copy landed,
+  // and how many of its RS entries freed. Each slot's lead: some event next
+  // cycle.
   input  logic [S-1:0]        ev_l_cq01h,
-  input  logic [S*D-1:0]      ev_owe_cq02h,
+  input  logic [S*D*NR-1:0]   ev_owe_cq02h,
   input  logic [S*D-1:0]      ev_cpi_cq02h,
   input  logic [S*D-1:0]      ev_cpl_cq02h,
   input  logic [S*D*2-1:0]    ev_rsf_cq02h,
@@ -123,6 +125,7 @@ module ooe_rob #(
   // leads their payload by a cycle (OA's response OI-58, L1).
   input  logic [ND-1:0]       dn_l_cq01h,
   input  logic [ND*TW-1:0]    dn_tag_cq02h,
+  input  logic [ND*2-1:0]     dn_row_cq02h,    // the row each completes (OA's rev 282)
   input  logic [NM-1:0]       cm_l_cq01h,
   input  logic [NM*TW-1:0]    cm_tag_cq02h,
   // A slot released (its ROB empty): its pointers return to 0. Its lead.
@@ -183,7 +186,7 @@ module ooe_rob #(
   // (an RCU or lane op: its done; a memop: its completion); the fields.
   logic [S*D-1:0]      v_cq02h, cmp_q_cq02h;
   logic [S*D-1:0]      dn_cq02h, md_cq02h, cp_cq02h, kr_cq02h, km_cq02h;
-  logic [S*D*OW-1:0]   ow_cq02h;
+  logic [S*D*NR*RCW-1:0] oc_cq02h;           // per row, its dones in flight
   logic [S*D*2-1:0]    rc_cq02h;
   logic [S*D-1:0]      gwe_cq02h, pwe_cq02h, pfr_cq02h;
   logic [S*D*4-1:0]    dst_cq02h;
@@ -347,16 +350,34 @@ module ooe_rob #(
   // ccv_rcu_ooe_done, asserted below), so an entry's dones owed fall by one
   // or none; MIU's completions are one an entry a cycle already.
   logic [S*D-1:0]    dn_e_cq02h, cm_e_cq02h;
+  logic [S*D*NR-1:0] dr_e_cq02h;               // a done for row r of entry e
   always_comb begin
     dn_e_cq02h = '0;
     cm_e_cq02h = '0;
+    dr_e_cq02h = '0;
     for (int e = 0; e < S * D; e++) begin
       for (int p = 0; p < ND; p++)
-        if (dn_q_cq02h[p] && dn_tag_cq02h[p * TW +: TW] == TW'(e)) dn_e_cq02h[e] = 1'b1;
+        for (int r = 0; r < NR; r++)
+          if (dn_q_cq02h[p] && dn_tag_cq02h[p * TW +: TW] == TW'(e) && dn_row_cq02h[p * 2 +: 2] == 2'(r))
+            dr_e_cq02h[e * NR + r] = 1'b1;
+      dn_e_cq02h[e] = |dr_e_cq02h[e * NR +: NR];
       for (int p = 0; p < NM; p++)
         if (cm_q_cq02h[p] && cm_tag_cq02h[p * TW +: TW] == TW'(e)) cm_e_cq02h[e] = 1'b1;
     end
   end
+  // Each row's count after this cycle is zero: none owed now, and its
+  // count is the done it takes (one or none, per row a cycle). From flops
+  // and the late done, so the completion term stays an AND-OR of it.
+  logic [S*D*NR-1:0] oz_nx_cq02h;
+  logic [S*D-1:0]    ozall_cq02h;
+  always_comb
+    for (int e = 0; e < S * D; e++) begin
+      for (int r = 0; r < NR; r++)
+        oz_nx_cq02h[e * NR + r] = ~ev_owe_cq02h[e * NR + r] &
+            ((oc_cq02h[(e * NR + r) * RCW +: RCW] == '0 & ~dr_e_cq02h[e * NR + r]) |
+             (oc_cq02h[(e * NR + r) * RCW +: RCW] == RCW'(1) & dr_e_cq02h[e * NR + r]));
+      ozall_cq02h[e] = &oz_nx_cq02h[e * NR +: NR];
+    end
   // The retirements: entry e leaves this cycle.
   logic [S*D-1:0] rt_e_cq02h;
   always_comb begin
@@ -368,7 +389,7 @@ module ooe_rob #(
   logic [S*D-1:0]    v_nx_cq02h, cmp_nx_cq02h, wr_cq02h;
   logic [S*D-1:0]    cmp_old_cq02h;            // complete at the edge, this cycle's allocations aside
   logic [S*D-1:0]    dn_nx_cq02h, md_nx_cq02h, cp_nx_cq02h;
-  logic [S*D*OW-1:0] ow_nx_cq02h;
+  logic [S*D*NR*RCW-1:0] oc_nx_cq02h;
   logic [S*D*2-1:0]  rc_nx_cq02h;
   always_comb
     for (int e = 0; e < S * D; e++) begin
@@ -384,15 +405,16 @@ module ooe_rob #(
       dn_nx_cq02h[e] = ~rt_e_cq02h[e] & (dn_cq02h[e] | dn_e_cq02h[e]);
       md_nx_cq02h[e] = ~rt_e_cq02h[e] & (md_cq02h[e] | cm_e_cq02h[e]);
       cp_nx_cq02h[e] = ~rt_e_cq02h[e] & ((cp_cq02h[e] & ~ev_cpl_cq02h[e]) | ev_cpi_cq02h[e]);
-      ow_nx_cq02h[e * OW +: OW] = rt_e_cq02h[e] ? '0 :
-          ow_cq02h[e * OW +: OW] - OW'(dn_e_cq02h[e]) + OW'(ev_owe_cq02h[e]);
+      for (int r = 0; r < NR; r++)
+        oc_nx_cq02h[(e * NR + r) * RCW +: RCW] = rt_e_cq02h[e] ? '0 :
+            oc_cq02h[(e * NR + r) * RCW +: RCW] - RCW'(dr_e_cq02h[e * NR + r]) + RCW'(ev_owe_cq02h[e * NR + r]);
       // Complete from the registered kind and count: an entry never
       // completes at its fill's edge (its kind, cleared at the last retire, is
       // neither yet, and no done precedes its fill), so the fill stays off
-      // this path. ow reaches zero when this cycle's dones pay all it owes.
+      // this path. Every row's count reaches zero with this cycle's dones.
       // An entry allocated this cycle was free, so its old terms are none.
       cmp_old_cq02h[e] = v_cq02h[e] & ~rt_e_cq02h[e] & (cmp_q_cq02h[e] |
-          ({1'b0, ow_cq02h[e * OW +: OW]} + {{OW{1'b0}}, ev_owe_cq02h[e]} == (OW + 1)'(dn_e_cq02h[e]) &&
+          (ozall_cq02h[e] &&
            rc_cq02h[e * 2 +: 2] == ev_rsf_cq02h[e * 2 +: 2] &&
            ((kr_cq02h[e] & (dn_cq02h[e] | dn_e_cq02h[e])) |
             (km_cq02h[e] & (md_cq02h[e] | cm_e_cq02h[e]) & ~((cp_cq02h[e] & ~ev_cpl_cq02h[e]) | ev_cpi_cq02h[e])))));
@@ -553,13 +575,13 @@ module ooe_rob #(
         dn_cq02h[gs * D +: D]           <= '0;
         md_cq02h[gs * D +: D]           <= '0;
         cp_cq02h[gs * D +: D]           <= '0;
-        ow_cq02h[gs * D * OW +: D * OW] <= '0;
+        oc_cq02h[gs * D * NR * RCW +: D * NR * RCW] <= '0;
         rc_cq02h[gs * D * 2 +: D * 2]   <= '0;
       end else if (cm_en_cq02h[gs]) begin
         dn_cq02h[gs * D +: D]           <= dn_nx_cq02h[gs * D +: D];
         md_cq02h[gs * D +: D]           <= md_nx_cq02h[gs * D +: D];
         cp_cq02h[gs * D +: D]           <= cp_nx_cq02h[gs * D +: D];
-        ow_cq02h[gs * D * OW +: D * OW] <= ow_nx_cq02h[gs * D * OW +: D * OW];
+        oc_cq02h[gs * D * NR * RCW +: D * NR * RCW] <= oc_nx_cq02h[gs * D * NR * RCW +: D * NR * RCW];
         rc_cq02h[gs * D * 2 +: D * 2]   <= rc_nx_cq02h[gs * D * 2 +: D * 2];
       end
     end
@@ -708,26 +730,35 @@ module ooe_rob #(
   // -- Checks -----------------------------------------------------------------------
   // V-58's count never underflows, and an entry retires with it at zero and
   // no done owed (OA's rev 277 (b)); a done names an entry that owes one.
-  logic [S*D-1:0] rc_uf_cq02h, ow_uf_cq02h, rt_bad_cq02h;
+  logic [S*D-1:0] rc_uf_cq02h, ow_uf_cq02h, ow_of_cq02h, rt_bad_cq02h;
   always_comb
     for (int e = 0; e < S * D; e++) begin
       rc_uf_cq02h[e]  = v_cq02h[e] && !al_e_cq02h[e] && rc_cq02h[e * 2 +: 2] < ev_rsf_cq02h[e * 2 +: 2];
-      ow_uf_cq02h[e]  = v_cq02h[e] && !al_e_cq02h[e] &&
-                        {1'b0, ow_cq02h[e * OW +: OW]} + {{OW{1'b0}}, ev_owe_cq02h[e]} < (OW + 1)'(dn_e_cq02h[e]);
-      rt_bad_cq02h[e] = rt_e_cq02h[e] && (rc_cq02h[e * 2 +: 2] != 2'd0 || ow_cq02h[e * OW +: OW] != '0);
+      ow_uf_cq02h[e]  = 1'b0;
+      ow_of_cq02h[e]  = 1'b0;
+      for (int r = 0; r < NR; r++) begin
+        if (v_cq02h[e] && !al_e_cq02h[e] && dr_e_cq02h[e * NR + r] && !ev_owe_cq02h[e * NR + r] &&
+            oc_cq02h[(e * NR + r) * RCW +: RCW] == '0) ow_uf_cq02h[e] = 1'b1;
+        if (ev_owe_cq02h[e * NR + r] && !dr_e_cq02h[e * NR + r] && oc_cq02h[(e * NR + r) * RCW +: RCW] == '1)
+          ow_of_cq02h[e] = 1'b1;
+      end
+      rt_bad_cq02h[e] = rt_e_cq02h[e] && (rc_cq02h[e * 2 +: 2] != 2'd0 || oc_cq02h[e * NR * RCW +: NR * RCW] != '0);
     end
   `CCV_ASSERT(rs_count_no_underflow, rc_uf_cq02h == '0)
   `CCV_ASSERT(owed_no_underflow, ow_uf_cq02h == '0)
+  `CCV_ASSERT(owed_no_overflow, ow_of_cq02h == '0)
   `CCV_ASSERT(retire_with_nothing_owed, rt_bad_cq02h == '0)
-  // RCU's contract (OA's rev 279 (a)): at most one done per rob_tag a cycle.
+  // RCU's contract (OA's rev 282): at most one done per rob_tag and row a
+  // cycle, so each row's count falls by one or none.
   logic [ND-1:0] dn_two_cq02h;
   always_comb
     for (int p = 0; p < ND; p++) begin
       dn_two_cq02h[p] = 1'b0;
       for (int m = 0; m < p; m++)
-        if (dn_q_cq02h[p] && dn_q_cq02h[m] && dn_tag_cq02h[p * TW +: TW] == dn_tag_cq02h[m * TW +: TW]) dn_two_cq02h[p] = 1'b1;
+        if (dn_q_cq02h[p] && dn_q_cq02h[m] && dn_tag_cq02h[p * TW +: TW] == dn_tag_cq02h[m * TW +: TW] &&
+            dn_row_cq02h[p * 2 +: 2] == dn_row_cq02h[m * 2 +: 2]) dn_two_cq02h[p] = 1'b1;
     end
-  `CCV_ASSERT(one_done_per_tag, dn_two_cq02h == '0)
+  `CCV_ASSERT(one_done_per_row, dn_two_cq02h == '0)
   // The go's no-op bits are zero past its count (the window reads them
   // without it), and at most two cycles' allocations wait for their fill.
   logic [S-1:0] nop_past_cq02h, uf_over_cq02h;

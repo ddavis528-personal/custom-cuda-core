@@ -1131,13 +1131,23 @@ commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   the kind and the RS count. A release returns head and tail to 0 and
   leaves the fill pointer behind the tail by the entries still to fill.
 - *Completion* (OA's rev 277 (b)): V-58's count of RS entries, set at the
-  fill and taken down by each free; the dones owed RCU, up at each issue
-  that owes one, down at each done; and the kind's result, a lane or RCU
-  op's done, a memop's MIU completion with no copy in flight. A cancel
-  needs no input: rc and ow hold the entry until its reissue's done. RCU
-  sends at most one done per rob_tag a cycle (OA's rev 279 (a); a
-  contract on ccv_rcu_ooe_done, TI's in the schema, AR's in RCU's text),
-  asserted (one_done_per_tag), so ow falls by one or none.
+  fill and taken down by each free; per row (OA's revs 282 and 286, OI-90),
+  the dones in flight, up at each issue that owes one, down at each done
+  that names the row (done_row, TI's 6ba08b1); and the kind's result, a
+  lane or RCU op's done, a memop's MIU completion with no copy in flight.
+  Rows: 0 the op or an atomic's A1, 1 a masked load's copy, 2 A2, 3 A3.
+  A cancel needs no input: a replayed issue's done still comes (A-47), and
+  the row's count holds the entry until its reissue's done too. RCU sends
+  at most one done per rob_tag and row a cycle (asserted,
+  one_done_per_row), so each count falls by one or none; dones for two
+  rows of one entry in a cycle (an atomic's rows of different latency)
+  need no hold. The count is 2 bits: ooe_rs holds an issue while its row
+  has 3 in flight (OA's rev 286), and the ROB asserts no count under 0 or
+  over 3 (owed_no_underflow, owed_no_overflow). The model's hold
+  (`issue.row_hold`) never acts in the unit tests or the audit; under the
+  atom-early-wake control's storm of replays, the row-no-hold control
+  finds 78 rows past 3 without it and none with it. check-ngd: dn_tag
+  (with 2-bit counts) as in the measurement below.
 - *Retire* (rev 277 (a), rev 278): each slot's head window, RETIRE_PER_ROB
   bits of "retires this cycle", is a register, so ooe_rat's and the free
   lists' leads are from flops. It takes the cycle's completions at its
@@ -1186,8 +1196,9 @@ commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   35,656 cycles, 38,874 retirements, 58,583 GPR section frees, 3,731
   predicate frees, 0 mismatches; with mispredicts (ROB_MISPREDICT=1, each
   core stopped at its first squash): 4,832 cycles, 2,932 retirements, 0
-  mismatches. Controls drop-free, no-copy, no-lead, fill-order, nop-real
-  and two-in-a-cycle are each caught, each by its own check.
+  mismatches. Controls drop-free, no-copy, no-lead, fill-order, nop-real,
+  two-in-a-cycle and wrong-row (each cycle's first done names the next
+  row) are each caught, each by its own check.
 - *The entry* (rev 277 (c), rev 279): 65 bits with slice 4's chwidth
   width and one fault cause with its valid (DEC's wins). Barrier data goes
   in a per-slot side buffer 2 deep, in program order, popped at retire
