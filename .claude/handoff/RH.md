@@ -49,9 +49,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   21f7150 (d9ddd2c's ccv-sim faults F-RO), skeleton from da182a7. The oracles
   passed with counts matching OI's; runs started 02:47Z, detached (setsid nohup).
   If the skeleton refuses the oracles, stop and tell OI; never fall back.
-  A container reclaim at 04:55Z killed run 1; restarted 04:55Z. Relaunch with
-  rh-jobs/oi88v2.sh (it skips finished runs and kept oracles). While it runs,
-  keep rh-jobs/watch.sh 6600 open as a tracked background task, which also wakes
-  RH at each run's end; an idle container is reclaimed. Fallback check:
-  send_later trig_01VHLFXtXZK4hNugXSEqU9ch (07:12Z).
+  Run 1 lost twice (container restarts at 04:55Z and 06:11Z); third try from
+  06:12Z. ccv-skel's RSS grows faster as coremark128 runs (8.3 GB at 1 h), so the
+  16 GB swapfile /home/user/rh-swap is on (`swapon` again after a restart).
+  rh-jobs/memlog.sh logs to ~/ccv-logs/memlog.txt. Relaunch with
+  rh-jobs/oi88v2.sh (it skips finished runs and kept oracles), plus memlog.sh
+  detached and rh-jobs/watch.sh 6600 as a tracked task. Fallback check:
+  trig_01VE9puJrHyUozKfsbdCpPNk (08:44Z).
 - RH's own: the clean gate passed on 203f04b (5949 s); pushed.
