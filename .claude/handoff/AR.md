@@ -56,12 +56,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 259, OA 287, TI 274, IS 180, CP 148, OI 239, DA 97,
+  record): AR 260, OA 292, TI 275, IS 180, CP 148, OI 244, DA 98,
   Conventions 15. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
-- Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 19), MIU
+- Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 20), MIU
   aa7a288a-dae2 (rev 46), RAU 090626bb-a50c (rev 33), FET 75d75b94-1614
   (rev 45), DEC 1d1fdcda-739e, DCU c18a112b-d2c6, SPM b66e4f64-612c, LANE
   ea1f36a7-0725, SYU 1f8b4472-68c1, OOE 515615a9-8caf (OA's).
@@ -71,6 +71,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 - rev 96: TI-46 (b) at r = 2; decode-queue share 7, queue 13.
 - rev 97: IS-25 (O-84): frames in the bottom of the thread's O-83 region,
   R15 = W. Built by TI in 5fe7177 (pin d9ddd2c); PF-46 adopted and built.
+- rev 98 (recorded by OA, Daniel: "I agree with your recommendation for
+  OI-86/88"): (b), the RCU branch lead with resolve_lag 0, plus
+  squash_act_lag 1 (audit +1.2%).
 
 ## Open work (most urgent first)
 1. L1 size, 64 vs 512 KiB: TI's sweep on CP-64's eight traces, frames in
@@ -78,14 +81,14 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    does 512 KiB hold across many traces. CoreMark alone: 512 KiB -7.1%,
    frames -15.7%, both -22.8%; 512 KiB's lead with frames is 8.4%, an
    upper bound (hit latency held at 64 KiB's). Bring it to Daniel.
-2. OI-86/OI-88 mispredict and squash lags: OA will put (a) resolve_lag 1
-   + squash_act_lag 1 against (b) resolve_lag 0 + squash_act_lag 1 (the
-   33-flop branch lead on the RCU-only done's fixed slot; RCU spec rev
-   14-19) to DA in one row, on S1, coremark32, coremark128 and the audit.
-   So far: resolve_lag 1 S1 +0.81%, audit +1.7%; squash_act_lag 1 S1 +0,
-   coremark32 +0, audit +1.4%. coremark128 runs are with RH (OOM fixed by
-   TI 47e2622; oracle fault fixed by TI c5a1fc0). Check OA's row when it
-   lands; then to Daniel.
+2. OI-86/OI-88 adopted (b) (DA rev 98). AR rev 260 / RCU spec rev 20: lead
+   fields lead_br_taken (1) + lead_br_mask (32) on ccv_rcu_ooe_done, slot
+   CCV_DONE_SLOT_RCU only, no tag; branch and call only. A ret's lead is
+   don't-care, so rets stay at resolve_lag 1, which (b)'s figures (all 0)
+   did not count; the bound is the ret share of (a)'s S1 +0.8% and
+   coremark32 +0.64%. Waiting on TI (schema, per-slot fields, with the
+   OI-93 drop), OI (rets at lag 1, the difference), OA (the caveat). If
+   the ret cost is material, a ret lead is the next row; bring it to Daniel.
 3. TI-48 closed (all handoffs in; autoCompactWindow 400000 at 63a7bd5).
    TI-49 done (AR rev 256; OA put it into the register skill, rev 285).
 4. OI-85/OI-90 row-indexed dones: built (TI 6ba08b1; OI per-row 2-bit
