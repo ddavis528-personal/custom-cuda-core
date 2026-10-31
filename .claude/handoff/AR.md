@@ -40,6 +40,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   on its digest; ring a notice only for a row that asks something of its
   receiver (an FYI or close-out waits for their sweep); use `gate-triage`
   for a red gate and `run-tabulate` for an experiment's runs.
+- Session home (TI-50; Daniel approved 2026-10-31, AR rev 258): installed
+  /home/user/.claude (settings.json with autoCompactWindow 400000 and the
+  compact hook, agents link, ccv-setup.json) from ~/ccv-tools' copy of
+  8dd82a6. It lives in the container, not the repo. The sweep runs --check
+  after its merge; on exit 1 it asks Daniel, never reinstalls by itself.
 
 ## Register
 - Doc JApHYjaUESeq8tsGMGXMU5. AR tab node bc521c46-9710, responses table
@@ -51,12 +56,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 257, OA 287, TI 271, IS 180, CP 148, OI 239, DA 97,
+  record): AR 258, OA 287, TI 272, IS 180, CP 148, OI 239, DA 97,
   Conventions 15. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
-- Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 18), MIU
+- Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 19), MIU
   aa7a288a-dae2 (rev 46), RAU 090626bb-a50c (rev 33), FET 75d75b94-1614
   (rev 45), DEC 1d1fdcda-739e, DCU c18a112b-d2c6, SPM b66e4f64-612c, LANE
   ea1f36a7-0725, SYU 1f8b4472-68c1, OOE 515615a9-8caf (OA's).
