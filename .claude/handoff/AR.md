@@ -51,7 +51,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 256, OA 286, TI 271, IS 180, CP 148, OI 239, DA 97,
+  record): AR 257, OA 287, TI 271, IS 180, CP 148, OI 239, DA 97,
   Conventions 15. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
@@ -76,7 +76,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 2. OI-86/OI-88 mispredict and squash lags: OA will put (a) resolve_lag 1
    + squash_act_lag 1 against (b) resolve_lag 0 + squash_act_lag 1 (the
    33-flop branch lead on the RCU-only done's fixed slot; RCU spec rev
-   14-18) to DA in one row, on S1, coremark32, coremark128 and the audit.
+   14-19) to DA in one row, on S1, coremark32, coremark128 and the audit.
    So far: resolve_lag 1 S1 +0.81%, audit +1.7%; squash_act_lag 1 S1 +0,
    coremark32 +0, audit +1.4%. coremark128 runs are with RH (OOM fixed by
    TI 47e2622; oracle fault fixed by TI c5a1fc0). Check OA's row when it
