@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 14 | 36 |
-| ⚠️ Some provisional | 26 | 136 |
+| ⚠️ Some provisional | 26 | 138 |
 | ⛔ Some preliminary | 15 | 141 |
-| **Total** | **55** | **313** |
+| **Total** | **55** | **315** |
 
 ## What still has to be decided
 
@@ -398,7 +398,13 @@ rcu → ooe · rate 7 · execution
 | `branch_taken` | `1` | 1 | literal |
 | `branch_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `aux` | `32` | 32 | literal |
-| **total** | | **74** | ⚠️ 7 provisional |
+| `lead_br_taken` | `1` | 1 | literal |
+| `lead_br_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| **total** | | **107** | ⚠️ 7 provisional |
+
+Lead fields (driven with valid, a cycle ahead of the rest): `lead_br_taken`, `lead_br_mask`.
+
+Slot fields (defined only on the slots named, zero on the rest): `branch_taken` on `CCV_DONE_SLOT_RCU`; `branch_mask` on `CCV_DONE_SLOT_RCU`; `aux` on `CCV_DONE_SLOT_RCU`; `lead_br_taken` on `CCV_DONE_SLOT_RCU`; `lead_br_mask` on `CCV_DONE_SLOT_RCU`.
 
 ### `ccv_rcu_miu_addr`
 
@@ -850,6 +856,8 @@ rcu → lane · rate 1 · execution
 | `sec_dst_width` | `CCV_SECTIONS*CCV_W_CHWIDTH` | 8 | CCV_SECTIONS (arch); CCV_W_CHWIDTH (isa) |
 | `operand_byp` | `CCV_SECTIONS*(CCV_L_OPERANDS_PER_LANE+1)*CCV_P_W_LANE_BYP_SEL` | 80 ⛔ | CCV_SECTIONS (arch); CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_P_W_LANE_BYP_SEL (tunable) |
 | **total** | | **344** | ⛔ 276 preliminary |
+
+Lead fields (driven with valid, a cycle ahead of the rest): `section_en`, `sec_pred_bit`.
 
 ### `ccv_ooe_miu_memop`
 

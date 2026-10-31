@@ -60,8 +60,9 @@ struct ExerciseCfg {
 
 /// Stream of a message: its slot, its binding group, or its key value.
 uint64_t streamOf(const ChanDesc &cd, unsigned slot, uint64_t keyval);
+/// A field the slot does not carry (slot_fields) is zero.
 Bits expectedPayload(const ChanInst &ci, uint64_t stream, uint64_t seq,
-                     uint64_t keyval);
+                     uint64_t keyval, unsigned slot);
 uint64_t expectedTid(const ChanInst &ci, uint64_t stream, uint64_t seq);
 
 std::unique_ptr<Block> makeExerciser(int inst, const ExerciseCfg &cfg);

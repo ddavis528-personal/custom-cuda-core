@@ -107,6 +107,11 @@ private:
   /// The rob_tags whose done is the RCU-only class's, from their issue: R's
   /// resource, not a warp-collective (OA's response OI-93).
   std::set<unsigned> rcu_only_;
+  // A branch's or call's done carries its outcome on the lead fields too
+  // (AR rev 260, RCU spec rev 20); a ret's lead is don't-care. By uid at
+  // decode, by rob tag from issue. TI's check, OI-18.
+  std::set<uint64_t> br_lead_tid_;
+  std::set<unsigned> br_lead_;
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   /// TI-46 (b), DA tab rev 96: decode-queue credits back to FET, one slot
   /// a tier-1 warp. A slot's return is what left the queue since the last:
@@ -223,6 +228,7 @@ private:
     if (((u.attr_raw >> 11) & 1u) && (u.attr_raw & 7u) != kLatCollective)
       k_.fail("ooe: seq %llu is cross-lane with lat_class %u; a warp-collective op is lat_class %u",
               (unsigned long long)uidSeq(m.tid), u.attr_raw & 7u, unsigned(kLatCollective));
+    if (((u.attr_raw >> 6) & 1u) && !((u.attr_raw >> kAttrRetBit) & 1u)) br_lead_tid_.insert(m.tid);
     u.mem_op = unsigned(get(p, c.dec_ooe, "mem_op"));
     u.space = unsigned(get(p, c.dec_ooe, "space"));
     u.ordering = unsigned(get(p, c.dec_ooe, "ordering"));
@@ -326,6 +332,15 @@ private:
         d.row = r != row_sent_.end() ? r->second : drow;
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
+        // The lead (a cycle ahead; the slot hands it over with the payload)
+        // must say what the payload says, on a branch or a call.
+        if (br_lead_.count(d.rob_tag) && hasField(c.rcu_ooe, "lead_br_taken")) {
+          const bool lt = get(m.payload, c.rcu_ooe, "lead_br_taken") != 0;
+          const uint32_t lm = uint32_t(get(m.payload, c.rcu_ooe, "lead_br_mask"));
+          if (lt != d.branch_taken || lm != d.branch_mask)
+            k_.fail("ooe: rob tag %u branch done's lead (taken %u, mask %08x) is not its payload (taken %u, "
+                    "mask %08x)", d.rob_tag, unsigned(lt), lm, unsigned(d.branch_taken), d.branch_mask);
+        }
         // TI's d347d2c names the field branch_aux, renamed aux after it.
         for (const char *f : {"aux", "branch_aux"})
           if (hasField(c.rcu_ooe, f)) d.aux = uint32_t(get(m.payload, c.rcu_ooe, f));
@@ -444,6 +459,8 @@ private:
       if (!x.copy && x.res != ooe::Issue::kMemop) row_sent_[x.rob_tag] = x.row;
       if (x.res == ooe::Issue::kRcuOp && x.byp_group != kBypCollective) rcu_only_.insert(x.rob_tag);
       else rcu_only_.erase(x.rob_tag);
+      if (br_lead_tid_.count(x.tid)) br_lead_.insert(x.rob_tag);
+      else br_lead_.erase(x.rob_tag);
       put(is, c.ooe_rcu, "warp_id", x.warp);
       put(is, c.ooe_rcu, "issue_mask", x.issue_mask);
       // A name is a row and a position (sectioned; unsectioned the position

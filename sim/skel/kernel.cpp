@@ -2723,7 +2723,12 @@ private:
     }
     // Its class names its slot, wherever it ran (movi-in-lane's movi stays
     // RCU-only; OA's response OI-93).
-    to_ooe_.push_back({rcuOnlyDone(a.op) ? kRcuOnlyDone : kPoolDone, done(a.tag), a.tid});
+    // --break slot-field-aux sets aux on a pool done: aux is defined only on
+    // CCV_DONE_SLOT_RCU (slot_fields), and the sender refuses it elsewhere.
+    Bits dn = done(a.tag);
+    if (k_.brk == "slot-field-aux" && !rcuOnlyDone(a.op))
+      put(dn, c.rcu_ooe, "aux", 1u);
+    to_ooe_.push_back({rcuOnlyDone(a.op) ? kRcuOnlyDone : kPoolDone, dn, a.tid});
   }
 
   /// This cycle's issues, one slot per select resource: S0-S3, P0-P3, R.
@@ -3122,6 +3127,13 @@ private:
         if (r && same != r->taken)
           k_.failHeld(at, m.tid, "rcu: seq %llu ret pass returns lanes %08x, oracle %08x",
                       (unsigned long long)r->seq, same, r->taken);
+      }
+      // AR rev 260 (RCU spec rev 20): a branch's or call's outcome rides a
+      // cycle ahead too, on the lead fields; a ret's lead is don't-care and
+      // stays zero. --break lead-corrupt flips the lead's taken bit.
+      if (!op->ret) {
+        put(d, c.rcu_ooe, "lead_br_taken", (active != 0) != (k_.brk == "lead-corrupt"));
+        put(d, c.rcu_ooe, "lead_br_mask", active);
       }
       to_ooe_.push_back({kRcuOnlyDone, d, m.tid});
       return;

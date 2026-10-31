@@ -147,6 +147,10 @@
 #     (OI-85)                                  every done
 #   the RCU-only class completes on        rcu-done-pool (callret): OOE
 #     CCV_DONE_SLOT_RCU (OI-93)                refuses each off its slot
+#   a slot carries only its slot_fields;    slot-field-aux (callret): the
+#     the rest are zero (AR rev 260)           sender refuses aux off its slot
+#   a branch's or call's lead says what     lead-corrupt (callret): OOE
+#     its done says (AR rev 260)               refuses each branch done
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -1347,12 +1351,38 @@ fi
 # class takes it (OA's response OI-93). rcu-done-pool: that class takes the
 # lowest free slot of all, as the pool's did, and OOE refuses each such done
 # off its slot, and nothing else fails.
+# Off its slot such a done also carries fields that slot does not have
+# (slot_fields: branch_taken, branch_mask, aux and the lead are
+# CCV_DONE_SLOT_RCU's alone), which the sender refuses: both kinds, and
+# nothing else.
 "$SKEL" --kernel build/oracle/callret/oracle.jsonl --break rcu-done-pool >"$B/kernel_rcu-done-pool.log" 2>&1
 n=$(grep -c "^CHECK ooe: rob tag [0-9]* (RCU-only) done on slot [0-4]; the RCU-only class completes on slot" "$B/kernel_rcu-done-pool.log")
-if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_rcu-done-pool.log" check_failures)" = "$n" ]; then
-  say "--break rcu-done-pool: OOE refuses an RCU-only done off its slot" "PASS ($n dones)"
+sf=$(grep -c "^CHECK ccv_rcu_ooe_done: [a-z_]* is set on slot [0-4]; it is defined only on slots 0x20 (slot_fields)" "$B/kernel_rcu-done-pool.log")
+if [ "$n" -gt 0 ] && [ "$sf" -gt 0 ] && [ "$(field "$B/kernel_rcu-done-pool.log" check_failures)" = "$((n + sf))" ]; then
+  say "--break rcu-done-pool: OOE refuses an RCU-only done off its slot" "PASS ($n dones, $sf slot fields)"
 else
-  bad "--break rcu-done-pool" "$n refused: $(grep '^KERNEL' "$B/kernel_rcu-done-pool.log")"
+  bad "--break rcu-done-pool" "$n refused, $sf slot fields: $(grep '^KERNEL' "$B/kernel_rcu-done-pool.log")"
+fi
+# slot_fields (AR rev 260): a field defined only on some slots of a channel
+# is zero on the rest, and the sender refuses it set. slot-field-aux sets aux
+# on each pool done; each is refused, and nothing else fails.
+"$SKEL" --kernel build/oracle/callret/oracle.jsonl --break slot-field-aux >"$B/kernel_slot-field-aux.log" 2>&1
+n=$(grep -c "^CHECK ccv_rcu_ooe_done: aux is set on slot [0-46]; it is defined only on slots 0x20 (slot_fields)" "$B/kernel_slot-field-aux.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_slot-field-aux.log" check_failures)" = "$n" ]; then
+  say "--break slot-field-aux: the sender refuses a field off its slots" "PASS ($n dones)"
+else
+  bad "--break slot-field-aux" "$n refused: $(grep '^KERNEL' "$B/kernel_slot-field-aux.log")"
+fi
+# The branch lead (AR rev 260, RCU spec rev 20): a branch's or call's done
+# carries lead_br_taken and lead_br_mask a cycle ahead, equal to the
+# payload's branch_taken and branch_mask. lead-corrupt flips the lead's
+# taken bit; OOE refuses each branch or call done, and nothing else fails.
+"$SKEL" --kernel build/oracle/callret/oracle.jsonl --break lead-corrupt >"$B/kernel_lead-corrupt.log" 2>&1
+n=$(grep -c "^CHECK ooe: rob tag [0-9]* branch done's lead (taken [01], mask [0-9a-f]*) is not its payload" "$B/kernel_lead-corrupt.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-corrupt.log" check_failures)" = "$n" ]; then
+  say "--break lead-corrupt: OOE refuses a branch lead that is not its done" "PASS ($n dones)"
+else
+  bad "--break lead-corrupt" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-corrupt.log")"
 fi
 
 # Notices (OA-23; AR's response TI-23): DCU promises a refill

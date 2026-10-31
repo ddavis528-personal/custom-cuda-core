@@ -651,6 +651,19 @@ protected:
                    kChans[chan].name, slot);
       std::abort();
     }
+    // slot_fields (OA's response OI-93): a field defined on other slots
+    // only is zero here, or a link that drops it there would lose it.
+    const ChanDesc &cd = kChans[chan];
+    for (unsigned f = 0; f != cd.nfields; ++f) {
+      const FieldDesc &fd = cd.fields[f];
+      if ((fd.slots >> slot) & 1u) continue;
+      for (uint32_t b = 0; b < fd.width; b += 64)
+        if (msg.get(fd.lsb + b, fd.width - b < 64 ? fd.width - b : 64)) {
+          k_.fail("%s: %s is set on slot %u; it is defined only on slots %#x (slot_fields)",
+                  cd.name, fd.name, slot, unsigned(fd.slots));
+          break;
+        }
+    }
     pend_[j] = {true, msg, tid};
   }
   /// The credits a slot holds now: a sender that promises a message for a
