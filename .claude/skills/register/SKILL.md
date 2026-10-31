@@ -41,8 +41,11 @@ register row you wrote this turn, decide who must hear of it:
 - **A DA row you recorded:** every agent whose items it settles or changes.
   Otherwise Daniel's decision reaches them only at the next sweep, up to a
   day late (AR's response OA-18).
-- **Skip** yourself, `DA` (Daniel is told in your report), `—`, and rows
-  that ask nothing of anyone (a close-out, an Impl rollup).
+- **Skip** yourself, `DA` (Daniel is told in your report), `—`, and every
+  receiver the row asks nothing of: a close-out, an Impl rollup, an FYI, a
+  response its raiser need not act on. Those wait for the receiver's daily
+  sweep and ring no one (TI-49 (2), OA, 2026-10-30): a notice costs its
+  receiver a turn over its whole context, so ring only for an ask.
 
 Send one notice per receiving agent, covering all of its rows:
 
@@ -69,7 +72,11 @@ is not the record.
 
 1. `notice.py parse` on the text gives `from`, `tab`, `rows` and `rev`. If
    it does not parse, ignore the message, and mention it in your report.
-2. Read only those rows: a `search` on each ID in tab `tab` (the docs read's
+2. Read only those rows, and preferably not into your own context: hand the
+   notice text and your prefix to the `register-reader` subagent
+   (`.claude/agents/register-reader.md`) and act on its digest (TI-49 (3),
+   OA, 2026-10-30). Read a row yourself when you are about to answer it and
+   need its exact text: a `search` on its ID in tab `tab` (the docs read's
    ref is the tab's node id), then `view` with `parentId` on its row.
    Don't read whole tabs here.
 3. Act on the rows as the register's conventions say. Answer in your own tab
@@ -89,7 +96,9 @@ The sweep catches everything a notice can miss: rows from prefixes with no
 session, a send that failed, Conventions changes, and context for what others
 are doing.
 
-1. Read every tab with `{"kind":"view","sinceRev":N}` from your bookmarks.
+1. Read every tab with `{"kind":"view","sinceRev":N}` from your bookmarks,
+   through the `register-reader` subagent (pass your prefix and bookmarks),
+   and read in full only the rows its digest says need you.
    Keep the bookmarks in your memory or scratchpad, one rev per tab. With no
    bookmark, read the outline and `search` your prefix.
 2. Answer every row with your prefix in Needs that you have not answered.
@@ -115,8 +124,8 @@ as AR 3, OA 7, TI 11, OI 15, CP 19, IS 23. Use this prompt:
 > substance, otherwise abort that merge and raise a row naming the owner.
 > Push only after a clean gate on the merge (tools/regen.sh, then
 > tools/verify.sh; CP its own repository's gate). Then, from the merged
-> roster, run the register skill's section 6: check the pongs to your last
-> pings, and ping every other agent. Report in a few lines: the register,
+> roster, on Fridays only, run the register skill's section 6: check the
+> pongs to your last pings, and ping every other agent. Report in a few lines: the register,
 > what was merged, by branch and commit count, and who answered.
 
 The merge is Daniel's (DA tab rev 78, TI-43, 2026-10-24): branches had gone
@@ -134,13 +143,16 @@ leaves you testing against a block that no longer exists, and lets a
 mismatch between the two sides (a renamed field, a changed contract) sit
 unseen for a day.
 
-## 6. The daily ping (reachability)
+## 6. The weekly ping (reachability)
 
 A notice sent to a session that no longer holds the role is lost without a
 word: after a migration, agents went on ringing replaced sessions for days.
-So each daily sweep, after its merge, pings every other agent through the
+So the Friday sweep, after its merge, pings every other agent through the
 roster, and each answer says whether the right agent answered (Daniel,
-2026-10-24).
+2026-10-24; weekly on Fridays since DA, 2026-10-30, TI-49 (1), so a session
+whose budget ran out is checked soon after the weekly budget returns; the
+Saturday sweep checks Friday's pongs). A ping that arrives on another day is
+still answered, once.
 
 **Send.** For each other prefix with a session (`notice.py roster`; DA has
 none), compose and send with `priority: "later"`:
