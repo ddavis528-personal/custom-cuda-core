@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-10-30. Keep this current at every task's end; it is what
+Updated 2026-10-31. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 
 ## Who and what
@@ -50,9 +50,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 - Notices: `python3 .claude/skills/register/notice.py compose --from AR
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
-- Bookmarks, revs read through (also in the scratchpad's
-  register/bookmarks.json): AR 255, OA 283, TI 267, IS 178, CP 146,
-  OI 231, DA 97, Conventions 15. Pings 2026-10-30: all five answered ok.
+- Bookmarks, revs read through (the scratchpad is not durable; this is the
+  record): AR 256, OA 286, TI 271, IS 180, CP 148, OI 239, DA 97,
+  Conventions 15. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+- RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
+  ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
+  register tab. Its branch is merged in the sweep like the others.
 - Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 18), MIU
   aa7a288a-dae2 (rev 46), RAU 090626bb-a50c (rev 33), FET 75d75b94-1614
   (rev 45), DEC 1d1fdcda-739e, DCU c18a112b-d2c6, SPM b66e4f64-612c, LANE
@@ -70,13 +73,18 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    does 512 KiB hold across many traces. CoreMark alone: 512 KiB -7.1%,
    frames -15.7%, both -22.8%; 512 KiB's lead with frames is 8.4%, an
    upper bound (hit latency held at 64 KiB's). Bring it to Daniel.
-2. OI-86 mispredict cycle: OA recommends (b), a branch-outcome lead on
-   the RCU-only done's fixed slot (33 flops, no waiver; RCU spec rev 14-18
-   says RCU can give it), against (a), resolve_lag 1 (S1 +0.81%, audit
-   +1.7%). Waits on OI's coremark32/128 figures; then to Daniel.
-3. TI-48: this file; answer re:TI-48 with its pushed commit. TI-49: taken
-   (task updated); answer re:TI-49 in the same row.
-4. OI-85 row-indexed dones: built (TI 6ba08b1); RCU and MIU text done.
+2. OI-86/OI-88 mispredict and squash lags: OA will put (a) resolve_lag 1
+   + squash_act_lag 1 against (b) resolve_lag 0 + squash_act_lag 1 (the
+   33-flop branch lead on the RCU-only done's fixed slot; RCU spec rev
+   14-18) to DA in one row, on S1, coremark32, coremark128 and the audit.
+   So far: resolve_lag 1 S1 +0.81%, audit +1.7%; squash_act_lag 1 S1 +0,
+   coremark32 +0, audit +1.4%. coremark128 runs are with RH (OOM fixed by
+   TI 47e2622; oracle fault fixed by TI c5a1fc0). Check OA's row when it
+   lands; then to Daniel.
+3. TI-48 closed (all handoffs in; autoCompactWindow 400000 at 63a7bd5).
+   TI-49 done (AR rev 256; OA put it into the register skill, rev 285).
+4. OI-85/OI-90 row-indexed dones: built (TI 6ba08b1; OI per-row 2-bit
+   counts, 9be452c, da182a7); RCU and MIU text done.
 5. Older AR items: AR-4 to AR-10, AR-12, AR-13, AR-15 to AR-17, the AR-20
    table (single-thread trades: 8 checkpoints -4.2%, ROB 48/64
    -3.9%/-5.1%, latency levers), the FET checkpoint cost, Q-50, Q-60.
