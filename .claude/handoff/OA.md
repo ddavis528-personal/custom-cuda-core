@@ -34,7 +34,7 @@ AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
 CP session_019cSebQ45AT3pSnPU71torg. OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 15, OA 286, AR 256, TI 271, OI 239, IS 180, CP 148, DA 97.
+Conventions 15, OA 287, AR 256, TI 271, OI 240, IS 180, CP 148, DA 97.
 OOE doc rev 347. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
@@ -52,7 +52,8 @@ OOE doc rev 347. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026
 3. Overhead review list for DA after the first pass: NGD-7 copies (736, 220,
    340 flops), OI-84's 360 flops, RAT read ~2x, waivers (ooe_go, names' pools
    10 flops, candidates 72), scarce names +0.53%, retire lag +0.25%.
-4. Watch: L1 size (AR-24 eight-trace sweep, TI); TI-47 done.
+4. OI-93 (rev 287): ROB slice 2a budgets granted; RCU-only dones on fixed slot CCV_DONE_SLOTS-2 (not 0); TI schema contract, AR confirm aux use.
+5. Watch: L1 size (AR-24 eight-trace sweep, TI); TI-47 done.
 
 ## Settled recently (for context)
 TI-46 (b) credits, share 7, r 2, queue 13 (231c29e). OI-83 late RAT write,
