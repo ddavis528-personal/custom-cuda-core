@@ -37,16 +37,16 @@ AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
 CP session_019cSebQ45AT3pSnPU71torg. OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 15, OA 291, AR 257, TI 273, OI 244, IS 180, CP 148, DA 97.
-OOE doc rev 348. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
+Conventions 15, OA 293, AR 260, TI 273, OI 244, IS 180, CP 148, DA 97.
+OOE doc rev 351. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
-1. OI-86/OI-88 AT DA (OA rev 289, reported to Daniel 10-31): (a) rl 1 + sal 1:
-   S1 +0.8%, cm32 +0.64%, cm128 -0.32% (unexplained; OI checking), audit 929/901
-   +3.1%; (b) RCU lead (33 flops) + sal 1: S1 0, CoreMark 0, audit 912/901 +1.2%.
-   Skeleton, model-only. OA recommends (b). sal unpriced by CoreMark (no wrong
-   path in skeleton). Record DA's words in DA tab; if (b): notify AR (lead) and
-   OI (rl to 0 in slice 2a RTL, built at rl 1 sal 1); doc gets the slot sentence.
+1. OI-86/OI-88 ADOPTED (b) by DA 10-31 ("I agree with your recommendation for
+   OI-86/88"; DA tab rev 98, OA rev 292, doc rev 349-351). AR rev 260 / RCU spec
+   rev 20: lead_br_taken+lead_br_mask, branch/call only; rets stay resolve_lag 1.
+   OA rev 293: ooe_rs holds branch/call off RCU the cycle after a ret (no two
+   resolutions a cycle); OI prices (b)+ret lag+hold vs (b) (S1 0, CM 0, audit
+   912): <0.5% mine, over -> DA. Watch TI's lead contract, OI's resolve_lag 0.
 1b. OI-94 (OA rev 291, doc rev 348): (c) taken conditional on OI's price < 0.5%
    (squashed bit per lane in Rename 1/2, RS/RAT gated, ROB holds unfilled
    squashed entries until fill). Watch for OI's price; over 0.5% -> DA.
