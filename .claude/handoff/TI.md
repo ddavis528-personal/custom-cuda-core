@@ -32,12 +32,14 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 15, AR 250, OA 279, IS 176, TI 270, OI 238 (OI-91 answered at
-TI rev 270), CP 143, DA 96. Latest TI open: TI-49.
+Conventions 15, AR 250, OA 279, IS 176, TI 271, OI 239 (OI-91 at TI rev 270,
+OI-92 at 271), CP 143, DA 96. Latest TI open: TI-49.
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- Local, unpushed: 47e2622 (OI-92: launch log only for traced runs) and
+  handoff commits; tonight's sweep gates and pushes them.
 - Tip of both branches: c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
   refuses a stale ENTRY), on 63a7bd5 (autoCompactWindow 400k), on c69475e
   (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
