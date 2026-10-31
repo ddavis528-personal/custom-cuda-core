@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-10-30. Keep this current at every task's end; it is what
+Updated 2026-10-31. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -38,17 +38,18 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 250, OA 279, IS 179, TI 267, OI 227, CP 146, DA 97.
-Session scratch (not durable): bookmarks.json and notes.md under the
-session scratchpad `reg/`.
+Conventions 15, AR 256, OA 286, IS 180, TI 271, OI 239, CP 148, DA 97.
+Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.
+Read through the register-reader subagent; this file is the durable
+bookmark store.
 
 ## State
 - ISA decisions this cycle: O-73 to O-84. Latest: O-83 (interleaved
   per-thread memory, srd #3 %privoff, DA tab rev 95) and O-84 (address-taken
   frames in the bottom of the O-83 region, R15 = W, recursion refused,
   O-64 frame windows withdrawn, DA tab rev 97).
-- Compiler branch tip f5fa030 (fast-forwarded to CP's head; CP-69's merge
-  loop ended). CP's snapshot d9ddd2c builds O-83 and O-84; TI pinned it.
+- Compiler branch fast-forwards to CP's head (CP-69's merge loop ended).
+  A new agent RH has a handoff on core (ccr-c22116ce-1vzyjg). CP's snapshot d9ddd2c builds O-83 and O-84; TI pinned it.
 
 ## Open work (most urgent first)
 1. TI-49 (2) and (3): OA rules on quieter notices and the register-reader
