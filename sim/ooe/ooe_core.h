@@ -1560,6 +1560,7 @@ public:
       unsigned ckpt = 0;
       uint32_t gmask = 0;
       uint64_t pcn = 0, tgt = 0;
+      unsigned pchi = 0;          ///< pc[47:32]: a ret's target is {pc[47:32], aux}
     };
     struct Ret {
       unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
