@@ -56,7 +56,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 258, OA 287, TI 272, IS 180, CP 148, OI 239, DA 97,
+  record): AR 259, OA 287, TI 273, IS 180, CP 148, OI 239, DA 97,
   Conventions 15. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
@@ -90,8 +90,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    TI-49 done (AR rev 256; OA put it into the register skill, rev 285).
 4. OI-85/OI-90 row-indexed dones: built (TI 6ba08b1; OI per-row 2-bit
    counts, 9be452c, da182a7); RCU and MIU text done.
-5. Older AR items: AR-4 to AR-10, AR-12, AR-13, AR-15 to AR-17, the AR-20
+5. re:OI-93 (AR rev 259, TI asked): the field drop is safe, but the skeleton
+   gives shfl.idx lat_class 0 (3 cycles, pool done) where the params give
+   it 5 (CCV_LAT_COLLECTIVE); kLatCollective is unused. Rev 257's "collective
+   ops are lat_class 5" was the params, not the skeleton. Await TI's answer.
+   If 0: CCV_DONE_SLOTS could be 6. If 5: DEC's table changes.
+6. Older AR items: AR-4 to AR-10, AR-12, AR-13, AR-15 to AR-17, the AR-20
    table (single-thread trades: 8 checkpoints -4.2%, ROB 48/64
    -3.9%/-5.1%, latency levers), the FET checkpoint cost, Q-50, Q-60.
-6. Carry: the next row to CP corrects benchmarks.md's "alu16 1.59x (AR)"
+7. Carry: the next row to CP corrects benchmarks.md's "alu16 1.59x (AR)"
    to OI's 2026-10-20 measurement.
