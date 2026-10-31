@@ -24,6 +24,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   Push only to `ccr-c22116ce-1vzyjg`; never to a requester's branch. Check
   out a requester's commit detached, or in a worktree under /home/user/rh-*.
 - Fresh container: `./tools/setup-toolchain.sh` once.
+- A detached job dies when the idle container is reclaimed. Keep a tracked
+  background task (e.g. rh-jobs/watch.sh) open while it runs, and make jobs
+  resumable.
 - Run long jobs with `tools/bg-run.sh <name> <cmd...>`, and read summaries, not logs.
   Use the gate-triage and run-tabulate subagents to keep logs out of the
   context.
@@ -46,5 +49,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   21f7150 (d9ddd2c's ccv-sim faults F-RO), skeleton from da182a7. The oracles
   passed with counts matching OI's; runs started 02:47Z, detached (setsid nohup).
   If the skeleton refuses the oracles, stop and tell OI; never fall back.
-  Next check: send_later trig_01Se5UUbwKyCsqinvhGQggSf (04:55Z).
+  A container reclaim at 04:55Z killed run 1; restarted 04:55Z. Relaunch with
+  rh-jobs/oi88v2.sh (it skips finished runs and kept oracles). While it runs,
+  keep rh-jobs/watch.sh 6600 open as a tracked background task, which also wakes
+  RH at each run's end; an idle container is reclaimed. Fallback check:
+  send_later trig_01VHLFXtXZK4hNugXSEqU9ch (07:12Z).
 - RH's own: the clean gate passed on 203f04b (5949 s); pushed.
