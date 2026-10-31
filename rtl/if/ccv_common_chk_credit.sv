@@ -288,9 +288,9 @@ module ccv_common_chk_credit #(
   wire [PAYLOAD_W-1:0] absent_lead = ch_payload & ZERO_MASK & LEAD_MASK;
   wire [PAYLOAD_W-1:0] absent_rest = ch_payload & ZERO_MASK & ~LEAD_MASK;
   `CCV_CONTRACT_M(MODE, absent_lead_zero,
-                  !ch_valid || !`CCV_KNOWN(absent_lead) || absent_lead == '0)
+                  !ch_valid || !(`CCV_KNOWN(absent_lead)) || absent_lead == '0)
   `CCV_CONTRACT_M(MODE, absent_field_zero,
-                  !valid_q || !`CCV_KNOWN(absent_rest) || absent_rest == '0)
+                  !valid_q || !(`CCV_KNOWN(absent_rest)) || absent_rest == '0)
 
   // -- end of test: every message answered --------------------------------
   // A receiver that consumes two messages and returns one credit breaks no
