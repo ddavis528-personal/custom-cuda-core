@@ -32,13 +32,13 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 15, AR 256, OA 288, IS 182, TI 273, OI 239, CP 149, DA 97
+Conventions 15, AR 260, OA 292, IS 182, TI 275, OI 239, CP 149, DA 97
 (sweep 2026-10-31: nothing new for TI). Latest TI open: TI-50 (rev 272).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Tip of both branches: 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
+- Tip of both branches: a17c736 (gate-push clears on red), on 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
   five branches; release b2f4e58), with 47e2622 (OI-92), on c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
   refuses a stale ENTRY), on 63a7bd5 (autoCompactWindow 400k), on c69475e
   (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
@@ -56,12 +56,19 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
   OA (OA rev 288). Waiting: AR, OI.
 
 ## Open work (most urgent first)
--1. OI-93 done: 16af94a pushed (CCV_DONE_SLOT_RCU, schema contract, RCU
-   stub routing by class, check in sim/ooe/ooe_block.cpp under OI-18,
-   control rcu-done-pool). TI response at TI rev 273; notices AR, OI, OA.
-   Waiting on AR: aux used by no other class, and the class = all of R's
-   CCV_LAT_RCU ops. Then drop branch_taken/branch_mask/aux from the other
-   six slots (per-slot fields in gen-interfaces).
+-1. OI-93 done (16af94a). Follow-up, task in flight:
+   (a) shfl lat_class 5 at CCV_LAT_COLLECTIVE (AR rev 259, TI rev 274):
+       b0d91c2, gating with this handoff. rope 6763 -> 7757 (branch
+       resolve and redirect wait behind shfl), others +1..+25.
+   (b) Per-slot fields (schema key, gen-interfaces/gen-skel/gen-top,
+       checker bank, DPI, payload-spec; ~50 sites using c["bits"]): drop
+       branch_taken/branch_mask/aux off ccv_rcu_ooe_done's slots but
+       CCV_DONE_SLOT_RCU; and AR rev 260 (RCU spec rev 20): lead_fields
+       lead_br_taken (1) + lead_br_mask (32, CCV_W_LANE_MASK) on that slot
+       only, no tag, branches/calls only; RCU stub drives them; OOE check
+       payload == previous cycle's lead; control corrupting the lead.
+       Side worktree /home/user/ti-coll (branch ti-coll) for it.
+   DA adopted OI-88 (b) (OA rev 292); TI answered at TI rev 275.
 0. Disk: a clean gate needs ~11 GB of the session's allowance; keep
    /home/user/sweep small (oracle13's 4 GB filled it on 2026-10-31). A red
    gate left 16 GB in build/: gate-push now clears it on red too, keeping
