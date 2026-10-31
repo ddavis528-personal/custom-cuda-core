@@ -74,6 +74,16 @@ for k in "${kdirs[@]}"; do
   crange=$(sed -n 's/^CONST=//p' "$k/kernel.cfg")
   fault=$(sed -n 's/^FAULT=//p' "$k/kernel.cfg")
   entry=$(sed -n 's/^ENTRY=//p' "$k/kernel.cfg")
+  # A release kernel's launch.txt names its entry, and a pin may move it
+  # (d9ddd2c moved coremark-derived's 0x3330 -> 0x332c, OI-91): run from a
+  # stale ENTRY and ccv-sim starts mid-code. kernel.cfg must say what the
+  # snapshot says.
+  lentry=$(sed -n 's/^entry //p' "$(dirname "$srcpath")/launch.txt" 2>/dev/null)
+  if [ -n "$lentry" ] && [ $(( ${entry:-0} )) -ne $(( lentry )) ]; then
+    printf '  %-46s FAIL (ENTRY %s, but the pinned launch.txt says %s)\n' \
+      "oracle $name from the pinned ccv-sim" "${entry:-0}" "$lentry"
+    rm -rf "${O:?}/$name"; rc=1; continue
+  fi
   maxsteps=$(sed -n 's/^MAXSTEPS=//p' "$k/kernel.cfg")
   ooecfg=$(sed -n 's/^OOE_CONFIG=//p' "$k/kernel.cfg")
   out=$O/$name
