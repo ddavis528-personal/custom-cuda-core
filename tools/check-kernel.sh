@@ -222,6 +222,28 @@ fi
 # checked in. No oracle, no kernel runs: that is a failure, not a skip.
 tools/gen-oracle.sh || { echo "  S1 kernels: no oracle records" >&2; exit 1; }
 
+# A release kernel runs from the entry its pinned launch.txt names, and a pin
+# may move it (d9ddd2c: coremark-derived 0x3330 -> 0x332c, OI-91). Every
+# test/bench config must say what the snapshot says, and gen-oracle must
+# refuse one that does not, before ccv-sim starts it mid-code.
+Cs=$(tools/fetch-compiler.sh)
+stale=""
+for c in test/bench/*/kernel.cfg; do
+  le=$(sed -n 's/^entry //p' "$Cs/$(dirname "$(sed -n 's/^SOURCE=//p' "$c")")/launch.txt" 2>/dev/null)
+  ce=$(sed -n 's/^ENTRY=//p' "$c")
+  [ -z "$le" ] || [ $(( ${ce:-0} )) -eq $(( le )) ] || stale="$stale $(basename "$(dirname "$c")")($ce, pin $le)"
+done
+se=$B/stale-entry; rm -rf "$se"; mkdir -p "$se"; cp -r test/bench/coremark1 "$se/coremark1"
+sed -i 's/^ENTRY=.*/ENTRY=0x3330/' "$se/coremark1/kernel.cfg"
+if [ -n "$stale" ]; then
+  bad "bench ENTRY == the pinned launch.txt's" "stale:$stale"
+elif seo=$(CCV_ORACLE_DIR="$se/o" tools/gen-oracle.sh "$se/coremark1" 2>&1); [ $? = 1 ] &&
+     grep -q "but the pinned launch.txt says" <<<"$seo" && [ ! -e "$se/o/coremark1" ]; then
+  say "bench ENTRY == the pinned launch.txt's" "PASS ($(ls -d test/bench/*/ | wc -l) configs; a stale one refused)"
+else
+  bad "bench ENTRY == the pinned launch.txt's" "gen-oracle ran coremark1 at a stale ENTRY"
+fi
+
 # -- the clean run -----------------------------------------------------------
 log=$B/kernel_vadd.log
 "$SKEL" --kernel "$K" --trace "$B/kernel_vadd.ccvtrace" >"$log" 2>&1
