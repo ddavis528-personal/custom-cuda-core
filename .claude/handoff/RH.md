@@ -42,10 +42,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI-88 (from OI, 2026-10-30 23:12Z): CoreMark under ROB slice 2 knobs at
   da182a7. Script /home/user/rh-jobs/oi88.sh (worktree /home/user/rh-oi88),
   progress in ~/ccv-logs/oi88.summary, per-run logs ~/ccv-logs/<k>.<cfg>.{log,time}.
-  BLOCKED 2026-10-31 02:50Z: gen-oracle at da182a7 FAILs both kernels (pinned
-  ccv-sim F-RO store to 0x20000, pc 7000, warp 0). Asked OI which pin, args or
-  commit to use; waiting on its reply. Launch the script detached (setsid nohup):
-  the background runner stops a command after 2 h. Reply to OI with one line per run: kernel, config,
-  cycles, from_fetch, gpr/pred/mem mismatches, check_failures, redirects, peak
-  RSS. Report a run that died and go on. No commits.
+  OI's fix (2026-10-31): oracles from worktree /home/user/rh-oi88-ora at
+  21f7150 (d9ddd2c's ccv-sim faults F-RO), skeleton from da182a7. The oracles
+  passed with counts matching OI's; runs started 02:47Z, detached (setsid nohup).
+  If the skeleton refuses the oracles, stop and tell OI; never fall back.
+  Next check: send_later trig_01Se5UUbwKyCsqinvhGQggSf (04:55Z).
 - RH's own: the clean gate passed on 203f04b (5949 s); pushed.
