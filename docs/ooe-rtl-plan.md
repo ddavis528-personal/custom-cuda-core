@@ -1116,6 +1116,85 @@ Built (`rtl/ooe/`):
      gate (10 flops) changes on 12% / 24% of its enabled cycles (medium /
      high), waived (CG-3, rtl/cg-waivers.json).
 
+## The ROB (OI-85; OA's revs 277 to 279)
+
+`rtl/ooe/ooe_rob.sv`, in six slices. Slice 1 (built): storage, allocation,
+completion, in-order retire, the frees and the retire-stage register, and
+the room rename's go reads. Branches, squash and deferred free (2), memop
+commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
+`test/ooe/rob_tb.cpp` stops a core at its first such event.
+
+- *Allocation and fill.* The go's edge allocates each slot's entries at
+  its tail, a no-op (neither class bit) complete at once. Rename 2 fills
+  the rest two cycles on, in program order per slot, at the fill pointer:
+  the names to commit and to free, the sections the old GPR name frees,
+  the kind and the RS count. A release returns head and tail to 0 and
+  leaves the fill pointer behind the tail by the entries still to fill.
+- *Completion* (OA's rev 277 (b)): V-58's count of RS entries, set at the
+  fill and taken down by each free; the dones owed RCU, up at each issue
+  that owes one, down at each done; and the kind's result, a lane or RCU
+  op's done, a memop's MIU completion with no copy in flight. A cancel
+  needs no input: rc and ow hold the entry until its reissue's done. RCU
+  sends at most one done per rob_tag a cycle (OA's rev 279 (a); a
+  contract on ccv_rcu_ooe_done, TI's in the schema, AR's in RCU's text),
+  asserted (one_done_per_tag), so ow falls by one or none.
+- *Retire* (rev 277 (a), rev 278): each slot's head window, RETIRE_PER_ROB
+  bits of "retires this cycle", is a register, so ooe_rat's and the free
+  lists' leads are from flops. It takes the cycle's completions at its
+  edge: an entry completed in a cycle retires in the next (the model's
+  retire_lag 1, its default to be, OI-87; rob_tb sets it). The retire-stage register then carries what
+  ooe_rat commits and the free lists' masks.
+- *The room*: entries are held head to tail without a hole, so a slot's
+  free run is D less its count and always reaches the head (reach is tied
+  high; the model agrees every cycle). The counts (held, and allocated
+  but not filled) are one-hot, so the go's late count moves them by a
+  shift that synthesis cannot fold back into a carry chain; the run is
+  encoded from the held count into its own register.
+- *Depth.* The first build was 47.9 NGD flop to flop. Head, tail and fill
+  pointers are one-hot, so the window and the decodes need no adder; a
+  completion reads the registered kind and count (nothing completes at
+  its fill's edge); the done count is an OR under (a). The go's
+  allocations (al_n, al_nop, at the take's 14) reach neither the entries
+  nor the window through the count: an allocation lands only on free
+  entries from the tail, so valid and complete are written there from
+  flops, and al_nop is zero past the count (asserted, nop_within_count),
+  so the window's no-op term needs no count either. An entry's write bits
+  are read by the window only while it is valid and filled (a no-op can
+  retire before its fill lands). NGD-7 copies on the window. Budgets
+  (`ooe_rob.ngd.json`, OA's rev 279 (b)): 2 for every input from a
+  register, 14 for the go's. check-ngd: 23.7 flop to flop; dn_tag 19.3
+  from its 2 (21.3), cm_tag 18.8, fl_slot 18.7, al_n 10.7 and al_nop 10.4
+  from their 14; no finding, so slice 1 closes with no lag added (rev
+  279's (c) not needed).
+- *Clock gating.* Every enable is from this module's flops (CG-5). A fill
+  lands only on its slot's unfilled entries from the fill pointer, so each
+  entry's fields are one gate on fl_q and that candidate set (a candidate
+  that takes no fill writes don't-care data: its own fill rewrites every
+  field); "more than j unfilled" is registered for it (CG-2). Each slot's
+  state is clocked on its own events, split by what changes it: pointers
+  and counts, the tail, the fill state, the completion terms (a done or a
+  completion only where the slot has an entry waiting for one), and the
+  window. The retire-stage register's fields clock only as entries retire;
+  its write bits and free masks also the cycle after, to clear. check-cg:
+  9,243 flops, 9,216 in 151 gates, worst enable 7.6 NGD; the three active
+  slots' windows (20 flops each) change on 37% to 41% of their enabled
+  cycles, within the module's allowance with the flopped leads.
+- *The bench.* rob_tb drives the module from the model's ROB log
+  (`Core::robLog`) a model cycle behind, the fills from two cycles before,
+  and compares the decision, its leads, the room, and the retire-stage
+  register and its frees a cycle later. 25 seeds, every prediction right:
+  35,656 cycles, 38,874 retirements, 58,583 GPR section frees, 3,731
+  predicate frees, 0 mismatches; with mispredicts (ROB_MISPREDICT=1, each
+  core stopped at its first squash): 4,832 cycles, 2,932 retirements, 0
+  mismatches. Controls drop-free, no-copy, no-lead, fill-order, nop-real
+  and two-in-a-cycle are each caught, each by its own check.
+- *The entry* (rev 277 (c), rev 279): 65 bits with slice 4's chwidth
+  width and one fault cause with its valid (DEC's wins). Barrier data goes
+  in a per-slot side buffer 2 deep, in program order, popped at retire
+  (about 9,300 bits in all against about 21,600 in the entries); a slot's
+  third barrier op holds rename until one of the two retires, counted on
+  CP-62's four kernels with slice 5 (over 0.5%, the depth goes to 3).
+
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 
 DA reviews the copies NGD-7 costs after OOE's first pass. Each is a
