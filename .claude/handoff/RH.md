@@ -42,7 +42,14 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-(none)
+- OI-86/88 rev 293 pricing (OI, 2026-10-31 17:41Z): coremark128 configs a, b, c
+  at 712913d plus OI's patch (rh-jobs/oi86.patch, applied uncommitted in the
+  detached worktree /home/user/rh-oi86; never commit it). Script rh-jobs/oi86.sh
+  (resumable), summary ~/ccv-logs/oi86.summary. Watcher:
+  RH_SUMMARY=oi86.summary RH_JOB=oi86 rh-jobs/watch2.sh 6900. Swap on.
+  Per config, report to OI: from_fetch, finished, check_failures, order, the
+  count of "ret_hold: a branch" lines (must be 0 for c), PERF ret/call.
+  Fallback check trig_019PpjBrKH5eEjGgtUsjZHsL (19:44Z).
 
 ## Done
 - OI-88 (OI, 2026-10-30 to 31): six CoreMark runs at skeleton da182a7 with
