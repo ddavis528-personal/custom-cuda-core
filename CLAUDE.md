@@ -153,6 +153,13 @@ red, with a proposed fix) and `run-tabulate` (an experiment's runs as one
 table) run on cheaper models; for a search across the code use the built-in
 Explore agent. The session still writes the register and decides; a
 subagent only reads and reports.
+A session loads these definitions when it starts, from its own project
+directory: one started earlier, or elsewhere, gets "agent type not found".
+Then spawn a general-purpose agent with the file's `model` and its body as
+the prompt, followed by the task; it works the same.
+
+The session compacts at 400k tokens (`autoCompactWindow` in
+`.claude/settings.json`; DA, 2026-10-30, set once every agent had a handoff).
 
 ## Sessions working side by side
 
