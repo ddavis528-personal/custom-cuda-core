@@ -6,7 +6,8 @@
 #
 # Prints a few lines: regen's commit if any, the gate's summary
 # (tools/gate-summary.py), what it pushed. Logs go to $CCV_LOGDIR. Exit 1 on
-# any refusal or a red gate, with nothing pushed.
+# any refusal or a red gate, with nothing pushed; a red gate's job logs are
+# kept in $CCV_LOGDIR and build/ cleared all the same (but --keep-build).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ME=gate-push
@@ -28,7 +29,16 @@ SHA7=$(git rev-parse --short HEAD)
 VLOG="$LOGDIR/verify-$SHA7-$STAMP.log"
 say "gate on $SHA7 (log: $VLOG)"
 ./tools/verify.sh >"$VLOG" 2>&1
-python3 tools/gate-summary.py "$VLOG" || die "gate not green on $SHA7; nothing pushed"
+if ! python3 tools/gate-summary.py "$VLOG"; then
+  # A red gate leaves ~16 GB in build/, more than the next gate can spare
+  # (2026-10-31): keep its job logs beside the gate's log, then clear.
+  if [ "$KEEP" != 1 ]; then
+    [ -d build/verify ] && cp -r build/verify "$LOGDIR/verify-$SHA7-$STAMP.d"
+    clear_build
+    say "job logs kept in $LOGDIR/verify-$SHA7-$STAMP.d"
+  fi
+  die "gate not green on $SHA7; nothing pushed"
+fi
 if [ "$PUSH" = 1 ]; then
   ancestry                            # again: a branch may have moved meanwhile
   push_all

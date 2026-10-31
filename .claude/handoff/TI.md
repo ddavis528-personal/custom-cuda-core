@@ -32,13 +32,13 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 15, AR 256, OA 287, IS 180, TI 272, OI 239, CP 148, DA 97
+Conventions 15, AR 256, OA 288, IS 182, TI 273, OI 239, CP 149, DA 97
 (sweep 2026-10-31: nothing new for TI). Latest TI open: TI-50 (rev 272).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Tip of both branches: 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
+- Tip of both branches: 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
   five branches; release b2f4e58), with 47e2622 (OI-92), on c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
   refuses a stale ENTRY), on 63a7bd5 (autoCompactWindow 400k), on c69475e
   (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
@@ -52,20 +52,20 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
   runs it once with DA's approval (DA chose this, 2026-10-31), and
   `--check` in its daily sweep. TI's is installed (--check matches); subagent
   types load only at the next session start. TI-50 (rev 272) asks the other
-  five; notices sent 2026-10-31. Watch for their answers.
+  five; notices sent 2026-10-31. Installed: TI, IS (IS rev 182), CP (CP-74),
+  OA (OA rev 288). Waiting: AR, OI.
 
 ## Open work (most urgent first)
--1. OI-93 (OA rev 287, Needs TI): RCU-only class's dones on slot
-   CCV_DONE_SLOT_RCU (= CCV_DONE_SLOTS - 2, new param), schema contract,
-   RCU stub routing, check in sim/ooe/ooe_block.cpp (TI's edit, OI-18) and
-   the S1 stub, control rcu-done-pool (callret, 18 refused). Commit cf25085,
-   gating. After push: TI response to OI-93 (class = all of R's RCU-only ops,
-   not only branches: else 7 classes share 6 slots), notices OA, OI (the
-   OI-18 edit), AR (confirm no other class uses aux; then drop
-   branch_taken/branch_mask/aux from the other six slots, ~390 wires,
-   which needs per-slot fields in gen-interfaces).
+-1. OI-93 done: 16af94a pushed (CCV_DONE_SLOT_RCU, schema contract, RCU
+   stub routing by class, check in sim/ooe/ooe_block.cpp under OI-18,
+   control rcu-done-pool). TI response at TI rev 273; notices AR, OI, OA.
+   Waiting on AR: aux used by no other class, and the class = all of R's
+   CCV_LAT_RCU ops. Then drop branch_taken/branch_mask/aux from the other
+   six slots (per-slot fields in gen-interfaces).
 0. Disk: a clean gate needs ~11 GB of the session's allowance; keep
-   /home/user/sweep small (oracle13's 4 GB filled it on 2026-10-31).
+   /home/user/sweep small (oracle13's 4 GB filled it on 2026-10-31). A red
+   gate left 16 GB in build/: gate-push now clears it on red too, keeping
+   build/verify in $CCV_LOGDIR.
 1. TI-48 (TI rev 266): all five handoffs in (files checked in each commit,
    2026-10-30); `"autoCompactWindow": 400000` set in .claude/settings.json.
    Pushed 63a7bd5; TI-48 closed (TI rev 269); CP added the key in
