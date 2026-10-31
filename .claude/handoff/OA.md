@@ -1,6 +1,6 @@
 # OA handoff (OOE architect)
 
-Updated 2026-10-30. Keep this current at every task's end; it is what
+Updated 2026-10-31. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Role and rules (from Daniel, in conversation)
@@ -37,15 +37,19 @@ AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
 CP session_019cSebQ45AT3pSnPU71torg. OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 15, OA 287, AR 257, TI 271, OI 240, IS 180, CP 148, DA 97.
-OOE doc rev 347. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
+Conventions 15, OA 291, AR 257, TI 273, OI 244, IS 180, CP 148, DA 97.
+OOE doc rev 348. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
-1. OI-86/OI-88, to DA when OI's runs land: (a) resolve_lag 1 + squash_act_lag 1
-   against (b) RCU branch lead (33 flops, one fixed RCU-only done slot, AR's
-   RCU spec rev 14) + squash_act_lag 1; S1, coremark32, coremark128, audit.
-   So far: resolve_lag S1 +0.81%, audit +1.7%; squash lag S1 0, cm32 0,
-   audit +1.4%. OA recommends (b). Knobs stay 0 until DA rules.
+1. OI-86/OI-88 AT DA (OA rev 289, reported to Daniel 10-31): (a) rl 1 + sal 1:
+   S1 +0.8%, cm32 +0.64%, cm128 -0.32% (unexplained; OI checking), audit 929/901
+   +3.1%; (b) RCU lead (33 flops) + sal 1: S1 0, CoreMark 0, audit 912/901 +1.2%.
+   Skeleton, model-only. OA recommends (b). sal unpriced by CoreMark (no wrong
+   path in skeleton). Record DA's words in DA tab; if (b): notify AR (lead) and
+   OI (rl to 0 in slice 2a RTL, built at rl 1 sal 1); doc gets the slot sentence.
+1b. OI-94 (OA rev 291, doc rev 348): (c) taken conditional on OI's price < 0.5%
+   (squashed bit per lane in Rename 1/2, RS/RAT gated, ROB holds unfilled
+   squashed entries until fill). Watch for OI's price; over 0.5% -> DA.
 2. OI-85 ROB: slice 1 pushed 9c079f9 (retire_lag 1 taken, rev 278; default
    waits on OI-87's go_tb fix and TI's re-pins). Row-indexed dones (rev 282,
    283) pushed 6ba08b1. Barrier side buffer 2 deep (rev 279): OI counts holds
@@ -55,7 +59,7 @@ OOE doc rev 347. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026
 3. Overhead review list for DA after the first pass: NGD-7 copies (736, 220,
    340 flops), OI-84's 360 flops, RAT read ~2x, waivers (ooe_go, names' pools
    10 flops, candidates 72), scarce names +0.53%, retire lag +0.25%.
-4. OI-93 (rev 287): ROB slice 2a budgets granted; RCU-only dones on fixed slot CCV_DONE_SLOTS-2 (not 0); TI schema contract; AR confirmed (rev 257, RCU spec rev 19: only lat_class 0 sets aux/branch_mask; barriers stay lat_class 0).
+4. OI-93 (rev 287; rev 289 fl_brl_cq01h input 2; rev 290 slot class = all CCV_LAT_RCU ops, TI 16af94a): ROB slice 2a budgets granted; RCU-only dones on fixed slot CCV_DONE_SLOTS-2 (not 0); TI schema contract; AR confirmed (rev 257, RCU spec rev 19: only lat_class 0 sets aux/branch_mask; barriers stay lat_class 0).
 5. Watch: L1 size (AR-24 eight-trace sweep, TI); TI-47 done.
 
 ## Settled recently (for context)
