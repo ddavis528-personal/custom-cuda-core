@@ -32,13 +32,14 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 15, AR 250, OA 279, IS 176, TI 269, OI 234 (FYI re:OI-85,
-re:OI-89; OI-89 closed), CP 143, DA 96. Latest TI open: TI-49.
+Conventions 15, AR 250, OA 279, IS 176, TI 270, OI 238 (OI-91 answered at
+TI rev 270), CP 143, DA 96. Latest TI open: TI-49.
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Tip of both branches: 63a7bd5 (autoCompactWindow 400k), on c69475e
+- Tip of both branches: c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
+  refuses a stale ENTRY), on 63a7bd5 (autoCompactWindow 400k), on c69475e
   (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
 - Compiler pin d9ddd2c (source f5fa030; O-83, O-84).
 - Frame-interleave experiment done: coremark32 -7.1%, coremark128 -15.7%
@@ -47,6 +48,8 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
   review that check-cg patch when the sweep merges it.
 
 ## Open work (most urgent first)
+0. Disk: a clean gate needs ~11 GB of the session's allowance; keep
+   /home/user/sweep small (oracle13's 4 GB filled it on 2026-10-31).
 1. TI-48 (TI rev 266): all five handoffs in (files checked in each commit,
    2026-10-30); `"autoCompactWindow": 400000` set in .claude/settings.json.
    Pushed 63a7bd5; TI-48 closed (TI rev 269); CP added the key in
