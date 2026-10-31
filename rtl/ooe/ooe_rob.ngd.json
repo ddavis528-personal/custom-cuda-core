@@ -19,6 +19,12 @@
    "date": "2026-10-30",
    "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: MIU's completion channel, its repeater's flops"
   },
+  "dn_row_cq02h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-30",
+   "why": "OA's rev 282 (re:OI-85, OA tab): the done's row index rides ccv_rcu_ooe_done with its rob_tag, at the same measured arrival, 2, its repeater's flops"
+  },
   "dn_tag_cq02h": {
    "arrival": 2.0,
    "by": "OA",
