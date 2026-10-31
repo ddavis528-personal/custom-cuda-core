@@ -808,6 +808,13 @@ private:
 
 /// A queued outbound message: slot, payload, identity.
 struct Q { unsigned slot; Bits msg; uint64_t tid; };
+/// RCU's dones on ccv_rcu_ooe_done name no slot when queued, only their class:
+/// the RCU-only class's one slot (CCV_DONE_SLOT_RCU), or the pool of the rest
+/// (OA's response OI-93). Not slot numbers.
+enum : unsigned { kPoolDone = ~0u, kRcuOnlyDone = ~0u - 1 };
+/// The class that completes on CCV_DONE_SLOT_RCU: what RCU executes alone at
+/// CCV_LAT_RCU (a cross-lane op is RCU's too, but warp-collective).
+inline bool rcuOnlyDone(const OpInfo *op) { return inRcu(op->cls) || isBarrier(op); }
 
 /// OOE's implementation behind the swap boundary: the S1 stub (ooe.cpp).
 std::unique_ptr<Block> makeOoe(int inst, Kernel &k);

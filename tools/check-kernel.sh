@@ -143,6 +143,8 @@
 #     entry (OA-23)                            every completion
 #   a done echoes its issue's ROB row       done-row (vadd): OOE refuses
 #     (OI-85)                                  every done
+#   the RCU-only class completes on        rcu-done-pool (callret): OOE
+#     CCV_DONE_SLOT_RCU (OI-93)                refuses each off its slot
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -1325,6 +1327,18 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_done-row.log" check_failures)" = "$n"
   say "--break done-row: OOE refuses the wrong row" "PASS ($n dones)"
 else
   bad "--break done-row" "$n refused: $(grep '^KERNEL' "$B/kernel_done-row.log")"
+fi
+# The RCU-only class (branch, ret, predicate logic, pmov, movi: what RCU
+# executes alone) completes on its one slot, CCV_DONE_SLOT_RCU, and no other
+# class takes it (OA's response OI-93). rcu-done-pool: that class takes the
+# lowest free slot of all, as the pool's did, and OOE refuses each such done
+# off its slot, and nothing else fails.
+"$SKEL" --kernel build/oracle/callret/oracle.jsonl --break rcu-done-pool >"$B/kernel_rcu-done-pool.log" 2>&1
+n=$(grep -c "^CHECK ooe: rob tag [0-9]* (RCU-only) done on slot [0-4]; the RCU-only class completes on slot" "$B/kernel_rcu-done-pool.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_rcu-done-pool.log" check_failures)" = "$n" ]; then
+  say "--break rcu-done-pool: OOE refuses an RCU-only done off its slot" "PASS ($n dones)"
+else
+  bad "--break rcu-done-pool" "$n refused: $(grep '^KERNEL' "$B/kernel_rcu-done-pool.log")"
 fi
 
 # Notices (OA-23; AR's response TI-23): DCU promises a refill

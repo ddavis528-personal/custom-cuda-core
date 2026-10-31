@@ -104,6 +104,9 @@ private:
   /// rob tag -> the row its last done-owing issue, and its last memop, named
   /// (OI-85): a done or completion must echo it.
   std::map<unsigned, unsigned> row_sent_, cmpl_row_sent_;
+  /// The rob_tags whose done is the RCU-only class's, from their issue: R's
+  /// resource, not a warp-collective (OA's response OI-93).
+  std::set<unsigned> rcu_only_;
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   /// TI-46 (b), DA tab rev 96: decode-queue credits back to FET, one slot
   /// a tier-1 warp. A slot's return is what left the queue since the last:
@@ -306,6 +309,13 @@ private:
         auto r = row_sent_.find(d.rob_tag);
         if (r != row_sent_.end() && r->second != drow)
           k_.fail("ooe: rob tag %u done for row %u, but its issue named row %u", d.rob_tag, drow, r->second);
+        // The RCU-only class on its one slot, every other class off it
+        // (CCV_DONE_SLOT_RCU; OA's response OI-93). TI's check, OI-18.
+        const bool ro = rcu_only_.count(d.rob_tag) != 0;
+        if (ro != (s == ccv::prov::kDoneSlotRcu))
+          k_.fail("ooe: rob tag %u (%s) done on slot %u; the RCU-only class completes on slot %u "
+                  "(CCV_DONE_SLOT_RCU) and no other class does", d.rob_tag, ro ? "RCU-only" : "pool", s,
+                  ccv::prov::kDoneSlotRcu);
         // Refused once here; the core counts the row its issue named.
         d.row = r != row_sent_.end() ? r->second : drow;
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
@@ -426,6 +436,8 @@ private:
       put(is, c.ooe_rcu, "done_row", x.row);   // OI-85
       // A copy and a memop's RCU issue owe no done (A-38, OI-4).
       if (!x.copy && x.res != ooe::Issue::kMemop) row_sent_[x.rob_tag] = x.row;
+      if (x.res == ooe::Issue::kRcuOp && x.byp_group != kBypCollective) rcu_only_.insert(x.rob_tag);
+      else rcu_only_.erase(x.rob_tag);
       put(is, c.ooe_rcu, "warp_id", x.warp);
       put(is, c.ooe_rcu, "issue_mask", x.issue_mask);
       // A name is a row and a position (sectioned; unsectioned the position

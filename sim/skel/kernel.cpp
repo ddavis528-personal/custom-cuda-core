@@ -2652,13 +2652,22 @@ private:
       lane_q_.erase(it);
       break;
     }
-    // ccv_rcu_ooe_done's slots are a free pool: any done takes any slot,
-    // oldest first. A lane op's done leaves the cycle its write lands, at
-    // V-35's bound exactly, so it cannot wait for a particular slot.
+    // ccv_rcu_ooe_done: the RCU-only class (an op RCU executes alone, at
+    // CCV_LAT_RCU) completes on its one slot, CCV_DONE_SLOT_RCU, and every
+    // other done takes the lowest free of the rest, oldest first (OA's
+    // response OI-93). A lane op's done leaves the cycle its write lands, at
+    // V-35's bound exactly, so it cannot wait for a particular slot; R issues
+    // one op a cycle, so the RCU-only slot is never contended.
+    // rcu-done-pool: the RCU-only class takes the lowest free of all of them.
+    const unsigned rate = kChans[c.rcu_ooe].rate, rs = ccv::prov::kDoneSlotRcu;
+    static_assert(ccv::prov::kDoneSlotRcu < ccv::prov::kDoneSlots, "the RCU-only done slot is a slot");
     for (auto it = to_ooe_.begin(); it != to_ooe_.end();) {
-      unsigned s = 0;
-      while (s != kChans[c.rcu_ooe].rate && !can(c.rcu_ooe, s)) ++s;
-      if (s == kChans[c.rcu_ooe].rate) break;
+      const bool rcu_only = it->slot == kRcuOnlyDone;
+      const bool fixed = rcu_only && k_.brk != "rcu-done-pool";
+      unsigned s = fixed ? rs : 0;
+      if (!fixed)
+        while (s != rate && ((s == rs && !rcu_only) || !can(c.rcu_ooe, s))) ++s;
+      if (s == rate || !can(c.rcu_ooe, s)) { ++it; continue; }
       send(c.rcu_ooe, s, it->msg, it->tid);
       it = to_ooe_.erase(it);
     }
@@ -2712,7 +2721,7 @@ private:
       const uint32_t on = k_.brk == "ignore-mask" ? 0xffffffffu : a.active;
       k_.pred[a.ppred] = ((a.merge ? k_.pred[a.ppold] : 0u) & ~on) | (po_mask & on);
     }
-    to_ooe_.push_back({0, done(a.tag), a.tid});
+    to_ooe_.push_back({kPoolDone, done(a.tag), a.tid});
   }
 
   /// This cycle's issues, one slot per select resource: S0-S3, P0-P3, R.
@@ -2977,7 +2986,7 @@ private:
           if (k_.pred[ppd] != d->p)
             k_.fail("rcu: seq %llu P%u = %08x, oracle %08x", (unsigned long long)r->seq, d->idx,
                     k_.pred[ppd], d->p);
-      to_ooe_.push_back({0, done(tag), m.tid});
+      to_ooe_.push_back({kRcuOnlyDone, done(tag), m.tid});
       return;
     }
     // shfl.idx (Format G): each guarded issue lane takes the source at one
@@ -3001,7 +3010,7 @@ private:
                           (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
               break;
             }
-      to_ooe_.push_back({0, done(tag), m.tid});
+      to_ooe_.push_back({kPoolDone, done(tag), m.tid});
       return;
     }
     if (op->cls == kImm && k_.brk != "movi-in-lane") {
@@ -3019,7 +3028,7 @@ private:
                       (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
               break;
             }
-      to_ooe_.push_back({0, done(tag), m.tid});
+      to_ooe_.push_back({kRcuOnlyDone, done(tag), m.tid});
       return;
     }
     // Predicate logic executes HERE, beside the predicate file, and never
@@ -3059,7 +3068,7 @@ private:
           if (k_.pred[ppd] != d->p)
             k_.fail("rcu: seq %llu P%u = %08x, oracle %08x",
                     (unsigned long long)r->seq, d->idx, k_.pred[ppd], d->p);
-      to_ooe_.push_back({0, done(tag), m.tid});
+      to_ooe_.push_back({kRcuOnlyDone, done(tag), m.tid});
       return;
     }
     // Branches resolve HERE too: the condition is a predicate. The taken
@@ -3112,7 +3121,7 @@ private:
           k_.failHeld(at, m.tid, "rcu: seq %llu ret pass returns lanes %08x, oracle %08x",
                       (unsigned long long)r->seq, same, r->taken);
       }
-      to_ooe_.push_back({0, d, m.tid});
+      to_ooe_.push_back({kRcuOnlyDone, d, m.tid});
       return;
     }
 
