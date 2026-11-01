@@ -297,6 +297,13 @@ for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row 
     say "  control $c (rob)" "caught"
   fi
 done
+# two-resolutions: two candidates in a cycle, forced; one_resolution itself
+# must catch it (no other check sees it first).
+if out=$(ROB_CONTROL=two-resolutions "$dir/rob_tb" 3 2>&1) || ! grep -q "one_resolution" <<<"$out"; then
+  say "  control two-resolutions (rob)" "MISSED"; fail=1
+else
+  say "  control two-resolutions (rob)" "caught"
+fi
 
 # ooe_wake, driven from the model's wake log after every cycle. Its
 # latencies, bypass points and penalties are the parameters'; the model's

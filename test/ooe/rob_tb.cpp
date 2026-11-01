@@ -61,6 +61,7 @@
 // Usage: rob_tb [seeds] | rob_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_rob.h"
+#include "Vooe_rob___024root.h"
 #include "verilated.h"
 #include "cg_trace.h"
 #include "ooe_core.h"
@@ -85,6 +86,7 @@ void ooeTestPredictAll(bool on);
 void robConfig(Config &c) {
   c.retire_lag = 1;
   c.resolve_lag = 1;
+  c.resolve_lag_ret_only = 0;   // every branch at lag 1: the RTL resolves from its outcome register until RCU's branch lead lands
   c.squash_act_lag = 1;
   c.held_room_lag = 1;
   c.squash_held_room_lag = 1;   // the ROB registers no run in a squash's cycle that leaves held entries
@@ -143,12 +145,22 @@ template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i !
 
 CgRun cg;
 
+// two-resolutions: after the edge that registers a branch's outcome,
+// every resolved bit cleared, so each completed branch still in the ROB is
+// a candidate again beside it (one_resolution must fire).
+bool force_rsv = false;
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
   cg.dump();
   dut->ooe_core_clk = 1;
   dut->eval();
+  if (force_rsv) {
+    force_rsv = false;
+    auto &w = dut->rootp->ooe_rob__DOT__rsv_cq02h;
+    for (unsigned i = 0; i != RB_S * RB_D; ++i) setBit(w, i, false);
+    dut->eval();
+  }
   cg.dump();
 }
 void fail(const char *what, unsigned a, unsigned rtl, unsigned model) {
@@ -490,6 +502,7 @@ void drive(const Cyc &c, const Cyc &nx) {
     dut->dn_taken_cq02h = taken;
     dut->dn_mask_cq02h = mask;
     dut->dn_aux_cq02h = d.aux;
+    if (control == "two-resolutions" && b.br) force_rsv = true;
   }
   // two-in-a-cycle: the first done again, on the first free slot.
   unsigned dup = ND;

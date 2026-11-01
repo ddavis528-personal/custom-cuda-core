@@ -1311,6 +1311,15 @@ Memop commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   (ooeTestRandomRetsHookedWith), which must hold some branch. Controls
   no-hold (select) and no-ret-hold (trio) are caught. ooe_sched's flop to
   flop goes 19.9 to 24.7 NGD.
+- *One resolution a cycle* (OA's revs 294-296, in ooe_rob): at most one
+  resolution candidate across the ROB a cycle (`one_resolution`), the
+  ROB's one outcome register. The RTL resolves every branch from that
+  register, a cycle after its done (the model's resolve_lag 1 for all,
+  resolve_lag_ret_only 0 in rob_tb), so today no stimulus breaks it; once
+  RCU's branch lead lands and branches resolve at 0, the ret hold is what
+  keeps it, and rob_tb's control becomes the model's inject_no_ret_hold.
+  Until then control two-resolutions clears every resolved bit after an
+  outcome's edge, and the assert, by name, must catch it.
 - *The replay lead* (found by the ret run, and by the plain random run past
   the gate's 25 seeds): ooe_sched's ready register enable had no lead for
   the edge after a producer's replay, where ooe_wake's lines drop (the

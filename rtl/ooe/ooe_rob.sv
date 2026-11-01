@@ -1474,6 +1474,11 @@ module ooe_rob #(
   `CCV_ASSERT(branch_done_on_bs, dn_brx_cq02h == '0)
   // A resolution candidate is a filled entry (no stale branch bit).
   `CCV_ASSERT(candidate_filled, (cand_cq02h & ufm_cq02h) == '0)
+  // One resolution a cycle across the ROB (OA's revs 293-294): one
+  // outcome register, so at most one candidate. With rets at resolve_lag 1
+  // and branches at 0 (once RCU's branch lead lands), a branch done the
+  // cycle after a ret's would make two; Issue's ret hold keeps it off RCU.
+  `CCV_ASSERT(one_resolution, (cand_cq02h & (cand_cq02h - 1'b1)) == '0)
   `CCV_ASSERT(unfilled_owes_none, (v_cq02h & ufm_cq02h & outq_cq02h) == '0)
   // The head's thermometer register is hoh's (the resolution's search).
   logic [S*D-1:0] thc_cq02h;
