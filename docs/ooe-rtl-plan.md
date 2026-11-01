@@ -1072,6 +1072,14 @@ Built (`rtl/ooe/`):
      whenever an allowance is held, as the pool saturates at 0 below them:
      rename_scarce's lagged counters drive a credit below the held, which
      go_tb's exact pool never does.
+     The reserve moving with the rotation changes the fits too (rem):
+     off the first slot when it held one, and onto the next when that
+     slot's head needs two of a credit (2026-11-01). The second half was
+     missing: with nothing else changing, the next slot kept the fits it
+     had without the reserve. go_tb found it under OA rev 294's defaults
+     (55 mismatches at 25 seeds, squash_act_lag 1; none after). check-ngd
+     unchanged at 22.8 (room_p 18.2 in-flop, 24.2 from its arrival, base
+     18.1; written ~(dd & dr_nx), its other spelling mapped to 19.1).
      *Counters (7b, built).* Rename's counters replace the go's pool,
      floor and room ports (OI-73 to OI-76, OA's revs 215, 216 and 219):
      RS room per class (up by ooe_rs's frees, a lead a cycle ahead), and
