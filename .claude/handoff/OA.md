@@ -38,19 +38,19 @@ AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
 CP session_019cSebQ45AT3pSnPU71torg. OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 15, OA 293, AR 260, TI 273, OI 244, IS 180, CP 148, DA 97.
-OOE doc rev 351. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
+Conventions 15, OA 296, AR 260, TI 280, OI 250, IS 182, CP 149, DA 97.
+OOE doc rev 352. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
-1. OI-86/OI-88 ADOPTED (b) by DA 10-31 ("I agree with your recommendation for
-   OI-86/88"; DA tab rev 98, OA rev 292, doc rev 349-351). AR rev 260 / RCU spec
-   rev 20: lead_br_taken+lead_br_mask, branch/call only; rets stay resolve_lag 1.
-   OA rev 293: ooe_rs holds branch/call off RCU the cycle after a ret (no two
-   resolutions a cycle); OI prices (b)+ret lag+hold vs (b) (S1 0, CM 0, audit
-   912): <0.5% mine, over -> DA. Watch TI's lead contract, OI's resolve_lag 0.
-1b. OI-94 (OA rev 291, doc rev 348): (c) taken conditional on OI's price < 0.5%
-   (squashed bit per lane in Rename 1/2, RS/RAT gated, ROB holds unfilled
-   squashed entries until fill). Watch for OI's price; over 0.5% -> DA.
+1. OI-86/OI-88 ADOPTED (b) by DA 10-31 (DA tab 98). AR's lead (RCU spec rev 20)
+   branch/call only; TI pushed it (80697a3). OA rev 294 took resolve_lag_ret_only
+   1, ret_hold 1, squash_act_lag 1, squash_held_room_lag 1 (S1 +0.03%, cm32
+   +0.01%, cm128 -0.30%, audit 912; model). Floors run (RH, after slice 2b)
+   adds rets and S1 for OI-94; >0.5% -> OA.
+1b. OI-94 (c): accepted as built (OA revs 295-296): RTL kill count waits on the
+   fill; model C'' fixed lag. Close OI-94 when OI reports two asserts in:
+   model fill = alloc+2, and no RS/RAT write after a squash (with Rename's mark).
+   Slice 2b (OI c911fe3/969a42b) blocked on gate memory (OI-97; TI 4c2ce8b).
 2. OI-85 ROB: slice 1 pushed 9c079f9 (retire_lag 1 taken, rev 278; default
    waits on OI-87's go_tb fix and TI's re-pins). Row-indexed dones (rev 282,
    283) pushed 6ba08b1. Barrier side buffer 2 deep (rev 279): OI counts holds
