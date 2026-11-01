@@ -46,11 +46,13 @@
 
 //   The ret hold (OA's rev 293): no branch or call is selected for RCU the
 //   cycle after a ret is, so the ROB's one outcome path never resolves a
-//   branch beside a ret (a ret resolves a cycle after its done). A fourth
-//   register, beside the grant register and on its enable, holds the
-//   grants of rets (ret_cq03h), and its OR takes this cycle's branches and
-//   calls (brk_cq03h) from select. It is the model's rule exactly (a ret's
-//   grant, not its request), the hold's OR at select's request.
+//   branch beside a ret (a ret resolves a cycle after its done). A
+//   register of the RCU entries' ret bits (ret_cq03h), on the grant
+//   register's enable, is ANDed with the grant register after the edge
+//   (not before it: the grant is select's deepest path, from vel_cq03h),
+//   and its OR takes this cycle's branches and calls (brk_cq03h) from
+//   select. It is the model's rule exactly (a ret's grant, not its
+//   request), the hold's OR at select's request.
 //
 // The reference is the model's ready and request registers and its
 // sectioned select (Core::readyRegister, Core::requestRegister,
@@ -206,9 +208,9 @@ module ooe_sched #(
   logic [N-1:0] cand_cq03h, grant_cq03h, lost_cq03h;
   // The ret hold: a ret granted last cycle holds this cycle's branches and
   // calls off RCU.
-  logic [NR-1:0] gnr_cq04h;                // the grants of rets, last cycle
+  logic [NR-1:0] rtq_cq04h;                // the RCU entries' ret bits, last cycle
   logic [NR-1:0] hold_cq04h;
-  assign hold_cq04h = gnr_cq04h != '0 ? brk_cq03h : '0;
+  assign hold_cq04h = (gnt_cq04h[NR-1:0] & rtq_cq04h) != '0 ? brk_cq03h : '0;
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
     .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .hold_cq03h(hold_cq04h),
     .vel_cq03h(vel_cq03h),
@@ -268,12 +270,12 @@ module ooe_sched #(
       gnt_cq04h     <= '0;
       gnt_out_cq04h <= '0;
       gnt_w_cq04h   <= '0;
-      gnr_cq04h     <= '0;
+      rtq_cq04h     <= '0;
     end else if (gnt_en_cq03h) begin
       gnt_cq04h     <= grant_cq03h;
       gnt_out_cq04h <= grant_cq03h;
       gnt_w_cq04h   <= grant_cq03h;
-      gnr_cq04h     <= grant_cq03h[NR-1:0] & ret_cq03h;
+      rtq_cq04h     <= ret_cq03h;
     end
   end
 

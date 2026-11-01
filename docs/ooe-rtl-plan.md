@@ -1302,15 +1302,19 @@ Memop commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
 - *The ret hold* (OA's rev 293, in ooe_sched): no branch or call is
   selected for RCU the cycle after a ret's grant, so the ROB's one
   outcome path never resolves a branch beside a ret. A register of the
-  rets' grants (gnr_cq04h, NR flops on the grant register's enable) and
-  its OR mask select's branch and call requests (ooe_select's hold_cq03h);
+  RCU entries' ret bits (rtq_cq04h, NR flops on the grant register's
+  enable), ANDed with the grant register after the edge, and its OR mask
+  select's branch and call requests (ooe_select's hold_cq03h). The AND
+  sat first before the edge, on the grant's own path, and put vel_cq03h
+  at 25.2 (arrival 4.0 + 21.2), over the stage: after the edge it is
+  20.4;
   ret_cq03h and brk_cq03h are new entry bits beside the footprint
   (arrival 4.0, for OA to confirm). It is the model's rule exactly, so
   select_tb and trio_tb compare it; random programs have no rets, so both
   add a run with every third branch a ret under testRetHold's settings
   (ooeTestRandomRetsHookedWith), which must hold some branch. Controls
   no-hold (select) and no-ret-hold (trio) are caught. ooe_sched's flop to
-  flop goes 19.9 to 24.7 NGD.
+  flop goes 19.9 to 24.4 NGD.
 - *One resolution a cycle* (OA's revs 294-296, in ooe_rob): at most one
   resolution candidate across the ROB a cycle (`one_resolution`), the
   ROB's one outcome register. The RTL resolves every branch from that
