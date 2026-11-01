@@ -43,23 +43,23 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-01)
-AR 261, OA 296 (RA tab now rev 2), IS 182, TI 282, OI 252, CP 149, DA 99, RA 1, Conventions 16.
-Nothing had RA in Needs at session start. AR now 262, OA 297, RA 30.
+AR 263, OA 299, RA 40 (others as at session start: IS 182, TI 282, OI 252,
+CP 149, DA 99, Conventions 16).
 
 ## Open work, most urgent first
-- AR round 1 answered (AR rev 262), RA rows updated (RA rev 30). Settled:
-  5 scheduled write ports/bank + migration; SFU 2nd result on lane_rcu_res;
-  MIU lead fields (phys_dst..pred_we) for CG-5; A = RCU holding issue
-  payload, GPR read A+1, pred read A (+forward), lane gets A+3..A+5;
-  done valid leaves by A+L-1; LAT_RCU_ADDR counts to valid launch, plan 1
-  (2 fallback), PF-47; collective->3 pursue, hold 5 till Phase 1, then
-  OA then DA (changes OA-4), time register-index shfl (~21 NGD est);
-  xbar = RCU sub-module; Q-18: AGU in MIU; no area budget before Phase 1
-  (report flops / write D-mux / read mux separately); floorplan: 16 lanes
-  each long side, MIU one short side, PCA+OOE other, lane links 0 stages;
-  widening clear struck; migration borrows R ports + OOE idle-R 1-in-K.
-- Round 2 to AR: RA-13 dispatch_fault, RA-14 kill vs migration, RA-15 ops
-  on R. RA-16 to TI (schema/params), RA-17 to OA (idle-R rule). Notices
-  sent. When AR's round 2 returns and nothing new: write first-pass arch
-  doc (Claude doc, intent document), notify Daniel.
-- Spec reconciliation (rcu-arch.md section 5) on first edit of RCU tab.
+- First-pass RCU Arch doc written: https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB
+  (doc 1e5066f9-e4db-4fe3-aabc-0022606c9e96, body node 81a1f5d5-f92b,
+  tab dfa9bcdb-0b00, timeline widget d460388b-053c). Daniel notified for
+  review; iterate on his comments. Asked him: area/power targets; Phase 1
+  in this session or on RH; is the scope right.
+- AR questions exhausted (rounds 1-2, AR revs 262/263). Settled list is the
+  doc's section 1 table (RA-1..RA-17).
+- Key correction (AR re:RA-6): migration owns NO port. Demotion reads via
+  an idle R read port (10 physical read ports/bank, not 11); restore rows
+  staged 1 cycle then written via R's write port; idle-R rule K=4.
+- RA-16 (a)-(g) waits on TI (notice sent at rev 40). RA-17 to OI pricing
+  (OA row 299, knob idle_r_k).
+- Rows still to raise (doc section 13): barrier ambiguity TI-40 vs done
+  doc slot 5 (OA/TI); PRF needs no reset, confirm no read-before-write
+  (OA); OA to add RA minute 27 to the register skill.
+- Spec tab reconciliation (rcu-arch.md section 5) after Daniel accepts.
