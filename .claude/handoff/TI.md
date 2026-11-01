@@ -33,13 +33,13 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 15, AR 260, OA 293, IS 182, TI 281, OI 247, CP 149, DA 98
+Conventions 15, AR 260, OA 293, IS 182, TI 282, OI 251, CP 149, DA 98
 (sweep 2026-10-31: nothing new for TI). Latest TI open: TI-50 (rev 272).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Tip of both branches: 1afee59 (sweep 2026-11-01: 60 commits from five branches; release 1494a06, snapshot-2026-11-01-1afee59 local only, tag refused), on 4c2ce8b (OI-97: big units map in series; ABC selftest own cache), on 5e7c8db (OI-95: ABC cache, parallel map/map -r, scoped gate; DA confirmed in TI's session 2026-10-31; TI rev 279), on 43d92b3, on 80697a3 (AR rev 260 branch lead + slot_fields step A; TI rev 277, notices to AR/OI/OA), on f77582b (b0d91c2 shfl lat_class 5), on a17c736 (gate-push clears on red), on 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
+- Tip of both branches: 7782ce0 (OI-101 split gate: verify --only/--skip, gate-export, gate-push --import, gate-combine; DA ruled same-commit split counts, 2026-11-01; TI rev 282), on 1afee59 (sweep 2026-11-01: 60 commits from five branches; release 1494a06, snapshot-2026-11-01-1afee59 local only, tag refused), on 4c2ce8b (OI-97: big units map in series; ABC selftest own cache), on 5e7c8db (OI-95: ABC cache, parallel map/map -r, scoped gate; DA confirmed in TI's session 2026-10-31; TI rev 279), on 43d92b3, on 80697a3 (AR rev 260 branch lead + slot_fields step A; TI rev 277, notices to AR/OI/OA), on f77582b (b0d91c2 shfl lat_class 5), on a17c736 (gate-push clears on red), on 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
   five branches; release b2f4e58), with 47e2622 (OI-92), on c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
   refuses a stale ENTRY), on 63a7bd5 (autoCompactWindow 400k), on c69475e
   (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
