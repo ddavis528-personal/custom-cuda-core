@@ -42,19 +42,14 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- OI-88 (from OI, 2026-10-30 23:12Z): CoreMark under ROB slice 2 knobs at
-  da182a7. Script /home/user/rh-jobs/oi88.sh (worktree /home/user/rh-oi88),
-  progress in ~/ccv-logs/oi88.summary, per-run logs ~/ccv-logs/<k>.<cfg>.{log,time}.
-  OI's fix (2026-10-31): oracles from worktree /home/user/rh-oi88-ora at
-  21f7150 (d9ddd2c's ccv-sim faults F-RO), skeleton from da182a7. The oracles
-  passed with counts matching OI's; runs started 02:47Z, detached (setsid nohup).
-  If the skeleton refuses the oracles, stop and tell OI; never fall back.
-  Done and reported to OI: coremark128 base 17608696, rl 17551979, rlsh 17551979
-  (identical to rl). coremark128 sh running from 11:33Z under the original
-  script's skeleton. rh-jobs/oi88v3.sh (pid waits on it) then runs the two
-  coremark32 runs with CCV_OOE_STATS=~/ccv-logs/<k>.<cfg>.stats.json. OI wants
-  branch.under_squash and squash.due_branch_retired from it, which only that JSON
-  carries. After a restart, relaunch rh-jobs/oi88v2.sh (stats added; it skips
-  finished runs), plus `swapon /home/user/rh-swap`, memlog.sh, and the watch.sh
-  tracked task. Send OI one line per run as each finishes.
+(none)
+
+## Done
+- OI-88 (OI, 2026-10-30 to 31): six CoreMark runs at skeleton da182a7 with
+  oracles from 21f7150 (d9ddd2c's ccv-sim faults F-RO). All passed; results sent
+  to OI 14:16Z. Logs ~/ccv-logs/<k>.<cfg>.{full,log,time,stats.json}; oracles kept
+  in /home/user/rh-oi88-ora. Lessons: coremark128 peaks at 12.4 GB, and a 16 GB
+  swapfile is a safe margin. Set CCV_OOE_STATS on every run (Core::counters go
+  only there). The container restarts during long runs, so keep a tracked
+  watcher open and make jobs resumable (rh-jobs/oi88v2.sh is the template).
 - RH's own: the clean gate passed on 203f04b (5949 s); pushed.
