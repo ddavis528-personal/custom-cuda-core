@@ -11,9 +11,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
   Record his words verbatim; write adopted items as O-n (log, change
   summary, normative text). Notify the agents a decision affects.
 - Branch `ccr-3868632d-p8esoz` in both repos. Merge commits only, never
-  rebase or force-push. Push only after a clean gate: core
-  `tools/regen.sh` then `tools/verify.sh`; compiler `ninja -C build` then
-  `tools/verify.sh`. ISA-only commits: `python3 tools/check-docs.py`, run
+  rebase or force-push. Push only after a green gate. Core (OI-95, DA
+  2026-10-31): a between-sweep push takes the scoped gate
+  (`tools/gate-push.sh`, SCOPED PASS); the sweep's merge takes the full
+  clean gate (`tools/gate-push.sh --full`, PASS). Compiler: `ninja -C
+  build` then `tools/verify.sh`. ISA-only commits: `python3 tools/check-docs.py`, run
   unpiped (a `| tail` once hid a failure).
 - Merge rules (DA tab revs 78, 89; CP-69): merge every peer branch at the
   daily sweep, and between sweeps when a peer's pushed work bears on IS's.
@@ -38,10 +40,15 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 256, OA 286, IS 180, TI 271, OI 239, CP 148, DA 97.
+Conventions 15, AR 256, OA 286, IS 182, TI 271, OI 239, CP 148, DA 97.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
+
+## Session home (TI-50)
+Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
+(writes /home/user/.claude: 400k window, handoff hook, agents link).
+Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
 - ISA decisions this cycle: O-73 to O-84. Latest: O-83 (interleaved
