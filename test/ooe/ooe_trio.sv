@@ -69,6 +69,8 @@ module ooe_trio #(
   input  logic [N*N-1:0]    sdep_cq03h,
   input  logic [N*LS-1:0]   sslot_cq03h,
   input  logic [N*9-1:0]    res_cq03h,
+  input  logic [NR-1:0]     ret_cq03h,
+  input  logic [NR-1:0]     brk_cq03h,
   input  logic [N-1:0]      chas_cq03h,
   input  logic [N*W-1:0]    cidx_cq03h,
   input  logic [NR*NR-1:0]  older_r_cq03h,
@@ -78,7 +80,9 @@ module ooe_trio #(
   // A negative control (trio_tb's TRIO_CONTROL): 0 none, 1 no-msd (the
   // held misses never reach ooe_sched), 2 no-miss-lead (no event lead),
   // 3 late-leads (the miss pulses and held misses a cycle late, as flops of
-  // their own would give them), 4 no-alloc-lead.
+  // their own would give them), 4 no-alloc-lead, 5 no-ret-hold (no ret
+  // reaches ooe_sched), 6 no-rep-lead (the bench's alone: it rewrites
+  // ooe_sched's ready register enable).
   input  logic [2:0]        ctl,
   // What the bench compares.
   output logic [N-1:0]      grant_cq04h,
@@ -124,6 +128,7 @@ module ooe_trio #(
   // The control's view of what reaches ooe_sched.
   logic [N-1:0] msd_q, mis_q, s_msd, s_mis;
   logic         s_wml, s_alloc;
+  logic [NR-1:0] s_ret;
   always_ff @(posedge ooe_core_clk) begin
     msd_q <= msd_cq02h;
     mis_q <= miss_cq02h;
@@ -133,6 +138,7 @@ module ooe_trio #(
     s_mis   = ctl == 3'd3 ? mis_q : miss_cq02h;
     s_wml   = ctl == 3'd2 ? 1'b0 : wml;
     s_alloc = ctl == 3'd4 ? 1'b0 : alloc_cq02h;
+    s_ret   = ctl == 3'd5 ? '0 : ret_cq03h;
   end
   // V-65 (OA's response OI-45 (1)): ooe_sched's issued after an edge,
   // formed from its own replay rule, is ooe_rs's issued register after
@@ -159,7 +165,8 @@ module ooe_trio #(
     .vel_cq03h(vel_cq03h), .siss_cq03h(siss_cq03h), .sdep_cq03h(sdep_cq03h), .sslot_cq03h(sslot_cq03h),
     .res_cq03h(res_cq03h), .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h),
     .older_r_cq03h(older_r_cq03h), .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h),
-    .block_cq03h(block_cq03h), .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w));
+    .block_cq03h(block_cq03h), .ret_cq03h(s_ret), .brk_cq03h(brk_cq03h),
+    .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w));
 endmodule
 `undef CCV_CLK
 `undef CCV_RST

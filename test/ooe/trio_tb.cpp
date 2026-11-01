@@ -36,7 +36,14 @@
 // squash_ready_skipped counts the bits left out.
 //
 // Negative controls (TRIO_CONTROL, ooe_trio's ctl), ooe_sched's: no-msd,
-// no-miss-lead, late-leads, no-alloc-lead.
+// no-miss-lead, late-leads, no-alloc-lead, no-ret-hold (ooe_sched sees no
+// ret, so the ret hold, OA's rev 293, holds nothing), no-rep-lead (the
+// ready register's enable without its replay lead: the bench rewrites the
+// enable's flop, the lead being internal).
+//
+// ooe_sched's ret hold: the random runs have no rets, so they are followed
+// by testRetHold's mix (every third branch a ret) under ret_hold and its
+// settings, which must hold some branch.
 //
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD ooe_sched's clock-gating unit measures (its scope is
@@ -63,6 +70,9 @@
 using ccv::ooe::Config;
 using ccv::ooe::Core;
 
+const char *ooeTestName();
+int ooeTestRandomRetsHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
+
 void trioConfig(Config &c) {
   c.fits_stale = 6;
   c.rs_same_edge = false;
@@ -71,6 +81,14 @@ void trioConfig(Config &c) {
   c.req_rows_late = true;
   c.miss_lead = true;
   c.ready_rep_late = true;
+}
+/// The ret hold's run (OA's rev 293): testRetHold's settings over the trio's.
+void trioRetConfig(Config &c) {
+  trioConfig(c);
+  c.resolve_lag = 1;
+  c.resolve_lag_ret_only = 1;
+  c.squash_act_lag = 1;
+  c.ret_hold = 1;
 }
 
 namespace {
@@ -83,6 +101,7 @@ std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_trio> dut;
 uint64_t current = 0;
 bool following = false;
+unsigned long long held = 0;                   // RCU entries the ret hold took (the model's)
 unsigned long long squash_ready_skipped = 0;   // ready bits of rows a squash frees next edge
 unsigned long long cycles = 0, cores = 0, skipped = 0, grants = 0, mismatches = 0, diverged = 0,
                    first_sum = 0, compared_cores = 0;
@@ -183,13 +202,23 @@ void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
   cg.dump();
+  // no-rep-lead: ooe_sched's ready register enable without its replay lead
+  // (the flop rewritten after the edge, from its other leads before it).
+  auto *r = dut->rootp;
+  const bool drop = control == 6 && r->ooe_trio__DOT__u_sched__DOT__rl_cq02h &&
+                    !(r->ooe_trio__DOT__u_sched__DOT__tl_cq02h || r->ooe_trio__DOT__u_sched__DOT__wml_cq02h ||
+                      r->ooe_trio__DOT__u_sched__DOT__alloc_cq02h || r->ooe_trio__DOT__u_sched__DOT__stop_cq02h);
   dut->ooe_core_clk = 1;
   dut->eval();
+  if (drop) {
+    r->ooe_trio__DOT__u_sched__DOT__ready_en_cq03h = 0;
+    dut->eval();
+  }
   cg.dump();
 }
 
 void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model) {
-  ++mismatches;
+  if (!mismatches++) std::fprintf(stderr, "first mismatch in %s (core %llu)\n", ooeTestName(), (unsigned long long)current);
   if (++kinds[what] <= 3)
     std::fprintf(stderr, "cycle %llu (core cycle %llu): %s (%u, %u: rtl %u, model %u)\n", cycles, core_cycle, what, a,
                  b, rtl, model);
@@ -345,6 +374,11 @@ void hook(const Core &c) {
     setField(dut->sslot_cq03h, e * LS, LS, v ? sw.sel_slot[e] : 0);
     setField(dut->res_cq03h, e * 9, 9, v ? sw.sel_res[e] : 0);
     setBit(dut->chas_cq03h, e, v && sw.sel_chas[e]);
+    if (e < NR) {
+      setBit(dut->ret_cq03h, e, v && sw.sel_ret[e]);
+      setBit(dut->brk_cq03h, e, v && sw.sel_brk[e]);
+      held += v && sw.sel_hold[e];
+    }
     setField(dut->cidx_cq03h, e * W, W, v ? sw.sel_cidx[e] : 0);
   }
   for (unsigned e = 0; e != NR; ++e)
@@ -557,7 +591,8 @@ void hook(const Core &c) {
 int main(int argc, char **argv) {
   if (const char *c = std::getenv("TRIO_CONTROL")) {
     const std::string n = c;
-    control = n == "no-msd" ? 1 : n == "no-miss-lead" ? 2 : n == "late-leads" ? 3 : n == "no-alloc-lead" ? 4 : 0;
+    control = n == "no-msd" ? 1 : n == "no-miss-lead" ? 2 : n == "late-leads" ? 3 : n == "no-alloc-lead" ? 4
+            : n == "no-ret-hold" ? 5 : n == "no-rep-lead" ? 6 : 0;
     if (!control) { std::fprintf(stderr, "trio_tb: unknown control %s\n", c); return 2; }
   }
   const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
@@ -567,16 +602,19 @@ int main(int argc, char **argv) {
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_trio>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
-  const int model_fails = cg.run(seeds, nullptr, hook, trioConfig);
+  int model_fails = cg.run(seeds, nullptr, hook, trioConfig);
+  if (!cg.on()) model_fails += ooeTestRandomRetsHookedWith(std::max(2u, seeds / 4), hook, trioRetConfig);
   cg.close();
   dut->final();
   for (const auto &k : kinds) std::fprintf(stderr, "  %-30s %llu\n", k.first.c_str(), k.second);
   for (const auto &k : first_kinds) std::fprintf(stderr, "  first: %-23s %llu\n", k.first.c_str(), k.second);
   std::printf("trio_tb seeds=%u cores=%llu compared=%llu cycles=%llu skipped=%llu grants=%llu "
-              "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f squash_ready_skipped=%llu mismatches=%llu model_failures=%d\n",
+              "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f squash_ready_skipped=%llu held=%llu mismatches=%llu model_failures=%d\n",
               seeds, cores, compared_cores, cycles, skipped, grants, grant_cores,
-              grant_cores ? double(grant_first_sum) / double(grant_cores) : 0.0, squash_ready_skipped, mismatches, model_fails);
-  const int rc = mismatches || model_fails ? 1 : 0;
+              grant_cores ? double(grant_first_sum) / double(grant_cores) : 0.0, squash_ready_skipped, held, mismatches,
+              model_fails);
+  if (!cg.on() && !held) std::fprintf(stderr, "trio_tb: the ret hold never held an entry\n");
+  const int rc = mismatches || model_fails || (!cg.on() && !held) ? 1 : 0;
   dut.reset();
   ctx.reset();
   return rc;

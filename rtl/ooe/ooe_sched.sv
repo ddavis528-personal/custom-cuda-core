@@ -16,9 +16,14 @@
 //   its event lead (a miss, or a completion past L1,
 //   changes lines at the edge after next: each known a cycle ahead, a
 //   completion by its channel's valid), ooe_rs's
-//   allocation lead (a row written at this edge), and the stop lead,
+//   allocation lead (a row written at this edge), the stop lead,
 //   OI-50's replay rule over iss, dep and msd as they stand after this
-//   edge (an entry returns to Waiting at the next cycle's hop).
+//   edge (an entry returns to Waiting at the next cycle's hop), and the
+//   replay lead, a producer some row reads replayed at this edge: ooe_wake
+//   takes the stop at this edge, so the lines it gives this module drop at
+//   the next one, which the stop lead's capture precedes (a grandchild of
+//   a missed load, granted on its parent's bypass before the parent's
+//   replay was known, stayed ready a cycle and issued twice without it).
 //
 //   Request: per entry, valid, not issued, its warp active, and a copy's
 //   sources confirmed (its row empty), as they stand after this edge. Its
@@ -38,6 +43,14 @@
 //   CG-5 waiver, the grant at 2 NGD).
 //   Its enable is "something may request or something is held": the
 //   request and ready registers' AND, or the mask copy's OR.
+
+//   The ret hold (OA's rev 293): no branch or call is selected for RCU the
+//   cycle after a ret is, so the ROB's one outcome path never resolves a
+//   branch beside a ret (a ret resolves a cycle after its done). A fourth
+//   register, beside the grant register and on its enable, holds the
+//   grants of rets (ret_cq03h), and its OR takes this cycle's branches and
+//   calls (brk_cq03h) from select. It is the model's rule exactly (a ret's
+//   grant, not its request), the hold's OR at select's request.
 //
 // The reference is the model's ready and request registers and its
 // sectioned select (Core::readyRegister, Core::requestRegister,
@@ -95,6 +108,8 @@ module ooe_sched #(
   input  logic [NM*NM-1:0]  older_m_cq03h,
   input  logic [3:0]        busy_cq03h,    // MIU pipes a bulk discard took
   input  logic [S-1:0]      block_cq03h,
+  input  logic [NR-1:0]     ret_cq03h,     // an RCU entry is a ret (not a copy)
+  input  logic [NR-1:0]     brk_cq03h,     // an RCU entry is a branch or call, not a ret (not a copy)
   output logic [N-1:0]      grant_cq04h,
   output logic [N-1:0]      grant_w_cq04h  // the same, for ooe_wake's timers
 );
@@ -155,6 +170,18 @@ module ooe_sched #(
     tl_cq02h = (wtl_cq02h & read) != '0;
   end
 
+  // The replay lead: a producer replayed at this edge, of a column some
+  // row reads. ooe_wake takes the stop at this edge, so its lines as this
+  // module reads them drop at the next edge (the model's ready_rep_late),
+  // after the stop lead's capture at this one.
+  logic rl_cq02h;
+  always_comb begin
+    logic [N-1:0] col;
+    col = '0;
+    for (int i = 0; i < N; i++) col = col | dep_cq02h[i * N +: N];
+    rl_cq02h = (rep_cq02h & col) != '0;
+  end
+
   // -- Ready register ---------------------------------------------------------
   logic [N-1:0] ready_cq02h;
   logic [N-1:0] ready_cq03h;
@@ -177,8 +204,14 @@ module ooe_sched #(
 
   // -- Select -----------------------------------------------------------------
   logic [N-1:0] cand_cq03h, grant_cq03h, lost_cq03h;
+  // The ret hold: a ret granted last cycle holds this cycle's branches and
+  // calls off RCU.
+  logic [NR-1:0] gnr_cq04h;                // the grants of rets, last cycle
+  logic [NR-1:0] hold_cq04h;
+  assign hold_cq04h = gnr_cq04h != '0 ? brk_cq03h : '0;
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
-    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .vel_cq03h(vel_cq03h),
+    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .hold_cq03h(hold_cq04h),
+    .vel_cq03h(vel_cq03h),
     .iss_cq03h(siss_cq03h), .dep_cq03h(sdep_cq03h), .slot_cq03h(sslot_cq03h), .res_cq03h(res_cq03h),
     .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h), .older_r_cq03h(older_r_cq03h),
     .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h), .block_cq03h(block_cq03h),
@@ -214,7 +247,7 @@ module ooe_sched #(
       // A grant leaving now: ooe_wake takes it at this edge, and its lead
       // line may rise there (a latency of LEAD + 1, OA's response OI-45),
       // which no timer lead of ooe_wake's foresees.
-      ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h;
+      ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h || rl_cq02h;
       gl_cq05h       <= (gnt_cq04h & dcol_cq02h) != '0;
       stop_cq03h     <= stop_cq02h;
       alc_cq03h      <= alloc_cq02h;
@@ -235,10 +268,12 @@ module ooe_sched #(
       gnt_cq04h     <= '0;
       gnt_out_cq04h <= '0;
       gnt_w_cq04h   <= '0;
+      gnr_cq04h     <= '0;
     end else if (gnt_en_cq03h) begin
       gnt_cq04h     <= grant_cq03h;
       gnt_out_cq04h <= grant_cq03h;
       gnt_w_cq04h   <= grant_cq03h;
+      gnr_cq04h     <= grant_cq03h[NR-1:0] & ret_cq03h;
     end
   end
 

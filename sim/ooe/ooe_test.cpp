@@ -50,6 +50,7 @@ void (*g_random_config_hook)(Config &) = nullptr;
 /// block has no squash yet, test/ooe/rob_tb.cpp): the draws are the same,
 /// only the prediction is the outcome.
 bool g_random_predict_all = false;
+unsigned g_random_ret_every = 0;   // every n-th random branch a ret (an RTL bench's ret_hold run)
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
 void (*g_pre_cycle_hook)(const Core &) = nullptr;
@@ -1379,6 +1380,7 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
                               bool narrow = false) {
   auto r = [&](unsigned k) { return unsigned(rng() % k); };
   std::vector<Op> p;
+  unsigned rets_seen = 0;
   // Sectioned: each architectural register has one width for the program,
   // as the committed chwidth table gives it: R0-R3 32-bit, the rest any.
   std::array<unsigned, 16> width{};
@@ -1402,6 +1404,12 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     else if (c < 88) {
       o.k = kBranch; o.pguard = r(4); o.taken = r(2);
       o.pred_taken = r(3) || g_random_predict_all ? o.taken : !o.taken;
+      if (g_random_ret_every && ++rets_seen % g_random_ret_every == 0) {
+        o.ret = true;
+        o.taken = true;
+        o.pred_taken = r(4) != 0;
+        o.ret_to = 0x2468;
+      }
     }
     else { o.k = kLane; o.nsrc = 2; }
     if ((o.k == kLane || o.k == kLoad || o.k == kSetp) && r(5) == 0) { o.guard = true; o.pguard = r(4); }
@@ -4918,6 +4926,15 @@ int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*c
 /// the failure count.
 /// The unit test running, for a bench's diagnostics.
 const char *ooeTestName() { return g_test.c_str(); }
+/// The random tests with every third branch a ret (testRetHold's mix),
+/// hooked and configured by cfg: the benches of ret_hold's RTL (OA's rev
+/// 293), whose plain random traffic has no rets.
+int ooeTestRandomRetsHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_random_ret_every = 3;
+  const int f = ooeTestRandomHookedWith(seeds, hook, cfg);
+  g_random_ret_every = 0;
+  return f;
+}
 /// The random programs predict every branch (g_random_predict_all).
 void ooeTestPredictAll(bool on) { g_random_predict_all = on; }
 int ooeTestDirectedHooked(void (*hook)(const Core &)) {

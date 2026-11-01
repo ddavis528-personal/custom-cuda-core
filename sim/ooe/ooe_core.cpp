@@ -436,7 +436,7 @@ void Core::cycle(uint64_t now) {
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
-                 &wlog_.sel_cand, &wlog_.sel_grant})
+                 &wlog_.sel_cand, &wlog_.sel_grant, &wlog_.sel_ret, &wlog_.sel_brk, &wlog_.sel_hold})
     v->assign(n_, 0);
   wlog_.sel_res.assign(n_, 0);
   wlog_.sel_cidx.assign(n_, 0);
@@ -2873,7 +2873,7 @@ void Core::selectSectioned() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.eligible_at > now_ || (x.res & busy)) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
-    if (cfg_.ret_hold && !cfg_.inject_no_ret_hold && ret_sel_at_ + 1 == now_ && !x.copy) {   // OA's rev 293
+    if (retHeld() && !x.copy) {   // OA's rev 293
       const RobEntry &rb = slot_[x.slot].rob[x.rob];
       if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
     }
@@ -2930,6 +2930,11 @@ void Core::selectSectioned() {
     wlog_.sel_copy[e] = x.copy;
     wlog_.sel_chas[e] = x.cls == RsCls::kMiu && r.copy && r.rs_copy != kNoEntry;
     wlog_.sel_cidx[e] = wlog_.sel_chas[e] ? r.rs_copy : 0;
+    // ret_hold's terms (OA's rev 293): a ret, a branch or call on RCU, and
+    // whether the hold took the entry this cycle.
+    wlog_.sel_ret[e] = !x.copy && r.u.attr.ret;
+    wlog_.sel_brk[e] = !x.copy && r.u.attr.branch && !r.u.attr.ret && x.cls == RsCls::kRcu;
+    wlog_.sel_hold[e] = wlog_.sel_brk[e] && retHeld();
   }
   for (unsigned e : cand) wlog_.sel_cand[e] = 1;
   std::vector<PickReq> preq;
@@ -3071,7 +3076,7 @@ void Core::select() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
-    if (cfg_.ret_hold && !cfg_.inject_no_ret_hold && ret_sel_at_ + 1 == now_ && !x.copy) {   // OA's rev 293
+    if (retHeld() && !x.copy) {   // OA's rev 293
       const RobEntry &rb = slot_[x.slot].rob[x.rob];
       if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
     }

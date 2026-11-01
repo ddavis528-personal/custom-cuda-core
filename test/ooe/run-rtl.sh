@@ -644,7 +644,7 @@ fi
 # The controls run the bench's seeds: a bulk discard beside a candidate
 # memop (no-busy) is rare, and 3 seeds stopped reaching one when rename's
 # go changed (OA-21); a caught control stops at its first difference.
-for c in no-order no-conf no-busy; do
+for c in no-order no-conf no-busy no-hold; do
   if SELECT_CONTROL=$c "$dir/select_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (select)" "MISSED"; fail=1
   else
@@ -680,7 +680,7 @@ if out=$("$dir/trio_tb" "$seeds" 2>&1); then
 else
   say "rs + wake + sched assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-msd no-miss-lead late-leads no-alloc-lead; do
+for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead; do
   if TRIO_CONTROL=$c "$dir/trio_tb" 6 >/dev/null 2>&1; then
     say "  control $c (trio)" "MISSED"; fail=1
   else

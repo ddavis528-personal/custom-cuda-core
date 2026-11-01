@@ -1506,6 +1506,10 @@ public:
     /// candidates and the grants. sel_live: the sectioned select ran.
     std::vector<uint8_t> sel_valid, sel_elig, sel_iss, sel_rq, sel_gnt, sel_ready, sel_conf, sel_slot, sel_copy,
         sel_chas, sel_cand, sel_grant;
+    /// ret_hold's (OA's rev 293): each entry a ret, a branch or call on
+    /// RCU (neither a copy), and held this cycle, the cycle after a ret's
+    /// select.
+    std::vector<uint8_t> sel_ret, sel_brk, sel_hold;
     std::vector<unsigned> sel_res, sel_cidx;
     unsigned sel_busy = 0, sel_block = 0;
     bool sel_live = false;
@@ -1742,6 +1746,8 @@ private:
   void robStop(const char *why) { if (!roblog_.stop) roblog_.stop = why; }
   bool branch_squash_ = false;              ///< squashAfter from a branch's resolution (ROB slice 2b builds it)
   uint64_t ret_sel_at_ = ~0ull;             ///< ret_hold: the cycle a ret was last selected for RCU
+  /// ret_hold: no branch or call is selected for RCU this cycle.
+  bool retHeld() const { return cfg_.ret_hold && !cfg_.inject_no_ret_hold && ret_sel_at_ + 1 == now_; }
   uint64_t res_ret_ = ~0ull;                ///< ret_hold's check: the cycle the last ret resolves
   GoLog golog_;
   void goRoomNext();

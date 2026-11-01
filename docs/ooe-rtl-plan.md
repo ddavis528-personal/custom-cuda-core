@@ -1299,6 +1299,27 @@ Memop commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   included; its control late-fill (one cycle's fills a cycle late) is
   caught by it. A stopped core's last two cycles still land the fills
   owed.
+- *The ret hold* (OA's rev 293, in ooe_sched): no branch or call is
+  selected for RCU the cycle after a ret's grant, so the ROB's one
+  outcome path never resolves a branch beside a ret. A register of the
+  rets' grants (gnr_cq04h, NR flops on the grant register's enable) and
+  its OR mask select's branch and call requests (ooe_select's hold_cq03h);
+  ret_cq03h and brk_cq03h are new entry bits beside the footprint
+  (arrival 4.0, for OA to confirm). It is the model's rule exactly, so
+  select_tb and trio_tb compare it; random programs have no rets, so both
+  add a run with every third branch a ret under testRetHold's settings
+  (ooeTestRandomRetsHookedWith), which must hold some branch. Controls
+  no-hold (select) and no-ret-hold (trio) are caught. ooe_sched's flop to
+  flop goes 19.9 to 24.7 NGD.
+- *The replay lead* (found by the ret run, and by the plain random run past
+  the gate's 25 seeds): ooe_sched's ready register enable had no lead for
+  the edge after a producer's replay, where ooe_wake's lines drop (the
+  stop lead captures the replay's own edge). A grandchild of a missed load,
+  granted on its parent's bypass before the parent's replay was known,
+  stayed ready and was granted again a cycle early. The lead is a producer
+  some row reads replayed at this edge; trio_tb runs 80 seeds clean, and
+  its control no-rep-lead (the bench rewrites the enable's flop without
+  the lead) is caught.
 - *The entry* (rev 277 (c), rev 279): 65 bits with slice 4's chwidth
   width and one fault cause with its valid (DEC's wins). Barrier data goes
   in a per-slot side buffer 2 deep, in program order, popped at retire
