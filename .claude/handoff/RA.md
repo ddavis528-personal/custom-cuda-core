@@ -44,14 +44,22 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 
 ## Register bookmarks (2026-11-01)
 AR 261, OA 296 (RA tab now rev 2), IS 182, TI 282, OI 252, CP 149, DA 99, RA 1, Conventions 16.
-Nothing had RA in Needs at session start.
+Nothing had RA in Needs at session start. AR now 262, OA 297, RA 30.
 
 ## Open work, most urgent first
-- AR round 1: RA-2..RA-12 raised (RA tab rev 2), notice sent to AR 2026-11-01;
-  RA-1 to OA (skill minute). Wait for AR's answers (notice), then round 2
-  or, when exhausted, the first-pass arch doc. Key RA positions: write
-  ports 6/bank not 2; read ports 11/bank; CG-5 needs load-return lead
-  fields; A-timeline guard@A, GPR read@A+1; LAT_RCU_ADDR->2;
-  COLLECTIVE->3 (merge with R class); xbar inside RCU; AGU stays in MIU.
-- First-pass RCU arch doc (after AR answers).
+- AR round 1 answered (AR rev 262), RA rows updated (RA rev 30). Settled:
+  5 scheduled write ports/bank + migration; SFU 2nd result on lane_rcu_res;
+  MIU lead fields (phys_dst..pred_we) for CG-5; A = RCU holding issue
+  payload, GPR read A+1, pred read A (+forward), lane gets A+3..A+5;
+  done valid leaves by A+L-1; LAT_RCU_ADDR counts to valid launch, plan 1
+  (2 fallback), PF-47; collective->3 pursue, hold 5 till Phase 1, then
+  OA then DA (changes OA-4), time register-index shfl (~21 NGD est);
+  xbar = RCU sub-module; Q-18: AGU in MIU; no area budget before Phase 1
+  (report flops / write D-mux / read mux separately); floorplan: 16 lanes
+  each long side, MIU one short side, PCA+OOE other, lane links 0 stages;
+  widening clear struck; migration borrows R ports + OOE idle-R 1-in-K.
+- Round 2 to AR: RA-13 dispatch_fault, RA-14 kill vs migration, RA-15 ops
+  on R. RA-16 to TI (schema/params), RA-17 to OA (idle-R rule). Notices
+  sent. When AR's round 2 returns and nothing new: write first-pass arch
+  doc (Claude doc, intent document), notify Daniel.
 - Spec reconciliation (rcu-arch.md section 5) on first edit of RCU tab.
