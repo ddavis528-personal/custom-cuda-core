@@ -129,6 +129,47 @@ def run(cmd):
     return cg.run(cmd)
 
 
+# ABC's mapping, cached beside the Yosys netlists (OI-95): keyed by the
+# netlist it reads, the genlib, the whole ABC script and yosys-abc's
+# version, so a hit is the mapped netlist and the report the run would
+# write. verify.sh clears build/synth-cache for a clean gate, as it does the
+# netlists; a scoped or --cached run keeps both.
+_ABC_VERSION = []
+
+
+def abc_cached(script, blif, out, genlib=None):
+    """yosys-abc `script` (reading `blif`, writing `out`), from the cache if
+    the same netlist, genlib and script have run before. Returns the
+    CompletedProcess, its stdout ABC's report either way."""
+    import hashlib, fcntl, shutil, subprocess
+    if not _ABC_VERSION:
+        # Its `version` prints no version: the binary itself is the key.
+        with open(shutil.which("yosys-abc"), "rb") as fh:
+            _ABC_VERSION.append(hashlib.sha256(fh.read()).hexdigest())
+    h = hashlib.sha256()
+    h.update(" ".join(script.replace(blif, "<in>").replace(out, "<out>").split()).encode())
+    h.update(b"\0" + _ABC_VERSION[0].encode())
+    for f in (blif, genlib or GENLIB):
+        with open(f, "rb") as fh:
+            h.update(b"\0" + hashlib.sha256(fh.read()).digest())
+    os.makedirs(cg.SYNTH_CACHE, exist_ok=True)
+    hit = os.path.join(cg.SYNTH_CACHE, "abc-" + h.hexdigest())
+    with open(hit + ".lock", "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        if not os.path.exists(hit + ".blif"):
+            r = run(["yosys-abc", "-c", script])
+            if r.returncode or not os.path.exists(out):
+                return r
+            shutil.copyfile(out, hit + ".tmp")
+            with open(hit + ".log.tmp", "w") as fh:
+                fh.write(r.stdout)
+            os.replace(hit + ".log.tmp", hit + ".log")
+            os.replace(hit + ".tmp", hit + ".blif")
+            return r
+    shutil.copyfile(hit + ".blif", out)
+    return subprocess.CompletedProcess([], 0, open(hit + ".log").read(), "")
+
+
 # == The mapped netlist ========================================================
 
 def genlib(path=GENLIB):
@@ -359,8 +400,8 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
     if r.returncode:
         raise SystemExit("check-ngd: %s: yosys failed:\n%s" % (work, (r.stdout + r.stderr)[-2000:]))
     def mapped_timing(how, out):
-        r = run(["yosys-abc", "-c", "read_blif %s; read_library %s; strash; dch; %s; "
-                 "print_stats; write_blif %s" % (blif, GENLIB, how, out)])
+        r = abc_cached("read_blif %s; read_library %s; strash; dch; %s; "
+                       "print_stats; write_blif %s" % (blif, GENLIB, how, out), blif, out)
         m = re.search(r"delay\s*=\s*([\d.]+)", r.stdout)
         if r.returncode or not m:
             raise SystemExit("check-ngd: %s: ABC failed:\n%s"
@@ -370,7 +411,13 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
             raise SystemExit("check-ngd: %s: the timing pass's longest path, %.2f NGD, is not "
                              "ABC's, %.2f (%s)" % (work, t.abc_like, t.abc, how))
         return t
-    t = mapped_timing("map", mapped)
+    # map and map -r read the same netlist and nothing of each other's, so
+    # they run side by side (OI-95: about 17 minutes on ooe_rob).
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(2) as ex:
+        f_map = ex.submit(mapped_timing, "map", mapped)
+        f_r = ex.submit(mapped_timing, "map -r", os.path.join(work, "map_r.blif"))
+        t, tr = f_map.result(), f_r.result()
     # Input to flop (NGD-3), each input from the better of two maps (OI-64):
     # map's area recovery lets every path with slack grow to the module's
     # longest, so an input's cone can read the worst path whatever its own
@@ -380,7 +427,6 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
     # legal implementation, and timing-driven synthesis takes the better for
     # a critical input. ABC drops BLIF input arrivals, so the inputs cannot
     # be costed in either map.
-    tr = mapped_timing("map -r", os.path.join(work, "map_r.blif"))
     t.ir_area, t.ir_r = t.ir, tr.ir
     t.ir = {p: min(v, tr.ir.get(p, v)) for p, v in t.ir.items()}
     # NGD-7's paths from each register, to the flops and to each output,
@@ -1240,13 +1286,54 @@ def selftest():
     _, f = block_check("fx_deep_in", "ngd_fx_blk_deepin", files, [], none)
     expect(any("input" in x and "port budget" in x for x in f),
            "a block input deep before its flop passed")
+    # 9. ABC's cache (OI-95) misses on every input it reads: the netlist,
+    #    the genlib's contents behind the same path, and the script; and a
+    #    hit hands back the report and netlist the run wrote.
+    cdir = os.path.join(BUILD, "fixture", "abc_cache")
+    os.makedirs(cdir, exist_ok=True)
+    nb, lib2 = os.path.join(cdir, "t.blif"), os.path.join(cdir, "lib.genlib")
+    def blif_of(body):
+        with open(nb, "w") as fh:
+            fh.write(".model t\n.inputs a b c\n.outputs y\n%s.end\n" % body)
+    def abc_delay(how, lib):
+        o = os.path.join(cdir, "o.blif")
+        if os.path.exists(o):
+            os.remove(o)
+        r = abc_cached("read_blif %s; read_library %s; strash; %s; print_stats; write_blif %s"
+                       % (nb, lib, how, o), nb, o, genlib=lib)
+        m = re.search(r"delay\s*=\s*([\d.]+)", r.stdout)
+        return (float(m.group(1)) if m else None), os.path.exists(o)
+    shutil_ = __import__("shutil")
+    shutil_.copyfile(GENLIB, lib2)
+    blif_of(".names a b x\n11 1\n.names x c y\n11 1\n")
+    d1, o1 = abc_delay("map", lib2)
+    d1b, o1b = abc_delay("map", lib2)
+    expect(d1 is not None and o1 and (d1b, o1b) == (d1, o1),
+           "an ABC cache hit did not hand back the run's report and netlist (%s, %s)" % (d1, d1b))
+    blif_of(".names a b y\n11 1\n")
+    d2, _ = abc_delay("map", lib2)
+    expect(d2 is not None and d2 < d1, "the ABC cache handed back a map after its netlist "
+           "changed (%s then %s)" % (d1, d2))
+    blif_of(".names a b x\n11 1\n.names x c y\n11 1\n")
+    txt = open(lib2).read()
+    with open(lib2, "w") as fh:
+        fh.write(re.sub(r"(PIN\s+\S+\s+\S+\s+\S+\s+\S+\s+)([\d.]+)(\s+\S+\s+)([\d.]+)",
+                        lambda m: "%s%g%s%g" % (m.group(1), float(m.group(2)) * 3, m.group(3),
+                                                float(m.group(4)) * 3), txt))
+    d3, _ = abc_delay("map", lib2)
+    expect(d3 is not None and d3 > d1, "the ABC cache handed back a map after the genlib "
+           "behind its path changed (%s then %s)" % (d1, d3))
+    n0 = len(glob.glob(os.path.join(cg.SYNTH_CACHE, "abc-*.blif")))
+    abc_delay("map -r", lib2)
+    expect(len(glob.glob(os.path.join(cg.SYNTH_CACHE, "abc-*.blif"))) == n0 + 1,
+           "the ABC cache keyed map -r as map")
     for x in bad:
         sys.stderr.write("check-ngd selftest: %s\n" % x)
     if not bad:
         print("  timing pass against ABC, outputs, inputs, the stage, paths straight through, "
               "inner helpers alone and inside a parent, registers shared by an output and the "
               "rest, observation ports, budget files, ratchet, coverage, glue, the assembled "
-              "block from its budgets and whole (%d controls)"
+              "block from its budgets and whole, ABC's cache (%d controls)"
               % checks)
     return 1 if bad else 0
 

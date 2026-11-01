@@ -400,6 +400,28 @@ def main():
                     "carrying the whole payload, not a lead"); return 1
             if "lead_why" not in c:
                 err("lead_fields are set with no reason recorded"); return 1
+        # Slot fields (OA's response OI-93): a field defined on the named
+        # slots alone, each a slot index or a parameter naming one, and zero
+        # on every other, which the skeleton's send and the SV checker bank
+        # hold. A link may then drop it from the other slots.
+        sf = c.get("slot_fields")
+        if sf is not None:
+            if c["rate"] < 2 or c["rate"] > 32:
+                err("slot_fields needs a channel of 2 to 32 slots"); return 1
+            pvals = {x["name"]: x["value"] for x in json.load(open(PARAMS))["params"]}
+            for f, sl in sf.items():
+                if f not in c["payload_fields"]:
+                    err("slot_fields names %s, not a payload field" % f); return 1
+                if not sl:
+                    err("slot_fields gives %s no slot" % f); return 1
+                for x in sl:
+                    v = pvals.get(x) if isinstance(x, str) else x
+                    if not isinstance(v, int) or not 0 <= v < c["rate"]:
+                        err("slot_fields: %s's slot %r is not a slot of %d" % (f, x, c["rate"])); return 1
+            if len(sf) == len(c["payload_fields"]):
+                err("every field is a slot field: some field must ride every slot"); return 1
+            if "slot_fields_why" not in c:
+                err("slot_fields are set with no reason recorded"); return 1
         # A request whose responses come back on another channel, with at
         # most `max` outstanding. Stated instead of a correlation tag, and
         # checked across the pair by ccv_common_chk_outstanding.

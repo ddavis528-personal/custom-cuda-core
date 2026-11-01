@@ -189,6 +189,7 @@ fi
 NEG_CASES="overrun:no_overrun at_depth:- phantom:no_phantom_credit
   phantom_with_send:no_phantom_credit stall:stall_honoured
   xpayload:payload_known_when_due xlead:lead_known_at_valid xlead_before:-
+  absent:absent_field_zero absent_lead:absent_lead_zero absent_idle:-
   timeout:response_within_n timeout_at_n:-
   timeout_n1:response_within_n timeout_second:response_within_n
   second_late:response_within_n"

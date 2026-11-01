@@ -308,6 +308,18 @@ def main():
                                     params, pv)
             L.extend(rows)
             L.append("")
+            if c.get("lead_fields"):
+                L.append("Lead fields (driven with valid, a cycle ahead of the "
+                         "rest): %s." % ", ".join("`%s`" % f for f in c["lead_fields"]))
+                L.append("")
+            if c.get("slot_fields"):
+                # A field defined only on some slots is zero on the others
+                # (AR rev 260); the ports still carry the full width.
+                L.append("Slot fields (defined only on the slots named, zero on "
+                         "the rest): %s." % "; ".join(
+                             "`%s` on %s" % (f, ", ".join("`%s`" % x for x in sl))
+                             for f, sl in c["slot_fields"].items()))
+                L.append("")
 
     text = "\n".join(L).rstrip() + "\n"
     cur = open(OUT).read() if os.path.exists(OUT) else None
