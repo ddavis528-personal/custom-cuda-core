@@ -1669,6 +1669,7 @@ void testResolveLagRetire() {
       Config c = baseConfig();
       c.retire_lag = 0;
       c.resolve_lag = 1;
+      c.resolve_lag_ret_only = 0;   // every branch lags: these programs carry no rets
       c.inject_retire_unresolved = control;
       std::mt19937 rng(seed);
       Env e(c, seed);

@@ -419,7 +419,7 @@ struct Config {
   /// room reads 0 for squash_room_lag cycles after its squash cycle (1, the
   /// default, OA's rev 280: the run's scan after a squash is from flops). 0
   /// is the same-cycle form.
-  unsigned resolve_lag = 0;
+  unsigned resolve_lag = 1;
   unsigned defer_release_lag = 0;
   unsigned squash_room_lag = 1;
   /// Measurement arms for resolve_lag (OI-86): lag only mispredicts (a
@@ -430,9 +430,11 @@ struct Config {
   /// only, branches and calls resolving from RCU's lead at 0. ret_hold: a
   /// branch or call is not selected for RCU the cycle after a ret is, so the
   /// ROB's one outcome path never resolves a branch beside a ret (checked;
-  /// inject_no_ret_hold drops the hold).
-  unsigned resolve_lag_ret_only = 0;
-  unsigned ret_hold = 0;
+  /// inject_no_ret_hold drops the hold). Both 1, with resolve_lag 1 (rets
+  /// at lag 1, branches and calls at 0), squash_act_lag 1 and
+  /// squash_held_room_lag 1, are the defaults (OA's rev 294, OI-98).
+  unsigned resolve_lag_ret_only = 1;
+  unsigned ret_hold = 1;
   unsigned branch_ends_window = 1;
   /// A squashed entry held for an op in flight frees its ROB slot as the op
   /// lands and its names a cycle later (1, the default, OA's rev 280: the
@@ -444,7 +446,7 @@ struct Config {
   /// registered squash, which RS, RAT, decq and the go take with a lead).
   /// Meanwhile the slot runs on: rename takes the wrong path, select issues
   /// it, and the squash takes all of it.
-  unsigned squash_act_lag = 0;
+  unsigned squash_act_lag = 1;
   /// The go's run from the tail sees a held entry's release a cycle late
   /// (OI-85 slice 2): the release comes off the done path, too deep for the
   /// scan that forms the run, so the scan reads it as held one cycle more.
@@ -461,7 +463,7 @@ struct Config {
   /// (that search would be the squash's, NGD-1) and reads the run from the
   /// held flops after. Without held entries the squash's run is the
   /// occupancy's, from flops, at once.
-  unsigned squash_held_room_lag = 0;
+  unsigned squash_held_room_lag = 1;
 
   // -- fault injection: the negative controls the core itself must carry ------
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)

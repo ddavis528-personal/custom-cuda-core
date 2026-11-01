@@ -981,8 +981,11 @@ queue's flush act a cycle after the resolution, from the ROB's squash
 register, the redirect (with the epoch it moves to) unchanged; meanwhile
 the slot runs on, and a branch younger than a due squash is not resolved.
 `held_room_lag` 1: the go's free run sees a held entry's release a cycle
-late. All three are 0 until DA rules (DA's (b), OA's rev 292: resolve_lag 0
-once RCU's branch lead lands, rets at 1; squash_act_lag 1). A branch at the
+late. DA took (b) (OA's rev 292): branches and calls resolve at 0 from
+RCU's branch lead, rets at 1, squash_act_lag 1; with OA's rev 294 (OI-98)
+the defaults are resolve_lag 1 with resolve_lag_ret_only 1 (so rets alone
+lag), ret_hold 1, squash_act_lag 1 and squash_held_room_lag 1;
+held_room_lag and kill_free_lag stay 0 by default, set by the ROB's bench. A branch at the
 head retires only once its resolution has acted (`retire.res_pend`): at
 retire_lag 0 it would otherwise retire in its completion's cycle and its
 squash, a cycle later, be lost, so every audit run hung retiring the
