@@ -10,6 +10,14 @@
 # the clean gate, every section and every netlist; the daily sweep's merge
 # and every release take it whatever is asked here.
 #
+# --import=a.tgz[,b.tgz] (OI-101; DA, 2026-11-01): a gate split across
+# containers. Each file is another container's tools/gate-export.sh of the
+# same commit: its passed sections are skipped here, and the joined gate
+# passes only if tools/gate-combine.py finds one commit and tree, and every
+# section the scope needs passed exactly once (SPLIT PASS / SPLIT SCOPED
+# PASS). A file's build/synth-cache, if it carries one, merges into ours
+# first (content-keyed entries; ours win on a clash).
+#
 # Prints a few lines: regen's commit if any, the gate's summary
 # (tools/gate-summary.py), what it pushed. Logs go to $CCV_LOGDIR. Exit 1 on
 # any refusal or a red gate, with nothing pushed; a red gate's job logs are
@@ -18,14 +26,15 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 ME=gate-push
 . tools/push-lib.sh
-PUSH=1 KEEP=0 FULLGATE=0
+PUSH=1 KEEP=0 FULLGATE=0 IMPORTS=""
 for a in "$@"; do
   case "$a" in
     --branches=*) CCV_PUSH_BRANCHES=${a#--branches=} ;;
     --no-push)    PUSH=0 ;;
     --keep-build) KEEP=1 ;;
     --full)       FULLGATE=1 ;;
-    *) echo "usage: $0 [--branches=a,b] [--no-push] [--keep-build] [--full]" >&2; exit 2 ;;
+    --import=*)   IMPORTS=$(echo "${a#--import=}" | tr ',' ' ') ;;
+    *) echo "usage: $0 [--branches=a,b] [--no-push] [--keep-build] [--full] [--import=a.tgz,..]" >&2; exit 2 ;;
   esac
 done
 clean_tree
@@ -50,9 +59,39 @@ if [ "$FULLGATE" != 1 ] && [ "$PUSH" = 1 ]; then
     say "no base on the target branches: the full gate"
   fi
 fi
+IMP_DIRS=() IMP_SKIP=""
+n=0
+for f in $IMPORTS; do
+  n=$((n + 1))
+  d="$LOGDIR/import-$SHA7-$STAMP-$n"
+  mkdir -p "$d" && tar -xzf "$f" -C "$d" || die "cannot unpack $f"
+  if [ -d "$d/build/synth-cache" ]; then
+    mkdir -p build/synth-cache && cp -rn "$d/build/synth-cache/." build/synth-cache/
+    say "merged $f's synthesis cache"
+  fi
+  [ -f "$d/build/verify/manifest.json" ] || continue
+  c=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' "$d/build/verify/manifest.json")
+  [ "$c" = "$PUSH_SHA" ] || die "$f ran ${c:0:7}, not $SHA7 (regen moved HEAD? gate $SHA7 there)"
+  ran=$(python3 -c 'import json,sys; print(",".join(j for j,v in json.load(open(sys.argv[1]))["sections"].items() if v["outcome"]=="pass"))' "$d/build/verify/manifest.json")
+  [ -n "$ran" ] && IMP_SKIP="${IMP_SKIP:+$IMP_SKIP,}$ran"
+  IMP_DIRS+=("$d/build/verify")
+  say "imported $f: ${ran:-no passed section}"
+done
+[ -n "$IMP_SKIP" ] && GATE_ARGS+=(--skip "$IMP_SKIP")
 say "gate on $SHA7 (log: $VLOG)"
 ./tools/verify.sh "${GATE_ARGS[@]}" >"$VLOG" 2>&1
-if ! python3 tools/gate-summary.py "${SUM_ARGS[@]}" "$VLOG"; then
+gate_ok() {
+  if [ ${#IMP_DIRS[@]} -gt 0 ]; then
+    # Here a PARTIAL PASS, half of the gate; the join decides.
+    local sum; sum=$(python3 tools/gate-summary.py "$VLOG")
+    echo "$sum"
+    case "$sum" in "gate: PARTIAL PASS"*) ;; *) return 1 ;; esac
+    python3 tools/gate-combine.py build/verify "${IMP_DIRS[@]}"
+  else
+    python3 tools/gate-summary.py "${SUM_ARGS[@]}" "$VLOG"
+  fi
+}
+if ! gate_ok; then
   # A red gate leaves ~16 GB in build/, more than the next gate can spare
   # (2026-10-31): keep its job logs beside the gate's log, then clear.
   if [ "$KEEP" != 1 ]; then

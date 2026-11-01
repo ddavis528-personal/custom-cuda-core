@@ -36,6 +36,16 @@
 #                            reads "SCOPED PASS", never "PASS". The daily
 #                            sweep's merge, every release and the nightly run
 #                            the default: every section, every netlist clean.
+#   tools/verify.sh --only a,b / --skip a,b
+#                            only these sections, or all but these (beside
+#                            --changed: within its scope). A section whose
+#                            `after` one is left out is refused. The result
+#                            reads "PARTIAL PASS": half of a gate split across
+#                            containers (OI-101; DA, 2026-11-01), which
+#                            tools/gate-combine.py joins for gate-push.
+#                            Every run writes build/verify/manifest.json: the
+#                            commit, its tree, each section's outcome and
+#                            log hash; tools/gate-export.sh packs it.
 #   CCV_JOBS=n               sections run n at a time after the generators
 #                            (default: every core; 1 is the serial gate).
 #                            Each section's log is build/verify/<job>.log.
@@ -48,13 +58,18 @@ export PATH="$PWD/tools/shim:$PATH"
 FULL=0
 CACHED=0
 BASE=""
+ONLY="" SKIP=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --full)    FULL=1 ;;
     --cached)  CACHED=1 ;;
     --changed) [ $# -ge 2 ] || { echo "verify: --changed needs a base" >&2; exit 2; }
                BASE=$2; CACHED=1; shift ;;
-    *) echo "usage: $0 [--full] [--cached] [--changed <base>]" >&2; exit 2 ;;
+    --only)    [ $# -ge 2 ] || { echo "verify: --only needs sections" >&2; exit 2; }
+               ONLY=$(echo "$2" | tr ',' ' '); shift ;;
+    --skip)    [ $# -ge 2 ] || { echo "verify: --skip needs sections" >&2; exit 2; }
+               SKIP=$(echo "$2" | tr ',' ' '); shift ;;
+    *) echo "usage: $0 [--full] [--cached] [--changed <base>] [--only a,b] [--skip a,b]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -188,6 +203,9 @@ job_s1d() {
 job_iface() {
   section "Interface checker convention"
   run "interface convention" ./tools/check-if.sh
+  # The gate's own joins, cheap, in a section every run takes (OI-95, OI-101).
+  run "gate scope map" python3 tools/gate-scope.py --selftest
+  run "split gate join" python3 tools/gate-combine.py --selftest
 }
 
 job_xprop() {
@@ -407,7 +425,6 @@ rm -rf "$LOGS" && mkdir -p "$LOGS"
 SCOPE=""
 if [ -n "$BASE" ]; then
   section "scope -- the sections the change since $BASE needs"
-  run "gate scope map" python3 tools/gate-scope.py --selftest
   sc=$(python3 tools/gate-scope.py "$BASE") || { echo "verify: no scope against $BASE"; exit 2; }
   echo "$sc" | sed 's/^/  /'
   SCOPE=$(echo "$sc" | head -1)
@@ -454,15 +471,38 @@ flush() {
   done
 }
 for j in $START; do state[$j]=wait; done
+declare -A outcome=()
 nskip=0
+for j in $ONLY $SKIP; do
+  case " $(echo $ORDER) " in *" $j "*) ;; *) echo "verify: no section $j"; exit 2 ;; esac
+done
 if [ -n "$SCOPE" ] && [ "$SCOPE" != ALL ]; then
   for j in $START; do
     case " $SCOPE " in *" $j "*) continue ;; esac
-    state[$j]=done; nskip=$((nskip + 1))
+    state[$j]=done; outcome[$j]=scope; nskip=$((nskip + 1))
     printf '\n== %s ==\n  SKIPPED -- not in the scope of the change since %s\n' "$j" "$BASE" >"$LOGS/$j.log"
   done
-  flush
 fi
+# --only / --skip: the sections another container runs (OI-101).
+if [ -n "$ONLY$SKIP" ]; then
+  for j in $START; do
+    [ "${state[$j]}" = wait ] || continue
+    keep=1
+    [ -n "$ONLY" ] && { case " $ONLY " in *" $j "*) ;; *) keep=0 ;; esac; }
+    case " $SKIP " in *" $j "*) keep=0 ;; esac
+    [ "$keep" = 1 ] && continue
+    state[$j]=done; outcome[$j]=elsewhere; nskip=$((nskip + 1))
+    printf '\n== %s ==\n  SKIPPED -- left to another run (--only/--skip)\n' "$j" >"$LOGS/$j.log"
+  done
+  for j in $START; do
+    [ "${state[$j]}" = wait ] || continue
+    for d in ${after[$j]:-}; do
+      [ "${outcome[$d]:-}" = elsewhere ] &&
+        { echo "verify: $j waits on $d, which --only/--skip leaves out"; exit 2; }
+    done
+  done
+fi
+flush
 while :; do
   for j in $START; do
     [ "${#job[@]}" -lt "$JOBS" ] || break
@@ -474,7 +514,7 @@ while :; do
   j=${job[$pid]}; unset "job[$pid]"
   state[$j]=done
   printf '  [%s: %ds]\n' "$j" $((SECONDS - ${t0[$j]})) >>"$LOGS/$j.log"
-  [ "$rc" = 0 ] || fail=1
+  [ "$rc" = 0 ] && outcome[$j]=pass || { outcome[$j]=fail; fail=1; }
   flush
 done
 for j in $ORDER; do
@@ -505,8 +545,27 @@ cat <<'PENDING'
   Stage 4+ per-block cycle                          -- after the skeleton
 PENDING
 
+# The run's record, for tools/gate-combine.py: one commit, its tree, and each
+# section's outcome (pass, fail, scope: outside --changed's, elsewhere: left
+# to another run) with its log's hash.
+{
+  printf '{"commit": "%s", "tree": "%s", "dirty": %s, "base": "%s", "cached": %s, "sections": {' \
+    "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')" \
+    "$([ -n "$(git status --porcelain --untracked-files=no)" ] && echo true || echo false)" \
+    "$BASE" "$([ "$CACHED" = 1 ] && echo true || echo false)"
+  sep=""
+  for j in $ORDER; do
+    printf '%s"%s": {"outcome": "%s", "log": "%s"}' "$sep" "$j" "${outcome[$j]:-fail}" \
+      "$(sha256sum "$LOGS/$j.log" 2>/dev/null | cut -c1-64)"
+    sep=", "
+  done
+  printf '}}\n'
+} >"$LOGS/manifest.json"
+
 section "result"
-if [ "$fail" = "0" ] && [ -n "$BASE" ]; then
+if [ "$fail" = "0" ] && [ -n "$ONLY$SKIP" ]; then
+  echo "  PARTIAL PASS -- $(( $(echo $ORDER | wc -w) - nskip )) of $(echo $ORDER | wc -w) sections${BASE:+, the change since $BASE}; half of a split gate, not a gate"
+elif [ "$fail" = "0" ] && [ -n "$BASE" ]; then
   echo "  SCOPED PASS -- $(( $(echo $ORDER | wc -w) - nskip )) of $(echo $ORDER | wc -w) sections, the change since $BASE, netlists from build/synth-cache"
 elif [ "$fail" = "0" ] && [ "$CACHED" = 1 ]; then
   echo "  CACHED PASS -- netlists from build/synth-cache; not the gate for a push"
