@@ -24,6 +24,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   Push only to `ccr-c22116ce-1vzyjg`; never to a requester's branch. Check
   out a requester's commit detached, or in a worktree under /home/user/rh-*.
 - Fresh container: `./tools/setup-toolchain.sh` once.
+- The disk allowance is about 39 GB in all. A gate's build/ needs 5 GB or more, so
+  keep swap at 6 GB or less during a gate and delete finished jobs' oracles and
+  builds promptly.
 - A detached job dies when the idle container is reclaimed. Keep a tracked
   background task (e.g. rh-jobs/watch.sh) open while it runs, and make jobs
   resumable.
@@ -49,6 +52,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   ngd/cg), swap on. Watcher rh-jobs/watchgate.sh 6900. When it ends: send OI the
   commit, the gate-summary.py line, the slowest sections, and any failures with
   their first errors. Never push; OI pushes after a green result.
+  Run 1 died at disk-full (18:05Z). Restarted 18:08Z with a 6 GB swap;
+  rh-jobs/disklog.sh logs ~/ccv-logs/disklog.txt.
 
 ## Done
 - Rev 293 pricing (OI, 2026-10-31 to 11-01): coremark128 and coremark32,
