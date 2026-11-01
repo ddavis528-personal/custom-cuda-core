@@ -9,7 +9,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   design engineer; answer him as one.
 - AR owns: the architecture docs and the partitioning spec; the per-block
   specs for blocks with no session (RAU, PCA, DCU, MIU, FET, LANE, DEC, SYU,
-  SPM, and RCU's text); the AR register tab; docs/perf-register.md (PF-30
+  SPM; RCU's text until RA's first edit); the AR register tab; docs/perf-register.md (PF-30
   on); reading traces.
 - AR does not write code. It writes only its own tab, plus DA rows that
   record Daniel's own words ("Recorded by AR in Daniel's session").
@@ -62,12 +62,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 260, OA 293, TI 280, IS 182, CP 149, OI 247, DA 98,
-  Conventions 15. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  record): AR 261, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
+  Conventions 16, RA 1 (empty). Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
-- Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 20), MIU
+- Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 21, RA's now), MIU
   aa7a288a-dae2 (rev 46), RAU 090626bb-a50c (rev 33), FET 75d75b94-1614
   (rev 45), DEC 1d1fdcda-739e, DCU c18a112b-d2c6, SPM b66e4f64-612c, LANE
   ea1f36a7-0725, SYU 1f8b4472-68c1, OOE 515615a9-8caf (OA's).
@@ -77,11 +77,20 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 - rev 96: TI-46 (b) at r = 2; decode-queue share 7, queue 13.
 - rev 97: IS-25 (O-84): frames in the bottom of the thread's O-83 region,
   R15 = W. Built by TI in 5fe7177 (pin d9ddd2c); PF-46 adopted and built.
+- rev 99 (2026-11-01, AR recorded): RCU is the next major block; a new RCU
+  architecture session, RA, owns it; AR stays top-level arch. RA tab node
+  9851686b-2b0a (file 8b9d4d3a-16f1), roster entry session null until RA
+  writes it, handoff docs/rcu-arch.md, AR rev 261.
 - rev 98 (recorded by OA, Daniel: "I agree with your recommendation for
   OI-86/88"): (b), the RCU branch lead with resolve_lag 0, plus
   squash_act_lag 1 (audit +1.2%).
 
 ## Open work (most urgent first)
+0. RA ramp: when RA's questions arrive (RA tab), answer AR's share first:
+   Q-18 (address generation, with MIU's spec), crossbar as its own block,
+   PRF flops/area against a top-level budget (none exists), 192 rows after
+   RA's Phase 1 slice, floorplan adjacency. Don't edit the RCU spec tab
+   once RA has; send text as AR rows with RA in Needs.
 1. L1 size, 64 vs 512 KiB: TI's sweep on CP-64's eight traces, frames in
    place only, 64 KiB at hit base 7 vs 512 KiB at 7, 8, 9. Daniel's test:
    does 512 KiB hold across many traces. CoreMark alone: 512 KiB -7.1%,
