@@ -57,6 +57,20 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
   OA (OA rev 288). Waiting: AR, OI.
 
 ## Open work (most urgent first)
+-2. 2026-11-01 evening (DA): CI runners died on OI's 2b (runs 538/543/544,
+   no logs; NGD+CG on full ooe_rob OOM a 16 GB runner). Built heavy-unit
+   lock 0facb89 (CCV_HEAVY_SERIAL=1 in ci.yml, tools/heavy-units.json,
+   light limit 2 GB) and gate-scratch.sh ca27c87/6d4a2ae (OI-102; DA chose
+   a scratch branch; proxy refuses branch delete (403), so no drop;
+   gate-scratch/TI left on origin, CI run 551 on it from 0facb89).
+   LOCAL, NOT PUSHED: trial full gate on OI 2b tip + lock in /home/user/ti-coll
+   (logs /home/user/ccv-logs/trial), then gate-push --full, then TI rows:
+   OI-102 answer + every agent's sweep skips gate-scratch/* (notify all).
+   Asked DA: enable the lock for local gates too (sweep) - unanswered.
+   Then after the 02:11 sweep: AR re:RA-10 (delete rcu_miu_width, close
+   Q-18), RA-16 (schema/params, task list), AR re:RA-11 PHYS_REGS sweep.
+   New agent RA (RCU architecture), tab 9851686b-2b0a, read rev 30; AR tab
+   read rev 262; OI rev 252.
 -1. Done 2026-10-31: shfl lat_class 5 (b0d91c2) and AR rev 260's lead +
    slot_fields step A (80697a3; TI rev 277). Open from it: step B (narrow
    generated ports/nets per slot, ~50 c["bits"] sites) deferred until a
