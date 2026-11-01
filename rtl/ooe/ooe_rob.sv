@@ -191,9 +191,9 @@ module ooe_rob #(
   output logic [S-1:0]        rd_stay_cq04h,
   // A squash's bulk discard (A-41, A-53), when it takes a store at MIU:
   // per slot, the branch's index and the youngest allocated entry's.
-  output logic [S-1:0]        dc_v_cq04h,
-  output logic [S*LD-1:0]     dc_br_cq04h,
-  output logic [S*LD-1:0]     dc_disp_cq04h
+  output logic [S-1:0]        dc_v_cq03h,
+  output logic [S*LD-1:0]     dc_br_cq03h,
+  output logic [S*LD-1:0]     dc_disp_cq03h
 );
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) begin
@@ -317,7 +317,10 @@ module ooe_rob #(
   // is free) and its names go to the free lists through the kill register.
   localparam int KC = 2 * A + 1;
   logic [S*KC-1:0] kc_cq02h;
-  logic [S-1:0]    rd_q_cq03h;                 // the squash acting (R + 1): the redirect's lead
+  // The squash acting (R + 1): rd_s and sp_s are the window's own state at
+  // stage 02 (the squash acts on it), rd_q and sq_p their stage-03 copies
+  // for the redirect and the discard (CCV-L23; synthesis merges each pair).
+  logic [S-1:0]    rd_s_cq02h, rd_q_cq03h, ckfa_s_cq02h;   // ckfa_s: a checkpoint frees (the register's enable)
   (* keep *) logic [S-1:0] rd_o_cq03h;        // its copy for rd_l (NGD-7)
   logic            kl_cq02h;
   always_comb begin
@@ -345,14 +348,14 @@ module ooe_rob #(
             // Killed: a squash acting now, or its rank under the kill count.
             // A fill that lands goes to the fill pointer plus its rank less
             // the count.
-            kl_cq02h = rd_q_cq03h[s];
+            kl_cq02h = rd_s_cq02h[s];
             sel_cq02h = '0;
             for (int k = 0; k < KC; k++) begin
               if (kc_cq02h[s * KC + k] && 32'(rk_cq02h) < k) kl_cq02h = 1'b1;
               for (int r = 0; r < A; r++)
                 if (kc_cq02h[s * KC + k] && 32'(rk_cq02h) == r + k) sel_cq02h = sel_cq02h | rotl(woh_cq02h[s * D +: D], r);
             end
-            sel_cq02h = sel_cq02h & {D{~rd_q_cq03h[s]}};
+            sel_cq02h = sel_cq02h & {D{~rd_s_cq02h[s]}};
             for (int i = 0; i < D; i++) fl_e_cq02h[(s * D + i) * A + l] = sel_cq02h[i];
             nfl_cq02h[s * LA +: LA] = nfl_cq02h[s * LA +: LA] + 1'b1;
             if (!kl_cq02h) nlv_cq02h[s * LA +: LA] = nlv_cq02h[s * LA +: LA] + 1'b1;
@@ -476,14 +479,14 @@ module ooe_rob #(
   // frees its new names now; an unfilled one frees its slot now and its
   // names as its fill lands (the kill count). The model squashes ahead of
   // retire, so nothing behind the branch retires first (the window, below).
-  logic [S*D-1:0] sqm_cq03h, sq_p_cq03h;
-  logic [S-1:0]   sq_rt_cq03h;                  // the branch retired at R
+  logic [S*D-1:0] sqm_cq02h, sp_s_cq02h, sq_p_cq03h;
+  logic [S-1:0]   sq_rt_cq02h;                  // the branch retired at R
   logic [S*D-1:0] pfx_cq02h, pick_cq02h, cw_e_cq02h;
   logic [S*D-1:0] sqe_cq02h, outq_cq02h, hds_cq02h, frel_cq02h, krel_cq02h;
   always_comb
     for (int e = 0; e < S * D; e++) begin
       outq_cq02h[e] = (oc_cq02h[e * NR * RCW +: NR * RCW] != '0) | (am_cq02h[e] & ~md_cq02h[e]) | cp_cq02h[e];
-      sqe_cq02h[e]  = rd_q_cq03h[e / D] & sqm_cq03h[e] & v_cq02h[e] & ~hd_cq02h[e];
+      sqe_cq02h[e]  = rd_s_cq02h[e / D] & sqm_cq02h[e] & v_cq02h[e] & ~hd_cq02h[e];
       // An unfilled entry has issued nothing, so owes nothing (asserted,
       // unfilled_owes_none): the held set needs no unfilled mask, which
       // keeps the fill pointer's decode off the room's path (NGD-1).
@@ -553,7 +556,7 @@ module ooe_rob #(
   logic [S*NC-1:0] och_nx_cq02h, ufh_nx_cq02h;
   logic [S*LB-1:0] run_nx_cq02h;
   logic [S-1:0]    reach_nx_cq02h, reach_q_cq02h;
-  logic [S*D-1:0]  hrel_q_cq03h;               // the release register (below)
+  logic [S*D-1:0]  hrel_q_cq02h;               // the release register (below)
   logic [S*KC-1:0] kc_nx_cq02h;
   logic [S*NC-1:0] uxa_all_cq02h;              // for the kill count's bound (asserted)
   logic [NC-1:0]   ox_cq02h, ux_cq02h, uxa_cq02h, sc_cq02h;
@@ -652,22 +655,22 @@ module ooe_rob #(
         woh_nx_cq02h[s * D +: D] = woh_nx_cq02h[s * D +: D] |
                                    ({D{nlv_cq02h[s * LA +: LA] == LA'(k)}} & rotl(woh_cq02h[s * D +: D], k));
       uxa_all_cq02h[s * NC +: NC] = '0;
-      if (rd_q_cq03h[s]) begin
+      if (rd_s_cq02h[s]) begin
         // The squash (no allocation in its cycle, asserted): the tail and
         // the fill pointer to the branch + 1; held, the entries from the
         // head through the branch (none once it has retired), less this
         // cycle's retirements; nothing unfilled, and the fills still owed
         // counted to be killed.
-        toh_nx_cq02h[s * D +: D] = rotl(sq_p_cq03h[s * D +: D], 1);
-        woh_nx_cq02h[s * D +: D] = rotl(sq_p_cq03h[s * D +: D], 1);
+        toh_nx_cq02h[s * D +: D] = rotl(sp_s_cq02h[s * D +: D], 1);
+        woh_nx_cq02h[s * D +: D] = rotl(sp_s_cq02h[s * D +: D], 1);
         ufh_nx_cq02h[s * NC +: NC] = NC'(1);
         ugt_nx_cq02h[s * A +: A] = '0;
         kc_nx_cq02h[s * KC +: KC] = uxa_cq02h[KC-1:0];
         uxa_all_cq02h[s * NC +: NC] = uxa_cq02h;
         sc_cq02h = '0;
         for (int k = 1; k < NC; k++)
-          sc_cq02h[k] = |(hoh_cq02h[s * D +: D] & rotl(sq_p_cq03h[s * D +: D], (D - (k - 1)) % D));   // entry h + k - 1
-        if (sq_rt_cq03h[s]) sc_cq02h = NC'(1);
+          sc_cq02h[k] = |(hoh_cq02h[s * D +: D] & rotl(sp_s_cq02h[s * D +: D], (D - (k - 1)) % D));   // entry h + k - 1
+        if (sq_rt_cq02h[s]) sc_cq02h = NC'(1);
         och_nx_cq02h[s * NC +: NC] = '0;
         for (int k = 0; k < RP + 1; k++)
           och_nx_cq02h[s * NC +: NC] = och_nx_cq02h[s * NC +: NC] | ({NC{nret_cq02h[s * LA +: LA] == LA'(k)}} & (sc_cq02h >> k));
@@ -719,7 +722,7 @@ module ooe_rob #(
       // holding entries, 0 for a cycle (the model's squash_held_room_lag 1),
       // the run then read from the held flops the cycle after, its enable
       // the held entries. Otherwise the tail's, less the count.
-      rsq_cq02h = rd_q_cq03h[s] | rel_q_cq02h[s];
+      rsq_cq02h = rd_s_cq02h[s] | rel_q_cq02h[s];
       // From the tail with held entries, the first one's offset (dt, from
       // the held flops); reaching the head, D less the occupancy (ox; a
       // squash's or a release's, ochs), whose terms are flops only. With no
@@ -743,7 +746,7 @@ module ooe_rob #(
       // What the next window may take: nothing younger than a mispredict
       // picked now or squashing now, and no held entry; no allocation now
       // either when there is a pick (it is younger).
-      wok_cq02h  = ~pfx_cq02h[s * D +: D] & ~({D{rd_q_cq03h[s]}} & sqm_cq03h[s * D +: D]) & ~hd_cq02h[s * D +: D];
+      wok_cq02h  = ~pfx_cq02h[s * D +: D] & ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]) & ~hd_cq02h[s * D +: D];
       anyp_cq02h = |cw_e_cq02h[s * D +: D];
       gfe_v_cq02h = gwe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~ufm_cq02h[s * D +: D];
       pfe_v_cq02h = pwe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~ufm_cq02h[s * D +: D];
@@ -792,14 +795,14 @@ module ooe_rob #(
       // A squash and a held entry move them too, and the cycle after its
       // release (the room then reaches the head), and a kill count waiting
       // for its fills.
-      ptr_en_cq02h[s] = al_q_cq02h[s] | (|w_cq02h[s * RP +: RP]) | rel_q_cq02h[s] | rd_q_cq03h[s] | (|hd_cq02h[s * D +: D]) |
-                        (|hrel_q_cq03h[s * D +: D]);
-      tl_en_cq02h[s]  = al_q_cq02h[s] | rel_q_cq02h[s] | rd_q_cq03h[s];
+      ptr_en_cq02h[s] = al_q_cq02h[s] | (|w_cq02h[s * RP +: RP]) | rel_q_cq02h[s] | rd_s_cq02h[s] | (|hd_cq02h[s * D +: D]) |
+                        (|hrel_q_cq02h[s * D +: D]);
+      tl_en_cq02h[s]  = al_q_cq02h[s] | rel_q_cq02h[s] | rd_s_cq02h[s];
       fp_en_cq02h[s]  = (fl_q_cq02h & (~ufh_cq02h[s * NC] | ~kc_cq02h[s * KC])) | al_q_cq02h[s] | rel_q_cq02h[s] |
-                        rd_q_cq03h[s];
+                        rd_s_cq02h[s];
       cm_en_cq02h[s]  = (((|dn_q_cq02h) | (|cm_q_cq02h)) & wt_cq02h[s]) | ev_q_cq02h[s] |
                         (|w_cq02h[s * RP +: RP]) | (fl_q_cq02h & ~ufh_cq02h[s * NC]) | al_q_cq02h[s] |
-                        rd_q_cq03h[s] | (|hd_cq02h[s * D +: D]);
+                        rd_s_cq02h[s] | (|hd_cq02h[s * D +: D]);
       win_en_cq02h[s] = ptr_en_cq02h[s] | fp_en_cq02h[s] | cm_en_cq02h[s];
     end
   for (genvar gs = 0; gs < S; gs++) begin : g_slot
@@ -952,11 +955,11 @@ module ooe_rob #(
   // cycle more). And the kill register: the names of last cycle's killed
   // fills.
   logic [S*D-1:0]     frx_cq02h;
-  logic [A-1:0]       kv_q_cq03h, kpa_q_cq03h;
-  logic [A*GW-1:0]    kg_q_cq03h;
-  logic [A*NSB-1:0]   ks_q_cq03h;
-  logic [A*PW-1:0]    kp_q_cq03h;
-  assign frx_cq02h = frel_cq02h | hrel_q_cq03h;
+  logic [A-1:0]       kv_q_cq02h, kpa_q_cq02h;
+  logic [A*GW-1:0]    kg_q_cq02h;
+  logic [A*NSB-1:0]   ks_q_cq02h;
+  logic [A*PW-1:0]    kp_q_cq02h;
+  assign frx_cq02h = frel_cq02h | hrel_q_cq02h;
   always_comb begin
     gfree_nx_cq02h = '0;
     pfree_nx_cq02h = '0;
@@ -969,12 +972,12 @@ module ooe_rob #(
           if (pal_cq02h[e] && pname_cq02h[e * PW +: PW] == PW'(p)) pfree_nx_cq02h[p] = 1'b1;
       end
     for (int l = 0; l < A; l++)
-      if (kv_q_cq03h[l]) begin
+      if (kv_q_cq02h[l]) begin
         for (int r = 0; r < NG; r++)
-          if (kg_q_cq03h[l * GW + (GW - GR) +: GR] == GR'(r))
-            gfree_nx_cq02h[r * NSB +: NSB] = gfree_nx_cq02h[r * NSB +: NSB] | ks_q_cq03h[l * NSB +: NSB];
+          if (kg_q_cq02h[l * GW + (GW - GR) +: GR] == GR'(r))
+            gfree_nx_cq02h[r * NSB +: NSB] = gfree_nx_cq02h[r * NSB +: NSB] | ks_q_cq02h[l * NSB +: NSB];
         for (int p = 0; p < NP; p++)
-          if (kpa_q_cq03h[l] && kp_q_cq03h[l * PW +: PW] == PW'(p)) pfree_nx_cq02h[p] = 1'b1;
+          if (kpa_q_cq02h[l] && kp_q_cq02h[l * PW +: PW] == PW'(p)) pfree_nx_cq02h[p] = 1'b1;
       end
     for (int s = 0; s < S; s++)
       for (int k = 0; k < RP; k++) begin
@@ -998,7 +1001,7 @@ module ooe_rob #(
   // The write bits clock while the window retires or last did (to clear
   // them); the fields, payload under them, only as it retires; the free
   // masks as it frees or last did.
-  logic rb_en_cq02h, rf_en_cq02h, rm_en_cq02h, r_live_cq03h, m_live_cq03h;
+  logic rb_en_cq02h, rf_en_cq02h, rm_en_cq02h, r_live_cq03h, m_live_cq02h;
   assign rf_en_cq02h = |w_cq02h;
   assign rb_en_cq02h = rf_en_cq02h | r_live_cq03h;
   // The free masks may take something now: a retirement that frees, a
@@ -1006,26 +1009,26 @@ module ooe_rob #(
   // killed fill, each from flops, so the enable stays within CG-2's 8 (the
   // releases themselves are the squash's search, 15.7 deep).
   logic mw_cq02h;
-  assign mw_cq02h    = (|(w_cq02h & (wgf_cq02h | wpf_cq02h))) | (|rd_q_cq03h) | (|hrel_q_cq03h) | (|kv_q_cq03h);
-  assign rm_en_cq02h = mw_cq02h | m_live_cq03h;
+  assign mw_cq02h    = (|(w_cq02h & (wgf_cq02h | wpf_cq02h))) | (|rd_s_cq02h) | (|hrel_q_cq02h) | (|kv_q_cq02h);
+  assign rm_en_cq02h = mw_cq02h | m_live_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       r_live_cq03h <= 1'b0;
-      m_live_cq03h <= 1'b0;
+      m_live_cq02h <= 1'b0;
     end else begin
       r_live_cq03h <= rf_en_cq02h;
-      m_live_cq03h <= mw_cq02h;
+      m_live_cq02h <= mw_cq02h;
     end
   end
   // The release register, clocked while an entry is held or it holds one.
   logic [S-1:0] hr_en_cq02h;
   always_comb
     for (int s = 0; s < S; s++)
-      hr_en_cq02h[s] = rd_q_cq03h[s] | (|hd_cq02h[s * D +: D]) | (|hrel_q_cq03h[s * D +: D]);
+      hr_en_cq02h[s] = rd_s_cq02h[s] | (|hd_cq02h[s * D +: D]) | (|hrel_q_cq02h[s * D +: D]);
   for (genvar gs = 0; gs < S; gs++) begin : g_hrel
     always_ff @(posedge ooe_core_clk) begin
-      if (rst_r01h)              hrel_q_cq03h[gs * D +: D] <= '0;
-      else if (hr_en_cq02h[gs])  hrel_q_cq03h[gs * D +: D] <= hrel_e_cq02h[gs * D +: D];
+      if (rst_r01h)              hrel_q_cq02h[gs * D +: D] <= '0;
+      else if (hr_en_cq02h[gs])  hrel_q_cq02h[gs * D +: D] <= hrel_e_cq02h[gs * D +: D];
     end
   end
   // The kill register: each killed fill's names, clocked while a fill may be
@@ -1033,18 +1036,18 @@ module ooe_rob #(
   logic kr_en_cq02h, kd_en_cq02h;
   logic [S-1:0] kc0_cq02h;                     // the slot's kill count is zero
   always_comb for (int s = 0; s < S; s++) kc0_cq02h[s] = kc_cq02h[s * KC];
-  assign kd_en_cq02h = fl_q_cq02h & ((|rd_q_cq03h) | ~(&kc0_cq02h));
-  assign kr_en_cq02h = kd_en_cq02h | (|kv_q_cq03h);
+  assign kd_en_cq02h = fl_q_cq02h & ((|rd_s_cq02h) | ~(&kc0_cq02h));
+  assign kr_en_cq02h = kd_en_cq02h | (|kv_q_cq02h);
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h)         kv_q_cq03h <= '0;
-    else if (kr_en_cq02h) kv_q_cq03h <= fk_cq02h & fl_v_cq02h & {A{fl_q_cq02h}};
+    if (rst_r01h)         kv_q_cq02h <= '0;
+    else if (kr_en_cq02h) kv_q_cq02h <= fk_cq02h & fl_v_cq02h & {A{fl_q_cq02h}};
   end
   always_ff @(posedge ooe_core_clk) begin
     if (kd_en_cq02h) begin
-      kpa_q_cq03h <= fl_palloc_cq02h & ~fl_nop_cq02h;
-      kg_q_cq03h  <= fl_gname_cq02h;
-      kp_q_cq03h  <= fl_pname_cq02h;
-      for (int l = 0; l < A; l++) ks_q_cq03h[l * NSB +: NSB] <= fl_gnsec_cq02h[l * NSB +: NSB] & {NSB{~fl_nop_cq02h[l]}};
+      kpa_q_cq02h <= fl_palloc_cq02h & ~fl_nop_cq02h;
+      kg_q_cq02h  <= fl_gname_cq02h;
+      kp_q_cq02h  <= fl_pname_cq02h;
+      for (int l = 0; l < A; l++) ks_q_cq02h[l * NSB +: NSB] <= fl_gnsec_cq02h[l * NSB +: NSB] & {NSB{~fl_nop_cq02h[l]}};
     end
   end
   // The leads' own registers (the output's copies, NGD-7).
@@ -1060,7 +1063,7 @@ module ooe_rob #(
       kpl_q_cq02h <= 1'b0;
     end else begin
       sql_q_cq02h <= |rd_nx_cq02h;
-      hdl_q_cq02h <= (|hda_cq02h) | (|rd_q_cq03h);   // held, or a squash that may hold and release now
+      hdl_q_cq02h <= (|hda_cq02h) | (|rd_s_cq02h);   // held, or a squash that may hold and release now
       kgl_q_cq02h <= kd_en_cq02h && |(fk_cq02h & fl_v_cq02h & ~fl_nop_cq02h & fl_gwe_cq02h);
       kpl_q_cq02h <= kd_en_cq02h && |(fk_cq02h & fl_v_cq02h & ~fl_nop_cq02h & fl_palloc_cq02h);
     end
@@ -1239,7 +1242,7 @@ module ooe_rob #(
   logic [S-1:0]   rs_en_cq02h;
   logic [S*D-1:0] sqa_cq02h;                       // in the squash acting now
   always_comb
-    for (int e = 0; e < S * D; e++) sqa_cq02h[e] = rd_q_cq03h[e / D] & sqm_cq03h[e];
+    for (int e = 0; e < S * D; e++) sqa_cq02h[e] = rd_s_cq02h[e / D] & sqm_cq02h[e];
   assign cand_cq02h   = v_cq02h & cmp_q_cq02h & br_cq02h & ~rsv_cq02h & ~hd_cq02h & ~sqa_cq02h;
   assign rsv_nx_cq02h = (rsv_cq02h | cand_cq02h | sqe_cq02h) & ~fd_en_cq02h;
   always_comb
@@ -1318,31 +1321,36 @@ module ooe_rob #(
   assign cnx_cq02h = v_cq02h & cmp_q_cq02h & br_cq02h & ~rsv_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
-      rs_en_cq02h[s] = (|cnx_cq02h[s * D +: D]) | rd_q_cq03h[s] | (|ckf_cq03h[s * NK +: NK]);
+      rs_en_cq02h[s] = (|cnx_cq02h[s * D +: D]) | rd_s_cq02h[s] | ckfa_s_cq02h[s];
     end
   for (genvar gs = 0; gs < S; gs++) begin : g_res
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
+        rd_s_cq02h[gs]                <= 1'b0;
         rd_q_cq03h[gs]                <= 1'b0;
         rd_o_cq03h[gs]                <= 1'b0;
         ckf_cq03h[gs * NK +: NK]      <= '0;
+        ckfa_s_cq02h[gs]              <= 1'b0;
       end else if (rs_en_cq02h[gs]) begin
+        rd_s_cq02h[gs]                <= |pick_cq02h[gs * D +: D];
         rd_q_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
         rd_o_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
         ckf_cq03h[gs * NK +: NK]      <= ckf_nx_cq02h[gs * NK +: NK];
+        ckfa_s_cq02h[gs]              <= |ckf_nx_cq02h[gs * NK +: NK];
       end
     end
     always_ff @(posedge ooe_core_clk) begin
       if (rs_en_cq02h[gs]) begin
+        sp_s_cq02h[gs * D +: D] <= pick_cq02h[gs * D +: D];
         sq_p_cq03h[gs * D +: D] <= pick_cq02h[gs * D +: D];
-        sqm_cq03h[gs * D +: D]  <= sqm_nx_cq02h[gs * D +: D];
-        sq_rt_cq03h[gs]         <= sq_rt_nx_cq02h[gs];
+        sqm_cq02h[gs * D +: D]  <= sqm_nx_cq02h[gs * D +: D];
+        sq_rt_cq02h[gs]         <= sq_rt_nx_cq02h[gs];
       end
     end
   end
   assign rd_l_cq03h = rd_o_cq03h;
   always_comb
-    for (int s = 0; s < S; s++) rd_nx_cq02h[s] = rs_en_cq02h[s] ? |pick_cq02h[s * D +: D] : rd_q_cq03h[s];
+    for (int s = 0; s < S; s++) rd_nx_cq02h[s] = rs_en_cq02h[s] ? |pick_cq02h[s * D +: D] : rd_s_cq02h[s];
   // The squash's bulk discard (A-41, A-53): when it takes a store at MIU
   // (uncommitted: commit is at retire), the circular range (branch, tail]
   // goes to MIU at once, its loads with it (TI-21); a cycle after the squash.
@@ -1350,25 +1358,25 @@ module ooe_rob #(
     enc = '0;
     for (int i = 0; i < D; i++) enc = enc | ({LD{oh[i]}} & LD'(i));
   endfunction
-  logic [S-1:0]    dc_nx_cq03h, dc_en_cq03h, dcp_en_cq03h;
-  logic [S*LD-1:0] dcb_nx_cq03h, dcd_nx_cq03h;
+  logic [S-1:0]    dc_nx_cq02h, dc_en_cq02h, dcp_en_cq02h;
+  logic [S*LD-1:0] dcb_nx_cq02h, dcd_nx_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
-      dc_nx_cq03h[s] = |(sqe_cq02h[s * D +: D] & st_cq02h[s * D +: D] & am_cq02h[s * D +: D]);
-      dcb_nx_cq03h[s * LD +: LD] = enc(sq_p_cq03h[s * D +: D]);
-      dcd_nx_cq03h[s * LD +: LD] = enc(rotl(toh_cq02h[s * D +: D], D - 1));
-      dc_en_cq03h[s] = rd_q_cq03h[s] | dc_v_cq04h[s];
-      dcp_en_cq03h[s] = rd_q_cq03h[s];            // the payload, with a squash
+      dc_nx_cq02h[s] = |(sqe_cq02h[s * D +: D] & st_cq02h[s * D +: D] & am_cq02h[s * D +: D]);
+      dcb_nx_cq02h[s * LD +: LD] = enc(sp_s_cq02h[s * D +: D]);
+      dcd_nx_cq02h[s * LD +: LD] = enc(rotl(toh_cq02h[s * D +: D], D - 1));
+      dc_en_cq02h[s] = rd_s_cq02h[s] | dc_v_cq03h[s];
+      dcp_en_cq02h[s] = rd_s_cq02h[s];            // the payload, with a squash
     end
   for (genvar gs = 0; gs < S; gs++) begin : g_dc
     always_ff @(posedge ooe_core_clk) begin
-      if (rst_r01h)             dc_v_cq04h[gs] <= 1'b0;
-      else if (dc_en_cq03h[gs]) dc_v_cq04h[gs] <= dc_nx_cq03h[gs];
+      if (rst_r01h)             dc_v_cq03h[gs] <= 1'b0;
+      else if (dc_en_cq02h[gs]) dc_v_cq03h[gs] <= dc_nx_cq02h[gs];
     end
     always_ff @(posedge ooe_core_clk) begin
-      if (dcp_en_cq03h[gs]) begin
-        dc_br_cq04h[gs * LD +: LD]   <= dcb_nx_cq03h[gs * LD +: LD];
-        dc_disp_cq04h[gs * LD +: LD] <= dcd_nx_cq03h[gs * LD +: LD];
+      if (dcp_en_cq02h[gs]) begin
+        dc_br_cq03h[gs * LD +: LD]   <= dcb_nx_cq02h[gs * LD +: LD];
+        dc_disp_cq03h[gs * LD +: LD] <= dcd_nx_cq02h[gs * LD +: LD];
       end
     end
   end
@@ -1514,8 +1522,8 @@ module ooe_rob #(
   logic [S-1:0] sq_al_cq02h, kc_over_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
-      sq_al_cq02h[s]   = rd_q_cq03h[s] && al_n_cq02h[s * LA +: LA] != '0;
-      kc_over_cq02h[s] = rd_q_cq03h[s] && (uxa_all_cq02h[s * NC +: NC] >> KC) != '0;
+      sq_al_cq02h[s]   = rd_s_cq02h[s] && al_n_cq02h[s * LA +: LA] != '0;
+      kc_over_cq02h[s] = rd_s_cq02h[s] && (uxa_all_cq02h[s * NC +: NC] >> KC) != '0;
     end
   `CCV_ASSERT(squash_allocates_nothing, sq_al_cq02h == '0)
   `CCV_ASSERT(kill_count_bounded, kc_over_cq02h == '0)

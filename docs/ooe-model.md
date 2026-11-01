@@ -1003,7 +1003,8 @@ runs a third of its branches as rets, and its control
 S1 3,914 to 3,915 with rets at lag 1, 3,915 with the hold;
 coremark32 4,584,463 to 4,584,938 (+0.010%) with rets at lag 1, the same
 with the hold (it fired 4 times); coremark128 17,060,800 to 17,023,250
-(-0.22%) with rets at lag 1 (warm MLC, RH's runs). The audit's random
+(-0.22%) with rets at lag 1 and 17,009,943 (-0.08% more) with the hold (it
+fired 1,996 times; warm MLC, RH's runs). The audit's random
 programs have no rets, so it cannot price either. `release_names_lag` 1 and
 `squash_room_lag` 1 are the defaults (OA's rev 280): a held entry frees
 its ROB slot as its op lands and its names a cycle later (and with its

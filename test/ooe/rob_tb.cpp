@@ -592,12 +592,12 @@ void check(const Cyc &c, const Cyc *prev) {
     std::vector<int> dbr(S, -1), ddp(S, -1);
     for (const auto &d : prev->r.discard) if (d.slot < S) { dbr[d.slot] = int(d.branch); ddp[d.slot] = int(d.disp); }
     for (unsigned q = 0; q != S; ++q) {
-      const bool v = getBit(dut->dc_v_cq04h, q);
+      const bool v = getBit(dut->dc_v_cq03h, q);
       if (v != (dbr[q] >= 0)) { fail("discard differs", q, v, dbr[q] >= 0); continue; }
       if (!v) continue;
       ++discards;
-      if (getField(dut->dc_br_cq04h, q * LD, LD) != unsigned(dbr[q])) fail("discard branch differs", q, getField(dut->dc_br_cq04h, q * LD, LD), unsigned(dbr[q]));
-      if (getField(dut->dc_disp_cq04h, q * LD, LD) != unsigned(ddp[q])) fail("discard youngest differs", q, getField(dut->dc_disp_cq04h, q * LD, LD), unsigned(ddp[q]));
+      if (getField(dut->dc_br_cq03h, q * LD, LD) != unsigned(dbr[q])) fail("discard branch differs", q, getField(dut->dc_br_cq03h, q * LD, LD), unsigned(dbr[q]));
+      if (getField(dut->dc_disp_cq03h, q * LD, LD) != unsigned(ddp[q])) fail("discard youngest differs", q, getField(dut->dc_disp_cq03h, q * LD, LD), unsigned(ddp[q]));
     }
   }
   if (!prev) return;

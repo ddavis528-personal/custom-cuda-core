@@ -46,12 +46,24 @@ answered (checked 10-30); next pings Friday 11-06.
   added to wt7's test/ooe/cg-units.json only; never commit it). Confirm
   once at full size. Keep CoreMark on RH, never beside synthesis here.
 
+## State (2026-11-01 02:00)
+- Full NGD (CG-fixed RTL): 24.3 flop-flop, in-flop 22.7, no findings
+  (4074 s). Full CG after the fix not finished (2 h limit); the gate runs it.
+- Landing tree scratchpad/land (worktree, detached): a78cd3f 2b, 4e876b9
+  merge of TI ccr-183cc441-doowtf (5918949: OI-95 scoped gate, AR rev 260
+  lead, OI-93), 82be63e OI-96 lead-uid bound + replay mark. gate-push
+  (scoped vs 712913d) task b93hqodn6, log scratchpad/gate-land.log.
+- Docs: plan CHECK_NGD/CG filled; model doc cm32/cm128 prices (cm128 c,
+  the hold, still on RH: add its figure in a later docs commit).
+- After push: register rows from OI-97 (see Open work 3 + cold-MLC row to
+  the dec_ooe_uop owner + OI-96 done + 2b's CG/NGD), sync main checkout.
+
 ## State (2026-10-31 22:05)
 - RH cold bisect: all 7 points (bbec7c1..712913d) fire dec_ooe_uop_s0/s1
   response_within_n from tick 95945, identically: predates 2a, NOT OI's.
   A stall (credit returns), bursts recur; cold never finishes. Raise a row
   to the owner (dec_ooe_uop / MLC cold) with RH's table. Not blocking 2b.
-- RH warm cm32 a (sal=1): 4,584,463; b (+rets lag 1): 4,584,938 (+0.010%); c (+ret_hold): 4,584,938 (+0, hold fired 4). CM32_PRICE text: "+0.010% with rets at lag 1, +0 more with the hold". cm128 a: 17,060,800; b: 17,023,250 (-0.22%, faster); c from 00:51 (~1h35).
+- RH warm cm32 a (sal=1): 4,584,463; b (+rets lag 1): 4,584,938 (+0.010%); c (+ret_hold): 4,584,938 (+0, hold fired 4). CM32_PRICE text: "+0.010% with rets at lag 1, +0 more with the hold". cm128 a 17,060,800; b 17,023,250 (-0.22%); c 17,009,943 (-0.08% vs b; hold fired 1996). All PASS, warm. RH idle.
 - TI rev 279: OI-95 DONE, pushed 5e7c8db (ABC cached, map/map -r parallel,
   verify.sh --changed + gate-scope.py; gate-push scoped by default, --full
   for clean). Land 2b on a tip including 5e7c8db; send TI the gate times.
