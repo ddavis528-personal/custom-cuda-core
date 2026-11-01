@@ -3907,6 +3907,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       q.gmask = u.group_mask;
       q.pcn = u.pc + 2 * (u.ilen + 1);
       q.tgt = q.pcn + uint64_t(2 * int64_t(int32_t(u.imm)));
+      q.pchi = unsigned((u.pc >> 32) & 0xffffu);
     }
     roblog_.alloc.push_back(q);
     if (r.atomic) robStop("atomic");

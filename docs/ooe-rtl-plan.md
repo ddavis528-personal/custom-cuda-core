@@ -1120,7 +1120,8 @@ Built (`rtl/ooe/`):
 
 `rtl/ooe/ooe_rob.sv`, in six slices. Slice 1 (built): storage, allocation,
 completion, in-order retire, the frees and the retire-stage register, and
-the room rename's go reads. Branches, squash and deferred free (2), memop
+the room rename's go reads. Slice 2's first part (built): branch records,
+resolution and the redirect. Squash and deferred free (2's rest), memop
 commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
 `test/ooe/rob_tb.cpp` stops a core at its first such event.
 
@@ -1199,6 +1200,51 @@ commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   mismatches. Controls drop-free, no-copy, no-lead, fill-order, nop-real,
   two-in-a-cycle and wrong-row (each cycle's first done names the next
   row) are each caught, each by its own check.
+- *Branches* (slice 2 part a; OI-86's form (a), OA's rev 284, the model at
+  resolve_lag 1 and squash_act_lag 1 pending DA's ruling; OI-93, OA's rev
+  287). Each entry holds its branch bit and checkpoint. Each (slot,
+  checkpoint) record holds what the resolution reads: the prediction, the
+  group's lanes, the fall-through and taken targets, a ret's pc[47:32]. It
+  is written a cycle after the fill, from a register of the fill's branch
+  fields clocked on Rename 2's lead fl_brl (a branch in the next fill), so
+  both enables are from flops (CG-5) and the register idles between
+  branches (asserted, branch_fill_lead); a done never reads a record
+  still being written (asserted, branch_record_written). A branch's done
+  comes on RCU's fixed RCU-only slot, BS = CCV_DONE_SLOTS - 2 (AR's RCU
+  spec rev 14; asserted, branch_done_on_bs), one a cycle; the slot's other
+  RCU-only dones are no outcome. At D the outcome register takes the
+  done's entry (one-hot), checkpoint and outcome, and the V-41 verdict,
+  formed against every record at once and picked by the tag, so the mask's
+  compare is off the tag's path; the record's outcome is written a cycle
+  later, only when it changes the wrong bit (a set one clears at the
+  record's next fill), so the records idle under predicted branches. At
+  C, the branch's completion edge, its bit joins the slot's candidates:
+  valid, complete, a branch, and not yet resolved. The resolved bit is
+  set when the entry is a candidate and cleared at its fill, in gates of
+  half a slot (DCGE); it resets to set, so a candidate is always a filled
+  entry (asserted, candidate_filled). At R = C + 1, per slot, the oldest wrong candidate from the
+  head (a circular prefix) is the mispredict, and every right one older
+  frees its checkpoint; the redirect's lead, the frees and the
+  mispredict's one-hot are registered at R's edge, and the redirect's
+  payload (checkpoint, the lanes that took it, the target, a ret's stay)
+  a cycle after its lead, from the record. A branch ends its retire window
+  (the model's branch_ends_window). The squash, acting at R + 1 from that
+  one-hot, is the next part. Every select over entries or records is an
+  AND-OR of one-hot terms with constant indices: a priority `if` over the
+  entries built a chain of 128 muxes (190 NGD), and a computed index over
+  the records a shifter Yosys ran out of memory on. Budgets (OA's rev
+  287): 2 for each new input. check-ngd: 24.9 flop to flop, dn_tag 21.5,
+  outputs 3.3 from flops (fl_brl at the default 12 until OA budgets it).
+  check-cg: 15,072 flops, 15,042 in 201 gates, worst enable 7.8 NGD. The bench routes each branch's done to BS with
+  its outcome and compares the redirect lead and the checkpoint frees with
+  the model's resolution a cycle before, the payload a cycle after its
+  lead; a core stops at its squash, and the stopping cycle and one more
+  are driven empty so the last redirect is still compared. 25 seeds:
+  3,704 resolutions and frees, 0 mismatches; mispredicting, 100 redirects,
+  0 mismatches. Controls flip-taken (every outcome inverted),
+  right-always (no branch wrong), branch-off-slot (a branch's done on
+  another slot) and no-branch-lead (fl_brl never driven) are each
+  caught.
 - *The entry* (rev 277 (c), rev 279): 65 bits with slice 4's chwidth
   width and one fault cause with its valid (DEC's wins). Barrier data goes
   in a per-slot side buffer 2 deep, in program order, popped at retire
