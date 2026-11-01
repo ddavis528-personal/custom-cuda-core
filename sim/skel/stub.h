@@ -260,7 +260,12 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
   const bool ctl = op->cls == kExit || isBarrier(op);
   const unsigned ser = op->cls == kExit ? kSerExit : op->cls == kBarWait ? kSerBarrier
                      : op->cls == kBarArrive ? kSerArrive : op->chw ? kSerChwidth : kSerNone;
+  // A cross-lane op (shfl) is RCU's but warp-collective: lat_class 5 at
+  // CCV_LAT_COLLECTIVE (Daniel's responses OA-4; AR's rev 259, TI's rev
+  // 274). RCU may finish it sooner, which V-35 allows; its dependants wake
+  // at 5.
   const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore || op->cls == kFence ? kLatCompletion
+                     : op->cross ? kLatCollective
                      : execRcu(op) || ctl ? kLatRcu : kLatLane;
   return uint32_t(op->ret) << kAttrRetBit |
          uint32_t(bypGroupOf(op)) << 14 |
@@ -646,6 +651,19 @@ protected:
                    kChans[chan].name, slot);
       std::abort();
     }
+    // slot_fields (OA's response OI-93): a field defined on other slots
+    // only is zero here, or a link that drops it there would lose it.
+    const ChanDesc &cd = kChans[chan];
+    for (unsigned f = 0; f != cd.nfields; ++f) {
+      const FieldDesc &fd = cd.fields[f];
+      if ((fd.slots >> slot) & 1u) continue;
+      for (uint32_t b = 0; b < fd.width; b += 64)
+        if (msg.get(fd.lsb + b, fd.width - b < 64 ? fd.width - b : 64)) {
+          k_.fail("%s: %s is set on slot %u; it is defined only on slots %#x (slot_fields)",
+                  cd.name, fd.name, slot, unsigned(fd.slots));
+          break;
+        }
+    }
     pend_[j] = {true, msg, tid};
   }
   /// The credits a slot holds now: a sender that promises a message for a
@@ -808,6 +826,13 @@ private:
 
 /// A queued outbound message: slot, payload, identity.
 struct Q { unsigned slot; Bits msg; uint64_t tid; };
+/// RCU's dones on ccv_rcu_ooe_done name no slot when queued, only their class:
+/// the RCU-only class's one slot (CCV_DONE_SLOT_RCU), or the pool of the rest
+/// (OA's response OI-93). Not slot numbers.
+enum : unsigned { kPoolDone = ~0u, kRcuOnlyDone = ~0u - 1 };
+/// The class that completes on CCV_DONE_SLOT_RCU: what RCU executes alone at
+/// CCV_LAT_RCU (a cross-lane op is RCU's too, but warp-collective).
+inline bool rcuOnlyDone(const OpInfo *op) { return inRcu(op->cls) || isBarrier(op); }
 
 /// OOE's implementation behind the swap boundary: the S1 stub (ooe.cpp).
 std::unique_ptr<Block> makeOoe(int inst, Kernel &k);

@@ -118,6 +118,12 @@ private:
       while (has(c.rcu_ooe, s)) {
         Receiver::Msg m = take(c.rcu_ooe, s);
         if (E *e = byTag(unsigned(get(m.payload, c.rcu_ooe, "rob_tag")))) {
+          // The RCU-only class on its one slot, every other class off it
+          // (CCV_DONE_SLOT_RCU; OA's response OI-93).
+          if (rcuOnlyDone(e->op) != (s == ccv::prov::kDoneSlotRcu))
+            k_.fail("ooe: rob tag %u (%s) done on slot %u; the RCU-only class completes on slot %u "
+                    "(CCV_DONE_SLOT_RCU) and no other class does", e->tag,
+                    rcuOnlyDone(e->op) ? "RCU-only" : "pool", s, ccv::prov::kDoneSlotRcu);
           e->rcu = true;
           e->taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
           e->taken_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));

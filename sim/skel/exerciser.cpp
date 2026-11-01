@@ -34,6 +34,7 @@ private:
 
 ExerciseTotals g_totals;
 std::vector<Launched> g_launched;
+bool g_log_launches = false;
 bool g_draining = false;
 bool g_class_bad[kNumChans] = {};
 bool g_mismatch_chan[kNumChans] = {};
@@ -140,7 +141,7 @@ private:
     const uint64_t kv = cd.order == Order::kField ? fieldOf(cd, m.payload) : 0;
     const uint64_t st = streamOf(cd, s, kv);
     const uint64_t q = g.seq[st]++;
-    if (m.payload != expectedPayload(*g.ci, st, q, kv)) {
+    if (m.payload != expectedPayload(*g.ci, st, q, kv, s)) {
       // The first on each CHANNEL, not the first five in all: the misorder
       // control is judged by which channels report, and a cap across all of
       // them let one busy channel hide another (found on a repeated link).
@@ -284,7 +285,7 @@ private:
                             ? rng_.next() % keyValues(cd) : 0;
     const uint64_t st = streamOf(cd, s, kv);
     const uint64_t q = g.seq[st]++;
-    Bits msg = expectedPayload(*g.ci, st, q, kv);
+    Bits msg = expectedPayload(*g.ci, st, q, kv, s);
     if (cfg_.misgroup && cd.bind_key >= 0) {
       // Every message names the NEXT group: a slot carrying another
       // stream's traffic, which binding exists to rule out.
@@ -355,7 +356,7 @@ uint64_t streamOf(const ChanDesc &cd, unsigned slot, uint64_t keyval) {
 }
 
 Bits expectedPayload(const ChanInst &ci, uint64_t stream, uint64_t seq,
-                     uint64_t keyval) {
+                     uint64_t keyval, unsigned slot) {
   const ChanDesc &cd = kChans[ci.chan];
   Bits b(cd.bits);
   // Payload is per instance even on a lockstep channel: each lane has its
@@ -363,6 +364,7 @@ Bits expectedPayload(const ChanInst &ci, uint64_t stream, uint64_t seq,
   const uint64_t k = messageKey(ci, true, stream, seq);
   for (unsigned f = 0; f != cd.nfields; ++f) {
     const FieldDesc &fd = cd.fields[f];
+    if (!((fd.slots >> slot) & 1u)) continue;   // not this slot's (slot_fields): zero
     for (uint32_t off = 0; off < fd.width; off += 64) {
       const uint32_t w = fd.width - off < 64 ? fd.width - off : 64;
       b.set(fd.lsb + off, w, splitmix(k ^ (uint64_t(f) << 20) ^ off));
@@ -415,7 +417,9 @@ ExerciseTotals exerciseTotals() {
 }
 void setDraining(bool on) { g_draining = on; }
 const std::vector<Launched> &launchedLog() { return g_launched; }
+void setLogLaunches(bool on) { g_log_launches = on; }
 void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid) {
+  if (!g_log_launches) return;
   const uint32_t nb = msg.size();
   g_launched.push_back(
       {chan, uint32_t(msg.get(0, nb < 32 ? nb : 32)),
