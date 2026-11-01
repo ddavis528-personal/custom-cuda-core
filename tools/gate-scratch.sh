@@ -3,13 +3,13 @@
 # out on gate-scratch/<PREFIX> before it is verified, and an export comes
 # back on gate-scratch/<PREFIX>-export. Nothing merges or gates these
 # branches: every sweep skips gate-scratch/* and CI ignores them. The owner
-# force-pushes them freely and drops them when the split gate is done.
+# force-pushes them freely; they are never deleted, since a session's git
+# proxy refuses a branch deletion (HTTP 403), so each send overwrites the last.
 #
 #   tools/gate-scratch.sh send-commit <PREFIX>            HEAD to gate-scratch/<PREFIX>
 #   tools/gate-scratch.sh fetch-commit <PREFIX> <sha>     fetch it, check out <sha> detached
 #   tools/gate-scratch.sh send-export <PREFIX> <x.tgz>    a gate-export.sh file, to <PREFIX>-export
 #   tools/gate-scratch.sh fetch-export <PREFIX> <out.tgz> fetch it back
-#   tools/gate-scratch.sh drop <PREFIX>                   delete both
 #
 # An export goes as a one-file commit with no parent. GitHub refuses a file
 # over 100 MB, so an export with --cache may not fit: send the logs alone.
@@ -17,7 +17,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 ME=gate-scratch
 . tools/push-lib.sh
-usage() { sed -n '8,12p' "$0" | sed 's/^# //' >&2; exit 2; }
+usage() { sed -n '9,12p' "$0" | sed 's/^# //' >&2; exit 2; }
 [ $# -ge 2 ] || usage
 cmd=$1 p=$2
 case "$p" in *[!A-Za-z0-9_-]*|"") die "bad prefix: $p" 2 ;; esac
@@ -47,10 +47,5 @@ case "$cmd" in
     with_retry git fetch -q origin "$ex" || die "cannot fetch $ex"
     git show FETCH_HEAD:export.tgz > "$3" || die "no export.tgz on $ex"
     say "$ex to $3 ($(stat -c %s "$3") bytes)" ;;
-  drop)
-    for b in "$br" "$ex"; do
-      git ls-remote --exit-code -q origin "refs/heads/$b" >/dev/null 2>&1 || continue
-      with_retry git push -q origin --delete "$b" && say "deleted $b"
-    done ;;
   *) usage ;;
 esac

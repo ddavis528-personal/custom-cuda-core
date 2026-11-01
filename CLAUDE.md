@@ -71,8 +71,10 @@ with `tools/gate-combine.py`: the same commit and tree, every needed section
 passed exactly once. Its result reads `SPLIT PASS` or `SPLIT SCOPED PASS`.
 The unverified commit and the export travel on scratch branches
 (`tools/gate-scratch.sh`; OI-102, DA, 2026-11-01): `gate-scratch/<PREFIX>`
-and `gate-scratch/<PREFIX>-export`, which nothing merges or gates. Every
-agent's sweep skips `gate-scratch/*`, and CI ignores them.
+and `gate-scratch/<PREFIX>-export`, which nothing merges or gates. A
+session cannot delete a branch (the proxy refuses it), so each send
+overwrites the last. Every agent's sweep skips `gate-scratch/*`, and CI
+ignores them.
 
 Routine moves are one command each, printing a few lines with the logs in
 `$CCV_LOGDIR` (default `~/ccv-logs`; DA, 2026-10-30): `tools/gate-push.sh`
