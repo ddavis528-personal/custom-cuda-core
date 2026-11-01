@@ -1,6 +1,6 @@
 # OA handoff (OOE architect)
 
-Updated 2026-10-31. Keep this current at every task's end; it is what
+Updated 2026-11-01. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Role and rules (from Daniel, in conversation)
@@ -18,8 +18,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 - Every figure is model-only or RTL-bench-held; say which.
 - Notices: `notice.py compose`, `send_message` priority "later"; only for
   rows that ask something of the receiver (skill section 2).
-- Branch ccr-9eb50716-lecnjf: merges only (merge commits), push only after a
-  clean gate (TI-43): `CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf tools/gate-push.sh`.
+- Branch ccr-9eb50716-lecnjf: merges only (merge commits). Pushes take the
+  scoped gate (OI-95, DA 2026-10-31): `CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf
+  tools/gate-push.sh`; the sweep's merge takes the full one (add `--full`).
   The stop hook's "unpushed commits" while a gate runs: say the push is held.
 - Commits end with the session's Co-Authored-By and Claude-Session lines.
 
@@ -60,7 +61,10 @@ OOE doc rev 351. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    340 flops), OI-84's 360 flops, RAT read ~2x, waivers (ooe_go, names' pools
    10 flops, candidates 72), scarce names +0.53%, retire lag +0.25%.
 4. OI-93 (rev 287; rev 289 fl_brl_cq01h input 2; rev 290 slot class = all CCV_LAT_RCU ops, TI 16af94a): ROB slice 2a budgets granted; RCU-only dones on fixed slot CCV_DONE_SLOTS-2 (not 0); TI schema contract; AR confirmed (rev 257, RCU spec rev 19: only lat_class 0 sets aux/branch_mask; barriers stay lat_class 0).
-5. Watch: L1 size (AR-24 eight-trace sweep, TI); TI-47 done.
+5. Overhead list add: rope +994 cycles (+14.7%, model) from shfl's corrected
+   CCV_LAT_COLLECTIVE (TI b0d91c2): shfl feeds branch conditions; candidate for
+   a shorter collective latency.
+6. Watch: L1 size (AR-24 eight-trace sweep, TI); TI-47 done.
 
 ## Settled recently (for context)
 TI-46 (b) credits, share 7, r 2, queue 13 (231c29e). OI-83 late RAT write,
