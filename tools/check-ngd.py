@@ -996,6 +996,10 @@ def main_check(only=None):
         fails += more
     if not parts:
         print("  blocks: none assembled yet (every block top is a generated stub)")
+    more, over = cg.heavy_check("check-ngd")
+    for l in more:
+        print("  " + l)
+    fails += over
     print("  %d unit(s), %d port budget(s) in %d module file(s), stage %g NGD, ports %g by "
           "default" % (len(units), len(budgets.e), len(budgets.files), STAGE, PORT))
     for f in fails:

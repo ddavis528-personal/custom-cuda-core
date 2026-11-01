@@ -1,0 +1,7 @@
+{
+  "_doc": "Units check-cg and check-ngd measure one at a time under CCV_HEAVY_SERIAL=1 (GitHub CI sets it; DA, 2026-11-01). light_rss_max_mib: with the lock on, a unit not named here whose one command peaks over this fails the check. 2048 MiB: three light units beside one heavy one (about 6.5 GB) stay within a 16 GB runner.",
+  "light_rss_max_mib": 2048,
+  "units": {
+    "ooe_rob": "full-size ooe_rob (slice 2b): Yosys about 6 GB, ABC about 6.5 GB per map (OI-97)"
+  }
+}

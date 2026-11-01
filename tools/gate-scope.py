@@ -37,6 +37,7 @@ MAP = [
     ("tools/genout.py", ALL),
     ("tools/check-ngd.py", ["ngd"]),
     ("tools/check-cg.py", ["cg", "ngd"]),          # check-ngd imports it
+    ("tools/heavy-units.json", ["cg", "ngd"]),     # both read it, through check-cg
     ("tools/check-kernel.sh", ["kernel", "svh"]),
     ("tools/check-sv-hosted.sh", ["svh"]),
     ("tools/check-skel.sh", ["skel", "kernel", "svh", "top"]),
