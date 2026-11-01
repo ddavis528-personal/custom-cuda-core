@@ -9,7 +9,9 @@ name: verify
 
 on:
   push:
-    branches: ["**"]
+    # gate-scratch/* carries a split gate's unverified commit and its export
+    # between containers (tools/gate-scratch.sh); its gate is the split one.
+    branches-ignore: ["gate-scratch/**"]
   pull_request:
   workflow_dispatch:
   schedule:

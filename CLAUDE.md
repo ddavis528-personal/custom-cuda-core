@@ -69,13 +69,17 @@ pack it with `tools/gate-export.sh` (`--cache` adds the synthesis cache,
 --import=<file>`, which skips the sections the file passed and joins the two
 with `tools/gate-combine.py`: the same commit and tree, every needed section
 passed exactly once. Its result reads `SPLIT PASS` or `SPLIT SCOPED PASS`.
+The unverified commit and the export travel on scratch branches
+(`tools/gate-scratch.sh`; OI-102, DA, 2026-11-01): `gate-scratch/<PREFIX>`
+and `gate-scratch/<PREFIX>-export`, which nothing merges or gates. Every
+agent's sweep skips `gate-scratch/*`, and CI ignores them.
 
 Routine moves are one command each, printing a few lines with the logs in
 `$CCV_LOGDIR` (default `~/ccv-logs`; DA, 2026-10-30): `tools/gate-push.sh`
 (regen and commit, the scoped gate against what the target branches hold, or
 the clean one with `--full`, an ancestry check, push to
 `$CCV_PUSH_BRANCHES`, clear build but the synthesis cache) and `tools/daily-sweep.sh` (merge every
-remote branch but release, regen, `tools/make-release.sh --push`, push,
+remote branch but release and `gate-scratch/*`, regen, `tools/make-release.sh --push`, push,
 clear; it stops, exit 3, on a conflict outside generated files). Read a
 gate's result with `tools/gate-summary.py <log>`, not the log, and run a
 long job as `tools/bg-run.sh <name> <cmd...>`, which ends in one line.
