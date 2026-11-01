@@ -137,7 +137,7 @@ def run(cmd):
 _ABC_VERSION = []
 
 
-def abc_cached(script, blif, out, genlib=None):
+def abc_cached(script, blif, out, genlib=None, cache=None):
     """yosys-abc `script` (reading `blif`, writing `out`), from the cache if
     the same netlist, genlib and script have run before. Returns the
     CompletedProcess, its stdout ABC's report either way."""
@@ -152,8 +152,9 @@ def abc_cached(script, blif, out, genlib=None):
     for f in (blif, genlib or GENLIB):
         with open(f, "rb") as fh:
             h.update(b"\0" + hashlib.sha256(fh.read()).digest())
-    os.makedirs(cg.SYNTH_CACHE, exist_ok=True)
-    hit = os.path.join(cg.SYNTH_CACHE, "abc-" + h.hexdigest())
+    cache = cache or cg.SYNTH_CACHE
+    os.makedirs(cache, exist_ok=True)
+    hit = os.path.join(cache, "abc-" + h.hexdigest())
     with open(hit + ".lock", "w") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)
         if not os.path.exists(hit + ".blif"):
@@ -388,6 +389,23 @@ def reg_names(d):
     return out
 
 
+# A netlist this size or more maps in series: ABC's peak grows with it, and
+# ooe_rob's (the one unit past it today) needs most of the container alone.
+PARALLEL_BLIF_MAX = 4 << 20
+PARALLEL_FREE_MIN = 8 << 30
+
+
+def two_maps_fit(blif):
+    try:
+        if os.path.getsize(blif) >= PARALLEL_BLIF_MAX:
+            return False
+        with open("/proc/meminfo") as fh:
+            free = {l.split(":")[0]: int(l.split()[1]) * 1024 for l in fh if ":" in l}
+        return free.get("MemAvailable", 0) >= PARALLEL_FREE_MIN
+    except OSError:
+        return False
+
+
 def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
     """Ungate a Yosys JSON netlist, map it with ABC and time it."""
     d = json.load(open(jsonfile))
@@ -412,12 +430,19 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
                              "ABC's, %.2f (%s)" % (work, t.abc_like, t.abc, how))
         return t
     # map and map -r read the same netlist and nothing of each other's, so
-    # they run side by side (OI-95: about 17 minutes on ooe_rob).
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(2) as ex:
-        f_map = ex.submit(mapped_timing, "map", mapped)
-        f_r = ex.submit(mapped_timing, "map -r", os.path.join(work, "map_r.blif"))
-        t, tr = f_map.result(), f_r.result()
+    # they may run side by side (OI-95) -- but not on a big unit: full-size
+    # ooe_rob's ABC peaks near 6.5 GB each, and two of them were killed in a
+    # 15 GB container at CCV_JOBS=1 (OI-97). Side by side only for a small
+    # netlist with the memory for both; in series otherwise.
+    if two_maps_fit(blif):
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(2) as ex:
+            f_map = ex.submit(mapped_timing, "map", mapped)
+            f_r = ex.submit(mapped_timing, "map -r", os.path.join(work, "map_r.blif"))
+            t, tr = f_map.result(), f_r.result()
+    else:
+        t = mapped_timing("map", mapped)
+        tr = mapped_timing("map -r", os.path.join(work, "map_r.blif"))
     # Input to flop (NGD-3), each input from the better of two maps (OI-64):
     # map's area recovery lets every path with slack grow to the module's
     # longest, so an input's cone can read the worst path whatever its own
@@ -1289,7 +1314,11 @@ def selftest():
     # 9. ABC's cache (OI-95) misses on every input it reads: the netlist,
     #    the genlib's contents behind the same path, and the script; and a
     #    hit hands back the report and netlist the run wrote.
+    #    Against a cache of its own, empty at the start: the gate's may keep
+    #    these entries from an earlier run (OI-97).
     cdir = os.path.join(BUILD, "fixture", "abc_cache")
+    ccache = os.path.join(cdir, "cache")
+    __import__("shutil").rmtree(ccache, ignore_errors=True)
     os.makedirs(cdir, exist_ok=True)
     nb, lib2 = os.path.join(cdir, "t.blif"), os.path.join(cdir, "lib.genlib")
     def blif_of(body):
@@ -1300,7 +1329,7 @@ def selftest():
         if os.path.exists(o):
             os.remove(o)
         r = abc_cached("read_blif %s; read_library %s; strash; %s; print_stats; write_blif %s"
-                       % (nb, lib, how, o), nb, o, genlib=lib)
+                       % (nb, lib, how, o), nb, o, genlib=lib, cache=ccache)
         m = re.search(r"delay\s*=\s*([\d.]+)", r.stdout)
         return (float(m.group(1)) if m else None), os.path.exists(o)
     shutil_ = __import__("shutil")
@@ -1323,9 +1352,9 @@ def selftest():
     d3, _ = abc_delay("map", lib2)
     expect(d3 is not None and d3 > d1, "the ABC cache handed back a map after the genlib "
            "behind its path changed (%s then %s)" % (d1, d3))
-    n0 = len(glob.glob(os.path.join(cg.SYNTH_CACHE, "abc-*.blif")))
+    n0 = len(glob.glob(os.path.join(ccache, "abc-*.blif")))
     abc_delay("map -r", lib2)
-    expect(len(glob.glob(os.path.join(cg.SYNTH_CACHE, "abc-*.blif"))) == n0 + 1,
+    expect(len(glob.glob(os.path.join(ccache, "abc-*.blif"))) == n0 + 1,
            "the ABC cache keyed map -r as map")
     for x in bad:
         sys.stderr.write("check-ngd selftest: %s\n" % x)
