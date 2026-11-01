@@ -290,7 +290,7 @@ else
   say "rob == model, mispredicting" "FAIL"; echo "$out" | tail -8; fail=1
 fi
 for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
-         no-branch-lead no-miu no-store drop-killed-fill; do
+         no-branch-lead no-miu no-store drop-killed-fill late-fill; do
   if ROB_CONTROL=$c "$dir/rob_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else

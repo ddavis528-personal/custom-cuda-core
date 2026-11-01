@@ -1292,7 +1292,13 @@ Memop commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   926 killed fills, 365 discards, 0 mismatches; every prediction right, 0
   mismatches. Controls no-miu (MIU's outstanding never driven), no-store
   (no store bit at the fill) and drop-killed-fill (a killed fill's names
-  never freed) are each caught, with slice 1's and part a's.
+  never freed) are each caught, with slice 1's and part a's. The
+  assertion fill_at_alloc_2 (OA's rev 295, OI-94) holds what the kill
+  count and the model's kill_free_lag rest on: per slot, the fills
+  arriving are the go's allocations two cycles before, killed ones
+  included; its control late-fill (one cycle's fills a cycle late) is
+  caught by it. A stopped core's last two cycles still land the fills
+  owed.
 - *The entry* (rev 277 (c), rev 279): 65 bits with slice 4's chwidth
   width and one fault cause with its valid (DEC's wins). Barrier data goes
   in a per-slot side buffer 2 deep, in program order, popped at retire

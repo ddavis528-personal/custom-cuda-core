@@ -1528,6 +1528,12 @@ module ooe_rob #(
   `CCV_ASSERT(squash_allocates_nothing, sq_al_cq02h == '0)
   `CCV_ASSERT(kill_count_bounded, kc_over_cq02h == '0)
   `CCV_ASSERT(held_never_retires, (rt_e_cq02h & (hd_cq02h | sqe_cq02h)) == '0)
+  // Every fill lands two cycles after its allocation (OA's rev 295, OI-94):
+  // per slot, the fills arriving now are the go's allocations two cycles
+  // ago, killed ones included. The kill count and the model's
+  // kill_free_lag (a killed entry's names at alloc + 3) both rest on it; a
+  // stall between the go and Rename 2 would break it.
+  `CCV_ASSERT_T(fill_at_alloc_2, nfl_cq02h == `CCV_PAST(`CCV_PAST(al_n_cq02h)))
 endmodule
 `undef CCV_CLK
 `undef CCV_RST
