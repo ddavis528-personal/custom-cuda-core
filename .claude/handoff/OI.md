@@ -35,7 +35,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 260, OA 296, IS 182, TI 281, OI 250, CP 149, DA 98 (sweep 11-01). Pings: Friday 10-30's all
+Conventions 15, AR 260, OA 296, IS 182, TI 282, OI 250, CP 149, DA 98 (sweep 11-01). Pings: Friday 10-30's all
 answered (checked 10-30); next pings Friday 11-06.
 
 ## Compute (DA, 2026-10-31)
@@ -45,6 +45,54 @@ answered (checked 10-30); next pings Friday 11-06.
 - Iterate NGD on the one-slot unit ooe_rob_s1 in scratch tree wt7 (unit
   added to wt7's test/ooe/cg-units.json only; never commit it). Confirm
   once at full size. Keep CoreMark on RH, never beside synthesis here.
+
+## State (2026-11-01 16:30 UTC, later)
+- 4c71575 (wt9, on b7cb9fb): ooe_sched ret hold (OA rev 293) + ready register replay
+  lead (a latent RTL bug: a missed load's grandchild granted twice; trio_tb failed at
+  80 seeds at b7cb9fb too). select/trio PASS 25, trio 80 clean, controls no-hold,
+  no-ret-hold, no-rep-lead caught; ooe_sched NGD 24.7, CG pass (ready DCGE 79% medium).
+  Lint clean. Budgets ret_cq03h/brk_cq03h 4.0 by OI, for OA to confirm.
+- Gating 4c71575 HERE: tools/gate-push.sh in wt9 (pgid 31373, CCV_JOBS=1, started
+  16:21 UTC, pushes to ccr-57eff422-5tdecg on green). Logs ~/ccv-logs/verify-4c71575-*.
+  It covers b7cb9fb, so RH's b7cb9fb gate (rh-gate) only matters if this one is red.
+- TI-282 (re:OI-101, done in 7782ce0; DA: a same-commit split gate counts for a push,
+  not a release): RH `verify.sh --only cg [--changed <base>]` then `gate-export.sh cg.tgz
+  --cache`; here `gate-push.sh --import=cg.tgz` (skips cg, joins: SPLIT [SCOPED] PASS).
+  Regen+commit first (an import must be the same commit). Needs OI: try it on RH and
+  report times/breaks in the OI tab. Plan: on the next push (model-default flip), after
+  merging 7782ce0. Bookmark TI 282.
+- wt10 (2026-11-01 22:30): 528e2b2 merges TI's 7782ce0 on 4c71575; 1865263 flips the
+  model defaults (OA rev 294; resolve-lag retire test pinned resolve_lag_ret_only 0);
+  6bca95f ooe_rob one_resolution assert + rob_tb control two-resolutions (robConfig pins
+  resolve_lag_ret_only 0: RTL lags all branches until RCU's lead); 07f39e7 = wt9's d3e9660
+  (wt9's gate of 4c71575 was RED: NGD-3 ooe_sched vel_cq03h 25.2; fix moves the ret AND
+  after the edge, rtq_cq04h, in-flop 20.4, flop-flop 24.4); cd27763 ooe_go rem_cq02h (the
+  rotation's reserve moving onto a need-2 head re-registers the fits; go_tb 55 mismatches
+  under squash_act_lag 1, 0 after). ooe_go NGD 22.8, room_p 24.2 from arrival (0.8 margin;
+  another spelling mapped to 25.1), CG as base. Full run-rtl PASS (27 min), regen clean.
+  Gating the wt10 tip as a split gate: RH `--only cg` + export (bundle sent in a message),
+  here `gate-push --import`. Disk: never run benches beside a gate (it filled).
+  OA still asks: S1 + rets in next floors run; OI-94 (c) price; OI-88 closable.
+- After the push: OI row to OA (fill assert landed, OI-94 condition 2 comes with
+  Rename's mark; ret hold landed with its two budgets for OA to confirm; NGD 24.7
+  margin; the replay-lead fix) and notify OA. Also tell OA: one_resolution + control, the default flip, the ooe_go reserve bug.
+
+## State (2026-11-01 16:30)
+- Pushed: 969a42b (2b), cfa62c6 (sweep 11-01 + handoff). Main checkout
+  synced to cfa62c6 (detached).
+- wt8 (scratchpad/wt8, from cfa62c6): b7cb9fb ooe_rob fill_at_alloc_2
+  assertion (OA rev 295) + rob_tb late-fill control (caught by it) +
+  driveFills at a core's stop. rob bench clean, 15 controls. Local gate
+  stopped; DA (11-01): send whole gates to RH. RH gates b7cb9fb from a
+  bundle (scratchpad/b7cb9fb.bundle, ref oi-fill-assert), verify.sh
+  --changed cfa62c6 at CCV_JOBS=1; RH reports, OI pushes b7cb9fb on green
+  (ancestry check, then push from wt8). Then tell OA (OI-94: the fill
+  assert landed; cond 2 with Rename's mark).
+- OI-101 (rev 251, TI notified): verify --only/--skip + bring-back of a
+  section's result + a synth-cache that survives a clear (DA's request).
+  Next OI row OI-102. OI bookmark 251.
+- RULE: never `pgrep -f`/`pkill -f` a pattern in the same shell command
+  line (it matches itself: exit 144). Use `ps -eo cmd | grep -v grep`.
 
 ## State (2026-11-01 15:00)
 - 2b LANDED: 969a42b pushed (scoped PASS 21/21; ngd 8290 s, cg 6340 s at
