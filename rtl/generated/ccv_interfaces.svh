@@ -261,12 +261,16 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_pred_out;
 } ccv_lane_rcu_res_t;
 
+// LEAD fields are driven with valid, one cycle ahead of the
+// rest of the payload (schema lead_fields).
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
   logic [2-1:0]                                  done_row;
   logic                                          branch_taken;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    branch_mask;
   logic [32-1:0]                                 aux;
+  logic                                          lead_br_taken;  // LEAD
+  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    lead_br_mask;  // LEAD
 } ccv_rcu_ooe_done_t;
 
 typedef struct packed {

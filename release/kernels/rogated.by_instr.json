@@ -3305,8 +3305,8 @@
     "instr_uid": 4611686018427387910,
     "unit": "instr",
     "channel_id": 6,
-    "payload_lo": 0,
-    "payload_hi": 65535
+    "payload_lo": 65535,
+    "payload_hi": 1
    }
   },
   {

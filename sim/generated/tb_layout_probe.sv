@@ -105,12 +105,14 @@ module tb_layout_probe (
   output logic [31:0] c5_f0,
   output logic [3:0] c5_f1,
   output logic [3:0] c5_f2,
-  input  logic [73:0] c6,
+  input  logic [106:0] c6,
   output logic [6:0] c6_f0,
   output logic [1:0] c6_f1,
   output logic c6_f2,
   output logic [31:0] c6_f3,
   output logic [31:0] c6_f4,
+  output logic c6_f5,
+  output logic [31:0] c6_f6,
   input  logic [3110:0] c7,
   output logic [6:0] c7_f0,
   output logic [31:0] c7_f1,
@@ -487,6 +489,8 @@ module tb_layout_probe (
   assign c6_f2 = s6.branch_taken;
   assign c6_f3 = s6.branch_mask;
   assign c6_f4 = s6.aux;
+  assign c6_f5 = s6.lead_br_taken;
+  assign c6_f6 = s6.lead_br_mask;
   ccv_rcu_miu_addr_t s7;
   assign s7 = c7;
   assign c7_f0 = s7.rob_tag;

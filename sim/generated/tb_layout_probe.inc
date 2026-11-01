@@ -130,14 +130,16 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_lane_rcu_res", "sec_pred_out", p.c5_f2, b, 0, 4);
   }
   {
-    const Bits b = randomBits(74, seed ^ 47514u);
+    const Bits b = randomBits(107, seed ^ 47514u);
     put(p.c6, b);
     p.eval();
-    bad += check("ccv_rcu_ooe_done", "rob_tag", p.c6_f0, b, 67, 7);
-    bad += check("ccv_rcu_ooe_done", "done_row", p.c6_f1, b, 65, 2);
-    bad += check("ccv_rcu_ooe_done", "branch_taken", p.c6_f2, b, 64, 1);
-    bad += check("ccv_rcu_ooe_done", "branch_mask", p.c6_f3, b, 32, 32);
-    bad += check("ccv_rcu_ooe_done", "aux", p.c6_f4, b, 0, 32);
+    bad += check("ccv_rcu_ooe_done", "rob_tag", p.c6_f0, b, 100, 7);
+    bad += check("ccv_rcu_ooe_done", "done_row", p.c6_f1, b, 98, 2);
+    bad += check("ccv_rcu_ooe_done", "branch_taken", p.c6_f2, b, 97, 1);
+    bad += check("ccv_rcu_ooe_done", "branch_mask", p.c6_f3, b, 65, 32);
+    bad += check("ccv_rcu_ooe_done", "aux", p.c6_f4, b, 33, 32);
+    bad += check("ccv_rcu_ooe_done", "lead_br_taken", p.c6_f5, b, 32, 1);
+    bad += check("ccv_rcu_ooe_done", "lead_br_mask", p.c6_f6, b, 0, 32);
   }
   {
     const Bits b = randomBits(3111, seed ^ 55433u);

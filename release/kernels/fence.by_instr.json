@@ -3217,22 +3217,6 @@
    "ph": "i",
    "s": "t",
    "ts": 53,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 6,
-    "payload_lo": 0,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 53,
    "pid": 1004,
    "tid": 0,
    "args": {
@@ -3241,6 +3225,22 @@
     "channel_id": 9,
     "payload_lo": 0,
     "payload_hi": 2154946560
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 53,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 6,
+    "payload_lo": 0,
+    "payload_hi": 0
    }
   },
   {

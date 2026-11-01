@@ -46,14 +46,24 @@ time (default every core; `CCV_JOBS=1` is serial), each section's log in
 products names it in `after` in `tools/verify.sh`; no two jobs that may run
 together share a build directory. check-cg and check-ngd measure their units
 `CCV_JOBS` at a time too, and share one Yosys netlist per unit through
-`build/synth-cache`. The gate clears it first; `tools/verify.sh --cached`
-keeps it for an intermediate run, whose result reads `CACHED PASS`. The gate
-before a push is the clean one (Daniel, 2026-10-21).
+`build/synth-cache`, ABC's maps too, keyed by everything a run reads. The
+full gate clears it first; `tools/verify.sh --cached` keeps it for an
+intermediate run, whose result reads `CACHED PASS`.
+A push to a working branch takes the scoped gate (OI-95; DA, 2026-10-31):
+`tools/verify.sh --changed <base>` keeps the cache and runs only the
+sections `tools/gate-scope.py` maps the change to, with those they wait on;
+the generators, the staleness check, the toolchain, lint and the interface
+checks run every time, and schema/, params/, the gate's own tools and any
+path the map does not name run every section. Its result reads `SCOPED
+PASS`, never `PASS`, and a push still never goes out red. The daily sweep's
+merge and every release take the full clean gate (Daniel, 2026-10-21, kept
+there), which catches a gap in the map or the cache key within a day.
 
 Routine moves are one command each, printing a few lines with the logs in
 `$CCV_LOGDIR` (default `~/ccv-logs`; DA, 2026-10-30): `tools/gate-push.sh`
-(regen and commit, the clean gate, an ancestry check, push to
-`$CCV_PUSH_BRANCHES`, clear build) and `tools/daily-sweep.sh` (merge every
+(regen and commit, the scoped gate against what the target branches hold, or
+the clean one with `--full`, an ancestry check, push to
+`$CCV_PUSH_BRANCHES`, clear build but the synthesis cache) and `tools/daily-sweep.sh` (merge every
 remote branch but release, regen, `tools/make-release.sh --push`, push,
 clear; it stops, exit 3, on a conflict outside generated files). Read a
 gate's result with `tools/gate-summary.py <log>`, not the log, and run a
@@ -138,7 +148,9 @@ beyond this file, branch tips, runs in flight, register bookmarks and open
 work, most urgent first, in a few kB. Update it when a task ends, not only
 before a compaction: nothing writes it for you. After every compaction the
 SessionStart hook in `.claude/settings.json` (`.claude/hooks/handoff.sh`)
-prints it, finding the prefix from the session id in
+prints it, once the session-home skill (`.claude/skills/session-home/`) has
+installed those settings where a multi-repo session reads them, `/home/user/.claude/`;
+it finds the prefix from the session id in
 `docs/register/roster.json`. A session in custom-cuda-complier copies the
 script and hook unchanged, and the script reads this roster from a
 custom-cuda-core checkout beside it (or `$CCV_ROSTER`, or a copy at that
@@ -160,6 +172,9 @@ the prompt, followed by the task; it works the same.
 
 The session compacts at 400k tokens (`autoCompactWindow` in
 `.claude/settings.json`; DA, 2026-10-30, set once every agent had a handoff).
+None of `.claude/settings.json` or `.claude/agents/` reaches a session that
+runs from `/home/user` until the session-home skill installs it there;
+`tools/setup-session-home.py --check` says whether it has.
 
 ## Sessions working side by side
 

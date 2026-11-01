@@ -513,6 +513,10 @@ static constexpr uint32_t kFootMinPred = 0;
 /// PROVISIONAL -- decided by: LANE per-block session
 static constexpr uint32_t kDoneSlots = 7;
 
+/// The one slot of ccv_rcu_ooe_done that R's RCU-only latency class completes on (CCV_LAT_RCU: branch, ret, barrier arrive and wait, and the predicate logic, pmov and movi that RCU executes alone), and that no other class takes. R issues one op a cycle and the class has one fixed latency, so at most one such done lands a cycle: one slot, never contended, and one outcome register in OOE rather than one per slot. branch_taken, branch_mask and aux are defined only on it. The other classes take the lowest free of the rest, which CCV_DONE_SLOTS sizes for them: four lane, one SFU, one warp-collective. One name for OOE, the RCU stub and the checks, so none can disagree with a constant (OA's response OI-93).  Derived: = CCV_DONE_SLOTS - 2.
+/// PROVISIONAL -- decided by: OOE architect
+static constexpr uint32_t kDoneSlotRcu = 5;
+
 /// Bypass penalty within one group (integer to integer, FP to FP, SFU to SFU): cycles after the producer's fastest bypass point, CCV_LAT_LANE_BYP for a lane producer.
 /// PROVISIONAL -- decided by: LANE per-block session (register OA-4)
 static constexpr uint32_t kLatBypPenSame = 0;

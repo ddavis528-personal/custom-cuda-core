@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """The gate's result in a few lines, from tools/verify.sh's log.
 
-    tools/gate-summary.py [verify.log] [--tail N]
+    tools/gate-summary.py [verify.log] [--tail N] [--scoped]
 
 Prints the result, every section's time, and for each failing claim its line
 plus the last N lines (default 8) of any log it names in parentheses. A
 session reads this instead of the log itself, which runs to ~1,000 lines.
 Exit status: 0 for PASS, 1 for FAIL, 2 when the log has no result (the gate
-did not finish).
+did not finish). With --scoped, a SCOPED PASS (verify.sh --changed) is 0
+too; without it, it is 1: only a push to a working branch takes one.
 """
 import re
 import sys
@@ -15,6 +16,9 @@ from pathlib import Path
 
 args = sys.argv[1:]
 tail = 8
+scoped = "--scoped" in args
+if scoped:
+    args.remove("--scoped")
 if "--tail" in args:
     i = args.index("--tail")
     tail = int(args[i + 1])
@@ -50,4 +54,5 @@ if result is None:
     print("  last lines:")
     for l in lines[-tail:]:
         print("    " + l[:200])
-sys.exit(0 if result in ("PASS",) else 1 if result else 2)
+ok = result == "PASS" or (scoped and (result or "").startswith("SCOPED PASS"))
+sys.exit(0 if ok else 1 if result else 2)
