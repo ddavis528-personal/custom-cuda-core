@@ -58,6 +58,13 @@ path the map does not name run every section. Its result reads `SCOPED
 PASS`, never `PASS`, and a push still never goes out red. The daily sweep's
 merge and every release take the full clean gate (Daniel, 2026-10-21, kept
 there), which catches a gap in the map or the cache key within a day.
+A gate may be split across containers (OI-101; DA, 2026-11-01): run part of
+it in another one with `tools/verify.sh --only`/`--skip` (`PARTIAL PASS`),
+pack it with `tools/gate-export.sh` (`--cache` adds the synthesis cache,
+`--cache-only` sends that alone), and push with `tools/gate-push.sh
+--import=<file>`, which skips the sections the file passed and joins the two
+with `tools/gate-combine.py`: the same commit and tree, every needed section
+passed exactly once. Its result reads `SPLIT PASS` or `SPLIT SCOPED PASS`.
 
 Routine moves are one command each, printing a few lines with the logs in
 `$CCV_LOGDIR` (default `~/ccv-logs`; DA, 2026-10-30): `tools/gate-push.sh`
