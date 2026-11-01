@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-10-31. Keep this current at every task's end; it is what
+Updated 2026-11-01. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 
 ## Who and what
@@ -33,6 +33,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   take the scoped gate (verify.sh --changed <base>, SCOPED PASS); the
   sweep's merge and releases keep the full clean gate, so AR's sweep is
   unchanged.
+- Last sweep 2026-11-01: 5 branches merged (72 commits), full gate PASS,
+  session-home --check matches (tools/setup-session-home.py now merged in).
 - Daily sweep (scheduled task trig_01V1WipqEXd8e7TAaWnKvQGu, 09:04 UTC):
   register section 4 from the bookmarks; fetch; merge every remote branch
   with commits ours lacks except `release` (merge commits only); gate;
@@ -60,7 +62,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 260, OA 293, TI 279, IS 180, CP 148, OI 244, DA 98,
+  record): AR 260, OA 293, TI 280, IS 182, CP 149, OI 247, DA 98,
   Conventions 15. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
