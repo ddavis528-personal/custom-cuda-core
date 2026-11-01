@@ -42,7 +42,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-(none)
+- Gate for OI's unpushed b7cb9fb (OI, 2026-11-01 15:08Z; DA: full gates go to
+  RH). It came as a bundle (rh-jobs/rh-b7cb9fb.bundle) and is checked out in the
+  worktree /home/user/rh-gate. `CCV_JOBS=1 tools/verify.sh --changed cfa62c6 >
+  gate.log`, detached, from 15:13Z, about 4 h; nothing beside it (12 GB in
+  ngd/cg), swap on. Watcher rh-jobs/watchgate.sh 6900. When it ends: send OI the
+  commit, the gate-summary.py line, the slowest sections, and any failures with
+  their first errors. Never push; OI pushes after a green result.
 
 ## Done
 - Rev 293 pricing (OI, 2026-10-31 to 11-01): coremark128 and coremark32,
