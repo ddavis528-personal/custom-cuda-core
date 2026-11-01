@@ -25,6 +25,17 @@
 #                            everything a run reads). Its result reads
 #                            "CACHED PASS", never "PASS": the gate for a push
 #                            is the default, every netlist built clean.
+#   tools/verify.sh --changed <base>
+#                            a working-branch push's gate (OI-95; DA,
+#                            2026-10-31): the build/synth-cache earlier runs
+#                            left (as --cached), and only the sections
+#                            tools/gate-scope.py names for the change since
+#                            <base>, with the ones they wait on; the
+#                            generators, the staleness check, the toolchain,
+#                            lint and the interface checks always. Its result
+#                            reads "SCOPED PASS", never "PASS". The daily
+#                            sweep's merge, every release and the nightly run
+#                            the default: every section, every netlist clean.
 #   CCV_JOBS=n               sections run n at a time after the generators
 #                            (default: every core; 1 is the serial gate).
 #                            Each section's log is build/verify/<job>.log.
@@ -36,12 +47,16 @@ export PATH="$PWD/tools/shim:$PATH"
 
 FULL=0
 CACHED=0
-for a in "$@"; do
-  case "$a" in
-    --full)   FULL=1 ;;
-    --cached) CACHED=1 ;;
-    *) echo "usage: $0 [--full] [--cached]" >&2; exit 2 ;;
+BASE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --full)    FULL=1 ;;
+    --cached)  CACHED=1 ;;
+    --changed) [ $# -ge 2 ] || { echo "verify: --changed needs a base" >&2; exit 2; }
+               BASE=$2; CACHED=1; shift ;;
+    *) echo "usage: $0 [--full] [--cached] [--changed <base>]" >&2; exit 2 ;;
   esac
+  shift
 done
 
 fail=0
@@ -382,9 +397,34 @@ declare -A after=(
 LOGS=build/verify
 rm -rf "$LOGS" && mkdir -p "$LOGS"
 # check-cg and check-ngd share their Yosys netlists through this cache, keyed
-# by everything a run reads. Cleared here unless --cached, so the gate for a
-# push synthesises each one itself (Daniel, 2026-10-21).
+# by everything a run reads, ABC's maps among them (OI-95). Cleared here
+# unless --cached or --changed, so the full gate (the daily sweep's merge,
+# every release, the nightly) synthesises each one itself (Daniel,
+# 2026-10-21); a working-branch push reuses it (DA, 2026-10-31).
 [ "$CACHED" = 1 ] || rm -rf build/synth-cache
+# --changed: the sections the change needs, and the ones they wait on. The
+# walkthrough is built from skel, kernel and svh's runs: with any of them.
+SCOPE=""
+if [ -n "$BASE" ]; then
+  section "scope -- the sections the change since $BASE needs"
+  run "gate scope map" python3 tools/gate-scope.py --selftest
+  sc=$(python3 tools/gate-scope.py "$BASE") || { echo "verify: no scope against $BASE"; exit 2; }
+  echo "$sc" | sed 's/^/  /'
+  SCOPE=$(echo "$sc" | head -1)
+  if [ "$SCOPE" != ALL ]; then
+    case " $SCOPE " in *" skel "*|*" kernel "*|*" svh "*) SCOPE="$SCOPE walkthrough" ;; esac
+    while :; do
+      grown=$SCOPE
+      for j in $SCOPE; do
+        for d in ${after[$j]:-}; do
+          case " $grown " in *" $d "*) ;; *) grown="$grown $d" ;; esac
+        done
+      done
+      [ "$grown" = "$SCOPE" ] && break
+      SCOPE=$grown
+    done
+  fi
+fi
 for j in $ORDER; do
   case " $(echo $START) " in *" $j "*) ;; *) echo "verify: job $j is never started"; exit 2 ;; esac
   declare -F "job_$j" >/dev/null || { echo "verify: no job_$j"; exit 2; }
@@ -414,6 +454,15 @@ flush() {
   done
 }
 for j in $START; do state[$j]=wait; done
+nskip=0
+if [ -n "$SCOPE" ] && [ "$SCOPE" != ALL ]; then
+  for j in $START; do
+    case " $SCOPE " in *" $j "*) continue ;; esac
+    state[$j]=done; nskip=$((nskip + 1))
+    printf '\n== %s ==\n  SKIPPED -- not in the scope of the change since %s\n' "$j" "$BASE" >"$LOGS/$j.log"
+  done
+  flush
+fi
 while :; do
   for j in $START; do
     [ "${#job[@]}" -lt "$JOBS" ] || break
@@ -457,7 +506,9 @@ cat <<'PENDING'
 PENDING
 
 section "result"
-if [ "$fail" = "0" ] && [ "$CACHED" = 1 ]; then
+if [ "$fail" = "0" ] && [ -n "$BASE" ]; then
+  echo "  SCOPED PASS -- $(( $(echo $ORDER | wc -w) - nskip )) of $(echo $ORDER | wc -w) sections, the change since $BASE, netlists from build/synth-cache"
+elif [ "$fail" = "0" ] && [ "$CACHED" = 1 ]; then
   echo "  CACHED PASS -- netlists from build/synth-cache; not the gate for a push"
 elif [ "$fail" = "0" ]; then
   echo "  PASS"

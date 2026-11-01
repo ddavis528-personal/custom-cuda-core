@@ -104,6 +104,14 @@ private:
   /// rob tag -> the row its last done-owing issue, and its last memop, named
   /// (OI-85): a done or completion must echo it.
   std::map<unsigned, unsigned> row_sent_, cmpl_row_sent_;
+  /// The rob_tags whose done is the RCU-only class's, from their issue: R's
+  /// resource, not a warp-collective (OA's response OI-93).
+  std::set<unsigned> rcu_only_;
+  // A branch's or call's done carries its outcome on the lead fields too
+  // (AR rev 260, RCU spec rev 20); a ret's lead is don't-care. By uid at
+  // decode, by rob tag from issue. TI's check, OI-18.
+  std::set<uint64_t> br_lead_tid_;
+  std::set<unsigned> br_lead_;
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   /// TI-46 (b), DA tab rev 96: decode-queue credits back to FET, one slot
   /// a tier-1 warp. A slot's return is what left the queue since the last:
@@ -214,6 +222,13 @@ private:
     u.fetch_epoch = unsigned(get(p, c.dec_ooe, "fetch_epoch"));
     u.attr_raw = uint32_t(get(p, c.dec_ooe, "sched_attr"));
     u.attr = ooe::SchedAttr::decode(u.attr_raw);
+    // A cross-lane op is warp-collective: lat_class 5, CCV_LAT_COLLECTIVE
+    // (CCV_P_W_SCHED_ATTR; Daniel's responses OA-4; AR's rev 259). TI's
+    // check, OI-18.
+    if (((u.attr_raw >> 11) & 1u) && (u.attr_raw & 7u) != kLatCollective)
+      k_.fail("ooe: seq %llu is cross-lane with lat_class %u; a warp-collective op is lat_class %u",
+              (unsigned long long)uidSeq(m.tid), u.attr_raw & 7u, unsigned(kLatCollective));
+    if (((u.attr_raw >> 6) & 1u) && !((u.attr_raw >> kAttrRetBit) & 1u)) br_lead_tid_.insert(m.tid);
     u.mem_op = unsigned(get(p, c.dec_ooe, "mem_op"));
     u.space = unsigned(get(p, c.dec_ooe, "space"));
     u.ordering = unsigned(get(p, c.dec_ooe, "ordering"));
@@ -306,10 +321,26 @@ private:
         auto r = row_sent_.find(d.rob_tag);
         if (r != row_sent_.end() && r->second != drow)
           k_.fail("ooe: rob tag %u done for row %u, but its issue named row %u", d.rob_tag, drow, r->second);
+        // The RCU-only class on its one slot, every other class off it
+        // (CCV_DONE_SLOT_RCU; OA's response OI-93). TI's check, OI-18.
+        const bool ro = rcu_only_.count(d.rob_tag) != 0;
+        if (ro != (s == ccv::prov::kDoneSlotRcu))
+          k_.fail("ooe: rob tag %u (%s) done on slot %u; the RCU-only class completes on slot %u "
+                  "(CCV_DONE_SLOT_RCU) and no other class does", d.rob_tag, ro ? "RCU-only" : "pool", s,
+                  ccv::prov::kDoneSlotRcu);
         // Refused once here; the core counts the row its issue named.
         d.row = r != row_sent_.end() ? r->second : drow;
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
+        // The lead (a cycle ahead; the slot hands it over with the payload)
+        // must say what the payload says, on a branch or a call.
+        if (br_lead_.count(d.rob_tag) && hasField(c.rcu_ooe, "lead_br_taken")) {
+          const bool lt = get(m.payload, c.rcu_ooe, "lead_br_taken") != 0;
+          const uint32_t lm = uint32_t(get(m.payload, c.rcu_ooe, "lead_br_mask"));
+          if (lt != d.branch_taken || lm != d.branch_mask)
+            k_.fail("ooe: rob tag %u branch done's lead (taken %u, mask %08x) is not its payload (taken %u, "
+                    "mask %08x)", d.rob_tag, unsigned(lt), lm, unsigned(d.branch_taken), d.branch_mask);
+        }
         // TI's d347d2c names the field branch_aux, renamed aux after it.
         for (const char *f : {"aux", "branch_aux"})
           if (hasField(c.rcu_ooe, f)) d.aux = uint32_t(get(m.payload, c.rcu_ooe, f));
@@ -426,6 +457,10 @@ private:
       put(is, c.ooe_rcu, "done_row", x.row);   // OI-85
       // A copy and a memop's RCU issue owe no done (A-38, OI-4).
       if (!x.copy && x.res != ooe::Issue::kMemop) row_sent_[x.rob_tag] = x.row;
+      if (x.res == ooe::Issue::kRcuOp && x.byp_group != kBypCollective) rcu_only_.insert(x.rob_tag);
+      else rcu_only_.erase(x.rob_tag);
+      if (br_lead_tid_.count(x.tid)) br_lead_.insert(x.rob_tag);
+      else br_lead_.erase(x.rob_tag);
       put(is, c.ooe_rcu, "warp_id", x.warp);
       put(is, c.ooe_rcu, "issue_mask", x.issue_mask);
       // A name is a row and a position (sectioned; unsectioned the position

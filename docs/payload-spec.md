@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 14 | 36 |
-| ⚠️ Some provisional | 26 | 136 |
+| ⚠️ Some provisional | 26 | 138 |
 | ⛔ Some preliminary | 15 | 141 |
-| **Total** | **55** | **313** |
+| **Total** | **55** | **315** |
 
 ## What still has to be decided
 
@@ -387,7 +387,7 @@ ooe → fet · rate 4 · control
 
 ### `ccv_rcu_ooe_done`
 
-Completion back to the ROB for arithmetic -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it. CCV_OP_PRF_COPY produces no done: its masked load keeps one rob_tag and one completion, the load's (A-38). Nor does any memop: a load or store completes on ccv_miu_ooe_cmpl alone, and RCU, which sends its address and writes a load's data, sends nothing here for it (OI-4, Daniel 2026-10-08). A done for a memop would spend a transfer and, arriving late, could match a reused rob_tag. CCV_DONE_SLOTS slots, a free pool (TI-9, OA's response 2026-10-09): dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class. Four narrow lane ops issued at t - 7, an SFU op at t - 12, an RCU-only op at t - 3 and a warp-collective at t - 5 all land at t: seven. A lane op's done leaves the cycle its write lands, at V-35's bound with no slack, so none can wait for a slot. Memops send none (OI-4). No fault rides here: no cause of ISA v1.9 (§12) originates in RCU or a lane (AR's response IS-16), so exec_fault, fault_lane_mask and the lanes' sec_fault were removed. AR-24 (b), OA's revs 222, 223, 226: branch_mask is issue mask AND guard for a branch and for a barrier arrive, wait and wait.phase. For a ret, aux is the lowest active lane's rs (the target's offset in the ret's 4 GiB code window, ISA section 3) and branch_mask the active lanes whose rs equals it; OOE redirects those lanes to {PC[47:32] of the ret, aux} with stay = 1, and the ret re-issues for the rest, a pass per distinct target. For wait.phase, aux carries ps's lane bits, each lane's expected phase. Don't-care otherwise. DONE_ROW (OI-85, OA's rev 282): the row this done completes, echoed from its issue on ccv_ooe_rcu_issue. OOE's entry sets that row's done bit: a done names its entry and row, so two dones for one entry land in one cycle without a hold, and the pool and V-35's bound stand as derived.
+Completion back to the ROB for arithmetic -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it. CCV_OP_PRF_COPY produces no done: its masked load keeps one rob_tag and one completion, the load's (A-38). Nor does any memop: a load or store completes on ccv_miu_ooe_cmpl alone, and RCU, which sends its address and writes a load's data, sends nothing here for it (OI-4, Daniel 2026-10-08). A done for a memop would spend a transfer and, arriving late, could match a reused rob_tag. CCV_DONE_SLOTS slots, a free pool (TI-9, OA's response 2026-10-09): dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class. Four narrow lane ops issued at t - 7, an SFU op at t - 12, an RCU-only op at t - 3 and a warp-collective at t - 5 all land at t: seven. A lane op's done leaves the cycle its write lands, at V-35's bound with no slack, so none can wait for a slot. Memops send none (OI-4). No fault rides here: no cause of ISA v1.9 (§12) originates in RCU or a lane (AR's response IS-16), so exec_fault, fault_lane_mask and the lanes' sec_fault were removed. AR-24 (b), OA's revs 222, 223, 226: branch_mask is issue mask AND guard for a branch and for a barrier arrive, wait and wait.phase. For a ret, aux is the lowest active lane's rs (the target's offset in the ret's 4 GiB code window, ISA section 3) and branch_mask the active lanes whose rs equals it; OOE redirects those lanes to {PC[47:32] of the ret, aux} with stay = 1, and the ret re-issues for the rest, a pass per distinct target. For wait.phase, aux carries ps's lane bits, each lane's expected phase. Don't-care otherwise. One slot, CCV_DONE_SLOT_RCU (CCV_DONE_SLOTS - 2; AR's RCU spec rev 14, OA's response OI-93): the RCU-only class, what RCU executes alone at CCV_LAT_RCU (branch, ret, barrier arrive and wait, predicate logic, pmov, movi), completes only there, and no other class takes it; R issues one op a cycle, so it is never contended, and OOE keeps one outcome register, not one per slot. branch_taken, branch_mask and aux are defined only on that slot; on the others they are don't-care. Every other class takes the lowest free of the rest, which CCV_DONE_SLOTS sizes for them. DONE_ROW (OI-85, OA's rev 282): the row this done completes, echoed from its issue on ccv_ooe_rcu_issue. OOE's entry sets that row's done bit: a done names its entry and row, so two dones for one entry land in one cycle without a hold, and the pool and V-35's bound stand as derived.
 
 rcu → ooe · rate 7 · execution
 
@@ -398,7 +398,13 @@ rcu → ooe · rate 7 · execution
 | `branch_taken` | `1` | 1 | literal |
 | `branch_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `aux` | `32` | 32 | literal |
-| **total** | | **74** | ⚠️ 7 provisional |
+| `lead_br_taken` | `1` | 1 | literal |
+| `lead_br_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| **total** | | **107** | ⚠️ 7 provisional |
+
+Lead fields (driven with valid, a cycle ahead of the rest): `lead_br_taken`, `lead_br_mask`.
+
+Slot fields (defined only on the slots named, zero on the rest): `branch_taken` on `CCV_DONE_SLOT_RCU`; `branch_mask` on `CCV_DONE_SLOT_RCU`; `aux` on `CCV_DONE_SLOT_RCU`; `lead_br_taken` on `CCV_DONE_SLOT_RCU`; `lead_br_mask` on `CCV_DONE_SLOT_RCU`.
 
 ### `ccv_rcu_miu_addr`
 
@@ -850,6 +856,8 @@ rcu → lane · rate 1 · execution
 | `sec_dst_width` | `CCV_SECTIONS*CCV_W_CHWIDTH` | 8 | CCV_SECTIONS (arch); CCV_W_CHWIDTH (isa) |
 | `operand_byp` | `CCV_SECTIONS*(CCV_L_OPERANDS_PER_LANE+1)*CCV_P_W_LANE_BYP_SEL` | 80 ⛔ | CCV_SECTIONS (arch); CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_P_W_LANE_BYP_SEL (tunable) |
 | **total** | | **344** | ⛔ 276 preliminary |
+
+Lead fields (driven with valid, a cycle ahead of the rest): `section_en`, `sec_pred_bit`.
 
 ### `ccv_ooe_miu_memop`
 

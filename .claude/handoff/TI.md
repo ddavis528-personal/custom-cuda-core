@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-10-30. Keep this current at every task's end; it is what
+Updated 2026-10-31. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -8,7 +8,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
   `claude/custom-cuda-core-infra-6msg93`, each after
   `git merge-base --is-ancestor origin/<b> HEAD`. No PRs. Never bare `git stash`.
 - Push with `CCV_PUSH_BRANCHES=ccr-183cc441-doowtf,claude/custom-cuda-core-infra-6msg93
-  tools/gate-push.sh` (regen+commit, clean gate, ancestry, push, clear build);
+  tools/gate-push.sh` (regen+commit, scoped gate by default, `--full` for a
+  gate-infrastructure change, ancestry, push, clear build but synth-cache);
   run it in the background and read its summary lines only.
 - Notices: hand the text to the `register-reader` subagent with prefix TI
   (not loaded in this session: general-purpose, model sonnet, the file's
@@ -32,29 +33,42 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 15, AR 256, OA 286, IS 180, TI 271, OI 239, CP 148, DA 97
-(sweep 2026-10-31: nothing new for TI). Latest TI open: TI-49.
+Conventions 15, AR 260, OA 292, IS 182, TI 279, OI 246, CP 149, DA 97
+(sweep 2026-10-31: nothing new for TI). Latest TI open: TI-50 (rev 272).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Tip of both branches: 3fbb402 (sweep 2026-10-31: 45 commits merged from
+- Tip of both branches: 5e7c8db (OI-95: ABC cache, parallel map/map -r, scoped gate; DA confirmed in TI's session 2026-10-31; TI rev 279), on 43d92b3, on 80697a3 (AR rev 260 branch lead + slot_fields step A; TI rev 277, notices to AR/OI/OA), on f77582b (b0d91c2 shfl lat_class 5), on a17c736 (gate-push clears on red), on 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
   five branches; release b2f4e58), with 47e2622 (OI-92), on c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
   refuses a stale ENTRY), on 63a7bd5 (autoCompactWindow 400k), on c69475e
   (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
 - Compiler pin d9ddd2c (source f5fa030; O-83, O-84).
 - Frame-interleave experiment done: coremark32 -7.1%, coremark128 -15.7%
   at 64 KiB; at 512 KiB frames -16.9%, both fixes together -22.8%.
-- OI's check-cg scope fix (9c079f9) is merged as of 3fbb402: review it.
+- OI's check-cg scope fix (9c079f9): reviewed 2026-10-31, sound (scoped key, base-name fallback, control 15b).
 - Settings: sessions' project dir is /home/user, so the repo's
   .claude/settings.json and .claude/agents do not load (2026-10-31). Fix:
   the session-home skill (tools/setup-session-home.py, 8dd82a6); each agent
   runs it once with DA's approval (DA chose this, 2026-10-31), and
-  `--check` in its daily sweep. TI-50 asks the other five.
+  `--check` in its daily sweep. TI's is installed (--check matches); subagent
+  types load only at the next session start. TI-50 (rev 272) asks the other
+  five; notices sent 2026-10-31. Installed: TI, IS (IS rev 182), CP (CP-74),
+  OA (OA rev 288). Waiting: AR, OI.
 
 ## Open work (most urgent first)
+-1. Done 2026-10-31: shfl lat_class 5 (b0d91c2) and AR rev 260's lead +
+   slot_fields step A (80697a3; TI rev 277). Open from it: step B (narrow
+   generated ports/nets per slot, ~50 c["bits"] sites) deferred until a
+   repeated link or the RTL needs it. OI-96: br_lead_tid_ never erased;
+   OI carries the fix at its merge (TI rev 278): TI leaves ooe_block.cpp.
+   Side worktree /home/user/ti-coll: scratch for trials.
+   Background runs: pass timeout 7200000 to a gate-push (default 30 min
+   kills it).
 0. Disk: a clean gate needs ~11 GB of the session's allowance; keep
-   /home/user/sweep small (oracle13's 4 GB filled it on 2026-10-31).
+   /home/user/sweep small (oracle13's 4 GB filled it on 2026-10-31). A red
+   gate left 16 GB in build/: gate-push now clears it on red too, keeping
+   build/verify in $CCV_LOGDIR.
 1. TI-48 (TI rev 266): all five handoffs in (files checked in each commit,
    2026-10-30); `"autoCompactWindow": 400000` set in .claude/settings.json.
    Pushed 63a7bd5; TI-48 closed (TI rev 269); CP added the key in
