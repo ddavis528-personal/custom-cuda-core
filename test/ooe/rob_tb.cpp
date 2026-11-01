@@ -11,7 +11,7 @@
 // and the retire-stage register and its frees with the model's a cycle
 // before. The leads are the next cycle's, so the RTL runs a model cycle
 // behind. A core stops being compared at the first thing slice 1 does not
-// build (RobLog::stop: a squash, a fault taken, a retire port, an atomic,
+// build (RobLog::stop: a squash acting, a fault taken, a retire port, an atomic,
 // a kill); cores with other than RB_S tier-1 slots are skipped.
 //
 // Negative controls (ROB_CONTROL=<name>) perturb the driving and must be
@@ -23,7 +23,21 @@
 // (a done sent twice in its cycle, for the same row, against RCU's one
 // done per rob_tag and row a cycle, OA's rev 282: the assertion fires),
 // and wrong-row (each cycle's first done names the next row: a row's count
-// underflows, or the entry never completes).
+// underflows, or the entry never completes); slice 2's flip-taken (every
+// branch outcome inverted: right branches redirect) and right-always (every
+// outcome agrees with its prediction: mispredicts never redirect, run with
+// the programs mispredicting), branch-off-slot (a branch's done on a
+// slot other than BS: the assertion fires) and no-branch-lead (a branch
+// fill's lead never comes: the assertion fires).
+//
+// Slice 2 (OI-85, form (a) of OI-86): the model at resolve_lag 1 and
+// squash_act_lag 1. A branch's done goes on slot BS (CCV_DONE_SLOTS - 2, AR's RCU spec rev
+// 14) with its outcome, the other dones on the lowest free slots; the
+// resolution's registered outputs (the redirect lead per slot, the
+// checkpoints right branches free) are compared with the model's resolve a
+// cycle before, the redirect's payload a cycle after its lead. The squash
+// is the next part: a core stops there, and the stopping cycle and one
+// more are driven empty so the redirect's lead and payload are compared.
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: rob_tb [seeds] | rob_tb --cg <scenario> <vcd>
@@ -48,15 +62,24 @@ using ccv::ooe::Core;
 int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &));
 const char *ooeTestName();
 void ooeTestPredictAll(bool on);
-void robConfig(Config &c) { c.retire_lag = 1; }
+// Slice 2's form (a), OI-86: the redirect a cycle after the resolution, the
+// squash acting a cycle after that (OA rev 284, pending DA's ruling).
+void robConfig(Config &c) {
+  c.retire_lag = 1;
+  c.resolve_lag = 1;
+  c.squash_act_lag = 1;
+  c.held_room_lag = 1;
+}
 
 namespace {
 constexpr unsigned NR = 4;
 constexpr unsigned S = RB_S, D = RB_D, RP = RB_RP, A = RB_A, ND = RB_ND, NM = RB_NM, GW = RB_GW, GR = RB_GR,
-                   NG = RB_NG, NS = RB_NS, PW = RB_PW, NP = RB_NP, LB = 6, LT = 3;
+                   NG = RB_NG, NS = RB_NS, PW = RB_PW, NP = RB_NP, NK = RB_NK, PCW = RB_PCW, LB = 6, LT = 3,
+                   BS = ND - 2;   // RCU-only ops' fixed done slot (AR's RCU spec rev 14, OA rev 287)
 constexpr unsigned NSB = NS ? NS : 1;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
-constexpr unsigned LS = S > 1 ? bits(S) : 1, LD = bits(D), TW = LS + LD, LA = bits(A + 1);
+constexpr unsigned LS = S > 1 ? bits(S) : 1, LD = bits(D), TW = LS + LD, LA = bits(A + 1), LK = NK > 1 ? bits(NK) : 1;
+constexpr uint64_t PCM = (uint64_t(1) << PCW) - 1;
 
 std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_rob> dut;
@@ -64,7 +87,7 @@ std::string control;
 uint64_t current = 0;
 bool live = false, stopped = false;
 unsigned long long cycles = 0, cores = 0, skipped = 0, stops = 0, retires = 0, allocs = 0, nops = 0, gfrees = 0,
-                   pfrees = 0, events = 0, mismatches = 0;
+                   pfrees = 0, events = 0, mismatches = 0, resolves = 0, redirects = 0, ckfrees = 0;
 std::map<std::string, unsigned long long> stop_why;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
@@ -84,6 +107,14 @@ template <typename T> void setField(T &w, unsigned lo, unsigned n, unsigned v) {
 template <typename T> unsigned getField(const T &w, unsigned lo, unsigned n) {
   unsigned v = 0;
   for (unsigned i = 0; i != n; ++i) v |= unsigned(getBit(w, lo + i)) << i;
+  return v;
+}
+template <typename T> void setField64(T &w, unsigned lo, unsigned n, uint64_t v) {
+  for (unsigned i = 0; i != n; ++i) setBit(w, lo + i, (v >> i) & 1u);
+}
+template <typename T> uint64_t getField64(const T &w, unsigned lo, unsigned n) {
+  uint64_t v = 0;
+  for (unsigned i = 0; i != n; ++i) v |= uint64_t(getBit(w, lo + i)) << i;
   return v;
 }
 template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i != n; ++i) setBit(w, i, false); }
@@ -129,12 +160,40 @@ bool hasEvent(const Core::RobLog &r, unsigned s) {
 std::vector<int> owed_dbg(S * D, 0);
 std::vector<unsigned> tl_dbg(S, 0);
 std::vector<std::string> hist_dbg(S * D);
+// Each tag's branch fields, from its allocation: a done on it is routed to
+// slot BS, and the controls read its prediction.
+std::vector<Core::RobLog::Alloc> br_of(S * D);
+unsigned long long br_two = 0;
+
+// A cycle's dones by slot (-1 none): a branch's on slot BS, the rest from
+// the lowest free slot in the log's order (the stub's choice), BS last. RCU
+// sends one branch done a cycle (its fixed slot); branch-off-slot sends it
+// on the lowest free slot instead.
+std::vector<int> doneSlots(const Core::RobLog &r) {
+  std::vector<int> sl(ND, -1);
+  std::vector<size_t> rest;
+  bool br_seen = false;
+  for (size_t k = 0; k != r.done.size(); ++k) {
+    const unsigned t = r.done[k];
+    const bool br = t < S * D && br_of[t].br && (k >= r.dpay.size() || r.dpay[k].row == 0);
+    if (br && !br_seen && control != "branch-off-slot") { sl[BS] = int(k); br_seen = true; }
+    else { if (br && br_seen) ++br_two; rest.push_back(k); }
+  }
+  for (size_t k : rest) {
+    unsigned p = 0;
+    while (p != ND && (p == BS || sl[p] >= 0)) ++p;
+    if (p == ND && sl[BS] < 0) p = BS;
+    if (p != ND) sl[p] = int(k);
+  }
+  return sl;
+}
 
 void clearInputs() {
   dut->al_l_cq01h = 0;
   clearAll(dut->al_n_cq02h, S * LA);
   clearAll(dut->al_nop_cq02h, S * A);
   dut->fl_l_cq01h = 0;
+  dut->fl_brl_cq01h = 0;
   for (auto *p : {&dut->fl_v_cq02h, &dut->fl_nop_cq02h, &dut->fl_mem_cq02h, &dut->fl_gwe_cq02h, &dut->fl_pwe_cq02h,
                   &dut->fl_pfree_cq02h})
     *p = 0;
@@ -147,6 +206,12 @@ void clearInputs() {
   clearAll(dut->fl_pdst_cq02h, A * 2);
   clearAll(dut->fl_pname_cq02h, A * PW);
   clearAll(dut->fl_pold_cq02h, A * PW);
+  for (auto *p : {&dut->fl_br_cq02h, &dut->fl_ptaken_cq02h, &dut->fl_ret_cq02h}) *p = 0;
+  clearAll(dut->fl_ckpt_cq02h, A * LK);
+  clearAll(dut->fl_gmask_cq02h, A * 32);
+  clearAll(dut->fl_pcn_cq02h, A * PCW);
+  clearAll(dut->fl_tgt_cq02h, A * PCW);
+  clearAll(dut->fl_pchi_cq02h, A * 16);
   dut->ev_l_cq01h = 0;
   clearAll(dut->ev_owe_cq02h, S * D * NR);
   clearAll(dut->ev_cpi_cq02h, S * D);
@@ -155,6 +220,9 @@ void clearInputs() {
   dut->dn_l_cq01h = 0;
   clearAll(dut->dn_tag_cq02h, ND * TW);
   clearAll(dut->dn_row_cq02h, ND * 2);
+  dut->dn_taken_cq02h = 0;
+  dut->dn_mask_cq02h = 0;
+  dut->dn_aux_cq02h = 0;
   dut->cm_l_cq01h = 0;
   clearAll(dut->cm_tag_cq02h, NM * TW);
   dut->rel_l_cq01h = 0;
@@ -163,6 +231,7 @@ void clearInputs() {
 void resetRtl() {
   clearInputs();
   hist.clear();
+  br_of.assign(S * D, Core::RobLog::Alloc());
   tl_dbg.assign(S, 0);
   owed_dbg.assign(S * D, 0);
   // A core can end a cycle after a lead promised it more (a done next
@@ -207,6 +276,7 @@ void drive(const Cyc &c, const Cyc &nx) {
   for (const auto &a : r.alloc) {
     if (a.slot >= S || n[a.slot] == A) continue;
     setBit(dut->al_nop_cq02h, a.slot * A + n[a.slot], a.nop && control != "nop-real");
+    br_of[a.slot * D + a.idx] = a;
     ++n[a.slot];
     ++allocs;
     nops += a.nop;
@@ -236,6 +306,14 @@ void drive(const Cyc &c, const Cyc &nx) {
       setField(dut->fl_pname_cq02h, l * PW, PW, a.pname);
       setField(dut->fl_pold_cq02h, l * PW, PW, a.pold);
       setBit(dut->fl_pfree_cq02h, l, a.pfree);
+      setBit(dut->fl_br_cq02h, l, a.br);
+      setField(dut->fl_ckpt_cq02h, l * LK, LK, a.ckpt);
+      setBit(dut->fl_ptaken_cq02h, l, a.ptaken);
+      setBit(dut->fl_ret_cq02h, l, a.ret);
+      setField64(dut->fl_gmask_cq02h, l * 32, 32, a.gmask);
+      setField64(dut->fl_pcn_cq02h, l * PCW, PCW, a.pcn & PCM);
+      setField64(dut->fl_tgt_cq02h, l * PCW, PCW, a.tgt & PCM);
+      setField(dut->fl_pchi_cq02h, l * 16, 16, a.pchi);
       ++l;
     }
   }
@@ -256,21 +334,49 @@ void drive(const Cyc &c, const Cyc &nx) {
   events += r.owe.size() + r.cpi.size() + r.cpl.size() + r.rsf.size();
   // RCU's dones and MIU's completions.
   // Each done's row is the one RCU echoed (done_row, TI's 6ba08b1).
-  auto drow = [&](size_t p) {
-    const unsigned w = p < r.dpay.size() ? r.dpay[p].row : 0u;
-    return control == "wrong-row" && p == 0 ? (w + 1) % NR : w;
+  // A branch's on slot BS, with its outcome (taken, the lanes, a ret's aux).
+  const std::vector<int> sl = doneSlots(r);
+  // wrong-row: the log's first done names the next row.
+  auto drow = [&](unsigned p) {
+    const size_t k = size_t(sl[p]);
+    const unsigned w = k < r.dpay.size() ? r.dpay[k].row : 0u;
+    return control == "wrong-row" && k == 0 ? (w + 1) % NR : w;
   };
-  for (unsigned p = 0; p != r.done.size() && p != ND; ++p) {
-    setField(dut->dn_tag_cq02h, p * TW, TW, r.done[p]);
+  int first = -1;
+  for (unsigned p = 0; p != ND; ++p) {
+    if (sl[p] < 0) continue;
+    if (first < 0) first = int(p);
+    setField(dut->dn_tag_cq02h, p * TW, TW, r.done[size_t(sl[p])]);
     setField(dut->dn_row_cq02h, p * 2, 2, drow(p));
   }
-  if (control == "two-in-a-cycle" && !r.done.empty() && r.done.size() < ND) {
-    setField(dut->dn_tag_cq02h, r.done.size() * TW, TW, r.done[0]);
-    setField(dut->dn_row_cq02h, r.done.size() * 2, 2, drow(0));
+  // The outcome rides slot BS (don't-care elsewhere).
+  if (sl[BS] >= 0 && size_t(sl[BS]) < r.dpay.size()) {
+    const Core::RobLog::DonePay &d = r.dpay[size_t(sl[BS])];
+    const Core::RobLog::Alloc &b = br_of[r.done[size_t(sl[BS])] % (S * D)];
+    bool taken = d.taken;
+    uint32_t mask = d.mask;
+    // right-always: every outcome agrees with its prediction (a missed
+    // mispredict); flip-taken: every outcome inverted (a right branch read
+    // as wrong).
+    if (control == "right-always") { taken = b.ptaken; mask = b.gmask; }
+    if (control == "flip-taken") taken = !taken;
+    dut->dn_taken_cq02h = taken;
+    dut->dn_mask_cq02h = mask;
+    dut->dn_aux_cq02h = d.aux;
+  }
+  // two-in-a-cycle: the first done again, on the first free slot.
+  unsigned dup = ND;
+  if (control == "two-in-a-cycle" && first >= 0)
+    for (unsigned p = 0; p != ND; ++p) if (sl[p] < 0 && p != BS) { dup = p; break; }
+  if (dup != ND) {
+    setField(dut->dn_tag_cq02h, dup * TW, TW, r.done[size_t(sl[unsigned(first)])]);
+    setField(dut->dn_row_cq02h, dup * 2, 2, drow(unsigned(first)));
   }
   for (unsigned p = 0; p != r.cmpl.size() && p != NM; ++p) setField(dut->cm_tag_cq02h, p * TW, TW, r.cmpl[p]);
   events += r.done.size() + r.cmpl.size();
-  // The leads: the next cycle's.
+  // The leads: the next cycle's. A stopping cycle is driven empty (the
+  // stop tail), so it has none.
+  if (nx.r.stop) return;
   for (unsigned q = 0; q != S; ++q) {
     bool al = false;
     for (const auto &a : nx.r.alloc) al = al || a.slot == q;
@@ -280,12 +386,51 @@ void drive(const Cyc &c, const Cyc &nx) {
   }
   // A fill next cycle: the allocations fillLag() - 1 cycles before this one.
   dut->fl_l_cq01h = hist.size() >= fillLag() && !hist[hist.size() - fillLag()].empty();
-  for (unsigned p = 0; p != nx.r.done.size() && p != ND; ++p) setBit(dut->dn_l_cq01h, p, true);
-  if (control == "two-in-a-cycle" && !nx.r.done.empty() && nx.r.done.size() < ND)
-    setBit(dut->dn_l_cq01h, nx.r.done.size(), true);
+  // ... and whether a branch is among them (no-branch-lead: never).
+  bool brl = false;
+  if (hist.size() >= fillLag())
+    for (const auto &a : hist[hist.size() - fillLag()]) brl = brl || a.br;
+  dut->fl_brl_cq01h = brl && control != "no-branch-lead";
+  // The dones' leads: next cycle's slots, as it will place them (its
+  // allocations are this cycle's, so br_of already holds them).
+  const std::vector<int> nsl = doneSlots(nx.r);
+  bool nany = false;
+  for (unsigned p = 0; p != ND; ++p) if (nsl[p] >= 0) { setBit(dut->dn_l_cq01h, p, true); nany = true; }
+  if (control == "two-in-a-cycle" && nany)
+    for (unsigned p = 0; p != ND; ++p) if (nsl[p] < 0 && p != BS) { setBit(dut->dn_l_cq01h, p, true); break; }
   if (std::getenv("ROB_DEBUG") && (!r.done.empty() || !nx.r.done.empty()))
     std::fprintf(stderr, "ROB_DEBUG drive cycle %llu dones %zu next %zu\n", cycles, r.done.size(), nx.r.done.size());
   for (unsigned p = 0; p != nx.r.cmpl.size() && p != NM; ++p) setBit(dut->cm_l_cq01h, p, true);
+}
+
+// The resolution: last cycle's (the model's resolve, logged in the cycle
+// before the RTL's registered outputs show it): each slot's redirect lead
+// and the checkpoints right branches free; and the redirect's payload, a
+// cycle after its lead (p2, the cycle before that).
+void checkRes(const Cyc *p1, const Cyc *p2) {
+  if (p1) {
+    std::vector<uint8_t> rd(S, 0), ck(S * NK, 0);
+    for (const auto &q : p1->r.redirect) if (q.slot < S) rd[q.slot] = 1;
+    for (const auto &q : p1->r.ckfree) if (q.first < S && q.second < NK) ck[q.first * NK + q.second] = 1;
+    resolves += p1->r.resolve.size();
+    redirects += p1->r.redirect.size();
+    ckfrees += p1->r.ckfree.size();
+    for (unsigned s = 0; s != S; ++s)
+      if (getBit(dut->rd_l_cq03h, s) != bool(rd[s])) fail("redirect lead differs", s, getBit(dut->rd_l_cq03h, s), rd[s]);
+    for (unsigned b = 0; b != S * NK; ++b)
+      if (getBit(dut->ckf_cq03h, b) != bool(ck[b])) fail("checkpoint free differs", b, getBit(dut->ckf_cq03h, b), ck[b]);
+  }
+  if (p2)
+    for (const auto &q : p2->r.redirect) {
+      if (q.slot >= S) continue;
+      const unsigned s = q.slot;
+      if (getField(dut->rd_ckpt_cq04h, s * LK, LK) != q.ckpt) fail("redirect checkpoint differs", s, getField(dut->rd_ckpt_cq04h, s * LK, LK), q.ckpt);
+      if (uint32_t(getField64(dut->rd_tmask_cq04h, s * 32, 32)) != q.taken_mask)
+        fail("redirect taken mask differs", s, unsigned(getField64(dut->rd_tmask_cq04h, s * 32, 32)), q.taken_mask);
+      if (getField64(dut->rd_tgt_cq04h, s * PCW, PCW) != (q.target & PCM))
+        fail("redirect target differs", s, unsigned(getField64(dut->rd_tgt_cq04h, s * PCW, PCW)), unsigned(q.target));
+      if (getBit(dut->rd_stay_cq04h, s) != q.stay) fail("redirect stay differs", s, getBit(dut->rd_stay_cq04h, s), q.stay);
+    }
 }
 
 // This cycle's retirements, from the decision; last cycle's, from the
@@ -353,14 +498,14 @@ void check(const Cyc &c, const Cyc *prev) {
   }
 }
 
-Cyc pend, prev;
-bool pending = false, have_prev = false;
+Cyc pend, prev, prev2;
+bool pending = false, have_prev = false, have_prev2 = false;
 
 void hook(const Core &c) {
   const Core::GoLog &g = c.goLog();
   if (c.serial() != current) {
     if (pending && live && !stopped) ++skipped;    // the last core's last cycle: no next log for its leads
-    pending = have_prev = false;
+    pending = have_prev = have_prev2 = false;
     current = c.serial();
     const Config &k = c.config();
     live = k.slots == S && k.rob_depth == D && k.retire_per_rob == RP && k.rename_width <= A && k.sectioned == (NS > 0);
@@ -382,13 +527,27 @@ void hook(const Core &c) {
       ++stops;
       ++stop_why[pend.r.stop];
       stopped = true;
+      // The stopping cycle and one more, driven empty: the resolution
+      // registered from the last compared cycle (a squash's redirect lead,
+      // the squash itself slice 2's next part) and its payload.
+      clearInputs();
+      dut->eval();
+      checkRes(have_prev ? &prev : nullptr, have_prev2 ? &prev2 : nullptr);
+      tick();
+      clearInputs();
+      dut->eval();
+      checkRes(nullptr, have_prev ? &prev : nullptr);
+      tick();
       return;
     }
     ++cycles;
     drive(pend, now);
     dut->eval();
     check(pend, have_prev ? &prev : nullptr);
+    checkRes(have_prev ? &prev : nullptr, have_prev2 ? &prev2 : nullptr);
     tick();
+    prev2 = prev;
+    have_prev2 = have_prev;
     prev = pend;
     have_prev = true;
   }
@@ -407,17 +566,20 @@ int main(int argc, char **argv) {
   dut = std::make_unique<Vooe_rob>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
   // The random programs mispredict nothing, so a core runs past where its
-  // first squash would stop it (slice 2's); ROB_MISPREDICT=1 runs them as
-  // drawn.
-  ooeTestPredictAll(std::getenv("ROB_MISPREDICT") == nullptr);
+  // first squash would stop it (slice 2's next part); ROB_MISPREDICT=1 runs
+  // them as drawn, each core to its first squash, its redirect compared
+  // drawn (right-always needs mispredicts to miss).
+  ooeTestPredictAll(std::getenv("ROB_MISPREDICT") == nullptr && control != "right-always");
   const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, robConfig)) +
                           cg.run(seeds, nullptr, hook, robConfig);
   cg.close();
   dut->final();
   std::printf("rob_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu nops=%llu events=%llu retires=%llu "
-              "gpr-frees=%llu pred-frees=%llu stopped=%llu skipped=%llu mismatches=%llu model_failures=%d\n",
+              "gpr-frees=%llu pred-frees=%llu resolves=%llu redirects=%llu ckpt-frees=%llu stopped=%llu skipped=%llu "
+              "mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, nops, events, retires, gfrees,
-              pfrees, stops, skipped, mismatches, model_fails);
+              pfrees, resolves, redirects, ckfrees, stops, skipped, mismatches, model_fails);
+  if (br_two) std::printf("  cycles with two branch dones (RCU's one a cycle): %llu\n", br_two);
   for (const auto &kv : stop_why) std::printf("  stopped at %s: %llu\n", kv.first.c_str(), kv.second);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
