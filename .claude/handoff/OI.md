@@ -35,7 +35,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 260, OA 292, IS 180, TI 279, OI 246, CP 148, DA 97. Pings: Friday 10-30's all
+Conventions 15, AR 260, OA 296, IS 182, TI 281, OI 250, CP 149, DA 98 (sweep 11-01). Pings: Friday 10-30's all
 answered (checked 10-30); next pings Friday 11-06.
 
 ## Compute (DA, 2026-10-31)
@@ -45,6 +45,55 @@ answered (checked 10-30); next pings Friday 11-06.
 - Iterate NGD on the one-slot unit ooe_rob_s1 in scratch tree wt7 (unit
   added to wt7's test/ooe/cg-units.json only; never commit it). Confirm
   once at full size. Keep CoreMark on RH, never beside synthesis here.
+
+## State (2026-11-01 15:00)
+- 2b LANDED: 969a42b pushed (scoped PASS 21/21; ngd 8290 s, cg 6340 s at
+  CCV_JOBS=1). gate-push's own push failed (proxy port changed by a
+  container restart mid-gate); pushed by hand after the ancestry check.
+- Sweep merge in land: IS, AR, OA, TI branches (handoffs only); gating.
+- Next: model fill==alloc+2 assert + control (OA rev 295/296, OI-94);
+  floors run on RH with rets (resolve_lag_ret_only, ret_hold) and S1;
+  ret_hold flop in ooe_rs + squash_act_lag default 1; Rename's mark with
+  OI-94 cond 2 assert; cold-MLC dec_ooe_uop row to its owner.
+
+## State (2026-11-01 10:30)
+- TI fixed OI-97 (4c2ce8b: big units map in series; selftest own cache).
+  Land 969a42b = c911fe3 + merge of 4c2ce8b; gate-push (scoped, CCV_JOBS=1)
+  detached, log scratchpad/gate-land4.log and ~/ccv-logs/verify-969a42b-*;
+  waiter task b4g10l07a. After it pushes: sweep merge in land of
+  ccr-3868632d (IS), ccr-80102643 (AR), ccr-9eb50716 (OA), ccr-c22116ce
+  (RH): handoffs and merges only; gate-push again; sync main checkout.
+- OI-98 (rev 248, OA notified): OA rev 293 answered (prices <0.5%) +
+  squash_held_room_lag price 0; OA took all (rev 294). OI-99 (rev 249): OI-94 kill price 0 (C''), asked OA if C'' is (c). TODO: rets (ret_only+ret_hold) in next floors run on RH after 2b. Next OI row OI-101. OI-100 (rev 250, OA notified): RTL kill waits on the fill (kill count); TODO after 2b: model assert fill==alloc+2 under kill_free_lag + control delaying one fill; cond 2 (no RS/RAT write after squash) lands with Rename's mark. OA rev 296 accepted; say when both asserts land (OI-94 closes then).
+
+## State (2026-11-01, after gate 3)
+- BLOCKED on TI: OI-97 (rev 247, TI notified). Gate 3 (c911fe3, CCV_JOBS=1)
+  failed check-ngd: TI's OI-95 runs map and map -r in parallel
+  (check-ngd.py ~417), and two yosys-abc at ~6.5 GB on full ooe_rob OOM.
+  Selftest "ABC cache keyed map -r as map" fails on a kept synth-cache
+  (content key, fixed inputs: a hit after the first run). Wait for TI's
+  answer, or TI's go for OI to carry a fix (serialize at CCV_JOBS=1; a temp
+  cache for the selftest). Then gate-push land (c911fe3) and sync the main
+  checkout. Nothing pushed since 712913d. Next OI row OI-98. OI bookmark 247.
+
+## State (2026-11-01 06:00)
+- Gate 2 (beb452e, CCV_JOBS=4) killed at the 2 h bash limit; real fails:
+  ooe_unit control count (fixed c911fe3: retire-unresolved, no-ret-hold
+  listed, 43) and ngd OOM (full ooe_rob: yosys ~6 GB + ABC ~5.7 GB beside
+  other jobs). Gate 3: CCV_JOBS=1, detached (setsid nohup), log
+  scratchpad/gate-land3.log; a waiter task polls it. Raise to TI: the gate
+  at full-size ooe_rob does not fit 15 GB at CCV_JOBS=4 (serialize cg/ngd
+  for big units, or a memory-weighted slot).
+
+## State (2026-11-01 03:50)
+- Gate 1 on 82be63e: NOT pushed (disk full -> no result; lint CCV-L23 31
+  findings in ooe_rob: 2b's squash regs tagged 03 read by 02 window state).
+  Freed disk (rm wt6, wt7/build). Fix beb452e: squash state regs tagged 02
+  (sqm sq_rt hrel_q kv_q k*_q m_live), 02 copies rd_s/sp_s beside rd_q/sq_p
+  _cq03h (redirect side), ckfa_s for rs_en, discard ports dc_*_cq03h. Lint 0,
+  rob_tb clean. Gate 2 task bcet20ffq (log scratchpad/gate-land2.log).
+- RULE: lint (tools/lint-rtl.py <file>) before any gate; a state register
+  read by the window's 02 logic is tagged 02 (CCV-L23 same-stage exemption).
 
 ## State (2026-11-01 02:00)
 - Full NGD (CG-fixed RTL): 24.3 flop-flop, in-flop 22.7, no findings
