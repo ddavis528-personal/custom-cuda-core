@@ -45,6 +45,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 (none)
 
 ## Done
+- Rev 293 pricing (OI, 2026-10-31 to 11-01): coremark128 and coremark32,
+  configs a/b/c, at 712913d plus OI's patch (rh-jobs/oi86.patch, uncommitted in
+  the detached worktree /home/user/rh-oi86), warm. All PASS; results sent to OI
+  02:25Z. Cold (no CCV_MLC_WARM) hangs on the dec_ooe_uop response_within_n check
+  at tick 95945 from bbec7c1 through 712913d (bisect in ~/ccv-logs/bisect/), so a
+  cold run must be watched for an %Error flood. OI is raising it with the owner.
+  Tools: rh-jobs/oi86line.sh (one line a config) and perfdiff.py.
 - OI-88 (OI, 2026-10-30 to 31): six CoreMark runs at skeleton da182a7 with
   oracles from 21f7150 (d9ddd2c's ccv-sim faults F-RO). All passed; results sent
   to OI 14:16Z. Logs ~/ccv-logs/<k>.<cfg>.{full,log,time,stats.json}; oracles kept
