@@ -49,11 +49,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   21f7150 (d9ddd2c's ccv-sim faults F-RO), skeleton from da182a7. The oracles
   passed with counts matching OI's; runs started 02:47Z, detached (setsid nohup).
   If the skeleton refuses the oracles, stop and tell OI; never fall back.
-  Run 1 lost twice (container restarts at 04:55Z and 06:11Z); third try from
-  06:12Z. ccv-skel's RSS grows faster as coremark128 runs (8.3 GB at 1 h), so the
-  16 GB swapfile /home/user/rh-swap is on (`swapon` again after a restart).
-  rh-jobs/memlog.sh logs to ~/ccv-logs/memlog.txt. Relaunch with
-  rh-jobs/oi88v2.sh (it skips finished runs and kept oracles), plus memlog.sh
-  detached and rh-jobs/watch.sh 6600 as a tracked task. Fallback check:
-  trig_01VE9puJrHyUozKfsbdCpPNk (08:44Z).
+  Done and reported to OI: coremark128 base 17608696, rl 17551979, rlsh 17551979
+  (identical to rl). coremark128 sh running from 11:33Z under the original
+  script's skeleton. rh-jobs/oi88v3.sh (pid waits on it) then runs the two
+  coremark32 runs with CCV_OOE_STATS=~/ccv-logs/<k>.<cfg>.stats.json. OI wants
+  branch.under_squash and squash.due_branch_retired from it, which only that JSON
+  carries. After a restart, relaunch rh-jobs/oi88v2.sh (stats added; it skips
+  finished runs), plus `swapon /home/user/rh-swap`, memlog.sh, and the watch.sh
+  tracked task. Send OI one line per run as each finishes.
 - RH's own: the clean gate passed on 203f04b (5949 s); pushed.
