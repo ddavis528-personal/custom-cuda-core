@@ -43,10 +43,15 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-01)
-AR 261, OA 296, IS 182, TI 282, OI 252, CP 149, DA 99, RA 1, Conventions 16.
+AR 261, OA 296 (RA tab now rev 2), IS 182, TI 282, OI 252, CP 149, DA 99, RA 1, Conventions 16.
 Nothing had RA in Needs at session start.
 
 ## Open work, most urgent first
-- AR question round 1 (RA-n rows): see RA tab.
+- AR round 1: RA-2..RA-12 raised (RA tab rev 2), notice sent to AR 2026-11-01;
+  RA-1 to OA (skill minute). Wait for AR's answers (notice), then round 2
+  or, when exhausted, the first-pass arch doc. Key RA positions: write
+  ports 6/bank not 2; read ports 11/bank; CG-5 needs load-return lead
+  fields; A-timeline guard@A, GPR read@A+1; LAT_RCU_ADDR->2;
+  COLLECTIVE->3 (merge with R class); xbar inside RCU; AGU stays in MIU.
 - First-pass RCU arch doc (after AR answers).
 - Spec reconciliation (rcu-arch.md section 5) on first edit of RCU tab.
