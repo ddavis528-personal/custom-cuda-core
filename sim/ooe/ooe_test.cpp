@@ -1645,6 +1645,100 @@ void testSquash() {
   EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "register leak");
 }
 
+/// resolve_lag 1 under retire_lag 0 (OI-87): a branch completes and could
+/// retire in that cycle, before its resolution acts a cycle later; its
+/// squash would be lost and the wrong path retire. The branch waits at the
+/// head until it has acted. Random programs on four warps, mispredicting;
+/// the control lets the branch retire unresolved.
+void testResolveLagRetire() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "resolve-lag retire (control)" : "resolve-lag retire";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned waited = 0, mispredicts = 0;
+    for (unsigned seed = 1; seed != 4; ++seed) {
+      Config c = baseConfig();
+      c.retire_lag = 0;
+      c.resolve_lag = 1;
+      c.inject_retire_unresolved = control;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+      e.finish(20000);
+      waited += unsigned(e.core.counters["retire.res_pend"]);
+      mispredicts += unsigned(e.core.counters["branch.mispredict"]);
+      if (!control) EXPECT(e.core.counters["errors"] == 0, "errors");
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = g_fail != saved;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control retire-unresolved", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a branch retired before its resolution acted, unnoticed");
+      continue;
+    }
+    EXPECT(waited > 0, "no branch waited at the head for its resolution");
+    EXPECT(mispredicts > 0, "no mispredicts");
+  }
+}
+
+/// OA's rev 293: (b) with rets still at resolve_lag 1 (AR's lead is for
+/// branches and calls only). A ret resolves a cycle after its done, a
+/// branch in its done's cycle, so a branch done the cycle after a ret's
+/// would resolve beside it on the ROB's one outcome path; ret_hold keeps
+/// a branch or call off RCU the cycle after a ret is selected, and the core
+/// checks no branch resolves beside a ret. Random programs with every third
+/// branch a ret, some mispredicted, on four warps; the control drops the
+/// hold, and the check must fire.
+void testRetHold() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "ret hold (control)" : "ret hold";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned held = 0, rets = 0, errors = 0;
+    for (unsigned seed = 1; seed != 4; ++seed) {
+      Config c = baseConfig();
+      c.resolve_lag = 1;
+      c.resolve_lag_ret_only = 1;
+      c.squash_act_lag = 1;
+      c.ret_hold = 1;
+      c.inject_no_ret_hold = control;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      for (unsigned i = 0; i != 4; ++i) {
+        std::vector<Op> p = randomProgram(rng, 300, true);
+        unsigned nb = 0;
+        for (Op &o : p)
+          if (o.k == kBranch && ++nb % 3 == 0) {
+            o.ret = true;
+            o.taken = true;
+            o.pred_taken = rng() % 4 != 0;
+            o.ret_to = 0x2468;
+            ++rets;
+          }
+        e.launch(i, i, p);
+      }
+      e.finish(20000);
+      held += unsigned(e.core.counters["issue.ret_hold"]);
+      errors += unsigned(e.core.counters["errors"]);
+      if (!control) EXPECT(e.core.counters["errors"] == 0, "errors");
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = errors > 0;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control no-ret-hold", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a branch resolved beside a ret, unnoticed without the hold");
+      continue;
+    }
+    EXPECT(held > 0, "the hold never held a branch (%u rets)", rets);
+  }
+}
+
 /// The floors and the ceiling, which binds: two slots, a ceiling well under
 /// the ROB. The ceiling is a term of the go (OI-73 (3), OA's rev 207): it
 /// holds each warp at its ceiling, and the check after the go never fires.
@@ -5005,6 +5099,8 @@ int main(int argc, char **argv) {
   testSquashSaturated();
   testFinalBeforeProducer();
   testFloorCeiling();
+  testResolveLagRetire();
+  testRetHold();
   testCeilingGo();
   testDemote();
   testRestore();
