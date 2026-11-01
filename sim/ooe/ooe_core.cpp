@@ -2854,9 +2854,23 @@ bool Core::memopOrderOk(const Slot &s, const RobEntry &r) const {
   return true;
 }
 
+bool Core::migInFlight() const {
+  for (const Slot &s : slot_)
+    if (s.st == WarpState::kAllocated || s.st == WarpState::kDrained || (s.st == WarpState::kDemoting && s.map_sent))
+      return true;
+  return false;
+}
+
 void Core::selectSectioned() {
-  constexpr unsigned kRes = 9, kP0 = 5;
+  constexpr unsigned kRes = 9, kP0 = 5, kR = 4;
   unsigned busy = 0;
+  // idle_r_k (RA-17): R left idle this cycle for a migration's row.
+  const bool mig = cfg_.idle_r_k && migInFlight();
+  const bool force_r = mig && !cfg_.inject_no_idle_r && r_run_ + 1 >= cfg_.idle_r_k;
+  if (force_r) {
+    busy |= 1u << kR;
+    count("issue.idle_r");
+  }
   std::vector<bool> memop_block(slot_.size(), false);
   // A bulk discard takes P0 for the cycle, and no memop of its warp goes
   // with it (V-23).
@@ -3002,9 +3016,11 @@ void Core::selectSectioned() {
   }
   const auto isExtra = [&](unsigned e) { return std::find(extra.begin(), extra.end(), e) != extra.end(); };
   unsigned used = busy, issued = 0;
+  bool r_granted = false;
   for (unsigned e : grant) {
     if ((used & rs_[e].res) && !isExtra(e)) { err("V-60: a resource granted twice in a cycle"); continue; }
     used |= rs_[e].res;
+    r_granted |= (rs_[e].res >> kR) & 1;
     const RsEntry &x = rs_[e];
     const RobEntry &r = slot_[x.slot].rob[x.rob];
     unsigned port = unsigned(__builtin_ctz(x.res));
@@ -3033,6 +3049,10 @@ void Core::selectSectioned() {
     ++issued;
   }
   ++histograms["issue_per_cycle"][issued];
+  r_idle_ = !r_granted;
+  r_run_ = mig && r_granted ? r_run_ + 1 : 0;
+  if (mig && r_run_ >= cfg_.idle_r_k)
+    err("RA-17: R granted %u cycles running while a migration is in flight", r_run_);
   ++histograms["sections_idle"][4 - unsigned(__builtin_popcount(used & 0xFu))];
   // OI-81's figure: GPR rows not in the pool (held, buffered or not, and on
   // their way back), each cycle.

@@ -435,6 +435,15 @@ struct Config {
   /// squash_held_room_lag 1, are the defaults (OA's rev 294, OI-98).
   unsigned resolve_lag_ret_only = 1;
   unsigned ret_hold = 1;
+  /// RA-17 (OA's revs 298-299): a migration borrows R's PRF ports, a row in
+  /// each cycle R holds no op. While one is in flight (restore-allocate to
+  /// restore-activate; a demotion's map to its slot's free), select leaves
+  /// R idle after idle_r_k - 1 cycles running with R granted, and a
+  /// natural idle restarts the count: 17 rows in at most 17 x idle_r_k
+  /// cycles. 0 is off; 4 is RA's plan until Phase 1. Checked: no migration
+  /// sees idle_r_k cycles running with R granted (inject_no_idle_r drops
+  /// the force). The sectioned select only (R is its resource 4).
+  unsigned idle_r_k = 0;
   unsigned branch_ends_window = 1;
   /// A squashed entry held for an op in flight frees its ROB slot as the op
   /// lands and its names a cycle later (1, the default, OA's rev 280: the
@@ -470,6 +479,7 @@ struct Config {
   bool inject_row_no_hold = false; ///< select issues a row past 3 dones in flight (row-no-hold, OI-90)
   bool inject_retire_unresolved = false;  ///< resolve_lag: a branch retires before its resolution acts
   bool inject_no_ret_hold = false;  ///< ret_hold: a branch is selected the cycle after a ret
+  bool inject_no_idle_r = false;  ///< idle_r_k: select never leaves R idle for a migration (RA-17)
   bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
@@ -1117,6 +1127,9 @@ public:
   /// from now (read only under Config::miss_lead).
   void hint(unsigned rob_tag);
   uint64_t now() const { return now_; }   ///< the last cycle run
+  /// R held no op at the last cycle's select: a migration's row may use
+  /// its PRF port (RA-17).
+  bool rIdle() const { return r_idle_; }
   bool reqStopQ() const { return req_stop_q_; }   ///< req_rows_late's stop lead (benches)
   void alloc(const Alloc &a);
   void demote(unsigned warp);
@@ -1751,6 +1764,10 @@ private:
   /// ret_hold: no branch or call is selected for RCU this cycle.
   bool retHeld() const { return cfg_.ret_hold && !cfg_.inject_no_ret_hold && ret_sel_at_ + 1 == now_; }
   uint64_t res_ret_ = ~0ull;                ///< ret_hold's check: the cycle the last ret resolves
+  unsigned r_run_ = 0;                      ///< idle_r_k: cycles running with R granted, a migration in flight
+  bool r_idle_ = true;                      ///< R held no op at this cycle's select
+  /// idle_r_k: a migration is in flight in some slot (RA-17's window).
+  bool migInFlight() const;
   GoLog golog_;
   void goRoomNext();
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)

@@ -1008,7 +1008,19 @@ coremark32 4,584,463 to 4,584,938 (+0.010%) with rets at lag 1, the same
 with the hold (it fired 4 times); coremark128 17,060,800 to 17,023,250
 (-0.22%) with rets at lag 1 and 17,009,943 (-0.08% more) with the hold (it
 fired 1,996 times; warm MLC, RH's runs). The audit's random
-programs have no rets, so it cannot price either. `release_names_lag` 1 and
+programs have no rets, so it cannot price either. `idle_r_k` (RA-17,
+OA's revs 298-299; 0, off, until priced): a migration borrows R's PRF
+ports, a row in each cycle R holds no op (AR's answers to RA-6 and RA-8),
+so while one is in flight (restore-allocate to restore-activate, a
+demotion's map to its slot's free) select leaves R idle after
+`idle_r_k` - 1 cycles running with R granted, a natural idle restarting
+the count (`issue.idle_r`): 17 rows in at most 17 x K cycles. The swap
+environment's `r_ports` moves the rows that way (off, they take 17 cycles
+on ports of their own, as TI-21 has them). R running K cycles granted
+beside a migration is an error; the test idle R (three warps of RCU-only
+ops, a demotion and its restores) holds every migration to 68 cycles at
+K 4, and its control (`inject_no_idle_r`) is caught. Sectioned select
+only, where R is resource 4. `release_names_lag` 1 and
 `squash_room_lag` 1 are the defaults (OA's rev 280): a held entry frees
 its ROB slot as its op lands and its names a cycle later (and with its
 slot, if the slot is released first), and a squashed slot's room reads 0

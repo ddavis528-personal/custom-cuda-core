@@ -388,6 +388,11 @@ struct Env {
     /// PF-41 (AR's revs 116-117): with provisional, a provisional warp is
     /// demoted the moment a ready parked warp appears, no threshold wait.
     bool preempt = false;
+    /// RA-17 (AR's answers to RA-6 and RA-8): a migration's rows go
+    /// through R's PRF ports, one in each cycle R holds no op, not a
+    /// read or write port of their own. Off: 17 rows in 17 cycles, as
+    /// TI-21 has them, on the ports charge_ports names.
+    bool r_ports = false;
   } swap;
   enum : unsigned { kNever = 0, kSwap = 1, kEvict = 2 };
   unsigned hop = ccv::kLatHop;
@@ -397,6 +402,21 @@ struct Env {
   std::map<std::pair<unsigned, size_t>, uint64_t> served;   ///< (warp, index) -> when its DRAM fill lands
   std::vector<std::pair<uint64_t, uint64_t>> read_busy, write_busy;   ///< migration port intervals
   uint64_t write_conflicts = 0;          ///< cycles a restore's write port would have been short
+  /// RA-17: a migration's rows under r_ports, each moved in a cycle R held
+  /// no op; done(last) runs at the cycle its last row moved.
+  struct Xfer { uint64_t from = 0; unsigned left = ccv::kMigrationCycles; std::function<void(uint64_t)> done; };
+  std::vector<Xfer> xfers;
+  uint64_t xfer_rows = 0, xfer_waits = 0;   ///< rows moved, and cycles a row waited on a busy R
+  uint64_t xfer_max = 0;                    ///< the longest migration, first row's cycle to last
+  /// A migration of 17 rows from cycle first: under r_ports, as R allows;
+  /// else in 17 cycles. done(last) at the cycle of its last row.
+  void migrate(uint64_t first, std::function<void(uint64_t)> done) {
+    if (!swap.r_ports) { done(first + ccv::kMigrationCycles - 1); return; }
+    Xfer x;
+    x.from = first;
+    x.done = std::move(done);
+    xfers.push_back(std::move(x));
+  }
   std::map<std::pair<unsigned, size_t>, uint64_t> tid_at;   ///< (warp, index) -> its latest correct-path tid
   std::map<unsigned, unsigned> slot_owner;                  ///< slot -> its latest occupant (launch, activate)
   // Measures: swaps, each demoted slot's empty time (from the miss at the
@@ -469,8 +489,9 @@ struct Env {
     // PCA's command beside it: the first row a hop on, 16 more, done to RAU,
     // RAU's decision, activate.
     const uint64_t first = a + 2 * hop;
-    write_busy.push_back({first, first + ccv::kMigrationCycles});
-    acts.insert({first + 16 + hop + 1 + hop, [this, id, slot] {
+    if (!swap.r_ports) write_busy.push_back({first, first + ccv::kMigrationCycles});
+    migrate(first, [this, id, slot](uint64_t last) {
+    acts.insert({last + hop + 1 + hop, [this, id, slot] {
       Alloc ac;
       ac.warp = id;
       ac.slot = slot;
@@ -487,6 +508,7 @@ struct Env {
       restore_busy = false;
       ++swaps;
     }});
+    });
   }
 
   /// RAU on OOE's report: a stalled head with an outstanding load.
@@ -595,9 +617,10 @@ struct Env {
     }
     const uint64_t migrate = t + hop + 1;            // drained to RAU, its decision
     const uint64_t first = migrate + 2 * hop;        // migrate to RCU, the first row to PCA
-    if (swap.charge_ports) read_busy.push_back({migrate + hop, migrate + hop + ccv::kMigrationCycles});
+    if (swap.charge_ports && !swap.r_ports) read_busy.push_back({migrate + hop, migrate + hop + ccv::kMigrationCycles});
     const unsigned slot = x->slot, id = x->id;
-    const uint64_t decide = first + 16 + hop + 1;     // done to RAU, its decision
+    this->migrate(first, [this, slot, id](uint64_t last) {
+    const uint64_t decide = last + hop + 1;           // done to RAU, its decision
     acts.insert({decide, [this, slot, id, decide] {
       // Free the slot (alloc_op 0) and, at the same decision, pick a parked
       // warp for it; the warp is parked, ready when its fill has landed.
@@ -616,6 +639,7 @@ struct Env {
       demote_busy = false;
       rauRestore(decide);
     }});
+    });
   }
 
   explicit Env(const Config &c, unsigned seed = 1) : cfg(c), core(c), rng(seed) {
@@ -1237,6 +1261,18 @@ struct Env {
     const auto presets = std::move(preset_cw);
     preset_cw.clear();
     core.cycle(t);
+    // RA-17: a migration's row moves in each cycle R held no op (its read
+    // or write in the cycle after; a cycle either way).
+    for (auto it = xfers.begin(); it != xfers.end();) {
+      if (t < it->from) { ++it; continue; }
+      if (!core.rIdle()) { ++xfer_waits; ++it; continue; }
+      ++xfer_rows;
+      if (--it->left) { ++it; continue; }
+      xfer_max = std::max<uint64_t>(xfer_max, t - it->from + 1);
+      auto done = std::move(it->done);
+      it = xfers.erase(it);
+      done(t + 1);
+    }
     for (const auto &pc : presets) core.presetWidths(pc.first, pc.second);
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
@@ -1745,6 +1781,76 @@ void testRetHold() {
       continue;
     }
     EXPECT(held > 0, "the hold never held a branch (%u rets)", rets);
+  }
+}
+
+/// RA-17 (OA's revs 298-299): a migration's rows use R's PRF ports, one in
+/// each cycle R holds no op (swap.r_ports), and select leaves R idle after
+/// idle_r_k - 1 cycles running with R granted while one is in flight. Three
+/// warps of RCU-only ops keep R busy every cycle it can be; warp 0's DRAM
+/// miss demotes it, and parked warps restore. With K = 4 every migration
+/// moves its 17 rows within 17 x 4 cycles and the check stays quiet; the
+/// control drops the force, and the check must fire.
+void testIdleR() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "idle R (control)" : "idle R";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned forced = 0, errors = 0, swaps = 0;
+    uint64_t rows = 0, waits = 0;
+    for (unsigned seed = 1; seed != 4; ++seed) {
+      Config c = baseConfig();
+      c.sectioned = true;
+      c.decq = 13;
+      c.idle_r_k = 4;
+      c.inject_no_idle_r = control;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 10;
+      e.swap.rau = true;
+      e.swap.r_ports = true;
+      e.swap.dram_pm = 40;
+      e.replay_spread = 60;
+      for (unsigned i = 0; i != 4; ++i) {
+        std::vector<Op> p;
+        if (i == 0) {
+          p = randomProgram(rng, 200, true);
+          for (Op &o : p)
+            if (o.k == kLoad) { o.dram = true; o.fill = e.swap.dram_hi; break; }
+        } else {
+          for (unsigned j = 0; j != 600; ++j) { Op o; o.k = kRcuOp; o.dst = j % 16; p.push_back(o); }
+          Op x; x.k = kExit; p.push_back(x);
+        }
+        e.launch(i, i, p);
+      }
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      if (control) { while (!e.done() && e.t < 20000) e.step(); }
+      else e.finish(200000);
+      forced += unsigned(e.core.counters["issue.idle_r"]);
+      errors += unsigned(e.core.counters["errors"]);
+      swaps += e.swaps;
+      rows += e.xfer_rows;
+      waits += e.xfer_waits;
+      if (!control) {
+        EXPECT(e.core.counters["errors"] == 0, "errors");
+        EXPECT(e.xfers.empty(), "%zu migrations unfinished", e.xfers.size());
+        EXPECT(e.xfer_max <= 17u * 4, "a migration took %llu cycles, over 17 x 4", (unsigned long long)e.xfer_max);
+      }
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = errors > 0;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control no-idle-r", caught ? "caught" : "MISSED");
+      EXPECT(caught, "R busy past K running beside a migration, unnoticed without the force");
+      continue;
+    }
+    EXPECT(swaps > 0 && rows > 0, "%u swaps, %llu rows", swaps, (unsigned long long)rows);
+    EXPECT(forced > 0 && waits > 0, "R never forced idle (%u) or never busy beside a row (%llu)", forced,
+           (unsigned long long)waits);
+    std::printf("      idle R (K 4): %u swaps, %llu rows, %llu row waits, %u forced idles\n", swaps,
+                (unsigned long long)rows, (unsigned long long)waits, forced);
   }
 }
 
@@ -5067,6 +5173,11 @@ int main(int argc, char **argv) {
     std::printf("ooe-test --atomic: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--idle-r") {   // RA-17's test alone
+    testIdleR();
+    std::printf("ooe-test --idle-r: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--audit") {
     audit();
     return g_fail ? 1 : 0;
@@ -5119,6 +5230,7 @@ int main(int argc, char **argv) {
   testFloorCeiling();
   testResolveLagRetire();
   testRetHold();
+  testIdleR();
   testCeilingGo();
   testDemote();
   testRestore();
