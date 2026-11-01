@@ -47,12 +47,12 @@ so this is a build artifact rather than something to remember.
 | `rtl/top/stubs/ccv_rcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_spm.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_syu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
-| `sim/ooe/ooe_block.cpp` | — | `CCV_LAT_L1_MISS_WAKE` |
+| `sim/ooe/ooe_block.cpp` | — | `CCV_DONE_SLOT_RCU`, `CCV_LAT_L1_MISS_WAKE` |
 | `sim/ooe/ooe_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_BR_CKPTS`, `CCV_P_W_FETCH_EPOCH` |
 | `sim/ooe/ooe_core.h` | — | — |
 | `sim/ooe/ooe_test.cpp` | — | `CCV_P_FOOT_MIN_FP` |
 | `sim/skel/kernel.cpp` | — | `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_MAX_CTA` |
-| `sim/skel/ooe.cpp` | — | — |
+| `sim/skel/ooe.cpp` | — | `CCV_DONE_SLOT_RCU` |
 | `sim/skel/stub.h` | — | — |
 | `test/cg/tb_cg_clk.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |

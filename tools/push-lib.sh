@@ -87,6 +87,9 @@ MSG
 
 # Build products, minus the compiler snapshot and its fetch cache.
 clear_build() {
-  find build -mindepth 1 -maxdepth 1 ! -name compiler ! -name compiler.git -exec rm -rf {} + 2>/dev/null
-  say "cleared build/ (kept compiler, compiler.git)"
+  # The synthesis cache stays: the next scoped gate reuses it (OI-95). A
+  # full gate clears it itself.
+  find build -mindepth 1 -maxdepth 1 ! -name compiler ! -name compiler.git ! -name synth-cache \
+    -exec rm -rf {} + 2>/dev/null
+  say "cleared build/ (kept compiler, compiler.git, synth-cache)"
 }

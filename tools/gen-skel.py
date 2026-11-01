@@ -144,7 +144,12 @@ def build(d, pv, blocks):
                           # its receiver's owner has stated the hold.
                           held=c.get("backpressure", "").startswith("held:"),
                           latency_match=c.get("latency_match"),
-                          lead=lead, lead_mask=lead_mask))
+                          lead=lead, lead_mask=lead_mask,
+                          # slot_fields (OA's response OI-93): per field, a
+                          # mask of the slots it is defined on; all others.
+                          slot_masks={f: sum(1 << (pv[x] if isinstance(x, str) else x)
+                                             for x in sl)
+                                      for f, sl in c.get("slot_fields", {}).items()}))
 
     # Channel instances and the slot map. Slots are numbered channel instance
     # by channel instance, so a slot index is stable for a fixed schema and
@@ -232,7 +237,10 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
     L.append("/// most significant.")
     L.append("/// `lead`: driven with valid, one cycle ahead of the rest of the")
     L.append("/// payload, in the same register (schema lead_fields).")
-    L.append("struct FieldDesc { const char *name; uint32_t lsb; uint32_t width; bool lead; };")
+    L.append("/// `slots`: bit s set when the field is defined on slot s (schema")
+    L.append("/// slot_fields); on any other slot it is zero.")
+    L.append("struct FieldDesc { const char *name; uint32_t lsb; uint32_t width; bool lead;")
+    L.append("                   uint32_t slots = ~0u; };")
     L.append("")
     L.append("/// Ordering is a KEY: none; one order per binding group; or one")
     L.append("/// order per value of a payload field (e.g. warp_id).")
@@ -259,8 +267,10 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
     for c in chans:
         L.append("inline constexpr FieldDesc kF_%s[] = {" % c["name"])
         for f, lsb, w in c["fields"]:
-            L.append('  {"%s", %d, %d, %s},' % (f, lsb, w,
-                     "true" if f in c["lead"] else "false"))
+            sm = c["slot_masks"].get(f)
+            L.append('  {"%s", %d, %d, %s%s},' % (f, lsb, w,
+                     "true" if f in c["lead"] else "false",
+                     ", 0x%xu" % sm if sm is not None else ""))
         L.append("};")
     L.append("")
     L.append("inline constexpr ChanDesc kChans[] = {")
@@ -404,6 +414,11 @@ def gen_sv(chans, cinst, nslots, pbits):
             off = ci["payload_base"] + s * c["bits"]
             lm = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
                   if c["lead_mask"] else "")
+            # The fields this slot does not carry (slot_fields) are zero.
+            zm = sum(((1 << w) - 1) << lsb for f, lsb, w in c["fields"]
+                     if not (c["slot_masks"].get(f, ~0) >> s) & 1)
+            if zm:
+                lm += ", .ZERO_MASK(%d'h%x)" % (c["bits"], zm)
             if c["attrs"]["fixed_latency"]:
                 lm += ", .FIXED_LAT(1)"   # no stall, credit on landing (A-47)
             # A backpressured channel's response bound is the watchdog

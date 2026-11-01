@@ -930,6 +930,15 @@
       "doc": "Slots on ccv_rcu_ooe_done, a free pool. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). The lane term counts results per section per fixed-latency class, not per unit, so FP's minimum adds no term while FP shares the lane's latency class: select gives a section to one op a cycle, so an FP op and an integer op in one section cannot complete together. A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here (four slots), a bank write port per section, and a lat_class code of its own (OA's response IS-7)."
     },
     {
+      "name": "CCV_DONE_SLOT_RCU",
+      "value": 5,
+      "status": "provisional",
+      "decided_at": "OOE architect",
+      "source": "AR's RCU spec rev 14; OA's response OI-93 (OA's rev 287, 2026-10-31)",
+      "derive": "CCV_DONE_SLOTS - 2",
+      "doc": "The one slot of ccv_rcu_ooe_done that R's RCU-only latency class completes on (CCV_LAT_RCU: branch, ret, barrier arrive and wait, and the predicate logic, pmov and movi that RCU executes alone), and that no other class takes. R issues one op a cycle and the class has one fixed latency, so at most one such done lands a cycle: one slot, never contended, and one outcome register in OOE rather than one per slot. branch_taken, branch_mask and aux are defined only on it. The other classes take the lowest free of the rest, which CCV_DONE_SLOTS sizes for them: four lane, one SFU, one warp-collective. One name for OOE, the RCU stub and the checks, so none can disagree with a constant (OA's response OI-93)."
+    },
+    {
       "name": "CCV_P_W_BYP_GROUP",
       "value": 3,
       "status": "preliminary",

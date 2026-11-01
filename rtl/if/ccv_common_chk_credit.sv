@@ -59,6 +59,12 @@ module ccv_common_chk_credit #(
   // the case -- it gates a lane before the operands it gates arrive. Zero on
   // every channel without lead fields, which makes the property vacuous.
   parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0,
+  // Payload bits this slot does not carry (schema slot_fields: a field
+  // defined only on some slots of a channel; AR rev 260). They are zero
+  // here, the lead ones in the valid cycle and the rest when the payload is
+  // due. Zero on every slot that carries all its channel's fields, which
+  // makes both properties vacuous.
+  parameter logic [PAYLOAD_W-1:0] ZERO_MASK = '0,
   // Sequential repeater stages between THIS checker and the sender
   // (rtl/phys/ccv_common_rpt.sv). Only the stall rule depends on where along a
   // repeated link the checker sits: a stall seen here reaches the sender
@@ -275,6 +281,16 @@ module ccv_common_chk_credit #(
   wire [PAYLOAD_W-1:0] lead_bits = ch_payload & LEAD_MASK;
   `CCV_CONTRACT_M(MODE, lead_known_at_valid,
                   !ch_valid || `CCV_KNOWN(lead_bits))
+
+  // A field this slot does not carry is zero (ZERO_MASK): its lead bits in
+  // the valid cycle, the rest when the payload is due. Unknown bits are the
+  // two properties above's to name.
+  wire [PAYLOAD_W-1:0] absent_lead = ch_payload & ZERO_MASK & LEAD_MASK;
+  wire [PAYLOAD_W-1:0] absent_rest = ch_payload & ZERO_MASK & ~LEAD_MASK;
+  `CCV_CONTRACT_M(MODE, absent_lead_zero,
+                  !ch_valid || !(`CCV_KNOWN(absent_lead)) || absent_lead == '0)
+  `CCV_CONTRACT_M(MODE, absent_field_zero,
+                  !valid_q || !(`CCV_KNOWN(absent_rest)) || absent_rest == '0)
 
   // -- end of test: every message answered --------------------------------
   // A receiver that consumes two messages and returns one credit breaks no
