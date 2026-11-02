@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-02. Keep this current at every task's end; it is what
+Updated 2026-11-02 (sweep). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -42,9 +42,9 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 260, OA 296, IS 184, TI 281, OI 250, CP 149, DA 100, RA 41.
+Conventions 17, AR 268, OA 310, IS 186, TI 290, OI 252, CP 152, DA 103, RA 59, RI 1.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
-not yet in the merged roster, so notice.py refuses to=RA: send the notice by hand).
+now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
