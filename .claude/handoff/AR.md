@@ -62,8 +62,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 264, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
-  Conventions 16, RA 41. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  record): AR 265, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
+  Conventions 16, RA 42. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
@@ -103,7 +103,14 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    + fixed_latency, every memop incl. fence gets one address (AR owes MIU
    spec pairing rule); RA-23 kill_ack a level, all 8 blocks; RA-26 no RCU
    CSRs, answer reads 0 + credit. Lesson: check docs/rcu-arch.md's channel
-   table before answering a migration question. Owed by AR: LANE spec (SFU second result on lane_rcu_res;
+   table before answering a migration question.
+   RA-28/29 answered, AR rev 265: MIU <=1 GPR write/section/cycle (miss
+   arbiter; MIU spec), PCA rows contiguous 0..16 (PCA spec), pca_rcu depth
+   stays 4 (Q-43), RAU <= CCV_TIER1_WARPS migrations command->mig_done (RAU
+   spec); 4 PRF write ports (collectives in R at A+2; supersedes rev 262's
+   5th). Asked OA: two SFU ops in one cycle vs fixed done slot 4. RA-29 (c)
+   early collective done -> if legal, RA-8 costs RCU nothing; DA gets OOE
+   cost + perf. RCU RTL-depth spec: artifact 4k7VrEKJG4KUgMYG1Qz8mB (RA's). Owed by AR: LANE spec (SFU second result on lane_rcu_res;
    lane pipeline 3 cycles A+3..A+5) and MIU spec (lead fields phys_dst,
    dst_pos, dst_width, active_mask, phys_pred, pred_we) once TI's schema
    rows land; floorplan plan under Q-42 (16 lanes per long side, MIU one
