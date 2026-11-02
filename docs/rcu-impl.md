@@ -15,6 +15,8 @@ Nothing of the RCU's RTL exists yet: the RCU in both hosts is the C++ stub
 and parameter changes the spec needs are agreed but not all applied (section
 6).
 
+Paths under rtl/rcu/ and test/rcu/ are written plain, not as code, until they exist (the docs check holds every code path to the tree).
+
 ---
 
 ## 1. Who RI is, and what it owns
@@ -24,8 +26,8 @@ and parameter changes the spec needs are agreed but not all applied (section
   - Register: https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5, tab RI (node
     `8e4547bc-c469`). The tab and its Conventions row were added 2026-11-02.
 - **RI owns:**
-  - the RCU's RTL, `rtl/rcu/`;
-  - its units, benches and fixtures, `test/rcu/`;
+  - the RCU's RTL, rtl/rcu/;
+  - its units, benches and fixtures, test/rcu/;
   - the RCU-internal assertions and the Q-53 checkers the spec assigns to
     RCU's RTL;
   - every measurement in the spec's exit table, M1 to M7, and the report of
@@ -110,12 +112,12 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
   A package localparam cannot be overridden, so a reduced unit would
   otherwise be impossible (RA-32 (2)).
 - **Units:**
-  - `test/rcu/cg-units.json` for every sequential module;
-  - `test/rcu/ngd-units.json` for any module with no flops.
+  - test/rcu/cg-units.json for every sequential module;
+  - test/rcu/ngd-units.json for any module with no flops.
 
   Every module gets a reduced unit for loops (a bank at `ROWS` = 32,
   `ccv_rcu_lanes` at `COPIES` = 4) and its full-size unit for its exit. A
-  full-size unit that peaks over 2 GB goes on `tools/heavy-units.json`
+  full-size unit that peaks over 2 GB goes on tools/heavy-units.json
   (TI's; on TI's scratch branch, not yet merged, 2026-11-02; ask TI). Copy the shape of `test/ooe/cg-units.json`.
 - **Port budgets, `rtl/rcu/<module>.ngd.json`:**
   - The numbers are RA's, from the Partition tab's "Port NGD budgets" table.
@@ -164,7 +166,7 @@ ports.
 Until he decides, this plan assumes it, and the decision goes in the DA tab.
 Verification then runs at three levels.
 
-1. **Module benches** (`test/rcu/`):
+1. **Module benches** (test/rcu/):
    - directed tests per module, against the spec's per-cycle tables;
    - the in-module assertions (Partition tab) on in every run;
    - the `lead-promise` assertion from the first `lanes` and `mem` builds.
@@ -216,7 +218,7 @@ what section 7 has unblocked.
 | The stub's timing and AR's answers in the stub | TI | RA-30 | block replay at cycle level (section 5) | transaction-level compare |
 | The ccv-skel port-trace dump | TI | RA-34 | M2 with real stimulus; block replay | reset/idle and directed stimulus only |
 | Fanout term enforced in check-ngd | TI | RA-33 | nothing: report-only numbers count for M1 | record the reported stages beside each path |
-| Repo support: the gate-scope map for `rtl/rcu/` and `test/rcu/`, a gate job for RCU's benches, the SV-hosted RTL selector, the CLAUDE.md pointer to this file, and the sweep minutes RA 27 and RI 31 in the register skill | TI, OA | RA-37 | an unmapped path runs every gate section on each push; SV-hosted runs | push less often until the map lands |
+| Repo support: the gate-scope map for rtl/rcu/ and test/rcu/, a gate job for RCU's benches, the SV-hosted RTL selector, the CLAUDE.md pointer to this file, and the sweep minutes RA 27 and RI 31 in the register skill | TI, OA | RA-37 | an unmapped path runs every gate section on each push; SV-hosted runs | push less often until the map lands |
 | The collective fold, 5 → 3 | DA | RA-29 (c) | nothing: the spec runs collectives in the R pipe either way; only the parameter and OOE's class change | phase 1's figures are the input |
 
 ## 8. Getting the session set up (first hour)
