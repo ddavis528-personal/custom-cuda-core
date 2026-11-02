@@ -62,7 +62,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 266, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
+  record): AR 267, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
   Conventions 16, RA 45. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
@@ -119,7 +119,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    accepted revs 264/265 (all folded; RA-30 is its TI row). AR owes the
    top-level assertion that coincident miu_rcu_data slots' sections are
    disjoint. Address channel is ~12,400 wires (4 x 3,111), fixed in
-   rcu-arch/Q-18; payload-spec.md line 165's 8,400 is schema text (TI's). Owed by AR: LANE spec (SFU second result on lane_rcu_res;
+   rcu-arch/Q-18; payload-spec.md line 165's 8,400 is schema text (TI's).
+   AR rev 267: issue lead slice agreed per OA rev 307 (lead_sec_mask,
+   lead_src_used, lead_imm_used, lead_merge_used on 9 slots; R adds
+   lead_guard_used + lead_guard_pred, ~88 wires); guard lead replaces
+   RA-32's lag-1 fallback (DA only if both fail). TI writes lead_fields and
+   applies ADDR_BASE 1. OA tab read rows 306/307 and TI 285 only, so the
+   sweep bookmarks for OA/TI stay put. Owed by AR: LANE spec (SFU second result on lane_rcu_res;
    lane pipeline 3 cycles A+3..A+5) and MIU spec (lead fields phys_dst,
    dst_pos, dst_width, active_mask, phys_pred, pred_we) once TI's schema
    rows land; floorplan plan under Q-42 (16 lanes per long side, MIU one
