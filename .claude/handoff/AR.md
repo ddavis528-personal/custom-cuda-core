@@ -108,7 +108,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    arbiter; MIU spec), PCA rows contiguous 0..16 (PCA spec), pca_rcu depth
    stays 4 (Q-43), RAU <= CCV_TIER1_WARPS migrations command->mig_done (RAU
    spec); 4 PRF write ports (collectives in R at A+2; supersedes rev 262's
-   5th). Asked OA: two SFU ops in one cycle vs fixed done slot 4. RA-29 (c)
+   5th). SFU slot-4 question settled by OA rev 304 (CCV_P_FOOT_MIN_SFU = 4: one SFU
+   issue a cycle; TI adds a require tying slot numbers to the terms). RA-29 (c)
    early collective done -> if legal, RA-8 costs RCU nothing; DA gets OOE
    cost + perf. RCU RTL-depth spec: artifact 4k7VrEKJG4KUgMYG1Qz8mB (RA's). Owed by AR: LANE spec (SFU second result on lane_rcu_res;
    lane pipeline 3 cycles A+3..A+5) and MIU spec (lead fields phys_dst,
