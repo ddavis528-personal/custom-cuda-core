@@ -86,7 +86,7 @@ state; PCA does.
 | `ccv_rcu_lane_ops` | RCU → LANE ×32 | 1 | Operands and control to each lane, lockstep across all 32. Lead fields `section_en`, `sec_pred_bit`. |
 | `ccv_lane_rcu_res` | LANE ×32 → RCU | 1 | Lane results, written at their contracted cycle. |
 | `ccv_rcu_ooe_done` | RCU → OOE | 7 | Completions, a free pool of `CCV_DONE_SLOTS` = 7. The RCU-only class sits on the fixed slot `CCV_DONE_SLOT_RCU` (5). Lead fields `lead_br_taken`, `lead_br_mask`. |
-| `ccv_rcu_miu_addr` | RCU → MIU | 4 | Memory-op operands (base, index, store data) and `active_mask`. About 8,400 wires, the widest interface in the design (Q-18). |
+| `ccv_rcu_miu_addr` | RCU → MIU | 4 | Memory-op operands (base, index, store data) and `active_mask`. About 12,400 wires (4 × 3,111: base, index and store data at 1,024 bits each, plus `active_mask` and `rob_tag`), the widest interface in the design (Q-18). |
 | `ccv_miu_rcu_data` | MIU → RCU | 4 | Load data, written under `active_mask`, plus `pred_result`. |
 | `ccv_ooe_rcu_map` | OOE → RCU | 1 | A migrating warp's RAT: 16 GPR and 4 predicate physical names. |
 | `ccv_rau_rcu_mig` | RAU → RCU | 1 | The migration command. RCU pairs it with the map, in either order (A-45). |
@@ -240,7 +240,7 @@ These come first: each one that fails sends a change back to OA/OI.
 - **The widening clear:** per row, per slice, or lazy with valid bits.
 
 **Repository items:**
-- **Q-18 (open; settle before floorplan):** RCU → MIU is about 8,400 wires.
+- **Q-18 (open; settle before floorplan):** RCU → MIU is about 12,400 wires.
   Co-locate the AGUs, or move address generation into the register-read stage?
   It is a partitioning question, so AR and RA settle it together, with MIU's
   spec (AR's) on the other side. PF-33 is the related performance item.

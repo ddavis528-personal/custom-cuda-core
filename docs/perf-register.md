@@ -69,7 +69,7 @@ it.
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
-| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | open (RA-7; RCU's Phase 1 measures it) |
+| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266); TI applies; 2 if RCU's NGD measurement M1 misses |
 
 ## Entries
 
@@ -1154,3 +1154,14 @@ it.
 - **Cost:** none outside RCU, if the timeline fits: the read stage that
   serves the lanes serves MIU. The parameter changes only after RA's Phase 1
   confirms it, since every kernel's cycle counts move with it.
+- **Decision (RA-31, AR rev 266, 2026-11-02):** set `CCV_LAT_RCU_ADDR_BASE`
+  to 1 now, ahead of Phase 1. The reason to wait went away with RA-21: the
+  address channel is now fixed-latency, so RCU cannot send early, and
+  holding to 5 would cost 4 delay stages × 4 slots × 3,111 bits, about 50k
+  flops. Nobody would build those, so 5 is not a value the RTL could ever
+  have. RCU's spec is built to 1. If the implementation's NGD measurement
+  (M1) misses, RA returns with 2, and the counts move once more. The param's
+  own text gives the move to RCU's session ("RCU's session confirms or moves
+  it"), so this does not reopen Daniel's placeholder decision (OA-5).
+  `CCV_LAT_L1_WAKE` goes from 16 to 12. PF-33's measurement is worth
+  re-running on the current pin once TI applies it.
