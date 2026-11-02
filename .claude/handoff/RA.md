@@ -93,8 +93,8 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   RA-30 (TI) raised: repo half of AR's answers. RA-28/29 settled too (AR rev 265: pairing queues = CCV_TIER1_WARPS; FIFO stays 4; A+2 rule for
   every R class). Still open: RA-16, RA-30 (TI).
 - Daniel 2026-11-02: spec good as a first pass. DCGE = share of ENABLED cycles where the value
-  changes (risk = enabling unused fields, not high load). No parity/ECC v1 (PF-47); flops not latches
-  (PF-48); PRF fully scanned by synthesis, te only on ccv_common_clk; Daniel spins up the impl agent.
+  changes (risk = enabling unused fields, not high load). No parity/ECC v1 (PF-48); flops not latches
+  (PF-49); PRF fully scanned by synthesis, te only on ccv_common_clk; Daniel spins up the impl agent.
 - RA-31 (AR/TI/OA: CCV_LAT_RCU_ADDR 5->1; lead slice section mask + operand use), RA-32 (OA guard
   fallback resolve_lag 1; TI per-unit param overrides) raised rev 45, notices sent.
 - OA rev 306 (re RA-31/32): L1 wake follows derive; OOE adds the lead slice from select if OI's NGD fits;

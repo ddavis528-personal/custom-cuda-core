@@ -69,8 +69,8 @@ it.
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
-| PF-47 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
-| PF-48 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
+| PF-48 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
+| PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
 
 ## Entries
 
@@ -1132,7 +1132,7 @@ it.
   one warp and 64 KiB, 1.3% over TI's scratch bound of 1,218,411: the
   prologue's `srd` and add, which the bound never paid.
 
-### PF-47 End-to-end parity on register state
+### PF-48 End-to-end parity on register state
 
 - **Now:** no parity and no ECC anywhere on register state. The PRF
   (192 x 1,024 flops), the predicate file (48 x 32), and every channel that
@@ -1162,7 +1162,7 @@ it.
   requirement for detected-error reporting. Owner: RA (RCU) with AR for
   the cross-block channels.
 
-### PF-48 A latch-based physical register file
+### PF-49 A latch-based physical register file
 
 - **Now:** the PRF is flops: 4 banks of 192 x 256, about 196,600 flops,
   84% of the RCU (RCU spec, Partition tab). Daniel (2026-11-02): flops for
