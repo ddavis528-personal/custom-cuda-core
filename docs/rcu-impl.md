@@ -139,8 +139,10 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
 
   Every module gets a reduced unit for loops (a bank at `ROWS` = 32,
   `ccv_rcu_lanes` at `COPIES` = 4) and its full-size unit for its exit. A
-  full-size unit that peaks over 2 GB goes on tools/heavy-units.json
-  (TI's; on TI's scratch branch, not yet merged, 2026-11-02; ask TI). Copy the shape of `test/ooe/cg-units.json`.
+  full-size unit that peaks over 2048 MiB goes on tools/heavy-units.json,
+  in the commit that grows it. The gate runs each listed unit alone under a
+  lock, and fails an unlisted unit that peaks over the limit (TI rev 289,
+  eb170bf, `CCV_HEAVY_SERIAL`). A full-size bank is very likely one. Copy the shape of `test/ooe/cg-units.json`.
 - **Port budgets, `rtl/rcu/<module>.ngd.json`:**
   - The numbers are RA's, from the Partition tab's "Port NGD budgets" table.
     RI transcribes them with `"by": "RA"` and a `why` citing the tab and its
@@ -166,7 +168,11 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
   - **Yosys:** every flow uses `tools/shim/yosys`.
   - **Fanout:** check-ngd reports a fanout term, ceil(log4(fanout/4))
     inverter stages at 0.68 NGD each (RA-33, Daniel's option (a)). It is
-    report-only today, enforced later. M1 counts it either way.
+    report-only today, enforced later. M1 counts it either way. Its first
+    run (TI rev 289) put 10 OOE units over 25, `ooe_rob` at 44.3. RCU's spec
+    already budgets for it: the select one-hots are copied per bank and
+    section, so a row AND drives 64 cells (Register file tab, "Select
+    fanout"). Check the report on every wide net, not only the selects.
 - **Clock-gating stimulus (RA-34):** check-cg's idle, medium and high
   scenarios come from checked replays of ccv-skel's per-block port-trace
   dump (TI is building it):
@@ -332,6 +338,7 @@ bank's unit runs. Order them by what section 7 has unblocked.
    - Create your daily sweep task as the skill's section 5 says, at minute
      31 (the series runs AR 3, OA 7, TI 11, OI 15, CP 19, IS 23, RA 27); RA
      asked OA to add it (RA-37).
+   - Your sweep's merge skips release and gate-scratch/* (TI rev 289).
    - Read rows through the `register-reader` subagent. Ring a notice only
      for a row that asks something of its receiver.
 5. **Toolchain.** In a fresh container, run `./tools/setup-toolchain.sh`.

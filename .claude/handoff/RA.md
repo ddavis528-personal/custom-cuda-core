@@ -55,7 +55,7 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-01)
-AR 267, OA 308, RA 56, DA 103, Conventions 17, CP 151, IS 184, TI 288, CP 150 (others as at session start: OI 252,
+AR 267, OA 308, RA 56, DA 103, Conventions 17, CP 151, IS 184, TI 289, CP 150 (others as at session start: OI 252,
 CP 149, DA 99, Conventions 16).
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -131,6 +131,9 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   review each phase exit row.
 - TI rev 288: lead slice in schema + stub (control lead-src-clear); ADDR_BASE=1 reverted, waits on OI (ooe_wake NGD
   26.1 at new constants; no-msd control seeds). Spec Partition rev 12 says so. Watch for TI's reapply.
+- TI rev 289: heavy-unit lock + tools/heavy-units.json (eb170bf, on ccr-183cc441-doowtf; the sweep merges it);
+  sweep task prompt now skips gate-scratch/* (updated 2026-11-02). Fanout term first run: 10 OOE units >25
+  (ooe_rob 44.3); RCU's spec has per-bank-section select copies already.
 - Answers due: RA-16, RA-30, RA-36, RA-37, RA-38 (TI); RA-35 (AR); RA-37 (OA: RI 31 only, roster commit bc1c2b4 named at rev 55); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
 - Spec tab reconciliation (rcu-arch.md section 5: per-block specs doc RCU tab
