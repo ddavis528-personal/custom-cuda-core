@@ -37,7 +37,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   session-home --check matches (tools/setup-session-home.py now merged in).
 - Daily sweep (scheduled task trig_01V1WipqEXd8e7TAaWnKvQGu, 09:04 UTC):
   register section 4 from the bookmarks; fetch; merge every remote branch
-  with commits ours lacks except `release` (merge commits only); gate;
+  with commits ours lacks except `release` and `gate-scratch/*` (DA
+  2026-11-01, TI rev 289; task prompt updated 2026-11-02) (merge commits only); gate;
   push; report in a few lines. Pings (section 6) on Fridays only; Saturday
   checks Friday's pongs (TI-49; Daniel confirmed 2026-10-30, task updated).
 - Credit rules (TI-49, Daniel 2026-10-30: "follow changes to optimize our
