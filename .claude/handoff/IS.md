@@ -66,6 +66,11 @@ Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
   A new agent RH has a handoff on core (ccr-c22116ce-1vzyjg). CP's snapshot d9ddd2c builds O-83 and O-84; TI pinned it.
 
 ## Open work (most urgent first)
+0. Core sweep merge of 2026-11-02 (b12fc59, 108 commits) is held: the full
+   gate went red on check-ngd's light limit, a measuring bug (IS-26). TI
+   fixed it in eda9ce8 and rings IS when pushed. Then merge TI's branch,
+   tools/gate-push.sh --full (run detached via setsid + bg-run.sh: the gate
+   now takes ~4 h, past the 2 h background limit), push, and close IS-26.
 1. TI-49 (2) and (3): OA rules on quieter notices and the register-reader
    subagent; follow the skill once it changes.
 2. IS-14 item 2 (redux) waits on CP; item 3 (position hints) waits on
