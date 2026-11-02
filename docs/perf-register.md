@@ -69,7 +69,7 @@ it.
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
-| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266); TI applies; 2 if RCU's NGD measurement M1 misses |
+| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266); held: TI reverted it (rev 288) until OI fixes ooe_wake NGD-3 and the rs_tb no-msd control; 2 if RCU's M1 misses |
 
 ## Entries
 
@@ -1165,3 +1165,13 @@ it.
   it"), so this does not reopen Daniel's placeholder decision (OA-5).
   `CCV_LAT_L1_WAKE` goes from 16 to 12. PF-33's measurement is worth
   re-running on the current pin once TI applies it.
+- **Held (TI rev 288, 2026-11-02):** applied, then reverted in the same push,
+  because OOE's RTL failed twice at the new constants. First, ooe_wake's
+  inputs `cls_cq01h` and `kind_cq01h` reach a flop at 26.1 and 26.0 NGD
+  against 25, since the decode-then-compare cone on the wake thresholds gets
+  about 1 NGD deeper. Second, run-rtl's negative control no-msd (rs) is
+  missed: rs_tb's 25 seeds no longer reach the lost-miss case at the shorter
+  latencies. OI makes the cone shallower (per-class precomputed thresholds,
+  else OA re-budgets the two inputs) and gives rs_tb stimulus that reaches
+  the case. TI reapplies in one commit. The decision stands; nothing in the
+  failures argues against it.

@@ -124,7 +124,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    lead_src_used, lead_imm_used, lead_merge_used on 9 slots; R adds
    lead_guard_used + lead_guard_pred, ~88 wires); guard lead replaces
    RA-32's lag-1 fallback (DA only if both fail). TI writes lead_fields and
-   applies ADDR_BASE 1. OA tab read rows 306/307 and TI 285 only, so the
+   applies ADDR_BASE 1. TI rev 288: lead slice BUILT; ADDR_BASE 1 REVERTED,
+   held on OI (ooe_wake NGD-3 26.1/25; rs_tb no-msd control missed); TI
+   reapplies in one commit. PF-47 row says held. OA tab read rows 306/307 and TI 285 only, so the
    sweep bookmarks for OA/TI stay put. Owed by AR: LANE spec (SFU second result on lane_rcu_res;
    lane pipeline 3 cycles A+3..A+5) and MIU spec (lead fields phys_dst,
    dst_pos, dst_width, active_mask, phys_pred, pred_we) once TI's schema
