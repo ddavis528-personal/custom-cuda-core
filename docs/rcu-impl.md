@@ -13,7 +13,7 @@ the module partition, the port NGD budgets, the checks and the exit criteria.
 Nothing of the RCU's RTL exists yet: the RCU in both hosts is the C++ stub
 (`class Rcu`, `sim/skel/kernel.cpp`) and its generated SV stub. The schema
 and parameter changes the spec needs are agreed but not all applied (section
-6).
+7).
 
 Paths under rtl/rcu/ and test/rcu/ are written plain, not as code, until they exist (the docs check holds every code path to the tree).
 
