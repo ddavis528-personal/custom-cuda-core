@@ -9,7 +9,9 @@ name: verify
 
 on:
   push:
-    branches: ["**"]
+    # gate-scratch/* carries a split gate's unverified commit and its export
+    # between containers (tools/gate-scratch.sh); its gate is the split one.
+    branches-ignore: ["gate-scratch/**"]
   pull_request:
   workflow_dispatch:
   schedule:
@@ -43,7 +45,14 @@ jobs:
       - name: Install toolchain
         run: VERILATOR_PREFIX="$HOME/verilator-${{ steps.vl.outputs.tag }}" ./tools/setup-toolchain.sh
 
+      # A runner has 4 cores and 16 GB; full-size ooe_rob's Yosys and ABC
+      # take about 6 GB each, and check-cg's and check-ngd's ran side by side
+      # and killed the runner (runs 538, 543, 544). CCV_HEAVY_SERIAL measures
+      # each unit tools/heavy-units.json names alone (DA, 2026-11-01); it is
+      # the default everywhere now, set here so CI never depends on that.
       - name: Verify
+        env:
+          CCV_HEAVY_SERIAL: "1"
         run: ./tools/verify.sh
 
       # Separate job-step rather than part of the gate: re-measuring takes

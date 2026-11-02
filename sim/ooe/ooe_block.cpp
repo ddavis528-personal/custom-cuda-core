@@ -753,6 +753,9 @@ private:
         s = (s + 1) % (kSlotR + 1);
       Bits msg = p.second;
       put(msg, c.ooe_rcu, "footprint", fp);
+      // RA-31's lead (OA's rev 307): from the entry's static fields.
+      putIssueLead(msg, c.ooe_rcu, s, fp, x.gpr_reads, x.send_imm, x.merge,
+                   x.res == ooe::Issue::kRcuOp && x.guarded, x.ppguard, k_.brk);
       sendOn(c.ooe_rcu, s, msg, x.tid);
     }
     for (const auto &p : issues) {
