@@ -39,7 +39,7 @@ until they exist (the docs check holds every code path to the tree).
   - the RCU's RTL, rtl/rcu/;
   - its units, benches and fixtures, test/rcu/;
   - the RCU-internal assertions and the Q-53 checkers the spec assigns to
-    RCU's RTL (and their model-side equivalents);
+    RCU's RTL (the model flags the same never-happens conditions);
   - every measurement in the spec's exit table, M0 (the model) to M7, and the report of
     each against its criterion;
   - its `<module>.ngd.json` files, whose numbers are RA's (section 4).
@@ -112,9 +112,8 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
 ## 4. Where the code goes, and the rules that shape it
 
 - **The model:** sim/rcu/, in the OOE pattern (`sim/ooe/`, `sim/skel/ooe.cpp`):
-  - a core class per spec module, holding the spec's named registers as its
-    state and advancing them once a cycle, so an RTL module and its model
-    class can be compared at the module's ports and registers;
+  - its inside is RI's to organise. It is not a clone of the RTL's modules
+    and registers (Daniel, 2026-11-02; section 5);
   - a block class at RCU's ports (`sim/skel/stub.h`'s `Stub` interface),
     behind a makeRcu hook that TI adds, with `CCV_RCU_IMPL=stub` keeping
     the stub selectable in both hosts (RA-38);
@@ -187,13 +186,45 @@ the model and keeps it in lock-step with the RTL. Nothing at the spec's
 timing exists today, so RI writes it, starting from what the stub already
 gets right.
 
-**What "cycle-accurate" means here.**
-- Every RCU output appears on the cycle the spec gives it: valids and
-  payloads, leads, dones on their fixed slots, wakes, credits, kill ack.
-- Every input is taken on the cycle the spec takes it.
-- The model's state is the spec's registers: names, widths, and the cycle
-  each loads. An RTL module and its model class therefore agree at their
-  ports and their registers, not only at the block's ports.
+**What "cycle-accurate" means here** (Daniel, 2026-11-02, DA tab: "cycle
+accurate in terms of how it drives its interfaces and when interesting events
+happen ... track and model any hazards, stall conditions, sleep, etc. but it
+does not need to clone the RTL with all the same internal structures").
+
+The model must get these right, cycle by cycle:
+- **Its interfaces.** Every RCU output on the cycle the spec gives it, with
+  its payload: lane ops and their leads, MIU addresses, dones on their fixed
+  slots, wakes, credits returned, migration rows, the kill ack. Every input
+  is taken on the cycle the spec takes it, and back-pressure is honoured as
+  the spec's stall-safe sender does.
+- **Its events**, emitted through the existing event mechanism (`emit`,
+  `sim/skel/stub.h`), each on its cycle:
+  - every GPR and predicate write: row, lanes, value;
+  - branch outcomes, and the guard forward from MIU;
+  - kill drain and ack;
+  - migration rows out and in, and the pairing of map and command;
+  - bypass selects used.
+- **Its hazards and stalls:**
+  - a migration's R2 read or RW write waiting for a cycle R leaves free;
+  - a send held for a credit;
+  - the restore staging FIFO full;
+  - anything else that delays an action from its nominal cycle.
+
+  The model must reproduce the delay. It must also flag, as a failure,
+  anything the spec says never happens (two writes to one row and lane, a
+  write to the zero register's row).
+- **Sleep and idle:** `rcu_idle`, and every period in which the spec has the
+  block, or a part of it, doing nothing. These are what the clock-gating
+  scenarios and the kill drain depend on.
+
+The model does **not** need the RTL's structure:
+- not its modules;
+- not its predecode, copy or `(* keep *)` flops;
+- not its stage registers, beyond what the timing above requires.
+
+Model the register file as values, not 49,550 flops a bank. Where a choice
+of structure makes no difference at the ports or in the events, take the
+simplest.
 
 **The stub as a head start.** Take its port handling, its operand and merge
 semantics (the predicate read-modify-write, the zero registers, the
@@ -215,14 +246,18 @@ the oracle for checks, never decisions (CLAUDE.md, "The swap boundary").
 
    Report the kernel cycle counts against the stub's. They are the first
    measure of the spec's timing.
-2. **Module lock-step** (test/rcu/): each RTL module against its model class
-   under Verilator, driven by the same stimulus, comparing every output and
-   every named register every cycle. Stimulus is directed tests from the
-   spec's per-cycle tables, then port traces cut at the module's boundary.
+2. **Module benches** (test/rcu/): each RTL module under Verilator,
+   with directed tests from the spec's per-cycle tables and its in-module
+   assertions on. Where a module's outputs are block outputs or events the
+   model already produces (the bank's writes, the done slots, the kill ack),
+   check them against the model's. RTL modules are not compared with model
+   internals: the model has none to compare.
 3. **Block lock-step:** `ccv_rcu` against the model's block, driven by
    ccv-skel port traces (RA-34) recorded with the model in place, comparing
-   every output every cycle. This is the gate job RA-38 (e) asks for, the
-   RCU's equivalent of ooe_rtl.
+   every output and every event every cycle. The RTL's events come from a
+   sim-only monitor, bound to the RTL, that derives them from the RTL's
+   state. This is the gate job RA-38 (e) asks for, RCU's equivalent of
+   ooe_rtl.
 4. **In the SV top:**
    - `tools/check-sv-hosted.sh` with the RTL in place of `ccv_rcu`'s DPI shim;
    - every kernel against ccv-sim's oracle;
@@ -231,8 +266,10 @@ the oracle for checks, never decisions (CLAUDE.md, "The swap boundary").
 
    The selector that swaps the RTL in is TI's to add (RA-37 (c)).
 
-**Lock-step is permanent.** A change to the RTL that changes behaviour
-changes the model in the same commit, and the reverse. A fix found in
+**Lock-step is at the ports and the events, and it is permanent.** A change
+to the RTL that changes behaviour there changes the model in the same commit,
+and the reverse. A change inside the RTL that the ports and events cannot
+see needs nothing from the model. A fix found in
 either is made in both. The lock-step jobs run at every gate that touches
 sim/rcu/ or rtl/rcu/.
 
@@ -252,14 +289,15 @@ out of your context.
 | Phase | Build | Measure | Exit, and who reads the row |
 |---|---|---|---|
 | 0, setup | section 8 | — | roster, session home, handoff, sweep task in place |
-| 1, the model | sim/rcu/: the spec's modules as classes, the block at RCU's ports | M0 | every kernel and control passes on both hosts with the model as the default (TI flips makeRcu's default, RA-38 (a)); kernel cycles against the stub's reported. **RA reads it** and folds anything the spec failed to say into the spec |
-| 2, the register file and the R pipe | `ccv_rcu_bank` (units at 32 rows, then 192), `ccv_rcu_r` + `ccv_rcu_xbar` | M3; M1 and M2 for both modules; module lock-step | bank read AND-OR ≤ 7 NGD at 192 rows; flops within 1% of 49,550; every write D-cone and enable within budget; the register-index shfl (about 22) and ret (about 23) paths ≤ 25 with the read. **RA and DA:** these are the figures for the collective fold from 5 to 3 (RA-8, RA-29 (c)) and the first real flop count. If a bank cannot be a flop array at 25 NGD, stop and raise it at once (Q-51's reopening cost) |
+| 1, the model | sim/rcu/: the block at RCU's ports, with its events, hazards, stalls and idle | M0 | every kernel and control passes on both hosts with the model as the default (TI flips makeRcu's default, RA-38 (a)); kernel cycles against the stub's reported. **RA reads it** and folds anything the spec failed to say into the spec |
+| 2, the register file and the R pipe | `ccv_rcu_bank` (units at 32 rows, then 192), `ccv_rcu_r` + `ccv_rcu_xbar` | M3; M1 and M2 for both modules; module benches | bank read AND-OR ≤ 7 NGD at 192 rows; flops within 1% of 49,550; every write D-cone and enable within budget; the register-index shfl (about 22) and ret (about 23) paths ≤ 25 with the read. **RA and DA:** these are the figures for the collective fold from 5 to 3 (RA-8, RA-29 (c)) and the first real flop count. If a bank cannot be a flop array at 25 NGD, stop and raise it at once (Q-51's reopening cost) |
 | 3, predicates and kill | `ccv_rcu_pred` (with and without the guard lead), `ccv_rcu_kill` | M1, M2; M4 | guard path in A ≤ 16 NGD with the lead (≤ 23 without); kill drain bound M4 |
 | 4, lanes, memory, migration | `ccv_rcu_lanes` (4 copies, then 32), `ccv_rcu_mem`, `ccv_rcu_mig` | M1, M2 (the lead-slice field groups), M5 | DCGE per field group; the literal-imm group under 75% goes to RA (the remedy is a DEC bit through OA, never a waiver first); migration 17 rows within 68 cycles |
 | 5, the block | `ccv_rcu` assembled; Q-53 checkers (arrival-cycle, A-35's two isolation assertions, the A-45 pairing checker) | M1 block convergence from the `.ngd.json` files, level by level, then timed whole; M2 block 2%; M6; M7 | every row of the exit table met, or a waiver Daniel signs. Then RA reconciles the spec with what was built |
 
-From phase 2, every RTL module passes its module lock-step against the model
-before its measurements count. Phases 3 and 4 can overlap phase 2 once the
+From phase 2, every RTL module passes its bench, checked against the model
+where section 5 says, before its measurements count. From phase 5, the block
+runs in lock-step with the model. Phases 3 and 4 can overlap phase 2 once the
 bank's unit runs. Order them by what section 7 has unblocked.
 
 ## 7. What RI waits on
