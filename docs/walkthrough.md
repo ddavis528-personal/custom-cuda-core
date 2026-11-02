@@ -241,7 +241,7 @@ instruction can be followed across every block it touches. Seq 12,
      41  ccv_fet_dec_instr              fet  -> dec       
      43  ccv_dec_ooe_uop                dec  -> ooe       
      47  EV_DISPATCH                    ooe          
-     66  EV_WAKEUP                      ooe          
+     62  EV_WAKEUP                      ooe          
      91  EV_OOE_MEMOP_HOLD_CYCLES       ooe          
      91  EV_ISSUE                       ooe          
      92  ccv_ooe_rcu_issue              ooe  -> rcu     x4
@@ -287,14 +287,14 @@ in the same cycle, and gets 32 results back 4 cycles later:
      47  ccv_fet_dec_instr              fet  -> dec       
      49  ccv_dec_ooe_uop                dec  -> ooe       
      53  EV_DISPATCH                    ooe          
-    107  EV_WAKEUP                      ooe          
-    108  EV_WAKEUP                      ooe          
-    108  EV_ISSUE                       ooe          
-    109  ccv_ooe_rcu_issue              ooe  -> rcu     x4
-    111  EV_OOE_CANCEL_REPLAY           ooe          
-    111  ccv_rcu_lane_ops               rcu  -> lane   x32
-    115  ccv_lane_rcu_res               lane -> rcu    x32
-    117  ccv_rcu_ooe_done               rcu  -> ooe       
+    103  EV_WAKEUP                      ooe          
+    104  EV_WAKEUP                      ooe          
+    104  EV_ISSUE                       ooe          
+    105  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    107  EV_OOE_CANCEL_REPLAY           ooe          
+    107  ccv_rcu_lane_ops               rcu  -> lane   x32
+    111  ccv_lane_rcu_res               lane -> rcu    x32
+    113  ccv_rcu_ooe_done               rcu  -> ooe       
     133  EV_ISSUE                       ooe          
     134  ccv_ooe_rcu_issue              ooe  -> rcu     x4
     136  ccv_rcu_lane_ops               rcu  -> lane   x32
@@ -410,7 +410,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[46663:45452])
+    .ch_payload(payload[46807:45596])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
@@ -509,4 +509,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 4847e0ebf902e528 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: fc3fb4fe4a01f0d1 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
