@@ -62,8 +62,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 263, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
-  Conventions 16, RA 30. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  record): AR 264, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
+  Conventions 16, RA 41. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
@@ -89,12 +89,21 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
-   link + CCV_LAT_SFU + done link, no RCU discard; rule for all: kill_ack
-   waits for the block's last message to land -> AR owes RAU, PCA (drop
-   partial warp, credits), MIU (stop rows, ack after last beat) spec text;
+   link + CCV_LAT_SFU + done link; rule for all: kill_ack waits for the
+   block's last message to land -> AR owes RAU, PCA (stop rows, ack when
+   every sent row is credited back), MIU (ack after last beat) spec text;
    RA-15 ops at R: pand/por/pxor/pmov #imm; skeleton lacks PXOR, PMOV reg,
    C_RECONV). Pinned ISA is v1.9 (build/compiler/d9ddd2c.../docs), not the
-   stale compiler checkout's v1.7. Owed by AR: LANE spec (SFU second result on lane_rcu_res;
+   stale compiler checkout's v1.7.
+   Round 3 answered, AR rev 264: RA-14 CORRECTED (restore rows are PCA's
+   on ccv_pca_rcu_mig with warp_id; RCU discards held cmd/map/rows of a
+   killed warp and returns credits; discard only under a kill); RA-18 call
+   link in imm, DEC imm_kind 6, OOE substitutes pc[31:0]+bytes(ilen) at
+   rename (AR owes DEC spec line); RA-21 rcu_miu_addr bound (slot k = Pk)
+   + fixed_latency, every memop incl. fence gets one address (AR owes MIU
+   spec pairing rule); RA-23 kill_ack a level, all 8 blocks; RA-26 no RCU
+   CSRs, answer reads 0 + credit. Lesson: check docs/rcu-arch.md's channel
+   table before answering a migration question. Owed by AR: LANE spec (SFU second result on lane_rcu_res;
    lane pipeline 3 cycles A+3..A+5) and MIU spec (lead fields phys_dst,
    dst_pos, dst_width, active_mask, phys_pred, pred_we) once TI's schema
    rows land; floorplan plan under Q-42 (16 lanes per long side, MIU one
