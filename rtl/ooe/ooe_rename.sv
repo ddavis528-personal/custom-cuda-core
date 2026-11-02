@@ -60,6 +60,7 @@ module ooe_rename #(
   parameter int FK = 4,                  // its refill banks
   parameter int NS = 4,                  // GPR row sections: 4 the narrow allocator (slice 6, OI-81), 0 whole rows
   parameter int FR = 0,                  // with NS: every register a whole row (AR-24's interim, full_rows)
+  parameter int FS = 1,                  // free sources the free lists OR: the four per-warp ROBs in the stage (OA-24)
   parameter int AG = 16,                 // architectural GPRs a slot (CCV_GPRS)
   parameter int AP = 4,                  // and predicates (CCV_PREDS)
   parameter int FLG = 16,                // a slot's GPR rename floor (CCV_P_REN_FLOOR)
@@ -167,12 +168,13 @@ module ooe_rename #(
   input  logic [R*2-1:0]    po_pdst_cq02h,
   input  logic [R-1:0]      po_pwe_cq02h,
   input  logic [R*PW-1:0]   po_pname_cq02h,
-  // The free lists' frees (the retire stage's register) and their leads.
-  input  logic              gfree_l_cq00h,
-  input  logic [NG-1:0]     gfree_cq01h,
-  input  logic [NG*NSB-1:0] gfree_sec_cq01h,   // NS > 0: the GPR sections freed, row r's at r * NS (in place of gfree)
-  input  logic              pfree_l_cq00h,
-  input  logic [NP-1:0]     pfree_cq01h,
+  // The free lists' frees (the retire stage's register) and their leads,
+  // per source (source f's at f * the width).
+  input  logic [FS-1:0]     gfree_l_cq00h,
+  input  logic [FS*NG-1:0]  gfree_cq01h,
+  input  logic [FS*NG*NSB-1:0] gfree_sec_cq01h,   // NS > 0: the GPR sections freed, row r's at r * NS (in place of gfree)
+  input  logic [FS-1:0]     pfree_l_cq00h,
+  input  logic [FS*NP-1:0]  pfree_cq01h,
   // The take, to decq (deq_t, deq_sel) and ooe_rat (tk).
   output logic [S*R-1:0]    take_cq02h,
   output logic [S-1:0]      sel_cq02h,
@@ -282,7 +284,7 @@ module ooe_rename #(
     assign rtl_cq02h[l] = NS != 0 && FR == 0 && l_v_cq02h[l] && l_gwe_cq02h[l] && !l_x_cq02h[l * XL + 3] &&
                           l_w_cq02h[l * 10 + 6 +: 2] != 2'd0;
   end
-  ooe_freelist #(.N(NG), .A(R), .B(FB), .K(FK), .S(S), .NS(NS)) u_gfree (
+  ooe_freelist #(.N(NG), .A(R), .B(FB), .K(FK), .S(S), .NS(NS), .FS(FS)) u_gfree (
     .ooe_core_clk, .ooe_rst_r00h, .alloc_req_cq01h(wt_cq02h[0 +: R]), .free_l_cq00h(gfree_l_cq00h),
     .free_mask_cq01h(gfree_cq01h), .own_slot_cq01h(gown_cq02h), .alloc_v_cq02h(galv_cq02h),
     .alloc_idx_cq02h(galloc_cq02h), .avail_cq02h(gavail_cq02h), .fsp_cq03h(gfsp_cq03h),
@@ -291,7 +293,7 @@ module ooe_rename #(
     .free_sec_cq01h(gfree_sec_cq01h), .sa_l_cq00h(sal_cq02h), .rt_l_cq00h(rtl_cq02h), .sa_v_cq01h(sa_v_cq03h),
     .sa_row_cq01h(sa_row_cq03h), .sa_sec_cq01h(sa_sec_cq03h), .rt_v_cq01h(rt_v_cq03h), .rt_row_cq01h(rt_row_cq03h),
     .cand_v_cq02h(gcv_cq02h), .cand_row_cq02h(gcr_cq02h), .cand_same_cq02h(gcs_cq02h));
-  ooe_freelist #(.N(NP), .A(R), .B(FB), .K(FK), .S(S)) u_pfree (
+  ooe_freelist #(.N(NP), .A(R), .B(FB), .K(FK), .S(S), .FS(FS)) u_pfree (
     .ooe_core_clk, .ooe_rst_r00h, .alloc_req_cq01h(wt_cq02h[R +: R]), .free_l_cq00h(pfree_l_cq00h),
     .free_mask_cq01h(pfree_cq01h), .own_slot_cq01h(pown_cq02h), .alloc_v_cq02h(palv_cq02h),
     .alloc_idx_cq02h(palloc_cq02h), .avail_cq02h(pavail_cq02h), .fsp_cq03h(pfsp_cq03h),

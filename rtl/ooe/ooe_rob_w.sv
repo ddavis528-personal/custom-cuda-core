@@ -1,4 +1,18 @@
-//===-- ooe_rob.sv - OOE reorder buffers: allocation, completion, retire ---===//
+//===-- ooe_rob_w.sv - one warp's reorder buffer: allocation, completion, retire ===//
+//
+// One instance a tier-1 slot (OA-24, DA rev 104): the stage holds SA of
+// them, identical, slot WID each, so no synthesis run holds more than one
+// warp's ROB. All state is the slot's own. Three things cross warps, and
+// each instance reads them whole: Rename 2's fill lanes (it takes those
+// with fl_slot == WID), RCU's dones and MIU's completions and the branch
+// outcome on done slot BS (it takes those whose rob_tag's slot bits are
+// WID). Its frees and their leads are its own; ooe_freelist ORs the SA
+// instances' at its input (its FS sources). The per-slot ports are one
+// slot wide (S is 1 here); test/ooe/ooe_rob_tb.sv assembles the four
+// behind the single ROB's ports for the bench.
+//
+// What follows describes the ROB as one slot sees it; "per slot" is this
+// instance's own.
 //
 // Spec: the design doc's Retire, squash and recovery (four per-warp ROBs of
 // CCV_P_ROB_DEPTH entries, retiring in order up to CCV_RETIRE_PER_ROB a warp
@@ -64,8 +78,9 @@
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
 `define CCV_RST rst_r01h
-module ooe_rob #(
-  parameter int S  = 4,                  // tier-1 slots (CCV_TIER1_WARPS)
+module ooe_rob_w #(
+  parameter int SA = 4,                  // tier-1 slots (CCV_TIER1_WARPS): the rob_tag's slot bits
+  parameter int WID = 0,                 // this instance's slot (OA-24)
   parameter int D  = 32,                 // entries a slot (CCV_P_ROB_DEPTH)
   parameter int RP = 2,                  // retirements a slot a cycle (CCV_RETIRE_PER_ROB)
   parameter int A  = 4,                  // entries a cycle, across slots (CCV_ISSUE_WIDTH)
@@ -83,7 +98,8 @@ module ooe_rob #(
   parameter int PCW = 48,                // a pc
   parameter int BS = ND - 2,             // the done slot RCU-only ops complete on, branches among them (AR's RCU spec rev 14, OA rev 287)
   localparam int NSB = (NS > 0) ? NS : 1,
-  localparam int LS = (S > 1) ? $clog2(S) : 1,
+  localparam int S  = 1,                 // the slots this instance holds: its own
+  localparam int LS = (SA > 1) ? $clog2(SA) : 1,
   localparam int LD = $clog2(D),
   localparam int TW = LS + LD,           // a rob_tag
   localparam int LA = $clog2(A + 1),
@@ -344,7 +360,7 @@ module ooe_rob #(
         if (fl_v_cq02h[m] && fl_slot_cq02h[m * LS +: LS] == fl_slot_cq02h[l * LS +: LS]) rk_cq02h = rk_cq02h + 1'b1;
       if (fl_v_cq02h[l])
         for (int s = 0; s < S; s++)
-          if (fl_slot_cq02h[l * LS +: LS] == LS'(s)) begin
+          if (fl_slot_cq02h[l * LS +: LS] == LS'(WID + s)) begin
             // Killed: a squash acting now, or its rank under the kill count.
             // A fill that lands goes to the fill pointer plus its rank less
             // the count.
@@ -449,11 +465,11 @@ module ooe_rob #(
     for (int e = 0; e < S * D; e++) begin
       for (int p = 0; p < ND; p++)
         for (int r = 0; r < NR; r++)
-          if (dn_q_cq02h[p] && dn_tag_cq02h[p * TW +: TW] == TW'(e) && dn_row_cq02h[p * 2 +: 2] == 2'(r))
+          if (dn_q_cq02h[p] && dn_tag_cq02h[p * TW +: TW] == TW'(WID * D + e) && dn_row_cq02h[p * 2 +: 2] == 2'(r))
             dr_e_cq02h[e * NR + r] = 1'b1;
       dn_e_cq02h[e] = |dr_e_cq02h[e * NR +: NR];
       for (int p = 0; p < NM; p++)
-        if (cm_q_cq02h[p] && cm_tag_cq02h[p * TW +: TW] == TW'(e)) cm_e_cq02h[e] = 1'b1;
+        if (cm_q_cq02h[p] && cm_tag_cq02h[p * TW +: TW] == TW'(WID * D + e)) cm_e_cq02h[e] = 1'b1;
     end
   end
   // Each row's count after this cycle is zero: none owed now, and its
@@ -1135,7 +1151,7 @@ module ooe_rob #(
     rw_nx_cq02h = '0;
     for (int r = 0; r < S * NK; r++)
       for (int l = 0; l < A; l++)
-        if (fp_v_cq02h[l] && fp_slot_cq02h[l * LS +: LS] == LS'(r / NK) && fp_ck_cq02h[l * LK +: LK] == LK'(r % NK)) begin
+        if (fp_v_cq02h[l] && fp_slot_cq02h[l * LS +: LS] == LS'(WID + r / NK) && fp_ck_cq02h[l * LK +: LK] == LK'(r % NK)) begin
           rw_en_cq02h[r] = fp_q_cq02h;
           rw_nx_cq02h[r * RW +: RW] = rw_nx_cq02h[r * RW +: RW] | fp_rec_cq02h[l * RW +: RW];
         end
@@ -1173,8 +1189,8 @@ module ooe_rob #(
     bo_ck_nx_cq02h = '0;
     bo_br_nx_cq02h = 1'b0;
     for (int e = 0; e < S * D; e++) begin
-      bo_ck_nx_cq02h = bo_ck_nx_cq02h | ({LK{dn_tag_cq02h[BS * TW +: TW] == TW'(e)}} & ck_cq02h[e * LK +: LK]);
-      bo_br_nx_cq02h = bo_br_nx_cq02h | (dn_tag_cq02h[BS * TW +: TW] == TW'(e) && br_cq02h[e]);
+      bo_ck_nx_cq02h = bo_ck_nx_cq02h | ({LK{dn_tag_cq02h[BS * TW +: TW] == TW'(WID * D + e)}} & ck_cq02h[e * LK +: LK]);
+      bo_br_nx_cq02h = bo_br_nx_cq02h | (dn_tag_cq02h[BS * TW +: TW] == TW'(WID * D + e) && br_cq02h[e]);
     end
     // The verdict against every record at once, from the done's outcome
     // and the records' flops, then the one the tag names: the mask's
@@ -1183,7 +1199,7 @@ module ooe_rob #(
     for (int r = 0; r < S * NK; r++) begin
       bo_rec_cq02h = rec_cq02h[r * RW +: RW];
       bo_wrong_nx_cq02h = bo_wrong_nx_cq02h |
-        (dn_tag_cq02h[BS * TW + LD +: LS] == LS'(r / NK) && bo_ck_nx_cq02h == LK'(r % NK) &&
+        (dn_tag_cq02h[BS * TW + LD +: LS] == LS'(WID + r / NK) && bo_ck_nx_cq02h == LK'(r % NK) &&
          (rec_pt(bo_rec_cq02h) ? !(dn_taken_cq02h && dn_mask_cq02h == rec_gm(bo_rec_cq02h)) : dn_taken_cq02h));
     end
   end
@@ -1196,7 +1212,7 @@ module ooe_rob #(
   always_ff @(posedge ooe_core_clk) begin
     if (bo_en_cq02h) begin
       bo_tag_cq02h   <= dn_tag_cq02h[BS * TW +: TW];
-      for (int e = 0; e < S * D; e++) bo_oh_cq02h[e] <= dn_tag_cq02h[BS * TW +: TW] == TW'(e);
+      for (int e = 0; e < S * D; e++) bo_oh_cq02h[e] <= dn_tag_cq02h[BS * TW +: TW] == TW'(WID * D + e);
       bo_ck_cq02h    <= bo_ck_nx_cq02h;
       bo_taken_cq02h <= dn_taken_cq02h;
       bo_mask_cq02h  <= dn_mask_cq02h;
@@ -1216,7 +1232,7 @@ module ooe_rob #(
   always_comb
     for (int r = 0; r < S * NK; r++) begin
       ow_w_cq02h[r]   = out_cq02h[r * OWD + OWD - 1];
-      ow_hit_cq02h[r] = bo_v_cq02h && bo_tag_cq02h[LD +: LS] == LS'(r / NK) && bo_ck_cq02h == LK'(r % NK);
+      ow_hit_cq02h[r] = bo_v_cq02h && bo_tag_cq02h[LD +: LS] == LS'(WID + r / NK) && bo_ck_cq02h == LK'(r % NK);
       ow_en_cq02h[r]  = (rw_en_cq02h[r] && ow_w_cq02h[r]) || (ow_hit_cq02h[r] && (bo_wrong_cq02h || ow_w_cq02h[r]));
     end
   for (genvar gr = 0; gr < S * NK; gr++) begin : g_out
@@ -1462,7 +1478,7 @@ module ooe_rob #(
     for (int p = 0; p < ND; p++) begin
       dn_brx_cq02h[p] = 1'b0;
       for (int e = 0; e < S * D; e++)
-        if (p != BS && dn_q_cq02h[p] && dn_tag_cq02h[p * TW +: TW] == TW'(e) && v_cq02h[e] && br_cq02h[e] &&
+        if (p != BS && dn_q_cq02h[p] && dn_tag_cq02h[p * TW +: TW] == TW'(WID * D + e) && v_cq02h[e] && br_cq02h[e] &&
             !ufm_cq02h[e]) dn_brx_cq02h[p] = 1'b1;
     end
     bo_early_cq02h = 1'b0;
