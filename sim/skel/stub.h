@@ -486,6 +486,24 @@ constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
 constexpr unsigned kSecs = ccv::kSections;
 constexpr unsigned kSlotS0 = 0, kSlotP0 = kSecs, kSlotR = kSecs + ccv::kMiuPipes;
 static_assert(kSlotR + 1 == ccv::kIssueResources, "S0-S3, P0-P3, R");
+static_assert(kSlotR == ccv::kIssueSlotR, "R's slot (CCV_ISSUE_SLOT_R)");
+/// ccv_ooe_rcu_issue's lead (RA-31; OA's rev 307, AR's rev 267): what OOE
+/// knows at select from the RS entry's static fields, opcode-blind, sent a
+/// cycle ahead so RCU enables only the operand groups the op uses. Every
+/// bit is a superset; a clear bit is a promise. The guard's is R's alone
+/// (slot_fields). lead-src-clear promises no source on every op: RCU must
+/// refuse each op that reads one.
+inline void putIssueLead(Bits &m, unsigned chan, unsigned slot, unsigned fp, unsigned src_used,
+                         bool imm_used, bool merge, bool guard_used, unsigned guard_pred,
+                         const std::string &brk) {
+  put(m, chan, "lead_sec_mask", fp);
+  put(m, chan, "lead_src_used", brk == "lead-src-clear" ? 0u : src_used & 7u);
+  put(m, chan, "lead_imm_used", imm_used);
+  put(m, chan, "lead_merge_used", merge);
+  const bool r = slot == kSlotR && guard_used;
+  put(m, chan, "lead_guard_used", r);
+  put(m, chan, "lead_guard_pred", r ? guard_pred : 0u);
+}
 /// chwidth's codes, and the sections (or pipes) a register of each spans.
 enum : unsigned { kChw32 = 0, kChw16 = 1, kChw8 = 2, kChw4 = 3 };
 inline unsigned spanOf(unsigned chw) { return chw == kChw32 ? 4u : chw == kChw16 ? 2u : 1u; }

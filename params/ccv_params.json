@@ -132,6 +132,14 @@
       "doc": "Slots on ccv_ooe_rcu_issue, one per select resource, in this order: the lane sections S0-S3, the MIU pipes P0-P3, and the RCU unit R. An op takes its lowest resource's slot and marks the rest of its footprint continuation."
     },
     {
+      "name": "CCV_ISSUE_SLOT_R",
+      "value": 8,
+      "status": "arch",
+      "source": "RA-31 (OA's rev 307, AR's rev 267)",
+      "derive": "CCV_SECTIONS + CCV_MIU_PIPES",
+      "doc": "The slot of ccv_ooe_rcu_issue that the RCU unit R issues on, the last of CCV_ISSUE_RESOURCES. The guard lead (lead_guard_used, lead_guard_pred) is defined only on it."
+    },
+    {
       "name": "CCV_W_PHYS_POS",
       "value": 2,
       "status": "arch",

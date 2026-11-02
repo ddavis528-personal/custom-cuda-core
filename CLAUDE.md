@@ -49,6 +49,11 @@ together share a build directory. check-cg and check-ngd measure their units
 `build/synth-cache`, ABC's maps too, keyed by everything a run reads. The
 full gate clears it first; `tools/verify.sh --cached` keeps it for an
 intermediate run, whose result reads `CACHED PASS`.
+Under `CCV_HEAVY_SERIAL`, on by default in every gate, local and GitHub's
+(DA, 2026-11-01 and 2026-11-02; `CCV_HEAVY_SERIAL=0` turns it off for a run),
+check-cg and check-ngd measure each unit `tools/heavy-units.json` names
+alone, with nothing else of either beside it, and fail a unit it does not
+name whose one command peaks over its light limit.
 A push to a working branch takes the scoped gate (OI-95; DA, 2026-10-31):
 `tools/verify.sh --changed <base>` keeps the cache and runs only the
 sections `tools/gate-scope.py` maps the change to, with those they wait on;
@@ -65,13 +70,19 @@ pack it with `tools/gate-export.sh` (`--cache` adds the synthesis cache,
 --import=<file>`, which skips the sections the file passed and joins the two
 with `tools/gate-combine.py`: the same commit and tree, every needed section
 passed exactly once. Its result reads `SPLIT PASS` or `SPLIT SCOPED PASS`.
+The unverified commit and the export travel on scratch branches
+(`tools/gate-scratch.sh`; OI-102, DA, 2026-11-01): `gate-scratch/<PREFIX>`
+and `gate-scratch/<PREFIX>-export`, which nothing merges or gates. A
+session cannot delete a branch (the proxy refuses it), so each send
+overwrites the last. Every agent's sweep skips `gate-scratch/*`, and CI
+ignores them.
 
 Routine moves are one command each, printing a few lines with the logs in
 `$CCV_LOGDIR` (default `~/ccv-logs`; DA, 2026-10-30): `tools/gate-push.sh`
 (regen and commit, the scoped gate against what the target branches hold, or
 the clean one with `--full`, an ancestry check, push to
 `$CCV_PUSH_BRANCHES`, clear build but the synthesis cache) and `tools/daily-sweep.sh` (merge every
-remote branch but release, regen, `tools/make-release.sh --push`, push,
+remote branch but release and `gate-scratch/*`, regen, `tools/make-release.sh --push`, push,
 clear; it stops, exit 3, on a conflict outside generated files). Read a
 gate's result with `tools/gate-summary.py <log>`, not the log, and run a
 long job as `tools/bg-run.sh <name> <cmd...>`, which ends in one line.
