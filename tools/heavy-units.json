@@ -1,0 +1,8 @@
+{
+  "_doc": "Units check-cg and check-ngd each measure alone under CCV_HEAVY_SERIAL, on by default in every gate (DA, 2026-11-01 for CI, 2026-11-02 for local gates; CCV_HEAVY_SERIAL=0 turns it off): a heavy unit holds the lock exclusive, every other unit shared, so nothing runs beside it (full-size ooe_rob's Yosys and its ABC child peaked at 10.7 GB together; trial on OI's slice 2b, 2026-11-02). light_rss_max_mib: with the lock on, a unit not named here whose one command peaks over this fails the check. 2048 MiB: four light units at once stay well within a 16 GB runner.",
+  "light_rss_max_mib": 2048,
+  "units": {
+    "ooe_rob": "full-size ooe_rob (slice 2b): Yosys about 6 GB with its ABC child about 4.7 GB beside it, 7514 MiB the largest one command in check-ngd (OI-97; trial 2026-11-02)",
+    "ooe_rename": "ooe_rename: check-cg peaked at 2662 MiB on CI run 551 (pre-2b), over the light limit"
+  }
+}
