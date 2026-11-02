@@ -234,19 +234,27 @@ def note_rss(nbytes):
 
 @contextlib.contextmanager
 def as_unit(name, heavy=None, lock=None):
-    """This thread's commands count toward `name`'s peak; a heavy unit holds
-    the lock (one fd per hold, taken once per thread: flock is per open
-    file, so a nested hold on a second fd would wait on itself)."""
+    """This thread's commands count toward `name`'s peak. With the lock on,
+    a heavy unit runs alone: it holds the lock exclusive and every other
+    unit holds it shared, so no light unit runs beside a heavy one either
+    (full-size ooe_rob's Yosys and its ABC child are 10.7 GB together, which
+    three light units beside would push past a 16 GB runner; trial,
+    2026-11-02). A turnstile (the lock's .gate), taken before the lock and
+    let go once it is held, keeps a waiting heavy unit from starving behind
+    a stream of light ones. One fd per hold, taken once per thread: flock is
+    per open file, so a nested hold on a second fd would wait on itself."""
     heavy = HEAVY if heavy is None else heavy
     prev, held = getattr(_TLS, "unit", None), getattr(_TLS, "held", False)
     lk = None
     _TLS.unit = name
     try:
-        if heavy_serial() and name in heavy and not held:
+        if heavy_serial() and not held:
             lock = lock or HEAVY_LOCK
             os.makedirs(os.path.dirname(lock), exist_ok=True)
-            lk = open(lock, "w")
-            fcntl.flock(lk, fcntl.LOCK_EX)
+            with open(lock + ".gate", "w") as gate:
+                fcntl.flock(gate, fcntl.LOCK_EX)
+                lk = open(lock, "w")
+                fcntl.flock(lk, fcntl.LOCK_EX if name in heavy else fcntl.LOCK_SH)
             _TLS.held = True
         yield
     finally:
@@ -2141,7 +2149,9 @@ MEASURED_FIXTURES = ("cg_fx_good", "cg_fx_form", "cg_fx_deep", "cg_fx_dcge", "cg
 
 def heavy_selftest(expect):
     """The heavy-unit lock and the light limit, each a control: two heavy
-    units never overlap with the lock on and do without it; a nested hold
+    units never overlap with the lock on and do without it; a light unit
+    never runs beside a heavy one, and two light units still run together
+    (shared); a nested hold
     does not wait on itself; a light unit over the limit fails, the same
     unit listed or under it does not."""
     import time
@@ -2150,7 +2160,7 @@ def heavy_selftest(expect):
     heavy = {"fx_h1", "fx_h2"}
     saved = os.environ.get("CCV_HEAVY_SERIAL")
 
-    def spans(on):
+    def spans(on, names=("fx_h1", "fx_h2")):
         os.environ["CCV_HEAVY_SERIAL"] = "1" if on else "0"
         out = {}
 
@@ -2159,17 +2169,21 @@ def heavy_selftest(expect):
                 t0 = time.monotonic()
                 run(["sleep", "0.4"])
                 out[name] = (t0, time.monotonic())
-        ts = [threading.Thread(target=one, args=(n,)) for n in sorted(heavy)]
+        ts = [threading.Thread(target=one, args=(n,)) for n in names]
         for t in ts:
             t.start()
         for t in ts:
             t.join()
-        (a0, a1), (b0, b1) = out["fx_h1"], out["fx_h2"]
+        (a0, a1), (b0, b1) = out[names[0]], out[names[1]]
         return a0 < b1 and b0 < a1
     try:
         expect(not spans(True), "two heavy units ran at once with CCV_HEAVY_SERIAL=1")
         expect(spans(False), "two heavy units never overlapped without the lock: the "
                "overlap control cannot see one")
+        expect(not spans(True, ("fx_h1", "fx_l1")),
+               "a light unit ran beside a heavy one with CCV_HEAVY_SERIAL=1")
+        expect(spans(True, ("fx_l1", "fx_l2")),
+               "two light units never overlapped with the lock on: light units hold it shared")
         os.environ["CCV_HEAVY_SERIAL"] = "1"
         done = []
 
