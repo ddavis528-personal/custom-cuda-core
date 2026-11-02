@@ -49,7 +49,8 @@ together share a build directory. check-cg and check-ngd measure their units
 `build/synth-cache`, ABC's maps too, keyed by everything a run reads. The
 full gate clears it first; `tools/verify.sh --cached` keeps it for an
 intermediate run, whose result reads `CACHED PASS`.
-Under `CCV_HEAVY_SERIAL=1`, which GitHub CI sets (a stopgap; DA, 2026-11-01),
+Under `CCV_HEAVY_SERIAL`, on by default in every gate, local and GitHub's
+(DA, 2026-11-01 and 2026-11-02; `CCV_HEAVY_SERIAL=0` turns it off for a run),
 check-cg and check-ngd measure each unit `tools/heavy-units.json` names
 alone, with nothing else of either beside it, and fail a unit it does not
 name whose one command peaks over its light limit.

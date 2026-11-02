@@ -222,7 +222,9 @@ _PEAK_MU = threading.Lock()
 
 
 def heavy_serial():
-    return os.environ.get("CCV_HEAVY_SERIAL") == "1"
+    """On by default, locally as on CI (DA, 2026-11-02); CCV_HEAVY_SERIAL=0
+    turns it off for one run."""
+    return os.environ.get("CCV_HEAVY_SERIAL", "1") != "0"
 
 
 def note_rss(nbytes):

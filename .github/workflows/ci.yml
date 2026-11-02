@@ -48,7 +48,8 @@ jobs:
       # A runner has 4 cores and 16 GB; full-size ooe_rob's Yosys and ABC
       # take about 6 GB each, and check-cg's and check-ngd's ran side by side
       # and killed the runner (runs 538, 543, 544). CCV_HEAVY_SERIAL measures
-      # each unit tools/heavy-units.json names alone (DA, 2026-11-01).
+      # each unit tools/heavy-units.json names alone (DA, 2026-11-01); it is
+      # the default everywhere now, set here so CI never depends on that.
       - name: Verify
         env:
           CCV_HEAVY_SERIAL: "1"
