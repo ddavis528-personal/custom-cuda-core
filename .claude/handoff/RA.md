@@ -55,7 +55,7 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-01)
-AR 267, OA 307, RA 52, CP 151, IS 184, TI 287, CP 150 (others as at session start: OI 252,
+AR 267, OA 307, RA 53, CP 151, IS 184, TI 287, CP 150 (others as at session start: OI 252,
 CP 149, DA 99, Conventions 16).
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -116,7 +116,10 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   Refresh all ten together when a tab changes (README says how: Docs blob -> Artifact read path, then
   tools/snapshot-doc.py). Tab revs at snapshot: Overview 27, Conv 3, Pipe 4, RF 4, Pred 3, R 5, Lane 4,
   Mig 6, Done 12, Partition 8.
-- Answers due: RA-16, RA-30 (TI); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
+- Top-level docs (DA, 2026-11-02): per-block specs RCU tab reconciled (rev 23, RA's). Repo docs stale, raised
+  rev 53: RA-35 (AR: rcu-arch.md ports/latencies/section 8, strategy doc :53 ports) and RA-36 (TI: roadmap Part 0
+  RCU status, rcu_miu_width schema question/Q-18, Q-53 pointer, ooe-model.md L1 wake 16->12 for OI). Notices sent.
+- Answers due: RA-16, RA-30, RA-36 (TI); RA-35 (AR); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
 - Spec tab reconciliation (rcu-arch.md section 5: per-block specs doc RCU tab
   eda9347a-feaa) after Daniel accepts.
