@@ -27,6 +27,18 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 3. Then write a first-pass RCU Arch document and notify Daniel for review;
    he will iterate on it with RA.
 
+## Daniel's answers on the first pass (2026-11-02)
+1. No area target; "see where we land". Goal is synthesizability at a
+   reasonable frequency and efficiency: the same NGD and clock-gating rules
+   as OOE (25 NGD, 12/port side, .ngd.json, CG-5, RST-1, DCGE 75%).
+2. RA is arch only. Runs (Phase 1 sizing etc.) belong to the RCU
+   implementation agent (not yet created), helped by RH if needed. RA does
+   not run experiments; it states what to measure and the exit criteria.
+3. Scope/depth: the full cycle-accurate pipeline and arch description; RTL
+   must be implementable from the spec alone. So: every stage, every
+   register (name, width, enable), every mux select source, every channel
+   field's cycle, every op's per-cycle behaviour, every FSM/counter.
+
 ## Setup state
 - Roster: RA session written (commit b584233). session-home installed and
   --check matches (2026-11-01). Daily sweep scheduled task
