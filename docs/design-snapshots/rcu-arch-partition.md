@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=10 exported=2026-11-02 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 10 on 2026-11-02 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=12 exported=2026-11-02 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 12 on 2026-11-02 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -109,7 +109,7 @@ OOE sends a lead slice on every `ccv_ooe_rcu_issue` slot. It is driven from a fl
 
 - A set bit may load a group the op then does not use. That costs DCGE, not correctness.
 - A clear bit is a promise. RCU asserts at A, for every valid slot, that what the payload uses is a subset of what the lead promised: `src` operands, a non-none imm, merge, sections and guard.
-- Negative control `lead-promise`: it clears one lead bit of an op that uses the group, and it must fail. It joins the controls list.
+- Negative control `lead-src-clear` (TI's name, TI rev 288; this spec called it lead-promise): it clears one lead bit of an op that uses the group, and it must fail. It is in the controls list; the stub already refuses a broken promise, and the model and RTL must too.
 - The imm group's DCGE is the known weak spot. `imm_kind` literal does not say whether the op reads the literal (AR rev 266), so imm loads for every literal op. If the implementation measures that group under 75%, the remedy is a DEC bit through OA, not a waiver.
 
 **Contingencies.**
@@ -117,7 +117,7 @@ OOE sends a lead slice on every `ccv_ooe_rcu_issue` slot. It is driven from a fl
 - If OI's select-path NGD does not fit the grant mux, OOE sends the same bits from a registered copy of the entry (OA, NGD-7's copy). Nothing changes on RCU's side.
 - If OOE does not send the slice at all, every group falls back to `issue_v_q` and the implementation measures DCGE (list item 2 above).
 
-**Address time.** `CCV_LAT_RCU_ADDR_BASE` = 1 is adopted (PF-47; TI applies it with a regen). The address valid leaves at A's edge and the payload at A+1's edge, as this spec is built. If M1 misses, RA returns with 2 and one pipeline stage is added in `_mem`. `CCV_LAT_L1_WAKE` goes from 16 to 12.
+**Address time.** `CCV_LAT_RCU_ADDR_BASE` = 1 is adopted (PF-47). TI's first application failed the gate in OI's RTL, so the params still say 5 until OI fixes `ooe_wake`'s depth and the `no-msd` control's stimulus (TI rev 288); TI then reapplies it. RCU's spec, model and RTL are built to 1 regardless. The address valid leaves at A's edge and the payload at A+1's edge. If M1 misses, RA returns with 2 and one pipeline stage is added in `_mem`. `CCV_LAT_L1_WAKE` goes from 16 to 12.
 
 **Reduced units (RA-32 (2), TI rev 285).** Every RCU size is a module parameter that defaults to the `ccv_params_pkg` value, for example `parameter int ROWS = ccv_params_pkg::CCV_P_PHYS_REGS`. A reduced check-cg / check-ngd unit sets it in `cg-units.json`, as in `{"name": "rcu_bank_r32", "params": {"ROWS": 32}}`. The full-size unit stays for each module's exit, and a full-size unit that peaks over 2 GB goes on `tools/heavy-units.json`.
 
@@ -150,7 +150,7 @@ Q-53 checkers owed by RCU's RTL:
 
 The model replaces the stub in both hosts (`sim/skel/blocks.list`, selected by TI's makeRcu hook, RA-38), and the RTL replaces `ccv_rcu`'s DPI shim in the SV top. Every `--break` control below must fail with the model in place, and still fail with the RTL in place (`tools/check-kernel.sh`, and `tools/check-sv-hosted.sh` for the SV top):
 
-`ignore-mask`, `movi-in-lane`, `lead-corrupt`, `slot-field-aux`, `done-row`, `rcu-done-pool`, `no-rcu-bypass`, `wrong-merge`, `copy-from-new`, `mig-row-order`, `arch-pred-srcs`, `pdata-guard`, `dirty-zero`, `scalar-base`, `no-lane-bypass`, `late-copy`, `drop-pred-copy`, `drop-pred-data`, `attr-coll-as-rcu`, `conflate-pred`, `corrupt-echo`, `late-lead`, `lead-promise` (new with the issue lead slice, RA-31).
+`ignore-mask`, `movi-in-lane`, `lead-corrupt`, `slot-field-aux`, `done-row`, `rcu-done-pool`, `no-rcu-bypass`, `wrong-merge`, `copy-from-new`, `mig-row-order`, `arch-pred-srcs`, `pdata-guard`, `dirty-zero`, `scalar-base`, `no-lane-bypass`, `late-copy`, `drop-pred-copy`, `drop-pred-data`, `attr-coll-as-rcu`, `conflate-pred`, `corrupt-echo`, `late-lead`, `lead-src-clear` (new with the issue lead slice, RA-31; TI rev 288), and `drop-src-valid`, which now expects the lead's refusals too.
 
 Two of these change meaning with this spec; TI and OA agreed the new meanings under RA-29, and TI updates the controls with the RTL:
 
