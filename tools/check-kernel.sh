@@ -1384,6 +1384,17 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-corrupt.log" check_failures)" = 
 else
   bad "--break lead-corrupt" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-corrupt.log")"
 fi
+# The issue lead (RA-31; OA's rev 307, AR's rev 267): every operand group an
+# issue uses is named a cycle ahead, so RCU loads no other. lead-src-clear
+# has OOE promise no source on every op; RCU refuses each op that reads one,
+# once, and nothing else fails.
+"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break lead-src-clear >"$B/kernel_lead-src-clear.log" 2>&1
+n=$(grep -c "^CHECK rcu: seq [0-9]*, [^,]*, reads a source its lead says is unused" "$B/kernel_lead-src-clear.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-src-clear.log" check_failures)" = "$n" ]; then
+  say "--break lead-src-clear: RCU refuses a source its lead calls unused" "PASS ($n issues)"
+else
+  bad "--break lead-src-clear" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-src-clear.log")"
+fi
 
 # Notices (OA-23; AR's response TI-23): DCU promises a refill
 # CCV_LAT_FILL_NOTICE cycles after its notice lands, MIU a completion
