@@ -1120,9 +1120,9 @@ Built (`rtl/ooe/`):
 
 `rtl/ooe/ooe_rob.sv`, in six slices. Slice 1 (built): storage, allocation,
 completion, in-order retire, the frees and the retire-stage register, and
-the room rename's go reads. Slice 2's first part (built): branch records,
-resolution and the redirect. Squash and deferred free (2's rest), memop
-commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
+the room rename's go reads. Slice 2 (built): branch records, resolution
+and the redirect (part a), the squash and the deferred free (part b).
+Memop commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
 `test/ooe/rob_tb.cpp` stops a core at its first such event.
 
 - *Allocation and fill.* The go's edge allocates each slot's entries at
@@ -1245,6 +1245,54 @@ commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   right-always (no branch wrong), branch-off-slot (a branch's done on
   another slot) and no-branch-lead (fl_brl never driven) are each
   caught.
+- *Squash and deferred free* (slice 2 part b; OI-94's C'', put to OA
+  against its (c); DA's (b), OA's rev 292: `squash_act_lag` 1). The squash
+  acts at R + 1 from the mispredict's one-hot, on every entry younger than
+  the branch in its slot, each one of three kinds. Filled and not
+  outstanding: its names free at once. Held (an op still owed: dones owed,
+  a memop at MIU not done, or a copy in flight): its ROB slot stays taken
+  until the op lands, and its names free a cycle after (the release
+  register, `release_names_lag` 1). Unfilled (allocated, Rename 2's fill
+  still to come): every fill arriving in the squash's cycle is killed,
+  and so are the ones still owed, counted per slot in a one-hot kill
+  count (2A + 1 values); a killed fill's names free from the kill
+  register a cycle later, so the entry's ROB slot is free at once and the
+  fill never lands (the model's `kill_free_lag` 1: the names free three
+  cycles after the allocation). The tail returns to the branch; the go's
+  room counts the held entries as holes (the run to the first held one,
+  `held_room_lag` 1), and its enable takes the last release so the room
+  moves when the last held entry drains. The free leads are a superset in
+  the squash's cycle, any held entry or squash last cycle for the GPR and
+  predicate rows, exact for the kill register. A squashed store at MIU
+  sends one bulk discard per squash, from a register naming the branch
+  and the slot's youngest entry. Budgets: fl_brl 2 (OA's rev 289);
+  fl_gnsec, fl_palloc, fl_store and ev_miu at the default 12, asked of OA.
+  check-ngd: 24.3 NGD flop to flop at the pool's parameters, every input
+  within its arrival. It took restructuring: each OR over a slot's entries
+  is a reduce-OR of a masked vector (check-ngd's ABC flow does not balance,
+  and an OR accumulated in a loop or an if-ladder stays a 32-deep chain);
+  the run is the run from flops less the late allocation count (exact: the
+  go allocates from the tail within the room), so al_n meets only the last
+  subtract; the tail's search reads the held set alone; a squash that leaves
+  held entries registers a run of 0 for its cycle (the model's
+  `squash_held_room_lag` 1, price 0) rather than searching them; the
+  head's thermometer is a register; and the redirect lead's register has an
+  output copy (NGD-7). check-cg: every enable from the module's flops,
+  within CG-2's 8: the free masks clock on a retirement that frees, a squash
+  acting (its releases are within it), a held release or a killed fill, and
+  the resolution register on a superset of its candidates (a load with no
+  pick holds no squash). The bench
+  (`test/ooe/rob_tb.cpp`) runs the core mispredicting through its squashes
+  (no longer stopping at the first): per squash it counts the entries
+  squashed, held, killed and released, and checks each name freed once, in
+  the cycle the model's timing gives (a filled entry at the squash, an
+  unfilled one three cycles after its allocation, a held one a cycle after
+  its release), the free leads covering the frees, and the discard. 25
+  seeds: 1,209 squashes, 11,340 squashed entries, 2,823 held and released,
+  926 killed fills, 365 discards, 0 mismatches; every prediction right, 0
+  mismatches. Controls no-miu (MIU's outstanding never driven), no-store
+  (no store bit at the fill) and drop-killed-fill (a killed fill's names
+  never freed) are each caught, with slice 1's and part a's.
 - *The entry* (rev 277 (c), rev 279): 65 bits with slice 4's chwidth
   width and one fault cause with its valid (DEC's wins). Barrier data goes
   in a per-slot side buffer 2 deep, in program order, popped at retire
