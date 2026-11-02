@@ -410,7 +410,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[46663:45452])
+    .ch_payload(payload[46807:45596])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
@@ -503,10 +503,10 @@ counter-example that must fire, and a paragraph in
 From `docs/open-items.md`, which numbers every open item and never reuses an
 ID:
 
-- **Open:** Q-10, Q-17, Q-42, Q-45, Q-50, Q-57, Q-60
+- **Open:** Q-10, Q-17, Q-18, Q-42, Q-45, Q-50, Q-57, Q-60
 - **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-36, Q-37, Q-46, Q-48, Q-53, Q-59
 
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: c8c8a14fa5bff840 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 3696ce6e4e9a0d54 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
