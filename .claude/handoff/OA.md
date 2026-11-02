@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 312, AR 268, TI 291, OI 252, IS 185, CP 152, DA 104,
+Conventions 17, OA 313, AR 268, TI 291, OI 252, IS 185, CP 152, DA 104,
 RA 58 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
 OOE doc rev 352. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
@@ -52,9 +52,14 @@ OOE doc rev 352. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    under 2048 MiB, budgets carried and re-signed by OA, CG allowance check.
    TI took it (rev 291). Miter: test/formal/fv_rob_split.sv vs ooe_rob_ref.sv,
    one-time run, not gate (OA rev 312).
--0. 11-02 sweep: full gate runs detached (`~/ccv-logs/oa-sweep-gate-1102.out`,
-   ~4 h; run full gates via setsid/bg-run, the 2 h background cap kills them).
-   Don't commit on the branch while it runs. Check-in trig_01Qjvc8AbvjFQpA66oG8fvTY.
+-0. 11-02 sweep (fe24167, 106 commits unpushed): full gate RED only on the
+   heavy-unit guard (11 light units at exactly 2221 MiB, wait4 ru_maxrss
+   inherits the parent's peak; TI's e878569/e44d767/0facb89). Raised to TI
+   (OA rev 313). Rerun the full gate once TI's fix is on a branch (merge it).
+   Container gets reclaimed: run gates detached (setsid bg-run) AND a
+   run_in_background waiter loop (2 h cap, re-arm); check liveness with
+   `ps -eo pid,etime,args | grep "[g]ate-push.sh --full"`, never pgrep -f.
+   The container also restarted once mid check-cg with a waiter live (cause unknown).
 0. RCU (RA/RI) rulings 11-01..02, OA revs 297-310: idle-R run bound K 4 (OI
    builds, prices); collectives + RCU-only one issue class (OI, price); call
    link in imm at rename, offset to branch record (OI NGD); atomics/demotion
