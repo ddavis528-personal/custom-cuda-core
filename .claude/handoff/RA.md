@@ -55,7 +55,7 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-01)
-AR 267, OA 307, RA 54, DA 101, Conventions 17, CP 151, IS 184, TI 287, CP 150 (others as at session start: OI 252,
+AR 267, OA 308, RA 55, DA 101, Conventions 17, CP 151, IS 184, TI 287, CP 150 (others as at session start: OI 252,
 CP 149, DA 99, Conventions 16).
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -125,7 +125,7 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   selector, CLAUDE.md line, heavy-units; OA: skill minutes RA 27, RI 31). Answer RI rows (RA in Needs);
   review each phase exit row. Spec nit for next refresh: Partition tab 'replaces the stub in blocks.list' ->
   the SV top's file-list swap (rcu-impl.md section 5 says so).
-- Answers due: RA-16, RA-30, RA-36, RA-37 (TI); RA-35 (AR); RA-37 (OA); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
+- Answers due: RA-16, RA-30, RA-36, RA-37 (TI); RA-35 (AR); RA-37 (OA: RI 31 only, roster commit bc1c2b4 named at rev 55); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
 - Spec tab reconciliation (rcu-arch.md section 5: per-block specs doc RCU tab
   eda9347a-feaa) after Daniel accepts.
