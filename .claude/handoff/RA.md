@@ -55,7 +55,7 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-01)
-AR 264, OA 303, RA 43, IS 184, TI 284, CP 150 (others as at session start: OI 252,
+AR 265, OA 305, RA 44, IS 184, TI 284, CP 150 (others as at session start: OI 252,
 CP 149, DA 99, Conventions 16).
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -90,8 +90,9 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   First pass is in the Overview tab's history (rev 15).
 - Settled 2026-11-02 and folded into the spec: RA-14, RA-18..RA-27, RA-29 (OA, TI halves). O-85 =
   collectives (diagonal unballot). Fence DOES send an address msg. CSR = read-0 responder.
-  RA-30 (TI) raised: repo half of AR's answers. Still open: RA-28 (AR), RA-29 AR half, RA-16 (TI).
-- Answers due: RA-16 (TI), RA-28, RA-29 (AR), RA-30 (TI). Fold each answer into
+  RA-30 (TI) raised: repo half of AR's answers. RA-28/29 settled too (AR rev 265: pairing queues = CCV_TIER1_WARPS; FIFO stays 4; A+2 rule for
+  every R class). Still open: RA-16, RA-30 (TI).
+- Answers due: RA-16, RA-30 (TI). Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
 - Spec tab reconciliation (rcu-arch.md section 5: per-block specs doc RCU tab
   eda9347a-feaa) after Daniel accepts.
