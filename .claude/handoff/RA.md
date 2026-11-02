@@ -58,6 +58,28 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 AR 263, OA 299, RA 40 (others as at session start: IS 182, TI 282, OI 252,
 CP 149, DA 99, Conventions 16).
 
+## Spec doc (RTL-depth rewrite in progress, 2026-11-02)
+Doc 1e5066f9-e4db-4fe3-aabc-0022606c9e96 (https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB).
+Tabs (file / body): Overview dfa9bcdb-0b00 / 81a1f5d5-f92b (first pass, to rewrite last);
+Conventions b8c07a83-ca95 / 46057b65-98f1 DONE; Pipeline 8b466d58-aee5 / 37f906fe-2422 DONE;
+Register file 13b95959-8f04 / dd7dc786-f025 DONE; Predicate file 0e99a93e-aac2 / fe349acb-7397;
+R unit 72c26a02-6c53 / 10fb0241-f5be; Lane+memory 28e9ca7b-9ffb / 6773bf05-88be;
+Migration 7ddc7f8b-7c6e / 662008ee-60e7; Done/kill/reset ef251def-47bc / 624901bd-f2e3;
+Partition 7a8bcca7-ef25 / 9c653c29-9e9c. Each unfilled tab has one pending block (read outline).
+Digests: scratchpad digest-schema.md, digest-stub.md, digest-isa-ooe.md (lost with container).
+Design decisions taken in the rewrite (RA's own): A/A+1/A+2 stages; GPR write ports 4/bank
+(LW lane A+6, SW SFU A+11, MW load T, RW R A+2) - collectives run in the R pipe (W=A+2, done
+slot 6 at A+1), so the 5th port goes whatever CCV_LAT_COLLECTIVE says; split one-hot row
+predecode (hi 12 + lo 16 flops); done slots fixed: lane lead section k->k, SFU 4, R-only 5,
+collective 6; pred file: masked write ports (sel, mask, data), old-dst read at write time (no
+forward needed: old dst is ready at issue); guard forward only from MIU pred_result in A;
+restore staging FIFO depth = CCV_CREDIT_DEPTH (4); demote reads R2 when R op doesn't, restore
+writes RW when R op writes no GPR; wake = flop of OR of input wakes.
+Round 3 rows RA-18..RA-27 raised (RA tab rev 41), notices sent to AR, OA, IS, CP, TI.
+To raise next: RA-28 (AR: MIU never lands two loads on one section in a cycle; pca_rcu credit
+depth / staging; at most one demotion + one restore in flight), RA-29 (AR/TI: write ports 4,
+collectives in R pipe; SFU bypass window vs PRF write).
+
 ## Open work, most urgent first
 - First-pass RCU Arch doc written: https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB
   (doc 1e5066f9-e4db-4fe3-aabc-0022606c9e96, body node 81a1f5d5-f92b,
