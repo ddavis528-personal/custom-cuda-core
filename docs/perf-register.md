@@ -69,6 +69,9 @@ it.
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
+| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266); TI applies; 2 if RCU's NGD measurement M1 misses |
+| PF-48 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
+| PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
 
 ## Entries
 
@@ -1129,3 +1132,93 @@ it.
   frames and data in the run as compiled, runs clean at 1,234,051 cycles at
   one warp and 64 KiB, 1.3% over TI's scratch bound of 1,218,411: the
   prologue's `srd` and add, which the bound never paid.
+
+### PF-47 RCU's issue-to-address time from 5 to 1 or 2
+
+- **Now:** `CCV_LAT_RCU_ADDR` = 5 is a placeholder (Daniel, OA-5,
+  2026-10-08). It counts from RCU accepting the issue, cycle A, to the
+  address message's valid leaving RCU, since `CCV_LAT_HOP`, which
+  `CCV_LAT_L1_WAKE` adds after it, already holds the valid-to-payload cycle.
+  With it, `CCV_LAT_L1_WAKE` = 16.
+- **Alternative (RA-5, RA-7; AR's responses):** RCU reads the guard in A,
+  so it knows a memop is going out and registers the address valid, with
+  `active_mask`, at A's edge. It reads the operands in A+1, from row selects
+  flopped in A, with the sectioned 4:1 byte mux after the 192:1 read, and
+  registers the payload at A+1's edge. Counted as the parameter is defined,
+  that is 1. It is 2 if the byte mux or the read does not fit A+1 in 25 NGD,
+  which RA's Phase 1 measures.
+- **What it buys (PF-33's measurement, AR-24, TI's rev 196):** 2.0% of
+  CoreMark-derived cycles per cycle off `CCV_LAT_L1_WAKE`, linear from 16 to
+  10. At 2, `CCV_LAT_L1_WAKE` = 13: -5.9%, measured. At 1, it is 12: about
+  -7.9%, interpolated between the measured 13 and 11. The measurement is one
+  lane, pin 7ef9292; it is worth re-running on the current pin once Phase 1
+  gives the number.
+- **Cost:** none outside RCU, if the timeline fits: the read stage that
+  serves the lanes serves MIU. The parameter changes only after RA's Phase 1
+  confirms it, since every kernel's cycle counts move with it.
+- **Decision (RA-31, AR rev 266, 2026-11-02):** set `CCV_LAT_RCU_ADDR_BASE`
+  to 1 now, ahead of Phase 1. The reason to wait went away with RA-21: the
+  address channel is now fixed-latency, so RCU cannot send early, and
+  holding to 5 would cost 4 delay stages × 4 slots × 3,111 bits, about 50k
+  flops. Nobody would build those, so 5 is not a value the RTL could ever
+  have. RCU's spec is built to 1. If the implementation's NGD measurement
+  (M1) misses, RA returns with 2, and the counts move once more. The param's
+  own text gives the move to RCU's session ("RCU's session confirms or moves
+  it"), so this does not reopen Daniel's placeholder decision (OA-5).
+  `CCV_LAT_L1_WAKE` goes from 16 to 12. PF-33's measurement is worth
+  re-running on the current pin once TI applies it.
+
+### PF-48 End-to-end parity on register state
+
+- **Now:** no parity and no ECC anywhere on register state. The PRF
+  (192 x 1,024 flops), the predicate file (48 x 32), and every channel that
+  carries their values (`ccv_rcu_lane_ops`, `ccv_lane_rcu_res`,
+  `ccv_rcu_miu_addr`, `ccv_miu_rcu_data`, the migration rows to and from
+  PCA) carry data bits only. Daniel (2026-11-02): ECC is probably too much;
+  parity may be valuable eventually, but not in the first version.
+- **Alternative:** one parity bit per byte (or per section element), made
+  where a value is created and checked where it is consumed. It is stored
+  in the PRF and the predicate file, and carried on every channel above and
+  through PCA's parked rows. A check failure raises a machine fault toward
+  OOE, which needs a fault path the design does not have today (no fault
+  rides `ccv_rcu_ooe_done`, IS-16).
+- **Cost:** it must be end to end to mean anything, so it is pervasive.
+  - +12.5% PRF flops (about 24,600) and +12.5% wires on each data channel
+    (about 1,400 on lane ops and results, 1,600 on address and load data,
+    260 on the migration rows).
+  - A generator and checker at every producer and consumer. A merge,
+    shuffle or narrow write must regenerate parity for the bytes it changes.
+  - A fault channel and its handling in OOE.
+  - No timing impact on the PRF read, which carries the bit alongside, but
+    a parity tree (about 3 NGD a byte) at each check point.
+- **Who gains:** reliability: soft-error detection on about 200k state
+  flops, which matters more as the design moves toward silicon than for
+  the model.
+- **Signal:** a reliability target (FIT budget) from Daniel, or a product
+  requirement for detected-error reporting. Owner: RA (RCU) with AR for
+  the cross-block channels.
+
+### PF-49 A latch-based physical register file
+
+- **Now:** the PRF is flops: 4 banks of 192 x 256, about 196,600 flops,
+  84% of the RCU (RCU spec, Partition tab). Daniel (2026-11-02): flops for
+  the first version, as the most synthesis-friendly choice. It also passes
+  CG-1 to CG-5 and scan with no special handling.
+- **Alternative:** latch rows with a write pulse from a row clock gate, the
+  usual latch-array register file: one latch per bit instead of a flop,
+  with the write data held stable through the latch's transparent phase.
+- **Cost:**
+  - The style rules allow a latch only inside the clock-gate cell, so the
+    rules, the lint, `check-cg.py` and the NGD timing model would all need
+    a latch form.
+  - Write data must be held stable a phase longer, so the write ports' D
+    paths gain a timing constraint the flop design does not have.
+  - Scan needs a latch-aware flow.
+- **Gain:** roughly half the storage cell area and clock load of the PRF,
+  so the largest single area and clock-power item in the core shrinks by
+  about 40%.
+- **Signal:** the RCU's synthesized area and clock power from the
+  implementation agent's full-size runs (spec measures M2 and M3). If the
+  PRF dominates the core's area or clock power beyond what Daniel accepts,
+  this is the first lever. Owner: RA.
+
