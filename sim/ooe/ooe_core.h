@@ -426,6 +426,13 @@ struct Config {
   /// correct branch frees its checkpoint at once), and whether a branch
   /// ends its retire window.
   unsigned resolve_lag_wrong_only = 0;
+  /// OA's rev 293 (AR's lead, RCU spec rev 20): resolve_lag applies to rets
+  /// only, branches and calls resolving from RCU's lead at 0. ret_hold: a
+  /// branch or call is not selected for RCU the cycle after a ret is, so the
+  /// ROB's one outcome path never resolves a branch beside a ret (checked;
+  /// inject_no_ret_hold drops the hold).
+  unsigned resolve_lag_ret_only = 0;
+  unsigned ret_hold = 0;
   unsigned branch_ends_window = 1;
   /// A squashed entry held for an op in flight frees its ROB slot as the op
   /// lands and its names a cycle later (1, the default, OA's rev 280: the
@@ -442,10 +449,25 @@ struct Config {
   /// (OI-85 slice 2): the release comes off the done path, too deep for the
   /// scan that forms the run, so the scan reads it as held one cycle more.
   unsigned held_room_lag = 0;
+  /// OI-94 (C''): a squashed entry whose fill had not landed (allocated
+  /// within the last two cycles: Rename 1 and 2) frees its new names when
+  /// that fill arrives and a cycle more, its allocation's cycle + 3, the
+  /// ROB dropping the fill by a kill count (the price of OA's rev 291 (4)).
+  unsigned kill_free_lag = 0;
+  /// A squash that leaves the slot holding entries (squashed with an op in
+  /// flight, this squash's or an earlier one's) registers a run of 0 for
+  /// this many cycles from the squash's (the go reads that slot's run as 0):
+  /// the ROB does no search over the held entries in the squash's cycle
+  /// (that search would be the squash's, NGD-1) and reads the run from the
+  /// held flops after. Without held entries the squash's run is the
+  /// occupancy's, from flops, at once.
+  unsigned squash_held_room_lag = 0;
 
   // -- fault injection: the negative controls the core itself must carry ------
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
   bool inject_row_no_hold = false; ///< select issues a row past 3 dones in flight (row-no-hold, OI-90)
+  bool inject_retire_unresolved = false;  ///< resolve_lag: a branch retires before its resolution acts
+  bool inject_no_ret_hold = false;  ///< ret_hold: a branch is selected the cycle after a ret
   bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
@@ -1190,6 +1212,8 @@ private:
     bool res_pend = false;         ///< resolve_lag: complete and resolve at res_at
     uint64_t res_at = 0;
     bool rel_pend = false;         ///< defer_release_lag: release at rel_at
+    uint64_t alloc_at = 0;         ///< the cycle rename allocated it (kill_free_lag)
+    unsigned kill_wait = 0;        ///< kill_free_lag: its names free this many cycles on
     uint64_t rel_at = 0;
     // branch
     bool resolved = false, taken = false;
@@ -1716,6 +1740,9 @@ private:
   RatLog rlog_;
   RobLog roblog_;
   void robStop(const char *why) { if (!roblog_.stop) roblog_.stop = why; }
+  bool branch_squash_ = false;              ///< squashAfter from a branch's resolution (ROB slice 2b builds it)
+  uint64_t ret_sel_at_ = ~0ull;             ///< ret_hold: the cycle a ret was last selected for RCU
+  uint64_t res_ret_ = ~0ull;                ///< ret_hold's check: the cycle the last ret resolves
   GoLog golog_;
   void goRoomNext();
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
@@ -1745,10 +1772,11 @@ private:
   std::vector<unsigned> audit_room_;      ///< each slot's ROB room as the cycle starts (the settings audit)
   unsigned auditRobRoom(unsigned si) const;
   std::vector<uint8_t> audit_squash_;     ///< a slot squashed this cycle (the settings audit)
+  std::vector<uint8_t> squash_held_;      ///< squash_held_room_lag: the slot's last squash left held entries
   std::vector<uint64_t> squash_at_;       ///< squash_room_lag: each slot's last squash cycle, plus one
   /// release_names_lag: names a deferred release frees next cycle (slot,
   /// name, predicate or GPR).
-  struct NameFree { unsigned slot, name; bool pred; };
+  struct NameFree { unsigned slot, name; bool pred; unsigned wait = 1; };   ///< wait: cycles to its free
   std::vector<NameFree> name_free_;
   /// squash_act_lag: per slot, a resolved mispredict whose squash is due:
   /// the branch's program order, its checkpoint and the RAT it restores.
