@@ -1012,15 +1012,34 @@ programs have no rets, so it cannot price either. `idle_r_k` (RA-17,
 OA's revs 298-299; 0, off, until priced): a migration borrows R's PRF
 ports, a row in each cycle R holds no op (AR's answers to RA-6 and RA-8),
 so while one is in flight (restore-allocate to restore-activate, a
-demotion's map to its slot's free) select leaves R idle after
-`idle_r_k` - 1 cycles running with R granted, a natural idle restarting
-the count (`issue.idle_r`): 17 rows in at most 17 x K cycles. The swap
+demotion's map to its slot's free) select leaves R idle in a cycle whose
+cycle before last ended `idle_r_k` - 2 cycles running with R granted
+(`issue.idle_r`; decided a cycle ahead, as ooe_sched's force register
+is, so a natural idle in the last cycle still forces one), never K
+running: 17 rows in at most 17 x K cycles. The run counts R's grants
+with or without a migration in flight, so one that starts in a run has R
+held at once. The swap
 environment's `r_ports` moves the rows that way (off, they take 17 cycles
 on ports of their own, as TI-21 has them). R running K cycles granted
 beside a migration is an error; the test idle R (three warps of RCU-only
 ops, a demotion and its restores) holds every migration to 68 cycles at
 K 4, and its control (`inject_no_idle_r`) is caught. Sectioned select
-only, where R is resource 4. `release_names_lag` 1 and
+only, where R is resource 4. RCU-only ops and warp-collectives are one
+issue class at R (RA-29 (a), OA's rev 305, RA's confirmation): a
+collective's footprint minimum is 0, so it takes R and nothing else, one
+op of the class a cycle, and both count in the idle-R run (the test idle
+R runs one warp of collectives). Two of the class granted in a cycle is an
+error (`issue.r_class_pair`); the test R class contends two warps of each
+for R, and its control (`inject_split_r_class`, R's own copy in the pick
+for a collective) is caught. `split_r_class` 1 is that split as a price
+point, the error off. Vote's and ballot's predicate source (RA-29 (e),
+OA's rev 303) takes pand's and por's path: DEC marks the op
+`pred_logic` with its qualifiers in imm, rename reads the predicate RAT
+for them, the RS entry depends on them, and the issue carries the
+physical predicates in imm (TI-1's format), whatever the opcode; the
+environment decodes every such imm and holds both sources readable at
+issue (the test pred sources; its control, `inject_pq_no_dep`, drops
+the dependency and is caught). `release_names_lag` 1 and
 `squash_room_lag` 1 are the defaults (OA's rev 280): a held entry frees
 its ROB slot as its op lands and its names a cycle later (and with its
 slot, if the slot is released first), and a squashed slot's room reads 0

@@ -111,6 +111,7 @@ void hook(const Core &c) {
     std::exit(2);
   }
   dut->busy_cq03h = control == "no-busy" ? 0 : w.sel_busy >> 5;
+  dut->rhold_cq03h = (w.sel_busy >> 4) & 1u;   // RA-17's force: R taken for a migration's row
   dut->block_cq03h = control == "no-busy" ? 0 : w.sel_block;
   for (unsigned e = 0; e != NR; ++e)
     for (unsigned j = 0; j != NR; ++j)

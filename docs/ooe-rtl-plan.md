@@ -1323,6 +1323,37 @@ Memop commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   (ooeTestRandomRetsHookedWith), which must hold some branch. Controls
   no-hold (select) and no-ret-hold (trio) are caught. ooe_sched's flop to
   flop goes 19.9 to 24.4 NGD.
+- *The idle-R force* (RA-17, OA's revs 298-299, in ooe_sched; IRK, the
+  model's idle_r_k, 0 off and 3 up built): a migration borrows R's PRF
+  ports a row a cycle R holds no op, so while one is in flight
+  (mig_cq02h, a lead: the next cycle's in-flight bit, from the control
+  block that tracks restores and demotions) select holds every RCU entry
+  whose footprint has R. A register of the RCU entries' R bits
+  (rrq_cq04h, as rtq_cq04h) gives R's grant last cycle; a run counter
+  (rrun_cq04h, 2 bits at IRK 4) the cycles running before it; and a
+  force register (force_cq04h) takes, a cycle ahead, "next cycle a
+  migration, and IRK - 2 running as this one ends". select reads the
+  flop (ooe_select's rhold_cq03h, beside the ret hold in the request).
+  Deciding the force on the last cycle's grant instead, the model's
+  first rule, put an OR over the entries after the edge on the request
+  and vel_cq03h at 25.2 (two spellings tried, both 25.2); registered, the
+  flop to flop stays 24.4 and res_cq03h reaches 24.9 with its arrival
+  (18.1 + 4 before: its R bit now masks the request), vel 24.7. The model
+  follows the RTL: the force reads the run as of the cycle before last
+  (`r_run_q_`), so a natural idle in the last cycle still forces one, and
+  the run counts R's grants with or without a migration, so no migration
+  flop is needed and a migration starting in a run has R held at once.
+  The guarantee is OA's: no in-flight migration sees IRK cycles running
+  with R granted. The three registers are the grant register's clock gate,
+  its enable adding a run or force to end (198 flops, DCGE 95% and 97%;
+  a gate of their own was 34% in medium, the R bits rarely changing).
+  trio_tb runs testIdleR's migrations under the trio's settings
+  (ooeTestIdleRHookedWith) after the ret run, the lead driven a cycle
+  ahead from the model's sel_mig, and must see a forced cycle; controls
+  no-idle-r (no migration reaches ooe_sched: grants differ) and no-force
+  (the bench clears the force register, the lead kept: the idle_r
+  assertion must fire by name) are caught. select_tb drives rhold from
+  the model's busy bit 4.
 - *One resolution a cycle* (OA's revs 294-296, in ooe_rob): at most one
   resolution candidate across the ROB a cycle (`one_resolution`), the
   ROB's one outcome register. The RTL resolves every branch from that

@@ -687,11 +687,19 @@ if out=$("$dir/trio_tb" "$seeds" 2>&1); then
 else
   say "rs + wake + sched assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead; do
+for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r; do
   if TRIO_CONTROL=$c "$dir/trio_tb" 6 >/dev/null 2>&1; then
     say "  control $c (trio)" "MISSED"; fail=1
   else
     say "  control $c (trio)" "caught"
   fi
 done
+# no-force: the force register cleared, the migration lead kept; ooe_sched's
+# own idle_r assertion must fire, by name (RA-17).
+nf_out=$(TRIO_CONTROL=no-force "$dir/trio_tb" 6 2>&1)
+if grep -q 'CCV idle_r failed' <<<"$nf_out"; then
+  say "  control no-force (trio, idle_r assertion)" "caught"
+else
+  say "  control no-force (trio, idle_r assertion)" "MISSED"; fail=1
+fi
 exit $fail
