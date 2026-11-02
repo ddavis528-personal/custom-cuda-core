@@ -117,7 +117,8 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
   - a block class at RCU's ports (`sim/skel/stub.h`'s `Stub` interface),
     behind a makeRcu hook that TI adds, with `CCV_RCU_IMPL=stub` keeping
     the stub selectable in both hosts (RA-38);
-  - unit tests beside it, run by a gate job TI adds (RA-38 (d));
+  - unit tests beside it, run by TI's `check-rcu-unit` job (RA-38; TI rev
+    290);
   - listed in `sim/skel/blocks.list`, so both hosts build it.
 - **RTL modules:** `rtl/rcu/ccv_rcu*.sv`, named and partitioned exactly as the
   Partition tab's module table:
@@ -262,7 +263,7 @@ the oracle for checks, never decisions (CLAUDE.md, "The swap boundary").
    ccv-skel port traces (RA-34) recorded with the model in place, comparing
    every output and every event every cycle. The RTL's events come from a
    sim-only monitor, bound to the RTL, that derives them from the RTL's
-   state. This is the gate job RA-38 (e) asks for, RCU's equivalent of
+   state. This is TI's `job_rcu_rtl` (RA-38; TI rev 290), RCU's equivalent of
    ooe_rtl.
 4. **In the SV top:**
    - `tools/check-sv-hosted.sh` with the RTL in place of `ccv_rcu`'s DPI shim;
@@ -270,7 +271,8 @@ the oracle for checks, never decisions (CLAUDE.md, "The swap boundary").
    - every control still failing (M6);
    - no divergence from the C++ host running the model (M7).
 
-   The selector that swaps the RTL in is TI's to add (RA-37 (c)).
+   The selector is `CCV_RCU_RTL` in `check-sv-hosted.sh` (RA-37; TI rev
+   290).
 
 **Lock-step is at the ports and the events, and it is permanent.** A change
 to the RTL that changes behaviour there changes the model in the same commit,
@@ -312,10 +314,10 @@ bank's unit runs. Order them by what section 7 has unblocked.
 |---|---|---|---|---|
 | Schema and parameter changes: (a)-(g), 4 write ports, fixed done slots, `dispatch_fault` deleted, the kill-drain parameter | TI | RA-16, RA-29 (a), (b) | ports of `kill`, `r`, `lanes`; phase 4's port list | build to the spec's port names; regen when TI lands them |
 | The issue lead slice (`lead_fields`), `CCV_LAT_RCU_ADDR_BASE` = 1, `CCV_LAT_L1_WAKE` 16 → 12 | TI (schema), OI (OOE sends it) | RA-31, RA-32 | `pred`'s split guard read; `lanes` and `mem` field-group enables | build with the lead inputs. Without the slice, every group falls back to the issue valid (Partition tab, "Contingencies") |
-| The model's hook (makeRcu, `CCV_RCU_IMPL=stub`), its blocks.list entry, its unit-test job, the RTL lock-step job | TI | RA-38 | the model in kernel runs; the lock-step gate jobs | develop the model under its unit tests; TI's hook lands with RI's first model commit |
+| The model's hook (makeRcu; the stub stays the default until your model passes every kernel and control, then `CCV_RCU_IMPL=stub` selects it), sim/rcu/*.cpp in blocks.list (with your first model commit: ping TI or carry the line yourself), `check-rcu-unit`, `job_rcu_rtl` (each wired while empty, failing on tests it did not run) | TI | RA-38, agreed TI rev 290 | the model in kernel runs; the lock-step jobs | develop the model under its unit tests |
 | The ccv-skel port-trace dump | TI | RA-34 | M2 with real stimulus; block lock-step | reset/idle and directed stimulus only |
 | Fanout term enforced in check-ngd | TI | RA-33 | nothing: report-only numbers count for M1 | record the reported stages beside each path |
-| Repo support: the gate-scope map for rtl/rcu/ and test/rcu/, a gate job for RCU's benches, the SV-hosted RTL selector, the CLAUDE.md pointer to this file, and the sweep minutes RA 27 and RI 31 in the register skill | TI, OA | RA-37 | an unmapped path runs every gate section on each push; SV-hosted runs | push less often until the map lands |
+| Repo support: the gate-scope map for sim/rcu/, rtl/rcu/ and test/rcu/ and the CLAUDE.md pointer (TI does these first), the `CCV_RCU_RTL` SV-hosted selector, and the sweep minute RI 31 in the register skill | TI, OA | RA-37, agreed TI rev 290, OA rev 308 | an unmapped path runs every gate section on each push; SV-hosted runs | push less often until the map lands |
 | The collective fold, 5 → 3 | DA | RA-29 (c) | nothing: the spec runs collectives in the R pipe either way; only the parameter and OOE's class change | phase 2's figures are the input |
 
 ## 8. Getting the session set up (first hour)
