@@ -19,6 +19,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
   unpiped (a `| tail` once hid a failure).
 - Merge rules (DA tab revs 78, 89; CP-69): merge every peer branch at the
   daily sweep, and between sweeps when a peer's pushed work bears on IS's.
+  Skip release and gate-scratch/* (OI-102, DA 2026-11-01: unverified scratch
+  commits, never merged or gated).
   Fast-forward when the peer's head contains IS's; skip a merge whose result
   tree equals IS's own (`git merge-tree --write-tree HEAD <b>` against
   `HEAD^{tree}`); otherwise merge and gate.
