@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-01. Keep this current at every task's end; it is what
+Updated 2026-11-02. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -40,7 +40,9 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 260, OA 296, IS 182, TI 281, OI 250, CP 149, DA 98.
+Conventions 15, AR 260, OA 296, IS 183, TI 281, OI 250, CP 149, DA 98, RA 41.
+RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
+not yet in the merged roster, so notice.py refuses to=RA: send the notice by hand).
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
@@ -59,6 +61,11 @@ Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
   A new agent RH has a handoff on core (ccr-c22116ce-1vzyjg). CP's snapshot d9ddd2c builds O-83 and O-84; TI pinned it.
 
 ## Open work (most urgent first)
+0. RA-20 (warp-collective semantics): IS rev 183 recommends (a)-(d) with
+   refinements and a diagonal unballot for (e); waiting on Daniel. On his
+   ruling: record verbatim, write O-85 (log, summary, Format G text),
+   notify RA, TI, CP. RA-19 answered (ISA stands; compiler 3f202bc); CP
+   aligns ccv-sim.
 1. TI-49 (2) and (3): OA rules on quieter notices and the register-reader
    subagent; follow the skill once it changes.
 2. IS-14 item 2 (redux) waits on CP; item 3 (position hints) waits on
