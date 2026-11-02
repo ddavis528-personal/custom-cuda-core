@@ -79,6 +79,12 @@
    "date": "2026-10-31",
    "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add)"
   },
+  "fl_brl_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-31",
+   "why": "OA's rev 289 (re:OI-93, OA tab): Rename 2's lead of a branch in the next fill, a flop in Rename 2 like the other cq01h leads, at 2 as rev 287's inputs"
+  },
   "fl_ckpt_cq02h": {
    "arrival": 2.0,
    "by": "OA",

@@ -17,6 +17,7 @@
 #include "ooe_core.h"
 
 #include <cstdlib>
+#include <deque>
 #include <fstream>
 #include <map>
 #include <set>
@@ -109,9 +110,16 @@ private:
   std::set<unsigned> rcu_only_;
   // A branch's or call's done carries its outcome on the lead fields too
   // (AR rev 260, RCU spec rev 20); a ret's lead is don't-care. By uid at
-  // decode, by rob tag from issue. TI's check, OI-18.
-  std::set<uint64_t> br_lead_tid_;
+  // decode, by rob tag from issue. TI's check, OI-18. Bounded (OI-96): a
+  // uid leaves at its issue, its rob tag keeping the uid so a replay's
+  // re-issue keeps the mark; a uid never issued (a wrong path's) is pruned
+  // once kLeadWindow decodes are newer, far past what can be in flight.
+  static constexpr uint64_t kLeadWindow = uint64_t(1) << 16;
+  std::map<uint64_t, uint64_t> br_lead_tid_;      // uid -> its decode count
+  std::deque<std::pair<uint64_t, uint64_t>> br_lead_age_;   // (decode count, uid), in order
+  uint64_t decoded_ = 0;
   std::set<unsigned> br_lead_;
+  std::map<unsigned, uint64_t> br_lead_uid_;      // rob tag -> the marked uid it holds
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   /// TI-46 (b), DA tab rev 96: decode-queue credits back to FET, one slot
   /// a tier-1 warp. A slot's return is what left the queue since the last:
@@ -228,7 +236,16 @@ private:
     if (((u.attr_raw >> 11) & 1u) && (u.attr_raw & 7u) != kLatCollective)
       k_.fail("ooe: seq %llu is cross-lane with lat_class %u; a warp-collective op is lat_class %u",
               (unsigned long long)uidSeq(m.tid), u.attr_raw & 7u, unsigned(kLatCollective));
-    if (((u.attr_raw >> 6) & 1u) && !((u.attr_raw >> kAttrRetBit) & 1u)) br_lead_tid_.insert(m.tid);
+    ++decoded_;
+    if (((u.attr_raw >> 6) & 1u) && !((u.attr_raw >> kAttrRetBit) & 1u)) {
+      br_lead_tid_[m.tid] = decoded_;
+      br_lead_age_.emplace_back(decoded_, m.tid);
+    }
+    while (!br_lead_age_.empty() && br_lead_age_.front().first + kLeadWindow < decoded_) {
+      const auto t = br_lead_tid_.find(br_lead_age_.front().second);
+      if (t != br_lead_tid_.end() && t->second == br_lead_age_.front().first) br_lead_tid_.erase(t);
+      br_lead_age_.pop_front();
+    }
     u.mem_op = unsigned(get(p, c.dec_ooe, "mem_op"));
     u.space = unsigned(get(p, c.dec_ooe, "space"));
     u.ordering = unsigned(get(p, c.dec_ooe, "ordering"));
@@ -459,8 +476,16 @@ private:
       if (!x.copy && x.res != ooe::Issue::kMemop) row_sent_[x.rob_tag] = x.row;
       if (x.res == ooe::Issue::kRcuOp && x.byp_group != kBypCollective) rcu_only_.insert(x.rob_tag);
       else rcu_only_.erase(x.rob_tag);
-      if (br_lead_tid_.count(x.tid)) br_lead_.insert(x.rob_tag);
-      else br_lead_.erase(x.rob_tag);
+      if (const auto t = br_lead_tid_.find(x.tid); t != br_lead_tid_.end()) {
+        br_lead_.insert(x.rob_tag);
+        br_lead_uid_[x.rob_tag] = x.tid;
+        br_lead_tid_.erase(t);
+      } else if (const auto b = br_lead_uid_.find(x.rob_tag); b != br_lead_uid_.end() && b->second == x.tid) {
+        // a replay's re-issue of the marked op: the mark stays
+      } else {
+        br_lead_.erase(x.rob_tag);
+        br_lead_uid_.erase(x.rob_tag);
+      }
       put(is, c.ooe_rcu, "warp_id", x.warp);
       put(is, c.ooe_rcu, "issue_mask", x.issue_mask);
       // A name is a row and a position (sectioned; unsectioned the position

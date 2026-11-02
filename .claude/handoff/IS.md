@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-10-31. Keep this current at every task's end; it is what
+Updated 2026-11-01. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -40,7 +40,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 256, OA 286, IS 182, TI 271, OI 239, CP 148, DA 97.
+Conventions 15, AR 260, OA 296, IS 182, TI 281, OI 250, CP 149, DA 98.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
