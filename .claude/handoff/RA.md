@@ -112,6 +112,10 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   TI's ccv-skel port-trace dump (rev 51). DCGE accepted only from traces after the stub's RA-19 merge fix.
 - DA chose (a) on fanout (2026-11-02); TI told to build it (rev 52). Spec 'Select fanout' marked decided.
 - TI rev 287: fanout term built report-only (TI ef51d19, local until its gate). Enforced later.
+- Spec snapshot (DA, 2026-11-02): docs/design-snapshots/rcu-arch-<tab>.md, 10 tabs, status living.
+  Refresh all ten together when a tab changes (README says how: Docs blob -> Artifact read path, then
+  tools/snapshot-doc.py). Tab revs at snapshot: Overview 27, Conv 3, Pipe 4, RF 4, Pred 3, R 5, Lane 4,
+  Mig 6, Done 12, Partition 8.
 - Answers due: RA-16, RA-30 (TI); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
 - Spec tab reconciliation (rcu-arch.md section 5: per-block specs doc RCU tab
