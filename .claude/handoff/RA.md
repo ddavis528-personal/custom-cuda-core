@@ -55,7 +55,7 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-01)
-AR 265, OA 305, RA 45, CP 151, IS 184, TI 284, CP 150 (others as at session start: OI 252,
+AR 265, OA 306, RA 46, CP 151, IS 184, TI 284, CP 150 (others as at session start: OI 252,
 CP 149, DA 99, Conventions 16).
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -97,7 +97,10 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   (PF-48); PRF fully scanned by synthesis, te only on ccv_common_clk; Daniel spins up the impl agent.
 - RA-31 (AR/TI/OA: CCV_LAT_RCU_ADDR 5->1; lead slice section mask + operand use), RA-32 (OA guard
   fallback resolve_lag 1; TI per-unit param overrides) raised rev 45, notices sent.
-- Answers due: RA-16, RA-30 (TI); RA-31, RA-32. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
+- OA rev 306 (re RA-31/32): L1 wake follows derive; OOE adds the lead slice from select if OI's NGD fits;
+  no lag-1 fallback (DA's call if >0.5%); OOE leads R's guard phys pred so RCU splits the guard read
+  (predecode A-1, guard ~22->~16 NGD). Folded into Predicate file tab; RA response at register rev 46.
+- Answers due: RA-16, RA-30 (TI); RA-31 (1) (AR: CCV_LAT_RCU_ADDR), RA-32 (2) (TI tooling). Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
 - Spec tab reconciliation (rcu-arch.md section 5: per-block specs doc RCU tab
   eda9347a-feaa) after Daniel accepts.
