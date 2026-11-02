@@ -69,6 +69,7 @@ it.
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
+| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266); TI applies; 2 if RCU's NGD measurement M1 misses |
 | PF-48 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
 | PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
 
@@ -1131,6 +1132,41 @@ it.
   frames and data in the run as compiled, runs clean at 1,234,051 cycles at
   one warp and 64 KiB, 1.3% over TI's scratch bound of 1,218,411: the
   prologue's `srd` and add, which the bound never paid.
+
+### PF-47 RCU's issue-to-address time from 5 to 1 or 2
+
+- **Now:** `CCV_LAT_RCU_ADDR` = 5 is a placeholder (Daniel, OA-5,
+  2026-10-08). It counts from RCU accepting the issue, cycle A, to the
+  address message's valid leaving RCU, since `CCV_LAT_HOP`, which
+  `CCV_LAT_L1_WAKE` adds after it, already holds the valid-to-payload cycle.
+  With it, `CCV_LAT_L1_WAKE` = 16.
+- **Alternative (RA-5, RA-7; AR's responses):** RCU reads the guard in A,
+  so it knows a memop is going out and registers the address valid, with
+  `active_mask`, at A's edge. It reads the operands in A+1, from row selects
+  flopped in A, with the sectioned 4:1 byte mux after the 192:1 read, and
+  registers the payload at A+1's edge. Counted as the parameter is defined,
+  that is 1. It is 2 if the byte mux or the read does not fit A+1 in 25 NGD,
+  which RA's Phase 1 measures.
+- **What it buys (PF-33's measurement, AR-24, TI's rev 196):** 2.0% of
+  CoreMark-derived cycles per cycle off `CCV_LAT_L1_WAKE`, linear from 16 to
+  10. At 2, `CCV_LAT_L1_WAKE` = 13: -5.9%, measured. At 1, it is 12: about
+  -7.9%, interpolated between the measured 13 and 11. The measurement is one
+  lane, pin 7ef9292; it is worth re-running on the current pin once Phase 1
+  gives the number.
+- **Cost:** none outside RCU, if the timeline fits: the read stage that
+  serves the lanes serves MIU. The parameter changes only after RA's Phase 1
+  confirms it, since every kernel's cycle counts move with it.
+- **Decision (RA-31, AR rev 266, 2026-11-02):** set `CCV_LAT_RCU_ADDR_BASE`
+  to 1 now, ahead of Phase 1. The reason to wait went away with RA-21: the
+  address channel is now fixed-latency, so RCU cannot send early, and
+  holding to 5 would cost 4 delay stages × 4 slots × 3,111 bits, about 50k
+  flops. Nobody would build those, so 5 is not a value the RTL could ever
+  have. RCU's spec is built to 1. If the implementation's NGD measurement
+  (M1) misses, RA returns with 2, and the counts move once more. The param's
+  own text gives the move to RCU's session ("RCU's session confirms or moves
+  it"), so this does not reopen Daniel's placeholder decision (OA-5).
+  `CCV_LAT_L1_WAKE` goes from 16 to 12. PF-33's measurement is worth
+  re-running on the current pin once TI applies it.
 
 ### PF-48 End-to-end parity on register state
 

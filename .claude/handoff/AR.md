@@ -62,8 +62,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 261, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
-  Conventions 16, RA 1 (empty). Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  record): AR 266, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
+  Conventions 16, RA 45. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
@@ -86,11 +86,50 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   squash_act_lag 1 (audit +1.2%).
 
 ## Open work (most urgent first)
-0. RA ramp: when RA's questions arrive (RA tab), answer AR's share first:
-   Q-18 (address generation, with MIU's spec), crossbar as its own block,
-   PRF flops/area against a top-level budget (none exists), 192 rows after
-   RA's Phase 1 slice, floorplan adjacency. Don't edit the RCU spec tab
-   once RA has; send text as AR rows with RA in Needs.
+0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
+   (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
+   deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
+   link + CCV_LAT_SFU + done link; rule for all: kill_ack waits for the
+   block's last message to land -> AR owes RAU, PCA (stop rows, ack when
+   every sent row is credited back), MIU (ack after last beat) spec text;
+   RA-15 ops at R: pand/por/pxor/pmov #imm; skeleton lacks PXOR, PMOV reg,
+   C_RECONV). Pinned ISA is v1.9 (build/compiler/d9ddd2c.../docs), not the
+   stale compiler checkout's v1.7.
+   Round 3 answered, AR rev 264: RA-14 CORRECTED (restore rows are PCA's
+   on ccv_pca_rcu_mig with warp_id; RCU discards held cmd/map/rows of a
+   killed warp and returns credits; discard only under a kill); RA-18 call
+   link in imm, DEC imm_kind 6, OOE substitutes pc[31:0]+bytes(ilen) at
+   rename (AR owes DEC spec line); RA-21 rcu_miu_addr bound (slot k = Pk)
+   + fixed_latency, every memop incl. fence gets one address (AR owes MIU
+   spec pairing rule); RA-23 kill_ack a level, all 8 blocks; RA-26 no RCU
+   CSRs, answer reads 0 + credit. Lesson: check docs/rcu-arch.md's channel
+   table before answering a migration question.
+   RA-28/29 answered, AR rev 265: MIU <=1 GPR write/section/cycle (miss
+   arbiter; MIU spec), PCA rows contiguous 0..16 (PCA spec), pca_rcu depth
+   stays 4 (Q-43), RAU <= CCV_TIER1_WARPS migrations command->mig_done (RAU
+   spec); 4 PRF write ports (collectives in R at A+2; supersedes rev 262's
+   5th). SFU slot-4 question settled by OA rev 304 (CCV_P_FOOT_MIN_SFU = 4: one SFU
+   issue a cycle; TI adds a require tying slot numbers to the terms). RA-29 (c)
+   early collective done -> if legal, RA-8 costs RCU nothing; DA gets OOE
+   cost + perf. RCU RTL-depth spec: artifact 4k7VrEKJG4KUgMYG1Qz8mB (RA's).
+   RA-31 answered, AR rev 266: PF-47 ADOPTED, CCV_LAT_RCU_ADDR_BASE 5 -> 1
+   now (param doc delegates to RCU's session; L1 wake 16 -> 12, ~-7.9%);
+   TI applies (own commit), fallback 2 if M1 misses; told Daniel. Issue
+   lead slice (~9 b/slot) agreed in principle, OA fixes contents. RA
+   accepted revs 264/265 (all folded; RA-30 is its TI row). AR owes the
+   top-level assertion that coincident miu_rcu_data slots' sections are
+   disjoint. Address channel is ~12,400 wires (4 x 3,111), fixed in
+   rcu-arch/Q-18; payload-spec.md line 165's 8,400 is schema text (TI's). Owed by AR: LANE spec (SFU second result on lane_rcu_res;
+   lane pipeline 3 cycles A+3..A+5) and MIU spec (lead fields phys_dst,
+   dst_pos, dst_width, active_mask, phys_pred, pred_we) once TI's schema
+   rows land; floorplan plan under Q-42 (16 lanes per long side, MIU one
+   short side, PCA+OOE the other, lane links abutted). Waiting: TI deletes
+   schema question rcu_miu_width (closes Q-18, now awaiting confirmation);
+   TI's PHYS_REGS 128/160/192 sweep; RA's Phase 1 (flops, write D-mux,
+   read mux GE separately) -> area budget to Daniel; RA-8 (collectives at
+   lat 3) to DA with figures via RA/OA. Open risk on AR's list: FP32 in
+   the lane's 3 cycles (FP shares lat 7). PF-47 added (RCU_ADDR 5 -> 1).
+   Don't edit the RCU spec tab; send text as AR rows with RA in Needs.
 1. L1 size, 64 vs 512 KiB: TI's sweep on CP-64's eight traces, frames in
    place only, 64 KiB at hit base 7 vs 512 KiB at 7, 8, 9. Daniel's test:
    does 512 KiB hold across many traces. CoreMark alone: 512 KiB -7.1%,
