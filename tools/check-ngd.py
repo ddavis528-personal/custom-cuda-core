@@ -290,6 +290,22 @@ class Timing:
         ins, outs, latches, gates = parse_blif(blif)
         self.abc = abc
         driver = {o: (g, a) for g, a, o in gates}
+        # The fanout term (RA-33; DA, 2026-11-02): the genlib's delays are
+        # at fanout 4, so a net with more loads is timed as if a buffer tree
+        # of inverters at fanout 4 drove them, ceil(log4(loads / 4)) stages,
+        # each an INV's delay. Report-only for now: it is timed beside the
+        # enforced depths (the fo_ fields), and nothing fails on it.
+        loads = collections.Counter(x for _, a, _ in gates for _, x in a)
+        loads.update(d for d, _ in latches)
+        loads.update(outs)
+        inv = delay(lib, "INV", "A")
+
+        def fo(n):
+            k, c = 0, 4
+            while c < loads.get(n, 0):
+                c, k = c * 4, k + 1
+            return k * inv
+        self.fanout_max = max(loads.values(), default=0)
         order, seen = [], set()
         for n0 in driver:
             stack = [(n0, False)]
@@ -304,8 +320,8 @@ class Timing:
                 stack.append((x, True))
                 stack.extend((a, False) for _, a in driver[x][1] if a not in seen)
 
-        def prop(start, buf=0.0):
-            arr = dict.fromkeys(start, 0.0)
+        def prop(start, buf=0.0, fan=False):
+            arr = {x: fo(x) if fan else 0.0 for x in start}
             for n in order:
                 g, a = driver[n]
                 if g in ("ZERO", "ONE"):
@@ -313,7 +329,7 @@ class Timing:
                 t = max((arr[x] + (buf if g == "BUF" else delay(lib, g, pin))
                          for pin, x in a if x in arr), default=NEG)
                 if t > NEG:
-                    arr[n] = t
+                    arr[n] = t + (fo(n) if fan else 0.0)
             return arr
 
         ports_in = collections.defaultdict(list)
@@ -336,6 +352,15 @@ class Timing:
                 t = max(a.get(o, NEG) for o in obits)
                 if t > NEG:
                     self.io[(p, q)] = t
+        # The same depths with the fanout term, the cut ports aside where
+        # report() reads them: flop to flop, any input to a flop, and a flop
+        # to each output.
+        # A cut port (bb_*, ungate's) is timed by its own budget, not here.
+        rf = prop([q for _, q in latches], fan=True)
+        af = prop([i for i in ins if not i.startswith("bb_")], fan=True)
+        self.fo_rr = max((rf.get(d, NEG) for d in d_nets), default=NEG)
+        self.fo_ro = max((rf.get(o, NEG) for o in outs if not o.startswith("bb_")), default=NEG)
+        self.fo_ir = max((af.get(d, NEG) for d in d_nets), default=NEG)
         self.ins, self.outs = sorted(ports_in), sorted(ports_out)
         self.gates = collections.Counter(g for g, _, _ in gates)
         self.nflops = len(latches)
@@ -778,6 +803,13 @@ def report(u, verbose=False):
     io = max([v for (i, o), v in t.io.items() if i not in t.cut and o not in t.cut] + [0.0])
     print("  unit %-16s %-14s flop-flop %5.1f  in-flop %5.1f  flop-out %5.1f  in-out %5.1f"
           % (u.name, u.module, max(t.rr, 0.0), ir, ro, io))
+    # The fanout term (RA-33), report-only: what the same paths cost when a
+    # net past fanout 4 is driven through a tree of inverters.
+    fo = max(t.fo_rr, t.fo_ir, t.fo_ro, 0.0)
+    if fo > max(t.rr, ir, ro, 0.0) + EPS:
+        print("    fanout (report-only, RA-33) flop-flop %5.1f  in-flop %5.1f  flop-out %5.1f;"
+              " widest net %d loads%s" % (max(t.fo_rr, 0.0), max(t.fo_ir, 0.0), max(t.fo_ro, 0.0),
+                                         t.fanout_max, ", over %g" % STAGE if fo > STAGE + EPS else ""))
     if verbose:
         for o in t.outs:
             if o not in t.cut:
@@ -1055,6 +1087,21 @@ def selftest():
         expect(False, "ngd_fx_xor3 timed at each gate's slowest pin agreed with ABC")
     except SystemExit as e:
         expect("is not ABC's" in str(e), "the slowest-pin table stopped the run otherwise: %s" % e)
+    # 1d. The fanout term (RA-33; DA, 2026-11-02): ngd_fx_fanout's select
+    #     flop drives 1,024 loads, so its paths gain ceil(log4(1024/4)) = 4
+    #     inverter stages; a fixture with no net past fanout 4 gains nothing.
+    ff = fixture("fx_fanout", "ngd_fx_fanout")
+    ff.measure()
+    inv = delay(LIB, "INV", "A")
+    expect(ff.t.fanout_max >= 1024, "ngd_fx_fanout's widest net has %d loads, not 1,024: 1d "
+           "tests nothing" % ff.t.fanout_max)
+    expect(ff.t.fo_rr >= ff.t.rr + 4 * inv - EPS,
+           "1,024 loads cost %.2f NGD flop to flop with the fanout term, against %.2f without: "
+           "want 4 inverter stages (%.2f) more" % (ff.t.fo_rr, ff.t.rr, 4 * inv))
+    ok = fx["ngd_fx_ok"].t
+    expect(ok.fanout_max > 4 or abs(ok.fo_rr - ok.rr) < EPS,
+           "ngd_fx_ok has no net past fanout 4, yet the fanout term moved it (%.2f, %.2f)"
+           % (ok.fo_rr, ok.rr))
     # 1b. NGD-3 takes each input from the better of two maps (OI-64): area
     #     recovery relaxes ngd_fx_relax's 8-bit add toward its multiplier, so
     #     the area map alone would put input i over the stage at the default
@@ -1366,7 +1413,7 @@ def selftest():
         print("  timing pass against ABC, outputs, inputs, the stage, paths straight through, "
               "inner helpers alone and inside a parent, registers shared by an output and the "
               "rest, observation ports, budget files, ratchet, coverage, glue, the assembled "
-              "block from its budgets and whole, ABC's cache (%d controls)"
+              "block from its budgets and whole, ABC's cache, the fanout term (%d controls)"
               % checks)
     return 1 if bad else 0
 
