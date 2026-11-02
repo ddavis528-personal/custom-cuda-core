@@ -925,7 +925,13 @@ part of a register.
 Daniel, 2026-10-17). The flop's own clock-to-Q and setup are outside it:
 every depth here is measured with the flops cut out, so the whole 25 is
 logic. An NGD is a NAND2 at fanout 4; `tools/ngd.genlib` holds the gates
-at their fanout-of-4 delays, and broadcast fanout and wire are not in it. The
+at their fanout-of-4 delays, and wire is not in it. Fanout past 4 is costed
+apart (RA-33; Daniel, 2026-11-02): a net with N loads is timed as if a tree
+of inverters at fanout 4 drove them, ceil(log4(N / 4)) stages at an INV's
+0.68 NGD each, so a select driving 1,024 bit-cells adds 4 stages, 2.7 NGD,
+to every path through it. `check-ngd` measures it beside the depths it
+enforces and reports each unit it moves; it is report-only until the
+ratchet has seen what moves, and enforced after. The
 static gates are costed by logical effort. The XOR family (XOR2, XNOR2, XOR3,
 XNOR3; Daniel, 2026-10-24) is taken from sky130hd's Liberty, pin by pin, over
 its NAND2 (`tools/genlib-xor.py`), and a path is timed at the delay of the pin

@@ -363,8 +363,32 @@
         "opcode",
         "imm",
         "chwidth",
-        "dispatch_fault"
+        "dispatch_fault",
+        "lead_sec_mask",
+        "lead_src_used",
+        "lead_imm_used",
+        "lead_merge_used",
+        "lead_guard_used",
+        "lead_guard_pred"
       ],
+      "lead_fields": [
+        "lead_sec_mask",
+        "lead_src_used",
+        "lead_imm_used",
+        "lead_merge_used",
+        "lead_guard_used",
+        "lead_guard_pred"
+      ],
+      "lead_why": "RCU's per-field operand enables (RA-31; OA's revs 306-307, AR's rev 267): the operand groups an issue loads are enabled a cycle ahead from RCU's own flops (CG-5), so a group the op does not use is never clocked. On every slot's lead: lead_sec_mask, the op's footprint; lead_src_used, bit i set when GPR source i is a real read (the entry's src_valid); lead_imm_used, set when imm_kind is not none, which covers every substitution OOE makes into imm (srd identities, call's link, predicate logic's and vote's and ballot's predicate sources) and, imm_kind 0 being literal, every literal-kind op, a superset AR accepts; lead_merge_used, set when the write merges (merge_en). On R's slot only (slot_fields): lead_guard_used, set when the guard is not the always-true predicate, and lead_guard_pred, its physical predicate; the negate stays in the payload. OOE builds all of it at select from the RS entry's static fields, opcode-blind. Every bit is a superset: a set bit may load a group the op does not use, a clear bit is a promise that it does not, and the RCU stub refuses an issue whose payload breaks one. A continuation's lead is zero. About 88 wires; a repeated link would carry them at each stage (it has none, params/links.json).",
+      "slot_fields": {
+        "lead_guard_used": [
+          "CCV_ISSUE_SLOT_R"
+        ],
+        "lead_guard_pred": [
+          "CCV_ISSUE_SLOT_R"
+        ]
+      },
+      "slot_fields_why": "Only R reads a guard ahead of its operands: a lane op's guard is the lane's own section_en and sec_pred_bit lead on ccv_rcu_lane_ops, and a memop's rides its payload to MIU. On S0-S3 and P0-P3 the guard lead is zero, which the checkers hold, and a link that narrows those slots drops it (about 8 x 7 wires).",
       "doc": "What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. One slot per select resource (CCV_ISSUE_RESOURCES = 9): S0-S3, P0-P3, R; see SECTIONED LANES below. MERGE (A-33): with merge_en set (the issue mask is not full or the op is guarded), phys_old_dst is a fourth source, read at issue with the others and carried to the lane as merge_data, so it bypasses like any operand; the lane writes its inactive lanes from it. merge_en = 0 makes phys_old_dst don't-care. Predicates merge in RCU instead: at write-back RCU read-modify-writes the 32-bit row from phys_pred_old_dst (A-43). A masked load sends a second, copy-only op here, opcode CCV_OP_PRF_COPY = 0x1FF, with the load's rob_tag: it writes only the load's inactive lanes (GPR and predicate destination alike) and produces no done (A-38). Fixed latency: once RCU accepts an issue the result lands at the contracted latency, and there is no port grant (Q-51, A-28). ZERO REGISTERS (A-64): CCV_P_PHYS_ZERO and CCV_P_PRED_ZERO, one past each pool, read zero and are never written. A read of one needs no PRF port: RCU decodes the index and drives a constant, which matters because a launched warp's early reads all name them (A-73). A launched warp's sources, guard and old destinations may name them; phys_dst, phys_pred_dst and the destinations of every write never do. PREDICATE LOGIC (TI-1): pand, por and pxor read two predicates, and OOE renames them like any source, so imm carries their physical names, not DEC's qualifiers: [CCV_P_W_PHYS_PRED-1:0] the first source, [CCV_P_W_PHYS_PRED] its negate, then the second source and its negate, 2 (CCV_P_W_PHYS_PRED + 1) = 14 bits. RCU reads them as it reads phys_pred_guard, so the issue channel does not grow. SECTIONED LANES (Daniel's responses OI-28 to OI-31, change doc 'Interface spec changes -- sectioned lanes', TI-9): a lane is four 8-bit sections and the PRF four section banks; a register name is a row (phys_src, phys_src2, phys_dst, phys_old_dst) plus a position (src_pos, dst_pos, old_dst_pos), each operand with its own width code (src_width; dst_width, which the merge source shares, being the same architectural register). footprint is the op's 4-bit mask: lane sections for an op on S0-S3 (the union of its operands' sections, widened to CCV_FOOT_MIN for its bypass_group; a non-contiguous mask is legal), MIU pipes for a memop on P0-P3, 0 on R. An op sits in its footprint's lowest slot; every other slot of its footprint carries cont = 1 and the same rob_tag, and nothing else. A memop takes P slots here, for RCU to read its operands at its width and position, as well as its pipe footprint on ccv_ooe_miu_memop. Co-issued footprints are disjoint (V-60), so at most one full-width lane op, one full-width memop and one RCU op issue in a cycle, and four 8-bit ops of each. The zero register is valid at any position. bypass_group rides with the op for the lanes' forwarding (OI-16). DONE_ROW (OI-85, OA's rev 282): which of the ROB entry's rows this issue is, 2 bits (0 the op itself, or an atomic's A1; 1 a masked load's copy; 2 an atomic's A2; 3 its A3), which RCU echoes on the op's done. The entry keeps a done bit per row and an owed mask, so two dones for one entry in one cycle set two bits, an OR with no adder; RCU never holds a done.",
       "id_classes": [
         "instr"
@@ -1632,6 +1656,12 @@
     "epoch_only": "1",
     "cont": "1",
     "footprint": "CCV_SECTIONS",
+    "lead_sec_mask": "CCV_SECTIONS",
+    "lead_src_used": "3",
+    "lead_imm_used": "1",
+    "lead_merge_used": "1",
+    "lead_guard_used": "1",
+    "lead_guard_pred": "CCV_P_W_PHYS_PRED",
     "bypass_group": "CCV_P_W_BYP_GROUP",
     "src_pos": "3*CCV_W_PHYS_POS",
     "src_width": "3*CCV_W_CHWIDTH",

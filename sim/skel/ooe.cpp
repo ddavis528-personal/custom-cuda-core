@@ -377,6 +377,8 @@ private:
     put(is, c.ooe_rcu, "opcode", opcodeOf(e.op));
     put(is, c.ooe_rcu, "bypass_group", attrBypGroup(e.attr));
     put(is, c.ooe_rcu, "footprint", slot == kSlotR ? 0u : maskOf(kChw32, 0));
+    putIssueLead(is, c.ooe_rcu, slot, slot == kSlotR ? 0u : maskOf(kChw32, 0), srcValidOf(e.op),
+                 !mem, merge, e.op->guard, e.ppguard, k_.brk);
     // A lead and its continuation: the rest of its full-width group.
     auto sendGroup = [&](unsigned lead, const Bits &m) {
       send(c.ooe_rcu, lead, m, e.tid);
