@@ -1639,11 +1639,16 @@ done
 # together, vadd's two loads land close enough that a hidden R9 is no longer
 # stale by luck of timing, and the control would prove nothing.
 "$SKEL" --kernel build/oracle/vaddslow/oracle.jsonl --break drop-src-valid >"$B/kernel_drop-src-valid.log" 2>&1
+# The issue lead (RA-31) names the hidden source unused too, so RCU also
+# refuses each op whose second source DEC hid: both must fire, and nothing
+# else.
 n=$(grep -c "^CHECK lane [0-9]*: seq 14 operand 1 (R9) " "$B/kernel_drop-src-valid.log")
-if [ "$n" = 32 ] && [ "$(field "$B/kernel_drop-src-valid.log" check_failures)" = 32 ]; then
-  say "--break drop-src-valid: seq 14 reads R9 stale" "PASS (32 lanes)"
+l=$(grep -c "^CHECK rcu: seq [0-9]*, [^,]*, reads a source its lead says is unused" "$B/kernel_drop-src-valid.log")
+if [ "$n" = 32 ] && [ "$l" -gt 0 ] && grep -q "^CHECK rcu: seq 14, C_ADD, reads a source its lead" "$B/kernel_drop-src-valid.log" &&
+   [ "$(field "$B/kernel_drop-src-valid.log" check_failures)" = $((32 + l)) ]; then
+  say "--break drop-src-valid: seq 14 reads R9 stale" "PASS (32 lanes; RCU refuses $l leads)"
 else
-  bad "--break drop-src-valid" "$n stale reads (want 32): $(grep '^KERNEL' "$B/kernel_drop-src-valid.log")"
+  bad "--break drop-src-valid" "$n stale reads (want 32), $l lead refusals: $(grep '^KERNEL' "$B/kernel_drop-src-valid.log")"
 fi
 # Predicate logic's sources arrive renamed in imm: RCU reading DEC's
 # qualifiers instead gets plog's P3 = !P1 | P2 wrong, and its own check, the
