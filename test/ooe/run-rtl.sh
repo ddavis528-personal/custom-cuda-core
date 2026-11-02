@@ -257,11 +257,12 @@ for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shi
   fi
 done
 
-# ooe_rob, the ROB (slice 1, OI-85), driven from the model's ROB log
+# ooe_rob, the ROB (slices 1 and 2, OI-85), driven from the model's ROB log
 # (Core::robLog) a model cycle behind, with retire_lag 1: its retirements,
-# their leads and frees, and the room rename's go reads compared exactly.
-# A core stops at the first thing slice 1 does not build (a squash, a fault,
-# a retire port, an atomic).
+# resolutions and squashes, their leads and frees, the discard and the room
+# rename's go reads compared exactly. A core stops at the first thing the
+# ROB does not build yet (a squash not a branch's, a fault, a retire port,
+# an atomic).
 dir=build/ooe-rtl/rob
 mkdir -p "$dir"
 rv() { sed -n "s/.*localparam int $1 = \([0-9]*\);.*/\1/p" rtl/generated/ccv_params_pkg.sv; }
@@ -281,14 +282,15 @@ if out=$("$dir/rob_tb" "$seeds" 2>&1) && grep -q "mismatches=0 model_failures=0"
 else
   say "rob == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-# The random programs as drawn (slice 2): each core to its first squash,
-# the redirect's lead and payload compared.
+# The random programs as drawn (slice 2): mispredicts, their squashes, held
+# entries and killed fills.
 if out=$(ROB_MISPREDICT=1 "$dir/rob_tb" "$seeds" 2>&1) && grep -q "mismatches=0 model_failures=0" <<<"$out"; then
   say "rob == model, mispredicting" "PASS ($(grep '^rob_tb' <<<"$out" | sed 's/.*seeds=//'))"
 else
   say "rob == model, mispredicting" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot no-branch-lead; do
+for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
+         no-branch-lead no-miu no-store drop-killed-fill; do
   if ROB_CONTROL=$c "$dir/rob_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else
