@@ -61,6 +61,7 @@
 // Usage: rob_tb [seeds] | rob_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_rob.h"
+#include "Vooe_rob___024root.h"
 #include "verilated.h"
 #include "cg_trace.h"
 #include "ooe_core.h"
@@ -85,6 +86,7 @@ void ooeTestPredictAll(bool on);
 void robConfig(Config &c) {
   c.retire_lag = 1;
   c.resolve_lag = 1;
+  c.resolve_lag_ret_only = 0;   // every branch at lag 1: the RTL resolves from its outcome register until RCU's branch lead lands
   c.squash_act_lag = 1;
   c.held_room_lag = 1;
   c.squash_held_room_lag = 1;   // the ROB registers no run in a squash's cycle that leaves held entries
@@ -143,12 +145,22 @@ template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i !
 
 CgRun cg;
 
+// two-resolutions: after the edge that registers a branch's outcome,
+// every resolved bit cleared, so each completed branch still in the ROB is
+// a candidate again beside it (one_resolution must fire).
+bool force_rsv = false;
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
   cg.dump();
   dut->ooe_core_clk = 1;
   dut->eval();
+  if (force_rsv) {
+    force_rsv = false;
+    auto &w = dut->rootp->ooe_rob__DOT__rsv_cq02h;
+    for (unsigned i = 0; i != RB_S * RB_D; ++i) setBit(w, i, false);
+    dut->eval();
+  }
   cg.dump();
 }
 void fail(const char *what, unsigned a, unsigned rtl, unsigned model) {
@@ -225,6 +237,8 @@ std::vector<unsigned long long> alloc_cyc(S * D, 0);
 std::map<unsigned, Core::RobLog::Alloc> held;   // squashed, held for an op in flight
 std::vector<uint8_t> killed(S * D, 0);           // squashed before its fill landed
 bool kill_dropped = false;
+std::vector<Core::RobLog::Alloc> late_fl;   // late-fill: the cycle's fills it holds back
+bool late_done = false;
 // Squash or held activity (a squash acting, an entry held or released) in
 // each of the last two cycles: the free leads' supersets reach that far.
 bool act1 = false, act2 = false;
@@ -348,47 +362,21 @@ void resetRtl() {
 }
 
 
-void drive(const Cyc &c, const Cyc &nx) {
-  clearInputs();
-  const Core::RobLog &r = c.r;
-  if (std::getenv("ROB_DEBUG")) {
-    std::vector<unsigned> &tl = tl_dbg;
-    for (unsigned q = 0; q != S; ++q) if ((r.release >> q) & 1u) tl[q] = 0;
-    for (const auto &a : r.alloc) if (a.slot < S) {
-      if (a.idx != tl[a.slot] && mismatches < 3) {
-        std::fprintf(stderr, "ROB_DEBUG cycle %llu: slot %u allocates %u, tail %u\n", cycles, a.slot, a.idx, tl[a.slot]);
-        ++mismatches;
-      }
-      tl[a.slot] = (a.idx + 1) % D;
-      owed_dbg[a.slot * D + a.idx] = 0; hist_dbg[a.slot * D + a.idx] = "A" + std::to_string(cycles);
-    }
-    for (unsigned t : r.owe) if (t < S * D) { ++owed_dbg[t]; hist_dbg[t] += " o" + std::to_string(cycles); }
-    for (unsigned t : r.done) if (t < S * D) {
-      hist_dbg[t] += " d" + std::to_string(cycles);
-      if (--owed_dbg[t] < 0 && mismatches < 3) {
-        std::fprintf(stderr, "ROB_DEBUG cycle %llu: tag %u done with none owed: %s\n", cycles, t, hist_dbg[t].c_str());
-        ++mismatches;
-      }
-    }
-  }
-  // The go's allocations, in order per slot.
-  std::vector<unsigned> n(S, 0);
-  for (const auto &a : r.alloc) {
-    if (a.slot >= S || n[a.slot] == A) continue;
-    setBit(dut->al_nop_cq02h, a.slot * A + n[a.slot], a.nop && control != "nop-real");
-    br_of[a.slot * D + a.idx] = a;
-    alloc_cyc[a.slot * D + a.idx] = c.n;
-    ++n[a.slot];
-    ++allocs;
-    nops += a.nop;
-  }
-  for (unsigned s = 0; s != S; ++s) setField(dut->al_n_cq02h, s * LA, LA, n[s]);
-  // Rename 2's fills: the allocations fillLag() cycles before.
-  hist.push_back(r.alloc);
+// Rename 2's fills: the allocations fillLag() cycles before. A stopped
+// core's last cycles take an empty allocation and still land the fills
+// owed (fill_at_alloc_2 holds across the stop).
+void driveFills(const std::vector<Core::RobLog::Alloc> &alloc) {
+  hist.push_back(alloc);
   if (hist.size() > 4) hist.pop_front();
   if (hist.size() > fillLag()) {
     std::vector<Core::RobLog::Alloc> fl = hist[hist.size() - 1 - fillLag()];
     if (control == "fill-order") std::reverse(fl.begin(), fl.end());
+    // late-fill: one cycle's fills arrive a cycle late, at the first cycle
+    // that has fills and none due next (fill_at_alloc_2 must fire).
+    if (control == "late-fill" && !late_done) {
+      if (!late_fl.empty()) { fl = late_fl; late_fl.clear(); late_done = true; }
+      else if (!fl.empty() && hist[hist.size() - fillLag()].empty()) { late_fl = fl; fl.clear(); }
+    }
     // drop-killed-fill: the first fill of an entry a squash took before it
     // landed never comes (its names are never freed, the kill count waits).
     if (control == "drop-killed-fill" && !kill_dropped)
@@ -427,6 +415,44 @@ void drive(const Cyc &c, const Cyc &nx) {
       ++l;
     }
   }
+}
+
+void drive(const Cyc &c, const Cyc &nx) {
+  clearInputs();
+  const Core::RobLog &r = c.r;
+  if (std::getenv("ROB_DEBUG")) {
+    std::vector<unsigned> &tl = tl_dbg;
+    for (unsigned q = 0; q != S; ++q) if ((r.release >> q) & 1u) tl[q] = 0;
+    for (const auto &a : r.alloc) if (a.slot < S) {
+      if (a.idx != tl[a.slot] && mismatches < 3) {
+        std::fprintf(stderr, "ROB_DEBUG cycle %llu: slot %u allocates %u, tail %u\n", cycles, a.slot, a.idx, tl[a.slot]);
+        ++mismatches;
+      }
+      tl[a.slot] = (a.idx + 1) % D;
+      owed_dbg[a.slot * D + a.idx] = 0; hist_dbg[a.slot * D + a.idx] = "A" + std::to_string(cycles);
+    }
+    for (unsigned t : r.owe) if (t < S * D) { ++owed_dbg[t]; hist_dbg[t] += " o" + std::to_string(cycles); }
+    for (unsigned t : r.done) if (t < S * D) {
+      hist_dbg[t] += " d" + std::to_string(cycles);
+      if (--owed_dbg[t] < 0 && mismatches < 3) {
+        std::fprintf(stderr, "ROB_DEBUG cycle %llu: tag %u done with none owed: %s\n", cycles, t, hist_dbg[t].c_str());
+        ++mismatches;
+      }
+    }
+  }
+  // The go's allocations, in order per slot.
+  std::vector<unsigned> n(S, 0);
+  for (const auto &a : r.alloc) {
+    if (a.slot >= S || n[a.slot] == A) continue;
+    setBit(dut->al_nop_cq02h, a.slot * A + n[a.slot], a.nop && control != "nop-real");
+    br_of[a.slot * D + a.idx] = a;
+    alloc_cyc[a.slot * D + a.idx] = c.n;
+    ++n[a.slot];
+    ++allocs;
+    nops += a.nop;
+  }
+  for (unsigned s = 0; s != S; ++s) setField(dut->al_n_cq02h, s * LA, LA, n[s]);
+  driveFills(r.alloc);
   // The RS's events, per entry.
   unsigned s, i;
   // Each issue owing a done, at its row (OA's rev 282): the log's owe_row
@@ -476,6 +502,7 @@ void drive(const Cyc &c, const Cyc &nx) {
     dut->dn_taken_cq02h = taken;
     dut->dn_mask_cq02h = mask;
     dut->dn_aux_cq02h = d.aux;
+    if (control == "two-resolutions" && b.br) force_rsv = true;
   }
   // two-in-a-cycle: the first done again, on the first free slot.
   unsigned dup = ND;
@@ -679,10 +706,12 @@ void hook(const Core &c) {
       // registered from the last compared cycle (a squash's redirect lead,
       // the squash itself slice 2's next part) and its payload.
       clearInputs();
+      driveFills({});
       dut->eval();
       checkRes(have_prev ? &prev : nullptr, have_prev2 ? &prev2 : nullptr);
       tick();
       clearInputs();
+      driveFills({});
       dut->eval();
       checkRes(nullptr, have_prev ? &prev : nullptr);
       tick();
