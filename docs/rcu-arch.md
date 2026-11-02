@@ -1,5 +1,13 @@
 # RCU architecture: handoff to the RCU architect session (RA)
 
+> **Superseded as the RCU reference (2026-11-02, RA-35).** RA's RCU spec is
+> complete: live at https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB, pinned
+> as `docs/design-snapshots/rcu-arch-*.md`. Where this handoff and the spec
+> differ, the spec wins. RA-1 to RA-34 in the register answer section 8's
+> questions, and the spec's Overview tab tabulates the decisions. This page is
+> kept as the record of what RA started from. Lines corrected since: the port
+> counts and the address latency.
+
 Written by AR on 2026-11-01, when Daniel chose RCU as the next major block
 after OOE (DA tab, row of that date). This is where the RA session starts. It
 says what the RCU is today, what has been decided and where it is written
@@ -104,15 +112,17 @@ state; PCA does.
 - **Predicate file:** `CCV_P_PRED_REGS` = 48 entries of 32 bits
   (provisional; A-21: it must exceed the resident warps' 16 architectural
   predicates).
-- **Ports:** 16 GPR reads at issue and 8 writes (4 lane, 4 load); the
-  predicate file has its own (A-28, A-33, A-43, A-55). There is no port grant
+- **Ports:** 10 GPR read ports and 4 write ports a bank (lane, SFU, load,
+  and the R pipe, which carries collectives; RA-2, RA-29, the RCU spec's
+  Register file tab). Before RA it said 16 reads and 8 writes. The predicate
+  file has its own (A-28, A-33, A-43, A-55). There is no port grant
   (Q-51): OOE schedules every write, and fixed latency is a declared channel
   attribute. The budget lines are `CCV_L_PRF_LANE_READ_BITS` = 4096
   (preliminary) and `CCV_PRF_MEMOP_READ_BITS` = 3072 (arch).
 - **Latencies:** `CCV_LAT_RCU` = 3 for the RCU-only class,
-  `CCV_LAT_COLLECTIVE` = 5 for the warp-collective class (a placeholder "until
-  an RCU session confirms it", and that session is you), `CCV_LAT_RCU_ADDR` =
-  5 from issue to address, `CCV_LAT_LANE` = 7, and `CCV_LAT_HOP` = 2 per
+  `CCV_LAT_COLLECTIVE` = 5 for the warp-collective class (the fold to 3, RA-8,
+  waits on Daniel with Phase 1's figures), `CCV_LAT_RCU_ADDR_BASE` = 1 from
+  issue to the address valid (RA-31, PF-47; it was a placeholder of 5), `CCV_LAT_LANE` = 7, and `CCV_LAT_HOP` = 2 per
   crossing with no repeaters.
 
 **What RCU executes** (Q-28, Q-32, Q-38, Q-40): any op whose inputs are all
@@ -222,10 +232,11 @@ These come first: each one that fails sends a change back to OA/OI.
    fit in A, rets can get a lead too. Whether that is worth it depends on OI's
    repricing (OA rev 293).
 3. **No held done, ever.** The 7-slot pool and V-35's bound assume it.
-4. **Every write lands at its contracted cycle through the 8 ports** (A-47),
+4. **Every write lands at its contracted cycle through the bank's write ports** (A-47; 4 a bank since RA-29),
    with the restore's migration rows fitted around OOE's schedule.
-5. **`CCV_LAT_COLLECTIVE` = 5 and `CCV_LAT_RCU_ADDR` = 5** are placeholders.
-   Confirm them, or give the real numbers.
+5. **`CCV_LAT_COLLECTIVE` = 5 and `CCV_LAT_RCU_ADDR` = 5** were placeholders.
+   Settled since: the address time is 1 (RA-31, PF-47), and the collective
+   fold to 3 waits on Daniel with Phase 1's figures (RA-8, RA-29).
 
 **The spec's own questions** (RCU tab, "Questions for the session"):
 
