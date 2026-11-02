@@ -2747,6 +2747,11 @@ private:
     std::array<int, kRes> owner;
     owner.fill(-1);
     for (unsigned s = 0; s != kRes; ++s) {
+      if (got[s] && cont(s))
+        for (const char *f : {"lead_sec_mask", "lead_src_used", "lead_imm_used", "lead_merge_used"})
+          if (get(m[s].payload, c.ooe_rcu, f))
+            k_.fail("rcu: seq %llu's continuation on %s sets %s; a continuation's lead is zero",
+                    seq(s), res(s).c_str(), f);
       if (!got[s] || cont(s)) continue;
       const unsigned fp = unsigned(get(m[s].payload, c.ooe_rcu, "footprint"));
       const unsigned base = groupOf(s);
@@ -2926,6 +2931,32 @@ private:
     if (want != kSlotR && fp != kAllSecs && !pred_copy)
       k_.fail("rcu: seq %llu's footprint %s; only full-width ops are modelled in the S1 stubs",
               (unsigned long long)uidSeq(m.tid), bits(fp).c_str());
+    // The lead (RA-31; OA's rev 307): a clear bit is a promise that the op
+    // does not use that operand group, which RCU then never loads. One
+    // refusal an issue, the first promise its payload breaks.
+    {
+      const unsigned lsec = unsigned(get(m.payload, c.ooe_rcu, "lead_sec_mask"));
+      const unsigned lsrc = unsigned(get(m.payload, c.ooe_rcu, "lead_src_used"));
+      const bool limm = get(m.payload, c.ooe_rcu, "lead_imm_used") != 0;
+      const bool lmrg = get(m.payload, c.ooe_rcu, "lead_merge_used") != 0;
+      const bool lgrd = get(m.payload, c.ooe_rcu, "lead_guard_used") != 0;
+      const unsigned lgp = unsigned(get(m.payload, c.ooe_rcu, "lead_guard_pred"));
+      unsigned rd = 0;
+      for (unsigned i = 0; op && i != op->nsrc; ++i)
+        if (!(op->alu_imm >= 0 && int(i) == op->imm_slot)) rd |= 1u << i;
+      const bool imm = op && (op->alu_imm >= 0 || op->srd_sel >= 0 || op->cls == kPredLogic);
+      const char *why = (fp & ~lsec) ? "a section outside its lead's mask"
+                        : (rd & ~lsrc) ? "a source its lead says is unused"
+                        : imm && !limm ? "an immediate its lead says is unused"
+                        : get(m.payload, c.ooe_rcu, "merge_en") && !lmrg ? "a merge its lead says is unused"
+                        : s == kSlotR && op && op->guard &&
+                          (!lgrd || lgp != unsigned(get(m.payload, c.ooe_rcu, "phys_pred_guard")))
+                            ? "a guard its lead does not name" : nullptr;
+      if (why)
+        k_.fail("rcu: seq %llu, %s, reads %s (lead sections %s, sources %s)",
+                (unsigned long long)uidSeq(m.tid), op ? op->name : "a copy", why,
+                bits(lsec).c_str(), bits(lsrc).c_str());
+    }
     // Every register named, at its width and position.
     const unsigned dw = unsigned(get(m.payload, c.ooe_rcu, "dst_width"));
     const bool merge = get(m.payload, c.ooe_rcu, "merge_en") != 0;

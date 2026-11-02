@@ -37,6 +37,7 @@ MAP = [
     ("tools/genout.py", ALL),
     ("tools/check-ngd.py", ["ngd"]),
     ("tools/check-cg.py", ["cg", "ngd"]),          # check-ngd imports it
+    ("tools/heavy-units.json", ["cg", "ngd"]),     # both read it, through check-cg
     ("tools/check-kernel.sh", ["kernel", "svh"]),
     ("tools/check-sv-hosted.sh", ["svh"]),
     ("tools/check-skel.sh", ["skel", "kernel", "svh", "top"]),
@@ -52,6 +53,7 @@ MAP = [
     # Not the gate's: the push, sweep and release scripts and the summary.
     ("tools/gate-combine.py", ["iface"]),         # its selftest runs there
     ("tools/gate-export.sh", []),
+    ("tools/gate-scratch.sh", []),
     ("tools/gate-push.sh", []),
     ("tools/gate-summary.py", []),
     ("tools/bg-run.sh", []),

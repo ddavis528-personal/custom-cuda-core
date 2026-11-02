@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The daily sweep's repository half (the register half needs the docs tools,
-# so it stays in the model's turn): merge every remote branch but release,
-# regen and commit, the release (whose gate is the push's gate), push, clear.
+# so it stays in the model's turn): merge every remote branch but release
+# and gate-scratch/*, regen and commit, the release (whose gate is the push's gate), push, clear.
 #
 #   tools/daily-sweep.sh [--branches=a,b] [--no-push] [--skip=b1,b2]
 #
@@ -32,7 +32,8 @@ WHEN=$(TZ=America/Los_Angeles date +'%Y-%m-%d, %H:%M')
 merged=""
 for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
   b=${rb#origin/}
-  case "$b" in HEAD|origin|release) continue ;; esac
+  # gate-scratch/*: unverified commits and exports in transit (DA, 2026-11-01).
+  case "$b" in HEAD|origin|release|gate-scratch/*) continue ;; esac
   case ",$SKIP," in *",$b,"*) continue ;; esac
   n=$(git rev-list --count "HEAD..$rb")
   [ "$n" -gt 0 ] || continue
