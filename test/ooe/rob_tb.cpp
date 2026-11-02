@@ -157,8 +157,13 @@ void tick() {
   dut->eval();
   if (force_rsv) {
     force_rsv = false;
-    auto &w = dut->rootp->ooe_rob__DOT__rsv_cq02h;
-    for (unsigned i = 0; i != RB_S * RB_D; ++i) setBit(w, i, false);
+    // Every per-warp instance's (OA-24): the harness's g_w[w].u_w.
+    auto *r = dut->rootp;
+    for (auto *w : {&r->ooe_rob_tb__DOT__g_w__BRA__0__KET____DOT__u_w__DOT__rsv_cq02h,
+                    &r->ooe_rob_tb__DOT__g_w__BRA__1__KET____DOT__u_w__DOT__rsv_cq02h,
+                    &r->ooe_rob_tb__DOT__g_w__BRA__2__KET____DOT__u_w__DOT__rsv_cq02h,
+                    &r->ooe_rob_tb__DOT__g_w__BRA__3__KET____DOT__u_w__DOT__rsv_cq02h})
+      for (unsigned i = 0; i != RB_D; ++i) setBit(*w, i, false);
     dut->eval();
   }
   cg.dump();

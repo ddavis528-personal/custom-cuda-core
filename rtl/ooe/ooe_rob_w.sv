@@ -336,7 +336,10 @@ module ooe_rob_w #(
   // The squash acting (R + 1): rd_s and sp_s are the window's own state at
   // stage 02 (the squash acts on it), rd_q and sq_p their stage-03 copies
   // for the redirect and the discard (CCV-L23; synthesis merges each pair).
-  logic [S-1:0]    rd_s_cq02h, rd_q_cq03h, ckfa_s_cq02h;   // ckfa_s: a checkpoint frees (the register's enable)
+  // rd_s keeps its own flop: at one slot a warp it equals sql_q (the
+  // output's copy, |rd_nx), and synthesis would merge the two (NGD-7).
+  (* keep *) logic [S-1:0] rd_s_cq02h;
+  logic [S-1:0]    rd_q_cq03h, ckfa_s_cq02h;   // ckfa_s: a checkpoint frees (the register's enable)
   (* keep *) logic [S-1:0] rd_o_cq03h;        // its copy for rd_l (NGD-7)
   logic            kl_cq02h;
   always_comb begin

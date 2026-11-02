@@ -1,7 +1,7 @@
 //===-- ooe_rob_ref.sv - the ROB before the split, frozen for its miter ----===//
 //
 // The single ooe_rob of 917752b (slices 1 and 2), renamed: the reference
-// test/formal/fv_rob_split.sv holds the four ooe_rob_w and their OR against
+// archive/ooe-rob-split/fv_rob_split.sv holds the four ooe_rob_w and their OR against
 // (OA-24 (a), OA rev 312). Never edited: it is what the split must equal.
 // What follows is that file's own description.
 //

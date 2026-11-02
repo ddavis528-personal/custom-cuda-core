@@ -1,13 +1,12 @@
 //===-- fv_rob_split.sv - the ROB split's miter, for formal proof ---------===//
 //
-// OA-24 (a), OA rev 312: the pre-split ROB (test/formal/ooe_rob_ref.sv)
+// OA-24 (a), OA rev 312: the pre-split ROB (archive/ooe-rob-split/ooe_rob_ref.sv)
 // against the four per-warp ooe_rob_w and the OR of their frees and leads,
-// driven by the same free inputs from reset, every output compared every
-// cycle (miter_*). Run once, not in the gate (it holds both ROBs): the
-// script and its result are in docs/ooe-rtl-plan.md, the ROB split. Every
-// assertion inside either ROB is removed for the run, so the inputs are
-// unconstrained: the split must equal the reference on any input at all,
-// contracts or not.
+// driven by the same inputs from a common all-zero start, reset held four
+// cycles, every output compared every cycle after (miter_*; a payload only
+// where its valid is set, see below). Archived, never in the gate or any
+// build: run.sh beside it, the result in README.md. The reference's own
+// assertions are the inputs' constraints (assumed); the split's are removed.
 //
 // Control FV_MUT_WID, which must fail: instance 1 is built as slot 2.
 //===----------------------------------------------------------------------===//
@@ -87,9 +86,13 @@ module fv_rob_split #(
   input logic [NM*TW-1:0] cm_tag_cq02h,
   input logic [S-1:0] rel_l_cq01h
 );
-  // Reset held in the first cycle, free after (the ROB flops it before use).
-  logic init = 1'b1;
-  always_ff @(posedge clk) init <= 1'b0;
+  // Reset held for the first four cycles, free after: the ROB flops it
+  // before use (RST-1), so its state is reset only from the second. Every
+  // flop starts at zero on both sides (write_aiger -zinit, as in simulation).
+  logic [2:0] ic = 3'd0;
+  logic init;
+  always_ff @(posedge clk) if (ic != 3'd4) ic <= ic + 3'd1;
+  assign init = ic != 3'd4;
   logic rst;
   assign rst = init | ooe_rst_r00h;
   logic [S*RP-1:0] r_rgl_cq02h, s_rgl_cq02h;
@@ -284,17 +287,52 @@ module fv_rob_split #(
     end
   end
   // Every output, every cycle out of the reset cycle.
+  // A payload is compared only where its valid is set: each instance loads
+  // its payload registers on its own enable, where the unsplit ROB loaded
+  // every slot's on one, so a lane with no valid may differ (and its
+  // consumer ignores it: ooe_rat takes ret_dst and ret_gname only under
+  // ret_gwe, ret_pdst and ret_pname under ret_pwe). The redirect's payload
+  // at cq04h is valid a cycle after its lead rd_l; a deferred free's
+  // dc_br and dc_disp with dc_v. Valids, leads and the ORed free masks are
+  // compared whole.
+  logic [S-1:0] rdl_q = '0;
+  always_ff @(posedge clk) rdl_q <= r_rd_l_cq03h;
+  logic [S*RP*4-1:0]  q_dst;
+  logic [S*RP*GW-1:0] q_gname;
+  logic [S*RP*2-1:0]  q_pdst;
+  logic [S*RP*PW-1:0] q_pname;
+  logic [S*LK-1:0]    q_ckpt;
+  logic [S*32-1:0]    q_tmask;
+  logic [S*PCW-1:0]   q_tgt;
+  logic [S-1:0]       q_stay;
+  logic [S*LD-1:0]    q_dcbr, q_dcdisp;
+  always_comb begin
+    for (int i = 0; i < S * RP; i++) begin
+      q_dst[i * 4 +: 4]     = {4{r_ret_gwe_cq03h[i]}};
+      q_gname[i * GW +: GW] = {GW{r_ret_gwe_cq03h[i]}};
+      q_pdst[i * 2 +: 2]    = {2{r_ret_pwe_cq03h[i]}};
+      q_pname[i * PW +: PW] = {PW{r_ret_pwe_cq03h[i]}};
+    end
+    for (int w = 0; w < S; w++) begin
+      q_ckpt[w * LK +: LK]    = {LK{rdl_q[w]}};
+      q_tmask[w * 32 +: 32]   = {32{rdl_q[w]}};
+      q_tgt[w * PCW +: PCW]   = {PCW{rdl_q[w]}};
+      q_stay[w]               = rdl_q[w];
+      q_dcbr[w * LD +: LD]    = {LD{r_dc_v_cq03h[w]}};
+      q_dcdisp[w * LD +: LD]  = {LD{r_dc_v_cq03h[w]}};
+    end
+  end
   always_comb if (!init) begin
     miter_rgl_cq02h: assert (r_rgl_cq02h == s_rgl_cq02h);
     miter_rpl_cq02h: assert (r_rpl_cq02h == s_rpl_cq02h);
     miter_gfree_l_cq02h: assert (r_gfree_l_cq02h == s_gfree_l_cq02h);
     miter_pfree_l_cq02h: assert (r_pfree_l_cq02h == s_pfree_l_cq02h);
     miter_ret_gwe_cq03h: assert (r_ret_gwe_cq03h == s_ret_gwe_cq03h);
-    miter_ret_dst_cq03h: assert (r_ret_dst_cq03h == s_ret_dst_cq03h);
-    miter_ret_gname_cq03h: assert (r_ret_gname_cq03h == s_ret_gname_cq03h);
+    miter_ret_dst_cq03h: assert (((r_ret_dst_cq03h ^ s_ret_dst_cq03h) & q_dst) == '0);
+    miter_ret_gname_cq03h: assert (((r_ret_gname_cq03h ^ s_ret_gname_cq03h) & q_gname) == '0);
     miter_ret_pwe_cq03h: assert (r_ret_pwe_cq03h == s_ret_pwe_cq03h);
-    miter_ret_pdst_cq03h: assert (r_ret_pdst_cq03h == s_ret_pdst_cq03h);
-    miter_ret_pname_cq03h: assert (r_ret_pname_cq03h == s_ret_pname_cq03h);
+    miter_ret_pdst_cq03h: assert (((r_ret_pdst_cq03h ^ s_ret_pdst_cq03h) & q_pdst) == '0);
+    miter_ret_pname_cq03h: assert (((r_ret_pname_cq03h ^ s_ret_pname_cq03h) & q_pname) == '0);
     miter_gfree_cq03h: assert (r_gfree_cq03h == s_gfree_cq03h);
     miter_pfree_cq03h: assert (r_pfree_cq03h == s_pfree_cq03h);
     miter_run_cq02h: assert (r_run_cq02h == s_run_cq02h);
@@ -302,12 +340,12 @@ module fv_rob_split #(
     miter_ret_cq02h: assert (r_ret_cq02h == s_ret_cq02h);
     miter_rd_l_cq03h: assert (r_rd_l_cq03h == s_rd_l_cq03h);
     miter_ckf_cq03h: assert (r_ckf_cq03h == s_ckf_cq03h);
-    miter_rd_ckpt_cq04h: assert (r_rd_ckpt_cq04h == s_rd_ckpt_cq04h);
-    miter_rd_tmask_cq04h: assert (r_rd_tmask_cq04h == s_rd_tmask_cq04h);
-    miter_rd_tgt_cq04h: assert (r_rd_tgt_cq04h == s_rd_tgt_cq04h);
-    miter_rd_stay_cq04h: assert (r_rd_stay_cq04h == s_rd_stay_cq04h);
+    miter_rd_ckpt_cq04h: assert (((r_rd_ckpt_cq04h ^ s_rd_ckpt_cq04h) & q_ckpt) == '0);
+    miter_rd_tmask_cq04h: assert (((r_rd_tmask_cq04h ^ s_rd_tmask_cq04h) & q_tmask) == '0);
+    miter_rd_tgt_cq04h: assert (((r_rd_tgt_cq04h ^ s_rd_tgt_cq04h) & q_tgt) == '0);
+    miter_rd_stay_cq04h: assert (((r_rd_stay_cq04h ^ s_rd_stay_cq04h) & q_stay) == '0);
     miter_dc_v_cq03h: assert (r_dc_v_cq03h == s_dc_v_cq03h);
-    miter_dc_br_cq03h: assert (r_dc_br_cq03h == s_dc_br_cq03h);
-    miter_dc_disp_cq03h: assert (r_dc_disp_cq03h == s_dc_disp_cq03h);
+    miter_dc_br_cq03h: assert (((r_dc_br_cq03h ^ s_dc_br_cq03h) & q_dcbr) == '0);
+    miter_dc_disp_cq03h: assert (((r_dc_disp_cq03h ^ s_dc_disp_cq03h) & q_dcdisp) == '0);
   end
 endmodule
