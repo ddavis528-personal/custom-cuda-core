@@ -55,7 +55,7 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-01)
-AR 267, OA 307, RA 52, CP 151, IS 184, TI 286, CP 150 (others as at session start: OI 252,
+AR 267, OA 307, RA 52, CP 151, IS 184, TI 287, CP 150 (others as at session start: OI 252,
 CP 149, DA 99, Conventions 16).
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -111,7 +111,8 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   RA-34: scenarios by activity; high = coremark128+vadd traces, medium = +2 idle, idle = reset; RA said yes to
   TI's ccv-skel port-trace dump (rev 51). DCGE accepted only from traces after the stub's RA-19 merge fix.
 - DA chose (a) on fanout (2026-11-02); TI told to build it (rev 52). Spec 'Select fanout' marked decided.
-- Answers due: RA-16, RA-30 (TI); TI's fanout term (report-only first) and port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
+- TI rev 287: fanout term built report-only (TI ef51d19, local until its gate). Enforced later.
+- Answers due: RA-16, RA-30 (TI); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
 - Spec tab reconciliation (rcu-arch.md section 5: per-block specs doc RCU tab
   eda9347a-feaa) after Daniel accepts.
