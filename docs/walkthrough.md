@@ -241,7 +241,7 @@ instruction can be followed across every block it touches. Seq 12,
      41  ccv_fet_dec_instr              fet  -> dec       
      43  ccv_dec_ooe_uop                dec  -> ooe       
      47  EV_DISPATCH                    ooe          
-     62  EV_WAKEUP                      ooe          
+     66  EV_WAKEUP                      ooe          
      91  EV_OOE_MEMOP_HOLD_CYCLES       ooe          
      91  EV_ISSUE                       ooe          
      92  ccv_ooe_rcu_issue              ooe  -> rcu     x4
@@ -287,14 +287,14 @@ in the same cycle, and gets 32 results back 4 cycles later:
      47  ccv_fet_dec_instr              fet  -> dec       
      49  ccv_dec_ooe_uop                dec  -> ooe       
      53  EV_DISPATCH                    ooe          
-    103  EV_WAKEUP                      ooe          
-    104  EV_WAKEUP                      ooe          
-    104  EV_ISSUE                       ooe          
-    105  ccv_ooe_rcu_issue              ooe  -> rcu     x4
-    107  EV_OOE_CANCEL_REPLAY           ooe          
-    107  ccv_rcu_lane_ops               rcu  -> lane   x32
-    111  ccv_lane_rcu_res               lane -> rcu    x32
-    113  ccv_rcu_ooe_done               rcu  -> ooe       
+    107  EV_WAKEUP                      ooe          
+    108  EV_WAKEUP                      ooe          
+    108  EV_ISSUE                       ooe          
+    109  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    111  EV_OOE_CANCEL_REPLAY           ooe          
+    111  ccv_rcu_lane_ops               rcu  -> lane   x32
+    115  ccv_lane_rcu_res               lane -> rcu    x32
+    117  ccv_rcu_ooe_done               rcu  -> ooe       
     133  EV_ISSUE                       ooe          
     134  ccv_ooe_rcu_issue              ooe  -> rcu     x4
     136  ccv_rcu_lane_ops               rcu  -> lane   x32
@@ -509,4 +509,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: fc3fb4fe4a01f0d1 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 3696ce6e4e9a0d54 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
