@@ -4985,6 +4985,10 @@ void audit() {
   };
   Config base = baseConfig();
   base.fits_stale = 6;
+  // AUDIT_RET_EVERY n: every n-th random branch a ret (testRetHold's mix);
+  // AUDIT_SECTIONED: the sectioned select, the RTL's (OA's rev 319 pricing).
+  if (const char *re = std::getenv("AUDIT_RET_EVERY")) g_random_ret_every = unsigned(std::atoi(re));
+  if (std::getenv("AUDIT_SECTIONED")) base.sectioned = true;
   if (const char *ac = std::getenv("AUDIT_CFG")) {   // a setting the audit runs under, as CCV_OOE_CONFIG (e.g. scarce names)
     const std::string e = base.apply(ac);
     if (!e.empty()) { std::fprintf(stderr, "%s\n", e.c_str()); return; }
