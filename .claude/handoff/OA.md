@@ -1,6 +1,6 @@
 # OA handoff (OOE architect)
 
-Updated 2026-11-01. Keep this current at every task's end; it is what
+Updated 2026-11-02. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Role and rules (from Daniel, in conversation)
@@ -21,6 +21,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 - Branch ccr-9eb50716-lecnjf: merges only (merge commits). Pushes take the
   scoped gate (OI-95, DA 2026-10-31): `CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf
   tools/gate-push.sh`; the sweep's merge takes the full one (add `--full`).
+  The sweep's merge skips gate-scratch/* (TI rev 289, DA's choice).
   The stop hook's "unpushed commits" while a gate runs: say the push is held.
 - Commits end with the session's Co-Authored-By and Claude-Session lines.
 
@@ -35,13 +36,33 @@ holds the 400k window, the handoff hook and the agents link.
 ## Sessions
 TI session_01J4Yp3xeV6DJtgCtcoqVsAq, OI session_01DMw4FtFbGoVboMGxWpLBuv,
 AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
-CP session_019cSebQ45AT3pSnPU71torg. OA is session_01TbX2MyX6quhjarDR7J2bMR.
+CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
+RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 15, OA 296, AR 260, TI 280, OI 250, IS 182, CP 149, DA 97.
+Conventions 17, OA 315, AR 268, TI 295, OI 254, IS 185, CP 152, DA 104,
+RA 58 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
 OOE doc rev 352. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
+-1. OA-24 CLOSED (OA rev 314): OI's split pushed (e35c9f9/4d388f8); budgets
+   re-signed; CG 1.03% within 2%; per-net plan still covers ooe_rob_w head_cq02h
+   (2205 loads) and rst_r01h; miter depth 16 at 8 entries asked if cheap.
+   OI-104 ruled (B) rev 315: ooe_wake kind/class written at RS allocation (lead
+   cq00h 2.0, payload cq01h 10.0); TI reapplies L1 wake 12 after OI lands it.
+-0. 11-02 sweep PUSHED cbe7bad (full gate PASS, cg 6088 s, ngd 4150 s), with
+   OI's split and TI's heavy-unit fix 16ab8ae merged. Gates: run detached
+   (setsid bg-run) AND a run_in_background waiter loop (2 h cap, re-arm);
+   liveness via `ps -eo pid,etime,args | grep "[g]ate-push.sh --full"`.
+0. RCU (RA/RI) rulings 11-01..02, OA revs 297-310: idle-R run bound K 4 (OI
+   builds, prices); collectives + RCU-only one issue class (OI, price); call
+   link in imm at rename, offset to branch record (OI NGD); atomics/demotion
+   answered; barriers don't issue to RCU in first build (rev 301 corrected);
+   fixed done slots OK, SFU one a cycle; early collective done legal on 3
+   conditions; fold to 3 goes to DA with RA's Phase 1; lead slice on
+   ccv_ooe_rcu_issue (AR agreed, 9 b/slot + R guard pred); RA-32 lag-1
+   fallback withdrawn; fanout term: OOE's 25 holds, OI per-net plan (rev 310);
+   ooe_wake cls/kind_cq01h arrival 2 if flop-driven; L1 wake 12 held on OI.
 1. OI-86/OI-88 ADOPTED (b) by DA 10-31 (DA tab 98). AR's lead (RCU spec rev 20)
    branch/call only; TI pushed it (80697a3). OA rev 294 took resolve_lag_ret_only
    1, ret_hold 1, squash_act_lag 1, squash_held_room_lag 1 (S1 +0.03%, cm32
