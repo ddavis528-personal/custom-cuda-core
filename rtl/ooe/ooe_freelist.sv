@@ -114,6 +114,7 @@ module ooe_freelist #(
   parameter int K = 4,     // refill banks (OI-38); divides N
   parameter int S = 4,     // owners: tier-1 slots (CCV_TIER1_WARPS)
   parameter int NS = 0,    // sections a row (4: the GPR rows, CCV_W_PHYS_POS; 0: none)
+  parameter int FS = 1,    // free sources, ORed at the input: the four per-warp ROBs (OA-24)
   localparam int W  = $clog2(N),
   localparam int NSB = (NS > 0) ? NS : 1,        // port widths when NS is 0
   localparam int NK = (NS > 0) ? 2 : 1,           // candidates a slot: its home position, one section and two
@@ -134,11 +135,11 @@ module ooe_freelist #(
   input  logic           ooe_core_clk,
   input  logic           ooe_rst_r00h,
   input  logic [A-1:0]   alloc_req_cq01h,    // port k takes its head entry
-  input  logic           free_l_cq00h,       // a free reaches free_mask next cycle (the ROB's decision)
-  input  logic [N-1:0]   free_mask_cq01h,    // entries freed this cycle (the retire stage's register)
+  input  logic [FS-1:0]  free_l_cq00h,       // a free reaches free_mask next cycle (the ROB's decision)
+  input  logic [FS*N-1:0] free_mask_cq01h,    // entries freed this cycle (the retire stage's register)
   input  logic [A*LS-1:0] own_slot_cq01h,    // the slot of the lane port k's entry goes to this cycle
   // Sections (NS > 0; tie off when 0).
-  input  logic [N*NSB-1:0] free_sec_cq01h,   // sections freed this cycle, row r's at r * NS (the retire stage's register)
+  input  logic [FS*N*NSB-1:0] free_sec_cq01h,   // sections freed this cycle, row r's at r * NS (the retire stage's register)
   input  logic [A-1:0]   sa_l_cq00h,         // Rename 2's lane k allocates or returns next cycle (its register is loading)
   input  logic [A-1:0]   sa_v_cq01h,         // Rename 2's lane k allocates sections
   input  logic [A*W-1:0] sa_row_cq01h,       //   in this row
@@ -167,6 +168,21 @@ module ooe_freelist #(
 `endif
 );
 
+  // The frees, ORed across their sources (OA-24: each per-warp ROB flops
+  // its own; OA grants these inputs 2.0 NGD, an OR behind the flop).
+  logic            fls_cq00h;
+  logic [N-1:0]    fms_cq01h;
+  logic [N*NSB-1:0] fss_cq01h;
+  always_comb begin
+    fls_cq00h = |free_l_cq00h;
+    fms_cq01h = '0;
+    fss_cq01h = '0;
+    for (int f = 0; f < FS; f++) begin
+      fms_cq01h = fms_cq01h | free_mask_cq01h[f * N +: N];
+      fss_cq01h = fss_cq01h | free_sec_cq01h[f * N * NSB +: N * NSB];
+    end
+  end
+
   // The state's fields.
   localparam int OBITS = 0;
   localparam int OBUF  = OBITS + N;
@@ -191,8 +207,8 @@ module ooe_freelist #(
   logic [N*LS-1:0] own_cq02h;
 
   `CCV_ASSERT_KNOWN(alloc_req_known, alloc_req_cq01h)
-  `CCV_ASSERT_KNOWN(free_mask_known, free_mask_cq01h)
-  `CCV_ASSERT_KNOWN(free_sec_known, free_sec_cq01h)
+  `CCV_ASSERT_KNOWN(free_mask_known, fms_cq01h)
+  `CCV_ASSERT_KNOWN(free_sec_known, fss_cq01h)
   `CCV_ASSERT_KNOWN(sa_v_known, sa_v_cq01h)
   `CCV_ASSERT_KNOWN(rt_v_known, rt_v_cq01h)
 
@@ -431,10 +447,10 @@ module ooe_freelist #(
     for (int i = 0; i < A && i < B; i++)
       if (LA'(i) < rq_cq02h) transit_m_cq02h[st_cq02h[OBUF + i * W +: W]] = 1'b1;
   end
-  `CCV_ASSERT(no_double_free, (((NS == 0) ? free_mask_cq01h : pend_cq02h) & st_cq02h[OBITS +: N] & ~transit_m_cq02h) == '0)
-  `CCV_ASSERT(no_free_of_grant, (((NS == 0) ? free_mask_cq01h : pend_cq02h) & granted_cq02h) == '0)
-  `CCV_ASSERT(free_led, free_mask_cq01h == '0 || free_en_cq01h)
-  `CCV_ASSERT(free_sec_led, free_sec_cq01h == '0 || free_en_cq01h)
+  `CCV_ASSERT(no_double_free, (((NS == 0) ? fms_cq01h : pend_cq02h) & st_cq02h[OBITS +: N] & ~transit_m_cq02h) == '0)
+  `CCV_ASSERT(no_free_of_grant, (((NS == 0) ? fms_cq01h : pend_cq02h) & granted_cq02h) == '0)
+  `CCV_ASSERT(free_led, fms_cq01h == '0 || free_en_cq01h)
+  `CCV_ASSERT(free_sec_led, fss_cq01h == '0 || free_en_cq01h)
   `CCV_ASSERT(sa_led, (sa_v_cq01h & ~sa_en_cq01h) == '0)
   `CCV_ASSERT(rt_led, (rt_v_cq01h & ~rt_en_cq01h) == '0)
 
@@ -451,7 +467,7 @@ module ooe_freelist #(
   logic [LA-1:0] rq_cq01h;          // how many this cycle takes: where the request prefix ends
   // This cycle's frees: the retire stage's mask, or with sections the
   // rows returning (pend).
-  assign nx_cq01h      = next_state(st_cq02h, rqh_cq02h, (NS == 0) ? free_mask_cq01h : pend_cq02h);
+  assign nx_cq01h      = next_state(st_cq02h, rqh_cq02h, (NS == 0) ? fms_cq01h : pend_cq02h);
   // With sections a row frees only as it returns (fr_en), whatever the lead.
   assign bits_en_cq01h = rq_cq02h != '0 || (NS == 0 && free_en_cq01h) || fr_en_cq02h;
   assign buf_en_cq01h  = rq_cq02h != '0 || 32'(st_cq02h[OCNT +: LB]) < B;
@@ -486,7 +502,7 @@ module ooe_freelist #(
       free_en_cq01h <= 1'b0;
     end else begin
       rq_cq02h      <= rq_cq01h;
-      free_en_cq01h <= free_l_cq00h;
+      free_en_cq01h <= fls_cq00h;
     end
   end
 
@@ -583,13 +599,13 @@ module ooe_freelist #(
     endfunction
     logic [N*NS-1:0] sec_q_cq02h, sfree_cq02h;
     logic [N-1:0]    pend_nx_cq01h;
-    assign sfree_cq02h   = sec_q_cq02h & ~free_sec_cq01h;
+    assign sfree_cq02h   = sec_q_cq02h & ~fss_cq01h;
     assign pend_nx_cq01h = pend_next(sec_q_cq02h, av_cq02h, ar_cq02h, as_cq02h,
-                                     free_sec_cq01h & {N * NS{free_en_cq01h}},
+                                     fss_cq01h & {N * NS{free_en_cq01h}},
                                      rows_of(sa_v_cq01h, sa_row_cq01h), rows_of(rt_v_cq01h & rt_en_cq01h, rt_row_cq01h));
     assign fr_en_cq02h = pend_cq02h != '0;
     // A free names live sections only, and Rename 2 allocates free ones.
-    `CCV_ASSERT(sec_free_live, (free_sec_cq01h & ~(sec_q_cq02h | sec_set(av_cq02h, ar_cq02h, as_cq02h))) == '0)
+    `CCV_ASSERT(sec_free_live, (fss_cq01h & ~(sec_q_cq02h | sec_set(av_cq02h, ar_cq02h, as_cq02h))) == '0)
     `CCV_ASSERT(sec_alloc_free, (sec_set(av_cq02h, ar_cq02h, as_cq02h) & sec_q_cq02h) == '0)
     logic sec_en_cq01h, pv_cq02h, pend_en_cq01h, pv_nx_cq01h;
     assign pv_nx_cq01h   = free_en_cq01h || rt_en_cq01h != '0;
@@ -601,7 +617,7 @@ module ooe_freelist #(
         pend_cq02h  <= '0;
         pv_cq02h    <= 1'b0;
       end else begin
-        if (sec_en_cq01h) sec_q_cq02h <= sec_next(sec_q_cq02h, av_cq02h, ar_cq02h, as_cq02h, free_sec_cq01h);
+        if (sec_en_cq01h) sec_q_cq02h <= sec_next(sec_q_cq02h, av_cq02h, ar_cq02h, as_cq02h, fss_cq01h);
         pv_cq02h <= pv_nx_cq01h;
         if (pend_en_cq01h) pend_cq02h <= pend_nx_cq01h;
       end
@@ -715,7 +731,7 @@ module ooe_freelist #(
       for (int g = 0; g < NF; g++) begin
         logic [FG-1:0] v;
         for (int i = 0; i < FG; i++)
-          v[i] = ((NS == 0) ? free_mask_cq01h[g * FG + i] : pend_cq02h[g * FG + i]) &&
+          v[i] = ((NS == 0) ? fms_cq01h[g * FG + i] : pend_cq02h[g * FG + i]) &&
                  own_cq02h[(g * FG + i) * LS +: LS] == LS'(s);
         fs_nx_cq01h[(s * NF + g) * LF +: LF] = count_of(v);
       end

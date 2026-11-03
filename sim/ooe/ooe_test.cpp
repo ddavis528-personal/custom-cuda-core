@@ -50,6 +50,7 @@ void (*g_random_config_hook)(Config &) = nullptr;
 /// block has no squash yet, test/ooe/rob_tb.cpp): the draws are the same,
 /// only the prediction is the outcome.
 bool g_random_predict_all = false;
+unsigned g_random_ret_every = 0;   // every n-th random branch a ret (an RTL bench's ret_hold run)
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
 void (*g_pre_cycle_hook)(const Core &) = nullptr;
@@ -77,19 +78,20 @@ uint32_t attr(bool miu, bool rcu, bool cross, bool wg, bool wp, unsigned memk, b
          uint32_t(wp) << 9 | memk << 7 | uint32_t(br) << 6 | ser << 3 | lat;
 }
 
-enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp, kAtomic };
+enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp, kAtomic, kColl };
 
 /// A kind's unit (its lat_class) and its consumer group (Config::byp).
-unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp || k == kAtomic ? 1 : k == kSfu ? 4 : 0; }
+unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp || k == kAtomic ? 1 : k == kSfu ? 4 : k == kColl ? 5 : 0; }
 /// Its bypass group as a producer (sched_attr's bypass_group).
 unsigned pgroupOf(Kind k) {
-  return k == kSfu ? Config::kGrpSfu : k == kFp ? Config::kGrpFp : k == kPlogic ? Config::kGrpPred : Config::kGrpInt;
+  return k == kSfu ? Config::kGrpSfu : k == kFp ? Config::kGrpFp : k == kPlogic ? Config::kGrpPred
+       : k == kColl ? Config::kGrpColl : Config::kGrpInt;
 }
 /// Its group as a consumer: a memop consumes as address calculation, and
 /// an op RCU executes takes no bypass (V-48).
 int groupOf(Kind k) {
   if (k == kLoad || k == kStore || k == kAtomic) return int(Config::kGrpAddr);
-  if (k == kRcuOp || k == kPlogic || k == kBranch) return -1;
+  if (k == kRcuOp || k == kPlogic || k == kBranch || k == kColl) return -1;
   return int(pgroupOf(k));
 }
 
@@ -98,6 +100,10 @@ struct Op {
   Kind k = kLane;
   unsigned dst = 0, src[3] = {}, nsrc = 0, pdst = 0, pguard = 0, pq[2] = {};
   bool guard = false, cross = false, taken = false, pred_taken = false;
+  /// kColl: vote (a predicate destination, pdst) or ballot (a GPR), each
+  /// reading pq[0] as its predicate source, qualifiers in imm as pand's
+  /// (RA-29 (e)); neither, a shfl.
+  bool vote = false, ballot = false;
   uint32_t mask = kFullMask;
   uint32_t tmask = kFullMask;    ///< kBranch: the lanes that take it, when taken
   unsigned w = 0;                ///< sectioned: the destination's width code
@@ -170,6 +176,17 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   case kFp: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 1); break;     // a lane FP op
   case kSfu: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 4); break;   // a spare lane unit
   case kRcuOp: u.attr_raw = attr(0, 1, 0, 1, 0, 0, 0, 0, 0); break;
+  case kColl:                                                // a warp-collective: R, lat_class 5
+    u.attr_raw = attr(0, 0, 0, !o.vote, o.vote, 0, 0, 0, 5);
+    if (o.vote || o.ballot) {
+      u.shape.pred_logic = true;
+      u.imm = o.pq[0] | o.pq[1] << 3;
+    }
+    if (o.vote) {
+      u.pred_we = true;
+      u.pred_dst = o.pdst;
+    }
+    break;
   case kSetp:
     u.attr_raw = attr(0, 0, 0, 0, 1, 0, 0, 0, 1);
     u.pred_we = true;
@@ -387,6 +404,11 @@ struct Env {
     /// PF-41 (AR's revs 116-117): with provisional, a provisional warp is
     /// demoted the moment a ready parked warp appears, no threshold wait.
     bool preempt = false;
+    /// RA-17 (AR's answers to RA-6 and RA-8): a migration's rows go
+    /// through R's PRF ports, one in each cycle R holds no op, not a
+    /// read or write port of their own. Off: 17 rows in 17 cycles, as
+    /// TI-21 has them, on the ports charge_ports names.
+    bool r_ports = false;
   } swap;
   enum : unsigned { kNever = 0, kSwap = 1, kEvict = 2 };
   unsigned hop = ccv::kLatHop;
@@ -396,6 +418,21 @@ struct Env {
   std::map<std::pair<unsigned, size_t>, uint64_t> served;   ///< (warp, index) -> when its DRAM fill lands
   std::vector<std::pair<uint64_t, uint64_t>> read_busy, write_busy;   ///< migration port intervals
   uint64_t write_conflicts = 0;          ///< cycles a restore's write port would have been short
+  /// RA-17: a migration's rows under r_ports, each moved in a cycle R held
+  /// no op; done(last) runs at the cycle its last row moved.
+  struct Xfer { uint64_t from = 0; unsigned left = ccv::kMigrationCycles; std::function<void(uint64_t)> done; };
+  std::vector<Xfer> xfers;
+  uint64_t xfer_rows = 0, xfer_waits = 0;   ///< rows moved, and cycles a row waited on a busy R
+  uint64_t xfer_max = 0;                    ///< the longest migration, first row's cycle to last
+  /// A migration of 17 rows from cycle first: under r_ports, as R allows;
+  /// else in 17 cycles. done(last) at the cycle of its last row.
+  void migrate(uint64_t first, std::function<void(uint64_t)> done) {
+    if (!swap.r_ports) { done(first + ccv::kMigrationCycles - 1); return; }
+    Xfer x;
+    x.from = first;
+    x.done = std::move(done);
+    xfers.push_back(std::move(x));
+  }
   std::map<std::pair<unsigned, size_t>, uint64_t> tid_at;   ///< (warp, index) -> its latest correct-path tid
   std::map<unsigned, unsigned> slot_owner;                  ///< slot -> its latest occupant (launch, activate)
   // Measures: swaps, each demoted slot's empty time (from the miss at the
@@ -468,8 +505,9 @@ struct Env {
     // PCA's command beside it: the first row a hop on, 16 more, done to RAU,
     // RAU's decision, activate.
     const uint64_t first = a + 2 * hop;
-    write_busy.push_back({first, first + ccv::kMigrationCycles});
-    acts.insert({first + 16 + hop + 1 + hop, [this, id, slot] {
+    if (!swap.r_ports) write_busy.push_back({first, first + ccv::kMigrationCycles});
+    migrate(first, [this, id, slot](uint64_t last) {
+    acts.insert({last + hop + 1 + hop, [this, id, slot] {
       Alloc ac;
       ac.warp = id;
       ac.slot = slot;
@@ -486,6 +524,7 @@ struct Env {
       restore_busy = false;
       ++swaps;
     }});
+    });
   }
 
   /// RAU on OOE's report: a stalled head with an outstanding load.
@@ -594,9 +633,10 @@ struct Env {
     }
     const uint64_t migrate = t + hop + 1;            // drained to RAU, its decision
     const uint64_t first = migrate + 2 * hop;        // migrate to RCU, the first row to PCA
-    if (swap.charge_ports) read_busy.push_back({migrate + hop, migrate + hop + ccv::kMigrationCycles});
+    if (swap.charge_ports && !swap.r_ports) read_busy.push_back({migrate + hop, migrate + hop + ccv::kMigrationCycles});
     const unsigned slot = x->slot, id = x->id;
-    const uint64_t decide = first + 16 + hop + 1;     // done to RAU, its decision
+    this->migrate(first, [this, slot, id](uint64_t last) {
+    const uint64_t decide = last + hop + 1;           // done to RAU, its decision
     acts.insert({decide, [this, slot, id, decide] {
       // Free the slot (alloc_op 0) and, at the same decision, pick a parked
       // warp for it; the warp is parked, ready when its fill has landed.
@@ -615,6 +655,7 @@ struct Env {
       demote_busy = false;
       rauRestore(decide);
     }});
+    });
   }
 
   explicit Env(const Config &c, unsigned seed = 1) : cfg(c), core(c), rng(seed) {
@@ -863,10 +904,14 @@ struct Env {
     for (unsigned i = 0; i != o.nsrc; ++i) checkRead(is.tid, is.psrc[i], false, group);
     if (is.merge && gpr(is.pdst) && o.k != kLoad) checkRead(is.tid, is.pold, false, group);
     if (o.guard || o.k == kBranch) checkRead(is.tid, is.ppguard, true, -1);
-    if (o.k == kPlogic) {
-      // the qualifier sources: the core renamed them; find them by RAT is
-      // not visible here, so they are checked through the predicate merge
-      // and the guard paths only.
+    if (o.k == kPlogic || (o.k == kColl && (o.vote || o.ballot))) {
+      // The qualifier sources, renamed into imm (TI-1; vote's and ballot's
+      // too, RA-29 (e)): each physical predicate, its negate above it, must
+      // be readable as the op issues.
+      constexpr unsigned w = ccv::prov::kWPhysPred;
+      if (!is.send_imm) violation(is.tid, "predicate sources without imm");
+      checkRead(is.tid, is.imm & ((1u << w) - 1), true, -1);
+      checkRead(is.tid, (is.imm >> (w + 1)) & ((1u << w) - 1), true, -1);
     }
     if (is.pred_we && is.merge) checkRead(is.tid, is.ppold, true, -1);
     // Results: when they are readable, and when they land.
@@ -1236,6 +1281,18 @@ struct Env {
     const auto presets = std::move(preset_cw);
     preset_cw.clear();
     core.cycle(t);
+    // RA-17: a migration's row moves in each cycle R held no op (its read
+    // or write in the cycle after; a cycle either way).
+    for (auto it = xfers.begin(); it != xfers.end();) {
+      if (t < it->from) { ++it; continue; }
+      if (!core.rIdle()) { ++xfer_waits; ++it; continue; }
+      ++xfer_rows;
+      if (--it->left) { ++it; continue; }
+      xfer_max = std::max<uint64_t>(xfer_max, t - it->from + 1);
+      auto done = std::move(it->done);
+      it = xfers.erase(it);
+      done(t + 1);
+    }
     for (const auto &pc : presets) core.presetWidths(pc.first, pc.second);
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
@@ -1379,6 +1436,7 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
                               bool narrow = false) {
   auto r = [&](unsigned k) { return unsigned(rng() % k); };
   std::vector<Op> p;
+  unsigned rets_seen = 0;
   // Sectioned: each architectural register has one width for the program,
   // as the committed chwidth table gives it: R0-R3 32-bit, the rest any.
   std::array<unsigned, 16> width{};
@@ -1402,6 +1460,12 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     else if (c < 88) {
       o.k = kBranch; o.pguard = r(4); o.taken = r(2);
       o.pred_taken = r(3) || g_random_predict_all ? o.taken : !o.taken;
+      if (g_random_ret_every && ++rets_seen % g_random_ret_every == 0) {
+        o.ret = true;
+        o.taken = true;
+        o.pred_taken = r(4) != 0;
+        o.ret_to = 0x2468;
+      }
     }
     else { o.k = kLane; o.nsrc = 2; }
     if ((o.k == kLane || o.k == kLoad || o.k == kSetp) && r(5) == 0) { o.guard = true; o.pguard = r(4); }
@@ -1661,6 +1725,7 @@ void testResolveLagRetire() {
       Config c = baseConfig();
       c.retire_lag = 0;
       c.resolve_lag = 1;
+      c.resolve_lag_ret_only = 0;   // every branch lags: these programs carry no rets
       c.inject_retire_unresolved = control;
       std::mt19937 rng(seed);
       Env e(c, seed);
@@ -1736,6 +1801,196 @@ void testRetHold() {
       continue;
     }
     EXPECT(held > 0, "the hold never held a branch (%u rets)", rets);
+  }
+}
+
+/// RA-17 (OA's revs 298-299): a migration's rows use R's PRF ports, one in
+/// each cycle R holds no op (swap.r_ports), and select leaves R idle after
+/// idle_r_k - 1 cycles running with R granted while one is in flight. Three
+/// warps of RCU-only ops and collectives keep R busy every cycle it can be; warp 0's DRAM
+/// miss demotes it, and parked warps restore. With K = 4 every migration
+/// moves its 17 rows within 17 x 4 cycles and the check stays quiet; the
+/// control drops the force, and the check must fire.
+void testIdleR(bool controls = true, unsigned seeds = 3) {
+  for (const bool control : {false, true}) {
+    if (control && !controls) break;
+    g_test = control ? "idle R (control)" : "idle R";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned forced = 0, errors = 0, swaps = 0;
+    uint64_t rows = 0, waits = 0;
+    for (unsigned seed = 1; seed != seeds + 1; ++seed) {
+      Config c = baseConfig();
+      c.sectioned = true;
+      c.decq = 13;
+      c.idle_r_k = 4;
+      c.inject_no_idle_r = control;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 10;
+      e.swap.rau = true;
+      e.swap.r_ports = true;
+      e.swap.dram_pm = 40;
+      e.replay_spread = 60;
+      for (unsigned i = 0; i != 4; ++i) {
+        std::vector<Op> p;
+        if (i == 0) {
+          p = randomProgram(rng, 200, true);
+          for (Op &o : p)
+            if (o.k == kLoad) { o.dram = true; o.fill = e.swap.dram_hi; break; }
+        } else {
+          // Warp 3's are collectives: R's one class (RA-29 (a)) runs the
+          // count as RCU-only ops do.
+          for (unsigned j = 0; j != 600; ++j) { Op o; o.k = i == 3 ? kColl : kRcuOp; o.dst = j % 16; p.push_back(o); }
+          Op x; x.k = kExit; p.push_back(x);
+        }
+        e.launch(i, i, p);
+      }
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      if (control) { while (!e.done() && e.t < 20000) e.step(); }
+      else e.finish(200000);
+      forced += unsigned(e.core.counters["issue.idle_r"]);
+      errors += unsigned(e.core.counters["errors"]);
+      swaps += e.swaps;
+      rows += e.xfer_rows;
+      waits += e.xfer_waits;
+      if (!control) {
+        EXPECT(e.core.counters["errors"] == 0, "errors");
+        EXPECT(e.xfers.empty(), "%zu migrations unfinished", e.xfers.size());
+        EXPECT(e.xfer_max <= 17u * 4, "a migration took %llu cycles, over 17 x 4", (unsigned long long)e.xfer_max);
+      }
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = errors > 0;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control no-idle-r", caught ? "caught" : "MISSED");
+      EXPECT(caught, "R busy past K running beside a migration, unnoticed without the force");
+      continue;
+    }
+    EXPECT(swaps > 0 && rows > 0, "%u swaps, %llu rows", swaps, (unsigned long long)rows);
+    EXPECT(forced > 0 && waits > 0, "R never forced idle (%u) or never busy beside a row (%llu)", forced,
+           (unsigned long long)waits);
+    std::printf("      idle R (K 4): %u swaps, %llu rows, %llu row waits, %u forced idles\n", swaps,
+                (unsigned long long)rows, (unsigned long long)waits, forced);
+  }
+}
+
+/// RA-29 (a): RCU-only ops and warp-collectives are one issue class at R,
+/// at most one a cycle (OA's rev 305; RA's confirmation). Two warps of
+/// RCU-only ops and two of collectives, with lane work between, contend
+/// for R every cycle; select must grant one of them a cycle, and the
+/// check stays quiet. The control gives collectives R's own copy in the
+/// pick (inject_split_r_class), so one goes beside an RCU-only op, and the
+/// check must fire.
+void testRClass(bool controls = true, unsigned seeds = 3) {
+  for (const bool control : {false, true}) {
+    if (control && !controls) break;
+    g_test = control ? "R class (control)" : "R class";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned errors = 0, pairs = 0;
+    uint64_t coll = 0, rcu = 0, cycles = 0;
+    for (unsigned seed = 1; seed != seeds + 1; ++seed) {
+      Config c = baseConfig();
+      c.sectioned = true;
+      c.inject_split_r_class = control;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      for (unsigned i = 0; i != 4; ++i) {
+        std::vector<Op> p;
+        for (unsigned j = 0; j != 300; ++j) {
+          Op o;
+          o.k = rng() % 4 == 0 ? kLane : i < 2 ? kRcuOp : kColl;
+          o.dst = j % 16;
+          if (o.k == kLane || rng() % 3 == 0) { o.src[0] = (j + 15) % 16; o.nsrc = 1; }
+          p.push_back(o);
+        }
+        Op x; x.k = kExit; p.push_back(x);
+        e.launch(i, i, p);
+        for (const Op &o : p) { if (o.k == kColl) ++coll; else if (o.k == kRcuOp) ++rcu; }
+      }
+      if (control) { while (!e.done() && e.t < 20000) e.step(); }
+      else e.finish(100000);
+      cycles += e.t;
+      errors += unsigned(e.core.counters["errors"]);
+      pairs += unsigned(e.core.counters["issue.r_class_pair"]);
+      if (!control) EXPECT(e.core.counters["errors"] == 0, "errors");
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = errors > 0 && pairs > 0;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control split-r-class", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a collective beside an RCU-only op at R, unnoticed");
+      continue;
+    }
+    EXPECT(pairs == 0, "%u cycles granted two of R's class", pairs);
+    std::printf("      R class: %llu RCU-only ops, %llu collectives, %llu cycles, one a cycle\n",
+                (unsigned long long)rcu, (unsigned long long)coll, (unsigned long long)cycles);
+  }
+}
+
+/// RA-29 (e) (OA's rev 303): vote's and ballot's predicate source is
+/// renamed into imm as pand's and por's are (TI-1), on the same path and
+/// with the same dependency. Each warp sets predicates from lane compares
+/// and votes and ballots on them at once, with pand/por among them; the
+/// environment decodes each op's imm and holds both physical predicates
+/// readable at its issue. The control drops the sources' dependency
+/// (inject_pq_no_dep), so a vote issues before its setp lands, and the
+/// check must fire.
+void testPredSources(bool controls = true, unsigned seeds = 3) {
+  for (const bool control : {false, true}) {
+    if (control && !controls) break;
+    g_test = control ? "pred sources (control)" : "pred sources";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned votes = 0, ballots = 0;
+    for (unsigned seed = 1; seed != seeds + 1; ++seed) {
+      Config c = baseConfig();
+      c.sectioned = true;
+      c.inject_pq_no_dep = control;
+      std::mt19937 rng(seed);
+      auto r = [&](unsigned n) { return unsigned(rng() % n); };
+      Env e(c, seed);
+      for (unsigned i = 0; i != 2; ++i) {
+        std::vector<Op> p;
+        for (unsigned j = 0; j != 150; ++j) {
+          Op s; s.k = kSetp; s.nsrc = 2; s.src[0] = r(16); s.src[1] = r(16); s.pdst = 1 + r(3); p.push_back(s);
+          Op o;
+          o.k = r(5) == 0 ? kPlogic : kColl;
+          o.pq[0] = s.pdst | (r(2) << 2);      // the qualifier's negate bit
+          o.pq[1] = r(4);
+          if (o.k == kColl) (r(2) ? o.vote : o.ballot) = true;
+          o.pdst = r(4);
+          o.dst = r(16);
+          p.push_back(o);
+          // A lane op after each: a ballot's reader, or the work between.
+          // (Denser predicate writes than this, a setp and a vote in every
+          // two uops, reach a V-04 under fits_stale 6 that is not this
+          // test's: raised as its own item.)
+          Op l; l.k = kLane; l.nsrc = 1; l.src[0] = o.k == kColl && o.ballot ? o.dst : r(16); l.dst = r(16);
+          p.push_back(l);
+          votes += o.vote;
+          ballots += o.ballot;
+        }
+        Op x; x.k = kExit; p.push_back(x);
+        e.launch(i, i, p);
+      }
+      e.finish(100000);
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = g_fail > saved;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control pq-no-dep", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a vote issued before its predicate source, unnoticed");
+      continue;
+    }
+    std::printf("      pred sources: %u votes, %u ballots, every source readable at issue\n", votes, ballots);
   }
 }
 
@@ -4266,6 +4521,68 @@ int stallHole(unsigned seeds, bool print, int only_fix = -1) {
   return fails;
 }
 
+/// RA-17's price (OA's rev 299): migration-heavy runs, TI-21's swap workload
+/// (8 warps, 4 resident and 4 parked, evict, 2% of loads to DRAM) on the
+/// sectioned select, with the lane ops of each program turned RCU-only at a
+/// given share (0: the sweep's own mix; the higher, the denser R). Each line
+/// is the mean over seeds of: today's model (rows on ports of their own),
+/// rows on R's ports with idle_r_k K, and the same with no force (K 0,
+/// unbounded: a migration waits as long as R stays busy). The price is
+/// against no force, all else the same; today's model, whose rows charge a
+/// PRF read port instead (TI-21), is beside it.
+void idleRPrice(unsigned seeds) {
+  const unsigned len = std::getenv("OOE_IDLE_R_LEN") ? unsigned(std::atoi(std::getenv("OOE_IDLE_R_LEN"))) : 1500;
+  struct R { double cycles = 0, mig = 0; uint64_t forced = 0, waits = 0, worst = 0, rgr = 0; unsigned swaps = 0, unfinished = 0; };
+  auto run = [&](unsigned dense, bool rports, unsigned K) {
+    R r;
+    for (unsigned seed = 1; seed <= seeds; ++seed) {
+      Config c = baseConfig();
+      c.sectioned = true;
+      c.decq = 13;
+      c.idle_r_k = K;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.mode = Env::kEvict;
+      e.swap.dram_pm = 20;
+      e.swap.r_ports = rports;
+      auto prog = [&] {
+        std::vector<Op> p = randomProgram(rng, len, true);
+        for (Op &o : p)
+          if (o.k == kLane && unsigned(rng() % 100) < dense) { o.k = kRcuOp; o.nsrc = 0; o.cross = false; }
+        return p;
+      };
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, prog());
+      for (unsigned i = 4; i != 8; ++i) e.park(i, prog());
+      while (!e.done() && e.t < 2000000) e.step();
+      r.unfinished += !e.done();
+      r.cycles += double(e.t);
+      r.swaps += e.swaps;
+      r.forced += e.core.counters["issue.idle_r"];
+      r.rgr += e.core.counters["issue.r"];
+      r.waits += e.xfer_waits;
+      r.worst = std::max(r.worst, e.xfer_max);
+    }
+    r.cycles /= seeds;
+    return r;
+  };
+  std::printf("| R-only share of lane ops | rows | K | cycles | vs no force | restores | R grants a cycle | forced idles | "
+              "of R's grants | row waits | longest migration | unfinished |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+  for (unsigned dense : {0u, 50u, 100u}) {
+    const R own = run(dense, false, 0), nf = run(dense, true, 0);
+    auto line = [&](const char *rows, unsigned K, const R &r) {
+      std::printf("| %u%% | %s | %u | %.0f | %+.2f%% | %u | %.3f | %llu | %.2f%% | %llu | %llu | %u |\n", dense, rows, K,
+                  r.cycles, 100.0 * (r.cycles / nf.cycles - 1.0), r.swaps, double(r.rgr) / (r.cycles * seeds),
+                  (unsigned long long)r.forced, 100.0 * double(r.forced) / double(std::max<uint64_t>(1, r.rgr)),
+                  (unsigned long long)r.waits, (unsigned long long)r.worst, r.unfinished);
+    };
+    line("own ports", 0, own);
+    for (unsigned K : {2u, 4u, 8u}) line("R's ports", K, run(dense, true, K));
+    line("R's ports, no force", 0, nf);
+  }
+}
+
 /// TI-21's workload (1): 8 warps, 4 resident and 4 parked, each a sweep
 /// program, 2% of loads missing to DRAM. Swap against swap-off (the parked
 /// warps enter as residents exit), per go form, with the swap count, the
@@ -4918,6 +5235,25 @@ int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*c
 /// the failure count.
 /// The unit test running, for a bench's diagnostics.
 const char *ooeTestName() { return g_test.c_str(); }
+/// The random tests with every third branch a ret (testRetHold's mix),
+/// hooked and configured by cfg: the benches of ret_hold's RTL (OA's rev
+/// 293), whose plain random traffic has no rets.
+int ooeTestRandomRetsHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_random_ret_every = 3;
+  const int f = ooeTestRandomHookedWith(seeds, hook, cfg);
+  g_random_ret_every = 0;
+  return f;
+}
+/// RA-17's idle-R test (testIdleR, no control) over seeds, hooked and
+/// configured by cfg: ooe_sched's idle-R force in test/ooe/trio_tb.cpp.
+int ooeTestIdleRHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_cycle_hook = hook;
+  g_config_hook = cfg;
+  testIdleR(false, seeds);
+  g_config_hook = nullptr;
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
 /// The random programs predict every branch (g_random_predict_all).
 void ooeTestPredictAll(bool on) { g_random_predict_all = on; }
 int ooeTestDirectedHooked(void (*hook)(const Core &)) {
@@ -5049,6 +5385,17 @@ int main(int argc, char **argv) {
     std::printf("ooe-test --atomic: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--idle-r") {   // RA-17's test alone
+    testIdleR();
+    std::printf("ooe-test --idle-r: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--r-class") {   // RA-29 (a)'s and (e)'s tests alone
+    testRClass();
+    testPredSources();
+    std::printf("ooe-test --r-class: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--audit") {
     audit();
     return g_fail ? 1 : 0;
@@ -5057,6 +5404,10 @@ int main(int argc, char **argv) {
     const char *only = std::getenv("OOE_TEST_HOLE_FIX");   // one fix's rows, by its index
     const int f = stallHole(seeds == 25 ? 48 : seeds, true, only ? std::atoi(only) : -1);
     std::printf("stall_hole: %d bound(s) missed by the decided go\n", f);
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--idle-r-price") {   // RA-17's price
+    idleRPrice(seeds == 25 ? 24 : seeds);
     return g_fail ? 1 : 0;
   }
   if (argc > 1 && std::string(argv[1]) == "--swap-sweep") {
@@ -5101,6 +5452,9 @@ int main(int argc, char **argv) {
   testFloorCeiling();
   testResolveLagRetire();
   testRetHold();
+  testIdleR();
+  testRClass();
+  testPredSources();
   testCeilingGo();
   testDemote();
   testRestore();

@@ -120,6 +120,18 @@
       "by": "OA",
       "date": "2026-10-21",
       "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 154): from copy flops in ooe_wake and ooe_rs, as iss and dep"
+    },
+    "ret_cq03h": {
+      "arrival": 4.0,
+      "by": "OI",
+      "date": "2026-11-01",
+      "why": "The ret hold (OA's rev 293): an RCU entry is a ret, a static bit of the entry beside its footprint (res_cq03h), straight from RS flops as OA's response OI-53 gives select's live inputs (for OA to confirm)"
+    },
+    "brk_cq03h": {
+      "arrival": 4.0,
+      "by": "OI",
+      "date": "2026-11-01",
+      "why": "The ret hold (OA's rev 293): an RCU entry is a branch or call, a static bit of the entry beside its footprint (res_cq03h), straight from RS flops as OA's response OI-53 gives select's live inputs (for OA to confirm)"
     }
   }
 }

@@ -149,9 +149,9 @@ for cfg in "gpr 0 $phys 0" "gsec 0 $phys $ns" "pred 1 $preds 0"; do
   dir=build/ooe-rtl/freelist_$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-        --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" -GS="$fl_slots" -GNS="$sec" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
+        --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" -GS="$fl_slots" -GFS="$fl_slots" -GNS="$sec" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-        -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_S=$fl_slots -DFL_POOL=$pool -DFL_NS=$sec -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+        -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_S=$fl_slots -DFL_FS=$fl_slots -DFL_POOL=$pool -DFL_NS=$sec -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
         "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" \
         "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
     say "freelist $name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
@@ -270,10 +270,10 @@ rob_p="S=$slots D=$(rv CCV_P_ROB_DEPTH) RP=$(rv CCV_RETIRE_PER_ROB) A=$width ND=
 rob_p="$rob_p GW=$(( $(rv CCV_P_W_PHYS_REG) + $(rv CCV_W_PHYS_POS) )) GR=$(rv CCV_P_W_PHYS_REG) NG=$(rv CCV_P_PHYS_REGS)"
 rob_p="$rob_p NS=$(( 1 << $(rv CCV_W_PHYS_POS) )) PW=$(rv CCV_P_W_PHYS_PRED) NP=$(rv CCV_P_PRED_REGS)"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      --trace $(for kv in $rob_p; do printf -- '-G%s ' "$kv"; done) --top-module ooe_rob \
+      --trace $(for kv in $rob_p; do printf -- '-G%s ' "$kv"; done) --top-module ooe_rob_tb \
       --Mdir "$dir" -o rob_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe $(for kv in $rob_p; do printf -- '-DRB_%s ' "$kv"; done) -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rob.sv" "$PWD/test/ooe/rob_tb.cpp" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
   say "rob: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi
@@ -290,13 +290,20 @@ else
   say "rob == model, mispredicting" "FAIL"; echo "$out" | tail -8; fail=1
 fi
 for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
-         no-branch-lead no-miu no-store drop-killed-fill; do
+         no-branch-lead no-miu no-store drop-killed-fill late-fill; do
   if ROB_CONTROL=$c "$dir/rob_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else
     say "  control $c (rob)" "caught"
   fi
 done
+# two-resolutions: two candidates in a cycle, forced; one_resolution itself
+# must catch it (no other check sees it first).
+if out=$(ROB_CONTROL=two-resolutions "$dir/rob_tb" 3 2>&1) || ! grep -q "one_resolution" <<<"$out"; then
+  say "  control two-resolutions (rob)" "MISSED"; fail=1
+else
+  say "  control two-resolutions (rob)" "caught"
+fi
 
 # ooe_wake, driven from the model's wake log after every cycle. Its
 # latencies, bypass points and penalties are the parameters'; the model's
@@ -644,7 +651,7 @@ fi
 # The controls run the bench's seeds: a bulk discard beside a candidate
 # memop (no-busy) is rare, and 3 seeds stopped reaching one when rename's
 # go changed (OA-21); a caught control stops at its first difference.
-for c in no-order no-conf no-busy; do
+for c in no-order no-conf no-busy no-hold; do
   if SELECT_CONTROL=$c "$dir/select_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (select)" "MISSED"; fail=1
   else
@@ -680,11 +687,19 @@ if out=$("$dir/trio_tb" "$seeds" 2>&1); then
 else
   say "rs + wake + sched assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-msd no-miss-lead late-leads no-alloc-lead; do
+for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r; do
   if TRIO_CONTROL=$c "$dir/trio_tb" 6 >/dev/null 2>&1; then
     say "  control $c (trio)" "MISSED"; fail=1
   else
     say "  control $c (trio)" "caught"
   fi
 done
+# no-force: the force register cleared, the migration lead kept; ooe_sched's
+# own idle_r assertion must fire, by name (RA-17).
+nf_out=$(TRIO_CONTROL=no-force "$dir/trio_tb" 6 2>&1)
+if grep -q 'CCV idle_r failed' <<<"$nf_out"; then
+  say "  control no-force (trio, idle_r assertion)" "caught"
+else
+  say "  control no-force (trio, idle_r assertion)" "MISSED"; fail=1
+fi
 exit $fail

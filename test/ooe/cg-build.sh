@@ -45,8 +45,8 @@ case "$unit" in
     fb=$(sed -n 's/.*unsigned fl_buf = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
     fk=$(sed -n 's/.*unsigned fl_banks = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
     slots=$(val CCV_TIER1_WARPS)
-    vl ooe_freelist "-DCCV_CHECK -GN=$nf -GA=$width -GB=$fb -GK=$fk -GS=$slots -GNS=$ns" \
-      "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_S=$slots -DFL_POOL=$pool -DFL_NS=$ns" \
+    vl ooe_freelist "-DCCV_CHECK -GN=$nf -GA=$width -GB=$fb -GK=$fk -GS=$slots -GFS=$slots -GNS=$ns" \
+      "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_S=$slots -DFL_FS=$slots -DFL_POOL=$pool -DFL_NS=$ns" \
       "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" ;;
   ooe_rat)
     read -r g d < <(python3 test/ooe/rat-params.py)
@@ -88,14 +88,15 @@ case "$unit" in
       "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" \
       "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" \
       "$PWD/test/ooe/rename_tb.cpp" ;;
-  ooe_rob)
-    # The ROB (slice 1, test/ooe/rob_tb.cpp), at the pool's and the
-    # channels' sizes.
+  ooe_rob_w)
+    # The ROB (test/ooe/rob_tb.cpp), at the pool's and the channels' sizes:
+    # the four per-warp instances in the bench harness (OA-24), the unit
+    # warp 0's.
     gw=$(( $(val CCV_P_W_PHYS_REG) + $(val CCV_W_PHYS_POS) )) ns=$(( 1 << $(val CCV_W_PHYS_POS) ))
     p="S=$(val CCV_TIER1_WARPS) D=$(val CCV_P_ROB_DEPTH) RP=$(val CCV_RETIRE_PER_ROB) A=$width ND=7 NM=4 NK=$(val CCV_P_BR_CKPTS) PCW=$(val CCV_ADDR_BITS) GW=$gw"
     p="$p GR=$(val CCV_P_W_PHYS_REG) NG=$(val CCV_P_PHYS_REGS) NS=$ns PW=$(val CCV_P_W_PHYS_PRED) NP=$(val CCV_P_PRED_REGS)"
-    vl ooe_rob "$(for kv in $p; do printf -- '-G%s ' "$kv"; done)" "$(for kv in $p; do printf -- '-DRB_%s ' "$kv"; done)" \
-      "$PWD/rtl/ooe/ooe_rob.sv" "$PWD/test/ooe/rob_tb.cpp" ;;
+    vl ooe_rob_tb "$(for kv in $p; do printf -- '-G%s ' "$kv"; done)" "$(for kv in $p; do printf -- '-DRB_%s ' "$kv"; done)" \
+      "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" ;;
   ooe_go)
     slots=$(val CCV_TIER1_WARPS)
     vl ooe_go "-GS=$slots -GR=$width" "-DGO_S=$slots -DGO_R=$width" \
