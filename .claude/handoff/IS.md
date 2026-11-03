@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-02 (sweep). Keep this current at every task's end; it is what
+Updated 2026-11-03. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -37,12 +37,18 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 - Docs tool: a cell replace takes `with` and needs the block's `ifHash`
   and `ifRev`; target paragraph ids, not text ids.
 
+## Gate timing
+The core full gate can pass 2 h, the background-task limit: start it with
+setsid nohup tools/bg-run.sh is-sweep-gate tools/gate-push.sh --full, then
+wait in 2 h slices. tools/heavy-units.json is TI's: on a conflict there,
+take TI's branch's version.
+
 ## Daily sweep (scheduled task trig_015FmjgTTHxM4zTcmDTMf4tG, 02:23 PT)
 Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 268, OA 310, IS 186, TI 290, OI 252, CP 152, DA 103, RA 59, RI 1.
+Conventions 17, AR 269, OA 316, IS 189, TI 297, OI 254, CP 152, DA 104, RA 60, RI 1.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.
@@ -66,11 +72,6 @@ Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
   A new agent RH has a handoff on core (ccr-c22116ce-1vzyjg). CP's snapshot d9ddd2c builds O-83 and O-84; TI pinned it.
 
 ## Open work (most urgent first)
-0. Core sweep merge of 2026-11-02 (b12fc59, 108 commits) is held: the full
-   gate went red on check-ngd's light limit, a measuring bug (IS-26). TI
-   fixed it in eda9ce8 and rings IS when pushed. Then merge TI's branch,
-   tools/gate-push.sh --full (run detached via setsid + bg-run.sh: the gate
-   now takes ~4 h, past the 2 h background limit), push, and close IS-26.
 1. TI-49 (2) and (3): OA rules on quieter notices and the register-reader
    subagent; follow the skill once it changes.
 2. IS-14 item 2 (redux) waits on CP; item 3 (position hints) waits on
