@@ -23,6 +23,7 @@ module ooe_trio #(
   parameter int NC = 4,
   parameter int S  = 4,
   parameter int FB = 1,
+  parameter int IRK = 4,     // ooe_sched's idle-R run (RA-17)
   parameter logic [63:0] LAT  = 64'h0000_050c_0000_0703,
   parameter logic [63:0] FAST = 64'h0000_0000_0000_0400,
   parameter logic [23:0] PEN  = 24'h03_02_00,
@@ -69,6 +70,9 @@ module ooe_trio #(
   input  logic [N*N-1:0]    sdep_cq03h,
   input  logic [N*LS-1:0]   sslot_cq03h,
   input  logic [N*9-1:0]    res_cq03h,
+  input  logic [NR-1:0]     ret_cq03h,
+  input  logic [NR-1:0]     brk_cq03h,
+  input  logic              mig_cq02h,
   input  logic [N-1:0]      chas_cq03h,
   input  logic [N*W-1:0]    cidx_cq03h,
   input  logic [NR*NR-1:0]  older_r_cq03h,
@@ -78,7 +82,10 @@ module ooe_trio #(
   // A negative control (trio_tb's TRIO_CONTROL): 0 none, 1 no-msd (the
   // held misses never reach ooe_sched), 2 no-miss-lead (no event lead),
   // 3 late-leads (the miss pulses and held misses a cycle late, as flops of
-  // their own would give them), 4 no-alloc-lead.
+  // their own would give them), 4 no-alloc-lead, 5 no-ret-hold (no ret
+  // reaches ooe_sched), 6 no-rep-lead (the bench's alone: it rewrites
+  // ooe_sched's ready register enable), 7 no-idle-r (no migration reaches
+  // ooe_sched, so RA-17's force never holds R).
   input  logic [2:0]        ctl,
   // What the bench compares.
   output logic [N-1:0]      grant_cq04h,
@@ -124,6 +131,8 @@ module ooe_trio #(
   // The control's view of what reaches ooe_sched.
   logic [N-1:0] msd_q, mis_q, s_msd, s_mis;
   logic         s_wml, s_alloc;
+  logic [NR-1:0] s_ret;
+  logic          s_mig;
   always_ff @(posedge ooe_core_clk) begin
     msd_q <= msd_cq02h;
     mis_q <= miss_cq02h;
@@ -133,6 +142,8 @@ module ooe_trio #(
     s_mis   = ctl == 3'd3 ? mis_q : miss_cq02h;
     s_wml   = ctl == 3'd2 ? 1'b0 : wml;
     s_alloc = ctl == 3'd4 ? 1'b0 : alloc_cq02h;
+    s_ret   = ctl == 3'd5 ? '0 : ret_cq03h;
+    s_mig   = ctl == 3'd7 ? 1'b0 : mig_cq02h;
   end
   // V-65 (OA's response OI-45 (1)): ooe_sched's issued after an edge,
   // formed from its own replay rule, is ooe_rs's issued register after
@@ -150,7 +161,7 @@ module ooe_trio #(
   end
   `CCV_ASSERT(v65_issued, ctl != 3'd0 || ((ise_q ^ u_rs.iss_cq02h) & valid_cq02h & ~fre_q & ~gr_q) == '0)
   `CCV_ASSERT(v65_stale_grant, ctl != 3'd0 || (gr_q2 & u_rs.iss_cq02h & ~grant_cq04h) == '0)
-  ooe_sched #(.N(N), .NR(NR), .S(S), .FB(FB)) u_sched (
+  ooe_sched #(.N(N), .NR(NR), .S(S), .FB(FB), .IRK(IRK)) u_sched (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .wake_cq02h(wake_cq02h), .valid_cq02h(valid_cq02h),
     .iss_cq02h(iss_cq02h), .slot_cq02h(slot_cq02h), .active_cq02h(active_cq02h), .copy_cq02h(copy_cq02h),
@@ -159,7 +170,8 @@ module ooe_trio #(
     .vel_cq03h(vel_cq03h), .siss_cq03h(siss_cq03h), .sdep_cq03h(sdep_cq03h), .sslot_cq03h(sslot_cq03h),
     .res_cq03h(res_cq03h), .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h),
     .older_r_cq03h(older_r_cq03h), .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h),
-    .block_cq03h(block_cq03h), .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w));
+    .block_cq03h(block_cq03h), .ret_cq03h(s_ret), .brk_cq03h(brk_cq03h), .mig_cq02h(s_mig),
+    .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w));
 endmodule
 `undef CCV_CLK
 `undef CCV_RST

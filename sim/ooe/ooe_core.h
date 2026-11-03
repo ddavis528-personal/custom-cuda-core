@@ -419,7 +419,7 @@ struct Config {
   /// room reads 0 for squash_room_lag cycles after its squash cycle (1, the
   /// default, OA's rev 280: the run's scan after a squash is from flops). 0
   /// is the same-cycle form.
-  unsigned resolve_lag = 0;
+  unsigned resolve_lag = 1;
   unsigned defer_release_lag = 0;
   unsigned squash_room_lag = 1;
   /// Measurement arms for resolve_lag (OI-86): lag only mispredicts (a
@@ -430,9 +430,27 @@ struct Config {
   /// only, branches and calls resolving from RCU's lead at 0. ret_hold: a
   /// branch or call is not selected for RCU the cycle after a ret is, so the
   /// ROB's one outcome path never resolves a branch beside a ret (checked;
-  /// inject_no_ret_hold drops the hold).
-  unsigned resolve_lag_ret_only = 0;
-  unsigned ret_hold = 0;
+  /// inject_no_ret_hold drops the hold). Both 1, with resolve_lag 1 (rets
+  /// at lag 1, branches and calls at 0), squash_act_lag 1 and
+  /// squash_held_room_lag 1, are the defaults (OA's rev 294, OI-98).
+  unsigned resolve_lag_ret_only = 1;
+  unsigned ret_hold = 1;
+  /// RA-17 (OA's revs 298-299): a migration borrows R's PRF ports, a row in
+  /// each cycle R holds no op. While one is in flight (restore-allocate to
+  /// restore-activate; a demotion's map to its slot's free), select leaves
+  /// R idle in a cycle whose cycle before last ended idle_r_k - 2 cycles
+  /// running with R granted (decided a cycle ahead, as ooe_sched's force
+  /// register is: R's grant last cycle is select's own deepest path), so
+  /// never idle_r_k running, and a natural idle restarts the count: 17
+  /// rows in at most 17 x idle_r_k cycles. The run counts R's grants
+  /// whether or not a migration is in flight. ooe_sched builds 0 and 3 up. 0 is off; 4 is RA's plan until Phase 1. Checked: no migration
+  /// sees idle_r_k cycles running with R granted (inject_no_idle_r drops
+  /// the force). The sectioned select only (R is its resource 4).
+  unsigned idle_r_k = 0;
+  /// RA-29 (a)'s price: collectives get R's own copy in select's pick, so
+  /// one may go beside an RCU-only op (the design keeps them one class, at
+  /// most one a cycle; inject_split_r_class is that rule's control).
+  bool split_r_class = false;
   unsigned branch_ends_window = 1;
   /// A squashed entry held for an op in flight frees its ROB slot as the op
   /// lands and its names a cycle later (1, the default, OA's rev 280: the
@@ -444,7 +462,7 @@ struct Config {
   /// registered squash, which RS, RAT, decq and the go take with a lead).
   /// Meanwhile the slot runs on: rename takes the wrong path, select issues
   /// it, and the squash takes all of it.
-  unsigned squash_act_lag = 0;
+  unsigned squash_act_lag = 1;
   /// The go's run from the tail sees a held entry's release a cycle late
   /// (OI-85 slice 2): the release comes off the done path, too deep for the
   /// scan that forms the run, so the scan reads it as held one cycle more.
@@ -461,13 +479,16 @@ struct Config {
   /// (that search would be the squash's, NGD-1) and reads the run from the
   /// held flops after. Without held entries the squash's run is the
   /// occupancy's, from flops, at once.
-  unsigned squash_held_room_lag = 0;
+  unsigned squash_held_room_lag = 1;
 
   // -- fault injection: the negative controls the core itself must carry ------
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
   bool inject_row_no_hold = false; ///< select issues a row past 3 dones in flight (row-no-hold, OI-90)
   bool inject_retire_unresolved = false;  ///< resolve_lag: a branch retires before its resolution acts
   bool inject_no_ret_hold = false;  ///< ret_hold: a branch is selected the cycle after a ret
+  bool inject_no_idle_r = false;  ///< idle_r_k: select never leaves R idle for a migration (RA-17)
+  bool inject_pq_no_dep = false;  ///< predicate logic's (vote's, ballot's) imm sources wake nothing (RA-29 (e))
+  bool inject_split_r_class = false;  ///< a collective and an RCU-only op go together at R (RA-29 (a))
   bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
@@ -602,7 +623,8 @@ struct SchedAttr {
   static SchedAttr decode(uint32_t a);
 };
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
-enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3 };
+enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3,
+               kLatClsCollective = 5 };
 enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
 inline bool isBarrierSer(unsigned s) { return s == kSerBarrier || s == kSerArrive; }
 
@@ -1115,6 +1137,9 @@ public:
   /// from now (read only under Config::miss_lead).
   void hint(unsigned rob_tag);
   uint64_t now() const { return now_; }   ///< the last cycle run
+  /// R held no op at the last cycle's select: a migration's row may use
+  /// its PRF port (RA-17).
+  bool rIdle() const { return r_idle_; }
   bool reqStopQ() const { return req_stop_q_; }   ///< req_rows_late's stop lead (benches)
   void alloc(const Alloc &a);
   void demote(unsigned warp);
@@ -1506,9 +1531,15 @@ public:
     /// candidates and the grants. sel_live: the sectioned select ran.
     std::vector<uint8_t> sel_valid, sel_elig, sel_iss, sel_rq, sel_gnt, sel_ready, sel_conf, sel_slot, sel_copy,
         sel_chas, sel_cand, sel_grant;
+    /// ret_hold's (OA's rev 293): each entry a ret, a branch or call on
+    /// RCU (neither a copy), and held this cycle, the cycle after a ret's
+    /// select.
+    std::vector<uint8_t> sel_ret, sel_brk, sel_hold;
     std::vector<unsigned> sel_res, sel_cidx;
     unsigned sel_busy = 0, sel_block = 0;
     bool sel_live = false;
+    /// RA-17's: a migration is in flight this cycle (under idle_r_k).
+    bool sel_mig = false;
   };
   /// The timer's word on an entry: issued, its full-latency wake raised, and
   /// not speculative, so confirmation may take it (confirmPass).
@@ -1742,7 +1773,14 @@ private:
   void robStop(const char *why) { if (!roblog_.stop) roblog_.stop = why; }
   bool branch_squash_ = false;              ///< squashAfter from a branch's resolution (ROB slice 2b builds it)
   uint64_t ret_sel_at_ = ~0ull;             ///< ret_hold: the cycle a ret was last selected for RCU
+  /// ret_hold: no branch or call is selected for RCU this cycle.
+  bool retHeld() const { return cfg_.ret_hold && !cfg_.inject_no_ret_hold && ret_sel_at_ + 1 == now_; }
   uint64_t res_ret_ = ~0ull;                ///< ret_hold's check: the cycle the last ret resolves
+  unsigned r_run_ = 0;                      ///< idle_r_k: cycles running with R granted, a migration in flight
+  unsigned r_run_q_ = 0;                    ///< r_run_ a cycle earlier (the force's term)
+  bool r_idle_ = true;                      ///< R held no op at this cycle's select
+  /// idle_r_k: a migration is in flight in some slot (RA-17's window).
+  bool migInFlight() const;
   GoLog golog_;
   void goRoomNext();
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)

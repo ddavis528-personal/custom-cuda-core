@@ -47,7 +47,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
                                      {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge},
-                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"ret_now", &ret_now}, {"go_static", &go_static},
+                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"split_r_class", &split_r_class}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
@@ -436,12 +436,13 @@ void Core::cycle(uint64_t now) {
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
-                 &wlog_.sel_cand, &wlog_.sel_grant})
+                 &wlog_.sel_cand, &wlog_.sel_grant, &wlog_.sel_ret, &wlog_.sel_brk, &wlog_.sel_hold})
     v->assign(n_, 0);
   wlog_.sel_res.assign(n_, 0);
   wlog_.sel_cidx.assign(n_, 0);
   wlog_.sel_busy = wlog_.sel_block = 0;
   wlog_.sel_live = false;
+  wlog_.sel_mig = false;
   wlog_.ralloc.clear();
   wlog_.hop_live = false;
   wlog_.hop_dep.clear();
@@ -1055,7 +1056,7 @@ void Core::addDeps(unsigned e, const RobEntry &r, bool copy_half) {
   // except for a masked load, whose copy reads it instead.
   if (r.merge && r.alloc_gpr && !r.copy) dep(e, r.pold, false, group);
   if (u.shape.guard || u.shape.pdata) dep(e, r.ppguard, true, -1);
-  if (u.shape.pred_logic) {
+  if (u.shape.pred_logic && !cfg_.inject_pq_no_dep) {
     dep(e, r.pq[0], true, -1);
     dep(e, r.pq[1], true, -1);
   }
@@ -2854,9 +2855,38 @@ bool Core::memopOrderOk(const Slot &s, const RobEntry &r) const {
   return true;
 }
 
+bool Core::migInFlight() const {
+  for (const Slot &s : slot_)
+    if (s.st == WarpState::kAllocated || s.st == WarpState::kDrained || (s.st == WarpState::kDemoting && s.map_sent))
+      return true;
+  return false;
+}
+
 void Core::selectSectioned() {
-  constexpr unsigned kRes = 9, kP0 = 5;
+  constexpr unsigned kP0 = 5, kR = 4, kRc = 9;
+  // RA-29 (a): RCU-only ops and warp-collectives are one issue class at R,
+  // one a cycle. split_r_class (a price) and inject_split_r_class (its
+  // control) give collectives R's own copy in the pick, kRc, so one of
+  // each may go together.
+  const bool split = cfg_.split_r_class || cfg_.inject_split_r_class;
+  const unsigned kRes = split ? 10 : 9;
+  const auto pickRes = [&](unsigned e) {
+    const unsigned m = rs_[e].res;
+    if (!split || !((m >> kR) & 1u) || rs_[e].copy) return m;
+    if (slot_[rs_[e].slot].rob[rs_[e].rob].u.attr.lat_class != kLatClsCollective) return m;
+    return (m & ~(1u << kR)) | (1u << kRc);
+  };
   unsigned busy = 0;
+  // idle_r_k (RA-17): R left idle this cycle for a migration's row.
+  const bool mig = cfg_.idle_r_k && migInFlight();
+  // Decided a cycle ahead, as ooe_sched's force register is: the run as
+  // the cycle before last ended, K - 2 grants, whatever the last cycle
+  // did (R's grant there is select's own deepest path).
+  const bool force_r = mig && !cfg_.inject_no_idle_r && r_run_q_ + 2 >= cfg_.idle_r_k;
+  if (force_r) {
+    busy |= 1u << kR | (split ? 1u << kRc : 0u);
+    count("issue.idle_r");
+  }
   std::vector<bool> memop_block(slot_.size(), false);
   // A bulk discard takes P0 for the cycle, and no memop of its warp goes
   // with it (V-23).
@@ -2873,7 +2903,7 @@ void Core::selectSectioned() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.eligible_at > now_ || (x.res & busy)) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
-    if (cfg_.ret_hold && !cfg_.inject_no_ret_hold && ret_sel_at_ + 1 == now_ && !x.copy) {   // OA's rev 293
+    if (retHeld() && !x.copy) {   // OA's rev 293
       const RobEntry &rb = slot_[x.slot].rob[x.rob];
       if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
     }
@@ -2908,6 +2938,7 @@ void Core::selectSectioned() {
   // ooe_select's inputs as this select sees them, and its candidates.
   wlog_.sel_live = true;
   wlog_.sel_busy = busy;
+  wlog_.sel_mig = mig;
   for (unsigned si = 0; si != slot_.size(); ++si) wlog_.sel_block |= unsigned(memop_block[si]) << si;
   for (unsigned e = 0; e != n_ && e < wlog_.sel_valid.size(); ++e) {
     const RsEntry &x = rs_[e];
@@ -2930,10 +2961,15 @@ void Core::selectSectioned() {
     wlog_.sel_copy[e] = x.copy;
     wlog_.sel_chas[e] = x.cls == RsCls::kMiu && r.copy && r.rs_copy != kNoEntry;
     wlog_.sel_cidx[e] = wlog_.sel_chas[e] ? r.rs_copy : 0;
+    // ret_hold's terms (OA's rev 293): a ret, a branch or call on RCU, and
+    // whether the hold took the entry this cycle.
+    wlog_.sel_ret[e] = !x.copy && r.u.attr.ret;
+    wlog_.sel_brk[e] = !x.copy && r.u.attr.branch && !r.u.attr.ret && x.cls == RsCls::kRcu;
+    wlog_.sel_hold[e] = wlog_.sel_brk[e] && retHeld();
   }
   for (unsigned e : cand) wlog_.sel_cand[e] = 1;
   std::vector<PickReq> preq;
-  for (unsigned e : cand) preq.push_back({rs_[e].res, rs_[e].age});
+  for (unsigned e : cand) preq.push_back({pickRes(e), rs_[e].age});
   std::vector<unsigned> grant;
   unsigned lost = 0;
   const std::vector<bool> won = pickResources(preq, kRes, &lost, cfg_.pick_fallback);
@@ -2996,10 +3032,13 @@ void Core::selectSectioned() {
     grant.insert(grant.end(), extra.begin(), extra.end());
   }
   const auto isExtra = [&](unsigned e) { return std::find(extra.begin(), extra.end(), e) != extra.end(); };
-  unsigned used = busy, issued = 0;
+  unsigned used = busy, issued = 0, r_grants = 0;
+  bool r_granted = false;
   for (unsigned e : grant) {
-    if ((used & rs_[e].res) && !isExtra(e)) { err("V-60: a resource granted twice in a cycle"); continue; }
-    used |= rs_[e].res;
+    if ((used & pickRes(e)) && !isExtra(e)) { err("V-60: a resource granted twice in a cycle"); continue; }
+    used |= pickRes(e);
+    r_granted |= (rs_[e].res >> kR) & 1;
+    r_grants += (rs_[e].res >> kR) & 1;
     const RsEntry &x = rs_[e];
     const RobEntry &r = slot_[x.slot].rob[x.rob];
     unsigned port = unsigned(__builtin_ctz(x.res));
@@ -3028,6 +3067,20 @@ void Core::selectSectioned() {
     ++issued;
   }
   ++histograms["issue_per_cycle"][issued];
+  // RA-29 (a): one of R's class a cycle, RCU-only or collective.
+  if (r_grants > 1) {
+    count("issue.r_class_pair");
+    if (!cfg_.split_r_class) err("RA-29: %u ops of R's class (RCU-only, collective) granted in a cycle", r_grants);
+  }
+  r_idle_ = !r_granted;
+  if (r_granted) count("issue.r");   // R's grants (RA-17's price)
+  // The run counts R's grants whether or not a migration is in flight
+  // (ooe_sched's run register needs no migration flop so), so a migration
+  // that starts in a run has R held at once.
+  r_run_q_ = r_run_;
+  r_run_ = cfg_.idle_r_k && r_granted ? r_run_ + 1 : 0;
+  if (mig && r_run_ >= cfg_.idle_r_k)
+    err("RA-17: R granted %u cycles running while a migration is in flight", r_run_);
   ++histograms["sections_idle"][4 - unsigned(__builtin_popcount(used & 0xFu))];
   // OI-81's figure: GPR rows not in the pool (held, buffered or not, and on
   // their way back), each cycle.
@@ -3071,7 +3124,7 @@ void Core::select() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
-    if (cfg_.ret_hold && !cfg_.inject_no_ret_hold && ret_sel_at_ + 1 == now_ && !x.copy) {   // OA's rev 293
+    if (retHeld() && !x.copy) {   // OA's rev 293
       const RobEntry &rb = slot_[x.slot].rob[x.rob];
       if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
     }

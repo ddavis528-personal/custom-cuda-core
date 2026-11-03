@@ -20,13 +20,16 @@
 // Negative controls (SELECT_CONTROL=<name>) perturb the driving and must
 // be caught: no-order (every memop sees no older unissued memop of its
 // warp), no-conf (every source counts as confirmed) and no-busy (a bulk
-// discard takes nothing).
+// discard takes nothing), and no-hold (the ret hold, OA's rev 293, holds
+// nothing). The random runs are followed by testRetHold's mix (every third
+// branch a ret) under ret_hold, so the hold is exercised.
 // Usage: select_tb [seeds]
 //===----------------------------------------------------------------------===//
 #include "Vooe_select.h"
 #include "verilated.h"
 #include "ooe_core.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -36,6 +39,7 @@ using ccv::ooe::Config;
 using ccv::ooe::Core;
 
 int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &));
+int ooeTestRandomRetsHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
 
 namespace {
 constexpr unsigned N = SEL_N, NR = SEL_NR, NM = N - NR, S = SEL_S;
@@ -45,7 +49,16 @@ constexpr unsigned LS = bits(S), W = bits(N);
 std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_select> dut;
 std::string control;
-unsigned long long cycles = 0, followed = 0, cands = 0, grants = 0, memops = 0, mismatches = 0;
+unsigned long long cycles = 0, followed = 0, cands = 0, grants = 0, memops = 0, held = 0, mismatches = 0;
+
+/// testRetHold's settings (OA's rev 293): rets resolve a cycle after their
+/// done, and the hold keeps branches and calls off RCU the cycle after.
+void retConfig(Config &c) {
+  c.resolve_lag = 1;
+  c.resolve_lag_ret_only = 1;
+  c.squash_act_lag = 1;
+  c.ret_hold = 1;
+}
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -82,6 +95,7 @@ void hook(const Core &c) {
     setBit(dut->rq_cq03h, e, w.sel_valid[e] && w.sel_rq[e]);
     setBit(dut->ready_cq03h, e, w.sel_valid[e] && w.sel_ready[e]);
     setBit(dut->gnt_cq03h, e, w.sel_valid[e] && w.sel_gnt[e]);
+    if (e < NR) setBit(dut->hold_cq03h, e, w.sel_valid[e] && w.sel_hold[e] && control != "no-hold");
     setBit(dut->vel_cq03h, e, w.sel_valid[e] && w.sel_elig[e]);
     setBit(dut->iss_cq03h, e, w.sel_valid[e] && w.sel_iss[e]);
     setField(dut->slot_cq03h, e * LS, LS, w.sel_slot[e]);
@@ -97,6 +111,7 @@ void hook(const Core &c) {
     std::exit(2);
   }
   dut->busy_cq03h = control == "no-busy" ? 0 : w.sel_busy >> 5;
+  dut->rhold_cq03h = (w.sel_busy >> 4) & 1u;   // RA-17's force: R taken for a migration's row
   dut->block_cq03h = control == "no-busy" ? 0 : w.sel_block;
   for (unsigned e = 0; e != NR; ++e)
     for (unsigned j = 0; j != NR; ++j)
@@ -109,6 +124,7 @@ void hook(const Core &c) {
   for (unsigned e = 0; e != N; ++e) {
     const bool cd = getBit(dut->cand_cq03h, e), gr = getBit(dut->grant_cq03h, e);
     cands += w.sel_cand[e];
+    held += w.sel_hold[e];
     grants += w.sel_grant[e];
     memops += e >= NR && w.sel_grant[e];
     if (cd != bool(w.sel_cand[e])) fail("candidate differs", e, cd, w.sel_cand[e]);
@@ -123,13 +139,15 @@ int main(int argc, char **argv) {
   ctx = std::make_unique<VerilatedContext>();
   ctx->commandArgs(argc, argv);
   dut = std::make_unique<Vooe_select>(ctx.get());
-  const int model_fails = ooeTestRandomHooked(seeds, hook);
+  int model_fails = control == "no-hold" ? 0 : ooeTestRandomHooked(seeds, hook);
+  model_fails += ooeTestRandomRetsHookedWith(std::max(2u, seeds / 4), hook, retConfig);
   dut->final();
   std::printf("select_tb control=%s seeds=%u cycles=%llu followed=%llu candidates=%llu grants=%llu "
-              "memops=%llu mismatches=%llu model_failures=%d\n",
-              control.empty() ? "none" : control.c_str(), seeds, cycles, followed, cands, grants, memops,
+              "memops=%llu held=%llu mismatches=%llu model_failures=%d\n",
+              control.empty() ? "none" : control.c_str(), seeds, cycles, followed, cands, grants, memops, held,
               mismatches, model_fails);
-  const int rc = mismatches || model_fails ? 1 : 0;
+  if (!held) std::fprintf(stderr, "select_tb: the ret hold never held an entry\n");
+  const int rc = mismatches || model_fails || !held ? 1 : 0;
   dut.reset();
   ctx.reset();
   return rc;
