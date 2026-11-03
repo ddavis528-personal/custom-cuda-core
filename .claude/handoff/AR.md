@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-01. Keep this current at every task's end; it is what
+Updated 2026-11-03. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 
 ## Who and what
@@ -33,8 +33,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   take the scoped gate (verify.sh --changed <base>, SCOPED PASS); the
   sweep's merge and releases keep the full clean gate, so AR's sweep is
   unchanged.
-- Last sweep 2026-11-01: 5 branches merged (72 commits), full gate PASS,
-  session-home --check matches (tools/setup-session-home.py now merged in).
+- Last sweep 2026-11-02/03: e556fbc pushed on SPLIT PASS (cg alone 75 min,
+  exported, then gate-push --full --import; the whole gate in one 2h
+  background run timed out with cg and ngd sharing the heavy lock). If a
+  full gate times out again, split it the same way: `verify.sh --only cg`
+  then `gate-export.sh`, then `gate-push.sh --full --branches=<ours>
+  --import=<tgz>`. heavy-units.json conflicts come from older TI text riding
+  other agents' sweep merges: take TI's newest side. session-home matches.
 - Daily sweep (scheduled task trig_01V1WipqEXd8e7TAaWnKvQGu, 09:04 UTC):
   register section 4 from the bookmarks; fetch; merge every remote branch
   with commits ours lacks except `release` and `gate-scratch/*` (DA
@@ -63,8 +68,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 268, OA 310, TI 289, IS 185, CP 152, OI 252, DA 103,
-  Conventions 17, RA 58, RI 1 (tab 8e4547bc-c469, new 2026-11-02). Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  record): AR 269, OA 315, TI 296, IS 188, CP 152, OI 254, DA 104,
+  Conventions 17, RA 60, RI 1 (tab 8e4547bc-c469, new 2026-11-02).
+  AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
+  DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
+  ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
+  (PF-47 unheld then; check the PF-47 row once TI's notice lands). Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
