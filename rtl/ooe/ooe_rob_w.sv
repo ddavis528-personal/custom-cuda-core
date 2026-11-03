@@ -599,6 +599,8 @@ module ooe_rob_w #(
   logic [S*LB-1:0] r0_cq02h;                   // the run before the count (asserted to cover it)
   logic [2*A:0]    ug_cq02h;
   logic [A-1:0]    uxg_cq02h;
+  logic [D+A:0]    ugd_cq02h;                  // a release's thresholds: ufh more than t
+  logic [D:0]      uxr_cq02h;                  // a release's: ux more than m, picked by nlv
   logic [LA-1:0]   nk_cq02h;
   logic            anyp_cq02h;
   logic [S*A-1:0]  ugt_nx_cq02h;
@@ -620,7 +622,7 @@ module ooe_rob_w #(
     {ox_cq02h, ux_cq02h, uxa_cq02h, sc_cq02h} = '0;
     {hm_cq02h, xr_cq02h, wok_cq02h, wk_cq02h, gfe_v_cq02h, pfe_v_cq02h} = '0;
     {th_nx_cq02h, tk_cq02h, ufm_nx_cq02h, ufl_cq02h} = '0;
-    {dt_cq02h, rsel_cq02h, mku_cq02h, mkd_cq02h, nk_cq02h, ug_cq02h, uxg_cq02h} = '0;
+    {dt_cq02h, rsel_cq02h, mku_cq02h, mkd_cq02h, nk_cq02h, ug_cq02h, uxg_cq02h, ugd_cq02h, uxr_cq02h} = '0;
     {r0u_cq02h, r0d_cq02h, rdf_cq02h, rsq_cq02h, rcht_cq02h, ochs_cq02h, r0_cq02h} = '0;
     {anyp_cq02h, wpr_cq02h, nak_cq02h, mkj_cq02h} = '0;
     for (int s = 0; s < S; s++) begin
@@ -725,14 +727,22 @@ module ooe_rob_w #(
         for (int u = 0; u < NC; u++)
           woh_nx_cq02h[s * D + (D - u) % D] = woh_nx_cq02h[s * D + (D - u) % D] | ufh_nx_cq02h[s * NC + u];
         // The unfilled entries then end at D - 1: entry i is unfilled when
-        // the next count reaches D - i, each threshold from ux and picked
-        // by the go's count, as ufh_nx is (none after a squash).
+        // the next count reaches D - i (none after a squash). ux at least m
+        // is ufh at least m + k for this cycle's k landing fills: each
+        // threshold from the flopped count, picked by the fills' count, then
+        // by the go's (both late; NGD-3), as ugt is.
+        for (int t = 0; t < D + A + 1; t++) ugd_cq02h[t] = t < NC ? (ufh_cq02h[s * NC +: NC] >> t) != '0 : 1'b0;
+        for (int m = 1; m < D + 1; m++) begin
+          uxr_cq02h[m] = 1'b0;
+          for (int k = 0; k < A + 1; k++)
+            uxr_cq02h[m] = uxr_cq02h[m] | ((nlv_cq02h[s * LA +: LA] == LA'(k)) & ugd_cq02h[m + k]);
+        end
         for (int i = 0; i < D; i++) begin
           ufm_nx_cq02h[s * D + i] = 1'b0;
           for (int j = 0; j < A + 1; j++)
             if (al_n_cq02h[s * LA +: LA] == LA'(j))
               ufm_nx_cq02h[s * D + i] = ufm_nx_cq02h[s * D + i] |
-                                        (D - i - j <= 0 ? 1'b1 : ((ux_cq02h >> (D - i - j)) != '0));
+                                        (D - i - j <= 0 ? 1'b1 : uxr_cq02h[D - i - j]);
           ufm_nx_cq02h[s * D + i] = ufm_nx_cq02h[s * D + i] & ~rd_s_cq02h[s];
         end
       end
