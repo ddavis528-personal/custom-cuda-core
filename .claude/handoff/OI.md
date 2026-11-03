@@ -35,8 +35,11 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 260, OA 305, RA 44 (RA tab 9851686b-2b0a; RA not in local roster),  IS 182, TI 282, OI 250, CP 149, DA 98 (sweep 11-01). Pings: Friday 10-30's all
-answered (checked 10-30); next pings Friday 11-06.
+Conventions 17 (RA-n RCU arch, RI-n RCU impl added), AR 268, OA 310, RA 58 (RA tab
+9851686b-2b0a; RA/RI not in local roster), IS 185, TI 290, OI 252, CP 152, DA 103
+(sweep 11-02 10:20; DA 99-103: RCU next after OOE, RI session, RCU C++ model).
+Pings: next Friday 11-06. Sweep 11-02 merge pending until the wt11 gate ends
+(skip gate-scratch/*).
 
 ## Compute (DA, 2026-10-31)
 - OI-95 raised (rev 245, TI notified): persistent synth-cache incl. ABC,
@@ -83,6 +86,67 @@ answered (checked 10-30); next pings Friday 11-06.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-2a. STATE 11-02 (wt13 e35c9f9 = split + archive, on fe523c4 sweep merge): DA closed the
+   equivalence work: old ROB + miter moved to archive/ooe-rob-split/ (README has result:
+   BMC clean thru frame 9 at D8, control fails f8; never in gate/lint/bench - DA: no
+   full-size ROB check may stay in a regression). Full gate via gate-push --full running
+   (pgid 461, log scratchpad/gatepush13.log). Then OI row to OA+TI: figures (b) ngd 23.1,
+   1915 MiB, widest head_cq02h[0] 2205; CG misfits 55 = 1.03% (win_en gate 20 @37/39%);
+   budgets carried (c); TI: drop ooe_rob from tools/heavy-units.json, stale ooe_rob
+   comments in check-cg/ngd + ci.yml, gate-scope selftest path rtl/ooe/ooe_rob.sv.
+-2. TOP PRIORITY (DA rev 104, OA-24 rev 311): split ooe_rob into 4 identical ooe_rob_w #(WID)
+   (all per-warp state inside; no unique instance; ooe_rob = wires only or the four in
+   the OOE top; no parent logic). Fill: each takes Rename 2 lanes with fl_slot==WID;
+   dones/MIU cmpl/R branch outcome match rob_tag warp bits == WID; frees: each flops its
+   gfree/pfree + valids (cq03h/cq02h), ooe_freelist ORs the four (arrival 2.0, OA).
+   Done: (a) benches/kernels pass + miter old ooe_rob vs 4x+OR4 (OR4 in harness);
+   (b) ooe_rob_w flops, peak check-ngd MiB (<2048), f-f NGD w/ fanout, widest net
+   (~700 expected); (c) ooe_rob.ngd.json budgets carry port by port (OA re-signs);
+   (d) CG misfits at a quarter's 2% to OA. TI: cg-units, heavy-units, ratchet carry.
+   Ahead of slice 2b, idle-R counter, fanout plan's rob part. Work tree wt13 (branch
+   oi-rob-split off 917752b; MERGE wt11's pushed merge in first - it has TI's heavy lock).
+   DONE (uncommitted, unbuilt): git mv ooe_rob -> ooe_rob_w (+ .ngd.json, budgets carried
+   with a note), SA/WID params, S=1 internal, compares LS'(WID+s), TW'(WID*D+e),
+   LS'(WID+r/NK); harness test/ooe/ooe_rob_tb.sv (generate g_w[w].u_w, OR4 of frees
+   and leads); rob_tb.cpp -> Vooe_rob_tb; run-rtl/cg-build/cg-units -> ooe_rob_w (scope
+   g_w[0].u_w: CHECK the VCD scope name); ooe_freelist FS param (ORs sources; fls/fms/fss
+   internals), freelist_tb FL_FS spreads frees p%FS, lead rotates; FS 4 in freelist
+   units + run-rtl/cg-build; ooe_rename FS pass-through (default 1).
+   TODO: build; rob_tb force_rsv poke (rootp name) for two-resolutions; miter
+   (scratchpad/miter/build.sh, rob_miter_tb.cpp: old ooe_rob as Vref); NGD/CG of the unit
+   (flops, peak MiB, f-f w/ fanout, widest net); docs/ooe-rtl-plan.md; OI row to OA+TI.
+-1. 917752b PUSHED (SCOPED PASS, serial). Sweep merge 9a5863f in wt11 (7 branches:
+   126afa13 42, 183cc441 15, 3868632d 2, 80102643 13, 9eb50716 2, c22116ce 3, infra 15;
+   walkthrough regen, perf-register union PF-47 held + PF-48/49). Gate pgid 18623,
+   default jobs (TI's heavy-unit lock now in), log scratchpad/gate11c.log. Then wt12
+   (ooe_wake grant-split compares) rebased onto it: measure NGD at LAT_SPEC 12/LAT_MISS 15.
+-0.5 TI rev 288 (re:RA-31, row .461856): ADDR_BASE=1 (L1_WAKE 12, L1_CMPL 14, ooe_wake
+   LAT_SPEC 12/LAT_MISS 15) reverted until OI fixes: (1) ooe_wake NGD-3 cls_cq01h/
+   kind_cq01h 26.1/26.0 > 25 (budget arrive 9; late_time + reached(age,thr) ~l.207-218;
+   precompute per-class thresholds/compare terms, or OA re-budgets); (2) run-rtl
+   'control no-msd (rs)' MISSED at 12/14 (rs_tb 25 seeds; needs stimulus/seeds, control
+   unchanged); (3) docs/ooe-model.md:77 L1_WAKE 16->12 at reapply; (4) merge TI's push
+   (lead slice, sim/ooe/ooe_block.cpp senders fill lead). Then answer in OI tab, ring TI.
+   TI tab bookmark 288.
+-0.4 TI rev 289: (a) OI-102 answered (eb170bf: tools/gate-scratch.sh send/fetch-commit on
+   gate-scratch/OI); CCV_HEAVY_SERIAL lock default on (tools/heavy-units.json: ooe_rob,
+   ooe_rename; an unlisted unit peaking >2048 MiB fails; ooe_go 1947 is close) - list
+   big units in the commit that grows them. Sweep merge SKIPS gate-scratch/* (follow at
+   every sweep; the trigger prompt is unchanged, ask DA before rewriting it).
+   (b) RA-33 fanout term report-only (ceil(log4(loads/4)) INV x 0.68 past fanout 4):
+   10 OOE units over 25 (rob 44.3 f-f, 2783 loads; rename 30.7 / f-o 30.0, 261; rendep
+   30.5, 377; rs 29.9, 377; freelist gsec 28.8, 1496 / gpr 27.7 / pred 28.3; prodmap
+   28.8, 1826; go 27.7, 959; decq 26.1, 144). Asked: name each widest net (flush, valid
+   broadcast, age row...) and say keep-copy replication or re-budget. Answer in OI tab.
+-0.3 OA rev 310: fanout - 25 holds, no allowance. Per unit (10): widest nets, flop-driven?,
+   fix (flop-driven: k (* keep *) copies at the leaves, e.g. rob 2783 -> 16x174 = 15 flops,
+   6->3 stages; logic-driven: restructure/register), flop count. rob +19 = nets in series
+   (row select then per-entry broadcast): register the decoded one-hot or split the row
+   write. Ports over budget (rename f-o 30.0, go 25.8): NGD-7 output copies, no re-budget.
+   Copies count in CG. Extra stage -> OA with price (>0.5% DA). Enforcement DA's.
+   ooe_wake: OA grants cls/kind arrival 2 if driven straight from a flop w/ NGD-7 copy
+   (both .ngd.json in one commit); try the shallower cone first (wt12 has it). Then
+   no-msd (rs); then TI reapplies base 1 and OI reruns S1 + floors. OA bookmark 310.
 0. OA revs 306-307 + AR rev 267 (RA-31/32, notices 01:36-01:40 11-02): measure
    ooe_rs select-path NGD for the issue lead slice (selected entry's section mask +
    operand-use bits, R's guard phys pred, grant-muxed and flopped; fallback a

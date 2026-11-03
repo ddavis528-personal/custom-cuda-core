@@ -60,8 +60,8 @@
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: rob_tb [seeds] | rob_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
-#include "Vooe_rob.h"
-#include "Vooe_rob___024root.h"
+#include "Vooe_rob_tb.h"
+#include "Vooe_rob_tb___024root.h"
 #include "verilated.h"
 #include "cg_trace.h"
 #include "ooe_core.h"
@@ -104,7 +104,7 @@ constexpr unsigned LS = S > 1 ? bits(S) : 1, LD = bits(D), TW = LS + LD, LA = bi
 constexpr uint64_t PCM = (uint64_t(1) << PCW) - 1;
 
 std::unique_ptr<VerilatedContext> ctx;
-std::unique_ptr<Vooe_rob> dut;
+std::unique_ptr<Vooe_rob_tb> dut;
 std::string control;
 uint64_t current = 0;
 bool live = false, stopped = false;
@@ -157,8 +157,13 @@ void tick() {
   dut->eval();
   if (force_rsv) {
     force_rsv = false;
-    auto &w = dut->rootp->ooe_rob__DOT__rsv_cq02h;
-    for (unsigned i = 0; i != RB_S * RB_D; ++i) setBit(w, i, false);
+    // Every per-warp instance's (OA-24): the harness's g_w[w].u_w.
+    auto *r = dut->rootp;
+    for (auto *w : {&r->ooe_rob_tb__DOT__g_w__BRA__0__KET____DOT__u_w__DOT__rsv_cq02h,
+                    &r->ooe_rob_tb__DOT__g_w__BRA__1__KET____DOT__u_w__DOT__rsv_cq02h,
+                    &r->ooe_rob_tb__DOT__g_w__BRA__2__KET____DOT__u_w__DOT__rsv_cq02h,
+                    &r->ooe_rob_tb__DOT__g_w__BRA__3__KET____DOT__u_w__DOT__rsv_cq02h})
+      for (unsigned i = 0; i != RB_D; ++i) setBit(*w, i, false);
     dut->eval();
   }
   cg.dump();
@@ -763,7 +768,7 @@ int main(int argc, char **argv) {
   ctx->commandArgs(argc, argv);
   std::string vcd;
   if (cg.parse(argc, argv, vcd) || std::getenv("ROB_VCD")) CgRun::prepare(*ctx);
-  dut = std::make_unique<Vooe_rob>(ctx.get());
+  dut = std::make_unique<Vooe_rob_tb>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
   else if (const char *dv = std::getenv("ROB_VCD")) cg.open(*dut, dv);   // debugging
   // The random programs mispredict nothing, so a core runs past where its
