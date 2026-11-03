@@ -54,8 +54,8 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 - Push: tools/gate-push.sh (scoped gate; docs/ and .claude/ map to no
   sections). Merge commits only. No PRs. No model ids in commits.
 
-## Register bookmarks (2026-11-01)
-AR 267, OA 308, RA 59, DA 103, Conventions 17, CP 151, IS 184, TI 290, CP 150 (others as at session start: OI 252,
+## Register bookmarks (2026-11-02)
+AR 268, OA 310, RA 60, DA 103, Conventions 17, CP 152, IS 186, TI 295 (others as at session start: OI 252,
 CP 149, DA 99, Conventions 16).
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -134,6 +134,16 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
 - TI rev 289: heavy-unit lock + tools/heavy-units.json (eb170bf, on ccr-183cc441-doowtf; the sweep merges it);
   sweep task prompt now skips gate-scratch/* (updated 2026-11-02). Fanout term first run: 10 OOE units >25
   (ooe_rob 44.3); RCU's spec has per-bank-section select copies already.
+- Sweep 2026-11-03 pushed at 047159d (SPLIT SCOPED PASS: cg alone 58 min, exported, then gate-push --import; a
+  4-core container can't fit cg+ngd in one 2 h job). TI rev 295 fixed the heavy guard (per-command peaks, 16ab8ae).
+  OI's ooe_rob split landed (ooe_rob_w); heavy-units.json merged as ooe_rob_w, ooe_rename, ooe_sched.
+- Bank sizing (Daniel 2026-11-03: go ahead; size units like ooe_rob_w). Stand-in + driver in scratchpad sizing/
+  (rcu_bank_sz.sv, measure.py = check-ngd's own synth+ABC, private cold cache). ooe_rob_w ref: 5,359 flops, 158k cells,
+  1,914 MiB, 561 s. Bank 192 rows: 2 lanes 3,479 fl/99k cells/692 MiB; 4 lanes 6,551/193k/1,350; 8 lanes
+  12,695/383k/2,665 (heavy); full 32 lanes extrapolates ~50k/1.5M/~10.5 GB. Read flop-out 8.3 NGD (fanout 11.0) vs
+  Partition budget 7: R path tight. Write 7.3, write-data in 5.6. Proposed: 4-lane slices, 8/bank, 32 in RCU. Awaiting
+  Daniel on slicing + R-read depth before editing the spec. Keep big modules' param defaults small (Yosys elaborates
+  defaults at read: 4.7 GB on a 64k-cell unit).
 - Answers due: RA-16, RA-30, RA-36 (TI); RA-37/RA-38 AGREED by TI rev 290 (building: gate-scope + CLAUDE.md first, then makeRcu,
   blocks.list, check-rcu-unit, job_rcu_rtl, CCV_RCU_RTL), impl pending; RA-35 (AR); RA-37 (OA: RI 31 only, roster commit bc1c2b4 named at rev 55); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
