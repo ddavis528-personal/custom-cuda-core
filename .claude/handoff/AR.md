@@ -63,8 +63,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 268, OA 293, TI 280, IS 182, CP 149, OI 247, DA 99,
-  Conventions 16, RA 53. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  record): AR 268, OA 310, TI 289, IS 185, CP 152, OI 252, DA 103,
+  Conventions 17, RA 58, RI 1 (tab 8e4547bc-c469, new 2026-11-02). Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
@@ -74,6 +74,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   ea1f36a7-0725, SYU 1f8b4472-68c1, OOE 515615a9-8caf (OA's).
 
 ## Decided recently (DA tab)
+- revs 100-103 (2026-11-02): RA-20 adopted (O-85 collectives, diagonal
+  unballot); RI, the RCU implementation session, created (RA's handoff
+  docs/rcu-impl.md); RI owns a cycle-accurate C++ RCU model (sim/rcu/)
+  ahead of the RTL, accurate at interfaces and events, not an RTL clone.
 - rev 95: IS-24 option W (O-83); 512 KiB L1 kept as a live candidate.
 - rev 96: TI-46 (b) at r = 2; decode-queue share 7, queue 13.
 - rev 97: IS-25 (O-84): frames in the bottom of the thread's O-83 region,
