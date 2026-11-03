@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 316, RA 60, IS 188, TI 297, OI 257, CP 152, DA 104
+Conventions 17, AR 269, OA 316, RA 60, IS 188, TI 297, OI 262, CP 152, DA 104
 (sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -86,6 +86,13 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-4. FANOUT PLAN (OA rev 310): 7aeb62a PUSHED (rob_w head read via hoh keep copies
+   hrg/hrn/hrp; fanout f-f 38.7 -> 31.9). Row at OI rev 258 (corrected 262) to OA (re:RA-33, notified):
+   per-unit table, rulings asked for rs and decq (free-entry candidates ahead), freelist scan, sched
+   pick, rendep cp input, go fits. OI's own, no ruling: rob_w fill selects registered
+   (ufh -> fl_e ~800 loads), prodmap pm_cq02h copies (~3 NGD), rename
+   output copies (NGD-7; retrace the reported map first), rst_r01h copies. Tools: scratchpad/fo/path.py (worst path
+   with fanout from build/synth-cache/abc-*.blif; units.txt maps module -> blif).
 -3. OI-104 DONE on OI's side: b23bbd8 (store in ooe_rs, full gate PASS), the sweep
    merge 2f64d10 (full PASS), and 1f7c642 (pushed 11-03, SCOPED PASS). 1f7c642 has
    rendep build the per-port {cls,kind} (spec from c_x bit 20, XW 21) and rename

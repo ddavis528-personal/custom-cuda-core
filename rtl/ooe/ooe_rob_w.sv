@@ -398,6 +398,13 @@ module ooe_rob_w #(
   // every field. The no-op and complete bits an allocation writes need no
   // count (nop_d: lane j's bit at tail + j).
   logic [S*D-1:0] cand_al_cq02h, cand_fl_cq02h, nop_d_cq02h, ufm_cq02h;
+  // The unfilled mask as a register (the fanout plan, OA rev 310): ufm,
+  // decoded from the count each cycle, put about 15 NGD ahead of the
+  // squash's release and every entry's write. ufq holds the same set, kept
+  // up to date from this cycle's allocations and landed fills (asserted
+  // equal to ufm, which only the check reads).
+  logic [S*D-1:0] ufq_cq02h, ufm_nx_cq02h;
+  logic [D-1:0]   ufl_cq02h;                   // this cycle's landed fills' entries
   logic [D-1:0]   cw_cq02h;
   always_comb begin
     cand_al_cq02h = '0;
@@ -516,8 +523,8 @@ module ooe_rob_w #(
       // unfilled_owes_none): the held set needs no unfilled mask, which
       // keeps the fill pointer's decode off the room's path (NGD-1).
       hds_cq02h[e]  = sqe_cq02h[e] & outq_cq02h[e];
-      frel_cq02h[e] = sqe_cq02h[e] & ~ufm_cq02h[e] & ~outq_cq02h[e];
-      krel_cq02h[e] = sqe_cq02h[e] & ufm_cq02h[e];
+      frel_cq02h[e] = sqe_cq02h[e] & ~ufq_cq02h[e] & ~outq_cq02h[e];
+      krel_cq02h[e] = sqe_cq02h[e] & ufq_cq02h[e];
     end
   // The retirements: entry e leaves this cycle.
   logic [S*D-1:0] rt_e_cq02h;
@@ -612,7 +619,7 @@ module ooe_rob_w #(
     {w_nx_cq02h, wg_nx_cq02h, wp_nx_cq02h, wgf_nx_cq02h, wpf_nx_cq02h} = '0;
     {ox_cq02h, ux_cq02h, uxa_cq02h, sc_cq02h} = '0;
     {hm_cq02h, xr_cq02h, wok_cq02h, wk_cq02h, gfe_v_cq02h, pfe_v_cq02h} = '0;
-    {th_nx_cq02h, tk_cq02h} = '0;
+    {th_nx_cq02h, tk_cq02h, ufm_nx_cq02h, ufl_cq02h} = '0;
     {dt_cq02h, rsel_cq02h, mku_cq02h, mkd_cq02h, nk_cq02h, ug_cq02h, uxg_cq02h} = '0;
     {r0u_cq02h, r0d_cq02h, rdf_cq02h, rsq_cq02h, rcht_cq02h, ochs_cq02h, r0_cq02h} = '0;
     {anyp_cq02h, wpr_cq02h, nak_cq02h, mkj_cq02h} = '0;
@@ -646,6 +653,12 @@ module ooe_rob_w #(
         toh_nx_cq02h[s * D +: D]   = toh_nx_cq02h[s * D +: D] |
                                      ({D{al_n_cq02h[s * LA +: LA] == LA'(j)}} & rotl(toh_cq02h[s * D +: D], j));
       end
+      // The unfilled mask: the fills that land leave it (the first nlv from
+      // the fill pointer), this cycle's allocations join it.
+      ufl_cq02h = '0;
+      for (int k = 0; k < A; k++)
+        if (nlv_cq02h[s * LA +: LA] > LA'(k)) ufl_cq02h = ufl_cq02h | rotl(woh_cq02h[s * D +: D], k);
+      ufm_nx_cq02h[s * D +: D] = (ufq_cq02h[s * D +: D] & ~ufl_cq02h) | al_e_cq02h[s * D +: D];
       // More than j unfilled after this cycle: the go's count picks which
       // of the fills' thresholds applies (ux more than j - a, for a count a).
       // ux more than m is ufh more than m + k for this cycle's k landing
@@ -687,6 +700,7 @@ module ooe_rob_w #(
         toh_nx_cq02h[s * D +: D] = rotl(sp_s_cq02h[s * D +: D], 1);
         woh_nx_cq02h[s * D +: D] = rotl(sp_s_cq02h[s * D +: D], 1);
         ufh_nx_cq02h[s * NC +: NC] = NC'(1);
+        ufm_nx_cq02h[s * D +: D]   = '0;
         ugt_nx_cq02h[s * A +: A] = '0;
         kc_nx_cq02h[s * KC +: KC] = uxa_cq02h[KC-1:0];
         uxa_all_cq02h[s * NC +: NC] = uxa_cq02h;
@@ -710,6 +724,17 @@ module ooe_rob_w #(
         woh_nx_cq02h[s * D +: D] = '0;
         for (int u = 0; u < NC; u++)
           woh_nx_cq02h[s * D + (D - u) % D] = woh_nx_cq02h[s * D + (D - u) % D] | ufh_nx_cq02h[s * NC + u];
+        // The unfilled entries then end at D - 1: entry i is unfilled when
+        // the next count reaches D - i, each threshold from ux and picked
+        // by the go's count, as ufh_nx is (none after a squash).
+        for (int i = 0; i < D; i++) begin
+          ufm_nx_cq02h[s * D + i] = 1'b0;
+          for (int j = 0; j < A + 1; j++)
+            if (al_n_cq02h[s * LA +: LA] == LA'(j))
+              ufm_nx_cq02h[s * D + i] = ufm_nx_cq02h[s * D + i] |
+                                        (D - i - j <= 0 ? 1'b1 : ((ux_cq02h >> (D - i - j)) != '0));
+          ufm_nx_cq02h[s * D + i] = ufm_nx_cq02h[s * D + i] & ~rd_s_cq02h[s];
+        end
       end
       // The room: with no held entry, D less the entries held, encoded from
       // the count. With held entries (squashed, an op in flight, in the free
@@ -771,8 +796,8 @@ module ooe_rob_w #(
       // either when there is a pick (it is younger).
       wok_cq02h  = ~pfx_cq02h[s * D +: D] & ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]) & ~hd_cq02h[s * D +: D];
       anyp_cq02h = |cw_e_cq02h[s * D +: D];
-      gfe_v_cq02h = gwe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~ufm_cq02h[s * D +: D];
-      pfe_v_cq02h = pwe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~ufm_cq02h[s * D +: D];
+      gfe_v_cq02h = gwe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~ufq_cq02h[s * D +: D];
+      pfe_v_cq02h = pwe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~ufq_cq02h[s * D +: D];
       for (int k = 0; k < RP; k++) begin
         wk_cq02h = rotl(hoh_nx_cq02h[s * D +: D], k);
         // This cycle's allocations reach the window apart from the entries
@@ -791,7 +816,7 @@ module ooe_rob_w #(
         // resolution acts. Its bit is a filled entry's field (a no-op is no
         // branch).
         wpr_cq02h                = w_nx_cq02h[s * RP + k] && !(|(wk_cq02h & br_cq02h[s * D +: D] &
-                                   v_cq02h[s * D +: D] & ~ufm_cq02h[s * D +: D]));
+                                   v_cq02h[s * D +: D] & ~ufq_cq02h[s * D +: D]));
         wg_nx_cq02h[s * RP + k]  = |(wk_cq02h & gfe_v_cq02h);
         wgf_nx_cq02h[s * RP + k] = |(wk_cq02h & gfe_v_cq02h & gsn_cq02h[s * D +: D]);
         wp_nx_cq02h[s * RP + k]  = |(wk_cq02h & pfe_v_cq02h);
@@ -863,12 +888,14 @@ module ooe_rob_w #(
         ufh_cq02h[gs * NC +: NC]        <= NC'(1);
         ugt_cq02h[gs * A +: A]          <= '0;
         woh_cq02h[gs * D +: D]          <= D'(1);
+        ufq_cq02h[gs * D +: D]          <= '0;
         kc_cq02h[gs * KC +: KC]         <= KC'(1);
       end else if (fp_en_cq02h[gs]) begin
         ufh_cq02h[gs * NC +: NC]        <= ufh_nx_cq02h[gs * NC +: NC];
         kc_cq02h[gs * KC +: KC]         <= kc_nx_cq02h[gs * KC +: KC];
         ugt_cq02h[gs * A +: A]          <= ugt_nx_cq02h[gs * A +: A];
         woh_cq02h[gs * D +: D]          <= woh_nx_cq02h[gs * D +: D];
+        ufq_cq02h[gs * D +: D]          <= ufm_nx_cq02h[gs * D +: D];
       end
     end
     // The completion terms: reset, and cleared as their entry retires, so
@@ -1481,6 +1508,7 @@ module ooe_rob_w #(
       end
       rt_bad_cq02h[e] = rt_e_cq02h[e] && (rc_cq02h[e * 2 +: 2] != 2'd0 || oc_cq02h[e * NR * RCW +: NR * RCW] != '0);
     end
+  `CCV_ASSERT(unfilled_mask, ufq_cq02h == ufm_cq02h)
   `CCV_ASSERT(head_read_copies, hrg_cq02h == hoh_cq02h && hrn_cq02h == hoh_cq02h && hrp_cq02h == hoh_cq02h)
   `CCV_ASSERT(rs_count_no_underflow, rc_uf_cq02h == '0)
   `CCV_ASSERT(owed_no_underflow, ow_uf_cq02h == '0)
