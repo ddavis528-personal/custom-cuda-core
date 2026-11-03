@@ -153,7 +153,7 @@ def selftest():
     expect(scope(["tools/new-check.py"])[0] == ALL, "a new tool was scoped")
     expect(scope(["test/new/x.sv"])[0] == ALL, "a new test directory was scoped")
     expect(scope(["sim/src/x.cpp"])[0] == ALL, "ccv-sim's side of sim/ was scoped")
-    s, _ = scope(["rtl/ooe/ooe_rob.sv"])
+    s, _ = scope(["rtl/ooe/ooe_rob_w.sv"])
     expect(s != ALL and {"cg", "ngd", "ooe_rtl", "svh", "top"} <= set(s),
            "an OOE RTL change skips a section that reads it: %s" % s)
     s, _ = scope(["sim/ooe/ooe_core.cpp"])
