@@ -2,7 +2,7 @@
 //
 // Runs the model's directed and random unit tests (sim/ooe/ooe_test.cpp)
 // with the ROB's window lag (retire_lag 1, OI-85), the random programs
-// predicting every branch (slice 1 has no squash), and, after every core
+// predicting every branch (ROB_MISPREDICT=1: as drawn), and, after every core
 // cycle, drives ooe_rob with what the model's ROB saw in it (Core::robLog):
 // each slot's allocations at the go, Rename 2's fills two cycles on, the
 // RS's events per entry, RCU's dones and MIU's completions by rob_tag, the
@@ -10,9 +10,10 @@
 // leads) and the room rename's go reads with the model's in that cycle,
 // and the retire-stage register and its frees with the model's a cycle
 // before. The leads are the next cycle's, so the RTL runs a model cycle
-// behind. A core stops being compared at the first thing slice 1 does not
-// build (RobLog::stop: a squash acting, a fault taken, a retire port, an atomic,
-// a kill); cores with other than RB_S tier-1 slots are skipped.
+// behind. A core stops being compared at the first thing the ROB does not
+// build yet (RobLog::stop: a squash other than a branch's, a fault taken, a
+// retire port, an atomic, a kill); cores with other than RB_S tier-1 slots
+// are skipped.
 //
 // Negative controls (ROB_CONTROL=<name>) perturb the driving and must be
 // caught: drop-free (one RS free in a cycle never reaches the ROB: V-58's
@@ -28,21 +29,39 @@
 // outcome agrees with its prediction: mispredicts never redirect, run with
 // the programs mispredicting), branch-off-slot (a branch's done on a
 // slot other than BS: the assertion fires) and no-branch-lead (a branch
-// fill's lead never comes: the assertion fires).
+// fill's lead never comes: the assertion fires); slice 2b's no-miu (a
+// memop's send to MIU never reaches the ROB: a squash frees it with its op
+// in flight), no-store (no fill is a store: a squash's discard is missed)
+// and drop-killed-fill (the fill of an entry squashed before it landed
+// never comes: its names are never freed), run mispredicting.
 //
 // Slice 2 (OI-85, form (a) of OI-86): the model at resolve_lag 1 and
 // squash_act_lag 1. A branch's done goes on slot BS (CCV_DONE_SLOTS - 2, AR's RCU spec rev
 // 14) with its outcome, the other dones on the lowest free slots; the
 // resolution's registered outputs (the redirect lead per slot, the
 // checkpoints right branches free) are compared with the model's resolve a
-// cycle before, the redirect's payload a cycle after its lead. The squash
-// is the next part: a core stops there, and the stopping cycle and one
-// more are driven empty so the redirect's lead and payload are compared.
+// cycle before, the redirect's payload a cycle after its lead.
+//
+// Slice 2b (OI-94's (C''), the ROB drops a killed fill): the squash acts in
+// the model's squash cycle. Each squashed entry frees its new names (the
+// GPR row's sections gname holds, the predicate under rename_preds): one
+// filled with nothing in flight at once, in the frees the retire-stage
+// check reads a cycle on; one held (dones owed, at MIU and not complete, a
+// copy in flight) when its op lands and a cycle more (the release
+// register); one whose fill had not landed when that fill arrives and a
+// cycle more (the kill register). The free leads cover every free; a
+// squash acting or an entry held or released in the last two cycles may
+// raise them with none. The room, the window and the discard (a squashed
+// store at MIU: the branch and the youngest entry, a cycle after the
+// squash) are compared as ever; RS frees of an entry taken before its fill
+// never reach the ROB. ROB_TRACE=<cycle> prints the log around a cycle,
+// ROB_VCD=<file> dumps the run.
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: rob_tb [seeds] | rob_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_rob.h"
+#include "Vooe_rob___024root.h"
 #include "verilated.h"
 #include "cg_trace.h"
 #include "ooe_core.h"
@@ -67,8 +86,11 @@ void ooeTestPredictAll(bool on);
 void robConfig(Config &c) {
   c.retire_lag = 1;
   c.resolve_lag = 1;
+  c.resolve_lag_ret_only = 0;   // every branch at lag 1: the RTL resolves from its outcome register until RCU's branch lead lands
   c.squash_act_lag = 1;
   c.held_room_lag = 1;
+  c.squash_held_room_lag = 1;   // the ROB registers no run in a squash's cycle that leaves held entries
+  c.kill_free_lag = 1;   // OI-94 (C''): a killed fill's names free as the RTL frees them
 }
 
 namespace {
@@ -87,7 +109,9 @@ std::string control;
 uint64_t current = 0;
 bool live = false, stopped = false;
 unsigned long long cycles = 0, cores = 0, skipped = 0, stops = 0, retires = 0, allocs = 0, nops = 0, gfrees = 0,
-                   pfrees = 0, events = 0, mismatches = 0, resolves = 0, redirects = 0, ckfrees = 0;
+                   pfrees = 0, events = 0, mismatches = 0, resolves = 0, redirects = 0, ckfrees = 0,
+                   squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0;
+bool rename_preds = true;
 std::map<std::string, unsigned long long> stop_why;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
@@ -121,12 +145,22 @@ template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i !
 
 CgRun cg;
 
+// two-resolutions: after the edge that registers a branch's outcome,
+// every resolved bit cleared, so each completed branch still in the ROB is
+// a candidate again beside it (one_resolution must fire).
+bool force_rsv = false;
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
   cg.dump();
   dut->ooe_core_clk = 1;
   dut->eval();
+  if (force_rsv) {
+    force_rsv = false;
+    auto &w = dut->rootp->ooe_rob__DOT__rsv_cq02h;
+    for (unsigned i = 0; i != RB_S * RB_D; ++i) setBit(w, i, false);
+    dut->eval();
+  }
   cg.dump();
 }
 void fail(const char *what, unsigned a, unsigned rtl, unsigned model) {
@@ -137,6 +171,7 @@ void fail(const char *what, unsigned a, unsigned rtl, unsigned model) {
 // A cycle as the bench drives it: the model's log, and its go log's room.
 struct Cyc {
   Core::RobLog r;
+  unsigned long long n = 0;                    // the bench's cycle index
   std::vector<unsigned> run, ret;
   std::vector<uint8_t> reach;
 };
@@ -151,7 +186,7 @@ bool slotOf(unsigned tag, unsigned &s, unsigned &i) {
   return s < S;
 }
 bool hasEvent(const Core::RobLog &r, unsigned s) {
-  for (const auto *v : {&r.owe, &r.cpi, &r.cpl, &r.rsf})
+  for (const auto *v : {&r.owe, &r.cpi, &r.cpl, &r.rsf, &r.miu})
     for (unsigned t : *v) if ((t >> LD) == s) return true;
   return false;
 }
@@ -188,6 +223,76 @@ std::vector<int> doneSlots(const Core::RobLog &r) {
   return sl;
 }
 
+// Slice 2b: what a squash frees and when the RTL's free masks show it,
+// keyed by the cycle whose retire-stage check reads them (the frees of a
+// cycle's retirements are keyed by that cycle): a filled entry with nothing
+// in flight at the squash's cycle q; a held one at its release's n + 1 (the
+// release register); one whose fill had not landed (OI-94 (C''): the ROB
+// drops its fill and frees its names through the kill register) at its
+// fill's cycle + 1, its allocation's + 3. Its new names: the GPR row's
+// sections it holds, the predicate it allocated under rename_preds.
+struct Frees { std::vector<uint8_t> g, p; };
+std::map<unsigned long long, Frees> sq_frees;
+std::vector<unsigned long long> alloc_cyc(S * D, 0);
+std::map<unsigned, Core::RobLog::Alloc> held;   // squashed, held for an op in flight
+std::vector<uint8_t> killed(S * D, 0);           // squashed before its fill landed
+bool kill_dropped = false;
+std::vector<Core::RobLog::Alloc> late_fl;   // late-fill: the cycle's fills it holds back
+bool late_done = false;
+// Squash or held activity (a squash acting, an entry held or released) in
+// each of the last two cycles: the free leads' supersets reach that far.
+bool act1 = false, act2 = false;
+Frees &freesAt(unsigned long long key) {
+  Frees &f = sq_frees[key];
+  if (f.g.empty()) { f.g.assign(NG * NSB, 0); f.p.assign(NP, 0); }
+  return f;
+}
+void addFree(unsigned long long key, const Core::RobLog::Alloc &a) {
+  if (a.nop) return;
+  Frees &f = freesAt(key);
+  const bool palloc = a.pwe && rename_preds;
+  if (a.gwe && a.gnsec) {
+    const unsigned row = a.gname >> (GW - GR);
+    for (unsigned j = 0; j != NSB; ++j) if ((a.gnsec >> j) & 1u) f.g[row * NSB + j] = 1;
+  }
+  if (palloc && a.pname < NP) f.p[a.pname] = 1;
+}
+bool unfilledAt(unsigned tag, unsigned long long q) { return alloc_cyc[tag] + fillLag() >= q; }
+// The cycle's squash, as the model logged it, before the RTL is driven
+// (the RS frees of an entry taken before its fill never reach the ROB: it
+// has no entry).
+void account(Cyc &c) {
+  const unsigned long long q = c.n;
+  squashes += c.r.squash.size();
+  std::vector<uint8_t> unf(S * D, 0);
+  for (const auto &e : c.r.sq_ent) {
+    const unsigned t = e.first;
+    if (t >= S * D) continue;
+    ++sq_ents;
+    const Core::RobLog::Alloc &a = br_of[t];
+    if (unfilledAt(t, q)) {
+      if (e.second) fail("held entry not yet filled", t, 0, 1);
+      unf[t] = 1;
+      killed[t] = 1;
+      ++sq_kills;
+      addFree(alloc_cyc[t] + fillLag() + 1, a);
+    } else if (e.second) {
+      ++sq_held;
+      held[t] = a;
+    } else addFree(q, a);
+  }
+  for (unsigned t : c.r.hrel) {
+    auto it = held.find(t);
+    if (it == held.end()) { fail("held release of an entry not held", t, 0, 0); continue; }
+    ++hrels;
+    addFree(q + 1, it->second);
+    held.erase(it);
+  }
+  std::vector<unsigned> rsf;
+  for (unsigned t : c.r.rsf) if (t >= S * D || !unf[t]) rsf.push_back(t);
+  c.r.rsf = rsf;
+}
+
 void clearInputs() {
   dut->al_l_cq01h = 0;
   clearAll(dut->al_n_cq02h, S * LA);
@@ -212,11 +317,15 @@ void clearInputs() {
   clearAll(dut->fl_pcn_cq02h, A * PCW);
   clearAll(dut->fl_tgt_cq02h, A * PCW);
   clearAll(dut->fl_pchi_cq02h, A * 16);
+  clearAll(dut->fl_gnsec_cq02h, A * NSB);
+  dut->fl_palloc_cq02h = 0;
+  dut->fl_store_cq02h = 0;
   dut->ev_l_cq01h = 0;
   clearAll(dut->ev_owe_cq02h, S * D * NR);
   clearAll(dut->ev_cpi_cq02h, S * D);
   clearAll(dut->ev_cpl_cq02h, S * D);
   clearAll(dut->ev_rsf_cq02h, S * D * 2);
+  clearAll(dut->ev_miu_cq02h, S * D);
   dut->dn_l_cq01h = 0;
   clearAll(dut->dn_tag_cq02h, ND * TW);
   clearAll(dut->dn_row_cq02h, ND * 2);
@@ -232,6 +341,11 @@ void resetRtl() {
   clearInputs();
   hist.clear();
   br_of.assign(S * D, Core::RobLog::Alloc());
+  alloc_cyc.assign(S * D, 0);
+  killed.assign(S * D, 0);
+  sq_frees.clear();
+  held.clear();
+  act1 = act2 = false;
   tl_dbg.assign(S, 0);
   owed_dbg.assign(S * D, 0);
   // A core can end a cycle after a lead promised it more (a done next
@@ -247,6 +361,61 @@ void resetRtl() {
   tick();
 }
 
+
+// Rename 2's fills: the allocations fillLag() cycles before. A stopped
+// core's last cycles take an empty allocation and still land the fills
+// owed (fill_at_alloc_2 holds across the stop).
+void driveFills(const std::vector<Core::RobLog::Alloc> &alloc) {
+  hist.push_back(alloc);
+  if (hist.size() > 4) hist.pop_front();
+  if (hist.size() > fillLag()) {
+    std::vector<Core::RobLog::Alloc> fl = hist[hist.size() - 1 - fillLag()];
+    if (control == "fill-order") std::reverse(fl.begin(), fl.end());
+    // late-fill: one cycle's fills arrive a cycle late, at the first cycle
+    // that has fills and none due next (fill_at_alloc_2 must fire).
+    if (control == "late-fill" && !late_done) {
+      if (!late_fl.empty()) { fl = late_fl; late_fl.clear(); late_done = true; }
+      else if (!fl.empty() && hist[hist.size() - fillLag()].empty()) { late_fl = fl; fl.clear(); }
+    }
+    // drop-killed-fill: the first fill of an entry a squash took before it
+    // landed never comes (its names are never freed, the kill count waits).
+    if (control == "drop-killed-fill" && !kill_dropped)
+      for (auto it = fl.begin(); it != fl.end(); ++it)
+        if (it->slot < S && killed[it->slot * D + it->idx]) { fl.erase(it); kill_dropped = true; break; }
+    for (const auto &a : fl) if (a.slot < S) killed[a.slot * D + a.idx] = 0;
+    unsigned l = 0;
+    for (const auto &a : fl) {
+      if (l == A) { fail("more fills than lanes", 0, l, unsigned(fl.size())); break; }
+      setBit(dut->fl_v_cq02h, l, true);
+      setField(dut->fl_slot_cq02h, l * LS, LS, a.slot);
+      setBit(dut->fl_nop_cq02h, l, a.nop && control != "nop-real");
+      setBit(dut->fl_mem_cq02h, l, a.mem);
+      setField(dut->fl_rs_cq02h, l * 2, 2, a.rs);
+      setBit(dut->fl_gwe_cq02h, l, a.gwe);
+      setField(dut->fl_dst_cq02h, l * 4, 4, a.dst);
+      setField(dut->fl_gname_cq02h, l * GW, GW, a.gname);
+      setField(dut->fl_gold_cq02h, l * GW, GW, a.gold);
+      setField(dut->fl_gsec_cq02h, l * NSB, NSB, a.gsec);
+      setBit(dut->fl_pwe_cq02h, l, a.pwe);
+      setField(dut->fl_pdst_cq02h, l * 2, 2, a.pdst);
+      setField(dut->fl_pname_cq02h, l * PW, PW, a.pname);
+      setField(dut->fl_pold_cq02h, l * PW, PW, a.pold);
+      setBit(dut->fl_pfree_cq02h, l, a.pfree);
+      setField(dut->fl_gnsec_cq02h, l * NSB, NSB, a.gnsec);
+      setBit(dut->fl_palloc_cq02h, l, a.pwe && rename_preds);
+      setBit(dut->fl_store_cq02h, l, a.store && control != "no-store");
+      setBit(dut->fl_br_cq02h, l, a.br);
+      setField(dut->fl_ckpt_cq02h, l * LK, LK, a.ckpt);
+      setBit(dut->fl_ptaken_cq02h, l, a.ptaken);
+      setBit(dut->fl_ret_cq02h, l, a.ret);
+      setField64(dut->fl_gmask_cq02h, l * 32, 32, a.gmask);
+      setField64(dut->fl_pcn_cq02h, l * PCW, PCW, a.pcn & PCM);
+      setField64(dut->fl_tgt_cq02h, l * PCW, PCW, a.tgt & PCM);
+      setField(dut->fl_pchi_cq02h, l * 16, 16, a.pchi);
+      ++l;
+    }
+  }
+}
 
 void drive(const Cyc &c, const Cyc &nx) {
   clearInputs();
@@ -277,46 +446,13 @@ void drive(const Cyc &c, const Cyc &nx) {
     if (a.slot >= S || n[a.slot] == A) continue;
     setBit(dut->al_nop_cq02h, a.slot * A + n[a.slot], a.nop && control != "nop-real");
     br_of[a.slot * D + a.idx] = a;
+    alloc_cyc[a.slot * D + a.idx] = c.n;
     ++n[a.slot];
     ++allocs;
     nops += a.nop;
   }
   for (unsigned s = 0; s != S; ++s) setField(dut->al_n_cq02h, s * LA, LA, n[s]);
-  // Rename 2's fills: the allocations fillLag() cycles before.
-  hist.push_back(r.alloc);
-  if (hist.size() > 4) hist.pop_front();
-  if (hist.size() > fillLag()) {
-    std::vector<Core::RobLog::Alloc> fl = hist[hist.size() - 1 - fillLag()];
-    if (control == "fill-order") std::reverse(fl.begin(), fl.end());
-    unsigned l = 0;
-    for (const auto &a : fl) {
-      if (l == A) { fail("more fills than lanes", 0, l, unsigned(fl.size())); break; }
-      setBit(dut->fl_v_cq02h, l, true);
-      setField(dut->fl_slot_cq02h, l * LS, LS, a.slot);
-      setBit(dut->fl_nop_cq02h, l, a.nop && control != "nop-real");
-      setBit(dut->fl_mem_cq02h, l, a.mem);
-      setField(dut->fl_rs_cq02h, l * 2, 2, a.rs);
-      setBit(dut->fl_gwe_cq02h, l, a.gwe);
-      setField(dut->fl_dst_cq02h, l * 4, 4, a.dst);
-      setField(dut->fl_gname_cq02h, l * GW, GW, a.gname);
-      setField(dut->fl_gold_cq02h, l * GW, GW, a.gold);
-      setField(dut->fl_gsec_cq02h, l * NSB, NSB, a.gsec);
-      setBit(dut->fl_pwe_cq02h, l, a.pwe);
-      setField(dut->fl_pdst_cq02h, l * 2, 2, a.pdst);
-      setField(dut->fl_pname_cq02h, l * PW, PW, a.pname);
-      setField(dut->fl_pold_cq02h, l * PW, PW, a.pold);
-      setBit(dut->fl_pfree_cq02h, l, a.pfree);
-      setBit(dut->fl_br_cq02h, l, a.br);
-      setField(dut->fl_ckpt_cq02h, l * LK, LK, a.ckpt);
-      setBit(dut->fl_ptaken_cq02h, l, a.ptaken);
-      setBit(dut->fl_ret_cq02h, l, a.ret);
-      setField64(dut->fl_gmask_cq02h, l * 32, 32, a.gmask);
-      setField64(dut->fl_pcn_cq02h, l * PCW, PCW, a.pcn & PCM);
-      setField64(dut->fl_tgt_cq02h, l * PCW, PCW, a.tgt & PCM);
-      setField(dut->fl_pchi_cq02h, l * 16, 16, a.pchi);
-      ++l;
-    }
-  }
+  driveFills(r.alloc);
   // The RS's events, per entry.
   unsigned s, i;
   // Each issue owing a done, at its row (OA's rev 282): the log's owe_row
@@ -325,13 +461,16 @@ void drive(const Cyc &c, const Cyc &nx) {
     if (slotOf(r.owe[k], s, i)) setBit(dut->ev_owe_cq02h, (s * D + i) * NR + (k < r.owe_row.size() ? r.owe_row[k] : 0), true);
   for (unsigned t : r.cpi) if (slotOf(t, s, i) && control != "no-copy") setBit(dut->ev_cpi_cq02h, s * D + i, true);
   for (unsigned t : r.cpl) if (slotOf(t, s, i)) setBit(dut->ev_cpl_cq02h, s * D + i, true);
+  // no-miu: a memop's send to MIU never reaches the ROB (a squash frees
+  // its entry with the op in flight, and a store there is not discarded).
+  for (unsigned t : r.miu) if (slotOf(t, s, i) && control != "no-miu") setBit(dut->ev_miu_cq02h, s * D + i, true);
   bool dropped = false;
   for (unsigned t : r.rsf)
     if (slotOf(t, s, i)) {
       if (control == "drop-free" && !dropped) { dropped = true; continue; }
       setField(dut->ev_rsf_cq02h, (s * D + i) * 2, 2, getField(dut->ev_rsf_cq02h, (s * D + i) * 2, 2) + 1);
     }
-  events += r.owe.size() + r.cpi.size() + r.cpl.size() + r.rsf.size();
+  events += r.owe.size() + r.cpi.size() + r.cpl.size() + r.rsf.size() + r.miu.size();
   // RCU's dones and MIU's completions.
   // Each done's row is the one RCU echoed (done_row, TI's 6ba08b1).
   // A branch's on slot BS, with its outcome (taken, the lanes, a ret's aux).
@@ -363,6 +502,7 @@ void drive(const Cyc &c, const Cyc &nx) {
     dut->dn_taken_cq02h = taken;
     dut->dn_mask_cq02h = mask;
     dut->dn_aux_cq02h = d.aux;
+    if (control == "two-resolutions" && b.br) force_rsv = true;
   }
   // two-in-a-cycle: the first done again, on the first free slot.
   unsigned dup = ND;
@@ -463,8 +603,30 @@ void check(const Cyc &c, const Cyc *prev) {
       if (n != c.ret[s]) fail("the go's retirements differ", s, n, c.ret[s]);
     }
   }
-  if (dut->gfree_l_cq02h != gf) fail("GPR free lead differs", 0, dut->gfree_l_cq02h, gf);
-  if (dut->pfree_l_cq02h != pf) fail("predicate free lead differs", 0, dut->pfree_l_cq02h, pf);
+  // A squash's frees keyed by this cycle need the lead too; a squash
+  // acting, or an entry held now or last cycle, may raise it with none (the
+  // RTL's squash and held leads are supersets, OI-94).
+  bool sg = false, sp = false;
+  if (auto it = sq_frees.find(c.n); it != sq_frees.end()) {
+    for (uint8_t b : it->second.g) sg = sg || b;
+    for (uint8_t b : it->second.p) sp = sp || b;
+  }
+  const bool loose = !r.squash.empty() || !held.empty() || !r.hrel.empty() || act1 || act2;
+  if (dut->gfree_l_cq02h ? !(gf || sg || loose) : (gf || sg)) fail("GPR free lead differs", 0, dut->gfree_l_cq02h, gf || sg);
+  if (dut->pfree_l_cq02h ? !(pf || sp || loose) : (pf || sp)) fail("predicate free lead differs", 0, dut->pfree_l_cq02h, pf || sp);
+  // A squash's store-and-load discard: last cycle's, from its register.
+  if (prev) {
+    std::vector<int> dbr(S, -1), ddp(S, -1);
+    for (const auto &d : prev->r.discard) if (d.slot < S) { dbr[d.slot] = int(d.branch); ddp[d.slot] = int(d.disp); }
+    for (unsigned q = 0; q != S; ++q) {
+      const bool v = getBit(dut->dc_v_cq03h, q);
+      if (v != (dbr[q] >= 0)) { fail("discard differs", q, v, dbr[q] >= 0); continue; }
+      if (!v) continue;
+      ++discards;
+      if (getField(dut->dc_br_cq03h, q * LD, LD) != unsigned(dbr[q])) fail("discard branch differs", q, getField(dut->dc_br_cq03h, q * LD, LD), unsigned(dbr[q]));
+      if (getField(dut->dc_disp_cq03h, q * LD, LD) != unsigned(ddp[q])) fail("discard youngest differs", q, getField(dut->dc_disp_cq03h, q * LD, LD), unsigned(ddp[q]));
+    }
+  }
   if (!prev) return;
   // Last cycle's: what ooe_rat commits, and the frees.
   std::vector<unsigned> pp(S, 0);
@@ -488,6 +650,17 @@ void check(const Cyc &c, const Cyc *prev) {
       if (q.pfree) pm[q.pold] = 1;
     }
   }
+  if (auto it = sq_frees.find(prev->n); it != sq_frees.end()) {
+    for (unsigned b = 0; b != NG * NSB; ++b) {
+      if (it->second.g[b] && gm[b]) fail("GPR section freed twice", b, 0, 2);
+      gm[b] |= it->second.g[b];
+    }
+    for (unsigned b = 0; b != NP; ++b) {
+      if (it->second.p[b] && pm[b]) fail("predicate freed twice", b, 0, 2);
+      pm[b] |= it->second.p[b];
+    }
+    sq_frees.erase(it);
+  }
   for (unsigned b = 0; b != NG * NSB; ++b) {
     if (getBit(dut->gfree_cq03h, b) != bool(gm[b])) { fail("GPR section freed differs", b, getBit(dut->gfree_cq03h, b), gm[b]); break; }
     gfrees += gm[b];
@@ -508,7 +681,9 @@ void hook(const Core &c) {
     pending = have_prev = have_prev2 = false;
     current = c.serial();
     const Config &k = c.config();
-    live = k.slots == S && k.rob_depth == D && k.retire_per_rob == RP && k.rename_width <= A && k.sectioned == (NS > 0);
+    live = k.slots == S && k.rob_depth == D && k.retire_per_rob == RP && k.rename_width <= A && k.sectioned == (NS > 0) &&
+           k.defer_release_lag == 0;
+    rename_preds = k.rename_preds;
     stopped = false;
     if (live) ++cores;
     if (std::getenv("ROB_DEBUG")) std::fprintf(stderr, "ROB_DEBUG core %llu: %s%s\n", (unsigned long long)current, ooeTestName(), live ? "" : " (skipped)");
@@ -531,21 +706,46 @@ void hook(const Core &c) {
       // registered from the last compared cycle (a squash's redirect lead,
       // the squash itself slice 2's next part) and its payload.
       clearInputs();
+      driveFills({});
       dut->eval();
       checkRes(have_prev ? &prev : nullptr, have_prev2 ? &prev2 : nullptr);
       tick();
       clearInputs();
+      driveFills({});
       dut->eval();
       checkRes(nullptr, have_prev ? &prev : nullptr);
       tick();
       return;
     }
     ++cycles;
+    pend.n = cycles;
+    account(pend);
     drive(pend, now);
     dut->eval();
+    if (const char *w = std::getenv("ROB_TRACE")) {
+      const unsigned long long lo = std::strtoull(w, nullptr, 10);
+      if (cycles + 12 >= lo && cycles <= lo + 4) {
+        std::string t = "TRACE " + std::to_string(cycles) + " t" + std::to_string(cg.t) + ":";
+        for (const auto &a : pend.r.alloc) t += " A" + std::to_string(a.slot * D + a.idx);
+        for (const auto &q : pend.r.squash) t += " SQ" + std::to_string(q.slot) + "/" + std::to_string(q.keep);
+        for (const auto &e : pend.r.sq_ent) t += std::string(e.second ? " h" : " s") + std::to_string(e.first);
+        for (unsigned x : pend.r.hrel) t += " R" + std::to_string(x);
+        for (const auto &q : pend.r.ret) t += " ret" + std::to_string(q.slot * D + q.idx);
+        for (unsigned x : pend.r.miu) t += " m" + std::to_string(x);
+        for (unsigned x : pend.r.done) t += " d" + std::to_string(x);
+        for (unsigned x : pend.r.cmpl) t += " c" + std::to_string(x);
+        for (unsigned x : pend.r.owe) t += " o" + std::to_string(x);
+        if (!pend.run.empty())
+          t += " | run " + std::to_string(pend.run[0]) + "/" + std::to_string(int(pend.reach[0])) + " rtl " +
+               std::to_string(getField(dut->run_cq02h, 0, LB)) + "/" + std::to_string(getBit(dut->reach_cq02h, 0));
+        std::fprintf(stderr, "%s\n", t.c_str());
+      }
+    }
     check(pend, have_prev ? &prev : nullptr);
     checkRes(have_prev ? &prev : nullptr, have_prev2 ? &prev2 : nullptr);
     tick();
+    act2 = act1;
+    act1 = !pend.r.squash.empty() || !held.empty() || !pend.r.hrel.empty();
     prev2 = prev;
     have_prev2 = have_prev;
     prev = pend;
@@ -562,23 +762,27 @@ int main(int argc, char **argv) {
   ctx = std::make_unique<VerilatedContext>();
   ctx->commandArgs(argc, argv);
   std::string vcd;
-  if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
+  if (cg.parse(argc, argv, vcd) || std::getenv("ROB_VCD")) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_rob>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
+  else if (const char *dv = std::getenv("ROB_VCD")) cg.open(*dut, dv);   // debugging
   // The random programs mispredict nothing, so a core runs past where its
   // first squash would stop it (slice 2's next part); ROB_MISPREDICT=1 runs
   // them as drawn, each core to its first squash, its redirect compared
   // drawn (right-always needs mispredicts to miss).
-  ooeTestPredictAll(std::getenv("ROB_MISPREDICT") == nullptr && control != "right-always");
+  // The squash's controls need squashes.
+  const bool sq_control = control == "no-miu" || control == "no-store" || control == "drop-killed-fill";
+  ooeTestPredictAll(std::getenv("ROB_MISPREDICT") == nullptr && control != "right-always" && !sq_control);
   const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, robConfig)) +
                           cg.run(seeds, nullptr, hook, robConfig);
   cg.close();
   dut->final();
   std::printf("rob_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu nops=%llu events=%llu retires=%llu "
               "gpr-frees=%llu pred-frees=%llu resolves=%llu redirects=%llu ckpt-frees=%llu stopped=%llu skipped=%llu "
-              "mismatches=%llu model_failures=%d\n",
+              "squashes=%llu squashed=%llu held=%llu killed=%llu held-releases=%llu discards=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, nops, events, retires, gfrees,
-              pfrees, resolves, redirects, ckfrees, stops, skipped, mismatches, model_fails);
+              pfrees, resolves, redirects, ckfrees, stops, skipped, squashes, sq_ents, sq_held, sq_kills, hrels, discards,
+              mismatches, model_fails);
   if (br_two) std::printf("  cycles with two branch dones (RCU's one a cycle): %llu\n", br_two);
   for (const auto &kv : stop_why) std::printf("  stopped at %s: %llu\n", kv.first.c_str(), kv.second);
   const int rc = mismatches || model_fails ? 1 : 0;

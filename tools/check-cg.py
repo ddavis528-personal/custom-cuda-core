@@ -70,6 +70,7 @@ findings a waiver now takes is reported as superseded, not failed.
 import argparse
 import collections
 import concurrent.futures
+import contextlib
 import fcntl
 import glob
 import hashlib
@@ -81,6 +82,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build", "cg")
@@ -175,9 +177,143 @@ BUDGET_PCT = float(param("CCV_CG_BUDGET_PCT"))
 MODULE_FLOPS = int(param("CCV_CG_MODULE_FLOPS"))
 
 
+# A child forked from this process starts its peak (ru_maxrss) at this
+# process's size: Linux carries the resident set across exec. check-cg
+# grows past 2 GB with full-size ooe_rob loaded, and eleven light units each
+# read 2179 MiB, its size, not theirs (release gate, 2026-11-02). So every
+# command runs under tools/rss-run.py, a small process, which reports the
+# command's own peak. Empty only in the selftest's control.
+RSS_RUN = [sys.executable, "-I", "-S", os.path.join(ROOT, "tools", "rss-run.py")]
+
+
 def run(cmd, cwd=ROOT, **kw):
-    return subprocess.run(cmd, cwd=cwd, shell=isinstance(cmd, str),
-                          capture_output=True, text=True, **kw)
+    """The command's CompletedProcess, as subprocess.run with its output
+    captured; its peak memory, with its children's, goes to the unit this
+    thread is measuring (as_unit)."""
+    if isinstance(cmd, str):
+        cmd = ["/bin/sh", "-c", cmd]
+    # Through tools/rss-run.py, so the peak is the command's own, not this
+    # process's size carried across fork and exec (RSS_RUN says why).
+    rfd, wfd = os.pipe()
+    try:
+        p = subprocess.Popen(RSS_RUN + [str(wfd)] + list(cmd) if RSS_RUN else cmd, cwd=cwd,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             pass_fds=(wfd,), **kw)
+    finally:
+        os.close(wfd)
+    got = {}
+
+    def drain(k, f):
+        got[k] = f.read()
+        f.close()
+    ts = [threading.Thread(target=drain, args=(k, f)) for k, f in
+          (("out", p.stdout), ("err", p.stderr))]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    # wait4, not wait: its rusage is the peak of this child and its own.
+    _, status, ru = os.wait4(p.pid, 0)
+    p.returncode = os.waitstatus_to_exitcode(status)
+    with os.fdopen(rfd) as f:
+        told = f.read().strip()
+    note_rss((int(told) if told else ru.ru_maxrss) << 10)
+    return subprocess.CompletedProcess(cmd, p.returncode, got["out"], got["err"])
+
+
+# == Heavy units, one at a time (DA, 2026-11-01) ===============================
+# A stopgap for GitHub's runners (4 cores, 16 GB, CCV_JOBS every core): with
+# full-size ooe_rob, check-cg's and check-ngd's Yosys and ABC for it (about
+# 6 GB each, OI-97) ran side by side and the runner was killed, logs and all
+# (runs 538, 543, 544). Under CCV_HEAVY_SERIAL=1, which CI sets, a unit
+# tools/heavy-units.json names is measured holding build/heavy-unit.lock, so
+# no two heavy units run at once in either check or across the two; the
+# rest run CCV_JOBS at a time beside it, as before. The list cannot go stale
+# silently: a unit it does not name whose one command peaks over its
+# light_rss_max_mib fails the check while the lock is on.
+HEAVY_FILE = os.path.join(ROOT, "tools", "heavy-units.json")
+HEAVY_LOCK = os.path.join(ROOT, "build", "heavy-unit.lock")
+_HEAVY = json.load(open(HEAVY_FILE))
+HEAVY = set(_HEAVY["units"])
+LIGHT_RSS_MAX = int(_HEAVY["light_rss_max_mib"]) << 20
+_TLS = threading.local()
+PEAK = {}
+_PEAK_MU = threading.Lock()
+
+
+def heavy_serial():
+    """On by default, locally as on CI (DA, 2026-11-02); CCV_HEAVY_SERIAL=0
+    turns it off for one run."""
+    return os.environ.get("CCV_HEAVY_SERIAL", "1") != "0"
+
+
+def note_rss(nbytes):
+    unit = getattr(_TLS, "unit", None)
+    if unit is not None:
+        with _PEAK_MU:
+            PEAK[unit] = max(PEAK.get(unit, 0), nbytes)
+
+
+@contextlib.contextmanager
+def as_unit(name, heavy=None, lock=None):
+    """This thread's commands count toward `name`'s peak. With the lock on,
+    a heavy unit runs alone: it holds the lock exclusive and every other
+    unit holds it shared, so no light unit runs beside a heavy one either
+    (full-size ooe_rob's Yosys and its ABC child are 10.7 GB together, which
+    three light units beside would push past a 16 GB runner; trial,
+    2026-11-02). A turnstile (the lock's .gate), taken before the lock and
+    let go once it is held, keeps a waiting heavy unit from starving behind
+    a stream of light ones. One fd per hold, taken once per thread: flock is
+    per open file, so a nested hold on a second fd would wait on itself."""
+    heavy = HEAVY if heavy is None else heavy
+    prev, held = getattr(_TLS, "unit", None), getattr(_TLS, "held", False)
+    lk = None
+    _TLS.unit = name
+    try:
+        if heavy_serial() and not held:
+            lock = lock or HEAVY_LOCK
+            os.makedirs(os.path.dirname(lock), exist_ok=True)
+            with open(lock + ".gate", "w") as gate:
+                fcntl.flock(gate, fcntl.LOCK_EX)
+                lk = open(lock, "w")
+                fcntl.flock(lk, fcntl.LOCK_EX if name in heavy else fcntl.LOCK_SH)
+            _TLS.held = True
+        yield
+    finally:
+        if lk:
+            _TLS.held = False
+            lk.close()
+        _TLS.unit = prev
+
+
+def unit_task(name, fn):
+    """fn, run as as_unit(name), for a pool."""
+    def task(*a, **kw):
+        with as_unit(name):
+            return fn(*a, **kw)
+    return task
+
+
+def heavy_check(tool, heavy=None, limit=None, peak=None):
+    """(the report line, the failures): with the lock on, every unit over
+    the light limit must be on the list."""
+    heavy = HEAVY if heavy is None else heavy
+    limit = LIGHT_RSS_MAX if limit is None else limit
+    peak = PEAK if peak is None else peak
+    if not heavy_serial():
+        return [], []
+    light = {u: b for u, b in peak.items() if u not in heavy}
+    over = sorted(u for u, b in light.items() if b > limit)
+    top = max(light, key=light.get) if light else None
+    line = ("heavy units one at a time (CCV_HEAVY_SERIAL): %s; every other unit's commands "
+            "within %d MiB%s" % (", ".join("%s %d MiB" % (u, peak[u] >> 20) for u in sorted(heavy)
+                                           if u in peak) or "none measured",
+                                 limit >> 20,
+                                 " (largest %s, %d MiB)" % (top, light[top] >> 20) if top else ""))
+    fails = ["unit %s peaked at %d MiB, over the light limit %d MiB, and is not in "
+             "tools/heavy-units.json: name it there, or it may run beside a heavy unit and "
+             "exhaust a GitHub runner" % (u, light[u] >> 20, limit >> 20) for u in over]
+    return [line], fails
 
 
 # A Yosys netlist, once per gate: check-cg and check-ngd synthesise each
@@ -247,7 +383,7 @@ def measured(units, measure, pool=None, also=None):
     try:
         fs = []
         for u in units:
-            fs.append((u, pool.submit(measure, u)))
+            fs.append((u, pool.submit(unit_task(u.name, measure), u)))
             if also:
                 also(pool, u)
         for u, f in fs:
@@ -1968,7 +2104,7 @@ def main_check(only=None, verbose=False):
 
     def queue_el(p, u):
         if not only:
-            elaborated[u.name] = p.submit(unit_elaborate, u, modules)
+            elaborated[u.name] = p.submit(unit_task(u.name, unit_elaborate), u, modules)
     for u in measured(units, lambda u: u.measure(), pool, queue_el):
         report(u, verbose)
         if u.nl is not None:
@@ -1988,6 +2124,9 @@ def main_check(only=None, verbose=False):
     lines += more
     fails += over
     fails += unmeasured(units)
+    more, over = heavy_check("check-cg")
+    lines += more
+    fails += over
     for l in lines:
         print("  " + l)
     if not parts:
@@ -2028,6 +2167,103 @@ def fixture_unit(name, module, scope=None):
 
 MEASURED_FIXTURES = ("cg_fx_good", "cg_fx_form", "cg_fx_deep", "cg_fx_dcge", "cg_fx_small",
                      "cg_fx_wide", "cg_fx_big", "cg_fx_name", "cg_fx_gen")
+
+
+def heavy_selftest(expect):
+    """The heavy-unit lock and the light limit, each a control: two heavy
+    units never overlap with the lock on and do without it; a light unit
+    never runs beside a heavy one, and two light units still run together
+    (shared); a nested hold
+    does not wait on itself; a command's peak is its own, not check-cg's;
+    a light unit over the limit fails, the same unit listed or under it
+    does not."""
+    import time
+    lock = os.path.join(BUILD, "fixture", "heavy.lock")
+    os.makedirs(os.path.dirname(lock), exist_ok=True)
+    heavy = {"fx_h1", "fx_h2"}
+    saved = os.environ.get("CCV_HEAVY_SERIAL")
+
+    def spans(on, names=("fx_h1", "fx_h2")):
+        os.environ["CCV_HEAVY_SERIAL"] = "1" if on else "0"
+        out = {}
+
+        def one(name):
+            with as_unit(name, heavy, lock):
+                t0 = time.monotonic()
+                run(["sleep", "0.4"])
+                out[name] = (t0, time.monotonic())
+        ts = [threading.Thread(target=one, args=(n,)) for n in names]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        (a0, a1), (b0, b1) = out[names[0]], out[names[1]]
+        return a0 < b1 and b0 < a1
+    try:
+        expect(not spans(True), "two heavy units ran at once with CCV_HEAVY_SERIAL=1")
+        expect(spans(False), "two heavy units never overlapped without the lock: the "
+               "overlap control cannot see one")
+        expect(not spans(True, ("fx_h1", "fx_l1")),
+               "a light unit ran beside a heavy one with CCV_HEAVY_SERIAL=1")
+        expect(spans(True, ("fx_l1", "fx_l2")),
+               "two light units never overlapped with the lock on: light units hold it shared")
+        os.environ["CCV_HEAVY_SERIAL"] = "1"
+        done = []
+
+        def nested():
+            with as_unit("fx_h1", heavy, lock):
+                with as_unit("fx_h1", heavy, lock):
+                    done.append(1)
+        t = threading.Thread(target=nested, daemon=True)
+        t.start()
+        t.join(10)
+        expect(done == [1], "a nested hold of the heavy lock waited on itself")
+        saved_peak = dict(PEAK)
+        with as_unit("fx_light", set(), lock):
+            run([sys.executable, "-c", "b = bytearray(96 << 20); b[::4096] = b'x' * len(b[::4096])"])
+        with as_unit("fx_small", set(), lock):
+            run(["true"])
+        # The command's own peak, not this process's: with 512 MiB held
+        # here, `true` must read small, and read big without rss-run.py
+        # (the control that sees what it guards; release gate, 2026-11-02).
+        global RSS_RUN
+        ballast = bytearray(512 << 20)
+        ballast[::4096] = b"x" * len(ballast[::4096])
+        with as_unit("fx_ballast", set(), lock):
+            run(["true"])
+        saved_rss_run, RSS_RUN = RSS_RUN, []
+        try:
+            with as_unit("fx_ballast_bare", set(), lock):
+                run(["true"])
+        finally:
+            RSS_RUN = saved_rss_run
+        del ballast
+        peak = {u: PEAK[u] for u in ("fx_light", "fx_small", "fx_ballast", "fx_ballast_bare")}
+        PEAK.clear()
+        PEAK.update(saved_peak)
+        expect(peak["fx_ballast"] < 64 << 20, "a command read its parent's size as its own "
+               "peak: `true` under 512 MiB of check-cg read %d MiB" % (peak["fx_ballast"] >> 20))
+        expect(peak["fx_ballast_bare"] >= 512 << 20, "without tools/rss-run.py, `true` read "
+               "%d MiB under 512 MiB of check-cg: the control cannot see a parent's size"
+               % (peak["fx_ballast_bare"] >> 20))
+        peak = {u: peak[u] for u in ("fx_light", "fx_small")}
+        expect(peak["fx_light"] >= 96 << 20, "a command's peak memory was not measured: "
+               "%d MiB, want 96 or more" % (peak["fx_light"] >> 20))
+        _, f = heavy_check("selftest", set(), 64 << 20, peak)
+        expect(len(f) == 1 and "fx_light" in f[0], "a light unit over the limit, not on the "
+               "list, passed: %s" % f)
+        _, f = heavy_check("selftest", {"fx_light"}, 64 << 20, peak)
+        expect(not f, "a listed heavy unit failed the light limit: %s" % f)
+        _, f = heavy_check("selftest", set(), 256 << 20, peak)
+        expect(not f, "units under the light limit failed it: %s" % f)
+        os.environ["CCV_HEAVY_SERIAL"] = "0"
+        expect(heavy_check("selftest", set(), 64 << 20, peak) == ([], []),
+               "the light limit was checked with the lock off")
+    finally:
+        if saved is None:
+            os.environ.pop("CCV_HEAVY_SERIAL", None)
+        else:
+            os.environ["CCV_HEAVY_SERIAL"] = saved
 
 
 def selftest():
@@ -2495,13 +2731,14 @@ def selftest():
                           if "DFF" in c["type"].upper()) if not r.returncode else -1)
     expect(widths == [3, 5], "the synthesis cache handed back a netlist after an -I header "
            "changed: %s flops, want [3, 5]" % widths)
+    heavy_selftest(expect)
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
         print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
               "ratchet, coverage, module and block budgets, kept and replayed flop counts, "
               "enable sources and the reset, repeater instantiations, kept copies, the "
-              "synthesis cache (%d controls)" % checks)
+              "synthesis cache, heavy units one at a time (%d controls)" % checks)
     return 1 if bad else 0
 
 

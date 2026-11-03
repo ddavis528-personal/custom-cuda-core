@@ -70,6 +70,10 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); OI-31, OI-33)
   localparam int CCV_ISSUE_RESOURCES = 9;
 
+  // The slot of ccv_ooe_rcu_issue that the RCU unit R issues on, the last of CCV_ISSUE_RESOURCES. The guard lead (lead_guard_used, lead_guard_pred) is defined only on it.  Derived: = CCV_SECTIONS + CCV_MIU_PIPES.
+  // decided at the block-level grill-me (RA-31 (OA's rev 307, AR's rev 267))
+  localparam int CCV_ISSUE_SLOT_R = 8;
+
   // A register's position in its row, the section its lowest byte sits in: a 32-bit register at 0, a 16-bit one at 0 or 2, an 8-bit one anywhere. A register name is a row (CCV_P_W_PHYS_REG) plus this; the zero register is valid at any position.  Derived: = clog2(CCV_SECTIONS).
   // decided at the block-level grill-me (Daniel's response OI-29 (2026-10-08))
   localparam int CCV_W_PHYS_POS = 2;

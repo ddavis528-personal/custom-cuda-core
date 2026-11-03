@@ -36,9 +36,10 @@ std::string Config::apply(const std::string &spec) {
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"share_return", &share_return},
       {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
-      {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"branch_ends_window", &branch_ends_window},
+      {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
-      {"held_room_lag", &held_room_lag}};
+      {"held_room_lag", &held_room_lag}, {"kill_free_lag", &kill_free_lag},
+      {"squash_held_room_lag", &squash_held_room_lag}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
@@ -46,7 +47,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
                                      {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge},
-                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"ret_now", &ret_now}, {"go_static", &go_static},
+                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"split_r_class", &split_r_class}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
@@ -222,6 +223,7 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   ret_pend_.clear();
   free_defer_.clear();
   squash_at_.clear();
+  squash_held_.clear();
   name_free_.clear();
   squash_due_.clear();
 }
@@ -375,7 +377,15 @@ void Core::cycle(uint64_t now) {
     };
     while (run != cfg_.rob_depth && !held((x.tail + run) % cfg_.rob_depth)) ++run;
     go_run_[si] = run;
-    go_reach_[si] = run == cfg_.rob_depth || (x.tail + run) % cfg_.rob_depth == x.head;
+    // squash_held_room_lag: the ROB registers no run in a squash's cycle
+    // that leaves held entries, so the run reads 0 the cycle after.
+    if (cfg_.squash_held_room_lag && si < squash_held_.size() && squash_held_[si] && si < squash_at_.size() &&
+        squash_at_[si] && now_ >= squash_at_[si] && now_ < squash_at_[si] + cfg_.squash_held_room_lag)
+      go_run_[si] = 0;
+    // Reaching the head: the run ends at its live entry. An empty ROB whose
+    // run ends at a held entry sitting at the head's index does not reach
+    // it (nothing retires there; ooe_rob's reach is "no held entry").
+    go_reach_[si] = run == cfg_.rob_depth || ((x.tail + run) % cfg_.rob_depth == x.head && x.count != 0);
   }
   fr_prev2_ = fr_prev_;
   if (fr_prev2_.size() != slot_.size()) fr_prev2_.assign(slot_.size(), {0, 0});
@@ -389,9 +399,13 @@ void Core::cycle(uint64_t now) {
   retPending();
   // release_names_lag: last cycle's held releases free their names now.
   {
+    // kill_free_lag: a killed fill's, when their wait runs out.
     const auto nf = std::move(name_free_);
     name_free_.clear();
-    for (const NameFree &f : nf) { if (f.pred) freePred(f.slot, f.name); else freeGpr(f.slot, f.name); }
+    for (NameFree f : nf) {
+      if (f.wait > 1) { --f.wait; name_free_.push_back(f); continue; }
+      if (f.pred) freePred(f.slot, f.name); else freeGpr(f.slot, f.name);
+    }
   }
   pfree_.clock();
   decq_flushed_ = 0;
@@ -422,12 +436,13 @@ void Core::cycle(uint64_t now) {
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
-                 &wlog_.sel_cand, &wlog_.sel_grant})
+                 &wlog_.sel_cand, &wlog_.sel_grant, &wlog_.sel_ret, &wlog_.sel_brk, &wlog_.sel_hold})
     v->assign(n_, 0);
   wlog_.sel_res.assign(n_, 0);
   wlog_.sel_cidx.assign(n_, 0);
   wlog_.sel_busy = wlog_.sel_block = 0;
   wlog_.sel_live = false;
+  wlog_.sel_mig = false;
   wlog_.ralloc.clear();
   wlog_.hop_live = false;
   wlog_.hop_dep.clear();
@@ -1041,7 +1056,7 @@ void Core::addDeps(unsigned e, const RobEntry &r, bool copy_half) {
   // except for a masked load, whose copy reads it instead.
   if (r.merge && r.alloc_gpr && !r.copy) dep(e, r.pold, false, group);
   if (u.shape.guard || u.shape.pdata) dep(e, r.ppguard, true, -1);
-  if (u.shape.pred_logic) {
+  if (u.shape.pred_logic && !cfg_.inject_pq_no_dep) {
     dep(e, r.pq[0], true, -1);
     dep(e, r.pq[1], true, -1);
   }
@@ -1595,7 +1610,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   if (r.u.attr.branch && r.resolved) {
     const bool right = r.u.pred_taken ? r.taken && (r.taken_mask == r.u.group_mask || cfg_.inject_partial_taken_ok)
                                       : !r.taken;
-    if (cfg_.resolve_lag && !(cfg_.resolve_lag_wrong_only && right)) { r.res_pend = true; r.res_at = now_ + cfg_.resolve_lag; }
+    if (cfg_.resolve_lag && !(cfg_.resolve_lag_wrong_only && right) && !(cfg_.resolve_lag_ret_only && !r.u.attr.ret)) { r.res_pend = true; r.res_at = now_ + cfg_.resolve_lag; }
     else resolveBranch(slot, idx);
   }
 }
@@ -1661,6 +1676,13 @@ void Core::takeCompletions() {
     }
     if (r->u.attr.branch) {
       r->resolved = true;
+      if (cfg_.ret_hold) {
+        // OA's rev 293: a ret resolves a cycle after its done (resolve_lag
+        // 1), a branch or call in its done's cycle (RCU's lead), so a branch
+        // done the cycle after a ret's would resolve beside it.
+        if (r->u.attr.ret) res_ret_ = now_ + 1;
+        else if (res_ret_ == now_) err("ret_hold: a branch resolves beside a ret in cycle %llu", (unsigned long long)now_);
+      }
       r->taken = d.branch_taken;
       r->taken_mask = d.branch_mask;
       r->ret_aux = d.aux;
@@ -1944,7 +1966,9 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
     q.cp = cp;
     epoch = (epoch + 1) % cfg_.epochs;
   } else {
+    branch_squash_ = true;
     squashAfter(slot, int(idx), false);
+    branch_squash_ = false;
     // Restore OOE's RAT in the same cycle FET restores its groups (Q8).
     s.rat = cp.gpr;
     s.prat = cp.pred;
@@ -1982,10 +2006,12 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
 void Core::releaseEntry(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   // release_names_lag: a held entry's names free next cycle, its slot now.
-  const bool late = cfg_.release_names_lag && r.squashed;
-  auto gpr = [&](unsigned p) { if (late) name_free_.push_back({slot, p, false}); else freeGpr(slot, p); };
+  // kill_free_lag: an entry squashed before its fill, kill_wait cycles on.
+  const unsigned wait = r.kill_wait ? r.kill_wait : 1;
+  const bool late = (cfg_.release_names_lag && r.squashed) || r.kill_wait;
+  auto gpr = [&](unsigned p) { if (late) name_free_.push_back({slot, p, false, wait}); else freeGpr(slot, p); };
   if (r.alloc_gpr) gpr(r.pnew);
-  if (r.alloc_pred) { if (late) name_free_.push_back({slot, r.ppnew, true}); else freePred(slot, r.ppnew); }
+  if (r.alloc_pred) { if (late) name_free_.push_back({slot, r.ppnew, true, wait}); else freePred(slot, r.ppnew); }
   if (r.ptmp_t != kNoEntry) gpr(r.ptmp_t);
   if (r.ptmp_n != kNoEntry) gpr(r.ptmp_n);
   if (r.ckpt_live) { slot_[slot].ckpt[r.u.ckpt].live = false; r.ckpt_live = false; }
@@ -1996,7 +2022,8 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
 /// Squash every entry of the slot younger than keep_idx, in ROB order; with
 /// to_retirement, every entry. The caller restores the RAT.
 void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool discard_all) {
-  robStop("squash");
+  // A branch's squash is ROB slice 2b's; any other (a kill, a demotion) stops it.
+  if (!branch_squash_) robStop("squash");
   // A squash to retirement (a kill, a demotion, a due squash whose branch
   // has retired) takes any squash still due.
   if (to_retirement && slot < squash_due_.size()) squash_due_[slot].on = false;
@@ -2044,6 +2071,12 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool dis
       oev(OoeEv::kDeferredFree, s.warp, tagOf(slot, idx), 0, r.u.tid);
     } else {
       roblog_.sq_ent.push_back({tagOf(slot, idx), false});
+      // kill_free_lag: not yet filled (Rename 2 fills two cycles on), its
+      // names free with the killed fill, a cycle after it arrives.
+      if (cfg_.kill_free_lag && r.alloc_at + 2 >= now_) {
+        r.kill_wait = unsigned(r.alloc_at + 3 - now_);
+        count("squash.killed_fill");
+      }
       releaseEntry(slot, idx);
     }
   }
@@ -2052,6 +2085,10 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool dis
         s.rob[unsigned(keep_idx)].u.tid);
   count("squash.entries", n);
   count("squash.deferred", deferred);
+  if (squash_held_.size() != slot_.size()) squash_held_.assign(slot_.size(), 0);
+  squash_held_[slot] = 0;
+  for (const RobEntry &e : s.rob)
+    if (e.valid && e.squashed) squash_held_[slot] = 1;
   if (stores_at_miu || discard_all) {
     // One bulk discard of the circular range (branch, tail] (A-41, A-53),
     // which takes the loads with the stores (TI-21). A demotion's covers the
@@ -2110,7 +2147,9 @@ void Core::squashDue() {
       }
     }
     if (keep < 0) count("squash.due_branch_retired");
+    branch_squash_ = true;
     squashAfter(si, keep, keep < 0);
+    branch_squash_ = false;
     s.rat = q.cp.gpr;
     s.prat = q.cp.pred;
     rlog_.restore.push_back({si, q.ckpt});
@@ -2477,6 +2516,10 @@ void Core::retire() {
     while (n != cfg_.retire_per_rob && s.count && !s.fault_stop) {
       RobEntry &r = s.rob[s.head];
       if (!r.complete || now_ < r.ret_at) break;
+      // resolve_lag: a branch retires only once its resolution has acted;
+      // under retire_lag 0 it would otherwise retire in its completion's
+      // cycle and its squash would be lost.
+      if (r.res_pend && !cfg_.inject_retire_unresolved) { count("retire.res_pend"); break; }
       // resolve_lag: a branch ends its window, so nothing younger retires
       // beside it before its resolution has acted.
       if (after_branch) { count("retire.branch_ends_window"); break; }
@@ -2812,9 +2855,38 @@ bool Core::memopOrderOk(const Slot &s, const RobEntry &r) const {
   return true;
 }
 
+bool Core::migInFlight() const {
+  for (const Slot &s : slot_)
+    if (s.st == WarpState::kAllocated || s.st == WarpState::kDrained || (s.st == WarpState::kDemoting && s.map_sent))
+      return true;
+  return false;
+}
+
 void Core::selectSectioned() {
-  constexpr unsigned kRes = 9, kP0 = 5;
+  constexpr unsigned kP0 = 5, kR = 4, kRc = 9;
+  // RA-29 (a): RCU-only ops and warp-collectives are one issue class at R,
+  // one a cycle. split_r_class (a price) and inject_split_r_class (its
+  // control) give collectives R's own copy in the pick, kRc, so one of
+  // each may go together.
+  const bool split = cfg_.split_r_class || cfg_.inject_split_r_class;
+  const unsigned kRes = split ? 10 : 9;
+  const auto pickRes = [&](unsigned e) {
+    const unsigned m = rs_[e].res;
+    if (!split || !((m >> kR) & 1u) || rs_[e].copy) return m;
+    if (slot_[rs_[e].slot].rob[rs_[e].rob].u.attr.lat_class != kLatClsCollective) return m;
+    return (m & ~(1u << kR)) | (1u << kRc);
+  };
   unsigned busy = 0;
+  // idle_r_k (RA-17): R left idle this cycle for a migration's row.
+  const bool mig = cfg_.idle_r_k && migInFlight();
+  // Decided a cycle ahead, as ooe_sched's force register is: the run as
+  // the cycle before last ended, K - 2 grants, whatever the last cycle
+  // did (R's grant there is select's own deepest path).
+  const bool force_r = mig && !cfg_.inject_no_idle_r && r_run_q_ + 2 >= cfg_.idle_r_k;
+  if (force_r) {
+    busy |= 1u << kR | (split ? 1u << kRc : 0u);
+    count("issue.idle_r");
+  }
   std::vector<bool> memop_block(slot_.size(), false);
   // A bulk discard takes P0 for the cycle, and no memop of its warp goes
   // with it (V-23).
@@ -2831,6 +2903,10 @@ void Core::selectSectioned() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.eligible_at > now_ || (x.res & busy)) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
+    if (retHeld() && !x.copy) {   // OA's rev 293
+      const RobEntry &rb = slot_[x.slot].rob[x.rob];
+      if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
+    }
     // The request register (OI-53): past rename, not issued, warp active
     // and a copy's confirmation, as an earlier cycle ended; the grant
     // register masks last cycle's grants until it captures them.
@@ -2862,6 +2938,7 @@ void Core::selectSectioned() {
   // ooe_select's inputs as this select sees them, and its candidates.
   wlog_.sel_live = true;
   wlog_.sel_busy = busy;
+  wlog_.sel_mig = mig;
   for (unsigned si = 0; si != slot_.size(); ++si) wlog_.sel_block |= unsigned(memop_block[si]) << si;
   for (unsigned e = 0; e != n_ && e < wlog_.sel_valid.size(); ++e) {
     const RsEntry &x = rs_[e];
@@ -2884,10 +2961,15 @@ void Core::selectSectioned() {
     wlog_.sel_copy[e] = x.copy;
     wlog_.sel_chas[e] = x.cls == RsCls::kMiu && r.copy && r.rs_copy != kNoEntry;
     wlog_.sel_cidx[e] = wlog_.sel_chas[e] ? r.rs_copy : 0;
+    // ret_hold's terms (OA's rev 293): a ret, a branch or call on RCU, and
+    // whether the hold took the entry this cycle.
+    wlog_.sel_ret[e] = !x.copy && r.u.attr.ret;
+    wlog_.sel_brk[e] = !x.copy && r.u.attr.branch && !r.u.attr.ret && x.cls == RsCls::kRcu;
+    wlog_.sel_hold[e] = wlog_.sel_brk[e] && retHeld();
   }
   for (unsigned e : cand) wlog_.sel_cand[e] = 1;
   std::vector<PickReq> preq;
-  for (unsigned e : cand) preq.push_back({rs_[e].res, rs_[e].age});
+  for (unsigned e : cand) preq.push_back({pickRes(e), rs_[e].age});
   std::vector<unsigned> grant;
   unsigned lost = 0;
   const std::vector<bool> won = pickResources(preq, kRes, &lost, cfg_.pick_fallback);
@@ -2950,10 +3032,13 @@ void Core::selectSectioned() {
     grant.insert(grant.end(), extra.begin(), extra.end());
   }
   const auto isExtra = [&](unsigned e) { return std::find(extra.begin(), extra.end(), e) != extra.end(); };
-  unsigned used = busy, issued = 0;
+  unsigned used = busy, issued = 0, r_grants = 0;
+  bool r_granted = false;
   for (unsigned e : grant) {
-    if ((used & rs_[e].res) && !isExtra(e)) { err("V-60: a resource granted twice in a cycle"); continue; }
-    used |= rs_[e].res;
+    if ((used & pickRes(e)) && !isExtra(e)) { err("V-60: a resource granted twice in a cycle"); continue; }
+    used |= pickRes(e);
+    r_granted |= (rs_[e].res >> kR) & 1;
+    r_grants += (rs_[e].res >> kR) & 1;
     const RsEntry &x = rs_[e];
     const RobEntry &r = slot_[x.slot].rob[x.rob];
     unsigned port = unsigned(__builtin_ctz(x.res));
@@ -2982,6 +3067,20 @@ void Core::selectSectioned() {
     ++issued;
   }
   ++histograms["issue_per_cycle"][issued];
+  // RA-29 (a): one of R's class a cycle, RCU-only or collective.
+  if (r_grants > 1) {
+    count("issue.r_class_pair");
+    if (!cfg_.split_r_class) err("RA-29: %u ops of R's class (RCU-only, collective) granted in a cycle", r_grants);
+  }
+  r_idle_ = !r_granted;
+  if (r_granted) count("issue.r");   // R's grants (RA-17's price)
+  // The run counts R's grants whether or not a migration is in flight
+  // (ooe_sched's run register needs no migration flop so), so a migration
+  // that starts in a run has R held at once.
+  r_run_q_ = r_run_;
+  r_run_ = cfg_.idle_r_k && r_granted ? r_run_ + 1 : 0;
+  if (mig && r_run_ >= cfg_.idle_r_k)
+    err("RA-17: R granted %u cycles running while a migration is in flight", r_run_);
   ++histograms["sections_idle"][4 - unsigned(__builtin_popcount(used & 0xFu))];
   // OI-81's figure: GPR rows not in the pool (held, buffered or not, and on
   // their way back), each cycle.
@@ -3025,6 +3124,10 @@ void Core::select() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
+    if (retHeld() && !x.copy) {   // OA's rev 293
+      const RobEntry &rb = slot_[x.slot].rob[x.rob];
+      if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
+    }
     const Slot &s = slot_[x.slot];
     if (s.st != WarpState::kActive && !atomFinishing(x)) return false;
     if (!rowReadySel(e)) return false;
@@ -3279,6 +3382,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   // The op's width: its destination's, else its first source's (AR-24 (d)).
   is.chwidth = !isZeroName(is.pdst) && is.pdst != noGpr() ? is.dst_w : is.src_w[0];
   out.issues.push_back(is);
+  if (r.u.attr.ret && !x.copy) ret_sel_at_ = now_;   // ret_hold
   const bool lane_step = x.atom == 2;
   if (lane_step || !r.is_mem || cfg_.memop_rcu_done) {
     ++r.rcu_dones_owed;
@@ -3709,6 +3813,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   r.valid = true;
   r.u = u;
   r.seq = s.next_seq++;
+  r.alloc_at = now_;
   if (bar_fault || width_fault || format_fault) ++rlog_.faults;
   r.is_mem = mem;
   r.is_store = mem && a.mem_kind == kMemKStore;

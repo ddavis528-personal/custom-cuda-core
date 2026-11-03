@@ -981,11 +981,73 @@ queue's flush act a cycle after the resolution, from the ROB's squash
 register, the redirect (with the epoch it moves to) unchanged; meanwhile
 the slot runs on, and a branch younger than a due squash is not resolved.
 `held_room_lag` 1: the go's free run sees a held entry's release a cycle
-late. All three are 0 until DA rules. `release_names_lag` 1 and
+late. DA took (b) (OA's rev 292): branches and calls resolve at 0 from
+RCU's branch lead, rets at 1, squash_act_lag 1; with OA's rev 294 (OI-98)
+the defaults are resolve_lag 1 with resolve_lag_ret_only 1 (so rets alone
+lag), ret_hold 1, squash_act_lag 1 and squash_held_room_lag 1;
+held_room_lag and kill_free_lag stay 0 by default, set by the ROB's bench. A branch at the
+head retires only once its resolution has acted (`retire.res_pend`): at
+retire_lag 0 it would otherwise retire in its completion's cycle and its
+squash, a cycle later, be lost, so every audit run hung retiring the
+wrong path; the test resolve-lag retire runs four warps mispredicting at
+resolve_lag 1 and its control (`inject_retire_unresolved`) is caught.
+`kill_free_lag` 1 (OI-94's C''): a squashed entry still unfilled frees
+its names three cycles after its allocation, as the ROB's kill register
+does. Measured on the audit at retire_lag 0 (base 901): squash_act_lag
+911 (+1.1%), with held_room_lag 916 (+0.55% more), with kill_free_lag
+916 (+0); resolve_lag 1 alone 915, with squash_act_lag 920, with
+held_room_lag 927, with kill_free_lag 927. `resolve_lag_ret_only` 1
+applies `resolve_lag` to rets alone (AR's lead covers branches and calls;
+OA's rev 293), and `ret_hold` 1 keeps select from issuing a branch or call
+to RCU the cycle after it issued a ret, so no cycle resolves two (ooe_rs's
+one flop); a branch resolving beside a ret is an error, the test ret hold
+runs a third of its branches as rets, and its control
+(`inject_no_ret_hold`) is caught. Priced against (b) (squash_act_lag 1):
+S1 3,914 to 3,915 with rets at lag 1, 3,915 with the hold;
+coremark32 4,584,463 to 4,584,938 (+0.010%) with rets at lag 1, the same
+with the hold (it fired 4 times); coremark128 17,060,800 to 17,023,250
+(-0.22%) with rets at lag 1 and 17,009,943 (-0.08% more) with the hold (it
+fired 1,996 times; warm MLC, RH's runs). The audit's random
+programs have no rets, so it cannot price either. `idle_r_k` (RA-17,
+OA's revs 298-299; 0, off, until priced): a migration borrows R's PRF
+ports, a row in each cycle R holds no op (AR's answers to RA-6 and RA-8),
+so while one is in flight (restore-allocate to restore-activate, a
+demotion's map to its slot's free) select leaves R idle in a cycle whose
+cycle before last ended `idle_r_k` - 2 cycles running with R granted
+(`issue.idle_r`; decided a cycle ahead, as ooe_sched's force register
+is, so a natural idle in the last cycle still forces one), never K
+running: 17 rows in at most 17 x K cycles. The run counts R's grants
+with or without a migration in flight, so one that starts in a run has R
+held at once. The swap
+environment's `r_ports` moves the rows that way (off, they take 17 cycles
+on ports of their own, as TI-21 has them). R running K cycles granted
+beside a migration is an error; the test idle R (three warps of RCU-only
+ops, a demotion and its restores) holds every migration to 68 cycles at
+K 4, and its control (`inject_no_idle_r`) is caught. Sectioned select
+only, where R is resource 4. RCU-only ops and warp-collectives are one
+issue class at R (RA-29 (a), OA's rev 305, RA's confirmation): a
+collective's footprint minimum is 0, so it takes R and nothing else, one
+op of the class a cycle, and both count in the idle-R run (the test idle
+R runs one warp of collectives). Two of the class granted in a cycle is an
+error (`issue.r_class_pair`); the test R class contends two warps of each
+for R, and its control (`inject_split_r_class`, R's own copy in the pick
+for a collective) is caught. `split_r_class` 1 is that split as a price
+point, the error off. Vote's and ballot's predicate source (RA-29 (e),
+OA's rev 303) takes pand's and por's path: DEC marks the op
+`pred_logic` with its qualifiers in imm, rename reads the predicate RAT
+for them, the RS entry depends on them, and the issue carries the
+physical predicates in imm (TI-1's format), whatever the opcode; the
+environment decodes every such imm and holds both sources readable at
+issue (the test pred sources; its control, `inject_pq_no_dep`, drops
+the dependency and is caught). `release_names_lag` 1 and
 `squash_room_lag` 1 are the defaults (OA's rev 280): a held entry frees
 its ROB slot as its op lands and its names a cycle later (and with its
 slot, if the slot is released first), and a squashed slot's room reads 0
-for a cycle. Measured (S1 / coremark32 / the audit; base 45,438 /
+for a cycle. `squash_held_room_lag` 1 (slice 2b's ROB; its bench
+sets it) registers a run of 0 in the cycle of a squash that leaves held
+entries, the run then read from the held flops: the audit is 911 / 911 at
+squash_act_lag 1 and 916 / 916 adding held_room_lag and kill_free_lag,
+price 0. Measured (S1 / coremark32 / the audit; base 45,438 /
 4,663,694 / 901 at retire_lag 1): resolve_lag 1 is +0.81% / +0.64% /
 +1.7%, adding squash_act_lag +0 / +0 / 929, adding held_room_lag +0 / -
 / 934; at resolve_lag 0, squash_act_lag is +0 / +0 / 912 and with

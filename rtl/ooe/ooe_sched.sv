@@ -16,9 +16,14 @@
 //   its event lead (a miss, or a completion past L1,
 //   changes lines at the edge after next: each known a cycle ahead, a
 //   completion by its channel's valid), ooe_rs's
-//   allocation lead (a row written at this edge), and the stop lead,
+//   allocation lead (a row written at this edge), the stop lead,
 //   OI-50's replay rule over iss, dep and msd as they stand after this
-//   edge (an entry returns to Waiting at the next cycle's hop).
+//   edge (an entry returns to Waiting at the next cycle's hop), and the
+//   replay lead, a producer some row reads replayed at this edge: ooe_wake
+//   takes the stop at this edge, so the lines it gives this module drop at
+//   the next one, which the stop lead's capture precedes (a grandchild of
+//   a missed load, granted on its parent's bypass before the parent's
+//   replay was known, stayed ready a cycle and issued twice without it).
 //
 //   Request: per entry, valid, not issued, its warp active, and a copy's
 //   sources confirmed (its row empty), as they stand after this edge. Its
@@ -38,6 +43,30 @@
 //   CG-5 waiver, the grant at 2 NGD).
 //   Its enable is "something may request or something is held": the
 //   request and ready registers' AND, or the mask copy's OR.
+
+//   The ret hold (OA's rev 293): no branch or call is selected for RCU the
+//   cycle after a ret is, so the ROB's one outcome path never resolves a
+//   branch beside a ret (a ret resolves a cycle after its done). A
+//   register of the RCU entries' ret bits (ret_cq03h), on the grant
+//   register's enable, is ANDed with the grant register after the edge
+//   (not before it: the grant is select's deepest path, from vel_cq03h),
+//   and its OR takes this cycle's branches and calls (brk_cq03h) from
+//   select. It is the model's rule exactly (a ret's grant, not its
+//   request), the hold's OR at select's request.
+//
+//   The idle-R force (RA-17, OA's revs 298-299; IRK, 0 = off): a migration
+//   takes R's PRF ports a row a cycle R holds no op, so while one is in
+//   flight (mig_cq02h, a lead: the next cycle's) select holds every RCU
+//   entry whose footprint has R (res bit 4) in a cycle whose cycle before
+//   last ended IRK - 2 cycles running with R granted: never IRK running.
+//   The run is the model's r_run_, R's grants running whether or not a
+//   migration is in flight: a register of the RCU entries' R bits
+//   (rrq_cq04h, as rtq_cq04h) gives "R granted last cycle", and a count of
+//   the cycles before it (rrun_cq04h) completes it. The force is a
+//   register (force_cq04h) decided a cycle ahead, so select reads a flop:
+//   deciding it on the last cycle's grant, an OR over the entries after
+//   the edge, put vel_cq03h at 25.2. The three are the grant register's
+//   clock gate, its enable adding a run or force to end.
 //
 // The reference is the model's ready and request registers and its
 // sectioned select (Core::readyRegister, Core::requestRegister,
@@ -55,6 +84,7 @@ module ooe_sched #(
   parameter int NR = 30,     // RCU-class entries, [0, NR)
   parameter int S  = 4,      // tier-1 warp slots (CCV_TIER1_WARPS)
   parameter int FB = 1,      // the RCU class's section fallback (OA's response IS-9)
+  parameter int IRK = 0,     // RA-17's idle-R run, idle_r_k (0: no force)
   localparam int NM = N - NR,
   localparam int LS = $clog2(S),
   localparam int W  = $clog2(N),
@@ -95,6 +125,9 @@ module ooe_sched #(
   input  logic [NM*NM-1:0]  older_m_cq03h,
   input  logic [3:0]        busy_cq03h,    // MIU pipes a bulk discard took
   input  logic [S-1:0]      block_cq03h,
+  input  logic [NR-1:0]     ret_cq03h,     // an RCU entry is a ret (not a copy)
+  input  logic [NR-1:0]     brk_cq03h,     // an RCU entry is a branch or call, not a ret (not a copy)
+  input  logic              mig_cq02h,     // a migration is in flight next cycle (RA-17; a lead)
   output logic [N-1:0]      grant_cq04h,
   output logic [N-1:0]      grant_w_cq04h  // the same, for ooe_wake's timers
 );
@@ -155,6 +188,18 @@ module ooe_sched #(
     tl_cq02h = (wtl_cq02h & read) != '0;
   end
 
+  // The replay lead: a producer replayed at this edge, of a column some
+  // row reads. ooe_wake takes the stop at this edge, so its lines as this
+  // module reads them drop at the next edge (the model's ready_rep_late),
+  // after the stop lead's capture at this one.
+  logic rl_cq02h;
+  always_comb begin
+    logic [N-1:0] col;
+    col = '0;
+    for (int i = 0; i < N; i++) col = col | dep_cq02h[i * N +: N];
+    rl_cq02h = (rep_cq02h & col) != '0;
+  end
+
   // -- Ready register ---------------------------------------------------------
   logic [N-1:0] ready_cq02h;
   logic [N-1:0] ready_cq03h;
@@ -177,15 +222,36 @@ module ooe_sched #(
 
   // -- Select -----------------------------------------------------------------
   logic [N-1:0] cand_cq03h, grant_cq03h, lost_cq03h;
+  // The ret hold: a ret granted last cycle holds this cycle's branches and
+  // calls off RCU.
+  logic [NR-1:0] rtq_cq04h;                // the RCU entries' ret bits, last cycle
+  logic [NR-1:0] hold_cq04h;
+  assign hold_cq04h = (gnt_cq04h[NR-1:0] & rtq_cq04h) != '0 ? brk_cq03h : '0;
+  // The idle-R force (RA-17): R granted last cycle (rg) and the run before
+  // it (rrun) give the run as last cycle ended (rnx); the force register
+  // takes it a cycle ahead, beside the migration's lead, so select reads a
+  // flop (R's grant last cycle is select's own deepest path, and its OR
+  // over the entries put vel_cq03h at 25.2). The three registers are the
+  // grant register's clock gate, whose enable adds a run or force to end.
+  logic [NR-1:0] rrq_cq04h;                // the RCU entries' R bits, last cycle
+  logic [NR-1:0] rbit_cq03h;
+  always_comb
+    for (int e = 0; e < NR; e++) rbit_cq03h[e] = res_cq03h[e * 9 + 4];
+  localparam int RW = IRK > 2 ? $clog2(IRK) : 1;
+  logic          rg_cq04h, force_cq04h;
+  logic [RW-1:0] rrun_cq04h, rnx_cq04h;
+  assign rg_cq04h  = (gnt_cq04h[NR-1:0] & rrq_cq04h) != '0;
+  assign rnx_cq04h = !rg_cq04h ? '0 : 32'(rrun_cq04h) >= IRK - 1 ? rrun_cq04h : rrun_cq04h + 1'b1;
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
-    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .vel_cq03h(vel_cq03h),
+    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .hold_cq03h(hold_cq04h), .rhold_cq03h(force_cq04h),
+    .vel_cq03h(vel_cq03h),
     .iss_cq03h(siss_cq03h), .dep_cq03h(sdep_cq03h), .slot_cq03h(sslot_cq03h), .res_cq03h(res_cq03h),
     .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h), .older_r_cq03h(older_r_cq03h),
     .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h), .block_cq03h(block_cq03h),
     .cand_cq03h(cand_cq03h), .grant_cq03h(grant_cq03h), .lost_cq03h(lost_cq03h));
   (* keep *) logic [N-1:0] gnt_out_cq04h;  // the grant register's leaving copy
   (* keep *) logic [N-1:0] gnt_w_cq04h;    // and ooe_wake's
-  assign gnt_en_cq03h      = (rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0;
+  assign gnt_en_cq03h      = (rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0 || force_cq04h || rrun_cq04h != '0;
   assign ready_en_cq02h    = ready_en_cq03h || gl_cq05h;
   // A grant moves a ready bit at the edge it arrives only through the lead
   // line (WL - 1) of a producer of latency LEAD + 1, threshold age 1; every
@@ -214,7 +280,7 @@ module ooe_sched #(
       // A grant leaving now: ooe_wake takes it at this edge, and its lead
       // line may rise there (a latency of LEAD + 1, OA's response OI-45),
       // which no timer lead of ooe_wake's foresees.
-      ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h;
+      ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h || rl_cq02h;
       gl_cq05h       <= (gnt_cq04h & dcol_cq02h) != '0;
       stop_cq03h     <= stop_cq02h;
       alc_cq03h      <= alloc_cq02h;
@@ -235,10 +301,34 @@ module ooe_sched #(
       gnt_cq04h     <= '0;
       gnt_out_cq04h <= '0;
       gnt_w_cq04h   <= '0;
+      rtq_cq04h     <= '0;
     end else if (gnt_en_cq03h) begin
       gnt_cq04h     <= grant_cq03h;
       gnt_out_cq04h <= grant_cq03h;
       gnt_w_cq04h   <= grant_cq03h;
+      rtq_cq04h     <= ret_cq03h;
+    end
+  end
+  // The idle-R registers (RA-17), on the grant register's enable: the R
+  // bits beside it (rg reads them only with it), the run as of the cycle
+  // before last, saturating at IRK - 1, and the force. With nothing to
+  // grant and no grant to clear, rg is 0, so the run and the force go to
+  // 0, which their own terms in the enable cover.
+  if (IRK == 0) begin : g_no_idle_r
+    assign force_cq04h = 1'b0;
+    assign rrq_cq04h   = '0;
+    assign rrun_cq04h  = '0;
+  end else begin : g_idle_r
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) begin
+        rrq_cq04h   <= '0;
+        rrun_cq04h  <= '0;
+        force_cq04h <= 1'b0;
+      end else if (gnt_en_cq03h) begin
+        rrq_cq04h   <= rbit_cq03h;
+        rrun_cq04h  <= rnx_cq04h;
+        force_cq04h <= mig_cq02h && 32'(rnx_cq04h) >= IRK - 2;
+      end
     end
   end
 
@@ -250,6 +340,13 @@ module ooe_sched #(
   // leaves a freed row's bits in place.
   `CCV_ASSERT(iss_valid, (iss_cq02h & ~valid_cq02h) == '0)
   `CCV_ASSERT(msd_issued, (msd_cq02h & ~iss_cq02h) == '0)
+  // RA-17: no cycle a migration is in flight ends IRK cycles running with
+  // R granted (the model's check; with the force in place it never fires).
+  // The run counts R's grants whether or not one is in flight, so the
+  // force holds R at once for a migration that starts in a run. IRK 1 and
+  // 2 would need the force from the lead alone, ungated: not built.
+  `CCV_ASSERT(irk_range, IRK == 0 || IRK >= 3)
+  `CCV_ASSERT_T(idle_r, IRK == 0 || !(`CCV_PAST(`CCV_PAST(mig_cq02h)) && rg_cq04h && 32'(rrun_cq04h) >= IRK - 1))
   `CCV_ASSERT_T(alloc_led, (valid_cq02h & ~`CCV_PAST(valid_cq02h)) == '0 || `CCV_PAST(alloc_cq02h))
 
 endmodule

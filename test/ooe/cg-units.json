@@ -197,7 +197,8 @@
         "N": 45,
         "NR": 30,
         "S": 4,
-        "FB": 1
+        "FB": 1,
+        "IRK": 4
       },
       "clock": "ooe_core_clk",
       "reset": "ooe_rst_r00h",

@@ -20,7 +20,9 @@
 // request register holds it (not issued, its warp active, and a copy's
 // sources confirmed, as an earlier cycle ended), its ready register holds
 // it, its grant register does not (granted last cycle, not yet captured
-// as issued), and ooe_rs says it is valid and past rename's stages. A
+// as issued), ooe_sched's ret hold does not take it (a branch or call the
+// cycle after a ret's grant, OA's rev 293), and ooe_rs says it is valid and
+// past rename's stages. A
 // memop also needs none of its pipes taken by a bulk discard (a discard
 // takes MIU pipes only, V-23), its sources confirmed, no bulk discard of
 // its warp this cycle, its copy (if it has one still in the RS) issued in
@@ -50,6 +52,8 @@ module ooe_select #(
   input  logic [N-1:0]       rq_cq03h,      // ooe_sched's request register
   input  logic [N-1:0]       ready_cq03h,   // its ready register
   input  logic [N-1:0]       gnt_cq03h,     // its grant register: granted last cycle
+  input  logic [NR-1:0]      hold_cq03h,    // its ret hold: RCU entries held this cycle
+  input  logic               rhold_cq03h,   // RA-17's force: RCU entries whose footprint has R held
   input  logic [N-1:0]       vel_cq03h,     // valid and past rename's stages (ooe_rs)
   input  logic [N-1:0]       iss_cq03h,     // issued (ooe_wake)
   input  logic [N*N-1:0]     dep_cq03h,     // row i, column j: i waits on j
@@ -83,6 +87,7 @@ module ooe_select #(
               slot_cq03h[j * LS +: LS] == sl)
             order_ok[e] = 1'b0;
       req[e] = rq_cq03h[e] && ready_cq03h[e] && !gnt_cq03h[e] && vel_cq03h[e];
+      if (e < NR) req[e] = req[e] && !hold_cq03h[e] && !(rhold_cq03h && res_cq03h[e * 9 + 4]);
       if (e >= NR)
         req[e] = req[e] && (res_cq03h[e * 9 + RR +: RM] & busy_cq03h) == '0 && conf[e] && !block_cq03h[sl] &&
                  copy_ok[e] && order_ok[e];

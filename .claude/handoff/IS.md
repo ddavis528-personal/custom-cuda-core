@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-10-31. Keep this current at every task's end; it is what
+Updated 2026-11-02. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -40,7 +40,9 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 256, OA 286, IS 182, TI 271, OI 239, CP 148, DA 97.
+Conventions 15, AR 260, OA 296, IS 184, TI 281, OI 250, CP 149, DA 100, RA 41.
+RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
+not yet in the merged roster, so notice.py refuses to=RA: send the notice by hand).
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
@@ -51,7 +53,10 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
-- ISA decisions this cycle: O-73 to O-84. Latest: O-83 (interleaved
+- ISA decisions this cycle: O-73 to O-85. O-85 (RA-20, DA 2026-11-02, DA tab
+  rev 100): warp-collective semantics, diagonal unballot; compiler a70f392.
+  RA-19: pmov merges by issue mask (3f202bc). Waiting: TI opcodes, CP ccv-sim.
+  DA-tab decision rows are written in Daniel's session by the agent he answers. Latest: O-83 (interleaved
   per-thread memory, srd #3 %privoff, DA tab rev 95) and O-84 (address-taken
   frames in the bottom of the O-83 region, R15 = W, recursion refused,
   O-64 frame windows withdrawn, DA tab rev 97).

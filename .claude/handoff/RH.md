@@ -24,6 +24,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   Push only to `ccr-c22116ce-1vzyjg`; never to a requester's branch. Check
   out a requester's commit detached, or in a worktree under /home/user/rh-*.
 - Fresh container: `./tools/setup-toolchain.sh` once.
+- The disk allowance is about 39 GB in all. A gate's build/ needs 5 GB or more, so
+  keep swap at 6 GB or less during a gate and delete finished jobs' oracles and
+  builds promptly.
 - A detached job dies when the idle container is reclaimed. Keep a tracked
   background task (e.g. rh-jobs/watch.sh) open while it runs, and make jobs
   resumable.
@@ -42,9 +45,14 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-(none)
+(none). Expected next (OI, 2026-11-01): TI's split gate (OI-101, 7782ce0). On a
+commit OI sends as a bundle, run `verify.sh --only cg`, then `gate-export.sh
+cg.tgz --cache`. Exact steps will come with the bundle.
 
 ## Done
+- Gate for OI's b7cb9fb (11-01): run 1 died at disk-full, and OI cancelled run 2
+  at 18:07Z (OI gated 4c71575 itself, which covers it). Worktree /home/user/rh-gate
+  kept, build/ removed.
 - Rev 293 pricing (OI, 2026-10-31 to 11-01): coremark128 and coremark32,
   configs a/b/c, at 712913d plus OI's patch (rh-jobs/oi86.patch, uncommitted in
   the detached worktree /home/user/rh-oi86), warm. All PASS; results sent to OI

@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-10-30. Keep this current at every task's end; it is what
+Updated 2026-11-02 01:30. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -21,50 +21,92 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
   detail). Notices via `.claude/skills/register/notice.py` and
   send_message. Pings weekly, Fridays (TI-49, DA).
 - Trees in the scratchpad (/tmp/claude-0/-home-user/<session>/scratchpad):
-  wt the sweep tree, wt3 slice 1 (pushed), wt4 slice 2 work (at 21f7150 +
-  uncommitted model edits). Disk is a fixed allowance: delete build dirs
+  wt the sweep tree, wt3 slice 1 (pushed), wt4 slice 2 model work (at
+  21f7150 + uncommitted model edits), wt5 slice 2 RTL (on the branch). Disk is a fixed allowance: delete build dirs
   you no longer need; one gate's build is about 15 GB.
 
 ## Daily sweep (scheduled task trig_01RHTzEomNoTP7mgfQxaNkmm)
 Read every tab since the bookmarks; merge every remote branch that is
-ahead (not release) into wt, gate, push; pongs; pings on Fridays only.
+ahead (not release) into wt, gate, push; pongs; pings on Fridays only;
+`tools/setup-session-home.py --check` (TI-50; on a mismatch ask DA to
+approve the install again, never reinstall unasked).
+- Session settings installed 2026-10-31 (DA approved): /home/user/.claude.
+  The compact hook prints THIS checkout's .claude/handoff/OI.md: keep
+  /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 256, OA 286, IS 180, TI 271, OI 239, CP 148, DA 97. Pings: Friday 10-30's all
+Conventions 15, AR 260, OA 305, RA 44 (RA tab 9851686b-2b0a; RA not in local roster),  IS 182, TI 282, OI 250, CP 149, DA 98 (sweep 11-01). Pings: Friday 10-30's all
 answered (checked 10-30); next pings Friday 11-06.
 
-## State
-- Branch tip: the 10-31 sweep merge on da182a7 (ROB slice 2 part 1). TI's
-  47e2622 (OI-92: ccv-skel's launch log only when traced) arrives with
-  TI's next push; until then coremark128 needs over 11 GB.
-- Model defaults: retire_lag 0 (OI-87: go_tb diverges under 1),
-  release_names_lag 1 and squash_room_lag 1 (OA rev 280).
-- Slice 2 knobs in wt4 (all 0 until DA rules, OA rev 284): resolve_lag,
-  squash_act_lag, held_room_lag. Audit 901 base; rl1 916; rl1+sal 929;
-  rl1+sal+hrl 934; sal 912; sal+hrl 920. S1 45,438 base, 45,805 at rl1
-  (squash/held lags +0). coremark32 4,663,694 base, 4,693,463 rl1 (sal +0).
-- coremark128 base 17,612,876 (155,416 redirects, wt4's model). The rest
-  of OI-88's CoreMark runs are on RH (session_01QPk2jvfKM1V5rRfip8FC86,
-  DA's run helper): skeleton da182a7, oracles from 21f7150 (pin d9ddd2c
-  faults, OI-91 to TI); coremark128 base, rl, rlsh, sh, then coremark32
-  sh, rlsh, one at a time, about 12 h from 2026-10-31 02:47 UTC; results
-  by send_message, then the table to OA. Never run coremark128 here
-  (OOM at 11 GB).
-- wt5: slice 2's tree. Part 1 pushed (9be452c, da182a7: per-row done
-  counts, OI-90; the model's knobs and log). Next, part 2's RTL per
-  scratchpad plan-rob2.md: branch records, resolution, squash, held
-  entries, room with holes; and ooe_rs's side of the row hold.
-- OI-90 to OA: rev 282's done bit misses a cancelled issue's done; per-row
-  counts proposed, width OA's.
+## Compute (DA, 2026-10-31)
+- OI-95 raised (rev 245, TI notified): persistent synth-cache incl. ABC,
+  map/map -r in parallel, verify.sh --changed for working-branch pushes;
+  nightly/release stay full clean. Until TI lands it, the gate is as before.
+- Iterate NGD on the one-slot unit ooe_rob_s1 in scratch tree wt7 (unit
+  added to wt7's test/ooe/cg-units.json only; never commit it). Confirm
+  once at full size. Keep CoreMark on RH, never beside synthesis here.
+
+## State (2026-11-02 01:30 UTC)
+- wt10 (scratchpad/wt10, tip 4cbb111 = 8 commits on cfa62c6: ret hold after the
+  edge, model default flip, one_resolution + control, ooe_go reserve fix, this
+  handoff). Gate: detached `setsid nohup tools/gate-push.sh` (pgid 21695, log
+  scratchpad/gate10.log, ~/ccv-logs/verify-4cbb111-20261101-2300.log), pushes to
+  ccr-57eff422-5tdecg on green. Split gate unusable (OI-102 to TI: the only
+  container channel is a 64 KiB message the model retypes). Background tasks cap
+  at 2 h: long gates via setsid nohup, a waiter loop on the pgid.
+- wt11 (scratchpad/wt11, worktree, branch oi-idle-r): 899b4fc + 88cd231 COMMITTED
+  (RA-17 RTL + model registered rule; RA-29 (a) r_class_pair err, testRClass,
+  inject_split_r_class, split_r_class price knob, collectives (kColl) in testIdleR
+  warp 3; RA-29 (e) env checks pred_logic imm sources readable, testPredSources,
+  inject_pq_no_dep). Model suite PASS and trio 25 PASS on 88cd231 (migs 2026,
+  forced 396, 0 mismatches, 8 controls caught). Price new rule (scratchpad/idle-r-price24R.txt): K4 forced/R grants
+  6.2/11.5/10.5% at 0/50/100% R share, longest migration 44/44/44 (no force
+  42/131/494), cycles noise. RA-29 (a) kernel price (S1 = test/kernels via
+  scratchpad/lag-kernels4.sh pattern with CCV_OOE_CONFIG=split_r_class=1, floors =
+  its check-ooo line, rope, audit = ooe-test --audit AUDIT_CFG, cta-reduce =
+  tools/time-bench.sh test/bench/cta-reduce*) NOT RUN: needs skel+oracles, after gate.
+- NEW FINDING (raise OI row to OA): V-04 under fits_stale 6, repro in
+  scratchpad/v04-repro.md (dense setp+vote/ballot, 2 warps, seed 3): a slot under
+  its floor spends it twice over took(t-1)+took(t) (registered share adds
+  unmetFloor a cycle early); gone at fits_stale 0. testPredSources adds a lane op
+  per pair to stay clear; say so in the row.
+- RA-22 checked: model rows A1/ordinary 0, copy 1, A2 2, A3 3 (makeIssue,
+  memop m.row); ooe_rob counts dones per row. Confirm to OA.
+- Next: commit wt11 (docs in ooe-rtl-plan.md + ooe-model.md done), merge onto the
+  pushed branch, gate, push. OI row answering OA rev 299 / RA-17 (price, RTL,
+  the registered rule as an RTL-realizable form with the same guarantee,
+  mig_cq02h's source = the future control block, arrival free: 1.7 NGD to a
+  flop); notify OA (RA: no session in local roster; say so).
+- After the 4cbb111 push: OI row to OA (fill assert; OI-94 condition 2 with
+  Rename's mark; ret hold budgets ret/brk 4.0 to confirm; f-f 24.4 + vel fix;
+  replay-lead fix; one_resolution + control; default flip; ooe_go reserve fix).
+  Sync this file to origin.
 
 ## Open work (most urgent first)
-1. coremark128 results to OA (OI-88 package for DA, OA rev 284).
-2. ROB slice 2 (OI-85): RobLog extension done in wt4's model; RTL per
-   scratchpad plan-rob2.md (mis bit at C, oldest pick and squash register
-   at R, squash acts at R + 1, held entries, room with holes, records);
-   rob_tb on the new log. Move wt4 onto the branch tip first.
-3. Land with slice 2: model fixes in wt4 (release_names_lag V-01 at slot
-   release; swap seed 2 forced DRAM miss, OA rev 284).
-4. OI-87: go_tb/model divergence under retire_lag 1 (CAS pairs under
-   stall.share.rs); then flip the default with check-kernel's re-pins.
-5. ROB slices 3-6; RTL 7 (barriers, in slice 5).
+0. OA revs 306-307 + AR rev 267 (RA-31/32, notices 01:36-01:40 11-02): measure
+   ooe_rs select-path NGD for the issue lead slice (selected entry's section mask +
+   operand-use bits, R's guard phys pred, grant-muxed and flopped; fallback a
+   registered copy of the static fields); confirm no consumer of CCV_LAT_L1_WAKE is
+   hardcoded at 16 (speculative wake, miss-check replay, per-row done counts,
+   squashed-load free); rerun S1/floors at ~12 (with CCV_LAT_RCU_ADDR_BASE = 1).
+   Checked so far: model uses cfg_.lat_l1_wake (core.cpp:1350, unitLat);
+   ooe_wake LAT_SPEC param (default 16, benches from wake-params.py). Rows to read.
+1. Gate/push 4cbb111; then wt11 (RA-17) as above.
+2. OA revs 300-305 (unanswered): RA-22 confirm done_row 0/2/3 (A1 memop,
+   A2 lane op, A3 addressless memop) - check model/RTL then answer; RA-18
+   (rev 302 supersedes 300): rename writes call link pc[31:0]+bytes(ilen)
+   into RS imm (imm_kind 6), target add where the branch's redirect target
+   is formed (may move to record fill a cycle later); place both adds, report
+   Rename NGD, budgets for moved ports to OA; RA-29 (a): one of RCU-only or
+   collective a cycle as one class, both in the idle-R run and ret hold;
+   assert + control that splits it; price model-only on S1, audit, floors,
+   rope, cta-reduce (<0.5% OA, over DA); after the idle-R counter. RA-29 (e):
+   vote/ballot predicate source substituted into imm as pand/por.
+3. OA asks: S1 + rets in next floors run; OI-94 (c) price; close OI-88;
+   Rename's mark with OI-94 condition 2's assert + control.
+4. After AR's lead + TI's schema: branches resolve at lag 0 (lead_br_*),
+   rets at 1.
+5. Receivers' squash interface at assembly (RS/RAT/decq/go leads).
+6. Model fixes in wt4 (release_names_lag V-01; swap seed 2 DRAM miss).
+7. OI-87 (go_tb under retire_lag 1), ROB slices 3-6 (the control block that
+   drives ooe_sched's mig_cq02h belongs there); RTL 7 (barriers).

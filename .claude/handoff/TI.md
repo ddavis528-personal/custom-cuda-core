@@ -33,13 +33,13 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 15, AR 260, OA 292, IS 182, TI 279, OI 246, CP 149, DA 97
+Conventions 15, AR 260, OA 293, IS 182, TI 282, OI 251, CP 149, DA 98
 (sweep 2026-10-31: nothing new for TI). Latest TI open: TI-50 (rev 272).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Tip of both branches: 5e7c8db (OI-95: ABC cache, parallel map/map -r, scoped gate; DA confirmed in TI's session 2026-10-31; TI rev 279), on 43d92b3, on 80697a3 (AR rev 260 branch lead + slot_fields step A; TI rev 277, notices to AR/OI/OA), on f77582b (b0d91c2 shfl lat_class 5), on a17c736 (gate-push clears on red), on 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
+- Tip of both branches: 7782ce0 (OI-101 split gate: verify --only/--skip, gate-export, gate-push --import, gate-combine; DA ruled same-commit split counts, 2026-11-01; TI rev 282), on 1afee59 (sweep 2026-11-01: 60 commits from five branches; release 1494a06, snapshot-2026-11-01-1afee59 local only, tag refused), on 4c2ce8b (OI-97: big units map in series; ABC selftest own cache), on 5e7c8db (OI-95: ABC cache, parallel map/map -r, scoped gate; DA confirmed in TI's session 2026-10-31; TI rev 279), on 43d92b3, on 80697a3 (AR rev 260 branch lead + slot_fields step A; TI rev 277, notices to AR/OI/OA), on f77582b (b0d91c2 shfl lat_class 5), on a17c736 (gate-push clears on red), on 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
   five branches; release b2f4e58), with 47e2622 (OI-92), on c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
   refuses a stale ENTRY), on 63a7bd5 (autoCompactWindow 400k), on c69475e
   (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
@@ -57,6 +57,20 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
   OA (OA rev 288). Waiting: AR, OI.
 
 ## Open work (most urgent first)
+-2. 2026-11-01 evening (DA): CI runners died on OI's 2b (runs 538/543/544,
+   no logs; NGD+CG on full ooe_rob OOM a 16 GB runner). Built heavy-unit
+   lock 0facb89 (CCV_HEAVY_SERIAL=1 in ci.yml, tools/heavy-units.json,
+   light limit 2 GB) and gate-scratch.sh ca27c87/6d4a2ae (OI-102; DA chose
+   a scratch branch; proxy refuses branch delete (403), so no drop;
+   gate-scratch/TI left on origin, CI run 551 on it from 0facb89).
+   LOCAL, NOT PUSHED: trial full gate on OI 2b tip + lock in /home/user/ti-coll
+   (logs /home/user/ccv-logs/trial), then gate-push --full, then TI rows:
+   OI-102 answer + every agent's sweep skips gate-scratch/* (notify all).
+   Asked DA: enable the lock for local gates too (sweep) - unanswered.
+   Then after the 02:11 sweep: AR re:RA-10 (delete rcu_miu_width, close
+   Q-18), RA-16 (schema/params, task list), AR re:RA-11 PHYS_REGS sweep.
+   New agent RA (RCU architecture), tab 9851686b-2b0a, read rev 30; AR tab
+   read rev 262; OI rev 252.
 -1. Done 2026-10-31: shfl lat_class 5 (b0d91c2) and AR rev 260's lead +
    slot_fields step A (80697a3; TI rev 277). Open from it: step B (narrow
    generated ports/nets per slot, ~50 c["bits"] sites) deferred until a

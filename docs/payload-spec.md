@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 14 | 36 |
 | ⚠️ Some provisional | 26 | 138 |
-| ⛔ Some preliminary | 15 | 141 |
-| **Total** | **55** | **315** |
+| ⛔ Some preliminary | 15 | 147 |
+| **Total** | **55** | **321** |
 
 ## What still has to be decided
 
@@ -833,7 +833,17 @@ ooe → rcu · rate 9 · execution
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `dispatch_fault` | `1` | 1 | literal |
-| **total** | | **177** | ⛔ 12 preliminary, ⚠️ 97 provisional |
+| `lead_sec_mask` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
+| `lead_src_used` | `3` | 3 | literal |
+| `lead_imm_used` | `1` | 1 | literal |
+| `lead_merge_used` | `1` | 1 | literal |
+| `lead_guard_used` | `1` | 1 | literal |
+| `lead_guard_pred` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
+| **total** | | **193** | ⛔ 12 preliminary, ⚠️ 103 provisional |
+
+Lead fields (driven with valid, a cycle ahead of the rest): `lead_sec_mask`, `lead_src_used`, `lead_imm_used`, `lead_merge_used`, `lead_guard_used`, `lead_guard_pred`.
+
+Slot fields (defined only on the slots named, zero on the rest): `lead_guard_used` on `CCV_ISSUE_SLOT_R`; `lead_guard_pred` on `CCV_ISSUE_SLOT_R`.
 
 ### `ccv_rcu_lane_ops`
 
