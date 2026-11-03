@@ -97,7 +97,7 @@ void trioRetConfig(Config &c) {
   c.resolve_lag = 1;
   c.resolve_lag_ret_only = 1;
   c.squash_act_lag = 1;
-  c.ret_hold = 1;
+  c.ret_hold = 2;   // OA's rev 320: a held win cancelled after the pick
 }
 /// RA-17's idle-R run: testIdleR's migrations over the trio's settings, at
 /// ooe_trio's IRK.
