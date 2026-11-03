@@ -42,8 +42,9 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 - 2026-11-03 (DA): longest-first queueing built (check-cg/check-ngd queue
   light units slowest first from $CCV_LOGDIR/unit-times/<tool>.json, written
   by clean gates only, CCV_CLEAN_GATE from verify.sh; control + 4 mutants);
-  ooe_rob_w stays heavy (DA). Pushing with gate-push --full; the record
-  seeds from this gate, so the next clean gate is the first ordered one.
+  ooe_rob_w stays heavy (DA). Pushed b5b2032 (full PASS, ngd 4604 s, cg
+  3912 s); record seeded in /root/ccv-logs/unit-times (cg 17, ngd 28 units).
+  Compare the next clean gate's cg/ngd against these.
 - 2026-11-03 12:00Z: both branches at bbd23d3 (sweep 2026-11-03: RA's
   ccr-126afa13-clcw9s merged 6ea9720, heavy-units.json kept TI's retune;
   AR's ccr-80102643-4n8bv4 (24); make-release skips gate-scratch/* a933e8d,
