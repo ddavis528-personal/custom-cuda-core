@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-02 01:30. Keep this current at every task's end; it is what
+Updated 2026-11-03 (after 1f7c642). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -31,15 +31,15 @@ Read every tab since the bookmarks; merge every remote branch that is
 ahead (not release) into wt, gate, push; pongs; pings on Fridays only;
 `tools/setup-session-home.py --check` (TI-50; on a mismatch ask DA to
 approve the install again, never reinstall unasked).
-- Session settings installed 2026-10-31 (DA approved): /home/user/.claude.
+- Session settings installed 2026-10-31 and again 2026-11-03 (DA approved both): /home/user/.claude.
   The compact hook prints THIS checkout's .claude/handoff/OI.md: keep
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 316, RA 60, IS 188, TI 297, OI 256, CP 152, DA 104
+Conventions 17, AR 269, OA 316, RA 60, IS 188, TI 297, OI 257, CP 152, DA 104
 (sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
-Pings: next Friday 11-06. Settings check FAILED 11-03 (fresh container): ask DA to
-approve the session-home install again; never reinstall unasked.
+Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
+the compact hook printed this handoff.
 
 ## Compute (DA, 2026-10-31)
 - OI-95 raised (rev 245, TI notified): persistent synth-cache incl. ABC,
@@ -86,14 +86,13 @@ approve the session-home install again; never reinstall unasked.
   Sync this file to origin.
 
 ## Open work (most urgent first)
--3. OI-104 (B) PUSHED b23bbd8 (full gate PASS, 11-03): kind/class store in ooe_rs
-   (akind/acls_cq01h at 10; kc in rcu_en/miu_en; kind_o/cls_o_cq02h to wake's
-   kind/cls_cq01h). Row re:OI-104 at OI rev 255/256, OA notified: asks wake kind/cls
-   arrival 9 -> 2.0 (2 + 17.1 = 19.1 at L1_WAKE 12); then TI reapplies base 1. When OA
-   answers: put OA's 2.0 in rtl/ooe/ooe_wake.ngd.json (by OA, citing its rev).
-   Later: ooe_rename to send akind/acls (rnrs ties them to 0 today).
-   Sweep 11-03 merged 5 branches (126afa13 12, 183cc441 3, 80102643 24, 9eb50716 13,
-   infra 3; heavy-units: TI's latest list each time); its full gate-push follows.
+-3. OI-104 DONE on OI's side: b23bbd8 (store in ooe_rs, full gate PASS), the sweep
+   merge 2f64d10 (full PASS), and 1f7c642 (pushed 11-03, SCOPED PASS). 1f7c642 has
+   rendep build the per-port {cls,kind} (spec from c_x bit 20, XW 21) and rename
+   send akind/acls_cq04h, with wake kind/cls at 2.0 by OA rev 317. Benches compare
+   the pairs, with a no-spec control. Row re:OI-104 is at OI rev 257 and TI is
+   notified: it asks TI for CCV_LAT_RCU_ADDR_BASE back to 1. Nothing left for OI
+   unless TI or OA answer.
 -2a. STATE 11-02 (wt13 e35c9f9 = split + archive, on fe523c4 sweep merge): DA closed the
    equivalence work: old ROB + miter moved to archive/ooe-rob-split/ (README has result:
    BMC clean thru frame 9 at D8, control fails f8; never in gate/lint/bench - DA: no
