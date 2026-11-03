@@ -39,6 +39,12 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-03 17:50Z: #59 base 1 re-applied on OI's 1f7c642 in local branch
+  ti-base1 (ti-ret HEAD 5839ecb, NOT pushed): ooe_wake ok (17.1 NGD), no-msd
+  (rs) caught, but no-rep-lead (trio) MISSED -> held for OI. Docs-write and
+  send_message tools were unavailable: row text in /home/user/ti-pending-row.txt,
+  write it + notify OI/OA when the tools are back. ti-ret reset to
+  f20f89e (OI's merge, no base 1).
 - 2026-11-03 (DA): longest-first queueing built (check-cg/check-ngd queue
   light units slowest first from $CCV_LOGDIR/unit-times/<tool>.json, written
   by clean gates only, CCV_CLEAN_GATE from verify.sh; control + 4 mutants);
