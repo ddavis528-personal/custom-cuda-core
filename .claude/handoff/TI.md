@@ -33,12 +33,19 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 268, OA 313, IS 187, TI 295, OI 253, CP 152, DA 104,
-RA 58, RI 1 (sweep 2026-11-02). Latest TI open: TI-50 (rev 272).
+Conventions 17, AR 269, OA 317, IS 188, TI 297, OI 254, CP 152, DA 104,
+RA 60, RI 1 (sweep 2026-11-03). Latest TI open: TI-50 (rev 272).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-03 12:00Z: both branches at bbd23d3 (sweep 2026-11-03: RA's
+  ccr-126afa13-clcw9s merged 6ea9720, heavy-units.json kept TI's retune;
+  AR's ccr-80102643-4n8bv4 (24); make-release skips gate-scratch/* a933e8d,
+  OA rev 316 / TI rev 297). Release fe9fe2a pushed, snapshot tag
+  snapshot-2026-11-03-bbd23d3 refused (local only). OA's
+  ccr-9eb50716-lecnjf has 4 commits after the sweep: next sweep.
+  #59 also waits on OI wiring ooe_rename akind/acls (OA rev 317).
 - 2026-11-03 09:40Z: both branches at c5ae668. ROB split (OI-103) in at
   5e5280f; retune 4e7186f (heavy list = ooe_rob_w only, kept 6% under the
   2048 MiB limit while the ROB grows; per-unit wall time and heavy-lock wait
