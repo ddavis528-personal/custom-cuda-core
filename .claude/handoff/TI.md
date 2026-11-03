@@ -39,6 +39,11 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-03 (DA): longest-first queueing built (check-cg/check-ngd queue
+  light units slowest first from $CCV_LOGDIR/unit-times/<tool>.json, written
+  by clean gates only, CCV_CLEAN_GATE from verify.sh; control + 4 mutants);
+  ooe_rob_w stays heavy (DA). Pushing with gate-push --full; the record
+  seeds from this gate, so the next clean gate is the first ordered one.
 - 2026-11-03 12:00Z: both branches at bbd23d3 (sweep 2026-11-03: RA's
   ccr-126afa13-clcw9s merged 6ea9720, heavy-units.json kept TI's retune;
   AR's ccr-80102643-4n8bv4 (24); make-release skips gate-scratch/* a933e8d,
@@ -52,8 +57,8 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
   lines in check-cg/check-ngd); c5ae668 queues heavy units first (control
   added). Full clean gate wall time: ~4h (16ab8ae, full-size ROB) -> 2h25
   (5e5280f) -> 1h37 (4e7186f) -> 1h18 (c5ae668). Critical path now ngd
-  (4600 s), led by ooe_rename (2673 s in ngd, 2258 s in cg). Next knob if
-  DA wants more: longest-first queueing from the last run's unit times.
+  (4600 s), led by ooe_rename (2673 s in ngd, 2258 s in cg). Longest-first
+  queueing: built (DA, 2026-11-03).
 - 2026-11-03: both branches at 16ab8ae (sweep 2026-11-02: six branches
   merged, perf-register conflict resolved 70f8a04; release 40c0816, tag
   refused). It carries eda9ce8 (check-cg's run() measures each command's own
