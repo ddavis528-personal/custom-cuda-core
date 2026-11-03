@@ -108,7 +108,7 @@ namespace {
 constexpr unsigned S = RENAME_S, R = RENAME_R, RP = RENAME_RP, C = RENAME_C, GW = RENAME_GW, PW = RENAME_PW,
                    NG = RENAME_NG, NP = RENAME_NP;
 constexpr unsigned N = RENAME_N, NR = RENAME_NR, FLG = RENAME_FLG, CLG = RENAME_CLG, FLP = RENAME_FLP, CLP = RENAME_CLP;
-constexpr unsigned NC = S * R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R + 2, FB = 8, FK = 4, XW = 20,
+constexpr unsigned NC = S * R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R + 2, FB = 8, FK = 4, XW = 21,
                    P = 2 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w ? w : 1; }
 constexpr unsigned LS = bits(S), LC = bits(C), LX = bits(XM + 1), W = bits(N);
@@ -176,6 +176,7 @@ void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model
 struct Uop {
   Core::RatLog::Ren r;
   unsigned pm = 0, pc = 0;   // its main entry's port, its copy's
+  uint8_t kc[2] = {};        // its entries' {class, kind}, the model's wakeKindClass (OA, re:OI-104)
 };
 struct Grp {
   std::vector<Uop> grp;
@@ -226,6 +227,12 @@ Grp snapGroup(const Core &c) {
     x.r = r;
     x.pm = r.mem ? R + mi++ : ri++;
     x.pc = r.copy != kNoEntry ? ri++ : 0;
+    for (unsigned k = 0; k != 2; ++k) {
+      const unsigned e = k == 0 ? r.main : r.copy;
+      if (e == kNoEntry) continue;
+      const auto kc = c.wakeKindClass(e);
+      x.kc[k] = uint8_t((kc.second << 2) | kc.first);
+    }
     if (x.pm < P) y.port_of[r.main] = x.pm;
     if (r.copy != kNoEntry && x.pc < P) y.port_of[r.copy] = x.pc;
     y.grp.push_back(x);
@@ -281,6 +288,8 @@ void compareRows(const Grp &y, const Grp *a) {
       ++rows;
       const bool prod = k == 1 || x.r.gwe || x.r.pwe;
       if (getBit(dut->row_prod_cq04h, p) != prod) fail("row_prod", p, 0, getBit(dut->row_prod_cq04h, p), prod);
+      const unsigned kc = getField(dut->akind_cq04h, p * 2, 2) | getField(dut->acls_cq04h, p * 3, 3) << 2;
+      if (kc != x.kc[k]) fail("kind and class", p, 0, kc, x.kc[k]);
       std::vector<uint8_t> want_row(N, 0), want_grp(P, 0), want_prv(P, 0);
       std::vector<uint8_t> code_row(N, 0), code_grp(P, 0), code_prv(P, 0);
       for (unsigned j = 0; j != N; ++j) {
@@ -432,6 +441,7 @@ unsigned attrOf(const Core::RatLog::Ren &r) {
   x |= (r.cgroup == 7 ? 0u : r.cgroup & 7u) << 11;
   x |= (r.unit & 7u) << 14;
   x |= (r.pgroup & 7u) << 17;
+  x |= unsigned(r.spec && control != "no-spec") << 20;
   return x;
 }
 

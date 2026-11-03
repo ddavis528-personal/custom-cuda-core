@@ -1320,6 +1320,18 @@ bool Core::rowConfirmed(unsigned i) const {
 
 // ---- wake, cancel, confirm ---------------------------------------------------------------
 
+std::pair<uint8_t, uint8_t> Core::wakeKindClass(unsigned e) const {
+  const RsEntry &x = rs_[e];
+  const RobEntry &r = slot_[x.slot].rob[x.rob];
+  const SchedAttr &a = r.u.attr;
+  if (x.copy) return {kWakeCopy, uint8_t(a.lat_class)};
+  if (x.atom == 2) return {kWakeTimed, uint8_t(kLatClsLane)};
+  if (r.is_mem)
+    return {cfg_.l1_spec && r.is_load && a.lat_class == kLatClsL1 && r.u.space == 0 ? kWakeSpec : kWakeMem,
+            uint8_t(a.lat_class)};
+  return {kWakeTimed, uint8_t(a.lat_class)};
+}
+
 void Core::setWakes(unsigned e) {
   RsEntry &x = rs_[e];
   const RobEntry &r = slot_[x.slot].rob[x.rob];
@@ -1327,19 +1339,18 @@ void Core::setWakes(unsigned e) {
   x.late = false;
   x.spec = x.on_completion = false;
   if (e < wlog_.grant.size()) {
+    const auto kc = wakeKindClass(e);
     wlog_.grant[e] = 1;
-    wlog_.cls[e] = uint8_t(a.lat_class);
-    wlog_.kind[e] = kWakeTimed;
+    wlog_.kind[e] = kc.first;
+    wlog_.cls[e] = kc.second;
   }
   if (x.copy) {
     x.late_at = now_ + cfg_.lat_lane;     // a lane op; no done (A-38)
-    if (e < wlog_.kind.size()) wlog_.kind[e] = kWakeCopy;
     return;
   }
   if (x.atom == 2) {
     // An atomic's lane op: N at the lane latency, for A3 (AR-21).
     x.late_at = now_ + cfg_.unitLat(kLatClsLane);
-    if (e < wlog_.cls.size()) wlog_.cls[e] = uint8_t(kLatClsLane);
     return;
   }
   if (r.is_mem) {
@@ -1351,7 +1362,6 @@ void Core::setWakes(unsigned e) {
     } else {
       x.on_completion = true;
     }
-    if (e < wlog_.kind.size()) wlog_.kind[e] = x.spec ? kWakeSpec : kWakeMem;
     return;
   }
   // A fixed-latency unit: the full-latency wake at its latency, and its
@@ -3891,6 +3901,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       w.pgroup = uint8_t(u.attr.bypass_group & 7u);
       w.nob = r.is_mem || u.attr.cross_lane;
       w.atomic = atomic;
+      w.spec = cfg_.l1_spec && r.is_load && u.attr.lat_class == kLatClsL1 && u.space == 0;
       for (unsigned i = 0; i != 3; ++i) w.wsrc[i] = r.wsrc[i];
       w.wdst = r.wdst;
       w.wset = a.serial == kSerChwidth || a.commit_width;

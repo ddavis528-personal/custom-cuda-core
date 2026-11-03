@@ -30,6 +30,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ccv {
@@ -1572,6 +1573,9 @@ public:
       /// memop or a cross-lane op).
       uint8_t greads = 0, cgroup = 0, unit = 0, pgroup = 0;
       bool gmerge = false, pguse = false, cguard = false, pmerge = false, nob = false, atomic = false;
+      /// Its main entry's wake is speculative: an L1-contracted global load
+      /// under l1_spec (wakeKindClass's kWakeSpec), for the RS row's kind.
+      bool spec = false;
       /// Width codes at rename (AR-24 (d)): src0..2's and the destination's.
       uint8_t wsrc[3] = {}, wdst = 0;
       bool wset = false;   ///< a chwidth or sibling: wdst is the width it sets
@@ -1977,6 +1981,10 @@ public:
   /// Whether the configured penalties fit the lines (a knob-set table may
   /// not); the structural check runs only when they do.
   bool wakeLinesFit() const { return pens_fit_; }
+  /// Entry e's timer kind and latency class, {kind, class}, as ooe_wake's
+  /// timer takes them at a grant: static per op, so ooe_rs writes them at
+  /// allocation (OA, re:OI-104). setWakes logs the same pair.
+  std::pair<uint8_t, uint8_t> wakeKindClass(unsigned e) const;
   /// A number unique to this core among all constructed in the process, so
   /// an observer can tell a new core from one at a reused address.
   uint64_t serial() const { return serial_; }
