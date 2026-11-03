@@ -36,11 +36,10 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17 (RA-n RCU arch, RI-n RCU impl added), AR 268, OA 310, RA 58 (RA tab
-9851686b-2b0a; RA/RI not in local roster), IS 185, TI 290, OI 252, CP 152, DA 103
-(sweep 11-02 10:20; DA 99-103: RCU next after OOE, RI session, RCU C++ model).
-Pings: next Friday 11-06. Sweep 11-02 merge pending until the wt11 gate ends
-(skip gate-scratch/*).
+Conventions 17, AR 269, OA 316, RA 60, IS 188, TI 297, OI 256, CP 152, DA 104
+(sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
+Pings: next Friday 11-06. Settings check FAILED 11-03 (fresh container): ask DA to
+approve the session-home install again; never reinstall unasked.
 
 ## Compute (DA, 2026-10-31)
 - OI-95 raised (rev 245, TI notified): persistent synth-cache incl. ABC,
@@ -87,16 +86,14 @@ Pings: next Friday 11-06. Sweep 11-02 merge pending until the wt11 gate ends
   Sync this file to origin.
 
 ## Open work (most urgent first)
--3. OI-104 (B), OA rev 315, rebuilt 11-03 after the container loss, on 5e5280f
-   (TI's tip: has 4d388f8 + TI 16ab8ae): kind/class store in ooe_rs (akind/acls_cq01h
-   at 10; kc under rcu_en/miu_en; kind_o/cls_o_cq02h to wake's kind/cls_cq01h) + the
-   lost 979b2b5 (no-msd >= 100 seeds; ooe-model doc). The in-wake store FAILED CG (45
-   groups of 5 flops, CG-4/5; staging 62% DCGE; alloc_v/idx 13.5 over 12). Measured
-   before the loss: rs NGD 18.2 (akind 10 + 8.2), kc in the class gates (98/99%,
-   81/90%); benches all PASS, rs no-kind caught. NEXT: full gate-push, then OI row
-   re:OI-104 to OA (Needs OA: wake kind/cls arrival 9 -> 2.0, from rs flops: 2 + 17.1
-   = 19.1 at L1_WAKE 12; report that the store sits in rs) and TI FYI (reapply base 1
-   after OA's 2.0); notify OA only.
+-3. OI-104 (B) PUSHED b23bbd8 (full gate PASS, 11-03): kind/class store in ooe_rs
+   (akind/acls_cq01h at 10; kc in rcu_en/miu_en; kind_o/cls_o_cq02h to wake's
+   kind/cls_cq01h). Row re:OI-104 at OI rev 255/256, OA notified: asks wake kind/cls
+   arrival 9 -> 2.0 (2 + 17.1 = 19.1 at L1_WAKE 12); then TI reapplies base 1. When OA
+   answers: put OA's 2.0 in rtl/ooe/ooe_wake.ngd.json (by OA, citing its rev).
+   Later: ooe_rename to send akind/acls (rnrs ties them to 0 today).
+   Sweep 11-03 merged 5 branches (126afa13 12, 183cc441 3, 80102643 24, 9eb50716 13,
+   infra 3; heavy-units: TI's latest list each time); its full gate-push follows.
 -2a. STATE 11-02 (wt13 e35c9f9 = split + archive, on fe523c4 sweep merge): DA closed the
    equivalence work: old ROB + miter moved to archive/ooe-rob-split/ (README has result:
    BMC clean thru frame 9 at D8, control fails f8; never in gate/lint/bench - DA: no
