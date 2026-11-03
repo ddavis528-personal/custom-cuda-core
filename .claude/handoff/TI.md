@@ -39,6 +39,14 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-03 09:40Z: both branches at c5ae668. ROB split (OI-103) in at
+  5e5280f; retune 4e7186f (heavy list = ooe_rob_w only, kept 6% under the
+  2048 MiB limit while the ROB grows; per-unit wall time and heavy-lock wait
+  lines in check-cg/check-ngd); c5ae668 queues heavy units first (control
+  added). Full clean gate wall time: ~4h (16ab8ae, full-size ROB) -> 2h25
+  (5e5280f) -> 1h37 (4e7186f) -> 1h18 (c5ae668). Critical path now ngd
+  (4600 s), led by ooe_rename (2673 s in ngd, 2258 s in cg). Next knob if
+  DA wants more: longest-first queueing from the last run's unit times.
 - 2026-11-03: both branches at 16ab8ae (sweep 2026-11-02: six branches
   merged, perf-register conflict resolved 70f8a04; release 40c0816, tag
   refused). It carries eda9ce8 (check-cg's run() measures each command's own
