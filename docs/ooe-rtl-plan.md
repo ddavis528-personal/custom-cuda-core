@@ -1126,7 +1126,19 @@ Built (`rtl/ooe/`):
 
 ## The ROB (OI-85; OA's revs 277 to 279)
 
-`rtl/ooe/ooe_rob.sv`, in six slices. Slice 1 (built): storage, allocation,
+`rtl/ooe/ooe_rob_w.sv`, in six slices; one instance a warp (OA-24, OA's
+rev 311, DA's rev 104). Each `ooe_rob_w #(SA, WID)` holds one slot's
+state: it takes the fill lanes whose `fl_slot` is its WID, and the dones,
+MIU completions and branch outcome whose rob tag's slot bits are its WID.
+Each instance flops its own GPR and predicate frees; `ooe_freelist`'s `FS`
+free sources are ORed at its input (arrival 2.0, OA). There is no parent
+logic: the benches build the four instances and the OR in a harness
+(`test/ooe/ooe_rob_tb.sv`). The split was checked against the unsplit ROB
+once, by a formal miter (OA's rev 312), now archived with the frozen
+reference in `archive/ooe-rob-split/`, which no gate, bench or build reads
+(DA, 2026-11-02): BMC clean through six cycles after reset at 8 entries a
+warp, its wrong-WID control failing; its README has the limits.
+Slice 1 (built): storage, allocation,
 completion, in-order retire, the frees and the retire-stage register, and
 the room rename's go reads. Slice 2 (built): branch records, resolution
 and the redirect (part a), the squash and the deferred free (part b).
@@ -1180,7 +1192,7 @@ Memop commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   so the window's no-op term needs no count either. An entry's write bits
   are read by the window only while it is valid and filled (a no-op can
   retire before its fill lands). NGD-7 copies on the window. Budgets
-  (`ooe_rob.ngd.json`, OA's rev 279 (b)): 2 for every input from a
+  (`ooe_rob_w.ngd.json`, OA's rev 279 (b)): 2 for every input from a
   register, 14 for the go's. check-ngd: 23.7 flop to flop; dn_tag 19.3
   from its 2 (21.3), cm_tag 18.8, fl_slot 18.7, al_n 10.7 and al_nop 10.4
   from their 14; no finding, so slice 1 closes with no lag added (rev
