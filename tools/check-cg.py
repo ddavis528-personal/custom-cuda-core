@@ -83,6 +83,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build", "cg")
@@ -179,7 +180,8 @@ MODULE_FLOPS = int(param("CCV_CG_MODULE_FLOPS"))
 
 # A child forked from this process starts its peak (ru_maxrss) at this
 # process's size: Linux carries the resident set across exec. check-cg
-# grows past 2 GB with full-size ooe_rob loaded, and eleven light units each
+# grew past 2 GB with full-size ooe_rob loaded (before the ROB split,
+# OA-24), and eleven light units each
 # read 2179 MiB, its size, not theirs (release gate, 2026-11-02). So every
 # command runs under tools/rss-run.py, a small process, which reports the
 # command's own peak. Empty only in the selftest's control.
@@ -222,13 +224,15 @@ def run(cmd, cwd=ROOT, **kw):
 
 
 # == Heavy units, one at a time (DA, 2026-11-01) ===============================
-# A stopgap for GitHub's runners (4 cores, 16 GB, CCV_JOBS every core): with
-# full-size ooe_rob, check-cg's and check-ngd's Yosys and ABC for it (about
+# Built for GitHub's runners (4 cores, 16 GB, CCV_JOBS every core) when
+# full-size ooe_rob, since split into four ooe_rob_w (OA-24), was measured: check-cg's and check-ngd's Yosys and ABC for it (about
 # 6 GB each, OI-97) ran side by side and the runner was killed, logs and all
 # (runs 538, 543, 544). Under CCV_HEAVY_SERIAL=1, which CI sets, a unit
 # tools/heavy-units.json names is measured holding build/heavy-unit.lock, so
-# no two heavy units run at once in either check or across the two; the
-# rest run CCV_JOBS at a time beside it, as before. The list cannot go stale
+# no two heavy units run at once in either check or across the two, and
+# (2026-11-02) no light unit beside a heavy one; light units share the lock
+# and run CCV_JOBS at a time. Kept after the split as future-proofing (DA,
+# 2026-11-02). The list cannot go stale
 # silently: a unit it does not name whose one command peaks over its
 # light_rss_max_mib fails the check while the lock is on.
 HEAVY_FILE = os.path.join(ROOT, "tools", "heavy-units.json")
@@ -239,6 +243,11 @@ LIGHT_RSS_MAX = int(_HEAVY["light_rss_max_mib"]) << 20
 _TLS = threading.local()
 PEAK = {}
 _PEAK_MU = threading.Lock()
+# Wall time per unit and time spent waiting for the heavy lock (report-only,
+# 2026-11-03): where the gate's minutes go, for retuning after the ROB
+# split (OA-24).
+UNIT_TIME = collections.Counter()
+LOCK_WAIT = collections.Counter()
 
 
 def heavy_serial():
@@ -259,7 +268,7 @@ def as_unit(name, heavy=None, lock=None):
     """This thread's commands count toward `name`'s peak. With the lock on,
     a heavy unit runs alone: it holds the lock exclusive and every other
     unit holds it shared, so no light unit runs beside a heavy one either
-    (full-size ooe_rob's Yosys and its ABC child are 10.7 GB together, which
+    (full-size ooe_rob's Yosys and its ABC child were 10.7 GB together, which
     three light units beside would push past a 16 GB runner; trial,
     2026-11-02). A turnstile (the lock's .gate), taken before the lock and
     let go once it is held, keeps a waiting heavy unit from starving behind
@@ -267,8 +276,12 @@ def as_unit(name, heavy=None, lock=None):
     per open file, so a nested hold on a second fd would wait on itself."""
     heavy = HEAVY if heavy is None else heavy
     prev, held = getattr(_TLS, "unit", None), getattr(_TLS, "held", False)
+    timing = not getattr(_TLS, "timing", False)
     lk = None
     _TLS.unit = name
+    t0 = t1 = time.monotonic()
+    if timing:
+        _TLS.timing = True
     try:
         if heavy_serial() and not held:
             lock = lock or HEAVY_LOCK
@@ -278,12 +291,32 @@ def as_unit(name, heavy=None, lock=None):
                 lk = open(lock, "w")
                 fcntl.flock(lk, fcntl.LOCK_EX if name in heavy else fcntl.LOCK_SH)
             _TLS.held = True
+            t1 = time.monotonic()
         yield
     finally:
         if lk:
             _TLS.held = False
             lk.close()
+        if timing:
+            _TLS.timing = False
+            with _PEAK_MU:
+                UNIT_TIME[name] += time.monotonic() - t1
+                LOCK_WAIT[name] += t1 - t0
         _TLS.unit = prev
+
+
+def time_lines(top=6):
+    """Report-only: the slowest units by wall time, and the time units
+    spent waiting for the heavy lock."""
+    if not UNIT_TIME:
+        return []
+    slow = ", ".join("%s %ds" % (u, t) for u, t in UNIT_TIME.most_common(top))
+    wait = sum(LOCK_WAIT.values())
+    most = LOCK_WAIT.most_common(1)[0] if wait >= 1 else None
+    return ["unit wall time (report-only): %s; %d unit(s) in all, %ds summed" %
+            (slow, len(UNIT_TIME), sum(UNIT_TIME.values())),
+            "heavy-lock wait (report-only): %ds summed%s" %
+            (wait, ", most %s %ds" % most if most else "")]
 
 
 def unit_task(name, fn):
@@ -372,7 +405,7 @@ def jobs():
     return max(1, int(n)) if n.isdigit() else (os.cpu_count() or 1)
 
 
-def measured(units, measure, pool=None, also=None):
+def measured(units, measure, pool=None, also=None, heavy=None):
     """Each unit measured, jobs() at a time (the work is Yosys, Verilator and
     the benches, each in the unit's own directory), handed back in order as it
     is done, so the report reads as a serial run's. A unit that raises raises
@@ -381,13 +414,21 @@ def measured(units, measure, pool=None, also=None):
     own = pool is None
     pool = pool or concurrent.futures.ThreadPoolExecutor(jobs())
     try:
-        fs = []
-        for u in units:
-            fs.append((u, pool.submit(unit_task(u.name, measure), u)))
+        units = list(units)
+        fut = {}
+        # Heavy units are queued first (2026-11-03): one that reaches the
+        # lock while a long light unit runs waits for it, and the turnstile
+        # stops every other thread behind it meanwhile; at 4e7186f that was
+        # 12642 s of summed waiting in check-cg and 7009 s in check-ngd.
+        # Run first, a heavy unit only ever waits for the other check's.
+        heavy = HEAVY if heavy is None else heavy
+        first = [u for u in units if heavy_serial() and u.name in heavy]
+        for u in first + [u for u in units if u not in first]:
+            fut[id(u)] = pool.submit(unit_task(u.name, measure), u)
             if also:
                 also(pool, u)
-        for u, f in fs:
-            f.result()
+        for u in units:
+            fut[id(u)].result()
             yield u
     finally:
         if own:
@@ -2125,7 +2166,7 @@ def main_check(only=None, verbose=False):
     fails += over
     fails += unmeasured(units)
     more, over = heavy_check("check-cg")
-    lines += more
+    lines += more + time_lines()
     fails += over
     for l in lines:
         print("  " + l)
@@ -2182,6 +2223,7 @@ def heavy_selftest(expect):
     os.makedirs(os.path.dirname(lock), exist_ok=True)
     heavy = {"fx_h1", "fx_h2"}
     saved = os.environ.get("CCV_HEAVY_SERIAL")
+    saved_times = (UNIT_TIME.copy(), LOCK_WAIT.copy())
 
     def spans(on, names=("fx_h1", "fx_h2")):
         os.environ["CCV_HEAVY_SERIAL"] = "1" if on else "0"
@@ -2249,6 +2291,21 @@ def heavy_selftest(expect):
         peak = {u: peak[u] for u in ("fx_light", "fx_small")}
         expect(peak["fx_light"] >= 96 << 20, "a command's peak memory was not measured: "
                "%d MiB, want 96 or more" % (peak["fx_light"] >> 20))
+        # Heavy units start first, the report keeps its order; without the
+        # lock, the queue is the units' own order (the control).
+        class _U:
+            def __init__(self, name):
+                self.name = name
+        for on, want in ((True, ["fx_h1", "fx_l1", "fx_l2"]), (False, ["fx_l1", "fx_l2", "fx_h1"])):
+            os.environ["CCV_HEAVY_SERIAL"] = "1" if on else "0"
+            started = []
+            with concurrent.futures.ThreadPoolExecutor(1) as one:
+                got = [u.name for u in measured([_U("fx_l1"), _U("fx_l2"), _U("fx_h1")],
+                                                lambda u: started.append(u.name), one, heavy=heavy)]
+            expect(started == want, "units started %s with CCV_HEAVY_SERIAL=%d, want %s"
+                   % (started, on, want))
+            expect(got == ["fx_l1", "fx_l2", "fx_h1"], "the report's order changed: %s" % got)
+        os.environ["CCV_HEAVY_SERIAL"] = "1"
         _, f = heavy_check("selftest", set(), 64 << 20, peak)
         expect(len(f) == 1 and "fx_light" in f[0], "a light unit over the limit, not on the "
                "list, passed: %s" % f)
@@ -2260,6 +2317,9 @@ def heavy_selftest(expect):
         expect(heavy_check("selftest", set(), 64 << 20, peak) == ([], []),
                "the light limit was checked with the lock off")
     finally:
+        for c, v in zip((UNIT_TIME, LOCK_WAIT), saved_times):
+            c.clear()
+            c.update(v)
         if saved is None:
             os.environ.pop("CCV_HEAVY_SERIAL", None)
         else:

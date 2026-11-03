@@ -414,8 +414,9 @@ def reg_names(d):
     return out
 
 
-# A netlist this size or more maps in series: ABC's peak grows with it, and
-# ooe_rob's (the one unit past it today) needs most of the container alone.
+# A netlist this size or more maps in series: ABC's peak grows with it.
+# Full-size ooe_rob's, the unit it was set for, needed most of the
+# container alone; the ROB split (OA-24) replaced it with ooe_rob_w.
 PARALLEL_BLIF_MAX = 4 << 20
 PARALLEL_FREE_MIN = 8 << 30
 
@@ -456,7 +457,7 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
         return t
     # map and map -r read the same netlist and nothing of each other's, so
     # they may run side by side (OI-95) -- but not on a big unit: full-size
-    # ooe_rob's ABC peaks near 6.5 GB each, and two of them were killed in a
+    # ooe_rob's ABC peaked near 6.5 GB each (before the split, OA-24), and two were killed in a
     # 15 GB container at CCV_JOBS=1 (OI-97). Side by side only for a small
     # netlist with the memory for both; in series otherwise.
     if two_maps_fit(blif):
@@ -1029,7 +1030,7 @@ def main_check(only=None):
     if not parts:
         print("  blocks: none assembled yet (every block top is a generated stub)")
     more, over = cg.heavy_check("check-ngd")
-    for l in more:
+    for l in more + cg.time_lines():
         print("  " + l)
     fails += over
     print("  %d unit(s), %d port budget(s) in %d module file(s), stage %g NGD, ports %g by "
