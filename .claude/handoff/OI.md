@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 319, RA 60, IS 188, TI 297, OI 263, CP 152, DA 104
+Conventions 17, AR 269, OA 320, RA 60, IS 188, TI 297, OI 264, CP 152, DA 104
 (sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -86,6 +86,22 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-5. STATE 11-03 20:00: main tree gate-push (scoped, detached, log ~/ccv-logs/oi-push-1955.log)
+   of c8794c1 ufq + 0d660fa (release thresholds late; rob_w NGD 25.1 -> 23.1, fo 31.6),
+   1659753 prodmap, 74d070c ret_hold 2 knob, fe68bcc handoff, 91313cb audit env knobs.
+   Worktree scratchpad/wtgo (on 91313cb): 0c1f6c7 go priod x dr pdr copies (go bench 25
+   seeds, 13/13 controls), 72b873f sched (b) TAKEN by OA rev 320: hold masks grant after
+   the pick in ooe_select, model default ret_hold 2, select/trio benches at 2, trio
+   no-rep-lead control now 12 seeds (caught at 12/25, missed at 6). Full run-rtl passed
+   otherwise; ooe-test PASS. GATE e1487ea RED (20:47): ooe_go NGD-3 unmet_g_cq01h (6.0) -> fitsx
+   25.8 (ABC joins pdr0 copies after the pool at 9.6); ooe_sched one command 2191 MiB > 2048
+   light limit (was 975; heavy-units.json is TI's). Both commits taken off the push, kept on
+   local branch oi-go-sched (e1487ea) and in wtgo; push gated without them. NEXT: after the push, cherry-pick both into main, measure NGD
+   (fanout) of ooe_go, ooe_sched, ooe_select ALONE, gate-push, then report to OA (rev 320
+   asks depth + fanout after; still >25 -> bring the remaining path first) + go's
+   remaining path and sender-drive table (hv/pl/px/unmet_g/p).
+   sched (b) price (OI rev 264): ret-heavy audit 1.25 lost slots/kop, 990 -> 987 cycles;
+   kernels zero exposure. OA rev 317 still owed: ooe_wake kind/cls 2.0 in ngd.json + rename akind/acls wiring.
 -4. FANOUT PLAN (OA rev 310): 7aeb62a PUSHED (rob_w head read via hoh keep copies
    hrg/hrn/hrp; fanout f-f 38.7 -> 31.9). Row at OI rev 258 (corrected 262) to OA (re:RA-33, notified):
    per-unit table, rulings asked for rs and decq (free-entry candidates ahead), freelist scan, sched
