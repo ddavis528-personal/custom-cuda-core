@@ -179,7 +179,8 @@ MODULE_FLOPS = int(param("CCV_CG_MODULE_FLOPS"))
 
 # A child forked from this process starts its peak (ru_maxrss) at this
 # process's size: Linux carries the resident set across exec. check-cg
-# grows past 2 GB with full-size ooe_rob loaded, and eleven light units each
+# grew past 2 GB with full-size ooe_rob loaded (before the ROB split,
+# OA-24), and eleven light units each
 # read 2179 MiB, its size, not theirs (release gate, 2026-11-02). So every
 # command runs under tools/rss-run.py, a small process, which reports the
 # command's own peak. Empty only in the selftest's control.
@@ -222,13 +223,15 @@ def run(cmd, cwd=ROOT, **kw):
 
 
 # == Heavy units, one at a time (DA, 2026-11-01) ===============================
-# A stopgap for GitHub's runners (4 cores, 16 GB, CCV_JOBS every core): with
-# full-size ooe_rob, check-cg's and check-ngd's Yosys and ABC for it (about
+# Built for GitHub's runners (4 cores, 16 GB, CCV_JOBS every core) when
+# full-size ooe_rob, since split into four ooe_rob_w (OA-24), was measured: check-cg's and check-ngd's Yosys and ABC for it (about
 # 6 GB each, OI-97) ran side by side and the runner was killed, logs and all
 # (runs 538, 543, 544). Under CCV_HEAVY_SERIAL=1, which CI sets, a unit
 # tools/heavy-units.json names is measured holding build/heavy-unit.lock, so
-# no two heavy units run at once in either check or across the two; the
-# rest run CCV_JOBS at a time beside it, as before. The list cannot go stale
+# no two heavy units run at once in either check or across the two, and
+# (2026-11-02) no light unit beside a heavy one; light units share the lock
+# and run CCV_JOBS at a time. Kept after the split as future-proofing (DA,
+# 2026-11-02). The list cannot go stale
 # silently: a unit it does not name whose one command peaks over its
 # light_rss_max_mib fails the check while the lock is on.
 HEAVY_FILE = os.path.join(ROOT, "tools", "heavy-units.json")
@@ -259,7 +262,7 @@ def as_unit(name, heavy=None, lock=None):
     """This thread's commands count toward `name`'s peak. With the lock on,
     a heavy unit runs alone: it holds the lock exclusive and every other
     unit holds it shared, so no light unit runs beside a heavy one either
-    (full-size ooe_rob's Yosys and its ABC child are 10.7 GB together, which
+    (full-size ooe_rob's Yosys and its ABC child were 10.7 GB together, which
     three light units beside would push past a 16 GB runner; trial,
     2026-11-02). A turnstile (the lock's .gate), taken before the lock and
     let go once it is held, keeps a waiting heavy unit from starving behind
