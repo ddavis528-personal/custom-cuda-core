@@ -793,9 +793,13 @@ module ooe_go #(
       for (int n = 2; n < S + 1; n++)
         for (int p = 0; p < PM + 1; p++)
           if (p % n != 0 && p / n < R) rem_cq02h = rem_cq02h | (nwh_cq01h[n] & pe_cq02h[c * (PM + 1) + p] & prio_en_cq01h);
-    // The first warp's need reserved moves with the rotation too (OI-80).
+    // The first warp's need reserved moves with the rotation too (OI-80):
+    // off the first slot when it holds one, and onto the next when its head
+    // needs two (with nothing else changing, the next slot's fits would
+    // otherwise keep the share it had without the reserve).
     for (int c = 0; c < 4; c++)
-      rem_cq02h = rem_cq02h | (~nwh_cq01h[0] & ~nwh_cq01h[1] & ~dd_cq02h[c * ND] & ~pe_cq02h[c * (PM + 1)] & prio_en_cq01h);
+      rem_cq02h = rem_cq02h | (~nwh_cq01h[0] & ~nwh_cq01h[1] & ~(dd_cq02h[c * ND] & dr_nx_cq02h[c * ND]) &
+                               ~pe_cq02h[c * (PM + 1)] & prio_en_cq01h);
   end
   logic [S-1:0] chg_nx_cq02h;
   always_comb
