@@ -1573,6 +1573,9 @@ public:
       /// memop or a cross-lane op).
       uint8_t greads = 0, cgroup = 0, unit = 0, pgroup = 0;
       bool gmerge = false, pguse = false, cguard = false, pmerge = false, nob = false, atomic = false;
+      /// Its main entry's wake is speculative: an L1-contracted global load
+      /// under l1_spec (wakeKindClass's kWakeSpec), for the RS row's kind.
+      bool spec = false;
       /// Width codes at rename (AR-24 (d)): src0..2's and the destination's.
       uint8_t wsrc[3] = {}, wdst = 0;
       bool wset = false;   ///< a chwidth or sibling: wdst is the width it sets

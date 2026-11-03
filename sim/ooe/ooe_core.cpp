@@ -3901,6 +3901,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       w.pgroup = uint8_t(u.attr.bypass_group & 7u);
       w.nob = r.is_mem || u.attr.cross_lane;
       w.atomic = atomic;
+      w.spec = cfg_.l1_spec && r.is_load && u.attr.lat_class == kLatClsL1 && u.space == 0;
       for (unsigned i = 0; i != 3; ++i) w.wsrc[i] = r.wsrc[i];
       w.wdst = r.wdst;
       w.wset = a.serial == kSerChwidth || a.commit_width;
