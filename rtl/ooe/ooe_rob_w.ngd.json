@@ -1,0 +1,221 @@
+{
+  "module": "ooe_rob_w",
+  "ports": {
+    "al_n_cq02h": {
+      "arrival": 14.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): the go's allocation, at its take's 14 (OA's response OI-65, rev 155), as ooe_rat's tk; inside this module it reaches the pointers, the count, the entries' allocation and, apart from the entries, the window's no-op term Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "al_nop_cq02h": {
+      "arrival": 14.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): the go's allocation, at its take's 14 (OA's response OI-65, rev 155), as ooe_rat's tk; inside this module it reaches the pointers, the count, the entries' allocation and, apart from the entries, the window's no-op term Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "cm_tag_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: MIU's completion channel, its repeater's flops Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "dn_aux_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): the branch outcome rides ccv_rcu_ooe_done's fixed RCU-only slot with its rob_tag, at the same measured arrival, 2, its repeater's flops Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "dn_mask_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): the branch outcome rides ccv_rcu_ooe_done's fixed RCU-only slot with its rob_tag, at the same measured arrival, 2, its repeater's flops Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "dn_row_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 282 (re:OI-85, OA tab): the done's row index rides ccv_rcu_ooe_done with its rob_tag, at the same measured arrival, 2, its repeater's flops Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "dn_tag_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: RCU's done channel, its repeater's flops Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "dn_taken_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): the branch outcome rides ccv_rcu_ooe_done's fixed RCU-only slot with its rob_tag, at the same measured arrival, 2, its repeater's flops Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "ev_cpi_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: ooe_rs's grant and free registers, decoded per entry by rob_tag Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "ev_cpl_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: ooe_rs's grant and free registers, decoded per entry by rob_tag Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "ev_owe_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: ooe_rs's grant and free registers, decoded per entry by rob_tag Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "ev_rsf_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: ooe_rs's grant and free registers, decoded per entry by rob_tag Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_br_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add) Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_brl_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 289 (re:OI-93, OA tab): Rename 2's lead of a branch in the next fill, a flop in Rename 2 like the other cq01h leads, at 2 as rev 287's inputs Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_ckpt_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add) Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_dst_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_gmask_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add) Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_gname_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_gold_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_gsec_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_gwe_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_mem_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_nop_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_pchi_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add) Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_pcn_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add) Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_pdst_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_pfree_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_pname_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_pold_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_ptaken_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add) Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_pwe_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_ret_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add) Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_rs_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_slot_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_tgt_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-31",
+      "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add) Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "fl_v_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-30",
+      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    }
+  }
+}

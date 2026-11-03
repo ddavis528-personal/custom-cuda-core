@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-10-31. Keep this current at every task's end; it is what
+Updated 2026-11-03. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -33,13 +33,27 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 15, AR 260, OA 293, IS 182, TI 282, OI 251, CP 149, DA 98
-(sweep 2026-10-31: nothing new for TI). Latest TI open: TI-50 (rev 272).
+Conventions 17, AR 268, OA 313, IS 187, TI 295, OI 253, CP 152, DA 104,
+RA 58, RI 1 (sweep 2026-11-02). Latest TI open: TI-50 (rev 272).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- Tip of both branches: 7782ce0 (OI-101 split gate: verify --only/--skip, gate-export, gate-push --import, gate-combine; DA ruled same-commit split counts, 2026-11-01; TI rev 282), on 1afee59 (sweep 2026-11-01: 60 commits from five branches; release 1494a06, snapshot-2026-11-01-1afee59 local only, tag refused), on 4c2ce8b (OI-97: big units map in series; ABC selftest own cache), on 5e7c8db (OI-95: ABC cache, parallel map/map -r, scoped gate; DA confirmed in TI's session 2026-10-31; TI rev 279), on 43d92b3, on 80697a3 (AR rev 260 branch lead + slot_fields step A; TI rev 277, notices to AR/OI/OA), on f77582b (b0d91c2 shfl lat_class 5), on a17c736 (gate-push clears on red), on 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
+- 2026-11-03: both branches at 16ab8ae (sweep 2026-11-02: six branches
+  merged, perf-register conflict resolved 70f8a04; release 40c0816, tag
+  refused). It carries eda9ce8 (check-cg's run() measures each command's own
+  peak through tools/rss-run.py: Linux carries the parent's RSS across exec
+  into ru_maxrss, so every light unit read check-cg's size and IS, OA and
+  TI gates went red) and 16ab8ae (ooe_sched heavy, 2190 MiB real).
+  All agents rung (TI rev 295). LOCAL, gating: a55c0ff = OI's ROB split
+  (OI-103, 4d388f8) merged + stale ooe_rob refs; ti-ret fast-forwarded to it;
+  gate-push --full running (logs ~/ccv-logs). Task #63 next (DA,
+  2026-11-02): keep every heavy hook, re-read true peaks from this gate,
+  drop units under 2048 MiB from heavy-units.json (ooe_rename already 1014;
+  ooe_rob_w's 2324 predates eda9ce8), retune check-ngd PARALLEL_BLIF_MAX /
+  PARALLEL_FREE_MIN, report cg/ngd times to DA (full-size ROB: cg 14955 s,
+  ngd 9607 s; OI's split gate 5642 / 3722 s).
+- Earlier tip 7782ce0 (OI-101 split gate: verify --only/--skip, gate-export, gate-push --import, gate-combine; DA ruled same-commit split counts, 2026-11-01; TI rev 282), on 1afee59 (sweep 2026-11-01: 60 commits from five branches; release 1494a06, snapshot-2026-11-01-1afee59 local only, tag refused), on 4c2ce8b (OI-97: big units map in series; ABC selftest own cache), on 5e7c8db (OI-95: ABC cache, parallel map/map -r, scoped gate; DA confirmed in TI's session 2026-10-31; TI rev 279), on 43d92b3, on 80697a3 (AR rev 260 branch lead + slot_fields step A; TI rev 277, notices to AR/OI/OA), on f77582b (b0d91c2 shfl lat_class 5), on a17c736 (gate-push clears on red), on 16af94a (OI-93), on 61339a2 (8dd82a6 session-home), on 3fbb402 (sweep 2026-10-31: 45 commits merged from
   five branches; release b2f4e58), with 47e2622 (OI-92), on c5a1fc0 (OI-91: bench ENTRY 0x332c, gen-oracle
   refuses a stale ENTRY), on 63a7bd5 (autoCompactWindow 400k), on c69475e
   (scripts and subagents), on 5bd4397 (handoff hook), on 6ba08b1 (OI-85 row-indexed dones, OA rev 282). Before: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
@@ -57,6 +71,12 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
   OA (OA rev 288). Waiting: AR, OI.
 
 ## Open work (most urgent first)
+-3. 2026-11-03: register rows answered this sweep: RA-37/38 (TI rev 290;
+   RI support, task #62), OA-24 (291; ROB split), IS-26 (292) and OA's
+   sweep-gate (293; the memory bug), OI-103 (294). Then #52 RA-36/AR
+   re:RA-10, #59 ADDR_BASE=1 after OI's ooe_wake fix, #60 port traces.
+   Container restarts kill detached gates: arm a send_later check-in for
+   every long gate.
 -2. 2026-11-01 evening (DA): CI runners died on OI's 2b (runs 538/543/544,
    no logs; NGD+CG on full ooe_rob OOM a 16 GB runner). Built heavy-unit
    lock 0facb89 (CCV_HEAVY_SERIAL=1 in ci.yml, tools/heavy-units.json,

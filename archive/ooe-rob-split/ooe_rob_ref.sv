@@ -1,4 +1,9 @@
-//===-- ooe_rob.sv - OOE reorder buffers: allocation, completion, retire ---===//
+//===-- ooe_rob_ref.sv - the ROB before the split, frozen for its miter ----===//
+//
+// The single ooe_rob of 917752b (slices 1 and 2), renamed: the reference
+// archive/ooe-rob-split/fv_rob_split.sv holds the four ooe_rob_w and their OR against
+// (OA-24 (a), OA rev 312). Never edited: it is what the split must equal.
+// What follows is that file's own description.
 //
 // Spec: the design doc's Retire, squash and recovery (four per-warp ROBs of
 // CCV_P_ROB_DEPTH entries, retiring in order up to CCV_RETIRE_PER_ROB a warp
@@ -64,7 +69,7 @@
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
 `define CCV_RST rst_r01h
-module ooe_rob #(
+module ooe_rob_ref #(
   parameter int S  = 4,                  // tier-1 slots (CCV_TIER1_WARPS)
   parameter int D  = 32,                 // entries a slot (CCV_P_ROB_DEPTH)
   parameter int RP = 2,                  // retirements a slot a cycle (CCV_RETIRE_PER_ROB)
