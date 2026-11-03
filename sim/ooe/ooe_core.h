@@ -434,6 +434,9 @@ struct Config {
   /// inject_no_ret_hold drops the hold). Both 1, with resolve_lag 1 (rets
   /// at lag 1, branches and calls at 0), squash_act_lag 1 and
   /// squash_held_room_lag 1, are the defaults (OA's rev 294, OI-98).
+  /// ret_hold 2 prices OA's rev 319 sched (b): the held branch still
+  /// requests, and a win is cancelled after the pick, its resource left
+  /// unused (issue.ret_hold_cancel, issue.ret_hold_lost_slot).
   unsigned resolve_lag_ret_only = 1;
   unsigned ret_hold = 1;
   /// RA-17 (OA's revs 298-299): a migration borrows R's PRF ports, a row in

@@ -4966,7 +4966,8 @@ void audit() {
                         "stall.gpr_buffer", "stall.gpr_empty", "stall.gpr_ceiling", "stall.gpr_floor",
                         "stall.pred_buffer", "stall.pred_empty", "stall.pred_floor_ceiling",
                         "stall.rob_full", "stall.rob_slot_held", "stall.rob_late_credit",
-                        "hold.chwidth", "hold.barrier", "hold.fault", "hold.inactive", "rename.full_width"};
+                        "hold.chwidth", "hold.barrier", "hold.fault", "hold.inactive", "rename.full_width",
+                        "issue.ret_hold", "issue.ret_hold_cancel", "issue.ret_hold_lost_slot"};
   auto run = [&](const Config &c) {
     R r;
     const char *as = std::getenv("AUDIT_SEEDS");   // the audit's runs (48 by default)
