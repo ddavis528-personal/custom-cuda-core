@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 316, RA 60, IS 188, TI 297, OI 262, CP 152, DA 104
+Conventions 17, AR 269, OA 318, RA 60, IS 188, TI 297, OI 263, CP 152, DA 104
 (sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -93,6 +93,23 @@ the compact hook printed this handoff.
    (ufh -> fl_e ~800 loads), prodmap pm_cq02h copies (~3 NGD), rename
    output copies (NGD-7; retrace the reported map first), rst_r01h copies. Tools: scratchpad/fo/path.py (worst path
    with fanout from build/synth-cache/abc-*.blif; units.txt maps module -> blif).
+   OA RULED rev 318 (OA tab row .464349): NO re-budgets (port or stage). Order: retime
+   from flops (no behaviour change) > model-priced change (OA <0.5%) > extra stage (DA).
+   Fanout term still report-only: after functional work, cheap units first.
+   - Mine (proceed): rob_w fill selects (if fl_v/fl_slot need an input->flop stage,
+     bring the price BEFORE building); prodmap pm copies; rename output copies; rst
+     copies (count in CG). c8794c1 (ufq register) committed, measuring.
+   - sched: register the OAI21-after-gnt function beside gnt from gnt's next state,
+     kept copies per row group; prove with the select bench. If it takes a same-cycle
+     input, tell OA first.
+   - rendep: sender registers cp already decoded (one-hot), kept copies by row group;
+     report sender depth; only if it doesn't fit, price the rename stage (OA -> DA).
+   - SENT OI rev 263 (sched OAI21 = req, takes brk/vel/res/older_r; go nets): WAIT OA.
+   - go: send OA the 3 widest nets in series priod/he -> fits (loads, driver, flop or
+     logic, which depend only on last cycle's state). OA rules on the list.
+   - rs: model registered free candidates (S1, audit, floors); <0.5% build.
+   - freelist: in2_en/as/rst copies first; model scan (a) two-step vs (b) banked on
+     S1, audit, scarce-names; OA takes cheaper, (a) on tie.
 -3. OI-104 DONE on OI's side: b23bbd8 (store in ooe_rs, full gate PASS), the sweep
    merge 2f64d10 (full PASS), and 1f7c642 (pushed 11-03, SCOPED PASS). 1f7c642 has
    rendep build the per-port {cls,kind} (spec from c_x bit 20, XW 21) and rename
