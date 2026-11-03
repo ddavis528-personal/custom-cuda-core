@@ -107,12 +107,16 @@ module ooe_rnrs #(
     .gnt_v_cq01h(gnt_v_cq03h), .gnt_idx_cq01h(gnt_idx_cq03h),
     .row_prod_cq02h(row_prod), .row_dep_cq02h(row_dep), .row_code_cq02h(row_code), .grp_dep_cq02h(grp_dep),
     .grp_code_cq02h(grp_code), .prv_dep_cq02h(prv_dep), .prv_code_cq02h(prv_code));
+  logic [2*N-1:0] kind_nc;   // ooe_wake's, not on this bench
+  logic [3*N-1:0] cls_nc;
   ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC)) u_rs (
     .ooe_core_clk, .ooe_rst_r00h, .req_l_cq00h, .req_cq01h, .row_prod_cq01h(row_prod), .row_dep_cq01h(row_dep | ctl_row_cq01h),
     .row_code_cq01h(row_code), .grp_dep_cq01h(grp_dep), .grp_code_cq01h(grp_code), .prv_dep_cq01h(prv_dep),
     .prv_code_cq01h(prv_code), .sqf_cq01h, .msd_cq01h, .cfin_cq01h, .wtl3_cq00h, .fin_cq00h, .gnt_cq01h,
     .cmpl_l_cq00h, .cmpl_idx_cq00h, .sq_l_cq00h, .gnt_v_cq03h, .gnt_idx_cq03h, .valid_out_cq02h, .dep_cq02h,
-    .code_cq02h, .prod_o_cq02h(prod_o), .hcol_cq02h);
+    .code_cq02h, .prod_o_cq02h(prod_o), .hcol_cq02h,
+    // Kind and class (ooe_wake's, OA re:OI-104): not yet from ooe_rename.
+    .akind_cq01h('0), .acls_cq01h('0), .kind_o_cq02h(kind_nc), .cls_o_cq02h(cls_nc));
   assign rd_row_dep = row_dep;
   assign dbg_eg = eg;
   assign dbg_ep = ep;
