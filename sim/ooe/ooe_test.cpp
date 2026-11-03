@@ -1769,7 +1769,7 @@ void testRetHold() {
       c.resolve_lag = 1;
       c.resolve_lag_ret_only = 1;
       c.squash_act_lag = 1;
-      c.ret_hold = 1;
+      c.ret_hold = 2;   // the default (OA's rev 320): a held win cancelled
       c.inject_no_ret_hold = control;
       std::mt19937 rng(seed);
       Env e(c, seed);
@@ -1788,7 +1788,7 @@ void testRetHold() {
         e.launch(i, i, p);
       }
       e.finish(20000);
-      held += unsigned(e.core.counters["issue.ret_hold"]);
+      held += unsigned(e.core.counters["issue.ret_hold_cancel"]);
       errors += unsigned(e.core.counters["errors"]);
       if (!control) EXPECT(e.core.counters["errors"] == 0, "errors");
     }

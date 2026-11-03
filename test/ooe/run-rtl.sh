@@ -695,8 +695,11 @@ if out=$("$dir/trio_tb" "$seeds" 2>&1); then
 else
   say "rs + wake + sched assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
 fi
+# no-rep-lead needs 12 seeds since the ret hold cancels after the pick (OA's
+# rev 320): the first replay-lead-only cycle that matters moved past seed 6.
 for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r; do
-  if TRIO_CONTROL=$c "$dir/trio_tb" 6 >/dev/null 2>&1; then
+  ns=6; [ "$c" = no-rep-lead ] && ns=12
+  if TRIO_CONTROL=$c "$dir/trio_tb" "$ns" >/dev/null 2>&1; then
     say "  control $c (trio)" "MISSED"; fail=1
   else
     say "  control $c (trio)" "caught"

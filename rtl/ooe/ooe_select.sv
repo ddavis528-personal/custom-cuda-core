@@ -20,9 +20,11 @@
 // request register holds it (not issued, its warp active, and a copy's
 // sources confirmed, as an earlier cycle ended), its ready register holds
 // it, its grant register does not (granted last cycle, not yet captured
-// as issued), ooe_sched's ret hold does not take it (a branch or call the
-// cycle after a ret's grant, OA's rev 293), and ooe_rs says it is valid and
-// past rename's stages. A
+// as issued), and ooe_rs says it is valid and past rename's stages.
+// ooe_sched's ret hold (a branch or call the cycle after a ret's grant,
+// OA's rev 293) cancels a held entry's win after the pick (OA's rev 320,
+// sched (b)): its resource goes unused, and the hold's OR stays off the
+// request. A
 // memop also needs none of its pipes taken by a bulk discard (a discard
 // takes MIU pipes only, V-23), its sources confirmed, no bulk discard of
 // its warp this cycle, its copy (if it has one still in the RS) issued in
@@ -87,7 +89,7 @@ module ooe_select #(
               slot_cq03h[j * LS +: LS] == sl)
             order_ok[e] = 1'b0;
       req[e] = rq_cq03h[e] && ready_cq03h[e] && !gnt_cq03h[e] && vel_cq03h[e];
-      if (e < NR) req[e] = req[e] && !hold_cq03h[e] && !(rhold_cq03h && res_cq03h[e * 9 + 4]);
+      if (e < NR) req[e] = req[e] && !(rhold_cq03h && res_cq03h[e * 9 + 4]);
       if (e >= NR)
         req[e] = req[e] && (res_cq03h[e * 9 + RR +: RM] & busy_cq03h) == '0 && conf[e] && !block_cq03h[sl] &&
                  copy_ok[e] && order_ok[e];
@@ -100,8 +102,10 @@ module ooe_select #(
   logic [NR*RR-1:0] win_r;
   logic [NM*RM-1:0] win_m;
   logic [N-1:0]     fb;          // grants by the RCU class's section fallback
+  logic [NR-1:0]    win_e;       // the RCU class's wins, before the ret hold
+  assign grant_cq03h[NR-1:0] = win_e & ~hold_cq03h;
   ooe_pick #(.N(NR), .R(RR), .FB(FB)) pick_r (.req_cq03h(req_r), .older_cq03h(older_r_cq03h),
-                                     .issue_cq03h(grant_cq03h[NR-1:0]), .lost_cq03h(lost_cq03h[NR-1:0]),
+                                     .issue_cq03h(win_e), .lost_cq03h(lost_cq03h[NR-1:0]),
                                      .win_cq03h(win_r), .fb_cq03h(fb[NR-1:0]));
   ooe_pick #(.N(NM), .R(RM)) pick_m (.req_cq03h(req_m), .older_cq03h(older_m_cq03h),
                                      .issue_cq03h(grant_cq03h[N-1:NR]), .lost_cq03h(lost_cq03h[N-1:NR]),
