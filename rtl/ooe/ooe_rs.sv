@@ -59,8 +59,9 @@
 //     held cycle;
 //   - a free by squash by the flop of the registered squash's lead (sq_en),
 //     both classes.
-// The outputs' grant register is clocked on the request leads; the valid
-// copy with its class. The reset is flopped (RST-1).
+// Each entry's timer kind and latency class (ooe_wake's, OA re:OI-104) are
+// written with its row and clocked with its class. The outputs' grant
+// register is clocked on the request leads; the valid copy with its class. The reset is flopped (RST-1).
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -78,6 +79,8 @@ module ooe_rs #(
   input  logic [P-1:0]     req_l_cq00h,  // port p allocates next cycle (rename's Rename 2 valid)
   input  logic [P-1:0]     req_cq01h,    // port p allocates
   input  logic [P-1:0]     row_prod_cq01h, // port p's entry writes a register some entry may wake on
+  input  logic [2*P-1:0]   akind_cq01h,  // port p's entry's timer kind (ooe_wake's, OA re:OI-104)
+  input  logic [3*P-1:0]   acls_cq01h,   // and its latency class
   input  logic [P*N-1:0]   row_dep_cq01h,  // port p's row: entries already in the RS
   input  logic [2*P*N-1:0] row_code_cq01h, // and each one's line select
   input  logic [P*P-1:0]   grp_dep_cq01h,  // port p's row: port q's entry, granted this cycle
@@ -101,7 +104,9 @@ module ooe_rs #(
   output logic [2*N*N-1:0] code_cq02h,   // the cell's wake-line select
   output logic [N-1:0]     prod_o_cq02h,  // each entry writes a register some entry may wake on (ooe_sched's
                                          // confirmation, OI-45)
-  output logic [N-1:0]     hcol_cq02h    // a row has named the entry since it was allocated
+  output logic [N-1:0]     hcol_cq02h,   // a row has named the entry since it was allocated
+  output logic [2*N-1:0]   kind_o_cq02h, // each entry's timer kind, as allocated (ooe_wake's grant)
+  output logic [3*N-1:0]   cls_o_cq02h   // and its latency class
 );
 
   // The reset, flopped before any use (RST-1).
@@ -214,6 +219,16 @@ module ooe_rs #(
   // inside deeper than the output's budget allows).
   (* keep *) logic [N-1:0] prod_oc_cq02h;
   assign prod_o_cq02h = prod_oc_cq02h;
+  // Each entry's timer kind and latency class, {class, kind}, written with
+  // its row at allocation (OA, re:OI-104) for ooe_wake's timers, which read
+  // them at a grant; payload, read only while the entry is valid. Read
+  // here only by its own next state, so the outputs come from it directly.
+  logic [5*N-1:0] kc_cq02h;
+  always_comb
+    for (int i = 0; i < N; i++) begin
+      kind_o_cq02h[i * 2 +: 2] = kc_cq02h[i * 5 +: 2];
+      cls_o_cq02h[i * 3 +: 3]  = kc_cq02h[i * 5 + 2 +: 3];
+    end
   logic [N-1:0]     cf_en_cq03h;          // the confirmation leads' flops
   logic [NC-1:0]    cva_cq01h;            // the completion channel's valid, flopped: its payload is here
   logic             cvb_cq02h;            // a payload arrived at the last edge
@@ -355,6 +370,7 @@ module ooe_rs #(
   // until the entry is freed, unless a row written at that same edge names
   // its next occupant; a set bit in a class's row is always flagged there.
   logic [N-1:0]     valid_nx_cq02h, prod_nx_cq01h, emp_nx_cq02h;
+  logic [5*N-1:0]   kc_nx_cq01h;
   logic             emp_g_cq02h;
   logic [P-1:0]     emp_new_cq02h;
   logic [N*N-1:0]   dep_nx_cq02h;
@@ -380,8 +396,14 @@ module ooe_rs #(
       // Its prod bit, from its port; cleared with its valid bit (read only
       // while valid), so it shares its class's enable.
       prod_nx_cq01h[i]  = prod_cq02h[i] && !free_cq02h[i];
+      // Its kind and class likewise, cleared with it: the class's enable
+      // clocks them, never one of the entry's own.
+      kc_nx_cq01h[i * 5 +: 5] = kc_cq02h[i * 5 +: 5] & {5{!free_cq02h[i]}};
       for (int p = 0; p < P; p++)
-        if (g_cq02h[p * N + i]) prod_nx_cq01h[i] = row_prod_cq01h[p];
+        if (g_cq02h[p * N + i]) begin
+          prod_nx_cq01h[i] = row_prod_cq01h[p];
+          kc_nx_cq01h[i * 5 +: 5] = {acls_cq01h[p * 3 +: 3], akind_cq01h[p * 2 +: 2]};
+        end
     end
     for (int p = 0; p < P; p++)
       if (|g_cq02h[p * N +: N]) begin
@@ -483,6 +505,7 @@ module ooe_rs #(
       prod_cq02h[NR-1:0]     <= prod_nx_cq01h[NR-1:0];
       prod_oc_cq02h[NR-1:0]  <= prod_nx_cq01h[NR-1:0];
       emp_cq02h[NR-1:0]      <= emp_nx_cq02h[NR-1:0];
+      kc_cq02h[5*NR-1:0]     <= kc_nx_cq01h[5*NR-1:0];
     end
     if (miu_en_cq01h) begin
       dep_cq02h[N*N-1:NR*N]    <= dep_nx_cq02h[N*N-1:NR*N];
@@ -490,6 +513,7 @@ module ooe_rs #(
       prod_cq02h[N-1:NR]     <= prod_nx_cq01h[N-1:NR];
       prod_oc_cq02h[N-1:NR]  <= prod_nx_cq01h[N-1:NR];
       emp_cq02h[N-1:NR]      <= emp_nx_cq02h[N-1:NR];
+      kc_cq02h[5*N-1:5*NR]   <= kc_nx_cq01h[5*N-1:5*NR];
     end
   end
 

@@ -157,6 +157,7 @@ struct Snap {
   std::vector<unsigned> cidx;
   std::vector<uint8_t> valid, iss, prod, fin, sqf, dep, code, line, wtl, wnext, slot, copy, ready_q, req_q, v73;
   std::vector<uint64_t> age;
+  std::vector<uint8_t> akind, acls;   // each entry allocated this cycle: its timer's kind and class
   uint64_t now = 0;   // the model's cycle
   bool stop_q = false;   // the model's stop lead register
   unsigned active = 0, ncmpl = 0;
@@ -165,6 +166,7 @@ struct Snap {
 Snap emptySnap() {
   Snap y;
   y.w.grant.assign(N, 0); y.w.kind.assign(N, 0); y.w.cls.assign(N, 0); y.w.rfree.assign(N, 0);
+  y.akind.assign(N, 0); y.acls.assign(N, 0);
   y.w.stop.assign(N, 0); y.w.cmpl.assign(N, 0); y.w.miss.assign(N, 0);
   y.valid.assign(N, 0); y.iss.assign(N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.sqf.assign(N, 0);
   y.dep.assign(N * N, 0); y.code.assign(N * N, 0); y.line.assign(N * L, 0); y.wtl.assign(N * L, 0);
@@ -178,6 +180,11 @@ Snap snapCycle(const Core &c) {
   y.now = c.now();
   y.stop_q = c.reqStopQ();
   y.codes = c.wakeLinesFit();
+  for (unsigned e : y.w.ralloc) {
+    const auto kc = c.wakeKindClass(e);
+    y.akind[e] = kc.first;
+    y.acls[e] = kc.second;
+  }
   for (unsigned i = 0; i != N; ++i) {
     y.valid[i] = c.rsValid(i);
     y.iss[i] = c.rsIssued(i);
@@ -373,12 +380,17 @@ void hook(const Core &c) {
   for (unsigned k = 0; k != tp2.cidx.size() && k != NC; ++k) setField(dut->hint_idx_cq01h, k * W, W, tp2.cidx[k]);
   dut->hint_l_cq00h = 0;
   for (unsigned k = 0; k != tp3.ncmpl && k != NC; ++k) dut->hint_l_cq00h |= 1u << k;
-  // -- ooe_wake's grant payload: the grants of t - 1 = a.
-  for (unsigned j = 0; j != N; ++j) {
-    setField(dut->kind_cq01h, j * 2, 2, a.w.kind[j]);
-    setField(dut->cls_cq01h, j * 3, 3, a.w.cls[j]);
-    setBit(dut->prod_cq01h, j, a.prod[j]);
-  }
+  // -- Each port's kind and class with its row (a's: ooe_rs writes them
+  // at this edge, OA re:OI-104), and ooe_wake's grant payload: the grants
+  // of t - 1 = a.
+  clearAll(dut->akind_cq01h, 2 * P);
+  clearAll(dut->acls_cq01h, 3 * P);
+  for (unsigned p = 0; p != P; ++p)
+    if (entry_of[p] != N) {
+      setField(dut->akind_cq01h, p * 2, 2, a.akind[entry_of[p]]);
+      setField(dut->acls_cq01h, p * 3, 3, a.acls[entry_of[p]]);
+    }
+  for (unsigned j = 0; j != N; ++j) setBit(dut->prod_cq01h, j, a.prod[j]);
   // -- ooe_sched's outer terms for P = t: the payload, the allocation lead
   // (a row written at this edge: a's), and select's live terms.
   for (unsigned e = 0; e != N; ++e) {

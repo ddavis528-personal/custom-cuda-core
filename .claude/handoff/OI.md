@@ -20,10 +20,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
   m8yvbw8rqgz.11664, rows: title, date, summary ending "Needs: X",
   detail). Notices via `.claude/skills/register/notice.py` and
   send_message. Pings weekly, Fridays (TI-49, DA).
-- Trees in the scratchpad (/tmp/claude-0/-home-user/<session>/scratchpad):
-  wt the sweep tree, wt3 slice 1 (pushed), wt4 slice 2 model work (at
-  21f7150 + uncommitted model edits), wt5 slice 2 RTL (on the branch). Disk is a fixed allowance: delete build dirs
-  you no longer need; one gate's build is about 15 GB.
+- Trees: the container was replaced on 11-03 (scratchpad, ~/ccv-logs and every
+  worktree lost; unpushed commits went with them). Work in the main checkout
+  /home/user/custom-cuda-core; send an unpushed commit to gate-scratch/OI
+  (`tools/gate-scratch.sh send-commit OI`) before a long gate. Disk is a fixed
+  allowance (~39 GB): delete build dirs you no longer need; a gate's build is ~15 GB.
 
 ## Daily sweep (scheduled task trig_01RHTzEomNoTP7mgfQxaNkmm)
 Read every tab since the bookmarks; merge every remote branch that is
@@ -86,6 +87,16 @@ Pings: next Friday 11-06. Sweep 11-02 merge pending until the wt11 gate ends
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-3. OI-104 (B), OA rev 315, rebuilt 11-03 after the container loss, on 5e5280f
+   (TI's tip: has 4d388f8 + TI 16ab8ae): kind/class store in ooe_rs (akind/acls_cq01h
+   at 10; kc under rcu_en/miu_en; kind_o/cls_o_cq02h to wake's kind/cls_cq01h) + the
+   lost 979b2b5 (no-msd >= 100 seeds; ooe-model doc). The in-wake store FAILED CG (45
+   groups of 5 flops, CG-4/5; staging 62% DCGE; alloc_v/idx 13.5 over 12). Measured
+   before the loss: rs NGD 18.2 (akind 10 + 8.2), kc in the class gates (98/99%,
+   81/90%); benches all PASS, rs no-kind caught. NEXT: full gate-push, then OI row
+   re:OI-104 to OA (Needs OA: wake kind/cls arrival 9 -> 2.0, from rs flops: 2 + 17.1
+   = 19.1 at L1_WAKE 12; report that the store sits in rs) and TI FYI (reapply base 1
+   after OA's 2.0); notify OA only.
 -2a. STATE 11-02 (wt13 e35c9f9 = split + archive, on fe523c4 sweep merge): DA closed the
    equivalence work: old ROB + miter moved to archive/ooe-rob-split/ (README has result:
    BMC clean thru frame 9 at D8, control fails f8; never in gate/lint/bench - DA: no

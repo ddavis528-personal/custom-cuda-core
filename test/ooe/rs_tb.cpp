@@ -35,7 +35,9 @@
 // (a row's references to entries allocated in the same cycle never reach
 // the RTL), no-req-lead, no-sq-lead, no-cmpl-lead and no-fin (the leads,
 // and the final bits, never reach it). The rows' comparison holds column
-// clearing: a valid row that kept a freed entry's bit differs.
+// clearing: a valid row that kept a freed entry's bit differs. Every valid
+// entry's kind and class (ooe_wake's, OA re:OI-104) are compared with what
+// its allocation drove; control no-kind drives none, and must be caught.
 //
 // The column flags (hcol_cq02h) are compared, every column after every
 // edge, with their definition kept here: set when a row naming the entry is
@@ -82,19 +84,22 @@ std::unique_ptr<Vooe_rs> dut;
 std::string control;
 uint64_t current = 0;
 std::vector<uint8_t> hcol;        // the column flags' reference
+std::vector<uint8_t> kref;        // each entry's kind and class as allocated: the reference
+unsigned long long kinds = 0;     // valid entries whose kind and class were compared
 constexpr unsigned NCL = RS_NC;
 
 // A core cycle as the model ended it.
 struct Snap {
   std::vector<unsigned> ralloc, cidx;   // allocations in order; the entries completing
   std::vector<uint8_t> rfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
+  std::vector<uint8_t> kc;              // each entry's {class, kind} as ooe_wake's timers take it
   bool sq = false, cmpl = false, codes = false;
 };
 Snap empty() {
   Snap y;
   y.rfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
   y.code.assign(N * N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.iss.assign(N, 0); y.wtl3.assign(N, 0);
-  y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0);
+  y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0); y.kc.assign(N, 0);
   return y;
 }
 Snap snapCycle(const Core &c) {
@@ -107,6 +112,10 @@ Snap snapCycle(const Core &c) {
     y.grant[i] = i < w.grant.size() && w.grant[i];
     y.valid[i] = c.rsValid(i);
     y.prod[i] = c.rsProduces(i);
+    if (c.rsValid(i)) {
+      const auto k = c.wakeKindClass(i);
+      y.kc[i] = uint8_t((k.second << 2) | k.first);
+    }
     // Final as ooe_wake holds it in the cycle: an entry confirmed in it was.
     y.fin[i] = c.rsFinal(i) || (i < w.conf.size() && w.conf[i]);
     y.iss[i] = c.rsIssued(i);
@@ -219,6 +228,7 @@ void hook(const Core &c) {
     current = c.serial();
     ++cores;
     hcol.assign(N, 0);
+    kref.assign(N, 0);
     clearAll(dut->req_cq01h, P);
     clearAll(dut->sqf_cq01h, N);
     clearAll(dut->msd_cq01h, N);
@@ -249,11 +259,18 @@ void hook(const Core &c) {
   clearAll(dut->prv_dep_cq01h, P * P);
   clearAll(dut->prv_code_cq01h, 2 * P * P);
   clearAll(dut->row_prod_cq01h, P);
+  clearAll(dut->akind_cq01h, 2 * P);
+  clearAll(dut->acls_cq01h, 3 * P);
   for (unsigned p = 0; p != P; ++p) {
     const unsigned e = entry_of[p];
     if (e == N) continue;
     setBit(dut->req_cq01h, p, true);
     setBit(dut->row_prod_cq01h, p, y.prod[e]);
+    // Its kind and class with its row; control no-kind loses them.
+    kref[e] = y.kc[e];
+    const unsigned k = control == "no-kind" ? 0u : y.kc[e];
+    for (unsigned b = 0; b != 2; ++b) setBit(dut->akind_cq01h, p * 2 + b, (k >> b) & 1u);
+    for (unsigned b = 0; b != 3; ++b) setBit(dut->acls_cq01h, p * 3 + b, (k >> (2 + b)) & 1u);
     ++allocs;
     for (unsigned j = 0; j != N; ++j) {
       if (!y.dep[e * N + j]) continue;
@@ -335,6 +352,9 @@ void hook(const Core &c) {
     if (v != bool(y.valid[i])) { fail("valid differs", i, 0, v, y.valid[i]); continue; }
     if (!v) continue;
     ++rows;
+    ++kinds;
+    const unsigned k = getField(dut->kind_o_cq02h, i * 2, 2) | getField(dut->cls_o_cq02h, i * 3, 3) << 2;
+    if (k != kref[i]) fail("kind and class differ", i, 0, k, kref[i]);
     for (unsigned j = 0; j != N; ++j) {
       const bool d = getBit(dut->dep_cq02h, i * N + j);
       if (d != bool(y.dep[i * N + j])) { fail("dependency bit differs", i, j, d, y.dep[i * N + j]); continue; }
@@ -362,9 +382,9 @@ int main(int argc, char **argv) {
   cg.close();
   dut->final();
   std::printf("rs_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu in-group=%llu frees=%llu "
-              "same-edge=%llu rows=%llu cells=%llu stale=%llu mismatches=%llu model_failures=%d\n",
+              "same-edge=%llu rows=%llu cells=%llu stale=%llu kinds=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, group, frees, reuse,
-              rows, cells, stale, mismatches, model_fails);
+              rows, cells, stale, kinds, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();

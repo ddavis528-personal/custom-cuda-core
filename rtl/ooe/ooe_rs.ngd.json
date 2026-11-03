@@ -90,6 +90,18 @@
       "by": "OA",
       "date": "2026-10-21",
       "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 135), in NGD from the launching flop: the registered squash's frees, a squash payload, OI-58 (2)"
+    },
+    "akind_cq01h": {
+      "arrival": 10.0,
+      "by": "OA",
+      "date": "2026-11-03",
+      "why": "OA's response re:OI-104 (OA tab, 2026-11-03, rev 315): each port's kind and class with its row, as row_code_cq01h, from the same Rename stage flops"
+    },
+    "acls_cq01h": {
+      "arrival": 10.0,
+      "by": "OA",
+      "date": "2026-11-03",
+      "why": "OA's response re:OI-104 (OA tab, 2026-11-03, rev 315): each port's kind and class with its row, as row_code_cq01h, from the same Rename stage flops"
     }
   }
 }
