@@ -177,12 +177,30 @@ BUDGET_PCT = float(param("CCV_CG_BUDGET_PCT"))
 MODULE_FLOPS = int(param("CCV_CG_MODULE_FLOPS"))
 
 
+# A child forked from this process starts its peak (ru_maxrss) at this
+# process's size: Linux carries the resident set across exec. check-cg
+# grows past 2 GB with full-size ooe_rob loaded, and eleven light units each
+# read 2179 MiB, its size, not theirs (release gate, 2026-11-02). So every
+# command runs under tools/rss-run.py, a small process, which reports the
+# command's own peak. Empty only in the selftest's control.
+RSS_RUN = [sys.executable, "-I", "-S", os.path.join(ROOT, "tools", "rss-run.py")]
+
+
 def run(cmd, cwd=ROOT, **kw):
     """The command's CompletedProcess, as subprocess.run with its output
     captured; its peak memory, with its children's, goes to the unit this
     thread is measuring (as_unit)."""
-    p = subprocess.Popen(cmd, cwd=cwd, shell=isinstance(cmd, str), stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE, text=True, **kw)
+    if isinstance(cmd, str):
+        cmd = ["/bin/sh", "-c", cmd]
+    # Through tools/rss-run.py, so the peak is the command's own, not this
+    # process's size carried across fork and exec (RSS_RUN says why).
+    rfd, wfd = os.pipe()
+    try:
+        p = subprocess.Popen(RSS_RUN + [str(wfd)] + list(cmd) if RSS_RUN else cmd, cwd=cwd,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             pass_fds=(wfd,), **kw)
+    finally:
+        os.close(wfd)
     got = {}
 
     def drain(k, f):
@@ -197,7 +215,9 @@ def run(cmd, cwd=ROOT, **kw):
     # wait4, not wait: its rusage is the peak of this child and its own.
     _, status, ru = os.wait4(p.pid, 0)
     p.returncode = os.waitstatus_to_exitcode(status)
-    note_rss(ru.ru_maxrss << 10)
+    with os.fdopen(rfd) as f:
+        told = f.read().strip()
+    note_rss((int(told) if told else ru.ru_maxrss) << 10)
     return subprocess.CompletedProcess(cmd, p.returncode, got["out"], got["err"])
 
 
@@ -2154,8 +2174,9 @@ def heavy_selftest(expect):
     units never overlap with the lock on and do without it; a light unit
     never runs beside a heavy one, and two light units still run together
     (shared); a nested hold
-    does not wait on itself; a light unit over the limit fails, the same
-    unit listed or under it does not."""
+    does not wait on itself; a command's peak is its own, not check-cg's;
+    a light unit over the limit fails, the same unit listed or under it
+    does not."""
     import time
     lock = os.path.join(BUILD, "fixture", "heavy.lock")
     os.makedirs(os.path.dirname(lock), exist_ok=True)
@@ -2202,9 +2223,30 @@ def heavy_selftest(expect):
             run([sys.executable, "-c", "b = bytearray(96 << 20); b[::4096] = b'x' * len(b[::4096])"])
         with as_unit("fx_small", set(), lock):
             run(["true"])
-        peak = {u: PEAK[u] for u in ("fx_light", "fx_small")}
+        # The command's own peak, not this process's: with 512 MiB held
+        # here, `true` must read small, and read big without rss-run.py
+        # (the control that sees what it guards; release gate, 2026-11-02).
+        global RSS_RUN
+        ballast = bytearray(512 << 20)
+        ballast[::4096] = b"x" * len(ballast[::4096])
+        with as_unit("fx_ballast", set(), lock):
+            run(["true"])
+        saved_rss_run, RSS_RUN = RSS_RUN, []
+        try:
+            with as_unit("fx_ballast_bare", set(), lock):
+                run(["true"])
+        finally:
+            RSS_RUN = saved_rss_run
+        del ballast
+        peak = {u: PEAK[u] for u in ("fx_light", "fx_small", "fx_ballast", "fx_ballast_bare")}
         PEAK.clear()
         PEAK.update(saved_peak)
+        expect(peak["fx_ballast"] < 64 << 20, "a command read its parent's size as its own "
+               "peak: `true` under 512 MiB of check-cg read %d MiB" % (peak["fx_ballast"] >> 20))
+        expect(peak["fx_ballast_bare"] >= 512 << 20, "without tools/rss-run.py, `true` read "
+               "%d MiB under 512 MiB of check-cg: the control cannot see a parent's size"
+               % (peak["fx_ballast_bare"] >> 20))
+        peak = {u: peak[u] for u in ("fx_light", "fx_small")}
         expect(peak["fx_light"] >= 96 << 20, "a command's peak memory was not measured: "
                "%d MiB, want 96 or more" % (peak["fx_light"] >> 20))
         _, f = heavy_check("selftest", set(), 64 << 20, peak)
