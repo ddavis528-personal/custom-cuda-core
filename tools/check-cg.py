@@ -83,6 +83,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build", "cg")
@@ -242,6 +243,11 @@ LIGHT_RSS_MAX = int(_HEAVY["light_rss_max_mib"]) << 20
 _TLS = threading.local()
 PEAK = {}
 _PEAK_MU = threading.Lock()
+# Wall time per unit and time spent waiting for the heavy lock (report-only,
+# 2026-11-03): where the gate's minutes go, for retuning after the ROB
+# split (OA-24).
+UNIT_TIME = collections.Counter()
+LOCK_WAIT = collections.Counter()
 
 
 def heavy_serial():
@@ -270,8 +276,12 @@ def as_unit(name, heavy=None, lock=None):
     per open file, so a nested hold on a second fd would wait on itself."""
     heavy = HEAVY if heavy is None else heavy
     prev, held = getattr(_TLS, "unit", None), getattr(_TLS, "held", False)
+    timing = not getattr(_TLS, "timing", False)
     lk = None
     _TLS.unit = name
+    t0 = t1 = time.monotonic()
+    if timing:
+        _TLS.timing = True
     try:
         if heavy_serial() and not held:
             lock = lock or HEAVY_LOCK
@@ -281,12 +291,32 @@ def as_unit(name, heavy=None, lock=None):
                 lk = open(lock, "w")
                 fcntl.flock(lk, fcntl.LOCK_EX if name in heavy else fcntl.LOCK_SH)
             _TLS.held = True
+            t1 = time.monotonic()
         yield
     finally:
         if lk:
             _TLS.held = False
             lk.close()
+        if timing:
+            _TLS.timing = False
+            with _PEAK_MU:
+                UNIT_TIME[name] += time.monotonic() - t1
+                LOCK_WAIT[name] += t1 - t0
         _TLS.unit = prev
+
+
+def time_lines(top=6):
+    """Report-only: the slowest units by wall time, and the time units
+    spent waiting for the heavy lock."""
+    if not UNIT_TIME:
+        return []
+    slow = ", ".join("%s %ds" % (u, t) for u, t in UNIT_TIME.most_common(top))
+    wait = sum(LOCK_WAIT.values())
+    most = LOCK_WAIT.most_common(1)[0] if wait >= 1 else None
+    return ["unit wall time (report-only): %s; %d unit(s) in all, %ds summed" %
+            (slow, len(UNIT_TIME), sum(UNIT_TIME.values())),
+            "heavy-lock wait (report-only): %ds summed%s" %
+            (wait, ", most %s %ds" % most if most else "")]
 
 
 def unit_task(name, fn):
@@ -2128,7 +2158,7 @@ def main_check(only=None, verbose=False):
     fails += over
     fails += unmeasured(units)
     more, over = heavy_check("check-cg")
-    lines += more
+    lines += more + time_lines()
     fails += over
     for l in lines:
         print("  " + l)
@@ -2185,6 +2215,7 @@ def heavy_selftest(expect):
     os.makedirs(os.path.dirname(lock), exist_ok=True)
     heavy = {"fx_h1", "fx_h2"}
     saved = os.environ.get("CCV_HEAVY_SERIAL")
+    saved_times = (UNIT_TIME.copy(), LOCK_WAIT.copy())
 
     def spans(on, names=("fx_h1", "fx_h2")):
         os.environ["CCV_HEAVY_SERIAL"] = "1" if on else "0"
@@ -2263,6 +2294,9 @@ def heavy_selftest(expect):
         expect(heavy_check("selftest", set(), 64 << 20, peak) == ([], []),
                "the light limit was checked with the lock off")
     finally:
+        for c, v in zip((UNIT_TIME, LOCK_WAIT), saved_times):
+            c.clear()
+            c.update(v)
         if saved is None:
             os.environ.pop("CCV_HEAVY_SERIAL", None)
         else:
