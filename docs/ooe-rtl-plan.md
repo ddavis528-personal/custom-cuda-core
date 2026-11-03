@@ -1072,6 +1072,14 @@ Built (`rtl/ooe/`):
      whenever an allowance is held, as the pool saturates at 0 below them:
      rename_scarce's lagged counters drive a credit below the held, which
      go_tb's exact pool never does.
+     The reserve moving with the rotation changes the fits too (rem):
+     off the first slot when it held one, and onto the next when that
+     slot's head needs two of a credit (2026-11-01). The second half was
+     missing: with nothing else changing, the next slot kept the fits it
+     had without the reserve. go_tb found it under OA rev 294's defaults
+     (55 mismatches at 25 seeds, squash_act_lag 1; none after). check-ngd
+     unchanged at 22.8 (room_p 18.2 in-flop, 24.2 from its arrival, base
+     18.1; written ~(dd & dr_nx), its other spelling mapped to 19.1).
      *Counters (7b, built).* Rename's counters replace the go's pool,
      floor and room ports (OI-73 to OI-76, OA's revs 215, 216 and 219):
      RS room per class (up by ooe_rs's frees, a lead a cycle ahead), and
@@ -1292,7 +1300,78 @@ Memop commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
   926 killed fills, 365 discards, 0 mismatches; every prediction right, 0
   mismatches. Controls no-miu (MIU's outstanding never driven), no-store
   (no store bit at the fill) and drop-killed-fill (a killed fill's names
-  never freed) are each caught, with slice 1's and part a's.
+  never freed) are each caught, with slice 1's and part a's. The
+  assertion fill_at_alloc_2 (OA's rev 295, OI-94) holds what the kill
+  count and the model's kill_free_lag rest on: per slot, the fills
+  arriving are the go's allocations two cycles before, killed ones
+  included; its control late-fill (one cycle's fills a cycle late) is
+  caught by it. A stopped core's last two cycles still land the fills
+  owed.
+- *The ret hold* (OA's rev 293, in ooe_sched): no branch or call is
+  selected for RCU the cycle after a ret's grant, so the ROB's one
+  outcome path never resolves a branch beside a ret. A register of the
+  RCU entries' ret bits (rtq_cq04h, NR flops on the grant register's
+  enable), ANDed with the grant register after the edge, and its OR mask
+  select's branch and call requests (ooe_select's hold_cq03h). The AND
+  sat first before the edge, on the grant's own path, and put vel_cq03h
+  at 25.2 (arrival 4.0 + 21.2), over the stage: after the edge it is
+  20.4;
+  ret_cq03h and brk_cq03h are new entry bits beside the footprint
+  (arrival 4.0, for OA to confirm). It is the model's rule exactly, so
+  select_tb and trio_tb compare it; random programs have no rets, so both
+  add a run with every third branch a ret under testRetHold's settings
+  (ooeTestRandomRetsHookedWith), which must hold some branch. Controls
+  no-hold (select) and no-ret-hold (trio) are caught. ooe_sched's flop to
+  flop goes 19.9 to 24.4 NGD.
+- *The idle-R force* (RA-17, OA's revs 298-299, in ooe_sched; IRK, the
+  model's idle_r_k, 0 off and 3 up built): a migration borrows R's PRF
+  ports a row a cycle R holds no op, so while one is in flight
+  (mig_cq02h, a lead: the next cycle's in-flight bit, from the control
+  block that tracks restores and demotions) select holds every RCU entry
+  whose footprint has R. A register of the RCU entries' R bits
+  (rrq_cq04h, as rtq_cq04h) gives R's grant last cycle; a run counter
+  (rrun_cq04h, 2 bits at IRK 4) the cycles running before it; and a
+  force register (force_cq04h) takes, a cycle ahead, "next cycle a
+  migration, and IRK - 2 running as this one ends". select reads the
+  flop (ooe_select's rhold_cq03h, beside the ret hold in the request).
+  Deciding the force on the last cycle's grant instead, the model's
+  first rule, put an OR over the entries after the edge on the request
+  and vel_cq03h at 25.2 (two spellings tried, both 25.2); registered, the
+  flop to flop stays 24.4 and res_cq03h reaches 24.9 with its arrival
+  (18.1 + 4 before: its R bit now masks the request), vel 24.7. The model
+  follows the RTL: the force reads the run as of the cycle before last
+  (`r_run_q_`), so a natural idle in the last cycle still forces one, and
+  the run counts R's grants with or without a migration, so no migration
+  flop is needed and a migration starting in a run has R held at once.
+  The guarantee is OA's: no in-flight migration sees IRK cycles running
+  with R granted. The three registers are the grant register's clock gate,
+  its enable adding a run or force to end (198 flops, DCGE 95% and 97%;
+  a gate of their own was 34% in medium, the R bits rarely changing).
+  trio_tb runs testIdleR's migrations under the trio's settings
+  (ooeTestIdleRHookedWith) after the ret run, the lead driven a cycle
+  ahead from the model's sel_mig, and must see a forced cycle; controls
+  no-idle-r (no migration reaches ooe_sched: grants differ) and no-force
+  (the bench clears the force register, the lead kept: the idle_r
+  assertion must fire by name) are caught. select_tb drives rhold from
+  the model's busy bit 4.
+- *One resolution a cycle* (OA's revs 294-296, in ooe_rob): at most one
+  resolution candidate across the ROB a cycle (`one_resolution`), the
+  ROB's one outcome register. The RTL resolves every branch from that
+  register, a cycle after its done (the model's resolve_lag 1 for all,
+  resolve_lag_ret_only 0 in rob_tb), so today no stimulus breaks it; once
+  RCU's branch lead lands and branches resolve at 0, the ret hold is what
+  keeps it, and rob_tb's control becomes the model's inject_no_ret_hold.
+  Until then control two-resolutions clears every resolved bit after an
+  outcome's edge, and the assert, by name, must catch it.
+- *The replay lead* (found by the ret run, and by the plain random run past
+  the gate's 25 seeds): ooe_sched's ready register enable had no lead for
+  the edge after a producer's replay, where ooe_wake's lines drop (the
+  stop lead captures the replay's own edge). A grandchild of a missed load,
+  granted on its parent's bypass before the parent's replay was known,
+  stayed ready and was granted again a cycle early. The lead is a producer
+  some row reads replayed at this edge; trio_tb runs 80 seeds clean, and
+  its control no-rep-lead (the bench rewrites the enable's flop without
+  the lead) is caught.
 - *The entry* (rev 277 (c), rev 279): 65 bits with slice 4's chwidth
   width and one fault cause with its valid (DEC's wins). Barrier data goes
   in a per-slot side buffer 2 deep, in program order, popped at retire

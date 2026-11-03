@@ -3,6 +3,7 @@
   "light_rss_max_mib": 2048,
   "units": {
     "ooe_rob": "full-size ooe_rob (slice 2b): Yosys about 6 GB with its ABC child about 4.7 GB beside it, 7514 MiB the largest one command in check-ngd (OI-97; trial 2026-11-02)",
-    "ooe_rename": "ooe_rename: check-cg peaked at 2662 MiB on CI run 551 (pre-2b), over the light limit"
+    "ooe_rename": "ooe_rename: listed from check-cg's 2662 MiB on CI run 551, which counted check-cg's own size; its own peak is 1014 MiB in check-cg and 650 MiB in check-ngd (f53fe58). Comes off with the ooe_rob split's retune (OA-24)",
+    "ooe_sched": "ooe_sched: its bench build (OI's ooe_core.cpp at -O2, with the scheduler trio) peaked at 2190 MiB in check-cg, the first gate measuring each command's own peak (f53fe58, 2026-11-02), just over the light limit; revisit with the ooe_rob split (OA-24), when the limits are retuned"
   }
 }

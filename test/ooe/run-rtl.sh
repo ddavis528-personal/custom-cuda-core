@@ -290,13 +290,20 @@ else
   say "rob == model, mispredicting" "FAIL"; echo "$out" | tail -8; fail=1
 fi
 for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
-         no-branch-lead no-miu no-store drop-killed-fill; do
+         no-branch-lead no-miu no-store drop-killed-fill late-fill; do
   if ROB_CONTROL=$c "$dir/rob_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else
     say "  control $c (rob)" "caught"
   fi
 done
+# two-resolutions: two candidates in a cycle, forced; one_resolution itself
+# must catch it (no other check sees it first).
+if out=$(ROB_CONTROL=two-resolutions "$dir/rob_tb" 3 2>&1) || ! grep -q "one_resolution" <<<"$out"; then
+  say "  control two-resolutions (rob)" "MISSED"; fail=1
+else
+  say "  control two-resolutions (rob)" "caught"
+fi
 
 # ooe_wake, driven from the model's wake log after every cycle. Its
 # latencies, bypass points and penalties are the parameters'; the model's
@@ -644,7 +651,7 @@ fi
 # The controls run the bench's seeds: a bulk discard beside a candidate
 # memop (no-busy) is rare, and 3 seeds stopped reaching one when rename's
 # go changed (OA-21); a caught control stops at its first difference.
-for c in no-order no-conf no-busy; do
+for c in no-order no-conf no-busy no-hold; do
   if SELECT_CONTROL=$c "$dir/select_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (select)" "MISSED"; fail=1
   else
@@ -680,11 +687,19 @@ if out=$("$dir/trio_tb" "$seeds" 2>&1); then
 else
   say "rs + wake + sched assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-msd no-miss-lead late-leads no-alloc-lead; do
+for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r; do
   if TRIO_CONTROL=$c "$dir/trio_tb" 6 >/dev/null 2>&1; then
     say "  control $c (trio)" "MISSED"; fail=1
   else
     say "  control $c (trio)" "caught"
   fi
 done
+# no-force: the force register cleared, the migration lead kept; ooe_sched's
+# own idle_r assertion must fire, by name (RA-17).
+nf_out=$(TRIO_CONTROL=no-force "$dir/trio_tb" 6 2>&1)
+if grep -q 'CCV idle_r failed' <<<"$nf_out"; then
+  say "  control no-force (trio, idle_r assertion)" "caught"
+else
+  say "  control no-force (trio, idle_r assertion)" "MISSED"; fail=1
+fi
 exit $fail
