@@ -546,6 +546,15 @@ module ooe_go #(
   localparam int ND = 2;
   logic [4*ND-1:0] dr_cq02h;                   // registered, one-hot per credit
   logic [4*ND-1:0] dr_nx_cq02h, dd_cq02h;
+  // The priority decode against the reserve (fanout plan, OA rev 319):
+  // pdr[s][c], slot s first and credit c's head needing two, registered with
+  // the rotation, three kept copies, each driving a third of the fits'
+  // table picks. dd's need-two bit is then an AND-OR with this cycle's
+  // heads, and its need-one bit its complement (dr is one-hot).
+  localparam int NK = 3;
+  (* keep *) logic [S*4-1:0] pdr0_cq02h, pdr1_cq02h, pdr2_cq02h;
+  logic [S*4-1:0]  pdr_nx_cq02h;
+  logic [NK*4*ND-1:0] ddk_cq02h;
   logic [PA-1:0]   a0_cq02h, a1_cq02h;
   logic [2:0]      dn_cq02h;
   logic [S-1:0]    pn_cq02h;                   // the rotation's next slot
@@ -570,6 +579,17 @@ module ooe_go #(
     ph_cq02h = |(priod_cq02h & with_w_cq01h);
     for (int c = 0; c < 4; c++)
       for (int d = 0; d < ND; d++) dd_cq02h[c * ND + d] = ph_cq02h ? dr_cq02h[c * ND + d] : d == 0;
+    for (int s = 0; s < S; s++)
+      for (int c = 0; c < 4; c++) pdr_nx_cq02h[s * 4 + c] = pn_cq02h[s] & dr_nx_cq02h[c * ND + 1];
+    ddk_cq02h = '0;
+    for (int c = 0; c < 4; c++) begin
+      for (int s = 0; s < S; s++) begin
+        ddk_cq02h[(0 * 4 + c) * ND + 1] = ddk_cq02h[(0 * 4 + c) * ND + 1] | (with_w_cq01h[s] & pdr0_cq02h[s * 4 + c]);
+        ddk_cq02h[(1 * 4 + c) * ND + 1] = ddk_cq02h[(1 * 4 + c) * ND + 1] | (with_w_cq01h[s] & pdr1_cq02h[s * 4 + c]);
+        ddk_cq02h[(2 * 4 + c) * ND + 1] = ddk_cq02h[(2 * 4 + c) * ND + 1] | (with_w_cq01h[s] & pdr2_cq02h[s * 4 + c]);
+      end
+      for (int k = 0; k < NK; k++) ddk_cq02h[(k * 4 + c) * ND] = ~ddk_cq02h[(k * 4 + c) * ND + 1];
+    end
   end
   // The table, at elaboration: for each case t (n warps, the first or not,
   // floor w, the first's need d) and each v, the pools that give a share of
@@ -607,13 +627,15 @@ module ooe_go #(
   localparam int NF = 2 * (R + 1);       // a warp's cases: role, floor
   logic [4*NT*R-1:0]   tp_cq02h;
   logic [4*NF*R-1:0]   tw_cq02h;
-  logic [S*ND-1:0]     nd_sel_cq02h;     // the warps' number and the first's need, one-hot
+  logic [NK*S*ND-1:0]  nd_sel_cq02h;     // the warps' number and the first's need, one-hot, per copy
   always_comb
     for (int c = 0; c < 4; c++) begin
       // One warp takes the whole pool, its reserve moot: its case reads no need.
-      for (int n = 1; n < S + 1; n++)
-        for (int d = 0; d < ND; d++)
-          nd_sel_cq02h[(n - 1) * ND + d] = n == 1 ? nwh_cq01h[n] & d == 0 : nwh_cq01h[n] & dd_cq02h[c * ND + d];
+      for (int k = 0; k < NK; k++)
+        for (int n = 1; n < S + 1; n++)
+          for (int d = 0; d < ND; d++)
+            nd_sel_cq02h[(k * S + n - 1) * ND + d] = n == 1 ? nwh_cq01h[n] & d == 0
+                                                            : nwh_cq01h[n] & ddk_cq02h[(k * 4 + c) * ND + d];
       for (int t = 0; t < NT; t++)
         for (int v = 1; v < R + 1; v++)
           tp_cq02h[(c * NT + t) * R + v - 1] = in_of(pth_cq02h[c * (PM + 1) +: PM + 1], t * R + v - 1);
@@ -623,7 +645,7 @@ module ooe_go #(
           for (int n = 1; n < S + 1; n++)
             for (int d = 0; d < ND; d++)
               tw_cq02h[(c * NF + t) * R + v - 1] = tw_cq02h[(c * NF + t) * R + v - 1] |
-                  (nd_sel_cq02h[(n - 1) * ND + d] & tp_cq02h[(c * NT + ((n - 1) * NF + t) * ND + d) * R + v - 1]);
+                  (nd_sel_cq02h[((t % NK) * S + n - 1) * ND + d] & tp_cq02h[(c * NT + ((n - 1) * NF + t) * ND + d) * R + v - 1]);
         end
     end
   logic [S*4*R-1:0] sg_cq02h;
@@ -798,7 +820,7 @@ module ooe_go #(
     // needs two (with nothing else changing, the next slot's fits would
     // otherwise keep the share it had without the reserve).
     for (int c = 0; c < 4; c++)
-      rem_cq02h = rem_cq02h | (~nwh_cq01h[0] & ~nwh_cq01h[1] & ~(dd_cq02h[c * ND] & dr_nx_cq02h[c * ND]) &
+      rem_cq02h = rem_cq02h | (~nwh_cq01h[0] & ~nwh_cq01h[1] & ~(ddk_cq02h[c * ND] & dr_nx_cq02h[c * ND]) &
                                ~pe_cq02h[c * (PM + 1)] & prio_en_cq01h);
   end
   logic [S-1:0] chg_nx_cq02h;
@@ -893,12 +915,18 @@ module ooe_go #(
       priox_cq02h <= S'(1);
       priod_cq02h <= S'(1);
       for (int c = 0; c < 4; c++) dr_cq02h[c * ND +: ND] <= ND'(1);
+      pdr0_cq02h  <= '0;
+      pdr1_cq02h  <= '0;
+      pdr2_cq02h  <= '0;
     end else if (prio_en_cq01h) begin
       prio_cq02h  <= {prio_cq02h[S-2:0], prio_cq02h[S-1]};
       priow_cq02h <= {priow_cq02h[S-2:0], priow_cq02h[S-1]};
       priox_cq02h <= {priox_cq02h[S-2:0], priox_cq02h[S-1]};
       priod_cq02h <= {priod_cq02h[S-2:0], priod_cq02h[S-1]};
       dr_cq02h    <= dr_nx_cq02h;
+      pdr0_cq02h  <= pdr_nx_cq02h;
+      pdr1_cq02h  <= pdr_nx_cq02h;
+      pdr2_cq02h  <= pdr_nx_cq02h;
     end
   end
 
@@ -906,6 +934,7 @@ module ooe_go #(
   logic [S-1:0] tk_any_cq02h;
   always_comb for (int s = 0; s < S; s++) tk_any_cq02h[s] = take_cq02h[s * R];
   `CCV_ASSERT(sel_covers, (tk_any_cq02h & ~sel_cq02h) == '0)
+  `CCV_ASSERT(prio_decode_copies, ddk_cq02h == {NK{dd_cq02h}})
 endmodule
 `undef CCV_CLK
 `undef CCV_RST
