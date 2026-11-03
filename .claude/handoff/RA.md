@@ -55,7 +55,7 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-02)
-AR 268, OA 310, RA 60, DA 103, Conventions 17, CP 152, IS 186, TI 290 (others as at session start: OI 252,
+AR 268, OA 310, RA 60, DA 103, Conventions 17, CP 152, IS 186, TI 295 (others as at session start: OI 252,
 CP 149, DA 99, Conventions 16).
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -134,12 +134,9 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
 - TI rev 289: heavy-unit lock + tools/heavy-units.json (eb170bf, on ccr-183cc441-doowtf; the sweep merges it);
   sweep task prompt now skips gate-scratch/* (updated 2026-11-02). Fanout term first run: 10 OOE units >25
   (ooe_rob 44.3); RCU's spec has per-bank-section select copies already.
-- SWEEP 2026-11-02 UNPUSHED: local ccr-126afa13-clcw9s at 25b1530 (58 merge commits: ccr-183cc441-doowtf,
-  ccr-57eff422-5tdecg, ccr-3868632d-p8esoz, ccr-80102643-4n8bv4, ccr-9eb50716-lecnjf, ccr-c22116ce-1vzyjg). Gate red/unfinished:
-  (1) TI's heavy guard (e878569) fails 11 unlisted light units at 2196 MiB (> 2048): ccv_common_csa, ooe_pick_rcu/miu, ooe_ready,
-  ooe_select, ooe_confirm, ooe_ratread, ooe_rencred, ooe_headrd, ooe_ren1, ooe_ren1n; inherited from TI's branch, not the merge;
-  identical 2196 smells like a per-process baseline. (2) cg's full-size ooe_rob runs >30 min; both gate runs killed at 2 h.
-  Fix is TI's (heavy-units.json / limit) + a split gate. Never push red. ROB split question is OA's (Daniel): RA stays out.
+- Sweep 2026-11-03 pushed at 047159d (SPLIT SCOPED PASS: cg alone 58 min, exported, then gate-push --import; a
+  4-core container can't fit cg+ngd in one 2 h job). TI rev 295 fixed the heavy guard (per-command peaks, 16ab8ae).
+  OI's ooe_rob split landed (ooe_rob_w); heavy-units.json merged as ooe_rob_w, ooe_rename, ooe_sched.
 - Answers due: RA-16, RA-30, RA-36 (TI); RA-37/RA-38 AGREED by TI rev 290 (building: gate-scope + CLAUDE.md first, then makeRcu,
   blocks.list, check-rcu-unit, job_rcu_rtl, CCV_RCU_RTL), impl pending; RA-35 (AR); RA-37 (OA: RI 31 only, roster commit bc1c2b4 named at rev 55); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
