@@ -742,7 +742,7 @@ module ooe_rob_w #(
           for (int j = 0; j < A + 1; j++)
             if (al_n_cq02h[s * LA +: LA] == LA'(j))
               ufm_nx_cq02h[s * D + i] = ufm_nx_cq02h[s * D + i] |
-                                        (D - i - j <= 0 ? 1'b1 : uxr_cq02h[D - i - j]);
+                                        (i + j >= D ? 1'b1 : uxr_cq02h[D - i - j]);
           ufm_nx_cq02h[s * D + i] = ufm_nx_cq02h[s * D + i] & ~rd_s_cq02h[s];
         end
       end
