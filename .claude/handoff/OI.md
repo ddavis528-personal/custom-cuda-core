@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 318, RA 60, IS 188, TI 297, OI 263, CP 152, DA 104
+Conventions 17, AR 269, OA 319, RA 60, IS 188, TI 297, OI 263, CP 152, DA 104
 (sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -104,7 +104,13 @@ the compact hook printed this handoff.
      input, tell OA first.
    - rendep: sender registers cp already decoded (one-hot), kept copies by row group;
      report sender depth; only if it doesn't fit, price the rename stage (OA -> DA).
-   - SENT OI rev 263 (sched OAI21 = req, takes brk/vel/res/older_r; go nets): WAIT OA.
+   - OA rev 319 (answer to OI 263): sched BUILD (a) req_f registered from next-state terms
+     (no behaviour change); MODEL (b) hold after the pick (held winner cancelled, slot
+     lost): lost slots/kilo-op on S1, audit, call/ret kernels (rope, recursion); <0.5%
+     OA's. go: register priod x dr one-hot, kept copies 3x12 (~1.4), report remaining
+     + sender-drive table for hv/pl/px/unmet_g/p (flop or logic, depth). decq: free
+     candidates a cycle ahead, priced with rs alone and together (<0.5% combined OA's).
+     prodmap: done 1659753 (fo 28.8 -> 17.4), nothing more unless asked.
    - go: send OA the 3 widest nets in series priod/he -> fits (loads, driver, flop or
      logic, which depend only on last cycle's state). OA rules on the list.
    - rs: model registered free candidates (S1, audit, floors); <0.5% build.
