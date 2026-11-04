@@ -1158,6 +1158,7 @@ class Unit:
         self.nl = None
         self.data = {}       # scenario -> dict(stats)
         self.errors = []     # measurement failures: the unit is not measured
+        self.obs = {}        # scenario -> the replay's lines, as integers
 
     # -- synthesis ----------------------------------------------------------
     def synth(self):
@@ -1220,6 +1221,23 @@ class Unit:
                 continue
             vcds[sc] = vcd
         return vcds
+
+    def replay_make(self):
+        """Make variables for the harness's C++ build. A unit names
+        `"replay_cxx": "clang++"` when its netlist's generated C++ is too
+        large for g++ (RI-10: the 205,000-cell rcu_bank_slice, whose one
+        19 MB file took g++ past 13.6 GB even at -O0; clang++ builds it in
+        about 610 MiB). The selftest holds a clang++ replay to the g++ one."""
+        cxx = self.spec.get("replay_cxx", "g++")
+        if cxx == "g++":
+            return []
+        if cxx != "clang++":
+            raise SystemExit("check-cg: unit %s: replay_cxx %r is neither g++ nor clang++"
+                             % (self.name, cxx))
+        # Verilator is configured for g++ (gnu++17 and its -fcoroutines);
+        # clang++ takes --timing's coroutines from C++20, with no flag.
+        return ["-MAKEFLAGS", "CXX=clang++ CFG_CXXFLAGS_STD=-std=c++20 "
+                "CFG_CXXFLAGS_COROUTINES= OPT_FAST=-O1 OPT_SLOW=-O0 OPT_GLOBAL=-O0"]
 
     def harness(self, n):
         """The netlist with every flop's Q and every group's enable brought
@@ -1305,7 +1323,8 @@ endmodule
         open(tf, "w").write(tb)
         hd = os.path.join(self.dir, "harness")
         shutil.rmtree(hd, ignore_errors=True)
-        r = run(["verilator", "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
+        r = run(["verilator"] + self.replay_make() + [
+                 "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
                  "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb"]
                 # A blackboxed child may instantiate a shared cell (OI-77: ooe_freelist's
                 # ccv_common_csa). A library directory resolves only modules still
@@ -1355,6 +1374,7 @@ endmodule
                 continue
             obs = [int(l, 16) for l in open(base + ".obs").read().split()]
             res[sc] = (snaps, obs)
+            self.obs[sc] = obs
         return res
 
     def stats(self, replays):
@@ -2508,6 +2528,22 @@ def selftest():
     u = fixture_unit("fx_swap", "cg_fx_good", scope="tb_cg_fixture.u_dcge")
     u.measure(vcds=vcds)
     expect(any("differ" in e for e in u.errors), "a trace of another module replayed clean")
+    # 8b. A clang++ harness (replay_cxx, RI-10) replays as g++'s does: every
+    #     flop and enable on every cycle alike, and it too refuses the
+    #     swapped trace.
+    ref = units["cg_fx_good"]
+    cl = fixture_unit("fx_good_clang", "cg_fx_good")
+    cl.spec["replay_cxx"] = "clang++"
+    cl.measure(vcds=vcds)
+    expect(not cl.errors and cl.obs and cl.obs == ref.obs,
+           "a clang++ replay differs from the g++ one: %s"
+           % (cl.errors[:1] or sorted(sc for sc in ref.obs if cl.obs.get(sc) != ref.obs[sc])))
+    expect(cl.data == ref.data, "a clang++ replay measured otherwise than g++'s")
+    u = fixture_unit("fx_swap_clang", "cg_fx_good", scope="tb_cg_fixture.u_dcge")
+    u.spec["replay_cxx"] = "clang++"
+    u.measure(vcds=vcds)
+    expect(any("differ" in e for e in u.errors),
+           "a trace of another module replayed clean under clang++")
     # 9. The scenarios: swapped idle and high, and one too short.
     g = units["cg_fx_good"]
     saved = dict(g.data)
