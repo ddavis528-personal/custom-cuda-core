@@ -40,17 +40,38 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 317, AR 269, TI 297, OI 256, IS 188, CP 152, DA 104,
-RA 60 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
-OOE doc rev 352. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
+Conventions 17, OA 329, AR 269, TI 300, OI 271, IS 188, CP 152, DA 106,
+RA 61 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
+OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
+-3. RA-39 early R read (R0/R1 in A; OA revs 328-329): only L1 hits miss A
+   (data lands in consumer's A). (i) MIU forward on R0/R1 TAKEN rev 329 (RA:
+   ~10k cells, 190 flops, A 16 NGD; overhead list); OOE doc rev 361. (ii) withdrawn.
+   (b) lead_r_src0/1 accepted; OI lead-mux NGD/CG, TI schema, AR agree.
+-2. DA 11-04 (DA tab 105): fanout term ENFORCED in check-ngd, today's paths
+   ratcheted (TI builds). OA rev 321 order: go+sched (held) first; then one model
+   batch pricing freelist scan (a two-step / b banked) + rs/decq free candidates
+   a cycle ahead (<0.5% total mine, else DA); rendep sender probe (else rename
+   stage -> DA); rob_w fill probe (input stage?); go remainder; copies last.
+   rev 322: TAKEN freelist (a) two-step (final). rs WITHDRAWN rev 325 (+1.1-1.6%
+   corrected): OI copies probe, then lag with +2 rows/class, else DA beside decq.
+   TI dry run (rev 299): 115 findings; 43 are ooe_ratread NGD-6 alone, asked TI
+   if alone-rule applies once instantiated, OI for parent-timed path (rev 326). (was: S1 to
+   confirm). decq ADOPTED by DA 11-04 (DA tab 106): 15 entries + free lag 1;
+   TI CCV_P_DECQ 15, AR DEC credit pool 15, OI builds (OA rev 327).
 -1. OA-24 CLOSED (OA rev 314): OI's split pushed (e35c9f9/4d388f8); budgets
    re-signed; CG 1.03% within 2%; per-net plan still covers ooe_rob_w head_cq02h
    (2205 loads) and rst_r01h; miter depth 16 at 8 entries asked if cheap.
-   OI-104: OI stored kind/class in ooe_rs (b23bbd8), accepted rev 317; ooe_wake
-   kind/cls_cq01h at 2.0. Open: OI wires ooe_rename's akind/acls (tied 0), then
-   TI reapplies L1 wake 12.
+   OI-104 done: kind/class stored in ooe_rs (b23bbd8), rename wired (1f7c642);
+   TI reapplies L1 wake 12 (base 1).
+   Fanout rulings rev 318 (OI rev 258): no re-budgets; rs registered free
+   candidates and freelist two-step vs banked are model-priced (<0.5% mine);
+   sched: (b) TAKEN rev 320 (ret_hold 2, hold cancels after pick, 1.25 lost
+   slots/kop ret-heavy, 0 on kernels; OOE doc rev 360); OI builds, reports depth;
+   go: priod x dr decode, then senders of hv/pl/px/unmet; decq with rs pricing;
+   rendep decode cp upstream (extra rename stage
+   -> DA); go: OI sends widest series nets. rob_w head fixed 31.9 (7aeb62a).
 -0. 11-03 sweep PUSHED ae1a316 (full gate, ~1 h 10 min; make-release fixed by TI a933e8d).
    11-02 sweep PUSHED cbe7bad (full gate PASS, cg 6088 s, ngd 4150 s), with
    OI's split and TI's heavy-unit fix 16ab8ae merged. Gates: run detached
