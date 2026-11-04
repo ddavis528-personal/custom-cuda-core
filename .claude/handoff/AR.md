@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 284, OA 331, TI 315, IS 189, CP 153, OI 274, DA 106,
+  record): AR 284, OA 333, TI 318, IS 189, CP 153, OI 274, DA 106,
   Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -131,7 +131,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   then AR to DA with RA's Phase 1 area. 192 stands until then.
   OA 333: 160 meets Q-35 (REN_CEIL 44 >= ROB 32), 128 fails (24 < 32);
   order agreed; OA recommends 160 to DA after the clean re-run. Waiting on
-  OI's check answer and TI's re-run. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  OI's check answer and TI's re-run. TI 316: the smaller pools ran with
+  their own REN_FLOOR/CEIL (12/44, 8/24), so the firings are OI's question.
+  TI 318 (re:AR 276): fair sweep off/32/48, all 57 match, 52 identical,
+  lnorm1 2562 flat; spinwait 1494 at 32 vs 2150 at 48 (forward-progress
+  test, expected); N = 48 stands. No reply owed. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
