@@ -1320,6 +1320,18 @@ bool Core::rowConfirmed(unsigned i) const {
 
 // ---- wake, cancel, confirm ---------------------------------------------------------------
 
+std::pair<uint8_t, uint8_t> Core::wakeKindClass(unsigned e) const {
+  const RsEntry &x = rs_[e];
+  const RobEntry &r = slot_[x.slot].rob[x.rob];
+  const SchedAttr &a = r.u.attr;
+  if (x.copy) return {kWakeCopy, uint8_t(a.lat_class)};
+  if (x.atom == 2) return {kWakeTimed, uint8_t(kLatClsLane)};
+  if (r.is_mem)
+    return {cfg_.l1_spec && r.is_load && a.lat_class == kLatClsL1 && r.u.space == 0 ? kWakeSpec : kWakeMem,
+            uint8_t(a.lat_class)};
+  return {kWakeTimed, uint8_t(a.lat_class)};
+}
+
 void Core::setWakes(unsigned e) {
   RsEntry &x = rs_[e];
   const RobEntry &r = slot_[x.slot].rob[x.rob];
@@ -1327,19 +1339,18 @@ void Core::setWakes(unsigned e) {
   x.late = false;
   x.spec = x.on_completion = false;
   if (e < wlog_.grant.size()) {
+    const auto kc = wakeKindClass(e);
     wlog_.grant[e] = 1;
-    wlog_.cls[e] = uint8_t(a.lat_class);
-    wlog_.kind[e] = kWakeTimed;
+    wlog_.kind[e] = kc.first;
+    wlog_.cls[e] = kc.second;
   }
   if (x.copy) {
     x.late_at = now_ + cfg_.lat_lane;     // a lane op; no done (A-38)
-    if (e < wlog_.kind.size()) wlog_.kind[e] = kWakeCopy;
     return;
   }
   if (x.atom == 2) {
     // An atomic's lane op: N at the lane latency, for A3 (AR-21).
     x.late_at = now_ + cfg_.unitLat(kLatClsLane);
-    if (e < wlog_.cls.size()) wlog_.cls[e] = uint8_t(kLatClsLane);
     return;
   }
   if (r.is_mem) {
@@ -1351,7 +1362,6 @@ void Core::setWakes(unsigned e) {
     } else {
       x.on_completion = true;
     }
-    if (e < wlog_.kind.size()) wlog_.kind[e] = x.spec ? kWakeSpec : kWakeMem;
     return;
   }
   // A fixed-latency unit: the full-latency wake at its latency, and its
@@ -2903,7 +2913,9 @@ void Core::selectSectioned() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.eligible_at > now_ || (x.res & busy)) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
-    if (retHeld() && !x.copy) {   // OA's rev 293
+    // ret_hold 2 (OA's rev 319, sched (b)): the held branch still requests;
+    // a win is cancelled after the pick and its resource loses the slot.
+    if (retHeld() && !x.copy && cfg_.ret_hold != 2) {   // OA's rev 293
       const RobEntry &rb = slot_[x.slot].rob[x.rob];
       if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
     }
@@ -2973,8 +2985,31 @@ void Core::selectSectioned() {
   std::vector<unsigned> grant;
   unsigned lost = 0;
   const std::vector<bool> won = pickResources(preq, kRes, &lost, cfg_.pick_fallback);
-  for (size_t i = 0; i != cand.size(); ++i)
-    if (won[i]) { grant.push_back(cand[i]); wlog_.sel_grant[cand[i]] = 1; }
+  std::vector<size_t> held2;   // ret_hold 2's cancelled wins
+  for (size_t i = 0; i != cand.size(); ++i) {
+    if (!won[i]) continue;
+    if (cfg_.ret_hold == 2 && retHeld() && !rs_[cand[i]].copy && rs_[cand[i]].cls == RsCls::kRcu) {
+      const RobEntry &rb = slot_[rs_[cand[i]].slot].rob[rs_[cand[i]].rob];
+      if (rb.u.attr.branch && !rb.u.attr.ret) {
+        // Cancelled after the pick: nothing else takes its resource.
+        count("issue.ret_hold_cancel");
+        held2.push_back(i);
+        continue;
+      }
+    }
+    grant.push_back(cand[i]);
+    wlog_.sel_grant[cand[i]] = 1;
+  }
+  if (!held2.empty()) {
+    // The slots lost: what the pick would have granted had the held
+    // branches not requested (ret_hold 1), less what it granted.
+    std::vector<PickReq> p1;
+    for (size_t i = 0; i != cand.size(); ++i)
+      if (std::find(held2.begin(), held2.end(), i) == held2.end()) p1.push_back(preq[i]);
+    unsigned l1 = 0, n1 = 0;
+    for (bool w : pickResources(p1, kRes, &l1, cfg_.pick_fallback)) n1 += w;
+    if (n1 > grant.size()) count("issue.ret_hold_lost_slot", n1 - grant.size());
+  }
   if (lost) count("select.lost_resource", lost);   // won a section, lost another
   // The request register is never stale where it would grant (OI-53).
   if (cfg_.req_reg)
@@ -3124,7 +3159,7 @@ void Core::select() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
-    if (retHeld() && !x.copy) {   // OA's rev 293
+    if (retHeld() && !x.copy && cfg_.ret_hold != 2) {   // OA's rev 293
       const RobEntry &rb = slot_[x.slot].rob[x.rob];
       if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
     }
@@ -3162,6 +3197,7 @@ void Core::select() {
 
   // MIU class first, then RCU: each round gives every warp, from the
   // rotating priority, its oldest ready entry (Select).
+  uint64_t cancelled = 0;   // ret_hold 2's warps, this cycle
   for (int pass = 0; pass != 2; ++pass) {
     const bool miu = pass == 0;
     for (bool progress = true; progress;) {
@@ -3170,9 +3206,19 @@ void Core::select() {
         const unsigned si = (rr_select_ + k) % slot_.size();
         if (ports == cfg_.issue_width) break;
         if (miu && (mports == cfg_.memop_width || memop_block[si])) continue;
+        if (cancelled & (1ull << si)) continue;
         const unsigned e = oldest(si, miu);
         if (e == kNoEntry) continue;
         const RobEntry &r = slot_[si].rob[rs_[e].rob];
+        // ret_hold 2 (OA's rev 319, sched (b)): the held branch was picked;
+        // cancelled, its port goes unused and its warp issues no more.
+        if (cfg_.ret_hold == 2 && retHeld() && !miu && r.u.attr.branch && !r.u.attr.ret) {
+          count("issue.ret_hold_cancel");
+          count("issue.ret_hold_lost_slot");
+          cancelled |= 1ull << si;
+          ++ports;
+          continue;
+        }
         // A masked load's copy goes with it; an atomic's, with its first read.
         const bool with_copy = r.copy && e == r.rs_main && r.rs_copy != kNoEntry && !rs_[r.rs_copy].issued;
         const unsigned need = with_copy ? 2 : 1;
@@ -3891,6 +3937,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       w.pgroup = uint8_t(u.attr.bypass_group & 7u);
       w.nob = r.is_mem || u.attr.cross_lane;
       w.atomic = atomic;
+      w.spec = cfg_.l1_spec && r.is_load && u.attr.lat_class == kLatClsL1 && u.space == 0;
       for (unsigned i = 0; i != 3; ++i) w.wsrc[i] = r.wsrc[i];
       w.wdst = r.wdst;
       w.wset = a.serial == kSerChwidth || a.commit_width;

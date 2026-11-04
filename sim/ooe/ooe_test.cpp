@@ -4966,7 +4966,8 @@ void audit() {
                         "stall.gpr_buffer", "stall.gpr_empty", "stall.gpr_ceiling", "stall.gpr_floor",
                         "stall.pred_buffer", "stall.pred_empty", "stall.pred_floor_ceiling",
                         "stall.rob_full", "stall.rob_slot_held", "stall.rob_late_credit",
-                        "hold.chwidth", "hold.barrier", "hold.fault", "hold.inactive", "rename.full_width"};
+                        "hold.chwidth", "hold.barrier", "hold.fault", "hold.inactive", "rename.full_width",
+                        "issue.ret_hold", "issue.ret_hold_cancel", "issue.ret_hold_lost_slot"};
   auto run = [&](const Config &c) {
     R r;
     const char *as = std::getenv("AUDIT_SEEDS");   // the audit's runs (48 by default)
@@ -4984,6 +4985,10 @@ void audit() {
   };
   Config base = baseConfig();
   base.fits_stale = 6;
+  // AUDIT_RET_EVERY n: every n-th random branch a ret (testRetHold's mix);
+  // AUDIT_SECTIONED: the sectioned select, the RTL's (OA's rev 319 pricing).
+  if (const char *re = std::getenv("AUDIT_RET_EVERY")) g_random_ret_every = unsigned(std::atoi(re));
+  if (std::getenv("AUDIT_SECTIONED")) base.sectioned = true;
   if (const char *ac = std::getenv("AUDIT_CFG")) {   // a setting the audit runs under, as CCV_OOE_CONFIG (e.g. scarce names)
     const std::string e = base.apply(ac);
     if (!e.empty()) { std::fprintf(stderr, "%s\n", e.c_str()); return; }

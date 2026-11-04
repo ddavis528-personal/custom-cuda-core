@@ -86,7 +86,7 @@ module ooe_rename #(
   localparam int MW = 16 * GW + 4 * PW,
   localparam int XM = 6 * R + 2,
   localparam int LX = $clog2(XM + 1),
-  localparam int XW = 20,                // a head's Rename 2 attributes (c_x)
+  localparam int XW = 21,                // a head's Rename 2 attributes (c_x)
   localparam int XL = XW + 3,            // a lane's: and its class bits (RS, MIU, copy)
   localparam int P  = 2 * R,             // RS allocation ports: R RCU, then R MIU
   localparam int LP = $clog2(P),
@@ -125,7 +125,9 @@ module ooe_rename #(
   // the guard, 2 its consumer group is none (RCU executes it), 3 no bypass
   // as a producer, 4-7 the GPR reads (src0..2, the merge source), 8 it reads
   // its guard, 9 the predicate-logic sources, 10 the predicate merge, 11-13
-  // its consumer group, 14-16 its lat_class, 17-19 its bypass group.
+  // its consumer group, 14-16 its lat_class, 17-19 its bypass group, 20
+  // its main's wake is speculative (an L1-contracted global load: its RS
+  // row's timer kind, OA re:OI-104).
   input  logic [NC*XW-1:0]  c_x_cq01h,
   // A chwidth or chwidth.multi sibling: its destination's width is the one
   // it sets (AR-24 (d), TI's rev 185), from decq's payload.
@@ -203,6 +205,8 @@ module ooe_rename #(
   output logic [P-1:0]      row_prod_cq04h,
   output logic [P*N-1:0]    row_dep_cq04h,
   output logic [2*P*N-1:0]  row_code_cq04h,
+  output logic [2*P-1:0]    akind_cq04h,   // each port's timer kind and latency class (OA, re:OI-104)
+  output logic [3*P-1:0]    acls_cq04h,
   output logic [P*P-1:0]    grp_dep_cq04h,
   output logic [2*P*P-1:0]  grp_code_cq04h,
   output logic [P*P-1:0]    prv_dep_cq04h,
@@ -873,7 +877,8 @@ module ooe_rename #(
   // Each lane's fields as ooe_rendep reads them: a uop that takes an RS
   // entry, its class bits and attributes, its names and reads (the
   // predicate reads in its order: guard, q0, q1, the old destination).
-  logic [R-1:0]       d_v_cq03h, d_mem_cq03h, d_cp_cq03h, d_atom_cq03h, d_cguard_cq03h, d_cnone_cq03h, d_nob_cq03h;
+  logic [R-1:0]       d_v_cq03h, d_mem_cq03h, d_cp_cq03h, d_atom_cq03h, d_cguard_cq03h, d_cnone_cq03h, d_nob_cq03h,
+                      d_spec_cq03h;
   logic [R*4-1:0]     d_gsv_cq03h, d_psv_cq03h;
   logic [R*4*PW-1:0]  d_psn_cq03h;
   logic [R*3-1:0]     d_cg_cq03h, d_unit_cq03h, d_pg_cq03h;
@@ -891,6 +896,7 @@ module ooe_rename #(
     assign d_cg_cq03h[l * 3 +: 3]   = x_x_cq03h[X + 14 +: 3];
     assign d_unit_cq03h[l * 3 +: 3] = x_x_cq03h[X + 17 +: 3];
     assign d_pg_cq03h[l * 3 +: 3]   = x_x_cq03h[X + 20 +: 3];
+    assign d_spec_cq03h[l]          = x_x_cq03h[X + 23];
     assign d_psn_cq03h[l * 4 * PW +: 4 * PW] = {r_p_cq03h[(l * 4 + 1) * PW +: PW], r_p_cq03h[(l * 4 + 3) * PW +: PW],
                                                r_p_cq03h[(l * 4 + 2) * PW +: PW], r_p_cq03h[(l * 4 + 0) * PW +: PW]};
   end
@@ -906,11 +912,12 @@ module ooe_rename #(
     .pwe_cq01h(p_pwe_cq03h), .pname_cq01h(r_pname_cq03h), .gsv_cq01h(d_gsv_cq03h), .gsn_cq01h(r_g_cq03h),
     .psv_cq01h(d_psv_cq03h), .psn_cq01h(d_psn_cq03h), .cguard_cq01h(d_cguard_cq03h), .cg_cq01h(d_cg_cq03h),
     .cnone_cq01h(d_cnone_cq03h), .unit_cq01h(d_unit_cq03h), .pg_cq01h(d_pg_cq03h), .nob_cq01h(d_nob_cq03h),
+    .spec_cq01h(d_spec_cq03h),
     .eg_cq01h(eg_cq03h), .egn_cq01h(egn_cq03h), .ep_cq01h(ep_cq03h), .epn_cq01h(epn_cq03h), .ecv_cq01h(ecv_cq03h),
     .gnt_v_cq01h(gnt_v_cq03h), .gnt_idx_cq01h(gnt_idx_cq03h),
     .row_prod_cq02h(row_prod_cq04h), .row_dep_cq02h(row_dep_cq04h), .row_code_cq02h(row_code_cq04h),
     .grp_dep_cq02h(grp_dep_cq04h), .grp_code_cq02h(grp_code_cq04h), .prv_dep_cq02h(prv_dep_cq04h),
-    .prv_code_cq02h(prv_code_cq04h));
+    .prv_code_cq02h(prv_code_cq04h), .akind_cq02h(akind_cq04h), .acls_cq02h(acls_cq04h));
 
   // Each lane's ports, packed per class in lane order: a main on its
   // class's next port, a copy on the RCU port after its main.

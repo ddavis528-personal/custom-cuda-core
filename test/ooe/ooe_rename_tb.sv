@@ -38,7 +38,7 @@ module ooe_rename_tb #(
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LC = (C > 1) ? $clog2(C) : 1,
   localparam int MW = 16 * GW + 4 * PW,
-  localparam int XW = 20,
+  localparam int XW = 21,
   localparam int P  = 2 * R,
   localparam int W  = $clog2(N)
 ) (
@@ -118,6 +118,8 @@ module ooe_rename_tb #(
   output logic [P-1:0]      row_prod_cq04h,
   output logic [P*N-1:0]    row_dep_cq04h,
   output logic [2*P*N-1:0]  row_code_cq04h,
+  output logic [2*P-1:0]    akind_cq04h,
+  output logic [3*P-1:0]    acls_cq04h,
   output logic [P*P-1:0]    grp_dep_cq04h,
   output logic [2*P*P-1:0]  grp_code_cq04h,
   output logic [P*P-1:0]    prv_dep_cq04h,
@@ -167,7 +169,7 @@ module ooe_rename_tb #(
     .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .gfree_l_cq00h, .gfree_cq01h, .gfree_sec_cq01h, .pfree_l_cq00h, .pfree_cq01h,
     .gnt_v_cq03h, .gnt_idx_cq03h, .take_cq02h, .sel_cq02h, .q_v_cq03h, .q_slot_cq03h, .q_dst_cq03h, .q_gwe_cq03h, .q_gname_cq03h,
     .q_pdst_cq03h, .q_pwe_cq03h, .q_pname_cq03h, .q_br_cq03h, .q_ckpt_cq03h, .q_w_cq03h, .req_l_cq03h, .req_cq04h,
-    .row_prod_cq04h, .row_dep_cq04h, .row_code_cq04h, .grp_dep_cq04h, .grp_code_cq04h, .prv_dep_cq04h,
+    .row_prod_cq04h, .row_dep_cq04h, .row_code_cq04h, .akind_cq04h, .acls_cq04h, .grp_dep_cq04h, .grp_code_cq04h, .prv_dep_cq04h,
     .prv_code_cq04h, .q_g_cq03h, .q_p_cq03h, .chk_cred_cq04h, .chk_unmet_g_cq04h,
     .chk_unmet_p_cq04h, .chk_room_g_cq04h, .chk_room_p_cq04h, .ctl_notq, .ctl_notq2);
 endmodule
