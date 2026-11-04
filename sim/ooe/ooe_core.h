@@ -967,6 +967,7 @@ public:
     direct_ = !cap && direct && banks > 1;
     used_.assign(banks, 0);
     inbuf_.assign(n, 0);
+    pr_.clear();
     buf_.clear();
     transit_ = took_ = 0;
     ready_ = n;
@@ -1078,13 +1079,21 @@ public:
     if (cap_ && !fresh) {
       // Last cycle's allocations leave the buffer; this cycle's stay, in
       // transit, until the next edge.
+      // fl_two_step: their buffered bits clear an edge later, after the
+      // next edge's search (ooe_freelist's registered pop mask): an entry
+      // freed meanwhile is found by the search after that.
+      std::vector<unsigned> popped;
       for (unsigned i = 0; i != transit_; ++i) {
-        inbuf_[buf_.front()] = 0;
+        if (two_step_) popped.push_back(buf_.front()); else inbuf_[buf_.front()] = 0;
         buf_.pop_front();
       }
       transit_ = took_;
       took_ = 0;
       if (two_step_) refill2(); else refill();
+      if (two_step_) {
+        for (const unsigned p : pr_) inbuf_[p] = 0;
+        pr_ = std::move(popped);
+      }
     }
     if (direct_) {
       used_.assign(banks_, 0);
@@ -1178,6 +1187,7 @@ private:
   std::vector<unsigned> cq_;
   bool two_step_ = false;
   std::vector<uint8_t> bit_, pend_, inbuf_, pend2_, used_;
+  std::vector<unsigned> pr_;   ///< fl_two_step: the last edge's pops, still marked buffered
   size_t npend2_ = 0;
   unsigned lag_ = 0;
   bool direct_ = false;
@@ -1953,6 +1963,8 @@ private:
   bool req_alloc_q2_ = false;             ///< and a cycle before (req_rows_late)
   bool req_stop_q_ = false;               ///< ooe_sched's registered stop lead (req_rows_late)
   bool ren_floors_in_share_ = false;      ///< rename's admission: the allowance holds the floors (fits_stale 6)
+  bool ren_pair_last_ = false;            ///< OI-79 (b): the pair tried takes the cycle's last lane
+  bool ren_pair_cut_ = false;             ///< and the go's terms admitted it: the width cuts the take there
   std::vector<unsigned> hints_;           ///< completion hints sent before this cycle (miss_lead)
   /// req_rows_late: each row's state one and two updates ago (bit 0
   /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle, 4
