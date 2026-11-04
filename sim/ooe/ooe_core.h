@@ -90,7 +90,7 @@ struct Config {
   /// next. decq_free_lag 1: ooe_decq's likewise, a slot freed in a cycle
   /// counted held through the next as well.
   unsigned rs_free_lag = 0;
-  unsigned decq_free_lag = 0;
+  unsigned decq_free_lag = 1;   // DA, OA rev 327: ooe_decq builds it
   unsigned ren_floor = ccv::prov::kRenFloor;
   unsigned ren_ceil = ccv::prov::kRenCeil;
   unsigned pred_ren_floor = ccv::prov::kPredRenFloor;

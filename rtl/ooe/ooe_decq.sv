@@ -68,6 +68,8 @@ module ooe_decq #(
   parameter int R = 4,     // uops rename takes a cycle (CCV_ISSUE_WIDTH)
   parameter int P = 16,    // payload bits
   parameter int PA = 6,    // the payload's low bits rename's fits read (its admission bits)
+  parameter bit FL = 1,    // the credits out count an entry freed at an edge held a cycle more
+                           // (the model's decq_free_lag; DA, OA's rev 327)
   localparam int LS = $clog2(S),
   localparam int LD = $clog2(D),
   localparam int LC = $clog2(D + 1),
@@ -262,6 +264,16 @@ module ooe_decq #(
   // take in transit. The same as the busy bits' count (an assertion).
   (* keep *) logic [LU-1:0] used_q_cq02h;   // the count, and its copy out (NGD-7)
   (* keep *) logic [LU-1:0] used_o_cq02h;
+  // With FL the copy out is the count before this edge's frees: the last
+  // count and this edge's arrivals, no subtract. It is clocked with the
+  // queue, and on the edge after one that freed entries (fr_q), so their
+  // credits return then.
+  logic [LU-1:0]   used_l_cq01h;
+  logic            fr_q_cq02h, uo_en_cq01h;
+  always_comb begin
+    used_l_cq01h = used_q_cq02h;
+    for (int k = 0; k < E; k++) used_l_cq01h = used_l_cq01h + LU'(enq_v_cq01h[k]);
+  end
   // The count's next value, written as the queue's own (next_state): the
   // state it reads is this edge's, as the queue's is.
   function automatic logic [LU-1:0] used_next(input logic [LU-1:0] u, input logic [E-1:0] ev,
@@ -469,11 +481,19 @@ module ooe_decq #(
     if (rst_r01h) begin
       st_cq02h[OBUSY +: Q + S * LC] <= '0;
       used_q_cq02h                  <= '0;
-      used_o_cq02h                  <= '0;
     end else if (decq_en_cq01h) begin
       st_cq02h     <= nx_cq01h;
       used_q_cq02h <= used_nx_cq01h;
-      used_o_cq02h <= used_nx_cq01h;
+    end
+  end
+  assign uo_en_cq01h = decq_en_cq01h || (FL && fr_q_cq02h);
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      used_o_cq02h <= '0;
+      fr_q_cq02h   <= 1'b0;
+    end else begin
+      if (uo_en_cq01h) used_o_cq02h <= FL ? used_l_cq01h : used_nx_cq01h;
+      fr_q_cq02h <= |tkv_cq02h || |fl_q_cq02h;
     end
   end
 
