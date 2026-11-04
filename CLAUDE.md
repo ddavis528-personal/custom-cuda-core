@@ -54,6 +54,9 @@ Under `CCV_HEAVY_SERIAL`, on by default in every gate, local and GitHub's
 check-cg and check-ngd measure each unit `tools/heavy-units.json` names
 alone, with nothing else of either beside it, and fail a unit it does not
 name whose one command peaks over its light limit.
+Both queue their heavy units first, then the rest slowest first by the last
+clean gate's unit times (DA, 2026-11-03), a record in
+`$CCV_LOGDIR/unit-times/` that only a clean gate writes.
 A push to a working branch takes the scoped gate (OI-95; DA, 2026-10-31):
 `tools/verify.sh --changed <base>` keeps the cache and runs only the
 sections `tools/gate-scope.py` maps the change to, with those they wait on;
