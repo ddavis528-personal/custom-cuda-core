@@ -197,9 +197,10 @@ module ooe_freelist #(
   localparam int OCNT  = OBUF + B * W;
   localparam int OPTR  = OCNT + LB;
   localparam int OROT  = OPTR + K * LM;
-  localparam int OIN   = OROT + LK;         // N bits: entry is in the buffer or a bank's candidate
+  localparam int OIN   = OROT + LK;         // N bits: entry is in the buffer
   localparam int OCQ   = OIN + N;           // each bank's candidate: K x {found, index}
-  localparam int SW    = OCQ + K * (LM + 1);
+  localparam int OSP   = OCQ + K * (LM + 1);   // each bank's next search start
+  localparam int SW    = OSP + K * LM;
 
   // The reset, flopped before any use (RST-1).
   logic rst_r01h;
@@ -281,33 +282,33 @@ module ooe_freelist #(
   endfunction
 
 
-  // The same first entry as a one-hot, from a log-depth prefix OR, so the
-  // held set is updated without decoding the index back.
-  function automatic logic [M-1:0] first_oh(input logic [M-1:0] v, input logic [LM-1:0] ptr);
-    logic [M-1:0] ge, hi, below_hi, below_all, t;
-    for (int i = 0; i < M; i++) ge[i] = LM'(i) >= ptr;
-    hi = v & ge;
-    // below[i]: some bit under i is set (exclusive prefix OR, Kogge-Stone).
-    below_hi  = hi << 1;
-    below_all = v << 1;
-    for (int d = 1; d < M; d = d * 2) begin
-      t         = below_hi << d;
-      below_hi  = below_hi | t;
-      t         = below_all << d;
-      below_all = below_all | t;
-    end
-    first_oh = (|hi) ? (hi & ~below_hi) : (v & ~below_all);
-  endfunction
-
   // The next state. Every value on the edge's path is a narrow field:
   // the buffer is rebuilt slot by slot (a gather), each slot either an
   // entry this cycle did not take or the r-th candidate of the banks in
   // rotating order, so no position is computed and then written through.
   // The next state. rq (one-hot, a flop): how many entries last cycle
   // took, popped from the buffer now, their free bits cleared with them.
+  // Leaving the buffer now: last cycle's take (rq, one-hot), its first q
+  // entries. Their free bits clear with them; the buffered set clears a
+  // cycle later, from this mask registered (pr), off the edge's path: in
+  // between the entries' free bits are clear, so no bank finds them, and
+  // none is freed before it has been out of the buffer a cycle.
+  function automatic logic [N-1:0] popped_of(input logic [SW-1:0] st, input logic [A:0] rq);
+    logic [B*W-1:0] buf_q;
+    logic [LB-1:0]  cnt;
+    buf_q = st[OBUF +: B * W];
+    cnt   = st[OCNT +: LB];
+    popped_of = '0;
+    for (int q = 1; q <= A; q++)
+      for (int i = 0; i < q && i < B; i++)
+        if (rq[q] && LB'(i) < cnt) popped_of[buf_q[i * W +: W]] = 1'b1;
+  endfunction
+
   function automatic logic [SW-1:0] next_state(input logic [SW-1:0] st, input logic [A:0] rq,
-                                               input logic [N-1:0] freed);
-    logic [N-1:0]      bits, inbuf, popped, added;
+                                               input logic [N-1:0] popped,
+                                               input logic [N-1:0] pr,
+                                               input logic [N-1:0] freed, input logic [K-1:0] ro);
+    logic [N-1:0]      bits, inbuf, added;
     logic [M-1:0]      bank;
     logic [LM:0]       fc;
     logic [B*W-1:0]    buf_q, nbuf;
@@ -315,15 +316,17 @@ module ooe_freelist #(
     logic [K-1:0]      found, ord_ok;
     logic [K*(LM+1)-1:0] cq_nx;            // each bank's next candidate
     logic [LM-1:0]     sp;                 // where a bank's search starts
+    logic [K*LM-1:0]   sp_nx;              // each bank's next
     logic [LM:0]       fs;                 // its result
-    logic [M-1:0]      os;                 // the same, one-hot
+    logic [K*M-1:0]    oh;                 // each bank's candidate, one-hot (none if not found)
     logic [K*W-1:0]    ent;                // each bank's candidate entry
     logic [K*LK-1:0]   ord_bank;              // the r-th found bank, in rotating order
     logic [K*LB-1:0]   rank;               // each bank's rank among the found
     logic [LB-1:0]     cnt, rem, nfound, room, cnt_nx;
     logic [A:0]        kq;                 // how many leave the buffer now, one-hot
 
-    logic [LK-1:0]     rot, bj;
+    logic [LK-1:0]     rot;
+    logic              ahead;
     logic [LM-1:0]     nxp;
     logic              adv;
     bits  = st[OBITS +: N];
@@ -332,13 +335,7 @@ module ooe_freelist #(
     bptr  = st[OPTR +: K * LM];
     rot   = st[OROT +: LK];
     inbuf = st[OIN +: N];
-    // Leaving the buffer now: last cycle's take, its first q entries. Their
-    // free bits clear with them.
-    kq = rq;
-    popped = '0;
-    for (int q = 1; q <= A; q++)
-      for (int i = 0; i < q && i < B; i++)
-        if (kq[q] && LB'(i) < cnt) popped[buf_q[i * W +: W]] = 1'b1;
+    kq    = rq;
     // Each bank's candidate, registered at the last edge (scan (a)): its
     // first free, unbuffered entry at or after its pointer, found then.
     found = '0;
@@ -349,18 +346,22 @@ module ooe_freelist #(
       found[bb]           = fc[LM];
       cand[bb * LM +: LM] = fc[LM-1:0];
       ent[bb * W +: W]    = W'(32'(fc[LM-1:0]) * K + bb);
+      for (int i = 0; i < M; i++) oh[bb * M + i] = fc[LM] && fc[LM-1:0] == LM'(i);
     end
     // The found banks in rotating order: each one's rank, and the r-th.
+    // From the order one-hot (ro): bank j comes before bank bb when, from
+    // the first bank r, (j - r) mod K < (bb - r) mod K, a constant per r.
     rank   = '0;
     ord_ok  = '0;
     ord_bank  = '0;
     nfound = '0;
-    for (int j = 0; j < K; j++) begin
-      bj = rot + LK'(j);
-      if (K > 1 && 32'(rot) + j >= K) bj = LK'(32'(rot) + j - K);
-      if (found[bj]) begin
-        rank[32'(bj) * LB +: LB] = nfound;
-        nfound = nfound + LB'(1);
+    for (int bb = 0; bb < K; bb++) begin
+      nfound = nfound + LB'(found[bb]);
+      for (int j = 0; j < K; j++) begin
+        ahead = 1'b0;
+        for (int r = 0; r < K; r++)
+          if ((j - r + K) % K < (bb - r + K) % K) ahead = ahead | ro[r];
+        rank[bb * LB +: LB] = rank[bb * LB +: LB] + LB'(found[j] && ahead);
       end
     end
     for (int rr = 0; rr < K; rr++)
@@ -403,30 +404,29 @@ module ooe_freelist #(
     rem = '0;
     for (int q = 0; q <= A; q++) rem = rem | ((cnt - LB'(q)) & {LB{kq[q]}});
     room  = LB'(B) - rem;
-    // The held set (inbuf) is the buffer and the candidates: an entry joins
-    // it as it becomes a candidate, so an append changes nothing there and
-    // the search excludes the candidate held. It leaves as it is popped.
     added = '0;
     for (int bb = 0; bb < K; bb++) begin
       adv = found[bb] && rank[bb * LB +: LB] < room;   // rank < nfound already
       nxp = (32'(cand[bb * LM +: LM]) == M - 1) ? '0 : cand[bb * LM +: LM] + LM'(1);
+      for (int ii = 0; ii < M; ii++) added[ii * K + bb] = adv && oh[bb * M + ii];
       // The next candidate, searched from the state beside the requests,
-      // then picked by adv: one search, from the candidate held (itself in
-      // the held set, so this is the search past it, from the pointer an
-      // append moves to) or, holding none, from the bank's pointer. A bank
-      // that holds one and appends none keeps it.
-      for (int i = 0; i < M; i++) bank[i] = bits[i * K + bb] && !inbuf[i * K + bb];
-      sp = found[bb] ? cand[bb * LM +: LM] : bptr[bb * LM +: LM];
+      // then picked by adv: one search, from the candidate held, itself
+      // left out (so this is the search past it, from the pointer an append
+      // moves to), or, holding none, from the bank's pointer. A bank that
+      // holds one and appends none keeps it.
+      for (int i = 0; i < M; i++) bank[i] = bits[i * K + bb] && !inbuf[i * K + bb] && !oh[bb * M + i];
+      sp = st[OSP + bb * LM +: LM];
       fs = first_from(bank, sp);
-      os = first_oh(bank, sp);
       cq_nx[bb * (LM + 1) +: LM + 1] = (found[bb] && !adv) ? {1'b1, cand[bb * LM +: LM]} : fs;
-      // A new candidate joins the held set.
-      for (int ii = 0; ii < M; ii++) added[ii * K + bb] = (adv || !found[bb]) && os[ii];
       bptr[bb * LM +: LM] = ({LM{adv}} & nxp) | ({LM{!adv}} & bptr[bb * LM +: LM]);
+      // The next search's start, registered so the search starts from a
+      // flop: the next candidate if there is one (the search past it leaves
+      // it out), else the pointer.
+      sp_nx[bb * LM +: LM] = cq_nx[bb * (LM + 1) + LM] ? cq_nx[bb * (LM + 1) +: LM] : bptr[bb * LM +: LM];
     end
     cnt_nx = (32'(rem) + 32'(nfound) > B) ? LB'(B) : rem + nfound;
     rot = (32'(rot) == K - 1) ? '0 : rot + LK'(1);
-    next_state = {cq_nx, (inbuf & ~popped) | added, rot, bptr, cnt_nx, nbuf, (bits & ~popped) | freed};
+    next_state = {sp_nx, cq_nx, (inbuf & ~pr) | added, rot, bptr, cnt_nx, nbuf, (bits & ~popped) | freed};
   endfunction
 
   // The state; the count of last cycle's allocations, held a cycle; and a
@@ -492,7 +492,19 @@ module ooe_freelist #(
   logic [LA-1:0] rq_cq01h;          // how many this cycle takes: where the request prefix ends
   // This cycle's frees: the retire stage's mask, or with sections the
   // rows returning (pend).
-  assign nx_cq01h      = next_state(st_cq02h, rqh_cq02h, (NS == 0) ? fms_cq01h : pend_cq02h);
+  // The bank order, one-hot, beside its index (the state's, which the
+  // testbench compares): ro_cq02h[r] while refill starts with bank r.
+  logic [K-1:0] ro_cq02h;
+  // The entries leaving the buffer at this edge, and the last edge's,
+  // registered, which the buffered set clears now (ib_en: under its own
+  // enable, or while such a mask waits; a stale one, its valid low, would
+  // clear entries buffered again since).
+  logic [N-1:0]  pop_cq01h, pr_cq02h;
+  logic          pr_v_cq02h, ib_en_cq01h;
+  assign pop_cq01h     = popped_of(st_cq02h, rqh_cq02h);
+  assign nx_cq01h      = next_state(st_cq02h, rqh_cq02h, pop_cq01h, pr_cq02h & {N{pr_v_cq02h}},
+                                    (NS == 0) ? fms_cq01h : pend_cq02h, ro_cq02h);
+  assign ib_en_cq01h   = buf_en_cq01h || pr_v_cq02h;
   // With sections a row frees only as it returns (fr_en), whatever the lead.
   assign bits_en_cq01h = rq_cq02h != '0 || (NS == 0 && free_en_cq01h) || fr_en_cq02h;
   assign buf_en_cq01h  = rq_cq02h != '0 || 32'(st_cq02h[OCNT +: LB]) < B;
@@ -514,7 +526,7 @@ module ooe_freelist #(
       st_cq02h[OCNT +: LB]          <= '0;
       st_cq02h[OPTR +: K * LM + LK] <= '0;
       st_cq02h[OIN +: N]            <= '0;
-      st_cq02h[OCQ +: K * (LM + 1)] <= '0;
+      st_cq02h[OCQ +: K * (LM + 1) + K * LM] <= '0;
       out_cq02h[B * W +: LB]        <= '0;
     end else begin
       if (bits_en_cq01h) st_cq02h[OBITS +: N] <= nx_cq01h[OBITS +: N];
@@ -522,24 +534,31 @@ module ooe_freelist #(
         st_cq02h[OBUF +: B * W + LB + K * LM] <= nx_cq01h[OBUF +: B * W + LB + K * LM];
         out_cq02h                             <= nx_cq01h[OBUF +: B * W + LB];
       end
-      if (cq_en_cq01h) begin
-        st_cq02h[OCQ +: K * (LM + 1)] <= nx_cq01h[OCQ +: K * (LM + 1)];
-        st_cq02h[OIN +: N]            <= nx_cq01h[OIN +: N];
-      end
+      if (ib_en_cq01h) st_cq02h[OIN +: N] <= nx_cq01h[OIN +: N];
+      if (cq_en_cq01h) st_cq02h[OCQ +: K * (LM + 1) + K * LM] <= nx_cq01h[OCQ +: K * (LM + 1) + K * LM];
       st_cq02h[OROT +: LK] <= nx_cq01h[OROT +: LK];
     end
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       rq_cq02h      <= '0;
+      ro_cq02h      <= K'(1);
       free_en_cq01h <= 1'b0;
       bits_ch_cq02h <= 1'b0;
+      pr_v_cq02h    <= 1'b0;
     end else begin
       rq_cq02h      <= rq_cq01h;
+      ro_cq02h      <= (K > 1) ? {ro_cq02h[K-2:0], ro_cq02h[K-1]} : ro_cq02h;
       free_en_cq01h <= fls_cq00h;
       bits_ch_cq02h <= bits_en_cq01h;
+      pr_v_cq02h    <= rq_cq02h != '0;
     end
   end
+  // The mask's payload, clocked when entries leave (its valid's cycle).
+  logic pr_en_cq01h;
+  assign pr_en_cq01h = rq_cq02h != '0;
+  always_ff @(posedge ooe_core_clk)
+    if (pr_en_cq01h) pr_cq02h <= pop_cq01h;
 
   // -- Sections, returns and candidates (NS > 0) --------------------------------
   // This cycle's frees: the rows whose last section frees, and the rows
