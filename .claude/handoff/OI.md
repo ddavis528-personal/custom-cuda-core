@@ -90,27 +90,17 @@ the compact hook printed this handoff.
    remove an entry once its path meets 25). State 11-04 ~13:30 UTC:
    - Freelist: scan (a) 32ba2d0, caps 9718b81, gsec retime (wr_q flop, no reuse cycle lost)
      PUSHED 013ed10; freelist has no caps left. OI rev 275 (OI-108) told OA, no notice.
-   - decq (OA rev 331: retime at 15 first, lag 1 + CCV_P_DECQ 15 in ONE push, every decq cap
-     off): DONE in worktree scratchpad/wtd, branch oi-decq-lag (b6316a7 RTL, acf7e75 merge of
-     013ed10, backed up gate-scratch/OI). Staging register packed by rank (sg, under lead),
-     rank register rq (lead, a cycle early), thermometer counts, heads per absolute position
-     + tko, thsel tree on deq_t. At 15/D7: f-f 23.0, enq_v 24.4, enq_slot 23.2, deq_t 24.9
-     (thin: ABC moves it +-0.2; bitwise thsel gave 25.1, keep the per-width functions).
-     CG 1004 flops, DCGE 98/87. Unit cg-units.json Q 15, D 7 (D was stale at 6).
-     TI OK'd OI carrying CCV_P_DECQ 15 (TI rev 306; decided_at DA-106).
-     Gate d32f65e RED (11-04 11:16). OI's fixes in wtd: b1bbee8 (model: CAS pair at the
-     last lane = width cut, OI-79 (b); FreeVec clears buffered bits an edge late like
-     ooe_freelist's pr) and ed25191 (drop CG-1 tkv waiver); go_tb + rename_scarce 25 seeds
-     clean; 48e7d7c (run-rtl: rob/trio controls at full seeds; no-copy, no-rep-lead had
-     slipped past 3/6 seeds); on gate-scratch/OI. Left are TI's: OI-111 (OI rev 278, notice sent):
-     gen-params.py:353 control 14->16; ooe_decq 2847 MiB -> heavy-units.json; check-kernel
-     held-over-r regex pins "holds 3" (now 4..7) and vadd4 drain orphan=0. On TI's push:
-     merge it into wtd (+ a461213 handoff), gate-push from wtd; on green close OI-109 and
-     OI-111 (FYI TI, OA), remove wtd. run-rtl on ed25191: ~/ccv-logs/oi-rtl-1308.log.
+   - decq (15 entries, free lag 1, CCV_P_DECQ 15, caps off) PUSHED 41ebad9 (SCOPED PASS
+     22/22, 11-04 ~19:00 UTC), with TI's b85595b (OI-111's checks), b1bbee8 (model pair cut at
+     the last lane; FreeVec late clear), ed25191 (tkv waiver gone), 48e7d7c (run-rtl controls
+     at full seeds), 41ebad9 (pair-split control bypasses the new cut). TODO: close OI-109 and
+     OI-111 in the OI tab (FYI TI, OA, no notice); remove worktree wtd.
+     The sched (b) gate 46b478e failed only because OI's disk cleanup removed build/verify
+     mid-run: re-gate it (wts, branch oi-sched-b) after merging origin.
    - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
      link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
      lead_r_src0/1 from RS names (TI 39a1861 on ccr-183cc441-doowtf; merge it). sched (b)
-     83c2900 is UNPUSHED (local branch oi-go-sched): gate+push it right after decq.
+     83c2900 (46b478e in wts) is UNPUSHED: gating next.
      TI tab bookmark 309.
    - RI-7 (answered OI rev 277): RA-18 call link imm_kind 6 OOE substitution is OI's, queued
      after the fanout cleanup; when it lands, row with rev + notify RI.
