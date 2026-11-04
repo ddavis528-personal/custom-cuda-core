@@ -1421,8 +1421,11 @@ else
 fi
 # pmov.imm writes only the issue-mask lanes (RA-19; ccv-sim at b83777e):
 # pmovdiv runs it on lanes 0-15 with P2 all ones, so lanes 16-31 keep theirs.
-# pmov-all-lanes writes all 32, and the oracle's P2 must refuse it.
-"$SKEL" --kernel build/oracle/pmovdiv/oracle.jsonl --break pmov-all-lanes >"$B/kernel_pmov-all-lanes.log" 2>&1
+# pmov-all-lanes writes all 32, and the oracle's P2 must refuse it. The
+# break is the stub's (RI's model, the default, has none yet: asked of RI,
+# TI's rev 319), so it runs on CCV_RCU_IMPL=stub; pmovdiv itself runs clean
+# on the model above.
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/pmovdiv/oracle.jsonl --break pmov-all-lanes >"$B/kernel_pmov-all-lanes.log" 2>&1
 if grep -q "^CHECK rcu: seq [0-9]* P2 = 00000000, oracle ffff0000$" "$B/kernel_pmov-all-lanes.log" &&
    [ "$(field "$B/kernel_pmov-all-lanes.log" check_failures)" = 1 ]; then
   say "--break pmov-all-lanes: pmov.imm keeps the inactive lanes" "PASS (P2 ffff0000 refused as 0)"
