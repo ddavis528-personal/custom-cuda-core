@@ -22,6 +22,14 @@ stubs the OOE model needs to be exercised.**
     ./tools/verify.sh            # green
 ```
 
+**RCU (2026-11-04; RA-36):** the block architecture is complete to RTL
+depth and snapshotted ([`design-snapshots/rcu-arch-overview.md`](design-snapshots/rcu-arch-overview.md)
+and its tabs). Its implementation session, RI, has started, model first:
+[`rcu-impl.md`](rcu-impl.md); `CCV_RCU_IMPL=model` runs RI's model in both
+hosts, and the stub stays the default until RI's M0. RI's exit criteria are
+the Partition tab's M1 to M7
+([`design-snapshots/rcu-arch-partition.md`](design-snapshots/rcu-arch-partition.md)).
+
 **To hand back to the planning track:**
 [`rtl-findings-stage1.md`](rtl-findings-stage1.md) covers what Stage 1 found
 about the strategy, organised for that audience rather than this one. The
