@@ -779,7 +779,8 @@ def findings(u, budgets, parents=frozenset()):
 def finding_value(u, budgets, key):
     """The depth a finding reads, for the fanout ratchet's caps: NGD-1's flop
     to flop, NGD-2's output ready time, NGD-3's arrival plus logic, NGD-6's
-    input to output; None for a finding with no depth (NGD-5, NGD-7)."""
+    input to output, NGD-7's reach from the register; None for NGD-5, which
+    has no depth to cap (a path straight through is refused at any depth)."""
     t, kind, _, rest = u.t, key[:5], key[5:6], key[6:]
     if kind == "NGD-1":
         return t.rr
@@ -790,6 +791,9 @@ def finding_value(u, budgets, key):
     if kind == "NGD-6":
         i, o = rest.split(">", 1)
         return t.io.get((i, o))
+    if kind == "NGD-7":
+        w = shared_worst(u, budgets).get(rest)
+        return w[4] if w else None
     return None
 
 
@@ -802,6 +806,15 @@ def shared_flops(u, budgets):
     required time is NGD-2's. The remedy is a copy of the register, one
     for the output and one for the paths inside, each declared (* keep *).
     Keyed by register."""
+    return [("NGD-7 %s" % reg, "NGD-7 %s (unit %s): register %s drives output %s, required at "
+             "%g, and reaches %s %.1f NGD away: copy the register, one copy for the output and "
+             "one for the rest, each (* keep *)" % (u.module, u.name, reg, port, lim, what, d))
+            for reg, (_, q, port, lim, d, what) in sorted(shared_worst(u, budgets).items())]
+
+
+def shared_worst(u, budgets):
+    """NGD-7's worst path per register: {register: (excess, q, port, required,
+    depth, what)}."""
     t, mod, worst = u.t, u.module, {}
     for q, outs in t.q_out.items():
         defs = {p: budgets.required(mod, p) for p in outs
@@ -817,10 +830,7 @@ def shared_flops(u, budgets):
         reg = t.regname.get(q, base(q))
         if d > defs[port] + EPS and d - defs[port] > worst.get(reg, (NEG,))[0]:
             worst[reg] = (d - defs[port], q, port, defs[port], d, what)
-    return [("NGD-7 %s" % reg, "NGD-7 %s (unit %s): register %s drives output %s, required at "
-             "%g, and reaches %s %.1f NGD away: copy the register, one copy for the output and "
-             "one for the rest, each (* keep *)" % (mod, u.name, reg, port, lim, what, d))
-            for reg, (_, q, port, lim, d, what) in sorted(worst.items())]
+    return worst
 
 
 def report(u, verbose=False):
@@ -1325,6 +1335,9 @@ def selftest():
         x.measure()
     expect(keys(sh) == {"NGD-7 a_q"}, "a register driving an output and a flop 15.9 NGD away "
            "passed, or was not named for its register: %s" % findings(sh, none))
+    v7 = finding_value(sh, none, "NGD-7 a_q")
+    expect(v7 is not None and v7 > PORT, "NGD-7 a_q has no depth for the fanout ratchet to cap: "
+           "%s" % v7)
     req = dict(sig, required=18)
     late = {("ngd_fx_shared", p): dict(req) for p in ("y", "w")}
     expect("NGD-7 a_q" not in keys(sh, Budgets(extra=late)),
