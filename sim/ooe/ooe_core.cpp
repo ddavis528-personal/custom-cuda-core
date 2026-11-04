@@ -47,7 +47,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
-                                     {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge}, {"fl_direct", &fl_direct},
+                                     {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge}, {"fl_direct", &fl_direct}, {"fl_two_step", &fl_two_step},
                                      {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"split_r_class", &split_r_class}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
@@ -206,8 +206,8 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   const unsigned names = cfg_.phys_regs * kPos_;
   gprod_.assign(names, {kNoEntry, kNoEntry});
   pprod_.assign(std::max(cfg_.pred_regs, 4u * kWarpIds), {kNoEntry, kNoEntry});
-  gfree_.reset(cfg_.phys_regs, cfg_.fl_buf, cfg_.fl_banks, cfg_.fl_free_lag, cfg_.fl_direct);
-  pfree_.reset(cfg_.pred_regs, cfg_.fl_buf, cfg_.fl_banks, cfg_.fl_free_lag, cfg_.fl_direct);
+  gfree_.reset(cfg_.phys_regs, cfg_.fl_buf, cfg_.fl_banks, cfg_.fl_free_lag, cfg_.fl_direct, cfg_.fl_two_step);
+  pfree_.reset(cfg_.pred_regs, cfg_.fl_buf, cfg_.fl_banks, cfg_.fl_free_lag, cfg_.fl_direct, cfg_.fl_two_step);
   gowner_.assign(names, 0);
   powner_.assign(cfg_.pred_regs, 0);
   gever_.assign(names, 0);
@@ -433,6 +433,9 @@ void Core::cycle(uint64_t now) {
   rob_prompt_.assign(slot_.size() * cfg_.rob_depth, 0);
   rob_freed_now_.assign(slot_.size(), 0);
   for (unsigned c = 0; c != 2; ++c) {
+    rs_late_prev2_[c] = rs_late_prev_[c];
+    rs_free_prev_[c] = rs_free_now_[c];
+    rs_pcnt_prev_[c] = std::min(rs_free_now_[c], std::min(rs_prompt_[c], cfg_.ren_free_cap));
     rs_late_prev_[c] = rs_free_now_[c] - std::min(rs_free_now_[c], std::min(rs_prompt_[c], cfg_.ren_free_cap));
     rs_free_now_[c] = 0;
   }

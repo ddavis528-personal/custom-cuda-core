@@ -82,6 +82,9 @@ struct Config {
   /// a bank can run dry while others hold names.
   unsigned fl_free_lag = 0;
   bool fl_direct = false;
+  /// fl_two_step 1: scan (a) as ooe_freelist builds it, each bank's
+  /// find-first registered and appended at the next edge (FreeVec::refill2).
+  bool fl_two_step = false;
   /// rs_free_lag 1: ooe_rs's free-entry candidates a cycle ahead; an entry
   /// freed in a cycle is held (allocation and rename's room) through the
   /// next. decq_free_lag 1: ooe_decq's likewise, a slot freed in a cycle
@@ -954,7 +957,8 @@ enum class OoeEv : unsigned {
 /// next cycle. ooe_freelist builds the buffered form.
 class FreeVec {
 public:
-  void reset(unsigned n, unsigned cap = 0, unsigned banks = 1, unsigned lag = 0, bool direct = false) {
+  void reset(unsigned n, unsigned cap = 0, unsigned banks = 1, unsigned lag = 0, bool direct = false,
+             bool two_step = false) {
     bit_.assign(n, 1);
     pend_.assign(n, 0);
     pend2_.assign(n, 0);
@@ -972,8 +976,10 @@ public:
     banks_ = cap || direct_ ? banks : 1;
     bptr_.assign(banks_, 0);
     rot_ = 0;
+    two_step_ = cap && two_step;
+    cq_.assign(banks_, n);
     fresh_ = true;
-    edge_ = Edge{buf_, bit_, bptr_, rot_};
+    edge_ = Edge{buf_, bit_, bptr_, rot_, 0, cq_};
   }
   /// Free entries, including those freed this cycle.
   size_t size() const { return ready_ + npend_ + npend2_; }
@@ -1078,7 +1084,7 @@ public:
       }
       transit_ = took_;
       took_ = 0;
-      refill();
+      if (two_step_) refill2(); else refill();
     }
     if (direct_) {
       used_.assign(banks_, 0);
@@ -1104,6 +1110,7 @@ public:
     edge_.bptr = bptr_;
     edge_.rot = rot_;
     edge_.transit = transit_;
+    edge_.cand = cq_;
   }
   /// The state just after the last clock edge, before any allocation since:
   /// what ooe_freelist holds after the same edge (its testbench compares).
@@ -1113,6 +1120,7 @@ public:
     std::vector<unsigned> bptr;
     unsigned rot = 0;
     unsigned transit = 0;
+    std::vector<unsigned> cand;   ///< fl_two_step: each bank's registered candidate (n: none)
   };
   const Edge &lastEdge() const { return edge_; }
 
@@ -1137,7 +1145,38 @@ private:
     }
     rot_ = (rot_ + 1) % banks_;
   }
+  /// fl_two_step, scan (a) (OA's revs 321-324): each bank's find-first is
+  /// registered. At the edge the banks' registered candidates append in the
+  /// rotating order while there is room, and each bank's next candidate is
+  /// found from the state before the edge: past the one it appended, the
+  /// one it holds if it appended none, or a fresh search if it held none.
+  /// A candidate is free and unbuffered, and allocation takes only the
+  /// buffer, so a held one stays good. Frees reach the bits at the edge as
+  /// before, a search a cycle later, the buffer an edge after that.
+  void refill2() {
+    const unsigned n = unsigned(bit_.size()), per = n / banks_;
+    std::vector<uint8_t> app(banks_, 0);
+    for (unsigned j = 0; j != banks_; ++j) {
+      const unsigned b = (rot_ + j) % banks_;
+      if (cq_[b] == n || buf_.size() >= cap_) continue;
+      buf_.push_back(cq_[b]);
+      inbuf_[cq_[b]] = 1;
+      bptr_[b] = (cq_[b] / banks_ + 1) % per;
+      app[b] = 1;
+    }
+    for (unsigned b = 0; b != banks_; ++b) {
+      if (cq_[b] != n && !app[b]) continue;   // held
+      cq_[b] = n;
+      for (unsigned i = 0; i != per; ++i) {
+        const unsigned q = (bptr_[b] + i) % per, p = q * banks_ + b;
+        if (bit_[p] && !inbuf_[p]) { cq_[b] = p; break; }
+      }
+    }
+    rot_ = (rot_ + 1) % banks_;
+  }
 
+  std::vector<unsigned> cq_;
+  bool two_step_ = false;
   std::vector<uint8_t> bit_, pend_, inbuf_, pend2_, used_;
   size_t npend2_ = 0;
   unsigned lag_ = 0;
@@ -1789,7 +1828,11 @@ public:
     RenCredits r;
     for (unsigned e = 0; e != n_; ++e) r.c[e < cfg_.rs_rcu ? 0 : 1] += !rs_[e].valid;
     for (unsigned k = 0; k != 2; ++k) {
-      r.c[k] -= rs_free_now_[k] + rs_late_prev_[k];
+      // rs_free_lag: the counters see ooe_rs's frees an edge later, as its
+      // candidates do: last cycle's prompt ones are unseen too, and the
+      // late ones from the cycle before.
+      r.c[k] -= cfg_.rs_free_lag ? rs_free_now_[k] + rs_free_prev_[k] + rs_late_prev2_[k]
+                                 : rs_free_now_[k] + rs_late_prev_[k];
       r.prompt[k] = std::min(rs_free_now_[k], std::min(rs_prompt_[k], cfg_.ren_free_cap));
       r.late[k] = rs_free_now_[k] - r.prompt[k];
     }
@@ -1818,6 +1861,15 @@ public:
       v.rs_late[k] = rs_free_now_[k] - v.rs_prompt[k];
       v.rs_late_prev[k] = rs_late_prev_[k];
     }
+    // rs_free_lag: the frees rename's counters take an edge later, so the
+    // stream they see is last cycle's, and this cycle's frees are all unseen.
+    if (cfg_.rs_free_lag)
+      for (unsigned k = 0; k != 2; ++k) {
+        v.rs_free[k] -= rs_free_now_[k];
+        v.rs_prompt[k] = rs_pcnt_prev_[k];
+        v.rs_late[k] = rs_free_prev_[k] - rs_pcnt_prev_[k];
+        v.rs_late_prev[k] = rs_late_prev2_[k];
+      }
     const FreeVec *fl[2] = {&gfree_, &pfree_};
     for (unsigned k = 0; k != 2; ++k) {
       v.name_take[k] = ren_tot_[2 + k];
@@ -1948,6 +2000,8 @@ private:
   /// free this cycle, per class, and last cycle's past ooe_rs's prompt count
   /// (a squash's, or past the cap), which reach the counters an edge late.
   unsigned rs_free_now_[2] = {}, rs_late_prev_[2] = {};
+  /// rs_free_lag: last cycle's frees, its prompt count, and the late ones the cycle before.
+  unsigned rs_free_prev_[2] = {}, rs_pcnt_prev_[2] = {}, rs_late_prev2_[2] = {};
   std::vector<unsigned> rob_freed_now_;   ///< ROB slots each slot freed this cycle (RenEvents)
   bool free_prompt_ = false;                ///< an RS free now is a confirmation's
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
