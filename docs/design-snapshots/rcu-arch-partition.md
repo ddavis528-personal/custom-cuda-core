@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=27 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 27 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=29 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 29 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -25,7 +25,7 @@ So:
 | Module | Inst | Holds | Flops (approx.) |
 | --- | --- | --- | --- |
 | `ccv_rcu` | 1 | the block top: `ccv_common_clk`, children, wires only | 0 |
-| `rcu_bank_slice #(K, J)` | 32 | 192 rows × 32 bits, byte section K of lanes 4J to 4J+3; its own predecode flops for every port (L0-3, M0-2, R0-2, LW/SW/MW/RW: 14 × 28); RW's A+1/A+2 copy; MW position shift; the zero-register no-select. Bank K is slices (K, 0..7); physical chunk J is slices (0..3, J) (Register file tab, Slices) | about 6,550 each, 209,600 in all |
+| `rcu_bank_slice #(K, J)` | 32 | 192 rows × 32 bits, byte section K of lanes 4J to 4J+3; its own predecode flops for every port but R0/R1 (L0-3, M0-2, R2, LW/SW/MW/RW: 12 × 28); R0/R1's `rsrc`, 64 flops (they decode the payload's rows on the wire, RA-39); RW's A+1/A+2 copy; MW position shift; the zero-register no-select. Bank K is slices (K, 0..7); physical chunk J is slices (0..3, J) (Register file tab, Slices) | about 6,550 each, 209,600 in all |
 | `rcu_pred` | 1 | 48 × 32 predicate file; every predicate read and write port; guard, MIU `pred_result` forward, `active`, branch outcome, `lead_br_*` (`(* keep *)`), `br_*_a`, `rpsrc_a`, `active_a[s]` | 2,500 |
 | `rcu_r` (+ `rcu_xbar` helper) | 1 | R pipe A+1/A+2: `r_a`, `rlow_a`, `rres_a1`, `rpres_a1`; RW data merge and steer; done slots 5 and 6 (`done_v_q`, tags, `done_b*_q`, `done_aux_q`) | 2,300 |
 | `rcu_lanes` | 1 | section ownership; 32 `rcu_lane_ops` payload, valid and lead flops; bypass tracker; `lwb_d[0..3]`, `swb_d`; done slots 0-4; `rcu_lane_ops` wakes | 12,900 |
@@ -47,7 +47,7 @@ RA writes these files with the implementation. A block input arrives at 2 NGD, b
 | issue payload → `lanes` payload, bypass flops | 2 | `lanes` in: 18 | 20 | ownership, the age 4-5 compare, immediate substitution |
 | issue payload → `mem` payload flops | 2 | `mem` in: 14 | 16 |  |
 | issue payload → `mig` `dm_v_q`, `rs_v_a1` | 2 | `mig` in: 12 | 14 | the R2/RW-free decode |
-| `bank` R0-R1 read (in A) → `r` `rsrc_a`; R2 read (in A+1) → `r` `old` | `bank` out: 11 for R2 (measured 11.0 with the fanout term, RI-9); 13 for R0-R1, whose binary select is decoded in the slice (Register file tab, lead-loaded ports) | `r` in: 12 for R0-R1 (alignment and the MIU forward into `rsrc_a`, about 5); 14 for R2 | 25 | alignment 2 into flops; R's compute starts at flops in A+1, about 13 for the register-index shfl and ret (R unit tab, early R source read, RA-39) |
+| OOE `ccv_ooe_rcu_issue` R slot `phys_src0/1` → `bank` R0-R1 read (in A) → the slice's `rsrc`; `bank` R2 read (in A+1) → `r` `old` | OOE out: 7 on `phys_src0/1`, straight from the issue register, slack nothing in OOE may use (OA rev 336); `bank` out: 11 for R2 (measured 11.0 with the fanout term, RI-9) | RCU in: 18 on `phys_src0/1` at `rcu_bank_slice` (fanout to 32 slices 2.5, decode 2, read 11.0, MIU write-through 2: about 17.5, into `rsrc`); `r` in: 14 for R2 | 25 | alignment 2 into flops; R's compute starts at flops in A+1, about 16 for the register-index shfl and ret, alignment of rsrc included (R unit tab, early R source read, RA-39) |
 | `bank` L0-L3 read → `lanes` payload | 11 | 6 | 17 |  |
 | `bank` M0-M2 read → `mem` payload | 11 | 10 | 21 | operand assembly |
 | `bank` R2 read → `mig` `dm_pay` | 11 | 3 | 14 |  |

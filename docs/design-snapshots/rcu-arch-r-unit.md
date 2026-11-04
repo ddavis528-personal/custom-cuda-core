@@ -1,9 +1,9 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=12 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 12 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=16 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 16 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # R unit and crossbar
 
-The R unit, `rcu_r`, executes one op a cycle from issue slot 8 in three stages: predicates and the branch outcome in A, every compute in A+1, the write in A+2. Its two compute sources, R0 and R1, are read a cycle early, in A, into flops; R2, the merge source, is read in A+1 (Early R source read, below; RA-39, proposed). Collectives use the same stages, so a collective is readable at A+3, inside its contracted `CCV_LAT_COLLECTIVE` = 5, and the R pipeline needs one GPR write port, not two.
+The R unit, `rcu_r`, executes one op a cycle from issue slot 8 in three stages: predicates and the branch outcome in A, every compute in A+1, the write in A+2. Its two compute sources, R0 and R1, are read a cycle early, in A, into flops; R2, the merge source, is read in A+1 (Early R source read, below; RA-39, taken: OA rev 336). Collectives use the same stages, so a collective is readable at A+3, inside its contracted `CCV_LAT_COLLECTIVE` = 5, and the R pipeline needs one GPR write port, not two.
 
 **The A+2 rule (RA-29 (a), agreed by AR, TI and OA).** Every R-pipe class writes the GPR and predicate files at exactly A+2: RCU-only ops, call's link and every collective mode. That is what lets R share one GPR write port (RW).
 
@@ -11,27 +11,26 @@ The R unit, `rcu_r`, executes one op a cycle from issue slot 8 in three stages: 
 - The stub asserts the rule, and so does `rcu_r`: every `rres_a1`/`rpres_a1` load is followed by its write in the next cycle.
 - Collectives and RCU-only ops are one issue class at R: one op a cycle on slot 8, both counted in the idle-R run. Collectives keep their own latency class and done slot 6.
 
-## Early R source read (RA-39, proposed 2026-11-04)
+## Early R source read (RA-39, taken 2026-11-04: OA rev 336, option (2))
 
 **Why.** The bank read measures 8.3 NGD from the select flops at 192 rows, 11.0 with the fanout term (Register file tab), against the 7 the Partition tab budgeted. check-ngd enforces the fanout term since 2026-11-04 (RA-33, TI rev 299). With read, alignment and compute all in A+1, `ret` comes to about 27 and the register-index shfl about 26 with the fanout term, both over 25.
 
-**What.** R0 and R1 are read in A instead of A+1, and their aligned values are flopped at A's edge into `rsrc_a`. Every compute in A+1 then starts at flops. The write stays at A+2, so the A+2 rule, `CCV_LAT_RCU` = 3, the collective timing and both done slots are unchanged.
+**What.** R0 and R1 are read in A instead of A+1, straight from the issue payload's `phys_src`\[15:8\] and \[7:0\] (no lead field: the predicate file's own form for guards), and each bank slice flops its own raw read of both into `rsrc`, at A's edge. Alignment and every compute are in A+1 in `rcu_r`, from flops. The write stays at A+2, so the A+2 rule, `CCV_LAT_RCU` = 3, the collective timing and both done slots are unchanged. The read lands in the slice, not in `r`, because a select on a port read out through the slice would be input to output through `rcu_bank_slice`, which the depth rules forbid.
 
 | Cycle | R0, R1 | R2 |
 | --- | --- | --- |
-| A−1 | rows from the R slot's lead, predecoded into the R0/R1 select flops | — |
-| A | read, aligned to the source's pos and width (from the payload, in A), into `rsrc_a` | rows from the payload, predecoded (as before) |
-| A+1 | compute from `rsrc_a` | read, aligned, into `old` (as before) |
+| A | rows from the payload's `phys_src` on the wire, decoded in each slice, read, MIU write-through, into the slice's `rsrc` (raw, unaligned) | rows from the payload, predecoded (as before) |
+| A+1 | `r` aligns `rsrc` to the source's pos and width and computes | read, aligned, into `old` (as before) |
 | A+2 | write (as before) | merge in the write (as before) |
 
-**Why it is safe (OA checked it class by class, rev 328).** Every class's contracted latency is issue to readable: a write at W is readable from W+1 = A + LAT, and no bypass reaches an R-slot consumer (V-48), so R0 and R1 read the PRF in A\_c, a cycle earlier than the rest of the RCU reads. Lane, SFU, R and collective producers, the copies and completion-driven wakes all land before A\_c. **The one exception is an L1-hit load:** `CCV_LAT_L1_WAKE` puts the consumer's A in the very cycle T that MIU's payload lands, and MW writes in T. R0 and R1 therefore take an **MIU forward** in A, as the predicate file's guard read does (below). OOE is unchanged and nothing waits.
+**Why it is safe (OA checked it class by class, rev 328).** Every class's contracted latency is issue to readable: a write at W is readable from W+1 = A + LAT, and no bypass reaches an R-slot consumer (V-48), so R0 and R1 read the PRF in A\_c, a cycle earlier than the rest of the RCU reads. Lane, SFU, R and collective producers, the copies and completion-driven wakes all land before A\_c. **The one exception is an L1-hit load:** `CCV_LAT_L1_WAKE` puts the consumer's A in the very cycle T that MIU's payload lands, and MW writes in T. R0 and R1 therefore take an **MIU write-through** in A. OOE is unchanged and nothing waits.
 
 **What it needs.**
 
-- From OOE, on the R slot's lead (`slot_fields`, beside `lead_guard_pred`): `lead_r_src0` and `lead_r_src1`, the physical rows of `phys_src`\[15:8\] and \[7:0\], 8 bits each, built at select from the RS entry's renamed names, opcode-blind. Zero when the source is unused (`lead_src_used`). TI adds them to the schema (RA-39).
-- In RCU: `rsrc_a`, 2 × 32 lanes × 32 bits = 2,048 flops, enabled per source by the lead's `lead_src_used` bit (a source the op does not read is never clocked); the R0/R1 select flops load at A−1's edge from the lead, enabled by the flopped lead valid.
+- From OOE: nothing new. `phys_src`\[15:8\] and \[7:0\] of the R slot on `ccv_ooe_rcu_issue`, driven straight from the issue register. Budgets (OA rev 336): RCU input 18, OOE output 7. The lead fields `lead_r_src0/1` of the earlier form are withdrawn (OI-115: muxed in select they put `ooe_sched` at 38.8 NGD against its 30.5).
+- In each `rcu_bank_slice`: `rsrc`, R0 and R1 raw for its byte section of its 4 lanes, 2 × 4 × 8 = 64 flops (2,048 across the 32 slices, as before), enabled by the slice's flop of the R issue valid lead (CG-5). `lead_src_used` is not used: a source the op does not read is read anyway, a small DCGE cost. R0 and R1 have no select flops (the RI-9 binary selects go: 16 ungated flops a slice, 512 in all).
 - Migration is unchanged: it uses R2 and RW only.
-- **The MIU forward on R0/R1 (RA-39, OA's rev 328 option (i)).** A register is (row, pos, width), and a hit load writes exactly its destination register, so a source naming the same row and pos is that register at the same committed width. The forward therefore sits after alignment: `v = load_word_j & em(src width)` on the lanes in slot j's `active_mask`, the aligned bank read on the rest (inactive lanes were written by the masked load's copy before the load issued). `r` keeps its own flops of the four MIU slots' leads (row, pos, width, `active_mask`, valid; about 180 flops). In A−1 it compares each slot's row with `lead_r_src0`/`1` into 8 match flops; in A it ANDs them with pos equality (the source's pos from the payload) and the slot's valid, giving a one-hot over the slots per source, then with `active_mask` per lane. Data: a 5-input AND-OR per bit, 2 × 1,024 bits, about 10,000 cells. At most one slot matches a source (asserted).
+- **The MIU write-through (RA-39, RA rev 70).** The slice compares the payload's row with its own MW select flops (row, lane mask, section, valid; Register file tab, lead-loaded ports) and, on a match, substitutes per lane and section the MW write data already on its D inputs for the bank's read. That is the row as it will stand after T, so every source width and pos on it is right, and forwarding every MW write that lands in A is a correct superset of the L1-hit case. No compare of pos and no lead copies in `r`: the 180 MIU lead flops, 8 match flops and the \~10,000-cell post-alignment forward of the earlier form are gone.
 
 **Rejected: compute in A+2 and write in A+3.** It moves every R write a cycle later. Either `CCV_LAT_RCU` grows from 3 to 4, which slows every predicate and movi chain, or only collectives move, and their writes collide with the next cycle's RCU-only writes on RW. `ret`'s done payload would also move to A+3, colliding on slot 5 with a branch issued a cycle after it unless R holds for a cycle, which OOE's select would have to know.
 
@@ -45,7 +44,7 @@ The R unit, `rcu_r`, executes one op a cycle from issue slot 8 in three stages: 
 | `rres_a1` | A+1's edge | GPR result `new[32][32]` right-aligned, old destination `old[32][32]` right-aligned, lane merge mask, dst predecode, pos, width | `r_v_a` (flop of `iss_v_q[8]`), or migration's restore grant (then the staged row) |
 | `rpres_a1` | A+1's edge | predicate result (32), merge mask (32), pd and old-destination predecode | `r_v_a` |
 | done slot 5 or 6 payload | A+1's edge | rob\_tag, done\_row; slot 5 adds branch\_taken, branch\_mask, aux | `r_v_a` |
-| rsrc\_a | A's edge | v(R0) and v(R1), aligned and zero-extended, 32 lanes × 32 bits each (RA-39) | per source: the flopped R lead valid AND its lead\_src\_used bit |
+| rsrc | A's edge | in each bank slice, not r: R0 and R1 raw for its section and 4 lanes, MIU write-through applied, 64 flops (2,048 in all); r aligns them in A+1 (RA-39) | the slice's flop of the R issue valid lead |
 
 In A+2 the RW port writes `steer(merge(new, old, mask), pos)` into the sections `secmask(width, pos)`, with `merge` per lane = mask ? new : old and `steer` the left shift by 8·pos. Merging in A+2 rather than A+1 keeps the merge off the crossbar path, at the cost of 1,024 flops for `old`.
 
@@ -87,13 +86,12 @@ Barriers do not reach the RCU in the first build (TI-40, TI-42; RA-25 closed by 
 
 | Stage | Path | Estimate (NGD) |
 | --- | --- | --- |
-| A−1 | R lead at the block port 2, predecode 3, into the R0/R1 select flops; the row compare against the MIU leads, 3, into the match flops | 5 |
-| A | R0 or R1 read 11.0 (measured, with fanout), align 2, MIU forward mux 2, select fanout about 1, into `rsrc_a` | 16 |
-| A | the forwarded load word: block port 2, em 1, mux 2, into `rsrc_a` | 5 |
+| A | `phys_src` at the RCU port 2, fanout to the 32 slices about 2.5, binary decode in the slice 2, R0 or R1 read 11.0 (measured, with fanout), MIU write-through mux 2, into the slice's `rsrc` | 19.5 (RCU input budget 18 + OOE's 2) |
+| A | the write-through match: row compare against the MW select flops 3, AND lane mask, section and valid 1, fanout to the 64 bits about 3, after the port's 4.5 | about 11.5, in parallel |
 | A+1 | R2 read 11.0, align 2, into `old` | 13 |
-| A+1 | register-index shfl from `rsrc_a`: decode 3, crossbar 6, em 1, fanout of the one-hots about 3 | 13 |
-| A+1 | `ret` from `rsrc_a`: pick 5 (`aux`), broadcast about 2, compare 5, AND 1, into `branch_mask` | 13 |
-| A+1 | `unballot` from `rsrc_a`: bit select 0 (a wire), into `rpres_a1` | 1 |
+| A+1 | register-index shfl from `rsrc`: align 2, select fanout 1, decode 3, crossbar 6, em 1, fanout of the one-hots about 3 | 16 |
+| A+1 | `ret` from `rsrc`: align 3, pick 5 (`aux`), broadcast about 2, compare 5, AND 1, into `branch_mask` | 16 |
+| A+1 | `unballot` from `rsrc`: align 3, bit select 0 (a wire), into `rpres_a1` | 4 |
 | A+1 | `vote`: OR or AND over 32 from `rpsrc_a`, into `rpres_a1` | 6 |
 
-Every R path now has 10 NGD or more of margin. Port budgets: `bank` out 11 on R0-R2 (the read with its fanout), `r` in 14. If OA cannot confirm RA-39's hazard condition for some class, the fallback is a late wake of R consumers by one cycle for that class, a bypass-table cell on OOE's side, not a change here.
+Every R path has 5 NGD or more of margin. Port budgets: `phys_src0/1` RCU in 18 (at `rcu_bank_slice`, fanout included); `bank` out 11 on R2; `rsrc` out of the slice from flops, `r` in 14. If OA cannot confirm RA-39's hazard condition for some class, the fallback is a late wake of R consumers by one cycle for that class, a bypass-table cell on OOE's side, not a change here.
