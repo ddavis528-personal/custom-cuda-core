@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Conventions_and_interfaces rev=3 exported=2026-11-02 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Conventions and interfaces*, at revision 3 on 2026-11-02 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Conventions_and_interfaces rev=4 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Conventions and interfaces*, at revision 4 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Conventions and interfaces
 
@@ -13,7 +13,7 @@ Every cycle number in this spec counts from **A, the cycle an issue's payload is
 - **Sending.** An output's valid and lead slice are flops loaded at the edge ending T−1, so they drive the wire in T; its payload flops load at the edge ending T, driving T+1. No logic sits between an output flop and the port; a flop that also feeds internal logic is duplicated, one `(* keep *)` copy for the port (NGD-7).
 - **A, A+n.** A is the payload cycle of an issue. "At A's edge" means the edge that ends cycle A.
 - **Writes.** A write to the PRF or predicate file *lands in W* when its data is on the row flops' D pins in cycle W; the new value is readable from W+1. A contracted latency L (issue to readable) puts W at A+L−1.
-- **Reads.** GPR rows are read in A+1 from select flops loaded at A's edge. Predicate rows are read in A from the payload wires (Predicate file tab).
+- **Reads.** GPR rows are read in A+1 from select flops loaded at A's edge, except the R op's sources R0 and R1, which are read in A from selects predecoded off the lead in A−1 (R unit tab, early R source read, RA-39). Predicate rows are read in A from the payload wires (Predicate file tab).
 - **Credits.** On the three fixed-latency inputs (issue, lane results, MIU data) the RCU never stalls and returns a credit in each message's payload cycle, from `<ch>_v_q`. On the other three inputs it returns a credit when it frees the entry the message took. On every output it keeps a counter per slot of depth `CCV_CREDIT_DEPTH` (4); on a fixed-latency output, sending with the counter at 0 is an assertion failure, never a stall.
 - **Wake.** Each output channel's `_wake` is a flop of the OR of the RCU's input wakes that can lead to a send on it (issue for lane ops, done and MIU address; map, command and PCA rows for demotion rows). That gives at least `CCV_WAKE_LAT` (4) of lead, since the inputs' wakes lead their valids by 4 and the RCU's earliest output valid is A+1. The RCU's own clock gate closes only when no input valid, no pipeline valid, no staged row and no pending migration is held.
 

@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=12 exported=2026-11-02 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 12 on 2026-11-02 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=13 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 13 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -116,7 +116,7 @@ What to measure: the implementation agent runs the kill checker with `KILL_DRAIN
 | `kill_drain`, `kill_ack_q`, `kill_ack_ep_q`, `mig_kmask` (0) | the MIU lead predecode flops: they are written every cycle and are gated by the valid that is reset |
 | `lead_bt_q`, `lead_bm_q` (0): leads are checked even without a valid |  |
 
-About 1,500 flops reset, out of roughly 235,000. Every payload is ignored without its valid, and the `dirty-zero` control is unaffected: the zero registers are constants, not rows.
+About 1,500 flops reset, out of roughly 246,000. Every payload is ignored without its valid, and the `dirty-zero` control is unaffected: the zero registers are constants, not rows.
 
 **kill\_ack after reset** is 0 with epoch 0. RAU starts no kill before reset ends, so a level of 0 is an unanswered nothing. AR confirms with RA-23.
 
