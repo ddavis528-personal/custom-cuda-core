@@ -55,7 +55,7 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-04 sweep)
-AR 275, OA 331, RA 64, DA 106, Conventions 17, CP 152, IS 189, TI 305, OI 274, RI 3.
+AR 275, OA 331, RA 64, DA 106, Conventions 17, CP 152, IS 189, TI 309, OI 274, RI 3. RA-39 (c) landed (TI rev 309); only OI lead NGD/CG left.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
