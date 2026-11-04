@@ -292,8 +292,8 @@ job_ooe_unit() {
 
 job_rcu_unit() {
   section "RCU model unit tests (sim/rcu/; RI-2)"
-  # The RCU model's own harness, before it replaces the stub in the
-  # kernels (CCV_RCU_IMPL=model; the stub stays the default until RI's M0).
+  # The RCU model's own harness, and its named controls; the model is the
+  # kernels' default since RI's M0 (CCV_RCU_IMPL=stub selects the stub).
   run "RCU unit tests" ./tools/check-rcu-unit.sh
 }
 

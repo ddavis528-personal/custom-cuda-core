@@ -189,7 +189,7 @@
       "value": 4,
       "status": "tunable",
       "decided_at": "Stage 4b sweep",
-      "doc": "D-cache lookups per cycle."
+      "doc": "D-cache lookups per cycle. It sets the rate of ccv_miu_dcu_req, ccv_dcu_miu_rsp and ccv_dcu_miu_fill_ntc (a notice promises its refill on the same response slot), each tied by rate_param, so tools/gen-interfaces.py refuses a rate that drifts from it."
     },
     {
       "name": "CCV_SPM_BYTES",

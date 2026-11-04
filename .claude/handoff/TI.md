@@ -39,6 +39,15 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-04 15:10Z: PUSHED 6cbabba (RCU events 33-47, RI-2 (d); TI rev
+  310) and b85595b (full gate PASS: ccv_miu_rcu_data leads its own six
+  fields, RA-40, drop option; OI-111's DECQ-15 checks, each valid at 13 and
+  15; AR-25 (1)-(3),(6) docs). TI rev 311 rows re:RA-40, re:AR-25,
+  re:OI-111; RA, AR, OI, RI notified. RH: J1 192 done, 160/128 running
+  with derived REN_FLOOR/CEIL (confirmed); then J5, J2, coremarkpl32/128
+  (OK'd); vadd16 waits on a CP export of vadd16/vadd16_loop as
+  release/kernels/ (TI to raise with CP). OI-112: imm_kind 6, arrival-2,
+  lead_r_src due 11-06; csa DUAL=0 rides OI's post-decq push.
 - 2026-11-04 06:10Z: PUSHED fbefc16 (ooe_sched back on heavy-units: CI
   red on every branch was TI's 4e7186f; TI rev 302 rang all) and b11e60f
   (fanout ratchet live: 109 caps in 9 ooe modules; seed fix 87795bf takes
