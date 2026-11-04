@@ -245,7 +245,8 @@ struct Config {
   /// Repeater stages on the issue and done links (params/links.json), for
   /// KILL_DRAIN.
   unsigned issue_stages = 0, done_stages = 0;
-  /// AR-24's interim on a full row (this build: no narrowing): MW and RW
+  /// AR-24's interim on a full row (this build: no narrowing; the RTL's
+  /// FULL_ROW, Register file tab rev 7, run lock-step at one setting): SW, MW and RW
   /// write a narrow register zero-extended across all four banks, so a row
   /// holds one register and is zero above its element. Off, they write
   /// secmask(width, pos) only, as the Register file tab says.

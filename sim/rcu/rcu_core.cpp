@@ -142,6 +142,9 @@ void Core::gatherWrites(uint64_t t, const In &in, std::vector<GWrite> &gw, std::
         if (d.copy && t - d.acc > ccv::prov::kLatLane)
           fail("seq %llu's copy reached the PRF %llu cycles after RCU took it; CCV_LAT_LANE is %u",
                seqOf(d.tid), (unsigned long long)(t - d.acc), ccv::prov::kLatLane);
+        // SW (A+11): not modelled yet (RA-3's field). When it is, it writes
+        // like MW and RW: all four banks zero-extended under full_row (RA's
+        // response RI-5, Register file tab rev 7), secmask otherwise.
         if (d.sfu) { fail("an SFU result is not modelled yet (RA-3's field)"); continue; }
         // LW writes every bank the op owns (Register file tab, LW's enable):
         // a chwidth widening names its old width in dst_width (AR-24) and

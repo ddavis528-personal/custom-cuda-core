@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 329, IS 189, TI 303, OI 272, CP 152, DA 106, RA 63, RI 1.
+Conventions 17, AR 275, OA 329, IS 189, TI 305, OI 272, CP 152, DA 106, RA 64, RI 3.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -48,7 +48,8 @@ Nothing had RI in Needs at session start.
 ## Pushed and raised (2026-11-04)
 - a0f6ccd pushed (model cc58b5d + regen). The gate on sim/rcu/ runs ALL sections (no scope map yet):
   ~2 h cold; warm synth-cache ~67 min. Run gate-push with timeout 7200000 and stash kernel.cpp first.
-- RI-1..7 raised, RI tab rev 2; notices sent to TI (1,2,3,7), RA (3-6), OI (7). Bookmark RI 2.
+- RI-1..7 raised (RI rev 2). TI rev 305 took RI-1,2 (next push), RI-7 waits on OI. RA rev 64 answered
+  RI-3..6: RI-4,5,6 closed (RI rev 3); RI-3 sent to TI to mark map/mig backpressured.
 - Since push (uncommitted): restore rows unwritten from map land (+ kill drop clears); pca rows
   written by own label (assert order); movi-in-lane sends the movi first and defers clashing lane ops
   a cycle; section merge into the lane message only for ops sent now (late-copy had sent twice).
