@@ -40,8 +40,8 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 331, AR 269, TI 304, OI 274, IS 188, CP 152, DA 106,
-RA 61 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
+Conventions 17, OA 331, AR 275, TI 304, OI 274, IS 189, CP 152, DA 106,
+RA 63 (tab 9851686b-2b0a), RI 2 (tab 8e4547bc-c469).
 OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
@@ -78,7 +78,10 @@ OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    go: priod x dr decode, then senders of hv/pl/px/unmet; decq with rs pricing;
    rendep decode cp upstream (extra rename stage
    -> DA); go: OI sends widest series nets. rob_w head fixed 31.9 (7aeb62a).
--0. 11-03 sweep PUSHED ae1a316 (full gate, ~1 h 10 min; make-release fixed by TI a933e8d).
+-0. 11-04 sweep PUSHED ebd3692 (92 commits, 5 branches; full gate ~1.5 h); release
+   rejected (TI pushed release meanwhile): re-parented the snapshot on origin/release
+   (70ccdf7), raised make-release's stale-parent bug to TI (OA rev 332).
+   11-03 sweep PUSHED ae1a316 (full gate, ~1 h 10 min; make-release fixed by TI a933e8d).
    11-02 sweep PUSHED cbe7bad (full gate PASS, cg 6088 s, ngd 4150 s), with
    OI's split and TI's heavy-unit fix 16ab8ae merged. Gates: run detached
    (setsid bg-run) AND a run_in_background waiter loop (2 h cap, re-arm);
