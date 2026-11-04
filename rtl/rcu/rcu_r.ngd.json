@@ -1,0 +1,179 @@
+{
+  "module": "rcu_r",
+  "ports": {
+    "iv_cr00h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "lsu_cr01h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "lsrc_cr01h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "kind_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "tag_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "drow_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "imask_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "imm_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "dst_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "dpos_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "dwid_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "opos_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "spos_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "swid_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "pd_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "mrg_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "pwe_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "mv_cr00h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "mrow_cr01h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "mpos_cr01h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "mam_cr01h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "mdat_cr02h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+    },
+    "rd0_cr02h": {
+      "arrival": 11.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "The bank slices' R0-R2 read: bank out 11 (8.3 measured, 11.0 with the fanout term), r in 14 (Partition tab: bank R0-R1 read in A -> r rsrc_a; R2 read in A+1 -> r old)."
+    },
+    "rd1_cr02h": {
+      "arrival": 11.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "The bank slices' R0-R2 read: bank out 11 (8.3 measured, 11.0 with the fanout term), r in 14 (Partition tab: bank R0-R1 read in A -> r rsrc_a; R2 read in A+1 -> r old)."
+    },
+    "rd2_cr03h": {
+      "arrival": 11.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "The bank slices' R0-R2 read: bank out 11 (8.3 measured, 11.0 with the fanout term), r in 14 (Partition tab: bank R0-R1 read in A -> r rsrc_a; R2 read in A+1 -> r old)."
+    },
+    "act_cr03h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only, held to a block port's 2."
+    },
+    "rpa_cr03h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only, held to a block port's 2."
+    },
+    "rpb_cr03h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only, held to a block port's 2."
+    },
+    "low_cr03h": {
+      "arrival": 2.0,
+      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
+      "date": "2026-11-04",
+      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only, held to a block port's 2."
+    }
+  }
+}

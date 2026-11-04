@@ -1,5 +1,5 @@
 {
-  "_comment": "Clock-gating and logic-depth units for RI's RCU RTL (tools/check-cg.py, tools/check-ngd.py; docs/rtl-coding-style.md, 'Local clock gating' and 'Logic depth'). Each bench is the module's value-model bench (test/rcu/*_tb.cpp) in its --cg mode, built by test/rcu/cg-build.sh at the unit's parameters: idle is reset and then no work, medium work on about a third of the cycles, high work every cycle. rcu_bank_slice_r32 is the reduced unit for loops (ROWS 32; RA-32 (2)). The full-size slice (ROWS 192, M3's exit) is not listed yet: check-ngd measures it (11.4 flop to flop, 9.4 in, 11.0 out with the fanout term, 2026-11-04), but check-cg's replay harness for its 205,000-cell netlist does not build in 16 GB (g++ 13.6 GB at -O0 on one generated file), so it waits on that harness (RI's row to TI). Build it with test/rcu/cg-build.sh rcu_bank_slice. One slice stands for all 32: K and J change only its wiring. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
+  "_comment": "Clock-gating and logic-depth units for RI's RCU RTL (tools/check-cg.py, tools/check-ngd.py; docs/rtl-coding-style.md, 'Local clock gating' and 'Logic depth'). Each bench is the module's value-model bench (test/rcu/*_tb.cpp) in its --cg mode, built by test/rcu/cg-build.sh at the unit's parameters: idle is reset and then no work, medium work on about a third of the cycles, high work every cycle. rcu_r is the R pipe at its one size, its crossbar helper inside it. rcu_bank_slice_r32 is the reduced unit for loops (ROWS 32; RA-32 (2)). The full-size slice (ROWS 192, M3's exit) is not listed yet: check-ngd measures it (11.4 flop to flop, 9.4 in, 11.0 out with the fanout term, 2026-11-04), but check-cg's replay harness for its 205,000-cell netlist does not build in 16 GB (g++ 13.6 GB at -O0 on one generated file), so it waits on that harness (RI's row to TI). Build it with test/rcu/cg-build.sh rcu_bank_slice. One slice stands for all 32: K and J change only its wiring. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
   "units": [
     {
       "name": "rcu_bank_slice_r32",
@@ -18,6 +18,23 @@
         "build": "test/rcu/cg-build.sh rcu_bank_slice_r32 {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "rcu_bank_slice"
+      }
+    },
+    {
+      "name": "rcu_r",
+      "module": "rcu_r",
+      "files": [
+        "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_xbar.sv",
+        "rtl/rcu/rcu_r.sv"
+      ],
+      "params": {},
+      "clock": "rcu_core_clk",
+      "reset": "rcu_rst_r00h",
+      "bench": {
+        "build": "test/rcu/cg-build.sh rcu_r {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "rcu_r"
       }
     }
   ]
