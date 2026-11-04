@@ -4,10 +4,9 @@
 // the R pipe (R unit tab; the RCU model's issueR, sim/rcu/rcu_core.cpp):
 // what RW writes, what PR writes and what done slots 5 and 6 carry.
 //
-//   an op's valid in t, its lead in t+1, A = t+2 (payload, R0 and R1 rows),
+//   an op's valid and lead in t+1, A = t+2 (payload, R0 and R1 rows),
 //   A+1 = t+3 (R2's row, active, RA, RB, rlow), A+2 = t+4 (the writes and the
-//   done payload); an MIU slot's valid in u, its lead in u+1, its data in
-//   u+2, forwarded to an R source in A = u+2 (rcu_r.sv, "Port timing").
+//   done payload); an MIU slot's valid and lead in u+1, its data in u+2, forwarded to an R source in A = u+2 (rcu_r.sv, "Port timing").
 //
 // Every R kind, random fields, random bank rows; the MIU slots land at random
 // with distinct rows, and an R source names a landing slot's register on
@@ -153,7 +152,7 @@ struct Bench {
   void drive(bool rst) {
     dut->rcu_rst_r00h = rst;
     const uint64_t c = cyc;
-    dut->iv_cr00h = op(c) != nullptr;
+    dut->iv_cr01h = op(c - 1) != nullptr;   // the valid comes with the lead
     if (const Op *o = op(c - 1)) {   // the lead
       dut->lsu_cr01h = (uses0(o->kind) ? 1 : 0) | (uses1(o->kind) ? 2 : 0);
       put(dut->lsrc_cr01h, 0, 8, o->src[0]);
@@ -186,13 +185,12 @@ struct Bench {
       dut->rpb_cr03h = o->rpb;
       dut->low_cr03h = o->act & (~o->act + 1u);
     }
-    dut->mv_cr00h = 0;
-    if (auto m = mvs.find(c); m != mvs.end())
-      for (unsigned j = 0; j < kNM; ++j) put(dut->mv_cr00h, j, 1, m->second[j]);
+    dut->mv_cr01h = 0;
     if (auto m = mvs.find(c - 1); m != mvs.end())
       for (unsigned j = 0; j < kNM; ++j)
         if (m->second[j]) {
           const Miu &s = mius[c - 1][j];
+          put(dut->mv_cr01h, j, 1, 1);
           put(dut->mrow_cr01h, j * 8, 8, s.row);
           put(dut->mpos_cr01h, j * 2, 2, s.pos);
           put(dut->mam_cr01h, j * 32, 32, s.am);

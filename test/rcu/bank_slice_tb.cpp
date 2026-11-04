@@ -6,8 +6,9 @@
 // write port leaves in the rows.
 //
 //   valid in t, row in t+1, a read's data and a write's data in t+2
-//   (rcu_bank_slice.sv, "Port timing"); a read in t+2 of a row written in
-//   t+2 sees the old value.
+//   (rcu_bank_slice.sv, "Port timing"); R0, R1 (read ports 7 and 8) and MW
+//   take their valid with the row, in t+1. A read in t+2 of a row written
+//   in t+2 sees the old value.
 //
 // Written by LW (owned sections), SW and RW (secmask, or the whole row zero
 // above the register under FULL_ROW), and MW (per MIU slot: the slot that
@@ -50,11 +51,16 @@
 #define BS_FULL_ROW 1
 #endif
 
+
 namespace {
 
 constexpr unsigned kRows = BS_ROWS, kK = BS_K, kZero = 255;
 constexpr bool kFullRow = BS_FULL_ROW != 0;
 constexpr unsigned kNR = 10, kNW = 3, kNM = 4, kL = 4;
+// Logical read ports 0-9 (L0-L3, M0-M2, R0-R2): R0 and R1 are the
+// module's rr ports 0 and 1; the rest its rd ports, R2 at 7.
+bool isRR(unsigned q) { return q == 7 || q == 8; }
+unsigned rdIdx(unsigned q) { return q == 9 ? 7 : q; }
 enum { kLW = 0, kSW = 1, kRW = 2 };
 
 // ---- Port bits: plain integers and VlWide alike -----------------------
@@ -144,12 +150,22 @@ struct Bench {
     dut->rcu_rst_r00h = rst;
     dut->rd_v_cr00h = 0;
     dut->wr_v_cr00h = 0;
-    dut->mw_v_cr00h = 0;
-    for (const Read &r : next.rd) put(dut->rd_v_cr00h, r.port, 1, 1);
+    dut->rr_v_cr01h = 0;
+    dut->mw_v_cr01h = 0;
+    for (const Read &r : next.rd)
+      if (!isRR(r.port)) put(dut->rd_v_cr00h, rdIdx(r.port), 1, 1);
     for (const Write &w : next.wr) put(dut->wr_v_cr00h, w.port, 1, 1);
-    for (const Load &l : next.ld) put(dut->mw_v_cr00h, l.slot, 1, 1);
-    // Rows and leads, a cycle after the valid. Unused fields hold.
-    for (const Read &r : s1.rd) put(dut->rd_row_cr01h, r.port * 8, 8, r.row);
+    // Rows and leads, a cycle after the valid (R0, R1 and MW: with theirs).
+    // Unused fields hold.
+    for (const Read &r : s1.rd) {
+      if (isRR(r.port)) {
+        put(dut->rr_v_cr01h, r.port - 7, 1, 1);
+        put(dut->rr_row_cr01h, (r.port - 7) * 8, 8, r.row);
+      } else {
+        put(dut->rd_row_cr01h, rdIdx(r.port) * 8, 8, r.row);
+      }
+    }
+    for (const Load &l : s1.ld) put(dut->mw_v_cr01h, l.slot, 1, 1);
     for (const Write &w : s1.wr) {
       put(dut->wr_row_cr01h, w.port * 8, 8, w.row);
       put(dut->wr_sec_cr01h, w.port * 4, 4, w.sec);
@@ -178,7 +194,8 @@ struct Bench {
         cov_zero += zero;
         for (unsigned l = 0; l < kL; ++l) {
           const unsigned want = zero ? 0u : row[r.row][l];
-          const unsigned got = unsigned(get(dut->rd_cr03h, r.port * 32 + 8 * l, 8));
+          const unsigned got = isRR(r.port) ? unsigned(get(dut->rr_cr03h, (r.port - 7) * 32 + 8 * l, 8))
+                                            : unsigned(get(dut->rd_cr03h, rdIdx(r.port) * 32 + 8 * l, 8));
           if (got != want) fail("read port %u row %u lane %u: %02x", r.port, r.row, l, got);
         }
       }
@@ -271,6 +288,9 @@ struct Gen {
       for (auto &x : ld.word) x = uint32_t(rng());
       c.ld.push_back(ld);
     }
+    // R0 or R1 on a row a load lands in: the old value.
+    for (Read &r : c.rd)
+      if (isRR(r.port) && !c.ld.empty() && coin(0.5)) r.row = c.ld[rnd(unsigned(c.ld.size()))].row;
     return c;
   }
 };

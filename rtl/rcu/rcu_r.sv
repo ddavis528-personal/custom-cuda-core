@@ -11,13 +11,13 @@
 // forward (RA-39 (i)), computes in A+1 from flops, and drives the RW and PR
 // writes and done slots 5 and 6 at A+2 (the A+2 rule, RA-29 (a)).
 //
-// Port timing (local stages, cr00h = A-2 ... cr04h = A+2). Every port
-// follows the bank slice's convention, CG-5's: a valid is flopped every
-// cycle and enables the flops of the fields that follow it a cycle later.
-//   cr00h  iv: the R slot issues in two cycles; mv[j]: MIU slot j lands in
-//          two cycles (T = A for the forward)
-//   cr01h  the R lead (lead_src_used, lead_r_src0/1); MIU slot leads
-//          (row, pos, active_mask)
+// Port timing (local stages, cr01h = A-1 ... cr04h = A+2). Neither OOE nor
+// MIU sends a valid a cycle ahead of its lead (RA's re:RI-9 (b)), so what
+// the leads decide is loaded every cycle, ungated, and kept small:
+//   cr01h  iv with the R lead (lead_src_used, lead_r_src0/1); mv[j] with
+//          MIU slot j's lead (row, pos, active_mask), landing in T = A.
+//          Each source picks the one slot naming its row and loads its pos,
+//          active_mask and index (the forward's state, RA-39 (i))
 //   cr02h  A: the payload (kind decoded by the block's op-class decode, as
 //          the model's RKind); R0/R1 rows from the banks; MIU load words.
 //          rw_v, pr_v: the RW and PR ports' valids (an R op is in A)
@@ -56,7 +56,7 @@ module rcu_r #(
   input  logic                rcu_core_clk,
   input  logic                rcu_rst_r00h,
   // The R slot: valid, lead, payload.
-  input  logic                iv_cr00h,        // R issues in two cycles
+  input  logic                iv_cr01h,        // R issues next cycle (the lead's valid)
   input  logic [1:0]          lsu_cr01h,       // lead_src_used: R0 at 0, R1 at 1
   input  logic [2*WR-1:0]     lsrc_cr01h,      // lead_r_src0 at [7:0], lead_r_src1 at [15:8]
   input  logic [4:0]          kind_cr02h,      // the model's RKind
@@ -78,7 +78,7 @@ module rcu_r #(
   input  logic [N*32-1:0]     rd1_cr02h,       // R1 in A
   input  logic [N*32-1:0]     rd2_cr03h,       // R2 in A+1 (the old destination)
   // MIU slots: valid, lead, load words.
-  input  logic [NM-1:0]       mv_cr00h,        // slot j lands in two cycles
+  input  logic [NM-1:0]       mv_cr01h,        // slot j lands next cycle (its lead's valid)
   input  logic [NM*WR-1:0]    mrow_cr01h,      //   phys_dst
   input  logic [NM*2-1:0]     mpos_cr01h,      //   dst_pos
   input  logic [NM*N-1:0]     mam_cr01h,       //   active_mask
@@ -137,87 +137,78 @@ module rcu_r #(
   endfunction
 
   // ---- Valids, flopped every cycle ---------------------------------------
-  logic          iv_cr01h, iv_cr02h;
-  logic [NM-1:0] mv_cr01h, mv_cr02h;
+  logic          iv_cr02h;
   logic          r_v_cr03h;
-  (* keep *) logic rv_cr02h;     // the RW and PR valids' own copy (an output)
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
-      iv_cr01h  <= 1'b0;
       iv_cr02h  <= 1'b0;
-      rv_cr02h  <= 1'b0;
-      mv_cr01h  <= '0;
-      mv_cr02h  <= '0;
       r_v_cr03h <= 1'b0;
     end else begin
-      iv_cr01h  <= iv_cr00h;
       iv_cr02h  <= iv_cr01h;
-      rv_cr02h  <= iv_cr01h;
-      mv_cr01h  <= mv_cr00h;
-      mv_cr02h  <= mv_cr01h;
       r_v_cr03h <= iv_cr02h;
     end
   end
-  assign rw_v_cr02h = rv_cr02h;
-  assign pr_v_cr02h = rv_cr02h;
+  // The RW and PR valids drive outputs and the module's enables, all
+  // within the output's budget: one flop.
+  assign rw_v_cr02h = iv_cr02h;
+  assign pr_v_cr02h = iv_cr02h;
 
   // ---- A-1: the R lead and the MIU leads ---------------------------------
-  // Flopped every cycle, zero without an op: ten flops, mostly zero, inside
-  // the module's allowance (a gate on them would reload zeros).
-  logic [1:0]   sen_cr02h;                 // lead_src_used, flopped
-  logic [2*NM-1:0] mt_cr02h;               // source s names slot j's row: s*NM + j
+  // Per source: lead_src_used, and the one landing slot naming its row
+  // (valid, pos, active_mask, index), loaded every cycle, ungated.
+  logic [1:0]      sen_cr02h;
+  logic [1:0]      fv_cr02h;
+  logic [2*2-1:0]  fpos_cr02h, fslot_cr02h;
+  logic [2*N-1:0]  fam_cr02h;
+  logic [2*NM-1:0] sel_cr01h;                // source s names slot j's row: s*NM + j
+  logic [1:0]      fv_d_cr01h;
+  logic [2*2-1:0]  fpos_d_cr01h, fslot_d_cr01h;
+  logic [2*N-1:0]  fam_d_cr01h;
+  always_comb begin
+    for (int s = 0; s < 2; s++) begin
+      fv_d_cr01h[s] = 1'b0;
+      fpos_d_cr01h[s*2 +: 2] = '0;
+      fslot_d_cr01h[s*2 +: 2] = '0;
+      fam_d_cr01h[s*N +: N] = '0;
+      for (int j = 0; j < NM; j++) begin
+        sel_cr01h[s*NM + j] = iv_cr01h & lsu_cr01h[s] & mv_cr01h[j] &
+                              (lsrc_cr01h[s*WR +: WR] == mrow_cr01h[j*WR +: WR]);
+        fv_d_cr01h[s] = fv_d_cr01h[s] | sel_cr01h[s*NM + j];
+        fpos_d_cr01h[s*2 +: 2]  = fpos_d_cr01h[s*2 +: 2] | ({2{sel_cr01h[s*NM + j]}} & mpos_cr01h[j*2 +: 2]);
+        fslot_d_cr01h[s*2 +: 2] = fslot_d_cr01h[s*2 +: 2] | ({2{sel_cr01h[s*NM + j]}} & 2'(j));
+        fam_d_cr01h[s*N +: N]   = fam_d_cr01h[s*N +: N] | ({N{sel_cr01h[s*NM + j]}} & mam_cr01h[j*N +: N]);
+      end
+    end
+  end
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       sen_cr02h <= '0;
-      mt_cr02h  <= '0;
+      fv_cr02h  <= '0;
     end else begin
       sen_cr02h <= {2{iv_cr01h}} & lsu_cr01h;
-      for (int s = 0; s < 2; s++)
-        for (int j = 0; j < NM; j++)
-          mt_cr02h[s*NM + j] <= iv_cr01h & mv_cr01h[j] &
-                                (lsrc_cr01h[s*WR +: WR] == mrow_cr01h[j*WR +: WR]);
+      fv_cr02h  <= fv_d_cr01h;
     end
   end
-  logic [NM*2-1:0] mpos_cr02h;
-  logic [NM*N-1:0] mam_cr02h;
-  for (genvar j = 0; j < NM; j++) begin : g_ml
-    wire ml_en_cr01h = mv_cr01h[j];
-    always_ff @(posedge rcu_core_clk) begin
-      if (ml_en_cr01h) begin
-        mpos_cr02h[j*2 +: 2] <= mpos_cr01h[j*2 +: 2];
-        mam_cr02h[j*N +: N]  <= mam_cr01h[j*N +: N];
-      end
-    end
+  always_ff @(posedge rcu_core_clk) begin
+    fpos_cr02h  <= fpos_d_cr01h;
+    fslot_cr02h <= fslot_d_cr01h;
+    fam_cr02h   <= fam_d_cr01h;
   end
 
   // ---- A: align R0 and R1, with the MIU forward, into rsrc_a ---------------
-  logic [2*NM-1:0] hit_cr02h;              // source s takes slot j: s*NM + j
+  logic [1:0]      hit_cr02h;               // source s takes its slot
   logic [N*32-1:0] v0_cr02h, v1_cr02h;
   always_comb begin
     for (int s = 0; s < 2; s++)
-      for (int j = 0; j < NM; j++)
-        hit_cr02h[s*NM + j] = mt_cr02h[s*NM + j] & mv_cr02h[j] &
-                              (mpos_cr02h[j*2 +: 2] == spos_cr02h[s*2 +: 2]);
+      hit_cr02h[s] = fv_cr02h[s] & (fpos_cr02h[s*2 +: 2] == spos_cr02h[s*2 +: 2]);
     for (int l = 0; l < N; l++) begin
       logic [31:0] b0_cr02h, b1_cr02h, f0_cr02h, f1_cr02h;
-      logic        h0_cr02h, h1_cr02h;
       b0_cr02h = align(rd0_cr02h[l*32 +: 32], spos_cr02h[1:0], swid_cr02h[1:0]);
       b1_cr02h = align(rd1_cr02h[l*32 +: 32], spos_cr02h[3:2], swid_cr02h[3:2]);
-      f0_cr02h = '0;
-      f1_cr02h = '0;
-      h0_cr02h = 1'b0;
-      h1_cr02h = 1'b0;
-      for (int j = 0; j < NM; j++) begin
-        logic t0_cr02h, t1_cr02h;
-        t0_cr02h = hit_cr02h[j] & mam_cr02h[j*N + l];
-        t1_cr02h = hit_cr02h[NM + j] & mam_cr02h[j*N + l];
-        h0_cr02h = h0_cr02h | t0_cr02h;
-        h1_cr02h = h1_cr02h | t1_cr02h;
-        f0_cr02h = f0_cr02h | ({32{t0_cr02h}} & mdat_cr02h[(j*N + l)*32 +: 32]);
-        f1_cr02h = f1_cr02h | ({32{t1_cr02h}} & mdat_cr02h[(j*N + l)*32 +: 32]);
-      end
-      v0_cr02h[l*32 +: 32] = h0_cr02h ? (f0_cr02h & em(swid_cr02h[1:0])) : b0_cr02h;
-      v1_cr02h[l*32 +: 32] = h1_cr02h ? (f1_cr02h & em(swid_cr02h[3:2])) : b1_cr02h;
+      f0_cr02h = mdat_cr02h[(32'(fslot_cr02h[1:0])*N + l)*32 +: 32] & em(swid_cr02h[1:0]);
+      f1_cr02h = mdat_cr02h[(32'(fslot_cr02h[3:2])*N + l)*32 +: 32] & em(swid_cr02h[3:2]);
+      v0_cr02h[l*32 +: 32] = (hit_cr02h[0] & fam_cr02h[l])     ? f0_cr02h : b0_cr02h;
+      v1_cr02h[l*32 +: 32] = (hit_cr02h[1] & fam_cr02h[N + l]) ? f1_cr02h : b1_cr02h;
     end
   end
   wire [1:0] src_en_cr02h = sen_cr02h;
@@ -418,8 +409,8 @@ module rcu_r #(
   // ---- Checks ----------------------------------------------------------------
   // At most one MIU slot forwards to a source (RA-39 (i)); every op on R
   // has an R kind; an op that writes a predicate has pred_we.
-  wire two_fwd_cr02h = !$onehot0(hit_cr02h[NM-1:0]) || !$onehot0(hit_cr02h[2*NM-1:NM]);
-  `CCV_ASSERT(one_forward_a_source, !(iv_cr02h && two_fwd_cr02h))
+  wire two_fwd_cr01h = !$onehot0(sel_cr01h[NM-1:0]) || !$onehot0(sel_cr01h[2*NM-1:NM]);
+  `CCV_ASSERT(one_forward_a_source, !two_fwd_cr01h)
   wire bad_kind_cr02h = kind_cr02h == 5'd0 || kind_cr02h > K_UNB;
   `CCV_ASSERT(r_kind_named, !(iv_cr02h && bad_kind_cr02h))
   `CCV_ASSERT(pred_write_has_we, !(iv_cr02h && wp_cr02h && !pwe_cr02h))
