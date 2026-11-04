@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=31 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 31 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=32 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 32 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -112,7 +112,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | RA-35 | AR | rcu-arch.md's ports, latencies and section 8 | raised | none (process) |
 | RA-36 | TI | roadmap Part 0 for the RCU | raised | none (process) |
 | RA-37, RA-38 | TI, OA | repo support for RI: gate-scope map, model hook (`makeRcu`, `CCV_RCU_IMPL`), `check-rcu-unit`, `job_rcu_rtl`, `CCV_RCU_RTL` | agreed (TI rev 290, OA rev 308); TI building | Partition (M0); rcu-impl.md |
-| RA-39 | OA, TI, AR | early R source read: R0/R1 rows on R's lead, read in A | (a), (b) taken by OA with the MIU forward (i) (revs 328-329); (d) agreed by AR (rev 271), merge question answered (RA rev 63); open: TI (c) the schema fields `lead_r_src0/1` and the stub; OI the lead mux's NGD and clock gating | R unit (Early R source read); Register file; Pipeline |
+| RA-39 | OA, TI, AR | early R source read: R0/R1 rows on R's lead, read in A | (a), (b) taken by OA with the MIU forward (i) (revs 328-329); (d) agreed by AR (rev 271), merge question answered (RA rev 63); (c) landed: `lead_r_src0/1` in the schema and stubs, with a control (TI rev 309); open: OI the lead mux's NGD and clock gating | R unit (Early R source read); Register file; Pipeline |
 
 ## For Daniel
 
