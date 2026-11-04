@@ -40,15 +40,19 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 333, AR 284, TI 304, OI 274, IS 189, CP 152, DA 106,
+Conventions 17, OA 334, AR 284, TI 304, OI 281, IS 189, CP 152, DA 106,
 RA 63 (tab 9851686b-2b0a), RI 2 (tab 8e4547bc-c469).
 OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
 -4. RA-11 PHYS_REGS (OA rev 333): 160 meets Q-35 (ceil 44 >= ROB 32), 128 fails
    (ceil 24 < 32). TI rev 316: runs DID use derived 12/44, 8/24, so my
-   16/64 guess was wrong; V-N/fits_stale is OI's to explain. After clean 160 re-run (2 four-warp kernels, S1, audit,
+   16/64 guess was wrong. OI-114 (OI rev 281): go floor term ignores
+   the slot's take in flight (model AND ooe_go); OA rev 334 took max(0,want-held-took),
+   all unseen takes, within go caps else registered; then TI re-runs 160. After clean 160 re-run (2 four-warp kernels, S1, audit,
    <0.5%) OA recommends 160 to DA via AR; OOE doc keeps 192 until DA decides.
+-3a. Landed 11-04: freelist gsec retime 013ed10 (no reuse cycle lost); decq retimed,
+   DECQ 15 + lag 1 at 41ebad9 (OI-109/111 closed); sched (b) ret_hold 2 gating.
 -3. RA-39 early R read (R0/R1 in A; OA revs 328-329): only L1 hits miss A
    (data lands in consumer's A). (i) MIU forward on R0/R1 TAKEN rev 329 (RA:
    ~10k cells, 190 flops, A 16 NGD; overhead list); OOE doc rev 361. (ii) withdrawn.
