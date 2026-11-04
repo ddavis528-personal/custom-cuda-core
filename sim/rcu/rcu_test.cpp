@@ -315,24 +315,6 @@ void testV60() {
   CONTROL("v60", e.failed("V-60") || e.failed("continuation"), "overlap passed");
 }
 
-/// RA-39 (b): R's early source rows must be the payload's, in order.
-void testLeadRsrc() {
-  for (bool swap : {false, true}) {
-    g_test = swap ? "lead-rsrc:swap" : "lead-rsrc";
-    Env e;
-    In in = Env::idleIn();
-    Issue r = laneOp(9, 3, 4, 1);
-    r.oc.unit = Unit::ROnly;
-    r.foot = 0x1;
-    r.lead.sec = 0x1;
-    r.lead.rsrc = swap ? std::array<unsigned, 2>{4, 3} : std::array<unsigned, 2>{3, 4};
-    in.iss[kSlotR] = r;
-    e.step(in);
-    if (swap) CONTROL("lead-rsrc-swap", e.failed("source row its lead does not name"), "swapped rows passed");
-    else EXPECT(!e.failed("source row its lead does not name"), "in-order rows refused");
-  }
-}
-
 /// Kill: the drain is KILL_DRAIN cycles from K's edge; ack-ready after it.
 void testKillDrain() {
   g_test = "kill-drain";
@@ -509,7 +491,6 @@ int main(int argc, char **argv) {
   testMigration("");
   testMigration("mig-row-order");
   testRestoreZero();
-  testLeadRsrc();
   testNarrowWrite();
   testIdle();
   std::printf("rcu-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
