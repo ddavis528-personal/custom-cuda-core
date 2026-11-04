@@ -1419,6 +1419,16 @@ if [ "$n" = 7 ] && [ "$(field "$B/kernel_lead-rsrc-swap.log" check_failures)" = 
 else
   bad "--break lead-rsrc-swap" "$n refused (7 pinned): $(grep '^KERNEL' "$B/kernel_lead-rsrc-swap.log")"
 fi
+# pmov.imm writes only the issue-mask lanes (RA-19; ccv-sim at b83777e):
+# pmovdiv runs it on lanes 0-15 with P2 all ones, so lanes 16-31 keep theirs.
+# pmov-all-lanes writes all 32, and the oracle's P2 must refuse it.
+"$SKEL" --kernel build/oracle/pmovdiv/oracle.jsonl --break pmov-all-lanes >"$B/kernel_pmov-all-lanes.log" 2>&1
+if grep -q "^CHECK rcu: seq [0-9]* P2 = 00000000, oracle ffff0000$" "$B/kernel_pmov-all-lanes.log" &&
+   [ "$(field "$B/kernel_pmov-all-lanes.log" check_failures)" = 1 ]; then
+  say "--break pmov-all-lanes: pmov.imm keeps the inactive lanes" "PASS (P2 ffff0000 refused as 0)"
+else
+  bad "--break pmov-all-lanes" "$(grep -m1 '^CHECK' "$B/kernel_pmov-all-lanes.log"); $(grep '^KERNEL' "$B/kernel_pmov-all-lanes.log")"
+fi
 
 # Notices (OA-23; AR's response TI-23): DCU promises a refill
 # CCV_LAT_FILL_NOTICE cycles after its notice lands, MIU a completion
