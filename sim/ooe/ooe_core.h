@@ -567,7 +567,8 @@ struct Config {
   bool inject_a1_base_only = false;
   bool inject_cas_split = false;
   /// OI-79 (b)'s control: the take keeps a pair the width splits (its
-  /// first slot taken, its second left for the next cycle).
+  /// first slot taken, its second left for the next cycle): it skips both
+  /// the take's cap and tryRename's cut at the last lane.
   bool inject_pair_split = false;
   /// OI-84's control: a pair's second in its warp's next round (OI-79 (b))
   /// rather than the lane after its first; four warps each with a CAS at

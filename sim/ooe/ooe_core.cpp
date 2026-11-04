@@ -4598,7 +4598,7 @@ void Core::rename() {
       cu.cas_reads = uint8_t(it2->shape.gpr_reads & 3u);
     }
     if (young) count("rename.refill");
-    ren_pair_last_ = pair && budget < 2;
+    ren_pair_last_ = pair && budget < 2 && !cfg_.inject_pair_split;
     ren_pair_cut_ = false;
     const bool renamed = tryRename(si, pair ? cu : *it);
     ren_pair_last_ = false;
