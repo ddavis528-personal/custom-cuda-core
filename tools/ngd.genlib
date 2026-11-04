@@ -6,7 +6,8 @@
 # fanout-of-4 delay, d = g*4 + p in units of tau, divided by a NAND2's
 # (4/3*4 + 2 = 7.33 tau), so a NAND2 at fanout 4 is 1.00 NGD. Delays are
 # load-independent: fanout beyond 4 (broadcast) and wire are costed outside
-# the logic, as OA's estimate does. Area is transistor count.
+# the logic, as OA's estimate does; check-ngd adds fanout's inverter tree to
+# every enforced depth (RA-33; DA, 2026-11-04). Area is transistor count.
 GATE ZERO   0  Y=CONST0;
 GATE ONE    0  Y=CONST1;
 GATE BUF    4  Y=A;          PIN * NONINV 1 999 1.36 0 1.36 0
