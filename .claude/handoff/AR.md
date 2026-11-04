@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-03. Keep this current at every task's end; it is what
+Updated 2026-11-04. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 
 ## Who and what
@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 279, OA 331, TI 309, IS 189, CP 153, OI 274, DA 106,
+  record): AR 282, OA 331, TI 309, IS 189, CP 153, OI 274, DA 106,
   Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -117,10 +117,25 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
-- Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 21, RA's now), MIU
-  aa7a288a-dae2 (rev 46), RAU 090626bb-a50c (rev 33), FET 75d75b94-1614
-  (rev 45), DEC 1d1fdcda-739e, DCU c18a112b-d2c6, SPM b66e4f64-612c, LANE
-  ea1f36a7-0725, SYU 1f8b4472-68c1, OOE 515615a9-8caf (OA's).
+- Specs doc DJeg9Hh8rkPDecq4hrAz35 (tab revs after the 11-04 review): RCU
+  eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (54), RAU 090626bb-a50c (60),
+  PCA 94b3a0ea-7224 (17), FET 75d75b94-1614 (47), DEC 1d1fdcda-739e (19),
+  DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (12),
+  SYU 1f8b4472-68c1 (8), CRU 5a50fd80-2423 (7), MLC f8873ac6-e74d (3), EXB
+  56392a06-86a6 (4), OOE 515615a9-8caf (OA's).
+- Spec review of the no-session blocks done 11-04 (Daniel asked; AR rev
+  280, AR-25 minted rev 282, TI notified): every tab's widths recounted
+  from payload-spec, kill text is RA-14/RA-23's, S1 paragraphs match the
+  stubs. AR-25 (TI): six schema/params doc fixes (pca_rcu_mig doc,
+  CCV_W_MIG_ROW doc, rcu_lane_ops srd doc, SFU 2nd result RA-3, imm_kind 6
+  RA-18, miu_dcu_req backpressure class). DEC's CCV_P_DECQ 15 stays (DA).
+- Docs-tool lessons: write ops need FULL ids (session prefix + ".n", e.g.
+  m30rdwkg40n.5277 in specs, m8yvbw8rqgz.n in the register); a read prints
+  them short. Replace a paragraph by its paragraph id (a cell's paragraph
+  is cell id + 1; a list item's is item id + 1), ifHash = the paragraph's
+  h, "as":"markdown" so marks are spelled. Never "chars" on run ids; "as":
+  "text" can stretch a code mark. Rows: insert {"as":"blocks"} after a row
+  id, several rows in one content array. Each op bumps the tab rev.
 
 ## Decided recently (DA tab)
 - revs 100-103 (2026-11-02): RA-20 adopted (O-85 collectives, diagonal
