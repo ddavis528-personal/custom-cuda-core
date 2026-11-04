@@ -84,7 +84,7 @@ struct Config {
   bool fl_direct = false;
   /// fl_two_step 1: scan (a) as ooe_freelist builds it, each bank's
   /// find-first registered and appended at the next edge (FreeVec::refill2).
-  bool fl_two_step = false;
+  bool fl_two_step = true;
   /// rs_free_lag 1: ooe_rs's free-entry candidates a cycle ahead; an entry
   /// freed in a cycle is held (allocation and rename's room) through the
   /// next. decq_free_lag 1: ooe_decq's likewise, a slot freed in a cycle

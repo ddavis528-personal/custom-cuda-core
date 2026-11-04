@@ -24,13 +24,19 @@
 // buffered until then, so refill cannot buffer them again.
 //
 // At each clock edge the buffer is refilled. The N entries form K
-// interleaved banks (entry mod K). Each bank finds its first free entry
-// that is not already buffered, at or after its own rotating pointer, a
-// find-first over N/K entries. The banks append in a rotating order, at
-// most one entry each, while there is room behind the entries this cycle
-// did not take. A bank with no candidate appends nothing. The bank order
-// advances by one every edge, and a bank's pointer moves past the entry it
-// appended.
+// interleaved banks (entry mod K). Each bank holds a registered candidate:
+// its first free entry that is not already buffered, at or after its own
+// rotating pointer, a find-first over N/K entries (scan (a), two steps,
+// OA's revs 321-324: the search and the append each a stage of their
+// own, so a free reaches the buffer an edge later). The banks append their
+// candidates in a rotating order, at most one entry each, while there is
+// room behind the entries this cycle did not take. A bank with no
+// candidate appends nothing. The bank order advances by one every edge,
+// and a bank's pointer moves past the entry it appended. At the same edge
+// each bank's next candidate is found from the state: past the one it
+// appended, the one it holds if it appended none (free and unbuffered, so
+// still good: allocation takes only the buffer), or a fresh search if it
+// held none.
 //
 // Frees OR into the free bits at the edge. They come from the retire
 // stage's register and a registered squash (OA's response OI-58), so a
@@ -97,7 +103,8 @@
 // State is one register, and its next value a function of it and this
 // cycle's inputs alone (CCV-L23). Local clock gating: the free bits are
 // clocked on last cycle's allocation or a free's lead, the buffer side on last cycle's
-// allocation or a refill, and the two-bit bank order and the registered
+// allocation or a refill, the candidates on either of those or on the
+// free bits' change at the last edge, and the two-bit bank order and the registered
 // request count every edge. The grant ports read a copy of the buffer and
 // its count (NGD-7: the state's own paths run through the refill, deeper
 // than an output's budget). The registered count serves both, its outputs
@@ -164,6 +171,7 @@ module ooe_freelist #(
   output logic [N-1:0]   free_cq02h,         // the free bits, the entries in transit still set
   output logic [K*LM-1:0] bptr_cq02h,        // each bank's pointer, within the bank
   output logic [LK-1:0]  rot_cq02h,          // the bank refill starts with
+  output logic [K*(LM+1)-1:0] bcand_cq02h,   // each bank's candidate {found, index within the bank}
   output logic [N*NSB-1:0] sec_cq02h         // each row's live sections
 `endif
 );
@@ -189,8 +197,9 @@ module ooe_freelist #(
   localparam int OCNT  = OBUF + B * W;
   localparam int OPTR  = OCNT + LB;
   localparam int OROT  = OPTR + K * LM;
-  localparam int OIN   = OROT + LK;         // N bits: entry is in the buffer
-  localparam int SW    = OIN + N;
+  localparam int OIN   = OROT + LK;         // N bits: entry is in the buffer or a bank's candidate
+  localparam int OCQ   = OIN + N;           // each bank's candidate: K x {found, index}
+  localparam int SW    = OCQ + K * (LM + 1);
 
   // The reset, flopped before any use (RST-1).
   logic rst_r01h;
@@ -271,8 +280,9 @@ module ooe_freelist #(
     first_from = hi[LM] ? hi : all;
   endfunction
 
+
   // The same first entry as a one-hot, from a log-depth prefix OR, so the
-  // buffered mask is updated without decoding the index back.
+  // held set is updated without decoding the index back.
   function automatic logic [M-1:0] first_oh(input logic [M-1:0] v, input logic [LM-1:0] ptr);
     logic [M-1:0] ge, hi, below_hi, below_all, t;
     for (int i = 0; i < M; i++) ge[i] = LM'(i) >= ptr;
@@ -303,8 +313,11 @@ module ooe_freelist #(
     logic [B*W-1:0]    buf_q, nbuf;
     logic [K*LM-1:0]   bptr, cand;
     logic [K-1:0]      found, ord_ok;
+    logic [K*(LM+1)-1:0] cq_nx;            // each bank's next candidate
+    logic [LM-1:0]     sp;                 // where a bank's search starts
+    logic [LM:0]       fs;                 // its result
+    logic [M-1:0]      os;                 // the same, one-hot
     logic [K*W-1:0]    ent;                // each bank's candidate entry
-    logic [K*M-1:0]    oh;                 // and as a one-hot within its bank
     logic [K*LK-1:0]   ord_bank;              // the r-th found bank, in rotating order
     logic [K*LB-1:0]   rank;               // each bank's rank among the found
     logic [LB-1:0]     cnt, rem, nfound, room, cnt_nx;
@@ -326,20 +339,16 @@ module ooe_freelist #(
     for (int q = 1; q <= A; q++)
       for (int i = 0; i < q && i < B; i++)
         if (kq[q] && LB'(i) < cnt) popped[buf_q[i * W +: W]] = 1'b1;
-    // Each bank's candidate: its first free, unbuffered entry at or after
-    // its pointer. State only, so it runs beside the requests.
+    // Each bank's candidate, registered at the last edge (scan (a)): its
+    // first free, unbuffered entry at or after its pointer, found then.
     found = '0;
     cand  = '0;
     ent   = '0;
-    oh    = '0;
     for (int bb = 0; bb < K; bb++) begin
-      for (int i = 0; i < M; i++) bank[i] = bits[i * K + bb] && !inbuf[i * K + bb];
-      fc                  = first_from(bank, bptr[bb * LM +: LM]);
+      fc                  = st[OCQ + bb * (LM + 1) +: LM + 1];
       found[bb]           = fc[LM];
-
       cand[bb * LM +: LM] = fc[LM-1:0];
       ent[bb * W +: W]    = W'(32'(fc[LM-1:0]) * K + bb);
-      oh[bb * M +: M]     = first_oh(bank, bptr[bb * LM +: LM]);
     end
     // The found banks in rotating order: each one's rank, and the r-th.
     rank   = '0;
@@ -394,16 +403,30 @@ module ooe_freelist #(
     rem = '0;
     for (int q = 0; q <= A; q++) rem = rem | ((cnt - LB'(q)) & {LB{kq[q]}});
     room  = LB'(B) - rem;
+    // The held set (inbuf) is the buffer and the candidates: an entry joins
+    // it as it becomes a candidate, so an append changes nothing there and
+    // the search excludes the candidate held. It leaves as it is popped.
     added = '0;
     for (int bb = 0; bb < K; bb++) begin
       adv = found[bb] && rank[bb * LB +: LB] < room;   // rank < nfound already
-      for (int ii = 0; ii < M; ii++) added[ii * K + bb] = adv && oh[bb * M + ii];
       nxp = (32'(cand[bb * LM +: LM]) == M - 1) ? '0 : cand[bb * LM +: LM] + LM'(1);
+      // The next candidate, searched from the state beside the requests,
+      // then picked by adv: one search, from the candidate held (itself in
+      // the held set, so this is the search past it, from the pointer an
+      // append moves to) or, holding none, from the bank's pointer. A bank
+      // that holds one and appends none keeps it.
+      for (int i = 0; i < M; i++) bank[i] = bits[i * K + bb] && !inbuf[i * K + bb];
+      sp = found[bb] ? cand[bb * LM +: LM] : bptr[bb * LM +: LM];
+      fs = first_from(bank, sp);
+      os = first_oh(bank, sp);
+      cq_nx[bb * (LM + 1) +: LM + 1] = (found[bb] && !adv) ? {1'b1, cand[bb * LM +: LM]} : fs;
+      // A new candidate joins the held set.
+      for (int ii = 0; ii < M; ii++) added[ii * K + bb] = (adv || !found[bb]) && os[ii];
       bptr[bb * LM +: LM] = ({LM{adv}} & nxp) | ({LM{!adv}} & bptr[bb * LM +: LM]);
     end
     cnt_nx = (32'(rem) + 32'(nfound) > B) ? LB'(B) : rem + nfound;
     rot = (32'(rot) == K - 1) ? '0 : rot + LK'(1);
-    next_state = {(inbuf & ~popped) | added, rot, bptr, cnt_nx, nbuf, (bits & ~popped) | freed};
+    next_state = {cq_nx, (inbuf & ~popped) | added, rot, bptr, cnt_nx, nbuf, (bits & ~popped) | freed};
   endfunction
 
   // The state; the count of last cycle's allocations, held a cycle; and a
@@ -425,6 +448,7 @@ module ooe_freelist #(
   assign free_cq02h = st_cq02h[OBITS +: N];
   assign bptr_cq02h = st_cq02h[OPTR +: K * LM];
   assign rot_cq02h  = st_cq02h[OROT +: LK];
+  assign bcand_cq02h = st_cq02h[OCQ +: K * (LM + 1)];
 `endif
 
   // Rename checks the buffer's count first, so every port that asks finds
@@ -462,7 +486,8 @@ module ooe_freelist #(
   // pool, too deep for an enable): from the module's own flops (CG-5). The
   // bank order and the registered count are written every edge, five flops
   // with no gate, and the lead's flop.
-  logic          bits_en_cq01h, buf_en_cq01h;
+  logic          bits_en_cq01h, buf_en_cq01h, cq_en_cq01h;
+  logic          bits_ch_cq02h;      // the free bits were clocked at the last edge
   logic [SW-1:0] nx_cq01h;
   logic [LA-1:0] rq_cq01h;          // how many this cycle takes: where the request prefix ends
   // This cycle's frees: the retire stage's mask, or with sections the
@@ -471,6 +496,10 @@ module ooe_freelist #(
   // With sections a row frees only as it returns (fr_en), whatever the lead.
   assign bits_en_cq01h = rq_cq02h != '0 || (NS == 0 && free_en_cq01h) || fr_en_cq02h;
   assign buf_en_cq01h  = rq_cq02h != '0 || 32'(st_cq02h[OCNT +: LB]) < B;
+  // A candidate changes only when it appends (the buffer's enable), or,
+  // held none, when the bits it searches changed at the last edge: the
+  // buffered set and the pointers change only under the buffer's enable.
+  assign cq_en_cq01h   = buf_en_cq01h || bits_ch_cq02h;
   always_comb begin
     rq_cq01h = '0;
     for (int q = 1; q < A + 1; q++)
@@ -485,13 +514,17 @@ module ooe_freelist #(
       st_cq02h[OCNT +: LB]          <= '0;
       st_cq02h[OPTR +: K * LM + LK] <= '0;
       st_cq02h[OIN +: N]            <= '0;
+      st_cq02h[OCQ +: K * (LM + 1)] <= '0;
       out_cq02h[B * W +: LB]        <= '0;
     end else begin
       if (bits_en_cq01h) st_cq02h[OBITS +: N] <= nx_cq01h[OBITS +: N];
       if (buf_en_cq01h) begin
         st_cq02h[OBUF +: B * W + LB + K * LM] <= nx_cq01h[OBUF +: B * W + LB + K * LM];
-        st_cq02h[OIN +: N]                    <= nx_cq01h[OIN +: N];
         out_cq02h                             <= nx_cq01h[OBUF +: B * W + LB];
+      end
+      if (cq_en_cq01h) begin
+        st_cq02h[OCQ +: K * (LM + 1)] <= nx_cq01h[OCQ +: K * (LM + 1)];
+        st_cq02h[OIN +: N]            <= nx_cq01h[OIN +: N];
       end
       st_cq02h[OROT +: LK] <= nx_cq01h[OROT +: LK];
     end
@@ -500,9 +533,11 @@ module ooe_freelist #(
     if (rst_r01h) begin
       rq_cq02h      <= '0;
       free_en_cq01h <= 1'b0;
+      bits_ch_cq02h <= 1'b0;
     end else begin
       rq_cq02h      <= rq_cq01h;
       free_en_cq01h <= fls_cq00h;
+      bits_ch_cq02h <= bits_en_cq01h;
     end
   end
 
