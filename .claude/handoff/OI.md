@@ -92,10 +92,12 @@ the compact hook printed this handoff.
    scratchpad/wtm, branch oi-price-knobs: ff3e97f knobs, 5193feb model fixes (both
    unpushed; back them up). OA batch results (OI revs 266-270):
    - freelist scan (a) TAKEN (OA 324): exact model fl_two_step (FreeVec::refill2, default
-     ON in wtm), audit 0.00% to the cycle. RTL in wtm (uncommitted): registered bank
-     candidates OCQ, inbuf = buffer + candidates, one search per bank from cand or bptr;
-     freelist bench PASS 3 pools, new control one-step caught. NGD gpr logic 19.6 but
-     fanout 27.9 (was 30.3): still tracing (fanout of the search compares/adv).
+     ON in wtm), audit 0.00% to the cycle. RTL in wtm f7f6eff (on gate-scratch/OI):
+     registered bank candidates OCQ + search start OSP, inbuf cleared a cycle late from
+     registered pop mask pr (pr_v-masked). Fanout NGD f-f gpr 24.8, gsec 25.0, pred 24.3;
+     bench PASS 3 pools, control one-step caught. NEXT: check-cg on 3 units (log
+     ~/ccv-logs/oi-cg-fl.log; check-cg OOM-killed once beside a bench: run alone),
+     25-seed bench, rename run-rtl sections, ooe-test, merge to main, gate-push, tell OA.
    - rs a cycle ahead: CORRECTED +1.1-1.6% audit (rev 270; old knob missed renCredits,
      now lagged in model). PAUSED: OA to rule DA vs copies probe (valid 26 -> Sklansky
      131/207 -> rows). RTL design ready (2A index cands/class, port k takes n_q+k).
