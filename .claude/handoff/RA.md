@@ -85,6 +85,7 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
+- RA-11 PHYS_REGS sweep (TI rev 315): RA rev 67 gave RCU flops 246k/212k/179k at 192/160/128, notice AR; decision AR + DA. 160 ~free; 128 waits OI's fits_stale/V-N check failures. RA-19 stub fix landed (TI rev 314, 9ce7381).
 - RA-40 closed: TI landed MIU lead_fields (b85595b, TI rev 311), AR MIU spec rev 48; closure at RA rev 66.
 - RI is live: session_01QPk2jvvXPLs4m8ZQbSk1g6, register tab 8e4547bc-c469 (bookmark rev 2).
   RI-3..6 answered at RA rev 64, notice sent: credit at launch intended (TI marks
