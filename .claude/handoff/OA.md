@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 323, AR 269, TI 297, OI 268, IS 188, CP 152, DA 105,
+Conventions 17, OA 324, AR 269, TI 297, OI 269, IS 188, CP 152, DA 105,
 RA 60 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
 OOE doc rev 357. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
@@ -53,7 +53,7 @@ OOE doc rev 357. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    rev 322: TAKEN freelist (a) two-step + rs candidates (0.00% audit; S1 to
    confirm, >0.2% back to OA). decq -> DA (rev 323): OA recommends (a) decq 15
    + free lag 1 (-2.2% vs today sectioned, model; +2 entries area); (b) 14+lag
-   +0.6%. Waiting on DA; OI runs S1 on both.
+   +0.6%, S1 (a) -0.03% (b) +0.06% vadd4 +13%. Waiting on DA. freelist/rs final.
 -1. OA-24 CLOSED (OA rev 314): OI's split pushed (e35c9f9/4d388f8); budgets
    re-signed; CG 1.03% within 2%; per-net plan still covers ooe_rob_w head_cq02h
    (2205 loads) and rst_r01h; miter depth 16 at 8 entries asked if cheap.
