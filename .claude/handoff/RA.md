@@ -54,9 +54,9 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 - Push: tools/gate-push.sh (scoped gate; docs/ and .claude/ map to no
   sections). Merge commits only. No PRs. No model ids in commits.
 
-## Register bookmarks (2026-11-03)
-AR 269, OA 316, RA 60, DA 104, Conventions 17, CP 152, IS 188, TI 297, OI 254, RI 1
-CP 149, DA 99, Conventions 16).
+## Register bookmarks (2026-11-04 sweep)
+AR 275, OA 331, RA 64, DA 106, Conventions 17, CP 152, IS 189, TI 309, OI 274, RI 3. RA-39 (c) landed (TI rev 309); only OI lead NGD/CG left.
+RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
 Doc 1e5066f9-e4db-4fe3-aabc-0022606c9e96 (https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB).
@@ -85,6 +85,12 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
+- RA-40 closed: TI landed MIU lead_fields (b85595b, TI rev 311), AR MIU spec rev 48; closure at RA rev 66.
+- RI is live: session_01QPk2jvvXPLs4m8ZQbSk1g6, register tab 8e4547bc-c469 (bookmark rev 2).
+  RI-3..6 answered at RA rev 64, notice sent: credit at launch intended (TI marks
+  ooe_rcu_map / rau_rcu_mig backpressured); LW = footprint (Lane+mem rev 5); FULL_ROW
+  parameter, 1 now, SW+MW+RW whole row zero above width (Register file rev 7; asked RI to
+  check SW in its model); RI-6 (a)-(d) in Migration rev 7, Predicate file rev 4.
 - 2026-11-04 HANDOFF AUDIT DONE (Daniel: "everything ready for handoff to RI"). Spec live revs:
   Overview 31 (status says ready for RI; decisions + open tables cover RA-35..39), Conventions 4,
   Pipeline 5 (IL/I/R rows + R-op cycle table carry RA-39), Register file 6, R unit 8, Done 13,

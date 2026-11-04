@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=6 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 6 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=7 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 7 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Register file
 
@@ -66,11 +66,18 @@ The owner of section k is the lead (cont = 0) S slot j ≤ k whose `footprint` h
 | Port | Lands in | Row select | Data for lane l | Lanes written | Section k written when |
 | --- | --- | --- | --- | --- | --- |
 | LW (lane) | A+6 | lane descriptor `lwb_d[k]` at depth 6 (predecoded at A) | `lane_rcu_res` c\_l `result`\[8k+7:8k\] | all 32; the GPR copy writes only lanes with `active` = 0 | descriptor valid, the op owns section k, it writes a GPR |
-| SW (SFU) | A+11 | SFU descriptor `swb_d` at depth 11 | the SFU second result (RA-3), byte k | all 32 | descriptor valid and k in the SFU destination's `secmask` |
-| MW (load) | MIU payload cycle T | `mdat_lead_q[j]`, predecoded on the wire in T−1 | `load_data` lane word of slot j, shifted left 8·pos, byte k | lanes in the lead `active_mask` | `mdat_v_q[j]` and k in `secmask(dst_width, dst_pos)` of slot j, and phys\_dst is not the zero register |
-| RW (R) | A+2 | `rres_a1` | R result (already merged with the old destination), shifted to pos, byte k; or a staged restore row | all 32 | R result valid and k in its `secmask`; a restore row writes all four |
+| SW (SFU) | A+11 | SFU descriptor `swb_d` at depth 11 | the SFU second result (RA-3), byte k | all 32 | descriptor valid and k in the SFU destination's `secmask` (all four under `FULL_ROW`) |
+| MW (load) | MIU payload cycle T | `mdat_lead_q[j]`, predecoded on the wire in T−1 | `load_data` lane word of slot j, shifted left 8·pos, byte k | lanes in the lead `active_mask` | `mdat_v_q[j]` and k in `secmask(dst_width, dst_pos)` of slot j (all four under `FULL_ROW`), and phys\_dst is not the zero register |
+| RW (R) | A+2 | `rres_a1` | R result (already merged with the old destination), shifted to pos, byte k; or a staged restore row | all 32 | R result valid and k in its `secmask` (all four under `FULL_ROW`); a restore row writes all four |
 
 **One load write per bank per cycle.** Four MIU slots can land in one cycle, so bank k's MW port takes the one slot j whose `secmask` covers k. Two slots covering the same bank in one cycle is an MIU contract breach (asserted; raised to AR as RA-28, since narrow loads in different pipes can name overlapping sections).
+
+**The full-row interim (AR-24; RI-5, 2026-11-04).** Today OOE allocates every register as a whole row at position 0, charged four sections, while the width codes stay the registers' own (`full_rows`, AR-24's interim; OOE's RTL keeps rows whole until its slice 6). The lanes then do no swizzle, and narrow-carry and lane-unmasked ops read the row whole, so the row must be zero above the register's width. `ccv_rcu` therefore takes a parameter `FULL_ROW`, passed down to every slice and to `r` and `mem`, **built as 1 now**:
+
+- `FULL_ROW` = 1: SW, MW and RW write all four banks of the row; the data above `dst_width` is forced to zero (an AND per byte from the width code, in the write data's own stage). LW needs nothing: it writes the op's owned sections, which OOE makes the whole row.
+- `FULL_ROW` = 0: the enables are the `secmask` terms in the table above, the spec's sectioned build.
+
+It flips to 0 only when both have landed: OOE allocating narrow registers at their positions (the footprint build, AR-24's end) and the lanes' swizzle. Every kernel without `full_rows` today has only 32-bit registers, for which the two settings write the same banks. The RCU model's `Config::full_row` (`CCV_RCU_FULL_ROW`) is the same switch; RTL and model run lock-step at the same setting.
 
 **D input and enable, per row r of bank k:**
 

@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-03. Keep this current at every task's end; it is what
+Updated 2026-11-04. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -48,7 +48,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 316, IS 189, TI 297, OI 254, CP 152, DA 104, RA 60, RI 1.
+Conventions 17, AR 275, OA 331, IS 189, TI 305, OI 274, CP 152, DA 106, RA 64, RI 3.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.

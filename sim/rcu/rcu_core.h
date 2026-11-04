@@ -116,6 +116,7 @@ struct Lead {   ///< the issue lead slice (RA-31), as the payload's lead fields
   unsigned sec = 0, src = 0;
   bool imm = false, merge = false, guard = false;
   unsigned gpred = 0;
+  std::array<unsigned, 2> rsrc{};   ///< R's first two source rows a cycle ahead (RA-39 (b))
 };
 
 struct Issue {
@@ -245,7 +246,8 @@ struct Config {
   /// Repeater stages on the issue and done links (params/links.json), for
   /// KILL_DRAIN.
   unsigned issue_stages = 0, done_stages = 0;
-  /// AR-24's interim on a full row (this build: no narrowing): MW and RW
+  /// AR-24's interim on a full row (this build: no narrowing; the RTL's
+  /// FULL_ROW, Register file tab rev 7, run lock-step at one setting): SW, MW and RW
   /// write a narrow register zero-extended across all four banks, so a row
   /// holds one register and is zero above its element. Off, they write
   /// secmask(width, pos) only, as the Register file tab says.
@@ -311,6 +313,7 @@ private:
     unsigned port, row, secs;
     uint32_t lanes;
     Word data;   ///< each lane's word, already steered: only secs's bytes are written
+    int slot = -1;   ///< the MIU slot of an MW write
   };
   struct PWrite {
     unsigned port, row;
@@ -318,6 +321,7 @@ private:
     uint32_t val, mm;      ///< D = (old & ~mm) | (val & mm), old read at write time
     int oldrow;            ///< the old destination's row, or -1 for 0
     bool miu;
+    int slot = -1;         ///< the MIU slot of a PM write
   };
   /// A lane op in flight, from its issue to its write-back.
   struct LaneDesc {
@@ -328,6 +332,7 @@ private:
     unsigned tag, done_row;
     uint64_t tid, a;
     uint64_t acc;   ///< the issue's A, where RCU took it (a held copy leaves later)
+    int dslot = -1; ///< a done slot other than the lead's (movi-in-lane's movi keeps R's)
   };
   /// The bypass history: a lane producer of a GPR, by issue cycle.
   struct Producer { uint64_t a; unsigned row, pos, secs, lead; };
@@ -366,7 +371,8 @@ private:
   std::map<uint64_t, std::vector<Done>> dsched_;      ///< dones by launch cycle
   std::deque<Producer> hist_;
   struct Deferred { uint64_t at; LaneMsg msg; LaneDesc d; };
-  std::deque<Deferred> late_;   ///< late-copy's held copies
+  std::deque<Deferred> late_;   ///< held lane messages (late-copy, movi-in-lane)
+  uint64_t movi_a_ = 0, movi_hold_ = 0;   ///< movi-in-lane: the movi's A, the lane queue's tail
 
   // Migration state (Migration tab).
   std::vector<MapEnt> mq_;
@@ -393,6 +399,8 @@ private:
   // Kill.
   unsigned drain_ = 0;
   bool drain_loaded_ = false;
+  bool kill_pend_ = false;    ///< a kill not yet quiet: KillAck when it is
+  unsigned kill_epoch_ = 0;
   bool idle_ = false;
   uint64_t idle_cycles_ = 0;
 
