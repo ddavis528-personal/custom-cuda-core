@@ -90,6 +90,7 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   Pipeline 5 (IL/I/R rows + R-op cycle table carry RA-39), Register file 6, R unit 8, Done 13,
   Partition 16 (M3 budget 11). Snapshots all current. rcu-impl.md: fanout enforced, RA-39 bullet,
   phase 2 exit (bank-out 11; A path ~16, A+1 compute ~13), waits-on row RA-39 (TI c, OI lead NGD/CG).
+  Sizing stand-in archived at archive/rcu-bank-sizing/ (Daniel, 2026-11-04).
   Next: report to Daniel; RI waits on TI (RA-16/30/36/37/38/39c) and OI (ooe_wake, lead NGD/CG).
 - RTL-depth spec complete (2026-11-02): https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB.
   Daniel notified for review; iterate on his comments (doc comments or chat).
