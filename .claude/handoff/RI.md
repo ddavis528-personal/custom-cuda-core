@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 331, IS 189, TI 310, OI 274, CP 152, DA 106, RA 64, RI 4.
+Conventions 17, AR 275, OA 331, IS 189, TI 310, OI 274, CP 152, DA 106, RA 68, RI 5.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -38,8 +38,12 @@ Nothing had RI in Needs at session start.
 - Gate: split gate if all sections run (`verify.sh --full --only ngd` + gate-export + gate-push --import).
 
 ## Open work, most urgent first
-1. M0: model check-kernel all green (mwmiss parked fixed by backpressure?), sv-hosted with model,
-   cycles table vs stub, gate-push, M0 row in RI tab + notice RA/TI. Tell TI: EV_RCU_GUARD_FWD doc
-   direction reversed (MIU->RCU).
+1. M0 MET and pushed (5968894, SPLIT SCOPED PASS 22/22; 2026-11-04). Reported as RI-8 (RI rev 5),
+   with RI-1/2/3 closed in responses; notices sent to RA and TI. Cycles ~/ccv-logs/m0-cycles.txt.
+   RA ACCEPTED M0's model part (RA tab rev 68): kill-ending +10-13 is KILL_DRAIN, -1..-5 stub slack.
+   M0's second part (RTL lock-step vs model) is phase 5. TI to make the model default (RA-38 (a))
+   and fix GUARD_FWD's doc.
+   Split gate recipe when every section runs: verify --changed <base> --only cg, export; same for
+   ngd; gate-push --import=a.tgz,b.tgz (each part under the 2-h background limit).
 2. Answer TI/RA/OI responses to RI-1..7 at the daily sweep.
-3. Phase 2 (bank slice, R pipe RTL) after M0.
+3. Phase 2 (bank slice, R pipe RTL): start now; NGD fanout>4 is enforced (RA-33).
