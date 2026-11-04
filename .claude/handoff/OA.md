@@ -40,11 +40,16 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 320, AR 269, TI 297, OI 264, IS 188, CP 152, DA 104,
+Conventions 17, OA 321, AR 269, TI 297, OI 265, IS 188, CP 152, DA 105,
 RA 60 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
 OOE doc rev 356. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
+-2. DA 11-04 (DA tab 105): fanout term ENFORCED in check-ngd, today's paths
+   ratcheted (TI builds). OA rev 321 order: go+sched (held) first; then one model
+   batch pricing freelist scan (a two-step / b banked) + rs/decq free candidates
+   a cycle ahead (<0.5% total mine, else DA); rendep sender probe (else rename
+   stage -> DA); rob_w fill probe (input stage?); go remainder; copies last.
 -1. OA-24 CLOSED (OA rev 314): OI's split pushed (e35c9f9/4d388f8); budgets
    re-signed; CG 1.03% within 2%; per-net plan still covers ooe_rob_w head_cq02h
    (2205 loads) and rst_r01h; miter depth 16 at 8 entries asked if cheap.
