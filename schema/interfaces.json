@@ -369,9 +369,7 @@
         "lead_imm_used",
         "lead_merge_used",
         "lead_guard_used",
-        "lead_guard_pred",
-        "lead_r_src0",
-        "lead_r_src1"
+        "lead_guard_pred"
       ],
       "lead_fields": [
         "lead_sec_mask",
@@ -379,22 +377,14 @@
         "lead_imm_used",
         "lead_merge_used",
         "lead_guard_used",
-        "lead_guard_pred",
-        "lead_r_src0",
-        "lead_r_src1"
+        "lead_guard_pred"
       ],
-      "lead_why": "RCU's per-field operand enables (RA-31; OA's revs 306-307, AR's rev 267): the operand groups an issue loads are enabled a cycle ahead from RCU's own flops (CG-5), so a group the op does not use is never clocked. On every slot's lead: lead_sec_mask, the op's footprint; lead_src_used, bit i set when GPR source i is a real read (the entry's src_valid); lead_imm_used, set when imm_kind is not none, which covers every substitution OOE makes into imm (srd identities, call's link, predicate logic's and vote's and ballot's predicate sources) and, imm_kind 0 being literal, every literal-kind op, a superset AR accepts; lead_merge_used, set when the write merges (merge_en). On R's slot only (slot_fields): lead_guard_used, set when the guard is not the always-true predicate, and lead_guard_pred, its physical predicate; the negate stays in the payload. Also on R's slot only (RA-39 (b); OA's rev 328, AR's rev 271): lead_r_src0 and lead_r_src1, the physical rows of phys_src[15:8] and phys_src[7:0], each zero when lead_src_used says that source is unused, so R reads its first two sources in A into flops and computes from them in A+1; CCV_LAT_RCU stays 3. 2 CCV_P_W_PHYS_REG = 16 wires. OOE builds all of it at select from the RS entry's static fields, opcode-blind. Every bit is a superset: a set bit may load a group the op does not use, a clear bit is a promise that it does not, and the RCU stub refuses an issue whose payload breaks one. A continuation's lead is zero. About 104 wires; a repeated link would carry them at each stage (it has none, params/links.json).",
+      "lead_why": "RCU's per-field operand enables (RA-31; OA's revs 306-307, AR's rev 267): the operand groups an issue loads are enabled a cycle ahead from RCU's own flops (CG-5), so a group the op does not use is never clocked. On every slot's lead: lead_sec_mask, the op's footprint; lead_src_used, bit i set when GPR source i is a real read (the entry's src_valid); lead_imm_used, set when imm_kind is not none, which covers every substitution OOE makes into imm (srd identities, call's link, predicate logic's and vote's and ballot's predicate sources) and, imm_kind 0 being literal, every literal-kind op, a superset AR accepts; lead_merge_used, set when the write merges (merge_en). On R's slot only (slot_fields): lead_guard_used, set when the guard is not the always-true predicate, and lead_guard_pred, its physical predicate; the negate stays in the payload. OOE builds all of it at select from the RS entry's static fields, opcode-blind. Every bit is a superset: a set bit may load a group the op does not use, a clear bit is a promise that it does not, and the RCU stub refuses an issue whose payload breaks one. A continuation's lead is zero. About 88 wires; a repeated link would carry them at each stage (it has none, params/links.json).",
       "slot_fields": {
         "lead_guard_used": [
           "CCV_ISSUE_SLOT_R"
         ],
         "lead_guard_pred": [
-          "CCV_ISSUE_SLOT_R"
-        ],
-        "lead_r_src0": [
-          "CCV_ISSUE_SLOT_R"
-        ],
-        "lead_r_src1": [
           "CCV_ISSUE_SLOT_R"
         ]
       },
@@ -1686,8 +1676,6 @@
     "lead_merge_used": "1",
     "lead_guard_used": "1",
     "lead_guard_pred": "CCV_P_W_PHYS_PRED",
-    "lead_r_src0": "CCV_P_W_PHYS_REG",
-    "lead_r_src1": "CCV_P_W_PHYS_REG",
     "bypass_group": "CCV_P_W_BYP_GROUP",
     "src_pos": "3*CCV_W_PHYS_POS",
     "src_width": "3*CCV_W_CHWIDTH",

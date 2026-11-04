@@ -16,11 +16,11 @@ fi
 # RI's named controls (RI-8): each must print that it was caught, so one that
 # stops firing fails here rather than passing quietly.
 missing=""
-for c in lane-missing lane-early byp-age3 guard-hazard v60 mig-row-order restore-zero lead-rsrc-swap; do
+for c in lane-missing lane-early byp-age3 guard-hazard v60 mig-row-order restore-zero; do
   grep -qx "control $c caught" "$log" || missing="$missing $c"
 done
 if [ -z "$missing" ]; then
-  say "RCU unit-test controls caught" "PASS (8)"
+  say "RCU unit-test controls caught" "PASS (7)"
 else
   say "RCU unit-test controls caught" "FAIL (not caught:$missing)"; exit 1
 fi

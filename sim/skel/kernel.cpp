@@ -2943,14 +2943,6 @@ private:
       const bool lmrg = get(m.payload, c.ooe_rcu, "lead_merge_used") != 0;
       const bool lgrd = get(m.payload, c.ooe_rcu, "lead_guard_used") != 0;
       const unsigned lgp = unsigned(get(m.payload, c.ooe_rcu, "lead_guard_pred"));
-      // RA-39 (b): R's first two source rows, as its payload names them,
-      // zero when the lead calls the source unused (and off R, always).
-      const unsigned lps = unsigned(get(m.payload, c.ooe_rcu, "phys_src"));
-      const unsigned lr0 = unsigned(get(m.payload, c.ooe_rcu, "lead_r_src0"));
-      const unsigned lr1 = unsigned(get(m.payload, c.ooe_rcu, "lead_r_src1"));
-      const bool on_r = s == kSlotR;
-      const bool rsrc_bad = lr0 != (on_r && (lsrc & 1u) ? (lps >> 8) & 0xffu : 0u) ||
-                            lr1 != (on_r && (lsrc & 2u) ? lps & 0xffu : 0u);
       unsigned rd = 0;
       for (unsigned i = 0; op && i != op->nsrc; ++i)
         if (!(op->alu_imm >= 0 && int(i) == op->imm_slot)) rd |= 1u << i;
@@ -2961,8 +2953,7 @@ private:
                         : get(m.payload, c.ooe_rcu, "merge_en") && !lmrg ? "a merge its lead says is unused"
                         : s == kSlotR && op && op->guard &&
                           (!lgrd || lgp != unsigned(get(m.payload, c.ooe_rcu, "phys_pred_guard")))
-                            ? "a guard its lead does not name"
-                        : rsrc_bad ? "a source row its lead does not name" : nullptr;
+                            ? "a guard its lead does not name" : nullptr;
       if (why)
         k_.fail("rcu: seq %llu, %s, reads %s (lead sections %s, sources %s)",
                 (unsigned long long)uidSeq(m.tid), op ? op->name : "a copy", why,
