@@ -1,6 +1,6 @@
 # RA handoff (RCU block architect)
 
-Updated 2026-11-02. Keep this current at every task's end; it is what
+Updated 2026-11-04. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules (written for TI);
 docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 
@@ -54,8 +54,8 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 - Push: tools/gate-push.sh (scoped gate; docs/ and .claude/ map to no
   sections). Merge commits only. No PRs. No model ids in commits.
 
-## Register bookmarks (2026-11-02)
-AR 268, OA 310, RA 60, DA 103, Conventions 17, CP 152, IS 186, TI 295 (others as at session start: OI 252,
+## Register bookmarks (2026-11-03)
+AR 269, OA 316, RA 60, DA 104, Conventions 17, CP 152, IS 188, TI 297, OI 254, RI 1
 CP 149, DA 99, Conventions 16).
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -85,6 +85,12 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
+- 2026-11-04 HANDOFF AUDIT DONE (Daniel: "everything ready for handoff to RI"). Spec live revs:
+  Overview 31 (status says ready for RI; decisions + open tables cover RA-35..39), Conventions 4,
+  Pipeline 5 (IL/I/R rows + R-op cycle table carry RA-39), Register file 6, R unit 8, Done 13,
+  Partition 16 (M3 budget 11). Snapshots all current. rcu-impl.md: fanout enforced, RA-39 bullet,
+  phase 2 exit (bank-out 11; A path ~16, A+1 compute ~13), waits-on row RA-39 (TI c, OI lead NGD/CG).
+  Next: report to Daniel; RI waits on TI (RA-16/30/36/37/38/39c) and OI (ooe_wake, lead NGD/CG).
 - RTL-depth spec complete (2026-11-02): https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB.
   Daniel notified for review; iterate on his comments (doc comments or chat).
   First pass is in the Overview tab's history (rev 15).
@@ -137,13 +143,23 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
 - Sweep 2026-11-03 pushed at 047159d (SPLIT SCOPED PASS: cg alone 58 min, exported, then gate-push --import; a
   4-core container can't fit cg+ngd in one 2 h job). TI rev 295 fixed the heavy guard (per-command peaks, 16ab8ae).
   OI's ooe_rob split landed (ooe_rob_w); heavy-units.json merged as ooe_rob_w, ooe_rename, ooe_sched.
-- Bank sizing (Daniel 2026-11-03: go ahead; size units like ooe_rob_w). Stand-in + driver in scratchpad sizing/
-  (rcu_bank_sz.sv, measure.py = check-ngd's own synth+ABC, private cold cache). ooe_rob_w ref: 5,359 flops, 158k cells,
-  1,914 MiB, 561 s. Bank 192 rows: 2 lanes 3,479 fl/99k cells/692 MiB; 4 lanes 6,551/193k/1,350; 8 lanes
-  12,695/383k/2,665 (heavy); full 32 lanes extrapolates ~50k/1.5M/~10.5 GB. Read flop-out 8.3 NGD (fanout 11.0) vs
-  Partition budget 7: R path tight. Write 7.3, write-data in 5.6. Proposed: 4-lane slices, 8/bank, 32 in RCU. Awaiting
-  Daniel on slicing + R-read depth before editing the spec. Keep big modules' param defaults small (Yosys elaborates
-  defaults at read: 4.7 GB on a 64k-cell unit).
+- Bank slicing DECIDED (Daniel 2026-11-03/04): ccv_rcu_bank_slice #(K,J) x32 = byte K of lanes 4J..4J+3,
+  192x32b, ~6,550 flops, own 14x28 selects, 32-flop row gate groups; physical chunk = 4 slices (4 lanes whole,
+  ~770k cells), 8 chunks; flat P&R, chunks keep physical partitioning open. Folded: Register file rev 5,
+  Partition rev 13, Overview rev 29 (decisions row), snapshots, rcu-impl.md. Rejected with numbers: 2/8-lane byte
+  slices, 1-lane x 4-section lane slice (+27k select flops), one-hot selects (fanout fix, not depth: 8.0/9.3).
+  Stand-in + measure.py only in scratchpad sizing/ (lost with the container).
+- R read depth: Daniel said go (2026-11-04) on the retime; RA chose the EARLY R SOURCE READ instead of compute-late:
+  R0/R1 rows on the R lead (lead_r_src0/1), predecoded A-1, read in A into rsrc_a (2,048 flops), compute A+1 from
+  flops (~13), write A+2 unchanged (LAT_RCU 3, collectives, slots 5/6 unchanged). Safe because a result is readable
+  at A_p+LAT and R consumers never bypass; other readers read at A+1. RA-39 raised (RA rev 61; OA (a) hazard + (b)
+  lead fields, TI (c) schema, AR (d)); notices sent. Spec: R unit rev 7, Partition rev 15 (bank out 11 on all
+  reads, r in 14), Register file rev 6. OA rev 328: all classes meet A except L1-hit loads (data lands in the
+  consumer's A); lead fields accepted. RA priced (i) MIU forward after alignment (RA rev 62, R unit rev 8): ~10k cells,
+  ~190 flops, A path ~16. OA TOOK (i) (rev 329). AR (272-273) asked the partial-write merge be priced: answered RA
+  rev 63 (after alignment the source = the written sections; per-lane merge only; input path 5 NGD). Waiting: TI (c)
+  schema, OI lead NGD/CG. AR (d) agreed (rev 271). Fanout term now enforced in check-ngd (TI rev 299, DA 2026-11-04).
+- Sectioned lanes KEPT (Daniel 2026-11-03; OI-28..31); packed contiguous lanes = PF-50 (c7938fa).
 - Answers due: RA-16, RA-30, RA-36 (TI); RA-37/RA-38 AGREED by TI rev 290 (building: gate-scope + CLAUDE.md first, then makeRcu,
   blocks.list, check-rcu-unit, job_rcu_rtl, CCV_RCU_RTL), impl pending; RA-35 (AR); RA-37 (OA: RI 31 only, roster commit bc1c2b4 named at rev 55); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
