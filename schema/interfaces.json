@@ -770,6 +770,7 @@
       "src": "miu",
       "dst": "dcu",
       "rate": 4,
+      "rate_param": "CCV_DCACHE_LOOKUPS",
       "backpressure": "held: DCU's owner states the hold (DCU spec rev 15, AR-25): a memory-path request, whose receiver holds it only while its miss buffers are full behind a memory stall, the backpressured class (AR's response TI-22), so it takes CCV_P_TIMEOUT_BP",
       "group": "memory",
       "payload_fields": [
@@ -794,6 +795,7 @@
       "src": "dcu",
       "dst": "miu",
       "rate": 4,
+      "rate_param": "CCV_DCACHE_LOOKUPS",
       "group": "memory",
       "payload_fields": [
         "req_id",
@@ -1445,6 +1447,7 @@
       "src": "dcu",
       "dst": "miu",
       "rate": 4,
+      "rate_param": "CCV_DCACHE_LOOKUPS",
       "group": "memory",
       "payload_fields": [
         "req_id"
