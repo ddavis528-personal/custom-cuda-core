@@ -5330,14 +5330,14 @@ private:
 } // namespace
 
 /// The RCU model (sim/rcu/rcu_block.cpp; RI-2, RA-38), and the stub here
-/// beside it: CCV_RCU_IMPL=model selects the model, in both hosts. The stub
-/// stays the default until RI reports the model passes every kernel (M0).
+/// beside it, in both hosts. The model is the default since RI's M0 (RI-8,
+/// RA's acceptance at its rev 68); CCV_RCU_IMPL=stub selects the stub.
 std::unique_ptr<Block> makeRcuModel(int inst, Kernel &k);
 
 static std::unique_ptr<Block> makeRcu(int inst, Kernel &k) {
   const char *impl = std::getenv("CCV_RCU_IMPL");
-  if (impl && std::string(impl) == "model") return makeRcuModel(inst, k);
-  return std::make_unique<Rcu>(inst, k);
+  if (impl && std::string(impl) == "stub") return std::make_unique<Rcu>(inst, k);
+  return makeRcuModel(inst, k);
 }
 
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {

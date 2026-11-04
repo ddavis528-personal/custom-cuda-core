@@ -451,7 +451,7 @@
       "id": 36,
       "class": "load_bearing",
       "provisional": true,
-      "doc": "A guard predicate forwarded to an MIU slot. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "doc": "RCU taking an MIU predicate write (MIU to RCU) as a guard forward: a the issue slot, b the MIU slot, c the predicate row (RI-2 (d)). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
       "fields": {
         "a": "issue_slot",
         "b": "miu_slot",

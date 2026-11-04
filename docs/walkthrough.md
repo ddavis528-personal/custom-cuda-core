@@ -294,13 +294,13 @@ in the same cycle, and gets 32 results back 4 cycles later:
     111  EV_OOE_CANCEL_REPLAY           ooe          
     111  ccv_rcu_lane_ops               rcu  -> lane   x32
     115  ccv_lane_rcu_res               lane -> rcu    x32
-    117  ccv_rcu_ooe_done               rcu  -> ooe       
+    116  ccv_rcu_ooe_done               rcu  -> ooe       
     133  EV_ISSUE                       ooe          
     134  ccv_ooe_rcu_issue              ooe  -> rcu     x4
     136  ccv_rcu_lane_ops               rcu  -> lane   x32
     140  ccv_lane_rcu_res               lane -> rcu    x32
-    142  ccv_rcu_ooe_done               rcu  -> ooe       
-    144  EV_RETIRE                      ooe          
+    141  ccv_rcu_ooe_done               rcu  -> ooe       
+    143  EV_RETIRE                      ooe          
 ```
 
 The trace converts to Perfetto (`tools/trace2perfetto.py`), with a track per
@@ -382,7 +382,7 @@ skeleton's:
 ```
 SVHOST shims=46/46 skewed=none
 KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
-TRACES records=734/734 equal=yes byte_identical=no differing_cycles=0
+TRACES records=767/767 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a

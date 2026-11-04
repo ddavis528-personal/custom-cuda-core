@@ -25,8 +25,9 @@ stubs the OOE model needs to be exercised.**
 **RCU (2026-11-04; RA-36):** the block architecture is complete to RTL
 depth and snapshotted ([`design-snapshots/rcu-arch-overview.md`](design-snapshots/rcu-arch-overview.md)
 and its tabs). Its implementation session, RI, has started, model first:
-[`rcu-impl.md`](rcu-impl.md); `CCV_RCU_IMPL=model` runs RI's model in both
-hosts, and the stub stays the default until RI's M0. RI's exit criteria are
+[`rcu-impl.md`](rcu-impl.md). The model met M0 (RI-8, accepted by RA
+2026-11-04) and is the RCU in both hosts; `CCV_RCU_IMPL=stub` selects the
+stub. RI's exit criteria are
 the Partition tab's M1 to M7
 ([`design-snapshots/rcu-arch-partition.md`](design-snapshots/rcu-arch-partition.md)).
 
