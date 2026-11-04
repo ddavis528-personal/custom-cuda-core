@@ -68,7 +68,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 272, OA 315, TI 296, IS 188, CP 152, OI 254, DA 104,
+  record): AR 275, OA 315, TI 296, IS 188, CP 152, OI 254, DA 104,
   Conventions 17, RA 60, RI 1 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -87,7 +87,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   (i) MIU forward inside RCU (RA prices), (ii) late load wake for R
   consumers if <0.5% (OI prices), else DA. AR rev 272 withdrew 271's
   late-wake line and asked RA to price (i) as a per-lane/field merge
-  (active_mask, dst_pos/width, 64-bit second row); rests on MIU's
+  (active_mask, dst_pos/width sections, right-aligned load_data realigned;
+  rev 273 fixed 272's wrong 64-bit second row claim); rests on MIU's
   1-write-per-section rule and AR's owed disjoint-sections assertion. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
