@@ -847,17 +847,19 @@ module ooe_freelist #(
   // The counts hold a free's while they were loaded with one (fsv: the
   // leads' flops, a cycle on), so they clear at the next edge. With
   // sections a row frees only as it returns (fr_en), whatever the lead.
-  // fsv is fr_ch, the candidates' flop of the same: its reset 1 only loads
-  // the counts with the zeros they hold.
   logic [S*NF*LF-1:0] fs_cq02h;
   logic fs_en_cq01h, fsv_cq02h;
-  assign fsv_cq02h = fr_ch_cq02h;
   assign fs_en_cq01h = (NS == 0 && free_en_cq01h) || fr_en_cq02h || fsv_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       fs_cq02h  <= '0;
+      fsv_cq02h <= 1'b0;
     end else begin
-      if (fs_en_cq01h) fs_cq02h <= fs_nx_cq01h;
+      // fsv under the counts' enable: when it is low, so are fsv and its input.
+      if (fs_en_cq01h) begin
+        fs_cq02h  <= fs_nx_cq01h;
+        fsv_cq02h <= (NS == 0 && free_en_cq01h) || fr_en_cq02h;
+      end
     end
   end
 
@@ -880,8 +882,10 @@ module ooe_freelist #(
       fsp_cq03h <= '0;
       fpv_cq03h <= 1'b0;
     end else begin
-      fpv_cq03h <= fsv_cq02h;
-      if (fsp_en_cq02h) fsp_cq03h <= fsp_nx_cq02h;
+      if (fsp_en_cq02h) begin   // fpv likewise
+        fsp_cq03h <= fsp_nx_cq02h;
+        fpv_cq03h <= fsv_cq02h;
+      end
     end
   end
 
