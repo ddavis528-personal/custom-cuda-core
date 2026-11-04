@@ -264,16 +264,27 @@ module ooe_decq #(
   // take in transit. The same as the busy bits' count (an assertion).
   (* keep *) logic [LU-1:0] used_q_cq02h;   // the count, and its copy out (NGD-7)
   (* keep *) logic [LU-1:0] used_o_cq02h;
-  // With FL the copy out is the count before this edge's frees: the last
-  // count and this edge's arrivals, no subtract. It is clocked with the
-  // queue, and on the edge after one that freed entries (fr_q), so their
-  // credits return then.
-  logic [LU-1:0]   used_l_cq01h;
+  // With FL the count takes an edge's frees an edge late: the frees,
+  // summed from flops and registered (frn), come off at the next edge,
+  // beside that edge's arrivals, so no slot's count is in the arrivals'
+  // cycle. Both copies hold it; the count is clocked with the queue, and
+  // on the edge after one that freed entries (fr_q), so their credits
+  // return then.
+  logic [LU-1:0]   used_l_cq01h, frn_cq02h, frn_nx_cq01h;
   logic            fr_q_cq02h, uo_en_cq01h;
-  always_comb begin
-    used_l_cq01h = used_q_cq02h;
-    for (int k = 0; k < E; k++) used_l_cq01h = used_l_cq01h + LU'(enq_v_cq01h[k]);
-  end
+  function automatic logic [LU-1:0] used_late(input logic [LU-1:0] u, input logic [E-1:0] ev,
+                                              input logic [LU-1:0] fr);
+    used_late = u - fr;
+    for (int k = 0; k < E; k++) used_late = used_late + LU'(ev[k]);
+  endfunction
+  function automatic logic [LU-1:0] freed_of(input logic [SW-1:0] st, input logic [S*LR-1:0] tk,
+                                             input logic [S-1:0] fl);
+    freed_of = '0;
+    for (int s = 0; s < S; s++)
+      freed_of = freed_of + (fl[s] ? LU'(st[OCNT + s * LC +: LC]) : LU'(tk[s * LR +: LR]));
+  endfunction
+  assign used_l_cq01h = used_late(used_q_cq02h, enq_v_cq01h, frn_cq02h);
+  assign frn_nx_cq01h = freed_of(st_cq02h, tk_cq02h, fl_q_cq02h);
   // The count's next value, written as the queue's own (next_state): the
   // state it reads is this edge's, as the queue's is.
   function automatic logic [LU-1:0] used_next(input logic [LU-1:0] u, input logic [E-1:0] ev,
@@ -412,14 +423,13 @@ module ooe_decq #(
     busy_n_cq02h = '0;
     for (int e = 0; e < Q; e++) busy_n_cq02h = busy_n_cq02h + LU'(st_cq02h[OBUSY + e]);
   end
-  `CCV_ASSERT(used_is_busy, used_q_cq02h == busy_n_cq02h)
+  `CCV_ASSERT(used_is_busy, used_q_cq02h == busy_n_cq02h + (FL ? frn_cq02h : LU'(0)))
 
   // Local clock gating (docs/rtl-coding-style.md): the queue changes only on
   // an arrival, its take in transit or a flush, all its own flops. The
   // output register and the take register change on rename's take (its
   // "some warp takes" bit: the waiver, V-75), a queue changed at the last
   // edge, a flush applied now, or a take in transit to clear.
-  logic          decq_en_cq01h;
   logic [S-1:0]  out_en_cq01h;            // each slot's count, valids and take
   logic [S-1:0]  pay_en_cq01h;            // and its payloads
   // A slot's arrivals change its count whether or not the candidates can
@@ -427,7 +437,6 @@ module ooe_decq #(
   logic [S-1:0]  arr_nx_cq01h;
   assign arr_nx_cq01h = enq_s_cq01h;
   logic [SW-1:0] nx_cq01h;
-  assign decq_en_cq01h = enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h;
   // A slot's heads change on rename's take from it (its early "may take"
   // bit: the waiver), on its arrivals at the last edge, or on its flush
   // applied now; its take in transit clears an edge after rename's take.
@@ -475,25 +484,31 @@ module ooe_decq #(
       end
   end
 
+  // The state under its own enable (its events: arrivals, a take in
+  // transit, a flush); the credit count, its copy out and the frees in
+  // their own gate, which with the free lag clocks the edge after a free
+  // too (fr_q), when the count takes it. fr_q and frn under it as well:
+  // when it is low, so are they and their inputs.
+  logic decq_en_cq01h;
+  assign decq_en_cq01h = enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h;
+  assign uo_en_cq01h   = enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h || (FL && fr_q_cq02h);
   always_ff @(posedge ooe_core_clk) begin
     // The reset state: busy bits and counts cleared; the payloads, owners
     // and positions are payload, guarded by busy.
-    if (rst_r01h) begin
-      st_cq02h[OBUSY +: Q + S * LC] <= '0;
-      used_q_cq02h                  <= '0;
-    end else if (decq_en_cq01h) begin
-      st_cq02h     <= nx_cq01h;
-      used_q_cq02h <= used_nx_cq01h;
-    end
+    if (rst_r01h) st_cq02h[OBUSY +: Q + S * LC] <= '0;
+    else if (decq_en_cq01h) st_cq02h <= nx_cq01h;
   end
-  assign uo_en_cq01h = decq_en_cq01h || (FL && fr_q_cq02h);
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
+      used_q_cq02h <= '0;
       used_o_cq02h <= '0;
+      frn_cq02h    <= '0;
       fr_q_cq02h   <= 1'b0;
-    end else begin
-      if (uo_en_cq01h) used_o_cq02h <= FL ? used_l_cq01h : used_nx_cq01h;
-      fr_q_cq02h <= |tkv_cq02h || |fl_q_cq02h;
+    end else if (uo_en_cq01h) begin
+      used_q_cq02h <= FL ? used_l_cq01h : used_nx_cq01h;
+      used_o_cq02h <= FL ? used_l_cq01h : used_nx_cq01h;
+      frn_cq02h    <= FL ? frn_nx_cq01h : '0;
+      fr_q_cq02h   <= |tkv_cq02h || |fl_q_cq02h;
     end
   end
 
