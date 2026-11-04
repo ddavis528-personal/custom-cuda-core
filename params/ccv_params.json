@@ -339,7 +339,7 @@
       "status": "arch",
       "source": "arch opens A-1, A-22 (2026-09-27)",
       "derive": "clog2(CCV_MIGRATION_CYCLES)",
-      "doc": "Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, 16 and up predicate and divergence state. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does."
+      "doc": "Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, row 16 the predicate state alone (CCV_W_PRED_STATE, 128 bits; PCA spec rev 17, AR-25): divergence state migrates through FET. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does."
     },
     {
       "name": "CCV_W_PRED_STATE",
