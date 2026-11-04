@@ -696,10 +696,10 @@ module ooe_freelist #(
     // emptied: its sections arrive with the registered allocations); a
     // row Rename 2 returns, the next cycle too. Both reach the free bits
     // and the owners' counts from this register, the emptied rows less
-    // those Rename 2 allocated in as they emptied: that cycle's
-    // allocations, registered (av, ar), which keeps the late inputs'
-    // decode out of the input's cycle (OA rev 330). Rename 2 never returns
-    // a row it allocates in that cycle, so the mask spares its returns.
+    // those Rename 2 allocated in as they emptied: those rows, decoded
+    // from the late inputs and flopped beside it (wr), so only the decode
+    // is in the inputs' cycle (OA rev 330). Rename 2 never returns a row
+    // it allocates in that cycle, so the mask spares its returns.
     function automatic logic [N-1:0] pend_next(input logic [N*NS-1:0] q, input logic [A-1:0] v,
                                                input logic [A*W-1:0] row, input logic [A*NS-1:0] sec,
                                                input logic [N*NS-1:0] fr, input logic [N-1:0] rt);
@@ -710,12 +710,18 @@ module ooe_freelist #(
         pend_next[r] = (was[r * NS +: NS] != '0 && nx[r * NS +: NS] == '0) || rt[r];
     endfunction
     logic [N*NS-1:0] sec_q_cq02h, sfree_cq02h;
-    logic [N-1:0]    pend_nx_cq01h, pend_q_cq02h;
+    logic [N-1:0]    pend_nx_cq01h, pend_q_cq02h, wr_q_cq02h;
     assign sfree_cq02h   = sec_q_cq02h & ~fss_cq01h;
     assign pend_nx_cq01h = pend_next(sec_q_cq02h, av_cq02h, ar_cq02h, as_cq02h,
                                      fss_cq01h & {N * NS{free_en_cq01h}},
                                      rows_of(rt_v_cq01h & rt_en_cq01h, rt_row_cq01h));
-    assign pend_cq02h  = pend_q_cq02h & ~rows_of(av_cq02h, ar_cq02h);
+    assign pend_cq02h  = pend_q_cq02h & ~wr_q_cq02h;
+    // Under the registered allocations' enable, as av: low only while no
+    // lane allocates now or did last cycle, so it clears.
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) wr_q_cq02h <= '0;
+      else if (iv_en_cq01h) wr_q_cq02h <= rows_of(sa_v_cq01h & sa_en_cq01h, sa_row_cq01h);
+    end
     assign fr_en_cq02h = pend_q_cq02h != '0;   // over the masked set, as an enable may be
     `CCV_ASSERT(sa_not_rt, (rows_of(sa_v_cq01h & sa_en_cq01h, sa_row_cq01h) &
                             rows_of(rt_v_cq01h & rt_en_cq01h, rt_row_cq01h)) == '0)
