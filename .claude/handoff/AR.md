@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 284, OA 333, TI 318, IS 189, CP 153, OI 274, DA 106,
+  record): AR 284, OA 336, TI 318, IS 189, CP 153, OI 274, DA 106,
   Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -83,8 +83,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   RA 61 RA-39 (R retime, Daniel asked 11-04): AR rev 271 agrees (d), R lead
   + lead_r_src0/1 (2x8, zero when unused), R reads R0/R1 in A; conditional
   on OA (a) (sources in PRF at issue+latency, no early wake; else OA's
-  late wake for R consumers, never an R hold). Partitioning-spec lead text
-  owed when TI's schema row lands.
+  late wake for R consumers, never an R hold). SUPERSEDED by OA 336
+  (re:OI-115, RA 70): option (2), R0/R1 read in A from the payload's
+  phys_src0/1 (budgets RCU in 18, OOE out 7), lead_r_src0/1 withdrawn,
+  AR's (d) lapses. Partitioning spec Interfaces tab rev 20 says so; the
+  L1-hit forward is a bank-level write-through.
   OA 328: L1-hit loads miss a read at A (data lands at T = A). OA's order:
   (i) MIU forward inside RCU (RA prices), (ii) late load wake for R
   consumers if <0.5% (OI prices), else DA. AR rev 272 withdrew 271's
