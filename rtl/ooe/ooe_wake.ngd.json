@@ -8,16 +8,16 @@
       "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: wake's grant copy (ooe_sched's third grant register)"
     },
     "kind_cq01h": {
-      "arrival": 9.0,
+      "arrival": 2.0,
       "by": "OA",
-      "date": "2026-10-18",
-      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+      "date": "2026-11-03",
+      "why": "OA's response re:OI-104 (OA tab, 2026-11-03, rev 317): straight from ooe_rs's per-entry kind and class flops (kind_o/cls_o_cq02h), as grant_cq01h; 2 + 17.1 = 19.1 at CCV_LAT_L1_WAKE 12"
     },
     "cls_cq01h": {
-      "arrival": 9.0,
+      "arrival": 2.0,
       "by": "OA",
-      "date": "2026-10-18",
-      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+      "date": "2026-11-03",
+      "why": "OA's response re:OI-104 (OA tab, 2026-11-03, rev 317): straight from ooe_rs's per-entry kind and class flops (kind_o/cls_o_cq02h), as grant_cq01h; 2 + 17.1 = 19.1 at CCV_LAT_L1_WAKE 12"
     },
     "cmpl_l_cq00h": {
       "arrival": 2.0,

@@ -251,8 +251,11 @@ Built (`rtl/ooe/`):
   are written at RS allocation (OA, re:OI-104): ooe_rs stores each entry's
   pair with its row (`akind`/`acls_cq01h`, arrival 10, as `row_code`),
   clocked with its class, and drives it from those flops
-  (`kind_o`/`cls_o_cq02h`) to this module's `kind`/`cls_cq01h`, which a
-  grant reads. Stored here, 5 bits an entry, the pairs fell under the
+  (`kind_o`/`cls_o_cq02h`) to this module's `kind`/`cls_cq01h` (arrival 2.0,
+  OA rev 317), which a grant reads. Rename makes the pair: `ooe_rendep`
+  builds each port's from its uop (a main timed, or a memop's, speculative
+  for an L1-contracted global load, c_x bit 20; a copy a copy; the class its
+  lat_class) and registers it with `row_prod`. Stored here, 5 bits an entry, the pairs fell under the
   clock-gating rules: Yosys gave each entry its own enable, 45 groups under
   8 flops, from ooe_rs's grant. Line k < 3 rises at the class's fastest bypass
   point plus the k-th penalty. The full-latency line rises at the class's

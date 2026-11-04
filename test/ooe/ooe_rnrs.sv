@@ -46,7 +46,7 @@ module ooe_rnrs #(
   input  logic [A*NS*LG-1:0] d_gsn_cq01h,
   input  logic [A*4-1:0]    d_psv_cq01h,
   input  logic [A*4*LQ-1:0] d_psn_cq01h,
-  input  logic [A-1:0]      d_cguard_cq01h, d_cnone_cq01h, d_nob_cq01h,
+  input  logic [A-1:0]      d_cguard_cq01h, d_cnone_cq01h, d_nob_cq01h, d_spec_cq01h,
   input  logic [A*3-1:0]    d_cg_cq01h, d_unit_cq01h, d_pg_cq01h,
   // ooe_prodmap's Rename 3 (the group a cycle on).
   input  logic              m_v_l_cq00h,
@@ -74,6 +74,8 @@ module ooe_rnrs #(
   output logic [N-1:0]      valid_out_cq02h,
   output logic [N*N-1:0]    dep_cq02h,
   output logic [2*N*N-1:0]  code_cq02h,
+  output logic [2*N-1:0]    kind_o_cq02h,   // ooe_rs's stored kind and class per entry (OA, re:OI-104)
+  output logic [3*N-1:0]    cls_o_cq02h,
   output logic [N-1:0]      hcol_cq02h,
   output logic [P*N-1:0]    rd_row_dep,     // rename's stage register, for the bench's reports
   output logic [P-1:0]      chk_bad,        // the assertion's ports, for the bench's reports
@@ -91,6 +93,8 @@ module ooe_rnrs #(
   logic [P*P-1:0]  grp_dep, prv_dep;
   logic [2*P*P-1:0] grp_code, prv_code;
   logic [N-1:0]    prod_o;
+  logic [2*P-1:0]  akind;      // each port's kind and class, rendep to ooe_rs (OA, re:OI-104)
+  logic [3*P-1:0]  acls;
   ooe_prodmap #(.N(N), .NR(NR), .A(A), .NG(NG), .NP(NP)) u_map (
     .ooe_core_clk, .ooe_rst_r00h, .v_l_cq00h(m_v_l_cq00h), .v_cq01h(m_v_cq01h), .gwe_cq01h(m_gwe_cq01h),
     .gname_cq01h(m_gname_cq01h), .pwe_cq01h(m_pwe_cq01h), .pname_cq01h(m_pname_cq01h), .pm_cq01h(m_pm_cq01h),
@@ -102,21 +106,19 @@ module ooe_rnrs #(
     .cp_cq01h(d_cp_cq01h), .atom_cq01h(d_atom_cq01h), .gwe_cq01h(d_gwe_cq01h), .gname_cq01h(d_gname_cq01h),
     .pwe_cq01h(d_pwe_cq01h), .pname_cq01h(d_pname_cq01h), .gsv_cq01h(d_gsv_cq01h), .gsn_cq01h(d_gsn_cq01h),
     .psv_cq01h(d_psv_cq01h), .psn_cq01h(d_psn_cq01h), .cguard_cq01h(d_cguard_cq01h), .cg_cq01h(d_cg_cq01h),
-    .cnone_cq01h(d_cnone_cq01h), .unit_cq01h(d_unit_cq01h), .pg_cq01h(d_pg_cq01h), .nob_cq01h(d_nob_cq01h),
+    .cnone_cq01h(d_cnone_cq01h), .unit_cq01h(d_unit_cq01h), .pg_cq01h(d_pg_cq01h), .nob_cq01h(d_nob_cq01h), .spec_cq01h(d_spec_cq01h),
     .eg_cq01h(eg), .egn_cq01h(egn), .ep_cq01h(ep), .epn_cq01h(epn), .ecv_cq01h(ecv),
     .gnt_v_cq01h(gnt_v_cq03h), .gnt_idx_cq01h(gnt_idx_cq03h),
     .row_prod_cq02h(row_prod), .row_dep_cq02h(row_dep), .row_code_cq02h(row_code), .grp_dep_cq02h(grp_dep),
-    .grp_code_cq02h(grp_code), .prv_dep_cq02h(prv_dep), .prv_code_cq02h(prv_code));
-  logic [2*N-1:0] kind_nc;   // ooe_wake's, not on this bench
-  logic [3*N-1:0] cls_nc;
+    .grp_code_cq02h(grp_code), .prv_dep_cq02h(prv_dep), .prv_code_cq02h(prv_code),
+    .akind_cq02h(akind), .acls_cq02h(acls));
   ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC)) u_rs (
     .ooe_core_clk, .ooe_rst_r00h, .req_l_cq00h, .req_cq01h, .row_prod_cq01h(row_prod), .row_dep_cq01h(row_dep | ctl_row_cq01h),
     .row_code_cq01h(row_code), .grp_dep_cq01h(grp_dep), .grp_code_cq01h(grp_code), .prv_dep_cq01h(prv_dep),
     .prv_code_cq01h(prv_code), .sqf_cq01h, .msd_cq01h, .cfin_cq01h, .wtl3_cq00h, .fin_cq00h, .gnt_cq01h,
     .cmpl_l_cq00h, .cmpl_idx_cq00h, .sq_l_cq00h, .gnt_v_cq03h, .gnt_idx_cq03h, .valid_out_cq02h, .dep_cq02h,
     .code_cq02h, .prod_o_cq02h(prod_o), .hcol_cq02h,
-    // Kind and class (ooe_wake's, OA re:OI-104): not yet from ooe_rename.
-    .akind_cq01h('0), .acls_cq01h('0), .kind_o_cq02h(kind_nc), .cls_o_cq02h(cls_nc));
+    .akind_cq01h(akind), .acls_cq01h(acls), .kind_o_cq02h, .cls_o_cq02h);
   assign rd_row_dep = row_dep;
   assign dbg_eg = eg;
   assign dbg_ep = ep;

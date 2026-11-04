@@ -26,7 +26,10 @@
 // names a valid entry from two edges ago or more that none of its sources
 // names, which ooe_rs's mask keeps, as a stale name of an entry the mask
 // does not cover would) and wrong-names (the assertion's names for each
-// port are another port's, so it must fire on correct rows).
+// port are another port's, so it must fire on correct rows). Every valid
+// entry's kind and class, from Rename's row through ooe_rs's store (OA,
+// re:OI-104), are compared with the model's wakeKindClass; no-spec drops
+// the speculative-wake bit and must be caught there.
 // Usage: rnrs_tb [seeds]
 //===----------------------------------------------------------------------===//
 #include "Vooe_rnrs.h"
@@ -105,11 +108,13 @@ std::vector<uint8_t> ctOf(const Core &c) {
 struct Uop {
   Core::RatLog::Ren r;
   unsigned pm = 0, pc = 0;   // its main entry's port, its copy's
+  uint8_t kc[2] = {};        // its entries' {class, kind}, the model's wakeKindClass (OA, re:OI-104)
 };
 struct Snap {
   // The RS (rs_tb's).
   std::vector<unsigned> ralloc, cidx;
   std::vector<uint8_t> rfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
+  std::vector<uint8_t> kc;   // each valid entry's {class, kind}, the model's wakeKindClass
   bool sq = false, cmpl = false, codes = false, preds = true;
   // Rename's group (rendep_tb's).
   std::vector<Uop> grp;
@@ -118,10 +123,10 @@ Snap empty() {
   Snap y;
   y.rfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
   y.code.assign(N * N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.iss.assign(N, 0); y.wtl3.assign(N, 0);
-  y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0);
+  y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0); y.kc.assign(N, 0);
   return y;
 }
-unsigned long long cycles = 0, cores = 0, allocs = 0, rows = 0, cells = 0, skipped = 0, mismatches = 0;
+unsigned long long cycles = 0, cores = 0, allocs = 0, rows = 0, cells = 0, skipped = 0, kinds = 0, mismatches = 0;
 void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model) {
   if (++mismatches <= 5)
     std::fprintf(stderr, "cycle %llu: %s (%u, %u: rtl %u, model %u)\n", cycles, what, a, b, rtl, model);
@@ -137,6 +142,10 @@ Snap snapCycle(const Core &c) {
     y.grant[i] = i < w.grant.size() && w.grant[i];
     y.valid[i] = c.rsValid(i);
     y.prod[i] = c.rsProduces(i);
+    if (y.valid[i]) {
+      const auto k = c.wakeKindClass(i);
+      y.kc[i] = uint8_t((k.second << 2) | k.first);
+    }
     y.fin[i] = c.rsFinal(i) || (i < w.conf.size() && w.conf[i]);
     y.iss[i] = c.rsIssued(i);
     y.wtl3[i] = c.rsValid(i) && c.wakeLineChanges(i, 3);
@@ -157,6 +166,12 @@ Snap snapCycle(const Core &c) {
     x.r = r;
     x.pm = r.mem ? A + mi++ : ri++;
     x.pc = r.copy != kNoEntry ? ri++ : 0;
+    for (unsigned k = 0; k != 2; ++k) {
+      const unsigned e = k == 0 ? r.main : r.copy;
+      if (e == kNoEntry) continue;
+      const auto kc = c.wakeKindClass(e);
+      x.kc[k] = uint8_t((kc.second << 2) | kc.first);
+    }
     y.grp.push_back(x);
   }
   if (ri > A || mi > A || y.grp.size() > A) fail("more renames than ports", 0, 0, unsigned(y.grp.size()), A);
@@ -190,6 +205,7 @@ bool portsOf(const Snap &y, std::vector<unsigned> &entry_of, std::vector<int> &p
 void driveDep(const Snap *y) {
   dut->d_v_cq01h = dut->d_mem_cq01h = dut->d_cp_cq01h = dut->d_atom_cq01h = 0;
   dut->d_gwe_cq01h = dut->d_pwe_cq01h = dut->d_cguard_cq01h = dut->d_cnone_cq01h = dut->d_nob_cq01h = 0;
+  dut->d_spec_cq01h = 0;
   dut->d_gsv_cq01h = 0;
   dut->d_psv_cq01h = 0;
   clearAll(dut->d_gname_cq01h, A * LG);
@@ -226,6 +242,7 @@ void driveDep(const Snap *y) {
     setField(dut->d_unit_cq01h, u * 3, 3, r.unit);
     setField(dut->d_pg_cq01h, u * 3, 3, r.pgroup);
     setBit(dut->d_nob_cq01h, u, r.nob);
+    setBit(dut->d_spec_cq01h, u, r.spec && control != "no-spec");
   }
 }
 void driveMap(const Snap *y) {
@@ -424,6 +441,14 @@ void hook(const Core &c) {
   for (unsigned p = 0; p != P; ++p)
     if (entry_of[p] != N)
       for (unsigned j = 0; j != N; ++j) named[j] |= y.dep[entry_of[p] * N + j];
+  // Every valid entry's kind and class, from Rename's row through
+  // ooe_rs's store (OA, re:OI-104), as the model's.
+  for (unsigned i = 0; i != N; ++i)
+    if (getBit(dut->valid_out_cq02h, i) && y.valid[i]) {
+      ++kinds;
+      const unsigned k = getField(dut->kind_o_cq02h, i * 2, 2) | getField(dut->cls_o_cq02h, i * 3, 3) << 2;
+      if (k != y.kc[i]) fail("kind and class differ", i, 0, k, y.kc[i]);
+    }
   if (!y.preds) {
     ++skipped;
   } else {
@@ -467,9 +492,9 @@ int main(int argc, char **argv) {
   const int model_fails = ooeTestDirectedHookedWith(hook, rsConfig) + cg.run(seeds, nullptr, hook, rsConfig);
   dut->final();
   std::printf("rnrs_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu rows=%llu cells=%llu "
-              "preds_off_cycles=%llu mismatches=%llu model_failures=%d\n",
+              "preds_off_cycles=%llu kinds=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, rows, cells, skipped,
-              mismatches, model_fails);
+              kinds, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();
