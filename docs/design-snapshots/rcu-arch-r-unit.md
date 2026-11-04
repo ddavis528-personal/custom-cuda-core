@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=7 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 7 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=8 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 8 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # R unit and crossbar
 
@@ -24,13 +24,14 @@ The R unit, `ccv_rcu_r`, executes one op a cycle from issue slot 8 in three stag
 | A+1 | compute from `rsrc_a` | read, aligned, into `old` (as before) |
 | A+2 | write (as before) | merge in the write (as before) |
 
-**Why it is safe.** Every class's contracted latency is issue to readable: a write at W is readable from W+1 = A + LAT. A consumer woken at A\_p + LAT has A\_c = A\_p + LAT, so a read in A\_c is the first readable cycle. The rest of the RCU reads in A\_c + 1, a cycle later than it needs to. R consumers never take a bypass (warp-collective consumers never bypass, A-62; RCU-only consumers read no lane bypass), so R0 and R1 always read the PRF. **OA confirms** that no class wakes an R consumer before its result is readable, loads at `CCV_LAT_L1_WAKE` and the masked-load copy included (RA-39).
+**Why it is safe (OA checked it class by class, rev 328).** Every class's contracted latency is issue to readable: a write at W is readable from W+1 = A + LAT, and no bypass reaches an R-slot consumer (V-48), so R0 and R1 read the PRF in A\_c, a cycle earlier than the rest of the RCU reads. Lane, SFU, R and collective producers, the copies and completion-driven wakes all land before A\_c. **The one exception is an L1-hit load:** `CCV_LAT_L1_WAKE` puts the consumer's A in the very cycle T that MIU's payload lands, and MW writes in T. R0 and R1 therefore take an **MIU forward** in A, as the predicate file's guard read does (below). OOE is unchanged and nothing waits.
 
 **What it needs.**
 
 - From OOE, on the R slot's lead (`slot_fields`, beside `lead_guard_pred`): `lead_r_src0` and `lead_r_src1`, the physical rows of `phys_src`\[15:8\] and \[7:0\], 8 bits each, built at select from the RS entry's renamed names, opcode-blind. Zero when the source is unused (`lead_src_used`). TI adds them to the schema (RA-39).
 - In RCU: `rsrc_a`, 2 × 32 lanes × 32 bits = 2,048 flops, enabled per source by the lead's `lead_src_used` bit (a source the op does not read is never clocked); the R0/R1 select flops load at A−1's edge from the lead, enabled by the flopped lead valid.
 - Migration is unchanged: it uses R2 and RW only.
+- **The MIU forward on R0/R1 (RA-39, OA's rev 328 option (i)).** A register is (row, pos, width), and a hit load writes exactly its destination register, so a source naming the same row and pos is that register at the same committed width. The forward therefore sits after alignment: `v = load_word_j & em(src width)` on the lanes in slot j's `active_mask`, the aligned bank read on the rest (inactive lanes were written by the masked load's copy before the load issued). `r` keeps its own flops of the four MIU slots' leads (row, pos, width, `active_mask`, valid; about 180 flops). In A−1 it compares each slot's row with `lead_r_src0`/`1` into 8 match flops; in A it ANDs them with pos equality (the source's pos from the payload) and the slot's valid, giving a one-hot over the slots per source, then with `active_mask` per lane. Data: a 5-input AND-OR per bit, 2 × 1,024 bits, about 10,000 cells. At most one slot matches a source (asserted).
 
 **Rejected: compute in A+2 and write in A+3.** It moves every R write a cycle later. Either `CCV_LAT_RCU` grows from 3 to 4, which slows every predicate and movi chain, or only collectives move, and their writes collide with the next cycle's RCU-only writes on RW. `ret`'s done payload would also move to A+3, colliding on slot 5 with a branch issued a cycle after it unless R holds for a cycle, which OOE's select would have to know.
 
@@ -86,8 +87,9 @@ Barriers do not reach the RCU in the first build (TI-40, TI-42; RA-25 closed by 
 
 | Stage | Path | Estimate (NGD) |
 | --- | --- | --- |
-| A−1 | R lead at the block port 2, predecode 3, into the R0/R1 select flops | 5 |
-| A | R0 or R1 read 11.0 (measured, with fanout), align 2, into `rsrc_a` | 13 |
+| A−1 | R lead at the block port 2, predecode 3, into the R0/R1 select flops; the row compare against the MIU leads, 3, into the match flops | 5 |
+| A | R0 or R1 read 11.0 (measured, with fanout), align 2, MIU forward mux 2, select fanout about 1, into `rsrc_a` | 16 |
+| A | the forwarded load word: block port 2, em 1, mux 2, into `rsrc_a` | 5 |
 | A+1 | R2 read 11.0, align 2, into `old` | 13 |
 | A+1 | register-index shfl from `rsrc_a`: decode 3, crossbar 6, em 1, fanout of the one-hots about 3 | 13 |
 | A+1 | `ret` from `rsrc_a`: pick 5 (`aux`), broadcast about 2, compare 5, AND 1, into `branch_mask` | 13 |

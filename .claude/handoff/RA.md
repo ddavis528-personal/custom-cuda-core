@@ -148,7 +148,9 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   flops (~13), write A+2 unchanged (LAT_RCU 3, collectives, slots 5/6 unchanged). Safe because a result is readable
   at A_p+LAT and R consumers never bypass; other readers read at A+1. RA-39 raised (RA rev 61; OA (a) hazard + (b)
   lead fields, TI (c) schema, AR (d)); notices sent. Spec: R unit rev 7, Partition rev 15 (bank out 11 on all
-  reads, r in 14), Register file rev 6. Fanout term now enforced in check-ngd (TI rev 299, DA 2026-11-04).
+  reads, r in 14), Register file rev 6. OA rev 328: all classes meet A except L1-hit loads (data lands in the
+  consumer's A); lead fields accepted. RA priced (i) MIU forward after alignment (RA rev 62, R unit rev 8): ~10k cells,
+  ~190 flops, A path ~16; asked OA to rule (i). Waiting: OA ruling, TI (c) schema, AR (d), OI lead NGD/CG. Fanout term now enforced in check-ngd (TI rev 299, DA 2026-11-04).
 - Sectioned lanes KEPT (Daniel 2026-11-03; OI-28..31); packed contiguous lanes = PF-50 (c7938fa).
 - Answers due: RA-16, RA-30, RA-36 (TI); RA-37/RA-38 AGREED by TI rev 290 (building: gate-scope + CLAUDE.md first, then makeRcu,
   blocks.list, check-rcu-unit, job_rcu_rtl, CCV_RCU_RTL), impl pending; RA-35 (AR); RA-37 (OA: RI 31 only, roster commit bc1c2b4 named at rev 55); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
