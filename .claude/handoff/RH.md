@@ -57,13 +57,15 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
     dec_ooe_uop hang is a result.
   - J5 (after J1, before J2): tools/sweep-fair.sh 0 32 48. Send TI the lnorm1
     row, pass/fail, and the table if it's small.
-  - J3: the hold cost (hold.chwidth / cycles from the J1/J2 stats) is approved.
-    vadd16 is BLOCKED: the pinned snapshot has only LLVM-style asm, which
-    ccv-as rejects; TI is asked for a CP export. chwidth.multi 12288 is a
-    register mask (r12, r13), not n. Local configs are in
-    /home/user/rh-jobs/local-bench/ (vadd16w4, vadd16loopw4, coremarkpl128,
-    whose oracle passes at 4.4 GB). coremarkpl32/128 runs are proposed for
-    after J2; waiting on TI's OK.
+  - J3: (a) vadd16 is DONE and sent (e533ecd pinned locally in /home/user/rh-j3;
+    configs from launch.txt in rh-jobs/local-bench/rel-*). It needs
+    CCV_OOE_CONFIG=full_rows=1 to run clean. The chwidth drain counter is
+    hold.registered.chwidth (go_static on); hold.chwidth reads 0. Report both
+    for J1/J2's hold cost. (b) coremarkpl32/128 warm, approved, chained after J2
+    in after-j1.sh.
+  - J1 160/128 run in the scratch worktree /home/user/rh-pchk via rh-jobs/j1b.sh
+    and setphys.py (TI confirmed the derived floor/ceil basis; report
+    REN_FLOOR/CEIL per size). after-j1.sh (J5, J2, J3b) waits on j1b.
   - J4: blocked on TI code (CTA queueing, gen-oracle -load). Meanwhile only
     coremark128 at 512 KiB with frames, if there's a frames knob.
   Order J1, J2, J3, then J4. Delete oracles and builds after each job.
