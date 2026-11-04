@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 320, RA 60, IS 188, TI 297, OI 264, CP 152, DA 104
+Conventions 17, AR 269, OA 326, RA 60, IS 188, TI 300, OI 271, CP 152, DA 104
 (sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -86,6 +86,30 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-6. FANOUT ENFORCEMENT, TOP PRIORITY (DA 11-04, recorded OI rev 265; TI builds the
+   check + ratchet seeded from 5e81e19, OA orders uArch by later invasiveness, rev 321).
+   5e81e19 PUSHED 11-04 01:10 (SCOPED PASS; main tree clean). Pricing worktree
+   scratchpad/wtm, branch oi-price-knobs: ff3e97f knobs, 5193feb model fixes (both
+   unpushed; back them up). OA batch results (OI revs 266-270):
+   - freelist scan (a) TAKEN (OA 324): exact model fl_two_step (FreeVec::refill2, default
+     ON in wtm), audit 0.00% to the cycle. RTL in wtm f7f6eff (on gate-scratch/OI):
+     registered bank candidates OCQ + search start OSP, inbuf cleared a cycle late from
+     registered pop mask pr (pr_v-masked). Fanout NGD f-f gpr 24.8, gsec 25.0, pred 24.3;
+     bench PASS 3 pools, control one-step caught. NEXT: check-cg on 3 units (log
+     ~/ccv-logs/oi-cg-fl.log; check-cg OOM-killed once beside a bench: run alone),
+     25-seed bench, rename run-rtl sections, ooe-test, merge to main, gate-push, tell OA.
+   - OA 325/326 (answered OI 271): rs order = (1) copies probe (valid by class half, grant
+     one-hot by row group) with fanout, (2) if short price rs_free_lag 1 + 2 rows/class
+     (RCU 32, MIU 17), 4 settings, flops/row, (3) DA beside decq. Then ooe_rat's path
+     through ratread with fanout, in parent (>25 joins plan). TI told 5e81e19 landed.
+   - rs a cycle ahead: CORRECTED +1.1-1.6% audit (rev 270; old knob missed renCredits,
+     now lagged in model). PAUSED: OA to rule DA vs copies probe (valid 26 -> Sklansky
+     131/207 -> rows). RTL design ready (2A index cands/class, port k takes n_q+k).
+   - decq: to DA via OA rev 323 (OA recommends 15 entries + lag 1: audit -1.5..-2.2%;
+     14+lag +0.6%; (ii) pointers out). S1: (a) -0.03%, (b) +0.06% (vadd4 +13%).
+   - TI rev 298 answered (OI rev 267): no-rep-lead is a seed count, 12 seeds in 83c2900.
+   Then: go 25.8 + sched 2191 MiB (oi-go-sched e1487ea), OA steps 2-5 (rendep probe,
+   rob_w fill, go report, copies), then ROB slices 3-6.
 -5. STATE 11-03 20:00: main tree gate-push (scoped, detached, log ~/ccv-logs/oi-push-1955.log)
    of c8794c1 ufq + 0d660fa (release thresholds late; rob_w NGD 25.1 -> 23.1, fo 31.6),
    1659753 prodmap, 74d070c ret_hold 2 knob, fe68bcc handoff, 91313cb audit env knobs.
