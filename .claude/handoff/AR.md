@@ -70,8 +70,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 275, OA 315, TI 296, IS 188, CP 152, OI 254, DA 104,
-  Conventions 17, RA 60, RI 1 (tab 8e4547bc-c469, new 2026-11-02).
+  record): AR 275, OA 331, TI 304, IS 189, CP 152, OI 274, DA 106,
+  Conventions 17, RA 63, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
   ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
@@ -91,7 +91,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   late-wake line and asked RA to price (i) as a per-lane/field merge
   (active_mask, dst_pos/width sections, right-aligned load_data realigned;
   rev 273 fixed 272's wrong 64-bit second row claim); rests on MIU's
-  1-write-per-section rule and AR's owed disjoint-sections assertion. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  1-write-per-section rule and AR's owed disjoint-sections assertion.
+  Closed 11-04: RA 62/63 priced (i) at ~10k cells + ~185 flops, R A path
+  13 -> ~16 NGD, input 5/12 NGD, merge after alignment; OA 329 took (i),
+  wake contract unchanged, flops on DA's overhead list. CCV_P_DECQ stays 13
+  in params until OI's lag RTL lands (TI rev 301); DEC spec already says 15.
+  PF-47: TI reapplied base 1 (rev 298) but holds it on OI's no-rep-lead
+  control (6 of 18 seeds miss). Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
