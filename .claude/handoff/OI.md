@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 330, RA 61, IS 188, TI 304, OI 273, CP 152, DA 104
+Conventions 17, AR 269, OA 331, RA 61, IS 188, TI 304, OI 276, CP 152, DA 104
 (sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -87,21 +87,21 @@ the compact hook printed this handoff.
 
 ## Open work (most urgent first)
 -6. FANOUT ENFORCED (TI b11e60f, ratchet rtl/ngd-ratchet.json "fanout"; caps only fall,
-   remove an entry once its path meets 25). State 11-04 08:50 UTC:
-   - Freelist scan (a) PUSHED 32ba2d0 (SCOPED PASS); met caps removed, PUSHED 9718b81.
-     fanout f-f gpr/gsec 24.1, pred 22.8; CG clean (pred 9 of 10.3 ungated flops: keep
-     rqh_cq02h a 5-flop one-hot, a derived bit 0 cost +3 NGD; fsv/fpv under their counts'
-     enables). OA told (OI-106, rev 273); TI re-pinned break pins OK (OI-105).
-   - NEXT (OA rev 330): gsec inputs sa_row_cq01h/sa_v_cq01h (caps 26.7/26.4): retime in
-     freelist, no port budget; caps off in the same push; a lost reuse cycle -> price
-     (S1+audit, <0.5% OA's). Worktree scratchpad/wtr, branch oi-fl-saretime, 0b4190a: pend
-     holds rows unmasked, consumers take pend & ~rows_of(av,ar) (no extra cycle); assert
-     sa_not_rt. Bench/ngd/cg running (~/ccv-logs/oi-r1.log).
-   - decq lag (OA 327, DA took 15 + lag 1): worktree scratchpad/wtd, branch oi-decq-lag,
-     4bd86ee (FL param, used_o lag, tb freeing, control no-free-lag): 25-seed bench PASS at
-     13 entries, 5 controls caught. cg/ngd on ooe_decq running (oi-r1.log). Then gate,
-     push, notify TI (TI rev 301: TI bumps CCV_P_DECQ to 15 in the same push); decq caps
-     (NGD-1 26.1, NGD-3 enq_v 30.2, enq_slot 27.0, deq_t 25.3) should clear with lag 1.
+   remove an entry once its path meets 25). State 11-04 ~13:30 UTC:
+   - Freelist: scan (a) 32ba2d0, caps 9718b81, gsec retime (wr_q flop, no reuse cycle lost)
+     PUSHED 013ed10; freelist has no caps left. OI rev 275 (OI-108) told OA, no notice.
+   - decq (OA rev 331: retime at 15 first, lag 1 + CCV_P_DECQ 15 in ONE push, every decq cap
+     off): DONE in worktree scratchpad/wtd, branch oi-decq-lag (b6316a7 RTL, acf7e75 merge of
+     013ed10, backed up gate-scratch/OI). Staging register packed by rank (sg, under lead),
+     rank register rq (lead, a cycle early), thermometer counts, heads per absolute position
+     + tko, thsel tree on deq_t. At 15/D7: f-f 23.0, enq_v 24.4, enq_slot 23.2, deq_t 24.9
+     (thin: ABC moves it +-0.2; bitwise thsel gave 25.1, keep the per-width functions).
+     CG 1004 flops, DCGE 98/87. Unit cg-units.json Q 15, D 7 (D was stale at 6).
+     OI rev 276 (OI-109) asks TI for CCV_P_DECQ 15 (or OK to carry it); notice sent.
+     Local commits on top (NOT for push as-is): params CCV_P_DECQ 15 placeholder + regen
+     walkthrough; dry-run scoped gate running (~/ccv-logs/oi-dq-dry.log, verify --changed
+     origin tip). On TI's answer: take TI's params (drop my placeholder), regen, gate-push
+     from wtd (CCV_PUSH_BRANCHES=ccr-57eff422-5tdecg), then remove wtd/wtr worktrees.
    - Then: rs copies probe (OA 325) -> ratread path (OA 326) -> RA-39 (b) lead_r_src0/1
      (OA 329) -> go 25.8 path + sched peak -> OA steps 2-5 -> ROB slices 3-6.
 -5. STATE 11-03 20:00: main tree gate-push (scoped, detached, log ~/ccv-logs/oi-push-1955.log)
