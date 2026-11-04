@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 333, OI 282, CP 152, DA 106, RI 3
+Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 335, OI 283, CP 152, DA 106, RI 3
 (sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -114,7 +114,13 @@ the compact hook printed this handoff.
      oi-rlead-probe, unit added to its cg-units.json): ooe_sched + names flops + R lead mux
      into a flop beside the grant register: 38.8 NGD flop-flop (sched alone 30.5). OI-115 (rev 282,
      notice to OA): lead in select's cycle cannot fit; options (1) valid moves a cycle, (2) lead
-     same-cycle for RCU, (3) predicted lead (no). WAITING on OA. Then build ooe_rs payload store +
+     same-cycle for RCU, (3) predicted lead (no). OA rev 335: probe (0), lead muxed off R's own
+     pick. DONE, OI-116 (rev 283, FYI OA/RA): rlead_only 18.7 NGD (13.9 w/o fanout), ~23.7 with
+     input arrivals; rlead_probe 26.4 vs sched alone 26.6 (8ba738f). Probes uncommitted in wtl
+     (ooe_select_rp.sv, rlead_probe.sv, rlead_only.sv + temp units). NEXT: lane slots (RA-31
+     fields) main + fallback pick with late 2:1: export ooe_pick's single-section fallback pick
+     in a probe copy; then build ooe_rs payload store + payload-read mux + lead mux. RA-39 (c)
+     RTL date moved to 2026-11-09. Then build ooe_rs payload store +
      payload-read mux either way. OI-112's 11-06 RA-39 (c) RTL date depends on it (said so).
    - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
      link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
