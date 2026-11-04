@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=28 exported=2026-11-02 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 28 on 2026-11-02 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=29 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 29 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -64,6 +64,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Select fanout | row selects copied per bank and section, 64 loads a row AND; fanout counted by check-ngd (Daniel's option (a)); about 6,300 flops | Register file | RA-33 |
 | CG stimulus | checked replays of ccv-skel port traces: high coremark128 and vadd, medium with two idle cycles after each, idle reset | Partition (M2) | RA-34 |
 | Model first | a cycle-accurate C++ model, owned by RI, ahead of the RTL; the RTL runs lock-step against it for good (Daniel, 2026-11-02, DA tab; RTL-first lost) | Partition (M0) | RA-38 |
+| Bank slices | each bank is 8 slices of one byte section across 4 lanes (192 rows × 32 bits, about 6,550 flops, 193,000 cells, 1.35 GB: inside ooe\_rob\_w's envelope), 32 in all, each with its own selects; a physical chunk is the 4 slices of 4 lanes, about 770,000 cells, 8 chunks; place and route flat, chunks keep physical partitioning open. Measured bank read 8.3 NGD (11.0 with fanout) is over its budget of 7: open | Register file, Partition | Daniel, 2026-11-03 |
 
 ## Settled with AR (RA-1 to RA-17)
 

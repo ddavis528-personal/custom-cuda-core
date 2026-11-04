@@ -137,13 +137,15 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
 - Sweep 2026-11-03 pushed at 047159d (SPLIT SCOPED PASS: cg alone 58 min, exported, then gate-push --import; a
   4-core container can't fit cg+ngd in one 2 h job). TI rev 295 fixed the heavy guard (per-command peaks, 16ab8ae).
   OI's ooe_rob split landed (ooe_rob_w); heavy-units.json merged as ooe_rob_w, ooe_rename, ooe_sched.
-- Bank sizing (Daniel 2026-11-03: go ahead; size units like ooe_rob_w). Stand-in + driver in scratchpad sizing/
-  (rcu_bank_sz.sv, measure.py = check-ngd's own synth+ABC, private cold cache). ooe_rob_w ref: 5,359 flops, 158k cells,
-  1,914 MiB, 561 s. Bank 192 rows: 2 lanes 3,479 fl/99k cells/692 MiB; 4 lanes 6,551/193k/1,350; 8 lanes
-  12,695/383k/2,665 (heavy); full 32 lanes extrapolates ~50k/1.5M/~10.5 GB. Read flop-out 8.3 NGD (fanout 11.0) vs
-  Partition budget 7: R path tight. Write 7.3, write-data in 5.6. Proposed: 4-lane slices, 8/bank, 32 in RCU. Awaiting
-  Daniel on slicing + R-read depth before editing the spec. Keep big modules' param defaults small (Yosys elaborates
-  defaults at read: 4.7 GB on a 64k-cell unit).
+- Bank slicing DECIDED (Daniel 2026-11-03/04): ccv_rcu_bank_slice #(K,J) x32 = byte K of lanes 4J..4J+3,
+  192x32b, ~6,550 flops, own 14x28 selects, 32-flop row gate groups; physical chunk = 4 slices (4 lanes whole,
+  ~770k cells), 8 chunks; flat P&R, chunks keep physical partitioning open. Folded: Register file rev 5,
+  Partition rev 13, Overview rev 29 (decisions row), snapshots, rcu-impl.md. Rejected with numbers: 2/8-lane byte
+  slices, 1-lane x 4-section lane slice (+27k select flops), one-hot selects (fanout fix, not depth: 8.0/9.3).
+  Stand-in + measure.py only in scratchpad sizing/ (lost with the container).
+- OPEN for Daniel: bank read 8.3 NGD (11.0 fanout) vs budget 7; R path (ret ~24.3 / ~27). Options: (b) retime R
+  compute A+1 -> A+2 (touches collective fold), (c) rebalance budgets (fails under fanout). (a) one-hot dropped.
+- Sectioned lanes KEPT (Daniel 2026-11-03; OI-28..31); packed contiguous lanes = PF-50 (c7938fa).
 - Answers due: RA-16, RA-30, RA-36 (TI); RA-37/RA-38 AGREED by TI rev 290 (building: gate-scope + CLAUDE.md first, then makeRcu,
   blocks.list, check-rcu-unit, job_rcu_rtl, CCV_RCU_RTL), impl pending; RA-35 (AR); RA-37 (OA: RI 31 only, roster commit bc1c2b4 named at rev 55); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).

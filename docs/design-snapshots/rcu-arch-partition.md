@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=12 exported=2026-11-02 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 12 on 2026-11-02 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=13 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 13 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -25,14 +25,14 @@ So:
 | Module | Inst | Holds | Flops (approx.) |
 | --- | --- | --- | --- |
 | `ccv_rcu` | 1 | the block top: `ccv_common_clk`, children, wires only | 0 |
-| `ccv_rcu_bank #(K)` | 4 | 192 × 256 rows; predecode flops for L0-3, M0-2, R0-2 and the LW/SW/MW/RW selects; RW's A+1/A+2 copy; MW position shift; the zero-register no-select | 49,550 each, 198,200 in all |
+| `ccv_rcu_bank_slice #(K, J)` | 32 | 192 rows × 32 bits, byte section K of lanes 4J to 4J+3; its own predecode flops for every port (L0-3, M0-2, R0-2, LW/SW/MW/RW: 14 × 28); RW's A+1/A+2 copy; MW position shift; the zero-register no-select. Bank K is slices (K, 0..7); physical chunk J is slices (0..3, J) (Register file tab, Slices) | about 6,550 each, 209,600 in all |
 | `ccv_rcu_pred` | 1 | 48 × 32 predicate file; every predicate read and write port; guard, MIU `pred_result` forward, `active`, branch outcome, `lead_br_*` (`(* keep *)`), `br_*_a`, `rpsrc_a`, `active_a[s]` | 2,500 |
 | `ccv_rcu_r` (+ `ccv_rcu_xbar` helper) | 1 | R pipe A+1/A+2: `r_a`, `rlow_a`, `rres_a1`, `rpres_a1`; RW data merge and steer; done slots 5 and 6 (`done_v_q`, tags, `done_b*_q`, `done_aux_q`) | 2,300 |
 | `ccv_rcu_lanes` | 1 | section ownership; 32 `rcu_lane_ops` payload, valid and lead flops; bypass tracker; `lwb_d[0..3]`, `swb_d`; done slots 0-4; `rcu_lane_ops` wakes | 12,900 |
 | `ccv_rcu_mem` | 1 | memop operand assembly; 4 `rcu_miu_addr` payloads (3,111 b each); MIU lead predecode flops (about 110 per slot); `rcu_miu_addr_wake` | 12,950 |
 | `ccv_rcu_mig` | 1 | Migration tab | 6,300 |
 | `ccv_rcu_kill` | 1 | kill drain and ack; `rcu_ooe_done_wake`; `rcu_idle_q`; credit-return flops for issue, lane-result and MIU-data slots; CSR tie-offs | 60 |
-| **Total** |  |  | **about 235,000**, 84% of it PRF rows |
+| **Total** |  |  | **about 246,000**, 80% of it PRF rows |
 
 Each sequential module flops `rst_n` once for itself (RST-1). Reset values: Done, kill and reset tab.
 
@@ -47,7 +47,7 @@ RA writes these files with the implementation. A block input arrives at 2 NGD, b
 | issue payload → `lanes` payload, bypass flops | 2 | `lanes` in: 18 | 20 | ownership, the age 4-5 compare, immediate substitution |
 | issue payload → `mem` payload flops | 2 | `mem` in: 14 | 16 |  |
 | issue payload → `mig` `dm_v_q`, `rs_v_a1` | 2 | `mig` in: 12 | 14 | the R2/RW-free decode |
-| `bank` R0-R2 read → `r` compute → `rres_a1` | `bank` out: 7 | `r` in: 18 | 25 | register-index shfl about 22 and ret about 23, both including the read |
+| `bank` R0-R2 read → `r` compute → `rres_a1` | `bank` out: 7 (measured 8.3, 11.0 with the fanout term; open, Register file tab) | `r` in: 18 | 25 | register-index shfl about 22 and ret about 23, both including the read |
 | `bank` L0-L3 read → `lanes` payload | 7 | 6 | 13 |  |
 | `bank` M0-M2 read → `mem` payload | 7 | 10 | 17 | operand assembly |
 | `bank` R2 read → `mig` `dm_pay` | 7 | 3 | 10 |  |
@@ -68,7 +68,7 @@ DCGE (CG-3) is a clock gate's share of enabled cycles in which the gated value a
 
 | Register group | Enable (own flops) | Where DCGE could fall | Remedy |
 | --- | --- | --- | --- |
-| PRF row × bank (256 flops) | `row_en` from the write ports' predecode flops | a write of the value already held, which is rare; a lane-masked write still changes the row | none expected |
+| PRF row × slice (32 flops) | `row_en` from the write ports' predecode flops | a write of the value already held, which is rare; a lane-masked write still changes the row | none expected |
 | predicate row (32) | the same, per predicate | a merge that leaves all bits unchanged, such as vote writing an unchanged result | none expected; measure |
 | `rcu_lane_ops` payload, per copy | the flopped issue valid of any lane op | **field groups an op does not use**: unowned sections, an immediate op's operand fields, a full-mask op's merge data, the bypass selects of an op with no bypass | per-section and per-field-group enables; they need the op's section mask and operand use a cycle early (RA-31 (2)) |
 | `rcu_miu_addr` payload, per slot | that pipe's flopped address valid | operand fields a memop does not use (a fence; a store's data on a load) | per-field-group enables, same lead |
@@ -119,7 +119,7 @@ OOE sends a lead slice on every `ccv_ooe_rcu_issue` slot. It is driven from a fl
 
 **Address time.** `CCV_LAT_RCU_ADDR_BASE` = 1 is adopted (PF-47). TI's first application failed the gate in OI's RTL, so the params still say 5 until OI fixes `ooe_wake`'s depth and the `no-msd` control's stimulus (TI rev 288); TI then reapplies it. RCU's spec, model and RTL are built to 1 regardless. The address valid leaves at A's edge and the payload at A+1's edge. If M1 misses, RA returns with 2 and one pipeline stage is added in `_mem`. `CCV_LAT_L1_WAKE` goes from 16 to 12.
 
-**Reduced units (RA-32 (2), TI rev 285).** Every RCU size is a module parameter that defaults to the `ccv_params_pkg` value, for example `parameter int ROWS = ccv_params_pkg::CCV_P_PHYS_REGS`. A reduced check-cg / check-ngd unit sets it in `cg-units.json`, as in `{"name": "rcu_bank_r32", "params": {"ROWS": 32}}`. The full-size unit stays for each module's exit, and a full-size unit that peaks over 2 GB goes on `tools/heavy-units.json`.
+**Reduced units (RA-32 (2), TI rev 285).** Every RCU size is a module parameter that defaults to the `ccv_params_pkg` value, for example `parameter int ROWS = ccv_params_pkg::CCV_P_PHYS_REGS`. A reduced check-cg / check-ngd unit sets it in `cg-units.json`, as in `{"name": "rcu_bank_slice_r32", "params": {"ROWS": 32}}`. The full-size unit stays for each module's exit, and a full-size unit that peaks over 2 GB goes on `tools/heavy-units.json`. Yosys elaborates a module at its defaults when it reads the file, before the unit's parameters apply, so a reduced unit first pays its module's full-size elaboration: a 64,000-cell stand-in took 4.7 GB with whole-bank defaults and 449 MiB with small ones (2026-11-03). No module's default may therefore be larger than its full-size unit; a slice meets that, since its full size is one unit.
 
 ## Assertions and checkers
 
@@ -166,10 +166,10 @@ RA does not run these. The implementation agent (RI; handoff `docs/rcu-impl.md`)
 | M0 | The cycle-accurate C++ model | tools/check-kernel.sh and tools/check-sv-hosted.sh with the model as RCU in both hosts; the model's unit tests; then block lock-step of the RTL against it (every output and event, every cycle) | every kernel passes against ccv-sim's oracle and every control above fails, with the model; every output and event on this spec's cycle, hazards and stalls included; kernel cycles reported against the stub's. From then on, the assembled block runs lock-step with no mismatch |
 | M1 | NGD per module and per port | `tools/check-ngd.py` at full size, plus each module's unit | every path ≤ 25, every port within its `.ngd.json`, all with check-ngd's fanout term counted (RA-33, Daniel's option (a)); the `pred` guard path in A ≤ 16 with the guard lead (≤ 23 without it) |
 | M2 | Clock gating | `tools/check-cg.py`: idle, medium and high scenarios (RA-34), driven by checked replays of ccv-skel port traces: high = coremark128 and vadd, medium = the same with two idle cycles after each, idle = reset and no issue; DCGE counts only from traces made after the stub's RA-19 merge fix | each module within its 2% / 8-flop allowance; block within 2%; no waiver except one Daniel signs |
-| M3 | Bank synthesis | Yosys (`tools/shim/yosys`) on one bank at 192 rows; a reduced unit at 32 rows for loops | completes; read AND-OR ≤ 7 NGD at 192 rows; flop count within 1% of 49,550 |
+| M3 | Bank slice synthesis | Yosys (`tools/shim/yosys`) on one slice at 192 rows × 4 lanes, through check-ngd and check-cg; a reduced unit at 32 rows for loops | completes as a light unit, within 2,048 MiB (stand-in 1,350); read AND-OR within the bank's read budget at 192 rows (stand-in 8.3 against 7: open); flop count within 1% of 6,550 |
 | M4 | Kill drain bound | the kill checker with `KILL_DRAIN` − 1 | fails on some kernel, or the margin is recorded |
 | M5 | Migration throughput | demote and restore under an R-heavy kernel | 17 rows within 68 cycles of launch (K = 4) |
 | M6 | Kernels | `tools/check-kernel.sh`, `tools/check-sv-hosted.sh` | every kernel passes with ccv-sim's oracle; every control above fails |
 | M7 | Swap boundary | SV-hosted run | no divergence: RCU reads only its receivers |
 
-Units for loops: a bank unit at 32 rows (module parameter `ROWS` set in `test/rcu/cg-units.json`; a package localparam such as `CCV_P_PHYS_REGS` cannot be overridden, RA-32 (2)), and `ccv_rcu_lanes` with 4 copies instead of 32 (`COPIES`). Traces for a reduced unit come from a skeleton run at the same sizes. Full-size runs are the exit.
+Units for loops: a bank slice unit at 32 rows (module parameter `ROWS` set in `test/rcu/cg-units.json`; a package localparam such as `CCV_P_PHYS_REGS` cannot be overridden, RA-32 (2)), and `ccv_rcu_lanes` with 4 copies instead of 32 (`COPIES`). Traces for a reduced unit come from a skeleton run at the same sizes. Full-size runs are the exit: one slice at 192 rows stands for all 32, as K and J change only which bytes and lanes it is wired to.

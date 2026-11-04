@@ -123,8 +123,9 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
 - **RTL modules:** `rtl/rcu/ccv_rcu*.sv`, named and partitioned exactly as the
   Partition tab's module table:
   - `ccv_rcu`, the top: `ccv_common_clk`, children and wires only;
-  - `ccv_rcu_bank` ×4, `ccv_rcu_pred`, `ccv_rcu_r` with the `ccv_rcu_xbar`
-    helper;
+  - `ccv_rcu_bank_slice` ×32 (byte section K of lanes 4J to 4J+3, 192 rows
+    × 32 bits; Register file tab, Slices), `ccv_rcu_pred`, `ccv_rcu_r` with
+    the `ccv_rcu_xbar` helper;
   - `ccv_rcu_lanes`, `ccv_rcu_mem`, `ccv_rcu_mig`, `ccv_rcu_kill`.
 
   The top keeps the generated stub's module name and port list
@@ -133,17 +134,23 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
 - **Sizes are module parameters**, each defaulting to its `ccv_params_pkg`
   value, for example `parameter int ROWS = ccv_params_pkg::CCV_P_PHYS_REGS`.
   A package localparam cannot be overridden, so a reduced unit would
-  otherwise be impossible (RA-32 (2)).
+  otherwise be impossible (RA-32 (2)). No default may exceed the
+  module's full-size unit: Yosys elaborates a module at its defaults when
+  it reads the file, before the unit's parameters apply, so a reduced unit
+  first pays the defaults' size (a 64,000-cell stand-in took 4.7 GB with
+  whole-bank defaults, 449 MiB with small ones; 2026-11-03).
 - **Units:**
   - test/rcu/cg-units.json for every sequential module;
   - test/rcu/ngd-units.json for any module with no flops.
 
-  Every module gets a reduced unit for loops (a bank at `ROWS` = 32,
+  Every module gets a reduced unit for loops (a bank slice at `ROWS` = 32,
   `ccv_rcu_lanes` at `COPIES` = 4) and its full-size unit for its exit. A
   full-size unit that peaks over 2048 MiB goes on tools/heavy-units.json,
   in the commit that grows it. The gate runs each listed unit alone under a
   lock, and fails an unlisted unit that peaks over the limit (TI rev 289,
-  eb170bf, `CCV_HEAVY_SERIAL`). A full-size bank is very likely one. Copy the shape of `test/ooe/cg-units.json`.
+  eb170bf, `CCV_HEAVY_SERIAL`). The bank is sliced so that none is: RA's
+  stand-in slice at full size measured 6,551 flops, 193,498 cells and
+  1,350 MiB in check-ngd's flow (`ooe_rob_w`: 5,359, 158,437, 1,914). Copy the shape of `test/ooe/cg-units.json`.
 - **Port budgets, `rtl/rcu/<module>.ngd.json`:**
   - The numbers are RA's, from the Partition tab's "Port NGD budgets" table.
     RI transcribes them with `"by": "RA"` and a `why` citing the tab and its
@@ -229,7 +236,7 @@ The model does **not** need the RTL's structure:
 - not its predecode, copy or `(* keep *)` flops;
 - not its stage registers, beyond what the timing above requires.
 
-Model the register file as values, not 49,550 flops a bank. Where a choice
+Model the register file as values, not 32 slices of 6,550 flops. Where a choice
 of structure makes no difference at the ports or in the events, take the
 simplest.
 
@@ -298,7 +305,7 @@ out of your context.
 |---|---|---|---|
 | 0, setup | section 8 | — | roster, session home, handoff, sweep task in place |
 | 1, the model | sim/rcu/: the block at RCU's ports, with its events, hazards, stalls and idle | M0 | every kernel and control passes on both hosts with the model as the default (TI flips makeRcu's default, RA-38 (a)); kernel cycles against the stub's reported. **RA reads it** and folds anything the spec failed to say into the spec |
-| 2, the register file and the R pipe | `ccv_rcu_bank` (units at 32 rows, then 192), `ccv_rcu_r` + `ccv_rcu_xbar` | M3; M1 and M2 for both modules; module benches | bank read AND-OR ≤ 7 NGD at 192 rows; flops within 1% of 49,550; every write D-cone and enable within budget; the register-index shfl (about 22) and ret (about 23) paths ≤ 25 with the read. **RA and DA:** these are the figures for the collective fold from 5 to 3 (RA-8, RA-29 (c)) and the first real flop count. If a bank cannot be a flop array at 25 NGD, stop and raise it at once (Q-51's reopening cost) |
+| 2, the register file and the R pipe | `ccv_rcu_bank_slice` (units at 32 rows, then 192), `ccv_rcu_r` + `ccv_rcu_xbar` | M3; M1 and M2 for both modules; module benches | slice read AND-OR within the bank's read budget at 192 rows (7 in the spec; RA's stand-in measured 8.3, open with Daniel); a light unit; flops within 1% of 6,550; every write D-cone and enable within budget; the register-index shfl (about 22) and ret (about 23) paths ≤ 25 with the read. **RA and DA:** these are the figures for the collective fold from 5 to 3 (RA-8, RA-29 (c)) and the first real flop count. If a bank cannot be a flop array at 25 NGD, stop and raise it at once (Q-51's reopening cost) |
 | 3, predicates and kill | `ccv_rcu_pred` (with and without the guard lead), `ccv_rcu_kill` | M1, M2; M4 | guard path in A ≤ 16 NGD with the lead (≤ 23 without); kill drain bound M4 |
 | 4, lanes, memory, migration | `ccv_rcu_lanes` (4 copies, then 32), `ccv_rcu_mem`, `ccv_rcu_mig` | M1, M2 (the lead-slice field groups), M5 | DCGE per field group; the literal-imm group under 75% goes to RA (the remedy is a DEC bit through OA, never a waiver first); migration 17 rows within 68 cycles |
 | 5, the block | `ccv_rcu` assembled; Q-53 checkers (arrival-cycle, A-35's two isolation assertions, the A-45 pairing checker) | M1 block convergence from the `.ngd.json` files, level by level, then timed whole; M2 block 2%; M6; M7 | every row of the exit table met, or a waiver Daniel signs. Then RA reconciles the spec with what was built |
