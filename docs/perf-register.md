@@ -72,6 +72,7 @@ it.
 | PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266); held: TI reverted it (rev 288) until OI fixes ooe_wake NGD-3 and the rs_tb no-msd control; 2 if RCU's M1 misses |
 | PF-48 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
 | PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
+| PF-50 | Packed contiguous lanes for narrow ops | OOE, LANE, RCU, MIU, schema | deferred (DA, 2026-11-03) |
 
 ## Entries
 
@@ -1232,3 +1233,33 @@ it.
   PRF dominates the core's area or clock power beyond what Daniel accepts,
   this is the first lever. Owner: RA.
 
+### PF-50 Packed contiguous lanes for narrow ops
+
+- **Now:** sectioned lanes (DA's responses OI-28 to OI-31, 2026-10-08;
+  `schema/interfaces.json`, SECTIONED LANES). Every lane is four 8-bit
+  sections and the PRF four section banks. A narrow op runs on all 32 lanes
+  in its sections: two 16-bit ops co-issue in separate halves of every lane,
+  four 8-bit ops in separate quarters. A register is a row plus a position.
+  Daniel kept it (2026-11-03).
+- **Alternative:** pack narrow values of adjacent threads into contiguous
+  lanes, and co-issue narrow ops on separate lane groups: for 16 bits, one
+  op on lanes 0-15 and another on lanes 16-31; for 8 bits, four groups of 8.
+- **Gain:** an idle lane group gates as a block (operand and pipeline flops,
+  the datapath, its PRF columns), where sectioned lanes leave every lane
+  partly busy under narrow work. Each group also has a physical boundary.
+- **Cost:**
+  - The schema changes: register naming (row plus lane group instead of
+    position) and `footprint`, which would name lane groups, not sections.
+  - OOE's rename, free list, row ownership and select are rebuilt around it.
+  - The lanes map several threads to one lane, so active masks, divergence
+    and lane-crossing ops act on sub-lanes, and the byte swizzle of the
+    footprint rule becomes a thread pack and unpack.
+  - Bypass between ops of different widths is harder: sectioned lanes keep
+    a narrow result in the lane that consumes it, at a fixed byte position.
+  - MIU's pipe-to-data mapping and the RCU's banks (lane groups, not byte
+    sections) follow.
+- **Signal:** lane and PRF clock power under narrow-heavy kernels. From
+  the lanes' and the RCU's check-cg DCGE on 8-bit and 16-bit scenarios
+  (RCU spec measure M2), and the power estimate, once there is one. If
+  partly-busy lanes dominate narrow workloads' clock power, this is the
+  lever. Owner: AR (cross-block); raised by RA.
