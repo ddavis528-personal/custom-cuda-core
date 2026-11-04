@@ -68,12 +68,16 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 269, OA 315, TI 296, IS 188, CP 152, OI 254, DA 104,
+  record): AR 270, OA 315, TI 296, IS 188, CP 152, OI 254, DA 104,
   Conventions 17, RA 60, RI 1 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
   ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
-  (PF-47 unheld then; check the PF-47 row once TI's notice lands). Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  (PF-47 unheld then; check the PF-47 row once TI's notice lands).
+  Read by notice 11-04 (not swept: OA 316-326, OI 255-270 unread):
+  OA 327 / DA 106 decq 15 + free lag 1 -> DEC spec states CCV_P_DECQ = 15
+  (specs DEC tab rev 17), AR rev 270 closes it. DA 105: RA-33 fanout term
+  enforced in check-ngd (ratcheted), nothing for AR. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
