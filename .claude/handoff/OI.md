@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 333, OI 281, CP 152, DA 106, RI 3
+Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 333, OI 282, CP 152, DA 106, RI 3
 (sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -104,7 +104,10 @@ the compact hook printed this handoff.
    - RA-39 (c): the OOE RTL has NO payload-read stage yet (no RS payload store, no issue
      payload/lead). Probe test/ooe/probes/rlead_probe.sv in worktree scratchpad/wtl (branch
      oi-rlead-probe, unit added to its cg-units.json): ooe_sched + names flops + R lead mux
-     into a flop beside the grant register. Run tools/check-ngd.py --unit rlead_probe there.
+     into a flop beside the grant register: 38.8 NGD flop-flop (sched alone 30.5). OI-115 (rev 282,
+     notice to OA): lead in select's cycle cannot fit; options (1) valid moves a cycle, (2) lead
+     same-cycle for RCU, (3) predicted lead (no). WAITING on OA. Then build ooe_rs payload store +
+     payload-read mux either way. OI-112's 11-06 RA-39 (c) RTL date depends on it (said so).
    - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
      link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
      lead_r_src0/1 from RS names (TI 39a1861 on ccr-183cc441-doowtf; merge it). sched (b)
