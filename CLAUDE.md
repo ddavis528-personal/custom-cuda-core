@@ -6,6 +6,8 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 `docs/open-items.md` (Q-n), with its owner.
 
 **An OOE model session starts at `docs/ooe-4b.md`.**
+**An RCU model session starts at `docs/rcu-impl.md`;** `CCV_RCU_IMPL=model`
+runs its model in both hosts, the stub staying the default until RI's M0.
 
 ## Sources of truth: edit these, never what is generated from them
 

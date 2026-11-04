@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-04 (after 9718b81). Keep this current at every task's end; it is what
+Updated 2026-11-04 (after OI-111). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -36,8 +36,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 330, RA 61, IS 188, TI 304, OI 273, CP 152, DA 104
-(sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
+Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 306, OI 277, CP 152, DA 106, RI 3
+(sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
 
@@ -87,21 +87,23 @@ the compact hook printed this handoff.
 
 ## Open work (most urgent first)
 -6. FANOUT ENFORCED (TI b11e60f, ratchet rtl/ngd-ratchet.json "fanout"; caps only fall,
-   remove an entry once its path meets 25). State 11-04 08:50 UTC:
-   - Freelist scan (a) PUSHED 32ba2d0 (SCOPED PASS); met caps removed, PUSHED 9718b81.
-     fanout f-f gpr/gsec 24.1, pred 22.8; CG clean (pred 9 of 10.3 ungated flops: keep
-     rqh_cq02h a 5-flop one-hot, a derived bit 0 cost +3 NGD; fsv/fpv under their counts'
-     enables). OA told (OI-106, rev 273); TI re-pinned break pins OK (OI-105).
-   - NEXT (OA rev 330): gsec inputs sa_row_cq01h/sa_v_cq01h (caps 26.7/26.4): retime in
-     freelist, no port budget; caps off in the same push; a lost reuse cycle -> price
-     (S1+audit, <0.5% OA's). Worktree scratchpad/wtr, branch oi-fl-saretime, 0b4190a: pend
-     holds rows unmasked, consumers take pend & ~rows_of(av,ar) (no extra cycle); assert
-     sa_not_rt. Bench/ngd/cg running (~/ccv-logs/oi-r1.log).
-   - decq lag (OA 327, DA took 15 + lag 1): worktree scratchpad/wtd, branch oi-decq-lag,
-     4bd86ee (FL param, used_o lag, tb freeing, control no-free-lag): 25-seed bench PASS at
-     13 entries, 5 controls caught. cg/ngd on ooe_decq running (oi-r1.log). Then gate,
-     push, notify TI (TI rev 301: TI bumps CCV_P_DECQ to 15 in the same push); decq caps
-     (NGD-1 26.1, NGD-3 enq_v 30.2, enq_slot 27.0, deq_t 25.3) should clear with lag 1.
+   remove an entry once its path meets 25). State 11-04 ~13:30 UTC:
+   - Freelist: scan (a) 32ba2d0, caps 9718b81, gsec retime (wr_q flop, no reuse cycle lost)
+     PUSHED 013ed10; freelist has no caps left. OI rev 275 (OI-108) told OA, no notice.
+   - decq (15 entries, free lag 1, CCV_P_DECQ 15, caps off) PUSHED 41ebad9 (SCOPED PASS
+     22/22, 11-04 ~19:00 UTC), with TI's b85595b (OI-111's checks), b1bbee8 (model pair cut at
+     the last lane; FreeVec late clear), ed25191 (tkv waiver gone), 48e7d7c (run-rtl controls
+     at full seeds), 41ebad9 (pair-split control bypasses the new cut). TODO: close OI-109 and
+     OI-111 in the OI tab (FYI TI, OA, no notice); remove worktree wtd.
+     The sched (b) gate 46b478e failed only because OI's disk cleanup removed build/verify
+     mid-run: re-gate it (wts, branch oi-sched-b) after merging origin.
+   - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
+     link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
+     lead_r_src0/1 from RS names (TI 39a1861 on ccr-183cc441-doowtf; merge it). sched (b)
+     83c2900 (46b478e in wts) is UNPUSHED: gating next.
+     TI tab bookmark 309.
+   - RI-7 (answered OI rev 277): RA-18 call link imm_kind 6 OOE substitution is OI's, queued
+     after the fanout cleanup; when it lands, row with rev + notify RI.
    - Then: rs copies probe (OA 325) -> ratread path (OA 326) -> RA-39 (b) lead_r_src0/1
      (OA 329) -> go 25.8 path + sched peak -> OA steps 2-5 -> ROB slices 3-6.
 -5. STATE 11-03 20:00: main tree gate-push (scoped, detached, log ~/ccv-logs/oi-push-1955.log)

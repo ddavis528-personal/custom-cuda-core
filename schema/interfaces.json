@@ -369,7 +369,9 @@
         "lead_imm_used",
         "lead_merge_used",
         "lead_guard_used",
-        "lead_guard_pred"
+        "lead_guard_pred",
+        "lead_r_src0",
+        "lead_r_src1"
       ],
       "lead_fields": [
         "lead_sec_mask",
@@ -377,14 +379,22 @@
         "lead_imm_used",
         "lead_merge_used",
         "lead_guard_used",
-        "lead_guard_pred"
+        "lead_guard_pred",
+        "lead_r_src0",
+        "lead_r_src1"
       ],
-      "lead_why": "RCU's per-field operand enables (RA-31; OA's revs 306-307, AR's rev 267): the operand groups an issue loads are enabled a cycle ahead from RCU's own flops (CG-5), so a group the op does not use is never clocked. On every slot's lead: lead_sec_mask, the op's footprint; lead_src_used, bit i set when GPR source i is a real read (the entry's src_valid); lead_imm_used, set when imm_kind is not none, which covers every substitution OOE makes into imm (srd identities, call's link, predicate logic's and vote's and ballot's predicate sources) and, imm_kind 0 being literal, every literal-kind op, a superset AR accepts; lead_merge_used, set when the write merges (merge_en). On R's slot only (slot_fields): lead_guard_used, set when the guard is not the always-true predicate, and lead_guard_pred, its physical predicate; the negate stays in the payload. OOE builds all of it at select from the RS entry's static fields, opcode-blind. Every bit is a superset: a set bit may load a group the op does not use, a clear bit is a promise that it does not, and the RCU stub refuses an issue whose payload breaks one. A continuation's lead is zero. About 88 wires; a repeated link would carry them at each stage (it has none, params/links.json).",
+      "lead_why": "RCU's per-field operand enables (RA-31; OA's revs 306-307, AR's rev 267): the operand groups an issue loads are enabled a cycle ahead from RCU's own flops (CG-5), so a group the op does not use is never clocked. On every slot's lead: lead_sec_mask, the op's footprint; lead_src_used, bit i set when GPR source i is a real read (the entry's src_valid); lead_imm_used, set when imm_kind is not none, which covers every substitution OOE makes into imm (srd identities, call's link, predicate logic's and vote's and ballot's predicate sources) and, imm_kind 0 being literal, every literal-kind op, a superset AR accepts; lead_merge_used, set when the write merges (merge_en). On R's slot only (slot_fields): lead_guard_used, set when the guard is not the always-true predicate, and lead_guard_pred, its physical predicate; the negate stays in the payload. Also on R's slot only (RA-39 (b); OA's rev 328, AR's rev 271): lead_r_src0 and lead_r_src1, the physical rows of phys_src[15:8] and phys_src[7:0], each zero when lead_src_used says that source is unused, so R reads its first two sources in A into flops and computes from them in A+1; CCV_LAT_RCU stays 3. 2 CCV_P_W_PHYS_REG = 16 wires. OOE builds all of it at select from the RS entry's static fields, opcode-blind. Every bit is a superset: a set bit may load a group the op does not use, a clear bit is a promise that it does not, and the RCU stub refuses an issue whose payload breaks one. A continuation's lead is zero. About 104 wires; a repeated link would carry them at each stage (it has none, params/links.json).",
       "slot_fields": {
         "lead_guard_used": [
           "CCV_ISSUE_SLOT_R"
         ],
         "lead_guard_pred": [
+          "CCV_ISSUE_SLOT_R"
+        ],
+        "lead_r_src0": [
+          "CCV_ISSUE_SLOT_R"
+        ],
+        "lead_r_src1": [
           "CCV_ISSUE_SLOT_R"
         ]
       },
@@ -428,7 +438,7 @@
         "sec_pred_bit"
       ],
       "lead_why": "The mask gates the lane, so it must arrive before what it gates (Q-40): section_en (an op holds the section) and sec_pred_bit (this lane computes it) are the lane's valid, per section and per lane, sent with valid one cycle ahead of the operands, so a masked-off or empty section never clocks its operand capture or its datapath. Nothing else leads (Daniel, 2026-10-18): a lead is captured in valid's cycle, so at the lane and at a repeated link's first stage it is a flop written every cycle, against the module's ungated allowance, and a lead is kept only for an enable or a real IPC gain. sec_owner and sec_pred_data gate nothing and travel with the operands.",
-      "doc": "Operands and control to one lane, one message a cycle (Daniel's response OI-28; change doc 'Interface spec changes -- sectioned lanes'). A lane is four 8-bit sections, S0-S3, and up to four ops share the message, each in its own sections. operand (three 32-bit ports, src0-src2) and merge_data (the fourth) are the four operand ports, 32 bits a lane: one byte a section, each from its own section bank. Per section: section_en (an op holds it), sec_owner (the lead section, its lowest, of the op that holds it; a section is its op's lead where sec_owner names itself), sec_opcode, sec_pred_bit and sec_pred_data. An owner rather than a lead bit, because a footprint may be non-contiguous (AR-15): ops on {S0, S2} and {S1, S3} share a message, and a lead bit alone cannot say whose S2 is (TI-10). On a lead section only: each of the four operands' position and width (sec_opnd_pos, sec_opnd_width) and the destination's (sec_dst_pos, sec_dst_width). The op routes bytes freely within its footprint as part of executing, the swizzle, after the bypass mux; it never reaches another lane's word, which only a warp-collective in RCU moves. A full-width op holds all four sections. sec_pred_bit is the section op's ENABLE in this lane: issue mask AND guard, the same computation as active_mask. A section whose enable is clear does not compute: its op returns merge_data's bytes as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. sec_pred_data is a predicate read as DATA, e.g. sel's selector. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic, pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; sec_pred_out carries those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, decoded from the selector by DEC as two opcodes. operand_byp is the lane-local bypass (A-59, TI-8, TI-9): one CCV_P_W_LANE_BYP_SEL select per operand port per section, since co-issued narrow ops may each forward from a different producer. A select with its forward bit set replaces that section's byte of that port with a result this lane computed earlier, named by the producer's lead section and its age, the cycles between the two messages' arrival here less CCV_LAT_LANE_BYP. RCU sets it for a source whose lane producer has not yet written the PRF, which only a dependant woken at a bypass offset can meet. The selects are the same on every lane, like the opcodes. LAYOUT: every per-section field packs S0 at its LSBs. sec_opnd_pos, sec_opnd_width and operand_byp hold one entry per port per section, section-major: entry k * (CCV_L_OPERANDS_PER_LANE + 1) + i is section k's port i, ports src0-src2 then merge_data. sec_opnd_pos, sec_opnd_width, sec_dst_pos and sec_dst_width are read on lead sections only.",
+      "doc": "Operands and control to one lane, one message a cycle (Daniel's response OI-28; change doc 'Interface spec changes -- sectioned lanes'). A lane is four 8-bit sections, S0-S3, and up to four ops share the message, each in its own sections. operand (three 32-bit ports, src0-src2) and merge_data (the fourth) are the four operand ports, 32 bits a lane: one byte a section, each from its own section bank. Per section: section_en (an op holds it), sec_owner (the lead section, its lowest, of the op that holds it; a section is its op's lead where sec_owner names itself), sec_opcode, sec_pred_bit and sec_pred_data. An owner rather than a lead bit, because a footprint may be non-contiguous (AR-15): ops on {S0, S2} and {S1, S3} share a message, and a lead bit alone cannot say whose S2 is (TI-10). On a lead section only: each of the four operands' position and width (sec_opnd_pos, sec_opnd_width) and the destination's (sec_dst_pos, sec_dst_width). The op routes bytes freely within its footprint as part of executing, the swizzle, after the bypass mux; it never reaches another lane's word, which only a warp-collective in RCU moves. A full-width op holds all four sections. sec_pred_bit is the section op's ENABLE in this lane: issue mask AND guard, the same computation as active_mask. A section whose enable is clear does not compute: its op returns merge_data's bytes as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. sec_pred_data is a predicate read as DATA, e.g. sel's selector. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic, pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; sec_pred_out carries those back. srd runs in the lane on the immediate OOE substitutes, its selector carried as imm_kind 2 to 5, not as two opcodes (AR-25): selectors 0 and 2 (imm_kind 2, warp_base; 4, %lanectx) OR the lane's index into it, selectors 1 and 3 (imm_kind 3, %ctaid; 5, %privoff) pass it through. operand_byp is the lane-local bypass (A-59, TI-8, TI-9): one CCV_P_W_LANE_BYP_SEL select per operand port per section, since co-issued narrow ops may each forward from a different producer. A select with its forward bit set replaces that section's byte of that port with a result this lane computed earlier, named by the producer's lead section and its age, the cycles between the two messages' arrival here less CCV_LAT_LANE_BYP. RCU sets it for a source whose lane producer has not yet written the PRF, which only a dependant woken at a bypass offset can meet. The selects are the same on every lane, like the opcodes. LAYOUT: every per-section field packs S0 at its LSBs. sec_opnd_pos, sec_opnd_width and operand_byp hold one entry per port per section, section-major: entry k * (CCV_L_OPERANDS_PER_LANE + 1) + i is section k's port i, ports src0-src2 then merge_data. sec_opnd_pos, sec_opnd_width, sec_dst_pos and sec_dst_width are read on lead sections only.",
       "id_classes": [
         "instr"
       ],
@@ -552,6 +562,15 @@
         "load_data"
       ],
       "doc": "Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file. phys_dst and phys_pred echo the memop's, so RCU writes back without state: load_data to phys_dst, pred_result (cas's success) to phys_pred. pred_we, set by MIU from the op (cas, not a load), says whether pred_result is written at all -- without it a stateless RCU would clobber the predicate phys_pred names on every load. An L1 hit's data lands at the contracted cycle, with its completion (A-47). A predicate load (mem_op 4, TI-36) returns its word as pred_result with pred_we, and phys_dst the zero register (CCV_P_PHYS_ZERO), which no write reaches: it writes no GPR. Its copy-only op merges the predicate's inactive lanes in RCU. A masked load's inactive lanes are written by its copy-only op through a lane, never by MIU, so this channel carries no merge fields (A-33). SECTIONED (OI-29, OI-33): phys_dst is a row, dst_pos and dst_width the slice the load writes; load_data carries the slice right-aligned in each lane's 32 bits.",
+      "lead_fields": [
+        "active_mask",
+        "phys_dst",
+        "dst_pos",
+        "dst_width",
+        "phys_pred",
+        "pred_we"
+      ],
+      "lead_why": "RCU's write enables (RA-40, RA-4 as settled; AR's rev 278, MIU spec rev 48): MIU's payload lands in T, the cycle MW writes, and under CG-5 an enable may not come from an input, so the fields that enable the write are sent with valid a cycle ahead, from MIU's flops, and RCU registers them at T-1: phys_dst (its row predecode is MW's row enable), dst_pos and dst_width (the bank enables, as secmask, and the position shift), active_mask (the lane mask), and phys_pred with pred_we (the predicate write and RA-39 (i)'s guard forward). 51 bits a slot on all four slots. They are the payload's own fields, leading, not copies (AR's preference, TI's choice at AR's rev 278): RCU uses only the lead, so the channel adds no wires against +204 for copies. Binding once sent and zero when the slot's valid is clear. MIU holds all six from the memop well before T, echoing rcu_miu_addr's. The channel has no repeater stage (params/links.json), so no repeater carries the lead slice.",
       "id_classes": [
         "instr"
       ],
@@ -751,7 +770,7 @@
       "src": "miu",
       "dst": "dcu",
       "rate": 4,
-      "backpressure": "pending: a memory-path request, whose receiver holds it only while its miss buffers are full behind a memory stall, the backpressured class (AR's response TI-22). It takes the class, and CCV_P_TIMEOUT_BP, when DCU's owner states the hold; until then CCV_P_TIMEOUT_N, which holds only while memory is a fixed-latency stub",
+      "backpressure": "held: DCU's owner states the hold (DCU spec rev 15, AR-25): a memory-path request, whose receiver holds it only while its miss buffers are full behind a memory stall, the backpressured class (AR's response TI-22), so it takes CCV_P_TIMEOUT_BP",
       "group": "memory",
       "payload_fields": [
         "req_id",
@@ -1103,6 +1122,7 @@
       "dst": "rcu",
       "rate": 1,
       "group": "control",
+      "backpressure": "held: RA confirmed (RI-3, RA's rev 64) that the credit is taken at launch and is intended: RCU holds RAU's migration notice until OOE's map for the same warp and direction arrives, in either order, so a message sent against credit is outstanding for as long as the other is late, with no bound of its own. response_within_n holds it to CCV_P_TIMEOUT_BP, a watchdog; under CCV_P_TIMEOUT_N, RI's mwmiss run had 59 response_within_n failures",
       "payload_fields": [
         "warp_id",
         "direction"
@@ -1118,6 +1138,7 @@
       "dst": "rcu",
       "rate": 1,
       "group": "control",
+      "backpressure": "held: RA confirmed (RI-3, RA's rev 64) that the credit is taken at launch and is intended: RCU holds OOE's map until RAU's migration notice for the same warp and direction arrives, in either order, so a message sent against credit is outstanding for as long as the other is late, with no bound of its own. response_within_n holds it to CCV_P_TIMEOUT_BP, a watchdog; under CCV_P_TIMEOUT_N, RI's mwmiss run had 59 response_within_n failures",
       "payload_fields": [
         "warp_id",
         "direction",
@@ -1158,7 +1179,7 @@
         "mig_row",
         "row_data"
       ],
-      "doc": "Architectural state back in on restore, one 1024-bit row per message in the same row numbering as ccv_rcu_pca_mig (0 to 15 GPRs, 16 and up predicate state), addressed by warp_id and mig_row so RCU writes it without state. RCU consumes a row only once it holds the warp's map (ccv_ooe_rcu_map, which it pairs with ccv_rau_rcu_mig in either order, A-45) and writes the row as it consumes it, so a row's credit coming back means the row is written (TI-13). The PC groups and their lane masks return to FET on ccv_pca_fet_mig.",
+      "doc": "Architectural state back in on restore, one 1024-bit row per message in the same row numbering as ccv_rcu_pca_mig (rows 0 to 15 the GPRs, row 16 the predicate state alone), addressed by warp_id and mig_row so RCU writes it without state. RCU consumes a row only once it holds the warp's map (ccv_ooe_rcu_map, which it pairs with ccv_rau_rcu_mig in either order, A-45) and writes the row as it consumes it, so a row's credit coming back means the row is written (TI-13). The divergence state, the lanes' PCs (lane_pcs) with the shared upper bits, the fairness state and the live lanes, returns to FET on ccv_pca_fet_mig (AR-25).",
       "id_classes": [
         "none"
       ]
@@ -1662,6 +1683,8 @@
     "lead_merge_used": "1",
     "lead_guard_used": "1",
     "lead_guard_pred": "CCV_P_W_PHYS_PRED",
+    "lead_r_src0": "CCV_P_W_PHYS_REG",
+    "lead_r_src1": "CCV_P_W_PHYS_REG",
     "bypass_group": "CCV_P_W_BYP_GROUP",
     "src_pos": "3*CCV_W_PHYS_POS",
     "src_width": "3*CCV_W_CHWIDTH",

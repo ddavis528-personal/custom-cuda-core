@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 14 | 36 |
 | ⚠️ Some provisional | 26 | 138 |
-| ⛔ Some preliminary | 15 | 147 |
-| **Total** | **55** | **321** |
+| ⛔ Some preliminary | 15 | 149 |
+| **Total** | **55** | **323** |
 
 ## What still has to be decided
 
@@ -254,7 +254,7 @@ rcu → pca · rate 1 · control
 
 ### `ccv_pca_rcu_mig`
 
-Architectural state back in on restore, one 1024-bit row per message in the same row numbering as ccv_rcu_pca_mig (0 to 15 GPRs, 16 and up predicate state), addressed by warp_id and mig_row so RCU writes it without state. RCU consumes a row only once it holds the warp's map (ccv_ooe_rcu_map, which it pairs with ccv_rau_rcu_mig in either order, A-45) and writes the row as it consumes it, so a row's credit coming back means the row is written (TI-13). The PC groups and their lane masks return to FET on ccv_pca_fet_mig.
+Architectural state back in on restore, one 1024-bit row per message in the same row numbering as ccv_rcu_pca_mig (rows 0 to 15 the GPRs, row 16 the predicate state alone), addressed by warp_id and mig_row so RCU writes it without state. RCU consumes a row only once it holds the warp's map (ccv_ooe_rcu_map, which it pairs with ccv_rau_rcu_mig in either order, A-45) and writes the row as it consumes it, so a row's credit coming back means the row is written (TI-13). The divergence state, the lanes' PCs (lane_pcs) with the shared upper bits, the fairness state and the live lanes, returns to FET on ccv_pca_fet_mig (AR-25).
 
 pca → rcu · rate 1 · control
 
@@ -439,6 +439,8 @@ miu → rcu · rate 4 · execution
 | `pred_we` | `1` | 1 | literal |
 | `load_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | **total** | | **1114** | ⚠️ 21 provisional |
+
+Lead fields (driven with valid, a cycle ahead of the rest): `active_mask`, `phys_dst`, `dst_pos`, `dst_width`, `phys_pred`, `pred_we`.
 
 ### `ccv_miu_ooe_cmpl`
 
@@ -839,15 +841,17 @@ ooe → rcu · rate 9 · execution
 | `lead_merge_used` | `1` | 1 | literal |
 | `lead_guard_used` | `1` | 1 | literal |
 | `lead_guard_pred` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
-| **total** | | **193** | ⛔ 12 preliminary, ⚠️ 103 provisional |
+| `lead_r_src0` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
+| `lead_r_src1` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
+| **total** | | **209** | ⛔ 12 preliminary, ⚠️ 119 provisional |
 
-Lead fields (driven with valid, a cycle ahead of the rest): `lead_sec_mask`, `lead_src_used`, `lead_imm_used`, `lead_merge_used`, `lead_guard_used`, `lead_guard_pred`.
+Lead fields (driven with valid, a cycle ahead of the rest): `lead_sec_mask`, `lead_src_used`, `lead_imm_used`, `lead_merge_used`, `lead_guard_used`, `lead_guard_pred`, `lead_r_src0`, `lead_r_src1`.
 
-Slot fields (defined only on the slots named, zero on the rest): `lead_guard_used` on `CCV_ISSUE_SLOT_R`; `lead_guard_pred` on `CCV_ISSUE_SLOT_R`.
+Slot fields (defined only on the slots named, zero on the rest): `lead_guard_used` on `CCV_ISSUE_SLOT_R`; `lead_guard_pred` on `CCV_ISSUE_SLOT_R`; `lead_r_src0` on `CCV_ISSUE_SLOT_R`; `lead_r_src1` on `CCV_ISSUE_SLOT_R`.
 
 ### `ccv_rcu_lane_ops`
 
-Operands and control to one lane, one message a cycle (Daniel's response OI-28; change doc 'Interface spec changes -- sectioned lanes'). A lane is four 8-bit sections, S0-S3, and up to four ops share the message, each in its own sections. operand (three 32-bit ports, src0-src2) and merge_data (the fourth) are the four operand ports, 32 bits a lane: one byte a section, each from its own section bank. Per section: section_en (an op holds it), sec_owner (the lead section, its lowest, of the op that holds it; a section is its op's lead where sec_owner names itself), sec_opcode, sec_pred_bit and sec_pred_data. An owner rather than a lead bit, because a footprint may be non-contiguous (AR-15): ops on {S0, S2} and {S1, S3} share a message, and a lead bit alone cannot say whose S2 is (TI-10). On a lead section only: each of the four operands' position and width (sec_opnd_pos, sec_opnd_width) and the destination's (sec_dst_pos, sec_dst_width). The op routes bytes freely within its footprint as part of executing, the swizzle, after the bypass mux; it never reaches another lane's word, which only a warp-collective in RCU moves. A full-width op holds all four sections. sec_pred_bit is the section op's ENABLE in this lane: issue mask AND guard, the same computation as active_mask. A section whose enable is clear does not compute: its op returns merge_data's bytes as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. sec_pred_data is a predicate read as DATA, e.g. sel's selector. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic, pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; sec_pred_out carries those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, decoded from the selector by DEC as two opcodes. operand_byp is the lane-local bypass (A-59, TI-8, TI-9): one CCV_P_W_LANE_BYP_SEL select per operand port per section, since co-issued narrow ops may each forward from a different producer. A select with its forward bit set replaces that section's byte of that port with a result this lane computed earlier, named by the producer's lead section and its age, the cycles between the two messages' arrival here less CCV_LAT_LANE_BYP. RCU sets it for a source whose lane producer has not yet written the PRF, which only a dependant woken at a bypass offset can meet. The selects are the same on every lane, like the opcodes. LAYOUT: every per-section field packs S0 at its LSBs. sec_opnd_pos, sec_opnd_width and operand_byp hold one entry per port per section, section-major: entry k * (CCV_L_OPERANDS_PER_LANE + 1) + i is section k's port i, ports src0-src2 then merge_data. sec_opnd_pos, sec_opnd_width, sec_dst_pos and sec_dst_width are read on lead sections only.
+Operands and control to one lane, one message a cycle (Daniel's response OI-28; change doc 'Interface spec changes -- sectioned lanes'). A lane is four 8-bit sections, S0-S3, and up to four ops share the message, each in its own sections. operand (three 32-bit ports, src0-src2) and merge_data (the fourth) are the four operand ports, 32 bits a lane: one byte a section, each from its own section bank. Per section: section_en (an op holds it), sec_owner (the lead section, its lowest, of the op that holds it; a section is its op's lead where sec_owner names itself), sec_opcode, sec_pred_bit and sec_pred_data. An owner rather than a lead bit, because a footprint may be non-contiguous (AR-15): ops on {S0, S2} and {S1, S3} share a message, and a lead bit alone cannot say whose S2 is (TI-10). On a lead section only: each of the four operands' position and width (sec_opnd_pos, sec_opnd_width) and the destination's (sec_dst_pos, sec_dst_width). The op routes bytes freely within its footprint as part of executing, the swizzle, after the bypass mux; it never reaches another lane's word, which only a warp-collective in RCU moves. A full-width op holds all four sections. sec_pred_bit is the section op's ENABLE in this lane: issue mask AND guard, the same computation as active_mask. A section whose enable is clear does not compute: its op returns merge_data's bytes as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. sec_pred_data is a predicate read as DATA, e.g. sel's selector. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic, pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; sec_pred_out carries those back. srd runs in the lane on the immediate OOE substitutes, its selector carried as imm_kind 2 to 5, not as two opcodes (AR-25): selectors 0 and 2 (imm_kind 2, warp_base; 4, %lanectx) OR the lane's index into it, selectors 1 and 3 (imm_kind 3, %ctaid; 5, %privoff) pass it through. operand_byp is the lane-local bypass (A-59, TI-8, TI-9): one CCV_P_W_LANE_BYP_SEL select per operand port per section, since co-issued narrow ops may each forward from a different producer. A select with its forward bit set replaces that section's byte of that port with a result this lane computed earlier, named by the producer's lead section and its age, the cycles between the two messages' arrival here less CCV_LAT_LANE_BYP. RCU sets it for a source whose lane producer has not yet written the PRF, which only a dependant woken at a bypass offset can meet. The selects are the same on every lane, like the opcodes. LAYOUT: every per-section field packs S0 at its LSBs. sec_opnd_pos, sec_opnd_width and operand_byp hold one entry per port per section, section-major: entry k * (CCV_L_OPERANDS_PER_LANE + 1) + i is section k's port i, ports src0-src2 then merge_data. sec_opnd_pos, sec_opnd_width, sec_dst_pos and sec_dst_width are read on lead sections only.
 
 rcu → lane · rate 1 · execution
 

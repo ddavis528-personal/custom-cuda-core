@@ -64,6 +64,9 @@ MAP = [
     ("tools/", ALL),
     # The OOE model is the reference the OOE RTL is compared against.
     ("sim/ooe/", ["skel", "kernel", "ooe_unit", "ooe_rtl", "svh"]),
+    # The RCU model (RI-2): built into both hosts (blocks.list), so the
+    # kernels and the SV top read it, and its own harness.
+    ("sim/rcu/", ["skel", "kernel", "rcu_unit", "svh"]),
     ("sim/skel/", ["skel", "kernel", "svh", "top"]),
     ("sim/", ALL),
     ("rtl/lint/", ["s1d"] + RTL),
@@ -159,6 +162,9 @@ def selftest():
     s, _ = scope(["sim/ooe/ooe_core.cpp"])
     expect(s != ALL and {"kernel", "ooe_unit", "ooe_rtl", "skel", "svh"} <= set(s),
            "an OOE model change skips a section that reads it: %s" % s)
+    s, _ = scope(["sim/rcu/rcu_core.cpp"])
+    expect(s != ALL and {"kernel", "rcu_unit", "skel", "svh"} <= set(s),
+           "an RCU model change skips a section that reads it: %s" % s)
     s, _ = scope(["docs/roadmap.md"])
     expect(s == [j for j in order if j in ALWAYS], "a prose change ran more than ALWAYS: %s" % s)
     s, _ = scope(["docs/roadmap.md", "params/links.json"])
