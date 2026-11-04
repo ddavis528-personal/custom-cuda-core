@@ -106,9 +106,7 @@
     },
     "ooe_sched": {
       "NGD-1": 30.5,
-      "NGD-3 brk_cq03h": 27.0,
       "NGD-3 cidx_cq03h": 26.6,
-      "NGD-3 older_m_cq03h": 25.1,
       "NGD-3 res_cq03h": 30.2,
       "NGD-3 siss_cq03h": 27.1,
       "NGD-3 sslot_cq03h": 27.3,
