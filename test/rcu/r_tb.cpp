@@ -4,23 +4,21 @@
 // the R pipe (R unit tab; the RCU model's issueR, sim/rcu/rcu_core.cpp):
 // what RW writes, what PR writes and what done slots 5 and 6 carry.
 //
-//   an op's valid and lead in t+1, A = t+2 (payload, R0 and R1 rows),
-//   A+1 = t+3 (R2's row, active, RA, RB, rlow), A+2 = t+4 (the writes and the
-//   done payload); an MIU slot's valid and lead in u+1, its data in u+2, forwarded to an R source in A = u+2 (rcu_r.sv, "Port timing").
+//   an op's valid lead in t+1, A = t+2 (the payload), A+1 = t+3 (rsrc: the
+//   bank slices' raw R0/R1 rows, MIU write-through already applied; R2's
+//   row; active, RA, RB, rlow), A+2 = t+4 (the writes and the done
+//   payload) (rcu_r.sv, "Port timing").
 //
-// Every R kind, random fields, random bank rows; the MIU slots land at random
-// with distinct rows, and an R source names a landing slot's register on
-// about a third of its reads, so the forward is taken on its active lanes
-// and the bank read on the rest. The bench keeps the module's input
-// contract: one MIU slot a source, the predicate file's rlow the lowest lane
-// of active, and a predicate-writing op has pred_we.
+// Every R kind, random fields, random rows at every position and width.
+// The bench keeps the module's input contract: the predicate file's rlow is
+// the lowest lane of active, and a predicate-writing op has pred_we.
 //
 // Runs: random traffic (the bench's ordinary run). --cg <idle|medium|high>
 // <vcd> runs one clock-gating scenario (tools/check-cg.py): idle is reset
 // and then nothing; medium an op on about a third of the cycles; high one
-// on most. Inputs change only with a message. --control <nofwd|retlow>
-// expects a wrong rule (no MIU forward; ret's aux from the highest active
-// lane): the run must fail (test/rcu/run-rtl.sh). Exit 0 only with no
+// on most. Inputs change only with a message. --control <noalign|retlow>
+// expects a wrong rule (a source's position ignored; ret's aux from the
+// highest active lane): the run must fail (test/rcu/run-rtl.sh). Exit 0 only with no
 // mismatch.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_r.h"
@@ -39,7 +37,7 @@
 
 namespace {
 
-constexpr unsigned kN = 32, kNM = 4, kZero = 255, kPZero = 63;
+constexpr unsigned kN = 32, kZero = 255, kPZero = 63;
 enum Kind : unsigned { None, Bra, Call, Ret, Pand, Por, Pxor, Pmov, Movi, ShI, ShR, ShU, ShD, ShB,
                        VAny, VAll, Bal, Unb, kKinds };
 const char *kName[kKinds] = {"none", "bra", "call", "ret", "pand", "por", "pxor", "pmov", "movi",
@@ -81,11 +79,6 @@ bool isbr(unsigned k) { return k >= Bra && k <= Ret; }
 bool uses0(unsigned k) { return k == Ret || (k >= ShI && k <= ShB) || k == Unb; }
 bool uses1(unsigned k) { return k == ShR; }
 
-struct Miu {   // one MIU slot landing
-  unsigned row, pos, w;
-  uint32_t am;
-  std::array<uint32_t, kN> dat;
-};
 struct Op {
   unsigned kind, tag, drow, dst, dpos, dwid, opos, pd;
   unsigned src[2], spos[2], swid[2];
@@ -96,7 +89,6 @@ struct Op {
   std::array<uint32_t, kN> wdat;
   uint32_t pval, pmm, bm, aux;
   bool bt;
-  unsigned fwd_lanes;
 };
 
 extern int g_argc;
@@ -109,10 +101,8 @@ struct Bench {
   uint64_t t = 0, cyc = 0;
   unsigned fails = 0, checked = 0;
   std::map<uint64_t, Op> ops;                         // by valid cycle
-  std::map<uint64_t, std::array<bool, kNM>> mvs;      // slots landing two cycles on, by valid cycle
-  std::map<uint64_t, std::array<Miu, kNM>> mius;
   std::array<unsigned, kKinds> cov_kind{};
-  unsigned cov_fwd = 0, cov_fwd_part = 0, cov_merge = 0, cov_shift = 0, cov_ret_multi = 0,
+  unsigned cov_merge = 0, cov_shift = 0, cov_ret_multi = 0,
            cov_noact = 0;
 
   explicit Bench(const char *vcd_path) {
@@ -153,11 +143,6 @@ struct Bench {
     dut->rcu_rst_r00h = rst;
     const uint64_t c = cyc;
     dut->iv_cr01h = op(c - 1) != nullptr;   // the valid comes with the lead
-    if (const Op *o = op(c - 1)) {   // the lead
-      dut->lsu_cr01h = (uses0(o->kind) ? 1 : 0) | (uses1(o->kind) ? 2 : 0);
-      put(dut->lsrc_cr01h, 0, 8, o->src[0]);
-      put(dut->lsrc_cr01h, 8, 8, o->src[1]);
-    }
     if (const Op *o = op(c - 2)) {   // A: the payload, R0 and R1
       dut->kind_cr02h = o->kind;
       dut->tag_cr02h = o->tag;
@@ -173,32 +158,18 @@ struct Bench {
       dut->pd_cr02h = o->pd;
       dut->mrg_cr02h = o->mrg;
       dut->pwe_cr02h = o->pwe;
-      for (unsigned l = 0; l < kN; ++l) {
-        dut->rd0_cr02h[l] = o->rd[0][l];
-        dut->rd1_cr02h[l] = o->rd[1][l];
-      }
     }
     if (const Op *o = op(c - 3)) {   // A+1: R2 and the predicate file's flops
-      for (unsigned l = 0; l < kN; ++l) dut->rd2_cr03h[l] = o->rd[2][l];
+      for (unsigned l = 0; l < kN; ++l) {
+        dut->rs0_cr03h[l] = o->rd[0][l];
+        dut->rs1_cr03h[l] = o->rd[1][l];
+        dut->rd2_cr03h[l] = o->rd[2][l];
+      }
       dut->act_cr03h = o->act;
       dut->rpa_cr03h = o->rpa;
       dut->rpb_cr03h = o->rpb;
       dut->low_cr03h = o->act & (~o->act + 1u);
     }
-    dut->mv_cr01h = 0;
-    if (auto m = mvs.find(c - 1); m != mvs.end())
-      for (unsigned j = 0; j < kNM; ++j)
-        if (m->second[j]) {
-          const Miu &s = mius[c - 1][j];
-          put(dut->mv_cr01h, j, 1, 1);
-          put(dut->mrow_cr01h, j * 8, 8, s.row);
-          put(dut->mpos_cr01h, j * 2, 2, s.pos);
-          put(dut->mam_cr01h, j * 32, 32, s.am);
-        }
-    if (auto m = mvs.find(c - 2); m != mvs.end())
-      for (unsigned j = 0; j < kNM; ++j)
-        if (m->second[j])
-          for (unsigned l = 0; l < kN; ++l) dut->mdat_cr02h[j * kN + l] = mius[c - 2][j].dat[l];
   }
 
   void check() {
@@ -238,8 +209,6 @@ struct Bench {
     dut->rcu_core_clk = 1;
     eval();
     ops.erase(cyc - 4);
-    mvs.erase(cyc - 2);
-    mius.erase(cyc - 2);
     ++cyc;
   }
 };
@@ -258,30 +227,6 @@ struct Gen {
     pos = w == 0 ? 0 : w == 1 ? 2 * below(2) : below(4);
   }
   unsigned row() { return 1 + below(23); }
-
-  // MIU slots landing at u + 2: distinct rows, so one slot a source.
-  void miu(Bench &b, uint64_t u, double rate) {
-    std::array<bool, kNM> v{};
-    std::array<Miu, kNM> m{};
-    bool any = false;
-    unsigned used = 0;
-    for (unsigned j = 0; j < kNM; ++j) {
-      if (!p(rate)) continue;
-      unsigned rw;
-      do rw = row(); while (used & (1u << rw));
-      used |= 1u << rw;
-      v[j] = any = true;
-      m[j].row = rw;
-      place(m[j].w, m[j].pos);
-      const unsigned x = below(4);
-      m[j].am = x == 0 ? ~0u : x == 1 ? 0u : u32();
-      for (unsigned l = 0; l < kN; ++l) m[j].dat[l] = u32() & em(m[j].w);
-    }
-    if (any) {
-      b.mvs[u] = v;
-      b.mius[u] = m;
-    }
-  }
 
   void op(Bench &b, uint64_t c) {
     Op o{};
@@ -304,8 +249,7 @@ struct Gen {
     if (o.kind == ShR) o.imm = 0;
     for (auto &rd : o.rd)
       for (auto &w : rd) w = u32();
-    // The sources: rows, and on about a third a landing MIU slot's register.
-    const auto mv = b.mvs.find(c);
+    // The sources: a row and a placement each.
     for (unsigned s = 0; s < 2; ++s) {
       const bool used = s == 0 ? uses0(o.kind) : uses1(o.kind);
       if (!used) {
@@ -315,17 +259,6 @@ struct Gen {
       }
       o.src[s] = row();
       place(o.swid[s], o.spos[s]);
-      if (mv != b.mvs.end() && p(0.4)) {
-        const unsigned j = below(kNM);
-        if (mv->second[j]) {
-          const Miu &m = b.mius[c][j];
-          o.src[s] = m.row;
-          if (p(0.8)) {
-            o.swid[s] = m.w;
-            o.spos[s] = m.pos;
-          }
-        }
-      }
     }
     if (o.kind == Ret && p(0.5)) {   // equal return addresses on several lanes
       const uint32_t v = u32();
@@ -337,23 +270,11 @@ struct Gen {
   }
 
   // The model's issueR, from the op's fields.
-  void expect(Bench &b, uint64_t c, Op &o) {
+  void expect(Bench &b, uint64_t, Op &o) {
     std::array<uint32_t, kN> v[2];
-    const auto mv = b.mvs.find(c);
     for (unsigned s = 0; s < 2; ++s)
-      for (unsigned l = 0; l < kN; ++l) {
-        v[s][l] = align(o.rd[s][l], o.spos[s], o.swid[s]);
-        if (mv == b.mvs.end() || control == "nofwd") continue;
-        if (!(s == 0 ? uses0(o.kind) : uses1(o.kind))) continue;
-        for (unsigned j = 0; j < kNM; ++j) {
-          const Miu &m = b.mius[c][j];
-          if (mv->second[j] && m.row == o.src[s] && m.pos == o.spos[s] && ((m.am >> l) & 1u)) {
-            v[s][l] = m.dat[l] & em(o.swid[s]);
-            ++o.fwd_lanes;
-          }
-        }
-      }
-    if (o.fwd_lanes) ++b.cov_fwd;
+      for (unsigned l = 0; l < kN; ++l)
+        v[s][l] = align(o.rd[s][l], control == "noalign" ? 0u : o.spos[s], o.swid[s]);
     const uint32_t e = em(o.dwid), act = o.act;
     std::array<uint32_t, kN> gnew{}, old{};
     for (unsigned l = 0; l < kN; ++l) old[l] = o.mrg ? align(o.rd[2][l], o.opos, o.dwid) : 0u;
@@ -436,12 +357,8 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   for (unsigned i = 0; i < n; ++i) {
     const uint64_t c = b.cyc;
     if (scenario == "medium") {
-      if (i % 3 == 0) {
-        g.miu(b, c, 0.3);
-        if (g.p(0.9)) g.op(b, c);
-      }
+      if (i % 3 == 0 && g.p(0.9)) g.op(b, c);
     } else if (scenario != "idle") {
-      g.miu(b, c, 0.4);
       if (g.p(0.9)) g.op(b, c);
     }
     b.step();
@@ -450,18 +367,18 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   bool cov = true;
   if (scenario != "idle") {
     for (unsigned k = 1; k < kKinds; ++k) cov &= b.cov_kind[k] != 0;
-    cov &= b.cov_fwd && b.cov_merge && b.cov_shift && b.cov_ret_multi && b.cov_noact;
+    cov &= b.cov_merge && b.cov_shift && b.cov_ret_multi && b.cov_noact;
     if (!cov) {
-      std::fprintf(stderr, "rcu_r: coverage: fwd %u merge %u shift %u ret_multi %u noact %u; kinds",
-                   b.cov_fwd, b.cov_merge, b.cov_shift, b.cov_ret_multi, b.cov_noact);
+      std::fprintf(stderr, "rcu_r: coverage: merge %u shift %u ret_multi %u noact %u; kinds",
+                   b.cov_merge, b.cov_shift, b.cov_ret_multi, b.cov_noact);
       for (unsigned k = 1; k < kKinds; ++k) std::fprintf(stderr, " %s %u", kName[k], b.cov_kind[k]);
       std::fputc('\n', stderr);
       ++b.fails;
     }
   }
-  std::printf("rcu_r: %s%s%s: %llu cycles, %u values checked, %u ops forwarded, %u mismatches: %s\n",
+  std::printf("rcu_r: %s%s%s: %llu cycles, %u values checked, %u mismatches: %s\n",
               scenario.empty() ? "random" : scenario.c_str(), control.empty() ? "" : ", control ",
-              control.c_str(), (unsigned long long)b.cyc, b.checked, b.cov_fwd, b.fails,
+              control.c_str(), (unsigned long long)b.cyc, b.checked, b.fails,
               b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }

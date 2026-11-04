@@ -24,15 +24,16 @@
 //                           taken into the select flops under that flop
 //   cycle t+1  a read's data on rd_cr03h, from the selects and the rows;
 //              a write's data on *_dat_cr02h, written at the edge ending t+1
-// A port whose valid comes with its row (R0 and R1 from the R slot's lead,
-// MW from MIU's lead; neither sender has a valid a cycle earlier, RA's
-// re:RI-9 (b)): the valid and row in t, loaded every cycle, ungated, into
-// select state: R0/R1's one-hot (RR_HOT; binary, decoded in t+1, misses
-// R0/R1's bank-out budget of 13 at 192 rows: 15.9 NGD), MW's row binary
-// and its slot's fields; the data in t+1 as above.
-// A read in t+1 of a row written in t+1 sees the old value. (The MIU
-// forward to R0/R1 is rcu_r's, RA-39 (i): a write-through here would put
-// MIU's data straight through the slice to its read output.)
+// MW, whose valid comes with MIU's lead (RA's re:RI-9 (b)): the valid and
+// lead in T-1, the slot covering K loaded every cycle, ungated (its row
+// binary, decoded in T, and its fields); the data in T as above.
+// R0 and R1 (RA-39, OA rev 336): no select flops. The R issue valid lead in
+// A-1 (rv_cr02h, flopped); the payload's phys_src rows on the wire in A
+// (rr_row_cr03h), decoded and read in A, with the MIU write-through (the MW
+// write landing in A, on its lanes, substituted for the read), into the
+// slice's rsrc at A's edge (rs_cr04h, raw: rcu_r aligns it in A+1).
+// A read of a row written in the same cycle sees the old value, but for
+// R0/R1's write-through of MW.
 //
 // Read ports: NR (8) whose valid leads, L0-L2 and L3 (merge data), M0-M2,
 // R2, in the order the parent wires them, on rd_*; R0 and R1 on rr_*. Each
@@ -73,7 +74,6 @@ module rcu_bank_slice #(
   parameter int J = 0,          // its lanes are 4J to 4J+3 (wiring only)
   parameter int FULL_ROW = 1,   // AR-24's interim: SW, MW, RW write the whole row
   parameter int NR = 8,         // read ports whose valid leads: L0-L3, M0-M2, R2
-  parameter int RR_HOT = 1,     // R0/R1 selects one-hot (1) or the row binary (0), loaded every cycle
   parameter int NW = 3,         // generic write ports: LW, SW, RW
   parameter int NM = 4,         // MIU slots on the load port
   localparam int L = 4,         // lanes
@@ -87,10 +87,10 @@ module rcu_bank_slice #(
   input  logic [NR-1:0]     rd_v_cr00h,     // port p reads next cycle
   input  logic [NR*WR-1:0]  rd_row_cr01h,   //   this row
   output logic [NR*32-1:0]  rd_cr03h,       // port p's 4 lanes' byte K (lane l at p*32 + 8l)
-  // R0 and R1: valid with the row.
-  input  logic [NRR-1:0]    rr_v_cr01h,     // port q reads next cycle
-  input  logic [NRR*WR-1:0] rr_row_cr01h,   //   this row
-  output logic [NRR*32-1:0] rr_cr03h,       // port q's 4 lanes' byte K
+  // R0 and R1: the R issue valid lead, then the payload's rows.
+  input  logic              rv_cr02h,       // R issues next cycle (the lead's valid)
+  input  logic [NRR*WR-1:0] rr_row_cr03h,   //   phys_src: R0 at [7:0], R1 at [15:8], on the wire
+  output logic [NRR*32-1:0] rs_cr04h,       // rsrc: their 4 lanes' byte K, raw, a cycle on
   // Generic write ports: 0 LW, 1 SW, 2 RW.
   input  logic [NW-1:0]     wr_v_cr00h,     // port p writes in two cycles
   input  logic [NW*WR-1:0]  wr_row_cr01h,   //   this row
@@ -153,39 +153,14 @@ module rcu_bank_slice #(
     end
   end
 
-  // R0 and R1: loaded every cycle, the zero register when not reading.
+  // R0 and R1: decoded on the wire.
   localparam logic [WR-1:0] ZROW = WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
   logic [NRR*NH-1:0] rr_hi_cr02h;
   logic [NRR*16-1:0] rr_lo_cr02h;
-  if (RR_HOT != 0) begin : g_rr_hot
-    (* keep *) logic [NRR*NH-1:0] rr_hq_cr02h;
-    (* keep *) logic [NRR*16-1:0] rr_lq_cr02h;
-    always_ff @(posedge rcu_core_clk) begin
-      if (rst_r01h) begin
-        rr_hq_cr02h <= '0;
-        rr_lq_cr02h <= '0;
-      end else begin
-        for (int q = 0; q < NRR; q++) begin
-          rr_hq_cr02h[q*NH +: NH] <= {NH{rr_v_cr01h[q]}} & dec_hi(rr_row_cr01h[q*WR +: WR]);
-          rr_lq_cr02h[q*16 +: 16] <= dec_lo(rr_row_cr01h[q*WR +: WR]);
-        end
-      end
-    end
-    assign rr_hi_cr02h = rr_hq_cr02h;
-    assign rr_lo_cr02h = rr_lq_cr02h;
-  end else begin : g_rr_bin
-    (* keep *) logic [NRR*WR-1:0] rr_row_cr02h;
-    always_ff @(posedge rcu_core_clk) begin
-      if (rst_r01h) rr_row_cr02h <= {NRR{ZROW}};
-      else
-        for (int q = 0; q < NRR; q++)
-          rr_row_cr02h[q*WR +: WR] <= rr_v_cr01h[q] ? rr_row_cr01h[q*WR +: WR] : ZROW;
-    end
-    always_comb begin
-      for (int q = 0; q < NRR; q++) begin
-        rr_hi_cr02h[q*NH +: NH] = dec_hi(rr_row_cr02h[q*WR +: WR]);
-        rr_lo_cr02h[q*16 +: 16] = dec_lo(rr_row_cr02h[q*WR +: WR]);
-      end
+  always_comb begin
+    for (int q = 0; q < NRR; q++) begin
+      rr_hi_cr02h[q*NH +: NH] = dec_hi(rr_row_cr03h[q*WR +: WR]);
+      rr_lo_cr02h[q*16 +: 16] = dec_lo(rr_row_cr03h[q*WR +: WR]);
     end
   end
 
@@ -318,7 +293,28 @@ module rcu_bank_slice #(
     plo_cr02h[NW*16 +: 16] = mw_lo_cr02h;
     pact_cr02h[NW]         = mw_act_cr02h;
   end
-  assign rr_cr03h = rdx_cr03h[NA*32-1:NR*32];
+  // R0 and R1 into rsrc: the read, or on the lanes of an MW write landing
+  // now in the same row (never the zero register), the byte it writes.
+  logic rv_cr03h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rst_r01h) rv_cr03h <= 1'b0;
+    else          rv_cr03h <= rv_cr02h;
+  end
+  logic [NRR*32-1:0] rs_d_cr03h;
+  always_comb begin
+    for (int q = 0; q < NRR; q++) begin
+      logic wt_cr03h;
+      wt_cr03h = mw_act_cr02h & (rr_row_cr03h[q*WR +: WR] == mw_row_cr02h) &
+                 (rr_row_cr03h[q*WR +: WR] != ZROW);
+      for (int l = 0; l < L; l++)
+        rs_d_cr03h[q*32 + 8*l +: 8] = (wt_cr03h & mw_lm_cr02h[l]) ? pdat_cr02h[NW*32 + 8*l +: 8]
+                                                                 : rdx_cr03h[(NR + q)*32 + 8*l +: 8];
+    end
+  end
+  wire rs_en_cr03h = rv_cr03h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rs_en_cr03h) rs_cr04h <= rs_d_cr03h;
+  end
 
   // ---- Rows: hits, enables and D ---------------------------------------
   logic [ROWS*NP-1:0] hit_cr02h;   // row r, port p at r*NP + p
@@ -364,8 +360,8 @@ module rcu_bank_slice #(
     for (int p = 0; p < NW; p++)
       bad_wr_cr01h = bad_wr_cr01h | (wr_v_cr01h[p] && 32'(wr_row_cr01h[p*WR +: WR]) >= ROWS);
     for (int q = 0; q < NRR; q++)
-      bad_rd_cr01h = bad_rd_cr01h | (rr_v_cr01h[q] && 32'(rr_row_cr01h[q*WR +: WR]) >= ROWS &&
-                                     32'(rr_row_cr01h[q*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
+      bad_rd_cr01h = bad_rd_cr01h | (rv_cr03h && 32'(rr_row_cr03h[q*WR +: WR]) >= ROWS &&
+                                     32'(rr_row_cr03h[q*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
     bad_mw_cr01h = 1'b0;
     for (int j = 0; j < NM; j++)
       bad_mw_cr01h = bad_mw_cr01h | (mw_v_cr01h[j] && 32'(mw_row_cr01h[j*WR +: WR]) >= ROWS &&

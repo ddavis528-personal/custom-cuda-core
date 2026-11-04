@@ -6,9 +6,12 @@
 // write port leaves in the rows.
 //
 //   valid in t, row in t+1, a read's data and a write's data in t+2
-//   (rcu_bank_slice.sv, "Port timing"); R0, R1 (read ports 7 and 8) and MW
-//   take their valid with the row, in t+1. A read in t+2 of a row written
-//   in t+2 sees the old value.
+//   (rcu_bank_slice.sv, "Port timing"); MW takes its valid with its lead,
+//   in t+1. R0 and R1 (read ports 7 and 8): the R valid lead in t+1, the
+//   row on the wire in t+2, the value in rsrc after t+2's edge. A read in
+//   t+2 of a row written in t+2 sees the old value, but for R0/R1 of an MW
+//   write (the write-through, on its lanes). --control nowt expects none:
+//   the run must fail (test/rcu/run-rtl.sh).
 //
 // Written by LW (owned sections), SW and RW (secmask, or the whole row zero
 // above the register under FULL_ROW), and MW (per MIU slot: the slot that
@@ -103,6 +106,7 @@ struct Cycle {   // what one cycle's valids started
 
 extern int g_argc;
 extern char **g_argv;
+extern bool g_nowt;   // --control nowt: expect no write-through (the run must fail)
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
@@ -114,6 +118,7 @@ struct Bench {
   std::vector<bool> known = std::vector<bool>(kRows, false);
   Cycle s1, s2;   // started one and two cycles ago
   // Coverage of the rules the random traffic must reach.
+  unsigned cov_wt = 0;
   unsigned cov_read = 0, cov_zero = 0, cov_lw = 0, cov_lw_skip = 0, cov_zfill = 0, cov_mw = 0,
            cov_mw_nib = 0, cov_mw_shift = 0, cov_hold = 0, cov_same = 0;
 
@@ -150,7 +155,7 @@ struct Bench {
     dut->rcu_rst_r00h = rst;
     dut->rd_v_cr00h = 0;
     dut->wr_v_cr00h = 0;
-    dut->rr_v_cr01h = 0;
+    dut->rv_cr02h = 0;
     dut->mw_v_cr01h = 0;
     for (const Read &r : next.rd)
       if (!isRR(r.port)) put(dut->rd_v_cr00h, rdIdx(r.port), 1, 1);
@@ -159,13 +164,14 @@ struct Bench {
     // Unused fields hold.
     for (const Read &r : s1.rd) {
       if (isRR(r.port)) {
-        put(dut->rr_v_cr01h, r.port - 7, 1, 1);
-        put(dut->rr_row_cr01h, (r.port - 7) * 8, 8, r.row);
+        dut->rv_cr02h = 1;
       } else {
         put(dut->rd_row_cr01h, rdIdx(r.port) * 8, 8, r.row);
       }
     }
     for (const Load &l : s1.ld) put(dut->mw_v_cr01h, l.slot, 1, 1);
+    for (const Read &r : s2.rd)
+      if (isRR(r.port)) put(dut->rr_row_cr03h, (r.port - 7) * 8, 8, r.row);
     for (const Write &w : s1.wr) {
       put(dut->wr_row_cr01h, w.port * 8, 8, w.row);
       put(dut->wr_sec_cr01h, w.port * 4, 4, w.sec);
@@ -185,6 +191,7 @@ struct Bench {
       for (unsigned l = 0; l < kL; ++l) put(dut->mw_dat_cr02h, (ld.slot * kL + l) * 32, 32, ld.word[l]);
     dut->rcu_core_clk = 0;
     eval();
+    std::vector<std::pair<unsigned, std::array<unsigned, kL>>> rs_want;   // R0/R1: in rsrc after the edge
     if (!rst) {
       // s2's reads: the rows as they stand before this cycle's writes.
       for (const Read &r : s2.rd) {
@@ -193,9 +200,21 @@ struct Bench {
         ++cov_read;
         cov_zero += zero;
         for (unsigned l = 0; l < kL; ++l) {
-          const unsigned want = zero ? 0u : row[r.row][l];
-          const unsigned got = isRR(r.port) ? unsigned(get(dut->rr_cr03h, (r.port - 7) * 32 + 8 * l, 8))
-                                            : unsigned(get(dut->rd_cr03h, rdIdx(r.port) * 32 + 8 * l, 8));
+          unsigned want = zero ? 0u : row[r.row][l];
+          if (isRR(r.port)) {
+            if (!zero && !g_nowt)
+              for (const Load &ld : s2.ld) {
+                const int b = loadByte(ld, l);
+                if (ld.row == r.row && b >= 0) {
+                  want = unsigned(b);
+                  ++cov_wt;
+                }
+              }
+            if (l == 0) rs_want.push_back({r.port - 7, {}});
+            rs_want.back().second[l] = want;
+            continue;
+          }
+          const unsigned got = unsigned(get(dut->rd_cr03h, rdIdx(r.port) * 32 + 8 * l, 8));
           if (got != want) fail("read port %u row %u lane %u: %02x", r.port, r.row, l, got);
         }
       }
@@ -203,9 +222,24 @@ struct Bench {
     }
     dut->rcu_core_clk = 1;
     eval();
+    for (const auto &[q, want] : rs_want)
+      for (unsigned l = 0; l < kL; ++l) {
+        const unsigned got = unsigned(get(dut->rs_cr04h, q * 32 + 8 * l, 8));
+        if (got != want[l]) fail("rsrc R%u lane %u: %02x, want %02x", q, l, got, want[l]);
+      }
     ++cyc;
     s2 = s1;
     s1 = next;
+  }
+
+  /// What a load writes in this slice on lane l: its byte, or -1 for none.
+  static int loadByte(const Load &ld, unsigned l) {
+    const bool cov = covers(ld.w, ld.pos);
+    if (!(cov || kFullRow) || ld.row == kZero || !((ld.lm >> l) & 1u)) return -1;
+    if (!cov) return 0;
+    uint8_t b = uint8_t(ld.word[l] >> (8 * (kK - ld.pos)));
+    if (ld.w == 3) b &= 0x0f;
+    return b;
   }
 
   /// The write rules, at the edge ending a write's data cycle.
@@ -288,7 +322,7 @@ struct Gen {
       for (auto &x : ld.word) x = uint32_t(rng());
       c.ld.push_back(ld);
     }
-    // R0 or R1 on a row a load lands in: the old value.
+    // R0 or R1 on a row a load lands in: the write-through.
     for (Read &r : c.rd)
       if (isRR(r.port) && !c.ld.empty() && coin(0.5)) r.row = c.ld[rnd(unsigned(c.ld.size()))].row;
     return c;
@@ -340,6 +374,7 @@ void directed(Bench &b) {
 
 int g_argc;
 char **g_argv;
+bool g_nowt = false;
 
 int run(const std::string &scenario, const char *vcd) {
   Bench b(vcd);
@@ -364,8 +399,12 @@ int run(const std::string &scenario, const char *vcd) {
                  b.cov_mw_shift, b.cov_hold);
     ++b.fails;
   }
-  std::printf("bank_slice: rows %u K %u full_row %d %s: %llu cycles, %u reads checked, %u mismatches: %s\n",
-              kRows, kK, int(kFullRow), scenario.empty() ? "directed+random" : scenario.c_str(),
+  if (scenario != "idle" && !g_nowt && !b.cov_wt) {
+    std::fprintf(stderr, "bank_slice: coverage: no write-through\n");
+    ++b.fails;
+  }
+  std::printf("bank_slice: rows %u K %u full_row %d%s %s: %llu cycles, %u reads checked, %u mismatches: %s\n",
+              kRows, kK, int(kFullRow), g_nowt ? ", control nowt:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
               (unsigned long long)b.cyc, b.cov_read, b.fails, b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }
@@ -377,6 +416,8 @@ int main(int argc, char **argv) {
   g_argv = argv;
   std::string scenario;
   const char *vcd = nullptr;
+  for (int i = 1; i + 1 < argc; ++i)
+    if (!std::strcmp(argv[i], "--control") && !std::strcmp(argv[i + 1], "nowt")) g_nowt = true;
   for (int i = 1; i + 2 < argc; ++i)
     if (!std::strcmp(argv[i], "--cg")) {
       scenario = argv[i + 1];
