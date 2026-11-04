@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-04 (after 9718b81). Keep this current at every task's end; it is what
+Updated 2026-11-04 (after OI-111). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -36,8 +36,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 331, RA 61, IS 188, TI 304, OI 276, CP 152, DA 104
-(sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
+Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 306, OI 277, CP 152, DA 106, RI 3
+(sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
 
@@ -97,11 +97,18 @@ the compact hook printed this handoff.
      + tko, thsel tree on deq_t. At 15/D7: f-f 23.0, enq_v 24.4, enq_slot 23.2, deq_t 24.9
      (thin: ABC moves it +-0.2; bitwise thsel gave 25.1, keep the per-width functions).
      CG 1004 flops, DCGE 98/87. Unit cg-units.json Q 15, D 7 (D was stale at 6).
-     OI rev 276 (OI-109) asks TI for CCV_P_DECQ 15 (or OK to carry it); notice sent.
-     Local commits on top (NOT for push as-is): params CCV_P_DECQ 15 placeholder + regen
-     walkthrough; dry-run scoped gate running (~/ccv-logs/oi-dq-dry.log, verify --changed
-     origin tip). On TI's answer: take TI's params (drop my placeholder), regen, gate-push
-     from wtd (CCV_PUSH_BRANCHES=ccr-57eff422-5tdecg), then remove wtd/wtr worktrees.
+     TI OK'd OI carrying CCV_P_DECQ 15 (TI rev 306; decided_at DA-106).
+     Gate d32f65e RED (11-04 11:16). OI's fixes in wtd: b1bbee8 (model: CAS pair at the
+     last lane = width cut, OI-79 (b); FreeVec clears buffered bits an edge late like
+     ooe_freelist's pr) and ed25191 (drop CG-1 tkv waiver); go_tb + rename_scarce 25 seeds
+     clean; 48e7d7c (run-rtl: rob/trio controls at full seeds; no-copy, no-rep-lead had
+     slipped past 3/6 seeds); on gate-scratch/OI. Left are TI's: OI-111 (OI rev 278, notice sent):
+     gen-params.py:353 control 14->16; ooe_decq 2847 MiB -> heavy-units.json; check-kernel
+     held-over-r regex pins "holds 3" (now 4..7) and vadd4 drain orphan=0. On TI's push:
+     merge it into wtd (+ a461213 handoff), gate-push from wtd; on green close OI-109 and
+     OI-111 (FYI TI, OA), remove wtd. run-rtl on ed25191: ~/ccv-logs/oi-rtl-1308.log.
+   - RI-7 (answered OI rev 277): RA-18 call link imm_kind 6 OOE substitution is OI's, queued
+     after the fanout cleanup; when it lands, row with rev + notify RI.
    - Then: rs copies probe (OA 325) -> ratread path (OA 326) -> RA-39 (b) lead_r_src0/1
      (OA 329) -> go 25.8 path + sched peak -> OA steps 2-5 -> ROB slices 3-6.
 -5. STATE 11-03 20:00: main tree gate-push (scoped, detached, log ~/ccv-logs/oi-push-1955.log)
