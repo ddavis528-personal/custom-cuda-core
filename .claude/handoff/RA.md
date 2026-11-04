@@ -54,9 +54,9 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 - Push: tools/gate-push.sh (scoped gate; docs/ and .claude/ map to no
   sections). Merge commits only. No PRs. No model ids in commits.
 
-## Register bookmarks (2026-11-03)
-AR 269, OA 316, RA 60, DA 104, Conventions 17, CP 152, IS 188, TI 297, OI 254, RI 1
-CP 149, DA 99, Conventions 16).
+## Register bookmarks (2026-11-04 sweep)
+AR 275, OA 331, RA 64, DA 106, Conventions 17, CP 152, IS 189, TI 305, OI 274, RI 3.
+RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
 Doc 1e5066f9-e4db-4fe3-aabc-0022606c9e96 (https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB).
