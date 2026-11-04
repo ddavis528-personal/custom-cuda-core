@@ -85,11 +85,17 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
+- RI is live: session_01QPk2jvvXPLs4m8ZQbSk1g6, register tab 8e4547bc-c469 (bookmark rev 2).
+  RI-3..6 answered at RA rev 64, notice sent: credit at launch intended (TI marks
+  ooe_rcu_map / rau_rcu_mig backpressured); LW = footprint (Lane+mem rev 5); FULL_ROW
+  parameter, 1 now, SW+MW+RW whole row zero above width (Register file rev 7; asked RI to
+  check SW in its model); RI-6 (a)-(d) in Migration rev 7, Predicate file rev 4.
 - 2026-11-04 HANDOFF AUDIT DONE (Daniel: "everything ready for handoff to RI"). Spec live revs:
   Overview 31 (status says ready for RI; decisions + open tables cover RA-35..39), Conventions 4,
   Pipeline 5 (IL/I/R rows + R-op cycle table carry RA-39), Register file 6, R unit 8, Done 13,
   Partition 16 (M3 budget 11). Snapshots all current. rcu-impl.md: fanout enforced, RA-39 bullet,
   phase 2 exit (bank-out 11; A path ~16, A+1 compute ~13), waits-on row RA-39 (TI c, OI lead NGD/CG).
+  Sizing stand-in archived at archive/rcu-bank-sizing/ (Daniel, 2026-11-04).
   Next: report to Daniel; RI waits on TI (RA-16/30/36/37/38/39c) and OI (ooe_wake, lead NGD/CG).
 - RTL-depth spec complete (2026-11-02): https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB.
   Daniel notified for review; iterate on his comments (doc comments or chat).
