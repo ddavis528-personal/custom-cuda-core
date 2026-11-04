@@ -2313,7 +2313,9 @@ private:
     } else if (const RegVal *d = gdef) {
       // A narrow destination is written zero-extended at its width code
       // (AR-24's interim on a full row), held to the record's width.
-      const unsigned dw = unsigned(get(m.payload, c.rcu_lane, "sec_dst_width"));
+      // sec_dst_width is per section (RI-1): the op's own, its lowest
+      // section's, section 0 for the full-width ops the S1 stubs model.
+      const unsigned dw = getSec(m.payload, c.rcu_lane, "sec_dst_width", 0, ccv::kWChwidth);
       if (dw != rc->widthOf(d->idx))
         k_.failHeld(at, m.tid, "lane %u: seq %llu R%u written at width code %u, the record's %u", lane_,
                     (unsigned long long)rc->seq, d->idx, dw, rc->widthOf(d->idx));

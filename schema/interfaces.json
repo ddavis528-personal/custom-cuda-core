@@ -1113,6 +1113,7 @@
       "dst": "rcu",
       "rate": 1,
       "group": "control",
+      "backpressure": "held: RA confirmed (RI-3, RA's rev 64) that the credit is taken at launch and is intended: RCU holds RAU's migration notice until OOE's map for the same warp and direction arrives, in either order, so a message sent against credit is outstanding for as long as the other is late, with no bound of its own. response_within_n holds it to CCV_P_TIMEOUT_BP, a watchdog; under CCV_P_TIMEOUT_N, RI's mwmiss run had 59 response_within_n failures",
       "payload_fields": [
         "warp_id",
         "direction"
@@ -1128,6 +1129,7 @@
       "dst": "rcu",
       "rate": 1,
       "group": "control",
+      "backpressure": "held: RA confirmed (RI-3, RA's rev 64) that the credit is taken at launch and is intended: RCU holds OOE's map until RAU's migration notice for the same warp and direction arrives, in either order, so a message sent against credit is outstanding for as long as the other is late, with no bound of its own. response_within_n holds it to CCV_P_TIMEOUT_BP, a watchdog; under CCV_P_TIMEOUT_N, RI's mwmiss run had 59 response_within_n failures",
       "payload_fields": [
         "warp_id",
         "direction",
