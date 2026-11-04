@@ -1396,6 +1396,17 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-src-clear.log" check_failures)" 
 else
   bad "--break lead-src-clear" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-src-clear.log")"
 fi
+# R's early source rows (RA-39 (b); OA's rev 328, AR's rev 271): lead_r_src0
+# and lead_r_src1 name the rows of phys_src a cycle ahead. lead-rsrc-swap
+# names them the wrong way round; RCU refuses each R issue whose two rows
+# differ (callret's, pinned), and nothing else fails.
+"$SKEL" --kernel build/oracle/callret/oracle.jsonl --break lead-rsrc-swap >"$B/kernel_lead-rsrc-swap.log" 2>&1
+n=$(grep -c "^CHECK rcu: seq [0-9]*, [^,]*, reads a source row its lead does not name" "$B/kernel_lead-rsrc-swap.log")
+if [ "$n" = 7 ] && [ "$(field "$B/kernel_lead-rsrc-swap.log" check_failures)" = "$n" ]; then
+  say "--break lead-rsrc-swap: RCU refuses R source rows its lead misnames" "PASS ($n issues)"
+else
+  bad "--break lead-rsrc-swap" "$n refused (7 pinned): $(grep '^KERNEL' "$B/kernel_lead-rsrc-swap.log")"
+fi
 
 # Notices (OA-23; AR's response TI-23): DCU promises a refill
 # CCV_LAT_FILL_NOTICE cycles after its notice lands, MIU a completion
