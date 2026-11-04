@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 283, OA 331, TI 313, IS 189, CP 153, OI 274, DA 106,
+  record): AR 284, OA 331, TI 315, IS 189, CP 153, OI 274, DA 106,
   Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -121,7 +121,14 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   at entry; 0.29%/warp on the loop, 7.9% only on the 228-cycle run. AR read
   PF-15's trigger as not met (fixed launch cost) and recorded it in PF-15;
   the wording is DA's. Next: coremarkpl32/coremark32 at 1 and 4 warps (TI,
-  after J2). Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  after J2).
+  RA-11 PHYS_REGS sweep (TI 315, RA 67 Needs AR+DA; AR 284, Needs OA, DA):
+  coremark128 +0.25% at 160, +0.20% at 128; share.names 7/33,194/2,428,849;
+  OOE checks fire at 160 (7 fits_stale) and 128 (3,271 + one V-N floor
+  cover), so 128's cycles are flattered and not evidence. RCU flops 246k ->
+  212k (160) / 179k (128). AR's order: OI answers TI's check question, TI
+  re-runs 160 clean on a second 4-warp kernel, OA's view on Q-35 at 160,
+  then AR to DA with RA's Phase 1 area. 192 stands until then. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
