@@ -96,7 +96,15 @@ the compact hook printed this handoff.
      term: a slot below its floor gets unmet floor from held BEFORE its own in-flight take, so
      the allowance is one over the credit (dump: held 45/43/44/25, want 28, 3 free, allowance 4).
      Check is right; model and ooe_go share the term. Proposed fix max(0, want-held-took);
-     WAITING on OA to rule the form. Then: fix model + ooe_go (price NGD), V-N at 128 (one
+     OA RULED (OA rev 334): form taken; took = every unseen take; assert in model + go_tb; fit go's
+     fanout caps (else register the term); model + ooe_go land together, GoLog compare unchanged;
+     then TI re-runs 160 (coremark128 + a 4-warp kernel, S1, audit); V-N@128 after that.
+     DESIGN NOTE: RTL unmet_g = rem_of(ufg, tq_gs) (ooe_rename.sv:848) ALREADY subtracts the lagged
+     take; the model's unmetFloor matches. The missing take is the go's OWN take in the split cycle
+     (split at rename() start, before takes; the dump: split from held 24, take same cycle -> 25).
+     It is the go's output, so 'register off the go path' doesn't apply. Build it like fits_s[k]:
+     per own take k, floor term max(0, unmet - GPR writes in the warp's first k heads) (constants
+     from the heads alone), selected by the take next cycle; model per k too. Price NGD vs caps. Then: fix model + ooe_go (price NGD), V-N at 128 (one
      firing, untraced). Repro worktree scratchpad/wtr: params 160/12/44, debug dump in
      ooe_core.cpp (RA11 lines), run build/skel/ccv-skel --kernel
      build/bench-oracle/coremark128/oracle.jsonl (~25 min to first firing; full run >2h).
