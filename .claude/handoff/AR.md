@@ -70,8 +70,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 277, OA 331, TI 309, IS 189, CP 153, OI 274, DA 106,
-  Conventions 17, RA 63, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
+  record): AR 278, OA 331, TI 309, IS 189, CP 153, OI 274, DA 106,
+  Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
   ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
@@ -105,7 +105,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   Lead fields paragraph (Interfaces tab rev 19). AR rev 277: miu_rcu_data
   has NO lead slice, yet RA 62's forward compares lead phys_dst in T-1;
   asked RA: lead_phys_dst (4x8, TI row, AR writes MIU text) or compare in
-  A (~+3 NGD). Waiting on RA. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  A (~+3 NGD). RA-40 (RA 65): all six RA-4 lead fields (agreed AR 262,
+  never reached the schema). AR wrote MIU spec (MIU tab rev 48: lead slice
+  + 1-GPR-write-per-section paragraphs); AR rev 278 asks TI for the schema
+  row and keep/drop of payload copies (AR prefers drop; 262's "no new
+  wires" holds only then). Still owed in MIU spec: kill-ack rule, address
+  pairing (every memop incl. fence). Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
