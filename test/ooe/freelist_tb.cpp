@@ -50,7 +50,9 @@
 // caught: drop-free (frees never reach the RTL), extra-alloc (one more
 // request than the model made, in a cycle that has one), no-lead (a
 // free's lead is never driven, so the free bits are not clocked for it)
-// and wrong-owner (each entry is given the next slot as its owner).
+// wrong-owner (each entry is given the next slot as its owner) and
+// one-step (the model refills as before scan (a): its search and append
+// at one edge, so the registered candidates must differ).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: freelist_tb [seeds] | freelist_tb --cg <scenario> <vcd>
@@ -125,6 +127,7 @@ template <typename T> bool getBit(const T &w, unsigned i) {
   if constexpr (sizeof(T) <= 8) return (w >> i) & 1u;
   else return (w[i / 32] >> (i % 32)) & 1u;
 }
+static bool g_one_step = false;   // FL_CONTROL=one-step
 template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
   unsigned v = 0;
   for (unsigned b = 0; b != n; ++b) v |= unsigned(getBit(w, lsb + b)) << b;
@@ -251,6 +254,11 @@ void hook(const Core &c) {
     if (got != e.bptr[b]) fail("bank pointer differs", got, e.bptr[b]);
   }
   if (unsigned(dut->rot_cq02h) != e.rot) fail("bank order differs", unsigned(dut->rot_cq02h), e.rot);
+  for (unsigned b = 0; b != FL_K && b < e.cand.size(); ++b) {   // scan (a): each bank's registered candidate
+    const unsigned f = getField(dut->bcand_cq02h, b * (LM + 1), LM + 1);
+    const unsigned got = (f >> LM) ? (f & ((1u << LM) - 1u)) * FL_K + b : FL_N;
+    if (got != e.cand[b]) fail("bank candidate differs", got, e.cand[b]);
+  }
   if (unsigned(dut->transit_cq02h) != e.transit) fail("entries in transit differ", unsigned(dut->transit_cq02h), e.transit);
   if (unsigned(dut->avail_cq02h) != e.buf.size() - e.transit)
     fail("available count differs", unsigned(dut->avail_cq02h), unsigned(e.buf.size() - e.transit));
@@ -385,7 +393,11 @@ int main(int argc, char **argv) {
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_freelist>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
+  // one-step: the model refills as before scan (a), searching and appending
+  // at one edge; the RTL's registered candidates must differ from it.
+  g_one_step = control == "one-step";
   const int model_fails = FL_NS ? cg.run(seeds, hook, nullptr, [](ccv::ooe::Config &k) {
+    if (g_one_step) k.fl_two_step = false;
     k.sectioned = true;
     k.cand = 2;
     k.cand_return = true;
@@ -393,7 +405,7 @@ int main(int argc, char **argv) {
     k.cand_lag = 2;
     k.ret_late = true;
     k.cand_home = true;
-  }) : cg.run(seeds, hook, nullptr);
+  }) : cg.run(seeds, hook, nullptr, [](ccv::ooe::Config &k) { if (g_one_step) k.fl_two_step = false; });
   cg.close();
   dut->final();
   std::printf("freelist_tb pool=%s%s control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu frees=%llu "

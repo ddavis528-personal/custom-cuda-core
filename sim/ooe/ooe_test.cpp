@@ -4995,6 +4995,11 @@ void audit() {
   }
   const R d = run(base);
   std::printf("audit: the decided go (fits_stale 6), 48 seeds: %.0f cycles\n", d.cy);
+  if (std::getenv("AUDIT_BASE_ONLY")) {   // one setting's price: its cycles and counters alone
+    std::printf("audit: cycles %.2f\n", d.cy);
+    for (const char *k : keys) std::printf("audit:   %-28s %10.1f per run\n", k, d.n.at(k));
+    return;
+  }
   {
     // OI-74 (iii), OI-75 (b) and OI-76, OA's revs 216 and 219: rename's held
     // and name counts see frees three edges late, the pool's floors are owed
