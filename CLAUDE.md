@@ -127,7 +127,9 @@ assembled block is checked from those files, level by level, for
 convergence to 25, then timed whole, its outputs straight from flops.
 `tools/check-ngd.py` measures every module at its units' parameters; what
 broke the rules when they were made sits on `rtl/ngd-ratchet.json`, which
-only shrinks.
+only shrinks. Every depth counts fanout past 4 as a tree of inverters
+(RA-33; enforced, DA, 2026-11-04); the paths that put over 25 are capped
+in that file's `fanout`, each cap only falling.
 
 Stage tags (DA, 2026-10-23; CCV-L29 in `docs/rtl-coding-style.md`): every
 net of a block's sequential module carries one, since CCV-L21 and CCV-L23

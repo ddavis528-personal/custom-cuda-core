@@ -247,7 +247,17 @@ Built (`rtl/ooe/`):
   timers, off this path"): one per RS entry, driving the four lines
   `ooe_ready` reads as flops, so each is decided at the edge before the
   cycle it holds for. A grant starts the timer; its age counts cycles
-  since and saturates. Line k < 3 rises at the class's fastest bypass
+  since and saturates. Its kind and latency class are static per op and
+  are written at RS allocation (OA, re:OI-104): ooe_rs stores each entry's
+  pair with its row (`akind`/`acls_cq01h`, arrival 10, as `row_code`),
+  clocked with its class, and drives it from those flops
+  (`kind_o`/`cls_o_cq02h`) to this module's `kind`/`cls_cq01h` (arrival 2.0,
+  OA rev 317), which a grant reads. Rename makes the pair: `ooe_rendep`
+  builds each port's from its uop (a main timed, or a memop's, speculative
+  for an L1-contracted global load, c_x bit 20; a copy a copy; the class its
+  lat_class) and registers it with `row_prod`. Stored here, 5 bits an entry, the pairs fell under the
+  clock-gating rules: Yosys gave each entry its own enable, 45 groups under
+  8 flops, from ooe_rs's grant. Line k < 3 rises at the class's fastest bypass
   point plus the k-th penalty. The full-latency line rises at the class's
   latency, at CCV_LAT_LANE for a masked load's copy, at CCV_LAT_L1_WAKE for
   an L1-contracted load, or, for a timer that waits, CCV_LAT_L1_MISS_WAKE
@@ -357,6 +367,12 @@ Built (`rtl/ooe/`):
   freed, so a set bit in a valid row is always flagged. The bench keeps
   that definition and compares every column after every edge; stale-hcol
   keeps its reference through a free and must be caught.
+
+  Each entry's timer kind and latency class, ooe_wake's (OA, re:OI-104),
+  are written with its row from the port's `akind`/`acls_cq01h`, cleared
+  with its valid bit and clocked with its class; the outputs come straight
+  from those flops. The bench compares every valid entry's pair with what
+  its allocation drove; control no-kind drives none and must be caught.
 
   Local clock gating (TI-14): each class's state (valid bits, rows, line
   selects and flags) is one gate, clocked on an allocation in the class, a
