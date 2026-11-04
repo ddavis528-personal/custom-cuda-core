@@ -302,6 +302,12 @@ module ooe_freelist #(
   // alone: a found bank whose rank in rotating order (ro, one-hot) is below
   // the room behind the entries that stay (rq, one-hot). next_state's adv,
   // here for the candidates' clock enables.
+  // The bank order, rotated by one (K = 1 holds it).
+  function automatic logic [K-1:0] rot1(input logic [K-1:0] ro);
+    rot1 = ro;
+    if (K > 1) rot1 = {ro[(K > 1 ? K - 2 : 0):0], ro[K-1]};
+  endfunction
+
   // Some bank holds a candidate.
   function automatic logic any_found(input logic [SW-1:0] st);
     any_found = 1'b0;
@@ -464,15 +470,13 @@ module ooe_freelist #(
   // (rqh), so the selects and enables formed from it decode nothing.
   (* keep *) logic [SW-1:0]     st_cq02h;
   (* keep *) logic [LB+B*W-1:0] out_cq02h;     // {count, buffer}
-  // Its bit 0 (no take) is not a flop: the rest's NOR, so the take costs A
-  // ungated flops, within the module's allowance.
-  logic [A:1]                   rqh_cq02h;     // last cycle's take, one-hot (a flop)
+  logic [A:0]                   rqh_cq02h;     // last cycle's take, one-hot (a flop)
   logic [LA-1:0]                rq_cq02h;      // the same, a number
   always_comb begin
     rq_cq02h = '0;
     for (int q = 1; q < A + 1; q++) rq_cq02h = rq_cq02h | (LA'(q) & {LA{rqh_cq02h[q]}});
   end
-  always_comb {alloc_v_cq02h, alloc_idx_cq02h} = grants(out_cq02h, {rqh_cq02h, !(|rqh_cq02h)});
+  always_comb {alloc_v_cq02h, alloc_idx_cq02h} = grants(out_cq02h, rqh_cq02h);
   assign avail_cq02h = out_cq02h[B * W +: LB] - LB'(rq_cq02h);
 `ifdef CCV_CHECK
   assign buf_cq02h     = st_cq02h[OBUF +: B * W];
@@ -523,7 +527,7 @@ module ooe_freelist #(
   logic [K-1:0]  cq_en_cq01h;        // each bank's candidate and search start
   logic          fr_ch_cq02h;        // entries were freed at the last edge
   logic [SW-1:0] nx_cq01h;
-  logic [A:1]    rqh_cq01h;         // how many this cycle takes, one-hot: where the request prefix ends
+  logic [A:0]    rqh_cq01h;         // how many this cycle takes, one-hot: where the request prefix ends
   // This cycle's frees: the retire stage's mask, or with sections the
   // rows returning (pend).
   // The bank order, one-hot, beside its index (the state's, which the
@@ -535,17 +539,17 @@ module ooe_freelist #(
   // clear entries buffered again since).
   logic [N-1:0]  pop_cq02h, pr_cq02h;
   logic          pr_v_cq02h, ib_en_cq01h;
-  assign pop_cq02h     = popped_of(st_cq02h, {rqh_cq02h, !(|rqh_cq02h)});
-  assign nx_cq01h      = next_state(st_cq02h, {rqh_cq02h, !(|rqh_cq02h)}, pop_cq02h, pr_cq02h & {N{pr_v_cq02h}},
+  assign pop_cq02h     = popped_of(st_cq02h, rqh_cq02h);
+  assign nx_cq01h      = next_state(st_cq02h, rqh_cq02h, pop_cq02h, pr_cq02h & {N{pr_v_cq02h}},
                                     (NS == 0) ? fms_cq01h : pend_cq02h, ro_cq02h);
   // (The buffer's enable, spelled out: lint reads an enable built from
   // another combinational net as a stage mix.)
-  assign ib_en_cq01h   = (|rqh_cq02h) || (32'(st_cq02h[OCNT +: LB]) < B && any_found(st_cq02h)) || pr_v_cq02h;
+  assign ib_en_cq01h   = !rqh_cq02h[0] || (32'(st_cq02h[OCNT +: LB]) < B && any_found(st_cq02h)) || pr_v_cq02h;
   // With sections a row frees only as it returns (fr_en), whatever the lead.
-  assign bits_en_cq01h = (|rqh_cq02h) || (NS == 0 && free_en_cq01h) || fr_en_cq02h;
+  assign bits_en_cq01h = !rqh_cq02h[0] || (NS == 0 && free_en_cq01h) || fr_en_cq02h;
   // The buffer changes when last cycle allocated, or when it has room and
   // a bank holds a candidate to append.
-  assign buf_en_cq01h  = (|rqh_cq02h) || (32'(st_cq02h[OCNT +: LB]) < B && any_found(st_cq02h));
+  assign buf_en_cq01h  = !rqh_cq02h[0] || (32'(st_cq02h[OCNT +: LB]) < B && any_found(st_cq02h));
   // A bank's candidate changes only when it appends (adv_of, from flops);
   // one held none changes only when entries were freed at the last edge (a
   // pop clears bits, and the buffered set gains only other banks'
@@ -554,10 +558,11 @@ module ooe_freelist #(
   // state's: under the buffer's enable, for these enables alone.
   logic [B:0]   cth_cq02h;
   for (genvar bb = 0; bb < K; bb++) begin : g_cqen
-    assign cq_en_cq01h[bb] = adv_of(st_cq02h, {rqh_cq02h, !(|rqh_cq02h)}, ro_cq02h, cth_cq02h, bb) || (!st_cq02h[OCQ + bb * (LM + 1) + LM] && fr_ch_cq02h);
+    assign cq_en_cq01h[bb] = adv_of(st_cq02h, rqh_cq02h, ro_cq02h, cth_cq02h, bb) || (!st_cq02h[OCQ + bb * (LM + 1) + LM] && fr_ch_cq02h);
   end
   always_comb begin
     rqh_cq01h    = '0;
+    rqh_cq01h[0] = !alloc_req_cq01h[0];
     for (int q = 1; q < A + 1; q++)
       rqh_cq01h[q] = alloc_req_cq01h[q-1] && (q == A || !alloc_req_cq01h[q % A]);
   end
@@ -591,22 +596,22 @@ module ooe_freelist #(
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
-      rqh_cq02h     <= '0;
+      rqh_cq02h     <= (A + 1)'(1);
       ro_cq02h      <= K'(1);
       free_en_cq01h <= 1'b0;
       fr_ch_cq02h   <= 1'b1;   // the reset frees every entry
       pr_v_cq02h    <= 1'b0;
     end else begin
       rqh_cq02h     <= rqh_cq01h;
-      if (K > 1) ro_cq02h <= {ro_cq02h[K-2:0], ro_cq02h[K-1]};
+      ro_cq02h      <= rot1(ro_cq02h);
       free_en_cq01h <= fls_cq00h;
       fr_ch_cq02h   <= (NS == 0 && free_en_cq01h) || fr_en_cq02h;
-      pr_v_cq02h    <= (|rqh_cq02h);
+      pr_v_cq02h    <= !rqh_cq02h[0];
     end
   end
   // The mask's payload, clocked when entries leave (its valid's cycle).
   logic pr_en_cq01h;
-  assign pr_en_cq01h = (|rqh_cq02h);
+  assign pr_en_cq01h = !rqh_cq02h[0];
   always_ff @(posedge ooe_core_clk)
     if (pr_en_cq01h) pr_cq02h <= pop_cq02h;
 
