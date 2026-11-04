@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 329, AR 269, TI 300, OI 271, IS 188, CP 152, DA 106,
+Conventions 17, OA 331, AR 269, TI 304, OI 274, IS 188, CP 152, DA 106,
 RA 61 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
 OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
@@ -49,8 +49,14 @@ OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    (data lands in consumer's A). (i) MIU forward on R0/R1 TAKEN rev 329 (RA:
    ~10k cells, 190 flops, A 16 NGD; overhead list); OOE doc rev 361. (ii) withdrawn.
    (b) lead_r_src0/1 accepted; OI lead-mux NGD/CG, TI schema, AR agree.
--2. DA 11-04 (DA tab 105): fanout term ENFORCED in check-ngd, today's paths
-   ratcheted (TI builds). OA rev 321 order: go+sched (held) first; then one model
+-2. DA 11-04 (DA tab 105): fanout term ENFORCED in check-ngd; TI seeded the
+   ratchet b11e60f (TI rev 304): 109 caps (ratread 43, go 16, rename 11, sched 8,
+   freelist 7, rendep 7, rs 7, rob_w 6, decq 4; decq clears with lag 1); caps
+   only fall. Freelist (a) BUILT 32ba2d0 (24.1 f-f); OI-106 gsec sa_row/sa_v
+   26.7/26.4: rev 330 retime inside freelist, no budget; reuse cycle -> model price.
+   OI-107 (rev 331): decq lag built but caps are next_state/arrival (26.4/30.1/
+   27.1/25.2), not credits; retime decq at 15 first, lag+15 in same push, no cap
+   relief (DA rule); lost cycle -> model, <0.5% mine. TI DECQ stays 13 till then. My rev 326 ratread alone-rule ask still unanswered by TI. OA rev 321 order: go+sched (held) first; then one model
    batch pricing freelist scan (a two-step / b banked) + rs/decq free candidates
    a cycle ahead (<0.5% total mine, else DA); rendep sender probe (else rename
    stage -> DA); rob_w fill probe (input stage?); go remainder; copies last.
