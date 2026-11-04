@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-03. Keep this current at every task's end; it is what
+Updated 2026-11-04. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 
 ## Who and what
@@ -70,8 +70,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 275, OA 315, TI 296, IS 188, CP 152, OI 254, DA 104,
-  Conventions 17, RA 60, RI 1 (tab 8e4547bc-c469, new 2026-11-02).
+  record): AR 282, OA 331, TI 312, IS 189, CP 153, OI 274, DA 106,
+  Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
   ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
@@ -91,14 +91,54 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   late-wake line and asked RA to price (i) as a per-lane/field merge
   (active_mask, dst_pos/width sections, right-aligned load_data realigned;
   rev 273 fixed 272's wrong 64-bit second row claim); rests on MIU's
-  1-write-per-section rule and AR's owed disjoint-sections assertion. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  1-write-per-section rule and AR's owed disjoint-sections assertion.
+  Closed 11-04: RA 62/63 priced (i) at ~10k cells + ~185 flops, R A path
+  13 -> ~16 NGD, input 5/12 NGD, merge after alignment; OA 329 took (i),
+  wake contract unchanged, flops on DA's overhead list. CCV_P_DECQ stays 13
+  in params until OI's lag RTL lands (TI rev 301); DEC spec already says 15.
+  PF-47: TI reapplied base 1 (rev 298) but holds it on OI's no-rep-lead
+  control (6 of 18 seeds miss).
+  TI rev 308 (DA asked): AR rev 276 released layernorm; AR 143's hold had
+  ended with CP-14 / AR 148 (CCV_FAIR_N 48), never said so then. Lesson:
+  close a hold in the row that ends it.
+  TI 309: RA-39 (c) in schema (39a1861). AR wrote the partitioning spec's
+  Lead fields paragraph (Interfaces tab rev 19). AR rev 277: miu_rcu_data
+  has NO lead slice, yet RA 62's forward compares lead phys_dst in T-1;
+  asked RA: lead_phys_dst (4x8, TI row, AR writes MIU text) or compare in
+  A (~+3 NGD). RA-40 (RA 65): all six RA-4 lead fields (agreed AR 262,
+  never reached the schema). AR wrote MIU spec (MIU tab rev 48: lead slice
+  + 1-GPR-write-per-section paragraphs); AR rev 278 asks TI for the schema
+  row and keep/drop of payload copies (AR prefers drop; 262's "no new
+  wires" holds only then). MIU spec made current at Daniel's ask (MIU tab
+  rev 54, AR rev 279): kill rule (RA-23), address pairing (RA-21), wire
+  table recounted from schema 39a1861 (15 channels, 21,675 in / 15,882
+  out; rcu_miu_addr 12,457), L1 WAKE/CMPL 16/18 (12/14 at base 1). RA-40
+  built at b85595b (TI 311, on TI's branch until the sweep merges it): the
+  six payload fields lead, no copies, no new wires; MIU tab rev 55 says so,
+  wire table unchanged. AR-25 (1)-(3),(6) done at b85595b; (4)(5) ride TI's
+  RA-16/RA-30 work. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
-- Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 21, RA's now), MIU
-  aa7a288a-dae2 (rev 46), RAU 090626bb-a50c (rev 33), FET 75d75b94-1614
-  (rev 45), DEC 1d1fdcda-739e, DCU c18a112b-d2c6, SPM b66e4f64-612c, LANE
-  ea1f36a7-0725, SYU 1f8b4472-68c1, OOE 515615a9-8caf (OA's).
+- Specs doc DJeg9Hh8rkPDecq4hrAz35 (tab revs after the 11-04 review): RCU
+  eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (55), RAU 090626bb-a50c (60),
+  PCA 94b3a0ea-7224 (17), FET 75d75b94-1614 (47), DEC 1d1fdcda-739e (19),
+  DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (12),
+  SYU 1f8b4472-68c1 (8), CRU 5a50fd80-2423 (7), MLC f8873ac6-e74d (3), EXB
+  56392a06-86a6 (4), OOE 515615a9-8caf (OA's).
+- Spec review of the no-session blocks done 11-04 (Daniel asked; AR rev
+  280, AR-25 minted rev 282, TI notified): every tab's widths recounted
+  from payload-spec, kill text is RA-14/RA-23's, S1 paragraphs match the
+  stubs. AR-25 (TI): six schema/params doc fixes (pca_rcu_mig doc,
+  CCV_W_MIG_ROW doc, rcu_lane_ops srd doc, SFU 2nd result RA-3, imm_kind 6
+  RA-18, miu_dcu_req backpressure class). DEC's CCV_P_DECQ 15 stays (DA).
+- Docs-tool lessons: write ops need FULL ids (session prefix + ".n", e.g.
+  m30rdwkg40n.5277 in specs, m8yvbw8rqgz.n in the register); a read prints
+  them short. Replace a paragraph by its paragraph id (a cell's paragraph
+  is cell id + 1; a list item's is item id + 1), ifHash = the paragraph's
+  h, "as":"markdown" so marks are spelled. Never "chars" on run ids; "as":
+  "text" can stretch a code mark. Rows: insert {"as":"blocks"} after a row
+  id, several rows in one content array. Each op bumps the tab rev.
 
 ## Decided recently (DA tab)
 - revs 100-103 (2026-11-02): RA-20 adopted (O-85 collectives, diagonal
