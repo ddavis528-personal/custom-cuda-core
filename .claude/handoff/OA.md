@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 334, AR 284, TI 304, OI 281, IS 189, CP 152, DA 106,
+Conventions 17, OA 335, AR 284, TI 304, OI 282, IS 189, CP 152, DA 106,
 RA 63 (tab 9851686b-2b0a), RI 2 (tab 8e4547bc-c469).
 OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
@@ -56,6 +56,10 @@ OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
 -3. RA-39 early R read (R0/R1 in A; OA revs 328-329): only L1 hits miss A
    (data lands in consumer's A). (i) MIU forward on R0/R1 TAKEN rev 329 (RA:
    ~10k cells, 190 flops, A 16 NGD; overhead list); OOE doc rev 361. (ii) withdrawn.
+   OI-115 (rev 335): R lead mux off final grant = sched 38.8 (cap 30.5); OA: probe
+   (0) mux off R's own pick (R footprint alone), lane slots off main+fallback picks
+   + late 2:1; RA prices fallback R0/R1 from payload wires (~19, RCU in-budget);
+   (1) valid a cycle later -> DA last. ooe_rs has no payload store in RTL yet.
    (b) lead_r_src0/1 accepted; OI lead-mux NGD/CG, TI schema, AR agree.
 -2. DA 11-04 (DA tab 105): fanout term ENFORCED in check-ngd; TI seeded the
    ratchet b11e60f (TI rev 304): 109 caps (ratread 43, go 16, rename 11, sched 8,
