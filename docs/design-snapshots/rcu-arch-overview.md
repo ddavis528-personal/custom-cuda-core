@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=32 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 32 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=33 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 33 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -110,8 +110,8 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | RA-33 | TI, DA | is high fanout buffered or costed in check-ngd's netlist? | settled: it was not (load-blind genlib); Daniel chose (a), a per-net fanout term; enforced in check-ngd (TI rev 299), paths over 25 then on a shrinking ratchet | Register file (Select fanout); Partition (M1) |
 | RA-34 | TI | stimulus for RCU's clock-gating units | settled: scenarios by activity; checked kernel-trace replay; TI adds a ccv-skel per-block port-trace dump (TI rev 286, RA rev 51) | Partition (M2) |
 | RA-35 | AR | rcu-arch.md's ports, latencies and section 8 | raised | none (process) |
-| RA-36 | TI | roadmap Part 0 for the RCU | raised | none (process) |
-| RA-37, RA-38 | TI, OA | repo support for RI: gate-scope map, model hook (`makeRcu`, `CCV_RCU_IMPL`), `check-rcu-unit`, `job_rcu_rtl`, `CCV_RCU_RTL` | agreed (TI rev 290, OA rev 308); TI building | Partition (M0); rcu-impl.md |
+| RA-36 | TI | roadmap Part 0 for the RCU | **done** (TI rev 317, e60ae23): roadmap RCU status; `rcu_miu_width` deleted, Q-18 closed; (d) goes to OI with ADDR\_BASE = 1 | none (process) |
+| RA-37, RA-38 | TI, OA | repo support for RI: gate-scope map, model hook (`makeRcu`, `CCV_RCU_IMPL`), `check-rcu-unit`, `job_rcu_rtl`, `CCV_RCU_RTL` | agreed (TI rev 290, OA rev 308); built: makeRcu with `CCV_RCU_IMPL`, `check-rcu-unit`, the gate-scope map (39a1861). RI met M0 with the model (5968894, RI rev 5), **accepted by RA** (rev 68); TI makes the model the default | Partition (M0); rcu-impl.md |
 | RA-39 | OA, TI, AR | early R source read: R0/R1 rows on R's lead, read in A | (a), (b) taken by OA with the MIU forward (i) (revs 328-329); (d) agreed by AR (rev 271), merge question answered (RA rev 63); (c) landed: `lead_r_src0/1` in the schema and stubs, with a control (TI rev 309); open: OI the lead mux's NGD and clock gating | R unit (Early R source read); Register file; Pipeline |
 
 ## For Daniel
