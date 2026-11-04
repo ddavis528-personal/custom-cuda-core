@@ -30,6 +30,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ccv {
@@ -1977,6 +1978,10 @@ public:
   /// Whether the configured penalties fit the lines (a knob-set table may
   /// not); the structural check runs only when they do.
   bool wakeLinesFit() const { return pens_fit_; }
+  /// Entry e's timer kind and latency class, {kind, class}, as ooe_wake's
+  /// timer takes them at a grant: static per op, so ooe_rs writes them at
+  /// allocation (OA, re:OI-104). setWakes logs the same pair.
+  std::pair<uint8_t, uint8_t> wakeKindClass(unsigned e) const;
   /// A number unique to this core among all constructed in the process, so
   /// an observer can tell a new core from one at a reused address.
   uint64_t serial() const { return serial_; }
