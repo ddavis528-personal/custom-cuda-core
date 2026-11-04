@@ -74,7 +74,7 @@ field:
   nothing (963 cycles). V-59 still holds the wake offsets at 3 or more,
   now as a performance check (unit test `v-59`). V-15 is checked only
   once a cancel has settled, as before. At today's latencies a second hop
-  never happens: the L1 shadow (CCV_LAT_L1_WAKE 16, the miss found at 19)
+  never happens: the L1 shadow (CCV_LAT_L1_WAKE, the miss found three cycles after it)
   is shorter than any dependant's own wake. One random seed in seven runs
   the long shadow the controls use, so the later hops are exercised.
 - **Confirmation takes one level a cycle** (`confirmPass`), as

@@ -103,6 +103,7 @@ module ooe_rendep #(
   input  logic [A*3-1:0]    unit_cq01h,     // as a producer: its lat_class
   input  logic [A*3-1:0]    pg_cq01h,       //   its bypass group
   input  logic [A-1:0]      nob_cq01h,      //   no bypass (a memop, a cross-lane op)
+  input  logic [A-1:0]      spec_cq01h,     // its main's wake is speculative (an L1-contracted global load)
   // ooe_prodmap's entries (their names and codes, two edges after
   // allocation or more).
   input  logic [N-1:0]      eg_cq01h,
@@ -120,7 +121,11 @@ module ooe_rendep #(
   output logic [P*P-1:0]    grp_dep_cq02h,
   output logic [2*P*P-1:0]  grp_code_cq02h,
   output logic [P*P-1:0]    prv_dep_cq02h,
-  output logic [2*P*P-1:0]  prv_code_cq02h
+  output logic [2*P*P-1:0]  prv_code_cq02h,
+  // Each port's entry's timer kind and latency class, ooe_wake's, which
+  // ooe_rs stores with the row (OA, re:OI-104).
+  output logic [2*P-1:0]    akind_cq02h,
+  output logic [3*P-1:0]    acls_cq02h
 );
 
   logic rst_r01h;
@@ -261,8 +266,20 @@ module ooe_rendep #(
 
   // Each port's producer, through the one-hot select: consumer c's uop
   // on the port it sits on (a copy produces its GPR alone, with no bypass).
+  // Its timer's {class, kind} too, as the model's wakeKindClass: a main is
+  // timed, or a memop's (speculative for an L1-contracted global load),
+  // and a copy is a copy, each at the uop's lat_class.
+  localparam logic [1:0] KTIMED = 2'd0, KCOPY = 2'd1, KSPEC = 2'd2, KMEM = 2'd3;
+  logic [5*P-1:0] pkc_cq01h;
+  logic [5*P-1:0] akc_cq02h;              // its register, in the stage register (below)
+  always_comb
+    for (int q = 0; q < P; q++) begin
+      akind_cq02h[q * 2 +: 2] = akc_cq02h[q * 5 +: 2];
+      acls_cq02h[q * 3 +: 3]  = akc_cq02h[q * 5 + 2 +: 3];
+    end
   always_comb begin
     pv_cq01h = '0; pgv_cq01h = '0; ppv_cq01h = '0; pgn_cq01h = '0; ppn_cq01h = '0; pcv_cq01h = '0; pprod_cq01h = '0;
+    pkc_cq01h = '0;
     for (int q = 0; q < P; q++)
       for (int c = 0; c < C; c++)
         if (coh_cq01h[c * P + q]) begin
@@ -274,9 +291,13 @@ module ooe_rendep #(
             ppn_cq01h[q * LQ +: LQ]    = ppn_cq01h[q * LQ +: LQ] | pname_cq01h[(c / 2) * LQ +: LQ];
             pcv_cq01h[q * CVW +: CVW]  = pcv_cq01h[q * CVW +: CVW] | pcv_c_cq01h[(c / 2) * CVW +: CVW];
             pprod_cq01h[q]             = pprod_cq01h[q] | gwe_cq01h[c / 2] | pwe_cq01h[c / 2];
+            pkc_cq01h[q * 5 +: 5]      = pkc_cq01h[q * 5 +: 5] |
+                                         {unit_cq01h[(c / 2) * 3 +: 3],
+                                          !mem_cq01h[c / 2] ? KTIMED : spec_cq01h[c / 2] ? KSPEC : KMEM};
           end else begin
             pcv_cq01h[q * CVW +: CVW]  = pcv_cq01h[q * CVW +: CVW] | {G{LATE}};
             pprod_cq01h[q]             = 1'b1;
+            pkc_cq01h[q * 5 +: 5]      = pkc_cq01h[q * 5 +: 5] | {unit_cq01h[(c / 2) * 3 +: 3], KCOPY};
           end
         end
   end
@@ -426,6 +447,7 @@ module ooe_rendep #(
   always_ff @(posedge ooe_core_clk) begin
     if (st_en_cq02h) begin
       row_prod_cq02h <= pprod_cq01h & pv_cq01h;
+      akc_cq02h      <= pkc_cq01h;
       row_dep_cq02h  <= rd_cq02h;
       row_code_cq02h <= rc_cq02h;
       grp_dep_cq02h  <= gd_cq01h;

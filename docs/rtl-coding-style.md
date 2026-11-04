@@ -929,9 +929,13 @@ at their fanout-of-4 delays, and wire is not in it. Fanout past 4 is costed
 apart (RA-33; Daniel, 2026-11-02): a net with N loads is timed as if a tree
 of inverters at fanout 4 drove them, ceil(log4(N / 4)) stages at an INV's
 0.68 NGD each, so a select driving 1,024 bit-cells adds 4 stages, 2.7 NGD,
-to every path through it. `check-ngd` measures it beside the depths it
-enforces and reports each unit it moves; it is report-only until the
-ratchet has seen what moves, and enforced after. The
+to every path through it. Enforced since Daniel, 2026-11-04: every
+depth NGD-1 to NGD-6 and a block's own checks count it, and the 25 includes
+the tree. The paths it put over the stage then sit, each capped at its
+depth, in `rtl/ngd-fanout-baseline.json`; `rtl/ngd-ratchet.json`'s
+`fanout` holds the caps, which only fall, and an entry leaves once its path
+meets the stage. NGD-7, and a block's outputs straight from a flop, are
+measured without it. The
 static gates are costed by logical effort. The XOR family (XOR2, XNOR2, XOR3,
 XNOR3; Daniel, 2026-10-24) is taken from sky130hd's Liberty, pin by pin, over
 its NAND2 (`tools/genlib-xor.py`), and a path is timed at the delay of the pin

@@ -10,7 +10,9 @@
 // valid bits to ooe_sched, and the matrix to ooe_wake's confirmation;
 // ooe_wake's lines, leads, issued bits, held misses and miss pulses to
 // ooe_sched, and its final bits, held misses and model-frame lead to
-// ooe_rs's confirmation. ooe_rs and ooe_wake share the completion channel,
+// ooe_rs's confirmation; ooe_rs's kind and class per entry, written at
+// allocation (OA, re:OI-104), to ooe_wake's timers. ooe_rs and ooe_wake
+// share the completion channel,
 // the registered squash's frees and its lead.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
@@ -56,9 +58,10 @@ module ooe_trio #(
   input  logic [NC*W-1:0]   cmpl_idx_cq00h,
   input  logic [NC-1:0]     hint_l_cq00h,
   input  logic [NC*W-1:0]   hint_idx_cq01h,
-  // The RS payload ooe_wake's timers read at a grant.
-  input  logic [2*N-1:0]    kind_cq01h,
-  input  logic [3*N-1:0]    cls_cq01h,
+  // Each port's kind and class with its row (ooe_rs writes them at
+  // allocation, OA re:OI-104), and the RS payload ooe_wake reads at a grant.
+  input  logic [2*P-1:0]    akind_cq01h,
+  input  logic [3*P-1:0]    acls_cq01h,
   input  logic [N-1:0]      prod_cq01h,
   // ooe_sched's other terms.
   input  logic [N*LS-1:0]   slot_cq02h,
@@ -106,11 +109,14 @@ module ooe_trio #(
   logic              wml;
   logic [N-1:0]      flt;
   logic [N-1:0]      prod_o;
+  logic [2*N-1:0]    kind_w;   // ooe_rs's stored kind and class, to ooe_wake (OA, re:OI-104)
+  logic [3*N-1:0]    cls_w;
   // ooe_wake takes the completion's payload a cycle after ooe_rs's stage
   // name for it; both are the channel's payload at the same edge.
   ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC)) u_rs (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
     .req_l_cq00h(req_l_cq00h), .req_cq01h(req_cq01h), .row_prod_cq01h(row_prod_cq01h),
+    .akind_cq01h(akind_cq01h), .acls_cq01h(acls_cq01h),
     .row_dep_cq01h(row_dep_cq01h), .row_code_cq01h(row_code_cq01h),
     .grp_dep_cq01h(grp_dep_cq01h), .grp_code_cq01h(grp_code_cq01h),
     .prv_dep_cq01h(prv_dep_cq01h), .prv_code_cq01h(prv_code_cq01h),
@@ -118,11 +124,12 @@ module ooe_trio #(
     .wtl3_cq00h(flt), .fin_cq00h(fin_cq02h), .gnt_cq01h(grant_cq04h),
     .cmpl_l_cq00h(cmpl_l_cq00h), .cmpl_idx_cq00h(cmpl_idx_cq00h), .sq_l_cq00h(sq_l_cq00h),
     .gnt_v_cq03h(gnt_v_cq03h), .gnt_idx_cq03h(gnt_idx_cq03h), .valid_out_cq02h(valid_cq02h),
-    .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol));
+    .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol),
+    .kind_o_cq02h(kind_w), .cls_o_cq02h(cls_w));
   ooe_wake #(.N(N), .LAT(LAT), .FAST(FAST), .PEN(PEN), .NPEN(NPEN), .LAT_COPY(LAT_COPY),
              .LAT_SPEC(LAT_SPEC), .LAT_MISS(LAT_MISS), .CMPL_DLY(CMPL_DLY), .NC(NC)) u_wake (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
-    .grant_cq01h(grant_w), .kind_cq01h(kind_cq01h), .cls_cq01h(cls_cq01h), .prod_cq01h(prod_cq01h),
+    .grant_cq01h(grant_w), .kind_cq01h(kind_w), .cls_cq01h(cls_w), .prod_cq01h(prod_cq01h),
     .cmpl_l_cq00h(cmpl_l_cq00h), .cmpl_idx_cq01h(cmpl_idx_cq00h),
     .hint_l_cq00h(hint_l_cq00h), .hint_idx_cq01h(hint_idx_cq01h),
     .dep_cq01h(dep_cq02h), .sqf_cq01h(sqf_cq01h), .sq_l_cq00h(sq_l_cq00h),
