@@ -128,7 +128,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   cover), so 128's cycles are flattered and not evidence. RCU flops 246k ->
   212k (160) / 179k (128). AR's order: OI answers TI's check question, TI
   re-runs 160 clean on a second 4-warp kernel, OA's view on Q-35 at 160,
-  then AR to DA with RA's Phase 1 area. 192 stands until then. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  then AR to DA with RA's Phase 1 area. 192 stands until then.
+  OA 333: 160 meets Q-35 (REN_CEIL 44 >= ROB 32), 128 fails (24 < 32);
+  order agreed; OA recommends 160 to DA after the clean re-run. Waiting on
+  OI's check answer and TI's re-run. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
