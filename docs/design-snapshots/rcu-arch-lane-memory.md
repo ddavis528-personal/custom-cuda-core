@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Lane_and_memory_paths rev=4 exported=2026-11-02 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Lane and memory paths*, at revision 4 on 2026-11-02 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Lane_and_memory_paths rev=5 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Lane and memory paths*, at revision 5 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Lane and memory paths
 
@@ -35,7 +35,7 @@ A lane consumer issued in A reads the PRF in A+1. A lane producer issued in A\_p
 
 ## Lane write-back
 
-At A each owned section pushes a descriptor into `lwb_d[k]`, depth `CCV_LAT_LANE` − 1: {valid, writes this bank (k in `secmask(dst)`), dst predecode, lane mask (all ones; \~`active` for the GPR copy)}, and the op's lead section adds {`pred_we`, pd and old-destination predicates' predecode, `active`, rob\_tag, done\_row, unit}. In A+6 bank k's LW port writes `lane_rcu_res` c\_l `result`\[8k+7:8k\] under the descriptor (Register file tab), and PLk writes the predicate (Predicate file tab). The lanes' `sec_valid` must equal the descriptor's write flags (asserted; it is never an enable, CG-5).
+At A each owned section pushes a descriptor into `lwb_d[k]`, depth `CCV_LAT_LANE` − 1: {valid, writes this bank (the op owns section k and writes a GPR: the Register file tab's LW enable), dst predecode, lane mask (all ones; \~`active` for the GPR copy)}, and the op's lead section adds {`pred_we`, pd and old-destination predicates' predecode, `active`, rob\_tag, done\_row, unit}. The banks written are the op's footprint, never `secmask(dst_width, dst_pos)`: they differ for chwidth's widening, whose `dst_width` names the old width (AR-24) while its footprint covers the new one, and the new upper sections must be written (RI-4). In A+6 bank k's LW port writes `lane_rcu_res` c\_l `result`\[8k+7:8k\] under the descriptor (Register file tab), and PLk writes the predicate (Predicate file tab). The lanes' `sec_valid` must equal the descriptor's write flags (asserted; it is never an enable, CG-5).
 
 SFU ops push into `swb_d`, depth `CCV_LAT_SFU` − 1, and write the SFU result field (RA-3) through SW in A+11.
 
