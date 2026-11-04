@@ -116,6 +116,7 @@ struct Lead {   ///< the issue lead slice (RA-31), as the payload's lead fields
   unsigned sec = 0, src = 0;
   bool imm = false, merge = false, guard = false;
   unsigned gpred = 0;
+  std::array<unsigned, 2> rsrc{};   ///< R's first two source rows a cycle ahead (RA-39 (b))
 };
 
 struct Issue {

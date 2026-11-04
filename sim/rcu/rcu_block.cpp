@@ -256,6 +256,7 @@ private:
     is.lead.merge = get(p, c.ooe_rcu, "lead_merge_used") != 0;
     is.lead.guard = get(p, c.ooe_rcu, "lead_guard_used") != 0;
     is.lead.gpred = unsigned(get(p, c.ooe_rcu, "lead_guard_pred"));
+    is.lead.rsrc = {unsigned(get(p, c.ooe_rcu, "lead_r_src0")), unsigned(get(p, c.ooe_rcu, "lead_r_src1"))};
     if (is.cont) return is;
     const bool copy = is.opcode == kOpCopy;
     const OpInfo *op = copy ? nullptr : opByCode(is.opcode);

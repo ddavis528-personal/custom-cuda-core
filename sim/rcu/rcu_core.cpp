@@ -309,12 +309,18 @@ void Core::checkIssues(const In &in, std::array<int, kRes> &owner) {
            want == kSlotS0 ? "S0-S3" : want == kSlotP0 ? "P0-P3" : "R");
     // The lead's promises (RA-31; Partition tab, superset rule): a clear
     // bit says the op does not use that group, which RCU then never loads.
+    // R's early source rows (RA-39 (b)) are R's read address a cycle ahead:
+    // each is the payload's row when its lead_src_used bit is set, else 0.
+    bool rsrc_bad = false;
+    for (unsigned i = 0; i != 2; ++i)
+      rsrc_bad = rsrc_bad || is.lead.rsrc[i] != (s == kSlotR && ((is.lead.src >> i) & 1u) ? is.src[i] : 0u);
     const char *why = (is.foot & ~is.lead.sec) ? "a section outside its lead's mask"
                       : (oc.reads & ~is.lead.src) ? "a source its lead says is unused"
                       : oc.imm_used && !is.lead.imm ? "an immediate its lead says is unused"
                       : is.merge && !is.lead.merge ? "a merge its lead says is unused"
                       : s == kSlotR && oc.guarded && (!is.lead.guard || is.lead.gpred != is.pguard)
-                          ? "a guard its lead does not name" : nullptr;
+                          ? "a guard its lead does not name"
+                      : rsrc_bad ? "a source row its lead does not name" : nullptr;
     if (why)
       fail("seq %llu, %s, reads %s (lead sections %s, sources %s)", seq(s), is.name, why,
            secBits(is.lead.sec).c_str(), secBits(is.lead.src).c_str());

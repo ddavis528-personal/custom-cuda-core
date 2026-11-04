@@ -61,5 +61,5 @@ RI asked TI to correct it.
 ## Negative controls in the unit tests
 
 Each control prints `control <name> caught` when the model refuses its
-hazard. There are seven: lane-missing, lane-early, byp-age3, guard-hazard, v60,
-mig-row-order, restore-zero. The run ends in `rcu-test: PASS (0 failures)`.
+hazard. There are eight: lane-missing, lane-early, byp-age3, guard-hazard, v60,
+mig-row-order, restore-zero, lead-rsrc-swap. The run ends in `rcu-test: PASS (0 failures)`.
