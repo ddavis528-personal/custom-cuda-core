@@ -746,7 +746,11 @@ void Core::issueR(uint64_t t, const Issue &is, uint32_t active, const Word &r0, 
   case RKind::Pand: pw = true; pval = rpa & rpb; break;
   case RKind::Por: pw = true; pval = rpa | rpb; break;
   case RKind::Pxor: pw = true; pval = rpa ^ rpb; break;
-  case RKind::PmovImm: pw = true; pval = is.imm; break;   // merged by the issue mask (RA-19)
+  case RKind::PmovImm:   // merged by the issue mask (RA-19); pmov-all-lanes writes all 32
+    pw = true;
+    pval = is.imm;
+    if (cfg_.brk == "pmov-all-lanes") pmm = kAll;
+    break;
   case RKind::Movi:
     for (unsigned l = 0; l != kLanes; ++l) gnew[l] = is.imm & em;
     break;
