@@ -46,8 +46,8 @@ OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
 
 ## Open work (most urgent first)
 -4. RA-11 PHYS_REGS (OA rev 333): 160 meets Q-35 (ceil 44 >= ROB 32), 128 fails
-   (ceil 24 < 32). Asked TI whether sweep regenerated floor/ceil (V-N firing
-   suggests 16/64 kept). After clean 160 re-run (2 four-warp kernels, S1, audit,
+   (ceil 24 < 32). TI rev 316: runs DID use derived 12/44, 8/24, so my
+   16/64 guess was wrong; V-N/fits_stale is OI's to explain. After clean 160 re-run (2 four-warp kernels, S1, audit,
    <0.5%) OA recommends 160 to DA via AR; OOE doc keeps 192 until DA decides.
 -3. RA-39 early R read (R0/R1 in A; OA revs 328-329): only L1 hits miss A
    (data lands in consumer's A). (i) MIU forward on R0/R1 TAKEN rev 329 (RA:
