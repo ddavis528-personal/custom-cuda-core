@@ -101,7 +101,8 @@ the compact hook printed this handoff.
      Gate d32f65e RED (11-04 11:16). OI's fixes in wtd: b1bbee8 (model: CAS pair at the
      last lane = width cut, OI-79 (b); FreeVec clears buffered bits an edge late like
      ooe_freelist's pr) and ed25191 (drop CG-1 tkv waiver); go_tb + rename_scarce 25 seeds
-     clean; on gate-scratch/OI. Left are TI's: OI-111 (OI rev 278, notice sent):
+     clean; 48e7d7c (run-rtl: rob/trio controls at full seeds; no-copy, no-rep-lead had
+     slipped past 3/6 seeds); on gate-scratch/OI. Left are TI's: OI-111 (OI rev 278, notice sent):
      gen-params.py:353 control 14->16; ooe_decq 2847 MiB -> heavy-units.json; check-kernel
      held-over-r regex pins "holds 3" (now 4..7) and vadd4 drain orphan=0. On TI's push:
      merge it into wtd (+ a461213 handoff), gate-push from wtd; on green close OI-109 and
