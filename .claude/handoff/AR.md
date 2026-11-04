@@ -33,7 +33,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   take the scoped gate (verify.sh --changed <base>, SCOPED PASS); the
   sweep's merge and releases keep the full clean gate, so AR's sweep is
   unchanged.
-- Last sweep 2026-11-02/03: e556fbc pushed on SPLIT PASS (cg alone 75 min,
+- Sweep 2026-11-04 (run early for TI's fbefc16 CI fix): 18be7b6 pushed on
+  SPLIT PASS (cg 59 min, rest ~65 min; a container restart lost one rest
+  run, rerun from the surviving export). Earlier: 11-02/03 e556fbc on SPLIT PASS (cg alone 75 min,
   exported, then gate-push --full --import; the whole gate in one 2h
   background run timed out with cg and ngd sharing the heavy lock). If a
   full gate times out again, split it the same way: `verify.sh --only cg`
