@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-02. Keep this current at every task's end; it is what
+Updated 2026-11-03. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -19,6 +19,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
   unpiped (a `| tail` once hid a failure).
 - Merge rules (DA tab revs 78, 89; CP-69): merge every peer branch at the
   daily sweep, and between sweeps when a peer's pushed work bears on IS's.
+  Skip release and gate-scratch/* (OI-102, DA 2026-11-01: unverified scratch
+  commits, never merged or gated).
   Fast-forward when the peer's head contains IS's; skip a merge whose result
   tree equals IS's own (`git merge-tree --write-tree HEAD <b>` against
   `HEAD^{tree}`); otherwise merge and gate.
@@ -35,14 +37,20 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 - Docs tool: a cell replace takes `with` and needs the block's `ifHash`
   and `ifRev`; target paragraph ids, not text ids.
 
+## Gate timing
+The core full gate can pass 2 h, the background-task limit: start it with
+setsid nohup tools/bg-run.sh is-sweep-gate tools/gate-push.sh --full, then
+wait in 2 h slices. tools/heavy-units.json is TI's: on a conflict there,
+take TI's branch's version.
+
 ## Daily sweep (scheduled task trig_015FmjgTTHxM4zTcmDTMf4tG, 02:23 PT)
 Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 260, OA 296, IS 184, TI 281, OI 250, CP 149, DA 100, RA 41.
+Conventions 17, AR 269, OA 316, IS 189, TI 297, OI 254, CP 152, DA 104, RA 60, RI 1.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
-not yet in the merged roster, so notice.py refuses to=RA: send the notice by hand).
+now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
