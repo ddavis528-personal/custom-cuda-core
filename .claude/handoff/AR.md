@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 276, OA 331, TI 304, IS 189, CP 153, OI 274, DA 106,
+  record): AR 277, OA 331, TI 309, IS 189, CP 153, OI 274, DA 106,
   Conventions 17, RA 63, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -100,7 +100,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   control (6 of 18 seeds miss).
   TI rev 308 (DA asked): AR rev 276 released layernorm; AR 143's hold had
   ended with CP-14 / AR 148 (CCV_FAIR_N 48), never said so then. Lesson:
-  close a hold in the row that ends it. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  close a hold in the row that ends it.
+  TI 309: RA-39 (c) in schema (39a1861). AR wrote the partitioning spec's
+  Lead fields paragraph (Interfaces tab rev 19). AR rev 277: miu_rcu_data
+  has NO lead slice, yet RA 62's forward compares lead phys_dst in T-1;
+  asked RA: lead_phys_dst (4x8, TI row, AR writes MIU text) or compare in
+  A (~+3 NGD). Waiting on RA. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
