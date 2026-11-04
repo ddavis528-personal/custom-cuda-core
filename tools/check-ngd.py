@@ -1000,7 +1000,8 @@ def main_check(only=None):
         if not units:
             raise SystemExit("check-ngd: no unit %s" % only)
     budgets = Budgets.load()
-    for u in cg.measured(units, lambda u: u.measure(budgets=budgets, modules=modules)):
+    for u in cg.measured(units, lambda u: u.measure(budgets=budgets, modules=modules),
+                         times=cg.last_times("check-ngd")):
         report(u, verbose=bool(only))
     if only:
         for _, msg in findings(units[0], budgets, parents):
@@ -1032,6 +1033,7 @@ def main_check(only=None):
     more, over = cg.heavy_check("check-ngd")
     for l in more + cg.time_lines():
         print("  " + l)
+    cg.save_times("check-ngd")
     fails += over
     print("  %d unit(s), %d port budget(s) in %d module file(s), stage %g NGD, ports %g by "
           "default" % (len(units), len(budgets.e), len(budgets.files), STAGE, PORT))
