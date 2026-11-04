@@ -26,8 +26,10 @@
 // Negative controls (DECQ_CONTROL=<name>) perturb the driving and must be
 // caught: drop-flush (a squash's flush never reaches the RTL), enq-swap (a
 // slot's two oldest arrivals in a cycle reach the ports youngest first),
-// no-enq-lead (the arrival lead never reaches it) and no-take-enable
-// (rename's "some warp takes" bit never reaches the take register).
+// no-enq-lead (the arrival lead never reaches it), no-take-enable
+// (rename's "some warp takes" bit never reaches the take register) and
+// no-free-lag (the credits expected as if freed entries returned at once:
+// the RTL's free lag must show).
 //
 // Rename's take is registered and popped at the next edge (OA-21): the
 // outputs read past it at once, and its entries hold their credits that
@@ -207,7 +209,7 @@ void drive(const Edge &e, bool lead) {
   // The take registered at this edge holds its entries until the next
   // (the model's decq_take_late); with decq_free_lag, the entries freed at
   // this edge (the last edge's take and flushes) hold a cycle more.
-  const unsigned lag = ccv::ooe::Config{}.decq_free_lag ? freeing : 0;
+  const unsigned lag = (ccv::ooe::Config{}.decq_free_lag && control != "no-free-lag") ? freeing : 0;
   freeing = held + in_transit;
   if (unsigned(dut->used_cq02h) != total + held + in_transit + lag)
     fail("credits differ", 0, unsigned(dut->used_cq02h), total + held + in_transit + lag);
