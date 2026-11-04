@@ -312,6 +312,7 @@ private:
     unsigned port, row, secs;
     uint32_t lanes;
     Word data;   ///< each lane's word, already steered: only secs's bytes are written
+    int slot = -1;   ///< the MIU slot of an MW write
   };
   struct PWrite {
     unsigned port, row;
@@ -319,6 +320,7 @@ private:
     uint32_t val, mm;      ///< D = (old & ~mm) | (val & mm), old read at write time
     int oldrow;            ///< the old destination's row, or -1 for 0
     bool miu;
+    int slot = -1;         ///< the MIU slot of a PM write
   };
   /// A lane op in flight, from its issue to its write-back.
   struct LaneDesc {
@@ -396,6 +398,8 @@ private:
   // Kill.
   unsigned drain_ = 0;
   bool drain_loaded_ = false;
+  bool kill_pend_ = false;    ///< a kill not yet quiet: KillAck when it is
+  unsigned kill_epoch_ = 0;
   bool idle_ = false;
   uint64_t idle_cycles_ = 0;
 

@@ -180,11 +180,11 @@ void Core::gatherWrites(uint64_t t, const In &in, std::vector<GWrite> &gw, std::
       // One load write per bank a cycle (RA-28 (a)).
       if (s & msecs) fail("two MIU slots write section bank(s) %s in one cycle (RA-28)", secBits(s & msecs).c_str());
       msecs |= s;
-      GWrite g{kMW, m.dst, cfg_.full_row ? kAllSecs : s & kAllSecs, m.active, {}};
+      GWrite g{kMW, m.dst, cfg_.full_row ? kAllSecs : s & kAllSecs, m.active, {}, int(j)};
       for (unsigned l = 0; l != kLanes; ++l) g.data[l] = (m.data[l] & elemMask(m.w)) << (8 * m.pos);
       gw.push_back(g);
     }
-    if (m.pwe) pw.push_back({kPM, m.ppred, m.active, m.pred_result, kAll, -1, true});
+    if (m.pwe) pw.push_back({kPM, m.ppred, m.active, m.pred_result, kAll, -1, true, int(j)});
   }
   // R, the predicate-only copy, and restores: scheduled at their decision.
   if (auto g = gsched_.find(t); g != gsched_.end()) {
@@ -370,7 +370,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
       fail("seq %llu's guard %u is written by a non-MIU port in its own A", seqOf(is.tid),
            is.pguard);
     for (const PWrite &w : pnow_)
-      if (w.miu && w.row == is.pguard && (oc.guarded || oc.pdata)) ev(Ev::GuardFwd, s, w.port, w.row);
+      if (w.miu && w.row == is.pguard && (oc.guarded || oc.pdata)) ev(Ev::GuardFwd, s, unsigned(w.slot), w.row);
     const uint32_t g = rdPred(is.pguard);
     x.guardv = is.pneg ? ~g : g;
     // pdata-guard: a predicate read as data taken as a guard too (TI-36 (c)).
@@ -407,7 +407,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
           fail("seq %llu's R%u source row %u is written by a non-MIU port in its own A",
                seqOf(is.tid), i, is.src[i]);
         for (const GWrite &w : gnow_)
-          if (w.port == kMW && w.row == is.src[i]) ev(Ev::RsrcFwd, i, 0, w.row);
+          if (w.port == kMW && w.row == is.src[i]) ev(Ev::RsrcFwd, i, unsigned(w.slot), w.row);
         (i == 0 ? x.r0 : x.r1) = rdReg(is.src[i], is.src_pos[i], is.src_w[i]);
       }
     }
@@ -654,6 +654,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
   // The kill drain (Done tab): KILL_DRAIN, loaded at K's edge, to 0.
   if (drain_ && !drain_loaded_) --drain_;
   drain_loaded_ = false;
+  if (kill_pend_ && killQuiet()) { ev(Ev::KillAck, kill_epoch_); kill_pend_ = false; }
 
   // rcu_idle_q: nothing valid in any stage and nothing pending.
   bool input = in.lres.has_value() || in.map || in.cmd || in.pca;
@@ -1000,6 +1001,8 @@ void Core::kill(uint32_t mask, unsigned epoch) {
   drain_ = killDrain();
   drain_loaded_ = true;
   ev(Ev::KillDrain, mask, epoch, drain_);
+  kill_pend_ = true;
+  kill_epoch_ = epoch;
   kmask_ |= mask;
   auto killed = [&](unsigned w) { return ((mask >> w) & 1u) != 0; };
   // Unpaired entries of killed warps are dropped, their credits returned.

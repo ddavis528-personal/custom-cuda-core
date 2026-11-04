@@ -18,44 +18,28 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 329, IS 189, TI 305, OI 272, CP 152, DA 106, RA 64, RI 3.
+Conventions 17, AR 275, OA 331, IS 189, TI 310, OI 274, CP 152, DA 106, RA 64, RI 4.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
-- TI owns schema/params/tools/stub/kernel.cpp's makeKernelBlock: makeRcu hook is TI's
-  (RA-38, planned TI rev 290, not built as of TI 303). Use a LOCAL uncommitted patch to run
-  kernels with the model until it lands; carry the blocks.list line with the first model
-  commit or ping TI.
-- No RCU events exist in schema/events.json: the model logs its events internally
-  (for unit tests and lock-step) until TI assigns ids (row to raise).
-- Model reads/writes Kernel::gpr / Kernel::pred as its PRF (the final-state compare
-  reads them), via a reference so unit tests use their own.
-- Params today: kLatRcuAddr 5 (spec builds to 1; TI reapplies after OI's ooe_wake fix),
-  no KILL_DRAIN param yet (RA-16 (g)), done slots still a pool in schema text (RA-29 (b)),
-  no MIU lead fields (RA-4), no lead_r_src0/1 (RA-39 (c)).
+- TI owns schema/params/tools/stub/kernel.cpp. TI landed (merged at f25b3e2): makeRcu with
+  CCV_RCU_IMPL=model, lane stub's per-section sec_dst_width, rcu_unit gate section
+  (tools/check-rcu-unit.sh), gate-scope for sim/rcu/, events 33-47, map/mig backpressured.
+  No local kernel.cpp patch any more.
+- Model events: rcu::Ev (4 fields, unit tests) packed to schema ids in rcu_block.cpp event();
+  docs/rcu-model.md has the packing, aux, interims, controls.
 
 ## Model state (2026-11-04)
-- sim/rcu/: rcu_core.{h,cpp} (spec timing), rcu_block.cpp (ports, oracle checks), rcu_test.cpp +
-  run-tests.sh (PASS). Block runs under CCV_RCU_IMPL=model via LOCAL kernel.cpp patch (never commit):
-  makeRcuLocal + lane stub reads sec_dst_width via getSec(...,0) (line ~2316).
-- Interims in the model: Config::full_row (AR-24, CCV_RCU_FULL_ROW=0 = spec secmask MW/RW);
-  LW writes every owned bank (Register file tab) not secmask (Lane tab) - conflict for RA;
-  call link from the record until RA-18 lands (rcu_block decode).
-- Fixed: demote wcnt off-by-one (first row c4), late-copy tid + copy contract check, seq printing.
-- Kernel cycles vs stub so far: vadd 157/157, sel 76/76, merge 71/72, callret 280/280,
-  sized 2640/2641, narrowadd 226/230. Stub log ~/ccv-logs/kernel-stub.log, model kernel-model.log.
-
-## Pushed and raised (2026-11-04)
-- a0f6ccd pushed (model cc58b5d + regen). The gate on sim/rcu/ runs ALL sections (no scope map yet):
-  ~2 h cold; warm synth-cache ~67 min. Run gate-push with timeout 7200000 and stash kernel.cpp first.
-- RI-1..7 raised (RI rev 2). TI rev 305 took RI-1,2 (next push), RI-7 waits on OI. RA rev 64 answered
-  RI-3..6: RI-4,5,6 closed (RI rev 3); RI-3 sent to TI to mark map/mig backpressured.
-- Since push (uncommitted): restore rows unwritten from map land (+ kill drop clears); pca rows
-  written by own label (assert order); movi-in-lane sends the movi first and defers clashing lane ops
-  a cycle; section merge into the lane message only for ops sent now (late-copy had sent twice).
+- sim/rcu/: rcu_core.{h,cpp}, rcu_block.cpp, rcu_test.cpp (7 "control <name> caught" lines), run-tests.sh.
+- Interims: Config::full_row (AR-24; CCV_RCU_FULL_ROW=0 = secmask); call link from record (RA-18, RI-7).
+- Pushed: a0f6ccd, b685619, 131cdee (sweep merge, SPLIT PASS). Then merged 7 branches -> f25b3e2;
+  on top: events emit, KillAck, MIU slot on GuardFwd/RsrcFwd, controls, docs/rcu-model.md.
+- Logs: ~/ccv-logs/kernel-model-m0b.log (model run after merge); per-kernel logs in build/kernel*.
+- Gate: split gate if all sections run (`verify.sh --full --only ngd` + gate-export + gate-push --import).
 
 ## Open work, most urgent first
-1. M0: CCV_RCU_IMPL=model tools/check-kernel.sh green except mwmiss parked (RI-3); then
-   check-sv-hosted.sh with the model; cycles table vs stub for RA.
+1. M0: model check-kernel all green (mwmiss parked fixed by backpressure?), sv-hosted with model,
+   cycles table vs stub, gate-push, M0 row in RI tab + notice RA/TI. Tell TI: EV_RCU_GUARD_FWD doc
+   direction reversed (MIU->RCU).
 2. Answer TI/RA/OI responses to RI-1..7 at the daily sweep.
 3. Phase 2 (bank slice, R pipe RTL) after M0.
