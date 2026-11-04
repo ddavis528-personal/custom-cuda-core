@@ -39,15 +39,6 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
-- 2026-11-04 06:10Z: PUSHED fbefc16 (ooe_sched back on heavy-units: CI
-  red on every branch was TI's 4e7186f; TI rev 302 rang all) and b11e60f
-  (fanout ratchet live: 109 caps in 9 ooe modules; seed fix 87795bf takes
-  a multi-unit module's worst unit; 836fd75 reverted; TI rev 304 rang
-  OI/OA/RA). Both branches at b11e60f. Waiting: #66 decq 15 (TI rev 301)
-  bumps with OI's decq_free_lag RTL, not before; #67 RA-39 (c) waits on
-  AR (d) (OA accepted (b), rev 328). OI-105 answered yes (TI rev 303).
-  Open: why CI reads ooe_sched at 2190 MiB vs 975 MiB locally.
-  Lesson: `setsid nohup ... & echo $!` gives setsid's pid, not the job's.
 - 2026-11-04 01:45Z: RA-33 fanout ENFORCED in check-ngd, local (faf5bf0,
   baa4136): every enforced depth and block level counts the term; ratchet
   'fanout' in rtl/ngd-ratchet.json, baseline rtl/ngd-fanout-baseline.json

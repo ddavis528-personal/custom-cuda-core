@@ -7,5 +7,3 @@ sim/skel/kernel.cpp
 sim/skel/ooe.cpp
 sim/ooe/ooe_core.cpp
 sim/ooe/ooe_block.cpp
-sim/rcu/rcu_core.cpp
-sim/rcu/rcu_block.cpp
