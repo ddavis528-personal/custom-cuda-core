@@ -1010,10 +1010,11 @@ fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
 # The first wrong read follows when OOE's free lists refill: since OI's
 # FreeVec alignment (OI-70, OI-71), seq 204's R3; since FET's decode-queue
-# credits (TI-46 (b)) pace the warp, seq 203's R4.
-if grep -q "^CHECK lane 0: seq 203 operand 1 (R4) 00000000, oracle 00000001" "$B/kernel_free-new.log" &&
+# credits (TI-46 (b)) pace the warp, seq 203's R4; since the two-step refill
+# (fl_two_step, OI-105), seq 204's R3 again.
+if grep -q "^CHECK lane 0: seq 204 operand 1 (R3) 00000000, oracle 00000064" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
-  say "--break free-new: a live register reallocated" "PASS (seq 203, its source reallocated)"
+  say "--break free-new: a live register reallocated" "PASS (seq 204, its source reallocated)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi
@@ -1654,10 +1655,10 @@ fi
 # qualifiers instead gets plog's P3 = !P1 | P2 wrong, and its own check, the
 # guarded add's lanes and the final compare all say so.
 "$SKEL" --kernel build/oracle/plog/oracle.jsonl --break arch-pred-srcs >"$B/kernel_arch-pred-srcs.log" 2>&1
-if grep -q "^CHECK rcu: seq 7 P3 = ffffffff, oracle ffff00ff" "$B/kernel_arch-pred-srcs.log" &&
+if grep -q "^CHECK rcu: seq 7 P3 = 0000ffff, oracle ffff00ff" "$B/kernel_arch-pred-srcs.log" &&
    [ "$(field "$B/kernel_arch-pred-srcs.log" pred_mismatch)" = 1 ] &&
-   [ "$(field "$B/kernel_arch-pred-srcs.log" check_failures)" = 9 ]; then
-  say "--break arch-pred-srcs: plog's P3 wrong" "PASS (RCU's check, 8 lanes' enable, the final P3)"
+   [ "$(field "$B/kernel_arch-pred-srcs.log" check_failures)" = 41 ]; then
+  say "--break arch-pred-srcs: plog's P3 wrong" "PASS (RCU's check, 16 lanes' enable, the final P3)"
 else
   bad "--break arch-pred-srcs" "a misnamed predicate source went unnoticed: $(grep '^KERNEL' "$B/kernel_arch-pred-srcs.log")"
 fi
