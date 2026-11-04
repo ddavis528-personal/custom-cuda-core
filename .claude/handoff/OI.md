@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 311, OI 280, CP 152, DA 106, RI 3
+Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 333, OI 281, CP 152, DA 106, RI 3
 (sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -90,13 +90,21 @@ the compact hook printed this handoff.
    remove an entry once its path meets 25). State 11-04 ~13:30 UTC:
    - Freelist: scan (a) 32ba2d0, caps 9718b81, gsec retime (wr_q flop, no reuse cycle lost)
      PUSHED 013ed10; freelist has no caps left. OI rev 275 (OI-108) told OA, no notice.
-   - decq (15 entries, free lag 1, CCV_P_DECQ 15, caps off) PUSHED 41ebad9 (SCOPED PASS
-     22/22, 11-04 ~19:00 UTC), with TI's b85595b (OI-111's checks), b1bbee8 (model pair cut at
-     the last lane; FreeVec late clear), ed25191 (tkv waiver gone), 48e7d7c (run-rtl controls
-     at full seeds), 41ebad9 (pair-split control bypasses the new cut). OI-109/OI-111 closed by OI-113
-     (OI rev 280, FYI, no notice); wtd removed.
-     The sched (b) gate 46b478e failed only because OI's disk cleanup removed build/verify
-     mid-run: re-gating as e622fb2 (wts, origin merged), log ~/ccv-logs/oi-push-sched-1915.log.
+   - decq PUSHED 41ebad9; sched (b) PUSHED 8ba738f (ret_hold 2; ooe_sched brk/older_m fanout caps
+     dropped). OI-109/111 closed by OI-113 (rev 280).
+   - RA-11 (OI-114, rev 281, notices to OA and TI): fits_stale 6 at PHYS 160 is the go's floor
+     term: a slot below its floor gets unmet floor from held BEFORE its own in-flight take, so
+     the allowance is one over the credit (dump: held 45/43/44/25, want 28, 3 free, allowance 4).
+     Check is right; model and ooe_go share the term. Proposed fix max(0, want-held-took);
+     WAITING on OA to rule the form. Then: fix model + ooe_go (price NGD), V-N at 128 (one
+     firing, untraced). Repro worktree scratchpad/wtr: params 160/12/44, debug dump in
+     ooe_core.cpp (RA11 lines), run build/skel/ccv-skel --kernel
+     build/bench-oracle/coremark128/oracle.jsonl (~25 min to first firing; full run >2h).
+     time-bench.sh stops at its chwidth selftest on coremark128 (told TI).
+   - RA-39 (c): the OOE RTL has NO payload-read stage yet (no RS payload store, no issue
+     payload/lead). Probe test/ooe/probes/rlead_probe.sv in worktree scratchpad/wtl (branch
+     oi-rlead-probe, unit added to its cg-units.json): ooe_sched + names flops + R lead mux
+     into a flop beside the grant register. Run tools/check-ngd.py --unit rlead_probe there.
    - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
      link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
      lead_r_src0/1 from RS names (TI 39a1861 on ccr-183cc441-doowtf; merge it). sched (b)
