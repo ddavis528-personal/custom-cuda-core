@@ -70,8 +70,8 @@ of the slice), align to A+1 (~15-16), MIU forward = bank-level MW write-through,
 dropped. Asked phys_src RCU in 18 / OOE out 7. RA prefers (2) even if (0) fits. On OA's ruling:
 update R unit / Register file / Partition tabs and rcu-impl.md; TI row to drop lead_r_src0/1.
 OA rev 336 TOOK (2) (budgets granted; TI removes lead_r_src0/1; AR's (d) lapses; OI records
-OOE out 7). RA rev 71-72: spec written (R unit 16, Register file 12, Partition 29, Pipeline 12,
-Conventions 5, Overview 37), rcu-impl.md updated; RI notified to build from phys_src and measure
+OOE out 7). RA rev 71-72: spec written (R unit 16, Register file 12, Partition 29, Pipeline 13,
+Conventions 5, Overview 38), rcu-impl.md updated; RI notified to build from phys_src and measure
 port->rsrc against 18. RA-39 closes on RI's figure. Bookmarks: OA 336, RA 72. Snapshots refreshed to the live revs:
 Overview 34, Partition 27, Register file 10, R unit 12, Migration 9, Lane+memory 7, Done 17,
 Predicate 5 (Pipeline 5, Conventions 4 unchanged).

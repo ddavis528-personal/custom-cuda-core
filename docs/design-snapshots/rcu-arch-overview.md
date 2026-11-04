@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=37 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 37 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=38 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 38 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -112,7 +112,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | RA-35 | AR | rcu-arch.md's ports, latencies and section 8 | raised | none (process) |
 | RA-36 | TI | roadmap Part 0 for the RCU | **done** (TI rev 317, e60ae23): roadmap RCU status; `rcu_miu_width` deleted, Q-18 closed; (d) goes to OI with ADDR\_BASE = 1 | none (process) |
 | RA-37, RA-38 | TI, OA | repo support for RI: gate-scope map, model hook (`makeRcu`, `CCV_RCU_IMPL`), `check-rcu-unit`, `job_rcu_rtl`, `CCV_RCU_RTL` | agreed (TI rev 290, OA rev 308); built: makeRcu with `CCV_RCU_IMPL`, `check-rcu-unit`, the gate-scope map (39a1861). RI met M0 with the model (5968894, RI rev 5), **accepted by RA** (rev 68); TI makes the model the default | Partition (M0); rcu-impl.md |
-| RA-39 | OA, TI, AR | early R source read: R0/R1 rows on R's lead, read in A | (a) taken by OA (revs 328-329). (b) as first written (R0/R1 rows on R's lead) withdrawn: OI-115 measured the lead mux in select at 38.8 NGD against `ooe_sched`'s 30.5. Taken instead, OA rev 336 on RA's price (RA rev 70): option (2), the read from the payload's `phys_src` on the wire into `rsrc` in each slice, the MIU forward a bank-level write-through, budgets RCU in 18 and OOE out 7. (c) `lead_r_src0/1` withdrawn: TI takes them out of the schema and stubs (landed at TI rev 309). (d) lapses (OA rev 336). Open: RI to measure the payload-wire read against 18. | R unit (Early R source read); Register file; Pipeline |
+| RA-39 | OA, TI, AR | early R source read: R0/R1 read in A from the payload's phys\_src | (a) taken by OA (revs 328-329). (b) as first written (R0/R1 rows on R's lead) withdrawn: OI-115 measured the lead mux in select at 38.8 NGD against `ooe_sched`'s 30.5. Taken instead, OA rev 336 on RA's price (RA rev 70): option (2), the read from the payload's `phys_src` on the wire into `rsrc` in each slice, the MIU forward a bank-level write-through, budgets RCU in 18 and OOE out 7. (c) `lead_r_src0/1` withdrawn: TI takes them out of the schema and stubs (landed at TI rev 309). (d) lapses (OA rev 336). Open: RI to measure the payload-wire read against 18. | R unit (Early R source read); Register file; Pipeline |
 
 ## For Daniel
 
