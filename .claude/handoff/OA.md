@@ -40,11 +40,16 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 327, AR 269, TI 300, OI 270, IS 188, CP 152, DA 106,
-RA 60 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
+Conventions 17, OA 328, AR 269, TI 300, OI 271, IS 188, CP 152, DA 106,
+RA 61 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
 OOE doc rev 360. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
+-3. RA-39 early R read (R0/R1 in A; OA rev 328): all classes meet A except
+   L1 hits (data lands in consumer's A=T, MW writes in T). (i) MIU forward on
+   R0/R1 preferred, RA prices; (ii) late hit-load wake for R consumers, OI
+   prices (model); (i) fits -> taken, else (ii) <0.5% mine, >0.5% DA.
+   (b) lead_r_src0/1 accepted; OI lead-mux NGD/CG, TI schema, AR agree.
 -2. DA 11-04 (DA tab 105): fanout term ENFORCED in check-ngd, today's paths
    ratcheted (TI builds). OA rev 321 order: go+sched (held) first; then one model
    batch pricing freelist scan (a two-step / b banked) + rs/decq free candidates
