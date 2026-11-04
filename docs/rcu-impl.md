@@ -176,11 +176,17 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
   - **Yosys:** every flow uses `tools/shim/yosys`.
   - **Fanout:** check-ngd reports a fanout term, ceil(log4(fanout/4))
     inverter stages at 0.68 NGD each (RA-33, Daniel's option (a)). It is
-    report-only today, enforced later. M1 counts it either way. Its first
-    run (TI rev 289) put 10 OOE units over 25, `ooe_rob` at 44.3. RCU's spec
-    already budgets for it: the select one-hots are copied per bank and
-    section, so a row AND drives 64 cells (Register file tab, "Select
+    enforced (TI rev 299, DA 2026-11-04); what was over 25 then sits on a
+    ratchet that only shrinks, and nothing of RCU's may join it. RCU's spec
+    already budgets for it: the select one-hots are copied per slice and
+    port, so a row AND drives 32 cells (Register file tab, "Select
     fanout"). Check the report on every wide net, not only the selects.
+- **Early R source read (RA-39):** R0 and R1 are read in A, not A+1, from
+  selects predecoded in A−1 off R's lead (`lead_r_src0/1`), into `rsrc_a`
+  (2,048 flops), with an MIU forward after alignment for an L1-hit load
+  landing in that A. R computes from flops in A+1 (about 13 NGD) and still
+  writes at A+2; `CCV_LAT_RCU` stays 3. R unit tab, "Early R source read".
+  The bank-out budget is 11 on every read port.
 - **Clock-gating stimulus (RA-34):** check-cg's idle, medium and high
   scenarios come from checked replays of ccv-skel's per-block port-trace
   dump (TI is building it):
@@ -305,7 +311,7 @@ out of your context.
 |---|---|---|---|
 | 0, setup | section 8 | — | roster, session home, handoff, sweep task in place |
 | 1, the model | sim/rcu/: the block at RCU's ports, with its events, hazards, stalls and idle | M0 | every kernel and control passes on both hosts with the model as the default (TI flips makeRcu's default, RA-38 (a)); kernel cycles against the stub's reported. **RA reads it** and folds anything the spec failed to say into the spec |
-| 2, the register file and the R pipe | `ccv_rcu_bank_slice` (units at 32 rows, then 192), `ccv_rcu_r` + `ccv_rcu_xbar` | M3; M1 and M2 for both modules; module benches | slice read AND-OR within the bank's read budget at 192 rows (7 in the spec; RA's stand-in measured 8.3, open with Daniel); a light unit; flops within 1% of 6,550; every write D-cone and enable within budget; the register-index shfl (about 22) and ret (about 23) paths ≤ 25 with the read. **RA and DA:** these are the figures for the collective fold from 5 to 3 (RA-8, RA-29 (c)) and the first real flop count. If a bank cannot be a flop array at 25 NGD, stop and raise it at once (Q-51's reopening cost) |
+| 2, the register file and the R pipe | `ccv_rcu_bank_slice` (units at 32 rows, then 192), `ccv_rcu_r` + `ccv_rcu_xbar` | M3; M1 and M2 for both modules; module benches | slice read AND-OR within the bank-out budget of 11 at 192 rows, fanout term included (RA's stand-in: 8.3, 11.0 with fanout); a light unit; flops within 1% of 6,550; every write D-cone and enable within budget; the R0/R1 read with alignment and MIU forward into `rsrc_a` in A (about 16) and the register-index shfl and ret compute from `rsrc_a` in A+1 (about 13) ≤ 25. **RA and DA:** these are the figures for the collective fold from 5 to 3 (RA-8, RA-29 (c)) and the first real flop count. If a bank cannot be a flop array at 25 NGD, stop and raise it at once (Q-51's reopening cost) |
 | 3, predicates and kill | `ccv_rcu_pred` (with and without the guard lead), `ccv_rcu_kill` | M1, M2; M4 | guard path in A ≤ 16 NGD with the lead (≤ 23 without); kill drain bound M4 |
 | 4, lanes, memory, migration | `ccv_rcu_lanes` (4 copies, then 32), `ccv_rcu_mem`, `ccv_rcu_mig` | M1, M2 (the lead-slice field groups), M5 | DCGE per field group; the literal-imm group under 75% goes to RA (the remedy is a DEC bit through OA, never a waiver first); migration 17 rows within 68 cycles |
 | 5, the block | `ccv_rcu` assembled; Q-53 checkers (arrival-cycle, A-35's two isolation assertions, the A-45 pairing checker) | M1 block convergence from the `.ngd.json` files, level by level, then timed whole; M2 block 2%; M6; M7 | every row of the exit table met, or a waiver Daniel signs. Then RA reconciles the spec with what was built |
@@ -323,7 +329,7 @@ bank's unit runs. Order them by what section 7 has unblocked.
 | The issue lead slice (`lead_fields`), `CCV_LAT_RCU_ADDR_BASE` = 1, `CCV_LAT_L1_WAKE` 16 → 12 | TI (schema), OI (OOE sends it) | RA-31, RA-32 | `pred`'s split guard read; `lanes` and `mem` field-group enables | build with the lead inputs. Without the slice, every group falls back to the issue valid (Partition tab, "Contingencies") |
 | The model's hook (makeRcu; the stub stays the default until your model passes every kernel and control, then `CCV_RCU_IMPL=stub` selects it), sim/rcu/*.cpp in blocks.list (with your first model commit: ping TI or carry the line yourself), `check-rcu-unit`, `job_rcu_rtl` (each wired while empty, failing on tests it did not run) | TI | RA-38, agreed TI rev 290 | the model in kernel runs; the lock-step jobs | develop the model under its unit tests |
 | The ccv-skel port-trace dump | TI | RA-34 | M2 with real stimulus; block lock-step | reset/idle and directed stimulus only |
-| Fanout term enforced in check-ngd | TI | RA-33 | nothing: report-only numbers count for M1 | record the reported stages beside each path |
+| The R lead's source rows `lead_r_src0/1` (schema and stub) and OOE sending them; the lead mux's NGD and clock gating in OOE | TI (schema, stub), OI (OOE) | RA-39 (c); OA took (a), (b) with the MIU forward (i), revs 328-329 | `r`'s and the slices' R0/R1 predecode in A−1 | build with the lead inputs; the model reads R0/R1 in A either way |
 | Repo support: the gate-scope map for sim/rcu/, rtl/rcu/ and test/rcu/ and the CLAUDE.md pointer (TI does these first), the `CCV_RCU_RTL` SV-hosted selector, and the sweep minute RI 31 in the register skill | TI, OA | RA-37, agreed TI rev 290, OA rev 308 | an unmapped path runs every gate section on each push; SV-hosted runs | push less often until the map lands |
 | The collective fold, 5 → 3 | DA | RA-29 (c) | nothing: the spec runs collectives in the R pipe either way; only the parameter and OOE's class change | phase 2's figures are the input |
 
