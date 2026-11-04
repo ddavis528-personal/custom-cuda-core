@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 325, AR 269, TI 297, OI 270, IS 188, CP 152, DA 105,
+Conventions 17, OA 326, AR 269, TI 299, OI 270, IS 188, CP 152, DA 105,
 RA 60 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
 OOE doc rev 358. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
@@ -51,7 +51,9 @@ OOE doc rev 358. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    a cycle ahead (<0.5% total mine, else DA); rendep sender probe (else rename
    stage -> DA); rob_w fill probe (input stage?); go remainder; copies last.
    rev 322: TAKEN freelist (a) two-step (final). rs WITHDRAWN rev 325 (+1.1-1.6%
-   corrected): OI copies probe, then lag with +2 rows/class, else DA beside decq. (was: S1 to
+   corrected): OI copies probe, then lag with +2 rows/class, else DA beside decq.
+   TI dry run (rev 299): 115 findings; 43 are ooe_ratread NGD-6 alone, asked TI
+   if alone-rule applies once instantiated, OI for parent-timed path (rev 326). (was: S1 to
    confirm, >0.2% back to OA). decq -> DA (rev 323): OA recommends (a) decq 15
    + free lag 1 (-2.2% vs today sectioned, model; +2 entries area); (b) 14+lag
    +0.6%, S1 (a) -0.03% (b) +0.06% vadd4 +13%. Waiting on DA. freelist/rs final.
