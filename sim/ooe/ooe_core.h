@@ -85,6 +85,10 @@ struct Config {
   /// fl_two_step 1: scan (a) as ooe_freelist builds it, each bank's
   /// find-first registered and appended at the next edge (FreeVec::refill2).
   bool fl_two_step = true;
+  /// r_load_late 1 (RA-39 (ii), OA rev 328): a consumer that executes in
+  /// RCU reads an L1-hit load's timed wake a cycle late (RCU reading R0/R1
+  /// in A, with no forward from MIU). Completion wakes are unchanged.
+  bool r_load_late = false;
   /// rs_free_lag 1: ooe_rs's free-entry candidates a cycle ahead; an entry
   /// freed in a cycle is held (allocation and rename's room) through the
   /// next. decq_free_lag 1: ooe_decq's likewise, a slot freed in a cycle
@@ -1401,6 +1405,8 @@ private:
     bool on_completion = false;    ///< wakes on its completion, not a time
     uint64_t late_at = 0;
     bool late = false;             ///< the full-latency wake (bypass wakes are per cell)
+    uint64_t late_t = 0;           ///< the cycle late was raised
+    bool hit_wake = false;         ///< late_at is an L1 hit's timed wake (r_load_late)
     bool confirmed = false;        ///< result can no longer be cancelled
     bool msd = false;              ///< missed its L1 slot, until its completion (OI-50's msd)
     bool msd_end = false;          ///< its completion came: msd clears after this cycle's hop
@@ -1504,6 +1510,8 @@ private:
   void addDeps(unsigned e, const RobEntry &r, bool copy_half);
   void dep(unsigned e, unsigned preg, bool pred, int group);
   bool cellOk(unsigned i, unsigned j) const;
+  /// r_load_late: consumer i reads producer p's late line a cycle late.
+  bool rLate(unsigned i, const RsEntry &p) const;
   bool rowReady(unsigned i) const;
   /// The row's lines as they will stand next cycle, from the state now:
   /// what the ready register holds then (OI-51).

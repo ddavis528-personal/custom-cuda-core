@@ -47,7 +47,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
-                                     {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge}, {"fl_direct", &fl_direct}, {"fl_two_step", &fl_two_step},
+                                     {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge}, {"fl_direct", &fl_direct}, {"fl_two_step", &fl_two_step}, {"r_load_late", &r_load_late},
                                      {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"split_r_class", &split_r_class}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
@@ -1077,7 +1077,7 @@ bool Core::cellOk(unsigned i, unsigned j) const {
   if (!(cell(i, j) & 1)) return true;
   const RsEntry &p = rs_[j];
   const uint8_t w = woff_[size_t(i) * n_ + j];
-  if (w == kLateOff) return p.late;
+  if (w == kLateOff) return p.late && !(rLate(i, p) && p.late_t >= now_);
   // A bypass wake: its offset after the producer's issue, while that issue
   // stands (a cancel clears issued). dep() gives offsets only to timed
   // producers.
@@ -1126,7 +1126,10 @@ bool Core::rowReadyAt(unsigned i, uint64_t t) const {
     const uint64_t issue_at = old ? p.rep_issue_at : p.issue_at, late_at = old ? p.rep_late_at : p.late_at;
     if (w == kLateOff) {
       // The full-latency wake: raised, or its timer fires by t.
-      if (!(late || (issued && !onc && t + skew_ >= late_at))) return false;
+      const bool rl = rLate(i, p);
+      if (rl ? !((late && p.late_t < t) || (issued && !onc && t + skew_ >= late_at + 1))
+             : !(late || (issued && !onc && t + skew_ >= late_at)))
+        return false;
     } else if (!(issued && t + skew_ >= issue_at + w)) {
       return false;
     }
@@ -1345,6 +1348,7 @@ void Core::setWakes(unsigned e) {
   const RobEntry &r = slot_[x.slot].rob[x.rob];
   const SchedAttr &a = r.u.attr;
   x.late = false;
+  x.hit_wake = false;
   x.spec = x.on_completion = false;
   if (e < wlog_.grant.size()) {
     const auto kc = wakeKindClass(e);
@@ -1366,6 +1370,7 @@ void Core::setWakes(unsigned e) {
     // scratchpad loads, atomics and everything past L1 wake on completion.
     if (cfg_.l1_spec && r.is_load && a.lat_class == kLatClsL1 && r.u.space == 0) {
       x.spec = true;
+      x.hit_wake = true;
       x.late_at = now_ + cfg_.lat_l1_wake;
     } else {
       x.on_completion = true;
@@ -1380,7 +1385,16 @@ void Core::setWakes(unsigned e) {
   else x.on_completion = true;
 }
 
-void Core::wake(unsigned e) { rs_[e].late = true; }
+void Core::wake(unsigned e) {
+  if (!rs_[e].late) rs_[e].late_t = now_;
+  rs_[e].late = true;
+}
+
+bool Core::rLate(unsigned i, const RsEntry &p) const {
+  if (!cfg_.r_load_late || !p.hit_wake) return false;
+  const RobEntry &r = slot_[rs_[i].slot].rob[rs_[i].rob];
+  return !r.is_mem && r.u.attr.lat_class == kLatClsRcu;
+}
 
 /// EV_WAKEUP for every operand whose wake was satisfied this cycle: the
 /// dependant's RS entry and the producer's.
@@ -1773,6 +1787,7 @@ void Core::takeCompletions() {
         x.on_completion = false;
         x.msd_end = x.msd;   // the hop still sees the miss this cycle (V-68)
         x.late_at = now_ + cfg_.cmpl_wake_delay;
+        x.hit_wake = false;
         if (!cfg_.cmpl_wake_delay) wake(r->rs_main);
       }
     }
@@ -1888,6 +1903,7 @@ void Core::atomCmpl(unsigned slot, unsigned idx, const Cmpl &c) {
     // T is readable once the data lands (Config::cmpl_wake_delay): A2 wakes.
     x.on_completion = false;
     x.late_at = now_ + cfg_.cmpl_wake_delay;
+    x.hit_wake = false;
     if (!cfg_.cmpl_wake_delay) wake(c.rs_idx);
     return;
   }
@@ -1915,6 +1931,7 @@ void Core::atomCmpl(unsigned slot, unsigned idx, const Cmpl &c) {
   // confirmed and go now; A3 confirms on this wake.
   x.on_completion = false;
   x.late_at = now_ + cfg_.cmpl_wake_delay;
+  x.hit_wake = false;
   if (!cfg_.cmpl_wake_delay) wake(c.rs_idx);
   if (r.rs_main != kNoEntry) rsFree(r.rs_main);
   if (r.rs_a2 != kNoEntry) rsFree(r.rs_a2);
