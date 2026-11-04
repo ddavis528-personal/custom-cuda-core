@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 282, OA 331, TI 309, IS 189, CP 153, OI 274, DA 106,
+  record): AR 282, OA 331, TI 312, IS 189, CP 153, OI 274, DA 106,
   Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -112,13 +112,16 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   wires" holds only then). MIU spec made current at Daniel's ask (MIU tab
   rev 54, AR rev 279): kill rule (RA-23), address pairing (RA-21), wire
   table recounted from schema 39a1861 (15 channels, 21,675 in / 15,882
-  out; rcu_miu_addr 12,457), L1 WAKE/CMPL 16/18 (12/14 at base 1). Redo
-  the wire table when TI lands RA-40's lead slice. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  out; rcu_miu_addr 12,457), L1 WAKE/CMPL 16/18 (12/14 at base 1). RA-40
+  built at b85595b (TI 311, on TI's branch until the sweep merges it): the
+  six payload fields lead, no copies, no new wires; MIU tab rev 55 says so,
+  wire table unchanged. AR-25 (1)-(3),(6) done at b85595b; (4)(5) ride TI's
+  RA-16/RA-30 work. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
 - Specs doc DJeg9Hh8rkPDecq4hrAz35 (tab revs after the 11-04 review): RCU
-  eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (54), RAU 090626bb-a50c (60),
+  eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (55), RAU 090626bb-a50c (60),
   PCA 94b3a0ea-7224 (17), FET 75d75b94-1614 (47), DEC 1d1fdcda-739e (19),
   DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (12),
   SYU 1f8b4472-68c1 (8), CRU 5a50fd80-2423 (7), MLC f8873ac6-e74d (3), EXB
