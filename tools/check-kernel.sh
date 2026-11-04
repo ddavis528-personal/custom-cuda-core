@@ -1396,6 +1396,18 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-src-clear.log" check_failures)" 
 else
   bad "--break lead-src-clear" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-src-clear.log")"
 fi
+# The RCU selector (RI-2, RA-38): CCV_RCU_IMPL=model puts RI's model behind
+# the RCU ports, which logs its events; the default is the stub, which logs
+# none. Which kernels the model passes is RI's to report (M0), not held here.
+ev="$B/rcu-model-ev.log"; rm -f "$ev"
+CCV_RCU_IMPL=model CCV_RCU_EVLOG="$ev" "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$B/kernel_rcu-model.log" 2>&1
+nm=$( [ -s "$ev" ] && wc -l <"$ev" || echo 0 ); rm -f "$ev"
+CCV_RCU_EVLOG="$ev" "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$B/kernel_rcu-stub.log" 2>&1
+if [ "$nm" -gt 0 ] && [ ! -e "$ev" ]; then
+  say "CCV_RCU_IMPL: model when asked, stub by default" "PASS ($nm model events)"
+else
+  bad "CCV_RCU_IMPL" "model events $nm; stub log $( [ -e "$ev" ] && echo written || echo absent)"
+fi
 # R's early source rows (RA-39 (b); OA's rev 328, AR's rev 271): lead_r_src0
 # and lead_r_src1 name the rows of phys_src a cycle ahead. lead-rsrc-swap
 # names them the wrong way round; RCU refuses each R issue whose two rows
