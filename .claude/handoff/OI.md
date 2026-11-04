@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 306, OI 277, CP 152, DA 106, RI 3
+Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 311, OI 280, CP 152, DA 106, RI 3
 (sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -93,10 +93,10 @@ the compact hook printed this handoff.
    - decq (15 entries, free lag 1, CCV_P_DECQ 15, caps off) PUSHED 41ebad9 (SCOPED PASS
      22/22, 11-04 ~19:00 UTC), with TI's b85595b (OI-111's checks), b1bbee8 (model pair cut at
      the last lane; FreeVec late clear), ed25191 (tkv waiver gone), 48e7d7c (run-rtl controls
-     at full seeds), 41ebad9 (pair-split control bypasses the new cut). TODO: close OI-109 and
-     OI-111 in the OI tab (FYI TI, OA, no notice); remove worktree wtd.
+     at full seeds), 41ebad9 (pair-split control bypasses the new cut). OI-109/OI-111 closed by OI-113
+     (OI rev 280, FYI, no notice); wtd removed.
      The sched (b) gate 46b478e failed only because OI's disk cleanup removed build/verify
-     mid-run: re-gate it (wts, branch oi-sched-b) after merging origin.
+     mid-run: re-gating as e622fb2 (wts, origin merged), log ~/ccv-logs/oi-push-sched-1915.log.
    - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
      link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
      lead_r_src0/1 from RS names (TI 39a1861 on ccr-183cc441-doowtf; merge it). sched (b)
