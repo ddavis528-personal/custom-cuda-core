@@ -80,6 +80,7 @@ shrinks.
 """
 import argparse
 import collections
+import copy
 import glob
 import importlib.util
 import json
@@ -1052,15 +1053,11 @@ def block_check(name, top, files, bbs, budgets, block=None, lib=LIB):
     return line, fails
 
 
-def seed_fanout(units, budgets, ratchet, modules):
-    """--seed-fanout: write the fanout baseline and the ratchet's "fanout"
-    from this run's findings that the plain ratchet does not list, each
-    capped at its depth rounded up to 0.1. Run once, on the pushed tip, when
-    the term was enforced (DA, 2026-11-04); never again."""
-    if os.path.exists(FANOUT_BASELINE):
-        raise SystemExit("check-ngd: %s exists; the fanout baseline is seeded once"
-                         % os.path.relpath(FANOUT_BASELINE, ROOT))
-    parents = parented(units, modules)
+def fanout_caps(units, budgets, ratchet, parents):
+    """The seed's caps: {module: {key: cap}} for every finding the plain
+    ratchet does not list, each at its depth rounded up to 0.1. A module
+    timed by several units (ooe_freelist's gpr and gsec) is capped at its
+    worst unit's depth, since policy() holds every unit to the one cap."""
     caps = collections.defaultdict(dict)
     for u in units:
         for key, _ in findings(u, budgets, parents):
@@ -1070,8 +1067,20 @@ def seed_fanout(units, budgets, ratchet, modules):
             if v is None:
                 raise SystemExit("check-ngd: %s %s has no depth to cap; fix it before seeding"
                                  % (u.module, key))
-            caps[u.module][key] = math.ceil(v * 10 - EPS) / 10
-    caps = {m: dict(sorted(k.items())) for m, k in sorted(caps.items())}
+            c = math.ceil(v * 10 - EPS) / 10
+            caps[u.module][key] = max(c, caps[u.module].get(key, c))
+    return {m: dict(sorted(k.items())) for m, k in sorted(caps.items())}
+
+
+def seed_fanout(units, budgets, ratchet, modules):
+    """--seed-fanout: write the fanout baseline and the ratchet's "fanout"
+    from this run's findings that the plain ratchet does not list, each
+    capped at its depth rounded up to 0.1. Run once, on the pushed tip, when
+    the term was enforced (DA, 2026-11-04); never again."""
+    if os.path.exists(FANOUT_BASELINE):
+        raise SystemExit("check-ngd: %s exists; the fanout baseline is seeded once"
+                         % os.path.relpath(FANOUT_BASELINE, ROOT))
+    caps = fanout_caps(units, budgets, ratchet, parented(units, modules))
     git = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
                          capture_output=True, text=True).stdout.strip()
     with open(FANOUT_BASELINE, "w") as f:
@@ -1432,6 +1441,21 @@ def selftest():
                                               "ngd_fx_ok": {"NGD-2 y": y}}, fb)
     expect(any("ngd_fx_ok" in x and "now meets the rule" in x for x in fails),
            "a fanout ratchet entry that passes stayed on the list")
+    #     A module timed by two units is seeded at the deeper one's depth,
+    #     whichever unit comes first, and that cap excuses both.
+    deep = copy.copy(fx["ngd_fx_out"])
+    deep.t = copy.copy(deep.t)
+    deep.t.ro = dict(deep.t.ro, y=y + 3)
+    pair = [deep, fx["ngd_fx_out"]]
+    for order in (pair, pair[::-1]):
+        c = fanout_caps(order, none, {}, {}).get("ngd_fx_out", {}).get("NGD-2 y")
+        expect(c is not None and c >= y + 3 - EPS,
+               "a module with two units was seeded at the shallower one's depth: %s" % c)
+    c = fanout_caps(pair, none, {}, {})
+    fails = policy(pair + [u for u in us if u.module != "ngd_fx_out"], none, {}, mods, base,
+                   c, c)
+    expect(not any("fanout ratchet cap" in x for x in fails),
+           "a two-unit module's seed did not excuse both units: %s" % fails)
     # 7. The assembled block from its budget files, level by level: a
     #    driver required at 14 straight into a receiver arriving at 15
     #    converges; with the driver's budget moved to 16 it does not. Logic
