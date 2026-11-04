@@ -73,6 +73,21 @@ struct Config {
   /// parameters if they stay (TI's response of 2026-10-16).
   unsigned fl_buf = 8;
   unsigned fl_banks = 4;
+  /// The fanout plan's pricing (OA's revs 318-321). fl_free_lag 1, the
+  /// free lists' scan (a), two-step: a free reaches the free bits an edge
+  /// later, so a name is reusable a cycle later. fl_direct 1 (with fl_buf
+  /// 0), scan (b), banked: no candidate buffer; each of fl_banks banks gives
+  /// at most one entry a cycle, the first free at or after its pointer, in
+  /// a rotating bank order, so a free is allocatable the cycle after it and
+  /// a bank can run dry while others hold names.
+  unsigned fl_free_lag = 0;
+  bool fl_direct = false;
+  /// rs_free_lag 1: ooe_rs's free-entry candidates a cycle ahead; an entry
+  /// freed in a cycle is held (allocation and rename's room) through the
+  /// next. decq_free_lag 1: ooe_decq's likewise, a slot freed in a cycle
+  /// counted held through the next as well.
+  unsigned rs_free_lag = 0;
+  unsigned decq_free_lag = 0;
   unsigned ren_floor = ccv::prov::kRenFloor;
   unsigned ren_ceil = ccv::prov::kRenCeil;
   unsigned pred_ren_floor = ccv::prov::kPredRenFloor;
@@ -939,9 +954,14 @@ enum class OoeEv : unsigned {
 /// next cycle. ooe_freelist builds the buffered form.
 class FreeVec {
 public:
-  void reset(unsigned n, unsigned cap = 0, unsigned banks = 1) {
+  void reset(unsigned n, unsigned cap = 0, unsigned banks = 1, unsigned lag = 0, bool direct = false) {
     bit_.assign(n, 1);
     pend_.assign(n, 0);
+    pend2_.assign(n, 0);
+    npend2_ = 0;
+    lag_ = lag;
+    direct_ = !cap && direct && banks > 1;
+    used_.assign(banks, 0);
     inbuf_.assign(n, 0);
     buf_.clear();
     transit_ = took_ = 0;
@@ -949,21 +969,33 @@ public:
     npend_ = 0;
     ptr_ = 0;
     cap_ = cap;
-    banks_ = cap ? banks : 1;
+    banks_ = cap || direct_ ? banks : 1;
     bptr_.assign(banks_, 0);
     rot_ = 0;
     fresh_ = true;
     edge_ = Edge{buf_, bit_, bptr_, rot_};
   }
   /// Free entries, including those freed this cycle.
-  size_t size() const { return ready_ + npend_; }
+  size_t size() const { return ready_ + npend_ + npend2_; }
   /// Free entries the admission floors count: all but this cycle's frees.
   size_t ready() const { return ready_; }
   /// Entries allocation can take this cycle: the buffer behind the entries
   /// in transit, or the free bits.
-  size_t avail() const { return cap_ ? buf_.size() - transit_ - took_ : ready_; }
+  size_t avail() const {
+    if (direct_) {
+      const unsigned n = unsigned(bit_.size()), per = n / banks_;
+      size_t k = 0;
+      for (unsigned b = 0; b != banks_; ++b) {
+        if (used_[b]) continue;
+        for (unsigned q = 0; q != per; ++q)
+          if (bit_[q * banks_ + b]) { ++k; break; }
+      }
+      return k;
+    }
+    return cap_ ? buf_.size() - transit_ - took_ : ready_;
+  }
   bool empty() const { return avail() == 0; }
-  bool has(unsigned p) const { return bit_[p] || pend_[p]; }
+  bool has(unsigned p) const { return bit_[p] || pend_[p] || pend2_[p]; }
   /// Taken since the last clock(): ooe_freelist clears a taken entry's free
   /// bit at the next edge, so a free of it now would be lost (OI-58).
   bool takenNow(unsigned p) const { return std::find(allocs_.begin(), allocs_.end(), p) != allocs_.end(); }
@@ -974,6 +1006,22 @@ public:
       const unsigned p = buf_[transit_ + took_++];
       take(p);
       return p;
+    }
+    if (direct_) {
+      const unsigned per = n / banks_;
+      for (unsigned j = 0; j != banks_; ++j) {
+        const unsigned b = (rot_ + j) % banks_;
+        if (used_[b]) continue;
+        for (unsigned i = 0; i != per; ++i) {
+          const unsigned q = (bptr_[b] + i) % per, p = q * banks_ + b;
+          if (!bit_[p]) continue;
+          take(p);
+          used_[b] = 1;
+          bptr_[b] = (q + 1) % per;
+          return p;
+        }
+      }
+      return n;   // caller checked avail()
     }
     for (unsigned i = 0; i != n; ++i) {
       const unsigned p = (ptr_ + i) % n;
@@ -1032,10 +1080,23 @@ public:
       took_ = 0;
       refill();
     }
+    if (direct_) {
+      used_.assign(banks_, 0);
+      rot_ = (rot_ + 1) % banks_;
+    }
+    if (npend2_) {   // fl_free_lag: last edge's frees join the bits now
+      for (size_t p = 0; p != pend2_.size(); ++p)
+        if (pend2_[p]) { pend2_[p] = 0; bit_[p] = 1; }
+      ready_ += npend2_;
+      npend2_ = 0;
+    }
     if (npend_) {
       for (size_t p = 0; p != pend_.size(); ++p)
-        if (pend_[p]) { pend_[p] = 0; bit_[p] = 1; }
-      ready_ += npend_;
+        if (pend_[p]) {
+          pend_[p] = 0;
+          if (lag_) pend2_[p] = 1; else bit_[p] = 1;
+        }
+      if (lag_) npend2_ = npend_; else ready_ += npend_;
       npend_ = 0;
     }
     edge_.buf = buf_;
@@ -1077,7 +1138,10 @@ private:
     rot_ = (rot_ + 1) % banks_;
   }
 
-  std::vector<uint8_t> bit_, pend_, inbuf_;
+  std::vector<uint8_t> bit_, pend_, inbuf_, pend2_, used_;
+  size_t npend2_ = 0;
+  unsigned lag_ = 0;
+  bool direct_ = false;
   std::deque<unsigned> buf_;
   std::vector<unsigned> allocs_, frees_, bptr_;
   size_t ready_ = 0, npend_ = 0, prev_frees_ = 0, prev2_frees_ = 0;
@@ -1125,6 +1189,7 @@ public:
   /// under decq_late_credit those freed this cycle.
   unsigned decqHeld() const {
     return unsigned(decq_.size()) + (cfg_.decq_late_credit ? decq_freed_ : 0) +
+           (cfg_.decq_free_lag ? decq_freed_prev_ : 0) +
            (cfg_.decq_flush_late ? decq_flush_prev_ : 0) + (cfg_.decq_take_late ? decq_take_prev_ : 0);
   }
   /// The adapter left a uop of this warp in the channel because canAccept
@@ -1791,6 +1856,7 @@ private:
   GoLog golog_;
   void goRoomNext();
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
+  unsigned decq_freed_prev_ = 0;            ///< and last cycle (decq_free_lag)
   unsigned decq_flush_now_ = 0, decq_flush_prev_ = 0;   ///< flushed this cycle, the last (decq_flush_late)
   unsigned decq_take_now_ = 0, decq_take_prev_ = 0;     ///< taken by rename this cycle, the last (decq_take_late)
   /// Per slot, the uops rename took this cycle: ooe_decq's slot count
@@ -1875,6 +1941,7 @@ private:
   /// names charged last cycle and this one stay within that room.
   std::vector<std::array<unsigned, 2>> ceil_room_reg_, ceil_room_use_, ceil_names_prev_;
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
+  std::vector<uint8_t> rs_prev_free_;       ///< RS entries freed last cycle (rs_free_lag)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
   /// fits_stale 6, rename's RS counters as the RTL keeps them: every RS
@@ -1884,7 +1951,7 @@ private:
   std::vector<unsigned> rob_freed_now_;   ///< ROB slots each slot freed this cycle (RenEvents)
   bool free_prompt_ = false;                ///< an RS free now is a confirmation's
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
-  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e]; }
+  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e] || (cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]); }
   bool robHeld(unsigned si, unsigned i) const {
     const size_t k = size_t(si) * cfg_.rob_depth + i;
     return slot_[si].rob[i].valid || rob_late_[k] ||

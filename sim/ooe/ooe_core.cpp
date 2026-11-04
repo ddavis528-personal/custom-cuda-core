@@ -26,7 +26,8 @@ std::string Config::apply(const std::string &spec) {
       {"rename_width", &rename_width}, {"rs_rcu", &rs_rcu}, {"rs_miu", &rs_miu},
       {"rs_warp_cap", &rs_warp_cap}, {"decq", &decq}, {"decq_warp_max", &decq_warp_max},
       {"phys_regs", &phys_regs}, {"pred_regs", &pred_regs},
-      {"fl_buf", &fl_buf}, {"fl_banks", &fl_banks}, {"ren_floor", &ren_floor},
+      {"fl_buf", &fl_buf}, {"fl_banks", &fl_banks}, {"fl_free_lag", &fl_free_lag},
+      {"rs_free_lag", &rs_free_lag}, {"decq_free_lag", &decq_free_lag}, {"ren_floor", &ren_floor},
       {"ren_ceil", &ren_ceil}, {"pred_ren_floor", &pred_ren_floor},
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
@@ -46,7 +47,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
-                                     {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge},
+                                     {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge}, {"fl_direct", &fl_direct},
                                      {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"split_r_class", &split_r_class}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
@@ -129,7 +130,7 @@ std::string Config::check() const {
   if (ckpts > (1u << ccv::prov::kWCkptId)) return "ckpts exceeds checkpoint_id";
   if (issue_width == 0 || rename_width == 0 || retire_per_rob == 0) return "a zero width";
   if (lat_lane_byp > lat_lane) return "CCV_LAT_LANE_BYP exceeds CCV_LAT_LANE";
-  if (fl_buf && (fl_banks == 0 || phys_regs % fl_banks || pred_regs % fl_banks))
+  if ((fl_buf || fl_direct) && (fl_banks == 0 || phys_regs % fl_banks || pred_regs % fl_banks))
     return "fl_banks must divide phys_regs and pred_regs";
   for (unsigned u = 0; u != kUnits; ++u)
     if (fastOf(u) && fastOf(u) >= unitLat(u)) {
@@ -205,8 +206,8 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   const unsigned names = cfg_.phys_regs * kPos_;
   gprod_.assign(names, {kNoEntry, kNoEntry});
   pprod_.assign(std::max(cfg_.pred_regs, 4u * kWarpIds), {kNoEntry, kNoEntry});
-  gfree_.reset(cfg_.phys_regs, cfg_.fl_buf, cfg_.fl_banks);
-  pfree_.reset(cfg_.pred_regs, cfg_.fl_buf, cfg_.fl_banks);
+  gfree_.reset(cfg_.phys_regs, cfg_.fl_buf, cfg_.fl_banks, cfg_.fl_free_lag, cfg_.fl_direct);
+  pfree_.reset(cfg_.pred_regs, cfg_.fl_buf, cfg_.fl_banks, cfg_.fl_free_lag, cfg_.fl_direct);
   gowner_.assign(names, 0);
   powner_.assign(cfg_.pred_regs, 0);
   gever_.assign(names, 0);
@@ -409,6 +410,7 @@ void Core::cycle(uint64_t now) {
   }
   pfree_.clock();
   decq_flushed_ = 0;
+  decq_freed_prev_ = decq_freed_;
   decq_freed_ = 0;
   decq_flush_prev_ = decq_flush_now_;
   decq_flush_now_ = 0;
@@ -416,6 +418,9 @@ void Core::cycle(uint64_t now) {
   decq_take_now_ = 0;
   decq_slot_take_.assign(slot_.size(), 0);
   rs_late_.assign(n_, 0);
+  // rs_free_lag: last cycle's frees (wlog_ is cleared below).
+  rs_prev_free_.assign(n_, 0);
+  for (unsigned e = 0; e != n_ && e < wlog_.rfree.size(); ++e) rs_prev_free_[e] = wlog_.rfree[e];
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
   if (cfg_.fits_stale) {
     rob_prompt_prev_ = rob_prompt_;
@@ -958,7 +963,7 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   // TI-19 leaves alone. Only rename's go counts this cycle's late frees as
   // held, and it has already checked there is room without them.
   for (unsigned e = lo; e != hi; ++e)
-    if (!rs_[e].valid && (cfg_.rs_same_edge || !wlog_.rfree[e])) {
+    if (!rs_[e].valid && (cfg_.rs_same_edge || !wlog_.rfree[e]) && !(cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e])) {
       rs_[e] = RsEntry();
       rs_[e].valid = true;
       rs_[e].cls = c;
