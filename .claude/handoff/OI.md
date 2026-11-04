@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-02 01:30. Keep this current at every task's end; it is what
+Updated 2026-11-03 (after 1f7c642). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -31,15 +31,15 @@ Read every tab since the bookmarks; merge every remote branch that is
 ahead (not release) into wt, gate, push; pongs; pings on Fridays only;
 `tools/setup-session-home.py --check` (TI-50; on a mismatch ask DA to
 approve the install again, never reinstall unasked).
-- Session settings installed 2026-10-31 (DA approved): /home/user/.claude.
+- Session settings installed 2026-10-31 and again 2026-11-03 (DA approved both): /home/user/.claude.
   The compact hook prints THIS checkout's .claude/handoff/OI.md: keep
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 316, RA 60, IS 188, TI 297, OI 256, CP 152, DA 104
+Conventions 17, AR 269, OA 320, RA 60, IS 188, TI 297, OI 264, CP 152, DA 104
 (sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
-Pings: next Friday 11-06. Settings check FAILED 11-03 (fresh container): ask DA to
-approve the session-home install again; never reinstall unasked.
+Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
+the compact hook printed this handoff.
 
 ## Compute (DA, 2026-10-31)
 - OI-95 raised (rev 245, TI notified): persistent synth-cache incl. ABC,
@@ -86,14 +86,59 @@ approve the session-home install again; never reinstall unasked.
   Sync this file to origin.
 
 ## Open work (most urgent first)
--3. OI-104 (B) PUSHED b23bbd8 (full gate PASS, 11-03): kind/class store in ooe_rs
-   (akind/acls_cq01h at 10; kc in rcu_en/miu_en; kind_o/cls_o_cq02h to wake's
-   kind/cls_cq01h). Row re:OI-104 at OI rev 255/256, OA notified: asks wake kind/cls
-   arrival 9 -> 2.0 (2 + 17.1 = 19.1 at L1_WAKE 12); then TI reapplies base 1. When OA
-   answers: put OA's 2.0 in rtl/ooe/ooe_wake.ngd.json (by OA, citing its rev).
-   Later: ooe_rename to send akind/acls (rnrs ties them to 0 today).
-   Sweep 11-03 merged 5 branches (126afa13 12, 183cc441 3, 80102643 24, 9eb50716 13,
-   infra 3; heavy-units: TI's latest list each time); its full gate-push follows.
+-5. STATE 11-03 20:00: main tree gate-push (scoped, detached, log ~/ccv-logs/oi-push-1955.log)
+   of c8794c1 ufq + 0d660fa (release thresholds late; rob_w NGD 25.1 -> 23.1, fo 31.6),
+   1659753 prodmap, 74d070c ret_hold 2 knob, fe68bcc handoff, 91313cb audit env knobs.
+   Worktree scratchpad/wtgo (on 91313cb): 0c1f6c7 go priod x dr pdr copies (go bench 25
+   seeds, 13/13 controls), 72b873f sched (b) TAKEN by OA rev 320: hold masks grant after
+   the pick in ooe_select, model default ret_hold 2, select/trio benches at 2, trio
+   no-rep-lead control now 12 seeds (caught at 12/25, missed at 6). Full run-rtl passed
+   otherwise; ooe-test PASS. GATE e1487ea RED (20:47): ooe_go NGD-3 unmet_g_cq01h (6.0) -> fitsx
+   25.8 (ABC joins pdr0 copies after the pool at 9.6); ooe_sched one command 2191 MiB > 2048
+   light limit (was 975; heavy-units.json is TI's). Both commits taken off the push, kept on
+   local branch oi-go-sched (e1487ea) and in wtgo; push gated without them. NEXT: after the push, cherry-pick both into main, measure NGD
+   (fanout) of ooe_go, ooe_sched, ooe_select ALONE, gate-push, then report to OA (rev 320
+   asks depth + fanout after; still >25 -> bring the remaining path first) + go's
+   remaining path and sender-drive table (hv/pl/px/unmet_g/p).
+   sched (b) price (OI rev 264): ret-heavy audit 1.25 lost slots/kop, 990 -> 987 cycles;
+   kernels zero exposure. OA rev 317 still owed: ooe_wake kind/cls 2.0 in ngd.json + rename akind/acls wiring.
+-4. FANOUT PLAN (OA rev 310): 7aeb62a PUSHED (rob_w head read via hoh keep copies
+   hrg/hrn/hrp; fanout f-f 38.7 -> 31.9). Row at OI rev 258 (corrected 262) to OA (re:RA-33, notified):
+   per-unit table, rulings asked for rs and decq (free-entry candidates ahead), freelist scan, sched
+   pick, rendep cp input, go fits. OI's own, no ruling: rob_w fill selects registered
+   (ufh -> fl_e ~800 loads), prodmap pm_cq02h copies (~3 NGD), rename
+   output copies (NGD-7; retrace the reported map first), rst_r01h copies. Tools: scratchpad/fo/path.py (worst path
+   with fanout from build/synth-cache/abc-*.blif; units.txt maps module -> blif).
+   OA RULED rev 318 (OA tab row .464349): NO re-budgets (port or stage). Order: retime
+   from flops (no behaviour change) > model-priced change (OA <0.5%) > extra stage (DA).
+   Fanout term still report-only: after functional work, cheap units first.
+   - Mine (proceed): rob_w fill selects (if fl_v/fl_slot need an input->flop stage,
+     bring the price BEFORE building); prodmap pm copies; rename output copies; rst
+     copies (count in CG). c8794c1 (ufq register) committed, measuring.
+   - sched: register the OAI21-after-gnt function beside gnt from gnt's next state,
+     kept copies per row group; prove with the select bench. If it takes a same-cycle
+     input, tell OA first.
+   - rendep: sender registers cp already decoded (one-hot), kept copies by row group;
+     report sender depth; only if it doesn't fit, price the rename stage (OA -> DA).
+   - OA rev 319 (answer to OI 263): sched BUILD (a) req_f registered from next-state terms
+     (no behaviour change); MODEL (b) hold after the pick (held winner cancelled, slot
+     lost): lost slots/kilo-op on S1, audit, call/ret kernels (rope, recursion); <0.5%
+     OA's. go: register priod x dr one-hot, kept copies 3x12 (~1.4), report remaining
+     + sender-drive table for hv/pl/px/unmet_g/p (flop or logic, depth). decq: free
+     candidates a cycle ahead, priced with rs alone and together (<0.5% combined OA's).
+     prodmap: done 1659753 (fo 28.8 -> 17.4), nothing more unless asked.
+   - go: send OA the 3 widest nets in series priod/he -> fits (loads, driver, flop or
+     logic, which depend only on last cycle's state). OA rules on the list.
+   - rs: model registered free candidates (S1, audit, floors); <0.5% build.
+   - freelist: in2_en/as/rst copies first; model scan (a) two-step vs (b) banked on
+     S1, audit, scarce-names; OA takes cheaper, (a) on tie.
+-3. OI-104 DONE on OI's side: b23bbd8 (store in ooe_rs, full gate PASS), the sweep
+   merge 2f64d10 (full PASS), and 1f7c642 (pushed 11-03, SCOPED PASS). 1f7c642 has
+   rendep build the per-port {cls,kind} (spec from c_x bit 20, XW 21) and rename
+   send akind/acls_cq04h, with wake kind/cls at 2.0 by OA rev 317. Benches compare
+   the pairs, with a no-spec control. Row re:OI-104 is at OI rev 257 and TI is
+   notified: it asks TI for CCV_LAT_RCU_ADDR_BASE back to 1. Nothing left for OI
+   unless TI or OA answer.
 -2a. STATE 11-02 (wt13 e35c9f9 = split + archive, on fe523c4 sweep merge): DA closed the
    equivalence work: old ROB + miter moved to archive/ooe-rob-split/ (README has result:
    BMC clean thru frame 9 at D8, control fails f8; never in gate/lint/bench - DA: no

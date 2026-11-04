@@ -2913,7 +2913,9 @@ void Core::selectSectioned() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.eligible_at > now_ || (x.res & busy)) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
-    if (retHeld() && !x.copy) {   // OA's rev 293
+    // ret_hold 2 (OA's rev 319, sched (b)): the held branch still requests;
+    // a win is cancelled after the pick and its resource loses the slot.
+    if (retHeld() && !x.copy && cfg_.ret_hold != 2) {   // OA's rev 293
       const RobEntry &rb = slot_[x.slot].rob[x.rob];
       if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
     }
@@ -2983,8 +2985,31 @@ void Core::selectSectioned() {
   std::vector<unsigned> grant;
   unsigned lost = 0;
   const std::vector<bool> won = pickResources(preq, kRes, &lost, cfg_.pick_fallback);
-  for (size_t i = 0; i != cand.size(); ++i)
-    if (won[i]) { grant.push_back(cand[i]); wlog_.sel_grant[cand[i]] = 1; }
+  std::vector<size_t> held2;   // ret_hold 2's cancelled wins
+  for (size_t i = 0; i != cand.size(); ++i) {
+    if (!won[i]) continue;
+    if (cfg_.ret_hold == 2 && retHeld() && !rs_[cand[i]].copy && rs_[cand[i]].cls == RsCls::kRcu) {
+      const RobEntry &rb = slot_[rs_[cand[i]].slot].rob[rs_[cand[i]].rob];
+      if (rb.u.attr.branch && !rb.u.attr.ret) {
+        // Cancelled after the pick: nothing else takes its resource.
+        count("issue.ret_hold_cancel");
+        held2.push_back(i);
+        continue;
+      }
+    }
+    grant.push_back(cand[i]);
+    wlog_.sel_grant[cand[i]] = 1;
+  }
+  if (!held2.empty()) {
+    // The slots lost: what the pick would have granted had the held
+    // branches not requested (ret_hold 1), less what it granted.
+    std::vector<PickReq> p1;
+    for (size_t i = 0; i != cand.size(); ++i)
+      if (std::find(held2.begin(), held2.end(), i) == held2.end()) p1.push_back(preq[i]);
+    unsigned l1 = 0, n1 = 0;
+    for (bool w : pickResources(p1, kRes, &l1, cfg_.pick_fallback)) n1 += w;
+    if (n1 > grant.size()) count("issue.ret_hold_lost_slot", n1 - grant.size());
+  }
   if (lost) count("select.lost_resource", lost);   // won a section, lost another
   // The request register is never stale where it would grant (OI-53).
   if (cfg_.req_reg)
@@ -3134,7 +3159,7 @@ void Core::select() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     if (rowHeld(e)) { count("issue.row_hold"); return false; }   // OI-90
-    if (retHeld() && !x.copy) {   // OA's rev 293
+    if (retHeld() && !x.copy && cfg_.ret_hold != 2) {   // OA's rev 293
       const RobEntry &rb = slot_[x.slot].rob[x.rob];
       if (rb.u.attr.branch && !rb.u.attr.ret && x.cls == RsCls::kRcu) { count("issue.ret_hold"); return false; }
     }
@@ -3172,6 +3197,7 @@ void Core::select() {
 
   // MIU class first, then RCU: each round gives every warp, from the
   // rotating priority, its oldest ready entry (Select).
+  uint64_t cancelled = 0;   // ret_hold 2's warps, this cycle
   for (int pass = 0; pass != 2; ++pass) {
     const bool miu = pass == 0;
     for (bool progress = true; progress;) {
@@ -3180,9 +3206,19 @@ void Core::select() {
         const unsigned si = (rr_select_ + k) % slot_.size();
         if (ports == cfg_.issue_width) break;
         if (miu && (mports == cfg_.memop_width || memop_block[si])) continue;
+        if (cancelled & (1ull << si)) continue;
         const unsigned e = oldest(si, miu);
         if (e == kNoEntry) continue;
         const RobEntry &r = slot_[si].rob[rs_[e].rob];
+        // ret_hold 2 (OA's rev 319, sched (b)): the held branch was picked;
+        // cancelled, its port goes unused and its warp issues no more.
+        if (cfg_.ret_hold == 2 && retHeld() && !miu && r.u.attr.branch && !r.u.attr.ret) {
+          count("issue.ret_hold_cancel");
+          count("issue.ret_hold_lost_slot");
+          cancelled |= 1ull << si;
+          ++ports;
+          continue;
+        }
         // A masked load's copy goes with it; an atomic's, with its first read.
         const bool with_copy = r.copy && e == r.rs_main && r.rs_copy != kNoEntry && !rs_[r.rs_copy].issued;
         const unsigned need = with_copy ? 2 : 1;
