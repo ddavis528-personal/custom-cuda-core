@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-01. Keep this current at every task's end; it is what
+Updated 2026-11-03. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 
 ## Who and what
@@ -33,8 +33,15 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   take the scoped gate (verify.sh --changed <base>, SCOPED PASS); the
   sweep's merge and releases keep the full clean gate, so AR's sweep is
   unchanged.
-- Last sweep 2026-11-01: 5 branches merged (72 commits), full gate PASS,
-  session-home --check matches (tools/setup-session-home.py now merged in).
+- Sweep 2026-11-04 (run early for TI's fbefc16 CI fix): 18be7b6 pushed on
+  SPLIT PASS (cg 59 min, rest ~65 min; a container restart lost one rest
+  run, rerun from the surviving export). Earlier: 11-02/03 e556fbc on SPLIT PASS (cg alone 75 min,
+  exported, then gate-push --full --import; the whole gate in one 2h
+  background run timed out with cg and ngd sharing the heavy lock). If a
+  full gate times out again, split it the same way: `verify.sh --only cg`
+  then `gate-export.sh`, then `gate-push.sh --full --branches=<ours>
+  --import=<tgz>`. heavy-units.json conflicts come from older TI text riding
+  other agents' sweep merges: take TI's newest side. session-home matches.
 - Daily sweep (scheduled task trig_01V1WipqEXd8e7TAaWnKvQGu, 09:04 UTC):
   register section 4 from the bookmarks; fetch; merge every remote branch
   with commits ours lacks except `release` and `gate-scratch/*` (DA
@@ -63,8 +70,28 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 268, OA 310, TI 289, IS 185, CP 152, OI 252, DA 103,
-  Conventions 17, RA 58, RI 1 (tab 8e4547bc-c469, new 2026-11-02). Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  record): AR 275, OA 315, TI 296, IS 188, CP 152, OI 254, DA 104,
+  Conventions 17, RA 60, RI 1 (tab 8e4547bc-c469, new 2026-11-02).
+  AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
+  DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
+  ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
+  (PF-47 unheld then; check the PF-47 row once TI's notice lands).
+  Read by notice 11-04 (not swept: OA 316-326, OI 255-270 unread):
+  OA 327 / DA 106 decq 15 + free lag 1 -> DEC spec states CCV_P_DECQ = 15
+  (specs DEC tab rev 17), AR rev 270 closes it. DA 105: RA-33 fanout term
+  enforced in check-ngd (ratcheted), nothing for AR.
+  RA 61 RA-39 (R retime, Daniel asked 11-04): AR rev 271 agrees (d), R lead
+  + lead_r_src0/1 (2x8, zero when unused), R reads R0/R1 in A; conditional
+  on OA (a) (sources in PRF at issue+latency, no early wake; else OA's
+  late wake for R consumers, never an R hold). Partitioning-spec lead text
+  owed when TI's schema row lands.
+  OA 328: L1-hit loads miss a read at A (data lands at T = A). OA's order:
+  (i) MIU forward inside RCU (RA prices), (ii) late load wake for R
+  consumers if <0.5% (OI prices), else DA. AR rev 272 withdrew 271's
+  late-wake line and asked RA to price (i) as a per-lane/field merge
+  (active_mask, dst_pos/width sections, right-aligned load_data realigned;
+  rev 273 fixed 272's wrong 64-bit second row claim); rests on MIU's
+  1-write-per-section rule and AR's owed disjoint-sections assertion. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.

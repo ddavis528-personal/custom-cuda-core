@@ -54,6 +54,9 @@ Under `CCV_HEAVY_SERIAL`, on by default in every gate, local and GitHub's
 check-cg and check-ngd measure each unit `tools/heavy-units.json` names
 alone, with nothing else of either beside it, and fail a unit it does not
 name whose one command peaks over its light limit.
+Both queue their heavy units first, then the rest slowest first by the last
+clean gate's unit times (DA, 2026-11-03), a record in
+`$CCV_LOGDIR/unit-times/` that only a clean gate writes.
 A push to a working branch takes the scoped gate (OI-95; DA, 2026-10-31):
 `tools/verify.sh --changed <base>` keeps the cache and runs only the
 sections `tools/gate-scope.py` maps the change to, with those they wait on;
@@ -124,7 +127,9 @@ assembled block is checked from those files, level by level, for
 convergence to 25, then timed whole, its outputs straight from flops.
 `tools/check-ngd.py` measures every module at its units' parameters; what
 broke the rules when they were made sits on `rtl/ngd-ratchet.json`, which
-only shrinks.
+only shrinks. Every depth counts fanout past 4 as a tree of inverters
+(RA-33; enforced, DA, 2026-11-04); the paths that put over 25 are capped
+in that file's `fanout`, each cap only falling.
 
 Stage tags (DA, 2026-10-23; CCV-L29 in `docs/rtl-coding-style.md`): every
 net of a block's sequential module carries one, since CCV-L21 and CCV-L23

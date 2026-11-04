@@ -420,6 +420,10 @@ rm -rf "$LOGS" && mkdir -p "$LOGS"
 # every release, the nightly) synthesises each one itself (Daniel,
 # 2026-10-21); a working-branch push reuses it (DA, 2026-10-31).
 [ "$CACHED" = 1 ] || rm -rf build/synth-cache
+# Only a clean gate's unit times are work, not cache hits: check-cg and
+# check-ngd record them then, and queue their units slowest first by them
+# (DA, 2026-11-03).
+if [ "$CACHED" = 1 ]; then export CCV_CLEAN_GATE=0; else export CCV_CLEAN_GATE=1; fi
 # --changed: the sections the change needs, and the ones they wait on. The
 # walkthrough is built from skel, kernel and svh's runs: with any of them.
 SCOPE=""

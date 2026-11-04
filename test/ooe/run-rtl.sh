@@ -161,8 +161,8 @@ for cfg in "gpr 0 $phys 0" "gsec 0 $phys $ns" "pred 1 $preds 0"; do
   else
     say "freelist $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  ctl="drop-free extra-alloc no-lead wrong-owner"
-  [ "$sec" != 0 ] && ctl="drop-sec-free sa-early no-lead"
+  ctl="drop-free extra-alloc no-lead wrong-owner one-step"
+  [ "$sec" != 0 ] && ctl="drop-sec-free sa-early no-lead one-step"
   for c in $ctl; do
     if FL_CONTROL=$c "$dir/freelist_tb" 3 >/dev/null 2>&1; then
       say "  control $c (freelist $name)" "MISSED"; fail=1
@@ -417,7 +417,7 @@ if out=$("$dir/rendep_tb" "$seeds" 2>&1); then
 else
   say "rendep == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-map late-code no-copy-src; do
+for c in no-map late-code no-copy-src no-spec; do
   if RD_CONTROL=$c "$dir/rendep_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rendep)" "MISSED"; fail=1
   else
@@ -456,6 +456,12 @@ for c in stale-live wrong-names; do
     say "  control $c (rnrs)" "MISSED (the assertion did not fire)"; fail=1
   fi
 done
+# no-spec loses the speculative-wake bit: the kind compare must catch it.
+if RNRS_CONTROL=no-spec "$dir/rnrs_tb" 3 >/dev/null 2>&1; then
+  say "  control no-spec (rnrs)" "MISSED"; fail=1
+else
+  say "  control no-spec (rnrs)" "caught"
+fi
 
 # ooe_rencred, the next value of rename's credit counters, driven from the
 # model's events after every cycle under the go they serve (fits_stale 6),
@@ -508,12 +514,14 @@ if out=$("$dir/rs_tb" "$seeds" 2>&1); then
 else
   say "rs == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-# no-msd runs the bench's seeds: a replay in ooe_rs only clears its issued
-# bit, and a replayed producer is not final until it reissues, so a lost
-# miss shows only where a non-producer would confirm early (3 seeds miss
-# it; a caught control stops at its first difference).
-for c in no-msd drop-squash-free drop-group drop-prv stale-live stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
-  cs=3; [ "$c" = no-msd ] && cs=$seeds
+# no-msd runs at least 100 seeds: a replay in ooe_rs only clears its
+# issued bit, and a replayed producer is not final until it reissues, so a
+# lost miss shows only where a non-producer would confirm early (3 seeds
+# miss it, and at CCV_LAT_L1_WAKE 12 / CCV_LAT_L1_CMPL 14 the 31st seed is
+# the first to catch it, TI rev 288; a caught control stops at its first
+# difference).
+for c in no-msd drop-squash-free drop-group drop-prv stale-live stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin no-kind; do
+  cs=3; [ "$c" = no-msd ] && cs=$(( seeds > 100 ? seeds : 100 ))
   if RS_CONTROL=$c "$dir/rs_tb" $cs >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1
   else
@@ -590,7 +598,7 @@ done
 # sectioned rows (NS 4, slice 6: the narrow allocator), its random cores
 # held to the decided form (its directed cores, timed for whole rows, are
 # the first build's).
-for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write" \
+for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write,no-spec" \
            "rename_ceil RENAME_FLOORS=4,8 0 -" \
            "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2" \
            "rename_sec RENAME_SECTIONS=1 25 drop-free,no-lead,no-reads,no-merge,no-cw-write"; do
