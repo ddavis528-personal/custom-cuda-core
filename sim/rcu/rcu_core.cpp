@@ -436,12 +436,17 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
     LaneDesc d = it->d;
     d.a = t;
     descs.push_back(d);
+    if (!d.copy && d.gdst && !d.sfu) hist_.push_back({t, d.dst, d.dst_pos, secMask(d.dst_w, d.dst_pos), d.lead});
     it = late_.erase(it);
   }
   while (!hist_.empty() && t - hist_.front().a > kBypHi) hist_.pop_front();
 
   const bool movi_lane = brk == "movi-in-lane";
-  for (unsigned s = 0; s != kRes; ++s) {
+  // movi-in-lane: the misplaced movi (on R) takes the lane message first, as
+  // the stub's lane queue does; a lane op it clashes with goes a cycle later.
+  std::array<unsigned, kRes> order;
+  for (unsigned i = 0; i != kRes; ++i) order[i] = movi_lane ? (i + kSlotR) % kRes : i;
+  for (unsigned s : order) {
     if (!in.iss[s] || in.iss[s]->cont) continue;
     Issue is = *in.iss[s];
     const AState &x = a[s];
@@ -552,13 +557,6 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
       if ((x.active >> l) & 1u) own.pred_bit[l] = uint8_t(is.foot);
       if (is.oc.pdata && brk != "drop-pred-data" && ((x.guardv >> l) & 1u)) own.pred_data[l] = uint8_t(is.foot);
     }
-    for (unsigned k = 0; k != kSecs; ++k)
-      if ((is.foot >> k) & 1u) msg.sec[k] = own.sec[k];
-    for (unsigned l = 0; l != kLanes; ++l) {
-      for (unsigned i = 0; i != kPorts; ++i) msg.opnd[l][i] |= own.opnd[l][i];
-      msg.pred_bit[l] |= own.pred_bit[l];
-      msg.pred_data[l] |= own.pred_data[l];
-    }
     LaneDesc d{lead, is.foot, copy || is.oc.gdst, copy, is.pwe && !copy, is.merge, is.oc.unit == Unit::Sfu,
                is.dst, is.dst_pos, is.dst_w, is.pdst, is.pold, x.active, is.tag, is.done_row, is.tid, t, t};
     // late-copy: the copy waits CCV_LAT_LANE cycles, landing after the
@@ -567,6 +565,22 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
     if (copy && brk == "late-copy") {
       late_.push_back({t + ccv::prov::kLatLane, own, d});
       continue;
+    }
+    if (movi_lane) {
+      bool clash = false;
+      for (unsigned k = 0; k != kSecs; ++k)
+        if (((is.foot >> k) & 1u) && msg.sec[k].en) clash = true;
+      if (clash) {
+        late_.push_back({t + 1, own, d});
+        continue;
+      }
+    }
+    for (unsigned k = 0; k != kSecs; ++k)
+      if ((is.foot >> k) & 1u) msg.sec[k] = own.sec[k];
+    for (unsigned l = 0; l != kLanes; ++l) {
+      for (unsigned i = 0; i != kPorts; ++i) msg.opnd[l][i] |= own.opnd[l][i];
+      msg.pred_bit[l] |= own.pred_bit[l];
+      msg.pred_data[l] |= own.pred_data[l];
     }
     if (!any_lane) msg.tid = is.tid;
     any_lane = true;
@@ -838,8 +852,6 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
       rs_ = me->m;
       rs_next_ = 0;
       rs_start_ = t;
-      for (unsigned g : rs_.gpr) unwritten_.insert(g);
-      for (unsigned p : rs_.pred) unwritten_p_.insert(p);
     }
     ev(Ev::MigPair, me->m.warp, dir);
     const unsigned mid = me->id, cid = ce->id;
@@ -900,10 +912,11 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
     if (!e.dead) {
       if (e.r.warp != rs_.warp) {
         fail("restore of warp %u: a row of warp %u before its predicate row (RA-28 (b))", rs_.warp, e.r.warp);
-      } else if (e.r.row != rs_next_) {
-        fail("restore of warp %u: row %u where row %u is next (RA-28 (b))", rs_.warp, e.r.row, rs_next_);
-        rs_next_ = e.r.row + 1;
       } else {
+        // Rows 0..16 in order is PCA's contract (RA-28 (b)), asserted; the
+        // write still goes by the row's own mig_row, decoded at land.
+        if (e.r.row != rs_next_)
+          fail("restore of warp %u: row %u where row %u is next (RA-28 (b))", rs_.warp, e.r.row, rs_next_);
         const bool prow = e.r.row == kArchGprs;
         if (!prow && rw_busy) {
           ++st_.mig_r_waits;
@@ -918,7 +931,7 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
           }
           rpop_[t + kRW] = 1;
           ++rs_inflight_;
-          ++rs_next_;
+          rs_next_ = e.r.row + 1;
         }
       }
     }
@@ -935,6 +948,13 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
           if (m.gpr[j] == m.gpr[i]) fail("warp %u's restore map gives R%u and R%u one row", m.warp, j, i);
       }
     if (mq_.size() >= kPairDepth) fail("a map lands with the pairing queue full (RA-28 (d))");
+    // A restore's rows are unwritten from its map's landing (TI-13): OOE
+    // may issue the warp's readers once RAU says done, never before the
+    // rows are written, whether or not the restore has launched.
+    if (m.dir == 1) {
+      for (unsigned g : m.gpr) unwritten_.insert(g);
+      for (unsigned p : m.pred) unwritten_p_.insert(p);
+    }
     mq_.push_back({m, t, next_id_++});
     kmask_ &= ~(1u << m.warp);
   }
@@ -978,7 +998,14 @@ void Core::kill(uint32_t mask, unsigned epoch) {
   auto killed = [&](unsigned w) { return ((mask >> w) & 1u) != 0; };
   // Unpaired entries of killed warps are dropped, their credits returned.
   for (auto it = mq_.begin(); it != mq_.end();)
-    if (killed(it->m.warp)) { it = mq_.erase(it); ++map_drops_; }
+    if (killed(it->m.warp)) {
+      if (it->m.dir == 1) {
+        for (unsigned g : it->m.gpr) unwritten_.erase(g);
+        for (unsigned p : it->m.pred) unwritten_p_.erase(p);
+      }
+      it = mq_.erase(it);
+      ++map_drops_;
+    }
     else ++it;
   for (auto it = cq_.begin(); it != cq_.end();)
     if (killed(it->c.warp)) { it = cq_.erase(it); ++cmd_drops_; }

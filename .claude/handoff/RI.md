@@ -45,10 +45,16 @@ Nothing had RI in Needs at session start.
 - Kernel cycles vs stub so far: vadd 157/157, sel 76/76, merge 71/72, callret 280/280,
   sized 2640/2641, narrowadd 226/230. Stub log ~/ccv-logs/kernel-stub.log, model kernel-model.log.
 
+## Pushed and raised (2026-11-04)
+- a0f6ccd pushed (model cc58b5d + regen). The gate on sim/rcu/ runs ALL sections (no scope map yet):
+  ~2 h cold; warm synth-cache ~67 min. Run gate-push with timeout 7200000 and stash kernel.cpp first.
+- RI-1..7 raised, RI tab rev 2; notices sent to TI (1,2,3,7), RA (3-6), OI (7). Bookmark RI 2.
+- Since push (uncommitted): restore rows unwritten from map land (+ kill drop clears); pca rows
+  written by own label (assert order); movi-in-lane sends the movi first and defers clashing lane ops
+  a cycle; section merge into the lane message only for ops sent now (late-copy had sent twice).
+
 ## Open work, most urgent first
-1. M0: rerun CCV_RCU_IMPL=model tools/check-kernel.sh; remaining fails were controls
-   (drop-src-valid, early-restore-done, lead-src-clear, pca-row-order, swap-on, mwmiss parked,
-   movi-in-lane counts, rcu-done-pool, slot-field-aux, lead-corrupt). Then check-sv-hosted.sh.
-2. Rows (RI tab empty, node 8e4547bc-c469): TI - lane stub sec_dst_width whole-field read; makeRcu hook +
-   check-rcu-unit wiring; RCU events ids; RA-18 status. RA - LW secmask vs owned banks; AR-24 full-row
-   interim vs secmask MW/RW; kill-drop multi-credit; mq_free flop; dead pop vs write pop; PL merge_en=0 old=0.
+1. M0: CCV_RCU_IMPL=model tools/check-kernel.sh green except mwmiss parked (RI-3); then
+   check-sv-hosted.sh with the model; cycles table vs stub for RA.
+2. Answer TI/RA/OI responses to RI-1..7 at the daily sweep.
+3. Phase 2 (bank slice, R pipe RTL) after M0.
