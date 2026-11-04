@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=5 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 5 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=6 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 6 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Register file
 
@@ -51,13 +51,13 @@ Every row index the RCU will use as a select is split at the edge before its use
 | L0, L1, L2 | `phys_src`\[15:8\], \[7:0\], `phys_src2` of the S op that owns section k | lane operands src0-src2 | `iss_v_q` OR over S slots 0..k |
 | L3 | `phys_old_dst` of that op | `merge_data` | same |
 | M0, M1, M2 | base, index, data source rows of the P op that owns pipe k | `rcu_miu_addr` base, index, store data | `iss_v_q` OR over P slots 0..k |
-| R0 | R op `phys_src`\[15:8\] | shfl source, ret's rs, unballot's rs | `iss_v_q[8]` |
-| R1 | R op `phys_src`\[7:0\] | register-index shfl's index | `iss_v_q[8]` |
+| R0 | R op `phys_src`\[15:8\], from the R lead's `lead_r_src0`: predecoded in A−1, read in A (RA-39) | shfl source, ret's rs, unballot's rs | `iss_v_q[8]` |
+| R1 | R op `phys_src`\[7:0\], from `lead_r_src1`: predecoded in A−1, read in A (RA-39) | register-index shfl's index | `iss_v_q[8]` |
 | R2 | R op `phys_old_dst`, or a demotion row | merge source for movi, call, shfl, ballot; demotion | `iss_v_q[8]` OR migration's read grant |
 
 The owner of section k is the lead (cont = 0) S slot j ≤ k whose `footprint` has bit k−j set; V-60 guarantees at most one. Memops follow the same rule over P slots, with pipe k ≡ section k: a memop's footprint is the union of its operands' sections, destination included (the schema's `CCV_PRF_MEMOP_READ_BITS` requirement, 3 × 256 bits per pipe). R ports read the same row in all four banks.
 
-**Read mux:** `rd[31:0] = OR over r of (sel_hi[r>>4] & sel_lo[r&15] & row[r])` in each slice, built as 12 groups of a 16:1 AND-OR on `sel_lo`, each gated by its `sel_hi` bit, then a 12:1 OR. **Measured: 8.3 NGD from the select flops at 192 rows, 11.0 with the fanout term** (stand-in, 2026-11-03; 5.8 at 32 rows). That is over the 7 this spec budgets for the bank's read out (Partition tab): the lane and memory paths still fit, the R path does not (ret about 24.3, about 27 with the fanout term). Open for Daniel: retime R (move the compute after the read from A+1 to A+2), or rebalance the budgets.
+**Read mux:** `rd[31:0] = OR over r of (sel_hi[r>>4] & sel_lo[r&15] & row[r])` in each slice, built as 12 groups of a 16:1 AND-OR on `sel_lo`, each gated by its `sel_hi` bit, then a 12:1 OR. **Measured: 8.3 NGD from the select flops at 192 rows, 11.0 with the fanout term** (stand-in, 2026-11-03; 5.8 at 32 rows). Every reader takes it into flops after at most alignment, so the bank's read-out budget is 11 (Partition tab). R0 and R1 are read a cycle early, in A, so that R's compute starts at flops (R unit tab, RA-39).
 
 **Alignment (R and M ports only).** A lane's word is {bank3, bank2, bank1, bank0}. Right-aligned value `v = (word >> 8·pos) & elemmask(width)`, elemmask = all ones, 0xFFFF, 0xFF, 0xF. A 4:1 byte mux plus the mask, about 2 NGD, using pos and width from `iss_*_a`. Lane ports send raw bytes; the lane swizzles (OOE doc, footprint rule).
 

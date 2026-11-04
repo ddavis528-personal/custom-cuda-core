@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=13 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 13 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=15 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 15 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -47,10 +47,10 @@ RA writes these files with the implementation. A block input arrives at 2 NGD, b
 | issue payload → `lanes` payload, bypass flops | 2 | `lanes` in: 18 | 20 | ownership, the age 4-5 compare, immediate substitution |
 | issue payload → `mem` payload flops | 2 | `mem` in: 14 | 16 |  |
 | issue payload → `mig` `dm_v_q`, `rs_v_a1` | 2 | `mig` in: 12 | 14 | the R2/RW-free decode |
-| `bank` R0-R2 read → `r` compute → `rres_a1` | `bank` out: 7 (measured 8.3, 11.0 with the fanout term; open, Register file tab) | `r` in: 18 | 25 | register-index shfl about 22 and ret about 23, both including the read |
-| `bank` L0-L3 read → `lanes` payload | 7 | 6 | 13 |  |
-| `bank` M0-M2 read → `mem` payload | 7 | 10 | 17 | operand assembly |
-| `bank` R2 read → `mig` `dm_pay` | 7 | 3 | 10 |  |
+| `bank` R0-R1 read (in A) → `r` `rsrc_a`; R2 read (in A+1) → `r` `old` | `bank` out: 11 (measured 8.3, 11.0 with the fanout term) | `r` in: 14 | 25 | alignment 2 into flops; R's compute starts at flops in A+1, about 13 for the register-index shfl and ret (R unit tab, early R source read, RA-39) |
+| `bank` L0-L3 read → `lanes` payload | 11 | 6 | 17 |  |
+| `bank` M0-M2 read → `mem` payload | 11 | 10 | 21 | operand assembly |
+| `bank` R2 read → `mig` `dm_pay` | 11 | 3 | 14 |  |
 | `pred` OL/OR/OC/D reads → `lanes`, `r`, `mig` | `pred` out: 5 | 8 | 13 |  |
 | `lane_rcu_res` → `bank` LW/SW D | 2 | `bank` in: 8 | 10 | AND-OR with hold |
 | `miu_rcu_data` → `bank` MW D | 2 | `bank` in: 12 | 14 | slot select 2, shift 2, mask 1, D 3 |
