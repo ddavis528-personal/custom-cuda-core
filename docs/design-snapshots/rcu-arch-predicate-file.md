@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=3 exported=2026-11-02 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 3 on 2026-11-02 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=4 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 4 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Predicate file
 
@@ -58,7 +58,7 @@ Each port presents a row select, a 32-bit lane mask m and 32-bit data d. Per row
 
 | Port | W | Row | m | d |
 | --- | --- | --- | --- | --- |
-| PL0-PL3 (lane op whose lead section is k, `pred_we`) | A+6 | `phys_pred_dst` | all ones | per lane l: `active[l]` ? `lane_rcu_res`\[l\].`sec_pred_out`\[k\] : old destination\[l\] (OLk) |
+| PL0-PL3 (lane op whose lead section is k, `pred_we`) | A+6 | `phys_pred_dst` | all ones | per lane l: `active[l]` ? `lane_rcu_res`\[l\].`sec_pred_out`\[k\] : old destination\[l\] (OLk); with `merge_en` = 0 the old destination is 0 and OLk is not read, as `merge_data` is 0 for a GPR (RI-6 (d)) |
 | PM0-PM3 (MIU slot j, lead `pred_we`) | T | lead `phys_pred` | lead `active_mask` | `pred_result` |
 | PR (R op, `r_wpred`) | A+2 | `phys_pred_dst` | all ones | the R result merged with the old destination (OR) by the op's merge mask (R unit tab) |
 | PC0-PC3 (predicate-only copy in S slot k) | A+2 | `phys_pred_dst` | \~`active` | old destination (OCk) |

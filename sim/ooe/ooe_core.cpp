@@ -3775,6 +3775,16 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       return false;
     }
   }
+  // OI-79 (b): a CAS pair at the cycle's last lane that the go's own terms
+  // above admit is the width's cut, and the take ends at its lane, as the
+  // RTL's go ends it. Its two names, charged at its first lane, must not
+  // refuse it first: the go fits them over the pair's two lanes, so the
+  // cycle's names short of two here are the width's, and a refusal would
+  // hand the lane to a head the go ranks after the pair.
+  if (ren_pair_last_) {
+    ren_pair_cut_ = true;
+    return false;
+  }
   unsigned pos = 0, plan = 0;
   if (wgpr && cfg_.sectioned && !atomic) {
     // The decided form places on the merge source's read, which a copy's
@@ -4588,7 +4598,16 @@ void Core::rename() {
       cu.cas_reads = uint8_t(it2->shape.gpr_reads & 3u);
     }
     if (young) count("rename.refill");
-    if (!tryRename(si, pair ? cu : *it)) {
+    ren_pair_last_ = pair && budget < 2 && !cfg_.inject_pair_split;
+    ren_pair_cut_ = false;
+    const bool renamed = tryRename(si, pair ? cu : *it);
+    ren_pair_last_ = false;
+    if (ren_pair_cut_) {
+      count("rename.pair_cut");
+      budget = 0;
+      return 0;
+    }
+    if (!renamed) {
       if (young) count("rename.refill_fail");
       blocked[si] = true;
       return 0;

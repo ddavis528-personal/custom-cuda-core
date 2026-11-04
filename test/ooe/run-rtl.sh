@@ -223,7 +223,7 @@ if out=$("$dir/decq_tb" "$seeds" 2>&1); then
 else
   say "decq == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in drop-flush enq-swap no-enq-lead no-take-enable; do
+for c in drop-flush enq-swap no-enq-lead no-take-enable no-free-lag; do
   if DECQ_CONTROL=$c "$dir/decq_tb" 3 >/dev/null 2>&1; then
     say "  control $c (decq)" "MISSED"; fail=1
   else
@@ -289,9 +289,12 @@ if out=$(ROB_MISPREDICT=1 "$dir/rob_tb" "$seeds" 2>&1) && grep -q "mismatches=0 
 else
   say "rob == model, mispredicting" "FAIL"; echo "$out" | tail -8; fail=1
 fi
+# The controls run every seed the bench does: a control caught only by a
+# trace the first few seeds happen to draw stops being caught when the
+# traces move (no-copy, at CCV_P_DECQ 15: first caught at seed 6).
 for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
          no-branch-lead no-miu no-store drop-killed-fill late-fill; do
-  if ROB_CONTROL=$c "$dir/rob_tb" 3 >/dev/null 2>&1; then
+  if ROB_CONTROL=$c "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else
     say "  control $c (rob)" "caught"
@@ -695,8 +698,10 @@ if out=$("$dir/trio_tb" "$seeds" 2>&1); then
 else
   say "rs + wake + sched assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
 fi
+# Every seed the bench runs, as rob's (no-rep-lead, at CCV_P_DECQ 15: not
+# caught in the first 6).
 for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r; do
-  if TRIO_CONTROL=$c "$dir/trio_tb" 6 >/dev/null 2>&1; then
+  if TRIO_CONTROL=$c "$dir/trio_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (trio)" "MISSED"; fail=1
   else
     say "  control $c (trio)" "caught"
