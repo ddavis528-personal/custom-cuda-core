@@ -68,7 +68,10 @@ git fetch -q origin 2>/dev/null || die "cannot fetch origin to check its branche
 UNMERGED=""
 for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
   b=${rb#origin/}
-  case "$b" in HEAD|origin|"$BRANCH") continue ;; esac
+  # gate-scratch/*: unverified commits and exports in transit, which the
+  # sweep never merges (OI-102; DA, 2026-11-01), so they never block one
+  # (OA, 2026-11-03).
+  case "$b" in HEAD|origin|"$BRANCH"|gate-scratch/*) continue ;; esac
   case ",$ALLOW," in *",$b,"*) continue ;; esac
   n=$(git rev-list --count "HEAD..$rb")
   [ "$n" -gt 0 ] && UNMERGED="$UNMERGED $b($n)"

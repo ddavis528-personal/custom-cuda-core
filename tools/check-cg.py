@@ -319,6 +319,50 @@ def time_lines(top=6):
             (wait, ", most %s %ds" % most if most else "")]
 
 
+# Longest first (DA, 2026-11-03): each check queues its light units by the
+# wall time the last clean gate took on each, slowest first, so the gate's
+# tail is never one long unit started late (at c5ae668, ooe_rename's 2673 s
+# in check-ngd set the critical path). Heavy units still go first. The record
+# lives in $CCV_LOGDIR (outside build/, which every push clears) and only a
+# clean gate writes it (CCV_CLEAN_GATE=1, from tools/verify.sh): a cached
+# run's times are cache hits, not work. A unit the record lacks counts as the
+# slowest, so a new unit is never the one started last. No record (CI, a
+# fresh container): the units' own order.
+def times_file(tool):
+    d = os.environ.get("CCV_LOGDIR") or os.path.expanduser("~/ccv-logs")
+    return os.path.join(d, "unit-times", tool + ".json")
+
+
+def last_times(tool):
+    try:
+        with open(times_file(tool)) as f:
+            return {str(k): float(v) for k, v in json.load(f)["units"].items()}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+
+
+def save_times(tool):
+    """This run's unit times over the last record, on a clean gate only."""
+    if os.environ.get("CCV_CLEAN_GATE") != "1" or not UNIT_TIME:
+        return False
+    rec = last_times(tool)
+    rec.update({u: round(t, 1) for u, t in UNIT_TIME.items()})
+    path = times_file(tool)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    with open(tmp, "w") as f:
+        json.dump({"tool": tool, "units": rec}, f, indent=1, sort_keys=True)
+    os.replace(tmp, path)
+    return True
+
+
+def longest_first(units, times):
+    """units, slowest first by `times`; unknown units first, ties in order."""
+    if not times:
+        return list(units)
+    return sorted(units, key=lambda u: -times.get(u.name, float("inf")))
+
+
 def unit_task(name, fn):
     """fn, run as as_unit(name), for a pool."""
     def task(*a, **kw):
@@ -405,12 +449,13 @@ def jobs():
     return max(1, int(n)) if n.isdigit() else (os.cpu_count() or 1)
 
 
-def measured(units, measure, pool=None, also=None, heavy=None):
+def measured(units, measure, pool=None, also=None, heavy=None, times=None):
     """Each unit measured, jobs() at a time (the work is Yosys, Verilator and
     the benches, each in the unit's own directory), handed back in order as it
     is done, so the report reads as a serial run's. A unit that raises raises
     here, in its turn. `also(pool, u)`, if given, queues more of a unit's work
-    right behind its measurement, on the same pool."""
+    right behind its measurement, on the same pool. `times` (unit -> s, the
+    last clean gate's, last_times) queues the light units slowest first."""
     own = pool is None
     pool = pool or concurrent.futures.ThreadPoolExecutor(jobs())
     try:
@@ -423,7 +468,8 @@ def measured(units, measure, pool=None, also=None, heavy=None):
         # Run first, a heavy unit only ever waits for the other check's.
         heavy = HEAVY if heavy is None else heavy
         first = [u for u in units if heavy_serial() and u.name in heavy]
-        for u in first + [u for u in units if u not in first]:
+        rest = longest_first([u for u in units if u not in first], times)
+        for u in first + rest:
             fut[id(u)] = pool.submit(unit_task(u.name, measure), u)
             if also:
                 also(pool, u)
@@ -2146,7 +2192,8 @@ def main_check(only=None, verbose=False):
     def queue_el(p, u):
         if not only:
             elaborated[u.name] = p.submit(unit_task(u.name, unit_elaborate), u, modules)
-    for u in measured(units, lambda u: u.measure(), pool, queue_el):
+    for u in measured(units, lambda u: u.measure(), pool, queue_el,
+                      times=last_times("check-cg")):
         report(u, verbose)
         if u.nl is not None:
             findings += source_findings(u, resets)
@@ -2167,6 +2214,7 @@ def main_check(only=None, verbose=False):
     fails += unmeasured(units)
     more, over = heavy_check("check-cg")
     lines += more + time_lines()
+    save_times("check-cg")
     fails += over
     for l in lines:
         print("  " + l)
@@ -2305,7 +2353,47 @@ def heavy_selftest(expect):
             expect(started == want, "units started %s with CCV_HEAVY_SERIAL=%d, want %s"
                    % (started, on, want))
             expect(got == ["fx_l1", "fx_l2", "fx_h1"], "the report's order changed: %s" % got)
+        # Longest first: heavy still first, then the lights slowest first by
+        # the record, an unknown light unit before every known one; no
+        # record, input order (the control).
+        units3 = [_U("fx_l1"), _U("fx_l2"), _U("fx_h1"), _U("fx_l3")]
         os.environ["CCV_HEAVY_SERIAL"] = "1"
+        for times, want in (({"fx_l1": 1.0, "fx_l2": 9.0, "fx_h1": 0.5},
+                             ["fx_h1", "fx_l3", "fx_l2", "fx_l1"]),
+                            (None, ["fx_h1", "fx_l1", "fx_l2", "fx_l3"])):
+            started = []
+            with concurrent.futures.ThreadPoolExecutor(1) as one:
+                got = [u.name for u in measured(units3, lambda u: started.append(u.name),
+                                                one, heavy=heavy, times=times)]
+            expect(started == want, "units started %s with times %s, want %s"
+                   % (started, times, want))
+            expect(got == ["fx_l1", "fx_l2", "fx_h1", "fx_l3"],
+                   "the report's order changed: %s" % got)
+        # The record: written on a clean gate only, read back, merged.
+        saved_env = {k: os.environ.get(k) for k in ("CCV_LOGDIR", "CCV_CLEAN_GATE")}
+        rec_dir = os.path.join(BUILD, "fixture", "unit-times")
+        shutil.rmtree(rec_dir, ignore_errors=True)
+        try:
+            os.environ["CCV_LOGDIR"] = rec_dir
+            UNIT_TIME.clear()
+            UNIT_TIME.update({"fx_a": 3.0})
+            os.environ["CCV_CLEAN_GATE"] = "0"
+            expect(not save_times("fx") and last_times("fx") == {},
+                   "a run that was not a clean gate wrote the unit-time record")
+            os.environ["CCV_CLEAN_GATE"] = "1"
+            save_times("fx")
+            UNIT_TIME.clear()
+            UNIT_TIME.update({"fx_b": 5.0})
+            save_times("fx")
+            expect(last_times("fx") == {"fx_a": 3.0, "fx_b": 5.0},
+                   "the unit-time record did not keep and merge: %s" % last_times("fx"))
+        finally:
+            for k, v in saved_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            shutil.rmtree(rec_dir, ignore_errors=True)
         _, f = heavy_check("selftest", set(), 64 << 20, peak)
         expect(len(f) == 1 and "fx_light" in f[0], "a light unit over the limit, not on the "
                "list, passed: %s" % f)
