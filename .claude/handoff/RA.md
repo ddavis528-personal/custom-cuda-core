@@ -55,7 +55,16 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
   sections). Merge commits only. No PRs. No model ids in commits.
 
 ## Register bookmarks (2026-11-04 sweep)
-AR 275, OA 331, RA 64, DA 106, Conventions 17, CP 152, IS 189, TI 309, OI 274, RI 3. RA-39 (c) landed (TI rev 309); only OI lead NGD/CG left.
+AR 284, OA 331, RA 69, DA 106, Conventions 17, CP 152, IS 189, TI 319, OI 274, RI 6. RA-39 (c) landed (TI rev 309); only OI lead NGD/CG left.
+TI rev 319: the model is the default (863a374); RI-7 / RA-18 wait on OI's imm_kind 6 (11-06).
+RI-9 answered (RA rev 69; RI notified): sub-blocks rcu_<name> (CCV-L28, every tab and
+rcu-impl.md); R0/R1/MW selects loaded every cycle, ungated (~31 flops/slice); R0/R1 hold an
+8-bit binary row decoded in the slice in A, bank out 13 / r in 12, R2 keeps one-hot, out 11
+(RI measured 11.0 at 649ee09, 6,574 flops); fallback one-hot loaded every cycle (~72/slice);
+write data straight into D; RCU masks nibble/above dst_width; port hit ORs its lane mask.
+Waiting: RI to measure the binary-decode R0/R1 read. Snapshots refreshed to the live revs:
+Overview 34, Partition 27, Register file 10, R unit 12, Migration 9, Lane+memory 7, Done 17,
+Predicate 5 (Pipeline 5, Conventions 4 unchanged).
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)

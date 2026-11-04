@@ -1,9 +1,9 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=13 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 13 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=17 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 17 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
-This tab covers everything RCU tells OOE and RAU about completion and teardown: the done channel, the kill handshake, what reset clears, the CSR tie-off and the block clock gate. Done payloads live with their sources: slots 0-4 in `ccv_rcu_lanes`, slots 5-6 in `ccv_rcu_r`, and the slot-5 leads in `ccv_rcu_pred`. Kill, the done wake and the idle term live in `ccv_rcu_kill`, and the gate in the block top (Partition tab).
+This tab covers everything RCU tells OOE and RAU about completion and teardown: the done channel, the kill handshake, what reset clears, the CSR tie-off and the block clock gate. Done payloads live with their sources: slots 0-4 in `rcu_lanes`, slots 5-6 in `rcu_r`, and the slot-5 leads in `rcu_pred`. Kill, the done wake and the idle term live in `rcu_kill`, and the gate in the block top (Partition tab).
 
 ## Done slots: fixed per class
 

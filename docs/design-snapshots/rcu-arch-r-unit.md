@@ -1,14 +1,14 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=8 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 8 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=12 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 12 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # R unit and crossbar
 
-The R unit, `ccv_rcu_r`, executes one op a cycle from issue slot 8 in three stages: predicates and the branch outcome in A, every compute in A+1, the write in A+2. Its two compute sources, R0 and R1, are read a cycle early, in A, into flops; R2, the merge source, is read in A+1 (Early R source read, below; RA-39, proposed). Collectives use the same stages, so a collective is readable at A+3, inside its contracted `CCV_LAT_COLLECTIVE` = 5, and the R pipeline needs one GPR write port, not two.
+The R unit, `rcu_r`, executes one op a cycle from issue slot 8 in three stages: predicates and the branch outcome in A, every compute in A+1, the write in A+2. Its two compute sources, R0 and R1, are read a cycle early, in A, into flops; R2, the merge source, is read in A+1 (Early R source read, below; RA-39, proposed). Collectives use the same stages, so a collective is readable at A+3, inside its contracted `CCV_LAT_COLLECTIVE` = 5, and the R pipeline needs one GPR write port, not two.
 
 **The A+2 rule (RA-29 (a), agreed by AR, TI and OA).** Every R-pipe class writes the GPR and predicate files at exactly A+2: RCU-only ops, call's link and every collective mode. That is what lets R share one GPR write port (RW).
 
 - A future mode that needs a second crossbar cycle breaks the rule. It needs a fifth port or an R hold, and comes back as a row.
-- The stub asserts the rule, and so does `ccv_rcu_r`: every `rres_a1`/`rpres_a1` load is followed by its write in the next cycle.
+- The stub asserts the rule, and so does `rcu_r`: every `rres_a1`/`rpres_a1` load is followed by its write in the next cycle.
 - Collectives and RCU-only ops are one issue class at R: one op a cycle on slot 8, both counted in the idle-R run. Collectives keep their own latency class and done slot 6.
 
 ## Early R source read (RA-39, proposed 2026-11-04)
@@ -81,7 +81,7 @@ Barriers do not reach the RCU in the first build (TI-40, TI-42; RA-25 closed by 
 
 ## Crossbar
 
-`ccv_rcu_xbar` is a combinational inner helper of `ccv_rcu_r` (timed as its parent's logic, and held alone to 16 NGD until instantiated). Inputs: `src[32][32]` (v(R0)), `idx[32][5]`. Output: `out[l] = src[idx[l]]`. Each output lane decodes its index to a 32-bit one-hot (3 NGD) and takes a 32:1 AND-OR of 32-bit words (6 NGD): about 9 NGD, 32 × 32 × 32 AND-OR cells. The immediate-index form uses the same structure with every `idx[l]` equal. `ret` uses the one-hot `rlow_a` into the same kind of AND-OR, separately. `unballot` needs no crossbar: lane l takes bit l of its own rs.
+`rcu_xbar` is a combinational inner helper of `rcu_r` (timed as its parent's logic, and held alone to 16 NGD until instantiated). Inputs: `src[32][32]` (v(R0)), `idx[32][5]`. Output: `out[l] = src[idx[l]]`. Each output lane decodes its index to a 32-bit one-hot (3 NGD) and takes a 32:1 AND-OR of 32-bit words (6 NGD): about 9 NGD, 32 × 32 × 32 AND-OR cells. The immediate-index form uses the same structure with every `idx[l]` equal. `ret` uses the one-hot `rlow_a` into the same kind of AND-OR, separately. `unballot` needs no crossbar: lane l takes bit l of its own rs.
 
 ## Depth (estimates, with the fanout term, for the implementation to measure)
 

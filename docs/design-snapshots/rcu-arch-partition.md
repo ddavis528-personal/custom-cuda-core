@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=16 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 16 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=27 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 27 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -16,7 +16,7 @@ Three rules from `docs/rtl-coding-style.md` decide the cuts:
 So:
 
 1. **Every module decodes the issue payload itself.** The raw `ooe_rcu_issue_s*_payload` and the flopped valids are wired from the block's ports to every module that acts in A. Each module decodes the op-class fields it needs, from the generated op-class table (Pipeline tab). The duplicated decode is a few hundred gates per module, against a through-path that is illegal.
-2. **A predicate read in A and its consumer share a module.** The guard read, `active`, the branch outcome and the R predicate sources all depend on a predicate read in A, so they live with the predicate file, in `ccv_rcu_pred`.
+2. **A predicate read in A and its consumer share a module.** The guard read, `active`, the branch outcome and the R predicate sources all depend on a predicate read in A, so they live with the predicate file, in `rcu_pred`.
 3. **A register file is the only module whose outputs are combinational.** Each read port's AND-OR is driven from the file's own predecode flops. The receiving module's budget pays for the rest of the path.
 4. **Write data enters a register file directly from the block port or from the writer's flops.** Steering such as MW's position shift is inside the file.
 
@@ -25,13 +25,13 @@ So:
 | Module | Inst | Holds | Flops (approx.) |
 | --- | --- | --- | --- |
 | `ccv_rcu` | 1 | the block top: `ccv_common_clk`, children, wires only | 0 |
-| `ccv_rcu_bank_slice #(K, J)` | 32 | 192 rows × 32 bits, byte section K of lanes 4J to 4J+3; its own predecode flops for every port (L0-3, M0-2, R0-2, LW/SW/MW/RW: 14 × 28); RW's A+1/A+2 copy; MW position shift; the zero-register no-select. Bank K is slices (K, 0..7); physical chunk J is slices (0..3, J) (Register file tab, Slices) | about 6,550 each, 209,600 in all |
-| `ccv_rcu_pred` | 1 | 48 × 32 predicate file; every predicate read and write port; guard, MIU `pred_result` forward, `active`, branch outcome, `lead_br_*` (`(* keep *)`), `br_*_a`, `rpsrc_a`, `active_a[s]` | 2,500 |
-| `ccv_rcu_r` (+ `ccv_rcu_xbar` helper) | 1 | R pipe A+1/A+2: `r_a`, `rlow_a`, `rres_a1`, `rpres_a1`; RW data merge and steer; done slots 5 and 6 (`done_v_q`, tags, `done_b*_q`, `done_aux_q`) | 2,300 |
-| `ccv_rcu_lanes` | 1 | section ownership; 32 `rcu_lane_ops` payload, valid and lead flops; bypass tracker; `lwb_d[0..3]`, `swb_d`; done slots 0-4; `rcu_lane_ops` wakes | 12,900 |
-| `ccv_rcu_mem` | 1 | memop operand assembly; 4 `rcu_miu_addr` payloads (3,111 b each); MIU lead predecode flops (about 110 per slot); `rcu_miu_addr_wake` | 12,950 |
-| `ccv_rcu_mig` | 1 | Migration tab | 6,300 |
-| `ccv_rcu_kill` | 1 | kill drain and ack; `rcu_ooe_done_wake`; `rcu_idle_q`; credit-return flops for issue, lane-result and MIU-data slots; CSR tie-offs | 60 |
+| `rcu_bank_slice #(K, J)` | 32 | 192 rows × 32 bits, byte section K of lanes 4J to 4J+3; its own predecode flops for every port (L0-3, M0-2, R0-2, LW/SW/MW/RW: 14 × 28); RW's A+1/A+2 copy; MW position shift; the zero-register no-select. Bank K is slices (K, 0..7); physical chunk J is slices (0..3, J) (Register file tab, Slices) | about 6,550 each, 209,600 in all |
+| `rcu_pred` | 1 | 48 × 32 predicate file; every predicate read and write port; guard, MIU `pred_result` forward, `active`, branch outcome, `lead_br_*` (`(* keep *)`), `br_*_a`, `rpsrc_a`, `active_a[s]` | 2,500 |
+| `rcu_r` (+ `rcu_xbar` helper) | 1 | R pipe A+1/A+2: `r_a`, `rlow_a`, `rres_a1`, `rpres_a1`; RW data merge and steer; done slots 5 and 6 (`done_v_q`, tags, `done_b*_q`, `done_aux_q`) | 2,300 |
+| `rcu_lanes` | 1 | section ownership; 32 `rcu_lane_ops` payload, valid and lead flops; bypass tracker; `lwb_d[0..3]`, `swb_d`; done slots 0-4; `rcu_lane_ops` wakes | 12,900 |
+| `rcu_mem` | 1 | memop operand assembly; 4 `rcu_miu_addr` payloads (3,111 b each); MIU lead predecode flops (about 110 per slot); `rcu_miu_addr_wake` | 12,950 |
+| `rcu_mig` | 1 | Migration tab | 6,300 |
+| `rcu_kill` | 1 | kill drain and ack; `rcu_ooe_done_wake`; `rcu_idle_q`; credit-return flops for issue, lane-result and MIU-data slots; CSR tie-offs | 60 |
 | **Total** |  |  | **about 246,000**, 80% of it PRF rows |
 
 Each sequential module flops `rst_n` once for itself (RST-1). Reset values: Done, kill and reset tab.
@@ -47,7 +47,7 @@ RA writes these files with the implementation. A block input arrives at 2 NGD, b
 | issue payload → `lanes` payload, bypass flops | 2 | `lanes` in: 18 | 20 | ownership, the age 4-5 compare, immediate substitution |
 | issue payload → `mem` payload flops | 2 | `mem` in: 14 | 16 |  |
 | issue payload → `mig` `dm_v_q`, `rs_v_a1` | 2 | `mig` in: 12 | 14 | the R2/RW-free decode |
-| `bank` R0-R1 read (in A) → `r` `rsrc_a`; R2 read (in A+1) → `r` `old` | `bank` out: 11 (measured 8.3, 11.0 with the fanout term) | `r` in: 14 | 25 | alignment 2 into flops; R's compute starts at flops in A+1, about 13 for the register-index shfl and ret (R unit tab, early R source read, RA-39) |
+| `bank` R0-R1 read (in A) → `r` `rsrc_a`; R2 read (in A+1) → `r` `old` | `bank` out: 11 for R2 (measured 11.0 with the fanout term, RI-9); 13 for R0-R1, whose binary select is decoded in the slice (Register file tab, lead-loaded ports) | `r` in: 12 for R0-R1 (alignment and the MIU forward into `rsrc_a`, about 5); 14 for R2 | 25 | alignment 2 into flops; R's compute starts at flops in A+1, about 13 for the register-index shfl and ret (R unit tab, early R source read, RA-39) |
 | `bank` L0-L3 read → `lanes` payload | 11 | 6 | 17 |  |
 | `bank` M0-M2 read → `mem` payload | 11 | 10 | 21 | operand assembly |
 | `bank` R2 read → `mig` `dm_pay` | 11 | 3 | 14 |  |
@@ -172,4 +172,4 @@ RA does not run these. The implementation agent (RI; handoff `docs/rcu-impl.md`)
 | M6 | Kernels | `tools/check-kernel.sh`, `tools/check-sv-hosted.sh` | every kernel passes with ccv-sim's oracle; every control above fails |
 | M7 | Swap boundary | SV-hosted run | no divergence: RCU reads only its receivers |
 
-Units for loops: a bank slice unit at 32 rows (module parameter `ROWS` set in `test/rcu/cg-units.json`; a package localparam such as `CCV_P_PHYS_REGS` cannot be overridden, RA-32 (2)), and `ccv_rcu_lanes` with 4 copies instead of 32 (`COPIES`). Traces for a reduced unit come from a skeleton run at the same sizes. Full-size runs are the exit: one slice at 192 rows stands for all 32, as K and J change only which bytes and lanes it is wired to.
+Units for loops: a bank slice unit at 32 rows (module parameter `ROWS` set in `test/rcu/cg-units.json`; a package localparam such as `CCV_P_PHYS_REGS` cannot be overridden, RA-32 (2)), and `rcu_lanes` with 4 copies instead of 32 (`COPIES`). Traces for a reduced unit come from a skeleton run at the same sizes. Full-size runs are the exit: one slice at 192 rows stands for all 32, as K and J change only which bytes and lanes it is wired to.

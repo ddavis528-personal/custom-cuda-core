@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=33 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 33 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=34 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 34 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -78,7 +78,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Read ports: 10 per bank, migration on an idle R port | settled (AR re:RA-6) | RA-6 |
 | `CCV_LAT_RCU_ADDR` = 1 (fallback 2) | adopted (AR rev 266, PF-47); 2 if M1 misses | RA-7 |
 | Collective fold 5 → 3 | RCU now meets 3; folding the contract is OA's, then Daniel's | RA-8 |
-| Crossbar as an RCU sub-module | settled: `ccv_rcu_xbar`, an inner helper | RA-9 |
+| Crossbar as an RCU sub-module | settled: `rcu_xbar`, an inner helper | RA-9 |
 | Q-18: the AGU stays in MIU | settled | RA-10 |
 | No area budget; floorplan | settled (Daniel, 2026-11-02) | RA-11, RA-12 |
 | `dispatch_fault` deleted | settled, TI to apply | RA-13, RA-16 (e) |

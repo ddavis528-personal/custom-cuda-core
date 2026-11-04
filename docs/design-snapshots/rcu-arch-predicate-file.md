@@ -1,9 +1,9 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=4 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 4 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=5 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 5 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Predicate file
 
-The predicate file, `ccv_rcu_pred`, is 48 rows × 32 bits read in A and written through masked write ports; the only forward it needs is from MIU's `pred_result` in the guard's own cycle, and every merge reads the old destination at write time, when it is already final.
+The predicate file, `rcu_pred`, is 48 rows × 32 bits read in A and written through masked write ports; the only forward it needs is from MIU's `pred_result` in the guard's own cycle, and every merge reads the old destination at write time, when it is already final.
 
 ## Organisation
 

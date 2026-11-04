@@ -1,9 +1,9 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Lane_and_memory_paths rev=5 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Lane and memory paths*, at revision 5 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Lane_and_memory_paths rev=7 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Lane and memory paths*, at revision 7 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Lane and memory paths
 
-The lane path is owned per section: in A each bank k learns which S op owns it, and every per-section field of the lane message, every lane write and the bypass selects follow that owner. The memory path does the same per MIU pipe, with pipe k ≡ section k. Both modules are `ccv_rcu_lanes` and `ccv_rcu_mem`.
+The lane path is owned per section: in A each bank k learns which S op owns it, and every per-section field of the lane message, every lane write and the bypass selects follow that owner. The memory path does the same per MIU pipe, with pipe k ≡ section k. Both modules are `rcu_lanes` and `rcu_mem`.
 
 ## Lane message assembly
 
