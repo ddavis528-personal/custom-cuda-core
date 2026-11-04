@@ -85,7 +85,7 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
-- RA-40 (RA rev 65, notices TI + AR): ccv_miu_rcu_data has no lead slice; RA-4's six fields (51 b/slot) needed for MW/PM CG-5 enables and RA-39 (i). Took the lead over AR's compare-in-A option. Waits TI schema, AR MIU text.
+- RA-40 closed: TI landed MIU lead_fields (b85595b, TI rev 311), AR MIU spec rev 48; closure at RA rev 66.
 - RI is live: session_01QPk2jvvXPLs4m8ZQbSk1g6, register tab 8e4547bc-c469 (bookmark rev 2).
   RI-3..6 answered at RA rev 64, notice sent: credit at launch intended (TI marks
   ooe_rcu_map / rau_rcu_mig backpressured); LW = footprint (Lane+mem rev 5); FULL_ROW
