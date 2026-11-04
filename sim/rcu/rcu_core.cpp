@@ -445,11 +445,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
   while (!hist_.empty() && t - hist_.front().a > kBypHi) hist_.pop_front();
 
   const bool movi_lane = brk == "movi-in-lane";
-  // movi-in-lane: the misplaced movi (on R) takes the lane message first, as
-  // the stub's lane queue does; a lane op it clashes with goes a cycle later.
-  std::array<unsigned, kRes> order;
-  for (unsigned i = 0; i != kRes; ++i) order[i] = movi_lane ? (i + kSlotR) % kRes : i;
-  for (unsigned s : order) {
+  for (unsigned s = 0; s != kRes; ++s) {
     if (!in.iss[s] || in.iss[s]->cont) continue;
     Issue is = *in.iss[s];
     const AState &x = a[s];
@@ -569,14 +565,21 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
       late_.push_back({t + ccv::prov::kLatLane, own, d});
       continue;
     }
-    if (movi_lane) {
-      bool clash = false;
-      for (unsigned k = 0; k != kSecs; ++k)
-        if (((is.foot >> k) & 1u) && msg.sec[k].en) clash = true;
-      if (clash) {
-        late_.push_back({t + 1, own, d});
-        continue;
-      }
+    if (movi_lane && in.iss[s]->oc.rk == RKind::Movi) {
+      // The misplaced movi leaves R's pipe for the lanes at A+2, R's write
+      // cycle, and completes on R's slot. Lane ops issued after it queue
+      // behind it in order, as the stub's one-message-a-cycle lane queue
+      // does, so the control's late dones are the stub's.
+      d.dslot = int(kDoneRcu);
+      late_.push_back({t + kRW, own, d});
+      movi_a_ = t;
+      movi_hold_ = t + kRW;
+      continue;
+    }
+    if (movi_lane && t > movi_a_ && t <= movi_hold_) {
+      late_.push_back({movi_hold_ + 1, own, d});
+      movi_hold_ = movi_hold_ + 1;
+      continue;
     }
     for (unsigned k = 0; k != kSecs; ++k)
       if ((is.foot >> k) & 1u) msg.sec[k] = own.sec[k];
@@ -599,7 +602,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
       const uint64_t w = d.a + (d.sfu ? kSfuW : kLaneW);
       lanes_[w].push_back(d);
       if (d.copy) continue;   // a copy completes on the load's (OI-4)
-      Done dn{d.sfu ? kDoneSfu : d.lead, d.tag, d.done_row};
+      Done dn{d.dslot >= 0 ? unsigned(d.dslot) : d.sfu ? kDoneSfu : d.lead, d.tag, d.done_row};
       dn.tid = d.tid;
       if (brk == "slot-field-aux") dn.aux_set = true;
       dsched_[w - 1].push_back(dn);

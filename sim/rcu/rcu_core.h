@@ -329,6 +329,7 @@ private:
     unsigned tag, done_row;
     uint64_t tid, a;
     uint64_t acc;   ///< the issue's A, where RCU took it (a held copy leaves later)
+    int dslot = -1; ///< a done slot other than the lead's (movi-in-lane's movi keeps R's)
   };
   /// The bypass history: a lane producer of a GPR, by issue cycle.
   struct Producer { uint64_t a; unsigned row, pos, secs, lead; };
@@ -367,7 +368,8 @@ private:
   std::map<uint64_t, std::vector<Done>> dsched_;      ///< dones by launch cycle
   std::deque<Producer> hist_;
   struct Deferred { uint64_t at; LaneMsg msg; LaneDesc d; };
-  std::deque<Deferred> late_;   ///< late-copy's held copies
+  std::deque<Deferred> late_;   ///< held lane messages (late-copy, movi-in-lane)
+  uint64_t movi_a_ = 0, movi_hold_ = 0;   ///< movi-in-lane: the movi's A, the lane queue's tail
 
   // Migration state (Migration tab).
   std::vector<MapEnt> mq_;
