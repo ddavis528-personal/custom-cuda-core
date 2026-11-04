@@ -107,6 +107,11 @@ the compact hook printed this handoff.
      held-over-r regex pins "holds 3" (now 4..7) and vadd4 drain orphan=0. On TI's push:
      merge it into wtd (+ a461213 handoff), gate-push from wtd; on green close OI-109 and
      OI-111 (FYI TI, OA), remove wtd. run-rtl on ed25191: ~/ccv-logs/oi-rtl-1308.log.
+   - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
+     link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
+     lead_r_src0/1 from RS names (TI 39a1861 on ccr-183cc441-doowtf; merge it). sched (b)
+     83c2900 is UNPUSHED (local branch oi-go-sched): gate+push it right after decq.
+     TI tab bookmark 309.
    - RI-7 (answered OI rev 277): RA-18 call link imm_kind 6 OOE substitution is OI's, queued
      after the fanout cleanup; when it lands, row with rev + notify RI.
    - Then: rs copies probe (OA 325) -> ratread path (OA 326) -> RA-39 (b) lead_r_src0/1
