@@ -62,7 +62,14 @@ rcu-impl.md); R0/R1/MW selects loaded every cycle, ungated (~31 flops/slice); R0
 8-bit binary row decoded in the slice in A, bank out 13 / r in 12, R2 keeps one-hot, out 11
 (RI measured 11.0 at 649ee09, 6,574 flops); fallback one-hot loaded every cycle (~72/slice);
 write data straight into D; RCU masks nibble/above dst_width; port hit ORs its lane mask.
-Waiting: RI to measure the binary-decode R0/R1 read. Snapshots refreshed to the live revs:
+Waiting: RI to measure the binary-decode R0/R1 read.
+OI-115 (OI rev 282): OOE's R lead mux in select costs 8.3 NGD (ooe_sched 38.8 vs cap 30.5).
+OA rev 335 asked RA to price (2): R0/R1 read in A from the payload's phys_src, no lead.
+RA rev 70 (OA notified): fits, ~19.5. rsrc_a moves into the slices (raw read; no read-through
+of the slice), align to A+1 (~15-16), MIU forward = bank-level MW write-through, lead_src_used
+dropped. Asked phys_src RCU in 18 / OOE out 7. RA prefers (2) even if (0) fits. On OA's ruling:
+update R unit / Register file / Partition tabs and rcu-impl.md; TI row to drop lead_r_src0/1.
+Bookmark OA 335. Snapshots refreshed to the live revs:
 Overview 34, Partition 27, Register file 10, R unit 12, Migration 9, Lane+memory 7, Done 17,
 Predicate 5 (Pipeline 5, Conventions 4 unchanged).
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
