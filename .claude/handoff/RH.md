@@ -55,9 +55,15 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
     rh-jobs/j1.sh from 12:40Z (resumable by value); logs in ~/ccv-logs/j1/.
   - J2: coremark32/128/pl32 warm and cold, plus CCV_DCU_WAYS=8 warm. A cold
     dec_ooe_uop hang is a result.
-  - J3: plan sent to TI; waiting on whether TI/CP supplies vadd16w4's kernel.cfg
-    or RH writes one. The chwidth hold cost is hold.chwidth / cycles from the
-    J1/J2 stats.
+  - J5 (after J1, before J2): tools/sweep-fair.sh 0 32 48. Send TI the lnorm1
+    row, pass/fail, and the table if it's small.
+  - J3: the hold cost (hold.chwidth / cycles from the J1/J2 stats) is approved.
+    vadd16 is BLOCKED: the pinned snapshot has only LLVM-style asm, which
+    ccv-as rejects; TI is asked for a CP export. chwidth.multi 12288 is a
+    register mask (r12, r13), not n. Local configs are in
+    /home/user/rh-jobs/local-bench/ (vadd16w4, vadd16loopw4, coremarkpl128,
+    whose oracle passes at 4.4 GB). coremarkpl32/128 runs are proposed for
+    after J2; waiting on TI's OK.
   - J4: blocked on TI code (CTA queueing, gen-oracle -load). Meanwhile only
     coremark128 at 512 KiB with frames, if there's a frames knob.
   Order J1, J2, J3, then J4. Delete oracles and builds after each job.
