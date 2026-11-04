@@ -83,8 +83,10 @@ import collections
 import glob
 import importlib.util
 import json
+import math
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -121,6 +123,14 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
         "NGD-3 free_cq01h",
     ],
 }.items() for k in ks}
+# The fanout term's ratchet (RA-33; DA, 2026-11-04, OI rev 265): enforcing
+# the term put paths that met the stage before over it. Each stood, keyed as
+# its finding is and capped at its value, in this baseline, seeded once from
+# the pushed tip; rtl/ngd-ratchet.json's "fanout" holds each module's caps,
+# which may only fall: an entry not in the baseline, one capped above it, a
+# finding over its cap, and an entry that now meets the rule all fail. Never
+# add to the baseline: a path written since meets the rule with the term.
+FANOUT_BASELINE = os.path.join(ROOT, "rtl", "ngd-fanout-baseline.json")
 EPS = 0.005
 NEG = float("-inf")
 
@@ -293,8 +303,10 @@ class Timing:
         # The fanout term (RA-33; DA, 2026-11-02): the genlib's delays are
         # at fanout 4, so a net with more loads is timed as if a buffer tree
         # of inverters at fanout 4 drove them, ceil(log4(loads / 4)) stages,
-        # each an INV's delay. Report-only for now: it is timed beside the
-        # enforced depths (the fo_ fields), and nothing fails on it.
+        # each an INV's delay. Enforced since DA, 2026-11-04 (OI rev 265):
+        # rr, ro, ir and io, every rule's depth, block levels' included, are
+        # timed with it; the p_ fields are the same depths without it,
+        # report-only. ABC's own check (abc_like) stays without it.
         loads = collections.Counter(x for _, a, _ in gates for _, x in a)
         loads.update(d for d, _ in latches)
         loads.update(outs)
@@ -342,25 +354,21 @@ class Timing:
         every = prop(list(ins) + [q for _, q in latches], buf=delay(lib, "BUF", "A"))
         self.abc_like = max([every.get(n, NEG) for n in d_nets + list(outs)] + [0.0])
         r = prop([q for _, q in latches])
-        self.rr = max((r.get(d, NEG) for d in d_nets), default=NEG)
-        self.ro = {p: max(r.get(o, NEG) for o in bits) for p, bits in ports_out.items()}
+        self.p_rr = max((r.get(d, NEG) for d in d_nets), default=NEG)
+        self.p_ro = {p: max(r.get(o, NEG) for o in bits) for p, bits in ports_out.items()}
+        pa = prop([i for i in ins if not i.startswith("bb_")])
+        self.p_ir = max((pa.get(d, NEG) for d in d_nets), default=NEG)
+        rf = prop([q for _, q in latches], fan=True)
+        self.rr = max((rf.get(d, NEG) for d in d_nets), default=NEG)
+        self.ro = {p: max(rf.get(o, NEG) for o in bits) for p, bits in ports_out.items()}
         self.ir, self.io = {}, {}
         for p, bits in ports_in.items():
-            a = prop(bits)
+            a = prop(bits, fan=True)
             self.ir[p] = max((a.get(d, NEG) for d in d_nets), default=NEG)
             for q, obits in ports_out.items():
                 t = max(a.get(o, NEG) for o in obits)
                 if t > NEG:
                     self.io[(p, q)] = t
-        # The same depths with the fanout term, the cut ports aside where
-        # report() reads them: flop to flop, any input to a flop, and a flop
-        # to each output.
-        # A cut port (bb_*, ungate's) is timed by its own budget, not here.
-        rf = prop([q for _, q in latches], fan=True)
-        af = prop([i for i in ins if not i.startswith("bb_")], fan=True)
-        self.fo_rr = max((rf.get(d, NEG) for d in d_nets), default=NEG)
-        self.fo_ro = max((rf.get(o, NEG) for o in outs if not o.startswith("bb_")), default=NEG)
-        self.fo_ir = max((af.get(d, NEG) for d in d_nets), default=NEG)
         self.ins, self.outs = sorted(ports_in), sorted(ports_out)
         self.gates = collections.Counter(g for g, _, _ in gates)
         self.nflops = len(latches)
@@ -493,6 +501,7 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
     t.ro_area, t.ro_r = t.ro, tr.ro
     if tr.rr <= t.rr + EPS:
         t.ro = {p: min(v, tr.ro.get(p, v)) for p, v in t.ro.items()}
+        t.p_ro = {p: min(v, tr.p_ro.get(p, v)) for p, v in t.p_ro.items()}
         t.q_flop = {q: min(v, tr.q_flop.get(q, v)) for q, v in t.q_flop.items()}
         q_out = collections.defaultdict(dict)
         for q, outs in t.q_out.items():
@@ -767,6 +776,23 @@ def findings(u, budgets, parents=frozenset()):
     return out
 
 
+def finding_value(u, budgets, key):
+    """The depth a finding reads, for the fanout ratchet's caps: NGD-1's flop
+    to flop, NGD-2's output ready time, NGD-3's arrival plus logic, NGD-6's
+    input to output; None for a finding with no depth (NGD-5, NGD-7)."""
+    t, kind, _, rest = u.t, key[:5], key[5:6], key[6:]
+    if kind == "NGD-1":
+        return t.rr
+    if kind == "NGD-2":
+        return t.ro.get(rest)
+    if kind == "NGD-3":
+        return budgets.arrival(u.module, rest) + t.ir[rest] if rest in t.ir else None
+    if kind == "NGD-6":
+        i, o = rest.split(">", 1)
+        return t.io.get((i, o))
+    return None
+
+
 def shared_flops(u, budgets):
     """NGD-7 (Daniel, 2026-10-19): a register that drives an output is held,
     on every path it starts, to that output's required time: to the module's
@@ -804,13 +830,12 @@ def report(u, verbose=False):
     io = max([v for (i, o), v in t.io.items() if i not in t.cut and o not in t.cut] + [0.0])
     print("  unit %-16s %-14s flop-flop %5.1f  in-flop %5.1f  flop-out %5.1f  in-out %5.1f"
           % (u.name, u.module, max(t.rr, 0.0), ir, ro, io))
-    # The fanout term (RA-33), report-only: what the same paths cost when a
-    # net past fanout 4 is driven through a tree of inverters.
-    fo = max(t.fo_rr, t.fo_ir, t.fo_ro, 0.0)
-    if fo > max(t.rr, ir, ro, 0.0) + EPS:
-        print("    fanout (report-only, RA-33) flop-flop %5.1f  in-flop %5.1f  flop-out %5.1f;"
-              " widest net %d loads%s" % (max(t.fo_rr, 0.0), max(t.fo_ir, 0.0), max(t.fo_ro, 0.0),
-                                         t.fanout_max, ", over %g" % STAGE if fo > STAGE + EPS else ""))
+    # The depths above carry the fanout term (RA-33, enforced since DA,
+    # 2026-11-04); report-only, what the same paths read without it.
+    p_ro = max([v for k, v in t.p_ro.items() if k not in t.cut] + [0.0])
+    if max(t.rr, ir, ro, 0.0) > max(t.p_rr, t.p_ir, p_ro, 0.0) + EPS:
+        print("    without the fanout term flop-flop %5.1f  in-flop %5.1f  flop-out %5.1f;"
+              " widest net %d loads" % (max(t.p_rr, 0.0), max(t.p_ir, 0.0), p_ro, t.fanout_max))
     if verbose:
         for o in t.outs:
             if o not in t.cut:
@@ -829,18 +854,42 @@ def load(path, key, default):
     return json.load(open(path)).get(key, default) if os.path.exists(path) else default
 
 
-def policy(units, budgets, ratchet, modules, baseline=RATCHET_BASELINE):
+def policy(units, budgets, ratchet, modules, baseline=RATCHET_BASELINE, fan=None,
+           fan_base=None):
     """Findings excused by the ratchet; a ratchet entry that is no longer a
     finding, or was never in the baseline, refused; a design module no unit
-    measures, refused. Returns the failures."""
+    measures, refused. `fan` ({module: {key: cap}}, the ratchet's "fanout")
+    excuses a finding the fanout term made, up to its cap, which must be in
+    `fan_base` and no higher than it. Returns the failures."""
+    fan, fan_base = fan or {}, fan_base or {}
     fails = list(budgets.check(units, modules))
     found = collections.defaultdict(set)
     parents = parented(units, modules)
     for u in units:
         for key, msg in findings(u, budgets, parents):
             found[u.module].add(key)
-            if key not in ratchet.get(u.module, []):
+            if key in ratchet.get(u.module, []):
+                continue
+            cap = fan.get(u.module, {}).get(key)
+            v = finding_value(u, budgets, key)
+            if cap is None:
                 fails.append(msg)
+            elif v is None or v > cap + EPS:
+                fails.append("%s; its fanout ratchet cap is %g (RA-33): a capped path may only "
+                             "get shorter" % (msg, cap))
+    for mod, caps in sorted(fan.items()):
+        for k, cap in sorted(caps.items()):
+            b = fan_base.get(mod, {}).get(k)
+            if b is None:
+                fails.append("fanout ratchet: %s %s was not over the stage when the fanout term "
+                             "was enforced (%s); the list only shrinks"
+                             % (mod, k, os.path.relpath(FANOUT_BASELINE, ROOT)))
+            elif cap > b + EPS:
+                fails.append("fanout ratchet: %s %s capped at %g, above its baseline %g; a cap "
+                             "only falls" % (mod, k, cap, b))
+            elif k not in found.get(mod, set()) and any(u.module == mod for u in units):
+                fails.append("fanout ratchet: %s %s now meets the rule: remove it from %s"
+                             % (mod, k, os.path.relpath(RATCHET, ROOT)))
     for mod, keys in sorted(ratchet.items()):
         for k in keys:
             if (mod, k) not in baseline:
@@ -978,9 +1027,11 @@ def block_check(name, top, files, bbs, budgets, block=None, lib=LIB):
         if o in t.cut:
             continue
         thru = any(q == o for (_, q) in t.io)
-        if t.ro[o] > EPS or thru:
+        # Straight from a flop is the netlist's shape: timed without the
+        # fanout term, which a flop with more than 4 loads would add.
+        if t.p_ro[o] > EPS or thru:
             fails.append("block %s: output %s is not straight from a flop (%.1f NGD after one%s)"
-                         % (name, o, max(t.ro[o], 0.0),
+                         % (name, o, max(t.p_ro[o], 0.0),
                             ", and reached from an input" if thru else ""))
     for i in t.ins:
         if i not in t.cut and t.ir[i] > PORT + EPS:
@@ -991,7 +1042,44 @@ def block_check(name, top, files, bbs, budgets, block=None, lib=LIB):
     return line, fails
 
 
-def main_check(only=None):
+def seed_fanout(units, budgets, ratchet, modules):
+    """--seed-fanout: write the fanout baseline and the ratchet's "fanout"
+    from this run's findings that the plain ratchet does not list, each
+    capped at its depth rounded up to 0.1. Run once, on the pushed tip, when
+    the term was enforced (DA, 2026-11-04); never again."""
+    if os.path.exists(FANOUT_BASELINE):
+        raise SystemExit("check-ngd: %s exists; the fanout baseline is seeded once"
+                         % os.path.relpath(FANOUT_BASELINE, ROOT))
+    parents = parented(units, modules)
+    caps = collections.defaultdict(dict)
+    for u in units:
+        for key, _ in findings(u, budgets, parents):
+            if key in ratchet.get(u.module, []):
+                continue
+            v = finding_value(u, budgets, key)
+            if v is None:
+                raise SystemExit("check-ngd: %s %s has no depth to cap; fix it before seeding"
+                                 % (u.module, key))
+            caps[u.module][key] = math.ceil(v * 10 - EPS) / 10
+    caps = {m: dict(sorted(k.items())) for m, k in sorted(caps.items())}
+    git = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                         capture_output=True, text=True).stdout.strip()
+    with open(FANOUT_BASELINE, "w") as f:
+        json.dump({"_comment": "The paths over the stage when the fanout term (RA-33) was "
+                   "enforced (DA, 2026-11-04), seeded by check-ngd --seed-fanout at %s, each "
+                   "capped at its depth. Never edited: rtl/ngd-ratchet.json's \"fanout\" "
+                   "holds the caps, which only fall." % git, "modules": caps}, f, indent=2)
+        f.write("\n")
+    r = json.load(open(RATCHET))
+    r["fanout"] = caps
+    with open(RATCHET, "w") as f:
+        json.dump(r, f, indent=2)
+        f.write("\n")
+    print("  fanout ratchet seeded: %d path(s) in %d module(s)"
+          % (sum(len(v) for v in caps.values()), len(caps)))
+
+
+def main_check(only=None, seed=False):
     units = load_units()
     modules = design_modules()
     parents = parented(units, modules)
@@ -1008,7 +1096,15 @@ def main_check(only=None):
             print("    " + msg)
         return 0
     ratchet = load(RATCHET, "modules", {})
-    fails = policy(units, budgets, ratchet, modules)
+    fan = load(RATCHET, "fanout", {})
+    fails = policy(units, budgets, ratchet, modules, fan=fan,
+                   fan_base=load(FANOUT_BASELINE, "modules", {}))
+    if seed:
+        seed_fanout(units, budgets, ratchet, modules)
+    for mod in sorted(fan):
+        print("  fanout ratchet: %-14s %2d path(s) over the stage with the fanout term, "
+              "capped: %s" % (mod, len(fan[mod]), ", ".join(
+                  "%s %g" % (k, v) for k, v in sorted(fan[mod].items()))))
     for mod in sorted(ratchet):
         n5 = sum(k.startswith("NGD-5") for k in ratchet[mod])
         n6 = sum(k.startswith("NGD-6") for k in ratchet[mod])
@@ -1098,13 +1194,13 @@ def selftest():
     inv = delay(LIB, "INV", "A")
     expect(ff.t.fanout_max >= 1024, "ngd_fx_fanout's widest net has %d loads, not 1,024: 1d "
            "tests nothing" % ff.t.fanout_max)
-    expect(ff.t.fo_rr >= ff.t.rr + 4 * inv - EPS,
+    expect(ff.t.rr >= ff.t.p_rr + 4 * inv - EPS,
            "1,024 loads cost %.2f NGD flop to flop with the fanout term, against %.2f without: "
-           "want 4 inverter stages (%.2f) more" % (ff.t.fo_rr, ff.t.rr, 4 * inv))
+           "want 4 inverter stages (%.2f) more" % (ff.t.rr, ff.t.p_rr, 4 * inv))
     ok = fx["ngd_fx_ok"].t
-    expect(ok.fanout_max > 4 or abs(ok.fo_rr - ok.rr) < EPS,
+    expect(ok.fanout_max > 4 or abs(ok.rr - ok.p_rr) < EPS,
            "ngd_fx_ok has no net past fanout 4, yet the fanout term moved it (%.2f, %.2f)"
-           % (ok.fo_rr, ok.rr))
+           % (ok.rr, ok.p_rr))
     # 1b. NGD-3 takes each input from the better of two maps (OI-64): area
     #     recovery relaxes ngd_fx_relax's 8-bit add toward its multiplier, so
     #     the area map alone would put input i over the stage at the default
@@ -1303,6 +1399,26 @@ def selftest():
     fails = policy(us, none, {}, dict(mods, ngd_fx_lost="f"), base)
     expect(any("ngd_fx_lost" in x and "no timing unit" in x for x in fails),
            "a module with no unit passed")
+    # 6b. The fanout ratchet (RA-33; DA, 2026-11-04): a finding at or under
+    #     its cap excused; one over it refused; a cap above its baseline, one
+    #     not in the baseline, or one on a path that now meets the rule,
+    #     refused.
+    y = finding_value(fx["ngd_fx_out"], none, "NGD-2 y")
+    expect(y is not None and y > PORT, "ngd_fx_out's NGD-2 y has no depth to cap: %s" % y)
+    fb = {"ngd_fx_out": {"NGD-2 y": y + 1}, "ngd_fx_ok": {"NGD-2 y": y}}
+    fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": y}}, fb)
+    expect(not fails, "a finding at its fanout cap was not excused: %s" % fails)
+    fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": y - 0.5}}, fb)
+    expect(any("fanout ratchet cap" in x for x in fails),
+           "a finding over its fanout cap was excused")
+    fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": y + 2}}, fb)
+    expect(any("above its baseline" in x for x in fails), "a fanout cap rose past its baseline")
+    fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": y}}, {})
+    expect(any("the list only shrinks" in x for x in fails), "the fanout ratchet grew")
+    fails = policy(us, none, {}, mods, base, {"ngd_fx_out": {"NGD-2 y": y},
+                                              "ngd_fx_ok": {"NGD-2 y": y}}, fb)
+    expect(any("ngd_fx_ok" in x and "now meets the rule" in x for x in fails),
+           "a fanout ratchet entry that passes stayed on the list")
     # 7. The assembled block from its budget files, level by level: a
     #    driver required at 14 straight into a receiver arriving at 15
     #    converges; with the driver's budget moved to 16 it does not. Logic
@@ -1425,11 +1541,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--unit")
+    ap.add_argument("--seed-fanout", action="store_true",
+                    help="write the fanout baseline and ratchet from this run (once)")
     a = ap.parse_args()
     os.makedirs(BUILD, exist_ok=True)
     if a.selftest:
         return selftest()
-    return main_check(a.unit)
+    return main_check(a.unit, a.seed_fanout)
 
 
 if __name__ == "__main__":
