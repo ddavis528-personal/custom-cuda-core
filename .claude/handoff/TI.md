@@ -39,11 +39,18 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-04 01:45Z: RA-33 fanout ENFORCED in check-ngd, local (faf5bf0,
+  baa4136): every enforced depth and block level counts the term; ratchet
+  'fanout' in rtl/ngd-ratchet.json, baseline rtl/ngd-fanout-baseline.json
+  written once by `check-ngd.py --seed-fanout`. Dry run on tip: 115 findings
+  (log ~/ccv-logs/lf/ngd-dry.log). TI rev 299 answered OI 265 / DA 105.
+  NEXT: when OI's 5e81e19 lands on its branch, merge it, seed (full ngd run
+  with --seed-fanout), commit, gate-push --full. Base 1 (#59) waits for OI's
+  83c2900 (run-rtl.sh 12 seeds, OI rev 267); TI rev 298 written.
 - 2026-11-03 17:50Z: #59 base 1 re-applied on OI's 1f7c642 in local branch
   ti-base1 (ti-ret HEAD 5839ecb, NOT pushed): ooe_wake ok (17.1 NGD), no-msd
-  (rs) caught, but no-rep-lead (trio) MISSED -> held for OI. Docs-write and
-  send_message tools were unavailable: row text in /home/user/ti-pending-row.txt,
-  write it + notify OI/OA when the tools are back. ti-ret reset to
+  (rs) caught, but no-rep-lead (trio) MISSED -> held for OI. Row written (TI rev
+  298), OI and OA notified. ti-ret reset to
   f20f89e (OI's merge, no base 1).
 - 2026-11-03 (DA): longest-first queueing built (check-cg/check-ngd queue
   light units slowest first from $CCV_LOGDIR/unit-times/<tool>.json, written
