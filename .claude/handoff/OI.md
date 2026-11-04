@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 335, OI 283, CP 152, DA 106, RI 3
+Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 336, OI 284, CP 152, DA 106, RI 3
 (sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -120,7 +120,15 @@ the compact hook printed this handoff.
      (ooe_select_rp.sv, rlead_probe.sv, rlead_only.sv + temp units). NEXT: lane slots (RA-31
      fields) main + fallback pick with late 2:1: export ooe_pick's single-section fallback pick
      in a probe copy; then build ooe_rs payload store + payload-read mux + lead mux. RA-39 (c)
-     RTL date moved to 2026-11-09. Then build ooe_rs payload store +
+     RTL date moved to 2026-11-09.
+     OA rev 336: OPTION (2) TAKEN: no R lead / lead_r_src0/1 in OOE; phys_src0/1 straight from
+     the issue register, OOE out budget 7 (record in the issue register owner's ngd.json). OI-117
+     (rev 284, FYI OA): lane-slot leads off own picks: sched 28.3 (late 2:1), 27.5 (2:1 after
+     flop), 26.6 main only, vs sched alone 26.6, cap 30.5; 20.7 without fanout in all; kept
+     copies 28.6 (no help). Final-grant form alone 34.9 vs late 25.7. R guard pred = rlead form.
+     Probes in wtl (lslot_probe.sv LATE 1-4, lslot_only.sv, ooe_pick_fp.sv, ooe_select_lp.sv).
+     NEXT RTL: ooe_rs payload store + payload-read mux, lane-slot leads in the late 2:1 form, R
+     guard pred off R's pick, phys_src0/1 from the issue reg (out 7). Then build ooe_rs payload store +
      payload-read mux either way. OI-112's 11-06 RA-39 (c) RTL date depends on it (said so).
    - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
      link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
