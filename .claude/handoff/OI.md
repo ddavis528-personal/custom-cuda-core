@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 324, RA 60, IS 188, TI 298, OI 270, CP 152, DA 104
+Conventions 17, AR 269, OA 326, RA 60, IS 188, TI 300, OI 271, CP 152, DA 104
 (sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -98,6 +98,10 @@ the compact hook printed this handoff.
      bench PASS 3 pools, control one-step caught. NEXT: check-cg on 3 units (log
      ~/ccv-logs/oi-cg-fl.log; check-cg OOM-killed once beside a bench: run alone),
      25-seed bench, rename run-rtl sections, ooe-test, merge to main, gate-push, tell OA.
+   - OA 325/326 (answered OI 271): rs order = (1) copies probe (valid by class half, grant
+     one-hot by row group) with fanout, (2) if short price rs_free_lag 1 + 2 rows/class
+     (RCU 32, MIU 17), 4 settings, flops/row, (3) DA beside decq. Then ooe_rat's path
+     through ratread with fanout, in parent (>25 joins plan). TI told 5e81e19 landed.
    - rs a cycle ahead: CORRECTED +1.1-1.6% audit (rev 270; old knob missed renCredits,
      now lagged in model). PAUSED: OA to rule DA vs copies probe (valid 26 -> Sklansky
      131/207 -> rows). RTL design ready (2A index cands/class, port k takes n_q+k).
