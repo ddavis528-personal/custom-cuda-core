@@ -324,6 +324,22 @@ it.
 - **Trigger, from now:** `hold.chwidth` reaching 5% of a run's cycles on
   converged narrow code, such as vadd16 at four warps on compiler F-200's export or
   a narrow-FP kernel. OA then brings the design back to DA with that figure.
+- **Measured (AR-24, TI's rev 313, 2026-11-04):** vadd16 at four warps, one
+  CTA, warm, on CP's export at e533ecd (CP-79), counted as
+  `hold.registered.chwidth` (under go_static a refusal counts there, not in
+  `hold.chwidth`). Both runs hold 72 warp-cycles: one `chwidth.multi` a
+  warp at entry, about 18 cycles each. vadd16_loop (n = 12,288) runs 6,275
+  cycles, so the hold is 0.29% of each warp's cycles (1.15% as warp-cycles
+  over cycles). vadd16 (n = 128) runs 228 cycles, so it is 7.9% a warp
+  (31.6% as warp-cycles over cycles). AR's reading (AR rev 283): the trigger
+  is not met. The cost is a fixed 18 cycles a warp at launch, under 5% on any
+  run past about 360 cycles, and OA-16's 640 to 770 flops would buy those 18
+  cycles once a launch. Only the 228-cycle run crosses 5%, and only because
+  it is short. With four warps the hold also bounds the cycle cost from
+  above, since the other warps issue during one warp's drain. The share that
+  matters is per warp, because a drain holds only its own warp's rename. The
+  trigger's wording is DA's; the coremarkpl32 and coremark32 runs at one and
+  four warps follow (TI, after J2).
 
 ### PF-16 More than one redirect a cycle
 
