@@ -98,10 +98,8 @@
     "ooe_rs": {
       "NGD-1": 29.4,
       "NGD-3 grp_dep_cq01h": 25.6,
-      "NGD-3 prv_code_cq01h": 26.2,
       "NGD-3 prv_dep_cq01h": 26.9,
       "NGD-3 req_cq01h": 30.2,
-      "NGD-3 row_code_cq01h": 25.5,
       "NGD-3 sqf_cq01h": 26.3
     },
     "ooe_sched": {
