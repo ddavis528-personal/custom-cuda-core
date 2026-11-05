@@ -41,7 +41,7 @@ Nothing had RI in Needs at session start.
 00. Push: 600004a (all phase 2 + RI-11 + TI merge + r32 out of the gate) split gate running
     (bqmniuo5k: cg then ngd -> ~/ccv-logs/gate-{cg,ngd}-600004a.tgz); then gate-push --import.
     TI's AR-bases push waits on: 600004a (sent on gate-scratch/RI), MOVI_TOTAL 354 re-pin (TI),
-    and RI-12 (OOE model decq bug on demote, OI). Repro tree ri-wt2 (params restored).
+    and RI-12 (OOE decq bug; OI FIXED at OI rev 287, verified on 600004a, lands in OI's next push: close RI-12 then). Repro tree ri-wt2 (params restored).
 0. RI-11 DONE for RCU (RI rev 10; notices TI, RA). DA: flop at every block boundary; A counts
    from RCU's interface flop; arrivals 0 (rd2 11), set in 0d087e9; check-ngd passes. Model derives
    lane/SFU timing from params; tests derive too (checked at LANE 8/SFU 13). TI lands the params
