@@ -1,0 +1,11 @@
+{
+  "module": "rcu_bank_slice",
+  "ports": {
+    "rr_row_cr03h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "R0/R1's rows, the issue payload's phys_src from RCU's interface flop (DA's ruling on RI-11), wire only; the fanout to the 32 slices (about 2.5) is counted by check-ngd. The slice's decode, read and write-through into rsrc measure 15.9 (18.4 with fanout) of the 25. RA-39's 19/6 split lapsed."
+    }
+  }
+}
