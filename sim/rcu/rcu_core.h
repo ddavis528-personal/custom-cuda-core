@@ -17,7 +17,7 @@
 // launches in t: each one's valid is on the wire in t+1 and its payload in
 // t+2. So for an issue in A (its payload cycle):
 //   - a lane op, an address and an R done are launched in A (valid A+1);
-//   - an R op's write lands in A+2; a lane op's in A+6 (CCV_LAT_LANE - 1);
+//   - an R op's write lands in A+2; a lane op's in A + CCV_LAT_LANE - 1 (A+6 at 7, A+7 at 8);
 //   - a lane op's done is launched in A+5 (valid A+6), from its descriptor,
 //     not from its results.
 // A write that lands in W is readable from W+1. Reads in A (guards,
@@ -70,7 +70,7 @@ constexpr unsigned kRW = 2;   ///< R's write, A+2: the A+2 rule (RA-29 (a))
 static_assert(kRW + 1 == ccv::prov::kLatRcu, "R writes at A+2, readable at A + CCV_LAT_RCU");
 /// The lane bypass window (Lane and memory tab): ages LAT_LANE_BYP to LAT_LANE - 2.
 constexpr unsigned kBypLo = ccv::prov::kLatLaneByp, kBypHi = ccv::prov::kLatLane - 2;
-/// KILL_DRAIN = 2 + link(issue) + CCV_LAT_SFU + 1 + link(done), 15 abutted
+/// KILL_DRAIN = 2 + link(issue) + CCV_LAT_SFU + 1 + link(done), 15 abutted at SFU 12, 16 at 13
 /// (Done tab). The parameter is RA-16 (g), still to land; the links' extra
 /// stages come from the block (Config).
 constexpr unsigned kKillDrainBase = 2 + ccv::prov::kLatSfu + 1;
