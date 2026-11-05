@@ -1,9 +1,9 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=6 exported=2026-11-02 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 6 on 2026-11-02 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=9 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 9 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Migration
 
-Migration moves one warp's 16 GPR rows and 4 predicates between RCU and PCA, one 1,024-bit row per message: rows 0-15 are R0-R15 and row 16 is the predicate row. All of it lives in `ccv_rcu_mig`. It owns no PRF port (AR re:RA-6):
+Migration moves one warp's 16 GPR rows and 4 predicates between RCU and PCA, one 1,024-bit row per message: rows 0-15 are R0-R15 and row 16 is the predicate row. All of it lives in `rcu_mig`. It owns no PRF port (AR re:RA-6):
 
 - A demotion reads GPR rows on **R2**, in A+1 of a cycle whose R op does not read R2. It reads the predicate row on the dedicated predicate ports **D0-D3**.
 - A restore writes GPR rows on **RW**, in A+2 of a cycle whose R op writes no GPR. It writes the predicate row on the dedicated predicate ports **PG0-PG3**.
@@ -19,7 +19,7 @@ OOE's idle-R rule (K = 4, OOE's side) guarantees progress: while a migration is 
 | `rcu_pca_mig` (1034 b) | out | `warp_id`, `mig_row`, `row_data` | none |
 | `pca_rcu_mig` (1034 b) | in | `warp_id`, `mig_row`, `row_data` | none |
 
-None of these four channels is fixed-latency, so the stall rule applies (next section). RCU never asserts stall on the two inbound channels it receives from OOE and RAU, nor on `pca_rcu_mig`. It holds a PCA row back by withholding credit, as TI-13 requires: a returned credit means the row is written.
+None of these four channels is fixed-latency, so the stall rule applies (next section). RCU never asserts stall on the two inbound channels it receives from OOE and RAU, nor on `pca_rcu_mig`. It holds a PCA row back by withholding credit, as TI-13 requires: a returned credit means the row is written. It holds an `ooe_rcu_map` or `rau_rcu_mig` message the same way, until its pair launches: the pairing entry is the credit, and returning it at landing would let the sender overrun the queue (RI-3, intended). Behind a busy engine that is up to `CCV_TIER1_WARPS` − 1 migrations of 17 rows each, every row paced by PCA's credits, so with every warp parked a third warp's pair waits past `CCV_P_TIMEOUT_N`. Both channels are therefore the backpressured class, held to `CCV_P_TIMEOUT_BP` (RI-3; TI marks them in the schema).
 
 ## The stall-safe sender pattern (all of RCU's non-fixed-latency outputs)
 
@@ -45,7 +45,7 @@ So neither queue ever holds more unpaired halves than it has entries, and the tw
 | `mig_mq_v[i]` | 1 × 4 | land or launch or kill drop | entry holds a map |
 | `mig_mq[i]` | (5 + 1 + 128 + 24) × 4 = 632 | land into i | `{warp, dir, gpr_map, pred_map}` |
 | `mig_cq_v[i]`, `mig_cq[i]` | (1 + 6) × 4 | land, launch, kill drop | `{warp, dir}` |
-| `mig_mq_free`, `mig_cq_free` | 4 one-hot each | every cycle | the lowest free entry, from the `_v` flops |
+| `mig_mq_free`, `mig_cq_free` | 4 one-hot each | every cycle | the lowest free entry of the `_v` flops' next values (after this cycle's land, launch and kill drop), so lands on consecutive cycles take different entries (RI-6 (b)) |
 | `mig_dpick`, `mig_rpick` | 1 + 4 + 4 each | every cycle | the flopped pick: the lowest map entry that has a matching command, and its command entry. One pick for demote, one for restore. |
 
 - **Landing.** The valid input is flopped in T−1 (`mig_mq_rxv`). The payload lands in T, into the entry that `mig_mq_free` names, with that entry's write enable driven by the flopped valid. Credits guarantee a free entry. Commands land the same way.
@@ -141,9 +141,9 @@ Per cycle, with the demotion row's decision cycle A:
 
 `kill_valid` (cycle K−1, flopped) and `kill_warp_mask` (cycle K, flopped into `mig_kmask[31:0]`, OR-accumulated) act from K+1:
 
-- **Pairing entries.** Map and command entries of a killed warp are dropped and their credits returned. A row that lands for a warp whose `mig_kmask` bit is set is marked dead. A `ooe_rcu_map` landing for warp w clears `mig_kmask[w]`; a new map comes only after RAU relaunches, which is after every ack.
+- **Pairing entries.** Map and command entries of a killed warp are dropped and their credits returned. Each channel returns one credit a cycle, so the credits a cycle frees (a launch's one, a kill's several) add into a per-channel pending count, `mig_mcr_n` and `mig_ccr_n` (3 bits each, enabled while nonzero or freeing), and one credit goes out each cycle while it is nonzero (RI-6 (a)). A launch's credit is therefore on the wire the next cycle at the earliest. A row that lands for a warp whose `mig_kmask` bit is set is marked dead. A `ooe_rcu_map` landing for warp w clears `mig_kmask[w]`; a new map comes only after RAU relaunches, which is after every ack.
 - **Demotion of a killed warp.** It stops at a row boundary: `dm_busy` clears at the first edge from K+1. A row whose valid is already out still sends its payload, since valid is binding.
-- **Restore of a killed warp.** `rs_busy` clears. Its FIFO rows are marked dead. A dead head entry is popped without a write, and its credit is returned at the next edge, so PCA's in-flight rows drain.
+- **Restore of a killed warp.** `rs_busy` clears. Its FIFO rows are marked dead. A dead head entry is popped without a write, and its credit is returned at the next edge, so PCA's in-flight rows drain. The FIFO pops at most one entry a cycle: when a restore write's pop and a dead head's pop fall in the same cycle, the write pops first and the dead head the next cycle (RI-6 (c)).
 - **Quiesce contribution.** The kill tab's ack takes the AND of:
   - no `dm_busy` for a killed warp;
   - no live FIFO entry of a killed warp;
@@ -155,7 +155,7 @@ Per cycle, with the demotion row's decision cycle A:
 
 About 6,300 flops, every one of them behind its land, launch or send enable. The large arrays are `rs_f` (4,184 flops), `dm_pay` (1,034) and `mig_mq` (632).
 
-Assertions in `ccv_rcu_mig`:
+Assertions in `rcu_mig`:
 
 - `chk_dm_stable`.
 - Rows sent in order 0..16 per demotion.
