@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 284, OA 336, TI 318, IS 189, CP 153, OI 274, DA 106,
+  record): AR 285, OA 338, TI 322, RA 75 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 106,
   Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -180,6 +180,20 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   squash_act_lag 1 (audit +1.2%).
 
 ## Open work (most urgent first)
+00. RI-11 interface flops (Daniel 11-05 in TI's session, TI 321: rpt
+   default one flop in + one out, zero-cycle option kept; "AR decides
+   first"). AR rev 285 decided: the two module flops ARE the two
+   CCV_RT_ABUT/HOP count, never in series with a block's own; HOP, credit
+   loop 4+2N, WAKE_LAT, leads, notices unchanged (check-formal rerun is
+   the test); work a receiver did before its first flop moves a cycle.
+   Expected (owners confirm): LAT_RCU 3 (cancels), COLLECTIVE 5, LANE 7->8,
+   SFU 12->13 (MW writes in lane_rcu_res's landing cycle), L1_WAKE 16->17,
+   CMPL 18->19 (address path), L1_HIT 7; bypass unchanged, lane bypass
+   holds a cycle longer. NGD: 25 a block from its interface flops; 12/12
+   only inside a block; RA-39's 19/6 split goes. Partitioning spec
+   Interfaces rev 21-22 (boundary rule, lead fields incl. miu_rcu_data).
+   AR still owes: LANE spec LANE_BASE/SFU once RA confirms; MIU spec "counts
+   from holding" line. Waiting: TI, RA, OA (notified rev 285).
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
