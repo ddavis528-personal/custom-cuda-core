@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 74, RI 9.
+Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 78, RI 10. AR 287.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -38,12 +38,13 @@ Nothing had RI in Needs at session start.
 - Gate: split gate if all sections run (`verify.sh --full --only ngd` + gate-export + gate-push --import).
 
 ## Open work, most urgent first
-0. RI-11 (RI rev 9; notices to RA, OA, TI): DA ruled every block boundary has a flop by
-   construction (credited interface module). RCU spec's 'inputs consumed off the wire in A' and
-   RA-39's NGD split are void. Repo today: ccv_common_rpt at STAGES=0 is wires, so TI must make it
-   real. TI rev 321: DA ruled the interface module defaults to a flop on each
-   side (zero-cycle option kept); AR decides the latency accounting, then TI builds it, then RA
-   restates. RTL waits (rr_row 8.5, rcu_r arrivals 2 will change). RA/OA held at RA 75 / OA 338.
+0. RI-11 DONE for RCU (RI rev 10; notices TI, RA). DA: flop at every block boundary; A counts
+   from RCU's interface flop; arrivals 0 (rd2 11), set in 0d087e9; check-ngd passes. Model derives
+   lane/SFU timing from params; tests derive too (checked at LANE 8/SFU 13). TI lands the params
+   (LANE_BASE 8, SFU 13, RCU_ADDR_BASE 6) and must merge 0d087e9 first. Then re-run run-tests and
+   check-kernel on TI's push.
+   Push chain: 0d087e9 split gate (cg bnh4z0vqi -> ~/ccv-logs/gate-cg-0d087e9.tgz; then ngd; then
+   gate-push --import=both). ba3549b pushed (SPLIT SCOPED PASS).
 1. Phase 2 RTL (rtl/rcu/, test/rcu/): rcu_bank_slice (RA-39: R0/R1 read from phys_src on the
    wire, rsrc flopped per slice with MW write-through), rcu_r + rcu_xbar. Figures sent to RA as
    RI responses rev 8 (notice sent): phys_src->rsrc 18.4 vs 18 at 192 (miss 0.4) RA-39 CLOSED (RA rev 74, OA rev 337):
