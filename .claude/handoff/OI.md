@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 336, OI 284, CP 152, DA 106, RI 3
+Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 337, OI 284, CP 152, DA 106, RI 3
 (sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -128,7 +128,16 @@ the compact hook printed this handoff.
      copies 28.6 (no help). Final-grant form alone 34.9 vs late 25.7. R guard pred = rlead form.
      Probes in wtl (lslot_probe.sv LATE 1-4, lslot_only.sv, ooe_pick_fp.sv, ooe_select_lp.sv).
      NEXT RTL: ooe_rs payload store + payload-read mux, lane-slot leads in the late 2:1 form, R
-     guard pred off R's pick, phys_src0/1 from the issue reg (out 7). Then build ooe_rs payload store +
+     guard pred off R's pick, phys_src0/1 from the issue reg (out budget 6: OA rev 337, RCU in 19).
+     IN PROGRESS worktree scratchpad/wtp (branch oi-payload, uncommitted, from 1dc0cdd): ooe_rs
+     PW/K params, pay/home staged on req_en, written an edge late via lgp (kept lg copy, pw_en),
+     issue register (iss_v/iss_pay) off gnt_cq01h & home, clocked on iss_en <= sched's new output
+     gnt_l_cq03h (= gnt_en); own reset flop rst_p_r01h (rst_r01h's 374 loads are the worst path:
+     sharing it cost 29.4 -> 29.9). Asserts pay_ready, slot_onehot (on iss_en). trio_tb: tags +
+     homes (rsRes accessor in ooe_core.h), issue compare, controls pay-port/no-home (caught);
+     rs_tb drives home + pay bits (RS_PW; cg-build -GPW=176 -DRS_PW=176); rnrs ties off.
+     ooe_rs NGD 29.4 (= cap; req 29.5 < cap 30.2). CG: re-running with payload driven.
+     Trio-only runner: scratchpad/trio-only.sh <vectors> <seeds>. Then build ooe_rs payload store +
      payload-read mux either way. OI-112's 11-06 RA-39 (c) RTL date depends on it (said so).
    - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
      link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
