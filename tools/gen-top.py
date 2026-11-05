@@ -429,6 +429,18 @@ def rpt_param(c, cp):
     return "RPT_" + (c["name"][4:] + copy_sfx(c, cp)).upper()
 
 
+# The ends built without a boundary flop (params/links.json "no_flop", read by
+# tools/ccv_links.py), as (block type, channel without ccv_); set by main().
+NO_FLOP = set()
+
+
+def bnd(t, c):
+    """The boundary flops block type t's end of channel c holds in its
+    wrapper's repeater: 1 by default, the block's own boundary register built
+    there (Daniel, 2026-11-05; AR's revs 285 and 287); 0 for a no-flop end."""
+    return 0 if (t, c["name"][4:]) in NO_FLOP else 1
+
+
 def ft_param(ci, o):
     """Feedthrough ordinal o's stage count: by ordinal, not copy, so two
     wrappers carrying different copies across themselves can be one template."""
@@ -488,15 +500,16 @@ def wrapper_plan(binst, cinst, ports, names, ft, reuse):
     return plan
 
 
-def rpt_inst(L, name, stages, c, src, dst):
+def rpt_inst(L, name, stages, c, src, dst, boundary=0):
     """One ccv_common_rpt for a channel instance. `src` and `dst` map a signal to
-    its per-slot net names (a function of slot and sig)."""
+    its per-slot net names (a function of slot and sig); `boundary` is the
+    end's boundary flops (bnd), 0 on a feedthrough."""
     r = c["rate"]
     lead = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
             if c["lead_mask"] else "")
     cat = lambda f, sig: "{%s}" % ", ".join(f(sl, sig) for sl in reversed(range(r)))
-    L.append("  ccv_common_rpt #(.STAGES(%s), .SLOTS(%d), .PAYLOAD_W(%d)%s) %s ("
-             % (stages, r, c["bits"], lead, name))
+    L.append("  ccv_common_rpt #(.STAGES(%s), .BOUNDARY(%d), .SLOTS(%d), .PAYLOAD_W(%d)%s) %s ("
+             % (stages, boundary, r, c["bits"], lead, name))
     L.append("    .clk(core_clk), .rst_n(rst_n),")
     L.append("    .src_valid(%s), .src_payload(%s)," % (cat(src, "valid"), cat(src, "payload")))
     L.append("    .src_wake(%s), .src_credit(%s), .src_stall(%s),"
@@ -536,8 +549,10 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
     L.append("// HARDENING WRAPPER %s: ccv_%s and the sequential repeaters of its"
              % (mod, t))
     L.append("// channel ends -- the physical hierarchy (docs/physical.md, \"Wrappers")
-    L.append("// and links\"). Nothing but instances and nets, like the top. An end")
-    L.append("// whose link has no stages here is connected straight through.")
+    L.append("// and links\"). Nothing but instances and nets, like the top. Each end's")
+    L.append("// repeater holds the block's boundary flop (BOUNDARY 1) and its link's")
+    L.append("// stages; a no-flop end (params/links.json no_flop) whose link has no")
+    L.append("// stages here is connected straight through.")
     if baked is not None:
         L.append("//")
         L.append("// A HARD-REUSE TEMPLATE (params/links.json hard_reuse): its stages")
@@ -546,7 +561,7 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
         L += ["//   " + x for x in textwrap.wrap(", ".join(users), 66)]
     else:
         L.append("// Each end's stages are a parameter the top sets from params/links.json;")
-        L.append("// at 0 the end is wired straight through, with no repeater.")
+        L.append("// at 0 a no-flop end is wired straight through, with no repeater.")
     if fts:
         L.append("//")
         L.append("// FEEDTHROUGHS: channels routed across this wrapper, by ordinal,")
@@ -576,8 +591,10 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
     L.append(");")
     L.append("")
     if baked is not None:
-        # An end at 0 is wired straight through, so its count is no one's.
-        used = [p for p in params if baked[p] or p.startswith("FT")]
+        # An end wired straight through has a count that is no one's.
+        flopped = {rpt_param(cinst[x]["chan"], cp) for x, _, cp in ends
+                   if bnd(t, cinst[x]["chan"])}
+        used = [p for p in params if baked[p] or p.startswith("FT") or p in flopped]
         if used:
             L.append("  // This template's stages, fixed.")
             for p in used:
@@ -609,11 +626,13 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
         src, dst = (blk, out) if side == "src" else (out, blk)
         nm = c["name"][4:] + copy_sfx(c, cp)
         prm = rpt_param(c, cp)
-        L.append("  // %s, %s end" % (c["name"], "source" if side == "src" else "destination"))
-        if baked is not None and baked[prm] == 0:
+        b = bnd(t, c)
+        L.append("  // %s, %s end%s" % (c["name"], "source" if side == "src" else "destination",
+                                       "" if b else ", no-flop (params/links.json no_flop)"))
+        if baked is not None and baked[prm] + b == 0:
             wire_inst(L, c, src, dst)
-        elif baked is not None:
-            rpt_inst(L, "u_rpt_" + nm, prm, c, src, dst)
+        elif baked is not None or b:
+            rpt_inst(L, "u_rpt_" + nm, prm, c, src, dst, b)
         else:
             L.append("  if (%s > 0) begin : g_rpt_%s" % (prm, nm))
             sub = []
@@ -1230,32 +1249,34 @@ def rpt_units(binst, cinst, names, ports, ft, plan):
     seen = {}
     for k, (t, i) in enumerate(binst):
         _, vals, _ = plan[k]
-        where = [(x, cp, rpt_param(cinst[x]["chan"], cp)) for x, _, cp in
-                 block_ends(t, i, ports[t], cinst)]
-        where += [(x, None, ft_param(cinst[x], o)) for o, (x, _) in enumerate(ft.get(k, []))]
-        for x, cp, prm in where:
+        where = [(x, cp, rpt_param(cinst[x]["chan"], cp), bnd(t, cinst[x]["chan"]))
+                 for x, _, cp in block_ends(t, i, ports[t], cinst)]
+        where += [(x, None, ft_param(cinst[x], o), 0) for o, (x, _) in enumerate(ft.get(k, []))]
+        for x, cp, prm, b in where:
             st = vals[prm]
-            if not st:
+            if not st + b:
                 continue
             c = cinst[x]["chan"]
-            key = (st, c["rate"], c["bits"], c["lead_mask"])
+            key = (st, b, c["rate"], c["bits"], c["lead_mask"])
             seen.setdefault(key, []).append("%s %s" % (names[k][2:], prm))
     units = []
-    for (st, r, w, lead), users in sorted(seen.items()):
+    for (st, b, r, w, lead), users in sorted(seen.items()):
         lit = "%d'h%x" % (w, lead)
         units.append({
-            "name": "rpt_s%d_n%d_w%d_l%x" % (st, r, w, lead),
+            "name": "rpt_s%d%s_n%d_w%d_l%x" % (st, "_b%d" % b if b else "", r, w, lead),
             "module": "ccv_common_rpt",
             "files": ["rtl/phys/ccv_common_rpt.sv"],
-            "params": {"STAGES": st, "SLOTS": r, "PAYLOAD_W": w, "LEAD_MASK": lit},
+            "params": {"STAGES": st, "BOUNDARY": b, "SLOTS": r, "PAYLOAD_W": w,
+                       "LEAD_MASK": lit},
             "clock": "clk",
             "reset": "!rst_n",
             "instances": users,
             "bench": {
                 "build": ("verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style "
                           "-Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=%d "
-                          "-GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv "
-                          "rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv" % (st, r, w, lit)),
+                          "-GBOUNDARY=%d -GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb "
+                          "rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv"
+                          % (st, b, r, w, lit)),
                 "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
                 "scope": "tb_cg_rpt.dut"}})
     return json.dumps({
@@ -1272,6 +1293,11 @@ def main():
     ports = {b["name"]: block_ports(b["name"], chans, ninst, common, len(binst))
              for b in blocks}
     reuse = ccv_links.hard_reuse([b["name"] for b in blocks])
+    ends = {}
+    for t, i in binst:
+        for x, _, _ in block_ends(t, i, ports[t], cinst):
+            ends.setdefault(t, set()).add(cinst[x]["chan"]["name"][4:])
+    NO_FLOP.update(ccv_links.no_flop([b["name"] for b in blocks], ends))
     targets = [(os.path.join(TOPDIR, "ccv_top.sv"),
                 gen_top(d, binst, chans, cinst, ninst, common, ports, reuse)),
                (os.path.join(TBDIR, "tb_top.sv"),

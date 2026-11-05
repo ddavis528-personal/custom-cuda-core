@@ -1066,7 +1066,7 @@ top is RTL, it is checked twice. First from the budget files, quickly: each
 level of its hierarchy that instantiates others is mapped alone, its
 children cut out, each child's output starting at its required time and each
 child's input to be reached by its arrival, the block's own inputs arriving
-at 13, inner helpers flattened into their parents. So every connection must
+at 0, straight from the interface module's flop in its wrapper, inner helpers flattened into their parents. So every connection must
 converge to 25 as the files say, and any glue between children is NGD-5. Then timed whole, synthesised flattened with its
 hardening wrapper: every flop to flop path within 25, whatever the files
 said. That pass is still needed, but it should find only corner cases, where
@@ -1074,10 +1074,14 @@ synthesis did across a boundary what it could not module by module (two
 64-bit parities in series map shallower than their halves; a large function
 split across a port may map deeper or shallower than its halves add up to).
 And its boundary
-is **registered on both sides** (`docs/skeleton.md`): every output straight
-from a flop, every input into its flops within 12. With a link at 0 repeater
-stages, its default in `params/links.json`, a block port is wired straight to
-its neighbour's, so the blocks' own RTL is what keeps the rule. The block
+is **registered on both sides with nothing between** (`docs/skeleton.md`;
+AR's rev 285 (5): a crossing carries no logic): every output straight from a
+flop, every input straight into one. The flops are the interface module's
+boundary stage, built in the hardening wrapper (`ccv_common_rpt` `BOUNDARY`,
+default 1; Daniel, 2026-11-05), so the block's own paths run from them within
+the stage; at a no-flop end (`params/links.json` `no_flop`) they are the
+block's own registers at 0 NGD. The 12-a-side port budget stays only between
+modules inside a block. The block
 budget of local clock gating (2% per instance) is checked on the same
 assembly by `tools/check-cg.py`. Today no block top is RTL, so neither runs
 on the tree; the fixtures exercise both.

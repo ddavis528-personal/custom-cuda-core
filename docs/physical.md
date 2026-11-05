@@ -21,10 +21,32 @@ changes around it.
 | backward | credit, stall | every cycle, reset low |
 | — | the reset | flopped once, `rst_n_q`, before any use (RST-1) |
 
-`STAGES = 0` is wires, used only for a feedthrough the floorplan routes
-across a wrapper where the distance needs no stage: a channel end with no
-stages has no repeater at all (below). The module is reusable (`clk`/`rst_n`
-are generic formals).
+**The boundary flop (`BOUNDARY`, default 1; Daniel, 2026-11-05, AR's revs
+285, 287).** The module holds `STAGES + BOUNDARY` stages: `STAGES` for the
+link's distance, `BOUNDARY` the block's own boundary register, built here
+instead of in the block, at the block's side of the end: at a source end the
+sender's last flop, at a destination end the receiver's first, for every
+signal (valid, payload, lead and wake forward; credit and stall back). They
+are the two flops `CCV_RT_ABUT` already counts, so no crossing, round trip or
+credit depth changes, and they are never in series with a block's own: a
+block with flopped ends drives and takes its ports with logic. A boundary
+stage is built exactly as a link stage is. `BOUNDARY = 0` is the zero-cycle
+option, for an end listed in `params/links.json` `no_flop` (below).
+`STAGES + BOUNDARY = 0` is wires, used only for a feedthrough the floorplan
+routes across a wrapper where the distance needs no stage, or a no-flop end
+of an unrepeated link: such an end has no repeater at all (below). The module
+is reusable (`clk`/`rst_n` are generic formals).
+
+Two things the boundary flop moves, not yet settled (TI's rev 326 row
+re:RI-11, to AR and DA), and neither binds while every end is no-flop:
+- **Stall.** A sender that takes stall into its launch decision ahead of its
+  first flop stops a cycle later with the flop in the wrapper (proved in
+  `test/formal/fv_link.sv` under `FV_BUILT`: no valid two cycles after a
+  stall holds, one does not). Rescue depth, drain wait and the checker's stall
+  rule would each grow by one for a stalling receiver.
+- **Leads.** A flopped end takes its lead slice in valid's cycle, so its lead
+  flops are written every cycle under no enable (CG-5), against the
+  repeater's own allowance, which every lead channel's flopped end exceeds.
 
 **The payload enable is the stage's own valid flop.** The payload follows
 valid by one cycle, so the cycle it sits on a stage's input is exactly the
@@ -156,11 +178,24 @@ generated `ccv_<blk>_ports.svh`. Block RTL and its port list therefore stay
 the swap boundary: C++ shim, stub or RTL, inside a wrapper that doesn't
 change.
 
-**A channel end has a repeater only where its link has stages there**
-(Daniel, 2026-10-18: a wire through a module of its own is an unnecessary
-obfuscation, and NGD-5 refuses one in any design module). An end with none
-is connected straight through, `assign`s between the block's port and the
-wrapper's. A parameterised wrapper chooses with a generate-if on the stage
+**A channel end has a repeater wherever it has a flop: its link's stages
+there, or its boundary flop** (Daniel, 2026-10-18: a wire through a module of
+its own is an unnecessary obfuscation, and NGD-5 refuses one in any design
+module; 2026-11-05: one flop on every end by default). An end with neither, a
+no-flop end of an unrepeated link, is connected straight through, `assign`s
+between the block's port and the wrapper's.
+
+**No-flop ends (`"no_flop"` in `params/links.json`).** Each entry names a
+block type (or a list), `"channels"` (`"all"` or a list of the type's
+channels) and a `"why"`; `tools/ccv_links.py` refuses an unknown key, block or
+channel, a duplicate, a missing why, and `"all"` for a type whose RTL top
+exists. AR's rev 287 (1) allows no-flop only for an end whose block register
+drives or takes the port with 0 NGD (held at the wrapper by
+`tools/check-ngd.py`: every input straight into a flop, every output straight
+from one), a feedthrough, or a DPI host. Today every block is a DPI host or
+stub, so every type is listed and the generated top is what it was; a block
+leaves the list in the same change that brings its RTL top, and its ends take
+the flops then. A parameterised wrapper chooses with a generate-if on the stage
 count the top sets, so a new split still changes parameters only; a
 hard-reuse template has its ends fixed. A feedthrough always has its
 repeater, of no stages if the distance needs none: the one feedthrough
