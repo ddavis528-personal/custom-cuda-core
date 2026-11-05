@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-04. Keep this current at every task's end; it is what
+Updated 2026-11-05. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -48,7 +48,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 275, OA 331, IS 189, TI 305, OI 274, CP 152, DA 106, RA 64, RI 3.
+Conventions 17, AR 295, OA 346, IS 189, TI 336, OI 290, CP 154, DA 108, RA 82, RI 15.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Next pings Friday 2026-11-06.
@@ -61,6 +61,10 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
+- 2026-11-05 sweep: nothing for IS. DA 107 (interface module 1 flop in/out
+  default), DA 108 (boundary lead slice counts on receiver's 2%), DA (CI):
+  GitHub CI gates only release/weekly/dispatch; red ubuntu-latest runs ignored.
+  RA-19 closed in both sims (CP 20db9c9, TI 9ce7381).
 - ISA decisions this cycle: O-73 to O-85. O-85 (RA-20, DA 2026-11-02, DA tab
   rev 100): warp-collective semantics, diagonal unballot; compiler a70f392.
   RA-19: pmov merges by issue mask (3f202bc). Waiting: TI opcodes, CP ccv-sim.
