@@ -1,6 +1,6 @@
 # OA handoff (OOE architect)
 
-Updated 2026-11-02. Keep this current at every task's end; it is what
+Updated 2026-11-05. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Role and rules (from Daniel, in conversation)
@@ -40,11 +40,25 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 345, AR 292, TI 333, OI 288, IS 189, CP 152, DA 108,
-RA 74 (tab 9851686b-2b0a), RI 9 (tab 8e4547bc-c469).
-OOE doc rev 363. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
+Conventions 17, OA 353, AR 300, TI 338, OI 294, IS 189, CP 154, DA 108,
+RA 82 (tab 9851686b-2b0a), RI 15 (tab 8e4547bc-c469).
+OOE doc rev 364. Pings 2026-10-30 (Fri): all ponged ok. Next pings Fri 2026-11-06.
+Sweep 11-05: 6 branches (209 commits) merged at 76f0190, full gate green, pushed;
+release 5174359; snapshot tag refused by the proxy (known, local only).
 
 ## Open work (most urgent first)
+-7. ooe_rs depth (OA 351/352, OI 293/294): copies took ooe_rs 30.1->26.2 (RTL, cap 29.4).
+   rs_free_lag DROPPED: free not on valid->grant-prefix path, buys no depth.
+   OI prices in one audit: (1) per-port candidates registered a cycle ahead (new
+   semantic) + RTL depth est; (2) 49 rows no lag (+3,353 OOE flops, ~5.1%, ooe_rs
+   +2,573). Then DA: (a) stay on cap (likely rec), (b) pre-register if <0.5% and
+   meets 25, (c) 49 rows only if speedup well over 1%. Told DA in chat 11-05.
+-6. RI-11 cmpl (AR 298, OA 350): CMPL_HINT 3 / FILL_NOTICE 5 covers noticed-refill
+   wakes only. OI splits miu_ooe_cmpl +1.60% S1 (refill/on-completion/cancel shadow)
+   + hint point, in the package run, now a links.json no_flop run in both hosts
+   (AR 300 link term: crossing = HOP + link_n + bnd_rx; OOE contracts unchanged at
+   defaults; OA 353, doc 364). Then OA recommends cmpl treatment to DA.
+   lane_rcu_res is the only RCU zero-cycle candidate.
 -5. RI-11 / DA 11-05 (via TI rev 321, verbatim; OA recorded DA tab 107): interface
    module default one flop in + out (2 cycles/link), zero-cycle option kept; AR does
    latency accounting first. OA rev 339: RA-39 19/6 lapses; OOE list given to AR;
