@@ -86,6 +86,20 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-9. STATE 11-05 ~11:50 UTC. OA rev 352 (re:OI 294): rs_free_lag dropped; price (1) cand-ahead
+   + RTL depth, (2) 49 rows no lag, one audit. Model knob rs_cand_ahead=A in worktree
+   scratchpad/wtca (branch oi-candahead, uncommitted, patch ri11/candahead.patch): candidates
+   = first A free at the prior cycle's start, less that cycle's candidates; rsHeld/rsAlloc
+   honour them (renCredits not, fits_stale 6 split slightly optimistic). Unit suite: all pass
+   but control pair-rounds MISSED (timing; knob not for push). 4-seed audit 917 -> 959.
+   RH job SENT 11-05 11:50 (after its CoreMark): ri11/ca-run.sh, 12 audits base/CA/R49 x
+   s1/s0 x n0/n1 -> out/audit.txt. RTL probe caprobe/ooe_rs_ca.sv (g = req & cnd regs, cnd
+   from grants(valid|cany,'1)); runs after the cf39eec gate (bfl6x8959, caprobe/ca.log).
+   Base crit (old 29.2 netlist): prefix to the grant ~17.1, broadcast + row write ~12.
+   Then: OI row to OA (Needs OA) with both, notify OA.
+   AR rev 300 (re:RI-16, Needs incl. OI): crossing = HOP + link_n + bnd_rx (links.json, both
+   hosts). AFTER TI lands it: RI prices, then OI prices D, N, Z1-Z3 and the package (AR 298,
+   OA 349) as links.json no_flop configs, not rx_lag knobs. Nothing now. AR bookmark 300.
 -8. STATE 11-05 ~11:00 UTC. PUSHED aa9ad9c (SCOPED PASS): RA-31 leads per OA 343 (A)
    (790a38d: lead in I at t+1, payload t+2 via gd) + OA 325 step 1 copies (ooe_rs f-f 26.2,
    sqf 26.3 AT cap 26.3, req 28.5; prv_code/row_code caps removed). OI rev 293 reported
