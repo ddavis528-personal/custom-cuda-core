@@ -284,9 +284,11 @@ module ooe_freelist #(
   // took, popped from the buffer now, their free bits cleared with them.
   // Leaving the buffer now: last cycle's take (rq, one-hot), its first q
   // entries. Their free bits clear with them; the buffered set clears a
-  // cycle later, from this mask registered (pr), off the edge's path: in
-  // between the entries' free bits are clear, so no bank finds them, and
-  // none is freed before it has been out of the buffer a cycle.
+  // cycle later, from this mask registered (pr), off the edge's path. An
+  // entry freed in between (a squash can free a name the cycle after its
+  // take) is still marked buffered at the next search, so no bank finds it
+  // there; it is found from the search after (the model's FreeVec clears
+  // its buffered set as late).
   function automatic logic [N-1:0] popped_of(input logic [SW-1:0] st, input logic [A:0] rq);
     logic [B*W-1:0] buf_q;
     logic [LB-1:0]  cnt;

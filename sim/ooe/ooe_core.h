@@ -90,7 +90,7 @@ struct Config {
   /// next. decq_free_lag 1: ooe_decq's likewise, a slot freed in a cycle
   /// counted held through the next as well.
   unsigned rs_free_lag = 0;
-  unsigned decq_free_lag = 0;
+  unsigned decq_free_lag = 1;   // DA, OA rev 327: ooe_decq builds it
   unsigned ren_floor = ccv::prov::kRenFloor;
   unsigned ren_ceil = ccv::prov::kRenCeil;
   unsigned pred_ren_floor = ccv::prov::kPredRenFloor;
@@ -452,11 +452,12 @@ struct Config {
   /// inject_no_ret_hold drops the hold). Both 1, with resolve_lag 1 (rets
   /// at lag 1, branches and calls at 0), squash_act_lag 1 and
   /// squash_held_room_lag 1, are the defaults (OA's rev 294, OI-98).
-  /// ret_hold 2 prices OA's rev 319 sched (b): the held branch still
-  /// requests, and a win is cancelled after the pick, its resource left
-  /// unused (issue.ret_hold_cancel, issue.ret_hold_lost_slot).
+  /// ret_hold 2, the default since OA's rev 320 (sched (b)): the held
+  /// branch still requests, and a win is cancelled after the pick, its
+  /// resource left unused (issue.ret_hold_cancel, issue.ret_hold_lost_slot),
+  /// so the hold stays off ooe_select's request. 1 holds the request.
   unsigned resolve_lag_ret_only = 1;
-  unsigned ret_hold = 1;
+  unsigned ret_hold = 2;
   /// RA-17 (OA's revs 298-299): a migration borrows R's PRF ports, a row in
   /// each cycle R holds no op. While one is in flight (restore-allocate to
   /// restore-activate; a demotion's map to its slot's free), select leaves
@@ -567,7 +568,8 @@ struct Config {
   bool inject_a1_base_only = false;
   bool inject_cas_split = false;
   /// OI-79 (b)'s control: the take keeps a pair the width splits (its
-  /// first slot taken, its second left for the next cycle).
+  /// first slot taken, its second left for the next cycle): it skips both
+  /// the take's cap and tryRename's cut at the last lane.
   bool inject_pair_split = false;
   /// OI-84's control: a pair's second in its warp's next round (OI-79 (b))
   /// rather than the lane after its first; four warps each with a CAS at
@@ -605,6 +607,9 @@ struct Config {
   bool inject_park_layout_lost = false;
   /// TI-34's control: the memops, barriers and faults carry CTA slot 0.
   bool inject_cta_slot_zero = false;
+  /// RI-12's control: a released slot keeps its warp's queued uops, which
+  /// the warp's next slot then takes against a count that never held them.
+  bool inject_keep_released_uops = false;
   /// TI-36 (b)'s control: a predicate-only masked load (ld.pred) makes no
   /// copy, so its inactive lanes' bits are lost.
   bool inject_pred_copy_lost = false;
@@ -967,6 +972,7 @@ public:
     direct_ = !cap && direct && banks > 1;
     used_.assign(banks, 0);
     inbuf_.assign(n, 0);
+    pr_.clear();
     buf_.clear();
     transit_ = took_ = 0;
     ready_ = n;
@@ -1078,13 +1084,21 @@ public:
     if (cap_ && !fresh) {
       // Last cycle's allocations leave the buffer; this cycle's stay, in
       // transit, until the next edge.
+      // fl_two_step: their buffered bits clear an edge later, after the
+      // next edge's search (ooe_freelist's registered pop mask): an entry
+      // freed meanwhile is found by the search after that.
+      std::vector<unsigned> popped;
       for (unsigned i = 0; i != transit_; ++i) {
-        inbuf_[buf_.front()] = 0;
+        if (two_step_) popped.push_back(buf_.front()); else inbuf_[buf_.front()] = 0;
         buf_.pop_front();
       }
       transit_ = took_;
       took_ = 0;
       if (two_step_) refill2(); else refill();
+      if (two_step_) {
+        for (const unsigned p : pr_) inbuf_[p] = 0;
+        pr_ = std::move(popped);
+      }
     }
     if (direct_) {
       used_.assign(banks_, 0);
@@ -1178,6 +1192,7 @@ private:
   std::vector<unsigned> cq_;
   bool two_step_ = false;
   std::vector<uint8_t> bit_, pend_, inbuf_, pend2_, used_;
+  std::vector<unsigned> pr_;   ///< fl_two_step: the last edge's pops, still marked buffered
   size_t npend2_ = 0;
   unsigned lag_ = 0;
   bool direct_ = false;
@@ -1953,6 +1968,8 @@ private:
   bool req_alloc_q2_ = false;             ///< and a cycle before (req_rows_late)
   bool req_stop_q_ = false;               ///< ooe_sched's registered stop lead (req_rows_late)
   bool ren_floors_in_share_ = false;      ///< rename's admission: the allowance holds the floors (fits_stale 6)
+  bool ren_pair_last_ = false;            ///< OI-79 (b): the pair tried takes the cycle's last lane
+  bool ren_pair_cut_ = false;             ///< and the go's terms admitted it: the width cuts the take there
   std::vector<unsigned> hints_;           ///< completion hints sent before this cycle (miss_lead)
   /// req_rows_late: each row's state one and two updates ago (bit 0
   /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle, 4
@@ -2152,6 +2169,7 @@ public:
   /// next.
   bool wakeLineChanges(unsigned j, unsigned k) const { return lineAt(j, k, now_ + 2) != lineAt(j, k, now_ + 1); }
   unsigned rsSlot(unsigned e) const { return rs_[e].slot; }
+  unsigned rsRes(unsigned e) const { return rs_[e].res; }   ///< the entry's footprint (S0-S3, R, P0-P3; ooe_select's res)
   bool rsCopy(unsigned e) const { return rs_[e].copy; }
   bool rsEligibleNext(unsigned e) const { return rs_[e].eligible_at <= now_ + 1; }
   bool slotActive(unsigned s) const { return s < slot_.size() && slot_[s].st == WarpState::kActive; }
