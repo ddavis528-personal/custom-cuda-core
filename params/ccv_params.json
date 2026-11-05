@@ -703,11 +703,11 @@
     },
     {
       "name": "CCV_P_DECQ",
-      "value": 13,
+      "value": 15,
       "status": "provisional",
-      "decided_at": "OOE per-block session; DA's response OA-21 (2026-10-20)",
+      "decided_at": "DA-106 (2026-11-04)",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; DA's response OA-21",
-      "doc": "Decode queue depth ahead of rename. 13 since rename interleaves warps uop by uop (option (c), DA's response OA-21): decq registers the take and pops it an edge late, and the extra entry covers the uop in flight; DEC's credit pool follows it. Was 12."
+      "doc": "Decode queue depth ahead of rename. 15 with decq_free_lag 1, was 13 (DA-106, OA's rev 327): a freed entry's credit returns an edge late, and the two extra entries cover it; DEC's credit pool follows it. 13 was for rename's take popped an edge late (option (c), DA's response OA-21); 12 before that."
     },
     {
       "name": "CCV_P_RS_WARP_CAP",
