@@ -3,9 +3,9 @@
   "ports": {
     "br_cr02h": {
       "arrival": 5.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA (RA tab rev 81, re:RI-14)",
       "date": "2026-11-05",
-      "why": "The op-class decode's guarded, pdata and branch bits (Pipeline tab, Op-class decode), decoded from the issue slot's opcode at the interface flop: 5 NGD, the Partition tab's figure for the decode (issue payload to bank predecode). Set by RI pending RA: they reach the guard's force term, 12.5 NGD on, 17.5 in all."
+      "why": "RA rev 81: the class bits arrive at 0 and the op-class decode (Pipeline tab) is timed inside rcu_pred. The decode table is TI's to generate (RI-14 follow-up); until rcu_pred takes the opcode and decodes it, the decode's 5 NGD (Partition tab: issue payload to bank predecode) sits here at the port so the path is timed whole: 12.5 NGD on to the guard's force term, 17.5 in all."
     },
     "dq_cr02h": {
       "required": 18.0,
@@ -21,9 +21,9 @@
     },
     "gt_cr02h": {
       "arrival": 5.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA (RA tab rev 81, re:RI-14)",
       "date": "2026-11-05",
-      "why": "The op-class decode's guarded, pdata and branch bits (Pipeline tab, Op-class decode), decoded from the issue slot's opcode at the interface flop: 5 NGD, the Partition tab's figure for the decode (issue payload to bank predecode). Set by RI pending RA: they reach the guard's force term, 12.5 NGD on, 17.5 in all."
+      "why": "RA rev 81: the class bits arrive at 0 and the op-class decode (Pipeline tab) is timed inside rcu_pred. The decode table is TI's to generate (RI-14 follow-up); until rcu_pred takes the opcode and decodes it, the decode's 5 NGD (Partition tab: issue payload to bank predecode) sits here at the port so the path is timed whole: 12.5 NGD on to the guard's force term, 17.5 in all."
     },
     "im_cr02h": {
       "arrival": 0.0,
@@ -37,25 +37,13 @@
       "date": "2026-11-05",
       "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
     },
-    "lgp_cr01h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
-      "date": "2026-11-05",
-      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
-    },
-    "lgu_cr01h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
-      "date": "2026-11-05",
-      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
-    },
-    "mam_cr01h": {
+    "mam_cr02h": {
       "arrival": 0.0,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-05",
       "why": "ccv_miu_rcu_data's lead (T-1) and pred_result (T) from RCU's interface flop (DA's ruling on RI-11), wire only. mv and mwe make the enable that keeps MIU's lead (CG-5 waiver, rtl/cg-waivers.json)."
     },
-    "mp_cr01h": {
+    "mp_cr02h": {
       "arrival": 0.0,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-05",
@@ -87,9 +75,9 @@
     },
     "pdt_cr02h": {
       "arrival": 5.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA (RA tab rev 81, re:RI-14)",
       "date": "2026-11-05",
-      "why": "The op-class decode's guarded, pdata and branch bits (Pipeline tab, Op-class decode), decoded from the issue slot's opcode at the interface flop: 5 NGD, the Partition tab's figure for the decode (issue payload to bank predecode). Set by RI pending RA: they reach the guard's force term, 12.5 NGD on, 17.5 in all."
+      "why": "RA rev 81: the class bits arrive at 0 and the op-class decode (Pipeline tab) is timed inside rcu_pred. The decode table is TI's to generate (RI-14 follow-up); until rcu_pred takes the opcode and decodes it, the decode's 5 NGD (Partition tab: issue payload to bank predecode) sits here at the port so the path is timed whole: 12.5 NGD on to the guard's force term, 17.5 in all."
     },
     "rimm_cr02h": {
       "arrival": 0.0,

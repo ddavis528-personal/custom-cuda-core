@@ -109,8 +109,6 @@ module rcu_pred #(
   input  logic               rcu_rst_r00h,
   // Stage I: the issue slots.
   input  logic [NS-1:0]      iv_cr01h,      // slot s issues next cycle (the lead's valid)
-  input  logic               lgu_cr01h,     // R's lead_guard_used
-  input  logic [WP-1:0]      lgp_cr01h,     // R's lead_guard_pred
   input  logic [NS*WP-1:0]   gd_cr02h,      // phys_pred_guard
   input  logic [NS-1:0]      ng_cr02h,      // pred_neg
   input  logic [NS*N-1:0]    im_cr02h,      // issue_mask
@@ -126,11 +124,11 @@ module rcu_pred #(
   output logic [N-1:0]       low_cr03h,     // rlow_a
   output logic               lbt_cr03h,     // lead_br_taken_a
   output logic [N-1:0]       lbm_cr03h,     // lead_br_mask_a
-  // MIU: each slot's lead in T-1, its pred_result in T.
+  // MIU: valid and pred_we in T-1; the row, mask and pred_result in T.
   input  logic [NM-1:0]      mv_cr01h,      // slot j lands next cycle
   input  logic [NM-1:0]      mwe_cr01h,     //   pred_we
-  input  logic [NM*WP-1:0]   mp_cr01h,      //   phys_pred
-  input  logic [NM*N-1:0]    mam_cr01h,     //   active_mask
+  input  logic [NM*WP-1:0]   mp_cr02h,      //   phys_pred
+  input  logic [NM*N-1:0]    mam_cr02h,     //   active_mask
   input  logic [NM*N-1:0]    mr_cr02h,      // pred_result, landing now
   // Merge write ports.
   input  logic [NQ-1:0]      qv_cr00h,      // port q writes in two cycles
@@ -199,36 +197,14 @@ module rcu_pred #(
     end
   end
 
-  // ---- R's guard lead (RA-32), kept for A -----------------------------
-  // Loaded under the lead's valid, from RCU's interface flop on the issue
-  // channel (CG-5 waiver, as MIU's lead below).
-  wire rl_en_cr01h = iv_cr01h[SR];
-  logic [NH-1:0] rg_hi_cr02h;
-  logic [7:0]    rg_lo_cr02h;
-  always_ff @(posedge rcu_core_clk) begin
-    // Without the lead (an unguarded op) the row decodes to none: it reads 0.
-    if (rl_en_cr01h) begin
-      rg_hi_cr02h <= lgu_cr01h ? dec_hi(lgp_cr01h) : '0;
-      rg_lo_cr02h <= dec_lo(lgp_cr01h);
-    end
-  end
-  logic rgu_cr02h;   // for the lead's contract only
-  always_ff @(posedge rcu_core_clk) begin
-    rgu_cr02h <= lgu_cr01h;
-  end
-
-  // ---- MIU's lead, kept for T ------------------------------------------
-  wire [NM-1:0] ml_en_cr01h = mv_cr01h & mwe_cr01h;   // the interface flop's Q (CG-5 waiver)
+  // ---- MIU's row and mask, decoded in T -------------------------------
   logic [NM*NH-1:0] m_hi_cr02h;
   logic [NM*8-1:0]  m_lo_cr02h;
-  logic [NM*N-1:0]  m_am_cr02h;
-  for (genvar j = 0; j < NM; j++) begin : g_ml
-    always_ff @(posedge rcu_core_clk) begin
-      if (ml_en_cr01h[j]) begin
-        m_hi_cr02h[j*NH +: NH] <= dec_hi(mp_cr01h[j*WP +: WP]);
-        m_lo_cr02h[j*8 +: 8]   <= dec_lo(mp_cr01h[j*WP +: WP]);
-        m_am_cr02h[j*N +: N]   <= mam_cr01h[j*N +: N];
-      end
+  wire  [NM*N-1:0]  m_am_cr02h = mam_cr02h;
+  always_comb begin
+    for (int j = 0; j < NM; j++) begin
+      m_hi_cr02h[j*NH +: NH] = dec_hi(mp_cr02h[j*WP +: WP]);
+      m_lo_cr02h[j*8 +: 8]   = dec_lo(mp_cr02h[j*WP +: WP]);
     end
   end
 
@@ -259,13 +235,8 @@ module rcu_pred #(
     for (int s = 0; s < NS; s++) begin
       logic [N-1:0] r_cr02h, g_cr02h;
       logic         force_cr02h;
-      if (s == SR) begin
-        g_hi_cr02h[s*NH +: NH] = rg_hi_cr02h;
-        g_lo_cr02h[s*8 +: 8]   = rg_lo_cr02h;
-      end else begin
-        g_hi_cr02h[s*NH +: NH] = dec_hi(gd_cr02h[s*WP +: WP]);
-        g_lo_cr02h[s*8 +: 8]   = dec_lo(gd_cr02h[s*WP +: WP]);
-      end
+      g_hi_cr02h[s*NH +: NH] = dec_hi(gd_cr02h[s*WP +: WP]);
+      g_lo_cr02h[s*8 +: 8]   = dec_lo(gd_cr02h[s*WP +: WP]);
       r_cr02h = rd(g_hi_cr02h[s*NH +: NH], g_lo_cr02h[s*8 +: 8], row_cr02h);
       r_cr02h = fwd(g_hi_cr02h[s*NH +: NH], g_lo_cr02h[s*8 +: 8], r_cr02h,
                     mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
@@ -377,12 +348,15 @@ module rcu_pred #(
       logic [N-1:0] m, dv;
       m = '0;
       dv = '0;
-      row_en_cr02h[p] = 1'b0;
+      // The enable from the module's own flops only (CG-5): a merge port's
+      // row (its flopped one-hots), or any MIU slot landing. MIU's row comes
+      // with its data, so it selects in D: a row not named reloads itself.
+      row_en_cr02h[p] = |mw_cr02h;
       for (int q = 0; q < NP; q++) begin
         logic h;
         h = p_act_cr02h[q] & p_hi_cr02h[q*NH + p/8] & p_lo_cr02h[q*8 + p%8];
         hit_cr02h[p*NP + q] = h;
-        row_en_cr02h[p] = row_en_cr02h[p] | h;
+        if (q < NQ) row_en_cr02h[p] = row_en_cr02h[p] | h;
         m  = m | ({N{h}} & p_m_cr02h[q*N +: N]);
         dv = dv | ({N{h}} & p_m_cr02h[q*N +: N] & p_d_cr02h[q*N +: N]);
       end
@@ -415,7 +389,7 @@ module rcu_pred #(
   end
 
   // ---- Contracts -------------------------------------------------------
-  logic overlap_cr02h, bad_q_cr01h, bad_m_cr01h, bad_r_cr01h, hazard_cr02h, lead_cr02h;
+  logic overlap_cr02h, bad_q_cr01h, bad_m_cr02h, bad_r_cr01h, hazard_cr02h;
   always_comb begin
     overlap_cr02h = 1'b0;
     for (int p = 0; p < ROWS; p++) begin
@@ -430,9 +404,9 @@ module rcu_pred #(
     bad_q_cr01h = 1'b0;
     for (int q = 0; q < NQ; q++)
       bad_q_cr01h = bad_q_cr01h | (qv_cr01h[q] && 32'(qrow_cr01h[q*WP +: WP]) >= ROWS);
-    bad_m_cr01h = 1'b0;
+    bad_m_cr02h = 1'b0;
     for (int j = 0; j < NM; j++)
-      bad_m_cr01h = bad_m_cr01h | (ml_en_cr01h[j] && 32'(mp_cr01h[j*WP +: WP]) >= ROWS);
+      bad_m_cr02h = bad_m_cr02h | (mw_cr02h[j] && 32'(mp_cr02h[j*WP +: WP]) >= ROWS);
     bad_r_cr01h = 1'b0;
     for (int d = 0; d < ND; d++)
       bad_r_cr01h = bad_r_cr01h | (dv_cr01h[d] && 32'(drow_cr01h[d*WP +: WP]) >= ROWS &&
@@ -446,21 +420,16 @@ module rcu_pred #(
           hazard_cr02h = hazard_cr02h |
             (qa_cr02h[q] & (|(g_hi_cr02h[s*NH +: NH] & w_hi_cr02h[q*NH +: NH])) &
                            (|(g_lo_cr02h[s*8 +: 8] & w_lo_cr02h[q*8 +: 8])));
-    lead_cr02h = iv_cr02h[SR] && gt_cr02h[SR] &&
-                 (!rgu_cr02h || rg_hi_cr02h != dec_hi(gd_cr02h[SR*WP +: WP]) ||
-                  rg_lo_cr02h != dec_lo(gd_cr02h[SR*WP +: WP]));
   end
   // Ports on one row in a cycle write disjoint lanes.
   `CCV_ASSERT(pred_write_disjoint, !overlap_cr02h)
   // A write never names the zero predicate (A-64) or a row past the pool.
   `CCV_ASSERT(pred_write_row_named, !bad_q_cr01h)
-  `CCV_ASSERT(pred_load_row_named, !bad_m_cr01h)
+  `CCV_ASSERT(pred_load_row_named, !bad_m_cr02h)
   // A demotion read names a row of the pool or the zero predicate.
   `CCV_ASSERT(pred_read_row_named, !bad_r_cr01h)
   // A guard is never written in its own A but by MIU (the forward).
   `CCV_ASSERT(guard_no_hazard, !hazard_cr02h)
-  // R's guard lead names the payload's guard (RA-31, RA-32).
-  `CCV_ASSERT(guard_lead_names, !lead_cr02h)
 
 endmodule
 `undef CCV_CLK
