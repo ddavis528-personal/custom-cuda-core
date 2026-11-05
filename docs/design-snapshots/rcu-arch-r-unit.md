@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=16 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 16 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=20 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 20 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # R unit and crossbar
 
@@ -27,7 +27,7 @@ The R unit, `rcu_r`, executes one op a cycle from issue slot 8 in three stages: 
 
 **What it needs.**
 
-- From OOE: nothing new. `phys_src`\[15:8\] and \[7:0\] of the R slot on `ccv_ooe_rcu_issue`, driven straight from the issue register. Budgets (OA rev 336): RCU input 18, OOE output 7. The lead fields `lead_r_src0/1` of the earlier form are withdrawn (OI-115: muxed in select they put `ooe_sched` at 38.8 NGD against its 30.5).
+- From OOE: nothing new. `phys_src`\[15:8\] and \[7:0\] of the R slot on `ccv_ooe_rcu_issue`, driven straight from the issue register. Budgets (OA revs 336-337): RCU input 19, OOE output 6 (RI measured 18.4, RI rev 8). The lead fields `lead_r_src0/1` of the earlier form are withdrawn (OI-115: muxed in select they put `ooe_sched` at 38.8 NGD against its 30.5).
 - In each `rcu_bank_slice`: `rsrc`, R0 and R1 raw for its byte section of its 4 lanes, 2 × 4 × 8 = 64 flops (2,048 across the 32 slices, as before), enabled by the slice's flop of the R issue valid lead (CG-5). `lead_src_used` is not used: a source the op does not read is read anyway, a small DCGE cost. R0 and R1 have no select flops (the RI-9 binary selects go: 16 ungated flops a slice, 512 in all).
 - Migration is unchanged: it uses R2 and RW only.
 - **The MIU write-through (RA-39, RA rev 70).** The slice compares the payload's row with its own MW select flops (row, lane mask, section, valid; Register file tab, lead-loaded ports) and, on a match, substitutes per lane and section the MW write data already on its D inputs for the bank's read. That is the row as it will stand after T, so every source width and pos on it is right, and forwarding every MW write that lands in A is a correct superset of the L1-hit case. No compare of pos and no lead copies in `r`: the 180 MIU lead flops, 8 match flops and the \~10,000-cell post-alignment forward of the earlier form are gone.
@@ -40,7 +40,7 @@ The R unit, `rcu_r`, executes one op a cycle from issue slot 8 in three stages: 
 | --- | --- | --- | --- |
 | `r_a` | A's edge | r\_kind, rob\_tag, done\_row, issue\_mask, `active`, `imm`, dst row predecode, dst pos and width, src pos and width (R0, R1), old-destination pos, `phys_pred_dst` and old-destination predecode, `r_wgpr`, `r_wpred` | `iss_v_q[8]` |
 | `rpsrc_a` | A's edge | RA and RB values, negates applied, MIU forward applied (32 bits each) | `iss_v_q[8]` |
-| `rlow_a` | A's edge | one-hot of the lowest set bit of `active` (32 bits) | `iss_v_q[8]` |
+| `rlow_a` | A's edge | one-hot of the lowest set bit of `active` (32 bits); a flop of rcu\_pred, which computes active, read by rcu\_r (as built, RI; RA rev 73) | `iss_v_q[8]` |
 | `rres_a1` | A+1's edge | GPR result `new[32][32]` right-aligned, old destination `old[32][32]` right-aligned, lane merge mask, dst predecode, pos, width | `r_v_a` (flop of `iss_v_q[8]`), or migration's restore grant (then the staged row) |
 | `rpres_a1` | A+1's edge | predicate result (32), merge mask (32), pd and old-destination predecode | `r_v_a` |
 | done slot 5 or 6 payload | A+1's edge | rob\_tag, done\_row; slot 5 adds branch\_taken, branch\_mask, aux | `r_v_a` |
@@ -86,7 +86,7 @@ Barriers do not reach the RCU in the first build (TI-40, TI-42; RA-25 closed by 
 
 | Stage | Path | Estimate (NGD) |
 | --- | --- | --- |
-| A | `phys_src` at the RCU port 2, fanout to the 32 slices about 2.5, binary decode in the slice 2, R0 or R1 read 11.0 (measured, with fanout), MIU write-through mux 2, into the slice's `rsrc` | 19.5 (RCU input budget 18 + OOE's 2) |
+| A | `phys_src` at the RCU port 2, fanout to the 32 slices about 2.5, binary decode in the slice 2, R0 or R1 read 11.0 (measured, with fanout), MIU write-through mux 2, into the slice's `rsrc` | measured 18.4 (15.9 in the slice + 2.5 fanout), RCU input budget 19, + OOE's 2 |
 | A | the write-through match: row compare against the MW select flops 3, AND lane mask, section and valid 1, fanout to the 64 bits about 3, after the port's 4.5 | about 11.5, in parallel |
 | A+1 | R2 read 11.0, align 2, into `old` | 13 |
 | A+1 | register-index shfl from `rsrc`: align 2, select fanout 1, decode 3, crossbar 6, em 1, fanout of the one-hots about 3 | 16 |
@@ -94,4 +94,4 @@ Barriers do not reach the RCU in the first build (TI-40, TI-42; RA-25 closed by 
 | A+1 | `unballot` from `rsrc`: align 3, bit select 0 (a wire), into `rpres_a1` | 4 |
 | A+1 | `vote`: OR or AND over 32 from `rpsrc_a`, into `rpres_a1` | 6 |
 
-Every R path has 5 NGD or more of margin. Port budgets: `phys_src0/1` RCU in 18 (at `rcu_bank_slice`, fanout included); `bank` out 11 on R2; `rsrc` out of the slice from flops, `r` in 14. If OA cannot confirm RA-39's hazard condition for some class, the fallback is a late wake of R consumers by one cycle for that class, a bypass-table cell on OOE's side, not a change here.
+Every R path has 5 NGD or more of margin. Port budgets: `phys_src0/1` RCU in 19, OOE out 6 (at `rcu_bank_slice`, fanout included); `bank` out 11 on R2; `rsrc` out of the slice from flops, `r` in 14. If OA cannot confirm RA-39's hazard condition for some class, the fallback is a late wake of R consumers by one cycle for that class, a bypass-table cell on OOE's side, not a change here.

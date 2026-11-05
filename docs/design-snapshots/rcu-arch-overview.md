@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=38 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 38 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=43 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 43 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -65,7 +65,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | CG stimulus | checked replays of ccv-skel port traces: high coremark128 and vadd, medium with two idle cycles after each, idle reset | Partition (M2) | RA-34 |
 | Model first | a cycle-accurate C++ model, owned by RI, ahead of the RTL; the RTL runs lock-step against it for good (Daniel, 2026-11-02, DA tab; RTL-first lost) | Partition (M0) | RA-38 |
 | Bank slices | each bank is 8 slices of one byte section across 4 lanes (192 rows × 32 bits, about 6,550 flops, 193,000 cells, 1.35 GB: inside ooe\_rob\_w's envelope), 32 in all, each with its own selects; a physical chunk is the 4 slices of 4 lanes, about 770,000 cells, 8 chunks; place and route flat, chunks keep physical partitioning open. Bank read out budget 11 (measured 8.3, 11.0 with fanout) | Register file, Partition | Daniel, 2026-11-03 |
-| Early R source read | R0/R1 rows from the issue payload's `phys_src` on the wire (no lead), decoded in each bank slice and read in A into the slice's `rsrc` with an MIU write-through for L1-hit loads; `phys_src0/1` budgets RCU in 18, OOE out 7; align and compute from flops in A+1 (about 16 NGD); `CCV_LAT_RCU` stays 3 | R unit | RA-39 |
+| Early R source read | R0/R1 rows from the issue payload's `phys_src` on the wire (no lead), decoded in each bank slice and read in A into the slice's `rsrc` with an MIU write-through for L1-hit loads; `phys_src0/1` budgets RCU in 19, OOE out 6; align and compute from flops in A+1 (about 16 NGD); `CCV_LAT_RCU` stays 3 | R unit | RA-39 |
 
 ## Settled with AR (RA-1 to RA-17)
 
@@ -112,7 +112,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | RA-35 | AR | rcu-arch.md's ports, latencies and section 8 | raised | none (process) |
 | RA-36 | TI | roadmap Part 0 for the RCU | **done** (TI rev 317, e60ae23): roadmap RCU status; `rcu_miu_width` deleted, Q-18 closed; (d) goes to OI with ADDR\_BASE = 1 | none (process) |
 | RA-37, RA-38 | TI, OA | repo support for RI: gate-scope map, model hook (`makeRcu`, `CCV_RCU_IMPL`), `check-rcu-unit`, `job_rcu_rtl`, `CCV_RCU_RTL` | agreed (TI rev 290, OA rev 308); built: makeRcu with `CCV_RCU_IMPL`, `check-rcu-unit`, the gate-scope map (39a1861). RI met M0 with the model (5968894, RI rev 5), **accepted by RA** (rev 68); TI makes the model the default | Partition (M0); rcu-impl.md |
-| RA-39 | OA, TI, AR | early R source read: R0/R1 read in A from the payload's phys\_src | (a) taken by OA (revs 328-329). (b) as first written (R0/R1 rows on R's lead) withdrawn: OI-115 measured the lead mux in select at 38.8 NGD against `ooe_sched`'s 30.5. Taken instead, OA rev 336 on RA's price (RA rev 70): option (2), the read from the payload's `phys_src` on the wire into `rsrc` in each slice, the MIU forward a bank-level write-through, budgets RCU in 18 and OOE out 7. (c) `lead_r_src0/1` withdrawn: TI takes them out of the schema and stubs (landed at TI rev 309). (d) lapses (OA rev 336). Open: RI to measure the payload-wire read against 18. | R unit (Early R source read); Register file; Pipeline |
+| RA-39 | OA, TI, AR | early R source read: R0/R1 read in A from the payload's phys\_src | (a) taken by OA (revs 328-329). (b) as first written (R0/R1 rows on R's lead) withdrawn: OI-115 measured the lead mux in select at 38.8 NGD against `ooe_sched`'s 30.5. Taken instead, OA rev 336 on RA's price (RA rev 70): option (2), the read from the payload's `phys_src` on the wire into `rsrc` in each slice, the MIU forward a bank-level write-through, budgets RCU in 19 and OOE out 6 (moved 1 at OA rev 337 after RI measured 18.4). (c) `lead_r_src0/1` withdrawn: TI takes them out of the schema and stubs (landed at TI rev 309). (d) lapses (OA rev 336). Closed (RA rev 74). | R unit (Early R source read); Register file; Pipeline |
 
 ## For Daniel
 
@@ -125,5 +125,7 @@ Daniel accepted the spec as a first pass (2026-11-02) and answered RA's question
 - **Implementation session.** Daniel spins it up when ready.
 - **Fanout.** check-ngd counts it per net (option (a), 2026-11-02); RCU copies its selects to suit (Register file tab).
 - **Floorplan.** Nothing is baked in until bottom-up gate counts exist; the spec assumes no placement.
+
+**Phase 2 figures (RI, 2026-11-05; RI rev 8).** `rcu_bank_slice`: 1,324 flops at 32 rows, clock gating clean (lowest DCGE 91%/94%); at 192 rows flop to flop 17.7 NGD, read out 11.0, MW data to flops 10.5, and the RA-39 payload read 18.4 from the RCU port within 19 after a 1 NGD budget move from OOE (OA rev 337). `rcu_r` with `rcu_xbar`: 2,626 flops, clock gating clean (6 gates, DCGE 99-100%), 23.9 NGD flop to flop; its bench passes 142,737 values with the alignment and ret-low controls caught. The 192-row clock-gating harness is TI's (RI-10).
 
 Still open for Daniel: the collective latency fold from 5 to 3, after Phase 1 (RA-29 (c), RA-8).

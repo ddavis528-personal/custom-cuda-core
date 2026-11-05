@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=29 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 29 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=33 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 33 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -47,7 +47,7 @@ RA writes these files with the implementation. A block input arrives at 2 NGD, b
 | issue payload → `lanes` payload, bypass flops | 2 | `lanes` in: 18 | 20 | ownership, the age 4-5 compare, immediate substitution |
 | issue payload → `mem` payload flops | 2 | `mem` in: 14 | 16 |  |
 | issue payload → `mig` `dm_v_q`, `rs_v_a1` | 2 | `mig` in: 12 | 14 | the R2/RW-free decode |
-| OOE `ccv_ooe_rcu_issue` R slot `phys_src0/1` → `bank` R0-R1 read (in A) → the slice's `rsrc`; `bank` R2 read (in A+1) → `r` `old` | OOE out: 7 on `phys_src0/1`, straight from the issue register, slack nothing in OOE may use (OA rev 336); `bank` out: 11 for R2 (measured 11.0 with the fanout term, RI-9) | RCU in: 18 on `phys_src0/1` at `rcu_bank_slice` (fanout to 32 slices 2.5, decode 2, read 11.0, MIU write-through 2: about 17.5, into `rsrc`); `r` in: 14 for R2 | 25 | alignment 2 into flops; R's compute starts at flops in A+1, about 16 for the register-index shfl and ret, alignment of rsrc included (R unit tab, early R source read, RA-39) |
+| OOE `ccv_ooe_rcu_issue` R slot `phys_src0/1` → `bank` R0-R1 read (in A) → the slice's `rsrc`; `bank` R2 read (in A+1) → `r` `old` | OOE out: 6 on `phys_src0/1`, straight from the issue register, slack nothing in OOE may use (OA revs 336-337); `bank` out: 11 for R2 (measured 11.0 with the fanout term, RI-9) | RCU in: 19 on `phys_src0/1` at `rcu_bank_slice` (fanout to 32 slices 2.5, decode 2, read 11.0, MIU write-through 2: measured 18.4, into `rsrc`); `r` in: 14 for R2 | 25 | alignment 2 into flops; R's compute starts at flops in A+1, about 16 for the register-index shfl and ret, alignment of rsrc included (R unit tab, early R source read, RA-39) |
 | `bank` L0-L3 read → `lanes` payload | 11 | 6 | 17 |  |
 | `bank` M0-M2 read → `mem` payload | 11 | 10 | 21 | operand assembly |
 | `bank` R2 read → `mig` `dm_pay` | 11 | 3 | 14 |  |

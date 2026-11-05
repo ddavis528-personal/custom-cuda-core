@@ -75,10 +75,9 @@ Conventions 5, Overview 38), rcu-impl.md updated; RI notified to build from phys
 port->rsrc against 18. RI rev 8: 18.4 (15.9 in slice + 2.5 fanout), not retimed.
 RA rev 73: asked OA to move 1 NGD (phys_src0/1 RCU in 19, OOE out 6; rr_row arrival 8.5);
 RI's departures accepted: rlow from rcu_pred's flop; ngd.json arrivals; RI-9 (e) lane mask as
-D-cone hold mux where it arrives with data. Phase 2 figures in Overview (rev 39). Live tabs
-changed since the snapshots: R unit 17, Register file 13, Overview 39 -- refresh with the
-Partition budget edit (18->19 / 7->6) once OA grants. RA-39 closes on OA's grant.
-Bookmarks: OA 336, RA 73, RI 8. Snapshots refreshed to the live revs:
+D-cone hold mux where it arrives with data. Phase 2 figures in Overview (rev 39). OA rev 337 granted 19/6 (last move on the pair); RA rev 74
+closed RA-39; spec + snapshots at R unit 20, Register file 15, Partition 33, Overview 43.
+Bookmarks: OA 337, RA 74, RI 8. Snapshots refreshed to the live revs:
 Overview 34, Partition 27, Register file 10, R unit 12, Migration 9, Lane+memory 7, Done 17,
 Predicate 5 (Pipeline 5, Conventions 4 unchanged).
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
