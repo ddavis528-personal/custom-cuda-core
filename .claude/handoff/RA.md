@@ -102,7 +102,9 @@ notified): KILL_DRAIN derived (16); RA reads ADDR_BASE +1 as the receiving inter
 reapplies as 2 (RCU-internal 1), L1_WAKE 17->13, fallback 3 - AR to confirm; lane bypass ages 4-6,
 compare 12 entries (3 ages x 4 sections), SFU at PRF A_p+12. Spec: Lane 11, Overview 50, Partition 39,
 Conventions 11; snapshots current.
-Bookmarks: OA 338, RA 79, RI 9, TI 321, DA 106, AR 287.
+AR row 288 CONFIRMED RA rev 79 (PF-47 as 2, L1_WAKE 13, CMPL 15, fallback 3; bypass 4-6). RI rev 10:
+RI-11 done for RCU (arrivals 0, rd2 11, check-ngd passes, model params-derived). Nothing open for RA here.
+Bookmarks: OA 338, RA 79, RI 10, TI 321, DA 106, AR 288.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
