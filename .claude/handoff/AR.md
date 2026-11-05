@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 300, OA 350, TI 334, RA 84 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 291, DA 108,
+  record): AR 301, OA 350, TI 339, RA 85 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 291, DA 108,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
@@ -253,6 +253,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    no_flop edits. Done: LANE spec rev 21, MIU spec rev 59 (.11865/.12185/
    .12255), PF-47 row + bullet. Waits: TI link term in gen-params/gen-skel/
    checkers, then RI/OI price D, N, Z1-Z3 and OA 349's package.
+   TI 339 / RA 85 took AR 300. AR 301: default ends = TI's option 1 (three
+   RCU rx ends flopped; others as built, no-flop today; owners flip their own
+   ends by row to TI). CCV_LAT_RCU_ADDR stays = base (5; PF-47 1); RA's
+   "RCU_ADDR 6/2" counts from the landing; if gen-params adds bnd_rx inside
+   it, WAKE/CMPL read 18/20 (asked TI to assert 17/19/13/15). TI's bases
+   push (LANE_BASE 8, SFU 13, ADDR_BASE 6) lands first, then the term push
+   reverts bases to 7/12/5.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
