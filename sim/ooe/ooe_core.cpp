@@ -2213,6 +2213,25 @@ void Core::releaseSlot(unsigned slot) {
   for (unsigned r : cand_ret_) pend += ret_owner_[r] == slot + 1;
   if (s.held_gpr != pend || (cfg_.rename_preds && s.held_pred))
     err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr - pend, s.held_pred);
+  if (!cfg_.inject_keep_released_uops) {
+    decq_flushed_ |= 1u << slot;
+    for (auto it = decq_.begin(); it != decq_.end();)
+      if (it->warp == s.warp) {
+        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+        ++decq_freed_;
+        ++decq_flush_now_;
+        it = decq_.erase(it);
+        --s.decq;
+        count("decq.release_drop");
+        ev("release_drop", s.warp);
+      } else ++it;
+  }
+  {
+    unsigned q = 0;
+    for (const Uop &u : decq_) q += u.warp == s.warp;
+    if (q || s.decq)
+      err("RI-12: slot %u released with %u of warp %u's uops queued, its count %u", slot, q, s.warp, s.decq);
+  }
   slot_of_[s.warp % kWarpIds] = -1;
   if (slot < squash_due_.size()) squash_due_[slot].on = false;
   rlog_.release |= 1u << slot;

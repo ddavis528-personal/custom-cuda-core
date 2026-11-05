@@ -607,6 +607,9 @@ struct Config {
   bool inject_park_layout_lost = false;
   /// TI-34's control: the memops, barriers and faults carry CTA slot 0.
   bool inject_cta_slot_zero = false;
+  /// RI-12's control: a released slot keeps its warp's queued uops, which
+  /// the warp's next slot then takes against a count that never held them.
+  bool inject_keep_released_uops = false;
   /// TI-36 (b)'s control: a predicate-only masked load (ld.pred) makes no
   /// copy, so its inactive lanes' bits are lost.
   bool inject_pred_copy_lost = false;

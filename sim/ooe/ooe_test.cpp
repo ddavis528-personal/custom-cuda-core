@@ -2510,6 +2510,53 @@ void testLdLocal() {
   EXPECT(!held, "a local form reading a base should wait for its producer");
 }
 
+/// RI-12 (RI's provswap, 2026-11-05): uops that reach the decode queue
+/// after a demotion's squash, in the new epoch, while the warp sits
+/// drained, are dropped when RAU frees the slot; none outlives it, and
+/// the release checks that none is queued. The control keeps them.
+bool releaseDrop(bool control) {
+  Config c = baseConfig();
+  c.l1_spec = false;
+  c.inject_keep_released_uops = control;
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 6; ++i) { Op a; a.k = kLane; a.dst = i; a.nsrc = 1; p.push_back(a); }
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  for (unsigned k = 0; k != 3; ++k) e.step();
+  e.core.demote(0);
+  bool drained = false;
+  for (unsigned k = 0; k != 200; ++k) {
+    e.step();
+    drained |= !e.log.back().drained.empty();
+  }
+  Op a; a.k = kLane; a.dst = 9; a.nsrc = 1;
+  for (unsigned i = 0; i != 2; ++i) e.core.uop(makeUop(a, 0, e.next_tid++, e.core.epoch(0), 0));
+  e.step();
+  const uint64_t drops0 = e.core.counters["decq.release_drop"];
+  Alloc f; f.warp = 0; f.slot = 0; f.op = kAllocFree;
+  e.core.alloc(f);
+  for (unsigned k = 0; k != 10; ++k) e.step();
+  const uint64_t drops = e.core.counters["decq.release_drop"] - drops0;
+  const bool ok = drained && drops == 2 && e.errors.empty() && e.core.counters["errors"] == 0;
+  if (!control) {
+    g_test = "release drops the warp's queued uops (RI-12)";
+    EXPECT(drained, "the demotion never drained");
+    EXPECT(drops == 2, "%llu uops dropped at the release, want 2", (unsigned long long)drops);
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+void testReleaseDrop() {
+  releaseDrop(false);
+  const bool held = releaseDrop(true);
+  std::printf("  %-24s %s\n", "control keep-released-uops", held ? "MISSED" : "caught");
+  g_test = "release drops the warp's queued uops (RI-12) (control)";
+  EXPECT(!held, "uops kept past the release should fail the release's check");
+}
+
 void testCtaSlot() {
   ctaSlot(false);
   const bool held = ctaSlot(true);
@@ -5505,6 +5552,7 @@ int main(int argc, char **argv) {
   testParkedLayout();
   testFinalExit();
   testCtaSlot();
+  testReleaseDrop();
   testLaneCtx();
   testWidthFromTable();
   testMlcTrigger();
