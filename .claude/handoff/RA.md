@@ -1,6 +1,6 @@
 # RA handoff (RCU block architect)
 
-Updated 2026-11-04. Keep this current at every task's end; it is what
+Updated 2026-11-05. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules (written for TI);
 docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 
@@ -89,9 +89,14 @@ for a DA-tab row. RA rev 76 (AR notified): RCU internals invariant if lead+paylo
 couplings for AR: L1-hit forward (MIU vs issue link), credit depths (map/mig/PCA -> RCU mig FIFOs),
 KILL_DRAIN. After AR: restate Conventions (A from receiver flop Q), Partition (arrival 0),
 R unit/Register file (RA-39 without the split), rcu-impl.md; RI arrivals 0 / 2.5 / 11.
-Bookmarks: OA 338, RA 76, RI 9, TI 321, DA 106, AR 284. Snapshots refreshed to the live revs:
-Overview 34, Partition 27, Register file 10, R unit 12, Migration 9, Lane+memory 7, Done 17,
-Predicate 5 (Pipeline 5, Conventions 4 unchanged).
+AR rev 285 accounted it: from the RCU's interface flop, inputs at 0 NGD; LANE 8, SFU 13,
+L1_WAKE 17, L1_CMPL 19 (OA confirms), RCU 3, COLLECTIVE 5, bypass unchanged. RA rev 77/78
+confirmed (LW A+7, SW A+12; lane done loaded A+6 / wire A+7 / payload A+8, SFU A+11/A+12/A+13;
+descriptor ages 6, 11; KILL_DRAIN 16; lane-bypass window 9; guard ~15). OA still holds for a
+DA-tab row; TI derives the params once OA confirms. Spec restated (2026-11-05): Conventions 10,
+Partition 38, Done 24, Pipeline 17, Lane+memory 8, Predicate 7, Register file 16, R unit 22,
+Overview 49; snapshots and rcu-impl.md (block-boundary bullet) current.
+Bookmarks: OA 338, RA 78, RI 9, TI 321, DA 106, AR 285.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)

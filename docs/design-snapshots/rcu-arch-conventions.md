@@ -1,15 +1,15 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Conventions_and_interfaces rev=5 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Conventions and interfaces*, at revision 5 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Conventions_and_interfaces rev=10 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Conventions and interfaces*, at revision 10 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Conventions and interfaces
 
-Every cycle number in this spec counts from **A, the cycle an issue's payload is on the RCU's input wires**; every input is consumed in its payload cycle or captured at that cycle's edge, and every output leaves straight from a flop. This tab fixes those conventions and, per channel, which RCU register samples or drives each field in which cycle. Field widths and bit ranges are the schema's (`schema/interfaces.json`); they are not repeated here.
+Every cycle number in this spec counts from **A, the cycle the RCU's interface flop holds an issue's payload**. Every block boundary has a flop on each side, built by the interface module (ccv\_common\_rpt; Daniel 2026-11-05, TI rev 321, accounted by AR rev 285): no logic sits between a block port and the receiver's first flop, so every RCU input starts at a flop with 0 NGD, and every output leaves straight from an RCU register at 0 NGD. Throughout this spec, an input 'on the wire' in cycle T means at its interface flop's output in T. This tab fixes those conventions and, per channel, which RCU register samples or drives each field in which cycle. Field widths and bit ranges are the schema's (`schema/interfaces.json`); they are not repeated here.
 
 ## Timing conventions
 
 - **Clock and reset.** One input clock, `core_clk`, ungated; the RCU gates it as its first act through `ccv_common_clk` (CCV-L22). `rst_n` is captured by plain flops, `rst_n_q`, and every use of reset reads those (RST-1).
-- **A channel message** has its valid (and lead slice) on the wire in cycle T−1 and the rest of its payload on the wire in cycle T, the *payload cycle*. Valid binds: the payload follows even if a stall arrives between.
-- **Receiving.** The RCU captures every input valid in a flop written every cycle, `<ch>_v_q`, and every input lead slice in flops written every cycle, `<ch>_lead_q`. In cycle T those flops are the enables (CG-5, means L1 of the OOE doc) for whatever captures the payload at T's edge. Logic may also use the payload combinationally in T within the input's NGD budget (Partition tab).
+- **A channel message** has its valid (and lead slice) at the receiver's interface flop in cycle T−1 and the rest of its payload there in cycle T, the *payload cycle*. Valid binds: the payload follows even if a stall arrives between.
+- **Receiving.** The RCU captures every input valid in a flop written every cycle, `<ch>_v_q`, and every input lead slice in flops written every cycle, `<ch>_lead_q`. In cycle T those flops are the enables (CG-5, means L1 of the OOE doc) for whatever captures the payload at T's edge. Logic may also use the payload in T, from the interface flop's output, with the whole 25 NGD (Partition tab).
 - **Sending.** An output's valid and lead slice are flops loaded at the edge ending T−1, so they drive the wire in T; its payload flops load at the edge ending T, driving T+1. No logic sits between an output flop and the port; a flop that also feeds internal logic is duplicated, one `(* keep *)` copy for the port (NGD-7).
 - **A, A+n.** A is the payload cycle of an issue. "At A's edge" means the edge that ends cycle A.
 - **Writes.** A write to the PRF or predicate file *lands in W* when its data is on the row flops' D pins in cycle W; the new value is readable from W+1. A contracted latency L (issue to readable) puts W at A+L−1.
@@ -39,7 +39,7 @@ Registers carry a stage tag (CCV-L29): `_a` for flops loaded at A's edge, `_a1` 
 | Channel, slot | Valid and lead flops (drive T−1) | Payload flops (drive T) | First valid cycle |
 | --- | --- | --- | --- |
 | `rcu_lane_ops` c00-c31 | `lop_v_a`, lead `section_en_a[3:0]`, `sec_pred_bit_a[31:0][3:0]` | `lop_*_a1`: operands, merge\_data, per-section fields, `operand_byp` | valid A+1, payload A+2 |
-| `rcu_ooe_done` s0-s6 | `done_v[k]`; slot 5 lead `lead_br_taken_a`, `lead_br_mask_a` | `done_*[k]`: rob\_tag, done\_row; slot 5 adds branch\_taken, branch\_mask, aux | R ops A+1; lane ops A+6; SFU A+11 (Done tab) |
+| `rcu_ooe_done` s0-s6 | `done_v[k]`; slot 5 lead `lead_br_taken_a`, `lead_br_mask_a` | `done_*[k]`: rob\_tag, done\_row; slot 5 adds branch\_taken, branch\_mask, aux | R ops A+1; lane ops A+7; SFU A+12 (Done tab) |
 | `rcu_miu_addr` s0-s3 | `addr_v_a[j]` | `addr_*_a1[j]`: rob\_tag, active\_mask, base, index, store data | valid A+1, payload A+2 (`CCV_LAT_RCU_ADDR_BASE` = 1, RA-7; adopted as PF-47, RA-31) |
 | `rcu_pca_mig` | `pcam_v_a` | `pcam_*_a1`: warp\_id, mig\_row, row\_data | valid A+1, payload A+2 of an idle-R cycle A (Migration tab) |
 | `kill_ack`, `kill_ack_epoch` | `kill_ack_q`, `kill_ack_epoch_q` | n/a | Done tab |

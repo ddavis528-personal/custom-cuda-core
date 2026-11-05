@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=17 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 17 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=24 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 24 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -19,8 +19,8 @@ This tab covers everything RCU tells OOE and RAU about completion and teardown: 
 | --- | --- | --- | --- | --- | --- |
 | RCU-only (bra, call, ret, pand/por/pxor, pmov, movi) | 5 (`CCV_DONE_SLOT_RCU`) | A | A+1 | A+2 | R pipe (`rres_a1` stage) |
 | Warp collective (shfl, vote, ballot, unballot) | 6 | A | A+1 | A+2 | R pipe |
-| Lane op, lead section k | k (0-3) | A+5 | A+6 | A+7 | `lwb_d[k]` descriptor, age 5 |
-| SFU op | 4 | A+10 | A+11 | A+12 | `swb_d` descriptor, age 10 |
+| Lane op, lead section k | k (0-3) | A+6 | A+7 | A+8 | `lwb_d[k]` descriptor, age 6 (CCV\_LAT\_LANE − 2) |
+| SFU op | 4 | A+11 | A+12 | A+13 | `swb_d` descriptor, age 11 (CCV\_LAT\_SFU − 2) |
 | PRF copy (GPR or predicate), any memop | none |  |  |  | OI-4; masked-load copy: done\_row 1 completes on MIU's cmpl |
 
 A collective's done goes out at A+1, 3 cycles before `CCV_LAT_COLLECTIVE` = 5. The contract text allows an early finish (V-35: "RCU may finish sooner"). Its result is readable from A+3, so dependants woken at 5 read a landed value. RA-29 asks AR to confirm that an early done on a `fixed_latency` slot is legal; otherwise slot 6's valid is delayed 3 cycles through 3 more flop stages (rob\_tag and done\_row only, 9 b).
@@ -55,7 +55,7 @@ Each outbound wake is a flop, written every cycle. The receiver's gate holds thr
 | Wake | `D` of the flop | Why it covers the valid |
 | --- | --- | --- |
 | `rcu_lane_ops_c<NN>_wake` (each copy), `rcu_miu_addr_wake` | `ooe_rcu_issue_wake` | Lane and address valids are at A. OOE's own rule puts the issue wake in \[A−5, A−2\] for issue valid A−1, so RCU's flop is in \[A−4, A−1\]. |
-| `rcu_ooe_done_wake` | any `ooe_rcu_issue_s*_valid` (wire) OR any `lwb_d`/`swb_d` stage valid OR R pipe valid | R done valid at A+1, from issue valid at A−1 → wake at A. Lane done at A+6, from descriptor ages 1-5 → wake A+2..A+6. SFU likewise. |
+| `rcu_ooe_done_wake` | any `ooe_rcu_issue_s*_valid` (wire) OR any `lwb_d`/`swb_d` stage valid OR R pipe valid | R done valid at A+1, from issue valid at A−1 → wake at A. Lane done at A+7, from descriptor ages 1-6 → wake A+2..A+7. SFU likewise. |
 | `rcu_pca_mig_wake` | `dm_busy_next` | Migration tab: 4-cycle lead counter. |
 
 ## Credits RCU returns
@@ -88,10 +88,10 @@ RCU's pipe carries no warp id: an issue carries only `rob_tag`. RCU therefore ca
 | `kill_ack_q` | 1 | `kill_v_q` or ack-ready | `kill_ack`, a level (RA-23) |
 | `kill_ack_ep_q` | 2 | ack-ready | `kill_ack_epoch` |
 
-`KILL_DRAIN` = 2 + `link_n(ooe_rcu_issue)` + `CCV_LAT_SFU` + 1 + `link_n(rcu_ooe_done)`, which is 15 with abutted links. It covers:
+`KILL_DRAIN` = 2 + `link_n(ooe_rcu_issue)` + `CCV_LAT_SFU` + 1 + `link_n(rcu_ooe_done)`, which is 16 with abutted links (CCV\_LAT\_SFU 13 since the boundary flops, AR rev 285; 15 before). It covers:
 
 - the last issue that OOE may send before it reacts to the same kill (valid by K+1, payload A = K+2);
-- that issue's longest RCU life: an SFU done payload at A+12, which is on the wire to OOE until it lands.
+- that issue's longest RCU life: an SFU done payload at A+13, which is on the wire to OOE until it lands.
 
 An address message (A+1) and a lane message (A+1) leave sooner. A load's data from MIU is MIU's own drain, and RCU writes whatever lands.
 
