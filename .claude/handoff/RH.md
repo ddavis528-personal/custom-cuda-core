@@ -52,9 +52,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
     (sweep-fair PASS), J2 (cold hangs: cm128 at dec_ooe_uop; cm32 and pl32
     silent), J3 (vadd16 needs full_rows=1; coremarkpl; chwidth hold under 5%
     on every real-length kernel).
-  - J4: no frames knob (option W is always on through the kernel). Proposed
-    coremark128 at 512 KiB (CCV_DCU_SETS=512 WAYS=8) on b341691; waiting on
-    TI's OK. The CTA-queueing and gen-oracle -load parts wait on TI's code.
+  - J4 interim DONE: coremark128 at 512 KiB on b341691 (worktree
+    /home/user/rh-j4), 7,924,133, clean, 7.2 GB, sent. The CTA-queueing and
+    gen-oracle -load parts wait on TI's code; TI will say when they land.
 - Run notes: coremarkpl128 peaks at 14 GB and needs swap past 15 GB (disk
   allowing). A cold run can hang silently, with no output: compare against
   the warm time and kill it. Delete bench oracles after each job.
