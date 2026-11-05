@@ -296,6 +296,11 @@ private:
       u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1
                   : ik == kImmLaneCtx ? (k_.brk == "lanectx-as-ctatid" ? 0 : 2)
                   : ik == kImmPrivOff ? 3 : -1;
+      // RA-18: imm_kind 6, call's link (pc + bytes(ilen) into imm). The
+      // code is TI's to add to the schema and stub.h's enum (OI-112); until
+      // then it is named here.
+      constexpr unsigned kIkCallLink = 6;
+      u.shape.call_link = ik == kIkCallLink;
       if (pu > kPredUseData) {
         k_.fail("ooe: pred_use %u is not a code", pu);
         u.cause = 2;   // F-ILLEGAL: an encoding naming nothing

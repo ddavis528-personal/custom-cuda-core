@@ -3375,11 +3375,14 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     // (the lane ORs its index in), %ctaid for selector 1, and for selector
     // 2 (%lanectx, O-64) the hardware warp context, the core's index above
     // warp_id, shifted the same way. Selector 3 (%privoff, O-83) is a device
-    // constant, the private run's offset from local_base in windows.
+    // constant, the private run's offset from local_base in windows. A
+    // call's link (RA-18, imm_kind 6) is the next instruction's address, the
+    // low 32 bits of pc + bytes(ilen), as a branch's fall-through is formed.
     is.imm = u.shape.srd == 0 ? s.warp_in_cta << 5
            : u.shape.srd == 1 ? s.ctaid
            : u.shape.srd == 2 ? uint32_t(((cfg_.core_id << ccv::kWWarpId) | s.warp) << 5)
            : u.shape.srd == 3 ? uint32_t(3 * ccv::prov::kLaneContexts)
+           : u.shape.call_link && !cfg_.inject_no_call_link ? uint32_t(u.pc + 2 * (u.ilen + 1))
            : u.imm;
     // Predicate logic's two sources, renamed: each physical predicate with
     // its negate above it, where DEC's qualifiers were (TI-1).
