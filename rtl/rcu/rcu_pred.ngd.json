@@ -37,6 +37,18 @@
       "date": "2026-11-05",
       "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
     },
+    "lgp_cr01h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    },
+    "lgu_cr01h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    },
     "mam_cr02h": {
       "arrival": 0.0,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",

@@ -109,6 +109,8 @@ module rcu_pred #(
   input  logic               rcu_rst_r00h,
   // Stage I: the issue slots.
   input  logic [NS-1:0]      iv_cr01h,      // slot s issues next cycle (the lead's valid)
+  input  logic               lgu_cr01h,     // R's lead_guard_used
+  input  logic [WP-1:0]      lgp_cr01h,     // R's lead_guard_pred
   input  logic [NS*WP-1:0]   gd_cr02h,      // phys_pred_guard
   input  logic [NS-1:0]      ng_cr02h,      // pred_neg
   input  logic [NS*N-1:0]    im_cr02h,      // issue_mask
@@ -197,6 +199,18 @@ module rcu_pred #(
     end
   end
 
+  // ---- R's guard lead (RA-32), kept for A -----------------------------
+  // Written every cycle, as the lead's valid is (CG-5 strict, RA rev 81):
+  // nine flops in the module's ungated allowance. psel_hi as its one-hot
+  // (zero without a guard, so an unguarded op reads 0), psel_lo raw, its
+  // 3:8 decode left in A.
+  logic [NH-1:0] rg_hi_cr02h;
+  logic [2:0]    rg_l3_cr02h;
+  always_ff @(posedge rcu_core_clk) begin
+    rg_hi_cr02h <= lgu_cr01h ? dec_hi(lgp_cr01h) : '0;
+    rg_l3_cr02h <= lgp_cr01h[2:0];
+  end
+
   // ---- MIU's row and mask, decoded in T -------------------------------
   logic [NM*NH-1:0] m_hi_cr02h;
   logic [NM*8-1:0]  m_lo_cr02h;
@@ -235,8 +249,13 @@ module rcu_pred #(
     for (int s = 0; s < NS; s++) begin
       logic [N-1:0] r_cr02h, g_cr02h;
       logic         force_cr02h;
-      g_hi_cr02h[s*NH +: NH] = dec_hi(gd_cr02h[s*WP +: WP]);
-      g_lo_cr02h[s*8 +: 8]   = dec_lo(gd_cr02h[s*WP +: WP]);
+      if (s == SR) begin
+        g_hi_cr02h[s*NH +: NH] = rg_hi_cr02h;
+        g_lo_cr02h[s*8 +: 8]   = dec_lo({{(WP-3){1'b0}}, rg_l3_cr02h});
+      end else begin
+        g_hi_cr02h[s*NH +: NH] = dec_hi(gd_cr02h[s*WP +: WP]);
+        g_lo_cr02h[s*8 +: 8]   = dec_lo(gd_cr02h[s*WP +: WP]);
+      end
       r_cr02h = rd(g_hi_cr02h[s*NH +: NH], g_lo_cr02h[s*8 +: 8], row_cr02h);
       r_cr02h = fwd(g_hi_cr02h[s*NH +: NH], g_lo_cr02h[s*8 +: 8], r_cr02h,
                     mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
@@ -389,7 +408,7 @@ module rcu_pred #(
   end
 
   // ---- Contracts -------------------------------------------------------
-  logic overlap_cr02h, bad_q_cr01h, bad_m_cr02h, bad_r_cr01h, hazard_cr02h;
+  logic overlap_cr02h, bad_q_cr01h, bad_m_cr02h, bad_r_cr01h, hazard_cr02h, lead_cr02h;
   always_comb begin
     overlap_cr02h = 1'b0;
     for (int p = 0; p < ROWS; p++) begin
@@ -420,6 +439,8 @@ module rcu_pred #(
           hazard_cr02h = hazard_cr02h |
             (qa_cr02h[q] & (|(g_hi_cr02h[s*NH +: NH] & w_hi_cr02h[q*NH +: NH])) &
                            (|(g_lo_cr02h[s*8 +: 8] & w_lo_cr02h[q*8 +: 8])));
+    lead_cr02h = iv_cr02h[SR] && gt_cr02h[SR] &&
+                 (rg_hi_cr02h != dec_hi(gd_cr02h[SR*WP +: WP]) || rg_l3_cr02h != gd_cr02h[SR*WP +: 3]);
   end
   // Ports on one row in a cycle write disjoint lanes.
   `CCV_ASSERT(pred_write_disjoint, !overlap_cr02h)
@@ -430,6 +451,8 @@ module rcu_pred #(
   `CCV_ASSERT(pred_read_row_named, !bad_r_cr01h)
   // A guard is never written in its own A but by MIU (the forward).
   `CCV_ASSERT(guard_no_hazard, !hazard_cr02h)
+  // R's guard lead names the payload's guard (RA-31, RA-32).
+  `CCV_ASSERT(guard_lead_names, !lead_cr02h)
 
 endmodule
 `undef CCV_CLK

@@ -4,7 +4,7 @@
 // the predicate file's rules (Predicate file tab; the RCU model's stage I
 // and its gatherWrites/commit, sim/rcu/rcu_core.cpp):
 //
-//   issue    valid in t, payload in t+1 (A), the A+1
+//   issue    valid (and R's guard lead) in t, payload in t+1 (A), the A+1
 //            flops after t+1's edge: active, gv (S), pst (P), R's RA, RB,
 //            rlow and branch lead. The guard is the row before A's writes
 //            with the forward of MIU's writes landing in A.
@@ -147,12 +147,17 @@ struct Bench {
   void step(const Cycle &next, bool rst = false) {
     dut->rcu_rst_r00h = rst;
     dut->iv_cr01h = 0;
+    dut->lgu_cr01h = 0;
     dut->mv_cr01h = 0;
     dut->mwe_cr01h = 0;
     dut->qv_cr00h = 0;
     dut->dv_cr00h = 0;
     for (const Iss &i : next.iss) {
       put(dut->iv_cr01h, i.slot, 1, 1);
+      if (i.slot == kSR && i.gt) {
+        dut->lgu_cr01h = 1;
+        dut->lgp_cr01h = i.g;
+      }
     }
     for (const Ld &l : next.ld) {
       put(dut->mv_cr01h, l.slot, 1, 1);
