@@ -98,6 +98,12 @@ the compact hook printed this handoff.
    ooe_test.cpp main to remove). wtx also has the RI-12 fix (already pushed via wtp). Plan: S1 +
    audit at base, AR, AR+rx_lag=127, each bit alone; top 2 by cost; coremark128 (>2h); report to
    DA. Scripts: scratchpad/price/run.sh, price/s1.sh, skel-build.sh (point it at the tree).
+   S1 + audit DONE (scratchpad/ri11/summary.txt): ar +1.66% gm over base; all flops +3.49% over
+   ar; cmpl (32) +1.60%, dec uop (64) +1.29%, rcu done (8) +0.62% (trips V-35: done bound +1),
+   others 0. CoreMark SENT TO RH 11-05 (send_message, 6 configs, warm, patches inline: ri11/
+   rxlag.patch + arparams.patch on 497efb8). Long runs go to RH (DA, 11-05): coremark needs
+   CCV_MLC_WARM (cold floods dec_ooe_uop response_within_n) and peaks at 12.4 GB.
+   When RH answers: OI row to OA (Needs OA, DA) with S1, audit, CoreMark; notify OA.
    Then: lane-slot leads late 2:1; R guard pred off R's pick; phys_src0/1 from issue register;
    OI-114 floor term; OI-112 due 11-06; Friday pings 11-06.
 -6. FANOUT ENFORCED (TI b11e60f, ratchet rtl/ngd-ratchet.json "fanout"; caps only fall,
