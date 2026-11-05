@@ -2,136 +2,136 @@
   "module": "rcu_r",
   "ports": {
     "act_cr03h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only, held to a block port's 2."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only; fanout is check-ngd's."
     },
     "dpos_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "drow_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "dst_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "dwid_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "imask_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "imm_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "iv_cr01h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's R unit tab rev 16 and Partition rev 29; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "The R issue valid lead, a block port: every CCV block output comes straight from a flop and the link adds wire only (Partition tab, Port NGD budgets)."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "kind_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "low_cr03h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only, held to a block port's 2."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only; fanout is check-ngd's."
     },
     "mrg_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "opos_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "pd_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "pwe_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "rd2_cr03h": {
       "arrival": 11.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
+      "by": "RA (RA tab rev 78, re:RI-11)",
+      "date": "2026-11-05",
       "why": "The bank slices' R2 read in A+1: bank out 11 (8.3 measured, 11.0 with the fanout term), r in 14 (Partition tab: R2 read in A+1 -> r old)."
     },
     "rpa_cr03h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only, held to a block port's 2."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only; fanout is check-ngd's."
     },
     "rpb_cr03h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only, held to a block port's 2."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only; fanout is check-ngd's."
     },
     "rs0_cr03h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's R unit tab rev 16 and Partition rev 29; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "The bank slices' rsrc, R0 and R1 raw, straight from the slices' flops (RA-39 as OA rev 336 took it: 'rsrc out of the slice from flops'), held to a block port's 2."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The bank slices' rsrc, R0 and R1 raw, straight from the slices' flops (RA-39), wire only; fanout is check-ngd's."
     },
     "rs1_cr03h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's R unit tab rev 16 and Partition rev 29; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "The bank slices' rsrc, R0 and R1 raw, straight from the slices' flops (RA-39 as OA rev 336 took it: 'rsrc out of the slice from flops'), held to a block port's 2."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The bank slices' rsrc, R0 and R1 raw, straight from the slices' flops (RA-39), wire only; fanout is check-ngd's."
     },
     "spos_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "swid_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "tag_cr02h": {
-      "arrival": 2.0,
-      "by": "RI (from RA's Partition tab budgets; for RA to confirm)",
-      "date": "2026-11-04",
-      "why": "A block port (the issue channel's slot 8, or miu_rcu_data): every CCV block output comes straight from a flop and the link adds wire only, so it arrives at 2 (Partition tab, Port NGD budgets). kind_cr02h is the block's op-class decode, which phase 5 places; until then it is held to the block port's arrival."
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     }
   }
 }

@@ -2,10 +2,10 @@
   "module": "rcu_bank_slice",
   "ports": {
     "rr_row_cr03h": {
-      "arrival": 8.5,
-      "by": "RA (RA tab rev 74; OA rev 337 granted phys_src0/1 RCU in 19, OOE out 6)",
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-05",
-      "why": "R0/R1's rows, the issue payload's phys_src on the wire in A (RA-39): OOE out 6, then the fanout to the 32 slices, about 2.5, so the slice's decode, read and write-through into rsrc have 16.5 of RCU's input budget of 19 (measured 15.9 at 192 rows)."
+      "why": "R0/R1's rows, the issue payload's phys_src from RCU's interface flop (DA's ruling on RI-11), wire only; the fanout to the 32 slices (about 2.5) is counted by check-ngd. The slice's decode, read and write-through into rsrc measure 15.9 (18.4 with fanout) of the 25. RA-39's 19/6 split lapsed."
     }
   }
 }
