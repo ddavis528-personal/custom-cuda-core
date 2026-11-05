@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 297, OA 345, TI 334, RA 82 (tab 9851686b-2b0a), RI 15, IS 189, CP 154, OI 291, DA 108,
+  record): AR 298, OA 348, TI 334, RA 82 (tab 9851686b-2b0a), RI 15, IS 189, CP 154, OI 291, DA 108,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
@@ -224,6 +224,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    DANIEL; AR recommends (b) for rcu_done + dec_uop, miu_cmpl only if the
    floorplan abuts MIU/OOE (Q-42 plan puts them on opposite RCU ends: add
    MIU-OOE cmpl distance as the first floorplan number).
+   OA 347-348 agree the second kind; OA asks CMPL_HINT 3. AR row 298:
+   HINT 3 derives FILL_NOTICE 5 (DCU cost on noticed refills), covers refill
+   wakes only; OI splits miu_cmpl's +1.60% by cause and prices LANE 7/SFU 12
+   (lane_rcu_res zero-cycle, RA confirms MW cone <=12); ooe_rcu_issue stays
+   flopped (R read 18.4). All goes to Daniel with AR 296's question.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
