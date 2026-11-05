@@ -38,11 +38,14 @@ Nothing had RI in Needs at session start.
 - Gate: split gate if all sections run (`verify.sh --full --only ngd` + gate-export + gate-push --import).
 
 ## Open work, most urgent first
-00. Push e5e846b (main tree: a90cb8f rcu_pred, d2ca2d7 rcu_kill, trust-report regen). Split gate:
-    cg part bcdqazsfg running in main tree (verify --changed 89543cc --only cg ->
-    ~/ccv-logs/split-cg-e5e846b.log, gate-cg-e5e846b.tgz). Then, in the main tree, in the background:
-    CCV_PUSH_BRANCHES=ccr-888218a3-20cauz tools/gate-push.sh --import=$HOME/ccv-logs/gate-cg-e5e846b.tgz
-    (it runs the other scoped sections); expect SPLIT SCOPED PASS. 89543cc already pushed.
+00. HELD: RA rev 81 declined rcu_pred's two CG-5 waivers (else accepted RI-14; gt/pdt/br at 0
+    with the op-class decode inside pred once TI generates the table; ack/epoch assertion for
+    rcu_kill (4) to add). e5e846b's gate STOPPED, not pushed. Measured strict-CG-5 variants (local
+    WIP commits cf12cc0, 63457b2 on top of 7ca3d55/66b014e): none passes (row DCGE 14-18%, flop-flop
+    26.0, R w/o lead 27.5, MIU lead ungated 152 vs 53.6 allowance). RI-15 (RI rev 15, notice to RA)
+    asks DA/RA: (a) interface-flop Q may enable (recommended), (b) two-cycle leads, (c) keep waivers.
+    On the ruling: (a)/(c) -> git revert cf12cc0 63457b2 (restores a90cb8f layout, waivers); (b) ->
+    schema change via TI. Then add the rcu_kill ack/epoch assertion, regen, gate, push, tell TI (TI rev 330).
 0. Next push: ri-wt holds 3c912d1 (M4: model knob CCV_RCU_KILL_DRAIN_CUT + docs/rcu-model.md) + this
    handoff, on d2ca2d7. Merge into the main tree after e5e846b's push; scope sim/rcu -> rcu_unit etc.
 1. Phase 3 reported: RI-14 (RI rev 14; notices to RA, TI). TI took M4 (TI rev 330): kernel + V-24 post-ack check after AR 289; TELL TI (RI tab row + notice) once a90cb8f, d2ca2d7, 3c912d1 are pushed. Waiting on RA (departures 1-5,
@@ -53,4 +56,4 @@ Nothing had RI in Needs at session start.
 3. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals.
 4. Remaining phases per docs/rcu-impl.md: rcu_mig, the lane/SFU descriptor pipes, assembly (M5-M7).
 5. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
-Bookmarks 2026-11-05: RA 80, TI 330, OA 338, OI 287, AR 287, RI 14.
+Bookmarks 2026-11-05: RA 80, TI 330, OA 338, OI 287, AR 287, RI 15.
