@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-04 (after OI-111). Keep this current at every task's end; it is what
+Updated 2026-11-05 ~11:00 UTC (leads pushed, RI-11 package on RH). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -36,8 +36,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 285, RA 64, IS 189, TI 328, OA 342, OI 287, CP 152, DA 108, RI 12
-(sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
+Conventions 17, AR 298, RA 82, IS 189, TI 336, OA 350, OI 293, CP 152, DA 108, RI 15
+(sweep 11-05 10:20; CP/IS searches too big to read, no bookmark).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
 
@@ -86,6 +86,22 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-8. STATE 11-05 ~11:00 UTC. PUSHED aa9ad9c (SCOPED PASS): RA-31 leads per OA 343 (A)
+   (790a38d: lead in I at t+1, payload t+2 via gd) + OA 325 step 1 copies (ooe_rs f-f 26.2,
+   sqf 26.3 AT cap 26.3, req 28.5; prv_code/row_code caps removed). OI rev 293 reported
+   343/325 + step 2 (RH audit: R32 = rs_free_lag 1 + RCU 32/MIU 17 is 0.5-1.5% FASTER than
+   base; ~1,944 ooe_rs flops); OA owns step 3 (DA). Notified OA.
+   IN FLIGHT: wtf branch oi-sweep = oi-call (c10c4b4 call link, rebased on aa9ad9c) + daily
+   merge of 126afa13 17, 183cc441 7, 80102643 14, 888218a3 20, 9eb50716 15, c22116ce 6
+   (walkthrough conflicts taken ours; regen fixes). gate-push from wtf; on green ring TI
+   (session_01J4Yp3xeV6DJtgCtcoqVsAq) re call link (TI rev 331 ask) with OI row.
+   RI-11: OI rows 291 (pricing) and 292 (sign convention, AR). OA 349/350 + AR 298 package:
+   RH runs scratchpad/ri11/pkg-run.sh + rxsplit.patch (A6, H3, P, Ph, Pn, Pn+class).
+   S1 back (scratchpad/ri11/summary.txt): P +2.10% vs base, +0.44% vs AR; hint flop 0;
+   cmpl flop +1.39% = global load .74 + store .39 + hinted .26 + shared .05; H3-A6 +0.56%.
+   CoreMark due ~16:00 UTC: then one OI row to OA, AR, DA (Needs) + notices.
+   NEXT after: OA 326 (ooe_rat via ooe_ratread, NGD with fanout, report), go path 25.8,
+   sched peak, OI-114 floor term, ROB slices 3-6. TI will ring for S1+floors after PF-47.
 -7. STATE 11-05 ~04:00 UTC. PUSHED 497efb8 (SCOPED PASS): RA-39 (c) payload store + issue
    register (dca9c5f), its lint/stage-tag fixes + ooe_rs heavy unit (TI 327), RI-12 fix
    (release drops the warp's queued uops, invariant, testReleaseDrop, control
