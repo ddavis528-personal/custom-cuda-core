@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 80, RI 12. TI 326. TI 324. AR 287.
+Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 82, RI 12. TI 326. TI 324. AR 287.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -44,6 +44,10 @@ Nothing had RI in Needs at session start.
     WIP commits cf12cc0, 63457b2 on top of 7ca3d55/66b014e): none passes (row DCGE 14-18%, flop-flop
     26.0, R w/o lead 27.5, MIU lead ungated 152 vs 53.6 allowance). RI-15 (RI rev 15, notice to RA)
     asks DA/RA: (a) interface-flop Q may enable (recommended), (b) two-cycle leads, (c) keep waivers.
+    RA rev 82: (a)/(c) reverse DA's strict CG-5; RA proposes (d) to DA: the one-cycle ungated lead
+    holds (161 flops) charged to the RCU block's 2%, as DA rev 108 does boundary lead slices; a90cb8f
+    timing kept, no waiver. HOLD until DA rules. On (d): revert the WIP commits, make the lead captures
+    ungated (no enable), drop the two waivers, and say how the block budget is charged.
     On the ruling: (a)/(c) -> git revert cf12cc0 63457b2 (restores a90cb8f layout, waivers); (b) ->
     schema change via TI. Then add the rcu_kill ack/epoch assertion, regen, gate, push, tell TI (TI rev 330).
 0. Next push: ri-wt holds 3c912d1 (M4: model knob CCV_RCU_KILL_DRAIN_CUT + docs/rcu-model.md) + this
@@ -56,4 +60,4 @@ Nothing had RI in Needs at session start.
 3. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals.
 4. Remaining phases per docs/rcu-impl.md: rcu_mig, the lane/SFU descriptor pipes, assembly (M5-M7).
 5. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
-Bookmarks 2026-11-05: RA 80, TI 330, OA 338, OI 287, AR 287, RI 15.
+Bookmarks 2026-11-05: RA 82, TI 330, OA 338, OI 287, AR 287, RI 15.
