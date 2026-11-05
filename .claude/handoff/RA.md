@@ -106,7 +106,10 @@ AR row 288 CONFIRMED RA rev 79 (PF-47 as 2, L1_WAKE 13, CMPL 15, fallback 3; byp
 RI-11 done for RCU (arrivals 0, rd2 11, check-ngd passes, model params-derived). Nothing open for RA here.
 RI rev 11: M3 met (192-row slice: 6,554 flops, CG clean, one row gate 71% medium within allowance; NGD 18.4).
 RA rev 80 accepted; asked RI to name that gate and report it at block assembly (split enable before waiver).
-Bookmarks: OA 338, RA 80, RI 11, TI 321, DA 106, AR 288.
+DA rev 108 (Daniel, verified in DA tab): receiving boundary flop's lead slice is ungated and counts against
+the receiving block's per-instance 2% (RCU: ooe_rcu_issue 144 + miu_rcu_data lead); shrink lead fields first.
+Partition rev 40 records it (~4,700-flop block budget at 192 rows, also carries the slices' 71% row gates).
+Bookmarks: OA 338, RA 80, RI 11, TI 321, DA 108, AR 289.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
