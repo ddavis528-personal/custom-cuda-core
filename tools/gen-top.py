@@ -500,13 +500,17 @@ def wrapper_plan(binst, cinst, ports, names, ft, reuse):
     return plan
 
 
-def rpt_inst(L, name, stages, c, src, dst, boundary=0):
+def rpt_inst(L, name, stages, c, src, dst, boundary=0, dst_end=False):
     """One ccv_common_rpt for a channel instance. `src` and `dst` map a signal to
     its per-slot net names (a function of slot and sig); `boundary` is the
-    end's boundary flops (bnd), 0 on a feedthrough."""
+    end's boundary flops (bnd), 0 on a feedthrough; `dst_end` a destination
+    end's, whose boundary stage is its last (DST_END: which lead slice is the
+    block's to budget)."""
     r = c["rate"]
     lead = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
             if c["lead_mask"] else "")
+    if boundary and dst_end and c["lead_mask"]:
+        lead += ", .DST_END(1'b1)"
     cat = lambda f, sig: "{%s}" % ", ".join(f(sl, sig) for sl in reversed(range(r)))
     L.append("  ccv_common_rpt #(.STAGES(%s), .BOUNDARY(%d), .SLOTS(%d), .PAYLOAD_W(%d)%s) %s ("
              % (stages, boundary, r, c["bits"], lead, name))
@@ -632,7 +636,7 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
         if baked is not None and baked[prm] + b == 0:
             wire_inst(L, c, src, dst)
         elif baked is not None or b:
-            rpt_inst(L, "u_rpt_" + nm, prm, c, src, dst, b)
+            rpt_inst(L, "u_rpt_" + nm, prm, c, src, dst, b, side == "dst")
         else:
             L.append("  if (%s > 0) begin : g_rpt_%s" % (prm, nm))
             sub = []
@@ -1249,34 +1253,40 @@ def rpt_units(binst, cinst, names, ports, ft, plan):
     seen = {}
     for k, (t, i) in enumerate(binst):
         _, vals, _ = plan[k]
-        where = [(x, cp, rpt_param(cinst[x]["chan"], cp), bnd(t, cinst[x]["chan"]))
-                 for x, _, cp in block_ends(t, i, ports[t], cinst)]
-        where += [(x, None, ft_param(cinst[x], o), 0) for o, (x, _) in enumerate(ft.get(k, []))]
-        for x, cp, prm, b in where:
+        where = [(x, cp, rpt_param(cinst[x]["chan"], cp), bnd(t, cinst[x]["chan"]),
+                  side == "dst")
+                 for x, side, cp in block_ends(t, i, ports[t], cinst)]
+        where += [(x, None, ft_param(cinst[x], o), 0, False)
+                  for o, (x, _) in enumerate(ft.get(k, []))]
+        for x, cp, prm, b, dend in where:
             st = vals[prm]
             if not st + b:
                 continue
             c = cinst[x]["chan"]
-            key = (st, b, c["rate"], c["bits"], c["lead_mask"])
+            # DST_END matters only where it moves the boundary's lead slice:
+            # a flopped destination end with link stages and a lead.
+            de = int(bool(b and dend and c["lead_mask"]))
+            key = (st, b, de, c["rate"], c["bits"], c["lead_mask"])
             seen.setdefault(key, []).append("%s %s" % (names[k][2:], prm))
     units = []
-    for (st, b, r, w, lead), users in sorted(seen.items()):
+    for (st, b, de, r, w, lead), users in sorted(seen.items()):
         lit = "%d'h%x" % (w, lead)
         units.append({
-            "name": "rpt_s%d%s_n%d_w%d_l%x" % (st, "_b%d" % b if b else "", r, w, lead),
+            "name": "rpt_s%d%s%s_n%d_w%d_l%x" % (st, "_b%d" % b if b else "",
+                                                "_dst" if de else "", r, w, lead),
             "module": "ccv_common_rpt",
             "files": ["rtl/phys/ccv_common_rpt.sv"],
-            "params": {"STAGES": st, "BOUNDARY": b, "SLOTS": r, "PAYLOAD_W": w,
-                       "LEAD_MASK": lit},
+            "params": dict({"STAGES": st, "BOUNDARY": b, "SLOTS": r, "PAYLOAD_W": w,
+                            "LEAD_MASK": lit}, **({"DST_END": 1} if de else {})),
             "clock": "clk",
             "reset": "!rst_n",
             "instances": users,
             "bench": {
                 "build": ("verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style "
                           "-Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=%d "
-                          "-GBOUNDARY=%d -GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb "
+                          "-GBOUNDARY=%d -GDST_END=%d -GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb "
                           "rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv"
-                          % (st, b, r, w, lit)),
+                          % (st, b, de, r, w, lit)),
                 "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
                 "scope": "tb_cg_rpt.dut"}})
     return json.dumps({

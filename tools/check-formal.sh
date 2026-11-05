@@ -223,20 +223,21 @@ done
 # 1): the sender drives its port from logic and takes credit and stall off
 # its interface flop, the receiver takes its port into logic, the checkers
 # sit on the wrapper's side as in the top. AR's test: full rate at the same
-# depth, 4 + 2N, and not one less. The stall reaches the sender a cycle later
-# (stall2_honoured: two cycles at the wrapper's side, where the checker's
-# stall_honoured says one; TI's rev 325 to AR): the one checker property not
-# held here. Conservation is bounded here (PDR does not converge in 15 min).
+# depth, 4 + 2N, and not one less. The stall reaches the sender a cycle later,
+# which the checker counts with SRC_BOUNDARY 1 (AR's rev 289; gen-skel sets it
+# at every flopped source end): its stall_honoured holds here, and the
+# abutted rule (FV_CHK_BND0) fails. Conservation is bounded here (PDR does
+# not converge in 15 min; dc2;scorr;pdr proved it at N=0 in 968 s, ad hoc).
 for n in 0 1; do
   depth=$((LOOP + 2 * n))
-  r=$(prove "built_safety_n$n" $n $depth "FV_BUILT" -response_within_n,-stall_honoured,-conservation)
-  [ "$r" = proved ] && say "built, N=$n: safety, stall two cycles later" "PASS (proved)" ||
+  r=$(prove "built_safety_n$n" $n $depth "FV_BUILT" -response_within_n,-conservation)
+  [ "$r" = proved ] && say "built, N=$n: safety, stall rule +1" "PASS (proved)" ||
     bad "built safety, N=$n" "$r ($B/built_safety_n$n/abc.log)"
   r=$(prove_bmc "built_cons_n$n" $n $depth "FV_BUILT" conservation)
   [ "$r" = "bounded 40" ] && say "  ...conservation" "PASS (bounded, 40 cycles)" ||
     bad "built conservation, N=$n" "$r ($B/built_cons_n$n/abc.log)"
-  r=$(prove "built_stall1_n$n" $n $depth "FV_BUILT" stall_honoured)
-  [ "${r%% *}" = cex ] && say "  ...a stall one cycle later: stall_honoured fails" "PASS ($r)" ||
+  r=$(prove "built_stall1_n$n" $n $depth "FV_BUILT FV_CHK_BND0" stall_honoured)
+  [ "${r%% *}" = cex ] && say "  ...the abutted stall rule: stall_honoured fails" "PASS ($r)" ||
     bad "built stall_honoured, N=$n" "$r: the sender's interface flop did not delay the stall"
 done
 for n in 0 1 2; do

@@ -66,6 +66,10 @@
 module ccv_common_rpt #(
   parameter int STAGES    = 1,
   parameter int BOUNDARY  = 1,
+  // A destination end: the block takes this module's output, so its boundary
+  // stage is the last. With link stages the first is a link stage; without,
+  // the first is the boundary, as at every source end.
+  parameter bit DST_END   = 1'b0,
   parameter int SLOTS     = 1,
   parameter int PAYLOAD_W = 32,
   parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0
@@ -96,6 +100,13 @@ module ccv_common_rpt #(
   localparam bit HAS_LEAD = (LEAD_MASK != '0);
   // Every stage this end holds: the link's and the block's boundary.
   localparam int NST = STAGES + BOUNDARY;
+  // The first stage is the block's boundary stage. Its lead slice, written
+  // every cycle (its valid is this module's input), is then the boundary
+  // flop's, bnd_lead_q: it counts against the block's per-instance 2%, as
+  // the block's own capture did (Daniel, 2026-11-05, DA tab rev 108; AR's rev
+  // 289 (3)), where a link stage's lead_q counts against this module's own
+  // allowance (tools/check-cg.py RPT_BOUNDARY).
+  localparam bit BND_FIRST = (BOUNDARY != 0) && (!DST_END || STAGES == 0);
 
   // The reset, flopped before any use (RST-1): every flop below leaves reset
   // a cycle after rst_n does. A repeater of no stages has nothing to reset.
@@ -162,20 +173,32 @@ module ccv_common_rpt #(
 
       if (HAS_LEAD) begin : g_lead
         // The lead slice, taken in its valid's cycle: it rides with it.
-        logic [W-1:0] lead_q;
-        if (k == 0) begin : g_in
+        logic [W-1:0] lead_d;
+        if (k == 0 && BND_FIRST) begin : g_bnd
+          // The block's boundary flop: its valid is this module's input, so
+          // written every cycle, as valid, and the block's to budget.
+          logic [W-1:0] bnd_lead_q;
+          always_ff @(posedge clk) begin
+            bnd_lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
+          end
+          assign lead_d = bnd_lead_q;
+        end else if (k == 0) begin : g_in
           // Its valid is this module's input: written every cycle, as valid.
+          logic [W-1:0] lead_q;
           always_ff @(posedge clk) begin
             lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
           end
+          assign lead_d = lead_q;
         end else begin : g_flop
           // Its valid is the previous stage's valid flop: a clock enable.
+          logic [W-1:0] lead_q;
           wire lead_en = v[k*S+j];
           always_ff @(posedge clk) begin
             if (lead_en) lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
           end
+          assign lead_d = lead_q;
         end
-        assign p[((k+1)*S+j)*W +: W] = (pay_q & ~LEAD_MASK) | lead_q;
+        assign p[((k+1)*S+j)*W +: W] = (pay_q & ~LEAD_MASK) | lead_d;
       end else begin : g_nolead
         assign p[((k+1)*S+j)*W +: W] = pay_q;
       end

@@ -894,7 +894,13 @@ are; they count against the hardening wrapper's 2%, the block's partition,
 not the repeater's own allowance (Daniel, 2026-10-19), since a repeater is
 little else and would fail on them alone: two stages of one narrow slot are
 9 such flops, and a 4-slot channel 14 at one stage. Its first stage's lead
-slice, written every cycle too, stays within its own allowance. That is what
+slice, written every cycle too, stays within its own allowance when that
+stage is a link stage. When it is the boundary flop (`BOUNDARY` 1 at a
+source end, or at a destination end with no link stage; `bnd_lead_q`), the
+slice is the capture the block's own budget held before the end was
+flopped, and it counts against the wrapper's 2% as the control pulses do
+(Daniel, DA tab rev 108; AR rev 289). A destination end's boundary behind
+link stages is the last stage, enabled like any later stage. That is what
 limits leads on a repeated link: one 64-bit slot at one stage passes, and
 with a 16-bit lead it does not (the selftest's controls, with a two-stage
 16-bit slot whose control pulses pass its allowance and count against a

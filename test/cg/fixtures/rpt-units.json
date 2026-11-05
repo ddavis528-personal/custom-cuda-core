@@ -1,5 +1,5 @@
 {
-  "_comment": "check-cg selftest: three repeater instantiations in rtl/top/rpt-units.json's form (tools/gen-top.py). One stage of one 64-bit slot, with a 16-bit lead slice and without: the lead's first-stage flops, written every cycle, take the instantiation past its own allowance; without them it passes. Two stages of a 16-bit slot: its nine control flops (valid, wake, credit and stall at each stage, and the flopped reset) are past a 41-flop module's allowance, and pass it because they count against the wrapper's budget instead (Daniel, 2026-10-19). Each is at BOUNDARY 0, the link's stages alone, as these were made; a boundary stage is built as a link stage is (rtl/phys/ccv_common_rpt.sv).",
+  "_comment": "check-cg selftest: three repeater instantiations in rtl/top/rpt-units.json's form (tools/gen-top.py). One stage of one 64-bit slot, with a 16-bit lead slice and without: the lead's first-stage flops, written every cycle, take the instantiation past its own allowance; without them it passes. Two stages of a 16-bit slot: its nine control flops (valid, wake, credit and stall at each stage, and the flopped reset) are past a 41-flop module's allowance, and pass it because they count against the wrapper's budget instead (Daniel, 2026-10-19). The first three are at BOUNDARY 0, the link's stages alone. Two more carry the 16-bit lead at BOUNDARY 1 (DA tab rev 108, AR rev 289): with no link stage, the boundary flop is the first stage, and its ungated lead slice, bnd_lead_q, counts against the wrapper's budget (the receiving or sending block's), so the instantiation passes; at a destination end behind one link stage, the boundary is the last, gated stage, the first is a link stage, and its lead_q is still the repeater's own and past its allowance.",
   "units": [
     {
       "name": "fx_rpt_lead",
@@ -36,6 +36,32 @@
       "reset": "!rst_n",
       "bench": {
         "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GBOUNDARY=0 -GSTAGES=2 -GS=1 -GW=16 \"-GLEAD=16'h0\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
+        "scope": "tb_cg_rpt.dut"
+      }
+    },
+    {
+      "name": "fx_rpt_bnd",
+      "module": "ccv_common_rpt",
+      "files": ["rtl/phys/ccv_common_rpt.sv"],
+      "params": {"STAGES": 0, "BOUNDARY": 1, "SLOTS": 1, "PAYLOAD_W": 64, "LEAD_MASK": "64'hffff"},
+      "clock": "clk",
+      "reset": "!rst_n",
+      "bench": {
+        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GBOUNDARY=1 -GDST_END=0 -GSTAGES=0 -GS=1 -GW=64 \"-GLEAD=64'hffff\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
+        "scope": "tb_cg_rpt.dut"
+      }
+    },
+    {
+      "name": "fx_rpt_bnd_dst",
+      "module": "ccv_common_rpt",
+      "files": ["rtl/phys/ccv_common_rpt.sv"],
+      "params": {"STAGES": 1, "BOUNDARY": 1, "DST_END": 1, "SLOTS": 1, "PAYLOAD_W": 64, "LEAD_MASK": "64'hffff"},
+      "clock": "clk",
+      "reset": "!rst_n",
+      "bench": {
+        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GBOUNDARY=1 -GDST_END=1 -GSTAGES=1 -GS=1 -GW=64 \"-GLEAD=64'hffff\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
         "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
         "scope": "tb_cg_rpt.dut"
       }

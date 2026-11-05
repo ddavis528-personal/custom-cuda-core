@@ -37,16 +37,23 @@ routes across a wrapper where the distance needs no stage, or a no-flop end
 of an unrepeated link: such an end has no repeater at all (below). The module
 is reusable (`clk`/`rst_n` are generic formals).
 
-Two things the boundary flop moves, not yet settled (TI's rev 326 row
-re:RI-11, to AR and DA), and neither binds while every end is no-flop:
+Two things the boundary flop moves (TI's rev 326 row re:RI-11; AR rev 289,
+DA tab rev 108), neither binding while every end is no-flop:
 - **Stall.** A sender that takes stall into its launch decision ahead of its
   first flop stops a cycle later with the flop in the wrapper (proved in
-  `test/formal/fv_link.sv` under `FV_BUILT`: no valid two cycles after a
-  stall holds, one does not). Rescue depth, drain wait and the checker's stall
-  rule would each grow by one for a stalling receiver.
-- **Leads.** A flopped end takes its lead slice in valid's cycle, so its lead
-  flops are written every cycle under no enable (CG-5), against the
-  repeater's own allowance, which every lead channel's flopped end exceeds.
+  `test/formal/fv_link.sv` under `FV_BUILT`). So `CCV_RESCUE_DEPTH` and
+  `CCV_DRAIN_WAIT` are the round trip plus one, 3, and the credit checker's
+  stall rule is `1 + SRC_BOUNDARY + 2 × SRC_STAGES` cycles (`SRC_BOUNDARY`,
+  set by `tools/gen-skel.py` for every receiver whose sender's end is
+  flopped). Credits are unaffected.
+- **Leads.** A flopped end takes its lead slice in valid's cycle, so where
+  the boundary flop is the repeater's first stage its lead flops
+  (`bnd_lead_q`) are written every cycle under no enable (CG-5). They are
+  the capture the block's own budget held before, and `tools/check-cg.py`
+  counts them against the wrapper's 2%, the block's, per instance
+  (`RPT_BOUNDARY`); a link stage's lead stays on the repeater's own
+  allowance. A destination end's boundary behind link stages is the last
+  stage, gated by the stage before's valid, so it adds no ungated lead.
 
 **The payload enable is the stage's own valid flop.** The payload follows
 valid by one cycle, so the cycle it sits on a stage's input is exactly the

@@ -223,9 +223,22 @@ module fv_link #(
 
   // -- the interface checker, at both ends of the link ----------------------
   localparam int RT = ccv_params_pkg::CCV_RT_ABUT + 2 * N;
+  // The sender's interface flop, as gen-skel tells the top's checkers
+  // (SRC_BOUNDARY; AR's rev 289): built, a stall stops the sender a cycle
+  // later. FV_CHK_BND0 keeps the abutted rule on a built link: the control
+  // that the flop does delay the stall (stall_honoured fails).
+`ifdef FV_BUILT
+`ifdef FV_CHK_BND0
+  localparam int BND = 0;
+`else
+  localparam int BND = 1;
+`endif
+`else
+  localparam int BND = 0;
+`endif
   ccv_common_chk_credit #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(DEPTH),
                        .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2 * N),
-                       .LEAD_MASK(LEAD), .SRC_STAGES(0)) u_chk_src (
+                       .LEAD_MASK(LEAD), .SRC_STAGES(0), .SRC_BOUNDARY(BND)) u_chk_src (
     .clk(clk), .rst_n(rst_n), .ch_valid(s_valid), .ch_payload(s_payload),
     .ch_credit(s_credit), .ch_stall(s_stall)
 `ifdef CCV_TRACE
@@ -234,7 +247,7 @@ module fv_link #(
   );
   ccv_common_chk_credit #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(DEPTH),
                        .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2 * N),
-                       .LEAD_MASK(LEAD), .SRC_STAGES(N)) u_chk_dst (
+                       .LEAD_MASK(LEAD), .SRC_STAGES(N), .SRC_BOUNDARY(BND)) u_chk_dst (
     .clk(clk), .rst_n(rst_n), .ch_valid(r_valid), .ch_payload(r_payload),
     .ch_credit(r_credit), .ch_stall(r_stall)
 `ifdef CCV_TRACE
@@ -287,19 +300,6 @@ module fv_link #(
   end
 `ifdef FV_FAIR
   always @(*) if (rst_n) assume (idle_run < 2'd2 || pop_en);
-`endif
-
-`ifdef FV_BUILT
-  // The stall through the sender's interface flop: a stall seen at the
-  // wrapper's side stops valids there one cycle later than at an abutted
-  // sender's own port -- two cycles, not one (the checker's stall_honoured,
-  // at SRC_STAGES 0, is one; TI's row to AR, re:RI-11).
-  logic [1:0] stall_hb;
-  always_ff @(posedge clk) begin
-    if (!rst_n) stall_hb <= '0;
-    else        stall_hb <= {stall_hb[0], s_stall};
-  end
-  `CCV_ASSERT(stall2_honoured, !(stall_hb[1] && s_valid))
 `endif
 
 `ifdef FV_GREEDY
