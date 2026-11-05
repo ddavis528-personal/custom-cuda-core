@@ -1,13 +1,13 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=7 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 7 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=16 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 16 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Register file
 
-The GPR file is four section banks, each 192 rows × 256 bits with 10 read ports and 4 write ports; every select is a pre-decoded one-hot held in a flop, so no row decode sits on a read path or a clock-enable cone. That is one write port fewer than RA-2's five: collectives execute in the R pipeline and share its port (R unit tab). A bank is logical: it is built as 8 slices, `ccv_rcu_bank_slice` × 32 in all (below).
+The GPR file is four section banks, each 192 rows × 256 bits with 10 read ports and 4 write ports; every select is a pre-decoded one-hot held in a flop, so no row decode sits on a read path or a clock-enable cone. That is one write port fewer than RA-2's five: collectives execute in the R pipeline and share its port (R unit tab). A bank is logical: it is built as 8 slices, `rcu_bank_slice` × 32 in all (below).
 
 ## Slices and physical hierarchy (Daniel, 2026-11-03)
 
-- **Slice (k, j):** byte section k of lanes 4j to 4j+3, 192 rows × 32 bits, `ccv_rcu_bank_slice #(K, J)`. It is the RTL module and the check-cg / check-ngd unit. Bank k is the 8 slices (k, 0..7); the RCU has 32.
+- **Slice (k, j):** byte section k of lanes 4j to 4j+3, 192 rows × 32 bits, `rcu_bank_slice #(K, J)`. It is the RTL module and the check-cg / check-ngd unit. Bank k is the 8 slices (k, 0..7); the RCU has 32.
 - **Each slice is a complete bank for its 32 bits:** every read and write port, its own `sel_hi`/`sel_lo` copy per port (14 × 28 = 392 flops, which are also the fanout copies), its own row enables and gate groups, its own `rst_n` flop. No logic crosses slices: a read's bytes from the four banks meet at the reader (alignment on R and M; the lane's swizzle on L).
 - **Physical chunk j:** the four slices (0..3, j), lanes 4j to 4j+3 whole, 192 rows × 128 bits, about 770,000 cells. Eight chunks. Place and route is flat (the plan); a chunk is the contiguous APR block kept open in case physical partitioning is ever needed, which Daniel adopts only if the cost of the alternatives is prohibitive.
 - **Why 4 lanes of one byte (measured, Yosys and ABC through check-ngd's own flow, cold cache, a stand-in with the ports and selects of this tab):**
@@ -51,13 +51,13 @@ Every row index the RCU will use as a select is split at the edge before its use
 | L0, L1, L2 | `phys_src`\[15:8\], \[7:0\], `phys_src2` of the S op that owns section k | lane operands src0-src2 | `iss_v_q` OR over S slots 0..k |
 | L3 | `phys_old_dst` of that op | `merge_data` | same |
 | M0, M1, M2 | base, index, data source rows of the P op that owns pipe k | `rcu_miu_addr` base, index, store data | `iss_v_q` OR over P slots 0..k |
-| R0 | R op `phys_src`\[15:8\], from the R lead's `lead_r_src0`: predecoded in A−1, read in A (RA-39) | shfl source, ret's rs, unballot's rs | `iss_v_q[8]` |
-| R1 | R op `phys_src`\[7:0\], from `lead_r_src1`: predecoded in A−1, read in A (RA-39) | register-index shfl's index | `iss_v_q[8]` |
+| R0 | R op `phys_src`\[15:8\], on the payload wire in A: decoded in the slice, read in A into the slice's `rsrc` (RA-39, OA rev 336) | shfl source, ret's rs, unballot's rs | `iss_v_q[8]` |
+| R1 | R op `phys_src`\[7:0\], on the payload wire in A: as R0 (RA-39) | register-index shfl's index | `iss_v_q[8]` |
 | R2 | R op `phys_old_dst`, or a demotion row | merge source for movi, call, shfl, ballot; demotion | `iss_v_q[8]` OR migration's read grant |
 
 The owner of section k is the lead (cont = 0) S slot j ≤ k whose `footprint` has bit k−j set; V-60 guarantees at most one. Memops follow the same rule over P slots, with pipe k ≡ section k: a memop's footprint is the union of its operands' sections, destination included (the schema's `CCV_PRF_MEMOP_READ_BITS` requirement, 3 × 256 bits per pipe). R ports read the same row in all four banks.
 
-**Read mux:** `rd[31:0] = OR over r of (sel_hi[r>>4] & sel_lo[r&15] & row[r])` in each slice, built as 12 groups of a 16:1 AND-OR on `sel_lo`, each gated by its `sel_hi` bit, then a 12:1 OR. **Measured: 8.3 NGD from the select flops at 192 rows, 11.0 with the fanout term** (stand-in, 2026-11-03; 5.8 at 32 rows). Every reader takes it into flops after at most alignment, so the bank's read-out budget is 11 (Partition tab). R0 and R1 are read a cycle early, in A, so that R's compute starts at flops (R unit tab, RA-39).
+**Read mux:** `rd[31:0] = OR over r of (sel_hi[r>>4] & sel_lo[r&15] & row[r])` in each slice, built as 12 groups of a 16:1 AND-OR on `sel_lo`, each gated by its `sel_hi` bit, then a 12:1 OR. **Measured: 8.3 NGD from the select flops at 192 rows, 11.0 with the fanout term** (stand-in, 2026-11-03; 5.8 at 32 rows). Every reader takes it into flops after at most alignment, so the bank's read-out budget is 11 (Partition tab). R0 and R1 are read a cycle early, in A, from the payload's rows on the wire, into flops in the slice (\`rsrc\`), so that R's compute starts at flops (R unit tab, RA-39); their path from the RCU port is measured 18.4 (RI rev 8) against an budget of 25 from the interface flop.
 
 **Alignment (R and M ports only).** A lane's word is {bank3, bank2, bank1, bank0}. Right-aligned value `v = (word >> 8·pos) & elemmask(width)`, elemmask = all ones, 0xFFFF, 0xFF, 0xF. A 4:1 byte mux plus the mask, about 2 NGD, using pos and width from `iss_*_a`. Lane ports send raw bytes; the lane swizzles (OOE doc, footprint rule).
 
@@ -65,8 +65,8 @@ The owner of section k is the lead (cont = 0) S slot j ≤ k whose `footprint` h
 
 | Port | Lands in | Row select | Data for lane l | Lanes written | Section k written when |
 | --- | --- | --- | --- | --- | --- |
-| LW (lane) | A+6 | lane descriptor `lwb_d[k]` at depth 6 (predecoded at A) | `lane_rcu_res` c\_l `result`\[8k+7:8k\] | all 32; the GPR copy writes only lanes with `active` = 0 | descriptor valid, the op owns section k, it writes a GPR |
-| SW (SFU) | A+11 | SFU descriptor `swb_d` at depth 11 | the SFU second result (RA-3), byte k | all 32 | descriptor valid and k in the SFU destination's `secmask` (all four under `FULL_ROW`) |
+| LW (lane) | A+7 | lane descriptor `lwb_d[k]` at depth 6 (predecoded at A) | `lane_rcu_res` c\_l `result`\[8k+7:8k\] | all 32; the GPR copy writes only lanes with `active` = 0 | descriptor valid, the op owns section k, it writes a GPR |
+| SW (SFU) | A+12 | SFU descriptor `swb_d` at depth 11 | the SFU second result (RA-3), byte k | all 32 | descriptor valid and k in the SFU destination's `secmask` (all four under `FULL_ROW`) |
 | MW (load) | MIU payload cycle T | `mdat_lead_q[j]`, predecoded on the wire in T−1 | `load_data` lane word of slot j, shifted left 8·pos, byte k | lanes in the lead `active_mask` | `mdat_v_q[j]` and k in `secmask(dst_width, dst_pos)` of slot j (all four under `FULL_ROW`), and phys\_dst is not the zero register |
 | RW (R) | A+2 | `rres_a1` | R result (already merged with the old destination), shifted to pos, byte k; or a staged restore row | all 32 | R result valid and k in its `secmask` (all four under `FULL_ROW`); a restore row writes all four |
 
@@ -78,6 +78,15 @@ The owner of section k is the lead (cont = 0) S slot j ≤ k whose `footprint` h
 - `FULL_ROW` = 0: the enables are the `secmask` terms in the table above, the spec's sectioned build.
 
 It flips to 0 only when both have landed: OOE allocating narrow registers at their positions (the footprint build, AR-24's end) and the lanes' swizzle. Every kernel without `full_rows` today has only 32-bit registers, for which the two settings write the same banks. The RCU model's `Config::full_row` (`CCV_RCU_FULL_ROW`) is the same switch; RTL and model run lock-step at the same setting.
+
+**Lead-loaded ports and CG-5 (RI-9, 2026-11-04; R0/R1 revised by RA-39, OA rev 336).** Every other port's select flops load at A's edge (or from a descriptor) under a valid that is already a slice flop. MW (from the MIU lead in T−1) loads from lead fields that arrive with their valid, so no flop of the slice can enable it, and MIU cannot send a valid a cycle earlier. Its select state is therefore **loaded every cycle, ungated**, inside the slice's 2% allowance, and kept small. R0 and R1 have no select flops: they decode the payload's rows on the wire in A, and the slice's `rsrc` flops are enabled by its flop of the R issue valid lead.
+
+- **R0, R1:** the 8-bit row index of the payload's `phys_src`, binary, on the wire (the zero register selects nothing), decoded to `sel_hi`/`sel_lo` in the slice in A, read, merged with the MIU write-through (R unit tab) and flopped into `rsrc` (64 flops a slice). The path from the RCU port: fanout to the 32 slices about 2.5, decode 2, read 11.0, write-through 2, `measured 18.4 within` 25 from the interface flop (RA-39's 19/6 split lapsed with the boundary flops, AR rev 285).
+- **MW:** the slice picks, in T−1 from its own inputs, the one MIU slot whose `secmask` covers its byte section k (one per bank per cycle, asserted), and loads every cycle {row index (8, binary, decoded in T), the slot's `active_mask` for the slice's 4 lanes (4), `dst_pos` (2), valid (1)}.
+
+That is about 15 ungated flops a slice (MW's), about 11% of its allowance (2% of 6,574 = 131) and about 480 across the 32 slices. The binary R0/R1 selects of RI-9 (16 a slice) went with RA-39's payload-wire read.
+
+**Write data and masks.** Write data goes from the port straight into the rows' D, with no per-slice data flop, so LW lands in A+7 and MW in T. MW masks a 4-bit load's byte to its low nibble in the slice (and, under `FULL_ROW`, everything above `dst_width`): RCU does it, so MIU's upper bits never matter. A write whose lane mask has none of the slice's 4 lanes set does not clock the slice's row where the mask comes from the slice's own flops (MW's select flops): that port's hit includes the OR of its lane mask over the slice's lanes. A port whose lane mask arrives with its data cannot put it in an enable (CG-5); there the mask is a hold mux in the D-cone (D = m ? new : q) under the port's slice-level gate (RI-9 (e), as built; RA rev 73).
 
 **D input and enable, per row r of bank k:**
 

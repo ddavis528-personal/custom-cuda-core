@@ -1,9 +1,9 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=7 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 7 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=9 exported=2026-11-04 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 9 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Migration
 
-Migration moves one warp's 16 GPR rows and 4 predicates between RCU and PCA, one 1,024-bit row per message: rows 0-15 are R0-R15 and row 16 is the predicate row. All of it lives in `ccv_rcu_mig`. It owns no PRF port (AR re:RA-6):
+Migration moves one warp's 16 GPR rows and 4 predicates between RCU and PCA, one 1,024-bit row per message: rows 0-15 are R0-R15 and row 16 is the predicate row. All of it lives in `rcu_mig`. It owns no PRF port (AR re:RA-6):
 
 - A demotion reads GPR rows on **R2**, in A+1 of a cycle whose R op does not read R2. It reads the predicate row on the dedicated predicate ports **D0-D3**.
 - A restore writes GPR rows on **RW**, in A+2 of a cycle whose R op writes no GPR. It writes the predicate row on the dedicated predicate ports **PG0-PG3**.
@@ -155,7 +155,7 @@ Per cycle, with the demotion row's decision cycle A:
 
 About 6,300 flops, every one of them behind its land, launch or send enable. The large arrays are `rs_f` (4,184 flops), `dm_pay` (1,034) and `mig_mq` (632).
 
-Assertions in `ccv_rcu_mig`:
+Assertions in `rcu_mig`:
 
 - `chk_dm_stable`.
 - Rows sent in order 0..16 per demotion.
