@@ -63,47 +63,93 @@ module fv_link #(
   logic       rst_n;
   always_ff @(posedge clk) if (boot != 2'd3) boot <= boot + 2'd1;
   assign rst_n = (boot == 2'd3);
+  // The endpoints' reset. With the boundary built, the sender and receiver
+  // are blocks whose reset is flopped before any use (RST-1), as the end's
+  // repeater's is: both leave reset in the same cycle.
+  logic blk_rst_n;
+`ifdef FV_BUILT
+  always_ff @(posedge clk) blk_rst_n <= rst_n;
+`else
+  assign blk_rst_n = rst_n;
+`endif
 
   // -- the sender ----------------------------------------------------------
+  // FV_BUILT: the boundary flops are built in the end's repeater (BOUNDARY 1,
+  // Daniel 2026-11-05, AR 285/287), so the sender drives its port from logic
+  // and takes credit and stall off its interface flop: b_* is its port, s_*
+  // the wrapper's side, where the checker sits as on every link of the top.
   logic          s_valid, s_credit, s_stall, s_wake;
   logic [W-1:0]  s_payload;
   logic [63:0]   s_tid;
   logic [CW-1:0] credits;
   logic [H-1:0]  seq, prom;
   logic          go;
+`ifdef FV_BUILT
+  logic          b_credit, b_stall;
+  logic [W-1:0]  b_payload;
+  // A credit out of the interface flop is usable the cycle it emerges: the
+  // cycle after it reached the wrapper, as a credit taken off the wire is.
+  assign go = blk_rst_n && want && (credits != '0 || b_credit) && !b_stall;
+`else
   assign go = want && (credits != '0) && !s_stall;
+`endif
+  wire           cr_in;              // the credit the sender counts
+`ifdef FV_BUILT
+  assign cr_in = b_credit;
+`else
+  assign cr_in = s_credit;
+`endif
 
   always_ff @(posedge clk) begin
-    if (!rst_n) begin
+    if (!blk_rst_n) begin
+`ifndef FV_BUILT
       s_valid <= 1'b0;
+`endif
       credits <= CW'(DEPTH);
       seq     <= '0;
     end else begin
+`ifndef FV_BUILT
       s_valid <= go;
+`endif
       if (go) begin
         prom <= seq;
         seq  <= seq + 1'b1;
       end
-      if (go && !s_credit)      credits <= credits - 1'b1;
-      else if (!go && s_credit) credits <= credits + 1'b1;
+      if (go && !cr_in)      credits <= credits - 1'b1;
+      else if (!go && cr_in) credits <= credits + 1'b1;
     end
   end
+`ifdef FV_BUILT
+  // The lead with valid; the rest the cycle after, from the sender's flop.
+  assign b_payload = {prom, seq};
+  ccv_common_rpt #(.STAGES(0), .BOUNDARY(1), .SLOTS(1), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_bnd_src (
+    .clk(clk), .rst_n(rst_n),
+    .src_valid(go), .src_payload(b_payload), .src_wake(1'b0),
+    .src_credit(b_credit), .src_stall(b_stall),
+    .dst_valid(s_valid), .dst_payload(s_payload), .dst_wake(s_wake),
+    .dst_credit(s_credit), .dst_stall(s_stall)
+`ifdef CCV_TRACE
+    , .src_tid(64'd0), .dst_tid(s_tid)
+`endif
+  );
+`else
   // The lead with valid; the rest of the promised message a cycle later.
   always_ff @(posedge clk) begin
-    if (!rst_n)       s_payload <= '0;
+    if (!blk_rst_n)       s_payload <= '0;
     else begin
       if (go)      s_payload[H-1:0] <= seq;
       if (s_valid) s_payload[W-1:H] <= prom;
     end
   end
   assign s_wake = 1'b0;
+`endif
   assign s_tid  = '0;
 
   // -- the link ------------------------------------------------------------
   logic          r_valid, r_credit, r_stall, r_wake;
   logic [W-1:0]  r_payload;
   logic [63:0]   r_tid;
-  ccv_common_rpt #(.STAGES(N), .SLOTS(1), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt (
+  ccv_common_rpt #(.STAGES(N), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt (
     .clk(clk), .rst_n(rst_n),
     .src_valid(s_valid), .src_payload(s_payload), .src_wake(s_wake),
     .src_credit(s_credit), .src_stall(s_stall),
@@ -115,8 +161,14 @@ module fv_link #(
   );
 
   // -- the receiver ----------------------------------------------------------
-  logic          landing;
+  // `landing` is the cycle a message is counted, popped and its credit
+  // decided; `due` the cycle its whole payload is readable. Without the
+  // boundary built they are one cycle, the receiver's own valid flop; with
+  // it (FV_BUILT) the interface flop's valid is `landing` and the payload is
+  // in the interface flop the cycle after (AR 285 (2)).
+  logic          landing, due;
   logic [H-1:0]  lead_q, expect_q;
+  logic [W-1:0]  d_payload;
   logic [CW-1:0] occ;
   wire [CW-1:0]  avail = occ + {{(CW-1){1'b0}}, landing};
   wire           pop = pop_en && (avail != '0);
@@ -125,28 +177,68 @@ module fv_link #(
 `else
   wire           pop_two = 1'b0;
 `endif
+`ifdef FV_BUILT
+  logic          d_valid;
+  ccv_common_rpt #(.STAGES(0), .BOUNDARY(1), .SLOTS(1), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_bnd_dst (
+    .clk(clk), .rst_n(rst_n),
+    .src_valid(r_valid), .src_payload(r_payload), .src_wake(r_wake),
+    .src_credit(r_credit), .src_stall(r_stall),
+    .dst_valid(d_valid), .dst_payload(d_payload), .dst_wake(),
+    .dst_credit(pop), .dst_stall(stall_in)
+`ifdef CCV_TRACE
+    , .src_tid(r_tid), .dst_tid()
+`endif
+  );
+  assign landing = d_valid;
   always_ff @(posedge clk) begin
-    if (!rst_n) begin
+    if (!blk_rst_n) due <= 1'b0;
+    else        due <= landing;
+    if (landing) lead_q <= d_payload[H-1:0];
+  end
+`else
+  always_ff @(posedge clk) begin
+    if (!blk_rst_n) begin
       landing  <= 1'b0;
-      occ      <= '0;
-      expect_q <= '0;
       r_credit <= 1'b0;
       r_stall  <= 1'b0;
     end else begin
       landing  <= r_valid;
-      if (r_valid) lead_q <= r_payload[H-1:0];
-      if (landing) expect_q <= expect_q + 1'b1;
-      occ      <= avail - {{(CW-1){1'b0}}, pop} - {{(CW-1){1'b0}}, pop_two};
       r_credit <= pop;               // ONE credit, whatever was consumed
       r_stall  <= stall_in;
+    end
+    if (r_valid) lead_q <= r_payload[H-1:0];
+  end
+  assign due       = landing;
+  assign d_payload = r_payload;
+`endif
+  always_ff @(posedge clk) begin
+    if (!blk_rst_n) begin
+      occ      <= '0;
+      expect_q <= '0;
+    end else begin
+      if (due) expect_q <= expect_q + 1'b1;
+      occ      <= avail - {{(CW-1){1'b0}}, pop} - {{(CW-1){1'b0}}, pop_two};
     end
   end
 
   // -- the interface checker, at both ends of the link ----------------------
   localparam int RT = ccv_params_pkg::CCV_RT_ABUT + 2 * N;
+  // The sender's interface flop, as gen-skel tells the top's checkers
+  // (SRC_BOUNDARY; AR's rev 289): built, a stall stops the sender a cycle
+  // later. FV_CHK_BND0 keeps the abutted rule on a built link: the control
+  // that the flop does delay the stall (stall_honoured fails).
+`ifdef FV_BUILT
+`ifdef FV_CHK_BND0
+  localparam int BND = 0;
+`else
+  localparam int BND = 1;
+`endif
+`else
+  localparam int BND = 0;
+`endif
   ccv_common_chk_credit #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(DEPTH),
                        .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2 * N),
-                       .LEAD_MASK(LEAD), .SRC_STAGES(0)) u_chk_src (
+                       .LEAD_MASK(LEAD), .SRC_STAGES(0), .SRC_BOUNDARY(BND)) u_chk_src (
     .clk(clk), .rst_n(rst_n), .ch_valid(s_valid), .ch_payload(s_payload),
     .ch_credit(s_credit), .ch_stall(s_stall)
 `ifdef CCV_TRACE
@@ -155,7 +247,7 @@ module fv_link #(
   );
   ccv_common_chk_credit #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(DEPTH),
                        .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2 * N),
-                       .LEAD_MASK(LEAD), .SRC_STAGES(N)) u_chk_dst (
+                       .LEAD_MASK(LEAD), .SRC_STAGES(N), .SRC_BOUNDARY(BND)) u_chk_dst (
     .clk(clk), .rst_n(rst_n), .ch_valid(r_valid), .ch_payload(r_payload),
     .ch_credit(r_credit), .ch_stall(r_stall)
 `ifdef CCV_TRACE
@@ -174,7 +266,7 @@ module fv_link #(
       n_land       <= n_land + KW'(landing);
       n_consumed   <= n_consumed + KW'(pop) + KW'(pop_two);
       n_credit_out <= n_credit_out + KW'(r_credit);
-      n_credit_in  <= n_credit_in + KW'(s_credit);
+      n_credit_in  <= n_credit_in + KW'(cr_in);
     end
   end
   // On the link: launched, not yet landed; credits sent, not yet arrived.
@@ -183,7 +275,7 @@ module fv_link #(
   wire [KW-1:0] owed = n_consumed - n_credit_out;   // consumed, credit not yet sent
 
   `CCV_ASSERT(data_in_order,
-              !landing || (lead_q == expect_q && r_payload[W-1:H] == expect_q))
+              !due || (lead_q == expect_q && d_payload[W-1:H] == expect_q))
   `CCV_ASSERT(no_overflow, occ <= CW'(DEPTH))
   // Every message consumed before this cycle has had its credit sent, but
   // the last cycle's, which is the credit register now: exactly r_credit.
@@ -217,7 +309,7 @@ module fv_link #(
     assume (pop_en);
     assume (!stall_in);
   end
-  `CCV_ASSERT(full_bandwidth, go)
+  `CCV_ASSERT(full_bandwidth, go || !blk_rst_n)
 `endif
 
   // Non-vacuity, as assertions that must FAIL (tools/check-formal.sh): a
