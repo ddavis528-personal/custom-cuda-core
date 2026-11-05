@@ -1,6 +1,6 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-04. Keep current at every task's end. Role and ownership:
+Updated 2026-11-05. Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 331, IS 189, TI 310, OI 274, CP 152, DA 106, RA 68, RI 5.
+Conventions 17, AR 275, OA 336, IS 189, TI 320, OI 274, CP 152, DA 106, RA 72, RI 8.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -38,12 +38,16 @@ Nothing had RI in Needs at session start.
 - Gate: split gate if all sections run (`verify.sh --full --only ngd` + gate-export + gate-push --import).
 
 ## Open work, most urgent first
-1. M0 MET and pushed (5968894, SPLIT SCOPED PASS 22/22; 2026-11-04). Reported as RI-8 (RI rev 5),
-   with RI-1/2/3 closed in responses; notices sent to RA and TI. Cycles ~/ccv-logs/m0-cycles.txt.
-   RA ACCEPTED M0's model part (RA tab rev 68): kill-ending +10-13 is KILL_DRAIN, -1..-5 stub slack.
-   M0's second part (RTL lock-step vs model) is phase 5. TI to make the model default (RA-38 (a))
-   and fix GUARD_FWD's doc.
-   Split gate recipe when every section runs: verify --changed <base> --only cg, export; same for
-   ngd; gate-push --import=a.tgz,b.tgz (each part under the 2-h background limit).
-2. Answer TI/RA/OI responses to RI-1..7 at the daily sweep.
-3. Phase 2 (bank slice, R pipe RTL): start now; NGD fanout>4 is enforced (RA-33).
+1. Phase 2 RTL (rtl/rcu/, test/rcu/): rcu_bank_slice (RA-39: R0/R1 read from phys_src on the
+   wire, rsrc flopped per slice with MW write-through), rcu_r + rcu_xbar. Figures sent to RA as
+   RI responses rev 8 (notice sent): phys_src->rsrc 18.4 vs 18 at 192 (miss 0.4) -- do NOT
+   retime until RA answers. rcu_r 2,626 flops, 23.9 NGD, CG clean. Departures to confirm:
+   low from pred's flops, the .ngd.json arrivals, RI-9 (e). RI-10 (192-row cg harness) with TI.
+   Benches: test/rcu/run-rtl.sh (all units + controls nowt/noalign/retlow).
+2. Push chain: ba3549b (main tree) split gate cg passed (~/ccv-logs/gate-cg-ba3549b.tgz), ngd
+   part -> gate-ngd-ba3549b.tgz, then gate-push --import=both. Then fast-forward main tree to
+   the ri-wt commits (795776d, 316564f, aa00783, 58ae73e + this handoff), regen, split gate, push.
+3. TI to merge eac3054 (model drops lead_r_src; on gate-scratch/RI, ri-wt2). Merge TI back after.
+4. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
+5. Split gate recipe when every section runs: verify --changed <base> --only cg, export; same for
+   ngd; gate-push --import=a.tgz,b.tgz (each part a separate background job, < 2 h).
