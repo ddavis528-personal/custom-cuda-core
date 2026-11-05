@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 344, AR 287, TI 332, OI 288, IS 189, CP 152, DA 108,
+Conventions 17, OA 345, AR 292, TI 333, OI 288, IS 189, CP 152, DA 108,
 RA 74 (tab 9851686b-2b0a), RI 9 (tab 8e4547bc-c469).
 OOE doc rev 363. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
@@ -63,6 +63,8 @@ OOE doc rev 363. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    TI 332: OOE 978 of 782 with boundary leads (375 = 231 done in + 144 issue out), but
    TI counted rob_w x1 and old ooe_rs; OA 344 asked recount (~1,200 vs ~1,309), OI to
    gate issue lead off G valid, then list movable done-lead fields (<0.5% mine).
+   RESOLVED: TI 333 withdrew; OOE ~1,200 of ~1,309, fits; OA 345: no shrink, issue-lead
+   gating optional margin; depends on ooe_rs gated payload store landing.
 -4. RA-11 PHYS_REGS (OA rev 333): 160 meets Q-35 (ceil 44 >= ROB 32), 128 fails
    (ceil 24 < 32). TI rev 316: runs DID use derived 12/44, 8/24, so my
    16/64 guess was wrong. OI-114 (OI rev 281): go floor term ignores
