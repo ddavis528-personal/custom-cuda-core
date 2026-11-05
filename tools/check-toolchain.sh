@@ -29,10 +29,12 @@ probe() {
     yosys)     yosys -V 2>/dev/null | head -1 ;;
     sby)       sby --version 2>/dev/null | head -1 ;;
     cvc5)      cvc5 --version 2>/dev/null | head -1 ;;
+    # check-cg builds a too-large unit's replay harness with it (RI-10).
+    clang)     clang++ --version 2>/dev/null | head -1 ;;
   esac
 }
 
-TOOLS="verilator iverilog yosys sby cvc5"
+TOOLS="verilator iverilog yosys sby cvc5 clang"
 
 if [ "$MODE" = "--update" ]; then
   {

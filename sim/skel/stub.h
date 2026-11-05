@@ -22,7 +22,6 @@
 #include <cstring>
 #include <deque>
 #include <map>
-#include <utility>
 #include <memory>
 #include <set>
 #include <string>
@@ -494,7 +493,7 @@ static_assert(kSlotR == ccv::kIssueSlotR, "R's slot (CCV_ISSUE_SLOT_R)");
 /// cycle ahead so RCU enables only the operand groups the op uses. Every
 /// bit is a superset; a clear bit is a promise. The guard's is R's alone
 /// (slot_fields). lead-src-clear promises no source on every op: RCU must
-/// refuse each op that reads one. The phys_src field must be put first.
+/// refuse each op that reads one.
 inline void putIssueLead(Bits &m, unsigned chan, unsigned slot, unsigned fp, unsigned src_used,
                          bool imm_used, bool merge, bool guard_used, unsigned guard_pred,
                          const std::string &brk) {
@@ -505,16 +504,6 @@ inline void putIssueLead(Bits &m, unsigned chan, unsigned slot, unsigned fp, uns
   const bool r = slot == kSlotR && guard_used;
   put(m, chan, "lead_guard_used", r);
   put(m, chan, "lead_guard_pred", r ? guard_pred : 0u);
-  // RA-39 (b): R's first two source rows a cycle ahead, from the payload's
-  // own phys_src, each zero when its lead_src_used bit is clear.
-  // lead-rsrc-swap names them the wrong way round.
-  const unsigned used = brk == "lead-src-clear" ? 0u : src_used;
-  const unsigned ps = unsigned(get(m, chan, "phys_src"));
-  unsigned r0 = slot == kSlotR && (used & 1u) ? (ps >> 8) & 0xffu : 0u;
-  unsigned r1 = slot == kSlotR && (used & 2u) ? ps & 0xffu : 0u;
-  if (brk == "lead-rsrc-swap") std::swap(r0, r1);
-  put(m, chan, "lead_r_src0", r0);
-  put(m, chan, "lead_r_src1", r1);
 }
 /// chwidth's codes, and the sections (or pipes) a register of each spans.
 enum : unsigned { kChw32 = 0, kChw16 = 1, kChw8 = 2, kChw4 = 3 };

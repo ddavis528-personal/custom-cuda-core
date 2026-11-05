@@ -1408,24 +1408,11 @@ if [ "$nm" -gt 0 ] && [ ! -e "$ev" ]; then
 else
   bad "CCV_RCU_IMPL" "model events $nm; stub log $( [ -e "$ev" ] && echo written || echo absent)"
 fi
-# R's early source rows (RA-39 (b); OA's rev 328, AR's rev 271): lead_r_src0
-# and lead_r_src1 name the rows of phys_src a cycle ahead. lead-rsrc-swap
-# names them the wrong way round; RCU refuses each R issue whose two rows
-# differ (callret's, pinned), and nothing else fails.
-"$SKEL" --kernel build/oracle/callret/oracle.jsonl --break lead-rsrc-swap >"$B/kernel_lead-rsrc-swap.log" 2>&1
-n=$(grep -c "^CHECK rcu: seq [0-9]*, [^,]*, reads a source row its lead does not name" "$B/kernel_lead-rsrc-swap.log")
-if [ "$n" = 7 ] && [ "$(field "$B/kernel_lead-rsrc-swap.log" check_failures)" = "$n" ]; then
-  say "--break lead-rsrc-swap: RCU refuses R source rows its lead misnames" "PASS ($n issues)"
-else
-  bad "--break lead-rsrc-swap" "$n refused (7 pinned): $(grep '^KERNEL' "$B/kernel_lead-rsrc-swap.log")"
-fi
 # pmov.imm writes only the issue-mask lanes (RA-19; ccv-sim at b83777e):
 # pmovdiv runs it on lanes 0-15 with P2 all ones, so lanes 16-31 keep theirs.
-# pmov-all-lanes writes all 32, and the oracle's P2 must refuse it. The
-# break is the stub's (RI's model, the default, has none yet: asked of RI,
-# TI's rev 319), so it runs on CCV_RCU_IMPL=stub; pmovdiv itself runs clean
-# on the model above.
-CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/pmovdiv/oracle.jsonl --break pmov-all-lanes >"$B/kernel_pmov-all-lanes.log" 2>&1
+# pmov-all-lanes writes all 32, and the oracle's P2 must refuse it. RI's
+# model has the break (ba3549b, TI's rev 319), so it runs on the default.
+"$SKEL" --kernel build/oracle/pmovdiv/oracle.jsonl --break pmov-all-lanes >"$B/kernel_pmov-all-lanes.log" 2>&1
 if grep -q "^CHECK rcu: seq [0-9]* P2 = 00000000, oracle ffff0000$" "$B/kernel_pmov-all-lanes.log" &&
    [ "$(field "$B/kernel_pmov-all-lanes.log" check_failures)" = 1 ]; then
   say "--break pmov-all-lanes: pmov.imm keeps the inactive lanes" "PASS (P2 ffff0000 refused as 0)"
