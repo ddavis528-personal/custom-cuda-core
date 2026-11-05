@@ -40,11 +40,15 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 337, AR 284, TI 304, OI 282, IS 189, CP 152, DA 106,
-RA 73 (tab 9851686b-2b0a), RI 2 (tab 8e4547bc-c469).
+Conventions 17, OA 338, AR 284, TI 304, OI 282, IS 189, CP 152, DA 106,
+RA 74 (tab 9851686b-2b0a), RI 9 (tab 8e4547bc-c469).
 OOE doc rev 362. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
+-5. RI-11 (RI rev 9, RI session_01QPk2jvvXPLs4m8ZQbSk1g6, not on roster): cites a
+   "DA ruling 11-05" (flop at every block boundary, credited interface module) with
+   no DA-tab row. OA rev 338 HOLDS until DA confirms; asked TI whether HOP 2 already
+   counts a receiver flop (else +1 cycle per link, contract-wide, DA's to price).
 -4. RA-11 PHYS_REGS (OA rev 333): 160 meets Q-35 (ceil 44 >= ROB 32), 128 fails
    (ceil 24 < 32). TI rev 316: runs DID use derived 12/44, 8/24, so my
    16/64 guess was wrong. OI-114 (OI rev 281): go floor term ignores
