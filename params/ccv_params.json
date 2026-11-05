@@ -593,17 +593,19 @@
     },
     {
       "name": "CCV_RESCUE_DEPTH",
-      "value": 2,
+      "value": 3,
       "status": "arch",
-      "doc": "Storage a stalling receiver reserves to catch everything already in flight. Equals the round trip: no unwinding, no negative acknowledgement.",
-      "source": "ports spec 2026-09-23"
+      "derive": "CCV_RT_ABUT + 1",
+      "doc": "Storage a stalling receiver reserves to catch everything already in flight: the round trip plus the cycle a stall spends in the sender's interface flop (the boundary stage, rtl/phys/ccv_common_rpt.sv; proved in tools/check-formal.sh, built: no valid two cycles after a stall at the wrapper, and not one). No unwinding, no negative acknowledgement. One more payload entry per stalling receiver than the round trip alone; credits are unaffected.",
+      "source": "ports spec 2026-09-23; AR's rev 289 (re:RI-11), 2 to 3"
     },
     {
       "name": "CCV_DRAIN_WAIT",
-      "value": 2,
+      "value": 3,
       "status": "arch",
-      "doc": "Cycles to wait after asserting stall before nothing is in flight. Equals the round trip, which is what lets sleep entry, chwidth change and demotion share one mechanism and one proof.",
-      "source": "ports spec 2026-09-23"
+      "derive": "CCV_RT_ABUT + 1",
+      "doc": "Cycles to wait after asserting stall before nothing is in flight: the round trip plus the cycle a stall spends in the sender's interface flop (as CCV_RESCUE_DEPTH). One wait for sleep entry, chwidth change and demotion, which is what lets them share one mechanism and one proof, a cycle longer than the round trip alone.",
+      "source": "ports spec 2026-09-23; AR's rev 289 (re:RI-11), 2 to 3"
     },
     {
       "name": "CCV_WAKE_LAT",

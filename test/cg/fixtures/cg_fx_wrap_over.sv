@@ -15,7 +15,7 @@ module cg_fx_wrap_over (
   wire        v0, rv, cr, st, wk;
   wire [15:0] d0, rd;
   cg_fx_wide u_w0 (.clk, .rst, .in_v, .in_d, .out_v(v0), .out_d(d0));
-  ccv_common_rpt #(.STAGES(2), .SLOTS(1), .PAYLOAD_W(16)) u_rpt (
+  ccv_common_rpt #(.STAGES(2), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(16)) u_rpt (
     .clk, .rst_n(!rst),
     .src_valid(v0), .src_payload(d0), .src_wake(in_d[0]), .src_credit(cr), .src_stall(st),
     .dst_valid(rv), .dst_payload(rd), .dst_wake(wk), .dst_credit(in_v), .dst_stall(in_d[1]));
