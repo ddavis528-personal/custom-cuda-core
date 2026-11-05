@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-03. Keep this current at every task's end; it is what
+Updated 2026-11-05. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -39,6 +39,19 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-05 01:30Z: PUSHED 31e21e0 (full gate PASS, both branches): RI-10
+  (a) rtl/rcu+test/rcu scope cg/ngd with a readers check in gate-scope.py,
+  (b) check-cg unit key replay_cxx clang++ (clang 18 in toolchain lock) for
+  the full rcu_bank_slice (6574 flops, clean, 490 s, 1377 MiB); lead_r_src
+  removed with RI's eac3054; ba3549b merged, pmov-all-lanes on the default
+  model. TI rev 324 re:RI-10, RI notified (RI is not in roster.json; notice
+  composed by hand). Next, #75 interface flops (DA 11-05: ccv_common_rpt
+  default one flop at each block end, zero-cycle option kept; DPI ends
+  no-flop): AR 288 settled params: LANE_BASE 8, SFU 13, RCU_ADDR_BASE 6
+  (incl. receiving iface flop); PF-47 reapply = 2 (1+1, params must say so
+  if bases land first) -> L1_WAKE 13, CMPL 15, M1-miss fallback 3;
+  KILL_DRAIN 16 derived; reword CCV_P_W_LANE_BYP_AGE doc: lane forwards
+  LANE_BYP..LANE-2, PRF serves LANE-1. Merge RI's 0d087e9 first.
 - 2026-11-04 later: PUSHED 863a374 (scoped gate PASS 22/22): RI's 5968894
   merged (M0 met, RA rev 68 accepted); RI's model is makeRcu's default,
   CCV_RCU_IMPL=stub selects the stub; check-rcu-unit holds RI's 8
