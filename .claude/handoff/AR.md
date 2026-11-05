@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 295, OA 345, TI 334, RA 82 (tab 9851686b-2b0a), RI 15, IS 189, CP 154, OI 290, DA 108,
+  record): AR 297, OA 345, TI 334, RA 82 (tab 9851686b-2b0a), RI 15, IS 189, CP 154, OI 291, DA 108,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
@@ -217,6 +217,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    AR 293-295): OOE fits, ~1,200 of ~1,309 per instance (ooe_rob_w x4), so
    the source-end no-flop is margin only. TI: no tool change needed if
    allowed (links.json no_flop). N=1,2 unbounded conservation running.
+   OI 291 priced: AR params +1.66% S1; all OOE inputs flopped +3.49%;
+   miu_ooe_cmpl +1.60, dec_ooe_uop +1.29, rcu_ooe_done +0.62 alone. AR row
+   296-297: OOE's ends have logic before first flop, so zero-cycle needs a
+   SECOND no-flop kind (<=12 NGD input, link_n 0, abutting blocks), ASKED
+   DANIEL; AR recommends (b) for rcu_done + dec_uop, miu_cmpl only if the
+   floorplan abuts MIU/OOE (Q-42 plan puts them on opposite RCU ends: add
+   MIU-OOE cmpl distance as the first floorplan number).
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
