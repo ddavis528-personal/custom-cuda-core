@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 275, OA 331, RA 64, IS 189, TI 316, OA 337, OI 284, CP 152, DA 106, RI 3
+Conventions 17, AR 285, RA 64, IS 189, TI 322, OA 339 (340 notice: not yet readable, re-read), OI 284, CP 152, DA 106, RI 3
 (sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -127,18 +127,20 @@ the compact hook printed this handoff.
      flop), 26.6 main only, vs sched alone 26.6, cap 30.5; 20.7 without fanout in all; kept
      copies 28.6 (no help). Final-grant form alone 34.9 vs late 25.7. R guard pred = rlead form.
      Probes in wtl (lslot_probe.sv LATE 1-4, lslot_only.sv, ooe_pick_fp.sv, ooe_select_lp.sv).
-     NEXT RTL: ooe_rs payload store + payload-read mux, lane-slot leads in the late 2:1 form, R
-     guard pred off R's pick, phys_src0/1 from the issue reg (out budget 6: OA rev 337, RCU in 19).
-     IN PROGRESS worktree scratchpad/wtp (branch oi-payload, uncommitted, from 1dc0cdd): ooe_rs
-     PW/K params, pay/home staged on req_en, written an edge late via lgp (kept lg copy, pw_en),
-     issue register (iss_v/iss_pay) off gnt_cq01h & home, clocked on iss_en <= sched's new output
-     gnt_l_cq03h (= gnt_en); own reset flop rst_p_r01h (rst_r01h's 374 loads are the worst path:
-     sharing it cost 29.4 -> 29.9). Asserts pay_ready, slot_onehot (on iss_en). trio_tb: tags +
-     homes (rsRes accessor in ooe_core.h), issue compare, controls pay-port/no-home (caught);
-     rs_tb drives home + pay bits (RS_PW; cg-build -GPW=176 -DRS_PW=176); rnrs ties off.
-     ooe_rs NGD 29.4 (= cap; req 29.5 < cap 30.2). CG: re-running with payload driven.
-     Trio-only runner: scratchpad/trio-only.sh <vectors> <seeds>. Then build ooe_rs payload store +
-     payload-read mux either way. OI-112's 11-06 RA-39 (c) RTL date depends on it (said so).
+     DONE dca9c5f (wtp, branch oi-payload; gating): ooe_rs payload store (pst/hst staged on
+     req_en, written an edge late via kept lgp, pw_en), issue register iss_v/iss_pay off
+     gnt_cq01h & home, on iss_en <= sched gnt_l_cq03h, a SUPERSET lead (kept rq_l copy |
+     gnt_out | force_l | rrun_l; gnt_l_covers assert); own reset rst_p_r01h (rst_r01h fanout).
+     NGD: rs 29.4 (= cap), sched 26.7 (caps all hold, no NGD-7). CG pass both (sched med 79%).
+     Trio 3 seeds: 7234 grants = issued slots, 0 mismatches; controls pay-port/no-home caught.
+     Rejected sched variants: direct gnt_en (NGD-7), copies of ready too (vel 28.4 > 28.2),
+     separate copy enables (code in 31.3). OI row on the payload store still to write.
+     NEXT RTL: lane-slot leads in the late 2:1 form, R guard pred off R's pick, phys_src0/1
+     from the issue reg. RA-39's 6 out budget LAPSED (DA interface flops, RI-11; OA 339).
+   - RI-11 (DA: interface module defaults to a flop each side; AR 285: HOP/credits unchanged,
+     LANE 7->8, SFU 12->13, L1_WAKE 16->17, L1_CMPL 18->19). OA 340 asks OI: audit OOE inputs
+     with logic before first flop (cmpl+hint wakes, rcu done, RAU, decq enq, ckpt/redirect);
+     price those latencies + OOE moves, and zero-cycle on the top 2 links, for DA. Read OA 340.
    - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
      link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
      lead_r_src0/1 from RS names (TI 39a1861 on ccr-183cc441-doowtf; merge it). sched (b)
