@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 80, RI 11. TI 324. AR 287.
+Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 80, RI 12. TI 326. TI 324. AR 287.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -38,6 +38,10 @@ Nothing had RI in Needs at session start.
 - Gate: split gate if all sections run (`verify.sh --full --only ngd` + gate-export + gate-push --import).
 
 ## Open work, most urgent first
+00. Push: 600004a (all phase 2 + RI-11 + TI merge + r32 out of the gate) split gate running
+    (bqmniuo5k: cg then ngd -> ~/ccv-logs/gate-{cg,ngd}-600004a.tgz); then gate-push --import.
+    TI's AR-bases push waits on: 600004a (sent on gate-scratch/RI), MOVI_TOTAL 354 re-pin (TI),
+    and RI-12 (OOE decq bug; OI FIXED at OI rev 287, verified on 600004a, lands in OI's next push: close RI-12 then). Repro tree ri-wt2 (params restored).
 0. RI-11 DONE for RCU (RI rev 10; notices TI, RA). DA: flop at every block boundary; A counts
    from RCU's interface flop; arrivals 0 (rd2 11), set in 0d087e9; check-ngd passes. Model derives
    lane/SFU timing from params; tests derive too (checked at LANE 8/SFU 13). TI lands the params
