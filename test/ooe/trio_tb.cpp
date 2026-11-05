@@ -97,7 +97,7 @@ void trioRetConfig(Config &c) {
   c.resolve_lag = 1;
   c.resolve_lag_ret_only = 1;
   c.squash_act_lag = 1;
-  c.ret_hold = 1;
+  c.ret_hold = 2;   // OA's rev 320: a held win cancelled after the pick
 }
 /// RA-17's idle-R run: testIdleR's migrations over the trio's settings, at
 /// ooe_trio's IRK.
@@ -107,6 +107,9 @@ void trioIdleRConfig(Config &c) {
 }
 
 namespace {
+#ifndef TR_PW
+#define TR_PW 16   // ooe_trio's PW: the payload tag's bits
+#endif
 constexpr unsigned N = TR_N, NR = TR_NR, NM = N - NR, A = TR_A, P = 2 * A, S = TR_S, L = Core::kWakeLines,
                    NC = TR_NC;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
@@ -129,6 +132,11 @@ std::map<std::string, unsigned long long> first_kinds;   // each core's first mi
 int prev_rq[TR_N], prev_rd[TR_N], t_prev_req[TR_N], t_prev_ready[TR_N];
 unsigned long long grant_cores = 0, grant_first_sum = 0;
 unsigned long long core_cycle = 0;
+// The payload (RA-39 (c)): each entry's tag and slot as its allocation
+// drove them, and the grant register the issue register reads.
+uint16_t tag_of[TR_N], home_of[TR_N];
+unsigned tag_next = 0;
+unsigned long long issued_slots = 0;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -151,6 +159,15 @@ template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
 }
 template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i != n; ++i) setBit(w, i, false); }
 
+// An entry's issue slot (ccv_ooe_rcu_issue's binding: S0-S3, P0-P3, R),
+// one-hot, from its footprint (ooe_select's res: S0-S3, R, P0-P3): its
+// lowest resource in the slot order.
+uint16_t homeSlot(unsigned res) {
+  for (unsigned k = 0; k != 4; ++k) if (res >> k & 1) return uint16_t(1u << k);
+  for (unsigned k = 0; k != 4; ++k) if (res >> (5 + k) & 1) return uint16_t(1u << (4 + k));
+  return res >> 4 & 1 ? uint16_t(1u << 8) : 0;
+}
+
 // One model cycle, all three benches' views of it.
 struct Snap {
   Core::WakeLog w;
@@ -158,6 +175,7 @@ struct Snap {
   std::vector<uint8_t> valid, iss, prod, fin, sqf, dep, code, line, wtl, wnext, slot, copy, ready_q, req_q, v73;
   std::vector<uint64_t> age;
   std::vector<uint8_t> akind, acls;   // each entry allocated this cycle: its timer's kind and class
+  std::vector<uint16_t> ahome;        // and its issue slot, one-hot (RA-39 (c)): its footprint's lowest resource
   uint64_t now = 0;   // the model's cycle
   bool stop_q = false;   // the model's stop lead register
   unsigned active = 0, ncmpl = 0;
@@ -166,7 +184,7 @@ struct Snap {
 Snap emptySnap() {
   Snap y;
   y.w.grant.assign(N, 0); y.w.kind.assign(N, 0); y.w.cls.assign(N, 0); y.w.rfree.assign(N, 0);
-  y.akind.assign(N, 0); y.acls.assign(N, 0);
+  y.akind.assign(N, 0); y.acls.assign(N, 0); y.ahome.assign(N, 0);
   y.w.stop.assign(N, 0); y.w.cmpl.assign(N, 0); y.w.miss.assign(N, 0);
   y.valid.assign(N, 0); y.iss.assign(N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.sqf.assign(N, 0);
   y.dep.assign(N * N, 0); y.code.assign(N * N, 0); y.line.assign(N * L, 0); y.wtl.assign(N * L, 0);
@@ -184,6 +202,7 @@ Snap snapCycle(const Core &c) {
     const auto kc = c.wakeKindClass(e);
     y.akind[e] = kc.first;
     y.acls[e] = kc.second;
+    y.ahome[e] = homeSlot(c.rsRes(e));
   }
   for (unsigned i = 0; i != N; ++i) {
     y.valid[i] = c.rsValid(i);
@@ -385,10 +404,21 @@ void hook(const Core &c) {
   // of t - 1 = a.
   clearAll(dut->akind_cq01h, 2 * P);
   clearAll(dut->acls_cq01h, 3 * P);
+  clearAll(dut->pay_cq01h, P * TR_PW);
+  clearAll(dut->home_cq01h, P * 9);
   for (unsigned p = 0; p != P; ++p)
     if (entry_of[p] != N) {
-      setField(dut->akind_cq01h, p * 2, 2, a.akind[entry_of[p]]);
-      setField(dut->acls_cq01h, p * 3, 3, a.acls[entry_of[p]]);
+      const unsigned e = entry_of[p];
+      setField(dut->akind_cq01h, p * 2, 2, a.akind[e]);
+      setField(dut->acls_cq01h, p * 3, 3, a.acls[e]);
+      // Its payload, a tag of the bench's, and its slot. Control
+      // pay-port drives each RCU port's payload on its neighbour's port,
+      // no-home drives no slot: both must be caught.
+      tag_of[e] = uint16_t(++tag_next);
+      home_of[e] = a.ahome[e];
+      const unsigned pp = control == 9 && p < A ? (p ^ 1) : p;
+      setField(dut->pay_cq01h, pp * TR_PW, TR_PW, tag_of[e]);
+      if (control != 10) setField(dut->home_cq01h, p * 9, 9, home_of[e]);
     }
   for (unsigned j = 0; j != N; ++j) setBit(dut->prod_cq01h, j, a.prod[j]);
   // -- ooe_sched's outer terms for P = t: the payload, the allocation lead
@@ -501,9 +531,30 @@ void hook(const Core &c) {
                         (unsigned long long)r->ooe_trio__DOT__ise_q,
                         (unsigned long long)r->ooe_trio__DOT__u_rs__DOT__iss_cq02h);
   }
+  uint64_t gr_before = 0;   // the grant register the issue register reads at this edge
+  for (unsigned e = 0; e != N; ++e) gr_before |= uint64_t(getBit(dut->grant_cq04h, e)) << e;
   tick();
-  // -- After the edge. ooe_sched: its grant register is the model's grants
-  // of t.
+  // -- After the edge. ooe_rs's issue register: slot k holds the entry of
+  // the last grant register whose slot is k, with the payload its
+  // allocation drove (RA-39 (c)).
+  {
+    unsigned want_v = 0;
+    uint16_t want_pay[9] = {};
+    for (unsigned e = 0; e != N; ++e)
+      if (gr_before >> e & 1)
+        for (unsigned k = 0; k != 9; ++k)
+          if (home_of[e] >> k & 1) { want_v |= 1u << k; want_pay[k] = tag_of[e]; }
+    for (unsigned k = 0; k != 9; ++k) {
+      const bool gv = getBit(dut->iss_v_cq05h, k);
+      if (gv != bool(want_v >> k & 1)) fail("issue slot valid differs", k, 0, gv, want_v >> k & 1);
+      else if (gv) {
+        ++issued_slots;
+        const unsigned gp = unsigned(getField(dut->iss_pay_cq05h, k * TR_PW, TR_PW));
+        if (gp != want_pay[k]) fail("issue payload differs", k, 0, gp, want_pay[k]);
+      }
+    }
+  }
+  // -- ooe_sched: its grant register is the model's grants of t.
   for (unsigned e = 0; e != N; ++e) {
     const bool want = e < sw.sel_grant.size() && sw.sel_grant[e], got = getBit(dut->grant_cq04h, e);
     grants += want;
@@ -631,7 +682,8 @@ int main(int argc, char **argv) {
   if (const char *c = std::getenv("TRIO_CONTROL")) {
     const std::string n = c;
     control = n == "no-msd" ? 1 : n == "no-miss-lead" ? 2 : n == "late-leads" ? 3 : n == "no-alloc-lead" ? 4
-            : n == "no-ret-hold" ? 5 : n == "no-rep-lead" ? 6 : n == "no-idle-r" ? 7 : n == "no-force" ? 8 : 0;
+            : n == "no-ret-hold" ? 5 : n == "no-rep-lead" ? 6 : n == "no-idle-r" ? 7 : n == "no-force" ? 8
+            : n == "pay-port" ? 9 : n == "no-home" ? 10 : 0;
     if (!control) { std::fprintf(stderr, "trio_tb: unknown control %s\n", c); return 2; }
   }
   const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
@@ -649,9 +701,9 @@ int main(int argc, char **argv) {
   for (const auto &k : kinds) std::fprintf(stderr, "  %-30s %llu\n", k.first.c_str(), k.second);
   for (const auto &k : first_kinds) std::fprintf(stderr, "  first: %-23s %llu\n", k.first.c_str(), k.second);
   std::printf("trio_tb seeds=%u cores=%llu compared=%llu cycles=%llu skipped=%llu grants=%llu "
-              "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f squash_ready_skipped=%llu held=%llu migs=%llu forced=%llu mismatches=%llu model_failures=%d\n",
+              "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f squash_ready_skipped=%llu held=%llu migs=%llu forced=%llu issued_slots=%llu mismatches=%llu model_failures=%d\n",
               seeds, cores, compared_cores, cycles, skipped, grants, grant_cores,
-              grant_cores ? double(grant_first_sum) / double(grant_cores) : 0.0, squash_ready_skipped, held, migs, forced, mismatches,
+              grant_cores ? double(grant_first_sum) / double(grant_cores) : 0.0, squash_ready_skipped, held, migs, forced, issued_slots, mismatches,
               model_fails);
   if (!cg.on() && !held) std::fprintf(stderr, "trio_tb: the ret hold never held an entry\n");
   if (!cg.on() && !forced) std::fprintf(stderr, "trio_tb: the idle-R force never held R\n");

@@ -284,9 +284,11 @@ module ooe_freelist #(
   // took, popped from the buffer now, their free bits cleared with them.
   // Leaving the buffer now: last cycle's take (rq, one-hot), its first q
   // entries. Their free bits clear with them; the buffered set clears a
-  // cycle later, from this mask registered (pr), off the edge's path: in
-  // between the entries' free bits are clear, so no bank finds them, and
-  // none is freed before it has been out of the buffer a cycle.
+  // cycle later, from this mask registered (pr), off the edge's path. An
+  // entry freed in between (a squash can free a name the cycle after its
+  // take) is still marked buffered at the next search, so no bank finds it
+  // there; it is found from the search after (the model's FreeVec clears
+  // its buffered set as late).
   function automatic logic [N-1:0] popped_of(input logic [SW-1:0] st, input logic [A:0] rq);
     logic [B*W-1:0] buf_q;
     logic [LB-1:0]  cnt;
@@ -695,24 +697,36 @@ module ooe_freelist #(
     // 2 allocates in it this cycle (it took it as a candidate as it
     // emptied: its sections arrive with the registered allocations); a
     // row Rename 2 returns, the next cycle too. Both reach the free bits
-    // and the owners' counts from this register.
+    // and the owners' counts from this register, the emptied rows less
+    // those Rename 2 allocated in as they emptied: those rows, decoded
+    // from the late inputs and flopped beside it (wr), so only the decode
+    // is in the inputs' cycle (OA rev 330). Rename 2 never returns a row
+    // it allocates in that cycle, so the mask spares its returns.
     function automatic logic [N-1:0] pend_next(input logic [N*NS-1:0] q, input logic [A-1:0] v,
                                                input logic [A*W-1:0] row, input logic [A*NS-1:0] sec,
-                                               input logic [N*NS-1:0] fr, input logic [N-1:0] wr,
-                                               input logic [N-1:0] rt);
+                                               input logic [N*NS-1:0] fr, input logic [N-1:0] rt);
       logic [N*NS-1:0] was, nx;
       was = q | sec_set(v, row, sec);
       nx  = was & ~fr;
       for (int r = 0; r < N; r++)
-        pend_next[r] = (was[r * NS +: NS] != '0 && nx[r * NS +: NS] == '0 && !wr[r]) || rt[r];
+        pend_next[r] = (was[r * NS +: NS] != '0 && nx[r * NS +: NS] == '0) || rt[r];
     endfunction
     logic [N*NS-1:0] sec_q_cq02h, sfree_cq02h;
-    logic [N-1:0]    pend_nx_cq01h;
+    logic [N-1:0]    pend_nx_cq01h, pend_q_cq02h, wr_q_cq02h;
     assign sfree_cq02h   = sec_q_cq02h & ~fss_cq01h;
     assign pend_nx_cq01h = pend_next(sec_q_cq02h, av_cq02h, ar_cq02h, as_cq02h,
                                      fss_cq01h & {N * NS{free_en_cq01h}},
-                                     rows_of(sa_v_cq01h, sa_row_cq01h), rows_of(rt_v_cq01h & rt_en_cq01h, rt_row_cq01h));
-    assign fr_en_cq02h = pend_cq02h != '0;
+                                     rows_of(rt_v_cq01h & rt_en_cq01h, rt_row_cq01h));
+    assign pend_cq02h  = pend_q_cq02h & ~wr_q_cq02h;
+    // Under the registered allocations' enable, as av: low only while no
+    // lane allocates now or did last cycle, so it clears.
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) wr_q_cq02h <= '0;
+      else if (iv_en_cq01h) wr_q_cq02h <= rows_of(sa_v_cq01h & sa_en_cq01h, sa_row_cq01h);
+    end
+    assign fr_en_cq02h = pend_q_cq02h != '0;   // over the masked set, as an enable may be
+    `CCV_ASSERT(sa_not_rt, (rows_of(sa_v_cq01h & sa_en_cq01h, sa_row_cq01h) &
+                            rows_of(rt_v_cq01h & rt_en_cq01h, rt_row_cq01h)) == '0)
     // A free names live sections only, and Rename 2 allocates free ones.
     `CCV_ASSERT(sec_free_live, (fss_cq01h & ~(sec_q_cq02h | sec_set(av_cq02h, ar_cq02h, as_cq02h))) == '0)
     `CCV_ASSERT(sec_alloc_free, (sec_set(av_cq02h, ar_cq02h, as_cq02h) & sec_q_cq02h) == '0)
@@ -723,12 +737,12 @@ module ooe_freelist #(
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
         sec_q_cq02h <= '0;
-        pend_cq02h  <= '0;
+        pend_q_cq02h <= '0;
         pv_cq02h    <= 1'b0;
       end else begin
         if (sec_en_cq01h) sec_q_cq02h <= sec_next(sec_q_cq02h, av_cq02h, ar_cq02h, as_cq02h, fss_cq01h);
         pv_cq02h <= pv_nx_cq01h;
-        if (pend_en_cq01h) pend_cq02h <= pend_nx_cq01h;
+        if (pend_en_cq01h) pend_q_cq02h <= pend_nx_cq01h;
       end
     end
 `ifdef CCV_CHECK

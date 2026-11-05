@@ -39,6 +39,36 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-04 later: PUSHED 863a374 (scoped gate PASS 22/22): RI's 5968894
+  merged (M0 met, RA rev 68 accepted); RI's model is makeRcu's default,
+  CCV_RCU_IMPL=stub selects the stub; check-rcu-unit holds RI's 8
+  'control <c> caught' lines; GUARD_FWD doc; pmovdiv kernel (pmov.imm
+  merges issue mask, 9ce7381, compiler pin e533ecd) with --break
+  pmov-all-lanes run under CCV_RCU_IMPL=stub until RI adds the break to its
+  model (asked at TI rev 319, re:RI-8; RI, RA notified). Then move that
+  control back to the default. RI-7 waits on OI's imm_kind 6 (11-06).
+  #62 left: job_rcu_rtl lock-step (needs RI's RTL), check-sv-hosted
+  selector. RH: J1/J3/J5 done (AR revs 283/284, TI 318); J2 running
+  (coremark128 cold hangs at 95945, dec_ooe_uop response_within_n), then
+  coremarkpl32/128. #72 waits on OI's answer to TI revs 315/316.
+- 2026-11-04 15:10Z: PUSHED 6cbabba (RCU events 33-47, RI-2 (d); TI rev
+  310) and b85595b (full gate PASS: ccv_miu_rcu_data leads its own six
+  fields, RA-40, drop option; OI-111's DECQ-15 checks, each valid at 13 and
+  15; AR-25 (1)-(3),(6) docs). TI rev 311 rows re:RA-40, re:AR-25,
+  re:OI-111; RA, AR, OI, RI notified. RH: J1 192 done, 160/128 running
+  with derived REN_FLOOR/CEIL (confirmed); then J5, J2, coremarkpl32/128
+  (OK'd); vadd16 waits on a CP export of vadd16/vadd16_loop as
+  release/kernels/ (TI to raise with CP). OI-112: imm_kind 6, arrival-2,
+  lead_r_src due 11-06; csa DUAL=0 rides OI's post-decq push.
+- 2026-11-04 06:10Z: PUSHED fbefc16 (ooe_sched back on heavy-units: CI
+  red on every branch was TI's 4e7186f; TI rev 302 rang all) and b11e60f
+  (fanout ratchet live: 109 caps in 9 ooe modules; seed fix 87795bf takes
+  a multi-unit module's worst unit; 836fd75 reverted; TI rev 304 rang
+  OI/OA/RA). Both branches at b11e60f. Waiting: #66 decq 15 (TI rev 301)
+  bumps with OI's decq_free_lag RTL, not before; #67 RA-39 (c) waits on
+  AR (d) (OA accepted (b), rev 328). OI-105 answered yes (TI rev 303).
+  Open: why CI reads ooe_sched at 2190 MiB vs 975 MiB locally.
+  Lesson: `setsid nohup ... & echo $!` gives setsid's pid, not the job's.
 - 2026-11-04 01:45Z: RA-33 fanout ENFORCED in check-ngd, local (faf5bf0,
   baa4136): every enforced depth and block level counts the term; ratchet
   'fanout' in rtl/ngd-ratchet.json, baseline rtl/ngd-fanout-baseline.json

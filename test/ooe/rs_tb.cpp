@@ -75,7 +75,10 @@ void rsConfig(Config &c) {
 }
 
 namespace {
-constexpr unsigned N = RS_N, NR = RS_NR, A = RS_A, P = 2 * A;
+#ifndef RS_PW
+#define RS_PW 1   // ooe_rs's PW as built (cg-build.sh builds the unit's 176)
+#endif
+constexpr unsigned N = RS_N, NR = RS_NR, A = RS_A, P = 2 * A, PW = RS_PW;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned W = bits(N);
 
@@ -89,17 +92,25 @@ unsigned long long kinds = 0;     // valid entries whose kind and class were com
 constexpr unsigned NCL = RS_NC;
 
 // A core cycle as the model ended it.
+// An entry's issue slot, one-hot, from its footprint (as trio_tb's).
+uint16_t homeSlot(unsigned res) {
+  for (unsigned k = 0; k != 4; ++k) if (res >> k & 1) return uint16_t(1u << k);
+  for (unsigned k = 0; k != 4; ++k) if (res >> (5 + k) & 1) return uint16_t(1u << (4 + k));
+  return res >> 4 & 1 ? uint16_t(1u << 8) : 0;
+}
+
 struct Snap {
   std::vector<unsigned> ralloc, cidx;   // allocations in order; the entries completing
   std::vector<uint8_t> rfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
   std::vector<uint8_t> kc;              // each entry's {class, kind} as ooe_wake's timers take it
+  std::vector<uint16_t> home;           // and its issue slot, one-hot (RA-39 (c); trio_tb checks the payload)
   bool sq = false, cmpl = false, codes = false;
 };
 Snap empty() {
   Snap y;
   y.rfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
   y.code.assign(N * N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.iss.assign(N, 0); y.wtl3.assign(N, 0);
-  y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0); y.kc.assign(N, 0);
+  y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0); y.kc.assign(N, 0); y.home.assign(N, 0);
   return y;
 }
 Snap snapCycle(const Core &c) {
@@ -115,6 +126,7 @@ Snap snapCycle(const Core &c) {
     if (c.rsValid(i)) {
       const auto k = c.wakeKindClass(i);
       y.kc[i] = uint8_t((k.second << 2) | k.first);
+      y.home[i] = homeSlot(c.rsRes(i));
     }
     // Final as ooe_wake holds it in the cycle: an entry confirmed in it was.
     y.fin[i] = c.rsFinal(i) || (i < w.conf.size() && w.conf[i]);
@@ -261,6 +273,8 @@ void hook(const Core &c) {
   clearAll(dut->row_prod_cq01h, P);
   clearAll(dut->akind_cq01h, 2 * P);
   clearAll(dut->acls_cq01h, 3 * P);
+  clearAll(dut->home_cq01h, P * 9);
+  clearAll(dut->pay_cq01h, P * PW);
   for (unsigned p = 0; p != P; ++p) {
     const unsigned e = entry_of[p];
     if (e == N) continue;
@@ -268,6 +282,16 @@ void hook(const Core &c) {
     setBit(dut->row_prod_cq01h, p, y.prod[e]);
     // Its kind and class with its row; control no-kind loses them.
     kref[e] = y.kc[e];
+    for (unsigned b = 0; b != 9; ++b) setBit(dut->home_cq01h, p * 9 + b, (y.home[e] >> b) & 1u);
+    // A payload as an allocation's: its own bits, a mix of the allocation's
+    // count (trio_tb checks what is read; this bench clocks the store).
+    {
+      uint64_t x = 0x9e3779b97f4a7c15ull * (allocs + 1);
+      for (unsigned b = 0; b != PW; ++b) {
+        if (b % 64 == 0) { x ^= x >> 31; x *= 0xbf58476d1ce4e5b9ull; x ^= x >> 29; }
+        setBit(dut->pay_cq01h, p * PW + b, (x >> (b % 64)) & 1u);
+      }
+    }
     const unsigned k = control == "no-kind" ? 0u : y.kc[e];
     for (unsigned b = 0; b != 2; ++b) setBit(dut->akind_cq01h, p * 2 + b, (k >> b) & 1u);
     for (unsigned b = 0; b != 3; ++b) setBit(dut->acls_cq01h, p * 3 + b, (k >> (2 + b)) & 1u);

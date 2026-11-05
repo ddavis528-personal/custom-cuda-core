@@ -588,7 +588,7 @@ module ccv_miu_w #(
   end
   // ccv_miu_rcu_data, source end
   if (RPT_MIU_RCU_DATA > 0) begin : g_rpt_miu_rcu_data
-    ccv_common_rpt #(.STAGES(RPT_MIU_RCU_DATA), .SLOTS(4), .PAYLOAD_W(1114)) u_rpt_miu_rcu_data (
+    ccv_common_rpt #(.STAGES(RPT_MIU_RCU_DATA), .SLOTS(4), .PAYLOAD_W(1114), .LEAD_MASK(1114'h7fffffff800000007ffff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)) u_rpt_miu_rcu_data (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_rcu_data_s3_valid, b_miu_rcu_data_s2_valid, b_miu_rcu_data_s1_valid, b_miu_rcu_data_s0_valid}), .src_payload({b_miu_rcu_data_s3_payload, b_miu_rcu_data_s2_payload, b_miu_rcu_data_s1_payload, b_miu_rcu_data_s0_payload}),
       .src_wake(b_miu_rcu_data_wake), .src_credit({b_miu_rcu_data_s3_credit, b_miu_rcu_data_s2_credit, b_miu_rcu_data_s1_credit, b_miu_rcu_data_s0_credit}), .src_stall({b_miu_rcu_data_s3_stall, b_miu_rcu_data_s2_stall, b_miu_rcu_data_s1_stall, b_miu_rcu_data_s0_stall}),

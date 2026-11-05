@@ -189,7 +189,7 @@
       "value": 4,
       "status": "tunable",
       "decided_at": "Stage 4b sweep",
-      "doc": "D-cache lookups per cycle."
+      "doc": "D-cache lookups per cycle. It sets the rate of ccv_miu_dcu_req, ccv_dcu_miu_rsp and ccv_dcu_miu_fill_ntc (a notice promises its refill on the same response slot), each tied by rate_param, so tools/gen-interfaces.py refuses a rate that drifts from it."
     },
     {
       "name": "CCV_SPM_BYTES",
@@ -339,7 +339,7 @@
       "status": "arch",
       "source": "arch opens A-1, A-22 (2026-09-27)",
       "derive": "clog2(CCV_MIGRATION_CYCLES)",
-      "doc": "Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, 16 and up predicate and divergence state. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does."
+      "doc": "Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, row 16 the predicate state alone (CCV_W_PRED_STATE, 128 bits; PCA spec rev 17, AR-25): divergence state migrates through FET. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does."
     },
     {
       "name": "CCV_W_PRED_STATE",
@@ -701,11 +701,11 @@
     },
     {
       "name": "CCV_P_DECQ",
-      "value": 13,
+      "value": 15,
       "status": "provisional",
-      "decided_at": "OOE per-block session; DA's response OA-21 (2026-10-20)",
+      "decided_at": "DA-106 (2026-11-04)",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; DA's response OA-21",
-      "doc": "Decode queue depth ahead of rename. 13 since rename interleaves warps uop by uop (option (c), DA's response OA-21): decq registers the take and pops it an edge late, and the extra entry covers the uop in flight; DEC's credit pool follows it. Was 12."
+      "doc": "Decode queue depth ahead of rename. 15 with decq_free_lag 1, was 13 (DA-106, OA's rev 327): a freed entry's credit returns an edge late, and the two extra entries cover it; DEC's credit pool follows it. 13 was for rename's take popped an edge late (option (c), DA's response OA-21); 12 before that."
     },
     {
       "name": "CCV_P_RS_WARP_CAP",

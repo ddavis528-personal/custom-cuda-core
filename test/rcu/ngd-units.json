@@ -1,0 +1,16 @@
+{
+  "_comment": "Timing units for RI's RCU design modules with no flops, which test/rcu/cg-units.json does not cover (tools/check-ngd.py): one module at one parameterisation each.",
+  "units": [
+    {
+      "name": "rcu_xbar",
+      "module": "rcu_xbar",
+      "files": [
+        "rtl/rcu/rcu_xbar.sv"
+      ],
+      "params": {
+        "LANES": 32,
+        "W": 32
+      }
+    }
+  ]
+}
