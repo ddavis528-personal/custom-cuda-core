@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 82, RI 12. TI 326. TI 324. AR 287.
+Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 84, RI 12. TI 326. TI 324. AR 287.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -38,6 +38,9 @@ Nothing had RI in Needs at session start.
 - Gate: split gate if all sections run (`verify.sh --full --only ngd` + gate-export + gate-push --import).
 
 ## Open work, most urgent first
+0000. RA revs 83/84 (zero-cycle pricing): depths answered (RI rev 16, notice sent). Model runs
+    D/Z1/Z2/Z3 delegated to a background agent in worktree /home/user/ri-wt3 (802b8ae, local param
+    edits reverted after): post the table as an RI row for RA/DA when it reports.
 000. SWEEP 2026-11-05 in ri-wt2 (detached, from pushed 89543cc): merged 6 branches (126afa13 17,
     183cc441 7, 57eff422 47, 80102643 14, 9eb50716 15, c22116ce 5) + regen = 802b8ae. Full split gate:
     cg part bf89hat92 -> ~/ccv-logs/gate-cg-802b8ae.tgz; then `tools/verify.sh --only ngd` + export;
@@ -67,4 +70,4 @@ Nothing had RI in Needs at session start.
 3. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals.
 4. Remaining phases per docs/rcu-impl.md: rcu_mig, the lane/SFU descriptor pipes, assembly (M5-M7).
 5. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
-Bookmarks 2026-11-05 sweep: Conventions 17, AR 297, OA 347, IS 189, TI 336, OI 292, CP 154, DA 108, RA 82, RI 15.
+Bookmarks 2026-11-05 sweep: Conventions 17, AR 297, OA 347, IS 189, TI 336, OI 292, CP 154, DA 108, RA 84, RI 16.
