@@ -44,9 +44,13 @@
 // boundary register, built here instead of in the block: at a source end the
 // sender's last flop, at a destination end the receiver's first, for every
 // signal of the end (valid, payload, lead, wake forward; credit and stall
-// back). They are the two flops CCV_RT_ABUT already counts, so no crossing,
-// round trip or credit depth changes, and never in series with a block's own:
-// the block drives and takes these ports with logic, not registers. A stage
+// back), never in series with a block's own: the block drives and takes
+// these ports with logic, not registers. A flopped receiving end adds a
+// cycle to its crossing, bnd_rx (AR's revs 300, 301); a flopped sending end
+// adds none, replacing the sender's output register (AR's rev 285).
+// CCV_RT_ABUT counts both for such a block; in front of a block that still
+// registers its inputs and credit (a DPI host), a flopped receiving end is a
+// stage each way in the round trip and credit depth (docs/physical.md). A stage
 // is a stage, so the boundary is built exactly as a link stage is.
 // BOUNDARY = 0 is the zero-cycle option, for an end whose block registers the
 // port itself with 0 NGD (checked at the wrapper by check-ngd) or a DPI host

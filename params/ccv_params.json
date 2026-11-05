@@ -1014,7 +1014,7 @@
       "status": "tunable",
       "decided_at": "generated",
       "source": "Daniel's responses OA-4 (2026-10-08), a placeholder; 12 to 13 at AR's rev 287 (re:RI-11); derived from CCV_LAT_SFU_BASE at AR's revs 300 and 301 (re:RI-16)",
-      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 13 at the defaults. RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 16 at the defaults), derived, never written as a number (AR's rev 288).",
+      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 13 at the defaults. RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 17 at the defaults, its issue end flopped), derived, never written as a number (AR's rev 288).",
       "derive": "CCV_LAT_SFU_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res')"
     },
     {
