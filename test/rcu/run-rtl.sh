@@ -10,6 +10,8 @@
 #                   retlow), each of which must fail
 #   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (nofwd,
 #                   nomerge), each of which must fail
+#   rcu_kill:       test/rcu/kill_tb.cpp, and its control drain (KILL_DRAIN
+#                   - 1 in the value model), which must fail
 # Usage: test/rcu/run-rtl.sh [--full]   (--full adds the 192-row slice)
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -60,4 +62,11 @@ for c in nofwd nomerge; do
     say "rcu_pred control $c" "NOT CAUGHT ($B/rcu_pred.$c.log)"; fail=1
   fi
 done
+bench rcu_kill test/rcu/cg-build.sh rcu_kill "$B/rcu_kill" -- "$B/rcu_kill/tb"
+if [ -x "$B/rcu_kill/tb" ] && ! "$B/rcu_kill/tb" --control drain >"$B/rcu_kill.drain.log" 2>&1 &&
+   grep -q "control drain: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_kill.drain.log"; then
+  say "rcu_kill control drain" "caught"
+else
+  say "rcu_kill control drain" "NOT CAUGHT ($B/rcu_kill.drain.log)"; fail=1
+fi
 exit $fail
