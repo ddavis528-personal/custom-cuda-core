@@ -114,7 +114,11 @@ took departures (1) OL/OR/OC in pred, (3) dq 18 but gt/pdt/br at 0, (4) shared e
 (5) rcu_r pr_orow (Partition rev 41); DECLINED (2) CG-5 waivers on m_am/rg_hi (use interface flop lead
 directly, else ungated in allowance). Credit-pulse block-budget ask (rcu_kill 45 cr pulses, CG-1 waiver):
 RA supports; DANIEL TO RULE (asked in chat). M4 kill-drain bound unexercised: TI's kernel + V-24 checker.
-Bookmarks: OA 338, RA 81, RI 14, TI 321, DA 108, AR 289.
+RI-15 (RI rev 15): strict CG-5 leaves no legal rcu_pred layout (MIU lead 152 fl, R guard 9 fl held into
+payload cycle; enable would be an input). RI offered (a) iface-flop Q as enable, (b) 2-cycle leads, (c) waivers.
+RA rev 82: (a)/(c) reverse Daniel's CG-5 ruling; RA proposes (d) one-cycle ungated lead holds charged to the
+block 2% like DA rev 108 (161 fl; block ~1,500 of ~4,700). DANIEL TO RULE (with credit pulses). rcu_pred/kill held.
+Bookmarks: OA 338, RA 82, RI 15, TI 321, DA 108, AR 289.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
