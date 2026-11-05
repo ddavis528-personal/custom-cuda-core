@@ -71,6 +71,8 @@ module ooe_rs #(
   parameter int NR = 30,                 // RCU-class entries, [0, NR)
   parameter int A  = 4,                  // allocation ports per class (CCV_ISSUE_WIDTH)
   parameter int NC = 4,                  // completions a cycle (ccv_miu_ooe_cmpl's rate)
+  parameter int PW = 1,                  // payload bits an entry holds for its issue (RA-39 (c))
+  parameter int K  = 9,                  // issue slots (CCV_ISSUE_RESOURCES: S0-S3, P0-P3, R)
   localparam int P  = 2 * A,             // ports: RCU's 0..A-1, then MIU's
   localparam int W  = $clog2(N)
 ) (
@@ -97,6 +99,14 @@ module ooe_rs #(
   input  logic [NC-1:0]    cmpl_l_cq00h, // the completion channel's valid: a payload next cycle
   input  logic [NC*W-1:0]  cmpl_idx_cq00h, // each completion's RS entry (its payload)
   input  logic             sq_l_cq00h,   // the registered squash frees next cycle
+  // The payload (RA-39 (c)): each port's, with its request, and its issue
+  // slot, one-hot (the footprint's lowest resource: an RCU entry's S0-S3
+  // or R, an MIU entry's P0-P3).
+  input  logic [P*PW-1:0]  pay_cq01h,
+  input  logic [P*K-1:0]   home_cq01h,
+  input  logic             gnt_l_cq01h,  // ooe_sched's grant register may change at the next edge
+  output logic [K-1:0]     iss_v_cq03h,  // the issue register: slot k issues
+  output logic [K*PW-1:0]  iss_pay_cq03h, // and its entry's payload
   output logic [P-1:0]     gnt_v_cq03h,  // port p was granted, at the last edge
   output logic [P*W-1:0]   gnt_idx_cq03h, // port p's entry
   output logic [N-1:0]     valid_out_cq02h, // the valid bits (a copy for the outputs)
@@ -465,6 +475,104 @@ module ooe_rs #(
       sq_en_cq01h  <= sq_l_cq00h;
     end
   end
+
+  // -- Payload and issue (RA-39 (c); OOE microarchitecture, Payload read) ---
+  // Each port's payload and slot are staged at its allocation, on its
+  // request lead, and written into the entry at the next edge through the
+  // last edge's grant (lg), one entry's flops at a time: both enables are
+  // this module's own flops (CG-5). The entry is first read the cycle
+  // after its first grant registers, which is no sooner than that write
+  // (pay_ready). The free leaves them as they are: payload, read only
+  // through a grant of a valid entry.
+  logic [P*PW-1:0] pst_cq02h;
+  logic [P*K-1:0]  hst_cq02h;
+  always_ff @(posedge ooe_core_clk)
+    for (int p = 0; p < P; p++)
+      if (req_en_cq01h[p]) begin
+        pst_cq02h[p * PW +: PW] <= pay_cq01h[p * PW +: PW];
+        hst_cq02h[p * K +: K]   <= home_cq01h[p * K +: K];
+      end
+  // The payload's own flopped reset (RST-1): rst_r01h's loads are the
+  // module's widest net, on its worst path.
+  (* keep *) logic p_rst_r01h;
+  always_ff @(posedge ooe_core_clk) p_rst_r01h <= ooe_rst_r00h;
+  // The last edge's grant again, for the write alone (NGD-7: lg's own
+  // loads are the rows' path), clocked as lg is.
+  (* keep *) logic [P*N-1:0] lgp_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (p_rst_r01h)         lgp_cq02h <= '0;
+    else if (lg_en_cq02h) lgp_cq02h <= g_cq02h;
+  end
+  logic [N-1:0] pw_en_cq02h;
+  always_comb begin
+    pw_en_cq02h = '0;
+    for (int q = 0; q < P; q++) pw_en_cq02h = pw_en_cq02h | lgp_cq02h[q * N +: N];
+  end
+  logic [N*PW-1:0] pq_cq02h;
+  logic [N*K-1:0]  hq_cq02h;
+  logic [N*PW-1:0] pd_cq02h;
+  logic [N*K-1:0]  hd_cq02h;
+  always_comb
+    for (int i = 0; i < N; i++) begin
+      pd_cq02h[i * PW +: PW] = '0;
+      hd_cq02h[i * K +: K]   = '0;
+      for (int p = 0; p < P; p++)
+        if (lgp_cq02h[p * N + i]) begin
+          pd_cq02h[i * PW +: PW] = pd_cq02h[i * PW +: PW] | pst_cq02h[p * PW +: PW];
+          hd_cq02h[i * K +: K]   = hd_cq02h[i * K +: K] | hst_cq02h[p * K +: K];
+        end
+    end
+  always_ff @(posedge ooe_core_clk)
+    for (int i = 0; i < N; i++)
+      if (pw_en_cq02h[i]) begin
+        pq_cq02h[i * PW +: PW] <= pd_cq02h[i * PW +: PW];
+        hq_cq02h[i * K +: K]   <= hd_cq02h[i * K +: K];
+      end
+  // The payload read: slot k takes the granted entry whose slot is k, a
+  // one-hot AND-OR over its class, into the issue register. The register
+  // is clocked when ooe_sched's grant register was (its lead, flopped), so
+  // it clears with it.
+  logic iss_en_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (p_rst_r01h) iss_en_cq02h <= 1'b0;
+    else          iss_en_cq02h <= gnt_l_cq01h;
+  end
+  logic [K-1:0]    iv_d_cq02h;
+  logic [K*PW-1:0] ip_d_cq02h;
+  always_comb
+    for (int k = 0; k < K; k++) begin
+      iv_d_cq02h[k] = 1'b0;
+      ip_d_cq02h[k * PW +: PW] = '0;
+      for (int e = 0; e < N; e++)
+        if (gnt_cq01h[e] && hq_cq02h[e * K + k]) begin
+          iv_d_cq02h[k] = 1'b1;
+          ip_d_cq02h[k * PW +: PW] = ip_d_cq02h[k * PW +: PW] | pq_cq02h[e * PW +: PW];
+        end
+    end
+  always_ff @(posedge ooe_core_clk) begin
+    if (p_rst_r01h)       iss_v_cq03h <= '0;
+    else if (iss_en_cq02h) iss_v_cq03h <= iv_d_cq02h;
+  end
+  always_ff @(posedge ooe_core_clk)
+    if (iss_en_cq02h) iss_pay_cq03h <= ip_d_cq02h;
+  // A grant the issue register takes never reads an entry whose payload
+  // is still in its stage (the design's timing: select reads an entry no
+  // sooner than the edge after its allocation, ooe_sched's request
+  // register; trio_tb holds it).
+  `CCV_ASSERT(pay_ready, !iss_en_cq02h || (gnt_cq01h & lga_cq02h) == '0)
+  // A granted entry has one slot, and no two grants share one (V-60).
+  logic slot_ok_cq02h;
+  always_comb begin
+    logic [K-1:0] seen;
+    slot_ok_cq02h = 1'b1;
+    seen = '0;
+    for (int e = 0; e < N; e++)
+      if (gnt_cq01h[e]) begin
+        if (!$onehot(hq_cq02h[e * K +: K]) || (seen & hq_cq02h[e * K +: K]) != '0) slot_ok_cq02h = 1'b0;
+        seen = seen | hq_cq02h[e * K +: K];
+      end
+  end
+  `CCV_ASSERT(slot_onehot, !iss_en_cq02h || slot_ok_cq02h)
 
   // Local clock gating (docs/rtl-coding-style.md). A class's state, its
   // valid bits, rows, line selects, prod bits and column flags, changes
