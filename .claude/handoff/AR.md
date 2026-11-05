@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 299, OA 350, TI 334, RA 84 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 291, DA 108,
+  record): AR 300, OA 350, TI 334, RA 84 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 291, DA 108,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
@@ -242,6 +242,17 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    (1)), fails by construction (TI may keep as negative control); no skeleton
    change; price via bases: N AR bases (+1.17% S1 RCU model), Z1 RCU_ADDR 5,
    Z2 LANE 7/SFU 12, Z3 none. miu_rcu_data pred guard fwd 16.2 > 12.
+   AR 300 (re:RI-16, TI 337) SUPERSEDES 299 and 286's booking: TI's link
+   term adopted. Crossing = HOP + link_n + bnd_rx (1 flopped rx end, 0
+   no-flop; source-end wrapper flop free). Bases block-internal: LANE 7,
+   SFU 12, RCU_ADDR 5 (PF-47 1, not 2). Defaults: lane_res/issue/miu_data
+   flopped at RCU; rcu_lane_ops and rcu_miu_addr (MIU stub) no-flop ->
+   LANE 8, SFU 13, WAKE 17 (13; issue term cancels, +1 = miu_data end),
+   CMPL 19 (15) + bnd_rx(miu_ooe_cmpl), LAT_RCU 3, V-35 base+bnd(issue)
+   +bnd(done). D valid; RI's skeleton ask stands; pricing = links.json
+   no_flop edits. Done: LANE spec rev 21, MIU spec rev 59 (.11865/.12185/
+   .12255), PF-47 row + bullet. Waits: TI link term in gen-params/gen-skel/
+   checkers, then RI/OI price D, N, Z1-Z3 and OA 349's package.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
