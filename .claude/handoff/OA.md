@@ -40,9 +40,9 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 342, AR 287, TI 322, OI 282, IS 189, CP 152, DA 108,
+Conventions 17, OA 343, AR 287, TI 322, OI 288, IS 189, CP 152, DA 108,
 RA 74 (tab 9851686b-2b0a), RI 9 (tab 8e4547bc-c469).
-OOE doc rev 362. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
+OOE doc rev 363. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
 -5. RI-11 / DA 11-05 (via TI rev 321, verbatim; OA recorded DA tab 107): interface
@@ -57,6 +57,9 @@ OOE doc rev 362. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    HINT, BYP same. OA 341: +1 should sit on PF-47's adopted base 1 (=2, WAKE 13).
    DA 108 (via AR): boundary lead flops count vs receiver's 2% CG; OOE takes
    rcu_ooe_done's 231; OA 342 asked OI for margin, shrink lead fields first if over.
+   OI 286: OOE 1.45% ungated with the 231, margin 326; nothing moves. OI 285: receiver
+   audit done, rx_lag pricing -> DA next. OA 343: issue timing (A) valid+lead in I
+   t+1, payload t+2 via late G copy (HOP already assumes it); select lead muxes dropped.
 -4. RA-11 PHYS_REGS (OA rev 333): 160 meets Q-35 (ceil 44 >= ROB 32), 128 fails
    (ceil 24 < 32). TI rev 316: runs DID use derived 12/44, 8/24, so my
    16/64 guess was wrong. OI-114 (OI rev 281): go floor term ignores
@@ -67,7 +70,7 @@ OOE doc rev 362. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    DECQ 15 + lag 1 at 41ebad9 (OI-109/111 closed); sched (b) ret_hold 2 gating.
 -3. RA-39 early R read (R0/R1 in A; OA revs 328-329): only L1 hits miss A
    (data lands in consumer's A). (i) MIU forward on R0/R1 TAKEN rev 329 (RA:
-   ~10k cells, 190 flops, A 16 NGD; overhead list); OOE doc rev 362. (ii) withdrawn.
+   ~10k cells, 190 flops, A 16 NGD; overhead list); OOE doc rev 363. (ii) withdrawn.
    OI-115 (rev 335): R lead mux off final grant = sched 38.8 (cap 30.5); OA: probe
    (0) mux off R's own pick (R footprint alone), lane slots off main+fallback picks
    + late 2:1; RA prices fallback R0/R1 from payload wires (~19, RCU in-budget);
