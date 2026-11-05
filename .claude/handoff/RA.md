@@ -96,7 +96,13 @@ descriptor ages 6, 11; KILL_DRAIN 16; lane-bypass window 9; guard ~15). OA still
 DA-tab row; TI derives the params once OA confirms. Spec restated (2026-11-05): Conventions 10,
 Partition 38, Done 24, Pipeline 17, Lane+memory 8, Predicate 7, Register file 16, R unit 22,
 Overview 49; snapshots and rcu-impl.md (block-boundary bullet) current.
-Bookmarks: OA 338, RA 78, RI 9, TI 321, DA 106, AR 285.
+AR row 286 (AR rev 287): accounting FINAL. DPI-host ends stay no-flop; +1s in RCU_ADDR_BASE 5->6,
+LANE_BASE 8, SFU 13; no credit depth grows; MISS_WAKE/CMPL_HINT/LANE_BYP unchanged. RA rev 79 (AR, TI
+notified): KILL_DRAIN derived (16); RA reads ADDR_BASE +1 as the receiving interface flop, so PF-47
+reapplies as 2 (RCU-internal 1), L1_WAKE 17->13, fallback 3 - AR to confirm; lane bypass ages 4-6,
+compare 12 entries (3 ages x 4 sections), SFU at PRF A_p+12. Spec: Lane 11, Overview 50, Partition 39,
+Conventions 11; snapshots current.
+Bookmarks: OA 338, RA 79, RI 9, TI 321, DA 106, AR 287.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)

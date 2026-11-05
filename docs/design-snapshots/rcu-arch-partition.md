@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=38 exported=2026-11-05 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 38 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=39 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 39 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -44,7 +44,7 @@ RA writes these files with the implementation. A block input starts at its inter
 | --- | --- | --- | --- | --- |
 | issue lead `lead_guard_pred` → `pred` `psel` flops (A−1); `psel` → 48:1 read → negate, forward → `lead_br_*` flops (A) | block port, 2 | `pred` in: 12 | 14 (A−1); about 16 in A | the split guard read (RA-32, Predicate file tab): the guard's row is predecoded at A−1 from the issue lead, so the A path starts at flops. Without the guard lead it is the old single-cycle path, pred in 23, about 22, still the tightest in RCU |
 | issue payload → `bank` read predecode flops | 2 | `bank` in: 14 | 16 | op-class decode 5, owner 3, predecode 3, port mux 2 |
-| issue payload → `lanes` payload, bypass flops | 2 | `lanes` in: 18 | 20 | ownership, the age 4-5 compare, immediate substitution |
+| issue payload → `lanes` payload, bypass flops | 2 | `lanes` in: 18 | 20 | ownership, the age 4-6 compare, immediate substitution |
 | issue payload → `mem` payload flops | 2 | `mem` in: 14 | 16 |  |
 | issue payload → `mig` `dm_v_q`, `rs_v_a1` | 2 | `mig` in: 12 | 14 | the R2/RW-free decode |
 | OOE `ccv_ooe_rcu_issue` R slot `phys_src0/1` → `bank` R0-R1 read (in A) → the slice's `rsrc`; `bank` R2 read (in A+1) → `r` `old` | `phys_src0/1` from the interface flop at 0 (RA-39's 19/6 split lapsed with the boundary flops, AR rev 285); `bank` out: 11 for R2 (measured 11.0 with the fanout term, RI-9) | `rcu_bank_slice` in: 25 on `phys_src0/1` from the interface flop (fanout to 32 slices 2.5, decode, read, MIU write-through: measured 18.4, into `rsrc`); `r` in: 14 for R2 | 25 | alignment 2 into flops; R's compute starts at flops in A+1, about 16 for the register-index shfl and ret, alignment of rsrc included (R unit tab, early R source read, RA-39) |
@@ -117,7 +117,7 @@ OOE sends a lead slice on every `ccv_ooe_rcu_issue` slot. It is driven from a fl
 - If OI's select-path NGD does not fit the grant mux, OOE sends the same bits from a registered copy of the entry (OA, NGD-7's copy). Nothing changes on RCU's side.
 - If OOE does not send the slice at all, every group falls back to `issue_v_q` and the implementation measures DCGE (list item 2 above).
 
-**Address time.** `CCV_LAT_RCU_ADDR_BASE` = 1 is adopted (PF-47). TI's first application failed the gate in OI's RTL, so the params still say 5 until OI fixes `ooe_wake`'s depth and the `no-msd` control's stimulus (TI rev 288); TI then reapplies it. RCU's spec, model and RTL are built to 1 regardless. The address valid leaves at A's edge and the payload at A+1's edge. If M1 misses, RA returns with 2 and one pipeline stage is added in `_mem`. `CCV_LAT_L1_WAKE` goes from 16 to 12.
+**Address time.** `CCV_LAT_RCU_ADDR_BASE` = 1 is adopted (PF-47). TI's first application failed the gate in OI's RTL, so the params still say 5 until OI fixes `ooe_wake`'s depth and the `no-msd` control's stimulus (TI rev 288); TI then reapplies it. RCU's spec, model and RTL are built to 1 regardless. The address valid leaves at A's edge and the payload at A+1's edge. If M1 misses, RA returns with 2 and one pipeline stage is added in `_mem`. `CCV_LAT_L1_WAKE` goes from 17 to 13. The boundary flops leave RCU's address time unchanged: valid and payload as above, counted from the interface flop. The parameter also counts the receiving interface flop (AR row 286: 5 to 6 today), so TI reapplies it as 2, not 1 (RA rev 79).
 
 **Reduced units (RA-32 (2), TI rev 285).** Every RCU size is a module parameter that defaults to the `ccv_params_pkg` value, for example `parameter int ROWS = ccv_params_pkg::CCV_P_PHYS_REGS`. A reduced check-cg / check-ngd unit sets it in `cg-units.json`, as in `{"name": "rcu_bank_slice_r32", "params": {"ROWS": 32}}`. The full-size unit stays for each module's exit, and a full-size unit that peaks over 2 GB goes on `tools/heavy-units.json`. Yosys elaborates a module at its defaults when it reads the file, before the unit's parameters apply, so a reduced unit first pays its module's full-size elaboration: a 64,000-cell stand-in took 4.7 GB with whole-bank defaults and 449 MiB with small ones (2026-11-03). No module's default may therefore be larger than its full-size unit; a slice meets that, since its full size is one unit.
 
@@ -134,7 +134,7 @@ In each module (sim-only, `ifdef CCV_ASSERT`):
   - The guard forward fires only on a MIU `pred_we` to the guard's row in A.
 - **lanes:**
   - The lanes' `sec_valid` equals the descriptor's write flags.
-  - Bypass select only at age 4-5.
+  - Bypass select only at age 4-6.
   - Done slot k valid only with `lwb_d[k]` age 5.
 - **r:** one R op per cycle; slot 5 fields zero for non-branch ops.
 - **mig:** Migration tab list.

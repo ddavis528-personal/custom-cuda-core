@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=49 exported=2026-11-05 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 49 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=50 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 50 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -51,14 +51,14 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Collectives | run in the R pipe: done at A+1, written at A+2, readable at A+3, inside `CCV_LAT_COLLECTIVE` = 5; no fifth write port | R unit | RA-29 (a), (c); RA-8 |
 | Row select | split one-hot predecode, 12 + 16 flops per port and slice; the zero register selects nothing | Register file |  |
 | Predicate merges | masked write ports; old destination read at write time; the forwards are MIU `pred_result` into the guard and MIU's MW write through into the R0/R1 read in each bank slice | Predicate file; R unit |  |
-| Lane bypass | age 4-5 (`CCV_LAT_LANE_BYP` to `CCV_LAT_LANE` − 2); no SFU bypass | Lane and memory | RA-29 (d) |
+| Lane bypass | age 4-6 (`CCV_LAT_LANE_BYP` to `CCV_LAT_LANE` − 2); no SFU bypass | Lane and memory | RA-29 (d) |
 | Done slots | fixed: lane lead section k → k, SFU → 4, RCU-only → 5, collective → 6 | Done | RA-29 (b) |
 | Migration ports | demotion reads R2 and D0-3; restore writes RW and PG0-3; no port of its own; 4-deep restore FIFO | Migration | RA-6, RA-17, RA-28 |
 | Kill | drain everything for `KILL_DRAIN` = 16; ack as a level with epoch | Done | RA-14, RA-23 |
 | Reset | control state only, about 1,500 flops; no PRF or payload reset | Done | A-29 |
 | CSRs | none; a read-0 responder (RA-26) | Done | RA-26 |
 | Size | about 246,000 flops, 80% of them PRF rows | Partition | RA-11 |
-| Address time | CCV\_LAT\_RCU\_ADDR\_BASE = 1: address valid at A+1, payload at A+2; L1 wake 16 to 12; 2 if M1 misses | Lane and memory; Partition | RA-7, RA-31 (1); PF-47 |
+| Address time | CCV\_LAT\_RCU\_ADDR\_BASE = 1: address valid at A+1, payload at A+2; RCU-internal, from the interface flop; the parameter also counts the receiving interface flop (AR row 286: 5 to 6 today), so it is reapplied as 2 and L1 wake goes 17 to 13; one more if M1 misses (RA rev 79) | Lane and memory; Partition | RA-7, RA-31 (1); PF-47 |
 | Issue lead slice | OOE sends section mask, source, imm and merge use (and on R's slot the guard predicate) a cycle ahead; RCU enables each field group from it; a clear bit is asserted as a promise | Partition; Pipeline (stage IL) | RA-31 (2), RA-39 |
 | Split guard read | guard row predecoded at A−1 from the lead; guard path about 16 NGD in A (about 22 without the lead) | Predicate file | RA-32 (1) |
 | Select fanout | row selects copied per slice and port, 32 loads a row AND; 12,544 flops; fanout counted by check-ngd (Daniel's option (a)), enforced (TI rev 299) | Register file | RA-33 |
@@ -76,7 +76,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | SFU second result on `ccv_lane_rcu_res` | settled | RA-3 |
 | MIU lead fields, for CG-5 on load write-back | settled | RA-4 |
 | Read ports: 10 per bank, migration on an idle R port | settled (AR re:RA-6) | RA-6 |
-| `CCV_LAT_RCU_ADDR` = 1 (fallback 2) | adopted (AR rev 266, PF-47); 2 if M1 misses | RA-7 |
+| `CCV_LAT_RCU_ADDR` = 2 with the boundary flop (RCU-internal 1; fallback 3) | adopted (AR rev 266, PF-47); +1 for the interface flop (AR row 286, RA rev 79); one more if M1 misses | RA-7 |
 | Collective fold 5 → 3 | RCU now meets 3; folding the contract is OA's, then Daniel's | RA-8 |
 | Crossbar as an RCU sub-module | settled: `rcu_xbar`, an inner helper | RA-9 |
 | Q-18: the AGU stays in MIU | settled | RA-10 |
@@ -105,7 +105,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | RA-28 | AR | MIU's one-load-per-section, PCA row order and credit depth, the outstanding-migration bound | settled (AR rev 265): (a) MIU lands at most one GPR write per section a cycle; (b) PCA's rows are contiguous 0..16; (c) depth stays 4 (Q-43); (d) at most CCV\_TIER1\_WARPS migrations outstanding, the pairing queue depth | a second MW port, or a deeper restore path |
 | RA-29 | AR, TI, OA | 4 write ports, fixed done slots, early collective done, SFU wake, vote/ballot `ps` | **(a), (b), (d), (e) agreed** by TI and OA; (c) legal on OA's three conditions, which the spec meets; the fold to 3 goes to Daniel with Phase 1 figures; AR agreed (a) and added the A+2 rule for every R class; one SFU issue a cycle (OA) keeps slot 4 collision-free | none |
 | RA-30 | TI | the schema and stub work AR's answers left to TI | raised | none |
-| RA-31 | AR, OA, TI | (1) CCV\_LAT\_RCU\_ADDR\_BASE 5 to 1; (2) a lead slice on ccv\_ooe\_rcu\_issue for per-field-group clock enables | settled: (1) 1 now, 2 if M1 misses (AR rev 266, PF-47; L1 wake 16 to 12); the params still say 5 until OI's `ooe_wake` fix, then TI reapplies; (2) contents fixed (OA rev 307), TI writes lead\_fields | Partition (The issue lead slice) |
+| RA-31 | AR, OA, TI | (1) CCV\_LAT\_RCU\_ADDR\_BASE 5 to 1; (2) a lead slice on ccv\_ooe\_rcu\_issue for per-field-group clock enables | settled: (1) 1 now, 2 if M1 misses (AR rev 266, PF-47; L1 wake 16 to 12, now 17 to 13 with the boundary flop); the params still say 5 until OI's `ooe_wake` fix, then TI reapplies; (2) contents fixed (OA rev 307), TI writes lead\_fields | Partition (The issue lead slice) |
 | RA-32 | OA, TI | (1) guard-path fallback; (2) reduced-size units for check-cg / check-ngd | settled: (1) no lag-1 fallback; OOE leads R's guard physical predicate (OA rev 306); (2) no tool work: sizes are module parameters defaulting to the package (TI rev 285) | Predicate file (The split guard read); Partition (The issue lead slice) |
 | RA-33 | TI, DA | is high fanout buffered or costed in check-ngd's netlist? | settled: it was not (load-blind genlib); Daniel chose (a), a per-net fanout term; enforced in check-ngd (TI rev 299), paths over 25 then on a shrinking ratchet | Register file (Select fanout); Partition (M1) |
 | RA-34 | TI | stimulus for RCU's clock-gating units | settled: scenarios by activity; checked kernel-trace replay; TI adds a ccv-skel per-block port-trace dump (TI rev 286, RA rev 51) | Partition (M2) |

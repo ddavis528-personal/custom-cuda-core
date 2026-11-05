@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Lane_and_memory_paths rev=8 exported=2026-11-05 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Lane and memory paths*, at revision 8 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Lane_and_memory_paths rev=11 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Lane and memory paths*, at revision 11 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Lane and memory paths
 
@@ -27,10 +27,10 @@ Every per-section field is written for every section the op owns, not only its l
 
 ## Bypass tracker
 
-A lane consumer issued in A reads the PRF in A+1. A lane producer issued in A\_p lands in A\_p + `CCV_LAT_LANE` − 1. So the lanes must forward exactly when the age a = A − A\_p satisfies `CCV_LAT_LANE_BYP` ≤ a ≤ `CCV_LAT_LANE` − 2 (4 and 5 today); at a ≥ 6 the PRF read has the value. The tracker:
+A lane consumer issued in A reads the PRF in A+1. A lane producer issued in A\_p lands in A\_p + `CCV_LAT_LANE` − 1. So the lanes must forward exactly when the age a = A − A\_p satisfies `CCV_LAT_LANE_BYP` ≤ a ≤ `CCV_LAT_LANE` − 2 (4 to 6 since CCV\_LAT\_LANE went to 8 with the boundary flops; the lane's bypass holds a value one cycle longer, AR row 286); at a ≥ 7 the PRF read has the value. The tracker:
 
-- **History:** a shift register, depth `CCV_LAT_LANE` − 2, of per-section entries pushed in A for every lane-class op that writes a GPR: {valid, dst row, dst pos, lead section}. Copies and SFU ops are not pushed (an SFU result reaches the PRF at A\_p + 11 and has no lane-local bypass; RA-29 asks OA to confirm that no SFU consumer reads before then).
-- **Compare (stage I):** for each owner o, operand port i (0-3), the source's (row, pos) on the wire against every history entry at ages `CCV_LAT_LANE_BYP` to `CCV_LAT_LANE` − 2 (9 entries since CCV\_LAT\_LANE went to 8 with the boundary flops, AR rev 285; bypass latencies unchanged): a 10-bit equality, about 3 NGD. At most one matches (single assignment; asserted).
+- **History:** a shift register, depth `CCV_LAT_LANE` − 2, of per-section entries pushed in A for every lane-class op that writes a GPR: {valid, dst row, dst pos, lead section}. Copies and SFU ops are not pushed (an SFU result reaches the PRF at A\_p + 12 and has no lane-local bypass; RA-29 asks OA to confirm that no SFU consumer reads before then).
+- **Compare (stage I):** for each owner o, operand port i (0-3), the source's (row, pos) on the wire against every history entry at ages `CCV_LAT_LANE_BYP` to `CCV_LAT_LANE` − 2 (12 entries: three ages of four sections, from 8 since CCV\_LAT\_LANE went to 8 with the boundary flops, AR rev 285 and row 286; CCV\_LAT\_LANE\_BYP stays 4 and the 2-bit age field still covers it): a 10-bit equality, about 3 NGD. At most one matches (single assignment; asserted).
 - **Select:** on a match, `operand_byp`\[k\]\[i\] = {age − `CCV_LAT_LANE_BYP` (2 bits), producer's lead section (2), forward = 1}, LSB first; else 0. Written for every k o owns. Flopped at A's edge (`byp_a`), moved into the payload at A+1's edge.
 
 ## Lane write-back
