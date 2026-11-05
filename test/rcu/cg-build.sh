@@ -18,7 +18,10 @@ case "$unit" in
     rows=192 k=1 fr=1
     case "$unit" in *_r32*) rows=32 ;; esac
     case "$unit" in *_sec) fr=0 ;; esac
-    vl rcu_bank_slice "-GROWS=$rows -GK=$k -GFULL_ROW=$fr" "-DBS_ROWS=$rows -DBS_K=$k -DBS_FULL_ROW=$fr" \
+    vl rcu_bank_slice "-GROWS=$rows -GK=$k -GFULL_ROW=$fr" \
+      "-DBS_ROWS=$rows -DBS_K=$k -DBS_FULL_ROW=$fr" \
       "$PWD/rtl/rcu/rcu_bank_slice.sv" "$PWD/test/rcu/bank_slice_tb.cpp" ;;
+  rcu_r)
+    vl rcu_r "" "" "$PWD/rtl/rcu/rcu_xbar.sv" "$PWD/rtl/rcu/rcu_r.sv" "$PWD/test/rcu/r_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

@@ -174,8 +174,9 @@ void testRTiming() {
   EXPECT(e.fails.empty(), "%s", e.fails.empty() ? "" : e.fails[0].c_str());
 }
 
-/// A lane op: the lane message in A, its done launched at A+5, its results
-/// expected and written at A+6 (CCV_LAT_LANE 7). Early or missing results fail.
+/// A lane op: the lane message in A, its done launched at A + CCV_LAT_LANE - 2,
+/// its results expected and written at A + CCV_LAT_LANE - 1 (kLaneW; A+6 at
+/// CCV_LAT_LANE 7, A+7 at 8 since RI-11). Early or missing results fail.
 void testLaneTiming() {
   g_test = "lane-timing";
   for (int mode = 0; mode != 3; ++mode) {   // 0 on time, 1 missing, 2 early
@@ -190,9 +191,10 @@ void testLaneTiming() {
       for (unsigned k = 0; k != kSecs; ++k) EXPECT(o.lane->sec[k].en && o.lane->sec[k].owner == 0, "section %u", k);
     }
     long done_at = -1;
-    for (uint64_t c = 21; c != 27; ++c) {
+    const uint64_t a = 20, w = a + kLaneW;
+    for (uint64_t c = a + 1; c != w + 1; ++c) {
       In x = Env::idleIn();
-      if ((mode == 0 && c == 26) || (mode == 2 && c == 25)) x.lres = laneRes(0xabcd0000u);
+      if ((mode == 0 && c == w) || (mode == 2 && c == w - 1)) x.lres = laneRes(0xabcd0000u);
       Out oo = e.step(x);
       if (!oo.dones.empty()) {
         done_at = long(c);
@@ -200,9 +202,9 @@ void testLaneTiming() {
       }
     }
     if (mode == 0) {
-      EXPECT(done_at == 25, "done launched at %ld, not A+5", done_at);
-      EXPECT(e.gpr[9][0] == 0xabcd0000u, "not written at A+6");
-      EXPECT(e.first(Ev::GprWrite, 9) == 26, "GprWrite at %ld", e.first(Ev::GprWrite, 9));
+      EXPECT(done_at == long(w - 1), "done launched at %ld, not A+%u", done_at, kLaneW - 1);
+      EXPECT(e.gpr[9][0] == 0xabcd0000u, "not written at A+%u", kLaneW);
+      EXPECT(e.first(Ev::GprWrite, 9) == long(w), "GprWrite at %ld", e.first(Ev::GprWrite, 9));
       EXPECT(e.fails.empty(), "%s", e.fails.empty() ? "" : e.fails[0].c_str());
     } else {
       CONTROL(mode == 1 ? "lane-missing" : "lane-early", e.failed(mode == 1 ? "did not arrive" : "nothing in flight"), "control %d passed", mode);
@@ -210,12 +212,13 @@ void testLaneTiming() {
   }
 }
 
-/// The bypass window, ages CCV_LAT_LANE_BYP (4) to CCV_LAT_LANE - 2 (5):
-/// select forward | lead << 1 | (age - 4) << 3; at 6 the PRF holds it; at 3
-/// a read is a contract breach.
+/// The bypass window, ages CCV_LAT_LANE_BYP (kBypLo, 4) to CCV_LAT_LANE - 2
+/// (kBypHi; 5, or 6 at CCV_LAT_LANE 8 since RI-11): select forward | lead << 1 |
+/// (age - kBypLo) << 3; past kBypHi the PRF holds it; below kBypLo a read is a
+/// contract breach.
 void testBypassWindow() {
   g_test = "bypass";
-  for (unsigned age = 3; age != 8; ++age) {
+  for (unsigned age = kBypLo - 1; age != kBypHi + 3; ++age) {
     Env e;
     e.t = 40;
     In in = Env::idleIn();
@@ -228,15 +231,15 @@ void testBypassWindow() {
       Out o = e.step(x);
       if (c != age || !o.lane) continue;
       const unsigned sel = o.lane->sec[0].byp[0];
-      if (age == 4) EXPECT(sel == 1u, "age 4 select %u", sel);
-      if (age == 5) EXPECT(sel == (1u | 1u << 3), "age 5 select %u", sel);
-      if (age >= 6) {
+      if (age >= kBypLo && age <= kBypHi)
+        EXPECT(sel == (1u | (age - kBypLo) << 3), "age %u select %u", age, sel);
+      if (age > kBypHi) {
         EXPECT(sel == 0, "age %u bypasses (%u)", age, sel);
         EXPECT(o.lane->opnd[0][0] == 0x77777777u, "age %u reads %08x, not the PRF's", age, o.lane->opnd[0][0]);
       }
       EXPECT(o.lane->sec[0].byp[1] == 0, "the unrelated port bypasses");
     }
-    if (age == 3) CONTROL("byp-age3", e.failed("CCV_LAT_LANE_BYP"), "age 3 read passed");
+    if (age < kBypLo) CONTROL("byp-age3", e.failed("CCV_LAT_LANE_BYP"), "age 3 read passed");
     else {
       // Drain the second op's results.
       while (e.t <= 40 + age + kLaneW) {
@@ -323,7 +326,8 @@ void testKillDrain() {
   e.step();
   e.core.kill(0x1, 0);
   const unsigned d = e.core.killDrain();
-  EXPECT(d == 15, "KILL_DRAIN %u, not 15", d);
+  const unsigned want = 2 + ccv::prov::kLatSfu + 1;   // abutted: 15 at SFU 12, 16 at 13
+  EXPECT(d == want, "KILL_DRAIN %u, not %u", d, want);
   e.step();   // K
   unsigned n = 0;
   while (!e.core.killQuiet() && n < 40) { e.step(); ++n; }
