@@ -77,7 +77,12 @@ RA rev 73: asked OA to move 1 NGD (phys_src0/1 RCU in 19, OOE out 6; rr_row arri
 RI's departures accepted: rlow from rcu_pred's flop; ngd.json arrivals; RI-9 (e) lane mask as
 D-cone hold mux where it arrives with data. Phase 2 figures in Overview (rev 39). OA rev 337 granted 19/6 (last move on the pair); RA rev 74
 closed RA-39; spec + snapshots at R unit 20, Register file 15, Partition 33, Overview 43.
-Bookmarks: OA 337, RA 74, RI 8. Snapshots refreshed to the live revs:
+RI-11 (RI rev 9): RI reports a DA ruling of 11-05 (flop on both sides of every block boundary;
+RCU must not consume inputs off the wire; RA-39 split void). NOT in the DA tab (still rev 106);
+DA row .35431 says "registered on both sides". RA rev 75: holding until DA confirms reading
+(A) receiver flop at every input (+1 cycle on every RCU latency or two-ahead leads; AR/DA call)
+vs (B) the sender's flop is the boundary (today's rule: 12 NGD/port side). Asked Daniel directly.
+Bookmarks: OA 337, RA 75, RI 9, TI 320, DA 106. Snapshots refreshed to the live revs:
 Overview 34, Partition 27, Register file 10, R unit 12, Migration 9, Lane+memory 7, Done 17,
 Predicate 5 (Pipeline 5, Conventions 4 unchanged).
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
