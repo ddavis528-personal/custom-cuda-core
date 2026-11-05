@@ -166,5 +166,79 @@ def hard_reuse(block_types, links_path=None):
     return set(r)
 
 
+def rtl_tops(root=ROOT):
+    """Block types whose top, ccv_<type>, is RTL written by hand: a module of
+    that name anywhere under rtl/ but the generated top (rtl/top/), whose
+    stubs and DPI shims are not RTL."""
+    out = set()
+    pat = re.compile(r"^\s*module\s+ccv_([a-z][a-z0-9]*)\b", re.M)
+    for d, _, fs in os.walk(os.path.join(root, "rtl")):
+        if os.path.relpath(d, root).split(os.sep)[:2] == ["rtl", "top"]:
+            continue
+        for f in fs:
+            if f.endswith(".sv"):
+                with open(os.path.join(d, f)) as fh:
+                    out.update(pat.findall(fh.read()))
+    return out
+
+
+def no_flop(block_types, ends, links_path=None, root=ROOT):
+    """The channel ends built without a boundary flop (params/links.json
+    "no_flop"): a set of (block type, channel name without ccv_). Every other
+    end's repeater holds one (BOUNDARY 1, rtl/phys/ccv_common_rpt.sv;
+    Daniel, 2026-11-05). `ends` maps a block type to the channels it has an
+    end of.
+
+    An entry names a block type, or a list of them, and "channels": "all" or
+    a list. "all" is refused for a type whose top is RTL: an RTL block that
+    replaces a stub takes the wrapper's flops in that same change, never
+    inheriting the stub's no-flop (AR's rev 287 (1)); an RTL block's no-flop
+    end is named, and check-ngd holds it to 0 NGD at its wrapper."""
+    p = links_path or path()
+    with open(p) as f:
+        d = json.load(f)
+    errs, out, seen = [], set(), {}
+    rtl = rtl_tops(root)
+    for no, e in enumerate(d.get("no_flop", []), 1):
+        where = "no_flop[%d]" % no
+        unknown = set(e) - {"block", "channels", "why"}
+        if unknown:
+            errs.append("%s: unknown key(s) %s" % (where, ", ".join(sorted(unknown))))
+        if not e.get("why"):
+            errs.append("%s: says no why" % where)
+        bs = e.get("block")
+        bs = [bs] if isinstance(bs, str) else bs
+        if not (isinstance(bs, list) and bs):
+            errs.append("%s: block must be a block type or a list of them" % where)
+            continue
+        for b in bs:
+            if b not in block_types:
+                errs.append("%s: no block type %r" % (where, b))
+                continue
+            chs = e.get("channels", "all")
+            if chs == "all":
+                if b in rtl:
+                    errs.append("%s: %s's top is RTL, so its ends take the boundary flop; "
+                                "name the no-flop channels, which check-ngd holds to 0 NGD "
+                                "(AR's rev 287 (1))" % (where, b))
+                chs = sorted(ends.get(b, ()))
+            elif not (isinstance(chs, list) and chs):
+                errs.append("%s: channels must be \"all\" or a list" % where)
+                continue
+            for c in chs:
+                if c not in ends.get(b, ()):
+                    errs.append("%s: %s has no end of channel %r" % (where, b, c))
+                elif (b, c) in seen:
+                    errs.append("%s: %s's end of %s is already no_flop[%d]"
+                                % (where, b, c, seen[(b, c)]))
+                else:
+                    seen[(b, c)] = no
+                    out.add((b, c))
+    if errs:
+        raise SystemExit("%s: %d problem(s)\n  %s"
+                         % (os.path.relpath(p, ROOT), len(errs), "\n  ".join(errs)))
+    return out
+
+
 def total(hops):
     return sum(s for _, s in hops)

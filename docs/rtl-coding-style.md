@@ -894,7 +894,13 @@ are; they count against the hardening wrapper's 2%, the block's partition,
 not the repeater's own allowance (Daniel, 2026-10-19), since a repeater is
 little else and would fail on them alone: two stages of one narrow slot are
 9 such flops, and a 4-slot channel 14 at one stage. Its first stage's lead
-slice, written every cycle too, stays within its own allowance. That is what
+slice, written every cycle too, stays within its own allowance when that
+stage is a link stage. When it is the boundary flop (`BOUNDARY` 1 at a
+source end, or at a destination end with no link stage; `bnd_lead_q`), the
+slice is the capture the block's own budget held before the end was
+flopped, and it counts against the wrapper's 2% as the control pulses do
+(Daniel, DA tab rev 108; AR rev 289). A destination end's boundary behind
+link stages is the last stage, enabled like any later stage. That is what
 limits leads on a repeated link: one 64-bit slot at one stage passes, and
 with a 16-bit lead it does not (the selftest's controls, with a two-stage
 16-bit slot whose control pulses pass its allowance and count against a
@@ -1066,7 +1072,7 @@ top is RTL, it is checked twice. First from the budget files, quickly: each
 level of its hierarchy that instantiates others is mapped alone, its
 children cut out, each child's output starting at its required time and each
 child's input to be reached by its arrival, the block's own inputs arriving
-at 13, inner helpers flattened into their parents. So every connection must
+at 0, straight from the interface module's flop in its wrapper, inner helpers flattened into their parents. So every connection must
 converge to 25 as the files say, and any glue between children is NGD-5. Then timed whole, synthesised flattened with its
 hardening wrapper: every flop to flop path within 25, whatever the files
 said. That pass is still needed, but it should find only corner cases, where
@@ -1074,10 +1080,14 @@ synthesis did across a boundary what it could not module by module (two
 64-bit parities in series map shallower than their halves; a large function
 split across a port may map deeper or shallower than its halves add up to).
 And its boundary
-is **registered on both sides** (`docs/skeleton.md`): every output straight
-from a flop, every input into its flops within 12. With a link at 0 repeater
-stages, its default in `params/links.json`, a block port is wired straight to
-its neighbour's, so the blocks' own RTL is what keeps the rule. The block
+is **registered on both sides with nothing between** (`docs/skeleton.md`;
+AR's rev 285 (5): a crossing carries no logic): every output straight from a
+flop, every input straight into one. The flops are the interface module's
+boundary stage, built in the hardening wrapper (`ccv_common_rpt` `BOUNDARY`,
+default 1; Daniel, 2026-11-05), so the block's own paths run from them within
+the stage; at a no-flop end (`params/links.json` `no_flop`) they are the
+block's own registers at 0 NGD. The 12-a-side port budget stays only between
+modules inside a block. The block
 budget of local clock gating (2% per instance) is checked on the same
 assembly by `tools/check-cg.py`. Today no block top is RTL, so neither runs
 on the tree; the fixtures exercise both.

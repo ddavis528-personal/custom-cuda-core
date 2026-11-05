@@ -6,10 +6,12 @@
 
 // HARDENING WRAPPER ccv_syu_w: ccv_syu and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. An end
-// whose link has no stages here is connected straight through.
+// and links"). Nothing but instances and nets, like the top. Each end's
+// repeater holds the block's boundary flop (BOUNDARY 1) and its link's
+// stages; a no-flop end (params/links.json no_flop) whose link has no
+// stages here is connected straight through.
 // Each end's stages are a parameter the top sets from params/links.json;
-// at 0 the end is wired straight through, with no repeater.
+// at 0 a no-flop end is wired straight through, with no repeater.
 `include "ccv_interfaces.svh"
 
 module ccv_syu_w #(
@@ -104,9 +106,9 @@ module ccv_syu_w #(
 `endif
   );
 
-  // ccv_ooe_syu_bar, destination end
+  // ccv_ooe_syu_bar, destination end, no-flop (params/links.json no_flop)
   if (RPT_OOE_SYU_BAR > 0) begin : g_rpt_ooe_syu_bar
-    ccv_common_rpt #(.STAGES(RPT_OOE_SYU_BAR), .SLOTS(1), .PAYLOAD_W(111)) u_rpt_ooe_syu_bar (
+    ccv_common_rpt #(.STAGES(RPT_OOE_SYU_BAR), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(111)) u_rpt_ooe_syu_bar (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_syu_bar_valid}), .src_payload({ooe_syu_bar_payload}),
       .src_wake(ooe_syu_bar_wake), .src_credit({ooe_syu_bar_credit}), .src_stall({ooe_syu_bar_stall}),
@@ -126,9 +128,9 @@ module ccv_syu_w #(
     assign {b_ooe_syu_bar_tid} = {ooe_syu_bar_tid};
 `endif
   end
-  // ccv_syu_ooe_rel, source end
+  // ccv_syu_ooe_rel, source end, no-flop (params/links.json no_flop)
   if (RPT_SYU_OOE_REL > 0) begin : g_rpt_syu_ooe_rel
-    ccv_common_rpt #(.STAGES(RPT_SYU_OOE_REL), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_syu_ooe_rel (
+    ccv_common_rpt #(.STAGES(RPT_SYU_OOE_REL), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_syu_ooe_rel (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_syu_ooe_rel_valid}), .src_payload({b_syu_ooe_rel_payload}),
       .src_wake(b_syu_ooe_rel_wake), .src_credit({b_syu_ooe_rel_credit}), .src_stall({b_syu_ooe_rel_stall}),
@@ -148,9 +150,9 @@ module ccv_syu_w #(
     assign {syu_ooe_rel_tid} = {b_syu_ooe_rel_tid};
 `endif
   end
-  // ccv_syu_fet_rel, source end
+  // ccv_syu_fet_rel, source end, no-flop (params/links.json no_flop)
   if (RPT_SYU_FET_REL > 0) begin : g_rpt_syu_fet_rel
-    ccv_common_rpt #(.STAGES(RPT_SYU_FET_REL), .SLOTS(1), .PAYLOAD_W(37)) u_rpt_syu_fet_rel (
+    ccv_common_rpt #(.STAGES(RPT_SYU_FET_REL), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(37)) u_rpt_syu_fet_rel (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_syu_fet_rel_valid}), .src_payload({b_syu_fet_rel_payload}),
       .src_wake(b_syu_fet_rel_wake), .src_credit({b_syu_fet_rel_credit}), .src_stall({b_syu_fet_rel_stall}),
@@ -170,9 +172,9 @@ module ccv_syu_w #(
     assign {syu_fet_rel_tid} = {b_syu_fet_rel_tid};
 `endif
   end
-  // ccv_syu_rau_ready, source end
+  // ccv_syu_rau_ready, source end, no-flop (params/links.json no_flop)
   if (RPT_SYU_RAU_READY > 0) begin : g_rpt_syu_rau_ready
-    ccv_common_rpt #(.STAGES(RPT_SYU_RAU_READY), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_syu_rau_ready (
+    ccv_common_rpt #(.STAGES(RPT_SYU_RAU_READY), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_syu_rau_ready (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_syu_rau_ready_valid}), .src_payload({b_syu_rau_ready_payload}),
       .src_wake(b_syu_rau_ready_wake), .src_credit({b_syu_rau_ready_credit}), .src_stall({b_syu_rau_ready_stall}),
@@ -192,9 +194,9 @@ module ccv_syu_w #(
     assign {syu_rau_ready_tid} = {b_syu_rau_ready_tid};
 `endif
   end
-  // ccv_rau_syu_alloc, destination end
+  // ccv_rau_syu_alloc, destination end, no-flop (params/links.json no_flop)
   if (RPT_RAU_SYU_ALLOC > 0) begin : g_rpt_rau_syu_alloc
-    ccv_common_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .SLOTS(1), .PAYLOAD_W(58)) u_rpt_rau_syu_alloc (
+    ccv_common_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(58)) u_rpt_rau_syu_alloc (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rau_syu_alloc_valid}), .src_payload({rau_syu_alloc_payload}),
       .src_wake(rau_syu_alloc_wake), .src_credit({rau_syu_alloc_credit}), .src_stall({rau_syu_alloc_stall}),

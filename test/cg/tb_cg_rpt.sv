@@ -16,6 +16,8 @@
 // Inputs change just after the falling edge; the rising edge samples them.
 module tb_cg_rpt #(
   parameter int STAGES = 2,
+  parameter int BOUNDARY = 0,
+  parameter bit DST_END  = 1'b0,
   parameter int S      = 2,
   parameter int W      = 16,
   parameter logic [W-1:0] LEAD = 16'h00ff
@@ -29,7 +31,7 @@ module tb_cg_rpt #(
   wire  [S*W-1:0]   dst_payload;
   wire              dst_wake;
 
-  ccv_common_rpt #(.STAGES(STAGES), .SLOTS(S), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) dut (.*);
+  ccv_common_rpt #(.STAGES(STAGES), .BOUNDARY(BOUNDARY), .DST_END(DST_END), .SLOTS(S), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) dut (.*);
 
   logic [31:0] rng = 32'h6d2b79f5;
   function automatic logic [31:0] next(input logic [31:0] x);

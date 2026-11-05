@@ -7,11 +7,15 @@
 # is when it would actually save time.
 name: verify
 
+# When (DA, 2026-11-05): a working branch's push is already gated where it is
+# made (tools/gate-push.sh never pushes red), and the daily sweep's merge takes
+# the full clean gate, so re-running it on every push only repeated a passing
+# gate (eight agents, ~100 min each). CI keeps what only it gives, a clean
+# machine outside the containers: each release snapshot (the daily sweep's
+# merged tree, tools/make-release.sh), the weekly re-measure, and a dispatch.
 on:
   push:
-    # gate-scratch/* carries a split gate's unverified commit and its export
-    # between containers (tools/gate-scratch.sh); its gate is the split one.
-    branches-ignore: ["gate-scratch/**"]
+    branches: ["release"]
   pull_request:
   workflow_dispatch:
   schedule:
@@ -23,7 +27,11 @@ on:
 
 jobs:
   gate:
-    runs-on: ubuntu-latest
+    # Pinned: setup-toolchain.sh takes Yosys, cvc5 and clang from apt, so the
+    # image IS their version. ubuntu-latest moved to 26.04 on 2026-11-05 and
+    # brought Yosys 0.52, cvc5 1.3.2 and clang 21 against pins 0.33, 1.1.2 and
+    # 18; six sections failed on every push. Move it with the pins, together.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

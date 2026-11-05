@@ -44,8 +44,14 @@ Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"):
          timed whole, flattened, every flop-to-flop path within the stage,
          for the corner cases where synthesis did across a boundary what it
          could not module by module. And its boundary is registered on both
-         sides: every output straight from a flop, every input into its
-         flops within the default port budget.
+         sides with nothing between: every output straight from a flop,
+         every input straight into one. A crossing carries no logic (AR's rev
+         285 (5)): the boundary flops are the interface module's, built in the
+         block's hardening wrapper (rtl/phys/ccv_common_rpt.sv BOUNDARY;
+         Daniel, 2026-11-05), so the block's paths run from them within the
+         stage; a no-flop end (params/links.json no_flop) is the block's own
+         register at 0 NGD, which this holds at the wrapper. The 12-a-side
+         port budget stays only between modules inside a block.
 
 Each module is measured at the parameters of its units (test/**/cg-units.json,
 and test/**/ngd-units.json for modules with no flops): Yosys synthesises it
@@ -935,8 +941,10 @@ def converge(name, top, files, bbs, budgets, lib=LIB, params=None, defines=(), u
     wrapper aside, which is nets and repeaters) is mapped alone, its
     children cut out. A child's output starts at its required time, a
     child's input must be reached by its arrival; the module's own ports take
-    its budgets, or, for a block top, the boundary's: inputs arriving at the
-    default (its outputs, straight from a flop, are the flattened pass's).
+    its budgets, or, for a block top, the boundary's: inputs arriving at 0,
+    straight from the interface module's flop in its wrapper (AR's rev 285
+    (5); a no-flop end's 0 NGD and the outputs, straight from a flop, are the
+    flattened pass's).
     So every connection must converge, and a path that touches none of the
     module's own flops must be a wire (NGD-5: glue between children is a
     third segment on a flop-to-flop path).
@@ -983,7 +991,7 @@ def converge(name, top, files, bbs, budgets, lib=LIB, params=None, defines=(), u
                 return (budgets.required(c[0], c[1]), c[2], True) if c else (None, None, True)
             if is_clock(p):
                 return None, None, False
-            return (STAGE - PORT if edge else budgets.arrival(own, p)), p, False
+            return (0.0 if edge else budgets.arrival(own, p)), p, False
 
         def end(p):
             if p in t.cut:
@@ -1026,9 +1034,10 @@ def converge(name, top, files, bbs, budgets, lib=LIB, params=None, defines=(), u
 def block_check(name, top, files, bbs, budgets, block=None, lib=LIB):
     """A block assembled: first converged from its budget files, level by
     level; then timed whole, flattened, every flop-to-flop path within the
-    stage, every output straight from a flop, every input into its flops
-    within the default port budget. `block` is the block's own module (the
-    partition's top may be its hardening wrapper). Returns (line, failures)."""
+    stage, every output straight from a flop, every input straight into one
+    (a crossing carries no logic: AR's rev 285 (5)). `block` is the block's
+    own module (the partition's top may be its hardening wrapper, whose
+    boundary flops are the interface module's). Returns (line, failures)."""
     fails = [msg for _, msg in converge(name, block or top, files, bbs, budgets, lib)]
     work, jf = synth("b_" + name, top, files, bbs)
     t = map_and_time(work, jf, [os.path.basename(b)[:-3] for b in bbs], lib)
@@ -1045,11 +1054,13 @@ def block_check(name, top, files, bbs, budgets, block=None, lib=LIB):
                          % (name, o, max(t.p_ro[o], 0.0),
                             ", and reached from an input" if thru else ""))
     for i in t.ins:
-        if i not in t.cut and t.ir[i] > PORT + EPS:
-            fails.append("block %s: input %s reaches its flops %.1f NGD after arriving, over "
-                         "the %g port budget" % (name, i, t.ir[i], PORT))
+        if i not in t.cut and t.ir[i] > EPS:
+            fails.append("block %s: input %s reaches its flops %.1f NGD after arriving: a "
+                         "crossing carries no logic, so it goes straight into a flop, the "
+                         "interface module's or, at a no-flop end, the block's own (AR's rev "
+                         "285 (5))" % (name, i, t.ir[i]))
     line = ("block %-8s budgets converge level by level; whole, flop-flop %5.1f, outputs "
-            "from flops, inputs within %g" % (name, max(t.rr, 0.0), PORT))
+            "from flops, inputs into flops" % (name, max(t.rr, 0.0)))
     return line, fails
 
 
@@ -1505,8 +1516,10 @@ def selftest():
     expect(not keys(u, fi), "a unit with only an inner helper inside had findings: %s"
            % findings(u, fi))
     # 8. The assembled block, whole: every path in the stage; outputs from
-    #    flops; inputs within the port budget. Two 8-bit multiplies in series
-    #    across a module boundary are over the stage, whatever the budgets.
+    #    flops; inputs straight into flops (AR's rev 285 (5): one gate before
+    #    the first flop fails, as a deep tree does). Two 8-bit multiplies in
+    #    series across a module boundary are over the stage, whatever the
+    #    budgets.
     _, f = block_check("fx_ok", "ngd_fx_blk_ok", files, [], none)
     expect(not f, "a compliant assembled block failed: %s" % f)
     _, f = block_check("fx_long", "ngd_fx_blk_long", files, [], none)
@@ -1516,8 +1529,12 @@ def selftest():
     expect(any("not straight from a flop" in x for x in f),
            "a block output driven through logic passed")
     _, f = block_check("fx_deep_in", "ngd_fx_blk_deepin", files, [], none)
-    expect(any("input" in x and "port budget" in x for x in f),
+    expect(any("input" in x and "carries no logic" in x for x in f),
            "a block input deep before its flop passed")
+    _, f = block_check("fx_one_in", "ngd_fx_blk_onein", files, [], none)
+    expect(any("input" in x and "carries no logic" in x for x in f),
+           "a block input one gate before its flop passed (within the old 12-NGD port "
+           "budget, not within a crossing)")
     # 9. ABC's cache (OI-95) misses on every input it reads: the netlist,
     #    the genlib's contents behind the same path, and the script; and a
     #    hit hands back the report and netlist the run wrote.
