@@ -57,7 +57,10 @@ prove_now() {
   local keep=""
   case "$target" in
     all) ;;
-    -*)  keep="chformal -assert -remove t:\$assert c:*${target#-} %i" ;;
+    -*)  # -A,-B,...: every assertion but those ending in A or B or ...
+         local sel="" p
+         for p in ${target//,/ }; do sel="$sel c:*${p#-}${sel:+ %u}"; done
+         keep="chformal -assert -remove t:\$assert$sel %i" ;;
     *)   keep="chformal -assert -remove t:\$assert c:*$target %d" ;;
   esac
   local dflags=""
@@ -90,11 +93,21 @@ select -assert-min 1 t:\$_AND_ t:\$_NOT_
 write_aiger -I -B -zinit -no-startoffset $d/m.aig
 YS
   if ! yosys -q "$d/m.ys" >"$d/yosys.log" 2>&1; then echo error; return; fi
+  if [ -n "${BMC:-}" ]; then
+    # Bounded: no counterexample within BMC frames is "bounded <n>", not a proof.
+    timeout 900 yosys-abc -c "read_aiger $d/m.aig; fold; strash; bmc3 -F $BMC" >"$d/abc.log" 2>&1
+    if f=$(grep -oE "asserted in frame [0-9]+" "$d/abc.log"); then echo "cex ${f##* }"
+    elif grep -q "No output asserted in $BMC frames" "$d/abc.log"; then echo "bounded $BMC"
+    else echo error; fi
+    return
+  fi
   timeout 900 yosys-abc -c "read_aiger $d/m.aig; fold; strash; pdr" >"$d/abc.log" 2>&1
   if grep -q "Property proved" "$d/abc.log"; then echo proved
   elif f=$(grep -oE "asserted in frame [0-9]+" "$d/abc.log"); then echo "cex ${f##* }"
   else echo error; fi
 }
+
+prove_bmc_now() { BMC=40 prove_now "$@"; }
 
 prove_cg_now() {  # NAME "DEFINES" TARGET HQ HS HOLD [GATE_FILE] [ICG_FILE]
   local name=$1 defs=$2 target=$3 hq=$4 hs=$5 hold=$6
@@ -153,14 +166,16 @@ prove()    { if [ $PHASE = queue ]; then printf '%q ' prove_now "$@" >>"$Q"; ech
              else cat "$B/$1/verdict"; fi; }
 prove_cg() { if [ $PHASE = queue ]; then printf '%q ' prove_cg_now "$@" >>"$Q"; echo >>"$Q"; echo queued
              else cat "$B/$1/verdict"; fi; }
+prove_bmc() { if [ $PHASE = queue ]; then printf '%q ' prove_bmc_now "$@" >>"$Q"; echo >>"$Q"; echo queued
+             else cat "$B/$1/verdict"; fi; }
 # The slowest proofs (about 3, 2.5, 2, 2, 1.5 and 1 min), started first so
 # none of them starts last.
 SLOW="cg_episode safety_n2 response_n1 cgm_hyst_wrap response_n0 safety_n1"
 run_queue() {
   local jobs=${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)} line name n=0
   case "$jobs" in ''|*[!0-9]*|0) jobs=1 ;; esac
-  { for name in $SLOW; do grep -E "^prove(_cg)?_now $name " "$Q"; done
-    grep -vE "^prove(_cg)?_now ($(echo $SLOW | tr ' ' '|')) " "$Q"; } >"$Q.sorted"
+  { for name in $SLOW; do grep -E "^prove(_cg|_bmc)?_now $name " "$Q"; done
+    grep -vE "^prove(_cg|_bmc)?_now ($(echo $SLOW | tr ' ' '|')) " "$Q"; } >"$Q.sorted"
   while IFS= read -r line; do
     eval "set -- $line"; name=$2
     mkdir -p "$B/$name"
@@ -200,6 +215,39 @@ for n in 0 1 2; do
     say "full bandwidth, N=$n, depth $depth" "PASS (proved; depth $((depth - 1)): cex)"
   else
     bad "full bandwidth, N=$n" "depth $depth: $r; depth $((depth - 1)): $r2"
+  fi
+done
+
+# -- the boundary flops built (FV_BUILT): Daniel, 2026-11-05; AR's rev 285 ---
+# The end repeaters hold the blocks' boundary flops (ccv_common_rpt BOUNDARY
+# 1): the sender drives its port from logic and takes credit and stall off
+# its interface flop, the receiver takes its port into logic, the checkers
+# sit on the wrapper's side as in the top. AR's test: full rate at the same
+# depth, 4 + 2N, and not one less. The stall reaches the sender a cycle later,
+# which the checker counts with SRC_BOUNDARY 1 (AR's rev 289; gen-skel sets it
+# at every flopped source end): its stall_honoured holds here, and the
+# abutted rule (FV_CHK_BND0) fails. Conservation is bounded here (PDR does
+# not converge in 15 min; dc2;scorr;pdr proved it at N=0 in 968 s, ad hoc).
+for n in 0 1; do
+  depth=$((LOOP + 2 * n))
+  r=$(prove "built_safety_n$n" $n $depth "FV_BUILT" -response_within_n,-conservation)
+  [ "$r" = proved ] && say "built, N=$n: safety, stall rule +1" "PASS (proved)" ||
+    bad "built safety, N=$n" "$r ($B/built_safety_n$n/abc.log)"
+  r=$(prove_bmc "built_cons_n$n" $n $depth "FV_BUILT" conservation)
+  [ "$r" = "bounded 40" ] && say "  ...conservation" "PASS (bounded, 40 cycles)" ||
+    bad "built conservation, N=$n" "$r ($B/built_cons_n$n/abc.log)"
+  r=$(prove "built_stall1_n$n" $n $depth "FV_BUILT FV_CHK_BND0" stall_honoured)
+  [ "${r%% *}" = cex ] && say "  ...the abutted stall rule: stall_honoured fails" "PASS ($r)" ||
+    bad "built stall_honoured, N=$n" "$r: the sender's interface flop did not delay the stall"
+done
+for n in 0 1 2; do
+  depth=$((LOOP + 2 * n))
+  r=$(prove "built_bw_n$n" $n $depth "FV_BUILT FV_GREEDY" full_bandwidth)
+  r2=$(prove "built_bw_short_n$n" $n $((depth - 1)) "FV_BUILT FV_GREEDY" full_bandwidth)
+  if [ "$r" = proved ] && [ "${r2%% *}" = cex ]; then
+    say "built, full bandwidth, N=$n, depth $depth" "PASS (proved; depth $((depth - 1)): cex)"
+  else
+    bad "built full bandwidth, N=$n" "depth $depth: $r; depth $((depth - 1)): $r2"
   fi
 done
 

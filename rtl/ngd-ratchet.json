@@ -8,10 +8,6 @@
       "NGD-3 enq_slot_cq01h": 27.0,
       "NGD-3 enq_v_cq01h": 30.2
     },
-    "ooe_freelist": {
-      "NGD-3 sa_row_cq01h": 26.7,
-      "NGD-3 sa_v_cq01h": 26.4
-    },
     "ooe_go": {
       "NGD-1": 27.6,
       "NGD-2 lane_c_cq02h": 22.4,
