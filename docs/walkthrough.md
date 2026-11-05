@@ -333,7 +333,7 @@ otherwise:
     .core_clk(core_clk),
     .rst_n(rst_n),
     ...
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
     ...
 ```
@@ -510,4 +510,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: d49d20e3bb764361 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 5686f0fcfe891419 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
