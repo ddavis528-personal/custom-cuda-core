@@ -8,6 +8,8 @@
 #   rcu_xbar:       test/rcu/xbar_tb.cpp, 32 lanes
 #   rcu_r:          test/rcu/r_tb.cpp, and its negative controls (noalign,
 #                   retlow), each of which must fail
+#   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (nofwd,
+#                   nomerge), each of which must fail
 # Usage: test/rcu/run-rtl.sh [--full]   (--full adds the 192-row slice)
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -47,6 +49,15 @@ for c in noalign retlow; do   # a control the bench does not catch is a failure
     say "rcu_r control $c" "caught"
   else
     say "rcu_r control $c" "NOT CAUGHT ($B/rcu_r.$c.log)"; fail=1
+  fi
+done
+bench rcu_pred test/rcu/cg-build.sh rcu_pred "$B/rcu_pred" -- "$B/rcu_pred/tb"
+for c in nofwd nomerge; do
+  if [ -x "$B/rcu_pred/tb" ] && ! "$B/rcu_pred/tb" --control "$c" >"$B/rcu_pred.$c.log" 2>&1 &&
+     grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_pred.$c.log"; then
+    say "rcu_pred control $c" "caught"
+  else
+    say "rcu_pred control $c" "NOT CAUGHT ($B/rcu_pred.$c.log)"; fail=1
   fi
 done
 exit $fail

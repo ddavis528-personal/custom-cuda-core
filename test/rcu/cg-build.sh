@@ -23,5 +23,7 @@ case "$unit" in
       "$PWD/rtl/rcu/rcu_bank_slice.sv" "$PWD/test/rcu/bank_slice_tb.cpp" ;;
   rcu_r)
     vl rcu_r "" "" "$PWD/rtl/rcu/rcu_xbar.sv" "$PWD/rtl/rcu/rcu_r.sv" "$PWD/test/rcu/r_tb.cpp" ;;
+  rcu_pred)
+    vl rcu_pred "" "" "$PWD/rtl/rcu/rcu_pred.sv" "$PWD/test/rcu/pred_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

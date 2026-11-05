@@ -1,0 +1,101 @@
+{
+  "module": "rcu_pred",
+  "ports": {
+    "br_cr02h": {
+      "arrival": 5.0,
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-05",
+      "why": "The op-class decode's guarded, pdata and branch bits (Pipeline tab, Op-class decode), decoded from the issue slot's opcode at the interface flop: 5 NGD, the Partition tab's figure for the decode (issue payload to bank predecode). Set by RI pending RA: they reach the guard's force term, 12.5 NGD on, 17.5 in all."
+    },
+    "dq_cr02h": {
+      "required": 18.0,
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-05",
+      "why": "The demotion reads D0-D3 to rcu_mig's dm_pay (Partition tab: pred out 5, mig in 8). The rows that drive it also start the merge write path (old read, merge, row D), 17.6 NGD with the fanout term; held to the output's budget (NGD-7) they need 18, leaving mig 7 to capture the row (its R2 capture is 3). Copying the 1,536 row flops for the output is the alternative."
+    },
+    "gd_cr02h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    },
+    "gt_cr02h": {
+      "arrival": 5.0,
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-05",
+      "why": "The op-class decode's guarded, pdata and branch bits (Pipeline tab, Op-class decode), decoded from the issue slot's opcode at the interface flop: 5 NGD, the Partition tab's figure for the decode (issue payload to bank predecode). Set by RI pending RA: they reach the guard's force term, 12.5 NGD on, 17.5 in all."
+    },
+    "im_cr02h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    },
+    "iv_cr01h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    },
+    "lgp_cr01h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    },
+    "lgu_cr01h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    },
+    "mam_cr01h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "ccv_miu_rcu_data's lead (T-1) and pred_result (T) from RCU's interface flop (DA's ruling on RI-11), wire only. mv and mwe make the enable that keeps MIU's lead (CG-5 waiver, rtl/cg-waivers.json)."
+    },
+    "mp_cr01h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "ccv_miu_rcu_data's lead (T-1) and pred_result (T) from RCU's interface flop (DA's ruling on RI-11), wire only. mv and mwe make the enable that keeps MIU's lead (CG-5 waiver, rtl/cg-waivers.json)."
+    },
+    "mr_cr02h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "ccv_miu_rcu_data's lead (T-1) and pred_result (T) from RCU's interface flop (DA's ruling on RI-11), wire only. mv and mwe make the enable that keeps MIU's lead (CG-5 waiver, rtl/cg-waivers.json)."
+    },
+    "mv_cr01h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "ccv_miu_rcu_data's lead (T-1) and pred_result (T) from RCU's interface flop (DA's ruling on RI-11), wire only. mv and mwe make the enable that keeps MIU's lead (CG-5 waiver, rtl/cg-waivers.json)."
+    },
+    "mwe_cr01h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "ccv_miu_rcu_data's lead (T-1) and pred_result (T) from RCU's interface flop (DA's ruling on RI-11), wire only. mv and mwe make the enable that keeps MIU's lead (CG-5 waiver, rtl/cg-waivers.json)."
+    },
+    "ng_cr02h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    },
+    "pdt_cr02h": {
+      "arrival": 5.0,
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-05",
+      "why": "The op-class decode's guarded, pdata and branch bits (Pipeline tab, Op-class decode), decoded from the issue slot's opcode at the interface flop: 5 NGD, the Partition tab's figure for the decode (issue payload to bank predecode). Set by RI pending RA: they reach the guard's force term, 12.5 NGD on, 17.5 in all."
+    },
+    "rimm_cr02h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    }
+  }
+}
