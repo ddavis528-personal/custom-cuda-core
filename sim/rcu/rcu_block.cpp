@@ -124,6 +124,7 @@ private:
     // the Register file tab's secmask writes instead.
     const char *fr = std::getenv("CCV_RCU_FULL_ROW");
     cfg.full_row = !(fr && std::string(fr) == "0");
+    if (const char *kc = std::getenv("CCV_RCU_KILL_DRAIN_CUT")) cfg.kill_drain_cut = unsigned(std::atoi(kc));
     for (const ChanInst &ci : kChanInsts) {
       if (ci.chan == chanId("ccv_ooe_rcu_issue")) cfg.issue_stages = std::max(cfg.issue_stages, unsigned(ci.stages));
       if (ci.chan == chanId("ccv_rcu_ooe_done")) cfg.done_stages = std::max(cfg.done_stages, unsigned(ci.stages));
