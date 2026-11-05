@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 14 | 36 |
 | ⚠️ Some provisional | 26 | 138 |
-| ⛔ Some preliminary | 15 | 149 |
-| **Total** | **55** | **323** |
+| ⛔ Some preliminary | 15 | 147 |
+| **Total** | **55** | **321** |
 
 ## What still has to be decided
 
@@ -153,18 +153,6 @@ because those are the ones where a skeleton that reads the field
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
 | `CCV_OP_PRF_COPY` | 511 | low | The copy-only op's opcode on ccv_ooe_rcu_issue and ccv_rcu_lane_ops: the all-ones code, which no ISA opcode takes. A masked load issues it beside the load, with the load's rob_tag and destinations and the old destination as merge_data: a lane returns merge_data on its inactive lanes, RCU writes only those, and no done comes back -- the load keeps one completion, its own (A-38). OOE clears the load's copy-pending at issue + CCV_LAT_LANE, as for any lane op; RCU owes the PRF write within CCV_LAT_LANE of accepting it. |
-
-## Open questions that no width can close
-
-Each is numbered in [`open-items.md`](open-items.md), the one list of what is undecided.
-
-### Q-18 — rcu miu width
-
-*partitioning question that a width exposed — partitioning / floorplan*
-
-ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 4 -- roughly 8,400 wires from RCU into MIU, almost certainly the widest interface in the design. It argues for co-locating the AGUs with RCU, or moving address generation into the register read stage.
-
-**Blocks:** Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.
 
 ---
 
@@ -841,13 +829,11 @@ ooe → rcu · rate 9 · execution
 | `lead_merge_used` | `1` | 1 | literal |
 | `lead_guard_used` | `1` | 1 | literal |
 | `lead_guard_pred` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
-| `lead_r_src0` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
-| `lead_r_src1` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
-| **total** | | **209** | ⛔ 12 preliminary, ⚠️ 119 provisional |
+| **total** | | **193** | ⛔ 12 preliminary, ⚠️ 103 provisional |
 
-Lead fields (driven with valid, a cycle ahead of the rest): `lead_sec_mask`, `lead_src_used`, `lead_imm_used`, `lead_merge_used`, `lead_guard_used`, `lead_guard_pred`, `lead_r_src0`, `lead_r_src1`.
+Lead fields (driven with valid, a cycle ahead of the rest): `lead_sec_mask`, `lead_src_used`, `lead_imm_used`, `lead_merge_used`, `lead_guard_used`, `lead_guard_pred`.
 
-Slot fields (defined only on the slots named, zero on the rest): `lead_guard_used` on `CCV_ISSUE_SLOT_R`; `lead_guard_pred` on `CCV_ISSUE_SLOT_R`; `lead_r_src0` on `CCV_ISSUE_SLOT_R`; `lead_r_src1` on `CCV_ISSUE_SLOT_R`.
+Slot fields (defined only on the slots named, zero on the rest): `lead_guard_used` on `CCV_ISSUE_SLOT_R`; `lead_guard_pred` on `CCV_ISSUE_SLOT_R`.
 
 ### `ccv_rcu_lane_ops`
 

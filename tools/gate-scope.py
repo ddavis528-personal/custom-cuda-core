@@ -26,6 +26,8 @@ ALWAYS = ["s1a", "s1d", "iface", "vlint"]
 # Every section that reads RTL, its benches or its synthesis flow.
 RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "top",
        "formal", "phys", "svh", "links"]
+# The sections that read RI's RCU RTL and its benches (RI-10).
+RCU_RTL = ["cg", "ngd"]
 # First match wins: the more specific prefix comes first.
 MAP = [
     # The sources of truth everything is generated from, and the gate itself.
@@ -70,9 +72,14 @@ MAP = [
     ("sim/skel/", ["skel", "kernel", "svh", "top"]),
     ("sim/", ALL),
     ("rtl/lint/", ["s1d"] + RTL),
+    # RI's RCU RTL (RI-10, RA-37): only check-cg and check-ngd read it (their
+    # rtl/** globs and test/rcu/cg-units.json); lint and vlint always run.
+    # Nothing instantiates it yet; the selftest fails when something does.
+    ("rtl/rcu/", RCU_RTL),
     ("rtl/", RTL),
     ("test/kernels/", ["kernel", "svh"]),
     ("test/ooe/", ["ooe_rtl", "cg", "ngd"]),
+    ("test/rcu/", RCU_RTL),
     ("test/cg/", ["cg"]),
     ("test/ngd/", ["ngd"]),
     ("test/neg/", ["iface"]),
@@ -135,6 +142,35 @@ def changed(base):
     return sorted(paths)
 
 
+def rcu_rtl_readers(root=ROOT):
+    """What reads rtl/rcu/ beyond check-cg and check-ngd: an RTL file
+    elsewhere under rtl/ that instantiates one of its modules, or a tool,
+    test script or CI file that names the directory."""
+    import glob
+    mods = set()
+    for f in glob.glob(os.path.join(root, "rtl", "rcu", "**", "*.sv"), recursive=True):
+        mods |= set(re.findall(r"^\s*module\s+(\w+)", open(f).read(), re.M))
+    out = []
+    if mods:
+        inst = re.compile(r"^\s*(%s)\b\s*(#\s*\(|\w+\s*\()" % "|".join(sorted(mods)), re.M)
+        for f in glob.glob(os.path.join(root, "rtl", "**", "*.sv"), recursive=True):
+            rel = os.path.relpath(f, root)
+            if not rel.startswith("rtl/rcu/") and inst.search(open(f).read()):
+                out.append(rel)
+    allowed = {"tools/gate-scope.py", "tools/check-cg.py", "tools/check-ngd.py"}
+    for pat in ("tools/*", "test/**/*.sh", "test/**/*.py", ".github/workflows/*"):
+        for f in glob.glob(os.path.join(root, pat), recursive=True):
+            rel = os.path.relpath(f, root)
+            if rel.startswith("test/rcu/") or rel in allowed or not os.path.isfile(f):
+                continue
+            try:
+                if "rtl/rcu" in open(f, errors="replace").read():
+                    out.append(rel)
+            except OSError:
+                pass
+    return out
+
+
 def selftest():
     bad = []
     order = jobs()
@@ -165,6 +201,26 @@ def selftest():
     s, _ = scope(["sim/rcu/rcu_core.cpp"])
     expect(s != ALL and {"kernel", "rcu_unit", "skel", "svh"} <= set(s),
            "an RCU model change skips a section that reads it: %s" % s)
+    s, _ = scope(["rtl/rcu/rcu_bank_slice.sv", "test/rcu/cg-units.json"])
+    expect(s != ALL and {"cg", "ngd"} <= set(s) and not {"ooe_rtl", "top", "svh"} & set(s),
+           "an RCU RTL change is not scoped to check-cg and check-ngd: %s" % s)
+    # RCU_RTL holds only while nothing else reads rtl/rcu/: no RTL outside it
+    # instantiates its modules, and no script but the two names it.
+    for x in rcu_rtl_readers():
+        bad.append("rtl/rcu/ is read by %s, outside RCU_RTL's sections: map it there" % x)
+    # Its control: a tree where the top instantiates an RCU module and a
+    # script names the directory must show both.
+    import tempfile
+    with tempfile.TemporaryDirectory() as t:
+        for rel, text in (("rtl/rcu/rcu_x.sv", "module rcu_x (input logic a);\nendmodule\n"),
+                          ("rtl/top/top.sv", "module top;\n  rcu_x u_x (.a(1'b0));\nendmodule\n"),
+                          ("tools/check-x.sh", "verilator rtl/rcu/rcu_x.sv\n"),
+                          ("tools/check-cg.py", "glob('rtl/rcu')\n")):
+            os.makedirs(os.path.dirname(os.path.join(t, rel)), exist_ok=True)
+            open(os.path.join(t, rel), "w").write(text)
+        got = sorted(rcu_rtl_readers(t))
+        expect(got == ["rtl/top/top.sv", "tools/check-x.sh"],
+               "a reader of rtl/rcu/ outside check-cg and check-ngd went unseen: %s" % got)
     s, _ = scope(["docs/roadmap.md"])
     expect(s == [j for j in order if j in ALWAYS], "a prose change ran more than ALWAYS: %s" % s)
     s, _ = scope(["docs/roadmap.md", "params/links.json"])

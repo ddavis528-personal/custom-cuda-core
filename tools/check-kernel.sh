@@ -1396,28 +1396,28 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-src-clear.log" check_failures)" 
 else
   bad "--break lead-src-clear" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-src-clear.log")"
 fi
-# The RCU selector (RI-2, RA-38): CCV_RCU_IMPL=model puts RI's model behind
-# the RCU ports, which logs its events; the default is the stub, which logs
-# none. Which kernels the model passes is RI's to report (M0), not held here.
+# The RCU selector (RI-8, RA-38 (a)): RI's model is the default behind the
+# RCU ports since M0 (RA's rev 68), and logs its events; CCV_RCU_IMPL=stub
+# puts the stub there, which logs none.
 ev="$B/rcu-model-ev.log"; rm -f "$ev"
-CCV_RCU_IMPL=model CCV_RCU_EVLOG="$ev" "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$B/kernel_rcu-model.log" 2>&1
+CCV_RCU_EVLOG="$ev" "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$B/kernel_rcu-model.log" 2>&1
 nm=$( [ -s "$ev" ] && wc -l <"$ev" || echo 0 ); rm -f "$ev"
-CCV_RCU_EVLOG="$ev" "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$B/kernel_rcu-stub.log" 2>&1
+CCV_RCU_IMPL=stub CCV_RCU_EVLOG="$ev" "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$B/kernel_rcu-stub.log" 2>&1
 if [ "$nm" -gt 0 ] && [ ! -e "$ev" ]; then
-  say "CCV_RCU_IMPL: model when asked, stub by default" "PASS ($nm model events)"
+  say "CCV_RCU_IMPL: model by default, stub when asked" "PASS ($nm model events)"
 else
   bad "CCV_RCU_IMPL" "model events $nm; stub log $( [ -e "$ev" ] && echo written || echo absent)"
 fi
-# R's early source rows (RA-39 (b); OA's rev 328, AR's rev 271): lead_r_src0
-# and lead_r_src1 name the rows of phys_src a cycle ahead. lead-rsrc-swap
-# names them the wrong way round; RCU refuses each R issue whose two rows
-# differ (callret's, pinned), and nothing else fails.
-"$SKEL" --kernel build/oracle/callret/oracle.jsonl --break lead-rsrc-swap >"$B/kernel_lead-rsrc-swap.log" 2>&1
-n=$(grep -c "^CHECK rcu: seq [0-9]*, [^,]*, reads a source row its lead does not name" "$B/kernel_lead-rsrc-swap.log")
-if [ "$n" = 7 ] && [ "$(field "$B/kernel_lead-rsrc-swap.log" check_failures)" = "$n" ]; then
-  say "--break lead-rsrc-swap: RCU refuses R source rows its lead misnames" "PASS ($n issues)"
+# pmov.imm writes only the issue-mask lanes (RA-19; ccv-sim at b83777e):
+# pmovdiv runs it on lanes 0-15 with P2 all ones, so lanes 16-31 keep theirs.
+# pmov-all-lanes writes all 32, and the oracle's P2 must refuse it. RI's
+# model has the break (ba3549b, TI's rev 319), so it runs on the default.
+"$SKEL" --kernel build/oracle/pmovdiv/oracle.jsonl --break pmov-all-lanes >"$B/kernel_pmov-all-lanes.log" 2>&1
+if grep -q "^CHECK rcu: seq [0-9]* P2 = 00000000, oracle ffff0000$" "$B/kernel_pmov-all-lanes.log" &&
+   [ "$(field "$B/kernel_pmov-all-lanes.log" check_failures)" = 1 ]; then
+  say "--break pmov-all-lanes: pmov.imm keeps the inactive lanes" "PASS (P2 ffff0000 refused as 0)"
 else
-  bad "--break lead-rsrc-swap" "$n refused (7 pinned): $(grep '^KERNEL' "$B/kernel_lead-rsrc-swap.log")"
+  bad "--break pmov-all-lanes" "$(grep -m1 '^CHECK' "$B/kernel_pmov-all-lanes.log"); $(grep '^KERNEL' "$B/kernel_pmov-all-lanes.log")"
 fi
 
 # Notices (OA-23; AR's response TI-23): DCU promises a refill

@@ -25,8 +25,8 @@ every message.
 ## 1. The kernel, from the compiler
 
 `c[i] = a[i] + b[i]` for 32 threads. The core pins one compiler snapshot,
-`tools/compiler.lock`: the `release` branch at `d9ddd2c` (source
-`f5fa030`). The kernel is that snapshot's own hand-scheduled listing,
+`tools/compiler.lock`: the `release` branch at `e533ecd` (source
+`45ce995`). The kernel is that snapshot's own hand-scheduled listing,
 test/elementwise.s in the compiler repository, and `test/kernels/vadd/kernel.cfg`
 gives the launch block and memory it runs against.
 
@@ -294,13 +294,13 @@ in the same cycle, and gets 32 results back 4 cycles later:
     111  EV_OOE_CANCEL_REPLAY           ooe          
     111  ccv_rcu_lane_ops               rcu  -> lane   x32
     115  ccv_lane_rcu_res               lane -> rcu    x32
-    117  ccv_rcu_ooe_done               rcu  -> ooe       
+    116  ccv_rcu_ooe_done               rcu  -> ooe       
     133  EV_ISSUE                       ooe          
     134  ccv_ooe_rcu_issue              ooe  -> rcu     x4
     136  ccv_rcu_lane_ops               rcu  -> lane   x32
     140  ccv_lane_rcu_res               lane -> rcu    x32
-    142  ccv_rcu_ooe_done               rcu  -> ooe       
-    144  EV_RETIRE                      ooe          
+    141  ccv_rcu_ooe_done               rcu  -> ooe       
+    143  EV_RETIRE                      ooe          
 ```
 
 The trace converts to Perfetto (`tools/trace2perfetto.py`), with a track per
@@ -382,7 +382,7 @@ skeleton's:
 ```
 SVHOST shims=46/46 skewed=none
 KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
-TRACES records=734/734 equal=yes byte_identical=no differing_cycles=0
+TRACES records=767/767 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -410,7 +410,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[46951:45740])
+    .ch_payload(payload[46807:45596])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
@@ -510,4 +510,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: de76ded9eb40ca03 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: d49d20e3bb764361 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

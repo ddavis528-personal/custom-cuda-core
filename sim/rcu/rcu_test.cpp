@@ -38,6 +38,15 @@ std::string g_test;
     }                                                                               \
   } while (0)
 
+/// A negative control: the hazard must be refused. Each caught one prints
+/// "control <name> caught" (TI's rev 310), so the gate can count them.
+#define CONTROL(name, c, ...)                                                       \
+  do {                                                                              \
+    const bool caught_ = (c);                                                       \
+    EXPECT(caught_, __VA_ARGS__);                                                   \
+    if (caught_) std::printf("control %s caught\n", name);                          \
+  } while (0)
+
 /// A core with its own register files, recording failures and events.
 struct Env : Hooks {
   std::vector<Word> gpr = std::vector<Word>(kRows);
@@ -196,7 +205,7 @@ void testLaneTiming() {
       EXPECT(e.first(Ev::GprWrite, 9) == 26, "GprWrite at %ld", e.first(Ev::GprWrite, 9));
       EXPECT(e.fails.empty(), "%s", e.fails.empty() ? "" : e.fails[0].c_str());
     } else {
-      EXPECT(e.failed(mode == 1 ? "did not arrive" : "nothing in flight"), "control %d passed", mode);
+      CONTROL(mode == 1 ? "lane-missing" : "lane-early", e.failed(mode == 1 ? "did not arrive" : "nothing in flight"), "control %d passed", mode);
     }
   }
 }
@@ -227,7 +236,7 @@ void testBypassWindow() {
       }
       EXPECT(o.lane->sec[0].byp[1] == 0, "the unrelated port bypasses");
     }
-    if (age == 3) EXPECT(e.failed("CCV_LAT_LANE_BYP"), "age 3 read passed");
+    if (age == 3) CONTROL("byp-age3", e.failed("CCV_LAT_LANE_BYP"), "age 3 read passed");
     else {
       // Drain the second op's results.
       while (e.t <= 40 + age + kLaneW) {
@@ -282,7 +291,7 @@ void testGuardForward() {
     Out o = e.step(in);
     const uint32_t want = mode == 0 ? 0x00ff00ffu : 0x0000ffffu;
     if (mode == 1) {
-      EXPECT(e.failed("non-MIU port in its own A"), "same-A predicate hazard passed");
+      CONTROL("guard-hazard", e.failed("non-MIU port in its own A"), "same-A predicate hazard passed");
     } else {
       EXPECT(e.fails.empty(), "mode %d: %s", mode, e.fails.empty() ? "" : e.fails[0].c_str());
       EXPECT(o.dones.size() == 1 && o.dones[0].bm == want, "branch mask %08x, not %08x",
@@ -303,7 +312,7 @@ void testV60() {
   b.lead.sec = 0x2;
   in.iss[kSlotS0 + 1] = b;
   e.step(in);
-  EXPECT(e.failed("V-60") || e.failed("continuation"), "overlap passed");
+  CONTROL("v60", e.failed("V-60") || e.failed("continuation"), "overlap passed");
 }
 
 /// Kill: the drain is KILL_DRAIN cycles from K's edge; ack-ready after it.
@@ -319,6 +328,7 @@ void testKillDrain() {
   unsigned n = 0;
   while (!e.core.killQuiet() && n < 40) { e.step(); ++n; }
   EXPECT(n == d, "quiet after %u cycles past K, not %u", n, d);
+  EXPECT(e.first(Ev::KillAck, 0) >= 0, "no KillAck once quiet");
   EXPECT(e.core.idle(), "not idle once drained");
 }
 
@@ -367,7 +377,7 @@ void testMigration(const char *brk) {
   if (*brk) {
     bool order = true;
     for (unsigned i = 0; i != rows.size(); ++i) order = order && rows[i].row == i;
-    EXPECT(!order, "mig-row-order's rows came out in order");
+    CONTROL("mig-row-order", !order, "mig-row-order's rows came out in order");
     return;
   }
   for (unsigned i = 0; i != rows.size(); ++i) {
@@ -426,7 +436,7 @@ void testRestoreZero() {
   In x = Env::idleIn();
   x.map = m;
   e.step(x);
-  EXPECT(e.failed("zero register"), "a zero row in a restore map passed");
+  CONTROL("restore-zero", e.failed("zero register"), "a zero row in a restore map passed");
 }
 
 /// A 16-bit load at position 1 (sections 1-2): the Register file tab's MW
