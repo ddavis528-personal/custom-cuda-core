@@ -48,7 +48,9 @@ Nothing had RI in Needs at session start.
     183cc441 7, 57eff422 47, 80102643 14, 9eb50716 15, c22116ce 5) + regen = 802b8ae. Full split gate:
     cg part: first run hit the 2 h background cap; relaunched DETACHED (setsid nohup
     ~/ccv-logs/sweep-gate.sh > ~/ccv-logs/sweep-gate-cg.out; waiter b7hec0wzq re-arm if it caps) ->
-    ~/ccv-logs/gate-cg-802b8ae.tgz; run the ngd part the same detached way; then `tools/verify.sh --only ngd` + export;
+    ~/ccv-logs/gate-cg-802b8ae.tgz; cg PASSED (gate-cg-802b8ae.tgz, 5420 s). ngd: first run died
+    (disk full); rerun detached (sweep-gate-ngd.sh -> sweep-gate-ngd.out). Disk: ri-wt/ri-wt3 build/ deleted
+    to free space (rebuildable); watch df before gate-push; then `tools/verify.sh --only ngd` + export;
     then in ri-wt2 CCV_PUSH_BRANCHES=ccr-888218a3-20cauz tools/gate-push.sh --full --import=cg,ngd.
     Held RI work (a90cb8f.., ri-wt) stays out. AR 295: RCU fits 2% only at ~62,750 flops + 50x modules.
 00. HELD: RA rev 81 declined rcu_pred's two CG-5 waivers (else accepted RI-14; gt/pdt/br at 0
