@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 78, RI 10. AR 287.
+Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 78, RI 11. TI 324. AR 287.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -45,6 +45,9 @@ Nothing had RI in Needs at session start.
    check-kernel on TI's push.
    Push chain: 0d087e9 split gate (cg bnh4z0vqi -> ~/ccv-logs/gate-cg-0d087e9.tgz; then ngd; then
    gate-push --import=both). ba3549b pushed (SPLIT SCOPED PASS).
+0b. RI-10 closed (TI 31e21e0 merged at c215aab): full slice in cg-units (5495933), check-cg clean
+   at 192 rows; M3 reported (RI rev 11, notice RA). Worktree ri-wt carries c215aab..HEAD for the
+   push after 0d087e9's (rcu-only changes now scope to cg+ngd).
 1. Phase 2 RTL (rtl/rcu/, test/rcu/): rcu_bank_slice (RA-39: R0/R1 read from phys_src on the
    wire, rsrc flopped per slice with MW write-through), rcu_r + rcu_xbar. Figures sent to RA as
    RI responses rev 8 (notice sent): phys_src->rsrc 18.4 vs 18 at 192 (miss 0.4) RA-39 CLOSED (RA rev 74, OA rev 337):
