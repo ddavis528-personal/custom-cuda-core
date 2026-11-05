@@ -189,7 +189,10 @@ module rcu_r #(
   logic          wg_cr03h, wp_cr03h, s5_cr03h, mrg_cr03h;
   logic [WT-1:0] tag_cr03h;
   logic [1:0]    drow_cr03h, dpos_cr03h, dwid_cr03h, opos_cr03h;
-  logic [3:0]    spos_cr03h, swid_cr03h;
+  // The sources' pos and width, a copy for each 4 lanes (the alignment's
+  // fanout: one copy for all 1,024 bits put A+1 at 25.9 NGD).
+  localparam int NG = N / 4;
+  (* keep *) logic [NG*4-1:0] spos_cr03h, swid_cr03h;
   logic [N-1:0]  imask_cr03h;
   logic [31:0]   imm_cr03h;
   always_ff @(posedge rcu_core_clk) begin
@@ -204,8 +207,8 @@ module rcu_r #(
       dpos_cr03h   <= dpos_cr02h;
       dwid_cr03h   <= dwid_cr02h;
       opos_cr03h   <= opos_cr02h;
-      spos_cr03h   <= spos_cr02h;
-      swid_cr03h   <= swid_cr02h;
+      spos_cr03h   <= {NG{spos_cr02h}};
+      swid_cr03h   <= {NG{swid_cr02h}};
       imask_cr03h  <= imask_cr02h;
       imm_cr03h    <= imm_cr02h;
       // The write ports' rows: no-select when the op writes none.
@@ -224,8 +227,10 @@ module rcu_r #(
   logic [N*32-1:0] rs0a_cr03h, rs1a_cr03h;   // v(R0), v(R1)
   always_comb begin
     for (int l = 0; l < N; l++) begin
-      rs0a_cr03h[l*32 +: 32] = align(rs0_cr03h[l*32 +: 32], spos_cr03h[1:0], swid_cr03h[1:0]);
-      rs1a_cr03h[l*32 +: 32] = align(rs1_cr03h[l*32 +: 32], spos_cr03h[3:2], swid_cr03h[3:2]);
+      rs0a_cr03h[l*32 +: 32] = align(rs0_cr03h[l*32 +: 32], spos_cr03h[(l/4)*4 +: 2],
+                                     swid_cr03h[(l/4)*4 +: 2]);
+      rs1a_cr03h[l*32 +: 32] = align(rs1_cr03h[l*32 +: 32], spos_cr03h[(l/4)*4 + 2 +: 2],
+                                     swid_cr03h[(l/4)*4 + 2 +: 2]);
     end
   end
 
@@ -292,7 +297,7 @@ module rcu_r #(
       K_VALL:  begin pv_cr03h = {N{pall_cr03h}}; pm_cr03h = act_cr03h; end
       default: begin   // unballot: lane l's bit l, 0 past rs's width
         for (int l = 0; l < N; l++)
-          pv_cr03h[l] = rs0a_cr03h[l*32 + l] & (l < (32 >> swid_cr03h[1:0]));
+          pv_cr03h[l] = rs0a_cr03h[l*32 + l] & (l < (32 >> swid_cr03h[(l/4)*4 +: 2]));
         pm_cr03h = act_cr03h;
       end
     endcase
