@@ -6,10 +6,12 @@
 
 // HARDENING WRAPPER ccv_cru_w: ccv_cru and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. An end
-// whose link has no stages here is connected straight through.
+// and links"). Nothing but instances and nets, like the top. Each end's
+// repeater holds the block's boundary flop (BOUNDARY 1) and its link's
+// stages; a no-flop end (params/links.json no_flop) whose link has no
+// stages here is connected straight through.
 // Each end's stages are a parameter the top sets from params/links.json;
-// at 0 the end is wired straight through, with no repeater.
+// at 0 a no-flop end is wired straight through, with no repeater.
 `include "ccv_interfaces.svh"
 
 module ccv_cru_w #(
@@ -63,9 +65,9 @@ module ccv_cru_w #(
 `endif
   );
 
-  // ccv_ooe_cru_fault, destination end
+  // ccv_ooe_cru_fault, destination end, no-flop (params/links.json no_flop)
   if (RPT_OOE_CRU_FAULT > 0) begin : g_rpt_ooe_cru_fault
-    ccv_common_rpt #(.STAGES(RPT_OOE_CRU_FAULT), .SLOTS(1), .PAYLOAD_W(172)) u_rpt_ooe_cru_fault (
+    ccv_common_rpt #(.STAGES(RPT_OOE_CRU_FAULT), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(172)) u_rpt_ooe_cru_fault (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_cru_fault_valid}), .src_payload({ooe_cru_fault_payload}),
       .src_wake(ooe_cru_fault_wake), .src_credit({ooe_cru_fault_credit}), .src_stall({ooe_cru_fault_stall}),
@@ -85,9 +87,9 @@ module ccv_cru_w #(
     assign {b_ooe_cru_fault_tid} = {ooe_cru_fault_tid};
 `endif
   end
-  // ccv_cru_rau_cfg, source end
+  // ccv_cru_rau_cfg, source end, no-flop (params/links.json no_flop)
   if (RPT_CRU_RAU_CFG > 0) begin : g_rpt_cru_rau_cfg
-    ccv_common_rpt #(.STAGES(RPT_CRU_RAU_CFG), .SLOTS(1), .PAYLOAD_W(74)) u_rpt_cru_rau_cfg (
+    ccv_common_rpt #(.STAGES(RPT_CRU_RAU_CFG), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(74)) u_rpt_cru_rau_cfg (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_cru_rau_cfg_valid}), .src_payload({b_cru_rau_cfg_payload}),
       .src_wake(b_cru_rau_cfg_wake), .src_credit({b_cru_rau_cfg_credit}), .src_stall({b_cru_rau_cfg_stall}),

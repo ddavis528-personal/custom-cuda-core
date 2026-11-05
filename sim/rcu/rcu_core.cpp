@@ -142,6 +142,9 @@ void Core::gatherWrites(uint64_t t, const In &in, std::vector<GWrite> &gw, std::
         if (d.copy && t - d.acc > ccv::prov::kLatLane)
           fail("seq %llu's copy reached the PRF %llu cycles after RCU took it; CCV_LAT_LANE is %u",
                seqOf(d.tid), (unsigned long long)(t - d.acc), ccv::prov::kLatLane);
+        // SW (A+11): not modelled yet (RA-3's field). When it is, it writes
+        // like MW and RW: all four banks zero-extended under full_row (RA's
+        // response RI-5, Register file tab rev 7), secmask otherwise.
         if (d.sfu) { fail("an SFU result is not modelled yet (RA-3's field)"); continue; }
         // LW writes every bank the op owns (Register file tab, LW's enable):
         // a chwidth widening names its old width in dst_width (AR-24) and
@@ -177,11 +180,11 @@ void Core::gatherWrites(uint64_t t, const In &in, std::vector<GWrite> &gw, std::
       // One load write per bank a cycle (RA-28 (a)).
       if (s & msecs) fail("two MIU slots write section bank(s) %s in one cycle (RA-28)", secBits(s & msecs).c_str());
       msecs |= s;
-      GWrite g{kMW, m.dst, cfg_.full_row ? kAllSecs : s & kAllSecs, m.active, {}};
+      GWrite g{kMW, m.dst, cfg_.full_row ? kAllSecs : s & kAllSecs, m.active, {}, int(j)};
       for (unsigned l = 0; l != kLanes; ++l) g.data[l] = (m.data[l] & elemMask(m.w)) << (8 * m.pos);
       gw.push_back(g);
     }
-    if (m.pwe) pw.push_back({kPM, m.ppred, m.active, m.pred_result, kAll, -1, true});
+    if (m.pwe) pw.push_back({kPM, m.ppred, m.active, m.pred_result, kAll, -1, true, int(j)});
   }
   // R, the predicate-only copy, and restores: scheduled at their decision.
   if (auto g = gsched_.find(t); g != gsched_.end()) {
@@ -311,7 +314,8 @@ void Core::checkIssues(const In &in, std::array<int, kRes> &owner) {
                       : oc.imm_used && !is.lead.imm ? "an immediate its lead says is unused"
                       : is.merge && !is.lead.merge ? "a merge its lead says is unused"
                       : s == kSlotR && oc.guarded && (!is.lead.guard || is.lead.gpred != is.pguard)
-                          ? "a guard its lead does not name" : nullptr;
+                          ? "a guard its lead does not name"
+                      : nullptr;
     if (why)
       fail("seq %llu, %s, reads %s (lead sections %s, sources %s)", seq(s), is.name, why,
            secBits(is.lead.sec).c_str(), secBits(is.lead.src).c_str());
@@ -367,7 +371,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
       fail("seq %llu's guard %u is written by a non-MIU port in its own A", seqOf(is.tid),
            is.pguard);
     for (const PWrite &w : pnow_)
-      if (w.miu && w.row == is.pguard && (oc.guarded || oc.pdata)) ev(Ev::GuardFwd, s, w.port, w.row);
+      if (w.miu && w.row == is.pguard && (oc.guarded || oc.pdata)) ev(Ev::GuardFwd, s, unsigned(w.slot), w.row);
     const uint32_t g = rdPred(is.pguard);
     x.guardv = is.pneg ? ~g : g;
     // pdata-guard: a predicate read as data taken as a guard too (TI-36 (c)).
@@ -404,7 +408,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
           fail("seq %llu's R%u source row %u is written by a non-MIU port in its own A",
                seqOf(is.tid), i, is.src[i]);
         for (const GWrite &w : gnow_)
-          if (w.port == kMW && w.row == is.src[i]) ev(Ev::RsrcFwd, i, 0, w.row);
+          if (w.port == kMW && w.row == is.src[i]) ev(Ev::RsrcFwd, i, unsigned(w.slot), w.row);
         (i == 0 ? x.r0 : x.r1) = rdReg(is.src[i], is.src_pos[i], is.src_w[i]);
       }
     }
@@ -436,6 +440,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
     LaneDesc d = it->d;
     d.a = t;
     descs.push_back(d);
+    if (!d.copy && d.gdst && !d.sfu) hist_.push_back({t, d.dst, d.dst_pos, secMask(d.dst_w, d.dst_pos), d.lead});
     it = late_.erase(it);
   }
   while (!hist_.empty() && t - hist_.front().a > kBypHi) hist_.pop_front();
@@ -552,13 +557,6 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
       if ((x.active >> l) & 1u) own.pred_bit[l] = uint8_t(is.foot);
       if (is.oc.pdata && brk != "drop-pred-data" && ((x.guardv >> l) & 1u)) own.pred_data[l] = uint8_t(is.foot);
     }
-    for (unsigned k = 0; k != kSecs; ++k)
-      if ((is.foot >> k) & 1u) msg.sec[k] = own.sec[k];
-    for (unsigned l = 0; l != kLanes; ++l) {
-      for (unsigned i = 0; i != kPorts; ++i) msg.opnd[l][i] |= own.opnd[l][i];
-      msg.pred_bit[l] |= own.pred_bit[l];
-      msg.pred_data[l] |= own.pred_data[l];
-    }
     LaneDesc d{lead, is.foot, copy || is.oc.gdst, copy, is.pwe && !copy, is.merge, is.oc.unit == Unit::Sfu,
                is.dst, is.dst_pos, is.dst_w, is.pdst, is.pold, x.active, is.tag, is.done_row, is.tid, t, t};
     // late-copy: the copy waits CCV_LAT_LANE cycles, landing after the
@@ -567,6 +565,29 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
     if (copy && brk == "late-copy") {
       late_.push_back({t + ccv::prov::kLatLane, own, d});
       continue;
+    }
+    if (movi_lane && in.iss[s]->oc.rk == RKind::Movi) {
+      // The misplaced movi leaves R's pipe for the lanes at A+2, R's write
+      // cycle, and completes on R's slot. Lane ops issued after it queue
+      // behind it in order, as the stub's one-message-a-cycle lane queue
+      // does, so the control's late dones are the stub's.
+      d.dslot = int(kDoneRcu);
+      late_.push_back({t + kRW, own, d});
+      movi_a_ = t;
+      movi_hold_ = t + kRW;
+      continue;
+    }
+    if (movi_lane && t > movi_a_ && t <= movi_hold_) {
+      late_.push_back({movi_hold_ + 1, own, d});
+      movi_hold_ = movi_hold_ + 1;
+      continue;
+    }
+    for (unsigned k = 0; k != kSecs; ++k)
+      if ((is.foot >> k) & 1u) msg.sec[k] = own.sec[k];
+    for (unsigned l = 0; l != kLanes; ++l) {
+      for (unsigned i = 0; i != kPorts; ++i) msg.opnd[l][i] |= own.opnd[l][i];
+      msg.pred_bit[l] |= own.pred_bit[l];
+      msg.pred_data[l] |= own.pred_data[l];
     }
     if (!any_lane) msg.tid = is.tid;
     any_lane = true;
@@ -582,7 +603,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
       const uint64_t w = d.a + (d.sfu ? kSfuW : kLaneW);
       lanes_[w].push_back(d);
       if (d.copy) continue;   // a copy completes on the load's (OI-4)
-      Done dn{d.sfu ? kDoneSfu : d.lead, d.tag, d.done_row};
+      Done dn{d.dslot >= 0 ? unsigned(d.dslot) : d.sfu ? kDoneSfu : d.lead, d.tag, d.done_row};
       dn.tid = d.tid;
       if (brk == "slot-field-aux") dn.aux_set = true;
       dsched_[w - 1].push_back(dn);
@@ -634,6 +655,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
   // The kill drain (Done tab): KILL_DRAIN, loaded at K's edge, to 0.
   if (drain_ && !drain_loaded_) --drain_;
   drain_loaded_ = false;
+  if (kill_pend_ && killQuiet()) { ev(Ev::KillAck, kill_epoch_); kill_pend_ = false; }
 
   // rcu_idle_q: nothing valid in any stage and nothing pending.
   bool input = in.lres.has_value() || in.map || in.cmd || in.pca;
@@ -719,7 +741,11 @@ void Core::issueR(uint64_t t, const Issue &is, uint32_t active, const Word &r0, 
   case RKind::Pand: pw = true; pval = rpa & rpb; break;
   case RKind::Por: pw = true; pval = rpa | rpb; break;
   case RKind::Pxor: pw = true; pval = rpa ^ rpb; break;
-  case RKind::PmovImm: pw = true; pval = is.imm; break;   // merged by the issue mask (RA-19)
+  case RKind::PmovImm:   // merged by the issue mask (RA-19); pmov-all-lanes writes all 32
+    pw = true;
+    pval = is.imm;
+    if (cfg_.brk == "pmov-all-lanes") pmm = kAll;
+    break;
   case RKind::Movi:
     for (unsigned l = 0; l != kLanes; ++l) gnew[l] = is.imm & em;
     break;
@@ -838,8 +864,6 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
       rs_ = me->m;
       rs_next_ = 0;
       rs_start_ = t;
-      for (unsigned g : rs_.gpr) unwritten_.insert(g);
-      for (unsigned p : rs_.pred) unwritten_p_.insert(p);
     }
     ev(Ev::MigPair, me->m.warp, dir);
     const unsigned mid = me->id, cid = ce->id;
@@ -900,10 +924,11 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
     if (!e.dead) {
       if (e.r.warp != rs_.warp) {
         fail("restore of warp %u: a row of warp %u before its predicate row (RA-28 (b))", rs_.warp, e.r.warp);
-      } else if (e.r.row != rs_next_) {
-        fail("restore of warp %u: row %u where row %u is next (RA-28 (b))", rs_.warp, e.r.row, rs_next_);
-        rs_next_ = e.r.row + 1;
       } else {
+        // Rows 0..16 in order is PCA's contract (RA-28 (b)), asserted; the
+        // write still goes by the row's own mig_row, decoded at land.
+        if (e.r.row != rs_next_)
+          fail("restore of warp %u: row %u where row %u is next (RA-28 (b))", rs_.warp, e.r.row, rs_next_);
         const bool prow = e.r.row == kArchGprs;
         if (!prow && rw_busy) {
           ++st_.mig_r_waits;
@@ -918,7 +943,7 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
           }
           rpop_[t + kRW] = 1;
           ++rs_inflight_;
-          ++rs_next_;
+          rs_next_ = e.r.row + 1;
         }
       }
     }
@@ -935,6 +960,13 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
           if (m.gpr[j] == m.gpr[i]) fail("warp %u's restore map gives R%u and R%u one row", m.warp, j, i);
       }
     if (mq_.size() >= kPairDepth) fail("a map lands with the pairing queue full (RA-28 (d))");
+    // A restore's rows are unwritten from its map's landing (TI-13): OOE
+    // may issue the warp's readers once RAU says done, never before the
+    // rows are written, whether or not the restore has launched.
+    if (m.dir == 1) {
+      for (unsigned g : m.gpr) unwritten_.insert(g);
+      for (unsigned p : m.pred) unwritten_p_.insert(p);
+    }
     mq_.push_back({m, t, next_id_++});
     kmask_ &= ~(1u << m.warp);
   }
@@ -974,11 +1006,20 @@ void Core::kill(uint32_t mask, unsigned epoch) {
   drain_ = killDrain();
   drain_loaded_ = true;
   ev(Ev::KillDrain, mask, epoch, drain_);
+  kill_pend_ = true;
+  kill_epoch_ = epoch;
   kmask_ |= mask;
   auto killed = [&](unsigned w) { return ((mask >> w) & 1u) != 0; };
   // Unpaired entries of killed warps are dropped, their credits returned.
   for (auto it = mq_.begin(); it != mq_.end();)
-    if (killed(it->m.warp)) { it = mq_.erase(it); ++map_drops_; }
+    if (killed(it->m.warp)) {
+      if (it->m.dir == 1) {
+        for (unsigned g : it->m.gpr) unwritten_.erase(g);
+        for (unsigned p : it->m.pred) unwritten_p_.erase(p);
+      }
+      it = mq_.erase(it);
+      ++map_drops_;
+    }
     else ++it;
   for (auto it = cq_.begin(); it != cq_.end();)
     if (killed(it->c.warp)) { it = cq_.erase(it); ++cmd_drops_; }

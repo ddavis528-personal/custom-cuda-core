@@ -19,6 +19,7 @@ so this is a build artifact rather than something to remember.
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
+| `rtl/rcu/rcu_bank_slice.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO` |
 | `rtl/top/dpi/ccv_cru.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dec.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |

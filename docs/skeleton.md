@@ -42,6 +42,11 @@ Every boundary is registered on both sides, no exceptions. So no combinational
 path crosses a block boundary, and a cycle is: every block reads `cur` (the
 flop outputs during cycle *t*) and writes `nxt` (cycle *t+1*); then every slot
 commits. Block evaluation order cannot matter, because nothing reads `nxt`.
+In RTL those two registers are the interface module's boundary stage, built
+in each block's hardening wrapper (`ccv_common_rpt` `BOUNDARY`, default 1;
+Daniel, 2026-11-05), not the block's own; a DPI host or stub end is no-flop
+(`params/links.json` `no_flop`) and its slot is the register
+(`docs/physical.md`).
 
 That is also what makes the §1 block swap work: a Verilated RTL block is
 clocked with `cur` on its inputs and its outputs land in `nxt`, exactly where

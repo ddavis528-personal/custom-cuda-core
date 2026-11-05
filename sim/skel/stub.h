@@ -369,8 +369,9 @@ inline constexpr OpInfo kOps[] = {
   {"FFMA_ACC_F0",   kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
   {"ST_GLOBAL",     kStore,     2, false, false, false, false, false,  1, -1,  0,  0, -1, -1, -1},
   {"C_BRA",         kBranch,    0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  // pmov.imm: bit n of the immediate is lane n's predicate bit, for all 32
-  // lanes, ungated by the issue mask (section 3): an immediate RCU writes.
+  // pmov.imm: bit n of the immediate is lane n's predicate bit on the
+  // issue-mask lanes, the rest kept from the old predicate (RA-19): an
+  // immediate RCU writes and merges.
   {"PMOV_IMM",      kImm,       0, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  0},
   // shfl.idx: each guarded issue lane takes the source register at one lane,
   // active or not (Format G): RCU, which holds every lane's register.

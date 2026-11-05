@@ -136,6 +136,29 @@ private:
   void event(const R::Event &e) override {
     if (evlog_)
       std::fprintf(evlog_, "%llu %s %u %u %u %u\n", (unsigned long long)e.t, R::evName(e.ev), e.a, e.b, e.c, e.d);
+    // The trace's events (schema/events.json, ids 33-47, TI's 6cbabba): the
+    // core's four fields packed into the schema's three. No RCU event names
+    // one instruction, so uid is 0. docs/rcu-model.md has the packing.
+    using E = R::Ev;
+    switch (e.ev) {
+    case E::GprWrite: emit(e.t, 0, EV_RCU_GPR_WRITE, UNIT_RCU, e.a, e.b, e.d << 4 | e.c); break;
+    case E::PredWrite: emit(e.t, 0, EV_RCU_PRED_WRITE, UNIT_RCU, e.a, e.b, e.d); break;
+    case E::Branch: emit(e.t, 0, EV_RCU_BRANCH, UNIT_RCU, e.a, e.c, e.d); break;
+    case E::GuardFwd: emit(e.t, 0, EV_RCU_GUARD_FWD, UNIT_RCU, e.a, e.b, e.c); break;
+    case E::RsrcFwd: emit(e.t, 0, EV_RCU_RSRC_FWD, UNIT_RCU, e.a, e.b, e.c); break;
+    case E::BypassSel: emit(e.t, 0, EV_RCU_BYPASS_SEL, UNIT_RCU, e.a, e.b, e.c | e.d << 8); break;
+    case E::KillDrain: emit(e.t, 0, EV_RCU_KILL_DRAIN, UNIT_RCU, e.a, e.b, e.c); break;
+    case E::KillAck: emit(e.t, 0, EV_RCU_KILL_ACK, UNIT_RCU, e.a); break;
+    case E::MigPair: emit(e.t, 0, EV_RCU_MIG_PAIR, UNIT_RCU, e.a, e.b); break;
+    case E::MigRowOut: emit(e.t, 0, EV_RCU_MIG_ROW_OUT, UNIT_RCU, e.a, e.b); break;
+    case E::MigRowIn: emit(e.t, 0, EV_RCU_MIG_ROW_IN, UNIT_RCU, e.a, e.b); break;
+    case E::MigWaitR: emit(e.t, 0, EV_RCU_MIG_WAIT, UNIT_RCU, e.a, e.b, 0); break;
+    case E::MigWaitCredit: emit(e.t, 0, EV_RCU_MIG_WAIT, UNIT_RCU, e.a, e.b, 1); break;
+    case E::RestoreHold: emit(e.t, 0, EV_RCU_RESTORE_HOLD, UNIT_RCU, e.a); break;
+    case E::RestoreDone: emit(e.t, 0, EV_RCU_RESTORE_DONE, UNIT_RCU, e.a); break;
+    case E::Idle: emit(e.t, 0, EV_RCU_IDLE, UNIT_RCU, 1); break;
+    case E::Wake: emit(e.t, 0, EV_RCU_IDLE, UNIT_RCU, 0); break;
+    }
   }
   void hit(const char *bin) override { k_.hit(bin); }
   void restored(const R::MapMsg &m) override {

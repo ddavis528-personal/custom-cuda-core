@@ -6,6 +6,8 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 `docs/open-items.md` (Q-n), with its owner.
 
 **An OOE model session starts at `docs/ooe-4b.md`.**
+**An RCU model session starts at `docs/rcu-impl.md`;** its model is the RCU
+in both hosts since M0 (RA, 2026-11-04), and `CCV_RCU_IMPL=stub` selects the stub.
 
 ## Sources of truth: edit these, never what is generated from them
 
@@ -57,6 +59,9 @@ name whose one command peaks over its light limit.
 Both queue their heavy units first, then the rest slowest first by the last
 clean gate's unit times (DA, 2026-11-03), a record in
 `$CCV_LOGDIR/unit-times/` that only a clean gate writes.
+GitHub's CI (`.github/workflows/ci.yml`, pinned to ubuntu-24.04) runs the full
+gate only on a push to `release`, weekly and on dispatch (DA, 2026-11-05): a
+working branch is gated where it is pushed from, never again on GitHub.
 A push to a working branch takes the scoped gate (OI-95; DA, 2026-10-31):
 `tools/verify.sh --changed <base>` keeps the cache and runs only the
 sections `tools/gate-scope.py` maps the change to, with those they wait on;
@@ -103,7 +108,9 @@ leads a payload by a cycle, and why a lead field is rare.
 flops and fewer than 8 flops outside the rules, and what its modules take
 must stay within 2% of each block's flops, per instance; a repeater's
 control pulses and flopped reset count only there, against its wrapper's 2%
-(2026-10-19), its lead slice against its own allowance. Past that,
+(2026-10-19), and so does a boundary flop's lead slice (the block's own
+capture before the end was flopped; 2026-11-05); a link stage's lead slice
+counts against the repeater's own allowance. Past that,
 refactor; a waiver (`rtl/cg-waivers.json`, written by the module's owner) is
 the last resort.
 RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:

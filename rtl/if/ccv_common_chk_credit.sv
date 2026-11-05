@@ -72,6 +72,13 @@ module ccv_common_chk_credit #(
   // long again to come back. 0 is the sender's own port, as on every
   // abutted link. ROUND_TRIP is the whole link's, wherever the checker is.
   parameter int SRC_STAGES = 0,
+  // The sender's end has its interface flop, the boundary stage
+  // (rtl/phys/ccv_common_rpt.sv BOUNDARY; params/links.json no_flop): a
+  // sender takes stall into its launch decision ahead of its first flop, so
+  // with that flop in its wrapper a stall stops it a cycle later (AR's rev
+  // 289, re:RI-11; proved in tools/check-formal.sh, built). 0 at a no-flop
+  // end, a DPI host's, as every end is until a block's RTL top takes them.
+  parameter int SRC_BOUNDARY = 0,
   // FIXED LATENCY (schema slot attribute fixed_latency, arch open A-47): the
   // receiver never stalls and returns every message's credit the cycle it
   // lands. OOE schedules wakeup from contracted latencies with no grant,
@@ -116,8 +123,9 @@ module ccv_common_chk_credit #(
   logic [CW-1:0]      tail;
   logic               valid_q;
   // The stall, as old as the first valid it can have suppressed: one cycle
-  // at the sender, 1 + 2 * SRC_STAGES at a point that far downstream.
-  localparam int SL = 1 + 2 * SRC_STAGES;
+  // at the sender, 1 + 2 * SRC_STAGES at a point that far downstream, and one
+  // more behind the sender's interface flop (SRC_BOUNDARY).
+  localparam int SL = 1 + SRC_BOUNDARY + 2 * SRC_STAGES;
   logic [SL-1:0]      stall_h;
 
   wire sent     = ch_valid;
