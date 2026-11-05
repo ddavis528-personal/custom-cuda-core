@@ -45,30 +45,32 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- TI's perf runs (TI, 2026-11-04; DA: all of TI's performance runs go to RH).
-  Detached worktree /home/user/rh-ti at 36e2049 (tip of ccr-183cc441-doowtf).
-  Commit nothing; params edits stay local. One small table per job to TI,
-  priority later. TI writes the register.
-  - J1 (RA-11): CCV_P_PHYS_REGS 192/160/128; every S1 kernel in build/oracle plus
-    coremark32 and coremark128, warm, with CCV_OOE_STATS. Rename stalls are
-    stall.gpr_empty/floor/ceiling/buffer and stall.share.names. Running
-    rh-jobs/j1.sh from 12:40Z (resumable by value); logs in ~/ccv-logs/j1/.
-  - J2: coremark32/128/pl32 warm and cold, plus CCV_DCU_WAYS=8 warm. A cold
-    dec_ooe_uop hang is a result.
-  - J5 (after J1, before J2): tools/sweep-fair.sh 0 32 48. Send TI the lnorm1
-    row, pass/fail, and the table if it's small.
-  - J3: the hold cost (hold.chwidth / cycles from the J1/J2 stats) is approved.
-    vadd16 is BLOCKED: the pinned snapshot has only LLVM-style asm, which
-    ccv-as rejects; TI is asked for a CP export. chwidth.multi 12288 is a
-    register mask (r12, r13), not n. Local configs are in
-    /home/user/rh-jobs/local-bench/ (vadd16w4, vadd16loopw4, coremarkpl128,
-    whose oracle passes at 4.4 GB). coremarkpl32/128 runs are proposed for
-    after J2; waiting on TI's OK.
-  - J4: blocked on TI code (CTA queueing, gen-oracle -load). Meanwhile only
-    coremark128 at 512 KiB with frames, if there's a frames knob.
-  Order J1, J2, J3, then J4. Delete oracles and builds after each job.
+- OI's RI-11 package v2 (OA rev 350, AR rev 298; 11-05 10:41Z): OI's
+  pkg-run.sh and rxsplit.patch in /home/user/rh-jobs/pkg2/, run dir
+  pkg2/run (trees A6 and PK are worktrees of custom-cuda-core). S1 and audit
+  are DONE and sent. CoreMarks via pkg2/all.sh (resumable), progress in
+  pkg2/run/progress, logs in run/out/cm/. Watch it with the pattern
+  "bash [.]/all\.sh". Report a table: from_fetch, check_failures,
+  redirect_wait, st_ld_wait. Nothing to push.
+- TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
+  for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
+  New jobs start from b341691 (TI's pin of e533ecd).
+  - DONE and sent: J1 (PHYS_REGS sweep; fits_stale 6 fires at 160/128), J5
+    (sweep-fair PASS), J2 (cold hangs: cm128 at dec_ooe_uop; cm32 and pl32
+    silent), J3 (vadd16 needs full_rows=1; coremarkpl; chwidth hold under 5%
+    on every real-length kernel).
+  - J4 interim DONE: coremark128 at 512 KiB on b341691 (worktree
+    /home/user/rh-j4), 7,924,133, clean, 7.2 GB, sent. The CTA-queueing and
+    gen-oracle -load parts wait on TI's code; TI will say when they land.
+- Run notes: coremarkpl128 peaks at 14 GB and needs swap past 15 GB (disk
+  allowing). A cold run can hang silently, with no output: compare against
+  the warm time and kill it. Delete bench oracles after each job.
 
 ## Done
+- OI's RI-11 CoreMark pricing and rs_free_lag audit (11-05): all sent. In
+  bit-8 rx_lag runs, V-35 floods past the skeleton's 10,000-line print cap
+  (kernel.cpp:33); OI accepted errors == check_failures as proof. The scripts
+  are in rh-jobs/ri11/ and rh-jobs/rs.sh; worktrees removed.
 - Gate for OI's b7cb9fb (11-01): run 1 died at disk-full, and OI cancelled run 2
   at 18:07Z (OI gated 4c71575 itself, which covers it). Worktree /home/user/rh-gate
   kept, build/ removed.
