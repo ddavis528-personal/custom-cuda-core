@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 298, OA 350, TI 334, RA 84 (tab 9851686b-2b0a), RI 15, IS 189, CP 154, OI 291, DA 108,
+  record): AR 299, OA 350, TI 334, RA 84 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 291, DA 108,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
@@ -236,6 +236,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    SFU 12 if Daniel allows); miu_rcu_data does NOT (guard forward ~21; needs
    2/23 split or lose forward; RI measures) -> stays flopped, no latency
    moves. LANE spec rev 16 corrected MW -> LW/SW.
+   RI-16 (RI 17): asked skeleton to model boundary flops; SV-hosted D fails
+   (done 8 vs class-0 6). AR row 299: flop never charged by itself (one of
+   HOP's two); D = wrapper flops in series with DPI hosts' registers (AR 287
+   (1)), fails by construction (TI may keep as negative control); no skeleton
+   change; price via bases: N AR bases (+1.17% S1 RCU model), Z1 RCU_ADDR 5,
+   Z2 LANE 7/SFU 12, Z3 none. miu_rcu_data pred guard fwd 16.2 > 12.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
