@@ -53,4 +53,4 @@ Nothing had RI in Needs at session start.
 3. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals.
 4. Remaining phases per docs/rcu-impl.md: rcu_mig, the lane/SFU descriptor pipes, assembly (M5-M7).
 5. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
-Bookmarks 2026-11-05: RA 80, TI 326, OA 338, OI 287, AR 287, RI 14.
+Bookmarks 2026-11-05: RA 80, TI 329, OA 338, OI 287, AR 287, RI 14.
