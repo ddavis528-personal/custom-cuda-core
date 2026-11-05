@@ -36,7 +36,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 285, RA 64, IS 189, TI 322, OA 339 (340 notice: not yet readable, re-read), OI 284, CP 152, DA 106, RI 3
+Conventions 17, AR 285, RA 64, IS 189, TI 328, OA 342, OI 287, CP 152, DA 108, RI 12
 (sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
@@ -86,6 +86,20 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-7. STATE 11-05 ~04:00 UTC. PUSHED 497efb8 (SCOPED PASS): RA-39 (c) payload store + issue
+   register (dca9c5f), its lint/stage-tag fixes + ooe_rs heavy unit (TI 327), RI-12 fix
+   (release drops the warp's queued uops, invariant, testReleaseDrop, control
+   keep-released-uops, check-ooe-unit 47 controls, TI 328). OI rev 287 answered RI-12 (RI + TI
+   notified; RI to merge OI's branch). Verified on RI's 600004a in scratchpad/wri (provswap 0
+   check failures with the fix).
+   NEXT: RI-11 pricing (OA 340) in worktree scratchpad/wtx (branch oi-ri11-price, AR params
+   applied, NEVER push its params): rx_lag knob (bits 1 alloc, 2 demote, 4 syu rel, 8 rcu done,
+   16 hint, 32 cmpl, 64 dec uop) in sim/ooe (uncommitted; also a --dbg-partial debug mode in
+   ooe_test.cpp main to remove). wtx also has the RI-12 fix (already pushed via wtp). Plan: S1 +
+   audit at base, AR, AR+rx_lag=127, each bit alone; top 2 by cost; coremark128 (>2h); report to
+   DA. Scripts: scratchpad/price/run.sh, price/s1.sh, skel-build.sh (point it at the tree).
+   Then: lane-slot leads late 2:1; R guard pred off R's pick; phys_src0/1 from issue register;
+   OI-114 floor term; OI-112 due 11-06; Friday pings 11-06.
 -6. FANOUT ENFORCED (TI b11e60f, ratchet rtl/ngd-ratchet.json "fanout"; caps only fall,
    remove an entry once its path meets 25). State 11-04 ~13:30 UTC:
    - Freelist: scan (a) 32ba2d0, caps 9718b81, gsec retime (wr_q flop, no reuse cycle lost)
