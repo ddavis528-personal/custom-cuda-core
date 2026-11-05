@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 336, IS 189, TI 320, OI 274, CP 152, DA 106, RA 74, RI 9.
+Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 74, RI 9.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -41,7 +41,9 @@ Nothing had RI in Needs at session start.
 0. RI-11 (RI rev 9; notices to RA, OA, TI): DA ruled every block boundary has a flop by
    construction (credited interface module). RCU spec's 'inputs consumed off the wire in A' and
    RA-39's NGD split are void. Repo today: ccv_common_rpt at STAGES=0 is wires, so TI must make it
-   real. RTL waits on RA's restatement (rr_row 8.5 and rcu_r arrivals 2 will change).
+   real. TI rev 321: DA ruled the interface module defaults to a flop on each
+   side (zero-cycle option kept); AR decides the latency accounting, then TI builds it, then RA
+   restates. RTL waits (rr_row 8.5, rcu_r arrivals 2 will change). RA/OA held at RA 75 / OA 338.
 1. Phase 2 RTL (rtl/rcu/, test/rcu/): rcu_bank_slice (RA-39: R0/R1 read from phys_src on the
    wire, rsrc flopped per slice with MW write-through), rcu_r + rcu_xbar. Figures sent to RA as
    RI responses rev 8 (notice sent): phys_src->rsrc 18.4 vs 18 at 192 (miss 0.4) RA-39 CLOSED (RA rev 74, OA rev 337):
