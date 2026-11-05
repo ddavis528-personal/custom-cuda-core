@@ -50,6 +50,8 @@ Nothing had RI in Needs at session start.
     ungated (no enable), drop the two waivers, and say how the block budget is charged.
     On the ruling: (a)/(c) -> git revert cf12cc0 63457b2 (restores a90cb8f layout, waivers); (b) ->
     schema change via TI. Then add the rcu_kill ack/epoch assertion, regen, gate, push, tell TI (TI rev 330).
+0a. TI rev 332: RI-11 accounting applied (f61983f), RI-13 took_flops fix pushed. Merge TI's tip
+    before the next gate; then close RI-11 (for RCU) and RI-13 in the RI tab after verifying.
 0. Next push: ri-wt holds 3c912d1 (M4: model knob CCV_RCU_KILL_DRAIN_CUT + docs/rcu-model.md) + this
    handoff, on d2ca2d7. Merge into the main tree after e5e846b's push; scope sim/rcu -> rcu_unit etc.
 1. Phase 3 reported: RI-14 (RI rev 14; notices to RA, TI). TI took M4 (TI rev 330): kernel + V-24 post-ack check after AR 289; TELL TI (RI tab row + notice) once a90cb8f, d2ca2d7, 3c912d1 are pushed. Waiting on RA (departures 1-5,
@@ -60,4 +62,4 @@ Nothing had RI in Needs at session start.
 3. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals.
 4. Remaining phases per docs/rcu-impl.md: rcu_mig, the lane/SFU descriptor pipes, assembly (M5-M7).
 5. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
-Bookmarks 2026-11-05: RA 82, TI 330, OA 338, OI 287, AR 287, RI 15.
+Bookmarks 2026-11-05: RA 82, TI 332, OA 338, OI 287, AR 287, RI 15.
