@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 287, OA 341, TI 323, RA 76 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 106,
+  record): AR 288, OA 341, TI 323, RA 79 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 106,
   Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -145,7 +145,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 - Specs doc DJeg9Hh8rkPDecq4hrAz35 (tab revs after the 11-04 review): RCU
   eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (56), RAU 090626bb-a50c (60),
   PCA 94b3a0ea-7224 (17), FET 75d75b94-1614 (47), DEC 1d1fdcda-739e (19),
-  DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (13),
+  DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (14),
   SYU 1f8b4472-68c1 (8), CRU 5a50fd80-2423 (7), MLC f8873ac6-e74d (3), EXB
   56392a06-86a6 (4), OOE 515615a9-8caf (OA's).
 - Spec review of the no-session blocks done 11-04 (Daniel asked; AR rev
@@ -195,7 +195,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    OA 341 accepts 286; +1 goes on the adopted PF-47 base (1->2, WAKE 13,
    CMPL 15); if the +1 lands before the PF-47 reapply, TI notes it in params
    source so the reapply takes 1+1. Agrees with MIU rev 56 and PF-47 note;
-   no AR answer owed (loop guard).
+   no AR answer owed (loop guard). RA 77-79 took 286 as final (KILL_DRAIN
+   derived, 16; RCU Conventions restated, A from the interface flop); AR
+   row 288 confirmed RA's RCU_ADDR_BASE reading (PF-47 2, fallback 3) and
+   took RA's lane bypass ages (forward 4-6, PRF from 7; LANE spec rev 14
+   corrected AR's "4 to 7"); TI rewords CCV_P_W_LANE_BYP_AGE's doc to LANE-2.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue

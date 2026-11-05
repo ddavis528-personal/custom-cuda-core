@@ -69,7 +69,7 @@ it.
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
-| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266); held: TI reverted it (rev 288) until OI fixes ooe_wake NGD-3 and the rs_tb no-msd control; 2 if RCU's M1 misses |
+| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266), 2 under RI-11's interface flops (AR rev 288); held: TI reverted it (rev 288) until OI fixes ooe_wake NGD-3 and the rs_tb no-msd control; 2 (3 under RI-11) if RCU's M1 misses |
 | PF-48 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
 | PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
 | PF-50 | Packed contiguous lanes for narrow ops | OOE, LANE, RCU, MIU, schema | deferred (DA, 2026-11-03) |
@@ -1199,9 +1199,12 @@ it.
   relative to the issue's launch. The bases are counted from the crossing's
   landing, so they carry that cycle: today's 5 becomes 6 (`CCV_LAT_L1_WAKE`
   17), and PF-47's 1 becomes 2 (`CCV_LAT_L1_WAKE` 13, PF-33's measured
-  -5.9% point rather than the interpolated -7.9%). RA's restatement of
-  RCU's timeline, counted from the interface flop, confirms or corrects
-  that cycle, and TI's reapply takes the value RA gives.
+  -5.9% point rather than the interpolated -7.9%; `CCV_LAT_L1_CMPL` 15).
+  RA confirmed it (RA rev 79, AR rev 288): RCU's own time from A is
+  unchanged, and the extra cycle is the receiving interface flop. The
+  M1-miss fallback becomes 3. If TI lands the RI-11 bases before the
+  reapply, params' source says so, so that the reapply takes 1 + 1 (OA rev
+  341).
 
 ### PF-48 End-to-end parity on register state
 
