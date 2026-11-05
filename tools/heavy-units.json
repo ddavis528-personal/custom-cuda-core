@@ -3,6 +3,8 @@
   "light_rss_max_mib": 2048,
   "units": {
     "ooe_rob_w": "one warp's ooe_rob_w (OA-24, the ROB split; the full-size ooe_rob it replaced peaked at 7514 MiB). Its own peak at 5e5280f (2026-11-03, the first gate with the split and eda9ce8's own-peak measurement): 1202 MiB in check-cg, 1918 MiB in check-ngd, 6% under the light limit; kept listed since the ROB grows with OI's slices. ooe_rename (1014 / 650 MiB) and ooe_sched (975 / 975 MiB) left the list at the same gate; both had been listed from readings that counted check-cg's own size or an older bench",
-    "ooe_sched": "ooe_sched's bench build peaks at 2189-2191 MiB in check-cg on GitHub's runners (CI runs 611-634, 2026-11-03/04: every one failed the light limit on it), though a local gate read 975 MiB at 5e5280f; listed again so it never runs beside another unit on a 16 GB runner (TI, 2026-11-04)."
+    "ooe_sched": "ooe_sched's bench build peaks at 2189-2191 MiB in check-cg on GitHub's runners (CI runs 611-634, 2026-11-03/04: every one failed the light limit on it), though a local gate read 975 MiB at 5e5280f; listed again so it never runs beside another unit on a 16 GB runner (TI, 2026-11-04).",
+    "ooe_decq": "ooe_decq's unit peaks at 2847 MiB in check-cg with CCV_P_DECQ 15 and the free lag's staging register (OI-111, OI's gate on d32f65e, 2026-11-04); listed so it never runs beside another unit (TI, 2026-11-04).",
+    "ooe_rs": "RA-39 (c)'s payload store and issue register at PW 176 (45 entries, a 30:1 read into 9 slots): its check-ngd peaks at 3056 MiB, its check-cg at 1985 MiB (OI's gate on 6ed8b04, 2026-11-05); listed so it never runs beside another unit (TI's OK, TI rev 327)."
   }
 }

@@ -3,6 +3,15 @@
   {
    "name": "thread_name",
    "ph": "M",
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "name": "UNIT_RCU"
+   }
+  },
+  {
+   "name": "thread_name",
+   "ph": "M",
    "pid": 3,
    "tid": 44,
    "args": {
@@ -250,6 +259,21 @@
    "tid": 0,
    "args": {
     "name": "CCV channels"
+   }
+  },
+  {
+   "name": "EV_RCU_IDLE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 2,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "idle": 1,
+    "unused": 0
    }
   },
   {
@@ -893,6 +917,21 @@
    }
   },
   {
+   "name": "EV_RCU_IDLE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 43,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "idle": 0,
+    "unused": 0
+   }
+  },
+  {
    "name": "EV_CH_XFER",
    "cat": "load_bearing",
    "ph": "i",
@@ -954,6 +993,22 @@
     "warp_id": 0,
     "rob_slot": 0,
     "active_mask": 4294967295
+   }
+  },
+  {
+   "name": "EV_RCU_PRED_WRITE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 45,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "pred_row": 1,
+    "value_after": 4294967295,
+    "port": 2
    }
   },
   {
@@ -1037,6 +1092,22 @@
    }
   },
   {
+   "name": "EV_RCU_GPR_WRITE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 46,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "row": 1,
+    "lane_mask": 4294967295,
+    "port_secmask": 63
+   }
+  },
+  {
    "name": "EV_CH_XFER",
    "cat": "load_bearing",
    "ph": "i",
@@ -1069,6 +1140,22 @@
    }
   },
   {
+   "name": "EV_RCU_GPR_WRITE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "row": 2,
+    "lane_mask": 4294967295,
+    "port_secmask": 63
+   }
+  },
+  {
    "name": "EV_CH_XFER",
    "cat": "load_bearing",
    "ph": "i",
@@ -1098,6 +1185,37 @@
     "warp_id": 0,
     "rob_slot": 3,
     "active_mask": 4294967295
+   }
+  },
+  {
+   "name": "EV_RCU_GPR_WRITE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 48,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "row": 3,
+    "lane_mask": 4294967295,
+    "port_secmask": 63
+   }
+  },
+  {
+   "name": "EV_RCU_IDLE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 48,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "idle": 1,
+    "unused": 0
    }
   },
   {
@@ -1181,6 +1299,36 @@
    }
   },
   {
+   "name": "EV_RCU_IDLE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 49,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "idle": 0,
+    "unused": 0
+   }
+  },
+  {
+   "name": "EV_RCU_IDLE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 50,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "idle": 1,
+    "unused": 0
+   }
+  },
+  {
    "name": "EV_CH_XFER",
    "cat": "load_bearing",
    "ph": "i",
@@ -1245,6 +1393,37 @@
    }
   },
   {
+   "name": "EV_RCU_KILL_DRAIN",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 56,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "warp_mask": 1,
+    "epoch": 1,
+    "kill_drain": 15
+   }
+  },
+  {
+   "name": "EV_RCU_IDLE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 57,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "idle": 0,
+    "unused": 0
+   }
+  },
+  {
    "name": "EV_CH_XFER",
    "cat": "load_bearing",
    "ph": "i",
@@ -1291,12 +1470,42 @@
     "payload_lo": 0,
     "payload_hi": 0
    }
+  },
+  {
+   "name": "EV_RCU_KILL_ACK",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 72,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "epoch": 1,
+    "unused": 0
+   }
+  },
+  {
+   "name": "EV_RCU_IDLE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 72,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "idle": 1,
+    "unused": 0
+   }
   }
  ],
  "displayTimeUnit": "ns",
  "ccv": {
   "schema_version": 2,
-  "schema_hash": "727da17b3c4367e2",
-  "events": 65
+  "schema_hash": "2e08856f4ac360b5",
+  "events": 78
  }
 }

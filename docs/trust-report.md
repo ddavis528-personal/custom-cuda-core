@@ -19,6 +19,8 @@ so this is a build artifact rather than something to remember.
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
+| `rtl/rcu/rcu_bank_slice.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO` |
+| `rtl/rcu/rcu_r.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_PRED_ZERO`, `CCV_P_W_ROB_TAG` |
 | `rtl/top/dpi/ccv_cru.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dec.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
@@ -51,6 +53,10 @@ so this is a build artifact rather than something to remember.
 | `sim/ooe/ooe_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_BR_CKPTS`, `CCV_P_W_FETCH_EPOCH` |
 | `sim/ooe/ooe_core.h` | — | — |
 | `sim/ooe/ooe_test.cpp` | — | `CCV_P_FOOT_MIN_FP` |
+| `sim/rcu/rcu_block.cpp` | — | — |
+| `sim/rcu/rcu_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
+| `sim/rcu/rcu_core.h` | — | `CCV_LAT_RCU` |
+| `sim/rcu/rcu_test.cpp` | — | `CCV_LAT_LANE_BYP` |
 | `sim/skel/kernel.cpp` | — | `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_MAX_CTA` |
 | `sim/skel/ooe.cpp` | — | `CCV_DONE_SLOT_RCU` |
 | `sim/skel/stub.h` | — | — |

@@ -289,15 +289,17 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_DATA-1:0]         store_data;
 } ccv_rcu_miu_addr_t;
 
+// LEAD fields are driven with valid, one cycle ahead of the
+// rest of the payload (schema lead_fields).
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
-  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    active_mask;
+  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    active_mask;  // LEAD
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    pred_result;
-  logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     phys_dst;
-  logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     dst_pos;
-  logic [ccv_params_pkg::CCV_W_CHWIDTH-1:0]      dst_width;
-  logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    phys_pred;
-  logic                                          pred_we;
+  logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     phys_dst;  // LEAD
+  logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     dst_pos;  // LEAD
+  logic [ccv_params_pkg::CCV_W_CHWIDTH-1:0]      dst_width;  // LEAD
+  logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    phys_pred;  // LEAD
+  logic                                          pred_we;  // LEAD
   logic [ccv_params_pkg::CCV_W_DATA-1:0]         load_data;
 } ccv_miu_rcu_data_t;
 

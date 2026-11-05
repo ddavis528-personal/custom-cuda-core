@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-03. Keep this current at every task's end; it is what
+Updated 2026-11-05. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -33,12 +33,74 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 269, OA 317, IS 188, TI 297, OI 254, CP 152, DA 104,
-RA 60, RI 1 (sweep 2026-11-03). Latest TI open: TI-50 (rev 272).
+Conventions 17, AR 291, OA 341, IS 189, TI 328, OI 287, CP 154, DA 108,
+RA 79, RI 13 (2026-11-05). Latest TI open: TI-50 (rev 272).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-05 05:15Z: PUSHED 810e35c (full gate PASS): #75 push B, the
+  interface module's boundary flop (ccv_common_rpt BOUNDARY, default 1;
+  params/links.json no_flop holds all 14 DPI-host types, so the top is
+  unchanged), check-ngd's straight-into-flops rule, fv_link FV_BUILT proofs
+  (conservation bounded 40 in gate; proved unbounded ad hoc at N=0 in 968 s
+  with dc2;scorr). links_split.json carries no_flop too (the first gate
+  failed on it). HELD on local branch ti-bases (c39035a): the bases
+  LANE_BASE 8, SFU 13, RCU_ADDR_BASE 6 + check-kernel re-pins; merge OI's
+  ccr-57eff422-5tdecg (OI rev 285/287; RI-12 decq fix) and RI's 600004a
+  (RI rev 12; re-pin MOVI_TOTAL 258->354), re-check pins, push together.
+  NEXT #76: AR 289 / DA 108: RESCUE_DEPTH, DRAIN_WAIT 3 (derive RT_ABUT+1);
+  checker SRC_BOUNDARY, stall rule 1+SRC_BOUNDARY+2*SRC_STAGES; check-cg
+  charges the boundary stage's ungated lead (rename bnd_lead_q) to the
+  block's 2%; RI-13 took_flops whole-vector fix; measure receiving blocks;
+  TI row re:RI-11 to AR (+ source-end lead goes to the sender: ask).
+  CI (DA, 2026-11-05, #77): ci.yml pinned to ubuntu-24.04 (ubuntu-latest
+  went to 26.04, apt Yosys 0.52 broke 6 sections), full gate only on push
+  to release, weekly and dispatch. RH: J4 512 KiB coremark128 7,924,133
+  clean; idle until OI's push (PHYS_REGS 160) and CTA-queueing code.
+- 2026-11-05 01:30Z: PUSHED 31e21e0 (full gate PASS, both branches): RI-10
+  (a) rtl/rcu+test/rcu scope cg/ngd with a readers check in gate-scope.py,
+  (b) check-cg unit key replay_cxx clang++ (clang 18 in toolchain lock) for
+  the full rcu_bank_slice (6574 flops, clean, 490 s, 1377 MiB); lead_r_src
+  removed with RI's eac3054; ba3549b merged, pmov-all-lanes on the default
+  model. TI rev 324 re:RI-10, RI notified (RI is not in roster.json; notice
+  composed by hand). Next, #75 interface flops (DA 11-05: ccv_common_rpt
+  default one flop at each block end, zero-cycle option kept; DPI ends
+  no-flop): AR 288 settled params: LANE_BASE 8, SFU 13, RCU_ADDR_BASE 6
+  (incl. receiving iface flop); PF-47 reapply = 2 (1+1, params must say so
+  if bases land first) -> L1_WAKE 13, CMPL 15, M1-miss fallback 3;
+  KILL_DRAIN 16 derived; reword CCV_P_W_LANE_BYP_AGE doc: lane forwards
+  LANE_BYP..LANE-2, PRF serves LANE-1. Merge RI's 0d087e9 first.
+- 2026-11-04 later: PUSHED 863a374 (scoped gate PASS 22/22): RI's 5968894
+  merged (M0 met, RA rev 68 accepted); RI's model is makeRcu's default,
+  CCV_RCU_IMPL=stub selects the stub; check-rcu-unit holds RI's 8
+  'control <c> caught' lines; GUARD_FWD doc; pmovdiv kernel (pmov.imm
+  merges issue mask, 9ce7381, compiler pin e533ecd) with --break
+  pmov-all-lanes run under CCV_RCU_IMPL=stub until RI adds the break to its
+  model (asked at TI rev 319, re:RI-8; RI, RA notified). Then move that
+  control back to the default. RI-7 waits on OI's imm_kind 6 (11-06).
+  #62 left: job_rcu_rtl lock-step (needs RI's RTL), check-sv-hosted
+  selector. RH: J1/J3/J5 done (AR revs 283/284, TI 318); J2 running
+  (coremark128 cold hangs at 95945, dec_ooe_uop response_within_n), then
+  coremarkpl32/128. #72 waits on OI's answer to TI revs 315/316.
+- 2026-11-04 15:10Z: PUSHED 6cbabba (RCU events 33-47, RI-2 (d); TI rev
+  310) and b85595b (full gate PASS: ccv_miu_rcu_data leads its own six
+  fields, RA-40, drop option; OI-111's DECQ-15 checks, each valid at 13 and
+  15; AR-25 (1)-(3),(6) docs). TI rev 311 rows re:RA-40, re:AR-25,
+  re:OI-111; RA, AR, OI, RI notified. RH: J1 192 done, 160/128 running
+  with derived REN_FLOOR/CEIL (confirmed); then J5, J2, coremarkpl32/128
+  (OK'd); vadd16 waits on a CP export of vadd16/vadd16_loop as
+  release/kernels/ (TI to raise with CP). OI-112: imm_kind 6, arrival-2,
+  lead_r_src due 11-06; csa DUAL=0 rides OI's post-decq push.
+- 2026-11-04 06:10Z: PUSHED fbefc16 (ooe_sched back on heavy-units: CI
+  red on every branch was TI's 4e7186f; TI rev 302 rang all) and b11e60f
+  (fanout ratchet live: 109 caps in 9 ooe modules; seed fix 87795bf takes
+  a multi-unit module's worst unit; 836fd75 reverted; TI rev 304 rang
+  OI/OA/RA). Both branches at b11e60f. Waiting: #66 decq 15 (TI rev 301)
+  bumps with OI's decq_free_lag RTL, not before; #67 RA-39 (c) waits on
+  AR (d) (OA accepted (b), rev 328). OI-105 answered yes (TI rev 303).
+  Open: why CI reads ooe_sched at 2190 MiB vs 975 MiB locally.
+  Lesson: `setsid nohup ... & echo $!` gives setsid's pid, not the job's.
 - 2026-11-04 01:45Z: RA-33 fanout ENFORCED in check-ngd, local (faf5bf0,
   baa4136): every enforced depth and block level counts the term; ratchet
   'fanout' in rtl/ngd-ratchet.json, baseline rtl/ngd-fanout-baseline.json

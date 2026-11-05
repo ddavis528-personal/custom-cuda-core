@@ -15,7 +15,7 @@ static constexpr uint32_t kSchemaVersion = 2;
 /// Semantic hash of the schema. Written into every trace header
 /// and checked on read, so a trace can never be silently
 /// interpreted against a schema it was not written under.
-static constexpr const char *kSchemaHash = "727da17b3c4367e2";
+static constexpr const char *kSchemaHash = "2e08856f4ac360b5";
 
 enum class EventClass : uint16_t {
   kLoadBearing = 0,          ///< exact match required (§1)
@@ -96,7 +96,37 @@ enum EventId : uint16_t {
   EV_OOE_CROSS_GROUP_SQUASH = 31,
   /// A masked load issues its copy-only op (CCV_OP_PRF_COPY, A-38). OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, "Events owed to the schema").
   EV_OOE_COPY_ISSUE = 32,
-  kEventIdCount = 33,
+  /// A GPR row written; c is port << 4 | section_mask. Ports: LW 0, SW 1, MW 2, RW 3, RS 4. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_GPR_WRITE = 33,
+  /// A predicate row written. Ports: PL 0, PM 1, PR 2, PC 3, PG 4. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_PRED_WRITE = 34,
+  /// A branch resolved in R; taken is branch_mask != 0. aux as RI's model defines it (RI to document in docs/rcu-impl.md). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_BRANCH = 35,
+  /// RCU taking an MIU predicate write (MIU to RCU) as a guard forward: a the issue slot, b the MIU slot, c the predicate row (RI-2 (d)). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_GUARD_FWD = 36,
+  /// An R source row forwarded from MIU (RA-39 fix (i), OA's rev 329). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_RSRC_FWD = 37,
+  /// An operand taken from a bypass rather than the PRF; c is select | section_mask << 8. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_BYPASS_SEL = 38,
+  /// A kill's drain starts. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_KILL_DRAIN = 39,
+  /// RCU acknowledges a kill. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_KILL_ACK = 40,
+  /// A migration's RAU notice and OOE map paired. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_MIG_PAIR = 41,
+  /// A migration row sent (demotion). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_MIG_ROW_OUT = 42,
+  /// A migration row written (restore). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_MIG_ROW_IN = 43,
+  /// A migration's next row waits: reason 0, R holds R2 or RW; 1, no rcu_pca_mig credit or a stall. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_MIG_WAIT = 44,
+  /// The warp at the restore FIFO's head waits for its pairing. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_RESTORE_HOLD = 45,
+  /// A warp's restore completes. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_RESTORE_DONE = 46,
+  /// RCU quiesces (its block gate may close) or turns busy again. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+  EV_RCU_IDLE = 47,
+  kEventIdCount = 48,
 };
 
 /// Class of each event id, for the §5 correlation split.
@@ -129,6 +159,21 @@ inline EventClass eventClass(EventId id) {
   case EV_OOE_DEMOTE_TRIGGER: return EventClass::kArbitrationSensitive;
   case EV_OOE_CROSS_GROUP_SQUASH: return EventClass::kArbitrationSensitive;
   case EV_OOE_COPY_ISSUE: return EventClass::kArbitrationSensitive;
+  case EV_RCU_GPR_WRITE: return EventClass::kLoadBearing;
+  case EV_RCU_PRED_WRITE: return EventClass::kLoadBearing;
+  case EV_RCU_BRANCH: return EventClass::kLoadBearing;
+  case EV_RCU_GUARD_FWD: return EventClass::kLoadBearing;
+  case EV_RCU_RSRC_FWD: return EventClass::kLoadBearing;
+  case EV_RCU_BYPASS_SEL: return EventClass::kLoadBearing;
+  case EV_RCU_KILL_DRAIN: return EventClass::kLoadBearing;
+  case EV_RCU_KILL_ACK: return EventClass::kLoadBearing;
+  case EV_RCU_MIG_PAIR: return EventClass::kLoadBearing;
+  case EV_RCU_MIG_ROW_OUT: return EventClass::kLoadBearing;
+  case EV_RCU_MIG_ROW_IN: return EventClass::kLoadBearing;
+  case EV_RCU_MIG_WAIT: return EventClass::kLoadBearing;
+  case EV_RCU_RESTORE_HOLD: return EventClass::kLoadBearing;
+  case EV_RCU_RESTORE_DONE: return EventClass::kLoadBearing;
+  case EV_RCU_IDLE: return EventClass::kLoadBearing;
   default: return EventClass::kLoadBearing;
   }
 }
@@ -162,6 +207,21 @@ inline const char *eventName(EventId id) {
   case EV_OOE_DEMOTE_TRIGGER: return "EV_OOE_DEMOTE_TRIGGER";
   case EV_OOE_CROSS_GROUP_SQUASH: return "EV_OOE_CROSS_GROUP_SQUASH";
   case EV_OOE_COPY_ISSUE: return "EV_OOE_COPY_ISSUE";
+  case EV_RCU_GPR_WRITE: return "EV_RCU_GPR_WRITE";
+  case EV_RCU_PRED_WRITE: return "EV_RCU_PRED_WRITE";
+  case EV_RCU_BRANCH: return "EV_RCU_BRANCH";
+  case EV_RCU_GUARD_FWD: return "EV_RCU_GUARD_FWD";
+  case EV_RCU_RSRC_FWD: return "EV_RCU_RSRC_FWD";
+  case EV_RCU_BYPASS_SEL: return "EV_RCU_BYPASS_SEL";
+  case EV_RCU_KILL_DRAIN: return "EV_RCU_KILL_DRAIN";
+  case EV_RCU_KILL_ACK: return "EV_RCU_KILL_ACK";
+  case EV_RCU_MIG_PAIR: return "EV_RCU_MIG_PAIR";
+  case EV_RCU_MIG_ROW_OUT: return "EV_RCU_MIG_ROW_OUT";
+  case EV_RCU_MIG_ROW_IN: return "EV_RCU_MIG_ROW_IN";
+  case EV_RCU_MIG_WAIT: return "EV_RCU_MIG_WAIT";
+  case EV_RCU_RESTORE_HOLD: return "EV_RCU_RESTORE_HOLD";
+  case EV_RCU_RESTORE_DONE: return "EV_RCU_RESTORE_DONE";
+  case EV_RCU_IDLE: return "EV_RCU_IDLE";
   default: return "EV_UNKNOWN";
   }
 }
@@ -246,6 +306,36 @@ inline const char *fieldName(EventId id, unsigned slot) {
     return slot == 0 ? "warp_id" : slot == 1 ? "other_group_entries" : "branch_rob_tag";
   case EV_OOE_COPY_ISSUE:
     return slot == 0 ? "warp_id" : slot == 1 ? "rob_tag" : "issue_slot";
+  case EV_RCU_GPR_WRITE:
+    return slot == 0 ? "row" : slot == 1 ? "lane_mask" : "port_secmask";
+  case EV_RCU_PRED_WRITE:
+    return slot == 0 ? "pred_row" : slot == 1 ? "value_after" : "port";
+  case EV_RCU_BRANCH:
+    return slot == 0 ? "rob_tag" : slot == 1 ? "branch_mask" : "aux";
+  case EV_RCU_GUARD_FWD:
+    return slot == 0 ? "issue_slot" : slot == 1 ? "miu_slot" : "pred_row";
+  case EV_RCU_RSRC_FWD:
+    return slot == 0 ? "r_source" : slot == 1 ? "miu_slot" : "row";
+  case EV_RCU_BYPASS_SEL:
+    return slot == 0 ? "issue_slot" : slot == 1 ? "port" : "select_secmask";
+  case EV_RCU_KILL_DRAIN:
+    return slot == 0 ? "warp_mask" : slot == 1 ? "epoch" : "kill_drain";
+  case EV_RCU_KILL_ACK:
+    return slot == 0 ? "epoch" : slot == 1 ? "unused" : "unused";
+  case EV_RCU_MIG_PAIR:
+    return slot == 0 ? "warp_id" : slot == 1 ? "direction" : "unused";
+  case EV_RCU_MIG_ROW_OUT:
+    return slot == 0 ? "warp_id" : slot == 1 ? "mig_row" : "unused";
+  case EV_RCU_MIG_ROW_IN:
+    return slot == 0 ? "warp_id" : slot == 1 ? "mig_row" : "unused";
+  case EV_RCU_MIG_WAIT:
+    return slot == 0 ? "warp_id" : slot == 1 ? "next_row" : "reason";
+  case EV_RCU_RESTORE_HOLD:
+    return slot == 0 ? "warp_id" : slot == 1 ? "unused" : "unused";
+  case EV_RCU_RESTORE_DONE:
+    return slot == 0 ? "warp_id" : slot == 1 ? "unused" : "unused";
+  case EV_RCU_IDLE:
+    return slot == 0 ? "idle" : slot == 1 ? "unused" : "unused";
   default: return "unused";
   }
 }

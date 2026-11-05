@@ -2313,7 +2313,9 @@ private:
     } else if (const RegVal *d = gdef) {
       // A narrow destination is written zero-extended at its width code
       // (AR-24's interim on a full row), held to the record's width.
-      const unsigned dw = unsigned(get(m.payload, c.rcu_lane, "sec_dst_width"));
+      // sec_dst_width is per section (RI-1): the op's own, its lowest
+      // section's, section 0 for the full-width ops the S1 stubs model.
+      const unsigned dw = getSec(m.payload, c.rcu_lane, "sec_dst_width", 0, ccv::kWChwidth);
       if (dw != rc->widthOf(d->idx))
         k_.failHeld(at, m.tid, "lane %u: seq %llu R%u written at width code %u, the record's %u", lane_,
                     (unsigned long long)rc->seq, d->idx, dw, rc->widthOf(d->idx));
@@ -3014,11 +3016,15 @@ private:
     // An immediate move is warp-level: RCU writes the immediate straight into
     // the register file on the issue-mask lanes, with no lane round trip.
     // (--break movi-in-lane sends it to the lanes instead, which must refuse.)
-    // pmov.imm (section 3): the immediate's bit n is lane n's predicate bit,
-    // all 32 lanes, ungated by the issue mask, so no merge.
+    // pmov.imm (section 3; RA-19, IS rev 183, ccv-sim at b83777e): the
+    // immediate's bit n is lane n's predicate bit on the issue-mask lanes;
+    // the others keep the old predicate's, which RCU holds, so it merges
+    // here with no lane trip. pmov-all-lanes writes all 32 instead.
     if (op->cls == kImm && op->pwrite) {
       if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
-      k_.pred[ppd] = imm0;
+      const uint32_t im = k_.brk == "pmov-all-lanes" ? ~0u : uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
+      const unsigned pold = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_old_dst"));
+      k_.pred[ppd] = (uint32_t(imm0) & im) | (k_.pred[pold] & ~im);
       if (const Record *r = rec(m.tid, "rcu"))
         if (const RegVal *d = r->predDef())
           if (k_.pred[ppd] != d->p)
@@ -5314,13 +5320,24 @@ private:
 
 } // namespace
 
+/// The RCU model (sim/rcu/rcu_block.cpp; RI-2, RA-38), and the stub here
+/// beside it, in both hosts. The model is the default since RI's M0 (RI-8,
+/// RA's acceptance at its rev 68); CCV_RCU_IMPL=stub selects the stub.
+std::unique_ptr<Block> makeRcuModel(int inst, Kernel &k);
+
+static std::unique_ptr<Block> makeRcu(int inst, Kernel &k) {
+  const char *impl = std::getenv("CCV_RCU_IMPL");
+  if (impl && std::string(impl) == "stub") return std::make_unique<Rcu>(inst, k);
+  return makeRcuModel(inst, k);
+}
+
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   if (inst < 0) return std::make_unique<Testbench>(inst, k);
   switch (kBlkInsts[inst].type) {
   case Blk::FET:  return std::make_unique<Fet>(inst, k);
   case Blk::DEC:  return std::make_unique<Dec>(inst, k);
   case Blk::OOE:  return makeOoe(inst, k);          // ooe.cpp
-  case Blk::RCU:  return std::make_unique<Rcu>(inst, k);
+  case Blk::RCU:  return makeRcu(inst, k);          // CCV_RCU_IMPL
   case Blk::LANE: return std::make_unique<Lane>(inst, k);
   case Blk::MIU:  return std::make_unique<Miu>(inst, k);
   case Blk::DCU:  return std::make_unique<Dcu>(inst, k);

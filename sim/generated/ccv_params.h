@@ -136,7 +136,7 @@ static constexpr uint32_t kWLaneIdx = 5;
 /// decided at the block-level grill-me (grill-me 2026-09-23)
 static constexpr uint32_t kMigrationCycles = 17;
 
-/// Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, 16 and up predicate and divergence state. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does.  Derived: = clog2(CCV_MIGRATION_CYCLES).
+/// Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, row 16 the predicate state alone (CCV_W_PRED_STATE, 128 bits; PCA spec rev 17, AR-25): divergence state migrates through FET. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does.  Derived: = clog2(CCV_MIGRATION_CYCLES).
 /// decided at the block-level grill-me (arch opens A-1, A-22 (2026-09-27))
 static constexpr uint32_t kWMigRow = 5;
 
@@ -272,13 +272,13 @@ static constexpr uint32_t kCreditTurnaround = 2;
 /// decided at the block-level grill-me (Q-43, 2026-09-26)
 static constexpr uint32_t kCreditDepth = 4;
 
-/// Storage a stalling receiver reserves to catch everything already in flight. Equals the round trip: no unwinding, no negative acknowledgement.
-/// decided at the block-level grill-me (ports spec 2026-09-23)
-static constexpr uint32_t kRescueDepth = 2;
+/// Storage a stalling receiver reserves to catch everything already in flight: the round trip plus the cycle a stall spends in the sender's interface flop (the boundary stage, rtl/phys/ccv_common_rpt.sv; proved in tools/check-formal.sh, built: no valid two cycles after a stall at the wrapper, and not one). No unwinding, no negative acknowledgement. One more payload entry per stalling receiver than the round trip alone; credits are unaffected.  Derived: = CCV_RT_ABUT + 1.
+/// decided at the block-level grill-me (ports spec 2026-09-23; AR's rev 289 (re:RI-11), 2 to 3)
+static constexpr uint32_t kRescueDepth = 3;
 
-/// Cycles to wait after asserting stall before nothing is in flight. Equals the round trip, which is what lets sleep entry, chwidth change and demotion share one mechanism and one proof.
-/// decided at the block-level grill-me (ports spec 2026-09-23)
-static constexpr uint32_t kDrainWait = 2;
+/// Cycles to wait after asserting stall before nothing is in flight: the round trip plus the cycle a stall spends in the sender's interface flop (as CCV_RESCUE_DEPTH). One wait for sleep entry, chwidth change and demotion, which is what lets them share one mechanism and one proof, a cycle longer than the round trip alone.  Derived: = CCV_RT_ABUT + 1.
+/// decided at the block-level grill-me (ports spec 2026-09-23; AR's rev 289 (re:RI-11), 2 to 3)
+static constexpr uint32_t kDrainWait = 3;
 
 /// Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_common_chk_wake). The receiver's side is ccv_common_clk: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this, so a valid that follows the wake by exactly this much is still captured.
 /// decided at the block-level grill-me (ports spec 2026-09-23)
@@ -337,7 +337,7 @@ namespace prov {
 /// PROVISIONAL -- decided by: Stage 4b sweep
 static constexpr uint32_t kDecodeWidth = 6;
 
-/// D-cache lookups per cycle.
+/// D-cache lookups per cycle. It sets the rate of ccv_miu_dcu_req, ccv_dcu_miu_rsp and ccv_dcu_miu_fill_ntc (a notice promises its refill on the same response slot), each tied by rate_param, so tools/gen-interfaces.py refuses a rate that drifts from it.
 /// PROVISIONAL -- decided by: Stage 4b sweep
 static constexpr uint32_t kDcacheLookups = 4;
 
@@ -413,9 +413,9 @@ static constexpr uint32_t kRsRcu = 30;
 /// PROVISIONAL -- decided by: OOE per-block session
 static constexpr uint32_t kRsMiu = 15;
 
-/// Decode queue depth ahead of rename. 13 since rename interleaves warps uop by uop (option (c), DA's response OA-21): decq registers the take and pops it an edge late, and the extra entry covers the uop in flight; DEC's credit pool follows it. Was 12.
-/// PROVISIONAL -- decided by: OOE per-block session; DA's response OA-21 (2026-10-20)
-static constexpr uint32_t kDecq = 13;
+/// Decode queue depth ahead of rename. 15 with decq_free_lag 1, was 13 (DA-106, OA's rev 327): a freed entry's credit returns an edge late, and the two extra entries cover it; DEC's credit pool follows it. 13 was for rename's take popped an edge late (option (c), DA's response OA-21); 12 before that.
+/// PROVISIONAL -- decided by: DA-106 (2026-11-04)
+static constexpr uint32_t kDecq = 15;
 
 /// Reservation-station entries one warp may hold at once, across both classes, so a stalled warp cannot fill the stations. The first-build value is both classes' total, which is no cap; the sweep sets it. Replaces the OOE model's rs_warp_cap knob.  Requires: CCV_P_RS_WARP_CAP <= CCV_P_RS_RCU + CCV_P_RS_MIU.
 /// PROVISIONAL -- decided by: Stage 4b sweep (register OA-7)

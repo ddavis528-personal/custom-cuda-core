@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-03. Keep this current at every task's end; it is what
+Updated 2026-11-04. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 
 ## Who and what
@@ -70,8 +70,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 275, OA 315, TI 296, IS 188, CP 152, OI 254, DA 104,
-  Conventions 17, RA 60, RI 1 (tab 8e4547bc-c469, new 2026-11-02).
+  record): AR 295, OA 345, TI 334, RA 79 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 108,
+  Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
   ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
@@ -83,22 +83,84 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   RA 61 RA-39 (R retime, Daniel asked 11-04): AR rev 271 agrees (d), R lead
   + lead_r_src0/1 (2x8, zero when unused), R reads R0/R1 in A; conditional
   on OA (a) (sources in PRF at issue+latency, no early wake; else OA's
-  late wake for R consumers, never an R hold). Partitioning-spec lead text
-  owed when TI's schema row lands.
+  late wake for R consumers, never an R hold). SUPERSEDED by OA 336
+  (re:OI-115, RA 70): option (2), R0/R1 read in A from the payload's
+  phys_src0/1 (budgets RCU in 18, OOE out 7), lead_r_src0/1 withdrawn,
+  AR's (d) lapses. Partitioning spec Interfaces tab rev 20 says so; the
+  L1-hit forward is a bank-level write-through.
   OA 328: L1-hit loads miss a read at A (data lands at T = A). OA's order:
   (i) MIU forward inside RCU (RA prices), (ii) late load wake for R
   consumers if <0.5% (OI prices), else DA. AR rev 272 withdrew 271's
   late-wake line and asked RA to price (i) as a per-lane/field merge
   (active_mask, dst_pos/width sections, right-aligned load_data realigned;
   rev 273 fixed 272's wrong 64-bit second row claim); rests on MIU's
-  1-write-per-section rule and AR's owed disjoint-sections assertion. Pings Fri 2026-10-30: all five answered ok (checked Sat).
+  1-write-per-section rule and AR's owed disjoint-sections assertion.
+  Closed 11-04: RA 62/63 priced (i) at ~10k cells + ~185 flops, R A path
+  13 -> ~16 NGD, input 5/12 NGD, merge after alignment; OA 329 took (i),
+  wake contract unchanged, flops on DA's overhead list. CCV_P_DECQ stays 13
+  in params until OI's lag RTL lands (TI rev 301); DEC spec already says 15.
+  PF-47: TI reapplied base 1 (rev 298) but holds it on OI's no-rep-lead
+  control (6 of 18 seeds miss).
+  TI rev 308 (DA asked): AR rev 276 released layernorm; AR 143's hold had
+  ended with CP-14 / AR 148 (CCV_FAIR_N 48), never said so then. Lesson:
+  close a hold in the row that ends it.
+  TI 309: RA-39 (c) in schema (39a1861). AR wrote the partitioning spec's
+  Lead fields paragraph (Interfaces tab rev 19). AR rev 277: miu_rcu_data
+  has NO lead slice, yet RA 62's forward compares lead phys_dst in T-1;
+  asked RA: lead_phys_dst (4x8, TI row, AR writes MIU text) or compare in
+  A (~+3 NGD). RA-40 (RA 65): all six RA-4 lead fields (agreed AR 262,
+  never reached the schema). AR wrote MIU spec (MIU tab rev 48: lead slice
+  + 1-GPR-write-per-section paragraphs); AR rev 278 asks TI for the schema
+  row and keep/drop of payload copies (AR prefers drop; 262's "no new
+  wires" holds only then). MIU spec made current at Daniel's ask (MIU tab
+  rev 54, AR rev 279): kill rule (RA-23), address pairing (RA-21), wire
+  table recounted from schema 39a1861 (15 channels, 21,675 in / 15,882
+  out; rcu_miu_addr 12,457), L1 WAKE/CMPL 16/18 (12/14 at base 1). RA-40
+  built at b85595b (TI 311, on TI's branch until the sweep merges it): the
+  six payload fields lead, no copies, no new wires; MIU tab rev 55 says so,
+  wire table unchanged. AR-25 (1)-(3),(6) done at b85595b; (4)(5) ride TI's
+  RA-16/RA-30 work.
+  AR-24 vadd16 at 4 warps (TI 313, AR 283): 72 warp-cycles hold, 18 a warp
+  at entry; 0.29%/warp on the loop, 7.9% only on the 228-cycle run. AR read
+  PF-15's trigger as not met (fixed launch cost) and recorded it in PF-15;
+  the wording is DA's. Next: coremarkpl32/coremark32 at 1 and 4 warps (TI,
+  after J2).
+  RA-11 PHYS_REGS sweep (TI 315, RA 67 Needs AR+DA; AR 284, Needs OA, DA):
+  coremark128 +0.25% at 160, +0.20% at 128; share.names 7/33,194/2,428,849;
+  OOE checks fire at 160 (7 fits_stale) and 128 (3,271 + one V-N floor
+  cover), so 128's cycles are flattered and not evidence. RCU flops 246k ->
+  212k (160) / 179k (128). AR's order: OI answers TI's check question, TI
+  re-runs 160 clean on a second 4-warp kernel, OA's view on Q-35 at 160,
+  then AR to DA with RA's Phase 1 area. 192 stands until then.
+  OA 333: 160 meets Q-35 (REN_CEIL 44 >= ROB 32), 128 fails (24 < 32);
+  order agreed; OA recommends 160 to DA after the clean re-run. Waiting on
+  OI's check answer and TI's re-run. TI 316: the smaller pools ran with
+  their own REN_FLOOR/CEIL (12/44, 8/24), so the firings are OI's question.
+  TI 318 (re:AR 276): fair sweep off/32/48, all 57 match, 52 identical,
+  lnorm1 2562 flat; spinwait 1494 at 32 vs 2150 at 48 (forward-progress
+  test, expected); N = 48 stands. No reply owed. Pings Fri 2026-10-30: all five answered ok (checked Sat).
 - RH (run helper, session_01QPk2jvfKM1V5rRfip8FC86, branch
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
-- Specs doc DJeg9Hh8rkPDecq4hrAz35: RCU eda9347a-feaa (rev 21, RA's now), MIU
-  aa7a288a-dae2 (rev 46), RAU 090626bb-a50c (rev 33), FET 75d75b94-1614
-  (rev 45), DEC 1d1fdcda-739e, DCU c18a112b-d2c6, SPM b66e4f64-612c, LANE
-  ea1f36a7-0725, SYU 1f8b4472-68c1, OOE 515615a9-8caf (OA's).
+- Specs doc DJeg9Hh8rkPDecq4hrAz35 (tab revs after the 11-04 review): RCU
+  eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (56), RAU 090626bb-a50c (60),
+  PCA 94b3a0ea-7224 (17), FET 75d75b94-1614 (47), DEC 1d1fdcda-739e (19),
+  DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (14),
+  SYU 1f8b4472-68c1 (8), CRU 5a50fd80-2423 (7), MLC f8873ac6-e74d (3), EXB
+  56392a06-86a6 (4), OOE 515615a9-8caf (OA's).
+- Spec review of the no-session blocks done 11-04 (Daniel asked; AR rev
+  280, AR-25 minted rev 282, TI notified): every tab's widths recounted
+  from payload-spec, kill text is RA-14/RA-23's, S1 paragraphs match the
+  stubs. AR-25 (TI): six schema/params doc fixes (pca_rcu_mig doc,
+  CCV_W_MIG_ROW doc, rcu_lane_ops srd doc, SFU 2nd result RA-3, imm_kind 6
+  RA-18, miu_dcu_req backpressure class). DEC's CCV_P_DECQ 15 stays (DA).
+- Docs-tool lessons: write ops need FULL ids (session prefix + ".n", e.g.
+  m30rdwkg40n.5277 in specs, m8yvbw8rqgz.n in the register); a read prints
+  them short. Replace a paragraph by its paragraph id (a cell's paragraph
+  is cell id + 1; a list item's is item id + 1), ifHash = the paragraph's
+  h, "as":"markdown" so marks are spelled. Never "chars" on run ids; "as":
+  "text" can stretch a code mark. Rows: insert {"as":"blocks"} after a row
+  id, several rows in one content array. Each op bumps the tab rev.
 
 ## Decided recently (DA tab)
 - revs 100-103 (2026-11-02): RA-20 adopted (O-85 collectives, diagonal
@@ -118,6 +180,42 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   squash_act_lag 1 (audit +1.2%).
 
 ## Open work (most urgent first)
+00. RI-11 interface flops (Daniel 11-05 via TI 321). AR rev 285 decided the
+   accounting; AR row 286 (rev 286-287) answered TI 323, RA 76, OA 339/340:
+   DPI-host ends stay no-flop (RTL replacing a stub takes flops by default);
+   +1s sit in bases counted from HOP's landing: RCU_ADDR_BASE 5->6 (PF-47's
+   1->2), LANE_BASE 7->8, SFU 12->13; derived L1_WAKE 17, CMPL 19; RCU_BASE
+   3, COLLECTIVE 5, MISS_WAKE 1, CMPL_HINT 2, LANE_BYP 4, BYP_AGE 2 unchanged;
+   no credit depth grows (exception: a receiver whose credit return was off
+   the wire; OI audits OOE's); KILL_DRAIN follows SFU; CCV_LAT_BYP_PEN_SFU's
+   doc equality breaks (OA rewords, TI applies). Specs: LANE rev 13
+   (latency paragraph), MIU rev 56 (counts from holding, 17/19, PF-47 13/15).
+   perf-register PF-47 RI-11 bullet. Waiting: TI lands bases in one push;
+   RA restates RCU (confirms the RCU_ADDR +1); OI audit of OOE receivers.
+   OA 341 accepts 286; +1 goes on the adopted PF-47 base (1->2, WAKE 13,
+   CMPL 15); if the +1 lands before the PF-47 reapply, TI notes it in params
+   source so the reapply takes 1+1. Agrees with MIU rev 56 and PF-47 note;
+   no AR answer owed (loop guard). RA 77-79 took 286 as final (KILL_DRAIN
+   derived, 16; RCU Conventions restated, A from the interface flop); AR
+   row 288 confirmed RA's RCU_ADDR_BASE reading (PF-47 2, fallback 3) and
+   took RA's lane bypass ages (forward 4-6, PRF from 7; LANE spec rev 14
+   corrected AR's "4 to 7"); TI rewords CCV_P_W_LANE_BYP_AGE's doc to LANE-2.
+   TI 325: flop built, formal full rate at 4+2N (unbounded conservation
+   still running); bases held until RI/OI unit-test fixes. AR row 289: stall
+   +1 taken (RESCUE_DEPTH, DRAIN_WAIT 3, derive RT_ABUT+1; stall rule
+   3+2xSRC_STAGES). Lead slices ungated (enable would be valid, CG-5): AR
+   recommends charging a boundary flop's lead slice to the receiving block's
+   per-instance 2% (repeater stages keep own allowance, Daniel 10-19 rule);
+   DECIDED by Daniel (DA tab rev 108, "this is where we pay for lead fields -
+   no free lunch"); TI applies in check-cg and the rule text.
+   TI 332 (f61983f): applied; OOE over its 2% by 196 (leads 375: 231 in,
+   144 out). AR row 292: source-end lead charged to the sender (confirmed);
+   ASKED DANIEL whether a lead channel's source end may go no-flop where the
+   sender's own gated lead register drives the port at 0 NGD (saves OOE 144,
+   RCU 487, MIU 204). Record his answer as a DA row. CORRECTED (TI 333,
+   AR 293-295): OOE fits, ~1,200 of ~1,309 per instance (ooe_rob_w x4), so
+   the source-end no-flop is margin only. TI: no tool change needed if
+   allowed (links.json no_flop). N=1,2 unbounded conservation running.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue

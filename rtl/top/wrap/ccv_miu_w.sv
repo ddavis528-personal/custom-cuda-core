@@ -6,10 +6,12 @@
 
 // HARDENING WRAPPER ccv_miu_w: ccv_miu and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. An end
-// whose link has no stages here is connected straight through.
+// and links"). Nothing but instances and nets, like the top. Each end's
+// repeater holds the block's boundary flop (BOUNDARY 1) and its link's
+// stages; a no-flop end (params/links.json no_flop) whose link has no
+// stages here is connected straight through.
 // Each end's stages are a parameter the top sets from params/links.json;
-// at 0 the end is wired straight through, with no repeater.
+// at 0 a no-flop end is wired straight through, with no repeater.
 `include "ccv_interfaces.svh"
 
 module ccv_miu_w #(
@@ -564,9 +566,9 @@ module ccv_miu_w #(
 `endif
   );
 
-  // ccv_rcu_miu_addr, destination end
+  // ccv_rcu_miu_addr, destination end, no-flop (params/links.json no_flop)
   if (RPT_RCU_MIU_ADDR > 0) begin : g_rpt_rcu_miu_addr
-    ccv_common_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .SLOTS(4), .PAYLOAD_W(3111)) u_rpt_rcu_miu_addr (
+    ccv_common_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(3111)) u_rpt_rcu_miu_addr (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rcu_miu_addr_s3_valid, rcu_miu_addr_s2_valid, rcu_miu_addr_s1_valid, rcu_miu_addr_s0_valid}), .src_payload({rcu_miu_addr_s3_payload, rcu_miu_addr_s2_payload, rcu_miu_addr_s1_payload, rcu_miu_addr_s0_payload}),
       .src_wake(rcu_miu_addr_wake), .src_credit({rcu_miu_addr_s3_credit, rcu_miu_addr_s2_credit, rcu_miu_addr_s1_credit, rcu_miu_addr_s0_credit}), .src_stall({rcu_miu_addr_s3_stall, rcu_miu_addr_s2_stall, rcu_miu_addr_s1_stall, rcu_miu_addr_s0_stall}),
@@ -586,9 +588,9 @@ module ccv_miu_w #(
     assign {b_rcu_miu_addr_s3_tid, b_rcu_miu_addr_s2_tid, b_rcu_miu_addr_s1_tid, b_rcu_miu_addr_s0_tid} = {rcu_miu_addr_s3_tid, rcu_miu_addr_s2_tid, rcu_miu_addr_s1_tid, rcu_miu_addr_s0_tid};
 `endif
   end
-  // ccv_miu_rcu_data, source end
+  // ccv_miu_rcu_data, source end, no-flop (params/links.json no_flop)
   if (RPT_MIU_RCU_DATA > 0) begin : g_rpt_miu_rcu_data
-    ccv_common_rpt #(.STAGES(RPT_MIU_RCU_DATA), .SLOTS(4), .PAYLOAD_W(1114)) u_rpt_miu_rcu_data (
+    ccv_common_rpt #(.STAGES(RPT_MIU_RCU_DATA), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1114), .LEAD_MASK(1114'h7fffffff800000007ffff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)) u_rpt_miu_rcu_data (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_rcu_data_s3_valid, b_miu_rcu_data_s2_valid, b_miu_rcu_data_s1_valid, b_miu_rcu_data_s0_valid}), .src_payload({b_miu_rcu_data_s3_payload, b_miu_rcu_data_s2_payload, b_miu_rcu_data_s1_payload, b_miu_rcu_data_s0_payload}),
       .src_wake(b_miu_rcu_data_wake), .src_credit({b_miu_rcu_data_s3_credit, b_miu_rcu_data_s2_credit, b_miu_rcu_data_s1_credit, b_miu_rcu_data_s0_credit}), .src_stall({b_miu_rcu_data_s3_stall, b_miu_rcu_data_s2_stall, b_miu_rcu_data_s1_stall, b_miu_rcu_data_s0_stall}),
@@ -608,9 +610,9 @@ module ccv_miu_w #(
     assign {miu_rcu_data_s3_tid, miu_rcu_data_s2_tid, miu_rcu_data_s1_tid, miu_rcu_data_s0_tid} = {b_miu_rcu_data_s3_tid, b_miu_rcu_data_s2_tid, b_miu_rcu_data_s1_tid, b_miu_rcu_data_s0_tid};
 `endif
   end
-  // ccv_ooe_miu_memop, destination end
+  // ccv_ooe_miu_memop, destination end, no-flop (params/links.json no_flop)
   if (RPT_OOE_MIU_MEMOP > 0) begin : g_rpt_ooe_miu_memop
-    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .SLOTS(4), .PAYLOAD_W(126)) u_rpt_ooe_miu_memop (
+    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(126)) u_rpt_ooe_miu_memop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_miu_memop_s3_valid, ooe_miu_memop_s2_valid, ooe_miu_memop_s1_valid, ooe_miu_memop_s0_valid}), .src_payload({ooe_miu_memop_s3_payload, ooe_miu_memop_s2_payload, ooe_miu_memop_s1_payload, ooe_miu_memop_s0_payload}),
       .src_wake(ooe_miu_memop_wake), .src_credit({ooe_miu_memop_s3_credit, ooe_miu_memop_s2_credit, ooe_miu_memop_s1_credit, ooe_miu_memop_s0_credit}), .src_stall({ooe_miu_memop_s3_stall, ooe_miu_memop_s2_stall, ooe_miu_memop_s1_stall, ooe_miu_memop_s0_stall}),
@@ -630,9 +632,9 @@ module ccv_miu_w #(
     assign {b_ooe_miu_memop_s3_tid, b_ooe_miu_memop_s2_tid, b_ooe_miu_memop_s1_tid, b_ooe_miu_memop_s0_tid} = {ooe_miu_memop_s3_tid, ooe_miu_memop_s2_tid, ooe_miu_memop_s1_tid, ooe_miu_memop_s0_tid};
 `endif
   end
-  // ccv_miu_ooe_cmpl, source end
+  // ccv_miu_ooe_cmpl, source end, no-flop (params/links.json no_flop)
   if (RPT_MIU_OOE_CMPL > 0) begin : g_rpt_miu_ooe_cmpl
-    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL), .SLOTS(4), .PAYLOAD_W(119)) u_rpt_miu_ooe_cmpl (
+    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(119)) u_rpt_miu_ooe_cmpl (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_ooe_cmpl_s3_valid, b_miu_ooe_cmpl_s2_valid, b_miu_ooe_cmpl_s1_valid, b_miu_ooe_cmpl_s0_valid}), .src_payload({b_miu_ooe_cmpl_s3_payload, b_miu_ooe_cmpl_s2_payload, b_miu_ooe_cmpl_s1_payload, b_miu_ooe_cmpl_s0_payload}),
       .src_wake(b_miu_ooe_cmpl_wake), .src_credit({b_miu_ooe_cmpl_s3_credit, b_miu_ooe_cmpl_s2_credit, b_miu_ooe_cmpl_s1_credit, b_miu_ooe_cmpl_s0_credit}), .src_stall({b_miu_ooe_cmpl_s3_stall, b_miu_ooe_cmpl_s2_stall, b_miu_ooe_cmpl_s1_stall, b_miu_ooe_cmpl_s0_stall}),
@@ -652,9 +654,9 @@ module ccv_miu_w #(
     assign {miu_ooe_cmpl_s3_tid, miu_ooe_cmpl_s2_tid, miu_ooe_cmpl_s1_tid, miu_ooe_cmpl_s0_tid} = {b_miu_ooe_cmpl_s3_tid, b_miu_ooe_cmpl_s2_tid, b_miu_ooe_cmpl_s1_tid, b_miu_ooe_cmpl_s0_tid};
 `endif
   end
-  // ccv_ooe_miu_retire, destination end
+  // ccv_ooe_miu_retire, destination end, no-flop (params/links.json no_flop)
   if (RPT_OOE_MIU_RETIRE > 0) begin : g_rpt_ooe_miu_retire
-    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_RETIRE), .SLOTS(4), .PAYLOAD_W(8)) u_rpt_ooe_miu_retire (
+    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_RETIRE), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(8)) u_rpt_ooe_miu_retire (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_miu_retire_s3_valid, ooe_miu_retire_s2_valid, ooe_miu_retire_s1_valid, ooe_miu_retire_s0_valid}), .src_payload({ooe_miu_retire_s3_payload, ooe_miu_retire_s2_payload, ooe_miu_retire_s1_payload, ooe_miu_retire_s0_payload}),
       .src_wake(ooe_miu_retire_wake), .src_credit({ooe_miu_retire_s3_credit, ooe_miu_retire_s2_credit, ooe_miu_retire_s1_credit, ooe_miu_retire_s0_credit}), .src_stall({ooe_miu_retire_s3_stall, ooe_miu_retire_s2_stall, ooe_miu_retire_s1_stall, ooe_miu_retire_s0_stall}),
@@ -674,9 +676,9 @@ module ccv_miu_w #(
     assign {b_ooe_miu_retire_s3_tid, b_ooe_miu_retire_s2_tid, b_ooe_miu_retire_s1_tid, b_ooe_miu_retire_s0_tid} = {ooe_miu_retire_s3_tid, ooe_miu_retire_s2_tid, ooe_miu_retire_s1_tid, ooe_miu_retire_s0_tid};
 `endif
   end
-  // ccv_miu_spm_req, source end
+  // ccv_miu_spm_req, source end, no-flop (params/links.json no_flop)
   if (RPT_MIU_SPM_REQ > 0) begin : g_rpt_miu_spm_req
-    ccv_common_rpt #(.STAGES(RPT_MIU_SPM_REQ), .SLOTS(4), .PAYLOAD_W(1477)) u_rpt_miu_spm_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_SPM_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1477)) u_rpt_miu_spm_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_spm_req_s3_valid, b_miu_spm_req_s2_valid, b_miu_spm_req_s1_valid, b_miu_spm_req_s0_valid}), .src_payload({b_miu_spm_req_s3_payload, b_miu_spm_req_s2_payload, b_miu_spm_req_s1_payload, b_miu_spm_req_s0_payload}),
       .src_wake(b_miu_spm_req_wake), .src_credit({b_miu_spm_req_s3_credit, b_miu_spm_req_s2_credit, b_miu_spm_req_s1_credit, b_miu_spm_req_s0_credit}), .src_stall({b_miu_spm_req_s3_stall, b_miu_spm_req_s2_stall, b_miu_spm_req_s1_stall, b_miu_spm_req_s0_stall}),
@@ -696,9 +698,9 @@ module ccv_miu_w #(
     assign {miu_spm_req_s3_tid, miu_spm_req_s2_tid, miu_spm_req_s1_tid, miu_spm_req_s0_tid} = {b_miu_spm_req_s3_tid, b_miu_spm_req_s2_tid, b_miu_spm_req_s1_tid, b_miu_spm_req_s0_tid};
 `endif
   end
-  // ccv_spm_miu_rsp, destination end
+  // ccv_spm_miu_rsp, destination end, no-flop (params/links.json no_flop)
   if (RPT_SPM_MIU_RSP > 0) begin : g_rpt_spm_miu_rsp
-    ccv_common_rpt #(.STAGES(RPT_SPM_MIU_RSP), .SLOTS(4), .PAYLOAD_W(1033)) u_rpt_spm_miu_rsp (
+    ccv_common_rpt #(.STAGES(RPT_SPM_MIU_RSP), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1033)) u_rpt_spm_miu_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({spm_miu_rsp_s3_valid, spm_miu_rsp_s2_valid, spm_miu_rsp_s1_valid, spm_miu_rsp_s0_valid}), .src_payload({spm_miu_rsp_s3_payload, spm_miu_rsp_s2_payload, spm_miu_rsp_s1_payload, spm_miu_rsp_s0_payload}),
       .src_wake(spm_miu_rsp_wake), .src_credit({spm_miu_rsp_s3_credit, spm_miu_rsp_s2_credit, spm_miu_rsp_s1_credit, spm_miu_rsp_s0_credit}), .src_stall({spm_miu_rsp_s3_stall, spm_miu_rsp_s2_stall, spm_miu_rsp_s1_stall, spm_miu_rsp_s0_stall}),
@@ -718,9 +720,9 @@ module ccv_miu_w #(
     assign {b_spm_miu_rsp_s3_tid, b_spm_miu_rsp_s2_tid, b_spm_miu_rsp_s1_tid, b_spm_miu_rsp_s0_tid} = {spm_miu_rsp_s3_tid, spm_miu_rsp_s2_tid, spm_miu_rsp_s1_tid, spm_miu_rsp_s0_tid};
 `endif
   end
-  // ccv_miu_dcu_req, source end
+  // ccv_miu_dcu_req, source end, no-flop (params/links.json no_flop)
   if (RPT_MIU_DCU_REQ > 0) begin : g_rpt_miu_dcu_req
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_dcu_req_s3_valid, b_miu_dcu_req_s2_valid, b_miu_dcu_req_s1_valid, b_miu_dcu_req_s0_valid}), .src_payload({b_miu_dcu_req_s3_payload, b_miu_dcu_req_s2_payload, b_miu_dcu_req_s1_payload, b_miu_dcu_req_s0_payload}),
       .src_wake(b_miu_dcu_req_wake), .src_credit({b_miu_dcu_req_s3_credit, b_miu_dcu_req_s2_credit, b_miu_dcu_req_s1_credit, b_miu_dcu_req_s0_credit}), .src_stall({b_miu_dcu_req_s3_stall, b_miu_dcu_req_s2_stall, b_miu_dcu_req_s1_stall, b_miu_dcu_req_s0_stall}),
@@ -740,9 +742,9 @@ module ccv_miu_w #(
     assign {miu_dcu_req_s3_tid, miu_dcu_req_s2_tid, miu_dcu_req_s1_tid, miu_dcu_req_s0_tid} = {b_miu_dcu_req_s3_tid, b_miu_dcu_req_s2_tid, b_miu_dcu_req_s1_tid, b_miu_dcu_req_s0_tid};
 `endif
   end
-  // ccv_dcu_miu_rsp, destination end
+  // ccv_dcu_miu_rsp, destination end, no-flop (params/links.json no_flop)
   if (RPT_DCU_MIU_RSP > 0) begin : g_rpt_dcu_miu_rsp
-    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_RSP), .SLOTS(4), .PAYLOAD_W(1031)) u_rpt_dcu_miu_rsp (
+    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_RSP), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1031)) u_rpt_dcu_miu_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dcu_miu_rsp_s3_valid, dcu_miu_rsp_s2_valid, dcu_miu_rsp_s1_valid, dcu_miu_rsp_s0_valid}), .src_payload({dcu_miu_rsp_s3_payload, dcu_miu_rsp_s2_payload, dcu_miu_rsp_s1_payload, dcu_miu_rsp_s0_payload}),
       .src_wake(dcu_miu_rsp_wake), .src_credit({dcu_miu_rsp_s3_credit, dcu_miu_rsp_s2_credit, dcu_miu_rsp_s1_credit, dcu_miu_rsp_s0_credit}), .src_stall({dcu_miu_rsp_s3_stall, dcu_miu_rsp_s2_stall, dcu_miu_rsp_s1_stall, dcu_miu_rsp_s0_stall}),
@@ -762,9 +764,9 @@ module ccv_miu_w #(
     assign {b_dcu_miu_rsp_s3_tid, b_dcu_miu_rsp_s2_tid, b_dcu_miu_rsp_s1_tid, b_dcu_miu_rsp_s0_tid} = {dcu_miu_rsp_s3_tid, dcu_miu_rsp_s2_tid, dcu_miu_rsp_s1_tid, dcu_miu_rsp_s0_tid};
 `endif
   end
-  // ccv_miu_fet_itlb, source end
+  // ccv_miu_fet_itlb, source end, no-flop (params/links.json no_flop)
   if (RPT_MIU_FET_ITLB > 0) begin : g_rpt_miu_fet_itlb
-    ccv_common_rpt #(.STAGES(RPT_MIU_FET_ITLB), .SLOTS(1), .PAYLOAD_W(64)) u_rpt_miu_fet_itlb (
+    ccv_common_rpt #(.STAGES(RPT_MIU_FET_ITLB), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(64)) u_rpt_miu_fet_itlb (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_fet_itlb_valid}), .src_payload({b_miu_fet_itlb_payload}),
       .src_wake(b_miu_fet_itlb_wake), .src_credit({b_miu_fet_itlb_credit}), .src_stall({b_miu_fet_itlb_stall}),
@@ -784,9 +786,9 @@ module ccv_miu_w #(
     assign {miu_fet_itlb_tid} = {b_miu_fet_itlb_tid};
 `endif
   end
-  // ccv_fet_miu_itlb_req, destination end
+  // ccv_fet_miu_itlb_req, destination end, no-flop (params/links.json no_flop)
   if (RPT_FET_MIU_ITLB_REQ > 0) begin : g_rpt_fet_miu_itlb_req
-    ccv_common_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .SLOTS(1), .PAYLOAD_W(60)) u_rpt_fet_miu_itlb_req (
+    ccv_common_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(60)) u_rpt_fet_miu_itlb_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({fet_miu_itlb_req_valid}), .src_payload({fet_miu_itlb_req_payload}),
       .src_wake(fet_miu_itlb_req_wake), .src_credit({fet_miu_itlb_req_credit}), .src_stall({fet_miu_itlb_req_stall}),
@@ -806,9 +808,9 @@ module ccv_miu_w #(
     assign {b_fet_miu_itlb_req_tid} = {fet_miu_itlb_req_tid};
 `endif
   end
-  // ccv_miu_rau_ready, source end
+  // ccv_miu_rau_ready, source end, no-flop (params/links.json no_flop)
   if (RPT_MIU_RAU_READY > 0) begin : g_rpt_miu_rau_ready
-    ccv_common_rpt #(.STAGES(RPT_MIU_RAU_READY), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_miu_rau_ready (
+    ccv_common_rpt #(.STAGES(RPT_MIU_RAU_READY), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_miu_rau_ready (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_rau_ready_valid}), .src_payload({b_miu_rau_ready_payload}),
       .src_wake(b_miu_rau_ready_wake), .src_credit({b_miu_rau_ready_credit}), .src_stall({b_miu_rau_ready_stall}),
@@ -828,9 +830,9 @@ module ccv_miu_w #(
     assign {miu_rau_ready_tid} = {b_miu_rau_ready_tid};
 `endif
   end
-  // ccv_rau_miu_cta, destination end
+  // ccv_rau_miu_cta, destination end, no-flop (params/links.json no_flop)
   if (RPT_RAU_MIU_CTA > 0) begin : g_rpt_rau_miu_cta
-    ccv_common_rpt #(.STAGES(RPT_RAU_MIU_CTA), .SLOTS(1), .PAYLOAD_W(277)) u_rpt_rau_miu_cta (
+    ccv_common_rpt #(.STAGES(RPT_RAU_MIU_CTA), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(277)) u_rpt_rau_miu_cta (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rau_miu_cta_valid}), .src_payload({rau_miu_cta_payload}),
       .src_wake(rau_miu_cta_wake), .src_credit({rau_miu_cta_credit}), .src_stall({rau_miu_cta_stall}),
@@ -850,9 +852,9 @@ module ccv_miu_w #(
     assign {b_rau_miu_cta_tid} = {rau_miu_cta_tid};
 `endif
   end
-  // ccv_dcu_miu_fill_ntc, destination end
+  // ccv_dcu_miu_fill_ntc, destination end, no-flop (params/links.json no_flop)
   if (RPT_DCU_MIU_FILL_NTC > 0) begin : g_rpt_dcu_miu_fill_ntc
-    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_FILL_NTC), .SLOTS(4), .PAYLOAD_W(4)) u_rpt_dcu_miu_fill_ntc (
+    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_FILL_NTC), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(4)) u_rpt_dcu_miu_fill_ntc (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dcu_miu_fill_ntc_s3_valid, dcu_miu_fill_ntc_s2_valid, dcu_miu_fill_ntc_s1_valid, dcu_miu_fill_ntc_s0_valid}), .src_payload({dcu_miu_fill_ntc_s3_payload, dcu_miu_fill_ntc_s2_payload, dcu_miu_fill_ntc_s1_payload, dcu_miu_fill_ntc_s0_payload}),
       .src_wake(dcu_miu_fill_ntc_wake), .src_credit({dcu_miu_fill_ntc_s3_credit, dcu_miu_fill_ntc_s2_credit, dcu_miu_fill_ntc_s1_credit, dcu_miu_fill_ntc_s0_credit}), .src_stall({dcu_miu_fill_ntc_s3_stall, dcu_miu_fill_ntc_s2_stall, dcu_miu_fill_ntc_s1_stall, dcu_miu_fill_ntc_s0_stall}),
@@ -872,9 +874,9 @@ module ccv_miu_w #(
     assign {b_dcu_miu_fill_ntc_s3_tid, b_dcu_miu_fill_ntc_s2_tid, b_dcu_miu_fill_ntc_s1_tid, b_dcu_miu_fill_ntc_s0_tid} = {dcu_miu_fill_ntc_s3_tid, dcu_miu_fill_ntc_s2_tid, dcu_miu_fill_ntc_s1_tid, dcu_miu_fill_ntc_s0_tid};
 `endif
   end
-  // ccv_miu_ooe_cmpl_hint, source end
+  // ccv_miu_ooe_cmpl_hint, source end, no-flop (params/links.json no_flop)
   if (RPT_MIU_OOE_CMPL_HINT > 0) begin : g_rpt_miu_ooe_cmpl_hint
-    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL_HINT), .SLOTS(4), .PAYLOAD_W(13)) u_rpt_miu_ooe_cmpl_hint (
+    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL_HINT), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(13)) u_rpt_miu_ooe_cmpl_hint (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_ooe_cmpl_hint_s3_valid, b_miu_ooe_cmpl_hint_s2_valid, b_miu_ooe_cmpl_hint_s1_valid, b_miu_ooe_cmpl_hint_s0_valid}), .src_payload({b_miu_ooe_cmpl_hint_s3_payload, b_miu_ooe_cmpl_hint_s2_payload, b_miu_ooe_cmpl_hint_s1_payload, b_miu_ooe_cmpl_hint_s0_payload}),
       .src_wake(b_miu_ooe_cmpl_hint_wake), .src_credit({b_miu_ooe_cmpl_hint_s3_credit, b_miu_ooe_cmpl_hint_s2_credit, b_miu_ooe_cmpl_hint_s1_credit, b_miu_ooe_cmpl_hint_s0_credit}), .src_stall({b_miu_ooe_cmpl_hint_s3_stall, b_miu_ooe_cmpl_hint_s2_stall, b_miu_ooe_cmpl_hint_s1_stall, b_miu_ooe_cmpl_hint_s0_stall}),

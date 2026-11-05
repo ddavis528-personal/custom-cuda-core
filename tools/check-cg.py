@@ -125,7 +125,10 @@ ICG = "ccv_common_ctech_icg"
 # A repeater's control pulses and its flopped reset, by register name
 # (rtl/phys/ccv_common_rpt.sv): counted against the hardening wrapper's
 # CCV_CG_BUDGET_PCT, not the repeater's own allowance (Daniel, 2026-10-19).
-# Its lead slice, lead_q, is not among them.
+# Its lead slice, lead_q, is not among them, but for a boundary stage's
+# (DA tab rev 108, AR rev 289): an interface flop's lead slice, bnd_lead_q,
+# is the capture the block's own budget held when the end had no flop, and
+# counts against the wrapper's budget, so the block's (RPT_BOUNDARY).
 RPT = "ccv_common_rpt"
 # A register declared (* keep *) keeps its flops through synthesis: a copy
 # made to part an output's flop from the module's own paths (check-ngd's
@@ -134,6 +137,7 @@ RPT = "ccv_common_rpt"
 # RTL this way, so all count the same flops.
 KEEP_FLOPS = ["proc", "setattr -set keep 1 a:keep %ci1 t:$*dff* %i"]
 RPT_CONTROL = ("valid_q", "wake_q", "credit_q", "stall_q", "rst_n_q")
+RPT_BOUNDARY = ("bnd_lead_q",)
 
 _spec = importlib.util.spec_from_file_location(
     "lint_rtl", os.path.join(ROOT, "tools", "lint-rtl.py"))
@@ -1158,6 +1162,7 @@ class Unit:
         self.nl = None
         self.data = {}       # scenario -> dict(stats)
         self.errors = []     # measurement failures: the unit is not measured
+        self.obs = {}        # scenario -> the replay's lines, as integers
 
     # -- synthesis ----------------------------------------------------------
     def synth(self):
@@ -1220,6 +1225,23 @@ class Unit:
                 continue
             vcds[sc] = vcd
         return vcds
+
+    def replay_make(self):
+        """Make variables for the harness's C++ build. A unit names
+        `"replay_cxx": "clang++"` when its netlist's generated C++ is too
+        large for g++ (RI-10: the 205,000-cell rcu_bank_slice, whose one
+        19 MB file took g++ past 13.6 GB even at -O0; clang++ builds it in
+        about 610 MiB). The selftest holds a clang++ replay to the g++ one."""
+        cxx = self.spec.get("replay_cxx", "g++")
+        if cxx == "g++":
+            return []
+        if cxx != "clang++":
+            raise SystemExit("check-cg: unit %s: replay_cxx %r is neither g++ nor clang++"
+                             % (self.name, cxx))
+        # Verilator is configured for g++ (gnu++17 and its -fcoroutines);
+        # clang++ takes --timing's coroutines from C++20, with no flag.
+        return ["-MAKEFLAGS", "CXX=clang++ CFG_CXXFLAGS_STD=-std=c++20 "
+                "CFG_CXXFLAGS_COROUTINES= OPT_FAST=-O1 OPT_SLOW=-O0 OPT_GLOBAL=-O0"]
 
     def harness(self, n):
         """The netlist with every flop's Q and every group's enable brought
@@ -1305,7 +1327,8 @@ endmodule
         open(tf, "w").write(tb)
         hd = os.path.join(self.dir, "harness")
         shutil.rmtree(hd, ignore_errors=True)
-        r = run(["verilator", "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
+        r = run(["verilator"] + self.replay_make() + [
+                 "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
                  "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb"]
                 # A blackboxed child may instantiate a shared cell (OI-77: ooe_freelist's
                 # ccv_common_csa). A library directory resolves only modules still
@@ -1355,6 +1378,7 @@ endmodule
                 continue
             obs = [int(l, 16) for l in open(base + ".obs").read().split()]
             res[sc] = (snaps, obs)
+            self.obs[sc] = obs
         return res
 
     def stats(self, replays):
@@ -1761,10 +1785,11 @@ def reg_base(r):
 
 
 def rpt_control(f):
-    """A finding about a repeater's control pulses or its flopped reset
-    only: the wrapper's budget takes it (RPT_CONTROL)."""
+    """A finding about a repeater's control pulses, its flopped reset or a
+    boundary stage's lead slice only: the wrapper's budget takes it
+    (RPT_CONTROL, RPT_BOUNDARY)."""
     return f.module == RPT and f.budgetable and f.regs and all(
-        reg_base(r) in RPT_CONTROL for r in f.regs)
+        reg_base(r) in RPT_CONTROL + RPT_BOUNDARY for r in f.regs)
 
 
 def module_budget(findings, units):
@@ -1815,15 +1840,36 @@ def took_flops(el, f):
     """A finding's flops in an elaborated partition: its registers, by name,
     in every instance of its module. A register in a generate is its own
     way's (g_slot[0].x, not every slot's x, OI-89): the longest suffix of its
-    scoped name the module has, else its base name (a child instance's)."""
+    scoped name the module has, else its base name (a child instance's). A
+    name with a bit range counts those bits only (RI-13)."""
     def key(r, regs):
         parts = re.sub(r"(\[[\d:,]+\])+$", "", r).split(".")
         for k in range(len(parts) - 1):
             if ".".join(parts[k:]) in regs:
                 return ".".join(parts[k:])
         return parts[-1]
-    return sum(m * sum(regs.get(x, 0) for x in {key(r, regs) for r in f.regs})
-               for b, m, regs in el["inst"] if b == f.module)
+    def bits(r):
+        """The bits a register name's trailing range selects ([hi:lo] or
+        [i]), or None for the whole vector (RI-13)."""
+        m = re.search(r"\[(\d+)(?::(\d+))?\]$", r)
+        if not m:
+            return None
+        hi, lo = int(m.group(1)), int(m.group(2) if m.group(2) else m.group(1))
+        return abs(hi - lo) + 1
+
+    def count(regs):
+        whole, part = set(), collections.Counter()
+        for r in f.regs:
+            x, n = key(r, regs), bits(r)
+            if n is None:
+                whole.add(x)
+            else:
+                part[x] += n
+        # A finding on part of a vector counts only the bits it names, as the
+        # replayed netlist does, never more than the vector has (RI-13).
+        return (sum(regs.get(x, 0) for x in whole)
+                + sum(min(n, regs.get(x, 0)) for x, n in part.items() if x not in whole))
+    return sum(m * count(regs) for b, m, regs in el["inst"] if b == f.module)
 
 
 def unit_flops(u, f):
@@ -2508,6 +2554,22 @@ def selftest():
     u = fixture_unit("fx_swap", "cg_fx_good", scope="tb_cg_fixture.u_dcge")
     u.measure(vcds=vcds)
     expect(any("differ" in e for e in u.errors), "a trace of another module replayed clean")
+    # 8b. A clang++ harness (replay_cxx, RI-10) replays as g++'s does: every
+    #     flop and enable on every cycle alike, and it too refuses the
+    #     swapped trace.
+    ref = units["cg_fx_good"]
+    cl = fixture_unit("fx_good_clang", "cg_fx_good")
+    cl.spec["replay_cxx"] = "clang++"
+    cl.measure(vcds=vcds)
+    expect(not cl.errors and cl.obs and cl.obs == ref.obs,
+           "a clang++ replay differs from the g++ one: %s"
+           % (cl.errors[:1] or sorted(sc for sc in ref.obs if cl.obs.get(sc) != ref.obs[sc])))
+    expect(cl.data == ref.data, "a clang++ replay measured otherwise than g++'s")
+    u = fixture_unit("fx_swap_clang", "cg_fx_good", scope="tb_cg_fixture.u_dcge")
+    u.spec["replay_cxx"] = "clang++"
+    u.measure(vcds=vcds)
+    expect(any("differ" in e for e in u.errors),
+           "a trace of another module replayed clean under clang++")
     # 9. The scenarios: swapped idle and high, and one too short.
     g = units["cg_fx_good"]
     saved = dict(g.data)
@@ -2787,15 +2849,18 @@ def selftest():
     #     stage of a 64-bit slot is past its allowance; without, it passes.
     rtext = lint.strip_comments(open(os.path.join(ROOT, "rtl/phys/ccv_common_rpt.sv")).read())
     rregs = {reg_base(r) for r in module_regs(rtext)}
-    expect(set(RPT_CONTROL) <= rregs and "lead_q" in rregs and "lead_q" not in RPT_CONTROL,
-           "RPT_CONTROL names registers the repeater lacks, or its lead slice: %s, %s"
-           % (sorted(set(RPT_CONTROL) - rregs), sorted(rregs)))
+    expect(set(RPT_CONTROL + RPT_BOUNDARY) <= rregs and "lead_q" in rregs
+           and "lead_q" not in RPT_CONTROL + RPT_BOUNDARY,
+           "RPT_CONTROL or RPT_BOUNDARY names registers the repeater lacks, or a link stage's "
+           "lead slice: %s, %s" % (sorted(set(RPT_CONTROL + RPT_BOUNDARY) - rregs), sorted(rregs)))
     expect(not rpt_control(Finding("CG-1", "cg_fx_small", {"valid_q"}, "", flops=1,
                                    budgetable=True))
            and not rpt_control(Finding("CG-1", RPT, {"valid_q", "g_stage[0].g_slot[0].lead_q"},
                                        "", flops=2, budgetable=True))
            and rpt_control(Finding("CG-1", RPT, {"g_stage[1].valid_q"}, "", flops=1,
-                                   budgetable=True)),
+                                   budgetable=True))
+           and rpt_control(Finding("CG-1", RPT, {"g_stage[0].g_slot[0].g_lead.g_bnd.bnd_lead_q"},
+                                   "", flops=16, budgetable=True)),
            "another module's register of a control pulse's name, or a repeater finding with "
            "its lead slice in it, went to the wrapper's budget, or a stage's valid did not")
     rus = load_units([os.path.join(FIXTURE_DIR, "rpt-units.json")])
@@ -2814,7 +2879,26 @@ def selftest():
            "failed: %s" % rfails["fx_rpt_plain"])
     expect(any("lead_q" in x for x in rfails["fx_rpt_lead"]),
            "a repeater whose lead slice is past its allowance passed: %s" % rfails["fx_rpt_lead"])
-    ctl = [f for f in rfs["fx_rpt_narrow2"] if f.status == "wrapper"]
+    #     A boundary stage's lead slice goes to the wrapper (DA tab rev 108):
+    #     with no link stage it passes; behind a link stage at a destination
+    #     end, the first stage's lead is a link stage's, and still fails.
+    bnd = {reg_base(r) for f in rfs["fx_rpt_bnd"] if f.status == "wrapper" and f.flops
+           for r in f.regs}
+    expect(not rfails["fx_rpt_bnd"] and "bnd_lead_q" in bnd,
+           "a boundary stage's lead slice was held to the repeater's own allowance, or not sent "
+           "to its wrapper's: %s; %s" % (rfails["fx_rpt_bnd"], sorted(bnd)))
+    expect(any("lead_q" in x and "bnd_lead_q" not in x for x in rfails["fx_rpt_bnd_dst"]),
+           "a link stage's lead slice at a destination end passed as a boundary's: %s"
+           % rfails["fx_rpt_bnd_dst"])
+    #     A finding on part of a vector counts its bits only in the kept
+    #     elaboration (RI-13): 32 of a 64-flop register, the whole for a bare
+    #     name, and never more than the register has.
+    el = {"inst": [("m", 2, {"v": 64, "w": 8})]}
+    tf = [took_flops(el, Finding("CG-3", "m", r, "")) for r in
+          ({"v[31:0]"}, {"v"}, {"v[3]", "w"}, {"w[15:0]"})]
+    expect(tf == [64, 128, 18, 16], "a part-vector finding's flops in the kept elaboration: "
+           "%s, not [64, 128, 18, 16]" % tf)
+    ctl = [f for f in rfs["fx_rpt_narrow2"] if f.status == "wrapper" and f.flops]
     expect(not rfails["fx_rpt_narrow2"] and {reg_base(r) for f in ctl for r in f.regs}
            == set(RPT_CONTROL),
            "a two-stage repeater's control pulses were held to its own allowance, or not all "

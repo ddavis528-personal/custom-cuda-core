@@ -40,14 +40,48 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 331, AR 269, TI 304, OI 274, IS 188, CP 152, DA 106,
-RA 61 (tab 9851686b-2b0a), RI 1 (tab 8e4547bc-c469).
-OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
+Conventions 17, OA 345, AR 292, TI 333, OI 288, IS 189, CP 152, DA 108,
+RA 74 (tab 9851686b-2b0a), RI 9 (tab 8e4547bc-c469).
+OOE doc rev 363. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
 
 ## Open work (most urgent first)
+-5. RI-11 / DA 11-05 (via TI rev 321, verbatim; OA recorded DA tab 107): interface
+   module default one flop in + out (2 cycles/link), zero-cycle option kept; AR does
+   latency accounting first. OA rev 339: RA-39 19/6 lapses; OOE list given to AR;
+   OI prices defaults + per-channel zero-cycle -> DA. OOE doc follows AR.
+   TI rev 322: HOP 2 already counts a flop each side (CCV_RT_ABUT), so links need
+   not grow if block/module output flops merge; what moves is logic before the
+   first flop. AR rev 285 accounting: LANE 8, SFU 13, L1_WAKE 17, CMPL 19, RCU 3, bypass
+   same. OA rev 340: OI audits OOE receivers (cmpl/hint wakes first) + prices for DA.
+   AR 286 final: ADDR_BASE 6, LANE_BASE 8, SFU 13; no credit depth grows; MISS_WAKE,
+   HINT, BYP same. OA 341: +1 should sit on PF-47's adopted base 1 (=2, WAKE 13).
+   DA 108 (via AR): boundary lead flops count vs receiver's 2% CG; OOE takes
+   rcu_ooe_done's 231; OA 342 asked OI for margin, shrink lead fields first if over.
+   OI 286: OOE 1.45% ungated with the 231, margin 326; nothing moves. OI 285: receiver
+   audit done, rx_lag pricing -> DA next. OA 343: issue timing (A) valid+lead in I
+   t+1, payload t+2 via late G copy (HOP already assumes it); select lead muxes dropped.
+   TI 332: OOE 978 of 782 with boundary leads (375 = 231 done in + 144 issue out), but
+   TI counted rob_w x1 and old ooe_rs; OA 344 asked recount (~1,200 vs ~1,309), OI to
+   gate issue lead off G valid, then list movable done-lead fields (<0.5% mine).
+   RESOLVED: TI 333 withdrew; OOE ~1,200 of ~1,309, fits; OA 345: no shrink, issue-lead
+   gating optional margin; depends on ooe_rs gated payload store landing.
+-4. RA-11 PHYS_REGS (OA rev 333): 160 meets Q-35 (ceil 44 >= ROB 32), 128 fails
+   (ceil 24 < 32). TI rev 316: runs DID use derived 12/44, 8/24, so my
+   16/64 guess was wrong. OI-114 (OI rev 281): go floor term ignores
+   the slot's take in flight (model AND ooe_go); OA rev 334 took max(0,want-held-took),
+   all unseen takes, within go caps else registered; then TI re-runs 160. After clean 160 re-run (2 four-warp kernels, S1, audit,
+   <0.5%) OA recommends 160 to DA via AR; OOE doc keeps 192 until DA decides.
+-3a. Landed 11-04: freelist gsec retime 013ed10 (no reuse cycle lost); decq retimed,
+   DECQ 15 + lag 1 at 41ebad9 (OI-109/111 closed); sched (b) ret_hold 2 gating.
 -3. RA-39 early R read (R0/R1 in A; OA revs 328-329): only L1 hits miss A
    (data lands in consumer's A). (i) MIU forward on R0/R1 TAKEN rev 329 (RA:
-   ~10k cells, 190 flops, A 16 NGD; overhead list); OOE doc rev 361. (ii) withdrawn.
+   ~10k cells, 190 flops, A 16 NGD; overhead list); OOE doc rev 363. (ii) withdrawn.
+   OI-115 (rev 335): R lead mux off final grant = sched 38.8 (cap 30.5); OA: probe
+   (0) mux off R's own pick (R footprint alone), lane slots off main+fallback picks
+   + late 2:1; RA prices fallback R0/R1 from payload wires (~19, RCU in-budget);
+   (1) valid a cycle later -> DA last. RA priced (2) 19.5 fits: TAKEN rev 336,
+   lead_r_src0/1 WITHDRAWN, phys_src0/1 budgets RCU in 19 / OOE out 6 (rev 337, RI measured 18.4; last move); (0) probe
+   still for RA-31 lead fields. ooe_rs has no payload store in RTL yet.
    (b) lead_r_src0/1 accepted; OI lead-mux NGD/CG, TI schema, AR agree.
 -2. DA 11-04 (DA tab 105): fanout term ENFORCED in check-ngd; TI seeded the
    ratchet b11e60f (TI rev 304): 109 caps (ratread 43, go 16, rename 11, sched 8,
@@ -78,7 +112,10 @@ OOE doc rev 361. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pin
    go: priod x dr decode, then senders of hv/pl/px/unmet; decq with rs pricing;
    rendep decode cp upstream (extra rename stage
    -> DA); go: OI sends widest series nets. rob_w head fixed 31.9 (7aeb62a).
--0. 11-03 sweep PUSHED ae1a316 (full gate, ~1 h 10 min; make-release fixed by TI a933e8d).
+-0. 11-04 sweep PUSHED ebd3692 (92 commits, 5 branches; full gate ~1.5 h); release
+   rejected (TI pushed release meanwhile): re-parented the snapshot on origin/release
+   (70ccdf7), raised make-release's stale-parent bug to TI (OA rev 332).
+   11-03 sweep PUSHED ae1a316 (full gate, ~1 h 10 min; make-release fixed by TI a933e8d).
    11-02 sweep PUSHED cbe7bad (full gate PASS, cg 6088 s, ngd 4150 s), with
    OI's split and TI's heavy-unit fix 16ab8ae merged. Gates: run detached
    (setsid bg-run) AND a run_in_background waiter loop (2 h cap, re-arm);

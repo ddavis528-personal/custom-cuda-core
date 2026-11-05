@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-03 (after 1f7c642). Keep this current at every task's end; it is what
+Updated 2026-11-04 (after OI-111). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -36,8 +36,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 269, OA 326, RA 60, IS 188, TI 300, OI 271, CP 152, DA 104
-(sweep 11-03 10:16). RI tab 8e4547bc-c469 not yet bookmarked: read it next sweep.
+Conventions 17, AR 285, RA 64, IS 189, TI 328, OA 342, OI 287, CP 152, DA 108, RI 12
+(sweep 11-04 11:15; RI tab 8e4547bc-c469 bookmarked).
 Pings: next Friday 11-06. Settings reinstalled 11-03 (DA approved); check passes,
 the compact hook printed this handoff.
 
@@ -86,30 +86,90 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
--6. FANOUT ENFORCEMENT, TOP PRIORITY (DA 11-04, recorded OI rev 265; TI builds the
-   check + ratchet seeded from 5e81e19, OA orders uArch by later invasiveness, rev 321).
-   5e81e19 PUSHED 11-04 01:10 (SCOPED PASS; main tree clean). Pricing worktree
-   scratchpad/wtm, branch oi-price-knobs: ff3e97f knobs, 5193feb model fixes (both
-   unpushed; back them up). OA batch results (OI revs 266-270):
-   - freelist scan (a) TAKEN (OA 324): exact model fl_two_step (FreeVec::refill2, default
-     ON in wtm), audit 0.00% to the cycle. RTL in wtm f7f6eff (on gate-scratch/OI):
-     registered bank candidates OCQ + search start OSP, inbuf cleared a cycle late from
-     registered pop mask pr (pr_v-masked). Fanout NGD f-f gpr 24.8, gsec 25.0, pred 24.3;
-     bench PASS 3 pools, control one-step caught. NEXT: check-cg on 3 units (log
-     ~/ccv-logs/oi-cg-fl.log; check-cg OOM-killed once beside a bench: run alone),
-     25-seed bench, rename run-rtl sections, ooe-test, merge to main, gate-push, tell OA.
-   - OA 325/326 (answered OI 271): rs order = (1) copies probe (valid by class half, grant
-     one-hot by row group) with fanout, (2) if short price rs_free_lag 1 + 2 rows/class
-     (RCU 32, MIU 17), 4 settings, flops/row, (3) DA beside decq. Then ooe_rat's path
-     through ratread with fanout, in parent (>25 joins plan). TI told 5e81e19 landed.
-   - rs a cycle ahead: CORRECTED +1.1-1.6% audit (rev 270; old knob missed renCredits,
-     now lagged in model). PAUSED: OA to rule DA vs copies probe (valid 26 -> Sklansky
-     131/207 -> rows). RTL design ready (2A index cands/class, port k takes n_q+k).
-   - decq: to DA via OA rev 323 (OA recommends 15 entries + lag 1: audit -1.5..-2.2%;
-     14+lag +0.6%; (ii) pointers out). S1: (a) -0.03%, (b) +0.06% (vadd4 +13%).
-   - TI rev 298 answered (OI rev 267): no-rep-lead is a seed count, 12 seeds in 83c2900.
-   Then: go 25.8 + sched 2191 MiB (oi-go-sched e1487ea), OA steps 2-5 (rendep probe,
-   rob_w fill, go report, copies), then ROB slices 3-6.
+-7. STATE 11-05 ~04:00 UTC. PUSHED 497efb8 (SCOPED PASS): RA-39 (c) payload store + issue
+   register (dca9c5f), its lint/stage-tag fixes + ooe_rs heavy unit (TI 327), RI-12 fix
+   (release drops the warp's queued uops, invariant, testReleaseDrop, control
+   keep-released-uops, check-ooe-unit 47 controls, TI 328). OI rev 287 answered RI-12 (RI + TI
+   notified; RI to merge OI's branch). Verified on RI's 600004a in scratchpad/wri (provswap 0
+   check failures with the fix).
+   NEXT: RI-11 pricing (OA 340) in worktree scratchpad/wtx (branch oi-ri11-price, AR params
+   applied, NEVER push its params): rx_lag knob (bits 1 alloc, 2 demote, 4 syu rel, 8 rcu done,
+   16 hint, 32 cmpl, 64 dec uop) in sim/ooe (uncommitted; also a --dbg-partial debug mode in
+   ooe_test.cpp main to remove). wtx also has the RI-12 fix (already pushed via wtp). Plan: S1 +
+   audit at base, AR, AR+rx_lag=127, each bit alone; top 2 by cost; coremark128 (>2h); report to
+   DA. Scripts: scratchpad/price/run.sh, price/s1.sh, skel-build.sh (point it at the tree).
+   S1 + audit DONE (scratchpad/ri11/summary.txt): ar +1.66% gm over base; all flops +3.49% over
+   ar; cmpl (32) +1.60%, dec uop (64) +1.29%, rcu done (8) +0.62% (trips V-35: done bound +1),
+   others 0. CoreMark SENT TO RH 11-05 (send_message, 6 configs, warm, patches inline: ri11/
+   rxlag.patch + arparams.patch on 497efb8). Long runs go to RH (DA, 11-05): coremark needs
+   CCV_MLC_WARM (cold floods dec_ooe_uop response_within_n) and peaks at 12.4 GB.
+   When RH answers: OI row to OA (Needs OA, DA) with S1, audit, CoreMark; notify OA.
+   Then: lane-slot leads late 2:1; R guard pred off R's pick; phys_src0/1 from issue register;
+   OI-114 floor term; OI-112 due 11-06; Friday pings 11-06.
+-6. FANOUT ENFORCED (TI b11e60f, ratchet rtl/ngd-ratchet.json "fanout"; caps only fall,
+   remove an entry once its path meets 25). State 11-04 ~13:30 UTC:
+   - Freelist: scan (a) 32ba2d0, caps 9718b81, gsec retime (wr_q flop, no reuse cycle lost)
+     PUSHED 013ed10; freelist has no caps left. OI rev 275 (OI-108) told OA, no notice.
+   - decq PUSHED 41ebad9; sched (b) PUSHED 8ba738f (ret_hold 2; ooe_sched brk/older_m fanout caps
+     dropped). OI-109/111 closed by OI-113 (rev 280).
+   - RA-11 (OI-114, rev 281, notices to OA and TI): fits_stale 6 at PHYS 160 is the go's floor
+     term: a slot below its floor gets unmet floor from held BEFORE its own in-flight take, so
+     the allowance is one over the credit (dump: held 45/43/44/25, want 28, 3 free, allowance 4).
+     Check is right; model and ooe_go share the term. Proposed fix max(0, want-held-took);
+     OA RULED (OA rev 334): form taken; took = every unseen take; assert in model + go_tb; fit go's
+     fanout caps (else register the term); model + ooe_go land together, GoLog compare unchanged;
+     then TI re-runs 160 (coremark128 + a 4-warp kernel, S1, audit); V-N@128 after that.
+     DESIGN NOTE: RTL unmet_g = rem_of(ufg, tq_gs) (ooe_rename.sv:848) ALREADY subtracts the lagged
+     take; the model's unmetFloor matches. The missing take is the go's OWN take in the split cycle
+     (split at rename() start, before takes; the dump: split from held 24, take same cycle -> 25).
+     It is the go's output, so 'register off the go path' doesn't apply. Build it like fits_s[k]:
+     per own take k, floor term max(0, unmet - GPR writes in the warp's first k heads) (constants
+     from the heads alone), selected by the take next cycle; model per k too. Price NGD vs caps. Then: fix model + ooe_go (price NGD), V-N at 128 (one
+     firing, untraced). Repro worktree scratchpad/wtr: params 160/12/44, debug dump in
+     ooe_core.cpp (RA11 lines), run build/skel/ccv-skel --kernel
+     build/bench-oracle/coremark128/oracle.jsonl (~25 min to first firing; full run >2h).
+     time-bench.sh stops at its chwidth selftest on coremark128 (told TI).
+   - RA-39 (c): the OOE RTL has NO payload-read stage yet (no RS payload store, no issue
+     payload/lead). Probe test/ooe/probes/rlead_probe.sv in worktree scratchpad/wtl (branch
+     oi-rlead-probe, unit added to its cg-units.json): ooe_sched + names flops + R lead mux
+     into a flop beside the grant register: 38.8 NGD flop-flop (sched alone 30.5). OI-115 (rev 282,
+     notice to OA): lead in select's cycle cannot fit; options (1) valid moves a cycle, (2) lead
+     same-cycle for RCU, (3) predicted lead (no). OA rev 335: probe (0), lead muxed off R's own
+     pick. DONE, OI-116 (rev 283, FYI OA/RA): rlead_only 18.7 NGD (13.9 w/o fanout), ~23.7 with
+     input arrivals; rlead_probe 26.4 vs sched alone 26.6 (8ba738f). Probes uncommitted in wtl
+     (ooe_select_rp.sv, rlead_probe.sv, rlead_only.sv + temp units). NEXT: lane slots (RA-31
+     fields) main + fallback pick with late 2:1: export ooe_pick's single-section fallback pick
+     in a probe copy; then build ooe_rs payload store + payload-read mux + lead mux. RA-39 (c)
+     RTL date moved to 2026-11-09.
+     OA rev 336: OPTION (2) TAKEN: no R lead / lead_r_src0/1 in OOE; phys_src0/1 straight from
+     the issue register, OOE out budget 7 (record in the issue register owner's ngd.json). OI-117
+     (rev 284, FYI OA): lane-slot leads off own picks: sched 28.3 (late 2:1), 27.5 (2:1 after
+     flop), 26.6 main only, vs sched alone 26.6, cap 30.5; 20.7 without fanout in all; kept
+     copies 28.6 (no help). Final-grant form alone 34.9 vs late 25.7. R guard pred = rlead form.
+     Probes in wtl (lslot_probe.sv LATE 1-4, lslot_only.sv, ooe_pick_fp.sv, ooe_select_lp.sv).
+     DONE dca9c5f (wtp, branch oi-payload; gating): ooe_rs payload store (pst/hst staged on
+     req_en, written an edge late via kept lgp, pw_en), issue register iss_v/iss_pay off
+     gnt_cq01h & home, on iss_en <= sched gnt_l_cq03h, a SUPERSET lead (kept rq_l copy |
+     gnt_out | force_l | rrun_l; gnt_l_covers assert); own reset rst_p_r01h (rst_r01h fanout).
+     NGD: rs 29.4 (= cap), sched 26.7 (caps all hold, no NGD-7). CG pass both (sched med 79%).
+     Trio 3 seeds: 7234 grants = issued slots, 0 mismatches; controls pay-port/no-home caught.
+     Rejected sched variants: direct gnt_en (NGD-7), copies of ready too (vel 28.4 > 28.2),
+     separate copy enables (code in 31.3). OI row on the payload store still to write.
+     NEXT RTL: lane-slot leads in the late 2:1 form, R guard pred off R's pick, phys_src0/1
+     from the issue reg. RA-39's 6 out budget LAPSED (DA interface flops, RI-11; OA 339).
+   - RI-11 (DA: interface module defaults to a flop each side; AR 285: HOP/credits unchanged,
+     LANE 7->8, SFU 12->13, L1_WAKE 16->17, L1_CMPL 18->19). OA 340 asks OI: audit OOE inputs
+     with logic before first flop (cmpl+hint wakes, rcu done, RAU, decq enq, ckpt/redirect);
+     price those latencies + OOE moves, and zero-cycle on the top 2 links, for DA. Read OA 340.
+   - OI-112 (OI rev 279, re TI 308/309, notice sent) PROMISED 2026-11-06: imm_kind 6 call
+     link (RA-30/RI-7), ooe_wake cls/kind arrival-2 cone (RA-31 base 1), RA-39 (c)
+     lead_r_src0/1 from RS names (TI 39a1861 on ccr-183cc441-doowtf; merge it). sched (b)
+     83c2900 (46b478e in wts) is UNPUSHED: gating next.
+     TI tab bookmark 309.
+   - RI-7 (answered OI rev 277): RA-18 call link imm_kind 6 OOE substitution is OI's, queued
+     after the fanout cleanup; when it lands, row with rev + notify RI.
+   - Then: rs copies probe (OA 325) -> ratread path (OA 326) -> RA-39 (b) lead_r_src0/1
+     (OA 329) -> go 25.8 path + sched peak -> OA steps 2-5 -> ROB slices 3-6.
 -5. STATE 11-03 20:00: main tree gate-push (scoped, detached, log ~/ccv-logs/oi-push-1955.log)
    of c8794c1 ufq + 0d660fa (release thresholds late; rob_w NGD 25.1 -> 23.1, fo 31.6),
    1659753 prodmap, 74d070c ret_hold 2 knob, fe68bcc handoff, 91313cb audit env knobs.

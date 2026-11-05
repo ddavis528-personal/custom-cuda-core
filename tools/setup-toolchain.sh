@@ -18,6 +18,7 @@ $SUDO apt-get install -y --no-install-recommends \
   yosys \
   cvc5 \
   build-essential \
+  clang \
   cmake \
   ninja-build \
   python3 \
@@ -70,7 +71,7 @@ fi
 
 echo
 echo "== versions =="
-for t in verilator iverilog yosys sby cvc5; do
+for t in verilator iverilog yosys sby cvc5 clang++; do
   printf '  %-12s ' "$t"
   flag=--version; [ "$t" = iverilog ] && flag=-V   # Icarus has no --version
   if command -v "$t" >/dev/null 2>&1; then

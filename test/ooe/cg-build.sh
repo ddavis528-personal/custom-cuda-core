@@ -29,7 +29,7 @@ case "$unit" in
       "$PWD/rtl/ooe/ooe_age.sv" "$PWD/test/ooe/age_tb.cpp" ;;
   ooe_rs)
     nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
-    vl ooe_rs "-GN=$n -GNR=$n_rcu -GA=$width -GNC=$nc" "-DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width -DRS_NC=$nc" \
+    vl ooe_rs "-GN=$n -GNR=$n_rcu -GA=$width -GNC=$nc -GPW=176" "-DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width -DRS_NC=$nc -DRS_PW=176" \
       "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/test/ooe/rs_tb.cpp" ;;
   ooe_decq)
     slots=$(val CCV_TIER1_WARPS) dq=$(val CCV_P_DECQ) dqw=$(val CCV_P_DECQ_WARP_MAX)

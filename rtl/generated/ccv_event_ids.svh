@@ -18,7 +18,7 @@
 // genuinely unused parameter in hand-written RTL still gets caught.
 /* verilator lint_off UNUSEDPARAM */
 localparam int CCV_SCHEMA_VERSION = 2;
-localparam string CCV_SCHEMA_HASH = "727da17b3c4367e2";
+localparam string CCV_SCHEMA_HASH = "2e08856f4ac360b5";
 
 localparam int CCV_UNIT_UNKNOWN = 0;
 localparam int CCV_UNIT_TESTBENCH = 1;
@@ -91,6 +91,36 @@ localparam int CCV_EV_OOE_DEMOTE_TRIGGER = 30;
 localparam int CCV_EV_OOE_CROSS_GROUP_SQUASH = 31;
 // A masked load issues its copy-only op (CCV_OP_PRF_COPY, A-38). OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, "Events owed to the schema").
 localparam int CCV_EV_OOE_COPY_ISSUE = 32;
+// A GPR row written; c is port << 4 | section_mask. Ports: LW 0, SW 1, MW 2, RW 3, RS 4. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_GPR_WRITE = 33;
+// A predicate row written. Ports: PL 0, PM 1, PR 2, PC 3, PG 4. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_PRED_WRITE = 34;
+// A branch resolved in R; taken is branch_mask != 0. aux as RI's model defines it (RI to document in docs/rcu-impl.md). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_BRANCH = 35;
+// RCU taking an MIU predicate write (MIU to RCU) as a guard forward: a the issue slot, b the MIU slot, c the predicate row (RI-2 (d)). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_GUARD_FWD = 36;
+// An R source row forwarded from MIU (RA-39 fix (i), OA's rev 329). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_RSRC_FWD = 37;
+// An operand taken from a bypass rather than the PRF; c is select | section_mask << 8. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_BYPASS_SEL = 38;
+// A kill's drain starts. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_KILL_DRAIN = 39;
+// RCU acknowledges a kill. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_KILL_ACK = 40;
+// A migration's RAU notice and OOE map paired. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_MIG_PAIR = 41;
+// A migration row sent (demotion). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_MIG_ROW_OUT = 42;
+// A migration row written (restore). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_MIG_ROW_IN = 43;
+// A migration's next row waits: reason 0, R holds R2 or RW; 1, no rcu_pca_mig credit or a stall. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_MIG_WAIT = 44;
+// The warp at the restore FIFO's head waits for its pairing. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_RESTORE_HOLD = 45;
+// A warp's restore completes. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_RESTORE_DONE = 46;
+// RCU quiesces (its block gate may close) or turns busy again. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.
+localparam int CCV_EV_RCU_IDLE = 47;
 
 // Trace identity layout. Only meaningful under CCV_TRACE.
 localparam int CCV_UID_SEQ_LSB = 0;

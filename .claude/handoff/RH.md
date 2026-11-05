@@ -45,9 +45,27 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-(none). Expected next (OI, 2026-11-01): TI's split gate (OI-101, 7782ce0). On a
-commit OI sends as a bundle, run `verify.sh --only cg`, then `gate-export.sh
-cg.tgz --cache`. Exact steps will come with the bundle.
+- OI's RI-11 CoreMark pricing (2026-11-05 04:47Z): 497efb8 plus the patches in
+  rh-jobs/ri11/ (rxlag.patch; plus arparams.patch for ar), in worktrees
+  /home/user/rh-ri11-base and /home/user/rh-ri11-ar. Script rh-jobs/ri11/run.sh
+  (resumable), summary ~/ccv-logs/ri11/summary. Configs: base, ar, ar127, ar32,
+  ar64, ar8 (CCV_OOE_CONFIG=rx_lag=N); coremark128 then coremark32; warm, with
+  stats. V-35 lines are filtered and counted per run (.v35). One line per config
+  to OI: finished, from_fetch, issue_groups, check_failures minus V-35,
+  redirect_wait, st_ld_wait. Never push; the patches are an experiment.
+- TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
+  for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
+  New jobs start from b341691 (TI's pin of e533ecd).
+  - DONE and sent: J1 (PHYS_REGS sweep; fits_stale 6 fires at 160/128), J5
+    (sweep-fair PASS), J2 (cold hangs: cm128 at dec_ooe_uop; cm32 and pl32
+    silent), J3 (vadd16 needs full_rows=1; coremarkpl; chwidth hold under 5%
+    on every real-length kernel).
+  - J4 interim DONE: coremark128 at 512 KiB on b341691 (worktree
+    /home/user/rh-j4), 7,924,133, clean, 7.2 GB, sent. The CTA-queueing and
+    gen-oracle -load parts wait on TI's code; TI will say when they land.
+- Run notes: coremarkpl128 peaks at 14 GB and needs swap past 15 GB (disk
+  allowing). A cold run can hang silently, with no output: compare against
+  the warm time and kill it. Delete bench oracles after each job.
 
 ## Done
 - Gate for OI's b7cb9fb (11-01): run 1 died at disk-full, and OI cancelled run 2

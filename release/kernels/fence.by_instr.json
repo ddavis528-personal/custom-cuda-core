@@ -2416,7 +2416,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 49,
+   "ts": 48,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -2432,7 +2432,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 51,
+   "ts": 50,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -2448,7 +2448,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 51,
+   "ts": 50,
    "pid": 1001,
    "tid": 0,
    "args": {
@@ -3152,6 +3152,38 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
+   "ts": 52,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 6,
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_RETIRE",
+   "cat": "arbitration_sensitive",
+   "ph": "i",
+   "s": "t",
+   "ts": 54,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "warp_id": 0,
+    "rob_slot": 2,
+    "active_mask": 4294967295
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
    "ts": 53,
    "pid": 1004,
    "tid": 0,
@@ -3225,38 +3257,6 @@
     "channel_id": 9,
     "payload_lo": 0,
     "payload_hi": 2154946560
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 53,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 6,
-    "payload_lo": 0,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_RETIRE",
-   "cat": "arbitration_sensitive",
-   "ph": "i",
-   "s": "t",
-   "ts": 55,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "warp_id": 0,
-    "rob_slot": 2,
-    "active_mask": 4294967295
    }
   },
   {
@@ -3647,7 +3647,7 @@
  "displayTimeUnit": "ns",
  "ccv": {
   "schema_version": 2,
-  "schema_hash": "727da17b3c4367e2",
-  "events": 228
+  "schema_hash": "2e08856f4ac360b5",
+  "events": 238
  }
 }

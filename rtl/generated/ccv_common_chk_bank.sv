@@ -774,28 +774,28 @@ module ccv_common_chk_bank (
   ccv_common_chk_atomic #(.N(4)) u_rcu_miu_addr_atomic (
     .clk(clk), .rst_n(rst_n), .enable(1'b0 | force_atomic),
     .valid(valid[101:98]), .credit(credit[101:98]));
-  ccv_common_chk_credit #(.PAYLOAD_W(1114), .CHANNEL(8), .FIXED_LAT(1)) u_miu_rcu_data_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1114), .CHANNEL(8), .LEAD_MASK(1114'h7fffffff800000007ffff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000), .FIXED_LAT(1)) u_miu_rcu_data_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[102]), .ch_credit(credit[102]), .ch_stall(stall[102]),
     .ch_payload(payload[31071:29958])
 `ifdef CCV_TRACE
     , .ch_tid(tid[6591:6528])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1114), .CHANNEL(8), .FIXED_LAT(1)) u_miu_rcu_data_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1114), .CHANNEL(8), .LEAD_MASK(1114'h7fffffff800000007ffff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000), .FIXED_LAT(1)) u_miu_rcu_data_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[103]), .ch_credit(credit[103]), .ch_stall(stall[103]),
     .ch_payload(payload[32185:31072])
 `ifdef CCV_TRACE
     , .ch_tid(tid[6655:6592])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1114), .CHANNEL(8), .FIXED_LAT(1)) u_miu_rcu_data_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1114), .CHANNEL(8), .LEAD_MASK(1114'h7fffffff800000007ffff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000), .FIXED_LAT(1)) u_miu_rcu_data_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[104]), .ch_credit(credit[104]), .ch_stall(stall[104]),
     .ch_payload(payload[33299:32186])
 `ifdef CCV_TRACE
     , .ch_tid(tid[6719:6656])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1114), .CHANNEL(8), .FIXED_LAT(1)) u_miu_rcu_data_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1114), .CHANNEL(8), .LEAD_MASK(1114'h7fffffff800000007ffff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000), .FIXED_LAT(1)) u_miu_rcu_data_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[105]), .ch_credit(credit[105]), .ch_stall(stall[105]),
     .ch_payload(payload[34413:33300])
 `ifdef CCV_TRACE
@@ -974,28 +974,28 @@ module ccv_common_chk_bank (
   ccv_common_chk_atomic #(.N(4)) u_spm_miu_rsp_atomic (
     .clk(clk), .rst_n(rst_n), .enable(1'b0 | force_atomic),
     .valid(valid[127:124]), .credit(credit[127:124]));
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16)) u_miu_dcu_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
     .ch_payload(payload[46807:45596])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16)) u_miu_dcu_req_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[129]), .ch_credit(credit[129]), .ch_stall(stall[129]),
     .ch_payload(payload[48019:46808])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8319:8256])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16)) u_miu_dcu_req_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[130]), .ch_credit(credit[130]), .ch_stall(stall[130]),
     .ch_payload(payload[49231:48020])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8383:8320])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16)) u_miu_dcu_req_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[131]), .ch_credit(credit[131]), .ch_stall(stall[131]),
     .ch_payload(payload[50443:49232])
 `ifdef CCV_TRACE
@@ -1148,14 +1148,14 @@ module ccv_common_chk_bank (
     , .ch_tid(tid[9727:9664])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(6), .CHANNEL(34)) u_rau_rcu_mig_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(6), .CHANNEL(34), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_rau_rcu_mig_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[152]), .ch_credit(credit[152]), .ch_stall(stall[152]),
     .ch_payload(payload[62726:62721])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9791:9728])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(222), .CHANNEL(35)) u_ooe_rcu_map_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(222), .CHANNEL(35), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_ooe_rcu_map_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[153]), .ch_credit(credit[153]), .ch_stall(stall[153]),
     .ch_payload(payload[62948:62727])
 `ifdef CCV_TRACE
