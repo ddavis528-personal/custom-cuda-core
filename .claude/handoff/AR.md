@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 291, OA 341, TI 325, RA 79 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 108,
+  record): AR 292, OA 341, TI 332, RA 79 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 108,
   Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -208,6 +208,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    per-instance 2% (repeater stages keep own allowance, Daniel 10-19 rule);
    DECIDED by Daniel (DA tab rev 108, "this is where we pay for lead fields -
    no free lunch"); TI applies in check-cg and the rule text.
+   TI 332 (f61983f): applied; OOE over its 2% by 196 (leads 375: 231 in,
+   144 out). AR row 292: source-end lead charged to the sender (confirmed);
+   ASKED DANIEL whether a lead channel's source end may go no-flop where the
+   sender's own gated lead register drives the port at 0 NGD (saves OOE 144,
+   RCU 487, MIU 204; OOE then over by 52). Record his answer as a DA row.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
