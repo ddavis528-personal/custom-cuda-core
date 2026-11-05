@@ -70,8 +70,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 295, OA 345, TI 334, RA 79 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 108,
-  Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
+  record): AR 295, OA 345, TI 334, RA 82 (tab 9851686b-2b0a), RI 15, IS 189, CP 154, OI 290, DA 108,
+  Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
+  RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
   ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
