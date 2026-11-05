@@ -200,8 +200,22 @@ ver() { "$@" 2>&1 | head -1; }
 } >"$STAGE/SNAPSHOT.md"
 
 # -- 4. commit it on the release branch --------------------------------------
-PARENT=$(git rev-parse -q --verify "refs/heads/$BRANCH" ||
-         git rev-parse -q --verify "refs/remotes/origin/$BRANCH" || true)
+# The parent is the release branch as the remote holds it now, fetched
+# here, not before the gate: another agent's snapshot may have landed while
+# ours gated (OA-332, fe459dc then 70ccdf7). A local branch that only lags
+# the remote's is stale and passed over; one with snapshots the remote lacks
+# (a local-only run) stays the parent, so those are kept.
+git fetch -q origin "$BRANCH" 2>/dev/null || true
+LOCALREL=$(git rev-parse -q --verify "refs/heads/$BRANCH" || true)
+REMOTEREL=$(git rev-parse -q --verify "refs/remotes/origin/$BRANCH" || true)
+if [ -n "$REMOTEREL" ] && { [ -z "$LOCALREL" ] ||
+     ! git merge-base --is-ancestor "$REMOTEREL" "$LOCALREL"; }; then
+  [ -z "$LOCALREL" ] || git merge-base --is-ancestor "$LOCALREL" "$REMOTEREL" ||
+    die "local $BRANCH and origin/$BRANCH have diverged; reconcile them first"
+  PARENT=$REMOTEREL
+else
+  PARENT=$LOCALREL
+fi
 rm -rf "$WT"
 git worktree add --detach "$WT" "$SHA" >/dev/null 2>&1 || die "worktree failed"
 (

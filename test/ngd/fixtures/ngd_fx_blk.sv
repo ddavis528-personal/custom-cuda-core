@@ -58,6 +58,16 @@ module ngd_fx_blk_comb (
   assign o = q[0] & q[1];
 endmodule
 
+// One gate between an input and its flop: inside the old 12-NGD port budget,
+// but a crossing carries no logic (AR's rev 285 (5)), so the block fails.
+module ngd_fx_blk_onein (
+  input  logic       clk,
+  input  logic [1:0] i,
+  output logic       o
+);
+  always_ff @(posedge clk) o <= i[0] & i[1];
+endmodule
+
 module ngd_fx_blk_deepin (
   input  logic        clk,
   input  logic [63:0] i,

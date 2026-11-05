@@ -25,8 +25,8 @@ every message.
 ## 1. The kernel, from the compiler
 
 `c[i] = a[i] + b[i]` for 32 threads. The core pins one compiler snapshot,
-`tools/compiler.lock`: the `release` branch at `d9ddd2c` (source
-`f5fa030`). The kernel is that snapshot's own hand-scheduled listing,
+`tools/compiler.lock`: the `release` branch at `e533ecd` (source
+`45ce995`). The kernel is that snapshot's own hand-scheduled listing,
 test/elementwise.s in the compiler repository, and `test/kernels/vadd/kernel.cfg`
 gives the launch block and memory it runs against.
 
@@ -294,13 +294,13 @@ in the same cycle, and gets 32 results back 4 cycles later:
     111  EV_OOE_CANCEL_REPLAY           ooe          
     111  ccv_rcu_lane_ops               rcu  -> lane   x32
     115  ccv_lane_rcu_res               lane -> rcu    x32
-    117  ccv_rcu_ooe_done               rcu  -> ooe       
+    116  ccv_rcu_ooe_done               rcu  -> ooe       
     133  EV_ISSUE                       ooe          
     134  ccv_ooe_rcu_issue              ooe  -> rcu     x4
     136  ccv_rcu_lane_ops               rcu  -> lane   x32
     140  ccv_lane_rcu_res               lane -> rcu    x32
-    142  ccv_rcu_ooe_done               rcu  -> ooe       
-    144  EV_RETIRE                      ooe          
+    141  ccv_rcu_ooe_done               rcu  -> ooe       
+    143  EV_RETIRE                      ooe          
 ```
 
 The trace converts to Perfetto (`tools/trace2perfetto.py`), with a track per
@@ -333,7 +333,7 @@ otherwise:
     .core_clk(core_clk),
     .rst_n(rst_n),
     ...
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
     ...
 ```
@@ -382,7 +382,7 @@ skeleton's:
 ```
 SVHOST shims=46/46 skewed=none
 KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
-TRACES records=734/734 equal=yes byte_identical=no differing_cycles=0
+TRACES records=767/767 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -408,7 +408,7 @@ SV top under `CCV_CHECK`.
 One of them: slot 0 of the channel from section 5.
 
 ```systemverilog
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16)) u_miu_dcu_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
     .ch_payload(payload[46807:45596])
 `ifdef CCV_TRACE
@@ -425,7 +425,7 @@ now (section 10), and caught in simulation by the checker's end-of-test
 check:
 
 ```
-[20000] %Error: ccv_common_chk_credit.sv:309: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
+[20000] %Error: ccv_common_chk_credit.sv:317: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
 SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=209728 received=209728 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=54 credits_home=161 idle_slots=0 violations=18
 ```
 
@@ -484,6 +484,7 @@ a script is one. Its sections:
 - Stage 3 -- skeleton (S0: plumbing)
 - Stage 3 -- skeleton (S1: vadd)
 - Stage 4b -- OOE model unit tests (sim/ooe/)
+- RCU model unit tests (sim/rcu/; RI-2)
 - Stage 4c -- OOE RTL (rtl/ooe/)
 - SV top -- rtl/top/ (generated, tracked)
 - Formal proofs -- one credited link, and the block clock gate
@@ -509,4 +510,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 4e6370de7ff80ada (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: dab6b22cc9c7bd49 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

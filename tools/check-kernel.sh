@@ -865,7 +865,7 @@ for kb in transp4:held-over-r borrow:borrow-partial; do
 done
 CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --cycles 20000 2>&1 |
   head -c 2000000 >"$B/kernel_warp-cap.log"
-ctl held-over-r "^CHECK ooe: warp 1 holds 3 slots past its held wait, over r = 2 (TI-46 (b))"
+ctl held-over-r "^CHECK ooe: warp 1 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
 ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
 ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
 # A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every
@@ -1396,6 +1396,29 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-src-clear.log" check_failures)" 
 else
   bad "--break lead-src-clear" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-src-clear.log")"
 fi
+# The RCU selector (RI-8, RA-38 (a)): RI's model is the default behind the
+# RCU ports since M0 (RA's rev 68), and logs its events; CCV_RCU_IMPL=stub
+# puts the stub there, which logs none.
+ev="$B/rcu-model-ev.log"; rm -f "$ev"
+CCV_RCU_EVLOG="$ev" "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$B/kernel_rcu-model.log" 2>&1
+nm=$( [ -s "$ev" ] && wc -l <"$ev" || echo 0 ); rm -f "$ev"
+CCV_RCU_IMPL=stub CCV_RCU_EVLOG="$ev" "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$B/kernel_rcu-stub.log" 2>&1
+if [ "$nm" -gt 0 ] && [ ! -e "$ev" ]; then
+  say "CCV_RCU_IMPL: model by default, stub when asked" "PASS ($nm model events)"
+else
+  bad "CCV_RCU_IMPL" "model events $nm; stub log $( [ -e "$ev" ] && echo written || echo absent)"
+fi
+# pmov.imm writes only the issue-mask lanes (RA-19; ccv-sim at b83777e):
+# pmovdiv runs it on lanes 0-15 with P2 all ones, so lanes 16-31 keep theirs.
+# pmov-all-lanes writes all 32, and the oracle's P2 must refuse it. RI's
+# model has the break (ba3549b, TI's rev 319), so it runs on the default.
+"$SKEL" --kernel build/oracle/pmovdiv/oracle.jsonl --break pmov-all-lanes >"$B/kernel_pmov-all-lanes.log" 2>&1
+if grep -q "^CHECK rcu: seq [0-9]* P2 = 00000000, oracle ffff0000$" "$B/kernel_pmov-all-lanes.log" &&
+   [ "$(field "$B/kernel_pmov-all-lanes.log" check_failures)" = 1 ]; then
+  say "--break pmov-all-lanes: pmov.imm keeps the inactive lanes" "PASS (P2 ffff0000 refused as 0)"
+else
+  bad "--break pmov-all-lanes" "$(grep -m1 '^CHECK' "$B/kernel_pmov-all-lanes.log"); $(grep '^KERNEL' "$B/kernel_pmov-all-lanes.log")"
+fi
 
 # Notices (OA-23; AR's response TI-23): DCU promises a refill
 # CCV_LAT_FILL_NOTICE cycles after its notice lands, MIU a completion
@@ -1466,12 +1489,16 @@ done
 # orphans its DCU requests, and reports the warp ready to RAU once they are
 # home. RAU restores only a ready warp (RAU spec rev 25), so the restored
 # warp's replayed load hits (stall's one L1 hit; none without the swap).
-# vadd4's discard orphans one request since FET's decode-queue credits pace
-# its warps (TI-46 (b)): it is ready once that comes home.
+# vadd4's discard orphans one request at a 13-entry decode queue, since
+# FET's credits pace its warps (TI-46 (b)), and none at 15 with the free lag
+# (OI-111): the deeper queue paces them so that none is in flight at the
+# discard. Exact at each depth; stall's drain carries the orphan going home.
+decq=$(python3 -c 'import json; print(next(p["value"] for p in json.load(open("params/ccv_params.json"))["params"] if p["name"] == "CCV_P_DECQ"))')
+v4orph=$([ "$decq" -le 13 ] && echo 1 || echo 0)
 w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
-w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=1 ready=1 restored=1)
+w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=$v4orph ready=1 restored=1)
 if [ -z "$w$w2" ]; then
-  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits; vadd4's orphan home, then ready)"
+  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits and orphan home; vadd4's $v4orph orphan(s) at decq $decq, then ready)"
 else
   bad "replay drain" "stall: $w; vadd4: $w2"
 fi

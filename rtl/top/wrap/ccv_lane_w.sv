@@ -6,8 +6,10 @@
 
 // HARDENING WRAPPER ccv_lane_w: ccv_lane and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. An end
-// whose link has no stages here is connected straight through.
+// and links"). Nothing but instances and nets, like the top. Each end's
+// repeater holds the block's boundary flop (BOUNDARY 1) and its link's
+// stages; a no-flop end (params/links.json no_flop) whose link has no
+// stages here is connected straight through.
 //
 // A HARD-REUSE TEMPLATE (params/links.json hard_reuse): its stages
 // are fixed here, so every instance that holds the same is this one
@@ -64,7 +66,7 @@ module ccv_lane_w (
 `endif
   );
 
-  // ccv_rcu_lane_ops, destination end
+  // ccv_rcu_lane_ops, destination end, no-flop (params/links.json no_flop)
   assign {b_rcu_lane_ops_valid} = {rcu_lane_ops_valid};
   assign {b_rcu_lane_ops_payload} = {rcu_lane_ops_payload};
   assign b_rcu_lane_ops_wake = rcu_lane_ops_wake;
@@ -73,7 +75,7 @@ module ccv_lane_w (
 `ifdef CCV_TRACE
   assign {b_rcu_lane_ops_tid} = {rcu_lane_ops_tid};
 `endif
-  // ccv_lane_rcu_res, source end
+  // ccv_lane_rcu_res, source end, no-flop (params/links.json no_flop)
   assign {lane_rcu_res_valid} = {b_lane_rcu_res_valid};
   assign {lane_rcu_res_payload} = {b_lane_rcu_res_payload};
   assign lane_rcu_res_wake = b_lane_rcu_res_wake;

@@ -96,14 +96,14 @@ module tb;
   logic [W-1:0] r_payload;
   logic [63:0]  r_tid;
 
-  ccv_common_rpt #(.STAGES(M), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt_a (
+  ccv_common_rpt #(.STAGES(M), .BOUNDARY(0), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt_a (
     .clk, .rst_n,
     .src_valid(s_valid), .src_payload(s_payload), .src_wake(s_wake),
     .src_credit(s_credit), .src_stall(s_stall),
     .dst_valid(m_valid), .dst_payload(m_payload), .dst_wake(m_wake),
     .dst_credit(m_credit), .dst_stall(m_stall),
     .src_tid(s_tid), .dst_tid(m_tid));
-  ccv_common_rpt #(.STAGES(N - M), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt_b (
+  ccv_common_rpt #(.STAGES(N - M), .BOUNDARY(0), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt_b (
     .clk, .rst_n,
     .src_valid(m_valid), .src_payload(m_payload), .src_wake(m_wake),
     .src_credit(m_credit), .src_stall(m_stall),

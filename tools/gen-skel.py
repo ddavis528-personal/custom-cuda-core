@@ -177,6 +177,20 @@ def build(d, pv, blocks):
         ci["hops"] = hops[i]
         ci["stages"] = ccv_links.total(hops[i])
         ci["src_stages"] = hops[i][0][1]
+    # Whether the source's end holds its interface flop, the boundary stage
+    # (params/links.json no_flop; tools/gen-top.py builds it): a stall then
+    # stops the sender a cycle later, which the checker's stall rule counts
+    # (SRC_BOUNDARY; AR's rev 289).
+    ends = {}
+    for c in chans:
+        for t in (c["src"], c["dst"]):
+            if t != "EXTERNAL":
+                ends.setdefault(t, set()).add(c["name"][4:])
+    nf = ccv_links.no_flop(sorted(ends), ends)
+    for ci in cinst:
+        c = ci["chan"]
+        ci["src_boundary"] = int(c["src"] != "EXTERNAL"
+                                 and (c["src"], c["name"][4:]) not in nf)
     return binst, chans, cinst, slot, pbit
 
 
@@ -434,6 +448,8 @@ def gen_sv(chans, cinst, nslots, pbits):
                        ".SRC_STAGES(%d)" % (2 * n, tmo, 2 * n, ci["src_stages"]))
             elif c["held"]:
                 lm += ", .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)"
+            if ci["src_boundary"]:
+                lm += ", .SRC_BOUNDARY(1)"   # the sender's interface flop
             L.append("  ccv_common_chk_credit #(.PAYLOAD_W(%d), .CHANNEL(%d)%s) "
                      "u_%s_s%d (" % (c["bits"], c["id"], lm, tag, s))
             L.append("    .clk(clk), .rst_n(rst_n), .ch_valid(valid[%d]), "
