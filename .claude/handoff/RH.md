@@ -45,6 +45,14 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
+- OI's RI-11 CoreMark pricing (2026-11-05 04:47Z): 497efb8 plus the patches in
+  rh-jobs/ri11/ (rxlag.patch; plus arparams.patch for ar), in worktrees
+  /home/user/rh-ri11-base and /home/user/rh-ri11-ar. Script rh-jobs/ri11/run.sh
+  (resumable), summary ~/ccv-logs/ri11/summary. Configs: base, ar, ar127, ar32,
+  ar64, ar8 (CCV_OOE_CONFIG=rx_lag=N); coremark128 then coremark32; warm, with
+  stats. V-35 lines are filtered and counted per run (.v35). One line per config
+  to OI: finished, from_fetch, issue_groups, check_failures minus V-35,
+  redirect_wait, st_ld_wait. Never push; the patches are an experiment.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
