@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 298, OA 349, TI 334, RA 84 (tab 9851686b-2b0a), RI 15, IS 189, CP 154, OI 291, DA 108,
+  record): AR 298, OA 350, TI 334, RA 84 (tab 9851686b-2b0a), RI 15, IS 189, CP 154, OI 291, DA 108,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
