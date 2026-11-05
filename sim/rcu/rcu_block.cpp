@@ -125,8 +125,8 @@ private:
     const char *fr = std::getenv("CCV_RCU_FULL_ROW");
     cfg.full_row = !(fr && std::string(fr) == "0");
     for (const ChanInst &ci : kChanInsts) {
-      if (ci.chan == chanId("ccv_ooe_rcu_issue")) cfg.issue_stages = std::max(cfg.issue_stages, unsigned(ci.stages));
-      if (ci.chan == chanId("ccv_rcu_ooe_done")) cfg.done_stages = std::max(cfg.done_stages, unsigned(ci.stages));
+      if (ci.chan == chanId("ccv_ooe_rcu_issue")) cfg.issue_stages = std::max(cfg.issue_stages, unsigned(ci.stages + ci.bnd_rx));
+      if (ci.chan == chanId("ccv_rcu_ooe_done")) cfg.done_stages = std::max(cfg.done_stages, unsigned(ci.stages + ci.bnd_rx));
     }
     return cfg;
   }

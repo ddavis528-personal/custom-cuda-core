@@ -19,7 +19,7 @@
     "",
     "hard_reuse: block types whose wrappers must stay hard-reusable. Their instances are grouped by what their wrapper holds -- each end's stages, each feedthrough's channel and stages -- and each group is one TEMPLATE with its stages fixed and no parameters: ccv_<type>_w for the group most instances are in, ccv_<type>_w_v1, _v2, ... for the rest, so a divergent split costs exactly as many templates as it has distinct wrappers, and no more. A type not listed gets one parameterised module (stages set by the top) and a module of its own per instance with feedthroughs.",
     "",
-    "no_flop: the channel ends built WITHOUT a boundary flop. Every other end's repeater holds one (rtl/phys/ccv_common_rpt.sv, BOUNDARY 1; Daniel, 2026-11-05): the block's own boundary register, built in its wrapper, the sender's last flop or the receiver's first, which CCV_RT_ABUT already counts (AR's rev 285). An entry names a block type (or a list) and \"channels\": \"all\" (the default) or a list of channel names without ccv_, with a why. Allowed only where the block's own register drives or takes the port with 0 NGD, which tools/check-ngd.py holds at the block's wrapper, or for a DPI host, whose posedge block is that register (AR's rev 287 (1)). \"all\" is refused for a block whose top is RTL: an RTL block replacing a stub takes the flops in that same change, never inheriting the stub's no-flop.",
+    "no_flop: the channel ends built WITHOUT a boundary flop. Every other end's repeater holds one (rtl/phys/ccv_common_rpt.sv, BOUNDARY 1; Daniel, 2026-11-05): the block's own boundary register, built in its wrapper, the sender's last flop or the receiver's first, which CCV_RT_ABUT already counts (AR's rev 285). An entry names a block type (or a list) and \"channels\": \"all\" (the default) or a list of channel names without ccv_, with a why. Allowed only where the block's own register drives or takes the port with 0 NGD, which tools/check-ngd.py holds at the block's wrapper, or for a DPI host, whose posedge block is that register (AR's rev 287 (1)). \"all\" is refused for a block whose top is RTL: an RTL block replacing a stub takes the flops in that same change, never inheriting the stub's no-flop. \"except\" (with \"all\" only) leaves the named channels flopped. A flopped RECEIVING end adds one cycle to its crossing, bnd_rx (AR's revs 300 and 301): a crossing is CCV_LAT_HOP + link_n + bnd_rx, in params/ccv_params.json's derives (bnd_rx('channel')) and in both hosts' links; a flopped sending end adds none, since it replaces the sender's own output register (AR's rev 285).",
     "",
     "Example entries (not active):",
     "  {\"channel\": \"fet_dec_instr\", \"route\": \"src:1 > dst:1\"}",
@@ -36,7 +36,6 @@
         "fet",
         "dec",
         "ooe",
-        "rcu",
         "lane",
         "miu",
         "spm",
@@ -49,7 +48,17 @@
         "exb"
       ],
       "channels": "all",
-      "why": "DPI hosts: every block's top is the C++ skeleton over DPI-C (rtl/top/dpi/) or a generated stub, whose posedge block is the boundary register at 0 NGD; dropping it would move both hosts' sampling and gain no contract (AR's rev 287 (1)). Each block leaves this list when its RTL top replaces the stub."
+      "why": "DPI hosts: every block's top is the C++ skeleton over DPI-C (rtl/top/dpi/) or a generated stub, whose posedge block is the boundary register at 0 NGD; dropping it would move both hosts' sampling and gain no contract (AR's rev 287 (1)). Each block leaves this list when its RTL top replaces the stub. RCU is the next entry."
+    },
+    {
+      "block": "rcu",
+      "channels": "all",
+      "except": [
+        "ooe_rcu_issue",
+        "lane_rcu_res",
+        "miu_rcu_data"
+      ],
+      "why": "Option 1 (AR's rev 301): RCU puts logic before its first register on these three inputs, so each takes the boundary flop in its wrapper and its crossing counts bnd_rx = 1 (AR's rev 300). Every other RCU end is taken or driven by a register at 0 NGD, as a DPI host's posedge block is (AR's rev 287 (1))."
     }
   ],
   "links": []

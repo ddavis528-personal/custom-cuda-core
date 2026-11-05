@@ -201,7 +201,7 @@ def no_flop(block_types, ends, links_path=None, root=ROOT):
     rtl = rtl_tops(root)
     for no, e in enumerate(d.get("no_flop", []), 1):
         where = "no_flop[%d]" % no
-        unknown = set(e) - {"block", "channels", "why"}
+        unknown = set(e) - {"block", "channels", "except", "why"}
         if unknown:
             errs.append("%s: unknown key(s) %s" % (where, ", ".join(sorted(unknown))))
         if not e.get("why"):
@@ -225,6 +225,14 @@ def no_flop(block_types, ends, links_path=None, root=ROOT):
             elif not (isinstance(chs, list) and chs):
                 errs.append("%s: channels must be \"all\" or a list" % where)
                 continue
+            exc = e.get("except", [])
+            if exc and e.get("channels", "all") != "all":
+                errs.append("%s: \"except\" goes only with channels \"all\"" % where)
+                exc = []
+            for c in exc:
+                if c not in ends.get(b, ()):
+                    errs.append("%s: except: %s has no end of channel %r" % (where, b, c))
+            chs = [c for c in chs if c not in exc]
             for c in chs:
                 if c not in ends.get(b, ()):
                     errs.append("%s: %s has no end of channel %r" % (where, b, c))
@@ -238,6 +246,32 @@ def no_flop(block_types, ends, links_path=None, root=ROOT):
         raise SystemExit("%s: %d problem(s)\n  %s"
                          % (os.path.relpath(p, ROOT), len(errs), "\n  ".join(errs)))
     return out
+
+
+def schema_ends(root=ROOT):
+    """Block type -> the channels (without ccv_) it has an end of, and
+    channel -> (src type, dst type), from schema/interfaces.json."""
+    with open(os.path.join(root, "schema", "interfaces.json")) as f:
+        chans = json.load(f)["channels"]
+    ends, sd = {}, {}
+    for c in chans:
+        sd[c["name"][4:]] = (c["src"], c["dst"])
+        for t in (c["src"], c["dst"]):
+            if t != "EXTERNAL":
+                ends.setdefault(t, set()).add(c["name"][4:])
+    return ends, sd
+
+
+def bnd_rx(links_path=None, root=ROOT):
+    """Channel (without ccv_) -> 1 when its receiving end holds the boundary
+    flop, else 0 (AR's revs 300 and 301): the term a crossing adds to
+    CCV_LAT_HOP + link_n, in params' derives and both hosts alike. A
+    flopped SENDING end adds nothing forward: it replaces the sender's own
+    output register (AR's rev 285)."""
+    ends, sd = schema_ends(root)
+    nf = no_flop(sorted(ends), ends, links_path, root)
+    return {ch: int(d != "EXTERNAL" and (d, ch) not in nf)
+            for ch, (s, d) in sd.items()}
 
 
 def total(hops):
