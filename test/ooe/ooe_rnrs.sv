@@ -112,6 +112,11 @@ module ooe_rnrs #(
     .row_prod_cq02h(row_prod), .row_dep_cq02h(row_dep), .row_code_cq02h(row_code), .grp_dep_cq02h(grp_dep),
     .grp_code_cq02h(grp_code), .prv_dep_cq02h(prv_dep), .prv_code_cq02h(prv_code),
     .akind_cq02h(akind), .acls_cq02h(acls));
+  // ooe_rs's issue register is trio_tb's to check; unread here.
+  /* verilator lint_off UNUSEDSIGNAL */
+  logic [8:0] rs_iss_v_nc;
+  logic [8:0] rs_iss_pay_nc;
+  /* verilator lint_on UNUSEDSIGNAL */
   ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC)) u_rs (
     .ooe_core_clk, .ooe_rst_r00h, .req_l_cq00h, .req_cq01h, .row_prod_cq01h(row_prod), .row_dep_cq01h(row_dep | ctl_row_cq01h),
     .row_code_cq01h(row_code), .grp_dep_cq01h(grp_dep), .grp_code_cq01h(grp_code), .prv_dep_cq01h(prv_dep),
@@ -119,7 +124,7 @@ module ooe_rnrs #(
     .cmpl_l_cq00h, .cmpl_idx_cq00h, .sq_l_cq00h, .gnt_v_cq03h, .gnt_idx_cq03h, .valid_out_cq02h, .dep_cq02h,
     .code_cq02h, .prod_o_cq02h(prod_o), .hcol_cq02h,
     .akind_cq01h(akind), .acls_cq01h(acls), .kind_o_cq02h, .cls_o_cq02h,
-    .pay_cq01h('0), .home_cq01h('0), .gnt_l_cq00h(1'b0), .iss_v_cq02h(), .iss_pay_cq02h());   // the payload: trio_tb's
+    .pay_cq01h('0), .home_cq01h('0), .gnt_l_cq01h(1'b0), .iss_v_cq03h(rs_iss_v_nc), .iss_pay_cq03h(rs_iss_pay_nc));   // the payload: trio_tb's
   assign rd_row_dep = row_dep;
   assign dbg_eg = eg;
   assign dbg_ep = ep;

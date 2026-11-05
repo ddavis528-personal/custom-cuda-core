@@ -130,7 +130,7 @@ module ooe_sched #(
   input  logic              mig_cq02h,     // a migration is in flight next cycle (RA-17; a lead)
   output logic [N-1:0]      grant_cq04h,
   output logic [N-1:0]      grant_w_cq04h, // the same, for ooe_wake's timers
-  output logic              gnt_l_cq03h    // the grant register is clocked at the next edge (ooe_rs's issue register)
+  output logic              gnt_l_cq04h    // the grant register is clocked at the next edge (ooe_rs's issue register)
 );
 
   logic rst_r01h;
@@ -279,8 +279,8 @@ module ooe_sched #(
   (* keep *) logic [N-1:0]  rq_l_cq03h;
   (* keep *) logic          force_l_cq04h;
   (* keep *) logic [RW-1:0] rrun_l_cq04h;
-  assign gnt_l_cq03h = rq_l_cq03h != '0 || gnt_out_cq04h != '0 || force_l_cq04h || rrun_l_cq04h != '0;
-  `CCV_ASSERT(gnt_l_covers, gnt_l_cq03h || !gnt_en_cq03h)
+  assign gnt_l_cq04h = rq_l_cq03h != '0 || gnt_out_cq04h != '0 || force_l_cq04h || rrun_l_cq04h != '0;
+  `CCV_ASSERT(gnt_l_covers, gnt_l_cq04h || !((rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0 || force_cq04h || rrun_cq04h != '0))
 
   // -- Registers --------------------------------------------------------------
   always_ff @(posedge ooe_core_clk) begin

@@ -133,8 +133,8 @@ module ooe_trio #(
     .gnt_v_cq03h(gnt_v_cq03h), .gnt_idx_cq03h(gnt_idx_cq03h), .valid_out_cq02h(valid_cq02h),
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol),
     .kind_o_cq02h(kind_w), .cls_o_cq02h(cls_w),
-    .pay_cq01h(pay_cq01h), .home_cq01h(home_cq01h), .gnt_l_cq00h(gnt_l),
-    .iss_v_cq02h(iss_v_cq05h), .iss_pay_cq02h(iss_pay_cq05h));
+    .pay_cq01h(pay_cq01h), .home_cq01h(home_cq01h), .gnt_l_cq01h(gnt_l),
+    .iss_v_cq03h(iss_v_cq05h), .iss_pay_cq03h(iss_pay_cq05h));
   ooe_wake #(.N(N), .LAT(LAT), .FAST(FAST), .PEN(PEN), .NPEN(NPEN), .LAT_COPY(LAT_COPY),
              .LAT_SPEC(LAT_SPEC), .LAT_MISS(LAT_MISS), .CMPL_DLY(CMPL_DLY), .NC(NC)) u_wake (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
@@ -187,7 +187,7 @@ module ooe_trio #(
     .res_cq03h(res_cq03h), .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h),
     .older_r_cq03h(older_r_cq03h), .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h),
     .block_cq03h(block_cq03h), .ret_cq03h(s_ret), .brk_cq03h(brk_cq03h), .mig_cq02h(s_mig),
-    .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w), .gnt_l_cq03h(gnt_l));
+    .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w), .gnt_l_cq04h(gnt_l));
 endmodule
 `undef CCV_CLK
 `undef CCV_RST
