@@ -18,7 +18,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
 
 ## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 336, IS 189, TI 320, OI 274, CP 152, DA 106, RA 72, RI 8.
+Conventions 17, AR 275, OA 336, IS 189, TI 320, OI 274, CP 152, DA 106, RA 73, RI 8.
 Nothing had RI in Needs at session start.
 
 ## Working rules beyond CLAUDE.md
@@ -40,8 +40,10 @@ Nothing had RI in Needs at session start.
 ## Open work, most urgent first
 1. Phase 2 RTL (rtl/rcu/, test/rcu/): rcu_bank_slice (RA-39: R0/R1 read from phys_src on the
    wire, rsrc flopped per slice with MW write-through), rcu_r + rcu_xbar. Figures sent to RA as
-   RI responses rev 8 (notice sent): phys_src->rsrc 18.4 vs 18 at 192 (miss 0.4) -- do NOT
-   retime until RA answers. rcu_r 2,626 flops, 23.9 NGD, CG clean. Departures to confirm:
+   RI responses rev 8 (notice sent): phys_src->rsrc 18.4 vs 18 at 192 (miss 0.4) RA (rev 73): no reshape;
+   RA asked OA for RCU in 19 / OOE out 6. ON OA's GRANT: rr_row arrival 8.5 in
+   rcu_bank_slice.ngd.json (in-slice budget 16.5). If OA declines, wait for RA's reshape pricing.
+   Departures (1)-(3) accepted. rcu_r 2,626 flops, 23.9 NGD, CG clean. Departures to confirm:
    low from pred's flops, the .ngd.json arrivals, RI-9 (e). RI-10 (192-row cg harness) with TI.
    Benches: test/rcu/run-rtl.sh (all units + controls nowt/noalign/retlow).
 2. Push chain: ba3549b (main tree) split gate cg passed (~/ccv-logs/gate-cg-ba3549b.tgz), ngd
