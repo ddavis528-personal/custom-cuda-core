@@ -1,6 +1,6 @@
 # RA handoff (RCU block architect)
 
-Updated 2026-11-04. Keep this current at every task's end; it is what
+Updated 2026-11-05. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules (written for TI);
 docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 
@@ -54,9 +54,72 @@ docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 - Push: tools/gate-push.sh (scoped gate; docs/ and .claude/ map to no
   sections). Merge commits only. No PRs. No model ids in commits.
 
-## Register bookmarks (2026-11-03)
-AR 269, OA 316, RA 60, DA 104, Conventions 17, CP 152, IS 188, TI 297, OI 254, RI 1
-CP 149, DA 99, Conventions 16).
+## Register bookmarks (2026-11-04 sweep)
+AR 284, OA 331, RA 69, DA 106, Conventions 17, CP 152, IS 189, TI 319, OI 274, RI 6. RA-39 (c) landed (TI rev 309); only OI lead NGD/CG left.
+TI rev 319: the model is the default (863a374); RI-7 / RA-18 wait on OI's imm_kind 6 (11-06).
+RI-9 answered (RA rev 69; RI notified): sub-blocks rcu_<name> (CCV-L28, every tab and
+rcu-impl.md); R0/R1/MW selects loaded every cycle, ungated (~31 flops/slice); R0/R1 hold an
+8-bit binary row decoded in the slice in A, bank out 13 / r in 12, R2 keeps one-hot, out 11
+(RI measured 11.0 at 649ee09, 6,574 flops); fallback one-hot loaded every cycle (~72/slice);
+write data straight into D; RCU masks nibble/above dst_width; port hit ORs its lane mask.
+Waiting: RI to measure the binary-decode R0/R1 read.
+OI-115 (OI rev 282): OOE's R lead mux in select costs 8.3 NGD (ooe_sched 38.8 vs cap 30.5).
+OA rev 335 asked RA to price (2): R0/R1 read in A from the payload's phys_src, no lead.
+RA rev 70 (OA notified): fits, ~19.5. rsrc_a moves into the slices (raw read; no read-through
+of the slice), align to A+1 (~15-16), MIU forward = bank-level MW write-through, lead_src_used
+dropped. Asked phys_src RCU in 18 / OOE out 7. RA prefers (2) even if (0) fits. On OA's ruling:
+update R unit / Register file / Partition tabs and rcu-impl.md; TI row to drop lead_r_src0/1.
+OA rev 336 TOOK (2) (budgets granted; TI removes lead_r_src0/1; AR's (d) lapses; OI records
+OOE out 7). RA rev 71-72: spec written (R unit 16, Register file 12, Partition 29, Pipeline 13,
+Conventions 5, Overview 38), rcu-impl.md updated; RI notified to build from phys_src and measure
+port->rsrc against 18. RI rev 8: 18.4 (15.9 in slice + 2.5 fanout), not retimed.
+RA rev 73: asked OA to move 1 NGD (phys_src0/1 RCU in 19, OOE out 6; rr_row arrival 8.5);
+RI's departures accepted: rlow from rcu_pred's flop; ngd.json arrivals; RI-9 (e) lane mask as
+D-cone hold mux where it arrives with data. Phase 2 figures in Overview (rev 39). OA rev 337 granted 19/6 (last move on the pair); RA rev 74
+closed RA-39; spec + snapshots at R unit 20, Register file 15, Partition 33, Overview 43.
+RI-11 (RI rev 9): RI reports a DA ruling of 11-05 (flop on both sides of every block boundary;
+RCU must not consume inputs off the wire; RA-39 split void). NOT in the DA tab (still rev 106);
+DA row .35431 says "registered on both sides". RA rev 75: holding until DA confirms reading
+(A) receiver flop at every input (+1 cycle on every RCU latency or two-ahead leads; AR/DA call)
+vs (B) the sender's flop is the boundary (today's rule: 12 NGD/port side).
+TI rev 321 recorded Daniel's words (TI's session): the interface module defaults to one flop on its
+input and output (2 cycles a link; a zero-cycle option is kept); AR decides the latency accounting
+first; the lane read-to-writeback latency grows, bypass doesn't. So reading (A). OA rev 338 holds
+for a DA-tab row. RA rev 76 (AR notified): RCU internals invariant if lead+payload share a link;
+couplings for AR: L1-hit forward (MIU vs issue link), credit depths (map/mig/PCA -> RCU mig FIFOs),
+KILL_DRAIN. After AR: restate Conventions (A from receiver flop Q), Partition (arrival 0),
+R unit/Register file (RA-39 without the split), rcu-impl.md; RI arrivals 0 / 2.5 / 11.
+AR rev 285 accounted it: from the RCU's interface flop, inputs at 0 NGD; LANE 8, SFU 13,
+L1_WAKE 17, L1_CMPL 19 (OA confirms), RCU 3, COLLECTIVE 5, bypass unchanged. RA rev 77/78
+confirmed (LW A+7, SW A+12; lane done loaded A+6 / wire A+7 / payload A+8, SFU A+11/A+12/A+13;
+descriptor ages 6, 11; KILL_DRAIN 16; lane-bypass window 9; guard ~15). OA still holds for a
+DA-tab row; TI derives the params once OA confirms. Spec restated (2026-11-05): Conventions 10,
+Partition 38, Done 24, Pipeline 17, Lane+memory 8, Predicate 7, Register file 16, R unit 22,
+Overview 49; snapshots and rcu-impl.md (block-boundary bullet) current.
+AR row 286 (AR rev 287): accounting FINAL. DPI-host ends stay no-flop; +1s in RCU_ADDR_BASE 5->6,
+LANE_BASE 8, SFU 13; no credit depth grows; MISS_WAKE/CMPL_HINT/LANE_BYP unchanged. RA rev 79 (AR, TI
+notified): KILL_DRAIN derived (16); RA reads ADDR_BASE +1 as the receiving interface flop, so PF-47
+reapplies as 2 (RCU-internal 1), L1_WAKE 17->13, fallback 3 - AR to confirm; lane bypass ages 4-6,
+compare 12 entries (3 ages x 4 sections), SFU at PRF A_p+12. Spec: Lane 11, Overview 50, Partition 39,
+Conventions 11; snapshots current.
+AR row 288 CONFIRMED RA rev 79 (PF-47 as 2, L1_WAKE 13, CMPL 15, fallback 3; bypass 4-6). RI rev 10:
+RI-11 done for RCU (arrivals 0, rd2 11, check-ngd passes, model params-derived). Nothing open for RA here.
+RI rev 11: M3 met (192-row slice: 6,554 flops, CG clean, one row gate 71% medium within allowance; NGD 18.4).
+RA rev 80 accepted; asked RI to name that gate and report it at block assembly (split enable before waiver).
+DA rev 108 (Daniel, verified in DA tab): receiving boundary flop's lead slice is ungated and counts against
+the receiving block's per-instance 2% (RCU: ooe_rcu_issue 144 + miu_rcu_data lead); shrink lead fields first.
+Partition rev 40 records it (~4,700-flop block budget at 192 rows, also carries the slices' 71% row gates).
+RI-14 (RI rev 14, phase 3): RA rev 81 accepted rcu_pred (2,870 fl, NGD 22.0) / rcu_kill (58 fl) / M1 22.0;
+took departures (1) OL/OR/OC in pred, (3) dq 18 but gt/pdt/br at 0, (4) shared epoch reg w/ assertion,
+(5) rcu_r pr_orow (Partition rev 41); DECLINED (2) CG-5 waivers on m_am/rg_hi (use interface flop lead
+directly, else ungated in allowance). Credit-pulse block-budget ask (rcu_kill 45 cr pulses, CG-1 waiver):
+RA supports; DANIEL TO RULE (asked in chat). M4 kill-drain bound unexercised: TI's kernel + V-24 checker.
+RI-15 (RI rev 15): strict CG-5 leaves no legal rcu_pred layout (MIU lead 152 fl, R guard 9 fl held into
+payload cycle; enable would be an input). RI offered (a) iface-flop Q as enable, (b) 2-cycle leads, (c) waivers.
+RA rev 82: (a)/(c) reverse Daniel's CG-5 ruling; RA proposes (d) one-cycle ungated lead holds charged to the
+block 2% like DA rev 108 (161 fl; block ~1,500 of ~4,700). DANIEL TO RULE (with credit pulses). rcu_pred/kill held.
+Bookmarks: OA 338, RA 82, RI 15, TI 321, DA 108, AR 289.
+RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
 Doc 1e5066f9-e4db-4fe3-aabc-0022606c9e96 (https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB).
@@ -85,6 +148,14 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
+- RI M0 (model) ACCEPTED at RA rev 68 (5968894; RI rev 5); TI asked to make the model makeRcu's default. RI on to phase 2 (bank slice, r/xbar). RA-36 done (TI rev 317, e60ae23). AR rev 284 sets the PHYS_REGS order: OI's check answer, 160 on a 2nd 4-warp kernel, OA on Q-35, then DA.
+- RA-11 PHYS_REGS sweep (TI rev 315): RA rev 67 gave RCU flops 246k/212k/179k at 192/160/128, notice AR; decision AR + DA. 160 ~free; 128 waits OI's fits_stale/V-N check failures. RA-19 stub fix landed (TI rev 314, 9ce7381).
+- RA-40 closed: TI landed MIU lead_fields (b85595b, TI rev 311), AR MIU spec rev 48; closure at RA rev 66.
+- RI is live: session_01QPk2jvvXPLs4m8ZQbSk1g6, register tab 8e4547bc-c469 (bookmark rev 2).
+  RI-3..6 answered at RA rev 64, notice sent: credit at launch intended (TI marks
+  ooe_rcu_map / rau_rcu_mig backpressured); LW = footprint (Lane+mem rev 5); FULL_ROW
+  parameter, 1 now, SW+MW+RW whole row zero above width (Register file rev 7; asked RI to
+  check SW in its model); RI-6 (a)-(d) in Migration rev 7, Predicate file rev 4.
 - 2026-11-04 HANDOFF AUDIT DONE (Daniel: "everything ready for handoff to RI"). Spec live revs:
   Overview 31 (status says ready for RI; decisions + open tables cover RA-35..39), Conventions 4,
   Pipeline 5 (IL/I/R rows + R-op cycle table carry RA-39), Register file 6, R unit 8, Done 13,

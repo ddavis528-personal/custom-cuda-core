@@ -123,10 +123,10 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
 - **RTL modules:** `rtl/rcu/ccv_rcu*.sv`, named and partitioned exactly as the
   Partition tab's module table:
   - `ccv_rcu`, the top: `ccv_common_clk`, children and wires only;
-  - `ccv_rcu_bank_slice` ×32 (byte section K of lanes 4J to 4J+3, 192 rows
-    × 32 bits; Register file tab, Slices), `ccv_rcu_pred`, `ccv_rcu_r` with
-    the `ccv_rcu_xbar` helper;
-  - `ccv_rcu_lanes`, `ccv_rcu_mem`, `ccv_rcu_mig`, `ccv_rcu_kill`.
+  - `rcu_bank_slice` ×32 (byte section K of lanes 4J to 4J+3, 192 rows
+    × 32 bits; Register file tab, Slices), `rcu_pred`, `rcu_r` with
+    the `rcu_xbar` helper;
+  - `rcu_lanes`, `rcu_mem`, `rcu_mig`, `rcu_kill`.
 
   The top keeps the generated stub's module name and port list
   (`rtl/top/stubs/ccv_rcu.sv`; `tools/gen-top.py`). That is what makes the
@@ -144,7 +144,7 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
   - test/rcu/ngd-units.json for any module with no flops.
 
   Every module gets a reduced unit for loops (a bank slice at `ROWS` = 32,
-  `ccv_rcu_lanes` at `COPIES` = 4) and its full-size unit for its exit. A
+  `rcu_lanes` at `COPIES` = 4) and its full-size unit for its exit. A
   full-size unit that peaks over 2048 MiB goes on tools/heavy-units.json,
   in the commit that grows it. The gate runs each listed unit alone under a
   lock, and fails an unlisted unit that peaks over the limit (TI rev 289,
@@ -181,12 +181,33 @@ AR updates it (RA-35). Read its sections 1 and 7 only for history.
     already budgets for it: the select one-hots are copied per slice and
     port, so a row AND drives 32 cells (Register file tab, "Select
     fanout"). Check the report on every wide net, not only the selects.
-- **Early R source read (RA-39):** R0 and R1 are read in A, not A+1, from
-  selects predecoded in A−1 off R's lead (`lead_r_src0/1`), into `rsrc_a`
-  (2,048 flops), with an MIU forward after alignment for an L1-hit load
-  landing in that A. R computes from flops in A+1 (about 13 NGD) and still
-  writes at A+2; `CCV_LAT_RCU` stays 3. R unit tab, "Early R source read".
-  The bank-out budget is 11 on every read port.
+- **Block boundaries (Daniel 2026-11-05; TI rev 321, AR rev 285, RA rev 77):**
+  every block boundary has a flop on each side, built by the interface
+  module (`ccv_common_rpt`). A and each channel's payload cycle count from
+  RCU's interface flop, and every RCU input starts at 0 NGD (arrivals 0;
+  `rd2` stays 11, internal). The contract moves where a write used to sit
+  before the first flop: `CCV_LAT_LANE` 8 and `CCV_LAT_SFU` 13, so LW is at
+  A+7 and SW at A+12, lane and SFU done are one cycle later, `KILL_DRAIN` is
+  16, and the lane-bypass compare window gains one age. `CCV_LAT_RCU` stays 3.
+  Build from the parameters, never literals: TI derives them once OA has
+  confirmed its counts.
+- **Early R source read (RA-39; OA rev 336, option (2)):** R0 and R1 are
+  read in A, not A+1, straight from the issue payload's `phys_src`[15:8]
+  and [7:0] on the wire (no lead field: `lead_r_src0/1` are withdrawn and
+  TI takes them out). Each `rcu_bank_slice` decodes the 8-bit rows, reads,
+  substitutes its own MW write data where the MW select flops match the
+  row (the MIU write-through, for an L1-hit load landing in that A) and
+  flops the raw result into its `rsrc`: 64 flops a slice, 2,048 in all,
+  enabled by its flop of the R issue valid lead. The read lands in the
+  slice because a port-driven select read out through it would be input
+  to output through the slice. `rcu_r` aligns `rsrc` and computes in A+1
+  (about 16 NGD) and still writes at A+2; `CCV_LAT_RCU` stays 3. Budgets:
+  `phys_src0/1` from RCU's interface flop at 0 (RI measured 18.4: 15.9 in
+  the slice + fanout 2.5, within 25; the 19/6 split lapsed with the
+  boundary flops, AR rev 285). R0/R1 have no select
+  flops; MW's (about 15 a slice) are the slice's only ungated ones (RI-9).
+  R unit tab, "Early R source read"; Register file tab, "Lead-loaded ports
+  and CG-5".
 - **Clock-gating stimulus (RA-34):** check-cg's idle, medium and high
   scenarios come from checked replays of ccv-skel's per-block port-trace
   dump (TI is building it):
@@ -311,9 +332,9 @@ out of your context.
 |---|---|---|---|
 | 0, setup | section 8 | — | roster, session home, handoff, sweep task in place |
 | 1, the model | sim/rcu/: the block at RCU's ports, with its events, hazards, stalls and idle | M0 | every kernel and control passes on both hosts with the model as the default (TI flips makeRcu's default, RA-38 (a)); kernel cycles against the stub's reported. **RA reads it** and folds anything the spec failed to say into the spec |
-| 2, the register file and the R pipe | `ccv_rcu_bank_slice` (units at 32 rows, then 192), `ccv_rcu_r` + `ccv_rcu_xbar` | M3; M1 and M2 for both modules; module benches | slice read AND-OR within the bank-out budget of 11 at 192 rows, fanout term included (RA's stand-in: 8.3, 11.0 with fanout); a light unit; flops within 1% of 6,550; every write D-cone and enable within budget; the R0/R1 read with alignment and MIU forward into `rsrc_a` in A (about 16) and the register-index shfl and ret compute from `rsrc_a` in A+1 (about 13) ≤ 25. **RA and DA:** these are the figures for the collective fold from 5 to 3 (RA-8, RA-29 (c)) and the first real flop count. If a bank cannot be a flop array at 25 NGD, stop and raise it at once (Q-51's reopening cost) |
-| 3, predicates and kill | `ccv_rcu_pred` (with and without the guard lead), `ccv_rcu_kill` | M1, M2; M4 | guard path in A ≤ 16 NGD with the lead (≤ 23 without); kill drain bound M4 |
-| 4, lanes, memory, migration | `ccv_rcu_lanes` (4 copies, then 32), `ccv_rcu_mem`, `ccv_rcu_mig` | M1, M2 (the lead-slice field groups), M5 | DCGE per field group; the literal-imm group under 75% goes to RA (the remedy is a DEC bit through OA, never a waiver first); migration 17 rows within 68 cycles |
+| 2, the register file and the R pipe | `rcu_bank_slice` (units at 32 rows, then 192), `rcu_r` + `rcu_xbar` | M3; M1 and M2 for both modules; module benches | slice read AND-OR within the bank-out budget at 192 rows, fanout term included: 11 for R2 (RA's stand-in: 8.3, 11.0 with fanout; RI measured 11.0 at 649ee09), the R0/R1 read from the `phys_src` port through decode, read and MIU write-through into the slice's `rsrc` within 25 from the interface flop (RI measured 18.4, RI rev 8); a light unit; flops within 1% of 6,550; every write D-cone and enable within budget; the register-index shfl and ret, alignment of `rsrc` included, in A+1 (about 16) ≤ 25. **RA and DA:** these are the figures for the collective fold from 5 to 3 (RA-8, RA-29 (c)) and the first real flop count. If a bank cannot be a flop array at 25 NGD, stop and raise it at once (Q-51's reopening cost) |
+| 3, predicates and kill | `rcu_pred` (with and without the guard lead), `rcu_kill` | M1, M2; M4 | guard path in A ≤ 16 NGD with the lead (≤ 23 without); kill drain bound M4 |
+| 4, lanes, memory, migration | `rcu_lanes` (4 copies, then 32), `rcu_mem`, `rcu_mig` | M1, M2 (the lead-slice field groups), M5 | DCGE per field group; the literal-imm group under 75% goes to RA (the remedy is a DEC bit through OA, never a waiver first); migration 17 rows within 68 cycles |
 | 5, the block | `ccv_rcu` assembled; Q-53 checkers (arrival-cycle, A-35's two isolation assertions, the A-45 pairing checker) | M1 block convergence from the `.ngd.json` files, level by level, then timed whole; M2 block 2%; M6; M7 | every row of the exit table met, or a waiver Daniel signs. Then RA reconciles the spec with what was built |
 
 From phase 2, every RTL module passes its bench, checked against the model
@@ -329,7 +350,7 @@ bank's unit runs. Order them by what section 7 has unblocked.
 | The issue lead slice (`lead_fields`), `CCV_LAT_RCU_ADDR_BASE` = 1, `CCV_LAT_L1_WAKE` 16 → 12 | TI (schema), OI (OOE sends it) | RA-31, RA-32 | `pred`'s split guard read; `lanes` and `mem` field-group enables | build with the lead inputs. Without the slice, every group falls back to the issue valid (Partition tab, "Contingencies") |
 | The model's hook (makeRcu; the stub stays the default until your model passes every kernel and control, then `CCV_RCU_IMPL=stub` selects it), sim/rcu/*.cpp in blocks.list (with your first model commit: ping TI or carry the line yourself), `check-rcu-unit`, `job_rcu_rtl` (each wired while empty, failing on tests it did not run) | TI | RA-38, agreed TI rev 290 | the model in kernel runs; the lock-step jobs | develop the model under its unit tests |
 | The ccv-skel port-trace dump | TI | RA-34 | M2 with real stimulus; block lock-step | reset/idle and directed stimulus only |
-| The R lead's source rows `lead_r_src0/1` (schema and stub) and OOE sending them; the lead mux's NGD and clock gating in OOE | TI (schema, stub), OI (OOE) | RA-39 (c); OA took (a), (b) with the MIU forward (i), revs 328-329 | `r`'s and the slices' R0/R1 predecode in A−1 | build with the lead inputs; the model reads R0/R1 in A either way |
+| `lead_r_src0/1` out of the schema and stubs (withdrawn, OA rev 336; RA-39 option (2) reads the payload's `phys_src` instead) | TI (schema) | RA-39, OA rev 336; the 19/6 split lapsed with the boundary flops (AR rev 285) | the slices' R0/R1 port is the payload's `phys_src`, already in the schema | build from `phys_src`; ignore the lead inputs until TI removes them |
 | Repo support: the gate-scope map for sim/rcu/, rtl/rcu/ and test/rcu/ and the CLAUDE.md pointer (TI does these first), the `CCV_RCU_RTL` SV-hosted selector, and the sweep minute RI 31 in the register skill | TI, OA | RA-37, agreed TI rev 290, OA rev 308 | an unmapped path runs every gate section on each push; SV-hosted runs | push less often until the map lands |
 | The collective fold, 5 → 3 | DA | RA-29 (c) | nothing: the spec runs collectives in the R pipe either way; only the parameter and OOE's class change | phase 2's figures are the input |
 
