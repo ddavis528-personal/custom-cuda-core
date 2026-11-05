@@ -40,9 +40,10 @@ Nothing had RI in Needs at session start.
 ## Open work, most urgent first
 0000. RA revs 83/84 (zero-cycle pricing): depths answered (RI rev 16). Model runs could not price
     the flops: ccv-skel ignores no_flop (rtl/top only), SV-hosted at D fails fixed latency 8 vs 6 ->
-    RI-16 (RI rev 17, notices TI/AR/RA). AR bases alone: S1 47,704 -> 48,264 (+1.17%). AR rev 299: no skeleton
-    change; price via bases: N = AR bases, Z1 = RCU_ADDR_BASE 5, Z2 = LANE_BASE 7 + SFU 12, Z3 none.
-    S1 + CM32 for N/Z1/Z2 running via agent in ri-wt3 (CM32 detached nohup, hours). Post as RI row.
+    RI-16 (RI rev 17, notices TI/AR/RA). AR bases alone: S1 47,704 -> 48,264 (+1.17%). AR rev 300 (reverses 299): RI-16
+    right; TI adds link term bnd_rx 1 per flopped receiving end in both hosts, bases back to 7/12/5.
+    AFTER TI lands it: price D, N, Z1-Z3 as links.json no_flop edits (S1, CM32 detached), post RI row.
+    Base-pricing runs stopped. ri-wt3 reverted, reusable.
 000. SWEEP 2026-11-05 in ri-wt2 (detached, from pushed 89543cc): merged 6 branches (126afa13 17,
     183cc441 7, 57eff422 47, 80102643 14, 9eb50716 15, c22116ce 5) + regen = 802b8ae. Full split gate:
     cg part bf89hat92 -> ~/ccv-logs/gate-cg-802b8ae.tgz; then `tools/verify.sh --only ngd` + export;
@@ -72,4 +73,4 @@ Nothing had RI in Needs at session start.
 3. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals.
 4. Remaining phases per docs/rcu-impl.md: rcu_mig, the lane/SFU descriptor pipes, assembly (M5-M7).
 5. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
-Bookmarks 2026-11-05 sweep: Conventions 17, AR 299, OA 347, IS 189, TI 336, OI 292, CP 154, DA 108, RA 84, RI 17.
+Bookmarks 2026-11-05 sweep: Conventions 17, AR 300, OA 347, IS 189, TI 338, OI 292, CP 154, DA 108, RA 84, RI 17.
