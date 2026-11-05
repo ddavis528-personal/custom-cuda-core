@@ -27,6 +27,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - The disk allowance is about 39 GB in all. A gate's build/ needs 5 GB or more, so
   keep swap at 6 GB or less during a gate and delete finished jobs' oracles and
   builds promptly.
+- A watcher's end isn't enough: if RH misses that wake-up, the idle container
+  is reclaimed (11-05: about 8 h lost). With every watcher, also keep a
+  send_later fallback check about 2 h out.
 - A detached job dies when the idle container is reclaimed. Keep a tracked
   background task (e.g. rh-jobs/watch.sh) open while it runs, and make jobs
   resumable.
