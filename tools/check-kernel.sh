@@ -452,7 +452,10 @@ fi
 # 512 -> 258 when FET's decode-queue credits replaced OOE's per-warp
 # refusal, TI-46 (b): the lone warp now waits on credits, so the readers of
 # the late movi48 issue later and half of the downstream reads land after it.
-MOVI_TOTAL=258
+# 258 -> 354 with the interface flops' bases (CCV_LAT_LANE 8, CCV_LAT_SFU 13,
+# AR's rev 287): the misplaced movi's result lands a cycle later, so more of
+# its readers issue before it (RI's rev 12 count).
+MOVI_TOTAL=354
 run movi-in-lane
 L="$B/kernel_movi-in-lane.log"
 nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$L")
