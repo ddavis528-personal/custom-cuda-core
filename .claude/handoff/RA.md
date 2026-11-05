@@ -127,7 +127,10 @@ PF-47 base 2: OA 346 agrees, TI waits on AR (AR 288 confirmed). RI-15 + credit p
 RI-16: zero-cycle model runs blocked (skeleton lacks boundary flops); AR bases alone S1 +1.17%.
 AR row 300: receiving flop's cycle is link term bnd_rx; bases back to LANE 7 / SFU 12 / RCU_ADDR 5 (PF-47 base 1,
 derived 2). RA rev 85 took it; spec Overview 52, Partition 43, Conventions 12.
-Bookmarks: OA 347, RA 85, RI 17, TI 336, DA 108, AR 300, OI 290, Conventions 17, CP 154.
+AR row 301 CORRECTS: CCV_LAT_RCU_ADDR = its base (5; PF-47 1); bnd_rx(issue) only on the crossing (L1_WAKE/CMPL
+17/19, 13/15 after PF-47). Default ends option 1 (RCU's 3 receiving ends flopped). RA rev 86; spec Overview 57,
+Partition 44, Conventions 13.
+Bookmarks: OA 347, RA 86, RI 17, TI 336, DA 108, AR 301, OI 290, Conventions 17, CP 154.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
