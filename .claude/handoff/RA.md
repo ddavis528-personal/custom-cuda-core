@@ -104,7 +104,9 @@ compare 12 entries (3 ages x 4 sections), SFU at PRF A_p+12. Spec: Lane 11, Over
 Conventions 11; snapshots current.
 AR row 288 CONFIRMED RA rev 79 (PF-47 as 2, L1_WAKE 13, CMPL 15, fallback 3; bypass 4-6). RI rev 10:
 RI-11 done for RCU (arrivals 0, rd2 11, check-ngd passes, model params-derived). Nothing open for RA here.
-Bookmarks: OA 338, RA 79, RI 10, TI 321, DA 106, AR 288.
+RI rev 11: M3 met (192-row slice: 6,554 flops, CG clean, one row gate 71% medium within allowance; NGD 18.4).
+RA rev 80 accepted; asked RI to name that gate and report it at block assembly (split enable before waiver).
+Bookmarks: OA 338, RA 80, RI 11, TI 321, DA 106, AR 288.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
