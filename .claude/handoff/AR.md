@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 285, OA 338, TI 322, RA 75 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 106,
+  record): AR 287, OA 340, TI 323, RA 76 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 106,
   Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -143,9 +143,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
 - Specs doc DJeg9Hh8rkPDecq4hrAz35 (tab revs after the 11-04 review): RCU
-  eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (55), RAU 090626bb-a50c (60),
+  eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (56), RAU 090626bb-a50c (60),
   PCA 94b3a0ea-7224 (17), FET 75d75b94-1614 (47), DEC 1d1fdcda-739e (19),
-  DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (12),
+  DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (13),
   SYU 1f8b4472-68c1 (8), CRU 5a50fd80-2423 (7), MLC f8873ac6-e74d (3), EXB
   56392a06-86a6 (4), OOE 515615a9-8caf (OA's).
 - Spec review of the no-session blocks done 11-04 (Daniel asked; AR rev
@@ -180,20 +180,18 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   squash_act_lag 1 (audit +1.2%).
 
 ## Open work (most urgent first)
-00. RI-11 interface flops (Daniel 11-05 in TI's session, TI 321: rpt
-   default one flop in + one out, zero-cycle option kept; "AR decides
-   first"). AR rev 285 decided: the two module flops ARE the two
-   CCV_RT_ABUT/HOP count, never in series with a block's own; HOP, credit
-   loop 4+2N, WAKE_LAT, leads, notices unchanged (check-formal rerun is
-   the test); work a receiver did before its first flop moves a cycle.
-   Expected (owners confirm): LAT_RCU 3 (cancels), COLLECTIVE 5, LANE 7->8,
-   SFU 12->13 (MW writes in lane_rcu_res's landing cycle), L1_WAKE 16->17,
-   CMPL 18->19 (address path), L1_HIT 7; bypass unchanged, lane bypass
-   holds a cycle longer. NGD: 25 a block from its interface flops; 12/12
-   only inside a block; RA-39's 19/6 split goes. Partitioning spec
-   Interfaces rev 21-22 (boundary rule, lead fields incl. miu_rcu_data).
-   AR still owes: LANE spec LANE_BASE/SFU once RA confirms; MIU spec "counts
-   from holding" line. Waiting: TI, RA, OA (notified rev 285).
+00. RI-11 interface flops (Daniel 11-05 via TI 321). AR rev 285 decided the
+   accounting; AR row 286 (rev 286-287) answered TI 323, RA 76, OA 339/340:
+   DPI-host ends stay no-flop (RTL replacing a stub takes flops by default);
+   +1s sit in bases counted from HOP's landing: RCU_ADDR_BASE 5->6 (PF-47's
+   1->2), LANE_BASE 7->8, SFU 12->13; derived L1_WAKE 17, CMPL 19; RCU_BASE
+   3, COLLECTIVE 5, MISS_WAKE 1, CMPL_HINT 2, LANE_BYP 4, BYP_AGE 2 unchanged;
+   no credit depth grows (exception: a receiver whose credit return was off
+   the wire; OI audits OOE's); KILL_DRAIN follows SFU; CCV_LAT_BYP_PEN_SFU's
+   doc equality breaks (OA rewords, TI applies). Specs: LANE rev 13
+   (latency paragraph), MIU rev 56 (counts from holding, 17/19, PF-47 13/15).
+   perf-register PF-47 RI-11 bullet. Waiting: TI lands bases in one push;
+   RA restates RCU (confirms the RCU_ADDR +1); OI audit of OOE receivers.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue

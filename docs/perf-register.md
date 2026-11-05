@@ -1194,6 +1194,14 @@ it.
   else OA re-budgets the two inputs) and gives rs_tb stimulus that reaches
   the case. TI reapplies in one commit. The decision stands; nothing in the
   failures argues against it.
+- **Under RI-11's interface flops (AR rev 286, 2026-11-05):** RCU's A is now
+  the cycle its interface flop holds the issue, a cycle later than before
+  relative to the issue's launch. The bases are counted from the crossing's
+  landing, so they carry that cycle: today's 5 becomes 6 (`CCV_LAT_L1_WAKE`
+  17), and PF-47's 1 becomes 2 (`CCV_LAT_L1_WAKE` 13, PF-33's measured
+  -5.9% point rather than the interpolated -7.9%). RA's restatement of
+  RCU's timeline, counted from the interface flop, confirms or corrects
+  that cycle, and TI's reapply takes the value RA gives.
 
 ### PF-48 End-to-end parity on register state
 
