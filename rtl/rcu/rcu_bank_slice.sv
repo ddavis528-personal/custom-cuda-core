@@ -339,10 +339,15 @@ module rcu_bank_slice #(
       row_d_cr02h[r*32 +: 32] = d | (keep & row_cr03h[r*32 +: 32]);
     end
   end
+  // Each row is its own register (g_row[r].rq_cr03h), so a finding on one
+  // row's gate names that row's 32 flops, not the whole array (check-cg's
+  // kept-hierarchy count goes by register name).
   for (genvar r = 0; r < ROWS; r++) begin : g_row
+    logic [31:0] rq_cr03h;
     always_ff @(posedge rcu_core_clk) begin
-      if (row_en_cr02h[r]) row_cr03h[r*32 +: 32] <= row_d_cr02h[r*32 +: 32];
+      if (row_en_cr02h[r]) rq_cr03h <= row_d_cr02h[r*32 +: 32];
     end
+    assign row_cr03h[r*32 +: 32] = rq_cr03h;
   end
 
   // ---- Contracts -------------------------------------------------------
