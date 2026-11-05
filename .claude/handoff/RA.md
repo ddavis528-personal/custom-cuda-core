@@ -81,8 +81,15 @@ RI-11 (RI rev 9): RI reports a DA ruling of 11-05 (flop on both sides of every b
 RCU must not consume inputs off the wire; RA-39 split void). NOT in the DA tab (still rev 106);
 DA row .35431 says "registered on both sides". RA rev 75: holding until DA confirms reading
 (A) receiver flop at every input (+1 cycle on every RCU latency or two-ahead leads; AR/DA call)
-vs (B) the sender's flop is the boundary (today's rule: 12 NGD/port side). Asked Daniel directly.
-Bookmarks: OA 337, RA 75, RI 9, TI 320, DA 106. Snapshots refreshed to the live revs:
+vs (B) the sender's flop is the boundary (today's rule: 12 NGD/port side).
+TI rev 321 recorded Daniel's words (TI's session): the interface module defaults to one flop on its
+input and output (2 cycles a link; a zero-cycle option is kept); AR decides the latency accounting
+first; the lane read-to-writeback latency grows, bypass doesn't. So reading (A). OA rev 338 holds
+for a DA-tab row. RA rev 76 (AR notified): RCU internals invariant if lead+payload share a link;
+couplings for AR: L1-hit forward (MIU vs issue link), credit depths (map/mig/PCA -> RCU mig FIFOs),
+KILL_DRAIN. After AR: restate Conventions (A from receiver flop Q), Partition (arrival 0),
+R unit/Register file (RA-39 without the split), rcu-impl.md; RI arrivals 0 / 2.5 / 11.
+Bookmarks: OA 338, RA 76, RI 9, TI 321, DA 106, AR 284. Snapshots refreshed to the live revs:
 Overview 34, Partition 27, Register file 10, R unit 12, Migration 9, Lane+memory 7, Done 17,
 Predicate 5 (Pipeline 5, Conventions 4 unchanged).
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
