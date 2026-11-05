@@ -33,12 +33,31 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 269, OA 317, IS 188, TI 297, OI 254, CP 152, DA 104,
-RA 60, RI 1 (sweep 2026-11-03). Latest TI open: TI-50 (rev 272).
+Conventions 17, AR 291, OA 341, IS 189, TI 328, OI 287, CP 154, DA 108,
+RA 79, RI 13 (2026-11-05). Latest TI open: TI-50 (rev 272).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-05 05:15Z: PUSHED 810e35c (full gate PASS): #75 push B, the
+  interface module's boundary flop (ccv_common_rpt BOUNDARY, default 1;
+  params/links.json no_flop holds all 14 DPI-host types, so the top is
+  unchanged), check-ngd's straight-into-flops rule, fv_link FV_BUILT proofs
+  (conservation bounded 40 in gate; proved unbounded ad hoc at N=0 in 968 s
+  with dc2;scorr). links_split.json carries no_flop too (the first gate
+  failed on it). HELD on local branch ti-bases (c39035a): the bases
+  LANE_BASE 8, SFU 13, RCU_ADDR_BASE 6 + check-kernel re-pins; merge OI's
+  ccr-57eff422-5tdecg (OI rev 285/287; RI-12 decq fix) and RI's 600004a
+  (RI rev 12; re-pin MOVI_TOTAL 258->354), re-check pins, push together.
+  NEXT #76: AR 289 / DA 108: RESCUE_DEPTH, DRAIN_WAIT 3 (derive RT_ABUT+1);
+  checker SRC_BOUNDARY, stall rule 1+SRC_BOUNDARY+2*SRC_STAGES; check-cg
+  charges the boundary stage's ungated lead (rename bnd_lead_q) to the
+  block's 2%; RI-13 took_flops whole-vector fix; measure receiving blocks;
+  TI row re:RI-11 to AR (+ source-end lead goes to the sender: ask).
+  CI (DA, 2026-11-05, #77): ci.yml pinned to ubuntu-24.04 (ubuntu-latest
+  went to 26.04, apt Yosys 0.52 broke 6 sections), full gate only on push
+  to release, weekly and dispatch. RH: J4 512 KiB coremark128 7,924,133
+  clean; idle until OI's push (PHYS_REGS 160) and CTA-queueing code.
 - 2026-11-05 01:30Z: PUSHED 31e21e0 (full gate PASS, both branches): RI-10
   (a) rtl/rcu+test/rcu scope cg/ngd with a readers check in gate-scope.py,
   (b) check-cg unit key replay_cxx clang++ (clang 18 in toolchain lock) for

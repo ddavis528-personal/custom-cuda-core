@@ -59,6 +59,9 @@ name whose one command peaks over its light limit.
 Both queue their heavy units first, then the rest slowest first by the last
 clean gate's unit times (DA, 2026-11-03), a record in
 `$CCV_LOGDIR/unit-times/` that only a clean gate writes.
+GitHub's CI (`.github/workflows/ci.yml`, pinned to ubuntu-24.04) runs the full
+gate only on a push to `release`, weekly and on dispatch (DA, 2026-11-05): a
+working branch is gated where it is pushed from, never again on GitHub.
 A push to a working branch takes the scoped gate (OI-95; DA, 2026-10-31):
 `tools/verify.sh --changed <base>` keeps the cache and runs only the
 sections `tools/gate-scope.py` maps the change to, with those they wait on;
