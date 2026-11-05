@@ -109,7 +109,12 @@ RA rev 80 accepted; asked RI to name that gate and report it at block assembly (
 DA rev 108 (Daniel, verified in DA tab): receiving boundary flop's lead slice is ungated and counts against
 the receiving block's per-instance 2% (RCU: ooe_rcu_issue 144 + miu_rcu_data lead); shrink lead fields first.
 Partition rev 40 records it (~4,700-flop block budget at 192 rows, also carries the slices' 71% row gates).
-Bookmarks: OA 338, RA 80, RI 11, TI 321, DA 108, AR 289.
+RI-14 (RI rev 14, phase 3): RA rev 81 accepted rcu_pred (2,870 fl, NGD 22.0) / rcu_kill (58 fl) / M1 22.0;
+took departures (1) OL/OR/OC in pred, (3) dq 18 but gt/pdt/br at 0, (4) shared epoch reg w/ assertion,
+(5) rcu_r pr_orow (Partition rev 41); DECLINED (2) CG-5 waivers on m_am/rg_hi (use interface flop lead
+directly, else ungated in allowance). Credit-pulse block-budget ask (rcu_kill 45 cr pulses, CG-1 waiver):
+RA supports; DANIEL TO RULE (asked in chat). M4 kill-drain bound unexercised: TI's kernel + V-24 checker.
+Bookmarks: OA 338, RA 81, RI 14, TI 321, DA 108, AR 289.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)

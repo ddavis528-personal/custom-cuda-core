@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=40 exported=2026-11-05 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 40 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=41 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 41 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -48,6 +48,7 @@ RA writes these files with the implementation. A block input starts at its inter
 | issue payload → `mem` payload flops | 2 | `mem` in: 14 | 16 |  |
 | issue payload → `mig` `dm_v_q`, `rs_v_a1` | 2 | `mig` in: 12 | 14 | the R2/RW-free decode |
 | OOE `ccv_ooe_rcu_issue` R slot `phys_src0/1` → `bank` R0-R1 read (in A) → the slice's `rsrc`; `bank` R2 read (in A+1) → `r` `old` | `phys_src0/1` from the interface flop at 0 (RA-39's 19/6 split lapsed with the boundary flops, AR rev 285); `bank` out: 11 for R2 (measured 11.0 with the fanout term, RI-9) | `rcu_bank_slice` in: 25 on `phys_src0/1` from the interface flop (fanout to 32 slices 2.5, decode, read, MIU write-through: measured 18.4, into `rsrc`); `r` in: 14 for R2 | 25 | alignment 2 into flops; R's compute starts at flops in A+1, about 16 for the register-index shfl and ret, alignment of rsrc included (R unit tab, early R source read, RA-39) |
+| rcu\_r pr\_orow (phys\_pred\_old\_dst carried to A+1) → pred's PR merge | 0 (a flop) | pred in: per rcu\_pred.ngd.json; pred's dq out required 18 (merge path, migration 7) | ≤ 25 | RCU-internal port, added at assembly (RI-14 (5), RA rev 81); OL/OR/OC stay inside rcu\_pred; gt/pdt/br arrive at 0, their decode timed in pred |
 | `bank` L0-L3 read → `lanes` payload | 11 | 6 | 17 |  |
 | `bank` M0-M2 read → `mem` payload | 11 | 10 | 21 | operand assembly |
 | `bank` R2 read → `mig` `dm_pay` | 11 | 3 | 14 |  |
