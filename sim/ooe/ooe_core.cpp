@@ -2213,6 +2213,25 @@ void Core::releaseSlot(unsigned slot) {
   for (unsigned r : cand_ret_) pend += ret_owner_[r] == slot + 1;
   if (s.held_gpr != pend || (cfg_.rename_preds && s.held_pred))
     err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr - pend, s.held_pred);
+  if (!cfg_.inject_keep_released_uops) {
+    decq_flushed_ |= 1u << slot;
+    for (auto it = decq_.begin(); it != decq_.end();)
+      if (it->warp == s.warp) {
+        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+        ++decq_freed_;
+        ++decq_flush_now_;
+        it = decq_.erase(it);
+        --s.decq;
+        count("decq.release_drop");
+        ev("release_drop", s.warp);
+      } else ++it;
+  }
+  {
+    unsigned q = 0;
+    for (const Uop &u : decq_) q += u.warp == s.warp;
+    if (q || s.decq)
+      err("RI-12: slot %u released with %u of warp %u's uops queued, its count %u", slot, q, s.warp, s.decq);
+  }
   slot_of_[s.warp % kWarpIds] = -1;
   if (slot < squash_due_.size()) squash_due_[slot].on = false;
   rlog_.release |= 1u << slot;
@@ -3775,6 +3794,16 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       return false;
     }
   }
+  // OI-79 (b): a CAS pair at the cycle's last lane that the go's own terms
+  // above admit is the width's cut, and the take ends at its lane, as the
+  // RTL's go ends it. Its two names, charged at its first lane, must not
+  // refuse it first: the go fits them over the pair's two lanes, so the
+  // cycle's names short of two here are the width's, and a refusal would
+  // hand the lane to a head the go ranks after the pair.
+  if (ren_pair_last_) {
+    ren_pair_cut_ = true;
+    return false;
+  }
   unsigned pos = 0, plan = 0;
   if (wgpr && cfg_.sectioned && !atomic) {
     // The decided form places on the merge source's read, which a copy's
@@ -4588,7 +4617,16 @@ void Core::rename() {
       cu.cas_reads = uint8_t(it2->shape.gpr_reads & 3u);
     }
     if (young) count("rename.refill");
-    if (!tryRename(si, pair ? cu : *it)) {
+    ren_pair_last_ = pair && budget < 2 && !cfg_.inject_pair_split;
+    ren_pair_cut_ = false;
+    const bool renamed = tryRename(si, pair ? cu : *it);
+    ren_pair_last_ = false;
+    if (ren_pair_cut_) {
+      count("rename.pair_cut");
+      budget = 0;
+      return 0;
+    }
+    if (!renamed) {
       if (young) count("rename.refill_fail");
       blocked[si] = true;
       return 0;

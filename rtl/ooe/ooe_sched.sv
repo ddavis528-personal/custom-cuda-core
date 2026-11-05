@@ -129,7 +129,8 @@ module ooe_sched #(
   input  logic [NR-1:0]     brk_cq03h,     // an RCU entry is a branch or call, not a ret (not a copy)
   input  logic              mig_cq02h,     // a migration is in flight next cycle (RA-17; a lead)
   output logic [N-1:0]      grant_cq04h,
-  output logic [N-1:0]      grant_w_cq04h  // the same, for ooe_wake's timers
+  output logic [N-1:0]      grant_w_cq04h, // the same, for ooe_wake's timers
+  output logic              gnt_l_cq04h    // the grant register is clocked at the next edge (ooe_rs's issue register)
 );
 
   logic rst_r01h;
@@ -212,7 +213,8 @@ module ooe_sched #(
                                              .wake_cq02h(wake_cq02h), .ready_cq02h(ready_cq02h));
 
   // -- Request register -------------------------------------------------------
-  logic [N-1:0] rq_cq02h, rq_cq03h;
+  logic [N-1:0] rq_cq02h;
+  (* keep *) logic [N-1:0] rq_cq03h;      // kept apart from its copy rq_l (gnt_l)
   logic         chg_cq04h, rq_en_cq02h, gnt_en_cq03h;
   always_comb
     for (int e = 0; e < N; e++)
@@ -238,8 +240,10 @@ module ooe_sched #(
   always_comb
     for (int e = 0; e < NR; e++) rbit_cq03h[e] = res_cq03h[e * 9 + 4];
   localparam int RW = IRK > 2 ? $clog2(IRK) : 1;
-  logic          rg_cq04h, force_cq04h;
-  logic [RW-1:0] rrun_cq04h, rnx_cq04h;
+  logic          rg_cq04h;
+  (* keep *) logic force_cq04h;          // kept apart from its copy force_l (gnt_l)
+  (* keep *) logic [RW-1:0] rrun_cq04h;  // and rrun_l
+  logic [RW-1:0] rnx_cq04h;
   assign rg_cq04h  = (gnt_cq04h[NR-1:0] & rrq_cq04h) != '0;
   assign rnx_cq04h = !rg_cq04h ? '0 : 32'(rrun_cq04h) >= IRK - 1 ? rrun_cq04h : rrun_cq04h + 1'b1;
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
@@ -266,6 +270,17 @@ module ooe_sched #(
   end
   assign grant_cq04h   = gnt_out_cq04h;
   assign grant_w_cq04h = gnt_w_cq04h;
+  // gnt_l, a superset of the grant register's enable for ooe_rs's issue
+  // register: a request pending, ready or not, in the term gnt_en reads
+  // as a ready request. From copies of its registers that drive nothing
+  // else (NGD-7: the originals start select's paths; a copy of the ready
+  // register too put vel_cq03h over its cap), the grant term from the
+  // output's own copy.
+  (* keep *) logic [N-1:0]  rq_l_cq03h;
+  (* keep *) logic          force_l_cq04h;
+  (* keep *) logic [RW-1:0] rrun_l_cq04h;
+  assign gnt_l_cq04h = rq_l_cq03h != '0 || gnt_out_cq04h != '0 || force_l_cq04h || rrun_l_cq04h != '0;
+  `CCV_ASSERT(gnt_l_covers, gnt_l_cq04h || !((rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0 || force_cq04h || rrun_cq04h != '0))
 
   // -- Registers --------------------------------------------------------------
   always_ff @(posedge ooe_core_clk) begin
@@ -289,11 +304,15 @@ module ooe_sched #(
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
-      ready_cq03h <= '0;
-      rq_cq03h    <= '0;
+      ready_cq03h   <= '0;
+      rq_cq03h      <= '0;
+      rq_l_cq03h    <= '0;
     end else begin
       if (ready_en_cq02h) ready_cq03h <= ready_cq02h & valid_cq02h;
-      if (rq_en_cq02h) rq_cq03h <= rq_cq02h;
+      if (rq_en_cq02h) begin
+        rq_cq03h   <= rq_cq02h;
+        rq_l_cq03h <= rq_cq02h;
+      end
     end
   end
   always_ff @(posedge ooe_core_clk) begin
@@ -315,19 +334,25 @@ module ooe_sched #(
   // grant and no grant to clear, rg is 0, so the run and the force go to
   // 0, which their own terms in the enable cover.
   if (IRK == 0) begin : g_no_idle_r
-    assign force_cq04h = 1'b0;
-    assign rrq_cq04h   = '0;
-    assign rrun_cq04h  = '0;
+    assign force_cq04h   = 1'b0;
+    assign rrq_cq04h     = '0;
+    assign rrun_cq04h    = '0;
+    assign force_l_cq04h = 1'b0;
+    assign rrun_l_cq04h  = '0;
   end else begin : g_idle_r
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
-        rrq_cq04h   <= '0;
-        rrun_cq04h  <= '0;
-        force_cq04h <= 1'b0;
+        rrq_cq04h     <= '0;
+        rrun_cq04h    <= '0;
+        force_cq04h   <= 1'b0;
+        rrun_l_cq04h  <= '0;
+        force_l_cq04h <= 1'b0;
       end else if (gnt_en_cq03h) begin
-        rrq_cq04h   <= rbit_cq03h;
-        rrun_cq04h  <= rnx_cq04h;
-        force_cq04h <= mig_cq02h && 32'(rnx_cq04h) >= IRK - 2;
+        rrq_cq04h     <= rbit_cq03h;
+        rrun_cq04h    <= rnx_cq04h;
+        force_cq04h   <= mig_cq02h && 32'(rnx_cq04h) >= IRK - 2;
+        rrun_l_cq04h  <= rnx_cq04h;
+        force_l_cq04h <= mig_cq02h && 32'(rnx_cq04h) >= IRK - 2;
       end
     end
   end

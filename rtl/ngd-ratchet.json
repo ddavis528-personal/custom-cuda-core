@@ -2,12 +2,6 @@
   "_comment": "Findings of tools/check-ngd.py that stood when the logic depth rules were made (Daniel, 2026-10-17 and 2026-10-18; docs/rtl-coding-style.md, 'Logic depth'): a port over the default CCV_NGD_PORT (NGD-2, NGD-3), awaiting the architect's budgets (the module's <module>.ngd.json beside its RTL) or a redesign; or logic on a path straight through a module, or between a module's children touching none of its flops (NGD-5, keyed from>to), awaiting a redesign that groups it with one sequential side, or the module's declaration as an inner helper. Or an inner helper that no module instantiates yet, a path input to output over CCV_NGD_INNER (NGD-6, 2026-10-19, keyed from>to), awaiting its parent. Or a register that drives an output and reaches a flop or another output past that output's required time (NGD-7, 2026-10-19, keyed by register), awaiting a copy for the output and one for the rest. The list only shrinks: check-ngd refuses an entry that now meets the rule, and one that was not here when its rule was made.",
   "modules": {},
   "fanout": {
-    "ooe_decq": {
-      "NGD-1": 26.1,
-      "NGD-3 deq_t_cq01h": 25.3,
-      "NGD-3 enq_slot_cq01h": 27.0,
-      "NGD-3 enq_v_cq01h": 30.2
-    },
     "ooe_go": {
       "NGD-1": 27.6,
       "NGD-2 lane_c_cq02h": 22.4,
@@ -112,9 +106,7 @@
     },
     "ooe_sched": {
       "NGD-1": 30.5,
-      "NGD-3 brk_cq03h": 27.0,
       "NGD-3 cidx_cq03h": 26.6,
-      "NGD-3 older_m_cq03h": 25.1,
       "NGD-3 res_cq03h": 30.2,
       "NGD-3 siss_cq03h": 27.1,
       "NGD-3 sslot_cq03h": 27.3,
