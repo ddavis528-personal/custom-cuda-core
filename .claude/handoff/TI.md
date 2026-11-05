@@ -39,6 +39,13 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-05 08:50Z: PUSHED f61983f/dbb4cce (full gate PASS): #76, AR 289 /
+  DA 108. Rescue/drain 3; checker SRC_BOUNDARY (stall rule 1+B+2S, gen-skel
+  sets it); rpt DST_END/BND_FIRST, bnd_lead_q charged to the wrapper
+  (check-cg RPT_BOUNDARY); RI-13 took_flops ranged fix. TI rev 332 rows
+  re:RI-11 (OOE 978 of 782 with flopped ends; source-end reading for AR/DA)
+  and re:RI-13; notices AR, OA, OI, RI. Next: #75 bases (ti-bases c39035a)
+  with OI's ccr-57eff422-5tdecg and RI's 600004a, MOVI_TOTAL 354; then #78.
 - 2026-11-05 05:15Z: PUSHED 810e35c (full gate PASS): #75 push B, the
   interface module's boundary flop (ccv_common_rpt BOUNDARY, default 1;
   params/links.json no_flop holds all 14 DPI-host types, so the top is
