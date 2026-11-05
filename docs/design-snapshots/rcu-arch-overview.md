@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=50 exported=2026-11-05 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 50 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=52 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 52 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -58,7 +58,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Reset | control state only, about 1,500 flops; no PRF or payload reset | Done | A-29 |
 | CSRs | none; a read-0 responder (RA-26) | Done | RA-26 |
 | Size | about 246,000 flops, 80% of them PRF rows | Partition | RA-11 |
-| Address time | CCV\_LAT\_RCU\_ADDR\_BASE = 1: address valid at A+1, payload at A+2; RCU-internal, from the interface flop; the parameter also counts the receiving interface flop (AR row 286: 5 to 6 today), so it is reapplied as 2 and L1 wake goes 17 to 13; one more if M1 misses (RA rev 79) | Lane and memory; Partition | RA-7, RA-31 (1); PF-47 |
+| Address time | CCV\_LAT\_RCU\_ADDR\_BASE = 1: address valid at A+1, payload at A+2; RCU-internal, from the interface flop; the receiving interface flop's cycle is the link term bnd\_rx (AR row 300), so the base stays 1, the derived CCV\_LAT\_RCU\_ADDR is 2, and L1 wake goes 17 to 13; one more if M1 misses (RA rev 79) | Lane and memory; Partition | RA-7, RA-31 (1); PF-47 |
 | Issue lead slice | OOE sends section mask, source, imm and merge use (and on R's slot the guard predicate) a cycle ahead; RCU enables each field group from it; a clear bit is asserted as a promise | Partition; Pipeline (stage IL) | RA-31 (2), RA-39 |
 | Split guard read | guard row predecoded at A−1 from the lead; guard path about 16 NGD in A (about 22 without the lead) | Predicate file | RA-32 (1) |
 | Select fanout | row selects copied per slice and port, 32 loads a row AND; 12,544 flops; fanout counted by check-ngd (Daniel's option (a)), enforced (TI rev 299) | Register file | RA-33 |
@@ -76,7 +76,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | SFU second result on `ccv_lane_rcu_res` | settled | RA-3 |
 | MIU lead fields, for CG-5 on load write-back | settled | RA-4 |
 | Read ports: 10 per bank, migration on an idle R port | settled (AR re:RA-6) | RA-6 |
-| `CCV_LAT_RCU_ADDR` = 2 with the boundary flop (RCU-internal 1; fallback 3) | adopted (AR rev 266, PF-47); +1 for the interface flop (AR row 286, RA rev 79); one more if M1 misses | RA-7 |
+| `CCV_LAT_RCU_ADDR` = 2: base 1 + bnd\_rx 1 (AR row 300) (RCU-internal 1; fallback 3) | adopted (AR rev 266, PF-47); the +1 is bnd\_rx, a link term, not the base (AR row 300); one more if M1 misses | RA-7 |
 | Collective fold 5 → 3 | RCU now meets 3; folding the contract is OA's, then Daniel's | RA-8 |
 | Crossbar as an RCU sub-module | settled: `rcu_xbar`, an inner helper | RA-9 |
 | Q-18: the AGU stays in MIU | settled | RA-10 |

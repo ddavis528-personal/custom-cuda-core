@@ -124,7 +124,10 @@ Zero-cycle pricing (OA 347, AR 298): RA rev 83/84 - lane_rcu_res zero-cycle reco
 PL merge 9.0-10.2, sec_valid never an enable) -> LANE 7/SFU 12; miu_rcu_data stays flopped (guard fwd 16.2 > 12;
 needs a split); issue stays flopped (18.4). RI model runs (S1, CoreMark) pending for DA.
 PF-47 base 2: OA 346 agrees, TI waits on AR (AR 288 confirmed). RI-15 + credit pulses: still DANIEL.
-Bookmarks: OA 347, RA 84, RI 16, TI 336, DA 108, AR 298, OI 290, Conventions 17, CP 154.
+RI-16: zero-cycle model runs blocked (skeleton lacks boundary flops); AR bases alone S1 +1.17%.
+AR row 300: receiving flop's cycle is link term bnd_rx; bases back to LANE 7 / SFU 12 / RCU_ADDR 5 (PF-47 base 1,
+derived 2). RA rev 85 took it; spec Overview 52, Partition 43, Conventions 12.
+Bookmarks: OA 347, RA 85, RI 17, TI 336, DA 108, AR 300, OI 290, Conventions 17, CP 154.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
