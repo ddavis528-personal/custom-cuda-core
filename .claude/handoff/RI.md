@@ -45,7 +45,7 @@ Nothing had RI in Needs at session start.
     (it runs the other scoped sections); expect SPLIT SCOPED PASS. 89543cc already pushed.
 0. Next push: ri-wt holds 3c912d1 (M4: model knob CCV_RCU_KILL_DRAIN_CUT + docs/rcu-model.md) + this
    handoff, on d2ca2d7. Merge into the main tree after e5e846b's push; scope sim/rcu -> rcu_unit etc.
-1. Phase 3 reported: RI-14 (RI rev 14; notices to RA, TI). Waiting on RA (departures 1-5,
+1. Phase 3 reported: RI-14 (RI rev 14; notices to RA, TI). TI took M4 (TI rev 330): kernel + V-24 post-ack check after AR 289; TELL TI (RI tab row + notice) once a90cb8f, d2ca2d7, 3c912d1 are pushed. Waiting on RA (departures 1-5,
    block-budget for credit pulses) and TI (SFU-in-flight kill kernel + post-ack checker for M4).
    M4 result: no kernel fails even at drain 0 (RCU idle at every kill); margin = whole drain.
 2. RI-12: close when OI's fix lands (OI rev 287). Then TI's AR-bases push (LANE_BASE 8, SFU 13):
@@ -53,4 +53,4 @@ Nothing had RI in Needs at session start.
 3. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals.
 4. Remaining phases per docs/rcu-impl.md: rcu_mig, the lane/SFU descriptor pipes, assembly (M5-M7).
 5. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
-Bookmarks 2026-11-05: RA 80, TI 329, OA 338, OI 287, AR 287, RI 14.
+Bookmarks 2026-11-05: RA 80, TI 330, OA 338, OI 287, AR 287, RI 14.
