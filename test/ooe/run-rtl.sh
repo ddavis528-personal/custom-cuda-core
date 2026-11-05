@@ -701,7 +701,7 @@ fi
 # Every seed the bench runs, as rob's (no-rep-lead, at CCV_P_DECQ 15 and
 # with the ret hold cancelling after the pick, OA's rev 320: not caught in
 # the first 6).
-for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r; do
+for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r pay-port no-home; do
   if TRIO_CONTROL=$c "$dir/trio_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (trio)" "MISSED"; fail=1
   else

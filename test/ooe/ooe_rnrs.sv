@@ -118,7 +118,8 @@ module ooe_rnrs #(
     .prv_code_cq01h(prv_code), .sqf_cq01h, .msd_cq01h, .cfin_cq01h, .wtl3_cq00h, .fin_cq00h, .gnt_cq01h,
     .cmpl_l_cq00h, .cmpl_idx_cq00h, .sq_l_cq00h, .gnt_v_cq03h, .gnt_idx_cq03h, .valid_out_cq02h, .dep_cq02h,
     .code_cq02h, .prod_o_cq02h(prod_o), .hcol_cq02h,
-    .akind_cq01h(akind), .acls_cq01h(acls), .kind_o_cq02h, .cls_o_cq02h);
+    .akind_cq01h(akind), .acls_cq01h(acls), .kind_o_cq02h, .cls_o_cq02h,
+    .pay_cq01h('0), .home_cq01h('0), .gnt_l_cq00h(1'b0), .iss_v_cq02h(), .iss_pay_cq02h());   // the payload: trio_tb's
   assign rd_row_dep = row_dep;
   assign dbg_eg = eg;
   assign dbg_ep = ep;

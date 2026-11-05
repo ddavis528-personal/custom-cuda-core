@@ -2166,6 +2166,7 @@ public:
   /// next.
   bool wakeLineChanges(unsigned j, unsigned k) const { return lineAt(j, k, now_ + 2) != lineAt(j, k, now_ + 1); }
   unsigned rsSlot(unsigned e) const { return rs_[e].slot; }
+  unsigned rsRes(unsigned e) const { return rs_[e].res; }   ///< the entry's footprint (S0-S3, R, P0-P3; ooe_select's res)
   bool rsCopy(unsigned e) const { return rs_[e].copy; }
   bool rsEligibleNext(unsigned e) const { return rs_[e].eligible_at <= now_ + 1; }
   bool slotActive(unsigned s) const { return s < slot_.size() && slot_[s].st == WarpState::kActive; }

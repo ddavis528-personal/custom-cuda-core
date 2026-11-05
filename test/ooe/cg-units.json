@@ -64,7 +64,8 @@
       "params": {
         "N": 45,
         "NR": 30,
-        "A": 4
+        "A": 4,
+        "PW": 176
       },
       "clock": "ooe_core_clk",
       "reset": "ooe_rst_r00h",
