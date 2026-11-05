@@ -35,6 +35,7 @@ module ooe_trio #(
   parameter int LAT_MISS = 19,
   parameter int CMPL_DLY = 1,
   parameter int PW = 16,     // the payload's bits (RA-39 (c)): the bench's tag
+  parameter int LW = 12,     // the lead slice's bits (RA-31, OA's rev 343): another tag
   parameter int K  = 9,
   localparam int P  = 2 * A,
   localparam int W  = $clog2(N),
@@ -65,6 +66,7 @@ module ooe_trio #(
   input  logic [2*P-1:0]    akind_cq01h,
   input  logic [3*P-1:0]    acls_cq01h,
   input  logic [P*PW-1:0]   pay_cq01h,
+  input  logic [P*LW-1:0]   lead_cq01h,
   input  logic [P*K-1:0]    home_cq01h,
   input  logic [N-1:0]      prod_cq01h,
   // ooe_sched's other terms.
@@ -97,6 +99,7 @@ module ooe_trio #(
   // What the bench compares.
   output logic [N-1:0]      grant_cq04h,
   output logic [K-1:0]      iss_v_cq05h,
+  output logic [K*LW-1:0]   iss_lead_cq05h,
   output logic [K*PW-1:0]   iss_pay_cq05h,
   output logic [P-1:0]      gnt_v_cq03h,
   output logic [P*W-1:0]    gnt_idx_cq03h,
@@ -120,7 +123,7 @@ module ooe_trio #(
   logic [3*N-1:0]    cls_w;
   // ooe_wake takes the completion's payload a cycle after ooe_rs's stage
   // name for it; both are the channel's payload at the same edge.
-  ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC), .PW(PW), .K(K)) u_rs (
+  ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC), .PW(PW), .LW(LW), .K(K)) u_rs (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
     .req_l_cq00h(req_l_cq00h), .req_cq01h(req_cq01h), .row_prod_cq01h(row_prod_cq01h),
     .akind_cq01h(akind_cq01h), .acls_cq01h(acls_cq01h),
@@ -133,8 +136,8 @@ module ooe_trio #(
     .gnt_v_cq03h(gnt_v_cq03h), .gnt_idx_cq03h(gnt_idx_cq03h), .valid_out_cq02h(valid_cq02h),
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol),
     .kind_o_cq02h(kind_w), .cls_o_cq02h(cls_w),
-    .pay_cq01h(pay_cq01h), .home_cq01h(home_cq01h), .gnt_l_cq01h(gnt_l),
-    .iss_v_cq03h(iss_v_cq05h), .iss_pay_cq03h(iss_pay_cq05h));
+    .pay_cq01h(pay_cq01h), .lead_cq01h(lead_cq01h), .home_cq01h(home_cq01h), .gnt_l_cq01h(gnt_l),
+    .iss_v_cq03h(iss_v_cq05h), .iss_lead_cq03h(iss_lead_cq05h), .iss_pay_cq03h(iss_pay_cq05h));
   ooe_wake #(.N(N), .LAT(LAT), .FAST(FAST), .PEN(PEN), .NPEN(NPEN), .LAT_COPY(LAT_COPY),
              .LAT_SPEC(LAT_SPEC), .LAT_MISS(LAT_MISS), .CMPL_DLY(CMPL_DLY), .NC(NC)) u_wake (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),

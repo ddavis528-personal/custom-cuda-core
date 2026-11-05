@@ -116,6 +116,7 @@ module ooe_rnrs #(
   /* verilator lint_off UNUSEDSIGNAL */
   logic [8:0] rs_iss_v_nc;
   logic [8:0] rs_iss_pay_nc;
+  logic [8:0] rs_iss_lead_nc;
   /* verilator lint_on UNUSEDSIGNAL */
   ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC)) u_rs (
     .ooe_core_clk, .ooe_rst_r00h, .req_l_cq00h, .req_cq01h, .row_prod_cq01h(row_prod), .row_dep_cq01h(row_dep | ctl_row_cq01h),
@@ -124,7 +125,8 @@ module ooe_rnrs #(
     .cmpl_l_cq00h, .cmpl_idx_cq00h, .sq_l_cq00h, .gnt_v_cq03h, .gnt_idx_cq03h, .valid_out_cq02h, .dep_cq02h,
     .code_cq02h, .prod_o_cq02h(prod_o), .hcol_cq02h,
     .akind_cq01h(akind), .acls_cq01h(acls), .kind_o_cq02h, .cls_o_cq02h,
-    .pay_cq01h('0), .home_cq01h('0), .gnt_l_cq01h(1'b0), .iss_v_cq03h(rs_iss_v_nc), .iss_pay_cq03h(rs_iss_pay_nc));   // the payload: trio_tb's
+    .pay_cq01h('0), .lead_cq01h('0), .home_cq01h('0), .gnt_l_cq01h(1'b0), .iss_v_cq03h(rs_iss_v_nc),
+    .iss_lead_cq03h(rs_iss_lead_nc), .iss_pay_cq03h(rs_iss_pay_nc));   // the payload: trio_tb's
   assign rd_row_dep = row_dep;
   assign dbg_eg = eg;
   assign dbg_ep = ep;
