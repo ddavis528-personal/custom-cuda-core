@@ -38,32 +38,19 @@ Nothing had RI in Needs at session start.
 - Gate: split gate if all sections run (`verify.sh --full --only ngd` + gate-export + gate-push --import).
 
 ## Open work, most urgent first
-00. Push: 600004a (all phase 2 + RI-11 + TI merge + r32 out of the gate) split gate running
-    (bqmniuo5k: cg then ngd -> ~/ccv-logs/gate-{cg,ngd}-600004a.tgz); then gate-push --import.
-    TI's AR-bases push waits on: 600004a (sent on gate-scratch/RI), MOVI_TOTAL 354 re-pin (TI),
-    and RI-12 (OOE decq bug; OI FIXED at OI rev 287, verified on 600004a, lands in OI's next push: close RI-12 then). Repro tree ri-wt2 (params restored).
-0. RI-11 DONE for RCU (RI rev 10; notices TI, RA). DA: flop at every block boundary; A counts
-   from RCU's interface flop; arrivals 0 (rd2 11), set in 0d087e9; check-ngd passes. Model derives
-   lane/SFU timing from params; tests derive too (checked at LANE 8/SFU 13). TI lands the params
-   (LANE_BASE 8, SFU 13, RCU_ADDR_BASE 6) and must merge 0d087e9 first. Then re-run run-tests and
-   check-kernel on TI's push.
-   Push chain: 0d087e9 split gate (cg bnh4z0vqi -> ~/ccv-logs/gate-cg-0d087e9.tgz; then ngd; then
-   gate-push --import=both). ba3549b pushed (SPLIT SCOPED PASS).
-0b. RI-10 closed (TI 31e21e0 merged at c215aab): full slice in cg-units (5495933), check-cg clean
-   at 192 rows; M3 ACCEPTED (RA rev 80). At bank assembly: report row 135's gate
-   (row_cr03h[4351:4320], en row_en_cr02h[135], 71% medium DCGE) with block CG totals; if <75% there,
-   split its enable before any waiver. Worktree ri-wt carries c215aab..HEAD for the
-   push after 0d087e9's (rcu-only changes now scope to cg+ngd).
-1. Phase 2 RTL (rtl/rcu/, test/rcu/): rcu_bank_slice (RA-39: R0/R1 read from phys_src on the
-   wire, rsrc flopped per slice with MW write-through), rcu_r + rcu_xbar. Figures sent to RA as
-   RI responses rev 8 (notice sent): phys_src->rsrc 18.4 vs 18 at 192 (miss 0.4) RA-39 CLOSED (RA rev 74, OA rev 337):
-   RCU in 19 / OOE out 6; rr_row arrival 8.5 set. Departures (1)-(3) accepted. rcu_r 2,626 flops, 23.9 NGD, CG clean. Departures to confirm:
-   low from pred's flops, the .ngd.json arrivals, RI-9 (e). RI-10 (192-row cg harness) with TI.
-   Benches: test/rcu/run-rtl.sh (all units + controls nowt/noalign/retlow).
-2. Push chain: ba3549b (main tree) split gate cg passed (~/ccv-logs/gate-cg-ba3549b.tgz), ngd
-   part -> gate-ngd-ba3549b.tgz, then gate-push --import=both. Then fast-forward main tree to
-   the ri-wt commits (795776d, 316564f, aa00783, 58ae73e + this handoff), regen, split gate, push.
-3. TI to merge eac3054 (model drops lead_r_src; on gate-scratch/RI, ri-wt2). Merge TI back after.
-4. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
-5. Split gate recipe when every section runs: verify --changed <base> --only cg, export; same for
-   ngd; gate-push --import=a.tgz,b.tgz (each part a separate background job, < 2 h).
+00. Push e5e846b (main tree: a90cb8f rcu_pred, d2ca2d7 rcu_kill, trust-report regen). Split gate:
+    cg part bcdqazsfg running in main tree (verify --changed 89543cc --only cg ->
+    ~/ccv-logs/split-cg-e5e846b.log, gate-cg-e5e846b.tgz). Then, in the main tree, in the background:
+    CCV_PUSH_BRANCHES=ccr-888218a3-20cauz tools/gate-push.sh --import=$HOME/ccv-logs/gate-cg-e5e846b.tgz
+    (it runs the other scoped sections); expect SPLIT SCOPED PASS. 89543cc already pushed.
+0. Next push: ri-wt holds 3c912d1 (M4: model knob CCV_RCU_KILL_DRAIN_CUT + docs/rcu-model.md) + this
+   handoff, on d2ca2d7. Merge into the main tree after e5e846b's push; scope sim/rcu -> rcu_unit etc.
+1. Phase 3 reported: RI-14 (RI rev 14; notices to RA, TI). Waiting on RA (departures 1-5,
+   block-budget for credit pulses) and TI (SFU-in-flight kill kernel + post-ack checker for M4).
+   M4 result: no kernel fails even at drain 0 (RCU idle at every kill); margin = whole drain.
+2. RI-12: close when OI's fix lands (OI rev 287). Then TI's AR-bases push (LANE_BASE 8, SFU 13):
+   re-run sim/rcu/run-tests.sh and check-kernel; KILL_DRAIN 16 (kd waiver max 5 covers it).
+3. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals.
+4. Remaining phases per docs/rcu-impl.md: rcu_mig, the lane/SFU descriptor pipes, assembly (M5-M7).
+5. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
+Bookmarks 2026-11-05: RA 80, TI 326, OA 338, OI 287, AR 287, RI 14.
