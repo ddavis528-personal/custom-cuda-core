@@ -50,6 +50,15 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
+- RI's RI-16 (lane_rcu_res F vs Z; RI says DA approved RI sending jobs, but
+  that's unconfirmed by DA in RH's session): rh-jobs/ri16.sh, worktrees
+  /home/user/rh-ri16-{F,Z}, summary ~/ccv-logs/ri16/. S1 sent; the CoreMarks are
+  running. Report to RI: cm32/cm128 cycles and %.
+- OI's C9 vs flopped at LANE 8/SFU 13 (DA 114): rh-jobs/c9/all.sh waits for
+  ri16 (run alone), then oracles at fb52948 (rh-c9chk), c9-run.sh in
+  rh-jobs/c9/run (trees A6, PK), then CoreMark A6/C9/C9r/F. Progress in
+  rh-jobs/c9/progress. Send S1 geomeans vs A6 and vs F (F-C9r, F-C9), then the
+  CoreMark table.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
