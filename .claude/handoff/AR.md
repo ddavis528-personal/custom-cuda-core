@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 309, OA 365, TI 350, RA 89 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 112,
+  record): AR 310, OA 365, TI 351, RA 89 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 112,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
@@ -320,6 +320,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    rescue +2*bnd_rx, and say which check holds RTL src-end flops. RTL: credit
    need not pass the rx boundary flop (depth 5 not 6; miu_rcu_data +2 entries
    = 8,912 flops) - RA to price when RCU's RTL top lands. Needs TI, RA.
+   TI 351: (1) DPI flopped send end refused (255436f), texts done, rescue ok.
+   AR 310: TI's check-ngd rule for RTL tops confirmed, amended: refuse a
+   hidden stage per WHOLE port (valid/lead incl.), mirrored at flopped rx ends;
+   fix = no_flop. Needs TI.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
