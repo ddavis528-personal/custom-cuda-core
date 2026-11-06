@@ -1106,6 +1106,16 @@ block top is RTL:
   straight from the interface module's flop in its wrapper, inner helpers
   flattened into their parents as their logic. So every connection must
   converge to 25 as the files say, and any glue between children is NGD-5.
+  The parent's wires carry the fanout term (RA-33) too: a net in the level
+  is timed with ceil(log4(N / 4)) INV stages for its N pins in the parent
+  (each cut child input on it, each output port, each of the parent's own
+  gate inputs and flop D pins). A child-to-child wire converges only when
+  the driver's required time plus that term is within each receiver's
+  arrival; a boundary input or the parent's own flop as the source is held
+  the same way. Each side counts its own net and no other: a child's unit
+  counts the loads inside the child on its port's net (its output port
+  counted once, as one load), the level counts only the pins on the
+  parent's net, so a load is never counted twice.
   With nothing straight through a module (NGD-5), a flop-to-flop path
   across modules is two port segments, so convergence and each unit's port
   checks bound it to 25.
@@ -1117,7 +1127,11 @@ block top is RTL:
   the same way, down to a leaf, whose unit's measurement at the instance's
   parameters must show it straight from or into a flop. The measurement,
   not the budget, is what holds: a budget of 0 would force it, but a leaf's
-  budget is a bound the architect may set higher.
+  budget is a bound the architect may set higher. The fanout term applies
+  at an input: one wired to more than 4 pins on the parent's net is a
+  buffer tree before its flops, not straight into one. An output is held
+  by its shape (straight from a flop), without the term; the load past the
+  crossing is the receiving block's input net, which counts it there.
 
 The flops are the interface module's boundary stage, built in the hardening
 wrapper (`ccv_common_rpt` `BOUNDARY`, default 1; Daniel, 2026-11-05), so the
@@ -1129,12 +1143,11 @@ The 12-a-side port budget stays only between modules inside a block.
 did: synthesis across a boundary (a constant, an unused output or a
 duplicated register only the whole would simplify, or two halves of a
 function that map shallower together: two 64-bit parities in series), which
-makes the parts conservative; and the load a parent's wire puts on a child's
-pin, its fanout across several children, which each part times at its own
-port alone. The convention covers the second only as far as the boundary
-and the connections are flop to flop: a child output fanned out wide by its
-parent's wires is timed nowhere, and the fanout term (RA-33) applies inside
-modules only. The block budget of local clock gating (2% per instance) is
+makes the parts conservative; and one net's loads as a whole: a child's
+output net is timed in two parts, the child's loads in its unit and the
+parent's pins at its level, each with its own fanout term, where the whole
+would take one tree over both, short of it by one INV stage at most. The
+block budget of local clock gating (2% per instance) is
 summed from the same read by `tools/check-cg.py`. Today no block top is RTL,
 so neither runs on the tree; the fixtures exercise both.
 

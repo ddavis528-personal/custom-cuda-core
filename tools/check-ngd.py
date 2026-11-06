@@ -67,11 +67,11 @@ Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"):
          What the parts cannot see, which the flattened pass did: synthesis
          across a boundary (a constant, an unused output, a register
          duplicated or merged, two halves of a function mapping shallower
-         together), which leaves the parts conservative; and the load a
-         parent's wire puts on a child's pin, its fanout across children,
-         which each part times at its own port alone. The convention covers
-         the second only where the connection is flop to flop at both ends;
-         a child output fanned out wide by its parent is timed nowhere.
+         together), which leaves the parts conservative; and one net's
+         loads as a whole. Each level times its wires with the fanout term
+         for the pins on the parent's net, a child's unit for its loads
+         inside the child, so a net split across the two is two trees where
+         the whole would be one: short of it by one INV stage at most.
 
 Each module is measured at the parameters of its units (test/**/cg-units.json,
 and test/**/ngd-units.json for modules with no flops): Yosys synthesises it
@@ -318,6 +318,7 @@ class Timing:
       ir[in]                 input to flop
       ro[out]                flop to output
       io[(in, out)]          input to output
+    each with the fanout term (below); p_rr, p_ro, p_ir and p_io without it.
     A BUF counts nothing here: ABC puts one only where a port is wired to a
     port, and fanout and wire are costed outside the logic (the genlib's
     note). `abc` is ABC's own longest path, BUFs at their genlib delay;
@@ -345,6 +346,7 @@ class Timing:
                 c, k = c * 4, k + 1
             return k * inv
         self.fanout_max = max(loads.values(), default=0)
+        self.loads, self.fo = loads, fo
         order, seen = [], set()
         for n0 in driver:
             stack = [(n0, False)]
@@ -388,14 +390,20 @@ class Timing:
         rf = prop([q for _, q in latches], fan=True)
         self.rr = max((rf.get(d, NEG) for d in d_nets), default=NEG)
         self.ro = {p: max(rf.get(o, NEG) for o in bits) for p, bits in ports_out.items()}
-        self.ir, self.io = {}, {}
+        self.ir, self.io, self.p_io = {}, {}, {}
         for p, bits in ports_in.items():
             a = prop(bits, fan=True)
+            z = prop(bits)
             self.ir[p] = max((a.get(d, NEG) for d in d_nets), default=NEG)
             for q, obits in ports_out.items():
                 t = max(a.get(o, NEG) for o in obits)
                 if t > NEG:
                     self.io[(p, q)] = t
+                    self.p_io[(p, q)] = max(z.get(o, NEG) for o in obits)
+        # A port's own net, its pins in this netlist: {port: (most loads on
+        # one of its bits, that bit's fanout term)}.
+        self.port_fan = {p: max((loads.get(b, 0), fo(b)) for b in bits)
+                         for p, bits in ports_in.items()}
         self.ins, self.outs = sorted(ports_in), sorted(ports_out)
         self.gates = collections.Counter(g for g, _, _ in gates)
         self.nflops = len(latches)
@@ -1002,6 +1010,16 @@ def converge(name, top, files, bbs, budgets, lib=LIB, params=None, defines=(), u
     touches none of the module's own flops must be a wire (NGD-5: glue
     between children is a third segment on a flop-to-flop path).
 
+    The level's nets carry the fanout term (RA-33) for the pins on the
+    parent's net only: each cut child input, output port, own gate input and
+    own flop D on it. A child's unit counts the loads inside the child on its
+    port's net, its output port as one; the level does not count those, and
+    the child does not count the parent's pins, so no load counts twice. A
+    wire (no logic, p_io 0) from a child's output, an own input or an own
+    flop converges only when its start plus that term (io) is within each
+    receiver's arrival; a path through the level's logic to a flop or from
+    one (ir, ro) carries the term on every net it crosses.
+
     For a block, every level from `start` (default the read's top) in `st`
     (default a read of `top`), the block's own top level timed even with no
     children, and findings are messages; each level's timing lands in
@@ -1074,12 +1092,17 @@ def converge(name, top, files, bbs, budgets, lib=LIB, params=None, defines=(), u
             (a, na, ka), (r, nr, kr) = start_(p), end(q)
             if not (ka or kr) or (ka and na is None) or (kr and nr is None) or is_clock(p):
                 continue
-            if dl > EPS:
+            lg = t.p_io[(p, q)]
+            if lg > EPS:
                 out.append(("NGD-5 %s>%s" % (na, nr), "NGD-5 %s: %.1f NGD of logic from %s to %s, "
-                            "a path that touches none of its flops" % (where, dl, na, nr)))
-            elif a is not None and r is not None and a > r + EPS:
+                            "a path that touches none of its flops" % (where, lg, na, nr)))
+            elif a is not None and r is not None and a + dl > r + EPS:
+                n, _ = t.port_fan.get(p, (0, 0.0))
+                fan = (", plus %.1f NGD of fanout term for the %d loads on the parent's net"
+                       % (dl, n)) if dl > EPS else ""
                 out.append(("budgets %s>%s" % (na, nr), "%s: budgets do not converge: %s, "
-                            "starting at %g, reaches %s, required at %g" % (where, na, a, nr, r)))
+                            "starting at %g%s, reaches %s, required at %g"
+                            % (where, na, a, fan, nr, r)))
     return out
 
 
@@ -1089,7 +1112,7 @@ def ngd_keyed(units):
             if u.t is not None and getattr(u, "jf", None)]
 
 
-def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB):
+def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, params=None):
     """A block assembled, as a sum of parts (Daniel, 2026-11-06): no
     whole-block synthesis, no child synthesised with its parent. The
     hierarchy of `top` (the partition: the block's hardening wrapper, or the
@@ -1114,18 +1137,25 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB):
           is a bound, 0 only by the architect's choice, where the unit
           measures the netlist the block instantiates.
 
+    The fanout term at the boundary: an input wired to more than 4 pins on
+    a level's net is a buffer tree before its flops, so it is not straight
+    into one (the level's ir and io carry the term; glue is judged on p_io,
+    without it). An output is held by its shape, straight from a flop
+    (p_ro, without the term): the load past the crossing is the receiving
+    block's input net, timed there.
+
     What this cannot see that the flattened pass could: synthesis across a
     boundary (a constant, an unused output or a duplicated register that
     only the whole would simplify, or a path one module's logic and its
     neighbour's would merge into a shallower tree) -- conservative, as each
-    part is timed without that help; and the load a parent's wire puts on a
-    child's pin, its fanout across several children, which each part times
-    at its own port alone. The convention covers the second only as far as
-    every boundary and child port is straight from or into a flop: a wide
-    fanout of a child's output is timed nowhere. `units` are the measured
-    timing units. Returns (line, failures)."""
+    part is timed without that help; and one net's loads as a whole: a
+    child's output net is timed in two parts, its loads inside the child by
+    the unit and the parent's pins by the level, each its own fanout tree,
+    where the whole would take one tree over both: short of it by one INV
+    stage at most (ceil(log4(2n/4)) <= ceil(log4(n/4)) + 1). `units` are the measured timing units. Returns (line,
+    failures)."""
     inner = sorted(budgets.inner)
-    st = cg.Structure("b_" + name, top, files, bbs, keep=inner)
+    st = cg.Structure("b_" + name, top, files, bbs, params, keep=inner)
     want = block or src_name(top)
     start = next((mn for mn in st.reachable() if src_name(mn) == want), st.top)
     timings = {}
@@ -1183,9 +1213,13 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB):
                 c, typ, pn, _ = t.cut[o]
                 if typ in st.lib or is_clock(pn):
                     continue
-                if dl > EPS:
+                lg = t.p_io[(p, q)]
+                if lg > EPS:
                     why.append("%s is %.1f NGD of glue %s %s.%s" % (
-                        where, dl, "after" if out else "before", c, pn))
+                        where, lg, "after" if out else "before", c, pn))
+                elif not out and dl > EPS:
+                    why.append("%s is fanned out to %d loads on its net, %.1f NGD of fanout "
+                               "term before %s.%s" % (where, t.port_fan[p][0], dl, c, pn))
                 else:
                     why += straight(typ, (mn, c), pn, out,
                                     "%s.%s" % (path, c) if path else c)
@@ -1655,6 +1689,19 @@ def selftest():
     f = msgs(converge("fx_asm_late", "ngd_fx_asm_ok", files, [], late))
     expect(any("do not converge" in x for x in f),
            "a driver required after its receiver's arrival passed: %s" % f)
+    #    The parent's wire carries the fanout term on its own net's pins
+    #    (RA-33): budgets that meet exactly, a driver required at 15 into
+    #    receivers arriving at 15, converge with 4 receivers on the net and
+    #    not with 8, one INV stage past FO4.
+    exact = Budgets(extra={("ngd_fx_bsrc", "y"): dict(fb.e[("ngd_fx_bsrc", "y")], required=15),
+                           ("ngd_fx_bdst", "a"): dict(fb.e[("ngd_fx_bdst", "a")], arrival=15)})
+    f = msgs(converge("fx_asm_fan4", "ngd_fx_asm_fan", files, [], exact, params={"N": 4}))
+    expect(not f, "a wire to 4 receivers, budgets meeting exactly, was refused: %s" % f)
+    f = msgs(converge("fx_asm_fan8", "ngd_fx_asm_fan", files, [], exact, params={"N": 8}))
+    expect(any("do not converge" in x and "fanout term for the 8 loads" in x for x in f)
+           and not any(x.startswith("NGD-5") for x in f),
+           "a child's output fanned out to 8 receivers on the parent's net, its budgets "
+           "meeting exactly, converged, or was called glue: %s" % f)
     f = msgs(converge("fx_asm_gap", "ngd_fx_asm_gap", files, [], fb))
     expect(any(x.startswith("NGD-5") and "u_src.y to u_dst.a" in x for x in f),
            "glue between two children passed: %s" % f)
@@ -1735,6 +1782,16 @@ def selftest():
     _, f = block_check("fx_kidin", "ngd_fx_blk_kidin", files, [], none, [dst2])
     expect(any("input i" in x and "u_dst.a" in x and "unit fx_dst2" in x for x in f),
            "a block input wired into a child's pin before logic passed: %s" % f)
+    #    The fanout term holds at the boundary too: an input wired straight
+    #    into 8 children's flops is a buffer tree before them, not straight
+    #    into one; into 4 it passes.
+    reg = funit("fx_reg", "ngd_fx_reg", {})
+    _, f = block_check("fx_fanin4", "ngd_fx_blk_fanin", files, [], none, [reg], params={"N": 4})
+    expect(not f, "an input wired straight into 4 children's flops was refused: %s" % f)
+    _, f = block_check("fx_fanin8", "ngd_fx_blk_fanin", files, [], none, [reg], params={"N": 8})
+    expect(any("input i" in x and "fanned out to 8 loads" in x for x in f),
+           "an input fanned out to 8 children's flops on the parent's net passed as "
+           "straight into a flop: %s" % f)
     #    Coverage: an instance no unit times at its parameters fails, naming
     #    the module and the parameters (here, units at W=8 only).
     _, f = block_check("fx_ok_nou", "ngd_fx_blk_ok", files, [], none, [src8, dst8])

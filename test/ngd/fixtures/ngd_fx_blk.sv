@@ -120,6 +120,25 @@ module ngd_fx_asm_ok (
   ngd_fx_bdst u_dst (.clk(clk), .a(y), .b(i_q[3]), .q(o));
 endmodule
 
+// The parent's wire, fanned out (RA-33 on the parent's net; 2026-11-06):
+// u_src.y straight into N receivers' a. The selftest's budgets meet
+// exactly, y required at 15 and a arriving at 15, so the connection
+// converges only while its N pins on the parent's net cost no fanout term:
+// N = 4 passes, N = 8 is one INV stage past FO4 and does not converge.
+module ngd_fx_asm_fan #(parameter int N = 8) (
+  input  logic         clk,
+  input  logic [3:0]   i,
+  output logic [N-1:0] o
+);
+  logic [3:0] i_q;
+  logic       y;
+  always_ff @(posedge clk) i_q <= i;
+  ngd_fx_bsrc u_src (.clk(clk), .d(i_q), .y(y));
+  for (genvar k = 0; k < N; k++) begin : g_dst
+    ngd_fx_bdst u_dst (.clk(clk), .a(y), .b(i_q[3]), .q(o[k]));
+  end
+endmodule
+
 module ngd_fx_asm_gap (
   input  logic       clk,
   input  logic [3:0] i,
@@ -216,4 +235,26 @@ module ngd_fx_blk_kidin (
   output logic [3:0] o
 );
   ngd_fx_dst #(.W(2)) u_dst (.clk(clk), .a(i), .q(o));
+endmodule
+
+// The boundary with the fanout term (2026-11-06): an input wired straight
+// into N children's flops. Its net carries N pins in the parent, so past 4
+// it is a buffer tree before those flops, not straight into one: N = 4
+// passes, N = 8 does not.
+module ngd_fx_reg (
+  input  logic clk,
+  input  logic a,
+  output logic q
+);
+  always_ff @(posedge clk) q <= a;
+endmodule
+
+module ngd_fx_blk_fanin #(parameter int N = 8) (
+  input  logic         clk,
+  input  logic         i,
+  output logic [N-1:0] o
+);
+  for (genvar k = 0; k < N; k++) begin : g_reg
+    ngd_fx_reg u_reg (.clk(clk), .a(i), .q(o[k]));
+  end
 endmodule
