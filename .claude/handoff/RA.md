@@ -164,8 +164,10 @@ TI 352: skeleton already models boundary flops (17720a0); RI-16 zero-cycle arm r
 DA 114 (Daniel, via AR): C9 approved (recovers ~1.5% S1; lapses if OI's 8/13 rerun <=0.5%). Zero-cycle bar:
 <=0.2% S1 stays flopped (architects close); 0.2-0.5% -> Daniel; >0.5% owner (RA for RCU) approves; an end that
 can't meet 12 NGD/side with its rx flop -> Daniel. RA rev 93 applies it to lane_rcu_res (await RI-16 S1 delta).
-Partition rev 50.
-Bookmarks: OA 366, RA 93, RI 21, TI 352, DA 114, AR 312, OI 306, Conventions 17, CP 155.
+DA 114 AMENDED (DA rev 115, Daniel verbatim): over 0.5% the architect approves only "if we also meet the NGD
+module rules" WITHOUT the rx flop. RA rev 94 corrects rev 93's with/without misread: lane_rcu_res meets 12 without
+flop (approvable >0.5%); miu_rcu_data doesn't (16.2) -> any zero-cycle case is Daniel's. Partition rev 51.
+Bookmarks: OA 366, RA 94, RI 21, TI 352, DA 115, AR 312, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
