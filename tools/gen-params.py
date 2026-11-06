@@ -401,8 +401,8 @@ def selftest(d):
              ("CCV_LAT_LANE", "derive",
               "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]
     # A boundary flop's cycle is a crossing's (bnd_rx; AR's revs 300, 301).
-    cases += [("bnd_rx:lane_rcu_res", "bnd", 0, "CCV_LAT_LANE"),
-              ("bnd_rx:lane_rcu_res", "bnd", 0, "CCV_LAT_SFU"),
+    cases += [("bnd_rx:lane_rcu_res", "bnd", 1, "CCV_LAT_LANE"),
+              ("bnd_rx:lane_rcu_res", "bnd", 1, "CCV_LAT_SFU"),
               ("bnd_rx:rcu_lane_ops", "bnd", 1, "CCV_LAT_LANE"),
               ("bnd_rx:ooe_rcu_issue", "bnd", 0, "CCV_LAT_L1_CMPL"),
               ("bnd_rx:miu_rcu_data", "bnd", 0, "CCV_LAT_L1_WAKE"),
