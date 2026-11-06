@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-06 ~00:45 UTC (OI-114 awaiting OA; cmpl cones; R49 S1 on RH). Keep this current at every task's end; it is what
+Updated 2026-11-06 ~04:30 UTC (OI-114 awaiting OA; first-kind cmpl probe done, OI 302/303; RH jobs R49, 2, 2b). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -86,6 +86,19 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-12. STATE 11-06 ~04:30 UTC. Bookmarks OA 357, AR 303, OI 303 (rev 304). Main checkout as -11.
+   - First-kind miu_ooe_cmpl RTL probe DONE (worktree scratchpad/byp, probe RTL, not for push;
+     ports2.py prints flop-flop, in->flop, out ready). wake: capture idx (en cv) 14.1->0, ff
+     21.9->22.8, fin bypass ready 9.9; sched fin->flop 13.8 (fits); rs cfin->flop 18.6 (28.5,
+     over) but a separate bypass term kept off rmask: cfb->flop 14.1 = 24.0, ff 27.1 (cap 29.4).
+     rob_w: capture tag 22.1->0, ff 31.6 (cap 31.7); retire window is the arrival reader, so the
+     done is an edge late (bit 1). OI 302 + correction OI 303 (OA, AR notified).
+   - Model knob cmpl_split bit 8 (hit-freed RS entry held a cycle) in scratchpad/wcs (497efb8 +
+     rxsplit + cmplsplit-delta + c8-delta, uncommitted): audit = base at 4 points; C9 (8|1):
+     993.60/991.81/903.35/909.65 vs 983.50/990.83/896.15/898.81.
+   - RH queue: R49 S1 (sent 00:30) -> job 2 (cs-run.sh: A6,C1,C2,C4,C7,F S1+audit+CM128/32)
+     -> job 2b (c8-delta: C8, C9). On return: row to OA, AR with the first-kind cost.
+   - Still: OI-114 awaits OA on OI 301; Friday pings (11-06); ROB slices 3-6.
 -11. STATE 11-06 ~00:45 UTC. Bookmarks OA 357, AR 303, OI 301. Main checkout: branch
    oi-handoff (b8dcb7d + this) holds the unpushed handoff; ccr-57eff422-5tdecg = origin 93457a4.
    - OI-114: built in wtf branch oi-floor114, 5664f5e (gate-scratch/OI): model split floor term
