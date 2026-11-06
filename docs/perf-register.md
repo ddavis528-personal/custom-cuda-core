@@ -1211,6 +1211,14 @@ it.
   flopped pair, about +1.95% S1 with `CCV_LAT_CMPL_HINT` 3, was not
   taken), so bnd_rx(miu_ooe_cmpl) is 0 and `CCV_LAT_CMPL_HINT` 2 stands.
   The M1-miss fallback is a base of 2 with the same terms.
+  `ccv_lane_rcu_res` takes a no-flop end at RCU (RA register rev 95, under
+  DA revs 114 and 115; RI-16's runs by RH, flopped vs zero-cycle with the
+  boundary flops in both hosts): S1 48,858 to 48,350 cycles (-1.04%),
+  coremark32 -0.93%, coremark128 +0.146%, accepted since S1 is the bar.
+  `CCV_LAT_LANE` returns to 7 and `CCV_LAT_SFU` to 12 when TI drops it from
+  RCU's flopped ends in params/links.json. It holds while RCU and every
+  lane abut (link_n 0; the partitioning spec's floorplan constraints) and
+  RCU's assembled block meets 12 NGD on the port without the flop.
 
 ### PF-48 End-to-end parity on register state
 

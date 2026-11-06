@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 312, OA 367, TI 351, RA 91 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 115,
+  record): AR 313, OA 367, TI 351, RA 95 (tab 9851686b-2b0a), RI 24, IS 190, CP 155, OI 309, DA 115,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
@@ -337,6 +337,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    <=0.2% S1 stays flopped (architects); 0.2-0.5% -> Daniel; >0.5% owner may
    approve ONLY IF it meets the module NGD rules without the flop (Daniel
    confirmed verbatim, DA rev 115); can't meet 12 NGD w/o rx flop -> Daniel.
+   RA 95: lane_rcu_res zero-cycle APPROVED (S1 -1.04%, cm32 -0.93%, cm128
+   +0.15%; NGD 10 est., check-ngd passes at 12) -> LANE 7/SFU 12 once TI edits
+   links.json. AR 313: checked OK; Partitioning tab rev 55 new 'Floorplan
+   constraints' (RCU abuts all 32 lanes, link_n 0; RCU-MIU adjacency); LANE
+   spec rev 22 (A+7 write, bypass ages 4-5, 5 deep); PF-47 bullet; C9 8/13
+   rerun NOT owed. Needs RA, OI, TI.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
