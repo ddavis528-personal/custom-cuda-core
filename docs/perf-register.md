@@ -1205,8 +1205,12 @@ it.
   The contracts are unchanged: `CCV_LAT_L1_WAKE` 13 (PF-33's measured
   -5.9% point rather than the interpolated -7.9%; the issue's bnd_rx
   cancels, and the extra cycle is miu_rcu_data's flopped end at RCU) and
-  `CCV_LAT_L1_CMPL` 15, each plus bnd_rx(miu_ooe_cmpl). The M1-miss
-  fallback is a base of 2 with the same terms.
+  `CCV_LAT_L1_CMPL` 15. OOE takes `ccv_miu_ooe_cmpl` and its hint at
+  no-flop ends of the first kind (OA rev 363, configuration C9: +0.444% S1
+  over A6, the ROB seeing a memop's done a cycle later inside OOE; the
+  flopped pair, about +1.95% S1 with `CCV_LAT_CMPL_HINT` 3, was not
+  taken), so bnd_rx(miu_ooe_cmpl) is 0 and `CCV_LAT_CMPL_HINT` 2 stands.
+  The M1-miss fallback is a base of 2 with the same terms.
 
 ### PF-48 End-to-end parity on register state
 
