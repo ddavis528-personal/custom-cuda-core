@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 306, OA 357, TI 346, RA 88 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 304, DA 111,
+  record): AR 307, OA 362, TI 346, RA 88 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 306, DA 111,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RI-15 decided (DA 109, option (c)); RI-14 credit pulses charged to block 2% (DA 110).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
@@ -299,6 +299,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    +1.0/+1.2/+0.1%. Needs OA, AR to take the form once RH prices C9 on S1/
    CoreMark (job 2b). When it lands: AR row taking the form, noting 306 (2)
    superseded, then the package to Daniel (C9 vs (b) ~+2%, with AR 296).
+   OI-115/OA-361: C9 S1 +0.444% over A6, cm128 -0.45%, cm32 -0.08%; flopped
+   (H3+P) ~+1.95% S1; C8 0; R49 S1 +0.276% (OA's separate RS-rows item).
+   AR 307 endorses C9, caveat: A6 base carries LANE 7/SFU 12 (= AR 296
+   second kind) - shifts all options alike. PUT TO DANIEL 11-06: C9 vs
+   flopped, plus AR 296. On his answer: record DA row(s) quoting him.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
