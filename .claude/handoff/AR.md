@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 306, OA 357, TI 339, RA 86 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 303, DA 108,
+  record): AR 306, OA 357, TI 339, RA 86 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 304, DA 108,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
@@ -293,6 +293,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    AR 306: first kind for cmpl+hint (HINT 2 stands), rs OA's call (AR leans
    (a) if <=0.1% S1), C1 accepted subject to RH price. Waiting RH prices of
    C1 + rs(a); then package (a) vs (b) ~+2% + AR 296 to Daniel.
+   OI-303 corrects 302: rs (a) is C2 (+3.7% audit, sched mirrors rs free) -
+   AR 306 (2)'s lean is moot; rs bypass off rmask, entry held a cycle, fits
+   24.0, free (C8). First kind = C9 (C8 + ROB a cycle late): audit +0.8/
+   +1.0/+1.2/+0.1%. Needs OA, AR to take the form once RH prices C9 on S1/
+   CoreMark (job 2b). When it lands: AR row taking the form, noting 306 (2)
+   superseded, then the package to Daniel (C9 vs (b) ~+2%, with AR 296).
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
