@@ -48,13 +48,6 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- OI's cmpl_split pricing (OI rev 300) in /home/user/rh-jobs/cs/: all.sh does
-  oracles, cs-run.sh (S1 and audit, sent) and CoreMark x6 in tree run/A6
-  (progress cs/progress). Then job 2b, c8.sh (cmpl_split 8/9: applies
-  c8-delta in A6, rebuilds, S1, audit, CoreMark), which waits for all.sh;
-  progress cs/progress2b, out run/out2b. OI's local-check numbers are at stock
-  params; A6 has raised latencies, so its base is 910.00, not 896.15. Clean up
-  run/A6, /home/user/rh-cschk, the oracles and the swap after.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
@@ -70,6 +63,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   the warm time and kill it. Delete bench oracles after each job.
 
 ## Done
+- OI's R49 S1, cmpl_split (job 2) and bit 8 (job 2b), 11-06: all sent; trees,
+  oracles and swap cleared. OI's local-check numbers were at stock params; A6
+  runs at raised latencies.
 - OI's RI-11 package v2 (S1, audit, CoreMark x12) and the rs_cand_ahead audit
   (11-05 to 06): all sent; trees removed. A reclaim on 11-05 cost about 8 h (see
   the fallback rule above).
