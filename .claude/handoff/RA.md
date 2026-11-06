@@ -158,7 +158,10 @@ convergence turn-around time ... power and area are likely to be a wash. The IPC
 RA withdrew the timing-based lane_rcu_res recommendation; all three ends flopped (LANE 8/SFU 13) until RI-16 runs
 (S1, CoreMark, flopped vs zero-cycle) show IPC. RA proposed AR 308's 0.2% S1 bar - Daniel to confirm. Notified
 AR (record in DA tab), RI, OI/OA (price C9 at 8/13), TI. Partition rev 49. session-home installed 11-06 (Daniel approved).
-Bookmarks: OA 366, RA 91, RI 21, TI 350, DA 112, AR 309, OI 306, Conventions 17, CP 155.
+AR 311 (DA rev 113 records Daniel's ruling; 0.2% bar = RA proposal awaiting Daniel) CORRECTS RA 90: unflopped
+credit through a flopped rx end is depth 5 (forward flop stays), not 4; miu_rcu_data +4,456. RA rev 92 took it.
+TI 352: skeleton already models boundary flops (17720a0); RI-16 zero-cycle arm runnable now; rescue sizing TI 351.
+Bookmarks: OA 366, RA 92, RI 21, TI 352, DA 113, AR 312, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
