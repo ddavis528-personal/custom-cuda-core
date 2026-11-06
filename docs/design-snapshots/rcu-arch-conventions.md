@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Conventions_and_interfaces rev=11 exported=2026-11-05 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Conventions and interfaces*, at revision 11 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Conventions_and_interfaces rev=13 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Conventions and interfaces*, at revision 13 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Conventions and interfaces
 
@@ -40,7 +40,7 @@ Registers carry a stage tag (CCV-L29): `_a` for flops loaded at A's edge, `_a1` 
 | --- | --- | --- | --- |
 | `rcu_lane_ops` c00-c31 | `lop_v_a`, lead `section_en_a[3:0]`, `sec_pred_bit_a[31:0][3:0]` | `lop_*_a1`: operands, merge\_data, per-section fields, `operand_byp` | valid A+1, payload A+2 |
 | `rcu_ooe_done` s0-s6 | `done_v[k]`; slot 5 lead `lead_br_taken_a`, `lead_br_mask_a` | `done_*[k]`: rob\_tag, done\_row; slot 5 adds branch\_taken, branch\_mask, aux | R ops A+1; lane ops A+7; SFU A+12 (Done tab) |
-| `rcu_miu_addr` s0-s3 | `addr_v_a[j]` | `addr_*_a1[j]`: rob\_tag, active\_mask, base, index, store data | valid A+1, payload A+2 (`CCV_LAT_RCU_ADDR_BASE` = 1, RA-7; adopted as PF-47, RA-31; the parameter is 2 with the receiving interface flop, AR row 286) |
+| `rcu_miu_addr` s0-s3 | `addr_v_a[j]` | `addr_*_a1[j]`: rob\_tag, active\_mask, base, index, store data | valid A+1, payload A+2 (`CCV_LAT_RCU_ADDR_BASE` = 1, RA-7; adopted as PF-47, RA-31; CCV\_LAT\_RCU\_ADDR equals the base; the boundary flop is bnd\_rx(issue) on the crossing, AR rows 300-301) |
 | `rcu_pca_mig` | `pcam_v_a` | `pcam_*_a1`: warp\_id, mig\_row, row\_data | valid A+1, payload A+2 of an idle-R cycle A (Migration tab) |
 | `kill_ack`, `kill_ack_epoch` | `kill_ack_q`, `kill_ack_epoch_q` | n/a | Done tab |
 | `csr_rsp`, `csr_credit` | RA-26 |  |  |

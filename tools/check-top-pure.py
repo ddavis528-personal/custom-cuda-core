@@ -395,24 +395,29 @@ def lit(v):
     return int(x, 16) if x else int(w)
 
 
+RPT_KEY = ("STAGES", "BOUNDARY", "SLOTS", "PAYLOAD_W", "LEAD_MASK")
+
+
 def check_rpt_units(mods, path):
-    """R8: the repeaters with stages the netlist instantiates, as (stages,
-    slots, payload width, lead mask), against rtl/top/rpt-units.json's."""
+    """R8: the repeaters with stages or a boundary flop the netlist
+    instantiates, as (stages, boundary, slots, payload width, lead mask),
+    against rtl/top/rpt-units.json's. A stage-0 repeater whose end is flopped
+    (BOUNDARY 1, AR's revs 300 and 301) holds a register and has a unit."""
     have = set()
     for mod in mods.values():
         for c in mod["cells"].values():
             if base(c["type"]) == "ccv_common_rpt" and c["type"] in mods:
                 pv = mods[c["type"]].get("parameter_default_values", {})
-                k = tuple(pval(pv.get(n, "0")) for n in ("STAGES", "SLOTS", "PAYLOAD_W",
-                                                         "LEAD_MASK"))
-                if k[0]:
+                k = tuple(pval(pv.get(n, "0")) for n in RPT_KEY)
+                if k[0] or k[1]:
                     have.add(k)
-    units = {tuple(lit(u["params"][n]) for n in ("STAGES", "SLOTS", "PAYLOAD_W", "LEAD_MASK"))
+    units = {tuple(lit(u["params"].get(n, 0)) for n in RPT_KEY)
              for u in json.load(open(path))["units"]}
-    bad = [("R8", "a repeater of %d stage(s), %d slot(s), %d bits, lead %#x is no unit of %s"
-            % (k + (os.path.relpath(RPT_UNITS, ROOT),))) for k in sorted(have - units)]
-    bad += [("R8", "unit (%d stage(s), %d slot(s), %d bits, lead %#x) is no repeater the "
-             "netlist has" % k) for k in sorted(units - have)]
+    bad = [("R8", "a repeater of %d stage(s), boundary %d, %d slot(s), %d bits, lead %#x "
+            "is no unit of %s" % (k + (os.path.relpath(RPT_UNITS, ROOT),)))
+           for k in sorted(have - units)]
+    bad += [("R8", "unit (%d stage(s), boundary %d, %d slot(s), %d bits, lead %#x) is no "
+             "repeater the netlist has" % k) for k in sorted(units - have)]
     return bad, len(have)
 
 

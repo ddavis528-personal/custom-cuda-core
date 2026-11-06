@@ -1,6 +1,6 @@
 # OA handoff (OOE architect)
 
-Updated 2026-11-02. Keep this current at every task's end; it is what
+Updated 2026-11-05. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Role and rules (from Daniel, in conversation)
@@ -40,11 +40,59 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 345, AR 292, TI 333, OI 288, IS 189, CP 152, DA 108,
-RA 74 (tab 9851686b-2b0a), RI 9 (tab 8e4547bc-c469).
-OOE doc rev 363. DA tab 98. Pings 2026-10-30 (Fri): all five ponged ok. Next pings Fri 2026-11-06. Roster has RH (run helper, offload worker).
+Conventions 17, OA 366, AR 308, TI 349, OI 306, IS 190, CP 155, DA 112,
+RA 89 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
+OOE doc rev 365. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
+Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
+release 2e95216; tag refused (known). session-home --check ok at 350k.
 
 ## Open work (most urgent first)
+-13. OA 365/366: zero-cycle ooe_rcu_issue -> AR 308: stays flopped, no splits (gain only
+   L1_CMPL -1, V-35 -1; L1_WAKE does NOT move - my 365 claim wrong). OI phys_src depth low
+   prio. OA 364: C9 ports must be 0 NGD, <=4 pins (sum of parts boundary); OOE units per param set.
+   AR 307 took C9 to DA in AR's session (+0.444% holds only with AR 296; lane cycle hits both).
+-12. RULED 11-06 (OA 363, under 0.5%): RI-11 OOE cmpl+hint ends first kind = C9, +0.444%
+   S1 over A6 (model; cm128 -0.45%, cm32 -0.08%); flopped H3+P ~+1.95% not taken. HINT 2/
+   FILL 4/MLC 39. TI: links.json no_flop at OOE; OI builds; AR updates specs. OOE doc 365.
+   R49 dropped (S1 +0.276% cost); ooe_rs stays 45 rows, 26.2 on cap. Told DA; DA may overrule.
+-11. DONE 11-06 (installed, --check ok). DA APPROVED in OA's session 11-06, verbatim "I approve the token limit" (DA tab 112):
+   once TI's autoCompactWindow 350000 push (2d445f5, TI-51) is merged into this branch
+   (the daily sweep merges it), run the session-home skill / tools/setup-session-home.py
+   so /home/user/.claude takes 350000; check with --check. Not yet on origin at 03:40Z.
+   TI-51 (2) sum of parts (DA tab, AR from TI paraphrase): no whole-block synthesis;
+   every instantiated module needs a unit per param set; port budgets are the contract.
+   When TI posts what it cannot catch, have OI check OOE unit coverage.
+-10. OA 357/358: cmpl AND hint ends both first kind (AR 303 ok; shared treatment keeps
+   HINT 2/FILL 4); free flops RAU/demote/SYU. A6H=H3: all +0.56% is the hint bundle.
+   OI probes the two bypasses (L1 hit->spec timer, ROB done bits; RTL) + S1 delay knob.
+   OI-114 (OI 301): pick = unmet registered at ooe_rename (go budget 6->0) + need-side
+   shift; price S1 + PHYS160 repro; <0.5% lands, only within ooe_go's caps.
+   DA package waits on: bypass probe, R49 S1.
+   OI 303 probe (RTL): capture free; sched bypass 23.7 ok; rs cfin 28.5 -> (a) hit
+   confirm an edge late (knob) or (b) free cone to 21 if (a)>0.3% S1; ROB done an edge
+   late = C1 (audit +0.8%). OA 359: package = first kind (C1+rs a, HINT 2) vs flopped
+   (H3+P ~+1.95% over A6) + R49 S1; RH job 2 pricing.
+-9. OA 355 (re OI 298/299), reported to DA 11-06: CA rejected; ooe_rs stays on cap 26.2.
+   DA picks: R49 (-2.0..-2.4% audit, +1,944 ooe_rs / +3,353 OOE flops; OA rec only
+   if S1 >= 1%, OI runs S1). RI-11: H3 params +0.56% S1 (rec accept); hint/RAU/
+   demote/SYU flops free; miu_ooe_cmpl flop +1.39% S1 -> rec no-flop end AR-300 kind 1
+   if OI confirms RTL + AR confirms kind applies. Record DA's answers in DA tab.
+-8. ooe_go depth (OI 297, OA 354): picked (c) keep caps (27.6 f2f/29.9 in/25.8 out,
+   RTL); 748e071 stays out. OI prices (a) unmet registered (minus last take) +
+   (b) fits on last cycle's pool (never overgrant) as one point, low priority.
+   RAT read (OI 296/TI 341): ooe_ratread 17.9 vs 16 alone; 43 caps wait for ooe_rename.
+-7. ooe_rs depth (OA 351/352, OI 293/294): copies took ooe_rs 30.1->26.2 (RTL, cap 29.4).
+   rs_free_lag DROPPED: free not on valid->grant-prefix path, buys no depth.
+   OI prices in one audit: (1) per-port candidates registered a cycle ahead (new
+   semantic) + RTL depth est; (2) 49 rows no lag (+3,353 OOE flops, ~5.1%, ooe_rs
+   +2,573). Then DA: (a) stay on cap (likely rec), (b) pre-register if <0.5% and
+   meets 25, (c) 49 rows only if speedup well over 1%. Told DA in chat 11-05.
+-6. RI-11 cmpl (AR 298, OA 350): CMPL_HINT 3 / FILL_NOTICE 5 covers noticed-refill
+   wakes only. OI splits miu_ooe_cmpl +1.60% S1 (refill/on-completion/cancel shadow)
+   + hint point, in the package run, now a links.json no_flop run in both hosts
+   (AR 300 link term: crossing = HOP + link_n + bnd_rx; OOE contracts unchanged at
+   defaults; OA 353, doc 364). Then OA recommends cmpl treatment to DA.
+   lane_rcu_res is the only RCU zero-cycle candidate.
 -5. RI-11 / DA 11-05 (via TI rev 321, verbatim; OA recorded DA tab 107): interface
    module default one flop in + out (2 cycles/link), zero-cycle option kept; AR does
    latency accounting first. OA rev 339: RA-39 19/6 lapses; OOE list given to AR;
