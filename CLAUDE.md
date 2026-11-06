@@ -106,7 +106,9 @@ leads a payload by a cycle, and why a lead field is rare.
 (`test/**/cg-units.json`, and every repeater the design instantiates,
 `rtl/top/rpt-units.json`). Each module may leave the larger of 2% of its
 flops and fewer than 8 flops outside the rules, and what its modules take
-must stay within 2% of each block's flops, per instance; a repeater's
+must stay within 2% of each block's flops, per instance, summed from the
+units at each instance's parameters, never a whole-block synthesis
+(Daniel, 2026-11-06); a repeater's
 control pulses and flopped reset count only there, against its wrapper's 2%
 (2026-10-19), and so does a boundary flop's lead slice (the block's own
 capture before the end was flopped; 2026-11-05); a link stage's lead slice
@@ -132,9 +134,12 @@ alone to 16 NGD, floor(2 × 25 / 3); 2026-10-19). A register that drives an
 output is held on every path it starts, inside as out, to that output's
 budget (2026-10-19): copy it, one for the output and one for the rest, each
 `(* keep *)`, or synthesis merges them back. The one feedthrough allowed is a
-channel a generated wrapper carries across itself. An
-assembled block is checked from those files, level by level, for
-convergence to 25, then timed whole, its outputs straight from flops.
+channel a generated wrapper carries across itself. Block
+limits are a sum of parts from module-level runs (Daniel, 2026-11-06): no
+whole-block synthesis. An assembled block is read structurally; each level
+is timed alone, children as black boxes, for convergence to 25; every
+instance needs a unit at its parameters; its outputs come straight from
+flops, by its parts.
 `tools/check-ngd.py` measures every module at its units' parameters; what
 broke the rules when they were made sits on `rtl/ngd-ratchet.json`, which
 only shrinks. Every depth counts fanout past 4 as a tree of inverters

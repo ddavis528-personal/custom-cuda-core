@@ -1,4 +1,4 @@
-// check-ngd fixtures: blocks assembled, for the whole-block pass. A source
+// check-ngd fixtures: blocks assembled, for the block checks. A source
 // whose output is a multiply after its flops and a sink whose input is a
 // multiply before its flop, 2 bits (shallow) or 8 (deep). Two multiplies in
 // series do not merge into one shallower tree, as two parities would when
@@ -191,4 +191,29 @@ module ngd_fx_asm_inner_gap (
   ngd_fx_bsrc  u_src (.clk(clk), .d(i_q), .y(y));
   ngd_fx_inner u_inn (.a(y), .b(i_q[2]), .y(g));
   ngd_fx_bdst  u_dst (.clk(clk), .a(g), .b(i_q[3]), .q(o));
+endmodule
+
+// The boundary rule as a sum of parts (Daniel, 2026-11-06): a block port
+// wired straight to a child's pin is held to that pin's own measurement, at
+// the child's parameters. Two tops:
+//   ngd_fx_blk_kidout  an output wired from ngd_fx_src's y, a multiply after
+//                      its flops: not straight from a flop, through the child
+//   ngd_fx_blk_kidin   an input wired into ngd_fx_dst's a, a multiply before
+//                      its flop: not straight into one, through the child
+module ngd_fx_blk_kidout (
+  input  logic       clk,
+  input  logic [3:0] i,
+  output logic [3:0] o
+);
+  logic [3:0] i_q;
+  always_ff @(posedge clk) i_q <= i;
+  ngd_fx_src #(.W(2)) u_src (.clk(clk), .d(i_q), .y(o));
+endmodule
+
+module ngd_fx_blk_kidin (
+  input  logic       clk,
+  input  logic [3:0] i,
+  output logic [3:0] o
+);
+  ngd_fx_dst #(.W(2)) u_dst (.clk(clk), .a(i), .q(o));
 endmodule
