@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-06 ~04:30 UTC (OI-114 awaiting OA; first-kind cmpl probe done, OI 302/303; RH jobs R49, 2, 2b). Keep this current at every task's end; it is what
+Updated 2026-11-06 ~07:30 UTC (slice 3 committed f7ce95c, gate-push; OI-114 rename form 3 measuring; RH 2b CoreMark pending). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -86,6 +86,28 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-13. STATE 11-06 ~07:30 UTC. Bookmarks OA 362, AR 306, OI 305, TI 346 (TI-51 FYI: compaction
+  350k, re-run session-home after merging TI's next push; block limits = sum of module runs).
+  ROB SLICE 3 committed f7ce95c in scratchpad/wrob (branch oi-rob3, + oi-handoff merged), gate-push
+  from wrob. Final form (variant B): second-store stop as a field mask (stp) beside the branch's
+  pick, split prefixes (wpr dones / wns stops); commit reads st through hrn (as the retire's names)
+  less wn (no-op allocated into the window, window flop); rd_t keep copy of rd_s for the squash
+  next-state block. NGD: ff 30.8, al_n 29.3, dn_row 26.0, dn_tag 27.0, fl_slot 31.4, fl_v 31.7 (all
+  <= caps); CG pass. LESSON: ABC remaps the whole unit on any change (+-0.4 on untouched capped
+  cones; even moving a declared input arrival moved ooe_go hv +1.7). Try equivalent forms; ngd-only
+  loops via scratchpad/ngdvar.sh. After the push: OI row answering OA 362 (no notice).
+  OI-114 (OA 358 registered form) in scratchpad/wtf (branch oi-floor114, 5664f5e + uncommitted):
+  model unmet_reg 1 (go reads last cycle's unmet less last take), go_tb drives max(0,U-L),
+  controls floor-pre-take and no-last-take caught. ooe_go RTL and ooe_go.ngd.json UNCHANGED
+  (budget arrival 6 still met by a register + less_oh). Forms tried: in-go one-hot/two-level/binsub
+  all over go caps; rename form 2 (register U - this take) over rename caps by 0.3-0.9 on untouched
+  cones. Form 3 (register unmet_cq04h, less_oh(reg, tq_gs) in front of go) measuring (chk16).
+  If it lands at/under caps: commit, send RH pricing (S1 + PHYS 160 cm128 repro, unmet_reg 1 vs 0),
+  then OA row. If not: row to OA/TI on cap noise with the evidence above.
+  RH: job 2 done (cm128/cm32 vs A6: C1 -0.45/-0.08, C2 -0.12/+0.23, C4 +0.25/+0.67, C7=F
+  +0.14/+0.82); 2b S1 C8 +0.000%, C9 +0.444% (=C1); C8/C9 CoreMark ~08:00Z. Then the DA package row
+  per OA 361 (first kind C9 + HINT 2/FILL_NOTICE 4 vs flopped H3+P ~+1.95% S1; R49 S1 +0.276%),
+  Needs OA/AR/DA, notify OA + AR.
 -12. STATE 11-06 ~04:30 UTC. Bookmarks OA 357, AR 303, OI 303 (rev 304). Main checkout as -11.
    - First-kind miu_ooe_cmpl RTL probe DONE (worktree scratchpad/byp, probe RTL, not for push;
      ports2.py prints flop-flop, in->flop, out ready). wake: capture idx (en cv) 14.1->0, ff
