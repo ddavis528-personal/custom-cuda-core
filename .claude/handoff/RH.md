@@ -48,6 +48,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
+- OI's cmpl_split pricing (OI rev 300) in /home/user/rh-jobs/cs/: all.sh does
+  oracles, cs-run.sh (S1 and audit, sent) and CoreMark x6 in tree run/A6
+  (progress cs/progress). Then job 2b, c8.sh (cmpl_split 8/9: applies
+  c8-delta in A6, rebuilds, S1, audit, CoreMark), which waits for all.sh;
+  progress cs/progress2b, out run/out2b. OI's local-check numbers are at stock
+  params; A6 has raised latencies, so its base is 910.00, not 896.15. Clean up
+  run/A6, /home/user/rh-cschk, the oracles and the swap after.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
