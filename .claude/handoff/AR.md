@@ -306,9 +306,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    then DA 110: charged to block 2% too, marked "credit"). TI: check-cg block
    total includes waived leads and credit pulses.
    DA 111 (TI-51, recorded by AR from TI rev 345, no verbatim quote): (1)
-   compact at 350k, not 400k: after merging TI's next push (2d445f5), ASK
-   DANIEL to approve re-running tools/setup-session-home.py (session-home
-   skill) so /home/user/.claude takes 350000. (2) Block NGD/CG limits as sum
+   compact at 350k, not 400k: DANIEL APPROVED (2026-11-06, in AR's session)
+   re-running the session-home skill once TI's push (2d445f5) is merged, so
+   /home/user/.claude takes 350000. Not on any remote yet (11-06 03:40Z):
+   do it in the sweep that merges it (its --check will fail until then). (2) Block NGD/CG limits as sum
    of parts from module units (no whole-block synthesis; replaces "timed
    whole"): every instantiated module needs a unit at each param set.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
