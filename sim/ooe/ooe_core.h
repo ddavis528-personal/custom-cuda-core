@@ -613,6 +613,9 @@ struct Config {
   /// TI-36 (b)'s control: a predicate-only masked load (ld.pred) makes no
   /// copy, so its inactive lanes' bits are lost.
   bool inject_pred_copy_lost = false;
+  /// RA-18's control (OI-112): a call's issue carries DEC's imm, its branch
+  /// offset, not its link.
+  bool inject_no_call_link = false;
   /// TI-37's control: no GPR destination is sent as 0, a real row, not the
   /// zero register's name.
   bool inject_none_row_zero = false;
@@ -669,6 +672,9 @@ struct UopShape {
   bool final_exit = false;
   int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid, 2 %lanectx (O-64),
                               ///< 3 %privoff (O-83)
+  /// call's link (RA-18, imm_kind 6): OOE puts pc + bytes(ilen), the next
+  /// instruction's address, in imm.
+  bool call_link = false;
 };
 
 struct Uop {
