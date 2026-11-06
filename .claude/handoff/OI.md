@@ -86,6 +86,18 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-10. STATE 11-06 ~00:15 UTC. PUSHED 93457a4 (SCOPED PASS 22/22): 11-05 sweep merge + call link
+   (c10c4b4) + handoff; OI rows 295 (TI notified: call link in) and 296 (re OA 326: ratread
+   path 17.9 with fanout, under 25, off the plan; parent is ooe_rename, unbuilt, so TI's
+   alone-16 question stands; OA and TI notified). Task 4 done.
+   OA 352 RTL probe DONE (ri11/summary.txt): rows side <= 24.0, candidate prefix 26.0-27.2
+   (16 endpoints). RH container was reclaimed; RH relaunched 22:19: Pn/Pn2048, cm32, then the
+   ca audit (~02:15 UTC). Then ONE row to OA (cand-ahead + R49 + probe), and the RI-11 row
+   (S1, audit, CM128: H3 +1.89% over A6; P = Ph = -0.05% vs H3) to OA, AR, DA.
+   GO PATH: ooe_go at its caps (f-f 27.6, in 29.9, out 25.8; 22.8 without fanout). Measuring
+   748e071 (priority decode copies, OA 319) on HEAD in scratchpad/wtgo2. Sched (b) and the
+   sched peak are done (20c31b6; TI listed ooe_sched heavy).
+   Bookmarks now: OA 353, OI 296, AR 300.
 -9. STATE 11-05 ~11:50 UTC. OA rev 352 (re:OI 294): rs_free_lag dropped; price (1) cand-ahead
    + RTL depth, (2) 49 rows no lag, one audit. Model knob rs_cand_ahead=A in worktree
    scratchpad/wtca (branch oi-candahead, uncommitted, patch ri11/candahead.patch): candidates
