@@ -8,7 +8,7 @@
 //            flops after t+1's edge: active, gv (S), pst (P), R's RA, RB,
 //            rlow and branch lead. The guard is the row before A's writes
 //            with the forward of MIU's writes landing in A.
-//   MIU      valid and pred_we in t, row, mask and pred_result in t+1, written at t+1's edge.
+//   MIU      lead in t, pred_result in t+1, written at t+1's edge.
 //   merge    valid in t, rows in t+1, data in t+2, written at t+2's edge:
 //            mm ? val : (merge ? old : 0) on lanes m, old read at write
 //            time before that cycle's writes.
@@ -162,6 +162,8 @@ struct Bench {
     for (const Ld &l : next.ld) {
       put(dut->mv_cr01h, l.slot, 1, 1);
       put(dut->mwe_cr01h, l.slot, 1, l.we);
+      put(dut->mp_cr01h, l.slot * kW, kW, l.p);
+      put(dut->mam_cr01h, l.slot * 32, 32, l.am);
     }
     for (const Mg &m : next.mg) put(dut->qv_cr00h, m.port, 1, 1);
     for (const Dm &d : next.dm) put(dut->dv_cr00h, d.port, 1, 1);
@@ -177,11 +179,7 @@ struct Bench {
         dut->rimm_cr02h = i.imm;
       }
     }
-    for (const Ld &l : s1.ld) {
-      put(dut->mp_cr02h, l.slot * kW, kW, l.p);
-      put(dut->mam_cr02h, l.slot * 32, 32, l.am);
-      put(dut->mr_cr02h, l.slot * 32, 32, l.pr);
-    }
+    for (const Ld &l : s1.ld) put(dut->mr_cr02h, l.slot * 32, 32, l.pr);
     for (const Mg &m : s1.mg) {
       put(dut->qrow_cr01h, m.port * kW, kW, m.row);
       put(dut->qorow_cr01h, m.port * kW, kW, m.orow);

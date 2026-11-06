@@ -155,6 +155,12 @@ module rcu_kill #(
   // ---- Contracts -------------------------------------------------------
   // The ack is low through every drain.
   `CCV_ASSERT(kill_ack_low_in_drain, !(kack_q_cr02h && kd_cr02h != '0))
+  // One register is kill_ep_q and kill_ack_ep_q (RA rev 81, departure (4)):
+  // the epoch is taken only at a K, whose edge also clears the ack, so an
+  // ack that is high always reports the epoch it was raised for.
+  `CCV_ASSERT(kill_ack_epoch_at_k, !(kep_en_cr01h && !(ka_en_cr01h && kv_cr01h)))
+  // A raised ack answers a pending kill, which it retires in the same edge.
+  `CCV_ASSERT(kill_ack_not_pending, !(kack_q_cr02h && kpend_cr02h))
 
 endmodule
 `undef CCV_CLK
