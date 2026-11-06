@@ -40,7 +40,15 @@ Exceptions, in order: the budgets, then the waivers, then the ratchet.
 CG-5 and RST-1 are structural: no budget takes them. Each module may leave the larger of CCV_CG_BUDGET_PCT of its
 flops and fewer than CCV_CG_MODULE_FLOPS flops outside the rules, smallest
 findings first, findings about flops only; what the modules take counts,
-per instance, against CCV_CG_BUDGET_PCT of each block with RTL. A
+per instance, against CCV_CG_BUDGET_PCT of each block with RTL, as a sum of
+parts (Daniel, 2026-11-06): no block is synthesised whole; a structural read
+of its hierarchy gives each instance and its parameters, and each instance's
+flops and takes are those of the unit measuring its module at those
+parameters (block_parts). An instance with flops and no unit at its
+parameters fails. What the sum cannot see is what synthesis of the whole
+would have removed across a boundary (a constant flop, an unused output's
+register), so it counts those flops where a final netlist might not: the
+budget is conservative there. A
 repeater's control pulses (valid, wake, credit and stall at every stage, and
 its flopped reset) are the channel's own, captured every cycle like any
 receiver's: they go straight to the block's budget, its hardening wrapper
@@ -1681,80 +1689,297 @@ def inner_helpers():
     return _INNER
 
 
-def elaborate(name, top, files, blackbox=(), known=(), params=None, defines=(), inner=None):
-    """A partition's flops, instance by instance: synthesised with its
-    hierarchy kept, each module's flops counted once and multiplied by how
-    many times the partition instantiates it. An inner helper (`inner`,
-    default inner_helpers()) is flattened into its parent first, as
-    check-ngd's synth does: it is its parent's logic, so a constant it makes
-    reaches its parent's flops as it does in the replayed netlist (OI-78). Returns the total and, per
-    instantiated module (by its source name), its multiplicity and its flop
-    count per register name. Nothing replays this netlist, so crosscheck()
-    holds it to the replayed one wherever a unit measures the same module."""
-    work = os.path.join(BUILD, "part_" + name)
-    os.makedirs(work, exist_ok=True)
-    jf = os.path.join(work, "part.json")
-    cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
-            % (" ".join("-D%s" % d for d in defines),
-               " ".join(["rtl/ccv_assert_pkg.sv"] + list(files)))]
-    for bb in blackbox:
-        cmds.append("read_verilog -sv -lib -Irtl/include -Irtl/generated %s" % bb)
+# == Sum of parts (Daniel, 2026-11-06) ========================================
+# A whole block cannot be synthesised within the gate's runtime and memory,
+# so nothing above a module is: a block's numbers are the sum of its
+# modules' unit measurements, each at the parameters the block instantiates
+# it with, over a structural read of the hierarchy (Structure). The read is
+# Yosys's front end and `hierarchy`, then `proc` and `chformal -remove`,
+# which only turn processes and assertions into cells so the netlist can be
+# written and a module's own flops seen. No `opt`, `synth`, `techmap` or
+# `abc` runs on it, and nothing flattens a child into its parent. A file of
+# leaves only -- modules that instantiate no module of the read -- is read
+# -lib, its modules ports alone: elaborating a big leaf costs about as much
+# as reading it (ooe_rs: 29 s to read and elaborate, 28 more at its unit's
+# parameters, 30 for proc), and only its instances' parameters are needed,
+# which its parent's elaboration evaluates. Modules read whole are read
+# -defer, elaborated once, at their instances' parameters. The front end
+# dominates: ooe_rename's hierarchy with ooe_freelist read whole and its
+# leaves -lib took 311 s, of which proc about 4%; no synthesis runs.
+
+
+def read_cmds(files, blackbox=(), params=None, top=None, defines=(), lib=(), defer=False):
+    """The read every flow here and in check-ngd shares: the files, those
+    in `lib` read -lib (ports only), the library cells (`blackbox`, -lib
+    too), and `params` set on `top`. `defer` leaves the modules read whole
+    unelaborated until `hierarchy` derives each at its instances'
+    parameters, instead of elaborating each at its defaults first."""
+    ds = " ".join("-D%s" % d for d in defines)
+    full = [f for f in files if f not in lib]
+    if defer:
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv"
+                % ds]
+        if full:
+            cmds.append("read_verilog -sv -formal -defer %s -Irtl/include -Irtl/generated %s"
+                        % (ds, " ".join(full)))
+    else:
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
+                % (ds, " ".join(["rtl/ccv_assert_pkg.sv"] + full))]
+    for f in [f for f in files if f in lib] + list(blackbox):
+        cmds.append("read_verilog -sv -lib %s -Irtl/include -Irtl/generated %s" % (ds, f))
     if params:
         cmds.append("chparam %s %s" % (" ".join(
             "-set %s %s" % (k, v) for k, v in sorted(params.items())), top))
-    inner = inner_helpers() if inner is None else inner
-    cmds += ["hierarchy -top %s" % top, "chformal -remove"] + KEEP_FLOPS
-    if inner:
-        cmds += ["setattr -mod -set keep_hierarchy 1 *",
-                 "setattr -mod -unset keep_hierarchy %s" % " ".join(
-                     "%s $paramod\\%s\\* $paramod$*\\%s" % (m, m, m) for m in sorted(inner))]
-    cmds += ["synth %s-top %s" % ("-flatten " if inner else "", top), "write_json %s" % jf]
-    r = run(["yosys", "-q", "-p", "; ".join(cmds)])
-    if r.returncode:
-        raise SystemExit("check-cg: partition %s: yosys failed:\n%s"
-                         % (name, (r.stdout + r.stderr)[-2000:]))
-    mods = json.load(open(jf))["modules"]
-    per = {}
-    for mn, m in mods.items():
-        alias = collections.defaultdict(set)
-        for nn, v in m["netnames"].items():
-            if v["hide_name"] or "$" in nn:
+    return cmds
+
+
+STRUCT_CMDS = ["proc", "chformal -remove"]
+# A module's own storage after `proc`: its flops, latches and memories; and
+# in its source, for a module read -lib.
+OWN_STATE_RE = re.compile(r"^\$(?:\w*dff\w*|\w*dlatch\w*|sr|mem\w*)$")
+SRC_STATE_RE = re.compile(r"\balways_ff\b|\balways_latch\b|\balways\s*@\s*\(\s*(?:pos|neg)edge\b")
+
+
+def src_name(mod):
+    """A module's source name from Yosys's name for one parameterisation:
+    $paramod\\<module>\\..., or $paramod$<sha1>\\<module> when its
+    parameter string is long (OI-69)."""
+    m = re.match(r"^\$paramod(?:\$[0-9a-f]+)?\\([^\\]+)", mod)
+    return m.group(1) if m else mod.lstrip("\\")
+
+
+def norm_params(pv):
+    """Parameter values as Yosys wrote them, comparable across reads: a bit
+    string as its integer, anything else as written."""
+    out = {}
+    for k, v in (pv or {}).items():
+        v = str(v)
+        out[k] = int(v, 2) if re.fullmatch(r"[01]+", v) else v.strip()
+    return out
+
+
+def dependent_defaults(text, names):
+    """The parameters of a module (its source `text`) whose default names
+    another of its parameters (`names`), so is not one value whatever the
+    others are; one whose default is not found counts as dependent."""
+    out = set()
+    for p in names:
+        m = re.search(r"\b%s\s*=(?!=)" % re.escape(p), text)
+        if not m:
+            out.add(p)
+            continue
+        depth, k, expr = 0, m.end(), []
+        while k < len(text):
+            ch = text[k]
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif ch in ",;" and depth == 0:
+                break
+            expr.append(ch)
+            k += 1
+        ids = set(re.findall(r"(?<!['$\w])[A-Za-z_]\w*", "".join(expr)))
+        if ids & (set(names) - {p}):
+            out.add(p)
+    return out
+
+
+class Structure:
+    """A hierarchy read structurally (see above): each module as Yosys
+    derives it at its parameters, its instances, and whether it holds state
+    of its own. Modules read -lib are leaves whose instances carry their
+    parameter overrides. `top` is the read's top, as the netlist names it."""
+
+    def __init__(self, name, top, files, blackbox=(), params=None, defines=(), keep=()):
+        self.name, self.files, self.blackbox = name, list(files), list(blackbox)
+        self.params, self.defines = params, list(defines)
+        texts, where = {}, {}
+        for f in files:
+            src = lint.strip_comments(open(os.path.join(ROOT, f)).read())
+            for a, b, n, _ in lint.module_spans(src):
+                texts[n], where[n] = src[a:b], f
+        self.src_state = {n: bool(SRC_STATE_RE.search(t)) for n, t in texts.items()}
+        self.texts = texts
+        inst = {n: any(re.search(r"\b%s\s*(#|[A-Za-z_]\w*\s*\()" % re.escape(m), t)
+                       for m in texts if m != n) for n, t in texts.items()}
+        lib = set()
+        for f in files:
+            mods = [n for n, w in where.items() if w == f]
+            raw = lint.strip_comments(open(os.path.join(ROOT, f)).read())
+            if (mods and not any(inst[n] or n == top or n in keep for n in mods)
+                    and not re.search(r"\b(package|interface)\b", raw)):
+                lib.add(f)
+        self.lib_files = lib
+        work = os.path.join(BUILD, "struct_" + name)
+        os.makedirs(work, exist_ok=True)
+        jf = os.path.join(work, "struct.json")
+        self.cmds = read_cmds(files, blackbox, params, top, defines, lib, defer=True) + [
+            "hierarchy -top %s" % top] + STRUCT_CMDS
+        t0 = time.time()
+        r = yosys_json(self.cmds, jf)
+        self.seconds = time.time() - t0
+        if r.returncode:
+            raise SystemExit("check-cg: %s: the structural read failed:\n%s"
+                             % (name, (r.stdout + r.stderr)[-2000:]))
+        self.mods = json.load(open(jf))["modules"]
+        libmods = {n for n, w in where.items() if w in lib}
+        bb = {m for m, v in self.mods.items() if v.get("attributes", {}).get("blackbox")}
+        # Leaves read -lib, at their own parameters or (dynports) derived.
+        self.leaf = {m for m in bb if src_name(m) in libmods}
+        self.lib = bb - self.leaf
+        self.top = next(m for m, v in self.mods.items() if v.get("attributes", {}).get("top"))
+
+    def cells(self, mn):
+        """[(instance, module)] for each design child of `mn`, library cells
+        aside."""
+        return sorted((cn, c["type"]) for cn, c in self.mods[mn].get("cells", {}).items()
+                      if c["type"] in self.mods and c["type"] not in self.lib)
+
+    def own_state(self, mn):
+        if mn in self.leaf:
+            return self.src_state.get(src_name(mn), True)
+        return any(OWN_STATE_RE.match(c["type"]) for c in self.mods[mn].get("cells", {}).values())
+
+    def key(self, mn, cell=None):
+        """What a unit must measure to stand for an instance: ("full",
+        module, every parameter's value) for a module Yosys derived or read
+        whole, ("ov", module, the instance's overrides) for a leaf read -lib
+        and not derived, whose cell carries them. `cell` is the instance in
+        its parent, (parent, name); None for the top."""
+        if cell is not None and mn in self.leaf and not mn.startswith("$paramod"):
+            c = self.mods[cell[0]]["cells"][cell[1]]
+            return ("ov", src_name(mn), tuple(sorted(norm_params(c.get("parameters")).items())))
+        return ("full", src_name(mn),
+                tuple(sorted(norm_params(self.mods[mn].get("parameter_default_values")).items())))
+
+    def matches(self, key, ukey):
+        """Whether a unit (unit_key) measures an instance (key) at its
+        parameters. A full key, every value equal. An override key, each
+        override equal to the unit's value; a parameter the instance leaves
+        at its default equal to the unit's when the unit sets it, the
+        default being one value (no other parameter in it); and one both
+        leave at the default equal, as a function of the others."""
+        kind, mod, vals = key
+        umod, ufull, uset, udefs = ukey
+        if mod != umod or udefs:
+            return False
+        uf = dict(ufull)
+        if kind == "full":
+            return dict(vals) == uf
+        ov = dict(vals)
+        if set(ov) - set(uf):
+            return False
+        base = norm_params(self.mods.get(mod, {}).get("parameter_default_values"))
+        dep = dependent_defaults(self.texts.get(mod, ""), list(uf))
+        for p, uv in uf.items():
+            if p in ov:
+                if ov[p] != uv:
+                    return False
+            elif p in uset and (p in dep or base.get(p) != uv):
+                return False
+        return True
+
+    def reachable(self, start=None):
+        """Every module under `start` (the top), library cells aside."""
+        out, todo = [], [start or self.top]
+        while todo:
+            mn = todo.pop()
+            if mn in out:
                 continue
-            for b in v["bits"]:
-                if isinstance(b, int):
-                    # By its name in the module, generate scope kept, and by
-                    # its base name: a finding names one or the other (OI-89).
-                    alias[b].add(re.sub(r"(\[\d+\])+$", "", nn))
-                    alias[b].add(re.sub(r"(\[\d+\])+$", "", nn.split(".")[-1]))
-        cnt, regs, kids = 0, collections.Counter(), []
-        for c in m["cells"].values():
-            t = c["type"]
-            if t in mods:
-                kids.append(t)
-            elif FLOP_RE.match(t):
-                cnt += 1
-                for nn in alias.get(c["connections"]["Q"][0], ()):
-                    regs[nn] += 1
-        per[mn] = (cnt, regs, kids)
-    known = set(known) | {top}
+            out.append(mn)
+            todo += [t for _, t in self.cells(mn)]
+        return out
 
-    def base(mn):
-        if not mn.startswith("$paramod"):
-            return mn
-        for tok in mn.split("\\"):
-            if tok in known:
-                return tok
-        return mn
 
-    mult = collections.Counter()
+def unit_key(spec, netlist):
+    """What a unit measures: its module, every parameter's value as its own
+    netlist (`netlist`, the unit's synthesised JSON) records it, the names
+    its params set, and its defines. A unit read with defines stands for no
+    instance: a block is read without."""
+    d = json.load(open(netlist))["modules"]
+    m = d.get(spec["module"]) or next(v for v in d.values() if v.get("attributes", {}).get("top"))
+    return (spec["module"],
+            tuple(sorted(norm_params(m.get("parameter_default_values")).items())),
+            frozenset(spec.get("params") or {}), tuple(spec.get("defines", [])))
 
-    def walk(mn, k):
-        mult[mn] += k
-        for kid in per[mn][2]:
-            walk(kid, k)
-    walk(next(mn for mn in mods if base(mn) == top), 1)
-    return {"total": sum(per[mn][0] * k for mn, k in mult.items()),
-            "inst": [(base(mn), k, per[mn][1]) for mn, k in mult.items()]}
+
+def show_key(key):
+    kind, mod, ps = key[:3]
+    s = "%s #(%s)" % (mod, ", ".join("%s=%s" % kv for kv in ps) or "defaults")
+    if len(key) > 3 and key[3]:
+        s += " with %s" % ", ".join(key[3])
+    return s
+
+
+def find_unit(st, key, keyed):
+    """The first of `keyed`, [(unit, unit_key)], that measures an instance
+    of key `key` in structure `st`."""
+    return next((u for u, k in keyed if st.matches(key, k)), None)
+
+
+def unit_regs(u):
+    """A unit's flops per register name, from its replayed netlist: by its
+    scoped name (a generate's way kept) and by its base name, as a finding
+    names one or the other (OI-89)."""
+    regs = collections.Counter()
+    for q in u.nl.flops:
+        names = set()
+        for n, _ in u.nl.alias.get(q, []):
+            n = re.sub(r"(\[\d+\])+$", "", n)
+            names |= {n, n.split(".")[-1]}
+        for n in names:
+            regs[n] += 1
+    return regs
+
+
+def cg_keyed(units):
+    return [(u, unit_key(u.spec, os.path.join(u.dir, "net.json"))) for u in units
+            if u.nl is not None]
+
+
+def block_parts(name, top, files, blackbox, units):
+    """A block's flops as the sum of its parts: the structural read of its
+    hierarchy, and for each instance the unit that measures its module at
+    the instance's parameters. A unit counts every flop of its netlist, the
+    children it flattens included, so only the children it blackboxes (its
+    "blackbox") are walked on. An instance with state of its own and no unit
+    at its parameters is a failure naming both; one with none (wiring, an
+    inner helper) counts nothing and its children are walked. Returns the
+    total, the instances as [(module, multiplicity, flops per register,
+    unit)], the failures and the structure."""
+    st = Structure("blk_" + name, top, files, blackbox)
+    keyed = cg_keyed(units)
+    mult, missing = collections.Counter(), collections.OrderedDict()
+
+    def walk(mn, cell, path):
+        key = st.key(mn, cell)
+        u = find_unit(st, key, keyed)
+        if u is not None:
+            mult[u.name] += 1
+            bb = set(u.spec.get("blackbox", {}))
+            kids = [(cn, t) for cn, t in st.cells(mn) if src_name(t) in bb]
+        else:
+            if st.own_state(mn):
+                missing.setdefault(key, []).append(path or src_name(mn))
+            kids = st.cells(mn)
+        for cn, t in kids:
+            walk(t, (mn, cn), "%s.%s" % (path, cn) if path else cn)
+    walk(st.top, None, "")
+    by = {u.name: u for u in units}
+    fails = []
+    for key, paths in missing.items():
+        others = sorted(show_key((None,) + k[:2] + (k[3],)) for _, k in keyed if k[0] == key[1])
+        fails.append("block %s: %s, instantiated as %s, has flops and no clock-gating unit at "
+                     "its parameters, so its flops are not counted (units measure it at: %s)"
+                     % (name, show_key(key), ", ".join(paths[:3]) + (
+                         " and %d more" % (len(paths) - 3) if len(paths) > 3 else ""),
+                        "; ".join(others) or "none"))
+    inst = [(by[n].module, k, unit_regs(by[n]), n) for n, k in mult.items()]
+    total = sum(len(by[n].nl.flops) * k for n, k in mult.items())
+    return total, inst, fails, st
 
 
 def partitions(modules):
@@ -1841,8 +2066,11 @@ def module_budget(findings, units):
 
 
 def took_flops(el, f):
-    """A finding's flops in an elaborated partition: its registers, by name,
-    in every instance of its module. A register in a generate is its own
+    """A finding's flops in a block (block_parts' `inst`): in every instance
+    of its module, as the instance's unit measured them. A finding of one
+    unit counts in that unit's instances only, at the flops its module
+    budget took (f.flops); one of no unit (CG-1's form) by its registers'
+    names in each instance's unit. A register in a generate is its own
     way's (g_slot[0].x, not every slot's x, OI-89): the longest suffix of its
     scoped name the module has, else its base name (a child instance's). A
     name with a bit range counts those bits only (RI-13)."""
@@ -1873,7 +2101,14 @@ def took_flops(el, f):
         # replayed netlist does, never more than the vector has (RI-13).
         return (sum(regs.get(x, 0) for x in whole)
                 + sum(min(n, regs.get(x, 0)) for x, n in part.items() if x not in whole))
-    return sum(m * count(regs) for b, m, regs in el["inst"] if b == f.module)
+    n = 0
+    for e in el["inst"]:
+        b, m, regs = e[:3]
+        un = e[3] if len(e) > 3 else None
+        if b != f.module or (f.unit is not None and un is not None and f.unit != un):
+            continue
+        n += m * (f.flops if f.unit is not None and f.unit == un else count(regs))
+    return n
 
 
 def unit_flops(u, f):
@@ -1882,55 +2117,7 @@ def unit_flops(u, f):
     return f.flops if f.unit == u.name else sum(len(u.reg_qs(r)) for r in f.regs)
 
 
-def crosscheck(findings, units, known, skew=(), elaborated=None):
-    """The block budget counts flops in a netlist synthesised with its
-    hierarchy kept, which nothing replays; a unit's netlist is flattened and
-    replayed against the simulated RTL. Yosys can read one RTL differently
-    in two flows (OI-44), so each measured unit's module is elaborated the
-    block budget's way, at the unit's parameters, and must count what the
-    replayed netlist counts: all its flops, and those of every finding its
-    module budget took. `skew` adds defines to the elaborated read alone:
-    the selftest's stand-in for such a misread. `elaborated`, unit name to a
-    future, holds elaborations already queued (main_check's, beside the
-    measurements). Returns the units' lines and the disagreements."""
-    took = [f for f in findings if f.status in ("module", "wrapper")]
-    lines, fails = [], []
-    for u in units:
-        if u.errors or u.nl is None:
-            continue
-        el = (elaborated[u.name].result() if elaborated and u.name in elaborated
-              else unit_elaborate(u, known, skew))
-        diff = []
-        if el["total"] != len(u.nl.flops):
-            diff.append("%d flops, the replayed netlist %d" % (el["total"], len(u.nl.flops)))
-        n = 0
-        for f in took:
-            if f.module != u.module or (f.unit is not None and f.unit != u.name):
-                continue
-            n += 1
-            got, want = took_flops(el, f), unit_flops(u, f)
-            if got != want:
-                diff.append("%s %s: %d flops, the replayed netlist %d"
-                            % (f.rule, "/".join(sorted(f.regs)), got, want))
-        if diff:
-            fails.append("unit %s: synthesised with its hierarchy kept, %s counts %s; the "
-                         "block budget would count the wrong design"
-                         % (u.name, u.module, "; ".join(diff)))
-        else:
-            lines.append("flop count: unit %-12s %5d flops, and %d budgeted finding(s), "
-                         "alike kept and replayed" % (u.name, el["total"], n))
-    return lines, fails
-
-
-def unit_elaborate(u, known, skew=()):
-    """A unit's module, the block budget's way (crosscheck)."""
-    s = u.spec
-    return elaborate("unit_" + u.name, u.module, s["files"],
-                     [s["blackbox"][b] for b in sorted(s.get("blackbox", {}))], known,
-                     s.get("params"), list(s.get("defines", [])) + list(skew))
-
-
-def block_budget(findings, parts, known):
+def block_budget(findings, parts, units):
     """What the module budgets took still counts against each block's
     CCV_CG_BUDGET_PCT, per instance over the block's hierarchy, its
     hardening wrapper's included, and so do its repeaters' control pulses
@@ -1938,12 +2125,19 @@ def block_budget(findings, parts, known):
     true, any rule): Daniel's rulings let a module waive the flops that
     hold an interface lead signal (RI-15, RA rev 87) or capture a
     credit-return pulse (RI-14, RA rev 88) on the condition that they fit
-    the block's 2%, and this is that check (RI-17). Returns the blocks'
-    lines and the blocks over it."""
+    the block's 2%, and this is that check (RI-17).
+
+    As a sum of parts (Daniel, 2026-11-06; block_parts): the block's flops,
+    and each take's, are its instances' units' replayed netlists', each at
+    the instance's parameters, over a structural read of the hierarchy; no
+    whole-block synthesis. An instance no unit measures at its parameters is
+    a failure. Returns the blocks' lines and the failures."""
     took = [f for f in findings if f.status in ("module", "wrapper") or block_charged(f)]
     lines, fails = [], []
     for name, top, files, bbs in parts:
-        el = elaborate(name, top, files, bbs, known)
+        total, inst, cover, st = block_parts(name, top, files, bbs, units)
+        fails += cover
+        el = {"total": total, "inst": inst}
         budget = el["total"] * BUDGET_PCT / 100.0
         used, ctl, wvd, items = 0, 0, 0, []
         for f in took:
@@ -1955,9 +2149,10 @@ def block_budget(findings, parts, known):
                 items.append((n, f))
         extra = ["%d of them repeater control" % ctl] if ctl else []
         extra += ["%d of them waived as lead or credit flops" % wvd] if wvd else []
-        lines.append("block budget: %-8s %6d flops, %.1f allowed, %d auto-waived in its modules"
-                     "%s" % (name, el["total"], budget, used,
-                             " (%s)" % "; ".join(extra) if extra else ""))
+        lines.append("block budget: %-8s %6d flops in %d unit(s) at their instances' "
+                     "parameters (structural read %.1f s), %.1f allowed, %d auto-waived in its "
+                     "modules%s" % (name, el["total"], len(inst), st.seconds, budget, used,
+                                    " (%s)" % "; ".join(extra) if extra else ""))
         if used > budget:
             worst = ", ".join("%s %s (%d%s)" % (f.module, "/".join(sorted(f.regs)), n,
                                                 ", waived" if f.status == "waived" else "")
@@ -2075,7 +2270,7 @@ def load(path, key):
 
 
 def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE, parts=(),
-           known=(), fratchet=None, fbaseline=FINDINGS_BASELINE, arrivals=None):
+           fratchet=None, fbaseline=FINDINGS_BASELINE, arrivals=None):
     """Apply each module's budget, then the waivers, then the ratchets: a
     waiver for what a budget already takes is refused as excusing nothing,
     and a waiver takes effect with no ratchet edit, the ratchet entry it
@@ -2136,7 +2331,7 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
                              % (mod, k))
     fails += [str(f) for f in findings if f.status == "open"]
     if parts:
-        more, over = block_budget(findings, parts, known)
+        more, over = block_budget(findings, parts, units)
         lines += more
         fails += over
     for w in waivers:
@@ -2262,17 +2457,7 @@ def main_check(only=None, verbose=False):
     fratchet = load(RATCHET, "findings")
     waivers = load(WAIVERS, "waivers")
     findings = []
-    # Each unit's crosscheck elaboration needs nothing measured, so it is
-    # queued on the same pool beside the unit's measurement, and waited for
-    # only in crosscheck. A unit whose measurement fails is never asked for.
-    pool = concurrent.futures.ThreadPoolExecutor(jobs())
-    elaborated = {}
-
-    def queue_el(p, u):
-        if not only:
-            elaborated[u.name] = p.submit(unit_task(u.name, unit_elaborate), u, modules)
-    for u in measured(units, lambda u: u.measure(), pool, queue_el,
-                      times=last_times("check-cg")):
+    for u in measured(units, lambda u: u.measure(), times=last_times("check-cg")):
         report(u, verbose)
         if u.nl is not None:
             findings += source_findings(u, resets)
@@ -2286,10 +2471,7 @@ def main_check(only=None, verbose=False):
         return 1 if unmeasured(units) else 0
     parts = partitions(modules)
     fails, lines = policy(findings, modules, units, waivers, ratchet, parts=parts,
-                          known=modules, fratchet=fratchet)
-    more, over = crosscheck(findings, units, modules, elaborated=elaborated)
-    lines += more
-    fails += over
+                          fratchet=fratchet)
     fails += unmeasured(units)
     more, over = heavy_check("check-cg")
     lines += more + time_lines()
@@ -2620,10 +2802,11 @@ def selftest():
         fs = [f for f in findings() if f.module in mods_in]
         us = [x for x in allu if x.module in mods_in]
         ws = [dict(w) for w in waivers]
-        fails, _ = policy(fs, {m: mods[m] for m in mods_in if m in mods}, us, ws,
-                          ratchet or {}, baseline=baseline, parts=parts,
-                          known=set(mods) | {"cg_fx_blk_ok", "cg_fx_blk_over", "cg_fx_blk_wv"},
-                          fratchet=fratchet, fbaseline=fbaseline)
+        fails, lines = policy(fs, {m: mods[m] for m in mods_in if m in mods}, us, ws,
+                              ratchet or {}, baseline=baseline, parts=parts,
+                              fratchet=fratchet, fbaseline=fbaseline)
+        if parts and os.environ.get("CG_SELFTEST_VERBOSE"):
+            print("\n".join("    " + x for x in lines if x.startswith("block")))
         return fails, fs
 
     # 10. Waivers: one that excuses a finding clears it; one that excuses
@@ -2678,7 +2861,7 @@ def selftest():
     expect(any("excuses nothing" in x for x in fails),
            "a waiver for what a module budget takes was accepted")
     # 14. The block budget: what the modules took counts against 2% of the
-    #     block's flops, per instance. 4 of 260 holds; 8 of 136 does not.
+    #     block's flops, per instance. 8 of 520 holds; 13 of 269 does not.
     fx = ["test/cg/fixtures/%s.sv" % m for m in ("cg_fx_wide", "cg_fx_small")]
     p_ok = ("fx_ok", "cg_fx_blk_ok", fx + ["test/cg/fixtures/cg_fx_blk_ok.sv"], [])
     p_over = ("fx_over", "cg_fx_blk_over", fx + ["test/cg/fixtures/cg_fx_blk_over.sv"], [])
@@ -2691,7 +2874,7 @@ def selftest():
     #     A lead waiver ("lead": true) excuses its module on the condition
     #     that its flops fit the block's 2% (Daniel's ruling on RI-15, RA rev
     #     87; RI-17): d_q's 16 flops, waived as a lead in cg_fx_form, put a
-    #     176-flop block over its 3.5. The same waiver without the mark is not
+    #     305-flop block over its 6.1. The same waiver without the mark is not
     #     charged, and a mark that is not a boolean is refused. A credit
     #     waiver ("credit": true, Daniel on RI-14, RA rev 88) is charged the
     #     same way.
@@ -2713,27 +2896,69 @@ def selftest():
     expect(any("lead is 'yes'" in x for x in fails), "a lead mark that is not a boolean passed")
     fails, _ = run_policy(("cg_fx_form",), [dict(w_d, credit=1)])
     expect(any("credit is 1" in x for x in fails), "a credit mark that is not a boolean passed")
-    # 15. The block budget's flop counts, from netlists nothing replays,
-    #     agree with the replayed ones: for every fixture, totals and what the
-    #     module budgets took; and a module the elaborated read takes
-    #     differently, one flop fewer in cg_fx_small's counter, is refused.
-    _, fs = run_policy(tuple(mods))
-    _, xf = crosscheck(fs, allu, set(mods))
-    expect(not xf, "kept and replayed flop counts differ on the fixtures: %s" % xf)
-    _, xf = crosscheck(fs, [units["cg_fx_small"], units["cg_fx_big"]], set(mods),
-                       skew=["CG_FX_MISREAD"])
-    expect(any("unit fx_small" in x and "c_q" in x and "3 flops" in x for x in xf)
-           and not any("fx_big" in x for x in xf),
-           "a module elaborated with one flop fewer than its replayed netlist passed: %s" % xf)
+    # 15. The block budget is a sum of parts (Daniel, 2026-11-06): no
+    #     netlist of the block is synthesised, so none can disagree with the
+    #     replayed ones (the old cross-check's hazard, a block netlist Yosys
+    #     read differently, is gone with it). What stands in its place is
+    #     that every instance is counted by a unit at its own parameters and
+    #     read: cg_fx_blk_ok's 520 flops are its three instances' units'
+    #     replayed counts (2 x 257 + 6); with cg_fx_small's unit read with CG_FX_MISREAD
+    #     (a 3-bit counter: another design than the block's), no unit stands
+    #     for u_s0, and the block fails naming it, rather than count 519.
+    total, inst, cover, _ = block_parts("fx_ok", p_ok[1], p_ok[2], [], allu)
+    want = 2 * len(units["cg_fx_wide"].nl.flops) + len(units["cg_fx_small"].nl.flops)
+    expect(total == want == 520 and not cover,
+           "a block's flops are not its instances' units' sum: %d, want %d (520): %s"
+           % (total, want, cover))
+    mis = __import__("copy").copy(units["cg_fx_small"])
+    mis.spec = dict(mis.spec, name="fx_small_misread", defines=["CG_FX_MISREAD"])
+    mis.name = "fx_small_misread"
+    _, _, cover, _ = block_parts("fx_ok_mis", p_ok[1], p_ok[2], [],
+                                 [units["cg_fx_wide"], mis])
+    expect(any("cg_fx_small #(defaults)" in x and "u_s0" in x and "CG_FX_MISREAD" in x
+               for x in cover),
+           "a unit of another read of a module stood for the block's instance: %s" % cover)
+    #     Coverage, by parameters: a block instance whose module no unit
+    #     measures at its parameters fails, naming both (below, with the
+    #     repeaters: cg_fx_wrap_ok's one-stage 16-bit repeater with only
+    #     the two-stage unit). And a block whose module has flops and no unit
+    #     at all fails the same way.
+    _, _, cover, _ = block_parts("fx_ok_nos", p_ok[1], p_ok[2], [], [units["cg_fx_wide"]])
+    expect(any("cg_fx_small" in x and "no clock-gating unit at its parameters" in x
+               and "none" in x for x in cover),
+           "a block instance with no unit was counted as nothing: %s" % cover)
     # 15b. A register in a generate, each way on its own enable, its findings
-    #      each taken by the module budget (cg_fx_gen): the kept elaboration
-    #      counts each finding's own way, not every way's (OI-89).
+    #      each taken by the module budget (cg_fx_gen): counted in the block
+    #      by each way's own flops in the unit's netlist, not every way's
+    #      (OI-89), and a finding with no unit by its registers there, as its
+    #      module budget took it.
     _, fs = run_policy(("cg_fx_gen",))
+    gu = units["cg_fx_gen"]
     took = [f for f in fs if f.module == "cg_fx_gen" and f.status == "module"
             and any(r.startswith("g_way[") for r in f.regs)]
-    _, xf = crosscheck(fs, [units["cg_fx_gen"]], set(mods))
-    expect(len(took) == 2 and not xf,
-           "a generate's ways were counted together, or not taken apart: %s %s" % ([str(f) for f in took], xf))
+    el = {"inst": [("cg_fx_gen", 1, unit_regs(gu), None)]}
+    diff = [(str(f), took_flops(el, f), unit_flops(gu, f)) for f in took
+            if took_flops(el, f) != unit_flops(gu, f)]
+    expect(len(took) == 2 and not diff,
+           "a generate's ways were counted together, or not taken apart: %s %s"
+           % ([str(f) for f in took], diff))
+    # 15c. Nothing of a child is synthesised in a block's read (Daniel,
+    #      2026-11-06): a child with a combinational loop, which the strict
+    #      Yosys refuses to synthesise (OI-44), reads structurally; the same
+    #      hierarchy synthesised with its children kept fails, so the read
+    #      would have failed had it synthesised the child.
+    lf = ["test/ngd/fixtures/ngd_fx_loopkid.sv"]
+    try:
+        st = Structure("fx_loopkid", "ngd_fx_blk_loopkid", lf)
+        ok_read = "ngd_fx_loop" in {src_name(t) for _, t in st.cells(st.top)}
+    except SystemExit as e:
+        ok_read = "read failed: %s" % e
+    r = run(["yosys", "-q", "-p", "; ".join(read_cmds(lf) + [
+        "hierarchy -top ngd_fx_blk_loopkid", "setattr -mod -set keep_hierarchy 1 *",
+        "synth -top ngd_fx_blk_loopkid"])])
+    expect(ok_read is True and r.returncode != 0,
+           "a block's structural read synthesised a child, or the looped child synthesises "
+           "(read: %s; synthesis exit %d)" % (ok_read, r.returncode))
     # 16. CG-5 and RST-1, from a netlist (cg_fx_src): a gate enabled
     #     straight from an input, the reset port in a gate's enable, an ICG
     #     enabled from an input; the reset port on a flop's reset pin and
@@ -2964,43 +3189,61 @@ def selftest():
                                                sorted(r for f in ctl for r in f.regs)))
     #     And they count against the wrapper: with one stage beside two
     #     cg_fx_wide, 7 of 535 flops hold its 2%; with two stages beside
-    #     one, 10 of 298 do not.
+    #     one, 10 of 298 do not. Each repeater is counted by the unit at its
+    #     instance's parameters (fx_rpt_narrow1, fx_rpt_narrow2), and the
+    #     control pulses charged are that unit's.
     wide = next(x for x in allu if x.module == "cg_fx_wide")
-    wfs = [f for f in findings() if f.module == "cg_fx_wide"]
     wmods = {"cg_fx_wide": mods["cg_fx_wide"], RPT: rmod[RPT]}
-    wknown = set(mods) | {RPT, "cg_fx_wrap_ok", "cg_fx_wrap_over"}
     wfiles = ["rtl/phys/ccv_common_rpt.sv", "test/cg/fixtures/cg_fx_wide.sv"]
-    nar = next(x for x in rus if x.name == "fx_rpt_narrow2")
-    for top, want in (("cg_fx_wrap_ok", False), ("cg_fx_wrap_over", True)):
+    nars = [next(x for x in rus if x.name == n) for n in ("fx_rpt_narrow1", "fx_rpt_narrow2")]
+
+    def wrap_policy(top, nar):
         part = (top[6:], top, wfiles + ["test/cg/fixtures/%s.sv" % top], [])
-        fs = wfs + form_check(rmod, [nar]) + coverage_check(rmod, [nar]) + unit_findings(nar)
-        for f in fs:
-            f.status = "open"
-        fails, blines = policy(fs, wmods, [wide, nar], [dict(w) for w in rwaivers], {},
-                               parts=[part], known=wknown)
+        fs = [f for f in findings() if f.module == "cg_fx_wide"]
+        fs += form_check(rmod, nar) + coverage_check(rmod, nar)
+        for x in nar:
+            fs += unit_findings(x)
+        return policy(fs, wmods, [wide] + nar, [dict(w) for w in rwaivers], {}, parts=[part])
+    for top, want in (("cg_fx_wrap_ok", False), ("cg_fx_wrap_over", True)):
+        fails, blines = wrap_policy(top, nars)
         if os.environ.get("CG_SELFTEST_VERBOSE"):
             print("\n".join("    " + x for x in blines))
         over = [x for x in fails if "block %s" % top[6:] in x and "over its" in x]
         expect(bool(over) == want and len(fails) == len(over),
                "a wrapper %s its 2%% with its repeater's control pulses %s: %s"
                % ((("over", "passed") if want else ("within", "failed")) + (fails,)))
+    #     Coverage by parameters: with only the two-stage unit, the
+    #     one-stage repeater in cg_fx_wrap_ok is measured by no unit, and
+    #     the block fails naming the module and its parameters.
+    fails, _ = wrap_policy("cg_fx_wrap_ok", nars[1:])
+    expect(any("block wrap_ok" in x and "ccv_common_rpt #(" in x and "STAGES=1" in x
+               and "PAYLOAD_W=16" in x and "u_rpt" in x and "no clock-gating unit" in x
+               for x in fails),
+           "a repeater instance at parameters no unit measures passed: %s" % fails)
     # 19. A register's (* keep *) copies (check-ngd's NGD-7) survive
-    #     synthesis here too (KEEP_FLOPS): both are counted where unmarked
-    #     copies merge into one, six flops fewer.
+    #     synthesis in a unit (KEEP_FLOPS), so the block's sum counts both:
+    #     where unmarked copies merge into one, six flops fewer.
     kf = ["test/ngd/fixtures/ngd_fx_shared.sv"]
-    kept = elaborate("fx_keep", "ngd_fx_split", kf)["total"]
-    bare = elaborate("fx_bare", "ngd_fx_split_bare", kf)["total"]
+
+    def synth_flops(name, mod, files):
+        x = Unit({"name": name, "module": mod, "files": files}, "selftest")
+        x.synth()
+        return len(x.nl.flops)
+    kept = synth_flops("fx_keep", "ngd_fx_split", kf)
+    bare = synth_flops("fx_bare", "ngd_fx_split_bare", kf)
     expect(kept == bare + 6, "(* keep *) copies of a 6-bit register were merged, or unmarked "
            "ones were not: %d flops kept, %d bare" % (kept, bare))
-    # 19b. An inner helper is flattened into its parent before the count
-    #      (OI-78): cg_fx_inner_h ties a bit to zero, so its parent's flop on
-    #      it is constant and dropped, as in the replayed netlist. With the
-    #      helper's boundary kept, the flop would stay.
+    # 19b. An inner helper is its parent's logic (OI-78): the parent's unit
+    #      flattens it, so its constant bit's flop is dropped (3 flops, not
+    #      4), and the block counts the parent's unit alone: the helper,
+    #      with no state of its own, needs no unit and adds nothing.
     inf = ["test/cg/fixtures/cg_fx_inner.sv"]
-    flat = elaborate("fx_inner", "cg_fx_inner", inf, inner={"cg_fx_inner_h"})["total"]
-    kept_b = elaborate("fx_inner_kept", "cg_fx_inner", inf, inner=())["total"]
-    expect(flat == 3 and kept_b == 4, "an inner helper's constant bit: %d flops flattened "
-           "(want 3), %d with its boundary kept (want 4)" % (flat, kept_b))
+    iu = Unit({"name": "fx_inner", "module": "cg_fx_inner", "files": inf}, "selftest")
+    iu.synth()
+    total, _, cover, _ = block_parts("fx_inner", "cg_fx_inner", inf, [], [iu])
+    expect(len(iu.nl.flops) == 3 and total == 3 and not cover,
+           "an inner helper's constant bit: %d flops in its parent's unit, %d in the block "
+           "(want 3, 3): %s" % (len(iu.nl.flops), total, cover))
     # 20. The synthesis cache: a header the script reads only through -I
     # changes, and the cache must miss, not hand back the old netlist.
     inc = os.path.join(BUILD, "fixture", "cache_inc")
@@ -3026,7 +3269,7 @@ def selftest():
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
         print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
-              "ratchet, coverage, module and block budgets, kept and replayed flop counts, "
+              "ratchet, coverage, module and block budgets as a sum of parts, "
               "enable sources and the reset, repeater instantiations, kept copies, the "
               "synthesis cache, heavy units one at a time (%d controls)" % checks)
     return 1 if bad else 0

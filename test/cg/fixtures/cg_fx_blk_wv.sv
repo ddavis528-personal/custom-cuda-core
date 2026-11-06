@@ -1,7 +1,7 @@
 // check-cg fixture: a block whose 2% must hold what a lead waiver
 // took in its modules (DA's ruling on RI-15; RI-17). cg_fx_form's d_q, 16
 // flops written every cycle, is cleared in its module by a CG-1 waiver marked
-// "lead": true, and still counts here: 128 + 48 = 176 flops, 2% is 3.5, used 16 or
+// "lead": true, and still counts here: 257 + 48 = 305 flops, 2% is 6.1, used 16 or
 // more. Unmarked, the waiver is not charged and the block holds.
 // tools/check-cg.py --selftest.
 module cg_fx_blk_wv (
