@@ -4261,6 +4261,7 @@ void Core::rename() {
     // unmet_reg: the go reads last cycle's (ooe_rename's register) and the
     // names its last take wrote.
     g.lt_g.assign(ns, 0); g.lt_p.assign(ns, 0);
+    g.unmet_on_g = g.unmet_g; g.unmet_on_p = g.unmet_p;
     if (cfg_.unmet_reg) {
       if (unmet_now_.size() != ns) unmet_now_.assign(ns, {0, 0});
       for (unsigned si = 0; si != ns; ++si) {

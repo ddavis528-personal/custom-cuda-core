@@ -1824,6 +1824,9 @@ public:
     /// unmet_reg 1: each slot's last take's names, GPR and predicate (the
     /// go subtracts them from the registered unmet).
     std::vector<unsigned> lt_g, lt_p;
+    /// unmet_reg: this cycle's unmet floors, as ooe_rename forms them before
+    /// its register (unmet_g/unmet_p then hold the register's, last cycle's).
+    std::vector<unsigned> unmet_on_g, unmet_on_p;
     std::vector<uint8_t> reach, hold;
     std::vector<uint8_t> occ;                 ///< per slot, occupied (not free)
     std::vector<unsigned> took;               ///< per slot
