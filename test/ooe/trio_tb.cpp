@@ -107,6 +107,9 @@ void trioIdleRConfig(Config &c) {
 }
 
 namespace {
+#ifndef TR_LW
+#define TR_LW 12   // ooe_trio's LW: the lead tag's bits
+#endif
 #ifndef TR_PW
 #define TR_PW 16   // ooe_trio's PW: the payload tag's bits
 #endif
@@ -132,9 +135,13 @@ std::map<std::string, unsigned long long> first_kinds;   // each core's first mi
 int prev_rq[TR_N], prev_rd[TR_N], t_prev_req[TR_N], t_prev_ready[TR_N];
 unsigned long long grant_cores = 0, grant_first_sum = 0;
 unsigned long long core_cycle = 0;
+// The issue slots the last edge's issue register held, and their payloads:
+// the second payload register's, a cycle after its valid (OA's rev 343).
+unsigned prev_v = 0;
+uint16_t prev_pay[9] = {};
 // The payload (RA-39 (c)): each entry's tag and slot as its allocation
 // drove them, and the grant register the issue register reads.
-uint16_t tag_of[TR_N], home_of[TR_N];
+uint16_t tag_of[TR_N], home_of[TR_N], lead_of[TR_N];
 unsigned tag_next = 0;
 unsigned long long issued_slots = 0;
 
@@ -321,6 +328,7 @@ void hook(const Core &c) {
     errs_seen = 0;
     ctx->assertOn(true);
     core_cycle = 0;
+    prev_v = 0;
     if (following) ++compared_cores;
     if (following && std::getenv("TRIO_FIRST")) std::fprintf(stderr, "compared core starts at cycle %llu\n", cycles + 1);
     clearAll(dut->req_cq01h, P);
@@ -405,6 +413,7 @@ void hook(const Core &c) {
   clearAll(dut->akind_cq01h, 2 * P);
   clearAll(dut->acls_cq01h, 3 * P);
   clearAll(dut->pay_cq01h, P * TR_PW);
+  clearAll(dut->lead_cq01h, P * TR_LW);
   clearAll(dut->home_cq01h, P * 9);
   for (unsigned p = 0; p != P; ++p)
     if (entry_of[p] != N) {
@@ -418,6 +427,8 @@ void hook(const Core &c) {
       home_of[e] = a.ahome[e];
       const unsigned pp = control == 9 && p < A ? (p ^ 1) : p;
       setField(dut->pay_cq01h, pp * TR_PW, TR_PW, tag_of[e]);
+      lead_of[e] = uint16_t((tag_of[e] * 2654435761u >> 7) & ((1u << TR_LW) - 1));
+      setField(dut->lead_cq01h, pp * TR_LW, TR_LW, lead_of[e]);
       if (control != 10) setField(dut->home_cq01h, p * 9, 9, home_of[e]);
     }
   for (unsigned j = 0; j != N; ++j) setBit(dut->prod_cq01h, j, a.prod[j]);
@@ -535,24 +546,34 @@ void hook(const Core &c) {
   for (unsigned e = 0; e != N; ++e) gr_before |= uint64_t(getBit(dut->grant_cq04h, e)) << e;
   tick();
   // -- After the edge. ooe_rs's issue register: slot k holds the entry of
-  // the last grant register whose slot is k, with the payload its
-  // allocation drove (RA-39 (c)).
+  // the last grant register whose slot is k, its valid with the lead slice
+  // its allocation drove (RA-31), and the rest of its payload (RA-39 (c))
+  // in the second register a cycle later (OA's rev 343, (A)). Control
+  // pay-with-valid holds the payload to its valid's cycle instead.
   {
     unsigned want_v = 0;
-    uint16_t want_pay[9] = {};
+    uint16_t want_pay[9] = {}, want_lead[9] = {};
     for (unsigned e = 0; e != N; ++e)
       if (gr_before >> e & 1)
         for (unsigned k = 0; k != 9; ++k)
-          if (home_of[e] >> k & 1) { want_v |= 1u << k; want_pay[k] = tag_of[e]; }
+          if (home_of[e] >> k & 1) { want_v |= 1u << k; want_pay[k] = tag_of[e]; want_lead[k] = lead_of[e]; }
+    const unsigned pv = control == 11 ? want_v : prev_v;
     for (unsigned k = 0; k != 9; ++k) {
       const bool gv = getBit(dut->iss_v_cq05h, k);
       if (gv != bool(want_v >> k & 1)) fail("issue slot valid differs", k, 0, gv, want_v >> k & 1);
       else if (gv) {
         ++issued_slots;
+        const unsigned gl = unsigned(getField(dut->iss_lead_cq05h, k * TR_LW, TR_LW));
+        if (gl != want_lead[k]) fail("issue lead differs", k, 0, gl, want_lead[k]);
+      }
+      if (pv >> k & 1) {
         const unsigned gp = unsigned(getField(dut->iss_pay_cq05h, k * TR_PW, TR_PW));
-        if (gp != want_pay[k]) fail("issue payload differs", k, 0, gp, want_pay[k]);
+        const unsigned wp = control == 11 ? want_pay[k] : prev_pay[k];
+        if (gp != wp) fail("issue payload differs", k, 0, gp, wp);
       }
     }
+    prev_v = want_v;
+    for (unsigned k = 0; k != 9; ++k) prev_pay[k] = want_pay[k];
   }
   // -- ooe_sched: its grant register is the model's grants of t.
   for (unsigned e = 0; e != N; ++e) {
@@ -683,7 +704,7 @@ int main(int argc, char **argv) {
     const std::string n = c;
     control = n == "no-msd" ? 1 : n == "no-miss-lead" ? 2 : n == "late-leads" ? 3 : n == "no-alloc-lead" ? 4
             : n == "no-ret-hold" ? 5 : n == "no-rep-lead" ? 6 : n == "no-idle-r" ? 7 : n == "no-force" ? 8
-            : n == "pay-port" ? 9 : n == "no-home" ? 10 : 0;
+            : n == "pay-port" ? 9 : n == "no-home" ? 10 : n == "pay-with-valid" ? 11 : 0;
     if (!control) { std::fprintf(stderr, "trio_tb: unknown control %s\n", c); return 2; }
   }
   const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
