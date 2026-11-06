@@ -4256,6 +4256,7 @@ void Core::rename() {
   if (!restore_q_.empty()) {
     // fits_stale 6: no split is registered while a restore owns the ports.
     for (auto &x : share_reg_) x = {0, 0, 0, 0};
+    for (auto &x : share_hold_) x = {0, 0, 0, 0};
     restoreStep();
     count("stall.restore");
     goRoomNext();
@@ -4450,14 +4451,23 @@ void Core::rename() {
     unsigned pool[4] = {c[0], c[1], c[2], c[3]};
     if (cfg_.fits_stale == 6) {
       if (share_reg_.size() != slot_.size()) share_reg_.assign(slot_.size(), {0, 0, 0, 0});
+      if (share_hold_.size() != slot_.size()) share_hold_.assign(slot_.size(), {0, 0, 0, 0});
       for (unsigned r = 0; r != 4; ++r) {
-        unsigned held = 0;
-        for (unsigned si = 0; si != slot_.size(); ++si)
-          held = one ? std::max(held, share_reg_[si][r]) : held + share_reg_[si][r];
+        // The allowances admitted against (each floor term less its slot's
+        // own take in the split cycle, OI-114) never hold more than the
+        // credit. The pool is split from the credit less the allowances as
+        // split (the go's held register, formed before that take): never
+        // less than those admitted against, so the pool only shrinks.
+        unsigned adm = 0, held = 0;
+        for (unsigned si = 0; si != slot_.size(); ++si) {
+          adm = one ? std::max(adm, share_reg_[si][r]) : adm + share_reg_[si][r];
+          held = one ? std::max(held, share_hold_[si][r]) : held + share_hold_[si][r];
+        }
         // This cycle takes at most the width from each credit (a class's
         // ports; a name per uop), so no more need be held back.
+        adm = std::min(adm, cfg_.rename_width);
         held = std::min(held, cfg_.rename_width);
-        if (held > c[r]) err("fits_stale 6: allowances of credit %u hold %u, the credit %u", r, held, c[r]);
+        if (adm > c[r]) err("fits_stale 6: allowances of credit %u hold %u, the credit %u", r, adm, c[r]);
         pool[r] = c[r] - std::min(held, c[r]);
         // The names (OA's rev 138): the credit is held as two counts, each
         // slot's floor still unspent and the pool above every floor. The
@@ -4518,12 +4528,16 @@ void Core::rename() {
         if (cfg_.fits_stale != 5) split[to[0]][r] += rem + resv;
       }
     if (cfg_.fits_stale == 6) {
+      split_floor_.assign(slot_.size(), {0, 0});
       for (unsigned si : with) {
-        split[si][2] += unmetFloor(si, false);
-        if (cfg_.rename_preds) split[si][3] += unmetFloor(si, true);
+        split_floor_[si][0] = unmetFloor(si, false);
+        if (cfg_.rename_preds) split_floor_[si][1] = unmetFloor(si, true);
+        split[si][2] += split_floor_[si][0];
+        split[si][3] += split_floor_[si][1];
       }
       share_ = share_reg_;
       share_reg_ = split;
+      share_hold_ = split;
       golog_.split = split;
     } else {
       share_ = split;
@@ -4713,6 +4727,20 @@ void Core::rename() {
       if (n) count("rename.pair_cut_again");   // the counts the snapshot restored, again
     }
   }
+  // OI-114 (OA's rev 334): a floor term is the slot's unmet floor less the
+  // names its own take in the split cycle wrote (the go's: GPR and predicate
+  // writes in the warp's first k heads, k its take), never below none. Held
+  // misses that take until next cycle, so the term split from it alone
+  // would count those names twice.
+  if (cfg_.fits_stale == 6 && shares_on_ && split_floor_.size() == slot_.size() && !cfg_.inject_floor_pre_take)
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      for (unsigned b = 0; b != 2; ++b) {
+        const unsigned less = std::min(split_floor_[si][b], ren_slot_[si][2 + b]);
+        if (!less) continue;
+        share_reg_[si][2 + b] -= less;
+        golog_.split[si][2 + b] -= less;
+        count("rename.floor_own_take");
+      }
   ren_late_frees_ = false;
   ren_floors_in_share_ = false;
   if (shares_on_ && (cfg_.fits_stale == 4 || cfg_.fits_stale == 7))

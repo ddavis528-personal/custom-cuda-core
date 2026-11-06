@@ -57,6 +57,7 @@ int ooeTestAtomicHookedWith(unsigned seeds, void (*hook)(const Core &), void (*c
 void goConfig(Config &c) {
   c.decq_warp_max = 6;
   if (const char *k = std::getenv("GO_CONTROL"); k && std::string(k) == "pair-rounds") c.inject_pair_rounds = true;
+  if (const char *k = std::getenv("GO_CONTROL"); k && std::string(k) == "floor-pre-take") c.inject_floor_pre_take = true;
   if (const char *n = std::getenv("GO_NAMES")) {
     unsigned rows = 0, ceil = 0;
     if (std::sscanf(n, "%u,%u", &rows, &ceil) == 2) { c.phys_regs = rows; c.ren_ceil = ceil; }
@@ -262,6 +263,10 @@ void check(const Core::GoLog &g, const Core::GoLog &nx) {
     if (got != (1u << before[b]) - 1u) fail(b ? "predicate writers differ" : "GPR writers differ", 0, got, (1u << before[b]) - 1u);
     writers += before[b];
   }
+  // OI-114: the names taken never exceed the credit (the allowances admitted
+  // against never hold more than it).
+  for (unsigned b = 0; b != 2; ++b)
+    if (before[b] > g.cred[2 + b]) fail(b ? "predicate names over the credit" : "GPR names over the credit", 0, before[b], g.cred[2 + b]);
   tick();
 }
 
