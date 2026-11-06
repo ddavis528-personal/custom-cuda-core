@@ -48,7 +48,7 @@
         "exb"
       ],
       "channels": "all",
-      "why": "DPI hosts: every block's top is the C++ skeleton over DPI-C (rtl/top/dpi/) or a generated stub, whose posedge block is the boundary register at 0 NGD; dropping it would move both hosts' sampling and gain no contract (AR's rev 287 (1)). Each block leaves this list when its RTL top replaces the stub. RCU is the next entry. OOE leaves it for an entry of its own whose channels are miu_ooe_cmpl and miu_ooe_cmpl_hint only, at bnd_rx 0, taken by OOE's own registers enabled by their valids; every other OOE receiving end takes the boundary flop (OA's ruling C9, re:OI-115, 2026-11-06)."
+      "why": "DPI hosts: every block's top is the C++ skeleton over DPI-C (rtl/top/dpi/) or a generated stub, whose posedge block is the boundary register at 0 NGD; dropping it would move both hosts' sampling and gain no contract (AR's rev 287 (1)). Each block leaves this list when its RTL top replaces the stub. RCU is the next entry. OOE leaves it for an entry of its own whose channels are miu_ooe_cmpl and miu_ooe_cmpl_hint only, at bnd_rx 0, taken by OOE's own registers enabled by their valids; every other OOE receiving end takes the boundary flop (OA's ruling C9, re:OI-115, 2026-11-06). That entry is HELD: under Daniel's rule that a receiving end goes zero-cycle only for IPC (RA's rev 91), OA holds C9 until DA rules on it (OA's rev 367); until then OOE leaves this list with every receiving end flopped."
     },
     {
       "block": "rcu",
