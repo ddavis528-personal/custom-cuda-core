@@ -167,7 +167,11 @@ can't meet 12 NGD/side with its rx flop -> Daniel. RA rev 93 applies it to lane_
 DA 114 AMENDED (DA rev 115, Daniel verbatim): over 0.5% the architect approves only "if we also meet the NGD
 module rules" WITHOUT the rx flop. RA rev 94 corrects rev 93's with/without misread: lane_rcu_res meets 12 without
 flop (approvable >0.5%); miu_rcu_data doesn't (16.2) -> any zero-cycle case is Daniel's. Partition rev 51.
-Bookmarks: OA 366, RA 94, RI 21, TI 352, DA 115, AR 312, OI 306, Conventions 17, CP 155.
+RI-16 rev 23 priced Z: S1 -1.04% (48,858->48,350), cm32 -0.93%, cm128 +0.15%; NGD without flop 10 (module).
+RA rev 95 APPROVED lane_rcu_res zero-cycle (LANE 7/SFU 12). Conditions: block read at assembly holds 12 w/o flop
+(else Daniel); link_n 0, RCU-lane abut. Asked TI (links.json except, retime 5 negative controls), AR (floorplan
+constraint; is OI's C9 8/13 rerun still owed). Partition rev 52. Watch for TI applying it.
+Bookmarks: OA 366, RA 95, RI 23, TI 352, DA 115, AR 312, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
