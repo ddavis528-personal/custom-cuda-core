@@ -40,9 +40,9 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 371, AR 308, TI 354, OI 309, IS 190, CP 155, DA 115,
+Conventions 17, OA 372, AR 308, TI 354, OI 310, IS 190, CP 155, DA 115,
 RA 95 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
-OOE doc rev 368. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
+OOE doc rev 369. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
 release 2e95216; tag refused (known). session-home --check ok at 350k.
 
@@ -64,7 +64,10 @@ release 2e95216; tag refused (known). session-home --check ok at 350k.
    released; OI builds under OA 364 terms (0 NGD, <=4 pins), TI adds links.json no_flop; OOE doc 367.
    RA 95: lane_rcu_res zero-cycle (S1 -1.04%) -> defaults LANE 7/SFU 12 again = C9's baseline; OA 371
    keeps DA's 8/13 rerun term as written (DA's, not ours to drop).
-   LAPSES if OI's LANE 8/SFU 13 rerun puts the gain at <=0.5% S1 -> back to DA. Watch for it.
+   OI-118/OA 372: 8/13 rerun DONE: C9 +0.370% vs F +1.581%, gain 1.21% -> STANDS (term met).
+   Build C9h (hint raw, no bypass, 0 S1) + RS bypass (worth 0.56%); RTL == model C9h cycle-exact;
+   cmpl_l raw -> capture+RS+wake (3 pins), ROB x4 from keep copies of cm_q. Watch caps/flops.
+   (was) LAPSES if OI's LANE 8/SFU 13 rerun puts the gain at <=0.5% S1 -> back to DA. Watch for it.
    Bar (DA verbatim 11-06): "Bring to me between 0.2 and 0.5 percent impact.  Also come to me if
    we cannot meet the default module boundary NGD rule without the receiver flop". AR's reading:
    gain <=0.2% stays flopped; 0.2-0.5% DA; >0.5% owning architect; needs-flop-for-12-NGD -> DA.
