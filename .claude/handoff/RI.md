@@ -49,7 +49,8 @@ Nothing had RI in Needs at session start.
     cg part: first run hit the 2 h background cap; relaunched DETACHED (setsid nohup
     ~/ccv-logs/sweep-gate.sh > ~/ccv-logs/sweep-gate-cg.out; waiter b7hec0wzq re-arm if it caps) ->
     ~/ccv-logs/gate-cg-802b8ae.tgz; cg PASSED (gate-cg-802b8ae.tgz, 5420 s). ngd: first run died
-    (disk full); rerun detached (sweep-gate-ngd.sh -> sweep-gate-ngd.out). Disk: ri-wt/ri-wt3 build/ deleted
+    (disk full); rerun detached (sweep-gate-ngd.sh, CCV_JOBS=2, -> sweep-gate-ngd.out); a container restart
+    kills it (twice so far): check pgrep, relaunch. ri-wt2/build/cg and main-tree build/ deleted. Disk: ri-wt/ri-wt3 build/ deleted
     to free space (rebuildable); watch df before gate-push; then `tools/verify.sh --only ngd` + export;
     then in ri-wt2 CCV_PUSH_BRANCHES=ccr-888218a3-20cauz tools/gate-push.sh --full --import=cg,ngd.
     Held RI work (a90cb8f.., ri-wt) stays out. AR 295: RCU fits 2% only at ~62,750 flops + 50x modules.
