@@ -834,12 +834,12 @@
     },
     {
       "name": "CCV_LAT_LANE",
-      "value": 8,
+      "value": 7,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-48",
       "derive": "CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res')",
-      "doc": "Contracted lane latency: base plus, out and back, the repeater stages (params/links.json; A-48) and a flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). 8 at the defaults: ccv_lane_rcu_res's end at RCU is flopped. The lane channels are lockstep, so every copy has the same stages."
+      "doc": "Contracted lane latency: base plus, out and back, the repeater stages (params/links.json; A-48) and a flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). 7 at the defaults: ccv_lane_rcu_res's end at RCU is zero-cycle (RA's rev 95, under DA 114; it was flopped, 8, from AR's rev 301), and that link takes no repeater stage, ever. The lane channels are lockstep, so every copy has the same stages."
     },
     {
       "name": "CCV_LAT_LANE_BYP",
@@ -1010,11 +1010,11 @@
     },
     {
       "name": "CCV_LAT_SFU",
-      "value": 13,
+      "value": 12,
       "status": "tunable",
       "decided_at": "generated",
       "source": "Daniel's responses OA-4 (2026-10-08), a placeholder; 12 to 13 at AR's rev 287 (re:RI-11); derived from CCV_LAT_SFU_BASE at AR's revs 300 and 301 (re:RI-16)",
-      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 13 at the defaults. RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 17 at the defaults, its issue end flopped), derived, never written as a number (AR's rev 288).",
+      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 12 at the defaults (RA's rev 95: ccv_lane_rcu_res's end at RCU zero-cycle). RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 16 at the defaults, its issue end flopped; 17 before RA's rev 95), derived, never written as a number (AR's rev 288).",
       "derive": "CCV_LAT_SFU_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res')"
     },
     {
