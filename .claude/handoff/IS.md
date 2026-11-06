@@ -76,6 +76,10 @@ Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
   A new agent RH has a handoff on core (ccr-c22116ce-1vzyjg). CP's snapshot d9ddd2c builds O-83 and O-84; TI pinned it.
 
 ## Open work (most urgent first)
+0. TI-51 (DA 2026-11-06): compaction 400k -> 350k. After merging TI's 2d445f5
+   (next sweep, full gate), ask Daniel to approve re-running
+   tools/setup-session-home.py; answered re:TI-51 at IS rev 190. Block limits
+   are now sum of parts (no whole-block synthesis); IS owns no block.
 1. TI-49 (2) and (3): OA rules on quieter notices and the register-reader
    subagent; follow the skill once it changes.
 2. IS-14 item 2 (redux) waits on CP; item 3 (position hints) waits on
