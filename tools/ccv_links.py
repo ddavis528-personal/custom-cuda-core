@@ -242,6 +242,24 @@ def no_flop(block_types, ends, links_path=None, root=ROOT):
                 else:
                     seen[(b, c)] = no
                     out.add((b, c))
+    # A DPI block's sending end stays no-flop (AR's rev 309 (1)): its posedge
+    # block already is its last register, so a boundary flop there is a
+    # second register in series, a repeater stage, which neither rtStages()
+    # nor params' derives would count. Such a stage belongs in "links", as
+    # route 'src:1'. An RTL top's sending end may leave no_flop: there the
+    # flop is the block's own last register, moved into its wrapper.
+    _, sd = schema_ends(root)
+    for b in block_types:
+        if b in rtl:
+            continue
+        off = sorted(c for c in ends.get(b, ())
+                     if sd.get(c, (None,))[0] == b and (b, c) not in out)
+        if off:
+            errs.append("%s is a DPI block, so its sending end of %s stays no_flop: its "
+                        "posedge block is already its last register, and a flop there "
+                        "would be a second in series, a link stage no derive counts; add "
+                        "it to \"links\" as route 'src:1' (AR's rev 309 (1))"
+                        % (b, ", ".join(off)))
     if errs:
         raise SystemExit("%s: %d problem(s)\n  %s"
                          % (os.path.relpath(p, ROOT), len(errs), "\n  ".join(errs)))
