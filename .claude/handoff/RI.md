@@ -37,13 +37,15 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-06: Conventions 17, AR 308, OA 366, IS 190, TI 355, OI 306, CP 155, DA 115, RA 89, RI 23.
+Bookmarks 2026-11-06: Conventions 17, AR 308, OA 366, IS 190, TI 355, OI 306, CP 155, DA 115, RA 95, RI 24.
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
-1. RI-16 (rev 23, notices RA, TI): Z gains S1 1.04%, cm32 0.93%, cm128 -0.15%; RA decides.
-   If adopted: TI's links.json edit, 5 check-kernel controls retimed (RI's model side if any).
+1. RI-16 DECIDED (RA rev 95): lane_rcu_res zero-cycle (LANE 7 / SFU 12), link_n 0 forever, on
+   condition the block-level read at RCU's assembly holds 12 on it without the flop (else Daniel).
+   TI drops it from links.json except + retimes 5 controls. When TI lands it: merge, run
+   sim/rcu/run-tests.sh + check-kernel; RTL descriptor pipes (lwb_d/swb_d) at the new depths.
 2. RI-18 (rev 23, TI): ret held-check key fixed (8ebe948); TI to add a ret-replay kernel and a
    --break; RI then keys the model's check by returned lanes under that brk name.
 3. RI-11/RI-13 (TI rev 332): verify on merged tip, close RI-13 (and RI-11 for RCU).
