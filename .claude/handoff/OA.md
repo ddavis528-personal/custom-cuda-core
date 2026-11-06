@@ -40,13 +40,20 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 359, AR 303, TI 341, OI 303, IS 189, CP 154, DA 108,
+Conventions 17, OA 362, AR 306, TI 346, OI 305, IS 189, CP 154, DA 112,
 RA 82 (tab 9851686b-2b0a), RI 15 (tab 8e4547bc-c469).
 OOE doc rev 364. Pings 2026-10-30 (Fri): all ponged ok. Next pings Fri 2026-11-06.
 Sweep 11-05: 6 branches (209 commits) merged at 76f0190, full gate green, pushed;
 release 5174359; snapshot tag refused by the proxy (known, local only).
 
 ## Open work (most urgent first)
+-11. DA APPROVED in OA's session 11-06, verbatim "I approve the token limit" (DA tab 112):
+   once TI's autoCompactWindow 350000 push (2d445f5, TI-51) is merged into this branch
+   (the daily sweep merges it), run the session-home skill / tools/setup-session-home.py
+   so /home/user/.claude takes 350000; check with --check. Not yet on origin at 03:40Z.
+   TI-51 (2) sum of parts (DA tab, AR from TI paraphrase): no whole-block synthesis;
+   every instantiated module needs a unit per param set; port budgets are the contract.
+   When TI posts what it cannot catch, have OI check OOE unit coverage.
 -10. OA 357/358: cmpl AND hint ends both first kind (AR 303 ok; shared treatment keeps
    HINT 2/FILL 4); free flops RAU/demote/SYU. A6H=H3: all +0.56% is the hint bundle.
    OI probes the two bypasses (L1 hit->spec timer, ROB done bits; RTL) + S1 delay knob.
