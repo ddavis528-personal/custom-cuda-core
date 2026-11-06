@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 307, OA 364, TI 349, RA 88 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 112,
+  record): AR 308, OA 365, TI 349, RA 89 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 112,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
@@ -308,6 +308,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    OA's call): cmpl+hint first kind, HINT 2/FILL 4/MLC 39 stand, flopped
    not taken. MIU spec rev 60 (.12255) and PF-47 bullet updated. Still
    Daniel's: AR 296 (lane_rcu_res zero-cycle => LANE 7/SFU 12).
+   OA 365/RA 89: zero-cycle ooe_rcu_issue needs splits (OOE 2-6, RCU 19-23).
+   AR 308: no splits for now (issue stays flopped); under the link term the
+   issue bnd_rx CANCELS in L1_WAKE (and LAT_RCU, lane) - only L1_CMPL -1 and
+   V-35 done -1 move; reopen if OI prices those >0.2% S1 (then to Daniel
+   with AR 296). OA/RA had claimed WAKE 13->12 (old base booking).
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
