@@ -37,7 +37,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 312, RA 91, IS 190, TI 354, OA 368, OI 307, CP 155, DA 114, RI 21
+Conventions 17, AR 312, RA 91, IS 190, TI 354, OA 368, OI 308, CP 155, DA 114, RI 21
 (sweep 11-06 10:20, plus notices to 13:00). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
@@ -61,10 +61,10 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
    LAT_MISS-LEAD, zero slack), wake's own confirm, rs's cmn (rs takes cmpl_idx too).
    Exact C9 needs bypasses on all; else the model's C9 needs lag bits (RH prices them).
    Block level: cmpl_l feeds wake, rs, rob x4 = 6 pins > 4 (OA 364: copies or one capture).
-3. OI-114 (go's floor less own take): wtf (oi-floor114, WIP committed + merged fb52948).
-   Forms mr3/mr3a/mr3c (scratchpad/ren.m*.sv, rebased on the merge's CT change) measured by
-   scratchpad/c9/ren-measure.sh -> c9/ren-measure.log. Caps: c_dst/c_src 26.9, ff 31.1,
-   q_gname 28.7, po_dst 27.5. If none fits: row to OA/TI on cap noise.
+3. OI-114 BLOCKED on OA (OI-116, rev 308, notice sent 11-06): rename form 3 fits its caps and
+   passes every bench, but needs ooe_go's per-take subtraction (5664f5e), which puts ooe_go
+   over 13 caps (unmet_g 29.9 and room_g 25.4 new over 25). Tree scratchpad/wtf, branch
+   oi-floor114 tip 1f3bb3c (not pushed; model GoLog unmet_on_g/p). Act on OA's ruling.
 4. ROB slice 4 (faults): the model's fault at retire (ooe_core.cpp ~2563) reports pc =
    r.u.pc: the 65-bit entry (rev 277 (c)/279) holds no PC: ask OA the PC source first.
    Outputs: ccv_ooe_rau_status.fault_taken, ccv_ooe_cru_fault (first fault of the context,
