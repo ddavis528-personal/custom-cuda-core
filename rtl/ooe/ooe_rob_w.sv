@@ -498,15 +498,20 @@ module ooe_rob_w #(
   // Each row's count after this cycle is zero: none owed now, and its
   // count is the done it takes (one or none, per row a cycle). From flops
   // and the late done, so the completion term stays an AND-OR of it.
-  logic [S*D*NR-1:0] oz_nx_cq02h;
-  logic [S*D-1:0]    ozall_cq02h;
+  // Written as a match: every row owes at most one, none newly owed (both
+  // from flops and the early event), and the rows taking a done this cycle
+  // are exactly those owing one, so the late done enters last.
+  logic [S*D*NR-1:0] oc1_cq02h;
+  logic [S*D-1:0]    ozb_cq02h, ozall_cq02h;
   always_comb
     for (int e = 0; e < S * D; e++) begin
-      for (int r = 0; r < NR; r++)
-        oz_nx_cq02h[e * NR + r] = ~ev_owe_cq02h[e * NR + r] &
-            ((oc_cq02h[(e * NR + r) * RCW +: RCW] == '0 & ~dr_e_cq02h[e * NR + r]) |
-             (oc_cq02h[(e * NR + r) * RCW +: RCW] == RCW'(1) & dr_e_cq02h[e * NR + r]));
-      ozall_cq02h[e] = &oz_nx_cq02h[e * NR +: NR];
+      ozb_cq02h[e] = 1'b1;
+      for (int r = 0; r < NR; r++) begin
+        oc1_cq02h[e * NR + r] = oc_cq02h[(e * NR + r) * RCW +: RCW] == RCW'(1);
+        ozb_cq02h[e] = ozb_cq02h[e] & ~ev_owe_cq02h[e * NR + r] &
+            (oc_cq02h[(e * NR + r) * RCW +: RCW] == '0 | oc1_cq02h[e * NR + r]);
+      end
+      ozall_cq02h[e] = ozb_cq02h[e] & (dr_e_cq02h[e * NR +: NR] == oc1_cq02h[e * NR +: NR]);
     end
   // -- The squash (slice 2 part b) --------------------------------------------------
   // A mispredict picked at R (the resolution, below) acts at R + 1 from its
