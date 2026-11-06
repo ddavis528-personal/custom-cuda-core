@@ -292,10 +292,12 @@ int main(int argc, char **argv) {
     };
     std::FILE *f = std::fopen(dump_wiring.c_str(), "w");
     if (!f) { std::fprintf(stderr, "cannot write %s\n", dump_wiring.c_str()); return 1; }
+    // Every flop on the path, as the SV top counts it: the link's stages and
+    // each end's boundary flop (pipe(); AR's revs 300 and 301).
     for (const ChanInst &ci : kChanInsts)
       for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
         std::fprintf(f, "%s %u %u %s %s %u\n", kChans[ci.chan].name, ci.inst, s,
-                     name(ci.src).c_str(), name(ci.dst).c_str(), ci.stages);
+                     name(ci.src).c_str(), name(ci.dst).c_str(), ci.pipe());
     std::fclose(f);
     return 0;
   }
