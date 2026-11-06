@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 312, OA 365, TI 351, RA 91 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 113,
+  record): AR 312, OA 367, TI 351, RA 91 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 114,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
@@ -329,6 +329,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    closes AR 296 the same way. Bar >0.2% S1 is RA's proposal: ASK DANIEL.
    AR 311: corrected RA 90 - credit unflopped through a flopped rx end is
    depth 5 not 4 (miu_rcu_data +4,456 over no-flop). Needs RA.
+   OA 367: OA 363 withdrawn as a ruling - C9 (no-flop cmpl+hint) is DANIEL's
+   under DA 113; OA recommends (model, 497efb8 @7/12: flopped +1.95% S1 vs C9
+   +0.444% => ~1.5% S1 recovered). OI reprices at 8/13; nothing built until DA
+   rules. DA 114 (Daniel, asked by AR in this session): C9 APPROVED (lapses
+   to Daniel if OI's 8/13 rerun shows <=0.5%). Bar for zero-cycle rx ends:
+   <=0.2% S1 stays flopped (architects); 0.2-0.5% -> Daniel; >0.5% owner may
+   approve (AR's reading); can't meet 12 NGD without rx flop -> Daniel.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
