@@ -45,6 +45,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
+- OI's RI-11 package v2 (OA rev 350, AR rev 298; 11-05 10:41Z): OI's
+  pkg-run.sh and rxsplit.patch in /home/user/rh-jobs/pkg2/, run dir
+  pkg2/run (trees A6 and PK are worktrees of custom-cuda-core). S1 and audit
+  are DONE and sent. CoreMarks via pkg2/all.sh (resumable), progress in
+  pkg2/run/progress, logs in run/out/cm/. Watch it with the pattern
+  "bash [.]/all\.sh". Report a table: from_fetch, check_failures,
+  redirect_wait, st_ld_wait. Nothing to push.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
