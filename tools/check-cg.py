@@ -60,7 +60,9 @@ waiver states floor_pct and measured_pct by scenario, the floor no higher
 than the measurement, and clears a gate only while its DCGE holds at the
 floor, and may name one gate of its register by its enable (enable); an allowance waiver, for CG-1's registers written every cycle or
 CG-4's ungated flops, states max_flops and measured_flops, and one flop more
-fails. A waiver without its threshold is refused. Last, the ratchet,
+fails. A waiver without its threshold is refused. A waiver of flops that
+hold an interface lead signal, any rule, is marked lead: true, and its flops
+count against the block's 2% (Daniel's ruling on RI-15, 2026-11-06). Last, the ratchet,
 rtl/cg-ratchet.json, holds the modules written before the rule, and the
 CG-5 and RST-1 findings that stood when those were made; it only shrinks: an
 entry outside its baseline is refused, and so is one with nothing left to
@@ -1931,10 +1933,12 @@ def block_budget(findings, parts, known):
     """What the module budgets took still counts against each block's
     CCV_CG_BUDGET_PCT, per instance over the block's hierarchy, its
     hardening wrapper's included, and so do its repeaters' control pulses
-    and what an allowance waiver (CG-1, CG-4: max_flops) takes: a waiver
-    excuses the module, never the block (DA's ruling on RI-15, 2026-11-06;
-    RI-17). Returns the blocks' lines and the blocks over it."""
-    took = [f for f in findings if f.status in ("module", "wrapper") or allowance_waived(f)]
+    and the flops a lead waiver takes ("lead": true, any rule): Daniel's
+    ruling on RI-15 (2026-11-06, RA rev 87) lets a module waive the flops
+    that hold an interface lead signal on the condition that they fit the
+    block's 2%, and this is that check (RI-17). Returns the blocks' lines
+    and the blocks over it."""
+    took = [f for f in findings if f.status in ("module", "wrapper") or lead_waived(f)]
     lines, fails = [], []
     for name, top, files, bbs in parts:
         el = elaborate(name, top, files, bbs, known)
@@ -1948,7 +1952,7 @@ def block_budget(findings, parts, known):
                 wvd += n if f.status == "waived" else 0
                 items.append((n, f))
         extra = ["%d of them repeater control" % ctl] if ctl else []
-        extra += ["%d of them allowance-waived" % wvd] if wvd else []
+        extra += ["%d of them lead-waived" % wvd] if wvd else []
         lines.append("block budget: %-8s %6d flops, %.1f allowed, %d auto-waived in its modules"
                      "%s" % (name, el["total"], budget, used,
                              " (%s)" % "; ".join(extra) if extra else ""))
@@ -1958,17 +1962,17 @@ def block_budget(findings, parts, known):
                               for n, f in sorted(items, key=lambda x: -x[0])[:3])
             fails.append("block %s: %d flops auto-waived in its modules%s, over its %g%% of %d "
                          "flops (%.1f); largest: %s"
-                         % (name, used, " (%d by allowance waivers)" % wvd if wvd else "",
+                         % (name, used, " (%d by lead waivers)" % wvd if wvd else "",
                             BUDGET_PCT, el["total"], budget, worst))
     return lines, fails
 
 
-def allowance_waived(f):
-    """A finding an allowance waiver took (CG-1's registers written every
-    cycle, CG-4's ungated flops): its flops still count against the block."""
+def lead_waived(f):
+    """A finding a lead waiver took ("lead": true): flops holding an
+    interface lead signal, waived in their module, whose flops still count
+    against the block's 2% (Daniel's ruling on RI-15; RA rev 87)."""
     w = getattr(f, "waiver", None)
-    return (f.status == "waived" and w is not None and f.rule in ("CG-1", "CG-4")
-            and f.budgetable and "max_flops" in w)
+    return f.status == "waived" and w is not None and w.get("lead") is True
 
 
 _ARRIVALS = {}
@@ -2131,6 +2135,9 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
         for k in WAIVER_KEYS + (CG5_WAIVER_KEYS if w.get("rule") == "CG-5" else ()):
             if w.get(k) in (None, "", []):
                 fails.append("waiver %s: no %s" % (w, k))
+        if "lead" in w and not isinstance(w["lead"], bool):
+            fails.append("waiver %s %s %s: lead is %r, not true or false"
+                         % (w.get("module"), w.get("rule"), w.get("target"), w["lead"]))
         if w.get("rule") not in WAIVER_RULES:
             fails.append("waiver %s: rule %r is not one a waiver may name (%s)"
                          % (w, w.get("rule"), ", ".join(WAIVER_RULES)))
@@ -2672,21 +2679,24 @@ def selftest():
     fails, _ = run_policy(small, parts=[p_over])
     expect(any("block fx_over" in x and "over its" in x for x in fails),
            "a block over its 2% with its modules' auto-waivers passed")
-    #     An allowance waiver excuses its module, never its block (DA's
-    #     ruling on RI-15; RI-17): d_q's 16 flops, waived in cg_fx_form,
-    #     put a 176-flop block over its 3.5; without the waiver the finding
-    #     stands in the module and the block takes nothing of it.
+    #     A lead waiver ("lead": true) excuses its module on the condition
+    #     that its flops fit the block's 2% (Daniel's ruling on RI-15, RA rev
+    #     87; RI-17): d_q's 16 flops, waived as a lead in cg_fx_form, put a
+    #     176-flop block over its 3.5. The same waiver without the mark is not
+    #     charged, and a mark that is not a boolean is refused.
     p_wv = ("fx_wv", "cg_fx_blk_wv", ["test/cg/fixtures/%s.sv" % m for m in
                                       ("cg_fx_wide", "cg_fx_form", "cg_fx_blk_wv")], [])
     w_d = dict({"module": "cg_fx_form", "rule": "CG-1", "target": "d_q", "why": "control",
                 "by": "TI", "date": "2026-11-06"}, **d_most)
-    fails, fs = run_policy(("cg_fx_form", "cg_fx_wide"), [w_d], parts=[p_wv])
+    fails, fs = run_policy(("cg_fx_form", "cg_fx_wide"), [dict(w_d, lead=True)], parts=[p_wv])
     expect(any(f.status == "waived" for f in has("CG-1", "cg_fx_form", "d_q", fs))
-           and any("block fx_wv" in x and "by allowance waivers" in x for x in fails),
-           "a block over its 2%% with an allowance waiver's flops passed: %s" % fails)
-    fails, _ = run_policy(("cg_fx_form", "cg_fx_wide"), parts=[p_wv])
+           and any("block fx_wv" in x and "by lead waivers" in x for x in fails),
+           "a block over its 2%% with a lead waiver's flops passed: %s" % fails)
+    fails, _ = run_policy(("cg_fx_form", "cg_fx_wide"), [w_d], parts=[p_wv])
     expect(not any("block fx_wv" in x for x in fails),
-           "a block was charged a finding no waiver took: %s" % fails)
+           "a block was charged a waiver not marked as a lead: %s" % fails)
+    fails, _ = run_policy(("cg_fx_form",), [dict(w_d, lead="yes")])
+    expect(any("lead is 'yes'" in x for x in fails), "a lead mark that is not a boolean passed")
     # 15. The block budget's flop counts, from netlists nothing replays,
     #     agree with the replayed ones: for every fixture, totals and what the
     #     module budgets took; and a module the elaborated read takes
