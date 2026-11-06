@@ -153,7 +153,12 @@ session-home --check DIFFERS (autoCompactWindow, env): needs Daniel's approval t
 AR 309 (re:TI-350): bnd_rx in credit depth, 2(N+bnd_rx); hosts keep it. RA rev 90: at RCU's RTL top, pass the
 credit unflopped through BOUNDARY (depth 4 not 6; miu_rcu_data alone 8,912 flops); depth-5 variant priced then
 with RI. Rescue sizing is TI's. 11-06 sweep pushed 31db61a (full gate).
-Bookmarks: OA 366, RA 90, RI 21, TI 350, DA 112, AR 309, OI 306, Conventions 17, CP 155.
+DANIEL 2026-11-06 (RA rev 91): zero-cycle receiving end approved ONLY for IPC ("the flop will pay for itself in
+convergence turn-around time ... power and area are likely to be a wash. The IPC is where we can't recover").
+RA withdrew the timing-based lane_rcu_res recommendation; all three ends flopped (LANE 8/SFU 13) until RI-16 runs
+(S1, CoreMark, flopped vs zero-cycle) show IPC. RA proposed AR 308's 0.2% S1 bar - Daniel to confirm. Notified
+AR (record in DA tab), RI, OI/OA (price C9 at 8/13), TI. Partition rev 49. session-home installed 11-06 (Daniel approved).
+Bookmarks: OA 366, RA 91, RI 21, TI 350, DA 112, AR 309, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
