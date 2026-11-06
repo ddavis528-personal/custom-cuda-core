@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 302, OA 350, TI 339, RA 86 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 299, DA 108,
+  record): AR 303, OA 355, TI 339, RA 86 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 299, DA 108,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
@@ -267,6 +267,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    keeps HINT 2/FILL 4/MLC 39, H3 overcharges); asked OI for A6L (A6+LANE7/
    SFU12) and A6H (A6+hint bundle), OA/OI for cmpl rx cone depth. Then (a)
    A6L vs (b) Pn2048 goes to Daniel with AR 296.
+   OA 355 (pre-302) recommends H3 + all rx flops but cmpl, cmpl first-kind
+   if OI's RTL confirms; asked AR to confirm first kind at OOE. AR 303: yes
+   (enable from OOE's own flops per CG-5: hit at L1_CMPL after issue, miss
+   via hint lead; nothing before the register; else ungated = lead slice in
+   OOE 2%). H3 wrong for no-flop cmpl (HINT 3 bundle only for flopped cmpl;
+   LANE 7/SFU 12 need AR 296 second kind). Asked OA for any cmpl-independent
+   reason for HINT 3. OA 351/352 send ooe_rs 45-49 rows area to DA.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
