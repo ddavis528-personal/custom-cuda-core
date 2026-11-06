@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-05 ~11:00 UTC (leads pushed, RI-11 package on RH). Keep this current at every task's end; it is what
+Updated 2026-11-06 ~00:45 UTC (OI-114 awaiting OA; cmpl cones; R49 S1 on RH). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -86,6 +86,21 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-11. STATE 11-06 ~00:45 UTC. Bookmarks OA 357, AR 303, OI 301. Main checkout: branch
+   oi-handoff (b8dcb7d + this) holds the unpushed handoff; ccr-57eff422-5tdecg = origin 93457a4.
+   - OI-114: built in wtf branch oi-floor114, 5664f5e (gate-scratch/OI): model split floor term
+     less own take (share_hold_ for the pool, share_reg_ adjusted after takes); ooe_go per-k
+     uk/sgk; go_tb names<=credit assert; run-rtl scarce-names run + control floor-pre-take
+     (caught only with GO_NAMES=144,24). go_tb 0 mismatches; ooe-test PASS. NGD OVER caps
+     (ff 28.5, unmet_p 30.2, hv 31.4, ...). OI 301 asks OA: register unmet in ooe_rename
+     (budget 6->0) + term max(0,u - last take names - take k) + need-side shift. AWAIT OA.
+   - OI 300 (re OA 355/357, AR 302/303): cmpl/hint payload cones 14.1 (ooe_wake idx), 22.1
+     (ooe_rob_w cm_tag), leads 1.9. A6L=A6, A6H=H3 (no runs). Promised next: RTL probe of the
+     two bypasses (wake hit->fin/confirm, rob done->retire) + model knob delaying only ROB done or
+     only timer hit, S1 on RH. Script scratchpad cmplcone/ports.py.
+   - OI 298 cand-ahead (OA rejected, 355), OI 299 RI-11 package v2 complete. OA 354: ooe_go keep caps;
+     (a)+(b) pricing low priority. RH: R49 S1 job sent 00:30 (aa9ad9c, rs_rcu=32,rs_miu=17) -> row to OA.
+   - Then: ROB slices 3-6; Friday pings today (11-06).
 -10. STATE 11-06 ~00:15 UTC. PUSHED 93457a4 (SCOPED PASS 22/22): 11-05 sweep merge + call link
    (c10c4b4) + handoff; OI rows 295 (TI notified: call link in) and 296 (re OA 326: ratread
    path 17.9 with fanout, under 25, off the plan; parent is ooe_rename, unbuilt, so TI's
