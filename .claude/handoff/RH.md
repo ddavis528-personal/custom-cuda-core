@@ -48,13 +48,6 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- OI's RI-11 package v2 (OA rev 350, AR rev 298; 11-05 10:41Z): OI's
-  pkg-run.sh and rxsplit.patch in /home/user/rh-jobs/pkg2/, run dir
-  pkg2/run (trees A6 and PK are worktrees of custom-cuda-core). S1 and audit
-  are DONE and sent. CoreMarks via pkg2/all.sh (resumable), progress in
-  pkg2/run/progress, logs in run/out/cm/. Watch it with the pattern
-  "bash [.]/all\.sh". Report a table: from_fetch, check_failures,
-  redirect_wait, st_ld_wait. Nothing to push.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
@@ -70,6 +63,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   the warm time and kill it. Delete bench oracles after each job.
 
 ## Done
+- OI's RI-11 package v2 (S1, audit, CoreMark x12) and the rs_cand_ahead audit
+  (11-05 to 06): all sent; trees removed. A reclaim on 11-05 cost about 8 h (see
+  the fallback rule above).
 - OI's RI-11 CoreMark pricing and rs_free_lag audit (11-05): all sent. In
   bit-8 rx_lag runs, V-35 floods past the skeleton's 10,000-line print cap
   (kernel.cpp:33); OI accepted errors == check_failures as proof. The scripts
