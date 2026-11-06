@@ -150,7 +150,10 @@ RI to update rcu-impl.md ("timed whole" -> sum of parts). RI-16: skeleton lacks 
 11-06 sweep: merged 80102643 (30), 9eb50716 (14), 57eff422 (13), 3868632d (11), 888218a3 (7), c22116ce (6).
 Friday pings: all ponged ok (OA TI AR CP IS RI OI RH). Pongs sent 11-06: OI AR OA TI CP IS RI.
 session-home --check DIFFERS (autoCompactWindow, env): needs Daniel's approval to rerun installer.
-Bookmarks: OA 366, RA 89, RI 21, TI 349, DA 112, AR 308, OI 306, Conventions 17, CP 155.
+AR 309 (re:TI-350): bnd_rx in credit depth, 2(N+bnd_rx); hosts keep it. RA rev 90: at RCU's RTL top, pass the
+credit unflopped through BOUNDARY (depth 4 not 6; miu_rcu_data alone 8,912 flops); depth-5 variant priced then
+with RI. Rescue sizing is TI's. 11-06 sweep pushed 31db61a (full gate).
+Bookmarks: OA 366, RA 90, RI 21, TI 350, DA 112, AR 309, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
