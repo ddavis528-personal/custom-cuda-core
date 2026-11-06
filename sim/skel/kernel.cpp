@@ -1874,10 +1874,11 @@ private:
     return m;
   }
 
-  /// A whole crossing of a channel: CCV_LAT_HOP plus its repeater stages.
+  /// A whole crossing of a channel: CCV_LAT_HOP plus its repeater stages and
+  /// a flopped receiving end's cycle, bnd_rx (AR's revs 300 and 301).
   static unsigned crossing(unsigned chan) {
     for (const ChanInst &ci : kChanInsts)
-      if (ci.chan == chan) return kLatHop + ci.stages;
+      if (ci.chan == chan) return kLatHop + ci.stages + ci.bnd_rx;
     return kLatHop;
   }
 
@@ -2102,7 +2103,8 @@ private:
   /// The lane pipeline: a result leaves kPipe cycles after its operands
   /// arrive, so it lands in RCU's PRF CCV_LAT_LANE - 1 cycles after RCU took
   /// the issue: the cycle before a dependant woken at the full latency reads
-  /// it (V-35). Stages on either lane channel add to CCV_LAT_LANE, not here.
+  /// it (V-35). Stages and a flopped receiving end (bnd_rx) on either lane
+  /// channel add to CCV_LAT_LANE, not here: the slot builds them.
   static constexpr unsigned kPipe = ccv::prov::kLatLaneBase - 1 - 2 * kLatHop;
   static_assert(ccv::prov::kLatLaneBase >= 1 + 2 * kLatHop, "no room for the lane pipeline");
   static_assert(ccv::prov::kLatLaneByp >= kPipe,

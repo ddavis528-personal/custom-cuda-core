@@ -25,7 +25,7 @@ Four layers, deliberately not one:
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
-| `tools/check-ngd.py` | NGD-1 … NGD-7, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
+| `tools/check-ngd.py` | NGD-1 … NGD-7, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block as a sum of parts. |
 
 **On Verible.** §6 adds it as a fourth tool and says "lint enforces it" is
 load-bearing for the whole X-safety approach. That second part is right and
@@ -857,8 +857,27 @@ breaks them fails in any bench, not only the one that knew the rule.
     over the block's whole hierarchy (its hardening wrapper, the block and
     its repeaters, every common module once for each place it is used), the
     flops its modules auto-waived must stay within 2% of the block's flops.
-    Explicit waivers do not count here. This applies once a block top is RTL,
-    not a generated stub; today none is.
+    So do the flops of a lead waiver (`"lead": true`, any rule): a module
+    may waive the flops that hold an interface lead signal, on the condition
+    that they fit its block's 2% at final construction (Daniel's ruling on
+    RI-15, 2026-11-06, RA rev 87; RI-17), and this is that check. So do the
+    flops of a credit waiver (`"credit": true`), flops that capture a
+    credit-return pulse (Daniel on RI-14, 2026-11-06, RA rev 88). Only those
+    flops take the marks. Other explicit waivers do not count here. This applies once a
+    block top is RTL, not a generated stub.
+  - The block's numbers are a **sum of parts** (Daniel, 2026-11-06): a
+    final synthesis of a whole block is infeasible within the gate's runtime
+    and memory, so nothing above a module is synthesised. The hierarchy is
+    read structurally (Yosys's front end, `hierarchy` and `proc`; no `synth`,
+    `opt`, `techmap` or `abc`, and a file of leaves read `-lib`, its ports
+    only), giving each instance's module and parameters. Each instance's
+    flops, and each finding's, are those of the unit that measures its
+    module at the instance's parameters, from the unit's own replayed
+    netlist; the block's are their sum. An instance with flops and no unit
+    at its parameters fails, naming the module and the parameters: the unit
+    is written at those parameters, not the instance's flops counted as
+    none. A unit counts the children it flattens; those it blackboxes are
+    counted by their own units.
 - **By waiver, last.** `rtl/cg-waivers.json` holds one entry per module,
   rule and register, with who wrote it, when, and why the rule cannot or
   should not be met, citing what was measured. Waivers are the last resort:
@@ -1067,30 +1086,70 @@ timing pass over the mapped netlist then splits every path by where it starts
 and ends: an input or a flop, an output or a flop. Its longest path must equal
 ABC's own, or the run stops.
 
-**The assembled block, from its budget files and then whole.** Once a block
-top is RTL, it is checked twice. First from the budget files, quickly: each
-level of its hierarchy that instantiates others is mapped alone, its
-children cut out, each child's output starting at its required time and each
-child's input to be reached by its arrival, the block's own inputs arriving
-at 0, straight from the interface module's flop in its wrapper, inner helpers flattened into their parents. So every connection must
-converge to 25 as the files say, and any glue between children is NGD-5. Then timed whole, synthesised flattened with its
-hardening wrapper: every flop to flop path within 25, whatever the files
-said. That pass is still needed, but it should find only corner cases, where
-synthesis did across a boundary what it could not module by module (two
-64-bit parities in series map shallower than their halves; a large function
-split across a port may map deeper or shallower than its halves add up to).
-And its boundary
-is **registered on both sides with nothing between** (`docs/skeleton.md`;
-AR's rev 285 (5): a crossing carries no logic): every output straight from a
-flop, every input straight into one. The flops are the interface module's
-boundary stage, built in the hardening wrapper (`ccv_common_rpt` `BOUNDARY`,
-default 1; Daniel, 2026-11-05), so the block's own paths run from them within
-the stage; at a no-flop end (`params/links.json` `no_flop`) they are the
-block's own registers at 0 NGD. The 12-a-side port budget stays only between
-modules inside a block. The block
-budget of local clock gating (2% per instance) is checked on the same
-assembly by `tools/check-cg.py`. Today no block top is RTL, so neither runs
-on the tree; the fixtures exercise both.
+**The assembled block, as a sum of parts** (Daniel, 2026-11-06). A final
+synthesis of a whole block is infeasible within the gate's runtime and
+memory, so a block's depth is checked from its modules' runs and a
+structural read of its hierarchy (Yosys's front end, `hierarchy` and `proc`:
+each instance, its parameters, and the parent's own glue); nothing above a
+module is synthesised, and no child is synthesised with its parent. Once a
+block top is RTL:
+
+- **Coverage.** Every instance in the block, its wrapper's repeaters
+  included, is measured by a unit at the instance's parameters. So each
+  module's own paths are held to the stage and its ports to its budgets
+  (NGD-1 to NGD-3, NGD-5, NGD-7). An instance no unit times at its
+  parameters fails, naming the module and the parameters.
+- **Convergence.** Each level of the hierarchy that instantiates others,
+  and the block's own top level, is mapped alone, its children black boxes,
+  each child's output starting at its required time and each child's input
+  to be reached by its arrival, the block's own inputs arriving at 0,
+  straight from the interface module's flop in its wrapper, inner helpers
+  flattened into their parents as their logic. So every connection must
+  converge to 25 as the files say, and any glue between children is NGD-5.
+  The parent's wires carry the fanout term (RA-33) too: a net in the level
+  is timed with ceil(log4(N / 4)) INV stages for its N pins in the parent
+  (each cut child input on it, each output port, each of the parent's own
+  gate inputs and flop D pins). A child-to-child wire converges only when
+  the driver's required time plus that term is within each receiver's
+  arrival; a boundary input or the parent's own flop as the source is held
+  the same way. Each side counts its own net and no other: a child's unit
+  counts the loads inside the child on its port's net (its output port
+  counted once, as one load), the level counts only the pins on the
+  parent's net, so a load is never counted twice.
+  With nothing straight through a module (NGD-5), a flop-to-flop path
+  across modules is two port segments, so convergence and each unit's port
+  checks bound it to 25.
+- **The boundary** is **registered on both sides with nothing between**
+  (`docs/skeleton.md`; AR's rev 285 (5): a crossing carries no logic): every
+  output straight from a flop, every input straight into one. By parts: at
+  each level a boundary port meets the level's own flop with no logic
+  between, or reaches a child's pin by a wire only, and that pin is held
+  the same way, down to a leaf, whose unit's measurement at the instance's
+  parameters must show it straight from or into a flop. The measurement,
+  not the budget, is what holds: a budget of 0 would force it, but a leaf's
+  budget is a bound the architect may set higher. The fanout term applies
+  at an input: one wired to more than 4 pins on the parent's net is a
+  buffer tree before its flops, not straight into one. An output is held
+  by its shape (straight from a flop), without the term; the load past the
+  crossing is the receiving block's input net, which counts it there.
+
+The flops are the interface module's boundary stage, built in the hardening
+wrapper (`ccv_common_rpt` `BOUNDARY`, default 1; Daniel, 2026-11-05), so the
+block's own paths run from them within the stage; at a no-flop end
+(`params/links.json` `no_flop`) they are the block's own registers at 0 NGD.
+The 12-a-side port budget stays only between modules inside a block.
+
+**What a sum of parts does not see**, which the flattened pass it replaces
+did: synthesis across a boundary (a constant, an unused output or a
+duplicated register only the whole would simplify, or two halves of a
+function that map shallower together: two 64-bit parities in series), which
+makes the parts conservative; and one net's loads as a whole: a child's
+output net is timed in two parts, the child's loads in its unit and the
+parent's pins at its level, each with its own fanout term, where the whole
+would take one tree over both, short of it by one INV stage at most. The
+block budget of local clock gating (2% per instance) is
+summed from the same read by `tools/check-cg.py`. Today no block top is RTL,
+so neither runs on the tree; the fixtures exercise both.
 
 **The ratchet.** What broke the rules when they were made sits on
 `rtl/ngd-ratchet.json`: ports over a default (NGD-2, NGD-3, 2026-10-17),

@@ -220,6 +220,10 @@ def gen_sv(d):
 # links follows them. link_n is the STAGES only: a whole crossing is
 # CCV_LAT_HOP + link_n(...), and a latency over paths with different numbers
 # of crossings (a max) has to say so, since no base can absorb the difference.
+# bnd_rx('channel'): 1 when that channel's receiving end holds the boundary
+# flop (params/links.json no_flop; AR's revs 300 and 301), else 0. A whole
+# crossing is CCV_LAT_HOP + link_n(...) + bnd_rx(...), and a block's own
+# base never holds it.
 # A derived parameter is never more settled than its inputs: a settled width
 # that follows a provisional count would move without its tier saying so.
 FUNCS = {"cdiv": lambda a, b: -(-a // b),
@@ -243,6 +247,9 @@ def link_stages(path=None):
                 (ccv_links.HOP.match(h) for h in e.get("route", "").split(">"))
                 if m)
         out[e.get("channel")] = max(out.get(e.get("channel"), 0), n)
+    # bnd_rx('ch') lives beside them, keyed "bnd_rx:<ch>".
+    for ch, b in ccv_links.bnd_rx(path).items():
+        out["bnd_rx:" + ch] = b
     return out
 
 
@@ -271,6 +278,14 @@ def evaluate(expr, values, links=None):
             return ev(n.body)
         if isinstance(n, ast.Constant) and isinstance(n.value, int):
             return n.value
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "bnd_rx" and len(n.args) == 1
+                and isinstance(n.args[0], ast.Constant)
+                and isinstance(n.args[0].value, str)):
+            if n.args[0].value not in schema_channels():
+                raise ValueError("bnd_rx names no channel: %r (names are "
+                                 "without ccv_)" % n.args[0].value)
+            return (links if links is not None else {}).get("bnd_rx:" + n.args[0].value, 0)
         if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
                 and n.func.id == "link_n" and len(n.args) == 1
                 and isinstance(n.args[0], ast.Constant)
@@ -377,20 +392,70 @@ def selftest(d):
              ("CCV_P_BR_CKPTS", "value", 7, "CCV_P_W_FETCH_EPOCH"),
              # TI-8: a bypass no faster than the register file is refused,
              # and the bypass select's age field follows CCV_LAT_LANE.
-             ("CCV_LAT_LANE_BYP", "value", 7, "CCV_LAT_LANE_BYP"),
+             # Equal to CCV_LAT_LANE, whatever it is (8 since the interface
+             # flops' bases, AR's rev 287).
+             ("CCV_LAT_LANE_BYP", "value",
+              next(p["value"] for p in d["params"] if p["name"] == "CCV_LAT_LANE"),
+              "CCV_LAT_LANE_BYP"),
              ("CCV_P_W_LANE_BYP_AGE", "value", 1, "CCV_P_W_LANE_BYP_AGE"),
              ("CCV_LAT_LANE", "derive",
               "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]
+    # A boundary flop's cycle is a crossing's (bnd_rx; AR's revs 300, 301).
+    cases += [("bnd_rx:lane_rcu_res", "bnd", 0, "CCV_LAT_LANE"),
+              ("bnd_rx:lane_rcu_res", "bnd", 0, "CCV_LAT_SFU"),
+              ("bnd_rx:rcu_lane_ops", "bnd", 1, "CCV_LAT_LANE"),
+              ("bnd_rx:ooe_rcu_issue", "bnd", 0, "CCV_LAT_L1_CMPL"),
+              ("bnd_rx:miu_rcu_data", "bnd", 0, "CCV_LAT_L1_WAKE"),
+              ("bnd_rx:dcu_miu_rsp", "bnd", 1, "CCV_LAT_L1_HIT"),
+              ("bnd_rx:miu_ooe_cmpl", "bnd", 1, "CCV_LAT_L1_CMPL"),
+              # Counted in the parameter as well, the issue flop is taken
+              # twice (AR's rev 301): refused.
+              ("CCV_LAT_RCU_ADDR", "derive",
+               "CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", "CCV_LAT_RCU_ADDR")]
     missed = []
     for name, key, v, who in cases:
         m, lk = copy.deepcopy(d), dict(links)
         if key == "links":
             lk[name[len("link_n('"):-2]] = v
+        if key == "bnd":
+            lk[name] = v
         for p in m["params"]:
             if p["name"] == name:
                 p[key] = v
         if not any(b.split()[0].rstrip(":") == who for b in check_derived(m, lk)):
             missed.append("%s %s = %s not caught at %s" % (name, key, v, who))
+    # AR's rev 301 (2): with the issue flop counted once, on the crossing,
+    # the L1 latencies are 17 and 19 at the defaults and 13 and 15 under
+    # PF-47 (CCV_LAT_RCU_ADDR_BASE 1); counted twice, 18 and 20.
+    def l1(base=None, addr_derive=None):
+        m = copy.deepcopy(d)
+        for p in m["params"]:
+            if base is not None and p["name"] == "CCV_LAT_RCU_ADDR_BASE":
+                p["value"] = base
+            if addr_derive and p["name"] == "CCV_LAT_RCU_ADDR":
+                p["derive"] = addr_derive
+        for _ in range(len(m["params"])):
+            vals = {p["name"]: p["value"] for p in m["params"]}
+            moved = False
+            for p in m["params"]:
+                if "derive" in p:
+                    w = evaluate(p["derive"], vals, links)
+                    if w != p["value"]:
+                        p["value"] = vals[p["name"]] = w
+                        moved = True
+            if not moved:
+                break
+        return vals["CCV_LAT_L1_WAKE"], vals["CCV_LAT_L1_CMPL"]
+    if links.get("bnd_rx:ooe_rcu_issue") and not any(
+            v for k, v in links.items() if not k.startswith("bnd_rx:")):
+        for got, want, what in (
+                (l1(), (17, 19), "the defaults"),
+                (l1(base=1), (13, 15), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1)"),
+                (l1(addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')"),
+                 (18, 20), "the issue flop counted twice (the control)")):
+            if got != want:
+                missed.append("L1_WAKE/L1_CMPL at %s: %s, want %s (AR's rev 301)"
+                              % (what, got, want))
     if missed:
         sys.stderr.write("".join("%s\n" % x for x in missed))
         return 1

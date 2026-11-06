@@ -191,6 +191,11 @@ def build(d, pv, blocks):
         c = ci["chan"]
         ci["src_boundary"] = int(c["src"] != "EXTERNAL"
                                  and (c["src"], c["name"][4:]) not in nf)
+        # A flopped receiving end: one stage more on the way in, the
+        # crossing's bnd_rx (AR's revs 300 and 301), which params' derives
+        # count as CCV_LAT_HOP + link_n + bnd_rx.
+        ci["bnd_rx"] = int(c["dst"] != "EXTERNAL"
+                           and (c["dst"], c["name"][4:]) not in nf)
     return binst, chans, cinst, slot, pbit
 
 
@@ -330,19 +335,33 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
     L.append("/// stages: sequential repeater stages each way (params/links.json);")
     L.append("/// src_stages: how many of them are in the source's wrapper, which is")
     L.append("/// where the checker bank watches the link.")
+    L.append("/// bnd_src, bnd_rx: whether the source's and the receiver's end hold")
+    L.append("/// the boundary flop (params/links.json no_flop), built as one stage")
+    L.append("/// more at that end (rtl/phys/ccv_common_rpt.sv BOUNDARY). CCV_RT_ABUT")
+    L.append("/// counts the sender's; a flopped receiving end in front of a block")
+    L.append("/// that registers its own inputs and credit (every DPI host) is a stage")
+    L.append("/// each way, so the round trip and credit depth grow by 2 x (stages +")
+    L.append("/// bnd_rx), and a crossing is CCV_LAT_HOP + stages + bnd_rx (AR's revs")
+    L.append("/// 300 and 301).")
     L.append("struct ChanInst {")
     L.append("  uint16_t chan; uint16_t inst; int16_t src; int16_t dst;")
     L.append("  uint32_t slot_base; uint64_t payload_base;")
     L.append("  uint16_t stages; uint16_t src_stages;")
+    L.append("  uint8_t bnd_src; uint8_t bnd_rx;")
+    L.append("  /// Flops each way between the sender and the receiver.")
+    L.append("  constexpr unsigned pipe() const { return stages + bnd_src + bnd_rx; }")
+    L.append("  /// Stages each way the round trip and credit depth count.")
+    L.append("  constexpr unsigned rtStages() const { return stages + bnd_rx; }")
     L.append("};")
     L.append("inline constexpr ChanInst kChanInsts[] = {")
     for ci in cinst:
-        L.append("  {%d, %d, %d, %d, %d, %d, %d, %d},"
+        L.append("  {%d, %d, %d, %d, %d, %d, %d, %d, %d, %d},"
                  % (ci["chan"]["id"], ci["inst"],
                     -1 if ci["src"] is None else ci["src"],
                     -1 if ci["dst"] is None else ci["dst"],
                     ci["slot_base"], ci["payload_base"],
-                    ci["stages"], ci["src_stages"]))
+                    ci["stages"], ci["src_stages"],
+                    ci["src_boundary"], ci["bnd_rx"]))
     L.append("};")
     L.append("constexpr unsigned kNumChanInsts = %d;" % len(cinst))
     L.append("constexpr unsigned kNumSlots = %d;" % nslots)
@@ -438,11 +457,15 @@ def gen_sv(chans, cinst, nslots, pbits):
             # A backpressured channel's response bound is the watchdog
             # CCV_P_TIMEOUT_BP, not CCV_P_TIMEOUT_N (AR's response TI-22).
             tmo = "CCV_P_TIMEOUT_BP" if c["held"] else "CCV_P_TIMEOUT_N"
-            if ci["stages"]:
+            if ci["stages"] + ci["bnd_rx"]:
                 # A repeated link (params/links.json): the round trip and the
                 # response bound grow by 2N, and the stall rule counts the
-                # stages between this point and the sender.
-                n = ci["stages"]
+                # stages between this point and the sender. A flopped
+                # receiving end in front of a block that registers its own
+                # inputs and credit, as every DPI host does, is one stage
+                # more each way (bnd_rx): the crossing's cycle forward, and
+                # the credit's back through the same flop.
+                n = ci["stages"] + ci["bnd_rx"]
                 lm += (", .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + %d), "
                        ".TIMEOUT_N(ccv_prov_pkg::%s + %d), "
                        ".SRC_STAGES(%d)" % (2 * n, tmo, 2 * n, ci["src_stages"]))
@@ -491,8 +514,9 @@ def gen_sv(chans, cinst, nslots, pbits):
         tag = "%s_i%d" % (base, ci["inst"]) if c["ninst"] > 1 else base
         lo, hi = ci["slot_base"], ci["slot_base"] + c["rate"] - 1
         # Watched where the link leaves the source's wrapper, the valid and
-        # wake reach the receiver the rest of the stages later.
-        arrive = ci["stages"] - ci["src_stages"]
+        # wake reach the receiver the rest of the stages later, plus the
+        # receiving end's boundary flop.
+        arrive = ci["stages"] - ci["src_stages"] + ci["bnd_rx"]
         L.append("  ccv_common_chk_wake %su_%s_wake (.clk(clk), .rst_n(rst_n), "
                  ".rx_gated(rx_gated[%d]), .wake_seen(wake[%d]), .valid_seen(|valid[%d:%d]));"
                  % ("#(.ARRIVE(%d)) " % arrive if arrive else "", tag, k, k, hi, lo))

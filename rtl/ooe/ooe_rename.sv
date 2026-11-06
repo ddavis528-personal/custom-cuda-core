@@ -73,7 +73,7 @@ module ooe_rename #(
   parameter int NU = 8,                  // lat_class codes
   parameter int G  = 8,                  // bypass groups (CCV_P_BYP_GROUPS)
   // ooe_rendep's code table (its CT; rendep-params.py's at today's parameters).
-  parameter logic [2*NU*G*G-1:0] CT = 1024'hffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff3ffffffff1fff4ffffffffffffffffffffffffffffffff,
+  parameter logic [2*NU*G*G-1:0] CT = 1024'hffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff3affffffb1ffb4ffffffffffffffffffffffffffffffff,
   localparam int H  = 2 * R - 1,
   localparam int NC = S * R,
   localparam int GR = $clog2(NG),

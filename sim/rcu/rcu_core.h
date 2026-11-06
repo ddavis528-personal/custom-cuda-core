@@ -253,6 +253,8 @@ struct Config {
   bool full_row = false;
   /// Negative controls (tools/check-kernel.sh), by name; empty for none.
   std::string brk;
+  /// CCV_RCU_KILL_DRAIN_CUT=<n>: the kill drain n cycles short (M4's control).
+  unsigned kill_drain_cut = 0;
 };
 
 /// What the core reports to its host. fail() is a check failure (a contract
@@ -296,7 +298,8 @@ public:
   bool idle() const { return idle_; }
   uint64_t idleCycles() const { return idle_cycles_; }
   const Config &config() const { return cfg_; }
-  unsigned killDrain() const { return kKillDrainBase + cfg_.issue_stages + cfg_.done_stages; }
+  /// KILL_DRAIN at the build's links, less kill_drain_cut (M4's control).
+  unsigned killDrain() const { return kKillDrainBase + cfg_.issue_stages + cfg_.done_stages - cfg_.kill_drain_cut; }
 
   /// Statistics for the M5 report and the sweep.
   struct Stats {

@@ -811,9 +811,9 @@
       "name": "CCV_LAT_LANE_BASE",
       "value": 7,
       "status": "tunable",
-      "decided_at": "LANE per-block session",
-      "source": "OOE Stage 4 session (2026-10-02), interface change set",
-      "doc": "Lane pipeline depth with abutted links, from RCU accepting the issue to the lane result in the PRF. An assumption until LANE's session confirms it as a contract."
+      "decided_at": "LANE per-block session; AR's revs 300 and 301 (re:RI-16)",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; 7 to 8 at AR's rev 287 (re:RI-11), back to 7 at AR's revs 300 and 301 (re:RI-16)",
+      "doc": "Lane pipeline depth with abutted links and no boundary flops, from RCU accepting the issue to the lane result in the PRF: the blocks' own time only. A flopped receiving end on either lane channel is a crossing's bnd_rx, counted in CCV_LAT_LANE, never here (AR's revs 300 and 301 (re:RI-16)). An assumption until LANE's session confirms it as a contract."
     },
     {
       "name": "CCV_LAT_L1_HIT_BASE",
@@ -834,12 +834,12 @@
     },
     {
       "name": "CCV_LAT_LANE",
-      "value": 7,
+      "value": 8,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-48",
-      "derive": "CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + link_n('lane_rcu_res')",
-      "doc": "Contracted lane latency: base plus the repeater stages out and back, from params/links.json (A-48). The lane channels are lockstep, so every copy has the same stages."
+      "derive": "CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res')",
+      "doc": "Contracted lane latency: base plus, out and back, the repeater stages (params/links.json; A-48) and a flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). 8 at the defaults: ccv_lane_rcu_res's end at RCU is flopped. The lane channels are lockstep, so every copy has the same stages."
     },
     {
       "name": "CCV_LAT_LANE_BYP",
@@ -857,7 +857,7 @@
       "decided_at": "generated",
       "source": "TI, lane-local bypass in the stubs (2026-10-08); A-59, register TI-8",
       "derive": "max(1, clog2(CCV_LAT_LANE - CCV_LAT_LANE_BYP))",
-      "doc": "How far back a lane's bypass reaches, in bits: a forwarded result is named by its age, the cycles between the producer's and the dependant's arrival at the lane, less CCV_LAT_LANE_BYP. Ages run from CCV_LAT_LANE_BYP up to CCV_LAT_LANE - 1, after which RCU's register file holds the value. The links stretch the window: stages on either lane channel delay the write-back but not the dependant, so this follows params/links.json through CCV_LAT_LANE."
+      "doc": "How far back a lane's bypass reaches, in bits: a forwarded result is named by its age, the cycles between the producer's and the dependant's arrival at the lane, less CCV_LAT_LANE_BYP. The lane forwards ages CCV_LAT_LANE_BYP up to CCV_LAT_LANE - 2; at CCV_LAT_LANE - 1 RCU's register file read serves the value (RA's count, AR's rev 288). The links stretch the window: stages on either lane channel delay the write-back but not the dependant, so this follows params/links.json through CCV_LAT_LANE."
     },
     {
       "name": "CCV_P_W_LANE_BYP_SEL",
@@ -1001,12 +1001,21 @@
       "doc": "Bypass penalty from integer or FP to SFU and from SFU to integer or FP, in cycles after the producer's fastest bypass point, capped at the PRF read. With today's values a lane producer's wake for an SFU consumer lands at CCV_LAT_LANE_BYP + 3 = CCV_LAT_LANE, the PRF read (OA's response OI-16). SFU's own fastest bypass point is not yet named (OA proposes CCV_LAT_SFU_BYP, for DA); until it is, an SFU producer wakes every consumer at CCV_LAT_SFU."
     },
     {
-      "name": "CCV_LAT_SFU",
+      "name": "CCV_LAT_SFU_BASE",
       "value": 12,
       "status": "tunable",
-      "decided_at": "LANE per-block session",
-      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder",
-      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF. A placeholder until a LANE session confirms it."
+      "decided_at": "LANE per-block session; AR's revs 300 and 301 (re:RI-16)",
+      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder, as CCV_LAT_SFU; 12 to 13 at AR's rev 287 (re:RI-11); the base, 12, at AR's revs 300 and 301 (re:RI-16)",
+      "doc": "The SFU's latency with abutted links and no boundary flops, as CCV_LAT_LANE_BASE is the lane's: the blocks' own time only. A placeholder until a LANE session confirms it."
+    },
+    {
+      "name": "CCV_LAT_SFU",
+      "value": 13,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder; 12 to 13 at AR's rev 287 (re:RI-11); derived from CCV_LAT_SFU_BASE at AR's revs 300 and 301 (re:RI-16)",
+      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 13 at the defaults. RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 17 at the defaults, its issue end flopped), derived, never written as a number (AR's rev 288).",
+      "derive": "CCV_LAT_SFU_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res')"
     },
     {
       "name": "CCV_LAT_COLLECTIVE",
@@ -1022,8 +1031,8 @@
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-46, A-48; A-61",
-      "derive": "CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + link_n('dcu_miu_rsp')",
-      "doc": "Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46)."
+      "derive": "CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + bnd_rx('miu_dcu_req') + link_n('dcu_miu_rsp') + bnd_rx('dcu_miu_rsp')",
+      "doc": "Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48) and each flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46)."
     },
     {
       "name": "CCV_LAT_HOP",
@@ -1031,15 +1040,15 @@
       "status": "arch",
       "source": "channel protocol (channel.h); made explicit for A-61",
       "derive": "CCV_RT_ABUT // 2 + 1",
-      "doc": "One channel crossing with no repeater stages, from the sender launching a message to the receiver holding its payload: the valid crosses in half the round trip and the payload lands one cycle after its valid. A whole crossing is CCV_LAT_HOP + link_n(channel). Latencies that are linear in their crossings fold this into their base; a max over paths with different numbers of crossings (CCV_LAT_L1_WAKE) cannot, so it is named."
+      "doc": "One channel crossing with no repeater stages, from the sender launching a message to the receiver holding its payload: the valid crosses in half the round trip and the payload lands one cycle after its valid. A whole crossing is CCV_LAT_HOP + link_n(channel) + bnd_rx(channel): the repeater stages and, where the receiving end holds the boundary flop, its cycle (AR's revs 300 and 301 (re:RI-16)). Latencies that are linear in their crossings fold this into their base; a max over paths with different numbers of crossings (CCV_LAT_L1_WAKE) cannot, so it is named."
     },
     {
       "name": "CCV_LAT_RCU_ADDR_BASE",
       "value": 5,
       "status": "tunable",
-      "decided_at": "RCU per-block session",
-      "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08)",
-      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. Tunable: RCU's session confirms or moves it."
+      "decided_at": "RCU per-block session; AR's revs 300 and 301 (re:RI-16)",
+      "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08); 5 to 6 at AR's rev 287 (re:RI-11), back to 5 at AR's revs 300 and 301 (re:RI-16)",
+      "doc": "RCU's time from the issue's landing to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop, RCU's own time only. The issue end's boundary flop is the crossing's bnd_rx, counted in CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL, never here (AR's revs 300 and 301 (re:RI-16)): RA's 6 is this 5 plus that flop, counted from the wrapper. 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. PF-47 (docs/perf-register.md), still to be reapplied, takes it to 1, and CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 15 (AR's rev 301). Tunable: RCU's session confirms or moves it."
     },
     {
       "name": "CCV_LAT_RCU_ADDR",
@@ -1048,25 +1057,25 @@
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
       "derive": "CCV_LAT_RCU_ADDR_BASE",
-      "doc": "RCU's issue-to-address time (A-61). Inside RCU, so no link enters it; the crossings either side are counted where it is used."
+      "doc": "RCU's issue-to-address time (A-61). Inside RCU, so no link and no boundary flop enters it; the crossings either side, bnd_rx included, are counted where it is used (AR's rev 301: counted here as well, CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL would take the issue flop twice, 18 and 20)."
     },
     {
       "name": "CCV_LAT_L1_WAKE",
-      "value": 16,
+      "value": 17,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
-      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue'))",
-      "doc": "Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels."
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue'))",
+      "doc": "Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16))."
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 18,
+      "value": 19,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
-      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl')",
-      "doc": "Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE."
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl')",
+      "doc": "Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16))."
     },
     {
       "name": "CCV_LAT_L1_MISS_WAKE",
@@ -1074,7 +1083,7 @@
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE model session, register OI-13 (ratified by OA 2026-10-07); the +1, OA's response OI-26 (2026-10-08)",
-      "derive": "max(0, CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue')) + 1) + 1",
+      "derive": "max(0, CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue')) + 1) + 1",
       "doc": "After a miss, from the completion's arrival at OOE to the dependant's earliest select (OA's response OI-26). Two parts. The data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read, so the dependant reaches RCU no sooner than the data (OI-13): MIU sends the data to RCU and the completion to OOE over different links. Plus 1: the wake is driven by the completion's arrival rather than a timer, so it cannot be raised a cycle early and reaches the ready stage a cycle after a timed wake would (OA-1). 1 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring."
     },
     {
@@ -1198,7 +1207,7 @@
       "value": 1,
       "status": "provisional",
       "decided_at": "IS's revs 164 and 170 (IS-24); DA tab rev 95 (option W)",
-      "source": "ISA v1.9 \u00a75.9 (O-83): 'CCV_PRIV_WINDOWS = 2^k, k >= 0, is a device constant'; the ISA states no value, so it is the device's; IS-24 proposed 1 to start, which ccv-sim's -priv-windows defaults to",
+      "source": "ISA v1.9 §5.9 (O-83): 'CCV_PRIV_WINDOWS = 2^k, k >= 0, is a device constant'; the ISA states no value, so it is the device's; IS-24 proposed 1 to start, which ccv-sim's -priv-windows defaults to",
       "require": "2 ** clog2(CCV_PRIV_WINDOWS) == CCV_PRIV_WINDOWS",
       "doc": "The 64 KiB windows each thread's O-83 region spans: L = CCV_PRIV_WINDOWS * 64 KiB bytes. The run's base window is W = local_base + %privoff, aligned by the runtime to CCV_PRIV_WINDOWS. MIU interleaves a .global access when rbase(d) >> k == W >> k, d the lowest lane of the issue mask, forms each lane's b = ((rbase(l) - W) << 16) + (rindex(l) << scale) + disp, raises F-ADDR for b outside [0, L), and places lane l's byte at R(ctx) + 128 * (b / 4) + 4l + b % 4, R(ctx) = ((W + CCV_PRIV_WINDOWS) << 16) + ctx * 32 * L. The run's own windows [W, W + CCV_PRIV_WINDOWS) name logical offsets only, so an ordinary access there is F-ADDR. A thread's O-30 frame takes the region's bottom F bytes with R15 = W (O-84); F is the compiler's and the runtime's, never MIU's. ccv-sim takes it as -priv-windows (tools/gen-oracle.sh)."
     },

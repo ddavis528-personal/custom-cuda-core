@@ -162,11 +162,11 @@ private:
     c.decq_warp_max = 0;
     unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop;
     for (const ChanInst &ci : kChanInsts) {
-      if (ci.chan == chanId("ccv_ooe_fet_redirect")) c.redirect_lat = ccv::kLatHop + ci.stages;
-      if (ci.chan == chanId("ccv_ooe_rcu_issue")) c.issue_link = ccv::kLatHop + ci.stages;
-      if (ci.chan == chanId("ccv_rcu_ooe_done")) c.done_link = ccv::kLatHop + ci.stages;
-      if (ci.chan == chanId("ccv_miu_rcu_data")) data_link = ccv::kLatHop + ci.stages;
-      if (ci.chan == chanId("ccv_miu_ooe_cmpl")) cmpl_link = ccv::kLatHop + ci.stages;
+      if (ci.chan == chanId("ccv_ooe_fet_redirect")) c.redirect_lat = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_ooe_rcu_issue")) c.issue_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_rcu_ooe_done")) c.done_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_miu_rcu_data")) data_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_miu_ooe_cmpl")) cmpl_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
     }
     // CCV_LAT_L1_MISS_WAKE is generated from the same links (OI-13), plus
     // the cycle an event-driven wake loses against a timed one (OA's
