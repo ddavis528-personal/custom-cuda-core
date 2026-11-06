@@ -27,6 +27,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - The disk allowance is about 39 GB in all. A gate's build/ needs 5 GB or more, so
   keep swap at 6 GB or less during a gate and delete finished jobs' oracles and
   builds promptly.
+- A watcher's end isn't enough: if RH misses that wake-up, the idle container
+  is reclaimed (11-05: about 8 h lost). With every watcher, also keep a
+  send_later fallback check about 2 h out.
 - A detached job dies when the idle container is reclaimed. Keep a tracked
   background task (e.g. rh-jobs/watch.sh) open while it runs, and make jobs
   resumable.
@@ -45,13 +48,6 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- OI's RI-11 package v2 (OA rev 350, AR rev 298; 11-05 10:41Z): OI's
-  pkg-run.sh and rxsplit.patch in /home/user/rh-jobs/pkg2/, run dir
-  pkg2/run (trees A6 and PK are worktrees of custom-cuda-core). S1 and audit
-  are DONE and sent. CoreMarks via pkg2/all.sh (resumable), progress in
-  pkg2/run/progress, logs in run/out/cm/. Watch it with the pattern
-  "bash [.]/all\.sh". Report a table: from_fetch, check_failures,
-  redirect_wait, st_ld_wait. Nothing to push.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
@@ -67,6 +63,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   the warm time and kill it. Delete bench oracles after each job.
 
 ## Done
+- OI's R49 S1, cmpl_split (job 2) and bit 8 (job 2b), 11-06: all sent; trees,
+  oracles and swap cleared. OI's local-check numbers were at stock params; A6
+  runs at raised latencies.
+- OI's RI-11 package v2 (S1, audit, CoreMark x12) and the rs_cand_ahead audit
+  (11-05 to 06): all sent; trees removed. A reclaim on 11-05 cost about 8 h (see
+  the fallback rule above).
 - OI's RI-11 CoreMark pricing and rs_free_lag audit (11-05): all sent. In
   bit-8 rx_lag runs, V-35 floods past the skeleton's 10,000-line print cap
   (kernel.cpp:33); OI accepted errors == check_failures as proof. The scripts
