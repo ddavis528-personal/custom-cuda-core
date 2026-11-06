@@ -59,8 +59,9 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
    model's default. Tree scratchpad/wc9 (branch oi-c9 on fb52948: knobs patch + wake/rs probe;
    scratchpad/c9/trio-build.sh <tree>). S1 (OI-118, rev 310): C9 +0.370% vs A6 at 8/13, F +1.581%;
    at 7/12 (the baseline again, RA 95, AR 313) C9 +0.444%, F ~+1.95%. C9h costs 0; no RS bypass +0.56%.
-2. OI-114 landed as (b) (OA 369; RH S1 at 0 cost at 192 and 160): pushed ooe_go, rename form 3
-   (registered unmet less last take, arrival 6), model floor_take_lag 1. Row to OA when pushed.
+2. OI-114 landed as (b) (OA 369), model only: the go reads unmet on time (unmet_reg 0; rename's
+   register failed CG-5/CG-3), floor_take_lag 1; rename and go RTL as pushed. RH's S1: 0 cost at 192
+   and 160 (X/Y, Z). Row to OA when pushed.
    (c) measured, for that row: unmet into go 23.9/24.2 at arrival 0, but go's own per-take chain stays
    over (ff 28.5, hv 31.4, px 31.1, pl 30.5, ha 28.8, room_p 26.9, room_g 25.4; 23.1 without fanout);
    rename with the (U-L) register: c_dst/c_src 27.3, po_dst 28.0, q_gname 28.5 (caps 26.9/27.5/28.7).

@@ -258,15 +258,15 @@ for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shi
 done
 # Scarce names (144 rows, a ceiling of 24), where the names' pool binds and
 # the floor term less the go's own take (OI-114) decides takes, a cycle late
-# (OA's revs 358 and 369 (b)): rename registers the unmet and the go reads it
-# less the last take. Its controls take the go's own take in the split cycle
-# (the model's floor_take_lag 0), or keep the names the last take wrote.
+# (OA's rev 369 (b)): the go reads the unmet on time, which holds the names
+# its last take wrote. Its control takes the go's own take in the split
+# cycle as well (the model's floor_take_lag 0).
 if out=$(GO_NAMES=144,24 "$dir/go_tb" 5 2>&1); then
   say "go == model, live, scarce names" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
 else
   say "go == model, live, scarce names" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in floor-take-now no-last-take; do
+for c in floor-take-now; do
   if GO_NAMES=144,24 GO_CONTROL=$c "$dir/go_tb" 3 >/dev/null 2>&1; then
     say "  control $c (go, scarce)" "MISSED"; fail=1
   else

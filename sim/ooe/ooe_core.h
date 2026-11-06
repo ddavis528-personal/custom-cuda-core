@@ -591,7 +591,7 @@ struct Config {
   /// names its own last take wrote (then this take's, as above). It misses
   /// only frees, so it never reserves less than it should hold. 0: the go
   /// reads unmet on time (arriving at 6 NGD).
-  unsigned unmet_reg = 1;
+  unsigned unmet_reg = 0;
   /// OA's response to OI-116 (rev 369 (b)), RH's S1 at 0 cost: 1 takes the
   /// split's floor term less the slot's own take a cycle late, from the
   /// registered unmet less the last take alone, with no subtraction in the

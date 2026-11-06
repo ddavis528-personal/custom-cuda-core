@@ -243,23 +243,16 @@ module ooe_rename #(
   logic [4*(R+1)-1:0] pl_cq03h;
   logic [S*LU-1:0]    unmet_g_cq04h, unmet_p_cq04h, room_g_cq04h, room_p_cq04h;
   logic               pool_en_cq04h;
-  // OI-114's registered form (OA's rev 358): the go reads each slot's unmet
-  // as last cycle's, from this register, less last cycle's take (the
-  // tq_gs/tq_ps register), max(0, U - L), from flops alone (below), so its
-  // change lead is the pool's and the pool's a cycle late.
-  logic [S*LU-1:0]    unmet_gq_cq05h, unmet_pq_cq05h, unmet_gl_cq05h, unmet_pl_cq05h;
-  logic               pool_en_q_cq05h, unmet_en_cq05h;
-  logic [S*(R+1)-1:0] tq_gs_cq03h, tq_ps_cq03h;   // each slot's lagged take of names (below)
   logic [R-1:0]      lane_v_cq02h;
   logic [R*NC-1:0]   lane_c_cq02h;
   logic [NC*2*R-1:0] wb_cq02h;
   logic [2*R-1:0]    wt_cq02h;
   ooe_go #(.S(S), .R(R), .PA(PA), .LU(LU), .LB(LB), .LT(LT)) u_go (
     .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .px_cq01h(px_cq04h), .pl_cq01h(pl_cq03h),
-    .unmet_g_cq01h(unmet_gl_cq05h), .unmet_p_cq01h(unmet_pl_cq05h), .room_g_cq01h(room_g_cq04h),
+    .unmet_g_cq01h(unmet_g_cq04h), .unmet_p_cq01h(unmet_p_cq04h), .room_g_cq01h(room_g_cq04h),
     .room_p_cq01h(room_p_cq04h), .run_cq01h,
     .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h, .sq_l_cq00h, .dq_ev_cq01h, .rob_en_cq01h,
-    .pool_en_cq01h(unmet_en_cq05h), .take_cq02h, .sel_cq02h, .lane_v_cq02h, .lane_c_cq02h, .wb_cq02h, .wt_cq02h);
+    .pool_en_cq01h(pool_en_cq04h), .take_cq02h, .sel_cq02h, .lane_v_cq02h, .lane_c_cq02h, .wb_cq02h, .wt_cq02h);
 
   // -- The free lists ---------------------------------------------------------
   logic [R-1:0]    galv_cq02h, palv_cq02h;
@@ -645,6 +638,7 @@ module ooe_rename #(
       end
     end
   logic [R:0]       tq_r_cq03h, tq_m_cq03h, tq_g_cq03h, tq_p_cq03h;
+  logic [S*(R+1)-1:0] tq_gs_cq03h, tq_ps_cq03h;
   logic             tq_nz_cq03h, tq_en_cq02h;
   assign tq_nz_cq03h = !tq_r_cq03h[0] || !tq_m_cq03h[0] || !tq_g_cq03h[0] || !tq_p_cq03h[0];
   assign tq_en_cq02h = r1_en_cq02h || tq_nz_cq03h;
@@ -860,33 +854,6 @@ module ooe_rename #(
   // registered sel (a take may come), a registered take, the counters'
   // or pool registers' enable, a slot's occupancy changing.
   assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h;
-  // The registered unmet: each slot's unmet as it stands, clocked on the
-  // pool's lead and the cycle after it; the go reads it less the last take
-  // of its names, never below none, formed from the two registers.
-  function automatic logic [LU-1:0] less_oh(input logic [LU-1:0] u, input logic [R:0] oh);
-    less_oh = '0;
-    for (int i = 0; i < R + 1; i++)
-      if (oh[i] && u >= LU'(i)) less_oh = less_oh | (u - LU'(i));
-  endfunction
-  always_comb
-    for (int s = 0; s < S; s++) begin
-      unmet_gl_cq05h[s * LU +: LU] = less_oh(unmet_gq_cq05h[s * LU +: LU], tq_gs_cq03h[s * (R + 1) +: R + 1]);
-      unmet_pl_cq05h[s * LU +: LU] = less_oh(unmet_pq_cq05h[s * LU +: LU], tq_ps_cq03h[s * (R + 1) +: R + 1]);
-    end
-  always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) pool_en_q_cq05h <= 1'b0;
-    else          pool_en_q_cq05h <= pool_en_cq04h;
-  end
-  always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) begin
-      unmet_gq_cq05h <= '0;
-      unmet_pq_cq05h <= '0;
-    end else if (unmet_en_cq05h) begin
-      unmet_gq_cq05h <= unmet_g_cq04h;
-      unmet_pq_cq05h <= unmet_p_cq04h;
-    end
-  end
-  assign unmet_en_cq05h = pool_en_cq04h | pool_en_q_cq05h;
 `ifdef CCV_CHECK_RENAME
   // Free names on time: the pool less every slot's held, on time.
   function automatic logic [7:0] names_on(input logic [S*HW-1:0] u, input logic [R:0] tq, input int n, input int w);
