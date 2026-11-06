@@ -857,8 +857,14 @@ breaks them fails in any bench, not only the one that knew the rule.
     over the block's whole hierarchy (its hardening wrapper, the block and
     its repeaters, every common module once for each place it is used), the
     flops its modules auto-waived must stay within 2% of the block's flops.
-    Explicit waivers do not count here. This applies once a block top is RTL,
-    not a generated stub; today none is.
+    So do the flops of a lead waiver (`"lead": true`, any rule): a module
+    may waive the flops that hold an interface lead signal, on the condition
+    that they fit its block's 2% at final construction (Daniel's ruling on
+    RI-15, 2026-11-06, RA rev 87; RI-17), and this is that check. So do the
+    flops of a credit waiver (`"credit": true`), flops that capture a
+    credit-return pulse (Daniel on RI-14, 2026-11-06, RA rev 88). Only those
+    flops take the marks. Other explicit waivers do not count here. This applies once a
+    block top is RTL, not a generated stub.
 - **By waiver, last.** `rtl/cg-waivers.json` holds one entry per module,
   rule and register, with who wrote it, when, and why the rule cannot or
   should not be met, citing what was measured. Waivers are the last resort:

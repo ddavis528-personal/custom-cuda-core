@@ -112,7 +112,10 @@ control pulses and flopped reset count only there, against its wrapper's 2%
 capture before the end was flopped; 2026-11-05); a link stage's lead slice
 counts against the repeater's own allowance. Past that,
 refactor; a waiver (`rtl/cg-waivers.json`, written by the module's owner) is
-the last resort.
+the last resort. A waiver of flops that hold an interface lead signal is
+marked `"lead": true`, one of flops capturing a credit-return pulse
+`"credit": true`, and their flops still count against the block's 2% (DA's
+rulings on RI-15 and RI-14, 2026-11-06).
 RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:
 its owner removes an entry once the module passes (CG-5 and RST-1 per
 register or port).
@@ -200,8 +203,9 @@ directory: one started earlier, or elsewhere, gets "agent type not found".
 Then spawn a general-purpose agent with the file's `model` and its body as
 the prompt, followed by the task; it works the same.
 
-The session compacts at 400k tokens (`autoCompactWindow` in
-`.claude/settings.json`; DA, 2026-10-30, set once every agent had a handoff).
+The session compacts at 350k tokens (`autoCompactWindow` in
+`.claude/settings.json`; DA, 2026-10-30, set at 400k once every agent had a
+handoff; 350k since 2026-11-06, to keep the week's usage within its limit).
 None of `.claude/settings.json` or `.claude/agents/` reaches a session that
 runs from `/home/user` until the session-home skill installs it there;
 `tools/setup-session-home.py --check` says whether it has.
