@@ -65,3 +65,20 @@ hazard. There are seven: lane-missing, lane-early, byp-age3, guard-hazard, v60,
 mig-row-order, restore-zero. (lead-rsrc-swap went with lead_r_src0/1:
 R0 and R1 are read in A from the payload's phys_src, RA-39 as OA rev 336
 took it.) The run ends in `rcu-test: PASS (0 failures)`.
+
+## The kill drain at kernel level (M4)
+
+`CCV_RCU_KILL_DRAIN_CUT=<n>` shortens the model's kill drain by n cycles
+(`Config::kill_drain_cut`). The spec asks for the kill checker to run at
+KILL_DRAIN − 1 and fail on some kernel whose kill lands with an SFU op in
+flight. On 2026-11-05 no kernel could make it fail. At cut 1 and at cut 15
+(drain 0), every kill kernel passed with no check failure: roconst, rolimit,
+rolaunch, rogated, rokill, addrhigh, addrneg and divchw. Each kill follows a
+memory fault, and RCU is already idle when it lands (the model's `idle` event
+comes 6 to 13 cycles before `kill_drain`). The bound is therefore not
+exercised at kernel level, and its margin is the whole drain (15 at these
+links). Two things would close it: a kernel whose fault lands with an SFU op
+in flight, and a checker that fails on any done or register write of a
+killed warp after RCU's ack. Both are TI's (see the RI tab).
+RTL holds the bound in `test/rcu/kill_tb.cpp` instead, where
+`--control drain` (KILL_DRAIN − 1) must fail.
