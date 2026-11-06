@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 368, AR 308, TI 349, OI 306, IS 190, CP 155, DA 114,
+Conventions 17, OA 368, AR 308, TI 354, OI 306, IS 190, CP 155, DA 115,
 RA 91 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
 OOE doc rev 367. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
@@ -58,6 +58,9 @@ release 2e95216; tag refused (known). session-home --check ok at 350k.
    Bar (DA verbatim 11-06): "Bring to me between 0.2 and 0.5 percent impact.  Also come to me if
    we cannot meet the default module boundary NGD rule without the receiver flop". AR's reading:
    gain <=0.2% stays flopped; 0.2-0.5% DA; >0.5% owning architect; needs-flop-for-12-NGD -> DA.
+   DA 115 (AR recorded in DA's session), DA verbatim: "Yes, over 0.5% the architect can approve,
+   if we also meet the NGD module rules". TI 354: OOE's own no_flop entry (cmpl+hint only) lands
+   with ccv_ooe's RTL top; until then OOE stays in the DPI all-list (no crossing moves).
    R49 dropped (S1 +0.276% cost); ooe_rs stays 45 rows, 26.2 on cap.
 -11. DONE 11-06 (installed, --check ok). DA APPROVED in OA's session 11-06, verbatim "I approve the token limit" (DA tab 112):
    once TI's autoCompactWindow 350000 push (2d445f5, TI-51) is merged into this branch
