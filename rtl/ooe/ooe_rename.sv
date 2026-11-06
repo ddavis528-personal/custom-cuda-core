@@ -248,7 +248,7 @@ module ooe_rename #(
   // tq_gs/tq_ps register), max(0, U - L), from flops alone (below), so its
   // change lead is the pool's and the pool's a cycle late.
   logic [S*LU-1:0]    unmet_gq_cq05h, unmet_pq_cq05h, unmet_gl_cq05h, unmet_pl_cq05h;
-  logic               pool_en_q_cq05h, pool_eq_cq05h;
+  logic               pool_en_q_cq05h, unmet_en_cq05h;
   logic [S*(R+1)-1:0] tq_gs_cq03h, tq_ps_cq03h;   // each slot's lagged take of names (below)
   logic [R-1:0]      lane_v_cq02h;
   logic [R*NC-1:0]   lane_c_cq02h;
@@ -259,7 +259,7 @@ module ooe_rename #(
     .unmet_g_cq01h(unmet_gl_cq05h), .unmet_p_cq01h(unmet_pl_cq05h), .room_g_cq01h(room_g_cq04h),
     .room_p_cq01h(room_p_cq04h), .run_cq01h,
     .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h, .sq_l_cq00h, .dq_ev_cq01h, .rob_en_cq01h,
-    .pool_en_cq01h(pool_eq_cq05h), .take_cq02h, .sel_cq02h, .lane_v_cq02h, .lane_c_cq02h, .wb_cq02h, .wt_cq02h);
+    .pool_en_cq01h(unmet_en_cq05h), .take_cq02h, .sel_cq02h, .lane_v_cq02h, .lane_c_cq02h, .wb_cq02h, .wt_cq02h);
 
   // -- The free lists ---------------------------------------------------------
   logic [R-1:0]    galv_cq02h, palv_cq02h;
@@ -881,12 +881,12 @@ module ooe_rename #(
     if (rst_r01h) begin
       unmet_gq_cq05h <= '0;
       unmet_pq_cq05h <= '0;
-    end else if (pool_eq_cq05h) begin
+    end else if (unmet_en_cq05h) begin
       unmet_gq_cq05h <= unmet_g_cq04h;
       unmet_pq_cq05h <= unmet_p_cq04h;
     end
   end
-  assign pool_eq_cq05h = pool_en_cq04h | pool_en_q_cq05h;
+  assign unmet_en_cq05h = pool_en_cq04h | pool_en_q_cq05h;
 `ifdef CCV_CHECK_RENAME
   // Free names on time: the pool less every slot's held, on time.
   function automatic logic [7:0] names_on(input logic [S*HW-1:0] u, input logic [R:0] tq, input int n, input int w);
