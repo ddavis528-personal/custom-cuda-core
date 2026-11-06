@@ -148,6 +148,8 @@ struct Op {
   /// its done's aux.
   bool ret = false;
   uint32_t ret_to = 0;
+  bool call = false;   ///< kBranch: a call, its link in imm (RA-18, imm_kind 6)
+  unsigned ilen = 1;   ///< the instruction length code
   uint32_t lanes = 0;
 };
 
@@ -158,13 +160,14 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   u.pc = 0x1000 + 4 * (tid & 0xffff);
   u.group_mask = o.mask;
   u.fetch_epoch = epoch;
-  u.ilen = 1;
+  u.ilen = o.ilen;
   for (unsigned i = 0; i != 3; ++i) u.src[i] = o.src[i];
   u.dst = o.dst;
   u.w = o.w;
   u.backward = o.backward;
   u.cause = o.cause;
   u.shape.srd = o.srd;
+  u.shape.call_link = o.call;
   u.fmt_rsv = o.fmt_rsv;
   u.fmt_opnd = o.fmt_opnd;
   for (unsigned i = 0; i != o.nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
@@ -2341,6 +2344,48 @@ bool ctaSlot(bool control) {
     for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
   }
   return ok;
+}
+
+/// RA-18 (OI-112): a call's link, imm_kind 6. OOE puts pc + bytes(ilen),
+/// the next instruction's address, in the issue's imm, and keeps the
+/// branch offset in its own record for the target. Each ilen code.
+bool callLink(bool control) {
+  bool ok = true;
+  for (unsigned ilen : {0u, 1u, 2u}) {
+    Config c = baseConfig();
+    c.inject_no_call_link = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op b; b.k = kBranch; b.call = true; b.ilen = ilen; b.taken = false; b.pred_taken = false; p.push_back(b);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(5, 0, p);
+    bool seen = false;
+    for (unsigned k = 0; k != 200 && !seen; ++k) {
+      e.step();
+      for (const Issue &is : e.log.back().issues)
+        if (is.warp == 5 && is.send_imm && !is.copy && is.res == Issue::kRcuOp) {
+          seen = true;
+          const uint32_t want = uint32_t(0x1000 + 4 * (is.tid & 0xffff) + 2 * (ilen + 1));   // makeUop's pc
+          if (is.imm != want) {
+            ok = false;
+            if (!control) EXPECT(false, "ilen %u: the link %08x, want %08x", ilen, is.imm, want);
+          }
+        }
+    }
+    if (!control) EXPECT(seen, "ilen %u: the call never issued", ilen);
+    if (!control) for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+void testCallLink() {
+  g_test = "call link (imm_kind 6)";
+  callLink(false);
+  const bool held = callLink(true);
+  std::printf("  %-24s %s\n", "control no-call-link", held ? "MISSED" : "caught");
+  g_test = "call link (control)";
+  EXPECT(!held, "a call issued with its branch offset for its link should fail the check");
 }
 
 /// O-64 (OA's rev 177): srd #2, %lanectx: OOE substitutes the hardware warp
@@ -5554,6 +5599,7 @@ int main(int argc, char **argv) {
   testCtaSlot();
   testReleaseDrop();
   testLaneCtx();
+  testCallLink();
   testWidthFromTable();
   testMlcTrigger();
   {

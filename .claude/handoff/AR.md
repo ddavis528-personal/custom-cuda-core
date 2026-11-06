@@ -70,8 +70,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 295, OA 345, TI 334, RA 79 (tab 9851686b-2b0a), RI 9, IS 189, CP 153, OI 274, DA 108,
-  Conventions 17, RA 65, RI 2 (tab 8e4547bc-c469, new 2026-11-02).
+  record): AR 307, OA 363, TI 349, RA 88 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 306, DA 111,
+  Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
+  RI-15 decided (DA 109, option (c)); RI-14 credit pulses charged to block 2% (DA 110).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
   ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
@@ -145,7 +146,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
 - Specs doc DJeg9Hh8rkPDecq4hrAz35 (tab revs after the 11-04 review): RCU
   eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (56), RAU 090626bb-a50c (60),
   PCA 94b3a0ea-7224 (17), FET 75d75b94-1614 (47), DEC 1d1fdcda-739e (19),
-  DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (14),
+  DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (16),
   SYU 1f8b4472-68c1 (8), CRU 5a50fd80-2423 (7), MLC f8873ac6-e74d (3), EXB
   56392a06-86a6 (4), OOE 515615a9-8caf (OA's).
 - Spec review of the no-session blocks done 11-04 (Daniel asked; AR rev
@@ -216,6 +217,114 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    AR 293-295): OOE fits, ~1,200 of ~1,309 per instance (ooe_rob_w x4), so
    the source-end no-flop is margin only. TI: no tool change needed if
    allowed (links.json no_flop). N=1,2 unbounded conservation running.
+   OI 291 priced: AR params +1.66% S1; all OOE inputs flopped +3.49%;
+   miu_ooe_cmpl +1.60, dec_ooe_uop +1.29, rcu_ooe_done +0.62 alone. AR row
+   296-297: OOE's ends have logic before first flop, so zero-cycle needs a
+   SECOND no-flop kind (<=12 NGD input, link_n 0, abutting blocks), ASKED
+   DANIEL; AR recommends (b) for rcu_done + dec_uop, miu_cmpl only if the
+   floorplan abuts MIU/OOE (Q-42 plan puts them on opposite RCU ends: add
+   MIU-OOE cmpl distance as the first floorplan number).
+   OA 347-348 agree the second kind; OA asks CMPL_HINT 3. AR row 298:
+   HINT 3 derives FILL_NOTICE 5 (DCU cost on noticed refills), covers refill
+   wakes only; OI splits miu_cmpl's +1.60% by cause and prices LANE 7/SFU 12
+   (lane_rcu_res zero-cycle, RA confirms MW cone <=12); ooe_rcu_issue stays
+   flopped (R read 18.4). All goes to Daniel with AR 296's question.
+   OA 349 (re:RA-83): package for DA, run as one config: flopped = issue,
+   minor OOE inputs, cmpl if hint 3; zero-cycle = lane_res, rcu_done,
+   dec_uop. Agrees with AR 298; no AR answer owed. Read RA-83 at next sweep.
+   RA 84: lane_rcu_res feeds LW/SW (not MW), cones ~7 -> qualifies (LANE 7,
+   SFU 12 if Daniel allows); miu_rcu_data does NOT (guard forward ~21; needs
+   2/23 split or lose forward; RI measures) -> stays flopped, no latency
+   moves. LANE spec rev 16 corrected MW -> LW/SW.
+   RI-16 (RI 17): asked skeleton to model boundary flops; SV-hosted D fails
+   (done 8 vs class-0 6). AR row 299: flop never charged by itself (one of
+   HOP's two); D = wrapper flops in series with DPI hosts' registers (AR 287
+   (1)), fails by construction (TI may keep as negative control); no skeleton
+   change; price via bases: N AR bases (+1.17% S1 RCU model), Z1 RCU_ADDR 5,
+   Z2 LANE 7/SFU 12, Z3 none. miu_rcu_data pred guard fwd 16.2 > 12.
+   AR 300 (re:RI-16, TI 337) SUPERSEDES 299 and 286's booking: TI's link
+   term adopted. Crossing = HOP + link_n + bnd_rx (1 flopped rx end, 0
+   no-flop; source-end wrapper flop free). Bases block-internal: LANE 7,
+   SFU 12, RCU_ADDR 5 (PF-47 1, not 2). Defaults: lane_res/issue/miu_data
+   flopped at RCU; rcu_lane_ops and rcu_miu_addr (MIU stub) no-flop ->
+   LANE 8, SFU 13, WAKE 17 (13; issue term cancels, +1 = miu_data end),
+   CMPL 19 (15) + bnd_rx(miu_ooe_cmpl), LAT_RCU 3, V-35 base+bnd(issue)
+   +bnd(done). D valid; RI's skeleton ask stands; pricing = links.json
+   no_flop edits. Done: LANE spec rev 21, MIU spec rev 59 (.11865/.12185/
+   .12255), PF-47 row + bullet. Waits: TI link term in gen-params/gen-skel/
+   checkers, then RI/OI price D, N, Z1-Z3 and OA 349's package.
+   TI 339 / RA 85 took AR 300. AR 301: default ends = TI's option 1 (three
+   RCU rx ends flopped; others as built, no-flop today; owners flip their own
+   ends by row to TI). CCV_LAT_RCU_ADDR stays = base (5; PF-47 1); RA's
+   "RCU_ADDR 6/2" counts from the landing; if gen-params adds bnd_rx inside
+   it, WAKE/CMPL read 18/20 (asked TI to assert 17/19/13/15). TI's bases
+   push (LANE_BASE 8, SFU 13, ADDR_BASE 6) lands first, then the term push
+   reverts bases to 7/12/5.
+   OI-299 (RI-11 package v2, rx_lag knobs): hint/RAU/demote/SYU rx flops
+   free; global-load cmpl flop +0.74% S1/+0.82% cm32; H3 params (HINT 3,
+   FILL 5, MLC_HIT_MAX 40, LANE 7/SFU 12) +0.56% S1, +1.4-1.9% CoreMark over
+   A6. AR 302: take free flops; decision = miu_ooe_cmpl's OOE end (no-flop
+   keeps HINT 2/FILL 4/MLC 39, H3 overcharges); asked OI for A6L (A6+LANE7/
+   SFU12) and A6H (A6+hint bundle), OA/OI for cmpl rx cone depth. Then (a)
+   A6L vs (b) Pn2048 goes to Daniel with AR 296.
+   OA 355 (pre-302) recommends H3 + all rx flops but cmpl, cmpl first-kind
+   if OI's RTL confirms; asked AR to confirm first kind at OOE. AR 303: yes
+   (enable from OOE's own flops per CG-5: hit at L1_CMPL after issue, miss
+   via hint lead; nothing before the register; else ungated = lead slice in
+   OOE 2%). H3 wrong for no-flop cmpl (HINT 3 bundle only for flopped cmpl;
+   LANE 7/SFU 12 need AR 296 second kind). Asked OA for any cmpl-independent
+   reason for HINT 3. OA 351/352 send ooe_rs 45-49 rows area to DA.
+   OA 357: no such reason; hint end must match cmpl's (shared treatment).
+   AR 304 corrects 303: package = RAU/demote/SYU flopped (free); cmpl+hint
+   both first kind (HINT 2/FILL 4/MLC 39) if OI's RTL confirms both cones,
+   else both flopped + HINT 3 bundle (Pn2048); LANE 7/SFU 12 only w/ AR 296.
+   Hint capture is a lead slice in OOE 2% either way (no new area).
+   OI-300: A6L=A6, A6H=H3 (base already LANE 7/SFU 12): H3 cost is all hint
+   bundle. As built neither cmpl nor hint is first kind (cmpl/hint_idx 14.1
+   in ooe_wake, cm_tag 22.1 in ooe_rob_w, decoded before first reg); capture
+   CG-5 clean via flopped valid leads. AR 305: (b) both flopped ~+2% over A6
+   (S1 +1.95, cm32 +2.24, cm128 +1.84); first kind free iff three readers fit
+   25 NGD with decode in front: L1 hit->spec timer, ROB done->retire, and
+   (AR's add) hint_idx->wake (late hint = lead 1). OI probes; then (a) vs
+   (b) + AR 296 go to Daniel.
+   OI-302 probe (RTL 93457a4 unpushed): capture free; spec hit bypass fits
+   ooe_sched 23.7 but ooe_rs 28.5 (fix (a) confirm late / (b) free cone 21);
+   ROB done an edge late (C1, audit s0n0 +0.8%); hint wake 22.8 fits.
+   AR 306: first kind for cmpl+hint (HINT 2 stands), rs OA's call (AR leans
+   (a) if <=0.1% S1), C1 accepted subject to RH price. Waiting RH prices of
+   C1 + rs(a); then package (a) vs (b) ~+2% + AR 296 to Daniel.
+   OI-303 corrects 302: rs (a) is C2 (+3.7% audit, sched mirrors rs free) -
+   AR 306 (2)'s lean is moot; rs bypass off rmask, entry held a cycle, fits
+   24.0, free (C8). First kind = C9 (C8 + ROB a cycle late): audit +0.8/
+   +1.0/+1.2/+0.1%. Needs OA, AR to take the form once RH prices C9 on S1/
+   CoreMark (job 2b). When it lands: AR row taking the form, noting 306 (2)
+   superseded, then the package to Daniel (C9 vs (b) ~+2%, with AR 296).
+   OI-115/OA-361: C9 S1 +0.444% over A6, cm128 -0.45%, cm32 -0.08%; flopped
+   (H3+P) ~+1.95% S1; C8 0; R49 S1 +0.276% (OA's separate RS-rows item).
+   AR 307 endorses C9, caveat: A6 base carries LANE 7/SFU 12 (= AR 296
+   second kind) - shifts all options alike. OA 363 RULED C9 (under 0.5%,
+   OA's call): cmpl+hint first kind, HINT 2/FILL 4/MLC 39 stand, flopped
+   not taken. MIU spec rev 60 (.12255) and PF-47 bullet updated. Still
+   Daniel's: AR 296 (lane_rcu_res zero-cycle => LANE 7/SFU 12).
+   DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
+   = RI's (c): module-level CG waivers for interface lead-signal flops OK,
+   charged to block's per-instance 2%, validated at final construction; RA
+   82 (d) withdrawn. rcu_kill's 45 credit pulses NOT covered (CG-1 waiver
+   then DA 110: charged to block 2% too, marked "credit"). TI: check-cg block
+   total includes waived leads and credit pulses.
+   DA 111 (TI-51, recorded by AR from TI rev 345, no verbatim quote): (1)
+   compact at 350k, not 400k: DANIEL APPROVED (2026-11-06, in AR's session)
+   re-running the session-home skill once TI's push (2d445f5) is merged, so
+   /home/user/.claude takes 350000. Out by TI's 1a9a3e8/0ce9c12 on
+   ccr-183cc441-doowtf and claude/custom-cuda-core-infra-6msg93 (full gate
+   PASS): the sweep that merges them re-runs the session-home skill (the
+   install, not just --check) under that approval.
+   TI 349 (TI-51 done, 0ce9c12): block CG/NGD from module units + structural
+   read. Can't catch: cross-boundary synthesis (conservative) and one net's
+   loads as a whole (short by <=1 INV stage). No AR spec says "timed whole"
+   (checked Common tab, Partitioning); nothing owed. (2) Block NGD/CG limits as sum
+   of parts from module units (no whole-block synthesis; replaces "timed
+   whole"): every instantiated module needs a unit at each param set.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
