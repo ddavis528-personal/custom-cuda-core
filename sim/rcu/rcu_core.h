@@ -269,8 +269,9 @@ struct Hooks {
   /// merged with its old destination.
   virtual void rResult(const Issue &, uint32_t /*lanes*/, const Word & /*gnew*/, uint32_t /*em*/,
                        bool /*pw*/, uint32_t /*pval*/) {}
-  /// A branch or ret outcome, as its done carries it.
-  virtual void branch(const Issue &, const Done &) {}
+  /// A branch or ret outcome, as its done carries it, and the lanes the op
+  /// executed on (a ret's pass: the same on every replay of that pass).
+  virtual void branch(const Issue &, const Done &, uint32_t /*active*/) {}
   /// A restore's predicate row was written: the warp's maps are its restore map's.
   virtual void restored(const MapMsg &) {}
   /// A coverage bin (Kernel::hit): lane_byp, pred_copy.
