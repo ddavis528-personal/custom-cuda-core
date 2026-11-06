@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=46 exported=2026-11-06 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 46 on 2026-11-06 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=47 exported=2026-11-06 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 47 on 2026-11-06 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -38,7 +38,7 @@ Each sequential module flops `rst_n` once for itself (RST-1). Reset values: Done
 
 ## Port NGD budgets (`<module>.ngd.json`)
 
-RA writes these files with the implementation. A block input starts at its interface flop with 0 NGD (every block boundary has a flop on each side; Conventions tab), so a module input fed from a block port has the whole 25 to spend, its fanout across the RCU included. The 12-a-side default applies only between modules inside the RCU; no NGD is budgeted across a block boundary. Ports not listed keep the default 12 a side.
+RA writes these files with the implementation. A block input starts at its interface flop with 0 NGD (every block boundary has a flop on each side; Conventions tab), so a module input fed from a block port has the whole 25 to spend, its fanout across the RCU included. The 12-a-side default applies only between modules inside the RCU; no NGD is budgeted across a block boundary. Ports not listed keep the default 12 a side. There is no whole-RCU synthesis (Daniel, 2026-11-06, TI-51). The block's NGD and clock-gating limits are a sum of parts from module runs, so these port budgets are the contract the RCU is assembled from. Every RCU module needs a check-cg / check-ngd unit at each parameter set the RCU instantiates it with: the full-size slice (ROWS = CCV\_P\_PHYS\_REGS) and every other module at its defaults. The block's 2% is the sum of its modules' take per instance.
 
 | Path | Driver side | Receiver side | Total | Notes |
 | --- | --- | --- | --- | --- |

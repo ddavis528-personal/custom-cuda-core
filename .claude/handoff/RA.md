@@ -138,7 +138,11 @@ to include waived lead flops in check-cg block total. Partition rev 45. Pongs: a
 TI rev 343: check-cg charges "lead": true waivers to the block 2%. DANIEL 2026-11-06: "Yes, charge the credit
 pulses to the block's 2% too" (RA rev 88; TI/RI/AR notified; AR to record in DA tab). Both of Daniel's open
 rulings now made. Partition rev 46.
-Bookmarks: OA 347, RA 88, RI 17, TI 343, DA 109, AR 301, OI 290, Conventions 17, CP 154.
+TI-51 (DA 2026-11-06): (1) compact at 350k - AFTER merging TI's next push, re-run session-home installer
+(/home/user/.claude takes 350000; needs Daniel's approval here). (2) no whole-block synthesis: block NGD/CG =
+sum of parts from module runs; port budgets are the contract; every module needs a unit at each instantiated
+parameter set (Partition rev 47). TI rev 344: check-cg charges "credit": true too. DA 110 records RA 88.
+Bookmarks: OA 347, RA 88, RI 17, TI 346, DA 110, AR 301, OI 290, Conventions 17, CP 154.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
