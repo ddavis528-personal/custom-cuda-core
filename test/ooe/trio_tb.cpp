@@ -90,6 +90,8 @@ void trioConfig(Config &c) {
   c.req_rows_late = true;
   c.miss_lead = true;
   c.ready_rep_late = true;
+  if (const char *s = std::getenv("TRIO_CS")) c.cmpl_split = unsigned(std::atoi(s));
+  if (const char *s = std::getenv("TRIO_RX")) c.rx_lag = unsigned(std::atoi(s));
 }
 /// The ret hold's run (OA's rev 293): testRetHold's settings over the trio's.
 void trioRetConfig(Config &c) {

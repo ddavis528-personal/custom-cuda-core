@@ -304,12 +304,13 @@ module ooe_rs #(
   // group ahead's: rename's lookup ran a stage earlier, on names that may
   // since have left their entries (ooe_rename, slice 2).
   logic [N-1:0] rmask_cq02h;
-  assign rmask_cq02h = valid_cq02h & ~free_cq02h & ~lga_cq02h;
+  logic [N-1:0] hcq_cq02h, hc_cq02h, hh_cq02h;   // C9's hit-confirm hold (below)
+  assign rmask_cq02h = valid_cq02h & ~(conf_cq02h & ~hc_cq02h | sqf_cq01h) & ~lga_cq02h;
   always_comb begin
-    g_cq02h = grants(valid_cq02h, req_cq01h);
-    g1_cq02h = grants(vc1_cq02h, req_cq01h);
-    g2_cq02h = grants(vc2_cq02h, req_cq01h);
-    g3_cq02h = grants(vc3_cq02h, req_cq01h);
+    g_cq02h = grants(valid_cq02h | hh_cq02h, req_cq01h);
+    g1_cq02h = grants(vc1_cq02h | hh_cq02h, req_cq01h);
+    g2_cq02h = grants(vc2_cq02h | hh_cq02h, req_cq01h);
+    g3_cq02h = grants(vc3_cq02h | hh_cq02h, req_cq01h);
     {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{rmask_cq02h}}, row_code_cq01h, grp_dep_cq01h,
                                   grp_code_cq01h, lg_cq02h, prv_dep_cq01h, prv_code_cq01h,
                                   valid_cq02h & ~lga_cq02h);
@@ -511,6 +512,22 @@ module ooe_rs #(
       cva_cq01h    <= cmpl_l_cq00h;
       cvb_cq02h    <= cva_cq01h != '0;
       sq_en_cq01h  <= sq_l_cq00h;
+    end
+  end
+
+  // C9 (OA rev 372; the model's cmpl_split 8): a confirmation an L1 hit
+  // makes, in its cycle or the next (hc: the hit's bypass from the raw
+  // completion, cmn, and its register, hq), frees its entry but stays off
+  // rename's row mask, and the entry stays held from allocation (hh) and
+  // rename's room through the next cycle.
+  assign hc_cq02h = cmn_cq01h | hcq_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      hcq_cq02h <= '0;
+      hh_cq02h <= '0;
+    end else begin
+      hcq_cq02h <= cmn_cq01h;
+      hh_cq02h <= conf_cq02h & hc_cq02h;
     end
   end
 
