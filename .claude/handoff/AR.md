@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 310, OA 365, TI 351, RA 89 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 112,
+  record): AR 312, OA 365, TI 351, RA 91 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 113,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
@@ -324,6 +324,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    AR 310: TI's check-ngd rule for RTL tops confirmed, amended: refuse a
    hidden stage per WHOLE port (valid/lead incl.), mirrored at flopped rx ends;
    fix = no_flop. Needs TI.
+   DA 113 (from RA 91's verbatim quote of Daniel): zero-cycle rx ends only
+   for performance, IPC decides; lane_rcu_res stays flopped (LANE 8/SFU 13);
+   closes AR 296 the same way. Bar >0.2% S1 is RA's proposal: ASK DANIEL.
+   AR 311: corrected RA 90 - credit unflopped through a flopped rx end is
+   depth 5 not 4 (miu_rcu_data +4,456 over no-flop). Needs RA.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
