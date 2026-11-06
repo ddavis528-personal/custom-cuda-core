@@ -581,6 +581,12 @@ struct Config {
   /// OI-114's control (OA's rev 334): the split's floor term keeps the
   /// names the slot's own take in the split cycle wrote.
   bool inject_floor_pre_take = false;
+  /// OI-114's registered form (OA's rev 358): ooe_rename registers each
+  /// slot's unmet floor, so the go reads last cycle's and takes from it the
+  /// names its own last take wrote (then this take's, as above). It misses
+  /// only frees, so it never reserves less than it should hold. 0: the go
+  /// reads unmet on time (arriving at 6 NGD).
+  unsigned unmet_reg = 1;
   /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
   /// register keeps its old width (the model before this).
   bool inject_sibling_uncommitted = false;
@@ -1808,6 +1814,9 @@ public:
     bool pin_set = false;
     std::vector<std::vector<uint16_t>> adm;  ///< per slot, its heads' admission bits, oldest first
     std::vector<unsigned> run, ret, unmet_g, unmet_p;
+    /// unmet_reg 1: each slot's last take's names, GPR and predicate (the
+    /// go subtracts them from the registered unmet).
+    std::vector<unsigned> lt_g, lt_p;
     std::vector<uint8_t> reach, hold;
     std::vector<uint8_t> occ;                 ///< per slot, occupied (not free)
     std::vector<unsigned> took;               ///< per slot
@@ -1996,6 +2005,8 @@ private:
   std::vector<std::array<unsigned, 4>> share_reg_;   ///< fits_stale 6: the allowances split for the next cycle
   std::vector<std::array<unsigned, 4>> share_hold_;  ///< fits_stale 6: and as split, before the split cycle's own takes (the pool's held)
   std::vector<std::array<unsigned, 2>> split_floor_; ///< fits_stale 6: each slot's floor term at the split, GPR and predicate (OI-114)
+  std::vector<std::array<unsigned, 2>> unmet_now_;   ///< unmet_reg: each slot's unmet floor this cycle (registered for the next)
+  std::vector<std::array<unsigned, 2>> last_take_;   ///< unmet_reg: the names each slot's last take wrote
   std::vector<std::array<unsigned, 4>> pend_a_, pend_b_;  ///< fits_stale 7: splits in flight, two cycles and one from use
   std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
   std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take

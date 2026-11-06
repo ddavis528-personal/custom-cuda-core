@@ -257,18 +257,21 @@ for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shi
   fi
 done
 # Scarce names (144 rows, a ceiling of 24), where the names' pool binds and
-# the floor term less the go's own take (OI-114) decides takes; its control
-# keeps the names that take wrote in the term.
+# the floor term less the go's own take (OI-114) decides takes; its controls
+# keep the names that take wrote in the term, or (the registered unmet, OA's
+# rev 358) the names the last take wrote.
 if out=$(GO_NAMES=144,24 "$dir/go_tb" 5 2>&1); then
   say "go == model, live, scarce names" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
 else
   say "go == model, live, scarce names" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-if GO_NAMES=144,24 GO_CONTROL=floor-pre-take "$dir/go_tb" 3 >/dev/null 2>&1; then
-  say "  control floor-pre-take (go, scarce)" "MISSED"; fail=1
-else
-  say "  control floor-pre-take (go, scarce)" "caught"
-fi
+for c in floor-pre-take no-last-take; do
+  if GO_NAMES=144,24 GO_CONTROL=$c "$dir/go_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (go, scarce)" "MISSED"; fail=1
+  else
+    say "  control $c (go, scarce)" "caught"
+  fi
+done
 
 # ooe_rob, the ROB (slices 1 and 2, OI-85), driven from the model's ROB log
 # (Core::robLog) a model cycle behind, with retire_lag 1: its retirements,
