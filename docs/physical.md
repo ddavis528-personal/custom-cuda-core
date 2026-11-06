@@ -27,9 +27,17 @@ link's distance, `BOUNDARY` the block's own boundary register, built here
 instead of in the block, at the block's side of the end: at a source end the
 sender's last flop, at a destination end the receiver's first, for every
 signal (valid, payload, lead and wake forward; credit and stall back). They
-are the two flops `CCV_RT_ABUT` already counts, so no crossing, round trip or
-credit depth changes, and they are never in series with a block's own: a
-block with flopped ends drives and takes its ports with logic. A boundary
+are never in series with a block's own: a block with flopped ends drives and
+takes its ports with logic. A flopped RECEIVING end adds one cycle to its
+crossing, `bnd_rx` (AR's revs 300 and 301): a crossing is `CCV_LAT_HOP +
+link_n + bnd_rx`, in `params/ccv_params.json`'s derives (`bnd_rx('channel')`)
+and in both hosts' links, and a block's own latency base never holds it. A
+flopped sending end adds none forward: it replaces the sender's own output
+register (AR's rev 285). `CCV_RT_ABUT` counts both flops for a block that
+takes and drives the ports with logic; in front of a block that still
+registers its own inputs and credit, as every DPI host does, a flopped
+receiving end is one stage more each way, so the hosts' checkers
+(`ROUND_TRIP`, `TIMEOUT_N`) and credit depth count it as a link stage. A boundary
 stage is built exactly as a link stage is. `BOUNDARY = 0` is the zero-cycle
 option, for an end listed in `params/links.json` `no_flop` (below).
 `STAGES + BOUNDARY = 0` is wires, used only for a feedthrough the floorplan
