@@ -3,7 +3,8 @@
 // ungated, and it holds still when idle. With the flopped reset and valid,
 // 6 loose flops, within the fixed allowance. Also the small finding the block
 // budget fixtures (cg_fx_blk_*) absorb or do not, and, read with
-// CG_FX_MISREAD, the flop-count cross-check's control. tools/check-cg.py --selftest.
+// CG_FX_MISREAD, another design: a unit of that read stands for no instance of
+// the block's (the block budget's coverage control). tools/check-cg.py --selftest.
 module cg_fx_small (
   input  logic        clk,
   input  logic        rst,
