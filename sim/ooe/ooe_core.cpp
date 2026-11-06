@@ -34,7 +34,7 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"share_return", &share_return},
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"share_return", &share_return},
       {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
@@ -4761,7 +4761,8 @@ void Core::rename() {
   // writes in the warp's first k heads, k its take), never below none. Held
   // misses that take until next cycle, so the term split from it alone
   // would count those names twice.
-  if (cfg_.fits_stale == 6 && shares_on_ && split_floor_.size() == slot_.size() && !cfg_.inject_floor_pre_take)
+  if (cfg_.fits_stale == 6 && shares_on_ && split_floor_.size() == slot_.size() && !cfg_.inject_floor_pre_take &&
+      !cfg_.floor_take_lag)
     for (unsigned si = 0; si != slot_.size(); ++si)
       for (unsigned b = 0; b != 2; ++b) {
         const unsigned less = std::min(split_floor_[si][b], ren_slot_[si][2 + b]);

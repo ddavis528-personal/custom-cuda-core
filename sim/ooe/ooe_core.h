@@ -592,6 +592,12 @@ struct Config {
   /// only frees, so it never reserves less than it should hold. 0: the go
   /// reads unmet on time (arriving at 6 NGD).
   unsigned unmet_reg = 1;
+  /// OA's response to OI-116 (rev 369 (b)), RH's S1 at 0 cost: 1 takes the
+  /// split's floor term less the slot's own take a cycle late, from the
+  /// registered unmet less the last take alone, with no subtraction in the
+  /// split cycle (ooe_go with no per-take term). 0: the in-cycle
+  /// subtraction (OI-114 as first built; go_tb's control floor-take-now).
+  unsigned floor_take_lag = 1;
   /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
   /// register keeps its old width (the model before this).
   bool inject_sibling_uncommitted = false;

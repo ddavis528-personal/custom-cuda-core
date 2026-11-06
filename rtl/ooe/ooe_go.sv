@@ -638,47 +638,6 @@ module ooe_go #(
                   ((first_w_cq02h[s] == (f != 0)) & ue_cq01h[(s * 4 + c) * (R + 1) + w] & tw_cq02h[(c * NF + f * (R + 1) + w) * R + v - 1] &
                    with_w_cq01h[s] & ~rbusy_cq01h);
         end
-  // The names' shares per own take k (OI-114, OA's rev 334): the floor term
-  // is the warp's unmet floor less the names its k heads taken now write,
-  // never below none (its held misses that take until next cycle). Per
-  // slot, credit (GPR, predicate) and k, the floor less those writes,
-  // one-hot to R, from the heads alone and the floor; the share as above,
-  // the take picking next cycle (the fits per k).
-  logic [S*(R+1)*2*(R+1)-1:0] uk_cq01h;         // [s][k][b][w]
-  logic [S*(R+1)*2*R-1:0]     sgk_cq02h;        // [s][k][b][v - 1]
-  logic [2*(R+1)-1:0]         pk_cq01h;         // the k heads' writes, one-hot to R, per credit
-  logic [LU-1:0]              uu_cq01h;
-  logic [3:0]                 pw_cq01h;
-  always_comb
-    for (int s = 0; s < S; s++)
-      for (int k = 0; k < R + 1; k++)
-        for (int b = 0; b < 2; b++) begin
-          pw_cq01h = '0;
-          for (int h = 0; h < k; h++)
-            if (h < H) pw_cq01h = pw_cq01h + (b == 0 ? 4'(ha_cq01h[(s * H + h) * PA + 8] | ha_cq01h[(s * H + h) * PA + 3]) :
-                                                         4'(ha_cq01h[(s * H + h) * PA + 4]));
-          for (int p = 0; p < R + 1; p++) pk_cq01h[b * (R + 1) + p] = pw_cq01h == 4'(p);
-          uu_cq01h = b == 0 ? unmet_g_cq01h[s * LU +: LU] : unmet_p_cq01h[s * LU +: LU];
-          for (int w = 0; w < R + 1; w++) begin
-            uk_cq01h[((s * (R + 1) + k) * 2 + b) * (R + 1) + w] = 1'b0;
-            for (int p = 0; p < k + 1; p++)
-              uk_cq01h[((s * (R + 1) + k) * 2 + b) * (R + 1) + w] = uk_cq01h[((s * (R + 1) + k) * 2 + b) * (R + 1) + w] |
-                  (pk_cq01h[b * (R + 1) + p] & (w == 0 ? uu_cq01h <= LU'(p) : w == R ? uu_cq01h >= LU'(R + p) :
-                                                                        uu_cq01h == LU'(w + p)));
-          end
-        end
-  always_comb
-    for (int s = 0; s < S; s++)
-      for (int k = 0; k < R + 1; k++)
-        for (int b = 0; b < 2; b++)
-          for (int v = 1; v < R + 1; v++) begin
-            sgk_cq02h[((s * (R + 1) + k) * 2 + b) * R + v - 1] = 1'b0;
-            for (int f = 0; f < 2; f++)
-              for (int w = 0; w < R + 1; w++)
-                sgk_cq02h[((s * (R + 1) + k) * 2 + b) * R + v - 1] = sgk_cq02h[((s * (R + 1) + k) * 2 + b) * R + v - 1] |
-                    ((first_w_cq02h[s] == (f != 0)) & uk_cq01h[((s * (R + 1) + k) * 2 + b) * (R + 1) + w] &
-                     tw_cq02h[((2 + b) * NF + f * (R + 1) + w) * R + v - 1] & with_w_cq01h[s] & ~rbusy_cq01h);
-          end
   // The allowances to hold next cycle: min(R, the shares' sum). The shares
   // split the pool whole among the warps with a head, so the sum is the pool
   // (the names' plus those warps' unmet floors); none under a restore.
@@ -748,8 +707,8 @@ module ooe_go #(
             ok_cq02h = hv_cq01h[s * H + k + m - 1] && !ser_cq01h && rm_cq01h[k + m - 32'(npf_cq01h)] &&
                        sg_fit(sg_cq02h[(s * 4 + 0) * R +: R], nd_cq01h[0 +: 4]) &&
                        sg_fit(sg_cq02h[(s * 4 + 1) * R +: R], nd_cq01h[4 +: 4]) &&
-                       sg_fit(sgk_cq02h[((s * (R + 1) + k) * 2 + 0) * R +: R], nd_cq01h[8 +: 4]) &&
-                       sg_fit(sgk_cq02h[((s * (R + 1) + k) * 2 + 1) * R +: R], nd_cq01h[12 +: 4]) &&
+                       sg_fit(sg_cq02h[(s * 4 + 2) * R +: R], nd_cq01h[8 +: 4]) &&
+                       sg_fit(sg_cq02h[(s * 4 + 3) * R +: R], nd_cq01h[12 +: 4]) &&
                        room_g_cq01h[s * LU +: LU] >= LU'(pre_cq01h[0 +: 4]) + LU'(nd_cq01h[8 +: 4]) &&
                        room_p_cq01h[s * LU +: LU] >= LU'(pre_cq01h[4 +: 4]) + LU'(nd_cq01h[12 +: 4]);
             ser_cq01h = ser_cq01h | a_cq01h[6];
