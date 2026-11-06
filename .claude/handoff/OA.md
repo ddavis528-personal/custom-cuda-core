@@ -40,13 +40,17 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 368, AR 308, TI 354, OI 306, IS 190, CP 155, DA 115,
+Conventions 17, OA 369, AR 308, TI 354, OI 308, IS 190, CP 155, DA 115,
 RA 91 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
 OOE doc rev 367. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
 release 2e95216; tag refused (known). session-home --check ok at 350k.
 
 ## Open work (most urgent first)
+-14. OA 369 re:OI-116 (OI-114 go form): (a) raise ooe_go caps REFUSED (ratchet falls; room_g 25.4,
+   unmet_g 29.9 >25 = DA rule); rename has no slack. (c) first: go's unmet arrival budget 0 + keep
+   copies of unmet flops (fanout); if caps hold -> push, no S1 cost. Else (b): per-take term
+   registered a cycle late, RH prices S1 w/ PHYS160; <0.5% mine, >0.5% DA. OI branch oi-floor114 1f3bb3c.
 -13. OA 365/366: zero-cycle ooe_rcu_issue -> AR 308: stays flopped, no splits (gain only
    L1_CMPL -1, V-35 -1; L1_WAKE does NOT move - my 365 claim wrong). OI phys_src depth low
    prio. OA 364: C9 ports must be 0 NGD, <=4 pins (sum of parts boundary); OOE units per param set.
