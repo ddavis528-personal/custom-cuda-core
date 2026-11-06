@@ -1702,17 +1702,29 @@ def inner_helpers():
 # -lib, its modules ports alone: elaborating a big leaf costs about as much
 # as reading it (ooe_rs: 29 s to read and elaborate, 28 more at its unit's
 # parameters, 30 for proc), and only its instances' parameters are needed,
-# which its parent's elaboration evaluates.
+# which its parent's elaboration evaluates. Modules read whole are read
+# -defer, elaborated once, at their instances' parameters. The front end
+# dominates: ooe_rename's hierarchy with ooe_freelist read whole and its
+# leaves -lib took 311 s, of which proc about 4%; no synthesis runs.
 
 
-def read_cmds(files, blackbox=(), params=None, top=None, defines=(), lib=()):
+def read_cmds(files, blackbox=(), params=None, top=None, defines=(), lib=(), defer=False):
     """The read every flow here and in check-ngd shares: the files, those
     in `lib` read -lib (ports only), the library cells (`blackbox`, -lib
-    too), and `params` set on `top`."""
+    too), and `params` set on `top`. `defer` leaves the modules read whole
+    unelaborated until `hierarchy` derives each at its instances'
+    parameters, instead of elaborating each at its defaults first."""
     ds = " ".join("-D%s" % d for d in defines)
     full = [f for f in files if f not in lib]
-    cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
-            % (ds, " ".join(["rtl/ccv_assert_pkg.sv"] + full))]
+    if defer:
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv"
+                % ds]
+        if full:
+            cmds.append("read_verilog -sv -formal -defer %s -Irtl/include -Irtl/generated %s"
+                        % (ds, " ".join(full)))
+    else:
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
+                % (ds, " ".join(["rtl/ccv_assert_pkg.sv"] + full))]
     for f in [f for f in files if f in lib] + list(blackbox):
         cmds.append("read_verilog -sv -lib %s -Irtl/include -Irtl/generated %s" % (ds, f))
     if params:
@@ -1804,7 +1816,7 @@ class Structure:
         work = os.path.join(BUILD, "struct_" + name)
         os.makedirs(work, exist_ok=True)
         jf = os.path.join(work, "struct.json")
-        self.cmds = read_cmds(files, blackbox, params, top, defines, lib) + [
+        self.cmds = read_cmds(files, blackbox, params, top, defines, lib, defer=True) + [
             "hierarchy -top %s" % top] + STRUCT_CMDS
         t0 = time.time()
         r = yosys_json(self.cmds, jf)
