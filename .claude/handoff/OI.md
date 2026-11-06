@@ -32,7 +32,7 @@ Read every tab since the bookmarks; merge every remote branch that is
 ahead (not release) into wt, gate, push; pongs; pings on Fridays only;
 `tools/setup-session-home.py --check` (TI-50; on a mismatch ask DA to
 approve the install again, never reinstall unasked).
-- Session settings installed 2026-10-31 and again 2026-11-03 (DA approved both): /home/user/.claude.
+- Session settings installed 2026-10-31, 11-03 and 11-06 (350k window; DA approved each): /home/user/.claude.
   The compact hook prints THIS checkout's .claude/handoff/OI.md: keep
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
@@ -72,7 +72,6 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
 5. DA 111b / OA 364: a unit for every OOE module at each instantiated param set
    (ooe_rob_w x4 by WID; ooe_ratread once rename has it).
 6. OA 365 (low): ooe_sched phys_src0/1 output depth.
-7. Ask DA: approve `python3 tools/setup-session-home.py` (--check fails after the 350k merge).
 
 ## Done 11-06
 - Slice 3 (memop commit, OA rev 362) pushed e491f22 (SCOPED PASS 22/22). Final fix: the
