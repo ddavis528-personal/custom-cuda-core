@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 308, OA 365, TI 349, RA 89 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 112,
+  record): AR 309, OA 365, TI 350, RA 89 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 112,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
@@ -313,6 +313,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    issue bnd_rx CANCELS in L1_WAKE (and LAT_RCU, lane) - only L1_CMPL -1 and
    V-35 done -1 move; reopen if OI prices those >0.2% S1 (then to Daniel
    with AR 296). OA/RA had claimed WAKE 13->12 (old base booking).
+   AR 309 (re:TI 350, bnd_rx pushed 17720a0): no derive term for a source-end
+   flop; on a DPI block it is a series stage -> generators should refuse it
+   (route src:1 instead). +2 RT/credit per flopped rx end agreed for hosts;
+   asked TI to add bnd_rx to CCV_CREDIT_DEPTH + links.json 2N texts, confirm
+   rescue +2*bnd_rx, and say which check holds RTL src-end flops. RTL: credit
+   need not pass the rx boundary flop (depth 5 not 6; miu_rcu_data +2 entries
+   = 8,912 flops) - RA to price when RCU's RTL top lands. Needs TI, RA.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
