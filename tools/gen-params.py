@@ -377,7 +377,11 @@ def selftest(d):
              ("CCV_P_BR_CKPTS", "value", 7, "CCV_P_W_FETCH_EPOCH"),
              # TI-8: a bypass no faster than the register file is refused,
              # and the bypass select's age field follows CCV_LAT_LANE.
-             ("CCV_LAT_LANE_BYP", "value", 7, "CCV_LAT_LANE_BYP"),
+             # Equal to CCV_LAT_LANE, whatever it is (8 since the interface
+             # flops' bases, AR's rev 287).
+             ("CCV_LAT_LANE_BYP", "value",
+              next(p["value"] for p in d["params"] if p["name"] == "CCV_LAT_LANE"),
+              "CCV_LAT_LANE_BYP"),
              ("CCV_P_W_LANE_BYP_AGE", "value", 1, "CCV_P_W_LANE_BYP_AGE"),
              ("CCV_LAT_LANE", "derive",
               "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]

@@ -5,7 +5,7 @@
 
 A session with several repositories runs from /home/user, not a repo root,
 so it never reads <repo>/.claude/settings.json or <repo>/.claude/agents: the
-400k compaction window, the handoff hook and the subagents all sat unused
+compaction window, the handoff hook and the subagents all sat unused
 (2026-10-31). This writes them where that session looks, its project
 directory's .claude/ (--target, default $CLAUDE_PROJECT_DIR or /home/user):
 
