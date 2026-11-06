@@ -70,9 +70,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 306, OA 357, TI 339, RA 86 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 304, DA 108,
+  record): AR 306, OA 357, TI 339, RA 87 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 304, DA 109,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
-  RA 82/RI-15 (lead hold charged to block 2%, option (d)) awaits DA.
+  RI-15 decided (DA 109, option (c)); rcu_kill CG-1 pulses still await DA.
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
   ooe_wake's allocation lead, then TI reapplies CCV_LAT_RCU_ADDR_BASE 1
@@ -299,6 +299,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    +1.0/+1.2/+0.1%. Needs OA, AR to take the form once RH prices C9 on S1/
    CoreMark (job 2b). When it lands: AR row taking the form, noting 306 (2)
    superseded, then the package to Daniel (C9 vs (b) ~+2%, with AR 296).
+   DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
+   = RI's (c): module-level CG waivers for interface lead-signal flops OK,
+   charged to block's per-instance 2%, validated at final construction; RA
+   82 (d) withdrawn. rcu_kill's 45 credit pulses NOT covered (CG-1 waiver
+   still open for Daniel). TI: check-cg block total includes waived leads.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
