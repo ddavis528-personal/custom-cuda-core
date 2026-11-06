@@ -113,8 +113,9 @@ capture before the end was flopped; 2026-11-05); a link stage's lead slice
 counts against the repeater's own allowance. Past that,
 refactor; a waiver (`rtl/cg-waivers.json`, written by the module's owner) is
 the last resort. A waiver of flops that hold an interface lead signal is
-marked `"lead": true`, and its flops still count against the block's 2%
-(DA's ruling on RI-15, 2026-11-06).
+marked `"lead": true`, one of flops capturing a credit-return pulse
+`"credit": true`, and their flops still count against the block's 2% (DA's
+rulings on RI-15 and RI-14, 2026-11-06).
 RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:
 its owner removes an entry once the module passes (CG-5 and RST-1 per
 register or port).
