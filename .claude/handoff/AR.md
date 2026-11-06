@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 306, OA 357, TI 339, RA 88 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 304, DA 110,
+  record): AR 306, OA 357, TI 346, RA 88 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 304, DA 111,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
   RI-15 decided (DA 109, option (c)); RI-14 credit pulses charged to block 2% (DA 110).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
@@ -305,6 +305,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    82 (d) withdrawn. rcu_kill's 45 credit pulses NOT covered (CG-1 waiver
    then DA 110: charged to block 2% too, marked "credit"). TI: check-cg block
    total includes waived leads and credit pulses.
+   DA 111 (TI-51, recorded by AR from TI rev 345, no verbatim quote): (1)
+   compact at 350k, not 400k: after merging TI's next push (2d445f5), ASK
+   DANIEL to approve re-running tools/setup-session-home.py (session-home
+   skill) so /home/user/.claude takes 350000. (2) Block NGD/CG limits as sum
+   of parts from module units (no whole-block synthesis; replaces "timed
+   whole"): every instantiated module needs a unit at each param set.
 0. RA (session_01QPk2jzLmjd3MWXjayVUy9d) round 1 answered, AR rev 262
    (RA-2..12); round 2 answered, AR rev 263 (RA-13 dispatch_fault dead, TI
    deletes via RA's row; RA-14 kill: RCU acks after a param drain = issue
