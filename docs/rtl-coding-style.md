@@ -857,8 +857,11 @@ breaks them fails in any bench, not only the one that knew the rule.
     over the block's whole hierarchy (its hardening wrapper, the block and
     its repeaters, every common module once for each place it is used), the
     flops its modules auto-waived must stay within 2% of the block's flops.
-    Explicit waivers do not count here. This applies once a block top is RTL,
-    not a generated stub; today none is.
+    So do the flops an allowance waiver takes (CG-1's written every cycle,
+    CG-4's ungated: `max_flops`): the waiver excuses its module, never its
+    block (Daniel's ruling on RI-15, 2026-11-06; RI-17). Other explicit
+    waivers (CG-2, CG-3, CG-5, RST-1) do not count here. This applies once a
+    block top is RTL, not a generated stub.
 - **By waiver, last.** `rtl/cg-waivers.json` holds one entry per module,
   rule and register, with who wrote it, when, and why the rule cannot or
   should not be met, citing what was measured. Waivers are the last resort:

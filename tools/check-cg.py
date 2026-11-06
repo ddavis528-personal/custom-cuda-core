@@ -1474,6 +1474,7 @@ class Finding:
     def __init__(self, rule, module, regs, msg, unit=None, flops=0, budgetable=False):
         self.rule, self.module, self.regs, self.msg, self.unit = rule, module, set(regs), msg, unit
         self.flops, self.budgetable = flops, budgetable
+        self.waiver = None
         self.status = "open"
         self.inputs, self.cone = set(), None    # CG-5: input ports and cone depth
         self.scenario, self.pct = None, None    # CG-3 on a gate: where, and its DCGE
@@ -1929,30 +1930,45 @@ def unit_elaborate(u, known, skew=()):
 def block_budget(findings, parts, known):
     """What the module budgets took still counts against each block's
     CCV_CG_BUDGET_PCT, per instance over the block's hierarchy, its
-    hardening wrapper's included, and so do its repeaters' control pulses.
-    Returns the blocks' lines and the blocks over it."""
-    took = [f for f in findings if f.status in ("module", "wrapper")]
+    hardening wrapper's included, and so do its repeaters' control pulses
+    and what an allowance waiver (CG-1, CG-4: max_flops) takes: a waiver
+    excuses the module, never the block (DA's ruling on RI-15, 2026-11-06;
+    RI-17). Returns the blocks' lines and the blocks over it."""
+    took = [f for f in findings if f.status in ("module", "wrapper") or allowance_waived(f)]
     lines, fails = [], []
     for name, top, files, bbs in parts:
         el = elaborate(name, top, files, bbs, known)
         budget = el["total"] * BUDGET_PCT / 100.0
-        used, ctl, items = 0, 0, []
+        used, ctl, wvd, items = 0, 0, 0, []
         for f in took:
             n = took_flops(el, f)
             if n:
                 used += n
                 ctl += n if f.status == "wrapper" else 0
+                wvd += n if f.status == "waived" else 0
                 items.append((n, f))
+        extra = ["%d of them repeater control" % ctl] if ctl else []
+        extra += ["%d of them allowance-waived" % wvd] if wvd else []
         lines.append("block budget: %-8s %6d flops, %.1f allowed, %d auto-waived in its modules"
                      "%s" % (name, el["total"], budget, used,
-                             " (%d of them repeater control)" % ctl if ctl else ""))
+                             " (%s)" % "; ".join(extra) if extra else ""))
         if used > budget:
-            worst = ", ".join("%s %s (%d)" % (f.module, "/".join(sorted(f.regs)), n)
+            worst = ", ".join("%s %s (%d%s)" % (f.module, "/".join(sorted(f.regs)), n,
+                                                ", waived" if f.status == "waived" else "")
                               for n, f in sorted(items, key=lambda x: -x[0])[:3])
-            fails.append("block %s: %d flops auto-waived in its modules, over its %g%% of %d "
-                         "flops (%.1f); largest: %s" % (name, used, BUDGET_PCT, el["total"],
-                                                        budget, worst))
+            fails.append("block %s: %d flops auto-waived in its modules%s, over its %g%% of %d "
+                         "flops (%.1f); largest: %s"
+                         % (name, used, " (%d by allowance waivers)" % wvd if wvd else "",
+                            BUDGET_PCT, el["total"], budget, worst))
     return lines, fails
+
+
+def allowance_waived(f):
+    """A finding an allowance waiver took (CG-1's registers written every
+    cycle, CG-4's ungated flops): its flops still count against the block."""
+    w = getattr(f, "waiver", None)
+    return (f.status == "waived" and w is not None and f.rule in ("CG-1", "CG-4")
+            and f.budgetable and "max_flops" in w)
 
 
 _ARRIVALS = {}
@@ -2077,6 +2093,7 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
                                                               w["target"], why))
             else:
                 f.status = "waived"
+                f.waiver = w
                 # A gain since the waiver was written: its floor may tighten.
                 if f.rule == "CG-3" and f.scenario is not None:
                     at = float(w["measured_pct"][f.scenario])
@@ -2589,7 +2606,7 @@ def selftest():
         ws = [dict(w) for w in waivers]
         fails, _ = policy(fs, {m: mods[m] for m in mods_in if m in mods}, us, ws,
                           ratchet or {}, baseline=baseline, parts=parts,
-                          known=set(mods) | {"cg_fx_blk_ok", "cg_fx_blk_over"},
+                          known=set(mods) | {"cg_fx_blk_ok", "cg_fx_blk_over", "cg_fx_blk_wv"},
                           fratchet=fratchet, fbaseline=fbaseline)
         return fails, fs
 
@@ -2655,6 +2672,21 @@ def selftest():
     fails, _ = run_policy(small, parts=[p_over])
     expect(any("block fx_over" in x and "over its" in x for x in fails),
            "a block over its 2% with its modules' auto-waivers passed")
+    #     An allowance waiver excuses its module, never its block (DA's
+    #     ruling on RI-15; RI-17): d_q's 16 flops, waived in cg_fx_form,
+    #     put a 176-flop block over its 3.5; without the waiver the finding
+    #     stands in the module and the block takes nothing of it.
+    p_wv = ("fx_wv", "cg_fx_blk_wv", ["test/cg/fixtures/%s.sv" % m for m in
+                                      ("cg_fx_wide", "cg_fx_form", "cg_fx_blk_wv")], [])
+    w_d = dict({"module": "cg_fx_form", "rule": "CG-1", "target": "d_q", "why": "control",
+                "by": "TI", "date": "2026-11-06"}, **d_most)
+    fails, fs = run_policy(("cg_fx_form", "cg_fx_wide"), [w_d], parts=[p_wv])
+    expect(any(f.status == "waived" for f in has("CG-1", "cg_fx_form", "d_q", fs))
+           and any("block fx_wv" in x and "by allowance waivers" in x for x in fails),
+           "a block over its 2%% with an allowance waiver's flops passed: %s" % fails)
+    fails, _ = run_policy(("cg_fx_form", "cg_fx_wide"), parts=[p_wv])
+    expect(not any("block fx_wv" in x for x in fails),
+           "a block was charged a finding no waiver took: %s" % fails)
     # 15. The block budget's flop counts, from netlists nothing replays,
     #     agree with the replayed ones: for every fixture, totals and what the
     #     module budgets took; and a module the elaborated read takes
