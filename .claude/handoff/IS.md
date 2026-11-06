@@ -51,7 +51,7 @@ the rules above, gated; pings on Fridays; report in a few lines.
 Conventions 17, AR 308, OA 366, IS 190, TI 349, OI 306, CP 155, DA 112, RA 89, RI 21.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
-Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH (check pongs Saturday 11-07). Next pings Friday 2026-11-13.
+Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged 11-06 (Saturday's check is a formality). Next pings Friday 2026-11-13.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
 
@@ -61,6 +61,8 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
+- TI-51 done: merged 2d445f5 (full gate PASS 43cb80ea), re-ran
+  setup-session-home.py with Daniel's approval; 350k installed, --check exit 0.
 - 2026-11-06 sweep: nothing for IS. DA 109/110 (lead CG-5 waivers and credit
   pulses on the receiving block's 2%), DA 111/112 (350k window; sum of parts).
   AR 296 (second no-flop end kind) and the C9 package wait on Daniel.
@@ -79,10 +81,6 @@ Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
   A new agent RH has a handoff on core (ccr-c22116ce-1vzyjg). CP's snapshot d9ddd2c builds O-83 and O-84; TI pinned it.
 
 ## Open work (most urgent first)
-0. TI-51 (DA 2026-11-06): compaction 400k -> 350k. After merging TI's 2d445f5
-   (next sweep, full gate), re-run tools/setup-session-home.py: APPROVED by
-   Daniel 2026-11-06 ("Yes approve"), once, after that merge; answered re:TI-51 at IS rev 190. Block limits
-   are now sum of parts (no whole-block synthesis); IS owns no block.
 1. TI-49 (2) and (3): OA rules on quieter notices and the register-reader
    subagent; follow the skill once it changes.
 2. IS-14 item 2 (redux) waits on CP; item 3 (position hints) waits on
