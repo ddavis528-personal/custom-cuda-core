@@ -1,0 +1,2290 @@
+//===-- ooe_core.h - the OOE microarchitecture, port-agnostic --*- C++ -*-===//
+//
+// The Stage 4b timing model of OOE: decode queue, rename (GPR and predicate
+// RATs, RAT checkpoints, a global free list with per-slot floor and
+// ceiling), unified reservation stations split by class, the 2-bit-cell
+// dependency matrix with per-pair bypass wakes, oldest-first select with a
+// rotating warp tie-break, transitive cancel, four per-slot ROBs, squash in
+// ROB order, deferred free, demotion, kill, restore and faults.
+//
+// The design is docs/design-snapshots/ooe-microarchitecture.md (the live doc
+// wins); every policy the doc leaves open is decided in docs/ooe-model.md,
+// and nothing here is a number without a parameter behind it there.
+//
+// This class knows no channel, no Bits and no testbench. It takes decoded
+// inputs and produces decoded outputs, one cycle() per clock; the port
+// adapter (ooe_block.cpp) packs and unpacks them at the swap boundary. The
+// split exists so every recovery path -- squash, cancel, demotion, kill,
+// restore -- has a unit test (ooe_test.cpp) long before a stub can reach it,
+// and so the RTL (4c) has a reference with the same seams.
+//===----------------------------------------------------------------------===//
+#ifndef CCV_OOE_CORE_H
+#define CCV_OOE_CORE_H
+
+#include "ccv_params.h"
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <map>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace ccv {
+namespace ooe {
+
+constexpr unsigned kArchGprs = ccv::kGprs;      ///< 16
+constexpr unsigned kArchPreds = ccv::kPreds;    ///< 4
+constexpr unsigned kWarpIds = ccv::kWarpContexts;
+constexpr uint32_t kFullMask = 0xffffffffu;
+constexpr unsigned kNoEntry = ~0u;
+
+// ---- configuration --------------------------------------------------------------
+//
+// Every default comes from params/ccv_params.json. A field with no parameter
+// behind it is marked KNOB: a sweep variable with a documented default
+// (docs/ooe-model.md, "Knobs without a parameter"), owed a parameter by the
+// top-level session before the RTL hard-codes anything.
+struct Config {
+  unsigned slots = ccv::kTier1Warps;              ///< tier-1 warps, one ROB each
+  unsigned rob_depth = ccv::prov::kRobDepth;
+  unsigned retire_per_rob = ccv::kRetirePerRob;
+  unsigned issue_width = ccv::kIssueWidth;        ///< ccv_ooe_rcu_issue rate
+  unsigned memop_width = ccv::kIssueWidth;        ///< ccv_ooe_miu_memop rate
+  unsigned retire_msgs = ccv::kIssueWidth;        ///< ccv_ooe_miu_retire rate
+  unsigned rename_width = ccv::kIssueWidth;       ///< doc: "4 uops per cycle"
+  unsigned rs_rcu = ccv::prov::kRsRcu;
+  unsigned rs_miu = ccv::prov::kRsMiu;
+  unsigned rs_warp_cap = ccv::prov::kRsWarpCap;   ///< 0 or >= both classes = no cap
+  unsigned decq = ccv::prov::kDecq;
+  /// 0 or >= decq = no limit. Form (b) of TI-46 (DA tab rev 96): OOE refuses
+  /// no uop for a per-warp reason, so in the skeleton, where FET holds the
+  /// share as credits, the block sets it 0; the unit benches, with no FET,
+  /// keep the cap as their stand-in for the credits.
+  unsigned decq_warp_max = ccv::prov::kDecqWarpMax;
+  unsigned ckpts = ccv::prov::kBrCkpts;
+  unsigned phys_regs = ccv::prov::kPhysRegs;
+  unsigned pred_regs = ccv::prov::kPredRegs;
+  /// The free lists' candidate buffer and refill banks (OA's response
+  /// OI-38); fl_buf 0 is the earlier rotating-pointer list. To be raised as
+  /// parameters if they stay (TI's response of 2026-10-16).
+  unsigned fl_buf = 8;
+  unsigned fl_banks = 4;
+  /// The fanout plan's pricing (OA's revs 318-321). fl_free_lag 1, the
+  /// free lists' scan (a), two-step: a free reaches the free bits an edge
+  /// later, so a name is reusable a cycle later. fl_direct 1 (with fl_buf
+  /// 0), scan (b), banked: no candidate buffer; each of fl_banks banks gives
+  /// at most one entry a cycle, the first free at or after its pointer, in
+  /// a rotating bank order, so a free is allocatable the cycle after it and
+  /// a bank can run dry while others hold names.
+  unsigned fl_free_lag = 0;
+  bool fl_direct = false;
+  /// fl_two_step 1: scan (a) as ooe_freelist builds it, each bank's
+  /// find-first registered and appended at the next edge (FreeVec::refill2).
+  bool fl_two_step = true;
+  /// rs_free_lag 1: ooe_rs's free-entry candidates a cycle ahead; an entry
+  /// freed in a cycle is held (allocation and rename's room) through the
+  /// next. decq_free_lag 1: ooe_decq's likewise, a slot freed in a cycle
+  /// counted held through the next as well.
+  unsigned rs_free_lag = 0;
+  unsigned decq_free_lag = 1;   // DA, OA rev 327: ooe_decq builds it
+  unsigned ren_floor = ccv::prov::kRenFloor;
+  unsigned ren_ceil = ccv::prov::kRenCeil;
+  unsigned pred_ren_floor = ccv::prov::kPredRenFloor;
+  unsigned pred_ren_ceil = ccv::prov::kPredRenCeil;
+  unsigned phys_zero = ccv::prov::kPhysZero;
+  unsigned pred_zero = ccv::prov::kPredZero;
+  unsigned epochs = 1u << ccv::prov::kWFetchEpoch;
+  // Wake latencies: the generated contract (A-47, A-57, A-61, A-63).
+  unsigned lat_rcu = ccv::prov::kLatRcu;
+  unsigned lat_lane = ccv::prov::kLatLane;
+  unsigned lat_lane_byp = ccv::prov::kLatLaneByp;
+  unsigned lat_l1_wake = ccv::prov::kLatL1Wake;
+  unsigned lat_l1_cmpl = ccv::prov::kLatL1Cmpl;
+  /// When an epoch notice has landed in FET: ccv_ooe_fet_redirect's fixed
+  /// latency (A-74). The adapter sets it from the wiring.
+  unsigned redirect_lat = ccv::kLatHop;
+  /// The crossings of ccv_ooe_rcu_issue and ccv_rcu_ooe_done, for the
+  /// arrival-cycle checker on done (V-35): the adapter sets both from the
+  /// wiring, CCV_LAT_HOP + repeater stages (A-63).
+  unsigned issue_link = ccv::kLatHop, done_link = ccv::kLatHop;
+  /// Past L1, dependants wake on the completion (A-46) -- but MIU sends the
+  /// data to RCU and the completion to OOE together, over different links.
+  /// A dependant must reach RCU after the data does, so it wakes this many
+  /// cycles after the completion lands: max(0, ccv_miu_rcu_data crossing -
+  /// ccv_miu_ooe_cmpl crossing - ccv_ooe_rcu_issue crossing + 1). The
+  /// CCV_LAT_L1_MISS_WAKE (OI-13), generated from the links; 0 with no repeaters.
+  unsigned cmpl_wake_delay = ccv::prov::kLatL1MissWake;
+  /// Select's payload-read stage (OA-1, OI-26): a grant leaves on the
+  /// channel this many cycles later. Wakes count from the grant, so the
+  /// stage shifts producer and dependant alike; only the contracts timed
+  /// from the channel (V-35, V-44, the L1 shadow, a copy's landing) add it.
+  /// 0 or 1.
+  unsigned payload_stages = 1;
+  /// Rename's stages (OA-1, OI-29): RAT read, producer lookup, matrix write.
+  /// An entry renamed in cycle t can be selected from t + rename_stages.
+  unsigned rename_stages = 3;
+  /// Demotion trigger thresholds (CSRs, one per trigger; Q18), each its own
+  /// parameter (OI-6); the values wait on OA-8.
+  unsigned demote_fallback = ccv::prov::kDemotionThreshold;
+  unsigned demote_mlc_miss = ccv::prov::kDemotionThresholdMlc;
+  unsigned demote_barrier = ccv::prov::kDemotionThresholdBarrier;
+
+  // -- what the neighbours can do today (docs/ooe-model.md, "S1 modes") -------
+  /// Bypass groups (docs/ooe-model.md, "Bypass groups"; OI-16, Daniel's
+  /// responses OA-4). A producer's lat_class sets its full latency and its
+  /// fastest bypass point; its bypass_group and the consumer's index the
+  /// penalty table. A consumer may issue on the result fast[unit] +
+  /// byp[producer group][consumer group] cycles after the producer's issue,
+  /// if that is under the full latency; kNoByp, or a unit with no fastest
+  /// point (single-time: RCU, warp-collective, loads), means the PRF read.
+  bool bypass = true;            ///< master enable
+  static constexpr unsigned kUnits = ccv::prelim::kPLatClasses;
+  static constexpr unsigned kGroups = ccv::prelim::kPBypGroups;
+  enum : unsigned { kGrpInt = 0, kGrpFp = 1, kGrpAddr = 2, kGrpSfu = 3, kGrpColl = 4, kGrpPred = 5 };
+  static constexpr uint8_t kNoByp = 0xFF;
+  std::array<std::array<uint8_t, kGroups>, kGroups> byp = defaultByp();
+  /// The fastest bypass point per lat_class; 0 for a single-time unit. The
+  /// lane's is lat_lane_byp (CCV_LAT_LANE_BYP). SFU has none until a
+  /// CCV_LAT_SFU_BYP exists (OA's response OI-16), so SFU wakes at its
+  /// full latency.
+  std::array<unsigned, kUnits> fast{};
+  /// Full latency of lat_class codes 4-7: SFU and warp-collective from
+  /// their parameters, the spares 0 (wake on the done).
+  std::array<unsigned, kUnits> unit_lat = {0, 0, 0, 0, ccv::prov::kLatSfu, ccv::prov::kLatCollective, 0, 0};
+  static std::array<std::array<uint8_t, kGroups>, kGroups> defaultByp() {
+    std::array<std::array<uint8_t, kGroups>, kGroups> t;
+    for (auto &row : t) row.fill(kNoByp);
+    const unsigned same = ccv::prov::kLatBypPenSame, intfp = ccv::prov::kLatBypPenIntFp,
+                   sfu = ccv::prov::kLatBypPenSfu;
+    t[kGrpInt][kGrpInt] = t[kGrpFp][kGrpFp] = t[kGrpSfu][kGrpSfu] = uint8_t(same);
+    t[kGrpInt][kGrpFp] = t[kGrpFp][kGrpInt] = uint8_t(intfp);
+    t[kGrpInt][kGrpSfu] = t[kGrpFp][kGrpSfu] = t[kGrpSfu][kGrpInt] = t[kGrpSfu][kGrpFp] = uint8_t(sfu);
+    return t;
+  }
+  unsigned fastOf(unsigned unit) const { return unit == 1 ? lat_lane_byp : fast[unit]; }
+  /// The bypass wake for a pair, in cycles after the producer's issue, or
+  /// 0 for none: the consumer waits the producer's full latency.
+  unsigned bypWake(unsigned unit, unsigned pg, unsigned cg) const {
+    if (unit >= kUnits || pg >= kGroups || cg >= kGroups || byp[pg][cg] == kNoByp) return 0;
+    const unsigned f = fastOf(unit);
+    if (!f) return 0;
+    const unsigned w = f + byp[pg][cg];
+    return w < unitLat(unit) ? w : 0;
+  }
+  /// A unit's full latency: when any reader may issue on its result through
+  /// the register file; 0 if it wakes on its done.
+  unsigned unitLat(unsigned unit) const {
+    return unit == 0 ? lat_rcu : unit == 1 ? lat_lane : unit >= 4 ? unit_lat[unit] : 0;
+  }
+  /// Speculative wake of L1-load dependants at CCV_LAT_L1_WAKE, cancelled on
+  /// a miss (A-46). Off while MIU completes no load at the L1 contract.
+  bool l1_spec = true;
+  // -- narrow registers and lane sections (OI-28 to OI-33, Daniel's 2026-10-08) -
+  /// Sectioned lanes: a register is a slice of a PRF row, named row * 4 +
+  /// position, an op claims the union of its operands' sections widened to
+  /// its unit's minimum, and select grants nine resources (S0-S3, R, P0-P3).
+  /// Off in S1 until OI-32's schema carries positions: names are then rows.
+  bool sectioned = false;
+  /// AR-24's interim (DA tab rev 87; OA's rev 225, AR's rev 174): every
+  /// register a full row at position 0, charged four sections, while each
+  /// operand's width code on the issue and memop stays the register's own
+  /// (the stubs mask the write). Off, a narrow register takes its slice.
+  bool full_rows = false;
+  /// The narrow allocator's form (OI-29, slice 6): 0 searches every row
+  /// the warp owns at each allocation; 1 and 2 are the RTL's candidates,
+  /// one per warp and kind (positions 0-3 for one section, 0 and 2 for
+  /// two), the lowest owned row with those sections free. Each group sees
+  /// them as it starts: a second allocation wanting a candidate the group
+  /// already took tries the next position's, then a fresh row (AR-15); a
+  /// position without one takes a fresh row, then another position's. 1
+  /// finds them on the group's starting state. 2 is ooe_freelist's
+  /// registered find: every free so far, but not last cycle's
+  /// allocations, and a candidate in a row last cycle allocated in is void.
+  /// The default, 2 with the four settings below, is the design (OI-81:
+  /// OA's revs 251 and 252); 0 is the reference the sweep compares with.
+  unsigned cand = 2;
+  /// With cand: every GPR writer takes a row from the free list, as the
+  /// go counts it; a narrow one that takes a candidate instead returns its
+  /// row, a free the next cycle (Rename 2's). Its slot holds the row from
+  /// the take to the return, as rename's held counts it.
+  bool cand_return = true;
+  /// With cand, OI-81 (ii): the lanes independent. A source or merged old
+  /// destination written earlier in the group counts as no narrow
+  /// operand (the home position), and a conflict takes a fresh row.
+  bool cand_indep = true;
+  /// cand 2's age: its find leaves out the last cand_lag groups'
+  /// allocations, and a candidate in a row they allocated in is void
+  /// (ooe_freelist registers Rename 2's allocations: 2).
+  unsigned cand_lag = 2;
+  /// OI-82's reduced form (OA's rev 254, the design): each slot keeps only its home position's two
+  /// candidates (one section at the slot index, two at sections 2(slot % 2)
+  /// up), 8 in all; a narrow destination wanting another position takes a
+  /// fresh row.
+  bool cand_home = true;
+  /// Sectioned: a row returns to the pool a cycle after its last section
+  /// frees, and a returned unused row (cand_return) a cycle later too, its
+  /// slot holding it until then (ooe_freelist registers Rename 2's
+  /// allocations and returns, and returns a row the cycle after it
+  /// empties, unless they wrote it). A free of a register the last group
+  /// allocated waits a cycle too: its sections reach the free list's bits
+  /// a cycle after the free could (a squash's free is registered too).
+  bool ret_late = true;
+  /// Placement of a narrow destination with no narrow source (OA-14):
+  /// 0 the warp's home position, its tier-1 slot index; 1 position 0 for
+  /// every warp; 2 the home position, advanced at each taken backward branch
+  /// from 0; 3 the same, from the slot index (OA-14 leaves the start open);
+  /// 4 the slot index plus the architectural destination (OI-34's own arm).
+  unsigned place = 0;
+  /// OA-13: a load passes older loads of its warp, blocked only by an older
+  /// unissued store, atomic, fence or ordered access. Off: memops issue in
+  /// program order per warp (OI-15).
+  bool loads_pass_loads = false;
+  /// The decode queue's credit return: an entry freed in a cycle takes no
+  /// arrival until the next, so this cycle's arrivals see it still held.
+  /// On (DA's response OI-39), because ooe_decq fits its stage only so.
+  bool decq_late_credit = true;
+  /// A squash's flush of the decode queue is registered and applied an edge
+  /// late (ooe_decq, OA's response OI-58): the flushed entries hold their
+  /// credits one cycle more.
+  bool decq_flush_late = true;
+  /// Rename's take is registered in the decode queue and popped an edge
+  /// late: the taken entries hold their credits one cycle more. On (OA-21,
+  /// DA 2026-10-20), because ooe_decq fits its stage only so.
+  bool decq_take_late = true;
+  /// How a go that lets several warps take in a cycle (rename_one_warp 0,
+  /// or 2 and up) keeps their sum within the shared credits (RS room per
+  /// class, GPR and predicate names), each warp's fits being formed alone
+  /// (OA-21). 0: exact, the model's running credits. 1: each warp's fits
+  /// against the credits less the rename width. 2: one warp takes while any
+  /// shared credit is below the rename width (a registered bit), several
+  /// otherwise. 3: OA-22's registered go, 2 as the RTL can build it from
+  /// registered state alone: rename sees this cycle's RS frees and ROB
+  /// retirements a cycle late wherever they could matter. Short is tested
+  /// on the credits without them, RS RCU against twice the width when a
+  /// candidate head uop is a copy; a short cycle's warp takes without
+  /// them; and a warp's fits count its ROB retirements a cycle late. 2
+  /// (OA-21, DA 2026-10-20: rename's interleaved go forms each warp's fits
+  /// alone, and its exact forms do not fit a stage). The default is 3
+  /// (OA-22, OA 2026-10-20: the go the RTL builds).
+  unsigned fits_conservative = 3;
+  /// OA's response OI-65 (a): rename's per-warp fits are registered a cycle
+  /// ahead, for every take the warp may make, so they see the decode
+  /// queue and the credits as the cycle before left them. A uop is taken
+  /// no sooner than the second cycle after it arrives, and frees (ROB
+  /// retirements; RS frees in the short test) reach the fits two cycles
+  /// late. Off until OA settles OI-65; the sweep measures it. 2, OA's
+  /// (a2): the held heads' fits as 1, but a refill (uops arriving into a
+  /// slot whose held heads do not fill the window) is taken at once and
+  /// re-checked in Rename 1, a failing tail waiting in the skid, which
+  /// costs what not taking it does; ROB retirements a cycle late (ret_n
+  /// reaches the fits in time); the short test on the last cycle's shared
+  /// credits against twice the width (RCU three times with a copy in a
+  /// head), and a short cycle's warp against the shared credits less it.
+  /// 3, OA's per-warp shares (OI-65): as 2, but no short path: each cycle
+  /// every shared credit (as registered, without this cycle's frees) is
+  /// split equally among the warps with a head, the remainder to the first
+  /// in rotation, and each warp admits against its own share. 4, OA's
+  /// stateful shares: each warp keeps its share of each shared credit, its
+  /// own takes lower it; frees, and the shares of warps four cycles without
+  /// a head, form a pool split each cycle equally among the warps with a
+  /// head (the remainder to the first in rotation); the shares and the pool
+  /// sum to the credit, as registered (checked). 5: as 3, the remainder
+  /// given to no warp (the split's add gone; test/ooe/probes/share_probe.sv).
+  /// 6: as 3, as the RTL registers it: a warp admits against an allowance
+  /// split a cycle ahead, with the fits, from the credit no allowance then
+  /// holds, less at most the width (what a cycle can take of any credit),
+  /// so no take counts twice; under one warp each warp's allowance is that
+  /// whole pool. The credits are rename's counters (renCredits).
+  /// 7: OA's stateful shares as the RTL registers them: each warp keeps
+  /// its share of each credit, its takes lower it; the credit no share
+  /// holds (frees, returns) is split each cycle among the warps with a
+  /// head into a register, and reaches a warp's fits a cycle after that, so
+  /// a split is usable two cycles on; a warp share_return cycles without a
+  /// take returns its share (decided on its registered takes, the fits at
+  /// offset 0 formed without it). The credits are rename's counters.
+  unsigned fits_stale = 6;
+  unsigned held_late = 3;   ///< OI-75 (b): cycles of frees rename's held and name counts have not seen
+  bool owed_lag = true;     ///< OI-74 (iii): the pool's floors owed from held before last cycle's takes
+  bool names_pool_lag = true;   ///< OI-76: the names' pool from last cycle's held, less two cycles' takes
+  /// Rename's go admits on what decq holds (slice 4's fits): each uop's
+  /// needs from its decode-time bits alone, so a uop that turns into a
+  /// no-op at rename (a barrier, width or format fault) still counts its
+  /// RS entries and names against its warp's allowances, a GPR write
+  /// counts a name even where the sectioned plan shares a row, and a
+  /// chwidth or barrier uop ends its warp's take for the cycle, faulting
+  /// or not. The counters and the RS, port and name checks stay exact.
+  bool go_static = true;
+  /// Whether RS allocation may take an entry freed in the same cycle
+  /// (same-edge reuse, DA's response OI-39). With confirmation inside
+  /// ooe_rs (OI-45) the free reaches allocation from its own flops at 25.7
+  /// NGD, over the stage, so 0 allocates only entries free at the cycle's
+  /// start. Rename's counters (fits_stale 6) never count a free in its own
+  /// cycle, so only which entry is taken changes.
+  bool rs_same_edge = false;
+  unsigned share_return = 2;   ///< fits_stale 7: cycles without a take before a warp returns its share
+  /// fits_stale 2 to 7: a uop that arrived after the last cycle's start,
+  /// which the registered fits do not hold, is taken (the refill, OA's (a2):
+  /// re-checked in Rename 1 against the state as it stands). false: it
+  /// waits until the fits hold it, as the RTL's fits with no arrival term
+  /// (test/ooe/probes/sharefits_probe.sv, AR 0) do.
+  bool take_young = false;
+  /// A retirement's ROB slot counts in rename's room in its own cycle (the
+  /// fits' ret_n term: test/ooe/probes/fitsk2_probe.sv, RET 1). false:
+  /// under fits_conservative 3 and the shares, a cycle late.
+  bool ret_now = true;
+  /// A copy's request sees its sources' confirmation a cycle late, as the
+  /// composed RTL does (OI-45: ooe_rs decides a confirmation while
+  /// ooe_sched is a model cycle on).
+  bool copy_conf_late = true;
+  /// The request register's enable also takes the allocation lead: a row
+  /// written at an edge enters at the next (ooe_sched, OI-45 (a)).
+  bool req_alloc_lead = true;
+  /// ooe_sched's request register sees ooe_rs's rows and ooe_wake's
+  /// issued bits two cycles late, as the composed RTL does (OI-45: both
+  /// take the grant register an edge after ooe_sched, and a row written at
+  /// an edge reaches the register at the next): a row freed or written in
+  /// the last two cycles requests on its state before them, and the
+  /// allocation lead comes with the row.
+  bool req_rows_late = true;
+  /// The ready register reads ooe_wake's lead lines, which drop an L1
+  /// load's wake two cycles before its miss when no completion hint has
+  /// come (OA-23): a spec load whose hint has not come is not ready from
+  /// its miss cycle on. The environment sends Core::hint.
+  bool miss_lead = true;
+  /// The ready register sees a source's replay two cycles late, as the
+  /// composed RTL does (OI-45: ooe_wake takes the replay while ooe_sched is
+  /// a cycle on, and its lead lines had risen on the timer it replaced):
+  /// until then it reads that timer.
+  bool ready_rep_late = true;
+  /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
+  /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
+  /// every free (OA's stage-boundary item 4, rename's own credits; not
+  /// accepted, DA 2026-10-19). 2: TI-19 as OA answers it: a confirmation's
+  /// RS free and a retirement's ROB free count in their cycle, the RS's up
+  /// to ren_free_cap per class (its thermometer), and the rest, past the cap
+  /// or from a squash, kill or landing, a cycle late. 2 at cap 4 is the
+  /// design (accepted by Daniel, 2026-10-19).
+  unsigned ren_credit = 2;
+  unsigned ren_free_cap = 4;
+  /// Select reads a registered ready (OA's response OI-51), as ooe_sched
+  /// does: a row is ready at select if its lines say so now, or said so at
+  /// the end of the last cycle for this one. Rises are unchanged (every
+  /// wake rises a cycle early into the register); a drop (a producer
+  /// returned to Waiting) reaches select a cycle late, so an entry may be
+  /// granted on a stale bit and is returned by the next hop (OA-17).
+  /// false: select reads the lines as they stand.
+  bool ready_reg = true;
+  /// Select's fallback pick on the lane sections (OA's response IS-9,
+  /// pickResources): 0 none, 1 section-only (the design: section-plus-half
+  /// measured 26.8 NGD in ooe_select, over the stage; section-only 24.3),
+  /// 2 section-plus-half.
+  unsigned pick_fallback = 1;
+  /// Select's request register (OA's response OI-53): one bit per entry,
+  /// written at an earlier cycle's end, of the terms that need only earlier
+  /// state: not issued, warp active, and a copy's sources confirmed. Its
+  /// enable (ooe_sched's, from its own flops, CG-5) is a grant last cycle
+  /// and a flop of "the register differs from its next value and this edge
+  /// does not capture it", so a change
+  /// other than a grant is captured one edge late. Valid and past rename's
+  /// stages (ooe_rs's bit), the matrix's ready (ready_reg) and a memop's
+  /// terms (confirmation, order, its copy's issue) stay live. false: every
+  /// term live.
+  bool req_reg = true;
+  /// KNOB (OI-56, OA's measurement): a branch ends its rename group, so its
+  /// checkpoint is the RAT's state at the next edge. 0 off; 1 the branch's
+  /// slot renames nothing more that cycle; 2 nothing renames after it.
+  unsigned branch_ends_group = 0;
+  /// KNOB (OA's responses OI-63): rename takes a prefix from each of up to
+  /// this many warps a cycle, in the rotating order, each warp's before the
+  /// next's (the RTL's go over rename's registered per-slot fits: 1, or 2
+  /// with a second pick). 0: uop by uop, warps interleaved round robin.
+  unsigned rename_one_warp = 0;
+  /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
+  /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
+  /// reaches the model: integer, FP (provisional, IS-7), address
+  /// calculation (in MIU pipes), SFU; warp-collective and predicate 0 (R
+  /// only). Groups 6 and 7 are spare and take the integer minimum.
+  std::array<unsigned, kGroups> foot_min = {
+      ccv::prov::kFootMinInt, ccv::prov::kFootMinFp, ccv::prov::kFootMinAddr, ccv::prov::kFootMinSfu,
+      ccv::prov::kFootMinCollective, ccv::prov::kFootMinPred, ccv::prov::kFootMinInt, ccv::prov::kFootMinInt};
+  /// Rename predicates through the predicate RAT and pool (Q-21, A-39). Off
+  /// while RCU reads predicate-logic sources and the final compare reads
+  /// predicates by a fixed window (physPred), which A-75 and a testbench
+  /// hook settle. Off, each warp's predicates live at a fixed window and
+  /// OOE orders predicate writes behind older readers and writers itself.
+  bool rename_preds = true;
+  /// The fixed window's base for warp_id w, predicate p: w * 4 + p.
+  std::function<unsigned(unsigned, unsigned)> pred_window =
+      [](unsigned w, unsigned p) { return w * kArchPreds + p; };
+  /// RCU sends a done for memops too (the S1 RCU does: for a store when it
+  /// sends the address, for a load when it writes the data). When set, a
+  /// memop completes only after both, so no late done meets a reused tag.
+  bool memop_rcu_done = false;
+  /// The ROB's head window (OI-85 (a)): an entry completed in a cycle
+  /// retires from that cycle + retire_lag. 0 is retire in the completion's
+  /// own cycle; 1 the window taking completions at its edge, a cycle late,
+  /// as the RTL does (OA's rev 278: to become the default; it waits on
+  /// go_tb's divergence at CAS pairs under the lag, OI-87).
+  unsigned retire_lag = 0;
+  /// ROB slice 2's timing (OI-86): a branch's resolution (squash, RAT
+  /// restore, redirect, checkpoint free) acts resolve_lag cycles after it
+  /// completes, the redirect then leaving from flops (with DA, OA's rev
+  /// 280); a squashed entry held for an op in flight releases
+  /// defer_release_lag cycles after the op lands; and a squashed slot's ROB
+  /// room reads 0 for squash_room_lag cycles after its squash cycle (1, the
+  /// default, OA's rev 280: the run's scan after a squash is from flops). 0
+  /// is the same-cycle form.
+  unsigned resolve_lag = 1;
+  unsigned defer_release_lag = 0;
+  unsigned squash_room_lag = 1;
+  /// Measurement arms for resolve_lag (OI-86): lag only mispredicts (a
+  /// correct branch frees its checkpoint at once), and whether a branch
+  /// ends its retire window.
+  unsigned resolve_lag_wrong_only = 0;
+  /// OA's rev 293 (AR's lead, RCU spec rev 20): resolve_lag applies to rets
+  /// only, branches and calls resolving from RCU's lead at 0. ret_hold: a
+  /// branch or call is not selected for RCU the cycle after a ret is, so the
+  /// ROB's one outcome path never resolves a branch beside a ret (checked;
+  /// inject_no_ret_hold drops the hold). Both 1, with resolve_lag 1 (rets
+  /// at lag 1, branches and calls at 0), squash_act_lag 1 and
+  /// squash_held_room_lag 1, are the defaults (OA's rev 294, OI-98).
+  /// ret_hold 2, the default since OA's rev 320 (sched (b)): the held
+  /// branch still requests, and a win is cancelled after the pick, its
+  /// resource left unused (issue.ret_hold_cancel, issue.ret_hold_lost_slot),
+  /// so the hold stays off ooe_select's request. 1 holds the request.
+  unsigned resolve_lag_ret_only = 1;
+  unsigned ret_hold = 2;
+  /// RA-17 (OA's revs 298-299): a migration borrows R's PRF ports, a row in
+  /// each cycle R holds no op. While one is in flight (restore-allocate to
+  /// restore-activate; a demotion's map to its slot's free), select leaves
+  /// R idle in a cycle whose cycle before last ended idle_r_k - 2 cycles
+  /// running with R granted (decided a cycle ahead, as ooe_sched's force
+  /// register is: R's grant last cycle is select's own deepest path), so
+  /// never idle_r_k running, and a natural idle restarts the count: 17
+  /// rows in at most 17 x idle_r_k cycles. The run counts R's grants
+  /// whether or not a migration is in flight. ooe_sched builds 0 and 3 up. 0 is off; 4 is RA's plan until Phase 1. Checked: no migration
+  /// sees idle_r_k cycles running with R granted (inject_no_idle_r drops
+  /// the force). The sectioned select only (R is its resource 4).
+  unsigned idle_r_k = 0;
+  /// RA-29 (a)'s price: collectives get R's own copy in select's pick, so
+  /// one may go beside an RCU-only op (the design keeps them one class, at
+  /// most one a cycle; inject_split_r_class is that rule's control).
+  bool split_r_class = false;
+  unsigned branch_ends_window = 1;
+  /// A squashed entry held for an op in flight frees its ROB slot as the op
+  /// lands and its names a cycle later (1, the default, OA's rev 280: the
+  /// free lists' masks from flops).
+  unsigned release_names_lag = 1;
+  /// A mispredict's squash, RAT restore, checkpoint frees, epoch and decode
+  /// queue flush act squash_act_lag cycles after its resolution, the
+  /// redirect still leaving at the resolution (OI-85 slice 2: the ROB's
+  /// registered squash, which RS, RAT, decq and the go take with a lead).
+  /// Meanwhile the slot runs on: rename takes the wrong path, select issues
+  /// it, and the squash takes all of it.
+  unsigned squash_act_lag = 1;
+  /// RI-11 pricing (OA rev 340): an interface flop in front of each OOE
+  /// receiver that acts on its payload in its arrival cycle moves that act a
+  /// cycle. Bits: 1 rau alloc, 2 rau demote, 4 syu release, 8 rcu done,
+  /// 16 cmpl hint, 32 miu cmpl, 64 dec uop (taken a cycle after it lands).
+  /// The message is taken as it lands (credits unchanged), its act deferred.
+  unsigned rx_lag = 0;
+  /// OI rev 300 pricing: a first-kind end on miu_ooe_cmpl, its payload
+  /// captured raw, each reader a cycle late unless it bypasses: 1 the
+  /// ROB's act (done, status, fault) a cycle late, 2 the RS timer's for a
+  /// hit (its confirm), 4 for any other (a restart). Atomics act as they land.
+  unsigned cmpl_split = 0;
+  /// The go's run from the tail sees a held entry's release a cycle late
+  /// (OI-85 slice 2): the release comes off the done path, too deep for the
+  /// scan that forms the run, so the scan reads it as held one cycle more.
+  unsigned held_room_lag = 0;
+  /// OI-94 (C''): a squashed entry whose fill had not landed (allocated
+  /// within the last two cycles: Rename 1 and 2) frees its new names when
+  /// that fill arrives and a cycle more, its allocation's cycle + 3, the
+  /// ROB dropping the fill by a kill count (the price of OA's rev 291 (4)).
+  unsigned kill_free_lag = 0;
+  /// A squash that leaves the slot holding entries (squashed with an op in
+  /// flight, this squash's or an earlier one's) registers a run of 0 for
+  /// this many cycles from the squash's (the go reads that slot's run as 0):
+  /// the ROB does no search over the held entries in the squash's cycle
+  /// (that search would be the squash's, NGD-1) and reads the run from the
+  /// held flops after. Without held entries the squash's run is the
+  /// occupancy's, from flops, at once.
+  unsigned squash_held_room_lag = 1;
+
+  // -- fault injection: the negative controls the core itself must carry ------
+  bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
+  bool inject_row_no_hold = false; ///< select issues a row past 3 dones in flight (row-no-hold, OI-90)
+  bool inject_retire_unresolved = false;  ///< resolve_lag: a branch retires before its resolution acts
+  bool inject_no_ret_hold = false;  ///< ret_hold: a branch is selected the cycle after a ret
+  bool inject_no_idle_r = false;  ///< idle_r_k: select never leaves R idle for a migration (RA-17)
+  bool inject_pq_no_dep = false;  ///< predicate logic's (vote's, ballot's) imm sources wake nothing (RA-29 (e))
+  bool inject_split_r_class = false;  ///< a collective and an RCU-only op go together at R (RA-29 (a))
+  bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
+  bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
+  bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
+  bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
+  bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
+  /// Sectioned select grants one more lane op a cycle onto sections already
+  /// held, unchecked (V-60): the kernels' no-resource-cap control, which RCU
+  /// must refuse.
+  bool inject_double_grant = false;
+  /// The ready register's enable takes no allocation lead (V-73's control):
+  /// a row allocated into a quiet machine is never captured as ready.
+  bool inject_no_alloc_lead = false;
+  /// No F-BARRIER check at dispatch: a barrier past its CTA's count goes to
+  /// SYU (testBarrierFault's control).
+  bool inject_no_bar_fault = false;
+  /// No F-WIDTH check at dispatch (testWidthFault's control).
+  bool inject_no_width_fault = false;
+  /// O-80's and O-81's controls: a sized transfer wider than rdata, and a
+  /// chwidth outside a converged warp, raise no F-WIDTH.
+  bool inject_no_sized_fault = false;
+  bool inject_no_converged_fault = false;
+  /// No F-FORMAT check at dispatch (testFormatFault's control).
+  bool inject_no_format_fault = false;
+  /// The fault-address register takes every faulting completion, not only
+  /// an older one (V-74's control).
+  bool inject_fa_youngest = false;
+  /// The ready register captures a stop's or a miss's change one edge late
+  /// (OI-54's control): a producer re-granted inside the stale window lets
+  /// a dependant confirm on a result it read too early.
+  bool inject_late_event = false;
+  /// AR-21's controls: an atomic's read issues away from its warp's head
+  /// (V-69); its consumers wake on its first write, not its last (V-71); a
+  /// demote is taken mid-atomic (V-70).
+  bool inject_atom_off_head = false;
+  /// The PRF's read ports (DA's response OA-6: 16 read, 8 write; no
+  /// parameter yet). Select keeps a cycle's operand reads within the read
+  /// ports a migration leaves (TI-21: a demote's 17 reads hold one for 17
+  /// cycles). 0: no limit.
+  unsigned prf_read_ports = 16;
+  /// TI-21's fixes for a stalled warp's RS room (OA's rev 130), off until
+  /// measured: (1) stall-aware shares, a warp whose oldest RS entry waits
+  /// on a memory miss past the L1 window gets no share of RS room (one
+  /// registered bit per warp); (2) a per-warp cap on each class's entries
+  /// (0: none; rs_warp_cap stays the cap over both).
+  bool share_stall_aware = false;
+  /// TI-24's control: a demotion's rewind beats youngest first.
+  bool inject_rewind_order = false;
+  unsigned rs_warp_cap_rcu = 0, rs_warp_cap_miu = 0;
+  bool inject_atom_early_wake = false;
+  bool inject_atom_demote_mid = false;
+  /// TI-39's controls: A1 takes rbase alone, not rindex (O-72's base+index);
+  /// rename takes a CAS's first slot without its second (the pair is one
+  /// admission unit, OA's rev 189).
+  bool inject_a1_base_only = false;
+  bool inject_cas_split = false;
+  /// OI-79 (b)'s control: the take keeps a pair the width splits (its
+  /// first slot taken, its second left for the next cycle): it skips both
+  /// the take's cap and tryRename's cut at the last lane.
+  bool inject_pair_split = false;
+  /// OI-84's control: a pair's second in its warp's next round (OI-79 (b))
+  /// rather than the lane after its first; four warps each with a CAS at
+  /// its head then never rename.
+  bool inject_pair_rounds = false;
+  /// OI-80's liveness rule's control (OA's rev 244): the split gives the
+  /// warp first in rotation no part of the pool for its head's need first.
+  bool inject_no_first_need = false;
+  /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
+  /// register keeps its old width (the model before this).
+  bool inject_sibling_uncommitted = false;
+  /// V-41's control (FET spec rev 28, TI's rev 199): a taken prediction
+  /// counts as right when any lane took the branch, as before.
+  bool inject_partial_taken_ok = false;
+  /// TI-40's controls: rename holds behind no wait, the converged's too;
+  /// a held warp's rewind beat goes unflagged, so FET resumes past the
+  /// wait.
+  bool inject_bar_no_hold = false;
+  bool inject_beat_unheld = false;
+  /// PF-23 (OA's rev 160, AR's rev 106): a demotion's discard takes its
+  /// warp's outstanding loads, so drained waits for their replay
+  /// completions, not their fills. Off: the drain waits for the fills.
+  bool replay_drain = true;
+  /// PF-23's control: drained waits for no squashed load at MIU.
+  bool inject_drain_early = false;
+  /// TI-25's controls: a demote of a warp whose exit retired is not
+  /// refused; a restore drops the parked layout (32 bits at position 0).
+  bool inject_no_refuse = false;
+  /// OA's rev 166's control: a destination takes DEC's width (Uop::w, a
+  /// test's hint, on no channel) instead of the committed table's.
+  bool inject_width_from_dec = false;
+  /// AR's rev 118's control: the fallback's report claims mlc_miss_seen for
+  /// any outstanding head load, before the MLC trigger's threshold.
+  bool inject_fallback_claims_mlc = false;
+  bool inject_park_layout_lost = false;
+  /// TI-34's control: the memops, barriers and faults carry CTA slot 0.
+  bool inject_cta_slot_zero = false;
+  /// RI-12's control: a released slot keeps its warp's queued uops, which
+  /// the warp's next slot then takes against a count that never held them.
+  bool inject_keep_released_uops = false;
+  /// TI-36 (b)'s control: a predicate-only masked load (ld.pred) makes no
+  /// copy, so its inactive lanes' bits are lost.
+  bool inject_pred_copy_lost = false;
+  /// TI-37's control: no GPR destination is sent as 0, a real row, not the
+  /// zero register's name.
+  bool inject_none_row_zero = false;
+  /// O-64 (OA's rev 177): this core's index, above warp_id in %lanectx's
+  /// substitution: CCV_P_CORE_ID, 0 on a one-core build (TI's tie-off).
+  unsigned core_id = ccv::prov::kCoreId;
+  /// TI-27's control (OA's rev 170), the environment's: FET marks the final
+  /// exit one exit early.
+  bool inject_final_exit_early = false;
+
+  /// Apply "name=value,..." over these defaults; returns an error or "".
+  std::string apply(const std::string &spec);
+  /// The elaboration-time checks (V-31, V-51, V-55); returns an error or "".
+  std::string check() const;
+};
+
+// ---- decoded inputs -----------------------------------------------------------------
+
+/// sched_attr, decoded (A-66). MSB first: rs_miu, exec_rcu, cross_lane,
+/// writes_gpr, writes_pred, mem_kind[2], branch, serial[3], lat_class[3]
+/// (serial 3 bits, code 4 barrier arrive: TI-41, OA's rev 198).
+struct SchedAttr {
+  bool rs_miu = false, exec_rcu = false, cross_lane = false;
+  bool writes_gpr = false, writes_pred = false, branch = false;
+  unsigned mem_kind = 0, serial = 0, lat_class = 0;
+  unsigned bypass_group = 0;    ///< OI-16: [16:14]
+  /// A CAS's two decode slots (AR's rev 156, OA's rev 189, TI-39): [17] the
+  /// first (rbase, rindex and the displacement: A1), [18] the second
+  /// (rs_cmp, rs_swap and the destination: A2), one instruction.
+  bool pair_first = false, pair_second = false;
+  /// [19] ret (AR-24 (b)); [20] commit_width (AR-24 (c), OA's rev 222): a
+  /// chwidth.multi sibling, serial 0, that commits its register's width at
+  /// retire without the hold, which the last sibling's serial 1 carries.
+  bool ret = false, commit_width = false;
+  static SchedAttr decode(uint32_t a);
+};
+enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
+enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3,
+               kLatClsCollective = 5 };
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+inline bool isBarrierSer(unsigned s) { return s == kSerBarrier || s == kSerArrive; }
+
+/// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
+/// derives these from the skeleton's opcode table -- the one place OOE still
+/// looks at opcode, marked temporary there.
+struct UopShape {
+  uint8_t gpr_reads = 0;      ///< bit i: src i is a real read
+  bool guard = false;         ///< the predicate read is a guard (an enable)
+  bool pdata = false;         ///< the predicate read is data (sel)
+  bool pred_logic = false;    ///< two predicate sources, qualifiers in imm
+  bool exit = false;
+  /// TI-27 (OA's rev 170): FET's final-exit mark, on the exit whose fetch
+  /// clears the warp's last live lanes. The warp is done when it retires.
+  bool final_exit = false;
+  int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid, 2 %lanectx (O-64),
+                              ///< 3 %privoff (O-83)
+};
+
+struct Uop {
+  uint64_t tid = 0;
+  unsigned warp = 0;
+  uint64_t pc = 0;
+  uint32_t group_mask = 0;
+  unsigned fetch_epoch = 0;
+  SchedAttr attr;
+  uint32_t attr_raw = 0;
+  unsigned mem_op = 0, space = 0, ordering = 0;
+  unsigned opcode = 0;               ///< passed to RCU unexamined
+  unsigned src[3] = {}, dst = 0;     ///< architectural GPRs
+  unsigned pred_guard = 0, pred_dst = 0;
+  bool pred_neg = false, pred_we = false;
+  uint32_t imm = 0;
+  unsigned ilen = 0;
+  unsigned ckpt = 0;
+  bool pred_taken = false;
+  bool scale_en = false;
+  unsigned slot_form = 0, arg_slot = 0;   ///< the launch-slot form, for MIU (TI-31)
+  unsigned local_form = 0;                ///< the interleaved local form, for MIU (IS-19)
+  /// O-80 (DA tab rev 90): a sized transfer, 0 rdata's width, 1 a byte, 2 a
+  /// halfword, and whether MIU sign-fills a sized load; for MIU.
+  unsigned xfer_size = 0;
+  bool xfer_signed = false;
+  /// A fault found before OOE, from ccv_dec_ooe_uop's cause: 1 F-FETCH or
+  /// 2 F-ILLEGAL, else 0 (IS-16). The uop is a no-op that faults at its head.
+  unsigned cause = 0;
+  /// F-FORMAT's inputs (OI-57; TI's 57048d7): bit i set where the op's
+  /// format code is reserved at width code i, and the operand whose
+  /// committed width selects the bit (0-2 src0-src2, 3 the destination).
+  unsigned fmt_rsv = 0, fmt_opnd = 0;
+  /// The destination's element width, from the committed chwidth table:
+  /// 0 32-bit, 1 16-bit, 2 8-bit, 3 4-bit (sectioned; a 4-bit register takes
+  /// an 8-bit section, OI-29). Sources carry their own in their names.
+  unsigned w = 0;
+  bool backward = false;             ///< a branch whose target is behind it (OA-14)
+  UopShape shape;
+  /// A CAS pair as rename joins it (TI-39): the first slot's uop, with the
+  /// second's destination, its write bit and its two operands (rs_cmp,
+  /// rs_swap) and their reads. Set by rename alone, never by DEC.
+  bool cas = false;
+  unsigned cas_src[2] = {};
+  uint8_t cas_reads = 0;
+  /// FET's all_waiting mark (TI-40, AR's revs 163-164): on a wait, the warp
+  /// is converged and rename holds behind it; on any marked uop, the
+  /// barrier demotion timer starts at its retire.
+  bool all_waiting = false;
+};
+/// A barrier OOE completes without issue, as exit (TI-40, TI's rev 176):
+/// one with no predicate read. A guarded arrive or wait, and wait.phase,
+/// issue to RCU, whose done brings their lanes.
+inline bool barNop(const Uop &u) {
+  return isBarrierSer(u.attr.serial) && !u.shape.guard && !u.shape.pdata;
+}
+
+struct Done {           ///< ccv_rcu_ooe_done
+  unsigned rob_tag = 0;
+  unsigned row = 0;           ///< done_row: the ROB row it completes (OI-85), its issue's echoed
+  bool branch_taken = false;
+  uint32_t branch_mask = 0;   ///< a branch's, a guarded barrier's: issue mask AND guard
+  /// The 32-bit field AR-24 (b) adds (TI names it aux): wait.phase's ps, each
+  /// lane's expected phase (OA's rev 226); a ret's branch_target otherwise.
+  uint32_t aux = 0;
+};
+struct Cmpl {           ///< ccv_miu_ooe_cmpl
+  unsigned rob_tag = 0, status = 0, cause = 0;
+  unsigned row = 0;     ///< done_row: the ROB row it completes (OI-85), its memop's echoed
+  unsigned rs_idx = 0;  ///< the memop's RS entry, echoed (OA-23): an atomic's A1 or A3
+  uint32_t lane_mask = 0;
+  uint64_t address = 0;
+  bool mlc_miss = false;
+  bool more = false;    ///< an atomic's A3: lanes remain, re-issue the three steps (AR-21)
+};
+/// Completion status (ccv_miu_ooe_cmpl's doc: 0 complete, 1 fault, 2 replay).
+enum : unsigned { kCmplOk = 0, kCmplFault = 1, kCmplReplay = 2 };
+enum : unsigned { kAllocFree = 0, kAllocLaunch = 1, kAllocRestoreAlloc = 2,
+                  kAllocRestoreActivate = 3 };
+struct Alloc {          ///< ccv_rau_ooe_alloc
+  unsigned warp = 0, slot = 0, op = 0;
+  uint32_t ctaid = 0, warp_in_cta = 0;
+  unsigned barrier_count = 0;      ///< launch and restore-allocate: the CTA's barriers, 0 to 16 (IS-16)
+  unsigned cta_slot = 0;           ///< launch and restore-allocate: the warp's CTA slot at RAU (TI-34)
+};
+/// Fault causes (CCV_W_FAULT_CAUSE; ISA v1.9 section 12's table order).
+enum : unsigned { kCauseWidth = 3, kCauseFormat = 4, kCauseBarrier = 9 };
+/// mem_op codes OOE reads or generates (OA's six, TI's a4fa218): an
+/// atomic's read (A1) and write (A3) are OOE's alone, as 0xF is (V-72).
+enum : unsigned { kMemOpAtomicRead = 2, kMemOpAtomicWrite = 3, kMemOpFence = 0xE };
+
+// ---- decoded outputs ----------------------------------------------------------------
+
+/// One ready requester of the per-resource select: its resource mask and
+/// its age (smaller is older).
+struct PickReq {
+  unsigned res = 0;
+  uint64_t age = 0;
+};
+/// The per-resource select (OI-31, V-60), the reference the RTL's
+/// ooe_pick is checked against: each resource grants its oldest
+/// requester, and a requester issues only if it wins every resource it
+/// names. Returns which requesters issue; *lost counts those that won some
+/// resources but not all (in that pick, before any fallback).
+///
+/// The fallback (OA's response IS-9), on resources 0-3, the lane sections:
+/// a section whose winner did not issue grants instead its oldest
+/// requester that names that section alone (1); and with 2, an aligned
+/// half (sections 0-1, 2-3) whose sections both fell through grants its
+/// oldest half-footprint requester, when that is the oldest of the half's
+/// pair and single-section requesters. Every pick is a parallel
+/// oldest-of-N over the same ages, so the RTL needs no second pass.
+std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost = nullptr,
+                                unsigned fallback = 0);
+
+struct Issue {          ///< ccv_ooe_rcu_issue
+  uint64_t tid = 0;
+  unsigned port = 0;    ///< issue slot
+  unsigned rob_tag = 0, warp = 0;
+  uint32_t issue_mask = 0;
+  unsigned psrc[3] = {}, pdst = 0, pold = 0;
+  unsigned ppguard = 0, ppdst = 0, ppold = 0;
+  bool pred_neg = false, pred_we = false, merge = false;
+  unsigned opcode = 0;
+  bool copy = false;    ///< the copy-only op (A-38): opcode CCV_OP_PRF_COPY
+  /// The ROB entry's row this issue is (OI-85, OA's rev 282): 0 the op or an
+  /// atomic's A1, 1 a masked load's copy, 2 an atomic's A2, 3 its A3. RCU
+  /// echoes it on the op's done, so the entry sets that row's done bit.
+  uint8_t row = 0;
+  bool send_imm = false;
+  uint32_t imm = 0;
+  /// Width codes (AR-24 (d)): each source's, the destination's (which the
+  /// merge source shares), from the registers' committed widths at rename;
+  /// chwidth the op's, its destination's, else its first source's.
+  unsigned src_w[3] = {}, dst_w = 0;
+  unsigned chwidth = 0;
+  bool guarded = false;          ///< for the adapter's coverage only
+  uint8_t gpr_reads = 0;         ///< likewise
+  /// The resource group the op issues on (ccv_ooe_rcu_issue's slots) and
+  /// its footprint there: lane sections, MIU pipes, or R alone (footprint 0).
+  enum : uint8_t { kLaneOp = 0, kMemop = 1, kRcuOp = 2 };
+  uint8_t res = kLaneOp;
+  uint8_t footprint = 0xF;
+  uint8_t byp_group = 0;         ///< sched_attr's bypass_group (OI-16)
+};
+struct Memop {          ///< ccv_ooe_miu_memop
+  uint64_t tid = 0;
+  unsigned cta_slot = 0;         ///< the warp's CTA slot, from its tier-1 slot's register (TI-34)
+  unsigned port = 0;
+  unsigned rob_tag = 0, warp = 0;
+  unsigned rs_idx = 0;           ///< its RS entry, which MIU echoes (OA-23); 0 on a discard
+  uint8_t row = 0;               ///< its ROB row (OI-85): 0, or 3 for an atomic's A3
+  unsigned mem_op = 0;           ///< DEC's (A-68), or 0xF for a bulk discard
+  uint32_t issue_mask = 0;
+  unsigned pdst = 0, ppred = 0;
+  uint32_t disp = 0;             ///< the uop's imm; the discard tail on 0xF
+  bool scale_en = false;
+  unsigned space = 0, ordering = 0, chwidth = 0;
+  unsigned data_pos = 0;   ///< the data register's position (its pipes start there; AR-24 (d))
+  unsigned slot_form = 0, arg_slot = 0;   ///< DEC's, unexamined (TI-31)
+  unsigned local_form = 0;                ///< DEC's, unexamined (IS-19)
+  unsigned xfer_size = 0;                 ///< DEC's (O-80): 0 chwidth's, 1 a byte, 2 a halfword
+  bool xfer_signed = false;
+};
+struct Commit {         ///< ccv_ooe_miu_retire
+  uint64_t tid = 0;
+  unsigned port = 0, rob_tag = 0;
+  bool commit = true;
+};
+struct Redirect {       ///< ccv_ooe_fet_redirect
+  uint64_t tid = 0;
+  unsigned warp = 0, slot = 0, ckpt = 0, epoch = 0;
+  uint32_t taken_mask = 0;
+  uint64_t target_pc = 0;
+  bool epoch_only = false;
+  /// A ret's redirect (AR-24 (b), OA's rev 223): the branch's active lanes
+  /// not in taken_mask stay at the ret, to re-issue with their own targets.
+  bool stay = false;
+  /// A demotion's rewind beat (TI-24 (3), OA's revs 150-151; TI's e95a6a8):
+  /// with epoch_only, FET sets the PCs of the lanes in taken_mask to
+  /// target_pc, each the oldest unretired uop of those lanes.
+  bool rewind = false;
+  /// TI-40 (AR's rev 164): a beat of a warp held behind a converged wait,
+  /// which retired; FET sets the lanes to target_pc less the wait's length,
+  /// held_long (0 16 bits, 1 32).
+  bool rewind_held = false, held_long = false;
+  /// own_pc (AR's rev 176, FET spec rev 24): the held warp has no unretired
+  /// uop, so FET rewinds from its own PC less the wait's length and ignores
+  /// target_pc, which the model still sets past the wait.
+  bool own_pc = false;
+};
+struct Status {         ///< ccv_ooe_rau_status
+  unsigned warp = 0;
+  bool fault_taken = false, stalled = false, mlc_miss_seen = false;
+  uint32_t retired_since_restore = 0;
+  /// A level (OA's rev 149): the warp's exit has retired and it holds no
+  /// ROB entry and no memop at MIU, until RAU frees the slot. Sent once,
+  /// as it rises.
+  bool exited = false;
+};
+struct Fault {          ///< ccv_ooe_cru_fault
+  uint64_t tid = 0;      ///< the faulting instruction (trace identity; TI-26)
+  unsigned warp = 0, cause = 0, cta_slot = 0;
+  uint64_t pc = 0, address = 0;
+  uint32_t lane_mask = 0;
+};
+struct Drained {        ///< ccv_ooe_rau_drained
+  unsigned warp = 0;
+  uint64_t resume_pc = 0;
+  bool refused = false;  ///< the warp's exit retired before the demote (TI-25)
+};
+struct RatMap {         ///< ccv_ooe_rcu_map
+  unsigned warp = 0, direction = 0;
+  std::array<unsigned, kArchGprs> gpr{};
+  /// Each register's committed width code (gpr_width; TI's rev 184).
+  std::array<unsigned, kArchGprs> w{};
+  std::array<unsigned, kArchPreds> pred{};
+};
+struct Bar {            ///< ccv_ooe_syu_bar (TI-40): a report at retire
+  unsigned warp = 0, cta_slot = 0, barrier_id = 0;
+  unsigned kind = 1;             ///< bar_kind: 0 arrive, 1 wait, 2 wait.phase, 3 exit
+  uint32_t issue_mask = 0, guard_mask = ~0u, phase_mask = 0;
+  bool held = false;             ///< a converged wait OOE holds rename behind
+  uint64_t tid = 0;
+};
+enum : unsigned { kBarArrive = 0, kBarWait = 1, kBarWaitPhase = 2, kBarExit = 3 };
+
+/// Everything the core sends in one cycle. The adapter drains it.
+struct Outputs {
+  std::vector<Issue> issues;
+  std::vector<Memop> memops;
+  std::vector<Commit> commits;
+  std::vector<Redirect> redirects;     ///< at most one: the channel is rate 1
+  uint64_t free_mask = 0;              ///< ccv_ooe_fet_ckpt_free, 0 = none
+  std::vector<Status> status;
+  std::vector<Fault> faults;
+  std::vector<Drained> drained;
+  std::vector<RatMap> maps;
+  std::vector<Bar> bars;
+  /// Kills acknowledged this cycle (kill_ack), by kill epoch.
+  std::vector<unsigned> kill_acks;
+  void clear() { *this = Outputs(); }
+};
+
+/// Retirement, reported for the testbench (retire bookkeeping, rat0).
+struct Retired {
+  uint64_t tid = 0;
+  unsigned warp = 0, rob_tag = 0;
+  bool exit = false;                ///< the warp's final exit (TI-27): it is done
+  bool writes_gpr = false;
+  unsigned dst = 0, pnew = 0;
+  bool writes_pred = false;         ///< a renamed predicate destination
+  unsigned pdst = 0, ppnew = 0;
+};
+
+// ---- the model -------------------------------------------------------------------------
+
+/// A free list as the RTL builds it (OI-22, docs/ooe-rtl-plan.md item 2): one
+/// bit per register, allocated by a priority encoder that starts at a rotating
+/// pointer and moves past each register it hands out, so a freed register
+/// comes back late. A free sets its bit at the clock edge (clock()), so a
+/// register freed in a cycle is not allocated in that cycle. Any number of
+/// frees a cycle costs nothing.
+/// OOE's structural events (docs/ooe-model.md, "Events"; OI-7), in the order
+/// of their ids in schema/events.json, EV_OOE_GPR_EMPTY first. Each carries
+/// warp_id as a; b and c are the schema's fields.
+enum class OoeEv : unsigned {
+  kGprEmpty, kRenameLimit, kPredEmpty, kRobFull, kRobSlotHeld, kRsFull, kRsWarpCap,
+  kDecqFull, kDecqWarpMax, kChwidthHold, kBarrierHold, kRedirectBusy, kMemopHeld,
+  kMemopHoldCycles, kDeferredFree, kReadyNotSelected, kCancelReplay, kDemoteTrigger,
+  kCrossGroupSquash, kCopyIssue, kCount
+};
+
+/// A free list (OI-22; structure OA's response OI-38). A bit per entry, set
+/// while it is free. With a candidate buffer (cap > 0, the default) the
+/// only source of allocations is a buffer of up to `cap` free entries, in
+/// order; alloc() takes its head. At each clock edge the buffer is refilled
+/// from `banks` interleaved banks (entry mod banks), in a rotating bank
+/// order: each bank appends at most one entry, the first free one not
+/// already buffered at or after its own rotating pointer, while there is
+/// room. A free reaches the free bits at the next edge, so it is visible
+/// to refill a cycle after it is freed and to allocation the cycle after
+/// that. Buffered entries stay free in the bits, so the admission floors
+/// (ready()) count them. An allocation clears its entry's free bit at the
+/// edge, but leaves the buffer a cycle later (OA's response OI-52): the
+/// free list registers each cycle's take, and pops that many at the next
+/// edge, so its buffer's clock enable comes from its own flops. Meanwhile
+/// those entries, in transit, sit at the buffer's head, and allocation
+/// takes the entries behind them. With cap 0 it is the earlier structure: the first
+/// free entry at or after one rotating pointer, a free allocatable from the
+/// next cycle. ooe_freelist builds the buffered form.
+class FreeVec {
+public:
+  void reset(unsigned n, unsigned cap = 0, unsigned banks = 1, unsigned lag = 0, bool direct = false,
+             bool two_step = false) {
+    bit_.assign(n, 1);
+    pend_.assign(n, 0);
+    pend2_.assign(n, 0);
+    npend2_ = 0;
+    lag_ = lag;
+    direct_ = !cap && direct && banks > 1;
+    used_.assign(banks, 0);
+    inbuf_.assign(n, 0);
+    pr_.clear();
+    buf_.clear();
+    transit_ = took_ = 0;
+    ready_ = n;
+    npend_ = 0;
+    ptr_ = 0;
+    cap_ = cap;
+    banks_ = cap || direct_ ? banks : 1;
+    bptr_.assign(banks_, 0);
+    rot_ = 0;
+    two_step_ = cap && two_step;
+    cq_.assign(banks_, n);
+    fresh_ = true;
+    edge_ = Edge{buf_, bit_, bptr_, rot_, 0, cq_};
+  }
+  /// Free entries, including those freed this cycle.
+  size_t size() const { return ready_ + npend_ + npend2_; }
+  /// Free entries the admission floors count: all but this cycle's frees.
+  size_t ready() const { return ready_; }
+  /// Entries allocation can take this cycle: the buffer behind the entries
+  /// in transit, or the free bits.
+  size_t avail() const {
+    if (direct_) {
+      const unsigned n = unsigned(bit_.size()), per = n / banks_;
+      size_t k = 0;
+      for (unsigned b = 0; b != banks_; ++b) {
+        if (used_[b]) continue;
+        for (unsigned q = 0; q != per; ++q)
+          if (bit_[q * banks_ + b]) { ++k; break; }
+      }
+      return k;
+    }
+    return cap_ ? buf_.size() - transit_ - took_ : ready_;
+  }
+  bool empty() const { return avail() == 0; }
+  bool has(unsigned p) const { return bit_[p] || pend_[p] || pend2_[p]; }
+  /// Taken since the last clock(): ooe_freelist clears a taken entry's free
+  /// bit at the next edge, so a free of it now would be lost (OI-58).
+  bool takenNow(unsigned p) const { return std::find(allocs_.begin(), allocs_.end(), p) != allocs_.end(); }
+  unsigned alloc() {
+    const unsigned n = unsigned(bit_.size());
+    if (cap_) {
+      if (!avail()) return n;   // caller checked avail()
+      const unsigned p = buf_[transit_ + took_++];
+      take(p);
+      return p;
+    }
+    if (direct_) {
+      const unsigned per = n / banks_;
+      for (unsigned j = 0; j != banks_; ++j) {
+        const unsigned b = (rot_ + j) % banks_;
+        if (used_[b]) continue;
+        for (unsigned i = 0; i != per; ++i) {
+          const unsigned q = (bptr_[b] + i) % per, p = q * banks_ + b;
+          if (!bit_[p]) continue;
+          take(p);
+          used_[b] = 1;
+          bptr_[b] = (q + 1) % per;
+          return p;
+        }
+      }
+      return n;   // caller checked avail()
+    }
+    for (unsigned i = 0; i != n; ++i) {
+      const unsigned p = (ptr_ + i) % n;
+      if (!bit_[p]) continue;
+      take(p);
+      ptr_ = (p + 1) % n;
+      return p;
+    }
+    return n;   // caller checked avail()
+  }
+  /// False when the entry is already free (a double free).
+  bool free(unsigned p) {
+    if (has(p)) return false;
+    pend_[p] = 1;
+    ++npend_;
+    frees_.push_back(p);
+    return true;
+  }
+  /// The allocations, in order, and frees since the last clock(): one clock
+  /// edge's worth, including those made by inputs between cycles
+  /// (ooe_freelist's testbench drives the RTL with them).
+  const std::vector<unsigned> &cycleAllocs() const { return allocs_; }
+  const std::vector<unsigned> &cycleFrees() const { return frees_; }
+  unsigned pointer() const { return ptr_; }
+  unsigned capacity() const { return unsigned(bit_.size()); }
+  unsigned bufferCap() const { return cap_; }
+  unsigned banks() const { return banks_; }
+  /// The buffer, head first, the entries in transit included; how many
+  /// those are (last cycle's allocations); each bank's pointer (an index
+  /// within the bank); the bank refill starts with next edge.
+  const std::deque<unsigned> &buffer() const { return buf_; }
+  unsigned inTransit() const { return transit_; }
+  unsigned bankPointer(unsigned b) const { return bptr_[b]; }
+  unsigned rotation() const { return rot_; }
+  bool bit(unsigned p) const { return bit_[p]; }
+  /// The clock edge: refill the buffer from the free bits as they stand,
+  /// then this cycle's frees join the bits.
+  void clock() {
+    allocs_.clear();
+    prev2_frees_ = prev_frees_;
+    prev_frees_ = frees_.size();
+    frees_.clear();
+    // The first edge is ooe_freelist's last reset edge, which refills
+    // nothing: the core's first cycle is the one after the reset, for every
+    // block alike (ooe_go's rotation starts there too; rename_tb).
+    const bool fresh = fresh_;
+    fresh_ = false;
+    if (cap_ && !fresh) {
+      // Last cycle's allocations leave the buffer; this cycle's stay, in
+      // transit, until the next edge.
+      // fl_two_step: their buffered bits clear an edge later, after the
+      // next edge's search (ooe_freelist's registered pop mask): an entry
+      // freed meanwhile is found by the search after that.
+      std::vector<unsigned> popped;
+      for (unsigned i = 0; i != transit_; ++i) {
+        if (two_step_) popped.push_back(buf_.front()); else inbuf_[buf_.front()] = 0;
+        buf_.pop_front();
+      }
+      transit_ = took_;
+      took_ = 0;
+      if (two_step_) refill2(); else refill();
+      if (two_step_) {
+        for (const unsigned p : pr_) inbuf_[p] = 0;
+        pr_ = std::move(popped);
+      }
+    }
+    if (direct_) {
+      used_.assign(banks_, 0);
+      rot_ = (rot_ + 1) % banks_;
+    }
+    if (npend2_) {   // fl_free_lag: last edge's frees join the bits now
+      for (size_t p = 0; p != pend2_.size(); ++p)
+        if (pend2_[p]) { pend2_[p] = 0; bit_[p] = 1; }
+      ready_ += npend2_;
+      npend2_ = 0;
+    }
+    if (npend_) {
+      for (size_t p = 0; p != pend_.size(); ++p)
+        if (pend_[p]) {
+          pend_[p] = 0;
+          if (lag_) pend2_[p] = 1; else bit_[p] = 1;
+        }
+      if (lag_) npend2_ = npend_; else ready_ += npend_;
+      npend_ = 0;
+    }
+    edge_.buf = buf_;
+    edge_.bits = bit_;
+    edge_.bptr = bptr_;
+    edge_.rot = rot_;
+    edge_.transit = transit_;
+    edge_.cand = cq_;
+  }
+  /// The state just after the last clock edge, before any allocation since:
+  /// what ooe_freelist holds after the same edge (its testbench compares).
+  struct Edge {
+    std::deque<unsigned> buf;
+    std::vector<uint8_t> bits;
+    std::vector<unsigned> bptr;
+    unsigned rot = 0;
+    unsigned transit = 0;
+    std::vector<unsigned> cand;   ///< fl_two_step: each bank's registered candidate (n: none)
+  };
+  const Edge &lastEdge() const { return edge_; }
+
+private:
+  void take(unsigned p) {
+    bit_[p] = 0;
+    --ready_;
+    allocs_.push_back(p);
+  }
+  void refill() {
+    const unsigned n = unsigned(bit_.size()), per = n / banks_;
+    for (unsigned j = 0; j != banks_ && buf_.size() < cap_; ++j) {
+      const unsigned b = (rot_ + j) % banks_;
+      for (unsigned i = 0; i != per; ++i) {
+        const unsigned q = (bptr_[b] + i) % per, p = q * banks_ + b;
+        if (!bit_[p] || inbuf_[p]) continue;
+        buf_.push_back(p);
+        inbuf_[p] = 1;
+        bptr_[b] = (q + 1) % per;
+        break;
+      }
+    }
+    rot_ = (rot_ + 1) % banks_;
+  }
+  /// fl_two_step, scan (a) (OA's revs 321-324): each bank's find-first is
+  /// registered. At the edge the banks' registered candidates append in the
+  /// rotating order while there is room, and each bank's next candidate is
+  /// found from the state before the edge: past the one it appended, the
+  /// one it holds if it appended none, or a fresh search if it held none.
+  /// A candidate is free and unbuffered, and allocation takes only the
+  /// buffer, so a held one stays good. Frees reach the bits at the edge as
+  /// before, a search a cycle later, the buffer an edge after that.
+  void refill2() {
+    const unsigned n = unsigned(bit_.size()), per = n / banks_;
+    std::vector<uint8_t> app(banks_, 0);
+    for (unsigned j = 0; j != banks_; ++j) {
+      const unsigned b = (rot_ + j) % banks_;
+      if (cq_[b] == n || buf_.size() >= cap_) continue;
+      buf_.push_back(cq_[b]);
+      inbuf_[cq_[b]] = 1;
+      bptr_[b] = (cq_[b] / banks_ + 1) % per;
+      app[b] = 1;
+    }
+    for (unsigned b = 0; b != banks_; ++b) {
+      if (cq_[b] != n && !app[b]) continue;   // held
+      cq_[b] = n;
+      for (unsigned i = 0; i != per; ++i) {
+        const unsigned q = (bptr_[b] + i) % per, p = q * banks_ + b;
+        if (bit_[p] && !inbuf_[p]) { cq_[b] = p; break; }
+      }
+    }
+    rot_ = (rot_ + 1) % banks_;
+  }
+
+  std::vector<unsigned> cq_;
+  bool two_step_ = false;
+  std::vector<uint8_t> bit_, pend_, inbuf_, pend2_, used_;
+  std::vector<unsigned> pr_;   ///< fl_two_step: the last edge's pops, still marked buffered
+  size_t npend2_ = 0;
+  unsigned lag_ = 0;
+  bool direct_ = false;
+  std::deque<unsigned> buf_;
+  std::vector<unsigned> allocs_, frees_, bptr_;
+  size_t ready_ = 0, npend_ = 0, prev_frees_ = 0, prev2_frees_ = 0;
+public:
+  size_t prevFrees() const { return prev_frees_; }
+  size_t prev2Frees() const { return prev2_frees_; }
+private:
+  unsigned ptr_ = 0, cap_ = 0, banks_ = 1, rot_ = 0;
+  unsigned transit_ = 0, took_ = 0;   // last cycle's allocations, and this cycle's
+  bool fresh_ = false;                 // no edge since reset()
+  Edge edge_;
+};
+
+class Core {
+public:
+  explicit Core(const Config &cfg);
+
+  // -- inputs. Completions and RAU's messages before cycle(), and they take
+  // effect in it; uops after it (the decode queue is written behind rename).
+  /// Can the decode queue take n uops of this warp? (Credit: the adapter
+  /// leaves a uop in the channel while this is false.) A CAS's two slots
+  /// arrive together, on credit for both (TI-39).
+  bool canAccept(unsigned warp, unsigned n = 1) const;
+  /// TI-46 (b): what the credit return and its checks read. A tier-1 slot's
+  /// warp (-1 if free), a warp's decode-queue slots, whether it is held at
+  /// a barrier, and whether its queued uops are one instruction's (a borrow).
+  int warpOfSlot(unsigned slot) const {
+    return slot < slot_.size() && slot_[slot].st != WarpState::kFree ? int(slot_[slot].warp) : -1;
+  }
+  int tier1Of(unsigned warp) const { return slotOf(warp); }
+  unsigned decqOf(unsigned warp) const { const int s = slotOf(warp); return s < 0 ? 0 : slot_[s].decq; }
+  bool barHeld(unsigned warp) const { const int s = slotOf(warp); return s >= 0 && slot_[s].bar_hold; }
+  bool decqOneInstr(unsigned warp) const {
+    uint64_t seq = UINT64_MAX;
+    for (const Uop &u : decq_)
+      if (u.warp == warp) {
+        const uint64_t q = u.tid & 0xffffffffu;
+        if (seq != UINT64_MAX && q != seq) return false;
+        seq = q;
+      }
+    return true;
+  }
+  unsigned decqShared() const { return decqHeld(); }
+  /// Decode-queue entries the credit check counts as held: the queue, plus
+  /// under decq_late_credit those freed this cycle.
+  unsigned decqHeld() const {
+    return unsigned(decq_.size()) + (cfg_.decq_late_credit ? decq_freed_ : 0) +
+           (cfg_.decq_free_lag ? decq_freed_prev_ : 0) +
+           (cfg_.decq_flush_late ? decq_flush_prev_ : 0) + (cfg_.decq_take_late ? decq_take_prev_ : 0);
+  }
+  /// The adapter left a uop of this warp in the channel because canAccept
+  /// said no: count which limit held it (the decode-queue events).
+  void noteRefused(unsigned warp);
+  /// For the final-exit assertion only: the lanes a warp launches with,
+  /// every lane unless set. OOE holds no live mask (OA's rev 170), so the
+  /// environment that launched the warp says which lanes will exit.
+  void expectLanes(unsigned warp, uint32_t lanes) { launch_lanes_[warp % kWarpIds] = lanes; }
+  void uop(const Uop &u);
+  void done(const Done &d);
+  void cmpl(const Cmpl &c);
+  /// OA-23's completion hint: the completion for rob_tag comes two cycles
+  /// from now (read only under Config::miss_lead).
+  void hint(unsigned rob_tag);
+  uint64_t now() const { return now_; }   ///< the last cycle run
+  /// R held no op at the last cycle's select: a migration's row may use
+  /// its PRF port (RA-17).
+  bool rIdle() const { return r_idle_; }
+  bool reqStopQ() const { return req_stop_q_; }   ///< req_rows_late's stop lead (benches)
+  void alloc(const Alloc &a);
+  void demote(unsigned warp);
+  /// The PRF read ports a migration holds this cycle (RCU's, TI-21): set
+  /// before cycle(), as the other inputs are.
+  void migrationReads(unsigned n) { mig_reads_ = n; }
+  void barRelease(uint32_t warp_mask);
+  void kill(uint32_t warp_mask, unsigned epoch);
+
+  /// One clock.
+  void cycle(uint64_t now);
+  Outputs out;
+  std::vector<Retired> retired;        ///< this cycle's retirements, in order
+
+  // -- observation ------------------------------------------------------------------
+  /// Hooks for events and coverage: (name, warp, a, b, tid).
+  std::function<void(const char *, unsigned, uint64_t, uint64_t, uint64_t)> on_event;
+  /// The structural events, (kind, warp, b, c, tid); see OoeEv.
+  std::function<void(OoeEv, unsigned, uint64_t, uint64_t, uint64_t)> on_ooe_event;
+  /// A broken invariant or a contract violation: the adapter makes it a
+  /// check failure.
+  std::function<void(const std::string &)> on_error;
+  /// Run every invariant (V-01 ... ) once; cycle() calls it when enabled.
+  bool check_invariants = true;
+  void checkInvariants();
+
+  bool busy() const;
+  const Config &config() const { return cfg_; }
+  /// Per-warp_id committed GPR map, for the final compare (Kernel::rat0).
+  std::vector<unsigned> committedGprMap(unsigned warp) const;
+  /// Counters: every structural stall and event of the doc's Events table.
+  std::map<std::string, uint64_t> counters;
+  std::map<std::string, std::map<uint64_t, uint64_t>> histograms;
+  /// Free-list depths and a slot's owned registers, for tests and sweeps.
+  size_t freeGprs() const { return gfree_.size() + ret_pend_.size() + cand_ret_.size(); }   ///< ret_late's pending rows as free
+  size_t freePreds() const { return pfree_.size(); }
+  /// Rows a slot holds, less those on their way back (ret_late, cand_return),
+  /// which freeGprs counts.
+  unsigned heldGprs(unsigned slot) const {
+    unsigned pend = 0;
+    for (unsigned r : ret_pend_) pend += ret_owner_[r] == slot + 1;
+    for (unsigned r : cand_ret_) pend += ret_owner_[r] == slot + 1;
+    return slot_[slot].held_gpr - pend;
+  }
+  /// A GPR row's or a predicate's owner, a slot, or -1 while free (for
+  /// test/ooe/freelist_tb.cpp, whose RTL keeps each entry's owner).
+  int gprRowOwner(unsigned row) const {
+    const auto &o = cfg_.sectioned ? rowOwner_ : gowner_;
+    if (cfg_.sectioned && row < ret_owner_.size() && ret_owner_[row]) return int(ret_owner_[row]) - 1;
+    return row < o.size() ? int(o[row]) - 1 : -1;
+  }
+  int predOwner(unsigned p) const { return p < powner_.size() ? int(powner_[p]) - 1 : -1; }
+  /// The GPR rows or predicates a slot freed since the last cycle started.
+  unsigned slotFrees(unsigned s, bool pred) const { return s < fr_now_.size() ? fr_now_[s][pred] : 0; }
+  /// RS entries slot holds in a class (TI-21's measure).
+  unsigned rsHeldIn(unsigned slot, bool miu) const {
+    unsigned n = 0;
+    for (const RsEntry &x : rs_) n += x.valid && x.slot == slot && (x.cls == RsCls::kMiu) == miu;
+    return n;
+  }
+  /// A slot's committed map (the demotion map's source).
+  std::array<unsigned, kArchGprs> committedGprs(unsigned slot) const { return slot_[slot].crat; }
+  /// The warp's speculative and committed predicate maps (rename_preds).
+  std::array<unsigned, kArchPreds> committedPredMap(unsigned warp) const;
+  /// The warp's current fetch epoch (A-70).
+  unsigned epoch(unsigned warp) const { return epoch_[warp % kWarpIds]; }
+
+private:
+  // -- structures ----------------------------------------------------------------------
+  enum class RsCls : uint8_t { kRcu, kMiu };
+
+  struct RobEntry {
+    bool valid = false;
+    bool squashed = false;         ///< held after a squash (deferred free)
+    Uop u;
+    unsigned seq = 0;              ///< per-warp program order, for age
+    unsigned psrc[3] = {}, pold = 0, pnew = 0;
+    unsigned ppguard = 0, ppold = 0, ppnew = 0, pq[2] = {};
+    bool merge = false;            ///< merge_en: some lane keeps its old value
+    bool alloc_gpr = false, alloc_pred = false;
+    bool is_mem = false, is_store = false, is_load = false, copy = false;
+    unsigned rs_main = kNoEntry, rs_copy = kNoEntry;
+    // completion
+    unsigned rcu_dones_owed = 0;   ///< issues to RCU whose done has not landed
+    /// Of those, per ROB row (OI-90, OA's rev 286): the ROB counts each row
+    /// in 2 bits, so select holds an issue while its row has 3 in flight.
+    uint8_t owed_row[4] = {};
+    unsigned stale_dones = 0;      ///< of those, issues a cancel voided
+    bool rcu_done = false, miu_done = false, at_miu = false;
+    bool copy_pending = false;
+    uint64_t copy_land = 0;        ///< the copy's scheduled landing
+    uint64_t rcu_issue_at = 0;     ///< the latest issue to RCU
+    bool complete = false;
+    uint64_t ret_at = 0;           ///< retire_lag: the first cycle it may retire
+    bool res_pend = false;         ///< resolve_lag: complete and resolve at res_at
+    uint64_t res_at = 0;
+    bool rel_pend = false;         ///< defer_release_lag: release at rel_at
+    uint64_t alloc_at = 0;         ///< the cycle rename allocated it (kill_free_lag)
+    unsigned kill_wait = 0;        ///< kill_free_lag: its names free this many cycles on
+    uint64_t rel_at = 0;
+    // branch
+    bool resolved = false, taken = false;
+    uint32_t taken_mask = 0;
+    uint32_t ret_aux = 0;              ///< a ret's target offset, its done's aux (AR-24 (b))
+    uint32_t bar_guard = ~0u;          ///< a guarded barrier's guard lanes, from its done (TI-40)
+    uint32_t bar_phase = 0;            ///< wait.phase's expected phases, from its done's aux
+    /// Width codes at rename (AR-24 (d)): each source's, a CAS's two, the
+    /// destination's, from the committed table. A register read before any
+    /// write is the zero name, so the table, not the name, holds its width.
+    uint8_t wsrc[3] = {}, wcas[2] = {}, wdst = 0;
+    bool ckpt_live = false;
+    // fault
+    bool fault = false;
+    unsigned fault_cause = 0;
+    uint32_t fault_lanes = 0;
+    uint64_t fault_addr = 0;
+    bool mlc_miss = false;
+    bool committed = false;        ///< a store's commit has gone to MIU
+    // An atomic (AR-21): A1 is rs_main, an exclusive read into T; A2 the
+    // lane op, T and the operands into N; A3 the write of N and the release.
+    // T is pnew for atom (rd's new name) and a temporary for red; N is
+    // always one. Both free at retire.
+    bool atomic = false;
+    unsigned rs_a2 = kNoEntry, rs_a3 = kNoEntry;
+    unsigned ptmp_t = kNoEntry, ptmp_n = kNoEntry;   ///< temporaries, kNoEntry when none
+    unsigned atom_t = 0;               ///< T: pnew or ptmp_t
+    unsigned pcas[2] = {};             ///< a CAS's A2 operands, rs_cmp and rs_swap (TI-39)
+    bool atom_started = false;         ///< its first A1 has issued
+    bool atom_pass = false;            ///< a pass in flight: A1 issued, A3 not complete
+    bool atom_final = false;           ///< the last pass's A3 completed (more = 0), or A1 faulted
+    unsigned atom_passes = 0;
+    uint64_t atom_pass_at = 0;         ///< this pass's A1 issue (hold cycles)
+    uint64_t atom_ready_at = 0;        ///< A1 first issuable but not at the head (head wait)
+    bool atom_waiting = false;
+  };
+
+  struct RsEntry {
+    bool valid = false;
+    RsCls cls = RsCls::kRcu;
+    unsigned slot = 0, rob = 0;    ///< owner
+    uint64_t age = 0;              ///< allocation order: the age matrix's order
+    bool copy = false;             ///< the copy-only half of a masked load
+    bool produces = false;         ///< writes a register some entry may wake on
+    bool issued = false;
+    uint64_t issue_at = 0;
+    bool spec = false;             ///< woken speculatively (an L1 load)
+    bool hinted = false;           ///< its completion's hint came (OA-23; miss_lead)
+    /// ready_rep_late: its last replay's cycle and the timer it replaced.
+    uint64_t rep_at = ~uint64_t(0), rep_issue_at = 0, rep_late_at = 0;
+    bool rep_late = false, rep_on_completion = false;
+    bool on_completion = false;    ///< wakes on its completion, not a time
+    uint64_t late_at = 0;
+    bool late = false;             ///< the full-latency wake (bypass wakes are per cell)
+    bool confirmed = false;        ///< result can no longer be cancelled
+    bool msd = false;              ///< missed its L1 slot, until its completion (OI-50's msd)
+    bool msd_end = false;          ///< its completion came: msd clears after this cycle's hop
+    bool stale = false;            ///< granted on a stale ready bit (OI-51), until its next replay or issue
+    bool ever_issued = false;
+    unsigned replays = 0;
+    bool ready_seen = false;       ///< for EV_WAKEUP / ready-not-selected
+    uint64_t ready_since = 0;      ///< first cycle a memop's row was ready
+    uint64_t eligible_at = 0;      ///< first cycle select may take it (rename's stages)
+    unsigned res = 0;              ///< sectioned: the resources it needs (resOf)
+    uint8_t atom = 0;              ///< an atomic's step: 1 A1, 2 A2, 3 A3 (AR-21); 0 none
+  };
+
+  struct Ckpt {
+    bool live = false;
+    std::array<unsigned, kArchGprs> gpr{};
+    std::array<unsigned, kArchPreds> pred{};
+  };
+
+  enum class WarpState : uint8_t { kFree, kAllocated, kActive, kDemoting,
+                                   kDrained, kKilling };
+  struct Slot {
+    WarpState st = WarpState::kFree;
+    unsigned warp = 0;
+    uint32_t ctaid = 0, warp_in_cta = 0;
+    std::array<unsigned, kArchGprs> rat{}, crat{};      ///< speculative, committed
+    std::array<unsigned, kArchPreds> prat{}, cprat{};
+    std::vector<Ckpt> ckpt;
+    std::vector<RobEntry> rob;
+    unsigned head = 0, tail = 0, count = 0;
+    unsigned next_seq = 0;
+    unsigned held_gpr = 0, held_pred = 0;     ///< owned registers (floor/ceiling)
+    unsigned rs_held = 0;                     ///< RS entries (per-warp cap)
+    unsigned decq = 0;                        ///< decode-queue entries
+    unsigned chwidth = 0;                     ///< committed (serialisation)
+    bool chwidth_hold = false, bar_hold = false;
+    unsigned bar_count = 0;                   ///< the CTA's barriers, from launch or restore-allocate (IS-16)
+    unsigned cta_slot = 0;                    ///< the warp's CTA slot, from launch or restore-allocate (TI-34)
+    /// The committed width per architectural GPR (OA's response OI-57): a
+    /// width code (0 32, 1 16, 2 8, 3 4 bits), written when a chwidth
+    /// retires, 32 at launch and at restore-allocate. F-WIDTH reads it.
+    std::array<uint8_t, 16> cw{};
+    /// V-74 (OA's response IS-16): the oldest unsquashed faulting memop's
+    /// address and ROB index, one register per warp, read at the head.
+    bool fa_valid = false;
+    unsigned fa_idx = 0;
+    uint64_t fa_addr = 0;
+    unsigned bar_id = 0;                      ///< the held barrier (events)
+    /// TI-40 (AR's revs 163-164): the held wait has retired, its length (a
+    /// 32-bit instruction) and its lanes, for a demotion's beat.
+    bool bar_retired = false, bar_long = false;
+    uint32_t bar_mask = 0;
+    /// The barrier demotion timer (OA's rev 200 (3)): from a held wait's
+    /// retire, or a marked uop's that leaves nothing younger in the ROB,
+    /// until the hold lifts or (unheld) the warp's next uop arrives.
+    bool bar_idle = false, bar_idle_reported = false;
+    uint64_t bar_idle_since = 0;
+    unsigned home_ctr = 0;                    ///< OA-14's rotating home position
+    unsigned chwidth_rob = 0;                 ///< the holding instruction
+    bool fault_stop = false;                  ///< V-24
+    uint64_t head_since = 0;                  ///< head-stall timer (demotion)
+    unsigned head_seen = ~0u;
+    bool stalled_reported = false, miss_reported = false;
+    uint32_t retired_since_restore = 0;
+    uint64_t next_pc = 0;                     ///< after the last retirement
+    bool map_sent = false;                    ///< demotion: map to RCU
+    uint64_t notice_lands = 0;                ///< epoch notice in FET (A-74)
+    bool notice_sent = false;
+    unsigned rewind_pending = 0;              ///< a demotion's beats not yet sent (TI-24 (3))
+    bool exit_retired = false, exited_sent = false;   ///< OA's rev 149
+    unsigned kill_epoch = 0;
+    uint64_t resume_pc = 0;
+    /// Restore-allocate in progress (OI-41): registers still to take, and
+    /// the cycle it was accepted (V-64).
+    bool restoring = false;
+    unsigned restore_gpr = 0, restore_pred = 0;
+    uint64_t restore_at = 0;
+  };
+
+  // -- pipeline steps (cycle() calls them in this order) ------------------------
+  void takeCompletions();
+  void advanceWakes();
+  void retire();
+  void select();
+  void rename();
+  void control();
+  void sendRedirect();
+
+  // -- helpers ---------------------------------------------------------------------------
+  int slotOf(unsigned warp) const;
+  RobEntry *byTag(unsigned tag, unsigned *slot = nullptr);
+  unsigned tagOf(unsigned slot, unsigned idx) const {
+    return slot << ccv::prov::kWRobIdx | idx;
+  }
+  unsigned robAge(const Slot &s, unsigned idx) const {
+    return (idx + cfg_.rob_depth - s.head) % cfg_.rob_depth;
+  }
+  bool tryRename(unsigned slot, const Uop &u);
+  unsigned rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy);
+  void rsFree(unsigned e);
+  void addDeps(unsigned e, const RobEntry &r, bool copy_half);
+  void dep(unsigned e, unsigned preg, bool pred, int group);
+  bool cellOk(unsigned i, unsigned j) const;
+  bool rowReady(unsigned i) const;
+  /// The row's lines as they will stand next cycle, from the state now:
+  /// what the ready register holds then (OI-51).
+  bool rowReadyNext(unsigned i) const { return rowReadyAt(i, now_ + 1); }
+  /// The row's lines at cycle t by the producers' timers, from the state now.
+  bool rowReadyAt(unsigned i, uint64_t t) const;
+  /// A memop's program order in its warp (OI-15; OA-13 when loads pass loads).
+  bool memopOrderOk(const Slot &s, const RobEntry &r) const;
+  /// What select reads: the ready register (OI-51), or the lines now.
+  bool rowReadySel(unsigned i) const { return cfg_.ready_reg ? bool(ready_q_[i]) : rowReady(i); }
+  /// The request register's next value for entry e (req_reg).
+  bool requestNext(unsigned e) const;
+  /// OI-90: the ROB row an RS entry's issue owes a done on, and whether
+  /// that row already has 3 in flight (ooe_rs holds it, OA's rev 286).
+  unsigned issueRow(unsigned e) const;
+  bool rowHeld(unsigned e) const;
+  void requestRegister();
+  /// Producer j's line k at cycle t by its timers alone, from the state
+  /// now: what ooe_wake's timers say ahead of time.
+  bool lineAt(unsigned j, unsigned k, uint64_t t) const;
+  /// The ready register's enable for the edge ending this cycle and the
+  /// lead it takes for the next (OA's response OI-53, V-73).
+  void readyRegister();
+  bool rowConfirmed(unsigned i) const;
+  void doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port);
+  void setWakes(unsigned e);
+  void wake(unsigned e);
+  void emitWakeups();
+  void cancel(unsigned e);
+  bool cancelHop();
+  void confirmPass();
+  bool predHold(unsigned slot, const RobEntry &r) const;
+  void complete(unsigned slot, unsigned idx);
+  void completeNow(unsigned slot, unsigned idx);   ///< resolve_lag: a pending resolution acts
+  void resolveBranch(unsigned slot, unsigned idx);
+  /// discard_all: send the bulk discard whatever reached MIU (a demotion's,
+  /// TI-21), which MIU's replay drain and ready report key on.
+  void squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool discard_all = false);
+  void releaseEntry(unsigned slot, unsigned idx);
+  bool outstanding(const RobEntry &r) const;
+  bool gprAllowed(unsigned slot, unsigned n) const;
+  bool predAllowed(unsigned slot, unsigned n) const;
+  unsigned allocGpr(unsigned slot);
+  /// Sectioned: allocate a register of width code w for a slot, preferring
+  /// position pos (a hint: another position if it must).
+  unsigned allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row = false);
+  /// Sectioned: how a width w register at pos would be placed, without
+  /// placing it: 0 an owned partial row, 1 a new row, 2 neither (stall).
+  unsigned planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row);
+  unsigned placePos(unsigned slot, const Uop &u, bool merge) const;
+  /// The resources an entry needs (OI-31): bits 0-3 lane sections S0-S3,
+  /// 4 RCU (R), 5-8 MIU pipes P0-P3.
+  unsigned resOf(const RobEntry &r, bool copy_half, bool widen = true) const;
+  unsigned dataName(const RobEntry &r) const;
+  unsigned dataWidth(const RobEntry &r) const;
+  /// An RS entry's resources: resOf for its ROB entry, or an atomic step's.
+  unsigned resEntry(unsigned e, bool widen = true) const;
+  void selectSectioned();
+  /// step: an atomic's (RsEntry::atom), 0 for any other entry.
+  Issue makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step = 0) const;
+  // -- atomics (AR-21) -----------------------------------------------------------------
+  /// May entry e issue as an atomic's step? A1 only at its warp's head (V-69).
+  bool atomIssueOk(unsigned e) const;
+  /// An entry of a killed warp's atomic pass in flight still issues, so the
+  /// pass writes and releases its hold (V-70).
+  bool atomFinishing(const RsEntry &x) const;
+  /// The head is an atomic in progress: no demotion trigger, and a demote
+  /// waits (V-70).
+  bool atomAtHead(unsigned slot) const;
+  void atomCmpl(unsigned slot, unsigned idx, const Cmpl &c);
+  /// Return the three steps to Waiting for the next pass.
+  void atomNextPass(RobEntry &r);
+  /// Free whatever RS entries an atomic still holds.
+  void atomFree(RobEntry &r);
+  void issueCopy(unsigned slot, unsigned idx, unsigned port);
+  unsigned secMask(unsigned w, unsigned pos) const {
+    return w == 0 ? 0xFu : w == 1 ? (3u << (pos & 2u)) : (1u << (pos & 3u));
+  }
+  unsigned allocPred(unsigned slot, unsigned arch);
+  void freeGpr(unsigned slot, unsigned p);
+  void freePred(unsigned slot, unsigned p);
+  void freeCkptsFrom(unsigned slot, unsigned idx);
+  void advanceEpoch(unsigned slot);
+  void epochNotice(unsigned slot);
+  void releaseSlot(unsigned slot);
+  void ev(const char *name, unsigned warp = 0, uint64_t a = 0, uint64_t b = 0,
+          uint64_t tid = 0);
+  void oev(OoeEv k, unsigned warp, uint64_t b = 0, uint64_t c = 0, uint64_t tid = 0) {
+    if (on_ooe_event) on_ooe_event(k, warp, b, c, tid);
+  }
+  void err(const char *fmt, ...);
+  void count(const std::string &k, uint64_t n = 1) { counters[k] += n; }
+
+  Config cfg_;
+  uint64_t now_ = 0;
+  std::vector<Slot> slot_;
+  std::array<int, kWarpIds> slot_of_;
+  std::array<unsigned, kWarpIds> epoch_{};
+
+  // decode queue: shared, in arrival order
+  std::deque<Uop> decq_;
+  std::deque<uint64_t> decq_seq_;           ///< each queued uop's arrival number
+  uint64_t next_decq_seq_ = 0;
+  uint64_t decq_seq_at_ = 0, decq_seq_prev_ = 0;   ///< next_decq_seq_ at this cycle's start, the last's (fits_stale)
+  uint32_t decq_flushed_ = 0;               ///< slots a squash flushed this cycle
+public:
+  /// What reached each RS entry's wake timer this cycle, for ooe_wake
+  /// (test/ooe/wake_tb.cpp): its grant with the timer kind and latency
+  /// class, a done or completion for its ROB entry (cmpl 2: one past L1,
+  /// which sets the late line's timer), a stop (a replay clearing issued,
+  /// or the entry freed), the L1 miss its timer found, and
+  /// the results confirmed on the timer's word (its full-latency wake, not
+  /// speculative). Observation only: nothing in the model reads it.
+  enum : uint8_t { kWakeTimed = 0, kWakeCopy = 1, kWakeSpec = 2, kWakeMem = 3 };
+  struct WakeLog {
+    std::vector<uint8_t> grant, kind, cls, done, cmpl, stop, miss, fin;
+    /// ooe_confirm's (test/ooe/confirm_tb.cpp): the cancel hop's inputs as
+    /// it ran (each entry issued and unconfirmed, the dependency bits) and
+    /// the entries it returned to Waiting; confirmation's inputs (issued and
+    /// unconfirmed, the result final, a destination, the dependency bits)
+    /// and the entries it confirmed. hop_live: a hop ran this cycle.
+    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, cf_iss, cf_fin, cf_prod, cf_dep;
+    bool hop_live = false;
+    /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
+    /// in allocation order, and those freed.
+    std::vector<unsigned> ralloc;
+    std::vector<uint8_t> rfree;
+    /// ooe_select's (test/ooe/select_tb.cpp), as the sectioned select saw
+    /// them: each entry's valid, issued, eligible (rename's stages past),
+    /// warp active, ready and sources-confirmed bits, its slot, footprint
+    /// (resOf), whether it is a copy, and a memop's live copy (sel_chas,
+    /// sel_cidx); the resources and warps a bulk discard took; then the
+    /// candidates and the grants. sel_live: the sectioned select ran.
+    std::vector<uint8_t> sel_valid, sel_elig, sel_iss, sel_rq, sel_gnt, sel_ready, sel_conf, sel_slot, sel_copy,
+        sel_chas, sel_cand, sel_grant;
+    /// ret_hold's (OA's rev 293): each entry a ret, a branch or call on
+    /// RCU (neither a copy), and held this cycle, the cycle after a ret's
+    /// select.
+    std::vector<uint8_t> sel_ret, sel_brk, sel_hold;
+    std::vector<unsigned> sel_res, sel_cidx;
+    unsigned sel_busy = 0, sel_block = 0;
+    bool sel_live = false;
+    /// RA-17's: a migration is in flight this cycle (under idle_r_k).
+    bool sel_mig = false;
+  };
+  /// The timer's word on an entry: issued, its full-latency wake raised, and
+  /// not speculative, so confirmation may take it (confirmPass).
+  /// A free entry is neither (its fields keep their last values): ooe_wake
+  /// stops a freed timer, and ooe_rs asserts it reports no free entry.
+  bool rsFinal(unsigned e) const { return rs_[e].valid && rs_[e].issued && rs_[e].late && !rs_[e].spec; }
+  const WakeLog &wakeLog() const { return wlog_; }
+  /// What reached the register alias tables this cycle, for ooe_rat
+  /// (test/ooe/rat_tb.cpp), in the order the model applied it: checkpoint
+  /// restores (a mispredict), squashes to retirement (a demotion or kill:
+  /// the speculative maps take the committed ones), slot releases, the
+  /// committed maps' writes at retirement, then rename's reads and writes in
+  /// rename order, a restore-allocate's writes among them (rst: both maps).
+  /// Observation only: nothing in the model reads it.
+  struct RatLog {
+    struct Ren {
+      unsigned slot = 0, src[3] = {}, dst = 0, gname = 0, pguard = 0, pdst = 0, pname = 0, pq[2] = {}, ckpt = 0;
+      bool gwe = false, pwe = false, plogic = false, br = false, rst = false;
+      /// What the reads returned: the model's own values.
+      unsigned psrc[3] = {}, pold = 0, ppguard = 0, ppold = 0, pqn[2] = {};
+      /// Its RS entries: the main one (MIU class when mem), a masked
+      /// load's copy (RCU), else kNoEntry; kNoEntry for a no-op.
+      unsigned main = kNoEntry, copy = kNoEntry;
+      bool mem = false;
+      /// What dep() reads, for test/ooe/rendep_tb.cpp (ooe_rename, slice
+      /// 2): the GPR sources read (gpr_reads), the merge source on the main
+      /// entry, the guard (or pdata) and the predicate merge, the consumer's
+      /// bypass group (kGrpAddr for a memop, 7 for none: RCU executes it),
+      /// and the producer's lat_class, bypass group and no-bypass bit (a
+      /// memop or a cross-lane op).
+      uint8_t greads = 0, cgroup = 0, unit = 0, pgroup = 0;
+      bool gmerge = false, pguse = false, cguard = false, pmerge = false, nob = false, atomic = false;
+      /// Its main entry's wake is speculative: an L1-contracted global load
+      /// under l1_spec (wakeKindClass's kWakeSpec), for the RS row's kind.
+      bool spec = false;
+      /// Width codes at rename (AR-24 (d)): src0..2's and the destination's.
+      uint8_t wsrc[3] = {}, wdst = 0;
+      bool wset = false;   ///< a chwidth or sibling: wdst is the width it sets
+    };
+    struct Ret {
+      unsigned slot = 0, dst = 0, gname = 0, pdst = 0, pname = 0;
+      bool gwe = false, pwe = false;
+    };
+    std::vector<std::pair<unsigned, unsigned>> restore;   ///< {slot, checkpoint}
+    uint32_t squash = 0, release = 0;                       ///< slot masks
+    std::vector<Ret> ret;
+    std::vector<Ren> ren;
+    /// Uops renamed as a rename-time fault's no-op (F-BARRIER, F-WIDTH,
+    /// F-FORMAT): a lane with its class bits and no Ren.
+    unsigned faults = 0;
+    /// Each slot's committed width table after the cycle (AR-24 (d)), and
+    /// whether the cycle changed it: a chwidth's or sibling's retire, a
+    /// launch, a restore-allocate.
+    std::vector<std::array<uint8_t, kArchGprs>> cw;
+    uint32_t cw_changed = 0;
+  };
+  const RatLog &ratLog() const { return rlog_; }
+  /// What the ROB saw and did this cycle (ooe_rob, slice 1, OI-85;
+  /// test/ooe/rob_tb.cpp): its allocations with the fields Rename 2 fills
+  /// in, the events that complete an entry (each by rob_tag), and the
+  /// retirements. stop names the first thing slice 1 does not build
+  /// (a squash, a fault taken, a retire port, an atomic): the bench stops
+  /// comparing that core there.
+  struct RobLog {
+    struct Alloc {
+      unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, pdst = 0, pname = 0, pold = 0;
+      unsigned gsec = 0;          ///< the sections gold frees (sectionsOf)
+      unsigned rs = 0;            ///< its RS entries (main, copy)
+      bool nop = false, gwe = false, pwe = false, mem = false;
+      bool pfree = false;         ///< pold is freed at retire (renamed, not the zero one)
+      // Slice 2: what a squash frees (the new names, their sections), a
+      // store (a squash's discard), and a branch's checkpoint record: its
+      // prediction, its group's lanes, the fall-through and taken targets.
+      unsigned gnsec = 0;         ///< the sections gname holds (sectionsOf)
+      bool store = false, br = false, ptaken = false, ret = false;
+      unsigned ckpt = 0;
+      uint32_t gmask = 0;
+      uint64_t pcn = 0, tgt = 0;
+      unsigned pchi = 0;          ///< pc[47:32]: a ret's target is {pc[47:32], aux}
+    };
+    struct Ret {
+      unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
+      bool gwe = false, pwe = false, pfree = false;
+    };
+    std::vector<Alloc> alloc;
+    /// rob_tags: issues owing RCU a done, RCU's dones, MIU's completions,
+    /// copies issued and landed, RS entries freed.
+    std::vector<unsigned> owe, done, cmpl, cpi, cpl, rsf;
+    /// Slice 2, beside owe and done (one each): the row each owes or
+    /// completes (OA's rev 282: 0 the main entry, 1 the copy, 2 an atomic's
+    /// A2), and a done's outcome (taken, mask, aux).
+    std::vector<unsigned> owe_row;
+    struct DonePay { unsigned row = 0; bool taken = false; uint32_t mask = 0, aux = 0; };
+    std::vector<DonePay> dpay;
+    std::vector<unsigned> miu;    ///< rob_tags: a memop sent to MIU (at_miu)
+    /// Each resolution acting this cycle (rob_tag, right), each squash
+    /// (slot, the branch's index or -1 for all) and what it did to each
+    /// entry (rob_tag, held for an op in flight), each held entry released
+    /// as its op lands, each checkpoint a right branch frees, each redirect
+    /// and each bulk discard (slot, the branch's index, the youngest's).
+    struct Resolve { unsigned tag = 0; bool right = false; };
+    std::vector<Resolve> resolve;
+    struct Squash { unsigned slot = 0; int keep = -1; };
+    std::vector<Squash> squash;
+    std::vector<std::pair<unsigned, bool>> sq_ent;
+    std::vector<unsigned> hrel;
+    std::vector<std::pair<unsigned, unsigned>> ckfree;
+    struct Redir { unsigned slot = 0, ckpt = 0; uint32_t taken_mask = 0; uint64_t target = 0; bool stay = false; };
+    std::vector<Redir> redirect;
+    struct Discard { unsigned slot = 0, branch = 0, disp = 0; };
+    std::vector<Discard> discard;
+    std::vector<Ret> ret;
+    uint32_t release = 0;         ///< slots released (their ROBs empty)
+    const char *stop = nullptr;
+  };
+  const RobLog &robLog() const { return roblog_; }
+  /// What rename's go read and did this cycle (slice 4, test/ooe/go_tb.cpp),
+  /// as the RTL holds it: per slot, the decode queue's heads in order and
+  /// each one's decode-time admission bits (bit 0 RCU, 1 MIU, 2 copy, 3 GPR
+  /// write, 4 predicate write, 5 branch, 6 serial: a chwidth or barrier),
+  /// the ROB's free run from the tail as the cycle started and whether it
+  /// reaches the head, this cycle's retirements, the registered hold and
+  /// unmet floors; the credits and floors owed; the rotation's first slot;
+  /// a restore owning the ports; and the takes, in lane order.
+  struct GoLog {
+    bool valid = false, restore = false;
+    unsigned prio = 0;
+    uint32_t flush = 0;                       ///< slots a squash flushed this cycle, before the go
+    unsigned cred[4] = {}, owed[2] = {};
+    /// Each credit's pool as the go's split reads it, before the allowances
+    /// held (fits_stale 6): for the names, OI-76's lagged pool, which trails
+    /// cred - owed by a cycle when a slot above its floor frees.
+    unsigned pin[4] = {};
+    bool pin_set = false;
+    std::vector<std::vector<uint16_t>> adm;  ///< per slot, its heads' admission bits, oldest first
+    std::vector<unsigned> run, ret, unmet_g, unmet_p;
+    std::vector<uint8_t> reach, hold;
+    std::vector<uint8_t> occ;                 ///< per slot, occupied (not free)
+    std::vector<unsigned> took;               ///< per slot
+    /// Each slot's room to its ceiling, per class (GPR rows, predicates), as
+    /// rename registers it at this cycle's start for the fits the go forms
+    /// now: arch + ceiling - held, saturated at 0 (OI-73 (3)).
+    std::vector<unsigned> room_g, room_p;
+    std::vector<std::array<unsigned, 4>> split;   ///< the allowances registered for the next cycle
+    std::vector<std::pair<unsigned, unsigned>> lanes;   ///< (slot, head) in take order
+  };
+  const GoLog &goLog() const { return golog_; }
+  /// A uop's admission bits as decq holds them (GoLog).
+  uint16_t admBits(const Uop &u) const;
+  /// A tier-1 slot's maps and checkpoints, for test/ooe/rat_tb.cpp.
+  unsigned ratGpr(unsigned s, unsigned a) const { return slot_[s].rat[a]; }
+  unsigned ratPred(unsigned s, unsigned a) const { return slot_[s].prat[a]; }
+  unsigned cratGpr(unsigned s, unsigned a) const { return slot_[s].crat[a]; }
+  unsigned cratPred(unsigned s, unsigned a) const { return slot_[s].cprat[a]; }
+  bool ckptLive(unsigned s, unsigned c) const { return slot_[s].ckpt[c].live; }
+  unsigned ckptGpr(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].gpr[a]; }
+  unsigned ckptPred(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].pred[a]; }
+  unsigned slots() const { return unsigned(slot_.size()); }
+  /// The producer map, for test/ooe/prodmap_tb.cpp: name n's RS entries
+  /// (k 0 the main one, 1 a masked load's copy) or kNoEntry, and the
+  /// GPR names there are (rows by positions).
+  unsigned gprodOf(unsigned n, unsigned k) const { return gprod_[n][k]; }
+  unsigned pprodOf(unsigned n) const { return pprod_[n][0]; }
+  unsigned gprodNames() const { return unsigned(gprod_.size()); }
+  unsigned pprodNames() const { return unsigned(pprod_.size()); }
+  bool rsLive(unsigned e) const { return rs_[e].valid; }
+  /// Rename's shared credits as its counters hold them (fits_stale 6; the
+  /// RTL's ooe_rename, slice 3), at rename: RS room per class, without
+  /// this cycle's frees nor last cycle's past ooe_rs's prompt count (a
+  /// squash's, or past the cap); GPR and predicate names, without this
+  /// cycle's frees. The prompt and late parts are what the counters add.
+  struct RenCredits {
+    unsigned c[4] = {};          ///< RS RCU, RS MIU, GPR names, predicate names
+    unsigned prompt[2] = {};     ///< this cycle's RS frees within ooe_rs's prompt count
+    unsigned late[2] = {};       ///< and the rest, which the counters add an edge late
+  };
+  RenCredits renCredits() const {
+    RenCredits r;
+    for (unsigned e = 0; e != n_; ++e) r.c[e < cfg_.rs_rcu ? 0 : 1] += !rs_[e].valid;
+    for (unsigned k = 0; k != 2; ++k) {
+      // rs_free_lag: the counters see ooe_rs's frees an edge later, as its
+      // candidates do: last cycle's prompt ones are unseen too, and the
+      // late ones from the cycle before.
+      r.c[k] -= cfg_.rs_free_lag ? rs_free_now_[k] + rs_free_prev_[k] + rs_late_prev2_[k]
+                                 : rs_free_now_[k] + rs_late_prev_[k];
+      r.prompt[k] = std::min(rs_free_now_[k], std::min(rs_prompt_[k], cfg_.ren_free_cap));
+      r.late[k] = rs_free_now_[k] - r.prompt[k];
+    }
+    r.c[2] = unsigned(gfree_.ready() - (cfg_.held_late >= 2 ? gfree_.prevFrees() : 0) - (cfg_.held_late >= 3 ? gfree_.prev2Frees() : 0));
+    r.c[3] = cfg_.rename_preds ? unsigned(pfree_.ready() - (cfg_.held_late >= 2 ? pfree_.prevFrees() : 0) -
+                                          (cfg_.held_late >= 3 ? pfree_.prev2Frees() : 0)) : 1000u;
+    return r;
+  }
+  /// What rename's counters count over the cycle just run, for
+  /// test/ooe/rencred_tb.cpp: the RS entries, names and ROB slots rename
+  /// took, the RS frees within ooe_rs's prompt count and past it, the
+  /// names allocated and freed, and the state the counters must reach at
+  /// the next edge.
+  struct RenEvents {
+    unsigned rs_take[2] = {}, rs_prompt[2] = {}, rs_late[2] = {}, rs_late_prev[2] = {};
+    unsigned rs_free[2] = {};     ///< RS entries not valid now
+    unsigned name_take[2] = {}, name_alloc[2] = {}, name_free[2] = {}, names[2] = {};
+    std::vector<unsigned> uops, rob_freed, rob_room;   ///< per slot
+  };
+  RenEvents renEvents() const {
+    RenEvents v;
+    for (unsigned e : wlog_.ralloc) ++v.rs_take[e < cfg_.rs_rcu ? 0 : 1];
+    for (unsigned e = 0; e != n_; ++e) v.rs_free[e < cfg_.rs_rcu ? 0 : 1] += !rs_[e].valid;
+    for (unsigned k = 0; k != 2; ++k) {
+      v.rs_prompt[k] = std::min(rs_free_now_[k], std::min(rs_prompt_[k], cfg_.ren_free_cap));
+      v.rs_late[k] = rs_free_now_[k] - v.rs_prompt[k];
+      v.rs_late_prev[k] = rs_late_prev_[k];
+    }
+    // rs_free_lag: the frees rename's counters take an edge later, so the
+    // stream they see is last cycle's, and this cycle's frees are all unseen.
+    if (cfg_.rs_free_lag)
+      for (unsigned k = 0; k != 2; ++k) {
+        v.rs_free[k] -= rs_free_now_[k];
+        v.rs_prompt[k] = rs_pcnt_prev_[k];
+        v.rs_late[k] = rs_free_prev_[k] - rs_pcnt_prev_[k];
+        v.rs_late_prev[k] = rs_late_prev2_[k];
+      }
+    const FreeVec *fl[2] = {&gfree_, &pfree_};
+    for (unsigned k = 0; k != 2; ++k) {
+      v.name_take[k] = ren_tot_[2 + k];
+      v.name_alloc[k] = unsigned(fl[k]->cycleAllocs().size());
+      v.name_free[k] = unsigned(fl[k]->cycleFrees().size());
+      v.names[k] = unsigned(fl[k]->size());
+    }
+    for (unsigned si = 0; si != slot_.size(); ++si) {
+      v.uops.push_back(si < took_.size() ? took_[si] : 0);
+      v.rob_freed.push_back(si < rob_freed_now_.size() ? rob_freed_now_[si] : 0);
+      // Slots not valid: a squashed entry whose op is still out (a deferred
+      // free) leaves the count at once but holds its slot until it lands.
+      unsigned room = 0;
+      for (const RobEntry &r : slot_[si].rob) room += !r.valid;
+      v.rob_room.push_back(room);
+    }
+    return v;
+  }
+  /// The distinct bypass penalties, sorted: wake line k is penalty k's.
+  const std::vector<unsigned> &wakePens() const { return pens_; }
+private:
+  WakeLog wlog_;
+  RatLog rlog_;
+  RobLog roblog_;
+  void robStop(const char *why) { if (!roblog_.stop) roblog_.stop = why; }
+  bool branch_squash_ = false;              ///< squashAfter from a branch's resolution (ROB slice 2b builds it)
+  uint64_t ret_sel_at_ = ~0ull;             ///< ret_hold: the cycle a ret was last selected for RCU
+  /// ret_hold: no branch or call is selected for RCU this cycle.
+  bool retHeld() const { return cfg_.ret_hold && !cfg_.inject_no_ret_hold && ret_sel_at_ + 1 == now_; }
+  uint64_t res_ret_ = ~0ull;                ///< ret_hold's check: the cycle the last ret resolves
+  unsigned r_run_ = 0;                      ///< idle_r_k: cycles running with R granted, a migration in flight
+  unsigned r_run_q_ = 0;                    ///< r_run_ a cycle earlier (the force's term)
+  bool r_idle_ = true;                      ///< R held no op at this cycle's select
+  /// idle_r_k: a migration is in flight in some slot (RA-17's window).
+  bool migInFlight() const;
+  GoLog golog_;
+  void goRoomNext();
+  unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
+  unsigned decq_freed_prev_ = 0;            ///< and last cycle (decq_free_lag)
+  unsigned decq_flush_now_ = 0, decq_flush_prev_ = 0;   ///< flushed this cycle, the last (decq_flush_late)
+  unsigned decq_take_now_ = 0, decq_take_prev_ = 0;     ///< taken by rename this cycle, the last (decq_take_late)
+  /// Per slot, the uops rename took this cycle: ooe_decq's slot count
+  /// subtracts its registered take, so they are no room for that slot until
+  /// the next edge, under the per-warp limit too (CCV_P_DECQ_WARP_MAX).
+  std::vector<unsigned> decq_slot_take_;
+  std::array<unsigned, 4> ren_tot_{};      ///< RS RCU, RS MIU, GPR, predicate names renamed this cycle
+  /// Per slot, the rows its atomic pair's second slot brings to ren_tot_
+  /// with its lane (OI-80 (d)).
+  std::vector<std::array<unsigned, 3>> pair_tot_;
+  std::vector<std::array<unsigned, 4>> ren_slot_;   ///< the same, per slot
+  std::vector<uint8_t> ren_serial_;          ///< go_static: a chwidth or barrier uop taken this cycle, per slot
+  std::vector<unsigned> go_run_;             ///< go_static: each slot's free ROB run from its tail, as the cycle starts
+  std::vector<uint8_t> go_reach_;            ///< and whether it reaches the head
+  std::vector<unsigned> go_room_;            ///< the ROB room this cycle's take may use, registered last cycle
+  std::vector<uint8_t> go_hold_;             ///< each slot's holds as the cycle starts (inactive, fault, chwidth, barrier)
+  std::vector<std::array<uint8_t, kArchGprs>> cw_prev_;   ///< each slot's width table after the last cycle (RatLog::cw)
+  /// Which hold it is, for the split counter (TI's rev 188): the first of
+  /// not active, chwidth, barrier, other (a fault stop).
+  std::vector<const char *> go_hold_why_;
+  unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
+  bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
+  std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
+  std::vector<unsigned> audit_room_;      ///< each slot's ROB room as the cycle starts (the settings audit)
+  unsigned auditRobRoom(unsigned si) const;
+  std::vector<uint8_t> audit_squash_;     ///< a slot squashed this cycle (the settings audit)
+  std::vector<uint8_t> squash_held_;      ///< squash_held_room_lag: the slot's last squash left held entries
+  std::vector<uint64_t> squash_at_;       ///< squash_room_lag: each slot's last squash cycle, plus one
+  /// release_names_lag: names a deferred release frees next cycle (slot,
+  /// name, predicate or GPR).
+  struct NameFree { unsigned slot, name; bool pred; unsigned wait = 1; };   ///< wait: cycles to its free
+  std::vector<NameFree> name_free_;
+  /// squash_act_lag: per slot, a resolved mispredict whose squash is due:
+  /// the branch's program order, its checkpoint and the RAT it restores.
+  struct SquashDue { bool on = false; unsigned seq = 0, ckpt = 0; uint64_t at = 0; Ckpt cp; };
+  std::vector<SquashDue> squash_due_;
+  /// held_room_lag: held entries released this cycle and last (slot * depth + index).
+  std::vector<uint8_t> hrel_now_, hrel_seen_;
+  void squashDue();
+  std::vector<uint8_t> row_conf_prev_;    ///< each row confirmed at the last request register update (copy_conf_late)
+  bool req_alloc_q_ = false;              ///< a row was written this cycle (req_alloc_lead's flop)
+  bool req_alloc_q2_ = false;             ///< and a cycle before (req_rows_late)
+  bool req_stop_q_ = false;               ///< ooe_sched's registered stop lead (req_rows_late)
+  bool ren_floors_in_share_ = false;      ///< rename's admission: the allowance holds the floors (fits_stale 6)
+  bool ren_pair_last_ = false;            ///< OI-79 (b): the pair tried takes the cycle's last lane
+  bool ren_pair_cut_ = false;             ///< and the go's terms admitted it: the width cuts the take there
+  std::vector<unsigned> hints_;           ///< completion hints sent before this cycle (miss_lead)
+  /// req_rows_late: each row's state one and two updates ago (bit 0
+  /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle, 4
+  /// held miss, 5 miss pulse, 6 final, 7 produces), and issued as
+  /// ooe_sched forms it this cycle.
+  std::vector<uint8_t> req_row_q_[2], req_ise_;
+  std::vector<uint8_t> req_dep_q_[2];     ///< the matrix one and two updates ago (req_rows_late)
+  std::vector<uint8_t> req_cnf_;          ///< ooe_sched's confirmations this cycle (req_rows_late)
+  std::vector<uint8_t> rob_prompt_prev_;  ///< the last cycle's (fits_stale: two cycles late)
+  unsigned rs_prompt_prev_[2] = {};       ///< the last cycle's prompt RS frees (fits_stale)
+  unsigned shr_prev_[4] = {};             ///< the last cycle's shared credits at rename (fits_stale 2)
+  bool shr_copy_prev_ = false;            ///< and a copy among its candidate heads
+  bool shares_on_ = false;                ///< fits_stale 3 this cycle
+  std::vector<std::array<unsigned, 4>> share_;   ///< each slot's share: RS RCU, RS MIU, GPR, predicate names
+  std::vector<std::array<unsigned, 4>> share_reg_;   ///< fits_stale 6: the allowances split for the next cycle
+  std::vector<std::array<unsigned, 4>> pend_a_, pend_b_;  ///< fits_stale 7: splits in flight, two cycles and one from use
+  std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
+  std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
+  std::vector<unsigned> took_;                   ///< uops each slot renamed this cycle
+  std::vector<unsigned> took2_;                  ///< of them, CAS pairs' second slots, which take no ROB entry (OI-79)
+  /// OI-80's liveness rule: per slot, its head refused on its share this
+  /// cycle, and the cycles running its head has so waited while the credit
+  /// covered its need.
+  std::vector<uint8_t> share_refused_;
+  std::vector<unsigned> share_wait_;
+  unsigned split_pool_[4] = {0, 0, 0, 0};       ///< the pool the last split divided (fits_stale 6)
+  /// The need the rotation's slot reserves (OI-80): its head's as the last
+  /// rotation step saw it, registered with the rotation.
+  std::array<unsigned, 4> first_need_{};
+  /// A head's needs per credit (RCU rows, MIU rows, names, predicates),
+  /// from its admission bits.
+  static std::array<unsigned, 4> headNeed(uint16_t a);
+  /// Head h's needs with its pair's second slot when h is a first (OI-80 (d)).
+  static std::array<unsigned, 4> pairNeed(const std::vector<uint16_t> &adm, size_t h);
+  /// The go's ceiling term (OI-73 (3), OA's rev 207): each slot's room to
+  /// its ceiling per class as registered at the last cycle's start, and the
+  /// names the slot was charged last cycle. A take is admitted while the
+  /// names charged last cycle and this one stay within that room.
+  std::vector<std::array<unsigned, 2>> ceil_room_reg_, ceil_room_use_, ceil_names_prev_;
+  std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
+  std::vector<uint8_t> rs_prev_free_;       ///< RS entries freed last cycle (rs_free_lag)
+  std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
+  unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
+  /// fits_stale 6, rename's RS counters as the RTL keeps them: every RS
+  /// free this cycle, per class, and last cycle's past ooe_rs's prompt count
+  /// (a squash's, or past the cap), which reach the counters an edge late.
+  unsigned rs_free_now_[2] = {}, rs_late_prev_[2] = {};
+  /// rs_free_lag: last cycle's frees, its prompt count, and the late ones the cycle before.
+  unsigned rs_free_prev_[2] = {}, rs_pcnt_prev_[2] = {}, rs_late_prev2_[2] = {};
+  std::vector<unsigned> rob_freed_now_;   ///< ROB slots each slot freed this cycle (RenEvents)
+  bool free_prompt_ = false;                ///< an RS free now is a confirmation's
+  /// Held for rename this cycle: valid, or freed this cycle and seen late.
+  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e] || (cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]); }
+  bool robHeld(unsigned si, unsigned i) const {
+    const size_t k = size_t(si) * cfg_.rob_depth + i;
+    return slot_[si].rob[i].valid || rob_late_[k] ||
+           ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[k] && !cfg_.ret_now) ||
+           (cfg_.fits_stale == 1 && rob_prompt_prev_[k]);
+  }
+  /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.
+  void robFreed(unsigned si, unsigned i, bool retire) {
+    if (rob_freed_now_.size() != slot_.size()) rob_freed_now_.assign(slot_.size(), 0);
+    ++rob_freed_now_[si];
+    if (cfg_.ren_credit == 1 || (cfg_.ren_credit == 2 && !retire)) rob_late_[size_t(si) * cfg_.rob_depth + i] = 1;
+    else rob_prompt_[size_t(si) * cfg_.rob_depth + i] = 1;
+  }
+
+  // reservation stations and the matrix
+  std::vector<RsEntry> rs_;           ///< [0, rs_rcu) RCU, then MIU
+  std::vector<uint8_t> cell_;         ///< N x N: bit 0 dependency
+  /// Per cell, which of the producer's wakes it waits for: kLateOff for the
+  /// full-latency wake, else a bypass offset from the producer's issue. A
+  /// producer broadcasts one wake per distinct offset in its column, so the
+  /// cell's select is log2 of that count wide (A-73's late bit, generalised).
+  std::vector<uint8_t> woff_;
+  std::vector<uint8_t> cok_;          ///< per cell, satisfied last cycle (EV_WAKEUP)
+  static constexpr uint8_t kLateOff = 0xFF;
+  uint64_t skew_ = 0;                 ///< inject_early_wake
+  std::vector<uint8_t> ready_q_;      ///< the registered ready (OI-51): rowReadyNext at the last cycle's end
+  std::vector<uint8_t> req_q_;        ///< select's request register (req_reg)
+  bool req_lead_q_ = false;           ///< its change lead: the register differed from its next value
+  std::vector<uint8_t> req_gnt_q_;    ///< the grant register: last cycle's grants, which mask select
+  std::vector<uint8_t> req_gnt_now_;  ///< this cycle's grants, for the grant register at its end
+  std::vector<uint8_t> row_pred_;     ///< each row's readiness for next cycle, as the timers said a cycle ago
+  bool row_pred_live_ = false;
+  bool ready_lead_q_ = false;         ///< the ready register's enable at this cycle's edge
+  unsigned n_ = 0;
+  uint8_t &cell(unsigned i, unsigned j) { return cell_[i * n_ + j]; }
+  uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }
+  uint64_t next_age_ = 0;
+  unsigned rr_rename_ = 0, rr_select_ = 0;
+
+  // producers of each physical register still in the RS (up to two: a
+  // masked load and its copy), and whether its value has landed
+  std::vector<std::array<unsigned, 2>> gprod_, pprod_;
+
+  // free lists: bit-vectors with rotating-start allocation (OI-22)
+  FreeVec gfree_, pfree_;
+  std::vector<uint8_t> gowner_, powner_;      ///< slot + 1, 0 = free
+  std::vector<uint8_t> gever_;                ///< ever allocated (reg_reuse)
+  // Sectioned registers: a name is row * kPos_ + position (kPos_ 1 when not
+  // sectioned, so a name is a row). A row is owned by one tier-1 slot while
+  // any of its sections is live (OI-29); gfree_ holds the wholly free rows.
+  unsigned kPos_ = 1;
+  std::vector<uint8_t> gw_;                   ///< name -> width code
+  std::vector<uint8_t> rowOwner_, rowSec_;    ///< row -> slot + 1; live sections
+public:
+  /// A section allocation or free (freelist_tb), and a slot without a
+  /// candidate of a kind.
+  struct SecEvent { unsigned row, sec, slot; };
+  static constexpr unsigned kNoRow = ~0u;
+private:
+  // cand: each slot's candidate rows by kind (kNoRow none), as this group
+  // sees them; the rows the group took a candidate of; and the sections
+  // allocated since the group started, by row (cand 2).
+  std::vector<std::array<unsigned, 6>> cand_;
+  std::vector<uint8_t> row_claim_, row_alloc_, cand_sec_;
+  std::vector<SecEvent> cyc_sa_, cyc_sf_;
+  std::vector<unsigned> cyc_rt_;
+  /// cand_return: rows to return next cycle, and each one's slot, which
+  /// holds it until then (rename's held counts the take and the return).
+  std::vector<unsigned> cand_ret_;
+  std::vector<uint8_t> ret_owner_;
+  /// ret_late: rows whose return waits for the next cycle (owner in
+  /// ret_owner_), and the allocations of the group before last (cand_lag 2).
+  std::vector<unsigned> ret_pend_;
+  std::vector<std::pair<unsigned, unsigned>> free_defer_;   ///< ret_late: (slot, name) freed next cycle
+  std::vector<uint8_t> row_alloc_prev_;
+  void retPending();
+  std::vector<uint16_t> grp_written_;        ///< cand_indep: each slot's GPRs written this group
+  unsigned cand_row_ = kNoRow;               ///< planSlice's candidate, for allocSlice
+  static unsigned candKind(unsigned w, unsigned pos) { return w == 1 ? 4 + ((pos >> 1) & 1u) : pos & 3u; }
+  unsigned candFind(unsigned slot, unsigned kind, const std::vector<uint8_t> &sec) const;
+  void candStart();
+  // The ready path as the RTL builds it (OA-1; A-62, A-73, OA-4): each
+  // producer drives kWakeLines wake lines, its fastest bypass point plus
+  // each bypass penalty, and the PRF read; each matrix cell selects one.
+  std::vector<unsigned> pens_;        ///< the distinct penalties, sorted
+  uint64_t serial_ = 0;
+  bool pens_fit_ = true;              ///< at most kWakeLines - 1 of them
+public:
+  static constexpr unsigned kWakeLines = 4, kLateLine = kWakeLines - 1;
+  /// A matrix cell: entry i waits on entry j.
+  bool depBit(unsigned i, unsigned j) const { return cell(i, j) & 1; }
+  /// The wake line cell (i, j) selects: a bypass penalty's index into the
+  /// producer's lines, or kLateLine for the PRF read.
+  unsigned cellCode(unsigned i, unsigned j) const;
+  /// Producer j's wake line k this cycle.
+  bool wakeLine(unsigned j, unsigned k) const;
+  /// Whether the configured penalties fit the lines (a knob-set table may
+  /// not); the structural check runs only when they do.
+  bool wakeLinesFit() const { return pens_fit_; }
+  /// Entry e's timer kind and latency class, {kind, class}, as ooe_wake's
+  /// timer takes them at a grant: static per op, so ooe_rs writes them at
+  /// allocation (OA, re:OI-104). setWakes logs the same pair.
+  std::pair<uint8_t, uint8_t> wakeKindClass(unsigned e) const;
+  /// A number unique to this core among all constructed in the process, so
+  /// an observer can tell a new core from one at a reused address.
+  uint64_t serial() const { return serial_; }
+  /// The GPR row free list and the predicate free list (ooe_freelist).
+  const FreeVec &gprFree() const { return gfree_; }
+  /// ooe_freelist's sections (freelist_tb, FL_NS): the section allocations
+  /// (row, sections, slot) and section frees (row, sections) since the GPR
+  /// free list's last clock, as its cycleAllocs and cycleFrees; the rows
+  /// cand_return gave back are among its frees. With cand, the candidates
+  /// the last group started from, and the section bits they were found on.
+  const std::vector<SecEvent> &cycleSecAllocs() const { return cyc_sa_; }
+  const std::vector<SecEvent> &cycleSecFrees() const { return cyc_sf_; }
+  const std::vector<unsigned> &cycleReturns() const { return cyc_rt_; }
+  unsigned candidate(unsigned slot, unsigned kind) const { return slot < cand_.size() ? cand_[slot][kind] : kNoRow; }
+  const std::vector<uint8_t> &candSections() const { return cand_sec_; }
+  const FreeVec &predFree() const { return pfree_; }
+  unsigned rsEntries() const { return n_; }
+  bool rsValid(unsigned e) const { return rs_[e].valid; }
+  bool rsIssued(unsigned e) const { return rs_[e].valid && rs_[e].issued; }
+  /// ooe_wake's age saturation (its AW of 5): a replay must come before it.
+  static constexpr unsigned kWakeAgeMax = 31;
+  /// Writes a register some entry may wake on (ooe_wake's prod, taken at grant).
+  bool rsProduces(unsigned e) const { return rs_[e].produces; }
+  /// Allocation order (smaller is older): what ooe_age's matrix encodes.
+  uint64_t rsAge(unsigned e) const { return rs_[e].age; }
+  /// The decode queue in arrival order, for ooe_decq: each uop's tier-1
+  /// slot and its arrival number (a count over the core's life).
+  struct DecqView { unsigned slot; uint64_t seq; };
+  std::vector<DecqView> decodeQueue() const;
+  /// Slots whose decode-queue uops a squash dropped since this cycle began.
+  uint32_t decqFlushed() const { return decq_flushed_; }
+  /// The first RCU-class entry index past the last; MIU entries follow.
+  unsigned rsRcuEntries() const { return cfg_.rs_rcu; }
+  bool rsReady(unsigned e) const { return rowReady(e); }
+  /// The assembled bench's (test/ooe/trio_tb.cpp), at a cycle's end: a producer's
+  /// wake line as it stands next cycle (what the ready register captures),
+  /// each entry's slot, copy flag and past rename next cycle, a slot's warp
+  /// active, and the ready and request registers.
+  bool wakeLineNext(unsigned j, unsigned k) const { return lineAt(j, k, now_ + 1); }
+  /// ooe_wake's timer lead: producer j's line k changes at the edge after
+  /// next.
+  bool wakeLineChanges(unsigned j, unsigned k) const { return lineAt(j, k, now_ + 2) != lineAt(j, k, now_ + 1); }
+  unsigned rsSlot(unsigned e) const { return rs_[e].slot; }
+  unsigned rsRes(unsigned e) const { return rs_[e].res; }   ///< the entry's footprint (S0-S3, R, P0-P3; ooe_select's res)
+  bool rsCopy(unsigned e) const { return rs_[e].copy; }
+  bool rsEligibleNext(unsigned e) const { return rs_[e].eligible_at <= now_ + 1; }
+  bool slotActive(unsigned s) const { return s < slot_.size() && slot_[s].st == WarpState::kActive; }
+  bool readyQ(unsigned e) const { return ready_q_[e]; }
+  /// A slot's barrier count, as launch or restore-allocate set it (IS-16).
+  unsigned slotBarCount(unsigned s) const { return slot_[s].bar_count; }
+  /// A slot's committed width code for architectural GPR a (OI-57).
+  unsigned slotWidth(unsigned s, unsigned a) const { return slot_[s].cw[a & 15]; }
+  /// A destination's width at rename: its committed width (OI-57; OA's rev
+  /// 166). chwidth holds rename until it retires, so the table is current.
+  unsigned dstWidth(unsigned slot, const Uop &u) const {
+    // A chwidth's destination is its register at the new width (TI's rev
+    // 185): the width it commits at retire, a sibling's too.
+    if (u.attr.serial == kSerChwidth || u.attr.commit_width) return u.imm & 3u;
+    return cfg_.inject_width_from_dec ? u.w : slot_[slot].cw[u.dst & 15];
+  }
+  /// The width a destination is allocated at: a full row under full_rows.
+  unsigned allocWidth(unsigned slot, const Uop &u) const { return cfg_.full_rows ? 0 : dstWidth(slot, u); }
+  /// Tests only: a launched warp's committed widths as though its chwidths
+  /// had retired (launch itself sets every register to 32 bits, A-64).
+  void presetWidths(unsigned slot, const std::array<uint8_t, 16> &cw) { slot_[slot].cw = cw; }
+  bool reqQ(unsigned e) const { return req_q_[e]; }
+  unsigned nameRow(unsigned n) const { return n / kPos_; }
+  unsigned namePos(unsigned n) const { return n % kPos_; }
+  bool isZeroName(unsigned n) const { return n / kPos_ == cfg_.phys_zero; }
+  unsigned zeroName() const { return cfg_.phys_zero * kPos_; }
+  /// No GPR destination on the issue and the memop (TI-37).
+  unsigned noGpr() const { return cfg_.inject_none_row_zero ? 0 : zeroName(); }
+  unsigned nameWidth(unsigned n) const { return n < gw_.size() ? gw_[n] : 0; }
+
+  /// The sections a register occupies; none for the zero register.
+  unsigned sectionsOf(unsigned n) const {
+    if (isZeroName(n)) return 0;
+    return cfg_.sectioned ? secMask(nameWidth(n), namePos(n)) : 0xFu;
+  }
+private:
+
+  // inputs not yet taken
+  std::vector<Done> dones_;
+  std::vector<Cmpl> cmpls_;
+  std::vector<std::pair<Cmpl, unsigned>> cs_due_, cs_next_;   ///< cmpl_split: parts deferred a cycle (1 ROB, 2 RS)
+  std::vector<Alloc> allocs_;
+  std::vector<unsigned> demotes_;
+  std::vector<unsigned> demotes_held_;   ///< a demote waiting for an atomic at the head (V-70)
+  /// TI-25 (AR's rev 112): the parked layout, per warp_id, each GPR's
+  /// position and committed width (2 + 2 bits, 64 bits a warp, 2 Kb for
+  /// the 32 contexts). Written at the demotion's map, read at
+  /// restore-allocate, which gives each register its own row with them.
+  struct Parked { std::array<uint8_t, 16> pos{}, w{}; };
+  std::array<Parked, kWarpIds> parked_{};
+  /// A check, not the design's state (OA's rev 170: OOE holds no live
+  /// mask): per warp_id, the lanes whose exit has retired since launch,
+  /// across swaps. A final exit's retire asserts they are every lane.
+  std::array<uint32_t, kWarpIds> exit_lanes_{};
+  std::array<uint32_t, kWarpIds> launch_lanes_ = [] {
+    std::array<uint32_t, kWarpIds> a{};
+    a.fill(kFullMask);
+    return a;
+  }();
+  unsigned mig_reads_ = 0;
+  std::vector<uint8_t> stall_bit_;       ///< share_stall_aware's registered bit per slot
+  /// The slot's oldest RS entry waits on a memory miss past the L1 window.
+  bool missStalled(unsigned slot) const;
+  /// GPR operand reads an issue of entry e makes (the PRF read-port charge).
+  unsigned readsOf(unsigned e) const;
+  uint32_t released_ = 0;
+  bool kill_pending_ = false;
+  uint32_t kill_mask_ = 0;
+  unsigned kill_epoch_ = 0;
+
+  // outbound queues on rate-limited channels
+  std::deque<Redirect> redirects_;
+  uint64_t free_mask_ = 0;
+  std::deque<Commit> commits_;
+  std::deque<Memop> discards_;       ///< bulk discards, waiting for a slot
+  // granted last cycle, in the payload-read stage (payload_stages = 1)
+  bool cancel_live_ = false;          ///< a transitive cancel still spreading
+  bool miss_now_ = false;             ///< an L1 miss this cycle (inject_shallow_cancel)
+  // Restore-allocate's 20 registers bypass the candidate buffer (OI-41).
+  size_t gAvail() const { return gfree_.avail(); }
+  size_t pAvail() const { return pfree_.avail(); }
+  unsigned gTake() { return gfree_.alloc(); }
+  unsigned pTake() { return pfree_.alloc(); }
+  /// Restore-allocate (OA's response OI-41): accepted slots, oldest first.
+  /// The front one drains the candidate buffers through rename's ports,
+  /// and rename stalls for every warp until the queue is empty.
+  std::deque<unsigned> restore_q_;
+  void restoreStep();
+  bool gprReserved(unsigned slot, unsigned n) const;
+  bool predReserved(unsigned slot, unsigned n) const;
+  unsigned unmetFloor(unsigned slot, bool pred) const;
+  unsigned heldSeen(unsigned slot, bool pred) const;
+  unsigned floorsOwedLag(bool pred) const;
+  std::vector<std::array<unsigned, 2>> fr_now_, fr_prev_, fr_prev2_;   ///< each slot's frees this cycle and last (heldSeen)
+  /// names_pool_lag: each slot's held as seen less the takes before it, this
+  /// cycle's and last cycle's, and the names taken one and two cycles ago.
+  std::vector<std::array<unsigned, 2>> pool_hl_, pool_hl_prev_;
+  std::array<unsigned, 2> pool_tk1_{}, pool_tk2_{};
+  unsigned floorsOwed(bool pred) const;
+  unsigned cancel_depth_ = 0;
+  std::vector<Issue> held_issues_;
+  std::vector<Memop> held_memops_;
+};
+
+} // namespace ooe
+} // namespace ccv
+#endif // CCV_OOE_CORE_H
