@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-05 ~11:00 UTC (leads pushed, RI-11 package on RH). Keep this current at every task's end; it is what
+Updated 2026-11-06 ~04:30 UTC (OI-114 awaiting OA; first-kind cmpl probe done, OI 302/303; RH jobs R49, 2, 2b). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -86,6 +86,46 @@ the compact hook printed this handoff.
   Sync this file to origin.
 
 ## Open work (most urgent first)
+-12. STATE 11-06 ~04:30 UTC. Bookmarks OA 357, AR 303, OI 303 (rev 304). Main checkout as -11.
+   - First-kind miu_ooe_cmpl RTL probe DONE (worktree scratchpad/byp, probe RTL, not for push;
+     ports2.py prints flop-flop, in->flop, out ready). wake: capture idx (en cv) 14.1->0, ff
+     21.9->22.8, fin bypass ready 9.9; sched fin->flop 13.8 (fits); rs cfin->flop 18.6 (28.5,
+     over) but a separate bypass term kept off rmask: cfb->flop 14.1 = 24.0, ff 27.1 (cap 29.4).
+     rob_w: capture tag 22.1->0, ff 31.6 (cap 31.7); retire window is the arrival reader, so the
+     done is an edge late (bit 1). OI 302 + correction OI 303 (OA, AR notified).
+   - Model knob cmpl_split bit 8 (hit-freed RS entry held a cycle) in scratchpad/wcs (497efb8 +
+     rxsplit + cmplsplit-delta + c8-delta, uncommitted): audit = base at 4 points; C9 (8|1):
+     993.60/991.81/903.35/909.65 vs 983.50/990.83/896.15/898.81.
+   - RH queue: R49 S1 (sent 00:30) -> job 2 (cs-run.sh: A6,C1,C2,C4,C7,F S1+audit+CM128/32)
+     -> job 2b (c8-delta: C8, C9). On return: row to OA, AR with the first-kind cost.
+   - Still: OI-114 awaits OA on OI 301; Friday pings (11-06); ROB slices 3-6.
+-11. STATE 11-06 ~00:45 UTC. Bookmarks OA 357, AR 303, OI 301. Main checkout: branch
+   oi-handoff (b8dcb7d + this) holds the unpushed handoff; ccr-57eff422-5tdecg = origin 93457a4.
+   - OI-114: built in wtf branch oi-floor114, 5664f5e (gate-scratch/OI): model split floor term
+     less own take (share_hold_ for the pool, share_reg_ adjusted after takes); ooe_go per-k
+     uk/sgk; go_tb names<=credit assert; run-rtl scarce-names run + control floor-pre-take
+     (caught only with GO_NAMES=144,24). go_tb 0 mismatches; ooe-test PASS. NGD OVER caps
+     (ff 28.5, unmet_p 30.2, hv 31.4, ...). OI 301 asks OA: register unmet in ooe_rename
+     (budget 6->0) + term max(0,u - last take names - take k) + need-side shift. AWAIT OA.
+   - OI 300 (re OA 355/357, AR 302/303): cmpl/hint payload cones 14.1 (ooe_wake idx), 22.1
+     (ooe_rob_w cm_tag), leads 1.9. A6L=A6, A6H=H3 (no runs). Promised next: RTL probe of the
+     two bypasses (wake hit->fin/confirm, rob done->retire) + model knob delaying only ROB done or
+     only timer hit, S1 on RH. Script scratchpad cmplcone/ports.py.
+   - OI 298 cand-ahead (OA rejected, 355), OI 299 RI-11 package v2 complete. OA 354: ooe_go keep caps;
+     (a)+(b) pricing low priority. RH: R49 S1 job sent 00:30 (aa9ad9c, rs_rcu=32,rs_miu=17) -> row to OA.
+   - Then: ROB slices 3-6; Friday pings today (11-06).
+-10. STATE 11-06 ~00:15 UTC. PUSHED 93457a4 (SCOPED PASS 22/22): 11-05 sweep merge + call link
+   (c10c4b4) + handoff; OI rows 295 (TI notified: call link in) and 296 (re OA 326: ratread
+   path 17.9 with fanout, under 25, off the plan; parent is ooe_rename, unbuilt, so TI's
+   alone-16 question stands; OA and TI notified). Task 4 done.
+   OA 352 RTL probe DONE (ri11/summary.txt): rows side <= 24.0, candidate prefix 26.0-27.2
+   (16 endpoints). RH container was reclaimed; RH relaunched 22:19: Pn/Pn2048, cm32, then the
+   ca audit (~02:15 UTC). Then ONE row to OA (cand-ahead + R49 + probe), and the RI-11 row
+   (S1, audit, CM128: H3 +1.89% over A6; P = Ph = -0.05% vs H3) to OA, AR, DA.
+   GO PATH: ooe_go at its caps (f-f 27.6, in 29.9, out 25.8; 22.8 without fanout). Measuring
+   748e071 (priority decode copies, OA 319) on HEAD in scratchpad/wtgo2. Sched (b) and the
+   sched peak are done (20c31b6; TI listed ooe_sched heavy).
+   Bookmarks now: OA 353, OI 296, AR 300.
 -9. STATE 11-05 ~11:50 UTC. OA rev 352 (re:OI 294): rs_free_lag dropped; price (1) cand-ahead
    + RTL depth, (2) 49 rows no lag, one audit. Model knob rs_cand_ahead=A in worktree
    scratchpad/wtca (branch oi-candahead, uncommitted, patch ri11/candahead.patch): candidates
