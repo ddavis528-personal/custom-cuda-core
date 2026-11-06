@@ -50,7 +50,6 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- Expected: OI's OI-114 S1 job (OA 369 (b)), on a commit in gate-scratch/OI.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
@@ -66,6 +65,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   the warm time and kill it. Delete bench oracles after each job.
 
 ## Done
+- OI-114 (b) S1 for OI (11-06): floor_take_lag costs 0 at 192 and at 160.
+  phys_regs=160 alone fails V-31; it needs ren_floor=12,ren_ceil=44. OI's
+  run.sh scripts build from the clone's HEAD, so pass them a worktree at the job's
+  commit.
 - RI-16 for RI (11-06; RI says DA approved, unconfirmed in RH's session), all
   sent: Z is -1.04% on S1, -0.93% on cm32, +0.15% on cm128, with 5 of Z's S1
   controls timing-dependent. RI's RCU ret-check harness bug was fixed in
