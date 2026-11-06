@@ -107,7 +107,9 @@ module ooe_rob_tb #(
   output logic [S-1:0]            rd_stay_cq04h,
   output logic [S-1:0]            dc_v_cq03h,
   output logic [S*LD-1:0]         dc_br_cq03h,
-  output logic [S*LD-1:0]         dc_disp_cq03h
+  output logic [S*LD-1:0]         dc_disp_cq03h,
+  output logic [S-1:0]            cmt_v_cq03h,
+  output logic [S*TW-1:0]         cmt_tag_cq03h
 );
   // Per instance, its frees and their leads, ORed below.
   logic [S-1:0]        gfl_w, pfl_w;
@@ -185,7 +187,9 @@ module ooe_rob_tb #(
       .rd_stay_cq04h(rd_stay_cq04h[w * ($bits(rd_stay_cq04h) / S) +: $bits(rd_stay_cq04h) / S]),
       .dc_v_cq03h(dc_v_cq03h[w * ($bits(dc_v_cq03h) / S) +: $bits(dc_v_cq03h) / S]),
       .dc_br_cq03h(dc_br_cq03h[w * ($bits(dc_br_cq03h) / S) +: $bits(dc_br_cq03h) / S]),
-      .dc_disp_cq03h(dc_disp_cq03h[w * ($bits(dc_disp_cq03h) / S) +: $bits(dc_disp_cq03h) / S])
+      .dc_disp_cq03h(dc_disp_cq03h[w * ($bits(dc_disp_cq03h) / S) +: $bits(dc_disp_cq03h) / S]),
+      .cmt_v_cq03h(cmt_v_cq03h[w * ($bits(cmt_v_cq03h) / S) +: $bits(cmt_v_cq03h) / S]),
+      .cmt_tag_cq03h(cmt_tag_cq03h[w * ($bits(cmt_tag_cq03h) / S) +: $bits(cmt_tag_cq03h) / S])
     );
   end
   always_comb begin

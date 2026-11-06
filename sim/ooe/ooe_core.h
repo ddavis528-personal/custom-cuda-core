@@ -55,6 +55,11 @@ struct Config {
   unsigned issue_width = ccv::kIssueWidth;        ///< ccv_ooe_rcu_issue rate
   unsigned memop_width = ccv::kIssueWidth;        ///< ccv_ooe_miu_memop rate
   unsigned retire_msgs = ccv::kIssueWidth;        ///< ccv_ooe_miu_retire rate
+  /// commit_per_slot 1: ccv_ooe_miu_retire's port k is ROB slot k's alone
+  /// (each warp's ooe_rob_w drives its own slot of the channel, no parent
+  /// logic): a slot commits at most one store a cycle (OA rev 362, ROB
+  /// slice 3). 0 shares the ports across slots (rob_tb's shared-ports).
+  unsigned commit_per_slot = 1;
   unsigned rename_width = ccv::kIssueWidth;       ///< doc: "4 uops per cycle"
   unsigned rs_rcu = ccv::prov::kRsRcu;
   unsigned rs_miu = ccv::prov::kRsMiu;
@@ -1781,6 +1786,8 @@ public:
     struct Discard { unsigned slot = 0, branch = 0, disp = 0; };
     std::vector<Discard> discard;
     std::vector<Ret> ret;
+    /// Slice 3: each store committed (slot, index), from the retire.
+    std::vector<std::pair<unsigned, unsigned>> commit;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;
   };

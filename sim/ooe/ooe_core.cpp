@@ -21,7 +21,7 @@ namespace ooe {
 
 std::string Config::apply(const std::string &spec) {
   std::map<std::string, unsigned *> u = {
-      {"slots", &slots}, {"rob_depth", &rob_depth}, {"retire_per_rob", &retire_per_rob},
+      {"slots", &slots}, {"rob_depth", &rob_depth}, {"retire_per_rob", &retire_per_rob}, {"commit_per_slot", &commit_per_slot},
       {"issue_width", &issue_width}, {"memop_width", &memop_width},
       {"rename_width", &rename_width}, {"rs_rcu", &rs_rcu}, {"rs_miu", &rs_miu},
       {"rs_warp_cap", &rs_warp_cap}, {"decq", &decq}, {"decq_warp_max", &decq_warp_max},
@@ -2548,7 +2548,7 @@ void Core::retire() {
       const unsigned h = tagOf(si, s.head);
       if (s.head_seen != h) { s.head_seen = h; s.head_since = now_; s.stalled_reported = s.miss_reported = false; }
     }
-    unsigned n = 0;
+    unsigned n = 0, slot_commits = 0;
     bool after_branch = false;
     while (n != cfg_.retire_per_rob && s.count && !s.fault_stop) {
       RobEntry &r = s.rob[s.head];
@@ -2589,12 +2589,16 @@ void Core::retire() {
       }
       if (r.is_store && !r.committed) {
         if (ports == cfg_.retire_msgs) { count("stall.retire_port"); robStop("retire port"); break; }
+        if (cfg_.commit_per_slot && slot_commits) { count("stall.commit_slot_port"); break; }
+        ++slot_commits;
         Commit c;
         c.tid = r.u.tid;
-        c.port = ports++;
+        c.port = cfg_.commit_per_slot ? si : ports;
+        ++ports;
         c.rob_tag = tagOf(si, s.head);
         out.commits.push_back(c);
         r.committed = true;
+        roblog_.commit.push_back({si, s.head});
       }
       // Commit the mapping; free the one it replaced: no older instruction
       // can still read it, and every younger one reads the new name.
