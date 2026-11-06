@@ -118,7 +118,31 @@ RI-15 (RI rev 15): strict CG-5 leaves no legal rcu_pred layout (MIU lead 152 fl,
 payload cycle; enable would be an input). RI offered (a) iface-flop Q as enable, (b) 2-cycle leads, (c) waivers.
 RA rev 82: (a)/(c) reverse Daniel's CG-5 ruling; RA proposes (d) one-cycle ungated lead holds charged to the
 block 2% like DA rev 108 (161 fl; block ~1,500 of ~4,700). DANIEL TO RULE (with credit pulses). rcu_pred/kill held.
-Bookmarks: OA 338, RA 82, RI 15, TI 321, DA 108, AR 289.
+Sweep 2026-11-05: merged 57eff422 (139), 888218a3 (20), 183cc441 (7), 80102643 (14), 9eb50716 (15),
+c22116ce (5); full gate green, pushed. TI rev 332: RCU leads 835 + controls 420 (Partition rev 42 budget ~2,500/4,700).
+Zero-cycle pricing (OA 347, AR 298): RA rev 83/84 - lane_rcu_res zero-cycle recommended (RI rev 16: LW 9.0/10.4,
+PL merge 9.0-10.2, sec_valid never an enable) -> LANE 7/SFU 12; miu_rcu_data stays flopped (guard fwd 16.2 > 12;
+needs a split); issue stays flopped (18.4). RI model runs (S1, CoreMark) pending for DA.
+PF-47 base 2: OA 346 agrees, TI waits on AR (AR 288 confirmed). RI-15 + credit pulses: still DANIEL.
+RI-16: zero-cycle model runs blocked (skeleton lacks boundary flops); AR bases alone S1 +1.17%.
+AR row 300: receiving flop's cycle is link term bnd_rx; bases back to LANE 7 / SFU 12 / RCU_ADDR 5 (PF-47 base 1,
+derived 2). RA rev 85 took it; spec Overview 52, Partition 43, Conventions 12.
+AR row 301 CORRECTS: CCV_LAT_RCU_ADDR = its base (5; PF-47 1); bnd_rx(issue) only on the crossing (L1_WAKE/CMPL
+17/19, 13/15 after PF-47). Default ends option 1 (RCU's 3 receiving ends flopped). RA rev 86; spec Overview 57,
+Partition 44, Conventions 13.
+DANIEL 2026-11-06 (RA session, verbatim in RA rev 87): "Yes it's ok to waive module level clock gating
+violations for interface lead signals, with the expectation (to be validated at final construction) that these
+will fit within the 2 percent block total". RI-15 decided as (c): RI keeps a90cb8f's waivers, pushes rcu_pred/kill.
+Not covered: rcu_kill's 45 credit pulses (CG-1) - still open for Daniel. AR asked to record in DA tab; TI asked
+to include waived lead flops in check-cg block total. Partition rev 45. Pongs: answered OI's ping 11-06.
+TI rev 343: check-cg charges "lead": true waivers to the block 2%. DANIEL 2026-11-06: "Yes, charge the credit
+pulses to the block's 2% too" (RA rev 88; TI/RI/AR notified; AR to record in DA tab). Both of Daniel's open
+rulings now made. Partition rev 46.
+TI-51 (DA 2026-11-06): (1) compact at 350k - AFTER merging TI's next push, re-run session-home installer
+(/home/user/.claude takes 350000; needs Daniel's approval here). (2) no whole-block synthesis: block NGD/CG =
+sum of parts from module runs; port budgets are the contract; every module needs a unit at each instantiated
+parameter set (Partition rev 47). TI rev 344: check-cg charges "credit": true too. DA 110 records RA 88.
+Bookmarks: OA 347, RA 88, RI 17, TI 346, DA 110, AR 301, OI 290, Conventions 17, CP 154.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
