@@ -105,16 +105,6 @@
    "date": "2026-10-23"
   },
   {
-   "module": "ooe_decq",
-   "rule": "CG-1",
-   "target": "tkv_cq02h",
-   "max_flops": 4,
-   "measured_flops": 4,
-   "why": "The residue of decq's flops written every cycle (4 flops). Adding the registered flush's copy for the outputs' mask, fl_o_cq02h (4 flops, written every cycle, the flush its D), took decq's count from 14 to 18: decq masks a slot's heads and count while its flush is registered, so rename's go blocks a squash for two cycles, not three (OA's response OI-66, rev 174), and NGD-7 asks a register that drives an output and reaches a flop 18.8 NGD away to be copied. The allowance (14 flops) takes the reset, fl_q, fl_o, enq_en and arr_q; this register, each slot's take in transit (deq_s, an input, its D), is what it leaves: 4 flops (DA's rule for a waiver's threshold, OA's response OI-66).",
-   "by": "OI",
-   "date": "2026-10-23"
-  },
-  {
    "module": "ooe_rename",
    "rule": "CG-3",
    "target": "pxn_cq04h",

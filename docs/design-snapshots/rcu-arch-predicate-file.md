@@ -1,9 +1,9 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=4 exported=2026-11-04 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 4 on 2026-11-04 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=7 exported=2026-11-05 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 7 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Predicate file
 
-The predicate file, `ccv_rcu_pred`, is 48 rows × 32 bits read in A and written through masked write ports; the only forward it needs is from MIU's `pred_result` in the guard's own cycle, and every merge reads the old destination at write time, when it is already final.
+The predicate file, `rcu_pred`, is 48 rows × 32 bits read in A and written through masked write ports; the only forward it needs is from MIU's `pred_result` in the guard's own cycle, and every merge reads the old destination at write time, when it is already final.
 
 ## Organisation
 
@@ -17,7 +17,7 @@ The predicate file, `ccv_rcu_pred`, is 48 rows × 32 bits read in A and written 
 | --- | --- | --- | --- |
 | G0-G8 | A | `phys_pred_guard` of slot s, on the wire (decoded combinationally) | guard of every lead slot; for a `pdata` op the data predicate; for a predicate store the store data |
 | RA, RB | A | R op `imm`\[5:0\] and `imm`\[12:7\] (negates `imm`\[6\], `imm`\[13\]), TI-1 | predicate sources of pand, por, pxor; vote and ballot's `ps` (RA-29 proposes it rides `imm`\[6:0\] the same way) |
-| OL0-OL3 | A+6 | lane descriptor's `phys_pred_old_dst` | merge source for a lane op's predicate result |
+| OL0-OL3 | A+7 | lane descriptor's `phys_pred_old_dst` | merge source for a lane op's predicate result |
 | OR | A+2 | `rpres_a1`'s old destination | merge source for an R op's predicate result |
 | OC0-OC3 | A+2 | the predicate-only copy's `phys_pred_old_dst` | the copy's data |
 | D0-D3 | A+1 of a demotion read cycle | the pairing entry's `pred_map`\[0..3\] | demotion row 16 |
@@ -26,10 +26,10 @@ No old-destination read needs a forward: OOE issues an op only when its old dest
 
 ## The guard path (stage I, the critical predicate path)
 
-1. Decode `phys_pred_guard` (on the wire, arriving by 2 NGD) and read the row, 48:1 AND-OR: about 12 NGD.
+1. Decode `phys_pred_guard` (on the wire, from its interface flop at 0 NGD) and read the row, 48:1 AND-OR: about 12 NGD.
 2. **MIU forward.** For each MIU slot j with `mdat_v_q[j]`, lead `pred_we` and lead `phys_pred` equal to the guard's index (6-bit compare, in parallel with the read), substitute `(row & ~m_j) | (pred_result_j & m_j)`, m\_j the lead `active_mask`, `pred_result_j` from the wire. About 2 NGD after the read.
 3. Negate by `pred_neg`; force all ones if the op is not `guarded` or is `pdata`: 1-2 NGD.
-4. `active = issue_mask & guard`: 1 NGD, about 17 NGD in all, into `active_a[s]` and, for S slots, `sec_pred_bit_a`.
+4. `active = issue_mask & guard`: 1 NGD, about 15 NGD in all, into `active_a[s]` and, for S slots, `sec_pred_bit_a`.
 5. The branch outcome: OR over 32 lanes, about 5 NGD more, into `lead_br_taken_a` (22 NGD). `lead_br_mask_a` = `active` (17).
 
 **The split guard read (RA-32, OA's rev 306).**
@@ -44,7 +44,7 @@ The lane slots' guards (G0-G7) take the same lead if OOE sends it for every slot
 
 This lands when OI's NGD fits the lead slice at select. Until then the spec's 22-NGD path stands, and the implementation agent measures it (M1).
 
-Only MIU writes need the forward: a lane producer lands at its A+6 and its consumer's A is at least A+7; an R producer lands at A+2 and its consumer's A is at least A+3; a predicate-only copy's consumer waits for the load. A guard read of a row that a non-MIU port writes in the same cycle is asserted never to happen.
+Only MIU writes need the forward: a lane producer lands at its A+7 and its consumer's A is at least A+8; an R producer lands at A+2 and its consumer's A is at least A+3; a predicate-only copy's consumer waits for the load. A guard read of a row that a non-MIU port writes in the same cycle is asserted never to happen.
 
 For a `pdata` op the forwarded, negated value is also sent to the lanes as `sec_pred_data`. For a predicate store (`mem_kind` pred-store) the raw row, without the negate, is the store data in lane 0 (the stub's rule, kernel.cpp 3156-3160).
 
@@ -58,7 +58,7 @@ Each port presents a row select, a 32-bit lane mask m and 32-bit data d. Per row
 
 | Port | W | Row | m | d |
 | --- | --- | --- | --- | --- |
-| PL0-PL3 (lane op whose lead section is k, `pred_we`) | A+6 | `phys_pred_dst` | all ones | per lane l: `active[l]` ? `lane_rcu_res`\[l\].`sec_pred_out`\[k\] : old destination\[l\] (OLk); with `merge_en` = 0 the old destination is 0 and OLk is not read, as `merge_data` is 0 for a GPR (RI-6 (d)) |
+| PL0-PL3 (lane op whose lead section is k, `pred_we`) | A+7 | `phys_pred_dst` | all ones | per lane l: `active[l]` ? `lane_rcu_res`\[l\].`sec_pred_out`\[k\] : old destination\[l\] (OLk); with `merge_en` = 0 the old destination is 0 and OLk is not read, as `merge_data` is 0 for a GPR (RI-6 (d)) |
 | PM0-PM3 (MIU slot j, lead `pred_we`) | T | lead `phys_pred` | lead `active_mask` | `pred_result` |
 | PR (R op, `r_wpred`) | A+2 | `phys_pred_dst` | all ones | the R result merged with the old destination (OR) by the op's merge mask (R unit tab) |
 | PC0-PC3 (predicate-only copy in S slot k) | A+2 | `phys_pred_dst` | \~`active` | old destination (OCk) |

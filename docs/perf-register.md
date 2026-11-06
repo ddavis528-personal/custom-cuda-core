@@ -69,7 +69,7 @@ it.
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
-| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266); held: TI reverted it (rev 288) until OI fixes ooe_wake NGD-3 and the rs_tb no-msd control; 2 if RCU's M1 misses |
+| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266), 2 under RI-11's interface flops (AR rev 288); held: TI reverted it (rev 288) until OI fixes ooe_wake NGD-3 and the rs_tb no-msd control; 2 (3 under RI-11) if RCU's M1 misses |
 | PF-48 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
 | PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
 | PF-50 | Packed contiguous lanes for narrow ops | OOE, LANE, RCU, MIU, schema | deferred (DA, 2026-11-03) |
@@ -324,6 +324,22 @@ it.
 - **Trigger, from now:** `hold.chwidth` reaching 5% of a run's cycles on
   converged narrow code, such as vadd16 at four warps on compiler F-200's export or
   a narrow-FP kernel. OA then brings the design back to DA with that figure.
+- **Measured (AR-24, TI's rev 313, 2026-11-04):** vadd16 at four warps, one
+  CTA, warm, on CP's export at e533ecd (CP-79), counted as
+  `hold.registered.chwidth` (under go_static a refusal counts there, not in
+  `hold.chwidth`). Both runs hold 72 warp-cycles: one `chwidth.multi` a
+  warp at entry, about 18 cycles each. vadd16_loop (n = 12,288) runs 6,275
+  cycles, so the hold is 0.29% of each warp's cycles (1.15% as warp-cycles
+  over cycles). vadd16 (n = 128) runs 228 cycles, so it is 7.9% a warp
+  (31.6% as warp-cycles over cycles). AR's reading (AR rev 283): the trigger
+  is not met. The cost is a fixed 18 cycles a warp at launch, under 5% on any
+  run past about 360 cycles, and OA-16's 640 to 770 flops would buy those 18
+  cycles once a launch. Only the 228-cycle run crosses 5%, and only because
+  it is short. With four warps the hold also bounds the cycle cost from
+  above, since the other warps issue during one warp's drain. The share that
+  matters is per warp, because a drain holds only its own warp's rename. The
+  trigger's wording is DA's; the coremarkpl32 and coremark32 runs at one and
+  four warps follow (TI, after J2).
 
 ### PF-16 More than one redirect a cycle
 
@@ -1178,6 +1194,17 @@ it.
   else OA re-budgets the two inputs) and gives rs_tb stimulus that reaches
   the case. TI reapplies in one commit. The decision stands; nothing in the
   failures argues against it.
+- **Under RI-11's interface flops (AR rev 286, 2026-11-05):** RCU's A is now
+  the cycle its interface flop holds the issue, a cycle later than before
+  relative to the issue's launch. The bases are counted from the crossing's
+  landing, so they carry that cycle: today's 5 becomes 6 (`CCV_LAT_L1_WAKE`
+  17), and PF-47's 1 becomes 2 (`CCV_LAT_L1_WAKE` 13, PF-33's measured
+  -5.9% point rather than the interpolated -7.9%; `CCV_LAT_L1_CMPL` 15).
+  RA confirmed it (RA rev 79, AR rev 288): RCU's own time from A is
+  unchanged, and the extra cycle is the receiving interface flop. The
+  M1-miss fallback becomes 3. If TI lands the RI-11 bases before the
+  reapply, params' source says so, so that the reapply takes 1 + 1 (OA rev
+  341).
 
 ### PF-48 End-to-end parity on register state
 
