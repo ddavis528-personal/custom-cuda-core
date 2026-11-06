@@ -7,7 +7,7 @@
   cvc5         present
   python3      present
   g++          present
-  build/ was not made by Verilator 5.052 2026-09-05 rev v5.052: cleared 29 entries
+  build/ made by Verilator 5.052 2026-09-05 rev v5.052
   a build/ made by another Verilator is cleared (3 controls)
   Verilator 5.052: step() and if/else flops agree      PASS (200000 arrivals=697565 flushes=19790 resets=466 differences=0)
     control: one planted payload                       caught
@@ -109,7 +109,7 @@
   lint clean across rtl/, test/, spike/          PASS
   generated parameter files current              PASS
   C++ and RTL parameter values agree with source PASS
-  [s1d: 10s]
+  [s1d: 8s]
 
 == Interface checker convention ==
   payload structs generated                      55 of 55 channels, 0 field(s) open
@@ -155,7 +155,7 @@
   formal: outstanding checker covers reachable   PASS
   gate scope: every section named exists; schema, params, the gate, unmapped paths run all; RTL and model changes reach their sections
   split gate: another commit, tree or dirty run, a gap, a double, an imported failure or edited log are each refused (11 controls)
-  [iface: 15s]
+  [iface: 5s]
 
 == X-propagation ==
   optimistic if-chain: definite, arbitrary answer PASS (=1101, the last branch)
@@ -192,64 +192,64 @@
     high    2998 cycles, activity 0.060,  1 gates enabled, lowest DCGE 100%
   unit ooe_wake       ooe_wake         1631 flops, 1620 in 47 clock gates (0 groups under 8), worst enable  5.6 NGD
     idle   23975 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium 16070 cycles, activity 0.001, 47 gates enabled, lowest DCGE 99%
-    high    3373 cycles, activity 0.005, 47 gates enabled, lowest DCGE 100%
+    medium 16075 cycles, activity 0.001, 47 gates enabled, lowest DCGE 96%
+    high    3456 cycles, activity 0.005, 47 gates enabled, lowest DCGE 100%
   unit ooe_age_rcu    ooe_age           902 flops,  900 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
     idle   23991 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium 26986 cycles, activity 0.028,  1 gates enabled, lowest DCGE 98%
-    high    6286 cycles, activity 0.109,  1 gates enabled, lowest DCGE 100%
+    medium 27005 cycles, activity 0.028,  1 gates enabled, lowest DCGE 98%
+    high    6508 cycles, activity 0.106,  1 gates enabled, lowest DCGE 100%
   unit ooe_age_miu    ooe_age           227 flops,  225 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
     idle   23991 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium 26986 cycles, activity 0.011,  1 gates enabled, lowest DCGE 77%
-    high    6286 cycles, activity 0.062,  1 gates enabled, lowest DCGE 100%
-  unit ooe_rs         ooe_rs           18388 flops, 18282 in 59 clock gates (0 groups under 8), worst enable  7.8 NGD
+    medium 27005 cycles, activity 0.010,  1 gates enabled, lowest DCGE 77%
+    high    6508 cycles, activity 0.061,  1 gates enabled, lowest DCGE 100%
+  unit ooe_rs         ooe_rs           18631 flops, 18524 in 60 clock gates (0 groups under 8), worst enable  7.8 NGD
     idle   23999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium 27002 cycles, activity 0.022, 25 gates enabled, lowest DCGE 81%
-    high    6302 cycles, activity 0.067, 58 gates enabled, lowest DCGE 90%
+    medium 27021 cycles, activity 0.022, 26 gates enabled, lowest DCGE 80%
+    high    6524 cycles, activity 0.065, 58 gates enabled, lowest DCGE 90%
   unit ooe_decq       ooe_decq         1004 flops,  986 in 12 clock gates (0 groups under 8), worst enable  4.2 NGD
     idle   23991 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium 26986 cycles, activity 0.021, 10 gates enabled, lowest DCGE 98%
-    high    6286 cycles, activity 0.061, 10 gates enabled, lowest DCGE 87%
+    medium 27005 cycles, activity 0.021, 10 gates enabled, lowest DCGE 98%
+    high    6508 cycles, activity 0.060, 10 gates enabled, lowest DCGE 88%
   unit ooe_freelist_gpr ooe_freelist     1500 flops, 1101 in 11 clock gates (192 groups under 8), worst enable  6.2 NGD
     idle   23983 cycles, activity 0.002,  7 gates enabled, lowest DCGE 100%
-    medium 26970 cycles, activity 0.003, 11 gates enabled, lowest DCGE 94%
-    high    6270 cycles, activity 0.004, 11 gates enabled, lowest DCGE 87%
+    medium 26989 cycles, activity 0.003, 11 gates enabled, lowest DCGE 93%
+    high    6492 cycles, activity 0.004, 11 gates enabled, lowest DCGE 88%
   unit ooe_freelist_gsec ooe_freelist     2822 flops, 2409 in 23 clock gates (193 groups under 8), worst enable  7.8 NGD
     idle   11991 cycles, activity 0.001,  7 gates enabled, lowest DCGE 100%
-    medium 13277 cycles, activity 0.002, 19 gates enabled, lowest DCGE 6%
-    high    3112 cycles, activity 0.004, 23 gates enabled, lowest DCGE 11%
+    medium 13282 cycles, activity 0.002, 17 gates enabled, lowest DCGE 6%
+    high    3294 cycles, activity 0.004, 23 gates enabled, lowest DCGE 11%
   unit ooe_freelist_pred ooe_freelist      516 flops,  405 in 11 clock gates (48 groups under 8), worst enable  6.2 NGD
     idle   23983 cycles, activity 0.009,  7 gates enabled, lowest DCGE 100%
-    medium 26970 cycles, activity 0.009, 11 gates enabled, lowest DCGE 97%
-    high    6270 cycles, activity 0.010, 11 gates enabled, lowest DCGE 95%
+    medium 26989 cycles, activity 0.009, 11 gates enabled, lowest DCGE 98%
+    high    6492 cycles, activity 0.010, 11 gates enabled, lowest DCGE 94%
   unit ooe_rat        ooe_rat          5469 flops, 5376 in 29 clock gates (0 groups under 8), worst enable  2.9 NGD
     idle   24005 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium 27016 cycles, activity 0.011, 22 gates enabled, lowest DCGE 81%
-    high    6316 cycles, activity 0.045, 22 gates enabled, lowest DCGE 90%
+    medium 27035 cycles, activity 0.011, 22 gates enabled, lowest DCGE 81%
+    high    6538 cycles, activity 0.043, 22 gates enabled, lowest DCGE 90%
   unit ooe_sched      ooe_sched         342 flops,  336 in  3 clock gates (0 groups under 8), worst enable  7.5 NGD
     idle   11995 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium  7650 cycles, activity 0.001,  3 gates enabled, lowest DCGE 79%
-    high    1637 cycles, activity 0.008,  3 gates enabled, lowest DCGE 98%
+    medium  7654 cycles, activity 0.001,  3 gates enabled, lowest DCGE 78%
+    high    1720 cycles, activity 0.008,  3 gates enabled, lowest DCGE 97%
   unit ooe_prodmap    ooe_prodmap      1790 flops, 1787 in  3 clock gates (0 groups under 8), worst enable  4.0 NGD
     idle   23999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium 27002 cycles, activity 0.019,  3 gates enabled, lowest DCGE 81%
-    high    6302 cycles, activity 0.068,  3 gates enabled, lowest DCGE 84%
-  unit ooe_rendep     ooe_rendep       1884 flops, 1880 in  2 clock gates (0 groups under 8), worst enable  1.7 NGD
+    medium 27021 cycles, activity 0.019,  3 gates enabled, lowest DCGE 81%
+    high    6524 cycles, activity 0.066,  3 gates enabled, lowest DCGE 84%
+  unit ooe_rendep     ooe_rendep       1900 flops, 1896 in  2 clock gates (0 groups under 8), worst enable  1.7 NGD
     idle   23999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium 27002 cycles, activity 0.009,  2 gates enabled, lowest DCGE 100%
-    high    6302 cycles, activity 0.032,  2 gates enabled, lowest DCGE 100%
+    medium 27021 cycles, activity 0.010,  2 gates enabled, lowest DCGE 100%
+    high    6524 cycles, activity 0.032,  2 gates enabled, lowest DCGE 100%
   unit ooe_go         ooe_go           1314 flops, 1292 in  7 clock gates (0 groups under 8), worst enable  5.9 NGD
     idle   23991 cycles, activity 0.014,  1 gates enabled, lowest DCGE 100%
-    medium 26986 cycles, activity 0.025,  6 gates enabled, lowest DCGE 63%
-    high    6286 cycles, activity 0.050,  6 gates enabled, lowest DCGE 54%
-  unit ooe_rename     ooe_rename       1705 flops, 1682 in 10 clock gates (0 groups under 8), worst enable  7.2 NGD
+    medium 27005 cycles, activity 0.025,  6 gates enabled, lowest DCGE 63%
+    high    6458 cycles, activity 0.050,  6 gates enabled, lowest DCGE 54%
+  unit ooe_rename     ooe_rename       1709 flops, 1686 in 10 clock gates (0 groups under 8), worst enable  7.2 NGD
     idle   23990 cycles, activity 0.119,  0 gates enabled, lowest DCGE -
-    medium 26976 cycles, activity 0.123,  9 gates enabled, lowest DCGE 11%
-    high    6513 cycles, activity 0.130,  9 gates enabled, lowest DCGE 22%
+    medium 27003 cycles, activity 0.123,  9 gates enabled, lowest DCGE 11%
+    high    6606 cycles, activity 0.130,  9 gates enabled, lowest DCGE 22%
   unit ooe_rob_w      ooe_rob_w        5386 flops, 5351 in 56 clock gates (3 groups under 8), worst enable  8.0 NGD
     idle   12003 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium  9714 cycles, activity 0.016, 48 gates enabled, lowest DCGE 37%
-    high    2633 cycles, activity 0.039, 48 gates enabled, lowest DCGE 39%
+    medium  9721 cycles, activity 0.016, 48 gates enabled, lowest DCGE 38%
+    high    2682 cycles, activity 0.038, 48 gates enabled, lowest DCGE 39%
   unit rcu_bank_slice rcu_bank_slice   6554 flops, 6519 in 204 clock gates (0 groups under 8), worst enable  4.8 NGD
     idle    3001 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  4001 cycles, activity 0.067, 204 gates enabled, lowest DCGE 71%
@@ -263,7 +263,7 @@
   module budget: unit ooe_wake      1631 flops, 32.6 allowed, 11 auto-waived in 5 finding(s)
   module budget: unit ooe_age_rcu    902 flops, 18.0 allowed, 2 auto-waived in 2 finding(s)
   module budget: unit ooe_age_miu    227 flops,  7.0 allowed, 2 auto-waived in 2 finding(s)
-  module budget: unit ooe_rs       18388 flops, 367.8 allowed, 107 auto-waived in 9 finding(s)
+  module budget: unit ooe_rs       18631 flops, 372.6 allowed, 108 auto-waived in 10 finding(s)
   module budget: unit ooe_decq      1004 flops, 20.1 allowed, 18 auto-waived in 6 finding(s)
   module budget: unit ooe_freelist_gpr  1500 flops, 30.0 allowed, 9 auto-waived in 9 finding(s)
   module budget: unit ooe_freelist_gsec  2822 flops, 56.4 allowed, 23 auto-waived in 10 finding(s)
@@ -271,52 +271,33 @@
   module budget: unit ooe_rat       5469 flops, 109.4 allowed, 93 auto-waived in 15 finding(s)
   module budget: unit ooe_sched      342 flops,  7.0 allowed, 6 auto-waived in 6 finding(s)
   module budget: unit ooe_prodmap   1790 flops, 35.8 allowed, 3 auto-waived in 3 finding(s)
-  module budget: unit ooe_rendep    1884 flops, 37.7 allowed, 4 auto-waived in 4 finding(s)
+  module budget: unit ooe_rendep    1900 flops, 38.0 allowed, 4 auto-waived in 4 finding(s)
   module budget: unit ooe_go        1314 flops, 26.3 allowed, 22 auto-waived in 7 finding(s)
-  module budget: unit ooe_rename    1705 flops, 34.1 allowed, 33 auto-waived in 9 finding(s)
+  module budget: unit ooe_rename    1709 flops, 34.2 allowed, 33 auto-waived in 9 finding(s)
   module budget: unit ooe_rob_w     5386 flops, 107.7 allowed, 75 auto-waived in 23 finding(s)
   module budget: unit rcu_bank_slice  6554 flops, 131.1 allowed, 67 auto-waived in 13 finding(s)
   module budget: unit rcu_r         2626 flops, 52.5 allowed, 5 auto-waived in 4 finding(s)
-  flop count: unit rpt            697 flops, and 7 budgeted finding(s), alike kept and replayed
-  flop count: unit clk             21 flops, and 6 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_wake      1631 flops, and 5 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_age_rcu    902 flops, and 2 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_age_miu    227 flops, and 2 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_rs       18388 flops, and 9 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_decq      1004 flops, and 6 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_freelist_gpr  1500 flops, and 9 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_freelist_gsec  2822 flops, and 10 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_freelist_pred   516 flops, and 9 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_rat       5469 flops, and 15 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_sched      342 flops, and 6 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_prodmap   1790 flops, and 3 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_rendep    1884 flops, and 4 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_go        1314 flops, and 7 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_rename    1705 flops, and 9 budgeted finding(s), alike kept and replayed
-  flop count: unit ooe_rob_w     5386 flops, and 23 budgeted finding(s), alike kept and replayed
-  flop count: unit rcu_bank_slice  6554 flops, and 13 budgeted finding(s), alike kept and replayed
-  flop count: unit rcu_r         2626 flops, and 4 budgeted finding(s), alike kept and replayed
-  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2850 MiB, ooe_rob_w 1149 MiB, ooe_rs 2316 MiB, ooe_sched 2395 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1941 MiB)
-  unit wall time (report-only): ooe_rename 2900s, ooe_go 1764s, ooe_rs 1584s, rcu_bank_slice 953s, rcu_r 918s, ooe_wake 825s; 19 unit(s) in all, 12427s summed
-  heavy-lock wait (report-only): 26179s summed, most ooe_rob_w 10036s
+  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2849 MiB, ooe_rob_w 1149 MiB, ooe_rs 2309 MiB, ooe_sched 975 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1948 MiB)
+  unit wall time (report-only): ooe_rs 1553s, ooe_go 912s, ooe_wake 665s, rcu_bank_slice 541s, ooe_rob_w 388s, ooe_rename 281s; 19 unit(s) in all, 5850s summed
+  heavy-lock wait (report-only): 15641s summed, most ooe_rename 3099s
   block budget: no block has RTL yet (every block top is a generated stub), so none is checked
-  16 module(s), 19 unit(s), 123 finding(s) auto-waived by a module budget, 62 waiver(s) in use, 0 on the ratchet
-  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, ratchet, coverage, module and block budgets, kept and replayed flop counts, enable sources and the reset, repeater instantiations, kept copies, the synthesis cache, heavy units one at a time (101 controls)
-  [cg: 9796s]
+  16 module(s), 19 unit(s), 124 finding(s) auto-waived by a module budget, 64 waiver(s) in use, 0 on the ratchet
+  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, ratchet, coverage, module and block budgets as a sum of parts, enable sources and the reset, repeater instantiations, kept copies, the synthesis cache, heavy units one at a time (109 controls)
+  [cg: 5600s]
 
 == Logic depth -- NGD-1 to NGD-7 ==
   unit rpt              ccv_common_rpt flop-flop   2.4  in-flop   1.7  flop-out   0.0  in-out   0.0
     without the fanout term flop-flop   1.7  in-flop   1.7  flop-out   0.0; widest net 8 loads
   unit clk              ccv_common_clk flop-flop  10.4  in-flop   9.7  flop-out   4.7  in-out   1.2
     without the fanout term flop-flop   9.7  in-flop   9.7  flop-out   4.7; widest net 10 loads
-  unit ooe_wake         ooe_wake       flop-flop  21.9  in-flop  19.8  flop-out   0.0  in-out   0.0
-    without the fanout term flop-flop  18.8  in-flop  18.8  flop-out   0.0; widest net 764 loads
+  unit ooe_wake         ooe_wake       flop-flop  22.7  in-flop  20.7  flop-out   0.0  in-out   0.0
+    without the fanout term flop-flop  18.8  in-flop  18.8  flop-out   0.0; widest net 903 loads
   unit ooe_age_rcu      ooe_age        flop-flop   7.1  in-flop  18.0  flop-out   0.0  in-out   0.0
     without the fanout term flop-flop   7.1  in-flop  11.3  flop-out   0.0; widest net 60 loads
   unit ooe_age_miu      ooe_age        flop-flop   9.1  in-flop  16.6  flop-out   0.0  in-out   0.0
     without the fanout term flop-flop   9.1  in-flop  11.3  flop-out   0.0; widest net 32 loads
-  unit ooe_rs           ooe_rs         flop-flop  29.2  in-flop  24.2  flop-out   1.7  in-out   0.0
-    without the fanout term flop-flop  18.1  in-flop  18.0  flop-out   1.7; widest net 377 loads
+  unit ooe_rs           ooe_rs         flop-flop  26.2  in-flop  22.5  flop-out   1.7  in-out   0.0
+    without the fanout term flop-flop  17.6  in-flop  17.5  flop-out   1.7; widest net 523 loads
   unit ooe_decq         ooe_decq       flop-flop  23.0  in-flop  19.4  flop-out   1.9  in-out   0.0
     without the fanout term flop-flop  18.9  in-flop  18.9  flop-out   1.9; widest net 132 loads
   unit ooe_freelist_gpr ooe_freelist   flop-flop  24.1  in-flop  20.8  flop-out   9.7  in-out   0.0
@@ -331,12 +312,12 @@
     without the fanout term flop-flop  20.7  in-flop  20.7  flop-out   6.9; widest net 734 loads
   unit ooe_prodmap      ooe_prodmap    flop-flop  17.4  in-flop  19.6  flop-out   0.0  in-out   0.0
     without the fanout term flop-flop  12.5  in-flop  13.6  flop-out   0.0; widest net 1302 loads
-  unit ooe_rendep       ooe_rendep     flop-flop  24.9  in-flop  32.4  flop-out   0.0  in-out   0.0
-    without the fanout term flop-flop  18.9  in-flop  18.9  flop-out   0.0; widest net 346 loads
+  unit ooe_rendep       ooe_rendep     flop-flop  24.9  in-flop  30.5  flop-out   0.0  in-out   0.0
+    without the fanout term flop-flop  18.9  in-flop  18.9  flop-out   0.0; widest net 361 loads
   unit ooe_go           ooe_go         flop-flop  27.6  in-flop  27.9  flop-out  25.8  in-out   0.0
     without the fanout term flop-flop  22.8  in-flop  22.8  flop-out  22.7; widest net 959 loads
-  unit ooe_rename       ooe_rename     flop-flop  30.6  in-flop  25.5  flop-out  28.3  in-out   0.0
-    without the fanout term flop-flop  24.1  in-flop  24.0  flop-out  24.0; widest net 264 loads
+  unit ooe_rename       ooe_rename     flop-flop  31.1  in-flop  25.5  flop-out  28.7  in-out   0.0
+    without the fanout term flop-flop  24.1  in-flop  24.0  flop-out  24.0; widest net 265 loads
   unit ooe_rob_w        ooe_rob_w      flop-flop  31.6  in-flop  29.7  flop-out   3.3  in-out   0.0
     without the fanout term flop-flop  23.1  in-flop  23.1  flop-out   2.7; widest net 1147 loads
   unit rcu_bank_slice   rcu_bank_slice flop-flop  17.7  in-flop  15.9  flop-out  11.0  in-out   0.0
@@ -357,19 +338,19 @@
   unit rcu_xbar         rcu_xbar       flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  12.2
   fanout ratchet: ooe_go         16 path(s) over the stage with the fanout term, capped: NGD-1 27.6, NGD-2 lane_c_cq02h 22.4, NGD-2 lane_v_cq02h 25.4, NGD-2 take_cq02h 19.3, NGD-2 wb_cq02h 25.8, NGD-2 wt_cq02h 25.8, NGD-3 ha_cq01h 28.5, NGD-3 hv_cq01h 29.7, NGD-3 pl_cq01h 29.6, NGD-3 px_cq01h 30, NGD-3 reach_cq01h 26.2, NGD-3 ret_cq01h 26, NGD-3 room_p_cq01h 25.6, NGD-3 run_cq01h 25.7, NGD-3 unmet_p_cq01h 25.8, NGD-7 utw_cq02h 17
   fanout ratchet: ooe_ratread    43 path(s) over the stage with the fanout term, capped: NGD-6 po_dst_cq02h>ren_pold_cq01h 17.9, NGD-6 po_dst_cq02h>ren_psrc_cq01h 17.9, NGD-6 po_pdst_cq02h>ren_ppguard_cq01h 16.7, NGD-6 po_pdst_cq02h>ren_ppold_cq01h 16.7, NGD-6 po_pdst_cq02h>ren_ppq_cq01h 16.7, NGD-6 pw_dst_cq01h>ren_pold_cq01h 18.2, NGD-6 pw_dst_cq01h>ren_psrc_cq01h 18.3, NGD-6 pw_pdst_cq01h>ren_ppguard_cq01h 17.6, NGD-6 pw_pdst_cq01h>ren_ppold_cq01h 17.6, NGD-6 pw_pdst_cq01h>ren_ppq_cq01h 17.6, NGD-6 pw_slot_cq01h>ren_pold_cq01h 18, NGD-6 pw_slot_cq01h>ren_ppguard_cq01h 17.1, NGD-6 pw_slot_cq01h>ren_ppold_cq01h 17.1, NGD-6 pw_slot_cq01h>ren_ppq_cq01h 17.1, NGD-6 pw_slot_cq01h>ren_psrc_cq01h 18, NGD-6 ren_dst_cq01h>ren_pold_cq01h 20.8, NGD-6 ren_dst_cq01h>ren_psrc_cq01h 20.8, NGD-6 ren_gwe_cq01h>ren_pold_cq01h 17.9, NGD-6 ren_gwe_cq01h>ren_psrc_cq01h 17.9, NGD-6 ren_pdst_cq01h>ren_ppguard_cq01h 17.6, NGD-6 ren_pdst_cq01h>ren_ppold_cq01h 17.6, NGD-6 ren_pdst_cq01h>ren_ppq_cq01h 17.6, NGD-6 ren_pguard_cq01h>ren_ppguard_cq01h 16.9, NGD-6 ren_pq_cq01h>ren_ppq_cq01h 16.9, NGD-6 ren_pwe_cq01h>ren_ppguard_cq01h 16.9, NGD-6 ren_pwe_cq01h>ren_ppold_cq01h 16.9, NGD-6 ren_pwe_cq01h>ren_ppq_cq01h 16.9, NGD-6 ren_rst_cq01h>ren_pold_cq01h 18.6, NGD-6 ren_rst_cq01h>ren_ppguard_cq01h 17.6, NGD-6 ren_rst_cq01h>ren_ppold_cq01h 17.6, NGD-6 ren_rst_cq01h>ren_ppq_cq01h 17.6, NGD-6 ren_rst_cq01h>ren_psrc_cq01h 18.6, NGD-6 ren_slot_cq01h>ren_pold_cq01h 20.6, NGD-6 ren_slot_cq01h>ren_ppguard_cq01h 19.6, NGD-6 ren_slot_cq01h>ren_ppold_cq01h 19.6, NGD-6 ren_slot_cq01h>ren_ppq_cq01h 19.6, NGD-6 ren_slot_cq01h>ren_psrc_cq01h 20.6, NGD-6 ren_src_cq01h>ren_psrc_cq01h 20.1, NGD-6 ren_v_cq01h>ren_pold_cq01h 17.9, NGD-6 ren_v_cq01h>ren_ppguard_cq01h 16.9, NGD-6 ren_v_cq01h>ren_ppold_cq01h 16.9, NGD-6 ren_v_cq01h>ren_ppq_cq01h 16.9, NGD-6 ren_v_cq01h>ren_psrc_cq01h 17.9
-  fanout ratchet: ooe_rename     11 path(s) over the stage with the fanout term, capped: NGD-1 30.6, NGD-2 q_gname_cq03h 28.4, NGD-2 q_pname_cq03h 3.4, NGD-3 c_dst_cq01h 26.9, NGD-3 c_src_cq01h 26.4, NGD-3 po_dst_cq02h 27.5, NGD-7 n_slot_cq03h 22.5, NGD-7 no_na_cq03h 22.7, NGD-7 qo_gl_cq03h 23, NGD-7 qo_gv_cq03h 24.1, NGD-7 wq_cq03h 23.4
-  fanout ratchet: ooe_rendep      7 path(s) over the stage with the fanout term, capped: NGD-3 cp_cq01h 33.7, NGD-3 gnt_idx_cq01h 26.2, NGD-3 gnt_v_cq01h 25.6, NGD-3 gsn_cq01h 29.9, NGD-3 mem_cq01h 34.5, NGD-3 psn_cq01h 30.7, NGD-3 v_cq01h 31.6
+  fanout ratchet: ooe_rename     11 path(s) over the stage with the fanout term, capped: NGD-1 31.1, NGD-2 q_gname_cq03h 28.7, NGD-2 q_pname_cq03h 3.4, NGD-3 c_dst_cq01h 26.9, NGD-3 c_src_cq01h 26.9, NGD-3 po_dst_cq02h 27.5, NGD-7 n_slot_cq03h 22.5, NGD-7 no_na_cq03h 22.7, NGD-7 qo_gl_cq03h 23, NGD-7 qo_gv_cq03h 24.1, NGD-7 wq_cq03h 23.4
+  fanout ratchet: ooe_rendep      7 path(s) over the stage with the fanout term, capped: NGD-3 cp_cq01h 33.7, NGD-3 gnt_idx_cq01h 26.9, NGD-3 gnt_v_cq01h 26.2, NGD-3 gsn_cq01h 29.9, NGD-3 mem_cq01h 34.5, NGD-3 psn_cq01h 30.7, NGD-3 v_cq01h 31.6
   fanout ratchet: ooe_rob_w       6 path(s) over the stage with the fanout term, capped: NGD-1 31.7, NGD-3 al_n_cq02h 29.3, NGD-3 dn_row_cq02h 26, NGD-3 dn_tag_cq02h 27.9, NGD-3 fl_slot_cq02h 31.5, NGD-3 fl_v_cq02h 31.7
-  fanout ratchet: ooe_rs          7 path(s) over the stage with the fanout term, capped: NGD-1 29.4, NGD-3 grp_dep_cq01h 25.6, NGD-3 prv_code_cq01h 26.2, NGD-3 prv_dep_cq01h 26.9, NGD-3 req_cq01h 30.2, NGD-3 row_code_cq01h 25.5, NGD-3 sqf_cq01h 26.3
+  fanout ratchet: ooe_rs          5 path(s) over the stage with the fanout term, capped: NGD-1 29.4, NGD-3 grp_dep_cq01h 25.6, NGD-3 prv_dep_cq01h 26.9, NGD-3 req_cq01h 30.2, NGD-3 sqf_cq01h 26.3
   fanout ratchet: ooe_sched       6 path(s) over the stage with the fanout term, capped: NGD-1 30.5, NGD-3 cidx_cq03h 26.6, NGD-3 res_cq03h 30.2, NGD-3 siss_cq03h 27.1, NGD-3 sslot_cq03h 27.3, NGD-3 vel_cq03h 28.2
   inner helpers: ccv_common_csa inside its parent, ooe_confirm inside its parent, ooe_headrd inside its parent, ooe_pick inside its parent, ooe_ratread alone, within 16 (no module instantiates it yet), ooe_ready inside its parent, ooe_ren1 inside its parent, ooe_ren1n inside its parent, ooe_rencred alone, within 16 (no module instantiates it yet), ooe_select inside its parent, rcu_xbar inside its parent
   blocks: none assembled yet (every block top is a generated stub)
-  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 842 MiB, ooe_rob_w 1676 MiB, ooe_rs 3095 MiB, ooe_sched 975 MiB; every other unit's commands within 2048 MiB (largest rcu_bank_slice, 1369 MiB)
-  unit wall time (report-only): ooe_rename 2136s, ooe_go 1501s, ooe_rendep 1126s, ooe_rob_w 678s, ooe_freelist_gsec 552s, ooe_wake 542s; 31 unit(s) in all, 8718s summed
-  heavy-lock wait (report-only): 25908s summed, most rcu_r 5112s
+  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 842 MiB, ooe_rob_w 1675 MiB, ooe_rs 2393 MiB, ooe_sched 546 MiB; every other unit's commands within 2048 MiB (largest rcu_bank_slice, 1369 MiB)
+  unit wall time (report-only): ooe_rename 1191s, ooe_go 837s, ooe_rendep 696s, ooe_wake 627s, ooe_freelist_gsec 300s, ooe_rob_w 254s; 31 unit(s) in all, 4779s summed
+  heavy-lock wait (report-only): 16928s summed, most ooe_rob_w 4398s
   31 unit(s), 269 port budget(s) in 26 module file(s), stage 25 NGD, ports 12 by default
-  timing pass against ABC, outputs, inputs, the stage, paths straight through, inner helpers alone and inside a parent, registers shared by an output and the rest, observation ports, budget files, ratchet, coverage, glue, the assembled block from its budgets and whole, ABC's cache, the fanout term (75 controls)
-  [ngd: 9053s]
+  timing pass against ABC, outputs, inputs, the stage, paths straight through, inner helpers alone and inside a parent, registers shared by an output and the rest, observation ports, budget files, ratchet, coverage, glue, the assembled block as a sum of parts, ABC's cache, the fanout term (84 controls)
+  [ngd: 5508s]
 
 == Clock gating (exploratory) ==
   enable inferred from the if-enable form        PASS
@@ -399,7 +380,7 @@
   --break misgroup: slot carries another stream  PASS (2 binding checker)
   --break wrong-class: every channel's set enforced PASS (55 channels)
   trace -> Perfetto JSON, one track per channel  PASS (55)
-  [skel: 15s]
+  [skel: 7s]
 
 == Stage 3 -- skeleton (S1: vadd) ==
   oracle addrhigh from the pinned ccv-sim        PASS (9 records)
@@ -461,7 +442,7 @@
   oracle vadd4 from the pinned ccv-sim           PASS (76 records, 4 warps)
   oracle vaddslow from the pinned ccv-sim        PASS (19 records)
   bench ENTRY == the pinned launch.txt's         PASS (4 configs; a stale one refused)
-  vadd: final state == ccv-sim, 0 violations     PASS (157 cycles, 126 from first fetch, 33/55 channels)
+  vadd: final state == ccv-sim, 0 violations     PASS (159 cycles, 128 from first fetch, 33/55 channels)
   vadd: bank EV_CH_XFER == every launch          PASS (660 transfers)
   vadd: deterministic (trace byte-identical)     PASS
   vadd trace -> Perfetto, 17 retires on 17 instrs PASS
@@ -477,80 +458,80 @@
   --break attr-store-as-load: the store never lands PASS (32 words)
   --break attr-coll-as-rcu: OOE refuses a shfl at lat_class 0 PASS (8 shfls)
   --break corrupt-echo: stateless write-back misroutes PASS
-  --break movi-in-lane: the lanes refuse it      PASS (V-35 names the late done; 258 failures, as pinned)
+  --break movi-in-lane: the lanes refuse it      PASS (V-35 names the late done; 354 failures, as pinned)
   --break srd-selector: DEC's range check        PASS
-  sel: final state == ccv-sim, 0 violations      PASS (76 cycles, 45 from first fetch)
+  sel: final state == ccv-sim, 0 violations      PASS (78 cycles, 47 from first fetch)
   --break drop-pred-data: sel's lanes reject it  PASS
-  srd: final state == ccv-sim, 0 violations      PASS (69 cycles, 38 from first fetch)
+  srd: final state == ccv-sim, 0 violations      PASS (70 cycles, 39 from first fetch)
   --break corrupt-ctaid: srd's lanes reject it   PASS
   --break cta-per-warp: one CTA in two slots     PASS (lanectx)
   --break cta-shared: two CTAs in one slot       PASS (rope)
   --break late-lead: every lane sees a stale mask PASS
   --break ignore-mask: masked-off poison lands   PASS
-  pguard: final state == ccv-sim, 0 violations   PASS (86 cycles, 55 from first fetch)
+  pguard: final state == ccv-sim, 0 violations   PASS (89 cycles, 58 from first fetch)
   --break conflate-pred: guard and P0/P1 wrong   PASS
   --break swap-prat0: compare reads OOE's map    PASS
-  merge: final state == ccv-sim, 0 violations    PASS (71 cycles, 40 from first fetch)
+  merge: final state == ccv-sim, 0 violations    PASS (73 cycles, 42 from first fetch)
   --break dirty-zero: every zero-register path   PASS (64 lane checks, P2, P3)
   --break wrong-merge: the lanes refuse it       PASS
-  mload: final state == ccv-sim, 0 violations    PASS (111 cycles, 80 from first fetch)
+  mload: final state == ccv-sim, 0 violations    PASS (113 cycles, 82 from first fetch)
   --break skip-copy: inactive lanes keep garbage PASS (R5 read, R8 final)
   --break copy-from-new: the lanes refuse it     PASS (32 copied lanes, 16 reads)
   --break late-copy: RCU's contract check fires  PASS (both copies)
-  unal: == ccv-sim, reaches its bins             PASS (136 cycles, 105 from first fetch; line_split=3 lines_peak=2 partial_line=2 full_line=0)
-  gather: == ccv-sim, reaches its bins           PASS (265 cycles, 234 from first fetch; lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0 hit_under_miss=2)
-  loop: == ccv-sim, reaches its bins             PASS (2842 cycles, 2811 from first fetch; redirect=99 ckpt_free=1 reg_reuse>0)
-  brs: == ccv-sim, reaches its bins              PASS (99 cycles, 68 from first fetch; redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5)
-  mload: == ccv-sim, reaches its bins            PASS (111 cycles, 80 from first fetch; copy=2 zero_read=1)
-  merge: == ccv-sim, reaches its bins            PASS (71 cycles, 40 from first fetch; zero_read=2 merge=4)
-  vadd: == ccv-sim, reaches its bins             PASS (157 cycles, 126 from first fetch; ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3)
-  hit: == ccv-sim, reaches its bins              PASS (227 cycles, 196 from first fetch; l1_hit=4 l1_late=0)
-  late: == ccv-sim, reaches its bins             PASS (171 cycles, 140 from first fetch; l1_late=1 l1_hit=2 hit_under_miss=1)
-  byp: == ccv-sim, reaches its bins              PASS (118 cycles, 87 from first fetch; copy=1 lane_byp=3)
-  plog: == ccv-sim, reaches its bins             PASS (70 cycles, 39 from first fetch; merge=3)
-  chains: == ccv-sim, reaches its bins           PASS (96 cycles, 65 from first fetch; lane_byp=9)
-  missrun: == ccv-sim, reaches its bins          PASS (121 cycles, 90 from first fetch; l1_hit=0 reexec=2)
-  ldpar: == ccv-sim, reaches its bins            PASS (154 cycles, 123 from first fetch; l1_hit=4 hit_under_miss=4)
-  mlp: == ccv-sim, reaches its bins              PASS (126 cycles, 95 from first fetch; l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0)
-  mwmiss: == ccv-sim, reaches its bins           PASS (129 cycles, 98 from first fetch; l1_hit=0)
-  vadd4: == ccv-sim, reaches its bins            PASS (203 cycles, 172 from first fetch; full_line=4)
-  swap: == ccv-sim, reaches its bins             PASS (556 cycles, 525 from first fetch; slot_reuse=2)
-  provswap: == ccv-sim, reaches its bins         PASS (2313 cycles, 2282 from first fetch; redirect>0 slot_reuse>0)
-  stall: == ccv-sim, reaches its bins            PASS (556 cycles, 525 from first fetch; l1_late>0)
-  vaddslow: == ccv-sim, reaches its bins         PASS (546 cycles, 515 from first fetch; full_line=1)
-  div: == ccv-sim, reaches its bins              PASS (978 cycles, 947 from first fetch; split=32 reconverge=2 groups_peak=2 fair_pick=1)
-  spinwait: == ccv-sim, reaches its bins         PASS (2181 cycles, 2150 from first fetch; fair_pick=4 groups_peak=3 st_ld_wait>0)
-  divtail: == ccv-sim, reaches its bins          PASS (642 cycles, 611 from first fetch; split=20 groups_peak=2)
-  divtail2: == ccv-sim, reaches its bins         PASS (1517 cycles, 1486 from first fetch; split=51 groups_peak=2)
-  roconst: == ccv-sim, reaches its bins          PASS (75 cycles, 44 from first fetch; ro_fault=1 fault=1 kill=1)
-  rolimit: == ccv-sim, reaches its bins          PASS (75 cycles, 44 from first fetch; ro_fault=1 fault=1 kill=1)
-  rolaunch: == ccv-sim, reaches its bins         PASS (73 cycles, 42 from first fetch; ro_fault=1 fault=1 kill=1)
-  rogated: == ccv-sim, reaches its bins          PASS (95 cycles, 64 from first fetch; ro_fault=1 fault=1 split=1 kill=1)
-  roload: == ccv-sim, reaches its bins           PASS (105 cycles, 74 from first fetch; ro_fault=0 fault=0 kill=0)
-  rokill: == ccv-sim, reaches its bins           PASS (103 cycles, 72 from first fetch; ro_fault=1 fault=1 kill=1)
-  slotform: == ccv-sim, reaches its bins         PASS (4365 cycles, 4334 from first fetch; slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0 dcu_evict=32)
-  lanectx: == ccv-sim, reaches its bins          PASS (69 cycles, 38 from first fetch; redirect=0 split=0)
-  lanectx2: == ccv-sim, reaches its bins         PASS (69 cycles, 38 from first fetch; redirect=0 split=0)
-  predspill: == ccv-sim, reaches its bins        PASS (966 cycles, 935 from first fetch; pred_xfer=7 pred_merge=6 pred_copy=0)
-  predmerge: == ccv-sim, reaches its bins        PASS (939 cycles, 908 from first fetch; pred_xfer=3 pred_merge=2 pred_copy=1)
-  predlane: == ccv-sim, reaches its bins         PASS (927 cycles, 896 from first fetch; pred_xfer=2 pred_merge=2 pred_copy=0)
-  predswap: == ccv-sim, reaches its bins         PASS (1178 cycles, 1147 from first fetch; pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15)
-  localsp: == ccv-sim, reaches its bins          PASS (4238 cycles, 4207 from first fetch; local_form=12 window_fill=0 pred_xfer=4 frame_lookups=0)
-  privwin: == ccv-sim, reaches its bins          PASS (2215 cycles, 2184 from first fetch; priv_form=11 priv_fault=0)
-  rope: == ccv-sim, reaches its bins             PASS (7753 cycles, 7722 from first fetch; local_form=44 frame_lookups=0)
-  fence: == ccv-sim, reaches its bins            PASS (82 cycles, 51 from first fetch; fence=1 fence_wait>0)
-  addrhigh: == ccv-sim, reaches its bins         PASS (82 cycles, 51 from first fetch; addr_fault=1 fault=1 kill=1)
-  addrneg: == ccv-sim, reaches its bins          PASS (82 cycles, 51 from first fetch; addr_fault=1 fault=1 kill=1)
+  unal: == ccv-sim, reaches its bins             PASS (138 cycles, 107 from first fetch; line_split=3 lines_peak=2 partial_line=2 full_line=0)
+  gather: == ccv-sim, reaches its bins           PASS (267 cycles, 236 from first fetch; lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0 hit_under_miss=2)
+  loop: == ccv-sim, reaches its bins             PASS (2942 cycles, 2911 from first fetch; redirect=99 ckpt_free=1 reg_reuse>0)
+  brs: == ccv-sim, reaches its bins              PASS (101 cycles, 70 from first fetch; redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5)
+  mload: == ccv-sim, reaches its bins            PASS (113 cycles, 82 from first fetch; copy=2 zero_read=1)
+  merge: == ccv-sim, reaches its bins            PASS (73 cycles, 42 from first fetch; zero_read=2 merge=4)
+  vadd: == ccv-sim, reaches its bins             PASS (159 cycles, 128 from first fetch; ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3)
+  hit: == ccv-sim, reaches its bins              PASS (234 cycles, 203 from first fetch; l1_hit=4 l1_late=0)
+  late: == ccv-sim, reaches its bins             PASS (175 cycles, 144 from first fetch; l1_late=1 l1_hit=2 hit_under_miss=1)
+  byp: == ccv-sim, reaches its bins              PASS (120 cycles, 89 from first fetch; copy=1 lane_byp=3)
+  plog: == ccv-sim, reaches its bins             PASS (72 cycles, 41 from first fetch; merge=3)
+  chains: == ccv-sim, reaches its bins           PASS (97 cycles, 66 from first fetch; lane_byp=9)
+  missrun: == ccv-sim, reaches its bins          PASS (123 cycles, 92 from first fetch; l1_hit=0 reexec=2)
+  ldpar: == ccv-sim, reaches its bins            PASS (157 cycles, 126 from first fetch; l1_hit=4 hit_under_miss=4)
+  mlp: == ccv-sim, reaches its bins              PASS (128 cycles, 97 from first fetch; l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0)
+  mwmiss: == ccv-sim, reaches its bins           PASS (131 cycles, 100 from first fetch; l1_hit=0)
+  vadd4: == ccv-sim, reaches its bins            PASS (204 cycles, 173 from first fetch; full_line=4)
+  swap: == ccv-sim, reaches its bins             PASS (558 cycles, 527 from first fetch; slot_reuse=2)
+  provswap: == ccv-sim, reaches its bins         PASS (2386 cycles, 2355 from first fetch; redirect>0 slot_reuse>0)
+  stall: == ccv-sim, reaches its bins            PASS (558 cycles, 527 from first fetch; l1_late>0)
+  vaddslow: == ccv-sim, reaches its bins         PASS (548 cycles, 517 from first fetch; full_line=1)
+  div: == ccv-sim, reaches its bins              PASS (1011 cycles, 980 from first fetch; split=32 reconverge=2 groups_peak=2 fair_pick=1)
+  spinwait: == ccv-sim, reaches its bins         PASS (2276 cycles, 2245 from first fetch; fair_pick=4 groups_peak=3 st_ld_wait>0)
+  divtail: == ccv-sim, reaches its bins          PASS (663 cycles, 632 from first fetch; split=20 groups_peak=2)
+  divtail2: == ccv-sim, reaches its bins         PASS (1569 cycles, 1538 from first fetch; split=51 groups_peak=2)
+  roconst: == ccv-sim, reaches its bins          PASS (77 cycles, 46 from first fetch; ro_fault=1 fault=1 kill=1)
+  rolimit: == ccv-sim, reaches its bins          PASS (77 cycles, 46 from first fetch; ro_fault=1 fault=1 kill=1)
+  rolaunch: == ccv-sim, reaches its bins         PASS (74 cycles, 43 from first fetch; ro_fault=1 fault=1 kill=1)
+  rogated: == ccv-sim, reaches its bins          PASS (97 cycles, 66 from first fetch; ro_fault=1 fault=1 split=1 kill=1)
+  roload: == ccv-sim, reaches its bins           PASS (107 cycles, 76 from first fetch; ro_fault=0 fault=0 kill=0)
+  rokill: == ccv-sim, reaches its bins           PASS (106 cycles, 75 from first fetch; ro_fault=1 fault=1 kill=1)
+  slotform: == ccv-sim, reaches its bins         PASS (4368 cycles, 4337 from first fetch; slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0 dcu_evict=32)
+  lanectx: == ccv-sim, reaches its bins          PASS (70 cycles, 39 from first fetch; redirect=0 split=0)
+  lanectx2: == ccv-sim, reaches its bins         PASS (70 cycles, 39 from first fetch; redirect=0 split=0)
+  predspill: == ccv-sim, reaches its bins        PASS (967 cycles, 936 from first fetch; pred_xfer=7 pred_merge=6 pred_copy=0)
+  predmerge: == ccv-sim, reaches its bins        PASS (940 cycles, 909 from first fetch; pred_xfer=3 pred_merge=2 pred_copy=1)
+  predlane: == ccv-sim, reaches its bins         PASS (928 cycles, 897 from first fetch; pred_xfer=2 pred_merge=2 pred_copy=0)
+  predswap: == ccv-sim, reaches its bins         PASS (1179 cycles, 1148 from first fetch; pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15)
+  localsp: == ccv-sim, reaches its bins          PASS (4237 cycles, 4206 from first fetch; local_form=12 window_fill=0 pred_xfer=4 frame_lookups=0)
+  privwin: == ccv-sim, reaches its bins          PASS (2217 cycles, 2186 from first fetch; priv_form=11 priv_fault=0)
+  rope: == ccv-sim, reaches its bins             PASS (7762 cycles, 7731 from first fetch; local_form=44 frame_lookups=0)
+  fence: == ccv-sim, reaches its bins            PASS (83 cycles, 52 from first fetch; fence=1 fence_wait>0)
+  addrhigh: == ccv-sim, reaches its bins         PASS (84 cycles, 53 from first fetch; addr_fault=1 fault=1 kill=1)
+  addrneg: == ccv-sim, reaches its bins          PASS (84 cycles, 53 from first fetch; addr_fault=1 fault=1 kill=1)
   addrlimit: == ccv-sim, reaches its bins        PASS (1071 cycles, 1040 from first fetch; addr_fault=0 fault=0)
-  ropediv: == ccv-sim, reaches its bins          PASS (1120 cycles, 1089 from first fetch; local_form=30 frame_lookups=0 split=2 groups_peak=2)
-  narrowadd: == ccv-sim, reaches its bins        PASS (226 cycles, 195 from first fetch; narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0)
-  sized: == ccv-sim, reaches its bins            PASS (2640 cycles, 2609 from first fetch; partial_line>0)
-  divchw: == ccv-sim, reaches its bins           PASS (110 cycles, 79 from first fetch; fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1)
+  ropediv: == ccv-sim, reaches its bins          PASS (1151 cycles, 1120 from first fetch; local_form=30 frame_lookups=0 split=2 groups_peak=2)
+  narrowadd: == ccv-sim, reaches its bins        PASS (232 cycles, 201 from first fetch; narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0)
+  sized: == ccv-sim, reaches its bins            PASS (2641 cycles, 2610 from first fetch; partial_line>0)
+  divchw: == ccv-sim, reaches its bins           PASS (114 cycles, 83 from first fetch; fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1)
   callret: == ccv-sim, reaches its bins          PASS (280 cycles, 249 from first fetch; ret_pass=1 groups_peak=2)
-  spmbank: == ccv-sim, reaches its bins          PASS (185 cycles, 154 from first fetch; spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0)
-  lnorm1: == ccv-sim, reaches its bins           PASS (2593 cycles, 2562 from first fetch; bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0)
-  transp4: == ccv-sim, reaches its bins          PASS (1169 cycles, 1138 from first fetch; bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0)
-  borrow: == ccv-sim, reaches its bins           PASS (99 cycles, 68 from first fetch; credit_borrow=1 credit_wait>0 chw_converged=2)
+  spmbank: == ccv-sim, reaches its bins          PASS (186 cycles, 155 from first fetch; spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0)
+  lnorm1: == ccv-sim, reaches its bins           PASS (2631 cycles, 2600 from first fetch; bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0)
+  transp4: == ccv-sim, reaches its bins          PASS (1183 cycles, 1152 from first fetch; bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0)
+  borrow: == ccv-sim, reaches its bins           PASS (102 cycles, 71 from first fetch; credit_borrow=1 credit_wait>0 chw_converged=2)
   --break xfer-ignored: MIU refuses rdata's width PASS (mem_mismatch=7)
   --break xfer-unsigned: ld.s8 zero-filled is caught PASS (gpr_mismatch=32)
   --break narrow-carry: the widening finds the carry PASS (96 checks)
@@ -562,9 +543,9 @@
   --break bar-park-off: refused                  PASS (292 checks)
   --break spm-no-wait: spmbank's spm_wait bin misses it PASS (spm_wait=0)
   --break held-over-r: refused                   PASS ( checks)
-  --break borrow-partial: refused                PASS (15 checks)
-  --break warp-cap: refused                      PASS (447 checks)
-  transp4, held warps demoted and restored       PASS (1384 cycles, 1353 from first fetch; demote=4)
+  --break borrow-partial: refused                PASS (16 checks)
+  --break warp-cap: refused                      PASS (457 checks)
+  transp4, held warps demoted and restored       PASS (1396 cycles, 1365 from first fetch; demote=4)
   --break held-no-clear: restored warps never fetch PASS (never finishes)
   div, FET predicting taken on any lane: V-41 redirects PASS (fet_pred_partial=32 redirect=32)
   inject_partial_taken_ok: a partial outcome counted right PASS (no redirect; never finishes)
@@ -572,12 +553,12 @@
   --break no-chw-mark: a converged chwidth must not fault PASS (129 checks)
   --break one-line: the lanes past the boundary  PASS (loads at MIU, 17 stored words and 2 overwritten)
   --break skip-read-partial: words lost          PASS (unal's 4 words beside its store)
-  --break write-through: no store merges in DCU  PASS (predswap's store_hit 15 -> 0, 7741 cycles)
+  --break write-through: no store merges in DCU  PASS (predswap's store_hit 15 -> 0, 7742 cycles)
   --break drop-writeback: evicted lines lost     PASS (seq 8's 32 lanes reload stale; 32 words in memory)
   --break deny-ownership: DCU refuses the line   PASS (predswap's AcquireBlock, vadd's AcquirePerm)
   --break local-no-ctx, local-base-slot          PASS (warp 1 in context 0's frame; local_base from the wrong word)
   --break priv-no-ctx, priv-lane0                PASS (warp 1 in context 0's region; the decision on lane 0's rbase faults)
-  --break free-new: a live register reallocated  PASS (seq 204, its source reallocated)
+  --break free-new: a live register reallocated  PASS (seq 379, its source reallocated)
   --break corrupt-group-mask: lane 31 refuses it PASS (A-69)
   --break stale-epoch: OOE drops the uop         PASS (A-70; 406 of 407 retire)
   --break fair-off: FET skips the fair pick (div) PASS (seq 82)
@@ -598,8 +579,8 @@
   --break stpred-whole-word: lanes 0-15 stored   PASS (predlane: 0x90010)
   --break xfer-low-lane: the lowest active lane's base PASS (predlane: window 25)
   --break pdata-guard: st.pred's predicate as a guard PASS (predlane)
-  predswap demoted between a st.pred's uops      PASS (at:57, it resumes at the instruction)
-  --break resume-mid: past the split instruction PASS (predswap at:57)
+  predswap demoted between a st.pred's uops      PASS (at:58, it resumes at the instruction)
+  --break resume-mid: past the split instruction PASS (predswap at:58)
   --break zero-cta-slot: warps 1-3 name slot 0   PASS (vadd4: 24 memops refused)
   --break no-kill: the run never ends (rokill)   PASS
   --break withheld-ack: the run never ends (rokill) PASS
@@ -608,7 +589,7 @@
   --break no-st-wait: the load reads past the store PASS (spinwait seq 205)
   spinwait under strict min-PC: hangs            PASS (ccv-sim at -fairness=0)
   every kernel with l1_spec alone; hit's 4 on time PASS (its miss's dependant replayed)
-  --break early-hit: V-44 names all four         PASS (at 17, CCV_LAT_L1_CMPL 18)
+  --break early-hit: V-44 names all four         PASS (at 18, CCV_LAT_L1_CMPL 19)
   --break late-hit-data: hits' dependants read stale PASS (4 ops x 32 lanes)
   --break no-rcu-bypass: hits' dependants read stale PASS (4 ops x 32 lanes)
   --break rs-echo: OOE refuses the wrong entry   PASS (8 completions)
@@ -623,7 +604,7 @@
   --break notice-wrong-id: dcu_miu_fill_ntc same_keys PASS (3)
   --break late-cmpl: miu_ooe_cmpl_hint on_time   PASS (3)
   --break hint-wrong-tag: miu_ooe_cmpl_hint same_keys PASS (3)
-  every kernel with the swap on == ccv-sim       PASS (30 parks, each restored; order_diff: none)
+  every kernel with the swap on == ccv-sim       PASS (29 parks, each restored; order_diff: none)
   stall: warp 0 parked, restored, resumed == ccv-sim PASS (rows, predicates and lane PCs at its boundary)
   swap: warp 0 parked, restored, resumed == ccv-sim PASS (rows, predicates and lane PCs at its boundary)
   replay drain: loads replayed, orphans home, then restored PASS (stall's replay hits and orphan home; vadd4's 0 orphan(s) at decq 15, then ready)
@@ -657,11 +638,11 @@
   --break narrow-pipes: MIU refuses each memop   PASS (8 memops)
   --break ordering-on-load: DEC, OOE and MIU refuse PASS (7 loads each)
   --break memop-ordering: OOE and MIU refuse each PASS (7 loads)
-  backpressured channels: longest wait           PASS (ccv_miu_dcu_req 0 of 8192; ccv_rau_rcu_mig 53 of 8192; ccv_ooe_rcu_map 62 of 8192; ccv_dec_ooe_uop 50 of 8192)
-  kernels issue out of order                     PASS (ahead=1481 depth=25 kernels=40 of 58)
-  --break dcu-one-miss: the stall bound fails    PASS (warp 1 finished at 597, within 300 of stalled warp 0's 551)
+  backpressured channels: longest wait           PASS (ccv_miu_dcu_req 0 of 8192; ccv_rau_rcu_mig 53 of 8192; ccv_ooe_rcu_map 62 of 8192; ccv_dec_ooe_uop 51 of 8192)
+  kernels issue out of order                     PASS (ahead=1492 depth=25 kernels=40 of 58)
+  --break dcu-one-miss: the stall bound fails    PASS (warp 1 finished at 599, within 300 of stalled warp 0's 553)
   --in-order: the same traces in program order   PASS (fails the floor: nothing reordered)
-  [kernel: 312s]
+  [kernel: 265s]
 
 == Stage 4b -- OOE model unit tests (sim/ooe/) ==
   OOE unit tests                                       PASS
@@ -712,12 +693,13 @@
   control split-r-class                                caught
   control pq-no-dep                                    caught
   control keep-released-uops                           caught
-  [ooe_unit: 136s]
+  control no-call-link                                 caught
+  [ooe_unit: 107s]
 
 == RCU model unit tests (sim/rcu/; RI-2) ==
   RCU unit tests                                       PASS
   RCU unit-test controls caught                        PASS (7)
-  [rcu_unit: 6s]
+  [rcu_unit: 4s]
 
 == Stage 4c -- OOE RTL (rtl/ooe/) ==
   pick rcu (30 entries, 5 resources) == model          PASS (200000 issued=288854 lost=144063 multi-issue=80523 fails=0)
@@ -735,7 +717,7 @@
     control youngest-wins (miu)                        caught
     control any-wins (miu)                             caught
     control no-mask (miu)                              caught
-  ready (45 entries) == model, live                    PASS (25 cycles=79664 skipped=44495 compared=614830 ready=359038 mismatches=0 model_failures=0)
+  ready (45 entries) == model, live                    PASS (25 cycles=81478 skipped=45787 compared=647794 ready=377701 mismatches=0 model_failures=0)
     control code-shift (ready)                         caught
     control no-late (ready)                            caught
   csa (1 operands of 8 bits) == arithmetic             PASS (200000 exact=100000 bad=0)
@@ -754,38 +736,38 @@
     control drop-op (csa 16 x 8)                       caught
   csa (18 operands of 9 bits) == arithmetic            PASS (200000 exact=100000 bad=0)
     control drop-op (csa 18 x 9)                       caught
-  freelist gpr (192 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=79464 allocs=69374 frees=61558 sec_allocs=0 sec_frees=0 returns=0 candidates=0 skipped=0 mismatches=0 model_failures=0)
+  freelist gpr (192 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=81278 allocs=69290 frees=61476 sec_allocs=0 sec_frees=0 returns=0 candidates=0 skipped=0 mismatches=0 model_failures=0)
     control drop-free (freelist gpr)                   caught
     control extra-alloc (freelist gpr)                 caught
     control no-lead (freelist gpr)                     caught
     control wrong-owner (freelist gpr)                 caught
     control one-step (freelist gpr)                    caught
-  freelist gsec (192 entries, 4 ports) == model, live  PASS (25 cores=200 cycles=40128 allocs=34671 frees=30818 sec_allocs=34671 sec_frees=30707 returns=3069 candidates=320224 skipped=39436 mismatches=0 model_failures=0)
+  freelist gsec (192 entries, 4 ports) == model, live  PASS (25 cores=200 cycles=41166 allocs=34681 frees=30830 sec_allocs=34681 sec_frees=30717 returns=3047 candidates=328528 skipped=40212 mismatches=0 model_failures=0)
     control drop-sec-free (freelist gsec)              caught
     control sa-early (freelist gsec)                   caught
     control no-lead (freelist gsec)                    caught
     control one-step (freelist gsec)                   caught
-  freelist pred (48 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=79464 allocs=9413 frees=7444 sec_allocs=0 sec_frees=0 returns=0 candidates=0 skipped=0 mismatches=0 model_failures=0)
+  freelist pred (48 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=81278 allocs=9413 frees=7444 sec_allocs=0 sec_frees=0 returns=0 candidates=0 skipped=0 mismatches=0 model_failures=0)
     control drop-free (freelist pred)                  caught
     control extra-alloc (freelist pred)                caught
     control no-lead (freelist pred)                    caught
     control wrong-owner (freelist pred)                caught
     control one-step (freelist pred)                   caught
-  age rcu (30 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=79664 allocs=75648 multi-alloc=23867 pairs=22005550 mismatches=0 model_failures=0)
+  age rcu (30 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=81478 allocs=75493 multi-alloc=23653 pairs=23491940 mismatches=0 model_failures=0)
     control no-valid (age rcu)                         caught
     control port-reverse (age rcu)                     caught
     control no-lead (age rcu)                          caught
-  age miu (15 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=79664 allocs=24066 multi-alloc=4436 pairs=3927268 mismatches=0 model_failures=0)
+  age miu (15 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=81478 allocs=24124 multi-alloc=4323 pairs=4100894 mismatches=0 model_failures=0)
     control no-valid (age miu)                         caught
     control port-reverse (age miu)                     caught
     control no-lead (age miu)                          caught
-  decq (15 entries, 4 slots, 6 in, 4 out) == model, live PASS (25 cores=200 cycles=79464 arrivals=103227 taken=98187 flushes=2379 heads=397479 pool-full=1214 mismatches=0 model_failures=0)
+  decq (15 entries, 4 slots, 6 in, 4 out) == model, live PASS (25 cores=200 cycles=81278 arrivals=103245 taken=98086 flushes=2379 heads=417709 pool-full=1355 mismatches=0 model_failures=0)
     control drop-flush (decq)                          caught
     control enq-swap (decq)                            caught
     control no-enq-lead (decq)                         caught
     control no-take-enable (decq)                      caught
     control no-free-lag (decq)                         caught
-  go (4 slots, 4 a cycle) == model, live               PASS (25 cores=294 cycles=203687 takes=114488 writers=91399 restore_cycles=7 pair-heads=135128 skipped=847 mismatches=0 model_failures=0)
+  go (4 slots, 4 a cycle) == model, live               PASS (25 cores=294 cycles=208838 takes=114094 writers=91257 restore_cycles=7 pair-heads=138728 skipped=849 mismatches=0 model_failures=0)
     control no-hold (go)                               caught
     control no-rbusy (go)                              caught
     control no-squash (go)                             caught
@@ -799,8 +781,8 @@
     control no-corr (go)                               caught
     control no-pair-bit (go)                           caught
     control pair-rounds (go)                           caught
-  rob (4 slots) == model, live                         PASS (25 cores=116 cycles=35435 allocs=38969 nops=283 events=120911 retires=38923 gpr-frees=58666 pred-frees=3737 resolves=3713 redirects=0 ckpt-frees=3713 stopped=8 skipped=107 squashes=0 squashed=0 held=0 killed=0 held-releases=0 discards=0 mismatches=0 model_failures=0)
-  rob == model, mispredicting                          PASS (25 cores=116 cycles=41823 allocs=50151 nops=1310 events=136622 retires=38870 gpr-frees=79228 pred-frees=3727 resolves=3709 redirects=1208 ckpt-frees=2501 stopped=5 skipped=110 squashes=1208 squashed=11211 held=2710 killed=960 held-releases=2710 discards=349 mismatches=0 model_failures=0)
+  rob (4 slots) == model, live                         PASS (25 cores=116 cycles=36562 allocs=38969 nops=283 events=120967 retires=38938 gpr-frees=58694 pred-frees=3737 resolves=3713 redirects=0 ckpt-frees=3713 stopped=5 skipped=110 squashes=0 squashed=0 held=0 killed=0 held-releases=0 discards=0 mismatches=0 model_failures=0)
+  rob == model, mispredicting                          PASS (25 cores=116 cycles=42819 allocs=50117 nops=1280 events=136791 retires=38889 gpr-frees=79014 pred-frees=3730 resolves=3711 redirects=1209 ckpt-frees=2502 stopped=6 skipped=109 squashes=1209 squashed=11150 held=2732 killed=1003 held-releases=2732 discards=368 mismatches=0 model_failures=0)
     control drop-free (rob)                            caught
     control no-copy (rob)                              caught
     control no-lead (rob)                              caught
@@ -817,7 +799,7 @@
     control drop-killed-fill (rob)                     caught
     control late-fill (rob)                            caught
     control two-resolutions (rob)                      caught
-  wake (45 timers, 4 lines) == model, live             PASS (25 cores=262 cycles=89393 skipped=53306 grants=30816 cmpls=3141 misses=397 stops=35321 fins=23639 compared=2165628 raised=66546 extra_leads=1396 mismatches=0 model_failures=0)
+  wake (45 timers, 4 lines) == model, live             PASS (25 cores=262 cycles=91317 skipped=54771 grants=30628 cmpls=3143 misses=406 stops=35233 fins=23574 compared=2279580 raised=112513 extra_leads=1398 mismatches=0 model_failures=0)
     control late-grant (wake)                          caught
     control drop-cmpl (wake)                           caught
     control no-dep (wake)                              caught
@@ -825,30 +807,30 @@
     control no-cmpl-lead (wake)                        caught
     control no-sq-lead (wake)                          caught
     control no-hint (wake)                             caught
-  confirm (45 entries) == model, live                  PASS (25 cores=200 cycles=79668 held=16206 replays=1018 confirms=82091 oa17=pass mismatches=0 model_failures=0)
+  confirm (45 entries) == model, live                  PASS (25 cores=200 cycles=81482 held=16544 replays=1060 confirms=81939 oa17=pass mismatches=0 model_failures=0)
     control no-msd (confirm)                           caught
     control msd-pulse (confirm)                        caught
     control no-fin (confirm)                           caught
     control no-dep (confirm)                           caught
-  prodmap (45 entries, 768 GPR names) == model, live   PASS (25 cores=262 cycles=89393 writes=101143 copies=3112 names=40587136 live=1508176 mismatches=0 model_failures=0)
+  prodmap (45 entries, 768 GPR names) == model, live   PASS (25 cores=262 cycles=91317 writes=100993 copies=3112 names=41563968 live=1581061 mismatches=0 model_failures=0)
     control no-ename (prodmap)                         caught
     control port-swap (prodmap)                        caught
     control no-lead (prodmap)                          caught
   rendep: CT default == rendep-params.py               PASS
-  rendep (45 entries, 4 uops) == model, live           PASS (25 cores=262 cycles=89393 rows=100578 cells=67003 grp=4081 prv=7981 masked_extra=19584 codes_skipped=34988 preds_skipped=1624 mismatches=0 model_failures=0)
+  rendep (45 entries, 4 uops) == model, live           PASS (25 cores=262 cycles=91317 rows=100481 cells=67583 grp=3987 prv=7931 masked_extra=18825 codes_skipped=35638 preds_skipped=1637 mismatches=0 model_failures=0)
     control no-map (rendep)                            caught
     control late-code (rendep)                         caught
     control no-copy-src (rendep)                       caught
     control no-spec (rendep)                           caught
-  rename lookup + ooe_rs assembled == model            PASS (25 cores=262 cycles=89393 allocs=104255 rows=1647877 cells=177941 preds_off_cycles=5771 kinds=1703356 mismatches=0 model_failures=0)
+  rename lookup + ooe_rs assembled == model            PASS (25 cores=262 cycles=91317 allocs=104105 rows=1726114 cells=189742 preds_off_cycles=5838 kinds=1784862 mismatches=0 model_failures=0)
     control stale-live (rnrs)                          caught
     control wrong-names (rnrs)                         caught
     control no-spec (rnrs)                             caught
-  rencred (rename's credits) == model, live            PASS (88839 uops=102441 late_frees=18819 draws=48 mismatches=0 model_failures=0)
+  rencred (rename's credits) == model, live            PASS (90761 uops=102287 late_frees=18810 draws=48 mismatches=0 model_failures=0)
     control no-late (rencred)                          caught
     control no-draw (rencred)                          caught
     control no-rob-free (rencred)                      caught
-  rs (45 entries, 4 ports a class) == model, live      PASS (25 cores=262 cycles=89393 allocs=104255 in-group=4301 frees=104255 same-edge=0 rows=1703356 cells=387103 stale=2435397 kinds=1703356 mismatches=0 model_failures=0)
+  rs (45 entries, 4 ports a class) == model, live      PASS (25 cores=262 cycles=91317 allocs=104105 in-group=4182 frees=104105 same-edge=0 rows=1784862 cells=414441 stale=2382573 kinds=1784862 mismatches=0 model_failures=0)
     control no-msd (rs)                                caught
     control drop-squash-free (rs)                      caught
     control drop-group (rs)                            caught
@@ -860,7 +842,7 @@
     control no-cmpl-lead (rs)                          caught
     control no-fin (rs)                                caught
     control no-kind (rs)                               caught
-  rat (4 slots, 4 ports) == model, live                PASS (25 cores=262 cycles=88839 skipped=554 renames=100903 in-group=54177 checkpoints=7659 restores=2481 squashes=3 releases=499 retires=66049 restore-writes=36 mismatches=0 model_failures=0)
+  rat (4 slots, 4 ports) == model, live                PASS (25 cores=262 cycles=90761 skipped=556 renames=100753 in-group=52973 checkpoints=7659 restores=2481 squashes=3 releases=499 retires=66047 restore-writes=36 mismatches=0 model_failures=0)
     control port-reverse (rat)                         caught
     control drop-restore (rat)                         caught
     control drop-retire (rat)                          caught
@@ -868,11 +850,11 @@
     control no-pending (rat)                           caught
     control no-lead (rat)                              caught
     control pend-over-event (rat)                      caught
-  Rename 1 (lanes, names, reads) == model, live        PASS (25 cores=262 cycles=47644 skipped=41749 stopped=2 lanes=52304 in-group=29973 gpr-names=37482 pred-names=4919 mismatches=0 model_failures=0)
+  Rename 1 (lanes, names, reads) == model, live        PASS (25 cores=262 cycles=48511 skipped=42806 stopped=2 lanes=52122 in-group=29139 gpr-names=37365 pred-names=4919 mismatches=0 model_failures=0)
     control lane-swap (ren1)                           caught
     control name-reverse (ren1)                        caught
     control drop-restore (ren1)                        caught
-  rename (go, Rename 1 and 2, free lists) == model, live PASS (25 cores=262 cycles=41052 skipped=139 stopped=2 takes=48851 lanes=48575 nops=276 gpr-names=34800 pred-names=4694 frees=34471 rows=50216 cells=32164 grp=2060 prv=3744 masked=11047 narrow-lanes=84 mismatches=0 model_failures=0)
+  rename (go, Rename 1 and 2, free lists) == model, live PASS (25 cores=262 cycles=41631 skipped=139 stopped=2 takes=48840 lanes=48564 nops=276 gpr-names=34816 pred-names=4694 frees=34487 rows=50205 cells=32674 grp=1998 prv=3707 masked=10637 narrow-lanes=84 mismatches=0 model_failures=0)
     control drop-free (rename)                         caught
     control no-lead (rename)                           caught
     control no-write-bits (rename)                     caught
@@ -882,22 +864,22 @@
     control no-grant (rename)                          caught
     control no-cw-write (rename)                       caught
     control no-spec (rename)                           caught
-  rename_ceil (go, Rename 1 and 2, free lists) == model, live PASS (0 cores=62 cycles=274 skipped=61 stopped=0 takes=61 lanes=60 nops=1 gpr-names=60 pred-names=0 frees=44 rows=60 cells=59 grp=12 prv=11 masked=0 narrow-lanes=0 mismatches=0 model_failures=0)
-  rename_scarce (go, Rename 1 and 2, free lists) == model, live PASS (25 cores=262 cycles=40647 skipped=139 stopped=2 takes=48822 lanes=48546 nops=276 gpr-names=34743 pred-names=4694 frees=34414 rows=50187 cells=31587 grp=1998 prv=3633 masked=11950 narrow-lanes=84 mismatches=0 model_failures=0)
+  rename_ceil (go, Rename 1 and 2, free lists) == model, live PASS (0 cores=62 cycles=275 skipped=61 stopped=0 takes=61 lanes=60 nops=1 gpr-names=60 pred-names=0 frees=44 rows=60 cells=59 grp=12 prv=11 masked=0 narrow-lanes=0 mismatches=0 model_failures=0)
+  rename_scarce (go, Rename 1 and 2, free lists) == model, live PASS (25 cores=262 cycles=41776 skipped=139 stopped=2 takes=48591 lanes=48315 nops=276 gpr-names=34637 pred-names=4694 frees=34308 rows=49956 cells=32135 grp=2052 prv=3571 masked=11236 narrow-lanes=84 mismatches=0 model_failures=0)
     control no-take-q (rename_scarce)                  caught
     control no-take-q2 (rename_scarce)                 caught
-  rename_sec (go, Rename 1 and 2, free lists) == model, live PASS (25 cores=262 cycles=48584 skipped=48 stopped=97 takes=58120 lanes=57836 nops=284 gpr-names=41523 pred-names=5805 frees=37227 rows=59526 cells=40170 grp=2266 prv=4113 masked=10656 narrow-lanes=7854 mismatches=0 model_failures=0)
+  rename_sec (go, Rename 1 and 2, free lists) == model, live PASS (25 cores=262 cycles=49604 skipped=48 stopped=97 takes=58098 lanes=57816 nops=282 gpr-names=41463 pred-names=5814 frees=37144 rows=59500 cells=40168 grp=2214 prv=3936 masked=10641 narrow-lanes=8005 mismatches=0 model_failures=0)
     control drop-free (rename_sec)                     caught
     control no-lead (rename_sec)                       caught
     control no-reads (rename_sec)                      caught
     control no-merge (rename_sec)                      caught
     control no-cw-write (rename_sec)                   caught
-  select (45 entries, 9 resources) == model, live      PASS (25 cycles=98426 followed=22247 candidates=56408 grants=21498 memops=3995 held=73 mismatches=0 model_failures=0)
+  select (45 entries, 9 resources) == model, live      PASS (25 cycles=100754 followed=22695 candidates=52565 grants=21476 memops=3981 held=81 mismatches=0 model_failures=0)
     control no-order (select)                          caught
     control no-conf (select)                           caught
     control no-busy (select)                           caught
     control no-hold (select)                           caught
-  rs + wake + sched assembled == model                 PASS (25 cores=251 compared=51 cycles=111905 skipped=80335 grants=27386 grant_diverged_cores=0 first_grant_divergence_mean=0 squash_ready_skipped=4047 held=73 migs=1437 forced=297 issued_slots=27386 mismatches=0 model_failures=0)
+  rs + wake + sched assembled == model                 PASS (25 cores=251 compared=51 cycles=111908 skipped=82327 grants=27167 grant_diverged_cores=0 first_grant_divergence_mean=0 squash_ready_skipped=3920 held=81 migs=1118 forced=329 issued_slots=27167 mismatches=0 model_failures=0)
     control no-msd (trio)                              caught
     control no-miss-lead (trio)                        caught
     control late-leads (trio)                          caught
@@ -907,8 +889,9 @@
     control no-idle-r (trio)                           caught
     control pay-port (trio)                            caught
     control no-home (trio)                             caught
+    control pay-with-valid (trio)                      caught
     control no-force (trio, idle_r assertion)          caught
-  [ooe_rtl: 2155s]
+  [ooe_rtl: 1514s]
 
 == SV top -- rtl/top/ (generated, tracked) ==
   verilator -Wall: top (synthesis view)          PASS
@@ -923,7 +906,7 @@
     ...and refuses 12 impure copies: top, wrapper, reuse, gate, units PASS
   SV top wiring == C++ skeleton wiring           PASS (69796 bits)
     ...and rejects a lane swapped in a copy      PASS
-  [top: 133s]
+  [top: 84s]
 
 == Formal proofs -- one credited link, and the block clock gate ==
   safety, N=0: every property, for all time      PASS (proved)
@@ -963,7 +946,7 @@
     ...a latch open on the high phase: the clean-clock properties fail PASS (cex 1)
     ...witness: reach_gated                      PASS (12 frames)
     ...witness: reach_woken                      PASS (18 frames)
-  [formal: 322s]
+  [formal: 281s]
 
 == Physical primitives -- sequential repeater ==
   repeater: verilator -Wall, ten shapes          PASS
@@ -977,137 +960,137 @@
     ...lead-gated: invisible in sim, refused by netlist PASS
     ...bnd-gated: invisible in sim, refused by netlist PASS
     ...raw-reset: invisible in sim, refused by netlist PASS
-  [phys: 33s]
+  [phys: 15s]
 
 == SV-hosted C++ -- the skeleton's blocks inside the SV top ==
   verilator -Wall: shims, top, testbench         PASS
     ...and refuse a build without CCV_TRACE      PASS
   SV-hosted build: 45 blocks + EXTERNAL as shims PASS
-  addrhigh: SV-hosted == C++-hosted              PASS (285 events, cycles=82
+  addrhigh: SV-hosted == C++-hosted              PASS (285 events, cycles=84
 cycles=0)
   addrlimit: SV-hosted == C++-hosted             PASS (78 events, cycles=1071
 cycles=0)
-  addrneg: SV-hosted == C++-hosted               PASS (46 events, cycles=82
+  addrneg: SV-hosted == C++-hosted               PASS (46 events, cycles=84
 cycles=0)
-  borrow: SV-hosted == C++-hosted                PASS (1029 events, cycles=99
+  borrow: SV-hosted == C++-hosted                PASS (1029 events, cycles=102
 cycles=0)
-  brs: SV-hosted == C++-hosted                   PASS (339 events, cycles=99
-cycles=131)
-  byp: SV-hosted == C++-hosted                   PASS (793 events, cycles=118
+  brs: SV-hosted == C++-hosted                   PASS (339 events, cycles=101
+cycles=135)
+  byp: SV-hosted == C++-hosted                   PASS (793 events, cycles=120
 cycles=0)
   callret: SV-hosted == C++-hosted               PASS (1489 events, cycles=280
 cycles=183)
-  chains: SV-hosted == C++-hosted                PASS (1499 events, cycles=96
+  chains: SV-hosted == C++-hosted                PASS (1501 events, cycles=97
 cycles=0)
-  div: SV-hosted == C++-hosted                   PASS (8209 events, cycles=978
-cycles=900)
-  divchw: SV-hosted == C++-hosted                PASS (344 events, cycles=110
-cycles=50)
-  divtail: SV-hosted == C++-hosted               PASS (5318 events, cycles=642
-cycles=576)
-  divtail2: SV-hosted == C++-hosted              PASS (21081 events, cycles=1517
-cycles=2347)
-  fence: SV-hosted == C++-hosted                 PASS (238 events, cycles=82
+  div: SV-hosted == C++-hosted                   PASS (8209 events, cycles=1011
+cycles=933)
+  divchw: SV-hosted == C++-hosted                PASS (344 events, cycles=114
+cycles=53)
+  divtail: SV-hosted == C++-hosted               PASS (5318 events, cycles=663
+cycles=597)
+  divtail2: SV-hosted == C++-hosted              PASS (21080 events, cycles=1569
+cycles=2433)
+  fence: SV-hosted == C++-hosted                 PASS (238 events, cycles=83
 cycles=0)
-  gather: SV-hosted == C++-hosted                PASS (1147 events, cycles=265
+  gather: SV-hosted == C++-hosted                PASS (1147 events, cycles=267
 cycles=0)
-  hit: SV-hosted == C++-hosted                   PASS (811 events, cycles=227
+  hit: SV-hosted == C++-hosted                   PASS (809 events, cycles=234
 cycles=0)
-  lanectx: SV-hosted == C++-hosted               PASS (397 events, cycles=69
+  lanectx: SV-hosted == C++-hosted               PASS (397 events, cycles=70
 cycles=0)
-  lanectx2: SV-hosted == C++-hosted              PASS (400 events, cycles=69
+  lanectx2: SV-hosted == C++-hosted              PASS (400 events, cycles=70
 cycles=0)
-  late: SV-hosted == C++-hosted                  PASS (931 events, cycles=171
+  late: SV-hosted == C++-hosted                  PASS (931 events, cycles=175
 cycles=0)
-  ldpar: SV-hosted == C++-hosted                 PASS (874 events, cycles=154
+  ldpar: SV-hosted == C++-hosted                 PASS (875 events, cycles=157
 cycles=0)
-  lnorm1: SV-hosted == C++-hosted                PASS (31031 events, cycles=2593
-cycles=1433)
-  localsp: SV-hosted == C++-hosted               PASS (2049 events, cycles=4238
+  lnorm1: SV-hosted == C++-hosted                PASS (30769 events, cycles=2631
+cycles=1518)
+  localsp: SV-hosted == C++-hosted               PASS (1980 events, cycles=4237
 cycles=0)
-  loop: SV-hosted == C++-hosted                  PASS (24246 events, cycles=2842
-cycles=2699)
-  merge: SV-hosted == C++-hosted                 PASS (507 events, cycles=71
+  loop: SV-hosted == C++-hosted                  PASS (24246 events, cycles=2942
+cycles=2799)
+  merge: SV-hosted == C++-hosted                 PASS (507 events, cycles=73
 cycles=0)
-  missrun: SV-hosted == C++-hosted               PASS (1374 events, cycles=121
+  missrun: SV-hosted == C++-hosted               PASS (1373 events, cycles=123
 cycles=0)
-  mload: SV-hosted == C++-hosted                 PASS (638 events, cycles=111
+  mload: SV-hosted == C++-hosted                 PASS (638 events, cycles=113
 cycles=0)
-  mlp: SV-hosted == C++-hosted                   PASS (1314 events, cycles=126
+  mlp: SV-hosted == C++-hosted                   PASS (1315 events, cycles=128
 cycles=0)
-  mwmiss: SV-hosted == C++-hosted                PASS (4598 events, cycles=129
+  mwmiss: SV-hosted == C++-hosted                PASS (4578 events, cycles=131
 cycles=0)
-  narrowadd: SV-hosted == C++-hosted             PASS (1059 events, cycles=226
+  narrowadd: SV-hosted == C++-hosted             PASS (1059 events, cycles=232
 cycles=0)
-  pguard: SV-hosted == C++-hosted                PASS (474 events, cycles=86
+  pguard: SV-hosted == C++-hosted                PASS (474 events, cycles=89
 cycles=0)
-  plog: SV-hosted == C++-hosted                  PASS (379 events, cycles=70
+  plog: SV-hosted == C++-hosted                  PASS (379 events, cycles=72
 cycles=0)
-  pmovdiv: SV-hosted == C++-hosted               PASS (331 events, cycles=104
-cycles=43)
-  predlane: SV-hosted == C++-hosted              PASS (347 events, cycles=927
+  pmovdiv: SV-hosted == C++-hosted               PASS (331 events, cycles=106
+cycles=44)
+  predlane: SV-hosted == C++-hosted              PASS (347 events, cycles=928
+cycles=27)
+  predmerge: SV-hosted == C++-hosted             PASS (291 events, cycles=940
 cycles=26)
-  predmerge: SV-hosted == C++-hosted             PASS (291 events, cycles=939
-cycles=25)
-  predspill: SV-hosted == C++-hosted             PASS (502 events, cycles=966
+  predspill: SV-hosted == C++-hosted             PASS (503 events, cycles=967
 cycles=0)
-  predswap: SV-hosted == C++-hosted              PASS (2208 events, cycles=1178
-cycles=995)
-  privwin: SV-hosted == C++-hosted               PASS (2155 events, cycles=2215
-cycles=37)
-  provswap: SV-hosted == C++-hosted              PASS (56454 events, cycles=2313
-cycles=7468)
-  roconst: SV-hosted == C++-hosted               PASS (141 events, cycles=75
+  predswap: SV-hosted == C++-hosted              PASS (2208 events, cycles=1179
+cycles=997)
+  privwin: SV-hosted == C++-hosted               PASS (2153 events, cycles=2217
+cycles=39)
+  provswap: SV-hosted == C++-hosted              PASS (56610 events, cycles=2386
+cycles=7697)
+  roconst: SV-hosted == C++-hosted               PASS (141 events, cycles=77
 cycles=0)
-  rogated: SV-hosted == C++-hosted               PASS (240 events, cycles=95
-cycles=25)
-  rokill: SV-hosted == C++-hosted                PASS (1558 events, cycles=103
-cycles=229)
-  rolaunch: SV-hosted == C++-hosted              PASS (78 events, cycles=73
+  rogated: SV-hosted == C++-hosted               PASS (240 events, cycles=97
+cycles=26)
+  rokill: SV-hosted == C++-hosted                PASS (1631 events, cycles=106
+cycles=235)
+  rolaunch: SV-hosted == C++-hosted              PASS (78 events, cycles=74
 cycles=0)
-  rolimit: SV-hosted == C++-hosted               PASS (141 events, cycles=75
+  rolimit: SV-hosted == C++-hosted               PASS (141 events, cycles=77
 cycles=0)
-  roload: SV-hosted == C++-hosted                PASS (339 events, cycles=105
+  roload: SV-hosted == C++-hosted                PASS (339 events, cycles=107
 cycles=0)
-  rope: SV-hosted == C++-hosted                  PASS (22267 events, cycles=7753
-cycles=22129)
-  ropediv: SV-hosted == C++-hosted               PASS (13984 events, cycles=1120
-cycles=1357)
-  sel: SV-hosted == C++-hosted                   PASS (301 events, cycles=76
+  rope: SV-hosted == C++-hosted                  PASS (22335 events, cycles=7762
+cycles=22174)
+  ropediv: SV-hosted == C++-hosted               PASS (13979 events, cycles=1151
+cycles=1408)
+  sel: SV-hosted == C++-hosted                   PASS (301 events, cycles=78
 cycles=0)
-  sized: SV-hosted == C++-hosted                 PASS (678 events, cycles=2640
+  sized: SV-hosted == C++-hosted                 PASS (678 events, cycles=2641
 cycles=0)
-  slotform: SV-hosted == C++-hosted              PASS (1485 events, cycles=4365
+  slotform: SV-hosted == C++-hosted              PASS (1485 events, cycles=4368
 cycles=0)
-  spinwait: SV-hosted == C++-hosted              PASS (12928 events, cycles=2181
-cycles=2040)
-  spmbank: SV-hosted == C++-hosted               PASS (657 events, cycles=185
+  spinwait: SV-hosted == C++-hosted              PASS (12928 events, cycles=2276
+cycles=2135)
+  spmbank: SV-hosted == C++-hosted               PASS (657 events, cycles=186
 cycles=0)
-  srd: SV-hosted == C++-hosted                   PASS (282 events, cycles=69
+  srd: SV-hosted == C++-hosted                   PASS (282 events, cycles=70
 cycles=0)
-  stall: SV-hosted == C++-hosted                 PASS (5969 events, cycles=556
+  stall: SV-hosted == C++-hosted                 PASS (5975 events, cycles=558
 cycles=0)
-  swap: SV-hosted == C++-hosted                  PASS (8889 events, cycles=556
+  swap: SV-hosted == C++-hosted                  PASS (8896 events, cycles=558
 cycles=0)
-  transp4: SV-hosted == C++-hosted               PASS (59041 events, cycles=1169
-cycles=2359)
-  unal: SV-hosted == C++-hosted                  PASS (371 events, cycles=136
+  transp4: SV-hosted == C++-hosted               PASS (58500 events, cycles=1183
+cycles=2372)
+  unal: SV-hosted == C++-hosted                  PASS (371 events, cycles=138
 cycles=0)
-  vadd: SV-hosted == C++-hosted                  PASS (767 events, cycles=157
-cycles=63)
-  vadd4: SV-hosted == C++-hosted                 PASS (3305 events, cycles=203
-cycles=266)
-  vaddslow: SV-hosted == C++-hosted              PASS (771 events, cycles=546
-cycles=63)
-  stall swapping: SV-hosted == C++-hosted        PASS (6784 events, restored=1)
-  vadd4 swapping: SV-hosted == C++-hosted        PASS (3565 events, restored=1)
-  swap swapping: SV-hosted == C++-hosted         PASS (9699 events, restored=1)
-  provswap swapping: SV-hosted == C++-hosted     PASS (61462 events, restored=3)
+  vadd: SV-hosted == C++-hosted                  PASS (767 events, cycles=159
+cycles=64)
+  vadd4: SV-hosted == C++-hosted                 PASS (3305 events, cycles=204
+cycles=270)
+  vaddslow: SV-hosted == C++-hosted              PASS (771 events, cycles=548
+cycles=64)
+  stall swapping: SV-hosted == C++-hosted        PASS (6786 events, restored=1)
+  vadd4 swapping: SV-hosted == C++-hosted        PASS (3461 events, restored=1)
+  swap swapping: SV-hosted == C++-hosted         PASS (9706 events, restored=1)
+  provswap swapping: SV-hosted == C++-hosted     PASS (61414 events, restored=3)
   every kernel control: the same KERNEL line     PASS (41 controls)
   with OOE's bypass: the same KERNEL line        PASS (59 runs, no-lane-bypass among them)
     ...u_dec one cycle late: caught              PASS (differing_cycles=106)
-    ...u_lane_05 one cycle late: caught          PASS (differing_cycles=69)
-  [svh: 156s]
+    ...u_lane_05 one cycle late: caught          PASS (differing_cycles=70)
+  [svh: 133s]
 
 == Hardening wrappers -- params/links.json ==
   links.json: malformed configurations refused   PASS (12 cases, each by name)
@@ -1116,14 +1099,14 @@ cycles=63)
   split: lanes hard-reused, 3 templates for 32   PASS (ccv_lane_w, _v1, _v2)
   split: S0 suite, every control, every credit home PASS
   split: wiring traced flop by flop == C++       PASS (85 slot(s) repeated, 177 stages)
-  split: every S1 kernel == ccv-sim              PASS (vadd 183 cycles)
-  split: every kernel with OOE's bypass          PASS (CCV_LAT_LANE 11, still forwarded at 4; byp's 3)
+  split: every S1 kernel == ccv-sim              PASS (vadd 185 cycles)
+  split: every kernel with OOE's bypass          PASS (CCV_LAT_LANE 12, still forwarded at 4; byp's 3)
   split: SV repeaters == C++ link model          PASS (58 kernels, 41 controls, skew caught)
-  [links: 375s]
+  [links: 273s]
 
 == Walkthrough -- docs/walkthrough.md ==
   walkthrough current
-  [walkthrough: 2s]
+  [walkthrough: 1s]
 
 == Verilator lint ==
   clean

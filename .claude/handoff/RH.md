@@ -27,6 +27,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - The disk allowance is about 39 GB in all. A gate's build/ needs 5 GB or more, so
   keep swap at 6 GB or less during a gate and delete finished jobs' oracles and
   builds promptly.
+- A watcher's end isn't enough: if RH misses that wake-up, the idle container
+  is reclaimed (11-05: about 8 h lost). With every watcher, also keep a
+  send_later fallback check about 2 h out.
 - A detached job dies when the idle container is reclaimed. Keep a tracked
   background task (e.g. rh-jobs/watch.sh) open while it runs, and make jobs
   resumable.
@@ -45,14 +48,6 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- OI's RI-11 CoreMark pricing (2026-11-05 04:47Z): 497efb8 plus the patches in
-  rh-jobs/ri11/ (rxlag.patch; plus arparams.patch for ar), in worktrees
-  /home/user/rh-ri11-base and /home/user/rh-ri11-ar. Script rh-jobs/ri11/run.sh
-  (resumable), summary ~/ccv-logs/ri11/summary. Configs: base, ar, ar127, ar32,
-  ar64, ar8 (CCV_OOE_CONFIG=rx_lag=N); coremark128 then coremark32; warm, with
-  stats. V-35 lines are filtered and counted per run (.v35). One line per config
-  to OI: finished, from_fetch, issue_groups, check_failures minus V-35,
-  redirect_wait, st_ld_wait. Never push; the patches are an experiment.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
@@ -68,6 +63,16 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   the warm time and kill it. Delete bench oracles after each job.
 
 ## Done
+- OI's R49 S1, cmpl_split (job 2) and bit 8 (job 2b), 11-06: all sent; trees,
+  oracles and swap cleared. OI's local-check numbers were at stock params; A6
+  runs at raised latencies.
+- OI's RI-11 package v2 (S1, audit, CoreMark x12) and the rs_cand_ahead audit
+  (11-05 to 06): all sent; trees removed. A reclaim on 11-05 cost about 8 h (see
+  the fallback rule above).
+- OI's RI-11 CoreMark pricing and rs_free_lag audit (11-05): all sent. In
+  bit-8 rx_lag runs, V-35 floods past the skeleton's 10,000-line print cap
+  (kernel.cpp:33); OI accepted errors == check_failures as proof. The scripts
+  are in rh-jobs/ri11/ and rh-jobs/rs.sh; worktrees removed.
 - Gate for OI's b7cb9fb (11-01): run 1 died at disk-full, and OI cancelled run 2
   at 18:07Z (OI gated 4c71575 itself, which covers it). Worktree /home/user/rh-gate
   kept, build/ removed.

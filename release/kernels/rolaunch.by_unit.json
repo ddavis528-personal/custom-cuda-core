@@ -1405,7 +1405,7 @@
     "unit": "UNIT_RCU",
     "warp_mask": 1,
     "epoch": 1,
-    "kill_drain": 15
+    "kill_drain": 16
    }
   },
   {
@@ -1476,7 +1476,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 72,
+   "ts": 73,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -1491,7 +1491,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 72,
+   "ts": 73,
    "pid": 1,
    "tid": 5,
    "args": {

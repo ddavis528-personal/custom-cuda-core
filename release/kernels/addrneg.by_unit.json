@@ -860,7 +860,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 60,
+   "ts": 61,
    "pid": 3,
    "tid": 10,
    "args": {
@@ -876,7 +876,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 62,
+   "ts": 63,
    "pid": 3,
    "tid": 31,
    "args": {
@@ -892,7 +892,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 63,
+   "ts": 64,
    "pid": 3,
    "tid": 50,
    "args": {
@@ -908,7 +908,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 65,
+   "ts": 66,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -916,7 +916,7 @@
     "unit": "UNIT_RCU",
     "warp_mask": 1,
     "epoch": 1,
-    "kill_drain": 15
+    "kill_drain": 16
    }
   },
   {
@@ -924,7 +924,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 66,
+   "ts": 67,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -939,7 +939,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 66,
+   "ts": 67,
    "pid": 3,
    "tid": 12,
    "args": {
@@ -955,7 +955,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 81,
+   "ts": 83,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -970,7 +970,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 81,
+   "ts": 83,
    "pid": 1,
    "tid": 5,
    "args": {
