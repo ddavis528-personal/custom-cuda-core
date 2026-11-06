@@ -1,6 +1,6 @@
 # RA handoff (RCU block architect)
 
-Updated 2026-11-05. Keep this current at every task's end; it is what
+Updated 2026-11-06. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules (written for TI);
 docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 
@@ -142,7 +142,15 @@ TI-51 (DA 2026-11-06): (1) compact at 350k - AFTER merging TI's next push, re-ru
 (/home/user/.claude takes 350000; needs Daniel's approval here). (2) no whole-block synthesis: block NGD/CG =
 sum of parts from module runs; port budgets are the contract; every module needs a unit at each instantiated
 parameter set (Partition rev 47). TI rev 344: check-cg charges "credit": true too. DA 110 records RA 88.
-Bookmarks: OA 347, RA 88, RI 17, TI 346, DA 110, AR 301, OI 290, Conventions 17, CP 154.
+RA rev 89 restates latency accounting. AR 308: ooe_rcu_issue stays flopped (zero-cycle gains only L1_CMPL -1 and
+V-35 done -1; reopen if OI prices >0.2% S1). OA 348: DA adopted zero-cycle receiving end (cone <=12, link_n 0,
+abutting). lane_rcu_res zero-cycle pending DA in RI-11 package; miu_rcu_data stays flopped (16.2 > 12).
+RI-17: 198 lead flops as built (MIU 4x46 + R 14); Partition rev 48 snapshotted. DA 111/112 record TI-51.
+RI to update rcu-impl.md ("timed whole" -> sum of parts). RI-16: skeleton lacks boundary-flop model.
+11-06 sweep: merged 80102643 (30), 9eb50716 (14), 57eff422 (13), 3868632d (11), 888218a3 (7), c22116ce (6).
+Friday pings: all ponged ok (OA TI AR CP IS RI OI RH). Pongs sent 11-06: OI AR OA TI CP IS RI.
+session-home --check DIFFERS (autoCompactWindow, env): needs Daniel's approval to rerun installer.
+Bookmarks: OA 366, RA 89, RI 21, TI 349, DA 112, AR 308, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
