@@ -290,7 +290,7 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (ports spec 2026-09-23)
   localparam int CCV_WAKE_LAT = 4;
 
-  // One channel crossing with no repeater stages, from the sender launching a message to the receiver holding its payload: the valid crosses in half the round trip and the payload lands one cycle after its valid. A whole crossing is CCV_LAT_HOP + link_n(channel). Latencies that are linear in their crossings fold this into their base; a max over paths with different numbers of crossings (CCV_LAT_L1_WAKE) cannot, so it is named.  Derived: = CCV_RT_ABUT // 2 + 1.
+  // One channel crossing with no repeater stages, from the sender launching a message to the receiver holding its payload: the valid crosses in half the round trip and the payload lands one cycle after its valid. A whole crossing is CCV_LAT_HOP + link_n(channel) + bnd_rx(channel): the repeater stages and, where the receiving end holds the boundary flop, its cycle (AR's revs 300 and 301 (re:RI-16)). Latencies that are linear in their crossings fold this into their base; a max over paths with different numbers of crossings (CCV_LAT_L1_WAKE) cannot, so it is named.  Derived: = CCV_RT_ABUT // 2 + 1.
   // decided at the block-level grill-me (channel protocol (channel.h); made explicit for A-61)
   localparam int CCV_LAT_HOP = 2;
 
@@ -472,9 +472,9 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: RCU per-block session
   localparam int CCV_LAT_RCU_BASE = 3;
 
-  // Lane pipeline depth with abutted links, from RCU accepting the issue to the lane result in the PRF. 8 since the receiving block's interface flop, built in its wrapper (Daniel, 2026-11-05; AR's revs 285 and 287, re:RI-11): RCU's MW aligns and writes the PRF in ccv_lane_rcu_res's landing cycle, which is now the cycle after the result reaches RCU's wrapper. An assumption until LANE's session confirms it as a contract.
-  // PROVISIONAL -- decided by: LANE per-block session; AR's rev 287 (re:RI-11)
-  localparam int CCV_LAT_LANE_BASE = 8;
+  // Lane pipeline depth with abutted links and no boundary flops, from RCU accepting the issue to the lane result in the PRF: the blocks' own time only. A flopped receiving end on either lane channel is a crossing's bnd_rx, counted in CCV_LAT_LANE, never here (AR's revs 300 and 301 (re:RI-16)). An assumption until LANE's session confirms it as a contract.
+  // PROVISIONAL -- decided by: LANE per-block session; AR's revs 300 and 301 (re:RI-16)
+  localparam int CCV_LAT_LANE_BASE = 7;
 
   // L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. An assumption until MIU's session confirms it.
   // PROVISIONAL -- decided by: MIU per-block session
@@ -484,7 +484,7 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_RCU = 3;
 
-  // Contracted lane latency: base plus the repeater stages out and back, from params/links.json (A-48). The lane channels are lockstep, so every copy has the same stages.  Derived: = CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + link_n('lane_rcu_res').
+  // Contracted lane latency: base plus, out and back, the repeater stages (params/links.json; A-48) and a flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). 8 at the defaults: ccv_lane_rcu_res's end at RCU is flopped. The lane channels are lockstep, so every copy has the same stages.  Derived: = CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res').
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_LANE = 8;
 
@@ -544,35 +544,39 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: LANE per-block session (register OA-4)
   localparam int CCV_LAT_BYP_PEN_SFU = 3;
 
-  // Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF. 13 since the receiving block's interface flop, built in its wrapper (Daniel, 2026-11-05; AR's revs 285 and 287, re:RI-11), for the reason CCV_LAT_LANE_BASE gives. RCU's kill drain follows it (2 + link_n('ooe_rcu_issue') + this + 1 + link_n('rcu_ooe_done'): 16 abutted), derived, never written as a number (AR's rev 288). A placeholder until a LANE session confirms it.
-  // PROVISIONAL -- decided by: LANE per-block session; AR's rev 287 (re:RI-11)
+  // The SFU's latency with abutted links and no boundary flops, as CCV_LAT_LANE_BASE is the lane's: the blocks' own time only. A placeholder until a LANE session confirms it.
+  // PROVISIONAL -- decided by: LANE per-block session; AR's revs 300 and 301 (re:RI-16)
+  localparam int CCV_LAT_SFU_BASE = 12;
+
+  // Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 13 at the defaults. RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 17 at the defaults, its issue end flopped), derived, never written as a number (AR's rev 288).  Derived: = CCV_LAT_SFU_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res').
+  // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_SFU = 13;
 
   // Full latency of lat_class 5, the warp-collective ops RCU executes (shfl, vote, ballot, unballot): issue to the result readable in the PRF. Cross-lane, so nothing bypasses from them (A-59). A placeholder until an RCU session confirms it.
   // PROVISIONAL -- decided by: RCU per-block session
   localparam int CCV_LAT_COLLECTIVE = 5;
 
-  // Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46).  Derived: = CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + link_n('dcu_miu_rsp').
+  // Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48) and each flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46).  Derived: = CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + bnd_rx('miu_dcu_req') + link_n('dcu_miu_rsp') + bnd_rx('dcu_miu_rsp').
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_L1_HIT = 7;
 
-  // RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. Counted from the issue's landing as CCV_LAT_HOP defines it, so it holds RCU's own time plus the receiving block's interface flop, built in its wrapper (Daniel, 2026-11-05; AR's revs 285 and 287, re:RI-11) (AR's rev 288). 5 was a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03; 6 is that 5 plus the interface flop. PF-47 (docs/perf-register.md) is still to be reapplied: its RCU-internal 1 lands here as 1 + 1 = 2, not 1 (OA's rev 341, AR's rev 288), taking CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 15. Tunable: RCU's session confirms or moves it.
-  // PROVISIONAL -- decided by: RCU per-block session; AR's revs 287 and 288 (re:RI-11)
-  localparam int CCV_LAT_RCU_ADDR_BASE = 6;
+  // RCU's time from the issue's landing to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop, RCU's own time only. The issue end's boundary flop is the crossing's bnd_rx, counted in CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL, never here (AR's revs 300 and 301 (re:RI-16)): RA's 6 is this 5 plus that flop, counted from the wrapper. 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. PF-47 (docs/perf-register.md), still to be reapplied, takes it to 1, and CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 15 (AR's rev 301). Tunable: RCU's session confirms or moves it.
+  // PROVISIONAL -- decided by: RCU per-block session; AR's revs 300 and 301 (re:RI-16)
+  localparam int CCV_LAT_RCU_ADDR_BASE = 5;
 
-  // RCU's issue-to-address time (A-61). Inside RCU, so no link enters it; the crossings either side are counted where it is used.  Derived: = CCV_LAT_RCU_ADDR_BASE.
+  // RCU's issue-to-address time (A-61). Inside RCU, so no link and no boundary flop enters it; the crossings either side, bnd_rx included, are counted where it is used (AR's rev 301: counted here as well, CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL would take the issue flop twice, 18 and 20).  Derived: = CCV_LAT_RCU_ADDR_BASE.
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_RCU_ADDR = 6;
+  localparam int CCV_LAT_RCU_ADDR = 5;
 
-  // Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels.  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue')).
+  // Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16)).  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue')).
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_L1_WAKE = 17;
 
-  // Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE.  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl').
+  // Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16)).  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl').
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_L1_CMPL = 19;
 
-  // After a miss, from the completion's arrival at OOE to the dependant's earliest select (OA's response OI-26). Two parts. The data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read, so the dependant reaches RCU no sooner than the data (OI-13): MIU sends the data to RCU and the completion to OOE over different links. Plus 1: the wake is driven by the completion's arrival rather than a timer, so it cannot be raised a cycle early and reaches the ready stage a cycle after a timed wake would (OA-1). 1 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring.  Derived: = max(0, CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue')) + 1) + 1.
+  // After a miss, from the completion's arrival at OOE to the dependant's earliest select (OA's response OI-26). Two parts. The data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read, so the dependant reaches RCU no sooner than the data (OI-13): MIU sends the data to RCU and the completion to OOE over different links. Plus 1: the wake is driven by the completion's arrival rather than a timer, so it cannot be raised a cycle early and reaches the ready stage a cycle after a timed wake would (OA-1). 1 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring.  Derived: = max(0, CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue')) + 1) + 1.
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_L1_MISS_WAKE = 1;
 

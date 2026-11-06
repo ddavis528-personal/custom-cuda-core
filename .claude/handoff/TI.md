@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-05. Keep this current at every task's end; it is what
+Updated 2026-11-06. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -33,12 +33,23 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 301, OA 346, IS 189, TI 340, OI 290, CP 154, DA 108,
-RA 82, RI 17 (2026-11-05). Latest TI open: TI-50 (rev 272).
+Conventions 17, AR 301, OA 346, IS 190, TI 349, OI 296, CP 155, DA 111,
+RA 88, RI 20 (2026-11-06; OA 363 read only for re:OI-115). Latest TI open:
+TI-51 (rev 346).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-06: PUSHED 1a9a3e8 (full gate PASS; the first try died on a full
+  disk: ccache 5 GB and old sw-*/build cleared) and 0ce9c12 (sum of parts,
+  full gate PASS, cg 4673s ngd 4563s). TI rows: 347 re:OI-18 (OOE defaults,
+  five re-seeded caps; OI RI OA rung), 348 re:OI-115 (OA's C9, links.json
+  8a25c7a on ti-bnd; OI rung), 349 re:TI-51 (sum of parts and its limits;
+  all seven rung). Disk: keep ~/.cache/ccache small; a full disk fails the
+  gate in its first seconds (check-cg selftest traceback).
+- Next: #79 rebase ti-bnd (now 8a25c7a, + C9 note) onto ti-b2 0ce9c12, full
+  gate, push, TI row to AR (RT +2 finding), notices OI and RI. Then OI-112
+  merge (origin/ccr-57eff422-5tdecg@93457a4) and OI-295.
 - 2026-11-05 (after a usage halt; container replaced, disk kept): the
   sweep's gate on ti-b2@e89df54 (bases + OI + RI merges + 5 sweep merges)
   FAILED, nothing pushed: OI's RTL defaults kept LANE 7/SFU 12/L1 16 (cg

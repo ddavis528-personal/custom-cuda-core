@@ -1,4 +1,4 @@
-KERNEL name=hit finished=1 cycles=234 from_fetch=203 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0
+KERNEL name=hit finished=1 cycles=237 from_fetch=206 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0
 UNUSED ccv_ooe_miu_retire ccv_ooe_fet_redirect ccv_ooe_fet_ckpt_free ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_rau_pca_mig ccv_miu_rau_ready ccv_syu_ooe_rel ccv_syu_fet_rel ccv_syu_rau_ready ccv_ooe_cru_fault ccv_cru_rau_cfg
 BPAGE ccv_dec_ooe_uop max=0 watchdog=8192
 BPAGE ccv_miu_dcu_req max=0 watchdog=8192

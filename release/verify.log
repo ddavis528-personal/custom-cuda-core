@@ -7,7 +7,7 @@
   cvc5         present
   python3      present
   g++          present
-  build/ made by Verilator 5.052 2026-09-05 rev v5.052
+  build/ was not made by Verilator 5.052 2026-09-05 rev v5.052: cleared 30 entries
   a build/ made by another Verilator is cleared (3 controls)
   Verilator 5.052: step() and if/else flops agree      PASS (200000 arrivals=697565 flushes=19790 resets=466 differences=0)
     control: one planted payload                       caught
@@ -28,12 +28,12 @@
 
 == generated artifacts ==
   generated event headers from schema/events.json (hash 2e08856f4ac360b5)
-  generated parameter definitions from params/ccv_params.json (186 parameters)
+  generated parameter definitions from params/ccv_params.json (187 parameters)
   generated interface topology from schema/interfaces.json (55 channels, 14 blocks)
   generated docs/payload-spec.md (14 settled, 26 prov, 15 prelim channels)
   event schema headers up to date (hash 2e08856f4ac360b5)
-  parameter definitions up to date (186 parameters)
-  derived parameters: 36 mutation(s), each refused by name
+  parameter definitions up to date (187 parameters)
+  derived parameters: 44 mutation(s), each refused by name
   20 ISA-sourced parameters against isa-v1.9-operation-map-and-encoding.md
   6 controls
   interface topology up to date (55 channels, 14 blocks)
@@ -67,7 +67,7 @@
   icarus: t_resp fires on a violation            PASS
   verilator: t_resp fires on a violation         PASS
   sby: library elaborates and property bites     PASS (label not in report)
-  [s1b: 2s]
+  [s1b: 1s]
 
 == Stage 1c -- event schema mechanism ==
   schema headers current and versioned           PASS
@@ -76,7 +76,7 @@
   stub stream round-trips into Perfetto JSON     PASS
   emitted cycles match the paper reference       PASS
   trace identity view: nesting, replay, none     PASS
-  [s1c: 2s]
+  [s1c: 1s]
 
 == Stage 1d -- coding style and lint ==
   style guide present                            PASS
@@ -109,7 +109,7 @@
   lint clean across rtl/, test/, spike/          PASS
   generated parameter files current              PASS
   C++ and RTL parameter values agree with source PASS
-  [s1d: 8s]
+  [s1d: 10s]
 
 == Interface checker convention ==
   payload structs generated                      55 of 55 channels, 0 field(s) open
@@ -258,6 +258,18 @@
     idle    3005 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  6005 cycles, activity 0.150,  6 gates enabled, lowest DCGE 100%
     high    6005 cycles, activity 0.445,  6 gates enabled, lowest DCGE 99%
+  unit rpt_s0_b1_n1_w40_l0 ccv_common_rpt     45 flops,   40 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium  2998 cycles, activity 0.150,  1 gates enabled, lowest DCGE 100%
+    high    2998 cycles, activity 0.462,  1 gates enabled, lowest DCGE 100%
+  unit rpt_s0_b1_dst_n4_w1114_lh8b1fbf9f64 ccv_common_rpt   4470 flops, 4252 in  4 clock gates (0 groups under 8), worst enable  0.0 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium  2998 cycles, activity 0.147,  4 gates enabled, lowest DCGE 100%
+    high    2998 cycles, activity 0.499,  4 gates enabled, lowest DCGE 100%
+  unit rpt_s0_b1_dst_n9_w193_lffff ccv_common_rpt   1766 flops, 1593 in  9 clock gates (0 groups under 8), worst enable  0.0 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium  2998 cycles, activity 0.150,  9 gates enabled, lowest DCGE 100%
+    high    2998 cycles, activity 0.495,  9 gates enabled, lowest DCGE 100%
   module budget: unit rpt            697 flops, 13.9 allowed, 0 auto-waived in 1 finding(s); 9 control flops to its wrapper's budget
   module budget: unit clk             21 flops,  7.0 allowed, 7 auto-waived in 6 finding(s)
   module budget: unit ooe_wake      1631 flops, 32.6 allowed, 11 auto-waived in 5 finding(s)
@@ -277,13 +289,16 @@
   module budget: unit ooe_rob_w     5386 flops, 107.7 allowed, 75 auto-waived in 23 finding(s)
   module budget: unit rcu_bank_slice  6554 flops, 131.1 allowed, 67 auto-waived in 13 finding(s)
   module budget: unit rcu_r         2626 flops, 52.5 allowed, 5 auto-waived in 4 finding(s)
-  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2849 MiB, ooe_rob_w 1149 MiB, ooe_rs 2309 MiB, ooe_sched 975 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1948 MiB)
-  unit wall time (report-only): ooe_rs 1553s, ooe_go 912s, ooe_wake 665s, rcu_bank_slice 541s, ooe_rob_w 388s, ooe_rename 281s; 19 unit(s) in all, 5850s summed
-  heavy-lock wait (report-only): 15641s summed, most ooe_rename 3099s
+  module budget: unit rpt_s0_b1_n1_w40_l0    45 flops,  7.0 allowed, 0 auto-waived in 1 finding(s); 5 control flops to its wrapper's budget
+  module budget: unit rpt_s0_b1_dst_n4_w1114_lh8b1fbf9f64  4470 flops, 89.4 allowed, 0 auto-waived in 1 finding(s); 218 control flops to its wrapper's budget
+  module budget: unit rpt_s0_b1_dst_n9_w193_lffff  1766 flops, 35.3 allowed, 0 auto-waived in 1 finding(s); 173 control flops to its wrapper's budget
+  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2834 MiB, ooe_rob_w 1149 MiB, ooe_rs 2309 MiB, ooe_sched 975 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1942 MiB)
+  unit wall time (report-only): ooe_rs 1612s, ooe_rename 1294s, rcu_bank_slice 834s, ooe_go 670s, ooe_rob_w 401s, ooe_freelist_gsec 394s; 22 unit(s) in all, 7066s summed
+  heavy-lock wait (report-only): 13084s summed, most ooe_rob_w 2788s
   block budget: no block has RTL yet (every block top is a generated stub), so none is checked
-  16 module(s), 19 unit(s), 124 finding(s) auto-waived by a module budget, 64 waiver(s) in use, 0 on the ratchet
+  16 module(s), 22 unit(s), 124 finding(s) auto-waived by a module budget, 64 waiver(s) in use, 0 on the ratchet
   form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, ratchet, coverage, module and block budgets as a sum of parts, enable sources and the reset, repeater instantiations, kept copies, the synthesis cache, heavy units one at a time (109 controls)
-  [cg: 5600s]
+  [cg: 5520s]
 
 == Logic depth -- NGD-1 to NGD-7 ==
   unit rpt              ccv_common_rpt flop-flop   2.4  in-flop   1.7  flop-out   0.0  in-out   0.0
@@ -336,6 +351,11 @@
   unit ooe_ren1         ooe_ren1       flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out   9.4
   unit ooe_ren1n        ooe_ren1n      flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  24.9
   unit rcu_xbar         rcu_xbar       flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  12.2
+  unit rpt_s0_b1_n1_w40_l0 ccv_common_rpt flop-flop   1.7  in-flop   1.7  flop-out   0.0  in-out   0.0
+  unit rpt_s0_b1_dst_n4_w1114_lh8b1fbf9f64 ccv_common_rpt flop-flop   2.4  in-flop   1.7  flop-out   0.0  in-out   0.0
+    without the fanout term flop-flop   1.7  in-flop   1.7  flop-out   0.0; widest net 13 loads
+  unit rpt_s0_b1_dst_n9_w193_lffff ccv_common_rpt flop-flop   3.0  in-flop   1.7  flop-out   0.0  in-out   0.0
+    without the fanout term flop-flop   1.7  in-flop   1.7  flop-out   0.0; widest net 28 loads
   fanout ratchet: ooe_go         16 path(s) over the stage with the fanout term, capped: NGD-1 27.6, NGD-2 lane_c_cq02h 22.4, NGD-2 lane_v_cq02h 25.4, NGD-2 take_cq02h 19.3, NGD-2 wb_cq02h 25.8, NGD-2 wt_cq02h 25.8, NGD-3 ha_cq01h 28.5, NGD-3 hv_cq01h 29.7, NGD-3 pl_cq01h 29.6, NGD-3 px_cq01h 30, NGD-3 reach_cq01h 26.2, NGD-3 ret_cq01h 26, NGD-3 room_p_cq01h 25.6, NGD-3 run_cq01h 25.7, NGD-3 unmet_p_cq01h 25.8, NGD-7 utw_cq02h 17
   fanout ratchet: ooe_ratread    43 path(s) over the stage with the fanout term, capped: NGD-6 po_dst_cq02h>ren_pold_cq01h 17.9, NGD-6 po_dst_cq02h>ren_psrc_cq01h 17.9, NGD-6 po_pdst_cq02h>ren_ppguard_cq01h 16.7, NGD-6 po_pdst_cq02h>ren_ppold_cq01h 16.7, NGD-6 po_pdst_cq02h>ren_ppq_cq01h 16.7, NGD-6 pw_dst_cq01h>ren_pold_cq01h 18.2, NGD-6 pw_dst_cq01h>ren_psrc_cq01h 18.3, NGD-6 pw_pdst_cq01h>ren_ppguard_cq01h 17.6, NGD-6 pw_pdst_cq01h>ren_ppold_cq01h 17.6, NGD-6 pw_pdst_cq01h>ren_ppq_cq01h 17.6, NGD-6 pw_slot_cq01h>ren_pold_cq01h 18, NGD-6 pw_slot_cq01h>ren_ppguard_cq01h 17.1, NGD-6 pw_slot_cq01h>ren_ppold_cq01h 17.1, NGD-6 pw_slot_cq01h>ren_ppq_cq01h 17.1, NGD-6 pw_slot_cq01h>ren_psrc_cq01h 18, NGD-6 ren_dst_cq01h>ren_pold_cq01h 20.8, NGD-6 ren_dst_cq01h>ren_psrc_cq01h 20.8, NGD-6 ren_gwe_cq01h>ren_pold_cq01h 17.9, NGD-6 ren_gwe_cq01h>ren_psrc_cq01h 17.9, NGD-6 ren_pdst_cq01h>ren_ppguard_cq01h 17.6, NGD-6 ren_pdst_cq01h>ren_ppold_cq01h 17.6, NGD-6 ren_pdst_cq01h>ren_ppq_cq01h 17.6, NGD-6 ren_pguard_cq01h>ren_ppguard_cq01h 16.9, NGD-6 ren_pq_cq01h>ren_ppq_cq01h 16.9, NGD-6 ren_pwe_cq01h>ren_ppguard_cq01h 16.9, NGD-6 ren_pwe_cq01h>ren_ppold_cq01h 16.9, NGD-6 ren_pwe_cq01h>ren_ppq_cq01h 16.9, NGD-6 ren_rst_cq01h>ren_pold_cq01h 18.6, NGD-6 ren_rst_cq01h>ren_ppguard_cq01h 17.6, NGD-6 ren_rst_cq01h>ren_ppold_cq01h 17.6, NGD-6 ren_rst_cq01h>ren_ppq_cq01h 17.6, NGD-6 ren_rst_cq01h>ren_psrc_cq01h 18.6, NGD-6 ren_slot_cq01h>ren_pold_cq01h 20.6, NGD-6 ren_slot_cq01h>ren_ppguard_cq01h 19.6, NGD-6 ren_slot_cq01h>ren_ppold_cq01h 19.6, NGD-6 ren_slot_cq01h>ren_ppq_cq01h 19.6, NGD-6 ren_slot_cq01h>ren_psrc_cq01h 20.6, NGD-6 ren_src_cq01h>ren_psrc_cq01h 20.1, NGD-6 ren_v_cq01h>ren_pold_cq01h 17.9, NGD-6 ren_v_cq01h>ren_ppguard_cq01h 16.9, NGD-6 ren_v_cq01h>ren_ppold_cq01h 16.9, NGD-6 ren_v_cq01h>ren_ppq_cq01h 16.9, NGD-6 ren_v_cq01h>ren_psrc_cq01h 17.9
   fanout ratchet: ooe_rename     11 path(s) over the stage with the fanout term, capped: NGD-1 31.1, NGD-2 q_gname_cq03h 28.7, NGD-2 q_pname_cq03h 3.4, NGD-3 c_dst_cq01h 26.9, NGD-3 c_src_cq01h 26.9, NGD-3 po_dst_cq02h 27.5, NGD-7 n_slot_cq03h 22.5, NGD-7 no_na_cq03h 22.7, NGD-7 qo_gl_cq03h 23, NGD-7 qo_gv_cq03h 24.1, NGD-7 wq_cq03h 23.4
@@ -345,12 +365,12 @@
   fanout ratchet: ooe_sched       6 path(s) over the stage with the fanout term, capped: NGD-1 30.5, NGD-3 cidx_cq03h 26.6, NGD-3 res_cq03h 30.2, NGD-3 siss_cq03h 27.1, NGD-3 sslot_cq03h 27.3, NGD-3 vel_cq03h 28.2
   inner helpers: ccv_common_csa inside its parent, ooe_confirm inside its parent, ooe_headrd inside its parent, ooe_pick inside its parent, ooe_ratread alone, within 16 (no module instantiates it yet), ooe_ready inside its parent, ooe_ren1 inside its parent, ooe_ren1n inside its parent, ooe_rencred alone, within 16 (no module instantiates it yet), ooe_select inside its parent, rcu_xbar inside its parent
   blocks: none assembled yet (every block top is a generated stub)
-  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 842 MiB, ooe_rob_w 1675 MiB, ooe_rs 2393 MiB, ooe_sched 546 MiB; every other unit's commands within 2048 MiB (largest rcu_bank_slice, 1369 MiB)
-  unit wall time (report-only): ooe_rename 1191s, ooe_go 837s, ooe_rendep 696s, ooe_wake 627s, ooe_freelist_gsec 300s, ooe_rob_w 254s; 31 unit(s) in all, 4779s summed
-  heavy-lock wait (report-only): 16928s summed, most ooe_rob_w 4398s
-  31 unit(s), 269 port budget(s) in 26 module file(s), stage 25 NGD, ports 12 by default
+  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 842 MiB, ooe_rob_w 1676 MiB, ooe_rs 2393 MiB, ooe_sched 546 MiB; every other unit's commands within 2048 MiB (largest rcu_bank_slice, 1369 MiB)
+  unit wall time (report-only): ooe_rename 1473s, ooe_wake 652s, rcu_bank_slice 354s, ooe_rendep 314s, ooe_rob_w 257s, ooe_rs 184s; 34 unit(s) in all, 4087s summed
+  heavy-lock wait (report-only): 16249s summed, most ooe_rob_w 3932s
+  34 unit(s), 269 port budget(s) in 26 module file(s), stage 25 NGD, ports 12 by default
   timing pass against ABC, outputs, inputs, the stage, paths straight through, inner helpers alone and inside a parent, registers shared by an output and the rest, observation ports, budget files, ratchet, coverage, glue, the assembled block as a sum of parts, ABC's cache, the fanout term (84 controls)
-  [ngd: 5508s]
+  [ngd: 5682s]
 
 == Clock gating (exploratory) ==
   enable inferred from the if-enable form        PASS
@@ -364,9 +384,9 @@
   trace id absent from synthesis, present in trace PASS
   C++ field offsets == SV packed structs         PASS (rounds=64)
     ...a 1-bit offset shift is caught on every field PASS (313 fields)
-  seed 1: 220771 msgs, 0 violations              PASS
-  seed 2: 219916 msgs, 0 violations              PASS
-  seed 3: 219467 msgs, 0 violations              PASS
+  seed 1: 220046 msgs, 0 violations              PASS
+  seed 2: 219238 msgs, 0 violations              PASS
+  seed 3: 218873 msgs, 0 violations              PASS
     (every slot used; sent == received; every credit home; XFER == launched, ids too) 
   --force-atomic: every group moves whole, clean PASS (16 groups)
   --break phantom-all: all 179 checkers fire     PASS
@@ -380,7 +400,7 @@
   --break misgroup: slot carries another stream  PASS (2 binding checker)
   --break wrong-class: every channel's set enforced PASS (55 channels)
   trace -> Perfetto JSON, one track per channel  PASS (55)
-  [skel: 7s]
+  [skel: 14s]
 
 == Stage 3 -- skeleton (S1: vadd) ==
   oracle addrhigh from the pinned ccv-sim        PASS (9 records)
@@ -442,7 +462,7 @@
   oracle vadd4 from the pinned ccv-sim           PASS (76 records, 4 warps)
   oracle vaddslow from the pinned ccv-sim        PASS (19 records)
   bench ENTRY == the pinned launch.txt's         PASS (4 configs; a stale one refused)
-  vadd: final state == ccv-sim, 0 violations     PASS (159 cycles, 128 from first fetch, 33/55 channels)
+  vadd: final state == ccv-sim, 0 violations     PASS (162 cycles, 131 from first fetch, 33/55 channels)
   vadd: bank EV_CH_XFER == every launch          PASS (660 transfers)
   vadd: deterministic (trace byte-identical)     PASS
   vadd trace -> Perfetto, 17 retires on 17 instrs PASS
@@ -460,78 +480,78 @@
   --break corrupt-echo: stateless write-back misroutes PASS
   --break movi-in-lane: the lanes refuse it      PASS (V-35 names the late done; 354 failures, as pinned)
   --break srd-selector: DEC's range check        PASS
-  sel: final state == ccv-sim, 0 violations      PASS (78 cycles, 47 from first fetch)
+  sel: final state == ccv-sim, 0 violations      PASS (79 cycles, 48 from first fetch)
   --break drop-pred-data: sel's lanes reject it  PASS
-  srd: final state == ccv-sim, 0 violations      PASS (70 cycles, 39 from first fetch)
+  srd: final state == ccv-sim, 0 violations      PASS (71 cycles, 40 from first fetch)
   --break corrupt-ctaid: srd's lanes reject it   PASS
   --break cta-per-warp: one CTA in two slots     PASS (lanectx)
   --break cta-shared: two CTAs in one slot       PASS (rope)
   --break late-lead: every lane sees a stale mask PASS
   --break ignore-mask: masked-off poison lands   PASS
-  pguard: final state == ccv-sim, 0 violations   PASS (89 cycles, 58 from first fetch)
+  pguard: final state == ccv-sim, 0 violations   PASS (90 cycles, 59 from first fetch)
   --break conflate-pred: guard and P0/P1 wrong   PASS
   --break swap-prat0: compare reads OOE's map    PASS
-  merge: final state == ccv-sim, 0 violations    PASS (73 cycles, 42 from first fetch)
+  merge: final state == ccv-sim, 0 violations    PASS (74 cycles, 43 from first fetch)
   --break dirty-zero: every zero-register path   PASS (64 lane checks, P2, P3)
   --break wrong-merge: the lanes refuse it       PASS
-  mload: final state == ccv-sim, 0 violations    PASS (113 cycles, 82 from first fetch)
+  mload: final state == ccv-sim, 0 violations    PASS (115 cycles, 84 from first fetch)
   --break skip-copy: inactive lanes keep garbage PASS (R5 read, R8 final)
   --break copy-from-new: the lanes refuse it     PASS (32 copied lanes, 16 reads)
   --break late-copy: RCU's contract check fires  PASS (both copies)
-  unal: == ccv-sim, reaches its bins             PASS (138 cycles, 107 from first fetch; line_split=3 lines_peak=2 partial_line=2 full_line=0)
-  gather: == ccv-sim, reaches its bins           PASS (267 cycles, 236 from first fetch; lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0 hit_under_miss=2)
-  loop: == ccv-sim, reaches its bins             PASS (2942 cycles, 2911 from first fetch; redirect=99 ckpt_free=1 reg_reuse>0)
-  brs: == ccv-sim, reaches its bins              PASS (101 cycles, 70 from first fetch; redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5)
-  mload: == ccv-sim, reaches its bins            PASS (113 cycles, 82 from first fetch; copy=2 zero_read=1)
-  merge: == ccv-sim, reaches its bins            PASS (73 cycles, 42 from first fetch; zero_read=2 merge=4)
-  vadd: == ccv-sim, reaches its bins             PASS (159 cycles, 128 from first fetch; ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3)
-  hit: == ccv-sim, reaches its bins              PASS (234 cycles, 203 from first fetch; l1_hit=4 l1_late=0)
-  late: == ccv-sim, reaches its bins             PASS (175 cycles, 144 from first fetch; l1_late=1 l1_hit=2 hit_under_miss=1)
-  byp: == ccv-sim, reaches its bins              PASS (120 cycles, 89 from first fetch; copy=1 lane_byp=3)
-  plog: == ccv-sim, reaches its bins             PASS (72 cycles, 41 from first fetch; merge=3)
-  chains: == ccv-sim, reaches its bins           PASS (97 cycles, 66 from first fetch; lane_byp=9)
-  missrun: == ccv-sim, reaches its bins          PASS (123 cycles, 92 from first fetch; l1_hit=0 reexec=2)
-  ldpar: == ccv-sim, reaches its bins            PASS (157 cycles, 126 from first fetch; l1_hit=4 hit_under_miss=4)
-  mlp: == ccv-sim, reaches its bins              PASS (128 cycles, 97 from first fetch; l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0)
-  mwmiss: == ccv-sim, reaches its bins           PASS (131 cycles, 100 from first fetch; l1_hit=0)
-  vadd4: == ccv-sim, reaches its bins            PASS (204 cycles, 173 from first fetch; full_line=4)
-  swap: == ccv-sim, reaches its bins             PASS (558 cycles, 527 from first fetch; slot_reuse=2)
-  provswap: == ccv-sim, reaches its bins         PASS (2386 cycles, 2355 from first fetch; redirect>0 slot_reuse>0)
-  stall: == ccv-sim, reaches its bins            PASS (558 cycles, 527 from first fetch; l1_late>0)
-  vaddslow: == ccv-sim, reaches its bins         PASS (548 cycles, 517 from first fetch; full_line=1)
-  div: == ccv-sim, reaches its bins              PASS (1011 cycles, 980 from first fetch; split=32 reconverge=2 groups_peak=2 fair_pick=1)
-  spinwait: == ccv-sim, reaches its bins         PASS (2276 cycles, 2245 from first fetch; fair_pick=4 groups_peak=3 st_ld_wait>0)
-  divtail: == ccv-sim, reaches its bins          PASS (663 cycles, 632 from first fetch; split=20 groups_peak=2)
-  divtail2: == ccv-sim, reaches its bins         PASS (1569 cycles, 1538 from first fetch; split=51 groups_peak=2)
-  roconst: == ccv-sim, reaches its bins          PASS (77 cycles, 46 from first fetch; ro_fault=1 fault=1 kill=1)
-  rolimit: == ccv-sim, reaches its bins          PASS (77 cycles, 46 from first fetch; ro_fault=1 fault=1 kill=1)
-  rolaunch: == ccv-sim, reaches its bins         PASS (74 cycles, 43 from first fetch; ro_fault=1 fault=1 kill=1)
-  rogated: == ccv-sim, reaches its bins          PASS (97 cycles, 66 from first fetch; ro_fault=1 fault=1 split=1 kill=1)
-  roload: == ccv-sim, reaches its bins           PASS (107 cycles, 76 from first fetch; ro_fault=0 fault=0 kill=0)
-  rokill: == ccv-sim, reaches its bins           PASS (106 cycles, 75 from first fetch; ro_fault=1 fault=1 kill=1)
-  slotform: == ccv-sim, reaches its bins         PASS (4368 cycles, 4337 from first fetch; slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0 dcu_evict=32)
-  lanectx: == ccv-sim, reaches its bins          PASS (70 cycles, 39 from first fetch; redirect=0 split=0)
-  lanectx2: == ccv-sim, reaches its bins         PASS (70 cycles, 39 from first fetch; redirect=0 split=0)
-  predspill: == ccv-sim, reaches its bins        PASS (967 cycles, 936 from first fetch; pred_xfer=7 pred_merge=6 pred_copy=0)
-  predmerge: == ccv-sim, reaches its bins        PASS (940 cycles, 909 from first fetch; pred_xfer=3 pred_merge=2 pred_copy=1)
-  predlane: == ccv-sim, reaches its bins         PASS (928 cycles, 897 from first fetch; pred_xfer=2 pred_merge=2 pred_copy=0)
-  predswap: == ccv-sim, reaches its bins         PASS (1179 cycles, 1148 from first fetch; pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15)
-  localsp: == ccv-sim, reaches its bins          PASS (4237 cycles, 4206 from first fetch; local_form=12 window_fill=0 pred_xfer=4 frame_lookups=0)
-  privwin: == ccv-sim, reaches its bins          PASS (2217 cycles, 2186 from first fetch; priv_form=11 priv_fault=0)
-  rope: == ccv-sim, reaches its bins             PASS (7762 cycles, 7731 from first fetch; local_form=44 frame_lookups=0)
-  fence: == ccv-sim, reaches its bins            PASS (83 cycles, 52 from first fetch; fence=1 fence_wait>0)
-  addrhigh: == ccv-sim, reaches its bins         PASS (84 cycles, 53 from first fetch; addr_fault=1 fault=1 kill=1)
-  addrneg: == ccv-sim, reaches its bins          PASS (84 cycles, 53 from first fetch; addr_fault=1 fault=1 kill=1)
-  addrlimit: == ccv-sim, reaches its bins        PASS (1071 cycles, 1040 from first fetch; addr_fault=0 fault=0)
-  ropediv: == ccv-sim, reaches its bins          PASS (1151 cycles, 1120 from first fetch; local_form=30 frame_lookups=0 split=2 groups_peak=2)
-  narrowadd: == ccv-sim, reaches its bins        PASS (232 cycles, 201 from first fetch; narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0)
-  sized: == ccv-sim, reaches its bins            PASS (2641 cycles, 2610 from first fetch; partial_line>0)
-  divchw: == ccv-sim, reaches its bins           PASS (114 cycles, 83 from first fetch; fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1)
-  callret: == ccv-sim, reaches its bins          PASS (280 cycles, 249 from first fetch; ret_pass=1 groups_peak=2)
-  spmbank: == ccv-sim, reaches its bins          PASS (186 cycles, 155 from first fetch; spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0)
-  lnorm1: == ccv-sim, reaches its bins           PASS (2631 cycles, 2600 from first fetch; bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0)
-  transp4: == ccv-sim, reaches its bins          PASS (1183 cycles, 1152 from first fetch; bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0)
-  borrow: == ccv-sim, reaches its bins           PASS (102 cycles, 71 from first fetch; credit_borrow=1 credit_wait>0 chw_converged=2)
+  unal: == ccv-sim, reaches its bins             PASS (140 cycles, 109 from first fetch; line_split=3 lines_peak=2 partial_line=2 full_line=0)
+  gather: == ccv-sim, reaches its bins           PASS (269 cycles, 238 from first fetch; lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0 hit_under_miss=2)
+  loop: == ccv-sim, reaches its bins             PASS (3042 cycles, 3011 from first fetch; redirect=99 ckpt_free=1 reg_reuse>0)
+  brs: == ccv-sim, reaches its bins              PASS (104 cycles, 73 from first fetch; redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5)
+  mload: == ccv-sim, reaches its bins            PASS (115 cycles, 84 from first fetch; copy=2 zero_read=1)
+  merge: == ccv-sim, reaches its bins            PASS (74 cycles, 43 from first fetch; zero_read=2 merge=4)
+  vadd: == ccv-sim, reaches its bins             PASS (162 cycles, 131 from first fetch; ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3)
+  hit: == ccv-sim, reaches its bins              PASS (237 cycles, 206 from first fetch; l1_hit=4 l1_late=0)
+  late: == ccv-sim, reaches its bins             PASS (178 cycles, 147 from first fetch; l1_late=1 l1_hit=2 hit_under_miss=1)
+  byp: == ccv-sim, reaches its bins              PASS (122 cycles, 91 from first fetch; copy=1 lane_byp=3)
+  plog: == ccv-sim, reaches its bins             PASS (73 cycles, 42 from first fetch; merge=3)
+  chains: == ccv-sim, reaches its bins           PASS (98 cycles, 67 from first fetch; lane_byp=9)
+  missrun: == ccv-sim, reaches its bins          PASS (125 cycles, 94 from first fetch; l1_hit=0 reexec=2)
+  ldpar: == ccv-sim, reaches its bins            PASS (160 cycles, 129 from first fetch; l1_hit=4 hit_under_miss=4)
+  mlp: == ccv-sim, reaches its bins              PASS (130 cycles, 99 from first fetch; l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0)
+  mwmiss: == ccv-sim, reaches its bins           PASS (133 cycles, 102 from first fetch; l1_hit=0)
+  vadd4: == ccv-sim, reaches its bins            PASS (241 cycles, 210 from first fetch; full_line=4)
+  swap: == ccv-sim, reaches its bins             PASS (561 cycles, 530 from first fetch; slot_reuse=2)
+  provswap: == ccv-sim, reaches its bins         PASS (2448 cycles, 2417 from first fetch; redirect>0 slot_reuse>0)
+  stall: == ccv-sim, reaches its bins            PASS (561 cycles, 530 from first fetch; l1_late>0)
+  vaddslow: == ccv-sim, reaches its bins         PASS (551 cycles, 520 from first fetch; full_line=1)
+  div: == ccv-sim, reaches its bins              PASS (1045 cycles, 1014 from first fetch; split=32 reconverge=2 groups_peak=2 fair_pick=1)
+  spinwait: == ccv-sim, reaches its bins         PASS (2329 cycles, 2298 from first fetch; fair_pick=4 groups_peak=3 st_ld_wait>0)
+  divtail: == ccv-sim, reaches its bins          PASS (685 cycles, 654 from first fetch; split=20 groups_peak=2)
+  divtail2: == ccv-sim, reaches its bins         PASS (1622 cycles, 1591 from first fetch; split=51 groups_peak=2)
+  roconst: == ccv-sim, reaches its bins          PASS (79 cycles, 48 from first fetch; ro_fault=1 fault=1 kill=1)
+  rolimit: == ccv-sim, reaches its bins          PASS (79 cycles, 48 from first fetch; ro_fault=1 fault=1 kill=1)
+  rolaunch: == ccv-sim, reaches its bins         PASS (76 cycles, 45 from first fetch; ro_fault=1 fault=1 kill=1)
+  rogated: == ccv-sim, reaches its bins          PASS (100 cycles, 69 from first fetch; ro_fault=1 fault=1 split=1 kill=1)
+  roload: == ccv-sim, reaches its bins           PASS (109 cycles, 78 from first fetch; ro_fault=0 fault=0 kill=0)
+  rokill: == ccv-sim, reaches its bins           PASS (109 cycles, 78 from first fetch; ro_fault=1 fault=1 kill=1)
+  slotform: == ccv-sim, reaches its bins         PASS (4371 cycles, 4340 from first fetch; slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0 dcu_evict=32)
+  lanectx: == ccv-sim, reaches its bins          PASS (71 cycles, 40 from first fetch; redirect=0 split=0)
+  lanectx2: == ccv-sim, reaches its bins         PASS (71 cycles, 40 from first fetch; redirect=0 split=0)
+  predspill: == ccv-sim, reaches its bins        PASS (969 cycles, 938 from first fetch; pred_xfer=7 pred_merge=6 pred_copy=0)
+  predmerge: == ccv-sim, reaches its bins        PASS (943 cycles, 912 from first fetch; pred_xfer=3 pred_merge=2 pred_copy=1)
+  predlane: == ccv-sim, reaches its bins         PASS (930 cycles, 899 from first fetch; pred_xfer=2 pred_merge=2 pred_copy=0)
+  predswap: == ccv-sim, reaches its bins         PASS (1187 cycles, 1156 from first fetch; pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15)
+  localsp: == ccv-sim, reaches its bins          PASS (4244 cycles, 4213 from first fetch; local_form=12 window_fill=0 pred_xfer=4 frame_lookups=0)
+  privwin: == ccv-sim, reaches its bins          PASS (2220 cycles, 2189 from first fetch; priv_form=11 priv_fault=0)
+  rope: == ccv-sim, reaches its bins             PASS (7797 cycles, 7766 from first fetch; local_form=44 frame_lookups=0)
+  fence: == ccv-sim, reaches its bins            PASS (84 cycles, 53 from first fetch; fence=1 fence_wait>0)
+  addrhigh: == ccv-sim, reaches its bins         PASS (86 cycles, 55 from first fetch; addr_fault=1 fault=1 kill=1)
+  addrneg: == ccv-sim, reaches its bins          PASS (85 cycles, 54 from first fetch; addr_fault=1 fault=1 kill=1)
+  addrlimit: == ccv-sim, reaches its bins        PASS (1072 cycles, 1041 from first fetch; addr_fault=0 fault=0)
+  ropediv: == ccv-sim, reaches its bins          PASS (1169 cycles, 1138 from first fetch; local_form=30 frame_lookups=0 split=2 groups_peak=2)
+  narrowadd: == ccv-sim, reaches its bins        PASS (239 cycles, 208 from first fetch; narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0)
+  sized: == ccv-sim, reaches its bins            PASS (2646 cycles, 2615 from first fetch; partial_line>0)
+  divchw: == ccv-sim, reaches its bins           PASS (118 cycles, 87 from first fetch; fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1)
+  callret: == ccv-sim, reaches its bins          PASS (291 cycles, 260 from first fetch; ret_pass=1 groups_peak=2)
+  spmbank: == ccv-sim, reaches its bins          PASS (187 cycles, 156 from first fetch; spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0)
+  lnorm1: == ccv-sim, reaches its bins           PASS (2668 cycles, 2637 from first fetch; bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0)
+  transp4: == ccv-sim, reaches its bins          PASS (1199 cycles, 1168 from first fetch; bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0)
+  borrow: == ccv-sim, reaches its bins           PASS (105 cycles, 74 from first fetch; credit_borrow=1 credit_wait>0 chw_converged=2)
   --break xfer-ignored: MIU refuses rdata's width PASS (mem_mismatch=7)
   --break xfer-unsigned: ld.s8 zero-filled is caught PASS (gpr_mismatch=32)
   --break narrow-carry: the widening finds the carry PASS (96 checks)
@@ -543,9 +563,9 @@
   --break bar-park-off: refused                  PASS (292 checks)
   --break spm-no-wait: spmbank's spm_wait bin misses it PASS (spm_wait=0)
   --break held-over-r: refused                   PASS ( checks)
-  --break borrow-partial: refused                PASS (16 checks)
-  --break warp-cap: refused                      PASS (457 checks)
-  transp4, held warps demoted and restored       PASS (1396 cycles, 1365 from first fetch; demote=4)
+  --break borrow-partial: refused                PASS (17 checks)
+  --break warp-cap: refused                      PASS (410 checks)
+  transp4, held warps demoted and restored       PASS (1426 cycles, 1395 from first fetch; demote=4)
   --break held-no-clear: restored warps never fetch PASS (never finishes)
   div, FET predicting taken on any lane: V-41 redirects PASS (fet_pred_partial=32 redirect=32)
   inject_partial_taken_ok: a partial outcome counted right PASS (no redirect; never finishes)
@@ -553,12 +573,12 @@
   --break no-chw-mark: a converged chwidth must not fault PASS (129 checks)
   --break one-line: the lanes past the boundary  PASS (loads at MIU, 17 stored words and 2 overwritten)
   --break skip-read-partial: words lost          PASS (unal's 4 words beside its store)
-  --break write-through: no store merges in DCU  PASS (predswap's store_hit 15 -> 0, 7742 cycles)
+  --break write-through: no store merges in DCU  PASS (predswap's store_hit 15 -> 0, 7750 cycles)
   --break drop-writeback: evicted lines lost     PASS (seq 8's 32 lanes reload stale; 32 words in memory)
   --break deny-ownership: DCU refuses the line   PASS (predswap's AcquireBlock, vadd's AcquirePerm)
   --break local-no-ctx, local-base-slot          PASS (warp 1 in context 0's frame; local_base from the wrong word)
   --break priv-no-ctx, priv-lane0                PASS (warp 1 in context 0's region; the decision on lane 0's rbase faults)
-  --break free-new: a live register reallocated  PASS (seq 379, its source reallocated)
+  --break free-new: a live register reallocated  PASS (seq 384, its source reallocated)
   --break corrupt-group-mask: lane 31 refuses it PASS (A-69)
   --break stale-epoch: OOE drops the uop         PASS (A-70; 406 of 407 retire)
   --break fair-off: FET skips the fair pick (div) PASS (seq 82)
@@ -579,8 +599,8 @@
   --break stpred-whole-word: lanes 0-15 stored   PASS (predlane: 0x90010)
   --break xfer-low-lane: the lowest active lane's base PASS (predlane: window 25)
   --break pdata-guard: st.pred's predicate as a guard PASS (predlane)
-  predswap demoted between a st.pred's uops      PASS (at:58, it resumes at the instruction)
-  --break resume-mid: past the split instruction PASS (predswap at:58)
+  predswap demoted between a st.pred's uops      PASS (at:59, it resumes at the instruction)
+  --break resume-mid: past the split instruction PASS (predswap at:59)
   --break zero-cta-slot: warps 1-3 name slot 0   PASS (vadd4: 24 memops refused)
   --break no-kill: the run never ends (rokill)   PASS
   --break withheld-ack: the run never ends (rokill) PASS
@@ -604,7 +624,7 @@
   --break notice-wrong-id: dcu_miu_fill_ntc same_keys PASS (3)
   --break late-cmpl: miu_ooe_cmpl_hint on_time   PASS (3)
   --break hint-wrong-tag: miu_ooe_cmpl_hint same_keys PASS (3)
-  every kernel with the swap on == ccv-sim       PASS (29 parks, each restored; order_diff: none)
+  every kernel with the swap on == ccv-sim       PASS (31 parks, each restored; order_diff: none)
   stall: warp 0 parked, restored, resumed == ccv-sim PASS (rows, predicates and lane PCs at its boundary)
   swap: warp 0 parked, restored, resumed == ccv-sim PASS (rows, predicates and lane PCs at its boundary)
   replay drain: loads replayed, orphans home, then restored PASS (stall's replay hits and orphan home; vadd4's 0 orphan(s) at decq 15, then ready)
@@ -639,10 +659,10 @@
   --break ordering-on-load: DEC, OOE and MIU refuse PASS (7 loads each)
   --break memop-ordering: OOE and MIU refuse each PASS (7 loads)
   backpressured channels: longest wait           PASS (ccv_miu_dcu_req 0 of 8192; ccv_rau_rcu_mig 53 of 8192; ccv_ooe_rcu_map 62 of 8192; ccv_dec_ooe_uop 51 of 8192)
-  kernels issue out of order                     PASS (ahead=1492 depth=25 kernels=40 of 58)
-  --break dcu-one-miss: the stall bound fails    PASS (warp 1 finished at 599, within 300 of stalled warp 0's 553)
+  kernels issue out of order                     PASS (ahead=1499 depth=25 kernels=40 of 58)
+  --break dcu-one-miss: the stall bound fails    PASS (warp 1 finished at 602, within 300 of stalled warp 0's 556)
   --in-order: the same traces in program order   PASS (fails the floor: nothing reordered)
-  [kernel: 265s]
+  [kernel: 283s]
 
 == Stage 4b -- OOE model unit tests (sim/ooe/) ==
   OOE unit tests                                       PASS
@@ -694,12 +714,12 @@
   control pq-no-dep                                    caught
   control keep-released-uops                           caught
   control no-call-link                                 caught
-  [ooe_unit: 107s]
+  [ooe_unit: 115s]
 
 == RCU model unit tests (sim/rcu/; RI-2) ==
   RCU unit tests                                       PASS
   RCU unit-test controls caught                        PASS (7)
-  [rcu_unit: 4s]
+  [rcu_unit: 5s]
 
 == Stage 4c -- OOE RTL (rtl/ooe/) ==
   pick rcu (30 entries, 5 resources) == model          PASS (200000 issued=288854 lost=144063 multi-issue=80523 fails=0)
@@ -891,7 +911,7 @@
     control no-home (trio)                             caught
     control pay-with-valid (trio)                      caught
     control no-force (trio, idle_r assertion)          caught
-  [ooe_rtl: 1514s]
+  [ooe_rtl: 1729s]
 
 == SV top -- rtl/top/ (generated, tracked) ==
   verilator -Wall: top (synthesis view)          PASS
@@ -906,7 +926,7 @@
     ...and refuses 12 impure copies: top, wrapper, reuse, gate, units PASS
   SV top wiring == C++ skeleton wiring           PASS (69796 bits)
     ...and rejects a lane swapped in a copy      PASS
-  [top: 84s]
+  [top: 116s]
 
 == Formal proofs -- one credited link, and the block clock gate ==
   safety, N=0: every property, for all time      PASS (proved)
@@ -946,7 +966,7 @@
     ...a latch open on the high phase: the clean-clock properties fail PASS (cex 1)
     ...witness: reach_gated                      PASS (12 frames)
     ...witness: reach_woken                      PASS (18 frames)
-  [formal: 281s]
+  [formal: 298s]
 
 == Physical primitives -- sequential repeater ==
   repeater: verilator -Wall, ten shapes          PASS
@@ -960,137 +980,137 @@
     ...lead-gated: invisible in sim, refused by netlist PASS
     ...bnd-gated: invisible in sim, refused by netlist PASS
     ...raw-reset: invisible in sim, refused by netlist PASS
-  [phys: 15s]
+  [phys: 18s]
 
 == SV-hosted C++ -- the skeleton's blocks inside the SV top ==
   verilator -Wall: shims, top, testbench         PASS
     ...and refuse a build without CCV_TRACE      PASS
   SV-hosted build: 45 blocks + EXTERNAL as shims PASS
-  addrhigh: SV-hosted == C++-hosted              PASS (285 events, cycles=84
+  addrhigh: SV-hosted == C++-hosted              PASS (285 events, cycles=86
 cycles=0)
-  addrlimit: SV-hosted == C++-hosted             PASS (78 events, cycles=1071
+  addrlimit: SV-hosted == C++-hosted             PASS (78 events, cycles=1072
 cycles=0)
-  addrneg: SV-hosted == C++-hosted               PASS (46 events, cycles=84
+  addrneg: SV-hosted == C++-hosted               PASS (46 events, cycles=85
 cycles=0)
-  borrow: SV-hosted == C++-hosted                PASS (1029 events, cycles=102
+  borrow: SV-hosted == C++-hosted                PASS (1029 events, cycles=105
 cycles=0)
-  brs: SV-hosted == C++-hosted                   PASS (339 events, cycles=101
-cycles=135)
-  byp: SV-hosted == C++-hosted                   PASS (793 events, cycles=120
+  brs: SV-hosted == C++-hosted                   PASS (339 events, cycles=104
+cycles=141)
+  byp: SV-hosted == C++-hosted                   PASS (793 events, cycles=122
 cycles=0)
-  callret: SV-hosted == C++-hosted               PASS (1489 events, cycles=280
-cycles=183)
-  chains: SV-hosted == C++-hosted                PASS (1501 events, cycles=97
+  callret: SV-hosted == C++-hosted               PASS (1489 events, cycles=291
+cycles=194)
+  chains: SV-hosted == C++-hosted                PASS (1501 events, cycles=98
 cycles=0)
-  div: SV-hosted == C++-hosted                   PASS (8209 events, cycles=1011
-cycles=933)
-  divchw: SV-hosted == C++-hosted                PASS (344 events, cycles=114
-cycles=53)
-  divtail: SV-hosted == C++-hosted               PASS (5318 events, cycles=663
-cycles=597)
-  divtail2: SV-hosted == C++-hosted              PASS (21080 events, cycles=1569
-cycles=2433)
-  fence: SV-hosted == C++-hosted                 PASS (238 events, cycles=83
+  div: SV-hosted == C++-hosted                   PASS (8209 events, cycles=1045
+cycles=967)
+  divchw: SV-hosted == C++-hosted                PASS (344 events, cycles=118
+cycles=56)
+  divtail: SV-hosted == C++-hosted               PASS (5318 events, cycles=685
+cycles=619)
+  divtail2: SV-hosted == C++-hosted              PASS (21080 events, cycles=1622
+cycles=2521)
+  fence: SV-hosted == C++-hosted                 PASS (238 events, cycles=84
 cycles=0)
-  gather: SV-hosted == C++-hosted                PASS (1147 events, cycles=267
+  gather: SV-hosted == C++-hosted                PASS (1147 events, cycles=269
 cycles=0)
-  hit: SV-hosted == C++-hosted                   PASS (809 events, cycles=234
+  hit: SV-hosted == C++-hosted                   PASS (809 events, cycles=237
 cycles=0)
-  lanectx: SV-hosted == C++-hosted               PASS (397 events, cycles=70
+  lanectx: SV-hosted == C++-hosted               PASS (397 events, cycles=71
 cycles=0)
-  lanectx2: SV-hosted == C++-hosted              PASS (400 events, cycles=70
+  lanectx2: SV-hosted == C++-hosted              PASS (400 events, cycles=71
 cycles=0)
-  late: SV-hosted == C++-hosted                  PASS (931 events, cycles=175
+  late: SV-hosted == C++-hosted                  PASS (931 events, cycles=178
 cycles=0)
-  ldpar: SV-hosted == C++-hosted                 PASS (875 events, cycles=157
+  ldpar: SV-hosted == C++-hosted                 PASS (875 events, cycles=160
 cycles=0)
-  lnorm1: SV-hosted == C++-hosted                PASS (30769 events, cycles=2631
-cycles=1518)
-  localsp: SV-hosted == C++-hosted               PASS (1980 events, cycles=4237
+  lnorm1: SV-hosted == C++-hosted                PASS (30803 events, cycles=2668
+cycles=1536)
+  localsp: SV-hosted == C++-hosted               PASS (2052 events, cycles=4244
 cycles=0)
-  loop: SV-hosted == C++-hosted                  PASS (24246 events, cycles=2942
-cycles=2799)
-  merge: SV-hosted == C++-hosted                 PASS (507 events, cycles=73
+  loop: SV-hosted == C++-hosted                  PASS (24246 events, cycles=3042
+cycles=2899)
+  merge: SV-hosted == C++-hosted                 PASS (507 events, cycles=74
 cycles=0)
-  missrun: SV-hosted == C++-hosted               PASS (1373 events, cycles=123
+  missrun: SV-hosted == C++-hosted               PASS (1373 events, cycles=125
 cycles=0)
-  mload: SV-hosted == C++-hosted                 PASS (638 events, cycles=113
+  mload: SV-hosted == C++-hosted                 PASS (638 events, cycles=115
 cycles=0)
-  mlp: SV-hosted == C++-hosted                   PASS (1315 events, cycles=128
+  mlp: SV-hosted == C++-hosted                   PASS (1317 events, cycles=130
 cycles=0)
-  mwmiss: SV-hosted == C++-hosted                PASS (4578 events, cycles=131
+  mwmiss: SV-hosted == C++-hosted                PASS (4580 events, cycles=133
 cycles=0)
-  narrowadd: SV-hosted == C++-hosted             PASS (1059 events, cycles=232
+  narrowadd: SV-hosted == C++-hosted             PASS (1059 events, cycles=239
 cycles=0)
-  pguard: SV-hosted == C++-hosted                PASS (474 events, cycles=89
+  pguard: SV-hosted == C++-hosted                PASS (474 events, cycles=90
 cycles=0)
-  plog: SV-hosted == C++-hosted                  PASS (379 events, cycles=72
+  plog: SV-hosted == C++-hosted                  PASS (379 events, cycles=73
 cycles=0)
-  pmovdiv: SV-hosted == C++-hosted               PASS (331 events, cycles=106
-cycles=44)
-  predlane: SV-hosted == C++-hosted              PASS (347 events, cycles=928
+  pmovdiv: SV-hosted == C++-hosted               PASS (331 events, cycles=109
+cycles=46)
+  predlane: SV-hosted == C++-hosted              PASS (347 events, cycles=930
+cycles=28)
+  predmerge: SV-hosted == C++-hosted             PASS (291 events, cycles=943
 cycles=27)
-  predmerge: SV-hosted == C++-hosted             PASS (291 events, cycles=940
-cycles=26)
-  predspill: SV-hosted == C++-hosted             PASS (503 events, cycles=967
+  predspill: SV-hosted == C++-hosted             PASS (503 events, cycles=969
 cycles=0)
-  predswap: SV-hosted == C++-hosted              PASS (2208 events, cycles=1179
-cycles=997)
-  privwin: SV-hosted == C++-hosted               PASS (2153 events, cycles=2217
-cycles=39)
-  provswap: SV-hosted == C++-hosted              PASS (56610 events, cycles=2386
-cycles=7697)
-  roconst: SV-hosted == C++-hosted               PASS (141 events, cycles=77
+  predswap: SV-hosted == C++-hosted              PASS (2208 events, cycles=1187
+cycles=1002)
+  privwin: SV-hosted == C++-hosted               PASS (2153 events, cycles=2220
+cycles=41)
+  provswap: SV-hosted == C++-hosted              PASS (56645 events, cycles=2448
+cycles=7916)
+  roconst: SV-hosted == C++-hosted               PASS (141 events, cycles=79
 cycles=0)
-  rogated: SV-hosted == C++-hosted               PASS (240 events, cycles=97
-cycles=26)
-  rokill: SV-hosted == C++-hosted                PASS (1631 events, cycles=106
-cycles=235)
-  rolaunch: SV-hosted == C++-hosted              PASS (78 events, cycles=74
+  rogated: SV-hosted == C++-hosted               PASS (240 events, cycles=100
+cycles=27)
+  rokill: SV-hosted == C++-hosted                PASS (1633 events, cycles=109
+cycles=242)
+  rolaunch: SV-hosted == C++-hosted              PASS (78 events, cycles=76
 cycles=0)
-  rolimit: SV-hosted == C++-hosted               PASS (141 events, cycles=77
+  rolimit: SV-hosted == C++-hosted               PASS (141 events, cycles=79
 cycles=0)
-  roload: SV-hosted == C++-hosted                PASS (339 events, cycles=107
+  roload: SV-hosted == C++-hosted                PASS (339 events, cycles=109
 cycles=0)
-  rope: SV-hosted == C++-hosted                  PASS (22335 events, cycles=7762
-cycles=22174)
-  ropediv: SV-hosted == C++-hosted               PASS (13979 events, cycles=1151
-cycles=1408)
-  sel: SV-hosted == C++-hosted                   PASS (301 events, cycles=78
+  rope: SV-hosted == C++-hosted                  PASS (22235 events, cycles=7797
+cycles=22071)
+  ropediv: SV-hosted == C++-hosted               PASS (13978 events, cycles=1169
+cycles=1434)
+  sel: SV-hosted == C++-hosted                   PASS (301 events, cycles=79
 cycles=0)
-  sized: SV-hosted == C++-hosted                 PASS (678 events, cycles=2641
+  sized: SV-hosted == C++-hosted                 PASS (678 events, cycles=2646
 cycles=0)
-  slotform: SV-hosted == C++-hosted              PASS (1485 events, cycles=4368
+  slotform: SV-hosted == C++-hosted              PASS (1485 events, cycles=4371
 cycles=0)
-  spinwait: SV-hosted == C++-hosted              PASS (12928 events, cycles=2276
-cycles=2135)
-  spmbank: SV-hosted == C++-hosted               PASS (657 events, cycles=186
+  spinwait: SV-hosted == C++-hosted              PASS (12928 events, cycles=2329
+cycles=2188)
+  spmbank: SV-hosted == C++-hosted               PASS (657 events, cycles=187
 cycles=0)
-  srd: SV-hosted == C++-hosted                   PASS (282 events, cycles=70
+  srd: SV-hosted == C++-hosted                   PASS (282 events, cycles=71
 cycles=0)
-  stall: SV-hosted == C++-hosted                 PASS (5975 events, cycles=558
+  stall: SV-hosted == C++-hosted                 PASS (5975 events, cycles=561
 cycles=0)
-  swap: SV-hosted == C++-hosted                  PASS (8896 events, cycles=558
+  swap: SV-hosted == C++-hosted                  PASS (8896 events, cycles=561
 cycles=0)
-  transp4: SV-hosted == C++-hosted               PASS (58500 events, cycles=1183
-cycles=2372)
-  unal: SV-hosted == C++-hosted                  PASS (371 events, cycles=138
+  transp4: SV-hosted == C++-hosted               PASS (58675 events, cycles=1199
+cycles=2473)
+  unal: SV-hosted == C++-hosted                  PASS (371 events, cycles=140
 cycles=0)
-  vadd: SV-hosted == C++-hosted                  PASS (767 events, cycles=159
-cycles=64)
-  vadd4: SV-hosted == C++-hosted                 PASS (3305 events, cycles=204
-cycles=270)
-  vaddslow: SV-hosted == C++-hosted              PASS (771 events, cycles=548
-cycles=64)
+  vadd: SV-hosted == C++-hosted                  PASS (767 events, cycles=162
+cycles=66)
+  vadd4: SV-hosted == C++-hosted                 PASS (3396 events, cycles=241
+cycles=278)
+  vaddslow: SV-hosted == C++-hosted              PASS (771 events, cycles=551
+cycles=66)
   stall swapping: SV-hosted == C++-hosted        PASS (6786 events, restored=1)
-  vadd4 swapping: SV-hosted == C++-hosted        PASS (3461 events, restored=1)
+  vadd4 swapping: SV-hosted == C++-hosted        PASS (3590 events, restored=1)
   swap swapping: SV-hosted == C++-hosted         PASS (9706 events, restored=1)
-  provswap swapping: SV-hosted == C++-hosted     PASS (61414 events, restored=3)
+  provswap swapping: SV-hosted == C++-hosted     PASS (61243 events, restored=3)
   every kernel control: the same KERNEL line     PASS (41 controls)
   with OOE's bypass: the same KERNEL line        PASS (59 runs, no-lane-bypass among them)
-    ...u_dec one cycle late: caught              PASS (differing_cycles=106)
-    ...u_lane_05 one cycle late: caught          PASS (differing_cycles=70)
-  [svh: 133s]
+    ...u_dec one cycle late: caught              PASS (differing_cycles=109)
+    ...u_lane_05 one cycle late: caught          PASS (differing_cycles=74)
+  [svh: 167s]
 
 == Hardening wrappers -- params/links.json ==
   links.json: malformed configurations refused   PASS (12 cases, each by name)
@@ -1099,14 +1119,14 @@ cycles=64)
   split: lanes hard-reused, 3 templates for 32   PASS (ccv_lane_w, _v1, _v2)
   split: S0 suite, every control, every credit home PASS
   split: wiring traced flop by flop == C++       PASS (85 slot(s) repeated, 177 stages)
-  split: every S1 kernel == ccv-sim              PASS (vadd 185 cycles)
-  split: every kernel with OOE's bypass          PASS (CCV_LAT_LANE 12, still forwarded at 4; byp's 3)
+  split: every S1 kernel == ccv-sim              PASS (vadd 183 cycles)
+  split: every kernel with OOE's bypass          PASS (CCV_LAT_LANE 11, still forwarded at 4; byp's 3)
   split: SV repeaters == C++ link model          PASS (58 kernels, 41 controls, skew caught)
-  [links: 273s]
+  [links: 292s]
 
 == Walkthrough -- docs/walkthrough.md ==
   walkthrough current
-  [walkthrough: 1s]
+  [walkthrough: 2s]
 
 == Verilator lint ==
   clean
