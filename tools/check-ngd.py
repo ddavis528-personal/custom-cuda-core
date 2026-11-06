@@ -1810,7 +1810,7 @@ def selftest():
         print("  timing pass against ABC, outputs, inputs, the stage, paths straight through, "
               "inner helpers alone and inside a parent, registers shared by an output and the "
               "rest, observation ports, budget files, ratchet, coverage, glue, the assembled "
-              "block from its budgets and whole, ABC's cache, the fanout term (%d controls)"
+              "block as a sum of parts, ABC's cache, the fanout term (%d controls)"
               % checks)
     return 1 if bad else 0
 
