@@ -40,13 +40,17 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 369, AR 308, TI 354, OI 308, IS 190, CP 155, DA 115,
+Conventions 17, OA 370, AR 308, TI 354, OI 309, IS 190, CP 155, DA 115,
 RA 91 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
 OOE doc rev 367. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
 release 2e95216; tag refused (known). session-home --check ok at 350k.
 
 ## Open work (most urgent first)
+-15. OA 370 re:OI-117 (ROB slice 4 fault PC): (b) per-entry PC, per spec (IS-4, payload table;
+   rewind beats need every entry's PC). pc[31:1]/entry + pc[47:32]/slot (CCV_W_PC_WINDOW) = 4,032
+   flops, written at fill from ccv_dec_ooe_uop.pc, assert upper match. No schema row, no S1 cost.
+   Watch OI's flops + head-read depth.
 -14. OA 369 re:OI-116 (OI-114 go form): (a) raise ooe_go caps REFUSED (ratchet falls; room_g 25.4,
    unmet_g 29.9 >25 = DA rule); rename has no slack. (c) first: go's unmet arrival budget 0 + keep
    copies of unmet flops (fanout); if caps hold -> push, no S1 cost. Else (b): per-take term
