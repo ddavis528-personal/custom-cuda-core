@@ -135,7 +135,7 @@ violations for interface lead signals, with the expectation (to be validated at 
 will fit within the 2 percent block total". RI-15 decided as (c): RI keeps a90cb8f's waivers, pushes rcu_pred/kill.
 Not covered: rcu_kill's 45 credit pulses (CG-1) - still open for Daniel. AR asked to record in DA tab; TI asked
 to include waived lead flops in check-cg block total. Partition rev 45. Pongs: answered OI's ping 11-06.
-Bookmarks: OA 347, RA 87, RI 17, TI 336, DA 108, AR 301, OI 290, Conventions 17, CP 154.
+Bookmarks: OA 347, RA 87, RI 17, TI 336, DA 109 (AR recorded the 11-06 ruling), AR 301, OI 290, Conventions 17, CP 154.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
