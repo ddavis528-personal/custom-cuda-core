@@ -40,13 +40,17 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 362, AR 306, TI 346, OI 305, IS 189, CP 154, DA 112,
+Conventions 17, OA 363, AR 306, TI 346, OI 306, IS 189, CP 154, DA 112,
 RA 82 (tab 9851686b-2b0a), RI 15 (tab 8e4547bc-c469).
 OOE doc rev 364. Pings 2026-10-30 (Fri): all ponged ok. Next pings Fri 2026-11-06.
 Sweep 11-05: 6 branches (209 commits) merged at 76f0190, full gate green, pushed;
 release 5174359; snapshot tag refused by the proxy (known, local only).
 
 ## Open work (most urgent first)
+-12. RULED 11-06 (OA 363, under 0.5%): RI-11 OOE cmpl+hint ends first kind = C9, +0.444%
+   S1 over A6 (model; cm128 -0.45%, cm32 -0.08%); flopped H3+P ~+1.95% not taken. HINT 2/
+   FILL 4/MLC 39. TI: links.json no_flop at OOE; OI builds; AR updates specs. OOE doc 365.
+   R49 dropped (S1 +0.276% cost); ooe_rs stays 45 rows, 26.2 on cap. Told DA; DA may overrule.
 -11. DA APPROVED in OA's session 11-06, verbatim "I approve the token limit" (DA tab 112):
    once TI's autoCompactWindow 350000 push (2d445f5, TI-51) is merged into this branch
    (the daily sweep merges it), run the session-home skill / tools/setup-session-home.py
