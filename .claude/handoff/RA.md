@@ -130,7 +130,12 @@ derived 2). RA rev 85 took it; spec Overview 52, Partition 43, Conventions 12.
 AR row 301 CORRECTS: CCV_LAT_RCU_ADDR = its base (5; PF-47 1); bnd_rx(issue) only on the crossing (L1_WAKE/CMPL
 17/19, 13/15 after PF-47). Default ends option 1 (RCU's 3 receiving ends flopped). RA rev 86; spec Overview 57,
 Partition 44, Conventions 13.
-Bookmarks: OA 347, RA 86, RI 17, TI 336, DA 108, AR 301, OI 290, Conventions 17, CP 154.
+DANIEL 2026-11-06 (RA session, verbatim in RA rev 87): "Yes it's ok to waive module level clock gating
+violations for interface lead signals, with the expectation (to be validated at final construction) that these
+will fit within the 2 percent block total". RI-15 decided as (c): RI keeps a90cb8f's waivers, pushes rcu_pred/kill.
+Not covered: rcu_kill's 45 credit pulses (CG-1) - still open for Daniel. AR asked to record in DA tab; TI asked
+to include waived lead flops in check-cg block total. Partition rev 45. Pongs: answered OI's ping 11-06.
+Bookmarks: OA 347, RA 87, RI 17, TI 336, DA 108, AR 301, OI 290, Conventions 17, CP 154.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
