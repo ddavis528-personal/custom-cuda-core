@@ -203,8 +203,9 @@ directory: one started earlier, or elsewhere, gets "agent type not found".
 Then spawn a general-purpose agent with the file's `model` and its body as
 the prompt, followed by the task; it works the same.
 
-The session compacts at 400k tokens (`autoCompactWindow` in
-`.claude/settings.json`; DA, 2026-10-30, set once every agent had a handoff).
+The session compacts at 350k tokens (`autoCompactWindow` in
+`.claude/settings.json`; DA, 2026-10-30, set at 400k once every agent had a
+handoff; 350k since 2026-11-06, to keep the week's usage within its limit).
 None of `.claude/settings.json` or `.claude/agents/` reaches a session that
 runs from `/home/user` until the session-home skill installs it there;
 `tools/setup-session-home.py --check` says whether it has.

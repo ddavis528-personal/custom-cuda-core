@@ -1,6 +1,6 @@
 ---
 name: session-home
-description: Install this repo's Claude Code settings (the 400k compaction window, the handoff hook, the subagents) where a cloud session actually reads them, and check they are still there. Use at session start, when `tools/setup-session-home.py --check` fails in a sweep, after `.claude/settings.json` or `.claude/agents/` change, and when a subagent type is "not found".
+description: Install this repo's Claude Code settings (the 350k compaction window, the handoff hook, the subagents) where a cloud session actually reads them, and check they are still there. Use at session start, when `tools/setup-session-home.py --check` fails in a sweep, after `.claude/settings.json` or `.claude/agents/` change, and when a subagent type is "not found".
 ---
 
 # Session home: settings a multi-repo session can see
@@ -52,7 +52,7 @@ or adds a definition to `.claude/agents/` is what makes it differ.
   prompt (CLAUDE.md).
 - **The window and the hook:** from the next session start at the latest;
   this version of Claude Code may also reload settings sooner. Until the
-  window holds, Daniel can type `/autocompact 400000` in the session, and
+  window holds, Daniel can type `/autocompact 350000` in the session, and
   `/compact` compacts it once, now.
 - Verify the hook without compacting: run the command that
   `/home/user/.claude/settings.json` names under `SessionStart`; it prints
