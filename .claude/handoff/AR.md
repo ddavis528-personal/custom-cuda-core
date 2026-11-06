@@ -70,8 +70,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 307, OA 363, TI 349, RA 88 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 306, DA 111,
-  Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
+  record): AR 307, OA 364, TI 349, RA 88 (tab 9851686b-2b0a), RI 21, IS 190, CP 155, OI 306, DA 112,
+  Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
+  merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
+  pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
   RI-15 decided (DA 109, option (c)); RI-14 credit pulses charged to block 2% (DA 110).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -315,10 +317,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    DA 111 (TI-51, recorded by AR from TI rev 345, no verbatim quote): (1)
    compact at 350k, not 400k: DANIEL APPROVED (2026-11-06, in AR's session)
    re-running the session-home skill once TI's push (2d445f5) is merged, so
-   /home/user/.claude takes 350000. Out by TI's 1a9a3e8/0ce9c12 on
-   ccr-183cc441-doowtf and claude/custom-cuda-core-infra-6msg93 (full gate
-   PASS): the sweep that merges them re-runs the session-home skill (the
-   install, not just --check) under that approval.
+   /home/user/.claude takes 350000. DONE in the 11-06 sweep: installed,
+   --check rc=0.
    TI 349 (TI-51 done, 0ce9c12): block CG/NGD from module units + structural
    read. Can't catch: cross-boundary synthesis (conservative) and one net's
    loads as a whole (short by <=1 INV stage). No AR spec says "timed whole"
