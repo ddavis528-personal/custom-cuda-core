@@ -588,7 +588,7 @@
       "name": "CCV_CREDIT_DEPTH",
       "value": 4,
       "status": "arch",
-      "doc": "Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2N longer, and its depth with it. Proved in tools/check-formal.sh: full rate at this depth, and not at one less.",
+      "doc": "Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2(N + bnd_rx) longer, and its depth with it: N its stages, and bnd_rx 1 where its receiving end holds the boundary flop, a stage each way in front of a receiver that registers its own inputs and credit, as every DPI host does (AR's rev 309 (2)). Proved in tools/check-formal.sh: full rate at this depth, and not at one less.",
       "source": "Q-43, 2026-09-26"
     },
     {

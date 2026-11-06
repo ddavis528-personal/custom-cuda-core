@@ -97,6 +97,10 @@ The widget adds latency. What must move with it is outside the widget.
 
 **The round trip grows by 2N.** For a link with N stages each way:
 
+(A flopped receiving end in front of a block that registers its own inputs
+and credit, as every DPI host does, is one stage more each way: read N as
+N + bnd_rx throughout; AR's rev 309 (2).)
+
 - every checker on it takes `ROUND_TRIP = CCV_RT_ABUT + 2N`;
 - credit depth is at least that;
 - `TIMEOUT_N` grows by 2N;

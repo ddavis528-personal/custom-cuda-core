@@ -23,10 +23,13 @@ Machine::Machine(unsigned depth, const Factory &make) {
   }
   // Senders and receivers hold references into slots_, so it must not
   // reallocate from here on.
-  // A repeated link's round trip is 2N longer, and so is its credit depth
-  // (docs/physical.md): the sender's credits and the receiver's buffer. A
-  // flopped receiving end counts as a stage here (rtStages): the blocks
-  // these hosts run register their own inputs and credit behind it.
+  // A repeated link's round trip is 2(N + bnd_rx) longer, and so is its
+  // credit depth (docs/physical.md): the sender's credits and the
+  // receiver's buffer. A flopped receiving end counts as a stage here
+  // (rtStages): the blocks these hosts run register their own inputs and
+  // credit behind it (AR's rev 309 (2)). The receiver's buffer is that
+  // whole depth, so the valids in flight when it stalls, at most
+  // CCV_RESCUE_DEPTH + 2(N + bnd_rx), always land in it (overflows, 0).
   for (unsigned k = 0; k != kNumSlots; ++k) {
     const unsigned d = depth + 2 * owner_[k]->rtStages();
     tx_.push_back(std::make_unique<Sender>(slots_[k], d));
