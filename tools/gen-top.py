@@ -1292,11 +1292,15 @@ def rpt_units(binst, cinst, names, ports, ft, plan):
             "reset": "!rst_n",
             "instances": users,
             "bench": {
-                "build": ("verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style "
+                # The payload ports are S x W bits wide, past Verilator's
+                # default trace width on the widest channels, and check-cg
+                # reads them from the VCD.
+                "build": ("verilator --binary --timing --trace --trace-max-width %d "
+                          "-Wno-fatal -Wno-lint -Wno-style "
                           "-Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=%d "
                           "-GBOUNDARY=%d -GDST_END=%d -GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb "
                           "rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv"
-                          % (st, b, de, r, w, lit)),
+                          % (max(4096, r * w), st, b, de, r, w, lit)),
                 "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
                 "scope": "tb_cg_rpt.dut"}})
     return json.dumps({

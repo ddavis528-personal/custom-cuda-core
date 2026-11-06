@@ -51,7 +51,7 @@
         "rcu RPT_LANE_RCU_RES_C31"
       ],
       "bench": {
-        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=0 -GBOUNDARY=1 -GDST_END=0 -GS=1 -GW=40 \"-GLEAD=40'h0\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "build": "verilator --binary --timing --trace --trace-max-width 4096 -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=0 -GBOUNDARY=1 -GDST_END=0 -GS=1 -GW=40 \"-GLEAD=40'h0\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
         "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
         "scope": "tb_cg_rpt.dut"
       }
@@ -76,7 +76,7 @@
         "rcu RPT_MIU_RCU_DATA"
       ],
       "bench": {
-        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=0 -GBOUNDARY=1 -GDST_END=1 -GS=4 -GW=1114 \"-GLEAD=1114'h7fffffff800000007ffff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "build": "verilator --binary --timing --trace --trace-max-width 4456 -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=0 -GBOUNDARY=1 -GDST_END=1 -GS=4 -GW=1114 \"-GLEAD=1114'h7fffffff800000007ffff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
         "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
         "scope": "tb_cg_rpt.dut"
       }
@@ -101,7 +101,7 @@
         "rcu RPT_OOE_RCU_ISSUE"
       ],
       "bench": {
-        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=0 -GBOUNDARY=1 -GDST_END=1 -GS=9 -GW=193 \"-GLEAD=193'hffff\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "build": "verilator --binary --timing --trace --trace-max-width 4096 -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=0 -GBOUNDARY=1 -GDST_END=1 -GS=9 -GW=193 \"-GLEAD=193'hffff\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
         "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
         "scope": "tb_cg_rpt.dut"
       }
