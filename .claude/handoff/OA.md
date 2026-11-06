@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 358, AR 303, TI 341, OI 301, IS 189, CP 154, DA 108,
+Conventions 17, OA 359, AR 303, TI 341, OI 303, IS 189, CP 154, DA 108,
 RA 82 (tab 9851686b-2b0a), RI 15 (tab 8e4547bc-c469).
 OOE doc rev 364. Pings 2026-10-30 (Fri): all ponged ok. Next pings Fri 2026-11-06.
 Sweep 11-05: 6 branches (209 commits) merged at 76f0190, full gate green, pushed;
@@ -53,6 +53,10 @@ release 5174359; snapshot tag refused by the proxy (known, local only).
    OI-114 (OI 301): pick = unmet registered at ooe_rename (go budget 6->0) + need-side
    shift; price S1 + PHYS160 repro; <0.5% lands, only within ooe_go's caps.
    DA package waits on: bypass probe, R49 S1.
+   OI 303 probe (RTL): capture free; sched bypass 23.7 ok; rs cfin 28.5 -> (a) hit
+   confirm an edge late (knob) or (b) free cone to 21 if (a)>0.3% S1; ROB done an edge
+   late = C1 (audit +0.8%). OA 359: package = first kind (C1+rs a, HINT 2) vs flopped
+   (H3+P ~+1.95% over A6) + R49 S1; RH job 2 pricing.
 -9. OA 355 (re OI 298/299), reported to DA 11-06: CA rejected; ooe_rs stays on cap 26.2.
    DA picks: R49 (-2.0..-2.4% audit, +1,944 ooe_rs / +3,353 OOE flops; OA rec only
    if S1 >= 1%, OI runs S1). RI-11: H3 params +0.56% S1 (rec accept); hint/RAU/
