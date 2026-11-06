@@ -809,11 +809,11 @@
     },
     {
       "name": "CCV_LAT_LANE_BASE",
-      "value": 7,
+      "value": 8,
       "status": "tunable",
-      "decided_at": "LANE per-block session",
-      "source": "OOE Stage 4 session (2026-10-02), interface change set",
-      "doc": "Lane pipeline depth with abutted links, from RCU accepting the issue to the lane result in the PRF. An assumption until LANE's session confirms it as a contract."
+      "decided_at": "LANE per-block session; AR's rev 287 (re:RI-11)",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; 7 to 8 at AR's rev 287 (re:RI-11)",
+      "doc": "Lane pipeline depth with abutted links, from RCU accepting the issue to the lane result in the PRF. 8 since the receiving block's interface flop, built in its wrapper (Daniel, 2026-11-05; AR's revs 285 and 287, re:RI-11): RCU's MW aligns and writes the PRF in ccv_lane_rcu_res's landing cycle, which is now the cycle after the result reaches RCU's wrapper. An assumption until LANE's session confirms it as a contract."
     },
     {
       "name": "CCV_LAT_L1_HIT_BASE",
@@ -834,7 +834,7 @@
     },
     {
       "name": "CCV_LAT_LANE",
-      "value": 7,
+      "value": 8,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-48",
@@ -857,7 +857,7 @@
       "decided_at": "generated",
       "source": "TI, lane-local bypass in the stubs (2026-10-08); A-59, register TI-8",
       "derive": "max(1, clog2(CCV_LAT_LANE - CCV_LAT_LANE_BYP))",
-      "doc": "How far back a lane's bypass reaches, in bits: a forwarded result is named by its age, the cycles between the producer's and the dependant's arrival at the lane, less CCV_LAT_LANE_BYP. Ages run from CCV_LAT_LANE_BYP up to CCV_LAT_LANE - 1, after which RCU's register file holds the value. The links stretch the window: stages on either lane channel delay the write-back but not the dependant, so this follows params/links.json through CCV_LAT_LANE."
+      "doc": "How far back a lane's bypass reaches, in bits: a forwarded result is named by its age, the cycles between the producer's and the dependant's arrival at the lane, less CCV_LAT_LANE_BYP. The lane forwards ages CCV_LAT_LANE_BYP up to CCV_LAT_LANE - 2; at CCV_LAT_LANE - 1 RCU's register file read serves the value (RA's count, AR's rev 288). The links stretch the window: stages on either lane channel delay the write-back but not the dependant, so this follows params/links.json through CCV_LAT_LANE."
     },
     {
       "name": "CCV_P_W_LANE_BYP_SEL",
@@ -1002,11 +1002,11 @@
     },
     {
       "name": "CCV_LAT_SFU",
-      "value": 12,
+      "value": 13,
       "status": "tunable",
-      "decided_at": "LANE per-block session",
-      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder",
-      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF. A placeholder until a LANE session confirms it."
+      "decided_at": "LANE per-block session; AR's rev 287 (re:RI-11)",
+      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder; 12 to 13 at AR's rev 287 (re:RI-11)",
+      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF. 13 since the receiving block's interface flop, built in its wrapper (Daniel, 2026-11-05; AR's revs 285 and 287, re:RI-11), for the reason CCV_LAT_LANE_BASE gives. RCU's kill drain follows it (2 + link_n('ooe_rcu_issue') + this + 1 + link_n('rcu_ooe_done'): 16 abutted), derived, never written as a number (AR's rev 288). A placeholder until a LANE session confirms it."
     },
     {
       "name": "CCV_LAT_COLLECTIVE",
@@ -1035,15 +1035,15 @@
     },
     {
       "name": "CCV_LAT_RCU_ADDR_BASE",
-      "value": 5,
+      "value": 6,
       "status": "tunable",
-      "decided_at": "RCU per-block session",
-      "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08)",
-      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. Tunable: RCU's session confirms or moves it."
+      "decided_at": "RCU per-block session; AR's revs 287 and 288 (re:RI-11)",
+      "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08); 5 to 6 at AR's rev 287 (re:RI-11)",
+      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. Counted from the issue's landing as CCV_LAT_HOP defines it, so it holds RCU's own time plus the receiving block's interface flop, built in its wrapper (Daniel, 2026-11-05; AR's revs 285 and 287, re:RI-11) (AR's rev 288). 5 was a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03; 6 is that 5 plus the interface flop. PF-47 (docs/perf-register.md) is still to be reapplied: its RCU-internal 1 lands here as 1 + 1 = 2, not 1 (OA's rev 341, AR's rev 288), taking CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 15. Tunable: RCU's session confirms or moves it."
     },
     {
       "name": "CCV_LAT_RCU_ADDR",
-      "value": 5,
+      "value": 6,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -1052,7 +1052,7 @@
     },
     {
       "name": "CCV_LAT_L1_WAKE",
-      "value": 16,
+      "value": 17,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -1061,7 +1061,7 @@
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 18,
+      "value": 19,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
