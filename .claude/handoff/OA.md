@@ -40,13 +40,17 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 353, AR 300, TI 338, OI 294, IS 189, CP 154, DA 108,
+Conventions 17, OA 354, AR 300, TI 341, OI 297, IS 189, CP 154, DA 108,
 RA 82 (tab 9851686b-2b0a), RI 15 (tab 8e4547bc-c469).
 OOE doc rev 364. Pings 2026-10-30 (Fri): all ponged ok. Next pings Fri 2026-11-06.
 Sweep 11-05: 6 branches (209 commits) merged at 76f0190, full gate green, pushed;
 release 5174359; snapshot tag refused by the proxy (known, local only).
 
 ## Open work (most urgent first)
+-8. ooe_go depth (OI 297, OA 354): picked (c) keep caps (27.6 f2f/29.9 in/25.8 out,
+   RTL); 748e071 stays out. OI prices (a) unmet registered (minus last take) +
+   (b) fits on last cycle's pool (never overgrant) as one point, low priority.
+   RAT read (OI 296/TI 341): ooe_ratread 17.9 vs 16 alone; 43 caps wait for ooe_rename.
 -7. ooe_rs depth (OA 351/352, OI 293/294): copies took ooe_rs 30.1->26.2 (RTL, cap 29.4).
    rs_free_lag DROPPED: free not on valid->grant-prefix path, buys no depth.
    OI prices in one audit: (1) per-port candidates registered a cycle ahead (new
