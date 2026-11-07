@@ -979,7 +979,7 @@
     "instr_uid": 4611686018427387908,
     "unit": "instr",
     "channel_id": 10,
-    "payload_lo": 524544,
+    "payload_lo": 1049089,
     "payload_hi": 0
    }
   },
@@ -988,7 +988,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 55,
+   "ts": 56,
    "pid": 1004,
    "tid": 0,
    "args": {
@@ -1004,7 +1004,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 58,
+   "ts": 59,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1020,7 +1020,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 59,
+   "ts": 60,
    "pid": 1004,
    "tid": 0,
    "args": {

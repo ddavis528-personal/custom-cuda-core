@@ -1271,8 +1271,8 @@
     "instr_uid": 4611686018427387907,
     "unit": "ccv_miu_ooe_cmpl",
     "channel_id": 10,
-    "payload_lo": 4294967280,
-    "payload_hi": 262143
+    "payload_lo": 4294967264,
+    "payload_hi": 524287
    }
   },
   {
@@ -1280,7 +1280,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 53,
+   "ts": 54,
    "pid": 1,
    "tid": 4,
    "args": {
@@ -1296,7 +1296,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 53,
+   "ts": 54,
    "pid": 1,
    "tid": 4,
    "args": {
@@ -1312,7 +1312,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 53,
+   "ts": 54,
    "pid": 3,
    "tid": 11,
    "args": {
@@ -1328,7 +1328,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 54,
+   "ts": 55,
    "pid": 3,
    "tid": 45,
    "args": {
@@ -1344,7 +1344,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 54,
+   "ts": 55,
    "pid": 3,
    "tid": 31,
    "args": {
@@ -1360,7 +1360,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 55,
+   "ts": 56,
    "pid": 3,
    "tid": 16,
    "args": {
@@ -1376,7 +1376,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 56,
+   "ts": 57,
    "pid": 3,
    "tid": 49,
    "args": {
@@ -1392,7 +1392,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 56,
+   "ts": 57,
    "pid": 3,
    "tid": 30,
    "args": {
@@ -1408,7 +1408,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 57,
+   "ts": 58,
    "pid": 3,
    "tid": 18,
    "args": {
@@ -1424,7 +1424,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 59,
+   "ts": 60,
    "pid": 3,
    "tid": 26,
    "args": {
@@ -1440,7 +1440,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 61,
+   "ts": 62,
    "pid": 3,
    "tid": 28,
    "args": {
@@ -1449,22 +1449,6 @@
     "channel_id": 28,
     "payload_lo": 4286579140,
     "payload_hi": 4294967295
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 1063,
-   "pid": 3,
-   "tid": 52,
-   "args": {
-    "instr_uid": 11529215046068469763,
-    "unit": "ccv_ext_exb_in",
-    "channel_id": 52,
-    "payload_lo": 0,
-    "payload_hi": 0
    }
   },
   {
@@ -1488,7 +1472,23 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 1066,
+   "ts": 1065,
+   "pid": 3,
+   "tid": 52,
+   "args": {
+    "instr_uid": 11529215046068469763,
+    "unit": "ccv_ext_exb_in",
+    "channel_id": 52,
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 1067,
    "pid": 3,
    "tid": 27,
    "args": {
@@ -1504,7 +1504,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 1068,
+   "ts": 1069,
    "pid": 3,
    "tid": 19,
    "args": {
@@ -1520,7 +1520,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 1070,
+   "ts": 1071,
    "pid": 3,
    "tid": 17,
    "args": {

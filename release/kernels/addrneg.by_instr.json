@@ -525,7 +525,7 @@
     "instr_uid": 4611686018427387905,
     "unit": "instr",
     "channel_id": 10,
-    "payload_lo": 4294967280,
+    "payload_lo": 4294967265,
     "payload_hi": 4294967295
    }
   },
@@ -534,7 +534,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 64,
+   "ts": 65,
    "pid": 1001,
    "tid": 0,
    "args": {
@@ -550,7 +550,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 67,
+   "ts": 68,
    "pid": 1000,
    "tid": 0,
    "args": {

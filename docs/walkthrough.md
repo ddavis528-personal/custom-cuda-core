@@ -215,7 +215,7 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=160 from_fetch=129 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
+KERNEL name=vadd finished=1 cycles=161 from_fetch=130 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
 XFER events=660 launched=660 match=yes channels_seen=33
 ```
 
@@ -381,7 +381,7 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=160 from_fetch=129 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
+KERNEL name=vadd finished=1 cycles=161 from_fetch=130 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
 TRACES records=767/767 equal=yes byte_identical=no differing_cycles=0
 ```
 
@@ -410,7 +410,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[46807:45596])
+    .ch_payload(payload[46811:45600])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
@@ -510,4 +510,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: e9bdb2bf4f76af7a (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 985fdc175837e9d7 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

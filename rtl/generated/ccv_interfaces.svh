@@ -330,6 +330,8 @@ typedef struct packed {
 localparam int CCV_OOE_MIU_MEMOP_DISCARD_TAIL_LSB = 0;
 localparam int CCV_OOE_MIU_MEMOP_DISCARD_TAIL_W = ccv_prov_pkg::CCV_P_W_ROB_IDX;
 
+// LEAD fields are driven with valid, one cycle ahead of the
+// rest of the payload (schema lead_fields).
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
   logic [2-1:0]                                  done_row;
@@ -340,6 +342,7 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_VA-1:0]           address;
   logic                                          mlc_miss;
   logic                                          more;
+  logic                                          lead_fault;  // LEAD
 } ccv_miu_ooe_cmpl_t;
 
 typedef struct packed {

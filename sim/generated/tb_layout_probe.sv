@@ -157,7 +157,7 @@ module tb_layout_probe (
   output logic c9_f18,
   output logic [1:0] c9_f19,
   output logic c9_f20,
-  input  logic [118:0] c10,
+  input  logic [119:0] c10,
   output logic [6:0] c10_f0,
   output logic [1:0] c10_f1,
   output logic [5:0] c10_f2,
@@ -167,6 +167,7 @@ module tb_layout_probe (
   output logic [63:0] c10_f6,
   output logic c10_f7,
   output logic c10_f8,
+  output logic c10_f9,
   input  logic [7:0] c11,
   output logic [6:0] c11_f0,
   output logic c11_f1,
@@ -555,6 +556,7 @@ module tb_layout_probe (
   assign c10_f6 = s10.address;
   assign c10_f7 = s10.mlc_miss;
   assign c10_f8 = s10.more;
+  assign c10_f9 = s10.lead_fault;
   ccv_ooe_miu_retire_t s11;
   assign s11 = c11;
   assign c11_f0 = s11.rob_tag;

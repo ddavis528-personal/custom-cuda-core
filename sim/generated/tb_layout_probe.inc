@@ -198,18 +198,19 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_ooe_miu_memop", "xfer_signed", p.c9_f20, b, 0, 1);
   }
   {
-    const Bits b = randomBits(119, seed ^ 79190u);
+    const Bits b = randomBits(120, seed ^ 79190u);
     put(p.c10, b);
     p.eval();
-    bad += check("ccv_miu_ooe_cmpl", "rob_tag", p.c10_f0, b, 112, 7);
-    bad += check("ccv_miu_ooe_cmpl", "done_row", p.c10_f1, b, 110, 2);
-    bad += check("ccv_miu_ooe_cmpl", "rs_idx", p.c10_f2, b, 104, 6);
-    bad += check("ccv_miu_ooe_cmpl", "status", p.c10_f3, b, 102, 2);
-    bad += check("ccv_miu_ooe_cmpl", "cause", p.c10_f4, b, 98, 4);
-    bad += check("ccv_miu_ooe_cmpl", "lane_mask", p.c10_f5, b, 66, 32);
-    bad += check("ccv_miu_ooe_cmpl", "address", p.c10_f6, b, 2, 64);
-    bad += check("ccv_miu_ooe_cmpl", "mlc_miss", p.c10_f7, b, 1, 1);
-    bad += check("ccv_miu_ooe_cmpl", "more", p.c10_f8, b, 0, 1);
+    bad += check("ccv_miu_ooe_cmpl", "rob_tag", p.c10_f0, b, 113, 7);
+    bad += check("ccv_miu_ooe_cmpl", "done_row", p.c10_f1, b, 111, 2);
+    bad += check("ccv_miu_ooe_cmpl", "rs_idx", p.c10_f2, b, 105, 6);
+    bad += check("ccv_miu_ooe_cmpl", "status", p.c10_f3, b, 103, 2);
+    bad += check("ccv_miu_ooe_cmpl", "cause", p.c10_f4, b, 99, 4);
+    bad += check("ccv_miu_ooe_cmpl", "lane_mask", p.c10_f5, b, 67, 32);
+    bad += check("ccv_miu_ooe_cmpl", "address", p.c10_f6, b, 3, 64);
+    bad += check("ccv_miu_ooe_cmpl", "mlc_miss", p.c10_f7, b, 2, 1);
+    bad += check("ccv_miu_ooe_cmpl", "more", p.c10_f8, b, 1, 1);
+    bad += check("ccv_miu_ooe_cmpl", "lead_fault", p.c10_f9, b, 0, 1);
   }
   {
     const Bits b = randomBits(8, seed ^ 87109u);
