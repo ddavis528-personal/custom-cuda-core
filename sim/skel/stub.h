@@ -149,8 +149,10 @@ enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
 // kFence orders the warp's memory ops at MIU (IS-11); kBarArrive and
 // kBarWait are ISA v1.9's bar.arrive and bar.wait (O-27), reported to SYU
 // at retire (TI-40).
+// kAtomic: a Format M read-modify-write (O-72; IS-21, AR-21): two decode
+// slots, a pair, which OOE splits into A1 (read), A2 (lane op), A3 (write).
 enum UopClass : uint8_t { kAlu, kLoad, kStore, kBranch, kExit, kPredLogic, kImm,
-                          kFence, kBarArrive, kBarWait };
+                          kFence, kBarArrive, kBarWait, kAtomic };
 struct OpInfo {
   const char *name;
   UopClass cls;
@@ -247,7 +249,7 @@ inline unsigned bypGroupOf(const OpInfo *op) {
   if (op->byp >= 0) return unsigned(op->byp);
   if (op->cross) return kBypCollective;
   switch (op->cls) {
-  case kLoad: case kStore: return kBypAddr;
+  case kLoad: case kStore: case kAtomic: return kBypAddr;
   case kPredLogic: return kBypPred;
   default: return kBypInt;
   }
@@ -255,8 +257,9 @@ inline unsigned bypGroupOf(const OpInfo *op) {
 /// A barrier uop: like exit, OOE completes it without issue (TI-40).
 inline bool isBarrier(const OpInfo *op) { return op->cls == kBarArrive || op->cls == kBarWait; }
 inline uint32_t schedAttrOf(const OpInfo *op) {
-  const bool mem = op->cls == kLoad || op->cls == kStore || op->cls == kFence;
-  const unsigned memk = op->cls == kStore ? kMemKStore : op->cls == kFence ? kMemKFence : kMemKLoad;
+  const bool mem = op->cls == kLoad || op->cls == kStore || op->cls == kFence || op->cls == kAtomic;
+  const unsigned memk = op->cls == kStore ? kMemKStore : op->cls == kFence ? kMemKFence
+                      : op->cls == kAtomic ? kMemKAtomic : kMemKLoad;
   const bool ctl = op->cls == kExit || isBarrier(op);
   const unsigned ser = op->cls == kExit ? kSerExit : op->cls == kBarWait ? kSerBarrier
                      : op->cls == kBarArrive ? kSerArrive : op->chw ? kSerChwidth : kSerNone;
@@ -264,7 +267,9 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
   // CCV_LAT_COLLECTIVE (Daniel's responses OA-4; AR's rev 259, TI's rev
   // 274). RCU may finish it sooner, which V-35 allows; its dependants wake
   // at 5.
-  const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore || op->cls == kFence ? kLatCompletion
+  // An atomic wakes its dependants on its last write's completion (A-46).
+  const unsigned lat = op->cls == kLoad ? kLatL1
+                     : op->cls == kStore || op->cls == kFence || op->cls == kAtomic ? kLatCompletion
                      : op->cross ? kLatCollective
                      : execRcu(op) || ctl ? kLatRcu : kLatLane;
   return uint32_t(op->ret) << kAttrRetBit |
@@ -278,14 +283,22 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
 // The three fields DEC adds so OOE never decodes opcode (A-75, TI-1).
 enum : unsigned { kPredUseNone = 0, kPredUseGuard = 1, kPredUseData = 2 };
 enum : unsigned { kImmLiteral = 0, kImmPredSrcs = 1, kImmWarpBase = 2, kImmCtaid = 3, kImmLaneCtx = 4,
-                  kImmPrivOff = 5 };
+                  kImmPrivOff = 5, kImmCallLink = 6 };
+/// A call (call, call.short): a branch that writes a GPR, its link (RA-18).
+inline bool isCall(const OpInfo *op) { return op->cls == kBranch && op->gdst; }
 /// Bit i: source i is a real read (src_arch's two fields, then src2_arch).
 inline unsigned srcValidOf(const OpInfo *op) { return (1u << op->nsrc) - 1u; }
 inline unsigned predUseOf(const OpInfo *op) {
   return op->guard ? kPredUseGuard : op->pdata ? kPredUseData : kPredUseNone;
 }
+/// A collective that reads a predicate source (vote.any, vote.all, ballot):
+/// it rides in imm, renamed by OOE as predicate logic's (O-85; TI rev 284).
+inline bool collPred(const OpInfo *op) {
+  return op->cross && op->nsrc == 0;
+}
 inline unsigned immKindOf(const OpInfo *op) {
-  return op->cls == kPredLogic ? kImmPredSrcs
+  return op->cls == kPredLogic || collPred(op) ? kImmPredSrcs
+         : isCall(op)           ? kImmCallLink
          : op->srd_sel == 0     ? kImmWarpBase
          : op->srd_sel == 1     ? kImmCtaid
          : op->srd_sel == 2     ? kImmLaneCtx
@@ -376,6 +389,25 @@ inline constexpr OpInfo kOps[] = {
   // shfl.idx: each guarded issue lane takes the source register at one lane,
   // active or not (Format G): RCU, which holds every lane's register.
   {"SHFL_IDX",      kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  // The rest of Format G's collectives (O-85, RA-20; DA tab rev 100, ISA
+  // v1.9 section 3, CP-76's opcode points). Each acts on its participating
+  // lanes, issue mask AND guard, and writes only them. shfl.up/down/bfly read
+  // lane l - c, l + c, l ^ c, a source outside 0..31 keeping the lane's own;
+  // the _R forms take c per lane from the low 5 bits of the index register
+  // ([22:19]), src_arch's second field. vote.any/all and ballot read one
+  // predicate, which rides in imm as predicate logic's do (imm_kind 1);
+  // unballot is diagonal: lane l's bit l of its own rs.
+  {"SHFL_IDX_R",    kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"SHFL_UP",       kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  {"SHFL_UP_R",     kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"SHFL_DOWN",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  {"SHFL_DOWN_R",   kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"SHFL_BFLY",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  {"SHFL_BFLY_R",   kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"VOTE_ANY",      kAlu,       0, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"VOTE_ALL",      kAlu,       0, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"BALLOT",        kAlu,       0, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"UNBALLOT",      kAlu,       1, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
   // The launch-slot forms (O-45; TI-31): [slot, rindex, scale, disp], the
   // window from launch slot `slot`, so no base register (base -1).
   {"LD_GLOBAL_SLOT", kLoad,     1, true,  false, false, false, false, -1,  0, -1,  2,  1, -1, -1, -1, false, false, -1, 0},
@@ -452,6 +484,31 @@ inline constexpr OpInfo kOps[] = {
   // laid out: [rdata, rbase, disp] and [rdata, rbase, rindex, scale, disp];
   // a store's data first among its sources.
   {"LD_SHARED",     kLoad,      1, true,  false, false, false, false,  0, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  // Format M's simple RMW atomics (O-72, O-73; IS-21): rd the old value;
+  // sources rbase, rindex, rs in that order (srcRegs reads them from the
+  // encoding, since ccv-sim's record folds a repeated register); imms
+  // [scale-enable, displacement]. DEC sends each as a pair of decode slots
+  // (OI-80 (d), DA tab rev 94): the first the address, the second rs and rd.
+  {"ATOM_ADD_G",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_MIN_S_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_MIN_U_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_MAX_S_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_MAX_U_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_AND_G",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_OR_G",    kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_XOR_G",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_EXCH_G",  kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_ADD_S",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ATOM_MIN_S_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ATOM_MIN_U_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ATOM_MAX_S_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ATOM_MAX_U_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ATOM_AND_S",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ATOM_OR_S",    kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ATOM_XOR_S",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ATOM_EXCH_S",  kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ATOM_ADD_F_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"ATOM_ADD_F_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"ST_SHARED",     kStore,     2, false, false, false, false, false,  1, -1,  0,  0, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"LD_SHARED_IDX", kLoad,      2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"ST_SHARED_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
@@ -516,6 +573,18 @@ inline uint32_t elemMask(unsigned chw) { return chw == kChw32 ? ~0u : (1u << (32
 inline unsigned maskOf(unsigned chw, unsigned pos) { return ((1u << spanOf(chw)) - 1u) << pos; }
 
 constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
+/// An atomic's three steps as RCU reads them (AR-21; IS-21), told apart by
+/// the issue's done_row (OI-85: 0 A1, 2 A2, 3 A3), since OOE sends each
+/// under the atomic's own opcode. A1 reads the address, rbase and rindex,
+/// into T like a load; A2 is the lane op, T and rs into N, under the
+/// atomic's opcode; A3 sends N, the write's data, like a store's. Not in
+/// kOps: never an opcode of their own.
+inline constexpr OpInfo kAtomA1 = {"ATOM.A1", kLoad,  2, true,  false, false, false, false,  0,  1, -1, -1, -1, -1, -1};
+inline constexpr OpInfo kAtomA2 = {"ATOM.A2", kAlu,   2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1};
+inline constexpr OpInfo kAtomA3 = {"ATOM.A3", kStore, 1, false, false, false, false, false, -1, -1,  0, -1, -1, -1, -1};
+inline const OpInfo *atomStep(unsigned row) {
+  return row == 0 ? &kAtomA1 : row == 2 ? &kAtomA2 : row == 3 ? &kAtomA3 : nullptr;
+}
 static_assert(kOpCopy > kNumOps, "the copy-only op's code collides with the table");
 inline unsigned opcodeOf(const OpInfo *o) { return unsigned(o - kOps) + 1; }
 /// O-80: a sized form's transfer, as xfer_size codes it (1 a byte, 2 a
@@ -552,6 +621,15 @@ inline const OpInfo *opByName(const std::string &n) {
 /// record cannot be made to fit the row.
 inline std::vector<unsigned> srcRegs(const OpInfo *op, const Record &r, unsigned sub, bool &ok) {
   std::vector<unsigned> g;
+  if (op->cls == kAtomic) {
+    // Format M (O-72): rbase [18:15], rs [22:19], rindex [26:23], from the
+    // encoding, since the record lists a register once however often it is
+    // named (an atomic on .shared with rbase = rindex = R0).
+    uint32_t w = 0;
+    for (unsigned b = 0; b != 4 && b < r.bytes.size(); ++b) w |= uint32_t(r.bytes[b]) << (8 * b);
+    ok = r.bytes.size() >= 4;
+    return {(w >> 15) & 15u, (w >> 23) & 15u, (w >> 19) & 15u};
+  }
   for (const RegVal *u : r.gprUses()) g.push_back(u->idx);
   ok = true;
   if (op->chw == 1) {
