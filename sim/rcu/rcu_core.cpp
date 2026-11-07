@@ -806,7 +806,7 @@ void Core::issueR(uint64_t t, const Issue &is, uint32_t active, const Word &r0, 
   h_.rResult(is, glanes, gnew, em, pw, pval);
   if (oc.rk == RKind::Bra || oc.rk == RKind::Call || oc.rk == RKind::Ret) {
     ev(Ev::Branch, is.tag, d.bt, d.bm, d.aux);
-    h_.branch(is, d);
+    h_.branch(is, d, active);
   }
   if (cfg_.brk == "slot-field-aux" && d.slot != kDoneRcu) d.aux_set = true;
   out.dones.push_back(d);

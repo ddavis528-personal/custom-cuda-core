@@ -1874,10 +1874,11 @@ private:
     return m;
   }
 
-  /// A whole crossing of a channel: CCV_LAT_HOP plus its repeater stages.
+  /// A whole crossing of a channel: CCV_LAT_HOP plus its repeater stages and
+  /// a flopped receiving end's cycle, bnd_rx (AR's revs 300 and 301).
   static unsigned crossing(unsigned chan) {
     for (const ChanInst &ci : kChanInsts)
-      if (ci.chan == chan) return kLatHop + ci.stages;
+      if (ci.chan == chan) return kLatHop + ci.stages + ci.bnd_rx;
     return kLatHop;
   }
 
@@ -2102,7 +2103,8 @@ private:
   /// The lane pipeline: a result leaves kPipe cycles after its operands
   /// arrive, so it lands in RCU's PRF CCV_LAT_LANE - 1 cycles after RCU took
   /// the issue: the cycle before a dependant woken at the full latency reads
-  /// it (V-35). Stages on either lane channel add to CCV_LAT_LANE, not here.
+  /// it (V-35). Stages and a flopped receiving end (bnd_rx) on either lane
+  /// channel add to CCV_LAT_LANE, not here: the slot builds them.
   static constexpr unsigned kPipe = ccv::prov::kLatLaneBase - 1 - 2 * kLatHop;
   static_assert(ccv::prov::kLatLaneBase >= 1 + 2 * kLatHop, "no room for the lane pipeline");
   static_assert(ccv::prov::kLatLaneByp >= kPipe,
@@ -3144,8 +3146,6 @@ private:
         // Held, as a lane's checks are: OOE may issue a ret on a load's
         // speculated L1 hit and replay it when the hit does not come, so
         // only a pass's last execution is judged. A pass is its lanes.
-        const std::string at = "rcu ret " + std::to_string(active);
-        k_.executing(at, m.tid);
         uint32_t tgt = 0, same = 0;
         bool first = true;
         for (unsigned l = 0; l != kLanes; ++l)
@@ -3154,6 +3154,12 @@ private:
             if (first) { tgt = v; first = false; }
             if (v == tgt) same |= 1u << l;
           }
+        // --break ret-held-by-lanes (RI-18) keys a pass by the lanes it
+        // returns: a speculated issue on stale data returns other lanes than
+        // its replay, so the replay never clears the failure (retmiss).
+        const std::string at =
+            "rcu ret " + std::to_string(k_.brk == "ret-held-by-lanes" ? same : active);
+        k_.executing(at, m.tid);
         put(d, c.rcu_ooe, "branch_mask", same);
         put(d, c.rcu_ooe, "branch_taken", same != 0);
         put(d, c.rcu_ooe, "aux", tgt);

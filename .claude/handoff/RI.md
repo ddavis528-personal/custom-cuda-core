@@ -1,69 +1,63 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-05. Keep current at every task's end. Role and ownership:
+Updated 2026-11-06 (evening). Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
 ## Who and setup
 - RI = session_01QPk2jvvXPLs4m8ZQbSk1g6 (roster commit 187048a). Register tab RI node
   8e4547bc-c469; write only there. Daniel (DA) is a senior microprocessor design engineer.
-- session-home installed (Daniel OK'd, 2026-11-04); --check matches.
+- session-home installed (Daniel OK'd 2026-11-04, re-run 2026-11-06 after the merge: 350k window);
+  --check matches.
 - Daily sweep scheduled task trig_01YVAyULgv3K9NymwVJXZybD, 02:31 America/Los_Angeles.
 - Toolchain: ./tools/setup-toolchain.sh (log ~/ccv-logs/setup-toolchain.log).
 
 ## Repos, branches, push
-- Core /home/user/custom-cuda-core, compiler /home/user/custom-cuda-complier (read only),
-  both on branch ccr-888218a3-20cauz. Started from TI's fbefc16, merged RA's 9676944.
+- Work tree /home/user/ri-wt (branch ccr-888218a3-20cauz); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-
-## Register bookmarks (2026-11-04)
-Conventions 17, AR 275, OA 336, IS 189, TI 321, OI 274, CP 152, DA 106, RA 80, RI 12. TI 326. TI 324. AR 287.
-Nothing had RI in Needs at session start.
+- Last push: d227bf0 (SPLIT SCOPED PASS; 8ebe948 ret-check fix + TI's dc380a1 merge),
+  after 6e0402d (SPLIT PASS, full). TI merged RI-17 at dc380a1 (TI rev 355).
+- RH (session_01QPk2jvfKM1V5rRfip8FC86) takes RI's perf runs (Daniel, 2026-11-06): send base
+  commit via gate-scratch/RI, exact arms and what to report; it replies with a table.
 
 ## Working rules beyond CLAUDE.md
-- TI owns schema/params/tools/stub/kernel.cpp. TI landed (merged at f25b3e2): makeRcu with
-  CCV_RCU_IMPL=model, lane stub's per-section sec_dst_width, rcu_unit gate section
-  (tools/check-rcu-unit.sh), gate-scope for sim/rcu/, events 33-47, map/mig backpressured.
-  No local kernel.cpp patch any more.
-- Model events: rcu::Ev (4 fields, unit tests) packed to schema ids in rcu_block.cpp event();
-  docs/rcu-model.md has the packing, aux, interims, controls.
+- Container gets reclaimed when idle: keep a run_in_background until-loop waiter on any
+  detached job (setsid nohup ... & disown). Restarts killed runs 3 times and lost commits once.
+- Send every unverified commit to gate-scratch/RI (tools/gate-scratch.sh) before gating.
+- Split gate: cg part with CCV_JOBS=1 (OOM at 15 GB otherwise), ngd part CCV_JOBS=2, each
+  gate-export, then gate-push --import=a.tgz,b.tgz. Chain script pattern ~/ccv-logs/chain-269efe6.sh.
+- TI owns schema/params/tools/stub/kernel.cpp. rcu_block.cpp uses ci.stages + ci.bnd_rx.
+- Model events: rcu::Ev packed to schema ids in rcu_block.cpp event(); docs/rcu-model.md.
 
-## Model state (2026-11-04)
-- sim/rcu/: rcu_core.{h,cpp}, rcu_block.cpp, rcu_test.cpp (7 "control <name> caught" lines), run-tests.sh.
-- Interims: Config::full_row (AR-24; CCV_RCU_FULL_ROW=0 = secmask); call link from record (RA-18, RI-7).
-- Pushed: a0f6ccd, b685619, 131cdee (sweep merge, SPLIT PASS). Then merged 7 branches -> f25b3e2;
-  on top: events emit, KillAck, MIU slot on GuardFwd/RsrcFwd, controls, docs/rcu-model.md.
-- Logs: ~/ccv-logs/kernel-model-m0b.log (model run after merge); per-kernel logs in build/kernel*.
-- Gate: split gate if all sections run (`verify.sh --full --only ngd` + gate-export + gate-push --import).
+## Rulings (Daniel, 2026-11-06)
+- RI-15 = (c): module-level CG-5 waivers for interface leads, `"lead": true`, each flop charged
+  to the RCU block's 2% (RA rev 87, DA rev 109). Credit pulses `"credit": true` (RA rev 88, DA 110).
+  Block limit = sum of parts (DA 111/112, TI-51); RCU top still a stub, so checked at assembly.
+- Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
+
+## Register
+Bookmarks 2026-11-06: Conventions 17, AR 308, OA 366, IS 190, TI 356, OI 306, CP 155, DA 115, RA 95, RI 24.
+DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
+architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
-00. Push: 600004a (all phase 2 + RI-11 + TI merge + r32 out of the gate) split gate running
-    (bqmniuo5k: cg then ngd -> ~/ccv-logs/gate-{cg,ngd}-600004a.tgz); then gate-push --import.
-    TI's AR-bases push waits on: 600004a (sent on gate-scratch/RI), MOVI_TOTAL 354 re-pin (TI),
-    and RI-12 (OOE decq bug; OI FIXED at OI rev 287, verified on 600004a, lands in OI's next push: close RI-12 then). Repro tree ri-wt2 (params restored).
-0. RI-11 DONE for RCU (RI rev 10; notices TI, RA). DA: flop at every block boundary; A counts
-   from RCU's interface flop; arrivals 0 (rd2 11), set in 0d087e9; check-ngd passes. Model derives
-   lane/SFU timing from params; tests derive too (checked at LANE 8/SFU 13). TI lands the params
-   (LANE_BASE 8, SFU 13, RCU_ADDR_BASE 6) and must merge 0d087e9 first. Then re-run run-tests and
-   check-kernel on TI's push.
-   Push chain: 0d087e9 split gate (cg bnh4z0vqi -> ~/ccv-logs/gate-cg-0d087e9.tgz; then ngd; then
-   gate-push --import=both). ba3549b pushed (SPLIT SCOPED PASS).
-0b. RI-10 closed (TI 31e21e0 merged at c215aab): full slice in cg-units (5495933), check-cg clean
-   at 192 rows; M3 ACCEPTED (RA rev 80). At bank assembly: report row 135's gate
-   (row_cr03h[4351:4320], en row_en_cr02h[135], 71% medium DCGE) with block CG totals; if <75% there,
-   split its enable before any waiver. Worktree ri-wt carries c215aab..HEAD for the
-   push after 0d087e9's (rcu-only changes now scope to cg+ngd).
-1. Phase 2 RTL (rtl/rcu/, test/rcu/): rcu_bank_slice (RA-39: R0/R1 read from phys_src on the
-   wire, rsrc flopped per slice with MW write-through), rcu_r + rcu_xbar. Figures sent to RA as
-   RI responses rev 8 (notice sent): phys_src->rsrc 18.4 vs 18 at 192 (miss 0.4) RA-39 CLOSED (RA rev 74, OA rev 337):
-   RCU in 19 / OOE out 6; rr_row arrival 8.5 set. Departures (1)-(3) accepted. rcu_r 2,626 flops, 23.9 NGD, CG clean. Departures to confirm:
-   low from pred's flops, the .ngd.json arrivals, RI-9 (e). RI-10 (192-row cg harness) with TI.
-   Benches: test/rcu/run-rtl.sh (all units + controls nowt/noalign/retlow).
-2. Push chain: ba3549b (main tree) split gate cg passed (~/ccv-logs/gate-cg-ba3549b.tgz), ngd
-   part -> gate-ngd-ba3549b.tgz, then gate-push --import=both. Then fast-forward main tree to
-   the ri-wt commits (795776d, 316564f, aa00783, 58ae73e + this handoff), regen, split gate, push.
-3. TI to merge eac3054 (model drops lead_r_src; on gate-scratch/RI, ri-wt2). Merge TI back after.
-4. Remove worktrees /home/user/ri-wt, ri-wt2 once merged. Daily sweep trig_01YVAyULgv3K9NymwVJXZybD.
-5. Split gate recipe when every section runs: verify --changed <base> --only cg, export; same for
-   ngd; gate-push --import=a.tgz,b.tgz (each part a separate background job, < 2 h).
+0. rcu_mig restructured, local 16f0c65 (on gate-scratch/RI, unverified): 400 seeds + controls pass,
+   M5 dm 65 / rs 66 of 68. CG/NGD run: ~/ccv-logs/mig-chk.sh -> mig-cg.log, mig-ngd.log. Then
+   slice 192 unit check, split gate, push (with 1d4b3dd, 20ab341), RI row to RA (kmask clear +2
+   ordering note, head-warp restore pick, dropped rs warp compare, ZROW vs write_row_named).
+   TI rev 356: Z (f4ce0fd, LANE 7/SFU 12) gating, push ~2h; RI-18 kernel 2026-11-07. After Z
+   merges fix stale 8/13 comments: sim/rcu/rcu_test.cpp:179,216; cg-waivers.json rcu_kill kd why
+   (KILL_DRAIN 16 at SFU 12, still 5 flops).
+1. RI-16 DECIDED (RA rev 95): lane_rcu_res zero-cycle (LANE 7 / SFU 12), link_n 0 forever, on
+   condition the block-level read at RCU's assembly holds 12 on it without the flop (else Daniel).
+   TI drops it from links.json except + retimes 5 controls. When TI lands it: merge, run
+   sim/rcu/run-tests.sh + check-kernel; RTL descriptor pipes (lwb_d/swb_d) at the new depths.
+2. RI-18 (rev 23, TI): ret held-check key fixed (8ebe948); TI to add a ret-replay kernel and a
+   --break; RI then keys the model's check by returned lanes under that brk name.
+3. RI-11/RI-13 (TI rev 332): verify on merged tip, close RI-13 (and RI-11 for RCU).
+   RI-12: close when OI's fix lands (OI rev 287).
+4. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals
+   (lead/credit waiver flops charged; sum of parts), block NGD for lane_rcu_res if Z.
+5. Remaining phases per docs/rcu-impl.md: rcu_mig, lane/SFU descriptor pipes, assembly (M5-M7).
+6. Remove worktrees ri-wt2, ri-wt3 when done.
