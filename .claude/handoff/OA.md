@@ -1,6 +1,6 @@
 # OA handoff (OOE architect)
 
-Updated 2026-11-05. Keep this current at every task's end; it is what
+Updated 2026-11-06. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Role and rules (from Daniel, in conversation)
@@ -40,23 +40,53 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 367, AR 308, TI 349, OI 306, IS 190, CP 155, DA 112,
-RA 91 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
-OOE doc rev 366. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
+Conventions 17, OA 378, AR 315, TI 357, OI 317, IS 190, CP 155, DA 115,
+RA 95 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
+OOE doc rev 369. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
 release 2e95216; tag refused (known). session-home --check ok at 350k.
 
 ## Open work (most urgent first)
+-17. OA 378 re:AR 315 PHYS_REGS 160 (Q-35; ~34k RCU flops, cycles flat, provisional): rerun to report
+   floor stalls (OI-114), restore-alloc under demotion, sectioned-row fragmentation, memop-held regs
+   (cm128). No stalls -> no OA objection, to DA on area; else OA gives min PHYS.
+-16. OA 376 re:OI-125 (slice 4 MIU fault capture CG): asked lead_fault (1b, with cv) on
+   ccv_miu_ooe_cmpl -> AR confirm MIU knows fault at valid, TI schema row. No CG-3 waiver (b, 408
+   flops, DA) unless (a) impossible. AR 314: yes; per-slot (4b), status==1 only (2=replay); MIU
+   spec 61. OA 377 accepted; OI builds after TI's schema row. Watch TI row + OI build.
+-15. OA 370 re:OI-117 (ROB slice 4 fault PC): (b) per-entry PC, per spec (IS-4, payload table;
+   rewind beats need every entry's PC). pc[31:1]/entry + pc[47:32]/slot (CCV_W_PC_WINDOW) = 4,032
+   flops, written at fill from ccv_dec_ooe_uop.pc, assert upper match. No schema row, no S1 cost.
+   Watch OI's flops + head-read depth.
+-14. OA 369 re:OI-116 (OI-114 go form): (a) raise ooe_go caps REFUSED (ratchet falls; room_g 25.4,
+   unmet_g 29.9 >25 = DA rule); rename has no slack. (c) first: go's unmet arrival budget 0 + keep
+   copies of unmet flops (fanout); if caps hold -> push, no S1 cost. Else (b): per-take term
+   registered a cycle late, RH prices S1 w/ PHYS160; <0.5% mine, >0.5% DA. OI branch oi-floor114 1f3bb3c.
 -13. OA 365/366: zero-cycle ooe_rcu_issue -> AR 308: stays flopped, no splits (gain only
    L1_CMPL -1, V-35 -1; L1_WAKE does NOT move - my 365 claim wrong). OI phys_src depth low
    prio. OA 364: C9 ports must be 0 NGD, <=4 pins (sum of parts boundary); OOE units per param set.
    AR 307 took C9 to DA in AR's session (+0.444% holds only with AR 296; lane cycle hits both).
--12. REOPENED by DA ruling (RA 91, verbatim: zero-cycle block-boundary receiving ends only for
-   performance; DA approves). OA 367: OA 363 now a RECOMMENDATION to DA; OI reprices at LANE 8/
-   SFU 13; OI/TI build nothing until DA rules. Was: RULED 11-06 (OA 363, under 0.5%): RI-11 OOE cmpl+hint ends first kind = C9, +0.444%
-   S1 over A6 (model; cm128 -0.45%, cm32 -0.08%); flopped H3+P ~+1.95% not taken. HINT 2/
-   FILL 4/MLC 39. TI: links.json no_flop at OOE; OI builds; AR updates specs. OOE doc 365.
-   R49 dropped (S1 +0.276% cost); ooe_rs stays 45 rows, 26.2 on cap. Told DA; DA may overrule.
+-12. C9 APPROVED by DA (DA tab 114, 11-06): OOE miu_ooe_cmpl+hint ends first kind, +0.444% S1
+   over A6 (model; cm128 -0.45%, cm32 -0.08%); flopped H3+P ~+1.95%, gain ~1.5%. OA 368: hold
+   released; OI builds under OA 364 terms (0 NGD, <=4 pins), TI adds links.json no_flop; OOE doc 367.
+   RA 95 (TI 357: applied f4ce0fd, full gate PASS): lane_rcu_res zero-cycle (S1 -1.04%) -> LANE 7/SFU 12 = C9's baseline; OA 371
+   keeps DA's 8/13 rerun term as written (DA's, not ours to drop).
+   OI-118/OA 372: 8/13 rerun DONE: C9 +0.370% vs F +1.581%, gain 1.21% -> STANDS (term met).
+   Build C9h (hint raw, no bypass, 0 S1) + RS bypass (worth 0.56%); RTL == model C9h cycle-exact;
+   cmpl_l raw -> capture+RS+wake (3 pins), ROB x4 from keep copies of cm_q. Watch caps/flops.
+   OI-120/OA 373: C9h built (oi-c9, exact). cmpl_idx_cq00h arrival 2 GRANTED. prv_code_cq01h 25.7
+   fanout cap REFUSED (ratchet; remap noise): (a) keep copies (b) arrival 9->8 if sender slack
+   (c) only then to DA. OI-121: (a) missed 25.9; OA 374 took (b): rs arrival 8 (24.7), rendep out 8
+   (0.0 measured). OI-122/OA 375: wake timer enable 8.1 -> grant_cq01h arrival 2->1, sched grant_w
+   out 1 (0.0 meas). C9h released to push; watch OI's commit + rs depths.
+   (was) LAPSES if OI's LANE 8/SFU 13 rerun puts the gain at <=0.5% S1 -> back to DA. Watch for it.
+   Bar (DA verbatim 11-06): "Bring to me between 0.2 and 0.5 percent impact.  Also come to me if
+   we cannot meet the default module boundary NGD rule without the receiver flop". AR's reading:
+   gain <=0.2% stays flopped; 0.2-0.5% DA; >0.5% owning architect; needs-flop-for-12-NGD -> DA.
+   DA 115 (AR recorded in DA's session), DA verbatim: "Yes, over 0.5% the architect can approve,
+   if we also meet the NGD module rules". TI 354: OOE's own no_flop entry (cmpl+hint only) lands
+   with ccv_ooe's RTL top; until then OOE stays in the DPI all-list (no crossing moves).
+   R49 dropped (S1 +0.276% cost); ooe_rs stays 45 rows, 26.2 on cap.
 -11. DONE 11-06 (installed, --check ok). DA APPROVED in OA's session 11-06, verbatim "I approve the token limit" (DA tab 112):
    once TI's autoCompactWindow 350000 push (2d445f5, TI-51) is merged into this branch
    (the daily sweep merges it), run the session-home skill / tools/setup-session-home.py
