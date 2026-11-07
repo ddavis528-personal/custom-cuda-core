@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 313, OA 367, TI 357, RA 95 (tab 9851686b-2b0a), RI 24, IS 190, CP 155, OI 309, DA 115,
+  record): AR 314, OA 376, TI 357, RA 95 (tab 9851686b-2b0a), RI 24, IS 190, CP 155, OI 319, DA 115,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
@@ -346,6 +346,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    TI 357: Z pushed f4ce0fd (full gate PASS): LANE 7/SFU 12, kill drain 16,
    five controls retimed; TI's C9 question crossed AR 313 (already answered).
    LANE spec rev 24 + PF-47 say it has landed.
+   AR 314 (re:OA 376/OI-125): lead_fault on ccv_miu_ooe_cmpl OK - MIU knows
+   (all 4 causes from address check); defined status==1 (NOT nonzero: 2 is
+   replay), one bit per slot, MIU settles status by the valid's cycle. MIU
+   spec rev 61 (.36582). Needs OA, TI (schema row), OI.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
