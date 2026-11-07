@@ -70,8 +70,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 317, OA 378, TI 367, RA 96 (tab 9851686b-2b0a), RI 35, IS 190, CP 155, OI 319, DA 115,
-  Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-07: nothing asks AR; merged 57eff422 101, 183cc441 98, 126afa13 19, 9eb50716 13, c22116ce 4, 888218a3 2 (walkthrough theirs); gate PASS ~/ccv-logs/ar-sweep-1107.log; session home OK; Friday pongs all 8 OK. Sweep 11-06: nothing asks AR;
+  record): AR 317, OA 380, TI 368, RA 97 (tab 9851686b-2b0a), RI 35, IS 190, CP 157, OI 321, DA 115,
+  Conventions 17 (RI tab 8e4547bc-c469). TI 368 (RA-30 at 1d9fa6f; RA 97 accepted), OA 380 (IS-21: atomic A1/A3 never discarded or replayed) written into MIU spec rev 63 (.5742); OI-126 (C9h at f00c14c, counters next push), nothing asks AR. Still waiting on J9 attribution (AR 317). Sweep 11-07: nothing asks AR; merged 57eff422 101, 183cc441 98, 126afa13 19, 9eb50716 13, c22116ce 4, 888218a3 2 (walkthrough theirs); gate PASS ~/ccv-logs/ar-sweep-1107.log; session home OK; Friday pongs all 8 OK. Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
   RI-15 decided (DA 109, option (c)); RI-14 credit pulses charged to block 2% (DA 110).
@@ -146,7 +146,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   ccr-c22116ce-1vzyjg) is DA's offload worker for long runs; it has no
   register tab. Its branch is merged in the sweep like the others.
 - Specs doc DJeg9Hh8rkPDecq4hrAz35 (tab revs after the 11-04 review): RCU
-  eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (56), RAU 090626bb-a50c (60),
+  eda9347a-feaa (RA's now), MIU aa7a288a-dae2 (63), RAU 090626bb-a50c (60),
   PCA 94b3a0ea-7224 (17), FET 75d75b94-1614 (47), DEC 1d1fdcda-739e (19),
   DCU c18a112b-d2c6 (15), SPM b66e4f64-612c (3), LANE ea1f36a7-0725 (16),
   SYU 1f8b4472-68c1 (8), CRU 5a50fd80-2423 (7), MLC f8873ac6-e74d (3), EXB
