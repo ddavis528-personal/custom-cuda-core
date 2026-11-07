@@ -151,6 +151,9 @@
 #     the rest are zero (AR rev 260)           sender refuses aux off its slot
 #   a branch's or call's lead says what     lead-corrupt (callret): OOE
 #     its done says (AR rev 260)               refuses each branch done
+#   a call's link is the imm OOE puts in    call-link-literal (callret,
+#     (imm_kind 6; RA-18, RA-30)               stub RCU): RCU's first CHECK
+#                                              is the link against ccv-sim
 #   a memop's fault lead is status == 1     lead-fault-replay (swap): OOE
 #     (OI-125, AR rev 314)                     refuses each replay's lead;
 #                                              lead-fault-drop (roconst):
@@ -1432,6 +1435,20 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-corrupt.log" check_failures)" = 
   say "--break lead-corrupt: OOE refuses a branch lead that is not its done" "PASS ($n dones)"
 else
   bad "--break lead-corrupt" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-corrupt.log")"
+fi
+# The call link (RA-18, RA-30; AR's rev 264): DEC marks a call imm_kind 6,
+# OOE puts pc + bytes(ilen) in imm, and RCU writes imm to the link register.
+# call-link-literal has DEC send a call's imm_kind as a literal, so imm keeps
+# the branch offset; the stub RCU's first CHECK is the link against ccv-sim's.
+# The stub only: RI's model takes the link from ccv-sim until it drops its
+# interim (RI-7); then the model joins, as ret-held-by-lanes's did.
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/callret/oracle.jsonl --break call-link-literal \
+  >"$B/kernel_call-link-literal.log" 2>&1
+n=$(grep -c "^CHECK rcu: seq [0-9]* call's link [0-9a-f]* in imm, oracle [0-9a-f]*" "$B/kernel_call-link-literal.log")
+if [ "$n" -gt 0 ] && grep -m1 '^CHECK' "$B/kernel_call-link-literal.log" | grep -q "^CHECK rcu: seq [0-9]* call's link"; then
+  say "--break call-link-literal (stub): a call's link is OOE's imm" "PASS ($n calls)"
+else
+  bad "--break call-link-literal" "$n refused: $(grep -m1 '^CHECK' "$B/kernel_call-link-literal.log")"
 fi
 # The issue lead (RA-31; OA's rev 307, AR's rev 267): every operand group an
 # issue uses is named a cycle ahead, so RCU loads no other. lead-src-clear

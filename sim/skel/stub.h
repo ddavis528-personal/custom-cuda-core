@@ -278,7 +278,9 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
 // The three fields DEC adds so OOE never decodes opcode (A-75, TI-1).
 enum : unsigned { kPredUseNone = 0, kPredUseGuard = 1, kPredUseData = 2 };
 enum : unsigned { kImmLiteral = 0, kImmPredSrcs = 1, kImmWarpBase = 2, kImmCtaid = 3, kImmLaneCtx = 4,
-                  kImmPrivOff = 5 };
+                  kImmPrivOff = 5, kImmCallLink = 6 };
+/// A call (call, call.short): a branch that writes a GPR, its link (RA-18).
+inline bool isCall(const OpInfo *op) { return op->cls == kBranch && op->gdst; }
 /// Bit i: source i is a real read (src_arch's two fields, then src2_arch).
 inline unsigned srcValidOf(const OpInfo *op) { return (1u << op->nsrc) - 1u; }
 inline unsigned predUseOf(const OpInfo *op) {
@@ -286,6 +288,7 @@ inline unsigned predUseOf(const OpInfo *op) {
 }
 inline unsigned immKindOf(const OpInfo *op) {
   return op->cls == kPredLogic ? kImmPredSrcs
+         : isCall(op)           ? kImmCallLink
          : op->srd_sel == 0     ? kImmWarpBase
          : op->srd_sel == 1     ? kImmCtaid
          : op->srd_sel == 2     ? kImmLaneCtx

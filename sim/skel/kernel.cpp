@@ -2693,9 +2693,16 @@ private:
       send(c.rcu_ooe, s, it->msg, it->tid);
       it = to_ooe_.erase(it);
     }
-    for (auto it = to_miu_.begin(); it != to_miu_.end();)
-      if (can(c.rcu_miu, it->slot)) { send(c.rcu_miu, it->slot, it->msg, it->tid); it = to_miu_.erase(it); }
-      else ++it;
+    // ccv_rcu_miu_addr is fixed_latency with bound slots (RA-21, RA-30):
+    // MIU never stalls it, so an address goes on its cycle, and a slot that
+    // is not free is a fault, never a wait.
+    for (auto it = to_miu_.begin(); it != to_miu_.end(); it = to_miu_.erase(it)) {
+      if (!can(c.rcu_miu, it->slot)) {
+        k_.fail("rcu: MIU pipe %u's address slot is not free (fixed_latency)", it->slot);
+        continue;
+      }
+      send(c.rcu_miu, it->slot, it->msg, it->tid);
+    }
   }
 
   /// A lane op's results: every section it held, from all 32 lanes.
@@ -2966,7 +2973,7 @@ private:
       unsigned rd = 0;
       for (unsigned i = 0; op && i != op->nsrc; ++i)
         if (!(op->alu_imm >= 0 && int(i) == op->imm_slot)) rd |= 1u << i;
-      const bool imm = op && (op->alu_imm >= 0 || op->srd_sel >= 0 || op->cls == kPredLogic);
+      const bool imm = op && (op->alu_imm >= 0 || op->srd_sel >= 0 || op->cls == kPredLogic || isCall(op));
       const char *why = (fp & ~lsec) ? "a section outside its lead's mask"
                         : (rd & ~lsrc) ? "a source its lead says is unused"
                         : imm && !limm ? "an immediate its lead says is unused"
@@ -3148,12 +3155,19 @@ private:
         k_.fail("rcu: seq %llu branch taken by %08x, oracle %08x",
                 (unsigned long long)r->seq, active, r->taken);
       // call writes its link register on the active lanes, as movi does:
-      // the next instruction's address, ccv-sim's value (CP-9, AR-22).
+      // the next instruction's address, low 32 bits, which OOE put in imm
+      // (imm_kind 6; RA-18, RA-30, AR's rev 264). ccv-sim's value checks it.
       if (op->gdst) {
         const RegVal *ld = r ? r->gprDef() : nullptr;
         if (r && !ld) k_.fail("rcu: seq %llu call without its link", (unsigned long long)r->seq);
         for (unsigned l = 0; l != kLanes; ++l)
-          k_.gpr[pd][l] = (active >> l) & 1u && ld ? ld->v[l] : k_.gpr[pold][l];
+          if ((active >> l) & 1u && ld && ld->v[l] != imm0) {
+            k_.fail("rcu: seq %llu call's link %08x in imm, oracle %08x",
+                    (unsigned long long)r->seq, imm0, ld->v[l]);
+            break;
+          }
+        for (unsigned l = 0; l != kLanes; ++l)
+          k_.gpr[pd][l] = (active >> l) & 1u ? imm0 : k_.gpr[pold][l];
       }
       // ret (AR-24 (b), OA's revs 222, 223): aux is the lowest active
       // lane's rs, the target's offset in the ret's code window, and
@@ -3463,8 +3477,12 @@ private:
     put(u, c.dec_ooe, "pred_use", predUseOf(op));
     // lanectx-literal: srd #2's imm_kind sent as a literal, so OOE substitutes
     // no context, and the lanes refuse the value.
+    // call-link-literal: a call's imm_kind 6 (RA-18) sent as a literal, so
+    // OOE leaves the branch offset in imm and RCU writes that as the link.
     put(u, c.dec_ooe, "imm_kind",
-        k_.brk == "lanectx-literal" && immKindOf(op) == kImmLaneCtx ? kImmLiteral : immKindOf(op));
+        (k_.brk == "lanectx-literal" && immKindOf(op) == kImmLaneCtx) ||
+                (k_.brk == "call-link-literal" && immKindOf(op) == kImmCallLink)
+            ? kImmLiteral : immKindOf(op));
     // fmt_rsv and fmt_opnd stay 0: no op in the skeleton's table has an FP
     // format field, so none can raise F-FORMAT (OI-57).
     // The memop's fields are DEC's to decode too (A-68); OOE copies them to
