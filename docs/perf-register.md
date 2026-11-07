@@ -1250,6 +1250,14 @@ it.
   this register from before 31168a3 is on the 1-way L1. TI re-checks
   the deltas booked on it (Z, C9, the boundary-flop prices, PHYS_REGS
   160) against the 0.2% bar once S1, cm32 and cm128 are re-run.
+  J10's whole-program runs (TI rev 375, RCU model, PHYS 192): going from
+  1 way to 8 ways takes cm32 from 4,637,603 to 2,773,055 cycles
+  (-40.2%) and cm128 from 17,044,442 to 8,732,687 (-48.8%). The stub
+  MIU's four-start mode is -0.04% on S1 and -0.4% on cm32 but +26.1% on
+  cm128 at 8 ways, where waits for a free pipe grow from 4.26M to
+  9.59M. TI keeps the stub single-start. Neither mode is the spec's MIU,
+  whose pipes are pipelined AGU stages with misses parked in the
+  buffers (AR rev 321), so cm128's memory-bound figures are bounds.
 
 ### PF-48 End-to-end parity on register state
 
