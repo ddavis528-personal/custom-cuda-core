@@ -55,10 +55,9 @@
       "channels": "all",
       "except": [
         "ooe_rcu_issue",
-        "lane_rcu_res",
         "miu_rcu_data"
       ],
-      "why": "Option 1 (AR's rev 301): RCU puts logic before its first register on these three inputs, so each takes the boundary flop in its wrapper and its crossing counts bnd_rx = 1 (AR's rev 300). Every other RCU end is taken or driven by a register at 0 NGD, as a DPI host's posedge block is (AR's rev 287 (1))."
+      "why": "Option 1 (AR's rev 301): RCU puts logic before its first register on these two inputs, so each takes the boundary flop in its wrapper and its crossing counts bnd_rx = 1 (AR's rev 300). lane_rcu_res was a third until RA's rev 95 made its end zero-cycle under DA 114 (LANE 8 to 7, SFU 13 to 12), on two conditions: the block-level read at RCU's assembly holds the end to 12 NGD, or it goes to Daniel; and that link takes no repeater stage, ever, since RCU and the lanes abut. Every other RCU end is taken or driven by a register at 0 NGD, as a DPI host's posedge block is (AR's rev 287 (1))."
     }
   ],
   "links": []

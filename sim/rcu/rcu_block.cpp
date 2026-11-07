@@ -199,7 +199,7 @@ private:
         }
     }
   }
-  void branch(const R::Issue &is, const R::Done &d) override {
+  void branch(const R::Issue &is, const R::Done &d, uint32_t active) override {
     const OpInfo *op = opByCode(is.opcode);
     const Record *r = rec(is.tid, "rcu");
     if (!op || !r) return;
@@ -209,8 +209,12 @@ private:
       return;
     }
     // A ret's lanes are judged by target, a pass at a time, and held: OOE
-    // may issue it on a speculated L1 hit and replay it (CP-54).
-    const std::string at = "rcu ret " + std::to_string(d.bm | (d.bt ? 0u : 0u));
+    // may issue it on a speculated L1 hit and replay it (CP-54). A pass is
+    // its active lanes, as the stub keys it: keyed by the lanes returned, a
+    // speculated issue on stale data returns other lanes than its replay, so
+    // the replay never clears its failure (coremark32, RI-16's runs).
+    // --break ret-held-by-lanes (RI-18) keys it so: retmiss must fail.
+    const std::string at = "rcu ret " + std::to_string(k_.brk == "ret-held-by-lanes" ? d.bm : active);
     k_.executing(at, is.tid);
     if (d.bm && d.aux != uint32_t(r->target))
       k_.failHeld(at, is.tid, "rcu: seq %llu ret to %08x, oracle %08llx", (unsigned long long)r->seq, d.aux,

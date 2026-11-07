@@ -20,6 +20,17 @@
 // a bank (RA-28), rows named inside the pool or the zero register for
 // reads and loads.
 //
+// Migration (rcu_mig) beside the R op on R2 and RW: R2 is the R op's when
+// its lead and its decode (r2u) say it reads R2, else migration's under
+// migration's lead; RW writes the restore's row, every lane and section,
+// when migration's lead and its decision (gw_sel) say so, the R op's write
+// ignored, else the R op's. The traffic covers each mix: R alone, migration
+// alone, both with the R op first on R2, the R op's lead with no R2 use
+// beside migration's read, a restore write beside the R op's lead, and
+// migration's RW lead with no decision beside an R op write or none.
+// --control rfirst expects migration's row on R2 when both read: the run
+// must fail.
+//
 // Runs: directed cases, then random traffic (the bench's ordinary run, the
 // high scenario). --cg <idle|medium|high> <vcd> runs one clock-gating
 // scenario (tools/check-cg.py; docs/rtl-coding-style.md, "Local clock
@@ -95,8 +106,21 @@ unsigned secmask(unsigned w, unsigned pos) { return ((1u << span(w)) - 1u) << po
 bool covers(unsigned w, unsigned pos) { return (secmask(w, pos) >> kK) & 1u; }
 
 // ---- Operations -------------------------------------------------------
-struct Read { unsigned port, row; };
-struct Write { unsigned port, row, sec; std::array<uint8_t, kL> dat; unsigned lm; };
+// R2 (port 9): rlead the R op's lead, ruse its decode (it reads R2), mig
+// migration's lead; `row` is the row the port reads, `other` the row the
+// source that loses names.
+struct Read { unsigned port, row; bool rlead = true, ruse = true, mig = false; unsigned other = 0; };
+// RW (port 2): rlead the R op's lead, mig migration's lead, gsel its
+// decision (the restore writes `row`, every lane, the R op's `other` row
+// ignored); with mig and no gsel the R op writes `row` if rlead, else
+// nothing.
+struct Write {
+  unsigned port, row, sec;
+  std::array<uint8_t, kL> dat;
+  unsigned lm;
+  bool rlead = true, mig = false, gsel = false;
+  unsigned other = 0;
+};
 struct Load { unsigned slot, row, w, pos, lm; std::array<uint32_t, kL> word; };
 struct Cycle {   // what one cycle's valids started
   std::vector<Read> rd;
@@ -107,6 +131,7 @@ struct Cycle {   // what one cycle's valids started
 extern int g_argc;
 extern char **g_argv;
 extern bool g_nowt;   // --control nowt: expect no write-through (the run must fail)
+extern bool g_rfirst; // --control rfirst: expect migration's row on R2 beside the R op's (must fail)
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
@@ -121,6 +146,7 @@ struct Bench {
   unsigned cov_wt = 0;
   unsigned cov_read = 0, cov_zero = 0, cov_lw = 0, cov_lw_skip = 0, cov_zfill = 0, cov_mw = 0,
            cov_mw_nib = 0, cov_mw_shift = 0, cov_hold = 0, cov_same = 0;
+  unsigned cov_m2 = 0, cov_m2r = 0, cov_m2n = 0, cov_mrw = 0, cov_mrwr = 0, cov_mrwn = 0;
 
   Bench(const char *vcd_path) {
     ctx = std::make_unique<VerilatedContext>();
@@ -157,24 +183,46 @@ struct Bench {
     dut->wr_v_cr00h = 0;
     dut->rv_cr02h = 0;
     dut->mw_v_cr01h = 0;
+    dut->g2_v_cr00h = 0;
+    dut->gw_v_cr00h = 0;
+    dut->r2u_cr01h = 0;
+    dut->gw_sel_cr01h = 0;
     for (const Read &r : next.rd)
-      if (!isRR(r.port)) put(dut->rd_v_cr00h, rdIdx(r.port), 1, 1);
-    for (const Write &w : next.wr) put(dut->wr_v_cr00h, w.port, 1, 1);
+      if (!isRR(r.port)) {
+        if (r.rlead) put(dut->rd_v_cr00h, rdIdx(r.port), 1, 1);
+        if (r.mig) dut->g2_v_cr00h = 1;
+      }
+    for (const Write &w : next.wr) {
+      if (w.rlead) put(dut->wr_v_cr00h, w.port, 1, 1);
+      if (w.mig) dut->gw_v_cr00h = 1;
+    }
     // Rows and leads, a cycle after the valid (R0, R1 and MW: with theirs).
     // Unused fields hold.
     for (const Read &r : s1.rd) {
       if (isRR(r.port)) {
         dut->rv_cr02h = 1;
-      } else {
+      } else if (r.port != 9) {
         put(dut->rd_row_cr01h, rdIdx(r.port) * 8, 8, r.row);
+      } else {   // R2: the R op's row and migration's
+        put(dut->rd_row_cr01h, rdIdx(r.port) * 8, 8, r.ruse ? r.row : r.other);
+        dut->g2_row_cr01h = r.ruse ? r.other : r.row;
+        dut->r2u_cr01h = r.ruse;
       }
     }
     for (const Load &l : s1.ld) put(dut->mw_v_cr01h, l.slot, 1, 1);
     for (const Read &r : s2.rd)
       if (isRR(r.port)) put(dut->rr_row_cr03h, (r.port - 7) * 8, 8, r.row);
     for (const Write &w : s1.wr) {
+      if (w.port == kRW && w.mig && w.gsel) {   // the restore's row; the R op's ignored
+        dut->gw_sel_cr01h = 1;
+        dut->gw_row_cr01h = w.row;
+        put(dut->wr_row_cr01h, w.port * 8, 8, w.other);
+        put(dut->wr_sec_cr01h, w.port * 4, 4, w.sec ^ 0xf);
+        continue;
+      }
       put(dut->wr_row_cr01h, w.port * 8, 8, w.row);
       put(dut->wr_sec_cr01h, w.port * 4, 4, w.sec);
+      if (w.mig) dut->gw_row_cr01h = w.other;
     }
     for (const Load &l : s1.ld) {
       put(dut->mw_row_cr01h, l.slot * 8, 8, l.row);
@@ -184,8 +232,16 @@ struct Bench {
     }
     // Data, two cycles after the valid.
     for (const Write &w : s2.wr) {
+      if (w.port == kRW && w.mig && w.gsel) {   // the restore's data; the R op's lanes junk
+        for (unsigned l = 0; l < kL; ++l) put(dut->gw_dat_cr02h, 8 * l, 8, w.dat[l]);
+        for (unsigned l = 0; l < kL; ++l) put(dut->wr_dat_cr02h, w.port * 32 + 8 * l, 8, uint8_t(~w.dat[l]));
+        put(dut->wr_lm_cr02h, w.port * kL, kL, 0);
+        continue;
+      }
       for (unsigned l = 0; l < kL; ++l) put(dut->wr_dat_cr02h, w.port * 32 + 8 * l, 8, w.dat[l]);
       put(dut->wr_lm_cr02h, w.port * kL, kL, w.lm);
+      if (w.mig)
+        for (unsigned l = 0; l < kL; ++l) put(dut->gw_dat_cr02h, 8 * l, 8, uint8_t(~w.dat[l]));
     }
     for (const Load &ld : s2.ld)
       for (unsigned l = 0; l < kL; ++l) put(dut->mw_dat_cr02h, (ld.slot * kL + l) * 32, 32, ld.word[l]);
@@ -195,9 +251,25 @@ struct Bench {
     if (!rst) {
       // s2's reads: the rows as they stand before this cycle's writes.
       for (const Read &r : s2.rd) {
+        if (r.port == 9 && g_rfirst && r.ruse && r.mig) {   // the control: migration's row expected
+          Read m = r;
+          m.row = r.other;
+          if (m.row != kZero && !known[m.row]) continue;
+          for (unsigned l = 0; l < kL; ++l) {
+            const unsigned want = m.row == kZero ? 0u : row[m.row][l];
+            const unsigned got = unsigned(get(dut->rd_cr03h, rdIdx(r.port) * 32 + 8 * l, 8));
+            if (got != want) fail("read port %u row %u lane %u: %02x", r.port, m.row, l, got);
+          }
+          continue;
+        }
         const bool zero = r.row == kZero;
         if (!zero && !known[r.row]) continue;
         ++cov_read;
+        if (r.port == 9 && r.mig) {
+          ++cov_m2;
+          cov_m2r += r.ruse;
+          cov_m2n += r.rlead && !r.ruse;
+        }
         cov_zero += zero;
         for (unsigned l = 0; l < kL; ++l) {
           unsigned want = zero ? 0u : row[r.row][l];
@@ -245,6 +317,17 @@ struct Bench {
   /// The write rules, at the edge ending a write's data cycle.
   void apply(const Cycle &c) {
     for (const Write &w : c.wr) {
+      if (w.port == kRW && w.mig) {
+        if (w.gsel) {   // the restore: every lane, the whole row
+          ++cov_mrw;
+          cov_mrwr += w.rlead;
+          for (unsigned l = 0; l < kL; ++l) row[w.row][l] = w.dat[l];
+          known[w.row] = true;
+          continue;
+        }
+        ++cov_mrwn;
+        if (!w.rlead) continue;   // migration's lead and no decision: no write
+      }
       const bool mine = (w.sec >> kK) & 1u;
       const bool act = mine || (kFullRow && w.port != kLW);
       if (w.port == kLW) (mine ? cov_lw : cov_lw_skip)++;
@@ -299,8 +382,18 @@ struct Gen {
         if (!taken[r]) { taken[r] = true; return r; }
       }
     };
-    for (unsigned q = 0; q < kNR; ++q)
-      if (coin(p)) c.rd.push_back({q, coin(0.1) ? kZero : rnd(kRows)});
+    for (unsigned q = 0; q < kNR; ++q) {
+      if (!coin(p)) continue;
+      Read rd{q, coin(0.1) ? kZero : rnd(kRows)};
+      if (q == 9 && coin(0.6)) {   // migration on R2: alone, beside the R op's read, or its unused lead
+        const unsigned k = rnd(3);
+        rd.mig = true;
+        rd.rlead = k != 0;
+        rd.ruse = k == 1;
+        rd.other = coin(0.1) ? kZero : rnd(kRows);
+      }
+      c.rd.push_back(rd);
+    }
     for (unsigned q = 0; q < kNW; ++q) {
       if (!coin(p)) continue;
       Write w{q, freeRow(), 0, {}, 0xf};
@@ -309,6 +402,14 @@ struct Gen {
       w.sec = q == kLW && coin(0.5) ? 0xfu : secmask(wd, pos);
       for (auto &b : w.dat) b = uint8_t(rng());
       if (q == kLW && coin(0.2)) w.lm = rnd(16);   // the copy: inactive lanes only
+      if (q == kRW && coin(0.6)) {   // migration on RW
+        const unsigned k = rnd(4);
+        w.mig = true;
+        w.gsel = k < 2;          // the restore writes: alone, or beside the R op's lead
+        w.rlead = k == 1 || k == 2;   // or no decision: beside an R op write, or alone
+        w.other = freeRow();
+        if (w.gsel) w.lm = 0xf;
+      }
       c.wr.push_back(w);
     }
     unsigned banks = 0;   // MIU's contract: one slot a bank (RA-28)
@@ -375,6 +476,7 @@ void directed(Bench &b) {
 int g_argc;
 char **g_argv;
 bool g_nowt = false;
+bool g_rfirst = false;
 
 int run(const std::string &scenario, const char *vcd) {
   Bench b(vcd);
@@ -399,12 +501,17 @@ int run(const std::string &scenario, const char *vcd) {
                  b.cov_mw_shift, b.cov_hold);
     ++b.fails;
   }
+  if (scenario != "idle" && (!b.cov_m2 || !b.cov_m2r || !b.cov_m2n || !b.cov_mrw || !b.cov_mrwr || !b.cov_mrwn)) {
+    std::fprintf(stderr, "bank_slice: coverage: R2 migration %u beside R %u beside an unused lead %u; RW restore %u beside R's lead %u, no decision %u\n",
+                 b.cov_m2, b.cov_m2r, b.cov_m2n, b.cov_mrw, b.cov_mrwr, b.cov_mrwn);
+    ++b.fails;
+  }
   if (scenario != "idle" && !g_nowt && !b.cov_wt) {
     std::fprintf(stderr, "bank_slice: coverage: no write-through\n");
     ++b.fails;
   }
   std::printf("bank_slice: rows %u K %u full_row %d%s %s: %llu cycles, %u reads checked, %u mismatches: %s\n",
-              kRows, kK, int(kFullRow), g_nowt ? ", control nowt:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
+              kRows, kK, int(kFullRow), g_nowt ? ", control nowt:" : g_rfirst ? ", control rfirst:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
               (unsigned long long)b.cyc, b.cov_read, b.fails, b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }
@@ -418,6 +525,7 @@ int main(int argc, char **argv) {
   const char *vcd = nullptr;
   for (int i = 1; i + 1 < argc; ++i)
     if (!std::strcmp(argv[i], "--control") && !std::strcmp(argv[i + 1], "nowt")) g_nowt = true;
+    else if (!std::strcmp(argv[i], "--control") && !std::strcmp(argv[i + 1], "rfirst")) g_rfirst = true;
   for (int i = 1; i + 2 < argc; ++i)
     if (!std::strcmp(argv[i], "--cg")) {
       scenario = argv[i + 1];

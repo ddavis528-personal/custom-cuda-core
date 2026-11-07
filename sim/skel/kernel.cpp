@@ -1269,7 +1269,7 @@ private:
         continue;
       }
       if (t.at == now_ && free(c.miu_rcu, t.data.slot) && free(c.miu_ooe, t.cmpl.slot)) {
-        send(c.miu_ooe, t.cmpl.slot, t.cmpl.msg, t.cmpl.tid);
+        send(c.miu_ooe, t.cmpl.slot, withLead(t.cmpl.msg), t.cmpl.tid);
         if (k_.brk == "late-hit-data")
           // The data a cycle behind its completion: dependants woken by the
           // contract read the register before the load lands.
@@ -1289,8 +1289,11 @@ private:
       else ++it;
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
-        if (free(chan, it->slot)) { send(chan, it->slot, it->msg, it->tid); it = q.erase(it); }
-        else ++it;
+        if (free(chan, it->slot)) {
+          send(chan, it->slot, chan == c.miu_ooe ? withLead(it->msg) : it->msg, it->tid);
+          it = q.erase(it);
+        } else
+          ++it;
     };
     drain(to_fet_, c.miu_fet);
     drain(to_rcu_, c.miu_rcu);
@@ -1376,6 +1379,21 @@ private:
     order_.erase(std::find(order_.begin(), order_.end(), tag));
     memop_.erase(tag);
     win_miss_.erase(tag);
+  }
+
+  // The fault lead (OI-125; AR's rev 314, MIU spec rev 61): lead_fault is
+  // status == 1, set as the completion leaves, with its valid a cycle ahead
+  // of the payload; a replay or a complete one never sets it. --break
+  // lead-fault-replay sets it on a replay too (OA rev 376's first rule,
+  // status nonzero), and --break lead-fault-drop never sets it on a fault;
+  // OOE's equality must refuse both.
+  Bits withLead(Bits m) {
+    const Ch &c = ch();
+    const unsigned st = unsigned(get(m, c.miu_ooe, "status"));
+    put(m, c.miu_ooe, "lead_fault",
+        (st == kStatusFault && k_.brk != "lead-fault-drop") ||
+            (st == kStatusReplay && k_.brk == "lead-fault-replay"));
+    return m;
   }
 
   Bits replayMsg(unsigned tag, unsigned rs_idx) {
@@ -2040,7 +2058,7 @@ private:
                             {job_.memop_slot, cmpl(job_), job_.tid}});
         } else if (now_ == job_.promised && can(c.miu_ooe, job_.memop_slot) &&
                    can(c.miu_rcu, job_.addr_slot)) {
-          send(c.miu_ooe, job_.memop_slot, cmpl(job_), job_.tid);
+          send(c.miu_ooe, job_.memop_slot, withLead(cmpl(job_)), job_.tid);
           send(c.miu_rcu, job_.addr_slot, d, job_.tid);
         } else {
           to_rcu_.push_back({job_.addr_slot, d, job_.tid});
@@ -3146,8 +3164,6 @@ private:
         // Held, as a lane's checks are: OOE may issue a ret on a load's
         // speculated L1 hit and replay it when the hit does not come, so
         // only a pass's last execution is judged. A pass is its lanes.
-        const std::string at = "rcu ret " + std::to_string(active);
-        k_.executing(at, m.tid);
         uint32_t tgt = 0, same = 0;
         bool first = true;
         for (unsigned l = 0; l != kLanes; ++l)
@@ -3156,6 +3172,12 @@ private:
             if (first) { tgt = v; first = false; }
             if (v == tgt) same |= 1u << l;
           }
+        // --break ret-held-by-lanes (RI-18) keys a pass by the lanes it
+        // returns: a speculated issue on stale data returns other lanes than
+        // its replay, so the replay never clears the failure (retmiss).
+        const std::string at =
+            "rcu ret " + std::to_string(k_.brk == "ret-held-by-lanes" ? same : active);
+        k_.executing(at, m.tid);
         put(d, c.rcu_ooe, "branch_mask", same);
         put(d, c.rcu_ooe, "branch_taken", same != 0);
         put(d, c.rcu_ooe, "aux", tgt);
