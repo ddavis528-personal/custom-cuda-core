@@ -625,13 +625,15 @@ void step(const Cycle &P, const Cycle &N) {
       if (got != sat(want, LU)) fail(what, s, 0, got, sat(want, LU));
     };
     if (std::getenv("RENAME_VERBOSE") && mismatches < 3 &&
-        (getField(dut->chk_unmet_g_cq04h, s * LU, LU) != sat(g.unmet_g[s], LU) ||
+        (getField(dut->chk_unmet_g_cq04h, s * LU, LU) != sat(s < g.unmet_on_g.size() ? g.unmet_on_g[s] : g.unmet_g[s], LU) ||
          getField(dut->chk_room_g_cq04h, s * LU, LU) != sat(g.room_g[s], LU)))
       std::fprintf(stderr, "  step %llu of core %llu: slot %u occ %d unmet_g %u room_g %u, rtl %u %u\n", core_steps, cores, s,
                    int(g.occ[s]), g.unmet_g[s], g.room_g[s], getField(dut->chk_unmet_g_cq04h, s * LU, LU),
                    getField(dut->chk_room_g_cq04h, s * LU, LU));
-    chk("unmet GPR floor differs", dut->chk_unmet_g_cq04h, g.unmet_g[s]);
-    chk("unmet predicate floor differs", dut->chk_unmet_p_cq04h, g.unmet_p[s]);
+    // OI-114's registered form: the check ports are the unmet floors as
+    // formed this cycle, before ooe_rename's register.
+    chk("unmet GPR floor differs", dut->chk_unmet_g_cq04h, s < g.unmet_on_g.size() ? g.unmet_on_g[s] : g.unmet_g[s]);
+    chk("unmet predicate floor differs", dut->chk_unmet_p_cq04h, s < g.unmet_on_p.size() ? g.unmet_on_p[s] : g.unmet_p[s]);
     chk("GPR room differs", dut->chk_room_g_cq04h, g.room_g[s]);
     chk("predicate room differs", dut->chk_room_p_cq04h, g.room_p[s]);
   }
