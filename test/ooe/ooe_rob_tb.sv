@@ -27,6 +27,7 @@ module ooe_rob_tb #(
   parameter int LT = 3,
   parameter int NK = 4,
   parameter int PCW = 48,
+  parameter int CW = 4,
   parameter int BS = ND - 2,
   localparam int NSB = (NS > 0) ? NS : 1,
   localparam int LS = (S > 1) ? $clog2(S) : 1,
@@ -41,6 +42,11 @@ module ooe_rob_tb #(
   input  logic [S-1:0]            al_l_cq01h,
   input  logic [S*LA-1:0]         al_n_cq02h,
   input  logic [S*A-1:0]          al_nop_cq02h,
+  input  logic [S*A-1:0]          al_flt_cq02h,
+  input  logic [S*A*CW-1:0]       al_cause_cq02h,
+  input  logic [S*A*31-1:0]       al_pc_cq02h,
+  input  logic [S*A*16-1:0]       al_pchi_cq02h,
+  input  logic [S*A*32-1:0]       al_gm_cq02h,
   input  logic                    fl_l_cq01h,
   input  logic                    fl_brl_cq01h,
   input  logic [A-1:0]            fl_v_cq02h,
@@ -109,18 +115,27 @@ module ooe_rob_tb #(
   output logic [S*LD-1:0]         dc_br_cq03h,
   output logic [S*LD-1:0]         dc_disp_cq03h,
   output logic [S-1:0]            cmt_v_cq03h,
-  output logic [S*TW-1:0]         cmt_tag_cq03h
+  output logic [S*TW-1:0]         cmt_tag_cq03h,
+  output logic [S-1:0]            ft_v_cq03h,
+  output logic [S*CW-1:0]         ft_cause_cq03h,
+  output logic [S*PCW-1:0]        ft_pc_cq03h,
+  output logic [S*32-1:0]         ft_lanes_cq03h
 );
   // Per instance, its frees and their leads, ORed below.
   logic [S-1:0]        gfl_w, pfl_w;
   logic [S*NG*NSB-1:0] gf_w;
   logic [S*NP-1:0]     pf_w;
   for (genvar w = 0; w < S; w++) begin : g_w
-    ooe_rob_w #(.SA(S), .WID(w), .D(D), .RP(RP), .A(A), .ND(ND), .NM(NM), .GW(GW), .GR(GR), .NG(NG), .NS(NS), .PW(PW), .NP(NP), .LB(LB), .LT(LT), .NK(NK), .PCW(PCW), .BS(BS)) u_w (
+    ooe_rob_w #(.SA(S), .WID(w), .D(D), .RP(RP), .A(A), .ND(ND), .NM(NM), .GW(GW), .GR(GR), .NG(NG), .NS(NS), .PW(PW), .NP(NP), .LB(LB), .LT(LT), .NK(NK), .PCW(PCW), .CW(CW), .BS(BS)) u_w (
       .ooe_core_clk, .ooe_rst_r00h,
       .al_l_cq01h(al_l_cq01h[w * ($bits(al_l_cq01h) / S) +: $bits(al_l_cq01h) / S]),
       .al_n_cq02h(al_n_cq02h[w * ($bits(al_n_cq02h) / S) +: $bits(al_n_cq02h) / S]),
       .al_nop_cq02h(al_nop_cq02h[w * ($bits(al_nop_cq02h) / S) +: $bits(al_nop_cq02h) / S]),
+      .al_flt_cq02h(al_flt_cq02h[w * ($bits(al_flt_cq02h) / S) +: $bits(al_flt_cq02h) / S]),
+      .al_cause_cq02h(al_cause_cq02h[w * ($bits(al_cause_cq02h) / S) +: $bits(al_cause_cq02h) / S]),
+      .al_pc_cq02h(al_pc_cq02h[w * ($bits(al_pc_cq02h) / S) +: $bits(al_pc_cq02h) / S]),
+      .al_pchi_cq02h(al_pchi_cq02h[w * ($bits(al_pchi_cq02h) / S) +: $bits(al_pchi_cq02h) / S]),
+      .al_gm_cq02h(al_gm_cq02h[w * ($bits(al_gm_cq02h) / S) +: $bits(al_gm_cq02h) / S]),
       .fl_l_cq01h,
       .fl_brl_cq01h,
       .fl_v_cq02h,
@@ -189,7 +204,11 @@ module ooe_rob_tb #(
       .dc_br_cq03h(dc_br_cq03h[w * ($bits(dc_br_cq03h) / S) +: $bits(dc_br_cq03h) / S]),
       .dc_disp_cq03h(dc_disp_cq03h[w * ($bits(dc_disp_cq03h) / S) +: $bits(dc_disp_cq03h) / S]),
       .cmt_v_cq03h(cmt_v_cq03h[w * ($bits(cmt_v_cq03h) / S) +: $bits(cmt_v_cq03h) / S]),
-      .cmt_tag_cq03h(cmt_tag_cq03h[w * ($bits(cmt_tag_cq03h) / S) +: $bits(cmt_tag_cq03h) / S])
+      .cmt_tag_cq03h(cmt_tag_cq03h[w * ($bits(cmt_tag_cq03h) / S) +: $bits(cmt_tag_cq03h) / S]),
+      .ft_v_cq03h(ft_v_cq03h[w * ($bits(ft_v_cq03h) / S) +: $bits(ft_v_cq03h) / S]),
+      .ft_cause_cq03h(ft_cause_cq03h[w * ($bits(ft_cause_cq03h) / S) +: $bits(ft_cause_cq03h) / S]),
+      .ft_pc_cq03h(ft_pc_cq03h[w * ($bits(ft_pc_cq03h) / S) +: $bits(ft_pc_cq03h) / S]),
+      .ft_lanes_cq03h(ft_lanes_cq03h[w * ($bits(ft_lanes_cq03h) / S) +: $bits(ft_lanes_cq03h) / S])
     );
   end
   always_comb begin

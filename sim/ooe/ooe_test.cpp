@@ -109,6 +109,7 @@ struct Op {
   unsigned w = 0;                ///< sectioned: the destination's width code
   bool backward = false;         ///< a backward branch (OA-14's rotation)
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
+  unsigned pc_hi = 0;            ///< pc[47:32] (a warp's code window, CCV_W_PC_WINDOW)
   unsigned chw = 2;              ///< kChw: the width code it sets on dst
   unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
   // kAtomic (AR-21; O-72, TI-39): src[0] rbase, src[1] rindex (A1's
@@ -157,7 +158,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   Uop u;
   u.tid = tid;
   u.warp = warp;
-  u.pc = 0x1000 + 4 * (tid & 0xffff);
+  u.pc = (uint64_t(o.pc_hi) << 32) | (0x1000 + 4 * (tid & 0xffff));
   u.group_mask = o.mask;
   u.fetch_epoch = epoch;
   u.ilen = o.ilen;
@@ -2840,6 +2841,59 @@ void testFault() {
   EXPECT(e.core.freeGprs() == c.phys_regs, "kill after a fault left %zu free", e.core.freeGprs());
 }
 
+/// ROB slice 4 (OI-125): rename-time faults in four sectioned warps, one a
+/// slot, each in its own code window (pc[47:32]), at a different place in
+/// its program, behind a load in one, with a second fault behind the first
+/// in another, and with partial group masks: each warp takes its first
+/// fault once, with its cause, pc and lanes, and retires what is older.
+/// test/ooe/rob_tb.cpp compares the ROB's fault record with these.
+void testSectionFaults() {
+  g_test = "sections: rename-time faults in four warps";
+  Config c = baseConfig();
+  c.sectioned = true;
+  c.l1_spec = false;
+  Env e(c);
+  e.keep_log = true;
+  const unsigned at[4] = {0, 2, 1, 3}, cause[4] = {2, 1, 2, 1};
+  const uint32_t mask[4] = {kFullMask, 0x0000ffffu, 0x00ff00ffu, 0x80000001u};
+  for (unsigned w = 0; w != 4; ++w) {
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 5; ++i) {
+      Op a;
+      a.k = (w == 1 && i == 0) ? kLoad : kLane;
+      a.dst = i;
+      a.nsrc = 1;
+      a.src[0] = i ? i - 1 : 0;
+      a.pc_hi = 0x1234u * (w + 1);
+      a.mask = mask[w];
+      if (i == at[w]) a.cause = cause[w];
+      if (w == 2 && i == 3) a.cause = 1;   // a second fault, never taken
+      p.push_back(a);
+    }
+    Op ex; ex.k = kExit; ex.pc_hi = 0x1234u * (w + 1); p.push_back(ex);
+    e.launch(w, w, p);
+  }
+  std::vector<unsigned> taken(4, 0), got(4, 0);
+  std::vector<uint64_t> pc(4, 0);
+  std::vector<uint32_t> lanes(4, 0);
+  for (unsigned k = 0; k != 300; ++k) {
+    e.step();
+    for (const Fault &f : e.log.back().faults)
+      if (f.warp < 4) { ++taken[f.warp]; got[f.warp] = f.cause; pc[f.warp] = f.pc; lanes[f.warp] = f.lane_mask; }
+  }
+  for (unsigned w = 0; w != 4; ++w) {
+    EXPECT(taken[w] == 1, "warp %u took %u faults", w, taken[w]);
+    EXPECT(got[w] == cause[w], "warp %u: cause %u, want %u", w, got[w], cause[w]);
+    EXPECT((pc[w] >> 32) == 0x1234u * (w + 1), "warp %u: pc %llx", w, (unsigned long long)pc[w]);
+    EXPECT(lanes[w] == mask[w], "warp %u: lanes %08x, want %08x", w, lanes[w], mask[w]);
+    EXPECT(e.warpOf(w)->retired.size() == at[w], "warp %u: %zu retired, want %u", w, e.warpOf(w)->retired.size(), at[w]);
+  }
+  e.core.kill(0xfu, 1);
+  for (unsigned k = 0; k != 40; ++k) e.step();
+  EXPECT(e.core.freeGprs() == c.phys_regs, "kill after the faults left %zu free", e.core.freeGprs());
+  for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+}
+
 /// OI-84 (OA's rev 264): four warps, each with an atomic pair at its head
 /// again and again, CASes and RMWs, so every round-0 head is a first slot.
 /// Under OI-79 (b)'s rounds each pair's second falls past the width and
@@ -5376,6 +5430,7 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testRestore();
   testKill();
   testFault();
+  testSectionFaults();
   testBarrier();
   testChwidth();
   testWidthCodes();
@@ -5564,6 +5619,7 @@ int main(int argc, char **argv) {
   testRestore();
   testKill();
   testFault();
+  testSectionFaults();
   testBarrier();
   testBarrierDemote();
   testBarrierTimer();

@@ -34,7 +34,7 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"share_return", &share_return},
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
       {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
@@ -1756,6 +1756,7 @@ void Core::takeCompletions() {
       if (c.status) {
         if (!c.cause) err("a faulting completion for rob tag %u carries no cause (ISA v1.9 section 12.6)", c.rob_tag);
         r->fault = true;
+        robStop("miu fault");   // slice 4: the ROB holds no MIU fault yet (OI-125)
         r->fault_cause = c.cause;
         r->fault_lanes = c.lane_mask;
         r->fault_addr = c.address;
@@ -1896,6 +1897,7 @@ void Core::atomCmpl(unsigned slot, unsigned idx, const Cmpl &c) {
       // untouched, and the entry faults at the head, restartable (V-72).
       if (!c.cause) err("a faulting completion for rob tag %u carries no cause (ISA v1.9 section 12.6)", tag);
       r.fault = true;
+      robStop("miu fault");   // slice 4: the ROB holds no MIU fault yet (OI-125)
       r.fault_cause = c.cause;
       r.fault_lanes = c.lane_mask;
       r.fault_addr = c.address;
@@ -2596,10 +2598,17 @@ void Core::retire() {
       if (after_branch) { count("retire.branch_ends_window"); break; }
       after_branch = cfg_.resolve_lag && cfg_.branch_ends_window && r.u.attr.branch;
       if (r.fault) {
+        // fault_head_only (ROB slice 4): 1 takes it on the window's port 0
+        // alone; 2 only once it was the head a cycle before (the RTL's
+        // registered head), so a fault behind older retirees waits there.
+        if ((n && cfg_.fault_head_only) || (cfg_.fault_head_only >= 2 && s.head_since >= now_)) {
+          count("retire.fault_waits_head");
+          break;
+        }
         // Faults are taken at retirement: stop, report, let RAU's kill clean
         // up (Faults; V-24). OOE does not squash.
         s.fault_stop = true;
-        robStop("fault");
+        roblog_.fault.push_back({si, s.head, r.fault_cause, r.u.pc, r.fault_lanes});
         Status st;
         st.warp = s.warp;
         st.fault_taken = true;
@@ -4139,6 +4148,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       q.tgt = q.pcn + uint64_t(2 * int64_t(int32_t(u.imm)));
       q.pchi = unsigned((u.pc >> 32) & 0xffffu);
     }
+    q.fault = r.fault;
+    q.cause = r.fault ? r.fault_cause : 0;
+    q.pclo = uint32_t((u.pc >> 1) & 0x7fffffffu);
+    q.epchi = unsigned((u.pc >> 32) & 0xffffu);
+    q.egmask = u.group_mask;
     roblog_.alloc.push_back(q);
     if (r.atomic) robStop("atomic");
   }

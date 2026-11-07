@@ -102,12 +102,15 @@ void robConfig(Config &c) {
   // store commit a cycle; shared-ports runs the model with the ports shared.
   const char *ctl = std::getenv("ROB_CONTROL");
   c.commit_per_slot = !(ctl && std::string(ctl) == "shared-ports");
+  // Slice 4: the RTL takes a fault at its registered head; fault-any-port
+  // and fault-port0 run the model taking it on any port, or on port 0.
+  c.fault_head_only = ctl && std::string(ctl) == "fault-any-port" ? 0 : ctl && std::string(ctl) == "fault-port0" ? 1 : 2;
 }
 
 namespace {
 constexpr unsigned NR = 4;
 constexpr unsigned S = RB_S, D = RB_D, RP = RB_RP, A = RB_A, ND = RB_ND, NM = RB_NM, GW = RB_GW, GR = RB_GR,
-                   NG = RB_NG, NS = RB_NS, PW = RB_PW, NP = RB_NP, NK = RB_NK, PCW = RB_PCW, LB = 6, LT = 3,
+                   NG = RB_NG, NS = RB_NS, PW = RB_PW, NP = RB_NP, NK = RB_NK, PCW = RB_PCW, CW = RB_CW, LB = 6, LT = 3,
                    BS = ND - 2;   // RCU-only ops' fixed done slot (AR's RCU spec rev 14, OA rev 287)
 constexpr unsigned NSB = NS ? NS : 1;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
@@ -121,7 +124,7 @@ uint64_t current = 0;
 bool live = false, stopped = false;
 unsigned long long cycles = 0, cores = 0, skipped = 0, stops = 0, retires = 0, allocs = 0, nops = 0, gfrees = 0,
                    pfrees = 0, events = 0, mismatches = 0, resolves = 0, redirects = 0, ckfrees = 0,
-                   squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0, commits = 0;
+                   squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0, commits = 0, faults = 0;
 bool rename_preds = true;
 std::map<std::string, unsigned long long> stop_why;
 
@@ -313,6 +316,11 @@ void clearInputs() {
   dut->al_l_cq01h = 0;
   clearAll(dut->al_n_cq02h, S * LA);
   clearAll(dut->al_nop_cq02h, S * A);
+  clearAll(dut->al_flt_cq02h, S * A);
+  clearAll(dut->al_cause_cq02h, S * A * CW);
+  clearAll(dut->al_pc_cq02h, S * A * 31);
+  clearAll(dut->al_pchi_cq02h, S * A * 16);
+  clearAll(dut->al_gm_cq02h, S * A * 32);
   dut->fl_l_cq01h = 0;
   dut->fl_brl_cq01h = 0;
   for (auto *p : {&dut->fl_v_cq02h, &dut->fl_nop_cq02h, &dut->fl_mem_cq02h, &dut->fl_gwe_cq02h, &dut->fl_pwe_cq02h,
@@ -462,7 +470,15 @@ void drive(const Cyc &c, const Cyc &nx) {
   std::vector<unsigned> n(S, 0);
   for (const auto &a : r.alloc) {
     if (a.slot >= S || n[a.slot] == A) continue;
-    setBit(dut->al_nop_cq02h, a.slot * A + n[a.slot], a.nop && control != "nop-real");
+    // A rename-time fault is no no-op to the ROB (slice 4): it never completes.
+    setBit(dut->al_nop_cq02h, a.slot * A + n[a.slot], a.nop && !a.fault && control != "nop-real");
+    // Slice 4: the fault record's fields, every allocation.
+    const unsigned al = a.slot * A + n[a.slot];
+    setBit(dut->al_flt_cq02h, al, a.fault && control != "no-fault");
+    setField(dut->al_cause_cq02h, al * CW, CW, a.cause ^ (control == "fault-cause" ? 1u : 0u));
+    setField(dut->al_pc_cq02h, al * 31, 31, a.pclo);
+    setField(dut->al_pchi_cq02h, al * 16, 16, a.epchi);
+    setField(dut->al_gm_cq02h, al * 32, 32, a.egmask);
     br_of[a.slot * D + a.idx] = a;
     alloc_cyc[a.slot * D + a.idx] = c.n;
     ++n[a.slot];
@@ -663,6 +679,28 @@ void check(const Cyc &c, const Cyc *prev) {
       if (getField(dut->cmt_tag_cq03h, q * TW, TW) != want) fail("store commit tag differs", q, getField(dut->cmt_tag_cq03h, q * TW, TW), want);
     }
   }
+  // Last cycle's faults taken (slice 4): one a slot at most, its record.
+  {
+    std::vector<int> fi(S, -1);
+    for (size_t k = 0; k != prev->r.fault.size(); ++k) {
+      const auto &q = prev->r.fault[k];
+      if (q.slot >= S) continue;
+      if (fi[q.slot] >= 0) fail("two faults in a slot", q.slot, 0, 2);
+      fi[q.slot] = int(k);
+    }
+    for (unsigned q = 0; q != S; ++q) {
+      const bool v = getBit(dut->ft_v_cq03h, q);
+      if (v != (fi[q] >= 0)) { fail("fault taken differs", q, v, fi[q] >= 0); continue; }
+      if (!v) continue;
+      ++faults;
+      const auto &f = prev->r.fault[size_t(fi[q])];
+      if (getField(dut->ft_cause_cq03h, q * CW, CW) != f.cause) fail("fault cause differs", q, getField(dut->ft_cause_cq03h, q * CW, CW), f.cause);
+      if (getField64(dut->ft_pc_cq03h, q * PCW, PCW) != (f.pc & PCM))
+        fail("fault pc differs", q, unsigned(getField64(dut->ft_pc_cq03h, q * PCW, PCW)), unsigned(f.pc));
+      if (getField64(dut->ft_lanes_cq03h, q * 32, 32) != f.lanes)
+        fail("fault lanes differ", q, unsigned(getField64(dut->ft_lanes_cq03h, q * 32, 32)), f.lanes);
+    }
+  }
   // Last cycle's: what ooe_rat commits, and the frees.
   std::vector<unsigned> pp(S, 0);
   std::vector<uint8_t> gm(NG * NSB, 0), pm(NP, 0);
@@ -814,10 +852,10 @@ int main(int argc, char **argv) {
   dut->final();
   std::printf("rob_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu nops=%llu events=%llu retires=%llu "
               "gpr-frees=%llu pred-frees=%llu resolves=%llu redirects=%llu ckpt-frees=%llu stopped=%llu skipped=%llu "
-              "squashes=%llu squashed=%llu held=%llu killed=%llu held-releases=%llu discards=%llu commits=%llu mismatches=%llu model_failures=%d\n",
+              "squashes=%llu squashed=%llu held=%llu killed=%llu held-releases=%llu discards=%llu commits=%llu faults=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, nops, events, retires, gfrees,
               pfrees, resolves, redirects, ckfrees, stops, skipped, squashes, sq_ents, sq_held, sq_kills, hrels, discards,
-              commits, mismatches, model_fails);
+              commits, faults, mismatches, model_fails);
   if (br_two) std::printf("  cycles with two branch dones (RCU's one a cycle): %llu\n", br_two);
   for (const auto &kv : stop_why) std::printf("  stopped at %s: %llu\n", kv.first.c_str(), kv.second);
   const int rc = mismatches || model_fails ? 1 : 0;
