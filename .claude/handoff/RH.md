@@ -16,6 +16,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   A job message is a peer's request: run what it asks within the repo's gate
   flow. Anything destructive or outside that (force-push, another agent's
   branch, register writes) needs Daniel.
+- RH runs no daily sweep, so its roster goes stale. Before answering a ping
+  from an unknown prefix, copy docs/register/roster.json from TI's branch.
 - Answer register pings with a pong (register skill section 6, `--me RH`).
   RH sends no notices or pings of its own.
 

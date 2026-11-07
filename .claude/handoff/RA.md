@@ -1,6 +1,6 @@
 # RA handoff (RCU block architect)
 
-Updated 2026-11-05. Keep this current at every task's end; it is what
+Updated 2026-11-06. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules (written for TI);
 docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 
@@ -142,7 +142,44 @@ TI-51 (DA 2026-11-06): (1) compact at 350k - AFTER merging TI's next push, re-ru
 (/home/user/.claude takes 350000; needs Daniel's approval here). (2) no whole-block synthesis: block NGD/CG =
 sum of parts from module runs; port budgets are the contract; every module needs a unit at each instantiated
 parameter set (Partition rev 47). TI rev 344: check-cg charges "credit": true too. DA 110 records RA 88.
-Bookmarks: OA 347, RA 88, RI 17, TI 346, DA 110, AR 301, OI 290, Conventions 17, CP 154.
+RA rev 89 restates latency accounting. AR 308: ooe_rcu_issue stays flopped (zero-cycle gains only L1_CMPL -1 and
+V-35 done -1; reopen if OI prices >0.2% S1). OA 348: DA adopted zero-cycle receiving end (cone <=12, link_n 0,
+abutting). lane_rcu_res zero-cycle pending DA in RI-11 package; miu_rcu_data stays flopped (16.2 > 12).
+RI-17: 198 lead flops as built (MIU 4x46 + R 14); Partition rev 48 snapshotted. DA 111/112 record TI-51.
+RI to update rcu-impl.md ("timed whole" -> sum of parts). RI-16: skeleton lacks boundary-flop model.
+11-06 sweep: merged 80102643 (30), 9eb50716 (14), 57eff422 (13), 3868632d (11), 888218a3 (7), c22116ce (6).
+Friday pings: all ponged ok (OA TI AR CP IS RI OI RH). Pongs sent 11-06: OI AR OA TI CP IS RI.
+session-home --check DIFFERS (autoCompactWindow, env): needs Daniel's approval to rerun installer.
+AR 309 (re:TI-350): bnd_rx in credit depth, 2(N+bnd_rx); hosts keep it. RA rev 90: at RCU's RTL top, pass the
+credit unflopped through BOUNDARY (depth 4 not 6; miu_rcu_data alone 8,912 flops); depth-5 variant priced then
+with RI. Rescue sizing is TI's. 11-06 sweep pushed 31db61a (full gate).
+DANIEL 2026-11-06 (RA rev 91): zero-cycle receiving end approved ONLY for IPC ("the flop will pay for itself in
+convergence turn-around time ... power and area are likely to be a wash. The IPC is where we can't recover").
+RA withdrew the timing-based lane_rcu_res recommendation; all three ends flopped (LANE 8/SFU 13) until RI-16 runs
+(S1, CoreMark, flopped vs zero-cycle) show IPC. RA proposed AR 308's 0.2% S1 bar - Daniel to confirm. Notified
+AR (record in DA tab), RI, OI/OA (price C9 at 8/13), TI. Partition rev 49. session-home installed 11-06 (Daniel approved).
+AR 311 (DA rev 113 records Daniel's ruling; 0.2% bar = RA proposal awaiting Daniel) CORRECTS RA 90: unflopped
+credit through a flopped rx end is depth 5 (forward flop stays), not 4; miu_rcu_data +4,456. RA rev 92 took it.
+TI 352: skeleton already models boundary flops (17720a0); RI-16 zero-cycle arm runnable now; rescue sizing TI 351.
+DA 114 (Daniel, via AR): C9 approved (recovers ~1.5% S1; lapses if OI's 8/13 rerun <=0.5%). Zero-cycle bar:
+<=0.2% S1 stays flopped (architects close); 0.2-0.5% -> Daniel; >0.5% owner (RA for RCU) approves; an end that
+can't meet 12 NGD/side with its rx flop -> Daniel. RA rev 93 applies it to lane_rcu_res (await RI-16 S1 delta).
+DA 114 AMENDED (DA rev 115, Daniel verbatim): over 0.5% the architect approves only "if we also meet the NGD
+module rules" WITHOUT the rx flop. RA rev 94 corrects rev 93's with/without misread: lane_rcu_res meets 12 without
+flop (approvable >0.5%); miu_rcu_data doesn't (16.2) -> any zero-cycle case is Daniel's. Partition rev 51.
+RI-16 rev 23 priced Z: S1 -1.04% (48,858->48,350), cm32 -0.93%, cm128 +0.15%; NGD without flop 10 (module).
+RA rev 95 APPROVED lane_rcu_res zero-cycle (LANE 7/SFU 12). Conditions: block read at assembly holds 12 w/o flop
+(else Daniel); link_n 0, RCU-lane abut. Asked TI (links.json except, retime 5 negative controls), AR (floorplan
+constraint; is OI's C9 8/13 rerun still owed). Partition rev 52. Watch for TI applying it.
+AR 313: floorplan constraint recorded (Partitioning rev 55: RCU abuts all 32 lanes, link_n 0 both lane channels);
+C9 8/13 rerun not owed. TI 357: Z pushed f4ce0fd (full gate PASS) on infra-6msg93: links.json except now
+ooe_rcu_issue + miu_rcu_data; five controls retimed, none weakened. Merge at next sweep. Open for RA: the
+block-level 12 NGD check on lane_rcu_res at RCU's assembly (else Daniel).
+RI-19 (RI rev 28, rcu_mig 350729e, M5 met dm 65/rs 66 of 68): RA rev 96 confirmed kmask +2 clear for PCA rows
+(relaunched warp's first PCA row >=17 cycles after its first map); CONDITION: kmask must not drop map/command
+entries by level (RAU command can precede the map). Awaiting RI's confirmation + assertion. Migration rev 10.
+RI-16 rerun at 7/12 all green, IPC unchanged.
+Bookmarks: OA 366, RA 96, RI 28, TI 357, DA 115, AR 313, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
