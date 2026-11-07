@@ -1638,27 +1638,11 @@
    }
   },
   {
-   "name": "EV_RCU_GPR_WRITE",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1,
-   "tid": 5,
-   "args": {
-    "instr_uid": 0,
-    "unit": "UNIT_RCU",
-    "row": 3,
-    "lane_mask": 4294967295,
-    "port_secmask": 63
-   }
-  },
-  {
    "name": "EV_OOE_MEMOP_HOLD_CYCLES",
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 49,
+   "ts": 48,
    "pid": 1,
    "tid": 4,
    "args": {
@@ -1674,7 +1658,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 49,
+   "ts": 48,
    "pid": 1,
    "tid": 4,
    "args": {
@@ -1683,6 +1667,22 @@
     "warp_id": 0,
     "issue_port": 5,
     "iq_slot": 30
+   }
+  },
+  {
+   "name": "EV_RCU_GPR_WRITE",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 48,
+   "pid": 1,
+   "tid": 5,
+   "args": {
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "row": 3,
+    "lane_mask": 4294967295,
+    "port_secmask": 63
    }
   },
   {
@@ -2202,7 +2202,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 50,
+   "ts": 49,
    "pid": 3,
    "tid": 3,
    "args": {
@@ -2218,7 +2218,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 50,
+   "ts": 49,
    "pid": 3,
    "tid": 3,
    "args": {
@@ -2234,7 +2234,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 50,
+   "ts": 49,
    "pid": 3,
    "tid": 3,
    "args": {
@@ -2250,7 +2250,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 50,
+   "ts": 49,
    "pid": 3,
    "tid": 3,
    "args": {
@@ -2266,7 +2266,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 50,
+   "ts": 49,
    "pid": 3,
    "tid": 9,
    "args": {
@@ -2282,7 +2282,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 52,
+   "ts": 51,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -2298,7 +2298,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 51,
+   "ts": 50,
    "pid": 3,
    "tid": 6,
    "args": {
@@ -2314,7 +2314,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 53,
+   "ts": 52,
    "pid": 1,
    "tid": 4,
    "args": {
@@ -2330,7 +2330,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 53,
+   "ts": 52,
    "pid": 1,
    "tid": 4,
    "args": {
@@ -2346,7 +2346,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 54,
+   "ts": 53,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -2361,7 +2361,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 53,
+   "ts": 52,
    "pid": 3,
    "tid": 7,
    "args": {
@@ -2377,7 +2377,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 55,
+   "ts": 54,
    "pid": 3,
    "tid": 10,
    "args": {
@@ -2393,7 +2393,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 57,
+   "ts": 56,
    "pid": 3,
    "tid": 31,
    "args": {
@@ -2409,7 +2409,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 58,
+   "ts": 57,
    "pid": 3,
    "tid": 50,
    "args": {
@@ -2425,7 +2425,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 60,
+   "ts": 59,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -2433,7 +2433,7 @@
     "unit": "UNIT_RCU",
     "warp_mask": 1,
     "epoch": 1,
-    "kill_drain": 17
+    "kill_drain": 16
    }
   },
   {
@@ -2441,7 +2441,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 61,
+   "ts": 60,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -2456,7 +2456,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 61,
+   "ts": 60,
    "pid": 3,
    "tid": 12,
    "args": {
@@ -2472,7 +2472,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 62,
+   "ts": 61,
    "pid": 3,
    "tid": 9,
    "args": {
@@ -2488,7 +2488,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 64,
+   "ts": 63,
    "pid": 3,
    "tid": 43,
    "args": {
@@ -2504,7 +2504,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 78,
+   "ts": 76,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -2519,7 +2519,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 78,
+   "ts": 76,
    "pid": 1,
    "tid": 5,
    "args": {

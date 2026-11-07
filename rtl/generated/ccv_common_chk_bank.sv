@@ -467,224 +467,224 @@ module ccv_common_chk_bank (
     , .ch_tid(tid[3775:3712])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i0_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i0_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[59]), .ch_credit(credit[59]), .ch_stall(stall[59]),
     .ch_payload(payload[15524:15485])
 `ifdef CCV_TRACE
     , .ch_tid(tid[3839:3776])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i1_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i1_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[60]), .ch_credit(credit[60]), .ch_stall(stall[60]),
     .ch_payload(payload[15564:15525])
 `ifdef CCV_TRACE
     , .ch_tid(tid[3903:3840])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i2_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i2_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[61]), .ch_credit(credit[61]), .ch_stall(stall[61]),
     .ch_payload(payload[15604:15565])
 `ifdef CCV_TRACE
     , .ch_tid(tid[3967:3904])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i3_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i3_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[62]), .ch_credit(credit[62]), .ch_stall(stall[62]),
     .ch_payload(payload[15644:15605])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4031:3968])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i4_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i4_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[63]), .ch_credit(credit[63]), .ch_stall(stall[63]),
     .ch_payload(payload[15684:15645])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4095:4032])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i5_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i5_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[64]), .ch_credit(credit[64]), .ch_stall(stall[64]),
     .ch_payload(payload[15724:15685])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4159:4096])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i6_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i6_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[65]), .ch_credit(credit[65]), .ch_stall(stall[65]),
     .ch_payload(payload[15764:15725])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4223:4160])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i7_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i7_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[66]), .ch_credit(credit[66]), .ch_stall(stall[66]),
     .ch_payload(payload[15804:15765])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4287:4224])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i8_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i8_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[67]), .ch_credit(credit[67]), .ch_stall(stall[67]),
     .ch_payload(payload[15844:15805])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4351:4288])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i9_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i9_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[68]), .ch_credit(credit[68]), .ch_stall(stall[68]),
     .ch_payload(payload[15884:15845])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4415:4352])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i10_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i10_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[69]), .ch_credit(credit[69]), .ch_stall(stall[69]),
     .ch_payload(payload[15924:15885])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4479:4416])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i11_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i11_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[70]), .ch_credit(credit[70]), .ch_stall(stall[70]),
     .ch_payload(payload[15964:15925])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4543:4480])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i12_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i12_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[71]), .ch_credit(credit[71]), .ch_stall(stall[71]),
     .ch_payload(payload[16004:15965])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4607:4544])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i13_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i13_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[72]), .ch_credit(credit[72]), .ch_stall(stall[72]),
     .ch_payload(payload[16044:16005])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4671:4608])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i14_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i14_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[73]), .ch_credit(credit[73]), .ch_stall(stall[73]),
     .ch_payload(payload[16084:16045])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4735:4672])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i15_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i15_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[74]), .ch_credit(credit[74]), .ch_stall(stall[74]),
     .ch_payload(payload[16124:16085])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4799:4736])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i16_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i16_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[75]), .ch_credit(credit[75]), .ch_stall(stall[75]),
     .ch_payload(payload[16164:16125])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4863:4800])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i17_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i17_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[76]), .ch_credit(credit[76]), .ch_stall(stall[76]),
     .ch_payload(payload[16204:16165])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4927:4864])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i18_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i18_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[77]), .ch_credit(credit[77]), .ch_stall(stall[77]),
     .ch_payload(payload[16244:16205])
 `ifdef CCV_TRACE
     , .ch_tid(tid[4991:4928])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i19_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i19_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[78]), .ch_credit(credit[78]), .ch_stall(stall[78]),
     .ch_payload(payload[16284:16245])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5055:4992])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i20_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i20_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[79]), .ch_credit(credit[79]), .ch_stall(stall[79]),
     .ch_payload(payload[16324:16285])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5119:5056])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i21_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i21_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[80]), .ch_credit(credit[80]), .ch_stall(stall[80]),
     .ch_payload(payload[16364:16325])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5183:5120])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i22_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i22_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[81]), .ch_credit(credit[81]), .ch_stall(stall[81]),
     .ch_payload(payload[16404:16365])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5247:5184])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i23_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i23_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[82]), .ch_credit(credit[82]), .ch_stall(stall[82]),
     .ch_payload(payload[16444:16405])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5311:5248])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i24_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i24_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[83]), .ch_credit(credit[83]), .ch_stall(stall[83]),
     .ch_payload(payload[16484:16445])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5375:5312])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i25_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i25_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[84]), .ch_credit(credit[84]), .ch_stall(stall[84]),
     .ch_payload(payload[16524:16485])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5439:5376])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i26_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i26_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[85]), .ch_credit(credit[85]), .ch_stall(stall[85]),
     .ch_payload(payload[16564:16525])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5503:5440])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i27_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i27_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[86]), .ch_credit(credit[86]), .ch_stall(stall[86]),
     .ch_payload(payload[16604:16565])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5567:5504])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i28_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i28_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[87]), .ch_credit(credit[87]), .ch_stall(stall[87]),
     .ch_payload(payload[16644:16605])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5631:5568])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i29_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i29_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[88]), .ch_credit(credit[88]), .ch_stall(stall[88]),
     .ch_payload(payload[16684:16645])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5695:5632])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i30_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i30_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[89]), .ch_credit(credit[89]), .ch_stall(stall[89]),
     .ch_payload(payload[16724:16685])
 `ifdef CCV_TRACE
     , .ch_tid(tid[5759:5696])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1), .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + 2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2), .SRC_STAGES(0)) u_lane_rcu_res_i31_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(40), .CHANNEL(5), .FIXED_LAT(1)) u_lane_rcu_res_i31_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[90]), .ch_credit(credit[90]), .ch_stall(stall[90]),
     .ch_payload(payload[16764:16725])
 `ifdef CCV_TRACE
@@ -1387,38 +1387,38 @@ module ccv_common_chk_bank (
   ccv_common_chk_wake u_rcu_lane_ops_i29_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[33]), .wake_seen(wake[33]), .valid_seen(|valid[56:56]));
   ccv_common_chk_wake u_rcu_lane_ops_i30_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[34]), .wake_seen(wake[34]), .valid_seen(|valid[57:57]));
   ccv_common_chk_wake u_rcu_lane_ops_i31_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[35]), .wake_seen(wake[35]), .valid_seen(|valid[58:58]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i0_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[36]), .wake_seen(wake[36]), .valid_seen(|valid[59:59]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i1_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[37]), .wake_seen(wake[37]), .valid_seen(|valid[60:60]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i2_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[38]), .wake_seen(wake[38]), .valid_seen(|valid[61:61]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i3_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[39]), .wake_seen(wake[39]), .valid_seen(|valid[62:62]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i4_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[40]), .wake_seen(wake[40]), .valid_seen(|valid[63:63]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i5_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[41]), .wake_seen(wake[41]), .valid_seen(|valid[64:64]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i6_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[42]), .wake_seen(wake[42]), .valid_seen(|valid[65:65]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i7_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[43]), .wake_seen(wake[43]), .valid_seen(|valid[66:66]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i8_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[44]), .wake_seen(wake[44]), .valid_seen(|valid[67:67]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i9_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[45]), .wake_seen(wake[45]), .valid_seen(|valid[68:68]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i10_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[46]), .wake_seen(wake[46]), .valid_seen(|valid[69:69]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i11_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[47]), .wake_seen(wake[47]), .valid_seen(|valid[70:70]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i12_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[48]), .wake_seen(wake[48]), .valid_seen(|valid[71:71]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i13_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[49]), .wake_seen(wake[49]), .valid_seen(|valid[72:72]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i14_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[50]), .wake_seen(wake[50]), .valid_seen(|valid[73:73]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i15_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[51]), .wake_seen(wake[51]), .valid_seen(|valid[74:74]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i16_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[52]), .wake_seen(wake[52]), .valid_seen(|valid[75:75]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i17_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[53]), .wake_seen(wake[53]), .valid_seen(|valid[76:76]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i18_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[54]), .wake_seen(wake[54]), .valid_seen(|valid[77:77]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i19_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[55]), .wake_seen(wake[55]), .valid_seen(|valid[78:78]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i20_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[56]), .wake_seen(wake[56]), .valid_seen(|valid[79:79]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i21_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[57]), .wake_seen(wake[57]), .valid_seen(|valid[80:80]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i22_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[58]), .wake_seen(wake[58]), .valid_seen(|valid[81:81]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i23_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[59]), .wake_seen(wake[59]), .valid_seen(|valid[82:82]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i24_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[60]), .wake_seen(wake[60]), .valid_seen(|valid[83:83]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i25_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[61]), .wake_seen(wake[61]), .valid_seen(|valid[84:84]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i26_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[62]), .wake_seen(wake[62]), .valid_seen(|valid[85:85]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i27_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[63]), .wake_seen(wake[63]), .valid_seen(|valid[86:86]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i28_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[64]), .wake_seen(wake[64]), .valid_seen(|valid[87:87]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i29_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[65]), .wake_seen(wake[65]), .valid_seen(|valid[88:88]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i30_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[66]), .wake_seen(wake[66]), .valid_seen(|valid[89:89]));
-  ccv_common_chk_wake #(.ARRIVE(1)) u_lane_rcu_res_i31_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[67]), .wake_seen(wake[67]), .valid_seen(|valid[90:90]));
+  ccv_common_chk_wake u_lane_rcu_res_i0_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[36]), .wake_seen(wake[36]), .valid_seen(|valid[59:59]));
+  ccv_common_chk_wake u_lane_rcu_res_i1_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[37]), .wake_seen(wake[37]), .valid_seen(|valid[60:60]));
+  ccv_common_chk_wake u_lane_rcu_res_i2_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[38]), .wake_seen(wake[38]), .valid_seen(|valid[61:61]));
+  ccv_common_chk_wake u_lane_rcu_res_i3_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[39]), .wake_seen(wake[39]), .valid_seen(|valid[62:62]));
+  ccv_common_chk_wake u_lane_rcu_res_i4_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[40]), .wake_seen(wake[40]), .valid_seen(|valid[63:63]));
+  ccv_common_chk_wake u_lane_rcu_res_i5_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[41]), .wake_seen(wake[41]), .valid_seen(|valid[64:64]));
+  ccv_common_chk_wake u_lane_rcu_res_i6_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[42]), .wake_seen(wake[42]), .valid_seen(|valid[65:65]));
+  ccv_common_chk_wake u_lane_rcu_res_i7_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[43]), .wake_seen(wake[43]), .valid_seen(|valid[66:66]));
+  ccv_common_chk_wake u_lane_rcu_res_i8_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[44]), .wake_seen(wake[44]), .valid_seen(|valid[67:67]));
+  ccv_common_chk_wake u_lane_rcu_res_i9_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[45]), .wake_seen(wake[45]), .valid_seen(|valid[68:68]));
+  ccv_common_chk_wake u_lane_rcu_res_i10_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[46]), .wake_seen(wake[46]), .valid_seen(|valid[69:69]));
+  ccv_common_chk_wake u_lane_rcu_res_i11_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[47]), .wake_seen(wake[47]), .valid_seen(|valid[70:70]));
+  ccv_common_chk_wake u_lane_rcu_res_i12_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[48]), .wake_seen(wake[48]), .valid_seen(|valid[71:71]));
+  ccv_common_chk_wake u_lane_rcu_res_i13_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[49]), .wake_seen(wake[49]), .valid_seen(|valid[72:72]));
+  ccv_common_chk_wake u_lane_rcu_res_i14_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[50]), .wake_seen(wake[50]), .valid_seen(|valid[73:73]));
+  ccv_common_chk_wake u_lane_rcu_res_i15_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[51]), .wake_seen(wake[51]), .valid_seen(|valid[74:74]));
+  ccv_common_chk_wake u_lane_rcu_res_i16_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[52]), .wake_seen(wake[52]), .valid_seen(|valid[75:75]));
+  ccv_common_chk_wake u_lane_rcu_res_i17_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[53]), .wake_seen(wake[53]), .valid_seen(|valid[76:76]));
+  ccv_common_chk_wake u_lane_rcu_res_i18_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[54]), .wake_seen(wake[54]), .valid_seen(|valid[77:77]));
+  ccv_common_chk_wake u_lane_rcu_res_i19_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[55]), .wake_seen(wake[55]), .valid_seen(|valid[78:78]));
+  ccv_common_chk_wake u_lane_rcu_res_i20_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[56]), .wake_seen(wake[56]), .valid_seen(|valid[79:79]));
+  ccv_common_chk_wake u_lane_rcu_res_i21_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[57]), .wake_seen(wake[57]), .valid_seen(|valid[80:80]));
+  ccv_common_chk_wake u_lane_rcu_res_i22_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[58]), .wake_seen(wake[58]), .valid_seen(|valid[81:81]));
+  ccv_common_chk_wake u_lane_rcu_res_i23_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[59]), .wake_seen(wake[59]), .valid_seen(|valid[82:82]));
+  ccv_common_chk_wake u_lane_rcu_res_i24_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[60]), .wake_seen(wake[60]), .valid_seen(|valid[83:83]));
+  ccv_common_chk_wake u_lane_rcu_res_i25_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[61]), .wake_seen(wake[61]), .valid_seen(|valid[84:84]));
+  ccv_common_chk_wake u_lane_rcu_res_i26_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[62]), .wake_seen(wake[62]), .valid_seen(|valid[85:85]));
+  ccv_common_chk_wake u_lane_rcu_res_i27_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[63]), .wake_seen(wake[63]), .valid_seen(|valid[86:86]));
+  ccv_common_chk_wake u_lane_rcu_res_i28_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[64]), .wake_seen(wake[64]), .valid_seen(|valid[87:87]));
+  ccv_common_chk_wake u_lane_rcu_res_i29_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[65]), .wake_seen(wake[65]), .valid_seen(|valid[88:88]));
+  ccv_common_chk_wake u_lane_rcu_res_i30_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[66]), .wake_seen(wake[66]), .valid_seen(|valid[89:89]));
+  ccv_common_chk_wake u_lane_rcu_res_i31_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[67]), .wake_seen(wake[67]), .valid_seen(|valid[90:90]));
   ccv_common_chk_wake u_rcu_ooe_done_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[68]), .wake_seen(wake[68]), .valid_seen(|valid[97:91]));
   ccv_common_chk_wake u_rcu_miu_addr_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[69]), .wake_seen(wake[69]), .valid_seen(|valid[101:98]));
   ccv_common_chk_wake #(.ARRIVE(1)) u_miu_rcu_data_wake (.clk(clk), .rst_n(rst_n), .rx_gated(rx_gated[70]), .wake_seen(wake[70]), .valid_seen(|valid[105:102]));

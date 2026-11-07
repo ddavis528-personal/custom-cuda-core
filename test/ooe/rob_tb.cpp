@@ -12,7 +12,7 @@
 // before. The leads are the next cycle's, so the RTL runs a model cycle
 // behind. A core stops being compared at the first thing the ROB does not
 // build yet (RobLog::stop: a squash other than a branch's, a fault taken, a
-// retire port, an atomic, a kill); cores with other than RB_S tier-1 slots
+// barrier port, an atomic, a kill); cores with other than RB_S tier-1 slots
 // are skipped.
 //
 // Negative controls (ROB_CONTROL=<name>) perturb the driving and must be
@@ -34,6 +34,13 @@
 // in flight), no-store (no fill is a store: a squash's discard is missed)
 // and drop-killed-fill (the fill of an entry squashed before it landed
 // never comes: its names are never freed), run mispredicting.
+//
+// Slice 3 (OI rev 304, OA rev 362): ccv_ooe_miu_retire's port WID is the
+// slot's own (commit_per_slot 1), so the window takes one store a cycle and
+// the commit leaves from the retire-stage register: last cycle's commits
+// are compared, slot and rob_tag. Its controls: shared-ports (the model
+// shares the ports, two stores retire in a window) and store-shift (a
+// store's bit lands on the next lane's fill).
 //
 // Slice 2 (OI-85, form (a) of OI-86): the model at resolve_lag 1 and
 // squash_act_lag 1. A branch's done goes on slot BS (CCV_DONE_SLOTS - 2, AR's RCU spec rev
@@ -91,6 +98,10 @@ void robConfig(Config &c) {
   c.held_room_lag = 1;
   c.squash_held_room_lag = 1;   // the ROB registers no run in a squash's cycle that leaves held entries
   c.kill_free_lag = 1;   // OI-94 (C''): a killed fill's names free as the RTL frees them
+  // Slice 3 (OI 304): ccv_ooe_miu_retire's port WID is the slot's own, one
+  // store commit a cycle; shared-ports runs the model with the ports shared.
+  const char *ctl = std::getenv("ROB_CONTROL");
+  c.commit_per_slot = !(ctl && std::string(ctl) == "shared-ports");
 }
 
 namespace {
@@ -110,7 +121,7 @@ uint64_t current = 0;
 bool live = false, stopped = false;
 unsigned long long cycles = 0, cores = 0, skipped = 0, stops = 0, retires = 0, allocs = 0, nops = 0, gfrees = 0,
                    pfrees = 0, events = 0, mismatches = 0, resolves = 0, redirects = 0, ckfrees = 0,
-                   squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0;
+                   squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0, commits = 0;
 bool rename_preds = true;
 std::map<std::string, unsigned long long> stop_why;
 
@@ -408,7 +419,9 @@ void driveFills(const std::vector<Core::RobLog::Alloc> &alloc) {
       setBit(dut->fl_pfree_cq02h, l, a.pfree);
       setField(dut->fl_gnsec_cq02h, l * NSB, NSB, a.gnsec);
       setBit(dut->fl_palloc_cq02h, l, a.pwe && rename_preds);
-      setBit(dut->fl_store_cq02h, l, a.store && control != "no-store");
+      setBit(dut->fl_store_cq02h, l, a.store && control != "no-store" && control != "store-shift");
+      // store-shift: a store's bit lands on the next lane's fill.
+      if (control == "store-shift" && a.store) setBit(dut->fl_store_cq02h, (l + 1) % A, true);
       setBit(dut->fl_br_cq02h, l, a.br);
       setField(dut->fl_ckpt_cq02h, l * LK, LK, a.ckpt);
       setBit(dut->fl_ptaken_cq02h, l, a.ptaken);
@@ -633,6 +646,23 @@ void check(const Cyc &c, const Cyc *prev) {
     }
   }
   if (!prev) return;
+  // Last cycle's store commits (slice 3): one a slot, its rob_tag.
+  {
+    std::vector<int> ci(S, -1);
+    for (const auto &q : prev->r.commit) {
+      if (q.first >= S) continue;
+      if (ci[q.first] >= 0) fail("two commits in a slot", q.first, 0, 2);
+      ci[q.first] = int(q.second);
+    }
+    for (unsigned q = 0; q != S; ++q) {
+      const bool v = getBit(dut->cmt_v_cq03h, q);
+      if (v != (ci[q] >= 0)) { fail("store commit differs", q, v, ci[q] >= 0); continue; }
+      if (!v) continue;
+      ++commits;
+      const unsigned want = q * D + unsigned(ci[q]);
+      if (getField(dut->cmt_tag_cq03h, q * TW, TW) != want) fail("store commit tag differs", q, getField(dut->cmt_tag_cq03h, q * TW, TW), want);
+    }
+  }
   // Last cycle's: what ooe_rat commits, and the frees.
   std::vector<unsigned> pp(S, 0);
   std::vector<uint8_t> gm(NG * NSB, 0), pm(NP, 0);
@@ -784,10 +814,10 @@ int main(int argc, char **argv) {
   dut->final();
   std::printf("rob_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu nops=%llu events=%llu retires=%llu "
               "gpr-frees=%llu pred-frees=%llu resolves=%llu redirects=%llu ckpt-frees=%llu stopped=%llu skipped=%llu "
-              "squashes=%llu squashed=%llu held=%llu killed=%llu held-releases=%llu discards=%llu mismatches=%llu model_failures=%d\n",
+              "squashes=%llu squashed=%llu held=%llu killed=%llu held-releases=%llu discards=%llu commits=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, nops, events, retires, gfrees,
               pfrees, resolves, redirects, ckfrees, stops, skipped, squashes, sq_ents, sq_held, sq_kills, hrels, discards,
-              mismatches, model_fails);
+              commits, mismatches, model_fails);
   if (br_two) std::printf("  cycles with two branch dones (RCU's one a cycle): %llu\n", br_two);
   for (const auto &kv : stop_why) std::printf("  stopped at %s: %llu\n", kv.first.c_str(), kv.second);
   const int rc = mismatches || model_fails ? 1 : 0;

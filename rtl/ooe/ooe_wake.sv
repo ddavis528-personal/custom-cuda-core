@@ -133,13 +133,13 @@ module ooe_wake #(
   // latency (CCV_LAT_RCU, CCV_LAT_LANE, -, -, CCV_LAT_SFU,
   // CCV_LAT_COLLECTIVE; 0 for a class no grant names), and the fastest bypass point
   // (CCV_LAT_LANE_BYP for the lane; 0 for none).
-  parameter logic [63:0] LAT  = 64'h0000_050d_0000_0803,
+  parameter logic [63:0] LAT  = 64'h0000_050c_0000_0703,
   parameter logic [63:0] FAST = 64'h0000_0000_0000_0400,
   // The distinct bypass penalties, ascending, and how many there are
   // (CCV_LAT_BYP_PEN_SAME, _INT_FP, _SFU).
   parameter logic [23:0] PEN  = 24'h03_02_00,
   parameter int NPEN     = 3,
-  parameter int LAT_COPY = 8,          // CCV_LAT_LANE
+  parameter int LAT_COPY = 7,          // CCV_LAT_LANE
   parameter int LAT_SPEC = 17,         // CCV_LAT_L1_WAKE
   parameter int LAT_MISS = 20,         // payload stages + CCV_LAT_L1_CMPL
   parameter int CMPL_DLY = 1,          // CCV_LAT_L1_MISS_WAKE

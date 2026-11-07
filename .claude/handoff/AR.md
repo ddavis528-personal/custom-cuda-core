@@ -70,8 +70,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 307, OA 363, TI 349, RA 88 (tab 9851686b-2b0a), RI 17, IS 189, CP 154, OI 306, DA 111,
-  Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-05: nothing asks AR;
+  record): AR 316, OA 378, TI 361, RA 96 (tab 9851686b-2b0a), RI 24, IS 190, CP 155, OI 319, DA 115,
+  Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
+  merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
+  pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
   RI-15 decided (DA 109, option (c)); RI-14 credit pulses charged to block 2% (DA 110).
   AR 269: the heavy-units conflict row for TI (closed by TI a55c0ff/5e5280f).
   DA 104: ROB split adopted. OA 315 (re:OI-104, option B): OI builds
@@ -306,6 +308,56 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    OA's call): cmpl+hint first kind, HINT 2/FILL 4/MLC 39 stand, flopped
    not taken. MIU spec rev 60 (.12255) and PF-47 bullet updated. Still
    Daniel's: AR 296 (lane_rcu_res zero-cycle => LANE 7/SFU 12).
+   OA 365/RA 89: zero-cycle ooe_rcu_issue needs splits (OOE 2-6, RCU 19-23).
+   AR 308: no splits for now (issue stays flopped); under the link term the
+   issue bnd_rx CANCELS in L1_WAKE (and LAT_RCU, lane) - only L1_CMPL -1 and
+   V-35 done -1 move; reopen if OI prices those >0.2% S1 (then to Daniel
+   with AR 296). OA/RA had claimed WAKE 13->12 (old base booking).
+   AR 309 (re:TI 350, bnd_rx pushed 17720a0): no derive term for a source-end
+   flop; on a DPI block it is a series stage -> generators should refuse it
+   (route src:1 instead). +2 RT/credit per flopped rx end agreed for hosts;
+   asked TI to add bnd_rx to CCV_CREDIT_DEPTH + links.json 2N texts, confirm
+   rescue +2*bnd_rx, and say which check holds RTL src-end flops. RTL: credit
+   need not pass the rx boundary flop (depth 5 not 6; miu_rcu_data +2 entries
+   = 8,912 flops) - RA to price when RCU's RTL top lands. Needs TI, RA.
+   TI 351: (1) DPI flopped send end refused (255436f), texts done, rescue ok.
+   AR 310: TI's check-ngd rule for RTL tops confirmed, amended: refuse a
+   hidden stage per WHOLE port (valid/lead incl.), mirrored at flopped rx ends;
+   fix = no_flop. Needs TI.
+   DA 113 (from RA 91's verbatim quote of Daniel): zero-cycle rx ends only
+   for performance, IPC decides; lane_rcu_res stays flopped (LANE 8/SFU 13);
+   closes AR 296 the same way. Bar >0.2% S1 is RA's proposal: ASK DANIEL.
+   AR 311: corrected RA 90 - credit unflopped through a flopped rx end is
+   depth 5 not 4 (miu_rcu_data +4,456 over no-flop). Needs RA.
+   OA 367: OA 363 withdrawn as a ruling - C9 (no-flop cmpl+hint) is DANIEL's
+   under DA 113; OA recommends (model, 497efb8 @7/12: flopped +1.95% S1 vs C9
+   +0.444% => ~1.5% S1 recovered). OI reprices at 8/13; nothing built until DA
+   rules. DA 114 (Daniel, asked by AR in this session): C9 APPROVED (lapses
+   to Daniel if OI's 8/13 rerun shows <=0.5%). Bar for zero-cycle rx ends:
+   <=0.2% S1 stays flopped (architects); 0.2-0.5% -> Daniel; >0.5% owner may
+   approve ONLY IF it meets the module NGD rules without the flop (Daniel
+   confirmed verbatim, DA rev 115); can't meet 12 NGD w/o rx flop -> Daniel.
+   RA 95: lane_rcu_res zero-cycle APPROVED (S1 -1.04%, cm32 -0.93%, cm128
+   +0.15%; NGD 10 est., check-ngd passes at 12) -> LANE 7/SFU 12 once TI edits
+   links.json. AR 313: checked OK; Partitioning tab rev 55 new 'Floorplan
+   constraints' (RCU abuts all 32 lanes, link_n 0; RCU-MIU adjacency); LANE
+   spec rev 22 (A+7 write, bypass ages 4-5, 5 deep); PF-47 bullet; C9 8/13
+   rerun NOT owed. Needs RA, OI, TI.
+   TI 357: Z pushed f4ce0fd (full gate PASS): LANE 7/SFU 12, kill drain 16,
+   five controls retimed; TI's C9 question crossed AR 313 (already answered).
+   LANE spec rev 24 + PF-47 say it has landed.
+   AR 314 (re:OA 376/OI-125): lead_fault on ccv_miu_ooe_cmpl OK - MIU knows
+   (all 4 causes from address check); defined status==1 (NOT nonzero: 2 is
+   replay), one bit per slot, MIU settles status by the valid's cycle. MIU
+   spec rev 61 (.36582). Needs OA, TI (schema row), OI.
+   AR 315 (re:TI 360, RA-11 (c)): PHYS_REGS sweep f4ce0fd: 160 free (S1/cm32 =,
+   cm128 -0.06%) but provisional (OI fits_stale); 128 cm32 +0.17 cm128 +0.25.
+   AR leans 160 (~34k RCU flops): bring to OA (Q-35) then DANIEL once TI #72
+   re-runs 160 clean, <=0.1% everywhere. 128 not brought. RA-11 (a) budget
+   waits RA Phase 1; (b) answered by Partitioning rev 55.
+   AR 316 (re:OA 378): #72 at 160 must also report floor stalls, restore-
+   allocate under demotion, sectioned-row fragmentation, memop-held regs
+   (cm128); OI adds missing counters. OA: no objection if no new stalls.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
@@ -315,10 +367,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    DA 111 (TI-51, recorded by AR from TI rev 345, no verbatim quote): (1)
    compact at 350k, not 400k: DANIEL APPROVED (2026-11-06, in AR's session)
    re-running the session-home skill once TI's push (2d445f5) is merged, so
-   /home/user/.claude takes 350000. Out by TI's 1a9a3e8/0ce9c12 on
-   ccr-183cc441-doowtf and claude/custom-cuda-core-infra-6msg93 (full gate
-   PASS): the sweep that merges them re-runs the session-home skill (the
-   install, not just --check) under that approval.
+   /home/user/.claude takes 350000. DONE in the 11-06 sweep: installed,
+   --check rc=0.
    TI 349 (TI-51 done, 0ce9c12): block CG/NGD from module units + structural
    read. Can't catch: cross-boundary synthesis (conservative) and one net's
    loads as a whole (short by <=1 INV stage). No AR spec says "timed whole"

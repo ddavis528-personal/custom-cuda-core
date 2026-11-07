@@ -268,7 +268,7 @@ static constexpr uint32_t kRtAbut = 2;
 /// decided at the block-level grill-me (Q-43, 2026-09-26)
 static constexpr uint32_t kCreditTurnaround = 2;
 
-/// Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2N longer, and its depth with it. Proved in tools/check-formal.sh: full rate at this depth, and not at one less.
+/// Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2(N + bnd_rx) longer, and its depth with it: N its stages, and bnd_rx 1 where its receiving end holds the boundary flop, a stage each way in front of a receiver that registers its own inputs and credit, as every DPI host does (AR's rev 309 (2)). Proved in tools/check-formal.sh: full rate at this depth, and not at one less.
 /// decided at the block-level grill-me (Q-43, 2026-09-26)
 static constexpr uint32_t kCreditDepth = 4;
 
@@ -473,9 +473,9 @@ static constexpr uint32_t kLatL1HitBase = 7;
 /// PROVISIONAL -- decided by: generated
 static constexpr uint32_t kLatRcu = 3;
 
-/// Contracted lane latency: base plus, out and back, the repeater stages (params/links.json; A-48) and a flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). 8 at the defaults: ccv_lane_rcu_res's end at RCU is flopped. The lane channels are lockstep, so every copy has the same stages.  Derived: = CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res').
+/// Contracted lane latency: base plus, out and back, the repeater stages (params/links.json; A-48) and a flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). 7 at the defaults: ccv_lane_rcu_res's end at RCU is zero-cycle (RA's rev 95, under DA 114; it was flopped, 8, from AR's rev 301), and that link takes no repeater stage, ever. The lane channels are lockstep, so every copy has the same stages.  Derived: = CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res').
 /// PROVISIONAL -- decided by: generated
-static constexpr uint32_t kLatLane = 8;
+static constexpr uint32_t kLatLane = 7;
 
 /// Lane-local bypass (A-59): a dependent lane op may issue this many cycles after its producer, measured issue to dependent issue. Producer and dependant execute at the same lane index and both cross ccv_ooe_rcu_issue and ccv_rcu_lane_ops, so the links cancel and none enters it; the floorplan cannot change it. Applies only where the scheduler marks the pair bypassable: dependants of cross-lane ops wake at CCV_LAT_LANE, and a consumer takes it only if every use it makes of the producer is a lane operand (A-62, Q-55). The lane forwards the value; RCU names it with operand_byp on ccv_rcu_lane_ops (TI-8).  Requires: CCV_LAT_LANE_BYP < CCV_LAT_LANE.
 /// PROVISIONAL -- decided by: LANE per-block session
@@ -537,9 +537,9 @@ static constexpr uint32_t kLatBypPenSfu = 3;
 /// PROVISIONAL -- decided by: LANE per-block session; AR's revs 300 and 301 (re:RI-16)
 static constexpr uint32_t kLatSfuBase = 12;
 
-/// Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 13 at the defaults. RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 17 at the defaults, its issue end flopped), derived, never written as a number (AR's rev 288).  Derived: = CCV_LAT_SFU_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res').
+/// Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 12 at the defaults (RA's rev 95: ccv_lane_rcu_res's end at RCU zero-cycle). RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 16 at the defaults, its issue end flopped; 17 before RA's rev 95), derived, never written as a number (AR's rev 288).  Derived: = CCV_LAT_SFU_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res').
 /// PROVISIONAL -- decided by: generated
-static constexpr uint32_t kLatSfu = 13;
+static constexpr uint32_t kLatSfu = 12;
 
 /// Full latency of lat_class 5, the warp-collective ops RCU executes (shfl, vote, ballot, unballot): issue to the result readable in the PRF. Cross-lane, so nothing bypasses from them (A-59). A placeholder until an RCU session confirms it.
 /// PROVISIONAL -- decided by: RCU per-block session

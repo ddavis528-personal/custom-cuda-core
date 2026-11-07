@@ -73,7 +73,7 @@ module ooe_rendep #(
   // that lat_class and group read by a consumer of group cg.
   // The default is test/ooe/rendep-params.py's table at today's parameters;
   // run-rtl.sh checks it.
-  parameter logic [2*NU*G*G-1:0] CT = 1024'hffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff3affffffb1ffb4ffffffffffffffffffffffffffffffff,
+  parameter logic [2*NU*G*G-1:0] CT = 1024'hffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff3ffffffff1fff4ffffffffffffffffffffffffffffffff,
   localparam int W   = $clog2(N),
   localparam int P   = 2 * A,
   localparam int LG  = $clog2(NG),
