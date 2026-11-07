@@ -37,7 +37,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-07: Conventions 17, AR 308, OA 366, IS 190, TI 362, OI 306, CP 155, DA 115, RA 96, RI 31.
+Bookmarks 2026-11-07 (sweep): Conventions 17, AR 316, OA 379, IS 190, TI 362, OI 319, CP 155, DA 115, RA 96, RI 31.
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
