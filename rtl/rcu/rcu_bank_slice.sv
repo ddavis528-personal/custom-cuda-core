@@ -312,6 +312,7 @@ module rcu_bank_slice #(
   logic [NP*NH-1:0] phi_cr02h;
   logic [NP*16-1:0] plo_cr02h;
   logic [NP-1:0]    pact_cr02h;
+  logic [NP-1:0]    pzf_cr02h;    // port p writes zeros here (FULL_ROW, K outside it)
   always_comb begin
     for (int p = 0; p < NW; p++) begin
       pdat_cr02h[p*32 +: 32] = {32{wr_keep_cr02h[p]}} & wr_dat_cr02h[p*32 +: 32];
@@ -323,6 +324,7 @@ module rcu_bank_slice #(
       phi_cr02h[p*NH +: NH]  = wr_hi_cr02h[p*NH +: NH];
       plo_cr02h[p*16 +: 16]  = wr_lo_cr02h[p*16 +: 16];
       pact_cr02h[p]          = wr_act_cr02h[p];
+      pzf_cr02h[p]           = ~wr_keep_cr02h[p] & ~(p == NW - 1 && gws_cr02h);
     end
     // MW: lane l's byte K is byte b of slot j's word, by the one-hot select.
     for (int l = 0; l < L; l++) begin
@@ -336,6 +338,7 @@ module rcu_bank_slice #(
     phi_cr02h[NW*NH +: NH] = mw_hi_cr02h;
     plo_cr02h[NW*16 +: 16] = mw_lo_cr02h;
     pact_cr02h[NW]         = mw_act_cr02h;
+    pzf_cr02h[NW]          = ~mw_kp_cr02h;
   end
   // R0 and R1 into rsrc: the read, or on the lanes of an MW write landing
   // now in the same row (never the zero register), the byte it writes.
@@ -374,7 +377,8 @@ module rcu_bank_slice #(
         logic h;
         h = pact_cr02h[p] & phi_cr02h[p*NH + r/16] & plo_cr02h[p*16 + r%16];
         hit_cr02h[r*NP + p] = h;
-        row_en_cr02h[r] = row_en_cr02h[r] | h;
+        // A zero fill of a row already zero changes nothing: no clock.
+        row_en_cr02h[r] = row_en_cr02h[r] | (h & (~pzf_cr02h[p] | (|row_cr03h[r*32 +: 32])));
         for (int l = 0; l < L; l++) begin
           d[8*l +: 8]    = d[8*l +: 8] | ({8{h & plm_cr02h[p*L + l]}} & pdat_cr02h[p*32 + 8*l +: 8]);
           keep[8*l +: 8] = keep[8*l +: 8] & ~{8{h & plm_cr02h[p*L + l]}};
