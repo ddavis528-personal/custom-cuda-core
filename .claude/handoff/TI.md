@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-06. Keep this current at every task's end; it is what
+Updated 2026-11-07. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -33,12 +33,28 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 310, OA 368, IS 190, TI 354, OI 306, CP 155, DA 114,
-RA 91, RI 22 (2026-11-06). Latest TI open: TI-51 (rev 346).
+Conventions 17, AR 316, OA 379, IS 190, TI 363, OI 319, CP 155, DA 115,
+RA 96, RI 31 (2026-11-07 sweep). Latest TI open: TI-51 (rev 346).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
-pongs. Pings 2026-10-30 sent to all five; all ponged ok.
+pongs. Pings 2026-11-06 sent to AR OA IS OI CP RA RI; all seven ponged ok.
 
 ## State
+- 2026-11-07 sweep: tips 24d17a4 on both TI branches (merged 126afa13 16,
+  183cc441 55, 57eff422 47, 80102643 9, 888218a3 2, 9eb50716 13, c22116ce 4;
+  release gate PASS; release fd0402f pushed, snapshot-2026-11-07-24d17a4 tag
+  refused, local only). Before it: PUSHED 43695ae (RI-18 stub), 41c82d8
+  (ret-held-by-lanes over stub and model), 5a2f4aa (full PASS: lead_fault on
+  ccv_miu_ooe_cmpl, OI-125/AR 314; controls lead-fault-replay/-drop; OOE check
+  in ooe_block.cpp, OI told, TI rev 363). TI rows 358-363.
+  RH: J6 done (TI rev 360); J7 done: clean but coremarkpl32 (943,992 CHECK
+  fails, first "seq 207330 R14 lane 2 = 00000240, oracle 00003a6c") and three
+  cold runs hang (cm128 cold: dec_ooe_uop response_within_n tick 116735 s4).
+  #88 RH bisecting coremarkpl32 (CCV_RCU_IMPL=stub run + --cycles bisect on the
+  model); J8 coremarkpl128 paused, reruns on the stub if the stub is clean.
+  Next: stub clean -> TI row to RI with repro; else bisect 36e2049..f4ce0fd.
+  Then relay J7/J8 to AR (AR-24, #34/#38) with the coremarkpl caveat.
+  #72: after OI's fits_stale fix + counters (rev 361), rerun 160 vs 192 on RH.
+  Disk: old /tmp/tmp.* not TI's; deleting them was denied, ask the user.
 - 2026-11-07 01:30Z: PUSHED f4ce0fd (full gate PASS): Z (RA rev 95, AR rev 313): lane_rcu_res zero-cycle at RCU,
   LANE 7, SFU 12; five controls retimed (movi 258, held-over-r warp 3, free-new seq 379 R4, predswap/resume-mid
   at:58); drift control flips lane_rcu_res bnd to 1; rendep CT defaults in ooe_rendep/ooe_rename. RH runs J6
