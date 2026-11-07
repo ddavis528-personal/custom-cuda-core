@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-07 10:20 (C9h gate relaunched 10:12, log scratchpad/gp-c9h3.log; sweep merge waits on it; TI 360 fix and ROB slice 4 uncommitted in scratch trees). Keep this current at every task's end; it is what
+Updated 2026-11-07 12:40 (C9h PUSHED f00c14c; sweep merge 289b880 full gate running 11:30, log scratchpad/gp-sweep7.log;
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -51,30 +51,21 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first)
-1. C9h push (task #23): wc9 (scratchpad/wc9, oi-c9) merged TI's origin/ccr-183cc441-doowtf (41c82d8,
-   tip a6bb2e1) as f00c14c; regen clean. gate-push launched 08:07 11-07 detached, log
-   scratchpad/gp-c9h.log (verify log ~/ccv-logs/verify-f00c14c-*). On green: OI-114 row to OA, and
-   tell TI. On red: gate-triage.
-2. TI 360 (task #26), tree scratchpad/wfs, branch oi-fs off oi-c9 63a0594, UNCOMMITTED:
-   root cause = OI-114 (b): under floor_take_lag 1 a slot's floor term is split again while its
-   allowance holding it is admitted against (take reaches unmet a cycle late) -> one cycle double
-   count -> sum of allowances > credit (all failures credit 2, one slot's floor; trace t=1272/1273).
-   Fix: model knob floor_held_gate 1 (floor_held_ per slot/class; no floor term when the registered
-   allowance holds one) + ooe_go fh_cq02h flops (enabled with fits, gate ug/up, fhc forces chg).
-   cm128 phys128 300k cycles: fits 23 -> 0. go_tb exact live+scarce; control floor-held-off caught.
-   Counters added (TI 361/AR 315-316/OA 378): restore.alloc_wait, rename.frag (+.peak, hist),
-   gpr_held_by_memop (+.peak, hist; = in-flight memops' GPR names). Debug prints removed.
-   TODO: run-tests.sh, check-ngd/check-cg ooe_go, commit, RH price at 128/160/192, row to OA+TI+AR.
-   Note: my cm128 runs with CCV_OOE_CONFIG all show order=bad/operand CHECKs even at default (an
-   invocation artifact); compare fits counts only.
-3. ROB slice 4 (task #22), tree scratchpad/wr4 (oi-rob4 off oi-c9 63a0594), UNCOMMITTED. Fault taken
-   at the registered head only (hrf & v & flt & ~hd & ~(rd_s&sqm), !fst; own enable ft_en from
-   flops), no ftk_q; model knob fault_head_only 2 (head_since < now_); rob_tb exact live+mispredict;
-   controls no-fault, fault-cause, fault-any-port, fault-port0 caught; run-tests PASS.
-   NGD (ngd-rob4d): NGD-1 30.8, dn_tag 27.2 ok; OVER: al_n 29.6 (cap 29.3), dn_row 26.4 (cap 26.0).
-   Then tried: dn_row decode split into kept copies dra/drb (not yet measured, nor rob_tb rerun).
-   Then check-cg, commit, OA row (flops ~2,300/slot vs OA's 1,270; head-only fault +1 cycle).
-   MIU lead_fault path waits on TI's schema row (OI-125).
+1. Sweep merge (task #27): wc9 (oi-c9) at 289b880 merged 7 branches (TI 5a2f4aa lead_fault, RA, AR,
+   RI, OA, RH handoffs) + main checkout's handoff commits; full gate-push launched 11:30, log
+   scratchpad/gp-sweep7.log. On red: gate-triage. OI-126 (C9h close-out) written, rev 320, no ring.
+2. ROB slice 4 (task #22), tree scratchpad/wr4 (oi-rob4), local commits 644621d + merge 63715f5 (289b880)
+   + f48e194 (MIU faults on lead_fault): cmcap fv + fault capture; rob_w mf mark, V-74 register fa_*
+   (oldest from head), record reads fa when head's, ft_addr out; cfe also takes fault in its cycle;
+   model drops robStop("miu fault"); testMemFault(true) on hooked benches. rob_tb exact live+mispredict
+   (faults 6, 2 MIU); all 6 fault controls caught; cmcap_tb exact, 3 controls caught.
+   Also unmeasured: dn_row split dra/drb. TODO after the gate: check-ngd ooe_rob_w (caps al_n 29.3,
+   dn_row 26.0, NGD-1 31.7) and ooe_cmcap; check-cg both (cmcap: 9 always-clocked flops vs 2% ~9.4);
+   ngd.json budgets for cf_* inputs if needed; run-tests.sh; OA row (flops: +mf 32, fa ~200/slot;
+   record lanes from fa; head-only fault +1 cycle).
+3. TI 360 (task #26), tree scratchpad/wfs (oi-fs), local WIP 5e37a70: floor_held_gate fix + counters
+   (restore.alloc_wait, rename.frag, gpr_held_by_memop). TODO: merge 289b880, run-tests, check-ngd/cg
+   ooe_go, push, RH price at 128/160/192, rows to OA+TI+AR (asked by TI 360/361, AR 315/316, OA 378).
 4. DA 111b / OA 364: a unit for every OOE module at each instantiated param set.
 5. OA 365 (low): ooe_sched phys_src0/1 output depth.
 
