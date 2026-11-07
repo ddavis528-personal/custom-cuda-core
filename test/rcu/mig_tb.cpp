@@ -432,7 +432,9 @@ struct Bench {
     if (rst_now || cmdq.empty() || !ccred || !coin(cfg.psend)) return;
     const int id = cmdq.front();
     Mig &m = migs[id];
-    if (ready[id] > t || (m.map_first && m.map_ok > t)) return;
+    // A relaunched warp's command may land before its map or in kmask's lag
+    // (RA, re:RI-19): only its PCA rows wait for the map.
+    if (ready[id] > t) return;
     cmdq.pop_front();
     dut->cv_cr00h = 1;
     cpay = id;
