@@ -40,12 +40,14 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 380, AR 316, TI 366, OI 321, IS 190, CP 155, DA 115,
+Conventions 17, OA 380, AR 316, TI 373, OI 321, IS 190, CP 155, DA 115,
 RA 96 (tab 9851686b-2b0a), RI 31 (tab 8e4547bc-c469).
 OOE doc rev 369. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release 702d9bff; tag refused (known).
 
 ## Open work (most urgent first)
+-19. TI-373: DCU stub default now 8x64 (31168a3): perf baselines moved. Any pricing OA judges
+   (OI-114 (b), PHYS 160, C9 reruns) must compare runs on the same side of 31168a3; never mix.
 -18. OA 380 re:TI IS-21 OOE's side: CAS pd rides A2 (renamed pd, pred_we, old pd, every pass; OI
    model, RI step table; no field change). A1/A3 never bulk-discarded nor replayed (status 0/1):
    TI 366: DONE - pd rides DEC 2nd slot; schema text: mem_op 2/3 exempt, status never 2. OI-127 agrees.
