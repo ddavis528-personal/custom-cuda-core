@@ -39,6 +39,12 @@ Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-07 01:30Z: PUSHED f4ce0fd (full gate PASS): Z (RA rev 95, AR rev 313): lane_rcu_res zero-cycle at RCU,
+  LANE 7, SFU 12; five controls retimed (movi 258, held-over-r warp 3, free-new seq 379 R4, predswap/resume-mid
+  at:58); drift control flips lane_rcu_res bnd to 1; rendep CT defaults in ooe_rendep/ooe_rename. RH runs J6
+  (#72 PHYS_REGS 192/160/128), J7 (#34 J2+J4 rebaseline), J8 (#38 J3) on f4ce0fd; #46 goes as J9 once CTA
+  queueing and gen-oracle -load exist. RI-18 on ti-r18: retmiss kernel, --break ret-held-by-lanes (stub; RI
+  adds the model side, then its run joins the control).
 - 2026-11-06 PM: #79 PUSHED 17720a0 (full gate PASS). Sweep PUSHED 2281ab8
   (7 branches: 80102643 30, 9eb50716 28, 126afa13 16, 57eff422 13 incl.
   OI-112 93457a4, 3868632d 11, 888218a3 7, c22116ce 2; release 89db27a,
