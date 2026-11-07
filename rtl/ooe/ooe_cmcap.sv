@@ -68,9 +68,11 @@ module ooe_cmcap #(
       fv_cq01h <= cmpl_lf_cq00h;
     end
   end
+  logic [NC-1:0] fv_en_cq01h;                  // the fault lead, as the fault fields' enable
+  assign fv_en_cq01h = fv_cq01h;
   for (genvar k = 0; k < NC; k++) begin : g_f
     always_ff @(posedge ooe_core_clk)
-      if (fv_cq01h[k]) f_cq02h[k * FW +: FW] <= cmpl_f_cq01h[k * FW +: FW];
+      if (fv_en_cq01h[k]) f_cq02h[k * FW +: FW] <= cmpl_f_cq01h[k * FW +: FW];
   end
   for (genvar k = 0; k < C; k++) begin : g_cp
     (* keep *) logic [NC*PW-1:0] cp_cq02h;

@@ -329,9 +329,9 @@ module ooe_rob_w #(
   // And an MIU fault (OI-125): set by the entry's faulting completion,
   // cleared as it leaves. The entry never completes (cmn_e, the
   // completions without a fault, complete it), so the window stops at it
-  // as at a rename-time fault. cm_e (every completion) still ends its time
-  // at MIU, so a squashed one is released as any other.
-  logic [S*D-1:0]      mf_cq02h, cmn_e_cq02h, cfe_cq02h;
+  // as at a rename-time fault. Every completion ends its time at MIU (md,
+  // or mf for a fault it keeps), so a squashed one is released as any other.
+  logic [S*D-1:0]      mf_cq02h, mf_nx_cq02h, cmn_e_cq02h, cfe_cq02h;
   // V-74's register per slot: the oldest MIU fault's entry (one-hot), its
   // cause, lanes and address (the model's fa_*). The record reads it when
   // its entry is the head's.
@@ -539,16 +539,15 @@ module ooe_rob_w #(
   // or none; MIU's completions are one an entry a cycle already.
   logic [S*D-1:0]    dn_e_cq02h, cm_e_cq02h;
   logic [S*D*NR-1:0] dr_e_cq02h;               // a done for row r of entry e
-  // Each port's row, decoded twice, one copy for each half of the entries,
-  // so neither fans out across every entry.
-  (* keep *) logic [ND*NR-1:0] dra_cq02h;
-  (* keep *) logic [ND*NR-1:0] drb_cq02h;
+  // Each port's tag, decoded to the entries: the window's ports read them
+  // apart from the entry terms (below).
+  logic [ND*S*D-1:0] ddn_cq02h;
+  logic [NM*S*D-1:0] dcm_cq02h;
   always_comb
-    for (int p = 0; p < ND; p++)
-      for (int r = 0; r < NR; r++) begin
-        dra_cq02h[p * NR + r] = dn_q_cq02h[p] && dn_row_cq02h[p * 2 +: 2] == 2'(r);
-        drb_cq02h[p * NR + r] = dn_q_cq02h[p] && dn_row_cq02h[p * 2 +: 2] == 2'(r);
-      end
+    for (int e = 0; e < S * D; e++) begin
+      for (int p = 0; p < ND; p++) ddn_cq02h[p * S * D + e] = dn_tag_cq02h[p * TW +: TW] == TW'(WID * D + e);
+      for (int p = 0; p < NM; p++) dcm_cq02h[p * S * D + e] = cm_tag_cq02h[p * TW +: TW] == TW'(WID * D + e);
+    end
   always_comb begin
     dn_e_cq02h = '0;
     cm_e_cq02h = '0;
@@ -558,14 +557,14 @@ module ooe_rob_w #(
     for (int e = 0; e < S * D; e++) begin
       for (int p = 0; p < ND; p++)
         for (int r = 0; r < NR; r++)
-          if ((e < S * D / 2 ? dra_cq02h[p * NR + r] : drb_cq02h[p * NR + r]) && dn_tag_cq02h[p * TW +: TW] == TW'(WID * D + e))
+          if (dn_q_cq02h[p] && ddn_cq02h[p * S * D + e] && dn_row_cq02h[p * 2 +: 2] == 2'(r))
             dr_e_cq02h[e * NR + r] = 1'b1;
       dn_e_cq02h[e] = |dr_e_cq02h[e * NR +: NR];
       for (int p = 0; p < NM; p++)
-        if (cm_tag_cq02h[p * TW +: TW] == TW'(WID * D + e)) begin
-          cm_e_cq02h[e]  = cm_e_cq02h[e]  | cm_q_cq02h[p];
-          cmn_e_cq02h[e] = cmn_e_cq02h[e] | (cm_q_cq02h[p] & ~cf_q_cq02h[p]);
-          cfe_cq02h[e]   = cfe_cq02h[e]   | cf_q_cq02h[p];
+        if (dcm_cq02h[p * S * D + e]) begin
+          if (cm_q_cq02h[p])                   cm_e_cq02h[e]  = 1'b1;
+          if (cm_q_cq02h[p] && !cf_q_cq02h[p]) cmn_e_cq02h[e] = 1'b1;
+          if (cf_q_cq02h[p])                   cfe_cq02h[e]   = 1'b1;
         end
     end
   end
@@ -603,7 +602,7 @@ module ooe_rob_w #(
   logic [S*D-1:0] sqe_cq02h, outq_cq02h, hds_cq02h, frel_cq02h, krel_cq02h;
   always_comb
     for (int e = 0; e < S * D; e++) begin
-      outq_cq02h[e] = (oc_cq02h[e * NR * RCW +: NR * RCW] != '0) | (am_cq02h[e] & ~md_cq02h[e]) | cp_cq02h[e];
+      outq_cq02h[e] = (oc_cq02h[e * NR * RCW +: NR * RCW] != '0) | (am_cq02h[e] & ~(md_cq02h[e] | mf_cq02h[e])) | cp_cq02h[e];
       sqe_cq02h[e]  = rd_s_cq02h[e / D] & sqm_cq02h[e] & v_cq02h[e] & ~hd_cq02h[e];
       // An unfilled entry has issued nothing, so owes nothing (asserted,
       // unfilled_owes_none): the held set needs no unfilled mask, which
@@ -622,6 +621,7 @@ module ooe_rob_w #(
   end
   logic [S*D-1:0]    v_nx_cq02h, cmp_nx_cq02h, wr_cq02h;
   logic [S*D-1:0]    cmp_old_cq02h;            // complete at the edge, this cycle's allocations aside
+  logic [S*D-1:0]    ya_cq02h, yb_cq02h, yc_cq02h, ym_cq02h, ykm_cq02h;
   logic [S*D-1:0]    dn_nx_cq02h, md_nx_cq02h, cp_nx_cq02h, am_nx_cq02h;
   // A held entry is released once its op has landed, with this cycle's
   // events (a squash's own hold among them, as the model releases in the
@@ -631,7 +631,7 @@ module ooe_rob_w #(
   logic [S*D*2-1:0]  rc_nx_cq02h;
   always_comb
     for (int e = 0; e < S * D; e++) begin
-      out_nx_cq02h[e]   = ~ozall_cq02h[e] | ((am_cq02h[e] | ev_miu_cq02h[e]) & ~(md_cq02h[e] | cm_e_cq02h[e])) |
+      out_nx_cq02h[e]   = ~ozall_cq02h[e] | ((am_cq02h[e] | ev_miu_cq02h[e]) & ~(md_cq02h[e] | mf_cq02h[e] | cm_e_cq02h[e])) |
                           (cp_cq02h[e] & ~ev_cpl_cq02h[e]) | ev_cpi_cq02h[e];
       hrel_e_cq02h[e]   = (hd_cq02h[e] | hds_cq02h[e]) & ~out_nx_cq02h[e];
       hd_nx_cq02h[e]    = (hd_cq02h[e] | hds_cq02h[e]) & ~hrel_e_cq02h[e];
@@ -647,7 +647,11 @@ module ooe_rob_w #(
       rc_nx_cq02h[e * 2 +: 2] = rel_e_cq02h[e] ? 2'd0 : wr_cq02h[e] ? fd_rs_cq02h[e * 2 +: 2] :
                                 rc_cq02h[e * 2 +: 2] - ev_rsf_cq02h[e * 2 +: 2];
       dn_nx_cq02h[e] = ~rel_e_cq02h[e] & (dn_cq02h[e] | dn_e_cq02h[e]);
-      md_nx_cq02h[e] = ~rel_e_cq02h[e] & (md_cq02h[e] | cm_e_cq02h[e]);
+      // md marks a completion that ends the entry's time at MIU and lets it
+      // complete: every completion but a fault the entry keeps (mf), whose
+      // own flop says the same to the out terms (OI-125), so the completion
+      // term needs no fault input.
+      md_nx_cq02h[e] = ~rel_e_cq02h[e] & (md_cq02h[e] | (cm_e_cq02h[e] & ~mf_nx_cq02h[e]));
       cp_nx_cq02h[e] = ~rel_e_cq02h[e] & ((cp_cq02h[e] & ~ev_cpl_cq02h[e]) | ev_cpi_cq02h[e]);
       am_nx_cq02h[e] = ~rel_e_cq02h[e] & (am_cq02h[e] | ev_miu_cq02h[e]);
       for (int r = 0; r < NR; r++)
@@ -662,8 +666,16 @@ module ooe_rob_w #(
           (ozall_cq02h[e] &&
            rc_cq02h[e * 2 +: 2] == ev_rsf_cq02h[e * 2 +: 2] &&
            ((kr_cq02h[e] & (dn_cq02h[e] | dn_e_cq02h[e])) |
-            (km_cq02h[e] & ~mf_cq02h[e] & (md_cq02h[e] | cmn_e_cq02h[e]) & ~((cp_cq02h[e] & ~ev_cpl_cq02h[e]) | ev_cpi_cq02h[e])))));
+            (km_cq02h[e] & (md_cq02h[e] | cmn_e_cq02h[e]) & ~((cp_cq02h[e] & ~ev_cpl_cq02h[e]) | ev_cpi_cq02h[e])))));
       cmp_nx_cq02h[e] = cand_al_cq02h[e] ? nop_d_cq02h[e] : cmp_old_cq02h[e];
+      // The same term's parts from flops and the early events, for the
+      // window's ports (below): complete already; the counts' match; a done
+      // kind done already, or any; a completion kind completed already, or any.
+      ya_cq02h[e]  = v_cq02h[e] & ~rt_e_cq02h[e] & cmp_q_cq02h[e];
+      yb_cq02h[e]  = v_cq02h[e] & ~rt_e_cq02h[e] & ozb_cq02h[e] & (rc_cq02h[e * 2 +: 2] == ev_rsf_cq02h[e * 2 +: 2]);
+      yc_cq02h[e]  = kr_cq02h[e] & dn_cq02h[e];
+      ykm_cq02h[e] = km_cq02h[e] & ~((cp_cq02h[e] & ~ev_cpl_cq02h[e]) | ev_cpi_cq02h[e]);
+      ym_cq02h[e]  = ykm_cq02h[e] & md_cq02h[e];
     end
 
   // -- The pointers and the next window ---------------------------------------------
@@ -702,6 +714,13 @@ module ooe_rob_w #(
   logic [D-1:0]    tk_cq02h;
   logic [D-1:0]    gfe_v_cq02h, pfe_v_cq02h;
   logic            wpr_cq02h, nak_cq02h, mkj_cq02h, wns_cq02h, cok_cq02h;
+  logic [S*RP-1:0] coks_cq02h, cokp_cq02h;     // each port's complete, as the entries' and as read (asserted equal)
+  logic [NR-1:0]   drk_cq02h, ock_cq02h;
+  logic            cmk_cq02h;
+  logic [LD-1:0]   hkb_cq02h;                  // port k's entry, binary
+  // Port k's term without the completion's match and its factor, kept, so
+  // the late match enters it last (NGD-3).
+  (* keep *) logic [S*RP-1:0] ckp_cq02h, ckq_cq02h;
   always_comb begin
     // Defaults: every output and temporary assigned on every path.
     {hoh_nx_cq02h, toh_nx_cq02h, woh_nx_cq02h} = '0;
@@ -715,6 +734,7 @@ module ooe_rob_w #(
     {dt_cq02h, rsel_cq02h, mku_cq02h, mkd_cq02h, nk_cq02h, ug_cq02h, uxg_cq02h, ugd_cq02h, uxr_cq02h} = '0;
     {r0u_cq02h, r0d_cq02h, rdf_cq02h, rsq_cq02h, rcht_cq02h, ochs_cq02h, r0_cq02h} = '0;
     {anyp_cq02h, wpr_cq02h, nak_cq02h, mkj_cq02h, wns_cq02h, cok_cq02h} = '0;
+    {coks_cq02h, cokp_cq02h, drk_cq02h, ock_cq02h, cmk_cq02h, ckp_cq02h, ckq_cq02h, hkb_cq02h} = '0;
     for (int s = 0; s < S; s++) begin
       wpr_cq02h = 1'b1;                        // every older port of the window completes
       wns_cq02h = 1'b1;                        // and none stops it (fields alone, apart from the dones)
@@ -813,10 +833,12 @@ module ooe_rob_w #(
         och_nx_cq02h[s * NC +: NC] = NC'(1);
         ochs_cq02h = NC'(1);
         // The fill pointer returns behind the tail by the entries still to
-        // fill: u unfilled is entry (D - u) mod D, a wiring of the count.
+        // fill: u unfilled is entry (D - u) mod D, a wiring of the count,
+        // which is ux (a release allocates nothing, asserted, as the tail's
+        // return assumes), so the go's late count stays off it.
         woh_nx_cq02h[s * D +: D] = '0;
         for (int u = 0; u < NC; u++)
-          woh_nx_cq02h[s * D + (D - u) % D] = woh_nx_cq02h[s * D + (D - u) % D] | ufh_nx_cq02h[s * NC + u];
+          woh_nx_cq02h[s * D + (D - u) % D] = woh_nx_cq02h[s * D + (D - u) % D] | ux_cq02h[u];
         // The unfilled entries then end at D - 1: entry i is unfilled when
         // the next count reaches D - i (none after a squash). ux at least m
         // is ufh at least m + k for this cycle's k landing fills: each
@@ -919,7 +941,42 @@ module ooe_rob_w #(
         // Two prefixes, so the dones' AND stays apart from the stops'. A
         // stopped slot's head is its faulting entry, which never completes:
         // it retires nothing more.
-        cok_cq02h                = |(wk_cq02h & cmp_old_cq02h[s * D +: D] & wok_cq02h);
+        // Port k's entry completes: its entry's term, read at the port. The
+        // port's entry (wk, one-hot, from flops) selects the early parts,
+        // and each late done or completion matches the port's entry by its
+        // own tag decode, so neither passes through the entry's term or the
+        // entries' OR (the same value: coks, asserted below).
+        // A completion's match compares its tag ({slot, entry}, TW = LS + LD)
+        // with the port's entry in binary, from flops, so the late tag
+        // meets a compare, not a decode across the entries.
+        hkb_cq02h = '0;
+        for (int i = 0; i < D; i++)
+          hkb_cq02h = hkb_cq02h | ({LD{wk_cq02h[i]}} & LD'(i));
+        cmk_cq02h = 1'b0;
+        for (int p = 0; p < NM; p++)
+          cmk_cq02h = cmk_cq02h | (cm_q_cq02h[p] & ~cf_q_cq02h[p] &&
+                                   cm_tag_cq02h[p * TW + LD +: LS] == LS'(WID + s) &&
+                                   cm_tag_cq02h[p * TW +: LD] == hkb_cq02h);
+        drk_cq02h = '0;
+        ock_cq02h = '0;
+        for (int r = 0; r < NR; r++) begin
+          for (int p = 0; p < ND; p++)
+            drk_cq02h[r] = drk_cq02h[r] | (dn_q_cq02h[p] && dn_row_cq02h[p * 2 +: 2] == 2'(r) &&
+                                           |(wk_cq02h & ddn_cq02h[p * S * D + s * D +: D]));
+          for (int i = 0; i < D; i++)
+            ock_cq02h[r] = ock_cq02h[r] | (wk_cq02h[i] & oc1_cq02h[(s * D + i) * NR + r]);
+        end
+        coks_cq02h[s * RP + k]   = |(wk_cq02h & cmp_old_cq02h[s * D +: D] & wok_cq02h);
+        // wk is one-hot, so the window's mask (wok: the pick's prefix, late
+        // among the flops' cones) enters once, last, as the port's own.
+        ckp_cq02h[s * RP + k]    = |(wk_cq02h & ya_cq02h[s * D +: D]) |
+                                   (|(wk_cq02h & yb_cq02h[s * D +: D]) && drk_cq02h == ock_cq02h &&
+                                    (|(wk_cq02h & yc_cq02h[s * D +: D]) | (|(wk_cq02h & kr_cq02h[s * D +: D]) & |drk_cq02h) |
+                                     |(wk_cq02h & ym_cq02h[s * D +: D])));
+        ckq_cq02h[s * RP + k]    = |(wk_cq02h & yb_cq02h[s * D +: D]) && drk_cq02h == ock_cq02h &&
+                                   |(wk_cq02h & ykm_cq02h[s * D +: D]);
+        cok_cq02h                = |(wk_cq02h & wok_cq02h) & (ckp_cq02h[s * RP + k] | (ckq_cq02h[s * RP + k] & cmk_cq02h));
+        cokp_cq02h[s * RP + k]   = cok_cq02h;
         w_nx_cq02h[s * RP + k]   = (cok_cq02h | nak_cq02h) && wpr_cq02h && wns_cq02h;
         wpr_cq02h                = wpr_cq02h && (cok_cq02h | nak_cq02h);
         // Its entry's fields are a past occupant's: the commit reads none.
@@ -1116,12 +1173,23 @@ module ooe_rob_w #(
     end
   end
   // -- Faults (slice 4, OI-125) ------------------------------------------------------
-  // The allocation writes each entry's fault fields, lane j into entry tail
-  // + j, clocked on an allocation candidate while the slot allocates (both
-  // from flops, CG-5); an entry past the count writes don't-care data,
-  // payload under its valid bit, as the allocation's no-op bit.
-  logic [S*D-1:0]    ae_en_cq02h;
-  logic [S*D-1:0]    af_d_cq02h;
+  // The allocation's fault fields reach the entries a cycle late, through a
+  // staging register, so each entry is clocked only when it was allocated:
+  // the count is an input (CG-5), and clocking all A entries from the tail
+  // on every allocation changed under half of them. The staging register
+  // holds the lanes and the tail (clocked on al_q), and as_q the entries
+  // allocated (al_e, clocked while it or al_q is set to clear it). For the
+  // cycle the fields are in flight, the head's fault check reads the
+  // staged bit (fle); its record is read a cycle after the take, by when
+  // the entry holds them.
+  logic [S*D-1:0]    as_q_cq02h, ae_en_cq02h;
+  logic [S*D-1:0]    ast_cq02h;                 // the tail the staged lanes start at
+  logic [S*A-1:0]    asf_cq02h;
+  logic [S*A*CW-1:0] asc_cq02h;
+  logic [S*A*31-1:0] asp_cq02h;
+  logic [S*A*32-1:0] asg_cq02h;
+  logic [S-1:0]      asl_en_cq02h, asq_en_cq02h;
+  logic [S*D-1:0]    af_d_cq02h, fle_cq02h;  // fle: each entry's fault, the staged one while in flight
   logic [S*D*CW-1:0] ac_d_cq02h;
   logic [S*D*31-1:0] ap_d_cq02h;
   logic [S*D*32-1:0] ag_d_cq02h;
@@ -1129,16 +1197,34 @@ module ooe_rob_w #(
   always_comb begin
     {af_d_cq02h, ac_d_cq02h, ap_d_cq02h, ag_d_cq02h, aw_cq02h} = '0;
     for (int s = 0; s < S; s++) begin
-      ae_en_cq02h[s * D +: D] = cand_al_cq02h[s * D +: D] & {D{al_q_cq02h[s]}};
+      asl_en_cq02h[s] = al_q_cq02h[s];
+      asq_en_cq02h[s] = al_q_cq02h[s] | (|as_q_cq02h[s * D +: D]);
       for (int j = 0; j < A; j++) begin
-        aw_cq02h = rotl(toh_cq02h[s * D +: D], j);
+        aw_cq02h = rotl(ast_cq02h[s * D +: D], j);
         for (int i = 0; i < D; i++) begin
-          af_d_cq02h[s * D + i]               = af_d_cq02h[s * D + i] | (aw_cq02h[i] & al_flt_cq02h[s * A + j]);
-          ac_d_cq02h[(s * D + i) * CW +: CW]  = ac_d_cq02h[(s * D + i) * CW +: CW] | ({CW{aw_cq02h[i]}} & al_cause_cq02h[(s * A + j) * CW +: CW]);
-          ap_d_cq02h[(s * D + i) * 31 +: 31]  = ap_d_cq02h[(s * D + i) * 31 +: 31] | ({31{aw_cq02h[i]}} & al_pc_cq02h[(s * A + j) * 31 +: 31]);
-          ag_d_cq02h[(s * D + i) * 32 +: 32]  = ag_d_cq02h[(s * D + i) * 32 +: 32] | ({32{aw_cq02h[i]}} & al_gm_cq02h[(s * A + j) * 32 +: 32]);
+          af_d_cq02h[s * D + i]               = af_d_cq02h[s * D + i] | (aw_cq02h[i] & asf_cq02h[s * A + j]);
+          ac_d_cq02h[(s * D + i) * CW +: CW]  = ac_d_cq02h[(s * D + i) * CW +: CW] | ({CW{aw_cq02h[i]}} & asc_cq02h[(s * A + j) * CW +: CW]);
+          ap_d_cq02h[(s * D + i) * 31 +: 31]  = ap_d_cq02h[(s * D + i) * 31 +: 31] | ({31{aw_cq02h[i]}} & asp_cq02h[(s * A + j) * 31 +: 31]);
+          ag_d_cq02h[(s * D + i) * 32 +: 32]  = ag_d_cq02h[(s * D + i) * 32 +: 32] | ({32{aw_cq02h[i]}} & asg_cq02h[(s * A + j) * 32 +: 32]);
         end
       end
+    end
+    ae_en_cq02h = as_q_cq02h;
+    fle_cq02h   = (flt_cq02h & ~as_q_cq02h) | (as_q_cq02h & af_d_cq02h);
+  end
+  for (genvar gs = 0; gs < S; gs++) begin : g_ast
+    always_ff @(posedge ooe_core_clk) begin
+      if (asl_en_cq02h[gs]) begin
+        ast_cq02h[gs * D +: D]                <= toh_cq02h[gs * D +: D];
+        asf_cq02h[gs * A +: A]                <= al_flt_cq02h[gs * A +: A];
+        asc_cq02h[gs * A * CW +: A * CW]      <= al_cause_cq02h[gs * A * CW +: A * CW];
+        asp_cq02h[gs * A * 31 +: A * 31]      <= al_pc_cq02h[gs * A * 31 +: A * 31];
+        asg_cq02h[gs * A * 32 +: A * 32]      <= al_gm_cq02h[gs * A * 32 +: A * 32];
+      end
+    end
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h)                as_q_cq02h[gs * D +: D] <= '0;
+      else if (asq_en_cq02h[gs])   as_q_cq02h[gs * D +: D] <= al_e_cq02h[gs * D +: D];
     end
   end
   for (genvar ge = 0; ge < S * D; ge++) begin : g_flt
@@ -1156,16 +1242,24 @@ module ooe_rob_w #(
   // from the head (hrf) of this cycle's faulting completions and the one
   // it holds. Both are clocked on the fault leads (cf_q) and, to clear, on
   // a mark held, a squash, a release: all this module's flops (CG-5).
-  logic [S*D-1:0]  mf_nx_cq02h, fa_oh_nx_cq02h;
+  logic [S*D-1:0]  fa_oh_nx_cq02h;
   logic [S-1:0]    mf_en_cq02h, fa_en_cq02h, fa_v_nx_cq02h, fa_new_cq02h;
   logic [S*CW-1:0] fa_c_nx_cq02h;
   logic [S*32-1:0] fa_l_nx_cq02h;
   logic [S*VA-1:0] fa_a_nx_cq02h;
-  logic [D-1:0]    fx_cq02h, fge_cq02h, fu_cq02h, fy_cq02h, fw_cq02h, fpo_cq02h;
-  logic [NM-1:0]   fps_cq02h;
+  // Per slot, the contenders as age keys {before the head, index}: lower
+  // is older. Each port's from its tag against the binary head (encoded
+  // from hrf, a flop), the register's from its index; then pairwise
+  // compares among NM + 1, no chain over the entries.
+  logic [LD-1:0]   fhb_cq02h, fai_cq02h;
+  logic [NM-1:0]   fcp_cq02h, fwp_cq02h;
+  logic [NM*(LD+1)-1:0] fkp_cq02h;
+  logic [LD:0]     fka_cq02h;
+  logic            fca_cq02h;
+  logic [D-1:0]    fok_cq02h;
   always_comb begin
-    {fx_cq02h, fge_cq02h, fu_cq02h, fy_cq02h, fw_cq02h, fpo_cq02h, fps_cq02h} = '0;
-    {fa_c_nx_cq02h, fa_l_nx_cq02h, fa_a_nx_cq02h} = '0;
+    {fhb_cq02h, fai_cq02h, fcp_cq02h, fwp_cq02h, fkp_cq02h, fka_cq02h, fca_cq02h, fok_cq02h} = '0;
+    {fa_c_nx_cq02h, fa_l_nx_cq02h, fa_a_nx_cq02h, fa_oh_nx_cq02h} = '0;
     // A squashed entry's completion (held, or squashed now) marks nothing.
     for (int e = 0; e < S * D; e++)
       mf_nx_cq02h[e] = (mf_cq02h[e] | (cfe_cq02h[e] & v_cq02h[e] & ~hd_cq02h[e] &
@@ -1173,36 +1267,43 @@ module ooe_rob_w #(
     for (int s = 0; s < S; s++) begin
       mf_en_cq02h[s] = (|cf_q_cq02h) | (|mf_cq02h[s * D +: D]);
       fa_en_cq02h[s] = (|cf_q_cq02h) | rel_q_cq02h[s] | (rd_s_cq02h[s] & fa_v_cq02h[s]);
-      // The contenders: this cycle's faulting entries, live and not squashed
-      // now, and the register's, unless a squash now takes it.
-      fx_cq02h = ((cfe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D]) |
-                  (fa_oh_cq02h[s * D +: D] & {D{fa_v_cq02h[s]}})) &
-                 ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]);
-      // The oldest: the lowest at or past the head, else the lowest.
-      for (int i = 0; i < D; i++) fge_cq02h[i] = (i == 0 ? 1'b0 : fge_cq02h[i - 1]) | hrf_cq02h[s * D + i];
-      fu_cq02h = fx_cq02h & fge_cq02h;
-      fy_cq02h = (|fu_cq02h) ? fu_cq02h : fx_cq02h;
-      for (int i = 0; i < D; i++) begin
-        fw_cq02h[i] = fy_cq02h[i] & ~(i == 0 ? 1'b0 : fpo_cq02h[i - 1]);
-        fpo_cq02h[i] = (i == 0 ? 1'b0 : fpo_cq02h[i - 1]) | fy_cq02h[i];
-      end
-      fa_oh_nx_cq02h[s * D +: D] = fw_cq02h;
-      fa_v_nx_cq02h[s] = (|fx_cq02h) & ~rel_q_cq02h[s];
-      // A new oldest: its port's fields; else the register's own.
-      fa_new_cq02h[s] = |(fw_cq02h & ~(fa_oh_cq02h[s * D +: D] & {D{fa_v_cq02h[s]}}));
+      fok_cq02h = v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D] & ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]);
+      fhb_cq02h = enc(hrf_cq02h[s * D +: D]);
+      fai_cq02h = enc(fa_oh_cq02h[s * D +: D]);
+      fca_cq02h = fa_v_cq02h[s] & ~(rd_s_cq02h[s] & |(sqm_cq02h[s * D +: D] & fa_oh_cq02h[s * D +: D]));
+      fka_cq02h = {fai_cq02h < fhb_cq02h, fai_cq02h};
       for (int p = 0; p < NM; p++) begin
-        fps_cq02h[p] = 1'b0;
+        fcp_cq02h[p] = 1'b0;
         for (int i = 0; i < D; i++)
-          fps_cq02h[p] = fps_cq02h[p] | (fw_cq02h[i] & cf_q_cq02h[p] && cm_tag_cq02h[p * TW +: TW] == TW'(WID * D + s * D + i));
-        fa_c_nx_cq02h[s * CW +: CW] = fa_c_nx_cq02h[s * CW +: CW] | ({CW{fps_cq02h[p]}} & cf_cause_cq02h[p * CW +: CW]);
-        fa_l_nx_cq02h[s * 32 +: 32] = fa_l_nx_cq02h[s * 32 +: 32] | ({32{fps_cq02h[p]}} & cf_lanes_cq02h[p * 32 +: 32]);
-        fa_a_nx_cq02h[s * VA +: VA] = fa_a_nx_cq02h[s * VA +: VA] | ({VA{fps_cq02h[p]}} & cf_addr_cq02h[p * VA +: VA]);
+          fcp_cq02h[p] = fcp_cq02h[p] | (cf_q_cq02h[p] & fok_cq02h[i] &&
+                                         cm_tag_cq02h[p * TW +: TW] == TW'(WID * D + s * D + i));
+        fkp_cq02h[p * (LD + 1) +: LD + 1] = {cm_tag_cq02h[p * TW +: LD] < fhb_cq02h, cm_tag_cq02h[p * TW +: LD]};
       end
-      if (!fa_new_cq02h[s]) begin
-        fa_c_nx_cq02h[s * CW +: CW] = fa_c_cq02h[s * CW +: CW];
-        fa_l_nx_cq02h[s * 32 +: 32] = fa_l_cq02h[s * 32 +: 32];
-        fa_a_nx_cq02h[s * VA +: VA] = fa_a_cq02h[s * VA +: VA];
+      // A port wins over the register when strictly older, over a port
+      // before it when strictly older, over one after it when not younger.
+      for (int p = 0; p < NM; p++) begin
+        fwp_cq02h[p] = fcp_cq02h[p] & ~(fca_cq02h & (fka_cq02h <= fkp_cq02h[p * (LD + 1) +: LD + 1]));
+        for (int q = 0; q < NM; q++)
+          if (q != p)
+            fwp_cq02h[p] = fwp_cq02h[p] & ~(fcp_cq02h[q] &
+                (q < p ? fkp_cq02h[q * (LD + 1) +: LD + 1] <= fkp_cq02h[p * (LD + 1) +: LD + 1]
+                       : fkp_cq02h[q * (LD + 1) +: LD + 1] <  fkp_cq02h[p * (LD + 1) +: LD + 1]));
       end
+      fa_new_cq02h[s]  = |fwp_cq02h;
+      fa_v_nx_cq02h[s] = (fca_cq02h | (|fcp_cq02h)) & ~rel_q_cq02h[s];
+      for (int p = 0; p < NM; p++) begin
+        fa_c_nx_cq02h[s * CW +: CW] = fa_c_nx_cq02h[s * CW +: CW] | ({CW{fwp_cq02h[p]}} & cf_cause_cq02h[p * CW +: CW]);
+        fa_l_nx_cq02h[s * 32 +: 32] = fa_l_nx_cq02h[s * 32 +: 32] | ({32{fwp_cq02h[p]}} & cf_lanes_cq02h[p * 32 +: 32]);
+        fa_a_nx_cq02h[s * VA +: VA] = fa_a_nx_cq02h[s * VA +: VA] | ({VA{fwp_cq02h[p]}} & cf_addr_cq02h[p * VA +: VA]);
+        for (int i = 0; i < D; i++)
+          fa_oh_nx_cq02h[s * D + i] = fa_oh_nx_cq02h[s * D + i] | (fwp_cq02h[p] & cm_tag_cq02h[p * TW +: LD] == LD'(i));
+      end
+      // Held unless a port wins, in the data: the clock's enable stays
+      // fa_en, from flops (CG-5), not the ports' compare.
+      fa_oh_nx_cq02h[s * D +: D]  = fa_oh_nx_cq02h[s * D +: D]  | ({D{~fa_new_cq02h[s]}}  & fa_oh_cq02h[s * D +: D]);
+      fa_c_nx_cq02h[s * CW +: CW] = fa_c_nx_cq02h[s * CW +: CW] | ({CW{~fa_new_cq02h[s]}} & fa_c_cq02h[s * CW +: CW]);
+      fa_l_nx_cq02h[s * 32 +: 32] = fa_l_nx_cq02h[s * 32 +: 32] | ({32{~fa_new_cq02h[s]}} & fa_l_cq02h[s * 32 +: 32]);
+      fa_a_nx_cq02h[s * VA +: VA] = fa_a_nx_cq02h[s * VA +: VA] | ({VA{~fa_new_cq02h[s]}} & fa_a_cq02h[s * VA +: VA]);
     end
   end
   for (genvar gs = 0; gs < S; gs++) begin : g_fa
@@ -1246,7 +1347,7 @@ module ooe_rob_w #(
   always_comb
     for (int s = 0; s < S; s++) begin
       ft_nx_cq02h[s] = (|(hrf_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D] &
-                          (flt_cq02h[s * D +: D] | mf_cq02h[s * D +: D] | cfe_cq02h[s * D +: D]) &
+                          (fle_cq02h[s * D +: D] | mf_cq02h[s * D +: D] | cfe_cq02h[s * D +: D]) &
                           ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]))) && !fst_cq02h[s];
       ft_en_cq02h[s] = ft_nx_cq02h[s] | ft_q_cq02h[s] | rel_q_cq02h[s];
     end
@@ -1268,13 +1369,17 @@ module ooe_rob_w #(
       end
     end
   end
+  logic [S-1:0] pf_en_cq02h, pch_en_cq02h, ftr_en_cq02h;
+  assign pf_en_cq02h  = al_q_cq02h | rel_q_cq02h;
+  assign pch_en_cq02h = al_q_cq02h & pf_cq02h;
+  assign ftr_en_cq02h = ft_q_cq02h;              // the record: clocked on the take
   for (genvar gs = 0; gs < S; gs++) begin : g_fslot
     always_ff @(posedge ooe_core_clk) begin
-      if (rst_r01h)                                pf_cq02h[gs] <= 1'b1;
-      else if (al_q_cq02h[gs] | rel_q_cq02h[gs])   pf_cq02h[gs] <= rel_q_cq02h[gs];
+      if (rst_r01h)              pf_cq02h[gs] <= 1'b1;
+      else if (pf_en_cq02h[gs])  pf_cq02h[gs] <= rel_q_cq02h[gs];
     end
     always_ff @(posedge ooe_core_clk) begin
-      if (al_q_cq02h[gs] & pf_cq02h[gs]) pch_cq02h[gs * 16 +: 16] <= al_pchi_cq02h[gs * A * 16 +: 16];
+      if (pch_en_cq02h[gs]) pch_cq02h[gs * 16 +: 16] <= al_pchi_cq02h[gs * A * 16 +: 16];
     end
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
@@ -1290,7 +1395,7 @@ module ooe_rob_w #(
       else          ft_v_cq03h[gs] <= ft_q_cq02h[gs];
     end
     always_ff @(posedge ooe_core_clk) begin
-      if (ft_q_cq02h[gs]) begin
+      if (ftr_en_cq02h[gs]) begin
         ft_cause_cq03h[gs * CW +: CW] <= ftc_nx_cq03h[gs * CW +: CW];
         ft_pc_cq03h[gs * PCW +: PCW]  <= ftp_nx_cq03h[gs * PCW +: PCW];
         ft_lanes_cq03h[gs * 32 +: 32] <= ftl_nx_cq03h[gs * 32 +: 32];
@@ -1862,7 +1967,8 @@ module ooe_rob_w #(
     end
   `CCV_ASSERT(fault_not_nop, (al_flt_cq02h & al_nop_cq02h) == '0)
   // A faulting entry never completes, so the window stops at it.
-  `CCV_ASSERT(fault_never_done, ((flt_cq02h | mf_cq02h) & v_cq02h & cmp_old_cq02h) == '0)
+  `CCV_ASSERT(port_complete_is_entry, cokp_cq02h == coks_cq02h)
+  `CCV_ASSERT(fault_never_done, ((fle_cq02h | mf_cq02h) & v_cq02h & cmp_old_cq02h) == '0)
   `CCV_ASSERT(pc_window, pcw_bad_cq02h == '0)
   `CCV_ASSERT(owed_no_underflow, ow_uf_cq02h == '0)
   `CCV_ASSERT(owed_no_overflow, ow_of_cq02h == '0)
@@ -1956,6 +2062,12 @@ module ooe_rob_w #(
       kc_over_cq02h[s] = rd_s_cq02h[s] && (uxa_all_cq02h[s * NC +: NC] >> KC) != '0;
     end
   `CCV_ASSERT(squash_allocates_nothing, sq_al_cq02h == '0)
+  // A release allocates nothing in its cycle: the tail and the fill pointer
+  // return to entry 0 then, apart from the go's count.
+  logic [S-1:0] rel_al_cq02h;
+  always_comb
+    for (int s = 0; s < S; s++) rel_al_cq02h[s] = rel_q_cq02h[s] && al_n_cq02h[s * LA +: LA] != '0;
+  `CCV_ASSERT(release_allocates_nothing, rel_al_cq02h == '0)
   `CCV_ASSERT(kill_count_bounded, kc_over_cq02h == '0)
   `CCV_ASSERT(held_never_retires, (rt_e_cq02h & (hd_cq02h | sqe_cq02h)) == '0)
   // Every fill lands two cycles after its allocation (OA's rev 295, OI-94):
