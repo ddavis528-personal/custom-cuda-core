@@ -300,12 +300,8 @@ private:
     }
     is.oc = classOf(op, copy, copy && is.pwe && is.dst == R::kZero);
     is.name = op ? op->name : "a copy";
-    // INTERIM until RA-18 lands (DEC's imm_kind 6, OOE's pc + length in
-    // imm): call's link is ccv-sim's, as the stub takes it (CP-9, AR-22).
-    // The core reads imm as the spec says; only this line feeds it.
-    if (is.oc.rk == R::RKind::Call)
-      if (const Record *r = rec(is.tid, "rcu"))
-        if (const RegVal *ld = r->gprDef()) is.imm = ld->v[0];
+    // call's link is OOE's pc + length in imm (imm_kind 6; RA-18, RA-30):
+    // the core reads it as the spec says.
     if (k_.brk == "dirty-zero") {
       k_.gpr[R::kZero].fill(0x5a5a5a5au);
       k_.pred[R::kPZero] = 0xa5a5a5a5u;
