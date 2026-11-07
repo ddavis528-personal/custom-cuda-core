@@ -345,7 +345,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    rerun NOT owed. Needs RA, OI, TI.
    TI 357: Z pushed f4ce0fd (full gate PASS): LANE 7/SFU 12, kill drain 16,
    five controls retimed; TI's C9 question crossed AR 313 (already answered).
-   LANE spec rev 23 + PF-47 say it has landed.
+   LANE spec rev 24 + PF-47 say it has landed.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
