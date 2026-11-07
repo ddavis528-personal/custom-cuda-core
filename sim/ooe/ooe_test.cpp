@@ -1234,7 +1234,9 @@ struct Env {
     }
     // OA-23's hint, two cycles ahead of its completion; none for an
     // abandoned load (PF-23).
-    for (auto r = cmpls.equal_range(t + 2); r.first != r.second; ++r.first)
+    // rx_lag 16 (C9h): the hint acts a cycle after it lands, as ooe_block
+    // defers it, so the core takes it one cycle ahead of its completion.
+    for (auto r = cmpls.equal_range(t + ((core.config().rx_lag & 16) ? 1 : 2)); r.first != r.second; ++r.first)
       if (r.first->second.status != kCmplReplay) core.hint(r.first->second.rob_tag);
     // TI-21: a restore's rows hold a PRF write port (OA's rev 132): count
     // the cycles its landings would have found the ports short.

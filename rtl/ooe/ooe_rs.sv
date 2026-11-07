@@ -304,12 +304,15 @@ module ooe_rs #(
   // group ahead's: rename's lookup ran a stage earlier, on names that may
   // since have left their entries (ooe_rename, slice 2).
   logic [N-1:0] rmask_cq02h;
-  assign rmask_cq02h = valid_cq02h & ~free_cq02h & ~lga_cq02h;
+  logic [N-1:0] hcq_cq02h, hc_cq02h, hh_cq02h;   // C9's hit-confirm hold (below)
+  logic [N-1:0] clr_cq02h;                       // the columns cleared at this edge: the frees and the held
+  logic         hhv_cq02h;                       // some entry held (hh): the class enables' term, one flop
+  assign rmask_cq02h = valid_cq02h & ~(conf_cq02h & ~hc_cq02h | sqf_cq01h) & ~lga_cq02h;
   always_comb begin
-    g_cq02h = grants(valid_cq02h, req_cq01h);
-    g1_cq02h = grants(vc1_cq02h, req_cq01h);
-    g2_cq02h = grants(vc2_cq02h, req_cq01h);
-    g3_cq02h = grants(vc3_cq02h, req_cq01h);
+    g_cq02h = grants(valid_cq02h | hh_cq02h, req_cq01h);
+    g1_cq02h = grants(vc1_cq02h | hh_cq02h, req_cq01h);
+    g2_cq02h = grants(vc2_cq02h | hh_cq02h, req_cq01h);
+    g3_cq02h = grants(vc3_cq02h | hh_cq02h, req_cq01h);
     {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{rmask_cq02h}}, row_code_cq01h, grp_dep_cq01h,
                                   grp_code_cq01h, lg_cq02h, prv_dep_cq01h, prv_code_cq01h,
                                   valid_cq02h & ~lga_cq02h);
@@ -422,7 +425,7 @@ module ooe_rs #(
         ga2_cq02h = ga2_cq02h | g2_cq02h[p * N + i];
         ga3_cq02h = ga3_cq02h | g3_cq02h[p * N + i];
       end
-      dep_nx_cq02h[i * N +: N]           = dep_cq02h[i * N +: N] & ~free_cq02h & {N{!ga1_cq02h}};
+      dep_nx_cq02h[i * N +: N]           = dep_cq02h[i * N +: N] & ~clr_cq02h & {N{!ga1_cq02h}};
       code_nx_cq02h[i * 2 * N +: N]      = code_cq02h[i * 2 * N +: N] & dep2_cq02h[i * 2 * N +: N] & {N{!ga2_cq02h}};
       code_nx_cq02h[i * 2 * N + N +: N]  = code_cq02h[i * 2 * N + N +: N] & dep2_cq02h[i * 2 * N + N +: N] & {N{!ga3_cq02h}};
       for (int p = 0; p < P; p++) begin
@@ -471,10 +474,10 @@ module ooe_rs #(
       // a one-hot select, not an override in port order (NGD-7: dep).
       emp_g_cq02h = 1'b0;
       for (int p = 0; p < P; p++) emp_g_cq02h = emp_g_cq02h | (g_cq02h[p * N + i] & emp_new_cq02h[p]);
-      emp_nx_cq02h[i] = ga_cq02h[i] ? emp_g_cq02h : (dep_cq02h[i * N +: N] & ~free_cq02h) == '0;
+      emp_nx_cq02h[i] = ga_cq02h[i] ? emp_g_cq02h : (dep_cq02h[i * N +: N] & ~clr_cq02h) == '0;
     end
-    hr_nx_cq02h = (hr_cq02h & ~free_cq02h) | named_r_cq02h;
-    hm_nx_cq02h = (hm_cq02h & ~free_cq02h) | named_m_cq02h;
+    hr_nx_cq02h = (hr_cq02h & ~clr_cq02h) | named_r_cq02h;
+    hm_nx_cq02h = (hm_cq02h & ~clr_cq02h) | named_m_cq02h;
   end
   assign hcol_cq02h = hr_cq02h | hm_cq02h;
 
@@ -494,7 +497,7 @@ module ooe_rs #(
       for (int i = 0; i < N; i++)
         if (cva_cq01h[k] && cmpl_idx_cq00h[k * W +: W] == W'(i)) cmn_cq01h[i] = 1'b1;
     for (int i = 0; i < N; i++)
-      cf_d_cq02h[i] = valid_cq02h[i] && !free_cq02h[i] && (dep_cq02h[i * N +: N] & ~free_cq02h) == '0 &&
+      cf_d_cq02h[i] = valid_cq02h[i] && !free_cq02h[i] && (dep_cq02h[i * N +: N] & ~clr_cq02h) == '0 &&
                 (prod_cq02h[i] ? wtl3_cq00h[i] || fin_cq00h[i] || cmn_cq01h[i] || (cf_en_cq03h[i] && cvb_cq02h)
                                : iss_cq02h[i] || gnt_cq01h[i]);
   end
@@ -511,6 +514,29 @@ module ooe_rs #(
       cva_cq01h    <= cmpl_l_cq00h;
       cvb_cq02h    <= cva_cq01h != '0;
       sq_en_cq01h  <= sq_l_cq00h;
+    end
+  end
+
+  // C9 (OA rev 372; the model's cmpl_split 8): a confirmation an L1 hit
+  // makes, in its cycle or the next (hc: the hit's bypass from the raw
+  // completion, cmn, and its register, hq), frees its entry but stays off
+  // rename's row mask, and the entry stays held from allocation (hh) and
+  // rename's room through the next cycle. A row written at the free's edge
+  // may name it (the mask cannot see it): its column is cleared at the
+  // next, the hold's, as a free's is (clr; the class enables take hh on a
+  // column their flags name: on hhv, any entry held, one flop of the same
+  // term, as hh & hr would put the enable over CG-2's 8).
+  assign hc_cq02h = cmn_cq01h | hcq_cq02h;
+  assign clr_cq02h = free_cq02h | hh_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      hcq_cq02h <= '0;
+      hh_cq02h <= '0;
+      hhv_cq02h <= 1'b0;
+    end else begin
+      hcq_cq02h <= cmn_cq01h;
+      hh_cq02h <= conf_cq02h & hc_cq02h;
+      hhv_cq02h <= (conf_cq02h & hc_cq02h) != '0;
     end
   end
 
@@ -656,8 +682,8 @@ module ooe_rs #(
   logic rcu_en_cq01h, miu_en_cq01h;
   logic [N-1:0] fl_cq01h;                    // a free may come: led by confirmation, or a squash
   assign fl_cq01h = cf_en_cq03h | {N{sq_en_cq01h}};
-  assign rcu_en_cq01h = |req_en_cq01h[A-1:0] || |fl_cq01h[NR-1:0] || |(fl_cq01h & hr_cq02h);
-  assign miu_en_cq01h = |req_en_cq01h[P-1:A] || |fl_cq01h[N-1:NR] || |(fl_cq01h & hm_cq02h);
+  assign rcu_en_cq01h = |req_en_cq01h[A-1:0] || |fl_cq01h[NR-1:0] || |(fl_cq01h & hr_cq02h) || hhv_cq02h;
+  assign miu_en_cq01h = |req_en_cq01h[P-1:A] || |fl_cq01h[N-1:NR] || |(fl_cq01h & hm_cq02h) || hhv_cq02h;
 
   always_ff @(posedge ooe_core_clk) begin
     // The reset state: every entry free, no column with a dependant. The

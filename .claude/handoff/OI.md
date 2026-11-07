@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-06 ~15:30 UTC (sweep merge fb52948 pushed; RH C9 job out; pruned, the long history is in git). Keep this current at every task's end; it is what
+Updated 2026-11-07 (C9h gate red: OI-122 to OA, kernel retime for TI). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,7 +37,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 313, RA 95, IS 190, TI 354, OA 372, OI 310, CP 155, DA 114, RI 21
+Conventions 17, AR 313, RA 95, IS 190, TI 359, OA 375, OI 315, CP 155, DA 114, RI 21
 (sweep 11-06 10:20, plus notices to 13:00). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
@@ -51,14 +51,18 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first)
-1. C9 build (task #23; OA 372): C9h + the RS bypass, cycle-exact against the model at
-   cmpl_split 9 + rx_lag 16 (the hint late). cmpl_l raw drives capture, RS and wake only (3 pins);
-   ROB x4 from (* keep *) copies of cm_q; hint raw to its capture only. Bypass ports: rs
-   cmpl_l/cmpl_idx (cfb), wake fin + confirm, the miss check at LAT_MISS, msd. Over a cap: to OA.
-   The model's knobs are still a patch (scratchpad/c9/c9knobs.patch); the build makes C9h the
-   model's default. Tree scratchpad/wc9 (branch oi-c9 on fb52948: knobs patch + wake/rs probe;
-   scratchpad/c9/trio-build.sh <tree>). S1 (OI-118, rev 310): C9 +0.370% vs A6 at 8/13, F +1.581%;
-   at 7/12 (the baseline again, RA 95, AR 313) C9 +0.444%, F ~+1.95%. C9h costs 0; no RS bypass +0.56%.
+1. C9 build (task #23; OA 372, DA 114): BUILT in scratchpad/wc9, branch oi-c9 (35999fa, e33da99,
+   merges 86b477e, db3ad0b = TI's f4ce0fd; also on gate-scratch/OI). C9h is the model default
+   (cmpl_split 9, rx_lag 16); ooe_cmcap new; ooe_rs hit-freed column clear (clr = free|hh, hhv
+   flop for CG-2 7.8); ooe_wake hint capture hix+hq one gate. run-rtl and trio exact (no-c9h
+   control). regen + walkthrough committed; cmpl_idx_cq00h arrival 2 written (00c77fe, OA 373).
+   prv_code split granted (OA 374) and written (5e1b436). Gate on 5e1b436 RED; fixed in OI's files:
+   ratchet grp_dep/sqf caps removed (met), no-msd seeds >=200 (f33368b, wc9 tip, unpushed).
+   OI-122 GRANTED (OA 375): grant arrival 1, sched grant_w out 1, waiver 7.1 (aae48b6; checks clean).
+   OI-123: TI (rev 359) says OI carries the check-kernel retimes: at:59, priv_form 12 (6ded4df;
+   check-kernel.sh rc 0). wc9 tip d94146a (on gate-scratch/OI). WAITING for TI's 41c82d8 on origin
+   (TI: base on it, check-kernel ret-held block, RI-18); send_later trig_01Nofj1FgLivKdmZL6hqnEzB.
+   Then gate-push from wc9; then OI-114's row to OA.
 2. OI-114 landed as (b) (OA 369), model only: the go reads unmet on time (unmet_reg 0; rename's
    register failed CG-5/CG-3), floor_take_lag 1; rename and go RTL as pushed. RH's S1: 0 cost at 192
    and 160 (X/Y, Z). Row to OA when pushed.

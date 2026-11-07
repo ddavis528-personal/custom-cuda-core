@@ -238,8 +238,10 @@ int main(int argc, char **argv) {
                       brk == "corrupt-group-mask" || brk == "fair-off" ||
                       brk == "fair-late" || brk == "split-swap" ||
                       brk == "no-st-wait" || brk == "early-mark" || brk == "beats-dead" ||
-                      brk == "no-ro" || brk == "no-window-fill" || brk == "window-from-base" ||
-                      brk == "scalar-base" || brk == "zero-cta-slot" || brk == "lanectx-literal" || brk == "lanectx-as-ctatid" || brk == "drop-pred-copy" || brk == "pdata-guard" || brk == "ldpred-whole-word" || brk == "stpred-whole-word" ||
+                      brk == "no-ro" || brk == "atom-one-slot" || brk == "atom-lane-old" ||
+                      brk == "atom-one-pass" || brk == "atom-no-more" || brk == "atom-descending" ||
+                      brk == "no-window-fill" || brk == "window-from-base" ||
+                      brk == "scalar-base" || brk == "zero-cta-slot" || brk == "lanectx-literal" || brk == "call-link-literal" || brk == "shfl-wrap" || brk == "coll-issue-only" || brk == "unballot-lowest" || brk == "lanectx-as-ctatid" || brk == "drop-pred-copy" || brk == "pdata-guard" || brk == "ldpred-whole-word" || brk == "stpred-whole-word" ||
                       brk == "xfer-low-lane" || brk == "resume-mid" || brk == "whole-cta-mask" ||
                       brk == "no-kill" || brk == "withheld-ack" || brk == "stale-ack" ||
                       brk == "stale-epoch" ||
@@ -253,7 +255,7 @@ int main(int argc, char **argv) {
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
                       brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
-                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-src-clear" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
+                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-fault-replay" || brk == "lead-fault-drop" || brk == "lead-src-clear" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
                       brk == "xfer-unsigned" || brk == "xfer-ignored" || brk == "chw-mark-always" ||
                       brk == "ret-no-stay" || brk == "pred-taken-any" || brk == "ret-held-by-lanes" ||

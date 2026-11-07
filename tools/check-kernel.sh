@@ -116,7 +116,7 @@
 #     active or not                              16-31 use their own window
 #   st.pred's predicate is data, not a guard  pdata-guard (predlane): its clear
 #                                                bits keep memory's ones
-#   a demotion between a cracked              resume-mid (predswap, at:58):
+#   a demotion between a cracked              resume-mid (predswap, at:59):
 #     instruction's uops resumes at its          the warp resumes past it
 #     first uop (AR's response TI-36)
 #   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
@@ -151,6 +151,24 @@
 #     the rest are zero (AR rev 260)           sender refuses aux off its slot
 #   a branch's or call's lead says what     lead-corrupt (callret): OOE
 #     its done says (AR rev 260)               refuses each branch done
+#   a call's link is the imm OOE puts in    call-link-literal (callret,
+#     (imm_kind 6; RA-18, RA-30)               stub RCU): RCU's first CHECK
+#                                              is the link against ccv-sim
+#   the collectives compute O-85's         shfl-wrap, coll-issue-only,
+#     semantics (RA-20, DA tab rev 100)        unballot-lowest (coll, stub
+#                                              RCU): CP-76's three readings
+#   an atomic is a decode pair, and runs    atom-one-slot: OOE refuses each
+#     in passes, one lane an address in        one-slot atomic (OI-80);
+#     ascending order, until MIU says no       atom-one-pass: a lane reads the
+#     more (O-72; AR-21, V-72; IS-21)          word before a lower lane wrote;
+#                                              atom-no-more: lanes left unrun;
+#                                              atom-lane-old: A2 writes T back;
+#                                              atom-descending (atomf): f32
+#                                                rounding shows the order
+#   a memop's fault lead is status == 1     lead-fault-replay (swap): OOE
+#     (OI-125, AR rev 314)                     refuses each replay's lead;
+#                                              lead-fault-drop (roconst):
+#                                              and a fault with none
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -696,6 +714,8 @@ fi
 # mispredicted branches, checkpoint pressure. Each must match ccv-sim, AND
 # reach the bins it exists for -- a kernel that passes without reaching its
 # path proves nothing about it. Bins are counted in the stubs (COVER line).
+# privwin's priv_form: 11 until OOE's C9h (OA's rev 372), 12 with it: one more
+# private memop re-executed, its formation counted again (TI's response OI-123).
 cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 while read -r k want; do
   [ -z "$k" ] && continue
@@ -757,7 +777,7 @@ predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 localsp local_form=12 window_fill=0 pred_xfer=4 frame_lookups=0
-privwin priv_form=11 priv_fault=0
+privwin priv_form=12 priv_fault=0
 rope local_form=44 frame_lookups=0
 fence fence=1 fence_wait>0
 addrhigh addr_fault=1 fault=1 kill=1
@@ -773,6 +793,8 @@ spmbank spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0
 lnorm1 bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0
 transp4 bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0
 borrow credit_borrow=1 credit_wait>0 chw_converged=2
+atom   atomic_pair=7 atomic=7 atomic_write=193 atomic_repass=186 atomic_lane>0 spm_pass>0
+atomf  atomic_pair=2 atomic=2 atomic_write=64 atomic_repass=62 spm_pass>0
 KERNELS
 # O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
 # xfer_size, never rdata's width, and a signed load sign-filled to rdata.
@@ -1116,6 +1138,16 @@ if grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-RO at pc 1
 else
   bad "--break no-ro" "a store into .const went unrefused: $(grep '^KERNEL' "$B/kernel_no-ro.log")"
 fi
+# A fault's completion leads with lead_fault (OI-125; AR's rev 314), and
+# OOE's fault capture gates on it. lead-fault-drop never sets it: roconst's
+# F-RO completion goes unled, which OOE's equality refuses.
+"$SKEL" --kernel build/oracle/roconst/oracle.jsonl --break lead-fault-drop >"$B/kernel_lead-fault-drop.log" 2>&1
+n=$(grep -c "^CHECK ooe: rob tag [0-9]* completion's lead_fault 0 is not its status 1 == fault" "$B/kernel_lead-fault-drop.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-fault-drop.log" check_failures)" = "$n" ]; then
+  say "--break lead-fault-drop: OOE refuses a fault with no lead" "PASS ($n faults)"
+else
+  bad "--break lead-fault-drop" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-fault-drop.log")"
+fi
 # F-ADDR (O-75; CP-34's kernels): a .global address is the exact sum, and
 # one outside [0, 2^48) faults. Taken modulo 2^48, addrhigh's lanes 16-31
 # store at the bottom of memory and lanes 0-15 land too, and addrneg's load
@@ -1225,21 +1257,22 @@ fi
 # A demotion between a cracked instruction's uops (AR's response TI-36):
 # at cycle 59 (57 before the interface flops' bases, AR's rev 287; 58 with
 # them; 59 with RCU's flopped ends as bnd_rx, AR's revs 300, 301; 58 with
-# ccv_lane_rcu_res's end at RCU zero-cycle, RA's rev 95) predswap's first st.pred has retired its first uop and not
+# ccv_lane_rcu_res's end at RCU zero-cycle, RA's rev 95; 59 with OOE's C9h,
+# OA's rev 372, TI's response OI-123) predswap's first st.pred has retired its first uop and not
 # its second, and the warp resumes at the instruction, running its first
 # uop again, which both transfers allow. Resumed past it, the second uop is
 # lost. The cycle comes from a sweep of CCV_RAU_DEMOTE=at:<cycle>: if timing
 # moves it, crack_split falls to 0 here and the cycle is swept again.
-CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at58.log" 2>&1
-if [ "$(cover "$B/kernel_predswap_at58.log" crack_split)" = 1 ] &&
-   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at58.log"; then
-  say "predswap demoted between a st.pred's uops" "PASS (at:58, it resumes at the instruction)"
+CCV_RAU_DEMOTE=at:59 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at59.log" 2>&1
+if [ "$(cover "$B/kernel_predswap_at59.log" crack_split)" = 1 ] &&
+   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at59.log"; then
+  say "predswap demoted between a st.pred's uops" "PASS (at:59, it resumes at the instruction)"
 else
-  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at58.log"); crack_split=$(cover "$B/kernel_predswap_at58.log" crack_split)"
+  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at59.log"); crack_split=$(cover "$B/kernel_predswap_at59.log" crack_split)"
 fi
-CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
+CCV_RAU_DEMOTE=at:59 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
 if grep -q "^CHECK fet: restored warp 0 lane 0 at 1014, but it resumes at 1018" "$B/kernel_resume-mid.log"; then
-  say "--break resume-mid: past the split instruction" "PASS (predswap at:58)"
+  say "--break resume-mid: past the split instruction" "PASS (predswap at:59)"
 else
   bad "--break resume-mid" "a mid-instruction resume went unchecked: $(grep '^KERNEL' "$B/kernel_resume-mid.log")"
 fi
@@ -1416,6 +1449,67 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-corrupt.log" check_failures)" = 
 else
   bad "--break lead-corrupt" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-corrupt.log")"
 fi
+# The call link (RA-18, RA-30; AR's rev 264): DEC marks a call imm_kind 6,
+# OOE puts pc + bytes(ilen) in imm, and RCU writes imm to the link register.
+# call-link-literal has DEC send a call's imm_kind as a literal, so imm keeps
+# the branch offset; the stub RCU's first CHECK is the link against ccv-sim's.
+# The stub only: RI's model takes the link from ccv-sim until it drops its
+# interim (RI-7); then the model joins, as ret-held-by-lanes's did.
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/callret/oracle.jsonl --break call-link-literal \
+  >"$B/kernel_call-link-literal.log" 2>&1
+n=$(grep -c "^CHECK rcu: seq [0-9]* call's link [0-9a-f]* in imm, oracle [0-9a-f]*" "$B/kernel_call-link-literal.log")
+if [ "$n" -gt 0 ] && grep -m1 '^CHECK' "$B/kernel_call-link-literal.log" | grep -q "^CHECK rcu: seq [0-9]* call's link"; then
+  say "--break call-link-literal (stub): a call's link is OOE's imm" "PASS ($n calls)"
+else
+  bad "--break call-link-literal" "$n refused: $(grep -m1 '^CHECK' "$B/kernel_call-link-literal.log")"
+fi
+# The warp collectives (O-85; RA-20, DA tab rev 100, CP-76): coll runs every
+# shuffle mode in both index forms, the votes, ballot and the diagonal
+# unballot. Each control is one of the readings O-85 ruled out, CP's three
+# ccv-sim controls on the stub RCU: shfl-wrap wraps an out-of-range source
+# modulo 32 rather than keeping the lane's own; coll-issue-only takes the
+# issue mask alone as the participating lanes, dropping the guard;
+# unballot-lowest takes every lane's bit from the lowest participating
+# lane's rs, RA's first proposal, not the diagonal. Each must fail in RCU's
+# own check against ccv-sim, and nothing else may fail.
+for b in "shfl-wrap:seq [0-9]* R[0-9]* lane [0-9]* = " "coll-issue-only:seq [0-9]* P[0-9]* = " \
+         "unballot-lowest:seq [0-9]* P[0-9]* = "; do
+  nm=${b%%:*}; pat=${b#*:}
+  CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/coll/oracle.jsonl --break "$nm" >"$B/kernel_$nm.log" 2>&1
+  n=$(grep -c "^CHECK rcu: $pat" "$B/kernel_$nm.log")
+  if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_$nm.log" check_failures)" = "$n" ]; then
+    say "--break $nm (stub): a collective O-85 ruled out" "PASS ($n refused)"
+  else
+    bad "--break $nm" "$n refused: $(grep '^KERNEL' "$B/kernel_$nm.log")"
+  fi
+done
+# O-72's atomics (IS-21; AR-21, V-72): atom runs every RMW form but CAS on
+# .global and .shared, most with all 32 lanes on one word, so each runs in
+# passes. Each control must fail at its first check, by the check named:
+#   atom-one-slot: DEC sends an atomic in one slot; OOE refuses it (OI-80)
+#   atom-one-pass: MIU runs every lane in one pass; lane 1 reads the word
+#     lane 0 has not yet written, and MIU's read check refuses it
+#   atom-lane-old: the lane op writes T back, not the new value; MIU's
+#     write check refuses lane 0's
+#   atom-no-more: MIU never sets more, so one pass ends the atomic and the
+#     lanes left never load; the next store of the old values sends them
+#   atom-descending (atomf, CP-81): MIU takes each address's highest lane
+#     first; f32 rounding makes lane 31's read differ, the integer RMWs'
+#     sums could not
+for b in "atom-one-slot:ooe: OI-80: warp 0's atomic (seq [0-9]*) arrives in one decode slot" \
+         "atom-one-pass:miu: seq [0-9]* lane 1 loaded " \
+         "atom-lane-old:miu: seq [0-9]* lane 0 atomic write " \
+         "atom-no-more:miu: seq [0-9]* lane [0-9]* store data " \
+         "atom-descending:miu: seq [0-9]* lane 31 loaded "; do
+  nm=${b%%:*}; pat=${b#*:}
+  k=atom; [ "$nm" = atom-descending ] && k=atomf
+  "$SKEL" --kernel build/oracle/$k/oracle.jsonl --break "$nm" >"$B/kernel_$nm.log" 2>&1
+  if grep -m1 '^CHECK' "$B/kernel_$nm.log" | grep -q "^CHECK $pat"; then
+    say "--break $nm: an atomic O-72 rules out" "PASS ($(field "$B/kernel_$nm.log" check_failures) checks)"
+  else
+    bad "--break $nm" "first: $(grep -m1 '^CHECK' "$B/kernel_$nm.log")"
+  fi
+done
 # The issue lead (RA-31; OA's rev 307, AR's rev 267): every operand group an
 # issue uses is named a cycle ahead, so RCU loads no other. lead-src-clear
 # has OOE promise no source on every op; RCU refuses each op that reads one,
@@ -1545,6 +1639,17 @@ if grep -q "^CHECK ooe: completion for rob tag [0-9]*, which is not in the ROB" 
   say "--break replay-twice: OOE refuses the second completion" "PASS"
 else
   bad "--break replay-twice" "two completions for one load went unnoticed"
+fi
+# The fault lead (OI-125; AR's rev 314): lead_fault on ccv_miu_ooe_cmpl is
+# status == 1, a cycle ahead with the valid, and OOE holds that equality on
+# every completion. lead-fault-replay sets it on each replay the demotion's
+# drain sends (OA rev 376's first rule, status nonzero).
+rd swap lead-fault-replay
+n=$(grep -c "^CHECK ooe: rob tag [0-9]* completion's lead_fault 1 is not its status 2 == fault" "$B/kernel_swap_lead-fault-replay.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_swap_lead-fault-replay.log" check_failures)" = "$n" ]; then
+  say "--break lead-fault-replay: OOE refuses a replay's fault lead" "PASS ($n replays)"
+else
+  bad "--break lead-fault-replay" "$n refused: $(grep '^KERNEL' "$B/kernel_swap_lead-fault-replay.log")"
 fi
 rd swap no-ready
 if [ "$(field "$B/kernel_swap_no-ready.log" finished)" != 1 ] &&

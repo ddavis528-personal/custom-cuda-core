@@ -132,6 +132,12 @@
       "by": "OI",
       "date": "2026-11-01",
       "why": "The ret hold (OA's rev 293): an RCU entry is a branch or call, a static bit of the entry beside its footprint (res_cq03h), straight from RS flops as OA's response OI-53 gives select's live inputs (for OA to confirm)"
+    },
+    "grant_w_cq04h": {
+      "required": 1.0,
+      "by": "OA",
+      "date": "2026-11-07",
+      "why": "OA's response re:OI-122 (OA tab rev 375): 1 NGD of the grant's split moved from ooe_sched to ooe_wake; ooe_sched sends grant_w_cq04h from its third (* keep *) grant register (0.0 measured), so each timer enable is 6.1 + 1 = 7.1, within CG-2's 8"
     }
   }
 }

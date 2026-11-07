@@ -759,8 +759,8 @@ void Core::issueR(uint64_t t, const Issue &is, uint32_t active, const Word &r0, 
   case RKind::ShflDown:
   case RKind::ShflBfly: {
     // Out of 0..31 the lane keeps its own (O-85).
-    const unsigned c = is.imm & 31u;
     shfl([&](unsigned l) {
+      const unsigned c = (oc.ireg ? r1[l] : is.imm) & 31u;
       const int j = oc.rk == RKind::ShflUp ? int(l) - int(c) : oc.rk == RKind::ShflDown ? int(l + c) : int(l ^ c);
       return j < 0 || j >= int(kLanes) ? l : unsigned(j);
     });

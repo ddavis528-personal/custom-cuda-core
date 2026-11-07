@@ -165,7 +165,10 @@ module ooe_rnrs #(
         for (int s = 0; s < 4; s++)
           if (psv_q[p * 4 + s] && ep[j] && epn[j * LQ +: LQ] == psn_q[(p * 4 + s) * LQ +: LQ]) named[j] = 1'b1;
       end
-      if (gnt_v_cq03h[p] && (row & ~grp_e & ~(named & valid_out_cq02h)) != '0) chk_bad[p] = 1'b1;
+      // C9h (OA rev 372): an entry an L1 hit's confirmation freed at the
+      // edge stays off the mask, and ooe_rs clears its column at the next,
+      // while it holds it (hh): exempt for that cycle alone.
+      if (gnt_v_cq03h[p] && (row & ~grp_e & ~(named & valid_out_cq02h) & ~u_rs.hh_cq02h) != '0) chk_bad[p] = 1'b1;
     end
   end
   `CCV_ASSERT(surviving_named, chk_bad == '0)
