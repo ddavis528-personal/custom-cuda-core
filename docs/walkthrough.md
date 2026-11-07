@@ -215,7 +215,7 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=160 from_fetch=129 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
+KERNEL name=vadd finished=1 cycles=161 from_fetch=130 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
 XFER events=660 launched=660 match=yes channels_seen=33
 ```
 
@@ -381,7 +381,7 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=160 from_fetch=129 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
+KERNEL name=vadd finished=1 cycles=161 from_fetch=130 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
 TRACES records=767/767 equal=yes byte_identical=no differing_cycles=0
 ```
 
