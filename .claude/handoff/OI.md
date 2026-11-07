@@ -37,7 +37,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 313, RA 95, IS 190, TI 357, OA 372, OI 312, CP 155, DA 114, RI 21
+Conventions 17, AR 313, RA 95, IS 190, TI 357, OA 373, OI 313, CP 155, DA 114, RI 21
 (sweep 11-06 10:20, plus notices to 13:00). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
@@ -55,10 +55,13 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
    merges 86b477e, db3ad0b = TI's f4ce0fd; also on gate-scratch/OI). C9h is the model default
    (cmpl_split 9, rx_lag 16); ooe_cmcap new; ooe_rs hit-freed column clear (clr = free|hh, hhv
    flop for CG-2 7.8); ooe_wake hint capture hix+hq one gate. run-rtl and trio exact (no-c9h
-   control). BLOCKED on OA (OI-120, rev 312, notice sent 11-07): cmpl_idx_cq00h arrival 2 in
-   rtl/ooe/ooe_rs.ngd.json (now 34.0 at default 13) and a 25.7 fanout cap on prv_code_cq01h.
-   On OA's answer: merge OA's branch (budget + cap), check-ngd --unit ooe_rs, consider lowering
-   the NGD-1 cap to 28.5, regen, gate-push from wc9. Then OI-114's row to OA.
+   control). regen + walkthrough committed; cmpl_idx_cq00h arrival 2 written (00c77fe, OA 373).
+   BLOCKED on OA (OI-121, rev 313, notice sent): prv_code_cq01h 25.7. OA refused a cap; (a) kept cd
+   copies per class gave 25.9 (reverted; scratchpad/c9/ooe_rs.cdm.sv). (b) asked: arrival 9->8
+   (ooe_rendep sends from a flop, out 0.0, default budget 12) -> 24.7. On grant: write both
+   entries (ooe_rs.ngd.json arrival 8; ooe_rendep.ngd.json out budget <=11) citing OA's row,
+   check-ngd/check-cg ooe_rs, rs-only.sh, consider NGD-1 cap 28.5, gate-push from wc9.
+   Then OI-114's row to OA.
 2. OI-114 landed as (b) (OA 369), model only: the go reads unmet on time (unmet_reg 0; rename's
    register failed CG-5/CG-3), floor_take_lag 1; rename and go RTL as pushed. RH's S1: 0 cost at 192
    and 160 (X/Y, Z). Row to OA when pushed.
