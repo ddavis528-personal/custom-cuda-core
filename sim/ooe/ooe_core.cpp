@@ -34,7 +34,7 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"share_return", &share_return},
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
       {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
@@ -1764,6 +1764,7 @@ void Core::takeCompletions() {
     const unsigned idx = c.rob_tag & ((1u << ccv::prov::kWRobIdx) - 1);
     if (parts & 1) {
       roblog_.cmpl.push_back(c.rob_tag);
+      roblog_.cmplf.push_back({c.status == kCmplFault, c.cause, c.lane_mask, c.address});
       if (!r->at_miu || r->miu_done) {
         err("V-43: a second completion for rob tag %u", c.rob_tag);
         return;
@@ -1914,6 +1915,12 @@ void Core::atomCmpl(unsigned slot, unsigned idx, const Cmpl &c) {
   }
   RsEntry &x = rs_[c.rs_idx];
   if (!x.issued) err("OI-58: a completion for RS entry %u, not issued", c.rs_idx);
+  // A bulk discard exempts mem_op 2 and 3 (ccv_ooe_miu_memop; TI rev
+  // 366): an atomic's read or write completes with status 0 or 1, never 2.
+  if (c.status == kCmplReplay) {
+    err("OI-127: rob tag %u, an atomic's %s, completed with status replay", tag, a1 ? "read" : "write");
+    return;
+  }
   if (a1) {
     if (c.more) err("V-72: rob tag %u's atomic read completes with more", tag);
     if (c.status) {
@@ -2621,10 +2628,16 @@ void Core::retire() {
       if (after_branch) { count("retire.branch_ends_window"); break; }
       after_branch = cfg_.resolve_lag && cfg_.branch_ends_window && r.u.attr.branch;
       if (r.fault) {
+        // fault_head_only (ROB slice 4): 1 takes it on the window's port 0
+        // alone; 2 only once it was the head a cycle before (the RTL's
+        // registered head), so a fault behind older retirees waits there.
+        if ((n && cfg_.fault_head_only) || (cfg_.fault_head_only >= 2 && s.head_since >= now_)) {
+          count("retire.fault_waits_head");
+          break;
+        }
         // Faults are taken at retirement: stop, report, let RAU's kill clean
         // up (Faults; V-24). OOE does not squash.
         s.fault_stop = true;
-        robStop("fault");
         Status st;
         st.warp = s.warp;
         st.fault_taken = true;
@@ -2641,6 +2654,7 @@ void Core::retire() {
         f.address = s.fa_valid && s.fa_idx == s.head ? s.fa_addr : 0;
         if (r.at_miu && (!s.fa_valid || s.fa_idx != s.head || s.fa_addr != r.fault_addr))
           err("V-74: the fault-address register does not hold rob tag %u's address", tagOf(si, s.head));
+        roblog_.fault.push_back({si, s.head, r.fault_cause, r.u.pc, r.fault_lanes, f.address});
         out.faults.push_back(f);
         count("fault");
         ev("fault", s.warp, r.fault_cause, r.u.pc, r.u.tid);
@@ -3420,9 +3434,15 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     is.pdst = step == 1 ? r.atom_t : step == 2 ? r.ptmp_n : noGpr();
     is.merge = step == 1 && r.copy;
     is.pold = is.merge ? r.pold : 0;
-    is.ppdst = 0;
-    is.pred_we = false;
-    is.ppold = 0;
+    // A2 writes a CAS's pd (OI-127, OA rev 380): its renamed name,
+    // pred_we and the old name for the A-43 merge, on every pass. merge
+    // then covers A2's N as well, from row 0 (pold 0): N's inactive lanes
+    // are never stored, since A3 runs under the same mask.
+    const bool a2pd = step == 2 && u.pred_we;
+    is.ppdst = a2pd ? r.ppnew : 0;
+    is.pred_we = a2pd;
+    is.ppold = a2pd && r.merge ? r.ppold : 0;
+    if (a2pd) is.merge = r.merge;
     const unsigned m = resEntry(step == 1 ? r.rs_main : step == 2 ? r.rs_a2 : r.rs_a3);
     is.res = step == 2 ? Issue::kLaneOp : Issue::kMemop;
     is.footprint = uint8_t(!cfg_.sectioned ? 0xFu : step == 2 ? m & 0xFu : m >> 5);
@@ -4081,6 +4101,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
         dep(r.rs_a2, r.psrc[2], false, int(Config::kGrpInt));
       }
       if (u.shape.guard) dep(r.rs_a2, r.ppguard, true, -1);
+      // A2 merges a CAS's pd from the old one (A-43).
+      if (u.pred_we && r.merge) dep(r.rs_a2, r.ppold, true, -1);
       gprod_[r.ptmp_n] = {r.rs_a2, kNoEntry};
       dep(r.rs_a3, r.ptmp_n, false, int(Config::kGrpAddr));
     } else {
@@ -4103,7 +4125,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     if (a.branch && u.pred_taken && u.backward) s.home_ctr = (s.home_ctr + 1) & 3u;
     // This uop is now the producer of its destinations.
     if (wgpr) gprod_[r.pnew] = {atomic ? r.rs_a3 : r.rs_main, copy ? r.rs_copy : kNoEntry};
-    if (u.pred_we) pprod_[r.ppnew] = {r.rs_main, kNoEntry};
+    // An atomic's pd, as its rd, wakes its consumers once, on A3's last
+    // pass (V-71); A2's last write lands before A3 reads N.
+    if (u.pred_we) pprod_[r.ppnew] = {atomic ? r.rs_a3 : r.rs_main, kNoEntry};
   }
   if (u.cause) {
     // Fetch's or decode's, as DEC sent it (TI's 75b6a19).
@@ -4164,6 +4188,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       q.tgt = q.pcn + uint64_t(2 * int64_t(int32_t(u.imm)));
       q.pchi = unsigned((u.pc >> 32) & 0xffffu);
     }
+    q.fault = r.fault;
+    q.cause = r.fault ? r.fault_cause : 0;
+    q.pclo = uint32_t((u.pc >> 1) & 0x7fffffffu);
+    q.epchi = unsigned((u.pc >> 32) & 0xffffu);
+    q.egmask = u.group_mask;
     roblog_.alloc.push_back(q);
     if (r.atomic) robStop("atomic");
   }
@@ -4732,6 +4761,12 @@ void Core::rename() {
       cu.attr_raw = (cu.attr_raw & ~(1u << 10)) | (it2->attr_raw & (1u << 10));
       for (unsigned i = 0; i != 2; ++i) cu.cas_src[i] = it2->src[i];
       cu.cas_reads = uint8_t(it2->shape.gpr_reads & 3u);
+      // CAS's pd (OI-127; TI rev 366): DEC puts it in the second slot,
+      // beside rd. The pair renames it with the rest.
+      if (!cfg_.inject_cas_no_pd) {
+        cu.pred_we = it2->pred_we;
+        cu.pred_dst = it2->pred_dst;
+      }
     }
     if (young) count("rename.refill");
     ren_pair_last_ = pair && budget < 2 && !cfg_.inject_pair_split;

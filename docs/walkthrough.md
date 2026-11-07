@@ -148,7 +148,7 @@ every channel for 2000 cycles, through the same wiring and the same checker
 bank:
 
 ```
-SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=220046 received=220046 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=179 idle_slots=0 violations=0
+SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=221709 received=221709 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=179 idle_slots=0 violations=0
 ```
 
 ## 5. One channel, from the schema down
@@ -426,11 +426,11 @@ check:
 
 ```
 [20000] %Error: ccv_common_chk_credit.sv:317: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
-SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=209046 received=209046 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=54 credits_home=161 idle_slots=0 violations=31
+SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=210292 received=210292 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=53 credits_home=161 idle_slots=0 violations=26
 ```
 
 The C++ receivers count the same leak from their side:
-`credit_leaks=54`, and only
+`credit_leaks=53`, and only
 161 of 179 slots have all
 their credits home at the end.
 
@@ -510,4 +510,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 985fdc175837e9d7 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: db2942aec0412101 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
