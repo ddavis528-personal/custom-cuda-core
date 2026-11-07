@@ -1428,6 +1428,11 @@ private:
   /// A memop not started, ended by a discard: its replay completion.
   void replay(unsigned tag, const Memop &mo) {
     const Ch &c = ch();
+    // An atomic's step is never replayed (schema text; OA's response re:TI
+    // rev 365): a bulk discard exempts it.
+    const unsigned mop = unsigned(get(mo.msg, c.ooe_miu, "mem_op"));
+    if (mop == kMemAtomicRead || mop == kMemAtomicWrite || atom_.count(tag))
+      k_.fail("miu: rob tag %u, an atomic's step, completed with status replay", tag);
     if (k_.brk != "drop-replay")
       to_ooe_.push_back(
           {mo.slot, replayMsg(tag, unsigned(get(mo.msg, c.ooe_miu, "rs_idx"))), mo.tid});
@@ -1870,6 +1875,8 @@ private:
   /// again, re-issued by OOE; its lanes come from what is left.
   /// atom-one-pass: every lane left in one pass, so lanes naming one
   /// address all read the value before any of them writes.
+  /// atom-descending: the highest lane of each address first, the order the
+  /// ISA rules out; only atomf's rounding tells it apart.
   void atomRead(Job j, const Bits &am) {
     auto it = atom_.find(j.tag);
     if (it == atom_.end()) {
@@ -1885,12 +1892,16 @@ private:
       k_.hit("atomic");
     }
     Atom &a = it->second;
+    // atom-descending: the highest lane left of each address goes first.
+    const bool desc = k_.brk == "atom-descending";
     uint32_t pass = 0;
-    for (unsigned l = 0; l != kLanes; ++l) {
+    for (unsigned i = 0; i != kLanes; ++i) {
+      const unsigned l = desc ? kLanes - 1 - i : i;
       if (!(a.left >> l & 1u)) continue;
       bool dup = false;
-      for (unsigned m = 0; m != l && k_.brk != "atom-one-pass"; ++m)
-        dup = dup || ((pass >> m & 1u) && (j.spm ? j.paddr[m] == j.paddr[l] : j.addr[m] == j.addr[l]));
+      for (unsigned m = 0; m != kLanes && k_.brk != "atom-one-pass"; ++m)
+        dup = dup || (m != l && (pass >> m & 1u) &&
+                      (j.spm ? j.paddr[m] == j.paddr[l] : j.addr[m] == j.addr[l]));
       if (!dup) pass |= 1u << l;
     }
     if (a.passes++) k_.hit("atomic_repass");

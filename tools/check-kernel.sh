@@ -162,7 +162,9 @@
 #     ascending order, until MIU says no       atom-one-pass: a lane reads the
 #     more (O-72; AR-21, V-72; IS-21)          word before a lower lane wrote;
 #                                              atom-no-more: lanes left unrun;
-#                                              atom-lane-old: A2 writes T back
+#                                              atom-lane-old: A2 writes T back;
+#                                              atom-descending (atomf): f32
+#                                                rounding shows the order
 #   a memop's fault lead is status == 1     lead-fault-replay (swap): OOE
 #     (OI-125, AR rev 314)                     refuses each replay's lead;
 #                                              lead-fault-drop (roconst):
@@ -792,6 +794,7 @@ lnorm1 bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0
 transp4 bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0
 borrow credit_borrow=1 credit_wait>0 chw_converged=2
 atom   atomic_pair=7 atomic=7 atomic_write=193 atomic_repass=186 atomic_lane>0 spm_pass>0
+atomf  atomic_pair=2 atomic=2 atomic_write=64 atomic_repass=62 spm_pass>0
 KERNELS
 # O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
 # xfer_size, never rdata's width, and a signed load sign-filled to rdata.
@@ -1490,12 +1493,17 @@ done
 #     write check refuses lane 0's
 #   atom-no-more: MIU never sets more, so one pass ends the atomic and the
 #     lanes left never load; the next store of the old values sends them
+#   atom-descending (atomf, CP-81): MIU takes each address's highest lane
+#     first; f32 rounding makes lane 31's read differ, the integer RMWs'
+#     sums could not
 for b in "atom-one-slot:ooe: OI-80: warp 0's atomic (seq [0-9]*) arrives in one decode slot" \
          "atom-one-pass:miu: seq [0-9]* lane 1 loaded " \
          "atom-lane-old:miu: seq [0-9]* lane 0 atomic write " \
-         "atom-no-more:miu: seq [0-9]* lane [0-9]* store data "; do
+         "atom-no-more:miu: seq [0-9]* lane [0-9]* store data " \
+         "atom-descending:miu: seq [0-9]* lane 31 loaded "; do
   nm=${b%%:*}; pat=${b#*:}
-  "$SKEL" --kernel build/oracle/atom/oracle.jsonl --break "$nm" >"$B/kernel_$nm.log" 2>&1
+  k=atom; [ "$nm" = atom-descending ] && k=atomf
+  "$SKEL" --kernel build/oracle/$k/oracle.jsonl --break "$nm" >"$B/kernel_$nm.log" 2>&1
   if grep -m1 '^CHECK' "$B/kernel_$nm.log" | grep -q "^CHECK $pat"; then
     say "--break $nm: an atomic O-72 rules out" "PASS ($(field "$B/kernel_$nm.log" check_failures) checks)"
   else
