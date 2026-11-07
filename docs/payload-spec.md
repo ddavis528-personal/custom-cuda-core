@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 14 | 36 |
-| ⚠️ Some provisional | 26 | 138 |
+| ⚠️ Some provisional | 26 | 139 |
 | ⛔ Some preliminary | 15 | 147 |
-| **Total** | **55** | **321** |
+| **Total** | **55** | **322** |
 
 ## What still has to be decided
 
@@ -432,7 +432,7 @@ Lead fields (driven with valid, a cycle ahead of the rest): `active_mask`, `phys
 
 ### `ccv_miu_ooe_cmpl`
 
-Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46). ATOMIC PASSES (AR-21, OA's response): an atomic is A1 (atomic-read), A2 (the lane op) and A3 (atomic-write) under one rob_tag. MIU runs its lanes in passes, at most one lane per address in ascending lane order, and never waits for a line while holding another (V-72). A3's completion carries more = 1 while lanes remain, and OOE re-issues the three steps; more is 0 on every other completion. FAULTS (ISA v1.9 §12.5-12.6): on a faulting completion, cause is the highest-priority cause among the faulting lanes (F-ALIGN, F-ADDR, F-SHARED or F-RO, codes 5-8), address the lowest faulting lane's effective address, and lane_mask the faulting lanes; CRU's record takes exactly those. STATUS: 0 complete, 1 fault (cause and address carry the detail), 2 replay. REPLAY DRAIN (AR's and OA's responses TI-21, MIU spec rev 18): a load a bulk discard covers is completed at once with status replay, and MIU orphans its requests to DCU: their responses are dropped, with no write on ccv_miu_rcu_data after the completion (a data beat already started finishes first, and its completion may then carry its real status), no hint on ccv_miu_ooe_cmpl_hint, and its fill notice ignored. A discard that races a normal completion in the same cycle still yields exactly one completion (A-41). So a demotion's drain waits for no fill. DONE_ROW (OI-85, OA's rev 282): the row this completion completes, echoed from the memop on ccv_ooe_miu_memop.
+Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46). ATOMIC PASSES (AR-21, OA's response): an atomic is A1 (atomic-read), A2 (the lane op) and A3 (atomic-write) under one rob_tag. MIU runs its lanes in passes, at most one lane per address in ascending lane order, and never waits for a line while holding another (V-72). A3's completion carries more = 1 while lanes remain, and OOE re-issues the three steps; more is 0 on every other completion. FAULTS (ISA v1.9 §12.5-12.6): on a faulting completion, cause is the highest-priority cause among the faulting lanes (F-ALIGN, F-ADDR, F-SHARED or F-RO, codes 5-8), address the lowest faulting lane's effective address, and lane_mask the faulting lanes; CRU's record takes exactly those. STATUS: 0 complete, 1 fault (cause and address carry the detail), 2 replay. REPLAY DRAIN (AR's and OA's responses TI-21, MIU spec rev 18): a load a bulk discard covers is completed at once with status replay, and MIU orphans its requests to DCU: their responses are dropped, with no write on ccv_miu_rcu_data after the completion (a data beat already started finishes first, and its completion may then carry its real status), no hint on ccv_miu_ooe_cmpl_hint, and its fill notice ignored. A discard that races a normal completion in the same cycle still yields exactly one completion (A-41). So a demotion's drain waits for no fill. DONE_ROW (OI-85, OA's rev 282): the row this completion completes, echoed from the memop on ccv_ooe_miu_memop. LEAD_FAULT (OI-125, AR's rev 314, MIU spec rev 61): status == 1, a cycle ahead with the valid, per slot; MIU settles status by the valid's cycle, so a discard that lands after the valid does not change that completion.
 
 miu → ooe · rate 4 · memory
 
@@ -447,7 +447,10 @@ miu → ooe · rate 4 · memory
 | `address` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `mlc_miss` | `1` | 1 | literal |
 | `more` | `1` | 1 | literal |
-| **total** | | **119** | ⚠️ 13 provisional |
+| `lead_fault` | `1` | 1 | literal |
+| **total** | | **120** | ⚠️ 13 provisional |
+
+Lead fields (driven with valid, a cycle ahead of the rest): `lead_fault`.
 
 ### `ccv_ooe_miu_retire`
 

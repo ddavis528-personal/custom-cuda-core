@@ -392,6 +392,15 @@ private:
         x.lane_mask = uint32_t(get(m.payload, c.miu_ooe, "lane_mask"));
         x.address = get(m.payload, c.miu_ooe, "address");
         x.mlc_miss = get(m.payload, c.miu_ooe, "mlc_miss") != 0;
+        // The fault lead (OI-125; AR's rev 314): a cycle ahead with the
+        // valid (the slot hands it over with the payload), lead_fault ==
+        // (status == 1) on every completion; never set by a replay.
+        if (hasField(c.miu_ooe, "lead_fault")) {
+          const bool lf = get(m.payload, c.miu_ooe, "lead_fault") != 0;
+          if (lf != (x.status == 1))
+            k_.fail("ooe: rob tag %u completion's lead_fault %u is not its status %u == fault", x.rob_tag,
+                    unsigned(lf), x.status);
+        }
         // MIU echoes the memop's RS entry (OA-23): any other is a completion
         // that would wake the wrong entry.
         const unsigned rs = unsigned(get(m.payload, c.miu_ooe, "rs_idx"));

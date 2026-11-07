@@ -151,6 +151,10 @@
 #     the rest are zero (AR rev 260)           sender refuses aux off its slot
 #   a branch's or call's lead says what     lead-corrupt (callret): OOE
 #     its done says (AR rev 260)               refuses each branch done
+#   a memop's fault lead is status == 1     lead-fault-replay (swap): OOE
+#     (OI-125, AR rev 314)                     refuses each replay's lead;
+#                                              lead-fault-drop (roconst):
+#                                              and a fault with none
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -1116,6 +1120,16 @@ if grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-RO at pc 1
 else
   bad "--break no-ro" "a store into .const went unrefused: $(grep '^KERNEL' "$B/kernel_no-ro.log")"
 fi
+# A fault's completion leads with lead_fault (OI-125; AR's rev 314), and
+# OOE's fault capture gates on it. lead-fault-drop never sets it: roconst's
+# F-RO completion goes unled, which OOE's equality refuses.
+"$SKEL" --kernel build/oracle/roconst/oracle.jsonl --break lead-fault-drop >"$B/kernel_lead-fault-drop.log" 2>&1
+n=$(grep -c "^CHECK ooe: rob tag [0-9]* completion's lead_fault 0 is not its status 1 == fault" "$B/kernel_lead-fault-drop.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-fault-drop.log" check_failures)" = "$n" ]; then
+  say "--break lead-fault-drop: OOE refuses a fault with no lead" "PASS ($n faults)"
+else
+  bad "--break lead-fault-drop" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-fault-drop.log")"
+fi
 # F-ADDR (O-75; CP-34's kernels): a .global address is the exact sum, and
 # one outside [0, 2^48) faults. Taken modulo 2^48, addrhigh's lanes 16-31
 # store at the bottom of memory and lanes 0-15 land too, and addrneg's load
@@ -1545,6 +1559,17 @@ if grep -q "^CHECK ooe: completion for rob tag [0-9]*, which is not in the ROB" 
   say "--break replay-twice: OOE refuses the second completion" "PASS"
 else
   bad "--break replay-twice" "two completions for one load went unnoticed"
+fi
+# The fault lead (OI-125; AR's rev 314): lead_fault on ccv_miu_ooe_cmpl is
+# status == 1, a cycle ahead with the valid, and OOE holds that equality on
+# every completion. lead-fault-replay sets it on each replay the demotion's
+# drain sends (OA rev 376's first rule, status nonzero).
+rd swap lead-fault-replay
+n=$(grep -c "^CHECK ooe: rob tag [0-9]* completion's lead_fault 1 is not its status 2 == fault" "$B/kernel_swap_lead-fault-replay.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_swap_lead-fault-replay.log" check_failures)" = "$n" ]; then
+  say "--break lead-fault-replay: OOE refuses a replay's fault lead" "PASS ($n replays)"
+else
+  bad "--break lead-fault-replay" "$n refused: $(grep '^KERNEL' "$B/kernel_swap_lead-fault-replay.log")"
 fi
 rd swap no-ready
 if [ "$(field "$B/kernel_swap_no-ready.log" finished)" != 1 ] &&
