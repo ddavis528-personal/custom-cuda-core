@@ -188,7 +188,8 @@ RI-20 (rcu_lanes 7,011 fl / rcu_mem 12,558 fl, ba0df94; NGD 13.6/11.0): RA rev 9
 (each module its own decode); sec_pred_bit_a moves to rcu_pred (lead field at A's edge; act_cr02h goes). TODO at
 assembly: reduce Partition's ~110 MIU lead-capture flops in rcu_mem (RI note 6: none there) and recount lead slices.
 Partition rev 53.
-Bookmarks: OA 379, RA 98, RI 38, TI 368, DA 115, AR 316, OI 319, Conventions 17, CP 155, IS 190.
+RA-30 CLOSED (RA rev 99): O-85 collectives landed de03fd6 (TI 371).
+Bookmarks: OA 379, RA 99, RI 38, TI 371, DA 115, AR 316, OI 319, Conventions 17, CP 155, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
