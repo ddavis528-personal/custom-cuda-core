@@ -1229,7 +1229,12 @@ it.
   points to a collision between a lane result and a load's data or wake,
   where the loser pays far more than a cycle. The fix belongs to that
   penalty, not to the latency, pending the stats diff and OI's and RI's
-  reading.
+  reading. The diff (TI rev 370) puts it at the ROB head waiting on MIU
+  (load_at_miu +30%, store +20%), not in RCU or in replays. The MIU
+  stub starts one job a cycle, puts committed stores first and blocks
+  every warp behind a held load. The spec's MIU has four pipes and holds
+  only the load. AR rev 319 asks for that stub's stall causes and a
+  four-pipe rerun before any of it is booked.
 
 ### PF-48 End-to-end parity on register state
 
