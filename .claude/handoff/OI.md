@@ -37,7 +37,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 313, RA 95, IS 190, TI 357, OA 373, OI 314, CP 155, DA 114, RI 21
+Conventions 17, AR 313, RA 95, IS 190, TI 359, OA 375, OI 315, CP 155, DA 114, RI 21
 (sweep 11-06 10:20, plus notices to 13:00). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
@@ -58,13 +58,10 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
    control). regen + walkthrough committed; cmpl_idx_cq00h arrival 2 written (00c77fe, OA 373).
    prv_code split granted (OA 374) and written (5e1b436). Gate on 5e1b436 RED; fixed in OI's files:
    ratchet grp_dep/sqf caps removed (met), no-msd seeds >=200 (f33368b, wc9 tip, unpushed).
-   BLOCKED on OA (OI-122, rev 314, notice sent): ooe_wake timer enable 6.1 cone + grant arrival 2 =
-   8.1 > CG-2 8 (C9h hm decode). Coarse/group/copies all fail (DCGE 47/55%, copies no-op). Asked:
-   ooe_wake.ngd.json grant_cq01h arrival 1, ooe_sched.ngd.json grant_w_cq04h required 1 (out 0.0).
-   On grant: write both, restate cg-waivers ooe_wake CG-5 enable_ngd 7.1 + why, check-cg both.
-   ALSO RED (TI's tools/check-kernel.sh): privwin priv_form 12 (want 11, line 760); predswap at:58
-   crack_split 0 and --break resume-mid. Measuring in wc9 (skel+oracle build, scratchpad/c9/
-   skel-build.log, oracle.log); then sweep CCV_RAU_DEMOTE=at:N and raise OI-123 to TI.
+   OI-122 GRANTED (OA 375): grant arrival 1, sched grant_w out 1, waiver 7.1 (aae48b6; checks clean).
+   OI-123: TI (rev 359) says OI carries the check-kernel retimes: at:59, priv_form 12 (6ded4df;
+   check-kernel.sh rc 0). wc9 tip d94146a (on gate-scratch/OI). WAITING for TI's 41c82d8 on origin
+   (TI: base on it, check-kernel ret-held block, RI-18); send_later trig_01Nofj1FgLivKdmZL6hqnEzB.
    Then gate-push from wc9; then OI-114's row to OA.
 2. OI-114 landed as (b) (OA 369), model only: the go reads unmet on time (unmet_reg 0; rename's
    register failed CG-5/CG-3), floor_take_lag 1; rename and go RTL as pushed. RH's S1: 0 cost at 192
