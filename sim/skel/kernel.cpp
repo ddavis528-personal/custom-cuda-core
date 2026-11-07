@@ -562,9 +562,10 @@ private:
   /// policy before rev 8, which the merged values survive but the timing
   /// does not.
   /// CCV_DCU_SETS sets (default 64, a power of two) of CCV_DCU_WAYS ways
-  /// (default 1, direct-mapped), least recently used replaced. Capacity and
-  /// associativity are unset in the DCU spec, which sizes the ways by a sweep
-  /// of 1, 2, 4 and 8 (AR-24's 4-warp shape, and AR's 512 KiB fit bound).
+  /// (default 8, 64 KiB), least recently used replaced: the DCU spec's 8
+  /// ways, settled by TI rev 234's 1-to-8-way sweep (AR rev 320). Before it
+  /// the default was 1 way, and three arrays 64 KiB apart (rbase<<16) fought
+  /// for one set (J9). A kernel that needs evictions sets CCV_DCU_WAYS=1.
   static unsigned setsOf() {
     const char *v = std::getenv("CCV_DCU_SETS");
     const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 64;
@@ -577,8 +578,8 @@ private:
   };
   static unsigned waysOf() {
     const char *v = std::getenv("CCV_DCU_WAYS");
-    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 1;
-    return n >= 1 && n <= 16 ? n : 1;
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 8;
+    return n >= 1 && n <= 16 ? n : 8;
   }
   const unsigned ways_ = waysOf();
   std::vector<Way> l1_ = std::vector<Way>(size_t(sets_) * ways_);
