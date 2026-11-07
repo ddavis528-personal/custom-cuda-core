@@ -285,6 +285,19 @@ private:
       is.oc.unit = R::Unit::Lane;
       return is;
     }
+    // O-72's atomics (IS-21; AR-21): one opcode, three steps by done_row,
+    // each issued as its step's class: A1 an address like a load's (base
+    // port 0, index 1), A2 the lane op on T and rs, A3 a store of N (port 0).
+    // The lanes still see the atomic's opcode, which names A2's operation.
+    if (op && op->cls == kAtomic) {
+      const OpInfo *step = atomStep(is.done_row);
+      if (!step) {
+        k_.fail("rcu: rob tag %u's atomic issued on row %u, no step of it", is.tag, is.done_row);
+        is.oc.unit = R::Unit::Lane;
+        return is;
+      }
+      op = step;
+    }
     is.oc = classOf(op, copy, copy && is.pwe && is.dst == R::kZero);
     is.name = op ? op->name : "a copy";
     // INTERIM until RA-18 lands (DEC's imm_kind 6, OOE's pc + length in

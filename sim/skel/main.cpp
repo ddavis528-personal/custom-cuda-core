@@ -238,7 +238,9 @@ int main(int argc, char **argv) {
                       brk == "corrupt-group-mask" || brk == "fair-off" ||
                       brk == "fair-late" || brk == "split-swap" ||
                       brk == "no-st-wait" || brk == "early-mark" || brk == "beats-dead" ||
-                      brk == "no-ro" || brk == "no-window-fill" || brk == "window-from-base" ||
+                      brk == "no-ro" || brk == "atom-one-slot" || brk == "atom-lane-old" ||
+                      brk == "atom-one-pass" || brk == "atom-no-more" ||
+                      brk == "no-window-fill" || brk == "window-from-base" ||
                       brk == "scalar-base" || brk == "zero-cta-slot" || brk == "lanectx-literal" || brk == "call-link-literal" || brk == "shfl-wrap" || brk == "coll-issue-only" || brk == "unballot-lowest" || brk == "lanectx-as-ctatid" || brk == "drop-pred-copy" || brk == "pdata-guard" || brk == "ldpred-whole-word" || brk == "stpred-whole-word" ||
                       brk == "xfer-low-lane" || brk == "resume-mid" || brk == "whole-cta-mask" ||
                       brk == "no-kill" || brk == "withheld-ack" || brk == "stale-ack" ||

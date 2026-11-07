@@ -157,6 +157,12 @@
 #   the collectives compute O-85's         shfl-wrap, coll-issue-only,
 #     semantics (RA-20, DA tab rev 100)        unballot-lowest (coll, stub
 #                                              RCU): CP-76's three readings
+#   an atomic is a decode pair, and runs    atom-one-slot: OOE refuses each
+#     in passes, one lane an address in        one-slot atomic (OI-80);
+#     ascending order, until MIU says no       atom-one-pass: a lane reads the
+#     more (O-72; AR-21, V-72; IS-21)          word before a lower lane wrote;
+#                                              atom-no-more: lanes left unrun;
+#                                              atom-lane-old: A2 writes T back
 #   a memop's fault lead is status == 1     lead-fault-replay (swap): OOE
 #     (OI-125, AR rev 314)                     refuses each replay's lead;
 #                                              lead-fault-drop (roconst):
@@ -785,6 +791,7 @@ spmbank spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0
 lnorm1 bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0
 transp4 bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0
 borrow credit_borrow=1 credit_wait>0 chw_converged=2
+atom   atomic_pair=7 atomic=7 atomic_write=193 atomic_repass=186 atomic_lane>0 spm_pass>0
 KERNELS
 # O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
 # xfer_size, never rdata's width, and a signed load sign-filled to rdata.
@@ -1471,6 +1478,28 @@ for b in "shfl-wrap:seq [0-9]* R[0-9]* lane [0-9]* = " "coll-issue-only:seq [0-9
     say "--break $nm (stub): a collective O-85 ruled out" "PASS ($n refused)"
   else
     bad "--break $nm" "$n refused: $(grep '^KERNEL' "$B/kernel_$nm.log")"
+  fi
+done
+# O-72's atomics (IS-21; AR-21, V-72): atom runs every RMW form but CAS on
+# .global and .shared, most with all 32 lanes on one word, so each runs in
+# passes. Each control must fail at its first check, by the check named:
+#   atom-one-slot: DEC sends an atomic in one slot; OOE refuses it (OI-80)
+#   atom-one-pass: MIU runs every lane in one pass; lane 1 reads the word
+#     lane 0 has not yet written, and MIU's read check refuses it
+#   atom-lane-old: the lane op writes T back, not the new value; MIU's
+#     write check refuses lane 0's
+#   atom-no-more: MIU never sets more, so one pass ends the atomic and the
+#     lanes left never load; the next store of the old values sends them
+for b in "atom-one-slot:ooe: OI-80: warp 0's atomic (seq [0-9]*) arrives in one decode slot" \
+         "atom-one-pass:miu: seq [0-9]* lane 1 loaded " \
+         "atom-lane-old:miu: seq [0-9]* lane 0 atomic write " \
+         "atom-no-more:miu: seq [0-9]* lane [0-9]* store data "; do
+  nm=${b%%:*}; pat=${b#*:}
+  "$SKEL" --kernel build/oracle/atom/oracle.jsonl --break "$nm" >"$B/kernel_$nm.log" 2>&1
+  if grep -m1 '^CHECK' "$B/kernel_$nm.log" | grep -q "^CHECK $pat"; then
+    say "--break $nm: an atomic O-72 rules out" "PASS ($(field "$B/kernel_$nm.log" check_failures) checks)"
+  else
+    bad "--break $nm" "first: $(grep -m1 '^CHECK' "$B/kernel_$nm.log")"
   fi
 done
 # The issue lead (RA-31; OA's rev 307, AR's rev 267): every operand group an
