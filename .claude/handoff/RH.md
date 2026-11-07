@@ -52,9 +52,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 ## Jobs in flight
 - None. Idle since 2026-11-07 16:50Z; free for TI's J9 (capacity sweep), once
   TI's CTA-queueing and gen-oracle -load code lands.
-- DONE and sent to TI (2026-11-07), f4ce0fd, worktree /home/user/rh-tip (keep:
-  the coremarkpl32 oracle stays in build/bench-oracle for RI's repro until TI
-  drops it). Logs in ~/ccv-logs/j6 and ~/ccv-logs/j78 (summary).
+- DONE and sent to TI (2026-11-07), f4ce0fd, worktree /home/user/rh-tip
+  (oracles cleared; TI rev 367: the pl32 divergence was RI's interim call-link
+  line, fixed on ti-o85. Next from TI: clean model reruns of pl32/pl128 after
+  its next push). Logs in ~/ccv-logs/j6 and ~/ccv-logs/j78 (summary).
   - J6: PHYS sweep. J7: dcu8/cold/512K; all cold runs hang. pl32 with the RCU
     model diverges: R14 lane 2 0x240 vs 0x3a6c.
   - Bisect for RI: pl32 is clean with CCV_RCU_IMPL=stub (14,295,719). With the
