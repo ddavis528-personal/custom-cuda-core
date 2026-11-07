@@ -449,18 +449,26 @@ module ooe_wake #(
   logic [NC-1:0]   hl_cq01h;
   logic [NC*W-1:0] hix_cq02h;
   logic [N-1:0]    hnt_cq01h, hm_cq02h;
-  logic            hix_en_cq01h;   // a hint's payload arrives now: the capture's enable
+  logic            hix_en_cq01h;   // a hint's payload arrives now, or the last's valids clear
+  logic [NC-1:0]   hq_cq02h;       // the captured hint's lanes: hl, a cycle on
   assign hnt_cq01h = '0;
+  // One gate for the capture and its lanes' valids: a hint's payload lands
+  // or the last one's valids clear. Alone, the payload would often be
+  // captured unchanged (first-fit allocation names the same entry hint
+  // after hint), under CG-3's 75%.
   always_ff @(posedge ooe_core_clk)
     if (hix_en_cq01h) hix_cq02h <= hint_idx_cq01h;
-  logic [NC-1:0] hq_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h)          hq_cq02h <= '0;
+    else if (hix_en_cq01h) hq_cq02h <= hl_cq01h;
+  end
   always_comb begin
     hm_cq02h = '0;
     for (int k = 0; k < NC; k++)
       for (int j = 0; j < N; j++)
         if (hq_cq02h[k] && hix_cq02h[k * W +: W] == W'(j)) hm_cq02h[j] = 1'b1;
   end
-  assign hix_en_cq01h = hl_cq01h != '0;
+  assign hix_en_cq01h = hl_cq01h != '0 || hq_cq02h != '0;
 
   // -- Stops (OI-45) ---------------------------------------------------------
   // The cancel and confirmation over this module's state, as ooe_rs runs
@@ -516,7 +524,7 @@ module ooe_wake #(
   logic [N-1:0]   flt_nx_cq01h;
   logic           wml_nx_cq01h;
   always_comb begin
-    wml_nx_cq01h = hix_en_cq01h;
+    wml_nx_cq01h = hl_cq01h != '0;
     for (int j = 0; j < N; j++) begin
       logic [EW-1:0] g;
       g = entry_next('0, 1'b1, kind_cq01h[j * 2 +: 2], cls_cq01h[j * 3 +: 3], prod_cq01h[j], 1'b0, 1'b0, 1'b0,
@@ -562,13 +570,11 @@ module ooe_wake #(
     if (rst_r01h) begin
       cv_cq01h    <= '0;
       hl_cq01h    <= '0;
-      hq_cq02h    <= '0;
       sq_en_cq01h <= 1'b0;
       wml_cq02h   <= 1'b0;
     end else begin
       cv_cq01h    <= cmpl_l_cq00h;
       hl_cq01h    <= hint_l_cq00h;
-      hq_cq02h    <= hl_cq01h;
       sq_en_cq01h <= sq_l_cq00h;
       wml_cq02h   <= wml_nx_cq01h;
     end

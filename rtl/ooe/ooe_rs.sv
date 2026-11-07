@@ -306,6 +306,7 @@ module ooe_rs #(
   logic [N-1:0] rmask_cq02h;
   logic [N-1:0] hcq_cq02h, hc_cq02h, hh_cq02h;   // C9's hit-confirm hold (below)
   logic [N-1:0] clr_cq02h;                       // the columns cleared at this edge: the frees and the held
+  logic         hhv_cq02h;                       // some entry held (hh): the class enables' term, one flop
   assign rmask_cq02h = valid_cq02h & ~(conf_cq02h & ~hc_cq02h | sqf_cq01h) & ~lga_cq02h;
   always_comb begin
     g_cq02h = grants(valid_cq02h | hh_cq02h, req_cq01h);
@@ -523,16 +524,19 @@ module ooe_rs #(
   // rename's room through the next cycle. A row written at the free's edge
   // may name it (the mask cannot see it): its column is cleared at the
   // next, the hold's, as a free's is (clr; the class enables take hh on a
-  // column their flags name).
+  // column their flags name: on hhv, any entry held, one flop of the same
+  // term, as hh & hr would put the enable over CG-2's 8).
   assign hc_cq02h = cmn_cq01h | hcq_cq02h;
   assign clr_cq02h = free_cq02h | hh_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       hcq_cq02h <= '0;
       hh_cq02h <= '0;
+      hhv_cq02h <= 1'b0;
     end else begin
       hcq_cq02h <= cmn_cq01h;
       hh_cq02h <= conf_cq02h & hc_cq02h;
+      hhv_cq02h <= (conf_cq02h & hc_cq02h) != '0;
     end
   end
 
@@ -678,8 +682,8 @@ module ooe_rs #(
   logic rcu_en_cq01h, miu_en_cq01h;
   logic [N-1:0] fl_cq01h;                    // a free may come: led by confirmation, or a squash
   assign fl_cq01h = cf_en_cq03h | {N{sq_en_cq01h}};
-  assign rcu_en_cq01h = |req_en_cq01h[A-1:0] || |fl_cq01h[NR-1:0] || |((fl_cq01h | hh_cq02h) & hr_cq02h);
-  assign miu_en_cq01h = |req_en_cq01h[P-1:A] || |fl_cq01h[N-1:NR] || |((fl_cq01h | hh_cq02h) & hm_cq02h);
+  assign rcu_en_cq01h = |req_en_cq01h[A-1:0] || |fl_cq01h[NR-1:0] || |(fl_cq01h & hr_cq02h) || hhv_cq02h;
+  assign miu_en_cq01h = |req_en_cq01h[P-1:A] || |fl_cq01h[N-1:NR] || |(fl_cq01h & hm_cq02h) || hhv_cq02h;
 
   always_ff @(posedge ooe_core_clk) begin
     // The reset state: every entry free, no column with a dependant. The
