@@ -286,8 +286,13 @@ inline unsigned srcValidOf(const OpInfo *op) { return (1u << op->nsrc) - 1u; }
 inline unsigned predUseOf(const OpInfo *op) {
   return op->guard ? kPredUseGuard : op->pdata ? kPredUseData : kPredUseNone;
 }
+/// A collective that reads a predicate source (vote.any, vote.all, ballot):
+/// it rides in imm, renamed by OOE as predicate logic's (O-85; TI rev 284).
+inline bool collPred(const OpInfo *op) {
+  return op->cross && op->nsrc == 0;
+}
 inline unsigned immKindOf(const OpInfo *op) {
-  return op->cls == kPredLogic ? kImmPredSrcs
+  return op->cls == kPredLogic || collPred(op) ? kImmPredSrcs
          : isCall(op)           ? kImmCallLink
          : op->srd_sel == 0     ? kImmWarpBase
          : op->srd_sel == 1     ? kImmCtaid
@@ -379,6 +384,25 @@ inline constexpr OpInfo kOps[] = {
   // shfl.idx: each guarded issue lane takes the source register at one lane,
   // active or not (Format G): RCU, which holds every lane's register.
   {"SHFL_IDX",      kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  // The rest of Format G's collectives (O-85, RA-20; DA tab rev 100, ISA
+  // v1.9 section 3, CP-76's opcode points). Each acts on its participating
+  // lanes, issue mask AND guard, and writes only them. shfl.up/down/bfly read
+  // lane l - c, l + c, l ^ c, a source outside 0..31 keeping the lane's own;
+  // the _R forms take c per lane from the low 5 bits of the index register
+  // ([22:19]), src_arch's second field. vote.any/all and ballot read one
+  // predicate, which rides in imm as predicate logic's do (imm_kind 1);
+  // unballot is diagonal: lane l's bit l of its own rs.
+  {"SHFL_IDX_R",    kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"SHFL_UP",       kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  {"SHFL_UP_R",     kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"SHFL_DOWN",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  {"SHFL_DOWN_R",   kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"SHFL_BFLY",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  {"SHFL_BFLY_R",   kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"VOTE_ANY",      kAlu,       0, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"VOTE_ALL",      kAlu,       0, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"BALLOT",        kAlu,       0, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
+  {"UNBALLOT",      kAlu,       1, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
   // The launch-slot forms (O-45; TI-31): [slot, rindex, scale, disp], the
   // window from launch slot `slot`, so no base register (base -1).
   {"LD_GLOBAL_SLOT", kLoad,     1, true,  false, false, false, false, -1,  0, -1,  2,  1, -1, -1, -1, false, false, -1, 0},

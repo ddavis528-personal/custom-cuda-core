@@ -154,6 +154,9 @@
 #   a call's link is the imm OOE puts in    call-link-literal (callret,
 #     (imm_kind 6; RA-18, RA-30)               stub RCU): RCU's first CHECK
 #                                              is the link against ccv-sim
+#   the collectives compute O-85's         shfl-wrap, coll-issue-only,
+#     semantics (RA-20, DA tab rev 100)        unballot-lowest (coll, stub
+#                                              RCU): CP-76's three readings
 #   a memop's fault lead is status == 1     lead-fault-replay (swap): OOE
 #     (OI-125, AR rev 314)                     refuses each replay's lead;
 #                                              lead-fault-drop (roconst):
@@ -1450,6 +1453,26 @@ if [ "$n" -gt 0 ] && grep -m1 '^CHECK' "$B/kernel_call-link-literal.log" | grep 
 else
   bad "--break call-link-literal" "$n refused: $(grep -m1 '^CHECK' "$B/kernel_call-link-literal.log")"
 fi
+# The warp collectives (O-85; RA-20, DA tab rev 100, CP-76): coll runs every
+# shuffle mode in both index forms, the votes, ballot and the diagonal
+# unballot. Each control is one of the readings O-85 ruled out, CP's three
+# ccv-sim controls on the stub RCU: shfl-wrap wraps an out-of-range source
+# modulo 32 rather than keeping the lane's own; coll-issue-only takes the
+# issue mask alone as the participating lanes, dropping the guard;
+# unballot-lowest takes every lane's bit from the lowest participating
+# lane's rs, RA's first proposal, not the diagonal. Each must fail in RCU's
+# own check against ccv-sim, and nothing else may fail.
+for b in "shfl-wrap:seq [0-9]* R[0-9]* lane [0-9]* = " "coll-issue-only:seq [0-9]* P[0-9]* = " \
+         "unballot-lowest:seq [0-9]* P[0-9]* = "; do
+  nm=${b%%:*}; pat=${b#*:}
+  CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/coll/oracle.jsonl --break "$nm" >"$B/kernel_$nm.log" 2>&1
+  n=$(grep -c "^CHECK rcu: $pat" "$B/kernel_$nm.log")
+  if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_$nm.log" check_failures)" = "$n" ]; then
+    say "--break $nm (stub): a collective O-85 ruled out" "PASS ($n refused)"
+  else
+    bad "--break $nm" "$n refused: $(grep '^KERNEL' "$B/kernel_$nm.log")"
+  fi
+done
 # The issue lead (RA-31; OA's rev 307, AR's rev 267): every operand group an
 # issue uses is named a cycle ahead, so RCU loads no other. lead-src-clear
 # has OOE promise no source on every op; RCU refuses each op that reads one,

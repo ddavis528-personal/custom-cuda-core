@@ -17,6 +17,7 @@
 //     when the spec returns it.
 //   - CCV_RCU_EVLOG=<file>: the core's events, one a line.
 //===----------------------------------------------------------------------===//
+#include <string>
 #include "stub.h"
 #include "rcu_core.h"
 
@@ -67,8 +68,23 @@ R::OpClass classOf(const OpInfo *op, bool copy, bool pred_copy) {
     return oc;
   }
   if (op->cross) {
+    // O-85's collectives, by the op table's name (TI, 2026-11-07). The _R
+    // shuffles take their index from source port 1; vote and ballot read
+    // their predicate from imm (imm_kind 1), as predicate logic does.
     oc.unit = R::Unit::Coll;
-    oc.rk = R::RKind::ShflIdxImm;   // the op table's one collective: shfl.idx #lane
+    const std::string nm = op->name;
+    const bool reg = nm.size() > 2 && nm.compare(nm.size() - 2, 2, "_R") == 0;
+    oc.rk = nm == "SHFL_IDX" ? R::RKind::ShflIdxImm
+            : nm == "SHFL_IDX_R" ? R::RKind::ShflIdxReg
+            : nm.rfind("SHFL_UP", 0) == 0 ? R::RKind::ShflUp
+            : nm.rfind("SHFL_DOWN", 0) == 0 ? R::RKind::ShflDown
+            : nm.rfind("SHFL_BFLY", 0) == 0 ? R::RKind::ShflBfly
+            : nm == "VOTE_ANY" ? R::RKind::VoteAny
+            : nm == "VOTE_ALL" ? R::RKind::VoteAll
+            : nm == "BALLOT" ? R::RKind::Ballot
+            : nm == "UNBALLOT" ? R::RKind::Unballot : R::RKind::None;
+    oc.ireg = reg && oc.rk != R::RKind::ShflIdxReg;
+    if (op->nsrc == 0) oc.imm_used = true;   // vote, ballot: the predicate in imm
     return oc;
   }
   if (inRcu(op->cls)) {

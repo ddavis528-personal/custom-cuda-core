@@ -3060,27 +3060,88 @@ private:
       to_ooe_.push_back({kRcuOnlyDone, done(tag), m.tid});
       return;
     }
-    // shfl.idx (Format G): each guarded issue lane takes the source at one
-    // lane, read whether or not that lane is active. The register file is
-    // RCU's, so it moves the value; inactive lanes keep the old destination.
-    // OOE wakes it early behind an L1 load and replays it on a miss, so it is
-    // judged, as a lane's op is, only on its last execution.
+    // The warp collectives (Format G; O-85, RA-20, DA tab rev 100). RCU
+    // executes them beside the register file, which every lane's operand is
+    // in (Q-32). Participating lanes are issue mask AND guard (active), and
+    // only they are written; the others keep the old destination. A shuffle
+    // reads its source lane whether or not that lane participates. OOE wakes
+    // one early behind an L1 load and replays it on a miss, so it is judged,
+    // as a lane's op is, only on its last execution.
     if (op->cross) {
       k_.executing("rcu", m.tid);
-      const unsigned from = imm0 & 31;
+      const std::string nm = op->name;
       // A narrow destination zero-extends at its width code (AR-24).
       const uint32_t em = elemMask(unsigned(get(m.payload, c.ooe_rcu, "dst_width")));
-      const uint32_t v = k_.gpr[src[0]][from] & em;
-      for (unsigned l = 0; l != kLanes; ++l)
-        k_.gpr[pd][l] = (active >> l) & 1u ? v : k_.gpr[pold][l];
-      if (const Record *r = rec(m.tid, "rcu"))
-        if (const RegVal *d = r->gprDef())
-          for (unsigned l = 0; l != kLanes; ++l)
-            if (((active >> l) & 1u) && k_.gpr[pd][l] != (d->v[l] & em)) {
-              k_.failHeld("rcu", m.tid, "rcu: seq %llu R%u lane %u = %08x, oracle %08x",
-                          (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
-              break;
-            }
+      const Record *r = rec(m.tid, "rcu");
+      // A predicate source rides in imm as predicate logic's first (TI-1).
+      auto psrc = [&]() {
+        constexpr unsigned w = ccv::prov::kWPhysPred;
+        const unsigned q = imm0 & ((1u << (w + 1)) - 1);
+        const unsigned p = q & ((1u << w) - 1);
+        if (p >= k_.pred.size()) {
+          k_.fail("rcu: seq %llu names predicate %u", (unsigned long long)uidSeq(m.tid), p);
+          return 0u;
+        }
+        return (q >> w) & 1 ? ~k_.pred[p] : k_.pred[p];
+      };
+      if (op->gdst) {
+        uint32_t v[kLanes];
+        if (nm == "BALLOT") {
+          const uint32_t b = psrc() & active;
+          for (unsigned l = 0; l != kLanes; ++l) v[l] = b & em;
+        } else {
+          const bool reg = nm.size() > 2 && nm.compare(nm.size() - 2, 2, "_R") == 0;
+          const std::string mode = nm.substr(5, nm.find('_', 5) == std::string::npos
+                                                    ? std::string::npos : nm.find('_', 5) - 5);
+          for (unsigned l = 0; l != kLanes; ++l) {
+            // shfl-wrap: a source outside 0..31 wraps modulo 32 instead of
+            // keeping the lane's own (CP's -ccv-test-shfl-wrap).
+            const unsigned cc = (reg ? k_.gpr[src[1]][l] : imm0) & 31u;
+            int j = mode == "IDX" ? int(cc) : mode == "UP" ? int(l) - int(cc)
+                  : mode == "DOWN" ? int(l + cc) : int(l ^ cc);
+            if (j < 0 || j >= int(kLanes)) j = k_.brk == "shfl-wrap" ? (j & 31) : int(l);
+            v[l] = k_.gpr[src[0]][j] & em;
+          }
+        }
+        // coll-issue-only: participation is the issue mask alone, the guard
+        // ignored (CP's -ccv-test-collective-issue).
+        const uint32_t part = k_.brk == "coll-issue-only" ? issue : active;
+        for (unsigned l = 0; l != kLanes; ++l)
+          k_.gpr[pd][l] = (part >> l) & 1u ? v[l] : k_.gpr[pold][l];
+        if (r)
+          if (const RegVal *d = r->gprDef())
+            for (unsigned l = 0; l != kLanes; ++l)
+              if (((active >> l) & 1u) && k_.gpr[pd][l] != (d->v[l] & em)) {
+                k_.failHeld("rcu", m.tid, "rcu: seq %llu R%u lane %u = %08x, oracle %08x",
+                            (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
+                break;
+              }
+      } else {
+        // vote.any, vote.all (over the participating lanes: any = 0 and
+        // all = 1 with none) and unballot, the diagonal: lane l's bit l of
+        // its own rs, 0 past rs's width.
+        uint32_t v = 0;
+        const uint32_t part = k_.brk == "coll-issue-only" ? issue : active;
+        if (nm == "VOTE_ANY") v = (psrc() & part) ? ~0u : 0u;
+        else if (nm == "VOTE_ALL") v = ((psrc() & part) == part) ? ~0u : 0u;
+        else if (nm == "UNBALLOT") {
+          const unsigned sw = unsigned(get(m.payload, c.ooe_rcu, "src_width")) & 3u;
+          const unsigned bits = 32u >> sw;
+          for (unsigned l = 0; l != kLanes; ++l) {
+            // unballot-lowest: RA's lowest-participating-lane reading, which
+            // O-85 replaced (CP's -ccv-test-unballot-lowest).
+            const unsigned from = k_.brk == "unballot-lowest" && part ? unsigned(__builtin_ctz(part)) : l;
+            if (l < bits) v |= ((k_.gpr[src[0]][from] >> l) & 1u) << l;
+          }
+        } else k_.fail("rcu: collective %s has no semantics here", op->name);
+        if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
+        k_.pred[ppd] = ((merge ? k_.pred[ppold] : 0u) & ~part) | (v & part);
+        if (r)
+          if (const RegVal *d = r->predDef())
+            if (k_.pred[ppd] != d->p)
+              k_.failHeld("rcu", m.tid, "rcu: seq %llu P%u = %08x, oracle %08x",
+                          (unsigned long long)r->seq, d->idx, k_.pred[ppd], d->p);
+      }
       to_ooe_.push_back({kPoolDone, done(tag), m.tid});
       return;
     }
@@ -3538,6 +3599,14 @@ private:
       // next instruction; the length rides beside it in ilen, and OOE
       // computes the target (arch open A-8).
       imm = uint32_t(immOf(0));
+    } else if (collPred(op)) {
+      // vote.any, vote.all and ballot (O-85): their one predicate source
+      // rides in imm as predicate logic's first does, for OOE to rename
+      // (TI rev 284); the second field repeats it, so no other predicate
+      // is named.
+      if (r->quals.size() < 2) k_.fail("dec: seq %llu %s without its predicate source",
+                                       (unsigned long long)r->seq, op->name);
+      else imm = (r->quals[1] & 7) | ((r->quals[1] & 7) << 3);
     } else if (op->cls == kPredLogic) {
       // Predicate logic executes in RCU (O-33, round 16). Its two source
       // qualifiers ride in imm: [2:0] ps0, [5:3] ps1.
