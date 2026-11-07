@@ -21,7 +21,7 @@ namespace ooe {
 
 std::string Config::apply(const std::string &spec) {
   std::map<std::string, unsigned *> u = {
-      {"slots", &slots}, {"rob_depth", &rob_depth}, {"retire_per_rob", &retire_per_rob},
+      {"slots", &slots}, {"rob_depth", &rob_depth}, {"retire_per_rob", &retire_per_rob}, {"commit_per_slot", &commit_per_slot},
       {"issue_width", &issue_width}, {"memop_width", &memop_width},
       {"rename_width", &rename_width}, {"rs_rcu", &rs_rcu}, {"rs_miu", &rs_miu},
       {"rs_warp_cap", &rs_warp_cap}, {"decq", &decq}, {"decq_warp_max", &decq_warp_max},
@@ -34,13 +34,13 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"share_return", &share_return},
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"share_return", &share_return},
       {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
       {"held_room_lag", &held_room_lag}, {"kill_free_lag", &kill_free_lag},
-      {"squash_held_room_lag", &squash_held_room_lag}};
+      {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}, {"cmpl_split", &cmpl_split}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
@@ -421,6 +421,8 @@ void Core::cycle(uint64_t now) {
   // rs_free_lag: last cycle's frees (wlog_ is cleared below).
   rs_prev_free_.assign(n_, 0);
   for (unsigned e = 0; e != n_ && e < wlog_.rfree.size(); ++e) rs_prev_free_[e] = wlog_.rfree[e];
+  rs_prev_hfree_ = rs_hfree_;
+  rs_hfree_.assign(n_, 0);
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
   if (cfg_.fits_stale) {
     rob_prompt_prev_ = rob_prompt_;
@@ -442,7 +444,7 @@ void Core::cycle(uint64_t now) {
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
-                 &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
+                 &wlog_.rfree, &wlog_.hfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant, &wlog_.sel_ret, &wlog_.sel_brk, &wlog_.sel_hold})
     v->assign(n_, 0);
@@ -966,7 +968,8 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   // TI-19 leaves alone. Only rename's go counts this cycle's late frees as
   // held, and it has already checked there is room without them.
   for (unsigned e = lo; e != hi; ++e)
-    if (!rs_[e].valid && (cfg_.rs_same_edge || !wlog_.rfree[e]) && !(cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e])) {
+    if (!rs_[e].valid && (cfg_.rs_same_edge || !wlog_.rfree[e]) && !(cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]) &&
+        !((cfg_.cmpl_split & 8) && e < rs_prev_hfree_.size() && rs_prev_hfree_[e])) {
       rs_[e] = RsEntry();
       rs_[e].valid = true;
       rs_[e].cls = c;
@@ -1527,6 +1530,11 @@ void Core::confirmPass() {
     }
     if (x.late && !x.spec) {
       x.confirmed = true;
+      if ((cfg_.cmpl_split & 8) && x.hit_at != ~0ull && x.hit_at + 1 >= now_ && e < rs_hfree_.size()) {
+        rs_hfree_[e] = 1;
+        if (e < wlog_.hfree.size()) wlog_.hfree[e] = 1;
+        count("cmpl_split.hit_free_held");
+      }
       if (e < wlog_.fin.size()) wlog_.fin[e] = 1;
       if (e < wlog_.conf.size()) wlog_.conf[e] = 1;
     }
@@ -1716,67 +1724,88 @@ void Core::takeCompletions() {
     complete(s, idx);
   }
   dones_.clear();
-  for (const Cmpl &c : cmpls_) {
+  // cmpl_split (OI rev 300): parts deferred last cycle act now, then this
+  // cycle's completions act in the parts not deferred.
+  cs_due_.swap(cs_next_);
+  cs_next_.clear();
+  auto part = [&](const Cmpl &c, unsigned parts, unsigned late) {
     unsigned s;
     RobEntry *r = byTag(c.rob_tag, &s);
-    if (!r) { err("completion for rob tag %u, which is not in the ROB", c.rob_tag); continue; }
-    roblog_.cmpl.push_back(c.rob_tag);
-    if (!r->at_miu || r->miu_done) {
-      err("V-43: a second completion for rob tag %u", c.rob_tag);
-      continue;
+    if (!r) {
+      if (late && !(parts & 1)) { count("cmpl_split.rs_after_retire"); return; }
+      err("completion for rob tag %u, which is not in the ROB", c.rob_tag);
+      return;
     }
-    r->miu_done = true;
     const unsigned idx = c.rob_tag & ((1u << ccv::prov::kWRobIdx) - 1);
-    if (r->atomic) { atomCmpl(s, idx, c); continue; }
-    if (c.more) err("V-72: a completion for rob tag %u, not an atomic's write, carries more", c.rob_tag);
-    if (r->squashed) {
-      count(c.status == kCmplReplay ? "cmpl.replay_after_squash" : "cmpl.after_squash");
-      continue;
-    }
-    // MIU replays only a discarded load (PF-23): a live entry's completion
-    // is its result or its fault.
-    if (c.status == kCmplReplay) err("PF-23: a replay completion for rob tag %u, which is not discarded", c.rob_tag);
-    if (c.status) {
-      // MIU's completion carries the section 12.5 winner and its lowest
-      // faulting lane's address (IS's response IS-16).
-      if (!c.cause) err("a faulting completion for rob tag %u carries no cause (ISA v1.9 section 12.6)", c.rob_tag);
-      r->fault = true;
-      r->fault_cause = c.cause;
-      r->fault_lanes = c.lane_mask;
-      r->fault_addr = c.address;
-      // V-74: the warp's register keeps the oldest faulting entry's address.
-      Slot &fs = slot_[s];
-      if (!fs.fa_valid || robAge(fs, idx) < robAge(fs, fs.fa_idx) || cfg_.inject_fa_youngest) {
-        fs.fa_valid = true;
-        fs.fa_idx = idx;
-        fs.fa_addr = c.address;
+    if (parts & 1) {
+      roblog_.cmpl.push_back(c.rob_tag);
+      if (!r->at_miu || r->miu_done) {
+        err("V-43: a second completion for rob tag %u", c.rob_tag);
+        return;
       }
+      r->miu_done = true;
+      if (r->atomic) { atomCmpl(s, idx, c); return; }
+      if (c.more) err("V-72: a completion for rob tag %u, not an atomic's write, carries more", c.rob_tag);
     }
-    r->mlc_miss = c.mlc_miss;
-    if (r->rs_main != kNoEntry && rs_[r->rs_main].valid) {
+    if (r->squashed) {
+      if (parts & 1) count(c.status == kCmplReplay ? "cmpl.replay_after_squash" : "cmpl.after_squash");
+      return;
+    }
+    if (parts & 1) {
+      if (c.status == kCmplReplay) err("PF-23: a replay completion for rob tag %u, which is not discarded", c.rob_tag);
+      if (c.status) {
+        if (!c.cause) err("a faulting completion for rob tag %u carries no cause (ISA v1.9 section 12.6)", c.rob_tag);
+        r->fault = true;
+        r->fault_cause = c.cause;
+        r->fault_lanes = c.lane_mask;
+        r->fault_addr = c.address;
+        Slot &fs = slot_[s];
+        if (!fs.fa_valid || robAge(fs, idx) < robAge(fs, fs.fa_idx) || cfg_.inject_fa_youngest) {
+          fs.fa_valid = true;
+          fs.fa_idx = idx;
+          fs.fa_addr = c.address;
+        }
+      }
+      r->mlc_miss = c.mlc_miss;
+    }
+    if ((parts & 2) && r->rs_main != kNoEntry && rs_[r->rs_main].valid) {
       RsEntry &x = rs_[r->rs_main];
-      // ooe_wake takes a completion into an issued timer only (OI-58).
       if (!x.issued) err("OI-58: a completion for RS entry %u, not issued", r->rs_main);
       if (r->rs_main < wlog_.cmpl.size()) wlog_.cmpl[r->rs_main] = 1;
       if (x.spec) {
-        // An L1 hit lands at exactly CCV_LAT_L1_CMPL (A-46, V-44).
-        if (now_ != x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
+        if (now_ - late != x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
           err("V-44: rob tag %u completed %llu cycles after issue; the L1 contract is %u",
-              c.rob_tag, (unsigned long long)(now_ - x.issue_at - cfg_.payload_stages),
+              c.rob_tag, (unsigned long long)(now_ - late - x.issue_at - cfg_.payload_stages),
               cfg_.lat_l1_cmpl);
-        x.spec = false;               // the speculative wake stands
+        x.spec = false;
+        x.hit_at = now_;
         count("load.l1_hit");
       } else {
         if (r->is_load) count("load.past_l1");
-        // Wake once the data is readable at RCU (Config::cmpl_wake_delay).
         if (r->rs_main < wlog_.cmpl.size()) wlog_.cmpl[r->rs_main] = 2;
         x.on_completion = false;
-        x.msd_end = x.msd;   // the hop still sees the miss this cycle (V-68)
+        x.msd_end = x.msd;
         x.late_at = now_ + cfg_.cmpl_wake_delay;
         if (!cfg_.cmpl_wake_delay) wake(r->rs_main);
       }
     }
-    complete(s, idx);
+    if (parts & 1) complete(s, idx);
+  };
+  for (const auto &d : cs_due_) part(d.first, d.second, 1);
+  for (const Cmpl &c : cmpls_) {
+    // 1: the ROB's part; 2: the RS part of a hit (the spec timer's
+    // confirm); 4: the RS part of any other (a restart).
+    unsigned later = 0;
+    if (cfg_.cmpl_split) {
+      unsigned s;
+      const RobEntry *r = byTag(c.rob_tag, &s);
+      if (r && !r->atomic) {
+        const bool hit = r->rs_main != kNoEntry && rs_[r->rs_main].valid && rs_[r->rs_main].spec;
+        later = (cfg_.cmpl_split & 1) | ((cfg_.cmpl_split & (hit ? 2 : 4)) ? 2 : 0);
+      }
+    }
+    if (later) cs_next_.push_back({c, later});
+    if (later != 3) part(c, 3 & ~later, 0);
   }
   cmpls_.clear();
 }
@@ -2213,6 +2242,11 @@ void Core::releaseSlot(unsigned slot) {
   for (unsigned r : cand_ret_) pend += ret_owner_[r] == slot + 1;
   if (s.held_gpr != pend || (cfg_.rename_preds && s.held_pred))
     err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr - pend, s.held_pred);
+  // RI-12: uops that landed after the demotion's squash, fetched in the new
+  // epoch from the rewind while the warp drained, are dropped with the slot;
+  // its restore refetches from the resume PC. ooe_decq frees the slot's
+  // entries at the free as at a flush (the free's cycle takes no uop for
+  // the slot: its warp holds none).
   if (!cfg_.inject_keep_released_uops) {
     decq_flushed_ |= 1u << slot;
     for (auto it = decq_.begin(); it != decq_.end();)
@@ -2548,7 +2582,7 @@ void Core::retire() {
       const unsigned h = tagOf(si, s.head);
       if (s.head_seen != h) { s.head_seen = h; s.head_since = now_; s.stalled_reported = s.miss_reported = false; }
     }
-    unsigned n = 0;
+    unsigned n = 0, slot_commits = 0;
     bool after_branch = false;
     while (n != cfg_.retire_per_rob && s.count && !s.fault_stop) {
       RobEntry &r = s.rob[s.head];
@@ -2589,12 +2623,16 @@ void Core::retire() {
       }
       if (r.is_store && !r.committed) {
         if (ports == cfg_.retire_msgs) { count("stall.retire_port"); robStop("retire port"); break; }
+        if (cfg_.commit_per_slot && slot_commits) { count("stall.commit_slot_port"); break; }
+        ++slot_commits;
         Commit c;
         c.tid = r.u.tid;
-        c.port = ports++;
+        c.port = cfg_.commit_per_slot ? si : ports;
+        ++ports;
         c.rob_tag = tagOf(si, s.head);
         out.commits.push_back(c);
         r.committed = true;
+        roblog_.commit.push_back({si, s.head});
       }
       // Commit the mapping; free the one it replaced: no older instruction
       // can still read it, and every younger one reads the new name.
@@ -4205,6 +4243,11 @@ void Core::rename() {
     }
   }
   candStart();
+  // unmet_reg (OI-114, OA's rev 358): the names each slot's take wrote last
+  // cycle (none in a restore's), before this cycle's are counted.
+  last_take_.assign(slot_.size(), {0, 0});
+  for (unsigned si = 0; si != slot_.size() && si < ren_slot_.size(); ++si)
+    last_take_[si] = {ren_slot_[si][2], ren_slot_[si][3]};
   ren_tot_.fill(0);
   pair_tot_.assign(slot_.size(), {0, 0, 0});
   ren_slot_.assign(slot_.size(), {});
@@ -4249,6 +4292,19 @@ void Core::rename() {
         g.unmet_p[si] = unmetFloor(si, true);
       }
     }
+    // unmet_reg: the go reads last cycle's (ooe_rename's register) and the
+    // names its last take wrote.
+    g.lt_g.assign(ns, 0); g.lt_p.assign(ns, 0);
+    g.unmet_on_g = g.unmet_g; g.unmet_on_p = g.unmet_p;
+    if (cfg_.unmet_reg) {
+      if (unmet_now_.size() != ns) unmet_now_.assign(ns, {0, 0});
+      for (unsigned si = 0; si != ns; ++si) {
+        std::swap(g.unmet_g[si], unmet_now_[si][0]);
+        std::swap(g.unmet_p[si], unmet_now_[si][1]);
+        g.lt_g[si] = last_take_[si][0];
+        g.lt_p[si] = last_take_[si][1];
+      }
+    }
     g.took.assign(ns, 0);
   }
   // A restore-allocate in progress owns the allocation ports: no warp
@@ -4256,6 +4312,7 @@ void Core::rename() {
   if (!restore_q_.empty()) {
     // fits_stale 6: no split is registered while a restore owns the ports.
     for (auto &x : share_reg_) x = {0, 0, 0, 0};
+    for (auto &x : share_hold_) x = {0, 0, 0, 0};
     restoreStep();
     count("stall.restore");
     goRoomNext();
@@ -4450,14 +4507,23 @@ void Core::rename() {
     unsigned pool[4] = {c[0], c[1], c[2], c[3]};
     if (cfg_.fits_stale == 6) {
       if (share_reg_.size() != slot_.size()) share_reg_.assign(slot_.size(), {0, 0, 0, 0});
+      if (share_hold_.size() != slot_.size()) share_hold_.assign(slot_.size(), {0, 0, 0, 0});
       for (unsigned r = 0; r != 4; ++r) {
-        unsigned held = 0;
-        for (unsigned si = 0; si != slot_.size(); ++si)
-          held = one ? std::max(held, share_reg_[si][r]) : held + share_reg_[si][r];
+        // The allowances admitted against (each floor term less its slot's
+        // own take in the split cycle, OI-114) never hold more than the
+        // credit. The pool is split from the credit less the allowances as
+        // split (the go's held register, formed before that take): never
+        // less than those admitted against, so the pool only shrinks.
+        unsigned adm = 0, held = 0;
+        for (unsigned si = 0; si != slot_.size(); ++si) {
+          adm = one ? std::max(adm, share_reg_[si][r]) : adm + share_reg_[si][r];
+          held = one ? std::max(held, share_hold_[si][r]) : held + share_hold_[si][r];
+        }
         // This cycle takes at most the width from each credit (a class's
         // ports; a name per uop), so no more need be held back.
+        adm = std::min(adm, cfg_.rename_width);
         held = std::min(held, cfg_.rename_width);
-        if (held > c[r]) err("fits_stale 6: allowances of credit %u hold %u, the credit %u", r, held, c[r]);
+        if (adm > c[r]) err("fits_stale 6: allowances of credit %u hold %u, the credit %u", r, adm, c[r]);
         pool[r] = c[r] - std::min(held, c[r]);
         // The names (OA's rev 138): the credit is held as two counts, each
         // slot's floor still unspent and the pool above every floor. The
@@ -4518,12 +4584,23 @@ void Core::rename() {
         if (cfg_.fits_stale != 5) split[to[0]][r] += rem + resv;
       }
     if (cfg_.fits_stale == 6) {
+      split_floor_.assign(slot_.size(), {0, 0});
       for (unsigned si : with) {
-        split[si][2] += unmetFloor(si, false);
-        if (cfg_.rename_preds) split[si][3] += unmetFloor(si, true);
+        if (cfg_.unmet_reg) {
+          // The registered unmet less the names the last take wrote.
+          const GoLog &g = golog_;
+          split_floor_[si][0] = g.unmet_g[si] > g.lt_g[si] ? g.unmet_g[si] - g.lt_g[si] : 0;
+          if (cfg_.rename_preds) split_floor_[si][1] = g.unmet_p[si] > g.lt_p[si] ? g.unmet_p[si] - g.lt_p[si] : 0;
+        } else {
+          split_floor_[si][0] = unmetFloor(si, false);
+          if (cfg_.rename_preds) split_floor_[si][1] = unmetFloor(si, true);
+        }
+        split[si][2] += split_floor_[si][0];
+        split[si][3] += split_floor_[si][1];
       }
       share_ = share_reg_;
       share_reg_ = split;
+      share_hold_ = split;
       golog_.split = split;
     } else {
       share_ = split;
@@ -4713,6 +4790,21 @@ void Core::rename() {
       if (n) count("rename.pair_cut_again");   // the counts the snapshot restored, again
     }
   }
+  // OI-114 (OA's rev 334): a floor term is the slot's unmet floor less the
+  // names its own take in the split cycle wrote (the go's: GPR and predicate
+  // writes in the warp's first k heads, k its take), never below none. Held
+  // misses that take until next cycle, so the term split from it alone
+  // would count those names twice.
+  if (cfg_.fits_stale == 6 && shares_on_ && split_floor_.size() == slot_.size() && !cfg_.inject_floor_pre_take &&
+      !cfg_.floor_take_lag)
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      for (unsigned b = 0; b != 2; ++b) {
+        const unsigned less = std::min(split_floor_[si][b], ren_slot_[si][2 + b]);
+        if (!less) continue;
+        share_reg_[si][2 + b] -= less;
+        golog_.split[si][2 + b] -= less;
+        count("rename.floor_own_take");
+      }
   ren_late_frees_ = false;
   ren_floors_in_share_ = false;
   if (shares_on_ && (cfg_.fits_stale == 4 || cfg_.fits_stale == 7))

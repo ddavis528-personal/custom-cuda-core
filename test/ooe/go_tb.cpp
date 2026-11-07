@@ -57,6 +57,7 @@ int ooeTestAtomicHookedWith(unsigned seeds, void (*hook)(const Core &), void (*c
 void goConfig(Config &c) {
   c.decq_warp_max = 6;
   if (const char *k = std::getenv("GO_CONTROL"); k && std::string(k) == "pair-rounds") c.inject_pair_rounds = true;
+  if (const char *k = std::getenv("GO_CONTROL"); k && std::string(k) == "floor-take-now") c.floor_take_lag = 0;
   if (const char *n = std::getenv("GO_NAMES")) {
     unsigned rows = 0, ceil = 0;
     if (std::sscanf(n, "%u,%u", &rows, &ceil) == 2) { c.phys_regs = rows; c.ren_ceil = ceil; }
@@ -147,6 +148,7 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
     for (unsigned r = 0; r != 2; ++r) pool = pool || g->owed[r] != nx->owed[r];
     for (unsigned s = 0; s != S; ++s) {
       pool = pool || g->unmet_g[s] != nx->unmet_g[s] || g->unmet_p[s] != nx->unmet_p[s] ||
+             (s < g->lt_g.size() && s < nx->lt_g.size() && (g->lt_g[s] != nx->lt_g[s] || g->lt_p[s] != nx->lt_p[s])) ||
              g->room_g[s] != nx->room_g[s] || g->room_p[s] != nx->room_p[s];
       if (control != "no-dq-ev") setBit(dut->dq_ev_cq01h, s, g->adm[s] != nx->adm[s]);
       if (control != "no-rob-en")
@@ -179,8 +181,18 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
       if ((a >> 7) & 1u) ++pairs;
       setField(dut->ha_cq01h, (s * H + p) * PA, PA, a);
     }
-    setField(dut->unmet_g_cq01h, s * LU, LU, sat(g->unmet_g[s], LU));
-    setField(dut->unmet_p_cq01h, s * LU, LU, sat(g->unmet_p[s], LU));
+    // OI-114's registered form: rename's register holds last cycle's unmet
+    // less last cycle's take, never below none. no-last-take: it holds the
+    // unmet alone, so the floor term counts those names twice.
+    {
+      unsigned ug = g->unmet_g[s], up = g->unmet_p[s];
+      if (s < g->lt_g.size() && control != "no-last-take") {
+        ug = ug > g->lt_g[s] ? ug - g->lt_g[s] : 0;
+        up = up > g->lt_p[s] ? up - g->lt_p[s] : 0;
+      }
+      setField(dut->unmet_g_cq01h, s * LU, LU, sat(ug, LU));
+      setField(dut->unmet_p_cq01h, s * LU, LU, sat(up, LU));
+    }
     // Each slot's room to its ceiling (OI-73 (3)); no-room: none binds.
     setField(dut->room_g_cq01h, s * LU, LU, control == "no-room" ? (1u << LU) - 1 : sat(g->room_g[s], LU));
     setField(dut->room_p_cq01h, s * LU, LU, control == "no-room" ? (1u << LU) - 1 : sat(g->room_p[s], LU));
@@ -262,6 +274,10 @@ void check(const Core::GoLog &g, const Core::GoLog &nx) {
     if (got != (1u << before[b]) - 1u) fail(b ? "predicate writers differ" : "GPR writers differ", 0, got, (1u << before[b]) - 1u);
     writers += before[b];
   }
+  // OI-114: the names taken never exceed the credit (the allowances admitted
+  // against never hold more than it).
+  for (unsigned b = 0; b != 2; ++b)
+    if (before[b] > g.cred[2 + b]) fail(b ? "predicate names over the credit" : "GPR names over the credit", 0, before[b], g.cred[2 + b]);
   tick();
 }
 

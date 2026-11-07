@@ -116,7 +116,7 @@
 #     active or not                              16-31 use their own window
 #   st.pred's predicate is data, not a guard  pdata-guard (predlane): its clear
 #                                                bits keep memory's ones
-#   a demotion between a cracked              resume-mid (predswap, at:58):
+#   a demotion between a cracked              resume-mid (predswap, at:59):
 #     instruction's uops resumes at its          the warp resumes past it
 #     first uop (AR's response TI-36)
 #   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
@@ -700,6 +700,8 @@ fi
 # mispredicted branches, checkpoint pressure. Each must match ccv-sim, AND
 # reach the bins it exists for -- a kernel that passes without reaching its
 # path proves nothing about it. Bins are counted in the stubs (COVER line).
+# privwin's priv_form: 11 until OOE's C9h (OA's rev 372), 12 with it: one more
+# private memop re-executed, its formation counted again (TI's response OI-123).
 cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 while read -r k want; do
   [ -z "$k" ] && continue
@@ -761,7 +763,7 @@ predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 localsp local_form=12 window_fill=0 pred_xfer=4 frame_lookups=0
-privwin priv_form=11 priv_fault=0
+privwin priv_form=12 priv_fault=0
 rope local_form=44 frame_lookups=0
 fence fence=1 fence_wait>0
 addrhigh addr_fault=1 fault=1 kill=1
@@ -1239,21 +1241,22 @@ fi
 # A demotion between a cracked instruction's uops (AR's response TI-36):
 # at cycle 59 (57 before the interface flops' bases, AR's rev 287; 58 with
 # them; 59 with RCU's flopped ends as bnd_rx, AR's revs 300, 301; 58 with
-# ccv_lane_rcu_res's end at RCU zero-cycle, RA's rev 95) predswap's first st.pred has retired its first uop and not
+# ccv_lane_rcu_res's end at RCU zero-cycle, RA's rev 95; 59 with OOE's C9h,
+# OA's rev 372, TI's response OI-123) predswap's first st.pred has retired its first uop and not
 # its second, and the warp resumes at the instruction, running its first
 # uop again, which both transfers allow. Resumed past it, the second uop is
 # lost. The cycle comes from a sweep of CCV_RAU_DEMOTE=at:<cycle>: if timing
 # moves it, crack_split falls to 0 here and the cycle is swept again.
-CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at58.log" 2>&1
-if [ "$(cover "$B/kernel_predswap_at58.log" crack_split)" = 1 ] &&
-   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at58.log"; then
-  say "predswap demoted between a st.pred's uops" "PASS (at:58, it resumes at the instruction)"
+CCV_RAU_DEMOTE=at:59 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at59.log" 2>&1
+if [ "$(cover "$B/kernel_predswap_at59.log" crack_split)" = 1 ] &&
+   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at59.log"; then
+  say "predswap demoted between a st.pred's uops" "PASS (at:59, it resumes at the instruction)"
 else
-  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at58.log"); crack_split=$(cover "$B/kernel_predswap_at58.log" crack_split)"
+  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at59.log"); crack_split=$(cover "$B/kernel_predswap_at59.log" crack_split)"
 fi
-CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
+CCV_RAU_DEMOTE=at:59 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
 if grep -q "^CHECK fet: restored warp 0 lane 0 at 1014, but it resumes at 1018" "$B/kernel_resume-mid.log"; then
-  say "--break resume-mid: past the split instruction" "PASS (predswap at:58)"
+  say "--break resume-mid: past the split instruction" "PASS (predswap at:59)"
 else
   bad "--break resume-mid" "a mid-instruction resume went unchecked: $(grep '^KERNEL' "$B/kernel_resume-mid.log")"
 fi
