@@ -358,6 +358,10 @@ void clearInputs() {
   dut->dn_aux_cq02h = 0;
   dut->cm_l_cq01h = 0;
   clearAll(dut->cm_tag_cq02h, NM * TW);
+  dut->cf_l_cq01h = 0;
+  clearAll(dut->cf_cause_cq02h, NM * CW);
+  clearAll(dut->cf_lanes_cq02h, NM * 32);
+  clearAll(dut->cf_addr_cq02h, NM * 64);
   dut->rel_l_cq01h = 0;
 }
 
@@ -546,7 +550,15 @@ void drive(const Cyc &c, const Cyc &nx) {
     setField(dut->dn_tag_cq02h, dup * TW, TW, r.done[size_t(sl[unsigned(first)])]);
     setField(dut->dn_row_cq02h, dup * 2, 2, drow(unsigned(first)));
   }
-  for (unsigned p = 0; p != r.cmpl.size() && p != NM; ++p) setField(dut->cm_tag_cq02h, p * TW, TW, r.cmpl[p]);
+  for (unsigned p = 0; p != r.cmpl.size() && p != NM; ++p) {
+    setField(dut->cm_tag_cq02h, p * TW, TW, r.cmpl[p]);
+    // Slice 4: a faulting completion's fields, under its lead (else the
+    // fields are don't-care: driven anyway, as MIU's payload).
+    const auto &f = r.cmplf[p];
+    setField(dut->cf_cause_cq02h, p * CW, CW, f.cause);
+    setField64(dut->cf_lanes_cq02h, p * 32, 32, f.lanes);
+    setField64(dut->cf_addr_cq02h, p * 64, 64, f.addr ^ uint64_t(control == "fault-addr" && f.fault));
+  }
   events += r.done.size() + r.cmpl.size();
   // The leads: the next cycle's. A stopping cycle is driven empty (the
   // stop tail), so it has none.
@@ -574,7 +586,10 @@ void drive(const Cyc &c, const Cyc &nx) {
     for (unsigned p = 0; p != ND; ++p) if (nsl[p] < 0 && p != BS) { setBit(dut->dn_l_cq01h, p, true); break; }
   if (std::getenv("ROB_DEBUG") && (!r.done.empty() || !nx.r.done.empty()))
     std::fprintf(stderr, "ROB_DEBUG drive cycle %llu dones %zu next %zu\n", cycles, r.done.size(), nx.r.done.size());
-  for (unsigned p = 0; p != nx.r.cmpl.size() && p != NM; ++p) setBit(dut->cm_l_cq01h, p, true);
+  for (unsigned p = 0; p != nx.r.cmpl.size() && p != NM; ++p) {
+    setBit(dut->cm_l_cq01h, p, true);
+    setBit(dut->cf_l_cq01h, p, nx.r.cmplf[p].fault && control != "no-fault-lead");
+  }
 }
 
 // The resolution: last cycle's (the model's resolve, logged in the cycle
@@ -699,6 +714,8 @@ void check(const Cyc &c, const Cyc *prev) {
         fail("fault pc differs", q, unsigned(getField64(dut->ft_pc_cq03h, q * PCW, PCW)), unsigned(f.pc));
       if (getField64(dut->ft_lanes_cq03h, q * 32, 32) != f.lanes)
         fail("fault lanes differ", q, unsigned(getField64(dut->ft_lanes_cq03h, q * 32, 32)), f.lanes);
+      if (getField64(dut->ft_addr_cq03h, q * 64, 64) != f.addr)
+        fail("fault address differs", q, unsigned(getField64(dut->ft_addr_cq03h, q * 64, 64)), unsigned(f.addr));
     }
   }
   // Last cycle's: what ooe_rat commits, and the frees.
@@ -755,7 +772,8 @@ void hook(const Core &c) {
     current = c.serial();
     const Config &k = c.config();
     live = k.slots == S && k.rob_depth == D && k.retire_per_rob == RP && k.rename_width <= A && k.sectioned == (NS > 0) &&
-           k.defer_release_lag == 0;
+           k.defer_release_lag == 0 &&
+           !k.inject_fa_youngest;   // the model's own V-74 control: its register keeps the youngest
     rename_preds = k.rename_preds;
     stopped = false;
     if (live) ++cores;

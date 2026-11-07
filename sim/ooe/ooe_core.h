@@ -1809,6 +1809,10 @@ public:
     /// rob_tags: issues owing RCU a done, RCU's dones, MIU's completions,
     /// copies issued and landed, RS entries freed.
     std::vector<unsigned> owe, done, cmpl, cpi, cpl, rsf;
+    /// Slice 4, beside cmpl (one each): its lead_fault (status 1) and the
+    /// fault's cause, lanes and address.
+    struct CmplFault { bool fault = false; unsigned cause = 0; uint32_t lanes = 0; uint64_t addr = 0; };
+    std::vector<CmplFault> cmplf;
     /// Slice 2, beside owe and done (one each): the row each owes or
     /// completes (OA's rev 282: 0 the main entry, 1 the copy, 2 an atomic's
     /// A2), and a done's outcome (taken, mask, aux).
@@ -1836,7 +1840,7 @@ public:
     /// Slice 3: each store committed (slot, index), from the retire.
     std::vector<std::pair<unsigned, unsigned>> commit;
     /// Slice 4: each fault taken at retire (slot, index, cause, pc, lanes).
-    struct Fault { unsigned slot = 0, idx = 0, cause = 0; uint64_t pc = 0; uint32_t lanes = 0; };
+    struct Fault { unsigned slot = 0, idx = 0, cause = 0; uint64_t pc = 0; uint32_t lanes = 0; uint64_t addr = 0; };
     std::vector<Fault> fault;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;

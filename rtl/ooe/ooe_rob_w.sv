@@ -97,6 +97,7 @@ module ooe_rob_w #(
   parameter int NK = 4,                  // branch checkpoints a slot (CCV_P_BR_CKPTS)
   parameter int PCW = 48,                // a pc
   parameter int CW = 4,                  // a fault cause (CCV_W_FAULT_CAUSE)
+  parameter int VA = 64,                 // a fault address (CCV_W_VA)
   parameter int BS = ND - 2,             // the done slot RCU-only ops complete on, branches among them (AR's RCU spec rev 14, OA rev 287)
   localparam int NSB = (NS > 0) ? NS : 1,
   localparam int S  = 1,                 // the slots this instance holds: its own
@@ -180,6 +181,13 @@ module ooe_rob_w #(
   input  logic [31:0]         dn_aux_cq02h,
   input  logic [NM-1:0]       cm_l_cq01h,
   input  logic [NM*TW-1:0]    cm_tag_cq02h,
+  // Slice 4: MIU's faulting completions (OI-125, AR rev 314): per port the
+  // lead_fault, flopped in ooe_cmcap as cm_l is, and a cycle after it the
+  // fault's cause, lanes and address, captured under it.
+  input  logic [NM-1:0]       cf_l_cq01h,
+  input  logic [NM*CW-1:0]    cf_cause_cq02h,
+  input  logic [NM*32-1:0]    cf_lanes_cq02h,
+  input  logic [NM*VA-1:0]    cf_addr_cq02h,
   // A slot released (its ROB empty): its pointers return to 0. Its lead.
   input  logic [S-1:0]        rel_l_cq01h,
   // The retire decision, a cycle ahead of the retire-stage register: per
@@ -230,7 +238,8 @@ module ooe_rob_w #(
   output logic [S-1:0]        ft_v_cq03h,
   output logic [S*CW-1:0]     ft_cause_cq03h,
   output logic [S*PCW-1:0]    ft_pc_cq03h,
-  output logic [S*32-1:0]     ft_lanes_cq03h
+  output logic [S*32-1:0]     ft_lanes_cq03h,
+  output logic [S*VA-1:0]     ft_addr_cq03h
 );
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) begin
@@ -242,6 +251,7 @@ module ooe_rob_w #(
   logic         fl_q_cq02h, fb_q_cq02h;
   logic [ND-1:0] dn_q_cq02h;                  // each port's valid
   logic [NM-1:0] cm_q_cq02h;
+  logic [NM-1:0] cf_q_cq02h;                  // each port's fault lead
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       al_q_cq02h  <= '0;
@@ -251,6 +261,7 @@ module ooe_rob_w #(
       fb_q_cq02h  <= 1'b0;
       dn_q_cq02h  <= '0;
       cm_q_cq02h  <= '0;
+      cf_q_cq02h  <= '0;
     end else begin
       al_q_cq02h  <= al_l_cq01h;
       ev_q_cq02h  <= ev_l_cq01h;
@@ -259,6 +270,7 @@ module ooe_rob_w #(
       fb_q_cq02h  <= fl_brl_cq01h;
       dn_q_cq02h  <= dn_l_cq01h;
       cm_q_cq02h  <= cm_l_cq01h;
+      cf_q_cq02h  <= cf_l_cq01h;
     end
   end
 
@@ -314,6 +326,20 @@ module ooe_rob_w #(
   // group mask, written at allocation (OI-125 (5), (6)); per slot pc[47:32]
   // (OA 370), written at the slot's first allocation after a release.
   logic [S*D-1:0]      flt_cq02h;
+  // And an MIU fault (OI-125): set by the entry's faulting completion,
+  // cleared as it leaves. The entry never completes (cmn_e, the
+  // completions without a fault, complete it), so the window stops at it
+  // as at a rename-time fault. cm_e (every completion) still ends its time
+  // at MIU, so a squashed one is released as any other.
+  logic [S*D-1:0]      mf_cq02h, cmn_e_cq02h, cfe_cq02h;
+  // V-74's register per slot: the oldest MIU fault's entry (one-hot), its
+  // cause, lanes and address (the model's fa_*). The record reads it when
+  // its entry is the head's.
+  logic [S-1:0]        fa_v_cq02h;
+  logic [S*D-1:0]      fa_oh_cq02h;
+  logic [S*CW-1:0]     fa_c_cq02h;
+  logic [S*32-1:0]     fa_l_cq02h;
+  logic [S*VA-1:0]     fa_a_cq02h;
   logic [S*D*CW-1:0]   fc_cq02h;
   logic [S*D*31-1:0]   pcl_cq02h;
   logic [S*D*32-1:0]   gm_cq02h;
@@ -526,6 +552,8 @@ module ooe_rob_w #(
   always_comb begin
     dn_e_cq02h = '0;
     cm_e_cq02h = '0;
+    cmn_e_cq02h = '0;
+    cfe_cq02h  = '0;
     dr_e_cq02h = '0;
     for (int e = 0; e < S * D; e++) begin
       for (int p = 0; p < ND; p++)
@@ -534,7 +562,11 @@ module ooe_rob_w #(
             dr_e_cq02h[e * NR + r] = 1'b1;
       dn_e_cq02h[e] = |dr_e_cq02h[e * NR +: NR];
       for (int p = 0; p < NM; p++)
-        if (cm_q_cq02h[p] && cm_tag_cq02h[p * TW +: TW] == TW'(WID * D + e)) cm_e_cq02h[e] = 1'b1;
+        if (cm_tag_cq02h[p * TW +: TW] == TW'(WID * D + e)) begin
+          cm_e_cq02h[e]  = cm_e_cq02h[e]  | cm_q_cq02h[p];
+          cmn_e_cq02h[e] = cmn_e_cq02h[e] | (cm_q_cq02h[p] & ~cf_q_cq02h[p]);
+          cfe_cq02h[e]   = cfe_cq02h[e]   | cf_q_cq02h[p];
+        end
     end
   end
   // Each row's count after this cycle is zero: none owed now, and its
@@ -630,7 +662,7 @@ module ooe_rob_w #(
           (ozall_cq02h[e] &&
            rc_cq02h[e * 2 +: 2] == ev_rsf_cq02h[e * 2 +: 2] &&
            ((kr_cq02h[e] & (dn_cq02h[e] | dn_e_cq02h[e])) |
-            (km_cq02h[e] & (md_cq02h[e] | cm_e_cq02h[e]) & ~((cp_cq02h[e] & ~ev_cpl_cq02h[e]) | ev_cpi_cq02h[e])))));
+            (km_cq02h[e] & ~mf_cq02h[e] & (md_cq02h[e] | cmn_e_cq02h[e]) & ~((cp_cq02h[e] & ~ev_cpl_cq02h[e]) | ev_cpi_cq02h[e])))));
       cmp_nx_cq02h[e] = cand_al_cq02h[e] ? nop_d_cq02h[e] : cmp_old_cq02h[e];
     end
 
@@ -1119,6 +1151,79 @@ module ooe_rob_w #(
       end
     end
   end
+  // MIU's faults (OI-125): each entry's mark, and V-74's register per slot,
+  // which keeps the oldest of the marked entries not squashed: the oldest
+  // from the head (hrf) of this cycle's faulting completions and the one
+  // it holds. Both are clocked on the fault leads (cf_q) and, to clear, on
+  // a mark held, a squash, a release: all this module's flops (CG-5).
+  logic [S*D-1:0]  mf_nx_cq02h, fa_oh_nx_cq02h;
+  logic [S-1:0]    mf_en_cq02h, fa_en_cq02h, fa_v_nx_cq02h, fa_new_cq02h;
+  logic [S*CW-1:0] fa_c_nx_cq02h;
+  logic [S*32-1:0] fa_l_nx_cq02h;
+  logic [S*VA-1:0] fa_a_nx_cq02h;
+  logic [D-1:0]    fx_cq02h, fge_cq02h, fu_cq02h, fy_cq02h, fw_cq02h, fpo_cq02h;
+  logic [NM-1:0]   fps_cq02h;
+  always_comb begin
+    {fx_cq02h, fge_cq02h, fu_cq02h, fy_cq02h, fw_cq02h, fpo_cq02h, fps_cq02h} = '0;
+    {fa_c_nx_cq02h, fa_l_nx_cq02h, fa_a_nx_cq02h} = '0;
+    // A squashed entry's completion (held, or squashed now) marks nothing.
+    for (int e = 0; e < S * D; e++)
+      mf_nx_cq02h[e] = (mf_cq02h[e] | (cfe_cq02h[e] & v_cq02h[e] & ~hd_cq02h[e] &
+                        ~(rd_s_cq02h[e / D] & sqm_cq02h[e]))) & ~rel_e_cq02h[e];
+    for (int s = 0; s < S; s++) begin
+      mf_en_cq02h[s] = (|cf_q_cq02h) | (|mf_cq02h[s * D +: D]);
+      fa_en_cq02h[s] = (|cf_q_cq02h) | rel_q_cq02h[s] | (rd_s_cq02h[s] & fa_v_cq02h[s]);
+      // The contenders: this cycle's faulting entries, live and not squashed
+      // now, and the register's, unless a squash now takes it.
+      fx_cq02h = ((cfe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D]) |
+                  (fa_oh_cq02h[s * D +: D] & {D{fa_v_cq02h[s]}})) &
+                 ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]);
+      // The oldest: the lowest at or past the head, else the lowest.
+      for (int i = 0; i < D; i++) fge_cq02h[i] = (i == 0 ? 1'b0 : fge_cq02h[i - 1]) | hrf_cq02h[s * D + i];
+      fu_cq02h = fx_cq02h & fge_cq02h;
+      fy_cq02h = (|fu_cq02h) ? fu_cq02h : fx_cq02h;
+      for (int i = 0; i < D; i++) begin
+        fw_cq02h[i] = fy_cq02h[i] & ~(i == 0 ? 1'b0 : fpo_cq02h[i - 1]);
+        fpo_cq02h[i] = (i == 0 ? 1'b0 : fpo_cq02h[i - 1]) | fy_cq02h[i];
+      end
+      fa_oh_nx_cq02h[s * D +: D] = fw_cq02h;
+      fa_v_nx_cq02h[s] = (|fx_cq02h) & ~rel_q_cq02h[s];
+      // A new oldest: its port's fields; else the register's own.
+      fa_new_cq02h[s] = |(fw_cq02h & ~(fa_oh_cq02h[s * D +: D] & {D{fa_v_cq02h[s]}}));
+      for (int p = 0; p < NM; p++) begin
+        fps_cq02h[p] = 1'b0;
+        for (int i = 0; i < D; i++)
+          fps_cq02h[p] = fps_cq02h[p] | (fw_cq02h[i] & cf_q_cq02h[p] && cm_tag_cq02h[p * TW +: TW] == TW'(WID * D + s * D + i));
+        fa_c_nx_cq02h[s * CW +: CW] = fa_c_nx_cq02h[s * CW +: CW] | ({CW{fps_cq02h[p]}} & cf_cause_cq02h[p * CW +: CW]);
+        fa_l_nx_cq02h[s * 32 +: 32] = fa_l_nx_cq02h[s * 32 +: 32] | ({32{fps_cq02h[p]}} & cf_lanes_cq02h[p * 32 +: 32]);
+        fa_a_nx_cq02h[s * VA +: VA] = fa_a_nx_cq02h[s * VA +: VA] | ({VA{fps_cq02h[p]}} & cf_addr_cq02h[p * VA +: VA]);
+      end
+      if (!fa_new_cq02h[s]) begin
+        fa_c_nx_cq02h[s * CW +: CW] = fa_c_cq02h[s * CW +: CW];
+        fa_l_nx_cq02h[s * 32 +: 32] = fa_l_cq02h[s * 32 +: 32];
+        fa_a_nx_cq02h[s * VA +: VA] = fa_a_cq02h[s * VA +: VA];
+      end
+    end
+  end
+  for (genvar gs = 0; gs < S; gs++) begin : g_fa
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h)                 mf_cq02h[gs * D +: D] <= '0;
+      else if (mf_en_cq02h[gs])     mf_cq02h[gs * D +: D] <= mf_nx_cq02h[gs * D +: D];
+    end
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h)             fa_v_cq02h[gs] <= 1'b0;
+      else if (fa_en_cq02h[gs]) fa_v_cq02h[gs] <= fa_v_nx_cq02h[gs];
+    end
+    // Its fields: un-reset, read only under its valid.
+    always_ff @(posedge ooe_core_clk) begin
+      if (fa_en_cq02h[gs]) begin
+        fa_oh_cq02h[gs * D +: D]     <= fa_oh_nx_cq02h[gs * D +: D];
+        fa_c_cq02h[gs * CW +: CW]    <= fa_c_nx_cq02h[gs * CW +: CW];
+        fa_l_cq02h[gs * 32 +: 32]    <= fa_l_nx_cq02h[gs * 32 +: 32];
+        fa_a_cq02h[gs * VA +: VA]    <= fa_a_nx_cq02h[gs * VA +: VA];
+      end
+    end
+  end
   // Per slot: pc[47:32] at its first allocation after a release (OA 370;
   // CCV_W_PC_WINDOW, checked at every allocation below), the fault taken
   // and the stop, and the record read at the head: the fault is taken at
@@ -1126,7 +1231,12 @@ module ooe_rob_w #(
   logic [S*CW-1:0]  ftc_nx_cq03h;
   logic [S*PCW-1:0] ftp_nx_cq03h;
   logic [S*32-1:0]  ftl_nx_cq03h;
+  logic [S*VA-1:0]  fta_nx_cq03h;
+  logic [S-1:0]     fhm_cq02h;                 // the head's fault is the register's (MIU's)
   logic [D-1:0]     fsel_cq02h;
+  // An MIU fault is taken in its completion's cycle too (cfe), as the
+  // model completes it then: its tag's match, from this module's lead flop
+  // and the capture's flops.
   // The fault is taken at the registered head (hrf), which a faulting entry
   // holds until the kill (it never completes, and is older than every
   // branch and pick), unless a squash now takes it (a wrong path's head as
@@ -1135,20 +1245,27 @@ module ooe_rob_w #(
   logic [S-1:0]     ft_en_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
-      ft_nx_cq02h[s] = (|(hrf_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D] & flt_cq02h[s * D +: D] &
+      ft_nx_cq02h[s] = (|(hrf_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D] &
+                          (flt_cq02h[s * D +: D] | mf_cq02h[s * D +: D] | cfe_cq02h[s * D +: D]) &
                           ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]))) && !fst_cq02h[s];
       ft_en_cq02h[s] = ft_nx_cq02h[s] | ft_q_cq02h[s] | rel_q_cq02h[s];
     end
   always_comb begin
-    {ftc_nx_cq03h, ftp_nx_cq03h, ftl_nx_cq03h, fsel_cq02h} = '0;
+    {ftc_nx_cq03h, ftp_nx_cq03h, ftl_nx_cq03h, fta_nx_cq03h, fsel_cq02h, fhm_cq02h} = '0;
     for (int s = 0; s < S; s++) begin
       fsel_cq02h = hrf_cq02h[s * D +: D];
+      fhm_cq02h[s] = fa_v_cq02h[s] & |(fa_oh_cq02h[s * D +: D] & fsel_cq02h);
       for (int i = 0; i < D; i++) begin
         ftc_nx_cq03h[s * CW +: CW] = ftc_nx_cq03h[s * CW +: CW] | ({CW{fsel_cq02h[i]}} & fc_cq02h[(s * D + i) * CW +: CW]);
         ftp_nx_cq03h[s * PCW + 1 +: 31] = ftp_nx_cq03h[s * PCW + 1 +: 31] | ({31{fsel_cq02h[i]}} & pcl_cq02h[(s * D + i) * 31 +: 31]);
         ftl_nx_cq03h[s * 32 +: 32] = ftl_nx_cq03h[s * 32 +: 32] | ({32{fsel_cq02h[i]}} & gm_cq02h[(s * D + i) * 32 +: 32]);
       end
       ftp_nx_cq03h[s * PCW + 32 +: 16] = pch_cq02h[s * 16 +: 16];
+      if (fhm_cq02h[s]) begin
+        ftc_nx_cq03h[s * CW +: CW] = fa_c_cq02h[s * CW +: CW];
+        ftl_nx_cq03h[s * 32 +: 32] = fa_l_cq02h[s * 32 +: 32];
+        fta_nx_cq03h[s * VA +: VA] = fa_a_cq02h[s * VA +: VA];
+      end
     end
   end
   for (genvar gs = 0; gs < S; gs++) begin : g_fslot
@@ -1177,6 +1294,7 @@ module ooe_rob_w #(
         ft_cause_cq03h[gs * CW +: CW] <= ftc_nx_cq03h[gs * CW +: CW];
         ft_pc_cq03h[gs * PCW +: PCW]  <= ftp_nx_cq03h[gs * PCW +: PCW];
         ft_lanes_cq03h[gs * 32 +: 32] <= ftl_nx_cq03h[gs * 32 +: 32];
+        ft_addr_cq03h[gs * VA +: VA]  <= fta_nx_cq03h[gs * VA +: VA];
       end
     end
   end
@@ -1744,7 +1862,7 @@ module ooe_rob_w #(
     end
   `CCV_ASSERT(fault_not_nop, (al_flt_cq02h & al_nop_cq02h) == '0)
   // A faulting entry never completes, so the window stops at it.
-  `CCV_ASSERT(fault_never_done, (flt_cq02h & v_cq02h & cmp_old_cq02h) == '0)
+  `CCV_ASSERT(fault_never_done, ((flt_cq02h | mf_cq02h) & v_cq02h & cmp_old_cq02h) == '0)
   `CCV_ASSERT(pc_window, pcw_bad_cq02h == '0)
   `CCV_ASSERT(owed_no_underflow, ow_uf_cq02h == '0)
   `CCV_ASSERT(owed_no_overflow, ow_of_cq02h == '0)

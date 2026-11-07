@@ -3209,13 +3209,16 @@ void testBarrierFault() {
 /// one run the older completes first, in the other the younger. Each must
 /// report the older's address and MIU's cause. The control lets every
 /// faulting completion write the register, so the younger's, landing
-/// second, overwrites the older's, and V-74 must fire.
-void testMemFault() {
+/// second, overwrites the older's, and V-74 must fire. sec runs it
+/// sectioned, the configuration test/ooe/rob_tb.cpp compares the ROB's RTL in.
+void testMemFault(bool sec = false) {
   for (const bool control : {false, true}) {
     unsigned caught = 0;
     for (const bool younger_first : {false, true}) {
-      g_test = control ? "mem fault (control)" : "mem fault";
+      g_test = sec ? (control ? "sections: mem fault (control)" : "sections: mem fault")
+                   : (control ? "mem fault (control)" : "mem fault");
       Config c = baseConfig();
+      c.sectioned = sec;
       c.l1_spec = false;
       c.inject_fa_youngest = control;
       Env e(c);
@@ -3272,7 +3275,7 @@ void testMemFault() {
       }
     }
     if (control) {
-      g_test = "mem fault (control)";
+      g_test = sec ? "sections: mem fault (control)" : "mem fault (control)";
       std::printf("  %-24s %s\n", "control fa-youngest", caught ? "caught" : "MISSED");
       EXPECT(caught, "a register taking every completion should break V-74");
     }
@@ -5430,6 +5433,7 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testRestore();
   testKill();
   testFault();
+  testMemFault(true); // ROB slice 4's MIU faults (OI-125), on every hooked bench
   testSectionFaults();
   testBarrier();
   testChwidth();
@@ -5625,6 +5629,7 @@ int main(int argc, char **argv) {
   testBarrierTimer();
   testBarrierFault();
   testMemFault();
+  testMemFault(true);
   testChwidth();
   testChwidthMulti();
   testRet();

@@ -26,6 +26,12 @@
 // Reset line: cv resets; the payload is un-reset, read only under
 // its valid (ooe_rob_w reads its copy only under its cm_q).
 //
+// The fault (ROB slice 4; OI-125, AR rev 314): lead_fault, a lead field
+// with the valid (status == 1), flopped as fv beside cv; the fault's cause,
+// lanes and address captured under it, per lane, into one register the R
+// slices read (each takes a bit to V-74's register alone, so R loads).
+// fv is clocked as cv is; the capture only on a fault, by fv (CG-5).
+//
 // The reference is the model's cmpl_split bit 1 (sim/ooe/ooe_core.cpp,
 // takeCompletions): test/ooe/cmcap_tb.cpp drives this module with the live
 // model's completions and checks each output is its input a cycle later.
@@ -34,14 +40,19 @@ module ooe_cmcap #(
   parameter int NC = 4,                  // completions a cycle (ccv_miu_ooe_cmpl's rate)
   parameter int PW = 7,                  // the payload the ROB reads (the ROB tag)
   parameter int R  = 4,                  // ROB slices (CCV_TIER1_WARPS)
-  parameter int C  = 2                   // payload copies, each for R / C slices
+  parameter int C  = 2,                  // payload copies, each for R / C slices
+  parameter int FW = 100                 // a fault's fields: cause, lanes, address
 ) (
   input  logic                ooe_core_clk,
   input  logic                ooe_rst_r00h,
   input  logic [NC-1:0]       cmpl_l_cq00h,   // a completion's payload arrives next cycle (raw)
   input  logic [NC*PW-1:0]    cmpl_pay_cq01h, // its payload (raw)
   output logic [NC-1:0]       cv_cq01h,       // the lead, flopped: the slices' lead
-  output logic [R*NC*PW-1:0]  pay_cq02h       // each slice's payload, a cycle after cv
+  output logic [R*NC*PW-1:0]  pay_cq02h,      // each slice's payload, a cycle after cv
+  input  logic [NC-1:0]       cmpl_lf_cq00h,  // its lead_fault (raw)
+  input  logic [NC*FW-1:0]    cmpl_f_cq01h,   // its fault's fields (raw)
+  output logic [NC-1:0]       fv_cq01h,       // lead_fault, flopped
+  output logic [NC*FW-1:0]    f_cq02h         // the fault's fields, a cycle after fv
 );
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
@@ -49,8 +60,17 @@ module ooe_cmcap #(
   logic cap_en_cq01h;
   assign cap_en_cq01h = cv_cq01h != '0;
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) cv_cq01h <= '0;
-    else          cv_cq01h <= cmpl_l_cq00h;
+    if (rst_r01h) begin
+      cv_cq01h <= '0;
+      fv_cq01h <= '0;
+    end else begin
+      cv_cq01h <= cmpl_l_cq00h;
+      fv_cq01h <= cmpl_lf_cq00h;
+    end
+  end
+  for (genvar k = 0; k < NC; k++) begin : g_f
+    always_ff @(posedge ooe_core_clk)
+      if (fv_cq01h[k]) f_cq02h[k * FW +: FW] <= cmpl_f_cq01h[k * FW +: FW];
   end
   for (genvar k = 0; k < C; k++) begin : g_cp
     (* keep *) logic [NC*PW-1:0] cp_cq02h;

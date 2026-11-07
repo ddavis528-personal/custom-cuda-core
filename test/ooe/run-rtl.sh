@@ -222,7 +222,7 @@ else
   else
     say "cmcap == model, a cycle late" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  for c in no-lead late-pay; do
+  for c in no-lead late-pay no-fault-lead; do
     if CMCAP_CONTROL=$c "$dir/cmcap_tb" 3 >/dev/null 2>&1; then
       say "  control $c (cmcap)" "MISSED"; fail=1
     else
@@ -341,7 +341,7 @@ fi
 # trace the first few seeds happen to draw stops being caught when the
 # traces move (no-copy, at CCV_P_DECQ 15: first caught at seed 6).
 for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
-         no-branch-lead no-miu no-store drop-killed-fill late-fill shared-ports store-shift no-fault fault-cause fault-any-port fault-port0; do
+         no-branch-lead no-miu no-store drop-killed-fill late-fill shared-ports store-shift no-fault fault-cause fault-any-port fault-port0 no-fault-lead fault-addr; do
   if ROB_CONTROL=$c "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else

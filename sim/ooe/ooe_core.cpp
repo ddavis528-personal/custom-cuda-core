@@ -1739,6 +1739,7 @@ void Core::takeCompletions() {
     const unsigned idx = c.rob_tag & ((1u << ccv::prov::kWRobIdx) - 1);
     if (parts & 1) {
       roblog_.cmpl.push_back(c.rob_tag);
+      roblog_.cmplf.push_back({c.status == kCmplFault, c.cause, c.lane_mask, c.address});
       if (!r->at_miu || r->miu_done) {
         err("V-43: a second completion for rob tag %u", c.rob_tag);
         return;
@@ -1756,7 +1757,6 @@ void Core::takeCompletions() {
       if (c.status) {
         if (!c.cause) err("a faulting completion for rob tag %u carries no cause (ISA v1.9 section 12.6)", c.rob_tag);
         r->fault = true;
-        robStop("miu fault");   // slice 4: the ROB holds no MIU fault yet (OI-125)
         r->fault_cause = c.cause;
         r->fault_lanes = c.lane_mask;
         r->fault_addr = c.address;
@@ -1897,7 +1897,6 @@ void Core::atomCmpl(unsigned slot, unsigned idx, const Cmpl &c) {
       // untouched, and the entry faults at the head, restartable (V-72).
       if (!c.cause) err("a faulting completion for rob tag %u carries no cause (ISA v1.9 section 12.6)", tag);
       r.fault = true;
-      robStop("miu fault");   // slice 4: the ROB holds no MIU fault yet (OI-125)
       r.fault_cause = c.cause;
       r.fault_lanes = c.lane_mask;
       r.fault_addr = c.address;
@@ -2608,7 +2607,6 @@ void Core::retire() {
         // Faults are taken at retirement: stop, report, let RAU's kill clean
         // up (Faults; V-24). OOE does not squash.
         s.fault_stop = true;
-        roblog_.fault.push_back({si, s.head, r.fault_cause, r.u.pc, r.fault_lanes});
         Status st;
         st.warp = s.warp;
         st.fault_taken = true;
@@ -2625,6 +2623,7 @@ void Core::retire() {
         f.address = s.fa_valid && s.fa_idx == s.head ? s.fa_addr : 0;
         if (r.at_miu && (!s.fa_valid || s.fa_idx != s.head || s.fa_addr != r.fault_addr))
           err("V-74: the fault-address register does not hold rob tag %u's address", tagOf(si, s.head));
+        roblog_.fault.push_back({si, s.head, r.fault_cause, r.u.pc, r.fault_lanes, f.address});
         out.faults.push_back(f);
         count("fault");
         ev("fault", s.warp, r.fault_cause, r.u.pc, r.u.tid);
