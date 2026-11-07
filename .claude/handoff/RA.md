@@ -184,7 +184,11 @@ RI-19 CLOSED: RI confirmed rcu_mig drops map/cmd only on the kill event; asserti
 full gate pushed 5dbb3ee. AR 315/TI 360: PHYS_REGS 160 saves ~34k RCU flops, provisional (OI fits_stale, TI #72).
 TI 368: RA-30 items 1-4 pushed (1d9fa6f, full PASS); KILL_DRAIN derive checked = 16. (6) done TI 314. (5) collectives
 with O-85 on ti-o85: RA-30 closes when it lands (RA rev 97).
-Bookmarks: OA 379, RA 97, RI 31, TI 368, DA 115, AR 316, OI 319, Conventions 17, CP 155, IS 190.
+RI-20 (rcu_lanes 7,011 fl / rcu_mem 12,558 fl, ba0df94; NGD 13.6/11.0): RA rev 98 confirmed class-bit arrival 5
+(each module its own decode); sec_pred_bit_a moves to rcu_pred (lead field at A's edge; act_cr02h goes). TODO at
+assembly: reduce Partition's ~110 MIU lead-capture flops in rcu_mem (RI note 6: none there) and recount lead slices.
+Partition rev 53.
+Bookmarks: OA 379, RA 98, RI 38, TI 368, DA 115, AR 316, OI 319, Conventions 17, CP 155, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)

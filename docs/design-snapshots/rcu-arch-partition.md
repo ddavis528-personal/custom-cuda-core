@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=52 exported=2026-11-06 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 52 on 2026-11-06 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=53 exported=2026-11-07 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 53 on 2026-11-07 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -16,7 +16,7 @@ Three rules from `docs/rtl-coding-style.md` decide the cuts:
 So:
 
 1. **Every module decodes the issue payload itself.** The raw `ooe_rcu_issue_s*_payload` and the flopped valids are wired from the block's ports to every module that acts in A. Each module decodes the op-class fields it needs, from the generated op-class table (Pipeline tab). The duplicated decode is a few hundred gates per module, against a through-path that is illegal.
-2. **A predicate read in A and its consumer share a module.** The guard read, `active`, the branch outcome and the R predicate sources all depend on a predicate read in A, so they live with the predicate file, in `rcu_pred`.
+2. **A predicate read in A and its consumer share a module.** The guard read, `active`, the branch outcome and the R predicate sources all depend on a predicate read in A (so does the lanes' lead field sec\_pred\_bit\_a: rcu\_pred loads it at A's edge from active by section ownership and its Q is wired to the rcu\_lane\_ops port; RA rev 98, re:RI-20), so they live with the predicate file, in `rcu_pred`.
 3. **A register file is the only module whose outputs are combinational.** Each read port's AND-OR is driven from the file's own predecode flops. The receiving module's budget pays for the rest of the path.
 4. **Write data enters a register file directly from the block port or from the writer's flops.** Steering such as MW's position shift is inside the file.
 
