@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-06 ~14:00 UTC (slice 3 pushed e491f22; sweep merge gating; pruned, the long history is in git). Keep this current at every task's end; it is what
+Updated 2026-11-06 ~15:30 UTC (sweep merge fb52948 pushed; RH C9 job out; pruned, the long history is in git). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -32,12 +32,12 @@ Read every tab since the bookmarks; merge every remote branch that is
 ahead (not release) into wt, gate, push; pongs; pings on Fridays only;
 `tools/setup-session-home.py --check` (TI-50; on a mismatch ask DA to
 approve the install again, never reinstall unasked).
-- Session settings installed 2026-10-31 and again 2026-11-03 (DA approved both): /home/user/.claude.
+- Session settings installed 2026-10-31, 11-03 and 11-06 (350k window; DA approved each): /home/user/.claude.
   The compact hook prints THIS checkout's .claude/handoff/OI.md: keep
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 309, RA 91, IS 190, TI 350, OA 367, OI 306, CP 155, DA 112, RI 21
+Conventions 17, AR 313, RA 95, IS 190, TI 354, OA 372, OI 310, CP 155, DA 114, RI 21
 (sweep 11-06 10:20, plus notices to 13:00). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
@@ -51,24 +51,29 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first)
-1. Sweep merge on branch oi-sweep (scratchpad/wrob): e491f22 + 7 remote branches (TI's
-   2281ab8 with 1a9a3e8/0ce9c12/17720a0, RA, IS, AR, RI, OA, RH); full gate-push.
-2. RH job (task: AR 300 (5), OA 367, RA 91/DA): price C9 (miu_ooe_cmpl + hint no_flop,
-   other OOE ends flopped) and all-flopped, at LANE 8 / SFU 13, as links.json edits under
-   bnd_rx; S1, cm32, cm128 vs defaults. Model figure to check: C9 +0.444% S1 (at 7/12).
-   C9 BUILD ON HOLD until DA rules (OA 367). OI-115 (DA package) awaits DA.
-3. OI-114 (go's floor less own take): ooe_go unchanged; rename form 3 in scratchpad/wtf
-   (branch oi-floor114, uncommitted; copies ../ren.r3.sv, r3a, r3c). Under TI's re-seeded
-   caps form 3 is over only c_dst (27.5 vs 26.9). Re-measure r3a/r3c after the merge; if none
-   fits, row to OA/TI on cap noise. Model/tb done (go_tb 0 mismatches; controls caught).
-4. ROB slice 4 (faults): entry fault cause+valid (DEC cause, dispatch F-WIDTH/F-FORMAT/
-   F-BARRIER), MIU cmpl fault (cause, lanes, 64-bit addr) into a per-warp fault-address
-   register (V-74, oldest), head stop, outputs ccv_ooe_rau_status.fault_taken and
-   ccv_ooe_cru_fault (cause, pc, lane_mask, address, cta_slot, warp_id). Check OA's entry
-   layout (rev 277 (c)/279) and the PC source first. Then slices 5 (barriers), 6 (demotion).
-5. DA 111b / OA 364: a check-ngd/cg unit for every OOE module at each instantiated param set.
-6. OA 365 (low priority, OA 366): ooe_sched phys_src0/1 output depth at aa9ad9c; report with
-   the next probe. OA 354 (a)+(b) low priority.
+1. C9 build (task #23; OA 372): C9h + the RS bypass, cycle-exact against the model at
+   cmpl_split 9 + rx_lag 16 (the hint late). cmpl_l raw drives capture, RS and wake only (3 pins);
+   ROB x4 from (* keep *) copies of cm_q; hint raw to its capture only. Bypass ports: rs
+   cmpl_l/cmpl_idx (cfb), wake fin + confirm, the miss check at LAT_MISS, msd. Over a cap: to OA.
+   The model's knobs are still a patch (scratchpad/c9/c9knobs.patch); the build makes C9h the
+   model's default. Tree scratchpad/wc9 (branch oi-c9 on fb52948: knobs patch + wake/rs probe;
+   scratchpad/c9/trio-build.sh <tree>). S1 (OI-118, rev 310): C9 +0.370% vs A6 at 8/13, F +1.581%;
+   at 7/12 (the baseline again, RA 95, AR 313) C9 +0.444%, F ~+1.95%. C9h costs 0; no RS bypass +0.56%.
+2. OI-114 landed as (b) (OA 369), model only: the go reads unmet on time (unmet_reg 0; rename's
+   register failed CG-5/CG-3), floor_take_lag 1; rename and go RTL as pushed. RH's S1: 0 cost at 192
+   and 160 (X/Y, Z). Row to OA when pushed.
+   (c) measured, for that row: unmet into go 23.9/24.2 at arrival 0, but go's own per-take chain stays
+   over (ff 28.5, hv 31.4, px 31.1, pl 30.5, ha 28.8, room_p 26.9, room_g 25.4; 23.1 without fanout);
+   rename with the (U-L) register: c_dst/c_src 27.3, po_dst 28.0, q_gname 28.5 (caps 26.9/27.5/28.7).
+3. ROB slice 4 (faults; OA 370 for the pc): pc[31:1] per entry + pc[47:32] per slot
+   (CCV_W_PC_WINDOW), 4,032 flops, written at fill from ccv_dec_ooe_uop.pc.
+4. (slice 4 detail) The model's fault at retire (ooe_core.cpp ~2563) reports pc =
+   r.u.pc: the 65-bit entry (rev 277 (c)/279) holds no PC: ask OA the PC source first.
+   Outputs: ccv_ooe_rau_status.fault_taken, ccv_ooe_cru_fault (first fault of the context,
+   written once). V-74 fault-address register per warp. Then slices 5, 6.
+5. DA 111b / OA 364: a unit for every OOE module at each instantiated param set
+   (ooe_rob_w x4 by WID; ooe_ratread once rename has it).
+6. OA 365 (low): ooe_sched phys_src0/1 output depth.
 
 ## Done 11-06
 - Slice 3 (memop commit, OA rev 362) pushed e491f22 (SCOPED PASS 22/22). Final fix: the
