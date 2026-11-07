@@ -213,7 +213,8 @@ private:
     // its active lanes, as the stub keys it: keyed by the lanes returned, a
     // speculated issue on stale data returns other lanes than its replay, so
     // the replay never clears its failure (coremark32, RI-16's runs).
-    const std::string at = "rcu ret " + std::to_string(active);
+    // --break ret-held-by-lanes (RI-18) keys it so: retmiss must fail.
+    const std::string at = "rcu ret " + std::to_string(k_.brk == "ret-held-by-lanes" ? d.bm : active);
     k_.executing(at, is.tid);
     if (d.bm && d.aux != uint32_t(r->target))
       k_.failHeld(at, is.tid, "rcu: seq %llu ret to %08x, oracle %08llx", (unsigned long long)r->seq, d.aux,

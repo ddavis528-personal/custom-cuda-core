@@ -161,7 +161,25 @@ AR (record in DA tab), RI, OI/OA (price C9 at 8/13), TI. Partition rev 49. sessi
 AR 311 (DA rev 113 records Daniel's ruling; 0.2% bar = RA proposal awaiting Daniel) CORRECTS RA 90: unflopped
 credit through a flopped rx end is depth 5 (forward flop stays), not 4; miu_rcu_data +4,456. RA rev 92 took it.
 TI 352: skeleton already models boundary flops (17720a0); RI-16 zero-cycle arm runnable now; rescue sizing TI 351.
-Bookmarks: OA 366, RA 92, RI 21, TI 352, DA 113, AR 312, OI 306, Conventions 17, CP 155.
+DA 114 (Daniel, via AR): C9 approved (recovers ~1.5% S1; lapses if OI's 8/13 rerun <=0.5%). Zero-cycle bar:
+<=0.2% S1 stays flopped (architects close); 0.2-0.5% -> Daniel; >0.5% owner (RA for RCU) approves; an end that
+can't meet 12 NGD/side with its rx flop -> Daniel. RA rev 93 applies it to lane_rcu_res (await RI-16 S1 delta).
+DA 114 AMENDED (DA rev 115, Daniel verbatim): over 0.5% the architect approves only "if we also meet the NGD
+module rules" WITHOUT the rx flop. RA rev 94 corrects rev 93's with/without misread: lane_rcu_res meets 12 without
+flop (approvable >0.5%); miu_rcu_data doesn't (16.2) -> any zero-cycle case is Daniel's. Partition rev 51.
+RI-16 rev 23 priced Z: S1 -1.04% (48,858->48,350), cm32 -0.93%, cm128 +0.15%; NGD without flop 10 (module).
+RA rev 95 APPROVED lane_rcu_res zero-cycle (LANE 7/SFU 12). Conditions: block read at assembly holds 12 w/o flop
+(else Daniel); link_n 0, RCU-lane abut. Asked TI (links.json except, retime 5 negative controls), AR (floorplan
+constraint; is OI's C9 8/13 rerun still owed). Partition rev 52. Watch for TI applying it.
+AR 313: floorplan constraint recorded (Partitioning rev 55: RCU abuts all 32 lanes, link_n 0 both lane channels);
+C9 8/13 rerun not owed. TI 357: Z pushed f4ce0fd (full gate PASS) on infra-6msg93: links.json except now
+ooe_rcu_issue + miu_rcu_data; five controls retimed, none weakened. Merge at next sweep. Open for RA: the
+block-level 12 NGD check on lane_rcu_res at RCU's assembly (else Daniel).
+RI-19 (RI rev 28, rcu_mig 350729e, M5 met dm 65/rs 66 of 68): RA rev 96 confirmed kmask +2 clear for PCA rows
+(relaunched warp's first PCA row >=17 cycles after its first map); CONDITION: kmask must not drop map/command
+entries by level (RAU command can precede the map). Awaiting RI's confirmation + assertion. Migration rev 10.
+RI-16 rerun at 7/12 all green, IPC unchanged.
+Bookmarks: OA 366, RA 96, RI 28, TI 357, DA 115, AR 313, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)

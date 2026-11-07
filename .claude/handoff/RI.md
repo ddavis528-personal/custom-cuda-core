@@ -1,6 +1,6 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-06. Keep current at every task's end. Role and ownership:
+Updated 2026-11-07. Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -16,8 +16,10 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work tree /home/user/ri-wt (branch ccr-888218a3-20cauz); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 269efe6 (SPLIT SCOPED PASS; carries a90cb8f, d2ca2d7, 3c912d1, a4592af).
-  Then sweep merge 699d0c9 + regen bcc5f44 (5 branches), not yet gated.
+- Last push: 350729e (SPLIT SCOPED PASS, 2026-11-07): rcu_mig, slice zero-fill gate, lint
+  fixes, TI's Z (f4ce0fd) and RI-18 (43695ae) merged, model --break ret-held-by-lanes.
+- RH (session_01QPk2jvfKM1V5rRfip8FC86) takes RI's perf runs (Daniel, 2026-11-06): send base
+  commit via gate-scratch/RI, exact arms and what to report; it replies with a table.
 
 ## Working rules beyond CLAUDE.md
 - Container gets reclaimed when idle: keep a run_in_background until-loop waiter on any
@@ -35,18 +37,21 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-06: Conventions 17, AR 308, OA 366, IS 190, TI 349, OI 306, CP 155, DA 112, RA 89, RI 21.
-RI-15 closed. RI-17 open (198 lead flops: MIU 4x46 + R 14), commit cell says awaits push.
+Bookmarks 2026-11-07: Conventions 17, AR 308, OA 366, IS 190, TI 358, OI 306, CP 155, DA 115, RA 95, RI 28.
+DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
+architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
-1. Gate + push bcc5f44 + handoff/rcu-impl.md commit (sweep merge: full or split full gate).
-2. RI-17: mark pushed at 269efe6, check-cg charges lead/credit marks; close. Tell TI (row +
-   notice) that a90cb8f, d2ca2d7, 3c912d1 are pushed (TI rev 330).
-3. RI-16 pricing (TI rev 352 recipe): flopped arm = defaults; zero-cycle arm = drop lane_rcu_res
-   from RCU's except list in params/links.json, LANE 7 / SFU 12, regen (in ri-wt3, never committed).
-   Run S1 and CoreMark32 each, detached; RI row for RA and DA.
+0. RI-19 (rev 28, RA): rcu_mig pushed, M5 dm 65 / rs 66 of 68. RA to confirm kmask's +2 clear vs a
+   relaunched warp's first row (>= 2 cycles after its map). Notes 2-9 in the row.
+   Lessons: run tools/check-1d.sh before a gate (the linter misreads 1'b0 in a wire's concat and a
+   for loop's <= bound); run tools/regen.sh after any merge before testing (sim/generated not checked in).
+1. Next phase: rcu_mem and rcu_lanes (docs/rcu-impl.md phase 4; exits M1, M2), then lane/SFU
+   descriptor pipes (lwb_d/swb_d) at LANE 7 / SFU 12, then assembly (M5-M7).
+2. RI-18: model side pushed; TI to drop CCV_RCU_IMPL=stub from the ret-held-by-lanes control. Close then.
+3. RI-16: RI's part done (rerun at 7/12 passes); NGD read on lane_rcu_res at assembly (12 without flop).
 4. RI-11/RI-13 (TI rev 332): verify on merged tip, close RI-13 (and RI-11 for RCU).
    RI-12: close when OI's fix lands (OI rev 287).
-5. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals.
-6. Remaining phases per docs/rcu-impl.md: rcu_mig, lane/SFU descriptor pipes, assembly (M5-M7).
-7. Remove worktrees ri-wt2, ri-wt3 when done.
+5. At bank assembly: row 135's gate (RA rev 80), rcu_r pr_orow output, block CG totals
+   (lead/credit waiver flops charged; sum of parts), block NGD for lane_rcu_res, write_row_named vs ZROW.
+6. Remove worktrees ri-wt2, ri-wt3 when done.

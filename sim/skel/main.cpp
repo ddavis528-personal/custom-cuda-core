@@ -253,7 +253,7 @@ int main(int argc, char **argv) {
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
                       brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
-                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-src-clear" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
+                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-fault-replay" || brk == "lead-fault-drop" || brk == "lead-src-clear" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
                       brk == "xfer-unsigned" || brk == "xfer-ignored" || brk == "chw-mark-always" ||
                       brk == "ret-no-stay" || brk == "pred-taken-any" || brk == "ret-held-by-lanes" ||
