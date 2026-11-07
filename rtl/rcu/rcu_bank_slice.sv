@@ -103,7 +103,16 @@ module rcu_bank_slice #(
   input  logic [NM*2-1:0]   mw_wid_cr01h,   //   width code (0 32, 1 16, 2 8, 3 4 bits)
   input  logic [NM*2-1:0]   mw_pos_cr01h,   //   position
   input  logic [NM*L-1:0]   mw_lm_cr01h,    //   the 4 lanes' active bits
-  input  logic [NM*L*32-1:0] mw_dat_cr02h   //   lane l's word at (j*L + l)*32, right-aligned
+  input  logic [NM*L*32-1:0] mw_dat_cr02h,  //   lane l's word at (j*L + l)*32, right-aligned
+  // Migration (rcu_mig) beside the R op: on R2 (read port NR-1) and RW
+  // (generic write port NW-1). Its requests come from rcu_mig's flops.
+  input  logic              g2_v_cr00h,     // migration's R2 lead
+  input  logic [WR-1:0]     g2_row_cr01h,   //   its row
+  input  logic              r2u_cr01h,      // the R op reads R2 (the decode, under R2's own lead)
+  input  logic              gw_v_cr00h,     // migration's RW lead
+  input  logic              gw_sel_cr01h,   //   the restore writes RW (else the R op does)
+  input  logic [WR-1:0]     gw_row_cr01h,   //   its row
+  input  logic [31:0]       gw_dat_cr02h    //   its 4 lanes' byte K: every lane, the whole row
 );
 
   logic rst_r01h;
@@ -129,17 +138,39 @@ module rcu_bank_slice #(
   // ---- Valids: each port's lead, flopped every cycle -------------------
   logic [NR-1:0] rd_v_cr01h;
   logic [NW-1:0] wr_v_cr01h;
+  logic          g2_v_cr01h, gw_v_cr01h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       rd_v_cr01h <= '0;
       wr_v_cr01h <= '0;
+      g2_v_cr01h <= 1'b0;
+      gw_v_cr01h <= 1'b0;
     end else begin
       rd_v_cr01h <= rd_v_cr00h;
       wr_v_cr01h <= wr_v_cr00h;
+      g2_v_cr01h <= g2_v_cr00h;
+      gw_v_cr01h <= gw_v_cr00h;
     end
   end
-  wire [NR-1:0] rd_en_cr01h = rd_v_cr01h;
-  wire [NW-1:0] wr_en_cr01h = wr_v_cr01h;
+  // R2 and RW take migration's lead beside their own; the row (and RW's
+  // sections) is the R op's or migration's, selected in the row cycle:
+  // R2's by the R op's decode (the R op first: migration holds back, the
+  // Migration tab), RW's by migration's flopped decision.
+  wire [NR-1:0] rd_en_cr01h = rd_v_cr01h | {g2_v_cr01h, {(NR-1){1'b0}}};
+  wire [NW-1:0] wr_en_cr01h = wr_v_cr01h | {gw_v_cr01h, {(NW-1){1'b0}}};
+  wire r2r_cr01h = rd_v_cr01h[NR-1] & r2u_cr01h;   // R2 is the R op's
+  wire gws_cr01h = gw_v_cr01h & gw_sel_cr01h;      // RW is the restore's
+  logic [NR*WR-1:0] rdr_cr01h;
+  logic [NW*WR-1:0] wrr_cr01h;
+  logic [NW*4-1:0]  wrs_cr01h;
+  always_comb begin
+    rdr_cr01h = rd_row_cr01h;
+    rdr_cr01h[(NR-1)*WR +: WR] = r2r_cr01h ? rd_row_cr01h[(NR-1)*WR +: WR] : g2_row_cr01h;
+    wrr_cr01h = wr_row_cr01h;
+    wrs_cr01h = wr_sec_cr01h;
+    wrr_cr01h[(NW-1)*WR +: WR] = gws_cr01h ? gw_row_cr01h : wr_row_cr01h[(NW-1)*WR +: WR];
+    wrs_cr01h[(NW-1)*4 +: 4]   = gws_cr01h ? 4'b1111 : wr_sec_cr01h[(NW-1)*4 +: 4];
+  end
 
   // ---- Read selects and the read mux -----------------------------------
   (* keep *) logic [NR*NH-1:0] rd_hi_cr02h;
@@ -147,8 +178,8 @@ module rcu_bank_slice #(
   for (genvar p = 0; p < NR; p++) begin : g_rsel
     always_ff @(posedge rcu_core_clk) begin
       if (rd_en_cr01h[p]) begin
-        rd_hi_cr02h[p*NH +: NH] <= dec_hi(rd_row_cr01h[p*WR +: WR]);
-        rd_lo_cr02h[p*16 +: 16] <= dec_lo(rd_row_cr01h[p*WR +: WR]);
+        rd_hi_cr02h[p*NH +: NH] <= dec_hi(rdr_cr01h[p*WR +: WR]);
+        rd_lo_cr02h[p*16 +: 16] <= dec_lo(rdr_cr01h[p*WR +: WR]);
       end
     end
   end
@@ -197,17 +228,26 @@ module rcu_bank_slice #(
   for (genvar p = 0; p < NW; p++) begin : g_wsel
     always_ff @(posedge rcu_core_clk) begin
       if (wr_en_cr01h[p]) begin
-        wr_hi_cr02h[p*NH +: NH] <= dec_hi(wr_row_cr01h[p*WR +: WR]);
-        wr_lo_cr02h[p*16 +: 16] <= dec_lo(wr_row_cr01h[p*WR +: WR]);
-        wr_keep_cr02h[p]        <= wr_sec_cr01h[p*4 + K];
+        wr_hi_cr02h[p*NH +: NH] <= dec_hi(wrr_cr01h[p*WR +: WR]);
+        wr_lo_cr02h[p*16 +: 16] <= dec_lo(wrr_cr01h[p*WR +: WR]);
+        wr_keep_cr02h[p]        <= wrs_cr01h[p*4 + K];
       end
     end
   end
+  // RW acts for the restore under migration's lead alone, else for the R
+  // op under its own (migration's lead with no restore write is no write).
+  logic gws_cr02h;
   always_ff @(posedge rcu_core_clk) begin
-    if (rst_r01h) wr_act_cr02h <= '0;
-    else
-      for (int p = 0; p < NW; p++)
+    if (rst_r01h) begin
+      wr_act_cr02h <= '0;
+      gws_cr02h    <= 1'b0;
+    end else begin
+      for (int p = 0; p < NW - 1; p++)
         wr_act_cr02h[p] <= wr_v_cr01h[p] & (wr_sec_cr01h[p*4 + K] | (FULL_ROW != 0 && p != 0));
+      wr_act_cr02h[NW-1] <= gws_cr01h |
+                            (wr_v_cr01h[NW-1] & ~gws_cr01h & (wr_sec_cr01h[(NW-1)*4 + K] | (FULL_ROW != 0)));
+      gws_cr02h <= gws_cr01h;
+    end
   end
 
   // The load port: in T-1, from MIU's lead, the one slot covering bank K
@@ -276,6 +316,10 @@ module rcu_bank_slice #(
     for (int p = 0; p < NW; p++) begin
       pdat_cr02h[p*32 +: 32] = {32{wr_keep_cr02h[p]}} & wr_dat_cr02h[p*32 +: 32];
       plm_cr02h[p*L +: L]    = wr_lm_cr02h[p*L +: L];
+      if (p == NW - 1 && gws_cr02h) begin   // the restore's row: every lane
+        pdat_cr02h[p*32 +: 32] = gw_dat_cr02h;
+        plm_cr02h[p*L +: L]    = '1;
+      end
       phi_cr02h[p*NH +: NH]  = wr_hi_cr02h[p*NH +: NH];
       plo_cr02h[p*16 +: 16]  = wr_lo_cr02h[p*16 +: 16];
       pact_cr02h[p]          = wr_act_cr02h[p];
@@ -359,11 +403,12 @@ module rcu_bank_slice #(
       two_hits_cr02h = two_hits_cr02h | !$onehot0(hit_cr02h[r*NP +: NP]);
     bad_rd_cr01h = 1'b0;
     for (int p = 0; p < NR; p++)
-      bad_rd_cr01h = bad_rd_cr01h | (rd_v_cr01h[p] && 32'(rd_row_cr01h[p*WR +: WR]) >= ROWS &&
-                                     32'(rd_row_cr01h[p*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
+      bad_rd_cr01h = bad_rd_cr01h | (rd_en_cr01h[p] && 32'(rdr_cr01h[p*WR +: WR]) >= ROWS &&
+                                     32'(rdr_cr01h[p*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
     bad_wr_cr01h = 1'b0;
     for (int p = 0; p < NW; p++)
       bad_wr_cr01h = bad_wr_cr01h | (wr_v_cr01h[p] && 32'(wr_row_cr01h[p*WR +: WR]) >= ROWS);
+    bad_wr_cr01h = bad_wr_cr01h | (gws_cr01h && 32'(gw_row_cr01h) >= ROWS);
     for (int q = 0; q < NRR; q++)
       bad_rd_cr01h = bad_rd_cr01h | (rv_cr03h && 32'(rr_row_cr03h[q*WR +: WR]) >= ROWS &&
                                      32'(rr_row_cr03h[q*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
