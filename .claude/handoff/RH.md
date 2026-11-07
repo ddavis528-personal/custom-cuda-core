@@ -53,7 +53,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - None. J9 (vadd16_loop J3->J8 attribution) DONE and sent 2026-11-07 18:00Z:
   the +1,065 step is 2a7f125 (lane_rcu_res zero-cycle). Scripts rh-jobs/j9/
   (j9.sh, j9w.sh: label:commit[:unflop-channel] points, about 2 min each),
-  logs ~/ccv-logs/j9{,w}. Idle; free for TI's J9 (capacity sweep), once
+  logs ~/ccv-logs/j9{,w,g,t}. KEEP /home/user/rh-j9t-w9, rh-j9t-w10 and
+  ~/ccv-logs/j9t (traces) until AR has read them; AR may ask for per-address DCU
+  evictions. NEXT: J10 (AR rev 319: MIU stub stall counters and a four-start
+  mode, a local patch on de03fd6), after TI's bundle gate on de03fd6 passes
+  (~19:15Z), with RI's CCV_RCU_STATS (ba39e6a, gate-scratch/RI) beside
+  CCV_OOE_STATS. Idle; free for TI's J9 (capacity sweep), once
   TI's CTA-queueing and gen-oracle -load code lands.
 - DONE and sent to TI (2026-11-07), f4ce0fd, worktree /home/user/rh-tip
   (oracles cleared; TI rev 367: the pl32 divergence was RI's interim call-link
