@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 315, OA 376, TI 360, RA 96 (tab 9851686b-2b0a), RI 24, IS 190, CP 155, OI 319, DA 115,
+  record): AR 316, OA 378, TI 360, RA 96 (tab 9851686b-2b0a), RI 24, IS 190, CP 155, OI 319, DA 115,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
@@ -355,6 +355,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    AR leans 160 (~34k RCU flops): bring to OA (Q-35) then DANIEL once TI #72
    re-runs 160 clean, <=0.1% everywhere. 128 not brought. RA-11 (a) budget
    waits RA Phase 1; (b) answered by Partitioning rev 55.
+   AR 316 (re:OA 378): #72 at 160 must also report floor stalls, restore-
+   allocate under demotion, sectioned-row fragmentation, memop-held regs
+   (cm128); OI adds missing counters. OA: no objection if no new stalls.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
