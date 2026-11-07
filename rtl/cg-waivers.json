@@ -8,10 +8,10 @@
    "ports": [
     "grant_cq01h"
    ],
-   "enable_ngd": 6.5,
-   "why": "OA's response OI-58: a timer's grant has no lead (the grant register's D is select's pick at 24.3 NGD, and the issue loop cannot pay a cycle). The grant comes from ooe_sched's third (* keep *) copy of its grant register (grant_w_cq04h), for this module alone, at 2 NGD (ooe_wake.ngd.json). check-cg measures each timer's enable cone at 4.1 NGD, 6.1 in all with the grant's arrival, within CG-2's 8; 6.5 is stated for margin. Every other term of the enable is this module's own flops (OA's responses OI-58, OI-62).",
+   "enable_ngd": 7.1,
+   "why": "OA's response OI-58: a timer's grant has no lead (the grant register's D is select's pick at 24.3 NGD, and the issue loop cannot pay a cycle). The grant comes from ooe_sched's third (* keep *) copy of its grant register (grant_w_cq04h), for this module alone, at 1 NGD (ooe_wake.ngd.json; OA's response re:OI-122, rev 375). Under C9h the hint match is decoded from the raw capture inside the enable: check-cg measures each timer's enable cone at 6.1 NGD at worst, 7.1 in all with the grant's arrival, within CG-2's 8. Every other term of the enable is this module's own flops (OA's responses OI-58, OI-62).",
    "by": "OI",
-   "date": "2026-10-20"
+   "date": "2026-11-07"
   },
   {
    "module": "ooe_decq",
