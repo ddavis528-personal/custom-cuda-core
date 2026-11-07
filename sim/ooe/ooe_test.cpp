@@ -121,6 +121,7 @@ struct Op {
   unsigned passes = 1;
   bool red = false, afault = false;
   bool cas = false, late2 = false;
+  bool cas_pd = false;           ///< a CAS writes pd (pdst) from its second slot (OI-127)
   unsigned csrc[2] = {}, ncsrc = 0;
   /// kExit (TI-27): last, its fetch clears the warp's last live lanes, so
   /// FET fetches no further; final, the mark FET sends (the last exit's, or
@@ -273,6 +274,9 @@ Uop atomSecond(const Op &o, const Uop &first) {
   }
   u.src[2] = 0;
   u.dst = o.dst;
+  // A CAS's pd beside rd (OI-127; TI rev 366).
+  u.pred_we = o.cas && o.cas_pd;
+  u.pred_dst = u.pred_we ? o.pdst : 0;
   u.attr_raw = (first.attr_raw & ~(1u << 17)) | 1u << 18 | (o.red ? 0u : 1u << 10);   // writes_gpr: rd
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
@@ -378,6 +382,7 @@ struct Env {
     bool started = false, hold = false, faulted = false, final = false;
     uint64_t t_ready = 0;
     unsigned T = 0;
+    unsigned P = 0;              ///< a CAS's pd, as A2 names it (OI-127)
   };
   std::map<uint64_t, Atom> atom;
   unsigned atom_mlc_pct = 0;                     ///< atomic reads that report an MLC miss
@@ -867,7 +872,7 @@ struct Env {
     auto it = m.find(preg);
     if (it == m.end()) return;    // never written: architectural state
     const uint64_t at = readableFor(it->second, pred ? -1 : group);
-    if (t < at && !pred && op_of[it->second.tid].k == kAtomic && op_of[tid].k != kAtomic) {
+    if (t < at && op_of[it->second.tid].k == kAtomic && op_of[tid].k != kAtomic) {
       // An atomic's consumers wake once, on its last write (V-71): an
       // earlier read is never a speculation a replay may clean up.
       errors.push_back("V-71: tid " + std::to_string(tid) + " reads atomic tid " + std::to_string(it->second.tid) +
@@ -950,7 +955,7 @@ struct Env {
   /// operand read, never speculative), or A2, the lane op.
   void atomIssue(const Issue &is, const Op &o) {
     issues_of[is.tid] += std::to_string(t) + "@" + std::to_string(is.port) + "/a" + std::to_string(is.res) + " ";
-    const Atom &a = atom[is.tid];
+    Atom &a = atom[is.tid];
     if (is.res == Issue::kMemop) {
       const size_t before = viol[is.tid].size();
       if (gpr(is.pdst)) {
@@ -985,6 +990,18 @@ struct Env {
     for (unsigned i = 1; i != 3; ++i)
       if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpInt));
     if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
+    // A CAS's pd: A2 writes it on every pass, merged from the old one
+    // (OI-127, OA rev 380); its consumers read it after the last (V-71).
+    const bool want_pd = o.cas && o.cas_pd;
+    if (is.pred_we != want_pd || (want_pd && is.ppdst == cfg.pred_zero))
+      errors.push_back("OI-127: tid " + std::to_string(is.tid) + "'s A2 pred_we " + std::to_string(is.pred_we) +
+                       " ppdst " + std::to_string(is.ppdst) + ", want " + (want_pd ? "its pd" : "none"));
+    if (is.pred_we) {
+      if (is.merge) checkRead(is.tid, is.ppold, true, -1);
+      if (a.P && a.P != is.ppdst) errors.push_back("OI-127: tid " + std::to_string(is.tid) + "'s A2 renames pd between passes");
+      a.P = is.ppdst;
+      pready[is.ppdst] = {t, ~uint64_t(0) >> 1, is.tid, 1, 0, false, false};
+    }
     const unsigned lat = cfg.unitLat(1);
     gready[is.pdst] = {t, t + lat, is.tid, 1, Config::kGrpInt, true, false};
     gwriter[is.pdst] = {is.tid, t};
@@ -1047,6 +1064,7 @@ struct Env {
       if (!c.more) {
         a.final = true;
         if (gready.count(a.T)) gready[a.T].late = when + data_after_cmpl;
+        if (a.P && pready.count(a.P) && pready[a.P].tid == m.tid) pready[a.P].late = when + data_after_cmpl;
       }
     }
     cmpls.insert({when, c});
@@ -4336,6 +4354,7 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       c.inject_a1_base_only = control == 3;
       c.inject_cas_split = control == 4;
       c.inject_pair_split = control == 5;
+      c.inject_cas_no_pd = control == 6;
       c.inject_row_no_hold = g_row_no_hold;
       std::mt19937 rng(seed * 13 + unsigned(mode));
       Env e(c, seed * 11 + unsigned(mode));
@@ -4367,6 +4386,15 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
               a.csrc[1] = rng() % 16;
               a.ncsrc = 2;
               a.late2 = rng() % 3 == 0;
+              // Half of them write pd (OI-127), which a later op reads.
+              if (rng() % 2 == 0) {
+                a.cas_pd = true;
+                a.pdst = 1 + rng() % 3;
+                if (k + 2 < prog.size() && (prog[k + 2].k == kLane || prog[k + 2].k == kSetp) && !prog[k + 2].guard) {
+                  prog[k + 2].guard = true;
+                  prog[k + 2].pguard = a.pdst;
+                }
+              }
             }
             a.passes = rng() % 16 == 0 ? 32 : 1 + rng() % 4;
             if (rng() % 6 == 0) a.mask = 0x0000ffffu;
@@ -5683,9 +5711,10 @@ int main(int argc, char **argv) {
     std::printf("  row hold (OI-90): %u rows past 3 without the hold, %u with\n", over[1], over[0]);
     std::printf("  %-24s %s\n", "control row-no-hold", over[1] && !over[0] ? "caught" : "MISSED");
   }
-  for (int k : {1, 2, 3, 4, 5}) {
+  for (int k : {1, 2, 3, 4, 5, 6}) {
     const char *name = k == 1 ? "control atom-off-head" : k == 2 ? "control atom-early-wake"
-                     : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split" : "control pair-split";
+                     : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split"
+                     : k == 5 ? "control pair-split" : "control cas-no-pd";
     const int saved = g_fail;
     testAtomicRandom(10, randomConfig, k);
     const bool caught = g_fail != saved;

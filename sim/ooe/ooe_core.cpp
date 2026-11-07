@@ -1890,6 +1890,12 @@ void Core::atomCmpl(unsigned slot, unsigned idx, const Cmpl &c) {
   }
   RsEntry &x = rs_[c.rs_idx];
   if (!x.issued) err("OI-58: a completion for RS entry %u, not issued", c.rs_idx);
+  // A bulk discard exempts mem_op 2 and 3 (ccv_ooe_miu_memop; TI rev
+  // 366): an atomic's read or write completes with status 0 or 1, never 2.
+  if (c.status == kCmplReplay) {
+    err("OI-127: rob tag %u, an atomic's %s, completed with status replay", tag, a1 ? "read" : "write");
+    return;
+  }
   if (a1) {
     if (c.more) err("V-72: rob tag %u's atomic read completes with more", tag);
     if (c.status) {
@@ -3403,9 +3409,15 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     is.pdst = step == 1 ? r.atom_t : step == 2 ? r.ptmp_n : noGpr();
     is.merge = step == 1 && r.copy;
     is.pold = is.merge ? r.pold : 0;
-    is.ppdst = 0;
-    is.pred_we = false;
-    is.ppold = 0;
+    // A2 writes a CAS's pd (OI-127, OA rev 380): its renamed name,
+    // pred_we and the old name for the A-43 merge, on every pass. merge
+    // then covers A2's N as well, from row 0 (pold 0): N's inactive lanes
+    // are never stored, since A3 runs under the same mask.
+    const bool a2pd = step == 2 && u.pred_we;
+    is.ppdst = a2pd ? r.ppnew : 0;
+    is.pred_we = a2pd;
+    is.ppold = a2pd && r.merge ? r.ppold : 0;
+    if (a2pd) is.merge = r.merge;
     const unsigned m = resEntry(step == 1 ? r.rs_main : step == 2 ? r.rs_a2 : r.rs_a3);
     is.res = step == 2 ? Issue::kLaneOp : Issue::kMemop;
     is.footprint = uint8_t(!cfg_.sectioned ? 0xFu : step == 2 ? m & 0xFu : m >> 5);
@@ -4064,6 +4076,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
         dep(r.rs_a2, r.psrc[2], false, int(Config::kGrpInt));
       }
       if (u.shape.guard) dep(r.rs_a2, r.ppguard, true, -1);
+      // A2 merges a CAS's pd from the old one (A-43).
+      if (u.pred_we && r.merge) dep(r.rs_a2, r.ppold, true, -1);
       gprod_[r.ptmp_n] = {r.rs_a2, kNoEntry};
       dep(r.rs_a3, r.ptmp_n, false, int(Config::kGrpAddr));
     } else {
@@ -4086,7 +4100,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     if (a.branch && u.pred_taken && u.backward) s.home_ctr = (s.home_ctr + 1) & 3u;
     // This uop is now the producer of its destinations.
     if (wgpr) gprod_[r.pnew] = {atomic ? r.rs_a3 : r.rs_main, copy ? r.rs_copy : kNoEntry};
-    if (u.pred_we) pprod_[r.ppnew] = {r.rs_main, kNoEntry};
+    // An atomic's pd, as its rd, wakes its consumers once, on A3's last
+    // pass (V-71); A2's last write lands before A3 reads N.
+    if (u.pred_we) pprod_[r.ppnew] = {atomic ? r.rs_a3 : r.rs_main, kNoEntry};
   }
   if (u.cause) {
     // Fetch's or decode's, as DEC sent it (TI's 75b6a19).
@@ -4708,6 +4724,12 @@ void Core::rename() {
       cu.attr_raw = (cu.attr_raw & ~(1u << 10)) | (it2->attr_raw & (1u << 10));
       for (unsigned i = 0; i != 2; ++i) cu.cas_src[i] = it2->src[i];
       cu.cas_reads = uint8_t(it2->shape.gpr_reads & 3u);
+      // CAS's pd (OI-127; TI rev 366): DEC puts it in the second slot,
+      // beside rd. The pair renames it with the rest.
+      if (!cfg_.inject_cas_no_pd) {
+        cu.pred_we = it2->pred_we;
+        cu.pred_dst = it2->pred_dst;
+      }
     }
     if (young) count("rename.refill");
     ren_pair_last_ = pair && budget < 2 && !cfg_.inject_pair_split;

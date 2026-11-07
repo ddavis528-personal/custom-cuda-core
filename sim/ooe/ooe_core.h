@@ -590,6 +590,8 @@ struct Config {
   /// admission unit, OA's rev 189).
   bool inject_a1_base_only = false;
   bool inject_cas_split = false;
+  /// Control (OI-127): the CAS pair drops its second slot's pd.
+  bool inject_cas_no_pd = false;
   /// OI-79 (b)'s control: the take keeps a pair the width splits (its
   /// first slot taken, its second left for the next cycle): it skips both
   /// the take's cap and tryRename's cut at the last lane.
