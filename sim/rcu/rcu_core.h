@@ -307,6 +307,8 @@ public:
     uint64_t lane_ops = 0, r_ops = 0, memops = 0, dones = 0, gpr_writes = 0, pred_writes = 0;
     uint64_t byp_sels = 0, demote_rows = 0, restore_rows = 0, mig_r_waits = 0,
              mig_credit_waits = 0, restore_holds = 0, max_demote_cycles = 0, max_restore_cycles = 0;
+    uint64_t rsrc_fwd = 0;                      ///< operand reads forwarded from MW in A
+    uint64_t dones_slot[kDoneSlots] = {};       ///< dones sent, by done slot
   };
   const Stats &stats() const { return st_; }
 

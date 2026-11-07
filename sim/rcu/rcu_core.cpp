@@ -408,7 +408,10 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
           fail("seq %llu's R%u source row %u is written by a non-MIU port in its own A",
                seqOf(is.tid), i, is.src[i]);
         for (const GWrite &w : gnow_)
-          if (w.port == kMW && w.row == is.src[i]) ev(Ev::RsrcFwd, i, unsigned(w.slot), w.row);
+          if (w.port == kMW && w.row == is.src[i]) {
+            ev(Ev::RsrcFwd, i, unsigned(w.slot), w.row);
+            ++st_.rsrc_fwd;
+          }
         (i == 0 ? x.r0 : x.r1) = rdReg(is.src[i], is.src_pos[i], is.src_w[i]);
       }
     }
@@ -635,6 +638,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
       if (d.slot < kDoneSlots && !in.done_can[d.slot])
         fail("done on slot %u without a credit (a fixed-latency channel)", d.slot);
       ++st_.dones;
+      if (d.slot < kDoneSlots) ++st_.dones_slot[d.slot];
     }
   }
 
