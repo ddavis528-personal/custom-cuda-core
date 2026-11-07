@@ -45,6 +45,12 @@
 //          lead lead_br_taken_a (OR of active) and lead_br_mask_a (active),
 //          zero unless the op is a branch or call, each (* keep *): they
 //          drive ccv_rcu_ooe_done's lead and nothing else.
+//          sec_pred_bit_a, rcu_lane_ops' lead (Predicate file tab, step 4;
+//          Partition rule 2; RA rev 98, re:RI-20): lane l's bit of
+//          section k is active[o][l] for the S slot o that owns k (its
+//          footprint, a lane-message op: the Lane and memory tab's own[k]),
+//          0 for a section no slot owns. Loaded when an S slot issues, or
+//          to clear what the last load left; its Q is the port.
 //
 // Merge write ports (NQ, 13: PL0-PL3 at 0-3, PR at 4, PC0-PC3 at 5-8,
 // PG0-PG3 at 9-12, in the order the parent wires them). A port's valid
@@ -120,6 +126,8 @@ module rcu_pred #(
   input  logic [NS-1:0]      pdt_cr02h,     // class: pdata
   input  logic               br_cr02h,      // class: R's op is a branch or call
   input  logic [2*WP+1:0]    rimm_cr02h,    // R's imm[13:0]: RA [5:0], neg [6]; RB [12:7], neg [13]
+  input  logic [NK*NK-1:0]   ft_cr02h,      // S slot s's footprint, section k at s*NK + k
+  input  logic [NK-1:0]      lm_cr02h,      // class: S slot s sends a lane message (lane, SFU, GPR copy)
   output logic [NS*N-1:0]    act_cr03h,     // active_a[s]
   output logic [NK*N-1:0]    gv_cr03h,      // gv_a[k]: S slot k's guard (sec_pred_data)
   output logic [NMP*N-1:0]   pst_cr03h,     // pst_a[j]: P slot j's raw guard row (st.pred data)
@@ -128,6 +136,7 @@ module rcu_pred #(
   output logic [N-1:0]       low_cr03h,     // rlow_a
   output logic               lbt_cr03h,     // lead_br_taken_a
   output logic [N-1:0]       lbm_cr03h,     // lead_br_mask_a
+  output logic [N*NK-1:0]    spb_cr03h,     // sec_pred_bit_a: lane l, section k at l*NK + k (rcu_lane_ops lead)
   // MIU: each slot's lead in T-1, its pred_result in T.
   input  logic [NM-1:0]      mv_cr01h,      // slot j lands next cycle
   input  logic [NM-1:0]      mwe_cr01h,     //   pred_we
@@ -328,6 +337,33 @@ module rcu_pred #(
   assign lbt_cr03h = lbt_q_cr03h;
   assign lbm_cr03h = lbm_q_cr03h;
 
+  // sec_pred_bit_a: section ownership from the S slots' footprints and
+  // class (this module's own copy of the decode, Partition rule 1).
+  logic [NK*NK-1:0] own_cr02h;     // own[k*NK + s]: S slot s owns section k
+  logic [N*NK-1:0]  spb_d_cr02h;
+  always_comb begin
+    for (int k = 0; k < NK; k++)
+      for (int s = 0; s < NK; s++)
+        own_cr02h[k*NK + s] = iv_cr02h[s] & lm_cr02h[s] & ft_cr02h[s*NK + k];
+    for (int l = 0; l < N; l++)
+      for (int k = 0; k < NK; k++) begin
+        spb_d_cr02h[l*NK + k] = 1'b0;
+        for (int s = 0; s < NK; s++)
+          spb_d_cr02h[l*NK + k] = spb_d_cr02h[l*NK + k] | (own_cr02h[k*NK + s] & act_d_cr02h[s*N + l]);
+      end
+  end
+  logic spbnz_cr03h;   // the last load was non-zero
+  wire spb_en_cr02h = (|iv_cr02h[NK-1:0]) | spbnz_cr03h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rst_r01h) begin
+      spb_cr03h   <= '0;
+      spbnz_cr03h <= 1'b0;
+    end else if (spb_en_cr02h) begin
+      spb_cr03h   <= spb_d_cr02h;
+      spbnz_cr03h <= |spb_d_cr02h;
+    end
+  end
+
   // ---- Merge write ports: selects, old destination, data ---------------
   wire [NQ-1:0] qv_en_cr01h = qv_cr01h;
   (* keep *) logic [NQ*NH-1:0] w_hi_cr02h, o_hi_cr02h;
@@ -463,6 +499,13 @@ module rcu_pred #(
   `CCV_ASSERT(guard_no_hazard, !hazard_cr02h)
   // R's guard lead names the payload's guard (RA-31, RA-32).
   `CCV_ASSERT(guard_lead_names, !lead_cr02h)
+  // One owner a section among the S slots.
+  logic own_bad_cr02h;
+  always_comb begin
+    own_bad_cr02h = 1'b0;
+    for (int k = 0; k < NK; k++) own_bad_cr02h |= $countones(own_cr02h[k*NK +: NK]) > 1;
+  end
+  `CCV_ASSERT(pred_spb_own, !own_bad_cr02h)
 
 endmodule
 `undef CCV_CLK

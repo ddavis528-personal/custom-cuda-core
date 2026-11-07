@@ -23,10 +23,9 @@
 // pipes follow the parameters):
 //   cr01h  the S slots' issue valid lead and lead slice (RA-31): section
 //          mask, sources, imm and merge used. Registered as iss_lead_q.
-//   cr02h  A: each slot's payload and op-class decode, and rcu_pred's
-//          active (the guard read in A). Section ownership from the
-//          footprints; the bypass compare (stage I); the lane message's
-//          lead fields (section_en, sec_pred_bit) and valid into their
+//   cr02h  A: each slot's payload and op-class decode. Section
+//          ownership from the footprints; the bypass compare (stage I);
+//          the lane message's lead field section_en and valid into their
 //          flops; each section's control, its owner's lead bits and its
 //          bypass selects into sec_a1 (byp_a); the history and the
 //          descriptors' first stage.
@@ -57,10 +56,6 @@
 // What the payload uses is a subset of what the lead promised (asserted).
 //
 // Departures, each for RA (RI tab):
-//   - sec_pred_bit is loaded at A's edge from rcu_pred's active in A
-//     (act_cr02h): rcu_pred has it only from a flop at A+1, so the guard
-//     read's A path crosses into this module (no budget in the Partition
-//     tab).
 //   - The descriptors carry rows binary (the slices predecode their write
 //     ports), and active from rcu_pred's active_a at A+1, not from A.
 //   - SW's data (RA-3's field) and its lane mask (all ones) are wired at
@@ -125,7 +120,6 @@ module rcu_lanes #(
   input  logic [NK*WP-1:0]        pod_cr02h,       // phys_pred_old_dst
   input  logic [NK*WT-1:0]        tag_cr02h,       // rob_tag
   input  logic [NK*2-1:0]         drow_cr02h,      // done_row
-  input  logic [NK*N-1:0]         act_cr02h,       // rcu_pred: active, in A
   // A+1.
   input  logic [NK*N-1:0]         acta_cr03h,      // rcu_pred: active_a
   input  logic [NK*N-1:0]         gv_cr03h,        // rcu_pred: gv_a, the guard, negated
@@ -137,7 +131,6 @@ module rcu_lanes #(
   output logic [NWK-1:0]          lwk_cr02h,       // wake (copy c from flop c/8)
   output logic [N-1:0]            lv_cr03h,        // valid
   output logic [N*NK-1:0]         sen_cr03h,       // section_en (lead)
-  output logic [N*NK-1:0]         spb_cr03h,       // sec_pred_bit (lead)
   output logic [N*NK*WO-1:0]      sop_cr04h,       // sec_opcode
   output logic [N*NP*32-1:0]      opd_cr04h,       // operand 0-2, then merge_data
   output logic [N*NK*2-1:0]       sown_cr04h,      // sec_owner
@@ -298,7 +291,6 @@ module rcu_lanes #(
   logic [NK*NP-1:0]  rdm_s_cr02h, use_s_cr02h;
   logic [NK-1:0]     pdt_s_cr02h;
   logic [NK*NP*WB-1:0] byp_s_cr02h;
-  logic [NK*N-1:0]   spb_s_cr02h;        // sec_pred_bit, lane l of section k at k*N + l
   always_comb begin
     for (int k = 0; k < NK; k++) begin
       opc_s_cr02h[k*WO +: WO] = '0;
@@ -312,7 +304,6 @@ module rcu_lanes #(
       use_s_cr02h[k*NP +: NP] = '0;
       pdt_s_cr02h[k] = 1'b0;
       byp_s_cr02h[k*NP*WB +: NP*WB] = '0;
-      spb_s_cr02h[k*N +: N] = '0;
       for (int s = 0; s < NK; s++) begin
         logic          o_cr02h;
         logic [NP-1:0] u_cr02h;
@@ -339,7 +330,6 @@ module rcu_lanes #(
         use_s_cr02h[k*NP +: NP] |= {NP{o_cr02h}} & u_cr02h;
         pdt_s_cr02h[k] |= o_cr02h & pdt_cr02h[s];
         byp_s_cr02h[k*NP*WB +: NP*WB] |= {NP*WB{o_cr02h}} & bsel_cr02h[s*NP*WB +: NP*WB];
-        spb_s_cr02h[k*N +: N] |= {N{o_cr02h}} & act_cr02h[s*N +: N];
       end
       // The immediate's port of a section whose owner has none: 3.
       if (!sen_cr02h[k]) isl_s_cr02h[2*k +: 2] = 2'd3;
@@ -382,20 +372,21 @@ module rcu_lanes #(
   end
 
   // ---- A: the lane message's lead fields, every copy ---------------------
-  // section_en, sec_pred_bit and valid: loaded when any S slot issues, or
-  // to clear what the last message left.
-  for (genvar c = 0; c < N; c++) begin : g_lead
-    wire ld_en_cr02h = any_v_cr02h | lv_cr03h[c];
-    always_ff @(posedge rcu_core_clk) begin
-      if (rst_r01h) begin
-        lv_cr03h[c]            <= 1'b0;
-        sen_cr03h[c*NK +: NK]  <= '0;
-        spb_cr03h[c*NK +: NK]  <= '0;
-      end else if (ld_en_cr02h) begin
-        lv_cr03h[c]            <= |sen_cr02h;
-        sen_cr03h[c*NK +: NK]  <= sen_cr02h;
-        for (int k = 0; k < NK; k++) spb_cr03h[c*NK + k] <= spb_s_cr02h[k*N + c];
-      end
+  // section_en and valid: loaded when any S slot issues, or to clear what
+  // the last message left. One gate for every copy (each copy's 5 flops
+  // are under a gate's 8), its enable from lvh, the valid's own copy (keep:
+  // the copies drive outputs). sec_pred_bit is rcu_pred's (RA rev 98).
+  (* keep *) logic lvh_cr03h;
+  wire ld_en_cr02h = any_v_cr02h | lvh_cr03h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rst_r01h) begin
+      lvh_cr03h <= 1'b0;
+      lv_cr03h  <= '0;
+      sen_cr03h <= '0;
+    end else if (ld_en_cr02h) begin
+      lvh_cr03h <= |sen_cr02h;
+      lv_cr03h  <= {N{|sen_cr02h}};
+      sen_cr03h <= {N{sen_cr02h}};
     end
   end
 

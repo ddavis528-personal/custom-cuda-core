@@ -203,7 +203,6 @@ struct Bench {
         put(dut->pod_cr02h, 6 * s, 6, o.pod);
         put(dut->tag_cr02h, 7 * s, 7, o.tag);
         put(dut->drow_cr02h, 2 * s, 2, o.drow);
-        put(dut->act_cr02h, kN * s, kN, o.act);
       }
     else
       dut->cls_cr02h = 0;   // the rest of the payload holds: no message
@@ -235,17 +234,15 @@ struct Bench {
     {
       const Group *x = g(c - 1);
       for (unsigned l = 0; l < kN; ++l) {
-        unsigned sen = 0, spb = 0;
+        unsigned sen = 0;
         if (x)
           for (unsigned k = 0; k < kK; ++k) {
             const unsigned o = x->owner(k);
             if (o == kK) continue;
             sen |= 1u << k;
-            spb |= ((x->op[o].act >> l) & 1u) << k;
           }
         eq("valid", get(dut->lv_cr03h, l, 1), sen != 0, l);
         eq("section_en", get(dut->sen_cr03h, l * kK, kK), sen, l);
-        eq("sec_pred_bit", get(dut->spb_cr03h, l * kK, kK), spb, l);
       }
     }
     // A+2: the payload of every owned section.
