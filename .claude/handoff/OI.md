@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-07 (C9h built in wc9; OI-120 to OA, awaiting budget). Keep this current at every task's end; it is what
+Updated 2026-11-07 (C9h gate red: OI-122 to OA, kernel retime for TI). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,7 +37,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 313, RA 95, IS 190, TI 357, OA 373, OI 313, CP 155, DA 114, RI 21
+Conventions 17, AR 313, RA 95, IS 190, TI 357, OA 373, OI 314, CP 155, DA 114, RI 21
 (sweep 11-06 10:20, plus notices to 13:00). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
@@ -56,12 +56,16 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
    (cmpl_split 9, rx_lag 16); ooe_cmcap new; ooe_rs hit-freed column clear (clr = free|hh, hhv
    flop for CG-2 7.8); ooe_wake hint capture hix+hq one gate. run-rtl and trio exact (no-c9h
    control). regen + walkthrough committed; cmpl_idx_cq00h arrival 2 written (00c77fe, OA 373).
-   BLOCKED on OA (OI-121, rev 313, notice sent): prv_code_cq01h 25.7. OA refused a cap; (a) kept cd
-   copies per class gave 25.9 (reverted; scratchpad/c9/ooe_rs.cdm.sv). (b) asked: arrival 9->8
-   (ooe_rendep sends from a flop, out 0.0, default budget 12) -> 24.7. On grant: write both
-   entries (ooe_rs.ngd.json arrival 8; ooe_rendep.ngd.json out budget <=11) citing OA's row,
-   check-ngd/check-cg ooe_rs, rs-only.sh, consider NGD-1 cap 28.5, gate-push from wc9.
-   Then OI-114's row to OA.
+   prv_code split granted (OA 374) and written (5e1b436). Gate on 5e1b436 RED; fixed in OI's files:
+   ratchet grp_dep/sqf caps removed (met), no-msd seeds >=200 (f33368b, wc9 tip, unpushed).
+   BLOCKED on OA (OI-122, rev 314, notice sent): ooe_wake timer enable 6.1 cone + grant arrival 2 =
+   8.1 > CG-2 8 (C9h hm decode). Coarse/group/copies all fail (DCGE 47/55%, copies no-op). Asked:
+   ooe_wake.ngd.json grant_cq01h arrival 1, ooe_sched.ngd.json grant_w_cq04h required 1 (out 0.0).
+   On grant: write both, restate cg-waivers ooe_wake CG-5 enable_ngd 7.1 + why, check-cg both.
+   ALSO RED (TI's tools/check-kernel.sh): privwin priv_form 12 (want 11, line 760); predswap at:58
+   crack_split 0 and --break resume-mid. Measuring in wc9 (skel+oracle build, scratchpad/c9/
+   skel-build.log, oracle.log); then sweep CCV_RAU_DEMOTE=at:N and raise OI-123 to TI.
+   Then gate-push from wc9; then OI-114's row to OA.
 2. OI-114 landed as (b) (OA 369), model only: the go reads unmet on time (unmet_reg 0; rename's
    register failed CG-5/CG-3), floor_take_lag 1; rename and go RTL as pushed. RH's S1: 0 cost at 192
    and 160 (X/Y, Z). Row to OA when pushed.
