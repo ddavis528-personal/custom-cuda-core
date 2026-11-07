@@ -533,22 +533,29 @@ module ooe_go #(
   // so the allowances could pass the credit. No floor term is split for a
   // slot whose registered allowance holds one (fh, per slot, GPR then
   // predicate): a floor still unmet is granted every other cycle.
-  logic [S*2-1:0]            fh_cq02h, fh_nx_cq01h;
-  logic [S*LU-1:0]           ug_cq01h, up_cq01h;    // the floor terms split now
+  logic [S*2-1:0]            fh_cq02h, fh_nx_cq02h;
+  logic [S*LU-1:0]           ug_cq02h, up_cq02h;    // the floor terms split now
   always_comb
     for (int s = 0; s < S; s++) begin
-      ug_cq01h[s * LU +: LU] = unmet_g_cq01h[s * LU +: LU] & {LU{~fh_cq02h[s * 2]}};
-      up_cq01h[s * LU +: LU] = unmet_p_cq01h[s * LU +: LU] & {LU{~fh_cq02h[s * 2 + 1]}};
-      fh_nx_cq01h[s * 2]     = with_w_cq01h[s] & ~rbusy_cq01h & (ug_cq01h[s * LU +: LU] != '0);
-      fh_nx_cq01h[s * 2 + 1] = with_w_cq01h[s] & ~rbusy_cq01h & (up_cq01h[s * LU +: LU] != '0);
+      ug_cq02h[s * LU +: LU] = unmet_g_cq01h[s * LU +: LU] & {LU{~fh_cq02h[s * 2]}};
+      up_cq02h[s * LU +: LU] = unmet_p_cq01h[s * LU +: LU] & {LU{~fh_cq02h[s * 2 + 1]}};
+      fh_nx_cq02h[s * 2]     = with_w_cq01h[s] & ~rbusy_cq01h & (ug_cq02h[s * LU +: LU] != '0);
+      fh_nx_cq02h[s * 2 + 1] = with_w_cq01h[s] & ~rbusy_cq01h & (up_cq02h[s * LU +: LU] != '0);
     end
-  logic [S*4*(R+1)-1:0]      ue_cq01h;         // each slot's floor per credit, one-hot to R (R: R or more)
+  logic [S*4*(R+1)-1:0]      ue_cq02h;         // each slot's floor per credit, one-hot to R (R: R or more)
   logic [LU-1:0]             u_cq01h;
+  logic                      uhb_cq02h;        // the slot's floor is held (fh): none split
   always_comb
     for (int s = 0; s < S; s++)
       for (int c = 0; c < 4; c++) begin
-        u_cq01h = c == 2 ? ug_cq01h[s * LU +: LU] : c == 3 ? up_cq01h[s * LU +: LU] : '0;
-        for (int w = 0; w < R + 1; w++) ue_cq01h[(s * 4 + c) * (R + 1) + w] = w == R ? u_cq01h >= LU'(R) : u_cq01h == LU'(w);
+        // The floor-held mask after the compares (fh is a flop): a held
+        // floor reads as none.
+        u_cq01h  = c == 2 ? unmet_g_cq01h[s * LU +: LU] : c == 3 ? unmet_p_cq01h[s * LU +: LU] : '0;
+        uhb_cq02h = c == 2 ? fh_cq02h[s * 2] : c == 3 ? fh_cq02h[s * 2 + 1] : 1'b0;
+        for (int w = 0; w < R + 1; w++)
+          ue_cq02h[(s * 4 + c) * (R + 1) + w] =
+            w == 0 ? (u_cq01h == '0) | uhb_cq02h :
+            (w == R ? u_cq01h >= LU'(R) : u_cq01h == LU'(w)) & ~uhb_cq02h;
       end
   // The first warp's reserve per credit, one-hot: none, or two where its
   // head needs two (an atomic's two MIU rows and names, a copy's second RCU
@@ -649,24 +656,24 @@ module ooe_go #(
           for (int f = 0; f < 2; f++)
             for (int w = 0; w < R + 1; w++)
               sg_cq02h[(s * 4 + c) * R + v - 1] = sg_cq02h[(s * 4 + c) * R + v - 1] |
-                  ((first_w_cq02h[s] == (f != 0)) & ue_cq01h[(s * 4 + c) * (R + 1) + w] & tw_cq02h[(c * NF + f * (R + 1) + w) * R + v - 1] &
+                  ((first_w_cq02h[s] == (f != 0)) & ue_cq02h[(s * 4 + c) * (R + 1) + w] & tw_cq02h[(c * NF + f * (R + 1) + w) * R + v - 1] &
                    with_w_cq01h[s] & ~rbusy_cq01h);
         end
   // The allowances to hold next cycle: min(R, the shares' sum). The shares
   // split the pool whole among the warps with a head, so the sum is the pool
   // (the names' plus those warps' unmet floors); none under a restore.
-  logic [S*R-1:0]     uw_cq01h;                // each warp's floor (a warp with a head), a thermometer to R
-  logic [R-1:0]       ut_cq01h;                // and summed
+  logic [S*R-1:0]     uw_cq02h;                // each warp's floor (a warp with a head), a thermometer to R
+  logic [R-1:0]       usum_cq02h;              // and summed
   logic [4*R-1:0]     held_nx_cq02h;           // a thermometer
   logic [4*(R+1)-1:0] he_nx_cq02h;             // and one-hot
   always_comb
     for (int c = 0; c < 4; c++) begin
       for (int s = 0; s < S; s++)
         for (int v = 1; v < R + 1; v++)
-          uw_cq01h[s * R + v - 1] = with_w_cq01h[s] & (c == 2 ? ug_cq01h[s * LU +: LU] >= LU'(v) :
-                                           c == 3 ? up_cq01h[s * LU +: LU] >= LU'(v) : 1'b0);
-      ut_cq01h = tsum(uw_cq01h);
-      held_nx_cq02h[c * R +: R] = tadd(pt_cq02h[c * (R + 1) + 1 +: R], ut_cq01h) & {R{(nw_cq01h != '0) & ~rbusy_cq01h}};
+          uw_cq02h[s * R + v - 1] = with_w_cq01h[s] & (c == 2 ? unmet_g_cq01h[s * LU +: LU] >= LU'(v) & ~fh_cq02h[s * 2] :
+                                           c == 3 ? unmet_p_cq01h[s * LU +: LU] >= LU'(v) & ~fh_cq02h[s * 2 + 1] : 1'b0);
+      usum_cq02h = tsum(uw_cq02h);
+      held_nx_cq02h[c * R +: R] = tadd(pt_cq02h[c * (R + 1) + 1 +: R], usum_cq02h) & {R{(nw_cq01h != '0) & ~rbusy_cq01h}};
       for (int h = 0; h < R + 1; h++) begin
         he_nx_cq02h[c * (R + 1) + h] = 1'b1;
         if (h > 0) he_nx_cq02h[c * (R + 1) + h] = he_nx_cq02h[c * (R + 1) + h] & held_nx_cq02h[c * R + h - 1];
@@ -822,7 +829,7 @@ module ooe_go #(
   always_comb begin
     fhc_cq02h = 1'b0;
     for (int s = 0; s < S; s++)
-      fhc_cq02h = fhc_cq02h | (fits_en_cq02h[s] & (fh_nx_cq01h[s * 2 +: 2] != fh_cq02h[s * 2 +: 2]));
+      fhc_cq02h = fhc_cq02h | (fits_en_cq02h[s] & (fh_nx_cq02h[s * 2 +: 2] != fh_cq02h[s * 2 +: 2]));
   end
   always_comb
     for (int s = 0; s < S; s++)
@@ -878,7 +885,7 @@ module ooe_go #(
         sel_q_cq02h[gs]                             <= 1'b0;
         fh_cq02h[gs * 2 +: 2]                       <= '0;
       end else if (fits_en_cq02h[gs]) begin
-        fh_cq02h[gs * 2 +: 2]                       <= fh_nx_cq01h[gs * 2 +: 2];
+        fh_cq02h[gs * 2 +: 2]                       <= fh_nx_cq02h[gs * 2 +: 2];
         fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
         fitsw_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
         fitsx_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
