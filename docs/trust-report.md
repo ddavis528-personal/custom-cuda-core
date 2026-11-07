@@ -20,6 +20,9 @@ so this is a build artifact rather than something to remember.
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
 | `rtl/rcu/rcu_bank_slice.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO` |
+| `rtl/rcu/rcu_kill.sv` | — | `CCV_LAT_SFU`, `CCV_P_W_KILL_EPOCH` |
+| `rtl/rcu/rcu_mig.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG` |
+| `rtl/rcu/rcu_pred.sv` | — | `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO`, `CCV_P_W_PHYS_PRED` |
 | `rtl/rcu/rcu_r.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_PRED_ZERO`, `CCV_P_W_ROB_TAG` |
 | `rtl/top/dpi/ccv_cru.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
@@ -65,6 +68,8 @@ so this is a build artifact rather than something to remember.
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/phys/tb_seq_rpt.sv` | — | `CCV_P_TIMEOUT_N` |
+| `test/rcu/kill_tb.cpp` | — | — |
+| `test/rcu/mig_tb.cpp` | — | — |
 | `test/smoke/credit_smoke.sv` | — | `CCV_P_TIMEOUT_N` |
 
 ## Reach a source scan cannot see

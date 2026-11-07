@@ -40,18 +40,24 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 363, AR 306, TI 346, OI 306, IS 189, CP 154, DA 112,
-RA 82 (tab 9851686b-2b0a), RI 15 (tab 8e4547bc-c469).
-OOE doc rev 364. Pings 2026-10-30 (Fri): all ponged ok. Next pings Fri 2026-11-06.
-Sweep 11-05: 6 branches (209 commits) merged at 76f0190, full gate green, pushed;
-release 5174359; snapshot tag refused by the proxy (known, local only).
+Conventions 17, OA 367, AR 308, TI 349, OI 306, IS 190, CP 155, DA 112,
+RA 91 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
+OOE doc rev 366. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
+Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
+release 2e95216; tag refused (known). session-home --check ok at 350k.
 
 ## Open work (most urgent first)
--12. RULED 11-06 (OA 363, under 0.5%): RI-11 OOE cmpl+hint ends first kind = C9, +0.444%
+-13. OA 365/366: zero-cycle ooe_rcu_issue -> AR 308: stays flopped, no splits (gain only
+   L1_CMPL -1, V-35 -1; L1_WAKE does NOT move - my 365 claim wrong). OI phys_src depth low
+   prio. OA 364: C9 ports must be 0 NGD, <=4 pins (sum of parts boundary); OOE units per param set.
+   AR 307 took C9 to DA in AR's session (+0.444% holds only with AR 296; lane cycle hits both).
+-12. REOPENED by DA ruling (RA 91, verbatim: zero-cycle block-boundary receiving ends only for
+   performance; DA approves). OA 367: OA 363 now a RECOMMENDATION to DA; OI reprices at LANE 8/
+   SFU 13; OI/TI build nothing until DA rules. Was: RULED 11-06 (OA 363, under 0.5%): RI-11 OOE cmpl+hint ends first kind = C9, +0.444%
    S1 over A6 (model; cm128 -0.45%, cm32 -0.08%); flopped H3+P ~+1.95% not taken. HINT 2/
    FILL 4/MLC 39. TI: links.json no_flop at OOE; OI builds; AR updates specs. OOE doc 365.
    R49 dropped (S1 +0.276% cost); ooe_rs stays 45 rows, 26.2 on cap. Told DA; DA may overrule.
--11. DA APPROVED in OA's session 11-06, verbatim "I approve the token limit" (DA tab 112):
+-11. DONE 11-06 (installed, --check ok). DA APPROVED in OA's session 11-06, verbatim "I approve the token limit" (DA tab 112):
    once TI's autoCompactWindow 350000 push (2d445f5, TI-51) is merged into this branch
    (the daily sweep merges it), run the session-home skill / tools/setup-session-home.py
    so /home/user/.claude takes 350000; check with --check. Not yet on origin at 03:40Z.

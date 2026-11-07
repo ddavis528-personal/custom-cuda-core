@@ -67,6 +67,16 @@ import json
 import os
 import sys
 import genout
+import hashlib
+
+
+def lead_tag(lead):
+    """A repeater unit's lead mask in its name: in hex up to 64 bits, past
+    that a 10-digit hash of it, since the name is a directory under build/
+    and a 1,114-bit mask in hex is longer than a file name may be."""
+    if lead.bit_length() <= 64:
+        return "%x" % lead
+    return "h" + hashlib.sha1(("%x" % lead).encode()).hexdigest()[:10]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOPDIR = os.path.join(ROOT, "rtl", "top")
@@ -1272,8 +1282,8 @@ def rpt_units(binst, cinst, names, ports, ft, plan):
     for (st, b, de, r, w, lead), users in sorted(seen.items()):
         lit = "%d'h%x" % (w, lead)
         units.append({
-            "name": "rpt_s%d%s%s_n%d_w%d_l%x" % (st, "_b%d" % b if b else "",
-                                                "_dst" if de else "", r, w, lead),
+            "name": "rpt_s%d%s%s_n%d_w%d_l%s" % (st, "_b%d" % b if b else "",
+                                                "_dst" if de else "", r, w, lead_tag(lead)),
             "module": "ccv_common_rpt",
             "files": ["rtl/phys/ccv_common_rpt.sv"],
             "params": dict({"STAGES": st, "BOUNDARY": b, "SLOTS": r, "PAYLOAD_W": w,
@@ -1282,11 +1292,15 @@ def rpt_units(binst, cinst, names, ports, ft, plan):
             "reset": "!rst_n",
             "instances": users,
             "bench": {
-                "build": ("verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style "
+                # The payload ports are S x W bits wide, past Verilator's
+                # default trace width on the widest channels, and check-cg
+                # reads them from the VCD.
+                "build": ("verilator --binary --timing --trace --trace-max-width %d "
+                          "-Wno-fatal -Wno-lint -Wno-style "
                           "-Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=%d "
                           "-GBOUNDARY=%d -GDST_END=%d -GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb "
                           "rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv"
-                          % (st, b, de, r, w, lit)),
+                          % (max(4096, r * w), st, b, de, r, w, lit)),
                 "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
                 "scope": "tb_cg_rpt.dut"}})
     return json.dumps({

@@ -455,7 +455,10 @@ fi
 # 258 -> 354 with the interface flops' bases (CCV_LAT_LANE 8, CCV_LAT_SFU 13,
 # AR's rev 287): the misplaced movi's result lands a cycle later, so more of
 # its readers issue before it (RI's rev 12 count).
-MOVI_TOTAL=354
+# 354 -> 258 when ccv_lane_rcu_res's end at RCU went zero-cycle (RA's rev
+# 95: CCV_LAT_LANE 7, CCV_LAT_SFU 12): the movi's result lands a cycle
+# sooner again, so the count is the one before the bases (RI-16's list).
+MOVI_TOTAL=258
 run movi-in-lane
 L="$B/kernel_movi-in-lane.log"
 nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$L")
@@ -765,6 +768,7 @@ narrowadd narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0
 sized partial_line>0
 divchw fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1
 callret ret_pass=1 groups_peak=2
+retmiss ret_pass=1 reexec>0
 spmbank spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0
 lnorm1 bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0
 transp4 bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0
@@ -829,6 +833,21 @@ if grep -q "^CHECK fet: warp 0 picks 1054 for lanes aaaaaaaa; ccv-sim issued 105
 else
   bad "--break ret-no-stay" "a ret's staying lanes sent past it went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-no-stay.log")"
 fi
+# A ret held across its replay (RI-18): retmiss's ret reads a load that
+# misses, so OOE issues it on the speculated hit, on stale lanes, and again
+# when the data comes. Its check is held and keyed by the pass's active
+# lanes, so the replay clears the speculated issue's failure.
+#   ret-held-by-lanes: the stub keys it by the lanes returned, and the
+#   speculated pass, returning lane 0 alone, is never cleared
+# The stub's side for now (CCV_RCU_IMPL=stub); RI adds the RCU model's
+# under the same name, and its run joins this control then.
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/retmiss/oracle.jsonl --break ret-held-by-lanes \
+  >"$B/kernel_ret-held-by-lanes.log" 2>&1
+if grep -q "^CHECK rcu: seq 6 ret pass returns lanes 00000001, oracle 49249249" "$B/kernel_ret-held-by-lanes.log"; then
+  say "--break ret-held-by-lanes: a replayed ret's pass" "PASS (stub; retmiss seq 6's speculated issue held)"
+else
+  bad "--break ret-held-by-lanes" "a replayed ret keyed by its returned lanes went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-held-by-lanes.log")"
+fi
 # .shared through SPM (TI's rev 230): MIU forms passes of one word a bank,
 # SPM serves a bank one pass a cycle, and each CTA slot has its own region;
 # and FET parks lanes ccv-sim blocked at a barrier wait (TI-40).
@@ -868,7 +887,8 @@ for kb in transp4:held-over-r borrow:borrow-partial; do
 done
 CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --cycles 20000 2>&1 |
   head -c 2000000 >"$B/kernel_warp-cap.log"
-ctl held-over-r "^CHECK ooe: warp 1 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
+# Warp 3 is the first caught since RA's rev 95 (LANE 7, SFU 12); warp 2 before.
+ctl held-over-r "^CHECK ooe: warp 3 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
 ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
 ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
 # A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every
@@ -1015,7 +1035,10 @@ fi
 # FreeVec alignment (OI-70, OI-71), seq 204's R3; since FET's decode-queue
 # credits (TI-46 (b)) pace the warp, seq 203's R4; since the two-step refill
 # (fl_two_step, OI-105), seq 204's R3 again; since the interface flops'
-# bases (CCV_LAT_LANE 8, CCV_LAT_SFU 13: AR's rev 287), seq 379's R4.
+# bases (CCV_LAT_LANE 8, CCV_LAT_SFU 13: AR's rev 287), seq 379's R4; with
+# the flop as the issue and data crossings' bnd_rx (AR's revs 300, 301), seq 384's R3;
+# with ccv_lane_rcu_res's end at RCU zero-cycle (RA's rev 95: CCV_LAT_LANE 7,
+# CCV_LAT_SFU 12), seq 379's R4 again.
 if grep -q "^CHECK lane 0: seq 379 operand 1 (R4) 00000000, oracle 00000001" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
   say "--break free-new: a live register reallocated" "PASS (seq 379, its source reallocated)"
@@ -1198,7 +1221,9 @@ else
   bad "--break pdata-guard" "st.pred's data predicate was taken as a guard unnoticed: $(grep '^KERNEL' "$B/kernel_pdata-guard.log")"
 fi
 # A demotion between a cracked instruction's uops (AR's response TI-36):
-# at cycle 58 (57 before the interface flops' bases, AR's rev 287) predswap's first st.pred has retired its first uop and not
+# at cycle 59 (57 before the interface flops' bases, AR's rev 287; 58 with
+# them; 59 with RCU's flopped ends as bnd_rx, AR's revs 300, 301; 58 with
+# ccv_lane_rcu_res's end at RCU zero-cycle, RA's rev 95) predswap's first st.pred has retired its first uop and not
 # its second, and the warp resumes at the instruction, running its first
 # uop again, which both transfers allow. Resumed past it, the second uop is
 # lost. The cycle comes from a sweep of CCV_RAU_DEMOTE=at:<cycle>: if timing
