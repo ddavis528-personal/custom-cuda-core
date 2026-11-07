@@ -1220,6 +1220,16 @@ it.
   RCU's kill drain 16). It holds while RCU and every
   lane abut (link_n 0; the partitioning spec's floorplan constraints) and
   RCU's assembled block meets 12 NGD on the port without the flop.
+  Open, not booked (TI register rev 369, RH's J9 bisect; AR rev 318):
+  the same change, 2a7f125, costs rel-vadd16_loop-128 +1,065 cycles
+  from fetch (5,610 to 6,675, +19.0%) and rel-vadd16-128 +5.5%. On
+  f4ce0fd, zero-cycling one more RCU end (miu_rcu_data, or
+  ooe_rcu_issue) shifts L1 wake and completion by one and wins back
+  14.4% and 16.8%. A one-cycle shift either way swinging this much
+  points to a collision between a lane result and a load's data or wake,
+  where the loser pays far more than a cycle. The fix belongs to that
+  penalty, not to the latency, pending the stats diff and OI's and RI's
+  reading.
 
 ### PF-48 End-to-end parity on register state
 
