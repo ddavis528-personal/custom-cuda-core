@@ -55,6 +55,11 @@ struct Config {
   unsigned issue_width = ccv::kIssueWidth;        ///< ccv_ooe_rcu_issue rate
   unsigned memop_width = ccv::kIssueWidth;        ///< ccv_ooe_miu_memop rate
   unsigned retire_msgs = ccv::kIssueWidth;        ///< ccv_ooe_miu_retire rate
+  /// commit_per_slot 1: ccv_ooe_miu_retire's port k is ROB slot k's alone
+  /// (each warp's ooe_rob_w drives its own slot of the channel, no parent
+  /// logic): a slot commits at most one store a cycle (OA rev 362, ROB
+  /// slice 3). 0 shares the ports across slots (rob_tb's shared-ports).
+  unsigned commit_per_slot = 1;
   unsigned rename_width = ccv::kIssueWidth;       ///< doc: "4 uops per cycle"
   unsigned rs_rcu = ccv::prov::kRsRcu;
   unsigned rs_miu = ccv::prov::kRsMiu;
@@ -578,6 +583,21 @@ struct Config {
   /// OI-80's liveness rule's control (OA's rev 244): the split gives the
   /// warp first in rotation no part of the pool for its head's need first.
   bool inject_no_first_need = false;
+  /// OI-114's control (OA's rev 334): the split's floor term keeps the
+  /// names the slot's own take in the split cycle wrote.
+  bool inject_floor_pre_take = false;
+  /// OI-114's registered form (OA's rev 358): ooe_rename registers each
+  /// slot's unmet floor, so the go reads last cycle's and takes from it the
+  /// names its own last take wrote (then this take's, as above). It misses
+  /// only frees, so it never reserves less than it should hold. 0: the go
+  /// reads unmet on time (arriving at 6 NGD).
+  unsigned unmet_reg = 0;
+  /// OA's response to OI-116 (rev 369 (b)), RH's S1 at 0 cost: 1 takes the
+  /// split's floor term less the slot's own take a cycle late, from the
+  /// registered unmet less the last take alone, with no subtraction in the
+  /// split cycle (ooe_go with no per-take term). 0: the in-cycle
+  /// subtraction (OI-114 as first built; go_tb's control floor-take-now).
+  unsigned floor_take_lag = 1;
   /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
   /// register keeps its old width (the model before this).
   bool inject_sibling_uncommitted = false;
@@ -1781,6 +1801,8 @@ public:
     struct Discard { unsigned slot = 0, branch = 0, disp = 0; };
     std::vector<Discard> discard;
     std::vector<Ret> ret;
+    /// Slice 3: each store committed (slot, index), from the retire.
+    std::vector<std::pair<unsigned, unsigned>> commit;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;
   };
@@ -1805,6 +1827,12 @@ public:
     bool pin_set = false;
     std::vector<std::vector<uint16_t>> adm;  ///< per slot, its heads' admission bits, oldest first
     std::vector<unsigned> run, ret, unmet_g, unmet_p;
+    /// unmet_reg 1: each slot's last take's names, GPR and predicate (the
+    /// go subtracts them from the registered unmet).
+    std::vector<unsigned> lt_g, lt_p;
+    /// unmet_reg: this cycle's unmet floors, as ooe_rename forms them before
+    /// its register (unmet_g/unmet_p then hold the register's, last cycle's).
+    std::vector<unsigned> unmet_on_g, unmet_on_p;
     std::vector<uint8_t> reach, hold;
     std::vector<uint8_t> occ;                 ///< per slot, occupied (not free)
     std::vector<unsigned> took;               ///< per slot
@@ -1991,6 +2019,10 @@ private:
   bool shares_on_ = false;                ///< fits_stale 3 this cycle
   std::vector<std::array<unsigned, 4>> share_;   ///< each slot's share: RS RCU, RS MIU, GPR, predicate names
   std::vector<std::array<unsigned, 4>> share_reg_;   ///< fits_stale 6: the allowances split for the next cycle
+  std::vector<std::array<unsigned, 4>> share_hold_;  ///< fits_stale 6: and as split, before the split cycle's own takes (the pool's held)
+  std::vector<std::array<unsigned, 2>> split_floor_; ///< fits_stale 6: each slot's floor term at the split, GPR and predicate (OI-114)
+  std::vector<std::array<unsigned, 2>> unmet_now_;   ///< unmet_reg: each slot's unmet floor this cycle (registered for the next)
+  std::vector<std::array<unsigned, 2>> last_take_;   ///< unmet_reg: the names each slot's last take wrote
   std::vector<std::array<unsigned, 4>> pend_a_, pend_b_;  ///< fits_stale 7: splits in flight, two cycles and one from use
   std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
   std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
