@@ -16,7 +16,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work tree /home/user/ri-wt (branch ccr-888218a3-20cauz); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 350729e (SPLIT SCOPED PASS, 2026-11-07): rcu_mig, slice zero-fill gate, lint
+- Last push: ba0df94 (2026-11-07, lanes+mem). Before: 350729e (SPLIT SCOPED PASS, 2026-11-07): rcu_mig, slice zero-fill gate, lint
   fixes, TI's Z (f4ce0fd) and RI-18 (43695ae) merged, model --break ret-held-by-lanes.
 - RH (session_01QPk2jvfKM1V5rRfip8FC86) takes RI's perf runs (Daniel, 2026-11-06): send base
   commit via gate-scratch/RI, exact arms and what to report; it replies with a table.
@@ -37,20 +37,24 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-07 (sweep): Conventions 17, AR 316, OA 379, IS 190, TI 364, OI 319, CP 155, DA 115, RA 96, RI 32.
+Bookmarks 2026-11-07 (sweep): Conventions 17, AR 319, OA 379, IS 190, TI 370, OI 319, CP 155, DA 115, RA 96, RI 38.
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--1. TI rev 364 (coremarkpl32 under the model) answered RI rev 32: not RCU. The --cycles cut flushes held
-   fails (replays pending); first real divergence seq 207330 = OOE's call-link imm stale for a diverged
-   CALL (ooe_core.cpp ~3388 u.pc); stub masks it (kernel.cpp ~3132 uses the oracle link). Notices to TI, OI.
-   Wait for OI's fix; nothing in the RCU model.
+-1. J9 (AR 318/319, TI 369/370): Z's +19% on rel-vadd16_loop-128 is not RCU (RI 36): AR now blames
+   the MIU stub's one-start serialization; TI/RH rerun on a 4-pipe stub. RI added CCV_RCU_STATS
+   (ba39e6a) for the w9/w10 diff; read RCU's half (migration, restore_hold) when TI relays it.
+   #88 (coremarkpl32): RI's own interim call-link line in rcu_block.cpp decode(); TI removed it in
+   21b4356 (RI rev 35 corrects revs 32/34). Rerun coremarkpl32 on the model after merging TI's push.
+   OI-127: add pd on A2 (when pred_we) to the atomic step table after merging ti-o85 and OI's A2 change.
 0. RI-19: note 1 confirmed (RA rev 96); mig_q_drop pushed 12e6b7b (RI rev 30). Close when RA has no more. Was: kmask +2 clear vs a
    relaunched warp's first row (>= 2 cycles after its map). Notes 2-9 in the row.
    Lessons: run tools/check-1d.sh before a gate (the linter misreads 1'b0 in a wire's concat and a
    for loop's <= bound); run tools/regen.sh after any merge before testing (sim/generated not checked in).
-1. Phase 4 rcu_lanes + rcu_mem (exits M1, M2): RTL, benches (lanes_tb, mem_tb; controls
+1. DONE: Phase 4 rcu_lanes + rcu_mem pushed ba0df94 (SPLIT SCOPED PASS); RI-20 to RA (rev 38):
+   class-bit arrival 5, act_cr02h budget; notes FYI. Lesson: check-cg wants the reset if alone
+   in its always_ff (CG-1), and grep a unit run for every CG-n, not only CG-3. Old item: RTL, benches (lanes_tb, mem_tb; controls
    bypage/immpos, align/pstlane), units rcu_lanes/rcu_mem (COPIES 32; _c4 local), ngd.json each,
    run-rtl.sh. 7e8fb4d on gate-scratch/RI; then CG-3 fixes in lanes (SFU valid stage 1 ungated,
    lact in the ll gate) and mem's asserts out of the generate (Yosys name clash): uncommitted while
