@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 373, AR 308, TI 357, OI 312, IS 190, CP 155, DA 115,
+Conventions 17, OA 374, AR 308, TI 357, OI 313, IS 190, CP 155, DA 115,
 RA 95 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
 OOE doc rev 369. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
@@ -69,7 +69,8 @@ release 2e95216; tag refused (known). session-home --check ok at 350k.
    cmpl_l raw -> capture+RS+wake (3 pins), ROB x4 from keep copies of cm_q. Watch caps/flops.
    OI-120/OA 373: C9h built (oi-c9, exact). cmpl_idx_cq00h arrival 2 GRANTED. prv_code_cq01h 25.7
    fanout cap REFUSED (ratchet; remap noise): (a) keep copies (b) arrival 9->8 if sender slack
-   (c) only then to DA. C9h push waits on it.
+   (c) only then to DA. OI-121: (a) missed 25.9; OA 374 took (b): rs arrival 8 (24.7), rendep out 8
+   (0.0 measured). C9h released to push; watch OI's commit + rs depths.
    (was) LAPSES if OI's LANE 8/SFU 13 rerun puts the gain at <=0.5% S1 -> back to DA. Watch for it.
    Bar (DA verbatim 11-06): "Bring to me between 0.2 and 0.5 percent impact.  Also come to me if
    we cannot meet the default module boundary NGD rule without the receiver flop". AR's reading:
