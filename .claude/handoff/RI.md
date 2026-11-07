@@ -37,12 +37,12 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-07: Conventions 17, AR 308, OA 366, IS 190, TI 358, OI 306, CP 155, DA 115, RA 95, RI 28.
+Bookmarks 2026-11-07: Conventions 17, AR 308, OA 366, IS 190, TI 358, OI 306, CP 155, DA 115, RA 96, RI 30.
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
-0. RI-19 (rev 28, RA): rcu_mig pushed, M5 dm 65 / rs 66 of 68. RA to confirm kmask's +2 clear vs a
+0. RI-19: note 1 confirmed (RA rev 96); mig_q_drop pushed 12e6b7b (RI rev 30). Close when RA has no more. Was: kmask +2 clear vs a
    relaunched warp's first row (>= 2 cycles after its map). Notes 2-9 in the row.
    Lessons: run tools/check-1d.sh before a gate (the linter misreads 1'b0 in a wire's concat and a
    for loop's <= bound); run tools/regen.sh after any merge before testing (sim/generated not checked in).
