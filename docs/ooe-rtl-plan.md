@@ -1158,7 +1158,17 @@ Slice 1 (built): storage, allocation,
 completion, in-order retire, the frees and the retire-stage register, and
 the room rename's go reads. Slice 2 (built): branch records, resolution
 and the redirect (part a), the squash and the deferred free (part b).
-Memop commit (3), faults (4), barriers (5) and demotion (6) follow; until each,
+Slice 3 (built, OI rev 304, OA rev 362): memop commit. ccv_ooe_miu_retire's
+port WID is the warp's own (the model's commit_per_slot 1), so the window
+takes one store a cycle (a second ends it) and the commit, the store's
+rob_tag, leaves from the retire-stage register. The second store's stop
+is a field term beside the branch's, one pick of the head; the commit reads
+the store bit through the head's register as the retire reads its names,
+less a no-op allocated straight into the window (its fields are a past
+occupant's), a window flop beside the others. The squash's pointer and
+count registers read their own copy of rd_s (rd_t), which keeps the
+unit's capped paths at or under their caps.
+Faults (4), barriers (5) and demotion (6) follow; until each,
 `test/ooe/rob_tb.cpp` stops a core at its first such event.
 
 - *Allocation and fill.* The go's edge allocates each slot's entries at
