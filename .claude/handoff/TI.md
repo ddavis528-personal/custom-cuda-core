@@ -33,12 +33,29 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 316, OA 379, IS 190, TI 363, OI 319, CP 155, DA 115,
-RA 96, RI 31 (2026-11-07 sweep). Latest TI open: TI-51 (rev 346).
+Conventions 17, AR 316, OA 380, IS 190, TI 367, OI 321, CP 156, DA 115,
+RA 96, RI 34 (2026-11-07 evening). Latest TI open: TI-51 (rev 346).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-11-06 sent to AR OA IS OI CP RA RI; all seven ponged ok.
 
 ## State
+- 2026-11-07 ~19:00Z: PUSHED de03fd6 (full PASS; ngd 4909s, cg 4864s): O-85
+  (coll), IS-21 (atom, atomf; controls atom-one-slot/-one-pass/-lane-old/
+  -no-more/-descending; schema discard text; MIU replay assertion), #88
+  (21b4356 removed RI's interim call-link line in sim/rcu/rcu_block.cpp).
+  TI row rev 371 (bundle pushed + re:AR 318/319 J9 relay); notices to RA OI
+  RI AR CP IS delivered. Next: RI reviews #88 edit and adds CAS pd on A2; TI
+  adds CAS (pd in DEC second slot) once OI's A2 pd lands; call-link-literal
+  on the model; RH's clean J7/J8 pl32 (to end)/pl128 reruns on de03fd6, relay
+  to AR.
+- J9 (AR rev 318/319): RH's traced w9/w10 rerun puts Z's +19% in the L1
+  (dcu_evict +73%, store_hit -49%, credit_wait x2; no RCU migrations). RH
+  keeps ~/ccv-logs/j9t and worktrees rh-j9t-w9/-w10 until AR reads it.
+  J10 sent to RH: local MIU stub patch (/tmp/claude-0/miu-multi.patch; also
+  commit 0194297 on local branch ti-miu4-local in /home/user/ti-miu4, NEVER
+  push) with stall-cause counters + CCV_MIU_MULTI=1 four-start; points
+  w9'/w10'/g1'/g2' re-made on de03fd6, plus S1/cm32/cm128. On results:
+  relay to AR, decide whether the stub MIU becomes four-pipe (TI's call).
 - 2026-11-07 sweep: tips 24d17a4 on both TI branches (merged 126afa13 16,
   183cc441 55, 57eff422 47, 80102643 9, 888218a3 2, 9eb50716 13, c22116ce 4;
   release gate PASS; release fd0402f pushed, snapshot-2026-11-07-24d17a4 tag
