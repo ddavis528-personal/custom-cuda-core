@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 316, OA 378, TI 363, RA 96 (tab 9851686b-2b0a), RI 31, IS 190, CP 155, OI 319, DA 115,
+  record): AR 317, OA 378, TI 367, RA 96 (tab 9851686b-2b0a), RI 35, IS 190, CP 155, OI 319, DA 115,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-07: nothing asks AR; merged 57eff422 101, 183cc441 98, 126afa13 19, 9eb50716 13, c22116ce 4, 888218a3 2 (walkthrough theirs); gate PASS ~/ccv-logs/ar-sweep-1107.log; session home OK; Friday pongs all 8 OK. Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
@@ -358,6 +358,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    AR 316 (re:OA 378): #72 at 160 must also report floor stalls, restore-
    allocate under demotion, sectioned-row fragmentation, memop-held regs
    (cm128); OI adds missing counters. OA: no objection if no new stalls.
+   AR 317 (re:TI 367 J8): rel-vadd16 +8.8%, loop +6.0% vs J3 (e533ecd); asked
+   RH bisect on loop: e533ecd, 17720a0^, 17720a0, f4ce0fd + local no-flop
+   miu_rcu_data / ooe_rcu_issue at f4ce0fd. If bnd_rx carries it: price ends
+   (miu_rcu_data >0.2% -> Daniel, can't meet 12). coremarkpl not booked
+   (stub vs model) until TI's model reruns.
    DA 109 (2026-11-06, recorded by AR from Daniel's words in RA 87): RI-15
    = RI's (c): module-level CG waivers for interface lead-signal flops OK,
    charged to block's per-instance 2%, validated at final construction; RA
