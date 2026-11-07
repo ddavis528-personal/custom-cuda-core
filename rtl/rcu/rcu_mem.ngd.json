@@ -9,21 +9,21 @@
     },
     "bsl_cr02h": {
       "arrival": 5.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA (RA tab rev 98, re:RI-20)",
       "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's."
+      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
     },
     "dsl_cr02h": {
       "arrival": 5.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA (RA tab rev 98, re:RI-20)",
       "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's."
+      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
     },
     "fen_cr02h": {
       "arrival": 5.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA (RA tab rev 98, re:RI-20)",
       "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's."
+      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
     },
     "foot_cr02h": {
       "arrival": 0.0,
@@ -51,15 +51,15 @@
     },
     "mem_cr02h": {
       "arrival": 5.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA (RA tab rev 98, re:RI-20)",
       "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's."
+      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
     },
     "psk_cr02h": {
       "arrival": 5.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA (RA tab rev 98, re:RI-20)",
       "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's."
+      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
     },
     "pst_cr03h": {
       "arrival": 0.0,
@@ -93,9 +93,9 @@
     },
     "xsl_cr02h": {
       "arrival": 5.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA (RA tab rev 98, re:RI-20)",
       "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's."
+      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): the decode (Pipeline tab) is 5 NGD from the issue payload (Partition tab: issue payload to bank predecode), so the path is timed whole at the port. RA's table has no row for rcu_mem's class bits; the same item as rcu_lanes's. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
     }
   }
 }
