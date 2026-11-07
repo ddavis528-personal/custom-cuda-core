@@ -443,7 +443,7 @@ module rcu_mig #(
   logic [1:0]       dm_wc_cr02h;
   logic [WC-1:0]    dm_cr_cr02h;
   (* keep *) logic  dm_v_cr03h;                 // dm_vo_cr03h is its copy for ov
-  (* keep *) logic  dm_vo_cr03h, dm_wk_cr03h;   // ov's and the wake's own flops
+  (* keep *) logic  dm_vo_cr03h, dm_wk_cr03h;   // ov's own flop; the wake's and R2's lead
   logic             dv_o_cr01h;                 // the D leads' own flop
   logic [WW-1:0]    dm_pw_cr04h;
   logic [WMR-1:0]   dm_prow_cr04h;
@@ -531,7 +531,7 @@ module rcu_mig #(
     r2row_cr02h = (dm_noh_cr02h[NG] | dm_noh_cr02h[NR]) ? ZROW : '0;
     for (int a = 0; a < NG; a++) r2row_cr02h |= {WR{dm_noh_cr02h[a]}} & dm_g_cr02h[a*WR +: WR];
   end
-  assign r2v_cr01h  = dm_busy_cr02h;
+  assign r2v_cr01h  = dm_wk_cr03h;   // dm_busy, its output copy
   assign dv_cr01h   = {NP{dv_o_cr01h}};
   assign drow_cr02h = dm_p_cr02h;
 
