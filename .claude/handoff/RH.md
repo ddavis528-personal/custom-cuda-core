@@ -50,6 +50,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
+- TI's J6-J8 on f4ce0fd (TI's Z tip; DA: TI's pending perf runs go to RH).
+  Worktree /home/user/rh-tip. J6 = rh-jobs/j6.sh 192 160 128 (PHYS_REGS, as
+  J1; log ~/ccv-logs/j6). J7+J8 = rh-jobs/j78.sh, which waits for j6 (log
+  ~/ccv-logs/j78): J2's set plus J4's 512 KiB, cold runs capped at 3x warm;
+  vadd16 rel-* with full_rows=1; coremarkpl128 (adds an 8 GB swap2, so watch the
+  disk). One table per job to TI, each beside the J1-J4 numbers.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
