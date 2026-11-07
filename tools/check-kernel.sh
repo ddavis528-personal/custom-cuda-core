@@ -768,6 +768,7 @@ narrowadd narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0
 sized partial_line>0
 divchw fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1
 callret ret_pass=1 groups_peak=2
+retmiss ret_pass=1 reexec>0
 spmbank spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0
 lnorm1 bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0
 transp4 bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0
@@ -831,6 +832,21 @@ if grep -q "^CHECK fet: warp 0 picks 1054 for lanes aaaaaaaa; ccv-sim issued 105
   say "--break ret-no-stay: a ret's second pass is followed" "PASS ($(field "$B/kernel_ret-no-stay.log" check_failures) checks)"
 else
   bad "--break ret-no-stay" "a ret's staying lanes sent past it went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-no-stay.log")"
+fi
+# A ret held across its replay (RI-18): retmiss's ret reads a load that
+# misses, so OOE issues it on the speculated hit, on stale lanes, and again
+# when the data comes. Its check is held and keyed by the pass's active
+# lanes, so the replay clears the speculated issue's failure.
+#   ret-held-by-lanes: the stub keys it by the lanes returned, and the
+#   speculated pass, returning lane 0 alone, is never cleared
+# The stub's side for now (CCV_RCU_IMPL=stub); RI adds the RCU model's
+# under the same name, and its run joins this control then.
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/retmiss/oracle.jsonl --break ret-held-by-lanes \
+  >"$B/kernel_ret-held-by-lanes.log" 2>&1
+if grep -q "^CHECK rcu: seq 6 ret pass returns lanes 00000001, oracle 49249249" "$B/kernel_ret-held-by-lanes.log"; then
+  say "--break ret-held-by-lanes: a replayed ret's pass" "PASS (stub; retmiss seq 6's speculated issue held)"
+else
+  bad "--break ret-held-by-lanes" "a replayed ret keyed by its returned lanes went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-held-by-lanes.log")"
 fi
 # .shared through SPM (TI's rev 230): MIU forms passes of one word a bank,
 # SPM serves a bank one pass a cycle, and each CTA slot has its own region;
