@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
   --to X --rows re:X-n --rev N --summary "..."`, then send_message with
   priority "later". Rows must look like X-n or re:X-n.
 - Bookmarks, revs read through (the scratchpad is not durable; this is the
-  record): AR 316, OA 378, TI 360, RA 96 (tab 9851686b-2b0a), RI 24, IS 190, CP 155, OI 319, DA 115,
+  record): AR 316, OA 378, TI 361, RA 96 (tab 9851686b-2b0a), RI 24, IS 190, CP 155, OI 319, DA 115,
   Conventions 17 (RI tab 8e4547bc-c469). Sweep 11-06: nothing asks AR;
   merged 8 branches (~97 commits), gate log ~/ccv-logs/ar-sweep-1106.log;
   pings sent 11-06 to OA IS TI OI CP RA RI RH (check pongs Saturday). Sweep 11-05: nothing asks AR;
