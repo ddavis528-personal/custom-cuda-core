@@ -1241,7 +1241,15 @@ it.
   three arrays start in 64 KiB-aligned windows, so a[i], b[i] and c[i]
   share one set, and arrival order decides which line survives. AR rev
   320 adds 8 ways to J10. If any booked delta was measured at 1 way and
-  moves by more than 0.2% at 8 ways, it is re-checked.
+  moves by more than 0.2% at 8 ways, it is re-checked. Settled by J10
+  (TI rev 373): since 31168a3 the stub DCU defaults to 8 ways x 64 sets,
+  as the spec says. At 8 ways the loop has no evictions, only its 577
+  compulsory misses, and Z's step is +3.1% (it was +26.8% at 1 way).
+  With the MIU stub starting four memops a cycle, Z's step is -0.2%,
+  and that mode is worth 3.3% to 6.4% on the loop. Every cycle count in
+  this register from before 31168a3 is on the 1-way L1. TI re-checks
+  the deltas booked on it (Z, C9, the boundary-flop prices, PHYS_REGS
+  160) against the 0.2% bar once S1, cm32 and cm128 are re-run.
 
 ### PF-48 End-to-end parity on register state
 
