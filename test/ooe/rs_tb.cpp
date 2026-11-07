@@ -39,6 +39,12 @@
 // entry's kind and class (ooe_wake's, OA re:OI-104) are compared with what
 // its allocation drove; control no-kind drives none, and must be caught.
 //
+// C9h (OA rev 372; the model's cmpl_split 8): an entry an L1 hit's
+// confirmation frees stays off rename's row mask, so a row allocated at
+// that edge may name it; ooe_rs clears the column at the next edge, the
+// hold's. Its column flag and the new rows' bits on it are not compared at
+// the free's edge (held_cols), and are at the next.
+//
 // The column flags (hcol_cq02h) are compared, every column after every
 // edge, with their definition kept here: set when a row naming the entry is
 // written, clear from the edge that frees it unless a row written at that
@@ -101,14 +107,14 @@ uint16_t homeSlot(unsigned res) {
 
 struct Snap {
   std::vector<unsigned> ralloc, cidx;   // allocations in order; the entries completing
-  std::vector<uint8_t> rfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
+  std::vector<uint8_t> rfree, hfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
   std::vector<uint8_t> kc;              // each entry's {class, kind} as ooe_wake's timers take it
   std::vector<uint16_t> home;           // and its issue slot, one-hot (RA-39 (c); trio_tb checks the payload)
   bool sq = false, cmpl = false, codes = false;
 };
 Snap empty() {
   Snap y;
-  y.rfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
+  y.rfree.assign(N, 0); y.hfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
   y.code.assign(N * N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.iss.assign(N, 0); y.wtl3.assign(N, 0);
   y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0); y.kc.assign(N, 0); y.home.assign(N, 0);
   return y;
@@ -120,6 +126,7 @@ Snap snapCycle(const Core &c) {
   y.codes = c.wakeLinesFit();
   for (unsigned i = 0; i != N; ++i) {
     y.rfree[i] = w.rfree[i];
+    y.hfree[i] = i < w.hfree.size() && w.hfree[i];
     y.grant[i] = i < w.grant.size() && w.grant[i];
     y.valid[i] = c.rsValid(i);
     y.prod[i] = c.rsProduces(i);
@@ -150,7 +157,7 @@ Snap snapCycle(const Core &c) {
 std::vector<Snap> hist;           // the snapshots not yet driven, oldest first, and the one before
 unsigned long long prev = 0;   // cells on the group granted at the last edge (prv_dep)
 unsigned long long cycles = 0, cores = 0, allocs = 0, group = 0, frees = 0, reuse = 0, rows = 0, cells = 0,
-                   stale = 0, mismatches = 0;
+                   stale = 0, mismatches = 0, held_cols = 0;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -368,6 +375,7 @@ void hook(const Core &c) {
   for (unsigned j = 0; j != N; ++j) {
     hcol[j] = ((hcol[j] && (!y.rfree[j] || control == "stale-hcol")) || named[j]) ? 1 : 0;
     const bool h = getBit(dut->hcol_cq02h, j);
+    if (y.hfree[j]) { ++held_cols; continue; }   // C9h: a row may name it until the next edge
     if (h != bool(hcol[j])) fail("column flag differs", j, 0, h, hcol[j]);
   }
   // After it: the valid bits and every valid row.
@@ -381,6 +389,7 @@ void hook(const Core &c) {
     if (k != kref[i]) fail("kind and class differ", i, 0, k, kref[i]);
     for (unsigned j = 0; j != N; ++j) {
       const bool d = getBit(dut->dep_cq02h, i * N + j);
+      if (y.hfree[j] && port_of[i] >= 0) continue;   // C9h: cleared at the next edge, compared there
       if (d != bool(y.dep[i * N + j])) { fail("dependency bit differs", i, j, d, y.dep[i * N + j]); continue; }
       if (!d || !y.codes) continue;
       ++cells;
@@ -406,9 +415,9 @@ int main(int argc, char **argv) {
   cg.close();
   dut->final();
   std::printf("rs_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu in-group=%llu frees=%llu "
-              "same-edge=%llu rows=%llu cells=%llu stale=%llu kinds=%llu mismatches=%llu model_failures=%d\n",
+              "same-edge=%llu rows=%llu cells=%llu stale=%llu kinds=%llu held-cols=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, group, frees, reuse,
-              rows, cells, stale, kinds, mismatches, model_fails);
+              rows, cells, stale, kinds, held_cols, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();

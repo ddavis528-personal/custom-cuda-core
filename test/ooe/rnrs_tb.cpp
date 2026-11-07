@@ -30,6 +30,9 @@
 // entry's kind and class, from Rename's row through ooe_rs's store (OA,
 // re:OI-104), are compared with the model's wakeKindClass; no-spec drops
 // the speculative-wake bit and must be caught there.
+// C9h (OA rev 372): a column an L1 hit's confirmation freed may be named by
+// a row allocated at that edge, and is cleared at the next (rs_tb's
+// held_cols): not compared at the free's edge, compared at the next.
 // Usage: rnrs_tb [seeds]
 //===----------------------------------------------------------------------===//
 #include "Vooe_rnrs.h"
@@ -113,7 +116,7 @@ struct Uop {
 struct Snap {
   // The RS (rs_tb's).
   std::vector<unsigned> ralloc, cidx;
-  std::vector<uint8_t> rfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
+  std::vector<uint8_t> rfree, hfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
   std::vector<uint8_t> kc;   // each valid entry's {class, kind}, the model's wakeKindClass
   bool sq = false, cmpl = false, codes = false, preds = true;
   // Rename's group (rendep_tb's).
@@ -121,12 +124,12 @@ struct Snap {
 };
 Snap empty() {
   Snap y;
-  y.rfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
+  y.rfree.assign(N, 0); y.hfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
   y.code.assign(N * N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.iss.assign(N, 0); y.wtl3.assign(N, 0);
   y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0); y.kc.assign(N, 0);
   return y;
 }
-unsigned long long cycles = 0, cores = 0, allocs = 0, rows = 0, cells = 0, skipped = 0, kinds = 0, mismatches = 0;
+unsigned long long cycles = 0, cores = 0, allocs = 0, rows = 0, cells = 0, skipped = 0, kinds = 0, mismatches = 0, held_cols = 0;
 void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model) {
   if (++mismatches <= 5)
     std::fprintf(stderr, "cycle %llu: %s (%u, %u: rtl %u, model %u)\n", cycles, what, a, b, rtl, model);
@@ -139,6 +142,7 @@ Snap snapCycle(const Core &c) {
   y.preds = c.config().rename_preds;
   for (unsigned i = 0; i != N; ++i) {
     y.rfree[i] = w.rfree[i];
+    y.hfree[i] = i < w.hfree.size() && w.hfree[i];
     y.grant[i] = i < w.grant.size() && w.grant[i];
     y.valid[i] = c.rsValid(i);
     y.prod[i] = c.rsProduces(i);
@@ -455,6 +459,7 @@ void hook(const Core &c) {
     for (unsigned j = 0; j != N; ++j) {
       hcol[j] = ((hcol[j] && !y.rfree[j]) || named[j]) ? 1 : 0;
       const bool h = getBit(dut->hcol_cq02h, j);
+      if (y.hfree[j]) { ++held_cols; continue; }   // C9h: a row may name it until the next edge
       if (h != bool(hcol[j])) fail("column flag differs", j, 0, h, hcol[j]);
     }
     for (unsigned i = 0; i != N; ++i) {
@@ -464,6 +469,7 @@ void hook(const Core &c) {
       ++rows;
       for (unsigned j = 0; j != N; ++j) {
         const bool d = getBit(dut->dep_cq02h, i * N + j);
+        if (y.hfree[j] && port_of[i] >= 0) continue;   // C9h: cleared at the next edge, compared there
         if (d != bool(y.dep[i * N + j])) { fail("dependency bit differs", i, j, d, y.dep[i * N + j]); continue; }
         if (!d || !y.codes) continue;
         ++cells;
@@ -492,9 +498,9 @@ int main(int argc, char **argv) {
   const int model_fails = ooeTestDirectedHookedWith(hook, rsConfig) + cg.run(seeds, nullptr, hook, rsConfig);
   dut->final();
   std::printf("rnrs_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu rows=%llu cells=%llu "
-              "preds_off_cycles=%llu kinds=%llu mismatches=%llu model_failures=%d\n",
+              "preds_off_cycles=%llu kinds=%llu held-cols=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, rows, cells, skipped,
-              kinds, mismatches, model_fails);
+              kinds, held_cols, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();

@@ -42,7 +42,8 @@
 // enable's flop, the lead being internal), no-idle-r (no migration
 // reaches ooe_sched, so RA-17's force never holds R), no-force (the bench
 // clears the force register after each edge, the lead kept: ooe_sched's
-// idle_r assertion must name it).
+// idle_r assertion must name it), no-c9h (the model's completions and hint
+// acting as they land, without C9h's capture: OA rev 372).
 //
 // ooe_sched's idle-R force (RA-17): the runs above have no migration
 // under idle_r_k, so testIdleR's (three warps keeping R busy beside warp
@@ -90,8 +91,9 @@ void trioConfig(Config &c) {
   c.req_rows_late = true;
   c.miss_lead = true;
   c.ready_rep_late = true;
-  if (const char *s = std::getenv("TRIO_CS")) c.cmpl_split = unsigned(std::atoi(s));
-  if (const char *s = std::getenv("TRIO_RX")) c.rx_lag = unsigned(std::atoi(s));
+  // no-c9h: the model without C9h (OA rev 372), its completions and hint
+  // acting as they land, against RTL built for C9h.
+  if (const char *s = std::getenv("TRIO_CONTROL"); s && std::string(s) == "no-c9h") c.cmpl_split = c.rx_lag = 0;
 }
 /// The ret hold's run (OA's rev 293): testRetHold's settings over the trio's.
 void trioRetConfig(Config &c) {
@@ -706,7 +708,8 @@ int main(int argc, char **argv) {
     const std::string n = c;
     control = n == "no-msd" ? 1 : n == "no-miss-lead" ? 2 : n == "late-leads" ? 3 : n == "no-alloc-lead" ? 4
             : n == "no-ret-hold" ? 5 : n == "no-rep-lead" ? 6 : n == "no-idle-r" ? 7 : n == "no-force" ? 8
-            : n == "pay-port" ? 9 : n == "no-home" ? 10 : n == "pay-with-valid" ? 11 : 0;
+            : n == "pay-port" ? 9 : n == "no-home" ? 10 : n == "pay-with-valid" ? 11
+            : n == "no-c9h" ? 12 : 0;
     if (!control) { std::fprintf(stderr, "trio_tb: unknown control %s\n", c); return 2; }
   }
   const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;

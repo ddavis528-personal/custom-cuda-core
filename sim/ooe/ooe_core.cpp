@@ -444,7 +444,7 @@ void Core::cycle(uint64_t now) {
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
-                 &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
+                 &wlog_.rfree, &wlog_.hfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant, &wlog_.sel_ret, &wlog_.sel_brk, &wlog_.sel_hold})
     v->assign(n_, 0);
@@ -1532,6 +1532,7 @@ void Core::confirmPass() {
       x.confirmed = true;
       if ((cfg_.cmpl_split & 8) && x.hit_at != ~0ull && x.hit_at + 1 >= now_ && e < rs_hfree_.size()) {
         rs_hfree_[e] = 1;
+        if (e < wlog_.hfree.size()) wlog_.hfree[e] = 1;
         count("cmpl_split.hit_free_held");
       }
       if (e < wlog_.fin.size()) wlog_.fin[e] = 1;

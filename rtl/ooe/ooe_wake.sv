@@ -38,11 +38,14 @@
 // is raised here for the select that reads it. Each timed threshold is the
 // model's latency less LEAD, at age 1 at the earliest (an assertion holds
 // every latency over LEAD). A completion moves a line no timer foresees, so
-// it comes with a hint exactly LEAD edges ahead on ccv_miu_ooe_cmpl (OA-23,
-// valid and RS index, its valid a cycle before, as the completion's): a
-// waiting timer's lead line times from its registered hint as a restart
-// times from its registered completion, and a spec timer with no hint by
-// its miss check, less LEAD, will miss, so its lead line drops then. The
+// it comes with a hint LEAD edges ahead on ccv_miu_ooe_cmpl (OA-23, valid
+// and RS index, its valid a cycle before, as the completion's). Under C9h
+// (OA rev 372) the hint is captured raw and acts a cycle after it lands
+// (the model's rx_lag 16): a waiting timer's lead line times from the
+// captured hint as a restart times from its registered completion; a spec
+// timer takes no hint (the model ignores one under LEAD + CMPL_DLY ahead),
+// and with none by its miss check, less LEAD, will miss, so its lead line
+// drops then. The
 // model-frame state (the full-latency line, fin, the miss check and the
 // held misses) is kept as it was: confirmation and the hop read it. A stop
 // cannot be foreseen, so a replayed producer's lead line drops with the
@@ -446,11 +449,10 @@ module ooe_wake #(
   logic [NC-1:0]   hl_cq01h;
   logic [NC*W-1:0] hix_cq02h;
   logic [N-1:0]    hnt_cq01h, hm_cq02h;
-  logic            hv_cq01h;   // a hint captured at the last edge
+  logic            hix_en_cq01h;   // a hint's payload arrives now: the capture's enable
   assign hnt_cq01h = '0;
   always_ff @(posedge ooe_core_clk)
-    for (int k = 0; k < NC; k++)
-      if (hl_cq01h[k]) hix_cq02h[k * W +: W] <= hint_idx_cq01h[k * W +: W];
+    if (hix_en_cq01h) hix_cq02h <= hint_idx_cq01h;
   logic [NC-1:0] hq_cq02h;
   always_comb begin
     hm_cq02h = '0;
@@ -458,7 +460,7 @@ module ooe_wake #(
       for (int j = 0; j < N; j++)
         if (hq_cq02h[k] && hix_cq02h[k * W +: W] == W'(j)) hm_cq02h[j] = 1'b1;
   end
-  assign hv_cq01h = hl_cq01h != '0;
+  assign hix_en_cq01h = hl_cq01h != '0;
 
   // -- Stops (OI-45) ---------------------------------------------------------
   // The cancel and confirmation over this module's state, as ooe_rs runs
@@ -514,7 +516,7 @@ module ooe_wake #(
   logic [N-1:0]   flt_nx_cq01h;
   logic           wml_nx_cq01h;
   always_comb begin
-    wml_nx_cq01h = hv_cq01h;
+    wml_nx_cq01h = hix_en_cq01h;
     for (int j = 0; j < N; j++) begin
       logic [EW-1:0] g;
       g = entry_next('0, 1'b1, kind_cq01h[j * 2 +: 2], cls_cq01h[j * 3 +: 3], prod_cq01h[j], 1'b0, 1'b0, 1'b0,

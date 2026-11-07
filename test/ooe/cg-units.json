@@ -296,6 +296,26 @@
       }
     },
     {
+      "name": "ooe_cmcap",
+      "module": "ooe_cmcap",
+      "files": [
+        "rtl/ooe/ooe_cmcap.sv"
+      ],
+      "params": {
+        "NC": 4,
+        "PW": 7,
+        "R": 4,
+        "C": 2
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_cmcap {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_cmcap"
+      }
+    },
+    {
       "name": "ooe_rob_w",
       "module": "ooe_rob_w",
       "files": [

@@ -496,7 +496,9 @@ struct Config {
   /// cycle. Bits: 1 rau alloc, 2 rau demote, 4 syu release, 8 rcu done,
   /// 16 cmpl hint, 32 miu cmpl, 64 dec uop (taken a cycle after it lands).
   /// The message is taken as it lands (credits unchanged), its act deferred.
-  unsigned rx_lag = 0;
+  /// 16 by default (C9h; OA rev 372, DA rev 114): the hint is captured raw
+  /// and acts a cycle after it lands, as ooe_wake builds it.
+  unsigned rx_lag = 16;
   /// OI rev 300 pricing: a first-kind end on miu_ooe_cmpl, its payload
   /// captured raw, each reader a cycle late unless it bypasses: 1 the
   /// ROB's act (done, status, fault) a cycle late, 2 the RS timer's for a
@@ -504,7 +506,9 @@ struct Config {
   /// 8: the first kind with the hit's confirmation bypassed from the capture
   /// into ooe_rs's free but kept off its rename-row mask: an entry so freed
   /// is held (allocation and rename's room) through the next cycle.
-  unsigned cmpl_split = 0;
+  /// 9 by default (C9h; OA rev 372, DA rev 114), as the RTL builds it:
+  /// ooe_cmcap the ROB's capture, ooe_rs's hit-confirm hold.
+  unsigned cmpl_split = 9;
   /// The go's run from the tail sees a held entry's release a cycle late
   /// (OI-85 slice 2): the release comes off the done path, too deep for the
   /// scan that forms the run, so the scan reads it as held one cycle more.
@@ -1669,9 +1673,11 @@ public:
     std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, cf_iss, cf_fin, cf_prod, cf_dep;
     bool hop_live = false;
     /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
-    /// in allocation order, and those freed.
+    /// in allocation order, and those freed; hfree: those freed by an L1
+    /// hit's bypassed confirmation (cmpl_split 8), which a row allocated
+    /// now may still name (C9h: off rename's mask), cleared at the next edge.
     std::vector<unsigned> ralloc;
-    std::vector<uint8_t> rfree;
+    std::vector<uint8_t> rfree, hfree;
     /// ooe_select's (test/ooe/select_tb.cpp), as the sectioned select saw
     /// them: each entry's valid, issued, eligible (rename's stages past),
     /// warp active, ready and sources-confirmed bits, its slot, footprint
