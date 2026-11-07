@@ -37,7 +37,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-07: Conventions 17, AR 308, OA 366, IS 190, TI 358, OI 306, CP 155, DA 115, RA 96, RI 30.
+Bookmarks 2026-11-07: Conventions 17, AR 308, OA 366, IS 190, TI 362, OI 306, CP 155, DA 115, RA 96, RI 31.
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
@@ -48,7 +48,7 @@ architect may approve only if the end meets module NGD without the flop; can't m
    for loop's <= bound); run tools/regen.sh after any merge before testing (sim/generated not checked in).
 1. Next phase: rcu_mem and rcu_lanes (docs/rcu-impl.md phase 4; exits M1, M2), then lane/SFU
    descriptor pipes (lwb_d/swb_d) at LANE 7 / SFU 12, then assembly (M5-M7).
-2. RI-18: model side pushed; TI to drop CCV_RCU_IMPL=stub from the ret-held-by-lanes control. Close then.
+2. RI-18 CLOSED (RI rev 31): TI 41c82d8 runs the control on stub and model. Merge 41c82d8 at the next sweep.
 3. RI-16: RI's part done (rerun at 7/12 passes); NGD read on lane_rcu_res at assembly (12 without flop).
 4. RI-11/RI-13 (TI rev 332): verify on merged tip, close RI-13 (and RI-11 for RCU).
    RI-12: close when OI's fix lands (OI rev 287).
