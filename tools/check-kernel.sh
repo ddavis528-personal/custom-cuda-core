@@ -293,6 +293,17 @@ else
   bad "vadd: bank EV_CH_XFER == every launch" "$(grep '^XFER' "$log")"
 fi
 
+# RCU's ports from a kernel run (RA-34): named as rtl/top/ports names them,
+# each slot balanced, and the dump only watches: the run is cycle-identical.
+"$SKEL" --kernel "$K" --port-dump "rcu=$B/kernel_vadd_rcu.vcd" >"$B/kernel_vadd_pd.log" 2>&1
+if [ "$(field "$B/kernel_vadd_pd.log" cycles)" = "$cyc" ] &&
+   pdo=$(python3 tools/check-port-dump.py "$B/kernel_vadd_rcu.vcd" 2>&1); then
+  say "vadd: RCU port dump, ports and balance" "PASS (cycle-identical run)"
+else
+  bad "vadd: RCU port dump" "$(field "$B/kernel_vadd_pd.log" cycles) cycles, not $cyc; $(head -3 <<<"${pdo:-}" | tr '\n' ' ')"
+fi
+rm -f "$B/kernel_vadd_rcu.vcd"
+
 # Deterministic: a second run is cycle-identical and trace-identical.
 "$SKEL" --kernel "$K" --trace "$B/kernel_vadd2.ccvtrace" >"$B/kernel_vadd2.log" 2>&1
 if cmp -s "$B/kernel_vadd.ccvtrace" "$B/kernel_vadd2.ccvtrace" &&
