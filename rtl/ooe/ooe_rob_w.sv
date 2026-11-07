@@ -1282,11 +1282,11 @@ module ooe_rob_w #(
       // A port wins over the register when strictly older, over a port
       // before it when strictly older, over one after it when not younger.
       for (int p = 0; p < NM; p++) begin
-        fwp_cq02h[p] = fcp_cq02h[p] & ~(fca_cq02h & (fka_cq02h <= fkp_cq02h[p * (LD + 1) +: LD + 1]));
+        fwp_cq02h[p] = fcp_cq02h[p] & ~(fca_cq02h & !(fkp_cq02h[p * (LD + 1) +: LD + 1] < fka_cq02h));
         for (int q = 0; q < NM; q++)
           if (q != p)
             fwp_cq02h[p] = fwp_cq02h[p] & ~(fcp_cq02h[q] &
-                (q < p ? fkp_cq02h[q * (LD + 1) +: LD + 1] <= fkp_cq02h[p * (LD + 1) +: LD + 1]
+                (q < p ? !(fkp_cq02h[p * (LD + 1) +: LD + 1] < fkp_cq02h[q * (LD + 1) +: LD + 1])
                        : fkp_cq02h[q * (LD + 1) +: LD + 1] <  fkp_cq02h[p * (LD + 1) +: LD + 1]));
       end
       fa_new_cq02h[s]  = |fwp_cq02h;
@@ -1329,10 +1329,10 @@ module ooe_rob_w #(
   // CCV_W_PC_WINDOW, checked at every allocation below), the fault taken
   // and the stop, and the record read at the head: the fault is taken at
   // the registered head, with nothing retiring, so it is still the head.
-  logic [S*CW-1:0]  ftc_nx_cq03h;
-  logic [S*PCW-1:0] ftp_nx_cq03h;
-  logic [S*32-1:0]  ftl_nx_cq03h;
-  logic [S*VA-1:0]  fta_nx_cq03h;
+  logic [S*CW-1:0]  ftc_nx_cq02h;
+  logic [S*PCW-1:0] ftp_nx_cq02h;
+  logic [S*32-1:0]  ftl_nx_cq02h;
+  logic [S*VA-1:0]  fta_nx_cq02h;
   logic [S-1:0]     fhm_cq02h;                 // the head's fault is the register's (MIU's)
   logic [D-1:0]     fsel_cq02h;
   // An MIU fault is taken in its completion's cycle too (cfe), as the
@@ -1352,20 +1352,20 @@ module ooe_rob_w #(
       ft_en_cq02h[s] = ft_nx_cq02h[s] | ft_q_cq02h[s] | rel_q_cq02h[s];
     end
   always_comb begin
-    {ftc_nx_cq03h, ftp_nx_cq03h, ftl_nx_cq03h, fta_nx_cq03h, fsel_cq02h, fhm_cq02h} = '0;
+    {ftc_nx_cq02h, ftp_nx_cq02h, ftl_nx_cq02h, fta_nx_cq02h, fsel_cq02h, fhm_cq02h} = '0;
     for (int s = 0; s < S; s++) begin
       fsel_cq02h = hrf_cq02h[s * D +: D];
       fhm_cq02h[s] = fa_v_cq02h[s] & |(fa_oh_cq02h[s * D +: D] & fsel_cq02h);
       for (int i = 0; i < D; i++) begin
-        ftc_nx_cq03h[s * CW +: CW] = ftc_nx_cq03h[s * CW +: CW] | ({CW{fsel_cq02h[i]}} & fc_cq02h[(s * D + i) * CW +: CW]);
-        ftp_nx_cq03h[s * PCW + 1 +: 31] = ftp_nx_cq03h[s * PCW + 1 +: 31] | ({31{fsel_cq02h[i]}} & pcl_cq02h[(s * D + i) * 31 +: 31]);
-        ftl_nx_cq03h[s * 32 +: 32] = ftl_nx_cq03h[s * 32 +: 32] | ({32{fsel_cq02h[i]}} & gm_cq02h[(s * D + i) * 32 +: 32]);
+        ftc_nx_cq02h[s * CW +: CW] = ftc_nx_cq02h[s * CW +: CW] | ({CW{fsel_cq02h[i]}} & fc_cq02h[(s * D + i) * CW +: CW]);
+        ftp_nx_cq02h[s * PCW + 1 +: 31] = ftp_nx_cq02h[s * PCW + 1 +: 31] | ({31{fsel_cq02h[i]}} & pcl_cq02h[(s * D + i) * 31 +: 31]);
+        ftl_nx_cq02h[s * 32 +: 32] = ftl_nx_cq02h[s * 32 +: 32] | ({32{fsel_cq02h[i]}} & gm_cq02h[(s * D + i) * 32 +: 32]);
       end
-      ftp_nx_cq03h[s * PCW + 32 +: 16] = pch_cq02h[s * 16 +: 16];
+      ftp_nx_cq02h[s * PCW + 32 +: 16] = pch_cq02h[s * 16 +: 16];
       if (fhm_cq02h[s]) begin
-        ftc_nx_cq03h[s * CW +: CW] = fa_c_cq02h[s * CW +: CW];
-        ftl_nx_cq03h[s * 32 +: 32] = fa_l_cq02h[s * 32 +: 32];
-        fta_nx_cq03h[s * VA +: VA] = fa_a_cq02h[s * VA +: VA];
+        ftc_nx_cq02h[s * CW +: CW] = fa_c_cq02h[s * CW +: CW];
+        ftl_nx_cq02h[s * 32 +: 32] = fa_l_cq02h[s * 32 +: 32];
+        fta_nx_cq02h[s * VA +: VA] = fa_a_cq02h[s * VA +: VA];
       end
     end
   end
@@ -1396,10 +1396,10 @@ module ooe_rob_w #(
     end
     always_ff @(posedge ooe_core_clk) begin
       if (ftr_en_cq02h[gs]) begin
-        ft_cause_cq03h[gs * CW +: CW] <= ftc_nx_cq03h[gs * CW +: CW];
-        ft_pc_cq03h[gs * PCW +: PCW]  <= ftp_nx_cq03h[gs * PCW +: PCW];
-        ft_lanes_cq03h[gs * 32 +: 32] <= ftl_nx_cq03h[gs * 32 +: 32];
-        ft_addr_cq03h[gs * VA +: VA]  <= fta_nx_cq03h[gs * VA +: VA];
+        ft_cause_cq03h[gs * CW +: CW] <= ftc_nx_cq02h[gs * CW +: CW];
+        ft_pc_cq03h[gs * PCW +: PCW]  <= ftp_nx_cq02h[gs * PCW +: PCW];
+        ft_lanes_cq03h[gs * 32 +: 32] <= ftl_nx_cq02h[gs * 32 +: 32];
+        ft_addr_cq03h[gs * VA +: VA]  <= fta_nx_cq02h[gs * VA +: VA];
       end
     end
   end
