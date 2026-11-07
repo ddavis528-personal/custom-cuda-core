@@ -50,6 +50,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
+- TI's J6-J8 on f4ce0fd (TI's Z tip; DA: TI's pending perf runs go to RH).
+  Worktree /home/user/rh-tip. J6 = rh-jobs/j6.sh 192 160 128 (PHYS_REGS, as
+  J1; log ~/ccv-logs/j6). J7+J8 = rh-jobs/j78.sh, which waits for j6 (log
+  ~/ccv-logs/j78): J2's set plus J4's 512 KiB, cold runs capped at 3x warm;
+  vadd16 rel-* with full_rows=1; coremarkpl128 (adds an 8 GB swap2, so watch the
+  disk). One table per job to TI, each beside the J1-J4 numbers.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
@@ -65,6 +71,16 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   the warm time and kill it. Delete bench oracles after each job.
 
 ## Done
+- OI-114 (b) S1 for OI (11-06): floor_take_lag costs 0 at 192 and at 160.
+  phys_regs=160 alone fails V-31; it needs ren_floor=12,ren_ceil=44. OI's
+  run.sh scripts build from the clone's HEAD, so pass them a worktree at the job's
+  commit.
+- RI-16 for RI (11-06; RI says DA approved, unconfirmed in RH's session), all
+  sent: Z is -1.04% on S1, -0.93% on cm32, +0.15% on cm128, with 5 of Z's S1
+  controls timing-dependent. RI's RCU ret-check harness bug was fixed in
+  8ebe948.
+- OI's C9 at LANE 8/SFU 13: S1 sent (F-C9r = 1.211%). OI stopped the CoreMark
+  half when AR 313 moved the baseline back to 7/12.
 - OI's R49 S1, cmpl_split (job 2) and bit 8 (job 2b), 11-06: all sent; trees,
   oracles and swap cleared. OI's local-check numbers were at stock params; A6
   runs at raised latencies.
