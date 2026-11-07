@@ -565,14 +565,16 @@ if out=$("$dir/rs_tb" "$seeds" 2>&1); then
 else
   say "rs == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-# no-msd runs at least 100 seeds: a replay in ooe_rs only clears its
+# no-msd runs at least 200 seeds: a replay in ooe_rs only clears its
 # issued bit, and a replayed producer is not final until it reissues, so a
 # lost miss shows only where a non-producer would confirm early (3 seeds
-# miss it, and at CCV_LAT_L1_WAKE 12 / CCV_LAT_L1_CMPL 14 the 31st seed is
-# the first to catch it, TI rev 288; a caught control stops at its first
+# miss it; at CCV_LAT_L1_WAKE 12 / CCV_LAT_L1_CMPL 14 the 31st seed was
+# the first to catch it, TI rev 288; under C9h, cmpl_split 9 and rx_lag 16
+# (OA 372), 105 seeds miss it and the free_led assertion catches it near
+# the 114th, cycle 380,760, OI-122; a caught control stops at its first
 # difference).
 for c in no-msd drop-squash-free drop-group drop-prv stale-live stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin no-kind; do
-  cs=3; [ "$c" = no-msd ] && cs=$(( seeds > 100 ? seeds : 100 ))
+  cs=3; [ "$c" = no-msd ] && cs=$(( seeds > 200 ? seeds : 200 ))
   if RS_CONTROL=$c "$dir/rs_tb" $cs >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1
   else
