@@ -61,6 +61,10 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
+- O-85 follow-ups done: TI de03fd6 (TI-371) builds every collective incl.
+  shfl.idx and _R forms (kernel coll; opcodes by name from ccv-sim). IS-21/O-72
+  RMW atomics built (kernels atom, atomf); CAS waits on OOE's A2 writing pd (OI).
+  ISA defines no cross-warp order on one word; raise only if it must be defined.
 - 2026-11-07 sweep: nothing for IS. DA 113-115 (Daniel): zero-cycle receiving
   ends only for IPC; bring 0.2-0.5% impacts to him, over 0.5% the architect
   approves if NGD module rules hold. C9 approved. RH has no register tab.
