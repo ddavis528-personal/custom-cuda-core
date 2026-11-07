@@ -727,7 +727,7 @@ module ccv_ooe_w #(
   end
   // ccv_miu_ooe_cmpl, destination end, no-flop (params/links.json no_flop)
   if (RPT_MIU_OOE_CMPL > 0) begin : g_rpt_miu_ooe_cmpl
-    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(119)) u_rpt_miu_ooe_cmpl (
+    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(120), .LEAD_MASK(120'h1)) u_rpt_miu_ooe_cmpl (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({miu_ooe_cmpl_s3_valid, miu_ooe_cmpl_s2_valid, miu_ooe_cmpl_s1_valid, miu_ooe_cmpl_s0_valid}), .src_payload({miu_ooe_cmpl_s3_payload, miu_ooe_cmpl_s2_payload, miu_ooe_cmpl_s1_payload, miu_ooe_cmpl_s0_payload}),
       .src_wake(miu_ooe_cmpl_wake), .src_credit({miu_ooe_cmpl_s3_credit, miu_ooe_cmpl_s2_credit, miu_ooe_cmpl_s1_credit, miu_ooe_cmpl_s0_credit}), .src_stall({miu_ooe_cmpl_s3_stall, miu_ooe_cmpl_s2_stall, miu_ooe_cmpl_s1_stall, miu_ooe_cmpl_s0_stall}),
