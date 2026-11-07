@@ -171,7 +171,11 @@ RI-16 rev 23 priced Z: S1 -1.04% (48,858->48,350), cm32 -0.93%, cm128 +0.15%; NG
 RA rev 95 APPROVED lane_rcu_res zero-cycle (LANE 7/SFU 12). Conditions: block read at assembly holds 12 w/o flop
 (else Daniel); link_n 0, RCU-lane abut. Asked TI (links.json except, retime 5 negative controls), AR (floorplan
 constraint; is OI's C9 8/13 rerun still owed). Partition rev 52. Watch for TI applying it.
-Bookmarks: OA 366, RA 95, RI 23, TI 352, DA 115, AR 312, OI 306, Conventions 17, CP 155.
+AR 313: floorplan constraint recorded (Partitioning rev 55: RCU abuts all 32 lanes, link_n 0 both lane channels);
+C9 8/13 rerun not owed. TI 357: Z pushed f4ce0fd (full gate PASS) on infra-6msg93: links.json except now
+ooe_rcu_issue + miu_rcu_data; five controls retimed, none weakened. Merge at next sweep. Open for RA: the
+block-level 12 NGD check on lane_rcu_res at RCU's assembly (else Daniel).
+Bookmarks: OA 366, RA 95, RI 23, TI 357, DA 115, AR 313, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
