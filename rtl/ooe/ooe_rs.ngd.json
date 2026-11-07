@@ -32,10 +32,10 @@
       "why": "OA's response OI-66 (OA tab rev 168): confirmed at 9, as grp_dep; rename's stage flops drive it"
     },
     "prv_code_cq01h": {
-      "arrival": 9.0,
+      "arrival": 8.0,
       "by": "OA",
-      "date": "2026-10-22",
-      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 9, as grp_dep; rename's stage flops drive it"
+      "date": "2026-11-07",
+      "why": "OA's response re:OI-121 (OA tab rev 374): 1 NGD of prv_code's split moved from ooe_rendep to ooe_rs; ooe_rendep sends it from a flop (0.0 measured)"
     },
     "row_dep_cq01h": {
       "arrival": 10.0,
