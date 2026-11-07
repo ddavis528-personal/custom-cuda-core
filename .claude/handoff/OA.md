@@ -40,20 +40,22 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 378, AR 315, TI 357, OI 317, IS 190, CP 155, DA 115,
-RA 95 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
+Conventions 17, OA 379, AR 316, TI 363, OI 319, IS 190, CP 155, DA 115,
+RA 96 (tab 9851686b-2b0a), RI 31 (tab 8e4547bc-c469).
 OOE doc rev 369. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
-Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
-release 2e95216; tag refused (known). session-home --check ok at 350k.
+Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release 702d9bff; tag refused (known).
 
 ## Open work (most urgent first)
 -17. OA 378 re:AR 315 PHYS_REGS 160 (Q-35; ~34k RCU flops, cycles flat, provisional): rerun to report
    floor stalls (OI-114), restore-alloc under demotion, sectioned-row fragmentation, memop-held regs
-   (cm128). No stalls -> no OA objection, to DA on area; else OA gives min PHYS.
+   (cm128). No stalls -> no OA objection, to DA on area; else OA gives min PHYS. AR 316 took the
+   four cases as criteria; TI 360: 160 has 18 fits_stale check fails (OI fix), provisional.
 -16. OA 376 re:OI-125 (slice 4 MIU fault capture CG): asked lead_fault (1b, with cv) on
    ccv_miu_ooe_cmpl -> AR confirm MIU knows fault at valid, TI schema row. No CG-3 waiver (b, 408
    flops, DA) unless (a) impossible. AR 314: yes; per-slot (4b), status==1 only (2=replay); MIU
-   spec 61. OA 377 accepted; OI builds after TI's schema row. Watch TI row + OI build.
+   spec 61. OA 377 accepted. TI pushed lead_fault 5a2f4aa (TI 363). OA 379: OI-125 items 5-6: pc/cause/
+   valid written at ALLOCATION (OA 370 amended); per-entry group mask 1,024/slot built (spec IS-4).
+   ROB payload ~2,294 flops/slot. Watch OI's build.
 -15. OA 370 re:OI-117 (ROB slice 4 fault PC): (b) per-entry PC, per spec (IS-4, payload table;
    rewind beats need every entry's PC). pc[31:1]/entry + pc[47:32]/slot (CCV_W_PC_WINDOW) = 4,032
    flops, written at fill from ccv_dec_ooe_uop.pc, assert upper match. No schema row, no S1 cost.
