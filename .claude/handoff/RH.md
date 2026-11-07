@@ -50,7 +50,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- None. Idle since 2026-11-07 16:50Z; free for TI's J9 (capacity sweep), once
+- None. J9 (vadd16_loop J3->J8 attribution) DONE and sent 2026-11-07 18:00Z:
+  the +1,065 step is 2a7f125 (lane_rcu_res zero-cycle). Scripts rh-jobs/j9/
+  (j9.sh, j9w.sh: label:commit[:unflop-channel] points, about 2 min each),
+  logs ~/ccv-logs/j9{,w}. Idle; free for TI's J9 (capacity sweep), once
   TI's CTA-queueing and gen-oracle -load code lands.
 - DONE and sent to TI (2026-11-07), f4ce0fd, worktree /home/user/rh-tip
   (oracles cleared; TI rev 367: the pl32 divergence was RI's interim call-link
