@@ -226,11 +226,12 @@ module rcu_mig #(
         kmclr_cr03h |= NWP'(1) << mq_w_cr02h[i];
     end
   end
+  wire kmp_en_cr01h = mrxv_cr01h | (|mjl_cr02h) | (|kmh_cr03h);
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       mjl_cr02h <= '0;
       kmh_cr03h <= '0;
-    end else begin
+    end else if (kmp_en_cr01h) begin
       mjl_cr02h <= mq_land_cr01h;
       kmh_cr03h <= kmhn_cr02h;
     end
@@ -248,7 +249,8 @@ module rcu_mig #(
   logic [WW-1:0]  f_w_cr02h [F];
   logic [NG-1:0]  f_rg_cr02h [F];    // mig_row one-hot, GPR rows (row 16 in f_r16)
   logic [WD-1:0]  f_dat_cr02h [F];
-  logic           rs_busy_cr02h, dm_busy_cr02h;
+  logic           rs_busy_cr02h;
+  (* keep *) logic dm_busy_cr02h;   // dm_wk_cr03h is its copy for the wake
   logic           rs_v_cr03h, rs_v_cr04h;   // rs_v_a1, rs_v_a2
 
   logic hd_v_cr02h, hd_dead_cr02h;
@@ -322,14 +324,15 @@ module rcu_mig #(
   wire [Q-1:0] mq_vn_cr02h = (mq_v_cr02h & ~mq_clr_cr02h) | mq_land_cr01h;
   wire [Q-1:0] cq_vn_cr02h = (cq_v_cr02h & ~cq_clr_cr02h) | cq_land_cr01h;
 
-  // Valid and free flops, every cycle (small).
+  // Valid and free flops, under a land, a possible launch or a kill.
+  wire qv_en_cr01h = mrxv_cr01h | crxv_cr01h | dlp_cr02h | rlp_cr02h | kact_cr02h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       mq_v_cr02h    <= '0;
       cq_v_cr02h    <= '0;
       mq_free_cr02h <= Q'(1);
       cq_free_cr02h <= Q'(1);
-    end else begin
+    end else if (qv_en_cr01h) begin
       mq_v_cr02h    <= mq_vn_cr02h;
       cq_v_cr02h    <= cq_vn_cr02h;
       mq_free_cr02h <= lowest(~mq_vn_cr02h);
@@ -394,26 +397,39 @@ module rcu_mig #(
   end
 
   // Credits: pending counts, one out a cycle per channel (RI-6 (a)), one
-  // per entry leaving. The credit outputs have their own flops, the
-  // counts' next value nonzero (an output's register is held to its budget
-  // on every path it starts).
+  // per entry leaving: a possible launch's (a kill-blocked one's entries
+  // are its kill's), now; a kill's other drops, counted and added a cycle
+  // on. The credit outputs have their own flops (an output's register is
+  // held to its budget on every path it starts): the next count nonzero.
+  localparam int WK = $clog2(Q + 1);
   logic [WN-1:0] mcn_cr02h, ccn_cr02h;
+  logic [WK-1:0] mkc_cr03h, ckc_cr03h;   // a kill's other drops, counted
   logic          mcr_o_cr02h, ccr_o_cr02h;
-  wire [WN-1:0] mcnn_cr02h = mcn_cr02h + WN'($countones(mq_clr_cr02h)) - WN'(mcn_cr02h != '0);
-  wire [WN-1:0] ccnn_cr02h = ccn_cr02h + WN'($countones(cq_clr_cr02h)) - WN'(ccn_cr02h != '0);
-  wire mcn_en_cr02h = (mcn_cr02h != '0) | dlp_cr02h | rlp_cr02h | kact_cr02h;
-  wire ccn_en_cr02h = (ccn_cr02h != '0) | dlp_cr02h | rlp_cr02h | kact_cr02h;
+  wire [Q-1:0] mkx_cr02h = mq_kd_cr02h & ~(dlp_cr02h ? dk_mi_cr02h : '0) & ~(rlp_cr02h ? rk_mi_cr02h : '0);
+  wire [Q-1:0] ckx_cr02h = cq_kd_cr02h & ~(dlp_cr02h ? dk_ci_cr02h : '0) & ~(rlp_cr02h ? rk_ci_cr02h : '0);
+  wire [WN-1:0] madd_cr02h = WN'(dlp_cr02h) + WN'(rlp_cr02h) + WN'(mkc_cr03h);
+  wire [WN-1:0] cadd_cr02h = WN'(dlp_cr02h) + WN'(rlp_cr02h) + WN'(ckc_cr03h);
+  wire mcn_en_cr02h = (mcn_cr02h != '0) | dlp_cr02h | rlp_cr02h | (mkc_cr03h != '0);
+  wire ccn_en_cr02h = (ccn_cr02h != '0) | dlp_cr02h | rlp_cr02h | (ckc_cr03h != '0);
+  wire kc_en_cr02h = kact_cr02h | (mkc_cr03h != '0) | (ckc_cr03h != '0);
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       mcn_cr02h   <= '0;
       ccn_cr02h   <= '0;
+      mkc_cr03h   <= '0;
+      ckc_cr03h   <= '0;
       mcr_o_cr02h <= 1'b0;
       ccr_o_cr02h <= 1'b0;
     end else begin
-      if (mcn_en_cr02h) mcn_cr02h <= mcnn_cr02h;
-      if (ccn_en_cr02h) ccn_cr02h <= ccnn_cr02h;
-      mcr_o_cr02h <= mcn_en_cr02h & (mcnn_cr02h != '0);
-      ccr_o_cr02h <= ccn_en_cr02h & (ccnn_cr02h != '0);
+      if (mcn_en_cr02h) mcn_cr02h <= mcn_cr02h + madd_cr02h - WN'(mcn_cr02h != '0);
+      if (ccn_en_cr02h) ccn_cr02h <= ccn_cr02h + cadd_cr02h - WN'(ccn_cr02h != '0);
+      if (kc_en_cr02h) begin
+        mkc_cr03h <= WK'($countones(mkx_cr02h));
+        ckc_cr03h <= WK'($countones(ckx_cr02h));
+      end
+      // The next count is nonzero: two or more now, or any added.
+      mcr_o_cr02h <= (mcn_cr02h > WN'(1)) | dlp_cr02h | rlp_cr02h | (mkc_cr03h != '0);
+      ccr_o_cr02h <= (ccn_cr02h > WN'(1)) | dlp_cr02h | rlp_cr02h | (ckc_cr03h != '0);
     end
   end
   assign mcr_cr02h = mcr_o_cr02h;
@@ -426,7 +442,7 @@ module rcu_mig #(
   logic [NR:0]      dm_oh_cr02h;   // the rows sent, one-hot: bit r, row r next (NR: all sent)
   logic [1:0]       dm_wc_cr02h;
   logic [WC-1:0]    dm_cr_cr02h;
-  logic             dm_v_cr03h;
+  (* keep *) logic  dm_v_cr03h;                 // dm_vo_cr03h is its copy for ov
   (* keep *) logic  dm_vo_cr03h, dm_wk_cr03h;   // ov's and the wake's own flops
   logic             dv_o_cr01h;                 // the D leads' own flop
   logic [WW-1:0]    dm_pw_cr04h;
@@ -679,7 +695,7 @@ module rcu_mig #(
       hold_k_cr01h |= (mq_v_cr02h[i] & kmask_cr02h[mq_w_cr02h[i]]) | (cq_v_cr02h[i] & kmask_cr02h[cq_w_cr02h[i]]);
   end
   wire busyn_cr01h = dm_busy_cr02h | rs_busy_cr02h | |mq_v_cr02h | |cq_v_cr02h | |f_v_cr02h |
-                     (mcn_cr02h != '0) | (ccn_cr02h != '0) | dm_v_cr03h | rs_v_cr03h | rs_v_cr04h |
+                     (mcn_cr02h != '0) | (ccn_cr02h != '0) | (mkc_cr03h != '0) | (ckc_cr03h != '0) | dm_v_cr03h | rs_v_cr03h | rs_v_cr04h |
                      rs_cr_cr04h | mrxv_cr01h | crxv_cr01h | prxv_cr01h | kvq_cr01h | kact_cr02h |
                      mv_cr00h | cv_cr00h | pv_cr00h | kv_cr00h;
   always_ff @(posedge rcu_core_clk) begin
