@@ -27,5 +27,7 @@ case "$unit" in
     vl rcu_pred "" "" "$PWD/rtl/rcu/rcu_pred.sv" "$PWD/test/rcu/pred_tb.cpp" ;;
   rcu_kill)
     vl rcu_kill "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_kill.sv" "$PWD/test/rcu/kill_tb.cpp" ;;
+  rcu_mig)
+    vl rcu_mig "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_mig.sv" "$PWD/test/rcu/mig_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

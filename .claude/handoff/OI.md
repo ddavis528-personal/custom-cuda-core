@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-07 (C9h gate red: OI-122 to OA, kernel retime for TI). Keep this current at every task's end; it is what
+Updated 2026-11-07 10:20 (C9h gate relaunched 10:12, log scratchpad/gp-c9h3.log; sweep merge waits on it; TI 360 fix and ROB slice 4 uncommitted in scratch trees). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,8 +37,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 313, RA 95, IS 190, TI 359, OA 375, OI 315, CP 155, DA 114, RI 21
-(sweep 11-06 10:20, plus notices to 13:00). Pings 11-06: all eight pinged; pongs OK from OA TI
+Conventions 17, AR 316, RA 96, IS 190, TI 362, OA 379, OI 319, CP 155, DA 115, RI 31
+(sweep 11-07 10:16). AR 314/OA 377: lead_fault = status==1, per slot, OI builds capture once TI's schema row lands (none to TI 362). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
 `--check` should differ; ask DA to approve `python3 tools/setup-session-home.py`.
@@ -51,33 +51,32 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first)
-1. C9 build (task #23; OA 372, DA 114): BUILT in scratchpad/wc9, branch oi-c9 (35999fa, e33da99,
-   merges 86b477e, db3ad0b = TI's f4ce0fd; also on gate-scratch/OI). C9h is the model default
-   (cmpl_split 9, rx_lag 16); ooe_cmcap new; ooe_rs hit-freed column clear (clr = free|hh, hhv
-   flop for CG-2 7.8); ooe_wake hint capture hix+hq one gate. run-rtl and trio exact (no-c9h
-   control). regen + walkthrough committed; cmpl_idx_cq00h arrival 2 written (00c77fe, OA 373).
-   prv_code split granted (OA 374) and written (5e1b436). Gate on 5e1b436 RED; fixed in OI's files:
-   ratchet grp_dep/sqf caps removed (met), no-msd seeds >=200 (f33368b, wc9 tip, unpushed).
-   OI-122 GRANTED (OA 375): grant arrival 1, sched grant_w out 1, waiver 7.1 (aae48b6; checks clean).
-   OI-123: TI (rev 359) says OI carries the check-kernel retimes: at:59, priv_form 12 (6ded4df;
-   check-kernel.sh rc 0). wc9 tip d94146a (on gate-scratch/OI). WAITING for TI's 41c82d8 on origin
-   (TI: base on it, check-kernel ret-held block, RI-18); send_later trig_01Nofj1FgLivKdmZL6hqnEzB.
-   Then gate-push from wc9; then OI-114's row to OA.
-2. OI-114 landed as (b) (OA 369), model only: the go reads unmet on time (unmet_reg 0; rename's
-   register failed CG-5/CG-3), floor_take_lag 1; rename and go RTL as pushed. RH's S1: 0 cost at 192
-   and 160 (X/Y, Z). Row to OA when pushed.
-   (c) measured, for that row: unmet into go 23.9/24.2 at arrival 0, but go's own per-take chain stays
-   over (ff 28.5, hv 31.4, px 31.1, pl 30.5, ha 28.8, room_p 26.9, room_g 25.4; 23.1 without fanout);
-   rename with the (U-L) register: c_dst/c_src 27.3, po_dst 28.0, q_gname 28.5 (caps 26.9/27.5/28.7).
-3. ROB slice 4 (faults; OA 370 for the pc): pc[31:1] per entry + pc[47:32] per slot
-   (CCV_W_PC_WINDOW), 4,032 flops, written at fill from ccv_dec_ooe_uop.pc.
-4. (slice 4 detail) The model's fault at retire (ooe_core.cpp ~2563) reports pc =
-   r.u.pc: the 65-bit entry (rev 277 (c)/279) holds no PC: ask OA the PC source first.
-   Outputs: ccv_ooe_rau_status.fault_taken, ccv_ooe_cru_fault (first fault of the context,
-   written once). V-74 fault-address register per warp. Then slices 5, 6.
-5. DA 111b / OA 364: a unit for every OOE module at each instantiated param set
-   (ooe_rob_w x4 by WID; ooe_ratread once rename has it).
-6. OA 365 (low): ooe_sched phys_src0/1 output depth.
+1. C9h push (task #23): wc9 (scratchpad/wc9, oi-c9) merged TI's origin/ccr-183cc441-doowtf (41c82d8,
+   tip a6bb2e1) as f00c14c; regen clean. gate-push launched 08:07 11-07 detached, log
+   scratchpad/gp-c9h.log (verify log ~/ccv-logs/verify-f00c14c-*). On green: OI-114 row to OA, and
+   tell TI. On red: gate-triage.
+2. TI 360 (task #26), tree scratchpad/wfs, branch oi-fs off oi-c9 63a0594, UNCOMMITTED:
+   root cause = OI-114 (b): under floor_take_lag 1 a slot's floor term is split again while its
+   allowance holding it is admitted against (take reaches unmet a cycle late) -> one cycle double
+   count -> sum of allowances > credit (all failures credit 2, one slot's floor; trace t=1272/1273).
+   Fix: model knob floor_held_gate 1 (floor_held_ per slot/class; no floor term when the registered
+   allowance holds one) + ooe_go fh_cq02h flops (enabled with fits, gate ug/up, fhc forces chg).
+   cm128 phys128 300k cycles: fits 23 -> 0. go_tb exact live+scarce; control floor-held-off caught.
+   Counters added (TI 361/AR 315-316/OA 378): restore.alloc_wait, rename.frag (+.peak, hist),
+   gpr_held_by_memop (+.peak, hist; = in-flight memops' GPR names). Debug prints removed.
+   TODO: run-tests.sh, check-ngd/check-cg ooe_go, commit, RH price at 128/160/192, row to OA+TI+AR.
+   Note: my cm128 runs with CCV_OOE_CONFIG all show order=bad/operand CHECKs even at default (an
+   invocation artifact); compare fits counts only.
+3. ROB slice 4 (task #22), tree scratchpad/wr4 (oi-rob4 off oi-c9 63a0594), UNCOMMITTED. Fault taken
+   at the registered head only (hrf & v & flt & ~hd & ~(rd_s&sqm), !fst; own enable ft_en from
+   flops), no ftk_q; model knob fault_head_only 2 (head_since < now_); rob_tb exact live+mispredict;
+   controls no-fault, fault-cause, fault-any-port, fault-port0 caught; run-tests PASS.
+   NGD (ngd-rob4d): NGD-1 30.8, dn_tag 27.2 ok; OVER: al_n 29.6 (cap 29.3), dn_row 26.4 (cap 26.0).
+   Then tried: dn_row decode split into kept copies dra/drb (not yet measured, nor rob_tb rerun).
+   Then check-cg, commit, OA row (flops ~2,300/slot vs OA's 1,270; head-only fault +1 cycle).
+   MIU lead_fault path waits on TI's schema row (OI-125).
+4. DA 111b / OA 364: a unit for every OOE module at each instantiated param set.
+5. OA 365 (low): ooe_sched phys_src0/1 output depth.
 
 ## Done 11-06
 - Slice 3 (memop commit, OA rev 362) pushed e491f22 (SCOPED PASS 22/22). Final fix: the
