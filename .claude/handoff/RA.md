@@ -179,7 +179,10 @@ RI-19 (RI rev 28, rcu_mig 350729e, M5 met dm 65/rs 66 of 68): RA rev 96 confirme
 (relaunched warp's first PCA row >=17 cycles after its first map); CONDITION: kmask must not drop map/command
 entries by level (RAU command can precede the map). Awaiting RI's confirmation + assertion. Migration rev 10.
 RI-16 rerun at 7/12 all green, IPC unchanged.
-Bookmarks: OA 366, RA 96, RI 28, TI 357, DA 115, AR 313, OI 306, Conventions 17, CP 155.
+RI-19 CLOSED: RI confirmed rcu_mig drops map/cmd only on the kill event; assertion mig_q_drop in 12e6b7b.
+11-07 sweep: merged 888218a3 (112), infra-6msg93 (1), 57eff422 (28), 9eb50716 (13), 80102643 (9), c22116ce (4);
+full gate pushed 5dbb3ee. AR 315/TI 360: PHYS_REGS 160 saves ~34k RCU flops, provisional (OI fits_stale, TI #72).
+Bookmarks: OA 379, RA 96, RI 31, TI 362, DA 115, AR 316, OI 319, Conventions 17, CP 155, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
