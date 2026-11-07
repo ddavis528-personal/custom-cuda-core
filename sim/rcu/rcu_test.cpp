@@ -176,7 +176,7 @@ void testRTiming() {
 
 /// A lane op: the lane message in A, its done launched at A + CCV_LAT_LANE - 2,
 /// its results expected and written at A + CCV_LAT_LANE - 1 (kLaneW; A+6 at
-/// CCV_LAT_LANE 7, A+7 at 8 since RI-11). Early or missing results fail.
+/// CCV_LAT_LANE 7, the default since Z). Early or missing results fail.
 void testLaneTiming() {
   g_test = "lane-timing";
   for (int mode = 0; mode != 3; ++mode) {   // 0 on time, 1 missing, 2 early
@@ -213,7 +213,7 @@ void testLaneTiming() {
 }
 
 /// The bypass window, ages CCV_LAT_LANE_BYP (kBypLo, 4) to CCV_LAT_LANE - 2
-/// (kBypHi; 5, or 6 at CCV_LAT_LANE 8 since RI-11): select forward | lead << 1 |
+/// (kBypHi; 5 at CCV_LAT_LANE 7, the default since Z): select forward | lead << 1 |
 /// (age - kBypLo) << 3; past kBypHi the PRF holds it; below kBypLo a read is a
 /// contract breach.
 void testBypassWindow() {
@@ -326,7 +326,7 @@ void testKillDrain() {
   e.step();
   e.core.kill(0x1, 0);
   const unsigned d = e.core.killDrain();
-  const unsigned want = 2 + ccv::prov::kLatSfu + 1;   // abutted: 15 at SFU 12, 16 at 13
+  const unsigned want = 2 + ccv::prov::kLatSfu + 1;   // abutted: 15 at SFU 12 (the default since Z)
   EXPECT(d == want, "KILL_DRAIN %u, not %u", d, want);
   e.step();   // K
   unsigned n = 0;

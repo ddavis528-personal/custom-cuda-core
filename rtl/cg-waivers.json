@@ -182,7 +182,7 @@
    "target": "kd_cr02h",
    "max_flops": 5,
    "measured_flops": 4,
-   "why": "The kill drain counter (Done, kill and reset tab: kill_drain, loaded with KILL_DRAIN in K and counting to 0), 4 flops at KILL_DRAIN 15, 5 at 16 once CCV_LAT_SFU is 13 (AR rev 285), so max 5. Its enable is its own (kill_v_q or a nonzero count) and it changes on every enabled cycle, but 5 flops are under a gate's 8; a one-hot drain timer would make a gate of 16 to save 5. rcu_kill is the block's control residue, 60 flops (Partition tab), so its own allowance is the floor of 7: the reset, kill_v_q, the done wake, the idle flop, the CSR responder, kill_ack_q and its pending bit take it.",
+   "why": "The kill drain counter (Done, kill and reset tab: kill_drain, loaded with KILL_DRAIN in K and counting to 0), 5 flops at KILL_DRAIN 16, its value at CCV_LAT_SFU 12 since Z (RA rev 95; 13 would still give 16), so max 5. Its enable is its own (kill_v_q or a nonzero count) and it changes on every enabled cycle, but 5 flops are under a gate's 8; a one-hot drain timer would make a gate of 16 to save 5. rcu_kill is the block's control residue, 60 flops (Partition tab), so its own allowance is the floor of 7: the reset, kill_v_q, the done wake, the idle flop, the CSR responder, kill_ack_q and its pending bit take it.",
    "by": "RI",
    "date": "2026-11-05"
   },
