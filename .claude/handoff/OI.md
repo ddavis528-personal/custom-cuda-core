@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-07 08:10 (C9h gate running; TI 360 fix and ROB slice 4 uncommitted in scratch trees). Keep this current at every task's end; it is what
+Updated 2026-11-07 10:20 (C9h gate relaunched 10:12, log scratchpad/gp-c9h3.log; sweep merge waits on it; TI 360 fix and ROB slice 4 uncommitted in scratch trees). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,8 +37,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 313, RA 95, IS 190, TI 359, OA 375, OI 315, CP 155, DA 114, RI 21
-(sweep 11-06 10:20, plus notices to 13:00). Pings 11-06: all eight pinged; pongs OK from OA TI
+Conventions 17, AR 316, RA 96, IS 190, TI 362, OA 379, OI 319, CP 155, DA 115, RI 31
+(sweep 11-07 10:16). AR 314/OA 377: lead_fault = status==1, per slot, OI builds capture once TI's schema row lands (none to TI 362). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
 `--check` should differ; ask DA to approve `python3 tools/setup-session-home.py`.
