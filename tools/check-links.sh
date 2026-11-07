@@ -63,6 +63,38 @@ else
   bad "links.json validator" "${missed# }"
 fi
 
+# no_flop, on a copy of the design's own file with one entry changed: each
+# refused by name. A DPI block's sending end off no_flop is a second register
+# in series, a link stage no derive counts (AR's rev 309 (1)).
+refused=0; missed=""
+while IFS='|' read -r want edit; do
+  [ -z "$want" ] && continue
+  python3 - "$edit" >"$T/nf.json" <<'PY'
+import json, sys
+d = json.load(open("params/links.json"))
+exec(sys.argv[1], {"nf": d["no_flop"]})
+json.dump(d, sys.stdout)
+PY
+  if out=$(CCV_LINKS="$T/nf.json" python3 tools/gen-skel.py --check 2>&1); then
+    missed="$missed [accepted: $edit]"
+  elif ! grep -q -- "$want" <<<"$out"; then
+    missed="$missed [$want: $(grep -m1 -v problem <<<"$out" | xargs)]"
+  else
+    refused=$((refused + 1))
+  fi
+done <<'CASES'
+rcu is a DPI block, so its sending end of rcu_ooe_done|nf[1]["except"].append("rcu_ooe_done")
+fet is a DPI block, so its sending end of|nf[0]["block"].remove("fet")
+says no why|nf[1].pop("why")
+has no end of channel 'fet_dec_instr'|nf[1]["except"].append("fet_dec_instr")
+is already no_flop|nf.append({"block": "fet", "channels": ["fet_dec_instr"], "why": "x"})
+CASES
+if [ -z "$missed" ]; then
+  say "links.json: malformed no_flop refused" "PASS ($refused cases, each by name)"
+else
+  bad "links.json no_flop validator" "${missed# }"
+fi
+
 # -- 2. a busy split, end to end -------------------------------------------------
 if ! command -v verilator >/dev/null 2>&1 || ! command -v yosys >/dev/null 2>&1; then
   say "split configuration" "SKIP -- needs verilator and yosys"
