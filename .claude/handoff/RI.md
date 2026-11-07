@@ -37,11 +37,18 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-06: Conventions 17, AR 308, OA 366, IS 190, TI 355, OI 306, CP 155, DA 115, RA 95, RI 24.
+Bookmarks 2026-11-06: Conventions 17, AR 308, OA 366, IS 190, TI 356, OI 306, CP 155, DA 115, RA 95, RI 24.
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+0. rcu_mig restructured, local 16f0c65 (on gate-scratch/RI, unverified): 400 seeds + controls pass,
+   M5 dm 65 / rs 66 of 68. CG/NGD run: ~/ccv-logs/mig-chk.sh -> mig-cg.log, mig-ngd.log. Then
+   slice 192 unit check, split gate, push (with 1d4b3dd, 20ab341), RI row to RA (kmask clear +2
+   ordering note, head-warp restore pick, dropped rs warp compare, ZROW vs write_row_named).
+   TI rev 356: Z (f4ce0fd, LANE 7/SFU 12) gating, push ~2h; RI-18 kernel 2026-11-07. After Z
+   merges fix stale 8/13 comments: sim/rcu/rcu_test.cpp:179,216; cg-waivers.json rcu_kill kd why
+   (KILL_DRAIN 16 at SFU 12, still 5 flops).
 1. RI-16 DECIDED (RA rev 95): lane_rcu_res zero-cycle (LANE 7 / SFU 12), link_n 0 forever, on
    condition the block-level read at RCU's assembly holds 12 on it without the flop (else Daniel).
    TI drops it from links.json except + retimes 5 controls. When TI lands it: merge, run
