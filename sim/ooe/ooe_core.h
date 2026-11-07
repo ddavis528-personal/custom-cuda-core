@@ -616,6 +616,13 @@ struct Config {
   /// split cycle (ooe_go with no per-take term). 0: the in-cycle
   /// subtraction (OI-114 as first built; go_tb's control floor-take-now).
   unsigned floor_take_lag = 1;
+  /// TI 360 (re:RA-11): under floor_take_lag 1 a slot's floor term is split
+  /// again while the allowance holding it is admitted against, so for a
+  /// cycle the slot's floor counts twice and the allowances can pass the
+  /// credit. 1 splits no floor term for a slot whose registered allowance
+  /// holds one (a registered bit gating the go's floor), so a floor still
+  /// unmet is granted every other cycle; 0 is (b) as first built.
+  unsigned floor_held_gate = 1;
   /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
   /// register keeps its old width (the model before this).
   bool inject_sibling_uncommitted = false;
@@ -1656,6 +1663,7 @@ private:
   }
   void err(const char *fmt, ...);
   void count(const std::string &k, uint64_t n = 1) { counters[k] += n; }
+  void namePressureStats();
 
   Config cfg_;
   uint64_t now_ = 0;
@@ -2042,6 +2050,7 @@ private:
   std::vector<std::array<unsigned, 4>> share_reg_;   ///< fits_stale 6: the allowances split for the next cycle
   std::vector<std::array<unsigned, 4>> share_hold_;  ///< fits_stale 6: and as split, before the split cycle's own takes (the pool's held)
   std::vector<std::array<unsigned, 2>> split_floor_; ///< fits_stale 6: each slot's floor term at the split, GPR and predicate (OI-114)
+  std::vector<std::array<unsigned, 2>> floor_held_; ///< floor_held_gate: the floor term of the allowance registered now, GPR and predicate (TI 360)
   std::vector<std::array<unsigned, 2>> unmet_now_;   ///< unmet_reg: each slot's unmet floor this cycle (registered for the next)
   std::vector<std::array<unsigned, 2>> last_take_;   ///< unmet_reg: the names each slot's last take wrote
   std::vector<std::array<unsigned, 4>> pend_a_, pend_b_;  ///< fits_stale 7: splits in flight, two cycles and one from use

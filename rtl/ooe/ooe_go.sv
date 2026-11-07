@@ -528,12 +528,26 @@ module ooe_go #(
   // pools give it v or more is formed from the warps and floors alone (the
   // table's terms chosen at elaboration), and the pool, one-hot, picks;
   // none without a head or under a restore.
+  // TI 360: a slot's floor term is split again while the allowance holding
+  // it is taken against (the take reaches unmet a cycle late, OI-114 (b)),
+  // so the allowances could pass the credit. No floor term is split for a
+  // slot whose registered allowance holds one (fh, per slot, GPR then
+  // predicate): a floor still unmet is granted every other cycle.
+  logic [S*2-1:0]            fh_cq02h, fh_nx_cq01h;
+  logic [S*LU-1:0]           ug_cq01h, up_cq01h;    // the floor terms split now
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      ug_cq01h[s * LU +: LU] = unmet_g_cq01h[s * LU +: LU] & {LU{~fh_cq02h[s * 2]}};
+      up_cq01h[s * LU +: LU] = unmet_p_cq01h[s * LU +: LU] & {LU{~fh_cq02h[s * 2 + 1]}};
+      fh_nx_cq01h[s * 2]     = with_w_cq01h[s] & ~rbusy_cq01h & (ug_cq01h[s * LU +: LU] != '0);
+      fh_nx_cq01h[s * 2 + 1] = with_w_cq01h[s] & ~rbusy_cq01h & (up_cq01h[s * LU +: LU] != '0);
+    end
   logic [S*4*(R+1)-1:0]      ue_cq01h;         // each slot's floor per credit, one-hot to R (R: R or more)
   logic [LU-1:0]             u_cq01h;
   always_comb
     for (int s = 0; s < S; s++)
       for (int c = 0; c < 4; c++) begin
-        u_cq01h = c == 2 ? unmet_g_cq01h[s * LU +: LU] : c == 3 ? unmet_p_cq01h[s * LU +: LU] : '0;
+        u_cq01h = c == 2 ? ug_cq01h[s * LU +: LU] : c == 3 ? up_cq01h[s * LU +: LU] : '0;
         for (int w = 0; w < R + 1; w++) ue_cq01h[(s * 4 + c) * (R + 1) + w] = w == R ? u_cq01h >= LU'(R) : u_cq01h == LU'(w);
       end
   // The first warp's reserve per credit, one-hot: none, or two where its
@@ -649,8 +663,8 @@ module ooe_go #(
     for (int c = 0; c < 4; c++) begin
       for (int s = 0; s < S; s++)
         for (int v = 1; v < R + 1; v++)
-          uw_cq01h[s * R + v - 1] = with_w_cq01h[s] & (c == 2 ? unmet_g_cq01h[s * LU +: LU] >= LU'(v) :
-                                           c == 3 ? unmet_p_cq01h[s * LU +: LU] >= LU'(v) : 1'b0);
+          uw_cq01h[s * R + v - 1] = with_w_cq01h[s] & (c == 2 ? ug_cq01h[s * LU +: LU] >= LU'(v) :
+                                           c == 3 ? up_cq01h[s * LU +: LU] >= LU'(v) : 1'b0);
       ut_cq01h = tsum(uw_cq01h);
       held_nx_cq02h[c * R +: R] = tadd(pt_cq02h[c * (R + 1) + 1 +: R], ut_cq01h) & {R{(nw_cq01h != '0) & ~rbusy_cq01h}};
       for (int h = 0; h < R + 1; h++) begin
@@ -801,11 +815,20 @@ module ooe_go #(
       rem_cq02h = rem_cq02h | (~nwh_cq01h[0] & ~nwh_cq01h[1] & ~(dd_cq02h[c * ND] & dr_nx_cq02h[c * ND]) &
                                ~pe_cq02h[c * (PM + 1)] & prio_en_cq01h);
   end
+  // A floor-held bit changing at this edge changes the split next cycle
+  // (every warp's: the shares' sum moves the held allowances too).
   logic [S-1:0] chg_nx_cq02h;
+  logic         fhc_cq02h;
+  always_comb begin
+    fhc_cq02h = 1'b0;
+    for (int s = 0; s < S; s++)
+      fhc_cq02h = fhc_cq02h | (fits_en_cq02h[s] & (fh_nx_cq01h[s * 2 +: 2] != fh_cq02h[s * 2 +: 2]));
+  end
   always_comb
     for (int s = 0; s < S; s++)
       chg_nx_cq02h[s] = hd_ev_cq02h[s] | (hv_cq01h[s * H] & (any_ev_cq02h | rob_en_cq01h[s] | pool_en_cq01h |
-                                                 (rbusy_l_cq00h ^ rbusy_cq01h) | he_chg_cq02h | rem_cq02h));
+                                                 (rbusy_l_cq00h ^ rbusy_cq01h) | he_chg_cq02h | rem_cq02h)) |
+                        fhc_cq02h;
   // The leads and the change bits, written every cycle (the module's
   // allowance and its waiver): the restore, each slot's block, squash and
   // change.
@@ -853,7 +876,9 @@ module ooe_go #(
         utw_cq02h[gs * (R + 1) * NU +: (R + 1) * NU] <= '0;
         utx_cq02h[gs * (R + 1) * NU +: (R + 1) * NU] <= '0;
         sel_q_cq02h[gs]                             <= 1'b0;
+        fh_cq02h[gs * 2 +: 2]                       <= '0;
       end else if (fits_en_cq02h[gs]) begin
+        fh_cq02h[gs * 2 +: 2]                       <= fh_nx_cq01h[gs * 2 +: 2];
         fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
         fitsw_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
         fitsx_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
