@@ -1,6 +1,6 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-07. Keep current at every task's end. Role and ownership:
+Updated 2026-11-07 (late). Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -16,7 +16,9 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work tree /home/user/ri-wt (branch ccr-888218a3-20cauz); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: ba0df94 (2026-11-07, lanes+mem). Before: 350729e (SPLIT SCOPED PASS, 2026-11-07): rcu_mig, slice zero-fill gate, lint
+- Last push: 5ac616f (2026-11-07, SPLIT SCOPED PASS 22/22): TI's de03fd6 bundle (O-85, IS-21 atomics,
+  #88 fix) and 31168a3 (stub DCU 8x64: rebaseline cycle counts) merged on 64fce0d (RA rev 98).
+  Before: ba0df94 (lanes+mem). Before: 350729e (SPLIT SCOPED PASS, 2026-11-07): rcu_mig, slice zero-fill gate, lint
   fixes, TI's Z (f4ce0fd) and RI-18 (43695ae) merged, model --break ret-held-by-lanes.
 - RH (session_01QPk2jvfKM1V5rRfip8FC86) takes RI's perf runs (Daniel, 2026-11-06): send base
   commit via gate-scratch/RI, exact arms and what to report; it replies with a table.
@@ -37,17 +39,19 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-07 (sweep): Conventions 17, AR 319, OA 379, IS 190, TI 370, OI 319, CP 155, DA 115, RA 96, RI 38.
+Bookmarks 2026-11-07 (sweep + notices): Conventions 17, AR 320, OA 379, IS 190, TI 374, OI 324, CP 155, DA 115, RA 100, RI 40.
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--1. J9 (AR 318/319, TI 369/370): Z's +19% on rel-vadd16_loop-128 is not RCU (RI 36): AR now blames
-   the MIU stub's one-start serialization; TI/RH rerun on a 4-pipe stub. RI added CCV_RCU_STATS
-   (ba39e6a) for the w9/w10 diff; read RCU's half (migration, restore_hold) when TI relays it.
-   #88 (coremarkpl32): RI's own interim call-link line in rcu_block.cpp decode(); TI removed it in
-   21b4356 (RI rev 35 corrects revs 32/34). Rerun coremarkpl32 on the model after merging TI's push.
-   OI-127: add pd on A2 (when pred_we) to the atomic step table after merging ti-o85 and OI's A2 change.
+-1. J9 settled (AR 320): the cliff was the stub DCU's 8 KiB direct-mapped default; TI made it 8x64
+   (31168a3). Not RCU. #88 fixed by TI (21b4356, reviewed RI rev 39); TI rev 367 ran coremarkpl32 to
+   the end on the model. OI-127/OI-129: A2 carries ppdst/pred_we/ppold (OI f727aed); the model's
+   lane write-back already writes it (RI rev 40). When TI says a CAS-with-pd kernel exists, run it
+   on model and stub.
+-0.5 RA rev 100 limits: rcu_pred gd_cr02h in-flop must stay <= 24.5 (now 23.9; first remedy:
+   pre-decode act_d); class-bit arrival 5 must hold with the atomics term added. TI built an
+   rcu_rtl gate section (0a6b7b3, TI rev 374) running test/rcu/run-rtl.sh: merge it at the sweep.
 0. RI-19: note 1 confirmed (RA rev 96); mig_q_drop pushed 12e6b7b (RI rev 30). Close when RA has no more. Was: kmask +2 clear vs a
    relaunched warp's first row (>= 2 cycles after its map). Notes 2-9 in the row.
    Lessons: run tools/check-1d.sh before a gate (the linter misreads 1'b0 in a wire's concat and a
