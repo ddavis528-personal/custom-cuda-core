@@ -29,5 +29,13 @@ case "$unit" in
     vl rcu_kill "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_kill.sv" "$PWD/test/rcu/kill_tb.cpp" ;;
   rcu_mig)
     vl rcu_mig "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_mig.sv" "$PWD/test/rcu/mig_tb.cpp" ;;
+  rcu_mem|rcu_mem_c4)
+    cp=32; [ "$unit" = rcu_mem_c4 ] && cp=4
+    vl rcu_mem "-GCOPIES=$cp" "-DMM_COPIES=$cp" \
+      "$PWD/rtl/rcu/rcu_mem.sv" "$PWD/test/rcu/mem_tb.cpp" ;;
+  rcu_lanes|rcu_lanes_c4)
+    cp=32; [ "$unit" = rcu_lanes_c4 ] && cp=4
+    vl rcu_lanes "-GCOPIES=$cp" "-I$PWD/sim/generated -DLN_COPIES=$cp" \
+      "$PWD/rtl/rcu/rcu_lanes.sv" "$PWD/test/rcu/lanes_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac
