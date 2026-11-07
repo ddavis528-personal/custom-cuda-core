@@ -256,11 +256,29 @@ for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shi
     say "  control $c (go)" "caught"
   fi
 done
+# Scarce names (144 rows, a ceiling of 24), where the names' pool binds and
+# the floor term less the go's own take (OI-114) decides takes, a cycle late
+# (OA's rev 369 (b)): the go reads the unmet on time, which holds the names
+# its last take wrote. Its control takes the go's own take in the split
+# cycle as well (the model's floor_take_lag 0).
+if out=$(GO_NAMES=144,24 "$dir/go_tb" 5 2>&1); then
+  say "go == model, live, scarce names" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "go == model, live, scarce names" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in floor-take-now; do
+  if GO_NAMES=144,24 GO_CONTROL=$c "$dir/go_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (go, scarce)" "MISSED"; fail=1
+  else
+    say "  control $c (go, scarce)" "caught"
+  fi
+done
 
-# ooe_rob, the ROB (slices 1 and 2, OI-85), driven from the model's ROB log
+# ooe_rob, the ROB (slices 1, 2 and 3, OI-85), driven from the model's ROB log
 # (Core::robLog) a model cycle behind, with retire_lag 1: its retirements,
-# resolutions and squashes, their leads and frees, the discard and the room
-# rename's go reads compared exactly. A core stops at the first thing the
+# resolutions and squashes, their leads and frees, the discard, the store
+# commits (slice 3, one a slot a cycle) and the room rename's go reads
+# compared exactly. A core stops at the first thing the
 # ROB does not build yet (a squash not a branch's, a fault, a retire port,
 # an atomic).
 dir=build/ooe-rtl/rob
@@ -293,7 +311,7 @@ fi
 # trace the first few seeds happen to draw stops being caught when the
 # traces move (no-copy, at CCV_P_DECQ 15: first caught at seed 6).
 for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
-         no-branch-lead no-miu no-store drop-killed-fill late-fill; do
+         no-branch-lead no-miu no-store drop-killed-fill late-fill shared-ports store-shift; do
   if ROB_CONTROL=$c "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else
