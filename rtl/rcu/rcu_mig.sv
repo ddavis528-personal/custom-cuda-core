@@ -716,6 +716,22 @@ module rcu_mig #(
   `CCV_ASSERT(mig_cmd_room, !(crxv_cr01h && cq_free_cr02h == '0))
   `CCV_ASSERT(mig_fifo_overrun, !(prxv_cr01h && |(tl_cr02h & f_v_cr02h)))
   `CCV_ASSERT(mig_dm_cred, dm_cr_cr02h <= WC'(CD))
+  // A map or command entry leaves only by a launch or the kill event (K+1),
+  // never by kmask's level: a relaunched warp's command can land before its
+  // map, or its map in the two cycles before kmask clears (RA, re:RI-19).
+  logic q_drop_bad_cr02h;
+  always_comb begin
+    q_drop_bad_cr02h = 1'b0;
+    for (int i = 0; i < Q; i++) begin
+      q_drop_bad_cr02h |= qv_en_cr01h & mq_v_cr02h[i] & ~mq_vn_cr02h[i] &
+                          ~((dlp_cr02h & dk_mi_cr02h[i]) | (rlp_cr02h & rk_mi_cr02h[i])) &
+                          ~killed(mq_w_cr02h[i], kact_cr02h, kmn_cr02h);
+      q_drop_bad_cr02h |= qv_en_cr01h & cq_v_cr02h[i] & ~cq_vn_cr02h[i] &
+                          ~((dlp_cr02h & dk_ci_cr02h[i]) | (rlp_cr02h & rk_ci_cr02h[i])) &
+                          ~killed(cq_w_cr02h[i], kact_cr02h, kmn_cr02h);
+    end
+  end
+  `CCV_ASSERT(mig_q_drop, !q_drop_bad_cr02h)
   // Rows go out 0..16, then the engine is done.
   `CCV_ASSERT(mig_dm_row, !(dm_v_cr03h && dm_oh_cr02h[NR]))
   // PCA sends a restore's rows contiguously (RA-28 (b)): a live row at e
