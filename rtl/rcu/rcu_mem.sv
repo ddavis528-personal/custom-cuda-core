@@ -248,27 +248,35 @@ module rcu_mem #(
       end
     end
   end
-  for (genvar j = 0; j < NK; j++) begin : g_chk
-    // A memop issues only on a valid slot, and its operands' sources are
-    // ones its lead promised.
-    `CCV_ASSERT(mem_valid, !mem_cr02h[j] || v_cr02h[j])
-    `CCV_ASSERT(mem_lead_promise, !(v_cr02h[j] && mem_cr02h[j]) || !prm_bad_cr02h[j])
-    // The footprint's lowest pipe is the slot, and every operand lies in it.
-    `CCV_ASSERT(mem_foot, !(v_cr02h[j] && mem_cr02h[j]) ||
-                (foot_cr02h[j*NK + j] && (foot_cr02h[j*NK +: NK] & NK'((1 << j) - 1)) == '0))
-    `CCV_ASSERT(mem_operand_owned, !(v_cr02h[j] && mem_cr02h[j]) ||
-                ((!use_cr02h[j*NM + 0] || (secmask(wid_cr02h[(j*NM + 0)*2 +: 2], pos_cr02h[(j*NM + 0)*2 +: 2])
-                                            & ~foot_cr02h[j*NK +: NK]) == '0) &&
-                 (!use_cr02h[j*NM + 1] || (secmask(wid_cr02h[(j*NM + 1)*2 +: 2], pos_cr02h[(j*NM + 1)*2 +: 2])
-                                            & ~foot_cr02h[j*NK +: NK]) == '0) &&
-                 (!use_cr02h[j*NM + 2] || (secmask(wid_cr02h[(j*NM + 2)*2 +: 2], pos_cr02h[(j*NM + 2)*2 +: 2])
-                                            & ~foot_cr02h[j*NK +: NK]) == '0)))
-    // A fence reads nothing; a predicate store reads no GPR data.
-    `CCV_ASSERT(mem_fence_bare, !(v_cr02h[j] && mem_cr02h[j] && fen_cr02h[j]) ||
-                (bsl_cr02h[2*j +: 2] == 2'd3 && xsl_cr02h[2*j +: 2] == 2'd3 && dsl_cr02h[2*j +: 2] == 2'd3
-                 && !psk_cr02h[j]))
-    `CCV_ASSERT(mem_pstore_data, !(v_cr02h[j] && mem_cr02h[j] && psk_cr02h[j]) || dsl_cr02h[2*j +: 2] == 2'd3)
+  // Per slot: a memop off a valid slot; a source its lead did not promise;
+  // a footprint whose lowest pipe is not the slot, or an operand outside
+  // it; a fence that reads; a predicate store that reads GPR data.
+  logic [NK-1:0] mv_bad_cr02h, prm_c_cr02h, ft_bad_cr02h, ow_bad_cr02h, fn_bad_cr02h, ps_bad_cr02h;
+  always_comb begin
+    for (int j = 0; j < NK; j++) begin
+      logic mm_cr02h;
+      mm_cr02h = v_cr02h[j] && mem_cr02h[j];
+      mv_bad_cr02h[j] = mem_cr02h[j] && !v_cr02h[j];
+      prm_c_cr02h[j]  = mm_cr02h && prm_bad_cr02h[j];
+      ft_bad_cr02h[j] = mm_cr02h && (!foot_cr02h[j*NK + j] ||
+                                     (foot_cr02h[j*NK +: NK] & NK'((1 << j) - 1)) != '0);
+      ow_bad_cr02h[j] = 1'b0;
+      for (int m = 0; m < NM; m++)
+        if (mm_cr02h && use_cr02h[j*NM + m] &&
+            (secmask(wid_cr02h[(j*NM + m)*2 +: 2], pos_cr02h[(j*NM + m)*2 +: 2]) & ~foot_cr02h[j*NK +: NK]) != '0)
+          ow_bad_cr02h[j] = 1'b1;
+      fn_bad_cr02h[j] = mm_cr02h && fen_cr02h[j] &&
+                        (bsl_cr02h[2*j +: 2] != 2'd3 || xsl_cr02h[2*j +: 2] != 2'd3 ||
+                         dsl_cr02h[2*j +: 2] != 2'd3 || psk_cr02h[j]);
+      ps_bad_cr02h[j] = mm_cr02h && psk_cr02h[j] && dsl_cr02h[2*j +: 2] != 2'd3;
+    end
   end
+  `CCV_ASSERT(mem_valid, mv_bad_cr02h == '0)
+  `CCV_ASSERT(mem_lead_promise, prm_c_cr02h == '0)
+  `CCV_ASSERT(mem_foot, ft_bad_cr02h == '0)
+  `CCV_ASSERT(mem_operand_owned, ow_bad_cr02h == '0)
+  `CCV_ASSERT(mem_fence_bare, fn_bad_cr02h == '0)
+  `CCV_ASSERT(mem_pstore_data, ps_bad_cr02h == '0)
   // The memops of one cycle own disjoint pipes.
   logic ovl_cr02h;
   always_comb begin

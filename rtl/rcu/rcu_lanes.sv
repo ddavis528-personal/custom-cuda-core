@@ -289,7 +289,6 @@ module rcu_lanes #(
   // ---- A: each section's control into sec_a1 ----------------------------
   // The owner's fields, its lead bits for the payload's enables, and its
   // bypass selects (byp_a).
-  logic [NK*NK-1:0]  own_a_cr02h;        // the owner one-hot, again (section k at k*NK)
   logic [NK*WO-1:0]  opc_s_cr02h;
   logic [NK*NP*2-1:0] opos_s_cr02h, owid_s_cr02h;
   logic [NK*2-1:0]   dpos_s_cr02h, dwid_s_cr02h, isl_s_cr02h;
@@ -566,7 +565,6 @@ module rcu_lanes #(
     for (genvar d = 2; d < DL + 1; d++) begin : g_st
       wire ls_en_cr03h = ov_cr03h[(d-2)*NK + k];
       wire ll_en_cr03h = dv_cr03h[(d-2)*NK + k] | pv_cr03h[(d-2)*NK + k] | cs_cr03h[(d-2)*NK + k];
-      wire la_en_cr03h = pv_cr03h[(d-2)*NK + k] | cs_cr03h[(d-2)*NK + k];
       always_ff @(posedge rcu_core_clk) begin
         if (ls_en_cr03h) begin
           lrow_cr03h[((d-1)*NK + k)*WR +: WR] <= lrow_cr03h[((d-2)*NK + k)*WR +: WR];
@@ -581,14 +579,16 @@ module rcu_lanes #(
           lmrg_cr03h[(d-1)*NK + k]            <= lmrg_cr03h[(d-2)*NK + k];
         end
       end
-      // active: rcu_pred's active_a into stage 2, then on.
+      // active: rcu_pred's active_a into stage 2, then on, in the stage's
+      // descriptor gate (ll_en): only a pdata write or a copy reads it, but a
+      // gate of its own idles on a run of ops with one active mask (CG-3).
       if (d == 2) begin : g_a2
         always_ff @(posedge rcu_core_clk) begin
-          if (la_en_cr03h) lact_cr03h[k*N +: N] <= acta_cr03h[k*N +: N];
+          if (ll_en_cr03h) lact_cr03h[k*N +: N] <= acta_cr03h[k*N +: N];
         end
       end else begin : g_an
         always_ff @(posedge rcu_core_clk) begin
-          if (la_en_cr03h) lact_cr03h[((d-2)*NK + k)*N +: N] <= lact_cr03h[((d-3)*NK + k)*N +: N];
+          if (ll_en_cr03h) lact_cr03h[((d-2)*NK + k)*N +: N] <= lact_cr03h[((d-3)*NK + k)*N +: N];
         end
       end
     end
@@ -635,22 +635,36 @@ module rcu_lanes #(
     sfo_cr02h = '0;
     for (int s = 0; s < NK; s++) sfo_cr02h |= {NK{sfu_cr02h[s]}} & foot_cr02h[s*NK +: NK];
   end
-  wire sv_en_cr02h = any_v_cr02h | (|ssv_cr03h) | (|sdv_cr03h) | (|sov_cr03h);
+  // Stage 1 loads every cycle (10 flops, the ungated allowance): its only
+  // enable would be an SFU issue, which is an input. Stages 2 on shift while
+  // anything is in flight.
+  wire sv_en_cr02h = (|ssv_cr03h) | (|sdv_cr03h) | (|sov_cr03h);
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
-      ssv_cr03h <= '0;
-      sdv_cr03h <= '0;
-      sov_cr03h <= '0;
-      ssl_cr03h <= '0;
-    end else if (sv_en_cr02h) begin
-      ssv_cr03h <= {ssv_cr03h[DS-2:0], |(sfu_cr02h & gdst_cr02h)};
-      sdv_cr03h <= {sdv_cr03h[DS-2:0], any_sfu_cr02h};
-      sov_cr03h <= {sov_cr03h[(DS-1)*NK-1:0], sfo_cr02h};
-      ssl_cr03h <= sfu_cr02h;
+      ssv_cr03h[0]       <= 1'b0;
+      sdv_cr03h[0]       <= 1'b0;
+      sov_cr03h[0 +: NK] <= '0;
+      ssl_cr03h          <= '0;
+    end else begin
+      ssv_cr03h[0]       <= |(sfu_cr02h & gdst_cr02h);
+      sdv_cr03h[0]       <= any_sfu_cr02h;
+      sov_cr03h[0 +: NK] <= sfo_cr02h;
+      ssl_cr03h          <= sfu_cr02h;
     end
   end
-  logic [(DS-1)*WR-1:0] srow_cr03h;    // stages 2 .. DS, stage d at d-2
-  logic [(DS-1)*NK-1:0] ssec_cr03h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rst_r01h) begin
+      ssv_cr03h[DS-1:1]       <= '0;
+      sdv_cr03h[DS-1:1]       <= '0;
+      sov_cr03h[DS*NK-1:NK]   <= '0;
+    end else if (sv_en_cr02h) begin
+      ssv_cr03h[DS-1:1]       <= ssv_cr03h[DS-2:0];
+      sdv_cr03h[DS-1:1]       <= sdv_cr03h[DS-2:0];
+      sov_cr03h[DS*NK-1:NK]   <= sov_cr03h[(DS-1)*NK-1:0];
+    end
+  end
+  logic [(DS-2)*WR-1:0] srow_cr03h;    // stages 2 .. DS-1 (SW's row and sections), stage d at d-2
+  logic [(DS-2)*NK-1:0] ssec_cr03h;
   logic [(DS-1)*WT-1:0] stag_cr03h;
   logic [(DS-1)*2-1:0]  sdro_cr03h;
   logic [WR-1:0] srow_n_cr03h;
@@ -680,10 +694,16 @@ module rcu_lanes #(
   end
   for (genvar d = 3; d < DS + 1; d++) begin : g_swb
     wire sw_en_cr03h = sdv_cr03h[d-2];
+    if (d < DS) begin : g_rs   // SW's row and sections end at stage DS-1
+      always_ff @(posedge rcu_core_clk) begin
+        if (sw_en_cr03h) begin
+          srow_cr03h[(d-2)*WR +: WR] <= srow_cr03h[(d-3)*WR +: WR];
+          ssec_cr03h[(d-2)*NK +: NK] <= ssec_cr03h[(d-3)*NK +: NK];
+        end
+      end
+    end
     always_ff @(posedge rcu_core_clk) begin
       if (sw_en_cr03h) begin
-        srow_cr03h[(d-2)*WR +: WR] <= srow_cr03h[(d-3)*WR +: WR];
-        ssec_cr03h[(d-2)*NK +: NK] <= ssec_cr03h[(d-3)*NK +: NK];
         stag_cr03h[(d-2)*WT +: WT] <= stag_cr03h[(d-3)*WT +: WT];
         sdro_cr03h[(d-2)*2 +: 2]   <= sdro_cr03h[(d-3)*2 +: 2];
       end

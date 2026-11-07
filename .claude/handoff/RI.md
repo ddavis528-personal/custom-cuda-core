@@ -46,8 +46,15 @@ architect may approve only if the end meets module NGD without the flop; can't m
    relaunched warp's first row (>= 2 cycles after its map). Notes 2-9 in the row.
    Lessons: run tools/check-1d.sh before a gate (the linter misreads 1'b0 in a wire's concat and a
    for loop's <= bound); run tools/regen.sh after any merge before testing (sim/generated not checked in).
-1. Next phase: rcu_mem and rcu_lanes (docs/rcu-impl.md phase 4; exits M1, M2), then lane/SFU
-   descriptor pipes (lwb_d/swb_d) at LANE 7 / SFU 12, then assembly (M5-M7).
+1. Phase 4 rcu_lanes + rcu_mem (exits M1, M2): RTL, benches (lanes_tb, mem_tb; controls
+   bypage/immpos, align/pstlane), units rcu_lanes/rcu_mem (COPIES 32; _c4 local), ngd.json each,
+   run-rtl.sh. 7e8fb4d on gate-scratch/RI; then CG-3 fixes in lanes (SFU valid stage 1 ungated,
+   lact in the ll gate) and mem's asserts out of the generate (Yosys name clash): uncommitted while
+   check-ngd/check-cg rerun (~/ccv-logs/chk-lm.log). Next: clean -> commit, run-rtl.sh, gate
+   (split), push; RI row to RA: act_cr02h budget (lanes), class-bit arrival 5 (lanes+mem), bank
+   L/M read-request decode at assembly, held unused groups vs spec "0", SW data/lane mask at
+   assembly, no MIU lead flops in rcu_mem (slices + pred hold them), DCGE figures.
+   Then assembly (M5-M7).
 2. RI-18 CLOSED (RI rev 31): TI 41c82d8 runs the control on stub and model. Merge 41c82d8 at the next sweep.
 3. RI-16: RI's part done (rerun at 7/12 passes); NGD read on lane_rcu_res at assembly (12 without flop).
 4. RI-11/RI-13 (TI rev 332): verify on merged tip, close RI-13 (and RI-11 for RCU).
