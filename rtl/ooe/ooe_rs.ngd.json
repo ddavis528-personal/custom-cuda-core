@@ -102,6 +102,12 @@
       "by": "OA",
       "date": "2026-11-03",
       "why": "OA's response re:OI-104 (OA tab, 2026-11-03, rev 315): each port's kind and class with its row, as row_code_cq01h, from the same Rename stage flops"
+    },
+    "cmpl_idx_cq00h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-11-07",
+      "why": "OA's response re:OI-120 (OA tab rev 373): the raw completion payload lands as cmpl_l does, from the link's last flop through OOE's 0-NGD boundary, so it takes cmpl_l's arrival 2 (OA OI-58, V-75)"
     }
   }
 }
