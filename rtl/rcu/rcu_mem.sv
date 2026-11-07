@@ -114,6 +114,8 @@ module rcu_mem #(
       v_cr02h  <= iv_cr01h;
       wk_cr02h <= iw_cr01h;
     end
+  end
+  always_ff @(posedge rcu_core_clk) begin
     lsrc_cr02h <= lsrc_cr01h;
   end
   assign mwk_cr02h = wk_cr02h;

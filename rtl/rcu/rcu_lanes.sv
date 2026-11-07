@@ -204,6 +204,8 @@ module rcu_lanes #(
       v_cr02h  <= iv_cr01h;
       wk_cr02h <= {NWK{iw_cr01h}};
     end
+  end
+  always_ff @(posedge rcu_core_clk) begin
     lsec_cr02h <= lsec_cr01h;
     lsrc_cr02h <= lsrc_cr01h;
     limm_cr02h <= limm_cr01h;
