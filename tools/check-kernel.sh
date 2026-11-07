@@ -837,17 +837,19 @@ fi
 # misses, so OOE issues it on the speculated hit, on stale lanes, and again
 # when the data comes. Its check is held and keyed by the pass's active
 # lanes, so the replay clears the speculated issue's failure.
-#   ret-held-by-lanes: the stub keys it by the lanes returned, and the
+#   ret-held-by-lanes: the RCU keys it by the lanes returned, and the
 #   speculated pass, returning lane 0 alone, is never cleared
-# The stub's side for now (CCV_RCU_IMPL=stub); RI adds the RCU model's
-# under the same name, and its run joins this control then.
-CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/retmiss/oracle.jsonl --break ret-held-by-lanes \
-  >"$B/kernel_ret-held-by-lanes.log" 2>&1
-if grep -q "^CHECK rcu: seq 6 ret pass returns lanes 00000001, oracle 49249249" "$B/kernel_ret-held-by-lanes.log"; then
-  say "--break ret-held-by-lanes: a replayed ret's pass" "PASS (stub; retmiss seq 6's speculated issue held)"
-else
-  bad "--break ret-held-by-lanes" "a replayed ret keyed by its returned lanes went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-held-by-lanes.log")"
-fi
+# Run on both RCUs, the stub and the model (RI's 350729e, RI-18): each must
+# catch it with the same line.
+for impl in stub model; do
+  CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/retmiss/oracle.jsonl --break ret-held-by-lanes \
+    >"$B/kernel_ret-held-by-lanes-$impl.log" 2>&1
+  if grep -q "^CHECK rcu: seq 6 ret pass returns lanes 00000001, oracle 49249249" "$B/kernel_ret-held-by-lanes-$impl.log"; then
+    say "--break ret-held-by-lanes ($impl): a replayed ret's pass" "PASS (retmiss seq 6's speculated issue held)"
+  else
+    bad "--break ret-held-by-lanes ($impl)" "a replayed ret keyed by its returned lanes went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-held-by-lanes-$impl.log")"
+  fi
+done
 # .shared through SPM (TI's rev 230): MIU forms passes of one word a bank,
 # SPM serves a bank one pass a cycle, and each CTA slot has its own region;
 # and FET parks lanes ccv-sim blocked at a barrier wait (TI-40).
