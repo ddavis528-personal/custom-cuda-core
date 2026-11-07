@@ -450,7 +450,7 @@ module rcu_mig #(
   logic [WD-1:0]    dm_pd_cr04h;
 
   // The row decided now, one-hot: past the row in A+1.
-  wire [NR:0] dm_noh_cr02h = dm_v_cr03h ? {dm_oh_cr02h[NR-1:0], 1'b0} : dm_oh_cr02h;
+  wire [NR:0] dm_noh_cr02h = dm_v_cr03h ? (dm_oh_cr02h << 1) : dm_oh_cr02h;
   wire [WC:0] dm_ncr_cr02h = (WC+1)'(dm_cr_cr02h) - (WC+1)'(dm_v_cr03h) + (WC+1)'(ocrq_cr02h);
   wire dm_p16_cr02h = dm_noh_cr02h[NG];
   wire dm_want_cr02h = dm_busy_cr02h & (dm_wc_cr02h == 2'd0) & ~dm_noh_cr02h[NR] &
@@ -508,7 +508,7 @@ module rcu_mig #(
   logic [WMR-1:0] dm_rown_cr03h;
   always_comb begin
     dm_rown_cr03h = '0;
-    for (int r = 0; r <= NR; r++) dm_rown_cr03h |= dm_oh_cr02h[r] ? WMR'(r) : '0;
+    for (int r = 0; r < NR + 1; r++) dm_rown_cr03h |= dm_oh_cr02h[r] ? WMR'(r) : '0;
   end
   wire dm_pay_en_cr03h = dm_v_cr03h;
   always_ff @(posedge rcu_core_clk) begin

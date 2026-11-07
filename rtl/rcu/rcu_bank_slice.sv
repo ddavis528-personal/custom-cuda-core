@@ -156,8 +156,8 @@ module rcu_bank_slice #(
   // sections) is the R op's or migration's, selected in the row cycle:
   // R2's by the R op's decode (the R op first: migration holds back, the
   // Migration tab), RW's by migration's flopped decision.
-  wire [NR-1:0] rd_en_cr01h = rd_v_cr01h | {g2_v_cr01h, {(NR-1){1'b0}}};
-  wire [NW-1:0] wr_en_cr01h = wr_v_cr01h | {gw_v_cr01h, {(NW-1){1'b0}}};
+  wire [NR-1:0] rd_en_cr01h = rd_v_cr01h | (NR'(g2_v_cr01h) << (NR - 1));
+  wire [NW-1:0] wr_en_cr01h = wr_v_cr01h | (NW'(gw_v_cr01h) << (NW - 1));
   wire r2r_cr01h = rd_v_cr01h[NR-1] & r2u_cr01h;   // R2 is the R op's
   wire gws_cr01h = gw_v_cr01h & gw_sel_cr01h;      // RW is the restore's
   logic [NR*WR-1:0] rdr_cr01h;
