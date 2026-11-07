@@ -383,6 +383,7 @@ struct Env {
     uint64_t t_ready = 0;
     unsigned T = 0;
     unsigned P = 0;              ///< a CAS's pd, as A2 names it (OI-127)
+    bool has_p = false;          ///< P is named (pp0 is a register when pred_zero is not 0)
   };
   std::map<uint64_t, Atom> atom;
   unsigned atom_mlc_pct = 0;                     ///< atomic reads that report an MLC miss
@@ -876,7 +877,9 @@ struct Env {
       // An atomic's consumers wake once, on its last write (V-71): an
       // earlier read is never a speculation a replay may clean up.
       errors.push_back("V-71: tid " + std::to_string(tid) + " reads atomic tid " + std::to_string(it->second.tid) +
-                       "'s result at " + std::to_string(t) + ", before its last pass");
+                       "'s result at " + std::to_string(t) + ", before its last pass (" + (pred ? "pp" : "p") +
+                       std::to_string(preg) + ", readable at " + std::to_string(at) + "; writer issues " +
+                       issues_of[it->second.tid] + "; reader issues " + issues_of[tid] + ")");
       return;
     }
     if (t < at) {
@@ -998,8 +1001,9 @@ struct Env {
                        " ppdst " + std::to_string(is.ppdst) + ", want " + (want_pd ? "its pd" : "none"));
     if (is.pred_we) {
       if (is.merge) checkRead(is.tid, is.ppold, true, -1);
-      if (a.P && a.P != is.ppdst) errors.push_back("OI-127: tid " + std::to_string(is.tid) + "'s A2 renames pd between passes");
+      if (a.has_p && a.P != is.ppdst) errors.push_back("OI-127: tid " + std::to_string(is.tid) + "'s A2 renames pd between passes");
       a.P = is.ppdst;
+      a.has_p = true;
       pready[is.ppdst] = {t, ~uint64_t(0) >> 1, is.tid, 1, 0, false, false};
     }
     const unsigned lat = cfg.unitLat(1);
@@ -1064,7 +1068,7 @@ struct Env {
       if (!c.more) {
         a.final = true;
         if (gready.count(a.T)) gready[a.T].late = when + data_after_cmpl;
-        if (a.P && pready.count(a.P) && pready[a.P].tid == m.tid) pready[a.P].late = when + data_after_cmpl;
+        if (a.has_p && pready.count(a.P) && pready[a.P].tid == m.tid) pready[a.P].late = when + data_after_cmpl;
       }
     }
     cmpls.insert({when, c});
