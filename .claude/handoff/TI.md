@@ -33,13 +33,29 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 301, OA 346, IS 190, TI 349, OI 296, CP 155, DA 111,
-RA 88, RI 20 (2026-11-06; OA 363 read only for re:OI-115). Latest TI open:
-TI-51 (rev 346).
+Conventions 17, AR 310, OA 368, IS 190, TI 354, OI 306, CP 155, DA 114,
+RA 91, RI 22 (2026-11-06). Latest TI open: TI-51 (rev 346).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 
 ## State
+- 2026-11-06 PM: #79 PUSHED 17720a0 (full gate PASS). Sweep PUSHED 2281ab8
+  (7 branches: 80102643 30, 9eb50716 28, 126afa13 16, 57eff422 13 incl.
+  OI-112 93457a4, 3868632d 11, 888218a3 7, c22116ce 2; release 89db27a,
+  snapshot-2026-11-06-2281ab8 local only, tag refused). PUSHED dc380a1
+  (full gate PASS, cg 7043s ngd 6827s): 255436f (AR 309: DPI flopped send
+  end refused in ccv_links.no_flop, check-links 5 no_flop controls,
+  2(N + bnd_rx) texts) + 6c020b9 + 2281ab8 + RI's ccr-888218a3-20cauz
+  (RI-17: a90cb8f d2ca2d7 3c912d1 269efe6). Then 8c1b55c (C9 approved,
+  DA-114; Daniel's zero-cycle bar in no_flop doc), scoped gate-push from
+  ti-bnd (branch ti-ar309), log scratchpad/gp-c9.log. On PASS: TI row to
+  RI (RI-17 merged at dc380a1) and re:DA-114 note; fast-forward ti-ret. TI rows today: 350 re:RI-16 (#79; AR OI
+  RI rung), 351 re:AR 309 (AR rung; AR 310 confirmed the check-ngd rule,
+  amended -> task #83, build when the first ccv_<type> RTL top lands), 352
+  re:RA 91 (Daniel: zero-cycle rx ends only for IPC; RI-16 zero-cycle arm =
+  drop lane_rcu_res from RCU except, LANE 7/SFU 12; RI RA rung), 353 re:OA
+  367 (C9 held; no notice), 354 re:OA 368 / DA-114 (C9 approved; OOE's own
+  entry lands with ccv_ooe's RTL top; OA OI rung).
 - 2026-11-06: PUSHED 1a9a3e8 (full gate PASS; the first try died on a full
   disk: ccache 5 GB and old sw-*/build cleared) and 0ce9c12 (sum of parts,
   full gate PASS, cg 4673s ngd 4563s). TI rows: 347 re:OI-18 (OOE defaults,
