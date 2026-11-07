@@ -135,7 +135,7 @@ void drive(Vccv_common_chk_bank &bank, Machine &m) {
     const ChanDesc &cd = kChans[ci.chan];
     for (unsigned s = 0; s != cd.rate; ++s) {
       const unsigned k = ci.slot_base + s;
-      const SlotSignals o = slots[k].at(ci.src_stages);
+      const SlotSignals o = slots[k].at(ci.bnd_src + ci.src_stages);
       setBit(bank.valid, k, o.valid);
       setBit(bank.credit, k, o.credit);
       setBit(bank.stall, k, o.stall);
@@ -256,7 +256,7 @@ int main(int argc, char **argv) {
                       brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-src-clear" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
                       brk == "xfer-unsigned" || brk == "xfer-ignored" || brk == "chw-mark-always" ||
-                      brk == "ret-no-stay" || brk == "pred-taken-any" ||
+                      brk == "ret-no-stay" || brk == "pred-taken-any" || brk == "ret-held-by-lanes" ||
                       // .shared and SPM (TI's rev 230); FET's barrier parking (TI-40)
                       brk == "spm-one-pass" || brk == "spm-no-wait" || brk == "spm-shared-region" ||
                       brk == "bar-park-off" || brk == "held-over-r" || brk == "held-no-clear" ||
@@ -292,10 +292,12 @@ int main(int argc, char **argv) {
     };
     std::FILE *f = std::fopen(dump_wiring.c_str(), "w");
     if (!f) { std::fprintf(stderr, "cannot write %s\n", dump_wiring.c_str()); return 1; }
+    // Every flop on the path, as the SV top counts it: the link's stages and
+    // each end's boundary flop (pipe(); AR's revs 300 and 301).
     for (const ChanInst &ci : kChanInsts)
       for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
         std::fprintf(f, "%s %u %u %s %s %u\n", kChans[ci.chan].name, ci.inst, s,
-                     name(ci.src).c_str(), name(ci.dst).c_str(), ci.stages);
+                     name(ci.src).c_str(), name(ci.dst).c_str(), ci.pipe());
     std::fclose(f);
     return 0;
   }
@@ -358,7 +360,7 @@ int main(int argc, char **argv) {
   // The drain covers the longest link: its stages each way, and a queue of
   // its deeper credits to empty.
   unsigned max_stages = 0;
-  for (const ChanInst &ci : kChanInsts) max_stages = std::max<unsigned>(max_stages, ci.stages);
+  for (const ChanInst &ci : kChanInsts) max_stages = std::max<unsigned>(max_stages, ci.pipe());
   const uint64_t kReset = 2, kDrain = 16 + 6 * max_stages, kBreakAt = 6;
   for (uint64_t c = 0; c != cycles; ++c) {
     const bool in_reset = c < kReset;
@@ -373,7 +375,7 @@ int main(int argc, char **argv) {
     // its payload lands 2 + N cycles on, and the credit goes back then.
     auto prompt = [&](unsigned k, uint64_t v, unsigned late = 0) {
       if (kChans[m.chanInstOf(k).chan].fixed_lat &&
-          c == v + 2 + m.chanInstOf(k).stages + late)
+          c == v + 2 + m.chanInstOf(k).pipe() + late)
         m.rx(k).forceCredit();
     };
     m.step(in_reset, [&] {
@@ -385,9 +387,9 @@ int main(int argc, char **argv) {
       // repeater stages, N cycles after the receiver raised it.
       if (brk == "stall-all")
         for (unsigned k = 0; k != kNumSlots; ++k) {
-          if (c == kBreakAt + 1 + m.chanInstOf(k).stages)
+          if (c == kBreakAt + 1 + m.chanInstOf(k).pipe())
             m.tx(k).forceValid(wellFormed(m, k));
-          prompt(k, kBreakAt + 1 + m.chanInstOf(k).stages);
+          prompt(k, kBreakAt + 1 + m.chanInstOf(k).pipe());
         }
       // atomic-all: a whole group (legal), then ONE slot's credit, then ONE
       // slot's valid. Each is legal for the credit checker -- slot 0 has a
@@ -405,15 +407,15 @@ int main(int argc, char **argv) {
           if (kChans[ci.chan].fixed_lat) {
             for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
               prompt(ci.slot_base + s, kBreakAt);
-            if (c == kBreakAt + 5 + ci.stages)
+            if (c == kBreakAt + 5 + ci.pipe())
               m.tx(ci.slot_base).forceValid(wellFormed(m, ci.slot_base));
-            prompt(ci.slot_base, kBreakAt + 5 + ci.stages);
+            prompt(ci.slot_base, kBreakAt + 5 + ci.pipe());
             continue;
           }
           // The credit after the message has arrived: N stages later on a
           // repeated link, or it would be a phantom where the bank watches.
-          if (c == kBreakAt + 3 + ci.stages) m.rx(ci.slot_base).forceCredit();
-          if (c == kBreakAt + 5 + ci.stages)
+          if (c == kBreakAt + 3 + ci.pipe()) m.rx(ci.slot_base).forceCredit();
+          if (c == kBreakAt + 5 + ci.pipe())
             m.tx(ci.slot_base).forceValid(wellFormed(m, ci.slot_base));
         }
       // lockstep-all: instance 0's slot 0 alone -- a valid, then (legally,
