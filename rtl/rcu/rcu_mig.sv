@@ -243,7 +243,8 @@ module rcu_mig #(
   end
 
   // ---- Restore FIFO state (declared here: the restore pick reads it) -----
-  logic [F-1:0]   f_v_cr02h, f_dead_cr02h, f_r16_cr02h, hd_cr02h, tl_cr02h;
+  logic [F-1:0]   f_v_cr02h, f_dead_cr02h, hd_cr02h, tl_cr02h;
+  logic           f_r16_cr02h [F];   // mig_row is 16
   logic [WW-1:0]  f_w_cr02h [F];
   logic [NG-1:0]  f_rg_cr02h [F];    // mig_row one-hot, GPR rows (row 16 in f_r16)
   logic [WD-1:0]  f_dat_cr02h [F];
@@ -265,8 +266,8 @@ module rcu_mig #(
   // Next cycle's head, for the restore pick: the head that stays (live
   // unless it goes dead now), or a row landing into the empty FIFO. A head
   // that moves is not predicted (the pick waits a cycle).
-  wire hn_live_cr01h = ~hd_en_cr02h & (hd_v_cr02h ? ~|(hd_cr02h & fdn_cr02h)
-                                                  : prxv_cr01h & |(tl_cr02h & hd_cr02h));
+  wire hn_hd_cr02h = ~hd_en_cr02h & hd_v_cr02h & ~|(hd_cr02h & fdn_cr02h);
+  wire hn_pw_cr01h = ~hd_en_cr02h & ~hd_v_cr02h & prxv_cr01h & |(tl_cr02h & hd_cr02h);
 
   // ---- Picks and launch --------------------------------------------------
   // Both picks are flopped one-hots of a map entry and its command, made a
@@ -306,15 +307,17 @@ module rcu_mig #(
   wire dl_cr02h = dlp_cr02h & ~killed(dk_w_cr02h, kact_cr02h, kmn_cr02h);
   wire rl_cr02h = rlp_cr02h & ~killed(hd_w_cr02h, kact_cr02h, kmn_cr02h);
 
-  // Entries a kill drops this cycle, and every entry leaving.
+  // Entries a kill drops this cycle, and every entry leaving: a launch the
+  // kill blocks drops its entries as a kill's, so the possible launches
+  // name them (shallower than the launches).
   logic [Q-1:0] mq_kd_cr02h, cq_kd_cr02h, mq_clr_cr02h, cq_clr_cr02h;
   always_comb begin
     for (int i = 0; i < Q; i++) begin
       mq_kd_cr02h[i] = mq_v_cr02h[i] & killed(mq_w_cr02h[i], kact_cr02h, kmn_cr02h);
       cq_kd_cr02h[i] = cq_v_cr02h[i] & killed(cq_w_cr02h[i], kact_cr02h, kmn_cr02h);
     end
-    mq_clr_cr02h = (dl_cr02h ? dk_mi_cr02h : '0) | (rl_cr02h ? rk_mi_cr02h : '0) | mq_kd_cr02h;
-    cq_clr_cr02h = (dl_cr02h ? dk_ci_cr02h : '0) | (rl_cr02h ? rk_ci_cr02h : '0) | cq_kd_cr02h;
+    mq_clr_cr02h = (dlp_cr02h ? dk_mi_cr02h : '0) | (rlp_cr02h ? rk_mi_cr02h : '0) | mq_kd_cr02h;
+    cq_clr_cr02h = (dlp_cr02h ? dk_ci_cr02h : '0) | (rlp_cr02h ? rk_ci_cr02h : '0) | cq_kd_cr02h;
   end
   wire [Q-1:0] mq_vn_cr02h = (mq_v_cr02h & ~mq_clr_cr02h) | mq_land_cr01h;
   wire [Q-1:0] cq_vn_cr02h = (cq_v_cr02h & ~cq_clr_cr02h) | cq_land_cr01h;
@@ -355,7 +358,7 @@ module rcu_mig #(
   // launches (a kill's drops are seen a cycle on, above).
   logic [Q-1:0] dkn_mi_cr02h, dkn_ci_cr02h, rkn_mi_cr02h, rkn_ci_cr02h;
   always_comb begin
-    logic [Q-1:0] msa, csa, hit, rhit;
+    logic [Q-1:0] msa, csa, hit;
     logic [Q-1:0] mat [Q];
     msa = mq_v_cr02h & ~(dlp_cr02h ? dk_mi_cr02h : '0) & ~(rlp_cr02h ? rk_mi_cr02h : '0);
     csa = cq_v_cr02h & ~(dlp_cr02h ? dk_ci_cr02h : '0) & ~(rlp_cr02h ? rk_ci_cr02h : '0);
@@ -364,17 +367,17 @@ module rcu_mig #(
         mat[i][j] = msa[i] & csa[j] & (mq_w_cr02h[i] == cq_w_cr02h[j]) & (mq_d_cr02h[i] == cq_d_cr02h[j]);
     for (int i = 0; i < Q; i++) begin
       hit[i] = |mat[i] & ~mq_d_cr02h[i];
-      rhit[i] = |mat[i] & mq_d_cr02h[i] & hn_live_cr01h &
-                (hd_v_cr02h ? (mq_w_cr02h[i] == hd_w_cr02h) : (mq_w_cr02h[i] == pw_cr01h));
+      rkn_mi_cr02h[i] = |mat[i] & mq_d_cr02h[i] &
+                        ((hn_hd_cr02h & (mq_w_cr02h[i] == hd_w_cr02h)) |
+                         (hn_pw_cr01h & (mq_w_cr02h[i] == pw_cr01h)));
+      // That warp's one restore command (read only beside its map).
+      rkn_ci_cr02h[i] = csa[i] & cq_d_cr02h[i] &
+                        ((hn_hd_cr02h & (cq_w_cr02h[i] == hd_w_cr02h)) |
+                         (hn_pw_cr01h & (cq_w_cr02h[i] == pw_cr01h)));
     end
     dkn_mi_cr02h = lowest(hit);
-    rkn_mi_cr02h = rhit;
     dkn_ci_cr02h = '0;
-    rkn_ci_cr02h = '0;
-    for (int i = 0; i < Q; i++) begin
-      dkn_ci_cr02h |= {Q{dkn_mi_cr02h[i]}} & lowest(mat[i]);
-      rkn_ci_cr02h |= {Q{rkn_mi_cr02h[i]}} & lowest(mat[i]);
-    end
+    for (int i = 0; i < Q; i++) dkn_ci_cr02h |= {Q{dkn_mi_cr02h[i]}} & lowest(mat[i]);
   end
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
@@ -390,24 +393,31 @@ module rcu_mig #(
     end
   end
 
-  // Credits: pending counts, one out a cycle per channel (RI-6 (a)). A
-  // launch frees one of each; a kill's drops are never a launch's.
+  // Credits: pending counts, one out a cycle per channel (RI-6 (a)), one
+  // per entry leaving. The credit outputs have their own flops, the
+  // counts' next value nonzero (an output's register is held to its budget
+  // on every path it starts).
   logic [WN-1:0] mcn_cr02h, ccn_cr02h;
-  wire [WN-1:0] mfree_cr02h = WN'(dl_cr02h) + WN'(rl_cr02h) + WN'($countones(mq_kd_cr02h));
-  wire [WN-1:0] cfree_cr02h = WN'(dl_cr02h) + WN'(rl_cr02h) + WN'($countones(cq_kd_cr02h));
-  wire mcn_en_cr02h = (mcn_cr02h != '0) | dl_cr02h | rl_cr02h | kact_cr02h;
-  wire ccn_en_cr02h = (ccn_cr02h != '0) | dl_cr02h | rl_cr02h | kact_cr02h;
+  logic          mcr_o_cr02h, ccr_o_cr02h;
+  wire [WN-1:0] mcnn_cr02h = mcn_cr02h + WN'($countones(mq_clr_cr02h)) - WN'(mcn_cr02h != '0);
+  wire [WN-1:0] ccnn_cr02h = ccn_cr02h + WN'($countones(cq_clr_cr02h)) - WN'(ccn_cr02h != '0);
+  wire mcn_en_cr02h = (mcn_cr02h != '0) | dlp_cr02h | rlp_cr02h | kact_cr02h;
+  wire ccn_en_cr02h = (ccn_cr02h != '0) | dlp_cr02h | rlp_cr02h | kact_cr02h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
-      mcn_cr02h <= '0;
-      ccn_cr02h <= '0;
+      mcn_cr02h   <= '0;
+      ccn_cr02h   <= '0;
+      mcr_o_cr02h <= 1'b0;
+      ccr_o_cr02h <= 1'b0;
     end else begin
-      if (mcn_en_cr02h) mcn_cr02h <= mcn_cr02h + mfree_cr02h - WN'(mcn_cr02h != '0);
-      if (ccn_en_cr02h) ccn_cr02h <= ccn_cr02h + cfree_cr02h - WN'(ccn_cr02h != '0);
+      if (mcn_en_cr02h) mcn_cr02h <= mcnn_cr02h;
+      if (ccn_en_cr02h) ccn_cr02h <= ccnn_cr02h;
+      mcr_o_cr02h <= mcn_en_cr02h & (mcnn_cr02h != '0);
+      ccr_o_cr02h <= ccn_en_cr02h & (ccnn_cr02h != '0);
     end
   end
-  assign mcr_cr02h = mcn_cr02h != '0;
-  assign ccr_cr02h = ccn_cr02h != '0;
+  assign mcr_cr02h = mcr_o_cr02h;
+  assign ccr_cr02h = ccr_o_cr02h;
 
   // ---- Demotion engine ---------------------------------------------------
   logic [WW-1:0]    dm_w_cr02h;
@@ -416,7 +426,9 @@ module rcu_mig #(
   logic [NR:0]      dm_oh_cr02h;   // the rows sent, one-hot: bit r, row r next (NR: all sent)
   logic [1:0]       dm_wc_cr02h;
   logic [WC-1:0]    dm_cr_cr02h;
-  logic             dm_v_cr03h, dm_r16_cr03h, dm_wk_cr03h;
+  logic             dm_v_cr03h;
+  (* keep *) logic  dm_vo_cr03h, dm_wk_cr03h;   // ov's and the wake's own flops
+  logic             dv_o_cr01h;                 // the D leads' own flop
   logic [WW-1:0]    dm_pw_cr04h;
   logic [WMR-1:0]   dm_prow_cr04h;
   logic [WD-1:0]    dm_pd_cr04h;
@@ -428,6 +440,7 @@ module rcu_mig #(
   wire dm_want_cr02h = dm_busy_cr02h & (dm_wc_cr02h == 2'd0) & ~dm_noh_cr02h[NR] &
                        (dm_ncr_cr02h != '0) & (dm_p16_cr02h | ~r2b_cr02h);
   wire dm_kill_cr02h = killed(dm_w_cr02h, kact_cr02h, kmn_cr02h);
+  wire dm_r16_cr03h = dm_oh_cr02h[NG];                            // the row in A+1 is 16
   wire dm_end_cr03h = dm_v_cr03h & dm_r16_cr03h;                  // row 16 goes out
   wire dm_busyn_cr02h = dl_cr02h | (dm_busy_cr02h & ~dm_end_cr03h & ~dm_kill_cr02h);
 
@@ -436,13 +449,17 @@ module rcu_mig #(
     if (rst_r01h) begin
       dm_busy_cr02h <= 1'b0;
       dm_v_cr03h    <= 1'b0;
-      dm_r16_cr03h  <= 1'b0;
+      dm_vo_cr03h   <= 1'b0;
       dm_wk_cr03h   <= 1'b0;
+      dv_o_cr01h    <= 1'b0;
     end else begin
       dm_busy_cr02h <= dm_busyn_cr02h;
       dm_v_cr03h    <= dm_want_cr02h & ~ost_cr02h;
-      dm_r16_cr03h  <= dm_p16_cr02h;
+      dm_vo_cr03h   <= dm_want_cr02h & ~ost_cr02h;
       dm_wk_cr03h   <= dm_busyn_cr02h;
+      // The D leads from row 14 on (a cycle early at most: a lead only
+      // readies the read), while the engine stays busy.
+      dv_o_cr01h    <= dm_busy_cr02h & ~dm_end_cr03h & ~dm_kill_cr02h & (|dm_noh_cr02h[NR:NG-2]);
     end
   end
   // The map, whenever the engine is free and a pick holds (the launch but
@@ -485,7 +502,7 @@ module rcu_mig #(
       dm_pd_cr04h   <= dm_r16_cr03h ? {{(WD - NP * 32){1'b0}}, dq_cr03h} : rd2_cr03h;
     end
   end
-  assign ov_cr03h   = dm_v_cr03h;
+  assign ov_cr03h   = dm_vo_cr03h;
   assign ow_cr04h   = dm_pw_cr04h;
   assign orow_cr04h = dm_prow_cr04h;
   assign odat_cr04h = dm_pd_cr04h;
@@ -493,13 +510,13 @@ module rcu_mig #(
 
   // Read requests. R2: the next row's map entry (a 16:1 one-hot AND-OR on
   // flops; the zero register past row 15), the lead while busy. D0-D3: the
-  // predicate map, the lead from row 15 on.
+  // predicate map, the lead from row 15 on (its flop above).
   always_comb begin
     r2row_cr02h = (dm_noh_cr02h[NG] | dm_noh_cr02h[NR]) ? ZROW : '0;
     for (int a = 0; a < NG; a++) r2row_cr02h |= {WR{dm_noh_cr02h[a]}} & dm_g_cr02h[a*WR +: WR];
   end
   assign r2v_cr01h  = dm_busy_cr02h;
-  assign dv_cr01h   = {NP{dm_busy_cr02h & (dm_noh_cr02h[NG-1] | dm_noh_cr02h[NG] | dm_noh_cr02h[NR])}};
+  assign dv_cr01h   = {NP{dv_o_cr01h}};
   assign drow_cr02h = dm_p_cr02h;
 
   // ---- Restore engine ----------------------------------------------------
@@ -510,12 +527,17 @@ module rcu_mig #(
   logic [F-1:0]     rs_sel_cr03h, rs_sel_cr04h;
   logic             rs_cr_cr04h;
   logic             rsc_o_cr02h, e16_o_cr02h;      // rs_can and e_16, for the outputs alone
+  logic             rwsel_o_cr03h;                 // rwsel's own flop
 
   // The entry decided now: the head, past a write already in A+1.
   wire [F-1:0] e_cr02h = rs_v_cr03h ? rot(hd_cr02h) : hd_cr02h;
   wire e_v_cr02h = |(e_cr02h & f_v_cr02h);
   wire e_dead_cr02h = |(e_cr02h & f_dead_cr02h);
-  wire e_16_cr02h = |(e_cr02h & f_r16_cr02h);
+  logic e_16_cr02h;
+  always_comb begin
+    e_16_cr02h = 1'b0;
+    for (int i = 0; i < F; i++) e_16_cr02h |= e_cr02h[i] & f_r16_cr02h[i];
+  end
   // From flops alone: a live row is at e and nothing blocks it but RW. The
   // row is the engine's warp's (PCA sends a restore's rows contiguously,
   // RA-28 (b); mig_rs_warp below checks it).
@@ -535,6 +557,7 @@ module rcu_mig #(
       rs_sel_cr03h  <= '0;
       rs_sel_cr04h  <= '0;
       rs_cr_cr04h   <= 1'b0;
+      rwsel_o_cr03h <= 1'b0;
     end else begin
       rs_busy_cr02h <= rs_busyn_cr02h;
       rs_v_cr03h    <= rs_want_cr02h;
@@ -544,6 +567,7 @@ module rcu_mig #(
       rs_sel_cr03h  <= e_cr02h;
       rs_sel_cr04h  <= rs_sel_cr03h;
       rs_cr_cr04h   <= rs_v_cr04h | dpop_cr02h;
+      rwsel_o_cr03h <= rs_want_cr02h & ~e_16_cr02h;
     end
   end
   // The map, whenever the engine is free and the head's pick holds.
@@ -558,8 +582,10 @@ module rcu_mig #(
 
   // The FIFO: land at the tail under the flopped valid, pop at the write's
   // A+2 or a dead head, head advanced in the write's A+1. A row of a warp
-  // in mig_kmask goes dead a cycle after it lands (or at K+1), unless it is
-  // decided or in its write: those write.
+  // in mig_kmask goes dead a cycle after it lands (or at K+1); one decided
+  // or in its write writes all the same (a dead row pops only at the head,
+  // never beside a write). The write's pop is the entry behind the head:
+  // the head moved past it in A+1.
   wire tl_en_cr01h = prxv_cr01h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
@@ -571,11 +597,10 @@ module rcu_mig #(
     end
   end
   wire [NR-1:0] prow1h_cr01h = NR'(1) << prow_cr01h;
-  wire [F-1:0] fly_cr02h = (rs_v_cr03h ? rs_sel_cr03h : '0) | (rs_v_cr04h ? rs_sel_cr04h : '0);
   for (genvar i = 0; i < F; i++) begin : g_f
     wire land_cr01h = prxv_cr01h & tl_cr02h[i];
-    wire pop_cr02h = (rs_v_cr04h & rs_sel_cr04h[i]) | (dpop_cr02h & hd_cr02h[i]);
-    wire kd_cr02h = f_v_cr02h[i] & ~f_dead_cr02h[i] & ~fly_cr02h[i] & kmask_cr02h[f_w_cr02h[i]];
+    wire pop_cr02h = (rs_v_cr04h & hd_cr02h[(i + 1) % F]) | (dpop_cr02h & hd_cr02h[i]);
+    wire kd_cr02h = f_v_cr02h[i] & ~f_dead_cr02h[i] & kmask_cr02h[f_w_cr02h[i]];
     assign fvn_cr02h[i] = land_cr01h | (f_v_cr02h[i] & ~pop_cr02h);
     assign fdn_cr02h[i] = ~land_cr01h & (f_dead_cr02h[i] | kd_cr02h);
     assign f16n_cr02h[i] = land_cr01h ? prow1h_cr01h[NG] : f_r16_cr02h[i];
@@ -608,6 +633,7 @@ module rcu_mig #(
   wire rscn_cr02h = rs_busyn_cr02h & |(en_cr02h & fvn_cr02h) & ~|(en_cr02h & fdn_cr02h) &
                     ~(rs_want_cr02h & e_16_cr02h) & ~rs_l16_cr03h;
   wire e16n_cr02h = |(en_cr02h & f16n_cr02h);
+  `CCV_ASSERT(mig_pop_sel, !(rs_v_cr04h && rs_sel_cr04h != rot(rot(rot(hd_cr02h)))))
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       rsc_o_cr02h <= 1'b0;
@@ -632,7 +658,7 @@ module rcu_mig #(
     for (int a = 0; a < NG; a++) rwrown_cr03h |= {WR{rg[a]}} & rs_g_cr02h[a*WR +: WR];
   end
   assign rwv_cr02h   = rsc_o_cr02h & ~e16_o_cr02h;
-  assign rwsel_cr03h = rs_v_cr03h & ~rs_l16_cr03h;
+  assign rwsel_cr03h = rwsel_o_cr03h;
   assign rwrow_cr03h = rwrown_cr03h;
   assign rwdat_cr04h = wdat_cr04h;
   assign gv_cr02h    = rsc_o_cr02h & e16_o_cr02h;
