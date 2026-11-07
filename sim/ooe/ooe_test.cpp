@@ -3276,7 +3276,9 @@ void testMemFault(bool sec = false) {
     }
     if (control) {
       g_test = sec ? "sections: mem fault (control)" : "mem fault (control)";
-      std::printf("  %-24s %s\n", "control fa-youngest", caught ? "caught" : "MISSED");
+      // One line for both layouts (check-ooe-unit counts the lines); each
+      // layout's catch is still required.
+      if (sec) std::printf("  %-24s %s\n", "control fa-youngest", caught ? "caught" : "MISSED");
       EXPECT(caught, "a register taking every completion should break V-74");
     }
   }
