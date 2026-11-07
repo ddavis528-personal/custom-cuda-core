@@ -62,8 +62,11 @@ Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"):
          (rtl/phys/ccv_common_rpt.sv BOUNDARY; Daniel, 2026-11-05), so the
          block's paths run from them within the stage; a no-flop end
          (params/links.json no_flop) is the block's own register at 0 NGD,
-         which this holds at the wrapper. The 12-a-side port budget stays
-         only between modules inside a block.
+         which this holds at the wrapper. At a flopped end, a block port
+         taken whole straight from or into the block's own flops is a
+         hidden stage, a second register beside the wrapper's (AR's rev
+         310). The 12-a-side port budget stays only between modules inside
+         a block.
          What the parts cannot see, which the flattened pass did: synthesis
          across a boundary (a constant, an unused output, a register
          duplicated or merged, two halves of a function mapping shallower
@@ -1112,7 +1115,64 @@ def ngd_keyed(units):
             if u.t is not None and getattr(u, "jf", None)]
 
 
-def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, params=None):
+def rtl_ends(name, root=ROOT):
+    """Block type `name`'s channel ends as (channel without ccv_, role, flopped):
+    role "src" for a sending end, "dst" for a receiving one; flopped when
+    params/links.json does not name the end no_flop, so the wrapper's
+    repeater holds its boundary flop."""
+    spec = importlib.util.spec_from_file_location(
+        "ccv_links", os.path.join(root, "tools", "ccv_links.py"))
+    lk = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lk)
+    ends, sd = lk.schema_ends(root)
+    nf = lk.no_flop(sorted(ends), ends, None, root)
+    out = []
+    for ch in sorted(ends.get(name, ())):
+        s, d = sd[ch]
+        for role, b in (("src", s), ("dst", d)):
+            if b == name:
+                out.append((ch, role, (name, ch) not in nf))
+    return out
+
+
+def hidden_stages(name, t, ends, straight):
+    """AR's rev 310 (TI rev 351's proposal, amended): at a FLOPPED end the
+    wrapper's repeater holds the boundary flop, so the block's own port must
+    not be a register of its own in series with it, a stage no derive
+    counts. A port is a slot's valid and payload together (its lead fields
+    ride the payload): refused when EVERY bit is straight from a flop (a
+    sending end) or straight into one (a receiving end); a bit with logic on
+    it is the block's own, timed to its port budget, so held tags straight
+    from flops beside it are fine. The fix is to drop the block's register,
+    or to name the end no_flop, where the block's flop is the boundary and
+    the straight-from-flop rule holds instead. Wake and the credit returns
+    are not the data port and are not held here; latency stays a dynamic
+    check (V-35). `straight(port, out)` is block_check's: [] when straight."""
+    fails = []
+    for ch, role, flopped in ends:
+        if not flopped:
+            continue
+        out = role == "src"
+        pat = re.compile(r"^(%s(?:_s\d+)?)_(valid|payload)$" % re.escape(ch))
+        groups = collections.OrderedDict()
+        for p in (t.outs if out else t.ins):
+            m = pat.match(base(p))
+            if m:
+                groups.setdefault(m.group(1), []).append(p)
+        for g, ports in groups.items():
+            if all(not straight(p, out) for p in ports):
+                fails.append(
+                    "block %s: %s is taken whole %s flops at a flopped %s end: with the "
+                    "wrapper's boundary flop that is a second register in series, a hidden "
+                    "stage (AR's rev 310); drop the block's register, or name the end "
+                    "no_flop in params/links.json"
+                    % (name, g, "straight from" if out else "straight into",
+                       "sending" if out else "receiving"))
+    return fails
+
+
+def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, params=None,
+                ends=None):
     """A block assembled, as a sum of parts (Daniel, 2026-11-06): no
     whole-block synthesis, no child synthesised with its parent. The
     hierarchy of `top` (the partition: the block's hardening wrapper, or the
@@ -1135,7 +1195,11 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
           instance's parameters (ro and ir 0 NGD, nothing straight
           through). The measurement, not the budget: a leaf's port budget
           is a bound, 0 only by the architect's choice, where the unit
-          measures the netlist the block instantiates.
+          measures the netlist the block instantiates;
+      (d) no hidden stage (AR's rev 310): inside a wrapper, a port of the
+          block's at a flopped end is not taken whole straight from or into
+          the block's own flops (hidden_stages). `ends` is the block's
+          channel ends, rtl_ends(name) when not given.
 
     The fanout term at the boundary: an input wired to more than 4 pins on
     a level's net is a buffer tree before its flops, so it is not straight
@@ -1258,6 +1322,9 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                          "carries no logic, so it goes straight into a flop, the interface "
                          "module's or, at a no-flop end, the block's own (AR's rev 285 (5)): %s"
                          % (name, i, "; ".join(why)))
+    if start != st.top and start in timings:
+        fails += hidden_stages(name, timings[start], rtl_ends(name) if ends is None else ends,
+                               lambda p, out: straight(start, None, p, out, ""))
     line = ("block %-8s sum of parts: %d level(s) timed alone for convergence, %d of %d "
             "instance(s) on units at their parameters, the boundary held by its parts "
             "(structural read %.1f s)" % (name, len(timings), n[0] - sum(
@@ -1799,6 +1866,27 @@ def selftest():
                and "W=8" in x for x in f)
            and any("ngd_fx_dst #(W=2)" in x for x in f),
            "a block instance at parameters no unit times passed: %s" % f)
+    #    The hidden stage at a flopped end (AR's rev 310): inside a
+    #    wrapper, a block port taken whole straight from (c, sending) or
+    #    into (r, receiving) the block's own flops is a second register
+    #    beside the wrapper's boundary flop. At no-flop ends it passes, and
+    #    a port with logic on one bit passes (per port, not per bit).
+    hid = [("c", "src", True), ("r", "dst", True)]
+    _, f = block_check("fx_hid", "ngd_fx_hwrp_reg", files, [], none, [],
+                       block="ngd_fx_hblk_reg", ends=hid)
+    expect(len(f) == 2 and any("c is taken whole straight from flops at a flopped sending"
+                               in x for x in f)
+           and any("r is taken whole straight into flops at a flopped receiving" in x
+                   for x in f),
+           "a block port taken whole straight from or into its flops at a flopped end "
+           "passed: %s" % f)
+    _, f = block_check("fx_hid_nf", "ngd_fx_hwrp_reg", files, [], none, [],
+                       block="ngd_fx_hblk_reg", ends=[(c, r, False) for c, r, _ in hid])
+    expect(not f, "a block's registered ports at no-flop ends were refused: %s" % f)
+    _, f = block_check("fx_hid_mix", "ngd_fx_hwrp_mix", files, [], none, [],
+                       block="ngd_fx_hblk_mix", ends=hid)
+    expect(not f, "ports with logic on one bit at flopped ends were refused as hidden "
+           "stages: %s" % f)
     #    No child is synthesised: a child with a combinational loop, which
     #    the strict Yosys refuses to synthesise (OI-44), under a parent timed
     #    alone; the same hierarchy synthesised with its children kept, as
