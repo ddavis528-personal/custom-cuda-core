@@ -1234,7 +1234,14 @@ it.
   stub starts one job a cycle, puts committed stores first and blocks
   every warp behind a held load. The spec's MIU has four pipes and holds
   only the load. AR rev 319 asks for that stub's stall causes and a
-  four-pipe rerun before any of it is booked.
+  four-pipe rerun before any of it is booked. TI's traces (rev 371) put
+  the step in the L1: evictions +73%, store hits -49%, L1 misses +23%.
+  The stub DCU defaults to 64 sets of 1 way (8 KiB, direct-mapped), and
+  nothing sets CCV_DCU_WAYS. The DCU spec settled 8 ways. The kernel's
+  three arrays start in 64 KiB-aligned windows, so a[i], b[i] and c[i]
+  share one set, and arrival order decides which line survives. AR rev
+  320 adds 8 ways to J10. If any booked delta was measured at 1 way and
+  moves by more than 0.2% at 8 ways, it is re-checked.
 
 ### PF-48 End-to-end parity on register state
 
