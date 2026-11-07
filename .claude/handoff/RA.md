@@ -175,7 +175,11 @@ AR 313: floorplan constraint recorded (Partitioning rev 55: RCU abuts all 32 lan
 C9 8/13 rerun not owed. TI 357: Z pushed f4ce0fd (full gate PASS) on infra-6msg93: links.json except now
 ooe_rcu_issue + miu_rcu_data; five controls retimed, none weakened. Merge at next sweep. Open for RA: the
 block-level 12 NGD check on lane_rcu_res at RCU's assembly (else Daniel).
-Bookmarks: OA 366, RA 95, RI 23, TI 357, DA 115, AR 313, OI 306, Conventions 17, CP 155.
+RI-19 (RI rev 28, rcu_mig 350729e, M5 met dm 65/rs 66 of 68): RA rev 96 confirmed kmask +2 clear for PCA rows
+(relaunched warp's first PCA row >=17 cycles after its first map); CONDITION: kmask must not drop map/command
+entries by level (RAU command can precede the map). Awaiting RI's confirmation + assertion. Migration rev 10.
+RI-16 rerun at 7/12 all green, IPC unchanged.
+Bookmarks: OA 366, RA 96, RI 28, TI 357, DA 115, AR 313, OI 306, Conventions 17, CP 155.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
