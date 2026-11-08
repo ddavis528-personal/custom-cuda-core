@@ -44,8 +44,8 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--2. IN FLIGHT 2026-11-08: chain-ri5 (~/ccv-logs/chain-ri5.sh, out chain-ri5.out) gates ri-wt2 branch ri-dec
-   (de9894d: module fixes, ccv_rcu.sv removed) and pushes. Then merge ri-retime (ri-wt4: d38ab59 retime,
+-2. IN FLIGHT 2026-11-08: chain-ri6 (chain-ri5 died: disk full from build/cg VCDs, ~9 GB; chain-ri6 rm -rf build/cg after the cg export). Was chain-ri5 (~/ccv-logs/chain-ri5.sh, out chain-ri5.out) gates ri-wt2 branch ri-dec
+   (de9894d: module fixes, ccv_rcu.sv removed) and pushes. ri-dec now fast-forwarded to ri-retime (ri-wt4: d38ab59 retime,
    f3f5de7 arrivals at fanout term + rcu_pred act_d pre-decode, 521d4fa stall flopped + stall2 control;
    all unit NGD/CG + run-rtl clean) and gate it the same way. Then, when TI's ti-ri22 (TI rev 381) lands:
    restore ccv_rcu.sv (gen: /home/user/ri-keep/gen_ccv_rcu.py; in 952dd81) + ccv_rcu.ngd.json (draft in /home/user/ri-keep;
