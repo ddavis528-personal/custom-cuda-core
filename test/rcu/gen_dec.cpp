@@ -76,7 +76,10 @@ int main() {
   for (unsigned u = 0; u != 7; ++u) std::printf("  localparam logic [2:0] U_%s = 3'd%u;\n", units[u], u);
   std::printf("  localparam logic [2:0] U_NONE = 3'd%u;\n", kNone);
   const char *rks[] = {"NONE", "BRA", "CALL", "RET", "PAND", "POR", "PXOR", "PMOVI", "MOVI",
-                       "SHIDXI", "SHIDXR", "SHUP", "SHDN", "SHBF", "VANY", "VALL", "BALLOT", "UNBAL"};
+                       "SHIDXI", "SHIDXR", "SHUP", "SHDN", "SHBF", "VANY", "VALL", "BALLOT", "UNBAL",
+                       "PMOV"};
+  static_assert(sizeof rks / sizeof *rks == unsigned(R::RKind::Pmov) + 1,
+                "rks names every RKind, in its order (Pmov last)");
   for (unsigned k = 0; k != sizeof rks / sizeof *rks; ++k)
     std::printf("  localparam logic [4:0] RK_%s = 5'd%u;\n", rks[k], k);
   const char *mks[] = {"NONE", "LOAD", "STORE", "PLOAD", "PSTORE", "FENCE"};

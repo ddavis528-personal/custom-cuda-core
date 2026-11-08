@@ -75,7 +75,8 @@ inline R::OpClass classOf(const OpInfo *op, bool copy, bool pred_copy) {
     case kPredLogic:
       oc.rk = !std::strcmp(op->name, "POR") ? R::RKind::Por
               : !std::strcmp(op->name, "PAND") ? R::RKind::Pand
-              : !std::strcmp(op->name, "PXOR") ? R::RKind::Pxor : R::RKind::None;
+              : !std::strcmp(op->name, "PXOR") ? R::RKind::Pxor
+              : !std::strcmp(op->name, "PMOV") ? R::RKind::Pmov : R::RKind::None;
       break;
     case kImm: oc.rk = op->pwrite ? R::RKind::PmovImm : R::RKind::Movi; break;
     default: break;

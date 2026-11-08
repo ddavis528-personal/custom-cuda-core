@@ -16,7 +16,7 @@
 // Runs: random traffic (the bench's ordinary run). --cg <idle|medium|high>
 // <vcd> runs one clock-gating scenario (tools/check-cg.py): idle is reset
 // and then nothing; medium an op on about a third of the cycles; high one
-// on most. Inputs change only with a message. --control <noalign|retlow>
+// on most. Inputs change only with a message. --control <noalign|retlow|pmovneg>
 // expects a wrong rule (a source's position ignored; ret's aux from the
 // highest active lane): the run must fail (test/rcu/run-rtl.sh). Exit 0 only with no
 // mismatch.
@@ -41,11 +41,11 @@
 namespace {
 
 constexpr unsigned kN = 32, kZero = 255, kPZero = 63;
-enum Kind : unsigned { None, Bra, Call, Ret, Pand, Por, Pxor, Pmov, Movi, ShI, ShR, ShU, ShD, ShB,
-                       VAny, VAll, Bal, Unb, kKinds };
-const char *kName[kKinds] = {"none", "bra", "call", "ret", "pand", "por", "pxor", "pmov", "movi",
+enum Kind : unsigned { None, Bra, Call, Ret, Pand, Por, Pxor, PmovI, Movi, ShI, ShR, ShU, ShD, ShB,
+                       VAny, VAll, Bal, Unb, Pmov, kKinds };
+const char *kName[kKinds] = {"none", "bra", "call", "ret", "pand", "por", "pxor", "pmov.i", "movi",
                              "shfl.idx.imm", "shfl.idx.reg", "shfl.up", "shfl.down", "shfl.bfly",
-                             "vote.any", "vote.all", "ballot", "unballot"};
+                             "vote.any", "vote.all", "ballot", "unballot", "pmov.p"};
 
 // ---- Port bits: plain integers and VlWide alike -----------------------
 template <typename T> void put(T &s, unsigned lsb, unsigned w, uint64_t v) {
@@ -76,7 +76,7 @@ unsigned span(unsigned w) { return w == 0 ? 4 : w == 1 ? 2 : 1; }
 unsigned secmask(unsigned w, unsigned pos) { return (((1u << span(w)) - 1u) << pos) & 15u; }
 uint32_t align(uint32_t row, unsigned pos, unsigned w) { return (row >> (8 * pos)) & em(w); }
 bool wg(unsigned k) { return k == Call || k == Movi || (k >= ShI && k <= ShB) || k == Bal; }
-bool wp(unsigned k) { return (k >= Pand && k <= Pmov) || k == VAny || k == VAll || k == Unb; }
+bool wp(unsigned k) { return (k >= Pand && k <= PmovI) || k == Pmov || k == VAny || k == VAll || k == Unb; }
 bool coll(unsigned k) { return (k >= ShI && k <= ShB) || k == VAny || k == VAll || k == Bal || k == Unb; }
 bool isbr(unsigned k) { return k >= Bra && k <= Ret; }
 bool uses0(unsigned k) { return k == Ret || (k >= ShI && k <= ShB) || k == Unb; }
@@ -231,7 +231,7 @@ const dectb::OpPool &pool(unsigned k) {
   }();
   return pools[k - 1];
 }
-// A kind no opcode decodes to (pxor: the ISA has none) is never drawn.
+// A kind no opcode decodes to is never drawn.
 bool decodable(unsigned k) { return !pool(k).empty(); }
 
 struct Gen {
@@ -332,7 +332,8 @@ struct Gen {
     case Pand: o.pval = o.rpa & o.rpb; break;
     case Por: o.pval = o.rpa | o.rpb; break;
     case Pxor: o.pval = o.rpa ^ o.rpb; break;
-    case Pmov: o.pval = o.imm; break;
+    case PmovI: o.pval = o.imm; break;
+    case Pmov: o.pval = control == "pmovneg" ? ~o.rpa : o.rpa; break;   // rpa: negate applied
     case Movi: gnew.fill(o.imm & e); break;
     case ShI: shfl([&](unsigned) { return cc; }); break;
     case ShR: shfl([&](unsigned l) { return v[1][l]; }); break;

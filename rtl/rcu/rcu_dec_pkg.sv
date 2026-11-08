@@ -53,6 +53,7 @@ package rcu_dec_pkg;
   localparam logic [4:0] RK_VALL = 5'd15;
   localparam logic [4:0] RK_BALLOT = 5'd16;
   localparam logic [4:0] RK_UNBAL = 5'd17;
+  localparam logic [4:0] RK_PMOV = 5'd18;
   localparam logic [2:0] MK_NONE = 3'd0;
   localparam logic [2:0] MK_LOAD = 3'd1;
   localparam logic [2:0] MK_STORE = 3'd2;
@@ -321,6 +322,7 @@ package rcu_dec_pkg;
       143: c = 27'h7e4e800;   // RCP_F32_P
       144: c = 27'h7e1c033;   // PXOR
       145: c = 27'h7e0c000;   // C_RECONV
+      146: c = 27'h7e1c093;   // PMOV
       511: c = pcopy ? 27'h7e0c806 : 27'h7e0c805;   // copy-only (A-38)
       default: c = 27'h0000007;
     endcase

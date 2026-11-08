@@ -103,9 +103,9 @@ module rcu_r #(
 
   // The model's RKind.
   localparam logic [4:0] K_BRA = 5'd1, K_CALL = 5'd2, K_RET = 5'd3, K_PAND = 5'd4,
-    K_POR = 5'd5, K_PXOR = 5'd6, K_PMOV = 5'd7, K_MOVI = 5'd8, K_SHI = 5'd9,
+    K_POR = 5'd5, K_PXOR = 5'd6, K_PMOVI = 5'd7, K_MOVI = 5'd8, K_SHI = 5'd9,
     K_SHR = 5'd10, K_SHU = 5'd11, K_SHD = 5'd12, K_SHB = 5'd13, K_VANY = 5'd14,
-    K_VALL = 5'd15, K_BAL = 5'd16, K_UNB = 5'd17;
+    K_VALL = 5'd15, K_BAL = 5'd16, K_UNB = 5'd17, K_PMOV = 5'd18;
 
   // The op-class decode (RI-21 (4)): the R slot carries no copy and no
   // atomic, so done_row and the predicate-copy flag only complete the call.
@@ -161,7 +161,8 @@ module rcu_r #(
   wire k_bal_cr02h  = kind_cr02h == K_BAL;
   wire k_vote_cr02h = kind_cr02h == K_VANY || kind_cr02h == K_VALL;
   wire k_unb_cr02h  = kind_cr02h == K_UNB;
-  wire k_plog_cr02h = kind_cr02h >= K_PAND && kind_cr02h <= K_PMOV;
+  wire k_plog_cr02h = (kind_cr02h >= K_PAND && kind_cr02h <= K_PMOVI) ||
+                      kind_cr02h == K_PMOV;
   wire k_br_cr02h   = kind_cr02h >= K_BRA && kind_cr02h <= K_RET;
   wire wg_cr02h     = k_call_cr02h | k_movi_cr02h | k_shf_cr02h | k_bal_cr02h;
   wire wp_cr02h     = k_plog_cr02h | k_vote_cr02h | k_unb_cr02h;
@@ -307,7 +308,8 @@ module rcu_r #(
       K_PAND:  pv_cr03h = rpa_cr03h & rpb_cr03h;
       K_POR:   pv_cr03h = rpa_cr03h | rpb_cr03h;
       K_PXOR:  pv_cr03h = rpa_cr03h ^ rpb_cr03h;
-      K_PMOV:  pv_cr03h = imm_cr03h;
+      K_PMOVI: pv_cr03h = imm_cr03h;
+      K_PMOV:  pv_cr03h = rpa_cr03h;   // pmov: ps0, its negate applied
       K_VANY:  begin pv_cr03h = {N{pany_cr03h}}; pm_cr03h = act_cr03h; end
       K_VALL:  begin pv_cr03h = {N{pall_cr03h}}; pm_cr03h = act_cr03h; end
       default: begin   // unballot: lane l's bit l, 0 past rs's width
@@ -358,7 +360,7 @@ module rcu_r #(
 
   // ---- Checks ----------------------------------------------------------------
   // Every op on R has an R kind; an op that writes a predicate has pred_we.
-  wire bad_kind_cr02h = kind_cr02h == 5'd0 || kind_cr02h > K_UNB ||
+  wire bad_kind_cr02h = kind_cr02h == 5'd0 || kind_cr02h > K_PMOV ||
                         (unit_cr02h != rcu_dec_pkg::U_RONLY && unit_cr02h != rcu_dec_pkg::U_COLL);
   `CCV_ASSERT(r_kind_named, !(iv_cr02h && bad_kind_cr02h))
   `CCV_ASSERT(pred_write_has_we, !(iv_cr02h && wp_cr02h && !pwe_cr02h))
