@@ -242,12 +242,16 @@ module ooe_sched #(
   localparam int RW = IRK > 2 ? $clog2(IRK) : 1;
   logic          rg_cq04h;
   (* keep *) logic force_cq04h;          // kept apart from its copy force_l (gnt_l)
+  // and a copy per RCU entry for select (fcp), each (* keep *): one force
+  // register's inverse fed every RCU request, 750 loads, 4 NGD of fanout
+  // at the head of the flop-to-flop path.
+  (* keep *) logic [NR-1:0] fcp_cq04h;
   (* keep *) logic [RW-1:0] rrun_cq04h;  // and rrun_l
   logic [RW-1:0] rnx_cq04h;
   assign rg_cq04h  = (gnt_cq04h[NR-1:0] & rrq_cq04h) != '0;
   assign rnx_cq04h = !rg_cq04h ? '0 : 32'(rrun_cq04h) >= IRK - 1 ? rrun_cq04h : rrun_cq04h + 1'b1;
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
-    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .hold_cq03h(hold_cq04h), .rhold_cq03h(force_cq04h),
+    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .hold_cq03h(hold_cq04h), .rhold_cq03h(fcp_cq04h),
     .vel_cq03h(vel_cq03h),
     .iss_cq03h(siss_cq03h), .dep_cq03h(sdep_cq03h), .slot_cq03h(sslot_cq03h), .res_cq03h(res_cq03h),
     .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h), .older_r_cq03h(older_r_cq03h),
@@ -338,6 +342,7 @@ module ooe_sched #(
     assign rrq_cq04h     = '0;
     assign rrun_cq04h    = '0;
     assign force_l_cq04h = 1'b0;
+    assign fcp_cq04h     = '0;
     assign rrun_l_cq04h  = '0;
   end else begin : g_idle_r
     always_ff @(posedge ooe_core_clk) begin
@@ -347,12 +352,14 @@ module ooe_sched #(
         force_cq04h   <= 1'b0;
         rrun_l_cq04h  <= '0;
         force_l_cq04h <= 1'b0;
+        fcp_cq04h     <= '0;
       end else if (gnt_en_cq03h) begin
         rrq_cq04h     <= rbit_cq03h;
         rrun_cq04h    <= rnx_cq04h;
         force_cq04h   <= mig_cq02h && 32'(rnx_cq04h) >= IRK - 2;
         rrun_l_cq04h  <= rnx_cq04h;
         force_l_cq04h <= mig_cq02h && 32'(rnx_cq04h) >= IRK - 2;
+        fcp_cq04h     <= {NR{mig_cq02h && 32'(rnx_cq04h) >= IRK - 2}};
       end
     end
   end
