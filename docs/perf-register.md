@@ -1263,7 +1263,7 @@ it.
   cm32 -1.42%, cm128 -5.67%. Dropping ooe_rcu_issue's receiving flop at
   RCU as well is S1 -3.48%, cm32 -1.98%, cm128 +0.09%, clean. That
   reopens AR rev 308: the end needs splits to meet the port rules, so it
-  goes to Daniel once RA and OA cost them (AR rev 323). Dropping
+  is RA's to approve under DA 115 if RA's and OA's splits meet 12 NGD on both sides, and goes to Daniel only if they cannot (AR revs 323, 324). Dropping
   miu_rcu_data's flop is S1 -0.26% but cm128 +2.21%, and it trips OOE's
   OA-17 check, so it stays flopped. C9 and PHYS_REGS 160 are re-checked
   in J12.
