@@ -95,6 +95,41 @@ else
   bad "links.json no_flop validator" "${missed# }"
 fi
 
+# credit_on_receipt (AR's rev 322, RA-41), on a copy of the design's own file
+# with one entry changed: each refused by name. On a zero-cycle end there is
+# no boundary flop to load the credit from; off its listed ends no schema
+# contract carries the receiving block's promise.
+refused=0; missed=""
+while IFS='|' read -r want edit; do
+  [ -z "$want" ] && continue
+  python3 - "$edit" >"$T/cor.json" <<'PY'
+import json, sys
+d = json.load(open("params/links.json"))
+exec(sys.argv[1], {"cor": d["credit_on_receipt"], "nf": d["no_flop"]})
+json.dump(d, sys.stdout)
+PY
+  if out=$(CCV_LINKS="$T/cor.json" python3 tools/gen-skel.py --check 2>&1); then
+    missed="$missed [accepted: $edit]"
+  elif ! grep -q -- "$want" <<<"$out"; then
+    missed="$missed [$want: $(grep -m1 -v problem <<<"$out" | xargs)]"
+  else
+    refused=$((refused + 1))
+  fi
+done <<'CASES'
+a zero-cycle end (no_flop)|cor.append({"end": "lane_rcu_res@rcu", "why": "x"})
+is not ooe_rcu_issue's destination|cor.append({"end": "ooe_rcu_issue@ooe", "why": "x"})
+not listed: ccv_ooe_rcu_map carries no credit_on_receipt contract|nf[1]["except"].append("ooe_rcu_map"); cor.append({"end": "ooe_rcu_map@rcu", "why": "x"})
+listed twice|cor.append(dict(cor[0]))
+says no why|cor[0].pop("why")
+an end is '<channel>@<block type>'|cor.append({"end": "ooe_rcu_issue", "why": "x"})
+unknown key|cor[0]["when"] = "x"
+CASES
+if [ -z "$missed" ]; then
+  say "links.json: credit_on_receipt off its ends refused" "PASS ($refused cases, each by name)"
+else
+  bad "links.json credit_on_receipt validator" "${missed# }"
+fi
+
 # -- 2. a busy split, end to end -------------------------------------------------
 if ! command -v verilator >/dev/null 2>&1 || ! command -v yosys >/dev/null 2>&1; then
   say "split configuration" "SKIP -- needs verilator and yosys"

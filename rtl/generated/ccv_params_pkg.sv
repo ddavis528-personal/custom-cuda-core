@@ -82,6 +82,10 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); AR-12)
   localparam int CCV_PRF_MEMOP_READ_BITS = 3072;
 
+  // PRF read bandwidth into R, RCU's own unit, a budget line (RA-16 (d)): three full rows of CCV_WARP_LANES x CCV_W_LANE_DATA bits a cycle for R's operand reads, beside the lanes' ports and the memops' (CCV_L_PRF_LANE_READ_BITS, CCV_PRF_MEMOP_READ_BITS).  Derived: = 3 * CCV_WARP_LANES * CCV_W_LANE_DATA.
+  // decided at the block-level grill-me (RA-16 (d); AR's revs 263 and 265, TI's rev 284)
+  localparam int CCV_PRF_RCU_READ_BITS = 3072;
+
   // One ROB per tier-1 warp.
   // decided at the block-level grill-me (grill-me 2026-09-23)
   localparam int CCV_ROB_INSTANCES = 4;
@@ -524,13 +528,17 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: RCU per-block session
   localparam int CCV_P_FOOT_MIN_PRED = 0;
 
-  // Slots on ccv_rcu_ooe_done, a free pool. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). The lane term counts results per section per fixed-latency class, not per unit, so FP's minimum adds no term while FP shares the lane's latency class: select gives a section to one op a cycle, so an FP op and an integer op in one section cannot complete together. A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here (four slots), a bank write port per section, and a lat_class code of its own (OA's response IS-7).  Derived: = CCV_SECTIONS // CCV_P_FOOT_MIN_INT + CCV_SECTIONS // CCV_P_FOOT_MIN_SFU + 2.
+  // Slots on ccv_rcu_ooe_done, a free pool, derived from the pipe list (pipes in this file; RA-16 (a)): 4 + 1 + 2, as CCV_SECTIONS // CCV_P_FOOT_MIN_INT + CCV_SECTIONS // CCV_P_FOOT_MIN_SFU + 2 gave before it. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). The lane term counts results per section per fixed-latency class, not per unit, so FP's minimum adds no term while FP shares the lane's latency class: select gives a section to one op a cycle, so an FP op and an integer op in one section cannot complete together. A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here (four slots), a bank write port per section, and a lat_class code of its own (OA's response IS-7).  Derived: = done_slots().
   // PROVISIONAL -- decided by: LANE per-block session
   localparam int CCV_DONE_SLOTS = 7;
 
   // The one slot of ccv_rcu_ooe_done that R's RCU-only latency class completes on (CCV_LAT_RCU: branch, ret, barrier arrive and wait, and the predicate logic, pmov and movi that RCU executes alone), and that no other class takes. R issues one op a cycle and the class has one fixed latency, so at most one such done lands a cycle: one slot, never contended, and one outcome register in OOE rather than one per slot. branch_taken, branch_mask and aux are defined only on it. The other classes take the lowest free of the rest, which CCV_DONE_SLOTS sizes for them: four lane, one SFU, one warp-collective. One name for OOE, the RCU stub and the checks, so none can disagree with a constant (OA's response OI-93).  Derived: = CCV_DONE_SLOTS - 2.
   // PROVISIONAL -- decided by: OOE architect
   localparam int CCV_DONE_SLOT_RCU = 5;
+
+  // GPR write ports on each RCU PRF bank, derived from the pipe list (pipes in this file): one per GPR write pipe, lane (LW), SFU (SW), load (MW) and R (RW). The collectives run in R and write at A+2, as RCU-only ops do, so they share RW: the RCU stub checks that every R-pipe class writes at A+2 (call's link and every collective mode), and a class that wrote at another offset would need a port of its own. Whether to fold to 3 is Daniel's, with Phase 1's figures (RA-29).  Derived: = gpr_write_ports().
+  // PROVISIONAL -- decided by: RCU per-block session
+  localparam int CCV_PRF_GPR_WRITE_PORTS = 4;
 
   // Bypass penalty within one group (integer to integer, FP to FP, SFU to SFU): cycles after the producer's fastest bypass point, CCV_LAT_LANE_BYP for a lane producer.
   // PROVISIONAL -- decided by: LANE per-block session (register OA-4)
@@ -551,6 +559,10 @@ package ccv_prov_pkg;
   // Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 12 at the defaults (RA's rev 95: ccv_lane_rcu_res's end at RCU zero-cycle). RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 16 at the defaults, its issue end flopped; 17 before RA's rev 95), derived, never written as a number (AR's rev 288).  Derived: = CCV_LAT_SFU_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res').
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_SFU = 12;
+
+  // RCU's kill drain: the cycles from kill_valid landing at RCU until RCU may raise kill_ack (the level of RA-23, AR's rev 264), so long that everything RCU accepted before the kill has finished as scheduled and its done has landed in OOE. RCU keeps no warp identity, so it searches for nothing: a counter of about 5 bits, loaded with this, and its quiescence is the count expired, no demotion row of a killed warp left to send, and no command, map or restore row held for one (AR's rev 264). 2 (the kill flopped, CG-5 and RST-1, and the last accepted issue) + the issue crossing's repeater stages and bnd_rx + CCV_LAT_SFU, the longest class + 1 + the done crossing's: 16 at the defaults, ccv_ooe_rcu_issue's end at RCU flopped.  Derived: = 2 + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_SFU + 1 + link_n('rcu_ooe_done') + bnd_rx('rcu_ooe_done').
+  // PROVISIONAL -- decided by: generated
+  localparam int CCV_LAT_RCU_KILL_DRAIN = 16;
 
   // Full latency of lat_class 5, the warp-collective ops RCU executes (shfl, vote, ballot, unballot): issue to the result readable in the PRF. Cross-lane, so nothing bypasses from them (A-59). A placeholder until an RCU session confirms it.
   // PROVISIONAL -- decided by: RCU per-block session

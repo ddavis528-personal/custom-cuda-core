@@ -28,6 +28,10 @@ Choices the spec left open (RI-6, taken by RA rev 64):
 unit tests read) into the schema's three fields. No RCU event names a single
 instruction, so uid is 0. `CCV_RCU_EVLOG=<file>` writes the core's own form, one
 event a line.
+`CCV_RCU_STATS=<file>` writes the core's counters as JSON at the end of a run
+(as OOE's `CCV_OOE_STATS`): op counts, bypass selects, operand reads
+forwarded from MW (`rsrc_fwd`), migration rows, waits and restore holds, and
+the dones sent by done slot.
 
 | id | event | a | b | c |
 |---|---|---|---|---|

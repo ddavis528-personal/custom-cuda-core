@@ -744,7 +744,7 @@
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 61696,
-    "payload_hi": 1572864
+    "payload_hi": 786432
    }
   },
   {
@@ -759,8 +759,8 @@
     "instr_uid": 4611686018427387905,
     "unit": "instr",
     "channel_id": 3,
-    "payload_lo": 1573120,
-    "payload_hi": 1048576
+    "payload_lo": 786688,
+    "payload_hi": 524288
    }
   },
   {
@@ -1384,7 +1384,7 @@
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 62208,
-    "payload_hi": 14680064
+    "payload_hi": 7340032
    }
   },
   {
@@ -3128,7 +3128,7 @@
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 65024,
-    "payload_hi": 5767168
+    "payload_hi": 2883584
    }
   },
   {
@@ -3208,7 +3208,7 @@
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 61440,
-    "payload_hi": 28835840
+    "payload_hi": 17301504
    }
   },
   {
@@ -3320,7 +3320,7 @@
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 62976,
-    "payload_hi": 4194304
+    "payload_hi": 2097152
    }
   },
   {

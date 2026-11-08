@@ -76,6 +76,8 @@ struct Iss {   // one slot's issue
   bool neg, gt, pdt, br;
   uint32_t im;
   unsigned imm;   // R: [13:0]
+  unsigned ft = 0;   // S: footprint (sections), disjoint among a cycle's lane messages
+  bool lm = false;   // S: sends a lane message (lane, SFU or GPR copy)
 };
 struct Ld { unsigned slot, p; bool we; uint32_t am, pr; };
 struct Mg { unsigned port, row, orow; bool mrg; uint32_t m, mm, val; };
@@ -89,7 +91,7 @@ struct Cycle {
 
 extern int g_argc;
 extern char **g_argv;
-bool g_nofwd = false, g_nomerge = false;
+bool g_nofwd = false, g_nomerge = false, g_spbown = false;
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
@@ -100,7 +102,7 @@ struct Bench {
   std::array<uint32_t, kRows> row{};
   std::array<bool, kRows> known{};
   Cycle s1, s2;
-  unsigned cov_fwd = 0, cov_neg = 0, cov_force = 0, cov_pdata = 0, cov_merge = 0, cov_nomerge = 0, cov_br = 0, cov_zp = 0, cov_dm = 0;
+  unsigned cov_spb = 0, cov_fwd = 0, cov_neg = 0, cov_force = 0, cov_pdata = 0, cov_merge = 0, cov_nomerge = 0, cov_br = 0, cov_zp = 0, cov_dm = 0;
 
   explicit Bench(const char *vcd_path) {
     ctx = std::make_unique<VerilatedContext>();
@@ -174,6 +176,10 @@ struct Bench {
       put(dut->im_cr02h, i.slot * 32, 32, i.im);
       put(dut->gt_cr02h, i.slot, 1, i.gt);
       put(dut->pdt_cr02h, i.slot, 1, i.pdt);
+      if (i.slot < kNK) {
+        put(dut->ft_cr02h, i.slot * kNK, kNK, i.ft);
+        put(dut->lm_cr02h, i.slot, 1, i.lm);
+      }
       if (i.slot == kSR) {
         dut->br_cr02h = i.br;
         dut->rimm_cr02h = i.imm;
@@ -196,6 +202,11 @@ struct Bench {
 
     struct Want { unsigned what, idx; uint32_t v; };
     std::vector<Want> want;   // after the edge
+    // sec_pred_bit_a: lane l, section k = active[o][l] of k's owner o, 0
+    // without one; a section whose owner's active is unknown is not checked.
+    std::array<uint32_t, kNK> spb{}, spb_kn{};
+    spb_kn.fill(kAll);
+    bool spb_first = true;
     if (!rst) {
       // Demotion reads, before this cycle's writes.
       for (const Dm &d : s2.dm) {
@@ -208,7 +219,12 @@ struct Bench {
       // Stage I for s1's issues (A now): MIU's writes landing now are s1's loads.
       for (const Iss &i : s1.iss) {
         const unsigned gp = (i.slot == kSR && !i.gt) ? kZP : i.g;
-        if (!kn(gp)) continue;
+        if (!kn(gp)) {
+          if (i.slot < kNK && i.lm)
+            for (unsigned k = 0; k < kNK; ++k)
+              if ((i.ft >> k) & 1u) spb_kn[k] = 0;
+          continue;
+        }
         bool hit = false;
         const uint32_t raw = fwd(gp, s1.ld, &hit);
         const uint32_t gv = i.neg ? ~raw : raw;
@@ -220,6 +236,15 @@ struct Bench {
         cov_pdata += i.pdt;
         cov_zp += gp == kZP;
         want.push_back({0, i.slot, act});
+        // spbown (control): the first lane message owns every section.
+        const unsigned ft = g_spbown ? (spb_first ? 0xfu : 0u) : i.ft;
+        if (i.slot < kNK && i.lm) spb_first = false;
+        if (i.slot < kNK && i.lm)
+          for (unsigned k = 0; k < kNK; ++k)
+            if ((ft >> k) & 1u) {
+              spb[k] = act;
+              cov_spb += act != 0;
+            }
         if (i.slot < kNK) want.push_back({1, i.slot, gv});
         if (i.slot >= kNK && i.slot < kSR) want.push_back({2, i.slot - kNK, raw});
         if (i.slot == kSR) {
@@ -239,6 +264,14 @@ struct Bench {
     }
     dut->rcu_core_clk = 1;
     eval();
+    if (!rst)
+      for (unsigned k = 0; k < kNK; ++k)
+        for (unsigned l = 0; l < 32; ++l) {
+          if (!((spb_kn[k] >> l) & 1u)) continue;
+          ++checked;
+          const unsigned got = unsigned(get(dut->spb_cr03h, l * kNK + k, 1));
+          if (got != ((spb[k] >> l) & 1u)) fail("sec_pred_bit lane %u section %u: %x, want %x", l, k, got, (spb[k] >> l) & 1u);
+        }
     for (const Want &w : want) {
       uint32_t got = 0;
       const char *n = "";
@@ -306,9 +339,22 @@ struct Gen {
         if (g == kZP || !busy1[g]) return g;
       }
     };
+    unsigned ftaken = 0;
     for (unsigned s = 0; s < kNS; ++s) {
       if (!coin(p)) continue;
       Iss i{s, guard(), coin(0.4), coin(0.7), coin(0.15), coin(0.5), mask(), 0};
+      if (s < kNK) {
+        // A lane message's footprint: sections no other S slot of this
+        // cycle has, now and then none left (it sends nothing).
+        i.lm = coin(0.8);
+        if (i.lm) {
+          for (unsigned k = 0; k < kNK; ++k)
+            if (!((ftaken >> k) & 1u) && coin(0.4)) i.ft |= 1u << k;
+          ftaken |= i.ft;
+        } else {
+          i.ft = rnd(16);   // ignored without a lane message
+        }
+      }
       if (s == kSR) {
         const unsigned pa = guard(), pb = guard();
         i.imm = pa | unsigned(coin(0.3)) << 6 | pb << 7 | unsigned(coin(0.3)) << 13;
@@ -428,16 +474,17 @@ int run(const std::string &scenario, const char *vcd) {
   }
   b.step(none);
   b.step(none);
-  if (scenario != "idle" && (!b.cov_neg || !b.cov_force || !b.cov_pdata || !b.cov_merge ||
+  if (scenario != "idle" && (!b.cov_spb || !b.cov_neg || !b.cov_force || !b.cov_pdata || !b.cov_merge ||
                              !b.cov_nomerge || !b.cov_br || !b.cov_zp || !b.cov_dm ||
                              (!g_nofwd && !b.cov_fwd))) {
-    std::fprintf(stderr, "pred: coverage: fwd %u neg %u force %u pdata %u merge %u nomerge %u br %u zp %u dm %u\n",
-                 b.cov_fwd, b.cov_neg, b.cov_force, b.cov_pdata, b.cov_merge, b.cov_nomerge, b.cov_br,
+    std::fprintf(stderr, "pred: coverage: spb %u fwd %u neg %u force %u pdata %u merge %u nomerge %u br %u zp %u dm %u\n",
+                 b.cov_spb, b.cov_fwd, b.cov_neg, b.cov_force, b.cov_pdata, b.cov_merge, b.cov_nomerge, b.cov_br,
                  b.cov_zp, b.cov_dm);
     ++b.fails;
   }
-  std::printf("pred%s%s %s: %llu cycles, %u values checked, %u mismatches: %s\n",
-              g_nofwd ? ", control nofwd:" : "", g_nomerge ? ", control nomerge:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
+  std::printf("pred%s%s%s %s: %llu cycles, %u values checked, %u mismatches: %s\n",
+              g_nofwd ? ", control nofwd:" : "", g_nomerge ? ", control nomerge:" : "",
+              g_spbown ? ", control spbown:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
               (unsigned long long)b.cyc, b.checked, b.fails, b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }
@@ -453,6 +500,7 @@ int main(int argc, char **argv) {
     if (!std::strcmp(argv[i], "--control")) {
       g_nofwd = g_nofwd || !std::strcmp(argv[i + 1], "nofwd");
       g_nomerge = g_nomerge || !std::strcmp(argv[i + 1], "nomerge");
+      g_spbown = g_spbown || !std::strcmp(argv[i + 1], "spbown");
     }
   for (int i = 1; i + 2 < argc; ++i)
     if (!std::strcmp(argv[i], "--cg")) {

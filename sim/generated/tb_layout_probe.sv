@@ -61,7 +61,7 @@ module tb_layout_probe (
   output logic c2_f32,
   output logic [1:0] c2_f33,
   output logic c2_f34,
-  input  logic [192:0] c3,
+  input  logic [191:0] c3,
   output logic [6:0] c3_f0,
   output logic [1:0] c3_f1,
   output logic [4:0] c3_f2,
@@ -87,13 +87,12 @@ module tb_layout_probe (
   output logic [8:0] c3_f22,
   output logic [31:0] c3_f23,
   output logic [1:0] c3_f24,
-  output logic c3_f25,
-  output logic [3:0] c3_f26,
-  output logic [2:0] c3_f27,
+  output logic [3:0] c3_f25,
+  output logic [2:0] c3_f26,
+  output logic c3_f27,
   output logic c3_f28,
   output logic c3_f29,
-  output logic c3_f30,
-  output logic [5:0] c3_f31,
+  output logic [5:0] c3_f30,
   input  logic [343:0] c4,
   output logic [35:0] c4_f0,
   output logic [95:0] c4_f1,
@@ -469,13 +468,12 @@ module tb_layout_probe (
   assign c3_f22 = s3.opcode;
   assign c3_f23 = s3.imm;
   assign c3_f24 = s3.chwidth;
-  assign c3_f25 = s3.dispatch_fault;
-  assign c3_f26 = s3.lead_sec_mask;
-  assign c3_f27 = s3.lead_src_used;
-  assign c3_f28 = s3.lead_imm_used;
-  assign c3_f29 = s3.lead_merge_used;
-  assign c3_f30 = s3.lead_guard_used;
-  assign c3_f31 = s3.lead_guard_pred;
+  assign c3_f25 = s3.lead_sec_mask;
+  assign c3_f26 = s3.lead_src_used;
+  assign c3_f27 = s3.lead_imm_used;
+  assign c3_f28 = s3.lead_merge_used;
+  assign c3_f29 = s3.lead_guard_used;
+  assign c3_f30 = s3.lead_guard_pred;
   ccv_rcu_lane_ops_t s4;
   assign s4 = c4;
   assign c4_f0 = s4.sec_opcode;

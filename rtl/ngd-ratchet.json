@@ -3,21 +3,17 @@
   "modules": {},
   "fanout": {
     "ooe_go": {
-      "NGD-1": 27.6,
+      "NGD-1": 26.1,
       "NGD-2 lane_c_cq02h": 22.4,
-      "NGD-2 lane_v_cq02h": 25.4,
+      "NGD-2 lane_v_cq02h": 24.5,
       "NGD-2 take_cq02h": 19.3,
-      "NGD-2 wb_cq02h": 25.8,
-      "NGD-2 wt_cq02h": 25.8,
-      "NGD-3 ha_cq01h": 28.5,
-      "NGD-3 hv_cq01h": 29.7,
-      "NGD-3 pl_cq01h": 29.6,
-      "NGD-3 px_cq01h": 30.0,
-      "NGD-3 reach_cq01h": 26.2,
-      "NGD-3 ret_cq01h": 26.0,
-      "NGD-3 room_p_cq01h": 25.6,
-      "NGD-3 run_cq01h": 25.7,
-      "NGD-3 unmet_p_cq01h": 25.8,
+      "NGD-2 wb_cq02h": 24.5,
+      "NGD-2 wt_cq02h": 25.0,
+      "NGD-3 ha_cq01h": 27.9,
+      "NGD-3 hv_cq01h": 28.9,
+      "NGD-3 pl_cq01h": 27.2,
+      "NGD-3 px_cq01h": 28.0,
+      "NGD-3 reach_cq01h": 25.3,
       "NGD-7 utw_cq02h": 17.0
     },
     "ooe_ratread": {
@@ -88,12 +84,11 @@
       "NGD-3 v_cq01h": 31.6
     },
     "ooe_rob_w": {
-      "NGD-1": 31.7,
-      "NGD-3 al_n_cq02h": 29.3,
-      "NGD-3 dn_row_cq02h": 26.0,
-      "NGD-3 dn_tag_cq02h": 27.9,
-      "NGD-3 fl_slot_cq02h": 31.5,
-      "NGD-3 fl_v_cq02h": 31.7
+      "NGD-1": 29.9,
+      "NGD-3 al_n_cq02h": 29.2,
+      "NGD-3 dn_tag_cq02h": 26.3,
+      "NGD-3 fl_slot_cq02h": 31.1,
+      "NGD-3 fl_v_cq02h": 29.9
     },
     "ooe_rs": {
       "NGD-1": 29.4,

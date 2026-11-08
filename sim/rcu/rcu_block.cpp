@@ -17,6 +17,7 @@
 //     when the spec returns it.
 //   - CCV_RCU_EVLOG=<file>: the core's events, one a line.
 //===----------------------------------------------------------------------===//
+#include <string>
 #include "stub.h"
 #include "rcu_core.h"
 
@@ -67,8 +68,23 @@ R::OpClass classOf(const OpInfo *op, bool copy, bool pred_copy) {
     return oc;
   }
   if (op->cross) {
+    // O-85's collectives, by the op table's name (TI, 2026-11-07). The _R
+    // shuffles take their index from source port 1; vote and ballot read
+    // their predicate from imm (imm_kind 1), as predicate logic does.
     oc.unit = R::Unit::Coll;
-    oc.rk = R::RKind::ShflIdxImm;   // the op table's one collective: shfl.idx #lane
+    const std::string nm = op->name;
+    const bool reg = nm.size() > 2 && nm.compare(nm.size() - 2, 2, "_R") == 0;
+    oc.rk = nm == "SHFL_IDX" ? R::RKind::ShflIdxImm
+            : nm == "SHFL_IDX_R" ? R::RKind::ShflIdxReg
+            : nm.rfind("SHFL_UP", 0) == 0 ? R::RKind::ShflUp
+            : nm.rfind("SHFL_DOWN", 0) == 0 ? R::RKind::ShflDown
+            : nm.rfind("SHFL_BFLY", 0) == 0 ? R::RKind::ShflBfly
+            : nm == "VOTE_ANY" ? R::RKind::VoteAny
+            : nm == "VOTE_ALL" ? R::RKind::VoteAll
+            : nm == "BALLOT" ? R::RKind::Ballot
+            : nm == "UNBALLOT" ? R::RKind::Unballot : R::RKind::None;
+    oc.ireg = reg && oc.rk != R::RKind::ShflIdxReg;
+    if (op->nsrc == 0) oc.imm_used = true;   // vote, ballot: the predicate in imm
     return oc;
   }
   if (inRcu(op->cls)) {
@@ -113,6 +129,27 @@ public:
   }
   ~RcuModel() override {
     if (evlog_) std::fclose(evlog_);
+    // Sweep data, as OOE's CCV_OOE_STATS: RCU's counters, as JSON, when
+    // CCV_RCU_STATS names a file (docs/rcu-model.md).
+    const char *path = std::getenv("CCV_RCU_STATS");
+    if (!path || !*path) return;
+    FILE *f = std::fopen(path, "w");
+    if (!f) return;
+    const R::Core::Stats &s = core_.stats();
+    std::fprintf(f, "{\n  \"kernel\": \"%s\",\n  \"cycles\": %llu,\n  \"counters\": {\n", k_.name.c_str(), (unsigned long long)now_);
+    const std::pair<const char *, uint64_t> c[] = {
+        {"lane_ops", s.lane_ops}, {"r_ops", s.r_ops}, {"memops", s.memops}, {"dones", s.dones},
+        {"gpr_writes", s.gpr_writes}, {"pred_writes", s.pred_writes}, {"byp_sels", s.byp_sels},
+        {"rsrc_fwd", s.rsrc_fwd}, {"demote_rows", s.demote_rows}, {"restore_rows", s.restore_rows},
+        {"mig_r_waits", s.mig_r_waits}, {"mig_credit_waits", s.mig_credit_waits},
+        {"restore_holds", s.restore_holds}, {"max_demote_cycles", s.max_demote_cycles},
+        {"max_restore_cycles", s.max_restore_cycles}};
+    for (const auto &e : c) std::fprintf(f, "    \"%s\": %llu,\n", e.first, (unsigned long long)e.second);
+    std::fprintf(f, "    \"dones_slot\": [");
+    for (unsigned i = 0; i != R::kDoneSlots; ++i)
+      std::fprintf(f, "%s%llu", i ? ", " : "", (unsigned long long)s.dones_slot[i]);
+    std::fprintf(f, "]\n  }\n}\n");
+    std::fclose(f);
   }
   const char *kind() const override { return "rcu"; }
 
@@ -269,14 +306,30 @@ private:
       is.oc.unit = R::Unit::Lane;
       return is;
     }
+    // O-72's atomics (IS-21; AR-21): one opcode, three steps by done_row,
+    // each issued as its step's class: A1 an address like a load's (base
+    // port 0, index 1), A2 the lane op on T and rs, A3 a store of N (port 0).
+    // The lanes still see the atomic's opcode, which names A2's operation.
+    if (op && op->cls == kAtomic) {
+      // A CAS's own steps (OI-127): guarded, and A2 reads rs_cmp and
+      // rs_swap and writes pd.
+      const OpInfo *step = atomStep(is.done_row, op);
+      if (!step) {
+        k_.fail("rcu: rob tag %u's atomic issued on row %u, no step of it", is.tag, is.done_row);
+        is.oc.unit = R::Unit::Lane;
+        return is;
+      }
+      op = step;
+    }
+    // A guarded or masked CAS's copy (A-38) names its pd as well as rd. A2
+    // merges pd's inactive lanes from the same old name on every pass
+    // (OI-127, OA rev 380), so the copy leaves the predicate to it: the
+    // core models a copy's predicate half only for ld.pred's (TI, 11-08).
+    if (copy && is.pwe && is.dst != R::kZero) is.pwe = false;
     is.oc = classOf(op, copy, copy && is.pwe && is.dst == R::kZero);
     is.name = op ? op->name : "a copy";
-    // INTERIM until RA-18 lands (DEC's imm_kind 6, OOE's pc + length in
-    // imm): call's link is ccv-sim's, as the stub takes it (CP-9, AR-22).
-    // The core reads imm as the spec says; only this line feeds it.
-    if (is.oc.rk == R::RKind::Call)
-      if (const Record *r = rec(is.tid, "rcu"))
-        if (const RegVal *ld = r->gprDef()) is.imm = ld->v[0];
+    // call's link is OOE's pc + length in imm (imm_kind 6; RA-18, RA-30):
+    // the core reads it as the spec says.
     if (k_.brk == "dirty-zero") {
       k_.gpr[R::kZero].fill(0x5a5a5a5au);
       k_.pred[R::kPZero] = 0xa5a5a5a5u;

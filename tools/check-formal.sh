@@ -17,6 +17,10 @@
 #   full_bandwidth, N = 0, 1, 2: a launch      the same at a credit depth one
 #     every cycle at the credit-loop depth       short of the loop (Q-43)
 #     (Q-43)
+#   credit on receipt (FV_COR), N = 0-2:       a receiver's own credit flop in
+#     safety, full rate at 4 + 2N              series (FV_COR_SERIES): full
+#                                                bandwidth fails; one taking a
+#                                                message late: credit_per_msg
 #   non-vacuity: messages flow and the         (reach_* are asserted false:
 #     buffer fills, under the safety proofs'     their counterexamples ARE
 #     (absent) assumptions                       the witnesses)
@@ -250,6 +254,39 @@ for n in 0 1 2; do
     bad "built full bandwidth, N=$n" "depth $depth: $r; depth $((depth - 1)): $r2"
   fi
 done
+
+# -- credit on receipt (FV_COR; AR's rev 322, RA-41) ------------------------------
+# The destination end's boundary stage loads its credit from its own valid flop
+# (ccv_common_rpt CREDIT_ON_RECEIPT), the receiver taking every message the
+# cycle it lands: safety, and full rate at the same depth, 4 + 2N, not one less.
+# Its controls: a receiver that registers its own credit behind the boundary
+# flop (rcu_kill's flop, FV_COR_SERIES) -- the register in series credit on
+# receipt removes -- runs below full rate at that depth; and one that takes a
+# landed message late or never (FV_COR_LATE) breaks credit_per_msg.
+for n in 0 1; do
+  depth=$((LOOP + 2 * n))
+  r=$(prove "cor_safety_n$n" $n $depth "FV_BUILT FV_COR" -response_within_n,-conservation)
+  [ "$r" = proved ] && say "credit on receipt, N=$n: safety" "PASS (proved)" ||
+    bad "credit on receipt safety, N=$n" "$r ($B/cor_safety_n$n/abc.log)"
+  r=$(prove_bmc "cor_cons_n$n" $n $depth "FV_BUILT FV_COR" conservation)
+  [ "$r" = "bounded 40" ] && say "  ...conservation" "PASS (bounded, 40 cycles)" ||
+    bad "credit on receipt conservation, N=$n" "$r ($B/cor_cons_n$n/abc.log)"
+done
+for n in 0 1 2; do
+  depth=$((LOOP + 2 * n))
+  r=$(prove "cor_bw_n$n" $n $depth "FV_BUILT FV_COR FV_GREEDY" full_bandwidth)
+  r2=$(prove "cor_bw_short_n$n" $n $((depth - 1)) "FV_BUILT FV_COR FV_GREEDY" full_bandwidth)
+  r3=$(prove "cor_series_n$n" $n $depth "FV_BUILT FV_COR_SERIES FV_GREEDY" full_bandwidth)
+  if [ "$r" = proved ] && [ "${r2%% *}" = cex ] && [ "${r3%% *}" = cex ]; then
+    say "credit on receipt, full bandwidth, N=$n" "PASS (proved at $depth; $((depth - 1)): cex; flop in series: cex)"
+  else
+    bad "credit on receipt full bandwidth, N=$n" \
+        "depth $depth: $r; depth $((depth - 1)): $r2; flop in series at $depth: $r3"
+  fi
+done
+r=$(prove "cor_late" 1 $((LOOP + 2)) "FV_BUILT FV_COR FV_COR_LATE" credit_per_msg)
+[ "${r%% *}" = cex ] && say "  ...a message taken late: credit_per_msg fails" "PASS ($r)" ||
+  bad "credit on receipt, taken late" "$r: not refuted"
 
 # -- the properties can fail: mutants ---------------------------------------
 for spec in "double_pop:FV_MUT_DOUBLE_POP:credit_per_msg" \

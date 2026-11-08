@@ -1,7 +1,7 @@
-# Snapshot snapshot-2026-11-07-24d17a4
+# Snapshot snapshot-2026-11-08-fd3b0aa
 
 **A generated, read-only snapshot. Do not edit or merge it.** The source
-is `ti-b2` at `24d17a42e43e498ef9e514339083843f143aa7c6`, and this branch is rebuilt from source by
+is `ccr-9eb50716-lecnjf` at `fd3b0aace281df871c731968f9646ae06baad411`, and this branch is rebuilt from source by
 `tools/make-release.sh`; nothing here flows back.
 
 **Start with [`docs/walkthrough.md`](docs/walkthrough.md):** one kernel
@@ -24,8 +24,8 @@ What is here beyond the source tree at that commit:
 
 | | |
 |---|---|
-| Source | `ti-b2` @ `24d17a42e43e498ef9e514339083843f143aa7c6` |
-| Built | 2026-11-07 (UTC) |
+| Source | `ccr-9eb50716-lecnjf` @ `fd3b0aace281df871c731968f9646ae06baad411` |
+| Built | 2026-11-08 (UTC) |
 | Gate | `tools/verify.sh`: PASS |
 | Compiler snapshot | custom-cuda-complier `release` @ `e533ecdfabd1aa267e4cffd49a4d7e1e8c13b263` (source `45ce995c923e7267feb71d87f8f9c5edfefcf0df`) |
 | Verilator | Verilator 5.052 2026-09-05 rev v5.052 |
@@ -36,423 +36,451 @@ What is here beyond the source tree at that commit:
 
 | Kernel | Result |
 |---|---|
-| `addrhigh` | `name=addrhigh finished=1 cycles=85 from_fetch=54 retired=5 issue_groups=6 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=26/55 violations=0` |
-| `addrlimit` | `name=addrlimit finished=1 cycles=1073 from_fetch=1042 retired=5 issue_groups=5 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/55 violations=0` |
-| `addrneg` | `name=addrneg finished=1 cycles=85 from_fetch=54 retired=1 issue_groups=2 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=23/55 violations=0` |
-| `borrow` | `name=borrow finished=1 cycles=102 from_fetch=71 retired=7 issue_groups=7 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=21/55 violations=0` |
-| `brs` | `name=brs finished=1 cycles=102 from_fetch=71 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=23/55 violations=0` |
-| `byp` | `name=byp finished=1 cycles=120 from_fetch=89 retired=14 issue_groups=14 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `callret` | `name=callret finished=1 cycles=292 from_fetch=261 retired=40 issue_groups=40 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=30/55 violations=0` |
-| `chains` | `name=chains finished=1 cycles=97 from_fetch=66 retired=29 issue_groups=29 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=21/55 violations=0` |
-| `div` | `name=div finished=1 cycles=1012 from_fetch=981 retired=144 issue_groups=144 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=23/55 violations=0` |
-| `divchw` | `name=divchw finished=1 cycles=114 from_fetch=83 retired=5 issue_groups=6 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=22/55 violations=0` |
-| `divtail` | `name=divtail finished=1 cycles=664 from_fetch=633 retired=96 issue_groups=96 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=23/55 violations=0` |
-| `divtail2` | `name=divtail2 finished=1 cycles=1570 from_fetch=1539 retired=366 issue_groups=366 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=23/55 violations=0` |
-| `fence` | `name=fence finished=1 cycles=84 from_fetch=53 retired=7 issue_groups=7 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=30/55 violations=0` |
-| `gather` | `name=gather finished=1 cycles=268 from_fetch=237 retired=16 issue_groups=16 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `hit` | `name=hit finished=1 cycles=234 from_fetch=203 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `lanectx` | `name=lanectx finished=1 cycles=71 from_fetch=40 retired=10 issue_groups=10 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=29/55 violations=0` |
-| `lanectx2` | `name=lanectx2 finished=1 cycles=71 from_fetch=40 retired=10 issue_groups=10 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=29/55 violations=0` |
-| `late` | `name=late finished=1 cycles=175 from_fetch=144 retired=16 issue_groups=16 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `ldpar` | `name=ldpar finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `lnorm1` | `name=lnorm1 finished=1 cycles=2645 from_fetch=2614 retired=526 issue_groups=526 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=37/55 violations=0` |
-| `localsp` | `name=localsp finished=1 cycles=4245 from_fetch=4214 retired=40 issue_groups=40 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=32/55 violations=0` |
-| `loop` | `name=loop finished=1 cycles=2942 from_fetch=2911 retired=407 issue_groups=407 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=23/55 violations=0` |
-| `merge` | `name=merge finished=1 cycles=72 from_fetch=41 retired=9 issue_groups=9 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=21/55 violations=0` |
-| `missrun` | `name=missrun finished=1 cycles=123 from_fetch=92 retired=28 issue_groups=28 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `mload` | `name=mload finished=1 cycles=113 from_fetch=82 retired=11 issue_groups=11 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `mlp` | `name=mlp finished=1 cycles=128 from_fetch=97 retired=21 issue_groups=21 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `mwmiss` | `name=mwmiss finished=1 cycles=131 from_fetch=100 retired=88 issue_groups=88 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `narrowadd` | `name=narrowadd finished=1 cycles=237 from_fetch=206 retired=21 issue_groups=21 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=32/55 violations=0` |
-| `pguard` | `name=pguard finished=1 cycles=88 from_fetch=57 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=29/55 violations=0` |
-| `plog` | `name=plog finished=1 cycles=71 from_fetch=40 retired=10 issue_groups=10 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=21/55 violations=0` |
-| `pmovdiv` | `name=pmovdiv finished=1 cycles=107 from_fetch=76 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=22/55 violations=0` |
-| `predlane` | `name=predlane finished=1 cycles=930 from_fetch=899 retired=10 issue_groups=10 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `predmerge` | `name=predmerge finished=1 cycles=943 from_fetch=912 retired=9 issue_groups=9 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0` |
-| `predspill` | `name=predspill finished=1 cycles=970 from_fetch=939 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `predswap` | `name=predswap finished=1 cycles=1194 from_fetch=1163 retired=46 issue_groups=46 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0` |
-| `privwin` | `name=privwin finished=1 cycles=2220 from_fetch=2189 retired=52 issue_groups=52 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=34/55 violations=0` |
-| `provswap` | `name=provswap finished=1 cycles=2384 from_fetch=2353 retired=978 issue_groups=978 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0` |
-| `retmiss` | `name=retmiss finished=1 cycles=189 from_fetch=158 retired=19 issue_groups=19 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0` |
-| `roconst` | `name=roconst finished=1 cycles=78 from_fetch=47 retired=4 issue_groups=5 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=26/55 violations=0` |
-| `rogated` | `name=rogated finished=1 cycles=99 from_fetch=68 retired=7 issue_groups=8 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=26/55 violations=0` |
-| `rokill` | `name=rokill finished=1 cycles=107 from_fetch=76 retired=41 issue_groups=4536 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/55 violations=0` |
-| `rolaunch` | `name=rolaunch finished=1 cycles=76 from_fetch=45 retired=4 issue_groups=5 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=24/55 violations=0` |
-| `rolimit` | `name=rolimit finished=1 cycles=78 from_fetch=47 retired=4 issue_groups=5 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=26/55 violations=0` |
-| `roload` | `name=roload finished=1 cycles=107 from_fetch=76 retired=8 issue_groups=8 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `rope` | `name=rope finished=1 cycles=7760 from_fetch=7729 retired=354 issue_groups=354 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=34/55 violations=0` |
-| `ropediv` | `name=ropediv finished=1 cycles=1152 from_fetch=1121 retired=203 issue_groups=203 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=34/55 violations=0` |
-| `sel` | `name=sel finished=1 cycles=78 from_fetch=47 retired=8 issue_groups=8 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=29/55 violations=0` |
-| `sized` | `name=sized finished=1 cycles=2648 from_fetch=2617 retired=25 issue_groups=25 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=32/55 violations=0` |
-| `slotform` | `name=slotform finished=1 cycles=4370 from_fetch=4339 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=32/55 violations=0` |
-| `spinwait` | `name=spinwait finished=1 cycles=2280 from_fetch=2249 retired=211 issue_groups=211 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=34/55 violations=0` |
-| `spmbank` | `name=spmbank finished=1 cycles=187 from_fetch=156 retired=13 issue_groups=13 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=28/55 violations=0` |
-| `srd` | `name=srd finished=1 cycles=71 from_fetch=40 retired=6 issue_groups=6 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=29/55 violations=0` |
-| `stall` | `name=stall finished=1 cycles=559 from_fetch=528 retired=116 issue_groups=116 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `swap` | `name=swap finished=1 cycles=559 from_fetch=528 retired=174 issue_groups=174 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `transp4` | `name=transp4 finished=1 cycles=1189 from_fetch=1158 retired=976 issue_groups=976 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=37/55 violations=0` |
-| `unal` | `name=unal finished=1 cycles=139 from_fetch=108 retired=9 issue_groups=9 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/55 violations=0` |
-| `vadd` | `name=vadd finished=1 cycles=161 from_fetch=130 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0` |
-| `vadd4` | `name=vadd4 finished=1 cycles=241 from_fetch=210 retired=68 issue_groups=68 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0` |
-| `vaddslow` | `name=vaddslow finished=1 cycles=550 from_fetch=519 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0` |
+| `addrhigh` | `name=addrhigh finished=1 cycles=85 from_fetch=54 retired=5 issue_groups=6 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=26/55 violations=0` |
+| `addrlimit` | `name=addrlimit finished=1 cycles=1073 from_fetch=1042 retired=5 issue_groups=5 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=27/55 violations=0` |
+| `addrneg` | `name=addrneg finished=1 cycles=85 from_fetch=54 retired=1 issue_groups=2 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=23/55 violations=0` |
+| `atom` | `name=atom finished=1 cycles=8235 from_fetch=8204 retired=29 issue_groups=29 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=32/55 violations=0` |
+| `atomf` | `name=atomf finished=1 cycles=4555 from_fetch=4524 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/55 violations=0` |
+| `borrow` | `name=borrow finished=1 cycles=102 from_fetch=71 retired=7 issue_groups=7 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=21/55 violations=0` |
+| `brs` | `name=brs finished=1 cycles=102 from_fetch=71 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=23/55 violations=0` |
+| `byp` | `name=byp finished=1 cycles=120 from_fetch=89 retired=14 issue_groups=14 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `callret` | `name=callret finished=1 cycles=276 from_fetch=245 retired=40 issue_groups=40 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=30/55 violations=0` |
+| `cas` | `name=cas finished=1 cycles=6792 from_fetch=6761 retired=56 issue_groups=56 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=32/55 violations=0` |
+| `chains` | `name=chains finished=1 cycles=97 from_fetch=66 retired=29 issue_groups=29 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=21/55 violations=0` |
+| `coll` | `name=coll finished=1 cycles=79 from_fetch=48 retired=24 issue_groups=24 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=21/55 violations=0` |
+| `div` | `name=div finished=1 cycles=1012 from_fetch=981 retired=144 issue_groups=144 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=23/55 violations=0` |
+| `divchw` | `name=divchw finished=1 cycles=115 from_fetch=84 retired=5 issue_groups=6 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=22/55 violations=0` |
+| `divtail` | `name=divtail finished=1 cycles=664 from_fetch=633 retired=96 issue_groups=96 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=23/55 violations=0` |
+| `divtail2` | `name=divtail2 finished=1 cycles=1570 from_fetch=1539 retired=366 issue_groups=366 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=23/55 violations=0` |
+| `fence` | `name=fence finished=1 cycles=84 from_fetch=53 retired=7 issue_groups=7 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=30/55 violations=0` |
+| `gather` | `name=gather finished=1 cycles=268 from_fetch=237 retired=16 issue_groups=16 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `hit` | `name=hit finished=1 cycles=234 from_fetch=203 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `lanectx` | `name=lanectx finished=1 cycles=71 from_fetch=40 retired=10 issue_groups=10 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=29/55 violations=0` |
+| `lanectx2` | `name=lanectx2 finished=1 cycles=71 from_fetch=40 retired=10 issue_groups=10 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=29/55 violations=0` |
+| `late` | `name=late finished=1 cycles=175 from_fetch=144 retired=16 issue_groups=16 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `ldpar` | `name=ldpar finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `lnorm1` | `name=lnorm1 finished=1 cycles=2571 from_fetch=2540 retired=526 issue_groups=526 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=37/55 violations=0` |
+| `localsp` | `name=localsp finished=1 cycles=2178 from_fetch=2147 retired=40 issue_groups=40 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `loop` | `name=loop finished=1 cycles=2942 from_fetch=2911 retired=407 issue_groups=407 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=23/55 violations=0` |
+| `merge` | `name=merge finished=1 cycles=72 from_fetch=41 retired=9 issue_groups=9 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=21/55 violations=0` |
+| `missrun` | `name=missrun finished=1 cycles=123 from_fetch=92 retired=28 issue_groups=28 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `mload` | `name=mload finished=1 cycles=113 from_fetch=82 retired=11 issue_groups=11 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `mlp` | `name=mlp finished=1 cycles=128 from_fetch=97 retired=21 issue_groups=21 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `mwmiss` | `name=mwmiss finished=1 cycles=131 from_fetch=100 retired=88 issue_groups=88 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `narrowadd` | `name=narrowadd finished=1 cycles=237 from_fetch=206 retired=21 issue_groups=21 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=32/55 violations=0` |
+| `pguard` | `name=pguard finished=1 cycles=88 from_fetch=57 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=29/55 violations=0` |
+| `plog` | `name=plog finished=1 cycles=72 from_fetch=41 retired=11 issue_groups=11 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=21/55 violations=0` |
+| `pmovdiv` | `name=pmovdiv finished=1 cycles=107 from_fetch=76 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=22/55 violations=0` |
+| `predlane` | `name=predlane finished=1 cycles=930 from_fetch=899 retired=10 issue_groups=10 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `predmerge` | `name=predmerge finished=1 cycles=943 from_fetch=912 retired=9 issue_groups=9 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/55 violations=0` |
+| `predspill` | `name=predspill finished=1 cycles=970 from_fetch=939 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `predswap` | `name=predswap finished=1 cycles=1194 from_fetch=1163 retired=46 issue_groups=46 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/55 violations=0` |
+| `privwin` | `name=privwin finished=1 cycles=1164 from_fetch=1133 retired=52 issue_groups=52 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/55 violations=0` |
+| `provswap` | `name=provswap finished=1 cycles=2357 from_fetch=2326 retired=978 issue_groups=978 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/55 violations=0` |
+| `retmiss` | `name=retmiss finished=1 cycles=189 from_fetch=158 retired=19 issue_groups=19 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/55 violations=0` |
+| `roconst` | `name=roconst finished=1 cycles=78 from_fetch=47 retired=4 issue_groups=5 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=26/55 violations=0` |
+| `rogated` | `name=rogated finished=1 cycles=99 from_fetch=68 retired=7 issue_groups=8 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=26/55 violations=0` |
+| `rokill` | `name=rokill finished=1 cycles=107 from_fetch=76 retired=41 issue_groups=4536 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=27/55 violations=0` |
+| `rolaunch` | `name=rolaunch finished=1 cycles=76 from_fetch=45 retired=4 issue_groups=5 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=24/55 violations=0` |
+| `rolimit` | `name=rolimit finished=1 cycles=78 from_fetch=47 retired=4 issue_groups=5 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=26/55 violations=0` |
+| `roload` | `name=roload finished=1 cycles=107 from_fetch=76 retired=8 issue_groups=8 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `rope` | `name=rope finished=1 cycles=688 from_fetch=657 retired=354 issue_groups=354 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/55 violations=0` |
+| `ropediv` | `name=ropediv finished=1 cycles=1042 from_fetch=1011 retired=203 issue_groups=203 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/55 violations=0` |
+| `sel` | `name=sel finished=1 cycles=78 from_fetch=47 retired=8 issue_groups=8 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=29/55 violations=0` |
+| `sized` | `name=sized finished=1 cycles=998 from_fetch=967 retired=25 issue_groups=25 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=32/55 violations=0` |
+| `slotform` | `name=slotform finished=1 cycles=4372 from_fetch=4341 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=32/55 violations=0` |
+| `spinwait` | `name=spinwait finished=1 cycles=2212 from_fetch=2181 retired=211 issue_groups=211 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/55 violations=0` |
+| `spmbank` | `name=spmbank finished=1 cycles=187 from_fetch=156 retired=13 issue_groups=13 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=28/55 violations=0` |
+| `srd` | `name=srd finished=1 cycles=71 from_fetch=40 retired=6 issue_groups=6 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=29/55 violations=0` |
+| `stall` | `name=stall finished=1 cycles=559 from_fetch=528 retired=116 issue_groups=116 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `swap` | `name=swap finished=1 cycles=559 from_fetch=528 retired=174 issue_groups=174 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `transp4` | `name=transp4 finished=1 cycles=1163 from_fetch=1132 retired=976 issue_groups=976 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=37/55 violations=0` |
+| `unal` | `name=unal finished=1 cycles=139 from_fetch=108 retired=9 issue_groups=9 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=31/55 violations=0` |
+| `vadd` | `name=vadd finished=1 cycles=161 from_fetch=130 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/55 violations=0` |
+| `vadd4` | `name=vadd4 finished=1 cycles=212 from_fetch=181 retired=68 issue_groups=68 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/55 violations=0` |
+| `vaddslow` | `name=vaddslow finished=1 cycles=550 from_fetch=519 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/55 violations=0` |
 
 ## Manifest of release/
 
 ```
-8566a20d1929dfd64db874c795ba4fe34c8383f097a1889978a5b761835e4b97  release/kernels/addrhigh.by_instr.json.gz
-ed19552db8cde66a33ba1adc73f94e519c0846548d4a99acccc07842b438e0d5  release/kernels/addrhigh.by_unit.json.gz
-c93aeb9dc8f285f326db15a94e97192d8a3fc733c02fd2bc3bbd5e1f4e3f9e0c  release/kernels/addrhigh.ccvtrace
-c4de99b46beb6cdc791818290654ad0bd99ff0237ccebeed03364298886ef536  release/kernels/addrhigh.log
+ff8d9f14d7d652be1961e75609d3c7e15e317a6c9a023949ac7dbaee8c652388  release/kernels/addrhigh.by_instr.json.gz
+87418c153efc8628e2ebd5bf2bf1342ae72bce8d91f0b2f93b725936e9ad4fef  release/kernels/addrhigh.by_unit.json.gz
+3d57c3c80bdfe50a4f4dddf680df2ce49109f79739b331fb5ad3d5be4d1574bf  release/kernels/addrhigh.ccvtrace
+a48f60a52fe5aeb1903a9e9c15d71416ce11534e592ff18187c35823bb640ddf  release/kernels/addrhigh.log
 569f2e22883fad5f0956c57ec734e6afbdd4b8a854e50277425172d6c0cbd766  release/kernels/addrhigh.oracle.jsonl
-6a86633a46da388f63bc88a933536aa3e05aa736b9537c93f4b0d84bc63cfc67  release/kernels/addrhigh.sv-hosted.log
-853da840aa2b403572ee6174b356aee0444dfeaa9b2e6dfb21880fccaecbb4c0  release/kernels/addrlimit.by_instr.json
-a5c1faeee86a00d7b6941ea3d04f18c8481284cd3fe332694db840efc1843541  release/kernels/addrlimit.by_unit.json
-bec60a73b8b115293fa37ec0b4ec228c873e343c6c0771c8c2f26997b3427a69  release/kernels/addrlimit.ccvtrace
-f70bb92224ececd426e418835e39ffa2cc9d586d5d73841dcae54a9b142d214d  release/kernels/addrlimit.log
+a20dee4a8273ae2f33c81b5e0a31f05d48f6e0a2d80a3f76823295ba2d217d9d  release/kernels/addrhigh.sv-hosted.log
+a70a1f0b1e0fc13b6caf8e317c8dbd513b56bc89775267abdd5954509df4804f  release/kernels/addrlimit.by_instr.json
+381b6d70a34fdb58940ef08a7a620b70043ecacf61360a9e3e493503ee75a82f  release/kernels/addrlimit.by_unit.json
+63c9132a847bbb7ec335d8b0f8f4eb6e7e913f2285cbbec90e3156bc1d2ec1ee  release/kernels/addrlimit.ccvtrace
+132cad1c1478cabda86d0ef8c48a283e33826bd7a8f6c8a7a18639cc02a46ce9  release/kernels/addrlimit.log
 bc660b0b40359a2c5a2478cb0eb4950b73fd22db50ea76b80052bc195a1920f4  release/kernels/addrlimit.oracle.jsonl
-1f3d370e04fcf1e0d2c2d47daf741de443275ea5c058dc4f53a71d07a377f5f0  release/kernels/addrlimit.sv-hosted.log
-ef76b3f5396f978b7ab85fbe69cf3e073601448a0093ea883e319f93331a4b4a  release/kernels/addrneg.by_instr.json
-2dad823ed6aecc7f81449d20c7072f7d2b2eed4eefcf082a4b6175f692107004  release/kernels/addrneg.by_unit.json
-288efd73edd0254ee3ad953a82a0a7a1942d7233c41e1533bb65bf4f23e47b2f  release/kernels/addrneg.ccvtrace
-c1045ad729fe443904eb8e1b8693d7174aa6ccee28b803e4f9a3e6631608ed62  release/kernels/addrneg.log
+d3dab5f70d669f739678e70740e330074e1a9bae566f089d7c536e9394c43c6d  release/kernels/addrlimit.sv-hosted.log
+a9c40fd6bc1ee0d6d95d07476f2267cddf922b0acc400e3d0629ccf8bc6630de  release/kernels/addrneg.by_instr.json
+b7d07e2708e4774f5675a44cc0563eb285d2334436b9e9a72711a209945dc55e  release/kernels/addrneg.by_unit.json
+309ee6ff1f874ddaf8d6be29bf6462a355d1c6025ab957e1e9adedc9ea4d5ded  release/kernels/addrneg.ccvtrace
+37c8e2005c543571b0e4a313cf2e9d48d61c07d52d2dac1560006745722ae274  release/kernels/addrneg.log
 16f5b0707ae44492a1efd67bb9dd38a7e79a7bbd354fa9207b9e7d150ff2f107  release/kernels/addrneg.oracle.jsonl
-44f65c97c48f8eba4c02106e176b9dc7feae510de860c1da1cf66b0def462da7  release/kernels/addrneg.sv-hosted.log
-6d127a0a43c4f7211be024393f5c6c2eacfd5984ca62f430a8470a5d4d2d9417  release/kernels/borrow.by_instr.json.gz
-13589f270d9166761425cc920bb567bb1d9a2e57379878cafcde6ba8af44e951  release/kernels/borrow.by_unit.json.gz
-60d4a4907e35d3efdcb8b9aa284916caa6c739cd8d30e61a20793a637c363a12  release/kernels/borrow.ccvtrace
-e8d328fa2e7a7cd5b1bf21cbcd30d15b8cbffce1eeec2b97c63078066a7f16b0  release/kernels/borrow.log
+89bc64bc1263b9c0979b446ee2039f5138d2b2b2c15adce70f8d507393d57f27  release/kernels/addrneg.sv-hosted.log
+293758adce47996ca26fb77a08145aeeb6d853c33a315698dbcc7557edebc635  release/kernels/atom.by_instr.json.gz
+496158e5f930fe7fd0d67ede8b92d4bd63eb99f4b7295c7a08ac559c67c92694  release/kernels/atom.by_unit.json.gz
+13d902754ab7c74ab69b53ff6a14d44ecc662abccc680a31dfe8d1ecdaee0a46  release/kernels/atom.ccvtrace
+a5333781c2a12e17c19fec8b3f7a9b1f4448d0dd205e0d293754b60c73436617  release/kernels/atom.log
+504f5b6e9d25114dc35f2c70b21bb7b3f3c508c691de12dc0e87d12a74285361  release/kernels/atom.oracle.jsonl
+41ec4fc93be6ee67035e848591150009bf08ce1fff72eac20fa3f77d220f6957  release/kernels/atom.sv-hosted.log
+c9e82f599a8f4615ce8947ae7e259237b211fbe7f8ac444e679b9f1c9a92926e  release/kernels/atomf.by_instr.json.gz
+9338fed03154bb0a12c201dc9c519beb47fa7f9de8dfa8db5d388ced750fb536  release/kernels/atomf.by_unit.json.gz
+5cb9207ab0a723e18be2aa58e551285f9abdd1964160e7f806bc33b6fb701c7f  release/kernels/atomf.ccvtrace
+09c4661b54ab487a59fd41091b2574ce6b82b01fd9dc37b938045985d6cd1275  release/kernels/atomf.log
+cfd1179edf4061a33ab2f75d7a6dec61decfe629000198189a7bfc2647b34238  release/kernels/atomf.oracle.jsonl
+792a7863c5a66c17da8a93acbc97191c0a4d9cb7b18e5fa24a2ff1fc5838ec64  release/kernels/atomf.sv-hosted.log
+920b1de573e05bdf29c452e9227dec272af9c6228c84124fecee90408542bee9  release/kernels/borrow.by_instr.json.gz
+f2b51243b3766221d9e6ef7c6ff99d215f832465e6247a3e3e731dba17215b5d  release/kernels/borrow.by_unit.json.gz
+a88323798cead36e6bd43ca98678dc3c9aa1918feeccff6885d3d7052d79cc97  release/kernels/borrow.ccvtrace
+5c4e960613f628bdcbb3b2cd4afdab6969163cc40396196600635d240681016a  release/kernels/borrow.log
 4c565e1ce0b3baee36e158694b32c8defb5cd662b2f9af75cb5d8c26cb1168ed  release/kernels/borrow.oracle.jsonl
-2a1ae9b7247f0fe1e9699654c344e8e31ee749132823447fe4c299d052109053  release/kernels/borrow.sv-hosted.log
-8cc132cb42cfa824530214187fd4f2cd4dc8ec72039f90ec1a6732f1093c4046  release/kernels/brs.by_instr.json.gz
-9bb80738d74796d603d6d5d2be857b71c8b3d70621efba624d1c85afd08c3058  release/kernels/brs.by_unit.json.gz
-3c159ed22ceb8ed90511b03aa2e714d22e3a4b32ad405ffb8c2b1d4025b2fa0f  release/kernels/brs.ccvtrace
-769f0088d8745773e1c8fac881e015b8957d2eea17d023ffe0dd16b7742dd725  release/kernels/brs.log
+d112771fb5fcc181d1f0c16aa513e9d91af08fe1358073d2936c959ad19eca26  release/kernels/borrow.sv-hosted.log
+385d362985b83a2814a229c08460bd287a7057b2ffd9aaa71dcc193562a77add  release/kernels/brs.by_instr.json.gz
+1326f064301a8ce1420c6a81261262703b9a5e62921e9b6f411ec5ee70b028fd  release/kernels/brs.by_unit.json.gz
+af1e3498d7888615659f600c29df6585e76cbfc3cc6e3255f0b3c5435d60aee3  release/kernels/brs.ccvtrace
+96922277877cec0a6d39c713dfdf0ee50c12ea887c506b744291bf5838ad24a0  release/kernels/brs.log
 e3c1cb3379580cf1aae44e8ddc8e846ef6fd661a573cfe0a8d4444b18a14dc56  release/kernels/brs.oracle.jsonl
-645d9bab0050962db3ed2a192823b65b3f6e4f03261f2828ec1150d513c79801  release/kernels/brs.sv-hosted.log
-033ba2f9b3dab6d275628cda6657b63f3aa5c6bcba945bb1126b934724349845  release/kernels/byp.by_instr.json.gz
-43a70ef3c42c1ca4bdf6acbdbd52324afe4d2c6c8218223650036472dfa876bf  release/kernels/byp.by_unit.json.gz
-97d93b632fb837c4f847a7264ba0c549f87cce3f1ddefe3ffe19a0d07ecc526e  release/kernels/byp.ccvtrace
-a8800ada062b131dd5c9a0b8d67de398c01bb815d9aee177be43937babf23f68  release/kernels/byp.log
+c3aef7b1a4e4ee61c51a9573d88fa922ec30ad097d0bf8b1e07da8d02707b161  release/kernels/brs.sv-hosted.log
+f9c3d6028d02cc988afe49ec5866258475a1e133be57facdeea01ba6cc459e09  release/kernels/byp.by_instr.json.gz
+e5cb9e12264449c7f8dffbc1ee81274f88d4e4c70d008f2f37c67b22a4925373  release/kernels/byp.by_unit.json.gz
+3152ded19deda5be34daf3f4fd386ed1d8ae33cfd4127815a40c6daeab8076da  release/kernels/byp.ccvtrace
+599ecd017e5a99aabfcea91ab2196961c381a2a01953656cef456d64733d220c  release/kernels/byp.log
 5a03dfa4f3603fef49f1e3639e74e34152ca3ca5ef8e41eb959f8323040fa2d5  release/kernels/byp.oracle.jsonl
-c46c4fe08593acacc0fa09143e4cb3f30cc61cda8e521bfe07a72d710dd88f04  release/kernels/byp.sv-hosted.log
-5e3571ce22a1264b5705d7584bd1cb1d8ebfc8bd7a945c7914433aa15601d13d  release/kernels/callret.by_instr.json.gz
-e6e8b24842ca702f5789924b153015f57b12483c4b5289e440b5b1f8706e0cf4  release/kernels/callret.by_unit.json.gz
-983bc82bb7530e3948b98674dfc5485f8f162f94ba27c22f777b1b36055c8854  release/kernels/callret.ccvtrace
-76dbc8205501c1f10c85e56e35084c5853f0a5683091c8a9e5e6af1f7796cec5  release/kernels/callret.log
+8eab37ec81ab7a2d1144f31b13fad6f1e17acd0ef8980ecceca3fbde988c8a69  release/kernels/byp.sv-hosted.log
+0d429514d656559fd891e403e623689210c806d7dcba27cbe93267f69dfd2200  release/kernels/callret.by_instr.json.gz
+da888561f6eb8214005c98d573ab158b371a9be99eab088e2985d526a74e1f40  release/kernels/callret.by_unit.json.gz
+f25dad2c5b3aaba302ebe8f598ff7a87b94db454fc87263670f33799a99b640d  release/kernels/callret.ccvtrace
+163b50487284e3e6a17c5cc8ec5737d56637ea1b5b9ed2aa158d33c59f81ec41  release/kernels/callret.log
 9b1d1b50b527f732362f837250aa2f26dabf3e76e16a4794856ebd8f105635b8  release/kernels/callret.oracle.jsonl
-fe72a6e65a14a307a371f715a09e1e9e72921dcd8ef21e3e6d1debc1aea3826d  release/kernels/callret.sv-hosted.log
-1cfb5fa70df9016c3b327a18bcdd83535658012a0398ea4fcef789e766de7eac  release/kernels/chains.by_instr.json.gz
-d7774739335dae8a63574d788ac2185555cfe7ee6bc1fd515242a49f01935135  release/kernels/chains.by_unit.json.gz
-313b202fd14fdd42517b3b1d8b8c235b947afc3ceba603b365cf65c1818e5fd2  release/kernels/chains.ccvtrace
-af2dd0060c95f64a1f99286bc6a9ed1bf273e493c9396eb7b4393ae519ddee3f  release/kernels/chains.log
+d74858558fb841dcb6a0c9171e2adabaa5c44cbb08bfba35167338023df9e44c  release/kernels/callret.sv-hosted.log
+62ee1a79217f80b7ab62f91c7d97c5f040c1c034b6f490aa972c2b0a9d561b67  release/kernels/cas.by_instr.json.gz
+5bd5070576e58f9d4e29ce36b1e118e5fe9e21bab6819db5bb6ccfc25464ce18  release/kernels/cas.by_unit.json.gz
+6505fc078765042bbafacacb50c25b95867931a27fb628bdcb037e4b1ff7fe9e  release/kernels/cas.ccvtrace
+ccbc392dd3b6fbbebbb2aaa8a919fe6b96b7eb8e899ccaeb8abb94751db68796  release/kernels/cas.log
+0ab31a9443336fe5d08e1a5fa5fcba3bc279b19022f7c5007908d39d8ef39536  release/kernels/cas.oracle.jsonl
+cabc762b68dd317f99f7da2d16077e6bf41865985d1bc9a48dccfb7b9d686ecd  release/kernels/cas.sv-hosted.log
+632579031f39b9f7162b0e56cfca84f33cd165fe93abb958d02ec13f0628f7b7  release/kernels/chains.by_instr.json.gz
+929f52e0550f6d702301f163ffa2ed864ef8b98022eccb5885f927c85336225a  release/kernels/chains.by_unit.json.gz
+f540e971dbc6151a7a468f71ce51054bf252605a661e03dbbb1bfbc130722132  release/kernels/chains.ccvtrace
+4b61d82ccd28e568baa6d6e11926b10cc0473c88077e9d6b81331818e1a9b4fe  release/kernels/chains.log
 26a4cc5c5524c7219d8706c2582c80357dea60be9d6ffdec99dac7d0365e2264  release/kernels/chains.oracle.jsonl
-1e9b9c6bf155304bf2f16117607f3cc26753124f365af26da5a33e5072d1a95a  release/kernels/chains.sv-hosted.log
-2dd86bc37d86e0900e73f62beea46a9250596abc5e1a9a66421a5cf37566304d  release/kernels/div.by_instr.json.gz
-6d7a4adf84e58c05f735a863267d1d16d0cbf0bb30436ce93ec7ae2e71db2976  release/kernels/div.by_unit.json.gz
-03f7a080135786fc6c51737ca125b335109d4802270839b37a1c6d796702f8c4  release/kernels/div.ccvtrace
-d7f39d97801875b770eec9e53c3f23996cc0befb4f4788ccb9169d9a987b4d88  release/kernels/div.log
+a498a8fd1478057a4f1025ce10cbee32cec5845ec1d13249d287df0b6fd6f9e0  release/kernels/chains.sv-hosted.log
+09e12c8c77fed5267eb71d94ef2fc33aecb37945adc3e58811705f8da136e911  release/kernels/coll.by_instr.json.gz
+56bfb5ac69dca28d85970bcca0cf7fa3c970f1b38197ac11e7b400b200d553c0  release/kernels/coll.by_unit.json.gz
+2c8ea6b1194e403806229f413a546b371a7e3c6b2d395355691fb700e8d8397f  release/kernels/coll.ccvtrace
+7db8b3523d7d72ed3e8b4146787a272bb5eb282b2963ac6cd4582288df050fec  release/kernels/coll.log
+dd718d23c88df5dc7d92b055d8542865aa0e029118486af127312a8a578cfcbc  release/kernels/coll.oracle.jsonl
+fc585b138c563aaf0845f835c8bf11b77e7c28e5625b639928eb9c67654e1e67  release/kernels/coll.sv-hosted.log
+82e069cdc865f2aedd895e2850e9b9a9abf51a584f5f76e18c912eed34c92248  release/kernels/div.by_instr.json.gz
+a9f294c37c6b9b1399b98f818fee75926de7908757318e94f483eb86eb74e9ba  release/kernels/div.by_unit.json.gz
+dcfc85567e91bb512739a56791b6060fbee51c4cd061880f275fcbbc1a44ef02  release/kernels/div.ccvtrace
+a964a957b711d9d076c9b61af1b61a20adb93fec212e8772ec833812a13e2e02  release/kernels/div.log
 71a567b85cf85622631490187563de9a5661099c78a590adff4ed0a0c3d24c16  release/kernels/div.oracle.jsonl
-276b83d6bd502ecf651973a265d1a706e26c105431929c278fa8224c55472ce7  release/kernels/div.sv-hosted.log
-baf47832d9cf6ede155859053201345e16d713a62aaa1324fd1233c772ebcfab  release/kernels/divchw.by_instr.json.gz
-2a574c6eb213b1d45a0dbb22b8bd5b96433de45df2c86accd1f4845a506866ff  release/kernels/divchw.by_unit.json.gz
-dea85525a98956d8e6f00fd4c3dd9a3beacdf911e9f8cbdc1e218629b147de3b  release/kernels/divchw.ccvtrace
-fd50bc0e032c88a43e3145d4b0766d8365c487699ab68c090d5551776c015c23  release/kernels/divchw.log
+f3d2820b602d584998caf29f1003ed0da485e391691e4fdd370b7869df300dd5  release/kernels/div.sv-hosted.log
+4c009abe4717b48a331ea437c753e312ab2a58af615309bf5e1402ed60ed6105  release/kernels/divchw.by_instr.json.gz
+82b0d36718b9670c1bb4b6c14325aee6380f2ae3f675ec6992f34e13771dce1c  release/kernels/divchw.by_unit.json.gz
+076b78a5599e9d55ef7f8241ce4284c7540c5c565e85e507feb40483de0efda6  release/kernels/divchw.ccvtrace
+1604ea79991a1d61f1c002fdd8a0ee2f127d39b931c0bc490dae3e036c243908  release/kernels/divchw.log
 58a541797f7a2df0a1c7528ae6a3edec212db90c7d3eb20656806f38b5c10b3d  release/kernels/divchw.oracle.jsonl
-baf0a4cd3804174d7ef3efd1ecac5b557b638813213a0019e6418e1643d746fa  release/kernels/divchw.sv-hosted.log
-21abb0edc89f1c649b12412196fa0ce94ee510f6b10f44adb11b10ae99e66482  release/kernels/divtail.by_instr.json.gz
-bca95cd2caf9c1c39868ed266b7e7d35fb2d381643dea04fe4c3b50653338cf5  release/kernels/divtail.by_unit.json.gz
-104f3503128d1075c595daded22cf7676320753b5deb157d0c2ffaf8a5d667e6  release/kernels/divtail.ccvtrace
-30d6535ae9fdd805baa09b9b3dff36aa903308fa74eaac4502d40d974a103b73  release/kernels/divtail.log
+c485e35e753ea07a397b5314eb524c3f8d1d9250256542fc281631147cde6ebc  release/kernels/divchw.sv-hosted.log
+cf3e5422b7115b3cbcf48735eba5c90441d1ad50869a8ca2fd9b339d87e08275  release/kernels/divtail.by_instr.json.gz
+f4ca5626e293c3959df240494eb0d07d14e3842c33871551dbb9542c643e9b8e  release/kernels/divtail.by_unit.json.gz
+2c621cdde1eaf96fefd220c89c88c20128a265ff7f1347d338c4e140cbed9339  release/kernels/divtail.ccvtrace
+b44f2ab2ab9df2de18d41f302e574556d1ca42b3830e8f6b838a6b48d535f899  release/kernels/divtail.log
 75f11a75c9b3b336e446140af4579f05b46c363a76b7aab3ec88154a07ba097d  release/kernels/divtail.oracle.jsonl
-6e327a615617ad1e0647f08b8c1638ace739dd14aa1d69f45b291ad280e638d2  release/kernels/divtail.sv-hosted.log
-2ad72eccef599fb7c1ea26b304b56c7f5844a9cb33561477584e01ac0c69196e  release/kernels/divtail2.by_instr.json.gz
-847fd6ec32e00b026d24eaeee028be2b8832bd49a80e53d4384ed4e53f94d75b  release/kernels/divtail2.by_unit.json.gz
-f463165bebe816dbba999e0e37027aed61a9c12602f537bba4e9863e2f2fa70c  release/kernels/divtail2.ccvtrace
-6d8d528b2918aa851245808d20519ca21ec034c4c2f03081c8ab9192a7a11597  release/kernels/divtail2.log
+5e330d08537eaf91f059f644d0592290e975076e0b16f678b80c537a9f5f3297  release/kernels/divtail.sv-hosted.log
+102b580827a071263a76239f1acab085d004509466a6464cedc72d8679b6b907  release/kernels/divtail2.by_instr.json.gz
+36a2407698e33496593da5a1e9662cfed0db5dec9a6336d826c1d53c6d13ff48  release/kernels/divtail2.by_unit.json.gz
+719fd65e1d7bb2459f32be08f0b50feb8d40a74a8e06189f7bc2ac250bc26f31  release/kernels/divtail2.ccvtrace
+917a68522fdbfa8cea40bac2317a7529a6bdd7d4c1e629dad68f9bb961f92399  release/kernels/divtail2.log
 b2db6b05eb6cf4a0a7677e31d0c6c2952d5cab49d353f0bb1883fe0b2a20ed14  release/kernels/divtail2.oracle.jsonl
-6c77eb2a1c4fa6b64af6fce5fa2bf77dceb3df4118f0153592f99cfb846d8881  release/kernels/divtail2.sv-hosted.log
-fdb51b4e28d2eb5134ee9b2f40f7e1624607077ed5143096f82066b4281e4d89  release/kernels/fence.by_instr.json
-250272c41588a0f22d7deb05fde8d57599e3de98080ea3d92f416841d60679a8  release/kernels/fence.by_unit.json.gz
-a30b49fd18cb7e3ad727e83998a48a973aa750e77cab68b043baa3929214be0a  release/kernels/fence.ccvtrace
-f9b513638f101a7847edf043e1c3b79e490ab7bb3885e11152dee27900e1eca5  release/kernels/fence.log
+1e85f14faf0309e88e1348c6f3446f2983c9e7f59e293c49a38df4f20249a9d5  release/kernels/divtail2.sv-hosted.log
+07288a9889b25c35239bf5b4f1fffa72bdbbfa96a44de8c824ae3786b97e5022  release/kernels/fence.by_instr.json
+6c09776f7b7f7071fda0c82d7b2741d3547990f8c54b37a00a8ac2cc05871768  release/kernels/fence.by_unit.json.gz
+38a21bdf35ebeb31c6055185f5de6c3bad35d119858720433df2a4ff628a63ad  release/kernels/fence.ccvtrace
+7ee94ae40c541fa19fc08aa3d1499bc7d22ba8051863c9051c0f7671f2b906bf  release/kernels/fence.log
 d1d40317f6cf5bfb430cda1f9c0ef676609e59cabe2a11623c42ffbeca93142b  release/kernels/fence.oracle.jsonl
-7a5a26e9b1048966e5c247c423e6c23d30a6f5383ef2d52e84e77c00b42f0339  release/kernels/fence.sv-hosted.log
-8650e959204a8e0265fd095a1353202fac5d02cbc1b17c21a100c80a889fe09d  release/kernels/gather.by_instr.json.gz
-0d3b8c6d5647c10432170a2d10daad9e109f3497160107d226adc6a40720f651  release/kernels/gather.by_unit.json.gz
-937976d4db694d23a93f82e15f626c9aa79ecb0615350355abe4385d3ab80716  release/kernels/gather.ccvtrace
-9cdb805b15c5dce6c16090361e7011e21c9ee609b47561a612e028f343d9452c  release/kernels/gather.log
+3ebd1a767343d609a477bf2fae75f3a4c69a55e9ee04010a21d584a52f297bfb  release/kernels/fence.sv-hosted.log
+22259f01c5aae2ac948e395ab7002d0b6d68705fbdfa880f73b3b2dae8e80130  release/kernels/gather.by_instr.json.gz
+e6c732f5dafc056e0172b2413271208fbc96b55a4200676e95e25910f7947e1b  release/kernels/gather.by_unit.json.gz
+f1bd6873f4d8c5a8a1d710a609e94776b72b1265a46fae293ce3dd8ca3f5b930  release/kernels/gather.ccvtrace
+9184e4f5348195b51e68838cdb7b09e59976a1e3a96ea4fb71bb382a74b6b5f2  release/kernels/gather.log
 0413e781d8d6ff578c64eb1f800b7931e66f676d5cdabb97b94a4033e6037662  release/kernels/gather.oracle.jsonl
-06e85b1a40644dfb6dee403e163e6ca9670acfbd743926c240552849ba130d37  release/kernels/gather.sv-hosted.log
-2f7fc91e88dbcab66521cbd221f8a019d5d7fbb4735f07709a1155f2296d2ce3  release/kernels/hit.by_instr.json.gz
-44097007a4e2433ae2cd1eac852f86aacd43004ba001e13422eb5fd9500fe080  release/kernels/hit.by_unit.json.gz
-5a922c12010856027dffb96da7571d025dc309a3aac34b425a6a2208d6023f40  release/kernels/hit.ccvtrace
-aa53cdce0cc0905bf18affce4b8dd63e3ce9e897386b95c014fcc4bab087b16e  release/kernels/hit.log
+55ac106686ead82f6c57a7b10a1f7da9bfd1ffb8f346afacdcb7a3277bb83984  release/kernels/gather.sv-hosted.log
+14efbba9c38a4bf312000eac1b52ac0b46eabac7cbcc02c7b02de822d6f884ab  release/kernels/hit.by_instr.json.gz
+a1c028a7ee844d6930abfa8d4e8133ac1876b89fcb1fc88f48b23cd9e5cd55b9  release/kernels/hit.by_unit.json.gz
+3ad9b029b0978dfdec0a8af33a7d6c79cc458e330a468d9f3e017a557956b6aa  release/kernels/hit.ccvtrace
+469e283f5cd1319e1b22d7d2755c8997d42ea2863ddffc68983992f7207e92be  release/kernels/hit.log
 7ba9603e0088d9164de6528f16ef6a7fa9ce5821c8c12b52cbb3734e39b9fd52  release/kernels/hit.oracle.jsonl
-135e9de8494fb245c94e8b9418c4c0615e92132605d3b362331b0e0994cba19b  release/kernels/hit.sv-hosted.log
-329d4656300aabeda8e465a34f356afdd970a5d06d289344331d1448979904fc  release/kernels/lanectx.by_instr.json.gz
-4d454de14bb28872dc9a94fa8fb46c676c227977b816140fbeaf4c06edc7f2d9  release/kernels/lanectx.by_unit.json.gz
-83beebb1cb18c2c64939dcbb1d7bb6ec5187cae00195b643ec933942ad4a5ace  release/kernels/lanectx.ccvtrace
-aafb2576913342a19fb9a96914b6743607acd65100a7f6e778757cf54f2e2be7  release/kernels/lanectx.log
+8fe468f75e0d4254dc53621569033180f5853d7137b3fc6b284bbc59e105bc8d  release/kernels/hit.sv-hosted.log
+3f755997e4e9f9d6c99b397c1d26c931e2bded1b0a026b8ce96e00e1fe6d860f  release/kernels/lanectx.by_instr.json.gz
+b683e91f84887d718063990ce99126d250856d5d9e1e25deefb05be132718a6e  release/kernels/lanectx.by_unit.json.gz
+e2d850a58ea1e4b34c5ea5d152b621496f32e709201f898ef7f3b40e6d9e2f59  release/kernels/lanectx.ccvtrace
+e9a87a76e76baeadbb3620153361a84eccfe3477e04fa91edfc6965619d762a2  release/kernels/lanectx.log
 888551babf540db8e3025b82e65ca655013f93eba3c8a65689d069d52a7e6039  release/kernels/lanectx.oracle.jsonl
-7490bf2b4b6fa099266dacc4dc6b83c1d82b7226cccaf764526ae45a45ba4ec3  release/kernels/lanectx.sv-hosted.log
-6b6341f706e5be9402b0d72b01eff9e89207756498a6cee6ce9661305d8691c8  release/kernels/lanectx2.by_instr.json.gz
-25d3d49a51f7cfc0e3bdc71cfb1f9c4f94d8d98ea98484758c2d796391d1a17d  release/kernels/lanectx2.by_unit.json.gz
-b98113570507141cbd7f696fe5e5e73111d833163f395b5b89c8daa00326fc7b  release/kernels/lanectx2.ccvtrace
-8b07b5ad6609873ff065cfea94209307c80b2cc234fed860dc646f31cc603804  release/kernels/lanectx2.log
+3558f6f3faa442239ccb30357fb19cda34410801331973d904c9a06b377628c7  release/kernels/lanectx.sv-hosted.log
+643276240fceddd0a828d78ce00e17735cd752e0127ba9ae68c1521009488277  release/kernels/lanectx2.by_instr.json.gz
+2c29d3f3328963cb53c71fc8c900925b17db1814d87044721f66ed42ba7c55e7  release/kernels/lanectx2.by_unit.json.gz
+3c19d7ad7fc1ca1d823f230592a1e43322df4dec2d12eec5206033fd0f481924  release/kernels/lanectx2.ccvtrace
+7e35a86c151bb0b61ea407576acfe764b88292e38fe2d1a0b6904312cee646c1  release/kernels/lanectx2.log
 45c13056dff5c73ed0c9ece56cc36f929bf335322193c7d5eb38710b1d1dfb02  release/kernels/lanectx2.oracle.jsonl
-e959184427763f37c42db202d5f8fe9d1259e39182f6bbe35c6f14c4169cad89  release/kernels/lanectx2.sv-hosted.log
-d1e1f3fa992bea23f2938b5d5b730fcf845f477711143983d32376f2c9ee8b67  release/kernels/late.by_instr.json.gz
-845d5fc8043fe8610f0adf16f7cf426c8a13a3b21754c570a9280d4eb658ee9d  release/kernels/late.by_unit.json.gz
-9c5f095ee55bbaa73ab9deebb149296fc920aaf72557ed69eea374f6a1d62cb6  release/kernels/late.ccvtrace
-5d7b628e42a238d93276e518b842baa545f72913fec5b4531f53adb2e783e96b  release/kernels/late.log
+31c0667bf937db11776bafbff27cea2868639208cb20491115c99bc62f9f5bf6  release/kernels/lanectx2.sv-hosted.log
+e30e0c943ad7f271cbc0f876d3c2abaf43acda0dfbc4596adeb4f67ad76811e1  release/kernels/late.by_instr.json.gz
+8f9619f75d9c3c201f430195e5b13ebc2142f1c15d07524398817f8d42190058  release/kernels/late.by_unit.json.gz
+b9f7f39c82e2c3da6a3ec41dd455f7913c88bf36b4d01ef32559023fc9378fd9  release/kernels/late.ccvtrace
+6d92936b415a67881edfdb92880bfa2c21c3e7e3d8771254bb01c81bfcf1db7c  release/kernels/late.log
 86084f6bd747a2cf32acbc0ebd96ebd3e4ef2d8d9e21be49e3ae49290d7927f3  release/kernels/late.oracle.jsonl
-27885b57a12110f18939956c83953087f221d283a4f3d3b3b7ad2638d90bb984  release/kernels/late.sv-hosted.log
-cbce3717b3c7c36cc5bc686e03bed3e1a75f712a5cf1ed9a02ceebe2c4ab259a  release/kernels/ldpar.by_instr.json.gz
-2eb658980931096000746d97a094f6e30954832b11ee569966a99e6a50b8a995  release/kernels/ldpar.by_unit.json.gz
-90a13bbb1b4a73967c6a12c9a0ddf0691c58bfce7721e567dc12f98d60fe8bb6  release/kernels/ldpar.ccvtrace
-fd72966795a08c323731bab52368755ff6507f07fe7c4b95afacc29bf32bed96  release/kernels/ldpar.log
+d73c3bf0d3c74aa3def7ad2d390b283768245bf57d97c28bb9df99fa1ab72afa  release/kernels/late.sv-hosted.log
+1a5a5704f7f5966ddbfc78a0ce3cc8a079ea86cae4a9b784d8e11bcb0b7e2d9b  release/kernels/ldpar.by_instr.json.gz
+5a44ce21df945eeacc42d04f824d7e20c9e8d61b188ba9d7a6f408c2385611c9  release/kernels/ldpar.by_unit.json.gz
+dc9181a5fd0d3841b61776a2c991fe7553d0d7b56ecc6beb9175e01ad6c33247  release/kernels/ldpar.ccvtrace
+d94499e82d676f3582063a59c7181f94b643a048d3473e29683bb0366b5abbaa  release/kernels/ldpar.log
 8ac08538e9c807637babd61b31e340f7461878ada31f0c0b83cd66331cfaf486  release/kernels/ldpar.oracle.jsonl
-ed46a28fe88e2fc8e5adadf636e154ba4c995d8b2c5afd4ec8c1100a77836921  release/kernels/ldpar.sv-hosted.log
-0e03d4c045d6f9b8d5c831973752165618b5f4509bae6be668b525d02da9d809  release/kernels/lnorm1.by_instr.json.gz
-418c58b0c2bdc3eda65b1713cf53cab5a321338661f37c7498a84135d973faaa  release/kernels/lnorm1.by_unit.json.gz
-c1442c6dedba8b28de99dd330fa3e602cbfd38abc87e69304704dc24c72cba6c  release/kernels/lnorm1.ccvtrace
-cca9e4e81534875b7a13fef2621267a2571bb8da44921352cf8a011969e8f06c  release/kernels/lnorm1.log
+5f5af5744786f2a00b01a3e016dba24586429a4eec8098a01fc7de7cd68ba4fc  release/kernels/ldpar.sv-hosted.log
+f9d3762ce818184cbd272913017038f9c89dc2733f47d10ac9fa55b999e2d52b  release/kernels/lnorm1.by_instr.json.gz
+1558762d4689fb267f4444a446a8696cec16b61b9dfed86772e96aac12fb899e  release/kernels/lnorm1.by_unit.json.gz
+427b8e18825c063e26b754a26286711058df0afad175cc8eeab3ccb76bebf4a2  release/kernels/lnorm1.ccvtrace
+5a50f29c9fb484af30edd56e94c0b8b95e230fb1574a71e87d998e44f18f4fb0  release/kernels/lnorm1.log
 a8d85811af988a1b9fc00db1517300af3d93ec8e589e403d3b9113fa9e0ffc86  release/kernels/lnorm1.oracle.jsonl
-adb5cc2a40621041a41341a5e951c2fed825288efa3f3a18933f5e32b571b486  release/kernels/lnorm1.sv-hosted.log
-003ea7717f988dffa94195d797be76ed11a06d5bdd8d7a228914f082dc111d2b  release/kernels/localsp.by_instr.json.gz
-33c92ad416e841b80685cf49d159d0db9cb3e115cc2ff9e91ecd3a4a5163f858  release/kernels/localsp.by_unit.json.gz
-d2e97823475653c0b0e65966a7c462221710b8a68d68c57962c31b429106698c  release/kernels/localsp.ccvtrace
-e135b23b40fd28c7841f16b8fcf2f16bbf51b43f4a9a2c2fa2ef0c31f24b4447  release/kernels/localsp.log
+a67c75ecfd15714517da6d74fc6083bf01c69dea8df3a7dddddc6b235d0bd4c6  release/kernels/lnorm1.sv-hosted.log
+061aa18e16e63c4556593b55189a30d5ec95df0ce60bf73280bd82949a052591  release/kernels/localsp.by_instr.json.gz
+55c4641f866a04a2b763a0462eb85a8c030d3dfcf36cf0814335e69b83c6bfe2  release/kernels/localsp.by_unit.json.gz
+174017da346ab4244206203d8808649dde72028ebb52f4e058c1748bc5d06b01  release/kernels/localsp.ccvtrace
+391a3cf9c7bd9f3105d7aa8b903d24eb57e09b0140a838aa87f8a5826140bf66  release/kernels/localsp.log
 55e3c9f36e7f7d38c0ddd38903aff4bb4509ae862015c592e6b937ea258042ca  release/kernels/localsp.oracle.jsonl
-7c9aa9ccbf7d1252df18781d2fc4a13d302cb7c3fe8900b6b45dbe816a6e3bf3  release/kernels/localsp.sv-hosted.log
-53d3162e20ffecfad9d65eda9bd12398a90e4ddce327a1a4d6459d4f0b01afb3  release/kernels/loop.by_instr.json.gz
-3ffc973c5169400e26b26d91eaf2e910343d8b29ba8f247da9861be56f9295a2  release/kernels/loop.by_unit.json.gz
-17f3e2f84ce1fb9b323a46604c530deea7c450d90455e7cee2124ab5801e1562  release/kernels/loop.ccvtrace
-6d3e101d401a8d86b59c9ce8d59e74989ced056aca24241f5e85b0d677c71f1b  release/kernels/loop.log
+cebf4c934b1d40844ff890b3e9371f7269b098bf9f8f9350fbabe88fbc02415d  release/kernels/localsp.sv-hosted.log
+21694f2c83d66a44bdbcbe7eecc7a75cfee26f6954694923e9f6c3eaaa9b87ff  release/kernels/loop.by_instr.json.gz
+0e5f25e6c9204d5ea47965ee37ef3d518d47b1c43661b8217451b2f246320109  release/kernels/loop.by_unit.json.gz
+97d1eb05954d7f89d5f1659a19003df0876e64b5b62d08e04f784ab588050283  release/kernels/loop.ccvtrace
+cbe88e086bd32d0d148700e8e7a6ec70cf99e3ed839c254afaf45c24bb726977  release/kernels/loop.log
 03ce5920c06c93e93516d8e53c3f7169f14e3593de204eacceffc0b8a3e32016  release/kernels/loop.oracle.jsonl
-d989cb57c2b8655bdd620158cf893fae349bdba9e97133e5568496d684e740bd  release/kernels/loop.sv-hosted.log
-df4ab473e12b233410ce2d5cafcdd22536f0a7789b6ab926d03db9f7040e94e0  release/kernels/merge.by_instr.json.gz
-303169051789dd529609f755adfa3813d0eddcbd6dadde914364d97355409115  release/kernels/merge.by_unit.json.gz
-e00c16dee608a887d2d4e4fac629f8f99216d3ee046b249b61873232abefa6aa  release/kernels/merge.ccvtrace
-ef8bfd88f899085bba5f5b89f12579b02b7ff68e7b2311d9be409cd6c4d11469  release/kernels/merge.log
+f37e809f75d3c5683e0cb0efdb302666972e5809c4ffb77897a160bd2957a255  release/kernels/loop.sv-hosted.log
+3c92257a26a425d7ed58b9a6923f05f6bd172decde2fdf16985a0a07425e4a9d  release/kernels/merge.by_instr.json.gz
+0837f1307f1b6597682f0da382c161e2fc1aec3fd39707cd6e32fa3ed340f13b  release/kernels/merge.by_unit.json.gz
+81a812c872035d9ffc0e9930db5a485e840923fd1fe1d2236931ee270d2c36dc  release/kernels/merge.ccvtrace
+abaf77c677778bce03552e47e09e6a465479d7f6f96da38ebbac8614e51d2938  release/kernels/merge.log
 f96d28815f8756b1f5a45ded53e6170883d2dfa10f9eef0d14b8050b1318164a  release/kernels/merge.oracle.jsonl
-fefa45224c71e76cae8f233475012d13f89e0a7a6b5277966a7ece161f84e1ca  release/kernels/merge.sv-hosted.log
-e92fb026b53cda6cf6ce3603078ae9e309b418f53e261ac83d0285297c99347b  release/kernels/missrun.by_instr.json.gz
-e00488cd28c325be7482a2fdcad8d9893df025dd0ab0a7a0d9e63f869d3991d8  release/kernels/missrun.by_unit.json.gz
-49a8d751837e485556ec3f0c525008cbf1c5029c3278f83dee84e60f994a6bff  release/kernels/missrun.ccvtrace
-5967832e3809a48a10ec9ac29334d8ab73f6293ef3bd8fd5374412322c72a455  release/kernels/missrun.log
+7fa7a905a407611e95c575c342aa592e7c8dfa79f13d4936915d2a70c1783a31  release/kernels/merge.sv-hosted.log
+f12f35704e3f755092fcf3cff58747c223a06ee451ab421871ed0fc2481c2f12  release/kernels/missrun.by_instr.json.gz
+9fd86d8d13c45ac1f412999c9e6ac1ef078856a37ebbd154e86b6039ba5c010f  release/kernels/missrun.by_unit.json.gz
+1e8f68cb459775e9e9a81cb8113fde787f3445191275a65dd33659393df5b95e  release/kernels/missrun.ccvtrace
+f4016f68ec76d3ecec0f329dd1dbdb7ea890c6329d105384a7fcde2c017ccd37  release/kernels/missrun.log
 531bdaf281e5590774bd2775427f25e4cc0419cf8e3d5b6999843ffe9ef87258  release/kernels/missrun.oracle.jsonl
-68bb0b57b5a74b400ed537321bf64e86808150b3fa15c659aef3c5f1d0297cd9  release/kernels/missrun.sv-hosted.log
-c23d46e24a2a90305b20d0a68e3703c8eef8df09ac413390a58d00d34485e8b8  release/kernels/mload.by_instr.json.gz
-1c6ba7fd2efd754894b76bd944f9540c053c13d248400e1a4f05a804a1314b5d  release/kernels/mload.by_unit.json.gz
-55da27088b1003b4129ae54d6dcf1f3edb0ad6337af65fe429ea6633d47bebea  release/kernels/mload.ccvtrace
-248cc4f91c1040cf9fdb856109538247067583cdd6314c46b254c6ea55349747  release/kernels/mload.log
+df24ffff26874646d5756c7e9d634314c045cd71040677dda9f4e1a395c6cba8  release/kernels/missrun.sv-hosted.log
+e1cc675a4381559c713b9c52def759c602ffa0132991264ae8f22c1f35c27c15  release/kernels/mload.by_instr.json.gz
+8684e6e87121b092966a335b3dc764d2c348472a7ce391df80d047bf685437e0  release/kernels/mload.by_unit.json.gz
+417144dff34ef2e24db13212b1472276798ae2324e76272692c0bc1eae1c39a6  release/kernels/mload.ccvtrace
+4929c8a4efc811188b5768ce4c0bce136bfa4d5af839c090a1b999ead0baf4ff  release/kernels/mload.log
 8000e477b9a95dfb9f0af964e8346acb9d36f1358fd06ffc4ff7cf599d2b8868  release/kernels/mload.oracle.jsonl
-4e2b6394a8bd4852a0ce952602d78b70646662c246a789ae47d60ec5ed434e3d  release/kernels/mload.sv-hosted.log
-5f77f5aa34a89ab785603519d02df24eca46816193d0cb6986702527b7f732e2  release/kernels/mlp.by_instr.json.gz
-9369c212ed6cc6c39fa6cbb29f36c32b25f4fdbdcb5421dd4d494644827e162f  release/kernels/mlp.by_unit.json.gz
-b1f3877e43af67ad0f4e579da8122d8833737c2ce3a41d70fc32c394cdb3a8e6  release/kernels/mlp.ccvtrace
-38420e603511c20cdbcba11b9bd2c569ade43155e57d535dfa4f4efd60d04126  release/kernels/mlp.log
+26e3d642a6638544711a320e5f5407e081448424fbe76f67e4a2771f178452db  release/kernels/mload.sv-hosted.log
+351b77319d69d915e0f7de920c42d5813648b58d35507cce9645012b7a81b072  release/kernels/mlp.by_instr.json.gz
+75414ad2b599fb79950df747e1f93adc75fee30363e3b77f4b81cacc3ef61ef4  release/kernels/mlp.by_unit.json.gz
+6cd55771ba471f0760bdf8d7e094cf62c2b2c529df673ec8c48be26954431005  release/kernels/mlp.ccvtrace
+c70dfb47ab485f9d8485611eff5038f328e2e511f23953935fc22a8b7bc83213  release/kernels/mlp.log
 138d282f88d56c8ad648a91af0a983254b55d9fa22942c00d47b327f516a6e44  release/kernels/mlp.oracle.jsonl
-7c1eea1d7bf2c305483e93cdabc9bfaf8f61ac57f68c6dfead8a2f8b3767f05e  release/kernels/mlp.sv-hosted.log
-f900ad439e82a3e04edf9046302514df1cab11e3d978b48354a485354d35a2a4  release/kernels/mwmiss.by_instr.json.gz
-5c266d3f75542d7a6e757a0112f7aa6f8167a703fd1816d537c2c834414b5149  release/kernels/mwmiss.by_unit.json.gz
-f559e0d8883122f74f7b036ef2ec548913c39414caf683dfb22bed0b1f2037a6  release/kernels/mwmiss.ccvtrace
-d87f72ca5ada370e2c370f89d42adaf5b808eded006676af321c4f18c3b8233b  release/kernels/mwmiss.log
+148518576598eec386157c03eb9bd3d0515a80f061185827fa85b383d31a4f49  release/kernels/mlp.sv-hosted.log
+9dafb3bf5df0abddafb067555c6ef4b7ed239994bd3f1fefa25385c74f2b0d04  release/kernels/mwmiss.by_instr.json.gz
+3b9341c34350c12401101e1e2b4a37fc5700f41abd29922c47942832f1731fae  release/kernels/mwmiss.by_unit.json.gz
+1c8abe3ef83d70722ddb9bb13b2758f1f3e5b51b20a7bedd6b410ea906fe1cbc  release/kernels/mwmiss.ccvtrace
+acfbe6b363484ca16bc71579d2eae81746951acdcaeab21462b358056a50e9c3  release/kernels/mwmiss.log
 8abe8e8997456a2a6711ee72da54d854b24e20abbdab28e4b7271c0d28418de8  release/kernels/mwmiss.oracle.jsonl
-97255f78ef503c931327d2111a0545e66c79c4d373ebed38296370db9e0c0c00  release/kernels/mwmiss.sv-hosted.log
-57de65575d808f22724246aa8821473708d7db5a717622c29f77a0f17e541759  release/kernels/narrowadd.by_instr.json.gz
-f55aa9fdb1055771a69322b7c81a440df07f4030d12d020b221c673da9b72006  release/kernels/narrowadd.by_unit.json.gz
-89768caed29d80b84051d7a0db9c259baff0e5e86554d670b8ed2542b1b8240a  release/kernels/narrowadd.ccvtrace
-ae81fbe9e878aeaa98d849f220a2910dd78a463830b4d66ca5db2cde8131c62c  release/kernels/narrowadd.log
+2773289d0dad21dbf059dea1ad7f8f2e266ceb42f0df946dd521d75fee72e62d  release/kernels/mwmiss.sv-hosted.log
+a1ddaec4cb2f6c9510d9a588441fb4415eccabee50082c81d9603cf58c809a05  release/kernels/narrowadd.by_instr.json.gz
+c0f558fccc4eefd4ff4264d841fd506963bab7ce683602b50ab3395b2e27be3d  release/kernels/narrowadd.by_unit.json.gz
+5695db585d4f624aeb509be5c67c54d2ba97ffae95da060231b13b3de9094c4f  release/kernels/narrowadd.ccvtrace
+27025f0357ed7d7595eb5b6cf73fa3ea4ceeff3c62611fac4c2af366234dd275  release/kernels/narrowadd.log
 40a2cf629853dd404bb06b4a07e35abde3d12efc13f26ffe28f923daf2994574  release/kernels/narrowadd.oracle.jsonl
-593a5ac7ceddee70a1f2ced17f99d557a17b11f7a95b87275f8885577615055a  release/kernels/narrowadd.sv-hosted.log
-cf96f3ee626407a2f22b1bbe2481db7e581a759f403f962f068b371c4cf6aa05  release/kernels/pguard.by_instr.json.gz
-afd3d5d23e1ac98b034e66173bba4611acfde9bb81f541a9d83342ab9b96ce75  release/kernels/pguard.by_unit.json.gz
-a38f130d253c05c533f204d4870f1bd4b8e39f9f9f07236034b56737b161e7b7  release/kernels/pguard.ccvtrace
-396d94e4d3e4421e560e87ddd6d0670b711bf56bc7f14463a3b985a9c912dcc9  release/kernels/pguard.log
+d49e8e820259214b297111ae0f96b1c9b8325e8b1987b1a6b118544f6c15874b  release/kernels/narrowadd.sv-hosted.log
+a7d3ffac4b536649d6986fe98c9f5a8d879da795c73fe580cf76369dcf97d721  release/kernels/pguard.by_instr.json.gz
+b35ccca48a3ee019096b2f39575aa4c4dae1b6780d564fecb357a0108a3e746f  release/kernels/pguard.by_unit.json.gz
+2fe2d3a5aace68f42de1c4313b116c29fbf827a9e4f45848f5c0e9025c0f9113  release/kernels/pguard.ccvtrace
+2f22a4d79c5beaa0d866a08130e33179f10b75489d62e6981b20d3d08d512310  release/kernels/pguard.log
 690e56f1cb8d97cbf67124b7dff3ad0a90cb8981814cd1709cf0cd0e035b3bd9  release/kernels/pguard.oracle.jsonl
-371443618d44eab6620ecb2ac496cec3754229ec875cc6846ceb24db98304336  release/kernels/pguard.sv-hosted.log
-593a676d8109eeaa8bd4c646890831a88c764a4764d65b41cbed48d5afc6a23b  release/kernels/plog.by_instr.json.gz
-cda772b0abbaed6c8de5446bd8baaf69d6be8ad0a295713799796c8f3b200591  release/kernels/plog.by_unit.json.gz
-a63bade7370eb7774bd954fd5a0a79ca928bff9fdc0502b1da37a204b8ee1aeb  release/kernels/plog.ccvtrace
-d6381c92c3f7999eff283fc95ce573a9089dee54f2445ddca8c469ba370885ec  release/kernels/plog.log
-c230f13f2e1082b306a9c5ab7809ff36cf5c1b2e47dca6b7a71f741524d403f5  release/kernels/plog.oracle.jsonl
-816c9a02a8a673bcb41817629badd5d19aa09e6f4ff5dfad062bd8aceacced5f  release/kernels/plog.sv-hosted.log
-4f531f3e99ac3939d9fce123aa836007d23acbdcbadefe3b1220bb99c8475ae3  release/kernels/pmovdiv.by_instr.json.gz
-ec63ae676b6b97def4b66d1815a977448bbf1eecaaf21392913c1dc8b7548dd1  release/kernels/pmovdiv.by_unit.json.gz
-82b5a40f01be204d368a4a4e3da18b9d4da8e65755305215b8181887e213c40a  release/kernels/pmovdiv.ccvtrace
-30d10a2204eb205f909e9f4e0b41e1263637797f5c406175a2b873f63d028f8b  release/kernels/pmovdiv.log
+bd369844731711a2ec310b1c979b983598834ce051a995ca5a1cb0b191a33584  release/kernels/pguard.sv-hosted.log
+7fd80fdfe3c3ec60ba212976124cc97f1ee0ca85beb6735881c07c79371d92c7  release/kernels/plog.by_instr.json.gz
+fa0bb1686374838c3987ac6b0d3db35bc13404fbb20f7b6598a7230df51f5252  release/kernels/plog.by_unit.json.gz
+9700cccdc5a4631cf36c27ee7ed2e15fd5cbce4dbcd62db5f3f0a459341780f9  release/kernels/plog.ccvtrace
+6cdb22a1a6055f0a62ee6e23021c4c0466c11a2e55625dd288c310bd92a45c13  release/kernels/plog.log
+0c99915e2da60f4670da00504a6371d7d17701d4431e733a3ff8fa98a2030d6a  release/kernels/plog.oracle.jsonl
+7b1f24f47cab489a659bdc703110ea77838c8bd6666d3bd2ff032d2e1ac4bd11  release/kernels/plog.sv-hosted.log
+6fc155d1ff67ece0981deccfbc52b612cd0494d38ba7e81402ad6234ed233eab  release/kernels/pmovdiv.by_instr.json.gz
+ae5ebea29d84286c4f5581ecb53f6ad04d8c7f098e30de6a965bdca28c1991cc  release/kernels/pmovdiv.by_unit.json.gz
+6ece2ff3810474c9e60072071c6ae63f914a306a2c4305fa895f1a0eea22351f  release/kernels/pmovdiv.ccvtrace
+7db2dccfaf9817ebf76e83f2b402a9cba7be26ae2526564cd638cc90c28633f7  release/kernels/pmovdiv.log
 7bc646cff6166a51bdce03d7c1b7209e871f0a91d743083a9b910a80bcd0b33f  release/kernels/pmovdiv.oracle.jsonl
-dcad617985854cd64d24816f2ef37508a007f7596d818d38a032979731f11dae  release/kernels/pmovdiv.sv-hosted.log
-1eeda76d2c56b8adc56451306016efa1328d605fe075c38d8317fca98a0d0f9e  release/kernels/predlane.by_instr.json.gz
-d5f75b883a920af767a1b3e8331614e2556d3550a8359cdc5dafe333dbb34f39  release/kernels/predlane.by_unit.json.gz
-ec76703472edc9de24902d04f52b6f564854b6c082c1068334496aaf0ae3770a  release/kernels/predlane.ccvtrace
-c67899bf1e6097cfa516e7b81c84b3942254393906b733fc07681e26c3204c7f  release/kernels/predlane.log
+a2995686acf3d9b06a1162338a130cfc7c71f93aa16021484f23ed6fd34ff958  release/kernels/pmovdiv.sv-hosted.log
+2cc2d5744053245c6ffa2d18f95a8ee8df66ecf8aae28c12c00d8f950def4635  release/kernels/predlane.by_instr.json.gz
+49dd936bc36419d506551f5d1545028c0f9d493f0caf5a7c8f5f14d19ded5fe6  release/kernels/predlane.by_unit.json.gz
+14dcef1fb4ecec3b41eb68eea100c4c924f58d8208b3e25e3823f8beffb5a89b  release/kernels/predlane.ccvtrace
+052d42986e8440a937fe106076521eae358367293784f953703fd8acb2db41d3  release/kernels/predlane.log
 c45f4177b9e84fc8a6e36b13534a0c7636eb30a3f8531847100ce5e23bf404b1  release/kernels/predlane.oracle.jsonl
-c483d38f48208a035a26fb18c9ea41fb163c4b5fe82336e03de900323866d8a9  release/kernels/predlane.sv-hosted.log
-6d153a360113d8d8112d2afc30f0d9f79577b749330ac42db1c3ed4039285c28  release/kernels/predmerge.by_instr.json.gz
-14722da25ff4795c34d158191f58517a6f6f7b1653ab24f079a0939e0f0f0b62  release/kernels/predmerge.by_unit.json.gz
-9e1cfb8b2502ca9d658ea557fcfcd6f0cf85e7d2d0549cdc9dff6ae89d5250b1  release/kernels/predmerge.ccvtrace
-575675336be3430de400dc4520328a35542b9689fb7607249b8d697b01c0e2d7  release/kernels/predmerge.log
+bd4c99927799c5f6c62a91a42233580e3570ccca33d68f10cdae8075251a5afb  release/kernels/predlane.sv-hosted.log
+2be76631f220adc8d54ec6787baa879372a0b6d2ed155e58e1cff7ad8963effe  release/kernels/predmerge.by_instr.json.gz
+f0a46d5f61fec24b8f7902fb9341ddf4100c96b22e147fc589b946491246f404  release/kernels/predmerge.by_unit.json.gz
+029ae0437bb86254236f636e509624280a9f14a40ff69aadd97bfd4a24eb4bb4  release/kernels/predmerge.ccvtrace
+4443cd96e2c1a4201a15dba5fcf3980df38099cf0eda49bd2c92c51a9cf6bf1a  release/kernels/predmerge.log
 6c737c49434bcd08e3e0814c8b1dbf15c586ae74f7929ba3148ddcee2c62c845  release/kernels/predmerge.oracle.jsonl
-dcfc4c334ad48b64742a361b4cb7b56d09ce2e9fedf2658ab2b1359d5197ae75  release/kernels/predmerge.sv-hosted.log
-eb2ff7f2ffbc63b72a3bcd8c567c00945c7700cf90d90b430415e7d1989e5b14  release/kernels/predspill.by_instr.json.gz
-218f38e7da51d533158c74d6df4de00d7d806e2c7893278d6b6e9f4136ce44e6  release/kernels/predspill.by_unit.json.gz
-538a6cdfd4a9a3cac26d8076c4b8ee3271693fd0403e8ccf00fb52c1c8ac9a49  release/kernels/predspill.ccvtrace
-d55e9b337c25be9c97bde603365b2073da69e4c129fc366af8aa6ae03a3523ee  release/kernels/predspill.log
+18a466f1e0d1c06fd079f17e9106f83425eaaa3bfc556e44b40ec1bbd1e4cb18  release/kernels/predmerge.sv-hosted.log
+f7e185cc52b4baf319d49ff2aa69454d0a5dc3bc89ec820e334f8db02001b7f3  release/kernels/predspill.by_instr.json.gz
+4d3e51db38c96d6e09eaa55ca467d170263a8f83ce0121254d9c3206f39a14f8  release/kernels/predspill.by_unit.json.gz
+349f32b3f925cf76caf11b10b8b37d2d942950b500bd2cd744502733da0d2b23  release/kernels/predspill.ccvtrace
+5b064fa2c5dffb566d4443fbd25a391f8c956ade48e576ffbeb5fc1d9110f46b  release/kernels/predspill.log
 b7c84c6478117ffa0f06da0e6ad1e4628e2683426a7911080810e78e06a5242e  release/kernels/predspill.oracle.jsonl
-25b89168fbef36a931d1f97147273f81cefb9bbd33d88a3eb230384ec6282999  release/kernels/predspill.sv-hosted.log
-92e045496bc4cbd45ba028733d531265f6ab45934ec6cba514b502c68f1f3bb6  release/kernels/predswap.by_instr.json.gz
-5f4135ca145655c852081ef87d6d2328c6a616dc16aa0420e63885deb34d57e5  release/kernels/predswap.by_unit.json.gz
-fc438bea55696ecef7147f04be5a4a38d4e981d8b5da61b73a14da4bdfbdfe94  release/kernels/predswap.ccvtrace
-2b5088900d031306a9f5d6b2d06f18bebfdc1cc4926ec4dd9314c60935d1f26e  release/kernels/predswap.log
+e3160df75edfc7ea831290252cb833c70c9dc66439a069deaabe0d3cd60862b3  release/kernels/predspill.sv-hosted.log
+de95708f76c8d40656b6c8c0a32539a551616b9bb6c8cfaffefe2898e0afa108  release/kernels/predswap.by_instr.json.gz
+25a890166b3a1e6f786032d8fbf6359ac3a37664bbeee6f835bc7d3642b532d0  release/kernels/predswap.by_unit.json.gz
+2ea280110f495df264f6b0eac6439699e16a0915062c2b6d24ca99765417f79f  release/kernels/predswap.ccvtrace
+98d8c4a70a1582d33544e30a277719439ec1debf371713bddafe3b66bd128316  release/kernels/predswap.log
 a6d4f7ed517553816d889c7c9eeb6bcfd1f6c973fbf682ecb69f3c2de619f7bb  release/kernels/predswap.oracle.jsonl
-35f5939b7c3da2b984da0c7456ac8a8442bcfd22fc25a2e9b18eca4840c2ce72  release/kernels/predswap.sv-hosted.log
-d726dc12562a98b0a3baac5d1c0449b0edcd243ed335c95e459759ce9f5b593f  release/kernels/privwin.by_instr.json.gz
-5c0b95a8444314c35c541cb5e250f318c21df1964e3884f23ac5977f24589a61  release/kernels/privwin.by_unit.json.gz
-95d8431fec72ec4d8a9285fab6980efa1594dd03e2685e421b67cec228b32553  release/kernels/privwin.ccvtrace
-050bcd19f491fb5fa012d2e53131a4bb423207b7591d639d1860895e781e575e  release/kernels/privwin.log
+4a589be2d1e65362bd4b093862b3be30801ebf30a88b5d746a7694778b1e9061  release/kernels/predswap.sv-hosted.log
+9417a0ff1e589cc54718f93d66e1d448d6e70332a3a3817410c3e68994807b70  release/kernels/privwin.by_instr.json.gz
+4aab3b550f29c8f7e3bde63a8355433b695ab4bfea99a76d95d05f69dd644229  release/kernels/privwin.by_unit.json.gz
+e0fd0eb9b9baa6bdcf71c83091dc5d28233ac6378f0940ab1f9eb0816c86838d  release/kernels/privwin.ccvtrace
+fb6f4f9f67fe4c1c8bb62f6330e06d1c374103b72eaacdeb962f929d3b9e81f8  release/kernels/privwin.log
 861f686fc4480363472908d679d8815e8c957d768e7ab32c826930527b0fb7a8  release/kernels/privwin.oracle.jsonl
-85f06fa65d15bf39c3f1f05d0a6d4b37762e45da939f1584998b7d85be6010c3  release/kernels/privwin.sv-hosted.log
-c131d9281adf1aa71207a6bfaf978138be77bcf9a922dbe5101f41170917f66a  release/kernels/provswap.by_instr.json.gz
-399f5078a9b1c9c44711a9e4e470a4a3d599a6bd121f078538967b78cee8a7c8  release/kernels/provswap.by_unit.json.gz
-924974a1e67f2b797466395a5629f833b0037978d8954b065b76ff76e2248d97  release/kernels/provswap.ccvtrace
-483a49beb329ccbc6c0136c64b4315c45a132492a6101841d266135180221037  release/kernels/provswap.log
+5e79c0679814e7dd397890b9209660d3b73205c7792a64ade56b4ccbb5aa5890  release/kernels/privwin.sv-hosted.log
+701b6503352b30ba1f41cd1afb6ab0763875d82e631cc59f0773b7c6cc1d07c5  release/kernels/provswap.by_instr.json.gz
+e2480e4e017b4cb6497e4e2529832a3ada7ffb7526d51ef10de488b83fd84679  release/kernels/provswap.by_unit.json.gz
+d07f457ebcd381b9e754c95c295c0e1d3bf6e4871db552bf7497f1155adea396  release/kernels/provswap.ccvtrace
+a253a9d97aeeb541b1a1e534635be8cc7d63e427e8151fb4bd8a492538d3c7fd  release/kernels/provswap.log
 c9c32a793d54cc7401477f582487f7e8b345b2669a75337b8d6327120d98e5dc  release/kernels/provswap.oracle.jsonl
-b43075bca07ba6166e2587b486093e27e3156faa06103a01ec50154b5269e6db  release/kernels/provswap.sv-hosted.log
-8db196a96df6a9f2216b5860c860f850108cd5c350942c9a52a5aa7f2938ffa9  release/kernels/retmiss.by_instr.json.gz
-feaebed652b1a8db729244247fbfced122231eb17d0ab9897be0fe6ed29103e0  release/kernels/retmiss.by_unit.json.gz
-5b3e5028830a0135b02467ff904bb4a636445b2756eb5bb69fa4a4964ced701f  release/kernels/retmiss.ccvtrace
-25e8e48d90bacfb1c43ec7d9c8cc49b129d5f86df276922f813acfc9edec1af9  release/kernels/retmiss.log
+498e6835e43f4bd5b6c0d7af5344bb127072fa8ed8e54d99d98184c8f4ff97ce  release/kernels/provswap.sv-hosted.log
+44219962f2bf3c00a6ca78006c987fa0a665371e87fb4489f33647489cb24a12  release/kernels/retmiss.by_instr.json.gz
+341f1fad27614bf2f363dbcb5108665f9f68a9a56ac7f7b828436898b4a90f68  release/kernels/retmiss.by_unit.json.gz
+bfe0834de490ce58d0e47687df42aa1372c12f648abbce2a23d30ff90a2df53a  release/kernels/retmiss.ccvtrace
+c55aa55f59e9dacafca3e597e8456cadd2cd0c3c1956e088e7a49ee239812d09  release/kernels/retmiss.log
 e5ef8538e838c6cff7febfc679dd091cf5e002f82d34f1009b1948ce22bc3649  release/kernels/retmiss.oracle.jsonl
-e67b18329227c49aa891a64c4250a530632074043d0d43a413b6dd14747ffc3d  release/kernels/retmiss.sv-hosted.log
-74a1a6f3ea4ffd4d81ee66ed959cd63465a231a3f183d4bc73a1eafa8d614747  release/kernels/roconst.by_instr.json
-f4bfe41abf263c57202eeaa306f93d91410a2ab00eca953731902e669a7f660c  release/kernels/roconst.by_unit.json
-4b1dd563bc6fa92c5b2eea552e1788c14dd677aec4f90a9cb3d33ca25ec5784d  release/kernels/roconst.ccvtrace
-901c69ac3a3d7105787fe5f12195ab8418ede5e51ebc9f9ff0c7bec74837c807  release/kernels/roconst.log
+98ccfdb189f8bd1093909d46cd9f33fdfb82d3557b547a7b1a39c7687f459a89  release/kernels/retmiss.sv-hosted.log
+9d60227eaf49c14fd3b4f0e72b439220de297ee6c7a1b8ffb23c9e5eeb2952d5  release/kernels/roconst.by_instr.json
+a0e25d5a3229313a2b66d996866af59d79e8a27ceedc6a4193409e0f4fed73db  release/kernels/roconst.by_unit.json
+26a99d074054f18545f2ec650525eb1bb56ae2d016da2e2fe4be4e6a73dc2887  release/kernels/roconst.ccvtrace
+39377a33966c83010c1b42f69901de7c835a16e3603849a91e46ede8c32b7973  release/kernels/roconst.log
 8087c0671de620162881aecd38cd6114b78e7be6bd71201e3ec02c9a2e2e750e  release/kernels/roconst.oracle.jsonl
-ef802a553c30258258e35d1f7c8544bc5d0dc1678253384a8ff1231a3aa7d5ac  release/kernels/roconst.sv-hosted.log
-5852940e352c331418b4a27c17fadb640966080d8a7b7726319869ece3e3ab06  release/kernels/rogated.by_instr.json
-3aeff4532017df894222f56a8c44389dc17c77d6e9fca6971458fea1c6da48eb  release/kernels/rogated.by_unit.json.gz
-f4da3effae59a971083ca36a1f97a9fb0ef15161596937ecf10954785f4afc34  release/kernels/rogated.ccvtrace
-65ed7a3465f6dee4a78a839168cf7d3d35c01bf4d109c9335350c382332b6d4c  release/kernels/rogated.log
+28050e37701a530950d260ebd7a08cd533d398f69e217146a8c0e3121b869593  release/kernels/roconst.sv-hosted.log
+63c496d2b878801f75243a30d802879b4bad83495b9cafe3805c826cf78b8ea4  release/kernels/rogated.by_instr.json
+89066c4e53905c12c5cb3701a860537e097d0efb2ec954fa28b84e40cd3f0ba8  release/kernels/rogated.by_unit.json.gz
+b7b062e4fea63ee62851afa2ff61089f42dbc5b14814c50942f35f20731764e0  release/kernels/rogated.ccvtrace
+68f4bb27e3b1d39c4bebb07a0b12a82bab4d1f8cf08339aa67f32f7c34dba197  release/kernels/rogated.log
 7cd02bd4cceec5a044d6b4d6a80df1e68ed0ae71b0b2a953143636d5b809ea6c  release/kernels/rogated.oracle.jsonl
-964e7325c04f6218db9b64cff261183a25bf922c1547db5b21c0d5565d4d0de1  release/kernels/rogated.sv-hosted.log
-c7f90a36f138e1076ecfc235aa62c98e5e18b1e83662eaac14f38136e1b92d20  release/kernels/rokill.by_instr.json.gz
-d965bdbc1670f682c8d4248ada61db92296ef1c956330568871d76eb5b062f13  release/kernels/rokill.by_unit.json.gz
-af1e24074ce5a43cedfede66d1ae3db0c8d7a8c88268df75467575bfa313f0e0  release/kernels/rokill.ccvtrace
-07093084b306f167c632e8bb7c1ca7ed7cf68fa2be6aa1fb3ad0cfec20dedf18  release/kernels/rokill.log
+d425cd76dc125c2fcec44f34624934c61e08e76b1d9aac33b6d4c32c049bdf03  release/kernels/rogated.sv-hosted.log
+36c2922466286e29ed98c9b29a87d1d9b10d64c1eee1e332afffe6d27d19bacb  release/kernels/rokill.by_instr.json.gz
+c525fd219a062f39fc85464f7a966dbccc4191ddda67b48c6f83252c87b8b194  release/kernels/rokill.by_unit.json.gz
+d8b9c1f21f6efe23b6cff5aa55d9a09ecafda7fa4d39d082181cb062f26c4cca  release/kernels/rokill.ccvtrace
+d42eadcef384eb9cf3accb8b7a4d8501aa35e9bceab6a1f52eca079fd3e3955f  release/kernels/rokill.log
 94efcef96af469a512d346ce61623980fe86383188eaebd55120f716db596f14  release/kernels/rokill.oracle.jsonl
-91e02603218612372e066989a379fee160e4c00f07a72ba0844535f8e9a57c21  release/kernels/rokill.sv-hosted.log
-9edfb2939fe367a0b43cc7672f64b30efae8b8eb8dce8cf7a28021a55ac9ca7d  release/kernels/rolaunch.by_instr.json
-2d8db50db98e25664c65712aff155d4c58890f24b6dff040e39d86575eecc8e2  release/kernels/rolaunch.by_unit.json
-2722b0180c5571af28c5d5e57ac84a49b48d2d9c911b2384eaedb5a991c3bfdd  release/kernels/rolaunch.ccvtrace
-12af9c237e657fa8123e45f5a2bcc063449a0c9fb261f20856b1c460d88a19db  release/kernels/rolaunch.log
+00d4a3cc05b6fcd38089bcbcb279190a61d0e8c10a9889558a370ae566a17154  release/kernels/rokill.sv-hosted.log
+f80922811fcf7fe0c95e691706befe832ff25e683d067e3aaac983cd4a5c477e  release/kernels/rolaunch.by_instr.json
+ff6608cc88b28562c03443b78dcbbc8a430693ac68dfaa9c536c53e978f3d0af  release/kernels/rolaunch.by_unit.json
+b749e9e281548ed432afb2649de661925532c37ae72e4ce89e9668c11eb51556  release/kernels/rolaunch.ccvtrace
+0794be969f859653dacaa9f5033da35754dc709a51180974155b1f0f2297dc1f  release/kernels/rolaunch.log
 e7dad585c3e70615de04330fd03f4f282c29a005dc1732a35655fb261d51139e  release/kernels/rolaunch.oracle.jsonl
-33ae7f5d507ee6e623214f53263f8316582e03db8ad12eced4aca339f91c0dec  release/kernels/rolaunch.sv-hosted.log
-74a1a6f3ea4ffd4d81ee66ed959cd63465a231a3f183d4bc73a1eafa8d614747  release/kernels/rolimit.by_instr.json
-7dc8e0b1feb72fc32f336cc9276ff3023f83a4bd67f05b1c1d2db5bb5c43778d  release/kernels/rolimit.by_unit.json
-77a7f0cd42431f4de36af6652e5a915198a183814cac386918ec5f96f10c4693  release/kernels/rolimit.ccvtrace
-67d43a5429607cb6967f7736b6bdf1f3075e7213bb05695ab3837a92a0f89175  release/kernels/rolimit.log
+cfaec78525f99049699b37bb2e0d2565126fb8364a97b84f4a593d7dc815df85  release/kernels/rolaunch.sv-hosted.log
+9d60227eaf49c14fd3b4f0e72b439220de297ee6c7a1b8ffb23c9e5eeb2952d5  release/kernels/rolimit.by_instr.json
+0e422748b925e81608f2a231594655574afcd39fd1edf26617f2057c864d97dc  release/kernels/rolimit.by_unit.json
+9ec963609fa3c37cb858dde3d38651cdae972b3a9e3f38781000ec2f594a9bd4  release/kernels/rolimit.ccvtrace
+6df6d54c7205fd7d35c80269b0720be95ed140196ed3caf40b847a312a0c81e6  release/kernels/rolimit.log
 1c5bc0cb8e8b2e69505fb5a551a16d5d10c56f232b88da7a27e336ad7d962de2  release/kernels/rolimit.oracle.jsonl
-d8efcf6e72994376f9bc715f9daf339282c9fe2d08851bdd911bbf2dc53c8e02  release/kernels/rolimit.sv-hosted.log
-29b581af746c35e6eb6bf33f37e0804edfecfe6b2c39453d004480b68813efe3  release/kernels/roload.by_instr.json.gz
-3ed0c059840f6c8a9703180f6d597e0d048b37dd0c6629dca156631ec1c0164a  release/kernels/roload.by_unit.json.gz
-b4483eaa4bad1c697a50d109b3f8c939d9b3dae7824a7627c6f31ead219ad9c0  release/kernels/roload.ccvtrace
-61cc06259965d5a06963e4bc8f5a0475f725e72a632782719cfe46937199a705  release/kernels/roload.log
+c3813bc992e7b3d0eb0b5d5e373deceec5fd1d00c7114e2ce5f6bee946351a87  release/kernels/rolimit.sv-hosted.log
+f67bc1c7f492d45f85c320e89b9f9d0ee854dd2396e890dc7234c9c5e4cba0e9  release/kernels/roload.by_instr.json.gz
+e3167f4e3ecad1ccefcf6d0f4ee99b8a2a15c90ccb77dea4b52fa7832dff0e6c  release/kernels/roload.by_unit.json.gz
+1fd0b83b3827c844bfbea0eed7be6aa9e73c494efbda9a1a72ff4d6d37443941  release/kernels/roload.ccvtrace
+0b12bc05e1f7456525d7faa8459631e8ee709aa8f167f5ef62c1cd5452b2d3d4  release/kernels/roload.log
 f7c1309cc9764769fb5803f6fd0f2f5e1eb418f2d23fbe5e17cf5f9106869fdf  release/kernels/roload.oracle.jsonl
-c64402814f7b14440b1c4a9eff08ba3ced133a01acbc0dc6da5c117ea482530e  release/kernels/roload.sv-hosted.log
-5d5e88da7106b37d492b1daa2ef9552ee0f4e9f41347201d8f899ae6c64eb43d  release/kernels/rope.by_instr.json.gz
-8bc61dc5f1f2d66db1c47b95e5ca937be06d73137f4380902a666640e9f29e45  release/kernels/rope.by_unit.json.gz
-91d75829f82e283c0ca83e00945473c8c688b469781827324692490cec771dfc  release/kernels/rope.ccvtrace
-16e345dc961d55efd54018d3005a461c7af9923e8235fab3a91a83cfbafc717e  release/kernels/rope.log
+fdb4691f6944907b0c5b2cb61fac9050e6ba3b924e5c174996043c1c208fe6ba  release/kernels/roload.sv-hosted.log
+9d90eb76ba263a13ac5dca4f2f36ec3fb5c323035cd8d3f112a4c1d11852b2f2  release/kernels/rope.by_instr.json.gz
+795d1150d0ef6c38d8a5f513d778e894438a9ced38a5847754be6696f23f0b86  release/kernels/rope.by_unit.json.gz
+4c91f7caa8d7fda9718921b6642e231f2d6812cbf5a69468fc09c4ed86685d10  release/kernels/rope.ccvtrace
+43c281e95df67b8a6f2666953c3aebbbec3b7b3cfeafbb6239cd4e76c178165b  release/kernels/rope.log
 d55f9efae392dc8877c102c01c0810e7654b666b6ede386328108164c6cf88f3  release/kernels/rope.oracle.jsonl
-c2e1fd4976f602f95d2792956a0044d4848a13f4c43f939ccb7bcf0eeb2ccb3f  release/kernels/rope.sv-hosted.log
-8f06bf76b726bd5d061516e5b6f9017b28f812011f6771d58ef075c72d3c0587  release/kernels/ropediv.by_instr.json.gz
-44285403d488e41de04524655ef5d02857c7618a0342203f2ae26d17f84f7990  release/kernels/ropediv.by_unit.json.gz
-d8d0a61ec48c92329965f2f4db0fb1e939cae365decf5062e88b66705b7ddb40  release/kernels/ropediv.ccvtrace
-cdfd882e26ddf2ad2ca5866f78873a70a8ebc06bdebca1a16b1ae39590fbde86  release/kernels/ropediv.log
+46cdbc9d626d79e6f5da8ba63217ed7deefb63d3caa8585ea5f48a7e75609660  release/kernels/rope.sv-hosted.log
+96a9e52fab1cbe3fc95ac53144c17ef84f03ecd045e7aeb9363dee732a09ccba  release/kernels/ropediv.by_instr.json.gz
+e89ab82f28827bf9df17517f67c3482988de4e14abf491964d0bbed14abc188c  release/kernels/ropediv.by_unit.json.gz
+838eeddd0834f80d5a04096f4d9569ebff21459a4d40d54d49500765874dac8e  release/kernels/ropediv.ccvtrace
+93814b2503ac8f2daf825ba71827653ec66259cabc2c3fa0cf51d5113c7ac862  release/kernels/ropediv.log
 10c0ec6ec18b7b44638c790033109198c079d07c1537bf193353ccedd00a920f  release/kernels/ropediv.oracle.jsonl
-6efee20923891e635a6940c659de455ce3adc3839d3c2e0ca3c454a6ca4e3797  release/kernels/ropediv.sv-hosted.log
-44762a20fae74a641306a271000f400732fef79382a264803830fe7cc20e6d28  release/kernels/sel.by_instr.json.gz
-de44873592a373bd8f38f9f9febab339e08c7a5a0ebe16aa46c7590e41719ed9  release/kernels/sel.by_unit.json.gz
-80aba30dd18a9d75d96a88ac75ff3ea1cadb303b06ecda90d74fb7a6e39c65e2  release/kernels/sel.ccvtrace
-37da397e775475bbda707671bdfd940993e68147a99941b97bde250a0f84f06e  release/kernels/sel.log
+f73906ce2e229ea5ad33d4c9323d49f84e448c0929ad2ae1194ec559871c9469  release/kernels/ropediv.sv-hosted.log
+a1b58403e156fd9e672776c6180656061701e7c1bb68f599afc64a5496c79816  release/kernels/sel.by_instr.json.gz
+6761baf03b1501b07368846158d6a6715cfc03ffd825601a9a957bc0aa680bea  release/kernels/sel.by_unit.json.gz
+cf56791412bcbdba8dec6c78ce5aab270d09d252a7cf409a5915afeea86e5dda  release/kernels/sel.ccvtrace
+9018b4eae20ccce1fbfbb42e8e4b0ab3be136d1f7bf67c1a11a71cabf626fb7c  release/kernels/sel.log
 87f6a81e8afa004c8039bf2f61c90176fcf29ab29bb17ac44aa016a5cc8438fe  release/kernels/sel.oracle.jsonl
-6b64b5f8c1ae79cea293eaa4aab2514246833f027be29a1d476d912f650845fd  release/kernels/sel.sv-hosted.log
-54021f4574c995a4fe8a0c7f4f55f337039863bc5550ca63d38bb5528906c307  release/kernels/sized.by_instr.json.gz
-adf5a3426b20ce64eca918cc68e3eee20172e0ae9637d5c29316c9cbd78a2a5b  release/kernels/sized.by_unit.json.gz
-6dde89d5e7817b7db61492d7430942e54177d0423f619dbb1c341f427d0cf094  release/kernels/sized.ccvtrace
-04002e6df15d5d1d740c53b29444b7def9bf03c86dbef3fb589a969f8709b96a  release/kernels/sized.log
+099adf6a85cea6a79e42120e04380ef84dabd4b38aa7903704c300551949dc31  release/kernels/sel.sv-hosted.log
+c8d1caf618ad1d17b2a3d6c16e27092c627ee093552b8bc3013f9dba862e421b  release/kernels/sized.by_instr.json.gz
+c81ed227c99096af50f39a83e9411fee1b473ecb1dfecde1bacf81f8e08b7a7c  release/kernels/sized.by_unit.json.gz
+95ff99b9a0efafaec4b59b944360d3664912cf64d3c038f58bcbd67fab2bf4e5  release/kernels/sized.ccvtrace
+d3b35090963e4cdf5676eb6b19aca4f8042b6cb13a99b8f76d946140549fa04b  release/kernels/sized.log
 36d903ba1618bd1faa437c9812a6ee6c0c966a63196c796267d74bf2695ebc3d  release/kernels/sized.oracle.jsonl
-e943ff75e9474bde68754aa7f2045b73defdb06d327f81f8f2b92fe2eeec08b3  release/kernels/sized.sv-hosted.log
-5de08e910373687f3303ddcd0aa43df0af9fb821e02064a8958a5da08a876996  release/kernels/slotform.by_instr.json.gz
-aa18e20af4dce0f5fe983ea6ea342e4a25162fe25eff028b3b53943a5ff35615  release/kernels/slotform.by_unit.json.gz
-f4df59634e4ad36e24b0c8e5ebefd28e6587e4f8c7b363cf3c755dd60c8a37d2  release/kernels/slotform.ccvtrace
-986298dff4eba98ae593c5eb2940640da8bca6671cadbc8327afabb0d35069c5  release/kernels/slotform.log
+851ff5f7c018f6e0f266a8f06bea0a314979a63009453fe61032f38aafcc5f17  release/kernels/sized.sv-hosted.log
+dac9ab1fcc360e3f5dbf392b57cb0768d430cdba287462e93cb1ecf63367c4cd  release/kernels/slotform.by_instr.json.gz
+fcf1b68babba5646aa283294697bdcd2d120992f19ada09052653c945454796e  release/kernels/slotform.by_unit.json.gz
+b159e417b57396749dd6592fdb8c9286f0ba652f2a3ad71a9c540ce1ddf44b6a  release/kernels/slotform.ccvtrace
+85360b0d3f16d505346b056542e0a8b6a6c8012dff9661d4e42b367d3980b3d2  release/kernels/slotform.log
 8b61db7419b18cea8a646fb628218447e72e84a18a9891ffb73b441736138ab9  release/kernels/slotform.oracle.jsonl
-96a4a2d7fc59865caec7b739befdbc143f636178fafc2b356e3e3316ef23aa1b  release/kernels/slotform.sv-hosted.log
-f0bd01e55bb1843a0aa6e4a2e93f855694a21c02ad5c750df31d46a0bbda2b65  release/kernels/spinwait.by_instr.json.gz
-6ad6979adc34ef2ff917640443133efa0302fb5d275544c2a059cecc371f0c2b  release/kernels/spinwait.by_unit.json.gz
-bfe5aecb3cdc71cca10153e0980ad45e1c5a5d1faacf84c8bac7843156328dad  release/kernels/spinwait.ccvtrace
-8e0229a6d789f1a57cb0dbdce986bbc4ca60a7550483aa8318479cb3e93144ed  release/kernels/spinwait.log
+c92b7aecc0915434d52769e4b69d32dea034fa85e1f155ad1e5bd75e1489f0db  release/kernels/slotform.sv-hosted.log
+ebd5113721af0aacdb5a9831aac94eab301eb911e783e434b8cee61528e3f011  release/kernels/spinwait.by_instr.json.gz
+1629141ee6fa570ce8489302eaf4129e013dd0d6f6d72a78052dde07d2817a12  release/kernels/spinwait.by_unit.json.gz
+3c2209e38fbcbbf27c15503b099f11344e8e2a2270160a8530a39b832435b9bd  release/kernels/spinwait.ccvtrace
+7173af1a828e6c30833774ad060588e138e1637c8e0562eaa42b0b6ebb4bdd12  release/kernels/spinwait.log
 868920637236c878b33779bd450439466fc3626996a3164573dc11d437d5c709  release/kernels/spinwait.oracle.jsonl
-421937b0c52f957af26d50eb2f736b72dbe7e0c32d1c5905725c40eab3a8f50c  release/kernels/spinwait.sv-hosted.log
-17eda36707a87011338eca26a1072099d1cb2bc5bf8a06a23edda4e9f2239731  release/kernels/spmbank.by_instr.json.gz
-05fe3f576f3f91c1035c790b6133ca6d4f2a2f6cf4f16a3ccd20fb32f6f9ad17  release/kernels/spmbank.by_unit.json.gz
-cad89d3bced160d71dee0f982dc2ce8828c67d8d5c3af43949ad3f47d7e0fe80  release/kernels/spmbank.ccvtrace
-8b67af2fc0757a32837f6cdedcd3983cf202074d59e4b52a4d4b5245b93e5227  release/kernels/spmbank.log
+d97e9d98ceea217aa1d242c364ebc2a830a0f4da7b8077e2c40c6a445c379d6e  release/kernels/spinwait.sv-hosted.log
+9fd7f88addd22564ee234faca06a40a60c9b878a3d0caf2c8cc3029a1ac5aaeb  release/kernels/spmbank.by_instr.json.gz
+08bac50ea34a7f13224a9531602530dd9e42d9cf43ac54ba48e2219700ec548d  release/kernels/spmbank.by_unit.json.gz
+c0c97013dd2c20868a7a738ecef09f385045d505ec7dde13a17fb5535d6286a1  release/kernels/spmbank.ccvtrace
+dd07383890c91ce57f645ca56f0ccac366edc0ca84bb25e67461fb342bbac1f2  release/kernels/spmbank.log
 3af490cc37d7a92dbe719b57de216b648536eb301ff9d13de9a39f50d150d725  release/kernels/spmbank.oracle.jsonl
-6974dc71c617fc1bd729e438ab86e4d247f483f72fe11874b28b4de942dce9db  release/kernels/spmbank.sv-hosted.log
-db644d0fd5692394301d59dfa8bb94e39c618df7282ced038984fac605d7addf  release/kernels/srd.by_instr.json.gz
-463fe6bacbd1be9173ec1dfd7eba813f17f3f3d80f0207a0c97367551758e67c  release/kernels/srd.by_unit.json.gz
-2ed6893819d8ee78dba28ae7a71416001b231ef39034f3daec396a29b14d69eb  release/kernels/srd.ccvtrace
-46cd18e402a70d5b9f5268dcdf6a899c3f3030a3db5b45f813d4052e5ba1dabc  release/kernels/srd.log
+7132bca783a1910f8be37367e66ff39e91f792db7da8a7359d02d80e0ee543a0  release/kernels/spmbank.sv-hosted.log
+d69219783c0c036fff965122253d5c55f51ec1365a8a2f507ef6d6ffcbd51fc2  release/kernels/srd.by_instr.json.gz
+773767b212bc1de68dc5c1badb86c7cbfceacce534f3fdf9706fbe80d04e6a2c  release/kernels/srd.by_unit.json.gz
+120e1319cd456c4df852934811be1da60dc62491e8712908c82e235990afb825  release/kernels/srd.ccvtrace
+62cf800e508077a895f441f3ab160b66ce5ca80a7394e19a033e9017b39f4b5c  release/kernels/srd.log
 b08eb5e3673cac7eebb8b72af5ed3783c8e70a9e96592e76bf3722551bc79473  release/kernels/srd.oracle.jsonl
-011ad538ae47893c2ab11f4a894c32ad99f9a7bd1fc7aaf40a03a88a27896813  release/kernels/srd.sv-hosted.log
-e1267260b050ba378fb5fbc09f24e658daa4e39202b31fc01ad09835a8627c72  release/kernels/stall.by_instr.json.gz
-f5a6ce7ba086c61f33bf2500613bf205b549e01182b473c538fa1113d1a8bd14  release/kernels/stall.by_unit.json.gz
-75f1c68583b9cf383462b43b83f3af5fd58306507689c20af7fc14c878d27776  release/kernels/stall.ccvtrace
-e454bed6d2c3767fdfe66bba2e6caeebbd13969c6a26a869cc83452e0c5c3c6f  release/kernels/stall.log
+200e21164b3abec72fbf151ca2b6a9b2173e682b5085b1d607478f1cd8bbc948  release/kernels/srd.sv-hosted.log
+a76ded0b2ac3cc2aaa47a00d648f6bf22080a39ea6844d7a8b88f68c26b315fd  release/kernels/stall.by_instr.json.gz
+3ddea789a095a903956f2d4f39cc0a8880bd409c6fca2b63da1a929760debc86  release/kernels/stall.by_unit.json.gz
+ee8a34eaa00d8d74698a829a37dcd3b6aec9f7281289a39cea60de789455faf7  release/kernels/stall.ccvtrace
+b1969ff98f2e3bc0c419cb2c560e63132280c13c01d0c5dd1cfa207dd3561ae3  release/kernels/stall.log
 500db2c482b07a0706583422cd68878301d0146c1f872ccc1f11bfdcf5c993ef  release/kernels/stall.oracle.jsonl
-6a18ba82e5be5074943e10c7de6ac6645e0daaec2a076ead7530ebc5b9a41ead  release/kernels/stall.sv-hosted.log
-ce5f07ca002f9ddf8deb9a913344b65c39153d8c27e2f593b871b8fb19cc4316  release/kernels/swap.by_instr.json.gz
-c28f53499a86ccad35e95eb4f4bd22614588348ad7541d985d4e2b751845bf76  release/kernels/swap.by_unit.json.gz
-4c1a000f481d85090a2989daee5c41bbffb9004d0a83f993333f3db41adcf340  release/kernels/swap.ccvtrace
-e528e0f8232056102a3b1b51b2c76c90e2504e031438aa88de142e44f4751f03  release/kernels/swap.log
+54fa3011ff88ef960f389bacc5127e3ae125936910817faeafefc6896ffee7d2  release/kernels/stall.sv-hosted.log
+e510032203d4282b6a2a5c98b60949599c8d04851d31f247851641dc744ffa8e  release/kernels/swap.by_instr.json.gz
+b0eaa61b9a2ad9413d2631e6f9915b82302b86e896a6a7be8c0131f3f3a7fbbb  release/kernels/swap.by_unit.json.gz
+28b0809be1ebae9fe1ae03b9d0ab0da2f0e11706818c5e01b53a7d1eb098d5ad  release/kernels/swap.ccvtrace
+6c77c37879e86b67aeafe3bb61d9ec9d0abad27956a0b47e6d3dd95705c4828f  release/kernels/swap.log
 3658a26316c1ff7bc1744304a42f736e930fcde2865c8913e6cc67a22ce96667  release/kernels/swap.oracle.jsonl
-ac4781836e1577b57de7a65f3035b9316186c76212ce9edcc3e62c2d624b035e  release/kernels/swap.sv-hosted.log
-ec09dab8327f88c4eefff5a69ab06bdd250806a8886aa0f71edb7eb521ae3d84  release/kernels/transp4.by_instr.json.gz
-0239a94707deb2c708a3c1f2cfafe24102e9ff3ed935c0f3ac564d5021c1b3e7  release/kernels/transp4.by_unit.json.gz
-60e38fa2a268d4a615cbd37e3ec4497a81b0ce0194c08acfae8978a92134d99a  release/kernels/transp4.ccvtrace
-f3910eebf96e68788ab352c67b4a76fca41bde653280651f7f955be5625e3b1b  release/kernels/transp4.log
+9df44ab537d2434cba00721d7e05b4b63f640cc671711f5eb8e6e2ba260c852e  release/kernels/swap.sv-hosted.log
+a065c7e8b07c91188150d43a01ca09c2eed810615442d4b337e7a38419a356f4  release/kernels/transp4.by_instr.json.gz
+c9cc5121f0425a4d306661fe99119ddb2ebc3f190a1e1545f81343c2996d8823  release/kernels/transp4.by_unit.json.gz
+8c76d925e89c874e5ccb725e80f9fa90d51661f7959b849cc7a4c9f90b049008  release/kernels/transp4.ccvtrace
+9563d3e8232a1c714d03b40ff2bc257caba3f18fd063d4d43e751db7e3c5c78c  release/kernels/transp4.log
 06396ace3ac19677fd39c700e408606e5bdbacb24997d663bbe8872e63dd74fc  release/kernels/transp4.oracle.jsonl
-f815b446a26673d6285ef61aab5fd8516cad1e9f93e28b6d974ee6ada9ff697b  release/kernels/transp4.sv-hosted.log
-750ce9b07f75bc24b62942360124b406437467997b753b3c6737f77de3ad4a19  release/kernels/unal.by_instr.json.gz
-4fa06155fc4d956d3757d85fa07861ec62596f6b6fde60f3b044186d177ef322  release/kernels/unal.by_unit.json.gz
-6e679da0bff69301043a53b7c50d12b8a1d0326adb67b6af1d533bd179b3ea66  release/kernels/unal.ccvtrace
-f0c82d70afd4d4efa467df3185f3145026e9f8f41816273da8a83a70d804b876  release/kernels/unal.log
+0fa996cd2624bfb522f76280054ca61436a02431a6a62ca523477c007014bf11  release/kernels/transp4.sv-hosted.log
+dcebdde3362ef5ffc93057463ba5a74084f49cab4c830107716b7ba9c9f6d6d5  release/kernels/unal.by_instr.json.gz
+735f389ebb00078050091b1c68a3bbae469364fabc3269fa04b74038ae5c5045  release/kernels/unal.by_unit.json.gz
+babb3fc621937e909e0825c3c091260117abc00f1b040156d22b9d4279b9df5f  release/kernels/unal.ccvtrace
+823f188815feaac6c1cf0a992e004dea5f4595fc61e7d2b709016a0ae74baade  release/kernels/unal.log
 c3d484bb160657a563df983d9a2532eac27f556636617960aa1e72183ac2b299  release/kernels/unal.oracle.jsonl
-5c05f7466064ac0af7ab5eb85b9abacf2252ccd23dcc601ec48ad52266bc714a  release/kernels/unal.sv-hosted.log
-b975fd387e1bcaba50b9ef822415c7557974b369578d2023d8066f2e7e15f695  release/kernels/vadd.by_instr.json.gz
-c0240cd70a88720a0b0951ed8d13ed9f50574a36936ef6689a4dbeca76850ed1  release/kernels/vadd.by_unit.json.gz
-f7962ce1224483b0575629ae56cdfb8fb8d7fc66abbb2bc54367ad021923cd4b  release/kernels/vadd.ccvtrace
-5861cb65b34f6ad1ec8f515cbdc2fd846a70edd31cab202455efec344da72d3a  release/kernels/vadd.log
+3d273371a953d48f646a851d525d4042028bdb3251d2664b7cc8e25b0b9e717c  release/kernels/unal.sv-hosted.log
+3e5aa26c01d74078ef311c598703e4bfa45c4c7dab9a6339bc8efe9ed2ccae54  release/kernels/vadd.by_instr.json.gz
+5a77cf1c9745151ea0626e3d488de55ae837324ec82dc593bb5a905c9f76dc6b  release/kernels/vadd.by_unit.json.gz
+10fe32ed353f074dc2b10c8fe441f722069c023ff22b12d5b17e829cab6ba730  release/kernels/vadd.ccvtrace
+08ad1a693d469fd398861e51937138ce170576bf4ec7a816f155c4cf48d366e3  release/kernels/vadd.log
 0276b6d0611a4bbcdc004ab3987214aea138245bc7217504147331689a9c0880  release/kernels/vadd.oracle.jsonl
-d65001aa35e821e0b7268f5dc9140ff6625eff33f2402c7b55c422bf529ad4eb  release/kernels/vadd.sv-hosted.log
-9b18452748f6bbb186dac53e3881fe8ec4e3f9c86910ec1190600eed669e2659  release/kernels/vadd4.by_instr.json.gz
-763e3de241aa1642b64050cb65b9d3dca491a8fc3f41bdb76f423829c7cc9fba  release/kernels/vadd4.by_unit.json.gz
-db0b4df38279c0f577786bc2aeec0a29fc004d91cc104b525b7183e73084d8d9  release/kernels/vadd4.ccvtrace
-f6fe33076ec19cfef5bb23508f4ffa0cff856b92eac7d9378e63df3c752fce42  release/kernels/vadd4.log
+908267d473fc160da5894735d8eef75aa12876537b9528894c7c3d6b29f518fe  release/kernels/vadd.sv-hosted.log
+4a447943e50953eeef352add8edaa7f86d3e0fadc5f4e92689f84cd69d6b4260  release/kernels/vadd4.by_instr.json.gz
+a2e5075c8d50ae23073cc8e5d992f0ad7bad48e3c04c24205490ef5ee44b9d7b  release/kernels/vadd4.by_unit.json.gz
+3b2b955f6822e731f7058ac9d4d95139332970a77740107437bdabf5363e5f1f  release/kernels/vadd4.ccvtrace
+22d0eef993a5a3802ae30a1ed9b33466de0ad7f3535c7bedf78875415d929bb6  release/kernels/vadd4.log
 225aa18fc9f38aa9ad615aa11de254337d59fa705877553d873062c68366e0db  release/kernels/vadd4.oracle.jsonl
-b4e41e46e2e8b63e515479c55dd60e9f9004bbed620bec9eee1fe38b2f3fef5d  release/kernels/vadd4.sv-hosted.log
-b9d8e2f8b94afc4f4a25fb5f4eb4627cfca4bf60fc0f0518f3feb05597bbe9ea  release/kernels/vaddslow.by_instr.json.gz
-c3bd7941f9e308d69e1f46a595a7841fd06677fec33e0e40d749ba67724f69a7  release/kernels/vaddslow.by_unit.json.gz
-95fe3d753a3f9fbb9cd7f7c224b21426296afaac6ee2a0525b9d9d9ddd9e4d2d  release/kernels/vaddslow.ccvtrace
-57d477979f85d5253b09f53839a57e8937dc3738cdae7a842748024e4f6b23cc  release/kernels/vaddslow.log
+99ca3fa7b7f235110295d64aea1a3c88114e0502a2fcb222fa925f7a15726830  release/kernels/vadd4.sv-hosted.log
+a9a1899d863144a5241952632709be3ffa34f2d90f3c093ceeee637b41c6d545  release/kernels/vaddslow.by_instr.json.gz
+0afae3cff819670f3d1eb160f5d2d9d8084af2766d60b60c744d50c458a9785d  release/kernels/vaddslow.by_unit.json.gz
+790212170c180645568e37c971d2e0acadd013967e87c7254204c61cad9cd5ce  release/kernels/vaddslow.ccvtrace
+8765ae06aa8a4d812dd086f81796bd921214f009f9ee5e241f382313b6fbfa94  release/kernels/vaddslow.log
 e9e6218e8b8450e9f9ff6b39d659c994a1e51c527a0c5bd10d18b5658ae0e344  release/kernels/vaddslow.oracle.jsonl
-f38591b3c5ea9cfbc72dc6d74649fa9590c64f208a87d97cfd29ca92d73fc23f  release/kernels/vaddslow.sv-hosted.log
-e2da4d9fe3d94a57757b71fbcf39603f97880acdd96d6cf259d5567f8325f1b5  release/verify.log
+5015e4fe04e5091738f9ab7c6bf3d330c1174adc30311f71b48d488582c33319  release/kernels/vaddslow.sv-hosted.log
+38c4a437870705dcb9370a133612c132256aa3a6a2ec1cd2162a7e097c871cf2  release/verify.log
 ecec1a37173b3e9e46a989946881f9d4639255fd582c7a2cbb350aa8629c0401  release/wiring.txt
 ```

@@ -312,6 +312,10 @@ def main():
                 L.append("Lead fields (driven with valid, a cycle ahead of the "
                          "rest): %s." % ", ".join("`%s`" % f for f in c["lead_fields"]))
                 L.append("")
+            if c.get("credit_on_receipt"):
+                # The receiving block's promise (AR's rev 322, RA-41).
+                L.append("Credit on receipt, at %s's end: %s" % (c["dst"], c["credit_on_receipt"]))
+                L.append("")
             if c.get("slot_fields"):
                 # A field defined only on some slots is zero on the others
                 # (AR rev 260); the ports still carry the full width.

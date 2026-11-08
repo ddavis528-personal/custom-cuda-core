@@ -109,6 +109,7 @@ struct Op {
   unsigned w = 0;                ///< sectioned: the destination's width code
   bool backward = false;         ///< a backward branch (OA-14's rotation)
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
+  unsigned pc_hi = 0;            ///< pc[47:32] (a warp's code window, CCV_W_PC_WINDOW)
   unsigned chw = 2;              ///< kChw: the width code it sets on dst
   unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
   // kAtomic (AR-21; O-72, TI-39): src[0] rbase, src[1] rindex (A1's
@@ -120,6 +121,7 @@ struct Op {
   unsigned passes = 1;
   bool red = false, afault = false;
   bool cas = false, late2 = false;
+  bool cas_pd = false;           ///< a CAS writes pd (pdst) from its second slot (OI-127)
   unsigned csrc[2] = {}, ncsrc = 0;
   /// kExit (TI-27): last, its fetch clears the warp's last live lanes, so
   /// FET fetches no further; final, the mark FET sends (the last exit's, or
@@ -157,7 +159,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   Uop u;
   u.tid = tid;
   u.warp = warp;
-  u.pc = 0x1000 + 4 * (tid & 0xffff);
+  u.pc = (uint64_t(o.pc_hi) << 32) | (0x1000 + 4 * (tid & 0xffff));
   u.group_mask = o.mask;
   u.fetch_epoch = epoch;
   u.ilen = o.ilen;
@@ -272,6 +274,9 @@ Uop atomSecond(const Op &o, const Uop &first) {
   }
   u.src[2] = 0;
   u.dst = o.dst;
+  // A CAS's pd beside rd (OI-127; TI rev 366).
+  u.pred_we = o.cas && o.cas_pd;
+  u.pred_dst = u.pred_we ? o.pdst : 0;
   u.attr_raw = (first.attr_raw & ~(1u << 17)) | 1u << 18 | (o.red ? 0u : 1u << 10);   // writes_gpr: rd
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
@@ -377,6 +382,8 @@ struct Env {
     bool started = false, hold = false, faulted = false, final = false;
     uint64_t t_ready = 0;
     unsigned T = 0;
+    unsigned P = 0;              ///< a CAS's pd, as A2 names it (OI-127)
+    bool has_p = false;          ///< P is named (pp0 is a register when pred_zero is not 0)
   };
   std::map<uint64_t, Atom> atom;
   unsigned atom_mlc_pct = 0;                     ///< atomic reads that report an MLC miss
@@ -866,11 +873,13 @@ struct Env {
     auto it = m.find(preg);
     if (it == m.end()) return;    // never written: architectural state
     const uint64_t at = readableFor(it->second, pred ? -1 : group);
-    if (t < at && !pred && op_of[it->second.tid].k == kAtomic && op_of[tid].k != kAtomic) {
+    if (t < at && op_of[it->second.tid].k == kAtomic && op_of[tid].k != kAtomic) {
       // An atomic's consumers wake once, on its last write (V-71): an
       // earlier read is never a speculation a replay may clean up.
       errors.push_back("V-71: tid " + std::to_string(tid) + " reads atomic tid " + std::to_string(it->second.tid) +
-                       "'s result at " + std::to_string(t) + ", before its last pass");
+                       "'s result at " + std::to_string(t) + ", before its last pass (" + (pred ? "pp" : "p") +
+                       std::to_string(preg) + ", readable at " + std::to_string(at) + "; writer issues " +
+                       issues_of[it->second.tid] + "; reader issues " + issues_of[tid] + ")");
       return;
     }
     if (t < at) {
@@ -949,7 +958,7 @@ struct Env {
   /// operand read, never speculative), or A2, the lane op.
   void atomIssue(const Issue &is, const Op &o) {
     issues_of[is.tid] += std::to_string(t) + "@" + std::to_string(is.port) + "/a" + std::to_string(is.res) + " ";
-    const Atom &a = atom[is.tid];
+    Atom &a = atom[is.tid];
     if (is.res == Issue::kMemop) {
       const size_t before = viol[is.tid].size();
       if (gpr(is.pdst)) {
@@ -984,6 +993,19 @@ struct Env {
     for (unsigned i = 1; i != 3; ++i)
       if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpInt));
     if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
+    // A CAS's pd: A2 writes it on every pass, merged from the old one
+    // (OI-127, OA rev 380); its consumers read it after the last (V-71).
+    const bool want_pd = o.cas && o.cas_pd;
+    if (is.pred_we != want_pd || (want_pd && is.ppdst == cfg.pred_zero))
+      errors.push_back("OI-127: tid " + std::to_string(is.tid) + "'s A2 pred_we " + std::to_string(is.pred_we) +
+                       " ppdst " + std::to_string(is.ppdst) + ", want " + (want_pd ? "its pd" : "none"));
+    if (is.pred_we) {
+      if (is.merge) checkRead(is.tid, is.ppold, true, -1);
+      if (a.has_p && a.P != is.ppdst) errors.push_back("OI-127: tid " + std::to_string(is.tid) + "'s A2 renames pd between passes");
+      a.P = is.ppdst;
+      a.has_p = true;
+      pready[is.ppdst] = {t, ~uint64_t(0) >> 1, is.tid, 1, 0, false, false};
+    }
     const unsigned lat = cfg.unitLat(1);
     gready[is.pdst] = {t, t + lat, is.tid, 1, Config::kGrpInt, true, false};
     gwriter[is.pdst] = {is.tid, t};
@@ -1046,6 +1068,7 @@ struct Env {
       if (!c.more) {
         a.final = true;
         if (gready.count(a.T)) gready[a.T].late = when + data_after_cmpl;
+        if (a.has_p && pready.count(a.P) && pready[a.P].tid == m.tid) pready[a.P].late = when + data_after_cmpl;
       }
     }
     cmpls.insert({when, c});
@@ -2840,6 +2863,59 @@ void testFault() {
   EXPECT(e.core.freeGprs() == c.phys_regs, "kill after a fault left %zu free", e.core.freeGprs());
 }
 
+/// ROB slice 4 (OI-125): rename-time faults in four sectioned warps, one a
+/// slot, each in its own code window (pc[47:32]), at a different place in
+/// its program, behind a load in one, with a second fault behind the first
+/// in another, and with partial group masks: each warp takes its first
+/// fault once, with its cause, pc and lanes, and retires what is older.
+/// test/ooe/rob_tb.cpp compares the ROB's fault record with these.
+void testSectionFaults() {
+  g_test = "sections: rename-time faults in four warps";
+  Config c = baseConfig();
+  c.sectioned = true;
+  c.l1_spec = false;
+  Env e(c);
+  e.keep_log = true;
+  const unsigned at[4] = {0, 2, 1, 3}, cause[4] = {2, 1, 2, 1};
+  const uint32_t mask[4] = {kFullMask, 0x0000ffffu, 0x00ff00ffu, 0x80000001u};
+  for (unsigned w = 0; w != 4; ++w) {
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 5; ++i) {
+      Op a;
+      a.k = (w == 1 && i == 0) ? kLoad : kLane;
+      a.dst = i;
+      a.nsrc = 1;
+      a.src[0] = i ? i - 1 : 0;
+      a.pc_hi = 0x1234u * (w + 1);
+      a.mask = mask[w];
+      if (i == at[w]) a.cause = cause[w];
+      if (w == 2 && i == 3) a.cause = 1;   // a second fault, never taken
+      p.push_back(a);
+    }
+    Op ex; ex.k = kExit; ex.pc_hi = 0x1234u * (w + 1); p.push_back(ex);
+    e.launch(w, w, p);
+  }
+  std::vector<unsigned> taken(4, 0), got(4, 0);
+  std::vector<uint64_t> pc(4, 0);
+  std::vector<uint32_t> lanes(4, 0);
+  for (unsigned k = 0; k != 300; ++k) {
+    e.step();
+    for (const Fault &f : e.log.back().faults)
+      if (f.warp < 4) { ++taken[f.warp]; got[f.warp] = f.cause; pc[f.warp] = f.pc; lanes[f.warp] = f.lane_mask; }
+  }
+  for (unsigned w = 0; w != 4; ++w) {
+    EXPECT(taken[w] == 1, "warp %u took %u faults", w, taken[w]);
+    EXPECT(got[w] == cause[w], "warp %u: cause %u, want %u", w, got[w], cause[w]);
+    EXPECT((pc[w] >> 32) == 0x1234u * (w + 1), "warp %u: pc %llx", w, (unsigned long long)pc[w]);
+    EXPECT(lanes[w] == mask[w], "warp %u: lanes %08x, want %08x", w, lanes[w], mask[w]);
+    EXPECT(e.warpOf(w)->retired.size() == at[w], "warp %u: %zu retired, want %u", w, e.warpOf(w)->retired.size(), at[w]);
+  }
+  e.core.kill(0xfu, 1);
+  for (unsigned k = 0; k != 40; ++k) e.step();
+  EXPECT(e.core.freeGprs() == c.phys_regs, "kill after the faults left %zu free", e.core.freeGprs());
+  for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+}
+
 /// OI-84 (OA's rev 264): four warps, each with an atomic pair at its head
 /// again and again, CASes and RMWs, so every round-0 head is a first slot.
 /// Under OI-79 (b)'s rounds each pair's second falls past the width and
@@ -3155,13 +3231,16 @@ void testBarrierFault() {
 /// one run the older completes first, in the other the younger. Each must
 /// report the older's address and MIU's cause. The control lets every
 /// faulting completion write the register, so the younger's, landing
-/// second, overwrites the older's, and V-74 must fire.
-void testMemFault() {
+/// second, overwrites the older's, and V-74 must fire. sec runs it
+/// sectioned, the configuration test/ooe/rob_tb.cpp compares the ROB's RTL in.
+void testMemFault(bool sec = false) {
   for (const bool control : {false, true}) {
     unsigned caught = 0;
     for (const bool younger_first : {false, true}) {
-      g_test = control ? "mem fault (control)" : "mem fault";
+      g_test = sec ? (control ? "sections: mem fault (control)" : "sections: mem fault")
+                   : (control ? "mem fault (control)" : "mem fault");
       Config c = baseConfig();
+      c.sectioned = sec;
       c.l1_spec = false;
       c.inject_fa_youngest = control;
       Env e(c);
@@ -3218,8 +3297,10 @@ void testMemFault() {
       }
     }
     if (control) {
-      g_test = "mem fault (control)";
-      std::printf("  %-24s %s\n", "control fa-youngest", caught ? "caught" : "MISSED");
+      g_test = sec ? "sections: mem fault (control)" : "mem fault (control)";
+      // One line for both layouts (check-ooe-unit counts the lines); each
+      // layout's catch is still required.
+      if (sec) std::printf("  %-24s %s\n", "control fa-youngest", caught ? "caught" : "MISSED");
       EXPECT(caught, "a register taking every completion should break V-74");
     }
   }
@@ -4279,6 +4360,7 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       c.inject_a1_base_only = control == 3;
       c.inject_cas_split = control == 4;
       c.inject_pair_split = control == 5;
+      c.inject_cas_no_pd = control == 6;
       c.inject_row_no_hold = g_row_no_hold;
       std::mt19937 rng(seed * 13 + unsigned(mode));
       Env e(c, seed * 11 + unsigned(mode));
@@ -4310,6 +4392,15 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
               a.csrc[1] = rng() % 16;
               a.ncsrc = 2;
               a.late2 = rng() % 3 == 0;
+              // Half of them write pd (OI-127), which a later op reads.
+              if (rng() % 2 == 0) {
+                a.cas_pd = true;
+                a.pdst = 1 + rng() % 3;
+                if (k + 2 < prog.size() && (prog[k + 2].k == kLane || prog[k + 2].k == kSetp) && !prog[k + 2].guard) {
+                  prog[k + 2].guard = true;
+                  prog[k + 2].pguard = a.pdst;
+                }
+              }
             }
             a.passes = rng() % 16 == 0 ? 32 : 1 + rng() % 4;
             if (rng() % 6 == 0) a.mask = 0x0000ffffu;
@@ -5376,6 +5467,8 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testRestore();
   testKill();
   testFault();
+  testMemFault(true); // ROB slice 4's MIU faults (OI-125), on every hooked bench
+  testSectionFaults();
   testBarrier();
   testChwidth();
   testWidthCodes();
@@ -5564,11 +5657,13 @@ int main(int argc, char **argv) {
   testRestore();
   testKill();
   testFault();
+  testSectionFaults();
   testBarrier();
   testBarrierDemote();
   testBarrierTimer();
   testBarrierFault();
   testMemFault();
+  testMemFault(true);
   testChwidth();
   testChwidthMulti();
   testRet();
@@ -5622,9 +5717,10 @@ int main(int argc, char **argv) {
     std::printf("  row hold (OI-90): %u rows past 3 without the hold, %u with\n", over[1], over[0]);
     std::printf("  %-24s %s\n", "control row-no-hold", over[1] && !over[0] ? "caught" : "MISSED");
   }
-  for (int k : {1, 2, 3, 4, 5}) {
+  for (int k : {1, 2, 3, 4, 5, 6}) {
     const char *name = k == 1 ? "control atom-off-head" : k == 2 ? "control atom-early-wake"
-                     : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split" : "control pair-split";
+                     : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split"
+                     : k == 5 ? "control pair-split" : "control cas-no-pd";
     const int saved = g_fail;
     testAtomicRandom(10, randomConfig, k);
     const bool caught = g_fail != saved;

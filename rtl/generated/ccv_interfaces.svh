@@ -237,7 +237,6 @@ typedef struct packed {
   logic [ccv_prelim_pkg::CCV_L_W_OPCODE-1:0]     opcode;
   logic [ccv_prov_pkg::CCV_P_W_IMM-1:0]          imm;
   logic [ccv_params_pkg::CCV_W_CHWIDTH-1:0]      chwidth;
-  logic                                          dispatch_fault;
   logic [ccv_params_pkg::CCV_SECTIONS-1:0]       lead_sec_mask;  // LEAD
   logic [3-1:0]                                  lead_src_used;  // LEAD
   logic                                          lead_imm_used;  // LEAD

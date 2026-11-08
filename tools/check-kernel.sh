@@ -151,6 +151,30 @@
 #     the rest are zero (AR rev 260)           sender refuses aux off its slot
 #   a branch's or call's lead says what     lead-corrupt (callret): OOE
 #     its done says (AR rev 260)               refuses each branch done
+#   a call's link is the imm OOE puts in    call-link-literal (callret,
+#     (imm_kind 6; RA-18, RA-30)               stub RCU): RCU's first CHECK
+#                                              is the link against ccv-sim
+#   the collectives compute O-85's         shfl-wrap, coll-issue-only,
+#     semantics (RA-20, DA tab rev 100)        unballot-lowest (coll, stub
+#                                              RCU): CP-76's three readings
+#   every R-pipe class writes its GPR at    r-write-coll-late (coll, stub
+#     A+2, so they share R's one write         RCU): collectives write at
+#     port (RA-16 (a), AR's rev 265)           A+4; RCU refuses each
+#   an atomic is a decode pair, and runs    atom-one-slot: OOE refuses each
+#     in passes, one lane an address in        one-slot atomic (OI-80);
+#     ascending order, until MIU says no       atom-one-pass: a lane reads the
+#     more (O-72; AR-21, V-72; IS-21)          word before a lower lane wrote;
+#                                              atom-no-more: lanes left unrun;
+#                                              atom-lane-old: A2 writes T back;
+#                                              atom-descending (atomf): f32
+#                                                rounding shows the order
+#   a CAS is a pair too, its pd on the       cas-pd-first (cas): RCU refuses
+#     second slot beside rd; A2 compares,        A2 without pd (stub), and pd's
+#     swaps and writes pd, merged from its       reader stores stale (model);
+#     old name when guarded (OI-127)           cas-pd-inverted: pd's reader
+#                                                stores the wrong lanes;
+#                                              cas-swap-always: a failing
+#                                                lane's write is refused
 #   a memop's fault lead is status == 1     lead-fault-replay (swap): OOE
 #     (OI-125, AR rev 314)                     refuses each replay's lead;
 #                                              lead-fault-drop (roconst):
@@ -278,6 +302,17 @@ if [ "$(field "$log" match)" = "yes" ]; then
 else
   bad "vadd: bank EV_CH_XFER == every launch" "$(grep '^XFER' "$log")"
 fi
+
+# RCU's ports from a kernel run (RA-34): named as rtl/top/ports names them,
+# each slot balanced, and the dump only watches: the run is cycle-identical.
+"$SKEL" --kernel "$K" --port-dump "rcu=$B/kernel_vadd_rcu.vcd" >"$B/kernel_vadd_pd.log" 2>&1
+if [ "$(field "$B/kernel_vadd_pd.log" cycles)" = "$cyc" ] &&
+   pdo=$(python3 tools/check-port-dump.py "$B/kernel_vadd_rcu.vcd" 2>&1); then
+  say "vadd: RCU port dump, ports and balance" "PASS (cycle-identical run)"
+else
+  bad "vadd: RCU port dump" "$(field "$B/kernel_vadd_pd.log" cycles) cycles, not $cyc; $(head -3 <<<"${pdo:-}" | tr '\n' ' ')"
+fi
+rm -f "$B/kernel_vadd_rcu.vcd"
 
 # Deterministic: a second run is cycle-identical and trace-identical.
 "$SKEL" --kernel "$K" --trace "$B/kernel_vadd2.ccvtrace" >"$B/kernel_vadd2.log" 2>&1
@@ -429,6 +464,23 @@ if grep -q "^CHECK lane 1: seq 14 operand 0 (R8)" "$B/kernel_corrupt-echo.log"; 
 else
   bad "--break corrupt-echo" "a wrong echoed destination went unnoticed"
 fi
+
+# Credit on receipt (AR's rev 322 (b) 3, RA-41): at ooe_rcu_issue@rcu and
+# miu_rcu_data@rcu the wrapper returns the credit from its boundary valid
+# flop, on RCU's promise to take each message the cycle it lands. A block
+# that takes one a cycle late, or drops it, must fail by name at the
+# receiver, not only as a divergence from the oracle; check-sv-hosted.sh
+# holds the SV top to the same.
+for brk in cor-late cor-drop; do
+  run "$brk"
+  n=$(field "$B/kernel_$brk.log" cor_late)
+  if grep -q "^CHECK ccv_ooe_rcu_issue: credit on receipt, slot" "$B/kernel_$brk.log" &&
+     [ "${n:-0}" -gt 0 ] && [ "$(field "$B/kernel_$brk.log" check_failures)" != 0 ]; then
+    say "--break $brk: credit on receipt refuses it" "PASS (cor_late=$n)"
+  else
+    bad "--break $brk" "a landed message taken late or dropped went unnoticed (cor_late=${n:-none})"
+  fi
+done
 
 # Where each op executes (Q-32, Q-38) is checked on every op. movi and
 # movi48 have no per-lane input, so RCU writes their immediate itself; sent
@@ -779,6 +831,9 @@ spmbank spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0
 lnorm1 bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0
 transp4 bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0
 borrow credit_borrow=1 credit_wait>0 chw_converged=2
+atom   atomic_pair=7 atomic=7 atomic_write=193 atomic_repass=186 atomic_lane>0 spm_pass>0
+atomf  atomic_pair=2 atomic=2 atomic_write=64 atomic_repass=62 spm_pass>0
+cas    atomic_pair=6 atomic=6 atomic_write=130 atomic_repass=124 cas_lane>0 cas_lane_off>0 spm_pass>0
 KERNELS
 # O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
 # xfer_size, never rdata's width, and a signed load sign-filled to rdata.
@@ -1433,6 +1488,119 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-corrupt.log" check_failures)" = 
 else
   bad "--break lead-corrupt" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-corrupt.log")"
 fi
+# The call link (RA-18, RA-30; AR's rev 264): DEC marks a call imm_kind 6,
+# OOE puts pc + bytes(ilen) in imm, and RCU writes imm to the link register.
+# call-link-literal has DEC send a call's imm_kind as a literal, so imm keeps
+# the branch offset; the stub RCU's first CHECK is the link against ccv-sim's.
+# The stub only: RI's model takes the link from ccv-sim until it drops its
+# interim (RI-7); then the model joins, as ret-held-by-lanes's did.
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/callret/oracle.jsonl --break call-link-literal \
+  >"$B/kernel_call-link-literal.log" 2>&1
+n=$(grep -c "^CHECK rcu: seq [0-9]* call's link [0-9a-f]* in imm, oracle [0-9a-f]*" "$B/kernel_call-link-literal.log")
+if [ "$n" -gt 0 ] && grep -m1 '^CHECK' "$B/kernel_call-link-literal.log" | grep -q "^CHECK rcu: seq [0-9]* call's link"; then
+  say "--break call-link-literal (stub): a call's link is OOE's imm" "PASS ($n calls)"
+else
+  bad "--break call-link-literal" "$n refused: $(grep -m1 '^CHECK' "$B/kernel_call-link-literal.log")"
+fi
+# The warp collectives (O-85; RA-20, DA tab rev 100, CP-76): coll runs every
+# shuffle mode in both index forms, the votes, ballot and the diagonal
+# unballot. Each control is one of the readings O-85 ruled out, CP's three
+# ccv-sim controls on the stub RCU: shfl-wrap wraps an out-of-range source
+# modulo 32 rather than keeping the lane's own; coll-issue-only takes the
+# issue mask alone as the participating lanes, dropping the guard;
+# unballot-lowest takes every lane's bit from the lowest participating
+# lane's rs, RA's first proposal, not the diagonal. Each must fail in RCU's
+# own check against ccv-sim, and nothing else may fail.
+for b in "shfl-wrap:seq [0-9]* R[0-9]* lane [0-9]* = " "coll-issue-only:seq [0-9]* P[0-9]* = " \
+         "unballot-lowest:seq [0-9]* P[0-9]* = "; do
+  nm=${b%%:*}; pat=${b#*:}
+  CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/coll/oracle.jsonl --break "$nm" >"$B/kernel_$nm.log" 2>&1
+  n=$(grep -c "^CHECK rcu: $pat" "$B/kernel_$nm.log")
+  if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_$nm.log" check_failures)" = "$n" ]; then
+    say "--break $nm (stub): a collective O-85 ruled out" "PASS ($n refused)"
+  else
+    bad "--break $nm" "$n refused: $(grep '^KERNEL' "$B/kernel_$nm.log")"
+  fi
+done
+# R's one GPR write port (RA-16 (a); AR's rev 265, TI's rev 284): params'
+# pipe list counts it once for the RCU-only and collective classes
+# (CCV_PRF_GPR_WRITE_PORTS 4), which holds only while each writes at A+2.
+# r-write-coll-late has the stub RCU's collectives write at A +
+# CCV_LAT_COLLECTIVE - 1; RCU refuses every GPR-writing collective (coll's
+# eight shuffles and its ballot), and nothing else fails.
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/coll/oracle.jsonl --break r-write-coll-late \
+  >"$B/kernel_r-write-coll-late.log" 2>&1
+n=$(grep -c "^CHECK rcu: seq [0-9]*, [A-Z_]*, writes its GPR at A+[0-9]*; R's write port is shared only while every R-pipe class writes at A+2 (RA-16 (a))" "$B/kernel_r-write-coll-late.log")
+if [ "$n" -eq 9 ] && [ "$(field "$B/kernel_r-write-coll-late.log" check_failures)" = "$n" ]; then
+  say "--break r-write-coll-late (stub): R's write port is A+2's alone" "PASS ($n collectives refused)"
+else
+  bad "--break r-write-coll-late" "$n refused: $(grep '^KERNEL' "$B/kernel_r-write-coll-late.log")"
+fi
+# O-72's atomics (IS-21; AR-21, V-72): atom runs every RMW form but CAS on
+# .global and .shared, most with all 32 lanes on one word, so each runs in
+# passes. Each control must fail at its first check, by the check named:
+#   atom-one-slot: DEC sends an atomic in one slot; OOE refuses it (OI-80)
+#   atom-one-pass: MIU runs every lane in one pass; lane 1 reads the word
+#     lane 0 has not yet written, and MIU's read check refuses it
+#   atom-lane-old: the lane op writes T back, not the new value; MIU's
+#     write check refuses lane 0's
+#   atom-no-more: MIU never sets more, so one pass ends the atomic and the
+#     lanes left never load; the next store of the old values sends them
+#   atom-descending (atomf, CP-81): MIU takes each address's highest lane
+#     first; f32 rounding makes lane 31's read differ, the integer RMWs'
+#     sums could not
+for b in "atom-one-slot:ooe: OI-80: warp 0's atomic (seq [0-9]*) arrives in one decode slot" \
+         "atom-one-pass:miu: seq [0-9]* lane 1 loaded " \
+         "atom-lane-old:miu: seq [0-9]* lane 0 atomic write " \
+         "atom-no-more:miu: seq [0-9]* lane [0-9]* store data " \
+         "atom-descending:miu: seq [0-9]* lane 31 loaded "; do
+  nm=${b%%:*}; pat=${b#*:}
+  k=atom; [ "$nm" = atom-descending ] && k=atomf
+  "$SKEL" --kernel build/oracle/$k/oracle.jsonl --break "$nm" >"$B/kernel_$nm.log" 2>&1
+  if grep -m1 '^CHECK' "$B/kernel_$nm.log" | grep -q "^CHECK $pat"; then
+    say "--break $nm: an atomic O-72 rules out" "PASS ($(field "$B/kernel_$nm.log" check_failures) checks)"
+  else
+    bad "--break $nm" "first: $(grep -m1 '^CHECK' "$B/kernel_$nm.log")"
+  fi
+done
+# CAS (O-72, IS-21; OI-127): cas runs CAS_G and CAS_S, contended (every
+# lane on one word: a chain each lane wins in ascending order, and a word
+# one lane wins), uncontended, and guarded on lanes 0-15 so rd and pd merge
+# from their old names, every pd read back by a guarded add. DEC puts pd on
+# the pair's second slot; OOE's A2 issues it; the lane compares and swaps.
+# Each control must fail at its first check, by the check named:
+#   cas-pd-first: DEC puts pd on the first slot, which OOE's join does not
+#     read, so A2 issues without it: the stub RCU refuses that A2; on the
+#     model RCU, pd is never written and its reader's store is refused
+#   cas-pd-inverted: the lane drives the compare's opposite as pd: the
+#     first CAS's reader stores lane 0's 1 as 0
+#   cas-swap-always: the lane swaps whatever the compare says: lane 1 of
+#     the one-winner CAS writes 2 over the 1 it should leave
+# The default RCU, RI's model, runs cas clean with every kernel; the stub,
+# which merges a CAS copy's pd itself, must too.
+log="$B/kernel_cas_stub.log"
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/cas/oracle.jsonl >"$log" 2>&1
+why=""
+for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+  [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
+done
+if [ -z "$why" ]; then
+  say "cas on the stub RCU == ccv-sim" "PASS ($(cycles "$log"))"
+else
+  bad "cas on the stub RCU" "${why# }"
+fi
+for b in "cas-pd-first:stub:rcu: seq [0-9]*, CAS_G's A2, writes no predicate" \
+         "cas-pd-first:model:miu: seq [0-9]* lane 0 store data 00000000, oracle 00000001" \
+         "cas-pd-inverted:model:miu: seq [0-9]* lane 0 store data 00000000, oracle 00000001" \
+         "cas-swap-always:model:miu: seq [0-9]* lane 1 atomic write 00000002, oracle 00000001"; do
+  nm=${b%%:*}; rest=${b#*:}; impl=${rest%%:*}; pat=${rest#*:}
+  CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/cas/oracle.jsonl --break "$nm" >"$B/kernel_$nm-$impl.log" 2>&1
+  if grep -m1 '^CHECK' "$B/kernel_$nm-$impl.log" | grep -q "^CHECK $pat"; then
+    say "--break $nm ($impl RCU): a CAS O-72 rules out" "PASS ($(field "$B/kernel_$nm-$impl.log" check_failures) checks)"
+  else
+    bad "--break $nm ($impl RCU)" "first: $(grep -m1 '^CHECK' "$B/kernel_$nm-$impl.log")"
+  fi
+done
 # The issue lead (RA-31; OA's rev 307, AR's rev 267): every operand group an
 # issue uses is named a cycle ahead, so RCU loads no other. lead-src-clear
 # has OOE promise no source on every op; RCU refuses each op that reads one,
@@ -1739,12 +1907,14 @@ else
 fi
 # Predicate logic's sources arrive renamed in imm: RCU reading DEC's
 # qualifiers instead gets plog's P3 = !P1 | P2 wrong, and its own check, the
-# guarded add's lanes and the final compare all say so.
+# guarded add's lanes and the final compare all say so; the pxor that reads
+# P3 (RA-16 (f)) gets P2 wrong as well, refused by RCU and the final compare.
 "$SKEL" --kernel build/oracle/plog/oracle.jsonl --break arch-pred-srcs >"$B/kernel_arch-pred-srcs.log" 2>&1
 if grep -q "^CHECK rcu: seq 7 P3 = 0000ffff, oracle ffff00ff" "$B/kernel_arch-pred-srcs.log" &&
-   [ "$(field "$B/kernel_arch-pred-srcs.log" pred_mismatch)" = 1 ] &&
-   [ "$(field "$B/kernel_arch-pred-srcs.log" check_failures)" = 41 ]; then
-  say "--break arch-pred-srcs: plog's P3 wrong" "PASS (RCU's check, 16 lanes' enable, the final P3)"
+   grep -q "^CHECK rcu: seq 9 P2 = 00000000, oracle ffffff00" "$B/kernel_arch-pred-srcs.log" &&
+   [ "$(field "$B/kernel_arch-pred-srcs.log" pred_mismatch)" = 2 ] &&
+   [ "$(field "$B/kernel_arch-pred-srcs.log" check_failures)" = 42 ]; then
+  say "--break arch-pred-srcs: plog's P3 and P2 wrong" "PASS (RCU's checks, 16 lanes' enable, the final P3 and P2)"
 else
   bad "--break arch-pred-srcs" "a misnamed predicate source went unnoticed: $(grep '^KERNEL' "$B/kernel_arch-pred-srcs.log")"
 fi

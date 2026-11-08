@@ -13,6 +13,12 @@
       "required": 18.0,
       "why": "The demotion reads D0-D3 to rcu_mig's dm_pay (Partition tab: pred out 5, mig in 8). The rows that drive it also start the merge write path (old read, merge, row D), 17.6 NGD with the fanout term; held to the output's budget (NGD-7) they need 18, leaving mig 7 to capture the row (its R2 capture is 3). Copying the 1,536 row flops for the output is the alternative."
     },
+    "ft_cr02h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; RA rev 98, re:RI-20)",
+      "date": "2026-11-07",
+      "why": "The S slots' footprint, from the issue channel's slots at RCU's interface flop (DA's ruling on RI-11), wire only; fanout inside the block is check-ngd's. It decides section ownership for sec_pred_bit_a, which RA rev 98 moves here (Predicate file tab, step 4; Partition rule 2)."
+    },
     "gd_cr02h": {
       "arrival": 0.0,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
@@ -48,6 +54,12 @@
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-05",
       "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+    },
+    "lm_cr02h": {
+      "arrival": 5.0,
+      "by": "RA (RA tab rev 98, re:RI-20)",
+      "date": "2026-11-07",
+      "why": "A class bit (the S slot sends a lane message), as gt and pdt (RA rev 81): the op-class decode's 5 NGD sits at the port until rcu_pred decodes the opcode itself; RA rev 98 confirms 5 on Partition rule 1 (each module its own copy of the decode)."
     },
     "mam_cr01h": {
       "arrival": 0.0,

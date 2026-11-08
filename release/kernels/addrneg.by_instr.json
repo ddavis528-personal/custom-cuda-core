@@ -350,7 +350,7 @@
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 256,
-    "payload_hi": 9961472
+    "payload_hi": 4980736
    }
   },
   {
@@ -446,7 +446,7 @@
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 61952,
-    "payload_hi": 2097152
+    "payload_hi": 1048576
    }
   },
   {

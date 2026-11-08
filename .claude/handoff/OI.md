@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-07 (C9h gate red: OI-122 to OA, kernel retime for TI). Keep this current at every task's end; it is what
+Updated 2026-11-08 (TI 360 pushed 95bf04d, OI-130; OI-127 done f727aed)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,8 +37,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 313, RA 95, IS 190, TI 359, OA 375, OI 315, CP 155, DA 114, RI 21
-(sweep 11-06 10:20, plus notices to 13:00). Pings 11-06: all eight pinged; pongs OK from OA TI
+Conventions 17, AR 320, RA 96, IS 190, TI 373, OA 382, OI 325, CP 155, DA 115, RI 35
+(sweep 11-07 10:16). AR 314/OA 377: lead_fault = status==1, per slot, OI builds capture once TI's schema row lands (none to TI 362). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
 `--check` should differ; ask DA to approve `python3 tools/setup-session-home.py`.
@@ -50,34 +50,21 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
 - check-ngd caps (rtl/ngd-ratchet.json "fanout") are strict (EPS 0.005); ABC remaps the
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
-## Open work (most urgent first)
-1. C9 build (task #23; OA 372, DA 114): BUILT in scratchpad/wc9, branch oi-c9 (35999fa, e33da99,
-   merges 86b477e, db3ad0b = TI's f4ce0fd; also on gate-scratch/OI). C9h is the model default
-   (cmpl_split 9, rx_lag 16); ooe_cmcap new; ooe_rs hit-freed column clear (clr = free|hh, hhv
-   flop for CG-2 7.8); ooe_wake hint capture hix+hq one gate. run-rtl and trio exact (no-c9h
-   control). regen + walkthrough committed; cmpl_idx_cq00h arrival 2 written (00c77fe, OA 373).
-   prv_code split granted (OA 374) and written (5e1b436). Gate on 5e1b436 RED; fixed in OI's files:
-   ratchet grp_dep/sqf caps removed (met), no-msd seeds >=200 (f33368b, wc9 tip, unpushed).
-   OI-122 GRANTED (OA 375): grant arrival 1, sched grant_w out 1, waiver 7.1 (aae48b6; checks clean).
-   OI-123: TI (rev 359) says OI carries the check-kernel retimes: at:59, priv_form 12 (6ded4df;
-   check-kernel.sh rc 0). wc9 tip d94146a (on gate-scratch/OI). WAITING for TI's 41c82d8 on origin
-   (TI: base on it, check-kernel ret-held block, RI-18); send_later trig_01Nofj1FgLivKdmZL6hqnEzB.
-   Then gate-push from wc9; then OI-114's row to OA.
-2. OI-114 landed as (b) (OA 369), model only: the go reads unmet on time (unmet_reg 0; rename's
-   register failed CG-5/CG-3), floor_take_lag 1; rename and go RTL as pushed. RH's S1: 0 cost at 192
-   and 160 (X/Y, Z). Row to OA when pushed.
-   (c) measured, for that row: unmet into go 23.9/24.2 at arrival 0, but go's own per-take chain stays
-   over (ff 28.5, hv 31.4, px 31.1, pl 30.5, ha 28.8, room_p 26.9, room_g 25.4; 23.1 without fanout);
-   rename with the (U-L) register: c_dst/c_src 27.3, po_dst 28.0, q_gname 28.5 (caps 26.9/27.5/28.7).
-3. ROB slice 4 (faults; OA 370 for the pc): pc[31:1] per entry + pc[47:32] per slot
-   (CCV_W_PC_WINDOW), 4,032 flops, written at fill from ccv_dec_ooe_uop.pc.
-4. (slice 4 detail) The model's fault at retire (ooe_core.cpp ~2563) reports pc =
-   r.u.pc: the 65-bit entry (rev 277 (c)/279) holds no PC: ask OA the PC source first.
-   Outputs: ccv_ooe_rau_status.fault_taken, ccv_ooe_cru_fault (first fault of the context,
-   written once). V-74 fault-address register per warp. Then slices 5, 6.
-5. DA 111b / OA 364: a unit for every OOE module at each instantiated param set
-   (ooe_rob_w x4 by WID; ooe_ratread once rename has it).
-6. OA 365 (low): ooe_sched phys_src0/1 output depth.
+## Open work (most urgent first; DA approved this order 11-07)
+1. TI 360 (task #26): PUSHED 95bf04d (SCOPED PASS 20/22); OI-130 rev 325 rang OA/TI/AR. Waiting on
+   RH (sent 11-08 ~05:00): G/N floor_held_gate at 192/160(ren 12/44)/128(ren 8/24), S1 + cm128 warm.
+   On RH's answer: add its numbers to OI-130 (no notice unless OA must act). OA owes: accept the fix;
+   ooe_go to 25 needs the share split retimed (~21 NGD hv->sg) or caps stand (#37).
+2. OA 382 (task #40): RTL issue payload: A2's RS row carries pd, pred_we, ppold; cas-no-pd control in RTL.
+3. OA 365 (task #24): ooe_sched phys_src0/1 output depth (<=6); fold in ooe_sched ratchet (#36).
+4. NGD fanout ratchet (rtl/ngd-ratchet.json "fanout"; DA asked 11-07), in order: ooe_rendep (#33,
+   worst mem 34.5), ooe_rob_w (#34; caps lowered to 29.9 in b8881c0),
+   ooe_rename (#35, 31.1), ooe_rs (#38, 30.2), ooe_ratread (#39, port-budget caps only).
+5. DA 111b / OA 364: a unit for every OOE module at each instantiated param set.
+6. Optional (OA 381, task #32): fa entry one-hot -> 5-bit index in ooe_rob_w (-108 flops).
+
+## Done 11-07
+- ROB slice 4 pushed adfa301 (SCOPED PASS 20/22); OI-128 row rev 322/323, OA accepted at 381.
 
 ## Done 11-06
 - Slice 3 (memop commit, OA rev 362) pushed e491f22 (SCOPED PASS 22/22). Final fix: the

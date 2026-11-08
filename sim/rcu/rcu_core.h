@@ -108,6 +108,7 @@ struct OpClass {
   bool gdst = false;      ///< writes a GPR
   int imm_slot = -1;      ///< lane operand port the immediate replaces, or -1
   bool imm_used = false;  ///< the payload's imm is read (the lead's imm promise)
+  bool ireg = false;      ///< shfl.up/down/bfly: c per lane from source port 1 (O-85's _R forms)
   unsigned reads = 0;     ///< GPR source ports 0-2 read
   int base_src = -1, index_src = -1, data_src = -1;   ///< memop operand map
 };
@@ -307,6 +308,8 @@ public:
     uint64_t lane_ops = 0, r_ops = 0, memops = 0, dones = 0, gpr_writes = 0, pred_writes = 0;
     uint64_t byp_sels = 0, demote_rows = 0, restore_rows = 0, mig_r_waits = 0,
              mig_credit_waits = 0, restore_holds = 0, max_demote_cycles = 0, max_restore_cycles = 0;
+    uint64_t rsrc_fwd = 0;                      ///< operand reads forwarded from MW in A
+    uint64_t dones_slot[kDoneSlots] = {};       ///< dones sent, by done slot
   };
   const Stats &stats() const { return st_; }
 

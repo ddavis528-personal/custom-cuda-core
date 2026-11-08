@@ -898,8 +898,8 @@
     "instr_uid": 4611686018427387904,
     "unit": "ccv_ooe_rcu_issue",
     "channel_id": 3,
-    "payload_lo": 4294443264,
-    "payload_hi": 524288
+    "payload_lo": 2147221760,
+    "payload_hi": 262144
    }
   },
   {
@@ -963,7 +963,7 @@
     "unit": "ccv_ooe_rcu_issue",
     "channel_id": 3,
     "payload_lo": 61696,
-    "payload_hi": 1572864
+    "payload_hi": 786432
    }
   },
   {
@@ -978,8 +978,8 @@
     "instr_uid": 4611686018427387905,
     "unit": "ccv_ooe_rcu_issue",
     "channel_id": 3,
-    "payload_lo": 2621696,
-    "payload_hi": 1048576
+    "payload_lo": 1310976,
+    "payload_hi": 524288
    }
   },
   {
@@ -1009,8 +1009,8 @@
     "instr_uid": 4611686018427387907,
     "unit": "ccv_ooe_rcu_issue",
     "channel_id": 3,
-    "payload_lo": 40370432,
-    "payload_hi": 9961472
+    "payload_lo": 20185344,
+    "payload_hi": 4980736
    }
   },
   {
@@ -2258,7 +2258,7 @@
     "unit": "ccv_ooe_rcu_issue",
     "channel_id": 3,
     "payload_lo": 65024,
-    "payload_hi": 5767168
+    "payload_hi": 2883584
    }
   },
   {
