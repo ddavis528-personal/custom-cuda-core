@@ -192,8 +192,10 @@ RA-30 CLOSED (RA rev 99): O-85 collectives landed de03fd6 (TI 371).
 RI-20 rev 39 ANSWERED (RA rev 100): footprint ownership and rcu_pred in-flop 23.9 accepted (64fce0d); gd_cr02h >24.5 comes back to RA (first remedy: pre-decode act_d); atomics term fits arrival 5; rcu_mem has no MIU-lead flops, so drop the Partition ~110 estimate and recount lead slices at assembly.
 RA-34 CLOSED (RA rev 101): TI's ccv-skel --port-dump rcu=FILE (88c31e7) is the cg-bench stimulus; model traces, TI rev 286 scenarios.
 RI-21 RULED (RA rev 102): (1) no rcu_rq; each slice forms its own L/M requests within bank-in 14; assert slice owner == lanes/mem. (2) rcu_pred drives PC0-PC3. (3) RA-41 (open, Needs TI): credit-on-receipt mode in the generated wrapper for ooe_rcu_issue and miu_rcu_data; rcu_kill's in-series flop is a TODO meanwhile; credit pulses charged fall 45 -> 32.
-TODO (promised in RA rev 102): reconcile the Partition tab with RI's FYI (rcu_mem row 'MIU lead predecode flops ~110/slot': check whether those are rcu_miu_addr's output lead predecode or lead capture; FULL_ROW only in the slice; latency text stale per RI), re-snapshot, check-docs. Read the live tab first.
-Bookmarks: OA 379, RA 102, RI 41, TI 377, DA 115, AR 316, OI 319, Conventions 17, CP 155, IS 190.
+RA-41: TI accepted (TI 379), AR confirmed (AR 322: block takes every landed msg that cycle, kill incl., no skid; control for late/dropped take). Close RA-41 when TI lands it.
+SPEC RECONCILED to LANE 7 / SFU 12 (93a0c46): Done 30, Pipeline 26, Predicate 9, Register file 24, Lane+memory 16, Overview 61, Conventions 14, Partition 56 (rcu_mem 12,560, no MIU lead flops; FULL_ROW slice only). Lane W A+6 (done A+5/A+6/A+7), SFU W A+11 (A+10/11/12); bypass ages 4-5.
+RA-42 (open, RA rev 103, Needs RI+TI): KILL_DRAIN 15 in rcu_core.h/rcu_test/rcu_kill.sv omits bnd_rx(issue); contract 16; M4 control.
+Bookmarks: OA 379, RA 103, RI 41, TI 379, AR 322, DA 115, OI 319, Conventions 17, CP 155, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
