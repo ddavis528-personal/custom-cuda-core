@@ -16,6 +16,7 @@ step "parameters"     python3 tools/gen-params.py
 step "interfaces"     python3 tools/gen-interfaces.py
 step "payload spec"   python3 tools/gen-payload-spec.py
 step "trust report"   python3 tools/gen-trust-report.py
+step "opcode table"   python3 tools/gen-ops.py
 step "skel wiring"    python3 tools/gen-skel.py
 step "SV top"         python3 tools/gen-top.py
 step "skeleton build" tools/check-skel.sh

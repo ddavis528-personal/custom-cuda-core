@@ -18,6 +18,10 @@ in both hosts since M0 (RA, 2026-11-04), and `CCV_RCU_IMPL=stub` selects the stu
   and its value over the quote), and `tools/check-isa-params.py` holds it to
   the ISA document in the pinned compiler snapshot (IS-11).
 - `params/links.json`: repeater stages per channel.
+- `params/ops.json`: the opcode table, a row per opcode (its position + 1),
+  appended only. `tools/gen-ops.py` writes the skeleton's C++ table
+  (`sim/generated/ccv_ops.h`) and `ccv_ops_pkg` (`rtl/generated/`), whose
+  `ccv_op_attr(opcode)` an RTL module's own decode reads (RI-21 (4)).
 - Generated, never hand-edited: `sim/generated/`, `rtl/generated/`,
   `rtl/top/`, `docs/payload-spec.md`, `docs/trust-report.md` and
   `docs/walkthrough.md`. Regenerate them with `tools/gen-*.py`;
