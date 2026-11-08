@@ -555,6 +555,11 @@ inline constexpr OpInfo kOps[] = {
   // serial 5 and every other sched_attr bit 0; its 8-bit payload is ignored.
   // Appended so no opcode moves.
   {"C_RECONV",      kNop,       0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  // register pmov (Format K 63; OA's rev 396): predicate logic on R, pd =
+  // ps0 under its negate, merged on the issue mask; DEC sends ps0 as both
+  // sources, so OOE renames it as por pd, ps0, ps0. Executed, never elided.
+  // Appended so no opcode moves.
+  {"PMOV",          kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
@@ -567,22 +572,111 @@ constexpr unsigned kSecs = ccv::kSections;
 constexpr unsigned kSlotS0 = 0, kSlotP0 = kSecs, kSlotR = kSecs + ccv::kMiuPipes;
 static_assert(kSlotR + 1 == ccv::kIssueResources, "S0-S3, P0-P3, R");
 static_assert(kSlotR == ccv::kIssueSlotR, "R's slot (CCV_ISSUE_SLOT_R)");
-/// ccv_ooe_rcu_issue's lead (RA-31; OA's rev 307, AR's rev 267): what OOE
-/// knows at select from the RS entry's static fields, opcode-blind, sent a
-/// cycle ahead so RCU enables only the operand groups the op uses. Every
-/// bit is a superset; a clear bit is a promise. The guard's is R's alone
-/// (slot_fields). lead-src-clear promises no source on every op: RCU must
-/// refuse each op that reads one.
-inline void putIssueLead(Bits &m, unsigned chan, unsigned slot, unsigned fp, unsigned src_used,
+/// ccv_ooe_rcu_issue's lead (RA-31; OA's rev 307, AR's rev 267; RA's revs
+/// 108-113, RA-43, OA's revs 387-391): what OOE knows at select from the RS
+/// entry's static fields, opcode-blind, sent a cycle ahead so RCU's end can
+/// be zero-cycle. Three kinds (schema lead_why):
+///  - ENABLES, a superset each: lead_sec_mask, lead_src_used, lead_imm_used,
+///    lead_merge_used, lead_guard_used. A clear bit is a promise.
+///    lead-src-clear promises no source on every op: RCU must refuse each op
+///    that reads one.
+///  - MOVED (no payload copy left): lead_guard_pred on every slot, the op's
+///    guard or data predicate (RA 109 (a)); lead_phys_src and
+///    lead_phys_src2 on R, R's source rows (RA 109 (b); placeIssueSrcRows),
+///    and lead_rpsrc on R, R's whole imm (RA's rev 114 (2); issueImm).
+///    RCU reads them from the lead (issueGuardPred, issueSrcRows).
+///  - COPIES, equal to their payload field (kIssueLeadCopies).
+///    A sender calls finishIssueLeads last on every slot, continuations too.
+/// putIssueLead sets the enables and the guard: guard_used is set when the
+/// op reads its predicate, as guard or data, and it is not the always-true
+/// one; guard_pred is the predicate whatever guard_used says.
+inline void putIssueLead(Bits &m, unsigned chan, unsigned /*slot*/, unsigned fp, unsigned src_used,
                          bool imm_used, bool merge, bool guard_used, unsigned guard_pred,
                          const std::string &brk) {
   put(m, chan, "lead_sec_mask", fp);
   put(m, chan, "lead_src_used", brk == "lead-src-clear" ? 0u : src_used & 7u);
   put(m, chan, "lead_imm_used", imm_used);
   put(m, chan, "lead_merge_used", merge);
-  const bool r = slot == kSlotR && guard_used;
-  put(m, chan, "lead_guard_used", r);
-  put(m, chan, "lead_guard_pred", r ? guard_pred : 0u);
+  put(m, chan, "lead_guard_used", guard_used);
+  // lead-guard-corrupt (RA 109 (a)): a moved lead names the wrong
+  // predicate on a guarded op. No payload copy is left to compare, so RCU
+  // reads the wrong guard, and the result must be wrong.
+  const unsigned gp = brk == "lead-guard-corrupt" && guard_used ? guard_pred ^ 1u : guard_pred;
+  put(m, chan, "lead_guard_pred", gp);
+}
+/// The source rows: in the payload on S0-S3 and P0-P3, in the lead on R
+/// (moved) and on S0-S3 (a copy). A sender puts phys_src and phys_src2 as
+/// ever; on a slot that does not carry them (R) this moves them to the lead
+/// and clears the payload's. lead-src-corrupt (RA 109 (b)) names a wrong
+/// first-source row in R's moved lead.
+inline void placeIssueSrcRows(Bits &m, unsigned chan, unsigned slot, const std::string &brk) {
+  if ((field(chan, "phys_src").slots >> slot) & 1u) return;   // a copy, if any: fillIssueLeadCopies
+  const uint64_t ps = get(m, chan, "phys_src"), ps2 = get(m, chan, "phys_src2");
+  put(m, chan, "phys_src", 0);
+  put(m, chan, "phys_src2", 0);
+  if (!((field(chan, "lead_phys_src").slots >> slot) & 1u)) return;
+  put(m, chan, "lead_phys_src", brk == "lead-src-corrupt" ? ps ^ (1u << ccv::prov::kWPhysReg) : ps);
+  put(m, chan, "lead_phys_src2", ps2);
+  // R's imm moves to lead_rpsrc too (RA's rev 114 (2)).
+  if ((field(chan, "lead_rpsrc").slots >> slot) & 1u && !((field(chan, "imm").slots >> slot) & 1u)) {
+    put(m, chan, "lead_rpsrc", get(m, chan, "imm"));
+    put(m, chan, "imm", 0);
+  }
+}
+/// The immediate as RCU reads it: the payload's where it carries one, R's
+/// moved lead_rpsrc on R (RA's rev 114 (2)).
+inline uint32_t issueImm(const Bits &m, unsigned chan, unsigned slot) {
+  return uint32_t(get(m, chan, (field(chan, "imm").slots >> slot) & 1u ? "imm" : "lead_rpsrc"));
+}
+/// The lead copies (RA-43, RA 109 (c)): each lead field and the payload
+/// field it mirrors. A copy is filled only on a slot that carries both.
+struct IssueLeadCopy { const char *lead, *field; };
+inline constexpr IssueLeadCopy kIssueLeadCopies[] = {
+    {"lead_opcode", "opcode"},           {"lead_phys_dst", "phys_dst"},
+    {"lead_dst_pos", "dst_pos"},         {"lead_dst_width", "dst_width"},
+    {"lead_done_row", "done_row"},       {"lead_pred_we", "pred_we"},
+    {"lead_phys_pred_dst", "phys_pred_dst"}, {"lead_cont", "cont"},
+    {"lead_pred_neg", "pred_neg"},       {"lead_phys_src", "phys_src"},
+    {"lead_phys_old_dst", "phys_old_dst"}, {"lead_old_dst_pos", "old_dst_pos"},
+    {"lead_src_pos", "src_pos"},
+};
+inline bool issueCopyOn(unsigned chan, const IssueLeadCopy &x, unsigned slot) {
+  return (field(chan, x.lead).slots >> slot) & (field(chan, x.field).slots >> slot) & 1u;
+}
+/// Fill every copy from the payload as built: call it last, on a lead's slot
+/// and on each continuation alike. lead-copy-corrupt (the control) flips a
+/// bit of lead_phys_dst on every slot that is not a continuation, which the
+/// receiving RCU must refuse by name.
+inline void fillIssueLeadCopies(Bits &m, unsigned chan, unsigned slot, const std::string &brk) {
+  for (const IssueLeadCopy &x : kIssueLeadCopies)
+    if (issueCopyOn(chan, x, slot)) put(m, chan, x.lead, get(m, chan, x.field));
+  if (brk == "lead-copy-corrupt" && !get(m, chan, "cont"))
+    put(m, chan, "lead_phys_dst", get(m, chan, "lead_phys_dst") ^ 1u);
+}
+/// What a sender does last on each ccv_ooe_rcu_issue slot, once it knows the
+/// slot: R's source rows to their lead, then every copy (RA-43).
+inline void finishIssueLeads(Bits &m, unsigned chan, unsigned slot, const std::string &brk) {
+  placeIssueSrcRows(m, chan, slot, brk);
+  fillIssueLeadCopies(m, chan, slot, brk);
+}
+/// The first copy on this slot that differs from its payload field, or null.
+inline const IssueLeadCopy *issueLeadCopyBroken(const Bits &m, unsigned chan, unsigned slot) {
+  for (const IssueLeadCopy &x : kIssueLeadCopies)
+    if (issueCopyOn(chan, x, slot) && get(m, chan, x.lead) != get(m, chan, x.field)) return &x;
+  return nullptr;
+}
+/// The moved fields, as RCU reads them: the guard's predicate from the lead
+/// on every slot, the source rows from the payload where it carries them
+/// and from the lead on R.
+inline unsigned issueGuardPred(const Bits &m, unsigned chan) {
+  return unsigned(get(m, chan, "lead_guard_pred"));
+}
+inline void issueSrcRows(const Bits &m, unsigned chan, unsigned slot, unsigned src[3]) {
+  const bool pl = (field(chan, "phys_src").slots >> slot) & 1u;
+  const unsigned ps = unsigned(get(m, chan, pl ? "phys_src" : "lead_phys_src"));
+  src[0] = (ps >> ccv::prov::kWPhysReg) & ((1u << ccv::prov::kWPhysReg) - 1u);
+  src[1] = ps & ((1u << ccv::prov::kWPhysReg) - 1u);
+  src[2] = unsigned(get(m, chan, pl ? "phys_src2" : "lead_phys_src2"));
 }
 /// chwidth's codes, and the sections (or pipes) a register of each spans.
 enum : unsigned { kChw32 = 0, kChw16 = 1, kChw8 = 2, kChw4 = 3 };

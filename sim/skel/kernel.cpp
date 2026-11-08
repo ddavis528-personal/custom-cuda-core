@@ -3091,10 +3091,20 @@ private:
     std::array<int, kRes> owner;
     owner.fill(-1);
     for (unsigned s = 0; s != kRes; ++s) {
+      // A lead copy (RA-43, RA 109 (c)) is its payload field a cycle early:
+      // one that differs is refused by name, on a lead's slot or a
+      // continuation's.
+      if (got[s])
+        if (const IssueLeadCopy *x = issueLeadCopyBroken(m[s].payload, c.ooe_rcu, s))
+          k_.fail("rcu: seq %llu on %s: %s %#llx differs from its payload's %s %#llx (a lead copy, RA-43)",
+                  seq(s), res(s).c_str(), x->lead,
+                  (unsigned long long)get(m[s].payload, c.ooe_rcu, x->lead), x->field,
+                  (unsigned long long)get(m[s].payload, c.ooe_rcu, x->field));
       if (got[s] && cont(s))
-        for (const char *f : {"lead_sec_mask", "lead_src_used", "lead_imm_used", "lead_merge_used"})
+        for (const char *f : {"lead_sec_mask", "lead_src_used", "lead_imm_used", "lead_merge_used",
+                              "lead_guard_used", "lead_guard_pred"})
           if (get(m[s].payload, c.ooe_rcu, f))
-            k_.fail("rcu: seq %llu's continuation on %s sets %s; a continuation's lead is zero",
+            k_.fail("rcu: seq %llu's continuation on %s sets %s; a continuation's enables and moved leads are zero",
                     seq(s), res(s).c_str(), f);
       if (!got[s] || cont(s)) continue;
       const unsigned fp = unsigned(get(m[s].payload, c.ooe_rcu, "footprint"));
@@ -3303,7 +3313,6 @@ private:
       const bool limm = get(m.payload, c.ooe_rcu, "lead_imm_used") != 0;
       const bool lmrg = get(m.payload, c.ooe_rcu, "lead_merge_used") != 0;
       const bool lgrd = get(m.payload, c.ooe_rcu, "lead_guard_used") != 0;
-      const unsigned lgp = unsigned(get(m.payload, c.ooe_rcu, "lead_guard_pred"));
       unsigned rd = 0;
       for (unsigned i = 0; op && i != op->nsrc; ++i)
         if (!(op->alu_imm >= 0 && int(i) == op->imm_slot)) rd |= 1u << i;
@@ -3312,9 +3321,12 @@ private:
                         : (rd & ~lsrc) ? "a source its lead says is unused"
                         : imm && !limm ? "an immediate its lead says is unused"
                         : get(m.payload, c.ooe_rcu, "merge_en") && !lmrg ? "a merge its lead says is unused"
-                        : s == kSlotR && op && op->guard &&
-                          (!lgrd || lgp != unsigned(get(m.payload, c.ooe_rcu, "phys_pred_guard")))
-                            ? "a guard its lead does not name" : nullptr;
+                        // A copy reads its guard too; the always-true one
+                        // (the zero predicate negated) needs no lead.
+                        : (!op || op->guard || op->pdata) && !lgrd &&
+                          !(issueGuardPred(m.payload, c.ooe_rcu) == ccv::prov::kPredZero &&
+                            get(m.payload, c.ooe_rcu, "pred_neg"))
+                            ? "a predicate its lead says is unused" : nullptr;
       if (why)
         k_.fail("rcu: seq %llu, %s, reads %s (lead sections %s, sources %s)",
                 (unsigned long long)uidSeq(m.tid), op ? op->name : "a copy", why,
@@ -3332,17 +3344,18 @@ private:
               getSec(m.payload, c.ooe_rcu, "src_width", i, ccv::kWChwidth),
               getSec(m.payload, c.ooe_rcu, "src_pos", i, ccv::kWPhysPos));
     if (!op) { issueCopy(s, m); return; }
-    const unsigned ps = unsigned(get(m.payload, c.ooe_rcu, "phys_src"));
     const unsigned pd = unsigned(get(m.payload, c.ooe_rcu, "phys_dst"));
-    const unsigned pp = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_guard"));
+    // Moved to the lead (RA 109 (a), (b)): the guard's predicate on every
+    // slot, and R's source rows.
+    const unsigned pp = issueGuardPred(m.payload, c.ooe_rcu);
     const unsigned ppd = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_dst"));
     const bool pwe = get(m.payload, c.ooe_rcu, "pred_we") != 0;
     // Merge (A-33, A-43): the old destinations, read like any source. Only
     // with merge_en set may a lane be inactive, so only then are they read.
     const unsigned pold = unsigned(get(m.payload, c.ooe_rcu, "phys_old_dst"));
     const unsigned ppold = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_old_dst"));
-    const unsigned src[3] = {(ps >> 8) & 0xff, ps & 0xff,
-                             unsigned(get(m.payload, c.ooe_rcu, "phys_src2"))};
+    unsigned src[3];
+    issueSrcRows(m.payload, c.ooe_rcu, s, src);
     // A restored warp's registers are read only once their rows are
     // written (TI-13, OA's check on Q-39): done means written.
     for (unsigned i = 0; i != op->nsrc; ++i)
@@ -3366,7 +3379,7 @@ private:
     // guard too, narrowing the lanes it acts on (OA's response TI-36 (c)).
     const bool gated = op->guard || (k_.brk == "pdata-guard" && op->pdata);
     const uint32_t active = issue & (gated ? guard : 0xffffffffu);
-    const uint32_t imm0 = uint32_t(get(m.payload, c.ooe_rcu, "imm"));
+    const uint32_t imm0 = issueImm(m.payload, c.ooe_rcu, s);
 
     // An op RCU executes must have no per-lane input: RCU has the register
     // file, but per-lane work is the lanes' (Q-32).
@@ -3511,7 +3524,7 @@ private:
     // Predicate logic executes HERE, beside the predicate file, and never
     // reaches a lane (O-33's second obligation; round 16). Its two sources
     // arrive renamed, in imm (TI-1): each CCV_P_W_PHYS_PRED bits of physical
-    // predicate and a negate above it, read as phys_pred_guard is.
+    // predicate and a negate above it, read as the guard is (lead_guard_pred).
     if (op->cls == kPredLogic) {
       constexpr unsigned w = ccv::prov::kWPhysPred;
       auto src = [&](unsigned q) {
@@ -3538,6 +3551,9 @@ private:
       if (!std::strcmp(op->name, "POR")) v = a | b;
       else if (!std::strcmp(op->name, "PAND")) v = a & b;
       else if (!std::strcmp(op->name, "PXOR")) v = a ^ b;
+      // pmov: pd = ps0 under its negate; ps1 repeats it and is not read.
+      // pmov-negate: RCU inverts ps0's negate, so pd is the complement.
+      else if (!std::strcmp(op->name, "PMOV")) v = k_.brk == "pmov-negate" ? ~a : a;
       else k_.fail("rcu: predicate op %s has no semantics here", op->name);
       if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
       k_.pred[ppd] = ((merge ? k_.pred[ppold] : 0u) & ~issue) | (v & issue);
@@ -3693,7 +3709,7 @@ private:
     const unsigned tag = unsigned(get(m.payload, c.ooe_rcu, "rob_tag"));
     const unsigned pd = unsigned(get(m.payload, c.ooe_rcu, "phys_dst"));
     const unsigned pold = unsigned(get(m.payload, c.ooe_rcu, "phys_old_dst"));
-    const unsigned pp = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_guard"));
+    const unsigned pp = issueGuardPred(m.payload, c.ooe_rcu);   // moved (RA 109 (a))
     if (!get(m.payload, c.ooe_rcu, "merge_en"))
       k_.fail("rcu: a copy-only op without merge_en has nothing to copy");
     const uint32_t issue = uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
@@ -3813,6 +3829,17 @@ private:
     // Decode itself is the oracle's: which registers the instruction reads
     // and writes. The table checks the record has the shape the uop can hold.
     const OpInfo *op = opByName(r->op);
+    // CCV_DEC_POR_COPY_AS_PMOV=1: DEC decodes a copy, por pd, ps, ps (the
+    // pinned compiler's predicate copy, O-20), as register pmov pd, ps, the
+    // form OA's rev 396 has RCU execute; no kernel at the pin emits pmov.
+    // A run mode, not a control: the result must still be ccv-sim's.
+    static const bool por_copy_as_pmov = [] {
+      const char *v = std::getenv("CCV_DEC_POR_COPY_AS_PMOV");
+      return v && std::string(v) == "1";
+    }();
+    if (por_copy_as_pmov && op && !std::strcmp(op->name, "POR") && r->quals.size() >= 2 &&
+        r->quals[0] == r->quals[1])
+      op = opByName("PMOV");
     // DEC's second illegal-instruction obligation, separate from the
     // reserved-field zero checks: srd's selector is a legal field that may
     // hold an unallocated value, so this is a range comparison. Selectors 2,
@@ -3977,6 +4004,8 @@ private:
       // qualifiers ride in imm: [2:0] ps0, [5:3] ps1.
       if (r->quals.size() < 2) k_.fail("dec: seq %llu predicate logic without two sources",
                                        (unsigned long long)r->seq);
+      else if (!std::strcmp(op->name, "PMOV"))   // ps1 = ps0 (OA's rev 396)
+        imm = (r->quals[0] & 7) | ((r->quals[0] & 7) << 3);
       else imm = (r->quals[0] & 7) | ((r->quals[1] & 7) << 3);
     } else if (isBarrier(op)) {
       // bar.arrive and bar.wait: the barrier id, OOE's to report (TI-40).

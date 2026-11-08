@@ -3413,6 +3413,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   for (unsigned i = 0; i != 3; ++i) is.src_w[i] = r.wsrc[i];
   is.dst_w = r.alloc_gpr ? r.wdst : 0;
   is.guarded = u.shape.guard;
+  is.pread = u.shape.guard || u.shape.pdata;
   is.gpr_reads = u.shape.gpr_reads;
   // The resource group and footprint. Sectioned: the entry's own resources
   // (resOf). Otherwise every op is full width.

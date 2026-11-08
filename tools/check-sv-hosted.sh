@@ -167,7 +167,8 @@ else
 fi
 
 # -- credit on receipt: a late or dropped take fails in the SV top itself ------
-# AR's rev 322 (b) 3, RA-41: at a credit-on-receipt end (params/links.json)
+# AR's rev 322 (b) 3, RA-41: at a credit-on-receipt end (params/links.json;
+# miu_rcu_data@rcu alone since RA-43)
 # the wrapper's repeater returns the credit from its boundary valid flop, so
 # a block that takes a landed message a cycle late, or drops it, must fail
 # in the SV-hosted run by name -- not only as a divergence from the oracle.
@@ -179,7 +180,7 @@ print(len(json.load(open(os.environ.get("CCV_LINKS", "params/links.json"))).get(
 for brk in $([ "$ncor" -gt 0 ] && echo cor-late cor-drop); do
   out=$("$SVH" "+ccv_oracle=$B/oracle/vadd/oracle.jsonl" "+ccv_break=$brk" 2>&1)
   n=$(grep ^KERNEL <<<"$out" | grep -oE ' cor_late=[0-9]+' | cut -d= -f2)
-  if grep -q '^CHECK ccv_ooe_rcu_issue: credit on receipt, slot' <<<"$out" &&
+  if grep -q '^CHECK ccv_miu_rcu_data: credit on receipt, slot' <<<"$out" &&
      [ "${n:-0}" -gt 0 ] && ! grep -q ' check_failures=0 ' <<<"$(grep ^KERNEL <<<"$out")"; then
     say "SV top: --break $brk fails on credit on receipt" "PASS (cor_late=$n)"
   else

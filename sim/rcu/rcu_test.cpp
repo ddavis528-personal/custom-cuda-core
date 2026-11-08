@@ -326,12 +326,11 @@ void testKillDrain() {
   e.step();
   e.core.kill(0x1, 0);
   const unsigned d = e.core.killDrain();
-  const unsigned want = 2 + ccv::prov::kLatSfu + 1;   // no links, no boundary flop: 15 at SFU 12
-  EXPECT(d == want, "KILL_DRAIN %u, not %u", d, want);
-  // The hosts add the issue end's stages and bnd_rx (rcu_block.cpp): at the
-  // default links, its end flopped, the params' derived drain (RA-42).
-  EXPECT(d + 1 == ccv::prov::kLatRcuKillDrain, "KILL_DRAIN %u + bnd_rx, not %u", d,
-         ccv::prov::kLatRcuKillDrain);
+  // No links and, since RA-43, no boundary flop on either end: the params'
+  // derived drain itself (RA-42, RA rev 125), 15 at SFU 12.
+  const unsigned want = 2 + ccv::prov::kLatSfu + 1;
+  EXPECT(d == want && d == ccv::prov::kLatRcuKillDrain, "KILL_DRAIN %u, not %u (CCV_LAT_RCU_KILL_DRAIN %u)", d,
+         want, ccv::prov::kLatRcuKillDrain);
   e.step();   // K
   unsigned n = 0;
   while (!e.core.killQuiet() && n < 40) { e.step(); ++n; }

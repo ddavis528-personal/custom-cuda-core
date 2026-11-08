@@ -377,8 +377,8 @@ MUTATIONS = {
         ".dst_credit({fet_mlc_ifill_credit})", ".dst_credit('0)", 1).replace(
         "if (RPT_FET_MLC_IFILL > 0) begin", "if (1) begin", 1)),
     "corfree": ("R2", WRAP_RCU, lambda t: t.replace(
-        ".DST_END(1'b1), .CREDIT_ON_RECEIPT(1'b1)) u_rpt_ooe_rcu_issue",
-        ".DST_END(1'b1), .CREDIT_ON_RECEIPT(1'b0)) u_rpt_ooe_rcu_issue", 1)),
+        ".DST_END(1'b1), .CREDIT_ON_RECEIPT(1'b1)) u_rpt_miu_rcu_data",
+        ".DST_END(1'b1), .CREDIT_ON_RECEIPT(1'b0)) u_rpt_miu_rcu_data", 1)),
     "rptunits": ("R8", RPT_UNITS, lambda t: t.replace(
         '"units": [', '"units": [{"name": "fx", "params": {"STAGES": 3, "SLOTS": 1, '
         '"PAYLOAD_W": 8, "LEAD_MASK": "8\'h0"}}' + ("," if '"units": []' not in t else ""),

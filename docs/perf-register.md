@@ -1282,6 +1282,28 @@ it.
   an RCU area target that 192 misses: RA-11 closed at 192 with about
   242,400 RCU flops (PRF 196,608) and no target (DA 2026-11-02; RA rev 122). C9 at 8 ways, and p192's flopped
   completion ends, are re-priced in J11b on OI-133's fix (11386e7).
+  `ccv_ooe_rcu_issue` takes a no-flop end at RCU too (RA-43, under DA rev
+  115 and AR rev 329; d1c65ef). Its fields RCU needs in the issue's first
+  cycle ride as A-1 leads, a cycle ahead with valid: the guard predicate
+  and R's source rows and imm are moved there, and the rest are copies.
+  bnd_rx(ooe_rcu_issue) goes from 1 to 0, so `CCV_LAT_KILL_DRAIN` drops
+  from 16 to 15 and `CCV_LAT_L1_CMPL` from 19 to 18. `CCV_LAT_LANE` (7),
+  `CCV_LAT_SFU` (12), `CCV_LAT_L1_WAKE` (17) and `CCV_LAT_L1_MISS_WAKE` (1)
+  are unchanged, and so is the issue credit depth (4), since RA-41's credit
+  on receipt had already taken bnd_rx out of its loop. In the skeleton,
+  0e969d5 to this change, with OI's OOE model and either RCU:
+
+  | cycles | RI's RCU model | RCU stub |
+  |---|---|---|
+  | vadd | 161 to 158 | 161 to 158 |
+  | loop | 2,942 to 2,842 (-3.4%) | 2,942 to 2,842 |
+  | S1 (sweep.sh's ten kernels) | 4,034 to 3,918 (-2.88%) | 4,037 to 3,921 (-2.87%) |
+  | all 63 kernels | 56,067 to 54,749 (-2.35%) | 56,011 to 54,685 (-2.37%) |
+
+  The all-kernel sum includes rope, which runs clean before the change and
+  after it fails OI's OA-17 check on L1 speculation (it passes with
+  `l1_spec=0`). It holds while OOE and RCU abut and RCU's assembled block
+  meets 12 NGD on the issue port without the flop.
 
 ### PF-48 End-to-end parity on register state
 

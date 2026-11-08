@@ -71,11 +71,16 @@ static_assert(kRW + 1 == ccv::prov::kLatRcu, "R writes at A+2, readable at A + C
 /// The lane bypass window (Lane and memory tab): ages LAT_LANE_BYP to LAT_LANE - 2.
 constexpr unsigned kBypLo = ccv::prov::kLatLaneByp, kBypHi = ccv::prov::kLatLane - 2;
 /// KILL_DRAIN = 2 + link(issue) + bnd_rx(issue) + CCV_LAT_SFU + 1 + link(done)
-/// (Done tab; RA-42): this base at no links, the issue end's stages and
-/// bnd_rx and the done link's from the block (Config: rcu_block.cpp adds
-/// ci.stages + ci.bnd_rx), so 16 in the hosts at the default links, as
-/// CCV_LAT_RCU_KILL_DRAIN (RA-16 (g)), which rcu_test holds it to.
-constexpr unsigned kKillDrainBase = 2 + ccv::prov::kLatSfu + 1;
+/// + bnd_rx(done) (Done tab; RA-42). The base cites the params' derived
+/// CCV_LAT_RCU_KILL_DRAIN (RA rev 125), 15 at the defaults, where every link
+/// and boundary term is 0 since RA-43 made the issue end zero-cycle; the
+/// hosts add the issue and done ends' stages and bnd_rx on top (Config:
+/// rcu_block.cpp adds ci.stages + ci.bnd_rx), 0 at the defaults. Should a
+/// default ever gain a stage, the assert below fails rather than the hosts
+/// counting it twice.
+constexpr unsigned kKillDrainBase = ccv::prov::kLatRcuKillDrain;
+static_assert(kKillDrainBase == 2 + ccv::prov::kLatSfu + 1,
+              "CCV_LAT_RCU_KILL_DRAIN carries a default link or boundary stage: the hosts would add it twice");
 
 using Word = std::array<uint32_t, kLanes>;   ///< one 32-bit element a lane
 
@@ -94,7 +99,7 @@ inline uint32_t byteMask(unsigned secs) {
 
 /// What executes it (the op-class decode, Pipeline tab).
 enum class Unit : uint8_t { Lane, Sfu, Mem, ROnly, Coll, Copy, PredCopy };
-enum class RKind : uint8_t { None, Bra, Call, Ret, Pand, Por, Pxor, PmovImm, Movi, ShflIdxImm,
+enum class RKind : uint8_t { None, Bra, Call, Ret, Pand, Por, Pxor, Pmov, PmovImm, Movi, ShflIdxImm,
                              ShflIdxReg, ShflUp, ShflDown, ShflBfly, VoteAny, VoteAll, Ballot,
                              Unballot };
 enum class MemKind : uint8_t { None, Load, Store, PredLoad, PredStore, Fence };

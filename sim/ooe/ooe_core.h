@@ -871,6 +871,7 @@ struct Issue {          ///< ccv_ooe_rcu_issue
   unsigned src_w[3] = {}, dst_w = 0;
   unsigned chwidth = 0;
   bool guarded = false;          ///< for the adapter's coverage only
+  bool pread = false;            ///< reads its predicate, guard or data (lead_guard_used, RA-43)
   uint8_t gpr_reads = 0;         ///< likewise
   /// The resource group the op issues on (ccv_ooe_rcu_issue's slots) and
   /// its footprint there: lane sections, MIU pipes, or R alone (footprint 0).

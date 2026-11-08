@@ -19,6 +19,7 @@ so this is a build artifact rather than something to remember.
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
+| `rtl/rcu/ccv_rcu.sv` | `CCV_L_OPERANDS_PER_LANE`, `CCV_L_W_OPCODE` | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W`, `CCV_P_W_LANE_BYP_SEL`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
 | `rtl/rcu/rcu_bank_slice.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO` |
 | `rtl/rcu/rcu_kill.sv` | — | `CCV_LAT_RCU_KILL_DRAIN`, `CCV_P_W_KILL_EPOCH` |
 | `rtl/rcu/rcu_lanes.sv` | `CCV_L_OPERANDS_PER_LANE`, `CCV_L_W_OPCODE` | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_PHYS_ZERO`, `CCV_P_PRED_ZERO`, `CCV_P_W_LANE_BYP_SEL`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_ROB_TAG` |
@@ -98,7 +99,7 @@ preliminary field:
 | `ccv_miu_spm_req` | `spm_op` |
 | `ccv_mlc_exb_req` | `coh_op`, `ownership_class` |
 | `ccv_ooe_miu_memop` | `mem_op` |
-| `ccv_ooe_rcu_issue` | `bypass_group`, `opcode` |
+| `ccv_ooe_rcu_issue` | `bypass_group`, `opcode`, `lead_opcode` |
 | `ccv_rau_fet_launch` | `code_bounds` |
 | `ccv_rcu_lane_ops` | `sec_opcode`, `operand`, `sec_opnd_pos`, `sec_opnd_width`, `operand_byp` |
 
