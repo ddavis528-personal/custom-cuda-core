@@ -697,7 +697,12 @@ module rcu_lanes #(
   // Stage 1: the valids and the SFU's slot; its fields come from lwb_d's
   // stage 1 at stage 2. Stage DS+1 holds the done payload.
   logic [DS-1:0]    ssv_cr03h, sdv_cr03h;    // SW writes; a done on slot 4
-  logic [DS*NK-1:0] sov_cr03h;               // sections the lanes return
+  // Sections the lanes return: stage 1 (ungated) and stages 2 on (shifted)
+  // are separate registers, so check-cg charges the ungated allowance with
+  // stage 1's NK flops only.
+  logic [NK-1:0]        sov1_cr03h;
+  logic [(DS-1)*NK-1:0] sovs_cr03h;
+  wire  [DS*NK-1:0]     sov_cr03h = {sovs_cr03h, sov1_cr03h};
   logic [NK-1:0]    ssl_cr03h;               // stage 1: the SFU's slot
   wire any_sfu_cr02h = |sfu_cr02h;
   logic [NK-1:0] sfo_cr02h;
@@ -713,12 +718,12 @@ module rcu_lanes #(
     if (rst_r01h) begin
       ssv_cr03h[0]       <= 1'b0;
       sdv_cr03h[0]       <= 1'b0;
-      sov_cr03h[0 +: NK] <= '0;
+      sov1_cr03h         <= '0;
       ssl_cr03h          <= '0;
     end else begin
       ssv_cr03h[0]       <= |(sfu_cr02h & gdst_cr02h);
       sdv_cr03h[0]       <= any_sfu_cr02h;
-      sov_cr03h[0 +: NK] <= sfo_cr02h;
+      sov1_cr03h         <= sfo_cr02h;
       ssl_cr03h          <= sfu_cr02h;
     end
   end
@@ -726,11 +731,11 @@ module rcu_lanes #(
     if (rst_r01h) begin
       ssv_cr03h[DS-1:1]       <= '0;
       sdv_cr03h[DS-1:1]       <= '0;
-      sov_cr03h[DS*NK-1:NK]   <= '0;
+      sovs_cr03h              <= '0;
     end else if (sv_en_cr02h) begin
       ssv_cr03h[DS-1:1]       <= ssv_cr03h[DS-2:0];
       sdv_cr03h[DS-1:1]       <= sdv_cr03h[DS-2:0];
-      sov_cr03h[DS*NK-1:NK]   <= sov_cr03h[(DS-1)*NK-1:0];
+      sovs_cr03h              <= sov_cr03h[(DS-1)*NK-1:0];
     end
   end
   logic [(DS-2)*WR-1:0] srow_cr03h;    // stages 2 .. DS-1 (SW's row and sections), stage d at d-2
