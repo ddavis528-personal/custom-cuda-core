@@ -152,7 +152,7 @@ for spec in vadd:corrupt-fetch vadd:corrupt-load vadd:drop-store \
             hit:early-hit hit:late-hit-data hit:no-rcu-bypass \
             vadd:drop-src-valid plog:arch-pred-srcs vadd:no-resource-cap \
             vadd:bad-pos vadd:narrow-pipes vadd:ordering-on-load vadd:memop-ordering \
-            callret:slot-field-aux callret:lead-corrupt vadd:sfu-valid-stray \
+            callret:slot-field-aux callret:lead-corrupt vadd:sfu-valid-stray vadd:nop-real-op \
             vadd:cor-late vadd:cor-drop; do
   IFS=: read -r k brk cap <<<"$spec"
   a=$(cpp "$k" --break "$brk" ${cap:+--cycles "$cap"} | grep ^KERNEL)

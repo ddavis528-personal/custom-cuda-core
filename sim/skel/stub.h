@@ -151,8 +151,11 @@ enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
 // at retire (TI-40).
 // kAtomic: a Format M read-modify-write (O-72; IS-21, AR-21): two decode
 // slots, a pair, which OOE splits into A1 (read), A2 (lane op), A3 (write).
+// kNop: a hint with no architectural effect (C_RECONV, reconv.hint; RA-16
+// (f), OA's rev 393), serial 5: OOE completes it at rename, and it runs
+// nowhere.
 enum UopClass : uint8_t { kAlu, kLoad, kStore, kBranch, kExit, kPredLogic, kImm,
-                          kFence, kBarArrive, kBarWait, kAtomic };
+                          kFence, kBarArrive, kBarWait, kAtomic, kNop };
 struct OpInfo {
   const char *name;
   UopClass cls;
@@ -228,7 +231,9 @@ inline bool execRcu(const OpInfo *op) { return inRcu(op->cls) || op->cross; }
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatRcu = 0, kLatLane = 1, kLatL1 = 2, kLatCompletion = 3,
                   kLatSfu = 4, kLatCollective = 5 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+// serial 5, no-op: complete at rename (C_RECONV; RA-16 (f), OA's rev 393).
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4,
+                  kSerNop = 5 };
 // Above bypass_group (CCV_P_W_SCHED_ATTR 21): the CAS pair's first and second
 // slots (17, 18; TI-39, OA's rev 189), ret (19: OOE takes its target from
 // ccv_rcu_ooe_done.aux and sets stay; AR-24 (b)), and commit_width
@@ -262,13 +267,16 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
                       : op->cls == kAtomic ? kMemKAtomic : kMemKLoad;
   const bool ctl = op->cls == kExit || isBarrier(op);
   const unsigned ser = op->cls == kExit ? kSerExit : op->cls == kBarWait ? kSerBarrier
-                     : op->cls == kBarArrive ? kSerArrive : op->chw ? kSerChwidth : kSerNone;
+                     : op->cls == kBarArrive ? kSerArrive : op->cls == kNop ? kSerNop
+                     : op->chw ? kSerChwidth : kSerNone;
   // A cross-lane op (shfl) is RCU's but warp-collective: lat_class 5 at
   // CCV_LAT_COLLECTIVE (Daniel's responses OA-4; AR's rev 259, TI's rev
   // 274). RCU may finish it sooner, which V-35 allows; its dependants wake
   // at 5.
   // An atomic wakes its dependants on its last write's completion (A-46).
-  const unsigned lat = op->cls == kLoad ? kLatL1
+  // A no-op (serial 5) sets no other bit: lat_class 0 (RA-16 (f)).
+  const unsigned lat = op->cls == kNop ? kLatRcu
+                     : op->cls == kLoad ? kLatL1
                      : op->cls == kStore || op->cls == kFence || op->cls == kAtomic ? kLatCompletion
                      : op->cross ? kLatCollective
                      : execRcu(op) || ctl ? kLatRcu : kLatLane;
@@ -308,6 +316,7 @@ inline bool attrMem(uint32_t a) { return (a >> 13) & 1u; }
 inline unsigned attrMemKind(uint32_t a) { return (a >> 7) & 3u; }
 inline bool attrBranch(uint32_t a) { return (a >> 6) & 1u; }
 inline unsigned attrBypGroup(uint32_t a) { return (a >> 14) & 7u; }
+inline unsigned attrSerial(uint32_t a) { return (a >> 3) & 7u; }
 /// A per-lane input: a GPR source, or the lane's own index.
 inline bool perLaneInput(const OpInfo *op, const Record &r) {
   return !r.gprUses().empty() || op->srd_sel >= 0 || op->chw;
@@ -542,6 +551,10 @@ inline constexpr OpInfo kOps[] = {
   {"RCP_F32_P",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
   // pxor (ISA v1.9 Format K, opcode 62; RA-16 (f)): PAND's row, RCU-only on R, appended so no opcode moves.
   {"PXOR",          kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  // reconv.hint (C_RECONV, FormatKraw 55; RA-16 (f), OA's rev 393): a hint,
+  // serial 5 and every other sched_attr bit 0; its 8-bit payload is ignored.
+  // Appended so no opcode moves.
+  {"C_RECONV",      kNop,       0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;

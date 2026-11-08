@@ -3886,6 +3886,11 @@ private:
     // attr-coll-as-rcu: DEC gives a cross-lane op lat_class 0, RCU's, not
     // the warp-collective 5 (AR's rev 259).
     if (k_.brk == "attr-coll-as-rcu" && op->cross) attr = (attr & ~7u) | kLatRcu;
+    // nop-real-op: DEC gives a real op, the C_ADD whose sum is stored,
+    // serial 5, C_RECONV's no-op (RA-16 (f), OA's rev 393): OOE completes
+    // it at rename and it never runs.
+    if (k_.brk == "nop-real-op" && !std::strcmp(op->name, "C_ADD"))
+      attr = (attr & ~(7u << 3)) | kSerNop << 3;
     put(u, c.dec_ooe, "sched_attr", attr);
     // What OOE schedules and renames on instead of opcode (A-75, TI-1).
     // drop-src-valid: DEC calls a two-source op's second source unread, so
