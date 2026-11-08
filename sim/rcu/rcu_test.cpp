@@ -511,6 +511,50 @@ void testSfuWrite() {
   }
 }
 
+/// A narrow SFU op (RA rev 124, OA-15): the lane sends sfu_result already
+/// steered, like result, and RCU writes it as it comes. A 16-bit op at
+/// position 2 writes bytes 2-3 only (FULL_ROW 0); under FULL_ROW a 16-bit op
+/// at position 0 writes the whole row, the lane's zeros above the width
+/// with it. Controls: sw-resteer steers sfu_result a second time; under
+/// FULL_ROW, bits outside the element are refused.
+void testSfuNarrow() {
+  for (int mode = 0; mode != 4; ++mode) {   // 0 pos 2, 1 full-row pos 0, 2 sw-resteer, 3 dirty above width
+    const bool fr = mode == 1 || mode == 3;
+    g_test = mode == 0 ? "sfu-narrow" : mode == 1 ? "sfu-narrow:full-row" : mode == 2 ? "sfu-narrow:sw-resteer"
+                                                                                       : "sfu-narrow:dirty";
+    Env e(mode == 2 ? "sw-resteer" : "", fr);
+    e.t = 40;
+    const unsigned pos = fr ? 0 : 2;
+    const uint32_t before = e.gpr[9][0], sres = fr ? (mode == 3 ? 0x0001beefu : 0x0000beefu) : 0xbeef0000u;
+    const uint64_t a = 40, w = a + kSfuW;
+    Issue sf = laneOp(9, 3, 4, 2);
+    sf.oc.unit = Unit::Sfu;
+    sf.dst_w = 1;
+    sf.dst_pos = pos;
+    for (uint64_t c = a; c != w + 1; ++c) {
+      In x = Env::idleIn();
+      if (c == a) placeLane(x, sf);
+      if (c == w) {
+        LaneRes r = laneRes(0);
+        r.sec_valid.fill(0);   // no lane op due: SW alone
+        r.sfu_result.fill(sres);
+        r.sfu_valid.fill(1);
+        x.lres = r;
+      }
+      e.step(x);
+    }
+    const uint32_t want = fr ? sres : (before & 0x0000ffffu) | sres;
+    if (mode < 2) {
+      EXPECT(e.gpr[9][0] == want && e.gpr[9][31] == want, "row %08x, not %08x", e.gpr[9][0], want);
+      EXPECT(e.fails.empty(), "%s", e.fails.empty() ? "" : e.fails[0].c_str());
+    } else if (mode == 2) {
+      CONTROL("sw-resteer", e.gpr[9][0] != want, "SW wrote %08x, steered twice", e.gpr[9][0]);
+    } else {
+      CONTROL("sfu-dirty-above-width", e.failed("outside its"), "bits above the width passed under FULL_ROW");
+    }
+  }
+}
+
 /// Idle: nothing in flight is idle; an op keeps it busy until its write.
 void testIdle() {
   g_test = "idle";
@@ -543,6 +587,7 @@ int main(int argc, char **argv) {
   testRestoreZero();
   testNarrowWrite();
   testSfuWrite();
+  testSfuNarrow();
   testIdle();
   std::printf("rcu-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
   return g_fail ? 1 : 0;

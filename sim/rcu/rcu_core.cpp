@@ -152,17 +152,24 @@ void Core::gatherWrites(uint64_t t, const In &in, std::vector<GWrite> &gw, std::
           fail("seq %llu's copy reached the PRF %llu cycles after RCU took it; CCV_LAT_LANE is %u",
                seqOf(d.tid), (unsigned long long)(t - d.acc), ccv::prov::kLatLane);
         // SW (A+11) writes sfu_result, never result, which is LW's (RA rev
-        // 120): steered like RW, into all four banks zero-extended under
-        // full_row (RA's response RI-5, Register file tab rev 7), secmask
-        // otherwise, every lane. A lane op due the same cycle writes LW
-        // beside it. sw-from-result feeds SW from result instead.
+        // 120). The lane sends sfu_result already steered, like result (RA
+        // rev 124): RCU writes byte k for every k in the op's secmask, all
+        // four under full_row (RA's response RI-5, Register file tab rev 7),
+        // where the lane owes zeros outside the element. A lane op due the
+        // same cycle writes LW beside it. sw-from-result feeds SW from
+        // result; sw-resteer masks and shifts sfu_result again.
         if (d.sfu) {
           if (d.gdst) {
             const unsigned ss = cfg_.full_row ? kAllSecs : secMask(d.dst_w, d.dst_pos) & kAllSecs;
             GWrite g{kSW, d.dst, ss, kAll, {}};
             const Word &src = cfg_.brk == "sw-from-result" ? r.result : r.sfu_result;
-            for (unsigned l = 0; l != kLanes; ++l)
-              g.data[l] = (src[l] & elemMask(d.dst_w)) << (8 * d.dst_pos);
+            const uint32_t em = elemMask(d.dst_w) << (8 * d.dst_pos);
+            for (unsigned l = 0; l != kLanes; ++l) {
+              if (cfg_.full_row && (src[l] & ~em))
+                fail("lane %u's sfu_result %08x for r%u has bits outside its %u-bit element at position %u",
+                     l, src[l], d.dst, 32u >> d.dst_w, d.dst_pos);
+              g.data[l] = cfg_.brk == "sw-resteer" ? (src[l] & elemMask(d.dst_w)) << (8 * d.dst_pos) : src[l];
+            }
             gw.push_back(g);
             ++st_.gpr_writes;
           }
