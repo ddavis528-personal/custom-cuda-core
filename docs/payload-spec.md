@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 14 | 36 |
+| All decided | 14 | 38 |
 | ⚠️ Some provisional | 26 | 139 |
 | ⛔ Some preliminary | 15 | 146 |
-| **Total** | **55** | **321** |
+| **Total** | **55** | **323** |
 
 ## What still has to be decided
 
@@ -162,7 +162,7 @@ because those are the ones where a skeleton that reads the field
 
 ### `ccv_lane_rcu_res`
 
-One lane's results, one message a cycle (OI-28): a 32-bit result, used whole by a full-width op and by section for narrow ones, already steered to each destination's position inside the lane; per section, sec_valid (an op's result is here), sec_pred_out (setp's compare, add.pp's predicate: one bit a lane per op, on the op's lead section). RCU knows which op held which section, the lane latency being fixed, so no tag rides here. RCU writes the PRF by slice through per-lane write enables: every lane for an ordinary op (an inactive lane's result is its merge_data), only the inactive lanes for CCV_OP_PRF_COPY (A-44).
+One lane's results, one message a cycle (OI-28): a 32-bit result, used whole by a full-width op and by section for narrow ones, already steered to each destination's position inside the lane; per section, sec_valid (an op's result is here), sec_pred_out (setp's compare, add.pp's predicate: one bit a lane per op, on the op's lead section). RCU knows which op held which section, the lane latency being fixed, so no tag rides here. RCU writes the PRF by slice through per-lane write enables: every lane for an ordinary op (an inactive lane's result is its merge_data), only the inactive lanes for CCV_OP_PRF_COPY (A-44). SFU (RA-16 (b), RA's rev 115): sfu_valid and sfu_result, an SFU op's 32-bit result, in the payload as sec_valid and result are. No destination rides here: RCU takes the row, position, width and section mask from its own SFU descriptor, CCV_LAT_SFU - 1 deep, and writes through its SW port at A+11. The lane result and the SFU result may both be valid in one cycle on one lane, on separate write ports. The end stays zero-cycle (params/links.json), these in-paths within its 12 NGD (RA's rev 106).
 
 lane → rcu · rate 1 · execution
 
@@ -171,7 +171,9 @@ lane → rcu · rate 1 · execution
 | `result` | `CCV_W_LANE_DATA` | 32 | CCV_W_LANE_DATA (isa) |
 | `sec_valid` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
 | `sec_pred_out` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
-| **total** | | **40** | |
+| `sfu_valid` | `1` | 1 | literal |
+| `sfu_result` | `CCV_W_LANE_DATA` | 32 | CCV_W_LANE_DATA (isa) |
+| **total** | | **73** | |
 
 ### `ccv_ooe_rau_status`
 
