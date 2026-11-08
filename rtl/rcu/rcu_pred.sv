@@ -114,7 +114,7 @@ module rcu_pred #(
   localparam int NH = (ROWS + 7) / 8                     // psel_hi bits, 6
 ) (
   input  logic               rcu_core_clk,
-  input  logic               rcu_rst_r00h,
+  input  logic               rst_n,
   // Stage I: the issue slots.
   input  logic [NS-1:0]      iv_cr01h,      // slot s issues next cycle (the lead's valid)
   input  logic               lgu_cr01h,     // R's lead_guard_used
@@ -129,6 +129,7 @@ module rcu_pred #(
   input  logic [NK*NK-1:0]   ft_cr02h,      // S slot s's footprint, section k at s*NK + k
   input  logic [NK-1:0]      lm_cr02h,      // class: S slot s sends a lane message (lane, SFU, GPR copy)
   output logic [NS*N-1:0]    act_cr03h,     // active_a[s]
+  output logic               busy_cr03h,    // to rcu_kill's idle: an issue in A or a predicate write pending
   output logic [NK*N-1:0]    gv_cr03h,      // gv_a[k]: S slot k's guard (sec_pred_data)
   output logic [NMP*N-1:0]   pst_cr03h,     // pst_a[j]: P slot j's raw guard row (st.pred data)
   output logic [N-1:0]       rpa_cr03h,     // rpsrc_a RA
@@ -161,7 +162,7 @@ module rcu_pred #(
 
   logic rst_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= rcu_rst_r00h;
+    rst_r01h <= !rst_n;
   end
 
   function automatic logic [NH-1:0] dec_hi(input logic [WP-1:0] p);
@@ -506,6 +507,9 @@ module rcu_pred #(
     for (int k = 0; k < NK; k++) own_bad_cr02h |= $countones(own_cr02h[k*NK +: NK]) > 1;
   end
   `CCV_ASSERT(pred_spb_own, !own_bad_cr02h)
+
+  // Busy, from flops only (P10, RI-21): rcu_kill's idle.
+  assign busy_cr03h = (|iv_cr02h) | (|qv_cr01h) | (|qa_cr02h) | (|dv_cr01h);
 
 endmodule
 `undef CCV_CLK

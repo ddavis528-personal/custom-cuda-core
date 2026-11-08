@@ -13,7 +13,7 @@
         "K": 1
       },
       "clock": "rcu_core_clk",
-      "reset": "rcu_rst_r00h",
+      "reset": "!rst_n",
       "bench": {
         "build": "test/rcu/cg-build.sh rcu_bank_slice {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
@@ -31,7 +31,7 @@
       ],
       "params": {},
       "clock": "rcu_core_clk",
-      "reset": "rcu_rst_r00h",
+      "reset": "!rst_n",
       "bench": {
         "build": "test/rcu/cg-build.sh rcu_r {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
@@ -47,7 +47,7 @@
       ],
       "params": {},
       "clock": "rcu_core_clk",
-      "reset": "rcu_rst_r00h",
+      "reset": "!rst_n",
       "bench": {
         "build": "test/rcu/cg-build.sh rcu_pred {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
@@ -63,7 +63,7 @@
       ],
       "params": {},
       "clock": "rcu_core_clk",
-      "reset": "rcu_rst_r00h",
+      "reset": "!rst_n",
       "bench": {
         "build": "test/rcu/cg-build.sh rcu_kill {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
@@ -79,7 +79,7 @@
       ],
       "params": {},
       "clock": "rcu_core_clk",
-      "reset": "rcu_rst_r00h",
+      "reset": "!rst_n",
       "bench": {
         "build": "test/rcu/cg-build.sh rcu_mig {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
@@ -97,7 +97,7 @@
         "COPIES": 32
       },
       "clock": "rcu_core_clk",
-      "reset": "rcu_rst_r00h",
+      "reset": "!rst_n",
       "bench": {
         "build": "test/rcu/cg-build.sh rcu_lanes {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
@@ -115,7 +115,7 @@
         "COPIES": 32
       },
       "clock": "rcu_core_clk",
-      "reset": "rcu_rst_r00h",
+      "reset": "!rst_n",
       "bench": {
         "build": "test/rcu/cg-build.sh rcu_mem {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",

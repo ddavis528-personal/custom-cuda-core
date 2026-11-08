@@ -155,7 +155,7 @@ struct Bench {
   }
 
   void drive(bool rst) {
-    dut->rcu_rst_r00h = rst;
+    dut->rst_n = !rst;
     const uint64_t c = cyc;
     dut->iw_cr01h = g(c + 1) || g(c + 2) || g(c + 3);
     // A-1: the lead.
@@ -214,16 +214,20 @@ struct Bench {
       }
       for (unsigned j = 0; j < kK * kP * kN; ++j) put(dut->rd_cr03h, 8 * j, 8, x->rd[j]);
     }
-    // A+6: the lanes' results, as due.
-    unsigned due = 0;
-    if (const Group *x = g(c - (kLat - 1)))
-      for (unsigned s = 0; s < kK; ++s)
-        if (x->v[s] && (x->op[s].cls == Lane || x->op[s].cls == Copy)) due |= x->op[s].foot;
-    if (const Group *x = g(c - (kSfu - 1)))
-      for (unsigned s = 0; s < kK; ++s)
-        if (x->v[s] && x->op[s].cls == Sfu) due |= x->op[s].foot;
+    // A+6: the lanes' results, as due; their valid a cycle before (A+5).
+    auto dueAt = [&](uint64_t cc) {
+      unsigned d = 0;
+      if (const Group *x = g(cc - (kLat - 1)))
+        for (unsigned s = 0; s < kK; ++s)
+          if (x->v[s] && (x->op[s].cls == Lane || x->op[s].cls == Copy)) d |= x->op[s].foot;
+      if (const Group *x = g(cc - (kSfu - 1)))
+        for (unsigned s = 0; s < kK; ++s)
+          if (x->v[s] && x->op[s].cls == Sfu) d |= x->op[s].foot;
+      return d;
+    };
+    const unsigned due = dueAt(c), due1 = dueAt(c + 1);
     for (unsigned l = 0; l < kN; ++l) {
-      put(dut->lrv_cr08h, l, 1, due != 0);
+      put(dut->lrv_cr07h, l, 1, due1 != 0);
       put(dut->lsv_cr08h, l * kK, kK, due);
     }
   }

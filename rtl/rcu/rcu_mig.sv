@@ -79,7 +79,7 @@ module rcu_mig #(
   localparam int CD = ccv_params_pkg::CCV_CREDIT_DEPTH    // rcu_pca_mig's credits
 ) (
   input  logic               rcu_core_clk,
-  input  logic               rcu_rst_r00h,
+  input  logic               rst_n,
   // ccv_ooe_rcu_map: valid on the wire, then the payload (gpr_pos and
   // gpr_width dropped: OOE keeps them).
   input  logic               mv_cr00h,
@@ -139,7 +139,7 @@ module rcu_mig #(
 
   logic rst_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= rcu_rst_r00h;
+    rst_r01h <= !rst_n;
   end
 
   function automatic logic [Q-1:0] lowest(input logic [Q-1:0] v);
@@ -443,7 +443,7 @@ module rcu_mig #(
   logic [1:0]       dm_wc_cr02h;
   logic [WC-1:0]    dm_cr_cr02h;
   (* keep *) logic  dm_v_cr03h;                 // dm_vo_cr03h is its copy for ov
-  (* keep *) logic  dm_vo_cr03h, dm_wk_cr03h;   // ov's own flop; the wake's and R2's lead
+  (* keep *) logic  dm_vo_cr03h, dm_wk_cr03h, dm_r2_cr03h;   // ov's own flop; the wake's (a block output); R2's lead (the slices)
   logic             dv_o_cr01h;                 // the D leads' own flop
   logic [WW-1:0]    dm_pw_cr04h;
   logic [WMR-1:0]   dm_prow_cr04h;
@@ -467,12 +467,14 @@ module rcu_mig #(
       dm_v_cr03h    <= 1'b0;
       dm_vo_cr03h   <= 1'b0;
       dm_wk_cr03h   <= 1'b0;
+      dm_r2_cr03h   <= 1'b0;
       dv_o_cr01h    <= 1'b0;
     end else begin
       dm_busy_cr02h <= dm_busyn_cr02h;
       dm_v_cr03h    <= dm_want_cr02h & ~ost_cr02h;
       dm_vo_cr03h   <= dm_want_cr02h & ~ost_cr02h;
       dm_wk_cr03h   <= dm_busyn_cr02h;
+      dm_r2_cr03h   <= dm_busyn_cr02h;
       // The D leads from row 14 on (a cycle early at most: a lead only
       // readies the read), while the engine stays busy.
       dv_o_cr01h    <= dm_busy_cr02h & ~dm_end_cr03h & ~dm_kill_cr02h & (|dm_noh_cr02h[NR:NG-2]);
@@ -531,7 +533,7 @@ module rcu_mig #(
     r2row_cr02h = (dm_noh_cr02h[NG] | dm_noh_cr02h[NR]) ? ZROW : '0;
     for (int a = 0; a < NG; a++) r2row_cr02h |= {WR{dm_noh_cr02h[a]}} & dm_g_cr02h[a*WR +: WR];
   end
-  assign r2v_cr01h  = dm_wk_cr03h;   // dm_busy, its output copy
+  assign r2v_cr01h  = dm_r2_cr03h;   // dm_busy, R2's own copy: the wake's drives a block output (NGD-7 at assembly)
   assign dv_cr01h   = {NP{dv_o_cr01h}};
   assign drow_cr02h = dm_p_cr02h;
 

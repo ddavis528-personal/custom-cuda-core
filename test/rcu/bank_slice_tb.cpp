@@ -178,7 +178,7 @@ struct Bench {
 
   /// One cycle: `next` starts now (valids); s1's rows and s2's data go in.
   void step(const Cycle &next, bool rst = false) {
-    dut->rcu_rst_r00h = rst;
+    dut->rst_n = !rst;
     dut->rd_v_cr00h = 0;
     dut->wr_v_cr00h = 0;
     dut->rv_cr02h = 0;

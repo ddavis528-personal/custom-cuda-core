@@ -88,7 +88,7 @@ module rcu_lanes #(
   localparam int NWK = (COPIES + 7) / 8                      // wake flops, one per 8 copies
 ) (
   input  logic                    rcu_core_clk,
-  input  logic                    rcu_rst_r00h,
+  input  logic                    rst_n,
   input  logic                    iw_cr01h,        // ooe_rcu_issue_wake
   // The S slots' lead (A-1).
   input  logic [NK-1:0]           iv_cr01h,        // slot s issues next cycle
@@ -125,10 +125,12 @@ module rcu_lanes #(
   input  logic [NK*N-1:0]         gv_cr03h,        // rcu_pred: gv_a, the guard, negated
   input  logic [NK*NP*N*8-1:0]    rd_cr03h,        // bank k port i lane l: ((k*NP + i)*N + l)*8
   // The lanes' results, in their write cycle (A+6): the lockstep checks.
-  input  logic [N-1:0]            lrv_cr08h,       // copy c's result lands
+  input  logic [N-1:0]            lrv_cr07h,       // copy c's result valid (leads its payload by a cycle)
   input  logic [N*NK-1:0]         lsv_cr08h,       //   its sec_valid
   // ccv_rcu_lane_ops, each copy.
   output logic [NWK-1:0]          lwk_cr02h,       // wake (copy c from flop c/8)
+  output logic                    busy_cr03h,      // to rcu_kill's idle: any stage or history valid
+  output logic                    dbusy_cr03h,     // to rcu_kill's done wake: a lane or SFU descriptor stage valid
   output logic [N-1:0]            lv_cr03h,        // valid
   output logic [N*NK-1:0]         sen_cr03h,       // section_en (lead)
   output logic [N*NK*WO-1:0]      sop_cr04h,       // sec_opcode
@@ -169,7 +171,7 @@ module rcu_lanes #(
 
   logic rst_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= rcu_rst_r00h;
+    rst_r01h <= !rst_n;
   end
 
   function automatic logic [NK-1:0] secmask(input logic [1:0] w, input logic [1:0] pos);
@@ -749,14 +751,20 @@ module rcu_lanes #(
   // The lanes' results: every copy in the same cycle (lockstep), exactly
   // when results are due, holding exactly the sections due (CG-5: never an
   // enable, only checked).
+  wire [NK-1:0] due_cr07h = ov_cr03h[(DL-2)*NK +: NK] | sov_cr03h[(DS-2)*NK +: NK];
   wire [NK-1:0] due_cr08h = ov_cr03h[(DL-1)*NK +: NK] | sov_cr03h[(DS-1)*NK +: NK];
   logic lres_bad_cr08h;
   always_comb begin
     lres_bad_cr08h = 1'b0;
     for (int c = 0; c < N; c++)
-      lres_bad_cr08h |= lrv_cr08h[c] != (|due_cr08h) || (lrv_cr08h[c] && lsv_cr08h[c*NK +: NK] != due_cr08h);
+      lres_bad_cr08h |= lrv_cr07h[c] != (|due_cr07h) || ((|due_cr08h) && lsv_cr08h[c*NK +: NK] != due_cr08h);
   end
   `CCV_ASSERT(lanes_lockstep, !lres_bad_cr08h)
+
+  // Busy, from flops only (P10, RI-21): rcu_kill's idle and done wake.
+  assign dbusy_cr03h = (|v_cr02h) | (|lv_cr03h) | (|ov_cr03h) | (|wv_cr03h) | (|dv_cr03h) | (|pv_cr03h) |
+                       (|ssv_cr03h) | (|sdv_cr03h);
+  assign busy_cr03h  = dbusy_cr03h | (|hv_cr03h);
 
 endmodule
 `undef CCV_CLK

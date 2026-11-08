@@ -82,7 +82,7 @@ module rcu_bank_slice #(
   localparam int NH = (ROWS + 15) / 16   // sel_hi bits
 ) (
   input  logic              rcu_core_clk,
-  input  logic              rcu_rst_r00h,
+  input  logic              rst_n,
   // Read ports.
   input  logic [NR-1:0]     rd_v_cr00h,     // port p reads next cycle
   input  logic [NR*WR-1:0]  rd_row_cr01h,   //   this row
@@ -117,7 +117,7 @@ module rcu_bank_slice #(
 
   logic rst_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= rcu_rst_r00h;
+    rst_r01h <= !rst_n;
   end
 
   // One-hot predecode of a row index.

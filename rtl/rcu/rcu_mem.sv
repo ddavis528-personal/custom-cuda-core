@@ -60,7 +60,7 @@ module rcu_mem #(
   localparam int WT = ccv_prov_pkg::CCV_P_W_ROB_TAG
 ) (
   input  logic                    rcu_core_clk,
-  input  logic                    rcu_rst_r00h,
+  input  logic                    rst_n,
   input  logic                    iw_cr01h,        // ooe_rcu_issue_wake
   // The P slots' lead (A-1).
   input  logic [NK-1:0]           iv_cr01h,        // slot j issues next cycle
@@ -82,6 +82,7 @@ module rcu_mem #(
   input  logic [NK*NM*N*8-1:0]    rd_cr03h,        // bank k port Mm lane l: ((k*NM + m)*N + l)*8
   // ccv_rcu_miu_addr, slot j.
   output logic                    mwk_cr02h,       // wake
+  output logic                    busy_cr03h,      // to rcu_kill's idle: a memop in A or an address out
   output logic [NK-1:0]           mv_cr03h,        // valid
   output logic [NK*WT-1:0]        mtag_cr04h,      // rob_tag
   output logic [NK*N-1:0]         mam_cr04h,       // active_mask
@@ -92,7 +93,7 @@ module rcu_mem #(
 
   logic rst_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= rcu_rst_r00h;
+    rst_r01h <= !rst_n;
   end
 
   function automatic logic [NK-1:0] secmask(input logic [1:0] w, input logic [1:0] pos);
@@ -292,6 +293,9 @@ module rcu_mem #(
       end
   end
   `CCV_ASSERT(mem_disjoint, !ovl_cr02h)
+
+  // Busy, from flops only (P10, RI-21): rcu_kill's idle.
+  assign busy_cr03h = (|v_cr02h) | (|mv_cr03h);
 
 endmodule
 `undef CCV_CLK

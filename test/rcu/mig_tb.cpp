@@ -346,7 +346,7 @@ struct Bench {
     }
 
     // Evaluate, sample.
-    dut->rcu_rst_r00h = rst;
+    dut->rst_n = !rst;
     dut->rcu_core_clk = 0;
     eval();
     Samp &s = hs[t % 8];

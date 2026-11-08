@@ -18,7 +18,7 @@
 //          the model's RKind). rw_v, pr_v: the RW and PR ports' valids
 //   cr03h  A+1: the slices' rsrc (R0, R1 raw rows); R2's row; active, RA,
 //          RB and rlow from the predicate file's flops. RW's row and
-//          sections, PR's row (no-select rows when the op writes no GPR or
+//          sections, PR's row and old row (no-select rows when the op writes no GPR or
 //          no predicate); the done valids
 //   cr04h  A+2: RW's data (every lane), PR's value and merge mask, the
 //          done payload
@@ -49,7 +49,7 @@ module rcu_r #(
   localparam int WT = ccv_prov_pkg::CCV_P_W_ROB_TAG
 ) (
   input  logic                rcu_core_clk,
-  input  logic                rcu_rst_r00h,
+  input  logic                rst_n,
   // The R slot: the valid lead, then the payload.
   input  logic                iv_cr01h,        // R issues next cycle (the lead's valid)
   input  logic [4:0]          kind_cr02h,      // the model's RKind
@@ -64,6 +64,7 @@ module rcu_r #(
   input  logic [3:0]          spos_cr02h,      // src_pos: R0 at [1:0], R1 at [3:2]
   input  logic [3:0]          swid_cr02h,      // src_width: R0 at [1:0], R1 at [3:2]
   input  logic [WP-1:0]       pd_cr02h,        // phys_pred_dst
+  input  logic [WP-1:0]       pold_cr02h,      // phys_pred_old_dst (PR's merge row)
   input  logic                mrg_cr02h,       // merge_en
   input  logic                pwe_cr02h,       // pred_we
   // The bank slices: lane l's 32 bits at 32l.
@@ -76,6 +77,7 @@ module rcu_r #(
   input  logic [N-1:0]        rpb_cr03h,       // RB
   input  logic [N-1:0]        low_cr03h,       // rlow_a: one-hot of active's lowest lane
   // RW: valid, row and sections, data on every lane.
+  output logic                busy_cr03h,      // to rcu_kill's idle and done wake: R's pipe valid
   output logic                rw_v_cr02h,
   output logic [WR-1:0]       rw_row_cr03h,
   output logic [3:0]          rw_sec_cr03h,
@@ -84,6 +86,7 @@ module rcu_r #(
   output logic                pr_v_cr02h,
   output logic [WP-1:0]       pr_row_cr03h,
   output logic                pr_mrg_cr03h,    // merge with the old predicate (else old = 0)
+  output logic [WP-1:0]       pr_orow_cr03h,   // PR's old row, the predicate file's merge read (RA rev 81)
   output logic [N-1:0]        pr_val_cr04h,
   output logic [N-1:0]        pr_mm_cr04h,
   // Done slots 5 (bit 0) and 6 (bit 1): valids, then one shared payload.
@@ -106,7 +109,7 @@ module rcu_r #(
 
   logic rst_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= rcu_rst_r00h;
+    rst_r01h <= !rst_n;
   end
 
   function automatic logic [31:0] em(input logic [1:0] w);
@@ -216,6 +219,7 @@ module rcu_r #(
       rw_sec_cr03h <= wg_cr02h ? secmask(dwid_cr02h, dpos_cr02h) : 4'b0000;
       pr_row_cr03h <= wp_cr02h ? pd_cr02h : ZPRD;
       pr_mrg_cr03h <= mrg_cr02h;
+      pr_orow_cr03h <= pold_cr02h;
     end
   end
   always_ff @(posedge rcu_core_clk) begin
@@ -346,6 +350,9 @@ module rcu_r #(
   wire bad_kind_cr02h = kind_cr02h == 5'd0 || kind_cr02h > K_UNB;
   `CCV_ASSERT(r_kind_named, !(iv_cr02h && bad_kind_cr02h))
   `CCV_ASSERT(pred_write_has_we, !(iv_cr02h && wp_cr02h && !pwe_cr02h))
+
+  // Busy, from flops only (P10, RI-21): rcu_kill's idle and done wake.
+  assign busy_cr03h = iv_cr02h | r_v_cr03h | (|dn_v_cr03h);
 
 endmodule
 `undef CCV_CLK

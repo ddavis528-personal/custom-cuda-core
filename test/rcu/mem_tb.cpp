@@ -135,7 +135,7 @@ struct Bench {
   }
 
   void drive(bool rst) {
-    dut->rcu_rst_r00h = rst;
+    dut->rst_n = !rst;
     const uint64_t c = cyc;
     const bool iw = g(c + 1) || g(c + 2) || g(c + 3);
     dut->iw_cr01h = iw;

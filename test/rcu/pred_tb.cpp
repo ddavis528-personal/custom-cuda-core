@@ -147,7 +147,7 @@ struct Bench {
 
   /// One cycle: `next` starts; s1's payloads and s2's data go in.
   void step(const Cycle &next, bool rst = false) {
-    dut->rcu_rst_r00h = rst;
+    dut->rst_n = !rst;
     dut->iv_cr01h = 0;
     dut->lgu_cr01h = 0;
     dut->mv_cr01h = 0;
