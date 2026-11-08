@@ -249,7 +249,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.imm = o.chw;
     break;
   case kReconv:   // C_RECONV: serial 5, every other attribute bit 0 (OA rev 393)
-    u.attr_raw = attr(0, 0, 0, 0, 0, 0, 0, kSerReconv, 0);
+    u.attr_raw = attr(0, 0, 0, 0, 0, 0, 0, kSerNop, 0);
     u.imm = 0xA5;   // its payload, ignored
     break;
   }

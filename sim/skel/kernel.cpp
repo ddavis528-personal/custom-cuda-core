@@ -2359,6 +2359,7 @@ private:
   unsigned lane_;
   std::deque<Out> q_;
   std::deque<Res> hist_;
+  bool sfu_stray_ = false;   ///< sfu-valid-stray: sent its one stray SFU result
 
   /// Port i, or merge_data for kBypMerge, section by section: the byte RCU
   /// read or, with that section's operand_byp select set, the byte this lane
@@ -2410,6 +2411,12 @@ private:
         // predicate out rides on its lead section.
         put(r, c.lane_rcu, "sec_valid", en);
       }
+      // No SFU op runs yet, so no SFU result rides out (RA-16 (b)).
+      // sfu-valid-stray: lane 3's first message carries one anyway.
+      const bool stray = k_.brk == "sfu-valid-stray" && lane_ == 3 && !sfu_stray_;
+      put(r, c.lane_rcu, "sfu_valid", stray ? 1u : 0u);
+      put(r, c.lane_rcu, "sfu_result", stray ? 0x5f0e5f0eu : 0u);
+      sfu_stray_ = sfu_stray_ || stray;
       h.v = uint32_t(get(r, c.lane_rcu, "result"));
       // The copy-only op writes only inactive lanes and is never a producer.
       if (getSec(m.payload, c.rcu_lane, "sec_opcode", 0, ccv::prelim::kWOpcode) != kOpCopy)
@@ -3020,6 +3027,10 @@ private:
         k_.fail("rcu: lane %u's results hold sections %x, not seq %llu's %x", l,
                 unsigned(get(m.payload, c.lane_rcu, "sec_valid")),
                 (unsigned long long)uidSeq(a.tid), a.foot);
+      // The SFU result (RA-16 (b)): RCU writes it from its own SFU
+      // descriptor, and the stub runs no SFU op, so any sfu_valid is stray.
+      if (get(m.payload, c.lane_rcu, "sfu_valid"))
+        k_.fail("rcu: lane %u sfu_valid with no SFU op in flight (RA-16 (b))", l);
       const uint32_t v = uint32_t(get(m.payload, c.lane_rcu, "result"));
       if (a.copy) {
         // The copy writes only the load's inactive lanes (A-38, A-44).
@@ -3875,6 +3886,11 @@ private:
     // attr-coll-as-rcu: DEC gives a cross-lane op lat_class 0, RCU's, not
     // the warp-collective 5 (AR's rev 259).
     if (k_.brk == "attr-coll-as-rcu" && op->cross) attr = (attr & ~7u) | kLatRcu;
+    // nop-real-op: DEC gives a real op, the C_ADD whose sum is stored,
+    // serial 5, C_RECONV's no-op (RA-16 (f), OA's rev 393): OOE completes
+    // it at rename and it never runs.
+    if (k_.brk == "nop-real-op" && !std::strcmp(op->name, "C_ADD"))
+      attr = (attr & ~(7u << 3)) | kSerNop << 3;
     put(u, c.dec_ooe, "sched_attr", attr);
     // What OOE schedules and renames on instead of opcode (A-75, TI-1).
     // drop-src-valid: DEC calls a two-source op's second source unread, so

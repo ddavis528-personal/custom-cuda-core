@@ -325,7 +325,20 @@ private:
     // merges pd's inactive lanes from the same old name on every pass
     // (OI-127, OA rev 380), so the copy leaves the predicate to it: the
     // core models a copy's predicate half only for ld.pred's (TI, 11-08).
-    if (copy && is.pwe && is.dst != R::kZero) is.pwe = false;
+    // Only an atomic's copy names both (RI rev 48): a load writes a GPR or,
+    // ld.pred's, a predicate alone. The copy carries the copy opcode, not
+    // its class, and issues ahead of its atomic's first step, so RCU cannot
+    // see the class; the check reads it from ccv-sim's record of the
+    // instruction (a check, never a decision: pwe is cleared either way).
+    if (copy && is.pwe && is.dst != R::kZero) {
+      if (const Record *r = rec(is.tid, "rcu")) {
+        const OpInfo *o = opByName(r->op);
+        if (!o || o->cls != kAtomic)
+          k_.fail("rcu: a copy writes both a GPR and a predicate outside the atomic class "
+                  "(%s, rob tag %u)", r->op.c_str(), is.tag);
+      }
+      is.pwe = false;
+    }
     is.oc = classOf(op, copy, copy && is.pwe && is.dst == R::kZero);
     is.name = op ? op->name : "a copy";
     // call's link is OOE's pc + length in imm (imm_kind 6; RA-18, RA-30):
@@ -372,6 +385,8 @@ private:
         r.result[l] = uint32_t(get(m.payload, c.lane_rcu, "result"));
         r.sec_valid[l] = uint8_t(get(m.payload, c.lane_rcu, "sec_valid"));
         r.sec_pred_out[l] = uint8_t(get(m.payload, c.lane_rcu, "sec_pred_out"));
+        r.sfu_valid[l] = uint8_t(get(m.payload, c.lane_rcu, "sfu_valid"));
+        r.sfu_result[l] = uint32_t(get(m.payload, c.lane_rcu, "sfu_result"));
       }
       in.lres = r;
     }

@@ -708,8 +708,11 @@ struct SchedAttr {
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3,
                kLatClsCollective = 5 };
+// kSerNop: a hint with no architectural effect (C_RECONV, reconv.hint), a
+// no-op complete at rename like exit and a dispatch fault (RA-16 (f), OA's
+// rev 393).
 enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4,
-                  kSerReconv = 5 };   ///< C_RECONV, the first spare code (OA rev 393, RA-16)
+                  kSerNop = 5 };
 inline bool isBarrierSer(unsigned s) { return s == kSerBarrier || s == kSerArrive; }
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
@@ -785,14 +788,12 @@ struct Uop {
 inline bool barNop(const Uop &u) {
   return isBarrierSer(u.attr.serial) && !u.shape.guard && !u.shape.pdata;
 }
-/// The no-ops OOE completes at allocation by their serial code: a barrier
-/// with no predicate read, and C_RECONV (serial 5; OA rev 393, RA-16),
-/// which DEC sends with every other attribute bit 0. It takes a ROB entry
-/// with its pc and group mask, no RS entry and no rename, never issues, and
-/// retires in order; its payload is ignored, so OOE stays opcode-blind.
-inline bool serNop(const Uop &u, bool reconv = true) {
-  return barNop(u) || (reconv && u.attr.serial == kSerReconv);
-}
+/// serial 5 (RA-16 (f), OA's rev 393): C_RECONV, which DEC sends with
+/// every other attribute bit 0. Allocated with its pc and group mask,
+/// complete at allocation; no RS entry, no rename, no issue; it retires in
+/// order and its payload is ignored, so OOE stays opcode-blind. `on` false
+/// is the reconv-issues control (inject_reconv_real).
+inline bool hintNop(const Uop &u, bool on = true) { return on && u.attr.serial == kSerNop; }
 
 struct Done {           ///< ccv_rcu_ooe_done
   unsigned rob_tag = 0;
