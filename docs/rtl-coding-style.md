@@ -1132,6 +1132,12 @@ block top is RTL:
   buffer tree before its flops, not straight into one. An output is held
   by its shape (straight from a flop), without the term; the load past the
   crossing is the receiving block's input net, which counts it there.
+  A one-cell capture is straight in (AR's rev 326, re:RI-22 (3)): a port
+  bit that reaches nothing but flops' D pins, each flop's synchronous reset
+  the flopped reset (RST-1) and its enable, if any, from the module's own
+  flops (CG-5), counts at 0 NGD plus its own net's fanout term, though its
+  timed depth is the reset AND's 1.7. Any other gate on the bit is logic,
+  held as such.
 
 The flops are the interface module's boundary stage, built in the hardening
 wrapper (`ccv_common_rpt` `BOUNDARY`, default 1; Daniel, 2026-11-05), so the

@@ -56,7 +56,9 @@ Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"):
          a wire only, and that pin is held the same way, down to a leaf,
          whose unit's measurement at the instance's parameters must show it
          straight from or into a flop (the measurement, not the leaf's
-         budget, which is a bound the architect may set above 0). A
+         budget, which is a bound the architect may set above 0); a
+         one-cell capture, the flop's own flopped reset or own-flop enable
+         and nothing more, is straight in (AR's rev 326). A
          crossing carries no logic (AR's rev 285 (5)): the boundary flops are
          the interface module's, built in the block's hardening wrapper
          (rtl/phys/ccv_common_rpt.sv BOUNDARY; Daniel, 2026-11-05), so the
@@ -478,9 +480,118 @@ def two_maps_fit(blif):
         return False
 
 
-def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
+def captures(d, blackbox=(), reset=None):
+    """The input ports a one-cell capture takes straight (AR's rev 326, re:
+    RI-22 (3)): every bit reaches nothing but the D pins of flops whose
+    synchronous reset, if any, is the module's flopped reset (RST-1: a plain
+    flop in a chain from the reset port, at the port's polarity) and whose
+    enable, if any, starts only at the module's own flops (CG-5). Such a
+    flop's reset AND or enable mux is the flop's own, not logic before it:
+    the boundary rule takes the port as straight into the flop, at 0 NGD
+    plus its own net's fanout term for the pins it drives before mapping
+    (a mapped reset AND may be shared, its tree behind it). A bit with any
+    other load (a gate, an output port, a flop's E or R pin) is not. Loads on a `blackbox` cell (a
+    cut child) are the level's wires, judged there. `reset` is the reset
+    port as "name" or "!name"; without one, an input named rst_n, active
+    low. Read before ungate(), which drops the enables. Returns {port: the
+    most pins one of its bits drives}."""
+    mods = list(d["modules"].values())
+    m = next((m for m in mods if m.get("attributes", {}).get("top")), mods[0])
+    ports, cells = m["ports"], m.get("cells", {})
+    if reset is None and ports.get("rst_n", {}).get("direction") == "input":
+        reset = "!rst_n"
+    loads, driver, plain = collections.defaultdict(list), {}, collections.defaultdict(list)
+    for cn, c in cells.items():
+        dirs = c.get("port_directions", {})
+        for pin, bits in c["connections"].items():
+            for b in bits:
+                if isinstance(b, int):
+                    if dirs.get(pin) == "output":
+                        driver[b] = cn
+                    else:
+                        loads[b].append((cn, pin))
+        if c["type"] == "$_DFF_P_":
+            plain[c["connections"]["D"][0]].append(c["connections"]["Q"][0])
+    rnets, rhigh = set(), None
+    if reset and reset.lstrip("!") in ports:
+        rhigh = not reset.startswith("!")
+        frontier = [ports[reset.lstrip("!")]["bits"][0]]
+        while frontier:
+            frontier = [q for n in frontier for q in plain.get(n, []) if q not in rnets]
+            rnets.update(frontier)
+    ins = {b for p in ports.values() if p["direction"] == "input" for b in p["bits"]}
+    outs = {b for p in ports.values() if p["direction"] != "input" for b in p["bits"]}
+    own = {}
+
+    def is_own(n):
+        """Whether net n's cone starts only at the module's flops (and
+        constants): CG-5's own-flop enable."""
+        stack = [n]
+        while stack:
+            x = stack[-1]
+            if x in own:
+                stack.pop()
+                continue
+            if not isinstance(x, int):
+                own[x] = True
+                stack.pop()
+                continue
+            c = cells.get(driver.get(x))
+            if x in ins or c is None:
+                own[x] = False
+                stack.pop()
+                continue
+            if cg.FLOP_RE.match(c["type"]):
+                own[x] = True
+                stack.pop()
+                continue
+            pins = cg.GATES.get(c["type"])
+            if pins is None:
+                own[x] = False
+                stack.pop()
+                continue
+            kids = [c["connections"][p][0] for p in pins]
+            todo = [k for k in kids if k not in own]
+            if todo:
+                stack += todo
+                continue
+            own[x] = all(own[k] for k in kids)
+            stack.pop()
+        return own[n]
+
+    def taken(cn, pin):
+        c = cells[cn]
+        if c["type"] in blackbox:
+            return True
+        fm = cg.FLOP_RE.match(c["type"])
+        if not fm or pin != "D":
+            return False
+        g = fm.groups()
+        k0 = next(n for n in range(0, 16, 4) if g[n])
+        kind, pols = g[k0], g[k0 + 1]
+        con = c["connections"]
+        if kind in ("SDFF", "SDFFE", "SDFFCE"):
+            if con["R"][0] not in rnets or (pols[1] == "P") != rhigh:
+                return False
+        if kind in ("DFFE", "SDFFE", "SDFFCE") and not is_own(con["E"][0]):
+            return False
+        return True
+    out = {}
+    for p, v in ports.items():
+        if v["direction"] != "input":
+            continue
+        bits = [b for b in v["bits"] if isinstance(b, int)]
+        if bits and all(b not in outs and loads.get(b) and all(taken(cn, pin)
+                                                               for cn, pin in loads[b])
+                        for b in bits):
+            out[p] = max(len(loads[b]) for b in bits)
+    return out
+
+
+def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None):
     """Ungate a Yosys JSON netlist, map it with ABC and time it."""
     d = json.load(open(jsonfile))
+    capture = captures(d, set(blackbox), reset)
     cut = ungate(d, set(blackbox))
     ug = os.path.join(work, "ug.json")
     json.dump(d, open(ug, "w"))
@@ -546,7 +657,7 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
             for p, v in outs.items():
                 q_out[q][p] = min(v, tr.q_out.get(q, {}).get(p, v))
         t.q_out = q_out
-    t.cut, t.regname = cut, reg_names(d)
+    t.cut, t.regname, t.capture = cut, reg_names(d), capture
     return t
 
 
@@ -611,7 +722,7 @@ class Unit:
         work, jf = synth("u_" + self.name, self.module, s["files"],
                          bbfiles, s.get("params"), s.get("defines", []))
         self.jf = jf
-        self.t = map_and_time(work, jf, bbs.keys(), lib)
+        self.t = map_and_time(work, jf, bbs.keys(), lib, s.get("reset"))
         if budgets is not None and children(self.module, s["files"], modules or {}) - set(
                 budgets.inner):
             self.h = converge("u_" + self.name, self.module, s["files"], bbfiles, budgets, lib,
@@ -1135,6 +1246,23 @@ def rtl_ends(name, root=ROOT):
     return out
 
 
+def into_flop(t, port):
+    """An input's depth into its flops for the boundary rule: its timed
+    depth, or, where a one-cell capture takes every bit (captures(): the
+    flop's own reset AND with the flopped reset, or its enable mux under an
+    own-flop enable; AR's rev 326, re:RI-22 (3)), only its own net's fanout
+    term for the pins it drives. Any other gate on a bit is logic, held as
+    such."""
+    v = t.ir.get(port, NEG)
+    n = getattr(t, "capture", {}).get(port)
+    if n is None:
+        return v
+    k, c = 0, 4
+    while c < n:
+        c, k = c * 4, k + 1
+    return min(v, k * delay(LIB, "INV", "A"))
+
+
 def hidden_stages(name, t, ends, straight):
     """AR's rev 310 (TI rev 351's proposal, amended): at a FLOPPED end the
     wrapper's repeater holds the boundary flop, so the block's own port must
@@ -1259,7 +1387,7 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
         where = "%s%s" % (path + "." if path else "", port)
         if mn in timings:
             t, why = timings[mn], []
-            own = t.p_ro.get(port, NEG) if out else t.ir.get(port, NEG)
+            own = t.p_ro.get(port, NEG) if out else into_flop(t, port)
             if own > EPS:
                 why.append("%s is %.1f NGD %s a flop" % (where, own, "after" if out else
                                                          "before"))
@@ -1295,7 +1423,7 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
             v = u.t.p_ro.get(port, NEG)
             thru = any(q == port for (_, q) in u.t.io)
         else:
-            v = u.t.ir.get(port, NEG)
+            v = into_flop(u.t, port)
             thru = any(p == port for (p, _) in u.t.io)
         why = []
         if v > EPS:
@@ -1887,6 +2015,25 @@ def selftest():
                        block="ngd_fx_hblk_mix", ends=hid)
     expect(not f, "ports with logic on one bit at flopped ends were refused as hidden "
            "stages: %s" % f)
+    #    The one-cell capture (AR's rev 326, re:RI-22 (3)): an input taken
+    #    by a flop under its own synchronous reset, the flopped reset (MODE
+    #    0), and an enable from the child's own flops too (1), is straight
+    #    in, though its timed depth is the reset AND's; one gate more (2),
+    #    the reset port itself (3, RST-1) or an enable from an input (4,
+    #    CG-5) is logic, and refused.
+    for mode, straight_in in ((0, True), (1, True), (2, False), (3, False), (4, False)):
+        cu = funit("fx_cap%d" % mode, "ngd_fx_cap", {"MODE": mode})
+        _, f = block_check("fx_cap%d" % mode, "ngd_fx_blk_cap", files, [], none, [cu],
+                           params={"MODE": mode})
+        if straight_in:
+            expect(not f and cu.t.ir.get("a", NEG) > EPS and "a" in cu.t.capture,
+                   "a one-cell capture (MODE %d, %.1f NGD timed) was refused at the "
+                   "boundary, or tests nothing: %s" % (mode, cu.t.ir.get("a", NEG), f))
+        else:
+            expect(any("input i does not go straight into a flop" in x for x in f)
+                   and "a" not in cu.t.capture,
+                   "a capture with more than its flop's own reset or own-flop enable "
+                   "(MODE %d) passed as straight into a flop: %s" % (mode, f))
     #    No child is synthesised: a child with a combinational loop, which
     #    the strict Yosys refuses to synthesise (OI-44), under a parent timed
     #    alone; the same hierarchy synthesised with its children kept, as
@@ -1955,7 +2102,8 @@ def selftest():
         print("  timing pass against ABC, outputs, inputs, the stage, paths straight through, "
               "inner helpers alone and inside a parent, registers shared by an output and the "
               "rest, observation ports, budget files, ratchet, coverage, glue, the assembled "
-              "block as a sum of parts, ABC's cache, the fanout term (%d controls)"
+              "block as a sum of parts, ABC's cache, the fanout term, one-cell captures "
+              "(%d controls)"
               % checks)
     return 1 if bad else 0
 
