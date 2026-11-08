@@ -1258,6 +1258,15 @@ it.
   9.59M. TI keeps the stub single-start. Neither mode is the spec's MIU,
   whose pipes are pipelined AGU stages with misses parked in the
   buffers (AR rev 321), so cm128's memory-bound figures are bounds.
+  Re-booked at 8 ways (J11, TI rev 380, 88c31e7, PHYS 192): Z takes S1
+  from 31,881 to 31,095 cycles (-2.47%, against -1.04% booked at 1 way),
+  cm32 -1.42%, cm128 -5.67%. Dropping ooe_rcu_issue's receiving flop at
+  RCU as well is S1 -3.48%, cm32 -1.98%, cm128 +0.09%, clean. That
+  reopens AR rev 308: the end needs splits to meet the port rules, so it
+  goes to Daniel once RA and OA cost them (AR rev 323). Dropping
+  miu_rcu_data's flop is S1 -0.26% but cm128 +2.21%, and it trips OOE's
+  OA-17 check, so it stays flopped. C9 and PHYS_REGS 160 are re-checked
+  in J12.
 
 ### PF-48 End-to-end parity on register state
 
