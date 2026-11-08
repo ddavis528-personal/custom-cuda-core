@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-08 (#33 pushed 5eb3acb8; #26 unmet_reg=1 flip in gate-push)
+Updated 2026-11-08 (#33 pushed 5eb3acb8; #26 OI-134 in gate-push, c_dst cap 27.5 by DA's ruling)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -56,8 +56,9 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
    (8,732,687); all clean, S1 301.85 0 BAD. Committed locally (not pushed): model unmet_reg=1 + ooe_rename
    registers the unmet (ur_g/ur_p, enable ur_d||tq_nz, never sel) and hands the go ur - tq_gs; controls
    unmet-now, no-last-take on rename_scarce; rename benches green. BLOCKED on DA: ooe_rename NGD-3 c_dst
-   27.50 > cap 26.9 (HEAD 26.82); 7 equivalent forms all 27.50 (ABC remaps ren1's q_gv cone; c_dst[17]'s
-   INV goes past 64 loads). Asked DA: raise c_dst cap to 27.5 (recover in #35) / hold the flip / keep trying.
+   27.50 > cap 26.9 (HEAD 26.82); 7 equivalent forms all 27.50. DA RULED 11-08: raise the c_dst cap
+   to 27.5 (ratchet and baseline, logged as DA's ruling), recover it to <=26.9 in #35. In gate-push.
+   On green: OI row for OI-134 (Needs: TI, OA; mention the baseline edit), ring TI and OA.
 2. #42 OA-387 lead move: blocked on TI's schema row (RA 114).
 3. #40 OA 382: RTL issue payload, A2's RS row carries pd, pred_we, ppold; cas-no-pd in RTL.
 4. NGD fanout ratchets: ooe_rob_w (#34, lower caps; measured 29.8), ooe_rename (#35, 30.58 now; caps c_dst

@@ -1,5 +1,5 @@
 {
-  "_comment": "The paths over the stage when the fanout term (RA-33) was enforced (DA, 2026-11-04), seeded by check-ngd --seed-fanout at 87795bf, each capped at its depth. Edited once, 2026-11-06 (Daniel's choice to re-seed): ooe_rename NGD-1, NGD-2 q_gname_cq03h, NGD-3 c_src_cq01h and ooe_rendep NGD-3 gnt_idx_cq01h, gnt_v_cq01h, raised to their depths when the OOE RTL defaults were corrected to the parameters (0ef9831). Otherwise never edited: rtl/ngd-ratchet.json's \"fanout\" holds the caps, which only fall.",
+  "_comment": "The paths over the stage when the fanout term (RA-33) was enforced (DA, 2026-11-04), seeded by check-ngd --seed-fanout at 87795bf, each capped at its depth. Edited once, 2026-11-06 (Daniel's choice to re-seed): ooe_rename NGD-1, NGD-2 q_gname_cq03h, NGD-3 c_src_cq01h and ooe_rendep NGD-3 gnt_idx_cq01h, gnt_v_cq01h, raised to their depths when the OOE RTL defaults were corrected to the parameters (0ef9831). Edited again, 2026-11-08 (Daniel's ruling on OI-134): ooe_rename NGD-3 c_dst_cq01h raised 26.9 to 27.5, the depth ABC maps it to once ooe_rename registers the unmet (no change in its cone; won back in the ratchet's work on ooe_rename). Otherwise never edited: rtl/ngd-ratchet.json's \"fanout\" holds the caps, which only fall.",
   "modules": {
     "ooe_decq": {
       "NGD-1": 26.1,
@@ -83,7 +83,7 @@
       "NGD-1": 31.1,
       "NGD-2 q_gname_cq03h": 28.7,
       "NGD-2 q_pname_cq03h": 3.4,
-      "NGD-3 c_dst_cq01h": 26.9,
+      "NGD-3 c_dst_cq01h": 27.5,
       "NGD-3 c_src_cq01h": 26.9,
       "NGD-3 po_dst_cq02h": 27.5,
       "NGD-7 n_slot_cq03h": 22.5,
