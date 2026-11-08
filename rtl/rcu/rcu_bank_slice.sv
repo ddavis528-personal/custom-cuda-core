@@ -8,8 +8,8 @@
 // Slice (K, J): byte section K of lanes 4J to 4J+3, ROWS rows of 32 bits
 // (lane l's byte at [8l+7:8l]). A complete bank for its 32 bits: every read
 // and write port, each with its own predecoded row select, its own row
-// enables, its own flopped reset. No logic crosses slices; J only names
-// which lanes the parent wires here.
+// enables, its own flopped reset. No logic crosses slices; J is no
+// parameter, only which lanes the parent (ccv_rcu) wires here.
 //
 // Row predecode. A row index r is held as two one-hots in flops, sel_hi
 // (r[7:4], NH bits, none for r >= ROWS) and sel_lo (r[3:0], 16 bits); row r
@@ -78,7 +78,6 @@
 module rcu_bank_slice #(
   parameter int ROWS = ccv_prov_pkg::CCV_P_PHYS_REGS,   // rows of the bank (32 for loops)
   parameter int K = 0,          // the byte section this slice holds
-  parameter int J = 0,          // its lanes are 4J to 4J+3 (wiring only)
   parameter int FULL_ROW = 1,   // AR-24's interim: SW, MW, RW write the whole row
   parameter int NR = 8,         // read ports whose valid leads: L0-L3, M0-M2, R2
   parameter int NW = 3,         // generic write ports: LW, SW, RW

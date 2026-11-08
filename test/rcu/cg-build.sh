@@ -14,10 +14,10 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
     "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/rcu/rcu_dec_pkg.sv" "$@"
 }
 case "$unit" in
-  rcu_bank_slice_r32|rcu_bank_slice|rcu_bank_slice_r32_sec|rcu_bank_slice_r32_k3)
+  rcu_bank_slice_r32|rcu_bank_slice|rcu_bank_slice_r32_sec|rcu_bank_slice_r32_k3|rcu_bank_slice_k[023])
     rows=192 k=1 fr=1
     case "$unit" in *_r32*) rows=32 ;; esac
-    case "$unit" in *_k3) k=3 ;; esac
+    case "$unit" in *_k0) k=0 ;; *_k2) k=2 ;; *_k3) k=3 ;; esac
     case "$unit" in *_sec) fr=0 ;; esac
     vl rcu_bank_slice "-GROWS=$rows -GK=$k -GFULL_ROW=$fr" \
       "-DBS_ROWS=$rows -DBS_K=$k -DBS_FULL_ROW=$fr" \

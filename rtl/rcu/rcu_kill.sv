@@ -14,7 +14,10 @@
 // edge kill_ack_q <- 1, held (a level, RA-23) until the next kill's K. A
 // kill during a drain reloads the drain, takes its epoch and is answered
 // once.
-//   KILL_DRAIN = 2 + link_n(ooe_rcu_issue) + CCV_LAT_SFU + 1 + link_n(rcu_ooe_done)
+//   KILL_DRAIN = CCV_LAT_RCU_KILL_DRAIN = 2 + link_n(ooe_rcu_issue)
+//                + bnd_rx(ooe_rcu_issue) + CCV_LAT_SFU + 1 + link_n(rcu_ooe_done)
+//   (+ bnd_rx(rcu_ooe_done)), derived in params at the build's links: 16 at
+//   the defaults, the issue end flopped (RA-42: the last issue's A is K+3).
 // The drain counter and the ack epoch are small groups (allowance waivers,
 // rtl/cg-waivers.json); the ack and pending bits sit in the allowance.
 //
@@ -45,8 +48,6 @@
 `define CCV_CLK rcu_core_clk
 `define CCV_RST rst_r01h
 module rcu_kill #(
-  parameter int LINK_ISS = 0,    // link_n(ooe_rcu_issue), from params/links.json
-  parameter int LINK_DONE = 0,   // link_n(rcu_ooe_done)
   parameter int NB = 6,          // busy terms from the other modules
   parameter int ND = 2,          // done-wake terms: rcu_lanes' descriptor stages, R's pipe
   localparam int NS = ccv_params_pkg::CCV_ISSUE_RESOURCES,   // issue slots, 9
@@ -54,7 +55,7 @@ module rcu_kill #(
   localparam int NM = 4,         // MIU data slots
   localparam int NC = NS + NL + NM,
   localparam int WE = ccv_prov_pkg::CCV_P_W_KILL_EPOCH,
-  localparam int KILL_DRAIN = 2 + LINK_ISS + ccv_prov_pkg::CCV_LAT_SFU + 1 + LINK_DONE,
+  localparam int KILL_DRAIN = ccv_prov_pkg::CCV_LAT_RCU_KILL_DRAIN,
   localparam int WD = $clog2(KILL_DRAIN + 1)
 ) (
   input  logic          rcu_core_clk,

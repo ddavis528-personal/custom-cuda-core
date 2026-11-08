@@ -313,7 +313,9 @@ module rcu_lanes #(
       for (int a = 1; a < DH + 1; a++) begin
         for (int e = 0; e < NK; e++) begin
           logic hit_cr02h;
-          hit_cr02h = rdp_cr02h[p] && r_cr02h != ZROW && hv_cr03h[(a-1)*NK + e] &&
+          // The port's read (rdp, from the opcode's decode) joins after the
+          // compares, so the decode runs beside them, not before.
+          hit_cr02h = r_cr02h != ZROW && hv_cr03h[(a-1)*NK + e] &&
                       hrow_cr03h[((a-1)*NK + e)*WR +: WR] == r_cr02h;
           if (a < BYP) begin
             young_cr02h[p] |= hit_cr02h;
@@ -323,7 +325,9 @@ module rcu_lanes #(
           end
         end
       end
-      multi_cr02h[p] = hits > 1;
+      bsel_cr02h[p*WB +: WB] = {WB{rdp_cr02h[p]}} & bsel_cr02h[p*WB +: WB];
+      young_cr02h[p] = rdp_cr02h[p] & young_cr02h[p];
+      multi_cr02h[p] = rdp_cr02h[p] & (hits > 1);
     end
   end
 
@@ -580,11 +584,15 @@ module rcu_lanes #(
   logic [DL*NK-1:0]    lmrg_cr03h;
   logic [NK*2-1:0]     ldpos_cr03h, ldwid_cr03h;    // stage 1 only
   logic [(DL-1)*NK*N-1:0] lact_cr03h;               // stages 2 .. DL, stage d at d-2
-  // PC at A+1: the copy's valid, which loads ~active at A+2, and its row
+  // PC at A+1: the copy's valid, which loads ~active for A+2, and its row
   // (the zero predicate if the issue is no predicate-only copy); its old
   // row is lwb_d's stage 1.
   logic [NK-1:0]    pcq_cr03h;
   logic [NK*WP-1:0] pcr_cr03h;
+  // ~active for PC's merge mask, a gate a slot under the PC's valid. Like any
+  // mask, it changes on about 1 - 0.5^2 of its loads under the bench's draw
+  // (all ones half the time), at CG-3's 75%: waived (rtl/cg-waivers.json).
+  // Sharing lact's stage-2 gate took lact under 75% with it.
   logic [NK*N-1:0]  pcm_n_cr04h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) pcq_cr03h <= '0;

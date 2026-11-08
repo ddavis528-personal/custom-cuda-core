@@ -5,7 +5,7 @@
 // (kill_v_q, kill_ep_q, kill_drain, kill_ack_q, kill_ack_ep_q, ack-ready
 // with migration's quiesce term), the credit flops, the done wake, the
 // idle term and the CSR responder. KILL_DRAIN is the tab's formula at the
-// build's links (KT_LINK_ISS, KT_LINK_DONE) and CCV_LAT_SFU.
+// build's links, bnd_rx included: CCV_LAT_RCU_KILL_DRAIN (RA-42).
 //
 // Runs: directed kills (one alone, one during a drain, a late quiesce),
 // then random traffic. --cg <idle|medium|high> <vcd> runs one clock-gating
@@ -27,17 +27,11 @@
 
 #include "ccv_params.h"
 
-#ifndef KT_LINK_ISS
-#define KT_LINK_ISS 0
-#endif
-#ifndef KT_LINK_DONE
-#define KT_LINK_DONE 0
-#endif
 
 namespace {
 
 constexpr unsigned kNS = 9, kNL = 32, kNM = 4, kNB = 6;
-unsigned g_drain = 2 + KT_LINK_ISS + ccv::prov::kLatSfu + 1 + KT_LINK_DONE;
+unsigned g_drain = ccv::prov::kLatRcuKillDrain;   // links and bnd_rx in (RA-42)
 
 template <typename T> void put(T &s, unsigned lsb, unsigned w, uint64_t v) {
   for (unsigned i = 0; i < w; ++i) {
