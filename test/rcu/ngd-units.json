@@ -11,6 +11,25 @@
         "LANES": 32,
         "W": 32
       }
+    },
+    {
+      "name": "rcu_top",
+      "module": "ccv_rcu",
+      "files": [
+        "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_dec_pkg.sv",
+        "rtl/rcu/ccv_rcu.sv"
+      ],
+      "blackbox": {
+        "ccv_common_clk": "rtl/clk/ccv_common_clk.sv",
+        "rcu_bank_slice": "rtl/rcu/rcu_bank_slice.sv",
+        "rcu_pred": "rtl/rcu/rcu_pred.sv",
+        "rcu_r": "rtl/rcu/rcu_r.sv",
+        "rcu_lanes": "rtl/rcu/rcu_lanes.sv",
+        "rcu_mem": "rtl/rcu/rcu_mem.sv",
+        "rcu_mig": "rtl/rcu/rcu_mig.sv",
+        "rcu_kill": "rtl/rcu/rcu_kill.sv"
+      }
     }
   ]
 }
