@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-08 12:00 (OI-133 pushed 11386e7; sweep merge 11-08 in a full gate)
+Updated 2026-11-08 15:00 (#33 rendep dc6ba0b in gate-push; RH U192 queued)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,11 +37,10 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 332, RA 117, IS 190, TI 385, OA 394, OI 331, CP 157, DA 115, RI 50
-(sweep 11-08). AR 314/OA 377: lead_fault = status==1, per slot, OI builds capture once TI's schema row lands (none to TI 362). Pings 11-06: all eight pinged; pongs OK from OA TI
-AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
-Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
-`--check` should differ; ask DA to approve `python3 tools/setup-session-home.py`.
+Conventions 17, AR 332, RA 117, IS 190, TI 387, OA 397, OI 333, CP 157, DA 115, RI 54
+(sweep 11-08 plus notices). AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
+once TI's schema row lands. Pings 11-06: all OK. Settings: after TI's 350k merge `--check` may
+differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
 
 ## Tools (scratchpad, not in the repo)
 - fo/path.py / path3.py: `START=<input> python3 fo/path3.py ir|rr <abc-*.blif>` traces the
@@ -51,21 +50,21 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
-0. Sweep merge 11-08 (7 branches incl. TI 9894da1 CAS/RA-16/RA-41) + oi-reconv cherry-pick bdbd514:
-   full gate-push running (log scratchpad/gp-sweep.log). On green: answer OA-393 (model done,
-   RTL compare waits for rename's decode front). Reconcile with TI's ti-g4 C_RECONV when it lands
-   (keep testReconv, control reconv-issues; check-ooe-unit count 51).
-1. OI-133 DONE: pushed 11386e7 (SCOPED PASS). Answer row rev 331 rang OA (close OA-386) and AR
-   (HIT_BASE 6 run not needed); RH told g2'' can rerun.
-2. #26 TI 360/OI-134: RH runs U160/L160/U128/L128 (G + unmet_reg=1 / G + floor_take_lag=0) after
-   TI's J12. Adopt only if clean, = at 192, no worse at 160; add numbers to OI-134.
-3. #42 OA-387 lead move: blocked on TI's schema row (RA 114: S0-S3 copies 32b, R imm to
-   lead_rpsrc[31:0]). Then rename stages leads, ooe_rs reads via exact grant; ooe_rs unit LW real.
-4. #40 OA 382: RTL issue payload, A2's RS row carries pd, pred_we, ppold; cas-no-pd in RTL.
-5. NGD fanout ratchets: ooe_rendep (#33, mem 34.5), ooe_rob_w (#34), ooe_rename (#35, 31.1),
-   ooe_rs (#38, now 28.8/req 28.4/prv_dep 26.4), ooe_ratread last (#39). ooe_sched done b8181c8.
-6. DA 111b / OA 364: a unit per OOE module per instantiated param set.
-7. Optional #32 (OA 381): fa one-hot -> 5-bit index in ooe_rob_w.
+0. #33 DONE locally: dc6ba0b (rendep pp_cq01h from rename's keep copy d_ppk_cq03h, OA 397 arrival 2.0;
+   five rendep caps gone, gsn 28.5/psn 28.8). gate-push log scratchpad/gp-rendep.log. It also carries
+   f2df07a (OI-50 co-grant comments, OA 395) and 881cdd2 (merge of TI a0c2f68; RI 54's sweep waits on it).
+   On green: an OI row closing OI-135 with rendep's worst path (gsn 28.44/psn 28.72; OA asked), no ring.
+   Lesson: any load on ren1's l_x/l_v/tk_* remaps ooe_rename's q_gv cone (+0.5); take from c_xl per class.
+1. #26 OI-134: RH results 95bf04d: U160 -2.22% vs G160, U128 -2.16%, L160 +1.87%, L128 -2.07%; all clean,
+   S1 geomean 301.85 0 BAD. U192 queued on RH after J11b (~16:00-17:00). Adopt U (unmet_reg=1) if = G192
+   (8,732,687); then OI-134 row with the numbers (ring TI/OA).
+2. #42 OA-387 lead move: blocked on TI's schema row (RA 114).
+3. #40 OA 382: RTL issue payload, A2's RS row carries pd, pred_we, ppold; cas-no-pd in RTL.
+4. NGD fanout ratchets: ooe_rob_w (#34, lower caps; measured 29.8), ooe_rename (#35, 30.58 now; caps c_dst
+   26.9 at 26.82, po_dst 27.5 at 27.50), ooe_rs (#38), ooe_ratread last (#39).
+5. DA 111b / OA 364: a unit per OOE module per instantiated param set.
+6. Optional #32 (OA 381): fa one-hot -> 5-bit index in ooe_rob_w.
+- scratchpad/check-ngd3.py regenerated 11-08 from tools/check-ngd.py (CCV_ROOT env picks the tree).
 
 ## Done 11-07
 - ROB slice 4 pushed adfa301 (SCOPED PASS 20/22); OI-128 row rev 322/323, OA accepted at 381.
