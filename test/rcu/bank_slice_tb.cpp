@@ -13,6 +13,14 @@
 //   write (the write-through, on its lanes). --control nowt expects none:
 //   the run must fail (test/rcu/run-rtl.sh).
 //
+// L0-L3 and M0-M2 come from the issue slots (P2): the bench encodes each
+// read as the S (P) slot owning section K, its rows on the sources the
+// port reads (M: the memop's base, index and data sources, an opcode that
+// has them, test/rcu/dec_tb.h), beside leads elsewhere, the owner's
+// continuations, and idle slots whose stale payload claims K. --control
+// lown puts the L rows on slot 0, msrc the M rows on src slot = port: the
+// run must fail.
+//
 // Written by LW (owned sections), SW and RW (secmask, or the whole row zero
 // above the register under FULL_ROW), and MW (per MIU slot: the slot that
 // covers the bank, its byte K - pos, a 4-bit load's low nibble). The bench
@@ -52,6 +60,7 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -124,16 +133,63 @@ struct Write {
   unsigned other = 0;
 };
 struct Load { unsigned slot, row, w, pos, lm; std::array<uint32_t, kL> word; };
+// An S or P slot of the issue channel as the slice reads it (P2): valid,
+// continuation, footprint, its three source rows (phys_src[15:8], [7:0],
+// phys_src2), phys_old_dst (S) or opcode and done_row (P). `drive` false:
+// the payload holds (an idle slot).
+struct Slot {
+  bool v = false, cont = false, drive = false;
+  unsigned foot = 0, src[3]{}, odst = 0, opc = 0, drw = 0;
+};
 struct Cycle {   // what one cycle's valids started
   std::vector<Read> rd;
   std::vector<Write> wr;
   std::vector<Load> ld;
+  std::array<Slot, 4> ss{}, ps{};   // filled by Bench::encode
 };
+
+// The memops that read each set of M ports (bit i: M0 base, M1 index, M2
+// data), each source on its own src slot: (opcode, done_row).
+struct MemOps {
+  std::array<std::vector<std::pair<unsigned, unsigned>>, 8> by;
+  MemOps() {
+    for (unsigned drw = 0; drw < 4; ++drw)
+      for (unsigned c : dectb::allOpcodes()) {
+        dectb::R::OpClass oc;
+        if (!dectb::classOf(c, drw, false, oc) || oc.unit != dectb::R::Unit::Mem) continue;
+        const int src[3] = {oc.base_src, oc.index_src, oc.data_src};
+        for (unsigned m = 1; m < 8; ++m) {
+          bool ok = true;
+          unsigned used = 0;
+          for (unsigned i = 0; i < 3; ++i)
+            if ((m >> i) & 1u) {
+              if (src[i] < 0 || ((used >> src[i]) & 1u)) ok = false;
+              else used |= 1u << src[i];
+            }
+          if (ok) by[m].push_back({c, drw});
+        }
+      }
+    if (by[1].empty() || by[3].empty() || by[5].empty()) {
+      std::fprintf(stderr, "bank_slice: no memop reads base, base and index, or base and data\n");
+      std::exit(2);
+    }
+  }
+  int src(unsigned opc, unsigned drw, unsigned i) const {
+    dectb::R::OpClass oc;
+    dectb::classOf(opc, drw, false, oc);
+    return i == 0 ? oc.base_src : i == 1 ? oc.index_src : oc.data_src;
+  }
+};
+const MemOps &memOps() {
+  static const MemOps m;
+  return m;
+}
 
 extern int g_argc;
 extern char **g_argv;
 extern bool g_nowt;   // --control nowt: expect no write-through (the run must fail)
 extern bool g_rfirst; // --control rfirst: expect migration's row on R2 beside the R op's (must fail)
+extern std::string g_ctl;   // --control lown|msrc: the L rows on slot 0, the M rows by port (must fail)
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
@@ -149,6 +205,77 @@ struct Bench {
   unsigned cov_read = 0, cov_zero = 0, cov_lw = 0, cov_lw_skip = 0, cov_zfill = 0, cov_mw = 0,
            cov_mw_nib = 0, cov_mw_shift = 0, cov_hold = 0, cov_same = 0;
   unsigned cov_m2 = 0, cov_m2r = 0, cov_m2n = 0, cov_mrw = 0, cov_mrwr = 0, cov_mrwn = 0;
+  unsigned cov_lown[4]{}, cov_mown[4]{}, cov_stale = 0, cov_cont = 0;
+  std::mt19937 erng{0x5107u + kK};
+  unsigned erow() { return unsigned(erng() % kRows); }
+
+  /// The issue slots for c's L and M reads (P2): an owner of section K
+  /// among slots 0..K, the rest leads elsewhere, continuations of the
+  /// owner, idle, or idle with a stale payload that would claim K.
+  void encode(Cycle &c) {
+    unsigned lrow[4], mrow[3], lm = 0, mm = 0;
+    for (const Read &r : c.rd) {
+      if (r.port < 4) lrow[r.port] = r.row, lm |= 1u << r.port;
+      else if (r.port < 7) mrow[r.port - 4] = r.row, mm |= 1u << (r.port - 4);
+    }
+    auto fill = [&](std::array<Slot, 4> &sl, bool own, bool mem) {
+      const unsigned o = own ? unsigned(erng() % (kK + 1)) : 4;
+      unsigned ofoot = 0;
+      if (own) {
+        ofoot = (1u << o) | (1u << kK);
+        for (unsigned b = o + 1; b < 4; ++b)
+          if (erng() % 4 == 0) ofoot |= 1u << b;
+      }
+      for (unsigned j = 0; j < 4; ++j) {
+        Slot &x = sl[j];
+        x = Slot{};
+        for (auto &r : x.src) r = erow();
+        x.odst = erow();
+        if (mem) {
+          const auto &any = memOps().by[1];
+          std::tie(x.opc, x.drw) = any[erng() % any.size()];
+        }
+        if (j == o) {
+          x.v = x.drive = true;
+          x.foot = ofoot;
+        } else if ((ofoot >> j) & 1u) {   // inside the owner's footprint: its continuation
+          x.v = x.drive = erng() % 2;
+          x.cont = true;
+          x.foot = erng() % 16;
+          cov_cont += x.v;
+        } else if (j != kK && erng() % 3 == 0) {   // a lead elsewhere
+          x.v = x.drive = true;
+          x.foot = 1u << j;
+        } else if (erng() % 3 == 0) {   // idle, its stale payload claiming K
+          x.drive = true;
+          x.foot = (1u << j) | (j <= kK ? 1u << kK : 0u);
+          cov_stale += j <= kK;
+        }
+      }
+      return o;
+    };
+    const unsigned so = fill(c.ss, lm != 0 || erng() % 4 == 0, false);
+    if (so < 4) {
+      Slot &x = c.ss[g_ctl == "lown" ? 0 : so];
+      if (lm) ++cov_lown[so];
+      for (unsigned i = 0; i < 3; ++i)
+        if ((lm >> i) & 1u) x.src[i] = lrow[i];
+      if (lm & 8u) x.odst = lrow[3];
+    }
+    const unsigned po = fill(c.ps, mm != 0 || erng() % 4 == 0, true);
+    if (po < 4 && mm) {
+      Slot &x = c.ps[po];
+      ++cov_mown[po];
+      const auto &ops = memOps().by[mm];
+      if (ops.empty()) {
+        std::fprintf(stderr, "bank_slice: no memop reads M ports %x\n", mm);
+        std::exit(2);
+      }
+      std::tie(x.opc, x.drw) = ops[erng() % ops.size()];
+      for (unsigned i = 0; i < 3; ++i)
+        if ((mm >> i) & 1u) x.src[g_ctl == "msrc" ? i : unsigned(memOps().src(x.opc, x.drw, i))] = mrow[i];
+    }
+  }
 
   Bench(const char *vcd_path) {
     ctx = std::make_unique<VerilatedContext>();
@@ -194,9 +321,13 @@ struct Bench {
     dut->rmrg_cr01h = ruse || (!g && (salt & 2u));
   }
 
-  void step(const Cycle &next, bool rst = false) {
+  void step(const Cycle &next_in, bool rst = false) {
+    Cycle next = next_in;
+    encode(next);
     dut->rst_n = !rst;
-    dut->rd_v_cr00h = 0;
+    dut->sv_cr00h = 0;
+    dut->pv_cr00h = 0;
+    dut->r2v_cr00h = 0;
     dut->wr_v_cr00h = 0;
     dut->rv_cr02h = 0;
     dut->mw_v_cr01h = 0;
@@ -205,11 +336,31 @@ struct Bench {
     dut->ropc_cr01h = 0;
     dut->rmrg_cr01h = 0;
     dut->gw_sel_cr01h = 0;
+    for (unsigned j = 0; j < 4; ++j) {
+      put(dut->sv_cr00h, j, 1, next.ss[j].v);
+      put(dut->pv_cr00h, j, 1, next.ps[j].v);
+    }
     for (const Read &r : next.rd)
-      if (!isRR(r.port)) {
-        if (r.rlead) put(dut->rd_v_cr00h, rdIdx(r.port), 1, 1);
+      if (r.port == 9) {
+        if (r.rlead) dut->r2v_cr00h = 1;
         if (r.mig) dut->g2_v_cr00h = 1;
       }
+    for (unsigned j = 0; j < 4; ++j) {
+      const Slot &x = s1.ss[j], &y = s1.ps[j];
+      if (x.drive) {
+        put(dut->scont_cr01h, j, 1, x.cont);
+        put(dut->sfoot_cr01h, 4 * j, 4, x.foot);
+        for (unsigned i = 0; i < 3; ++i) put(dut->ssrc_cr01h, (j * 3 + i) * 8, 8, x.src[i]);
+        put(dut->sodst_cr01h, 8 * j, 8, x.odst);
+      }
+      if (y.drive) {
+        put(dut->pcont_cr01h, j, 1, y.cont);
+        put(dut->pfoot_cr01h, 4 * j, 4, y.foot);
+        for (unsigned i = 0; i < 3; ++i) put(dut->psrc_cr01h, (j * 3 + i) * 8, 8, y.src[i]);
+        put(dut->popc_cr01h, 9 * j, 9, y.opc);
+        put(dut->pdrw_cr01h, 2 * j, 2, y.drw);
+      }
+    }
     for (const Write &w : next.wr) {
       if (w.rlead) put(dut->wr_v_cr00h, w.port, 1, 1);
       if (w.mig) dut->gw_v_cr00h = 1;
@@ -219,10 +370,8 @@ struct Bench {
     for (const Read &r : s1.rd) {
       if (isRR(r.port)) {
         dut->rv_cr02h = 1;
-      } else if (r.port != 9) {
-        put(dut->rd_row_cr01h, rdIdx(r.port) * 8, 8, r.row);
-      } else {   // R2: the R op's row and migration's
-        put(dut->rd_row_cr01h, rdIdx(r.port) * 8, 8, r.ruse ? r.row : r.other);
+      } else if (r.port == 9) {   // R2: the R op's row and migration's
+        dut->r2row_cr01h = r.ruse ? r.row : r.other;
         dut->g2_row_cr01h = r.ruse ? r.other : r.row;
         rOp(r.ruse, r.row ^ r.other);
       }
@@ -495,6 +644,7 @@ int g_argc;
 char **g_argv;
 bool g_nowt = false;
 bool g_rfirst = false;
+std::string g_ctl;
 
 int run(const std::string &scenario, const char *vcd) {
   Bench b(vcd);
@@ -524,12 +674,22 @@ int run(const std::string &scenario, const char *vcd) {
                  b.cov_m2, b.cov_m2r, b.cov_m2n, b.cov_mrw, b.cov_mrwr, b.cov_mrwn);
     ++b.fails;
   }
+  {
+    bool own = b.cov_stale && b.cov_cont;
+    for (unsigned j = 0; j <= kK; ++j) own = own && b.cov_lown[j] && b.cov_mown[j];
+    if (scenario != "idle" && !own) {
+      std::fprintf(stderr, "bank_slice: coverage: L owners %u %u %u %u, M owners %u %u %u %u, stale %u, cont %u\n",
+                   b.cov_lown[0], b.cov_lown[1], b.cov_lown[2], b.cov_lown[3], b.cov_mown[0], b.cov_mown[1],
+                   b.cov_mown[2], b.cov_mown[3], b.cov_stale, b.cov_cont);
+      ++b.fails;
+    }
+  }
   if (scenario != "idle" && !g_nowt && !b.cov_wt) {
     std::fprintf(stderr, "bank_slice: coverage: no write-through\n");
     ++b.fails;
   }
   std::printf("bank_slice: rows %u K %u full_row %d%s %s: %llu cycles, %u reads checked, %u mismatches: %s\n",
-              kRows, kK, int(kFullRow), g_nowt ? ", control nowt:" : g_rfirst ? ", control rfirst:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
+              kRows, kK, int(kFullRow), g_nowt ? ", control nowt:" : g_rfirst ? ", control rfirst:" : g_ctl.empty() ? "" : (", control " + g_ctl + ":").c_str(), scenario.empty() ? "directed+random" : scenario.c_str(),
               (unsigned long long)b.cyc, b.cov_read, b.fails, b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }
@@ -544,6 +704,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i)
     if (!std::strcmp(argv[i], "--control") && !std::strcmp(argv[i + 1], "nowt")) g_nowt = true;
     else if (!std::strcmp(argv[i], "--control") && !std::strcmp(argv[i + 1], "rfirst")) g_rfirst = true;
+    else if (!std::strcmp(argv[i], "--control")) g_ctl = argv[i + 1];
   for (int i = 1; i + 2 < argc; ++i)
     if (!std::strcmp(argv[i], "--cg")) {
       scenario = argv[i + 1];
