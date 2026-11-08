@@ -48,7 +48,7 @@ module ccv_rcu (
   localparam int WR = ccv_prov_pkg::CCV_P_W_PHYS_REG;
   localparam int WP = ccv_prov_pkg::CCV_P_W_PHYS_PRED;
   localparam int WT = ccv_prov_pkg::CCV_P_W_ROB_TAG;
-  localparam int OW = rcu_dec_pkg::OPC_W;
+  localparam int OW = ccv_prelim_pkg::CCV_L_W_OPCODE;    // = rcu_dec_pkg::OPC_W; not that package: a read in file order reaches this file first
   localparam int NM = ccv_params_pkg::CCV_MIU_PIPES;          // MIU slots, 4
   localparam int NWAKE = 1 + N + 1 + 1 + 1 + 1 + 1;          // issue, lane_res, MIU, map, rau, pca, kill
 
