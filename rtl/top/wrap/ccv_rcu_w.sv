@@ -1165,7 +1165,7 @@ module ccv_rcu_w #(
   );
 
   // ccv_ooe_rcu_issue, destination end, credit on receipt (params/links.json credit_on_receipt)
-  ccv_common_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .BOUNDARY(1), .SLOTS(9), .PAYLOAD_W(193), .LEAD_MASK(193'hffff), .DST_END(1'b1), .CREDIT_ON_RECEIPT(1'b1)) u_rpt_ooe_rcu_issue (
+  ccv_common_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .BOUNDARY(1), .SLOTS(9), .PAYLOAD_W(192), .LEAD_MASK(192'hffff), .DST_END(1'b1), .CREDIT_ON_RECEIPT(1'b1)) u_rpt_ooe_rcu_issue (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({ooe_rcu_issue_s8_valid, ooe_rcu_issue_s7_valid, ooe_rcu_issue_s6_valid, ooe_rcu_issue_s5_valid, ooe_rcu_issue_s4_valid, ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_valid}), .src_payload({ooe_rcu_issue_s8_payload, ooe_rcu_issue_s7_payload, ooe_rcu_issue_s6_payload, ooe_rcu_issue_s5_payload, ooe_rcu_issue_s4_payload, ooe_rcu_issue_s3_payload, ooe_rcu_issue_s2_payload, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s0_payload}),
     .src_wake(ooe_rcu_issue_wake), .src_credit({ooe_rcu_issue_s8_credit, ooe_rcu_issue_s7_credit, ooe_rcu_issue_s6_credit, ooe_rcu_issue_s5_credit, ooe_rcu_issue_s4_credit, ooe_rcu_issue_s3_credit, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_credit}), .src_stall({ooe_rcu_issue_s8_stall, ooe_rcu_issue_s7_stall, ooe_rcu_issue_s6_stall, ooe_rcu_issue_s5_stall, ooe_rcu_issue_s4_stall, ooe_rcu_issue_s3_stall, ooe_rcu_issue_s2_stall, ooe_rcu_issue_s1_stall, ooe_rcu_issue_s0_stall}),
