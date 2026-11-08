@@ -56,7 +56,8 @@ module rcu_r #(
   input  logic [WT-1:0]       tag_cr02h,       // rob_tag
   input  logic [1:0]          drow_cr02h,      // done_row
   input  logic [N-1:0]        imask_cr02h,     // issue_mask
-  input  logic [31:0]         imm_cr02h,
+  input  logic [31:0]         lrp_cr01h,       // lead_rpsrc: R's whole imm, in A-1 only (RA-43)
+  input  logic [2*WR-1:0]     lps_cr01h,       // lead_phys_src, R0 at [7:0], R1 at [15:8]: R's rows, in A-1 only (RA-43)
   input  logic [WR-1:0]       dst_cr02h,       // phys_dst
   input  logic [1:0]          dpos_cr02h,      // dst_pos
   input  logic [1:0]          dwid_cr02h,      // dst_width
@@ -76,6 +77,8 @@ module rcu_r #(
   input  logic [N-1:0]        rpa_cr03h,       // RA, negate and forward applied
   input  logic [N-1:0]        rpb_cr03h,       // RB
   input  logic [N-1:0]        low_cr03h,       // rlow_a: one-hot of active's lowest lane
+  // R's source rows for the slices' reads in A, from this module's capture.
+  output logic [2*WR-1:0]     rr_row_cr02h,    // R0 at [7:0], R1 at [15:8]
   // RW: valid, row and sections, data on every lane.
   output logic                busy_cr03h,      // to rcu_kill's idle and done wake: R's pipe valid
   output logic                rw_v_cr02h,
@@ -153,6 +156,22 @@ module rcu_r #(
   // within the output's budget: one flop.
   assign rw_v_cr02h = iv_cr02h;
   assign pr_v_cr02h = iv_cr02h;
+
+  // ---- R's moved leads, kept for A (RA-43) --------------------------------
+  // R's payload carries neither its imm nor its source rows: lead_rpsrc and
+  // lead_phys_src, beside R's valid in A-1, are captured here under that
+  // valid and hold the values in A as the payload would (CG-5 lead waiver,
+  // Daniel's ruling on RI-15). The rows drive an output: their own copy.
+  wire rl_en_cr01h = iv_cr01h;
+  logic [31:0] imm_cr02h;
+  (* keep *) logic [2*WR-1:0] rrow_cr02h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rl_en_cr01h) begin
+      imm_cr02h  <= lrp_cr01h;
+      rrow_cr02h <= lps_cr01h;
+    end
+  end
+  assign rr_row_cr02h = rrow_cr02h;
 
   // ---- A: the payload into r_a -------------------------------------------
   wire k_call_cr02h = kind_cr02h == K_CALL;

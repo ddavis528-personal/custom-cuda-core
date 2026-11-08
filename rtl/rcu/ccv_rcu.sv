@@ -28,11 +28,13 @@
 //   - the gate's stalled 0 and override 0: the block's idle (rcu_kill)
 //     closes it.
 // Trace ids (CCV_TRACE) are not carried: every _tid output is 0.
-// Credits (RA-41, AR rev 331): ooe_rcu_issue and miu_rcu_data credit on
-// receipt in the wrapper, so this block drives no credit for either and
-// keeps its promise to take every landed message the cycle it lands.
-// rcu_kill's 41 credit flops are the 9 issue valids (the block's idle, and
-// the issue credits that return with RA-43) and the 32 lane-result credits.
+// Credits: ooe_rcu_issue's zero-cycle end (RA-43) returns each slot's credit
+// from rcu_kill's flop of its valid; miu_rcu_data credits on receipt in the
+// wrapper (RA-41, AR rev 331), so this block drives none for it and keeps
+// its promise to take every landed message the cycle it lands. rcu_kill's
+// 41 credit flops are the 9 issue valids and the 32 lane-result credits.
+// The issue's guard is its lead only (RA-43): lead_guard_used and
+// lead_guard_pred of every slot go to rcu_pred, which predecodes them.
 //===----------------------------------------------------------------------===//
 `include "ccv_interfaces.svh"
 
@@ -80,7 +82,6 @@ module ccv_rcu (
   logic [NS*2-1:0] i_drw;
   logic [NS*WT-1:0] i_tag;
   logic [NS*N-1:0] i_im;
-  logic [NS*WP-1:0] i_gd;
   logic [NS-1:0] i_ng;
   logic [NS*WP-1:0] i_pd;
   logic [NS*WP-1:0] i_pod;
@@ -108,7 +109,6 @@ module ccv_rcu (
   assign i_drw[0*2 +: 2] = ooe_rcu_issue_s0_payload.done_row;
   assign i_tag[0*WT +: WT] = ooe_rcu_issue_s0_payload.rob_tag;
   assign i_im[0*N +: N] = ooe_rcu_issue_s0_payload.issue_mask;
-  assign i_gd[0*WP +: WP] = ooe_rcu_issue_s0_payload.phys_pred_guard;
   assign i_ng[0] = ooe_rcu_issue_s0_payload.pred_neg;
   assign i_pd[0*WP +: WP] = ooe_rcu_issue_s0_payload.phys_pred_dst;
   assign i_pod[0*WP +: WP] = ooe_rcu_issue_s0_payload.phys_pred_old_dst;
@@ -138,7 +138,6 @@ module ccv_rcu (
   assign i_drw[1*2 +: 2] = ooe_rcu_issue_s1_payload.done_row;
   assign i_tag[1*WT +: WT] = ooe_rcu_issue_s1_payload.rob_tag;
   assign i_im[1*N +: N] = ooe_rcu_issue_s1_payload.issue_mask;
-  assign i_gd[1*WP +: WP] = ooe_rcu_issue_s1_payload.phys_pred_guard;
   assign i_ng[1] = ooe_rcu_issue_s1_payload.pred_neg;
   assign i_pd[1*WP +: WP] = ooe_rcu_issue_s1_payload.phys_pred_dst;
   assign i_pod[1*WP +: WP] = ooe_rcu_issue_s1_payload.phys_pred_old_dst;
@@ -168,7 +167,6 @@ module ccv_rcu (
   assign i_drw[2*2 +: 2] = ooe_rcu_issue_s2_payload.done_row;
   assign i_tag[2*WT +: WT] = ooe_rcu_issue_s2_payload.rob_tag;
   assign i_im[2*N +: N] = ooe_rcu_issue_s2_payload.issue_mask;
-  assign i_gd[2*WP +: WP] = ooe_rcu_issue_s2_payload.phys_pred_guard;
   assign i_ng[2] = ooe_rcu_issue_s2_payload.pred_neg;
   assign i_pd[2*WP +: WP] = ooe_rcu_issue_s2_payload.phys_pred_dst;
   assign i_pod[2*WP +: WP] = ooe_rcu_issue_s2_payload.phys_pred_old_dst;
@@ -198,7 +196,6 @@ module ccv_rcu (
   assign i_drw[3*2 +: 2] = ooe_rcu_issue_s3_payload.done_row;
   assign i_tag[3*WT +: WT] = ooe_rcu_issue_s3_payload.rob_tag;
   assign i_im[3*N +: N] = ooe_rcu_issue_s3_payload.issue_mask;
-  assign i_gd[3*WP +: WP] = ooe_rcu_issue_s3_payload.phys_pred_guard;
   assign i_ng[3] = ooe_rcu_issue_s3_payload.pred_neg;
   assign i_pd[3*WP +: WP] = ooe_rcu_issue_s3_payload.phys_pred_dst;
   assign i_pod[3*WP +: WP] = ooe_rcu_issue_s3_payload.phys_pred_old_dst;
@@ -228,7 +225,6 @@ module ccv_rcu (
   assign i_drw[4*2 +: 2] = ooe_rcu_issue_s4_payload.done_row;
   assign i_tag[4*WT +: WT] = ooe_rcu_issue_s4_payload.rob_tag;
   assign i_im[4*N +: N] = ooe_rcu_issue_s4_payload.issue_mask;
-  assign i_gd[4*WP +: WP] = ooe_rcu_issue_s4_payload.phys_pred_guard;
   assign i_ng[4] = ooe_rcu_issue_s4_payload.pred_neg;
   assign i_pd[4*WP +: WP] = ooe_rcu_issue_s4_payload.phys_pred_dst;
   assign i_pod[4*WP +: WP] = ooe_rcu_issue_s4_payload.phys_pred_old_dst;
@@ -258,7 +254,6 @@ module ccv_rcu (
   assign i_drw[5*2 +: 2] = ooe_rcu_issue_s5_payload.done_row;
   assign i_tag[5*WT +: WT] = ooe_rcu_issue_s5_payload.rob_tag;
   assign i_im[5*N +: N] = ooe_rcu_issue_s5_payload.issue_mask;
-  assign i_gd[5*WP +: WP] = ooe_rcu_issue_s5_payload.phys_pred_guard;
   assign i_ng[5] = ooe_rcu_issue_s5_payload.pred_neg;
   assign i_pd[5*WP +: WP] = ooe_rcu_issue_s5_payload.phys_pred_dst;
   assign i_pod[5*WP +: WP] = ooe_rcu_issue_s5_payload.phys_pred_old_dst;
@@ -288,7 +283,6 @@ module ccv_rcu (
   assign i_drw[6*2 +: 2] = ooe_rcu_issue_s6_payload.done_row;
   assign i_tag[6*WT +: WT] = ooe_rcu_issue_s6_payload.rob_tag;
   assign i_im[6*N +: N] = ooe_rcu_issue_s6_payload.issue_mask;
-  assign i_gd[6*WP +: WP] = ooe_rcu_issue_s6_payload.phys_pred_guard;
   assign i_ng[6] = ooe_rcu_issue_s6_payload.pred_neg;
   assign i_pd[6*WP +: WP] = ooe_rcu_issue_s6_payload.phys_pred_dst;
   assign i_pod[6*WP +: WP] = ooe_rcu_issue_s6_payload.phys_pred_old_dst;
@@ -318,7 +312,6 @@ module ccv_rcu (
   assign i_drw[7*2 +: 2] = ooe_rcu_issue_s7_payload.done_row;
   assign i_tag[7*WT +: WT] = ooe_rcu_issue_s7_payload.rob_tag;
   assign i_im[7*N +: N] = ooe_rcu_issue_s7_payload.issue_mask;
-  assign i_gd[7*WP +: WP] = ooe_rcu_issue_s7_payload.phys_pred_guard;
   assign i_ng[7] = ooe_rcu_issue_s7_payload.pred_neg;
   assign i_pd[7*WP +: WP] = ooe_rcu_issue_s7_payload.phys_pred_dst;
   assign i_pod[7*WP +: WP] = ooe_rcu_issue_s7_payload.phys_pred_old_dst;
@@ -348,7 +341,6 @@ module ccv_rcu (
   assign i_drw[8*2 +: 2] = ooe_rcu_issue_s8_payload.done_row;
   assign i_tag[8*WT +: WT] = ooe_rcu_issue_s8_payload.rob_tag;
   assign i_im[8*N +: N] = ooe_rcu_issue_s8_payload.issue_mask;
-  assign i_gd[8*WP +: WP] = ooe_rcu_issue_s8_payload.phys_pred_guard;
   assign i_ng[8] = ooe_rcu_issue_s8_payload.pred_neg;
   assign i_pd[8*WP +: WP] = ooe_rcu_issue_s8_payload.phys_pred_dst;
   assign i_pod[8*WP +: WP] = ooe_rcu_issue_s8_payload.phys_pred_old_dst;
@@ -371,6 +363,12 @@ module ccv_rcu (
   assign i_src[(8*3 + 0)*WR +: WR] = ooe_rcu_issue_s8_payload.phys_src[2*WR-1:WR];
   assign i_src[(8*3 + 1)*WR +: WR] = ooe_rcu_issue_s8_payload.phys_src[WR-1:0];
   assign i_src[(8*3 + 2)*WR +: WR] = ooe_rcu_issue_s8_payload.phys_src2;
+  // R's moved leads (RA-43): its whole imm and its source rows, in A-1 only;
+  // R's payload imm and phys_src are zero. rcu_r and rcu_pred capture them.
+  logic [31:0] i_lrp;
+  logic [2*WR-1:0] i_lps;
+  assign i_lrp = ooe_rcu_issue_s8_payload.lead_rpsrc;
+  assign i_lps = ooe_rcu_issue_s8_payload.lead_phys_src;
 
   // ---- lane_rcu_res, flat ----------------------------------------------------
   logic [N-1:0] lr_v;
@@ -609,6 +607,7 @@ module ccv_rcu (
   logic [NK*N-1:0] p_dq;
   // rcu_r
   logic r_busy, r_rwv, r_prv, r_prmrg, r_dnbt;
+  logic [2*WR-1:0] r_rrow;   // R's source rows, R0 at [7:0], from rcu_r's lead capture
   logic [WR-1:0] r_rwrow;
   logic [3:0] r_rwsec;
   logic [N*32-1:0] r_rwdat;
@@ -703,7 +702,7 @@ module ccv_rcu (
         .r2row_cr01h (i_odst[8*WR +: WR]),
         .rd_cr03h    (sl_rd[(K*NJ + J)*NR*32 +: NR*32]),
         .rv_cr02h    (i_iv[8]),
-        .rr_row_cr03h({i_src[(8*3 + 1)*WR +: WR], i_src[(8*3 + 0)*WR +: WR]}),
+        .rr_row_cr03h(r_rrow),
         .rs_cr04h    (sl_rs[(K*NJ + J)*NRR*32 +: NRR*32]),
         .wr_v_cr00h  ({r_rwv, l_swv, l_lwv[K]}),
         .wr_row_cr01h({r_rwrow, l_swrow, l_lwrow[K*WR +: WR]}),
@@ -747,9 +746,8 @@ module ccv_rcu (
     .rcu_core_clk(gclk),
     .rst_n      (rst_n),
     .iv_cr01h   (i_iv),
-    .lgu_cr01h  (i_lgu[8]),
-    .lgp_cr01h  (i_lgp[8*WP +: WP]),
-    .gd_cr02h   (i_gd),
+    .lgu_cr01h  (i_lgu),
+    .lgp_cr01h  (i_lgp),
     .ng_cr02h   (i_ng),
     .im_cr02h   (i_im),
     .opc_cr02h  (i_opc),
@@ -757,7 +755,7 @@ module ccv_rcu (
     .drw_cr02h  (i_drw),
     .swe_cr02h  (i_pwe[0 +: NK]),
     .sdst_cr02h (i_dst[0 +: NK*WR]),
-    .rimm_cr02h (i_imm[8*32 +: 2*WP + 2]),
+    .lrp_cr01h  (i_lrp[2*WP + 1:0]),
     .ft_cr02h   (i_foot[0 +: NK*NK]),
     .act_cr03h  (p_act),
     .busy_cr03h (p_busy),
@@ -795,7 +793,9 @@ module ccv_rcu (
     .tag_cr02h    (i_tag[8*WT +: WT]),
     .drow_cr02h   (i_drw[8*2 +: 2]),
     .imask_cr02h  (i_im[8*N +: N]),
-    .imm_cr02h    (i_imm[8*32 +: 32]),
+    .lrp_cr01h    (i_lrp),
+    .lps_cr01h    ({i_lps[WR-1:0], i_lps[2*WR-1:WR]}),   // R0 (phys_src[15:8]) to [7:0]
+    .rr_row_cr02h (r_rrow),
     .dst_cr02h    (i_dst[8*WR +: WR]),
     .dpos_cr02h   (i_dpos[8*2 +: 2]),
     .dwid_cr02h   (i_dwid[8*2 +: 2]),
@@ -1019,14 +1019,23 @@ module ccv_rcu (
   assign rcu_miu_addr_wake = m_wk;
 
   assign ooe_rcu_issue_s0_stall = 1'b0;
+  assign ooe_rcu_issue_s0_credit = k_cr[0];
   assign ooe_rcu_issue_s1_stall = 1'b0;
+  assign ooe_rcu_issue_s1_credit = k_cr[1];
   assign ooe_rcu_issue_s2_stall = 1'b0;
+  assign ooe_rcu_issue_s2_credit = k_cr[2];
   assign ooe_rcu_issue_s3_stall = 1'b0;
+  assign ooe_rcu_issue_s3_credit = k_cr[3];
   assign ooe_rcu_issue_s4_stall = 1'b0;
+  assign ooe_rcu_issue_s4_credit = k_cr[4];
   assign ooe_rcu_issue_s5_stall = 1'b0;
+  assign ooe_rcu_issue_s5_credit = k_cr[5];
   assign ooe_rcu_issue_s6_stall = 1'b0;
+  assign ooe_rcu_issue_s6_credit = k_cr[6];
   assign ooe_rcu_issue_s7_stall = 1'b0;
+  assign ooe_rcu_issue_s7_credit = k_cr[7];
   assign ooe_rcu_issue_s8_stall = 1'b0;
+  assign ooe_rcu_issue_s8_credit = k_cr[8];
   assign rcu_lane_ops_c00_valid = l_v[0];
   assign rcu_lane_ops_c00_wake = l_wk[0];
   assign rcu_lane_ops_c00_payload.sec_opcode = l_sop[0*NK*WO +: NK*WO];

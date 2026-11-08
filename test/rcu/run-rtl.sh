@@ -13,7 +13,7 @@
 #   rcu_r:          test/rcu/r_tb.cpp, and its negative controls (noalign,
 #                   retlow, pmovneg), each of which must fail
 #   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (spbown, nofwd,
-#                   nomerge), each of which must fail
+#                   nomerge, lgcorrupt), each of which must fail
 #   rcu_kill:       test/rcu/kill_tb.cpp, and its control drain (KILL_DRAIN
 #                   - 1 in the value model), which must fail
 #   rcu_mig:        test/rcu/mig_tb.cpp (M5 and random traffic with kills), and
@@ -82,7 +82,7 @@ for c in noalign retlow pmovneg; do   # a control the bench does not catch is a 
   fi
 done
 bench rcu_pred test/rcu/cg-build.sh rcu_pred "$B/rcu_pred" -- "$B/rcu_pred/tb"
-for c in nofwd nomerge spbown; do
+for c in nofwd nomerge spbown lgcorrupt; do
   if [ -x "$B/rcu_pred/tb" ] && ! "$B/rcu_pred/tb" --control "$c" >"$B/rcu_pred.$c.log" 2>&1 &&
      grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_pred.$c.log"; then
     say "rcu_pred control $c" "caught"

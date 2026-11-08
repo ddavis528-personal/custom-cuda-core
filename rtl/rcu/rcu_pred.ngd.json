@@ -31,12 +31,6 @@
       "date": "2026-11-08",
       "why": "The S slots' footprint, from the issue channel's slots at RCU's interface flop (DA's ruling on RI-11), wire only; fanout inside the block is check-ngd's. It decides section ownership for sec_pred_bit_a, which RA rev 98 moves here (Predicate file tab, step 4; Partition rule 2)."
     },
-    "gd_cr02h": {
-      "arrival": 1.4,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
-      "date": "2026-11-05",
-      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
-    },
     "gv_cr03h": {
       "by": "RI, pending RA (RI tab)",
       "date": "2026-11-08",
@@ -121,11 +115,11 @@
       "required": 0.0,
       "why": "Straight from its flop, with no other load inside: the receiving port's arrival is 0 (RA tab rev 78, re:RI-11), so this end leaves at 0. The assembled block's convergence (check-ngd block_check) needs the two to meet."
     },
-    "rimm_cr02h": {
+    "lrp_cr01h": {
       "arrival": 1.4,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-05",
-      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1). Renamed for RA-43 by RI (2026-11-08): the port now takes the lead in A-1, captured in this module under the slot's valid; arrival kept pending RA's restatement for the zero-cycle end."
     },
     "rpa_cr03h": {
       "by": "RI, pending RA (RI tab)",

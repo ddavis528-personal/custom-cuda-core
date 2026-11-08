@@ -146,12 +146,21 @@ struct Bench {
     dut->rst_n = !rst;
     const uint64_t c = cyc;
     dut->iv_cr01h = op(c - 1) != nullptr;   // the valid comes with the lead
+    // R's moved leads (RA-43), in A-1 only: its whole imm and its source
+    // rows. Off a valid they carry noise, which the module must not keep.
+    if (const Op *o = op(c - 1)) {
+      dut->lrp_cr01h = o->imm;
+      dut->lps_cr01h = o->src[0] | o->src[1] << 8;
+    } else {
+      const uint64_t z = (c + 1) * 0x9e3779b97f4a7c15ull;
+      dut->lrp_cr01h = uint32_t(z >> 32);
+      dut->lps_cr01h = uint32_t(z >> 8) & 0xffffu;
+    }
     if (const Op *o = op(c - 2)) {   // A: the payload, R0 and R1
       dut->opc_cr02h = o->opc;
       dut->tag_cr02h = o->tag;
       dut->drow_cr02h = o->drow;
       dut->imask_cr02h = o->imask;
-      dut->imm_cr02h = o->imm;
       dut->dst_cr02h = o->dst;
       dut->dpos_cr02h = o->dpos;
       dut->dwid_cr02h = o->dwid;
@@ -181,6 +190,7 @@ struct Bench {
     const Op *o2 = op(c - 2), *o3 = op(c - 3), *o4 = op(c - 4);
     eq("rw_v", dut->rw_v_cr02h, o2 != nullptr);
     eq("pr_v", dut->pr_v_cr02h, o2 != nullptr);
+    if (o2) eq("rr_row", dut->rr_row_cr02h, o2->src[0] | o2->src[1] << 8);
     eq("dn_v", dut->dn_v_cr03h, o3 ? (coll(o3->kind) ? 2u : 1u) : 0u);
     if (o3) {
       eq("rw_row", dut->rw_row_cr03h, wg(o3->kind) ? o3->dst : kZero);

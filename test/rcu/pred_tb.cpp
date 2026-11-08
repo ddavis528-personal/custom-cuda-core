@@ -85,6 +85,10 @@ struct Iss {   // one slot's issue
   unsigned opc = 0, drow = 0, dst = 1;
   bool cont = false, pwe = false;
 };
+// lead_guard_used (RA-31, RA-43): the op reads its predicate, as guard or
+// data, and it is not the always-true one (the zero predicate, negated).
+// Without it the lead's row decodes to none, which reads as the zero row.
+bool lgu(const Iss &i) { return (i.gt || i.pdt) && !(i.g == kZP && i.neg); }
 struct Ld { unsigned slot, p; bool we; uint32_t am, pr; };
 struct Mg { unsigned port, row, orow; bool mrg; uint32_t m, mm, val; };
 struct Dm { unsigned port, row; };
@@ -97,7 +101,7 @@ struct Cycle {
 
 extern int g_argc;
 extern char **g_argv;
-bool g_nofwd = false, g_nomerge = false, g_spbown = false;
+bool g_nofwd = false, g_nomerge = false, g_spbown = false, g_lgcorrupt = false;
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
@@ -162,10 +166,13 @@ struct Bench {
     dut->dv_cr00h = 0;
     for (const Iss &i : next.iss) {
       put(dut->iv_cr01h, i.slot, 1, 1);
-      if (i.slot == kSR && i.gt) {
-        dut->lgu_cr01h = 1;
-        dut->lgp_cr01h = i.g;
-      }
+      put(dut->lgu_cr01h, i.slot, 1, lgu(i));
+      // The predicate, whatever guard_used says. lgcorrupt (control, the
+      // stub's lead-guard-corrupt): a guarded op's lead names another row,
+      // the zero predicate (a row a merge writes would trip the hazard
+      // assertion first, and the run would stop before its summary).
+      put(dut->lgp_cr01h, i.slot * kW, kW, g_lgcorrupt && lgu(i) ? kZP : i.g);
+      if (i.slot == kSR) dut->lrp_cr01h = i.imm;   // lead_rpsrc[13:0] (RA-43: not in R's payload)
     }
     for (const Ld &l : next.ld) {
       put(dut->mv_cr01h, l.slot, 1, 1);
@@ -177,7 +184,6 @@ struct Bench {
     for (const Dm &d : next.dm) put(dut->dv_cr00h, d.port, 1, 1);
     // Payloads a cycle on; unused fields hold.
     for (const Iss &i : s1.iss) {
-      put(dut->gd_cr02h, i.slot * kW, kW, i.g);
       put(dut->ng_cr02h, i.slot, 1, i.neg);
       put(dut->im_cr02h, i.slot * 32, 32, i.im);
       put(dut->opc_cr02h, i.slot * 9, 9, i.opc);
@@ -188,7 +194,6 @@ struct Bench {
         put(dut->swe_cr02h, i.slot, 1, i.pwe);
         put(dut->sdst_cr02h, i.slot * 8, 8, i.dst);
       }
-      if (i.slot == kSR) dut->rimm_cr02h = i.imm;
     }
     for (const Ld &l : s1.ld) put(dut->mr_cr02h, l.slot * 32, 32, l.pr);
     for (const Mg &m : s1.mg) {
@@ -223,7 +228,7 @@ struct Bench {
       }
       // Stage I for s1's issues (A now): MIU's writes landing now are s1's loads.
       for (const Iss &i : s1.iss) {
-        const unsigned gp = (i.slot == kSR && !i.gt) ? kZP : i.g;
+        const unsigned gp = lgu(i) ? i.g : kZP;
         if (!kn(gp)) {
           if (i.slot < kNK && i.lm)
             for (unsigned k = 0; k < kNK; ++k)
@@ -545,7 +550,7 @@ int run(const std::string &scenario, const char *vcd) {
   }
   std::printf("pred%s%s%s %s: %llu cycles, %u values checked, %u mismatches: %s\n",
               g_nofwd ? ", control nofwd:" : "", g_nomerge ? ", control nomerge:" : "",
-              g_spbown ? ", control spbown:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
+              g_spbown ? ", control spbown:" : g_lgcorrupt ? ", control lgcorrupt:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
               (unsigned long long)b.cyc, b.checked, b.fails, b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }
@@ -562,6 +567,7 @@ int main(int argc, char **argv) {
       g_nofwd = g_nofwd || !std::strcmp(argv[i + 1], "nofwd");
       g_nomerge = g_nomerge || !std::strcmp(argv[i + 1], "nomerge");
       g_spbown = g_spbown || !std::strcmp(argv[i + 1], "spbown");
+      g_lgcorrupt = g_lgcorrupt || !std::strcmp(argv[i + 1], "lgcorrupt");
     }
   for (int i = 1; i + 2 < argc; ++i)
     if (!std::strcmp(argv[i], "--cg")) {
