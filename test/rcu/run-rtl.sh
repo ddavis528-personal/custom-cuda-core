@@ -10,7 +10,7 @@
 #   rcu_xbar:       test/rcu/xbar_tb.cpp, 32 lanes
 #   rcu_r:          test/rcu/r_tb.cpp, and its negative controls (noalign,
 #                   retlow), each of which must fail
-#   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (nofwd,
+#   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (spbown, nofwd,
 #                   nomerge), each of which must fail
 #   rcu_kill:       test/rcu/kill_tb.cpp, and its control drain (KILL_DRAIN
 #                   - 1 in the value model), which must fail
@@ -18,7 +18,14 @@
 #                   its controls rlie (the R op's R2/RW use hidden), cred (a
 #                   credit fewer at the receiver), wake (the wake a cycle
 #                   early), each of which must fail
-# Usage: test/rcu/run-rtl.sh [--full]   (--full adds the 192-row slice)
+#   rcu_lanes:      test/rcu/lanes_tb.cpp, 4 copies (--full adds 32), and its
+#                   controls bypage (a forward's age one more) and immpos (the
+#                   immediate at position 0), each of which must fail
+#   rcu_mem:        test/rcu/mem_tb.cpp, 4 lanes (--full adds 32), and its
+#                   controls align (operands not right-aligned) and pstlane
+#                   (a predicate store's word in lane 1), each of which must fail
+# Usage: test/rcu/run-rtl.sh [--full]   (--full adds the 192-row slice and the
+#        32-copy lanes and mem)
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/rcu-rtl; mkdir -p "$B"
@@ -62,7 +69,7 @@ for c in noalign retlow; do   # a control the bench does not catch is a failure
   fi
 done
 bench rcu_pred test/rcu/cg-build.sh rcu_pred "$B/rcu_pred" -- "$B/rcu_pred/tb"
-for c in nofwd nomerge; do
+for c in nofwd nomerge spbown; do
   if [ -x "$B/rcu_pred/tb" ] && ! "$B/rcu_pred/tb" --control "$c" >"$B/rcu_pred.$c.log" 2>&1 &&
      grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_pred.$c.log"; then
     say "rcu_pred control $c" "caught"
@@ -86,5 +93,18 @@ for c in rlie cred wake; do
   else
     say "rcu_mig control $c" "NOT CAUGHT ($B/rcu_mig.$c.log)"; fail=1
   fi
+done
+for m in lanes mem; do
+  us="rcu_${m}_c4"; [ "${1:-}" = --full ] && us="$us rcu_$m"
+  for u in $us; do bench "$u" test/rcu/cg-build.sh "$u" "$B/$u" -- "$B/$u/tb"; done
+  case $m in lanes) cs="bypage immpos" ;; mem) cs="align pstlane" ;; esac
+  for c in $cs; do
+    if [ -x "$B/rcu_${m}_c4/tb" ] && ! "$B/rcu_${m}_c4/tb" --control "$c" >"$B/rcu_$m.$c.log" 2>&1 &&
+       grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_$m.$c.log"; then
+      say "rcu_$m control $c" "caught"
+    else
+      say "rcu_$m control $c" "NOT CAUGHT ($B/rcu_$m.$c.log)"; fail=1
+    fi
+  done
 done
 exit $fail

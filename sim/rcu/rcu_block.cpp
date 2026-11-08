@@ -129,6 +129,27 @@ public:
   }
   ~RcuModel() override {
     if (evlog_) std::fclose(evlog_);
+    // Sweep data, as OOE's CCV_OOE_STATS: RCU's counters, as JSON, when
+    // CCV_RCU_STATS names a file (docs/rcu-model.md).
+    const char *path = std::getenv("CCV_RCU_STATS");
+    if (!path || !*path) return;
+    FILE *f = std::fopen(path, "w");
+    if (!f) return;
+    const R::Core::Stats &s = core_.stats();
+    std::fprintf(f, "{\n  \"kernel\": \"%s\",\n  \"cycles\": %llu,\n  \"counters\": {\n", k_.name.c_str(), (unsigned long long)now_);
+    const std::pair<const char *, uint64_t> c[] = {
+        {"lane_ops", s.lane_ops}, {"r_ops", s.r_ops}, {"memops", s.memops}, {"dones", s.dones},
+        {"gpr_writes", s.gpr_writes}, {"pred_writes", s.pred_writes}, {"byp_sels", s.byp_sels},
+        {"rsrc_fwd", s.rsrc_fwd}, {"demote_rows", s.demote_rows}, {"restore_rows", s.restore_rows},
+        {"mig_r_waits", s.mig_r_waits}, {"mig_credit_waits", s.mig_credit_waits},
+        {"restore_holds", s.restore_holds}, {"max_demote_cycles", s.max_demote_cycles},
+        {"max_restore_cycles", s.max_restore_cycles}};
+    for (const auto &e : c) std::fprintf(f, "    \"%s\": %llu,\n", e.first, (unsigned long long)e.second);
+    std::fprintf(f, "    \"dones_slot\": [");
+    for (unsigned i = 0; i != R::kDoneSlots; ++i)
+      std::fprintf(f, "%s%llu", i ? ", " : "", (unsigned long long)s.dones_slot[i]);
+    std::fprintf(f, "]\n  }\n}\n");
+    std::fclose(f);
   }
   const char *kind() const override { return "rcu"; }
 
