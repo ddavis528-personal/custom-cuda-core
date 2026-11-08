@@ -509,6 +509,8 @@ struct Bench {
       const bool cov = covers(ld.w, ld.pos);
       if (!(cov || kFullRow) || ld.row == kZero) continue;
       ++cov_mw;
+      // A shifted load (pos != 0) that still covers section K: none can at
+      // K = 0, which only pos 0 covers, so the bin is required for K > 0.
       if (cov && ld.pos != 0) ++cov_mw_shift;
       if (cov && ld.w == 3) ++cov_mw_nib;
       for (unsigned l = 0; l < kL; ++l) {
@@ -663,7 +665,7 @@ int run(const std::string &scenario, const char *vcd) {
   b.step(none);
   b.step(none);
   if (scenario != "idle" && (!b.cov_read || !b.cov_zero || !b.cov_lw || !b.cov_lw_skip || !b.cov_mw ||
-                             !b.cov_mw_nib || !b.cov_mw_shift || !b.cov_hold || (kFullRow && !b.cov_zfill))) {
+                             !b.cov_mw_nib || (kK > 0 && !b.cov_mw_shift) || !b.cov_hold || (kFullRow && !b.cov_zfill))) {
     std::fprintf(stderr, "bank_slice: coverage: read %u zero %u lw %u lw_skip %u zfill %u mw %u nib %u shift %u hold %u\n",
                  b.cov_read, b.cov_zero, b.cov_lw, b.cov_lw_skip, b.cov_zfill, b.cov_mw, b.cov_mw_nib,
                  b.cov_mw_shift, b.cov_hold);

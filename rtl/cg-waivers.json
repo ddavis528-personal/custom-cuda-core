@@ -146,8 +146,8 @@
     "mv_cr01h",
     "mwe_cr01h"
    ],
-   "enable_ngd": 2.5,
-   "why": "MIU's kept lead, each slot's m_hi_cr02h, m_lo_cr02h and m_am_cr02h (46 flops, one gate a slot). Its predicate-write lead (phys_pred, active_mask) is on ccv_miu_rcu_data only in T-1 (RA-40: the payload's own fields, leading, not copies), and the write and the guard forward need it in T, so this module keeps it a cycle. Nothing earlier names the write, so the only enable is the lead's own valid & pred_we, straight from RCU's interface flop on the channel (DA's ruling on RI-11: a flop at every block boundary; rcu_pred.ngd.json, arrival 0): the enable starts at a flop and its cone is one AND, within CG-2's 8. Loaded every cycle instead, the 4 x 46 flops would be 184 ungated flops against this module's 2% (57). Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction.",
+   "enable_ngd": 3.1,
+   "why": "MIU's kept lead, each slot's m_hi_cr02h, m_lo_cr02h and m_am_cr02h (46 flops, one gate a slot). Its predicate-write lead (phys_pred, active_mask) is on ccv_miu_rcu_data only in T-1 (RA-40: the payload's own fields, leading, not copies), and the write and the guard forward need it in T, so this module keeps it a cycle. Nothing earlier names the write, so the only enable is the lead's own valid & pred_we, straight from RCU's interface flop on the channel (DA's ruling on RI-11: a flop at every block boundary; rcu_pred.ngd.json, arrival 0): the enable starts at a flop and its cone is one AND, within CG-2's 8. Loaded every cycle instead, the 4 x 46 flops would be 184 ungated flops against this module's 2% (57). Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction. The enable's arrival rose to the fanout term (mwe_cr01h 1.4; AR 326, RA rev 106), so it reads 3.1: cone 1.7 plus 1.4, still within CG-2's 8.",
    "by": "RI (Daniel's ruling, RA rev 87)",
    "date": "2026-11-06",
    "lead": true
@@ -159,8 +159,8 @@
    "ports": [
     "iv_cr01h"
    ],
-   "enable_ngd": 1.0,
-   "why": "R's guard lead kept for A, rg_hi_cr02h and rg_lo_cr02h (14 flops, one gate). lead_guard_pred (RA-31, RA-32, the split guard read) is on ccv_ooe_rcu_issue only in A-1, with R's valid, and is predecoded into these psel flops for A. The only enable is that valid, straight from RCU's interface flop (DA's ruling on RI-11; rcu_pred.ngd.json, arrival 0), a wire. Loaded every cycle instead, the 14 flops put the module one flop past its 2% (58 ungated against 57.4); a binary lead flop instead would put the decode on the branch path. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction.",
+   "enable_ngd": 2.0,
+   "why": "R's guard lead kept for A, rg_hi_cr02h and rg_lo_cr02h (14 flops, one gate). lead_guard_pred (RA-31, RA-32, the split guard read) is on ccv_ooe_rcu_issue only in A-1, with R's valid, and is predecoded into these psel flops for A. The only enable is that valid, straight from RCU's interface flop (DA's ruling on RI-11; rcu_pred.ngd.json, arrival 0), a wire. Loaded every cycle instead, the 14 flops put the module one flop past its 2% (58 ungated against 57.4); a binary lead flop instead would put the decode on the branch path. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction. The enable's arrival rose to the fanout term (iv_cr01h 2.0; AR 326, RA rev 106), so it reads 2.0, within CG-2's 8.",
    "by": "RI (Daniel's ruling, RA rev 87)",
    "date": "2026-11-06",
    "lead": true
