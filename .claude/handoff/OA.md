@@ -40,9 +40,9 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 392, AR 325, TI 382, OI 328, IS 190, CP 155, DA 115,
+Conventions 17, OA 393, AR 325, TI 383, OI 328, IS 190, CP 155, DA 115,
 RA 114 (tab 9851686b-2b0a), RI 45 (tab 8e4547bc-c469).
-OOE doc rev 371. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
+OOE doc rev 372. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release 702d9bff; tag refused (known).
 
 ## Open work (most urgent first)
@@ -66,6 +66,9 @@ Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release
    RA 114 overruled: S copies 32 (no src_width/phys_src2), R imm MOVED to lead_rpsrc[31:0]. Checked:
    nothing in OOE reads R's payload imm after grant (iss_pay -> channel only; tests read Issue struct)
    -> no objection, no row. OOE copies now ~ 207+81+128 = 416.
+   OA 393 re:TI 383: R imm settled = move (RA 114), OA 392 withdrawn. C_RECONV = rename-time no-op,
+   DEC serial 5 (first spare), done at alloc, no RS/issue; skel op table + control; OI model+RTL nop.
+   OWED: specify register-form PMOV (RA-16 (f), rename-time elided move) in its own row.
 -23. OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
    consumer co-granted with its producer (always stale). First check ooe_sched RTL (rep_cq02h uses
    pre-grant iss_cq02h, may already catch it) -> if so model-only fix; else add gnt to mask within caps.
