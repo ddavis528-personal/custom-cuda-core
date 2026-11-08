@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-08 (TI 360 pushed 95bf04d, OI-130; OI-127 done f727aed)
+Updated 2026-11-08 12:00 (OI-133 pushed 11386e7; sweep merge 11-08 in a full gate)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,8 +37,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 320, RA 96, IS 190, TI 373, OA 383, OI 328, CP 155, DA 115, RI 35
-(sweep 11-07 10:16). AR 314/OA 377: lead_fault = status==1, per slot, OI builds capture once TI's schema row lands (none to TI 362). Pings 11-06: all eight pinged; pongs OK from OA TI
+Conventions 17, AR 332, RA 117, IS 190, TI 385, OA 394, OI 331, CP 157, DA 115, RI 50
+(sweep 11-08). AR 314/OA 377: lead_fault = status==1, per slot, OI builds capture once TI's schema row lands (none to TI 362). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
 `--check` should differ; ask DA to approve `python3 tools/setup-session-home.py`.
@@ -51,24 +51,21 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
-0. OI-133 (rev 328, rang OA+TI; task #41): OA-17 fires at lat_l1_wake=16 (seed 6 mode 6, seed 19
-   mode 7): consumer co-granted with a producer re-issued after cancel escapes OI-50's hop.
-   Fix awaiting OA: model cancelHop `|| rs_[j].issue_at == y.issue_at`; RTL ooe_sched rep_cq02h
-   mask `~iss | msd | gnt_cq04h`. Prototype (env COHOP) in scratchpad/l1w/src passes 16/17.
-   On OA's yes: model + RTL + test at 16 + control dropping the term.
-0b. #36 ooe_sched ratchet in wfs (oi-sched, uncommitted): fcp_cq04h per-entry force copies to
-   select's rhold. trio no-force control MISSED: trio_tb.cpp:273 must also clear fcp_cq04h (IData).
-1. TI 360 (task #26): PUSHED 95bf04d (SCOPED PASS 20/22); OI-130 rev 325 rang OA/TI/AR. Waiting on
-   RH (sent 11-08 ~05:00): G/N floor_held_gate at 192/160(ren 12/44)/128(ren 8/24), S1 + cm128 warm.
-   On RH's answer: add its numbers to OI-130 (no notice unless OA must act). OA owes: accept the fix;
-   ooe_go to 25 needs the share split retimed (~21 NGD hv->sg) or caps stand (#37).
-2. OA 382 (task #40): RTL issue payload: A2's RS row carries pd, pred_we, ppold; cas-no-pd control in RTL.
-3. OA 365 (task #24): ooe_sched phys_src0/1 output depth (<=6); fold in ooe_sched ratchet (#36).
-4. NGD fanout ratchet (rtl/ngd-ratchet.json "fanout"; DA asked 11-07), in order: ooe_rendep (#33,
-   worst mem 34.5), ooe_rob_w (#34; caps lowered to 29.9 in b8881c0),
-   ooe_rename (#35, 31.1), ooe_rs (#38, 30.2), ooe_ratread (#39, port-budget caps only).
-5. DA 111b / OA 364: a unit for every OOE module at each instantiated param set.
-6. Optional (OA 381, task #32): fa entry one-hot -> 5-bit index in ooe_rob_w (-108 flops).
+0. Sweep merge 11-08 (7 branches incl. TI 9894da1 CAS/RA-16/RA-41) + oi-reconv cherry-pick bdbd514:
+   full gate-push running (log scratchpad/gp-sweep.log). On green: answer OA-393 (model done,
+   RTL compare waits for rename's decode front). Reconcile with TI's ti-g4 C_RECONV when it lands
+   (keep testReconv, control reconv-issues; check-ooe-unit count 51).
+1. OI-133 DONE: pushed 11386e7 (SCOPED PASS). Answer row rev 331 rang OA (close OA-386) and AR
+   (HIT_BASE 6 run not needed); RH told g2'' can rerun.
+2. #26 TI 360/OI-134: RH runs U160/L160/U128/L128 (G + unmet_reg=1 / G + floor_take_lag=0) after
+   TI's J12. Adopt only if clean, = at 192, no worse at 160; add numbers to OI-134.
+3. #42 OA-387 lead move: blocked on TI's schema row (RA 114: S0-S3 copies 32b, R imm to
+   lead_rpsrc[31:0]). Then rename stages leads, ooe_rs reads via exact grant; ooe_rs unit LW real.
+4. #40 OA 382: RTL issue payload, A2's RS row carries pd, pred_we, ppold; cas-no-pd in RTL.
+5. NGD fanout ratchets: ooe_rendep (#33, mem 34.5), ooe_rob_w (#34), ooe_rename (#35, 31.1),
+   ooe_rs (#38, now 28.8/req 28.4/prv_dep 26.4), ooe_ratread last (#39). ooe_sched done b8181c8.
+6. DA 111b / OA 364: a unit per OOE module per instantiated param set.
+7. Optional #32 (OA 381): fa one-hot -> 5-bit index in ooe_rob_w.
 
 ## Done 11-07
 - ROB slice 4 pushed adfa301 (SCOPED PASS 20/22); OI-128 row rev 322/323, OA accepted at 381.
