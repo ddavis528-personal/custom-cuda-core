@@ -59,6 +59,7 @@ void (*g_pre_cycle_hook)(const Core &) = nullptr;
 /// clock-gating scenarios).
 unsigned g_dec_every = 1, g_dec_width = 6;
 std::string g_test;
+std::string g_random_only;   // testRandom runs only this test when set (testCogrant)
 #define EXPECT(c, ...)                                                      \
   do {                                                                      \
     if (!(c)) {                                                             \
@@ -4048,6 +4049,7 @@ void testRandom(unsigned seeds) {
     for (int mode = 0; mode != 8; ++mode) {
       g_test = "random seed " + std::to_string(seed) + " mode " + std::to_string(mode);
       if (const char *only = std::getenv("OOE_TEST_ONLY")) if (g_test != only) continue;
+      if (!g_random_only.empty() && g_test != g_random_only) continue;
       const bool groups = seed % 2 == 1, sec = (mode & 4) != 0;
       const Config c = randomConfig(seed, mode);
       std::mt19937 rng(seed * 4 + unsigned(mode));
@@ -4483,6 +4485,39 @@ void testControls() {
     EXPECT(caught, "the harness missed it");
     std::printf("  %-24s %s\n", name.c_str(), caught ? "caught" : "MISSED");
   }
+}
+
+/// OI-133 (OA-17 at L1_WAKE 16): a producer cancelled and granted again at
+/// the same edge as a dependant granted on the ready bit its first issue
+/// woke. The hop must return the dependant (its stale grant) and the
+/// OA-17 check must not fire; without the co-grant term (the control) it
+/// confirms on a stale ready bit. The two random cases that found it.
+void testCogrant() {
+  const char *cases[] = {"random seed 6 mode 6", "random seed 19 mode 7"};
+  static bool no_cogrant;
+  void (*const saved_hook)(Config &) = g_config_hook;
+  g_config_hook = [](Config &c) { c.lat_l1_wake = 16; c.inject_no_cogrant = no_cogrant; };
+  for (const bool control : {false, true}) {
+    no_cogrant = control;
+    const int saved = g_fail;
+    unsigned failed = 0;
+    for (const char *t : cases) {
+      g_random_only = t;
+      const int before = g_fail;
+      g_quiet = control;
+      testRandom(19);
+      g_quiet = false;
+      failed += g_fail != before;
+    }
+    g_random_only.clear();
+    if (control) {
+      g_fail = saved;
+      g_test = "control no-cogrant";
+      EXPECT(failed, "the harness missed it");
+      std::printf("  %-24s %s\n", "control no-cogrant", failed ? "caught" : "MISSED");
+    }
+  }
+  g_config_hook = saved_hook;
 }
 
 // ---- TI-21: a stalled warp, the swap, and the hole it leaves ------------------------
@@ -5767,6 +5802,7 @@ int main(int argc, char **argv) {
     std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
   }
   testControls();
+  testCogrant();
   std::printf("ooe-test: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
   return g_fail ? 1 : 0;
 }

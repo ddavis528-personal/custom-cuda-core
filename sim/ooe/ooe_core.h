@@ -537,6 +537,7 @@ struct Config {
   bool inject_split_r_class = false;  ///< a collective and an RCU-only op go together at R (RA-29 (a))
   bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
+  bool inject_no_cogrant = false;     ///< the hop misses a co-granted dependant (OI-133)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
   bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
@@ -1699,7 +1700,7 @@ public:
     /// the entries it returned to Waiting; confirmation's inputs (issued and
     /// unconfirmed, the result final, a destination, the dependency bits)
     /// and the entries it confirmed. hop_live: a hop ran this cycle.
-    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, cf_iss, cf_fin, cf_prod, cf_dep;
+    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, hop_new, cf_iss, cf_fin, cf_prod, cf_dep;
     bool hop_live = false;
     /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
     /// in allocation order, and those freed; hfree: those freed by an L1

@@ -406,7 +406,7 @@ if out=$("$dir/confirm_tb" "$seeds" 2>&1); then
 else
   say "confirm == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-msd msd-pulse no-fin no-dep; do
+for c in no-msd msd-pulse no-fin no-dep no-new; do
   if CONFIRM_CONTROL=$c "$dir/confirm_tb" 3 >/dev/null 2>&1; then
     say "  control $c (confirm)" "MISSED"; fail=1
   else
