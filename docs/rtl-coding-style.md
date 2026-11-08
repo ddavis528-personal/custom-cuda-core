@@ -1132,11 +1132,24 @@ block top is RTL:
   buffer tree before its flops, not straight into one. An output is held
   by its shape (straight from a flop), without the term; the load past the
   crossing is the receiving block's input net, which counts it there.
+  A one-cell capture is straight in (AR's rev 326, re:RI-22 (3)): a port
+  bit that reaches nothing but flops' D pins, each flop's synchronous reset
+  the flopped reset (RST-1) and its enable, if any, from the module's own
+  flops (CG-5), counts at 0 NGD plus its own net's fanout term, though its
+  timed depth is the reset AND's 1.7. Any other gate on the bit is logic,
+  held as such.
 
 The flops are the interface module's boundary stage, built in the hardening
 wrapper (`ccv_common_rpt` `BOUNDARY`, default 1; Daniel, 2026-11-05), so the
 block's own paths run from them within the stage; at a no-flop end
 (`params/links.json` `no_flop`) they are the block's own registers at 0 NGD.
+A no-flop receiving end of the second kind (`no_flop_port_budget`; AR's rev
+326), zero-cycle for performance with logic before the block's first
+register (today `lane_rcu_res` at RCU, RA's rev 95 under DA 114), is held
+instead to the receiving block's input budget for each slot's valid and
+payload, from the wrapper's port at 0 through every level into a flop: 12
+NGD by default, or what the block's `<block>.ngd.json` gives the port. Its
+link takes no repeater stage, and its sender stays at 0 NGD.
 The 12-a-side port budget stays only between modules inside a block.
 
 **No hidden stage** (AR's rev 310, on TI rev 351): at a flopped end the

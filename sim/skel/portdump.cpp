@@ -119,8 +119,12 @@ void PortDump::build() {
         v.slot = k; v.at_src = at_src; v.shift = shift;
         Var &p = add(pre + "_payload", cd.bits, kFwdPayload);
         p.slot = k; p.at_src = at_src; p.shift = shift;
-        Var &c = add(pre + "_credit", 1, kBack);
-        c.slot = k; c.at_src = at_src; c.credit = true;
+        // A credit-on-receipt end's block has no credit port: the wrapper
+        // returns it (params/links.json; AR's rev 322).
+        if (at_src || !ci.cor) {
+          Var &c = add(pre + "_credit", 1, kBack);
+          c.slot = k; c.at_src = at_src; c.credit = true;
+        }
         Var &st = add(pre + "_stall", 1, kBack);
         st.slot = k; st.at_src = at_src;
       }

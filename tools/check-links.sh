@@ -83,16 +83,88 @@ PY
     refused=$((refused + 1))
   fi
 done <<'CASES'
-rcu is a DPI block, so its sending end of rcu_ooe_done|nf[1]["except"].append("rcu_ooe_done")
+rcu is a DPI block, so its sending end of rcu_ooe_done|nf[1]["channels"].remove("rcu_ooe_done")
 fet is a DPI block, so its sending end of|nf[0]["block"].remove("fet")
 says no why|nf[1].pop("why")
-has no end of channel 'fet_dec_instr'|nf[1]["except"].append("fet_dec_instr")
+has no end of channel 'fet_dec_instr'|nf[1]["channels"].append("fet_dec_instr")
+"except" goes only with channels "all"|nf[1]["except"] = ["ooe_rcu_map"]
+except: rcu has no end of channel 'fet_dec_instr'|nf[1]["channels"] = "all"; nf[1]["except"] = ["ooe_rcu_issue", "fet_dec_instr"]
 is already no_flop|nf.append({"block": "fet", "channels": ["fet_dec_instr"], "why": "x"})
 CASES
 if [ -z "$missed" ]; then
   say "links.json: malformed no_flop refused" "PASS ($refused cases, each by name)"
 else
   bad "links.json no_flop validator" "${missed# }"
+fi
+
+# credit_on_receipt (AR's rev 322, RA-41), on a copy of the design's own file
+# with one entry changed: each refused by name. On a zero-cycle end there is
+# no boundary flop to load the credit from; off its listed ends no schema
+# contract carries the receiving block's promise.
+refused=0; missed=""
+while IFS='|' read -r want edit; do
+  [ -z "$want" ] && continue
+  python3 - "$edit" >"$T/cor.json" <<'PY'
+import json, sys
+d = json.load(open("params/links.json"))
+exec(sys.argv[1], {"cor": d["credit_on_receipt"], "nf": d["no_flop"]})
+json.dump(d, sys.stdout)
+PY
+  if out=$(CCV_LINKS="$T/cor.json" python3 tools/gen-skel.py --check 2>&1); then
+    missed="$missed [accepted: $edit]"
+  elif ! grep -q -- "$want" <<<"$out"; then
+    missed="$missed [$want: $(grep -m1 -v problem <<<"$out" | xargs)]"
+  else
+    refused=$((refused + 1))
+  fi
+done <<'CASES'
+a zero-cycle end (no_flop)|cor.append({"end": "lane_rcu_res@rcu", "why": "x"})
+is not ooe_rcu_issue's destination|cor.append({"end": "ooe_rcu_issue@ooe", "why": "x"})
+not listed: ccv_ooe_rcu_map carries no credit_on_receipt contract|nf[1]["channels"].remove("ooe_rcu_map"); cor.append({"end": "ooe_rcu_map@rcu", "why": "x"})
+listed twice|cor.append(dict(cor[0]))
+says no why|cor[0].pop("why")
+an end is '<channel>@<block type>'|cor.append({"end": "ooe_rcu_issue", "why": "x"})
+unknown key|cor[0]["when"] = "x"
+CASES
+if [ -z "$missed" ]; then
+  say "links.json: credit_on_receipt off its ends refused" "PASS ($refused cases, each by name)"
+else
+  bad "links.json credit_on_receipt validator" "${missed# }"
+fi
+
+# no_flop_port_budget (AR's rev 326), on a copy of the design's own file with
+# one entry changed: each refused by name. Only a no-flop receiving end whose
+# link takes no stage is held to its port budget; a flopped end's logic is
+# behind the wrapper's flop, and a sending end stays at 0 NGD.
+refused=0; missed=""
+while IFS='|' read -r want edit; do
+  [ -z "$want" ] && continue
+  python3 - "$edit" >"$T/pb.json" <<'PY'
+import json, sys
+d = json.load(open("params/links.json"))
+exec(sys.argv[1], {"pb": d["no_flop_port_budget"], "nf": d["no_flop"], "lk": d["links"]})
+json.dump(d, sys.stdout)
+PY
+  if out=$(CCV_LINKS="$T/pb.json" python3 tools/gen-skel.py --check 2>&1); then
+    missed="$missed [accepted: $edit]"
+  elif ! grep -q -- "$want" <<<"$out"; then
+    missed="$missed [$want: $(grep -m1 -v problem <<<"$out" | xargs)]"
+  else
+    refused=$((refused + 1))
+  fi
+done <<'CASES'
+a flopped end (not no_flop)|pb.append({"end": "ooe_rcu_issue@rcu", "why": "x"})
+is not lane_rcu_res's destination|pb.append({"end": "lane_rcu_res@lane", "why": "x"})
+an end is '<channel>@<block type>'|pb.append({"end": "nosuch_chan@rcu", "why": "x"})
+its link takes a repeater stage|lk.append({"channel": "lane_rcu_res", "route": "src:1 > dst:0"})
+listed twice|pb.append(dict(pb[0]))
+says no why|pb[0].pop("why")
+unknown key|pb[0]["when"] = "x"
+CASES
+if [ -z "$missed" ]; then
+  say "links.json: no_flop_port_budget off its ends refused" "PASS ($refused cases, each by name)"
+else
+  bad "links.json no_flop_port_budget validator" "${missed# }"
 fi
 
 # -- 2. a busy split, end to end -------------------------------------------------

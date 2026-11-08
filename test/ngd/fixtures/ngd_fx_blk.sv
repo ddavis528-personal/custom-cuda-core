@@ -268,6 +268,8 @@ endmodule
 //   ngd_fx_hwrp_mix  one payload bit of each through a gate: the port is the
 //                    block's logic, timed to its budget, so it passes even
 //                    with its other bits straight (held tags)
+//   ngd_fx_hwrp_c0   ngd_fx_hwrp_reg's registers on per-slot ports, c_c0 and
+//                    r_c0 (a slotted channel's _c<n>): refused the same way
 module ngd_fx_hblk_reg (
   input  logic       clk,
   input  logic       r_valid,
@@ -326,4 +328,107 @@ module ngd_fx_hwrp_mix (
     c_valid <= cv;  c_payload <= cp;
   end
   ngd_fx_hblk_mix u_blk (.clk(clk), .r_valid(rv), .r_payload(rp), .c_valid(cv), .c_payload(cp));
+endmodule
+
+module ngd_fx_hblk_c0 (
+  input  logic       clk,
+  input  logic       r_c0_valid,
+  input  logic [3:0] r_c0_payload,
+  output logic       c_c0_valid,
+  output logic [3:0] c_c0_payload
+);
+  always_ff @(posedge clk) begin
+    c_c0_valid   <= r_c0_valid;
+    c_c0_payload <= r_c0_payload;
+  end
+endmodule
+
+module ngd_fx_hwrp_c0 (
+  input  logic       clk,
+  input  logic       r_c0_valid,
+  input  logic [3:0] r_c0_payload,
+  output logic       c_c0_valid,
+  output logic [3:0] c_c0_payload
+);
+  logic       rv, cv;
+  logic [3:0] rp, cp;
+  always_ff @(posedge clk) begin
+    rv <= r_c0_valid;  rp <= r_c0_payload;
+    c_c0_valid <= cv;  c_c0_payload <= cp;
+  end
+  ngd_fx_hblk_c0 u_blk (.clk(clk), .r_c0_valid(rv), .r_c0_payload(rp),
+                        .c_c0_valid(cv), .c_c0_payload(cp));
+endmodule
+
+// The one-cell capture (AR's rev 326, re:RI-22 (3)): a block input wired to a
+// child whose flop takes it under the flop's own synchronous reset (an AND
+// with the flopped reset, RST-1) or its own enable from the child's flops
+// (CG-5) is straight into that flop. One gate more is logic.
+//   MODE 0  reset: if (!rst_q) q <= 0; else q <= a                 straight
+//   MODE 1  reset and an own-flop enable                            straight
+//   MODE 2  reset, and a & k_q: one gate more                       refused
+//   MODE 3  the reset port itself, not flopped (RST-1)              refused
+//   MODE 4  an enable from input b, not the child's flops (CG-5)    refused
+module ngd_fx_cap #(parameter int MODE = 0) (
+  input  logic clk,
+  input  logic rst_n,
+  input  logic a,
+  input  logic b,
+  output logic q,
+  output logic k
+);
+  logic rst_q, en_q;
+  always_ff @(posedge clk) rst_q <= rst_n;
+  always_ff @(posedge clk) begin
+    if (!rst_q) begin
+      en_q <= 1'b0;
+      k    <= 1'b0;
+    end else begin
+      en_q <= ~en_q;
+      k    <= b;
+    end
+  end
+  if (MODE == 0) begin : g_rst
+    always_ff @(posedge clk) if (!rst_q) q <= 1'b0; else q <= a;
+  end else if (MODE == 1) begin : g_en
+    always_ff @(posedge clk) if (!rst_q) q <= 1'b0; else if (en_q) q <= a;
+  end else if (MODE == 2) begin : g_gate
+    always_ff @(posedge clk) if (!rst_q) q <= 1'b0; else q <= a & k;
+  end else if (MODE == 3) begin : g_raw
+    always_ff @(posedge clk) if (!rst_n) q <= 1'b0; else q <= a;
+  end else begin : g_inen
+    always_ff @(posedge clk) if (!rst_q) q <= 1'b0; else if (b) q <= a;
+  end
+endmodule
+
+module ngd_fx_blk_cap #(parameter int MODE = 0) (
+  input  logic clk,
+  input  logic rst_n,
+  input  logic i,
+  input  logic j,
+  output logic o,
+  output logic p
+);
+  ngd_fx_cap #(.MODE(MODE)) u_cap (.clk(clk), .rst_n(rst_n), .a(i), .b(j), .q(o), .k(p));
+endmodule
+
+// A zero-cycle end of the second kind (params/links.json no_flop_port_budget;
+// AR's rev 326): the wrapper wires r_payload straight to the block, whose
+// child takes it through logic (a W-bit multiply) before its flop. Held to
+// the block's input budget for the port, 12 by default, instead of straight
+// in: W = 2 within it, W = 8 over it; unlisted, held straight in.
+module ngd_fx_zblk #(parameter int W = 2) (
+  input  logic           clk,
+  input  logic [2*W-1:0] r_payload,
+  output logic [2*W-1:0] q
+);
+  ngd_fx_dst #(.W(W)) u_dst (.clk(clk), .a(r_payload), .q(q));
+endmodule
+
+module ngd_fx_zwrp #(parameter int W = 2) (
+  input  logic           clk,
+  input  logic [2*W-1:0] r_payload,
+  output logic [2*W-1:0] q
+);
+  ngd_fx_zblk #(.W(W)) u_blk (.clk(clk), .r_payload(r_payload), .q(q));
 endmodule

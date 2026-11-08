@@ -151,8 +151,11 @@ enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
 // at retire (TI-40).
 // kAtomic: a Format M read-modify-write (O-72; IS-21, AR-21): two decode
 // slots, a pair, which OOE splits into A1 (read), A2 (lane op), A3 (write).
+// kNop: a hint with no architectural effect (C_RECONV, reconv.hint; RA-16
+// (f), OA's rev 393), serial 5: OOE completes it at rename, and it runs
+// nowhere.
 enum UopClass : uint8_t { kAlu, kLoad, kStore, kBranch, kExit, kPredLogic, kImm,
-                          kFence, kBarArrive, kBarWait, kAtomic };
+                          kFence, kBarArrive, kBarWait, kAtomic, kNop };
 struct OpInfo {
   const char *name;
   UopClass cls;
@@ -228,7 +231,9 @@ inline bool execRcu(const OpInfo *op) { return inRcu(op->cls) || op->cross; }
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatRcu = 0, kLatLane = 1, kLatL1 = 2, kLatCompletion = 3,
                   kLatSfu = 4, kLatCollective = 5 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+// serial 5, no-op: complete at rename (C_RECONV; RA-16 (f), OA's rev 393).
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4,
+                  kSerNop = 5 };
 // Above bypass_group (CCV_P_W_SCHED_ATTR 21): the CAS pair's first and second
 // slots (17, 18; TI-39, OA's rev 189), ret (19: OOE takes its target from
 // ccv_rcu_ooe_done.aux and sets stay; AR-24 (b)), and commit_width
@@ -262,13 +267,16 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
                       : op->cls == kAtomic ? kMemKAtomic : kMemKLoad;
   const bool ctl = op->cls == kExit || isBarrier(op);
   const unsigned ser = op->cls == kExit ? kSerExit : op->cls == kBarWait ? kSerBarrier
-                     : op->cls == kBarArrive ? kSerArrive : op->chw ? kSerChwidth : kSerNone;
+                     : op->cls == kBarArrive ? kSerArrive : op->cls == kNop ? kSerNop
+                     : op->chw ? kSerChwidth : kSerNone;
   // A cross-lane op (shfl) is RCU's but warp-collective: lat_class 5 at
   // CCV_LAT_COLLECTIVE (Daniel's responses OA-4; AR's rev 259, TI's rev
   // 274). RCU may finish it sooner, which V-35 allows; its dependants wake
   // at 5.
   // An atomic wakes its dependants on its last write's completion (A-46).
-  const unsigned lat = op->cls == kLoad ? kLatL1
+  // A no-op (serial 5) sets no other bit: lat_class 0 (RA-16 (f)).
+  const unsigned lat = op->cls == kNop ? kLatRcu
+                     : op->cls == kLoad ? kLatL1
                      : op->cls == kStore || op->cls == kFence || op->cls == kAtomic ? kLatCompletion
                      : op->cross ? kLatCollective
                      : execRcu(op) || ctl ? kLatRcu : kLatLane;
@@ -308,6 +316,7 @@ inline bool attrMem(uint32_t a) { return (a >> 13) & 1u; }
 inline unsigned attrMemKind(uint32_t a) { return (a >> 7) & 3u; }
 inline bool attrBranch(uint32_t a) { return (a >> 6) & 1u; }
 inline unsigned attrBypGroup(uint32_t a) { return (a >> 14) & 7u; }
+inline unsigned attrSerial(uint32_t a) { return (a >> 3) & 7u; }
 /// A per-lane input: a GPR source, or the lane's own index.
 inline bool perLaneInput(const OpInfo *op, const Record &r) {
   return !r.gprUses().empty() || op->srd_sel >= 0 || op->chw;
@@ -509,6 +518,13 @@ inline constexpr OpInfo kOps[] = {
   {"ATOM_EXCH_S",  kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"ATOM_ADD_F_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
   {"ATOM_ADD_F_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  // CAS (Format M', 48 bits; O-72, O-73): rd the old word, pd the success
+  // predicate, under the pred qualifier; sources rbase, rindex, rs_cmp,
+  // rs_swap (srcRegs reads them from the encoding); imms [scale-enable,
+  // displacement]. A pair like the RMW forms (TI-39), the second slot
+  // carrying rs_cmp, rs_swap, rd and pd (OI-127, OA rev 380).
+  {"CAS_G",        kAtomic,    4, true,  true,  true,  true,  false,  0,  1, -1,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"CAS_S",        kAtomic,    4, true,  true,  true,  true,  false,  0,  1, -1,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"ST_SHARED",     kStore,     2, false, false, false, false, false,  1, -1,  0,  0, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"LD_SHARED_IDX", kLoad,      2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"ST_SHARED_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
@@ -533,6 +549,12 @@ inline constexpr OpInfo kOps[] = {
   {"RCP_U32",       kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
   {"RSQRT_F32",     kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
   {"RCP_F32_P",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
+  // pxor (ISA v1.9 Format K, opcode 62; RA-16 (f)): PAND's row, RCU-only on R, appended so no opcode moves.
+  {"PXOR",          kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  // reconv.hint (C_RECONV, FormatKraw 55; RA-16 (f), OA's rev 393): a hint,
+  // serial 5 and every other sched_attr bit 0; its 8-bit payload is ignored.
+  // Appended so no opcode moves.
+  {"C_RECONV",      kNop,       0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
@@ -582,7 +604,17 @@ constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
 inline constexpr OpInfo kAtomA1 = {"ATOM.A1", kLoad,  2, true,  false, false, false, false,  0,  1, -1, -1, -1, -1, -1};
 inline constexpr OpInfo kAtomA2 = {"ATOM.A2", kAlu,   2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1};
 inline constexpr OpInfo kAtomA3 = {"ATOM.A3", kStore, 1, false, false, false, false, false, -1, -1,  0, -1, -1, -1, -1};
-inline const OpInfo *atomStep(unsigned row) {
+/// A CAS (OI-127, OA rev 380): its steps are guarded by its qualifier, and
+/// A2 reads T, rs_cmp and rs_swap, and writes N and pd, merging pd's
+/// inactive lanes from its old name (A-43).
+inline constexpr OpInfo kCasA1 = {"CAS.A1", kLoad,  2, true,  true,  false, true,  false,  0,  1, -1, -1, -1, -1, -1};
+inline constexpr OpInfo kCasA2 = {"CAS.A2", kAlu,   3, true,  true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1};
+inline constexpr OpInfo kCasA3 = {"CAS.A3", kStore, 1, false, true,  false, true,  false, -1, -1,  0, -1, -1, -1, -1};
+/// A Format M compare-and-swap (CAS_G, CAS_S).
+inline bool isCas(const OpInfo *op) { return op && !std::strncmp(op->name, "CAS_", 4); }
+/// The step's shape; `op`, the atomic's own row, picks a CAS's.
+inline const OpInfo *atomStep(unsigned row, const OpInfo *op = nullptr) {
+  if (isCas(op)) return row == 0 ? &kCasA1 : row == 2 ? &kCasA2 : row == 3 ? &kCasA3 : nullptr;
   return row == 0 ? &kAtomA1 : row == 2 ? &kAtomA2 : row == 3 ? &kAtomA3 : nullptr;
 }
 static_assert(kOpCopy > kNumOps, "the copy-only op's code collides with the table");
@@ -627,6 +659,12 @@ inline std::vector<unsigned> srcRegs(const OpInfo *op, const Record &r, unsigned
     // named (an atomic on .shared with rbase = rindex = R0).
     uint32_t w = 0;
     for (unsigned b = 0; b != 4 && b < r.bytes.size(); ++b) w |= uint32_t(r.bytes[b]) << (8 * b);
+    // CAS (Format M', 48 bits): rs_cmp [22:19], rs_swap [26:23], rindex
+    // [35:32]: {rbase, rindex, rs_cmp, rs_swap}.
+    if (isCas(op)) {
+      ok = r.bytes.size() >= 6;
+      return {(w >> 15) & 15u, ok ? r.bytes[4] & 15u : 0u, (w >> 19) & 15u, (w >> 23) & 15u};
+    }
     ok = r.bytes.size() >= 4;
     return {(w >> 15) & 15u, (w >> 23) & 15u, (w >> 19) & 15u};
   }
@@ -930,6 +968,19 @@ enum : unsigned { kPoolDone = ~0u, kRcuOnlyDone = ~0u - 1 };
 /// The class that completes on CCV_DONE_SLOT_RCU: what RCU executes alone at
 /// CCV_LAT_RCU (a cross-lane op is RCU's too, but warp-collective).
 inline bool rcuOnlyDone(const OpInfo *op) { return inRcu(op->cls) || isBarrier(op); }
+/// R's GPR write (RA-16 (a), RA-29 (a); AR's rev 265): one write port, RW,
+/// for every class R executes, because each writes at A+2: the RCU-only
+/// class (movi, call's link) at CCV_LAT_RCU - 1, and the collectives early,
+/// at the same cycle, though their dependants wake at CCV_LAT_COLLECTIVE
+/// (V-35 allows it). params' pipe list counts RW once for both
+/// (CCV_PRF_GPR_WRITE_PORTS), which holds only while this does. `coll_late`
+/// is the control: collectives write at A + CCV_LAT_COLLECTIVE - 1 instead,
+/// which the RCU stub must refuse.
+constexpr unsigned kRWriteAt = ccv::prov::kLatRcu - 1;
+static_assert(kRWriteAt == 2, "R writes at A+2 (RA-29 (a))");
+inline unsigned rWriteAt(const OpInfo *op, bool coll_late) {
+  return op->cross && coll_late ? ccv::prov::kLatCollective - 1 : kRWriteAt;
+}
 
 /// OOE's implementation behind the swap boundary: the S1 stub (ooe.cpp).
 std::unique_ptr<Block> makeOoe(int inst, Kernel &k);
