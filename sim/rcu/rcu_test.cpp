@@ -469,6 +469,92 @@ void testNarrowWrite() {
   }
 }
 
+/// SW (A + CCV_LAT_SFU - 1) writes sfu_result, never result, which is LW's
+/// (RA rev 120). An SFU op issued kSfuW - kLaneW cycles before a lane op
+/// lands in the same cycle on every lane: SW takes sfu_result into its row,
+/// LW result into its own. Controls: sw-from-result feeds SW from result,
+/// and an SFU op due with no sfu_valid is refused.
+void testSfuWrite() {
+  for (int mode = 0; mode != 3; ++mode) {   // 0 clean, 1 sw-from-result, 2 no sfu_valid
+    g_test = mode == 0 ? "sfu-write" : mode == 1 ? "sfu-write:sw-from-result" : "sfu-write:no-sfu-valid";
+    Env e(mode == 1 ? "sw-from-result" : "");
+    e.t = 40;
+    const uint64_t a = 40, w = a + kSfuW, b = w - kLaneW;
+    Issue sf = laneOp(9, 3, 4, 2);
+    sf.oc.unit = Unit::Sfu;
+    for (uint64_t c = a; c != w + 1; ++c) {
+      In x = Env::idleIn();
+      if (c == a) placeLane(x, sf);
+      if (c == b) placeLane(x, laneOp(10, 5, 6, 3));
+      if (c == w) {
+        LaneRes r = laneRes(0xabcd0000u);
+        r.sfu_result.fill(0x12345678u);
+        if (mode != 2) r.sfu_valid.fill(1);
+        x.lres = r;
+      }
+      e.step(x);
+    }
+    if (mode == 0) {
+      EXPECT(e.gpr[9][0] == 0x12345678u && e.gpr[9][31] == 0x12345678u, "SW wrote %08x, not sfu_result",
+             e.gpr[9][0]);
+      EXPECT(e.gpr[10][0] == 0xabcd0000u && e.gpr[10][31] == 0xabcd0000u, "LW wrote %08x beside SW",
+             e.gpr[10][0]);
+      EXPECT(e.first(Ev::GprWrite, 9) == long(w) && e.first(Ev::GprWrite, 10) == long(w),
+             "SW at %ld, LW at %ld, not both %llu", e.first(Ev::GprWrite, 9), e.first(Ev::GprWrite, 10),
+             (unsigned long long)w);
+      EXPECT(e.fails.empty(), "%s", e.fails.empty() ? "" : e.fails[0].c_str());
+    } else if (mode == 1) {
+      CONTROL("sw-from-result", e.gpr[9][0] != 0x12345678u, "SW took sfu_result under sw-from-result");
+    } else {
+      CONTROL("sfu-valid-missing", e.failed("no sfu_valid"), "an SFU op due with no sfu_valid passed");
+    }
+  }
+}
+
+/// A narrow SFU op (RA rev 124, OA-15): the lane sends sfu_result already
+/// steered, like result, and RCU writes it as it comes. A 16-bit op at
+/// position 2 writes bytes 2-3 only (FULL_ROW 0); under FULL_ROW a 16-bit op
+/// at position 0 writes the whole row, the lane's zeros above the width
+/// with it. Controls: sw-resteer steers sfu_result a second time; under
+/// FULL_ROW, bits outside the element are refused.
+void testSfuNarrow() {
+  for (int mode = 0; mode != 4; ++mode) {   // 0 pos 2, 1 full-row pos 0, 2 sw-resteer, 3 dirty above width
+    const bool fr = mode == 1 || mode == 3;
+    g_test = mode == 0 ? "sfu-narrow" : mode == 1 ? "sfu-narrow:full-row" : mode == 2 ? "sfu-narrow:sw-resteer"
+                                                                                       : "sfu-narrow:dirty";
+    Env e(mode == 2 ? "sw-resteer" : "", fr);
+    e.t = 40;
+    const unsigned pos = fr ? 0 : 2;
+    const uint32_t before = e.gpr[9][0], sres = fr ? (mode == 3 ? 0x0001beefu : 0x0000beefu) : 0xbeef0000u;
+    const uint64_t a = 40, w = a + kSfuW;
+    Issue sf = laneOp(9, 3, 4, 2);
+    sf.oc.unit = Unit::Sfu;
+    sf.dst_w = 1;
+    sf.dst_pos = pos;
+    for (uint64_t c = a; c != w + 1; ++c) {
+      In x = Env::idleIn();
+      if (c == a) placeLane(x, sf);
+      if (c == w) {
+        LaneRes r = laneRes(0);
+        r.sec_valid.fill(0);   // no lane op due: SW alone
+        r.sfu_result.fill(sres);
+        r.sfu_valid.fill(1);
+        x.lres = r;
+      }
+      e.step(x);
+    }
+    const uint32_t want = fr ? sres : (before & 0x0000ffffu) | sres;
+    if (mode < 2) {
+      EXPECT(e.gpr[9][0] == want && e.gpr[9][31] == want, "row %08x, not %08x", e.gpr[9][0], want);
+      EXPECT(e.fails.empty(), "%s", e.fails.empty() ? "" : e.fails[0].c_str());
+    } else if (mode == 2) {
+      CONTROL("sw-resteer", e.gpr[9][0] != want, "SW wrote %08x, steered twice", e.gpr[9][0]);
+    } else {
+      CONTROL("sfu-dirty-above-width", e.failed("outside its"), "bits above the width passed under FULL_ROW");
+    }
+  }
+}
+
 /// Idle: nothing in flight is idle; an op keeps it busy until its write.
 void testIdle() {
   g_test = "idle";
@@ -500,6 +586,8 @@ int main(int argc, char **argv) {
   testMigration("mig-row-order");
   testRestoreZero();
   testNarrowWrite();
+  testSfuWrite();
+  testSfuNarrow();
   testIdle();
   std::printf("rcu-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
   return g_fail ? 1 : 0;
