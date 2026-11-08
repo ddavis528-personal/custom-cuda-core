@@ -4491,11 +4491,6 @@ void testControls() {
   }
 }
 
-/// OI-133 (OA-17 at L1_WAKE 16): a producer cancelled and granted again at
-/// the same edge as a dependant granted on the ready bit its first issue
-/// woke. The hop must return the dependant (its stale grant) and the
-/// OA-17 check must not fire; without the co-grant term (the control) it
-/// confirms on a stale ready bit. The two random cases that found it.
 /// C_RECONV (serial 5; OA rev 393, RA-16) joins exit's no-op path: a ROB
 /// entry complete at allocation, no RS entry, no rename, never issued,
 /// retired in order. The control treats it as a real op: it issues.
@@ -4530,11 +4525,23 @@ void testReconv() {
   }
 }
 
+/// OI-133 (OA-17 at L1_WAKE 16): a producer cancelled and granted again at
+/// the same edge as a dependant granted on the ready bit its first issue
+/// woke. The hop must return the dependant (its stale grant) and the
+/// OA-17 check must not fire; without the co-grant term (the control) it
+/// confirms on a stale ready bit. The two random cases that found it, at
+/// the latencies that found them: L1_WAKE 16 and L1_CMPL 19, pinned here so
+/// a later L1_CMPL (RA-43's 18 moves both off the co-grant edge) cannot
+/// retire the control silently.
 void testCogrant() {
   const char *cases[] = {"random seed 6 mode 6", "random seed 19 mode 7"};
   static bool no_cogrant;
   void (*const saved_hook)(Config &) = g_config_hook;
-  g_config_hook = [](Config &c) { c.lat_l1_wake = 16; c.inject_no_cogrant = no_cogrant; };
+  g_config_hook = [](Config &c) {
+    c.lat_l1_wake = 16;
+    c.lat_l1_cmpl = 19;
+    c.inject_no_cogrant = no_cogrant;
+  };
   for (const bool control : {false, true}) {
     no_cogrant = control;
     const int saved = g_fail;

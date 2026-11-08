@@ -661,7 +661,7 @@ module ccv_ooe_w #(
   end
   // ccv_ooe_rcu_issue, source end, no-flop (params/links.json no_flop)
   if (RPT_OOE_RCU_ISSUE > 0) begin : g_rpt_ooe_rcu_issue
-    ccv_common_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .BOUNDARY(0), .SLOTS(9), .PAYLOAD_W(192), .LEAD_MASK(192'hffff)) u_rpt_ooe_rcu_issue (
+    ccv_common_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .BOUNDARY(0), .SLOTS(9), .PAYLOAD_W(290), .LEAD_MASK(290'hffffffffffffffffffffffffffffff)) u_rpt_ooe_rcu_issue (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_ooe_rcu_issue_s8_valid, b_ooe_rcu_issue_s7_valid, b_ooe_rcu_issue_s6_valid, b_ooe_rcu_issue_s5_valid, b_ooe_rcu_issue_s4_valid, b_ooe_rcu_issue_s3_valid, b_ooe_rcu_issue_s2_valid, b_ooe_rcu_issue_s1_valid, b_ooe_rcu_issue_s0_valid}), .src_payload({b_ooe_rcu_issue_s8_payload, b_ooe_rcu_issue_s7_payload, b_ooe_rcu_issue_s6_payload, b_ooe_rcu_issue_s5_payload, b_ooe_rcu_issue_s4_payload, b_ooe_rcu_issue_s3_payload, b_ooe_rcu_issue_s2_payload, b_ooe_rcu_issue_s1_payload, b_ooe_rcu_issue_s0_payload}),
       .src_wake(b_ooe_rcu_issue_wake), .src_credit({b_ooe_rcu_issue_s8_credit, b_ooe_rcu_issue_s7_credit, b_ooe_rcu_issue_s6_credit, b_ooe_rcu_issue_s5_credit, b_ooe_rcu_issue_s4_credit, b_ooe_rcu_issue_s3_credit, b_ooe_rcu_issue_s2_credit, b_ooe_rcu_issue_s1_credit, b_ooe_rcu_issue_s0_credit}), .src_stall({b_ooe_rcu_issue_s8_stall, b_ooe_rcu_issue_s7_stall, b_ooe_rcu_issue_s6_stall, b_ooe_rcu_issue_s5_stall, b_ooe_rcu_issue_s4_stall, b_ooe_rcu_issue_s3_stall, b_ooe_rcu_issue_s2_stall, b_ooe_rcu_issue_s1_stall, b_ooe_rcu_issue_s0_stall}),

@@ -318,8 +318,8 @@ void Core::checkIssues(const In &in, std::array<int, kRes> &owner) {
                       : (oc.reads & ~is.lead.src) ? "a source its lead says is unused"
                       : oc.imm_used && !is.lead.imm ? "an immediate its lead says is unused"
                       : is.merge && !is.lead.merge ? "a merge its lead says is unused"
-                      : s == kSlotR && oc.guarded && (!is.lead.guard || is.lead.gpred != is.pguard)
-                          ? "a guard its lead does not name"
+                      : (oc.guarded || oc.pdata) && !is.lead.guard && !(is.pguard == kPZero && is.pneg)
+                          ? "a predicate its lead says is unused"
                       : nullptr;
     if (why)
       fail("seq %llu, %s, reads %s (lead sections %s, sources %s)", seq(s), is.name, why,
@@ -393,7 +393,8 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
         const uint32_t v = rdPred(p);
         return (q >> w) & 1u ? ~v : v;
       };
-      if (oc.rk == RKind::Pand || oc.rk == RKind::Por || oc.rk == RKind::Pxor || oc.rk == RKind::VoteAny ||
+      if (oc.rk == RKind::Pand || oc.rk == RKind::Por || oc.rk == RKind::Pxor || oc.rk == RKind::Pmov ||
+          oc.rk == RKind::VoteAny ||
           oc.rk == RKind::VoteAll || oc.rk == RKind::Ballot) {
         x.rpa = psrc(is.imm);
         x.rpb = psrc(is.imm >> (w + 1));
@@ -750,6 +751,9 @@ void Core::issueR(uint64_t t, const Issue &is, uint32_t active, const Word &r0, 
   case RKind::Pand: pw = true; pval = rpa & rpb; break;
   case RKind::Por: pw = true; pval = rpa | rpb; break;
   case RKind::Pxor: pw = true; pval = rpa ^ rpb; break;
+  // register pmov (OA's rev 396): pd = ps0 under its negate; ps1 repeats it
+  // and is not read. pmov-negate inverts ps0's negate.
+  case RKind::Pmov: pw = true; pval = cfg_.brk == "pmov-negate" ? ~rpa : rpa; break;
   case RKind::PmovImm:   // merged by the issue mask (RA-19); pmov-all-lanes writes all 32
     pw = true;
     pval = is.imm;
