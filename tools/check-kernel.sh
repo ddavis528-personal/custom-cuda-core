@@ -165,6 +165,9 @@
 #   serial 5 is C_RECONV's no-op, complete  nop-real-op (vadd, model OOE):
 #     at rename (RA-16 (f), OA rev 393)        the add never runs; MIU
 #                                                refuses its stored sum
+#   register pmov is predicate logic on R,  pmov-negate (predlane's copy as
+#     pd = ps0 under its negate (OA 396)       pmov, both RCUs): RCU refuses
+#                                                its own P1 at seq 7
 #   an atomic is a decode pair, and runs    atom-one-slot: OOE refuses each
 #     in passes, one lane an address in        one-slot atomic (OI-80);
 #     ascending order, until MIU says no       atom-one-pass: a lane reads the
@@ -1646,6 +1649,28 @@ for impl in model stub; do
     say "--break nop-real-op ($impl RCU): serial 5 never runs" "PASS ($(field "$log" check_failures) checks)"
   else
     bad "--break nop-real-op ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
+  fi
+done
+# Register pmov (Format K 63; OA's rev 396): predicate logic on R, pd = ps0
+# under its negate, merged on the issue mask. The pinned compiler emits none
+# (its predicate copy is por pd, ps, ps), so CCV_DEC_POR_COPY_AS_PMOV=1 has
+# DEC decode predlane's copy (seq 7, por P1, P0, P0 under lanes 16-31) as
+# pmov: the run must still be ccv-sim's, and with pmov-negate RCU inverts
+# ps0's negate and refuses its own P1, on RI's RCU and on the stub.
+for impl in model stub; do
+  log="$B/kernel_pmov-copy-$impl.log"
+  CCV_DEC_POR_COPY_AS_PMOV=1 CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/predlane/oracle.jsonl >"$log" 2>&1
+  if [ "$(field "$log" finished)" = 1 ] && [ "$(field "$log" check_failures)" = 0 ]; then
+    say "predlane's copy as register pmov ($impl RCU) == ccv-sim" "PASS"
+  else
+    bad "predlane's copy as register pmov ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
+  fi
+  log="$B/kernel_pmov-negate-$impl.log"
+  CCV_DEC_POR_COPY_AS_PMOV=1 CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break pmov-negate >"$log" 2>&1
+  if grep -m1 '^CHECK' "$log" | grep -q "^CHECK rcu: seq 7 P1 = ffffffff, oracle 0000ffff$"; then
+    say "--break pmov-negate ($impl RCU): pmov's negate inverted" "PASS ($(field "$log" check_failures) checks)"
+  else
+    bad "--break pmov-negate ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
   fi
 done
 # The RCU selector (RI-8, RA-38 (a)): RI's model is the default behind the

@@ -92,7 +92,7 @@ inline uint32_t byteMask(unsigned secs) {
 
 /// What executes it (the op-class decode, Pipeline tab).
 enum class Unit : uint8_t { Lane, Sfu, Mem, ROnly, Coll, Copy, PredCopy };
-enum class RKind : uint8_t { None, Bra, Call, Ret, Pand, Por, Pxor, PmovImm, Movi, ShflIdxImm,
+enum class RKind : uint8_t { None, Bra, Call, Ret, Pand, Por, Pxor, Pmov, PmovImm, Movi, ShflIdxImm,
                              ShflIdxReg, ShflUp, ShflDown, ShflBfly, VoteAny, VoteAll, Ballot,
                              Unballot };
 enum class MemKind : uint8_t { None, Load, Store, PredLoad, PredStore, Fence };

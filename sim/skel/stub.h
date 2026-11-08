@@ -555,6 +555,11 @@ inline constexpr OpInfo kOps[] = {
   // serial 5 and every other sched_attr bit 0; its 8-bit payload is ignored.
   // Appended so no opcode moves.
   {"C_RECONV",      kNop,       0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  // register pmov (Format K 63; OA's rev 396): predicate logic on R, pd =
+  // ps0 under its negate, merged on the issue mask; DEC sends ps0 as both
+  // sources, so OOE renames it as por pd, ps0, ps0. Executed, never elided.
+  // Appended so no opcode moves.
+  {"PMOV",          kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;

@@ -3538,6 +3538,9 @@ private:
       if (!std::strcmp(op->name, "POR")) v = a | b;
       else if (!std::strcmp(op->name, "PAND")) v = a & b;
       else if (!std::strcmp(op->name, "PXOR")) v = a ^ b;
+      // pmov: pd = ps0 under its negate; ps1 repeats it and is not read.
+      // pmov-negate: RCU inverts ps0's negate, so pd is the complement.
+      else if (!std::strcmp(op->name, "PMOV")) v = k_.brk == "pmov-negate" ? ~a : a;
       else k_.fail("rcu: predicate op %s has no semantics here", op->name);
       if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
       k_.pred[ppd] = ((merge ? k_.pred[ppold] : 0u) & ~issue) | (v & issue);
@@ -3813,6 +3816,17 @@ private:
     // Decode itself is the oracle's: which registers the instruction reads
     // and writes. The table checks the record has the shape the uop can hold.
     const OpInfo *op = opByName(r->op);
+    // CCV_DEC_POR_COPY_AS_PMOV=1: DEC decodes a copy, por pd, ps, ps (the
+    // pinned compiler's predicate copy, O-20), as register pmov pd, ps, the
+    // form OA's rev 396 has RCU execute; no kernel at the pin emits pmov.
+    // A run mode, not a control: the result must still be ccv-sim's.
+    static const bool por_copy_as_pmov = [] {
+      const char *v = std::getenv("CCV_DEC_POR_COPY_AS_PMOV");
+      return v && std::string(v) == "1";
+    }();
+    if (por_copy_as_pmov && op && !std::strcmp(op->name, "POR") && r->quals.size() >= 2 &&
+        r->quals[0] == r->quals[1])
+      op = opByName("PMOV");
     // DEC's second illegal-instruction obligation, separate from the
     // reserved-field zero checks: srd's selector is a legal field that may
     // hold an unallocated value, so this is a range comparison. Selectors 2,
@@ -3977,6 +3991,8 @@ private:
       // qualifiers ride in imm: [2:0] ps0, [5:3] ps1.
       if (r->quals.size() < 2) k_.fail("dec: seq %llu predicate logic without two sources",
                                        (unsigned long long)r->seq);
+      else if (!std::strcmp(op->name, "PMOV"))   // ps1 = ps0 (OA's rev 396)
+        imm = (r->quals[0] & 7) | ((r->quals[0] & 7) << 3);
       else imm = (r->quals[0] & 7) | ((r->quals[1] & 7) << 3);
     } else if (isBarrier(op)) {
       // bar.arrive and bar.wait: the barrier id, OOE's to report (TI-40).
