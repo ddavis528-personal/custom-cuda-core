@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=10 exported=2026-11-07 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 10 on 2026-11-07 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=10 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 10 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Migration
 
