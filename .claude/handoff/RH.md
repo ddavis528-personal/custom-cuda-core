@@ -50,12 +50,27 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- TI's J6-J8 on f4ce0fd (TI's Z tip; DA: TI's pending perf runs go to RH).
-  Worktree /home/user/rh-tip. J6 = rh-jobs/j6.sh 192 160 128 (PHYS_REGS, as
-  J1; log ~/ccv-logs/j6). J7+J8 = rh-jobs/j78.sh, which waits for j6 (log
-  ~/ccv-logs/j78): J2's set plus J4's 512 KiB, cold runs capped at 3x warm;
-  vadd16 rel-* with full_rows=1; coremarkpl128 (adds an 8 GB swap2, so watch the
-  disk). One table per job to TI, each beside the J1-J4 numbers.
+- None. Idle since 2026-11-08 00:00Z.
+- J10 DONE and sent (AR revs 319/320). de03fd6 + TI's MIU-stub patch
+  (rh-jobs/j10/miu.patch, fixed hunk) + ba39e6a (CCV_RCU_STATS), never pushed.
+  Points w9'/w10'/g1'/g2' x DCU 1 way / 8x64 x CCV_MIU_MULTI; S1, cm32 and
+  cm128 at w10'; pl32/pl128 model reruns clean (14,297,482 / 23,612,557).
+  Logs ~/ccv-logs/j10, scripts rh-jobs/j10 (j10b.sh, j10table.py). Worktrees and
+  swap removed. J9 traces dropped (TI: AR no longer needs them).
+- J9 DONE and sent: vadd16_loop's step is 2a7f125 (lane_rcu_res zero-cycle),
+  an L1 set conflict on the 64x1 default DCU (three arrays in 64 KiB windows 3,
+  4 and 5). Scripts rh-jobs/j9, logs ~/ccv-logs/j9{,w,g}.
+- DONE and sent to TI (2026-11-07), f4ce0fd, worktree /home/user/rh-tip
+  (oracles cleared; TI rev 367: the pl32 divergence was RI's interim call-link
+  line, fixed on ti-o85. Next from TI: clean model reruns of pl32/pl128 after
+  its next push). Logs in ~/ccv-logs/j6 and ~/ccv-logs/j78 (summary).
+  - J6: PHYS sweep. J7: dcu8/cold/512K; all cold runs hang. pl32 with the RCU
+    model diverges: R14 lane 2 0x240 vs 0x3a6c.
+  - Bisect for RI: pl32 is clean with CCV_RCU_IMPL=stub (14,295,719). With the
+    model, the first CHECK is between --cycles 1,649,413 and 1,650,878: seq
+    188276/188278 operand 0 (R14), oracle 0. Probes are in ~/ccv-logs/j78/bisect.
+  - J8: vadd16 248/6,675; pl128 on the stub is 23,605,166, clean, 7,975 s,
+    13.95 GB.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).
