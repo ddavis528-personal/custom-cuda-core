@@ -213,7 +213,8 @@ RA rev 117 (re:RI 49): interim arrival 0 on lanes opc_cr02h (25.3 w/ 1.4) and sl
 2026-11-08 sweep: merged 7 branches (183cc441 80, 80102643 37, 9eb50716 26, 888218a3 20, 57eff422 13, 3868632d 9, c22116ce 5), full gate PASS, pushed 53042265.
 RA rev 118-122: RA-16 (b) accepted as built (sfu_valid payload; SW enable from swb_d), (f) C_RECONV rename no-op; register pmov = R por w/ ps1=ps0,neg1=neg0 (op 63 / skel 146; TI ps1 check on ti-pmov); RA-16 CLOSED (rev 121). SW writes sfu_result never result (rev 120). RA-11 CLOSED (rev 122, AR 333: PHYS 192, area ~242,400 flops, no target). Spec e12d83f1 (R 26, RF 26, Overview 67).
 RA-43: TI ti-ra43 in full gate (ccc0872); model -2.35..-2.88% cycles. AR 332: PF-47 L1_CMPL 14 with RA-43 (spec still says 19->18; reconcile when TI lands). Open: RA-42 closes with KILL_DRAIN 15 landing; RI RTL lead capture + (e) on RTL; interim opcode arrivals (rev 117).
-Bookmarks: OA 396, RA 122, RI 52, TI 389, AR 333, DA 115, OI 331, Conventions 17, CP 157, IS 190.
+RA rev 123 (re:RI 53, 70cfd51 on 888218a3): interim CG-3 waiver rcu_bank_slice L read rows (112/slice, ~3,584 total; idle DCGE 74/63/53% at K1-3) noted; removed with RA-43 slice lead capture; if not landed when ccv_rcu.sv goes in -> other remedy before block check.
+Bookmarks: OA 396, RA 123, RI 53, TI 389, AR 333, DA 115, OI 331, Conventions 17, CP 157, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
