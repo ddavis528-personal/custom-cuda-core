@@ -196,8 +196,8 @@ RA-41: TI accepted (TI 379), AR confirmed (AR 322: block takes every landed msg 
 SPEC RECONCILED to LANE 7 / SFU 12 (93a0c46): Done 30, Pipeline 26, Predicate 9, Register file 24, Lane+memory 16, Overview 61, Conventions 14, Partition 56 (rcu_mem 12,560, no MIU lead flops; FULL_ROW slice only). Lane W A+6 (done A+5/A+6/A+7), SFU W A+11 (A+10/11/12); bypass ages 4-5.
 RA-42 (open, RA rev 103, Needs RI+TI): KILL_DRAIN 15 in rcu_core.h/rcu_test/rcu_kill.sv omits bnd_rx(issue); contract 16; M4 control.
 J11 (TI 380, 8-way): Z re-booked S1 -2.47%; ooe_rcu_issue flop costs S1 3.48% (cm32 1.98%) -> AR 308 reopened; miu_rcu_data g2'' fails OA-17 (OI/OA bug hunt), stays flopped.
-RA rev 104 (re:AR 323): RCU can't meet 12 as-is (pred gd 23.9, slice R0/R1 18.4, pred class 17.5, slice L/M 16.5, lanes 13.0) -> Daniel. Splits, no RCU cycle: leads for (a) guard neg/gd, (b) R phys_src0/1, (c) opcode with one class decode at A-1 (replaces Partition rule 1) or OOE-decoded class. ~250 lead flops in, ~1,700 rx flops out. KILL_DRAIN -> 15; RA-41 dropped for issue. Waiting: OA (OOE cost/cycle), RI (e) measures; then AR takes it to Daniel with AR 296.
-Bookmarks: OA 384, RA 104, RI 41, TI 380, AR 324, DA 115, OI 319, Conventions 17, CP 155, IS 190.
+RA rev 104 (re:AR 323): RCU can't meet 12 as-is (pred gd 23.9, slice R0/R1 18.4, pred class 17.5, slice L/M 16.5, lanes 13.0) -> Daniel. Splits, no RCU cycle: leads for (a) guard neg/gd, (b) R phys_src0/1, (c) opcode with one class decode at A-1 (replaces Partition rule 1) or OOE-decoded class. ~250 lead flops in, ~1,700 rx flops out. KILL_DRAIN -> 15; RA-41 dropped for issue. Waiting: OA (OOE cost/cycle), RI (e) measures; CORRECTED (AR 324/325, OA 385): if the leads meet 12 both sides it is RA's to APPROVE under DA 115 (OOE sends at 0 NGD out; OA must price leads at A-1); only if not -> Daniel with RA's paths.
+Bookmarks: OA 385, RA 104, RI 41, TI 380, AR 325, DA 115, OI 319, Conventions 17, CP 155, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
