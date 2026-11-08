@@ -70,9 +70,11 @@ constexpr unsigned kRW = 2;   ///< R's write, A+2: the A+2 rule (RA-29 (a))
 static_assert(kRW + 1 == ccv::prov::kLatRcu, "R writes at A+2, readable at A + CCV_LAT_RCU");
 /// The lane bypass window (Lane and memory tab): ages LAT_LANE_BYP to LAT_LANE - 2.
 constexpr unsigned kBypLo = ccv::prov::kLatLaneByp, kBypHi = ccv::prov::kLatLane - 2;
-/// KILL_DRAIN = 2 + link(issue) + CCV_LAT_SFU + 1 + link(done), 15 abutted at SFU 12, 16 at 13
-/// (Done tab). The parameter is RA-16 (g), still to land; the links' extra
-/// stages come from the block (Config).
+/// KILL_DRAIN = 2 + link(issue) + bnd_rx(issue) + CCV_LAT_SFU + 1 + link(done)
+/// (Done tab; RA-42): this base at no links, the issue end's stages and
+/// bnd_rx and the done link's from the block (Config: rcu_block.cpp adds
+/// ci.stages + ci.bnd_rx), so 16 in the hosts at the default links, as
+/// CCV_LAT_RCU_KILL_DRAIN (RA-16 (g)), which rcu_test holds it to.
 constexpr unsigned kKillDrainBase = 2 + ccv::prov::kLatSfu + 1;
 
 using Word = std::array<uint32_t, kLanes>;   ///< one 32-bit element a lane
@@ -92,9 +94,10 @@ inline uint32_t byteMask(unsigned secs) {
 
 /// What executes it (the op-class decode, Pipeline tab).
 enum class Unit : uint8_t { Lane, Sfu, Mem, ROnly, Coll, Copy, PredCopy };
-enum class RKind : uint8_t { None, Bra, Call, Ret, Pand, Por, Pxor, Pmov, PmovImm, Movi, ShflIdxImm,
+enum class RKind : uint8_t { None, Bra, Call, Ret, Pand, Por, Pxor, PmovImm, Movi, ShflIdxImm,
                              ShflIdxReg, ShflUp, ShflDown, ShflBfly, VoteAny, VoteAll, Ballot,
-                             Unballot };
+                             Unballot,
+                             Pmov /* register pmov: appended, so RI's RTL kinds keep their codes */ };
 enum class MemKind : uint8_t { None, Load, Store, PredLoad, PredStore, Fence };
 
 /// The decoded class fields (Pipeline tab, "Op-class decode"), filled by the
@@ -312,6 +315,8 @@ public:
     uint64_t lane_ops = 0, r_ops = 0, memops = 0, dones = 0, gpr_writes = 0, pred_writes = 0;
     uint64_t byp_sels = 0, demote_rows = 0, restore_rows = 0, mig_r_waits = 0,
              mig_credit_waits = 0, restore_holds = 0, max_demote_cycles = 0, max_restore_cycles = 0;
+    uint64_t rsrc_fwd = 0;                      ///< operand reads forwarded from MW in A
+    uint64_t dones_slot[kDoneSlots] = {};       ///< dones sent, by done slot
   };
   const Stats &stats() const { return st_; }
 

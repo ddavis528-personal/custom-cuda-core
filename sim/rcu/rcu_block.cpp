@@ -20,6 +20,7 @@
 #include <string>
 #include "stub.h"
 #include "rcu_core.h"
+#include "rcu_decode.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -38,75 +39,6 @@ inline unsigned getSec(const Bits &b, unsigned chan, const char *f, unsigned k, 
 }
 inline void putSec(Bits &b, unsigned chan, const char *f, unsigned k, unsigned w, unsigned v) {
   b.set(field(chan, f).lsb + w * k, w, v);
-}
-
-/// The op-class decode (Pipeline tab) of an opcode, from the op table.
-R::OpClass classOf(const OpInfo *op, bool copy, bool pred_copy) {
-  R::OpClass oc;
-  if (copy) {
-    oc.unit = pred_copy ? R::Unit::PredCopy : R::Unit::Copy;
-    oc.guarded = true;   // a copy's active lanes are issue mask AND guard
-    return oc;
-  }
-  oc.guarded = op->guard;
-  oc.pdata = op->pdata;
-  oc.gdst = op->gdst;
-  for (unsigned i = 0; i != op->nsrc; ++i)
-    if (!(op->alu_imm >= 0 && int(i) == op->imm_slot)) oc.reads |= 1u << i;
-  oc.imm_used = op->alu_imm >= 0 || op->srd_sel >= 0 || op->cls == kPredLogic;
-  oc.base_src = op->base_src;
-  oc.index_src = op->index_src;
-  oc.data_src = op->data_src;
-  const bool mem = op->cls == kLoad || op->cls == kStore || op->cls == kFence;
-  if (mem) {
-    oc.unit = R::Unit::Mem;
-    oc.mk = op->cls == kFence ? R::MemKind::Fence
-            : op->cls == kLoad ? (op->pxfer ? R::MemKind::PredLoad : R::MemKind::Load)
-                               : (op->pxfer ? R::MemKind::PredStore : R::MemKind::Store);
-    // A predicate transfer's active mask is the issue mask (TI-36).
-    if (op->pxfer) oc.guarded = false;
-    return oc;
-  }
-  if (op->cross) {
-    // O-85's collectives, by the op table's name (TI, 2026-11-07). The _R
-    // shuffles take their index from source port 1; vote and ballot read
-    // their predicate from imm (imm_kind 1), as predicate logic does.
-    oc.unit = R::Unit::Coll;
-    const std::string nm = op->name;
-    const bool reg = nm.size() > 2 && nm.compare(nm.size() - 2, 2, "_R") == 0;
-    oc.rk = nm == "SHFL_IDX" ? R::RKind::ShflIdxImm
-            : nm == "SHFL_IDX_R" ? R::RKind::ShflIdxReg
-            : nm.rfind("SHFL_UP", 0) == 0 ? R::RKind::ShflUp
-            : nm.rfind("SHFL_DOWN", 0) == 0 ? R::RKind::ShflDown
-            : nm.rfind("SHFL_BFLY", 0) == 0 ? R::RKind::ShflBfly
-            : nm == "VOTE_ANY" ? R::RKind::VoteAny
-            : nm == "VOTE_ALL" ? R::RKind::VoteAll
-            : nm == "BALLOT" ? R::RKind::Ballot
-            : nm == "UNBALLOT" ? R::RKind::Unballot : R::RKind::None;
-    oc.ireg = reg && oc.rk != R::RKind::ShflIdxReg;
-    if (op->nsrc == 0) oc.imm_used = true;   // vote, ballot: the predicate in imm
-    return oc;
-  }
-  if (inRcu(op->cls)) {
-    oc.unit = R::Unit::ROnly;
-    switch (op->cls) {
-    case kBranch: oc.rk = op->ret ? R::RKind::Ret : op->gdst ? R::RKind::Call : R::RKind::Bra; break;
-    case kPredLogic:
-      oc.rk = !std::strcmp(op->name, "POR") ? R::RKind::Por
-              : !std::strcmp(op->name, "PAND") ? R::RKind::Pand
-              : !std::strcmp(op->name, "PXOR") ? R::RKind::Pxor
-              : !std::strcmp(op->name, "PMOV") ? R::RKind::Pmov : R::RKind::None;
-      break;
-    case kImm: oc.rk = op->pwrite ? R::RKind::PmovImm : R::RKind::Movi; break;
-    default: break;
-    }
-    // ret reads its link register as R0 (the op table lists it as nsrc).
-    if (op->ret) oc.reads |= 1u;
-    return oc;
-  }
-  oc.unit = R::Unit::Lane;
-  oc.imm_slot = op->alu_imm >= 0 ? op->imm_slot : -1;
-  return oc;
 }
 
 class RcuModel : public Stub, R::Hooks {
@@ -130,6 +62,27 @@ public:
   }
   ~RcuModel() override {
     if (evlog_) std::fclose(evlog_);
+    // Sweep data, as OOE's CCV_OOE_STATS: RCU's counters, as JSON, when
+    // CCV_RCU_STATS names a file (docs/rcu-model.md).
+    const char *path = std::getenv("CCV_RCU_STATS");
+    if (!path || !*path) return;
+    FILE *f = std::fopen(path, "w");
+    if (!f) return;
+    const R::Core::Stats &s = core_.stats();
+    std::fprintf(f, "{\n  \"kernel\": \"%s\",\n  \"cycles\": %llu,\n  \"counters\": {\n", k_.name.c_str(), (unsigned long long)now_);
+    const std::pair<const char *, uint64_t> c[] = {
+        {"lane_ops", s.lane_ops}, {"r_ops", s.r_ops}, {"memops", s.memops}, {"dones", s.dones},
+        {"gpr_writes", s.gpr_writes}, {"pred_writes", s.pred_writes}, {"byp_sels", s.byp_sels},
+        {"rsrc_fwd", s.rsrc_fwd}, {"demote_rows", s.demote_rows}, {"restore_rows", s.restore_rows},
+        {"mig_r_waits", s.mig_r_waits}, {"mig_credit_waits", s.mig_credit_waits},
+        {"restore_holds", s.restore_holds}, {"max_demote_cycles", s.max_demote_cycles},
+        {"max_restore_cycles", s.max_restore_cycles}};
+    for (const auto &e : c) std::fprintf(f, "    \"%s\": %llu,\n", e.first, (unsigned long long)e.second);
+    std::fprintf(f, "    \"dones_slot\": [");
+    for (unsigned i = 0; i != R::kDoneSlots; ++i)
+      std::fprintf(f, "%s%llu", i ? ", " : "", (unsigned long long)s.dones_slot[i]);
+    std::fprintf(f, "]\n  }\n}\n");
+    std::fclose(f);
   }
   const char *kind() const override { return "rcu"; }
 
@@ -326,7 +279,7 @@ private:
       }
       is.pwe = false;
     }
-    is.oc = classOf(op, copy, copy && is.pwe && is.dst == R::kZero);
+    is.oc = rcudec::classOf(op, copy, copy && is.pwe && is.dst == R::kZero);
     is.name = op ? op->name : "a copy";
     // call's link is OOE's pc + length in imm (imm_kind 6; RA-18, RA-30):
     // the core reads it as the spec says.

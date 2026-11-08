@@ -36,8 +36,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <random>
+#include "dec_tb.h"
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -76,6 +78,12 @@ struct Iss {   // one slot's issue
   bool neg, gt, pdt, br;
   uint32_t im;
   unsigned imm;   // R: [13:0]
+  unsigned ft = 0;   // S: footprint (sections), disjoint among a cycle's lane messages
+  bool lm = false;   // S: sends a lane message (lane, SFU or GPR copy)
+  // The payload the class bits come from (the module decodes it,
+  // test/rcu/dec_tb.h): opcode, cont, done_row; S: pred_we and phys_dst.
+  unsigned opc = 0, drow = 0, dst = 1;
+  bool cont = false, pwe = false;
 };
 struct Ld { unsigned slot, p; bool we; uint32_t am, pr; };
 struct Mg { unsigned port, row, orow; bool mrg; uint32_t m, mm, val; };
@@ -89,7 +97,7 @@ struct Cycle {
 
 extern int g_argc;
 extern char **g_argv;
-bool g_nofwd = false, g_nomerge = false;
+bool g_nofwd = false, g_nomerge = false, g_spbown = false;
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
@@ -100,7 +108,7 @@ struct Bench {
   std::array<uint32_t, kRows> row{};
   std::array<bool, kRows> known{};
   Cycle s1, s2;
-  unsigned cov_fwd = 0, cov_neg = 0, cov_force = 0, cov_pdata = 0, cov_merge = 0, cov_nomerge = 0, cov_br = 0, cov_zp = 0, cov_dm = 0;
+  unsigned cov_spb = 0, cov_fwd = 0, cov_neg = 0, cov_force = 0, cov_pdata = 0, cov_merge = 0, cov_nomerge = 0, cov_br = 0, cov_zp = 0, cov_dm = 0;
 
   explicit Bench(const char *vcd_path) {
     ctx = std::make_unique<VerilatedContext>();
@@ -145,7 +153,7 @@ struct Bench {
 
   /// One cycle: `next` starts; s1's payloads and s2's data go in.
   void step(const Cycle &next, bool rst = false) {
-    dut->rcu_rst_r00h = rst;
+    dut->rst_n = !rst;
     dut->iv_cr01h = 0;
     dut->lgu_cr01h = 0;
     dut->mv_cr01h = 0;
@@ -172,12 +180,15 @@ struct Bench {
       put(dut->gd_cr02h, i.slot * kW, kW, i.g);
       put(dut->ng_cr02h, i.slot, 1, i.neg);
       put(dut->im_cr02h, i.slot * 32, 32, i.im);
-      put(dut->gt_cr02h, i.slot, 1, i.gt);
-      put(dut->pdt_cr02h, i.slot, 1, i.pdt);
-      if (i.slot == kSR) {
-        dut->br_cr02h = i.br;
-        dut->rimm_cr02h = i.imm;
+      put(dut->opc_cr02h, i.slot * 9, 9, i.opc);
+      put(dut->cont_cr02h, i.slot, 1, i.cont);
+      put(dut->drw_cr02h, i.slot * 2, 2, i.drow);
+      if (i.slot < kNK) {
+        put(dut->ft_cr02h, i.slot * kNK, kNK, i.ft);
+        put(dut->swe_cr02h, i.slot, 1, i.pwe);
+        put(dut->sdst_cr02h, i.slot * 8, 8, i.dst);
       }
+      if (i.slot == kSR) dut->rimm_cr02h = i.imm;
     }
     for (const Ld &l : s1.ld) put(dut->mr_cr02h, l.slot * 32, 32, l.pr);
     for (const Mg &m : s1.mg) {
@@ -196,6 +207,11 @@ struct Bench {
 
     struct Want { unsigned what, idx; uint32_t v; };
     std::vector<Want> want;   // after the edge
+    // sec_pred_bit_a: lane l, section k = active[o][l] of k's owner o, 0
+    // without one; a section whose owner's active is unknown is not checked.
+    std::array<uint32_t, kNK> spb{}, spb_kn{};
+    spb_kn.fill(kAll);
+    bool spb_first = true;
     if (!rst) {
       // Demotion reads, before this cycle's writes.
       for (const Dm &d : s2.dm) {
@@ -208,7 +224,12 @@ struct Bench {
       // Stage I for s1's issues (A now): MIU's writes landing now are s1's loads.
       for (const Iss &i : s1.iss) {
         const unsigned gp = (i.slot == kSR && !i.gt) ? kZP : i.g;
-        if (!kn(gp)) continue;
+        if (!kn(gp)) {
+          if (i.slot < kNK && i.lm)
+            for (unsigned k = 0; k < kNK; ++k)
+              if ((i.ft >> k) & 1u) spb_kn[k] = 0;
+          continue;
+        }
         bool hit = false;
         const uint32_t raw = fwd(gp, s1.ld, &hit);
         const uint32_t gv = i.neg ? ~raw : raw;
@@ -220,6 +241,15 @@ struct Bench {
         cov_pdata += i.pdt;
         cov_zp += gp == kZP;
         want.push_back({0, i.slot, act});
+        // spbown (control): the first lane message owns every section.
+        const unsigned ft = g_spbown ? (spb_first ? 0xfu : 0u) : i.ft;
+        if (i.slot < kNK && i.lm) spb_first = false;
+        if (i.slot < kNK && i.lm)
+          for (unsigned k = 0; k < kNK; ++k)
+            if ((ft >> k) & 1u) {
+              spb[k] = act;
+              cov_spb += act != 0;
+            }
         if (i.slot < kNK) want.push_back({1, i.slot, gv});
         if (i.slot >= kNK && i.slot < kSR) want.push_back({2, i.slot - kNK, raw});
         if (i.slot == kSR) {
@@ -239,6 +269,14 @@ struct Bench {
     }
     dut->rcu_core_clk = 1;
     eval();
+    if (!rst)
+      for (unsigned k = 0; k < kNK; ++k)
+        for (unsigned l = 0; l < 32; ++l) {
+          if (!((spb_kn[k] >> l) & 1u)) continue;
+          ++checked;
+          const unsigned got = unsigned(get(dut->spb_cr03h, l * kNK + k, 1));
+          if (got != ((spb[k] >> l) & 1u)) fail("sec_pred_bit lane %u section %u: %x, want %x", l, k, got, (spb[k] >> l) & 1u);
+        }
     for (const Want &w : want) {
       uint32_t got = 0;
       const char *n = "";
@@ -290,6 +328,60 @@ struct Gen {
     const unsigned x = rnd(8);
     return x == 0 ? kAll : x == 1 ? 0u : x == 2 ? (kAll << rnd(32)) : uint32_t(rng());
   }
+  // A slot's payload: an opcode (and cont, done_row; on S, pred_we and
+  // phys_dst) the decode makes the class the draw asked for (gt, pdt; R:
+  // br) where one has it, else the slot's kind alone; then the class bits
+  // are set from the decode. S slots: lane ops, GPR copies,
+  // predicate-only copies and continuations; P: memory ops (atomics at a
+  // random step); R: R-only ops and collectives.
+  void op(Iss &i, bool copies = true) {
+    using dectb::R::OpClass;
+    using dectb::R::RKind;
+    using dectb::R::Unit;
+    const unsigned kind = i.slot < kNK ? 0 : i.slot < kSR ? 1 : 2;
+    auto br = [](const OpClass &oc) { return oc.rk == RKind::Bra || oc.rk == RKind::Call; };
+    auto inKind = [kind](const OpClass &oc) {
+      return kind == 0 ? oc.unit == Unit::Lane : kind == 1 ? oc.unit == Unit::Mem
+                       : oc.unit == Unit::ROnly || oc.unit == Unit::Coll;
+    };
+    if (kind == 0 && copies && coin(0.25)) {   // a copy, a predicate-only copy or a continuation
+      const unsigned x = rnd(3);
+      i.opc = x == 2 ? 1 + rnd(ccv::skel::kNumOps) : ccv::skel::kOpCopy;
+      i.cont = x == 2;
+      i.pwe = x == 1 || coin(0.3);
+      i.dst = x == 1 ? 255u : 1 + rnd(200);
+      if (x == 0 && i.pwe) i.dst = 1 + rnd(200);
+    } else {
+      i.drow = kind == 1 ? rnd(4) : 0;
+      if (kind == 1 && i.drow == 1) i.drow = 0;   // an atomic has no step on row 1
+      const bool gt = i.gt, pdt = i.pdt, b = i.br;
+      static std::map<unsigned, dectb::OpPool> pools;
+      const unsigned key = kind | i.drow << 2 | gt << 4 | pdt << 5 | b << 6;
+      auto it = pools.find(key);
+      if (it == pools.end())
+        it = pools.emplace(key, dectb::OpPool("a slot's class", i.drow, [=](const OpClass &oc) {
+                 return inKind(oc) && oc.guarded == gt && oc.pdata == pdt && (kind != 2 || br(oc) == b);
+               }, false, true)).first;
+      if (it->second.empty()) {
+        const unsigned k2 = kind | i.drow << 2 | 1u << 7 | (kind == 2 ? b << 6 : 0u);
+        it = pools.find(k2);
+        if (it == pools.end())
+          it = pools.emplace(k2, dectb::OpPool("a slot's kind", i.drow, [=](const OpClass &oc) {
+                   return inKind(oc) && (kind != 2 || br(oc) == b);
+                 })).first;
+      }
+      i.opc = it->second.pick(rng);
+      i.pwe = coin(0.3);
+      i.dst = 1 + rnd(200);
+    }
+    OpClass oc;
+    const bool cls = !i.cont && dectb::classOf(i.opc, i.drow, i.pwe && i.dst == 255u, oc);
+    i.gt = cls && oc.guarded;
+    i.pdt = cls && oc.pdata;
+    i.br = cls && i.slot == kSR && br(oc);
+    i.lm = cls && i.slot < kNK &&
+           (oc.unit == Unit::Lane || oc.unit == Unit::Sfu || oc.unit == Unit::Copy);
+  }
   unsigned prow() { return coin(0.05) ? kZP : rnd(kRows); }
 
   /// One cycle's new work, each port busy with probability p. s1 is the
@@ -306,13 +398,25 @@ struct Gen {
         if (g == kZP || !busy1[g]) return g;
       }
     };
+    unsigned ftaken = 0;
     for (unsigned s = 0; s < kNS; ++s) {
       if (!coin(p)) continue;
       Iss i{s, guard(), coin(0.4), coin(0.7), coin(0.15), coin(0.5), mask(), 0};
+      op(i);   // the payload, and the class bits the decode gives it
+      if (s < kNK) {
+        // A lane message's footprint: sections no other S slot of this
+        // cycle has, now and then none left (it sends nothing).
+        if (i.lm) {
+          for (unsigned k = 0; k < kNK; ++k)
+            if (!((ftaken >> k) & 1u) && coin(0.4)) i.ft |= 1u << k;
+          ftaken |= i.ft;
+        } else {
+          i.ft = rnd(16);   // ignored without a lane message
+        }
+      }
       if (s == kSR) {
         const unsigned pa = guard(), pb = guard();
         i.imm = pa | unsigned(coin(0.3)) << 6 | pb << 7 | unsigned(coin(0.3)) << 13;
-        if (i.pdt) i.gt = false;   // R ops have no data predicate
       }
       c.iss.push_back(i);
     }
@@ -384,10 +488,13 @@ void directed(Bench &b) {
     b.step(none);
     b.step(none);
   };
+  // Each issue's payload: an opcode with the class asked for (Gen::op).
+  Gen g(1);
+  auto iss = [&](Cycle &cy, Iss i) { g.op(i, false); cy.iss.push_back(i); };
   // A guard forwarded from MIU in its own A, and the same read without it.
   Cycle c;
-  c.iss.push_back({0, 7, false, true, false, false, kAll, 0});
-  c.iss.push_back({kSR, 7, true, true, false, true, 0x00ff00ffu, (9u) | (1u << 6) | (7u << 7)});
+  iss(c, {0, 7, false, true, false, false, kAll, 0});
+  iss(c, {kSR, 7, true, true, false, true, 0x00ff00ffu, (9u) | (1u << 6) | (7u << 7)});
   c.ld.push_back({2, 7, true, 0x0000ffffu, 0x12345678u});
   run(c);
   // A copy beside MIU's return on one row, a merge with the old value.
@@ -402,9 +509,9 @@ void directed(Bench &b) {
   run(Cycle{{}, {}, {}, {{0, 11}, {1, 13}, {2, kZP}}});
   // Unguarded and pdata issues: active is the issue mask.
   Cycle u;
-  u.iss.push_back({1, 3, true, false, false, false, 0x13579bdfu, 0});
-  u.iss.push_back({2, 3, true, true, true, false, 0x2468ace0u, 0});
-  u.iss.push_back({4, 5, false, true, false, false, kAll, 0});
+  iss(u, {1, 3, true, false, false, false, 0x13579bdfu, 0});
+  iss(u, {2, 3, true, true, true, false, 0x2468ace0u, 0});
+  iss(u, {4, 5, false, true, false, false, kAll, 0});
   run(u);
 }
 
@@ -428,16 +535,17 @@ int run(const std::string &scenario, const char *vcd) {
   }
   b.step(none);
   b.step(none);
-  if (scenario != "idle" && (!b.cov_neg || !b.cov_force || !b.cov_pdata || !b.cov_merge ||
+  if (scenario != "idle" && (!b.cov_spb || !b.cov_neg || !b.cov_force || !b.cov_pdata || !b.cov_merge ||
                              !b.cov_nomerge || !b.cov_br || !b.cov_zp || !b.cov_dm ||
                              (!g_nofwd && !b.cov_fwd))) {
-    std::fprintf(stderr, "pred: coverage: fwd %u neg %u force %u pdata %u merge %u nomerge %u br %u zp %u dm %u\n",
-                 b.cov_fwd, b.cov_neg, b.cov_force, b.cov_pdata, b.cov_merge, b.cov_nomerge, b.cov_br,
+    std::fprintf(stderr, "pred: coverage: spb %u fwd %u neg %u force %u pdata %u merge %u nomerge %u br %u zp %u dm %u\n",
+                 b.cov_spb, b.cov_fwd, b.cov_neg, b.cov_force, b.cov_pdata, b.cov_merge, b.cov_nomerge, b.cov_br,
                  b.cov_zp, b.cov_dm);
     ++b.fails;
   }
-  std::printf("pred%s%s %s: %llu cycles, %u values checked, %u mismatches: %s\n",
-              g_nofwd ? ", control nofwd:" : "", g_nomerge ? ", control nomerge:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
+  std::printf("pred%s%s%s %s: %llu cycles, %u values checked, %u mismatches: %s\n",
+              g_nofwd ? ", control nofwd:" : "", g_nomerge ? ", control nomerge:" : "",
+              g_spbown ? ", control spbown:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
               (unsigned long long)b.cyc, b.checked, b.fails, b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }
@@ -453,6 +561,7 @@ int main(int argc, char **argv) {
     if (!std::strcmp(argv[i], "--control")) {
       g_nofwd = g_nofwd || !std::strcmp(argv[i + 1], "nofwd");
       g_nomerge = g_nomerge || !std::strcmp(argv[i + 1], "nomerge");
+      g_spbown = g_spbown || !std::strcmp(argv[i + 1], "spbown");
     }
   for (int i = 1; i + 2 < argc; ++i)
     if (!std::strcmp(argv[i], "--cg")) {
