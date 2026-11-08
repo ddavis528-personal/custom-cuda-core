@@ -1272,16 +1272,24 @@ it.
   credit on receipt had already taken bnd_rx out of that loop (TI 382,
   AR rev 330). The figures above stand until
   RH reprices g1'' with the leads. Dropping
-  miu_rcu_data's flop is S1 -0.26% but cm128 +2.21%, and it trips OOE's
-  OA-17 check, so it stays flopped. J12 (TI 389, 8 ways, every run clean):
+  miu_rcu_data's flop (J11b g2''', TI 390, clean on OI-133's fix 11386e7,
+  replacing J11's g2'' that ran with OA-17 failures) is S1 -0.26%, cm32
+  +0.19%, cm128 +1.27%, vadd16_loop -2.79%. S1 over 0.2% and up to 0.5% is
+  Daniel's (DA 114); AR recommends keeping the flop (AR rev 334), since the
+  gain is S1 alone and both coremarks lose, and it stays flopped unless he
+  rules otherwise. J12 (TI 389, 8 ways, every run clean):
   PHYS_REGS 160 leaves S1 and cm32 flat but costs cm128 +1.17% (128:
   +2.89%), now that cm128 is no longer L1-bound and the name pool shows
   (stall.share.names 0 / 14,337 / 1,265,169). That fails AR rev 315's bar
   of 0.1% everywhere, so PHYS_REGS stays 192 (AR rev 333). The 160 trade,
   about 34k RCU flops for cm128 +1.17%, goes to Daniel only if he sets
   an RCU area target that 192 misses: RA-11 closed at 192 with about
-  242,400 RCU flops (PRF 196,608) and no target (DA 2026-11-02; RA rev 122). C9 at 8 ways, and p192's flopped
-  completion ends, are re-priced in J11b on OI-133's fix (11386e7).
+  242,400 RCU flops (PRF 196,608) and no target (DA 2026-11-02; RA rev 122). J11b's p192'
+  (OOE's miu_ooe_cmpl and cmpl_hint ends flopped; CMPL_HINT 3, L1_CMPL 20)
+  prices those zero-cycle ends at S1 2.44%, cm32 0.96%, cm128 5.10% and
+  vadd16_loop 71% (issue-cadence collision, share.rs 9,920 to 22,586, as Z
+  in J9; not the L1), replacing J12's p192. They stay zero-cycle under DA
+  115 (AR rev 334). C9 at 8 ways is still to price.
 
 ### PF-48 End-to-end parity on register state
 
