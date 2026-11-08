@@ -1293,7 +1293,7 @@ def hidden_stages(name, t, ends, straight):
         if not flopped:
             continue
         out = role == "src"
-        pat = re.compile(r"^(%s(?:_s\d+)?)_(valid|payload)$" % re.escape(ch))
+        pat = re.compile(r"^(%s(?:_c\d+)?(?:_s\d+)?)_(valid|payload)$" % re.escape(ch))
         groups = collections.OrderedDict()
         for p in (t.outs if out else t.ins):
             m = pat.match(base(p))
@@ -1485,7 +1485,8 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
     bpat = re.compile(r"^(?:%s)(?:_c\d+)?(?:_s\d+)?_(?:valid|payload)$"
                       % "|".join(re.escape(c) for c in sorted(bud))) if bud else None
     for i in t.ins:
-        if is_clock(i) or i in t.cut:
+        # Wake and the reset are not data ports (RI-22 (3), AR 327).
+        if is_clock(i) or i in t.cut or i == "rst_n" or i.endswith("_wake"):
             continue
         if bpat and bpat.match(i) and start != st.top:
             d, arr = reach(st.top, None, i), budgets.arrival(want, i)
