@@ -105,9 +105,9 @@
     },
     "opc_cr02h": {
       "arrival": 0.0,
-      "by": "RI, interim until RA-43 lands (pending RA; RI tab)",
+      "by": "RA (RA tab rev 117, re:RI rev 49), interim until RA-43",
       "date": "2026-11-08",
-      "why": "The opcode's class decode reaches a flop 23.9 after the port (worst unit), so the fanout term (1.4; AR 326, RA rev 106) puts it at 25.3, over 25. RA-43 (zero-cycle issue, approved RA rev 113) decodes the class into flops from lead_opcode at A-1, which removes this path; until TI's schema for it lands, this port keeps arrival 0 from RCU's interface flop, and RI has asked RA to accept that or name another remedy."
+      "why": "The opcode's class decode reaches a flop 23.9 after the port (worst unit), so the fanout term (1.4; AR 326, RA rev 106) puts it at 25.3, over 25. RA-43 (zero-cycle issue, approved RA rev 113) decodes the class into flops from lead_opcode at A-1, which removes this path; until TI's schema for it lands, this port keeps arrival 0 from RCU's interface flop, accepted by RA rev 117: this entry goes in the commit that moves the class decode onto lead_opcode flops (RA-43), and if that has not landed when ccv_rcu.sv goes in, RI pre-decodes the path instead."
     },
     "opos_cr02h": {
       "arrival": 1.4,
