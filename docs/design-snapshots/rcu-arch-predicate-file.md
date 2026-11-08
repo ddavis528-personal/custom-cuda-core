@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=9 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 9 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=11 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 11 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Predicate file
 
@@ -26,9 +26,9 @@ No old-destination read needs a forward: OOE issues an op only when its old dest
 
 ## The guard path (stage I, the critical predicate path)
 
-1. Decode `phys_pred_guard` (on the wire, from its interface flop at 0 NGD) and read the row, 48:1 AND-OR: about 12 NGD.
+1. Decode `phys_pred_guard` (since RA-43 on every slot from lead\_guard\_pred at A−1, predecoded into the psel flops, RA-32; it was on the wire from the interface flop) and read the row, 48:1 AND-OR: about 12 NGD.
 2. **MIU forward.** For each MIU slot j with `mdat_v_q[j]`, lead `pred_we` and lead `phys_pred` equal to the guard's index (6-bit compare, in parallel with the read), substitute `(row & ~m_j) | (pred_result_j & m_j)`, m\_j the lead `active_mask`, `pred_result_j` from the wire. About 2 NGD after the read.
-3. Negate by `pred_neg`; force all ones if the op is not `guarded` or is `pdata`: 1-2 NGD.
+3. Negate (from the pred\_neg lead copy since RA-43) by `pred_neg`; force all ones if the op is not `guarded` or is `pdata`: 1-2 NGD.
 4. `active = issue_mask & guard`: 1 NGD, about 15 NGD in all, into `active_a[s]` and, for S slots, `sec_pred_bit_a`.
 5. The branch outcome: OR over 32 lanes, about 5 NGD more, into `lead_br_taken_a` (22 NGD). `lead_br_mask_a` = `active` (17).
 

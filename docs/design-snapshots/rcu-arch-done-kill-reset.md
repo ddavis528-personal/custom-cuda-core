@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=30 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 30 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=32 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 32 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -88,9 +88,9 @@ RCU's pipe carries no warp id: an issue carries only `rob_tag`. RCU therefore ca
 | `kill_ack_q` | 1 | `kill_v_q` or ack-ready | `kill_ack`, a level (RA-23) |
 | `kill_ack_ep_q` | 2 | ack-ready | `kill_ack_epoch` |
 
-`KILL_DRAIN` = 2 + `link_n(ooe_rcu_issue)` + `bnd_rx(ooe_rcu_issue)` + `CCV_LAT_SFU` + 1 + `link_n(rcu_ooe_done)`, which is 16 at the defaults: abutted links, the issue end flopped (bnd\_rx 1) and CCV\_LAT\_SFU 12 since lane\_rcu\_res's end at RCU went zero-cycle (RA rev 95). The issue end's bnd\_rx counts on the crossing, never in the base (AR revs 288, 300 and 301); 17 before RA rev 95. It covers:
+`KILL_DRAIN` = 2 + `link_n(ooe_rcu_issue)` + `bnd_rx(ooe_rcu_issue)` + `CCV_LAT_SFU` + 1 + `link_n(rcu_ooe_done)`, which is 15 at the defaults: abutted links, the issue end zero-cycle (bnd\_rx 0 since RA-43, AR 329; 16 with it flopped) and CCV\_LAT\_SFU 12 since lane\_rcu\_res's end at RCU went zero-cycle (RA rev 95). The issue end's bnd\_rx counts on the crossing, never in the base (AR revs 288, 300 and 301); 17 before RA rev 95. It covers:
 
-- the last issue that OOE may send before it reacts to the same kill (valid at RCU's interface flop by K+1 + bnd\_rx(ooe\_rcu\_issue), so payload A = K+3 with the issue end flopped);
+- the last issue that OOE may send before it reacts to the same kill (valid at RCU's interface flop by K+1 + bnd\_rx(ooe\_rcu\_issue), so payload A = K+2 with the issue end zero-cycle, RA-43);
 - that issue's longest RCU life: an SFU done payload at A+12, which is on the wire to OOE until it lands.
 
 An address message (A+1) and a lane message (A+1) leave sooner. A load's data from MIU is MIU's own drain, and RCU writes whatever lands.

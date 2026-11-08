@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=24 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 24 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=25 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 25 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Register file
 
@@ -81,7 +81,7 @@ It flips to 0 only when both have landed: OOE allocating narrow registers at the
 
 **Lead-loaded ports and CG-5 (RI-9, 2026-11-04; R0/R1 revised by RA-39, OA rev 336).** Every other port's select flops load at A's edge (or from a descriptor) under a valid that is already a slice flop. MW (from the MIU lead in T−1) loads from lead fields that arrive with their valid, so no flop of the slice can enable it, and MIU cannot send a valid a cycle earlier. Its select state is therefore **loaded every cycle, ungated**, inside the slice's 2% allowance, and kept small. R0 and R1 have no select flops: they decode the payload's rows on the wire in A, and the slice's `rsrc` flops are enabled by its flop of the R issue valid lead.
 
-- **R0, R1:** the 8-bit row index of the payload's `phys_src`, binary, on the wire (the zero register selects nothing), decoded to `sel_hi`/`sel_lo` in the slice in A, read, merged with the MIU write-through (R unit tab) and flopped into `rsrc` (64 flops a slice). The path from the RCU port: fanout to the 32 slices about 2.5, decode 2, read 11.0, write-through 2, `measured 18.4 within` 25 from the interface flop (RA-39's 19/6 split lapsed with the boundary flops, AR rev 285).
+- **R0, R1:** the 8-bit row index of the payload's `phys_src`, binary, on the wire (since RA-43 R's lead\_phys\_src at A−1, from RCU's lead flops; the zero register selects nothing), decoded to `sel_hi`/`sel_lo` in the slice in A, read, merged with the MIU write-through (R unit tab) and flopped into `rsrc` (64 flops a slice). The path from the RCU port: fanout to the 32 slices about 2.5, decode 2, read 11.0, write-through 2, `measured 18.4 within` 25 from the interface flop (RA-39's 19/6 split lapsed with the boundary flops, AR rev 285).
 - **MW:** the slice picks, in T−1 from its own inputs, the one MIU slot whose `secmask` covers its byte section k (one per bank per cycle, asserted), and loads every cycle {row index (8, binary, decoded in T), the slot's `active_mask` for the slice's 4 lanes (4), `dst_pos` (2), valid (1)}.
 
 That is about 15 ungated flops a slice (MW's), about 11% of its allowance (2% of 6,574 = 131) and about 480 across the 32 slices. The binary R0/R1 selects of RI-9 (16 a slice) went with RA-39's payload-wire read.
