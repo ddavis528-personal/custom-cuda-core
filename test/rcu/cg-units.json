@@ -6,6 +6,7 @@
       "module": "rcu_bank_slice",
       "files": [
         "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_dec_pkg.sv",
         "rtl/rcu/rcu_bank_slice.sv"
       ],
       "params": {
@@ -26,6 +27,7 @@
       "module": "rcu_r",
       "files": [
         "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_dec_pkg.sv",
         "rtl/rcu/rcu_xbar.sv",
         "rtl/rcu/rcu_r.sv"
       ],
@@ -43,6 +45,7 @@
       "module": "rcu_pred",
       "files": [
         "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_dec_pkg.sv",
         "rtl/rcu/rcu_pred.sv"
       ],
       "params": {},
@@ -59,6 +62,7 @@
       "module": "rcu_kill",
       "files": [
         "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_dec_pkg.sv",
         "rtl/rcu/rcu_kill.sv"
       ],
       "params": {},
@@ -75,6 +79,7 @@
       "module": "rcu_mig",
       "files": [
         "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_dec_pkg.sv",
         "rtl/rcu/rcu_mig.sv"
       ],
       "params": {},
@@ -91,6 +96,7 @@
       "module": "rcu_lanes",
       "files": [
         "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_dec_pkg.sv",
         "rtl/rcu/rcu_lanes.sv"
       ],
       "params": {
@@ -109,6 +115,7 @@
       "module": "rcu_mem",
       "files": [
         "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_dec_pkg.sv",
         "rtl/rcu/rcu_mem.sv"
       ],
       "params": {

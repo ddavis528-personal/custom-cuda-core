@@ -82,10 +82,12 @@ module rcu_kill #(
   output logic          csr_cr_cr01h  // csr_credit
 );
 
-  logic rst_r01h;
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_n_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= !rst_n;
+    rst_n_r01h <= rst_n;
   end
+  wire rst_r01h = !rst_n_r01h;
 
   // ---- Kill ------------------------------------------------------------
   logic kv_cr01h;

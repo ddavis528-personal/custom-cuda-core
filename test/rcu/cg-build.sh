@@ -10,8 +10,8 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
   local top=$1 g=$2 d=$3; shift 3
   verilator --cc --exe --build --trace -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style $g \
     --top-module "$top" --Mdir "$dir" -o tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-    -CFLAGS "-std=c++17 -O2 $d" \
-    "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ccv_assert_pkg.sv" "$@"
+    -CFLAGS "-std=c++17 -O2 -I$PWD/sim/generated -I$PWD/sim/skel -I$PWD/sim/rcu -I$PWD/sim/include $d" \
+    "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/rcu/rcu_dec_pkg.sv" "$@"
 }
 case "$unit" in
   rcu_bank_slice_r32|rcu_bank_slice|rcu_bank_slice_r32_sec)

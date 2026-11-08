@@ -50,6 +50,7 @@
 #include <vector>
 
 #include "ccv_params.h"
+#include "dec_tb.h"
 
 namespace {
 
@@ -278,6 +279,23 @@ struct Bench {
   }
   bool stopped(const Mig &m) const { return m.killed && t >= m.kcyc; }
 
+  // An R opcode and merge_en with this R2 and RW use: R2 needs a GPR
+  // destination (so RW too); RW without R2 is a GPR write without merge or a
+  // collective with none.
+  void rOp(const RSlot &r, unsigned &opc, bool &mrg) {
+    using dectb::R::Unit;
+    auto isR = [](const dectb::R::OpClass &oc) { return oc.unit == Unit::ROnly || oc.unit == Unit::Coll; };
+    static const dectb::OpPool gd("an R op writing a GPR", 0, [&](const dectb::R::OpClass &oc) { return isR(oc) && oc.gdst; });
+    static const dectb::OpPool cl("a collective writing no GPR", 0, [&](const dectb::R::OpClass &oc) { return oc.unit == Unit::Coll && !oc.gdst; });
+    static const dectb::OpPool no("an R-only op writing no GPR", 0, [&](const dectb::R::OpClass &oc) { return oc.unit == Unit::ROnly && !oc.gdst; });
+    if (r.r2) { opc = gd.pick(rng); mrg = true; return; }
+    if (r.rw) {
+      if (coin(0.5)) { opc = gd.pick(rng); mrg = false; } else { opc = cl.pick(rng); mrg = coin(0.5); }
+      return;
+    }
+    opc = no.pick(rng); mrg = coin(0.5);
+  }
+
   RSlot gen_r(uint64_t c) {
     RSlot r;
     if (cfg.rpattern >= 0) {
@@ -286,7 +304,7 @@ struct Bench {
     } else {
       r.v = coin(cfg.pr);
       r.r2 = coin(cfg.pr2);
-      r.rw = coin(cfg.prw);
+      r.rw = r.r2 || coin(cfg.prw);   // R2 is read only by a GPR write
     }
     return r;
   }
@@ -302,8 +320,15 @@ struct Bench {
     const RSlot &rc = rs[t % 8], &rn = rs[(t + 1) % 8];
     dut->riv_cr01h = rn.v;
     const bool lie = ctl == Ctl::rlie;
-    dut->rr2_cr02h = lie ? false : rc.v ? rc.r2 : (cfg.junk && coin(0.5));
-    dut->rrw_cr02h = lie ? false : rc.v ? rc.rw : (cfg.junk && coin(0.5));
+    // The R op as an opcode and merge_en the model's decode makes its R2 and
+    // RW use (test/rcu/dec_tb.h); rlie sends one that uses neither.
+    unsigned ropc;
+    bool rmrg;
+    rOp(lie ? RSlot{true, false, false} : rc.v ? rc : RSlot{cfg.junk && coin(0.5), coin(0.5), coin(0.5)},
+        ropc, rmrg);
+    if (!rc.v && !cfg.junk) ropc = 0, rmrg = false;
+    dut->ropc_cr02h = ropc;
+    dut->rmrg_cr02h = rmrg;
 
     // A kill: valid in K-1, the mask in K.
     dut->kv_cr00h = 0;

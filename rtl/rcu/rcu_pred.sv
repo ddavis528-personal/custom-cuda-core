@@ -111,7 +111,8 @@ module rcu_pred #(
   localparam int NQ = 13,                                // merge write ports
   localparam int NM = 4,                                 // MIU slots
   localparam int ND = 4,                                 // demotion read ports
-  localparam int NH = (ROWS + 7) / 8                     // psel_hi bits, 6
+  localparam int NH = (ROWS + 7) / 8,                    // psel_hi bits, 6
+  localparam int WR = ccv_prov_pkg::CCV_P_W_PHYS_REG       // a GPR row index, 8
 ) (
   input  logic               rcu_core_clk,
   input  logic               rst_n,
@@ -122,12 +123,13 @@ module rcu_pred #(
   input  logic [NS*WP-1:0]   gd_cr02h,      // phys_pred_guard
   input  logic [NS-1:0]      ng_cr02h,      // pred_neg
   input  logic [NS*N-1:0]    im_cr02h,      // issue_mask
-  input  logic [NS-1:0]      gt_cr02h,      // class: guarded
-  input  logic [NS-1:0]      pdt_cr02h,     // class: pdata
-  input  logic               br_cr02h,      // class: R's op is a branch or call
+  input  logic [NS*rcu_dec_pkg::OPC_W-1:0] opc_cr02h, // opcode (decoded here, rcu_dec_pkg)
+  input  logic [NS-1:0]      cont_cr02h,    // cont: a continuation, no class of its own
+  input  logic [NS*2-1:0]    drw_cr02h,     // done_row (an atomic's step)
+  input  logic [NK-1:0]      swe_cr02h,     // S slot s's pred_we (a copy's predicate-only form)
+  input  logic [NK*WR-1:0]   sdst_cr02h,    //   and phys_dst (the zero GPR)
   input  logic [2*WP+1:0]    rimm_cr02h,    // R's imm[13:0]: RA [5:0], neg [6]; RB [12:7], neg [13]
   input  logic [NK*NK-1:0]   ft_cr02h,      // S slot s's footprint, section k at s*NK + k
-  input  logic [NK-1:0]      lm_cr02h,      // class: S slot s sends a lane message (lane, SFU, GPR copy)
   output logic [NS*N-1:0]    act_cr03h,     // active_a[s]
   output logic               busy_cr03h,    // to rcu_kill's idle: an issue in A or a predicate write pending
   output logic [NK*N-1:0]    gv_cr03h,      // gv_a[k]: S slot k's guard (sec_pred_data)
@@ -160,9 +162,43 @@ module rcu_pred #(
 
   localparam logic [WP-1:0] ZP = WP'(ccv_prov_pkg::CCV_P_PRED_ZERO);
 
-  logic rst_r01h;
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_n_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= !rst_n;
+    rst_n_r01h <= rst_n;
+  end
+  wire rst_r01h = !rst_n_r01h;
+
+  // ---- The op-class decode (rcu_dec_pkg, the model's; RI-21 (4)) ------
+  // Per slot: guarded and pdata; R's op a branch or call (its lead);
+  // S slot s sends a lane message (a lane op or a GPR copy; not a
+  // predicate-only copy, which is pwe and the zero GPR). A continuation has
+  // no class.
+  localparam logic [WR-1:0] ZG = WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
+  logic [NS-1:0] gt_cr02h, pdt_cr02h;
+  logic [NK-1:0] lm_cr02h;
+  logic          br_cr02h;
+  always_comb begin
+    logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
+    logic                          pc_cr02h;
+    lm_cr02h = '0;
+    br_cr02h = 1'b0;
+    for (int s = 0; s < NS; s++) begin
+      pc_cr02h = (s < NK) ? (swe_cr02h[s % NK] && sdst_cr02h[(s % NK)*WR +: WR] == ZG) : 1'b0;
+      c_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h[s*rcu_dec_pkg::OPC_W +: rcu_dec_pkg::OPC_W],
+                                     drw_cr02h[s*2 +: 2], pc_cr02h);
+      gt_cr02h[s]  = !cont_cr02h[s] && c_cr02h[rcu_dec_pkg::CLS_GUARDED];
+      pdt_cr02h[s] = !cont_cr02h[s] && c_cr02h[rcu_dec_pkg::CLS_PDATA];
+      if (s < NK)
+        lm_cr02h[s % NK] = !cont_cr02h[s] &&
+          (c_cr02h[rcu_dec_pkg::CLS_UNIT +: 3] == rcu_dec_pkg::U_LANE ||
+           c_cr02h[rcu_dec_pkg::CLS_UNIT +: 3] == rcu_dec_pkg::U_SFU ||
+           c_cr02h[rcu_dec_pkg::CLS_UNIT +: 3] == rcu_dec_pkg::U_COPY);
+      if (s == SR)
+        br_cr02h = !cont_cr02h[s] &&
+          (c_cr02h[rcu_dec_pkg::CLS_RK +: 5] == rcu_dec_pkg::RK_BRA ||
+           c_cr02h[rcu_dec_pkg::CLS_RK +: 5] == rcu_dec_pkg::RK_CALL);
+    end
   end
 
   function automatic logic [NH-1:0] dec_hi(input logic [WP-1:0] p);
@@ -195,17 +231,21 @@ module rcu_pred #(
   logic [NQ-1:0] qv_cr01h, qa_cr02h;
   logic [ND-1:0] dv_cr01h;
   logic [NM-1:0] mw_cr02h;
+  // busy's own copy of qa (NGD-7: qa's write paths run past busy's 12).
+  (* keep *) logic qab_cr02h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       iv_cr02h <= '0;
       qv_cr01h <= '0;
       qa_cr02h <= '0;
+      qab_cr02h <= 1'b0;
       dv_cr01h <= '0;
       mw_cr02h <= '0;
     end else begin
       iv_cr02h <= iv_cr01h;
       qv_cr01h <= qv_cr00h;
       qa_cr02h <= qv_cr01h;
+      qab_cr02h <= |qv_cr01h;
       dv_cr01h <= dv_cr00h;
       mw_cr02h <= mv_cr01h & mwe_cr01h;
     end
@@ -509,7 +549,7 @@ module rcu_pred #(
   `CCV_ASSERT(pred_spb_own, !own_bad_cr02h)
 
   // Busy, from flops only (P10, RI-21): rcu_kill's idle.
-  assign busy_cr03h = (|iv_cr02h) | (|qv_cr01h) | (|qa_cr02h) | (|dv_cr01h);
+  assign busy_cr03h = (|iv_cr02h) | (|qv_cr01h) | qab_cr02h | (|dv_cr01h);
 
 endmodule
 `undef CCV_CLK

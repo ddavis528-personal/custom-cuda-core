@@ -169,10 +169,12 @@ module rcu_lanes #(
   localparam logic [WR-1:0] ZROW = WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
   localparam int WS = $clog2(NK);       // a section index
 
-  logic rst_r01h;
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_n_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= !rst_n;
+    rst_n_r01h <= rst_n;
   end
+  wire rst_r01h = !rst_n_r01h;
 
   function automatic logic [NK-1:0] secmask(input logic [1:0] w, input logic [1:0] pos);
     logic [NK-1:0] span;

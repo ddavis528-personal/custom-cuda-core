@@ -34,6 +34,9 @@
 #include <random>
 #include <string>
 #include <type_traits>
+#include <vector>
+
+#include "dec_tb.h"
 
 namespace {
 
@@ -80,7 +83,7 @@ bool uses0(unsigned k) { return k == Ret || (k >= ShI && k <= ShB) || k == Unb; 
 bool uses1(unsigned k) { return k == ShR; }
 
 struct Op {
-  unsigned kind, tag, drow, dst, dpos, dwid, opos, pd, pold;
+  unsigned kind, opc, tag, drow, dst, dpos, dwid, opos, pd, pold;
   unsigned src[2], spos[2], swid[2];
   bool mrg, pwe;
   uint32_t imask, imm, act, rpa, rpb;
@@ -144,7 +147,7 @@ struct Bench {
     const uint64_t c = cyc;
     dut->iv_cr01h = op(c - 1) != nullptr;   // the valid comes with the lead
     if (const Op *o = op(c - 2)) {   // A: the payload, R0 and R1
-      dut->kind_cr02h = o->kind;
+      dut->opc_cr02h = o->opc;
       dut->tag_cr02h = o->tag;
       dut->drow_cr02h = o->drow;
       dut->imask_cr02h = o->imask;
@@ -215,6 +218,22 @@ struct Bench {
   }
 };
 
+// The opcodes the model's decode makes each R kind (test/rcu/dec_tb.h).
+const dectb::OpPool &pool(unsigned k) {
+  static const std::vector<dectb::OpPool> pools = [] {
+    std::vector<dectb::OpPool> v;
+    for (unsigned i = 1; i < kKinds; ++i)
+      v.emplace_back(kName[i], 0u, [i](const dectb::R::OpClass &oc) {
+        return (oc.unit == dectb::R::Unit::ROnly || oc.unit == dectb::R::Unit::Coll) &&
+               unsigned(oc.rk) == i;
+      }, false, true);
+    return v;
+  }();
+  return pools[k - 1];
+}
+// A kind no opcode decodes to (pxor: the ISA has none) is never drawn.
+bool decodable(unsigned k) { return !pool(k).empty(); }
+
 struct Gen {
   std::mt19937_64 r;
   std::string control;
@@ -232,7 +251,8 @@ struct Gen {
 
   void op(Bench &b, uint64_t c) {
     Op o{};
-    o.kind = 1 + below(kKinds - 1);
+    do o.kind = 1 + below(kKinds - 1); while (!decodable(o.kind));
+    o.opc = pool(o.kind).pick(r);   // an opcode the decode makes this kind
     o.tag = below(128);
     o.drow = below(4);
     o.dst = row();
@@ -369,7 +389,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   for (int i = 0; i < 6; ++i) b.step();
   bool cov = true;
   if (scenario != "idle") {
-    for (unsigned k = 1; k < kKinds; ++k) cov &= b.cov_kind[k] != 0;
+    for (unsigned k = 1; k < kKinds; ++k) cov &= b.cov_kind[k] != 0 || !decodable(k);
     cov &= b.cov_merge && b.cov_shift && b.cov_ret_multi && b.cov_noact;
     if (!cov) {
       std::fprintf(stderr, "rcu_r: coverage: merge %u shift %u ret_multi %u noact %u; kinds",

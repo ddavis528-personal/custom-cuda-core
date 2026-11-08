@@ -115,10 +115,12 @@ module rcu_bank_slice #(
   input  logic [31:0]       gw_dat_cr02h    //   its 4 lanes' byte K: every lane, the whole row
 );
 
-  logic rst_r01h;
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_n_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= !rst_n;
+    rst_n_r01h <= rst_n;
   end
+  wire rst_r01h = !rst_n_r01h;
 
   // One-hot predecode of a row index.
   function automatic logic [NH-1:0] dec_hi(input logic [WR-1:0] r);

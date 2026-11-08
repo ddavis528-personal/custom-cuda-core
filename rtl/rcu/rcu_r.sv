@@ -14,8 +14,8 @@
 //
 // Port timing (local stages, cr01h = A-1 ... cr04h = A+2):
 //   cr01h  iv: the R issue valid lead (the op is in A next cycle)
-//   cr02h  A: the payload (kind decoded by the block's op-class decode, as
-//          the model's RKind). rw_v, pr_v: the RW and PR ports' valids
+//   cr02h  A: the payload (its opcode decoded here by rcu_dec_pkg, the
+//          model's op-class decode, to the model's RKind). rw_v, pr_v: the RW and PR ports' valids
 //   cr03h  A+1: the slices' rsrc (R0, R1 raw rows); R2's row; active, RA,
 //          RB and rlow from the predicate file's flops. RW's row and
 //          sections, PR's row and old row (no-select rows when the op writes no GPR or
@@ -52,7 +52,7 @@ module rcu_r #(
   input  logic                rst_n,
   // The R slot: the valid lead, then the payload.
   input  logic                iv_cr01h,        // R issues next cycle (the lead's valid)
-  input  logic [4:0]          kind_cr02h,      // the model's RKind
+  input  logic [rcu_dec_pkg::OPC_W-1:0] opc_cr02h, // opcode, decoded here (rcu_dec_pkg)
   input  logic [WT-1:0]       tag_cr02h,       // rob_tag
   input  logic [1:0]          drow_cr02h,      // done_row
   input  logic [N-1:0]        imask_cr02h,     // issue_mask
@@ -107,10 +107,18 @@ module rcu_r #(
     K_SHR = 5'd10, K_SHU = 5'd11, K_SHD = 5'd12, K_SHB = 5'd13, K_VANY = 5'd14,
     K_VALL = 5'd15, K_BAL = 5'd16, K_UNB = 5'd17;
 
-  logic rst_r01h;
+  // The op-class decode (RI-21 (4)): the R slot carries no copy and no
+  // atomic, so done_row and the predicate-copy flag only complete the call.
+  wire [rcu_dec_pkg::CLS_W-1:0] cls_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h, drow_cr02h, 1'b0);
+  wire [4:0] kind_cr02h = cls_cr02h[rcu_dec_pkg::CLS_RK +: 5];
+  wire [2:0] unit_cr02h = cls_cr02h[rcu_dec_pkg::CLS_UNIT +: 3];
+
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_n_r01h;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= !rst_n;
+    rst_n_r01h <= rst_n;
   end
+  wire rst_r01h = !rst_n_r01h;
 
   function automatic logic [31:0] em(input logic [1:0] w);
     em = (w == 2'd0) ? 32'hffff_ffff : (w == 2'd1) ? 32'h0000_ffff :
@@ -347,7 +355,8 @@ module rcu_r #(
 
   // ---- Checks ----------------------------------------------------------------
   // Every op on R has an R kind; an op that writes a predicate has pred_we.
-  wire bad_kind_cr02h = kind_cr02h == 5'd0 || kind_cr02h > K_UNB;
+  wire bad_kind_cr02h = kind_cr02h == 5'd0 || kind_cr02h > K_UNB ||
+                        (unit_cr02h != rcu_dec_pkg::U_RONLY && unit_cr02h != rcu_dec_pkg::U_COLL);
   `CCV_ASSERT(r_kind_named, !(iv_cr02h && bad_kind_cr02h))
   `CCV_ASSERT(pred_write_has_we, !(iv_cr02h && wp_cr02h && !pwe_cr02h))
 
