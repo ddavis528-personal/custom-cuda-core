@@ -42,7 +42,8 @@
 //
 // Demotion: the stall-safe sender pattern (Migration tab): dm_want from
 // this module's flops and the slot-8 decode, dm_v_q written every cycle
-// with D = dm_want & ~stall, and every state change enabled by dm_v_q a
+// with D = dm_want & ~stall (the stall flopped first, so at most one row
+// follows it: RI-22 (7)), and every state change enabled by dm_v_q a
 // cycle on. Wake leads by CCV_WAKE_LAT. Rows 0..16 in order, read live.
 //
 // Restore: a FIFO of CCV_CREDIT_DEPTH rows, landed at the tail. A restore
@@ -158,6 +159,11 @@ module rcu_mig #(
 
   // ---- Inbound valids and the R slot's lead, flopped ---------------------
   logic mrxv_cr01h, crxv_cr01h, prxv_cr01h, prxv2_cr02h, rivq_cr02h, ocrq_cr02h;
+  // The channel's stall, straight into a flop (RI-22 (7); AR 326, AR 328,
+  // RA rev 110): the end has no boundary flop, so the stall acts a cycle
+  // after it rises and at most one row follows it, which the receiver's
+  // CCV_RESCUE_DEPTH holds.
+  logic ostq_cr03h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       mrxv_cr01h <= 1'b0;
@@ -166,6 +172,7 @@ module rcu_mig #(
       prxv2_cr02h <= 1'b0;
       rivq_cr02h <= 1'b0;
       ocrq_cr02h <= 1'b0;
+      ostq_cr03h <= 1'b0;
     end else begin
       mrxv_cr01h <= mv_cr00h;
       crxv_cr01h <= cv_cr00h;
@@ -173,6 +180,7 @@ module rcu_mig #(
       prxv2_cr02h <= prxv_cr01h;
       rivq_cr02h <= riv_cr01h;
       ocrq_cr02h <= ocr_cr01h;
+      ostq_cr03h <= ost_cr02h;
     end
   end
   // pca_rcu_mig lands at a no-flop end: its payload goes straight into
@@ -510,8 +518,8 @@ module rcu_mig #(
       dv_o_cr01h    <= 1'b0;
     end else begin
       dm_busy_cr02h <= dm_busyn_cr02h;
-      dm_v_cr03h    <= dm_want_cr02h & ~ost_cr02h;
-      dm_vo_cr03h   <= dm_want_cr02h & ~ost_cr02h;
+      dm_v_cr03h    <= dm_want_cr02h & ~ostq_cr03h;
+      dm_vo_cr03h   <= dm_want_cr02h & ~ostq_cr03h;
       dm_wk_cr03h   <= dm_busyn_cr02h;
       dm_r2_cr03h   <= dm_busyn_cr02h;
       // The D leads from row 14 on (a cycle early at most: a lead only

@@ -31,7 +31,9 @@
 // each of which must fail (test/rcu/run-rtl.sh): --control rlie tells the
 // module the R op never holds R2 or RW while the ports still give it them;
 // --control cred gives the receiver one credit fewer than CCV_CREDIT_DEPTH;
-// --control wake checks the wake WL + 1 cycles before each valid.
+// --control wake checks the wake WL + 1 cycles before each valid;
+// --control stall2 shows the module each stall a cycle late, so two rows
+// follow it.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_mig.h"
 #include "verilated.h"
@@ -119,7 +121,7 @@ struct Samp {   // one cycle's outputs
   std::array<uint32_t, kNP> gdat{};
 };
 
-enum class Ctl { none, rlie, cred, wake };
+enum class Ctl { none, rlie, cred, wake, stall2 };
 
 struct Cfg {
   double pnew = 0.3, psend = 0.6, pr = 0.5, pr2 = 0.6, prw = 0.6, pstall = 0.1, pkill = 0.004;
@@ -348,7 +350,9 @@ struct Bench {
 
     // The receiver: stall and credits.
     stall[t % 8] = !rst && coin(cfg.pstall);
-    dut->ost_cr02h = stall[t % 8];
+    // --control stall2: the module sees each stall a cycle late, so a second
+    // row can follow it, which the check above must catch.
+    dut->ost_cr02h = ctl == Ctl::stall2 ? stall[(t + 7) % 8] : stall[t % 8];
     dut->ocr_cr01h = 0;
     if (!ocr_due.empty() && ocr_due.front() <= t) {
       ocr_due.pop_front();
@@ -580,7 +584,9 @@ struct Bench {
       if (!ocred) err("demotion row past the receiver's credits");
       else --ocred;
       ocr_due.push_back(t + 1 + pick(cfg.cdelay));
-      if (stall[(t + 7) % 8]) err("demotion valid the cycle after a stall");
+      // The stall is flopped in RCU (RI-22 (7)): at most one row follows it,
+      // so no valid two cycles after a stall (RA rev 110).
+      if (stall[(t + 6) % 8]) err("demotion valid two cycles after a stall");
       const unsigned back = ctl == Ctl::wake ? kWL + 1 : kWL;
       if (t >= back && !hs[(t + 8 - back) % 8].owk) err("demotion valid without its wake");
     }
@@ -810,6 +816,7 @@ int main(int argc, char **argv) {
       if (!std::strcmp(cname, "rlie")) ctl = Ctl::rlie;
       else if (!std::strcmp(cname, "cred")) ctl = Ctl::cred;
       else if (!std::strcmp(cname, "wake")) ctl = Ctl::wake;
+      else if (!std::strcmp(cname, "stall2")) ctl = Ctl::stall2;
       else {
         std::fprintf(stderr, "mig: unknown control %s\n", cname);
         return 2;
