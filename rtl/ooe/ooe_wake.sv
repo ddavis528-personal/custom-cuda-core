@@ -144,7 +144,7 @@ module ooe_wake #(
   parameter int NPEN     = 3,
   parameter int LAT_COPY = 7,          // CCV_LAT_LANE
   parameter int LAT_SPEC = 17,         // CCV_LAT_L1_WAKE
-  parameter int LAT_MISS = 20,         // payload stages + CCV_LAT_L1_CMPL
+  parameter int LAT_MISS = 19,         // payload stages + CCV_LAT_L1_CMPL
   parameter int CMPL_DLY = 1,          // CCV_LAT_L1_MISS_WAKE
   parameter int NC       = 4,          // completions a cycle (ccv_miu_ooe_cmpl's rate)
   parameter int LEAD     = 2,          // cycles the lines lead the model's wake (OA's response OI-45)
