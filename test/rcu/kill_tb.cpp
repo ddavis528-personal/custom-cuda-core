@@ -156,7 +156,7 @@ struct Bench {
                          drain == 0 && !dwake;
       dwake = in.iv || in.dbusy;
       idle = nidle;
-      cr = uint64_t(in.iv) | uint64_t(in.lv) << kNS | uint64_t(in.mv) << (kNS + kNL);
+      cr = uint64_t(in.iv) | uint64_t(in.lv) << kNS;   // no MIU credit (RA-41)
       csr = in.csr;
       kv_q = in.kv;
       ack = nack;
@@ -170,7 +170,7 @@ struct Bench {
     if (!rr) {
       chk("kill_ack", dut->kack_cr02h, ack);
       chk("kill_ack_epoch", dut->kaep_cr02h, aep);
-      chk("credits", get(dut->cr_cr01h, 0, kNS + kNL + kNM), cr);
+      chk("credits", get(dut->cr_cr01h, 0, kNS + kNL), cr);
       chk("done wake", dut->dwake_cr01h, dwake);
       chk("idle", dut->idle_cr01h, idle);
       chk("csr done", dut->csr_done_cr01h, csr);

@@ -169,9 +169,9 @@
    "module": "rcu_kill",
    "rule": "CG-1",
    "target": "cr_q_cr01h",
-   "max_flops": 45,
-   "measured_flops": 45,
-   "why": "RCU's credit returns on its inbound fixed-rate channels (Done, kill and reset tab, Credits RCU returns): one flop a slot, its D the slot's valid on the wire, so the credit returns in the cycle the payload lands; 9 issue slots, 32 lane-result copies, 4 MIU data slots, 45 flops written every cycle. They are the channels' own control pulses, captured every cycle like any receiver's: a repeater's are charged to its block's budget, not its own allowance (Daniel, 2026-10-19), and these are the same pulses at the block's own end, about 0.02% of RCU's 246,000 flops. A gate cannot hold them: the only enable that names a return is the valid itself, an input (CG-5). The module's allowance (7) takes its other 6 single flops (reset, kill_v_q, done wake, idle, CSR responder). Daniel's ruling on RI-14 (RA rev 88, DA rev 110, 2026-11-06): credit-return pulse flops are charged to the receiving block's per-instance 2%, marked credit for check-cg (TI rev 344).",
+   "max_flops": 41,
+   "measured_flops": 41,
+   "why": "RCU's credit returns on its inbound fixed-rate channels (Done, kill and reset tab, Credits RCU returns): one flop a slot, its D the slot's valid on the wire, so the credit returns in the cycle the payload lands; 9 issue slots, 32 lane-result copies, 4 MIU data slots, 45 flops written every cycle. They are the channels' own control pulses, captured every cycle like any receiver's: a repeater's are charged to its block's budget, not its own allowance (Daniel, 2026-10-19), and these are the same pulses at the block's own end, about 0.02% of RCU's 246,000 flops. A gate cannot hold them: the only enable that names a return is the valid itself, an input (CG-5). The module's allowance (7) takes its other 6 single flops (reset, kill_v_q, done wake, idle, CSR responder). Daniel's ruling on RI-14 (RA rev 88, DA rev 110, 2026-11-06): credit-return pulse flops are charged to the receiving block's per-instance 2%, marked credit for check-cg (TI rev 344). 45 to 41 (2026-11-08): miu_rcu_data has no credit port at RCU (RA-41, TI 9894da1; AR 331); the 9 issue credits stay for RA-43 (TI rev 385).",
    "by": "RI",
    "date": "2026-11-06",
    "credit": true
