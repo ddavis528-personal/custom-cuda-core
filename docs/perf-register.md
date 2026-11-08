@@ -1210,6 +1210,12 @@ it.
   over A6, the ROB seeing a memop's done a cycle later inside OOE; the
   flopped pair, about +1.95% S1 with `CCV_LAT_CMPL_HINT` 3, was not
   taken), so bnd_rx(miu_ooe_cmpl) is 0 and `CCV_LAT_CMPL_HINT` 2 stands.
+  Re-priced at 8 ways (DCU 8x64, on 11386e7; AR rev 335): the flopped
+  pair now costs S1 +2.44%, cm32 +0.96%, cm128 +5.10% (J11b p192'), so
+  C9's gain is well over DA 115's 0.5% and it stands. J13 (TI rev 392)
+  puts C9 against A6 at S1 +0.174%, cm32 -0.072%, cm128 +0.459%,
+  vadd16_loop +3.33%, all from cmpl_split=9: cm128 turns from a 0.45%
+  gain at 1 way to a cost once it is no longer L1-bound.
   The M1-miss fallback is a base of 2 with the same terms.
   `ccv_lane_rcu_res` takes a no-flop end at RCU (RA register rev 95, under
   DA revs 114 and 115; RI-16's runs by RH, flopped vs zero-cycle with the
