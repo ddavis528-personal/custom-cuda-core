@@ -465,6 +465,23 @@ else
   bad "--break corrupt-echo" "a wrong echoed destination went unnoticed"
 fi
 
+# Credit on receipt (AR's rev 322 (b) 3, RA-41): at ooe_rcu_issue@rcu and
+# miu_rcu_data@rcu the wrapper returns the credit from its boundary valid
+# flop, on RCU's promise to take each message the cycle it lands. A block
+# that takes one a cycle late, or drops it, must fail by name at the
+# receiver, not only as a divergence from the oracle; check-sv-hosted.sh
+# holds the SV top to the same.
+for brk in cor-late cor-drop; do
+  run "$brk"
+  n=$(field "$B/kernel_$brk.log" cor_late)
+  if grep -q "^CHECK ccv_ooe_rcu_issue: credit on receipt, slot" "$B/kernel_$brk.log" &&
+     [ "${n:-0}" -gt 0 ] && [ "$(field "$B/kernel_$brk.log" check_failures)" != 0 ]; then
+    say "--break $brk: credit on receipt refuses it" "PASS (cor_late=$n)"
+  else
+    bad "--break $brk" "a landed message taken late or dropped went unnoticed (cor_late=${n:-none})"
+  fi
+done
+
 # Where each op executes (Q-32, Q-38) is checked on every op. movi and
 # movi48 have no per-lane input, so RCU writes their immediate itself; sent
 # to the lanes instead, every lane must refuse both. The lane round trip also

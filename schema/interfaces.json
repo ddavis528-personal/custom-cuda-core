@@ -399,7 +399,8 @@
       "slot_attrs_why": {
         "slot_binding": "slot k is select resource k, CCV_ISSUE_RESOURCES in all: the lane sections S0-S3, the MIU pipes P0-P3, then the RCU unit R. An op sits in its lowest resource's slot and marks every other resource of its footprint continuation, so RCU sees which sections and pipes each cycle's ops hold; free slots would hide that",
         "fixed_latency": "once RCU accepts an issue, the result lands exactly at its contracted latency; OOE schedules wakeup from that and has no grant or late signal to learn otherwise (A-47, Q-51)"
-      }
+      },
+      "credit_on_receipt": "CREDIT ON RECEIPT (AR's rev 322, RA-41; params/links.json credit_on_receipt): a promise RCU makes at its end of this channel. RCU takes every issue in the cycle it is presented from its wrapper's boundary flop (that flop's valid; the payload follows a cycle later, as on every channel), under kill, flush and reset included: an issue landing during a kill is taken and voided, never left or refused. RCU has no skid of its own on this end: any storage an issue needs is RCU's own, sized from its own flops, and never borrowed from the credit. So the wrapper returns the credit itself, its boundary stage's credit flop loaded from that boundary valid flop, a cycle after the issue is presented, and RCU has no credit port on this channel. A block that takes an issue a cycle late, or drops one, breaks the contract; both hosts' runs fail on it (cor_late)."
     },
     {
       "name": "ccv_rcu_lane_ops",
@@ -576,7 +577,8 @@
       },
       "slot_attrs_why": {
         "fixed_latency": "L1-hit data must be in the PRF at the contracted cycle, since dependants woken at hit latency read it (A-47)"
-      }
+      },
+      "credit_on_receipt": "CREDIT ON RECEIPT (AR's rev 322, RA-41; params/links.json credit_on_receipt): a promise RCU makes at its end of this channel. RCU takes every load return in the cycle it is presented from its wrapper's boundary flop (that flop's valid; the payload follows a cycle later, the lead fields with valid), under kill, flush and reset included: a load return landing during a kill is taken and voided, never left or refused. RCU has no skid of its own on this end: any storage a return needs is RCU's own, sized from its own flops, and never borrowed from the credit. So the wrapper returns the credit itself, its boundary stage's credit flop loaded from that boundary valid flop, a cycle after the return is presented, and RCU has no credit port on this channel. A block that takes a return a cycle late, or drops one, breaks the contract; both hosts' runs fail on it (cor_late)."
     },
     {
       "name": "ccv_ooe_miu_memop",

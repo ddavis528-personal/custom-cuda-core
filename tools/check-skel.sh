@@ -149,6 +149,7 @@ for seed in 1 2 3; do
   [ "$(field "$log" mismatches)" = "0" ] || why="$why; payload mismatches"
   [ "$(field "$log" overflows)" = "0" ]  || why="$why; receive overflow"
   [ "$(field "$log" credit_leaks)" = "0" ] || why="$why; $(field "$log" credit_leaks) credit(s) lost"
+  [ "$(field "$log" cor_late)" = "0" ] || why="$why; credit on receipt: $(field "$log" cor_late) landed message-cycle(s) not taken"
   [ "$(field "$log" credits_home)" = "$X_SLOTS" ] || why="$why; credits home on $(field "$log" credits_home) of $X_SLOTS slots"
   [ "$(field "$log" idle_slots)" = "0" ] || why="$why; $(field "$log" idle_slots) idle slot(s)"
   [ "$(field "$log" sent)" = "$(field "$log" received)" ] || why="$why; sent != received"
