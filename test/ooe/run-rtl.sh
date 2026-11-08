@@ -290,13 +290,14 @@ done
 # the floor term less the go's own take (OI-114) decides takes, a cycle late
 # (OA's rev 369 (b)): the go reads the unmet on time, which holds the names
 # its last take wrote. Its control takes the go's own take in the split
-# cycle as well (the model's floor_take_lag 0).
+# cycle as well (the model's floor_take_lag 0); floor-held-off splits the
+# floor term again under an allowance that holds one (TI 360).
 if out=$(GO_NAMES=144,24 "$dir/go_tb" 5 2>&1); then
   say "go == model, live, scarce names" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
 else
   say "go == model, live, scarce names" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in floor-take-now; do
+for c in floor-take-now floor-held-off; do
   if GO_NAMES=144,24 GO_CONTROL=$c "$dir/go_tb" 3 >/dev/null 2>&1; then
     say "  control $c (go, scarce)" "MISSED"; fail=1
   else
@@ -405,7 +406,7 @@ if out=$("$dir/confirm_tb" "$seeds" 2>&1); then
 else
   say "confirm == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-msd msd-pulse no-fin no-dep; do
+for c in no-msd msd-pulse no-fin no-dep no-new; do
   if CONFIRM_CONTROL=$c "$dir/confirm_tb" 3 >/dev/null 2>&1; then
     say "  control $c (confirm)" "MISSED"; fail=1
   else

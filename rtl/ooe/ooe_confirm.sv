@@ -14,9 +14,14 @@
 // Cancel. An issued entry returns to Waiting when it depends on a producer
 // that is not issued (returned to Waiting, or never issued) or has missed
 // its L1 slot (msd: the miss, held from the cycle after it until the load's
-// completion). It is a level, decided every cycle, so an entry issued on a
-// stale ready bit is caught in the cycle it issues (OA-17). A replay
-// reaches the next level only through the parent's edge: one level a cycle.
+// completion), or was granted at the same edge as the entry itself (new:
+// both issued from this cycle; OI-133). It is a level, decided every
+// cycle, so an entry issued on a stale ready bit is caught in the cycle it
+// issues (OA-17): its producer is not issued, or has missed, or was
+// cancelled and granted again at the entry's own edge, so that both look
+// issued (a ready bit raised by the producer's first issue; L1_WAKE 16
+// found it). A replay reaches the next level only through the parent's
+// edge: one level a cycle.
 //
 // Confirm. An issued entry confirms when no dependency bit is left in its
 // row and either it writes nothing or its result is final (ooe_wake's fin:
@@ -28,7 +33,7 @@
 //
 // The reference is the model's cancelHop and confirmPass, which log their
 // inputs and decisions every cycle (Core::wakeLog: hop_iss, hop_dep,
-// hop_msd, replay; cf_fin, cf_prod, conf). test/ooe/confirm_tb.cpp drives
+// hop_msd, hop_new, replay; cf_fin, cf_prod, conf). test/ooe/confirm_tb.cpp drives
 // this module with them and compares both decisions, cycle by cycle, and
 // runs OA-17's directed case.
 //===----------------------------------------------------------------------===//
@@ -38,6 +43,7 @@ module ooe_confirm #(
   input  logic [N-1:0]   iss_cq01h,      // issued and unconfirmed
   input  logic [N*N-1:0] dep_cq01h,      // row i, column j: i waits on j
   input  logic [N-1:0]   msd_cq01h,      // missed its L1 slot, until its completion
+  input  logic [N-1:0]   new_cq01h,      // granted at the last edge: issued from this cycle
   input  logic [N-1:0]   fin_cq01h,      // its timer calls its result final
   input  logic [N-1:0]   prod_cq01h,     // writes a register some entry may wake on
   output logic [N-1:0]   replay_cq01h,   // returns to Waiting this cycle
@@ -50,7 +56,7 @@ module ooe_confirm #(
 
   always_comb
     for (int i = 0; i < N; i++) begin
-      replay_cq01h[i] = iss_cq01h[i] && |(dep_cq01h[i * N +: N] & gone);
+      replay_cq01h[i] = iss_cq01h[i] && |(dep_cq01h[i * N +: N] & (gone | (new_cq01h & {N{new_cq01h[i]}})));
       conf_cq01h[i]   = iss_cq01h[i] && dep_cq01h[i * N +: N] == '0 && (fin_cq01h[i] || !prod_cq01h[i]);
     end
 
