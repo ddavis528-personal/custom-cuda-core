@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=32 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 32 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=33 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 33 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -64,7 +64,7 @@ Each outbound wake is a flop, written every cycle. The receiver's gate holds thr
 | --- | --- | --- |
 | `ooe_rcu_issue_s*` | that slot's flopped valid (landed this cycle) | RCU never holds an issue |
 | `lane_rcu_res_c*` | that copy's flopped valid |  |
-| `miu_rcu_data_s*` | that slot's flopped valid |  |
+| `miu_rcu_data_s*` | none: no RCU credit port | The wrapper returns the credit on receipt, from its own `b_` valid flop (`ccv_common_rpt` `CREDIT_ON_RECEIPT`; RA-41, AR 330, TI 383, RA rev 116) |
 | `ooe_rcu_map`, `rau_rcu_mig` | entry launched or kill-dropped | Migration tab |
 | `pca_rcu_mig` | row written or dead row popped | Migration tab (TI-13) |
 
