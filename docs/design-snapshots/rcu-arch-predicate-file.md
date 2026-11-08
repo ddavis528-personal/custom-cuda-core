@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=11 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 11 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Predicate_file rev=12 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Predicate file*, at revision 12 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Predicate file
 
@@ -15,7 +15,7 @@ The predicate file, `rcu_pred`, is 48 rows × 32 bits read in A and written thro
 
 | Port | Cycle | Row source | Purpose |
 | --- | --- | --- | --- |
-| G0-G8 | A | `phys_pred_guard` of slot s, on the wire (decoded combinationally) | guard of every lead slot; for a `pdata` op the data predicate; for a predicate store the store data |
+| G0-G8 | A | `phys_pred_guard` of slot s, on the wire (decoded combinationally); since RA-43 lead\_guard\_pred at A−1 into the psel flops, and phys\_pred\_guard leaves the payload (TI 382) | guard of every lead slot; for a `pdata` op the data predicate; for a predicate store the store data |
 | RA, RB | A | R op `imm`\[5:0\] and `imm`\[12:7\] (negates `imm`\[6\], `imm`\[13\]), TI-1 | predicate sources of pand, por, pxor; vote and ballot's `ps` (RA-29 proposes it rides `imm`\[6:0\] the same way) |
 | OL0-OL3 | A+6 | lane descriptor's `phys_pred_old_dst` | merge source for a lane op's predicate result |
 | OR | A+2 | `rpres_a1`'s old destination | merge source for an R op's predicate result |
