@@ -268,6 +268,8 @@ endmodule
 //   ngd_fx_hwrp_mix  one payload bit of each through a gate: the port is the
 //                    block's logic, timed to its budget, so it passes even
 //                    with its other bits straight (held tags)
+//   ngd_fx_hwrp_c0   ngd_fx_hwrp_reg's registers on per-slot ports, c_c0 and
+//                    r_c0 (a slotted channel's _c<n>): refused the same way
 module ngd_fx_hblk_reg (
   input  logic       clk,
   input  logic       r_valid,
@@ -326,6 +328,36 @@ module ngd_fx_hwrp_mix (
     c_valid <= cv;  c_payload <= cp;
   end
   ngd_fx_hblk_mix u_blk (.clk(clk), .r_valid(rv), .r_payload(rp), .c_valid(cv), .c_payload(cp));
+endmodule
+
+module ngd_fx_hblk_c0 (
+  input  logic       clk,
+  input  logic       r_c0_valid,
+  input  logic [3:0] r_c0_payload,
+  output logic       c_c0_valid,
+  output logic [3:0] c_c0_payload
+);
+  always_ff @(posedge clk) begin
+    c_c0_valid   <= r_c0_valid;
+    c_c0_payload <= r_c0_payload;
+  end
+endmodule
+
+module ngd_fx_hwrp_c0 (
+  input  logic       clk,
+  input  logic       r_c0_valid,
+  input  logic [3:0] r_c0_payload,
+  output logic       c_c0_valid,
+  output logic [3:0] c_c0_payload
+);
+  logic       rv, cv;
+  logic [3:0] rp, cp;
+  always_ff @(posedge clk) begin
+    rv <= r_c0_valid;  rp <= r_c0_payload;
+    c_c0_valid <= cv;  c_c0_payload <= cp;
+  end
+  ngd_fx_hblk_c0 u_blk (.clk(clk), .r_c0_valid(rv), .r_c0_payload(rp),
+                        .c_c0_valid(cv), .c_c0_payload(cp));
 endmodule
 
 // The one-cell capture (AR's rev 326, re:RI-22 (3)): a block input wired to a

@@ -2067,6 +2067,16 @@ def selftest():
                        block="ngd_fx_hblk_mix", ends=hid)
     expect(not f, "ports with logic on one bit at flopped ends were refused as hidden "
            "stages: %s" % f)
+    #    A slotted channel's ports carry _c<n> (605f39e): the same registers
+    #    on c_c0 and r_c0 are refused the same way.
+    _, f = block_check("fx_hid_c0", "ngd_fx_hwrp_c0", files, [], none, [],
+                       block="ngd_fx_hblk_c0", ends=hid)
+    expect(len(f) == 2 and any("c_c0 is taken whole straight from flops at a flopped "
+                               "sending" in x for x in f)
+           and any("r_c0 is taken whole straight into flops at a flopped receiving" in x
+                   for x in f),
+           "a _c<n> block port taken whole straight from or into its flops at a "
+           "flopped end passed: %s" % f)
     #    The one-cell capture (AR's rev 326, re:RI-22 (3)): an input taken
     #    by a flop under its own synchronous reset, the flopped reset (MODE
     #    0), and an enable from the child's own flops too (1), is straight
