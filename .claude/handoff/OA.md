@@ -40,10 +40,10 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 394, AR 325, TI 383, OI 329, IS 190, CP 155, DA 115,
-RA 115 (tab 9851686b-2b0a), RI 45 (tab 8e4547bc-c469).
-OOE doc rev 372. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
-Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release 702d9bff; tag refused (known).
+Conventions 17, OA 396, AR 332, TI 387, OI 331, IS 190, CP 157, DA 115,
+RA 119 (tab 9851686b-2b0a), RI 50 (tab 8e4547bc-c469).
+OOE doc rev 373. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
+Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release b15c89e8; tag refused (known).
 
 ## Open work (most urgent first)
 -24. OA 387 re:RA 104/AR 325 (zero-cycle ooe_rcu_issue leads): YES on OOE side. pred_neg(+(a) bits),
@@ -68,8 +68,10 @@ Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release
    -> no objection, no row. OOE copies now ~ 207+81+128 = 416.
    OA 393 re:TI 383: R imm settled = move (RA 114), OA 392 withdrawn. C_RECONV = rename-time no-op,
    DEC serial 5 (first spare), done at alloc, no RS/issue; skel op table + control; OI model+RTL nop.
-   OWED: specify register-form PMOV (RA-16 (f), rename-time elided move) in its own row.
--23. OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
+   OA 396: register PMOV EXECUTED on R as plog (imm_kind 1, ps1=ps0), not elided (compiler emits none,
+   copies w/ por; elision needs phys-pred refcount, only full-mask/unguarded/unneg). RA 119 confirmed;
+   TI built 8dbc152. Reopen only if compiler emits pmov. RA-16 has nothing of OA's.
+-23. CLOSED (OA 395): OI-133 fix 5559b4f/b90adff/11386e7 accepted, rope cleared (TI 387). Was OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
    consumer co-granted with its producer (always stale). First check ooe_sched RTL (rep_cq02h uses
    pre-grant iss_cq02h, may already catch it) -> if so model-only fix; else add gnt to mask within caps.
    Sweep L1_WAKE 12-20, control drops term; >1-cycle window back to OA. J11 unpriced till lands.
