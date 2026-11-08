@@ -590,6 +590,8 @@ struct Config {
   /// admission unit, OA's rev 189).
   bool inject_a1_base_only = false;
   bool inject_cas_split = false;
+  /// Control (OI-127): the CAS pair drops its second slot's pd.
+  bool inject_cas_no_pd = false;
   /// OI-79 (b)'s control: the take keeps a pair the width splits (its
   /// first slot taken, its second left for the next cycle): it skips both
   /// the take's cap and tryRename's cut at the last lane.
@@ -616,6 +618,10 @@ struct Config {
   /// split cycle (ooe_go with no per-take term). 0: the in-cycle
   /// subtraction (OI-114 as first built; go_tb's control floor-take-now).
   unsigned floor_take_lag = 1;
+  /// ROB slice 4: 2 takes a fault only at the head as registered a cycle
+  /// before (ooe_rob_w's hrf), keeping it off the retire window's cones; 1
+  /// at the window's port 0; 0 on any port.
+  unsigned fault_head_only = 2;
   /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
   /// register keeps its old width (the model before this).
   bool inject_sibling_uncommitted = false;
@@ -1789,6 +1795,13 @@ public:
       uint32_t gmask = 0;
       uint64_t pcn = 0, tgt = 0;
       unsigned pchi = 0;          ///< pc[47:32]: a ret's target is {pc[47:32], aux}
+      // Slice 4 (OI-125): what the allocation writes for the fault record,
+      // every entry: a rename-time fault and its cause, pc[31:1], pc[47:32]
+      // and the group mask (a rename-time fault's lanes).
+      bool fault = false;
+      unsigned cause = 0;
+      uint32_t pclo = 0, egmask = 0;
+      unsigned epchi = 0;
     };
     struct Ret {
       unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
@@ -1798,6 +1811,10 @@ public:
     /// rob_tags: issues owing RCU a done, RCU's dones, MIU's completions,
     /// copies issued and landed, RS entries freed.
     std::vector<unsigned> owe, done, cmpl, cpi, cpl, rsf;
+    /// Slice 4, beside cmpl (one each): its lead_fault (status 1) and the
+    /// fault's cause, lanes and address.
+    struct CmplFault { bool fault = false; unsigned cause = 0; uint32_t lanes = 0; uint64_t addr = 0; };
+    std::vector<CmplFault> cmplf;
     /// Slice 2, beside owe and done (one each): the row each owes or
     /// completes (OA's rev 282: 0 the main entry, 1 the copy, 2 an atomic's
     /// A2), and a done's outcome (taken, mask, aux).
@@ -1824,6 +1841,9 @@ public:
     std::vector<Ret> ret;
     /// Slice 3: each store committed (slot, index), from the retire.
     std::vector<std::pair<unsigned, unsigned>> commit;
+    /// Slice 4: each fault taken at retire (slot, index, cause, pc, lanes).
+    struct Fault { unsigned slot = 0, idx = 0, cause = 0; uint64_t pc = 0; uint32_t lanes = 0; uint64_t addr = 0; };
+    std::vector<Fault> fault;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;
   };
