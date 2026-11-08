@@ -83,10 +83,12 @@ PY
     refused=$((refused + 1))
   fi
 done <<'CASES'
-rcu is a DPI block, so its sending end of rcu_ooe_done|nf[1]["except"].append("rcu_ooe_done")
+rcu is a DPI block, so its sending end of rcu_ooe_done|nf[1]["channels"].remove("rcu_ooe_done")
 fet is a DPI block, so its sending end of|nf[0]["block"].remove("fet")
 says no why|nf[1].pop("why")
-has no end of channel 'fet_dec_instr'|nf[1]["except"].append("fet_dec_instr")
+has no end of channel 'fet_dec_instr'|nf[1]["channels"].append("fet_dec_instr")
+"except" goes only with channels "all"|nf[1]["except"] = ["ooe_rcu_map"]
+except: rcu has no end of channel 'fet_dec_instr'|nf[1]["channels"] = "all"; nf[1]["except"] = ["ooe_rcu_issue", "fet_dec_instr"]
 is already no_flop|nf.append({"block": "fet", "channels": ["fet_dec_instr"], "why": "x"})
 CASES
 if [ -z "$missed" ]; then
@@ -118,7 +120,7 @@ PY
 done <<'CASES'
 a zero-cycle end (no_flop)|cor.append({"end": "lane_rcu_res@rcu", "why": "x"})
 is not ooe_rcu_issue's destination|cor.append({"end": "ooe_rcu_issue@ooe", "why": "x"})
-not listed: ccv_ooe_rcu_map carries no credit_on_receipt contract|nf[1]["except"].append("ooe_rcu_map"); cor.append({"end": "ooe_rcu_map@rcu", "why": "x"})
+not listed: ccv_ooe_rcu_map carries no credit_on_receipt contract|nf[1]["channels"].remove("ooe_rcu_map"); cor.append({"end": "ooe_rcu_map@rcu", "why": "x"})
 listed twice|cor.append(dict(cor[0]))
 says no why|cor[0].pop("why")
 an end is '<channel>@<block type>'|cor.append({"end": "ooe_rcu_issue", "why": "x"})

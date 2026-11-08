@@ -54,12 +54,17 @@
     },
     {
       "block": "rcu",
-      "channels": "all",
-      "except": [
-        "ooe_rcu_issue",
-        "miu_rcu_data"
+      "channels": [
+        "lane_rcu_res",
+        "ooe_rcu_map",
+        "pca_rcu_mig",
+        "rau_rcu_mig",
+        "rcu_lane_ops",
+        "rcu_miu_addr",
+        "rcu_ooe_done",
+        "rcu_pca_mig"
       ],
-      "why": "Option 1 (AR's rev 301): RCU puts logic before its first register on these two inputs, so each takes the boundary flop in its wrapper and its crossing counts bnd_rx = 1 (AR's rev 300). lane_rcu_res was a third until RA's rev 95 made its end zero-cycle under DA 114 (LANE 8 to 7, SFU 13 to 12), on two conditions: the block-level read at RCU's assembly holds the end to 12 NGD, or it goes to Daniel; and that link takes no repeater stage, ever, since RCU and the lanes abut. Every other RCU end is taken or driven by a register at 0 NGD, as a DPI host's posedge block is (AR's rev 287 (1))."
+      "why": "Every RCU end but ooe_rcu_issue and miu_rcu_data, named, since \"all\" is refused once ccv_rcu's top is RTL (RI-22). Those two stay flopped under Option 1 (AR's rev 301): RCU puts logic before its first register on them, so each takes the boundary flop in its wrapper and its crossing counts bnd_rx = 1 (AR's rev 300). lane_rcu_res was a third until RA's rev 95 made its end zero-cycle under DA 114 (LANE 8 to 7, SFU 13 to 12), on two conditions: the block-level read at RCU's assembly holds the end to 12 NGD, or it goes to Daniel; and that link takes no repeater stage, ever, since RCU and the lanes abut. Every other end named here is taken or driven by a register at 0 NGD, as a DPI host's posedge block is (AR's rev 287 (1))."
     }
   ],
   "credit_on_receipt": [
