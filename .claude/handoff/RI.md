@@ -44,6 +44,16 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+- 2026-11-08 TI rev 383: 9894da1 (on TI branches ccr-183cc441-doowtf / infra) = CAS writes pd + RA-16 + RA-41
+  (credit on receipt: 13 credit ports leave ccv_rcu_ports.svh). Reviewed RI rev 48 (adapter OK; suggest scoping
+  copy pwe-clear to atomics). After chain-ri6 pushes: merge 9894da1, drop rcu_kill's 13 credit capture flops
+  (rcu_kill.sv, ccv_rcu gen, kill_tb), cg-waivers 45->32, rerun kill units + benches. Bookmarks TI 383, RI 48.
+- 2026-11-08 chain-ri6 RED (not disk): lanes opc 25.3 + slice_k3 popc 25.8 at arrival 1.4 (interim arrival 0, RI rev 49,
+  pending RA); rcu_pred waivers m_am 2.5->3.1, rg_hi 1.0->2.0; slice_k0 bench cov_mw_shift unreachable at K 0 (bin now K>0).
+  LESSONS: check-ngd --unit may exit 0 with findings: grep 'check-ngd: NGD'. Run every slice unit (k0,k2,k3, K1) before a gate.
+- RA rev 117: interim accepted (bounded): the two entries go in the RA-43 class-flop commit; pre-decode instead if
+  RA-43 is not in when ccv_rcu.sv goes in. Measure slices at every K. Bookmarks RA 117, RI 49.
+- chain-ri7 = re-gate of ri-dec 4735e95 (fixes 9bd2d74, 2249bf3).
 -2. IN FLIGHT 2026-11-08: chain-ri6 (chain-ri5 died: disk full from build/cg VCDs, ~9 GB; chain-ri6 rm -rf build/cg after the cg export). Was chain-ri5 (~/ccv-logs/chain-ri5.sh, out chain-ri5.out) gates ri-wt2 branch ri-dec
    (de9894d: module fixes, ccv_rcu.sv removed) and pushes. ri-dec now fast-forwarded to ri-retime (ri-wt4: d38ab59 retime,
    f3f5de7 arrivals at fanout term + rcu_pred act_d pre-decode, 521d4fa stall flopped + stall2 control;
