@@ -280,7 +280,9 @@ int main(int argc, char **argv) {
                       // .shared and SPM (TI's rev 230); FET's barrier parking (TI-40)
                       brk == "spm-one-pass" || brk == "spm-no-wait" || brk == "spm-shared-region" ||
                       brk == "bar-park-off" || brk == "held-over-r" || brk == "held-no-clear" ||
-                      brk == "borrow-partial";
+                      brk == "borrow-partial" ||
+                      // the SFU result on ccv_lane_rcu_res (RA-16 (b))
+                      brk == "sfu-valid-stray";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;
