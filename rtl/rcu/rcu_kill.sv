@@ -139,8 +139,12 @@ module rcu_kill #(
       idle_q_cr01h  <= 1'b0;
     end else begin
       dwake_q_cr01h <= |iv_cr00h | (|dbusy_cr00h);
-      idle_q_cr01h  <= ~|busy_cr00h & ~|dbusy_cr00h & ~|iv_cr00h & ~|lv_cr00h & ~|mv_cr00h &
-                       ~kv_cr00h & ~kv_cr01h & (kd_cr02h == '0) & ~dwake_q_cr01h;
+      // lane_rcu_res and kill land at no-flop ends: those inputs go straight
+      // into a flop (AR rev 285 (5)), so idle reads their captures, a cycle
+      // on; the clock gate's quiesce hysteresis (8) and each channel's wake
+      // cover the cycle.
+      idle_q_cr01h  <= ~|busy_cr00h & ~|dbusy_cr00h & ~|iv_cr00h & ~|cr_q_cr01h[NS +: NL] &
+                       ~|mv_cr00h & ~kv_cr01h & (kd_cr02h == '0) & ~dwake_q_cr01h;
     end
   end
   assign dwake_cr01h = dwake_q_cr01h;

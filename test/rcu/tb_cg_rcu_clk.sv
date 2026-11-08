@@ -1,6 +1,6 @@
 // Clock-gating scenarios for ccv_common_clk at RCU's NWAKE (tools/check-cg.py,
 // unit rcu_clk; test/cg/tb_cg_clk.sv is TI's at NWAKE 2):
-// RCU's block clock gate (rtl/rcu/ccv_rcu.sv): 37 wake sources (issue, 32
+// RCU's block clock gate (rtl/rcu/ccv_rcu.sv): 38 wake sources (issue, 32
 // lane results, MIU data, map, RAU, PCA, kill), the TI bench's scenarios, the
 // hysteresis CSRs at 4 quiesced and 6 stalled cycles.
 //
@@ -14,7 +14,7 @@
 //
 // Inputs change just after the falling edge; the rising edge samples them.
 module tb_cg_rcu_clk;
-  localparam int NW = 37;
+  localparam int NW = 38;
   logic       clk = 1'b0, rst_n = 1'b0;
   logic       quiesced = 1'b1, stalled = 1'b0, cg_override = 1'b0, te = 1'b0;
   logic [NW-1:0] wake = '0;

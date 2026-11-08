@@ -707,8 +707,10 @@ module rcu_mig #(
   end
   wire busyn_cr01h = dm_busy_cr02h | rs_busy_cr02h | |mq_v_cr02h | |cq_v_cr02h | |f_v_cr02h |
                      (mcn_cr02h != '0) | (ccn_cr02h != '0) | (mkc_cr03h != '0) | (ckc_cr03h != '0) | dm_v_cr03h | rs_v_cr03h | rs_v_cr04h |
-                     rs_cr_cr04h | mrxv_cr01h | crxv_cr01h | prxv_cr01h | kvq_cr01h | kact_cr02h |
-                     mv_cr00h | cv_cr00h | pv_cr00h | kv_cr00h;
+                     rs_cr_cr04h | mrxv_cr01h | crxv_cr01h | prxv_cr01h | kvq_cr01h | kact_cr02h;
+  // Not the raw valids: map, rau, pca and kill land at no-flop ends, whose
+  // inputs go straight into a flop (AR rev 285 (5)); their captures above
+  // cover the cycle after, the clock gate's hysteresis the one before.
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       quiet_q_cr02h <= 1'b1;

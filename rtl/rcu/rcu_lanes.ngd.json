@@ -157,6 +157,24 @@
       "date": "2026-11-07",
       "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
+    "swrow_cr12h": {
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-08",
+      "required": 11.0,
+      "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
+    },
+    "swsec_cr12h": {
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-08",
+      "required": 11.0,
+      "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
+    },
+    "swv_cr11h": {
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-08",
+      "required": 11.0,
+      "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
+    },
     "tag_cr02h": {
       "arrival": 0.0,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",

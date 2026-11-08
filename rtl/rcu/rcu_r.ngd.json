@@ -49,12 +49,6 @@
       "date": "2026-11-05",
       "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
-    "opc_cr02h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
-      "date": "2026-11-05",
-      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
-    },
     "low_cr03h": {
       "arrival": 0.0,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
@@ -62,6 +56,12 @@
       "why": "The predicate file's A flops (active_a, rpsrc_a, rlow_a), read in A+1 straight from flops, wire only; fanout is check-ngd's."
     },
     "mrg_cr02h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "date": "2026-11-05",
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
+    },
+    "opc_cr02h": {
       "arrival": 0.0,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-05",
@@ -114,6 +114,24 @@
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-05",
       "why": "The bank slices' rsrc, R0 and R1 raw, straight from the slices' flops (RA-39), wire only; fanout is check-ngd's."
+    },
+    "rw_row_cr03h": {
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-08",
+      "required": 11.0,
+      "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
+    },
+    "rw_sec_cr03h": {
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-08",
+      "required": 11.0,
+      "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
+    },
+    "rw_v_cr02h": {
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-08",
+      "required": 11.0,
+      "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
     },
     "spos_cr02h": {
       "arrival": 0.0,
