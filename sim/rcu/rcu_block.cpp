@@ -290,7 +290,9 @@ private:
     // port 0, index 1), A2 the lane op on T and rs, A3 a store of N (port 0).
     // The lanes still see the atomic's opcode, which names A2's operation.
     if (op && op->cls == kAtomic) {
-      const OpInfo *step = atomStep(is.done_row);
+      // A CAS's own steps (OI-127): guarded, and A2 reads rs_cmp and
+      // rs_swap and writes pd.
+      const OpInfo *step = atomStep(is.done_row, op);
       if (!step) {
         k_.fail("rcu: rob tag %u's atomic issued on row %u, no step of it", is.tag, is.done_row);
         is.oc.unit = R::Unit::Lane;
@@ -298,6 +300,11 @@ private:
       }
       op = step;
     }
+    // A guarded or masked CAS's copy (A-38) names its pd as well as rd. A2
+    // merges pd's inactive lanes from the same old name on every pass
+    // (OI-127, OA rev 380), so the copy leaves the predicate to it: the
+    // core models a copy's predicate half only for ld.pred's (TI, 11-08).
+    if (copy && is.pwe && is.dst != R::kZero) is.pwe = false;
     is.oc = classOf(op, copy, copy && is.pwe && is.dst == R::kZero);
     is.name = op ? op->name : "a copy";
     // call's link is OOE's pc + length in imm (imm_kind 6; RA-18, RA-30):

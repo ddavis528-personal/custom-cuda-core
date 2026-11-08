@@ -254,7 +254,9 @@ struct Kernel {
       // O-72's atomics (IS-21; AR-21): the decode pair, the three steps,
       // the passes and the holds between a pass's read and write.
       "atomic_pair", "atomic", "atomic_repass", "atomic_write", "atomic_lane",
-      "atomic_acquire", "atomic_hold_wait"};
+      "atomic_acquire", "atomic_hold_wait",
+      // CAS (OI-127): its lane op on an active lane, and on a guarded-off one.
+      "cas_lane", "cas_lane_off"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory

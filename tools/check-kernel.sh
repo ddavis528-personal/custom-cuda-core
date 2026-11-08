@@ -165,6 +165,13 @@
 #                                              atom-lane-old: A2 writes T back;
 #                                              atom-descending (atomf): f32
 #                                                rounding shows the order
+#   a CAS is a pair too, its pd on the       cas-pd-first (cas): RCU refuses
+#     second slot beside rd; A2 compares,        A2 without pd (stub), and pd's
+#     swaps and writes pd, merged from its       reader stores stale (model);
+#     old name when guarded (OI-127)           cas-pd-inverted: pd's reader
+#                                                stores the wrong lanes;
+#                                              cas-swap-always: a failing
+#                                                lane's write is refused
 #   a memop's fault lead is status == 1     lead-fault-replay (swap): OOE
 #     (OI-125, AR rev 314)                     refuses each replay's lead;
 #                                              lead-fault-drop (roconst):
@@ -806,6 +813,7 @@ transp4 bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow
 borrow credit_borrow=1 credit_wait>0 chw_converged=2
 atom   atomic_pair=7 atomic=7 atomic_write=193 atomic_repass=186 atomic_lane>0 spm_pass>0
 atomf  atomic_pair=2 atomic=2 atomic_write=64 atomic_repass=62 spm_pass>0
+cas    atomic_pair=6 atomic=6 atomic_write=130 atomic_repass=124 cas_lane>0 cas_lane_off>0 spm_pass>0
 KERNELS
 # O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
 # xfer_size, never rdata's width, and a signed load sign-filled to rdata.
@@ -1519,6 +1527,44 @@ for b in "atom-one-slot:ooe: OI-80: warp 0's atomic (seq [0-9]*) arrives in one 
     say "--break $nm: an atomic O-72 rules out" "PASS ($(field "$B/kernel_$nm.log" check_failures) checks)"
   else
     bad "--break $nm" "first: $(grep -m1 '^CHECK' "$B/kernel_$nm.log")"
+  fi
+done
+# CAS (O-72, IS-21; OI-127): cas runs CAS_G and CAS_S, contended (every
+# lane on one word: a chain each lane wins in ascending order, and a word
+# one lane wins), uncontended, and guarded on lanes 0-15 so rd and pd merge
+# from their old names, every pd read back by a guarded add. DEC puts pd on
+# the pair's second slot; OOE's A2 issues it; the lane compares and swaps.
+# Each control must fail at its first check, by the check named:
+#   cas-pd-first: DEC puts pd on the first slot, which OOE's join does not
+#     read, so A2 issues without it: the stub RCU refuses that A2; on the
+#     model RCU, pd is never written and its reader's store is refused
+#   cas-pd-inverted: the lane drives the compare's opposite as pd: the
+#     first CAS's reader stores lane 0's 1 as 0
+#   cas-swap-always: the lane swaps whatever the compare says: lane 1 of
+#     the one-winner CAS writes 2 over the 1 it should leave
+# The default RCU, RI's model, runs cas clean with every kernel; the stub,
+# which merges a CAS copy's pd itself, must too.
+log="$B/kernel_cas_stub.log"
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/cas/oracle.jsonl >"$log" 2>&1
+why=""
+for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+  [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
+done
+if [ -z "$why" ]; then
+  say "cas on the stub RCU == ccv-sim" "PASS ($(cycles "$log"))"
+else
+  bad "cas on the stub RCU" "${why# }"
+fi
+for b in "cas-pd-first:stub:rcu: seq [0-9]*, CAS_G's A2, writes no predicate" \
+         "cas-pd-first:model:miu: seq [0-9]* lane 0 store data 00000000, oracle 00000001" \
+         "cas-pd-inverted:model:miu: seq [0-9]* lane 0 store data 00000000, oracle 00000001" \
+         "cas-swap-always:model:miu: seq [0-9]* lane 1 atomic write 00000002, oracle 00000001"; do
+  nm=${b%%:*}; rest=${b#*:}; impl=${rest%%:*}; pat=${rest#*:}
+  CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/cas/oracle.jsonl --break "$nm" >"$B/kernel_$nm-$impl.log" 2>&1
+  if grep -m1 '^CHECK' "$B/kernel_$nm-$impl.log" | grep -q "^CHECK $pat"; then
+    say "--break $nm ($impl RCU): a CAS O-72 rules out" "PASS ($(field "$B/kernel_$nm-$impl.log" check_failures) checks)"
+  else
+    bad "--break $nm ($impl RCU)" "first: $(grep -m1 '^CHECK' "$B/kernel_$nm-$impl.log")"
   fi
 done
 # The issue lead (RA-31; OA's rev 307, AR's rev 267): every operand group an
