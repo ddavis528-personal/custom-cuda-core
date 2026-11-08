@@ -33,12 +33,21 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 316, OA 380, IS 190, TI 367, OI 321, CP 156, DA 115,
+Conventions 17, AR 316, OA 380, IS 190, TI 373, OI 321, CP 156, DA 115,
 RA 96, RI 34 (2026-11-07 evening). Latest TI open: TI-51 (rev 346).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-11-06 sent to AR OA IS OI CP RA RI; all seven ponged ok.
 
 ## State
+- 2026-11-07 ~19:30Z: LOCAL on ti-dcu8 (/home/user/ti-dcu8), full gate
+  bundle running (gate-push --full): cc1e294 check-ngd hidden-stage rule (AR
+  rev 310), 72c2f1b ccv-skel --port-dump + tools/check-port-dump.py (#60,
+  RA-34; in check-skel and check-kernel), heavy-units ooe_sched note (#70:
+  peak is the replay harness's cold C++ compile, 2394 MiB; local gates read
+  975 because ccache is warm; ooe_go 1940 on release run 795, unattributed).
+  After PASS: TI rows to RA/RI (port dump ready: --port-dump rcu=FILE;
+  docs/rcu-impl.md "TI is building it" is RI's to update) and AR (rule live),
+  notices. RA-31 (#59) and CAS still wait on OI (ooe_wake cls/kind, A2 pd).
 - 2026-11-07 ~19:00Z: PUSHED de03fd6 (full PASS; ngd 4909s, cg 4864s): O-85
   (coll), IS-21 (atom, atomf; controls atom-one-slot/-one-pass/-lane-old/
   -no-more/-descending; schema discard text; MIU replay assertion), #88

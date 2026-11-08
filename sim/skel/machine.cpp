@@ -1,5 +1,6 @@
 //===-- machine.cpp - wiring --------------------------------------------===//
 #include "machine.h"
+#include "portdump.h"
 
 #include <cstdio>
 
@@ -60,6 +61,8 @@ Machine::Machine(unsigned depth, const Factory &make) {
 }
 
 void Machine::step(bool in_reset, const std::function<void()> &inject) {
+  if (dump)
+    dump->sample(*this, in_reset);   // the ports as this cycle starts
   for (Slot &s : slots_)
     s.begin();
   std::fill(fab_nxt_.begin(), fab_nxt_.end(), 0);   // a fabric is driven every cycle

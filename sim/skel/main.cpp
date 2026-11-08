@@ -7,7 +7,12 @@
 // load-bearing EV_CH_XFER stream comes from that same code.
 //
 //   ccv-skel [--cycles N] [--seed S] [--trace FILE] [--force-atomic]
-//            [--break MODE]
+//            [--break MODE] [--port-dump INST=FILE]
+//
+// --port-dump writes one block instance's ports, a sample a cycle, as a
+// VCD named as the SV top names them (RA-34: the stimulus for that block's
+// clock-gating replays; sim/skel/portdump.h). INST as the top names it,
+// u_ optional: rcu, lane_03.
 //
 // --break exists to prove the bank is wired, slot by slot, to what it claims
 // to check. A clean run from a bank that is not connected looks exactly like
@@ -96,6 +101,7 @@
 #include "exerciser.h"
 #include "kernel.h"
 #include "machine.h"
+#include "portdump.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -108,6 +114,8 @@
 using namespace ccv::skel;
 
 namespace {
+
+PortDump g_dump;   ///< --port-dump: one block's ports, if asked for
 
 template <typename W> void setBit(W &w, uint64_t i, bool v) {
   const uint32_t m = 1u << (i % 32);
@@ -166,6 +174,7 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
   k.brk = brk;
   k.name = kernelName(path);
   Machine m(ccv::kCreditDepth, [&](int inst) { return makeKernelBlock(inst, k); });
+  if (g_dump.active()) m.dump = &g_dump;
   bank.pair_enable = 1;
   if (brk == "late-lead")
     for (Slot &s : m.slots()) s.late_lead = true;
@@ -180,6 +189,7 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
     m.step(c < KernelEnd::kReset);
     if (end.after(c, k, m)) break;
   }
+  g_dump.close();
   bank.final();
   ccv::traceWriter().close();
   printKernelReport(k, m, end, ctx.errorCount());
@@ -206,7 +216,7 @@ Bits wellFormed(Machine &m, unsigned slot) {
 
 int main(int argc, char **argv) {
   uint64_t cycles = 2000, seed = 1;
-  std::string trace, brk = "none", dump_wiring, kernel;
+  std::string trace, brk = "none", dump_wiring, kernel, port_dump;
   bool cycles_given = false;
   bool force_atomic = false;
   for (int i = 1; i < argc; ++i) {
@@ -217,6 +227,7 @@ int main(int argc, char **argv) {
     else if (arg("--trace")) trace = argv[++i];
     else if (arg("--break")) brk = argv[++i];
     else if (arg("--dump-wiring")) dump_wiring = argv[++i];
+    else if (arg("--port-dump")) port_dump = argv[++i];
     else if (!std::strcmp(argv[i], "--force-atomic")) force_atomic = true;
   }
   // Only a traced run checks launches against the bank's XFER events (OI-92).
@@ -328,6 +339,15 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  if (!port_dump.empty()) {
+    const std::string what = kernel.empty() ? "S0 exerciser, seed " + std::to_string(seed)
+                                            : "kernel " + kernelName(kernel);
+    if (std::string e = g_dump.open(port_dump, what); !e.empty()) {
+      std::fprintf(stderr, "%s\n", e.c_str());
+      return 2;
+    }
+  }
+
   if (!kernel.empty()) {
     if (brk != "none" && !kbreak) {
       std::fprintf(stderr, "--break %s is an S0 control; not with --kernel\n", brk.c_str());
@@ -358,6 +378,7 @@ int main(int argc, char **argv) {
   // ccv_common_chk_outstanding). The functional stubs turn it on.
   bank->pair_enable = 0;
   Machine m(ccv::kCreditDepth, [&](int inst) { return makeExerciser(inst, cfg); });
+  if (g_dump.active()) m.dump = &g_dump;
 
   // The drain covers the longest link: its stages each way, and a queue of
   // its deeper credits to empty.
@@ -438,6 +459,7 @@ int main(int argc, char **argv) {
         }
     });
   }
+  g_dump.close();
   bank->final();
   ccv::traceWriter().close();
 
