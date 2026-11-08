@@ -146,19 +146,30 @@ module rcu_bank_slice #(
   wire rst_r01h = !rst_cr01h_n;
 
   // One-hot predecode of a row index.
+  // Each predecode reads its half of the row index.
+  /* verilator lint_off UNUSEDSIGNAL */
   function automatic logic [NH-1:0] dec_hi(input logic [WR-1:0] r);
     for (int h = 0; h < NH; h++) dec_hi[h] = r[WR-1:4] == h[WR-5:0];
   endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
+  // Each predecode reads its half of the row index.
+  /* verilator lint_off UNUSEDSIGNAL */
   function automatic logic [15:0] dec_lo(input logic [WR-1:0] r);
     for (int i = 0; i < 16; i++) dec_lo[i] = r[3:0] == i[3:0];
   endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
   // Does a register of width code w at position pos cover section K, and
   // which of its bytes sits there.
+  // K is a parameter: a bound is constant in some slices, by design.
+  /* verilator lint_off WIDTHEXPAND */
+  /* verilator lint_off CMPCONST */
   function automatic logic covers(input logic [1:0] w, input logic [1:0] pos);
     int span;
     span = (w == 2'd0) ? 4 : (w == 2'd1) ? 2 : 1;
     covers = (K >= pos) && (K < pos + span);
   endfunction
+  /* verilator lint_on WIDTHEXPAND */
+  /* verilator lint_on CMPCONST */
 
   // ---- Valids: each port's lead, flopped every cycle -------------------
   logic [NK-1:0] sv_cr01h, pv_cr01h;
@@ -215,7 +226,10 @@ module rcu_bank_slice #(
     lodst_cr01h = '0;
     mrow_cr01h  = '0;
     for (int j = 0; j < NK; j++) begin
+      // The class word: this module reads only its own fields.
+      /* verilator lint_off UNUSEDSIGNAL */
       logic [rcu_dec_pkg::CLS_W-1:0] c_cr01h;
+      /* verilator lint_on UNUSEDSIGNAL */
       logic [3*2-1:0]                sl_cr01h;
       sown_cr01h[j] = (K >= j) && sv_cr01h[j] && !scont_cr01h[j] && sfoot_cr01h[j*NK + K];
       pown_cr01h[j] = (K >= j) && pv_cr01h[j] && !pcont_cr01h[j] && pfoot_cr01h[j*NK + K];

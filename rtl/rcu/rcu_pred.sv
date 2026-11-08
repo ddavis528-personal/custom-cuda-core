@@ -201,12 +201,18 @@ module rcu_pred #(
     end
   end
 
+  // Each predecode reads its half of the predicate index.
+  /* verilator lint_off UNUSEDSIGNAL */
   function automatic logic [NH-1:0] dec_hi(input logic [WP-1:0] p);
     for (int h = 0; h < NH; h++) dec_hi[h] = p[WP-1:3] == h[WP-4:0];
   endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
+  // Each predecode reads its half of the predicate index.
+  /* verilator lint_off UNUSEDSIGNAL */
   function automatic logic [7:0] dec_lo(input logic [WP-1:0] p);
     for (int i = 0; i < 8; i++) dec_lo[i] = p[2:0] == i[2:0];
   endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
 
   logic [ROWS*N-1:0] row_cr02h;   // row p at p*N
 
@@ -309,7 +315,10 @@ module rcu_pred #(
 
   logic [NS*NH-1:0] g_hi_cr02h;
   logic [NS*8-1:0]  g_lo_cr02h;
+  // Slots without a guard leave their bits of these unread.
+  /* verilator lint_off UNUSEDSIGNAL */
   logic [NS*N-1:0]  graw_cr02h, gv_d_cr02h, act_d_cr02h;
+  /* verilator lint_on UNUSEDSIGNAL */
   always_comb begin
     for (int s = 0; s < NS; s++) begin
       logic [N-1:0] r_cr02h, g_cr02h, a1_cr02h, a0_cr02h;

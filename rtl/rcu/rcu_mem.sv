@@ -127,7 +127,10 @@ module rcu_mem #(
   logic [NK-1:0]   mem_cr02h, fen_cr02h, psk_cr02h;
   logic [NK*2-1:0] bsl_cr02h, xsl_cr02h, dsl_cr02h;
   always_comb begin
+    // The class word: this module reads only its own fields.
+    /* verilator lint_off UNUSEDSIGNAL */
     logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
+    /* verilator lint_on UNUSEDSIGNAL */
     for (int j = 0; j < NK; j++) begin
       c_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h[j*rcu_dec_pkg::OPC_W +: rcu_dec_pkg::OPC_W],
                                      drw_cr02h[2*j +: 2], 1'b0);

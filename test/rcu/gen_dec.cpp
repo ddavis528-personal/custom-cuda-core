@@ -62,7 +62,9 @@ int main() {
               "// (pwe && dst == 0), read only for the copy's opcode; done_row picks an\n"
               "// atomic's step. A continuation has no class: its caller gates it.\n"
               "// SFU ops class as lane ops, as in the model (Unit Sfu awaits RA-16 (b)).\n"
-              "package rcu_dec_pkg;\n\n");
+              "package rcu_dec_pkg;\n\n"
+              "  // Every class field and kind is named; each module reads the ones it needs.\n"
+              "  /* verilator lint_off UNUSEDPARAM */\n\n");
   std::printf("  localparam int unsigned OPC_W = %u;\n", OPC_W);
   std::printf("  localparam int unsigned CLS_W = %u;\n", W);
   unsigned at = 0;
@@ -113,6 +115,6 @@ int main() {
   }
   std::printf("      default: c = %s;\n    endcase\n    rcu_cls = c;\n  endfunction\n\n",
               hex(none, W).c_str());
-  std::printf("endpackage\n");
+  std::printf("  /* verilator lint_on UNUSEDPARAM */\nendpackage\n");
   return 0;
 }

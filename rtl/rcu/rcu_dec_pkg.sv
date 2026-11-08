@@ -9,6 +9,9 @@
 // SFU ops class as lane ops, as in the model (Unit Sfu awaits RA-16 (b)).
 package rcu_dec_pkg;
 
+  // Every class field and kind is named; each module reads the ones it needs.
+  /* verilator lint_off UNUSEDPARAM */
+
   localparam int unsigned OPC_W = 9;
   localparam int unsigned CLS_W = 27;
   localparam int unsigned CLS_UNIT = 0, CLS_UNIT_W = 3;
@@ -324,4 +327,5 @@ package rcu_dec_pkg;
     rcu_cls = c;
   endfunction
 
+  /* verilator lint_on UNUSEDPARAM */
 endpackage

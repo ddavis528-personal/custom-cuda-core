@@ -109,7 +109,10 @@ module rcu_r #(
 
   // The op-class decode (RI-21 (4)): the R slot carries no copy and no
   // atomic, so done_row and the predicate-copy flag only complete the call.
+  // The class word: this module reads only its own fields.
+  /* verilator lint_off UNUSEDSIGNAL */
   wire [rcu_dec_pkg::CLS_W-1:0] cls_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h, drow_cr02h, '0);
+  /* verilator lint_on UNUSEDSIGNAL */
   wire [4:0] kind_cr02h = cls_cr02h[rcu_dec_pkg::CLS_RK +: 5];
   wire [2:0] unit_cr02h = cls_cr02h[rcu_dec_pkg::CLS_UNIT +: 3];
 
