@@ -379,3 +379,24 @@ module ngd_fx_blk_cap #(parameter int MODE = 0) (
 );
   ngd_fx_cap #(.MODE(MODE)) u_cap (.clk(clk), .rst_n(rst_n), .a(i), .b(j), .q(o), .k(p));
 endmodule
+
+// A zero-cycle end of the second kind (params/links.json no_flop_port_budget;
+// AR's rev 326): the wrapper wires r_payload straight to the block, whose
+// child takes it through logic (a W-bit multiply) before its flop. Held to
+// the block's input budget for the port, 12 by default, instead of straight
+// in: W = 2 within it, W = 8 over it; unlisted, held straight in.
+module ngd_fx_zblk #(parameter int W = 2) (
+  input  logic           clk,
+  input  logic [2*W-1:0] r_payload,
+  output logic [2*W-1:0] q
+);
+  ngd_fx_dst #(.W(W)) u_dst (.clk(clk), .a(r_payload), .q(q));
+endmodule
+
+module ngd_fx_zwrp #(parameter int W = 2) (
+  input  logic           clk,
+  input  logic [2*W-1:0] r_payload,
+  output logic [2*W-1:0] q
+);
+  ngd_fx_zblk #(.W(W)) u_blk (.clk(clk), .r_payload(r_payload), .q(q));
+endmodule

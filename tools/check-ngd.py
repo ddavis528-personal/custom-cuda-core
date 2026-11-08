@@ -1263,6 +1263,18 @@ def into_flop(t, port):
     return min(v, k * delay(LIB, "INV", "A"))
 
 
+def rtl_port_budget(name, root=ROOT):
+    """Block type `name`'s zero-cycle receiving ends of the second kind
+    (params/links.json no_flop_port_budget; AR's rev 326): channel names
+    without ccv_, held to the block's input budget, not straight in."""
+    spec = importlib.util.spec_from_file_location(
+        "ccv_links", os.path.join(root, "tools", "ccv_links.py"))
+    lk = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lk)
+    ends, _ = lk.schema_ends(root)
+    return {c for b, c in lk.no_flop_port_budget(sorted(ends), ends, None, root) if b == name}
+
+
 def hidden_stages(name, t, ends, straight):
     """AR's rev 310 (TI rev 351's proposal, amended): at a FLOPPED end the
     wrapper's repeater holds the boundary flop, so the block's own port must
@@ -1300,7 +1312,7 @@ def hidden_stages(name, t, ends, straight):
 
 
 def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, params=None,
-                ends=None):
+                ends=None, budgeted=None):
     """A block assembled, as a sum of parts (Daniel, 2026-11-06): no
     whole-block synthesis, no child synthesised with its parent. The
     hierarchy of `top` (the partition: the block's hardening wrapper, or the
@@ -1327,7 +1339,17 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
       (d) no hidden stage (AR's rev 310): inside a wrapper, a port of the
           block's at a flopped end is not taken whole straight from or into
           the block's own flops (hidden_stages). `ends` is the block's
-          channel ends, rtl_ends(name) when not given.
+          channel ends, rtl_ends(name) when not given;
+      (e) a zero-cycle end of the second kind (params/links.json
+          no_flop_port_budget; AR's rev 326): a no-flop receiving end that
+          is zero-cycle for performance, not because a register takes it at
+          0 NGD. Its data ports (each slot's valid and payload) are held,
+          from the wrapper's port at 0, to the receiving block's input budget
+          for the port (its ngd.json, by default 25 - 12 arriving, so 12),
+          over every path through the hierarchy into a flop, instead of
+          straight into one. `budgeted` is the block's such channels,
+          rtl_port_budget(name) when not given. Every other no-flop end is
+          held straight in, as (c).
 
     The fanout term at the boundary: an input wired to more than 4 pins on
     a level's net is a buffer tree before its flops, so it is not straight
@@ -1441,8 +1463,37 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
         if why:
             fails.append("block %s: output %s is not straight from a flop: %s"
                          % (name, o, "; ".join(why)))
+    def reach(mn, cell, port):
+        """(e): the longest timed path from `port` of instance (mn, cell)
+        into a flop, through wires and children, each level's fanout term
+        and glue included, a leaf's by its unit. NEG where none (or no unit:
+        coverage says so)."""
+        if mn in timings:
+            t = timings[mn]
+            d = t.ir.get(port, NEG)
+            for (p, q), dl in t.io.items():
+                if p != port or q not in t.cut:
+                    continue
+                c, typ, pn, _ = t.cut[q]
+                if typ in st.lib or is_clock(pn):
+                    continue
+                d = max(d, dl + reach(typ, (mn, c), pn))
+            return d
+        u = found.get((mn, cell))
+        return NEG if u is None else u.t.ir.get(port, NEG)
+    bud = rtl_port_budget(name) if budgeted is None else budgeted
+    bpat = re.compile(r"^(?:%s)(?:_c\d+)?(?:_s\d+)?_(?:valid|payload)$"
+                      % "|".join(re.escape(c) for c in sorted(bud))) if bud else None
     for i in t.ins:
         if is_clock(i) or i in t.cut:
+            continue
+        if bpat and bpat.match(i) and start != st.top:
+            d, arr = reach(st.top, None, i), budgets.arrival(want, i)
+            if d > STAGE - arr + EPS:
+                fails.append("block %s: input %s, a zero-cycle end held to its port budget "
+                             "(params/links.json no_flop_port_budget; AR's rev 326), reaches a "
+                             "flop %.1f NGD in, over the %g its budget leaves (%s arriving at "
+                             "%g)" % (name, i, d, STAGE - arr, want, arr))
             continue
         why = straight(st.top, None, i, False, "")
         if why:
@@ -2034,6 +2085,25 @@ def selftest():
                    and "a" not in cu.t.capture,
                    "a capture with more than its flop's own reset or own-flop enable "
                    "(MODE %d) passed as straight into a flop: %s" % (mode, f))
+    #    A zero-cycle end of the second kind (AR's rev 326): listed, its
+    #    payload is held to the receiving block's input budget, 12 by
+    #    default: a 2-bit multiply before the flop passes, an 8-bit one does
+    #    not, and does once the block's budget file gives the port that
+    #    much; unlisted, the same end is held straight in, and refused.
+    zarr = math.floor((STAGE - dst8.t.ir["a"]) * 10) / 10
+    zb = Budgets(extra={("ngd_fx_zblk", "r_payload"): dict(why, arrival=zarr)})
+    for tag, w, bud, b, want in (("z2", 2, {"r"}, none, None),
+                                 ("z2_nf", 2, set(), none, "does not go straight into a flop"),
+                                 ("z8", 8, {"r"}, none, "held to its port budget"),
+                                 ("z8_wide", 8, {"r"}, zb, None)):
+        _, f = block_check("fx_" + tag, "ngd_fx_zwrp", files, [], b, [dst2, dst8],
+                           block="ngd_fx_zblk", params={"W": w}, ends=[], budgeted=bud)
+        if want is None:
+            expect(not f, "a second-kind end within its port budget (%s) was refused: %s"
+                   % (tag, f))
+        else:
+            expect(any("input r_payload" in x and want in x for x in f),
+                   "a second-kind end's logic (%s) passed, or failed otherwise: %s" % (tag, f))
     #    No child is synthesised: a child with a combinational loop, which
     #    the strict Yosys refuses to synthesise (OI-44), under a parent timed
     #    alone; the same hierarchy synthesised with its children kept, as
@@ -2102,8 +2172,8 @@ def selftest():
         print("  timing pass against ABC, outputs, inputs, the stage, paths straight through, "
               "inner helpers alone and inside a parent, registers shared by an output and the "
               "rest, observation ports, budget files, ratchet, coverage, glue, the assembled "
-              "block as a sum of parts, ABC's cache, the fanout term, one-cell captures "
-              "(%d controls)"
+              "block as a sum of parts, ABC's cache, the fanout term, one-cell captures, "
+              "second-kind no-flop ends (%d controls)"
               % checks)
     return 1 if bad else 0
 

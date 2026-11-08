@@ -132,6 +132,41 @@ else
   bad "links.json credit_on_receipt validator" "${missed# }"
 fi
 
+# no_flop_port_budget (AR's rev 326), on a copy of the design's own file with
+# one entry changed: each refused by name. Only a no-flop receiving end whose
+# link takes no stage is held to its port budget; a flopped end's logic is
+# behind the wrapper's flop, and a sending end stays at 0 NGD.
+refused=0; missed=""
+while IFS='|' read -r want edit; do
+  [ -z "$want" ] && continue
+  python3 - "$edit" >"$T/pb.json" <<'PY'
+import json, sys
+d = json.load(open("params/links.json"))
+exec(sys.argv[1], {"pb": d["no_flop_port_budget"], "nf": d["no_flop"], "lk": d["links"]})
+json.dump(d, sys.stdout)
+PY
+  if out=$(CCV_LINKS="$T/pb.json" python3 tools/gen-skel.py --check 2>&1); then
+    missed="$missed [accepted: $edit]"
+  elif ! grep -q -- "$want" <<<"$out"; then
+    missed="$missed [$want: $(grep -m1 -v problem <<<"$out" | xargs)]"
+  else
+    refused=$((refused + 1))
+  fi
+done <<'CASES'
+a flopped end (not no_flop)|pb.append({"end": "ooe_rcu_issue@rcu", "why": "x"})
+is not lane_rcu_res's destination|pb.append({"end": "lane_rcu_res@lane", "why": "x"})
+an end is '<channel>@<block type>'|pb.append({"end": "nosuch_chan@rcu", "why": "x"})
+its link takes a repeater stage|lk.append({"channel": "lane_rcu_res", "route": "src:1 > dst:0"})
+listed twice|pb.append(dict(pb[0]))
+says no why|pb[0].pop("why")
+unknown key|pb[0]["when"] = "x"
+CASES
+if [ -z "$missed" ]; then
+  say "links.json: no_flop_port_budget off its ends refused" "PASS ($refused cases, each by name)"
+else
+  bad "links.json no_flop_port_budget validator" "${missed# }"
+fi
+
 # -- 2. a busy split, end to end -------------------------------------------------
 if ! command -v verilator >/dev/null 2>&1 || ! command -v yosys >/dev/null 2>&1; then
   say "split configuration" "SKIP -- needs verilator and yosys"
