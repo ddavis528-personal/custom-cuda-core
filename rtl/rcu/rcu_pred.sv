@@ -231,14 +231,16 @@ module rcu_pred #(
   logic [NQ-1:0] qv_cr01h, qa_cr02h;
   logic [ND-1:0] dv_cr01h;
   logic [NM-1:0] mw_cr02h;
-  // busy's own copy of qa (NGD-7: qa's write paths run past busy's 12).
-  (* keep *) logic qab_cr02h;
+  // busy's own copies of qa and the issue valids (NGD-7: their other
+  // paths run past busy's 12).
+  (* keep *) logic qab_cr02h, ivb_cr02h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       iv_cr02h <= '0;
       qv_cr01h <= '0;
       qa_cr02h <= '0;
       qab_cr02h <= 1'b0;
+      ivb_cr02h <= 1'b0;
       dv_cr01h <= '0;
       mw_cr02h <= '0;
     end else begin
@@ -246,6 +248,7 @@ module rcu_pred #(
       qv_cr01h <= qv_cr00h;
       qa_cr02h <= qv_cr01h;
       qab_cr02h <= |qv_cr01h;
+      ivb_cr02h <= |iv_cr01h;
       dv_cr01h <= dv_cr00h;
       mw_cr02h <= mv_cr01h & mwe_cr01h;
     end
@@ -343,7 +346,11 @@ module rcu_pred #(
     rpa_d_cr02h = rimm_cr02h[WP] ? ~va_cr02h : va_cr02h;
     rpb_d_cr02h = rimm_cr02h[2*WP+1] ? ~vb_cr02h : vb_cr02h;
     ar_cr02h = act_d_cr02h[SR*N +: N];
-    low_d_cr02h = ar_cr02h & ~(ar_cr02h - N'(1));
+    // The lowest active lane, each bit against an OR of the lanes below
+    // it (a tree, not the subtractor's carry chain: its depth put the
+    // predicate rows past dq's 18, NGD-7).
+    for (int l = 0; l < N; l++)
+      low_d_cr02h[l] = ar_cr02h[l] & ~(|(ar_cr02h & N'((64'(1) << l) - 64'(1))));
     lbm_d_cr02h = {N{br_cr02h}} & ar_cr02h;
   end
 
@@ -549,7 +556,7 @@ module rcu_pred #(
   `CCV_ASSERT(pred_spb_own, !own_bad_cr02h)
 
   // Busy, from flops only (P10, RI-21): rcu_kill's idle.
-  assign busy_cr03h = (|iv_cr02h) | (|qv_cr01h) | qab_cr02h | (|dv_cr01h);
+  assign busy_cr03h = ivb_cr02h | (|qv_cr01h) | qab_cr02h | (|dv_cr01h);
 
 endmodule
 `undef CCV_CLK
