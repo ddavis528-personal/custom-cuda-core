@@ -707,7 +707,11 @@ struct SchedAttr {
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3,
                kLatClsCollective = 5 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+// kSerNop: a hint with no architectural effect (C_RECONV, reconv.hint), a
+// no-op complete at rename like exit and a dispatch fault (RA-16 (f), OA's
+// rev 393).
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4,
+                  kSerNop = 5 };
 inline bool isBarrierSer(unsigned s) { return s == kSerBarrier || s == kSerArrive; }
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
@@ -783,6 +787,9 @@ struct Uop {
 inline bool barNop(const Uop &u) {
   return isBarrierSer(u.attr.serial) && !u.shape.guard && !u.shape.pdata;
 }
+/// serial 5 (RA-16 (f), OA's rev 393): allocated with its pc and group
+/// mask, complete at allocation; no RS entry, no rename, no issue.
+inline bool hintNop(const Uop &u) { return u.attr.serial == kSerNop; }
 
 struct Done {           ///< ccv_rcu_ooe_done
   unsigned rob_tag = 0;

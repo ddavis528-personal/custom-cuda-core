@@ -160,6 +160,11 @@
 #   every R-pipe class writes its GPR at    r-write-coll-late (coll, stub
 #     A+2, so they share R's one write         RCU): collectives write at
 #     port (RA-16 (a), AR's rev 265)           A+4; RCU refuses each
+#   an SFU result is taken only for an SFU  sfu-valid-stray (vadd, both
+#     op in flight (RA-16 (b), RA rev 115)     pairs): RCU refuses lane 3's
+#   serial 5 is C_RECONV's no-op, complete  nop-real-op (vadd, model OOE):
+#     at rename (RA-16 (f), OA rev 393)        the add never runs; MIU
+#                                                refuses its stored sum
 #   an atomic is a decode pair, and runs    atom-one-slot: OOE refuses each
 #     in passes, one lane an address in        one-slot atomic (OI-80);
 #     ascending order, until MIU says no       atom-one-pass: a lane reads the
@@ -1656,6 +1661,37 @@ for pair in model/model model/stub stub/model stub/stub; do
     say "--break lead-src-corrupt ($impl RCU): ret's wrong target" "PASS"
   else
     bad "--break lead-src-corrupt ($impl RCU)" "first: $(grep -m1 '^CHECK' "$l")"
+  fi
+done
+# The SFU result on ccv_lane_rcu_res (RA-16 (b), RA's rev 115): RCU takes
+# sfu_valid only for an SFU op it has in flight, from its own descriptor.
+# None runs yet, so the lanes drive it 0; sfu-valid-stray has lane 3 drive
+# it once, and RCU refuses it by name, on the model pair and the stub pair.
+for impl in model stub; do
+  env=""; [ "$impl" = stub ] && env="CCV_OOE_IMPL=stub CCV_RCU_IMPL=stub"
+  log="$B/kernel_sfu-valid-stray-$impl.log"
+  env $env "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break sfu-valid-stray >"$log" 2>&1
+  n=$(grep -c "^CHECK rcu: lane 3 sfu_valid with no SFU op in flight (RA-16 (b))$" "$log")
+  if [ "$n" = 1 ] && [ "$(field "$log" check_failures)" != 0 ]; then
+    say "--break sfu-valid-stray ($impl pair): RCU refuses a stray SFU result" "PASS ($(field "$log" check_failures) checks)"
+  else
+    bad "--break sfu-valid-stray ($impl pair)" "$n refused: $(grep '^KERNEL' "$log")"
+  fi
+done
+# serial 5 (RA-16 (f), OA's rev 393): C_RECONV, a hint, completes at rename
+# with no rename and no issue. ccv-sim at the pin has no semantics for it,
+# so no kernel runs one; nop-real-op has DEC give vadd's C_ADD serial 5
+# instead, and its sum never reaches the store: MIU refuses the first lane's
+# data, on RI's RCU and on the stub. OOE's model only: the S1 stub OOE does
+# not run vadd at this pin.
+for impl in model stub; do
+  log="$B/kernel_nop-real-op-$impl.log"
+  CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break nop-real-op >"$log" 2>&1
+  if grep -m1 '^CHECK' "$log" | grep -q "^CHECK miu: seq [0-9]* lane 0 store data 00000000, oracle 00000001$" &&
+     [ "$(field "$log" mem_mismatch)" = 32 ]; then
+    say "--break nop-real-op ($impl RCU): serial 5 never runs" "PASS ($(field "$log" check_failures) checks)"
+  else
+    bad "--break nop-real-op ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
   fi
 done
 # The RCU selector (RI-8, RA-38 (a)): RI's model is the default behind the

@@ -142,6 +142,10 @@ struct Issue {
 struct LaneRes {
   Word result{};
   std::array<uint8_t, kLanes> sec_valid{}, sec_pred_out{};
+  // The SFU result (RA-16 (b), RA's rev 115): written from RCU's own SFU
+  // descriptor through the SW port at A+11, beside the lane result.
+  std::array<uint8_t, kLanes> sfu_valid{};
+  Word sfu_result{};
 };
 struct MiuData {
   uint32_t active = 0, pred_result = 0;

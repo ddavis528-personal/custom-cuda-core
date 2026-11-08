@@ -136,6 +136,11 @@ void Core::gatherWrites(uint64_t t, const In &in, std::vector<GWrite> &gw, std::
                secBits(r.sec_valid[l]).c_str(), secBits(want).c_str());
           break;
         }
+      // An SFU result is taken only for an SFU op due now (RA-16 (b)).
+      bool sfu = false;
+      for (const LaneDesc &d : ds) sfu = sfu || d.sfu;
+      for (unsigned l = 0; l != kLanes; ++l)
+        if (r.sfu_valid[l] && !sfu) fail("lane %u sfu_valid with no SFU op in flight (RA-16 (b))", l);
       for (const LaneDesc &d : ds) {
         // A copy lands within CCV_LAT_LANE of RCU taking it: the contract
         // OOE clears the load's copy-pending on (late-copy breaks it).
