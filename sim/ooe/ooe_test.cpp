@@ -79,7 +79,7 @@ uint32_t attr(bool miu, bool rcu, bool cross, bool wg, bool wp, unsigned memk, b
          uint32_t(wp) << 9 | memk << 7 | uint32_t(br) << 6 | ser << 3 | lat;
 }
 
-enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp, kAtomic, kColl };
+enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp, kAtomic, kColl, kReconv };
 
 /// A kind's unit (its lat_class) and its consumer group (Config::byp).
 unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp || k == kAtomic ? 1 : k == kSfu ? 4 : k == kColl ? 5 : 0; }
@@ -247,6 +247,10 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   case kChw:
     u.attr_raw = attr(0, 1, 0, o.chw_writes, 0, 0, 0, o.sibling ? 0 : 1, 0) | (o.sibling ? 1u << 20 : 0u);
     u.imm = o.chw;
+    break;
+  case kReconv:   // C_RECONV: serial 5, every other attribute bit 0 (OA rev 393)
+    u.attr_raw = attr(0, 0, 0, 0, 0, 0, 0, kSerReconv, 0);
+    u.imm = 0xA5;   // its payload, ignored
     break;
   }
   // A chwidth carries FET's converged mark (O-81) unless the test diverges it.
@@ -4492,6 +4496,40 @@ void testControls() {
 /// woke. The hop must return the dependant (its stale grant) and the
 /// OA-17 check must not fire; without the co-grant term (the control) it
 /// confirms on a stale ready bit. The two random cases that found it.
+/// C_RECONV (serial 5; OA rev 393, RA-16) joins exit's no-op path: a ROB
+/// entry complete at allocation, no RS entry, no rename, never issued,
+/// retired in order. The control treats it as a real op: it issues.
+void testReconv() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "reconv no-op (control)" : "reconv no-op";
+    Config c = baseConfig();
+    c.inject_reconv_real = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    Op r; r.k = kReconv; p.push_back(r);
+    Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
+    Op r2; r2.k = kReconv; p.push_back(r2);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    const unsigned issued = issueCount(e, 2) + issueCount(e, 4);
+    if (control) {
+      std::printf("  %-24s %s\n", "control reconv-issues", issued ? "caught" : "MISSED");
+      EXPECT(issued != 0, "a C_RECONV treated as a real op should issue");
+      continue;
+    }
+    EXPECT(issued == 0, "a C_RECONV issued %u times: it completes at allocation", issued);
+    EXPECT(issueCount(e, 1) == 1 && issueCount(e, 3) == 1, "the lane ops issued %u and %u times",
+           issueCount(e, 1), issueCount(e, 3));
+    const std::vector<uint64_t> &rt = e.w[0].retired;
+    bool order = rt.size() == 5;
+    for (size_t k = 0; order && k != rt.size(); ++k) order = rt[k] == k + 1;
+    EXPECT(order, "retired %zu uops, want all five in order", rt.size());
+  }
+}
+
 void testCogrant() {
   const char *cases[] = {"random seed 6 mode 6", "random seed 19 mode 7"};
   static bool no_cogrant;
@@ -5803,6 +5841,7 @@ int main(int argc, char **argv) {
   }
   testControls();
   testCogrant();
+  testReconv();
   std::printf("ooe-test: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
   return g_fail ? 1 : 0;
 }
