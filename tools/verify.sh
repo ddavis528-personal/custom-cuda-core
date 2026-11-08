@@ -304,6 +304,14 @@ job_ooe_rtl() {
   run "OOE RTL == model" ./test/ooe/run-rtl.sh
 }
 
+job_rcu_rtl() {
+  section "RCU RTL benches (RI's test/rcu/run-rtl.sh)"
+  # Each RCU RTL module under Verilator, assertions on, against its value
+  # model, at the units' sizes (the 32-row slice; --full's 192-row one stays
+  # RI's local loop), with each bench's named controls each caught.
+  run "RCU RTL benches" ./test/rcu/run-rtl.sh
+}
+
 job_top() {
   section "SV top -- rtl/top/ (generated, tracked)"
   # The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
@@ -408,9 +416,9 @@ JOBS="${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)}"
 case "$JOBS" in ''|*[!0-9]*|0) echo "verify: CCV_JOBS must be a positive count"; exit 2 ;; esac
 # Print order. Each section's own comment says what it reads from.
 ORDER="s1a s1b s1c s1d iface xprop ctech cg ngd clockgate skel kernel ooe_unit rcu_unit ooe_rtl
-       top formal phys svh links walkthrough vlint"
+       rcu_rtl top formal phys svh links walkthrough vlint"
 # Start order: the longest chain first, then the longest jobs, then the rest.
-START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys iface xprop s1c s1b
+START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys rcu_rtl iface xprop s1c s1b
        s1d ooe_unit rcu_unit s1a clockgate walkthrough vlint"
 declare -A after=(
   [kernel]="skel"          # the binary check-skel builds

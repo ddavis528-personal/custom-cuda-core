@@ -49,23 +49,14 @@ module ccv_rcu (
   assign kill_ack_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
-  assign ooe_rcu_issue_s0_credit = '0;
   assign ooe_rcu_issue_s0_stall = '0;
-  assign ooe_rcu_issue_s1_credit = '0;
   assign ooe_rcu_issue_s1_stall = '0;
-  assign ooe_rcu_issue_s2_credit = '0;
   assign ooe_rcu_issue_s2_stall = '0;
-  assign ooe_rcu_issue_s3_credit = '0;
   assign ooe_rcu_issue_s3_stall = '0;
-  assign ooe_rcu_issue_s4_credit = '0;
   assign ooe_rcu_issue_s4_stall = '0;
-  assign ooe_rcu_issue_s5_credit = '0;
   assign ooe_rcu_issue_s5_stall = '0;
-  assign ooe_rcu_issue_s6_credit = '0;
   assign ooe_rcu_issue_s6_stall = '0;
-  assign ooe_rcu_issue_s7_credit = '0;
   assign ooe_rcu_issue_s7_stall = '0;
-  assign ooe_rcu_issue_s8_credit = '0;
   assign ooe_rcu_issue_s8_stall = '0;
   assign rcu_lane_ops_c00_valid = '0;
   assign rcu_lane_ops_c00_payload = '0;
@@ -380,13 +371,9 @@ module ccv_rcu (
 `ifdef CCV_TRACE
   assign rcu_miu_addr_s3_tid = '0;
 `endif
-  assign miu_rcu_data_s0_credit = '0;
   assign miu_rcu_data_s0_stall = '0;
-  assign miu_rcu_data_s1_credit = '0;
   assign miu_rcu_data_s1_stall = '0;
-  assign miu_rcu_data_s2_credit = '0;
   assign miu_rcu_data_s2_stall = '0;
-  assign miu_rcu_data_s3_credit = '0;
   assign miu_rcu_data_s3_stall = '0;
   assign rau_rcu_mig_credit = '0;
   assign rau_rcu_mig_stall = '0;

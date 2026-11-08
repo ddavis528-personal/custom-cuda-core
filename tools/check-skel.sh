@@ -46,7 +46,7 @@ if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_common_chk_bank \
      rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv \
      rtl/if/ccv_common_chk_wake.sv \
      rtl/generated/ccv_common_chk_bank.sv \
-     "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" \
+     "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" "$R/sim/skel/portdump.cpp" \
      "$R/sim/skel/exerciser.cpp" $BLOCKS \
      "$R/sim/skel/oracle.cpp" "$R/sim/src/event.cpp" \
      "$R/sim/dpi/ccv_event_dpi.cpp" >"$B/skel.log" 2>&1; then
@@ -149,6 +149,7 @@ for seed in 1 2 3; do
   [ "$(field "$log" mismatches)" = "0" ] || why="$why; payload mismatches"
   [ "$(field "$log" overflows)" = "0" ]  || why="$why; receive overflow"
   [ "$(field "$log" credit_leaks)" = "0" ] || why="$why; $(field "$log" credit_leaks) credit(s) lost"
+  [ "$(field "$log" cor_late)" = "0" ] || why="$why; credit on receipt: $(field "$log" cor_late) landed message-cycle(s) not taken"
   [ "$(field "$log" credits_home)" = "$X_SLOTS" ] || why="$why; credits home on $(field "$log" credits_home) of $X_SLOTS slots"
   [ "$(field "$log" idle_slots)" = "0" ] || why="$why; $(field "$log" idle_slots) idle slot(s)"
   [ "$(field "$log" sent)" = "$(field "$log" received)" ] || why="$why; sent != received"
@@ -282,6 +283,35 @@ PY
   say "trace -> Perfetto JSON, one track per channel" "PASS ($tracks)"
 else
   bad "trace -> Perfetto JSON" "${tracks:-conversion failed} track(s)"
+fi
+
+# -- per-block port dumps (RA-34): one instance of every block type ---------
+# Named and sized as rtl/top/ports names them (tools/check-port-dump.py,
+# a separate rule from gen-top's), each slot balanced in a drained run; the
+# checker's selftest refuses a dropped, renamed, resized or extra port and a
+# credit short, and ccv-skel refuses an instance that does not exist.
+pd="$B/portdump"; rm -rf "$pd"; mkdir -p "$pd"
+insts=$(python3 - <<'PY'
+import re
+t = open("sim/generated/ccv_skel_wiring.h").read().split("kBlkInsts[] =")[1].split("};")[0]
+seen, out = {}, []
+for ty, ix in re.findall(r"Blk::(\w+), (\d+)", t):
+    seen.setdefault(ty, []).append(ix)
+for ty, ixs in seen.items():
+    out.append(ty.lower() if len(ixs) == 1 else "%s_%02d" % (ty.lower(), int(ixs[-1])))
+print(" ".join(out))
+PY
+)
+pok=1
+for i in $insts; do
+  "$SKEL" --cycles 80 --port-dump "$i=$pd/$i.vcd" >"$pd/$i.log" 2>&1 || { pok=0; pmiss="$i: ccv-skel rc=$?"; }
+done
+if [ $pok = 1 ] && python3 tools/check-port-dump.py "$pd"/*.vcd >"$pd/check.log" 2>&1 &&
+   python3 tools/check-port-dump.py --selftest "$pd/rcu.vcd" >"$pd/selftest.log" 2>&1 &&
+   ! "$SKEL" --cycles 10 --port-dump "no_such=$pd/x.vcd" >/dev/null 2>&1; then
+  say "port dumps == rtl/top/ports, every block" "PASS ($(echo $insts | wc -w) types; controls refused)"
+else
+  bad "port dumps == rtl/top/ports" "${pmiss:-$(grep -m2 -E 'FAIL|^  ' "$pd/check.log" "$pd/selftest.log" | tr '\n' ' ')}"
 fi
 
 exit $fail

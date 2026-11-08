@@ -491,6 +491,24 @@ struct Config {
   /// Meanwhile the slot runs on: rename takes the wrong path, select issues
   /// it, and the squash takes all of it.
   unsigned squash_act_lag = 1;
+  /// RI-11 pricing (OA rev 340): an interface flop in front of each OOE
+  /// receiver that acts on its payload in its arrival cycle moves that act a
+  /// cycle. Bits: 1 rau alloc, 2 rau demote, 4 syu release, 8 rcu done,
+  /// 16 cmpl hint, 32 miu cmpl, 64 dec uop (taken a cycle after it lands).
+  /// The message is taken as it lands (credits unchanged), its act deferred.
+  /// 16 by default (C9h; OA rev 372, DA rev 114): the hint is captured raw
+  /// and acts a cycle after it lands, as ooe_wake builds it.
+  unsigned rx_lag = 16;
+  /// OI rev 300 pricing: a first-kind end on miu_ooe_cmpl, its payload
+  /// captured raw, each reader a cycle late unless it bypasses: 1 the
+  /// ROB's act (done, status, fault) a cycle late, 2 the RS timer's for a
+  /// hit (its confirm), 4 for any other (a restart). Atomics act as they land.
+  /// 8: the first kind with the hit's confirmation bypassed from the capture
+  /// into ooe_rs's free but kept off its rename-row mask: an entry so freed
+  /// is held (allocation and rename's room) through the next cycle.
+  /// 9 by default (C9h; OA rev 372, DA rev 114), as the RTL builds it:
+  /// ooe_cmcap the ROB's capture, ooe_rs's hit-confirm hold.
+  unsigned cmpl_split = 9;
   /// The go's run from the tail sees a held entry's release a cycle late
   /// (OI-85 slice 2): the release comes off the done path, too deep for the
   /// scan that forms the run, so the scan reads it as held one cycle more.
@@ -572,6 +590,8 @@ struct Config {
   /// admission unit, OA's rev 189).
   bool inject_a1_base_only = false;
   bool inject_cas_split = false;
+  /// Control (OI-127): the CAS pair drops its second slot's pd.
+  bool inject_cas_no_pd = false;
   /// OI-79 (b)'s control: the take keeps a pair the width splits (its
   /// first slot taken, its second left for the next cycle): it skips both
   /// the take's cap and tryRename's cut at the last lane.
@@ -598,6 +618,10 @@ struct Config {
   /// split cycle (ooe_go with no per-take term). 0: the in-cycle
   /// subtraction (OI-114 as first built; go_tb's control floor-take-now).
   unsigned floor_take_lag = 1;
+  /// ROB slice 4: 2 takes a fault only at the head as registered a cycle
+  /// before (ooe_rob_w's hrf), keeping it off the retire window's cones; 1
+  /// at the window's port 0; 0 on any port.
+  unsigned fault_head_only = 2;
   /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
   /// register keeps its old width (the model before this).
   bool inject_sibling_uncommitted = false;
@@ -1430,6 +1454,7 @@ private:
     RsCls cls = RsCls::kRcu;
     unsigned slot = 0, rob = 0;    ///< owner
     uint64_t age = 0;              ///< allocation order: the age matrix's order
+    uint64_t hit_at = ~0ull;       ///< cmpl_split 8: the cycle its L1 hit landed
     bool copy = false;             ///< the copy-only half of a masked load
     bool produces = false;         ///< writes a register some entry may wake on
     bool issued = false;
@@ -1669,9 +1694,11 @@ public:
     std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, cf_iss, cf_fin, cf_prod, cf_dep;
     bool hop_live = false;
     /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
-    /// in allocation order, and those freed.
+    /// in allocation order, and those freed; hfree: those freed by an L1
+    /// hit's bypassed confirmation (cmpl_split 8), which a row allocated
+    /// now may still name (C9h: off rename's mask), cleared at the next edge.
     std::vector<unsigned> ralloc;
-    std::vector<uint8_t> rfree;
+    std::vector<uint8_t> rfree, hfree;
     /// ooe_select's (test/ooe/select_tb.cpp), as the sectioned select saw
     /// them: each entry's valid, issued, eligible (rename's stages past),
     /// warp active, ready and sources-confirmed bits, its slot, footprint
@@ -1768,6 +1795,13 @@ public:
       uint32_t gmask = 0;
       uint64_t pcn = 0, tgt = 0;
       unsigned pchi = 0;          ///< pc[47:32]: a ret's target is {pc[47:32], aux}
+      // Slice 4 (OI-125): what the allocation writes for the fault record,
+      // every entry: a rename-time fault and its cause, pc[31:1], pc[47:32]
+      // and the group mask (a rename-time fault's lanes).
+      bool fault = false;
+      unsigned cause = 0;
+      uint32_t pclo = 0, egmask = 0;
+      unsigned epchi = 0;
     };
     struct Ret {
       unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
@@ -1777,6 +1811,10 @@ public:
     /// rob_tags: issues owing RCU a done, RCU's dones, MIU's completions,
     /// copies issued and landed, RS entries freed.
     std::vector<unsigned> owe, done, cmpl, cpi, cpl, rsf;
+    /// Slice 4, beside cmpl (one each): its lead_fault (status 1) and the
+    /// fault's cause, lanes and address.
+    struct CmplFault { bool fault = false; unsigned cause = 0; uint32_t lanes = 0; uint64_t addr = 0; };
+    std::vector<CmplFault> cmplf;
     /// Slice 2, beside owe and done (one each): the row each owes or
     /// completes (OA's rev 282: 0 the main entry, 1 the copy, 2 an atomic's
     /// A2), and a done's outcome (taken, mask, aux).
@@ -1803,6 +1841,9 @@ public:
     std::vector<Ret> ret;
     /// Slice 3: each store committed (slot, index), from the retire.
     std::vector<std::pair<unsigned, unsigned>> commit;
+    /// Slice 4: each fault taken at retire (slot, index, cause, pc, lanes).
+    struct Fault { unsigned slot = 0, idx = 0, cause = 0; uint64_t pc = 0; uint32_t lanes = 0; uint64_t addr = 0; };
+    std::vector<Fault> fault;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;
   };
@@ -2049,6 +2090,7 @@ private:
   std::vector<std::array<unsigned, 2>> ceil_room_reg_, ceil_room_use_, ceil_names_prev_;
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rs_prev_free_;       ///< RS entries freed last cycle (rs_free_lag)
+  std::vector<uint8_t> rs_hfree_, rs_prev_hfree_;   ///< cmpl_split 8: freed by a hit's bypassed confirmation
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
   /// fits_stale 6, rename's RS counters as the RTL keeps them: every RS
@@ -2060,7 +2102,8 @@ private:
   std::vector<unsigned> rob_freed_now_;   ///< ROB slots each slot freed this cycle (RenEvents)
   bool free_prompt_ = false;                ///< an RS free now is a confirmation's
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
-  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e] || (cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]); }
+  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e] || (cfg_.rs_free_lag && e < rs_prev_free_.size() && rs_prev_free_[e]) ||
+                                         ((cfg_.cmpl_split & 8) && e < rs_prev_hfree_.size() && rs_prev_hfree_[e]); }
   bool robHeld(unsigned si, unsigned i) const {
     const size_t k = size_t(si) * cfg_.rob_depth + i;
     return slot_[si].rob[i].valid || rob_late_[k] ||
@@ -2248,6 +2291,7 @@ private:
   // inputs not yet taken
   std::vector<Done> dones_;
   std::vector<Cmpl> cmpls_;
+  std::vector<std::pair<Cmpl, unsigned>> cs_due_, cs_next_;   ///< cmpl_split: parts deferred a cycle (1 ROB, 2 RS)
   std::vector<Alloc> allocs_;
   std::vector<unsigned> demotes_;
   std::vector<unsigned> demotes_held_;   ///< a demote waiting for an atomic at the head (V-70)
