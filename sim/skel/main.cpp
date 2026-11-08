@@ -95,6 +95,8 @@
 //   cor-drop       ...and never: the block drops it
 //   ignore-mask    RCU's predicate merge drops the active mask (A-43)
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
+//   sfu-valid-stray  lane 3 drives sfu_valid with no SFU op in flight, which
+//                  RCU must refuse (RA-16 (b), RA's rev 115)
 //===----------------------------------------------------------------------===//
 #include "Vccv_common_chk_bank.h"
 #include "verilated.h"
