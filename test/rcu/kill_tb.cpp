@@ -149,7 +149,10 @@ struct Bench {
           }
         }
       }
-      const bool nidle = !in.busy && !in.dbusy && !in.iv && !in.lv && !in.mv && !in.kv && !kv1 &&
+      // lane results and kill land at no-flop ends: idle reads their
+      // captures (the credit flops' lane field, kv_q), a cycle on.
+      const bool lv_q = ((cr >> kNS) & ((uint64_t(1) << kNL) - 1)) != 0;
+      const bool nidle = !in.busy && !in.dbusy && !in.iv && !lv_q && !in.mv && !kv1 &&
                          drain == 0 && !dwake;
       dwake = in.iv || in.dbusy;
       idle = nidle;

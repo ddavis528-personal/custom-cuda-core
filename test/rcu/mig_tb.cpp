@@ -151,6 +151,7 @@ struct Bench {
   int mout = 0, cout = 0, pout = 0;     // sent, not yet credited
   int mpay = -1, cpay = -1, ppay = -1;  // a payload due this cycle
   bool mnow = false, cnow = false, pnow = false;   // a valid this cycle
+  bool mlast = false, clast = false, plast = false;   // and last cycle's: captured, busy a cycle on
   unsigned ppay_row = 0;
   std::deque<uint64_t> ocr_due;
   int cur_dm = -1;
@@ -425,6 +426,7 @@ struct Bench {
       dut->md_cr01h = coin(0.5);
     }
     mpay = -1;
+    mlast = mnow;
     mnow = false;
     dut->mv_cr00h = 0;
     while (!mapq.empty() && stopped(migs[mapq.front()])) mapq.pop_front();
@@ -451,6 +453,7 @@ struct Bench {
       dut->cd_cr01h = coin(0.5);
     }
     cpay = -1;
+    clast = cnow;
     cnow = false;
     dut->cv_cr00h = 0;
     while (!cmdq.empty() && stopped(migs[cmdq.front()])) cmdq.pop_front();
@@ -478,6 +481,7 @@ struct Bench {
       if (!t_land0) t_land0 = t;
     }
     ppay = -1;
+    plast = pnow;
     pnow = false;
     dut->pv_cr00h = 0;
     // A killed restore's rows stop a few cycles past K.
@@ -547,10 +551,12 @@ struct Bench {
   void check(const Samp &s, const Samp &p1, const Samp &p2) {
     // Busy low: nothing sent is uncredited, no migration holds the module.
     if (!s.busy) {
-      // (a valid this cycle lands next cycle: busy from there)
-      chk("busy low with a map uncredited", mout - mnow, 0);
-      chk("busy low with a command uncredited", cout - cnow, 0);
-      chk("busy low with a PCA row uncredited", pout - pnow, 0);
+      // (a valid lands at the next edge, into its capture flop, and busy
+      // reads the capture: busy from the cycle after that; the raw valids
+      // stay off busy, AR rev 285 (5))
+      chk("busy low with a map uncredited", std::max(0, mout - int(mnow) - int(mlast)), 0);
+      chk("busy low with a command uncredited", std::max(0, cout - int(cnow) - int(clast)), 0);
+      chk("busy low with a PCA row uncredited", std::max(0, pout - int(pnow) - int(plast)), 0);
     }
     // Credits: one a cycle per channel, never more than were sent.
     if (s.mcr) {
