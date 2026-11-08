@@ -45,6 +45,29 @@ routes across a wrapper where the distance needs no stage, or a no-flop end
 of an unrepeated link: such an end has no repeater at all (below). The module
 is reusable (`clk`/`rst_n` are generic formals).
 
+**Credit on receipt (`CREDIT_ON_RECEIPT`; AR's rev 322, RA-41; TI rev
+379).** At a receiving end listed in `params/links.json` `credit_on_receipt`
+(today `ooe_rcu_issue@rcu` and `miu_rcu_data@rcu`, no other), the boundary
+stage loads its credit flop from its own valid flop, so the credit goes back
+the cycle after a message is presented, with no register of the block's in
+series. That is the receiving block's promise, written into the channel's
+schema contract (`credit_on_receipt`): it takes every message the cycle it
+is presented, under kill, flush and reset included (one landing during a
+kill is taken and voided, never left or refused), it has no skid of its own
+there, and its storage is never borrowed from the credit. The wrapper has no
+credit port to the block on that end; the repeater's `dst_credit`, unread, is
+tied to 0, the one constant `tools/check-top-pure.py` allows (R2). The round
+trip there is the abutted one, `CCV_RT_ABUT + 2N` with no `bnd_rx`, in
+both hosts' checkers (`ROUND_TRIP`, `TIMEOUT_N`), so a flop in series on the
+credit fires the fixed-latency prompt (`--break fixed-all`). Refused: the
+attribute on a zero-cycle end (no boundary flop to load from: the repeater's
+elaboration and `tools/ccv_links.py`), on a sending end, and on any end whose
+channel carries no `credit_on_receipt` contract. Proved in
+`test/formal/fv_link.sv` (`FV_COR`: safety, conservation, full bandwidth at
+the abutted depth, which a flop in series, `FV_COR_SERIES`, fails); a block
+that takes a landed message a cycle late or drops it fails by name in both
+hosts (`--break cor-late`, `cor-drop`; the receivers' `cor_late`, required 0).
+
 Two things the boundary flop moves (TI's rev 326 row re:RI-11; AR rev 289,
 DA tab rev 108), neither binding while every end is no-flop:
 - **Stall.** A sender that takes stall into its launch decision ahead of its
@@ -99,7 +122,8 @@ The widget adds latency. What must move with it is outside the widget.
 
 (A flopped receiving end in front of a block that registers its own inputs
 and credit, as every DPI host does, is one stage more each way: read N as
-N + bnd_rx throughout; AR's rev 309 (2).)
+N + bnd_rx throughout; AR's rev 309 (2). Not at a credit-on-receipt end,
+whose credit the boundary stage returns itself: N there.)
 
 - every checker on it takes `ROUND_TRIP = CCV_RT_ABUT + 2N`;
 - credit depth is at least that;
