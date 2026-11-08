@@ -41,7 +41,7 @@ RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
 Conventions 17, OA 392, AR 325, TI 382, OI 328, IS 190, CP 155, DA 115,
-RA 113 (tab 9851686b-2b0a), RI 45 (tab 8e4547bc-c469).
+RA 114 (tab 9851686b-2b0a), RI 45 (tab 8e4547bc-c469).
 OOE doc rev 371. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release 702d9bff; tag refused (known).
 
@@ -63,6 +63,9 @@ Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release
    (src_pos 6) + opcode 81. Watch: TI schema row, OI build + unit LW + check-ngd, RH g1'' reprice.
    TI 382: built RA-43 on ti-ra43 (d1c65ef; KILL_DRAIN 15, L1_CMPL 18, credit 4), edits sim/ooe+rcu.
    OA 392: keep imm in R payload (copy); S copies 46 fine, src_width only if RI >12 (RA); ~504 flops.
+   RA 114 overruled: S copies 32 (no src_width/phys_src2), R imm MOVED to lead_rpsrc[31:0]. Checked:
+   nothing in OOE reads R's payload imm after grant (iss_pay -> channel only; tests read Issue struct)
+   -> no objection, no row. OOE copies now ~ 207+81+128 = 416.
 -23. OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
    consumer co-granted with its producer (always stale). First check ooe_sched RTL (rep_cq02h uses
    pre-grant iss_cq02h, may already catch it) -> if so model-only fix; else add gnt to mask within caps.
