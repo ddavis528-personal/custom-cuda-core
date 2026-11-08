@@ -48,7 +48,7 @@ architect may approve only if the end meets module NGD without the flop; can't m
    (de9894d: module fixes, ccv_rcu.sv removed) and pushes. Then merge ri-retime (ri-wt4: d38ab59 retime,
    f3f5de7 arrivals at fanout term + rcu_pred act_d pre-decode, 521d4fa stall flopped + stall2 control;
    all unit NGD/CG + run-rtl clean) and gate it the same way. Then, when TI's ti-ri22 (TI rev 381) lands:
-   restore ccv_rcu.sv (gen: scratchpad gen_ccv_rcu.py; in 952dd81) + ccv_rcu.ngd.json (draft in
+   restore ccv_rcu.sv (gen: /home/user/ri-keep/gen_ccv_rcu.py; in 952dd81) + ccv_rcu.ngd.json (draft in /home/user/ri-keep;
    scratchpad: lane_rcu_res_cNN arrival 13), rerun block check (blk_ngd.py), gate.
    Rows written RI rev 44/45: re:RI-22 rulings (M5 65/67 of 68, RA to confirm), (e): 14 issue in-paths
    over 12 (worst lanes dst 20.7); recommended the issue end stays flopped. Await RA/AR answers.
