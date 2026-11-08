@@ -39,11 +39,22 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-07 (sweep + notices): Conventions 17, AR 320, OA 379, IS 190, TI 374, OI 324, CP 155, DA 115, RA 100, RI 40.
+Bookmarks 2026-11-08 (notices): Conventions 17, AR 322, OA 379, IS 190, TI 379, OI 324, CP 155, DA 115, RA 103, RI 42.
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-2. PHASE 5 (2026-11-08): worktree /home/user/ri-wt2, branch ri-dec: 415b0ca P7, 847d085 P2,
+   c8dbab0 pred/mig fixes, fe76e2a ccv_rcu.sv assembled + RA-42 (on gate-scratch/RI). ccv_rcu.sv
+   is written by scratchpad gen_ccv_rcu.py + ccv_rcu_body.svf (hand-edit the .sv once settled).
+   Block check loop: scratchpad blk_ngd.py (check-ngd's block_check on RCU units only),
+   log ~/ccv-logs/blk-ngd.log. New units: rcu_bank_slice_k0/_k2/_k3 (ROWS 192), rcu_clk (NWAKE 37).
+   Next: block NGD clean -> regen, check-1d, run-rtl.sh, split gate, gate-push (merge ri-dec into
+   ccr-888218a3-20cauz). Then RI rows: re:RA-42 (RTL 15->16 via CCV_LAT_RCU_KILL_DRAIN; the model
+   already added bnd_rx via Config; M4 kernel control at cut 1 still to run), re:AR 322 (RA-41 TODO
+   flops marked in ccv_rcu.sv header), RA FYI: P2/P7, lanes pcm CG-3 waiver, slice ropc/rmrg
+   arrival 0, SFU never decoded, no PXOR, S6 kill credit in series, CSR wake (Q-59).
+   Then task 5c: lock-step vs model, RTL event monitor, Q-53 checkers.
 -1. J9 settled (AR 320): the cliff was the stub DCU's 8 KiB direct-mapped default; TI made it 8x64
    (31168a3). Not RCU. #88 fixed by TI (21b4356, reviewed RI rev 39); TI rev 367 ran coremarkpl32 to
    the end on the model. OI-127/OI-129: A2 carries ppdst/pred_we/ppold (OI f727aed); the model's
