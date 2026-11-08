@@ -1268,11 +1268,19 @@ it.
   gnt 10.2 with OOE's leads (OA 387, 390), held to 12 in
   ccv_rcu.ngd.json. Latency (AR rev 329): L1_CMPL 19 to 18, KILL_DRAIN
   16 to 15, LAT_LANE, LAT_SFU, L1_WAKE and L1_MISS_WAKE unchanged, V-35
-  done a cycle sooner, credit depth -2. The figures above stand until
+  done a cycle sooner; the issue credit depth stays 4, since RA-41's
+  credit on receipt had already taken bnd_rx out of that loop (TI 382,
+  AR rev 330). The figures above stand until
   RH reprices g1'' with the leads. Dropping
   miu_rcu_data's flop is S1 -0.26% but cm128 +2.21%, and it trips OOE's
-  OA-17 check, so it stays flopped. C9 and PHYS_REGS 160 are re-checked
-  in J12.
+  OA-17 check, so it stays flopped. J12 (TI 389, 8 ways, every run clean):
+  PHYS_REGS 160 leaves S1 and cm32 flat but costs cm128 +1.17% (128:
+  +2.89%), now that cm128 is no longer L1-bound and the name pool shows
+  (stall.share.names 0 / 14,337 / 1,265,169). That fails AR rev 315's bar
+  of 0.1% everywhere, so PHYS_REGS stays 192 (AR rev 333). The 160 trade,
+  about 34k RCU flops for cm128 +1.17%, goes to Daniel only if RA-11 (a)
+  shows RCU over budget at 192. C9 at 8 ways, and p192's flopped
+  completion ends, are re-priced in J11b on OI-133's fix (11386e7).
 
 ### PF-48 End-to-end parity on register state
 
