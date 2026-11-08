@@ -660,18 +660,18 @@ module ooe_rename #(
   // The same takes, each class's from its own x bits and then selected per
   // lane (lane_c is one-hot or zero, as ooe_ren1's fx reads it), so the
   // port select loads neither l_x nor the take terms.
-  logic [NC-1:0] cr_cq02h, cm_cq02h, cmem_cq02h;
+  logic [NC-1:0] cr_cq01h, cm_cq01h, cmem_cq01h;
   logic [R-1:0]  kr_cq02h, km_cq02h, kmem_cq02h;
   always_comb begin
     for (int c = 0; c < NC; c++) begin
-      cr_cq02h[c]   = c_xl_cq01h[c * XL] && (!c_xl_cq01h[c * XL + 1] || c_xl_cq01h[c * XL + 2]);
-      cm_cq02h[c]   = c_xl_cq01h[c * XL] && c_xl_cq01h[c * XL + 1];
-      cmem_cq02h[c] = c_xl_cq01h[c * XL + 1];
+      cr_cq01h[c]   = c_xl_cq01h[c * XL] && (!c_xl_cq01h[c * XL + 1] || c_xl_cq01h[c * XL + 2]);
+      cm_cq01h[c]   = c_xl_cq01h[c * XL] && c_xl_cq01h[c * XL + 1];
+      cmem_cq01h[c] = c_xl_cq01h[c * XL + 1];
     end
     for (int l = 0; l < R; l++) begin
-      kr_cq02h[l]   = lane_v_cq02h[l] && |(lane_c_cq02h[l * NC +: NC] & cr_cq02h);
-      km_cq02h[l]   = lane_v_cq02h[l] && |(lane_c_cq02h[l * NC +: NC] & cm_cq02h);
-      kmem_cq02h[l] = |(lane_c_cq02h[l * NC +: NC] & cmem_cq02h);
+      kr_cq02h[l]   = lane_v_cq02h[l] && |(lane_c_cq02h[l * NC +: NC] & cr_cq01h);
+      km_cq02h[l]   = lane_v_cq02h[l] && |(lane_c_cq02h[l * NC +: NC] & cm_cq01h);
+      kmem_cq02h[l] = |(lane_c_cq02h[l * NC +: NC] & cmem_cq01h);
     end
   end
   always_ff @(posedge ooe_core_clk)
