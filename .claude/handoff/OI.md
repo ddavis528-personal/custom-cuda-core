@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-07 (OI-127 pushed f727aed; slice 4 done, OA 381)
+Updated 2026-11-08 (TI 360 pushed 95bf04d, OI-130; OI-127 done f727aed)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,7 +37,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 320, RA 96, IS 190, TI 373, OA 381, OI 323, CP 155, DA 115, RI 35
+Conventions 17, AR 320, RA 96, IS 190, TI 373, OA 382, OI 325, CP 155, DA 115, RI 35
 (sweep 11-07 10:16). AR 314/OA 377: lead_fault = status==1, per slot, OI builds capture once TI's schema row lands (none to TI 362). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
@@ -51,20 +51,14 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
-1. OI-127 (tasks #29/#30): tree scratchpad/wcas (oi-cas) = 92bc35f + merges of adfa301 and TI's
-   ccr-183cc441 (1d9fa6f, de03fd6) + f727aed (test: pp0 is a real pd; P sentinel -> has_p).
-   Unit PASS, 49 controls caught incl. cas-no-pd; kernels EXIT 0. PUSHED f727aed (SCOPED PASS 22/22).
-   Next: OI row answering TI 366 / RI 34-35 (A2 carries ppdst,
-   pred_we, ppold; RI may write pd on A2); correct OI-127's claim that RTL carries pred_we per RS row
-   (ooe_rs holds an opaque PW payload, nothing assembles it); ask OA: a guarded CAS's copy op also
-   writes ppnew (agrees with A2); status-2 (replay) assertion on atomics reached by no kernel.
-   Ring TI, RI, OA.
-2. TI 360 (task #26), tree scratchpad/wfs (oi-fs), WIP 5e37a70: merge latest (TI 31168a3: DCU 8x64,
-   rebaseline every cycle count), run-tests, check-ngd/cg ooe_go, push, RH price 128/160/192, rows
-   to OA+TI+AR. Fold in NGD fanout ratchet for ooe_go (#37).
+1. TI 360 (task #26): PUSHED 95bf04d (SCOPED PASS 20/22); OI-130 rev 325 rang OA/TI/AR. Waiting on
+   RH (sent 11-08 ~05:00): G/N floor_held_gate at 192/160(ren 12/44)/128(ren 8/24), S1 + cm128 warm.
+   On RH's answer: add its numbers to OI-130 (no notice unless OA must act). OA owes: accept the fix;
+   ooe_go to 25 needs the share split retimed (~21 NGD hv->sg) or caps stand (#37).
+2. OA 382 (task #40): RTL issue payload: A2's RS row carries pd, pred_we, ppold; cas-no-pd control in RTL.
 3. OA 365 (task #24): ooe_sched phys_src0/1 output depth (<=6); fold in ooe_sched ratchet (#36).
 4. NGD fanout ratchet (rtl/ngd-ratchet.json "fanout"; DA asked 11-07), in order: ooe_rendep (#33,
-   worst mem 34.5), ooe_rob_w (#34; measured 29.8/31.0 at adfa301, lower caps on next push),
+   worst mem 34.5), ooe_rob_w (#34; caps lowered to 29.9 in b8881c0),
    ooe_rename (#35, 31.1), ooe_rs (#38, 30.2), ooe_ratread (#39, port-budget caps only).
 5. DA 111b / OA 364: a unit for every OOE module at each instantiated param set.
 6. Optional (OA 381, task #32): fa entry one-hot -> 5-bit index in ooe_rob_w (-108 flops).
