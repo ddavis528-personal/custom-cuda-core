@@ -805,7 +805,9 @@ module rcu_lanes #(
     lead_bad_cr02h = 1'b0;
     foot_bad_cr02h = 1'b0;
     cpy_bad_cr02h = 1'b0;
-    for (int k = 0; k < NK; k++) own_bad_cr02h |= $countones(own_cr02h[k*NK +: NK]) > 1;
+    // More than one bit, as x & (x - 1): not $countones, whose argument
+    // Icarus leaves out of always_comb's sensitivity.
+    for (int k = 0; k < NK; k++) own_bad_cr02h |= |(own_cr02h[k*NK +: NK] & (own_cr02h[k*NK +: NK] - NK'(1)));
     for (int s = 0; s < NK; s++) begin
       // The superset rule (RA-31): what the payload uses is within the lead.
       if (v_cr02h[s] && cls_cr02h[2*s +: 2] != 2'd0)

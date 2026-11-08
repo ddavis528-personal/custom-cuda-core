@@ -482,7 +482,10 @@ module rcu_bank_slice #(
   always_comb begin
     two_hits_cr02h = 1'b0;
     for (int r = 0; r < ROWS; r++)
-      two_hits_cr02h = two_hits_cr02h | !$onehot0(hit_cr02h[r*NP +: NP]);
+      // x & (x - 1) is "more than one bit": Icarus leaves a system
+      // function's argument out of always_comb's sensitivity ($onehot0 here
+      // read a stale X from time 0).
+      two_hits_cr02h = two_hits_cr02h | |(hit_cr02h[r*NP +: NP] & (hit_cr02h[r*NP +: NP] - NP'(1)));
     bad_rd_cr01h = 1'b0;
     for (int p = 0; p < NR; p++)
       bad_rd_cr01h = bad_rd_cr01h | (rd_en_cr01h[p] && 32'(rdr_cr01h[p*WR +: WR]) >= ROWS &&

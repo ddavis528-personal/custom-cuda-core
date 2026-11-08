@@ -328,7 +328,8 @@ module rcu_pred #(
     wire [7:0]    lo_cr02h = (s == SR) ? rg_lo_cr02h : dec_lo(gd_cr02h[s*WP +: WP]);
     assign g_hi_cr02h[s*NH +: NH] = hi_cr02h;
     assign g_lo_cr02h[s*8 +: 8]   = lo_cr02h;
-    wire [N-1:0] r_cr02h = fwd(hi_cr02h, lo_cr02h, rd(hi_cr02h, lo_cr02h, row_cr02h),
+    wire [N-1:0] rr_cr02h = rd(hi_cr02h, lo_cr02h, row_cr02h);
+    wire [N-1:0] r_cr02h = fwd(hi_cr02h, lo_cr02h, rr_cr02h,
                                mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
     assign graw_cr02h[s*N +: N] = r_cr02h;
     assign gv_d_cr02h[s*N +: N] = ng_cr02h[s] ? ~r_cr02h : r_cr02h;
@@ -345,10 +346,14 @@ module rcu_pred #(
   logic [N-1:0] rpa_d_cr02h, rpb_d_cr02h, low_d_cr02h, lbm_d_cr02h;
   wire [WP-1:0] pa_cr02h = rimm_cr02h[WP-1:0];
   wire [WP-1:0] pb_cr02h = rimm_cr02h[2*WP:WP+1];
-  wire [N-1:0]  va_cr02h = fwd(dec_hi(pa_cr02h), dec_lo(pa_cr02h), rd(dec_hi(pa_cr02h), dec_lo(pa_cr02h), row_cr02h),
-                             mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
-  wire [N-1:0]  vb_cr02h = fwd(dec_hi(pb_cr02h), dec_lo(pb_cr02h), rd(dec_hi(pb_cr02h), dec_lo(pb_cr02h), row_cr02h),
-                             mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
+  wire [NH-1:0] pah_cr02h = dec_hi(pa_cr02h);
+  wire [7:0]    pal_cr02h = dec_lo(pa_cr02h);
+  wire [NH-1:0] pbh_cr02h = dec_hi(pb_cr02h);
+  wire [7:0]    pbl_cr02h = dec_lo(pb_cr02h);
+  wire [N-1:0]  vra_cr02h = rd(pah_cr02h, pal_cr02h, row_cr02h);
+  wire [N-1:0]  vrb_cr02h = rd(pbh_cr02h, pbl_cr02h, row_cr02h);
+  wire [N-1:0]  va_cr02h = fwd(pah_cr02h, pal_cr02h, vra_cr02h, mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
+  wire [N-1:0]  vb_cr02h = fwd(pbh_cr02h, pbl_cr02h, vrb_cr02h, mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
   assign rpa_d_cr02h = rimm_cr02h[WP] ? ~va_cr02h : va_cr02h;
   assign rpb_d_cr02h = rimm_cr02h[2*WP+1] ? ~vb_cr02h : vb_cr02h;
   wire [N-1:0]  ar_cr02h = act_d_cr02h[SR*N +: N];
@@ -557,7 +562,9 @@ module rcu_pred #(
   logic own_bad_cr02h;
   always_comb begin
     own_bad_cr02h = 1'b0;
-    for (int k = 0; k < NK; k++) own_bad_cr02h |= $countones(own_cr02h[k*NK +: NK]) > 1;
+    // More than one bit, as x & (x - 1): not $countones, whose argument
+    // Icarus leaves out of always_comb's sensitivity.
+    for (int k = 0; k < NK; k++) own_bad_cr02h |= |(own_cr02h[k*NK +: NK] & (own_cr02h[k*NK +: NK] - NK'(1)));
   end
   `CCV_ASSERT(pred_spb_own, !own_bad_cr02h)
 
