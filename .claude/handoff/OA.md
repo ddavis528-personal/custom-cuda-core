@@ -40,8 +40,8 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 387, AR 325, TI 380, OI 328, IS 190, CP 155, DA 115,
-RA 104 (tab 9851686b-2b0a), RI 31 (tab 8e4547bc-c469).
+Conventions 17, OA 389, AR 325, TI 380, OI 328, IS 190, CP 155, DA 115,
+RA 108 (tab 9851686b-2b0a), RI 31 (tab 8e4547bc-c469).
 OOE doc rev 370. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release 702d9bff; tag refused (known).
 
@@ -51,6 +51,9 @@ Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release
    no cycle, 0 net flops, out 0. RTL ooe_rs unit: gnt in 8.8/9.5/10.2 at LW 1/16/43; f-f 26.2/26.3/27.4
    (17.6 w/o fanout) < cap 29.4. Watch: RA names (a) bits + approves; TI schema row; OI moves fields,
    sets unit LW real; RH reprices g1'' (expect -3.48% S1, model). OOE doc rev 370 notes it.
+   OA 388 re:RA 108: (a) = no new field; guard leads zero on S/P today -> fill every slot (drop
+   slot_fields); + lead_rpsrc=imm[13:0] (R). Moved (0 OOE flops) or copied (<=167) per field, RA picks.
+   R lead read ~55b > 43 run: few tenths more fanout, OI re-measures. Approval waits on RI.
 -23. OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
    consumer co-granted with its producer (always stale). First check ooe_sched RTL (rep_cq02h uses
    pre-grant iss_cq02h, may already catch it) -> if so model-only fix; else add gnt to mask within caps.
