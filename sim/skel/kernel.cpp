@@ -3537,6 +3537,14 @@ private:
         return (q >> w) & 1 ? ~v : v;
       };
       uint32_t a = src(imm0), b = src(imm0 >> (w + 1));
+      // register pmov's ps1 repeats its ps0 (OA's rev 396): RCU refuses one
+      // whose two sources differ, physical predicate or negate (RA 119).
+      if (!std::strcmp(op->name, "PMOV")) {
+        const uint32_t fm = (1u << (w + 1)) - 1;
+        if ((imm0 & fm) != ((imm0 >> (w + 1)) & fm))
+          k_.fail("rcu: seq %llu: pmov's ps1 (%u) is not its ps0 (%u)", (unsigned long long)uidSeq(m.tid),
+                  unsigned((imm0 >> (w + 1)) & fm), unsigned(imm0 & fm));
+      }
       // arch-pred-srcs: RCU reads DEC's qualifiers ([2:0] and [5:3]) as
       // before TI-1, not OOE's renamed sources; plog's P3 must come out wrong.
       if (k_.brk == "arch-pred-srcs") {
@@ -4005,7 +4013,9 @@ private:
       if (r->quals.size() < 2) k_.fail("dec: seq %llu predicate logic without two sources",
                                        (unsigned long long)r->seq);
       else if (!std::strcmp(op->name, "PMOV"))   // ps1 = ps0 (OA's rev 396)
-        imm = (r->quals[0] & 7) | ((r->quals[0] & 7) << 3);
+        // pmov-ps1: DEC sends ps1 with ps0's negate flipped; RCU must refuse
+        // it (RA 119).
+        imm = (r->quals[0] & 7) | (((r->quals[0] & 7) ^ (k_.brk == "pmov-ps1" ? 4u : 0u)) << 3);
       else imm = (r->quals[0] & 7) | ((r->quals[1] & 7) << 3);
     } else if (isBarrier(op)) {
       // bar.arrive and bar.wait: the barrier id, OOE's to report (TI-40).

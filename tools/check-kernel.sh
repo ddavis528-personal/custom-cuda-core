@@ -167,7 +167,8 @@
 #                                                refuses its stored sum
 #   register pmov is predicate logic on R,  pmov-negate (predlane's copy as
 #     pd = ps0 under its negate (OA 396)       pmov, both RCUs): RCU refuses
-#                                                its own P1 at seq 7
+#     and ps1 repeats ps0 (RA 119)              its own P1 at seq 7; pmov-ps1:
+#                                                RCU refuses ps1 != ps0
 #   an atomic is a decode pair, and runs    atom-one-slot: OOE refuses each
 #     in passes, one lane an address in        one-slot atomic (OI-80);
 #     ascending order, until MIU says no       atom-one-pass: a lane reads the
@@ -1717,6 +1718,15 @@ for impl in model stub; do
     say "--break pmov-negate ($impl RCU): pmov's negate inverted" "PASS ($(field "$log" check_failures) checks)"
   else
     bad "--break pmov-negate ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
+  fi
+  # RA 119: pmov's ps1 repeats its ps0; pmov-ps1 has DEC send ps1 with ps0's
+  # negate flipped, and RCU must refuse it.
+  log="$B/kernel_pmov-ps1-$impl.log"
+  CCV_DEC_POR_COPY_AS_PMOV=1 CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break pmov-ps1 >"$log" 2>&1
+  if grep -m1 '^CHECK' "$log" | grep -q "^CHECK rcu: seq 7: pmov's ps1 ([0-9]*) is not its ps0 ([0-9]*)$"; then
+    say "--break pmov-ps1 ($impl RCU): RCU refuses ps1 != ps0" "PASS ($(field "$log" check_failures) checks)"
+  else
+    bad "--break pmov-ps1 ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
   fi
 done
 # The RCU selector (RI-8, RA-38 (a)): RI's model is the default behind the
