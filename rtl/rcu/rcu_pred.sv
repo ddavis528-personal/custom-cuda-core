@@ -319,54 +319,46 @@ module rcu_pred #(
   /* verilator lint_off UNUSEDSIGNAL */
   logic [NS*N-1:0]  graw_cr02h, gv_d_cr02h, act_d_cr02h;
   /* verilator lint_on UNUSEDSIGNAL */
-  always_comb begin
-    for (int s = 0; s < NS; s++) begin
-      logic [N-1:0] r_cr02h, g_cr02h, a1_cr02h, a0_cr02h;
-      logic         force_cr02h;
-      if (s == SR) begin
-        g_hi_cr02h[s*NH +: NH] = rg_hi_cr02h;
-        g_lo_cr02h[s*8 +: 8]   = rg_lo_cr02h;
-      end else begin
-        g_hi_cr02h[s*NH +: NH] = dec_hi(gd_cr02h[s*WP +: WP]);
-        g_lo_cr02h[s*8 +: 8]   = dec_lo(gd_cr02h[s*WP +: WP]);
-      end
-      r_cr02h = rd(g_hi_cr02h[s*NH +: NH], g_lo_cr02h[s*8 +: 8], row_cr02h);
-      r_cr02h = fwd(g_hi_cr02h[s*NH +: NH], g_lo_cr02h[s*8 +: 8], r_cr02h,
-                    mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
-      graw_cr02h[s*N +: N] = r_cr02h;
-      g_cr02h = ng_cr02h[s] ? ~r_cr02h : r_cr02h;
-      gv_d_cr02h[s*N +: N] = g_cr02h;
-      force_cr02h = !gt_cr02h[s] || pdt_cr02h[s];
-      // active, pre-decoded off the late read (RA rev 100/106 remedy): both
-      // outcomes from the early im, negate and force, then the read selects,
-      // so the guard's path ends in one mux, not the negate, force and mask.
-      a1_cr02h = im_cr02h[s*N +: N] & {N{!ng_cr02h[s] || force_cr02h}};
-      a0_cr02h = im_cr02h[s*N +: N] & {N{ ng_cr02h[s] || force_cr02h}};
-      act_d_cr02h[s*N +: N] = (r_cr02h & a1_cr02h) | (~r_cr02h & a0_cr02h);
-    end
+  // The guard reads below are continuous assigns, not a process: a process
+  // that writes a slice or a scratch variable and reads it back re-triggers
+  // itself without end under Icarus, whose always_comb waits on whole
+  // vectors and on its own static locals. Same logic, same netlist.
+  for (genvar s = 0; s < NS; s++) begin : g_guard
+    wire [NH-1:0] hi_cr02h = (s == SR) ? rg_hi_cr02h : dec_hi(gd_cr02h[s*WP +: WP]);
+    wire [7:0]    lo_cr02h = (s == SR) ? rg_lo_cr02h : dec_lo(gd_cr02h[s*WP +: WP]);
+    assign g_hi_cr02h[s*NH +: NH] = hi_cr02h;
+    assign g_lo_cr02h[s*8 +: 8]   = lo_cr02h;
+    wire [N-1:0] r_cr02h = fwd(hi_cr02h, lo_cr02h, rd(hi_cr02h, lo_cr02h, row_cr02h),
+                               mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
+    assign graw_cr02h[s*N +: N] = r_cr02h;
+    assign gv_d_cr02h[s*N +: N] = ng_cr02h[s] ? ~r_cr02h : r_cr02h;
+    wire force_cr02h = !gt_cr02h[s] || pdt_cr02h[s];
+    // active, pre-decoded off the late read (RA rev 100/106 remedy): both
+    // outcomes from the early im, negate and force, then the read selects,
+    // so the guard's path ends in one mux, not the negate, force and mask.
+    wire [N-1:0] a1_cr02h = im_cr02h[s*N +: N] & {N{!ng_cr02h[s] || force_cr02h}};
+    wire [N-1:0] a0_cr02h = im_cr02h[s*N +: N] & {N{ ng_cr02h[s] || force_cr02h}};
+    assign act_d_cr02h[s*N +: N] = (r_cr02h & a1_cr02h) | (~r_cr02h & a0_cr02h);
   end
 
   // R's predicate sources: read on the wire, forward, then negate.
   logic [N-1:0] rpa_d_cr02h, rpb_d_cr02h, low_d_cr02h, lbm_d_cr02h;
-  always_comb begin
-    logic [WP-1:0] pa_cr02h, pb_cr02h;
-    logic [N-1:0]  va_cr02h, vb_cr02h, ar_cr02h;
-    pa_cr02h = rimm_cr02h[WP-1:0];
-    pb_cr02h = rimm_cr02h[2*WP:WP+1];
-    va_cr02h = fwd(dec_hi(pa_cr02h), dec_lo(pa_cr02h), rd(dec_hi(pa_cr02h), dec_lo(pa_cr02h), row_cr02h),
-                   mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
-    vb_cr02h = fwd(dec_hi(pb_cr02h), dec_lo(pb_cr02h), rd(dec_hi(pb_cr02h), dec_lo(pb_cr02h), row_cr02h),
-                   mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
-    rpa_d_cr02h = rimm_cr02h[WP] ? ~va_cr02h : va_cr02h;
-    rpb_d_cr02h = rimm_cr02h[2*WP+1] ? ~vb_cr02h : vb_cr02h;
-    ar_cr02h = act_d_cr02h[SR*N +: N];
-    // The lowest active lane, each bit against an OR of the lanes below
-    // it (a tree, not the subtractor's carry chain: its depth put the
-    // predicate rows past dq's 18, NGD-7).
-    for (int l = 0; l < N; l++)
-      low_d_cr02h[l] = ar_cr02h[l] & ~(|(ar_cr02h & N'((64'(1) << l) - 64'(1))));
-    lbm_d_cr02h = {N{br_cr02h}} & ar_cr02h;
+  wire [WP-1:0] pa_cr02h = rimm_cr02h[WP-1:0];
+  wire [WP-1:0] pb_cr02h = rimm_cr02h[2*WP:WP+1];
+  wire [N-1:0]  va_cr02h = fwd(dec_hi(pa_cr02h), dec_lo(pa_cr02h), rd(dec_hi(pa_cr02h), dec_lo(pa_cr02h), row_cr02h),
+                             mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
+  wire [N-1:0]  vb_cr02h = fwd(dec_hi(pb_cr02h), dec_lo(pb_cr02h), rd(dec_hi(pb_cr02h), dec_lo(pb_cr02h), row_cr02h),
+                             mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
+  assign rpa_d_cr02h = rimm_cr02h[WP] ? ~va_cr02h : va_cr02h;
+  assign rpb_d_cr02h = rimm_cr02h[2*WP+1] ? ~vb_cr02h : vb_cr02h;
+  wire [N-1:0]  ar_cr02h = act_d_cr02h[SR*N +: N];
+  // The lowest active lane, each bit against an OR of the lanes below
+  // it (a tree, not the subtractor's carry chain: its depth put the
+  // predicate rows past dq's 18, NGD-7).
+  for (genvar l = 0; l < N; l++) begin : g_low
+    assign low_d_cr02h[l] = ar_cr02h[l] & ~(|(ar_cr02h & N'((64'(1) << l) - 64'(1))));
   end
+  assign lbm_d_cr02h = {N{br_cr02h}} & ar_cr02h;
 
   // ---- Stage I's flops, loaded under the slot's valid ------------------
   wire [NS-1:0] iv_en_cr02h = iv_cr02h;
