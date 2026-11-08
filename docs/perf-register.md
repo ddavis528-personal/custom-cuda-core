@@ -1220,6 +1220,59 @@ it.
   RCU's kill drain 16). It holds while RCU and every
   lane abut (link_n 0; the partitioning spec's floorplan constraints) and
   RCU's assembled block meets 12 NGD on the port without the flop.
+  Open, not booked (TI register rev 369, RH's J9 bisect; AR rev 318):
+  the same change, 2a7f125, costs rel-vadd16_loop-128 +1,065 cycles
+  from fetch (5,610 to 6,675, +19.0%) and rel-vadd16-128 +5.5%. On
+  f4ce0fd, zero-cycling one more RCU end (miu_rcu_data, or
+  ooe_rcu_issue) shifts L1 wake and completion by one and wins back
+  14.4% and 16.8%. A one-cycle shift either way swinging this much
+  points to a collision between a lane result and a load's data or wake,
+  where the loser pays far more than a cycle. The fix belongs to that
+  penalty, not to the latency, pending the stats diff and OI's and RI's
+  reading. The diff (TI rev 370) puts it at the ROB head waiting on MIU
+  (load_at_miu +30%, store +20%), not in RCU or in replays. The MIU
+  stub starts one job a cycle, puts committed stores first and blocks
+  every warp behind a held load. The spec's MIU has four pipes and holds
+  only the load. AR rev 319 asks for that stub's stall causes and a
+  four-pipe rerun before any of it is booked. TI's traces (rev 371) put
+  the step in the L1: evictions +73%, store hits -49%, L1 misses +23%.
+  The stub DCU defaults to 64 sets of 1 way (8 KiB, direct-mapped), and
+  nothing sets CCV_DCU_WAYS. The DCU spec settled 8 ways. The kernel's
+  three arrays start in 64 KiB-aligned windows, so a[i], b[i] and c[i]
+  share one set, and arrival order decides which line survives. AR rev
+  320 adds 8 ways to J10. If any booked delta was measured at 1 way and
+  moves by more than 0.2% at 8 ways, it is re-checked. Settled by J10
+  (TI rev 373): since 31168a3 the stub DCU defaults to 8 ways x 64 sets,
+  as the spec says. At 8 ways the loop has no evictions, only its 577
+  compulsory misses, and Z's step is +3.1% (it was +26.8% at 1 way).
+  With the MIU stub starting four memops a cycle, Z's step is -0.2%,
+  and that mode is worth 3.3% to 6.4% on the loop. Every cycle count in
+  this register from before 31168a3 is on the 1-way L1. TI re-checks
+  the deltas booked on it (Z, C9, the boundary-flop prices, PHYS_REGS
+  160) against the 0.2% bar once S1, cm32 and cm128 are re-run.
+  J10's whole-program runs (TI rev 375, RCU model, PHYS 192): going from
+  1 way to 8 ways takes cm32 from 4,637,603 to 2,773,055 cycles
+  (-40.2%) and cm128 from 17,044,442 to 8,732,687 (-48.8%). The stub
+  MIU's four-start mode is -0.04% on S1 and -0.4% on cm32 but +26.1% on
+  cm128 at 8 ways, where waits for a free pipe grow from 4.26M to
+  9.59M. TI keeps the stub single-start. Neither mode is the spec's MIU,
+  whose pipes are pipelined AGU stages with misses parked in the
+  buffers (AR rev 321), so cm128's memory-bound figures are bounds.
+  Re-booked at 8 ways (J11, TI rev 380, 88c31e7, PHYS 192): Z takes S1
+  from 31,881 to 31,095 cycles (-2.47%, against -1.04% booked at 1 way),
+  cm32 -1.42%, cm128 -5.67%. Dropping ooe_rcu_issue's receiving flop at
+  RCU as well is S1 -3.48%, cm32 -1.98%, cm128 +0.09%, clean. That
+  reopens AR rev 308: the end needs splits to meet the port rules, so it
+  was RA's to approve under DA 115 (AR revs 323, 324). RA approved it
+  (RA-43, register rev 113): RCU's worst is 10.9 NGD, OOE's out 0 and
+  gnt 10.2 with OOE's leads (OA 387, 390), held to 12 in
+  ccv_rcu.ngd.json. Latency (AR rev 329): L1_CMPL 19 to 18, KILL_DRAIN
+  16 to 15, LAT_LANE, LAT_SFU, L1_WAKE and L1_MISS_WAKE unchanged, V-35
+  done a cycle sooner, credit depth -2. The figures above stand until
+  RH reprices g1'' with the leads. Dropping
+  miu_rcu_data's flop is S1 -0.26% but cm128 +2.21%, and it trips OOE's
+  OA-17 check, so it stays flopped. C9 and PHYS_REGS 160 are re-checked
+  in J12.
 
 ### PF-48 End-to-end parity on register state
 
