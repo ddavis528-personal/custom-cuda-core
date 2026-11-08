@@ -364,6 +364,8 @@ private:
         r.result[l] = uint32_t(get(m.payload, c.lane_rcu, "result"));
         r.sec_valid[l] = uint8_t(get(m.payload, c.lane_rcu, "sec_valid"));
         r.sec_pred_out[l] = uint8_t(get(m.payload, c.lane_rcu, "sec_pred_out"));
+        r.sfu_valid[l] = uint8_t(get(m.payload, c.lane_rcu, "sfu_valid"));
+        r.sfu_result[l] = uint32_t(get(m.payload, c.lane_rcu, "sfu_result"));
       }
       in.lres = r;
     }

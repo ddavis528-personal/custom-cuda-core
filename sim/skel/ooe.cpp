@@ -47,6 +47,9 @@ private:
     // instruction of the warp has written is still the zero register (A-64).
     unsigned psrc[3] = {}, pold = 0, pnew = 0, ppguard = 0, ppold = 0;
     bool issued = false, rcu = false, miu = false, committed = false;
+    // serial 5 (C_RECONV; RA-16 (f), OA's rev 393): complete at allocation,
+    // with no rename and no issue, as exit is complete once it issues.
+    bool nop = false;
     // A masked load's copy-only op (A-38) sends no done: OOE clears this at
     // the copy's contracted wake, issue + CCV_LAT_LANE, as for a lane op.
     bool copy_pending = false;
@@ -54,7 +57,7 @@ private:
     // A memop completes on MIU's completion alone: RCU sends no done for it
     // (OI-4).
     bool complete() const {
-      return op->cls == kExit ? issued
+      return op->cls == kExit || nop ? issued
                               : issued && (attrMem(attr) ? miu : rcu) && !copy_pending;
     }
   };
@@ -273,21 +276,23 @@ private:
     if (e.ordering != 0 && !(attrMem(e.attr) && attrMemKind(e.attr) == kMemKFence))
       k_.fail("ooe: pc 0x%llx has ordering %u but is not a fence",
               (unsigned long long)e.pc, e.ordering);
+    e.nop = attrSerial(e.attr) == kSerNop;
+    e.issued = e.nop;
     // Rename: sources and old destinations read the RAT before this
-    // instruction's own writes update it (A-64).
+    // instruction's own writes update it (A-64). A no-op renames nothing.
     auto q = [&](unsigned a) { return pw_[e.warp][a & 3] ? physPred(e.warp, a) : ccv::prov::kPredZero; };
     for (unsigned i = 0; i != 3; ++i) e.psrc[i] = rat_[e.warp][e.src[i] & 15];
     e.pold = rat_[e.warp][e.dst & 15];
     e.ppguard = q(e.pguard);
     e.ppold = q(e.pdst);
-    if (e.op->gdst) {
+    if (e.op->gdst && !e.nop) {
       e.pnew = free_.front();
       free_.pop_front();
       if (!used_.insert(e.pnew).second) k_.hit("reg_reuse");   // came back from a retire
       rat_[e.warp][e.dst & 15] = e.pnew;
       if (e.warp == 0) k_.ratOf(0)[e.dst & 15] = e.pnew;   // the final compare's map
     }
-    if (e.pwe) pw_[e.warp][e.pdst & 3] = true;
+    if (e.pwe && !e.nop) pw_[e.warp][e.pdst & 3] = true;
     e.tag = next_tag_;
     next_tag_ = (next_tag_ + 1) % kRob;
     emit(now_, e.tid, EV_DISPATCH, UNIT_OOE, e.warp, e.tag);
@@ -296,6 +301,7 @@ private:
 
   /// Registers an entry reads and writes, as (kind, index) pairs.
   static void regs(const E &e, std::vector<unsigned> &rd, std::vector<unsigned> &wr) {
+    if (e.nop) return;
     for (unsigned i = 0; i != e.op->nsrc; ++i) rd.push_back(e.src[i]);
     if (e.op->guard || e.op->pdata) rd.push_back(100 + e.pguard);
     if (e.op->cls == kPredLogic) {    // its sources are qualifiers in imm
@@ -476,7 +482,7 @@ private:
     // free-new: retire frees the write's own new register instead of the
     // one it replaced, so a live value is reallocated once the list wraps.
     const unsigned freed = k_.brk == "free-new" ? e.pnew : e.pold;
-    if (e.op->gdst && freed != ccv::prov::kPhysZero) free_.push_back(freed);
+    if (e.op->gdst && !e.nop && freed != ccv::prov::kPhysZero) free_.push_back(freed);
     rob_.pop_front();
   }
 

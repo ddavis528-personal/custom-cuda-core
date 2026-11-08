@@ -95,6 +95,10 @@
 //   cor-drop       ...and never: the block drops it
 //   ignore-mask    RCU's predicate merge drops the active mask (A-43)
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
+//   sfu-valid-stray  lane 3 drives sfu_valid with no SFU op in flight, which
+//                  RCU must refuse (RA-16 (b), RA's rev 115)
+//   nop-real-op    DEC gives the C_ADD whose sum is stored serial 5, C_RECONV's
+//                  no-op, so OOE completes it at rename (RA-16 (f), OA's rev 393)
 //===----------------------------------------------------------------------===//
 #include "Vccv_common_chk_bank.h"
 #include "verilated.h"
@@ -280,7 +284,11 @@ int main(int argc, char **argv) {
                       // .shared and SPM (TI's rev 230); FET's barrier parking (TI-40)
                       brk == "spm-one-pass" || brk == "spm-no-wait" || brk == "spm-shared-region" ||
                       brk == "bar-park-off" || brk == "held-over-r" || brk == "held-no-clear" ||
-                      brk == "borrow-partial";
+                      brk == "borrow-partial" ||
+                      // the SFU result on ccv_lane_rcu_res (RA-16 (b))
+                      brk == "sfu-valid-stray" ||
+                      // serial 5 on a real op (RA-16 (f))
+                      brk == "nop-real-op";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;
