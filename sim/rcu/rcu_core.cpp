@@ -393,7 +393,8 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
         const uint32_t v = rdPred(p);
         return (q >> w) & 1u ? ~v : v;
       };
-      if (oc.rk == RKind::Pand || oc.rk == RKind::Por || oc.rk == RKind::Pxor || oc.rk == RKind::VoteAny ||
+      if (oc.rk == RKind::Pand || oc.rk == RKind::Por || oc.rk == RKind::Pxor || oc.rk == RKind::Pmov ||
+          oc.rk == RKind::VoteAny ||
           oc.rk == RKind::VoteAll || oc.rk == RKind::Ballot) {
         x.rpa = psrc(is.imm);
         x.rpb = psrc(is.imm >> (w + 1));
@@ -746,6 +747,9 @@ void Core::issueR(uint64_t t, const Issue &is, uint32_t active, const Word &r0, 
   case RKind::Pand: pw = true; pval = rpa & rpb; break;
   case RKind::Por: pw = true; pval = rpa | rpb; break;
   case RKind::Pxor: pw = true; pval = rpa ^ rpb; break;
+  // register pmov (OA's rev 396): pd = ps0 under its negate; ps1 repeats it
+  // and is not read. pmov-negate inverts ps0's negate.
+  case RKind::Pmov: pw = true; pval = cfg_.brk == "pmov-negate" ? ~rpa : rpa; break;
   case RKind::PmovImm:   // merged by the issue mask (RA-19); pmov-all-lanes writes all 32
     pw = true;
     pval = is.imm;

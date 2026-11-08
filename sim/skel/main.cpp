@@ -105,6 +105,8 @@
 //                  RCU must refuse (RA-16 (b), RA's rev 115)
 //   nop-real-op    DEC gives the C_ADD whose sum is stored serial 5, C_RECONV's
 //                  no-op, so OOE completes it at rename (RA-16 (f), OA's rev 393)
+//   pmov-negate    RCU inverts register pmov's ps0 negate (OA's rev 396); with
+//                  CCV_DEC_POR_COPY_AS_PMOV=1, predlane's copy writes ~P0
 //===----------------------------------------------------------------------===//
 #include "Vccv_common_chk_bank.h"
 #include "verilated.h"
@@ -294,7 +296,9 @@ int main(int argc, char **argv) {
                       // the SFU result on ccv_lane_rcu_res (RA-16 (b))
                       brk == "sfu-valid-stray" ||
                       // serial 5 on a real op (RA-16 (f))
-                      brk == "nop-real-op";
+                      brk == "nop-real-op" ||
+                      // register pmov's negate (OA's rev 396)
+                      brk == "pmov-negate";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;
