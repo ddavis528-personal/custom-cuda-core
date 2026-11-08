@@ -287,23 +287,37 @@ package rcu_dec_pkg;
             2'd3: c = 27'h1e4c202;   // ATOM.A3
             default: c = 27'h0000007;
           endcase
-      125: c = 27'h1acc202;   // ST_SHARED
-      126: c = 27'h68ce102;   // LD_SHARED_IDX
-      127: c = 27'h13cc202;   // ST_SHARED_IDX
-      128: c = 27'h784e102;   // C_LD_GLOBAL
-      129: c = 27'h1acc202;   // C_ST_GLOBAL
-      130: c = 27'h7e56000;   // C_ORI
-      131: c = 27'h7ece800;   // SUB_P
-      132: c = 27'h7ece800;   // MUL_HI_U_P
-      133: c = 27'h7ece800;   // OR_P
-      134: c = 27'h7e56800;   // SHLI_P
-      135: c = 27'h7e56800;   // SHRI_P
-      136: c = 27'h7ece000;   // C_FADD
-      137: c = 27'h7ece000;   // FSUB
-      138: c = 27'h7e4e800;   // CVT_F32_S32_P
-      139: c = 27'h7e4e000;   // RCP_U32
-      140: c = 27'h7e4e000;   // RSQRT_F32
-      141: c = 27'h7e4e800;   // RCP_F32_P
+      125: case (drow)   // CAS_G: its step by done_row (OI-85)
+            2'd0: c = 27'h68ce102;   // ATOM.A1
+            2'd2: c = 27'h7ece000;   // ATOM.A2
+            2'd3: c = 27'h1e4c202;   // ATOM.A3
+            default: c = 27'h0000007;
+          endcase
+      126: case (drow)   // CAS_S: its step by done_row (OI-85)
+            2'd0: c = 27'h68ce102;   // ATOM.A1
+            2'd2: c = 27'h7ece000;   // ATOM.A2
+            2'd3: c = 27'h1e4c202;   // ATOM.A3
+            default: c = 27'h0000007;
+          endcase
+      127: c = 27'h1acc202;   // ST_SHARED
+      128: c = 27'h68ce102;   // LD_SHARED_IDX
+      129: c = 27'h13cc202;   // ST_SHARED_IDX
+      130: c = 27'h784e102;   // C_LD_GLOBAL
+      131: c = 27'h1acc202;   // C_ST_GLOBAL
+      132: c = 27'h7e56000;   // C_ORI
+      133: c = 27'h7ece800;   // SUB_P
+      134: c = 27'h7ece800;   // MUL_HI_U_P
+      135: c = 27'h7ece800;   // OR_P
+      136: c = 27'h7e56800;   // SHLI_P
+      137: c = 27'h7e56800;   // SHRI_P
+      138: c = 27'h7ece000;   // C_FADD
+      139: c = 27'h7ece000;   // FSUB
+      140: c = 27'h7e4e800;   // CVT_F32_S32_P
+      141: c = 27'h7e4e000;   // RCP_U32
+      142: c = 27'h7e4e000;   // RSQRT_F32
+      143: c = 27'h7e4e800;   // RCP_F32_P
+      144: c = 27'h7e1c033;   // PXOR
+      145: c = 27'h7e0c000;   // C_RECONV
       511: c = pcopy ? 27'h7e0c806 : 27'h7e0c805;   // copy-only (A-38)
       default: c = 27'h0000007;
     endcase
