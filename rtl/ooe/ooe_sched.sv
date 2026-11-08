@@ -18,7 +18,9 @@
 //   completion by its channel's valid), ooe_rs's
 //   allocation lead (a row written at this edge), the stop lead,
 //   OI-50's replay rule over iss, dep and msd as they stand after this
-//   edge (an entry returns to Waiting at the next cycle's hop), and the
+//   edge (an entry returns to Waiting at the next cycle's hop; a producer
+//   granted at this edge is not issued until after it, so the rule's
+//   co-grant arm, OI-133, needs no term of its own here), and the
 //   replay lead, a producer some row reads replayed at this edge: ooe_wake
 //   takes the stop at this edge, so the lines it gives this module drop at
 //   the next one, which the stop lead's capture precedes (a grandchild of
@@ -140,7 +142,9 @@ module ooe_sched #(
 
   // -- Leads ----------------------------------------------------------------
   // The stop lead: OI-50's replay rule, an issued entry with a producer
-  // not issued or missed, over the state after this edge.
+  // not issued or missed, over the state after this edge (a producer
+  // granted with it at this edge counts as not issued here: the co-grant
+  // arm, OI-133, which ooe_rs and ooe_wake decide from their last grant).
   // The same rule gives this cycle's replays (rep): ooe_rs and ooe_wake
   // take them at this edge, so issued after it is iss less rep (OA's
   // response OI-45: the model's order, a replayed entry requesting at

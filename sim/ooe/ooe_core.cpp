@@ -1590,7 +1590,8 @@ void Core::confirmPass() {
 void Core::advanceWakes() {
   // Transitive cancel is a level, decided every cycle from the state as it
   // stands at the cycle's start (OI-50): an issued entry whose row is no
-  // longer ready returns to Waiting. A miss is seen from the cycle after
+  // longer ready returns to Waiting, and so does one whose producer was
+  // granted at the same edge as it (the co-grant arm, OI-133). A miss is seen from the cycle after
   // it (the hardware's FMISS, held as msd), so the first hop comes a cycle
   // after the miss, and each further hop a cycle after the last (V-59, V-67).
   const bool after_miss = miss_now_;
