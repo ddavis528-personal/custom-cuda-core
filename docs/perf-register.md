@@ -1268,7 +1268,9 @@ it.
   gnt 10.2 with OOE's leads (OA 387, 390), held to 12 in
   ccv_rcu.ngd.json. Latency (AR rev 329): L1_CMPL 19 to 18, KILL_DRAIN
   16 to 15, LAT_LANE, LAT_SFU, L1_WAKE and L1_MISS_WAKE unchanged, V-35
-  done a cycle sooner; the issue credit depth stays 4, since RA-41's
+  done a cycle sooner. Landed in 21b4b80 (TI rev 391); TI's own
+  measurement there is -2.88% on sweep.sh's ten kernels and -2.35% on all
+  63 (TI rev 384). The issue credit depth stays 4, since RA-41's
   credit on receipt had already taken bnd_rx out of that loop (TI 382,
   AR rev 330). The figures above stand until
   RH reprices g1'' with the leads. Dropping
