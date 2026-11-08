@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=57 exported=2026-11-05 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 57 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=67 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 67 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -34,7 +34,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Conventions and interfaces | the cycle convention (A = issue payload cycle, a write in W is readable from W+1), naming, and every input and output field with its cycle |
 | Pipeline | the stages I (A), R (A+1), RW (A+2); the op-class decode table; every op class cycle by cycle |
 | Register file | the bank: rows, 10 read and 4 write ports, the split one-hot predecode, the write enables and D muxes |
-| Predicate file | the 48 × 32 file, its read ports in A, A+2 and A+7, the 17 masked write ports, the guard path and the MIU forward |
+| Predicate file | the 48 × 32 file, its read ports in A, A+2 and A+6, the 17 masked write ports, the guard path and the MIU forward |
 | R unit and crossbar | every R op's datapath in A and A+1, the crossbar helper, and the collectives |
 | Lane and memory paths | lane message assembly per owned section, the bypass tracker, the write-back descriptors, memop operands and load write-back |
 | Migration | pairing, the demotion and restore engines, the stall-safe sender pattern, migration under kill |
@@ -46,18 +46,18 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Decision | Value | Tab | Row |
 | --- | --- | --- | --- |
 | Stages | I in A (decode, guard, predicates, predecode, leads; R0/R1 source read); R in A+1 (other GPR reads, compute); RW in A+2 (R write) | Pipeline | RA-1, RA-5, RA-39 |
-| Write timing | lane LW at A+7, SFU SW at A+12, load MW at its payload cycle, R RW at A+2 | Pipeline |  |
+| Write timing | lane LW at A+6, SFU SW at A+11, load MW at its payload cycle, R RW at A+2 | Pipeline |  |
 | GPR ports per bank | 10 read (L0-3, M0-2, R0-2), 4 write (LW, SW, MW, RW) | Register file | RA-6; RA-29 (a) |
 | Collectives | run in the R pipe: done at A+1, written at A+2, readable at A+3, inside `CCV_LAT_COLLECTIVE` = 5; no fifth write port | R unit | RA-29 (a), (c); RA-8 |
 | Row select | split one-hot predecode, 12 + 16 flops per port and slice; the zero register selects nothing | Register file |  |
 | Predicate merges | masked write ports; old destination read at write time; the forwards are MIU `pred_result` into the guard and MIU's MW write through into the R0/R1 read in each bank slice | Predicate file; R unit |  |
-| Lane bypass | age 4-6 (`CCV_LAT_LANE_BYP` to `CCV_LAT_LANE` − 2); no SFU bypass | Lane and memory | RA-29 (d) |
+| Lane bypass | age 4-5 (`CCV_LAT_LANE_BYP` to `CCV_LAT_LANE` − 2); no SFU bypass | Lane and memory | RA-29 (d) |
 | Done slots | fixed: lane lead section k → k, SFU → 4, RCU-only → 5, collective → 6 | Done | RA-29 (b) |
 | Migration ports | demotion reads R2 and D0-3; restore writes RW and PG0-3; no port of its own; 4-deep restore FIFO | Migration | RA-6, RA-17, RA-28 |
-| Kill | drain everything for `KILL_DRAIN` = 16; ack as a level with epoch | Done | RA-14, RA-23 |
+| Kill | drain everything for `KILL_DRAIN` = 15 (RA-43); ack as a level with epoch | Done | RA-14, RA-23 |
 | Reset | control state only, about 1,500 flops; no PRF or payload reset | Done | A-29 |
 | CSRs | none; a read-0 responder (RA-26) | Done | RA-26 |
-| Size | about 246,000 flops, 80% of them PRF rows | Partition | RA-11 |
+| Size | about 242,400 flops summed from the units at their instances (RI rev 47), 81% of them PRF rows; CCV\_P\_PHYS\_REGS stays 192 (AR 333), no area target (Daniel, 2026-11-02); RA-11 closed (RA rev 122) | Partition | RA-11 |
 | Address time | CCV\_LAT\_RCU\_ADDR\_BASE = 1: address valid at A+1, payload at A+2; RCU-internal, from the interface flop; the receiving interface flop's cycle is the link term bnd\_rx (AR row 300), counted only on the crossing, so the base and CCV\_LAT\_RCU\_ADDR stay 1 (AR row 301), and L1 wake goes 17 to 13; one more if M1 misses (RA rev 79) | Lane and memory; Partition | RA-7, RA-31 (1); PF-47 |
 | Issue lead slice | OOE sends section mask, source, imm and merge use (and on R's slot the guard predicate) a cycle ahead; RCU enables each field group from it; a clear bit is asserted as a promise | Partition; Pipeline (stage IL) | RA-31 (2), RA-39 |
 | Split guard read | guard row predecoded at A−1 from the lead; guard path about 16 NGD in A (about 22 without the lead) | Predicate file | RA-32 (1) |
@@ -65,7 +65,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | CG stimulus | checked replays of ccv-skel port traces: high coremark128 and vadd, medium with two idle cycles after each, idle reset | Partition (M2) | RA-34 |
 | Model first | a cycle-accurate C++ model, owned by RI, ahead of the RTL; the RTL runs lock-step against it for good (Daniel, 2026-11-02, DA tab; RTL-first lost) | Partition (M0) | RA-38 |
 | Bank slices | each bank is 8 slices of one byte section across 4 lanes (192 rows × 32 bits, about 6,550 flops, 193,000 cells, 1.35 GB: inside ooe\_rob\_w's envelope), 32 in all, each with its own selects; a physical chunk is the 4 slices of 4 lanes, about 770,000 cells, 8 chunks; place and route flat, chunks keep physical partitioning open. Bank read out budget 11 (measured 8.3, 11.0 with fanout) | Register file, Partition | Daniel, 2026-11-03 |
-| Early R source read | R0/R1 rows from the issue payload's `phys_src` on the wire (no lead), decoded in each bank slice and read in A into the slice's `rsrc` with an MIU write-through for L1-hit loads; `phys_src0/1` budgets from RCU's interface flop, 18.4 within 25 (no split since the boundary flops); align and compute from flops in A+1 (about 16 NGD); `CCV_LAT_RCU` stays 3 | R unit | RA-39 |
+| Early R source read | R0/R1 rows from the issue payload's `phys_src` on the wire (no lead; since RA-43 they come from R's lead\_phys\_src at A−1, in RCU flops), decoded in each bank slice and read in A into the slice's `rsrc` with an MIU write-through for L1-hit loads; `phys_src0/1` budgets from RCU's interface flop, 18.4 within 25 (no split since the boundary flops); align and compute from flops in A+1 (about 16 NGD); `CCV_LAT_RCU` stays 3 | R unit | RA-39 |
 
 ## Settled with AR (RA-1 to RA-17)
 
@@ -80,7 +80,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Collective fold 5 → 3 | RCU now meets 3; folding the contract is OA's, then Daniel's | RA-8 |
 | Crossbar as an RCU sub-module | settled: `rcu_xbar`, an inner helper | RA-9 |
 | Q-18: the AGU stays in MIU | settled | RA-10 |
-| No area budget; floorplan | settled (Daniel, 2026-11-02) | RA-11, RA-12 |
+| No area budget; floorplan | settled (Daniel, 2026-11-02); 192 rows kept (AR 333, RA rev 122) | RA-11, RA-12 |
 | `dispatch_fault` deleted | settled, TI to apply | RA-13, RA-16 (e) |
 | Kill drain | settled, TI to add the parameter | RA-14, RA-16 (g) |
 | Ops on R | settled | RA-15 |
@@ -90,7 +90,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 
 | Row | Needs | Question | Status (2026-11-04) | Effect on this spec |
 | --- | --- | --- | --- | --- |
-| RA-16 | TI | schema and parameter changes (a)-(g) | open with TI, to be applied with RA-29 (a), (b); RA closes it on TI's notice | none |
+| RA-16 | TI | schema and parameter changes (a)-(g) | closed (RA rev 121): (a), (d)-(g) in TI's 9894da1; (b) SFU second result and (f) C\_RECONV in a0c2f68; register-form PMOV in 8dbc152 | none |
 | RA-18 | AR, OA, TI | call's link value | **settled**: `imm_kind` 6, OOE puts pc\[31:0\] + length in `imm` | R unit: call writes `imm` |
 | RA-19 | IS, CP | pmov #mask gated by the issue mask | **settled**: gated (ISA invariant 10); ccv-sim merges (CP-75) | as written |
 | RA-20 | IS, then TI | collective semantics | **settled as O-85** (Daniel), diagonal unballot | R unit collective rows updated |
@@ -126,7 +126,7 @@ Daniel accepted the spec as a first pass (2026-11-02) and answered RA's question
 - **Fanout.** check-ngd counts it per net (option (a), 2026-11-02); RCU copies its selects to suit (Register file tab).
 - **Floorplan.** Nothing is baked in until bottom-up gate counts exist; the spec assumes no placement.
 
-**Block boundaries (Daniel, 2026-11-05; TI rev 321; AR rev 285; RA rev 77).** Every block boundary has a flop on each side, built by the interface module. A and every channel's payload cycle T are counted from the RCU's interface flop (Conventions tab), and RCU's inputs start at 0 NGD with their whole 25. RCU's internal stages are unchanged. The contract moves by one cycle where a receiver's write used to precede its first flop: `CCV_LAT_LANE` 8 and `CCV_LAT_SFU` 13, so LW lands at A+7 and SW at A+12, lane and SFU done one cycle later, and `KILL_DRAIN` is 16. `CCV_LAT_RCU` stays 3, `CCV_LAT_COLLECTIVE` 5, and bypass latencies are unchanged. The lane-bypass compare window grows by one age. These numbers are pending TI's derived parameters.
+**Block boundaries (Daniel, 2026-11-05; TI rev 321; AR rev 285; RA rev 77).** Every block boundary has a flop on each side, built by the interface module. A and every channel's payload cycle T are counted from the RCU's interface flop (Conventions tab), and RCU's inputs start at 0 NGD with their whole 25. RCU's internal stages are unchanged. The contract moves by one cycle where a receiver's write used to precede its first flop: `CCV_LAT_LANE` 8 and `CCV_LAT_SFU` 13, so LW lands at A+7 and SW at A+12, lane and SFU done one cycle later, and `KILL_DRAIN` is 16. `CCV_LAT_RCU` stays 3, `CCV_LAT_COLLECTIVE` 5, and bypass latencies are unchanged. The lane-bypass compare window grows by one age. Since RA rev 95 lane\_rcu\_res's end at RCU is zero-cycle (bnd\_rx 0), so CCV\_LAT\_LANE is 7 and CCV\_LAT\_SFU 12: LW lands at A+6 and SW at A+11, and the bypass window is back to ages 4-5. KILL\_DRAIN stayed 16 while the issue end was flopped. Zero-cycle ooe\_rcu\_issue (RA-43, approved by RA under DA 115, 2026-11-08; AR 329): OOE sends lead copies at A−1 of every field RCU cannot meet 12 from (Partition tab, lead slice), so both sides meet 12 without the flop: RCU's worst issue in-path is 10.9 (RI rev 47), and OOE drives from its issue register at 0, with gnt in 10.2 and no OOE cycle (OA-390). The gain is S1 3.48% and cm32 1.98% (J11). AR checked the derives: KILL\_DRAIN 16 to 15, L1\_CMPL 19 to 18, and the issue channel's credit depth stays 4: 4 + 2(N + bnd\_rx) with both at 0. RA-41's credit-on-receipt had already taken bnd\_rx out of that loop, so AR 329's −2 is against a flopped end without it (TI 382, RA rev 114). LAT\_LANE 7, LAT\_SFU 12, L1\_WAKE 17 and L1\_MISS\_WAKE 1 are unchanged. V-35's done comes a cycle sooner after issue. There is no credit-on-receipt on this channel; RA-41 keeps it for miu\_rcu\_data only. The cost is about 595 RCU lead-capture flops against the block's 2% (about 4,850), less the boundary flops the end removes, and gated OOE flops (OA priced 345 before RA rev 114 narrowed the S0-S3 copies to 32 bits and made R's imm a move).
 
 **Phase 2 figures (RI, 2026-11-05; RI rev 8).** `rcu_bank_slice`: 1,324 flops at 32 rows, clock gating clean (lowest DCGE 91%/94%); at 192 rows flop to flop 17.7 NGD, read out 11.0, MW data to flops 10.5, and the RA-39 payload read 18.4 from the RCU port (from the interface flop since the boundary flops, AR rev 285; it was fitted after a 1 NGD budget move from OOE, OA rev 337). `rcu_r` with `rcu_xbar`: 2,626 flops, clock gating clean (6 gates, DCGE 99-100%), 23.9 NGD flop to flop; its bench passes 142,737 values with the alignment and ret-low controls caught. The 192-row clock-gating harness is TI's (RI-10).
 

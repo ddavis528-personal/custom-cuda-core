@@ -267,10 +267,12 @@ void tick() {
     r->ooe_trio__DOT__u_sched__DOT__ready_en_cq03h = 0;
     dut->eval();
   }
-  // no-force: ooe_sched's idle-R force register cleared after every edge,
-  // the migration lead kept, so its idle_r assertion must fire.
+  // no-force: ooe_sched's idle-R force register and select's per-entry
+  // copies of it (fcp) cleared after every edge, the migration lead kept,
+  // so its idle_r assertion must fire.
   if (control == 8) {
     r->ooe_trio__DOT__u_sched__DOT__force_cq04h = 0;
+    r->ooe_trio__DOT__u_sched__DOT__fcp_cq04h = 0;
     dut->eval();
   }
   cg.dump();

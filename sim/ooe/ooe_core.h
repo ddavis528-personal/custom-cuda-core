@@ -537,6 +537,7 @@ struct Config {
   bool inject_split_r_class = false;  ///< a collective and an RCU-only op go together at R (RA-29 (a))
   bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
+  bool inject_no_cogrant = false;     ///< the hop misses a co-granted dependant (OI-133)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
   bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
@@ -618,6 +619,13 @@ struct Config {
   /// split cycle (ooe_go with no per-take term). 0: the in-cycle
   /// subtraction (OI-114 as first built; go_tb's control floor-take-now).
   unsigned floor_take_lag = 1;
+  /// TI 360 (re:RA-11): under floor_take_lag 1 a slot's floor term is split
+  /// again while the allowance holding it is admitted against, so for a
+  /// cycle the slot's floor counts twice and the allowances can pass the
+  /// credit. 1 splits no floor term for a slot whose registered allowance
+  /// holds one (a registered bit gating the go's floor), so a floor still
+  /// unmet is granted every other cycle; 0 is (b) as first built.
+  unsigned floor_held_gate = 1;
   /// ROB slice 4: 2 takes a fault only at the head as registered a cycle
   /// before (ooe_rob_w's hrf), keeping it off the retire window's cones; 1
   /// at the window's port 0; 0 on any port.
@@ -1669,6 +1677,7 @@ private:
   }
   void err(const char *fmt, ...);
   void count(const std::string &k, uint64_t n = 1) { counters[k] += n; }
+  void namePressureStats();
 
   Config cfg_;
   uint64_t now_ = 0;
@@ -1698,7 +1707,7 @@ public:
     /// the entries it returned to Waiting; confirmation's inputs (issued and
     /// unconfirmed, the result final, a destination, the dependency bits)
     /// and the entries it confirmed. hop_live: a hop ran this cycle.
-    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, cf_iss, cf_fin, cf_prod, cf_dep;
+    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, hop_new, cf_iss, cf_fin, cf_prod, cf_dep;
     bool hop_live = false;
     /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
     /// in allocation order, and those freed; hfree: those freed by an L1
@@ -2069,6 +2078,7 @@ private:
   std::vector<std::array<unsigned, 4>> share_reg_;   ///< fits_stale 6: the allowances split for the next cycle
   std::vector<std::array<unsigned, 4>> share_hold_;  ///< fits_stale 6: and as split, before the split cycle's own takes (the pool's held)
   std::vector<std::array<unsigned, 2>> split_floor_; ///< fits_stale 6: each slot's floor term at the split, GPR and predicate (OI-114)
+  std::vector<std::array<unsigned, 2>> floor_held_; ///< floor_held_gate: the floor term of the allowance registered now, GPR and predicate (TI 360)
   std::vector<std::array<unsigned, 2>> unmet_now_;   ///< unmet_reg: each slot's unmet floor this cycle (registered for the next)
   std::vector<std::array<unsigned, 2>> last_take_;   ///< unmet_reg: the names each slot's last take wrote
   std::vector<std::array<unsigned, 4>> pend_a_, pend_b_;  ///< fits_stale 7: splits in flight, two cycles and one from use

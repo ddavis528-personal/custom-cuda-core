@@ -14,12 +14,17 @@
 // child C, granted from a stale ready bit, issues only after the miss.
 // ooe_confirm must return C to Waiting in the cycle it issues, from L's
 // held miss (V-67), and keep doing so while C stays issued.
+// And OI-133's: a producer P cancelled and granted again at the same edge
+// as its child C, granted on the ready bit P's first issue woke. Both are
+// issued and new; C must return in that cycle, P must not, and a child
+// granted on P a cycle later (not new) stands.
 //
 // Negative controls (CONFIRM_CONTROL=<name>) perturb the driving and must
 // be caught: no-msd (no held miss reaches the RTL), msd-pulse (a miss is
 // driven only in its first cycle, the pulse hop OA-17 found unsafe: the
-// directed case must fail), no-fin (every result is called final) and
-// no-dep (the dependency bits never reach it).
+// directed case must fail), no-fin (every result is called final), no-dep
+// (the dependency bits never reach it) and no-new (no grant is called
+// new: the co-grant case must fail).
 // Usage: confirm_tb [seeds]
 //===----------------------------------------------------------------------===//
 #include "Vooe_confirm.h"
@@ -89,6 +94,7 @@ void hook(const Core &c) {
   for (unsigned i = 0; i != N; ++i) {
     setBit(dut->iss_cq01h, i, w.hop_iss[i]);
     setBit(dut->msd_cq01h, i, msdDriven(i, w.hop_msd[i]));
+    setBit(dut->new_cq01h, i, w.hop_new[i] && control != "no-new");
     setBit(dut->fin_cq01h, i, w.cf_fin[i] || control == "no-fin");
     setBit(dut->prod_cq01h, i, w.cf_prod[i]);
     held += w.hop_msd[i];
@@ -116,6 +122,7 @@ void directed() {
   for (unsigned i = 0; i != N; ++i) {
     setBit(dut->iss_cq01h, i, false);
     setBit(dut->msd_cq01h, i, false);
+    setBit(dut->new_cq01h, i, false);
     setBit(dut->fin_cq01h, i, false);
     setBit(dut->prod_cq01h, i, true);
     for (unsigned j = 0; j != N; ++j) setBit(dut->dep_cq01h, i * N + j, false);
@@ -133,6 +140,33 @@ void directed() {
     if (t >= 1 && !getBit(dut->replay_cq01h, C)) fail("OA-17: C issued after its load's miss, not replayed", C, false, true);
     if (getBit(dut->conf_cq01h, C)) fail("OA-17: C confirmed on a missed load", C, true, false);
   }
+  setBit(dut->dep_cq01h, C * N + L, false);
+  setBit(dut->iss_cq01h, L, false);
+  setBit(dut->msd_cq01h, L, false);
+  setBit(dut->iss_cq01h, C, false);
+
+  // OI-133: P and C granted at one edge, C waiting on P; then D granted on
+  // P an edge later. Cycle 0: P and C issued and new. Cycle 1: P, and D
+  // issued, D new, P not.
+  const unsigned P = 2, D = 3;
+  setBit(dut->dep_cq01h, C * N + P, control != "no-dep");
+  setBit(dut->dep_cq01h, D * N + P, control != "no-dep");
+  ++cycles;
+  setBit(dut->iss_cq01h, P, true);
+  setBit(dut->iss_cq01h, C, true);
+  setBit(dut->new_cq01h, P, control != "no-new");
+  setBit(dut->new_cq01h, C, control != "no-new");
+  dut->eval();
+  if (!getBit(dut->replay_cq01h, C)) fail("OI-133: C granted with its re-granted producer, not replayed", C, false, true);
+  if (getBit(dut->replay_cq01h, P)) fail("OI-133: P replayed", P, true, false);
+  ++cycles;
+  setBit(dut->iss_cq01h, C, false);
+  setBit(dut->new_cq01h, P, false);
+  setBit(dut->new_cq01h, C, false);
+  setBit(dut->iss_cq01h, D, true);
+  setBit(dut->new_cq01h, D, control != "no-new");
+  dut->eval();
+  if (getBit(dut->replay_cq01h, D)) fail("OI-133: D, granted a cycle after its producer, replayed", D, true, false);
 }
 } // namespace
 

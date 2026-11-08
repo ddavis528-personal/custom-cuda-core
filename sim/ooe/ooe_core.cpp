@@ -34,7 +34,7 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
       {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
@@ -443,7 +443,7 @@ void Core::cycle(uint64_t now) {
   }
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
-                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
+                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.hop_new, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.hfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant, &wlog_.sel_ret, &wlog_.sel_brk, &wlog_.sel_hold})
@@ -497,7 +497,32 @@ void Core::cycle(uint64_t now) {
   sendRedirect();
   readyRegister();
   requestRegister();
+  namePressureStats();
   if (check_invariants) checkInvariants();
+}
+
+/// TI 361 / AR 315-316 / OA 378: what holds the names when they are scarce,
+/// sampled at each cycle's end. rename.frag: the rows owned by a slot with
+/// fewer than all their sections live (sectioned), per cycle as a histogram
+/// and its peak. gpr_held_by_memop: the GPR names (rows, sectioned) written
+/// by memory ops still in flight (allocated, not complete), likewise.
+void Core::namePressureStats() {
+  if (cfg_.sectioned && kPos_ > 1) {
+    const uint8_t full = uint8_t((1u << kPos_) - 1);
+    unsigned frag = 0;
+    for (unsigned r = 0; r != rowOwner_.size(); ++r)
+      if (rowOwner_[r] && (rowSec_[r] & full) != full) ++frag;
+    ++histograms["rename.frag"][frag];
+    uint64_t &pk = counters["rename.frag.peak"];
+    pk = std::max<uint64_t>(pk, frag);
+  }
+  unsigned held = 0;
+  for (const Slot &s : slot_)
+    for (const RobEntry &r : s.rob)
+      if (r.valid && !r.squashed && r.is_mem && r.alloc_gpr && !r.complete) ++held;
+  ++histograms["gpr_held_by_memop"][held];
+  uint64_t &pk = counters["gpr_held_by_memop.peak"];
+  pk = std::max<uint64_t>(pk, held);
 }
 
 bool Core::busy() const {
@@ -1422,10 +1447,14 @@ void Core::cancel(unsigned e) {
 }
 
 /// One hop of transitive cancel: every issued, unconfirmed entry whose row
-/// is no longer ready -- a producer it issued on has missed (msd) or is not
-/// issued -- returns to Waiting. False when nothing changed. Run at the start
-/// of every cycle, as ooe_confirm's level rule (OI-50).
+/// is no longer ready -- a producer it issued on has missed (msd), is not
+/// issued, or was granted at the same edge as it (OI-133) -- returns to
+/// Waiting. False when nothing changed. Run at the start of every cycle, as
+/// ooe_confirm's level rule (OI-50).
 bool Core::cancelHop() {
+  // Granted at the last edge: issued, the hop's first cycle (the RTL's
+  // register of the last edge's grant).
+  auto fresh = [&](const RsEntry &y) { return y.valid && y.issued && !y.confirmed && y.issue_at + 1 == now_; };
   // Decide the whole hop first, so a return to Waiting in this hop does not
   // reach that entry's own dependants until the next.
   std::vector<unsigned> hop;
@@ -1433,13 +1462,21 @@ bool Core::cancelHop() {
     const RsEntry &y = rs_[i];
     if (i < wlog_.hop_iss.size()) wlog_.hop_iss[i] = y.valid && y.issued && !y.confirmed;
     if (i < wlog_.hop_msd.size()) wlog_.hop_msd[i] = y.valid && y.msd;
+    if (i < wlog_.hop_new.size()) wlog_.hop_new[i] = fresh(y);
     // OI-50's rule, as the RTL decides it: an issued, unconfirmed entry
     // returns to Waiting when a producer it depends on is not issued or has
-    // missed its L1 slot. A dependant issued on a producer that was replayed
-    // and re-issued within a hop is caught when that re-issue is replayed.
+    // missed its L1 slot. A producer cancelled and granted again at the
+    // same edge as its dependant (granted on the ready bit the producer's
+    // first issue woke: OA-17's stale grant) is issued in the hop's first
+    // cycle with it, so the hop also counts a producer granted at the
+    // dependant's own edge as gone (OI-133; L1_WAKE 16 exposed it).
+    // A dependant granted before such a re-grant saw the producer not
+    // issued for a cycle at least, and returned then.
     if (!(y.valid && y.issued && !y.confirmed)) continue;
+    const bool yf = fresh(y) && !cfg_.inject_no_cogrant;
     for (unsigned j = 0; j != n_; ++j)
-      if ((cell(i, j) & 1) && (!rs_[j].issued || rs_[j].msd)) {
+      if ((cell(i, j) & 1) && (!rs_[j].issued || rs_[j].msd || (yf && fresh(rs_[j])))) {
+        if (rs_[j].issued && !rs_[j].msd) count("cancel.cogrant");
         hop.push_back(i);
         break;
       }
@@ -4205,6 +4242,10 @@ void Core::restoreStep() {
     }
     return rlog_.ren[base + k];
   };
+  // restore.alloc_wait (TI 361, AR 315): a cycle the restore has registers
+  // left to allocate and the free pool gives it none.
+  if ((s.restore_gpr && !gprAllowed(si, 1)) || (s.restore_pred && cfg_.rename_preds && !predAllowed(si, 1)))
+    count("restore.alloc_wait");
   for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr) {
     const unsigned a = kArchGprs - s.restore_gpr;
     // TI-25: its own row, at its parked position and committed width.
@@ -4342,6 +4383,7 @@ void Core::rename() {
     // fits_stale 6: no split is registered while a restore owns the ports.
     for (auto &x : share_reg_) x = {0, 0, 0, 0};
     for (auto &x : share_hold_) x = {0, 0, 0, 0};
+    for (auto &x : floor_held_) x = {0, 0};
     restoreStep();
     count("stall.restore");
     goRoomNext();
@@ -4624,9 +4666,16 @@ void Core::rename() {
           split_floor_[si][0] = unmetFloor(si, false);
           if (cfg_.rename_preds) split_floor_[si][1] = unmetFloor(si, true);
         }
+        if (cfg_.floor_held_gate && cfg_.floor_take_lag && si < floor_held_.size())
+          for (unsigned b = 0; b != 2; ++b)
+            if (floor_held_[si][b] && split_floor_[si][b]) {
+              split_floor_[si][b] = 0;
+              count(b ? "rename.floor_held_gate_pred" : "rename.floor_held_gate");
+            }
         split[si][2] += split_floor_[si][0];
         split[si][3] += split_floor_[si][1];
       }
+      floor_held_ = split_floor_;
       share_ = share_reg_;
       share_reg_ = split;
       share_hold_ = split;
