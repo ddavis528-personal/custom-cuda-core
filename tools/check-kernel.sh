@@ -1623,27 +1623,32 @@ fi
 # vadd's guarded branch (seq 8) resolves the wrong way; lead-src-corrupt
 # names R's wrong first source row, and callret's ret (seq 5) redirects to
 # the wrong target. Each runs on both RCUs, RI's model and the stub, behind
-# OI's OOE model; the OOE stub takes no ccv_miu_ooe_cmpl_hint, so it runs
-# no kernel to the end.
-for impl in model stub; do
-  e=$([ "$impl" = stub ] && echo stub || echo model)
-  l="$B/kernel_lead-copy-corrupt-$impl.log"
-  CCV_RCU_IMPL=$e "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break lead-copy-corrupt >"$l" 2>&1
+# OI's OOE model, and the first two behind the OOE stub too, whose issue is
+# built apart from the model's (sim/skel/ooe.cpp). callret does not run on
+# the OOE stub, which forms no call's link (RA-18), so lead-src-corrupt runs
+# behind the model only.
+for pair in model/model model/stub stub/model stub/stub; do
+  o=${pair%/*} impl=${pair#*/}
+  tag=$([ "$o" = stub ] && echo "OOE stub, $impl RCU" || echo "$impl RCU")
+  e=$impl
+  l="$B/kernel_lead-copy-corrupt-$o-$impl.log"
+  CCV_OOE_IMPL=$o CCV_RCU_IMPL=$e "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break lead-copy-corrupt >"$l" 2>&1
   re="^CHECK rcu: (seq [0-9]+ on [SPR][0-9]*|issue 0x[0-9a-f]+ on slot [0-9]+): lead_phys_dst 0x[0-9a-f]+ differs from its payload's phys_dst"
   n=$(grep -cE "$re" "$l")
   if [ "$n" -gt 0 ] && grep -m1 '^CHECK' "$l" | grep -qE "$re"; then
-    say "--break lead-copy-corrupt ($impl RCU): copy refused" "PASS ($n issues)"
+    say "--break lead-copy-corrupt ($tag): copy refused" "PASS ($n issues)"
   else
-    bad "--break lead-copy-corrupt ($impl RCU)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
+    bad "--break lead-copy-corrupt ($tag)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
   fi
-  l="$B/kernel_lead-guard-corrupt-$impl.log"
-  CCV_RCU_IMPL=$e "$SKEL" --kernel "$K" --break lead-guard-corrupt >"$l" 2>&1
+  l="$B/kernel_lead-guard-corrupt-$o-$impl.log"
+  CCV_OOE_IMPL=$o CCV_RCU_IMPL=$e "$SKEL" --kernel "$K" --break lead-guard-corrupt >"$l" 2>&1
   if [ "$(field "$l" check_failures)" != 0 ] &&
      grep -m1 '^CHECK' "$l" | grep -q "^CHECK rcu: seq 8 branch taken by"; then
-    say "--break lead-guard-corrupt ($impl RCU): wrong branch" "PASS"
+    say "--break lead-guard-corrupt ($tag): wrong branch" "PASS"
   else
-    bad "--break lead-guard-corrupt ($impl RCU)" "first: $(grep -m1 '^CHECK' "$l")"
+    bad "--break lead-guard-corrupt ($tag)" "first: $(grep -m1 '^CHECK' "$l")"
   fi
+  [ "$o" = stub ] && continue
   l="$B/kernel_lead-src-corrupt-$impl.log"
   CCV_RCU_IMPL=$e "$SKEL" --kernel build/oracle/callret/oracle.jsonl --break lead-src-corrupt >"$l" 2>&1
   if [ "$(field "$l" check_failures)" != 0 ] && ! grep -q "differs from its payload" "$l" &&
