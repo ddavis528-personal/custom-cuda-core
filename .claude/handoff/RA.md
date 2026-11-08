@@ -197,7 +197,8 @@ SPEC RECONCILED to LANE 7 / SFU 12 (93a0c46): Done 30, Pipeline 26, Predicate 9,
 RA-42 (open, RA rev 103, Needs RI+TI): KILL_DRAIN 15 in rcu_core.h/rcu_test/rcu_kill.sv omits bnd_rx(issue); contract 16; M4 control.
 J11 (TI 380, 8-way): Z re-booked S1 -2.47%; ooe_rcu_issue flop costs S1 3.48% (cm32 1.98%) -> AR 308 reopened; miu_rcu_data g2'' fails OA-17 (OI/OA bug hunt), stays flopped.
 RA rev 104 (re:AR 323): RCU can't meet 12 as-is (pred gd 23.9, slice R0/R1 18.4, pred class 17.5, slice L/M 16.5, lanes 13.0) -> Daniel. Splits, no RCU cycle: leads for (a) guard neg/gd, (b) R phys_src0/1, (c) opcode with one class decode at A-1 (replaces Partition rule 1) or OOE-decoded class. ~250 lead flops in, ~1,700 rx flops out. KILL_DRAIN -> 15; RA-41 dropped for issue. Waiting: OA (OOE cost/cycle), RI (e) measures; CORRECTED (AR 324/325, OA 385): if the leads meet 12 both sides it is RA's to APPROVE under DA 115 (OOE sends at 0 NGD out; OA must price leads at A-1); only if not -> Daniel with RA's paths.
-Bookmarks: OA 385, RA 104, RI 41, TI 380, AR 325, DA 115, OI 319, Conventions 17, CP 155, IS 190.
+RI-22 (5)-(7) RULED (RA rev 105): (5) arrivals stay 0, block_check counts net fanout once (TI). (6) zero-cycle 2nd-kind end held to 12 not 0 via links.json attr (TI); lane_rcu_res 10.4 ok; other no_flop RCU ends are 1st kind (0). (7) rcu_mig retimes kill mask + pca payload (kmask map+3); pca stall 4.0 -> AR chooses flop vs derived skid.
+Bookmarks: OA 385, RA 105, RI 43, TI 380, AR 325, DA 115, OI 319, Conventions 17, CP 155, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
