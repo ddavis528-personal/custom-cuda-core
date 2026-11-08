@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-06. Keep this current at every task's end; it is what
+Updated 2026-11-07. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -33,12 +33,56 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 310, OA 368, IS 190, TI 354, OI 306, CP 155, DA 114,
-RA 91, RI 22 (2026-11-06). Latest TI open: TI-51 (rev 346).
+Conventions 17, AR 321, OA 380, IS 190, TI 377, OI 324, CP 156, DA 115,
+RA 96, RI 34 (2026-11-07 evening). Latest TI open: TI-51 (rev 346).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
-pongs. Pings 2026-10-30 sent to all five; all ponged ok.
+pongs. Pings 2026-11-06 sent to AR OA IS OI CP RA RI; all seven ponged ok.
 
 ## State
+- 2026-11-08 ~00:00Z: PUSHED 88c31e7 (full PASS; cg 5374s, ngd 5346s; first
+  run died of a full disk: clear idle worktrees' build/ before a full gate,
+  it needs ~17 GB). Bundle: hidden-stage rule (AR 310), --port-dump +
+  check-port-dump.py (RA-34), heavy-units ooe_sched note (#70), DCU 8x64
+  default (AR 320), rcu_rtl gate section (RI 39). TI rev 377 rows + notices
+  to RA RI AR. J10 complete (MULTI off: +26% cm128 8w; pl128 model +0.03%);
+  ti-miu4-local 0194297 (counters + MULTI) stays unpushed; counters may ride
+  later without MULTI. NEXT: CAS in the skeleton (OI-129: f727aed has A2 pd;
+  DEC pd on second uop), then tell RI (RI rev 40); booked deltas (Z, C9,
+  boundary flops, PHYS 160) at 8 ways vs AR's 0.2%. RA-31 (#59) still waits
+  on OI's ooe_wake cls/kind at arrival 2.
+- 2026-11-07 ~19:00Z: PUSHED de03fd6 (full PASS; ngd 4909s, cg 4864s): O-85
+  (coll), IS-21 (atom, atomf; controls atom-one-slot/-one-pass/-lane-old/
+  -no-more/-descending; schema discard text; MIU replay assertion), #88
+  (21b4356 removed RI's interim call-link line in sim/rcu/rcu_block.cpp).
+  TI row rev 371 (bundle pushed + re:AR 318/319 J9 relay); notices to RA OI
+  RI AR CP IS delivered. Next: RI reviews #88 edit and adds CAS pd on A2; TI
+  adds CAS (pd in DEC second slot) once OI's A2 pd lands; call-link-literal
+  on the model; RH's clean J7/J8 pl32 (to end)/pl128 reruns on de03fd6, relay
+  to AR.
+- J9 (AR rev 318/319): RH's traced w9/w10 rerun puts Z's +19% in the L1
+  (dcu_evict +73%, store_hit -49%, credit_wait x2; no RCU migrations). RH
+  keeps ~/ccv-logs/j9t and worktrees rh-j9t-w9/-w10 until AR reads it.
+  J10 sent to RH: local MIU stub patch (/tmp/claude-0/miu-multi.patch; also
+  commit 0194297 on local branch ti-miu4-local in /home/user/ti-miu4, NEVER
+  push) with stall-cause counters + CCV_MIU_MULTI=1 four-start; points
+  w9'/w10'/g1'/g2' re-made on de03fd6, plus S1/cm32/cm128. On results:
+  relay to AR, decide whether the stub MIU becomes four-pipe (TI's call).
+- 2026-11-07 sweep: tips 24d17a4 on both TI branches (merged 126afa13 16,
+  183cc441 55, 57eff422 47, 80102643 9, 888218a3 2, 9eb50716 13, c22116ce 4;
+  release gate PASS; release fd0402f pushed, snapshot-2026-11-07-24d17a4 tag
+  refused, local only). Before it: PUSHED 43695ae (RI-18 stub), 41c82d8
+  (ret-held-by-lanes over stub and model), 5a2f4aa (full PASS: lead_fault on
+  ccv_miu_ooe_cmpl, OI-125/AR 314; controls lead-fault-replay/-drop; OOE check
+  in ooe_block.cpp, OI told, TI rev 363). TI rows 358-363.
+  RH: J6 done (TI rev 360); J7 done: clean but coremarkpl32 (943,992 CHECK
+  fails, first "seq 207330 R14 lane 2 = 00000240, oracle 00003a6c") and three
+  cold runs hang (cm128 cold: dec_ooe_uop response_within_n tick 116735 s4).
+  #88 RH bisecting coremarkpl32 (CCV_RCU_IMPL=stub run + --cycles bisect on the
+  model); J8 coremarkpl128 paused, reruns on the stub if the stub is clean.
+  Next: stub clean -> TI row to RI with repro; else bisect 36e2049..f4ce0fd.
+  Then relay J7/J8 to AR (AR-24, #34/#38) with the coremarkpl caveat.
+  #72: after OI's fits_stale fix + counters (rev 361), rerun 160 vs 192 on RH.
+  Disk: old /tmp/tmp.* not TI's; deleting them was denied, ask the user.
 - 2026-11-07 01:30Z: PUSHED f4ce0fd (full gate PASS): Z (RA rev 95, AR rev 313): lane_rcu_res zero-cycle at RCU,
   LANE 7, SFU 12; five controls retimed (movi 258, held-over-r warp 3, free-new seq 379 R4, predswap/resume-mid
   at:58); drift control flips lane_rcu_res bnd to 1; rendep CT defaults in ooe_rendep/ooe_rename. RH runs J6

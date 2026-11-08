@@ -400,6 +400,17 @@ def main():
                     "carrying the whole payload, not a lead"); return 1
             if "lead_why" not in c:
                 err("lead_fields are set with no reason recorded"); return 1
+        # Credit on receipt (AR's rev 322, RA-41): the receiving block's
+        # promise, in words, that it takes every message the cycle it is
+        # presented from its boundary flop, kill, flush and reset included,
+        # with no skid of its own. params/links.json lists the end; this
+        # text is what lets it (tools/ccv_links.py).
+        cor = c.get("credit_on_receipt")
+        if cor is not None:
+            if not (isinstance(cor, str) and cor.strip()):
+                err("credit_on_receipt is the receiving block's promise, in words"); return 1
+            if c["dst"] == "EXTERNAL":
+                err("credit_on_receipt at EXTERNAL: no wrapper returns the credit"); return 1
         # Slot fields (OA's response OI-93): a field defined on the named
         # slots alone, each a slot index or a parameter naming one, and zero
         # on every other, which the skeleton's send and the SV checker bank

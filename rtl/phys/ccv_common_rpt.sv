@@ -56,6 +56,19 @@
 // port itself with 0 NGD (checked at the wrapper by check-ngd) or a DPI host
 // (params/links.json "no_flop"). STAGES + BOUNDARY = 0 is wires.
 //
+// CREDIT ON RECEIPT (CREDIT_ON_RECEIPT 1; AR's rev 322, RA-41): at a
+// flopped destination end (DST_END, BOUNDARY 1) whose block promises to take
+// every message the cycle it is presented from the boundary flop, under
+// kill, flush and reset included, with no skid of its own (the schema's
+// credit_on_receipt contract; params/links.json credit_on_receipt), the
+// boundary stage's credit flop loads from that stage's own valid flop, flop
+// to flop: the credit leaves the cycle after the message is presented, the
+// cycle a block taking it then would return it, with no second register in
+// series behind the boundary for a derive not to count. dst_credit is then
+// unused: the block has no credit port on that end (tools/gen-top.py). Only
+// this flop's input changes; every other stage, and the rest of this stage,
+// is built as above.
+//
 // What a repeated link changes, which the widget itself cannot: the round
 // trip grows by 2 * STAGES, and credit depth, drain wait and every checker's
 // ROUND_TRIP grow with it (docs/physical.md). Every slot of a channel
@@ -74,6 +87,9 @@ module ccv_common_rpt #(
   // stage is the last. With link stages the first is a link stage; without,
   // the first is the boundary, as at every source end.
   parameter bit DST_END   = 1'b0,
+  // The boundary stage's credit is its own valid, a cycle on (above). Only
+  // at a flopped destination end; refused anywhere else.
+  parameter bit CREDIT_ON_RECEIPT = 1'b0,
   parameter int SLOTS     = 1,
   parameter int PAYLOAD_W = 32,
   parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0
@@ -111,6 +127,12 @@ module ccv_common_rpt #(
   // 289 (3)), where a link stage's lead_q counts against this module's own
   // allowance (tools/check-cg.py RPT_BOUNDARY).
   localparam bit BND_FIRST = (BOUNDARY != 0) && (!DST_END || STAGES == 0);
+
+  // Credit on receipt loads the BOUNDARY stage, the last of a destination
+  // end's: anywhere else there is no boundary flop to take it from.
+  if (CREDIT_ON_RECEIPT && !(DST_END && BOUNDARY == 1)) begin : g_cor_refused
+    $error("ccv_common_rpt: CREDIT_ON_RECEIPT needs a flopped destination end (DST_END, BOUNDARY 1)");
+  end
 
   // The reset, flopped before any use (RST-1): every flop below leaves reset
   // a cycle after rst_n does. A repeater of no stages has nothing to reset.
@@ -151,6 +173,10 @@ module ccv_common_rpt #(
     // The payload's clock enable, named as one (docs/rtl-coding-style.md,
     // "Local clock gating"): this stage's own valid flop.
     wire  [S-1:0] pay_en = valid_q;
+    // The credit this stage takes: the next node's, or, at the boundary stage
+    // of a credit-on-receipt end, its own valid flop.
+    localparam bit COR_HERE = CREDIT_ON_RECEIPT && (k == NST - 1);
+    wire  [S-1:0] credit_d = COR_HERE ? valid_q : cr[(k+1)*S +: S];
 
     always_ff @(posedge clk) begin
       if (!rst_n_q) begin
@@ -161,7 +187,7 @@ module ccv_common_rpt #(
       end else begin
         valid_q  <= v[k*S +: S];
         wake_q   <= wk[k];
-        credit_q <= cr[(k+1)*S +: S];
+        credit_q <= credit_d;
         stall_q  <= st[(k+1)*S +: S];
       end
     end

@@ -1139,6 +1139,19 @@ block's own paths run from them within the stage; at a no-flop end
 (`params/links.json` `no_flop`) they are the block's own registers at 0 NGD.
 The 12-a-side port budget stays only between modules inside a block.
 
+**No hidden stage** (AR's rev 310, on TI rev 351): at a flopped end the
+wrapper's repeater holds the boundary flop, so the block's own port there
+must not be a register of its own too: two in series is a link stage no
+derive counts. check-ngd refuses a port of the block's (a slot's valid and
+payload together, its lead fields riding the payload) taken whole straight
+from the block's flops at a flopped sending end, or straight into them at a
+flopped receiving end. Per port, not per bit: a port with logic on any bit
+is the block's own logic, timed to its port budget, and held tags straight
+from flops beside it are fine. The fix is to drop the block's register, or
+to name the end `no_flop`, where the block's flop is the boundary and the
+straight-from-flop rule above holds instead. Wake and credit returns are not
+held here, and latency stays a dynamic check (V-35).
+
 **What a sum of parts does not see**, which the flattened pass it replaces
 did: synthesis across a boundary (a constant, an unused output or a
 duplicated register only the whole would simplify, or two halves of a

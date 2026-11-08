@@ -67,7 +67,7 @@ if ! verilator --binary -j 0 --assert --timing -Wno-fatal -Wno-TIMESCALEMOD \
      -DCCV_CHECK -DCCV_TRACE $INC --top-module tb --Mdir "$B/svh_vo" -o ccv-svh \
      -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
      $SV "$R/sim/skel/dpi_host.cpp" $BLOCKS \
-     "$R/sim/skel/oracle.cpp" "$R/sim/skel/machine.cpp" \
+     "$R/sim/skel/oracle.cpp" "$R/sim/skel/machine.cpp" "$R/sim/skel/portdump.cpp" \
      "$R/sim/skel/exerciser.cpp" "$R/sim/src/event.cpp" \
      "$R/sim/dpi/ccv_event_dpi.cpp" >"$B/svh_build.log" 2>&1; then
   bad "SV-hosted build" "$(grep -m1 -iE '%Error|error:' "$B/svh_build.log")"
@@ -152,7 +152,8 @@ for spec in vadd:corrupt-fetch vadd:corrupt-load vadd:drop-store \
             hit:early-hit hit:late-hit-data hit:no-rcu-bypass \
             vadd:drop-src-valid plog:arch-pred-srcs vadd:no-resource-cap \
             vadd:bad-pos vadd:narrow-pipes vadd:ordering-on-load vadd:memop-ordering \
-            callret:slot-field-aux callret:lead-corrupt; do
+            callret:slot-field-aux callret:lead-corrupt \
+            vadd:cor-late vadd:cor-drop; do
   IFS=: read -r k brk cap <<<"$spec"
   a=$(cpp "$k" --break "$brk" ${cap:+--cycles "$cap"} | grep ^KERNEL)
   s=$(svh "$k" "+ccv_break=$brk" ${cap:++ccv_cycles=$cap} | grep ^KERNEL)
@@ -164,6 +165,27 @@ if [ -z "$diffs" ]; then
 else
   bad "every kernel control: the same KERNEL line" "differ:$diffs"
 fi
+
+# -- credit on receipt: a late or dropped take fails in the SV top itself ------
+# AR's rev 322 (b) 3, RA-41: at a credit-on-receipt end (params/links.json)
+# the wrapper's repeater returns the credit from its boundary valid flop, so
+# a block that takes a landed message a cycle late, or drops it, must fail
+# in the SV-hosted run by name -- not only as a divergence from the oracle.
+# A configuration with no such end (test/phys/links_split.json) has nothing
+# for the control to hold late: said so, never passed.
+ncor=$(python3 -c 'import json, os
+print(len(json.load(open(os.environ.get("CCV_LINKS", "params/links.json"))).get("credit_on_receipt", [])))')
+[ "$ncor" -gt 0 ] || say "SV top: credit on receipt, late or dropped" "SKIP -- no credit_on_receipt end in this configuration"
+for brk in $([ "$ncor" -gt 0 ] && echo cor-late cor-drop); do
+  out=$("$SVH" "+ccv_oracle=$B/oracle/vadd/oracle.jsonl" "+ccv_break=$brk" 2>&1)
+  n=$(grep ^KERNEL <<<"$out" | grep -oE ' cor_late=[0-9]+' | cut -d= -f2)
+  if grep -q '^CHECK ccv_ooe_rcu_issue: credit on receipt, slot' <<<"$out" &&
+     [ "${n:-0}" -gt 0 ] && ! grep -q ' check_failures=0 ' <<<"$(grep ^KERNEL <<<"$out")"; then
+    say "SV top: --break $brk fails on credit on receipt" "PASS (cor_late=$n)"
+  else
+    bad "SV top: --break $brk fails on credit on receipt" "not caught: $(grep ^KERNEL <<<"$out" | grep -oE 'check_failures=[0-9]+ .*cor_late=[0-9]+')"
+  fi
+done
 
 # -- OOE's bypass on, both hosts ---------------------------------------------
 # The lane-local bypass (A-59, TI-8): with OOE waking lane dependants at

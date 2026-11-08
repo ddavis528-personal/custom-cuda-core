@@ -258,3 +258,72 @@ module ngd_fx_blk_fanin #(parameter int N = 8) (
     ngd_fx_reg u_reg (.clk(clk), .a(i), .q(o[k]));
   end
 endmodule
+
+// The hidden stage at a flopped end (AR's rev 310): a block inside a wrapper
+// whose own flops stand for the repeaters' boundary flops. Channel c is the
+// block's sending end, r its receiving end, each a valid and a 4-bit payload.
+//   ngd_fx_hwrp_reg  the block takes r whole straight into its flops and
+//                    drives c whole straight from them: at flopped ends, two
+//                    registers in series each way; at no-flop ends, fine
+//   ngd_fx_hwrp_mix  one payload bit of each through a gate: the port is the
+//                    block's logic, timed to its budget, so it passes even
+//                    with its other bits straight (held tags)
+module ngd_fx_hblk_reg (
+  input  logic       clk,
+  input  logic       r_valid,
+  input  logic [3:0] r_payload,
+  output logic       c_valid,
+  output logic [3:0] c_payload
+);
+  always_ff @(posedge clk) begin
+    c_valid   <= r_valid;
+    c_payload <= r_payload;
+  end
+endmodule
+
+module ngd_fx_hblk_mix (
+  input  logic       clk,
+  input  logic       r_valid,
+  input  logic [3:0] r_payload,
+  output logic       c_valid,
+  output logic [3:0] c_payload
+);
+  logic [3:0] p;
+  always_ff @(posedge clk) begin
+    c_valid <= r_valid;
+    p       <= {r_payload[3:1], r_payload[0] ^ r_payload[1]};
+  end
+  assign c_payload = {p[3:1], p[0] & p[1]};
+endmodule
+
+module ngd_fx_hwrp_reg (
+  input  logic       clk,
+  input  logic       r_valid,
+  input  logic [3:0] r_payload,
+  output logic       c_valid,
+  output logic [3:0] c_payload
+);
+  logic       rv, cv;
+  logic [3:0] rp, cp;
+  always_ff @(posedge clk) begin
+    rv <= r_valid;  rp <= r_payload;
+    c_valid <= cv;  c_payload <= cp;
+  end
+  ngd_fx_hblk_reg u_blk (.clk(clk), .r_valid(rv), .r_payload(rp), .c_valid(cv), .c_payload(cp));
+endmodule
+
+module ngd_fx_hwrp_mix (
+  input  logic       clk,
+  input  logic       r_valid,
+  input  logic [3:0] r_payload,
+  output logic       c_valid,
+  output logic [3:0] c_payload
+);
+  logic       rv, cv;
+  logic [3:0] rp, cp;
+  always_ff @(posedge clk) begin
+    rv <= r_valid;  rp <= r_payload;
+    c_valid <= cv;  c_payload <= cp;
+  end
+  ngd_fx_hblk_mix u_blk (.clk(clk), .r_valid(rv), .r_payload(rp), .c_valid(cv), .c_payload(cp));
+endmodule
