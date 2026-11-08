@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 393, AR 325, TI 383, OI 328, IS 190, CP 155, DA 115,
+Conventions 17, OA 394, AR 325, TI 383, OI 329, IS 190, CP 155, DA 115,
 RA 115 (tab 9851686b-2b0a), RI 45 (tab 8e4547bc-c469).
 OOE doc rev 372. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release 702d9bff; tag refused (known).
@@ -80,8 +80,9 @@ Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release
    <=0.5% -> DA (DA 114 term). Watch: OI root cause, RA ruling, C9 re-price.
    AR 323/324 reopened AR 308; OA 385: OOE side 0 NGD out (t+2 reg, OI-131), split 0/12 -> RCU in<=12
    RA approves, >12 DA (OA signs OOE half). OI: issue-port check-ngd unit when payload assembled.
--21. OA 383 re:OI-130 (95bf04d): OI-114 went (b); floor_held_gate fixes fits_stale double floor,
-   ACCEPTED pending RH price of (b)+gate on 8x64 (192/160/128, S1+cm128): <0.5% mine, else DA.
+-21. OA 383 re:OI-130 (95bf04d): OI-114 went (b); floor_held_gate fixes fits_stale double floor.
+   OA 394 re:OI-134 (RH, model): G S1 = everywhere; cm128 G=B@192, -1.57%@160, +2.75%@128 (redirect_wait);
+   N fails fits_stale. KEPT G, closed. Low-pri OI look at 128 (derived floor_take_lag / unmet_reg).
    ooe_go caps all fell (NGD-1 26.x, hv 28.x), stand; no share retime. TI #72 rerun must be clean.
 -20. OA 381 re:OI-128: ROB slice 4 pushed adfa301, flops ACCEPTED (rob_w 5,395->8,275; cmcap 61->465);
    optional fa one-hot->5b index (-108). Slice 4 done; next ROB slices.
