@@ -1,3 +1,4 @@
+#include <functional>
 //===-- ooe_block.cpp - the OOE model at the swap boundary ---------------===//
 //
 // Packs and unpacks OOE's channels around ooe::Core, and nothing else: the
@@ -21,6 +22,7 @@
 #include <fstream>
 #include <map>
 #include <set>
+#include <cstdio>
 #include <tuple>
 
 namespace ccv {
@@ -76,6 +78,9 @@ public:
     };
   }
   ~OoeModel() override {
+    if (std::getenv("CCV_RX_CLS"))
+      std::fprintf(stderr, "RXCLS replay=%llu hinted=%llu atomic_fence=%llu shared=%llu load=%llu ordered=%llu store=%llu\n", (unsigned long long)rx_cls_[0],
+                   (unsigned long long)rx_cls_[1], (unsigned long long)rx_cls_[2], (unsigned long long)rx_cls_[3], (unsigned long long)rx_cls_[4], (unsigned long long)rx_cls_[5], (unsigned long long)rx_cls_[6]);
     // Sizing-sweep data (docs/ooe-model.md, "Sweeps"): every counter and
     // histogram, as JSON, when CCV_OOE_STATS names a file.
     const char *path = std::getenv("CCV_OOE_STATS");
@@ -309,8 +314,21 @@ private:
     return u;
   }
 
+  /// RI-11 pricing: acts deferred a cycle (Config::rx_lag), in arrival order.
+  std::vector<std::function<void()>> rx_due_, rx_next_;
+  std::set<unsigned> rx_hinted_;      ///< tags hinted, not yet completed
+  uint64_t rx_cls_[7] = {0, 0, 0, 0, 0, 0, 0};   ///< completions by class (bits 128 << i)
+  std::map<unsigned, unsigned> rx_kind_;   ///< rob tag -> 1 atomic/fence, 2 shared, 3 other
+  void rxAct(unsigned bit, std::function<void()> f) {
+    if (core_.config().rx_lag & bit) rx_next_.push_back(std::move(f));
+    else f();
+  }
   void takeInputs() {
     const Ch &c = ch();
+    rx_due_.swap(rx_next_);
+    rx_next_.clear();
+    for (auto &f : rx_due_) f();
+    rx_due_.clear();
     if (has(c.rau_ooe, 0)) {
       Receiver::Msg m = take(c.rau_ooe, 0);
       ooe::Alloc a;
@@ -321,16 +339,18 @@ private:
       a.warp_in_cta = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
       a.barrier_count = unsigned(get(m.payload, c.rau_ooe, "barrier_count"));
       a.cta_slot = unsigned(get(m.payload, c.rau_ooe, "cta_slot"));
-      core_.alloc(a);
+      rxAct(1, [this, a] { core_.alloc(a); });
     }
     if (hasIn(demote_) && has(unsigned(demote_), 0)) {
       Receiver::Msg m = take(unsigned(demote_), 0);
-      core_.demote(unsigned(get(m.payload, unsigned(demote_), "warp_id")));
+      const unsigned dw = unsigned(get(m.payload, unsigned(demote_), "warp_id"));
+      rxAct(2, [this, dw] { core_.demote(dw); });
     }
     if (hasIn(rel_) && has(unsigned(rel_), 0)) {
       Receiver::Msg m = take(unsigned(rel_), 0);
       // A held wait's answer names its warp (TI-40); the core takes a mask.
-      core_.barRelease(uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id"));
+      const uint32_t bm = uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id");
+      rxAct(4, [this, bm] { core_.barRelease(bm); });
       cred_rel_ |= uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id");
     }
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
@@ -366,7 +386,7 @@ private:
         // TI's d347d2c names the field branch_aux, renamed aux after it.
         for (const char *f : {"aux", "branch_aux"})
           if (hasField(c.rcu_ooe, f)) d.aux = uint32_t(get(m.payload, c.rcu_ooe, f));
-        core_.done(d);
+        rxAct(8, [this, d] { core_.done(d); });
       }
     // Completion hints (OA-23), taken as they land, as a fixed-latency
     // channel's must be: each names the memop's RS entry, and the model
@@ -380,7 +400,8 @@ private:
         auto e = rs_sent_.find(tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u hinted for RS entry %u, but its memop named entry %u", tag, rs, e->second);
-        core_.hint(tag);
+        rxAct(16, [this, tag] { core_.hint(tag); });
+        rx_hinted_.insert(tag);
       }
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)
       while (has(c.miu_ooe, s)) {
@@ -392,6 +413,15 @@ private:
         x.lane_mask = uint32_t(get(m.payload, c.miu_ooe, "lane_mask"));
         x.address = get(m.payload, c.miu_ooe, "address");
         x.mlc_miss = get(m.payload, c.miu_ooe, "mlc_miss") != 0;
+        // The fault lead (OI-125; AR's rev 314): a cycle ahead with the
+        // valid (the slot hands it over with the payload), lead_fault ==
+        // (status == 1) on every completion; never set by a replay.
+        if (hasField(c.miu_ooe, "lead_fault")) {
+          const bool lf = get(m.payload, c.miu_ooe, "lead_fault") != 0;
+          if (lf != (x.status == 1))
+            k_.fail("ooe: rob tag %u completion's lead_fault %u is not its status %u == fault", x.rob_tag,
+                    unsigned(lf), x.status);
+        }
         // MIU echoes the memop's RS entry (OA-23): any other is a completion
         // that would wake the wrong entry.
         const unsigned rs = unsigned(get(m.payload, c.miu_ooe, "rs_idx"));
@@ -406,7 +436,17 @@ private:
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u completed for RS entry %u, but its memop "
                   "named entry %u", x.rob_tag, rs, e->second);
-        core_.cmpl(x);
+        // RI-11 split (OA rev 350, AR rev 298): bit 32 flops every completion;
+        // 128 a replay (the miss's cancel), 256 a hinted (noticed) refill,
+        // 512 any other (on-completion classes, faults).
+        const bool hinted = rx_hinted_.erase(x.rob_tag) != 0;
+        auto kd = rx_kind_.find(x.rob_tag);
+        const unsigned kind = kd != rx_kind_.end() ? kd->second : 3;
+        // 128 replay, 256 hinted refill, 512 atomic or fence, 1024 shared, 2048 global load (unordered: the timed wake's confirm), 4096 ordered global, 8192 global store
+        const unsigned ci = x.status == ooe::kCmplReplay ? 0 : hinted ? 1 : kind == 1 ? 2 : kind == 2 ? 3 : kind == 4 ? 5 : kind == 5 ? 6 : 4;
+        const unsigned cb = 128u << ci;
+        rxAct((core_.config().rx_lag & 32) ? 32u : cb, [this, x] { core_.cmpl(x); });
+        rx_cls_[ci]++;
       }
   }
 
@@ -447,6 +487,7 @@ private:
         if (taken.count(s)) { held.insert(w); continue; }
         if (held.count(w) || oldest[w] != std::make_tuple(r->front().arrived, s, size_t(0)))
           continue;
+        if ((core_.config().rx_lag & 64) && r->front().arrived + 1 > now_) continue;
         if (best < 0 || r->front().arrived < when) { best = int(s); when = r->front().arrived; }
       }
       if (best < 0) return;
@@ -552,6 +593,7 @@ private:
         // hint (OA-23).
         put(mo, c.ooe_miu, "rs_idx", x.rs_idx);
         rs_sent_[x.rob_tag] = x.rs_idx;
+        rx_kind_[x.rob_tag] = (x.mem_op == ooe::kMemOpAtomicRead || x.mem_op == ooe::kMemOpAtomicWrite || x.mem_op == ooe::kMemOpFence) ? 1 : x.space == kSpaceShared ? 2 : x.ordering ? 4 : (x.mem_op == kMemStore || x.mem_op == kMemPredStore) ? 5 : 3;
         put(mo, c.ooe_miu, "issue_mask", x.issue_mask);
         put(mo, c.ooe_miu, "phys_dst", core_.nameRow(x.pdst));
         put(mo, c.ooe_miu, "dst_pos", core_.namePos(x.pdst));

@@ -31,6 +31,11 @@ case "$unit" in
     nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
     vl ooe_rs "-GN=$n -GNR=$n_rcu -GA=$width -GNC=$nc -GPW=176" "-DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width -DRS_NC=$nc -DRS_PW=176" \
       "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/test/ooe/rs_tb.cpp" ;;
+  ooe_cmcap)
+    nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
+    slots=$(val CCV_TIER1_WARPS) pw=$(sed -n 's/.*kWRobTag = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)
+    vl ooe_cmcap "-GNC=$nc -GPW=$pw -GR=$slots" "-DCM_NC=$nc -DCM_PW=$pw -DCM_R=$slots" \
+      "$PWD/rtl/ooe/ooe_cmcap.sv" "$PWD/test/ooe/cmcap_tb.cpp" ;;
   ooe_decq)
     slots=$(val CCV_TIER1_WARPS) dq=$(val CCV_P_DECQ) dqw=$(val CCV_P_DECQ_WARP_MAX)
     uops=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_dec_ooe_uop'))")
@@ -94,7 +99,7 @@ case "$unit" in
     # warp 0's.
     gw=$(( $(val CCV_P_W_PHYS_REG) + $(val CCV_W_PHYS_POS) )) ns=$(( 1 << $(val CCV_W_PHYS_POS) ))
     p="S=$(val CCV_TIER1_WARPS) D=$(val CCV_P_ROB_DEPTH) RP=$(val CCV_RETIRE_PER_ROB) A=$width ND=7 NM=4 NK=$(val CCV_P_BR_CKPTS) PCW=$(val CCV_ADDR_BITS) GW=$gw"
-    p="$p GR=$(val CCV_P_W_PHYS_REG) NG=$(val CCV_P_PHYS_REGS) NS=$ns PW=$(val CCV_P_W_PHYS_PRED) NP=$(val CCV_P_PRED_REGS)"
+    p="$p GR=$(val CCV_P_W_PHYS_REG) NG=$(val CCV_P_PHYS_REGS) NS=$ns PW=$(val CCV_P_W_PHYS_PRED) NP=$(val CCV_P_PRED_REGS) CW=$(val CCV_W_FAULT_CAUSE)"
     vl ooe_rob_tb "$(for kv in $p; do printf -- '-G%s ' "$kv"; done)" "$(for kv in $p; do printf -- '-DRB_%s ' "$kv"; done)" \
       "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" ;;
   ooe_go)

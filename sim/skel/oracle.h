@@ -89,7 +89,11 @@ struct Record {
   unsigned predMask() const { return quals.empty() ? 0u : quals[0] & 15u; }
   /// The uops DEC issues for it: one per predicate of a transfer's mask,
   /// ascending (TI-36), else one.
+  /// A Format M atomic (O-72): DEC sends it as two decode slots, a pair
+  /// under one id (OI-80 (d), TI-39), which FET's credit gate counts.
+  bool atomic() const { return op.rfind("ATOM_", 0) == 0 || op.rfind("CAS_", 0) == 0; }
   unsigned uops() const {
+    if (atomic()) return 2;
     if (chwMulti()) return chwMask() ? unsigned(__builtin_popcount(chwMask())) : 1u;
     return predXfer() && predMask() ? unsigned(__builtin_popcount(predMask())) : 1u;
   }
