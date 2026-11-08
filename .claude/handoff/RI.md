@@ -52,7 +52,9 @@ architect may approve only if the end meets module NGD without the flop; can't m
    scratchpad: lane_rcu_res_cNN arrival 13), rerun block check (blk_ngd.py), gate.
    Rows written RI rev 44/45: re:RI-22 rulings (M5 65/67 of 68, RA to confirm), (e): 14 issue in-paths
    over 12 (worst lanes dst 20.7). RA rev 111: M5 confirmed, RI-22 closed; (e) re-run (RI rev 47): only
-   lanes 14.5 (odst/opos/spos/src) left; +128 lead flops -> 10.9 block worst; ~567 lead flops vs 2% ~4,850. RA rev 112 accepted; waits on OA price; no RTL until RA approves.
+   lanes 14.5 (odst/opos/spos/src) left; +128 lead flops -> 10.9 block worst; ~567 lead flops vs 2% ~4,850. RA rev 113 / RA-43: zero-cycle ooe_rcu_issue APPROVED. When TI's schema lands: capture leads in lanes/pred/
+   bank_slice/r, re-run (e) on RTL vs schema fields (src_pos/src_width per schema), and with the issue boundary
+   flop gone KILL_DRAIN goes back to 15 (BND_ISS term = 0, model + RTL) to close RA-42.
    Still owed: re:RA-42 (BND_ISS term in KILL_DRAIN, model+RTL; checker at KILL_DRAIN-1 control),
    RA rev 102 re:RI-21 (slice L/M owner assert + control; pred drives PC0-3; kill flop TODO).
 -2. PHASE 5 (2026-11-08): worktree /home/user/ri-wt2, branch ri-dec: 415b0ca P7, 847d085 P2,
