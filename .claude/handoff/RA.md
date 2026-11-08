@@ -204,7 +204,8 @@ OA 388/389: guard leads are 0 on S/P today, OOE fills free. RA rev 109: MOVED gu
 AR 328 withdrew AR 327: stall is at RCU's sending end, RESCUE_DEPTH holds the extra msg -> RA rev 110: RI retimes ALL THREE (stall incl.), no boundary flop; assert <=1 msg after stall + control. TI 381: links.json no_flop_port_budget (lane_rcu_res@rcu) built; the 12 goes in ccv_rcu's ngd.json (RI writes with ccv_rcu.sv, cites RA 106).
 RA rev 111 (re:RI rev 45): M5 margins 3/1 (demotion 65, restore 67, bound 68) CONFIRMED; restore margin thin -> any extra restore cycle back to RA, re-measure at assembly. RI-22 closed as taken (ri-retime d38ab59/f3f5de7/521d4fa).
 (e) zero-cycle ooe_rcu_issue NOT approved: 14 in-paths >12 with leads (lanes dst 20.7, pwe 19.7, drow 17.7, pred sdst 16.5, slice pdrw 16.1, ...). Stays flopped. WAITING: OA price of lead copies (dst/drow/pwe/sdst/swe/drw/pdrw, cont, pred_neg, R imm>[13:0]) at A-1 no OOE cycle; RI re-measure with those as flops + lead flops vs 2%. Both clean -> RA approves + schema row for TI; else -> Daniel via AR (paths, price, S1 3.48%). No RCU retime (spends the gain).
-Bookmarks: OA 389, RA 111, RI 45, TI 381, AR 328, DA 115, OI 319, Conventions 17, CP 155, IS 190.
+RA rev 112 (re:RI rev 47): with rev 111 list + 4 S-slot leads (phys_old_dst 8, old_dst_pos 2, src_pos 6, phys_src 16; x4 = 128) block worst 10.9; ~567 lead flops vs 2% ~4,850. RCU side CLEAN. WAITING ONLY on OA price of whole set at A-1 (no OOE cycle) -> yes: RA APPROVES + schema row TI (leads, links.json drop flop, no credit_on_receipt, KILL_DRAIN 15); no: Daniel via AR.
+Bookmarks: OA 389, RA 112, RI 47, TI 381, AR 328, DA 115, OI 319, Conventions 17, CP 155, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
