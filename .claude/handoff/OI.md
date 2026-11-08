@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-08 15:00 (#33 rendep dc6ba0b in gate-push; RH U192 queued)
+Updated 2026-11-08 (#33 pushed 5eb3acb8; #26 unmet_reg=1 flip in gate-push)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,7 +37,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 332, RA 117, IS 190, TI 387, OA 397, OI 333, CP 157, DA 115, RI 54
+Conventions 17, AR 332, RA 117, IS 190, TI 391, OA 397, OI 334, CP 157, DA 115, RI 54
 (sweep 11-08 plus notices). AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
 once TI's schema row lands. Pings 11-06: all OK. Settings: after TI's 350k merge `--check` may
 differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
@@ -50,14 +50,14 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
-0. #33 DONE locally: dc6ba0b (rendep pp_cq01h from rename's keep copy d_ppk_cq03h, OA 397 arrival 2.0;
-   five rendep caps gone, gsn 28.5/psn 28.8). gate-push log scratchpad/gp-rendep.log. It also carries
-   f2df07a (OI-50 co-grant comments, OA 395) and 881cdd2 (merge of TI a0c2f68; RI 54's sweep waits on it).
-   On green: an OI row closing OI-135 with rendep's worst path (gsn 28.44/psn 28.72; OA asked), no ring.
+0. #33 PUSHED (5eb3acb8, SCOPED PASS 23/23, with TI 21b4b80 merged); OI-135 closed at OI rev 334.
    Lesson: any load on ren1's l_x/l_v/tk_* remaps ooe_rename's q_gv cone (+0.5); take from c_xl per class.
-1. #26 OI-134: RH results 95bf04d: U160 -2.22% vs G160, U128 -2.16%, L160 +1.87%, L128 -2.07%; all clean,
-   S1 geomean 301.85 0 BAD. U192 queued on RH after J11b (~16:00-17:00). Adopt U (unmet_reg=1) if = G192
-   (8,732,687); then OI-134 row with the numbers (ring TI/OA).
+1. #26 OI-134: RH 95bf04d: U160 -2.22% vs G160, U128 -2.16%, L160 +1.87%, L128 -2.07%, U192 = G192
+   (8,732,687); all clean, S1 301.85 0 BAD. Committed locally (not pushed): model unmet_reg=1 + ooe_rename
+   registers the unmet (ur_g/ur_p, enable ur_d||tq_nz, never sel) and hands the go ur - tq_gs; controls
+   unmet-now, no-last-take on rename_scarce; rename benches green. BLOCKED on DA: ooe_rename NGD-3 c_dst
+   27.50 > cap 26.9 (HEAD 26.82); 7 equivalent forms all 27.50 (ABC remaps ren1's q_gv cone; c_dst[17]'s
+   INV goes past 64 loads). Asked DA: raise c_dst cap to 27.5 (recover in #35) / hold the flip / keep trying.
 2. #42 OA-387 lead move: blocked on TI's schema row (RA 114).
 3. #40 OA 382: RTL issue payload, A2's RS row carries pd, pred_we, ppold; cas-no-pd in RTL.
 4. NGD fanout ratchets: ooe_rob_w (#34, lower caps; measured 29.8), ooe_rename (#35, 30.58 now; caps c_dst

@@ -227,9 +227,12 @@ module ooe_rename #(
   output logic [S*LU-1:0]   chk_room_p_cq04h,
   // Controls: the pool's correction dropped (no lagged take subtracted),
   // or the names' older take, which their pool register takes (OA's rev
-  // 219).
+  // 219); the go reading the unmet on time, or the registered unmet with
+  // no last take subtracted (OI-134).
   input  logic              ctl_notq,
-  input  logic              ctl_notq2
+  input  logic              ctl_notq2,
+  input  logic              ctl_unow,
+  input  logic              ctl_nolt
 `endif
 );
 
@@ -242,6 +245,7 @@ module ooe_rename #(
   logic [4*LX-1:0]    px_cq04h;
   logic [4*(R+1)-1:0] pl_cq03h;
   logic [S*LU-1:0]    unmet_g_cq04h, unmet_p_cq04h, room_g_cq04h, room_p_cq04h;
+  logic [S*LU-1:0]    ug_go_cq05h, up_go_cq05h;   // the go's: the registered unmet less the last take (OI-134)
   logic               pool_en_cq04h;
   logic [R-1:0]      lane_v_cq02h;
   logic [R*NC-1:0]   lane_c_cq02h;
@@ -249,7 +253,7 @@ module ooe_rename #(
   logic [2*R-1:0]    wt_cq02h;
   ooe_go #(.S(S), .R(R), .PA(PA), .LU(LU), .LB(LB), .LT(LT)) u_go (
     .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .px_cq01h(px_cq04h), .pl_cq01h(pl_cq03h),
-    .unmet_g_cq01h(unmet_g_cq04h), .unmet_p_cq01h(unmet_p_cq04h), .room_g_cq01h(room_g_cq04h),
+    .unmet_g_cq01h(ug_go_cq05h), .unmet_p_cq01h(up_go_cq05h), .room_g_cq01h(room_g_cq04h),
     .room_p_cq01h(room_p_cq04h), .run_cq01h,
     .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h, .sq_l_cq00h, .dq_ev_cq01h, .rob_en_cq01h,
     .pool_en_cq01h(pool_en_cq04h), .take_cq02h, .sel_cq02h, .lane_v_cq02h, .lane_c_cq02h, .wb_cq02h, .wt_cq02h);
@@ -889,10 +893,56 @@ module ooe_rename #(
       room_g_cq04h[s * LU +: LU]  = rem_of(ucg_cq04h[s * HW +: HW], tq_gs_cq03h[s * (R + 1) +: R + 1]);
       room_p_cq04h[s * LU +: LU]  = rem_of(ucp_cq04h[s * HW +: HW], tq_ps_cq03h[s * (R + 1) +: R + 1]);
     end
+  // OI-134 (OI-114's registered form, OA's rev 358): the go reads each
+  // slot's unmet a cycle late, from a register, less the names its last
+  // take wrote (the lagged take, tq_gs/tq_ps); none read on time. The
+  // register takes when its sources moved at the last edge: the counters
+  // (cnt_en a cycle ago), the occupancy (its change a cycle ago), the
+  // lagged takes (they move only on an edge with tq_nz on either side).
+  // None reads sel: a load on it remaps Rename 1's q_gv cone.
+  logic [S*LU-1:0] ur_g_cq05h, ur_p_cq05h;
+  logic            ur_d_cq04h, ur_en_cq04h;
+  always_ff @(posedge ooe_core_clk)
+    if (rst_r01h) ur_d_cq04h <= 1'b1;
+    else          ur_d_cq04h <= cnt_en_cq03h || occ_l_cq00h != occ_cq01h;
+  assign ur_en_cq04h = ur_d_cq04h || tq_nz_cq03h;
+  always_ff @(posedge ooe_core_clk)
+    if (rst_r01h) begin
+      ur_g_cq05h <= '0;
+      ur_p_cq05h <= '0;
+    end else if (ur_en_cq04h) begin
+      ur_g_cq05h <= unmet_g_cq04h;
+      ur_p_cq05h <= unmet_p_cq04h;
+    end
+  // An unmet less a take, one-hot, at 0.
+  function automatic logic [LU-1:0] less_oh(input logic [LU-1:0] u, input logic [R:0] oh, input logic on);
+    logic [LU:0] d;
+    d = {1'b0, u} - (on ? (LU + 1)'(oh_val(oh)) : '0);
+    less_oh = d[LU] ? '0 : d[LU-1:0];
+  endfunction
+`ifdef CCV_CHECK_RENAME
+  logic [S*LU-1:0] ux_g_cq05h, ux_p_cq05h;     // the controls' unmet: on time, or registered
+  logic            ux_lt_cq05h;                 // the last take subtracted
+  assign ux_g_cq05h  = ctl_unow ? unmet_g_cq04h : ur_g_cq05h;
+  assign ux_p_cq05h  = ctl_unow ? unmet_p_cq04h : ur_p_cq05h;
+  assign ux_lt_cq05h = !ctl_unow && !ctl_nolt;
+`else
+  logic [S*LU-1:0] ux_g_cq05h, ux_p_cq05h;
+  logic            ux_lt_cq05h;
+  assign ux_g_cq05h  = ur_g_cq05h;
+  assign ux_p_cq05h  = ur_p_cq05h;
+  assign ux_lt_cq05h = 1'b1;
+`endif
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      ug_go_cq05h[s * LU +: LU] = less_oh(ux_g_cq05h[s * LU +: LU], tq_gs_cq03h[s * (R + 1) +: R + 1], ux_lt_cq05h);
+      up_go_cq05h[s * LU +: LU] = less_oh(ux_p_cq05h[s * LU +: LU], tq_ps_cq03h[s * (R + 1) +: R + 1], ux_lt_cq05h);
+    end
   // The go's change lead for its fits' clocks: a superset, from the
   // registered sel (a take may come), a registered take, the counters'
-  // or pool registers' enable, a slot's occupancy changing.
-  assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h;
+  // or pool registers' enable, a slot's occupancy changing, the unmet's
+  // register taking (OI-134; its tq_nz term is within cnt_en).
+  assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h || ur_d_cq04h;
 `ifdef CCV_CHECK_RENAME
   // Free names on time: the pool less every slot's held, on time.
   function automatic logic [7:0] names_on(input logic [S*HW-1:0] u, input logic [R:0] tq, input int n, input int w);

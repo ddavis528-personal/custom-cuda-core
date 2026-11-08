@@ -612,8 +612,10 @@ struct Config {
   /// slot's unmet floor, so the go reads last cycle's and takes from it the
   /// names its own last take wrote (then this take's, as above). It misses
   /// only frees, so it never reserves less than it should hold. 0: the go
-  /// reads unmet on time (arriving at 6 NGD).
-  unsigned unmet_reg = 0;
+  /// reads unmet on time (arriving at 6 NGD). 1 by default since OI-134
+  /// (RH, 95bf04d): clean at 192, 160 and 128 physical registers, equal to
+  /// the cycle at 192, coremark128 -2.22% at 160 and -2.16% at 128.
+  unsigned unmet_reg = 1;
   /// OA's response to OI-116 (rev 369 (b)), RH's S1 at 0 cost: 1 takes the
   /// split's floor term less the slot's own take a cycle late, from the
   /// registered unmet less the last take alone, with no subtraction in the
