@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 383, AR 316, TI 373, OI 325, IS 190, CP 155, DA 115,
+Conventions 17, OA 383, AR 316, TI 373, OI 326, IS 190, CP 155, DA 115,
 RA 96 (tab 9851686b-2b0a), RI 31 (tab 8e4547bc-c469).
 OOE doc rev 369. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release 702d9bff; tag refused (known).
@@ -76,7 +76,7 @@ Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release
    copies of unmet flops (fanout); if caps hold -> push, no S1 cost. Else (b): per-take term
    registered a cycle late, RH prices S1 w/ PHYS160; <0.5% mine, >0.5% DA. OI branch oi-floor114 1f3bb3c.
 -13. OA 365/366: zero-cycle ooe_rcu_issue -> AR 308: stays flopped, no splits (gain only
-   L1_CMPL -1, V-35 -1; L1_WAKE does NOT move - my 365 claim wrong). OI phys_src depth low
+   L1_CMPL -1, V-35 -1; L1_WAKE does NOT move - my 365 claim wrong). OI phys_src depth DONE (OI-131: 0 NGD after flop, out budget 0)
    prio. OA 364: C9 ports must be 0 NGD, <=4 pins (sum of parts boundary); OOE units per param set.
    AR 307 took C9 to DA in AR's session (+0.444% holds only with AR 296; lane cycle hits both).
 -12. C9 APPROVED by DA (DA tab 114, 11-06): OOE miu_ooe_cmpl+hint ends first kind, +0.444% S1
