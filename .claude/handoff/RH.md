@@ -50,16 +50,16 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- None. J9 (vadd16_loop J3->J8 attribution) DONE and sent 2026-11-07 18:00Z:
-  the +1,065 step is 2a7f125 (lane_rcu_res zero-cycle). Scripts rh-jobs/j9/
-  (j9.sh, j9w.sh: label:commit[:unflop-channel] points, about 2 min each),
-  logs ~/ccv-logs/j9{,w,g,t}. KEEP /home/user/rh-j9t-w9, rh-j9t-w10 and
-  ~/ccv-logs/j9t (traces) until AR has read them; AR may ask for per-address DCU
-  evictions. NEXT: J10 (AR rev 319: MIU stub stall counters and a four-start
-  mode, a local patch on de03fd6), after TI's bundle gate on de03fd6 passes
-  (~19:15Z), with RI's CCV_RCU_STATS (ba39e6a, gate-scratch/RI) beside
-  CCV_OOE_STATS. Idle; free for TI's J9 (capacity sweep), once
-  TI's CTA-queueing and gen-oracle -load code lands.
+- None. Idle since 2026-11-08 00:00Z.
+- J10 DONE and sent (AR revs 319/320). de03fd6 + TI's MIU-stub patch
+  (rh-jobs/j10/miu.patch, fixed hunk) + ba39e6a (CCV_RCU_STATS), never pushed.
+  Points w9'/w10'/g1'/g2' x DCU 1 way / 8x64 x CCV_MIU_MULTI; S1, cm32 and
+  cm128 at w10'; pl32/pl128 model reruns clean (14,297,482 / 23,612,557).
+  Logs ~/ccv-logs/j10, scripts rh-jobs/j10 (j10b.sh, j10table.py). Worktrees and
+  swap removed. J9 traces dropped (TI: AR no longer needs them).
+- J9 DONE and sent: vadd16_loop's step is 2a7f125 (lane_rcu_res zero-cycle),
+  an L1 set conflict on the 64x1 default DCU (three arrays in 64 KiB windows 3,
+  4 and 5). Scripts rh-jobs/j9, logs ~/ccv-logs/j9{,w,g}.
 - DONE and sent to TI (2026-11-07), f4ce0fd, worktree /home/user/rh-tip
   (oracles cleared; TI rev 367: the pl32 divergence was RI's interim call-link
   line, fixed on ti-o85. Next from TI: clean model reruns of pl32/pl128 after
