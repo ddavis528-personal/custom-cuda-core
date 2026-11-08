@@ -1263,7 +1263,13 @@ it.
   cm32 -1.42%, cm128 -5.67%. Dropping ooe_rcu_issue's receiving flop at
   RCU as well is S1 -3.48%, cm32 -1.98%, cm128 +0.09%, clean. That
   reopens AR rev 308: the end needs splits to meet the port rules, so it
-  is RA's to approve under DA 115 if RA's and OA's splits meet 12 NGD on both sides, and goes to Daniel only if they cannot (AR revs 323, 324). Dropping
+  was RA's to approve under DA 115 (AR revs 323, 324). RA approved it
+  (RA-43, register rev 113): RCU's worst is 10.9 NGD, OOE's out 0 and
+  gnt 10.2 with OOE's leads (OA 387, 390), held to 12 in
+  ccv_rcu.ngd.json. Latency (AR rev 329): L1_CMPL 19 to 18, KILL_DRAIN
+  16 to 15, LAT_LANE, LAT_SFU, L1_WAKE and L1_MISS_WAKE unchanged, V-35
+  done a cycle sooner, credit depth -2. The figures above stand until
+  RH reprices g1'' with the leads. Dropping
   miu_rcu_data's flop is S1 -0.26% but cm128 +2.21%, and it trips OOE's
   OA-17 check, so it stays flopped. C9 and PHYS_REGS 160 are re-checked
   in J12.
