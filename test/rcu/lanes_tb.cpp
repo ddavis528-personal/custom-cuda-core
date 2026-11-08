@@ -21,8 +21,9 @@
 // those bytes are not checked. The bypass selects are checked whole.
 //
 // Runs: random traffic. --cg <idle|medium|high> <vcd> runs one clock-gating
-// scenario (tools/check-cg.py). --control <bypage|immpos> expects a wrong
-// rule (a forward's age one more; the immediate's port at position 0):
+// scenario (tools/check-cg.py). --control <bypage|immpos|pcrow> expects a wrong
+// rule (a forward's age one more; the immediate's port at position 0; a PC row
+// from every issue's phys_pred_dst, not the zero predicate's):
 // the run must fail (test/rcu/run-rtl.sh). Exit 0 only with no mismatch.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_lanes.h"
@@ -87,7 +88,7 @@ struct Op {
   unsigned cls = None, foot = 0;
   unsigned lsec = 0, lsrc = 0;
   bool limm = false, lmrg = false;
-  bool gdst = false, immu = false, pdt = false, mrg = false, pwe = false, cont = false;
+  bool gdst = false, immu = false, pdt = false, mrg = false, pwe = false, cont = false, pc = false;
   unsigned rds = 0, isl = 3, opc = 0, tag = 0, drow = 0;
   uint32_t imm = 0, act = 0, gv = 0;
   unsigned src[3]{}, spos[3]{}, swid[3]{};
@@ -306,6 +307,19 @@ struct Bench {
         eq("done_row", get(dut->dnrow_cr09h, 2 * k, 2), g(a7)->op[k].drow, k);
       }
     }
+    // PC (P7): valid A on every S issue, rows A+1 (the zero predicate unless
+    // a predicate-only copy), m = ~active A+2.
+    for (unsigned k = 0; k < kK; ++k) {
+      const Group *x0 = g(c), *x1 = g(c - 1), *x2 = g(c - 2);
+      eq("pc_v", get(dut->pcv_cr02h, k, 1), x0 && x0->v[k], k);
+      if (x1 && x1->v[k]) {
+        const Op &o = x1->op[k];
+        eq("pc_row", get(dut->pcrow_cr03h, 6 * k, 6), o.pc || control == "pcrow" ? o.pd : 63u, k);
+        eq("pc_orow", get(dut->pcorow_cr03h, 6 * k, 6), o.pod, k);
+      }
+      if (x2 && x2->v[k] && x2->op[k].pc)
+        eq("pc_m", get(dut->pcm_cr04h, kN * k, kN), ~x2->op[k].act & kLanes, k);
+    }
     // SW: valid A+9, row A+10, write A+11; SFU done valid A+11, payload A+12.
     auto sfu = [](const Group *x) -> const Op * {
       if (x)
@@ -447,7 +461,7 @@ struct Gen {
       } else if (o.cls == None) {
         pcopy = p(0.5);
         o.cont = !pcopy;
-        if (pcopy) o.opc = ccv::skel::kOpCopy, o.pwe = true, ++cov_pcopy;
+        if (pcopy) o.opc = ccv::skel::kOpCopy, o.pwe = true, o.pc = true, ++cov_pcopy;
         o.mrg = p(0.4);
       } else {
         o.opc = lanePool(o.drow).pick(r);

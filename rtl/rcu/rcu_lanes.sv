@@ -148,6 +148,15 @@ module rcu_lanes #(
   output logic [NK*WP-1:0]        plorow_cr07h,
   output logic [NK-1:0]           plmrg_cr07h,
   output logic [NK*N-1:0]         plmm_cr08h,
+  // PC, rcu_pred's predicate-only copy port for S slot k (P7): written at
+  // A+2 on ~active, from its old destination (merge, mm none). Its valid is
+  // every S issue's, as PR's is every R op's: the opcode arrives at A, too
+  // late for a valid at A, so an issue that is not a predicate-only copy
+  // writes the zero predicate, which is never written (A-64).
+  output logic [NK-1:0]           pcv_cr02h,
+  output logic [NK*WP-1:0]        pcrow_cr03h,
+  output logic [NK*WP-1:0]        pcorow_cr03h,
+  output logic [NK*N-1:0]         pcm_cr04h,
   // SW, the SFU's write port.
   output logic                    swv_cr11h,
   output logic [WR-1:0]           swrow_cr12h,
@@ -163,6 +172,7 @@ module rcu_lanes #(
 
   localparam logic [WR-1:0] ZROW = WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
   localparam int WS = $clog2(NK);       // a section index
+  localparam logic [WP-1:0] ZPRD = WP'(ccv_prov_pkg::CCV_P_PRED_ZERO);
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
   logic rst_cr01h_n;
@@ -179,7 +189,7 @@ module rcu_lanes #(
   // classes SFU ops as lane ops (Unit Sfu awaits RA-16 (b)), so cls 2 is
   // never decoded yet.
   logic [NK*2-1:0] cls_cr02h, isl_cr02h;
-  logic [NK-1:0]   gdst_cr02h, immu_cr02h, pdt_cr02h;
+  logic [NK-1:0]   gdst_cr02h, immu_cr02h, pdt_cr02h, pcp_cr02h;
   logic [NK*3-1:0] rds_cr02h;
   always_comb begin
     logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
@@ -192,6 +202,7 @@ module rcu_lanes #(
                             u_cr02h == rcu_dec_pkg::U_LANE ? 2'd1 :
                             u_cr02h == rcu_dec_pkg::U_SFU  ? 2'd2 :
                             u_cr02h == rcu_dec_pkg::U_COPY ? 2'd3 : 2'd0;
+      pcp_cr02h[s]        = !cont_cr02h[s] && u_cr02h == rcu_dec_pkg::U_PCOPY;
       gdst_cr02h[s]       = c_cr02h[rcu_dec_pkg::CLS_GDST];
       rds_cr02h[3*s +: 3] = c_cr02h[rcu_dec_pkg::CLS_READS +: 3];
       isl_cr02h[2*s +: 2] = c_cr02h[rcu_dec_pkg::CLS_ISLOT +: 2];
@@ -233,6 +244,13 @@ module rcu_lanes #(
     lmrg_cr02h <= lmrg_cr01h;
   end
   assign lwk_cr02h = wk_cr02h;
+  // PC's valid: the issue valid's own copy, for the output alone (NGD-7).
+  (* keep *) logic [NK-1:0] pcvq_cr02h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rst_r01h) pcvq_cr02h <= '0;
+    else          pcvq_cr02h <= iv_cr01h;
+  end
+  assign pcv_cr02h = pcvq_cr02h;
   wire any_v_cr02h = |v_cr02h;
 
   // ---- A: ownership ----------------------------------------------------
@@ -562,6 +580,28 @@ module rcu_lanes #(
   logic [DL*NK-1:0]    lmrg_cr03h;
   logic [NK*2-1:0]     ldpos_cr03h, ldwid_cr03h;    // stage 1 only
   logic [(DL-1)*NK*N-1:0] lact_cr03h;               // stages 2 .. DL, stage d at d-2
+  // PC at A+1: the copy's valid, which loads ~active at A+2, and its row
+  // (the zero predicate if the issue is no predicate-only copy); its old
+  // row is lwb_d's stage 1.
+  logic [NK-1:0]    pcq_cr03h;
+  logic [NK*WP-1:0] pcr_cr03h;
+  logic [NK*N-1:0]  pcm_n_cr04h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rst_r01h) pcq_cr03h <= '0;
+    else          pcq_cr03h <= v_cr02h & pcp_cr02h;
+  end
+  for (genvar k = 0; k < NK; k++) begin : g_pc
+    wire pr_en_cr02h = v_cr02h[k];
+    wire pm_en_cr03h = pcq_cr03h[k];
+    always_ff @(posedge rcu_core_clk) begin
+      if (pr_en_cr02h) pcr_cr03h[k*WP +: WP] <= pcp_cr02h[k] ? pd_cr02h[k*WP +: WP] : ZPRD;
+    end
+    always_ff @(posedge rcu_core_clk) begin
+      if (pm_en_cr03h) pcm_n_cr04h[k*N +: N] <= ~acta_cr03h[k*N +: N];
+    end
+  end
+  assign pcrow_cr03h = pcr_cr03h;
+  assign pcm_cr04h   = pcm_n_cr04h;
   for (genvar k = 0; k < NK; k++) begin : g_lwb
     // Stage 1, from the payload.
     wire l1s_en_cr02h = lcl_cr02h[k];
@@ -640,6 +680,7 @@ module rcu_lanes #(
       plorow_cr07h[k*WP +: WP] = lpod_cr03h[((SR-1)*NK + k)*WP +: WP];
       plmrg_cr07h[k] = lmrg_cr03h[(SR-1)*NK + k];
       plmm_cr08h[k*N +: N] = lact_cr03h[((SW-2)*NK + k)*N +: N];
+      pcorow_cr03h[k*WP +: WP] = lpod_cr03h[k*WP +: WP];
       dnv_cr08h[k] = dv_cr03h[(SW-1)*NK + k];
     end
   end
@@ -790,7 +831,7 @@ module rcu_lanes #(
   // Busy, from flops only (P10, RI-21): rcu_kill's idle and done wake.
   assign dbusy_cr03h = (|v_cr02h) | (|lv_cr03h) | (|ov_cr03h) | (|wv_cr03h) | (|dv_cr03h) | (|pv_cr03h) |
                        (|ssv_cr03h) | (|sdv_cr03h);
-  assign busy_cr03h  = dbusy_cr03h | (|hv_cr03h);
+  assign busy_cr03h  = dbusy_cr03h | (|hv_cr03h) | (|pcq_cr03h);
 
 endmodule
 `undef CCV_CLK

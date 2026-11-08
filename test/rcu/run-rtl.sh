@@ -108,7 +108,7 @@ done
 for m in lanes mem; do
   us="rcu_${m}_c4"; [ "${1:-}" = --full ] && us="$us rcu_$m"
   for u in $us; do bench "$u" test/rcu/cg-build.sh "$u" "$B/$u" -- "$B/$u/tb"; done
-  case $m in lanes) cs="bypage immpos" ;; mem) cs="align pstlane" ;; esac
+  case $m in lanes) cs="bypage immpos pcrow" ;; mem) cs="align pstlane" ;; esac
   for c in $cs; do
     if [ -x "$B/rcu_${m}_c4/tb" ] && ! "$B/rcu_${m}_c4/tb" --control "$c" >"$B/rcu_$m.$c.log" 2>&1 &&
        grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_$m.$c.log"; then
