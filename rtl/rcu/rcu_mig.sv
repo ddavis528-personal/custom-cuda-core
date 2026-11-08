@@ -157,22 +157,41 @@ module rcu_mig #(
   endfunction
 
   // ---- Inbound valids and the R slot's lead, flopped ---------------------
-  logic mrxv_cr01h, crxv_cr01h, prxv_cr01h, rivq_cr02h, ocrq_cr02h;
+  logic mrxv_cr01h, crxv_cr01h, prxv_cr01h, prxv2_cr02h, rivq_cr02h, ocrq_cr02h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       mrxv_cr01h <= 1'b0;
       crxv_cr01h <= 1'b0;
       prxv_cr01h <= 1'b0;
+      prxv2_cr02h <= 1'b0;
       rivq_cr02h <= 1'b0;
       ocrq_cr02h <= 1'b0;
     end else begin
       mrxv_cr01h <= mv_cr00h;
       crxv_cr01h <= cv_cr00h;
       prxv_cr01h <= pv_cr00h;
+      prxv2_cr02h <= prxv_cr01h;
       rivq_cr02h <= riv_cr01h;
       ocrq_cr02h <= ocr_cr01h;
     end
   end
+  // pca_rcu_mig lands at a no-flop end: its payload goes straight into
+  // these flops in the cycle it arrives (AR rev 285 (5); RA's ruling on
+  // RI-22 (7), option A), beside the flopped valid, and the row lands in
+  // the FIFO a cycle on, under prxv2. A cycle a boundary flop would cost;
+  // no contract changes (PCA's credits count entries, as before).
+  logic [WW-1:0]  pwq_cr02h;
+  logic [WMR-1:0] prowq_cr02h;
+  logic [WD-1:0]  pdatq_cr02h;
+  wire pq_en_cr01h = prxv_cr01h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (pq_en_cr01h) begin
+      pwq_cr02h   <= pw_cr01h;
+      prowq_cr02h <= prow_cr01h;
+      pdatq_cr02h <= pdat_cr01h;
+    end
+  end
+
   // The R op's class (rcu_dec_pkg, the model's decode; the R slot carries
   // no atomic and no copy): it reads R2 when it merges into a GPR, and holds
   // RW when it writes a GPR or is a collective (the model's r2_busy, rw_busy).
@@ -211,6 +230,11 @@ module rcu_mig #(
   function automatic logic killed(input logic [WW-1:0] w, input logic act, input logic [NWP-1:0] m);
     killed = act & m[w];
   endfunction
+  // A warp in mig_kmask, this cycle's kill included (see the mask below).
+  function automatic logic inmask(input logic [WW-1:0] w, input logic [NWP-1:0] km,
+                                  input logic act, input logic [NWP-1:0] m);
+    inmask = km[w] | (act & m[w]);
+  endfunction
 
   // ---- Pairing queues ----------------------------------------------------
   logic [Q-1:0]     mq_v_cr02h, cq_v_cr02h;
@@ -230,7 +254,7 @@ module rcu_mig #(
   always_comb begin
     kmclr_cr03h = '0;
     for (int i = 0; i < Q; i++) begin
-      kmhn_cr02h[i] = mjl_cr02h[i] & kmask_cr02h[mq_w_cr02h[i]] & ~killed(mq_w_cr02h[i], kact_cr02h, kmn_cr02h);
+      kmhn_cr02h[i] = mjl_cr02h[i] & inmask(mq_w_cr02h[i], kmask_cr02h, kact_cr02h, kmn_cr02h) & ~killed(mq_w_cr02h[i], kact_cr02h, kmn_cr02h);
       if (kmh_cr03h[i] & ~killed(mq_w_cr02h[i], kact_cr02h, kmn_cr02h))
         kmclr_cr03h |= NWP'(1) << mq_w_cr02h[i];
     end
@@ -245,11 +269,17 @@ module rcu_mig #(
       kmh_cr03h <= kmhn_cr02h;
     end
   end
-  wire kmask_en_cr01h = kvq_cr01h | (|kmh_cr03h);
+  // kill_warp_mask lands at a no-flop end, so it goes straight into a flop
+  // (kmn, at K's edge; AR rev 285 (5), RA's ruling on RI-22 (7)) and joins
+  // the mask a cycle on, in K+1. Every reader takes the mask with this
+  // kill's warps ORed in for that cycle (inmask), which is the mask as it
+  // stood when the raw input fed it: the clear never takes a warp the kill
+  // acting in that cycle names (kmclr excludes killed()), so the two agree.
+  wire kmask_en_cr02h = kact_cr02h | (|kmh_cr03h);
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) kmask_cr02h <= '0;
-    else if (kmask_en_cr01h)
-      kmask_cr02h <= (kmask_cr02h & ~kmclr_cr03h) | (kvq_cr01h ? km_cr01h : '0);
+    else if (kmask_en_cr02h)
+      kmask_cr02h <= (kmask_cr02h & ~kmclr_cr03h) | (kact_cr02h ? kmn_cr02h : '0);
   end
 
   // ---- Restore FIFO state (declared here: the restore pick reads it) -----
@@ -278,7 +308,7 @@ module rcu_mig #(
   // unless it goes dead now), or a row landing into the empty FIFO. A head
   // that moves is not predicted (the pick waits a cycle).
   wire hn_hd_cr02h = ~hd_en_cr02h & hd_v_cr02h & ~|(hd_cr02h & fdn_cr02h);
-  wire hn_pw_cr01h = ~hd_en_cr02h & ~hd_v_cr02h & prxv_cr01h & |(tl_cr02h & hd_cr02h);
+  wire hn_pw_cr01h = ~hd_en_cr02h & ~hd_v_cr02h & prxv2_cr02h & |(tl_cr02h & hd_cr02h);
 
   // ---- Picks and launch --------------------------------------------------
   // Both picks are flopped one-hots of a map entry and its command, made a
@@ -381,11 +411,11 @@ module rcu_mig #(
       hit[i] = |mat[i] & ~mq_d_cr02h[i];
       rkn_mi_cr02h[i] = |mat[i] & mq_d_cr02h[i] &
                         ((hn_hd_cr02h & (mq_w_cr02h[i] == hd_w_cr02h)) |
-                         (hn_pw_cr01h & (mq_w_cr02h[i] == pw_cr01h)));
+                         (hn_pw_cr01h & (mq_w_cr02h[i] == pwq_cr02h)));
       // That warp's one restore command (read only beside its map).
       rkn_ci_cr02h[i] = csa[i] & cq_d_cr02h[i] &
                         ((hn_hd_cr02h & (cq_w_cr02h[i] == hd_w_cr02h)) |
-                         (hn_pw_cr01h & (cq_w_cr02h[i] == pw_cr01h)));
+                         (hn_pw_cr01h & (cq_w_cr02h[i] == pwq_cr02h)));
     end
     dkn_mi_cr02h = lowest(hit);
     dkn_ci_cr02h = '0;
@@ -613,7 +643,7 @@ module rcu_mig #(
   // or in its write writes all the same (a dead row pops only at the head,
   // never beside a write). The write's pop is the entry behind the head:
   // the head moved past it in A+1.
-  wire tl_en_cr01h = prxv_cr01h;
+  wire tl_en_cr01h = prxv2_cr02h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       hd_cr02h <= F'(1);
@@ -623,11 +653,11 @@ module rcu_mig #(
       if (tl_en_cr01h) tl_cr02h <= rot(tl_cr02h);
     end
   end
-  wire [NR-1:0] prow1h_cr01h = NR'(1) << prow_cr01h;
+  wire [NR-1:0] prow1h_cr01h = NR'(1) << prowq_cr02h;
   for (genvar i = 0; i < F; i++) begin : g_f
-    wire land_cr01h = prxv_cr01h & tl_cr02h[i];
+    wire land_cr01h = prxv2_cr02h & tl_cr02h[i];
     wire pop_cr02h = (rs_v_cr04h & hd_cr02h[(i + 1) % F]) | (dpop_cr02h & hd_cr02h[i]);
-    wire kd_cr02h = f_v_cr02h[i] & ~f_dead_cr02h[i] & kmask_cr02h[f_w_cr02h[i]];
+    wire kd_cr02h = f_v_cr02h[i] & ~f_dead_cr02h[i] & inmask(f_w_cr02h[i], kmask_cr02h, kact_cr02h, kmn_cr02h);
     assign fvn_cr02h[i] = land_cr01h | (f_v_cr02h[i] & ~pop_cr02h);
     assign fdn_cr02h[i] = ~land_cr01h & (f_dead_cr02h[i] | kd_cr02h);
     assign f16n_cr02h[i] = land_cr01h ? prow1h_cr01h[NG] : f_r16_cr02h[i];
@@ -644,10 +674,10 @@ module rcu_mig #(
     wire f_en_cr01h = land_cr01h;
     always_ff @(posedge rcu_core_clk) begin
       if (f_en_cr01h) begin
-        f_w_cr02h[i]   <= pw_cr01h;
+        f_w_cr02h[i]   <= pwq_cr02h;
         f_r16_cr02h[i] <= prow1h_cr01h[NG];
         f_rg_cr02h[i]  <= prow1h_cr01h[NG-1:0];
-        f_dat_cr02h[i] <= pdat_cr01h;
+        f_dat_cr02h[i] <= pdatq_cr02h;
       end
     end
   end
@@ -699,15 +729,16 @@ module rcu_mig #(
   logic quiet_q_cr02h, busy_q_cr02h;
   logic hold_k_cr01h;
   always_comb begin
-    hold_k_cr01h = dm_busy_cr02h & kmask_cr02h[dm_w_cr02h];
+    hold_k_cr01h = dm_busy_cr02h & inmask(dm_w_cr02h, kmask_cr02h, kact_cr02h, kmn_cr02h);
     for (int i = 0; i < F; i++)
-      hold_k_cr01h |= f_v_cr02h[i] & (f_dead_cr02h[i] | kmask_cr02h[f_w_cr02h[i]]);
+      hold_k_cr01h |= f_v_cr02h[i] & (f_dead_cr02h[i] | inmask(f_w_cr02h[i], kmask_cr02h, kact_cr02h, kmn_cr02h));
     for (int i = 0; i < Q; i++)
-      hold_k_cr01h |= (mq_v_cr02h[i] & kmask_cr02h[mq_w_cr02h[i]]) | (cq_v_cr02h[i] & kmask_cr02h[cq_w_cr02h[i]]);
+      hold_k_cr01h |= (mq_v_cr02h[i] & inmask(mq_w_cr02h[i], kmask_cr02h, kact_cr02h, kmn_cr02h)) |
+                     (cq_v_cr02h[i] & inmask(cq_w_cr02h[i], kmask_cr02h, kact_cr02h, kmn_cr02h));
   end
   wire busyn_cr01h = dm_busy_cr02h | rs_busy_cr02h | |mq_v_cr02h | |cq_v_cr02h | |f_v_cr02h |
                      (mcn_cr02h != '0) | (ccn_cr02h != '0) | (mkc_cr03h != '0) | (ckc_cr03h != '0) | dm_v_cr03h | rs_v_cr03h | rs_v_cr04h |
-                     rs_cr_cr04h | mrxv_cr01h | crxv_cr01h | prxv_cr01h | kvq_cr01h | kact_cr02h;
+                     rs_cr_cr04h | mrxv_cr01h | crxv_cr01h | prxv_cr01h | prxv2_cr02h | kvq_cr01h | kact_cr02h;
   // Not the raw valids: map, rau, pca and kill land at no-flop ends, whose
   // inputs go straight into a flop (AR rev 285 (5)); their captures above
   // cover the cycle after, the clock gate's hysteresis the one before.
@@ -727,7 +758,7 @@ module rcu_mig #(
   // Credits guarantee room: no land into a full queue or FIFO.
   `CCV_ASSERT(mig_map_room, !(mrxv_cr01h && mq_free_cr02h == '0))
   `CCV_ASSERT(mig_cmd_room, !(crxv_cr01h && cq_free_cr02h == '0))
-  `CCV_ASSERT(mig_fifo_overrun, !(prxv_cr01h && |(tl_cr02h & f_v_cr02h)))
+  `CCV_ASSERT(mig_fifo_overrun, !(prxv2_cr02h && |(tl_cr02h & f_v_cr02h)))
   `CCV_ASSERT(mig_dm_cred, dm_cr_cr02h <= WC'(CD))
   // A map or command entry leaves only by a launch or the kill event (K+1),
   // never by kmask's level: a relaunched warp's command can land before its
