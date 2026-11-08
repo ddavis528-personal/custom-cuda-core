@@ -27,7 +27,7 @@
       }
     },
     {
-      "name": "rpt_s0_b1_dst_n9_w193_lffff",
+      "name": "rpt_s0_b1_dst_n9_w192_lffff",
       "module": "ccv_common_rpt",
       "files": [
         "rtl/phys/ccv_common_rpt.sv"
@@ -36,8 +36,8 @@
         "STAGES": 0,
         "BOUNDARY": 1,
         "SLOTS": 9,
-        "PAYLOAD_W": 193,
-        "LEAD_MASK": "193'hffff",
+        "PAYLOAD_W": 192,
+        "LEAD_MASK": "192'hffff",
         "DST_END": 1
       },
       "clock": "clk",
@@ -46,7 +46,7 @@
         "rcu RPT_OOE_RCU_ISSUE"
       ],
       "bench": {
-        "build": "verilator --binary --timing --trace --trace-max-width 4096 -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=0 -GBOUNDARY=1 -GDST_END=1 -GS=9 -GW=193 \"-GLEAD=193'hffff\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "build": "verilator --binary --timing --trace --trace-max-width 4096 -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=0 -GBOUNDARY=1 -GDST_END=1 -GS=9 -GW=192 \"-GLEAD=192'hffff\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
         "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
         "scope": "tb_cg_rpt.dut"
       }

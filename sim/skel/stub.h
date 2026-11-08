@@ -540,6 +540,8 @@ inline constexpr OpInfo kOps[] = {
   {"RCP_U32",       kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
   {"RSQRT_F32",     kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
   {"RCP_F32_P",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
+  // pxor (ISA v1.9 Format K, opcode 62; RA-16 (f)): PAND's row, RCU-only on R, appended so no opcode moves.
+  {"PXOR",          kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
@@ -953,6 +955,19 @@ enum : unsigned { kPoolDone = ~0u, kRcuOnlyDone = ~0u - 1 };
 /// The class that completes on CCV_DONE_SLOT_RCU: what RCU executes alone at
 /// CCV_LAT_RCU (a cross-lane op is RCU's too, but warp-collective).
 inline bool rcuOnlyDone(const OpInfo *op) { return inRcu(op->cls) || isBarrier(op); }
+/// R's GPR write (RA-16 (a), RA-29 (a); AR's rev 265): one write port, RW,
+/// for every class R executes, because each writes at A+2: the RCU-only
+/// class (movi, call's link) at CCV_LAT_RCU - 1, and the collectives early,
+/// at the same cycle, though their dependants wake at CCV_LAT_COLLECTIVE
+/// (V-35 allows it). params' pipe list counts RW once for both
+/// (CCV_PRF_GPR_WRITE_PORTS), which holds only while this does. `coll_late`
+/// is the control: collectives write at A + CCV_LAT_COLLECTIVE - 1 instead,
+/// which the RCU stub must refuse.
+constexpr unsigned kRWriteAt = ccv::prov::kLatRcu - 1;
+static_assert(kRWriteAt == 2, "R writes at A+2 (RA-29 (a))");
+inline unsigned rWriteAt(const OpInfo *op, bool coll_late) {
+  return op->cross && coll_late ? ccv::prov::kLatCollective - 1 : kRWriteAt;
+}
 
 /// OOE's implementation behind the swap boundary: the S1 stub (ooe.cpp).
 std::unique_ptr<Block> makeOoe(int inst, Kernel &k);
