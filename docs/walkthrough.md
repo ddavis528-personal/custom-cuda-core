@@ -511,4 +511,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: bb0d2a7bb7a24c80 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: ae43d24b6922b806 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

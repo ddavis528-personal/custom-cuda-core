@@ -3322,6 +3322,17 @@ private:
       if (const Record *r = rec(m.tid, "rcu"))
         if (perLaneInput(op, *r))
           k_.fail("rcu: %s has a per-lane input; the lane executes it (Q-32)", op->name);
+    // R's one GPR write port (RA-16 (a)): shared by every R-pipe class only
+    // while each writes at A+2. --break r-write-coll-late moves the
+    // collectives' write to A + CCV_LAT_COLLECTIVE - 1, which needs a port of
+    // its own, so each GPR-writing collective is refused here.
+    if (execRcu(op) && op->gdst) {
+      const unsigned at = rWriteAt(op, k_.brk == "r-write-coll-late");
+      if (at != kRWriteAt)
+        k_.fail("rcu: seq %llu, %s, writes its GPR at A+%u; R's write port is shared only "
+                "while every R-pipe class writes at A+%u (RA-16 (a))",
+                (unsigned long long)uidSeq(m.tid), op->name, at, kRWriteAt);
+    }
     // An immediate move is warp-level: RCU writes the immediate straight into
     // the register file on the issue-mask lanes, with no lane round trip.
     // (--break movi-in-lane sends it to the lanes instead, which must refuse.)

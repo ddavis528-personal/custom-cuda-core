@@ -157,6 +157,9 @@
 #   the collectives compute O-85's         shfl-wrap, coll-issue-only,
 #     semantics (RA-20, DA tab rev 100)        unballot-lowest (coll, stub
 #                                              RCU): CP-76's three readings
+#   every R-pipe class writes its GPR at    r-write-coll-late (coll, stub
+#     A+2, so they share R's one write         RCU): collectives write at
+#     port (RA-16 (a), AR's rev 265)           A+4; RCU refuses each
 #   an atomic is a decode pair, and runs    atom-one-slot: OOE refuses each
 #     in passes, one lane an address in        one-slot atomic (OI-80);
 #     ascending order, until MIU says no       atom-one-pass: a lane reads the
@@ -1494,6 +1497,20 @@ for b in "shfl-wrap:seq [0-9]* R[0-9]* lane [0-9]* = " "coll-issue-only:seq [0-9
     bad "--break $nm" "$n refused: $(grep '^KERNEL' "$B/kernel_$nm.log")"
   fi
 done
+# R's one GPR write port (RA-16 (a); AR's rev 265, TI's rev 284): params'
+# pipe list counts it once for the RCU-only and collective classes
+# (CCV_PRF_GPR_WRITE_PORTS 4), which holds only while each writes at A+2.
+# r-write-coll-late has the stub RCU's collectives write at A +
+# CCV_LAT_COLLECTIVE - 1; RCU refuses every GPR-writing collective (coll's
+# eight shuffles and its ballot), and nothing else fails.
+CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/coll/oracle.jsonl --break r-write-coll-late \
+  >"$B/kernel_r-write-coll-late.log" 2>&1
+n=$(grep -c "^CHECK rcu: seq [0-9]*, [A-Z_]*, writes its GPR at A+[0-9]*; R's write port is shared only while every R-pipe class writes at A+2 (RA-16 (a))" "$B/kernel_r-write-coll-late.log")
+if [ "$n" -eq 9 ] && [ "$(field "$B/kernel_r-write-coll-late.log" check_failures)" = "$n" ]; then
+  say "--break r-write-coll-late (stub): R's write port is A+2's alone" "PASS ($n collectives refused)"
+else
+  bad "--break r-write-coll-late" "$n refused: $(grep '^KERNEL' "$B/kernel_r-write-coll-late.log")"
+fi
 # O-72's atomics (IS-21; AR-21, V-72): atom runs every RMW form but CAS on
 # .global and .shared, most with all 32 lanes on one word, so each runs in
 # passes. Each control must fail at its first check, by the check named:
