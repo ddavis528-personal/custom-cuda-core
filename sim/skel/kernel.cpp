@@ -2615,6 +2615,10 @@ private:
     const uint32_t t = operand(m, 0, rc.seq), x = operand(m, 1, rc.seq);
     bool ok = true;
     const std::vector<unsigned> g = srcRegs(op, rc, 0, ok);
+    if (isCas(op)) {
+      casLane(m, r, op, rc, on, at, t, x, operand(m, 2, rc.seq), ok ? g : std::vector<unsigned>{});
+      return;
+    }
     if (on && ok)
       for (const RegVal *u : rc.gprUses())
         if (u->idx == g[2] && u->v[lane_] != x)
@@ -2647,6 +2651,36 @@ private:
     put(r, c.lane_rcu, "result", v);
   }
 
+  /// A CAS's lane op, A2 (O-72; OI-127): T, the old word A1 read, against
+  /// rs_cmp; N is rs_swap where they are equal, else T, which A3 writes
+  /// back unchanged; and pd, the success, rides out on sec_pred_out for
+  /// RCU to merge (A-43). Each pass re-executes it, so its checks are held
+  /// and only the last, with every lane's own T, is judged.
+  /// cas-swap-always: N is rs_swap whatever the compare says.
+  /// cas-pd-inverted: pd drives the compare's opposite.
+  void casLane(const Receiver::Msg &m, Bits &r, const OpInfo *op, const Record &rc, bool on,
+               const std::string &at, uint32_t t, uint32_t cmp, uint32_t swap,
+               const std::vector<unsigned> &g) {
+    const Ch &c = ch();
+    if (on && g.size() == 4)
+      for (const RegVal *u : rc.gprUses())
+        for (unsigned i = 0; i != 2; ++i)
+          if (u->idx == g[2 + i] && u->v[lane_] != (i ? swap : cmp))
+            k_.failHeld(at, m.tid, "lane %u: seq %llu CAS's %s (R%u) %08x, oracle %08x", lane_,
+                        (unsigned long long)rc.seq, i ? "rs_swap" : "rs_cmp", u->idx,
+                        i ? swap : cmp, u->v[lane_]);
+    const bool ok = t == cmp;
+    if (on)
+      if (const RegVal *d = rc.predDef())
+        if (ok != (((d->p >> lane_) & 1u) != 0))
+          k_.failHeld(at, m.tid, "lane %u: seq %llu CAS %s (old %08x, rs_cmp %08x), oracle P%u %u",
+                      lane_, (unsigned long long)rc.seq, ok ? "succeeds" : "fails", t, cmp, d->idx,
+                      unsigned((d->p >> lane_) & 1u));
+    k_.hit(on ? "cas_lane" : "cas_lane_off");
+    put(r, c.lane_rcu, "result", ok || k_.brk == "cas-swap-always" ? swap : t);
+    put(r, c.lane_rcu, "sec_pred_out", (ok != (k_.brk == "cas-pd-inverted")) ? 1u : 0u);
+  }
+
   /// The copy-only op (A-38): no compute. An inactive lane returns
   /// merge_data, the masked load's old destination, which is what ccv-sim
   /// says the lane keeps; an enabled lane's result is don't-care, driven as
@@ -2656,7 +2690,9 @@ private:
     const Record *rc = rec(m.tid, "lane");
     if (!rc) return;
     const OpInfo *op = opByName(rc->op);
-    if (!op || op->cls != kLoad) {
+    // A load's, or a guarded or masked atomic's, for rd's inactive lanes
+    // (A-38; a CAS is guarded, OI-127).
+    if (!op || (op->cls != kLoad && op->cls != kAtomic)) {
       k_.fail("lane %u: a copy-only op for seq %llu, which is not a load", lane_,
               (unsigned long long)rc->seq);
       return;
@@ -3217,12 +3253,17 @@ private:
     // lanes get the atomic's opcode, opc, for A2.
     if (op && op->cls == kAtomic) {
       const unsigned row = done_row_[tag];
-      const OpInfo *st = atomStep(row);
+      const OpInfo *st = atomStep(row, op);
       if (!st) {
         k_.fail("rcu: seq %llu, %s, issued with row %u, no step of an atomic's",
                 (unsigned long long)uidSeq(m.tid), op->name, row);
         return;
       }
+      // A CAS's A2 writes its pd (OI-127, OA rev 380): DEC's second slot
+      // carries it, and OOE issues A2 with its name and pred_we.
+      if (st == &kCasA2 && !get(m.payload, c.ooe_rcu, "pred_we"))
+        k_.fail("rcu: seq %llu, %s's A2, writes no predicate; a CAS writes pd",
+                (unsigned long long)uidSeq(m.tid), op->name);
       k_.hit(row == 0 ? "atom_a1" : row == 2 ? "atom_a2" : "atom_a3");
       op = st;
     }
@@ -3322,6 +3363,17 @@ private:
       if (const Record *r = rec(m.tid, "rcu"))
         if (perLaneInput(op, *r))
           k_.fail("rcu: %s has a per-lane input; the lane executes it (Q-32)", op->name);
+    // R's one GPR write port (RA-16 (a)): shared by every R-pipe class only
+    // while each writes at A+2. --break r-write-coll-late moves the
+    // collectives' write to A + CCV_LAT_COLLECTIVE - 1, which needs a port of
+    // its own, so each GPR-writing collective is refused here.
+    if (execRcu(op) && op->gdst) {
+      const unsigned at = rWriteAt(op, k_.brk == "r-write-coll-late");
+      if (at != kRWriteAt)
+        k_.fail("rcu: seq %llu, %s, writes its GPR at A+%u; R's write port is shared only "
+                "while every R-pipe class writes at A+%u (RA-16 (a))",
+                (unsigned long long)uidSeq(m.tid), op->name, at, kRWriteAt);
+    }
     // An immediate move is warp-level: RCU writes the immediate straight into
     // the register file on the issue-mask lanes, with no lane round trip.
     // (--break movi-in-lane sends it to the lanes instead, which must refuse.)
@@ -3474,6 +3526,7 @@ private:
       uint32_t v = 0;
       if (!std::strcmp(op->name, "POR")) v = a | b;
       else if (!std::strcmp(op->name, "PAND")) v = a & b;
+      else if (!std::strcmp(op->name, "PXOR")) v = a ^ b;
       else k_.fail("rcu: predicate op %s has no semantics here", op->name);
       if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
       k_.pred[ppd] = ((merge ? k_.pred[ppold] : 0u) & ~issue) | (v & issue);
@@ -3649,8 +3702,16 @@ private:
       k_.hit("pred_copy");
       return;
     }
-    if (get(m.payload, c.ooe_rcu, "pred_we"))   // cas's predicate: not in S1
-      k_.fail("rcu: a copy-only op with a predicate destination is not modelled");
+    // A guarded or masked CAS's copy (A-38) names its pd too: the copy
+    // writes the inactive lanes of both destinations, the predicate's here,
+    // from its old name, beside the register file. A2 merges the same lanes
+    // from the same row (OI-127), so the order is free.
+    if (get(m.payload, c.ooe_rcu, "pred_we")) {
+      const unsigned ppd = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_dst"));
+      const unsigned ppold = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_old_dst"));
+      if (ppd == ccv::prov::kPredZero) k_.fail("rcu: a copy-only op writes the zero predicate");
+      else k_.pred[ppd] = (k_.pred[ppd] & active) | (k_.pred[ppold] & ~active);
+    }
     if (pd == ccv::prov::kPhysZero) k_.fail("rcu: a copy-only op writes the zero register");
     const Bits ctl = laneMsg(m, kOpCopy);
     std::vector<Bits> lanes;
@@ -3972,6 +4033,18 @@ private:
       put(a2, c.dec_ooe, "src2_arch", 0);
       put(a2, c.dec_ooe, "src_valid", 1);
       put(a2, c.dec_ooe, "sched_attr", sa | 1u << kAttrPairSecondBit);
+      if (isCas(op)) {
+        // A CAS (OI-127; TI rev 366): the second slot carries rs_cmp and
+        // rs_swap, and pd beside rd; the first carries no destination.
+        // cas-pd-first: pd rides the first slot instead, which OOE's join
+        // does not read, so A2 issues without it.
+        const bool first_pd = k_.brk == "cas-pd-first";
+        put(a2, c.dec_ooe, "src_arch", (g[2] << 4) | g[3]);
+        put(a2, c.dec_ooe, "src_valid", 3);
+        put(a1, c.dec_ooe, "sched_attr", (sa & ~(3u << 9)) | 1u << kAttrPairFirstBit);
+        put(first_pd ? a2 : a1, c.dec_ooe, "pred_we", 0);
+        put(first_pd ? a2 : a1, c.dec_ooe, "pred_dst", 0);
+      }
       q_.push_back({a1, m.tid});
       q_.push_back({a2, m.tid});
       k_.hit("atomic_pair");
@@ -5992,18 +6065,29 @@ bool KernelEnd::after(uint64_t c, Kernel &k, Machine &m) {
 
 void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
                        int violations) {
-  const KernelReport r = compareFinal(k);
-  uint64_t overflows = 0, leaks = 0;
+  uint64_t overflows = 0, leaks = 0, cor_late = 0;
   for (unsigned s = 0; s != kNumSlots; ++s) {
     overflows += m.rx(s).overflows();
     leaks += m.rx(s).leaks();
+    // Credit on receipt (AR's rev 322 (b)): the wrapper credited each
+    // message the cycle it was presented, so the block must have taken it
+    // then. A landed message left a cycle, or never taken, is a check
+    // failure in both hosts, named by its channel.
+    if (const uint64_t n = m.rx(s).corLate()) {
+      cor_late += n;
+      const ChanInst &ci = m.chanInstOf(s);
+      k.fail("%s: credit on receipt, slot %u: a landed message left %llu message-cycle(s) "
+             "past the cycle it was presented, taken late or dropped",
+             kChans[ci.chan].name, s - ci.slot_base, (unsigned long long)n);
+    }
   }
+  const KernelReport r = compareFinal(k);
   const uint64_t from_fetch =
       k.fetched && e.finish >= k.first_fetch ? e.finish - k.first_fetch : 0;
   std::printf("KERNEL name=%s finished=%d cycles=%llu from_fetch=%llu retired=%llu "
               "issue_groups=%u order=%s gpr_mismatch=%u pred_mismatch=%u "
               "mem_mismatch=%u check_failures=%llu class_violations=%llu "
-              "overflows=%llu credit_leaks=%llu channels_used=%u/%u violations=%d\n",
+              "overflows=%llu credit_leaks=%llu cor_late=%llu channels_used=%u/%u violations=%d\n",
               k.name.c_str(), int(e.finished), (unsigned long long)e.finish,
               (unsigned long long)from_fetch, (unsigned long long)k.retired,
               [&] { unsigned n = 0; for (const Oracle &o : k.orcs) n += o.issue_groups; return n; }(),
@@ -6011,7 +6095,7 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
               r.mem_mismatch, (unsigned long long)k.failures,
               (unsigned long long)k.class_violations,
               (unsigned long long)overflows, (unsigned long long)leaks,
-              r.channels_used, kNumChans,
+              (unsigned long long)cor_late, r.channels_used, kNumChans,
               violations);
   std::printf("UNUSED %s\n", r.unused.c_str());
   // Each backpressured channel's longest wait from landing to take, over its

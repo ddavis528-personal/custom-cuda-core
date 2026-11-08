@@ -32,6 +32,17 @@
 // Mutants that must break a proof: FV_MUT_DOUBLE_POP (the S0 bug: two
 // consumed, one credit), a DEPTH one short (full_bandwidth), and the
 // repeater's own mutants from tools/check-phys.sh (data_in_order).
+//
+// FV_COR (with FV_BUILT): the destination end returns credit on receipt
+// (rtl/phys/ccv_common_rpt.sv CREDIT_ON_RECEIPT; AR's rev 322, RA-41). Its
+// boundary stage loads the credit from its own valid flop, and the receiver,
+// keeping its promise, takes every message the cycle it lands: the same
+// loop, so full rate at 4 + 2N and not one less. FV_COR_SERIES is what credit
+// on receipt removes: a receiver that registers its own credit from the
+// landing valid (rcu_kill's credit flop) behind the boundary flop, a second
+// register in series that the depth does not count -- full_bandwidth fails.
+// FV_COR_LATE: credit on receipt, but the receiver takes a message when it
+// likes (late, or never): credit_per_msg and no_overflow fail.
 //===----------------------------------------------------------------------===//
 `include "ccv_if.svh"
 `include "ccv_params_pkg.sv"
@@ -171,7 +182,16 @@ module fv_link #(
   logic [W-1:0]  d_payload;
   logic [CW-1:0] occ;
   wire [CW-1:0]  avail = occ + {{(CW-1){1'b0}}, landing};
+`ifdef FV_COR
+`ifdef FV_COR_LATE
+  wire           pop = pop_en && (avail != '0);   // the promise broken
+`else
+  // The promise: every message taken the cycle it lands, whatever pop_en.
+  wire           pop = landing;
+`endif
+`else
   wire           pop = pop_en && (avail != '0);
+`endif
 `ifdef FV_MUT_DOUBLE_POP
   wire           pop_two = pop && pop2 && (avail >= CW'(2));
 `else
@@ -179,12 +199,29 @@ module fv_link #(
 `endif
 `ifdef FV_BUILT
   logic          d_valid;
-  ccv_common_rpt #(.STAGES(0), .BOUNDARY(1), .SLOTS(1), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_bnd_dst (
+  // The credit the receiver drives into its end: none at a credit-on-receipt
+  // end; FV_COR_SERIES, its own flop of the landing valid (rcu_kill's).
+  logic          d_credit;
+`ifdef FV_COR_SERIES
+  always_ff @(posedge clk) begin
+    if (!blk_rst_n) d_credit <= 1'b0;
+    else            d_credit <= landing;
+  end
+`else
+  assign d_credit = pop;
+`endif
+`ifdef FV_COR
+  localparam bit COR = 1'b1;
+`else
+  localparam bit COR = 1'b0;
+`endif
+  ccv_common_rpt #(.STAGES(0), .BOUNDARY(1), .DST_END(1'b1), .CREDIT_ON_RECEIPT(COR), .SLOTS(1),
+                   .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_bnd_dst (
     .clk(clk), .rst_n(rst_n),
     .src_valid(r_valid), .src_payload(r_payload), .src_wake(r_wake),
     .src_credit(r_credit), .src_stall(r_stall),
     .dst_valid(d_valid), .dst_payload(d_payload), .dst_wake(),
-    .dst_credit(pop), .dst_stall(stall_in)
+    .dst_credit(COR ? 1'b0 : d_credit), .dst_stall(stall_in)
 `ifdef CCV_TRACE
     , .src_tid(r_tid), .dst_tid()
 `endif

@@ -266,6 +266,69 @@ def no_flop(block_types, ends, links_path=None, root=ROOT):
     return out
 
 
+def credit_on_receipt(block_types, ends, links_path=None, root=ROOT):
+    """The destination ends whose credit is returned on receipt (params/
+    links.json "credit_on_receipt"; AR's rev 322, RA-41): a set of (block
+    type, channel name without ccv_). At such an end the wrapper's boundary
+    stage loads its credit flop from its own valid flop (rtl/phys/
+    ccv_common_rpt.sv CREDIT_ON_RECEIPT), and the block has no credit port
+    on it (tools/gen-top.py).
+
+    An entry is {"end": "<channel>@<block type>", "why": ...}. Refused: an
+    end that is not the channel's destination; a zero-cycle end (no_flop),
+    which has no boundary flop to load the credit from; and any end whose
+    channel's schema entry does not carry the receiving block's promise,
+    "credit_on_receipt" in schema/interfaces.json -- it takes every message
+    the cycle it is presented from the boundary flop, kill, flush and reset
+    included, with no skid of its own (AR's rev 322 (a), (c)). A new end is
+    listed by its block's architect's row showing that promise holds, and
+    the schema text that states it."""
+    p = links_path or path()
+    with open(p) as f:
+        d = json.load(f)
+    with open(os.path.join(root, "schema", "interfaces.json")) as f:
+        promise = {c["name"][4:]: c.get("credit_on_receipt")
+                   for c in json.load(f)["channels"]}
+    _, sd = schema_ends(root)
+    nf = no_flop(block_types, ends, links_path, root)
+    errs, out = [], set()
+    for no, e in enumerate(d.get("credit_on_receipt", []), 1):
+        where = "credit_on_receipt[%d]" % no
+        if not isinstance(e, dict):
+            errs.append("%s: an entry is {\"end\": \"<channel>@<block>\", \"why\": ...}" % where)
+            continue
+        unknown = set(e) - {"end", "why"}
+        if unknown:
+            errs.append("%s: unknown key(s) %s" % (where, ", ".join(sorted(unknown))))
+        if not e.get("why"):
+            errs.append("%s: says no why" % where)
+        ch, _, b = str(e.get("end", "")).partition("@")
+        where = "%s (%s)" % (where, e.get("end"))
+        if ch not in sd or not b:
+            errs.append("%s: an end is '<channel>@<block type>', channel without ccv_" % where)
+            continue
+        if sd[ch][1] != b:
+            errs.append("%s: %s is not %s's destination (%s is): credit on receipt is a "
+                        "receiving end's" % (where, b, ch, sd[ch][1]))
+            continue
+        if (b, ch) in nf:
+            errs.append("%s: a zero-cycle end (no_flop): it has no boundary flop to load "
+                        "the credit from (AR's rev 322)" % where)
+            continue
+        if not (isinstance(promise.get(ch), str) and promise[ch].strip()):
+            errs.append("%s: not listed: ccv_%s carries no credit_on_receipt contract in "
+                        "schema/interfaces.json, the receiving block's promise to take every "
+                        "message the cycle it is presented (AR's rev 322 (a), (c))" % (where, ch))
+            continue
+        if (b, ch) in out:
+            errs.append("%s: listed twice" % where)
+        out.add((b, ch))
+    if errs:
+        raise SystemExit("%s: %d problem(s)\n  %s"
+                         % (os.path.relpath(p, ROOT), len(errs), "\n  ".join(errs)))
+    return out
+
+
 def schema_ends(root=ROOT):
     """Block type -> the channels (without ccv_) it has an end of, and
     channel -> (src type, dst type), from schema/interfaces.json."""

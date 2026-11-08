@@ -509,6 +509,13 @@ inline constexpr OpInfo kOps[] = {
   {"ATOM_EXCH_S",  kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"ATOM_ADD_F_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
   {"ATOM_ADD_F_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  // CAS (Format M', 48 bits; O-72, O-73): rd the old word, pd the success
+  // predicate, under the pred qualifier; sources rbase, rindex, rs_cmp,
+  // rs_swap (srcRegs reads them from the encoding); imms [scale-enable,
+  // displacement]. A pair like the RMW forms (TI-39), the second slot
+  // carrying rs_cmp, rs_swap, rd and pd (OI-127, OA rev 380).
+  {"CAS_G",        kAtomic,    4, true,  true,  true,  true,  false,  0,  1, -1,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
+  {"CAS_S",        kAtomic,    4, true,  true,  true,  true,  false,  0,  1, -1,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"ST_SHARED",     kStore,     2, false, false, false, false, false,  1, -1,  0,  0, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"LD_SHARED_IDX", kLoad,      2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   {"ST_SHARED_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
@@ -533,6 +540,8 @@ inline constexpr OpInfo kOps[] = {
   {"RCP_U32",       kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
   {"RSQRT_F32",     kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
   {"RCP_F32_P",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
+  // pxor (ISA v1.9 Format K, opcode 62; RA-16 (f)): PAND's row, RCU-only on R, appended so no opcode moves.
+  {"PXOR",          kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
@@ -582,7 +591,17 @@ constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
 inline constexpr OpInfo kAtomA1 = {"ATOM.A1", kLoad,  2, true,  false, false, false, false,  0,  1, -1, -1, -1, -1, -1};
 inline constexpr OpInfo kAtomA2 = {"ATOM.A2", kAlu,   2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1};
 inline constexpr OpInfo kAtomA3 = {"ATOM.A3", kStore, 1, false, false, false, false, false, -1, -1,  0, -1, -1, -1, -1};
-inline const OpInfo *atomStep(unsigned row) {
+/// A CAS (OI-127, OA rev 380): its steps are guarded by its qualifier, and
+/// A2 reads T, rs_cmp and rs_swap, and writes N and pd, merging pd's
+/// inactive lanes from its old name (A-43).
+inline constexpr OpInfo kCasA1 = {"CAS.A1", kLoad,  2, true,  true,  false, true,  false,  0,  1, -1, -1, -1, -1, -1};
+inline constexpr OpInfo kCasA2 = {"CAS.A2", kAlu,   3, true,  true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1};
+inline constexpr OpInfo kCasA3 = {"CAS.A3", kStore, 1, false, true,  false, true,  false, -1, -1,  0, -1, -1, -1, -1};
+/// A Format M compare-and-swap (CAS_G, CAS_S).
+inline bool isCas(const OpInfo *op) { return op && !std::strncmp(op->name, "CAS_", 4); }
+/// The step's shape; `op`, the atomic's own row, picks a CAS's.
+inline const OpInfo *atomStep(unsigned row, const OpInfo *op = nullptr) {
+  if (isCas(op)) return row == 0 ? &kCasA1 : row == 2 ? &kCasA2 : row == 3 ? &kCasA3 : nullptr;
   return row == 0 ? &kAtomA1 : row == 2 ? &kAtomA2 : row == 3 ? &kAtomA3 : nullptr;
 }
 static_assert(kOpCopy > kNumOps, "the copy-only op's code collides with the table");
@@ -627,6 +646,12 @@ inline std::vector<unsigned> srcRegs(const OpInfo *op, const Record &r, unsigned
     // named (an atomic on .shared with rbase = rindex = R0).
     uint32_t w = 0;
     for (unsigned b = 0; b != 4 && b < r.bytes.size(); ++b) w |= uint32_t(r.bytes[b]) << (8 * b);
+    // CAS (Format M', 48 bits): rs_cmp [22:19], rs_swap [26:23], rindex
+    // [35:32]: {rbase, rindex, rs_cmp, rs_swap}.
+    if (isCas(op)) {
+      ok = r.bytes.size() >= 6;
+      return {(w >> 15) & 15u, ok ? r.bytes[4] & 15u : 0u, (w >> 19) & 15u, (w >> 23) & 15u};
+    }
     ok = r.bytes.size() >= 4;
     return {(w >> 15) & 15u, (w >> 23) & 15u, (w >> 19) & 15u};
   }
@@ -930,6 +955,19 @@ enum : unsigned { kPoolDone = ~0u, kRcuOnlyDone = ~0u - 1 };
 /// The class that completes on CCV_DONE_SLOT_RCU: what RCU executes alone at
 /// CCV_LAT_RCU (a cross-lane op is RCU's too, but warp-collective).
 inline bool rcuOnlyDone(const OpInfo *op) { return inRcu(op->cls) || isBarrier(op); }
+/// R's GPR write (RA-16 (a), RA-29 (a); AR's rev 265): one write port, RW,
+/// for every class R executes, because each writes at A+2: the RCU-only
+/// class (movi, call's link) at CCV_LAT_RCU - 1, and the collectives early,
+/// at the same cycle, though their dependants wake at CCV_LAT_COLLECTIVE
+/// (V-35 allows it). params' pipe list counts RW once for both
+/// (CCV_PRF_GPR_WRITE_PORTS), which holds only while this does. `coll_late`
+/// is the control: collectives write at A + CCV_LAT_COLLECTIVE - 1 instead,
+/// which the RCU stub must refuse.
+constexpr unsigned kRWriteAt = ccv::prov::kLatRcu - 1;
+static_assert(kRWriteAt == 2, "R writes at A+2 (RA-29 (a))");
+inline unsigned rWriteAt(const OpInfo *op, bool coll_late) {
+  return op->cross && coll_late ? ccv::prov::kLatCollective - 1 : kRWriteAt;
+}
 
 /// OOE's implementation behind the swap boundary: the S1 stub (ooe.cpp).
 std::unique_ptr<Block> makeOoe(int inst, Kernel &k);

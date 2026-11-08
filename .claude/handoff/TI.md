@@ -33,12 +33,23 @@ few lines.
 ## Register bookmarks (revs read through)
 Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
 (outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 316, OA 380, IS 190, TI 367, OI 321, CP 156, DA 115,
+Conventions 17, AR 321, OA 380, IS 190, TI 377, OI 324, CP 156, DA 115,
 RA 96, RI 34 (2026-11-07 evening). Latest TI open: TI-51 (rev 346).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-11-06 sent to AR OA IS OI CP RA RI; all seven ponged ok.
 
 ## State
+- 2026-11-08 ~00:00Z: PUSHED 88c31e7 (full PASS; cg 5374s, ngd 5346s; first
+  run died of a full disk: clear idle worktrees' build/ before a full gate,
+  it needs ~17 GB). Bundle: hidden-stage rule (AR 310), --port-dump +
+  check-port-dump.py (RA-34), heavy-units ooe_sched note (#70), DCU 8x64
+  default (AR 320), rcu_rtl gate section (RI 39). TI rev 377 rows + notices
+  to RA RI AR. J10 complete (MULTI off: +26% cm128 8w; pl128 model +0.03%);
+  ti-miu4-local 0194297 (counters + MULTI) stays unpushed; counters may ride
+  later without MULTI. NEXT: CAS in the skeleton (OI-129: f727aed has A2 pd;
+  DEC pd on second uop), then tell RI (RI rev 40); booked deltas (Z, C9,
+  boundary flops, PHYS 160) at 8 ways vs AR's 0.2%. RA-31 (#59) still waits
+  on OI's ooe_wake cls/kind at arrival 2.
 - 2026-11-07 ~19:00Z: PUSHED de03fd6 (full PASS; ngd 4909s, cg 4864s): O-85
   (coll), IS-21 (atom, atomf; controls atom-one-slot/-one-pass/-lane-old/
   -no-more/-descending; schema discard text; MIU replay assertion), #88
