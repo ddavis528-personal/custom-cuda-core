@@ -851,7 +851,8 @@ module ooe_go #(
                                ~pe_cq02h[c * (PM + 1)] & prio_en_cq01h);
   end
   // A floor-held bit changing at this edge changes the split next cycle
-  // (every warp's: the shares' sum moves the held allowances too).
+  // (every warp's with a head: the shares' sum moves the held allowances
+  // too; a slot without one has no fits to change).
   logic [S-1:0] chg_nx_cq02h;
   logic         fhc_cq02h;
   always_comb begin
@@ -862,8 +863,7 @@ module ooe_go #(
   always_comb
     for (int s = 0; s < S; s++)
       chg_nx_cq02h[s] = hd_ev_cq02h[s] | (hv_cq01h[s * H] & (any_ev_cq02h | rob_en_cq01h[s] | pool_en_cq01h |
-                                                 (rbusy_l_cq00h ^ rbusy_cq01h) | he_chg_cq02h | rem_cq02h)) |
-                        fhc_cq02h;
+                                                 (rbusy_l_cq00h ^ rbusy_cq01h) | he_chg_cq02h | rem_cq02h | fhc_cq02h));
   // The leads and the change bits, written every cycle (the module's
   // allowance and its waiver): the restore, each slot's block, squash and
   // change.
