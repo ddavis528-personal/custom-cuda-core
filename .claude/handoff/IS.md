@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-06. Keep this current at every task's end; it is what
+Updated 2026-11-07. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -48,10 +48,10 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 308, OA 366, IS 190, TI 349, OI 306, CP 155, DA 112, RA 89, RI 21.
+Conventions 17, AR 316, OA 379, IS 190, TI 362, OI 319, CP 155, DA 115, RA 96, RI 31.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
-Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged 11-06 (Saturday's check is a formality). Next pings Friday 2026-11-13.
+Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Next pings Friday 2026-11-13.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
 
@@ -61,6 +61,13 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
+- O-85 follow-ups done: TI de03fd6 (TI-371) builds every collective incl.
+  shfl.idx and _R forms (kernel coll; opcodes by name from ccv-sim). IS-21/O-72
+  RMW atomics built (kernels atom, atomf); CAS waits on OOE's A2 writing pd (OI).
+  ISA defines no cross-warp order on one word; raise only if it must be defined.
+- 2026-11-07 sweep: nothing for IS. DA 113-115 (Daniel): zero-cycle receiving
+  ends only for IPC; bring 0.2-0.5% impacts to him, over 0.5% the architect
+  approves if NGD module rules hold. C9 approved. RH has no register tab.
 - TI-51 done: merged 2d445f5 (full gate PASS 43cb80ea), re-ran
   setup-session-home.py with Daniel's approval; 350k installed, --check exit 0.
 - 2026-11-06 sweep: nothing for IS. DA 109/110 (lead CG-5 waivers and credit
