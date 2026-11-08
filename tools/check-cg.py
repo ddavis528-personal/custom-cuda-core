@@ -1181,10 +1181,10 @@ class Unit:
         s = self.spec
         defs = " ".join("-D%s" % d for d in s.get("defines", []))
         files = ["rtl/ccv_assert_pkg.sv"] + s["files"]
-        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated -Irtl/top/ports %s"
                 % (defs, " ".join(files))]
         for bb in sorted(s.get("blackbox", {})):
-            cmds.append("read_verilog -sv -lib -Irtl/include -Irtl/generated %s"
+            cmds.append("read_verilog -sv -lib -Irtl/include -Irtl/generated -Irtl/top/ports %s"
                         % s["blackbox"][bb])
         if s.get("params"):
             cmds.append("chparam %s %s" % (" ".join(
@@ -1340,7 +1340,8 @@ endmodule
         shutil.rmtree(hd, ignore_errors=True)
         r = run(["verilator"] + self.replay_make() + [
                  "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
-                 "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb"]
+                 "-Wno-style", "-Irtl/include", "-Irtl/generated",
+                 "-Irtl/top/ports", "--top-module", "cg_tb"]
                 # A blackboxed child may instantiate a shared cell (OI-77: ooe_freelist's
                 # ccv_common_csa). A library directory resolves only modules still
                 # missing, so the netlist's flattened copy never clashes.
@@ -1717,16 +1718,17 @@ def read_cmds(files, blackbox=(), params=None, top=None, defines=(), lib=(), def
     ds = " ".join("-D%s" % d for d in defines)
     full = [f for f in files if f not in lib]
     if defer:
-        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv"
-                % ds]
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated -Irtl/top/ports "
+                "rtl/ccv_assert_pkg.sv" % ds]
         if full:
-            cmds.append("read_verilog -sv -formal -defer %s -Irtl/include -Irtl/generated %s"
-                        % (ds, " ".join(full)))
+            cmds.append("read_verilog -sv -formal -defer %s -Irtl/include -Irtl/generated "
+                        "-Irtl/top/ports %s" % (ds, " ".join(full)))
     else:
-        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated -Irtl/top/ports %s"
                 % (ds, " ".join(["rtl/ccv_assert_pkg.sv"] + full))]
     for f in [f for f in files if f in lib] + list(blackbox):
-        cmds.append("read_verilog -sv -lib %s -Irtl/include -Irtl/generated %s" % (ds, f))
+        cmds.append("read_verilog -sv -lib %s -Irtl/include -Irtl/generated -Irtl/top/ports %s"
+                    % (ds, f))
     if params:
         cmds.append("chparam %s %s" % (" ".join(
             "-set %s %s" % (k, v) for k, v in sorted(params.items())), top))

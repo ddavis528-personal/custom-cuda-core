@@ -558,11 +558,11 @@ def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inn
     work = os.path.join(BUILD, name)
     os.makedirs(work, exist_ok=True)
     jf = os.path.join(work, "net.json")
-    cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
+    cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated -Irtl/top/ports %s"
             % (" ".join("-D%s" % x for x in defines),
                " ".join(["rtl/ccv_assert_pkg.sv"] + list(files)))]
     for bb in blackbox:
-        cmds.append("read_verilog -sv -lib -Irtl/include -Irtl/generated %s" % bb)
+        cmds.append("read_verilog -sv -lib -Irtl/include -Irtl/generated -Irtl/top/ports %s" % bb)
     if params:
         cmds.append("chparam %s %s" % (" ".join(
             "-set %s %s" % (k, v) for k, v in sorted(params.items())), top))
