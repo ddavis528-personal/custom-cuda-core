@@ -241,7 +241,7 @@ private:
   }
 
   // ---- decode ---------------------------------------------------------------------
-  R::Issue decode(const Receiver::Msg &m) {
+  R::Issue decode(const Receiver::Msg &m, unsigned slot) {
     const Ch &c = ch();
     const Bits &p = m.payload;
     R::Issue is;
@@ -251,8 +251,15 @@ private:
     is.done_row = unsigned(get(p, c.ooe_rcu, "done_row"));
     is.warp = unsigned(get(p, c.ooe_rcu, "warp_id"));
     is.issue_mask = uint32_t(get(p, c.ooe_rcu, "issue_mask"));
-    const unsigned ps = unsigned(get(p, c.ooe_rcu, "phys_src"));
-    is.src = {(ps >> 8) & 0xffu, ps & 0xffu, unsigned(get(p, c.ooe_rcu, "phys_src2"))};
+    // RA-43: R's sources ride the lead (moved); a copy that differs from its
+    // payload is OOE's broken promise, refused by name.
+    if (const IssueLeadCopy *x = issueLeadCopyBroken(p, c.ooe_rcu, slot))
+      k_.fail("rcu: issue %#llx on slot %u: %s %#llx differs from its payload's %s %#llx (a lead copy, RA-43)",
+              (unsigned long long)m.tid, slot, x->lead, (unsigned long long)get(p, c.ooe_rcu, x->lead),
+              x->field, (unsigned long long)get(p, c.ooe_rcu, x->field));
+    unsigned src[3];
+    issueSrcRows(p, c.ooe_rcu, slot, src);
+    is.src = {src[0], src[1], src[2]};
     for (unsigned i = 0; i != 3; ++i) {
       is.src_pos[i] = getSec(p, c.ooe_rcu, "src_pos", i, ccv::kWPhysPos);
       is.src_w[i] = getSec(p, c.ooe_rcu, "src_width", i, ccv::kWChwidth);
@@ -262,14 +269,14 @@ private:
     is.dst_w = unsigned(get(p, c.ooe_rcu, "dst_width"));
     is.old_dst = unsigned(get(p, c.ooe_rcu, "phys_old_dst"));
     is.old_pos = unsigned(get(p, c.ooe_rcu, "old_dst_pos"));
-    is.pguard = unsigned(get(p, c.ooe_rcu, "phys_pred_guard"));
+    is.pguard = issueGuardPred(p, c.ooe_rcu);
     is.pneg = get(p, c.ooe_rcu, "pred_neg") != 0;
     is.pdst = unsigned(get(p, c.ooe_rcu, "phys_pred_dst"));
     is.pold = unsigned(get(p, c.ooe_rcu, "phys_pred_old_dst"));
     is.pwe = get(p, c.ooe_rcu, "pred_we") != 0;
     is.merge = get(p, c.ooe_rcu, "merge_en") != 0;
     is.foot = unsigned(get(p, c.ooe_rcu, "footprint"));
-    is.imm = uint32_t(get(p, c.ooe_rcu, "imm"));
+    is.imm = issueImm(p, c.ooe_rcu, slot);
     is.opcode = unsigned(get(p, c.ooe_rcu, "opcode"));
     is.lead.sec = unsigned(get(p, c.ooe_rcu, "lead_sec_mask"));
     is.lead.src = unsigned(get(p, c.ooe_rcu, "lead_src_used"));
@@ -336,7 +343,7 @@ private:
     const Ch &c = ch();
     R::In in;
     for (unsigned s = 0; s != R::kRes; ++s)
-      if (has(c.ooe_rcu, s)) in.iss[s] = decode(take(c.ooe_rcu, s));
+      if (has(c.ooe_rcu, s)) in.iss[s] = decode(take(c.ooe_rcu, s), s);
     // Lane results: all 32 lanes, or it is not lockstep.
     unsigned n = 0;
     for (unsigned l = 0; l != R::kLanes; ++l) n += has(c.lane_rcu, 0, l);

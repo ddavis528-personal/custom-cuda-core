@@ -342,7 +342,8 @@ private:
     put(is, c.ooe_rcu, "rob_tag", e.tag);
     put(is, c.ooe_rcu, "warp_id", e.warp);
     put(is, c.ooe_rcu, "issue_mask", issue_mask);
-    put(is, c.ooe_rcu, "phys_src", (e.psrc[0] << 8) | e.psrc[1]);
+    // On R, finishIssueLeads moves them to the lead (RA 109 (b)).
+    put(is, c.ooe_rcu, "phys_src", (e.psrc[0] << ccv::prov::kWPhysReg) | e.psrc[1]);
     put(is, c.ooe_rcu, "phys_src2", e.psrc[2]);
     // srd's value is identity, which OOE holds, so it goes in the immediate
     // here and RCU substitutes it like any other: warp_base for %ctatid
@@ -360,7 +361,6 @@ private:
     }
     if (!mem) put(is, c.ooe_rcu, "imm", imm);
     put(is, c.ooe_rcu, "phys_dst", e.op->gdst ? e.pnew : 0);
-    put(is, c.ooe_rcu, "phys_pred_guard", e.ppguard);
     put(is, c.ooe_rcu, "phys_pred_dst", physPred(e.warp, e.pdst));
     put(is, c.ooe_rcu, "pred_we", e.pwe);
     put(is, c.ooe_rcu, "merge_en", merge);
@@ -377,16 +377,22 @@ private:
     put(is, c.ooe_rcu, "opcode", opcodeOf(e.op));
     put(is, c.ooe_rcu, "bypass_group", attrBypGroup(e.attr));
     put(is, c.ooe_rcu, "footprint", slot == kSlotR ? 0u : maskOf(kChw32, 0));
+    // The guard's predicate moved to the lead on every slot (RA 109 (a)):
+    // a guard or a predicate read as data (sel's, st.pred's) names it.
     putIssueLead(is, c.ooe_rcu, slot, slot == kSlotR ? 0u : maskOf(kChw32, 0), srcValidOf(e.op),
-                 !mem, merge, e.op->guard, e.ppguard, k_.brk);
+                 !mem, merge, e.op->guard || e.op->pdata, e.ppguard, k_.brk);
     // A lead and its continuation: the rest of its full-width group.
     auto sendGroup = [&](unsigned lead, const Bits &m) {
-      send(c.ooe_rcu, lead, m, e.tid);
+      // R's source rows to the lead, then the copies (RA-43), last.
+      Bits ld = m;
+      finishIssueLeads(ld, c.ooe_rcu, lead, k_.brk);
+      send(c.ooe_rcu, lead, ld, e.tid);
       if (lead == kSlotR) return;
       for (unsigned k = 1; k != kSecs; ++k) {
         Bits ct = msgOf(c.ooe_rcu);
         put(ct, c.ooe_rcu, "rob_tag", e.tag);
         put(ct, c.ooe_rcu, "cont", 1);
+        finishIssueLeads(ct, c.ooe_rcu, lead + k, k_.brk);
         send(c.ooe_rcu, lead + k, ct, e.tid);
       }
     };
@@ -398,7 +404,7 @@ private:
       Bits cp = is;
       put(cp, c.ooe_rcu, "opcode", kOpCopy);
       if (!e.op->guard) {
-        put(cp, c.ooe_rcu, "phys_pred_guard", ccv::prov::kPredZero);
+        put(cp, c.ooe_rcu, "lead_guard_pred", ccv::prov::kPredZero);
         put(cp, c.ooe_rcu, "pred_neg", 1);
       }
       // skip-copy: OOE issues the load alone, so the inactive lanes keep

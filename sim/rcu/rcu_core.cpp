@@ -313,8 +313,8 @@ void Core::checkIssues(const In &in, std::array<int, kRes> &owner) {
                       : (oc.reads & ~is.lead.src) ? "a source its lead says is unused"
                       : oc.imm_used && !is.lead.imm ? "an immediate its lead says is unused"
                       : is.merge && !is.lead.merge ? "a merge its lead says is unused"
-                      : s == kSlotR && oc.guarded && (!is.lead.guard || is.lead.gpred != is.pguard)
-                          ? "a guard its lead does not name"
+                      : (oc.guarded || oc.pdata) && !is.lead.guard && !(is.pguard == kPZero && is.pneg)
+                          ? "a predicate its lead says is unused"
                       : nullptr;
     if (why)
       fail("seq %llu, %s, reads %s (lead sections %s, sources %s)", seq(s), is.name, why,
