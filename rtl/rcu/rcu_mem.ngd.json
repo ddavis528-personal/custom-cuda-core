@@ -8,45 +8,45 @@
       "why": "rcu_pred's A flops (active_a, pst_a), read in A+1 straight from flops, wire only; fanout is check-ngd's."
     },
     "cont_cr02h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
-      "date": "2026-11-07",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
       "why": "The issue channel's P slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Decoded inside by rcu_dec_pkg, the model's op-class decode (RI-21 (4)), which RA rev 81 times inside the module once it takes the opcode."
     },
     "drw_cr02h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
-      "date": "2026-11-07",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
       "why": "The issue channel's P slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Decoded inside by rcu_dec_pkg, the model's op-class decode (RI-21 (4)), which RA rev 81 times inside the module once it takes the opcode."
     },
     "foot_cr02h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
-      "date": "2026-11-07",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
       "why": "The issue channel's P slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "iv_cr01h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
-      "date": "2026-11-07",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
       "why": "The issue channel's lead and wake from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "iw_cr01h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-07",
       "why": "The issue channel's lead and wake from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "lsrc_cr01h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-07",
       "why": "The issue channel's lead and wake from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "opc_cr02h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
-      "date": "2026-11-07",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
       "why": "The issue channel's P slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Decoded inside by rcu_dec_pkg, the model's op-class decode (RI-21 (4)), which RA rev 81 times inside the module once it takes the opcode."
     },
     "pst_cr03h": {
@@ -62,20 +62,20 @@
       "why": "The bank slices' M0-M2 read data: the slice's read mux leaves 11 NGD, and rcu_mem's assembly (2 NGD in the spec) has 10 to its flops."
     },
     "spos_cr02h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-07",
       "why": "The issue channel's P slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "swid_cr02h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-07",
       "why": "The issue channel's P slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
     "tag_cr02h": {
-      "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-07",
       "why": "The issue channel's P slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     }

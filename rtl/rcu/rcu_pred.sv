@@ -312,7 +312,7 @@ module rcu_pred #(
   logic [NS*N-1:0]  graw_cr02h, gv_d_cr02h, act_d_cr02h;
   always_comb begin
     for (int s = 0; s < NS; s++) begin
-      logic [N-1:0] r_cr02h, g_cr02h;
+      logic [N-1:0] r_cr02h, g_cr02h, a1_cr02h, a0_cr02h;
       logic         force_cr02h;
       if (s == SR) begin
         g_hi_cr02h[s*NH +: NH] = rg_hi_cr02h;
@@ -328,7 +328,12 @@ module rcu_pred #(
       g_cr02h = ng_cr02h[s] ? ~r_cr02h : r_cr02h;
       gv_d_cr02h[s*N +: N] = g_cr02h;
       force_cr02h = !gt_cr02h[s] || pdt_cr02h[s];
-      act_d_cr02h[s*N +: N] = im_cr02h[s*N +: N] & (g_cr02h | {N{force_cr02h}});
+      // active, pre-decoded off the late read (RA rev 100/106 remedy): both
+      // outcomes from the early im, negate and force, then the read selects,
+      // so the guard's path ends in one mux, not the negate, force and mask.
+      a1_cr02h = im_cr02h[s*N +: N] & {N{!ng_cr02h[s] || force_cr02h}};
+      a0_cr02h = im_cr02h[s*N +: N] & {N{ ng_cr02h[s] || force_cr02h}};
+      act_d_cr02h[s*N +: N] = (r_cr02h & a1_cr02h) | (~r_cr02h & a0_cr02h);
     end
   end
 
