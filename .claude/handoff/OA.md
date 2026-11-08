@@ -40,9 +40,9 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 390, AR 325, TI 380, OI 328, IS 190, CP 155, DA 115,
-RA 111 (tab 9851686b-2b0a), RI 45 (tab 8e4547bc-c469).
-OOE doc rev 370. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
+Conventions 17, OA 391, AR 325, TI 380, OI 328, IS 190, CP 155, DA 115,
+RA 113 (tab 9851686b-2b0a), RI 45 (tab 8e4547bc-c469).
+OOE doc rev 371. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release 702d9bff; tag refused (known).
 
 ## Open work (most urgent first)
@@ -59,6 +59,8 @@ Sweep 11-07: 6 branches (162 commits), full gate green, pushed 1bbbd506; release
    RA 111/RI 45: 14 RCU in-paths still >12 (worst lanes dst 20.7); RA asks dst/write fields, cont,
    pred_neg, R imm[31:14] as copies. OA 390: clean, 225 flops (+120 for odst/opos/spos/src on S0-S3),
    0 out, RTL unit LW 63/111: gnt 10.2, f-f 26.8/26.2. Now rests on RI re-run; else RA->AR->DA.
+   RA 113: APPROVED zero-cycle issue end under DA 115 (RI worst in-path 10.9). OA 391: copies 353
+   (src_pos 6) + opcode 81. Watch: TI schema row, OI build + unit LW + check-ngd, RH g1'' reprice.
 -23. OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
    consumer co-granted with its producer (always stale). First check ooe_sched RTL (rep_cq02h uses
    pre-grant iss_cq02h, may already catch it) -> if so model-only fix; else add gnt to mask within caps.
