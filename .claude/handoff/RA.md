@@ -190,7 +190,8 @@ assembly: reduce Partition's ~110 MIU lead-capture flops in rcu_mem (RI note 6: 
 Partition rev 53.
 RA-30 CLOSED (RA rev 99): O-85 collectives landed de03fd6 (TI 371).
 RI-20 rev 39 ANSWERED (RA rev 100): footprint ownership and rcu_pred in-flop 23.9 accepted (64fce0d); gd_cr02h >24.5 comes back to RA (first remedy: pre-decode act_d); atomics term fits arrival 5; rcu_mem has no MIU-lead flops, so drop the Partition ~110 estimate and recount lead slices at assembly.
-Bookmarks: OA 379, RA 100, RI 39, TI 373, DA 115, AR 316, OI 319, Conventions 17, CP 155, IS 190.
+RA-34 CLOSED (RA rev 101): TI's ccv-skel --port-dump rcu=FILE (88c31e7) is the cg-bench stimulus; model traces, TI rev 286 scenarios.
+Bookmarks: OA 379, RA 101, RI 39, TI 377, DA 115, AR 316, OI 319, Conventions 17, CP 155, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
