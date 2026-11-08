@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 397, AR 332, TI 387, OI 333, IS 190, CP 157, DA 115,
+Conventions 17, OA 398, AR 332, TI 390, OI 333, IS 190, CP 157, DA 115,
 RA 119 (tab 9851686b-2b0a), RI 50 (tab 8e4547bc-c469).
 OOE doc rev 373. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release b15c89e8; tag refused (known).
@@ -72,6 +72,7 @@ Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release
    copies w/ por; elision needs phys-pred refcount, only full-mask/unguarded/unneg). RA 119 confirmed;
    TI built 8dbc152. Reopen only if compiler emits pmov. RA-16 has nothing of OA's.
    OA 397: OI-135 pp_cq01h (rename R1 d_pp_cq03h -> ooe_rendep) arrival 2.0 granted, as OI-66; conditions: keep-copy for port vs m_pp_cq04h, fanout counted in rendep; watch OI push for rendep worst path and caps removed.
+   OA 398 re:TI J11b (rev 390, model, clean): g2''' S1 -0.26% cm128 +1.27% (RA's, DA 115); p192' (OOE cmpl/hint flopped) S1 +2.44% cm128 +5.10% loop +71% -> C9 worth more at 8-way. Asked TI/RH for C9 A6 point at 8-way vs w10''': <0.2 close, 0.2-0.5 DA, >0.5 DA.
 -23. CLOSED (OA 395): OI-133 fix 5559b4f/b90adff/11386e7 accepted, rope cleared (TI 387). Was OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
    consumer co-granted with its producer (always stale). First check ooe_sched RTL (rep_cq02h uses
    pre-grant iss_cq02h, may already catch it) -> if so model-only fix; else add gnt to mask within caps.
