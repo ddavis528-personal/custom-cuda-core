@@ -179,6 +179,14 @@
       "doc": "PRF read bandwidth for memop operands, a budget line kept as a check: base, index and store data, three full rows for one 32-bit memop or three slices each for four 8-bit ones, the same at every width. The requirement fails if the pipes and sections stop matching. Memop reads never use a lane port, or memory serialises with ALU work."
     },
     {
+      "name": "CCV_PRF_RCU_READ_BITS",
+      "value": 3072,
+      "status": "arch",
+      "source": "RA-16 (d); AR's revs 263 and 265, TI's rev 284",
+      "derive": "3 * CCV_WARP_LANES * CCV_W_LANE_DATA",
+      "doc": "PRF read bandwidth into R, RCU's own unit, a budget line (RA-16 (d)): three full rows of CCV_WARP_LANES x CCV_W_LANE_DATA bits a cycle for R's operand reads, beside the lanes' ports and the memops' (CCV_L_PRF_LANE_READ_BITS, CCV_PRF_MEMOP_READ_BITS)."
+    },
+    {
       "name": "CCV_ROB_INSTANCES",
       "value": 4,
       "status": "arch",
