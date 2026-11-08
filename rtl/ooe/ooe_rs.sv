@@ -279,7 +279,8 @@ module ooe_rs #(
   always_comb begin
     gone_cq02h = ~iss_cq02h | msd_cq01h;
     for (int i = 0; i < N; i++) begin
-      rep_cq02h[i]  = iss_cq02h[i] && |(dep_cq02h[i * N +: N] & (gone_cq02h | (ng_cq02h & {N{ng_cq02h[i]}})));
+      rep_cq02h[i]  = iss_cq02h[i] && (|(dep_cq02h[i * N +: N] & gone_cq02h) ||
+                                       (ng_cq02h[i] && |(dep_cq02h[i * N +: N] & ng_cq02h)));
       conf_cq02h[i] = iss_cq02h[i] && emp_cq02h[i] && (cfin_cq01h[i] || !prod_cq02h[i]);
     end
   end
