@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=25 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 25 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=26 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 26 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # R unit and crossbar
 
@@ -60,6 +60,7 @@ In A+2 the RW port writes `steer(merge(new, old, mask), pos)` into the sections 
 | `ret` | `active`; `rlow_a` | `aux` = OR over l of (`rlow_a`\[l\] & v(R0)\[l\]); `same`\[l\] = `active`\[l\] & (v(R0)\[l\] == aux) | none | slot 5: valid A+1, lead fields 0 (don't-care); payload branch\_taken = OR(active) (taken whenever any lane is active, since the lowest active lane matches itself), branch\_mask = `same`, aux |
 | `pand`, `por`, `pxor` | RA, RB into `rpsrc_a` | p = RA op RB | predicate pd, merge mask = issue\_mask | slot 5, payload A+2, branch fields 0 |
 | `pmov pd, #mask` | none | p = `imm` | predicate pd, merge mask = issue\_mask (RA-19 settled: the ISA's invariant 10; ccv-sim merges since CP-75; the stub still writes all 32 lanes until TI aligns it) | slot 5 |
+| `pmov pd, ps` (register form; ISA Format K opcode 63, skeleton op 146) | ps0 into rpsrc\_a from lead\_rpsrc; OOE sends ps1 = ps0 and neg1 = neg0 (OOE's model refuses otherwise, TI 388) | predicate-logic class, function por: p = (ps0^neg0) \| (ps1^neg1) = ps0^neg0 | predicate pd, merge mask = issue\_mask (Format K is unguarded) (RA rev 119, OA-396; RA-16 closed, RA rev 121) | slot 5, payload A+2, branch fields 0 |
 | `movi`, `movi48` | `active` = issue\_mask | new = `imm` & em, every lane | GPR rd | slot 5 |
 | `shfl.idx` (immediate index) | `active` = issue\_mask & guard | new\[l\] = v(R0)\[`imm`\[4:0\]\] & em | GPR rd | slot 6: valid A+1, payload A+2 |
 | `shfl.idx` (register index) | as above | idx\[l\] = v(R1)\[l\]\[4:0\]; new\[l\] = xbar(v(R0), idx)\[l\] & em | GPR rd | slot 6 |
