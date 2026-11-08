@@ -101,6 +101,7 @@ module ccv_rcu (
   logic [NS-1:0] i_lmrg;
   logic [NS-1:0] i_lgu;
   logic [NS*WP-1:0] i_lgp;
+  logic [NS-1:0] i_lcont;
   logic [NS*3*WR-1:0] i_src;   // source i's row at (s*3 + i)*WR: phys_src[15:8], [7:0], phys_src2
   assign i_iv[0] = ooe_rcu_issue_s0_valid;
   assign i_cont[0] = ooe_rcu_issue_s0_payload.cont;
@@ -128,6 +129,7 @@ module ccv_rcu (
   assign i_lmrg[0] = ooe_rcu_issue_s0_payload.lead_merge_used;
   assign i_lgu[0] = ooe_rcu_issue_s0_payload.lead_guard_used;
   assign i_lgp[0*WP +: WP] = ooe_rcu_issue_s0_payload.lead_guard_pred;
+  assign i_lcont[0] = ooe_rcu_issue_s0_payload.lead_cont;
   assign i_src[(0*3 + 0)*WR +: WR] = ooe_rcu_issue_s0_payload.phys_src[2*WR-1:WR];
   assign i_src[(0*3 + 1)*WR +: WR] = ooe_rcu_issue_s0_payload.phys_src[WR-1:0];
   assign i_src[(0*3 + 2)*WR +: WR] = ooe_rcu_issue_s0_payload.phys_src2;
@@ -157,6 +159,7 @@ module ccv_rcu (
   assign i_lmrg[1] = ooe_rcu_issue_s1_payload.lead_merge_used;
   assign i_lgu[1] = ooe_rcu_issue_s1_payload.lead_guard_used;
   assign i_lgp[1*WP +: WP] = ooe_rcu_issue_s1_payload.lead_guard_pred;
+  assign i_lcont[1] = ooe_rcu_issue_s1_payload.lead_cont;
   assign i_src[(1*3 + 0)*WR +: WR] = ooe_rcu_issue_s1_payload.phys_src[2*WR-1:WR];
   assign i_src[(1*3 + 1)*WR +: WR] = ooe_rcu_issue_s1_payload.phys_src[WR-1:0];
   assign i_src[(1*3 + 2)*WR +: WR] = ooe_rcu_issue_s1_payload.phys_src2;
@@ -186,6 +189,7 @@ module ccv_rcu (
   assign i_lmrg[2] = ooe_rcu_issue_s2_payload.lead_merge_used;
   assign i_lgu[2] = ooe_rcu_issue_s2_payload.lead_guard_used;
   assign i_lgp[2*WP +: WP] = ooe_rcu_issue_s2_payload.lead_guard_pred;
+  assign i_lcont[2] = ooe_rcu_issue_s2_payload.lead_cont;
   assign i_src[(2*3 + 0)*WR +: WR] = ooe_rcu_issue_s2_payload.phys_src[2*WR-1:WR];
   assign i_src[(2*3 + 1)*WR +: WR] = ooe_rcu_issue_s2_payload.phys_src[WR-1:0];
   assign i_src[(2*3 + 2)*WR +: WR] = ooe_rcu_issue_s2_payload.phys_src2;
@@ -215,6 +219,7 @@ module ccv_rcu (
   assign i_lmrg[3] = ooe_rcu_issue_s3_payload.lead_merge_used;
   assign i_lgu[3] = ooe_rcu_issue_s3_payload.lead_guard_used;
   assign i_lgp[3*WP +: WP] = ooe_rcu_issue_s3_payload.lead_guard_pred;
+  assign i_lcont[3] = ooe_rcu_issue_s3_payload.lead_cont;
   assign i_src[(3*3 + 0)*WR +: WR] = ooe_rcu_issue_s3_payload.phys_src[2*WR-1:WR];
   assign i_src[(3*3 + 1)*WR +: WR] = ooe_rcu_issue_s3_payload.phys_src[WR-1:0];
   assign i_src[(3*3 + 2)*WR +: WR] = ooe_rcu_issue_s3_payload.phys_src2;
@@ -244,6 +249,7 @@ module ccv_rcu (
   assign i_lmrg[4] = ooe_rcu_issue_s4_payload.lead_merge_used;
   assign i_lgu[4] = ooe_rcu_issue_s4_payload.lead_guard_used;
   assign i_lgp[4*WP +: WP] = ooe_rcu_issue_s4_payload.lead_guard_pred;
+  assign i_lcont[4] = ooe_rcu_issue_s4_payload.lead_cont;
   assign i_src[(4*3 + 0)*WR +: WR] = ooe_rcu_issue_s4_payload.phys_src[2*WR-1:WR];
   assign i_src[(4*3 + 1)*WR +: WR] = ooe_rcu_issue_s4_payload.phys_src[WR-1:0];
   assign i_src[(4*3 + 2)*WR +: WR] = ooe_rcu_issue_s4_payload.phys_src2;
@@ -273,6 +279,7 @@ module ccv_rcu (
   assign i_lmrg[5] = ooe_rcu_issue_s5_payload.lead_merge_used;
   assign i_lgu[5] = ooe_rcu_issue_s5_payload.lead_guard_used;
   assign i_lgp[5*WP +: WP] = ooe_rcu_issue_s5_payload.lead_guard_pred;
+  assign i_lcont[5] = ooe_rcu_issue_s5_payload.lead_cont;
   assign i_src[(5*3 + 0)*WR +: WR] = ooe_rcu_issue_s5_payload.phys_src[2*WR-1:WR];
   assign i_src[(5*3 + 1)*WR +: WR] = ooe_rcu_issue_s5_payload.phys_src[WR-1:0];
   assign i_src[(5*3 + 2)*WR +: WR] = ooe_rcu_issue_s5_payload.phys_src2;
@@ -302,6 +309,7 @@ module ccv_rcu (
   assign i_lmrg[6] = ooe_rcu_issue_s6_payload.lead_merge_used;
   assign i_lgu[6] = ooe_rcu_issue_s6_payload.lead_guard_used;
   assign i_lgp[6*WP +: WP] = ooe_rcu_issue_s6_payload.lead_guard_pred;
+  assign i_lcont[6] = ooe_rcu_issue_s6_payload.lead_cont;
   assign i_src[(6*3 + 0)*WR +: WR] = ooe_rcu_issue_s6_payload.phys_src[2*WR-1:WR];
   assign i_src[(6*3 + 1)*WR +: WR] = ooe_rcu_issue_s6_payload.phys_src[WR-1:0];
   assign i_src[(6*3 + 2)*WR +: WR] = ooe_rcu_issue_s6_payload.phys_src2;
@@ -331,6 +339,7 @@ module ccv_rcu (
   assign i_lmrg[7] = ooe_rcu_issue_s7_payload.lead_merge_used;
   assign i_lgu[7] = ooe_rcu_issue_s7_payload.lead_guard_used;
   assign i_lgp[7*WP +: WP] = ooe_rcu_issue_s7_payload.lead_guard_pred;
+  assign i_lcont[7] = ooe_rcu_issue_s7_payload.lead_cont;
   assign i_src[(7*3 + 0)*WR +: WR] = ooe_rcu_issue_s7_payload.phys_src[2*WR-1:WR];
   assign i_src[(7*3 + 1)*WR +: WR] = ooe_rcu_issue_s7_payload.phys_src[WR-1:0];
   assign i_src[(7*3 + 2)*WR +: WR] = ooe_rcu_issue_s7_payload.phys_src2;
@@ -360,6 +369,7 @@ module ccv_rcu (
   assign i_lmrg[8] = ooe_rcu_issue_s8_payload.lead_merge_used;
   assign i_lgu[8] = ooe_rcu_issue_s8_payload.lead_guard_used;
   assign i_lgp[8*WP +: WP] = ooe_rcu_issue_s8_payload.lead_guard_pred;
+  assign i_lcont[8] = ooe_rcu_issue_s8_payload.lead_cont;
   assign i_src[(8*3 + 0)*WR +: WR] = ooe_rcu_issue_s8_payload.phys_src[2*WR-1:WR];
   assign i_src[(8*3 + 1)*WR +: WR] = ooe_rcu_issue_s8_payload.phys_src[WR-1:0];
   assign i_src[(8*3 + 2)*WR +: WR] = ooe_rcu_issue_s8_payload.phys_src2;
@@ -690,6 +700,8 @@ module ccv_rcu (
         .sv_cr00h    (i_iv[0 +: NK]),
         .scont_cr01h (i_cont[0 +: NK]),
         .sfoot_cr01h (i_foot[0 +: NK*NK]),
+        .slcont_cr00h(i_lcont[0 +: NK]),
+        .slsec_cr00h (i_lsec[0 +: NK*NK]),
         .ssrc_cr01h  (i_src[0 +: NK*3*WR]),
         .sodst_cr01h (i_odst[0 +: NK*WR]),
         .pv_cr00h    (i_iv[NK +: NK]),

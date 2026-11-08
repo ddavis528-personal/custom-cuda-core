@@ -40,8 +40,9 @@
 // their rows itself (P2; Register file tab, Read ports; Partition tab,
 // "bank in 14": decode, owner, predecode): L0-L3 are phys_src[15:8],
 // [7:0], phys_src2 and phys_old_dst of the S slot owning section K (the
-// valid lead whose footprint has bit K), loaded when any S slot 0..K
-// issues; M0-M2 the base, index and data sources of the P slot owning pipe
+// valid lead whose footprint has bit K), loaded when an S slot 0..K
+// reaches section K by its leads (valid, lead_cont 0, lead_sec_mask bit
+// K: RA-43's copies at A-1, flopped here); M0-M2 the base, index and data sources of the P slot owning pipe
 // K (rcu_dec_pkg, the model's decode), loaded when any P slot 0..K does;
 // R2 the R op's phys_old_dst or migration's row. Each
 // is a 16:1 AND-OR on sel_lo per group of 16 rows, gated by its sel_hi
@@ -96,6 +97,8 @@ module rcu_bank_slice #(
   // of section (pipe) K and its rows decoded here (P2).
   input  logic [NK-1:0]     sv_cr00h,       // S slot s issues next cycle
   input  logic [NK-1:0]     scont_cr01h,    //   continuation
+  input  logic [NK-1:0]     slcont_cr00h,   //   lead_cont, beside the valid (RA-43)
+  input  logic [NK*NK-1:0]  slsec_cr00h,    //   lead_sec_mask, slot s at s*NK (a superset of the footprint)
   input  logic [NK*NK-1:0]  sfoot_cr01h,    //   footprint, slot s at s*NK
   input  logic [NK*3*WR-1:0] ssrc_cr01h,    //   source i's row at (s*3 + i)*WR: phys_src[15:8], [7:0], phys_src2
   input  logic [NK*WR-1:0]  sodst_cr01h,    //   phys_old_dst
@@ -173,12 +176,14 @@ module rcu_bank_slice #(
 
   // ---- Valids: each port's lead, flopped every cycle -------------------
   logic [NK-1:0] sv_cr01h, pv_cr01h;
+  logic [NK-1:0] sk_cr01h;   // S slot s reaches section K (its leads)
   logic          r2v_cr01h;
   logic [NW-1:0] wr_v_cr01h;
   logic          g2_v_cr01h, gw_v_cr01h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
       sv_cr01h   <= '0;
+      sk_cr01h   <= '0;
       pv_cr01h   <= '0;
       r2v_cr01h  <= 1'b0;
       wr_v_cr01h <= '0;
@@ -186,6 +191,8 @@ module rcu_bank_slice #(
       gw_v_cr01h <= 1'b0;
     end else begin
       sv_cr01h   <= sv_cr00h;
+      for (int j = 0; j < NK; j++)
+        sk_cr01h[j] <= (K >= j) && sv_cr00h[j] && !slcont_cr00h[j] && slsec_cr00h[j*NK + K];
       pv_cr01h   <= pv_cr00h;
       r2v_cr01h  <= r2v_cr00h;
       wr_v_cr01h <= wr_v_cr00h;
@@ -197,9 +204,12 @@ module rcu_bank_slice #(
   // sections) is the R op's or migration's, selected in the row cycle:
   // R2's by the R op's decode (the R op first: migration holds back, the
   // Migration tab), RW's by migration's flopped decision.
-  // L0-L3 load when an S slot 0..K issues, M0-M2 when a P slot 0..K does
-  // (only those can own section K: a footprint's lowest bit is its slot).
-  wire lv_cr01h = |sv_cr01h[K:0];
+  // L0-L3 load when an S slot reaches section K by its leads (RA-43:
+  // lead_sec_mask a superset of the footprint, so the owner below is among
+  // them, and a slot that reaches K by the lead alone loads the zero row);
+  // M0-M2 when a P slot 0..K issues (only those can own section K: a
+  // footprint's lowest bit is its slot).
+  wire lv_cr01h = |sk_cr01h;
   wire mv_cr01h = |pv_cr01h[K:0];
   wire [NR-1:0] rd_en_cr01h = {r2v_cr01h | g2_v_cr01h, {3{mv_cr01h}}, {4{lv_cr01h}}};
   wire [NW-1:0] wr_en_cr01h = wr_v_cr01h | (NW'(gw_v_cr01h) << (NW - 1));

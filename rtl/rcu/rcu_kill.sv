@@ -16,8 +16,9 @@
 // once.
 //   KILL_DRAIN = CCV_LAT_RCU_KILL_DRAIN = 2 + link_n(ooe_rcu_issue)
 //                + bnd_rx(ooe_rcu_issue) + CCV_LAT_SFU + 1 + link_n(rcu_ooe_done)
-//   (+ bnd_rx(rcu_ooe_done)), derived in params at the build's links: 16 at
-//   the defaults, the issue end flopped (RA-42: the last issue's A is K+3).
+//   (+ bnd_rx(rcu_ooe_done)), derived in params at the build's links: 15 at
+//   the defaults, the issue end zero-cycle (RA-43: bnd_rx(ooe_rcu_issue)
+//   0, the last issue's A is K+2; it was 16 with the end flopped, RA-42).
 // The drain counter and the ack epoch are small groups (allowance waivers,
 // rtl/cg-waivers.json); the ack and pending bits sit in the allowance.
 //

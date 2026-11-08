@@ -7,7 +7,8 @@
 #                   section 1, and 3 for every owner slot), and its controls
 #                   nowt (no MIU write-through), rfirst (migration's row on
 #                   R2 beside the R op's), lown (the L rows on slot 0) and
-#                   msrc (the M rows by port, not the memop's sources), each
+#                   msrc (the M rows by port, not the memop's sources) and
+#                   lsecK (the owner's lead_sec_mask without section K), each
 #                   of which must fail
 #   rcu_xbar:       test/rcu/xbar_tb.cpp, 32 lanes
 #   rcu_r:          test/rcu/r_tb.cpp, and its negative controls (noalign,
@@ -62,7 +63,7 @@ units="rcu_bank_slice_r32 rcu_bank_slice_r32_sec rcu_bank_slice_r32_k3"
 for u in $units; do
   bench "$u" test/rcu/cg-build.sh "$u" "$B/$u" -- "$B/$u/tb"
 done
-for c in nowt rfirst lown msrc; do
+for c in nowt rfirst lown msrc lsecK; do
   if [ -x "$B/rcu_bank_slice_r32/tb" ] && ! "$B/rcu_bank_slice_r32/tb" --control "$c" >"$B/bs.$c.log" 2>&1 &&
      grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/bs.$c.log"; then
     say "rcu_bank_slice control $c" "caught"

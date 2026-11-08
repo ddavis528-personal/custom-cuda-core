@@ -207,6 +207,7 @@ struct Bench {
   unsigned cov_m2 = 0, cov_m2r = 0, cov_m2n = 0, cov_mrw = 0, cov_mrwr = 0, cov_mrwn = 0;
   unsigned cov_lown[4]{}, cov_mown[4]{}, cov_stale = 0, cov_cont = 0;
   std::mt19937 erng{0x5107u + kK};
+  std::mt19937 lrng{0x1eadu + kK};   // the issue leads' noise and supersets
   unsigned erow() { return unsigned(erng() % kRows); }
 
   /// The issue slots for c's L and M reads (P2): an owner of section K
@@ -339,6 +340,16 @@ struct Bench {
     for (unsigned j = 0; j < 4; ++j) {
       put(dut->sv_cr00h, j, 1, next.ss[j].v);
       put(dut->pv_cr00h, j, 1, next.ps[j].v);
+      // S slot j's leads beside its valid (RA-43): lead_cont a copy;
+      // lead_sec_mask the footprint, now and then a superset, 0 on a
+      // continuation; off a valid, noise. lsecK (control): the owner's
+      // lead leaves out section K, so its L rows never load.
+      const Slot &x = next.ss[j];
+      const unsigned z = unsigned(lrng());   // its own stream: the draws stay as they were
+      unsigned ls = x.cont ? 0u : x.foot | ((z & 3u) == 0 ? (z >> 2) & 15u : 0u);
+      if (g_ctl == "lsecK" && x.v && !x.cont && ((x.foot >> kK) & 1u)) ls &= ~(1u << kK);
+      put(dut->slcont_cr00h, j, 1, x.v ? x.cont : (z >> 6) & 1u);
+      put(dut->slsec_cr00h, 4 * j, 4, x.v ? ls : (z >> 7) & 15u);
     }
     for (const Read &r : next.rd)
       if (r.port == 9) {

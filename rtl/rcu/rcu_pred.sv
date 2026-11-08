@@ -265,6 +265,9 @@ module rcu_pred #(
   // under that valid (CG-5 waiver under RA rev 87, as MIU's lead below).
   logic [NS*NH-1:0] rg_hi_cr02h;
   logic [NS*8-1:0]  rg_lo_cr02h;
+  // For the lead's contract only (synthesis drops them): lead_guard_used,
+  // and whether the guard is the zero predicate, read only in A.
+  logic [NS-1:0] rgu_cr02h, rgz_cr02h;
   for (genvar s = 0; s < NS; s++) begin : g_gl
     wire gl_en_cr01h = iv_cr01h[s];
     always_ff @(posedge rcu_core_clk) begin
@@ -272,6 +275,8 @@ module rcu_pred #(
       if (gl_en_cr01h) begin
         rg_hi_cr02h[s*NH +: NH] <= lgu_cr01h[s] ? dec_hi(lgp_cr01h[s*WP +: WP]) : '0;
         rg_lo_cr02h[s*8 +: 8]   <= dec_lo(lgp_cr01h[s*WP +: WP]);
+        rgu_cr02h[s]            <= lgu_cr01h[s];
+        rgz_cr02h[s]            <= lgp_cr01h[s*WP +: WP] == ZP;
       end
     end
   end
@@ -281,15 +286,6 @@ module rcu_pred #(
   logic [2*WP+1:0] rimm_cr02h;
   always_ff @(posedge rcu_core_clk) begin
     if (rl_en_cr01h) rimm_cr02h <= lrp_cr01h;
-  end
-  // For the lead's contract only (synthesis drops them): lead_guard_used,
-  // and whether the guard is the zero predicate.
-  logic [NS-1:0] rgu_cr02h, rgz_cr02h;
-  for (genvar s = 0; s < NS; s++) begin : g_glc
-    always_ff @(posedge rcu_core_clk) begin
-      rgu_cr02h[s] <= lgu_cr01h[s];
-      rgz_cr02h[s] <= lgp_cr01h[s*WP +: WP] == ZP;
-    end
   end
 
   // ---- MIU's lead, kept for T ------------------------------------------
