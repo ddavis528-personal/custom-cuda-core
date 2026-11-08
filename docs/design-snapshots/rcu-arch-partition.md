@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=53 exported=2026-11-07 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 53 on 2026-11-07 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=56 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 56 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -29,7 +29,7 @@ So:
 | `rcu_pred` | 1 | 48 × 32 predicate file; every predicate read and write port; guard, MIU `pred_result` forward, `active`, branch outcome, `lead_br_*` (`(* keep *)`), `br_*_a`, `rpsrc_a`, `active_a[s]` | 2,500 |
 | `rcu_r` (+ `rcu_xbar` helper) | 1 | R pipe A+1/A+2: `r_a`, `rlow_a`, `rres_a1`, `rpres_a1`; RW data merge and steer; done slots 5 and 6 (`done_v_q`, tags, `done_b*_q`, `done_aux_q`) | 2,300 |
 | `rcu_lanes` | 1 | section ownership; 32 `rcu_lane_ops` payload, valid and lead flops; bypass tracker; `lwb_d[0..3]`, `swb_d`; done slots 0-4; `rcu_lane_ops` wakes | 12,900 |
-| `rcu_mem` | 1 | memop operand assembly; 4 `rcu_miu_addr` payloads (3,111 b each); MIU lead predecode flops (about 110 per slot); `rcu_miu_addr_wake` | 12,950 |
+| `rcu_mem` | 1 | memop operand assembly; 4 `rcu_miu_addr` payloads (3,111 b each); no MIU lead capture (the slices and rcu\_pred hold it, RI-20); `rcu_miu_addr_wake` | 12,560 (RI-20, as built) |
 | `rcu_mig` | 1 | Migration tab | 6,300 |
 | `rcu_kill` | 1 | kill drain and ack; `rcu_ooe_done_wake`; `rcu_idle_q`; credit-return flops for issue, lane-result and MIU-data slots; CSR tie-offs | 60 |
 | **Total** |  |  | **about 246,000**, 80% of it PRF rows |
@@ -143,7 +143,7 @@ In each module (sim-only, `ifdef CCV_ASSERT`):
 
 Q-53 checkers owed by RCU's RTL:
 
-- The **arrival-cycle checker** on `rcu_ooe_done` per class: valid at A+1, A+7 or A+12 after the issue that names its `rob_tag`.
+- The **arrival-cycle checker** on `rcu_ooe_done` per class: valid at A+1, A+6 or A+11 after the issue that names its `rob_tag`.
 - **A-35's two isolation assertions.** Every lane of a newly allocated row is written by a lane result, the merge path or the copy before any read of it. This is a bind module with a 192 × 32 shadow, cleared by OOE's allocation, which it observes through the SV top. The companion assertion now reads: a launched warp's map is all zero registers (A-64).
 - The **A-45 pairing checker**: every launch pairs one map with one command of the same warp and direction.
 

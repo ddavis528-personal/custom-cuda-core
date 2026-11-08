@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=16 exported=2026-11-05 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 16 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=24 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 24 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Register file
 
@@ -65,14 +65,14 @@ The owner of section k is the lead (cont = 0) S slot j ≤ k whose `footprint` h
 
 | Port | Lands in | Row select | Data for lane l | Lanes written | Section k written when |
 | --- | --- | --- | --- | --- | --- |
-| LW (lane) | A+7 | lane descriptor `lwb_d[k]` at depth 6 (predecoded at A) | `lane_rcu_res` c\_l `result`\[8k+7:8k\] | all 32; the GPR copy writes only lanes with `active` = 0 | descriptor valid, the op owns section k, it writes a GPR |
-| SW (SFU) | A+12 | SFU descriptor `swb_d` at depth 11 | the SFU second result (RA-3), byte k | all 32 | descriptor valid and k in the SFU destination's `secmask` (all four under `FULL_ROW`) |
+| LW (lane) | A+6 | lane descriptor `lwb_d[k]` at depth 5 (predecoded at A) | `lane_rcu_res` c\_l `result`\[8k+7:8k\] | all 32; the GPR copy writes only lanes with `active` = 0 | descriptor valid, the op owns section k, it writes a GPR |
+| SW (SFU) | A+11 | SFU descriptor `swb_d` at depth 10 | the SFU second result (RA-3), byte k | all 32 | descriptor valid and k in the SFU destination's `secmask` (all four under `FULL_ROW`) |
 | MW (load) | MIU payload cycle T | `mdat_lead_q[j]`, predecoded on the wire in T−1 | `load_data` lane word of slot j, shifted left 8·pos, byte k | lanes in the lead `active_mask` | `mdat_v_q[j]` and k in `secmask(dst_width, dst_pos)` of slot j (all four under `FULL_ROW`), and phys\_dst is not the zero register |
 | RW (R) | A+2 | `rres_a1` | R result (already merged with the old destination), shifted to pos, byte k; or a staged restore row | all 32 | R result valid and k in its `secmask` (all four under `FULL_ROW`); a restore row writes all four |
 
 **One load write per bank per cycle.** Four MIU slots can land in one cycle, so bank k's MW port takes the one slot j whose `secmask` covers k. Two slots covering the same bank in one cycle is an MIU contract breach (asserted; raised to AR as RA-28, since narrow loads in different pipes can name overlapping sections).
 
-**The full-row interim (AR-24; RI-5, 2026-11-04).** Today OOE allocates every register as a whole row at position 0, charged four sections, while the width codes stay the registers' own (`full_rows`, AR-24's interim; OOE's RTL keeps rows whole until its slice 6). The lanes then do no swizzle, and narrow-carry and lane-unmasked ops read the row whole, so the row must be zero above the register's width. `ccv_rcu` therefore takes a parameter `FULL_ROW`, passed down to every slice and to `r` and `mem`, **built as 1 now**:
+**The full-row interim (AR-24; RI-5, 2026-11-04).** Today OOE allocates every register as a whole row at position 0, charged four sections, while the width codes stay the registers' own (`full_rows`, AR-24's interim; OOE's RTL keeps rows whole until its slice 6). The lanes then do no swizzle, and narrow-carry and lane-unmasked ops read the row whole, so the row must be zero above the register's width. `ccv_rcu` therefore takes a parameter `FULL_ROW`, passed down to every slice, the only module that uses it (`rcu_r` and `rcu_mem` take none: the slices apply every write's width), **built as 1 now**:
 
 - `FULL_ROW` = 1: SW, MW and RW write all four banks of the row; the data above `dst_width` is forced to zero (an AND per byte from the width code, in the write data's own stage). LW needs nothing: it writes the op's owned sections, which OOE makes the whole row.
 - `FULL_ROW` = 0: the enables are the `secmask` terms in the table above, the spec's sectioned build.
@@ -86,7 +86,7 @@ It flips to 0 only when both have landed: OOE allocating narrow registers at the
 
 That is about 15 ungated flops a slice (MW's), about 11% of its allowance (2% of 6,574 = 131) and about 480 across the 32 slices. The binary R0/R1 selects of RI-9 (16 a slice) went with RA-39's payload-wire read.
 
-**Write data and masks.** Write data goes from the port straight into the rows' D, with no per-slice data flop, so LW lands in A+7 and MW in T. MW masks a 4-bit load's byte to its low nibble in the slice (and, under `FULL_ROW`, everything above `dst_width`): RCU does it, so MIU's upper bits never matter. A write whose lane mask has none of the slice's 4 lanes set does not clock the slice's row where the mask comes from the slice's own flops (MW's select flops): that port's hit includes the OR of its lane mask over the slice's lanes. A port whose lane mask arrives with its data cannot put it in an enable (CG-5); there the mask is a hold mux in the D-cone (D = m ? new : q) under the port's slice-level gate (RI-9 (e), as built; RA rev 73).
+**Write data and masks.** Write data goes from the port straight into the rows' D, with no per-slice data flop, so LW lands in A+6 and MW in T. MW masks a 4-bit load's byte to its low nibble in the slice (and, under `FULL_ROW`, everything above `dst_width`): RCU does it, so MIU's upper bits never matter. A write whose lane mask has none of the slice's 4 lanes set does not clock the slice's row where the mask comes from the slice's own flops (MW's select flops): that port's hit includes the OR of its lane mask over the slice's lanes. A port whose lane mask arrives with its data cannot put it in an enable (CG-5); there the mask is a hold mux in the D-cone (D = m ? new : q) under the port's slice-level gate (RI-9 (e), as built; RA rev 73).
 
 **D input and enable, per row r of bank k:**
 
