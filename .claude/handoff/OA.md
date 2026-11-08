@@ -69,9 +69,9 @@ Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release
    OA 393 re:TI 383: R imm settled = move (RA 114), OA 392 withdrawn. C_RECONV = rename-time no-op,
    DEC serial 5 (first spare), done at alloc, no RS/issue; skel op table + control; OI model+RTL nop.
    OA 396: register PMOV EXECUTED on R as plog (imm_kind 1, ps1=ps0), not elided (compiler emits none,
-   OA 397: OI-135 pp_cq01h (rename R1 d_pp_cq03h -> ooe_rendep) arrival 2.0 granted, as OI-66; conditions: keep-copy for port vs m_pp_cq04h, fanout counted in rendep; watch OI push for rendep worst path and caps removed.
    copies w/ por; elision needs phys-pred refcount, only full-mask/unguarded/unneg). RA 119 confirmed;
    TI built 8dbc152. Reopen only if compiler emits pmov. RA-16 has nothing of OA's.
+   OA 397: OI-135 pp_cq01h (rename R1 d_pp_cq03h -> ooe_rendep) arrival 2.0 granted, as OI-66; conditions: keep-copy for port vs m_pp_cq04h, fanout counted in rendep; watch OI push for rendep worst path and caps removed.
 -23. CLOSED (OA 395): OI-133 fix 5559b4f/b90adff/11386e7 accepted, rope cleared (TI 387). Was OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
    consumer co-granted with its producer (always stale). First check ooe_sched RTL (rep_cq02h uses
    pre-grant iss_cq02h, may already catch it) -> if so model-only fix; else add gnt to mask within caps.
