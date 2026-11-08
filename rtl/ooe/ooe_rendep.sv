@@ -88,6 +88,10 @@ module ooe_rendep #(
   input  logic [A-1:0]      v_cq01h,        // uop u renames
   input  logic [A-1:0]      mem_cq01h,      // its main entry is MIU class
   input  logic [A-1:0]      cp_cq01h,       // it has a copy (a masked load)
+  // Each uop's ports, from rename's Rename 1 register (its ports_of): its
+  // main's (u) and its copy's (A + u), each class's packed in order. Only
+  // a valid uop's are read; the counts below check them.
+  input  logic [2*A*3-1:0]  pp_cq01h,
   input  logic [A-1:0]      atom_cq01h,     // an atomic (AR-21): asserted absent
   input  logic [A-1:0]      gwe_cq01h,      // it writes a GPR
   input  logic [A*LG-1:0]   gname_cq01h,    //   its new name
@@ -181,9 +185,11 @@ module ooe_rendep #(
   `CCV_ASSERT(grp_led, v_cq01h == '0 || grp_l_cq01h)
 
   // -- This group's ports --------------------------------------------------------
-  // Port of uop u's main entry and of its copy, and per port the producer it
-  // holds: its names and its code per consumer group.
-  logic [A*3-1:0]   pm_cq01h, pcp_cq01h;            // port within its class (0..A-1)
+  // Port of uop u's main entry and of its copy (rename registers them a
+  // stage early: counting them here put the one-hot port select's fanout
+  // behind the counts), and per port the producer it holds: its names and
+  // its code per consumer group.
+  logic [A*3-1:0]   pm_cq01h, pcp_cq01h;            // the counts' ports, checked against pp
   logic [P-1:0]     pv_cq01h, pgv_cq01h, ppv_cq01h;       // the port is taken; it produces a GPR, a predicate
   logic [P*LG-1:0]  pgn_cq01h;
   logic [P*LQ-1:0]  ppn_cq01h;
@@ -214,6 +220,13 @@ module ooe_rendep #(
   end
   // Rename takes no more than A entries a class (V-55's per-cycle bound).
   `CCV_ASSERT(ports_fit, nr <= A && nm <= A)
+  logic [A-1:0] pp_ok_cq01h;
+  always_comb
+    for (int u = 0; u < A; u++)
+      pp_ok_cq01h[u] = !v_cq01h[u] ||
+                       (pp_cq01h[u * 3 +: 3] == pm_cq01h[u * 3 +: 3] &&
+                        (!cp_cq01h[u] || pp_cq01h[(A + u) * 3 +: 3] == pcp_cq01h[u * 3 +: 3]));
+  `CCV_ASSERT(pp_counted, &pp_ok_cq01h)
 
   // -- The earlier groups' producers, by port ------------------------------------
   // G-1: the stage register's group (this module registered its ports at the
@@ -261,7 +274,7 @@ module ooe_rendep #(
         for (int s = 0; s < 4; s++)
           cps_cq01h[(2 * u + k) * 4 + s]   = k == 0 ? psv_cq01h[u * 4 + s] : (s == 0 && cguard_cq01h[u]);
         for (int q = 0; q < P; q++)
-          coh_cq01h[(2 * u + k) * P + q]   = cv_cq01h[2 * u + k] && 32'(k == 0 ? pm_cq01h[u * 3 +: 3] : pcp_cq01h[u * 3 +: 3]) == q;
+          coh_cq01h[(2 * u + k) * P + q]   = cv_cq01h[2 * u + k] && 32'(pp_cq01h[(k * A + u) * 3 +: 3]) == q;
       end
 
   // Each port's producer, through the one-hot select: consumer c's uop
