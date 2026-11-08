@@ -90,6 +90,9 @@
 //   bar-full-last  SYU takes the CTA's last warp as 32 lanes
 //   addr-wrap      MIU takes a .global address modulo 2^48, so F-ADDR never fires
 //   late-lead      the lane mask goes out with the operands, a cycle late
+//   cor-late       each credit-on-receipt slot's first message reaches its
+//                  block a cycle after it is presented (AR's rev 322 (b))
+//   cor-drop       ...and never: the block drops it
 //   ignore-mask    RCU's predicate merge drops the active mask (A-43)
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
 //===----------------------------------------------------------------------===//
@@ -178,6 +181,9 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
   bank.pair_enable = 1;
   if (brk == "late-lead")
     for (Slot &s : m.slots()) s.late_lead = true;
+  if (brk == "cor-late" || brk == "cor-drop")
+    for (unsigned s = 0; s != kNumSlots; ++s)
+      if (m.slots()[s].cor) m.rx(s).holdNext(brk == "cor-drop");
 
   // Finished: the rule is KernelEnd's, shared with the SV-hosted run.
   KernelEnd end;
@@ -260,7 +266,7 @@ int main(int argc, char **argv) {
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "cta-per-warp" || brk == "cta-shared" || brk == "no-wait-mark" || brk == "bar-own-warp" || brk == "bar-no-exit" ||
                       brk == "bar-full-last" || brk == "addr-wrap" ||
-                      brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
+                      brk == "conflate-pred" || brk == "late-lead" || brk == "cor-late" || brk == "cor-drop" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
                       brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
                       brk == "ignore-mask" || brk == "skip-read-partial" ||
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
@@ -396,8 +402,10 @@ int main(int argc, char **argv) {
 
     // The credit a fixed-latency receiver owes a valid forced at cycle v:
     // its payload lands 2 + N cycles on, and the credit goes back then.
+    // A credit-on-receipt slot owes none: its boundary flop returns the
+    // credit at exactly that cycle (fixed-all delays it there instead).
     auto prompt = [&](unsigned k, uint64_t v, unsigned late = 0) {
-      if (kChans[m.chanInstOf(k).chan].fixed_lat &&
+      if (kChans[m.chanInstOf(k).chan].fixed_lat && !m.slots()[k].cor &&
           c == v + 2 + m.chanInstOf(k).pipe() + late)
         m.rx(k).forceCredit();
     };
@@ -450,10 +458,14 @@ int main(int argc, char **argv) {
           if (kChans[ci.chan].fixed_lat) prompt(ci.slot_base, kBreakAt);
           else if (c == kBreakAt + 3) m.rx(ci.slot_base).forceCredit();
         }
-      // fixed-all: every fixed-latency slot's credit, one cycle late.
+      // fixed-all: every fixed-latency slot's credit, one cycle late. On a
+      // credit-on-receipt slot that is a flop in series on the boundary
+      // stage's credit, the register credit on receipt removes (AR's rev
+      // 322 (b)): the bank's fixed_latency_prompt must see it.
       if (brk == "fixed-all")
         for (unsigned k = 0; k != kNumSlots; ++k) {
           if (!kChans[m.chanInstOf(k).chan].fixed_lat) continue;
+          if (m.slots()[k].cor) m.slots()[k].cor_series = true;
           if (c == kBreakAt) m.tx(k).forceValid(wellFormed(m, k));
           prompt(k, kBreakAt, 1);
         }
@@ -465,11 +477,12 @@ int main(int argc, char **argv) {
 
   // -- summary: one line, machine-readable, for tools/check-skel.sh --------
   const ExerciseTotals t = exerciseTotals();
-  uint64_t overflows = 0, leaks = 0;
+  uint64_t overflows = 0, leaks = 0, cor_late = 0;
   unsigned idle = 0, home = 0;
   for (unsigned k = 0; k != kNumSlots; ++k) {
     overflows += m.rx(k).overflows();
     leaks += m.rx(k).leaks();
+    cor_late += m.rx(k).corLate();
     if (m.rx(k).received() == 0) ++idle;
     // Conservation: after the drain, every sender holds all its credits.
     if (m.tx(k).credits() == m.tx(k).depth()) ++home;
@@ -478,7 +491,7 @@ int main(int argc, char **argv) {
               "slots=%u sent=%llu received=%llu mismatches=%llu "
               "tid_mismatches=%llu class_violations=%llu "
               "class_violation_channels=%u overflows=%llu credit_leaks=%llu "
-              "credits_home=%u idle_slots=%u violations=%d\n",
+              "cor_late=%llu credits_home=%u idle_slots=%u violations=%d\n",
               (unsigned long long)cycles, kNumBlkInsts, kNumChans,
               kNumChanInsts, kNumSlots, (unsigned long long)t.sent,
               (unsigned long long)t.received,
@@ -486,7 +499,8 @@ int main(int argc, char **argv) {
               (unsigned long long)t.tid_mismatches,
               (unsigned long long)t.class_violations,
               t.class_violation_channels,
-              (unsigned long long)overflows, (unsigned long long)leaks, home,
+              (unsigned long long)overflows, (unsigned long long)leaks,
+              (unsigned long long)cor_late, home,
               idle, ctx->errorCount());
 
   if (!trace.empty() && brk == "none") return xferCheck(trace);

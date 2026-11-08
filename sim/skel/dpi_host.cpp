@@ -115,6 +115,9 @@ void init() {
       ccv::kCreditDepth, [](int inst) { return makeKernelBlock(inst, g->k); });
   if (g->k.brk == "late-lead")
     for (Slot &s : g->m->slots()) s.late_lead = true;
+  if (g->k.brk == "cor-late" || g->k.brk == "cor-drop")
+    for (unsigned s = 0; s != kNumSlots; ++s)
+      if (g->m->slots()[s].cor) g->m->rx(s).holdNext(g->k.brk == "cor-drop");
 }
 
 /// kBlkInsts index of an instance name, by gen-top.py's naming rule; -1 for

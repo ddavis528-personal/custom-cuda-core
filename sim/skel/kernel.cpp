@@ -5992,18 +5992,29 @@ bool KernelEnd::after(uint64_t c, Kernel &k, Machine &m) {
 
 void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
                        int violations) {
-  const KernelReport r = compareFinal(k);
-  uint64_t overflows = 0, leaks = 0;
+  uint64_t overflows = 0, leaks = 0, cor_late = 0;
   for (unsigned s = 0; s != kNumSlots; ++s) {
     overflows += m.rx(s).overflows();
     leaks += m.rx(s).leaks();
+    // Credit on receipt (AR's rev 322 (b)): the wrapper credited each
+    // message the cycle it was presented, so the block must have taken it
+    // then. A landed message left a cycle, or never taken, is a check
+    // failure in both hosts, named by its channel.
+    if (const uint64_t n = m.rx(s).corLate()) {
+      cor_late += n;
+      const ChanInst &ci = m.chanInstOf(s);
+      k.fail("%s: credit on receipt, slot %u: a landed message left %llu message-cycle(s) "
+             "past the cycle it was presented, taken late or dropped",
+             kChans[ci.chan].name, s - ci.slot_base, (unsigned long long)n);
+    }
   }
+  const KernelReport r = compareFinal(k);
   const uint64_t from_fetch =
       k.fetched && e.finish >= k.first_fetch ? e.finish - k.first_fetch : 0;
   std::printf("KERNEL name=%s finished=%d cycles=%llu from_fetch=%llu retired=%llu "
               "issue_groups=%u order=%s gpr_mismatch=%u pred_mismatch=%u "
               "mem_mismatch=%u check_failures=%llu class_violations=%llu "
-              "overflows=%llu credit_leaks=%llu channels_used=%u/%u violations=%d\n",
+              "overflows=%llu credit_leaks=%llu cor_late=%llu channels_used=%u/%u violations=%d\n",
               k.name.c_str(), int(e.finished), (unsigned long long)e.finish,
               (unsigned long long)from_fetch, (unsigned long long)k.retired,
               [&] { unsigned n = 0; for (const Oracle &o : k.orcs) n += o.issue_groups; return n; }(),
@@ -6011,7 +6022,7 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
               r.mem_mismatch, (unsigned long long)k.failures,
               (unsigned long long)k.class_violations,
               (unsigned long long)overflows, (unsigned long long)leaks,
-              r.channels_used, kNumChans,
+              (unsigned long long)cor_late, r.channels_used, kNumChans,
               violations);
   std::printf("UNUSED %s\n", r.unused.c_str());
   // Each backpressured channel's longest wait from landing to take, over its

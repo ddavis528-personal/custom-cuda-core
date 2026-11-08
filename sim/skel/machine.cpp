@@ -19,6 +19,9 @@ Machine::Machine(unsigned depth, const Factory &make) {
           lead.setBit(cd.fields[f].lsb + b, true);
     for (unsigned s = 0; s != cd.rate; ++s) {
       slots_.emplace_back(cd.bits, lead, ci.pipe());
+      // Credit on receipt loads the receiving end's boundary stage, which
+      // tools/ccv_links.py guarantees is there.
+      slots_.back().cor = ci.cor && ci.bnd_rx;
       owner_[ci.slot_base + s] = &ci;
     }
   }
@@ -31,6 +34,9 @@ Machine::Machine(unsigned depth, const Factory &make) {
   // credit behind it (AR's rev 309 (2)). The receiver's buffer is that
   // whole depth, so the valids in flight when it stalls, at most
   // CCV_RESCUE_DEPTH + 2(N + bnd_rx), always land in it (overflows, 0).
+  // A credit-on-receipt end's boundary flop returns the credit itself, with
+  // no block register behind it, so rtStages() leaves its bnd_rx out: the
+  // loop is exact there, as for an RTL block (AR's rev 322).
   for (unsigned k = 0; k != kNumSlots; ++k) {
     const unsigned d = depth + 2 * owner_[k]->rtStages();
     tx_.push_back(std::make_unique<Sender>(slots_[k], d));
