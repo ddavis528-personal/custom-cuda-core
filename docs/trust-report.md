@@ -94,7 +94,7 @@ preliminary field:
 | `ccv_miu_spm_req` | `spm_op` |
 | `ccv_mlc_exb_req` | `coh_op`, `ownership_class` |
 | `ccv_ooe_miu_memop` | `mem_op` |
-| `ccv_ooe_rcu_issue` | `bypass_group`, `opcode` |
+| `ccv_ooe_rcu_issue` | `bypass_group`, `opcode`, `lead_opcode` |
 | `ccv_rau_fet_launch` | `code_bounds` |
 | `ccv_rcu_lane_ops` | `sec_opcode`, `operand`, `sec_opnd_pos`, `sec_opnd_width`, `operand_byp` |
 

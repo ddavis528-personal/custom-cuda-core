@@ -159,7 +159,7 @@
       "status": "arch",
       "source": "RA-31 (OA's rev 307, AR's rev 267)",
       "derive": "CCV_SECTIONS + CCV_MIU_PIPES",
-      "doc": "The slot of ccv_ooe_rcu_issue that the RCU unit R issues on, the last of CCV_ISSUE_RESOURCES. The guard lead (lead_guard_used, lead_guard_pred) is defined only on it."
+      "doc": "The slot of ccv_ooe_rcu_issue that the RCU unit R issues on, the last of CCV_ISSUE_RESOURCES. R alone carries lead_rpsrc, imm's copy, and its source rows only in lead_phys_src and lead_phys_src2 (RA-43, RA's rev 109 (b)); the guard lead rides every slot since RA's rev 108."
     },
     {
       "name": "CCV_W_PHYS_POS",
@@ -1058,11 +1058,11 @@
     },
     {
       "name": "CCV_LAT_RCU_KILL_DRAIN",
-      "value": 16,
+      "value": 15,
       "status": "tunable",
       "decided_at": "generated",
       "source": "RA-14, RA-16 (g), RA-23 and RA-30; AR's revs 263 and 288 (derived, never a number)",
-      "doc": "RCU's kill drain: the cycles from kill_valid landing at RCU until RCU may raise kill_ack (the level of RA-23, AR's rev 264), so long that everything RCU accepted before the kill has finished as scheduled and its done has landed in OOE. RCU keeps no warp identity, so it searches for nothing: a counter of about 5 bits, loaded with this, and its quiescence is the count expired, no demotion row of a killed warp left to send, and no command, map or restore row held for one (AR's rev 264). 2 (the kill flopped, CG-5 and RST-1, and the last accepted issue) + the issue crossing's repeater stages and bnd_rx + CCV_LAT_SFU, the longest class + 1 + the done crossing's: 16 at the defaults, ccv_ooe_rcu_issue's end at RCU flopped.",
+      "doc": "RCU's kill drain: the cycles from kill_valid landing at RCU until RCU may raise kill_ack (the level of RA-23, AR's rev 264), so long that everything RCU accepted before the kill has finished as scheduled and its done has landed in OOE. RCU keeps no warp identity, so it searches for nothing: a counter of about 5 bits, loaded with this, and its quiescence is the count expired, no demotion row of a killed warp left to send, and no command, map or restore row held for one (AR's rev 264). 2 (the kill flopped, CG-5 and RST-1, and the last accepted issue) + the issue crossing's repeater stages and bnd_rx + CCV_LAT_SFU, the longest class + 1 + the done crossing's: 15 at the defaults, ccv_ooe_rcu_issue's end at RCU zero-cycle (bnd_rx 0; RA-43, AR's rev 329), 16 while it was flopped.",
       "derive": "2 + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_SFU + 1 + link_n('rcu_ooe_done') + bnd_rx('rcu_ooe_done')"
     },
     {
@@ -1118,7 +1118,7 @@
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 19,
+      "value": 18,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",

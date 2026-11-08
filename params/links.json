@@ -58,6 +58,7 @@
       "block": "rcu",
       "channels": [
         "lane_rcu_res",
+        "ooe_rcu_issue",
         "ooe_rcu_map",
         "pca_rcu_mig",
         "rau_rcu_mig",
@@ -66,23 +67,23 @@
         "rcu_ooe_done",
         "rcu_pca_mig"
       ],
-      "why": "Every RCU end but ooe_rcu_issue and miu_rcu_data, named, since \"all\" is refused once ccv_rcu's top is RTL (RI-22). Those two stay flopped under Option 1 (AR's rev 301): RCU puts logic before its first register on them, so each takes the boundary flop in its wrapper and its crossing counts bnd_rx = 1 (AR's rev 300). lane_rcu_res was a third until RA's rev 95 made its end zero-cycle under DA 114 (LANE 8 to 7, SFU 13 to 12), on two conditions: the block-level read at RCU's assembly holds the end to 12 NGD, or it goes to Daniel; and that link takes no repeater stage, ever, since RCU and the lanes abut. Every other end named here is taken or driven by a register at 0 NGD, as a DPI host's posedge block is (AR's rev 287 (1))."
+      "why": "Every RCU end but miu_rcu_data, named, since \"all\" is refused once ccv_rcu's top is RTL (RI-22). That one stays flopped under Option 1 (AR's rev 301): RCU puts logic before its first register on it, so it takes the boundary flop in its wrapper and its crossing counts bnd_rx = 1 (AR's rev 300). lane_rcu_res was a second until RA's rev 95 made its end zero-cycle under DA 114 (LANE 8 to 7, SFU 13 to 12), and ooe_rcu_issue a third until RA-43 (RA's rev 113, DA 115; AR's rev 329) made its end zero-cycle too (CCV_LAT_RCU_KILL_DRAIN 16 to 15, CCV_LAT_L1_CMPL 19 to 18), with lead copies of the payload at A-1 so RCU's logic before its first register reads flops: both on the conditions that the block-level read at RCU's assembly holds the end to 12 NGD (no_flop_port_budget), or it goes to Daniel, and that the link takes no repeater stage. Every other end named here is taken or driven by a register at 0 NGD, as a DPI host's posedge block is (AR's rev 287 (1))."
     }
   ],
   "credit_on_receipt": [
     {
-      "end": "ooe_rcu_issue@rcu",
-      "why": "AR's rev 322 (RA-41): RCU takes every issue the cycle it lands in the boundary flop (RA-41; Credits RCU returns, Done, kill and reset tab), so its credit is that flop's valid a cycle on; rcu_kill's nine credit-pulse flops in series behind the boundary flop, a register no derive counts, go."
-    },
-    {
       "end": "miu_rcu_data@rcu",
-      "why": "AR's rev 322 (RA-41): RCU takes every load return the cycle it lands in the boundary flop, so its credit is that flop's valid a cycle on; rcu_kill's four MIU credit-pulse flops go. lane_rcu_res stays zero-cycle, with rcu_kill's 32 (AR's rev 322 (c))."
+      "why": "AR's rev 322 (RA-41): RCU takes every load return the cycle it lands in the boundary flop, so its credit is that flop's valid a cycle on; rcu_kill's four MIU credit-pulse flops go. lane_rcu_res stays zero-cycle, with rcu_kill's 32 (AR's rev 322 (c)). The only such end since RA-43 (RA's rev 113) made ooe_rcu_issue's end at RCU zero-cycle: with no boundary flop there, RCU returns that credit itself, and rcu_kill's issue credit flops are RCU's own again."
     }
   ],
   "no_flop_port_budget": [
     {
       "end": "lane_rcu_res@rcu",
       "why": "RA's rev 95 made this end zero-cycle under DA 114 (CCV_LAT_LANE 8 to 7, CCV_LAT_SFU 13 to 12) on two conditions: the block-level read at RCU's assembly holds it to its 12 NGD port budget, or it goes to Daniel; and its link takes no repeater stage, since RCU and the lanes abut. The second kind (AR's rev 326): RCU's logic before its first register on these ports is held to ccv_rcu's input budget for them, not straight into a flop."
+    },
+    {
+      "end": "ooe_rcu_issue@rcu",
+      "why": "RA-43 (RA's rev 113, approved under DA 115; AR's rev 329 confirmed the accounting) made this end zero-cycle: bnd_rx 0, link_n unchanged at 0, CCV_LAT_RCU_KILL_DRAIN 16 to 15 and CCV_LAT_L1_CMPL 19 to 18. OOE sends lead copies of the payload fields RCU's logic before its first register reads, a cycle ahead from its own flops (schema lead_fields), so RCU's in-side cone starts at flops; AR quotes a worst case of 10.9 NGD. The second kind (AR's rev 326), as lane_rcu_res: held to ccv_rcu's 12 NGD input budget for these ports, or it goes to Daniel; its link takes no repeater stage. Not credit_on_receipt (RA-43 (3)): a zero-cycle end has no boundary flop to return the credit from, so RCU drives it."
     }
   ],
   "links": []
