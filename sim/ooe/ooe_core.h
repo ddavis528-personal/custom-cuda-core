@@ -538,6 +538,7 @@ struct Config {
   bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
   bool inject_no_cogrant = false;     ///< the hop misses a co-granted dependant (OI-133)
+  bool inject_reconv_real = false;    ///< C_RECONV (serial 5) is no no-op: it renames and issues (OA rev 393)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
   bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
@@ -707,7 +708,8 @@ struct SchedAttr {
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3,
                kLatClsCollective = 5 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4,
+                  kSerReconv = 5 };   ///< C_RECONV, the first spare code (OA rev 393, RA-16)
 inline bool isBarrierSer(unsigned s) { return s == kSerBarrier || s == kSerArrive; }
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
@@ -782,6 +784,14 @@ struct Uop {
 /// issue to RCU, whose done brings their lanes.
 inline bool barNop(const Uop &u) {
   return isBarrierSer(u.attr.serial) && !u.shape.guard && !u.shape.pdata;
+}
+/// The no-ops OOE completes at allocation by their serial code: a barrier
+/// with no predicate read, and C_RECONV (serial 5; OA rev 393, RA-16),
+/// which DEC sends with every other attribute bit 0. It takes a ROB entry
+/// with its pc and group mask, no RS entry and no rename, never issues, and
+/// retires in order; its payload is ignored, so OOE stays opcode-blind.
+inline bool serNop(const Uop &u, bool reconv = true) {
+  return barNop(u) || (reconv && u.attr.serial == kSerReconv);
 }
 
 struct Done {           ///< ccv_rcu_ooe_done
