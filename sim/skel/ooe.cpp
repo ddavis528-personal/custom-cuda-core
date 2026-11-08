@@ -77,6 +77,7 @@ private:
   // records only whether one has been written since launch (A-64).
   std::array<std::array<unsigned, 16>, 32> rat_;
   std::deque<unsigned> free_;
+  std::array<unsigned, 32> decq_back_{};   ///< decode-queue slots to return, per tier-1 slot
   std::set<unsigned> used_;     ///< registers ever allocated (coverage)
   bool pw_[32][4] = {};
   static constexpr unsigned kRob = 128;
@@ -112,8 +113,20 @@ private:
     // A uop waits in the channel -- its credit unreturned -- while the ROB
     // is full or no physical register is free: rename stalls, never drops.
     for (unsigned s = 0; s != kChans[c.dec_ooe].rate; ++s)
-      while (has(c.dec_ooe, s) && rob_.size() != kRob && !free_.empty())
+      while (has(c.dec_ooe, s) && rob_.size() != kRob && !free_.empty()) {
         dispatch(take(c.dec_ooe, s));
+        // A uop leaves the decode queue as it renames: one slot back to its
+        // tier-1 slot, the uop slot's binding group (TI-46 (b), A-65).
+        ++decq_back_[s / std::max(1u, unsigned(kChans[c.dec_ooe].bind_group))];
+      }
+    for (unsigned t = 0; t != kChans[c.ooe_cred].rate; ++t)
+      if (decq_back_[t] && can(c.ooe_cred, t)) {
+        Bits m = msgOf(c.ooe_cred);
+        put(m, c.ooe_cred, "tier1_id", t);
+        put(m, c.ooe_cred, "credit_count", decq_back_[t]);
+        send(c.ooe_cred, t, m, makeUid(IdClass::kNone, 0));
+        decq_back_[t] = 0;
+      }
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
       while (has(c.rcu_ooe, s)) {
         Receiver::Msg m = take(c.rcu_ooe, s);
@@ -152,6 +165,10 @@ private:
         if (E *e = byTag(unsigned(get(m.payload, c.miu_ooe, "rob_tag")))) e->miu = true;
         else k_.fail("ooe: completion for a tag not in the ROB");
       }
+    // The wake hint ahead of a completion: the stub schedules nothing early,
+    // so it takes the hint and ignores it.
+    for (unsigned s = 0; s != kChans[c.cmpl_hint].rate; ++s)
+      while (has(c.cmpl_hint, s)) take(c.cmpl_hint, s);
     for (E &e : rob_)
       if (e.copy_pending && now_ >= e.copy_wake) e.copy_pending = false;
     issueOne();
