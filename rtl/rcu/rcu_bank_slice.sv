@@ -108,7 +108,8 @@ module rcu_bank_slice #(
   // (generic write port NW-1). Its requests come from rcu_mig's flops.
   input  logic              g2_v_cr00h,     // migration's R2 lead
   input  logic [WR-1:0]     g2_row_cr01h,   //   its row
-  input  logic              r2u_cr01h,      // the R op reads R2 (the decode, under R2's own lead)
+  input  logic [rcu_dec_pkg::OPC_W-1:0] ropc_cr01h, // the R op's opcode (decoded here, rcu_dec_pkg)
+  input  logic              rmrg_cr01h,     //   and merge_en: it reads R2 (under R2's own lead)
   input  logic              gw_v_cr00h,     // migration's RW lead
   input  logic              gw_sel_cr01h,   //   the restore writes RW (else the R op does)
   input  logic [WR-1:0]     gw_row_cr01h,   //   its row
@@ -116,11 +117,11 @@ module rcu_bank_slice #(
 );
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
-  logic rst_n_r01h;
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_n_r01h <= rst_n;
+    rst_cr01h_n <= rst_n;
   end
-  wire rst_r01h = !rst_n_r01h;
+  wire rst_r01h = !rst_cr01h_n;
 
   // One-hot predecode of a row index.
   function automatic logic [NH-1:0] dec_hi(input logic [WR-1:0] r);
@@ -160,6 +161,10 @@ module rcu_bank_slice #(
   // Migration tab), RW's by migration's flopped decision.
   wire [NR-1:0] rd_en_cr01h = rd_v_cr01h | (NR'(g2_v_cr01h) << (NR - 1));
   wire [NW-1:0] wr_en_cr01h = wr_v_cr01h | (NW'(gw_v_cr01h) << (NW - 1));
+  // The R op reads R2 when it merges into a GPR (the model's decode,
+  // rcu_dec_pkg; the R slot carries no atomic and no copy).
+  wire [rcu_dec_pkg::CLS_W-1:0] rcls_cr01h = rcu_dec_pkg::rcu_cls(ropc_cr01h, '0, '0);
+  wire r2u_cr01h = rmrg_cr01h & rcls_cr01h[rcu_dec_pkg::CLS_GDST];
   wire r2r_cr01h = rd_v_cr01h[NR-1] & r2u_cr01h;   // R2 is the R op's
   wire gws_cr01h = gw_v_cr01h & gw_sel_cr01h;      // RW is the restore's
   logic [NR*WR-1:0] rdr_cr01h;

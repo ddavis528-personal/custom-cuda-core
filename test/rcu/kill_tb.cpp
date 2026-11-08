@@ -82,7 +82,7 @@ struct Bench {
   bool kv_q = false, ack = false, pend = false, dwake = false, idle = false, csr = false;
   unsigned kep = 0, aep = 0, drain = 0;
   uint64_t cr = 0;
-  bool rst_q = false;   // the module's flopped reset (RST-1)
+  bool rst_q = true;    // the module's flopped reset (RST-1): unknown, so held, until the first edge
 
   explicit Bench(const char *vcd_path) {
     ctx = std::make_unique<VerilatedContext>();

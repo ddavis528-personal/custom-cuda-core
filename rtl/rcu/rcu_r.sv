@@ -109,16 +109,16 @@ module rcu_r #(
 
   // The op-class decode (RI-21 (4)): the R slot carries no copy and no
   // atomic, so done_row and the predicate-copy flag only complete the call.
-  wire [rcu_dec_pkg::CLS_W-1:0] cls_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h, drow_cr02h, 1'b0);
+  wire [rcu_dec_pkg::CLS_W-1:0] cls_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h, drow_cr02h, '0);
   wire [4:0] kind_cr02h = cls_cr02h[rcu_dec_pkg::CLS_RK +: 5];
   wire [2:0] unit_cr02h = cls_cr02h[rcu_dec_pkg::CLS_UNIT +: 3];
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
-  logic rst_n_r01h;
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_n_r01h <= rst_n;
+    rst_cr01h_n <= rst_n;
   end
-  wire rst_r01h = !rst_n_r01h;
+  wire rst_r01h = !rst_cr01h_n;
 
   function automatic logic [31:0] em(input logic [1:0] w);
     em = (w == 2'd0) ? 32'hffff_ffff : (w == 2'd1) ? 32'h0000_ffff :

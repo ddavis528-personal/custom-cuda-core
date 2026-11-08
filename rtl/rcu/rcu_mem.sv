@@ -89,11 +89,11 @@ module rcu_mem #(
 );
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
-  logic rst_n_r01h;
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_n_r01h <= rst_n;
+    rst_cr01h_n <= rst_n;
   end
-  wire rst_r01h = !rst_n_r01h;
+  wire rst_r01h = !rst_cr01h_n;
 
   function automatic logic [NK-1:0] secmask(input logic [1:0] w, input logic [1:0] pos);
     logic [NK-1:0] span;

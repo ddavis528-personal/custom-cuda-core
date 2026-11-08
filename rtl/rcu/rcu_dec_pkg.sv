@@ -307,7 +307,7 @@ package rcu_dec_pkg;
       511: c = pcopy ? 27'h7e0c806 : 27'h7e0c805;   // copy-only (A-38)
       default: c = 27'h0000007;
     endcase
-    return c;
+    rcu_cls = c;
   endfunction
 
 endpackage

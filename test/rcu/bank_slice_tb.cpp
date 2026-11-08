@@ -21,7 +21,7 @@
 // reads and loads.
 //
 // Migration (rcu_mig) beside the R op on R2 and RW: R2 is the R op's when
-// its lead and its decode (r2u) say it reads R2, else migration's under
+// its lead and its decode (of its opcode and merge_en) say it reads R2, else migration's under
 // migration's lead; RW writes the restore's row, every lane and section,
 // when migration's lead and its decision (gw_sel) say so, the R op's write
 // ignored, else the R op's. The traffic covers each mix: R alone, migration
@@ -54,6 +54,8 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+
+#include "dec_tb.h"
 
 #ifndef BS_ROWS
 #define BS_ROWS 192
@@ -177,6 +179,21 @@ struct Bench {
   }
 
   /// One cycle: `next` starts now (valids); s1's rows and s2's data go in.
+  // The R op's opcode and merge_en, which the slice decodes to "reads R2"
+  // (merge_en and a GPR destination; test/rcu/dec_tb.h); salt picks among
+  // the opcodes, and among the ways not to read R2.
+  void rOp(bool ruse, unsigned salt) {
+    using dectb::R::OpClass;
+    using dectb::R::Unit;
+    auto isR = [](const OpClass &oc) { return oc.unit == Unit::ROnly || oc.unit == Unit::Coll; };
+    static const dectb::OpPool gd("an R op writing a GPR", 0, [&](const OpClass &oc) { return isR(oc) && oc.gdst; });
+    static const dectb::OpPool ng("an R op writing no GPR", 0, [&](const OpClass &oc) { return isR(oc) && !oc.gdst; });
+    const bool g = ruse || (salt & 1u);
+    const auto &ops = g ? gd.ops : ng.ops;
+    dut->ropc_cr01h = ops[(salt >> 1) % ops.size()];
+    dut->rmrg_cr01h = ruse || (!g && (salt & 2u));
+  }
+
   void step(const Cycle &next, bool rst = false) {
     dut->rst_n = !rst;
     dut->rd_v_cr00h = 0;
@@ -185,7 +202,8 @@ struct Bench {
     dut->mw_v_cr01h = 0;
     dut->g2_v_cr00h = 0;
     dut->gw_v_cr00h = 0;
-    dut->r2u_cr01h = 0;
+    dut->ropc_cr01h = 0;
+    dut->rmrg_cr01h = 0;
     dut->gw_sel_cr01h = 0;
     for (const Read &r : next.rd)
       if (!isRR(r.port)) {
@@ -206,7 +224,7 @@ struct Bench {
       } else {   // R2: the R op's row and migration's
         put(dut->rd_row_cr01h, rdIdx(r.port) * 8, 8, r.ruse ? r.row : r.other);
         dut->g2_row_cr01h = r.ruse ? r.other : r.row;
-        dut->r2u_cr01h = r.ruse;
+        rOp(r.ruse, r.row ^ r.other);
       }
     }
     for (const Load &l : s1.ld) put(dut->mw_v_cr01h, l.slot, 1, 1);

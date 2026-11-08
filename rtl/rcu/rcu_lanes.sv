@@ -96,13 +96,8 @@ module rcu_lanes #(
   input  logic [NK*3-1:0]         lsrc_cr01h,      // lead_src_used
   input  logic [NK-1:0]           limm_cr01h,      // lead_imm_used
   input  logic [NK-1:0]           lmrg_cr01h,      // lead_merge_used
-  // The payload and its op-class decode (A).
-  input  logic [NK*2-1:0]         cls_cr02h,       // 0 nothing to the lanes, 1 lane, 2 SFU, 3 GPR copy
-  input  logic [NK-1:0]           gdst_cr02h,      // class: writes a GPR
-  input  logic [NK*3-1:0]         rds_cr02h,       // class: GPR source ports read
-  input  logic [NK*2-1:0]         isl_cr02h,       // class: the immediate's port, 3 none
-  input  logic [NK-1:0]           immu_cr02h,      // class: the immediate is read
-  input  logic [NK-1:0]           pdt_cr02h,       // class: pdata
+  // The payload (A); its op-class decode is this module's (rcu_dec_pkg).
+  input  logic [NK-1:0]           cont_cr02h,      // cont: a continuation, no class
   input  logic [NK*NK-1:0]        foot_cr02h,      // footprint
   input  logic [NK*WO-1:0]        opc_cr02h,       // opcode
   input  logic [NK*32-1:0]        imm_cr02h,
@@ -170,11 +165,40 @@ module rcu_lanes #(
   localparam int WS = $clog2(NK);       // a section index
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
-  logic rst_n_r01h;
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_n_r01h <= rst_n;
+    rst_cr01h_n <= rst_n;
   end
-  wire rst_r01h = !rst_n_r01h;
+  wire rst_r01h = !rst_cr01h_n;
+
+  // ---- The op-class decode (rcu_dec_pkg, the model's; RI-21 (4)) -------
+  // Per S slot, from opcode, done_row, and a copy's pred_we and phys_dst:
+  // cls 0 nothing to the lanes (a continuation, a predicate-only copy), 1 a
+  // lane op, 2 SFU, 3 a GPR copy; writes a GPR; GPR source ports read; the
+  // immediate's port (3 none) and whether it is read; pdata. The model
+  // classes SFU ops as lane ops (Unit Sfu awaits RA-16 (b)), so cls 2 is
+  // never decoded yet.
+  logic [NK*2-1:0] cls_cr02h, isl_cr02h;
+  logic [NK-1:0]   gdst_cr02h, immu_cr02h, pdt_cr02h;
+  logic [NK*3-1:0] rds_cr02h;
+  always_comb begin
+    logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
+    logic [2:0]                    u_cr02h;
+    for (int s = 0; s < NK; s++) begin
+      c_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h[s*WO +: WO], drow_cr02h[2*s +: 2],
+                                     pwe_cr02h[s] && dst_cr02h[s*WR +: WR] == ZROW);
+      u_cr02h = c_cr02h[rcu_dec_pkg::CLS_UNIT +: 3];
+      cls_cr02h[2*s +: 2] = cont_cr02h[s] ? 2'd0 :
+                            u_cr02h == rcu_dec_pkg::U_LANE ? 2'd1 :
+                            u_cr02h == rcu_dec_pkg::U_SFU  ? 2'd2 :
+                            u_cr02h == rcu_dec_pkg::U_COPY ? 2'd3 : 2'd0;
+      gdst_cr02h[s]       = c_cr02h[rcu_dec_pkg::CLS_GDST];
+      rds_cr02h[3*s +: 3] = c_cr02h[rcu_dec_pkg::CLS_READS +: 3];
+      isl_cr02h[2*s +: 2] = c_cr02h[rcu_dec_pkg::CLS_ISLOT +: 2];
+      immu_cr02h[s]       = c_cr02h[rcu_dec_pkg::CLS_IMMU];
+      pdt_cr02h[s]        = c_cr02h[rcu_dec_pkg::CLS_PDATA];
+    end
+  end
 
   function automatic logic [NK-1:0] secmask(input logic [1:0] w, input logic [1:0] pos);
     logic [NK-1:0] span;

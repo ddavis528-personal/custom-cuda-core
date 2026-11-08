@@ -163,11 +163,11 @@ module rcu_pred #(
   localparam logic [WP-1:0] ZP = WP'(ccv_prov_pkg::CCV_P_PRED_ZERO);
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
-  logic rst_n_r01h;
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_n_r01h <= rst_n;
+    rst_cr01h_n <= rst_n;
   end
-  wire rst_r01h = !rst_n_r01h;
+  wire rst_r01h = !rst_cr01h_n;
 
   // ---- The op-class decode (rcu_dec_pkg, the model's; RI-21 (4)) ------
   // Per slot: guarded and pdata; R's op a branch or call (its lead);

@@ -111,7 +111,7 @@ int main() {
     rcudec::decodeClass(code, 0, false, 1, oc, d);
     std::printf("      %u: c = %s;   // %s\n", code, hex(pack(oc), W).c_str(), op->name);
   }
-  std::printf("      default: c = %s;\n    endcase\n    return c;\n  endfunction\n\n",
+  std::printf("      default: c = %s;\n    endcase\n    rcu_cls = c;\n  endfunction\n\n",
               hex(none, W).c_str());
   std::printf("endpackage\n");
   return 0;

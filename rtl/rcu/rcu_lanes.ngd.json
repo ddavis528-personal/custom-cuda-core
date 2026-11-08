@@ -7,11 +7,11 @@
       "date": "2026-11-07",
       "why": "rcu_pred's A flops (active_a, gv_a), read in A+1 straight from flops, wire only; fanout is check-ngd's."
     },
-    "cls_cr02h": {
-      "arrival": 5.0,
-      "by": "RA (RA tab rev 98, re:RI-20)",
+    "cont_cr02h": {
+      "arrival": 0.0,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): they arrive at 0 and the decode (Pipeline tab) is timed inside the module that uses them; until rcu_lanes takes the opcode and decodes it, the decode's 5 NGD (Partition tab: issue payload to bank predecode) sits at the port so the path is timed whole. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
+      "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Decoded inside by rcu_dec_pkg, the model's op-class decode (RI-21 (4)), which RA rev 81 times inside the module once it takes the opcode."
     },
     "dpos_cr02h": {
       "arrival": 0.0,
@@ -43,12 +43,6 @@
       "date": "2026-11-07",
       "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
     },
-    "gdst_cr02h": {
-      "arrival": 5.0,
-      "by": "RA (RA tab rev 98, re:RI-20)",
-      "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): they arrive at 0 and the decode (Pipeline tab) is timed inside the module that uses them; until rcu_lanes takes the opcode and decodes it, the decode's 5 NGD (Partition tab: issue payload to bank predecode) sits at the port so the path is timed whole. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
-    },
     "gv_cr03h": {
       "arrival": 0.0,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
@@ -60,18 +54,6 @@
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-07",
       "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
-    },
-    "immu_cr02h": {
-      "arrival": 5.0,
-      "by": "RA (RA tab rev 98, re:RI-20)",
-      "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): they arrive at 0 and the decode (Pipeline tab) is timed inside the module that uses them; until rcu_lanes takes the opcode and decodes it, the decode's 5 NGD (Partition tab: issue payload to bank predecode) sits at the port so the path is timed whole. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
-    },
-    "isl_cr02h": {
-      "arrival": 5.0,
-      "by": "RA (RA tab rev 98, re:RI-20)",
-      "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): they arrive at 0 and the decode (Pipeline tab) is timed inside the module that uses them; until rcu_lanes takes the opcode and decodes it, the decode's 5 NGD (Partition tab: issue payload to bank predecode) sits at the port so the path is timed whole. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
     },
     "iv_cr01h": {
       "arrival": 0.0,
@@ -125,7 +107,7 @@
       "arrival": 0.0,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-07",
-      "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
+      "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Also decoded inside by rcu_dec_pkg, the model's op-class decode (RI-21 (4)), which RA rev 81 times inside the module once it takes the opcode."
     },
     "opos_cr02h": {
       "arrival": 0.0,
@@ -138,12 +120,6 @@
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
       "date": "2026-11-07",
       "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
-    },
-    "pdt_cr02h": {
-      "arrival": 5.0,
-      "by": "RA (RA tab rev 98, re:RI-20)",
-      "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): they arrive at 0 and the decode (Pipeline tab) is timed inside the module that uses them; until rcu_lanes takes the opcode and decodes it, the decode's 5 NGD (Partition tab: issue payload to bank predecode) sits at the port so the path is timed whole. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
     },
     "pod_cr02h": {
       "arrival": 0.0,
@@ -162,12 +138,6 @@
       "by": "RA (Partition tab rev 52, Port NGD budgets)",
       "date": "2026-11-07",
       "why": "The bank slices' L0-L3 reads in A+1: bank out 11, lanes in 6, 17 in all (Partition tab, 'bank L0-L3 read -> lanes payload')."
-    },
-    "rds_cr02h": {
-      "arrival": 5.0,
-      "by": "RA (RA tab rev 98, re:RI-20)",
-      "date": "2026-11-07",
-      "why": "The op-class decode's bits, as RA rev 81 rules for rcu_pred's (re:RI-14): they arrive at 0 and the decode (Pipeline tab) is timed inside the module that uses them; until rcu_lanes takes the opcode and decodes it, the decode's 5 NGD (Partition tab: issue payload to bank predecode) sits at the port so the path is timed whole. RA rev 98 confirms 5 for rcu_lanes and rcu_mem on Partition rule 1: each module keeps its own copy of the decode at assembly."
     },
     "spos_cr02h": {
       "arrival": 0.0,

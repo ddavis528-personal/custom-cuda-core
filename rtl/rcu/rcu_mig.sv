@@ -138,11 +138,11 @@ module rcu_mig #(
   localparam int WN = $clog2(2 * Q + 1); // pending credits
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
-  logic rst_n_r01h;
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_n_r01h <= rst_n;
+    rst_cr01h_n <= rst_n;
   end
-  wire rst_r01h = !rst_n_r01h;
+  wire rst_r01h = !rst_cr01h_n;
 
   function automatic logic [Q-1:0] lowest(input logic [Q-1:0] v);
     logic seen;
@@ -176,7 +176,7 @@ module rcu_mig #(
   // The R op's class (rcu_dec_pkg, the model's decode; the R slot carries
   // no atomic and no copy): it reads R2 when it merges into a GPR, and holds
   // RW when it writes a GPR or is a collective (the model's r2_busy, rw_busy).
-  wire [rcu_dec_pkg::CLS_W-1:0] rcls_cr02h = rcu_dec_pkg::rcu_cls(ropc_cr02h, 2'd0, 1'b0);
+  wire [rcu_dec_pkg::CLS_W-1:0] rcls_cr02h = rcu_dec_pkg::rcu_cls(ropc_cr02h, '0, '0);
   wire rgd_cr02h  = rcls_cr02h[rcu_dec_pkg::CLS_GDST];
   wire rr2_cr02h  = rmrg_cr02h & rgd_cr02h;
   wire rrw_cr02h  = rgd_cr02h | (rcls_cr02h[rcu_dec_pkg::CLS_UNIT +: 3] == rcu_dec_pkg::U_COLL);
