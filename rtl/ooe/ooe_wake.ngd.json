@@ -2,10 +2,10 @@
   "module": "ooe_wake",
   "ports": {
     "grant_cq01h": {
-      "arrival": 2.0,
+      "arrival": 1.0,
       "by": "OA",
-      "date": "2026-10-20",
-      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: wake's grant copy (ooe_sched's third grant register)"
+      "date": "2026-11-07",
+      "why": "OA's response re:OI-122 (OA tab rev 375): 1 NGD of the grant's split moved from ooe_sched to ooe_wake; ooe_sched sends grant_w_cq04h from its third (* keep *) grant register (0.0 measured), so each timer enable is 6.1 + 1 = 7.1, within CG-2's 8"
     },
     "kind_cq01h": {
       "arrival": 2.0,

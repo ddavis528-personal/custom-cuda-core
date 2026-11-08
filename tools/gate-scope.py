@@ -24,10 +24,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALL = "ALL"
 ALWAYS = ["s1a", "s1d", "iface", "vlint"]
 # Every section that reads RTL, its benches or its synthesis flow.
-RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "top",
+RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "rcu_rtl", "top",
        "formal", "phys", "svh", "links"]
-# The sections that read RI's RCU RTL and its benches (RI-10).
-RCU_RTL = ["cg", "ngd"]
+# The sections that read RI's RCU RTL and its benches (RI-10; rcu_rtl, RI's
+# re:TI-371: test/rcu/run-rtl.sh).
+RCU_RTL = ["cg", "ngd", "rcu_rtl"]
 # First match wins: the more specific prefix comes first.
 MAP = [
     # The sources of truth everything is generated from, and the gate itself.
@@ -72,8 +73,9 @@ MAP = [
     ("sim/skel/", ["skel", "kernel", "svh", "top"]),
     ("sim/", ALL),
     ("rtl/lint/", ["s1d"] + RTL),
-    # RI's RCU RTL (RI-10, RA-37): only check-cg and check-ngd read it (their
-    # rtl/** globs and test/rcu/cg-units.json); lint and vlint always run.
+    # RI's RCU RTL (RI-10, RA-37): only check-cg and check-ngd (their rtl/**
+    # globs and test/rcu/cg-units.json) and RI's benches read it; lint and
+    # vlint always run.
     # Nothing instantiates it yet; the selftest fails when something does.
     ("rtl/rcu/", RCU_RTL),
     ("rtl/", RTL),
@@ -202,8 +204,10 @@ def selftest():
     expect(s != ALL and {"kernel", "rcu_unit", "skel", "svh"} <= set(s),
            "an RCU model change skips a section that reads it: %s" % s)
     s, _ = scope(["rtl/rcu/rcu_bank_slice.sv", "test/rcu/cg-units.json"])
-    expect(s != ALL and {"cg", "ngd"} <= set(s) and not {"ooe_rtl", "top", "svh"} & set(s),
-           "an RCU RTL change is not scoped to check-cg and check-ngd: %s" % s)
+    expect(s != ALL and {"cg", "ngd", "rcu_rtl"} <= set(s) and not {"ooe_rtl", "top", "svh"} & set(s),
+           "an RCU RTL change is not scoped to check-cg, check-ngd and its benches: %s" % s)
+    s, _ = scope(["test/rcu/r_tb.cpp"])
+    expect(s != ALL and "rcu_rtl" in s, "an RCU bench change skips the benches: %s" % s)
     # RCU_RTL holds only while nothing else reads rtl/rcu/: no RTL outside it
     # instantiates its modules, and no script but the two names it.
     for x in rcu_rtl_readers():

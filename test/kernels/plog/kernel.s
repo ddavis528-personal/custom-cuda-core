@@ -7,7 +7,8 @@
 #
 # P1 = tid < 16, P2 = tid < 8, so P3 = !P1 | P2 holds for lanes 0-7 and
 # 16-31. P3 then guards an add, so a wrong P3 shows in R6's lanes as well
-# as in the final P3.
+# as in the final P3. Then P2 = P1 ^ P3 (RA-16 (f)), lanes 8-31, which
+# neither OR nor AND of the two gives.
         POR        P0, 4, 0             # P0 = all ones
         SRD        R1, 0                # tid
         MOVI       R2, 16
@@ -17,4 +18,5 @@
         SETP_LT    P2, R15, 0, R1, R3   # @P0 P2 = tid < 8
         POR        P3, 5, 2             # P3 = !P1 | P2
         ADD_P      R6, 3, R1, R2, R2    # @P3 R6 = tid + 16; lanes 8-15 keep 7
+        PXOR       P2, 1, 3             # P2 = P1 ^ P3: lanes 8-31
         C_EXIT     0

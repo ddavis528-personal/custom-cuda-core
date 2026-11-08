@@ -250,7 +250,13 @@ struct Kernel {
       // Decode-queue credits at FET (TI-46 (b)).
       "credit_wait", "credit_borrow", "held_ahead_wait",
       // O-83's private run through MIU (option W; DA tab rev 95).
-      "priv_form", "priv_fault"};
+      "priv_form", "priv_fault",
+      // O-72's atomics (IS-21; AR-21): the decode pair, the three steps,
+      // the passes and the holds between a pass's read and write.
+      "atomic_pair", "atomic", "atomic_repass", "atomic_write", "atomic_lane",
+      "atomic_acquire", "atomic_hold_wait",
+      // CAS (OI-127): its lane op on an active lane, and on a guarded-off one.
+      "cas_lane", "cas_lane_off"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory

@@ -11,6 +11,7 @@
 #   the GPR rows with their sections and home candidates (OI-81, OI-82),
 #   and the predicates, in its buffered form (test/ooe/freelist_tb.cpp);
 # - ooe_age against the model's RS ages, live, for both RS classes
+# - ooe_cmcap (C9's capture of ccv_miu_ooe_cmpl for the ROB) against the model's completions, live
 #   (test/ooe/age_tb.cpp);
 # - ooe_decq against the model's decode queue, live (test/ooe/decq_tb.cpp);
 # - ooe_go, rename's go, against the model's go log, live (test/ooe/go_tb.cpp);
@@ -201,6 +202,35 @@ for cfg in "rcu 0 $n_rcu" "miu 1 $n_miu"; do
   done
 done
 
+# ooe_cmcap (C9: OA rev 372), driven with the model's completions as the ROB
+# takes them: each output its input a cycle later.
+nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
+cm_slots=$(sed -n 's/.*localparam int CCV_TIER1_WARPS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+cm_pw=$(sed -n 's/.*kWRobTag = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)
+dir=build/ooe-rtl/cmcap
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace -GNC="$nc" -GPW="$cm_pw" -GR="$cm_slots" --top-module ooe_cmcap --Mdir "$dir" -o cmcap_tb \
+      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DCM_NC=$nc -DCM_PW=$cm_pw -DCM_R=$cm_slots -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_cmcap.sv" "$PWD/test/ooe/cmcap_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "cmcap: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1
+else
+  if out=$("$dir/cmcap_tb" "$seeds" 2>&1); then
+    say "cmcap ($nc lanes, $cm_slots slices) == model, a cycle late" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+  else
+    say "cmcap == model, a cycle late" "FAIL"; echo "$out" | tail -8; fail=1
+  fi
+  for c in no-lead late-pay no-fault-lead; do
+    if CMCAP_CONTROL=$c "$dir/cmcap_tb" 3 >/dev/null 2>&1; then
+      say "  control $c (cmcap)" "MISSED"; fail=1
+    else
+      say "  control $c (cmcap)" "caught"
+    fi
+  done
+fi
+
 # ooe_decq, driven from the model's decode queue before every cycle. A
 # control may be caught by the RTL's own assertion before the comparison:
 # either fails the run.
@@ -286,7 +316,7 @@ mkdir -p "$dir"
 rv() { sed -n "s/.*localparam int $1 = \([0-9]*\);.*/\1/p" rtl/generated/ccv_params_pkg.sv; }
 rob_p="S=$slots D=$(rv CCV_P_ROB_DEPTH) RP=$(rv CCV_RETIRE_PER_ROB) A=$width ND=7 NM=4 NK=$(rv CCV_P_BR_CKPTS) PCW=$(rv CCV_ADDR_BITS)"
 rob_p="$rob_p GW=$(( $(rv CCV_P_W_PHYS_REG) + $(rv CCV_W_PHYS_POS) )) GR=$(rv CCV_P_W_PHYS_REG) NG=$(rv CCV_P_PHYS_REGS)"
-rob_p="$rob_p NS=$(( 1 << $(rv CCV_W_PHYS_POS) )) PW=$(rv CCV_P_W_PHYS_PRED) NP=$(rv CCV_P_PRED_REGS)"
+rob_p="$rob_p NS=$(( 1 << $(rv CCV_W_PHYS_POS) )) PW=$(rv CCV_P_W_PHYS_PRED) NP=$(rv CCV_P_PRED_REGS) CW=$(rv CCV_W_FAULT_CAUSE)"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
       --trace $(for kv in $rob_p; do printf -- '-G%s ' "$kv"; done) --top-module ooe_rob_tb \
       --Mdir "$dir" -o rob_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
@@ -311,7 +341,7 @@ fi
 # trace the first few seeds happen to draw stops being caught when the
 # traces move (no-copy, at CCV_P_DECQ 15: first caught at seed 6).
 for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
-         no-branch-lead no-miu no-store drop-killed-fill late-fill shared-ports store-shift; do
+         no-branch-lead no-miu no-store drop-killed-fill late-fill shared-ports store-shift no-fault fault-cause fault-any-port fault-port0 no-fault-lead fault-addr; do
   if ROB_CONTROL=$c "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else
@@ -535,14 +565,16 @@ if out=$("$dir/rs_tb" "$seeds" 2>&1); then
 else
   say "rs == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-# no-msd runs at least 100 seeds: a replay in ooe_rs only clears its
+# no-msd runs at least 200 seeds: a replay in ooe_rs only clears its
 # issued bit, and a replayed producer is not final until it reissues, so a
 # lost miss shows only where a non-producer would confirm early (3 seeds
-# miss it, and at CCV_LAT_L1_WAKE 12 / CCV_LAT_L1_CMPL 14 the 31st seed is
-# the first to catch it, TI rev 288; a caught control stops at its first
+# miss it; at CCV_LAT_L1_WAKE 12 / CCV_LAT_L1_CMPL 14 the 31st seed was
+# the first to catch it, TI rev 288; under C9h, cmpl_split 9 and rx_lag 16
+# (OA 372), 105 seeds miss it and the free_led assertion catches it near
+# the 114th, cycle 380,760, OI-122; a caught control stops at its first
 # difference).
 for c in no-msd drop-squash-free drop-group drop-prv stale-live stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin no-kind; do
-  cs=3; [ "$c" = no-msd ] && cs=$(( seeds > 100 ? seeds : 100 ))
+  cs=3; [ "$c" = no-msd ] && cs=$(( seeds > 200 ? seeds : 200 ))
   if RS_CONTROL=$c "$dir/rs_tb" $cs >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1
   else
@@ -719,7 +751,7 @@ fi
 # Every seed the bench runs, as rob's (no-rep-lead, at CCV_P_DECQ 15 and
 # with the ret hold cancelling after the pick, OA's rev 320: not caught in
 # the first 6).
-for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r pay-port no-home pay-with-valid; do
+for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r pay-port no-home pay-with-valid no-c9h; do
   if TRIO_CONTROL=$c "$dir/trio_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (trio)" "MISSED"; fail=1
   else
