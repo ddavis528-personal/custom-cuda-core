@@ -520,10 +520,6 @@ module ooe_go #(
   // needed when n is 0).
   // A need past R never fits: a cycle takes at most R of a credit (an
   // atomic's two MIU rows and two names can carry a run past it).
-  function automatic logic sg_fit(input logic [R-1:0] t, input logic [3:0] n);
-    sg_fit = n == 4'd0;
-    for (int v = 1; v < R + 1; v++) if (n == 4'(v)) sg_fit = t[v - 1];
-  endfunction
   // Each warp's share, a thermometer to R (sg[s][c][v - 1], v 1 to R): which
   // pools give it v or more is formed from the warps and floors alone (the
   // table's terms chosen at elaboration), and the pool, one-hot, picks;
@@ -688,20 +684,25 @@ module ooe_go #(
   // the heads alone, picks the share's bit that must be set, and the names
   // of the k heads taken now and the m after fit the warp's room to its
   // ceiling (as the ROB room covers k + m).
-  logic [S*(R+1)*R-1:0] fits_nx_cq01h;
   logic [LB+LT:0]       room_cq01h;
   logic [2*R:0]         rm_cq01h;              // room >= n
-  logic                 ok_cq02h, ser_cq01h;
+  logic                 ser_cq01h;
   logic [3:0]           npf_cq01h;             // pairs' first slots before the last head
-  logic [R-1:0]         okm_cq02h;             // each length's fit, before the cut-back
   logic [4*4-1:0]       nd_cq01h;              // each credit's need over the run
   logic [PA-1:0]        a_cq01h;
   logic [2*4-1:0]       pre_cq01h;             // the names of the k heads taken now, GPR and predicate
+  // The fit split in two (task #37, the fanout ratchet): the early half,
+  // from the heads and the rooms alone, gives each run's fit but the
+  // shares (fe) and each credit's need one-hot to R (ndo; none over R,
+  // which no share covers); the shares, late, meet them in one AND-OR per
+  // credit (a share's need as a mux).
+  logic [S*(R+1)*R-1:0]         fe_cq01h;
+  logic [S*(R+1)*R*4*(R+1)-1:0] ndo_cq01h;
   always_comb begin
-    fits_nx_cq01h = '0;
-    a_cq01h       = '0;
-    npf_cq01h     = '0;
-    okm_cq02h     = '0;
+    fe_cq01h  = '0;
+    ndo_cq01h = '0;
+    a_cq01h   = '0;
+    npf_cq01h = '0;
     for (int s = 0; s < S; s++) begin
       room_cq01h = (LB + LT + 1)'(run_cq01h[s * LB +: LB]) +
              (reach_cq01h[s] ? (LB + LT + 1)'(ret_cq01h[s * LT +: LT]) : '0);
@@ -713,8 +714,7 @@ module ooe_go #(
                                               4'(ha_cq01h[(s * H + h) * PA + 8] | ha_cq01h[(s * H + h) * PA + 3])};
         nd_cq01h = '0;
         ser_cq01h = 1'b0;
-        for (int m = 1; m < R + 1; m++) begin
-          ok_cq02h = 1'b0;
+        for (int m = 1; m < R + 1; m++)
           if (k + m - 1 < H) begin
             a_cq01h     = ha_cq01h[(s * H + k + m - 1) * PA +: PA];
             nd_cq01h[0 +: 4]  = nd_cq01h[0 +: 4] + 4'(a_cq01h[0]) + 4'(a_cq01h[2]) + 4'(a_cq01h[8] & a_cq01h[7]);
@@ -725,27 +725,55 @@ module ooe_go #(
             npf_cq01h = '0;
             for (int h = 0; h < k + m - 1; h++)
               if (h < H) npf_cq01h = npf_cq01h + 4'(ha_cq01h[(s * H + h) * PA + 7]);
-            ok_cq02h = hv_cq01h[s * H + k + m - 1] && !ser_cq01h && rm_cq01h[k + m - 32'(npf_cq01h)] &&
-                       sg_fit(sg_cq02h[(s * 4 + 0) * R +: R], nd_cq01h[0 +: 4]) &&
-                       sg_fit(sg_cq02h[(s * 4 + 1) * R +: R], nd_cq01h[4 +: 4]) &&
-                       sg_fit(sg_cq02h[(s * 4 + 2) * R +: R], nd_cq01h[8 +: 4]) &&
-                       sg_fit(sg_cq02h[(s * 4 + 3) * R +: R], nd_cq01h[12 +: 4]) &&
-                       room_g_cq01h[s * LU +: LU] >= LU'(pre_cq01h[0 +: 4]) + LU'(nd_cq01h[8 +: 4]) &&
-                       room_p_cq01h[s * LU +: LU] >= LU'(pre_cq01h[4 +: 4]) + LU'(nd_cq01h[12 +: 4]);
+            fe_cq01h[(s * (R + 1) + k) * R + m - 1] =
+                hv_cq01h[s * H + k + m - 1] && !ser_cq01h && rm_cq01h[k + m - 32'(npf_cq01h)] &&
+                room_g_cq01h[s * LU +: LU] >= LU'(pre_cq01h[0 +: 4]) + LU'(nd_cq01h[8 +: 4]) &&
+                room_p_cq01h[s * LU +: LU] >= LU'(pre_cq01h[4 +: 4]) + LU'(nd_cq01h[12 +: 4]);
+            for (int c = 0; c < 4; c++)
+              for (int v = 0; v < R + 1; v++)
+                ndo_cq01h[(((s * (R + 1) + k) * R + m - 1) * 4 + c) * (R + 1) + v] = nd_cq01h[c * 4 +: 4] == 4'(v);
             ser_cq01h = ser_cq01h | a_cq01h[6];
           end
-          okm_cq02h[m - 1] = ok_cq02h;
-        end
-        // A run never ends on a pair's first slot (OI-84 (a)): where head m
-        // is a first, length m fits as m + 1 does, its second's needs counted
-        // (OI-80 (d)), and not at all at the width. The fits stay a
-        // thermometer, a pair whole in it.
-        for (int m = 1; m < R + 1; m++)
-          fits_nx_cq01h[(s * (R + 1) + k) * R + m - 1] =
-              (k + m - 1 < H && ha_cq01h[(s * H + (k + m - 1) % H) * PA + 7]) ? (m < R && okm_cq02h[m % R]) : okm_cq02h[m - 1];
       end
     end
   end
+  // The cut-back and the squash, from the heads and the squash flop alone,
+  // taken in the early half too: a run never ends on a pair's first slot
+  // (OI-84 (a)): where head m is a first, length m fits as m + 1 does, its
+  // second's needs counted (OI-80 (d)), and not at all at the width (the
+  // fits stay a thermometer, a pair whole in it); a squash at this edge
+  // empties its slot's fits as they are registered (decq still shows its
+  // heads now; its registered flush masks them from the next cycle).
+  logic [S*(R+1)*R-1:0]         fc_cq01h;
+  logic [S*(R+1)*R*4*(R+1)-1:0] ndc_cq01h;
+  always_comb
+    for (int s = 0; s < S; s++)
+      for (int k = 0; k < R + 1; k++)
+        for (int m = 1; m < R + 1; m++)
+          if (k + m - 1 < H && ha_cq01h[(s * H + (k + m - 1) % H) * PA + 7]) begin
+            fc_cq01h[(s * (R + 1) + k) * R + m - 1] =
+                m < R && fe_cq01h[(s * (R + 1) + k) * R + m % R] && !sq_cq01h[s];
+            ndc_cq01h[((s * (R + 1) + k) * R + m - 1) * 4 * (R + 1) +: 4 * (R + 1)] =
+                ndo_cq01h[((s * (R + 1) + k) * R + m % R) * 4 * (R + 1) +: 4 * (R + 1)];
+          end else begin
+            fc_cq01h[(s * (R + 1) + k) * R + m - 1] = fe_cq01h[(s * (R + 1) + k) * R + m - 1] && !sq_cq01h[s];
+            ndc_cq01h[((s * (R + 1) + k) * R + m - 1) * 4 * (R + 1) +: 4 * (R + 1)] =
+                ndo_cq01h[((s * (R + 1) + k) * R + m - 1) * 4 * (R + 1) +: 4 * (R + 1)];
+          end
+  // The late half: each credit's share covers its need (a mux), all four.
+  logic [S*(R+1)*R-1:0] fits_nx_cq02h;
+  logic                 lt_cq02h;
+  always_comb
+    for (int s = 0; s < S; s++)
+      for (int k = 0; k < R + 1; k++)
+        for (int m = 1; m < R + 1; m++) begin
+          lt_cq02h = 1'b1;
+          for (int c = 0; c < 4; c++)
+            lt_cq02h = lt_cq02h &
+                ((ndc_cq01h[(((s * (R + 1) + k) * R + m - 1) * 4 + c) * (R + 1) +: R + 1] &
+                  {sg_cq02h[(s * 4 + c) * R +: R], 1'b1}) != '0);
+          fits_nx_cq02h[(s * (R + 1) + k) * R + m - 1] = fc_cq01h[(s * (R + 1) + k) * R + m - 1] & lt_cq02h;
+        end
 
   // Each warp's first slots past each take k, and each head's unit (OI-84
   // (a)): head v's unit is v less the seconds up to it, a second being the
@@ -886,9 +914,9 @@ module ooe_go #(
         fh_cq02h[gs * 2 +: 2]                       <= '0;
       end else if (fits_en_cq02h[gs]) begin
         fh_cq02h[gs * 2 +: 2]                       <= fh_nx_cq02h[gs * 2 +: 2];
-        fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
-        fitsw_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
-        fitsx_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
+        fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq02h[gs * (R + 1) * R +: (R + 1) * R];   // squash in fc
+        fitsw_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq02h[gs * (R + 1) * R +: (R + 1) * R];   // squash in fc
+        fitsx_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq02h[gs * (R + 1) * R +: (R + 1) * R];   // squash in fc
         wc_cq02h[gs * (R + 1) * 2 * R * R +: (R + 1) * 2 * R * R] <= wc_cq01h[gs * (R + 1) * 2 * R * R +: (R + 1) * 2 * R * R];
         pf_cq02h[gs * (R + 1) * R +: (R + 1) * R]   <= pf_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R];
         pfw_cq02h[gs * (R + 1) * R +: (R + 1) * R]  <= pf_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R];
