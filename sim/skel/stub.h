@@ -533,6 +533,8 @@ inline constexpr OpInfo kOps[] = {
   {"RCP_U32",       kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
   {"RSQRT_F32",     kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
   {"RCP_F32_P",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
+  // pxor (ISA v1.9 Format K, opcode 62; RA-16 (f)): PAND's row, RCU-only on R, appended so no opcode moves.
+  {"PXOR",          kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;

@@ -3485,6 +3485,7 @@ private:
       uint32_t v = 0;
       if (!std::strcmp(op->name, "POR")) v = a | b;
       else if (!std::strcmp(op->name, "PAND")) v = a & b;
+      else if (!std::strcmp(op->name, "PXOR")) v = a ^ b;
       else k_.fail("rcu: predicate op %s has no semantics here", op->name);
       if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
       k_.pred[ppd] = ((merge ? k_.pred[ppold] : 0u) & ~issue) | (v & issue);

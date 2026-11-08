@@ -1844,12 +1844,14 @@ else
 fi
 # Predicate logic's sources arrive renamed in imm: RCU reading DEC's
 # qualifiers instead gets plog's P3 = !P1 | P2 wrong, and its own check, the
-# guarded add's lanes and the final compare all say so.
+# guarded add's lanes and the final compare all say so; the pxor that reads
+# P3 (RA-16 (f)) gets P2 wrong as well, refused by RCU and the final compare.
 "$SKEL" --kernel build/oracle/plog/oracle.jsonl --break arch-pred-srcs >"$B/kernel_arch-pred-srcs.log" 2>&1
 if grep -q "^CHECK rcu: seq 7 P3 = 0000ffff, oracle ffff00ff" "$B/kernel_arch-pred-srcs.log" &&
-   [ "$(field "$B/kernel_arch-pred-srcs.log" pred_mismatch)" = 1 ] &&
-   [ "$(field "$B/kernel_arch-pred-srcs.log" check_failures)" = 41 ]; then
-  say "--break arch-pred-srcs: plog's P3 wrong" "PASS (RCU's check, 16 lanes' enable, the final P3)"
+   grep -q "^CHECK rcu: seq 9 P2 = 00000000, oracle ffffff00" "$B/kernel_arch-pred-srcs.log" &&
+   [ "$(field "$B/kernel_arch-pred-srcs.log" pred_mismatch)" = 2 ] &&
+   [ "$(field "$B/kernel_arch-pred-srcs.log" check_failures)" = 42 ]; then
+  say "--break arch-pred-srcs: plog's P3 and P2 wrong" "PASS (RCU's checks, 16 lanes' enable, the final P3 and P2)"
 else
   bad "--break arch-pred-srcs" "a misnamed predicate source went unnoticed: $(grep '^KERNEL' "$B/kernel_arch-pred-srcs.log")"
 fi
