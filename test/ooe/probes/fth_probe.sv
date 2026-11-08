@@ -7,7 +7,7 @@ module fth_probe #(parameter int N = 45, parameter int NR = 30, parameter int C 
   output logic [2*C-1:0] fth
 );
   logic [N-1:0] conf;
-  ooe_confirm #(.N(N)) cf(.iss_cq01h(iss), .dep_cq01h(dep), .msd_cq01h(msd), .fin_cq01h(fin), .prod_cq01h(prod),
+  ooe_confirm #(.N(N)) cf(.iss_cq01h(iss), .dep_cq01h(dep), .msd_cq01h(msd), .new_cq01h('0), .fin_cq01h(fin), .prod_cq01h(prod),
                           .replay_cq01h(), .conf_cq01h(conf));
   always_comb begin
     logic [$clog2(N + 1)-1:0] n0, n1;
