@@ -853,7 +853,7 @@ ooe → rcu · rate 9 · execution
 
 Lead fields (driven with valid, a cycle ahead of the rest): `lead_sec_mask`, `lead_src_used`, `lead_imm_used`, `lead_merge_used`, `lead_guard_used`, `lead_guard_pred`, `lead_opcode`, `lead_phys_dst`, `lead_dst_pos`, `lead_dst_width`, `lead_done_row`, `lead_pred_we`, `lead_phys_pred_dst`, `lead_cont`, `lead_pred_neg`, `lead_rpsrc`, `lead_phys_src`, `lead_phys_src2`, `lead_phys_old_dst`, `lead_old_dst_pos`, `lead_src_pos`.
 
-Slot fields (defined only on the slots named, zero on the rest): `imm` on `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`; `phys_src` on `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`; `phys_src2` on `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`; `lead_rpsrc` on `CCV_ISSUE_SLOT_R`; `lead_phys_src` on `0`, `1`, `2`, `3`, `CCV_ISSUE_SLOT_R`; `lead_phys_src2` on `CCV_ISSUE_SLOT_R`; `lead_phys_old_dst` on `0`, `1`, `2`, `3`; `lead_old_dst_pos` on `0`, `1`, `2`, `3`; `lead_src_pos` on `0`, `1`, `2`, `3`.
+Slot fields (defined only on the slots named, zero on the rest): `imm` on `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`; `phys_src` on `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`; `phys_src2` on `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`; `lead_rpsrc` on `CCV_ISSUE_SLOT_R`; `lead_phys_src` on `0`, `1`, `2`, `3`, `CCV_ISSUE_SLOT_R`; `lead_phys_src2` on `0`, `1`, `2`, `3`, `CCV_ISSUE_SLOT_R`; `lead_phys_old_dst` on `0`, `1`, `2`, `3`; `lead_old_dst_pos` on `0`, `1`, `2`, `3`; `lead_src_pos` on `0`, `1`, `2`, `3`.
 
 ### `ccv_rcu_lane_ops`
 

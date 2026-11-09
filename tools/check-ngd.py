@@ -176,6 +176,57 @@ EPS = 0.005
 # child port).
 WAKE_TAPS = {"kill_valid": ("ccv_common_clk", "wake")}
 NEG = float("-inf")
+# Per-field lead budgets at a zero-cycle end (DA tab rev 116, re:RI-26 and
+# re:AR-334, 2026-11-09): a lead field of a second-kind end's payload may
+# take its own budget, split across the crossing, keyed
+# "<channel>[_c<n>][_s<n>]_payload.<lead field>", channel without ccv_ (no
+# _s<n>: every slot). On the receiving block's own module it is an arrival,
+# held by block_check (e) on the field's bits; on the sending block's, a
+# required time. A module port inside a block that carries one names it in
+# "carries" beside its own arrival or required. lead_cross() holds both
+# sides: required(sender) + (STAGE - arrival(receiver)) <= STAGE.
+LEAD_KEY = re.compile(r"^(?P<port>(?P<ch>.+?)(?:_c\d+)?(?:_s(?P<slot>\d+))?_payload)"
+                      r"\.(?P<field>\w+)$")
+
+
+def lead_layout(root=ROOT):
+    """{channel without ccv_: {lead field: (lsb, width)}} from the schema,
+    the payload packed first field at the MSB end (tools/gen-skel.py)."""
+    sys.path.insert(0, os.path.join(root, "tools"))
+    from ccv_schema import field_width
+    d = json.load(open(os.path.join(root, "schema", "interfaces.json")))
+    pv = {x["name"]: x["value"] for x in
+          json.load(open(os.path.join(root, "params", "ccv_params.json")))["params"]}
+    out = {}
+    for c in d["channels"]:
+        lead = set(c.get("lead_fields", []))
+        if not lead:
+            continue
+        ws = [int(eval(str(field_width(d, c, f)), {"__builtins__": {}}, dict(pv)))
+              for f in c["payload_fields"]]
+        lsb, fl = sum(ws), {}
+        for f, w in zip(c["payload_fields"], ws):
+            lsb -= w
+            if f in lead:
+                fl[f] = (lsb, w)
+        out[c["name"][4:] if c["name"].startswith("ccv_") else c["name"]] = fl
+    return out
+
+
+def lead_key(key, leads):
+    """(channel, slot or None, field, the payload port) for a per-field key
+    naming a lead field of a channel in `leads`; else a reason it does not."""
+    m = LEAD_KEY.match(key) if isinstance(key, str) else None
+    if not m:
+        return "a per-field budget is '<channel>[_c<n>][_s<n>]_payload.<lead field>'"
+    port, f = m.group("port"), m.group("field")
+    for ch in sorted(leads, key=len, reverse=True):
+        mm = re.match(r"^%s(?:_c\d+)?(?:_s(\d+))?_payload$" % re.escape(ch), port)
+        if mm:
+            if f not in leads[ch]:
+                return "%s is not a lead field of %s (schema lead_fields)" % (f, ch)
+            return ch, (int(mm.group(1)) if mm.group(1) else None), f, port
+    return "%s names no channel with lead fields" % port
 
 
 def run(cmd):
@@ -327,6 +378,12 @@ def base(net):
     return re.sub(r"\[\d+\]$", "", net)
 
 
+def bitno(net):
+    """A port bit's index: its [n], or 0 for a one-bit port."""
+    m = re.search(r"\[(\d+)\]$", net)
+    return int(m.group(1)) if m else 0
+
+
 class Timing:
     """Longest paths of a mapped netlist, by where they start (an input
     port, or a flop) and end (an output port, or a flop):
@@ -421,6 +478,10 @@ class Timing:
         self.port_fan = {p: max((loads.get(b, 0), fo(b)) for b in bits)
                          for p, bits in ports_in.items()}
         self.ins, self.outs = sorted(ports_in), sorted(ports_out)
+        # Kept for slice_in() on a block's levels (map_and_time(keep=True));
+        # dropped on a unit's, whose netlist would only hold memory.
+        self._prop, self._d_nets, self._pin, self._pout = prop, d_nets, ports_in, ports_out
+        self._r = None
         self.gates = collections.Counter(g for g, _, _ in gates)
         self.nflops = len(latches)
         # Backward from the endpoints (NGD-7): each flop's longest path to
@@ -444,6 +505,31 @@ class Timing:
             for q, v in back(bits).items():
                 if q in qs:
                     self.q_out[q][p] = v
+
+
+    def bits(self, port):
+        """The bit indices of an input port, on a kept level."""
+        return {bitno(b) for b in self._pin.get(port, ())}
+
+    def slice_in(self, port, idx):
+        """An input port's bits `idx` alone, on a kept level (DA tab rev 116:
+        a lead field's own budget): (ir, {output: (io, the output bits it
+        reaches)}), with the fanout term, ir from the better of the two maps
+        as self.ir is."""
+        def one(t):
+            a = t._prop([b for b in t._pin.get(port, ()) if bitno(b) in idx], fan=True)
+            return max((a.get(d, NEG) for d in t._d_nets), default=NEG), a
+        ir, a = one(self)
+        if self._r is not None and port in self._r._pin:
+            ir_r = one(self._r)[0]
+            if ir_r > NEG:
+                ir = min(ir, ir_r)
+        io = {}
+        for q, obits in self._pout.items():
+            hit = {bitno(o): a[o] for o in obits if a.get(o, NEG) > NEG}
+            if hit:
+                io[q] = (max(hit.values()), set(hit))
+        return ir, io
 
 
 def reg_names(d):
@@ -599,8 +685,9 @@ def captures(d, blackbox=(), reset=None):
     return out
 
 
-def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None):
-    """Ungate a Yosys JSON netlist, map it with ABC and time it."""
+def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None, keep=False):
+    """Ungate a Yosys JSON netlist, map it with ABC and time it; `keep`, a
+    block's level, keeps the netlist for Timing.slice_in()."""
     d = json.load(open(jsonfile))
     capture = captures(d, set(blackbox), reset)
     cut = ungate(d, set(blackbox))
@@ -669,6 +756,10 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None):
                 q_out[q][p] = min(v, tr.q_out.get(q, {}).get(p, v))
         t.q_out = q_out
     t.cut, t.regname, t.capture = cut, reg_names(d), capture
+    if keep:
+        t._r = tr
+    else:
+        t._prop = t._d_nets = t._pin = t._pout = None
     return t
 
 
@@ -811,6 +902,22 @@ class Budgets:
         for (mod, port), b in (extra or {}).items():
             self.e[(mod, port)] = b
         self.inner.update(inner or {})
+        self.lead = collections.defaultdict(dict)   # (mod, payload port) -> {field: entry}
+        for (mod, port), b in self.e.items():
+            if "." in port:
+                pp, _, f = port.partition(".")
+                self.lead[(mod, pp)][f] = b
+
+    def lead_entries(self, mod, port):
+        """A payload port's per-field budgets (DA tab rev 116): {field:
+        entry}, the slot's own key over the channel-wide one."""
+        m = re.match(r"^(.*?)((?:_c\d+)?)((?:_s\d+)?)_payload$", port)
+        if not m:
+            return {}
+        out = {}
+        for cand in ("%s_payload" % m.group(1), "%s%s_payload" % m.group(1, 2), port):
+            out.update(self.lead.get((mod, cand), {}))
+        return out
 
     @classmethod
     def load(cls):
@@ -833,11 +940,14 @@ class Budgets:
         b = self.e.get((mod, port))
         return float(b["arrival"]) if b and "arrival" in b else STAGE - PORT
 
-    def check(self, units, modules):
+    def check(self, units, modules, leads=None):
         """NGD-4: each file for a design module, an inner helper's with no
         ports, each entry well formed and on a port its module has, of the
-        right direction."""
+        right direction; a per-field entry, or one that "carries" a field,
+        on a lead field of the channel its key names (DA tab rev 116)."""
         fails = list(self.bad)
+        if leads is None and any("." in p or "carries" in b for (_, p), b in self.e.items()):
+            leads = lead_layout()
         ports = {}
         for u in units:
             if u.t is not None:
@@ -873,11 +983,23 @@ class Budgets:
                 v = float(b[kind[0]])
                 if not 0 <= v <= STAGE:
                     fails.append("NGD-4 %s: %s %g is outside 0..%g" % (where, kind[0], v, STAGE))
+            pname = port
+            if "." in port or "carries" in b:
+                k = lead_key(port if "." in port else b["carries"], leads)
+                if isinstance(k, str):
+                    fails.append("NGD-4 %s: %s" % (where, k))
+                    continue
+                if kind[0] == "observation":
+                    fails.append("NGD-4 %s: a lead field's budget is an arrival or a required "
+                                 "time" % where)
+                    continue
+                if "." in port:
+                    pname = k[3]
             if mod in ports:
                 inp = kind[0] == "arrival"
-                if port not in (ports[mod][0] if inp else ports[mod][1]):
+                if pname not in (ports[mod][0] if inp else ports[mod][1]):
                     fails.append("NGD-4 %s: %s has no %s port %s"
-                                 % (where, mod, "input" if inp else "output", port))
+                                 % (where, mod, "input" if inp else "output", pname))
         return fails
 
 
@@ -1104,7 +1226,7 @@ def time_level(tag, st, mn, kids, lib=LIB):
         raise SystemExit("check-ngd: %s, level %s: yosys failed:\n%s"
                          % (tag, src_name(mn), (r.stdout + r.stderr)[-2000:]))
     TIMED_ALONE.append(mn)
-    return map_and_time(sub, jf, set(kids) | st.lib, lib)
+    return map_and_time(sub, jf, set(kids) | st.lib, lib, keep=True)
 
 
 # Every level time_level() synthesised, in order: the selftest's record that
@@ -1286,6 +1408,87 @@ def rtl_port_budget(name, root=ROOT):
     return {c for b, c in lk.no_flop_port_budget(sorted(ends), ends, None, root) if b == name}
 
 
+def lead_cross(budgets, ends=None, leads=None, rtl=None, root=ROOT):
+    """Both sides of a zero-cycle end held per lead field (DA tab rev 116,
+    re:RI-26 and re:AR-334: "RCU in-side 13 on the four lead fields; OOE's
+    out-side on them declared required 0 in its ngd.json so check-ngd holds
+    both sides (0 + 13 <= 25)"). Every per-field budget ("<port>.<field>",
+    or a port's "carries"; LEAD_KEY) is collected by channel and field, an
+    arrival as the receiver's, a required time as the sender's, and each
+    pair on the same slot (or every slot) must fit the stage:
+    required + (STAGE - arrival) <= STAGE. A side that declares none takes
+    its default (PORT required, STAGE - PORT arriving) for the sum; it fails
+    as not yet declared only once both blocks' tops are RTL (ccv_links
+    .rtl_tops), and is a pending line until then. `ends` is {channel:
+    (sending block, receiving block)} for the second-kind ends, from
+    params/links.json when not given. Returns (lines, failures)."""
+    if ends is None or rtl is None:
+        spec = importlib.util.spec_from_file_location(
+            "ccv_links", os.path.join(root, "tools", "ccv_links.py"))
+        lk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(lk)
+        if ends is None:
+            e, sd = lk.schema_ends(root)
+            ends = {c: sd[c] for _, c in lk.no_flop_port_budget(sorted(e), e, None, root)}
+        if rtl is None:
+            rtl = lk.rtl_tops(root)
+    decl = collections.defaultdict(lambda: {"src": [], "dst": []})
+    lines, fails = [], []
+    for (mod, port), b in sorted(budgets.e.items()):
+        key = port if "." in port else b.get("carries")
+        if key is None:
+            continue
+        if leads is None:
+            leads = lead_layout(root)
+        k = lead_key(key, leads)
+        if isinstance(k, str):
+            continue                     # NGD-4's (Budgets.check)
+        ch, slot, f, _ = k
+        where = "%s.%s" % (mod, port) + ("" if "." in port else " (carries %s)" % key)
+        if ch not in ends:
+            fails.append("lead budget %s: %s is not a zero-cycle end of the second kind "
+                         "(params/links.json no_flop_port_budget); a per-field budget splits "
+                         "only such a crossing (DA tab rev 116)" % (where, ch))
+            continue
+        if "arrival" in b:
+            decl[(ch, f)]["dst"].append((slot, float(b["arrival"]), where))
+        elif "required" in b:
+            decl[(ch, f)]["src"].append((slot, float(b["required"]), where))
+    for (ch, f), d in sorted(decl.items()):
+        src, dst = ends[ch]
+        for side, blk in (("src", src), ("dst", dst)):
+            if d[side]:
+                continue
+            msg = ("lead field %s of %s: ccv_%s's %s side declares no budget for it, so its "
+                   "default (%s %g) stands; DA tab rev 116 has both sides declared"
+                   % (f, ch, blk, "sending" if side == "src" else "receiving",
+                      "required" if side == "src" else "arriving",
+                      PORT if side == "src" else STAGE - PORT))
+            if src in rtl and dst in rtl:
+                fails.append(msg + ", and both blocks' tops are RTL")
+            else:
+                lines.append("pending: " + msg + " (not both tops RTL yet)")
+        snd = d["src"] or [(None, PORT, "ccv_%s's default" % src)]
+        rcv = d["dst"] or [(None, STAGE - PORT, "ccv_%s's default" % dst)]
+        worst = NEG
+        for ss, r, ws in snd:
+            for sr, a, wr in rcv:
+                if ss is not None and sr is not None and ss != sr:
+                    continue
+                worst = max(worst, r + STAGE - a)
+                if r + STAGE - a > STAGE + EPS:
+                    fails.append("lead field %s of %s%s: the sender's required %g (%s) + the "
+                                 "receiver's %g in (%s arriving at %g) = %g > %g: the two sides "
+                                 "of the zero-cycle crossing do not fit the stage (DA tab rev "
+                                 "116)" % (f, ch, "" if ss is None and sr is None else
+                                           ", slot %s" % (ss if ss is not None else sr),
+                                           r, ws, STAGE - a, wr, a, r + STAGE - a, STAGE))
+        lines.append("lead budgets: %s.%s across the zero-cycle end, %d sending and %d receiving "
+                     "declaration(s), worst required + in %g of %g"
+                     % (ch, f, len(d["src"]), len(d["dst"]), worst, STAGE))
+    return lines, fails
+
+
 def hidden_stages(name, t, ends, straight):
     """AR's rev 310 (TI rev 351's proposal, amended): at a FLOPPED end the
     wrapper's repeater holds the boundary flop, so the block's own port must
@@ -1323,7 +1526,7 @@ def hidden_stages(name, t, ends, straight):
 
 
 def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, params=None,
-                ends=None, budgeted=None, taps=None):
+                ends=None, budgeted=None, taps=None, layout=None):
     """A block assembled, as a sum of parts (Daniel, 2026-11-06): no
     whole-block synthesis, no child synthesised with its parent. The
     hierarchy of `top` (the partition: the block's hardening wrapper, or the
@@ -1360,7 +1563,12 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
           over every path through the hierarchy into a flop, instead of
           straight into one. `budgeted` is the block's such channels,
           rtl_port_budget(name) when not given. Every other no-flop end is
-          held straight in, as (c).
+          held straight in, as (c). A payload port whose block budget file
+          gives a lead field its own arrival ("<port>.<field>", or
+          "<channel>_payload.<field>" for every slot; DA tab rev 116) has
+          that field's bits held to STAGE less it, and the payload's other
+          bits to the port's budget. `layout` is {channel: {lead field:
+          (lsb, width)}}, lead_layout() when not given.
       (f) wake (AR's rev 336, RI-25 (4) (b)): a *_wake input, and a listed
           tap's path into the block clock's wake (`taps`, WAKE_TAPS when not
           given), is a wake source, not a data port: held to PORT (12) NGD
@@ -1504,6 +1712,24 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
         u = found.get((mn, cell))
         return NEG if u is None else u.t.ir.get(port, NEG)
 
+    def reach_bits(mn, cell, port, idx):
+        """(e) per field: reach() from bits `idx` of `port` alone, followed
+        bit by bit through each level (Timing.slice_in); a leaf's by its
+        unit's whole port."""
+        if mn in timings:
+            t = timings[mn]
+            d, io = t.slice_in(port, idx)
+            for q, (dl, oidx) in io.items():
+                if q not in t.cut:
+                    continue
+                c, typ, pn, _ = t.cut[q]
+                if typ in st.lib or is_clock(pn):
+                    continue
+                d = max(d, dl + reach_bits(typ, (mn, c), pn, oidx))
+            return d
+        u = found.get((mn, cell))
+        return NEG if u is None else u.t.ir.get(port, NEG)
+
     def tap_depth(mn, cell, port, tap):
         """(f): the longest timed path from `port` of level (mn, cell) into
         `tap`'s flops, through wires, glue and levels, each level's fanout
@@ -1523,7 +1749,7 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
             d = max(d, dl + sub)
         return d
     bud = rtl_port_budget(name) if budgeted is None else budgeted
-    bpat = re.compile(r"^(?:%s)(?:_c\d+)?(?:_s\d+)?_(?:valid|payload)$"
+    bpat = re.compile(r"^(%s)(?:_c\d+)?(?:_s\d+)?_(?:valid|payload)$"
                       % "|".join(re.escape(c) for c in sorted(bud))) if bud else None
     for i in t.ins:
         # Wake and the reset are not data ports (RI-22 (3), AR 327). A *_wake
@@ -1546,7 +1772,43 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                 fails.append("block %s: input %s's tap into %s.%s, a wake source (AR's rev 336, "
                              "RI-25 (4) (b)), reaches the wake flop %.1f NGD in, over the %g a "
                              "wake is held to" % (name, i, tap[0], tap[1], d, PORT))
-        if bpat and bpat.match(i) and start != st.top:
+        bm = bpat.match(i) if bpat else None
+        per = budgets.lead_entries(want, i) if bm and start != st.top else {}
+        if per:
+            # DA tab rev 116: each lead field with its own arrival, the rest
+            # of the payload at the port's.
+            if layout is None:
+                layout = lead_layout()
+            lay, arr = layout.get(bm.group(1), {}), budgets.arrival(want, i)
+            every = t.bits(i)
+            rest = set(every)
+            for fld, b in sorted(per.items()):
+                if fld not in lay:
+                    fails.append("block %s: %s.%s's budget names no lead field of %s (schema "
+                                 "lead_fields)" % (name, i, fld, bm.group(1)))
+                    continue
+                lsb, w = lay[fld]
+                idx = set(range(lsb, lsb + w)) & every
+                rest -= idx
+                if "arrival" not in b:
+                    continue
+                fa = float(b["arrival"])
+                d = reach_bits(st.top, None, i, idx)
+                if d > STAGE - fa + EPS:
+                    fails.append("block %s: input %s, lead field %s (bits [%d:%d]), a zero-cycle "
+                                 "end held to its per-field budget (DA tab rev 116), reaches a "
+                                 "flop %.1f NGD in, over the %g its budget leaves (%s arriving "
+                                 "at %g)" % (name, i, fld, lsb + w - 1, lsb, d, STAGE - fa, want,
+                                             fa))
+            d = reach_bits(st.top, None, i, rest) if rest else NEG
+            if d > STAGE - arr + EPS:
+                fails.append("block %s: input %s, its bits outside the lead fields budgeted "
+                             "alone (%s), a zero-cycle end held to its port budget (params/"
+                             "links.json no_flop_port_budget; AR's rev 326), reach a flop %.1f "
+                             "NGD in, over the %g its budget leaves (%s arriving at %g)"
+                             % (name, i, ", ".join(sorted(per)), d, STAGE - arr, want, arr))
+            continue
+        if bm and start != st.top:
             d, arr = reach(st.top, None, i), budgets.arrival(want, i)
             if d > STAGE - arr + EPS:
                 fails.append("block %s: input %s, a zero-cycle end held to its port budget "
@@ -1662,6 +1924,10 @@ def main_check(only=None, seed=False):
         fails += more
     if not parts:
         print("  blocks: none assembled yet (every block top is a generated stub)")
+    lines, more = lead_cross(budgets)
+    for l in lines or ["lead budgets across zero-cycle ends (DA tab rev 116): none declared yet"]:
+        print("  " + l)
+    fails += more
     more, over = cg.heavy_check("check-ngd")
     for l in more + cg.time_lines():
         print("  " + l)
@@ -2173,6 +2439,80 @@ def selftest():
         else:
             expect(any("input r_payload" in x and want in x for x in f),
                    "a second-kind end's logic (%s) passed, or failed otherwise: %s" % (tag, f))
+    #    Per-field lead budgets at a zero-cycle end (DA tab rev 116: "RCU
+    #    in-side 13 on the four lead fields; OOE's out-side on them declared
+    #    required 0 ... (0 + 13 <= 25)"). ngd_fx_lblk's lead_f takes a 4-bit
+    #    multiply (12.96 NGD): over the port's default 12 with no field
+    #    entry; within the 13 its own arrival 12.0 leaves; over it at 13.6
+    #    with one INV stage of fanout (F), the failure naming the field. The
+    #    port's budget still holds the payload's other bits: a 4-bit
+    #    multiply on them (V 4) fails as those bits, not as lead_f.
+    dst4 = funit("fx_dst4", "ngd_fx_dst", {"W": 4})
+    lf12 = {("ngd_fx_lblk", "r_payload.lead_f"): dict(why, arrival=12.0)}
+    for tag, v, fan, b, want in (("l_port", 2, 0, none, "a zero-cycle end held to its port"),
+                                 ("l_ok", 2, 0, Budgets(extra=lf12), None),
+                                 ("l_fan", 2, 1, Budgets(extra=lf12), "lead field lead_f"),
+                                 ("l_rest", 4, 0, Budgets(extra=lf12), "outside the lead")):
+        lay = {"r": {"lead_f": (2 * v, 8)}}
+        _, f = block_check("fx_" + tag, "ngd_fx_lwrp", files, [], b, [dst2, dst4],
+                           block="ngd_fx_lblk", params={"W": 4, "V": v, "F": fan}, ends=[],
+                           budgeted={"r"}, layout=lay)
+        if want is None:
+            expect(not f and 12 < dst4.t.ir["a"] <= 13,
+                   "a lead field within its own budget (%.2f NGD in, arriving at 12) was "
+                   "refused, or tests nothing: %s" % (dst4.t.ir["a"], f))
+        else:
+            expect(len(f) == 1 and "input r_payload" in f[0] and want in f[0]
+                   and (tag != "l_fan" or "13.6 NGD in, over the 13" in f[0]),
+                   "a lead field over its budget, or the payload's other bits over the "
+                   "port's (%s), passed, or failed otherwise: %s" % (tag, f))
+    #    The keys: a channel-wide entry covers every slot, a slot's own wins;
+    #    a key on no lead field, or an observation, is refused (NGD-4).
+    e0, e1 = dict(why, arrival=12.0), dict(why, arrival=11.0)
+    lb = Budgets(extra={("m", "r_payload.lead_f"): e0, ("m", "r_s3_payload.lead_f"): e1})
+    expect(lb.lead_entries("m", "r_s2_payload") == {"lead_f": e0}
+           and lb.lead_entries("m", "r_s3_payload") == {"lead_f": e1}
+           and lb.lead_entries("m", "r_s3_valid") == {},
+           "per-field keys resolved wrongly by slot: %s, %s"
+           % (lb.lead_entries("m", "r_s2_payload"), lb.lead_entries("m", "r_s3_payload")))
+    lay = {"r": {"lead_f": (4, 8)}}
+    lm = {"ngd_fx_lblk": "f", "m": "f"}
+    f = Budgets(extra={**lf12, ("m", "y"): dict(why, required=0.0,
+                                                carries="r_s1_payload.lead_f")}).check([], lm, lay)
+    expect(not f, "well-formed per-field budgets were refused: %s" % f)
+    for ent, want in (({("ngd_fx_lblk", "r_payload.rest"): dict(why, arrival=12.0)},
+                       "not a lead field of r"),
+                      ({("m", "y"): dict(why, required=0.0, carries="q_payload.lead_f")},
+                       "names no channel"),
+                      ({("ngd_fx_lblk", "r_payload.lead_f"): dict(why, observation=True)},
+                       "an arrival or a required")):
+        f = Budgets(extra=ent).check([], lm, lay)
+        expect(any(want in x for x in f), "a malformed per-field budget was accepted: %s" % f)
+    #    Both sides held (lead_cross): the sender's required 0 against the
+    #    receiver's arrival 12 fits (0 + 13 <= 25); required 1 against
+    #    arrival 0 does not (1 + 25 > 25); a side not yet declared is a
+    #    pending line until both tops are RTL, a failure after; a per-field
+    #    budget on a channel that is no second-kind end is refused.
+    snd0 = {("m", "y"): dict(why, required=0.0, carries="r_payload.lead_f")}
+    rends = {"r": ("snd", "rcv")}
+    for tag, ent, rtl, ends_, want in (
+            ("ok", {**lf12, **snd0}, set(), rends, None),
+            ("sum", {("ngd_fx_lblk", "r_payload.lead_f"): dict(why, arrival=0.0),
+                     ("m", "y"): dict(why, required=1.0, carries="r_payload.lead_f")},
+             set(), rends, "= 26 > 25"),
+            ("half", dict(lf12), set(), rends, None),
+            ("half_rtl", dict(lf12), {"snd", "rcv"}, rends, "ccv_snd's sending side declares "
+                                                           "no budget"),
+            ("off", {**lf12, **snd0}, set(), {}, "not a zero-cycle end of the second kind")):
+        ln, f = lead_cross(Budgets(extra=ent), ends=ends_, leads=lay, rtl=rtl)
+        if want is None:
+            expect(not f and (tag != "half" or any(l.startswith("pending:") for l in ln)),
+                   "lead budgets that hold both sides (%s) were refused, or a half not yet "
+                   "declared said nothing: %s %s" % (tag, f, ln))
+        else:
+            expect(f and all(want in x for x in f),
+                   "lead budgets that do not hold both sides (%s) passed, or failed otherwise: "
+                   "%s" % (tag, f))
     #    Wake (AR's rev 336, RI-25 (4) (b)): kill_valid, on the tap list,
     #    goes into the block clock's wake (ngd_fx_wclk standing for
     #    ccv_common_clk) and straight into kv_q. Its tap, and the x_wake
@@ -2280,7 +2620,8 @@ def selftest():
               "inner helpers alone and inside a parent, registers shared by an output and the "
               "rest, observation ports, budget files, ratchet, coverage, glue, the assembled "
               "block as a sum of parts, ABC's cache, the fanout term, one-cell captures, "
-              "second-kind no-flop ends, wake taps (%d controls)"
+              "second-kind no-flop ends, per-field lead budgets on both sides, wake taps (%d "
+              "controls)"
               % checks)
     return 1 if bad else 0
 
