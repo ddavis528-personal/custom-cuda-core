@@ -1027,7 +1027,7 @@ module ccv_rcu (
     .odat_cr04h (g_odat_cr04h),
     .owk_cr03h  (g_owk_cr03h),
     .kv_cr01h   (kill_detect_v_cr01h),
-    .km_cr01h   (kill_warp_mask),
+    .kmn_cr02h  (kill_detect_km_cr02h),
     .quiet_cr02h(g_quiet_cr02h),
     .busy_cr02h (g_busy_cr02h),
     .riv_cr01h  (i_iv_cr00h[8]),
@@ -1055,23 +1055,31 @@ module ccv_rcu (
   // on the ungated clock, the one wake detector CCV-L22 allows: kill_v_q in
   // K for both, asleep as awake, with no cycle added (a hold, not a delay).
   // The edge that ends K, which takes the epoch and the warp mask, is the
-  // first the wake opens. kill_valid goes straight into it (AR's rev 285 (5):
-  // a wake-tapped input's other loads go straight into a flop, RST-2), so it
-  // has no reset: OOE holds kill_valid low in reset, and rcu_kill and rcu_mig
-  // reset what it enables. One flop, written every cycle, in the block's 2%
-  // (RA rev 127, RA rev 130).
-  logic kill_detect_v_cr01h;
-  always_ff @(posedge core_clk) kill_detect_v_cr01h <= kill_valid;
+  // first the wake opens. The kill's three inputs go straight into these
+  // flops, RCU's boundary flops for them (AR's rev 285 (5), AR 338): the
+  // epoch and the warp mask of K are here in K+1, where rcu_mig reads the
+  // mask with kill_v_q a cycle on and rcu_kill holds the epoch to the ack
+  // under its own flop. No reset: OOE holds kill_valid low in reset, and
+  // rcu_kill and rcu_mig reset what they enable. 1 + WE + NWP flops, written
+  // every cycle, in the block's 2% (RA rev 127, RA rev 130).
+  logic                kill_detect_v_cr01h;
+  logic [$bits(kill_epoch)-1:0]     kill_detect_ep_cr02h;
+  logic [$bits(kill_warp_mask)-1:0] kill_detect_km_cr02h;
+  always_ff @(posedge core_clk) begin
+    kill_detect_v_cr01h  <= kill_valid;
+    kill_detect_ep_cr02h <= kill_epoch;
+    kill_detect_km_cr02h <= kill_warp_mask;
+  end
 
   // ---- rcu_kill: kill, the inbound credits, done's wake and the block's idle ---
   rcu_kill u_kill (
     .rcu_core_clk  (rcu_core_clk),
     .rst_n         (rst_n),
     .kv_cr01h      (kill_detect_v_cr01h),
-    .kep_cr01h     (kill_epoch),
+    .kep_cr02h     (kill_detect_ep_cr02h),
     .mq_cr01h      (g_quiet_cr02h),
     .kack_cr02h    (kill_ack),
-    .kaep_cr02h    (kill_ack_epoch),
+    .kaep_cr03h    (kill_ack_epoch),
     .iv_cr00h      (i_iv_cr00h),
     .lv_cr00h      (lr_v_cr00h),
     .mv_cr00h      (md_v_cr00h),

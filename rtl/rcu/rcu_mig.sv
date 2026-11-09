@@ -110,7 +110,7 @@ module rcu_mig #(
   output logic               owk_cr03h,     // rcu_pca_mig_wake
   // Kill: valid in K-1, the warp mask in K.
   input  logic               kv_cr01h,      // kill_v_q, ccv_rcu's kill detector flop (K)
-  input  logic [NWP-1:0]     km_cr01h,
+  input  logic [NWP-1:0]     kmn_cr02h,     // kill_warp_mask of K, ccv_rcu's kill detector flop (K+1)
   output logic               quiet_cr02h,   // to rcu_kill: nothing of a killed warp held
   output logic               busy_cr02h,    // to rcu_kill's idle
   // The R slot: its lead valid, then the payload's decode.
@@ -210,7 +210,8 @@ module rcu_mig #(
   wire rwb_cr02h = rivq_cr02h & rrw_cr02h;   // the R op holds RW
 
   // ---- Kill --------------------------------------------------------------
-  // kv_q in K, the mask flopped at K's edge: kact and kmn act in K+1.
+  // kv_q in K, the mask flopped at K's edge by ccv_rcu's kill detector (its
+  // boundary flop, AR 338): kact and kmn act in K+1.
   // mig_kmask accumulates killed warps until each one's next map lands; a
   // land clears its warp two cycles on (P+2's edge, from flops: the entry's
   // warp and the mask, never the input), unless a kill of that warp acts in
@@ -218,7 +219,7 @@ module rcu_mig #(
   // least two cycles after its map (RI's ordering note; the bench holds it).
   logic kact_cr02h;
   wire  kvq_cr01h = kv_cr01h;   // kill_v_q: ccv_rcu's kill detector (RA rev 127)
-  logic [NWP-1:0] kmn_cr02h, kmask_cr02h;
+  logic [NWP-1:0] kmask_cr02h;
   logic [Q-1:0] mjl_cr02h, kmh_cr03h;   // entry i landed last cycle; its warp clears next
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
@@ -226,11 +227,6 @@ module rcu_mig #(
     end else begin
       kact_cr02h <= kvq_cr01h;
     end
-  end
-  wire kmn_en_cr01h = kvq_cr01h;
-  always_ff @(posedge rcu_core_clk) begin
-    if (rst_r01h) kmn_cr02h <= '0;
-    else if (kmn_en_cr01h) kmn_cr02h <= km_cr01h;
   end
   // The killed-now test: a warp in this kill's mask, in K+1.
   function automatic logic killed(input logic [WW-1:0] w, input logic act, input logic [NWP-1:0] m);
@@ -276,7 +272,7 @@ module rcu_mig #(
     end
   end
   // kill_warp_mask lands at a no-flop end, so it goes straight into a flop
-  // (kmn, at K's edge; AR rev 285 (5), RA's ruling on RI-22 (7)) and joins
+  // (ccv_rcu's kill detector, at K's edge; AR rev 285 (5), AR 338) and joins
   // the mask a cycle on, in K+1. Every reader takes the mask with this
   // kill's warps ORed in for that cycle (inmask), which is the mask as it
   // stood when the raw input fed it: the clear never takes a warp the kill

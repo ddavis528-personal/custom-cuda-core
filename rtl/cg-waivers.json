@@ -155,18 +155,6 @@
    "by": "RI (Daniel's ruling, RA rev 87)",
    "date": "2026-11-09",
    "lead": true
-  },
-  {
-   "module": "rcu_mig",
-   "rule": "CG-5",
-   "target": "kmn_cr02h",
-   "ports": [
-    "kv_cr01h"
-   ],
-   "enable_ngd": 1.4,
-   "why": "The kill's warp mask, kmn_cr02h (32 flops, one gate), loaded at K under kill_v_q. kill_v_q is ccv_rcu's kill detector, a flop on the ungated clock (AR 336 (b), RA rev 127): the block's gate opens on a wake only from the edge after next, so a kill landing while RCU sleeps has no gated edge at K-1 to flop its valid, and this module's own kill_v_q flop (the enable before) would miss it. The enable is that flop's Q, a wire from the parent (rcu_mig.ngd.json, kv_cr01h 1.4), within CG-2's 8. Loaded every cycle instead, the 32 flops would take most of what the module leaves outside the rules. A kill's valid is the one RCU input that must act while the block sleeps, the reason AR ruled the detector; the mask is its payload.",
-   "by": "RI (AR 336, RA rev 127)",
-   "date": "2026-11-09"
   }
  ]
 }
