@@ -135,6 +135,11 @@ run "generate payload spec" python3 tools/gen-payload-spec.py
 run "event schema stable"   python3 tools/gen-event-schema.py --check
 run "parameters stable"     python3 tools/gen-params.py --check
 run "derived params refuse drift" python3 tools/gen-params.py --selftest
+# The opcode table (RI-21 (4)): kOps for the skeleton and ccv_ops_pkg for
+# an RTL decode, from params/ops.json, whose rows are append-only.
+run "generate opcode table" python3 tools/gen-ops.py
+run "opcode table stable"   python3 tools/gen-ops.py --check
+run "opcode table refuses a moved row" python3 tools/gen-ops.py --selftest
 run "ISA-sourced params match the pinned ISA" python3 tools/check-isa-params.py
 run "ISA params that should fail do" python3 tools/check-isa-params.py --selftest
 run "interfaces stable"     python3 tools/gen-interfaces.py --check
@@ -151,6 +156,8 @@ run "generate trust report" python3 tools/gen-trust-report.py
 run "trust report stable"   python3 tools/gen-trust-report.py --check
 run "generate skel wiring"  python3 tools/gen-skel.py
 run "skel wiring stable"    python3 tools/gen-skel.py --check
+# Through stub.h, which needs the wiring: C++ and SV agree per opcode.
+run "opcode table: C++ and SV agree" python3 tools/gen-ops.py --crosscheck
 run "generate SV top"       python3 tools/gen-top.py
 run "SV top stable"         python3 tools/gen-top.py --check
 # The walkthrough can be checked whole only at the end, from the builds the
