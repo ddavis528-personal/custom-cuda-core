@@ -75,8 +75,8 @@ module ooe_headrd #(
   // Per head, its GPR reads (src0..2, then the old destination) and its
   // predicate reads (guard, old destination, q0, q1): each value, the
   // captured group over the flops; its pending writer, the last pending
-  // port writing it, one-hot over the ports (ooe_ren1 takes that port's name
-  // over the value after the lanes, #35); and its in-group writer, one-hot
+  // port writing it, one-hot over the ports (ooe_ren1 lane-selects it and
+  // ooe_ren1n takes that port's name in Rename 2, #35); and its in-group writer, one-hot
   // over the heads.
   output logic [R*4*GW-1:0] h_gv_cq01h,
   output logic [R*4*A-1:0]  h_gk_cq01h,
@@ -90,7 +90,7 @@ module ooe_headrd #(
   // group's ports, a one-hot AND-OR after the compares; and, apart, its
   // pending writer, read from the slot's map by address like the flops (its
   // name is bound only in Rename 2's first gates, too late to fan to every
-  // read: ooe_ren1 takes it over the value after the lanes, #35), and the
+  // read: ooe_ren1n takes it in Rename 2, #35), and the
   // last lower head writing it.
   function automatic logic [GW-1:0] gval(input logic [3:0] a);
     logic [GW-1:0] f, v;

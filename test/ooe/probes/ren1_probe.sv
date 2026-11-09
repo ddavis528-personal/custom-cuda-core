@@ -55,14 +55,6 @@ module ren1_probe #(
     .unmet_g_cq01h, .unmet_p_cq01h, .run_cq01h, .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h,
     .sq_l_cq00h, .dq_ev_cq01h, .rob_en_cq01h, .pool_en_cq01h, .take_cq02h, .sel_cq02h(sel), .lane_v_cq02h(lane_v),
     .lane_c_cq02h(lane_c), .wb_cq02h(wb), .wt_cq02h);
-  // The pending group's names, as ooe_ren1n binds them (here: the lanes' index bits
-  // stand in, as the bind is Rename 2's).
-  logic [R*GW-1:0] pg;
-  logic [R*PW-1:0] pp;
-  always_comb for (int l = 0; l < R; l++) begin
-    pg[l * GW +: GW] = GW'(q_idx[l * 2 * R +: R]);
-    pp[l * PW +: PW] = PW'(q_idx[(l * 2 + 1) * R +: R]);
-  end
   logic [S*R*4*GW-1:0] c_gv;
   logic [S*R*4*R-1:0]  c_gw, c_pw, c_gk, c_pk;
   logic [S*R*4*PW-1:0] c_pv;
@@ -92,9 +84,9 @@ module ren1_probe #(
   logic [S*16*R-1:0] l_gkm, q_gkm; logic [S*4*R-1:0] l_pkm, q_pkm;
   ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(1)) r1 (.c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h,
     .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0), .c_gv_cq01h(c_gv), .c_gk_cq01h(c_gk),
-    .c_gw_cq01h(c_gw), .c_pv_cq01h(c_pv), .c_pk_cq01h(c_pk), .c_pw_cq01h(c_pw), .pw_gname_cq01h(pg),
-    .pw_pname_cq01h(pp), .lane_v_cq02h(lane_v), .lane_c_cq02h(lane_c), .wb_cq02h(wb), .l_v,
-    .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl, .l_x, .l_gkm, .l_pkm);
+    .c_gw_cq01h(c_gw), .c_pv_cq01h(c_pv), .c_pk_cq01h(c_pk), .c_pw_cq01h(c_pw),
+    .lane_v_cq02h(lane_v), .lane_c_cq02h(lane_c), .wb_cq02h(wb), .l_v,
+    .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl, .l_x, .l_gk(), .l_pk(), .l_gs(), .l_gkm, .l_pkm);
   logic en;
   assign en = |sel;
   always_ff @(posedge ooe_core_clk) begin

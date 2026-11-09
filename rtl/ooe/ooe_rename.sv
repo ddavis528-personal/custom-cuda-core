@@ -375,8 +375,6 @@ module ooe_rename #(
   (* keep *) logic [R*2-1:0]  p_pdst_cq03h;
   logic [S*16*R-1:0]   p_gkm_cq03h;   // the pending group's writers, per slot and register (#35)
   logic [S*4*R-1:0]    p_pkm_cq03h;
-  logic [R*GW-1:0]     p_gname_cq03h;
-  logic [R*PW-1:0]     p_pname_cq03h;
   logic [S*R*4*GW-1:0] c_gv_cq03h;
   logic [S*R*4*R-1:0]  c_gw_cq01h;
   logic [S*R*4*PW-1:0] c_pv_cq03h;
@@ -424,16 +422,18 @@ module ooe_rename #(
   logic [R*4*GW-1:0] l_g_cq02h;
   logic [R*4*R-1:0]  l_gl_cq02h, l_pl_cq02h;
   logic [R*4*PW-1:0] l_p_cq02h;
+  logic [R*4*R-1:0]  l_gk_cq02h, l_pk_cq02h;
+  logic [R*4-1:0]    l_gs_cq02h;
   logic [S*16*R-1:0] l_gkm_cq02h;
   logic [S*4*R-1:0]  l_pkm_cq02h;
-  ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(XL + 10)) u_ren1 (
+  ooe_ren1 #(.S(S), .R(R), .GW(GW), .GR(GR), .PW(PW), .LC(LC), .XW(XL + 10)) u_ren1 (
     .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h(c_xw_cq02h),
     .c_gv_cq01h(c_gv_cq03h), .c_gk_cq01h(c_gk_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq03h), .c_pk_cq01h(c_pk_cq03h),
-    .c_pw_cq01h, .pw_gname_cq01h(p_gname_cq03h), .pw_pname_cq01h(p_pname_cq03h), .lane_v_cq02h, .lane_c_cq02h,
+    .c_pw_cq01h, .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v(l_v_cq02h), .l_slot(l_slot_cq02h), .l_dst(l_dst_cq02h), .l_gwe(l_gwe_cq02h),
     .l_pdst(l_pdst_cq02h), .l_pwe(l_pwe_cq02h), .l_idx(l_idx_cq02h), .l_br(l_br_cq02h), .l_ckpt(l_ckpt_cq02h),
     .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_xw_cq02h),
-    .l_gkm(l_gkm_cq02h), .l_pkm(l_pkm_cq02h));
+    .l_gk(l_gk_cq02h), .l_pk(l_pk_cq02h), .l_gs(l_gs_cq02h), .l_gkm(l_gkm_cq02h), .l_pkm(l_pkm_cq02h));
 
   // Port k's owner: the slot of the lane whose name index is k (each
   // writing lane's names, one-hot by port: GPR, then predicate).
@@ -466,13 +466,16 @@ module ooe_rename #(
   (* keep *) logic [R*2*R-1:0] r_idx_cq03h;
   (* keep *) logic [R*GR-1:0]  r_galloc_cq03h;
   (* keep *) logic [R*PW-1:0]  r_palloc_cq03h;
-  (* keep *) logic [R*2*R-1:0] p_idx_cq03h;
-  (* keep *) logic [R*GR-1:0]  p_galloc_cq03h;
-  (* keep *) logic [R*PW-1:0]  p_palloc_cq03h;
   (* keep *) logic [R*4*GW-1:0] q_gv_cq03h;
   (* keep *) logic [R*4*GW-1:0] qo_gv_cq03h;   // the pending names again, for the names out (NGD-7)
   (* keep *) logic [R*5-1:0]    no_na_cq03h;   // and the narrow attributes
   (* keep *) logic [R*4*R-1:0] q_gl_cq03h;
+  // Each read's pending writer, by port (#35): ooe_ren1n takes that port's
+  // name, as the Rename 2 register's copy below holds it, over the value.
+  (* keep *) logic [R*4*R-1:0] q_gk_cq03h;
+  (* keep *) logic [R*4*R-1:0] qo_gk_cq03h;    // again, for the names out (NGD-7)
+  logic [R*4*R-1:0]            q_pk_cq03h;
+  (* keep *) logic [R*4-1:0]   q_gs_cq03h, qo_gs_cq03h;   // each read seen by placement (#35), twice (NGD-7)
   logic [R*4*R-1:0]  q_pl_cq03h;
   logic [R*4*PW-1:0] q_pv_cq03h;
   (* keep *) logic [R*XL-1:0] x_x_cq03h;
@@ -562,9 +565,11 @@ module ooe_rename #(
       r_idx_cq03h    <= l_idx_cq02h;
       r_galloc_cq03h <= galloc_cq02h;
       r_palloc_cq03h <= palloc_cq02h;
-      p_idx_cq03h    <= l_idx_cq02h;
-      p_galloc_cq03h <= galloc_cq02h;
-      p_palloc_cq03h <= palloc_cq02h;
+      q_gk_cq03h     <= l_gk_cq02h;
+      qo_gk_cq03h    <= l_gk_cq02h;
+      q_pk_cq03h     <= l_pk_cq02h;
+      q_gs_cq03h     <= l_gs_cq02h;
+      qo_gs_cq03h    <= l_gs_cq02h;
       x_x_cq03h      <= l_x_cq02h;
       w_cq03h        <= l_w_cq02h;
       n_slot_cq03h   <= l_slot_cq02h;
@@ -605,28 +610,45 @@ module ooe_rename #(
   logic [R*GR-1:0] sa_row_cq03h, rt_row_cq03h;
   logic [R*NSB-1:0] sa_sec_cq03h;
   // The other copies' sections and returns: unread (the q_ copy's go out).
-  logic [R-1:0]    r_sav_cq03h, r_rtv_cq03h, p_sav_cq03h, p_rtv_cq03h;
-  logic [R*GR-1:0] r_sar_cq03h, r_rtr_cq03h, p_sar_cq03h, p_rtr_cq03h;
-  logic [R*NSB-1:0] r_sas_cq03h, p_sas_cq03h;
+  logic [R-1:0]    r_sav_cq03h, r_rtv_cq03h;
+  logic [R*GR-1:0] r_sar_cq03h, r_rtr_cq03h;
+  logic [R*NSB-1:0] r_sas_cq03h;
   // The new names out, from the q_ copy (its reads unused).
   logic [R*4*GW-1:0] q_gx_cq03h;
   logic [R*4*PW-1:0] q_px_cq03h;
+  // The group before this one's new names, for its reads (#35): as the
+  // Rename 2 register holds them, pq_ for the names out, pr_ for Rename 2's,
+  // each (* keep *) beside m_gname (NGD-7).
+  (* keep *) logic [R*GW-1:0] pq_gname_cq04h, pr_gname_cq04h;
+  logic [R*PW-1:0]            pr_pname_cq04h;
+  logic [R*GW-1:0]            r_gname_cq03h;
+  logic [R*PW-1:0]            r_pname_cq03h;
+  logic                       pn_en_cq03h;
+  assign pn_en_cq03h = p_v_cq03h != '0;
+  always_ff @(posedge ooe_core_clk)
+    if (pn_en_cq03h) begin
+      pq_gname_cq04h <= r_gname_cq03h;
+      pr_gname_cq04h <= r_gname_cq03h;
+      pr_pname_cq04h <= r_pname_cq03h;
+    end
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .S(S)) u_ren1n (
     .q_idx_cq01h(q_idx_cq03h), .q_galloc_cq01h(q_galloc_cq03h), .q_palloc_cq01h(q_palloc_cq03h),
     .q_g_cq01h(qo_gv_cq03h), .q_gl_cq01h(qo_gl_cq03h), .q_p_cq01h('0), .q_pl_cq01h('0),
+    .q_gk_cq01h(qo_gk_cq03h), .q_pk_cq01h('0), .pn_gname_cq01h(pq_gname_cq04h), .pn_pname_cq01h('0),
+    .q_gs_cq01h(qo_gs_cq03h),
     .q_slot_cq01h(n_slot_cq03h), .q_gwe_cq01h(n_gwe_cq03h), .q_na_cq01h(no_na_cq03h), .q_nw_cq01h(wq_cq03h),
     .q_nal_cq01h(nq_al_cq03h), .q_nhm_cq01h(nq_hm_cq03h),
     .cand_v_cq01h(ncv_cq02h), .cand_row_cq01h(ncr_cq02h), .cand_same_cq01h(gcs_cq02h),
     .n_gname(q_gname_cq03h), .n_pname(q_pname_cq03h), .n_g(q_gx_cq03h), .n_p(q_px_cq03h),
     .n_sa_v(sa_v_cq03h), .n_sa_row(sa_row_cq03h), .n_sa_sec(sa_sec_cq03h), .n_rt_v(rt_v_cq03h), .n_rt_row(rt_row_cq03h));
   // Rename 2's, from the r_ copy: the new names and the reads.
-  logic [R*GW-1:0]   r_gname_cq03h;
-  logic [R*PW-1:0]   r_pname_cq03h;
   logic [R*4*GW-1:0] r_g_cq03h;
   logic [R*4*PW-1:0] r_p_cq03h;
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .S(S)) u_ren1nr (
     .q_idx_cq01h(r_idx_cq03h), .q_galloc_cq01h(r_galloc_cq03h), .q_palloc_cq01h(r_palloc_cq03h),
     .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(q_gl_cq03h), .q_p_cq01h(q_pv_cq03h), .q_pl_cq01h(q_pl_cq03h),
+    .q_gk_cq01h(q_gk_cq03h), .q_pk_cq01h(q_pk_cq03h), .pn_gname_cq01h(pr_gname_cq04h), .pn_pname_cq01h(pr_pname_cq04h),
+    .q_gs_cq01h(q_gs_cq03h),
     .q_slot_cq01h(n_slot_cq03h), .q_gwe_cq01h(n_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(w_cq03h),
     .q_nal_cq01h(nr_al_cq03h), .q_nhm_cq01h(nr_hm_cq03h),
     .cand_v_cq01h(ncv_cq02h), .cand_row_cq01h(ncr_cq02h), .cand_same_cq01h(gcs_cq02h),
@@ -636,18 +658,6 @@ module ooe_rename #(
   assign q_g_cq03h = r_g_cq03h;
   assign q_p_cq03h = r_p_cq03h;
 `endif
-  // From the copy, the pending group's names alone (its reads unused).
-  logic [R*4*GW-1:0] p_g_cq03h;
-  logic [R*4*PW-1:0] p_p_cq03h;
-  ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .S(S)) u_ren1np (
-    .q_idx_cq01h(p_idx_cq03h), .q_galloc_cq01h(p_galloc_cq03h), .q_palloc_cq01h(p_palloc_cq03h),
-    .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(q_gl_cq03h), .q_p_cq01h('0), .q_pl_cq01h('0),
-    .q_slot_cq01h(p_slot_cq03h), .q_gwe_cq01h(p_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(w_cq03h),
-    .q_nal_cq01h(nr_al_cq03h), .q_nhm_cq01h(nr_hm_cq03h),
-    .cand_v_cq01h(ncv_cq02h), .cand_row_cq01h(ncr_cq02h), .cand_same_cq01h(gcs_cq02h),
-    .n_gname(p_gname_cq03h), .n_pname(p_pname_cq03h), .n_g(p_g_cq03h), .n_p(p_p_cq03h),
-    .n_sa_v(p_sav_cq03h), .n_sa_row(p_sar_cq03h), .n_sa_sec(p_sas_cq03h), .n_rt_v(p_rtv_cq03h), .n_rt_row(p_rtr_cq03h));
-
   // -- Rename's counters (slice 7b; OI-73, OI-74, OI-75; OA's revs 207, 208, 213-216)
   // The takes reach the counters a cycle late, from the Rename 1 register:
   // each class's take and each slot's names, one-hot. Each counter is

@@ -221,6 +221,10 @@ struct Config {
   /// destination written earlier in the group counts as no narrow
   /// operand (the home position), and a conflict takes a fresh row.
   bool cand_indep = true;
+  /// With cand_indep (#35, OI row): a source or merged old destination the
+  /// group before this one wrote (the pending group, its names bound in the
+  /// same cycle as this group's reads) counts as no narrow operand too.
+  bool cand_indep_pend = true;
   /// cand 2's age: its find leaves out the last cand_lag groups'
   /// allocations, and a candidate in a row they allocated in is void
   /// (ooe_freelist registers Rename 2's allocations: 2).
@@ -2205,6 +2209,7 @@ private:
   std::vector<uint8_t> row_alloc_prev_;
   void retPending();
   std::vector<uint16_t> grp_written_;        ///< cand_indep: each slot's GPRs written this group
+  std::vector<uint16_t> grp_written_prev_;   ///< cand_indep_pend: and by the group before
   unsigned cand_row_ = kNoRow;               ///< planSlice's candidate, for allocSlice
   static unsigned candKind(unsigned w, unsigned pos) { return w == 1 ? 4 + ((pos >> 1) & 1u) : pos & 3u; }
   unsigned candFind(unsigned slot, unsigned kind, const std::vector<uint8_t> &sec) const;

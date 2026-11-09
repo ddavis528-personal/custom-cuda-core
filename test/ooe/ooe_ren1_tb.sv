@@ -140,14 +140,16 @@ module ooe_ren1_tb #(
   logic [R*4*GW-1:0] l_g;
   logic [R*4*R-1:0]  l_gl, l_pl;
   logic [R*4*PW-1:0] l_p;
+  logic [R*4*R-1:0]  l_gk, l_pk;
+  logic [R*4-1:0]    l_gs, q_gs;
   logic [S*16*R-1:0] l_gkm;
   logic [S*4*R-1:0]  l_pkm;
-  ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(1)) ooe_ren1 (
+  ooe_ren1 #(.S(S), .R(R), .GW(GW), .GR(GR), .PW(PW), .LC(LC), .XW(1)) ooe_ren1 (
     .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0),
     .c_gv_cq01h(c_gv), .c_gk_cq01h(c_gk), .c_gw_cq01h(c_gw), .c_pv_cq01h(c_pv), .c_pk_cq01h(c_pk),
-    .c_pw_cq01h(c_pw), .pw_gname_cq01h(q_gname), .pw_pname_cq01h(q_pname), .lane_v_cq02h, .lane_c_cq02h,
+    .c_pw_cq01h(c_pw), .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v, .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl,
-    .l_x, .l_gkm, .l_pkm);
+    .l_x, .l_gk, .l_pk, .l_gs, .l_gkm, .l_pkm);
 
   // The Rename 1 register (in ooe_rename, gated by the go's sel), with the
   // free lists' heads beside it.
@@ -155,7 +157,9 @@ module ooe_ren1_tb #(
   logic [R*GR-1:0]   q_galloc;
   logic [R*PW-1:0]   q_palloc;
   logic [R*4*GW-1:0] q_gv;
-  logic [R*4*R-1:0]  q_gl, q_pl;
+  logic [R*4*R-1:0]  q_gl, q_pl, q_gk, q_pk;
+  logic [R*GW-1:0]   pn_gname;          // the group before's names, as ooe_rename's Rename 2 register holds them
+  logic [R*PW-1:0]   pn_pname;
   logic [R*4*PW-1:0] q_pv;
   always_ff @(posedge ooe_core_clk)
     if (ooe_rst_r00h) q_v <= '0;
@@ -174,6 +178,13 @@ module ooe_ren1_tb #(
       q_pv     <= l_p;
       q_pl     <= l_pl;
       q_gkm    <= l_gkm;
+      q_gk     <= l_gk;
+      q_gs     <= l_gs;
+      q_pk     <= l_pk;
+      if (q_v != '0) begin
+        pn_gname <= q_gname;
+        pn_pname <= q_pname;
+      end
       q_pkm    <= l_pkm;
       q_galloc <= galloc_cq02h;
       q_palloc <= palloc_cq02h;
@@ -181,7 +192,8 @@ module ooe_ren1_tb #(
   // Rename 2's first gates: the names bound.
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW)) ooe_ren1n (
     .q_idx_cq01h(q_idx), .q_galloc_cq01h(q_galloc), .q_palloc_cq01h(q_palloc), .q_g_cq01h(q_gv),
-    .q_gl_cq01h(q_gl), .q_p_cq01h(q_pv), .q_pl_cq01h(q_pl),
+    .q_gl_cq01h(q_gl), .q_p_cq01h(q_pv), .q_pl_cq01h(q_pl), .q_gk_cq01h(q_gk), .q_pk_cq01h(q_pk),
+    .pn_gname_cq01h(pn_gname), .pn_pname_cq01h(pn_pname), .q_gs_cq01h(q_gs),
     // Whole rows here (NS 0): rename_tb's sectioned build holds the narrow names.
     .q_slot_cq01h('0), .q_gwe_cq01h('0), .q_na_cq01h('0), .q_nw_cq01h('0), .q_nal_cq01h('0),
     .q_nhm_cq01h('0), .cand_v_cq01h('0),

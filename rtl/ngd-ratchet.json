@@ -62,16 +62,7 @@
       "NGD-6 ren_v_cq01h>ren_psrc_cq01h": 17.9
     },
     "ooe_rename": {
-      "NGD-1": 27.3,
-      "NGD-2 q_gname_cq03h": 27.6,
-      "NGD-2 q_pname_cq03h": 3.4,
-      "NGD-3 c_dst_cq01h": 25.9,
-      "NGD-3 c_src_cq01h": 25.2,
-      "NGD-3 po_dst_cq02h": 25.7,
-      "NGD-7 no_na_cq03h": 21.7,
-      "NGD-7 qo_gl_cq03h": 21.5,
-      "NGD-7 qo_gv_cq03h": 21.8,
-      "NGD-7 wq_cq03h": 21.9
+      "NGD-2 q_pname_cq03h": 3.3
     },
     "ooe_rendep": {
       "NGD-3 gsn_cq01h": 28.5,
