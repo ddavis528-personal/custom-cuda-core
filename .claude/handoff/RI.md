@@ -41,7 +41,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-09 (notices): Conventions 17, AR 336, OA 379, IS 190, TI 395, OI 324, CP 155, DA 115, RA 130, RI 62. (DA 116, TI 396, AR 337)
+Bookmarks 2026-11-09 (notices): Conventions 17, AR 336, OA 379, IS 190, TI 395, OI 324, CP 155, DA 115, RA 130, RI 63. (DA 116, TI 396, AR 337)
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
@@ -54,6 +54,11 @@ architect may approve only if the end meets module NGD without the flop; can't m
    18801bda: ccv_rcu nets stage-tagged (L29; lint 0, top Icarus/Verilator + killsleep as before;
    scratchpad asm/verify4.sh; scratchpad tagnets.py). ccv_rcu.sv is now the source (ri-keep gen is stale).
    RI-26 RULED 13/0 (DA 116, RA 129): ef5f6f16 sets arrival 12.0 on the 4 lead ports (rcu_isd clean).
+   RI-29 (rev 63, to RA/AR/TI): block read at d7925bc2 (scratchpad blk_ngd.py, BLK_REAL=1 for params/links.json;
+   ~/ccv-logs/blk-ngd7r.sh) fails the block check: issue payload over 12 (cont 15.6 pred, pred_neg/merge 14.4,
+   phys_old_dst ~14.1 lanes, footprint ~13, src/old_dst_pos 12.7) and kill_valid/epoch/mask not straight into a
+   flop (AR 285 (5)). Asked RA: push module refactor without ccv_rcu.sv? Units all pass (chk7.sh; logs chk7-*).
+   DISK: allowance ~40 GB; delete build/cg *.vcd after each cg unit; old worktree builds (ri-wt2/3/4/6) deleted.
    RI-28 (rev 62) reported arrivals. When TI's ti-lead lands: ccv_rcu.ngd.json ports ooe_rcu_issue_payload.<field> 12.0.
    ri-wt2 unit checks ~/ccv-logs/chk-isd.log (slices + isd consumers); read with scratchpad cgpol.py.
    Then: block NGD read (measured fanout term per class bit and for kill_detect's Q, RA 126 b), re-measure
