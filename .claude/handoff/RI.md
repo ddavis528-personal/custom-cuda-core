@@ -74,7 +74,11 @@ architect may approve only if the end meets module NGD without the flop; can't m
    flop, CG-5), unit ccv_rcu in test/rcu/cg-units.json (children black boxes, bench killsleep_tb --cg; 34 in 1 gate,
    DCGE 100%). check-cg's harness reads only the black boxes' files, so the unit also lists ccv_params_pkg,
    rcu_dec_pkg, rcu_xbar, ccv_common_ctech_icg as black boxes (1ab94146, c9a310f8) -- tell TI in RI-33 (a tools fix
-   would be cleaner). chain-ri15 (~/ccv-logs/chain-ri15.out) gates ri-wt7 c9a310f8+regen, then pushes.
+   would be cleaner). chain-ri15 NGD-4: ccv_rcu.ngd.json keys must be per slot (0339f719, s0..s8). chain-ri16 on 0339f719: check-1d, cg,
+   ngd PASS (exports ~/ccv-logs/gate-{cg,ngd}-ri16.tgz); gate-push FAILED on 3 TI fixtures assuming RCU is DPI
+   (gate-scope.py:211 wrapper reader; check-links.sh:86 control; test/phys/links_split.json rcu "all") -> RI-33 (rev 67)
+   to TI, cc RA/AR, notices sent. NEXT: wait TI's fix commit; merge it + TI 0bd5ac02 (OA-405) + sweep branches into
+   ri-asm3, re-gate (chain-ri17), push. Bookmark RI tab rev 67.
    chain-ri12 FAILED cg: rcu_kill cr_q/kd/kaep had no waivers (d7925bc2 dropped them on scratchpad cgpol.py, which
    is BROKEN: it measures no rcu_kill findings; do not trust it, use the gate's cg log). Restored in both trees
    (ri-asm3 222a3010, ri-push12 41a4fd05, identical file). chain-ri13 (cg at CCV_JOBS=2) running: ~/ccv-logs/chain-ri13.out.
