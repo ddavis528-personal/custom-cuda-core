@@ -15,7 +15,8 @@
 //
 // Narrow names (NS > 0; slice 6, OI-81 (ii) and OI-82, OA's revs 252-254).
 // A GPR writer's allocation width is its destination's code, 32 bits for
-// an atomic or under FR (AR-24's interim). A narrow one is placed at its old
+// an atomic or under ooe_rename's FR (AR-24's interim), formed there with
+// its home (#35). A narrow one is placed at its old
 // destination's position on a merge, else at its first narrow source's,
 // else at its slot's home (one section at the slot index, a pair at
 // 2(slot mod 2)); a source or old destination with an in-group writer is
@@ -35,7 +36,6 @@ module ooe_ren1n #(
   parameter int GR = 8,                  // a GPR free list entry: the row (CCV_P_W_PHYS_REG)
   parameter int PW = 6,                  // predicate name (CCV_P_W_PHYS_PRED)
   parameter int NS = 0,                  // sections a row: 4 the narrow names, 0 whole rows
-  parameter int FR = 0,                  // 1: every register a whole row (AR-24's interim, full_rows)
   parameter int S  = 4,                  // tier-1 slots (CCV_TIER1_WARPS)
   localparam int GP = GW - GR,           // a name's position bits
   localparam int LS = (S > 1) ? $clog2(S) : 1,
@@ -58,6 +58,11 @@ module ooe_ren1n #(
   input  logic [R-1:0]      q_gwe_cq01h,
   input  logic [R*5-1:0]    q_na_cq01h,
   input  logic [R*10-1:0]   q_nw_cq01h,
+  // Each lane's allocation width (0 a whole row: under FR, an atomic, or its
+  // destination's code) and its slot's home position at that width, formed
+  // before the register from fields Rename 1 has early (#35).
+  input  logic [R*2-1:0]    q_nal_cq01h,
+  input  logic [R*2-1:0]    q_nhm_cq01h,
   input  logic [S*2-1:0]    cand_v_cq01h,
   input  logic [S*2*GR-1:0] cand_row_cq01h,
   input  logic [S-1:0]      cand_same_cq01h,
@@ -107,8 +112,8 @@ module ooe_ren1n #(
       logic [1:0]    w, p, home;
       logic [LS-1:0] sl;
       sl    = q_slot_cq01h[l * LS +: LS];
-      w     = (FR != 0 || q_na_cq01h[l * 5]) ? 2'd0 : q_nw_cq01h[l * 10 + 6 +: 2];
-      home  = (w == 2'd1) ? {sl[0], 1'b0} : 2'(sl);
+      w     = q_nal_cq01h[l * 2 +: 2];
+      home  = q_nhm_cq01h[l * 2 +: 2];
       p     = home;
       // The first narrow source with no in-group writer, nor the zero row.
       for (int i = 2; i >= 0; i--)
