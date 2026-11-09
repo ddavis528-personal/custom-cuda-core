@@ -1122,9 +1122,9 @@ module ccv_rcu (
   // under its own flop. No reset: OOE holds kill_valid low in reset, and
   // rcu_kill and rcu_mig reset what they enable. 1 + WE + NWP flops, written
   // every cycle, in the block's 2% (RA rev 127, RA rev 130).
-  logic                kill_detect_v_cr01h;
-  logic [$bits(kill_epoch)-1:0]     kill_detect_ep_cr02h;
-  logic [$bits(kill_warp_mask)-1:0] kill_detect_km_cr02h;
+  logic        kill_detect_v_cr01h;
+  logic [1:0]  kill_detect_ep_cr02h;    // kill_epoch's width (Icarus sizes $bits of a port as 0 here)
+  logic [31:0] kill_detect_km_cr02h;    // kill_warp_mask's
   always_ff @(posedge core_clk) begin
     kill_detect_v_cr01h  <= kill_valid;
     kill_detect_ep_cr02h <= kill_epoch;
