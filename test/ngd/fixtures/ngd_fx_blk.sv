@@ -433,6 +433,45 @@ module ngd_fx_zwrp #(parameter int W = 2) (
   ngd_fx_zblk #(.W(W)) u_blk (.clk(clk), .r_payload(r_payload), .q(q));
 endmodule
 
+// Per-field lead budgets at a zero-cycle end (DA tab rev 116): r_payload is
+// {lead_f, the rest}, lead_f's 2*W bits into one multiply (u_ld), the rest's
+// 2*V into another (u_rs). F = 1 also takes lead_f into four flops of the
+// block's own, five pins on each bit's net: one INV stage of fanout term.
+module ngd_fx_lblk #(parameter int W = 4, parameter int V = 2, parameter int F = 0) (
+  input  logic               clk,
+  input  logic [2*W+2*V-1:0] r_payload,
+  output logic [2*W-1:0]     q,
+  output logic [2*V-1:0]     p,
+  output logic [8*W-1:0]     fq
+);
+  ngd_fx_dst #(.W(W)) u_ld (.clk(clk), .a(r_payload[2*W+2*V-1:2*V]), .q(q));
+  ngd_fx_dst #(.W(V)) u_rs (.clk(clk), .a(r_payload[2*V-1:0]), .q(p));
+  if (F) begin : g_fan
+    // Four copies, each (* keep *), or synthesis merges them into one.
+    (* keep *) logic [2*W-1:0] f0_q, f1_q, f2_q, f3_q;
+    always_ff @(posedge clk) begin
+      f0_q <= r_payload[2*W+2*V-1:2*V];
+      f1_q <= r_payload[2*W+2*V-1:2*V];
+      f2_q <= r_payload[2*W+2*V-1:2*V];
+      f3_q <= r_payload[2*W+2*V-1:2*V];
+    end
+    assign fq = {f3_q, f2_q, f1_q, f0_q};
+  end else begin : g_nofan
+    assign fq = '0;
+  end
+endmodule
+
+module ngd_fx_lwrp #(parameter int W = 4, parameter int V = 2, parameter int F = 0) (
+  input  logic               clk,
+  input  logic [2*W+2*V-1:0] r_payload,
+  output logic [2*W-1:0]     q,
+  output logic [2*V-1:0]     p,
+  output logic [8*W-1:0]     fq
+);
+  ngd_fx_lblk #(.W(W), .V(V), .F(F)) u_blk (.clk(clk), .r_payload(r_payload), .q(q), .p(p),
+                                            .fq(fq));
+endmodule
+
 // A wake tap (AR's rev 336, RI-25 (4) (b)): kill_valid, a block input that is
 // no channel's _wake, is taken by a flop of the block's own (kv_q, its data
 // load) and tapped into the block clock's wake vector beside a channel's

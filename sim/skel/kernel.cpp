@@ -3317,7 +3317,13 @@ private:
       for (unsigned i = 0; op && i != op->nsrc; ++i)
         if (!(op->alu_imm >= 0 && int(i) == op->imm_slot)) rd |= 1u << i;
       const bool imm = op && (op->alu_imm >= 0 || op->srd_sel >= 0 || op->cls == kPredLogic || isCall(op));
-      const char *why = (fp & ~lsec) ? "a section outside its lead's mask"
+      // lead_sec_mask is exact (OA's rev 403 on RI-31): the footprint, bit
+      // for bit, so a superset is refused too.
+      if (lsec != fp)
+        k_.fail("rcu: seq %llu, %s: lead_sec_mask %s differs from its footprint %s (exact, OA's rev 403)",
+                (unsigned long long)uidSeq(m.tid), op ? op->name : "a copy", bits(lsec).c_str(),
+                bits(fp).c_str());
+      const char *why = lsec != fp ? nullptr
                         : (rd & ~lsrc) ? "a source its lead says is unused"
                         : imm && !limm ? "an immediate its lead says is unused"
                         : get(m.payload, c.ooe_rcu, "merge_en") && !lmrg ? "a merge its lead says is unused"
