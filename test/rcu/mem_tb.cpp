@@ -38,6 +38,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "cls_pack.h"
 #include "dec_tb.h"
 
 #ifndef MM_COPIES
@@ -155,9 +156,9 @@ struct Bench {
     if (const Group *x = g(c))
       for (unsigned j = 0; j < kK; ++j) {
         const Op &o = x->op[j];
-        put(dut->opc_cr02h, 9 * j, 9, o.opc);
+        // The class word rcu_isd holds from the lead (RA-43, RI-25).
+        put(dut->ocl_cr02h, 27 * j, 27, clspack::clsWord(o.opc, o.drow, false));
         put(dut->cont_cr02h, j, 1, x->v[j] && !o.mem);
-        put(dut->drw_cr02h, 2 * j, 2, o.drow);
         put(dut->foot_cr02h, kK * j, kK, o.foot);
         for (unsigned i = 0; i < 3; ++i) {
           put(dut->spos_cr02h, 6 * j + 2 * i, 2, o.spos[i]);

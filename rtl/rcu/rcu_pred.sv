@@ -19,17 +19,17 @@
 //
 // Stage I, the guard path (local stages cr01h = A-1, cr02h = A, cr03h =
 // A+1). Slots 0-3 are S0-S3, 4-7 P0-P3, 8 R (CCV_ISSUE_SLOT_R).
-//   cr01h  iv: the slot's issue valid lead. R's guard lead
+//   cr01h  iv: the slot's issue valid lead. Each slot's guard lead
 //          (lead_guard_used, lead_guard_pred), predecoded into flops under
-//          R's valid: in A R's guard is read from flops (RA-32, the split
-//          guard read).
+//          its valid: in A every guard is read from flops (RA-32, the split
+//          guard read; RA-43, the payload carries no guard).
 //          Each MIU slot's lead (valid, pred_we, phys_pred, active_mask),
 //          captured for T (see the MIU lead below).
-//   cr02h  A: every slot's payload from RCU's interface flop:
-//          phys_pred_guard (S and P slots read it on the wire, 48:1),
+//   cr02h  A: every slot's payload, on the wire (a zero-cycle end, RA-43):
 //          pred_neg, issue_mask; the op-class decode's guarded, pdata and,
-//          for R, whether the op is a branch or call; R's imm[13:0], the
-//          predicate sources of pand, por, pxor, vote and ballot (TI-1).
+//          for R, whether the op is a branch or call. R's lead_rpsrc[13:0],
+//          the predicate sources of pand, por, pxor, pmov, vote and ballot
+//          (TI-1), from this module's capture of the lead.
 //          MIU's pred_result, landing now (T).
 //          guard = the row, with MIU's forward: a slot landing now with
 //          pred_we on the guard's row substitutes pred_result on its
@@ -111,24 +111,19 @@ module rcu_pred #(
   localparam int NQ = 13,                                // merge write ports
   localparam int NM = 4,                                 // MIU slots
   localparam int ND = 4,                                 // demotion read ports
-  localparam int NH = (ROWS + 7) / 8,                    // psel_hi bits, 6
-  localparam int WR = ccv_prov_pkg::CCV_P_W_PHYS_REG       // a GPR row index, 8
+  localparam int NH = (ROWS + 7) / 8                     // psel_hi bits, 6
 ) (
   input  logic               rcu_core_clk,
   input  logic               rst_n,
   // Stage I: the issue slots.
   input  logic [NS-1:0]      iv_cr01h,      // slot s issues next cycle (the lead's valid)
-  input  logic               lgu_cr01h,     // R's lead_guard_used
-  input  logic [WP-1:0]      lgp_cr01h,     // R's lead_guard_pred
-  input  logic [NS*WP-1:0]   gd_cr02h,      // phys_pred_guard
+  input  logic [NS-1:0]      lgu_cr01h,     // lead_guard_used, each slot
+  input  logic [NS*WP-1:0]   lgp_cr01h,     // lead_guard_pred, each slot (RA-43: the payload has no guard)
   input  logic [NS-1:0]      ng_cr02h,      // pred_neg
   input  logic [NS*N-1:0]    im_cr02h,      // issue_mask
-  input  logic [NS*rcu_dec_pkg::OPC_W-1:0] opc_cr02h, // opcode (decoded here, rcu_dec_pkg)
+  input  logic [NS*rcu_dec_pkg::CLS_W-1:0] ocl_cr02h, // op class (rcu_isd's flops from the lead)
   input  logic [NS-1:0]      cont_cr02h,    // cont: a continuation, no class of its own
-  input  logic [NS*2-1:0]    drw_cr02h,     // done_row (an atomic's step)
-  input  logic [NK-1:0]      swe_cr02h,     // S slot s's pred_we (a copy's predicate-only form)
-  input  logic [NK*WR-1:0]   sdst_cr02h,    //   and phys_dst (the zero GPR)
-  input  logic [2*WP+1:0]    rimm_cr02h,    // R's imm[13:0]: RA [5:0], neg [6]; RB [12:7], neg [13]
+  input  logic [2*WP+1:0]    lrp_cr01h,     // lead_rpsrc[13:0], R's in A-1 (RA-43): RA [5:0], neg [6]; RB [12:7], neg [13]
   input  logic [NK*NK-1:0]   ft_cr02h,      // S slot s's footprint, section k at s*NK + k
   output logic [NS*N-1:0]    act_cr03h,     // active_a[s]
   output logic               busy_cr03h,    // to rcu_kill's idle: an issue in A or a predicate write pending
@@ -174,19 +169,15 @@ module rcu_pred #(
   // S slot s sends a lane message (a lane op or a GPR copy; not a
   // predicate-only copy, which is pwe and the zero GPR). A continuation has
   // no class.
-  localparam logic [WR-1:0] ZG = WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
   logic [NS-1:0] gt_cr02h, pdt_cr02h;
   logic [NK-1:0] lm_cr02h;
   logic          br_cr02h;
   always_comb begin
     logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
-    logic                          pc_cr02h;
     lm_cr02h = '0;
     br_cr02h = 1'b0;
     for (int s = 0; s < NS; s++) begin
-      pc_cr02h = (s < NK) ? (swe_cr02h[s % NK] && sdst_cr02h[(s % NK)*WR +: WR] == ZG) : 1'b0;
-      c_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h[s*rcu_dec_pkg::OPC_W +: rcu_dec_pkg::OPC_W],
-                                     drw_cr02h[s*2 +: 2], pc_cr02h);
+      c_cr02h = ocl_cr02h[s*rcu_dec_pkg::CLS_W +: rcu_dec_pkg::CLS_W];
       gt_cr02h[s]  = !cont_cr02h[s] && c_cr02h[rcu_dec_pkg::CLS_GUARDED];
       pdt_cr02h[s] = !cont_cr02h[s] && c_cr02h[rcu_dec_pkg::CLS_PDATA];
       if (s < NK)
@@ -201,12 +192,18 @@ module rcu_pred #(
     end
   end
 
+  // Each predecode reads its half of the predicate index.
+  /* verilator lint_off UNUSEDSIGNAL */
   function automatic logic [NH-1:0] dec_hi(input logic [WP-1:0] p);
     for (int h = 0; h < NH; h++) dec_hi[h] = p[WP-1:3] == h[WP-4:0];
   endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
+  // Each predecode reads its half of the predicate index.
+  /* verilator lint_off UNUSEDSIGNAL */
   function automatic logic [7:0] dec_lo(input logic [WP-1:0] p);
     for (int i = 0; i < 8; i++) dec_lo[i] = p[2:0] == i[2:0];
   endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
 
   logic [ROWS*N-1:0] row_cr02h;   // row p at p*N
 
@@ -254,22 +251,33 @@ module rcu_pred #(
     end
   end
 
-  // ---- R's guard lead (RA-32), kept for A -----------------------------
-  // Loaded under the lead's valid, from RCU's interface flop on the issue
-  // channel (CG-5 waiver under RA rev 87, as MIU's lead below).
-  wire rl_en_cr01h = iv_cr01h[SR];
-  logic [NH-1:0] rg_hi_cr02h;
-  logic [7:0]    rg_lo_cr02h;
-  always_ff @(posedge rcu_core_clk) begin
-    // Without the lead (an unguarded op) the row decodes to none: it reads 0.
-    if (rl_en_cr01h) begin
-      rg_hi_cr02h <= lgu_cr01h ? dec_hi(lgp_cr01h) : '0;
-      rg_lo_cr02h <= dec_lo(lgp_cr01h);
+  // ---- Each slot's guard lead (RA-32, RA-43), kept for A ---------------
+  // The payload carries no guard (RA-43): lead_guard_pred, beside the
+  // slot's valid in A-1, is predecoded into these psel flops for A, loaded
+  // under that valid (CG-5 waiver under RA rev 87, as MIU's lead below).
+  logic [NS*NH-1:0] rg_hi_cr02h;
+  logic [NS*8-1:0]  rg_lo_cr02h;
+  // For the lead's contract only (synthesis drops them): lead_guard_used,
+  // and whether the guard is the zero predicate, read only in A.
+  logic [NS-1:0] rgu_cr02h, rgz_cr02h;
+  for (genvar s = 0; s < NS; s++) begin : g_gl
+    wire gl_en_cr01h = iv_cr01h[s];
+    always_ff @(posedge rcu_core_clk) begin
+      // Without the lead (an unguarded op) the row decodes to none: it reads 0.
+      if (gl_en_cr01h) begin
+        rg_hi_cr02h[s*NH +: NH] <= lgu_cr01h[s] ? dec_hi(lgp_cr01h[s*WP +: WP]) : '0;
+        rg_lo_cr02h[s*8 +: 8]   <= dec_lo(lgp_cr01h[s*WP +: WP]);
+        rgu_cr02h[s]            <= lgu_cr01h[s];
+        rgz_cr02h[s]            <= lgp_cr01h[s*WP +: WP] == ZP;
+      end
     end
   end
-  logic rgu_cr02h;   // for the lead's contract only
+  // R's predicate sources, lead_rpsrc[13:0] (RA-43: R's payload has no
+  // imm), kept for A under R's valid (CG-5 lead waiver, as the guard's).
+  wire rl_en_cr01h = iv_cr01h[SR];
+  logic [2*WP+1:0] rimm_cr02h;
   always_ff @(posedge rcu_core_clk) begin
-    rgu_cr02h <= lgu_cr01h;
+    if (rl_en_cr01h) rimm_cr02h <= lrp_cr01h;
   end
 
   // ---- MIU's lead, kept for T ------------------------------------------
@@ -309,55 +317,55 @@ module rcu_pred #(
 
   logic [NS*NH-1:0] g_hi_cr02h;
   logic [NS*8-1:0]  g_lo_cr02h;
+  // Slots without a guard leave their bits of these unread.
+  /* verilator lint_off UNUSEDSIGNAL */
   logic [NS*N-1:0]  graw_cr02h, gv_d_cr02h, act_d_cr02h;
-  always_comb begin
-    for (int s = 0; s < NS; s++) begin
-      logic [N-1:0] r_cr02h, g_cr02h, a1_cr02h, a0_cr02h;
-      logic         force_cr02h;
-      if (s == SR) begin
-        g_hi_cr02h[s*NH +: NH] = rg_hi_cr02h;
-        g_lo_cr02h[s*8 +: 8]   = rg_lo_cr02h;
-      end else begin
-        g_hi_cr02h[s*NH +: NH] = dec_hi(gd_cr02h[s*WP +: WP]);
-        g_lo_cr02h[s*8 +: 8]   = dec_lo(gd_cr02h[s*WP +: WP]);
-      end
-      r_cr02h = rd(g_hi_cr02h[s*NH +: NH], g_lo_cr02h[s*8 +: 8], row_cr02h);
-      r_cr02h = fwd(g_hi_cr02h[s*NH +: NH], g_lo_cr02h[s*8 +: 8], r_cr02h,
-                    mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
-      graw_cr02h[s*N +: N] = r_cr02h;
-      g_cr02h = ng_cr02h[s] ? ~r_cr02h : r_cr02h;
-      gv_d_cr02h[s*N +: N] = g_cr02h;
-      force_cr02h = !gt_cr02h[s] || pdt_cr02h[s];
-      // active, pre-decoded off the late read (RA rev 100/106 remedy): both
-      // outcomes from the early im, negate and force, then the read selects,
-      // so the guard's path ends in one mux, not the negate, force and mask.
-      a1_cr02h = im_cr02h[s*N +: N] & {N{!ng_cr02h[s] || force_cr02h}};
-      a0_cr02h = im_cr02h[s*N +: N] & {N{ ng_cr02h[s] || force_cr02h}};
-      act_d_cr02h[s*N +: N] = (r_cr02h & a1_cr02h) | (~r_cr02h & a0_cr02h);
-    end
+  /* verilator lint_on UNUSEDSIGNAL */
+  // The guard reads below are continuous assigns, not a process: a process
+  // that writes a slice or a scratch variable and reads it back re-triggers
+  // itself without end under Icarus, whose always_comb waits on whole
+  // vectors and on its own static locals. Same logic, same netlist.
+  for (genvar s = 0; s < NS; s++) begin : g_guard
+    wire [NH-1:0] hi_cr02h = rg_hi_cr02h[s*NH +: NH];
+    wire [7:0]    lo_cr02h = rg_lo_cr02h[s*8 +: 8];
+    assign g_hi_cr02h[s*NH +: NH] = hi_cr02h;
+    assign g_lo_cr02h[s*8 +: 8]   = lo_cr02h;
+    wire [N-1:0] rr_cr02h = rd(hi_cr02h, lo_cr02h, row_cr02h);
+    wire [N-1:0] r_cr02h = fwd(hi_cr02h, lo_cr02h, rr_cr02h,
+                               mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
+    assign graw_cr02h[s*N +: N] = r_cr02h;
+    assign gv_d_cr02h[s*N +: N] = ng_cr02h[s] ? ~r_cr02h : r_cr02h;
+    wire force_cr02h = !gt_cr02h[s] || pdt_cr02h[s];
+    // active, pre-decoded off the late read (RA rev 100/106 remedy): both
+    // outcomes from the early im, negate and force, then the read selects,
+    // so the guard's path ends in one mux, not the negate, force and mask.
+    wire [N-1:0] a1_cr02h = im_cr02h[s*N +: N] & {N{!ng_cr02h[s] || force_cr02h}};
+    wire [N-1:0] a0_cr02h = im_cr02h[s*N +: N] & {N{ ng_cr02h[s] || force_cr02h}};
+    assign act_d_cr02h[s*N +: N] = (r_cr02h & a1_cr02h) | (~r_cr02h & a0_cr02h);
   end
 
   // R's predicate sources: read on the wire, forward, then negate.
   logic [N-1:0] rpa_d_cr02h, rpb_d_cr02h, low_d_cr02h, lbm_d_cr02h;
-  always_comb begin
-    logic [WP-1:0] pa_cr02h, pb_cr02h;
-    logic [N-1:0]  va_cr02h, vb_cr02h, ar_cr02h;
-    pa_cr02h = rimm_cr02h[WP-1:0];
-    pb_cr02h = rimm_cr02h[2*WP:WP+1];
-    va_cr02h = fwd(dec_hi(pa_cr02h), dec_lo(pa_cr02h), rd(dec_hi(pa_cr02h), dec_lo(pa_cr02h), row_cr02h),
-                   mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
-    vb_cr02h = fwd(dec_hi(pb_cr02h), dec_lo(pb_cr02h), rd(dec_hi(pb_cr02h), dec_lo(pb_cr02h), row_cr02h),
-                   mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
-    rpa_d_cr02h = rimm_cr02h[WP] ? ~va_cr02h : va_cr02h;
-    rpb_d_cr02h = rimm_cr02h[2*WP+1] ? ~vb_cr02h : vb_cr02h;
-    ar_cr02h = act_d_cr02h[SR*N +: N];
-    // The lowest active lane, each bit against an OR of the lanes below
-    // it (a tree, not the subtractor's carry chain: its depth put the
-    // predicate rows past dq's 18, NGD-7).
-    for (int l = 0; l < N; l++)
-      low_d_cr02h[l] = ar_cr02h[l] & ~(|(ar_cr02h & N'((64'(1) << l) - 64'(1))));
-    lbm_d_cr02h = {N{br_cr02h}} & ar_cr02h;
+  wire [WP-1:0] pa_cr02h = rimm_cr02h[WP-1:0];
+  wire [WP-1:0] pb_cr02h = rimm_cr02h[2*WP:WP+1];
+  wire [NH-1:0] pah_cr02h = dec_hi(pa_cr02h);
+  wire [7:0]    pal_cr02h = dec_lo(pa_cr02h);
+  wire [NH-1:0] pbh_cr02h = dec_hi(pb_cr02h);
+  wire [7:0]    pbl_cr02h = dec_lo(pb_cr02h);
+  wire [N-1:0]  vra_cr02h = rd(pah_cr02h, pal_cr02h, row_cr02h);
+  wire [N-1:0]  vrb_cr02h = rd(pbh_cr02h, pbl_cr02h, row_cr02h);
+  wire [N-1:0]  va_cr02h = fwd(pah_cr02h, pal_cr02h, vra_cr02h, mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
+  wire [N-1:0]  vb_cr02h = fwd(pbh_cr02h, pbl_cr02h, vrb_cr02h, mw_cr02h, m_hi_cr02h, m_lo_cr02h, m_am_cr02h, mr_cr02h);
+  assign rpa_d_cr02h = rimm_cr02h[WP] ? ~va_cr02h : va_cr02h;
+  assign rpb_d_cr02h = rimm_cr02h[2*WP+1] ? ~vb_cr02h : vb_cr02h;
+  wire [N-1:0]  ar_cr02h = act_d_cr02h[SR*N +: N];
+  // The lowest active lane, each bit against an OR of the lanes below
+  // it (a tree, not the subtractor's carry chain: its depth put the
+  // predicate rows past dq's 18, NGD-7).
+  for (genvar l = 0; l < N; l++) begin : g_low
+    assign low_d_cr02h[l] = ar_cr02h[l] & ~(|(ar_cr02h & N'((64'(1) << l) - 64'(1))));
   end
+  assign lbm_d_cr02h = {N{br_cr02h}} & ar_cr02h;
 
   // ---- Stage I's flops, loaded under the slot's valid ------------------
   wire [NS-1:0] iv_en_cr02h = iv_cr02h;
@@ -537,9 +545,9 @@ module rcu_pred #(
           hazard_cr02h = hazard_cr02h |
             (qa_cr02h[q] & (|(g_hi_cr02h[s*NH +: NH] & w_hi_cr02h[q*NH +: NH])) &
                            (|(g_lo_cr02h[s*8 +: 8] & w_lo_cr02h[q*8 +: 8])));
-    lead_cr02h = iv_cr02h[SR] && gt_cr02h[SR] &&
-                 (!rgu_cr02h || rg_hi_cr02h != dec_hi(gd_cr02h[SR*WP +: WP]) ||
-                  rg_lo_cr02h != dec_lo(gd_cr02h[SR*WP +: WP]));
+    // A guarded op without lead_guard_used: only the always-true guard, the
+    // zero predicate negated.
+    lead_cr02h = |(iv_cr02h & gt_cr02h & ~rgu_cr02h & ~(rgz_cr02h & ng_cr02h));
   end
   // Ports on one row in a cycle write disjoint lanes.
   `CCV_ASSERT(pred_write_disjoint, !overlap_cr02h)
@@ -550,13 +558,16 @@ module rcu_pred #(
   `CCV_ASSERT(pred_read_row_named, !bad_r_cr01h)
   // A guard is never written in its own A but by MIU (the forward).
   `CCV_ASSERT(guard_no_hazard, !hazard_cr02h)
-  // R's guard lead names the payload's guard (RA-31, RA-32).
+  // A guarded op's lead_guard_used is clear only for the always-true guard
+  // (RA-31: a clear bit is a promise).
   `CCV_ASSERT(guard_lead_names, !lead_cr02h)
   // One owner a section among the S slots.
   logic own_bad_cr02h;
   always_comb begin
     own_bad_cr02h = 1'b0;
-    for (int k = 0; k < NK; k++) own_bad_cr02h |= $countones(own_cr02h[k*NK +: NK]) > 1;
+    // More than one bit, as x & (x - 1): not $countones, whose argument
+    // Icarus leaves out of always_comb's sensitivity.
+    for (int k = 0; k < NK; k++) own_bad_cr02h |= |(own_cr02h[k*NK +: NK] & (own_cr02h[k*NK +: NK] - NK'(1)));
   end
   `CCV_ASSERT(pred_spb_own, !own_bad_cr02h)
 

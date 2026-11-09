@@ -26,6 +26,16 @@ case "$unit" in
     vl rcu_r "" "" "$PWD/rtl/rcu/rcu_xbar.sv" "$PWD/rtl/rcu/rcu_r.sv" "$PWD/test/rcu/r_tb.cpp" ;;
   rcu_pred)
     vl rcu_pred "" "" "$PWD/rtl/rcu/rcu_pred.sv" "$PWD/test/rcu/pred_tb.cpp" ;;
+  rcu_isd|rcu_isd_s)
+    ls=0; [ "$unit" = rcu_isd_s ] && ls=1
+    vl rcu_isd "-GLS=$ls" "-DISD_LS=$ls" "$PWD/rtl/rcu/rcu_isd.sv" "$PWD/test/rcu/isd_tb.cpp" ;;
+  ccv_rcu_killsleep|ccv_rcu)   # ccv_rcu: the same bench, the unit's --cg scenarios; the whole block on its gate: a kill while asleep (RA rev 127)
+    verilator --cc --exe --build --trace -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style --public-flat-rw \
+      --top-module ccv_rcu --Mdir "$dir" -o tb -DCCV_CHECK -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -I"$PWD/rtl/top/ports" -CFLAGS "-std=c++17 -O2 -I$PWD/sim/generated" \
+      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/rcu/rcu_dec_pkg.sv" \
+      "$PWD/rtl/ctech/sim/ccv_common_ctech_icg.sv" "$PWD/rtl/clk/ccv_common_clk.sv" \
+      $(ls "$PWD"/rtl/rcu/*.sv | grep -v rcu_dec_pkg) "$PWD/test/rcu/killsleep_tb.cpp" ;;
   rcu_kill)
     vl rcu_kill "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_kill.sv" "$PWD/test/rcu/kill_tb.cpp" ;;
   rcu_mig)
