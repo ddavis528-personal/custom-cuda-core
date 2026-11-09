@@ -50,7 +50,15 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- None. Idle since 2026-11-08 00:00Z.
+- None running. Idle since 2026-11-08 17:51Z. Kept: rh-j11b-w10pp, -g2pp and -p192
+  (88c31e7 merged with 11386e7, plus ba39e6a; experiment trees, never commit) until TI says.
+- DONE 2026-11-08, all sent:
+  - J12 (TI): PHYS sweep on 88c31e7 merged with 95bf04d; logs ~/ccv-logs/j12.
+  - OI-134 and U192 (OI): unmet_reg=1 clean at all sizes, equal at 192.
+  - J11b (TI): g2 and p192 clean on the OI-133 fix; p192 costs cm128 +5.10%, loop +71%.
+  - J13 (TI): C9 at 8 ways is identical to C9h; S1 +0.174%, cm128 +0.459% over A6.
+  - J11, and OI's TI 360 pricing.
+  Scripts are in rh-jobs/{j11,j12,oi134,oi360}.
 - J10 DONE and sent (AR revs 319/320). de03fd6 + TI's MIU-stub patch
   (rh-jobs/j10/miu.patch, fixed hunk) + ba39e6a (CCV_RCU_STATS), never pushed.
   Points w9'/w10'/g1'/g2' x DCU 1 way / 8x64 x CCV_MIU_MULTI; S1, cm32 and
