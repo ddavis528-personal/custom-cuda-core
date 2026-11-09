@@ -42,16 +42,18 @@ case "$unit" in
     vl ooe_decq "-GS=$slots -GQ=$dq -GD=$dqw -GE=$uops -GR=$width -GP=16" \
       "-DDQ_S=$slots -DDQ_Q=$dq -DDQ_D=$dqw -DDQ_E=$uops -DDQ_R=$width" \
       "$PWD/rtl/ooe/ooe_decq.sv" "$PWD/test/ooe/decq_tb.cpp" ;;
-  ooe_freelist_gpr|ooe_freelist_gsec|ooe_freelist_pred)
+  ooe_freelist_gpr|ooe_freelist_gsec|ooe_freelist_pred|ooe_freelist_gsec_fs1|ooe_freelist_pred_fs1)
+    # _fs1: one free source, as ooe_rename instantiates them at its own unit's FS (TI 397, re:RI-25).
+    fs=""; case $unit in *_fs1) fs=1 unit=${unit%_fs1} ;; esac
     ns=0
     if [ "$unit" = ooe_freelist_pred ]; then pool=1 nf=$(val CCV_P_PRED_REGS); else pool=0 nf=$(val CCV_P_PHYS_REGS); fi
     # The GPR rows' sections (OI-81): CCV_W_PHYS_POS bits of position, a section each.
     if [ "$unit" = ooe_freelist_gsec ]; then ns=$((1 << $(val CCV_W_PHYS_POS))); fi
     fb=$(sed -n 's/.*unsigned fl_buf = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
     fk=$(sed -n 's/.*unsigned fl_banks = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
-    slots=$(val CCV_TIER1_WARPS)
-    vl ooe_freelist "-DCCV_CHECK -GN=$nf -GA=$width -GB=$fb -GK=$fk -GS=$slots -GFS=$slots -GNS=$ns" \
-      "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_S=$slots -DFL_FS=$slots -DFL_POOL=$pool -DFL_NS=$ns" \
+    slots=$(val CCV_TIER1_WARPS); fs=${fs:-$slots}
+    vl ooe_freelist "-DCCV_CHECK -GN=$nf -GA=$width -GB=$fb -GK=$fk -GS=$slots -GFS=$fs -GNS=$ns" \
+      "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_S=$slots -DFL_FS=$fs -DFL_POOL=$pool -DFL_NS=$ns" \
       "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" ;;
   ooe_rat)
     read -r g d < <(python3 test/ooe/rat-params.py)
