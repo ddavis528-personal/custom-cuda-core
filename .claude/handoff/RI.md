@@ -63,6 +63,11 @@ architect may approve only if the end meets module NGD without the flop; can't m
    RA 132: kill + copies accepted; (a) lead_phys_src2 S0-S3 approved RCU side, waits OA+TI schema -> then rcu_isd_s
    captures it (lanes src row 2 from copy); (b) HOLD slice change until OA says lead_sec_mask exact: if yes precompute
    P owner in A-1 + assert equality + extra-bit control; if no, lead_footprint copy. TI 398: per-field keys ~07:15Z.
+   2026-11-09 08:50: TI 7b003e98 merged (7ae432df); 2f8bdee6 rcu_isd_s captures lead_phys_src2 (XW 42), lanes row 2
+   from copy, model refuses lead_sec wider than foot (controls leadsec-wide/narrow). chk11 ALL CLEAN incl. BLOCK READ
+   (no findings) -> ccv_rcu.sv goes in (RA 133). chain-ri13 (push variant) KILLED; chain-ri14 gates ri-asm3 WITH
+   ccv_rcu.sv from ri-wt7 (~/ccv-logs/chain-ri14.out). Don't edit ri-wt7 tracked files while it runs. ri-push12 obsolete.
+   After push: RI-33 to RA/TI/AR (block in, commit for TI to merge); then lock-step/SV-top (task 16).
    chain-ri12 FAILED cg: rcu_kill cr_q/kd/kaep had no waivers (d7925bc2 dropped them on scratchpad cgpol.py, which
    is BROKEN: it measures no rcu_kill findings; do not trust it, use the gate's cg log). Restored in both trees
    (ri-asm3 222a3010, ri-push12 41a4fd05, identical file). chain-ri13 (cg at CCV_JOBS=2) running: ~/ccv-logs/chain-ri13.out.
