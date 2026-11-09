@@ -116,7 +116,7 @@
 #     active or not                              16-31 use their own window
 #   st.pred's predicate is data, not a guard  pdata-guard (predlane): its clear
 #                                                bits keep memory's ones
-#   a demotion between a cracked              resume-mid (predswap, at:59):
+#   a demotion between a cracked              resume-mid (predswap, at:58):
 #     instruction's uops resumes at its          the warp resumes past it
 #     first uop (AR's response TI-36)
 #   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
@@ -160,6 +160,15 @@
 #   every R-pipe class writes its GPR at    r-write-coll-late (coll, stub
 #     A+2, so they share R's one write         RCU): collectives write at
 #     port (RA-16 (a), AR's rev 265)           A+4; RCU refuses each
+#   an SFU result is taken only for an SFU  sfu-valid-stray (vadd, both
+#     op in flight (RA-16 (b), RA rev 115)     pairs): RCU refuses lane 3's
+#   serial 5 is C_RECONV's no-op, complete  nop-real-op (vadd, model OOE):
+#     at rename (RA-16 (f), OA rev 393)        the add never runs; MIU
+#                                                refuses its stored sum
+#   register pmov is predicate logic on R,  pmov-negate (predlane's copy as
+#     pd = ps0 under its negate (OA 396)       pmov, both RCUs): RCU refuses
+#     and ps1 repeats ps0 (RA 119)              its own P1 at seq 7; pmov-ps1:
+#                                                RCU refuses ps1 != ps0
 #   an atomic is a decode pair, and runs    atom-one-slot: OOE refuses each
 #     in passes, one lane an address in        one-slot atomic (OI-80);
 #     ascending order, until MIU says no       atom-one-pass: a lane reads the
@@ -465,16 +474,17 @@ else
   bad "--break corrupt-echo" "a wrong echoed destination went unnoticed"
 fi
 
-# Credit on receipt (AR's rev 322 (b) 3, RA-41): at ooe_rcu_issue@rcu and
-# miu_rcu_data@rcu the wrapper returns the credit from its boundary valid
-# flop, on RCU's promise to take each message the cycle it lands. A block
+# Credit on receipt (AR's rev 322 (b) 3, RA-41): at miu_rcu_data@rcu, the
+# only such end since RA-43 made ooe_rcu_issue's zero-cycle, the wrapper
+# returns the credit from its boundary valid flop, on RCU's promise to take
+# each message the cycle it lands. A block
 # that takes one a cycle late, or drops it, must fail by name at the
 # receiver, not only as a divergence from the oracle; check-sv-hosted.sh
 # holds the SV top to the same.
 for brk in cor-late cor-drop; do
   run "$brk"
   n=$(field "$B/kernel_$brk.log" cor_late)
-  if grep -q "^CHECK ccv_ooe_rcu_issue: credit on receipt, slot" "$B/kernel_$brk.log" &&
+  if grep -q "^CHECK ccv_miu_rcu_data: credit on receipt, slot" "$B/kernel_$brk.log" &&
      [ "${n:-0}" -gt 0 ] && [ "$(field "$B/kernel_$brk.log" check_failures)" != 0 ]; then
     say "--break $brk: credit on receipt refuses it" "PASS (cor_late=$n)"
   else
@@ -1101,10 +1111,11 @@ fi
 # bases (CCV_LAT_LANE 8, CCV_LAT_SFU 13: AR's rev 287), seq 379's R4; with
 # the flop as the issue and data crossings' bnd_rx (AR's revs 300, 301), seq 384's R3;
 # with ccv_lane_rcu_res's end at RCU zero-cycle (RA's rev 95: CCV_LAT_LANE 7,
-# CCV_LAT_SFU 12), seq 379's R4 again.
-if grep -q "^CHECK lane 0: seq 379 operand 1 (R4) 00000000, oracle 00000001" "$B/kernel_free-new.log" &&
+# CCV_LAT_SFU 12), seq 379's R4 again; with ooe_rcu_issue's end at RCU
+# zero-cycle (RA-43), seq 204's R3.
+if grep -q "^CHECK lane 0: seq 204 operand 1 (R3) 00000000, oracle 00000064" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
-  say "--break free-new: a live register reallocated" "PASS (seq 379, its source reallocated)"
+  say "--break free-new: a live register reallocated" "PASS (seq 204, its source reallocated)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi
@@ -1297,21 +1308,22 @@ fi
 # at cycle 59 (57 before the interface flops' bases, AR's rev 287; 58 with
 # them; 59 with RCU's flopped ends as bnd_rx, AR's revs 300, 301; 58 with
 # ccv_lane_rcu_res's end at RCU zero-cycle, RA's rev 95; 59 with OOE's C9h,
-# OA's rev 372, TI's response OI-123) predswap's first st.pred has retired its first uop and not
+# OA's rev 372, TI's response OI-123; 58 with ooe_rcu_issue's end at RCU
+# zero-cycle, RA-43) predswap's first st.pred has retired its first uop and not
 # its second, and the warp resumes at the instruction, running its first
 # uop again, which both transfers allow. Resumed past it, the second uop is
 # lost. The cycle comes from a sweep of CCV_RAU_DEMOTE=at:<cycle>: if timing
 # moves it, crack_split falls to 0 here and the cycle is swept again.
-CCV_RAU_DEMOTE=at:59 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at59.log" 2>&1
-if [ "$(cover "$B/kernel_predswap_at59.log" crack_split)" = 1 ] &&
-   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at59.log"; then
-  say "predswap demoted between a st.pred's uops" "PASS (at:59, it resumes at the instruction)"
+CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at58.log" 2>&1
+if [ "$(cover "$B/kernel_predswap_at58.log" crack_split)" = 1 ] &&
+   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at58.log"; then
+  say "predswap demoted between a st.pred's uops" "PASS (at:58, it resumes at the instruction)"
 else
-  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at59.log"); crack_split=$(cover "$B/kernel_predswap_at59.log" crack_split)"
+  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at58.log"); crack_split=$(cover "$B/kernel_predswap_at58.log" crack_split)"
 fi
-CCV_RAU_DEMOTE=at:59 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
+CCV_RAU_DEMOTE=at:58 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
 if grep -q "^CHECK fet: restored warp 0 lane 0 at 1014, but it resumes at 1018" "$B/kernel_resume-mid.log"; then
-  say "--break resume-mid: past the split instruction" "PASS (predswap at:59)"
+  say "--break resume-mid: past the split instruction" "PASS (predswap at:58)"
 else
   bad "--break resume-mid" "a mid-instruction resume went unchecked: $(grep '^KERNEL' "$B/kernel_resume-mid.log")"
 fi
@@ -1612,6 +1624,147 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-src-clear.log" check_failures)" 
 else
   bad "--break lead-src-clear" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-src-clear.log")"
 fi
+# The A-1 leads of the zero-cycle issue end (RA-43; RA's revs 108-114, OA's
+# rev 391). A COPY that differs from its payload is refused by name at RCU
+# (lead-copy-corrupt: lead_phys_dst off by one on every lead slot). A MOVED
+# lead has no payload left to compare with, so a wrong one must give a
+# wrong result: lead-guard-corrupt names the wrong guard predicate, and
+# vadd's guarded branch (seq 8) resolves the wrong way; lead-src-corrupt
+# names R's wrong first source row, and callret's ret (seq 5) redirects to
+# the wrong target. Each runs on both RCUs, RI's model and the stub, behind
+# OI's OOE model, and the first two behind the OOE stub too, whose issue is
+# built apart from the model's (sim/skel/ooe.cpp). callret does not run on
+# the OOE stub, which forms no call's link (RA-18), so lead-src-corrupt runs
+# behind the model only.
+for pair in model/model model/stub stub/model stub/stub; do
+  o=${pair%/*} impl=${pair#*/}
+  tag=$([ "$o" = stub ] && echo "OOE stub, $impl RCU" || echo "$impl RCU")
+  e=$impl
+  l="$B/kernel_lead-copy-corrupt-$o-$impl.log"
+  CCV_OOE_IMPL=$o CCV_RCU_IMPL=$e "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break lead-copy-corrupt >"$l" 2>&1
+  re="^CHECK rcu: (seq [0-9]+ on [SPR][0-9]*|issue 0x[0-9a-f]+ on slot [0-9]+): lead_phys_dst 0x[0-9a-f]+ differs from its payload's phys_dst"
+  n=$(grep -cE "$re" "$l")
+  if [ "$n" -gt 0 ] && grep -m1 '^CHECK' "$l" | grep -qE "$re"; then
+    say "--break lead-copy-corrupt ($tag): copy refused" "PASS ($n issues)"
+  else
+    bad "--break lead-copy-corrupt ($tag)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
+  fi
+  # lead_phys_src2 is a copy on S0-S3 too (RA's rev 132, OA's rev 403 on
+  # RI-31): lead-src2-copy flips a bit of S0's, refused by name.
+  l="$B/kernel_lead-src2-copy-$o-$impl.log"
+  CCV_OOE_IMPL=$o CCV_RCU_IMPL=$e "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break lead-src2-copy >"$l" 2>&1
+  re="^CHECK rcu: (seq [0-9]+ on S0|issue 0x[0-9a-f]+ on slot 0): lead_phys_src2 (0|0x[0-9a-f]+) differs from its payload's phys_src2"
+  n=$(grep -cE "$re" "$l")
+  if [ "$n" -gt 0 ] && [ "$(field "$l" check_failures)" = "$n" ] && grep -m1 '^CHECK' "$l" | grep -qE "$re"; then
+    say "--break lead-src2-copy ($tag): S0's src2 copy refused" "PASS ($n issues)"
+  else
+    bad "--break lead-src2-copy ($tag)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
+  fi
+  # lead_sec_mask is exact (OA's rev 403): zero on a continuation
+  # (lead-sec-cont sets one), and the footprint on a lead's slot
+  # (lead-sec-superset sets a section beyond R's footprint 0, legal while
+  # it was a superset). RI's model RCU still holds only the superset rule
+  # (sim/rcu/rcu_core.cpp), so lead-sec-superset runs on the stub RCU.
+  l="$B/kernel_lead-sec-cont-$o-$impl.log"
+  CCV_OOE_IMPL=$o CCV_RCU_IMPL=$e "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break lead-sec-cont >"$l" 2>&1
+  re="^CHECK rcu: seq [0-9]+'s continuation on [SP][0-9] (sets lead_sec_mask; a continuation's enables|carries a lead; a continuation's lead is zero)"
+  n=$(grep -cE "$re" "$l")
+  if [ "$n" -gt 0 ] && [ "$(field "$l" check_failures)" = "$n" ] && grep -m1 '^CHECK' "$l" | grep -qE "$re"; then
+    say "--break lead-sec-cont ($tag): a continuation's mask refused" "PASS ($n slots)"
+  else
+    bad "--break lead-sec-cont ($tag)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
+  fi
+  if [ "$impl" = stub ]; then
+    l="$B/kernel_lead-sec-superset-$o.log"
+    CCV_OOE_IMPL=$o CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break lead-sec-superset >"$l" 2>&1
+    re="^CHECK rcu: seq [0-9]+, [^:]*: lead_sec_mask [01]+ differs from its footprint [01]+ \\(exact, OA's rev 403\\)"
+    n=$(grep -cE "$re" "$l")
+    if [ "$n" -gt 0 ] && [ "$(field "$l" check_failures)" = "$n" ] && grep -m1 '^CHECK' "$l" | grep -qE "$re"; then
+      say "--break lead-sec-superset ($tag): a superset mask refused" "PASS ($n issues)"
+    else
+      bad "--break lead-sec-superset ($tag)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
+    fi
+  fi
+  l="$B/kernel_lead-guard-corrupt-$o-$impl.log"
+  CCV_OOE_IMPL=$o CCV_RCU_IMPL=$e "$SKEL" --kernel "$K" --break lead-guard-corrupt >"$l" 2>&1
+  if [ "$(field "$l" check_failures)" != 0 ] &&
+     grep -m1 '^CHECK' "$l" | grep -q "^CHECK rcu: seq 8 branch taken by"; then
+    say "--break lead-guard-corrupt ($tag): wrong branch" "PASS"
+  else
+    bad "--break lead-guard-corrupt ($tag)" "first: $(grep -m1 '^CHECK' "$l")"
+  fi
+  [ "$o" = stub ] && continue
+  l="$B/kernel_lead-src-corrupt-$impl.log"
+  CCV_RCU_IMPL=$e "$SKEL" --kernel build/oracle/callret/oracle.jsonl --break lead-src-corrupt >"$l" 2>&1
+  if [ "$(field "$l" check_failures)" != 0 ] && ! grep -q "differs from its payload" "$l" &&
+     grep -m1 '^CHECK' "$l" | grep -q "^CHECK fet: seq 5 redirect to"; then
+    say "--break lead-src-corrupt ($impl RCU): ret's wrong target" "PASS"
+  else
+    bad "--break lead-src-corrupt ($impl RCU)" "first: $(grep -m1 '^CHECK' "$l")"
+  fi
+done
+# The SFU result on ccv_lane_rcu_res (RA-16 (b), RA's rev 115): RCU takes
+# sfu_valid only for an SFU op it has in flight, from its own descriptor.
+# None runs yet, so the lanes drive it 0; sfu-valid-stray has lane 3 drive
+# it once, and RCU refuses it by name, on the model pair and the stub pair.
+for impl in model stub; do
+  env=""; [ "$impl" = stub ] && env="CCV_OOE_IMPL=stub CCV_RCU_IMPL=stub"
+  log="$B/kernel_sfu-valid-stray-$impl.log"
+  env $env "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break sfu-valid-stray >"$log" 2>&1
+  n=$(grep -c "^CHECK rcu: lane 3 sfu_valid with no SFU op in flight (RA-16 (b))$" "$log")
+  if [ "$n" = 1 ] && [ "$(field "$log" check_failures)" != 0 ]; then
+    say "--break sfu-valid-stray ($impl pair): RCU refuses a stray SFU result" "PASS ($(field "$log" check_failures) checks)"
+  else
+    bad "--break sfu-valid-stray ($impl pair)" "$n refused: $(grep '^KERNEL' "$log")"
+  fi
+done
+# serial 5 (RA-16 (f), OA's rev 393): C_RECONV, a hint, completes at rename
+# with no rename and no issue. ccv-sim at the pin has no semantics for it,
+# so no kernel runs one; nop-real-op has DEC give vadd's C_ADD serial 5
+# instead, and its sum never reaches the store: MIU refuses the first lane's
+# data, on RI's RCU and on the stub. OOE's model only: the S1 stub OOE does
+# not run vadd at this pin.
+for impl in model stub; do
+  log="$B/kernel_nop-real-op-$impl.log"
+  CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break nop-real-op >"$log" 2>&1
+  if grep -m1 '^CHECK' "$log" | grep -q "^CHECK miu: seq [0-9]* lane 0 store data 00000000, oracle 00000001$" &&
+     [ "$(field "$log" mem_mismatch)" = 32 ]; then
+    say "--break nop-real-op ($impl RCU): serial 5 never runs" "PASS ($(field "$log" check_failures) checks)"
+  else
+    bad "--break nop-real-op ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
+  fi
+done
+# Register pmov (Format K 63; OA's rev 396): predicate logic on R, pd = ps0
+# under its negate, merged on the issue mask. The pinned compiler emits none
+# (its predicate copy is por pd, ps, ps), so CCV_DEC_POR_COPY_AS_PMOV=1 has
+# DEC decode predlane's copy (seq 7, por P1, P0, P0 under lanes 16-31) as
+# pmov: the run must still be ccv-sim's, and with pmov-negate RCU inverts
+# ps0's negate and refuses its own P1, on RI's RCU and on the stub.
+for impl in model stub; do
+  log="$B/kernel_pmov-copy-$impl.log"
+  CCV_DEC_POR_COPY_AS_PMOV=1 CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/predlane/oracle.jsonl >"$log" 2>&1
+  if [ "$(field "$log" finished)" = 1 ] && [ "$(field "$log" check_failures)" = 0 ]; then
+    say "predlane's copy as register pmov ($impl RCU) == ccv-sim" "PASS"
+  else
+    bad "predlane's copy as register pmov ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
+  fi
+  log="$B/kernel_pmov-negate-$impl.log"
+  CCV_DEC_POR_COPY_AS_PMOV=1 CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break pmov-negate >"$log" 2>&1
+  if grep -m1 '^CHECK' "$log" | grep -q "^CHECK rcu: seq 7 P1 = ffffffff, oracle 0000ffff$"; then
+    say "--break pmov-negate ($impl RCU): pmov's negate inverted" "PASS ($(field "$log" check_failures) checks)"
+  else
+    bad "--break pmov-negate ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
+  fi
+  # RA 119: pmov's ps1 repeats its ps0; pmov-ps1 has DEC send ps1 with ps0's
+  # negate flipped, and RCU must refuse it.
+  log="$B/kernel_pmov-ps1-$impl.log"
+  CCV_DEC_POR_COPY_AS_PMOV=1 CCV_RCU_IMPL=$impl "$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break pmov-ps1 >"$log" 2>&1
+  if grep -m1 '^CHECK' "$log" | grep -q "^CHECK rcu: seq 7: pmov's ps1 ([0-9]*) is not its ps0 ([0-9]*)$"; then
+    say "--break pmov-ps1 ($impl RCU): RCU refuses ps1 != ps0" "PASS ($(field "$log" check_failures) checks)"
+  else
+    bad "--break pmov-ps1 ($impl RCU)" "first: $(grep -m1 '^CHECK' "$log"); $(grep '^KERNEL' "$log")"
+  fi
+done
 # The RCU selector (RI-8, RA-38 (a)): RI's model is the default behind the
 # RCU ports since M0 (RA's rev 68), and logs its events; CCV_RCU_IMPL=stub
 # puts the stub there, which logs none.

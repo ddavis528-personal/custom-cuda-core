@@ -266,6 +266,67 @@ def no_flop(block_types, ends, links_path=None, root=ROOT):
     return out
 
 
+def no_flop_port_budget(block_types, ends, links_path=None, root=ROOT):
+    """The zero-cycle receiving ends of the SECOND kind (params/links.json
+    "no_flop_port_budget"; AR's rev 326, on RA's rev 95 and DA 114/115): a
+    set of (block type, channel name without ccv_). A first-kind no-flop end
+    is zero-cycle because the block's own register takes it at 0 NGD, which
+    check-ngd holds straight into a flop; a second-kind end is zero-cycle for
+    performance, its block putting logic before its first register, and
+    check-ngd holds that logic to the block's input budget for the port (its
+    ngd.json, 12 NGD by default) instead.
+
+    An entry is {"end": "<channel>@<block type>", "why": ...}. Refused: an
+    end that is not the channel's destination (the sender's end stays at 0
+    NGD); an end that takes the boundary flop (not no_flop), whose logic is
+    the block's own behind that flop; and an end whose link takes a
+    repeater stage, since the port budget assumes the sender's flop drives
+    it across an abutted crossing (link_n 0)."""
+    p = links_path or path()
+    with open(p) as f:
+        d = json.load(f)
+    _, sd = schema_ends(root)
+    nf = no_flop(block_types, ends, links_path, root)
+    staged = {e.get("channel") for e in d.get("links", [])
+              if any(int(m.group(2)) for m in (HOP.match(h) for h in
+                                                str(e.get("route", "")).split(">")) if m)}
+    errs, out = [], set()
+    for no, e in enumerate(d.get("no_flop_port_budget", []), 1):
+        where = "no_flop_port_budget[%d]" % no
+        if not isinstance(e, dict):
+            errs.append("%s: an entry is {\"end\": \"<channel>@<block>\", \"why\": ...}" % where)
+            continue
+        unknown = set(e) - {"end", "why"}
+        if unknown:
+            errs.append("%s: unknown key(s) %s" % (where, ", ".join(sorted(unknown))))
+        if not e.get("why"):
+            errs.append("%s: says no why" % where)
+        ch, _, b = str(e.get("end", "")).partition("@")
+        where = "%s (%s)" % (where, e.get("end"))
+        if ch not in sd or not b:
+            errs.append("%s: an end is '<channel>@<block type>', channel without ccv_" % where)
+            continue
+        if sd[ch][1] != b:
+            errs.append("%s: %s is not %s's destination (%s is): a port budget holds a "
+                        "receiving end; a sending end stays at 0 NGD" % (where, b, ch, sd[ch][1]))
+            continue
+        if (b, ch) not in nf:
+            errs.append("%s: a flopped end (not no_flop): the wrapper's boundary flop takes "
+                        "it, and the block's logic behind it is its own (AR's rev 326)" % where)
+            continue
+        if ch in staged:
+            errs.append("%s: its link takes a repeater stage; a zero-cycle end held to its "
+                        "port budget takes none (link_n 0)" % where)
+            continue
+        if (b, ch) in out:
+            errs.append("%s: listed twice" % where)
+        out.add((b, ch))
+    if errs:
+        raise SystemExit("%s: %d problem(s)\n  %s"
+                         % (os.path.relpath(p, ROOT), len(errs), "\n  ".join(errs)))
+    return out
+
+
 def credit_on_receipt(block_types, ends, links_path=None, root=ROOT):
     """The destination ends whose credit is returned on receipt (params/
     links.json "credit_on_receipt"; AR's rev 322, RA-41): a set of (block

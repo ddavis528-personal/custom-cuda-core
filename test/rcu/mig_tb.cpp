@@ -31,7 +31,9 @@
 // each of which must fail (test/rcu/run-rtl.sh): --control rlie tells the
 // module the R op never holds R2 or RW while the ports still give it them;
 // --control cred gives the receiver one credit fewer than CCV_CREDIT_DEPTH;
-// --control wake checks the wake WL + 1 cycles before each valid.
+// --control wake checks the wake WL + 1 cycles before each valid;
+// --control stall2 shows the module each stall a cycle late, so two rows
+// follow it.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_mig.h"
 #include "verilated.h"
@@ -50,6 +52,7 @@
 #include <vector>
 
 #include "ccv_params.h"
+#include "dec_tb.h"
 
 namespace {
 
@@ -118,7 +121,7 @@ struct Samp {   // one cycle's outputs
   std::array<uint32_t, kNP> gdat{};
 };
 
-enum class Ctl { none, rlie, cred, wake };
+enum class Ctl { none, rlie, cred, wake, stall2 };
 
 struct Cfg {
   double pnew = 0.3, psend = 0.6, pr = 0.5, pr2 = 0.6, prw = 0.6, pstall = 0.1, pkill = 0.004;
@@ -150,6 +153,7 @@ struct Bench {
   int mout = 0, cout = 0, pout = 0;     // sent, not yet credited
   int mpay = -1, cpay = -1, ppay = -1;  // a payload due this cycle
   bool mnow = false, cnow = false, pnow = false;   // a valid this cycle
+  bool mlast = false, clast = false, plast = false;   // and last cycle's: captured, busy a cycle on
   unsigned ppay_row = 0;
   std::deque<uint64_t> ocr_due;
   int cur_dm = -1;
@@ -278,6 +282,23 @@ struct Bench {
   }
   bool stopped(const Mig &m) const { return m.killed && t >= m.kcyc; }
 
+  // An R opcode and merge_en with this R2 and RW use: R2 needs a GPR
+  // destination (so RW too); RW without R2 is a GPR write without merge or a
+  // collective with none.
+  void rOp(const RSlot &r, unsigned &opc, bool &mrg) {
+    using dectb::R::Unit;
+    auto isR = [](const dectb::R::OpClass &oc) { return oc.unit == Unit::ROnly || oc.unit == Unit::Coll; };
+    static const dectb::OpPool gd("an R op writing a GPR", 0, [&](const dectb::R::OpClass &oc) { return isR(oc) && oc.gdst; });
+    static const dectb::OpPool cl("a collective writing no GPR", 0, [&](const dectb::R::OpClass &oc) { return oc.unit == Unit::Coll && !oc.gdst; });
+    static const dectb::OpPool no("an R-only op writing no GPR", 0, [&](const dectb::R::OpClass &oc) { return oc.unit == Unit::ROnly && !oc.gdst; });
+    if (r.r2) { opc = gd.pick(rng); mrg = true; return; }
+    if (r.rw) {
+      if (coin(0.5)) { opc = gd.pick(rng); mrg = false; } else { opc = cl.pick(rng); mrg = coin(0.5); }
+      return;
+    }
+    opc = no.pick(rng); mrg = coin(0.5);
+  }
+
   RSlot gen_r(uint64_t c) {
     RSlot r;
     if (cfg.rpattern >= 0) {
@@ -286,7 +307,7 @@ struct Bench {
     } else {
       r.v = coin(cfg.pr);
       r.r2 = coin(cfg.pr2);
-      r.rw = coin(cfg.prw);
+      r.rw = r.r2 || coin(cfg.prw);   // R2 is read only by a GPR write
     }
     return r;
   }
@@ -302,8 +323,15 @@ struct Bench {
     const RSlot &rc = rs[t % 8], &rn = rs[(t + 1) % 8];
     dut->riv_cr01h = rn.v;
     const bool lie = ctl == Ctl::rlie;
-    dut->rr2_cr02h = lie ? false : rc.v ? rc.r2 : (cfg.junk && coin(0.5));
-    dut->rrw_cr02h = lie ? false : rc.v ? rc.rw : (cfg.junk && coin(0.5));
+    // The R op as an opcode and merge_en the model's decode makes its R2 and
+    // RW use (test/rcu/dec_tb.h); rlie sends one that uses neither.
+    unsigned ropc;
+    bool rmrg;
+    rOp(lie ? RSlot{true, false, false} : rc.v ? rc : RSlot{cfg.junk && coin(0.5), coin(0.5), coin(0.5)},
+        ropc, rmrg);
+    if (!rc.v && !cfg.junk) ropc = 0, rmrg = false;
+    dut->ropc_cr02h = ropc;
+    dut->rmrg_cr02h = rmrg;
 
     // A kill: valid in K-1, the mask in K.
     dut->kv_cr00h = 0;
@@ -322,7 +350,9 @@ struct Bench {
 
     // The receiver: stall and credits.
     stall[t % 8] = !rst && coin(cfg.pstall);
-    dut->ost_cr02h = stall[t % 8];
+    // --control stall2: the module sees each stall a cycle late, so a second
+    // row can follow it, which the check above must catch.
+    dut->ost_cr02h = ctl == Ctl::stall2 ? stall[(t + 7) % 8] : stall[t % 8];
     dut->ocr_cr01h = 0;
     if (!ocr_due.empty() && ocr_due.front() <= t) {
       ocr_due.pop_front();
@@ -346,7 +376,7 @@ struct Bench {
     }
 
     // Evaluate, sample.
-    dut->rcu_rst_r00h = rst;
+    dut->rst_n = !rst;
     dut->rcu_core_clk = 0;
     eval();
     Samp &s = hs[t % 8];
@@ -400,6 +430,7 @@ struct Bench {
       dut->md_cr01h = coin(0.5);
     }
     mpay = -1;
+    mlast = mnow;
     mnow = false;
     dut->mv_cr00h = 0;
     while (!mapq.empty() && stopped(migs[mapq.front()])) mapq.pop_front();
@@ -426,6 +457,7 @@ struct Bench {
       dut->cd_cr01h = coin(0.5);
     }
     cpay = -1;
+    clast = cnow;
     cnow = false;
     dut->cv_cr00h = 0;
     while (!cmdq.empty() && stopped(migs[cmdq.front()])) cmdq.pop_front();
@@ -453,6 +485,7 @@ struct Bench {
       if (!t_land0) t_land0 = t;
     }
     ppay = -1;
+    plast = pnow;
     pnow = false;
     dut->pv_cr00h = 0;
     // A killed restore's rows stop a few cycles past K.
@@ -522,10 +555,12 @@ struct Bench {
   void check(const Samp &s, const Samp &p1, const Samp &p2) {
     // Busy low: nothing sent is uncredited, no migration holds the module.
     if (!s.busy) {
-      // (a valid this cycle lands next cycle: busy from there)
-      chk("busy low with a map uncredited", mout - mnow, 0);
-      chk("busy low with a command uncredited", cout - cnow, 0);
-      chk("busy low with a PCA row uncredited", pout - pnow, 0);
+      // (a valid lands at the next edge, into its capture flop, and busy
+      // reads the capture: busy from the cycle after that; the raw valids
+      // stay off busy, AR rev 285 (5))
+      chk("busy low with a map uncredited", std::max(0, mout - int(mnow) - int(mlast)), 0);
+      chk("busy low with a command uncredited", std::max(0, cout - int(cnow) - int(clast)), 0);
+      chk("busy low with a PCA row uncredited", std::max(0, pout - int(pnow) - int(plast)), 0);
     }
     // Credits: one a cycle per channel, never more than were sent.
     if (s.mcr) {
@@ -549,7 +584,9 @@ struct Bench {
       if (!ocred) err("demotion row past the receiver's credits");
       else --ocred;
       ocr_due.push_back(t + 1 + pick(cfg.cdelay));
-      if (stall[(t + 7) % 8]) err("demotion valid the cycle after a stall");
+      // The stall is flopped in RCU (RI-22 (7)): at most one row follows it,
+      // so no valid two cycles after a stall (RA rev 110).
+      if (stall[(t + 6) % 8]) err("demotion valid two cycles after a stall");
       const unsigned back = ctl == Ctl::wake ? kWL + 1 : kWL;
       if (t >= back && !hs[(t + 8 - back) % 8].owk) err("demotion valid without its wake");
     }
@@ -779,6 +816,7 @@ int main(int argc, char **argv) {
       if (!std::strcmp(cname, "rlie")) ctl = Ctl::rlie;
       else if (!std::strcmp(cname, "cred")) ctl = Ctl::cred;
       else if (!std::strcmp(cname, "wake")) ctl = Ctl::wake;
+      else if (!std::strcmp(cname, "stall2")) ctl = Ctl::stall2;
       else {
         std::fprintf(stderr, "mig: unknown control %s\n", cname);
         return 2;

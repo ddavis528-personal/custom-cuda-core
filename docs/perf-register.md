@@ -1297,6 +1297,19 @@ it.
   vadd16_loop 71% (issue-cadence collision, share.rs 9,920 to 22,586, as Z
   in J9; not the L1), replacing J12's p192. They stay zero-cycle under DA
   115 (AR rev 334). C9 at 8 ways is still to price.
+  TI's skeleton figures for RA-43 (bc02309a), 0e969d5 to the change,
+  with OI's OOE model and either RCU:
+
+  | cycles | RI's RCU model | RCU stub |
+  |---|---|---|
+  | vadd | 161 to 158 | 161 to 158 |
+  | loop | 2,942 to 2,842 (-3.4%) | 2,942 to 2,842 |
+  | S1 (sweep.sh's ten kernels) | 4,034 to 3,918 (-2.88%) | 4,037 to 3,921 (-2.87%) |
+  | all 63 kernels | 56,067 to 54,749 (-2.35%) | 56,011 to 54,685 (-2.37%) |
+
+  The all-kernel sum includes rope, which runs clean before the change
+  and after it fails OI's OA-17 check on L1 speculation (it passes with
+  `l1_spec=0`).
 
 ### PF-48 End-to-end parity on register state
 

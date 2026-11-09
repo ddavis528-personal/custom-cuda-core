@@ -18,6 +18,10 @@ in both hosts since M0 (RA, 2026-11-04), and `CCV_RCU_IMPL=stub` selects the stu
   and its value over the quote), and `tools/check-isa-params.py` holds it to
   the ISA document in the pinned compiler snapshot (IS-11).
 - `params/links.json`: repeater stages per channel.
+- `params/ops.json`: the opcode table, a row per opcode (its position + 1),
+  appended only. `tools/gen-ops.py` writes the skeleton's C++ table
+  (`sim/generated/ccv_ops.h`) and `ccv_ops_pkg` (`rtl/generated/`), whose
+  `ccv_op_attr(opcode)` an RTL module's own decode reads (RI-21 (4)).
 - Generated, never hand-edited: `sim/generated/`, `rtl/generated/`,
   `rtl/top/`, `docs/payload-spec.md`, `docs/trust-report.md` and
   `docs/walkthrough.md`. Regenerate them with `tools/gen-*.py`;
@@ -101,7 +105,10 @@ flops or more, its enable cone within 8 NGD and its DCGE at least 75% in
 idle, medium and high scenarios; anything else must toggle 75% of the time.
 An enable comes only from the module's own flops, never an input (CG-5), and
 the reset is flopped before any use (RST-1; 2026-10-18): that is why valid
-leads a payload by a cycle, and why a lead field is rare.
+leads a payload by a cycle, and why a lead field is rare. The reset arrives
+in the same cycle at every endpoint of a module and of an assembled block,
+children at their units' latencies; check-cg names the shallower ones and
+the reset stages they lack (RST-2; Daniel, 2026-11-09).
 `tools/check-cg.py` measures it from each module's unit
 (`test/**/cg-units.json`, and every repeater the design instantiates,
 `rtl/top/rpt-units.json`). Each module may leave the larger of 2% of its
