@@ -50,7 +50,17 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- None. Idle since 2026-11-08 00:00Z.
+- Queue (2026-11-08 ~11:00Z), each waits for the one before, all resumable:
+  1. J12 (TI): rh-jobs/j12/j12.sh, logs ~/ccv-logs/j12, table j12table.py. 88c31e7
+     merged with 95bf04d, ba39e6a cherry-picked (local). PHYS 192/160/128 via setphys,
+     and p192 (cmplflop.py: OOE's cmpl and hint ends flopped, CMPL_HINT 3).
+     p192 cm32 fails OA-17 once (no OI-133 fix in the tree).
+  2. OI-134 (OI): rh-jobs/oi134/oi134.sh, U/L 160/128 on 95bf04d, run alone.
+  3. J11b: rh-jobs/j11/j11b.sh, baseline and g2 (miu_rcu_data zero-cycle) on
+     88c31e7 merged with 11386e7 (OI-133 fix).
+  Worktrees rh-j12-*, rh-oi134, rh-j11b-* are experiment trees: never commit them.
+- DONE 2026-11-08: J11 (TI; booked deltas on 8x64; g2 failed OA-17, became
+  OI-133), OI's TI 360 pricing (G/N/B; logs ~/ccv-logs/oi360, cmtable.py).
 - J10 DONE and sent (AR revs 319/320). de03fd6 + TI's MIU-stub patch
   (rh-jobs/j10/miu.patch, fixed hunk) + ba39e6a (CCV_RCU_STATS), never pushed.
   Points w9'/w10'/g1'/g2' x DCU 1 way / 8x64 x CCV_MIU_MULTI; S1, cm32 and
