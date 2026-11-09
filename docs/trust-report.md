@@ -21,11 +21,12 @@ so this is a build artifact rather than something to remember.
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
 | `rtl/rcu/ccv_rcu.sv` | `CCV_L_OPERANDS_PER_LANE`, `CCV_L_W_OPCODE` | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W`, `CCV_P_W_LANE_BYP_SEL`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
 | `rtl/rcu/rcu_bank_slice.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO` |
+| `rtl/rcu/rcu_isd.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_W_PHYS_REG` |
 | `rtl/rcu/rcu_kill.sv` | — | `CCV_LAT_RCU_KILL_DRAIN`, `CCV_P_W_KILL_EPOCH` |
 | `rtl/rcu/rcu_lanes.sv` | `CCV_L_OPERANDS_PER_LANE`, `CCV_L_W_OPCODE` | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_PHYS_ZERO`, `CCV_P_PRED_ZERO`, `CCV_P_W_LANE_BYP_SEL`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_ROB_TAG` |
 | `rtl/rcu/rcu_mem.sv` | — | `CCV_P_W_ROB_TAG` |
 | `rtl/rcu/rcu_mig.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG` |
-| `rtl/rcu/rcu_pred.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG` |
+| `rtl/rcu/rcu_pred.sv` | — | `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO`, `CCV_P_W_PHYS_PRED` |
 | `rtl/rcu/rcu_r.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_PRED_ZERO`, `CCV_P_W_ROB_TAG` |
 | `rtl/top/dpi/ccv_cru.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |

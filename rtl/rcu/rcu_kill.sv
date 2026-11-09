@@ -6,7 +6,11 @@
 //       docs/design-snapshots/rcu-arch-partition.md (rcu_kill's row).
 //
 // Kill. kill_valid comes a cycle ahead of kill_epoch (and the mask, which
-// is rcu_mig's): kill_v_q is set in K. RCU's pipe carries no warp id, so it
+// is rcu_mig's): kill_v_q is set in K. It is ccv_rcu's kill detector, a flop
+// on the ungated clock (RA rev 127, AR 336): the block's gate opens on a
+// wake only from the edge after next, so a kill landing while RCU sleeps
+// would miss a kill_v_q on the gated clock; the epoch and the mask, in K,
+// meet the first edge the wake opens. RCU's pipe carries no warp id, so it
 // drains everything: at K's edge kill_drain is loaded with KILL_DRAIN and
 // counts to 0, kill_ack_q clears and the epoch is taken (into the ack
 // epoch itself: the ack is low until ack-ready). Ack-ready is
@@ -64,7 +68,7 @@ module rcu_kill #(
   input  logic          rcu_core_clk,
   input  logic          rst_n,
   // Kill: valid in K-1, epoch in K; migration's quiesce term.
-  input  logic          kv_cr00h,     // kill_valid
+  input  logic          kv_cr01h,     // kill_valid, from ccv_rcu's kill detector flop (K)
   input  logic [WE-1:0] kep_cr01h,    // kill_epoch
   input  logic          mq_cr01h,     // rcu_mig: no demotion, live restore row or unpaired entry of a killed warp
   output logic          kack_cr02h,   // kill_ack
@@ -94,11 +98,9 @@ module rcu_kill #(
   wire rst_r01h = !rst_cr01h_n;
 
   // ---- Kill ------------------------------------------------------------
-  logic kv_cr01h;
-  always_ff @(posedge rcu_core_clk) begin
-    if (rst_r01h) kv_cr01h <= 1'b0;
-    else          kv_cr01h <= kv_cr00h;
-  end
+  // kv_cr01h is kill_v_q: ccv_rcu's kill detector flops kill_valid on the
+  // ungated clock (RA rev 127, AR 336), so a kill that lands while the block
+  // sleeps is seen in K, as an awake one is.
   // The ack is low from K's edge to ack-ready, so the ack epoch takes the
   // new epoch at K: it is the tab's kill_ep_q and kill_ack_ep_q in one.
   logic [WE-1:0] kaep_q_cr02h;

@@ -20,6 +20,10 @@
 #                   predicate-only form), which must fail;
 #   rcu_kill:       test/rcu/kill_tb.cpp, and its control drain (KILL_DRAIN
 #                   - 1 in the value model), which must fail
+#   ccv_rcu_killsleep: test/rcu/killsleep_tb.cpp, the whole block on its gate:
+#                   a kill landing while asleep, and two a cycle apart across
+#                   the wake (RA rev 127), and its controls drop1 and drop2
+#                   (the kill detector's held kill dropped), each must fail
 #   rcu_mig:        test/rcu/mig_tb.cpp (M5 and random traffic with kills), and
 #                   its controls rlie (the R op's R2/RW use hidden), cred (a
 #                   credit fewer at the receiver), wake (the wake a cycle
@@ -108,6 +112,16 @@ if [ -x "$B/rcu_kill/tb" ] && ! "$B/rcu_kill/tb" --control drain >"$B/rcu_kill.d
 else
   say "rcu_kill control drain" "NOT CAUGHT ($B/rcu_kill.drain.log)"; fail=1
 fi
+# The whole block on its gate: a kill that lands while RCU sleeps (RA rev 127).
+bench ccv_rcu_killsleep test/rcu/cg-build.sh ccv_rcu_killsleep "$B/killsleep" -- "$B/killsleep/tb"
+for c in drop1 drop2; do
+  if [ -x "$B/killsleep/tb" ] && ! "$B/killsleep/tb" --control "$c" >"$B/killsleep.$c.log" 2>&1 &&
+     grep -q "control $c: .*: FAIL$" "$B/killsleep.$c.log"; then
+    say "ccv_rcu_killsleep control $c" "caught"
+  else
+    say "ccv_rcu_killsleep control $c" "NOT CAUGHT ($B/killsleep.$c.log)"; fail=1
+  fi
+done
 bench rcu_mig test/rcu/cg-build.sh rcu_mig "$B/rcu_mig" -- "$B/rcu_mig/tb"
 grep -h "^mig M5" "$B/rcu_mig.log" 2>/dev/null | sed 's/^/    /'
 for c in rlie cred wake stall2; do

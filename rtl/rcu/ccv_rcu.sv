@@ -1019,7 +1019,7 @@ module ccv_rcu (
     .orow_cr04h (g_orow),
     .odat_cr04h (g_odat),
     .owk_cr03h  (g_owk),
-    .kv_cr00h   (kill_valid),
+    .kv_cr01h   (kill_detect_v_cr01h),
     .km_cr01h   (kill_warp_mask),
     .quiet_cr02h(g_quiet),
     .busy_cr02h (g_busy),
@@ -1041,11 +1041,26 @@ module ccv_rcu (
     .gdat_cr04h (g_gdat)
   );
 
+  // ---- The kill detector (RA rev 127, AR 336 (b)) -------------------------
+  // kill_valid lands in K-1 and is in the gate's wake OR, but a wake opens
+  // the gate only from the edge after next (ccv_common_clk), so asleep, the
+  // edge that ends K-1 never reaches rcu_kill or rcu_mig. This flop takes it
+  // on the ungated clock, the one wake detector CCV-L22 allows: kill_v_q in
+  // K for both, asleep as awake, with no cycle added (a hold, not a delay).
+  // The edge that ends K, which takes the epoch and the warp mask, is the
+  // first the wake opens. Its reset is flopped first (RST-1). Two flops,
+  // written every cycle, in the block's 2% (RA rev 127).
+  logic kill_detect_rst_cr01h_n, kill_detect_v_cr01h;
+  always_ff @(posedge core_clk) begin
+    kill_detect_rst_cr01h_n <= rst_n;
+    kill_detect_v_cr01h     <= kill_detect_rst_cr01h_n && kill_valid;
+  end
+
   // ---- rcu_kill: kill, the inbound credits, done's wake and the block's idle ---
   rcu_kill u_kill (
     .rcu_core_clk  (gclk),
     .rst_n         (rst_n),
-    .kv_cr00h      (kill_valid),
+    .kv_cr01h      (kill_detect_v_cr01h),
     .kep_cr01h     (kill_epoch),
     .mq_cr01h      (g_quiet),
     .kack_cr02h    (kill_ack),

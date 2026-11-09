@@ -109,7 +109,7 @@ module rcu_mig #(
   output logic [WD-1:0]      odat_cr04h,    //   row_data
   output logic               owk_cr03h,     // rcu_pca_mig_wake
   // Kill: valid in K-1, the warp mask in K.
-  input  logic               kv_cr00h,
+  input  logic               kv_cr01h,      // kill_v_q, ccv_rcu's kill detector flop (K)
   input  logic [NWP-1:0]     km_cr01h,
   output logic               quiet_cr02h,   // to rcu_kill: nothing of a killed warp held
   output logic               busy_cr02h,    // to rcu_kill's idle
@@ -216,15 +216,14 @@ module rcu_mig #(
   // warp and the mask, never the input), unless a kill of that warp acts in
   // P+1 or P+2 (it drops the map). A PCA row of the new migration lands at
   // least two cycles after its map (RI's ordering note; the bench holds it).
-  logic kvq_cr01h, kact_cr02h;
+  logic kact_cr02h;
+  wire  kvq_cr01h = kv_cr01h;   // kill_v_q: ccv_rcu's kill detector (RA rev 127)
   logic [NWP-1:0] kmn_cr02h, kmask_cr02h;
   logic [Q-1:0] mjl_cr02h, kmh_cr03h;   // entry i landed last cycle; its warp clears next
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
-      kvq_cr01h  <= 1'b0;
       kact_cr02h <= 1'b0;
     end else begin
-      kvq_cr01h  <= kv_cr00h;
       kact_cr02h <= kvq_cr01h;
     end
   end

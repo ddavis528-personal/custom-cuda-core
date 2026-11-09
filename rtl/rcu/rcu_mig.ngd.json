@@ -48,6 +48,12 @@
       "by": "RI, under RA-43 (RA rev 113, rev 117) and the fanout term (AR 326, RA rev 106)",
       "date": "2026-11-09",
       "why": "Each slot's class word (rcu_dec_pkg::rcu_cls) straight from rcu_isd's flops, loaded in A-1 from the slot's lead fields (RA-43; one shared capture, RI-25), wire only; fanout is check-ngd's. This ends RA rev 117's interim on the opcode's class decode."
+    },
+    "kv_cr01h": {
+      "arrival": 1.4,
+      "by": "RI, under AR 336 (b) and RA rev 127; fanout term, AR 326, RA rev 106",
+      "date": "2026-11-09",
+      "why": "kill_v_q straight from ccv_rcu's kill detector flop (on the ungated clock, so a kill landing while RCU sleeps is seen in K), wire only; the fanout term across rcu_mig and rcu_kill is check-ngd's at the block read (RA rev 126 (b))."
     }
   }
 }

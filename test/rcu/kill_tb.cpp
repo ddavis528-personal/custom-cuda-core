@@ -107,7 +107,7 @@ struct Bench {
 
   void step(const In &in, bool rst = false) {
     dut->rst_n = !rst;
-    dut->kv_cr00h = in.kv;
+    dut->kv_cr01h = kv_q;   // ccv_rcu's kill detector: kill_valid flopped (RA rev 127)
     dut->kep_cr01h = in.kep;
     dut->mq_cr01h = in.mq;
     dut->iv_cr00h = in.iv;
