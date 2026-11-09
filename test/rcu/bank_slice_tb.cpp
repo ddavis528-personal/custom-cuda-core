@@ -190,7 +190,7 @@ extern int g_argc;
 extern char **g_argv;
 extern bool g_nowt;   // --control nowt: expect no write-through (the run must fail)
 extern bool g_rfirst; // --control rfirst: expect migration's row on R2 beside the R op's (must fail)
-extern std::string g_ctl;   // --control lown|msrc: the L rows on slot 0, the M rows by port (must fail)
+extern std::string g_ctl;   // --control lown|msrc|lsecK|psecX: the L rows on slot 0, the M rows by port (must fail)
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
@@ -209,6 +209,7 @@ struct Bench {
   unsigned cov_lown[4]{}, cov_mown[4]{}, cov_stale = 0, cov_cont = 0;
   std::mt19937 erng{0x5107u + kK};
   std::mt19937 lrng{0x1eadu + kK};   // the issue leads' noise and supersets
+  std::mt19937 prng{0x9eadu + kK};   // P's lead noise
   unsigned erow() { return unsigned(erng() % kRows); }
 
   /// The issue slots for c's L and M reads (P2): an owner of section K
@@ -338,6 +339,9 @@ struct Bench {
     dut->rcls_cr01h = uint32_t(clspack::clsWord(0, 0, false));
     dut->rmrg_cr01h = 0;
     dut->gw_sel_cr01h = 0;
+    bool pownK = false;
+    for (unsigned j = 0; j <= kK && j < 4; ++j)
+      pownK = pownK || (next.ps[j].v && !next.ps[j].cont && ((next.ps[j].foot >> kK) & 1u));
     for (unsigned j = 0; j < 4; ++j) {
       put(dut->sv_cr00h, j, 1, next.ss[j].v);
       put(dut->pv_cr00h, j, 1, next.ps[j].v);
@@ -351,6 +355,17 @@ struct Bench {
       if (g_ctl == "lsecK" && x.v && !x.cont && ((x.foot >> kK) & 1u)) ls &= ~(1u << kK);
       put(dut->slcont_cr00h, j, 1, x.v ? x.cont : (z >> 6) & 1u);
       put(dut->slsec_cr00h, 4 * j, 4, x.v ? ls : (z >> 7) & 15u);
+      // P slot j's leads (RA 133): lead_sec_mask the footprint exactly, 0
+      // on a continuation; off a valid, noise. psecX (control): a lead slot
+      // without section K gets bit K, so the owner from the leads differs
+      // from the payload's and p_lead_is_footprint fires (only in a cycle
+      // no slot owns pipe K, so it is that assert and not one_p_owner).
+      const Slot &y = next.ps[j];
+      const unsigned zp = unsigned(prng());
+      unsigned lp = y.cont ? 0u : y.foot;
+      if (g_ctl == "psecX" && y.v && !y.cont && kK >= j && !((y.foot >> kK) & 1u) && !pownK) lp |= 1u << kK;
+      put(dut->plcont_cr00h, j, 1, y.v ? y.cont : zp & 1u);
+      put(dut->plsec_cr00h, 4 * j, 4, y.v ? lp : (zp >> 1) & 15u);
     }
     for (const Read &r : next.rd)
       if (r.port == 9) {

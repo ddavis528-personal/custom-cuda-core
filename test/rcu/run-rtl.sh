@@ -8,7 +8,8 @@
 #                   nowt (no MIU write-through), rfirst (migration's row on
 #                   R2 beside the R op's), lown (the L rows on slot 0) and
 #                   msrc (the M rows by port, not the memop's sources) and
-#                   lsecK (the owner's lead_sec_mask without section K), each
+#                   lsecK (the owner's lead_sec_mask without section K) and
+#                   psecX (a P lead_sec_mask with an extra bit, RA 133), each
 #                   of which must fail
 #   rcu_xbar:       test/rcu/xbar_tb.cpp, 32 lanes
 #   rcu_r:          test/rcu/r_tb.cpp, and its negative controls (noalign,
@@ -72,6 +73,13 @@ units="rcu_bank_slice_r32 rcu_bank_slice_r32_sec rcu_bank_slice_r32_k3"
 for u in $units; do
   bench "$u" test/rcu/cg-build.sh "$u" "$B/$u" -- "$B/$u/tb"
 done
+# psecX: the slice refuses the lead (p_lead_is_footprint, RA 133).
+if [ -x "$B/rcu_bank_slice_r32/tb" ] && ! "$B/rcu_bank_slice_r32/tb" --control psecX >"$B/bs.psecX.log" 2>&1 &&
+   grep -q "Assertion failed in .*p_lead_is_footprint" "$B/bs.psecX.log"; then
+  say "rcu_bank_slice control psecX" "caught"
+else
+  say "rcu_bank_slice control psecX" "NOT CAUGHT ($B/bs.psecX.log)"; fail=1
+fi
 for c in nowt rfirst lown msrc lsecK; do
   if [ -x "$B/rcu_bank_slice_r32/tb" ] && ! "$B/rcu_bank_slice_r32/tb" --control "$c" >"$B/bs.$c.log" 2>&1 &&
      grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/bs.$c.log"; then

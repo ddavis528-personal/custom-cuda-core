@@ -43,7 +43,9 @@
 // valid lead whose footprint has bit K), loaded when an S slot 0..K
 // reaches section K by its leads (valid, lead_cont 0, lead_sec_mask bit
 // K: RA-43's copies at A-1, flopped here); M0-M2 the base, index and data sources of the P slot owning pipe
-// K (rcu_dec_pkg, the model's decode), loaded when any P slot 0..K does;
+// K (rcu_dec_pkg, the model's decode), its owner from the leads (lead_sec_mask
+// the footprint exactly, OA 403, RA 133; asserted equal to the payload's),
+// loaded when any P slot 0..K does;
 // R2 the R op's phys_old_dst or migration's row. Each
 // is a 16:1 AND-OR on sel_lo per group of 16 rows, gated by its sel_hi
 // bit, then an NH:1 OR: the spec's read mux.
@@ -102,6 +104,8 @@ module rcu_bank_slice #(
   input  logic [NK*3*WR-1:0] ssrc_cr01h,    //   source i's row at (s*3 + i)*WR: phys_src[15:8], [7:0], phys_src2
   input  logic [NK*WR-1:0]  sodst_cr01h,    //   phys_old_dst
   input  logic [NK-1:0]     pv_cr00h,       // P slot j issues next cycle
+  input  logic [NK-1:0]     plcont_cr00h,   //   lead_cont, beside the valid (RA-43)
+  input  logic [NK*NK-1:0]  plsec_cr00h,    //   lead_sec_mask, slot j at j*NK (the footprint exactly: OA 403, RA 133)
   input  logic [NK-1:0]     pcont_cr01h,
   input  logic [NK*NK-1:0]  pfoot_cr01h,
   input  logic [NK*rcu_dec_pkg::CLS_W-1:0] pcls_cr01h, // class (rcu_isd's flops from the lead: base, index, data sources)
@@ -175,6 +179,7 @@ module rcu_bank_slice #(
   // ---- Valids: each port's lead, flopped every cycle -------------------
   logic [NK-1:0] sv_cr01h, pv_cr01h;
   logic [NK-1:0] sk_cr01h;   // S slot s reaches section K (its leads)
+  logic [NK-1:0] pk_cr01h;   // P slot j owns pipe K (its leads, exact)
   logic          r2v_cr01h;
   logic [NW-1:0] wr_v_cr01h;
   logic          g2_v_cr01h, gw_v_cr01h;
@@ -182,6 +187,7 @@ module rcu_bank_slice #(
     if (rst_r01h) begin
       sv_cr01h   <= '0;
       sk_cr01h   <= '0;
+      pk_cr01h   <= '0;
       pv_cr01h   <= '0;
       r2v_cr01h  <= 1'b0;
       wr_v_cr01h <= '0;
@@ -192,6 +198,8 @@ module rcu_bank_slice #(
       for (int j = 0; j < NK; j++)
         sk_cr01h[j] <= (K >= j) && sv_cr00h[j] && !slcont_cr00h[j] && slsec_cr00h[j*NK + K];
       pv_cr01h   <= pv_cr00h;
+      for (int j = 0; j < NK; j++)
+        pk_cr01h[j] <= (K >= j) && pv_cr00h[j] && !plcont_cr00h[j] && plsec_cr00h[j*NK + K];
       r2v_cr01h  <= r2v_cr00h;
       wr_v_cr01h <= wr_v_cr00h;
       g2_v_cr01h <= g2_v_cr00h;
@@ -225,6 +233,7 @@ module rcu_bank_slice #(
   // are the owner's base, index and data sources (rcu_dec_pkg; 3: none,
   // the zero register).
   logic [NK-1:0] sown_cr01h, pown_cr01h;
+  logic [NK-1:0] pfo_cr01h;   // the payload's owner: the leads' check only
   logic [3*WR-1:0] lsrc_cr01h;
   logic [WR-1:0]   lodst_cr01h;
   logic [3*WR-1:0] mrow_cr01h;
@@ -239,7 +248,11 @@ module rcu_bank_slice #(
       /* verilator lint_on UNUSEDSIGNAL */
       logic [3*2-1:0]                sl_cr01h;
       sown_cr01h[j] = (K >= j) && sv_cr01h[j] && !scont_cr01h[j] && sfoot_cr01h[j*NK + K];
-      pown_cr01h[j] = (K >= j) && pv_cr01h[j] && !pcont_cr01h[j] && pfoot_cr01h[j*NK + K];
+      // P's owner from its leads, a cycle ahead (RA 133): lead_sec_mask is
+      // the footprint exactly on a lead slot, asserted below against the
+      // payload's, so the rows' select starts at a flop.
+      pown_cr01h[j] = pk_cr01h[j];
+      pfo_cr01h[j]  = (K >= j) && pv_cr01h[j] && !pcont_cr01h[j] && pfoot_cr01h[j*NK + K];
       lsrc_cr01h  = lsrc_cr01h  | ({3*WR{sown_cr01h[j]}} & ssrc_cr01h[j*3*WR +: 3*WR]);
       lodst_cr01h = lodst_cr01h | ({WR{sown_cr01h[j]}} & sodst_cr01h[j*WR +: WR]);
       c_cr01h = pcls_cr01h[j*rcu_dec_pkg::CLS_W +: rcu_dec_pkg::CLS_W];
@@ -517,6 +530,10 @@ module rcu_bank_slice #(
   // the P slots (V-60).
   `CCV_ASSERT(one_s_owner, $onehot0(sown_cr01h))
   `CCV_ASSERT(one_p_owner, $onehot0(pown_cr01h))
+  // The P owner from the leads is the payload's (RA 133: equality, not a
+  // superset): a lead_sec_mask that differs from the footprint on bit K, or
+  // a lead_cont that differs from cont, is refused.
+  `CCV_ASSERT(p_lead_is_footprint, pk_cr01h == pfo_cr01h)
   // Rows past the pool are never named; a read may name the zero register.
   `CCV_ASSERT(read_row_named, !bad_rd_cr01h)
   // A write never names the zero register (A-64) or a row past the pool.

@@ -827,6 +827,8 @@ module ccv_rcu (
         .ssrc_cr01h  (i_src_cr01h[0 +: NK*3*WR]),
         .sodst_cr01h (i_odst_cr01h[0 +: NK*WR]),
         .pv_cr00h    (i_iv_cr00h[NK +: NK]),
+        .plcont_cr00h(i_lcont_cr00h[NK +: NK]),
+        .plsec_cr00h (i_lsec_cr00h[NK*NK +: NK*NK]),
         .pcont_cr01h (i_cont_cr01h[NK +: NK]),
         .pfoot_cr01h (i_foot_cr01h[NK*NK +: NK*NK]),
         .pcls_cr01h  (i_cls_cr02h[NK*CW +: NK*CW]),
