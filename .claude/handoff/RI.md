@@ -1,6 +1,6 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-07 (late). Keep current at every task's end. Role and ownership:
+Updated 2026-11-09 (late). Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -13,10 +13,12 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Toolchain: ./tools/setup-toolchain.sh (log ~/ccv-logs/setup-toolchain.log).
 
 ## Repos, branches, push
-- Work tree /home/user/ri-wt (branch ccr-888218a3-20cauz); compiler repo read only.
+- Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 5ac616f (2026-11-07, SPLIT SCOPED PASS 22/22): TI's de03fd6 bundle (O-85, IS-21 atomics,
+- Last push: ff5ddcca (2026-11-08, SPLIT PASS 23/23, chain-ri10): daily sweep merges (all remote
+  branches but OI's ccr-57eff422, aborted on a sim/ooe conflict), ri-sfu (SW from sfu_result, RA 120/124),
+  lanes pcm_n_cr04h floors re-based 49/65. Before: 5ac616f (2026-11-07, SPLIT SCOPED PASS 22/22): TI's de03fd6 bundle (O-85, IS-21 atomics,
   #88 fix) and 31168a3 (stub DCU 8x64: rebaseline cycle counts) merged on 64fce0d (RA rev 98).
   Before: ba0df94 (lanes+mem). Before: 350729e (SPLIT SCOPED PASS, 2026-11-07): rcu_mig, slice zero-fill gate, lint
   fixes, TI's Z (f4ce0fd) and RI-18 (43695ae) merged, model --break ret-held-by-lanes.
@@ -39,11 +41,103 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-07 (sweep + notices): Conventions 17, AR 320, OA 379, IS 190, TI 374, OI 324, CP 155, DA 115, RA 100, RI 40.
+Bookmarks 2026-11-09 (notices): Conventions 17, AR 336, OA 379, IS 190, TI 395, OI 324, CP 155, DA 115, RA 130, RI 63. (DA 116, TI 396, AR 337)
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-3. NOW (2026-11-09; Daniel's order: class-word NGD -> gate+push ccv_rcu.sv -> lock-step/SV-top -> Q-53 ->
+   SW write-back + KILL_DRAIN -> RA reconciliation + Daniel's sign-off). ri-wt7 branch ri-asm3, tip d0076837
+   (on gate-scratch/RI): d33d8c70 AR 338/339 kill boundary flops (plain ungated detector flops; rcu_kill epoch at
+   K+1 under kvd_cr02h; rcu_mig reads detector mask; kmn waiver gone; killsleep 17/17/17); 905d92bc RA 131 (1)
+   rcu_isd lead copies (LS param, unit rcu_isd_s, isd_tb control xfree); d0076837 lanes cont copy, mig kmn arrival,
+   one rcu_isd waiver. run-rtl green, units + policy clean (~/ccv-logs/chk9*). RI-31 (rev 65) to RA/TI/AR:
+   block read S0-S3 14.1 = lanes src_cr02h 12.7 (phys_src2 payload-only) +1.4 -> asked lead_phys_src2;
+   S4-S7 12.8 = K3 slice pfoot 11.4+1.4 -> asked if lead_sec_mask == footprint (then precompute P owner in A-1
+   like sk_cr01h); lop 12.4 waits TI ti-lead carries (DA 116: 13).
+   Per-field block breakdown: scratchpad blk_ngd_dbg.py + dbgtools/ (debug copy of check-ngd), log ~/ccv-logs/blk-dbg.log;
+   per-port unit depth: scratchpad portdepth.py <map.blif> [min] [bits] (TRACE=<bit> prints path).
+   NEXT: RA 131 (3) push the module refactor WITHOUT ccv_rcu.sv (hold it and the killsleep bench out of the push
+   variant; check-1d, regen, split gate cg CCV_JOBS=1 / ngd CCV_JOBS=2, gate-export, gate-push --import).
+   scratchpad asm/verify4.sh = check-1d + top Icarus/Verilator + phantom (verify4.out).
+   RA 132: kill + copies accepted; (a) lead_phys_src2 S0-S3 approved RCU side, waits OA+TI schema -> then rcu_isd_s
+   captures it (lanes src row 2 from copy); (b) HOLD slice change until OA says lead_sec_mask exact: if yes precompute
+   P owner in A-1 + assert equality + extra-bit control; if no, lead_footprint copy. TI 398: per-field keys ~07:15Z.
+   2026-11-09 08:50: TI 7b003e98 merged (7ae432df); 2f8bdee6 rcu_isd_s captures lead_phys_src2 (XW 42), lanes row 2
+   from copy, model refuses lead_sec wider than foot (controls leadsec-wide/narrow). chk11 ALL CLEAN incl. BLOCK READ
+   (no findings) -> ccv_rcu.sv goes in (RA 133). chain-ri13 (push variant) KILLED; chain-ri14 gates ri-asm3 WITH
+   ccv_rcu.sv from ri-wt7 (~/ccv-logs/chain-ri14.out). Don't edit ri-wt7 tracked files while it runs. ri-push12 obsolete.
+   After push: RI-33 to RA/TI/AR (block in, commit for TI to merge); then lock-step/SV-top (task 16).
+   chain-ri12 FAILED cg: rcu_kill cr_q/kd/kaep had no waivers (d7925bc2 dropped them on scratchpad cgpol.py, which
+   is BROKEN: it measures no rcu_kill findings; do not trust it, use the gate's cg log). Restored in both trees
+   (ri-asm3 222a3010, ri-push12 41a4fd05, identical file). chain-ri13 (cg at CCV_JOBS=2) running: ~/ccv-logs/chain-ri13.out.
+   OLD: chain-ri12 in /home/user/ri-wt8 (branch ri-push12 = ri-asm3 minus ccv_rcu.sv/killsleep/rcu_top unit),
+   ~/ccv-logs/chain-ri12.out; it sends gate-scratch/RI itself (don't send from ri-wt7 meanwhile).
+   RA 133 (OA 403: lead_sec_mask exact on lead slots; OA's own row text blank, RA paraphrase): DONE ea6d5a39 (local,
+   ri-wt7): slice pk_cr01h P owner from plcont/plsec at A-1, assert p_lead_is_footprint, bench exact P leads, control
+   psecX (run-rtl greps the assert). Checks: ~/ccv-logs/chk10.sh/.log (run-rtl, slice ngd x4, block read, slice cg x4).
+   lead_phys_src2 (S0-S3, 32 iss_en flops OOE side) approved; waits TI schema -> rcu_isd_s XW+8, lanes src row 2.
+   chk10 all clean (run-rtl, slice ngd/cg x4). Merged TI 4d6065fd (cd68ff7b) + ccv_rcu.ngd.json lead arrivals (b735c0f1):
+   block read (~/ccv-logs/blk-ngd8r.*) S4-S8 CLEAN; only S0-S3 14.1 (phys_src2). RI-32 (rev 66) sent to RA, TI.
+   NEXT: when TI pushes ti-src2 (now gate-scratch/TI-src2 7b003e98), merge, regen, rcu_isd_s captures lead_phys_src2
+   (XW+8, lx packing, isd_tb), lanes src row 2 from x copy, ngd.json; units; block read; if clean gate+push ccv_rcu.sv.
+   Bookmarks (sweep 2026-11-09 10:31): Conv 17, AR 339, OA 409, IS 190, TI 400, OI 336, CP 157, DA 116, RA 133, RI 66.
+   OPEN: OA 405 (Needs RI): OA's sweep conflicts on our branch (perf-register.md AR vs TI PF-47; cg-waivers pcm_n floors;
+   rcu_dec_pkg regen). After chain-ri14 pushes: daily merge of RA/OI/AR/OA/RH branches (OI's 57eff422 conflicted before),
+   full gate, push; then answer OA 405 in RI tab.
+   DISK: allowance ~40 GB; delete build/cg *.vcd after each cg unit.
+-2. ASSEMBLY (ri-asm2 in ri-wt2, on gate-scratch/RI at 2d107c61; ff5ddcca is an ancestor):
+   f37a29cd ccv_rcu.sv (generated by ri-keep/gen_ccv_rcu.py + ccv_rcu_body.svf, untracked; keep them);
+   Icarus fixes (pred continuous assigns; |(x&(x-1)) not $onehot0); 3ced62a5 merge TI 21b4b80 (RA-43 +
+   pmov); a4d73a69 pmov (model decode PMOV was None!); 76305abc RA-43 RTL (guard/R srcs from leads, issue
+   credits = k_cr[s]); 0f8b86a5 slice L rows gated by lead cont/sec (lsecK control); 2d107c61 slice interim
+   waiver removed (L gate idle 100/98/98/93 K0-3). Green: run-rtl (22 controls caught), check-1d, top
+   Icarus plain+CHECK and Verilator TOP_OK (scratchpad asm/verify3.sh). Next: split gate + push (chain-ri11);
+   RI rows: RA (ngd arrivals restated for the zero-cycle end; binary capture of R imm/rows; slice M-row gate
+   84 flops at 61/54% idle K2/K3, budget 127/131 at K3, remedy: gate M by lead ownership; KILL_DRAIN 15
+   comments), TI (swap ccv_rcu.sv into the top file list; SFU controls into check-rcu-unit.sh; TI's 8dbc152
+   missed rcu_decode.h, RI fixed). Then per-level block CG/NGD (sum of parts), M4 kill checker, 5c lock-step.
+   Icarus lessons: no always_comb reading back its own slices; $onehot0 args miss sensitivity.
+   check-kernel does not rebuild a stale ccv-skel: run tools/check-skel.sh after model edits.
+- 2026-11-08 TI rev 383: 9894da1 (on TI branches ccr-183cc441-doowtf / infra) = CAS writes pd + RA-16 + RA-41
+  (credit on receipt: 13 credit ports leave ccv_rcu_ports.svh). Reviewed RI rev 48 (adapter OK; suggest scoping
+  copy pwe-clear to atomics). After chain-ri6 pushes: merge 9894da1, drop rcu_kill's 13 credit capture flops
+  (rcu_kill.sv, ccv_rcu gen, kill_tb), cg-waivers 45->32, rerun kill units + benches. Bookmarks TI 383, RI 48.
+- 2026-11-08 chain-ri6 RED (not disk): lanes opc 25.3 + slice_k3 popc 25.8 at arrival 1.4 (interim arrival 0, RI rev 49,
+  pending RA); rcu_pred waivers m_am 2.5->3.1, rg_hi 1.0->2.0; slice_k0 bench cov_mw_shift unreachable at K 0 (bin now K>0).
+  LESSONS: check-ngd --unit may exit 0 with findings: grep 'check-ngd: NGD'. Run every slice unit (k0,k2,k3, K1) before a gate.
+- RA rev 117: interim accepted (bounded): the two entries go in the RA-43 class-flop commit; pre-decode instead if
+  RA-43 is not in when ccv_rcu.sv goes in. Measure slices at every K. Bookmarks RA 117, RI 49.
+- chain-ri7 = re-gate of ri-dec 4735e95 (fixes 9bd2d74, 2249bf3).
+-2. IN FLIGHT 2026-11-08: chain-ri6 (chain-ri5 died: disk full from build/cg VCDs, ~9 GB; chain-ri6 rm -rf build/cg after the cg export). Was chain-ri5 (~/ccv-logs/chain-ri5.sh, out chain-ri5.out) gates ri-wt2 branch ri-dec
+   (de9894d: module fixes, ccv_rcu.sv removed) and pushes. ri-dec now fast-forwarded to ri-retime (ri-wt4: d38ab59 retime,
+   f3f5de7 arrivals at fanout term + rcu_pred act_d pre-decode, 521d4fa stall flopped + stall2 control;
+   all unit NGD/CG + run-rtl clean) and gate it the same way. Then, when TI's ti-ri22 (TI rev 381) lands:
+   restore ccv_rcu.sv (gen: /home/user/ri-keep/gen_ccv_rcu.py; in 952dd81) + ccv_rcu.ngd.json (draft in /home/user/ri-keep;
+   scratchpad: lane_rcu_res_cNN arrival 13), rerun block check (blk_ngd.py), gate.
+   Rows written RI rev 44/45: re:RI-22 rulings (M5 65/67 of 68, RA to confirm), (e): 14 issue in-paths
+   over 12 (worst lanes dst 20.7). RA rev 111: M5 confirmed, RI-22 closed; (e) re-run (RI rev 47): only
+   lanes 14.5 (odst/opos/spos/src) left; +128 lead flops -> 10.9 block worst; ~567 lead flops vs 2% ~4,850. RA rev 113 / RA-43: zero-cycle ooe_rcu_issue APPROVED. When TI's schema lands: capture leads in lanes/pred/
+   bank_slice/r, re-run (e) on RTL vs schema fields (src_pos/src_width per schema), and with the issue boundary
+   flop gone KILL_DRAIN goes back to 15 (BND_ISS term = 0, model + RTL) to close RA-42.
+   TI rev 382: RA-43 built on TI side (KILL_DRAIN 15, L1_CMPL 18, issue credit 4); TI edits sim/rcu too in that push:
+   at merge, reconcile with ri-dec fe76e2a (RTL kill drain 16) and keep TI's model edits.
+   RA rev 114: S-slot lead copies = phys_old_dst, old_dst_pos, src_pos, phys_src (32 b); src_width and phys_src2
+   stay payload (if either > 12 in the RTL re-run, back to RA). rcu_r takes imm (movi, call link) from the
+   lead_rpsrc capture; imm leaves R's payload.
+   Still owed: re:RA-42 (BND_ISS term in KILL_DRAIN, model+RTL; checker at KILL_DRAIN-1 control),
+   RA rev 102 re:RI-21 (slice L/M owner assert + control; pred drives PC0-3; kill flop TODO).
+-2. PHASE 5 (2026-11-08): worktree /home/user/ri-wt2, branch ri-dec: 415b0ca P7, 847d085 P2,
+   c8dbab0 pred/mig fixes, fe76e2a ccv_rcu.sv assembled + RA-42 (on gate-scratch/RI). ccv_rcu.sv
+   is written by scratchpad gen_ccv_rcu.py + ccv_rcu_body.svf (hand-edit the .sv once settled).
+   Block check loop: scratchpad blk_ngd.py (check-ngd's block_check on RCU units only),
+   log ~/ccv-logs/blk-ngd.log. New units: rcu_bank_slice_k0/_k2/_k3 (ROWS 192), rcu_clk (NWAKE 37).
+   Next: block NGD clean -> regen, check-1d, run-rtl.sh, split gate, gate-push (merge ri-dec into
+   ccr-888218a3-20cauz). Then RI rows: re:RA-42 (RTL 15->16 via CCV_LAT_RCU_KILL_DRAIN; the model
+   already added bnd_rx via Config; M4 kernel control at cut 1 still to run), re:AR 322 (RA-41 TODO
+   flops marked in ccv_rcu.sv header), RA FYI: P2/P7, lanes pcm CG-3 waiver, slice ropc/rmrg
+   arrival 0, SFU never decoded, no PXOR, S6 kill credit in series, CSR wake (Q-59).
+   Then task 5c: lock-step vs model, RTL event monitor, Q-53 checkers.
 -1. J9 settled (AR 320): the cliff was the stub DCU's 8 KiB direct-mapped default; TI made it 8x64
    (31168a3). Not RCU. #88 fixed by TI (21b4356, reviewed RI rev 39); TI rev 367 ran coremarkpl32 to
    the end on the model. OI-127/OI-129: A2 carries ppdst/pred_we/ppold (OI f727aed); the model's
@@ -56,18 +150,6 @@ architect may approve only if the end meets module NGD without the flop; can't m
    relaunched warp's first row (>= 2 cycles after its map). Notes 2-9 in the row.
    Lessons: run tools/check-1d.sh before a gate (the linter misreads 1'b0 in a wire's concat and a
    for loop's <= bound); run tools/regen.sh after any merge before testing (sim/generated not checked in).
-1. DONE: Phase 4 rcu_lanes + rcu_mem pushed ba0df94 (SPLIT SCOPED PASS); RI-20 to RA (rev 38):
-   class-bit arrival 5, act_cr02h budget; notes FYI. Lesson: check-cg wants the reset if alone
-   in its always_ff (CG-1), and grep a unit run for every CG-n, not only CG-3. Old item: RTL, benches (lanes_tb, mem_tb; controls
-   bypage/immpos, align/pstlane), units rcu_lanes/rcu_mem (COPIES 32; _c4 local), ngd.json each,
-   run-rtl.sh. 7e8fb4d on gate-scratch/RI; then CG-3 fixes in lanes (SFU valid stage 1 ungated,
-   lact in the ll gate) and mem's asserts out of the generate (Yosys name clash): uncommitted while
-   check-ngd/check-cg rerun (~/ccv-logs/chk-lm.log). Next: clean -> commit, run-rtl.sh, gate
-   (split), push; RI row to RA: act_cr02h budget (lanes), class-bit arrival 5 (lanes+mem), bank
-   L/M read-request decode at assembly, held unused groups vs spec "0", SW data/lane mask at
-   assembly, no MIU lead flops in rcu_mem (slices + pred hold them), DCGE figures.
-   Then assembly (M5-M7).
-2. RI-18 CLOSED (RI rev 31): TI 41c82d8 runs the control on stub and model. Merge 41c82d8 at the next sweep.
 3. RI-16: RI's part done (rerun at 7/12 passes); NGD read on lane_rcu_res at assembly (12 without flop).
 4. RI-11/RI-13 (TI rev 332): verify on merged tip, close RI-13 (and RI-11 for RCU).
    RI-12: close when OI's fix lands (OI rev 287).
