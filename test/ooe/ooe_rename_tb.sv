@@ -75,6 +75,8 @@ module ooe_rename_tb #(
   input  logic [$clog2(N-NR+1)-1:0] flm_cq01h,
   input  logic              ctl_notq,
   input  logic              ctl_notq2,
+  input  logic              ctl_unow,
+  input  logic              ctl_nolt,
   input  logic              ctl_pkeep,         // ooe_rat's control pend-over-event (CCV_CHECK_RAT)
   input  logic              gfree_l_cq00h,
   input  logic [NG-1:0]     gfree_cq01h,
@@ -171,5 +173,5 @@ module ooe_rename_tb #(
     .q_pdst_cq03h, .q_pwe_cq03h, .q_pname_cq03h, .q_br_cq03h, .q_ckpt_cq03h, .q_w_cq03h, .req_l_cq03h, .req_cq04h,
     .row_prod_cq04h, .row_dep_cq04h, .row_code_cq04h, .akind_cq04h, .acls_cq04h, .grp_dep_cq04h, .grp_code_cq04h, .prv_dep_cq04h,
     .prv_code_cq04h, .q_g_cq03h, .q_p_cq03h, .chk_cred_cq04h, .chk_unmet_g_cq04h,
-    .chk_unmet_p_cq04h, .chk_room_g_cq04h, .chk_room_p_cq04h, .ctl_notq, .ctl_notq2);
+    .chk_unmet_p_cq04h, .chk_room_g_cq04h, .chk_room_p_cq04h, .ctl_notq, .ctl_notq2, .ctl_unow, .ctl_nolt);
 endmodule

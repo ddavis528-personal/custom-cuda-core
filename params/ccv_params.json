@@ -159,7 +159,7 @@
       "status": "arch",
       "source": "RA-31 (OA's rev 307, AR's rev 267)",
       "derive": "CCV_SECTIONS + CCV_MIU_PIPES",
-      "doc": "The slot of ccv_ooe_rcu_issue that the RCU unit R issues on, the last of CCV_ISSUE_RESOURCES. The guard lead (lead_guard_used, lead_guard_pred) is defined only on it."
+      "doc": "The slot of ccv_ooe_rcu_issue that the RCU unit R issues on, the last of CCV_ISSUE_RESOURCES. R alone carries lead_rpsrc, imm's copy, and its source rows only in lead_phys_src and lead_phys_src2 (RA-43, RA's rev 109 (b)); the guard lead rides every slot since RA's rev 108."
     },
     {
       "name": "CCV_W_PHYS_POS",
@@ -1058,11 +1058,11 @@
     },
     {
       "name": "CCV_LAT_RCU_KILL_DRAIN",
-      "value": 16,
+      "value": 15,
       "status": "tunable",
       "decided_at": "generated",
       "source": "RA-14, RA-16 (g), RA-23 and RA-30; AR's revs 263 and 288 (derived, never a number)",
-      "doc": "RCU's kill drain: the cycles from kill_valid landing at RCU until RCU may raise kill_ack (the level of RA-23, AR's rev 264), so long that everything RCU accepted before the kill has finished as scheduled and its done has landed in OOE. RCU keeps no warp identity, so it searches for nothing: a counter of about 5 bits, loaded with this, and its quiescence is the count expired, no demotion row of a killed warp left to send, and no command, map or restore row held for one (AR's rev 264). 2 (the kill flopped, CG-5 and RST-1, and the last accepted issue) + the issue crossing's repeater stages and bnd_rx + CCV_LAT_SFU, the longest class + 1 + the done crossing's: 16 at the defaults, ccv_ooe_rcu_issue's end at RCU flopped.",
+      "doc": "RCU's kill drain: the cycles from kill_valid landing at RCU until RCU may raise kill_ack (the level of RA-23, AR's rev 264), so long that everything RCU accepted before the kill has finished as scheduled and its done has landed in OOE. RCU keeps no warp identity, so it searches for nothing: a counter of about 5 bits, loaded with this, and its quiescence is the count expired, no demotion row of a killed warp left to send, and no command, map or restore row held for one (AR's rev 264). 2 (the kill flopped, CG-5 and RST-1, and the last accepted issue) + the issue crossing's repeater stages and bnd_rx + CCV_LAT_SFU, the longest class + 1 + the done crossing's: 15 at the defaults, ccv_ooe_rcu_issue's end at RCU zero-cycle (bnd_rx 0; RA-43, AR's rev 329), 16 while it was flopped.",
       "derive": "2 + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_SFU + 1 + link_n('rcu_ooe_done') + bnd_rx('rcu_ooe_done')"
     },
     {
@@ -1096,7 +1096,7 @@
       "status": "tunable",
       "decided_at": "RCU per-block session; AR's revs 300 and 301 (re:RI-16)",
       "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08); 5 to 6 at AR's rev 287 (re:RI-11), back to 5 at AR's revs 300 and 301 (re:RI-16)",
-      "doc": "RCU's time from the issue's landing to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop, RCU's own time only. The issue end's boundary flop is the crossing's bnd_rx, counted in CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL, never here (AR's revs 300 and 301 (re:RI-16)): RA's 6 is this 5 plus that flop, counted from the wrapper. 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. PF-47 (docs/perf-register.md), still to be reapplied, takes it to 1, and CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 15 (AR's rev 301). Tunable: RCU's session confirms or moves it."
+      "doc": "RCU's time from the issue's landing to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop, RCU's own time only. A boundary flop on the issue end would be the crossing's bnd_rx, counted in CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL, never in this base (AR's revs 300 and 301 (re:RI-16)); since RA-43 the end is zero-cycle, bnd_rx(ccv_ooe_rcu_issue) 0 (AR's rev 332). 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. PF-47 (docs/perf-register.md), still to be reapplied, takes it to 1, and CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 14 (AR rev 301; 14 with RA-43, AR rev 332). Tunable: RCU's session confirms or moves it."
     },
     {
       "name": "CCV_LAT_RCU_ADDR",
@@ -1118,7 +1118,7 @@
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 19,
+      "value": 18,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -1361,7 +1361,7 @@
       "derive": "15 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS)",
       "decided_at": "DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)",
       "source": "OOE session (2026-10-03), A-66",
-      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: commit_width (1: a chwidth.multi sibling that commits its register's width at retire without serial's hold, which sits on the last sibling only; AR-24 (c), OA's rev 222), ret (1: the branch is a ret, so OOE takes its target from ccv_rcu_ooe_done.aux and sets the redirect's stay; AR-24 (b), OA's rev 223), pair_second and pair_first (1 each: a pair's two decode slots under one ROB entry; TI-39, OA's rev 189. A uop that needs k rows of any RS class, or k names, occupies k slots, at most one row per class and one name a slot: the CAS pair, and every single-slot RMW atomic, which DEC emits as a pair (OI-80 (d), DA tab rev 94)), bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
+      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: commit_width (1: a chwidth.multi sibling that commits its register's width at retire without serial's hold, which sits on the last sibling only; AR-24 (c), OA's rev 222), ret (1: the branch is a ret, so OOE takes its target from ccv_rcu_ooe_done.aux and sets the redirect's stay; AR-24 (b), OA's rev 223), pair_second and pair_first (1 each: a pair's two decode slots under one ROB entry; TI-39, OA's rev 189. A uop that needs k rows of any RS class, or k names, occupies k slots, at most one row per class and one name a slot: the CAS pair, and every single-slot RMW atomic, which DEC emits as a pair (OI-80 (d), DA tab rev 94)), bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5 no-op: complete at rename (C_RECONV; RA-16 (f), OA's rev 393), 6-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",

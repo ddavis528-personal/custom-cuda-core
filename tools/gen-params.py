@@ -468,17 +468,25 @@ def selftest(d):
     cases += [("bnd_rx:lane_rcu_res", "bnd", 1, "CCV_LAT_LANE"),
               ("bnd_rx:lane_rcu_res", "bnd", 1, "CCV_LAT_SFU"),
               ("bnd_rx:rcu_lane_ops", "bnd", 1, "CCV_LAT_LANE"),
-              ("bnd_rx:ooe_rcu_issue", "bnd", 0, "CCV_LAT_L1_CMPL"),
+              # Zero-cycle since RA-43 (AR's rev 329): its flop put back is
+              # a cycle on the crossing (RA-41's control was the reverse).
+              ("bnd_rx:ooe_rcu_issue", "bnd", 1, "CCV_LAT_L1_CMPL"),
+              ("bnd_rx:ooe_rcu_issue", "bnd", 1, "CCV_LAT_RCU_KILL_DRAIN"),
               ("bnd_rx:miu_rcu_data", "bnd", 0, "CCV_LAT_L1_WAKE"),
               ("bnd_rx:dcu_miu_rsp", "bnd", 1, "CCV_LAT_L1_HIT"),
               ("bnd_rx:miu_ooe_cmpl", "bnd", 1, "CCV_LAT_L1_CMPL"),
               # Counted in the parameter as well, the issue flop is taken
-              # twice (AR's rev 301): refused.
+              # twice (AR's rev 301): refused. Since RA-43 the end is
+              # zero-cycle, so the flop is put back for the case first
+              # (extra), or the control would have nothing to count.
               ("CCV_LAT_RCU_ADDR", "derive",
-               "CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", "CCV_LAT_RCU_ADDR")]
+               "CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", "CCV_LAT_RCU_ADDR",
+               {"bnd_rx:ooe_rcu_issue": 1})]
     missed = []
-    for name, key, v, who in cases:
+    for name, key, v, who, *extra in cases:
         m, lk = copy.deepcopy(d), dict(links)
+        for e in extra:
+            lk.update(e)
         if key == "links":
             lk[name[len("link_n('"):-2]] = v
         if key == "bnd":
@@ -498,7 +506,7 @@ def selftest(d):
     # AR's rev 301 (2): with the issue flop counted once, on the crossing,
     # the L1 latencies are 17 and 19 at the defaults and 13 and 15 under
     # PF-47 (CCV_LAT_RCU_ADDR_BASE 1); counted twice, 18 and 20.
-    def l1(base=None, addr_derive=None):
+    def l1(base=None, addr_derive=None, lk=links):
         m = copy.deepcopy(d)
         for p in m["params"]:
             if base is not None and p["name"] == "CCV_LAT_RCU_ADDR_BASE":
@@ -510,22 +518,27 @@ def selftest(d):
             moved = False
             for p in m["params"]:
                 if "derive" in p:
-                    w = evaluate(p["derive"], vals, links, m.get("pipes"))
+                    w = evaluate(p["derive"], vals, lk, m.get("pipes"))
                     if w != p["value"]:
                         p["value"] = vals[p["name"]] = w
                         moved = True
             if not moved:
                 break
         return vals["CCV_LAT_L1_WAKE"], vals["CCV_LAT_L1_CMPL"]
-    if links.get("bnd_rx:ooe_rcu_issue") and not any(
+    # RA-43 (AR's rev 329): with the issue's end at RCU zero-cycle, 17 and
+    # 18 at the defaults. AR's rev 301's three still hold with that end
+    # flopped, which is how they are run now.
+    flop = dict(links, **{"bnd_rx:ooe_rcu_issue": 1})
+    if links.get("bnd_rx:ooe_rcu_issue") == 0 and not any(
             v for k, v in links.items() if not k.startswith("bnd_rx:")):
         for got, want, what in (
-                (l1(), (17, 19), "the defaults"),
-                (l1(base=1), (13, 15), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1)"),
-                (l1(addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')"),
+                (l1(), (17, 18), "the defaults, the issue's end zero-cycle (RA-43)"),
+                (l1(lk=flop), (17, 19), "the defaults, the issue's end flopped"),
+                (l1(base=1, lk=flop), (13, 15), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), flopped"),
+                (l1(addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", lk=flop),
                  (18, 20), "the issue flop counted twice (the control)")):
             if got != want:
-                missed.append("L1_WAKE/L1_CMPL at %s: %s, want %s (AR's rev 301)"
+                missed.append("L1_WAKE/L1_CMPL at %s: %s, want %s (AR's revs 301, 329)"
                               % (what, got, want))
     if missed:
         sys.stderr.write("".join("%s\n" % x for x in missed))

@@ -1,11 +1,89 @@
 {
   "module": "rcu_bank_slice",
   "ports": {
-    "rr_row_cr03h": {
+    "pcont_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "The issue channel's S and P slots (valid, cont, footprint, rows, opcode, done_row) from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout to the 32 slices is check-ngd's. The slice decodes the owner of section K, the memop's sources (rcu_dec_pkg, the model's decode, RI-21 (4)) and the row mux into the L0-L3/M0-M2 select flops: the Partition tab's 'bank in 14' (op-class decode 5, owner 3, predecode 3, port mux 2), P2."
+    },
+    "pdrw_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "The issue channel's S and P slots (valid, cont, footprint, rows, opcode, done_row) from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout to the 32 slices is check-ngd's. The slice decodes the owner of section K, the memop's sources (rcu_dec_pkg, the model's decode, RI-21 (4)) and the row mux into the L0-L3/M0-M2 select flops: the Partition tab's 'bank in 14' (op-class decode 5, owner 3, predecode 3, port mux 2), P2."
+    },
+    "pfoot_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "The issue channel's S and P slots (valid, cont, footprint, rows, opcode, done_row) from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout to the 32 slices is check-ngd's. The slice decodes the owner of section K, the memop's sources (rcu_dec_pkg, the model's decode, RI-21 (4)) and the row mux into the L0-L3/M0-M2 select flops: the Partition tab's 'bank in 14' (op-class decode 5, owner 3, predecode 3, port mux 2), P2."
+    },
+    "popc_cr01h": {
       "arrival": 0.0,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287)",
-      "date": "2026-11-05",
+      "by": "RA (RA tab rev 117, re:RI rev 49), interim until RA-43",
+      "date": "2026-11-08",
+      "why": "The opcode's class decode reaches a flop 24.4 after the port (worst unit), so the fanout term (1.4; AR 326, RA rev 106) puts it at 25.8, over 25. RA-43 (zero-cycle issue, approved RA rev 113) decodes the class into flops from lead_opcode at A-1, which removes this path; until TI's schema for it lands, this port keeps arrival 0 from RCU's interface flop, accepted by RA rev 117: this entry goes in the commit that moves the class decode onto lead_opcode flops (RA-43), and if that has not landed when ccv_rcu.sv goes in, RI pre-decodes the path instead."
+    },
+    "psrc_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "The issue channel's S and P slots (valid, cont, footprint, rows, opcode, done_row) from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout to the 32 slices is check-ngd's. The slice decodes the owner of section K, the memop's sources (rcu_dec_pkg, the model's decode, RI-21 (4)) and the row mux into the L0-L3/M0-M2 select flops: the Partition tab's 'bank in 14' (op-class decode 5, owner 3, predecode 3, port mux 2), P2."
+    },
+    "rd_cr03h": {
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-08",
+      "required": 11.0,
+      "why": "Each port's read mux to its readers (rcu_lanes, rcu_mem, rcu_r rd2), which take it at 11 (RA's Partition tab rev 52, port NGD budgets); the slice's flop-out is 11.0."
+    },
+    "rmrg_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "the R slot's merge_en, from RCU's interface flop (DA's ruling on RI-11), wire only: the slice decodes whether the R op reads R2 (rcu_dec_pkg CLS_GDST with merge) for R2's select between the R op's row and migration's, into the R2 select flops. Its entry was missing, so it took the default 13 (check-ngd: 18.5 to the flops, 31.5 in all)."
+    },
+    "ropc_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "the R slot's opcode, from RCU's interface flop (DA's ruling on RI-11), wire only: the slice decodes whether the R op reads R2 (rcu_dec_pkg CLS_GDST with merge) for R2's select between the R op's row and migration's, into the R2 select flops. Its entry was missing, so it took the default 13 (check-ngd: 18.5 to the flops, 31.5 in all)."
+    },
+    "rr_row_cr03h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
       "why": "R0/R1's rows, the issue payload's phys_src from RCU's interface flop (DA's ruling on RI-11), wire only; the fanout to the 32 slices (about 2.5) is counted by check-ngd. The slice's decode, read and write-through into rsrc measure 15.9 (18.4 with fanout) of the 25. RA-39's 19/6 split lapsed."
+    },
+    "rs_cr04h": {
+      "by": "RI, pending RA (RI tab)",
+      "date": "2026-11-08",
+      "required": 0.0,
+      "why": "Straight from its flop, with no other load inside: the receiving port's arrival is 0 (RA tab rev 78, re:RI-11), so this end leaves at 0. The assembled block's convergence (check-ngd block_check) needs the two to meet."
+    },
+    "scont_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "The issue channel's S and P slots (valid, cont, footprint, rows, opcode, done_row) from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout to the 32 slices is check-ngd's. The slice decodes the owner of section K, the memop's sources (rcu_dec_pkg, the model's decode, RI-21 (4)) and the row mux into the L0-L3/M0-M2 select flops: the Partition tab's 'bank in 14' (op-class decode 5, owner 3, predecode 3, port mux 2), P2."
+    },
+    "sfoot_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "The issue channel's S and P slots (valid, cont, footprint, rows, opcode, done_row) from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout to the 32 slices is check-ngd's. The slice decodes the owner of section K, the memop's sources (rcu_dec_pkg, the model's decode, RI-21 (4)) and the row mux into the L0-L3/M0-M2 select flops: the Partition tab's 'bank in 14' (op-class decode 5, owner 3, predecode 3, port mux 2), P2."
+    },
+    "sodst_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "The issue channel's S and P slots (valid, cont, footprint, rows, opcode, done_row) from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout to the 32 slices is check-ngd's. The slice decodes the owner of section K, the memop's sources (rcu_dec_pkg, the model's decode, RI-21 (4)) and the row mux into the L0-L3/M0-M2 select flops: the Partition tab's 'bank in 14' (op-class decode 5, owner 3, predecode 3, port mux 2), P2."
+    },
+    "ssrc_cr01h": {
+      "arrival": 1.4,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-08",
+      "why": "The issue channel's S and P slots (valid, cont, footprint, rows, opcode, done_row) from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout to the 32 slices is check-ngd's. The slice decodes the owner of section K, the memop's sources (rcu_dec_pkg, the model's decode, RI-21 (4)) and the row mux into the L0-L3/M0-M2 select flops: the Partition tab's 'bank in 14' (op-class decode 5, owner 3, predecode 3, port mux 2), P2."
     }
   }
 }
