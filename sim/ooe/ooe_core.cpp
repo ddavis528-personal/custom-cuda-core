@@ -1590,7 +1590,8 @@ void Core::confirmPass() {
 void Core::advanceWakes() {
   // Transitive cancel is a level, decided every cycle from the state as it
   // stands at the cycle's start (OI-50): an issued entry whose row is no
-  // longer ready returns to Waiting. A miss is seen from the cycle after
+  // longer ready returns to Waiting, and so does one whose producer was
+  // granted at the same edge as it (the co-grant arm, OI-133). A miss is seen from the cycle after
   // it (the hardware's FMISS, held as msd), so the first hop comes a cycle
   // after the miss, and each further hop a cycle after the last (V-59, V-67).
   const bool after_miss = miss_now_;
@@ -1653,7 +1654,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   if (r.complete || r.squashed) return;
   bool c;
-  if (r.u.shape.exit || r.u.cause || barNop(r.u) || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat ||
+  if (r.u.shape.exit || r.u.cause || barNop(r.u) || hintNop(r.u, !cfg_.inject_reconv_real) || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat ||
       r.fault_cause == kCauseBarrier) c = true;   // no-ops: faulted before or at dispatch
   else if (r.atomic) c = r.atom_final && r.miu_done && !r.copy_pending && r.rcu_dones_owed == 0;   // V-71
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
@@ -3413,6 +3414,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   for (unsigned i = 0; i != 3; ++i) is.src_w[i] = r.wsrc[i];
   is.dst_w = r.alloc_gpr ? r.wdst : 0;
   is.guarded = u.shape.guard;
+  is.pread = u.shape.guard || u.shape.pdata;
   is.gpr_reads = u.shape.gpr_reads;
   // The resource group and footprint. Sectioned: the entry's own resources
   // (resOf). Otherwise every op is full width.
@@ -3663,7 +3665,7 @@ std::array<unsigned, 4> Core::pairNeed(const std::vector<uint16_t> &adm, size_t 
 
 uint16_t Core::admBits(const Uop &u) const {
   const SchedAttr &a = u.attr;
-  const bool nop = u.shape.exit || u.cause || barNop(u);
+  const bool nop = u.shape.exit || u.cause || barNop(u) || hintNop(u, !cfg_.inject_reconv_real);
   const bool mem = !nop && a.rs_miu, atom = mem && a.mem_kind == kMemKAtomic;
   const bool wgpr = !nop && a.writes_gpr;
   const bool pred = !nop && u.pred_we && cfg_.rename_preds;
@@ -3782,7 +3784,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned fmt_reg = u.fmt_opnd == 3 ? u.dst : u.src[u.fmt_opnd % 3];
   const bool format_fault = !width_fault && ((u.fmt_rsv >> s.cw[fmt_reg & 15]) & 1u) &&
                             !cfg_.inject_no_format_fault;
-  const bool nop = u.shape.exit || u.cause || barNop(u) || bar_fault || width_fault || format_fault;
+  const bool nop = u.shape.exit || u.cause || barNop(u) || hintNop(u, !cfg_.inject_reconv_real) || bar_fault || width_fault || format_fault;
   const bool mem = !nop && a.rs_miu;
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
@@ -3800,7 +3802,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned ngpr = atomic ? 2 : wgpr ? 1 : 0;
   // go_static: what the go charges against the warp's allowances, from the
   // uop's decode-time bits (a fault found here, or a shared row, unseen).
-  const bool nop_d = u.shape.exit || u.cause || barNop(u);
+  const bool nop_d = u.shape.exit || u.cause || barNop(u) || hintNop(u, !cfg_.inject_reconv_real);
   const bool mem_d = !nop_d && a.rs_miu, atom_d = mem_d && a.mem_kind == kMemKAtomic;
   const bool wgpr_d = !nop_d && a.writes_gpr;
   const bool wpred_d = !nop_d && u.pred_we && cfg_.rename_preds;

@@ -5,7 +5,7 @@
 // (kill_v_q, kill_ep_q, kill_drain, kill_ack_q, kill_ack_ep_q, ack-ready
 // with migration's quiesce term), the credit flops, the done wake, the
 // idle term and the CSR responder. KILL_DRAIN is the tab's formula at the
-// build's links (KT_LINK_ISS, KT_LINK_DONE) and CCV_LAT_SFU.
+// build's links, bnd_rx included: CCV_LAT_RCU_KILL_DRAIN (RA-42).
 //
 // Runs: directed kills (one alone, one during a drain, a late quiesce),
 // then random traffic. --cg <idle|medium|high> <vcd> runs one clock-gating
@@ -27,17 +27,11 @@
 
 #include "ccv_params.h"
 
-#ifndef KT_LINK_ISS
-#define KT_LINK_ISS 0
-#endif
-#ifndef KT_LINK_DONE
-#define KT_LINK_DONE 0
-#endif
 
 namespace {
 
 constexpr unsigned kNS = 9, kNL = 32, kNM = 4, kNB = 6;
-unsigned g_drain = 2 + KT_LINK_ISS + ccv::prov::kLatSfu + 1 + KT_LINK_DONE;
+unsigned g_drain = ccv::prov::kLatRcuKillDrain;   // links and bnd_rx in (RA-42)
 
 template <typename T> void put(T &s, unsigned lsb, unsigned w, uint64_t v) {
   for (unsigned i = 0; i < w; ++i) {
@@ -63,7 +57,8 @@ template <typename T> uint64_t get(const T &s, unsigned lsb, unsigned w) {
 }
 
 struct In {   // one cycle's inputs
-  bool kv = false, mq = true, dbusy = false, csr = false;
+  bool kv = false, mq = true, csr = false;
+  unsigned dbusy = 0;   // ND = 2 terms
   unsigned kep = 0, busy = 0, mv = 0;
   uint32_t iv = 0, lv = 0;
 };
@@ -81,7 +76,7 @@ struct Bench {
   bool kv_q = false, ack = false, pend = false, dwake = false, idle = false, csr = false;
   unsigned kep = 0, aep = 0, drain = 0;
   uint64_t cr = 0;
-  bool rst_q = false;   // the module's flopped reset (RST-1)
+  bool rst_q = true;    // the module's flopped reset (RST-1): unknown, so held, until the first edge
 
   explicit Bench(const char *vcd_path) {
     ctx = std::make_unique<VerilatedContext>();
@@ -111,7 +106,7 @@ struct Bench {
   }
 
   void step(const In &in, bool rst = false) {
-    dut->rcu_rst_r00h = rst;
+    dut->rst_n = !rst;
     dut->kv_cr00h = in.kv;
     dut->kep_cr01h = in.kep;
     dut->mq_cr01h = in.mq;
@@ -154,7 +149,10 @@ struct Bench {
           }
         }
       }
-      const bool nidle = !in.busy && !in.dbusy && !in.iv && !in.lv && !in.mv && !in.kv && !kv1 &&
+      // lane results and kill land at no-flop ends: idle reads their
+      // captures (the credit flops' lane field, kv_q), a cycle on.
+      const bool lv_q = ((cr >> kNS) & ((uint64_t(1) << kNL) - 1)) != 0;
+      const bool nidle = !in.busy && !in.dbusy && !in.iv && !lv_q && !in.mv && !kv1 &&
                          drain == 0 && !dwake;
       dwake = in.iv || in.dbusy;
       idle = nidle;
@@ -199,7 +197,7 @@ struct Gen {
     for (unsigned s = 0; s < kNS; ++s) if (coin(p * 0.4)) in.iv |= 1u << s;
     for (unsigned c = 0; c < kNL; ++c) if (coin(p * 0.3)) in.lv |= 1u << c;
     for (unsigned j = 0; j < kNM; ++j) if (coin(p * 0.3)) in.mv |= 1u << j;
-    in.dbusy = coin(p * 0.5);
+    in.dbusy = (coin(p * 0.5) ? 1u : 0u) | (coin(p * 0.2) ? 2u : 0u);
     for (unsigned b = 0; b < kNB; ++b) if (coin(p * 0.2)) in.busy |= 1u << b;
     in.csr = coin(p * 0.02);
     return in;

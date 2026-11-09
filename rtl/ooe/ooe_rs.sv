@@ -260,7 +260,7 @@ module ooe_rs #(
   logic [2*P*N-1:0] cd_cq02h;
   logic [P*N-1:0]   dz_cq02h;    // the rows' named terms alone, no row bits: the free enters named's root
   logic [2*P*N-1:0] cdz_cq02h;
-  // -- Confirmation, here (OI-45, OI-50; V-65) --------------------------------
+  // -- Confirmation, here (OI-45, OI-50 and its co-grant arm, OI-133; V-65) ----
   // This module's issued register: set at a grant (select's, issued from
   // the next edge), cleared by its own replays and frees, so it is
   // ooe_wake's issued flags (FISS) every cycle. The cancel's level rule and

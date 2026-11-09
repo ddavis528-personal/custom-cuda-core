@@ -93,8 +93,22 @@
 //   cor-late       each credit-on-receipt slot's first message reaches its
 //                  block a cycle after it is presented (AR's rev 322 (b))
 //   cor-drop       ...and never: the block drops it
+//   lead-copy-corrupt   OOE's issue lead_phys_dst differs from its payload
+//                  (RA-43): RCU refuses the copy by name
+//   lead-guard-corrupt  OOE's moved guard lead (lead_guard_pred) names the
+//                  wrong predicate (RA 109 (a)): RCU reads the wrong guard
+//   lead-src-corrupt    R's moved source lead names the wrong first row
+//                  (RA 109 (b)): R reads the wrong register
 //   ignore-mask    RCU's predicate merge drops the active mask (A-43)
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
+//   sfu-valid-stray  lane 3 drives sfu_valid with no SFU op in flight, which
+//                  RCU must refuse (RA-16 (b), RA's rev 115)
+//   nop-real-op    DEC gives the C_ADD whose sum is stored serial 5, C_RECONV's
+//                  no-op, so OOE completes it at rename (RA-16 (f), OA's rev 393)
+//   pmov-negate    RCU inverts register pmov's ps0 negate (OA's rev 396); with
+//                  CCV_DEC_POR_COPY_AS_PMOV=1, predlane's copy writes ~P0
+//   pmov-ps1       DEC sends register pmov's ps1 with ps0's negate flipped;
+//                  RCU must refuse it (RA 119)
 //===----------------------------------------------------------------------===//
 #include "Vccv_common_chk_bank.h"
 #include "verilated.h"
@@ -273,14 +287,20 @@ int main(int argc, char **argv) {
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
                       brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
-                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-fault-replay" || brk == "lead-fault-drop" || brk == "lead-src-clear" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
+                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-fault-replay" || brk == "lead-fault-drop" || brk == "lead-src-clear" || brk == "lead-copy-corrupt" || brk == "lead-guard-corrupt" || brk == "lead-src-corrupt" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
                       brk == "xfer-unsigned" || brk == "xfer-ignored" || brk == "chw-mark-always" ||
                       brk == "ret-no-stay" || brk == "pred-taken-any" || brk == "ret-held-by-lanes" ||
                       // .shared and SPM (TI's rev 230); FET's barrier parking (TI-40)
                       brk == "spm-one-pass" || brk == "spm-no-wait" || brk == "spm-shared-region" ||
                       brk == "bar-park-off" || brk == "held-over-r" || brk == "held-no-clear" ||
-                      brk == "borrow-partial";
+                      brk == "borrow-partial" ||
+                      // the SFU result on ccv_lane_rcu_res (RA-16 (b))
+                      brk == "sfu-valid-stray" ||
+                      // serial 5 on a real op (RA-16 (f))
+                      brk == "nop-real-op" ||
+                      // register pmov's negate (OA's rev 396)
+                      brk == "pmov-negate" || brk == "pmov-ps1";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

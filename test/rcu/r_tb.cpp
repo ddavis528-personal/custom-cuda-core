@@ -34,6 +34,9 @@
 #include <random>
 #include <string>
 #include <type_traits>
+#include <vector>
+
+#include "dec_tb.h"
 
 namespace {
 
@@ -80,7 +83,7 @@ bool uses0(unsigned k) { return k == Ret || (k >= ShI && k <= ShB) || k == Unb; 
 bool uses1(unsigned k) { return k == ShR; }
 
 struct Op {
-  unsigned kind, tag, drow, dst, dpos, dwid, opos, pd;
+  unsigned kind, opc, tag, drow, dst, dpos, dwid, opos, pd, pold;
   unsigned src[2], spos[2], swid[2];
   bool mrg, pwe;
   uint32_t imask, imm, act, rpa, rpb;
@@ -140,11 +143,11 @@ struct Bench {
   }
 
   void drive(bool rst) {
-    dut->rcu_rst_r00h = rst;
+    dut->rst_n = !rst;
     const uint64_t c = cyc;
     dut->iv_cr01h = op(c - 1) != nullptr;   // the valid comes with the lead
     if (const Op *o = op(c - 2)) {   // A: the payload, R0 and R1
-      dut->kind_cr02h = o->kind;
+      dut->opc_cr02h = o->opc;
       dut->tag_cr02h = o->tag;
       dut->drow_cr02h = o->drow;
       dut->imask_cr02h = o->imask;
@@ -156,6 +159,7 @@ struct Bench {
       dut->spos_cr02h = o->spos[0] | o->spos[1] << 2;
       dut->swid_cr02h = o->swid[0] | o->swid[1] << 2;
       dut->pd_cr02h = o->pd;
+      dut->pold_cr02h = o->pold;
       dut->mrg_cr02h = o->mrg;
       dut->pwe_cr02h = o->pwe;
     }
@@ -183,6 +187,7 @@ struct Bench {
       eq("rw_sec", dut->rw_sec_cr03h, wg(o3->kind) ? secmask(o3->dwid, o3->dpos) : 0u);
       eq("pr_row", dut->pr_row_cr03h, wp(o3->kind) ? o3->pd : kPZero);
       eq("pr_mrg", dut->pr_mrg_cr03h, o3->mrg);
+      eq("pr_orow", dut->pr_orow_cr03h, o3->pold);
     }
     if (o4) {
       eq("dn_tag", dut->dn_tag_cr04h, o4->tag);
@@ -213,6 +218,22 @@ struct Bench {
   }
 };
 
+// The opcodes the model's decode makes each R kind (test/rcu/dec_tb.h).
+const dectb::OpPool &pool(unsigned k) {
+  static const std::vector<dectb::OpPool> pools = [] {
+    std::vector<dectb::OpPool> v;
+    for (unsigned i = 1; i < kKinds; ++i)
+      v.emplace_back(kName[i], 0u, [i](const dectb::R::OpClass &oc) {
+        return (oc.unit == dectb::R::Unit::ROnly || oc.unit == dectb::R::Unit::Coll) &&
+               unsigned(oc.rk) == i;
+      }, false, true);
+    return v;
+  }();
+  return pools[k - 1];
+}
+// A kind no opcode decodes to (pxor: the ISA has none) is never drawn.
+bool decodable(unsigned k) { return !pool(k).empty(); }
+
 struct Gen {
   std::mt19937_64 r;
   std::string control;
@@ -230,13 +251,15 @@ struct Gen {
 
   void op(Bench &b, uint64_t c) {
     Op o{};
-    o.kind = 1 + below(kKinds - 1);
+    do o.kind = 1 + below(kKinds - 1); while (!decodable(o.kind));
+    o.opc = pool(o.kind).pick(r);   // an opcode the decode makes this kind
     o.tag = below(128);
     o.drow = below(4);
     o.dst = row();
     place(o.dwid, o.dpos);
     o.opos = o.dwid == 0 ? 0 : o.dwid == 1 ? 2 * below(2) : below(4);
     o.pd = below(48);
+    o.pold = below(48);
     o.mrg = p(0.6);
     o.pwe = wp(o.kind) || p(0.5);
     const unsigned xm = below(4);
@@ -366,7 +389,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   for (int i = 0; i < 6; ++i) b.step();
   bool cov = true;
   if (scenario != "idle") {
-    for (unsigned k = 1; k < kKinds; ++k) cov &= b.cov_kind[k] != 0;
+    for (unsigned k = 1; k < kKinds; ++k) cov &= b.cov_kind[k] != 0 || !decodable(k);
     cov &= b.cov_merge && b.cov_shift && b.cov_ret_multi && b.cov_noact;
     if (!cov) {
       std::fprintf(stderr, "rcu_r: coverage: merge %u shift %u ret_multi %u noact %u; kinds",

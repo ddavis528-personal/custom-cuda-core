@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-08 (TI 360 pushed 95bf04d, OI-130; OI-127 done f727aed)
+Updated 2026-11-09 (#26 OI-134: CG-3 rework of the ur register)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,11 +37,10 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 320, RA 96, IS 190, TI 373, OA 383, OI 328, CP 155, DA 115, RI 35
-(sweep 11-07 10:16). AR 314/OA 377: lead_fault = status==1, per slot, OI builds capture once TI's schema row lands (none to TI 362). Pings 11-06: all eight pinged; pongs OK from OA TI
-AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
-Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
-`--check` should differ; ask DA to approve `python3 tools/setup-session-home.py`.
+Conventions 17, AR 332, RA 117, IS 190, TI 397, OA 402, OI 334, CP 157, DA 116, RI 54
+(sweep 11-08 plus notices). AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
+once TI's schema row lands. Pings 11-06: all OK. Settings: after TI's 350k merge `--check` may
+differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
 
 ## Tools (scratchpad, not in the repo)
 - fo/path.py / path3.py: `START=<input> python3 fo/path3.py ir|rr <abc-*.blif>` traces the
@@ -51,24 +50,29 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
-0. OI-133 (rev 328, rang OA+TI; task #41): OA-17 fires at lat_l1_wake=16 (seed 6 mode 6, seed 19
-   mode 7): consumer co-granted with a producer re-issued after cancel escapes OI-50's hop.
-   Fix awaiting OA: model cancelHop `|| rs_[j].issue_at == y.issue_at`; RTL ooe_sched rep_cq02h
-   mask `~iss | msd | gnt_cq04h`. Prototype (env COHOP) in scratchpad/l1w/src passes 16/17.
-   On OA's yes: model + RTL + test at 16 + control dropping the term.
-0b. #36 ooe_sched ratchet in wfs (oi-sched, uncommitted): fcp_cq04h per-entry force copies to
-   select's rhold. trio no-force control MISSED: trio_tb.cpp:273 must also clear fcp_cq04h (IData).
-1. TI 360 (task #26): PUSHED 95bf04d (SCOPED PASS 20/22); OI-130 rev 325 rang OA/TI/AR. Waiting on
-   RH (sent 11-08 ~05:00): G/N floor_held_gate at 192/160(ren 12/44)/128(ren 8/24), S1 + cm128 warm.
-   On RH's answer: add its numbers to OI-130 (no notice unless OA must act). OA owes: accept the fix;
-   ooe_go to 25 needs the share split retimed (~21 NGD hv->sg) or caps stand (#37).
-2. OA 382 (task #40): RTL issue payload: A2's RS row carries pd, pred_we, ppold; cas-no-pd control in RTL.
-3. OA 365 (task #24): ooe_sched phys_src0/1 output depth (<=6); fold in ooe_sched ratchet (#36).
-4. NGD fanout ratchet (rtl/ngd-ratchet.json "fanout"; DA asked 11-07), in order: ooe_rendep (#33,
-   worst mem 34.5), ooe_rob_w (#34; caps lowered to 29.9 in b8881c0),
-   ooe_rename (#35, 31.1), ooe_rs (#38, 30.2), ooe_ratread (#39, port-budget caps only).
-5. DA 111b / OA 364: a unit for every OOE module at each instantiated param set.
-6. Optional (OA 381, task #32): fa entry one-hot -> 5-bit index in ooe_rob_w (-108 flops).
+0. #33 PUSHED (5eb3acb8, SCOPED PASS 23/23, with TI 21b4b80 merged); OI-135 closed at OI rev 334.
+   Lesson: any load on ren1's l_x/l_v/tk_* remaps ooe_rename's q_gv cone (+0.5); take from c_xl per class.
+1. #26 OI-134: RH 95bf04d: U160 -2.22% vs G160, U128 -2.16%, L160 +1.87%, L128 -2.07%, U192 = G192.
+   Local commits f4d5ee10 (model unmet_reg=1 + ur register) and 68817c46 (c_dst cap 27.5, DA's ruling
+   11-08; recover <=26.9 in #35), backed up at gate-scratch/OI. First gate FAILED CG-3: ur_g/ur_p
+   51-63% DCGE. Uncommitted rework: per-slot enable (occupancy changed / frees / own take, held at 0 and at
+   the LU ceiling via top_of; ur_oc per slot, reset 1 because occ rises at reset release with no lead).
+   v6 (global ur_o) 50-60%; v7 (per-slot ur_o, +3 CG-1 flops, likely over 35.5 allowance) being measured
+   (scratchpad run7.sh -> rn7.log, cg7.log). If v7 clears CG-3 but not the budget, ask DA: allowance
+   waiver (4 flops) vs CG-3 waiver (44 flops). On green: OI row (Needs: TI, OA), ring both.
+1b. RI-26 (DA 116: 13 RCU / 0 OOE; OA 401/402): add iss_lead_cq03h {"required":0.0,by OA,2026-11-09}
+   to rtl/ooe/ooe_rs.ngd.json (no carries); ccv_ooe.ngd.json keys ooe_rcu_issue_payload.{lead_opcode,
+   lead_done_row,lead_pred_we,lead_phys_dst} required 0.0 once TI's ti-lead (4d6065fd) lands and ccv_ooe
+   is RTL. Then OI row re:RI-26, FYI, rings no one.
+1c. TI 397 re:RI-25 (RST-2 landed, TI ea8ae6f1): ooe_rename's u_gfree/u_pfree run at FS=1 but the
+   ooe_freelist units are FS=4: add FS=1 units (cg-units, ngd units), merge TI's branch; answer in OI tab.
+2. #42 OA-387 lead move: blocked on TI's schema row (RA 114).
+3. #40 OA 382: RTL issue payload, A2's RS row carries pd, pred_we, ppold; cas-no-pd in RTL.
+4. NGD fanout ratchets: ooe_rob_w (#34, lower caps; measured 29.8), ooe_rename (#35, 30.58 now; caps c_dst
+   26.9 at 26.82, po_dst 27.5 at 27.50), ooe_rs (#38), ooe_ratread last (#39).
+5. DA 111b / OA 364: a unit per OOE module per instantiated param set.
+6. Optional #32 (OA 381): fa one-hot -> 5-bit index in ooe_rob_w.
+- scratchpad/check-ngd3.py regenerated 11-08 from tools/check-ngd.py (CCV_ROOT env picks the tree).
 
 ## Done 11-07
 - ROB slice 4 pushed adfa301 (SCOPED PASS 20/22); OI-128 row rev 322/323, OA accepted at 381.
