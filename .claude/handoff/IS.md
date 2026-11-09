@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-07. Keep this current at every task's end; it is what
+Updated 2026-11-08. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -48,7 +48,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 316, OA 379, IS 190, TI 362, OI 319, CP 155, DA 115, RA 96, RI 31.
+Conventions 17, AR 332, OA 394, IS 190, TI 385, OI 330, CP 157, DA 115, RA 117, RI 50.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Next pings Friday 2026-11-13.
@@ -63,7 +63,11 @@ Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 ## State
 - O-85 follow-ups done: TI de03fd6 (TI-371) builds every collective incl.
   shfl.idx and _R forms (kernel coll; opcodes by name from ccv-sim). IS-21/O-72
-  RMW atomics built (kernels atom, atomf); CAS waits on OOE's A2 writing pd (OI).
+  RMW atomics built (kernels atom, atomf); CAS landed 9894da1 (kernel cas,
+  guarded CAS merges rd/pd per invariant 10). IS-21 complete in the core.
+- reconv.hint: OA 393 makes C_RECONV a rename no-op (matches ISA: ignored by
+  Phase 1). ISA says the compiler emits it from day one; it emits none yet
+  (CP's F-124). Watch F-124; not an ISA change.
   ISA defines no cross-warp order on one word; raise only if it must be defined.
 - 2026-11-07 sweep: nothing for IS. DA 113-115 (Daniel): zero-cycle receiving
   ends only for IPC; bring 0.2-0.5% impacts to him, over 0.5% the architect
