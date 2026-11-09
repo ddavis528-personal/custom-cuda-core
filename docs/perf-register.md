@@ -1210,6 +1210,12 @@ it.
   over A6, the ROB seeing a memop's done a cycle later inside OOE; the
   flopped pair, about +1.95% S1 with `CCV_LAT_CMPL_HINT` 3, was not
   taken), so bnd_rx(miu_ooe_cmpl) is 0 and `CCV_LAT_CMPL_HINT` 2 stands.
+  Re-priced at 8 ways (DCU 8x64, on 11386e7; AR rev 335): the flopped
+  pair now costs S1 +2.44%, cm32 +0.96%, cm128 +5.10% (J11b p192'), so
+  C9's gain is well over DA 115's 0.5% and it stands. J13 (TI rev 392)
+  puts C9 against A6 at S1 +0.174%, cm32 -0.072%, cm128 +0.459%,
+  vadd16_loop +3.33%, all from cmpl_split=9: cm128 turns from a 0.45%
+  gain at 1 way to a cost once it is no longer L1-bound.
   The M1-miss fallback is a base of 2 with the same terms.
   `ccv_lane_rcu_res` takes a no-flop end at RCU (RA register rev 95, under
   DA revs 114 and 115; RI-16's runs by RH, flopped vs zero-cycle with the
@@ -1220,6 +1226,28 @@ it.
   RCU's kill drain 16). It holds while RCU and every
   lane abut (link_n 0; the partitioning spec's floorplan constraints) and
   RCU's assembled block meets 12 NGD on the port without the flop.
+  `ccv_ooe_rcu_issue` takes a no-flop end at RCU too (RA-43, under DA rev
+  115 and AR rev 329; d1c65ef). Its fields RCU needs in the issue's first
+  cycle ride as A-1 leads, a cycle ahead with valid: the guard predicate
+  and R's source rows and imm are moved there, and the rest are copies.
+  bnd_rx(ooe_rcu_issue) goes from 1 to 0, so `CCV_LAT_KILL_DRAIN` drops
+  from 16 to 15 and `CCV_LAT_L1_CMPL` from 19 to 18. `CCV_LAT_LANE` (7),
+  `CCV_LAT_SFU` (12), `CCV_LAT_L1_WAKE` (17) and `CCV_LAT_L1_MISS_WAKE` (1)
+  are unchanged, and so is the issue credit depth (4), since RA-41's credit
+  on receipt had already taken bnd_rx out of its loop. In the skeleton,
+  0e969d5 to this change, with OI's OOE model and either RCU:
+
+  | cycles | RI's RCU model | RCU stub |
+  |---|---|---|
+  | vadd | 161 to 158 | 161 to 158 |
+  | loop | 2,942 to 2,842 (-3.4%) | 2,942 to 2,842 |
+  | S1 (sweep.sh's ten kernels) | 4,034 to 3,918 (-2.88%) | 4,037 to 3,921 (-2.87%) |
+  | all 63 kernels | 56,067 to 54,749 (-2.35%) | 56,011 to 54,685 (-2.37%) |
+
+  The all-kernel sum includes rope, which runs clean before the change and
+  after it fails OI's OA-17 check on L1 speculation (it passes with
+  `l1_spec=0`). It holds while OOE and RCU abut and RCU's assembled block
+  meets 12 NGD on the issue port without the flop.
   Open, not booked (TI register rev 369, RH's J9 bisect; AR rev 318):
   the same change, 2a7f125, costs rel-vadd16_loop-128 +1,065 cycles
   from fetch (5,610 to 6,675, +19.0%) and rel-vadd16-128 +5.5%. On
@@ -1268,42 +1296,29 @@ it.
   gnt 10.2 with OOE's leads (OA 387, 390), held to 12 in
   ccv_rcu.ngd.json. Latency (AR rev 329): L1_CMPL 19 to 18, KILL_DRAIN
   16 to 15, LAT_LANE, LAT_SFU, L1_WAKE and L1_MISS_WAKE unchanged, V-35
-  done a cycle sooner; the issue credit depth stays 4, since RA-41's
+  done a cycle sooner. Landed in 21b4b80 (TI rev 391); TI's own
+  measurement there is -2.88% on sweep.sh's ten kernels and -2.35% on all
+  63 (TI rev 384). The issue credit depth stays 4, since RA-41's
   credit on receipt had already taken bnd_rx out of that loop (TI 382,
   AR rev 330). The figures above stand until
   RH reprices g1'' with the leads. Dropping
-  miu_rcu_data's flop is S1 -0.26% but cm128 +2.21%, and it trips OOE's
-  OA-17 check, so it stays flopped. J12 (TI 389, 8 ways, every run clean):
+  miu_rcu_data's flop (J11b g2''', TI 390, clean on OI-133's fix 11386e7,
+  replacing J11's g2'' that ran with OA-17 failures) is S1 -0.26%, cm32
+  +0.19%, cm128 +1.27%, vadd16_loop -2.79%. S1 over 0.2% and up to 0.5% is
+  Daniel's (DA 114); Daniel kept the flop (DA rev 116, 2026-11-09, on AR rev
+  334's recommendation: the gain is S1 alone and both coremarks lose). J12 (TI 389, 8 ways, every run clean):
   PHYS_REGS 160 leaves S1 and cm32 flat but costs cm128 +1.17% (128:
   +2.89%), now that cm128 is no longer L1-bound and the name pool shows
   (stall.share.names 0 / 14,337 / 1,265,169). That fails AR rev 315's bar
   of 0.1% everywhere, so PHYS_REGS stays 192 (AR rev 333). The 160 trade,
   about 34k RCU flops for cm128 +1.17%, goes to Daniel only if he sets
   an RCU area target that 192 misses: RA-11 closed at 192 with about
-  242,400 RCU flops (PRF 196,608) and no target (DA 2026-11-02; RA rev 122). C9 at 8 ways, and p192's flopped
-  completion ends, are re-priced in J11b on OI-133's fix (11386e7).
-  `ccv_ooe_rcu_issue` takes a no-flop end at RCU too (RA-43, under DA rev
-  115 and AR rev 329; d1c65ef). Its fields RCU needs in the issue's first
-  cycle ride as A-1 leads, a cycle ahead with valid: the guard predicate
-  and R's source rows and imm are moved there, and the rest are copies.
-  bnd_rx(ooe_rcu_issue) goes from 1 to 0, so `CCV_LAT_KILL_DRAIN` drops
-  from 16 to 15 and `CCV_LAT_L1_CMPL` from 19 to 18. `CCV_LAT_LANE` (7),
-  `CCV_LAT_SFU` (12), `CCV_LAT_L1_WAKE` (17) and `CCV_LAT_L1_MISS_WAKE` (1)
-  are unchanged, and so is the issue credit depth (4), since RA-41's credit
-  on receipt had already taken bnd_rx out of its loop. In the skeleton,
-  0e969d5 to this change, with OI's OOE model and either RCU:
-
-  | cycles | RI's RCU model | RCU stub |
-  |---|---|---|
-  | vadd | 161 to 158 | 161 to 158 |
-  | loop | 2,942 to 2,842 (-3.4%) | 2,942 to 2,842 |
-  | S1 (sweep.sh's ten kernels) | 4,034 to 3,918 (-2.88%) | 4,037 to 3,921 (-2.87%) |
-  | all 63 kernels | 56,067 to 54,749 (-2.35%) | 56,011 to 54,685 (-2.37%) |
-
-  The all-kernel sum includes rope, which runs clean before the change and
-  after it fails OI's OA-17 check on L1 speculation (it passes with
-  `l1_spec=0`). It holds while OOE and RCU abut and RCU's assembled block
-  meets 12 NGD on the issue port without the flop.
+  242,400 RCU flops (PRF 196,608) and no target (DA 2026-11-02; RA rev 122). J11b's p192'
+  (OOE's miu_ooe_cmpl and cmpl_hint ends flopped; CMPL_HINT 3, L1_CMPL 20)
+  prices those zero-cycle ends at S1 2.44%, cm32 0.96%, cm128 5.10% and
+  vadd16_loop 71% (issue-cadence collision, share.rs 9,920 to 22,586, as Z
+  in J9; not the L1), replacing J12's p192. They stay zero-cycle under DA
+  115 (AR rev 334). C9 at 8 ways is still to price.
 
 ### PF-48 End-to-end parity on register state
 

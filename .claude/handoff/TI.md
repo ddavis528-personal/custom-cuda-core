@@ -38,85 +38,30 @@ RA 96, RI 34 (2026-11-07 evening). Latest TI open: TI-51 (rev 346).
 Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
 pongs. Pings 2026-11-06 sent to AR OA IS OI CP RA RI; all seven ponged ok.
 
-## State (2026-11-08 ~21:30Z)
-- 20:23Z container restart lost every local worktree (ti-g4, ti-ra43, ...),
-  ~/ccv-logs and the scratchpad. ti-pmov rebuilt in /home/user/custom-cuda-core
-  (branch ti-pmov), backed up to origin gate-scratch/TI-pmov (a NEW scratch
-  branch: overwriting gate-scratch/TI needs a force-push). Back up every
-  unpushed commit there before a long job.
-- PUSHED 21b4b80 (RA-43 + register pmov) on both branches; TI 391 row and
-  notices sent. J11b (TI 390) and J13 (TI 392) relayed; OA 399 closed J13.
-- GATING ti-pmov full: 48033c1 merge RI 70cfd51 (rcudec::classOf + CAS copy
-  check, PMOV in rcu_decode.h, RKind::Pmov appended = 18, rcu_dec_pkg regen),
-  6ad84ca RA 119 (both RCUs refuse pmov ps1 != ps0; control pmov-ps1),
-  3239f29 RA 124 schema text, a0b940d rcu_test kill-drain == params on
-  RA-43's zero-cycle end (RI's file), d99127ec RI-21 (4) (params/ops.json,
-  tools/gen-ops.py -> ccv_ops.h + ccv_ops_pkg.sv, --check/--selftest/
-  --crosscheck; SV field cross_lane, opcode 9 bits, SRD_SEL0..3).
-  On PASS: TI row; notices RI (OI-18: merge edits, rcu_test fix; ccv_ops_pkg
-  can replace gen_dec's package) and RA (119, 124 done). On FAIL: gate-triage.
-- User (2026-11-08): "Clear anything required to make room" - disk clearing
-  for space is approved (caches, others' /tmp dirs included).
-- ti-miu4-local (MIU counters + MULTI) was lost in the restart; it was never
-  to be pushed anyway.
+## State (2026-11-09 ~08:30Z)
+- PUSHED on both branches, in order: 5271c5e7 (RA 119, RA 124, RI-21 (4)
+  ops.json/gen-ops, RI 70cfd51 merge, rcu_lanes floors, bank_slice heavy),
+  ea8ae6f1 (RST-2 reset same-cycle check, DA 2026-11-09; kill_valid wake tap
+  at 12 + *_wake bounded, AR 336), 4d6065fd (per-field lead budgets, DA 116
+  13 RCU / 0 OOE), 7b003e98 (RI-31: lead_phys_src2 copy S0-S3, lead_sec_mask
+  exact). TI rows 393-400 written and notified.
+- Worktrees: custom-cuda-core, ti-ops, ti-lead, ti-src2 (all at pushed tips).
+  Back up unpushed work to origin gate-scratch/TI-<name> (new branches; an
+  overwrite needs force-push, denied). Container restarts lose local work.
+- User (2026-11-08): "Clear anything required to make room". A gate's cg
+  section leaves ~15 GB in build/cg; delete finished sections' build dirs and
+  ccache when free disk drops under ~5 GB mid-gate.
+- RI-23 (TI 393): TI takes block_report into tools/ once ri-blkrpt lands:
+  check-cg/check-ngd write per-unit group/NGD records at a clean gate.
+- RI-24 (TI 394): TI owes (1) ccv_rcu.sv into SV-hosted under CCV_RCU_RTL on
+  RI's push, (2) shims drive _wake high into RTL receivers now, a staged
+  one-cycle lead later, (3) job_rcu_rtl block lock-step from
+  ccv-skel --port-dump VCDs + event-log diff.
+- RI follow-ups: rcu_core.cpp:317 superset -> equality, then run
+  lead-sec-superset on the model RCU too. OI: FS=1 freelist units (TI 397).
 
 ## Open work (most urgent first)
--3. 2026-11-03: register rows answered this sweep: RA-37/38 (TI rev 290;
-   RI support, task #62), OA-24 (291; ROB split), IS-26 (292) and OA's
-   sweep-gate (293; the memory bug), OI-103 (294). Then #52 RA-36/AR
-   re:RA-10, #59 ADDR_BASE=1 after OI's ooe_wake fix, #60 port traces.
-   Container restarts kill detached gates: arm a send_later check-in for
-   every long gate.
--2. 2026-11-01 evening (DA): CI runners died on OI's 2b (runs 538/543/544,
-   no logs; NGD+CG on full ooe_rob OOM a 16 GB runner). Built heavy-unit
-   lock 0facb89 (CCV_HEAVY_SERIAL=1 in ci.yml, tools/heavy-units.json,
-   light limit 2 GB) and gate-scratch.sh ca27c87/6d4a2ae (OI-102; DA chose
-   a scratch branch; proxy refuses branch delete (403), so no drop;
-   gate-scratch/TI left on origin, CI run 551 on it from 0facb89).
-   LOCAL, NOT PUSHED: trial full gate on OI 2b tip + lock in /home/user/ti-coll
-   (logs /home/user/ccv-logs/trial), then gate-push --full, then TI rows:
-   OI-102 answer + every agent's sweep skips gate-scratch/* (notify all).
-   Asked DA: enable the lock for local gates too (sweep) - unanswered.
-   Then after the 02:11 sweep: AR re:RA-10 (delete rcu_miu_width, close
-   Q-18), RA-16 (schema/params, task list), AR re:RA-11 PHYS_REGS sweep.
-   New agent RA (RCU architecture), tab 9851686b-2b0a, read rev 30; AR tab
-   read rev 262; OI rev 252.
--1. Done 2026-10-31: shfl lat_class 5 (b0d91c2) and AR rev 260's lead +
-   slot_fields step A (80697a3; TI rev 277). Open from it: step B (narrow
-   generated ports/nets per slot, ~50 c["bits"] sites) deferred until a
-   repeated link or the RTL needs it. OI-96: br_lead_tid_ never erased;
-   OI carries the fix at its merge (TI rev 278): TI leaves ooe_block.cpp.
-   Side worktree /home/user/ti-coll: scratch for trials.
-   Background runs: pass timeout 7200000 to a gate-push (default 30 min
-   kills it).
-0. Disk: a clean gate needs ~11 GB of the session's allowance; keep
-   /home/user/sweep small (oracle13's 4 GB filled it on 2026-10-31). A red
-   gate left 16 GB in build/: gate-push now clears it on red too, keeping
-   build/verify in $CCV_LOGDIR.
-1. TI-48 (TI rev 266): all five handoffs in (files checked in each commit,
-   2026-10-30); `"autoCompactWindow": 400000` set in .claude/settings.json.
-   Pushed 63a7bd5; TI-48 closed (TI rev 269); CP added the key in
-   custom-cuda-complier 64c36f6 (CP-73). Done. This session: /autocompact 500k.
-   Answered: AR (62443b5, AR rev 256; also took TI-49), OA (9d2bd00, OA rev
-   285; the register skill takes TI-49 (1)-(3) in the same commit), CP
-   (compiler 8ebd324, CP-72 at CP rev 147; roster copy checked in its sweep;
-   Friday pings), OI (b65a558, OI rev 235; Friday pings; agreed 6ba08b1's
-   OI-18 edit), IS (dc2ff40, IS rev 180; Friday pings).
-2. Usage (DA, 2026-10-30): scripts and subagents are in (CLAUDE.md, The gate;
-   Context and handoff). Still to propose: the sweep as its own cheaper
-   session (needs a way for pongs to come from the roster's session).
-   TI-49 (open, TI rev 267): Friday pings (DA's); proposals to OA: ring only
-   rows that ask the receiver something, read notices via register-reader.
-   Notices for TI-48 and TI-49 sent to all five 2026-10-30.
-3. AR-24 capacity sweep on CP-64's eight traces (#46): frames in place
-   only plus one interleaved equality check; 64 KiB at hit base 7 vs
-   512 KiB at bases 7/8/9. Needs CTA queueing past resident slots and
-   gen-oracle `-load`/init records. Scratch in /home/user/sweep.
-4. OI-86 (b), if DA takes it: RCU-only done at fixed slot
-   CCV_DONE_SLOTS-2 in the stub, plus the lead field.
-5. Barriers (TI-40): SYU stub, RAU alloc/exit, DEC bar rows (in progress).
-6. Held or pending: layernorm (held by AR rev 143); IS-20 narrow-source
-   control; IS-21 atomics; MIU .shared mod 2^32 and .global F-ADDR (CP-33,
-   O-75); csa DUAL=1 after OI; AR-24 follow-ups; gate kernels
-   coremark-derived-pl-fault and ld.pred.local (AR rev 171); DCU channel
-   rates from CCV_DCACHE_LOOKUPS.
+1. RI-24 (3) job_rcu_rtl lock-step harness; (2) shim _wake.
+2. RI-23 per-unit records + tools/block_report.py.
+3. #97 ri-sfu merge with its four check-rcu-unit controls.
+4. Blocked: #59, #78, #22, #33, #96 (ccv_rcu.sv), #41, #34/#38/#46.
