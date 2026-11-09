@@ -79,6 +79,8 @@ architect may approve only if the end meets module NGD without the flop; can't m
    (gate-scope.py:211 wrapper reader; check-links.sh:86 control; test/phys/links_split.json rcu "all") -> RI-33 (rev 67)
    to TI, cc RA/AR, notices sent. NEXT: wait TI's fix commit; merge it + TI 0bd5ac02 (OA-405) + sweep branches into
    ri-asm3, re-gate (chain-ri17), push. Bookmark RI tab rev 67.
+   RA 134 (re:RI-33): detector accepted. After ccv_rcu.sv lands, post in RI tab for the spec's NGD table: block read
+   numbers per slot group (the 13 fields, other ports), lead waiver total, 2% use, whether rev 123's slice waiver is gone.
    chain-ri12 FAILED cg: rcu_kill cr_q/kd/kaep had no waivers (d7925bc2 dropped them on scratchpad cgpol.py, which
    is BROKEN: it measures no rcu_kill findings; do not trust it, use the gate's cg log). Restored in both trees
    (ri-asm3 222a3010, ri-push12 41a4fd05, identical file). chain-ri13 (cg at CCV_JOBS=2) running: ~/ccv-logs/chain-ri13.out.
