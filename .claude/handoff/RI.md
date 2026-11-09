@@ -63,7 +63,10 @@ architect may approve only if the end meets module NGD without the flop; can't m
    RA 132: kill + copies accepted; (a) lead_phys_src2 S0-S3 approved RCU side, waits OA+TI schema -> then rcu_isd_s
    captures it (lanes src row 2 from copy); (b) HOLD slice change until OA says lead_sec_mask exact: if yes precompute
    P owner in A-1 + assert equality + extra-bit control; if no, lead_footprint copy. TI 398: per-field keys ~07:15Z.
-   PUSH IN FLIGHT: chain-ri12 in /home/user/ri-wt8 (branch ri-push12 = ri-asm3 minus ccv_rcu.sv/killsleep/rcu_top unit),
+   chain-ri12 FAILED cg: rcu_kill cr_q/kd/kaep had no waivers (d7925bc2 dropped them on scratchpad cgpol.py, which
+   is BROKEN: it measures no rcu_kill findings; do not trust it, use the gate's cg log). Restored in both trees
+   (ri-asm3 222a3010, ri-push12 41a4fd05, identical file). chain-ri13 (cg at CCV_JOBS=2) running: ~/ccv-logs/chain-ri13.out.
+   OLD: chain-ri12 in /home/user/ri-wt8 (branch ri-push12 = ri-asm3 minus ccv_rcu.sv/killsleep/rcu_top unit),
    ~/ccv-logs/chain-ri12.out; it sends gate-scratch/RI itself (don't send from ri-wt7 meanwhile).
    RA 133 (OA 403: lead_sec_mask exact on lead slots; OA's own row text blank, RA paraphrase): DONE ea6d5a39 (local,
    ri-wt7): slice pk_cr01h P owner from plcont/plsec at A-1, assert p_lead_is_footprint, bench exact P leads, control
