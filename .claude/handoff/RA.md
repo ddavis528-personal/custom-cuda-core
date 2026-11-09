@@ -215,7 +215,8 @@ RA rev 118-122: RA-16 (b) accepted as built (sfu_valid payload; SW enable from s
 RA-43: TI ti-ra43 in full gate (ccc0872); model -2.35..-2.88% cycles. AR 332: PF-47 L1_CMPL 14 with RA-43 (spec still says 19->18; reconcile when TI lands). Open: RA-42 closes with KILL_DRAIN 15 landing; RI RTL lead capture + (e) on RTL; interim opcode arrivals (rev 117).
 RA rev 123 (re:RI 53, 70cfd51 on 888218a3): interim CG-3 waiver rcu_bank_slice L read rows (112/slice, ~3,584 total; idle DCGE 74/63/53% at K1-3) noted; removed with RA-43 slice lead capture; if not landed when ccv_rcu.sv goes in -> other remedy before block check.
 RA rev 124 (re:RI 54): SFU result pre-steered like result; SW writes by swb_d secmask; RI built (RI 55). RA rev 125: RA-43 + register pmov LANDED (TI 21b4b80 on ccr-183cc441); derives checked KILL_DRAIN 15, L1_CMPL 18 (AR 332's 14 not in params - spec 19->18 stands); RA-42 CLOSED. Left: RI kKillDrainBase cite param; M4 kill-checker at KILL_DRAIN-1 at assembly; RI RTL lead capture + (e) on RTL ends interims rev 117/123.
-Bookmarks: OA 396, RA 125, RI 55, TI 391, AR 333, DA 115, OI 331, Conventions 17, CP 157, IS 190.
+RA rev 126 (re:RI-25, ri-asm2 318cf7c7): (1) shared rcu_isd class capture (243 flops, 9x27) accepted w/ own unit, arrivals = measured fanout, rev 117 interims end there; Partition row added. (4) kill_valid into clk wake 6.0: prefer (c) OOE kill wake (asked OA), fallback (a) flop on ungated clk + M4 + kill-asleep case; not (b) (AR's rule). RI-24: TI to swap ccv_rcu.sv into SV top; awake vadd not finishing (gpr_mismatch 320). RI-23 aggregate DCGE metric for DA.
+Bookmarks: OA 396, RA 126, RI 58, TI 391, AR 333, DA 115, OI 331, Conventions 17, CP 157, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
