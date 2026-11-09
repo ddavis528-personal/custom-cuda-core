@@ -13,15 +13,23 @@
 //   case 2  two kills a cycle apart across the wake keep the later epoch
 // --control drop1 / drop2 clear the detector's held kill in case 1 / in the
 // later kill of case 2 (the hold dropped), and each must fail.
+// --cg <idle|medium|high> <vcd> runs one clock-gating scenario for the unit
+// ccv_rcu (tools/check-cg.py), which measures the block top's own flops, the
+// detector's, its children black boxes: idle no kill, medium a kill on about
+// 2% of the cycles, high on 8%, each OOE's: a new epoch (the last + 1) and a
+// random mask, the next only once the last is acked. Traced to the top's
+// own nets (trace depth 2), every child's port included.
 //===----------------------------------------------------------------------===//
 #include "Vccv_rcu.h"
 #include "Vccv_rcu___024root.h"
 #include "verilated.h"
+#include "verilated_vcd_c.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <random>
 #include <string>
 
 #include "ccv_params.h"
@@ -36,16 +44,26 @@ char **g_argv;
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
   std::unique_ptr<Vccv_rcu> dut;
+  std::unique_ptr<VerilatedVcdC> vcd;
   uint64_t cyc = 0;
   unsigned fails = 0;
   std::string ctl;
 
-  explicit Bench(const std::string &c) : ctl(c) {
+  explicit Bench(const std::string &c, const char *vcd_path = nullptr) : ctl(c) {
     ctx = std::make_unique<VerilatedContext>();
     ctx->commandArgs(g_argc, g_argv);
+    if (vcd_path) ctx->traceEverOn(true);
     dut = std::make_unique<Vccv_rcu>(ctx.get());
+    if (vcd_path) {
+      vcd = std::make_unique<VerilatedVcdC>();
+      dut->trace(vcd.get(), 2);
+      vcd->open(vcd_path);
+    }
   }
-  ~Bench() { dut->final(); }
+  ~Bench() {
+    dut->final();
+    if (vcd) vcd->close();
+  }
   bool asleep() const { return dut->clk_gated; }   // the coming edge is not delivered
   // One cycle: inputs set, then the edge. drop clears the detector's flop
   // right after the edge (the control).
@@ -55,8 +73,10 @@ struct Bench {
     dut->kill_warp_mask = mask;
     dut->core_clk = 0;
     dut->eval();
+    if (vcd) vcd->dump(2 * cyc);
     dut->core_clk = 1;
     dut->eval();
+    if (vcd) vcd->dump(2 * cyc + 1);
     if (drop) {
       dut->rootp->ccv_rcu__DOT__kill_detect_v_cr01h = 0;
       dut->eval();
@@ -149,6 +169,46 @@ int run(const std::string &ctl) {
   return b.fails ? 1 : 0;
 }
 
+// One clock-gating scenario: reset, then kills at the scenario's rate, each
+// waiting for the last one's ack (OOE's protocol), with a fresh epoch and
+// mask in K so that every kill the gate takes changes its flops.
+int run_cg(const std::string &scenario, const char *vcd) {
+  Bench b("", vcd);
+  for (int i = 0; i < 6; ++i) {
+    b.dut->rst_n = 0;
+    b.step(false, 0, 0);
+  }
+  b.dut->rst_n = 1;
+  std::mt19937 rng(0x6b73u);
+  auto coin = [&](double p) { return std::uniform_real_distribution<double>(0, 1)(rng) < p; };
+  const unsigned n = scenario == "idle" ? 3000 : 4000;
+  const double p = scenario == "idle" ? 0 : scenario == "medium" ? 0.02 : 0.08;
+  unsigned ep = 0, kills = 0;
+  bool busy = false, fell = false;
+  for (unsigned i = 0; i < n; ++i) {
+    if (busy) {
+      fell |= !b.dut->kill_ack;
+      if (fell && b.dut->kill_ack) busy = false;
+    }
+    if (!busy && coin(p)) {
+      ep = (ep + 1) & 3u;
+      b.step(true, 0, 0);                              // K-1
+      b.step(false, ep, uint32_t(rng()) | 1u);         // K
+      i += 1;
+      ++kills;
+      busy = true;
+      fell = false;
+      continue;
+    }
+    b.step(false, 0, 0);
+  }
+  const bool cov = scenario == "idle" || kills >= 4;
+  if (!cov) ++b.fails;
+  std::printf("killsleep --cg %s: %llu cycles, %u kills: %s\n", scenario.c_str(),
+              (unsigned long long)b.cyc, kills, b.fails ? "FAIL" : "PASS");
+  return b.fails ? 1 : 0;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -157,6 +217,15 @@ int main(int argc, char **argv) {
   std::string ctl;
   for (int i = 1; i + 1 < argc; ++i)
     if (!std::strcmp(argv[i], "--control")) ctl = argv[i + 1];
+  for (int i = 1; i + 2 < argc; ++i)
+    if (!std::strcmp(argv[i], "--cg")) {
+      const std::string sc = argv[i + 1];
+      if (sc != "idle" && sc != "medium" && sc != "high") {
+        std::fprintf(stderr, "killsleep: unknown scenario %s\n", sc.c_str());
+        return 2;
+      }
+      return run_cg(sc, argv[i + 2]);
+    }
   if (!ctl.empty() && ctl != "drop1" && ctl != "drop2") {
     std::fprintf(stderr, "killsleep: unknown control %s\n", ctl.c_str());
     return 2;
