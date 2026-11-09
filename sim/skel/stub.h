@@ -339,13 +339,20 @@ static_assert(kSlotR == ccv::kIssueSlotR, "R's slot (CCV_ISSUE_SLOT_R)");
 /// 108-113, RA-43, OA's revs 387-391): what OOE knows at select from the RS
 /// entry's static fields, opcode-blind, sent a cycle ahead so RCU's end can
 /// be zero-cycle. Three kinds (schema lead_why):
-///  - ENABLES, a superset each: lead_sec_mask, lead_src_used, lead_imm_used,
+///  - ENABLES, a superset each: lead_src_used, lead_imm_used,
 ///    lead_merge_used, lead_guard_used. A clear bit is a promise.
+///    lead_sec_mask is EXACT (OA's rev 403 on RI-31): the footprint, bit for
+///    bit, on a lead's slot, and zero on a continuation. lead-sec-superset
+///    sets a section beyond the footprint on every lead that leaves one
+///    (R's, footprint 0), which RCU must refuse (legal before rev 403);
+///    lead-sec-cont sets one on every continuation (fillIssueLeadCopies).
 ///    lead-src-clear promises no source on every op: RCU must refuse each op
 ///    that reads one.
 ///  - MOVED (no payload copy left): lead_guard_pred on every slot, the op's
 ///    guard or data predicate (RA 109 (a)); lead_phys_src and
-///    lead_phys_src2 on R, R's source rows (RA 109 (b); placeIssueSrcRows),
+///    lead_phys_src2 on R, R's source rows (RA 109 (b); placeIssueSrcRows;
+///    on S0-S3 both are copies, lead_phys_src2's since RA's rev 132 and OA's
+///    rev 403 on RI-31),
 ///    and lead_rpsrc on R, R's whole imm (RA's rev 114 (2); issueImm).
 ///    RCU reads them from the lead (issueGuardPred, issueSrcRows).
 ///  - COPIES, equal to their payload field (kIssueLeadCopies).
@@ -356,7 +363,10 @@ static_assert(kSlotR == ccv::kIssueSlotR, "R's slot (CCV_ISSUE_SLOT_R)");
 inline void putIssueLead(Bits &m, unsigned chan, unsigned /*slot*/, unsigned fp, unsigned src_used,
                          bool imm_used, bool merge, bool guard_used, unsigned guard_pred,
                          const std::string &brk) {
-  put(m, chan, "lead_sec_mask", fp);
+  // lead-sec-superset: the lowest section outside the footprint, on every
+  // lead that leaves one (R's, whose footprint is 0, and a narrow op's).
+  const unsigned out = ~fp & 0xFu;
+  put(m, chan, "lead_sec_mask", fp | (brk == "lead-sec-superset" ? out & (0u - out) : 0u));
   put(m, chan, "lead_src_used", brk == "lead-src-clear" ? 0u : src_used & 7u);
   put(m, chan, "lead_imm_used", imm_used);
   put(m, chan, "lead_merge_used", merge);
@@ -401,7 +411,7 @@ inline constexpr IssueLeadCopy kIssueLeadCopies[] = {
     {"lead_phys_pred_dst", "phys_pred_dst"}, {"lead_cont", "cont"},
     {"lead_pred_neg", "pred_neg"},       {"lead_phys_src", "phys_src"},
     {"lead_phys_old_dst", "phys_old_dst"}, {"lead_old_dst_pos", "old_dst_pos"},
-    {"lead_src_pos", "src_pos"},
+    {"lead_src_pos", "src_pos"},         {"lead_phys_src2", "phys_src2"},
 };
 inline bool issueCopyOn(unsigned chan, const IssueLeadCopy &x, unsigned slot) {
   return (field(chan, x.lead).slots >> slot) & (field(chan, x.field).slots >> slot) & 1u;
@@ -415,6 +425,13 @@ inline void fillIssueLeadCopies(Bits &m, unsigned chan, unsigned slot, const std
     if (issueCopyOn(chan, x, slot)) put(m, chan, x.lead, get(m, chan, x.field));
   if (brk == "lead-copy-corrupt" && !get(m, chan, "cont"))
     put(m, chan, "lead_phys_dst", get(m, chan, "lead_phys_dst") ^ 1u);
+  // lead-src2-copy (RA's rev 132, OA's rev 403 on RI-31): S0's
+  // lead_phys_src2 copy off by one bit on every lead there.
+  if (brk == "lead-src2-copy" && slot == 0 && !get(m, chan, "cont"))
+    put(m, chan, "lead_phys_src2", get(m, chan, "lead_phys_src2") ^ 1u);
+  // lead-sec-cont (OA's rev 403): a continuation's section mask set.
+  if (brk == "lead-sec-cont" && get(m, chan, "cont"))
+    put(m, chan, "lead_sec_mask", 1u << (slot % kSecs));
 }
 /// What a sender does last on each ccv_ooe_rcu_issue slot, once it knows the
 /// slot: R's source rows to their lead, then every copy (RA-43).
