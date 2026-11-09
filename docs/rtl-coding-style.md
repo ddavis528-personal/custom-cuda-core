@@ -1169,6 +1169,21 @@ instead to the receiving block's input budget for each slot's valid and
 payload, from the wrapper's port at 0 through every level into a flop: 12
 NGD by default, or what the block's `<block>.ngd.json` gives the port. Its
 link takes no repeater stage, and its sender stays at 0 NGD.
+A lead field of such a payload may take its own budget, split across the
+crossing (DA tab rev 116, re:RI-26 and re:AR-334, 2026-11-09: on
+`ooe_rcu_issue` at RCU, lead_opcode, lead_done_row, lead_pred_we and
+lead_phys_dst arrive at 12, 13 NGD in, and OOE's out-side on them is
+required 0, so 0 + 13 <= 25, no cycle and no flops added). The key is
+`<channel>[_s<n>]_payload.<lead field>`, channel without `ccv_`, no `_s<n>`
+for every slot (`"ooe_rcu_issue_payload.lead_opcode": {"arrival": 12.0, ...}`
+in `ccv_rcu.ngd.json`, `"required": 0.0` in `ccv_ooe.ngd.json`); a module
+port inside a block that carries the field keeps its own name and adds
+`"carries": "ooe_rcu_issue_payload.lead_opcode"` beside its arrival or
+required. check-ngd holds the field's bits at the receiving block to 25
+less its arrival, the payload's other bits to the port's budget, and every
+pair of sending required and receiving arrival on the field to required +
+(25 - arrival) <= 25; a side with no declaration takes its default, and
+fails as undeclared only once both blocks' tops are RTL.
 The 12-a-side port budget stays only between modules inside a block.
 
 **No hidden stage** (AR's rev 310, on TI rev 351): at a flopped end the
