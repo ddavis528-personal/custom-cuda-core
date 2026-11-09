@@ -1151,6 +1151,12 @@ block top is RTL:
   flops (CG-5), counts at 0 NGD plus its own net's fanout term, though its
   timed depth is the reset AND's 1.7. Any other gate on the bit is logic,
   held as such.
+  A wake is not a data port (AR's rev 336, on RI-25 (4) (b)): a `*_wake`
+  input, and a block input check-ngd lists in `WAKE_TAPS` on its path into
+  the block clock's `wake` (RCU's `kill_valid` into `ccv_common_clk`), is
+  held to 12 NGD into the wake flop, wiring, glue, fanout term and the
+  clock gate's own OR included, not straight in; a tapped input's every
+  other load still goes straight into a flop.
 
 The flops are the interface module's boundary stage, built in the hardening
 wrapper (`ccv_common_rpt` `BOUNDARY`, default 1; Daniel, 2026-11-05), so the

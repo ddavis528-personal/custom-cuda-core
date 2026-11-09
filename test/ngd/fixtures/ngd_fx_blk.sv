@@ -432,3 +432,51 @@ module ngd_fx_zwrp #(parameter int W = 2) (
 );
   ngd_fx_zblk #(.W(W)) u_blk (.clk(clk), .r_payload(r_payload), .q(q));
 endmodule
+
+// A wake tap (AR's rev 336, RI-25 (4) (b)): kill_valid, a block input that is
+// no channel's _wake, is taken by a flop of the block's own (kv_q, its data
+// load) and tapped into the block clock's wake vector beside a channel's
+// x_wake and the block's own wake sources (r_q). ngd_fx_wclk stands for
+// ccv_common_clk: its wake OR-reduced into its wake flop, N bits wide, then
+// G XOR stages with its own flops, the depth a wake source is held to.
+//   DG  glue on kill_valid's data load before kv_q (refused: the tap
+//       excuses only the wake path)
+//   OI  1: another input, oth, ORed into the wake beside kill_valid
+//       (not on the tap list: refused, as any input into logic)
+module ngd_fx_wclk #(parameter int N = 4, parameter int G = 0) (
+  input  logic         clk,
+  input  logic [N-1:0] wake,
+  output logic         q
+);
+  logic [G:0] s_q;
+  logic w;
+  always_comb begin
+    w = |wake;
+    for (int k = 0; k < G; k++) w = w ^ s_q[k];
+  end
+  always_ff @(posedge clk) begin
+    s_q <= (s_q << 1) | (G+1)'(q);
+    q   <= w;
+  end
+endmodule
+
+module ngd_fx_blk_kv #(parameter int N = 4, parameter int G = 0, parameter int DG = 0,
+                       parameter int OI = 0) (
+  input  logic clk,
+  input  logic kill_valid,
+  input  logic x_wake,
+  input  logic oth,
+  output logic kv_o,
+  output logic w_o
+);
+  logic [N-1:0] r_q;
+  logic kv_q, o_q;
+  always_ff @(posedge clk) begin
+    kv_q <= DG ? kill_valid ^ r_q[0] : kill_valid;
+    o_q  <= oth;
+    r_q  <= {r_q[N-2:0], kv_q ^ o_q};
+  end
+  assign kv_o = kv_q;
+  ngd_fx_wclk #(.N(N), .G(G)) u_clk (.clk(clk),
+    .wake({r_q[N-1:2], OI ? (oth | r_q[1]) : r_q[1], x_wake, kill_valid}), .q(w_o));
+endmodule
