@@ -79,6 +79,11 @@ architect may approve only if the end meets module NGD without the flop; can't m
    (gate-scope.py:211 wrapper reader; check-links.sh:86 control; test/phys/links_split.json rcu "all") -> RI-33 (rev 67)
    to TI, cc RA/AR, notices sent. NEXT: wait TI's fix commit; merge it + TI 0bd5ac02 (OA-405) + sweep branches into
    ri-asm3, re-gate (chain-ri17), push. Bookmark RI tab rev 67.
+   TI 402 (re:RI-33): fixes on gate-scratch/TI-rcutop 079b64c2 (0339f719 merged; gate-scope, links control, split,
+   check-cg.py); TI gates + pushes ~23:30Z after the sweep's release gate. ri-asm4 (ri-wt7) = ri-asm3 + 7 sweep
+   merges (TI 0bd5ac02 incl.; cg-waivers ours, perf-register TI's), regen+check-1d run ~/ccv-logs/asm4a.log.
+   NEXT: when TI pushes, merge TI's pushed commit into ri-asm4, full split gate, push; then RA 134 figures
+   (CG: 2703 of 4949.4 used, 825 lead/credit; rev 123 slice waiver gone; NGD per slot group via blk_ngd_dbg.py).
    RA 134 (re:RI-33): detector accepted. After ccv_rcu.sv lands, post in RI tab for the spec's NGD table: block read
    numbers per slot group (the 13 fields, other ports), lead waiver total, 2% use, whether rev 123's slice waiver is gone.
    chain-ri12 FAILED cg: rcu_kill cr_q/kd/kaep had no waivers (d7925bc2 dropped them on scratchpad cgpol.py, which
