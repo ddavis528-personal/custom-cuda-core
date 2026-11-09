@@ -109,6 +109,14 @@
 //                  CCV_DEC_POR_COPY_AS_PMOV=1, predlane's copy writes ~P0
 //   pmov-ps1       DEC sends register pmov's ps1 with ps0's negate flipped;
 //                  RCU must refuse it (RA 119)
+//   lead-src2-copy OOE's issue lead_phys_src2 on S0 differs from its payload's
+//                  phys_src2 by one bit (a copy on S0-S3 since RA's rev 132,
+//                  OA's rev 403 on RI-31): RCU refuses the copy by name
+//   lead-sec-superset  OOE's lead_sec_mask sets a section beyond the footprint
+//                  (R's, footprint 0), legal while it was a superset: RCU
+//                  refuses it, exact since OA's rev 403
+//   lead-sec-cont  OOE's continuations carry a nonzero lead_sec_mask: RCU
+//                  refuses it (a continuation's is zero, OA's rev 403)
 //===----------------------------------------------------------------------===//
 #include "Vccv_common_chk_bank.h"
 #include "verilated.h"
@@ -300,7 +308,8 @@ int main(int argc, char **argv) {
                       // serial 5 on a real op (RA-16 (f))
                       brk == "nop-real-op" ||
                       // register pmov's negate (OA's rev 396)
-                      brk == "pmov-negate" || brk == "pmov-ps1";
+                      brk == "pmov-negate" || brk == "pmov-ps1" ||
+                      brk == "lead-src2-copy" || brk == "lead-sec-superset" || brk == "lead-sec-cont";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

@@ -1649,6 +1649,42 @@ for pair in model/model model/stub stub/model stub/stub; do
   else
     bad "--break lead-copy-corrupt ($tag)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
   fi
+  # lead_phys_src2 is a copy on S0-S3 too (RA's rev 132, OA's rev 403 on
+  # RI-31): lead-src2-copy flips a bit of S0's, refused by name.
+  l="$B/kernel_lead-src2-copy-$o-$impl.log"
+  CCV_OOE_IMPL=$o CCV_RCU_IMPL=$e "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break lead-src2-copy >"$l" 2>&1
+  re="^CHECK rcu: (seq [0-9]+ on S0|issue 0x[0-9a-f]+ on slot 0): lead_phys_src2 (0|0x[0-9a-f]+) differs from its payload's phys_src2"
+  n=$(grep -cE "$re" "$l")
+  if [ "$n" -gt 0 ] && [ "$(field "$l" check_failures)" = "$n" ] && grep -m1 '^CHECK' "$l" | grep -qE "$re"; then
+    say "--break lead-src2-copy ($tag): S0's src2 copy refused" "PASS ($n issues)"
+  else
+    bad "--break lead-src2-copy ($tag)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
+  fi
+  # lead_sec_mask is exact (OA's rev 403): zero on a continuation
+  # (lead-sec-cont sets one), and the footprint on a lead's slot
+  # (lead-sec-superset sets a section beyond R's footprint 0, legal while
+  # it was a superset). RI's model RCU still holds only the superset rule
+  # (sim/rcu/rcu_core.cpp), so lead-sec-superset runs on the stub RCU.
+  l="$B/kernel_lead-sec-cont-$o-$impl.log"
+  CCV_OOE_IMPL=$o CCV_RCU_IMPL=$e "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break lead-sec-cont >"$l" 2>&1
+  re="^CHECK rcu: seq [0-9]+'s continuation on [SP][0-9] (sets lead_sec_mask; a continuation's enables|carries a lead; a continuation's lead is zero)"
+  n=$(grep -cE "$re" "$l")
+  if [ "$n" -gt 0 ] && [ "$(field "$l" check_failures)" = "$n" ] && grep -m1 '^CHECK' "$l" | grep -qE "$re"; then
+    say "--break lead-sec-cont ($tag): a continuation's mask refused" "PASS ($n slots)"
+  else
+    bad "--break lead-sec-cont ($tag)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
+  fi
+  if [ "$impl" = stub ]; then
+    l="$B/kernel_lead-sec-superset-$o.log"
+    CCV_OOE_IMPL=$o CCV_RCU_IMPL=stub "$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break lead-sec-superset >"$l" 2>&1
+    re="^CHECK rcu: seq [0-9]+, [^:]*: lead_sec_mask [01]+ differs from its footprint [01]+ \\(exact, OA's rev 403\\)"
+    n=$(grep -cE "$re" "$l")
+    if [ "$n" -gt 0 ] && [ "$(field "$l" check_failures)" = "$n" ] && grep -m1 '^CHECK' "$l" | grep -qE "$re"; then
+      say "--break lead-sec-superset ($tag): a superset mask refused" "PASS ($n issues)"
+    else
+      bad "--break lead-sec-superset ($tag)" "$n refused; first: $(grep -m1 '^CHECK' "$l")"
+    fi
+  fi
   l="$B/kernel_lead-guard-corrupt-$o-$impl.log"
   CCV_OOE_IMPL=$o CCV_RCU_IMPL=$e "$SKEL" --kernel "$K" --break lead-guard-corrupt >"$l" 2>&1
   if [ "$(field "$l" check_failures)" != 0 ] &&
