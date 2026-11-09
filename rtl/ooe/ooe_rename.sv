@@ -896,24 +896,61 @@ module ooe_rename #(
   // OI-134 (OI-114's registered form, OA's rev 358): the go reads each
   // slot's unmet a cycle late, from a register, less the names its last
   // take wrote (the lagged take, tq_gs/tq_ps); none read on time. The
-  // register takes when its sources moved at the last edge: the counters
-  // (cnt_en a cycle ago), the occupancy (its change a cycle ago), the
-  // lagged takes (they move only on an edge with tq_nz on either side).
+  // register takes, per slot (its GPR and predicate unmets, and whether it
+  // was occupied), only when the unmet can move: a slot's occupancy
+  // changed at the last edge (every slot; and once out of reset, since a
+  // slot may be occupied from the first cycle, its lead held off in
+  // reset), or, in an occupied slot, frees reached the remainders at it
+  // or the slot's take of a class is registered now. A class whose unmet
+  // is 0 stands there under a take (its floor is met), and one at the
+  // ceiling of LU bits whose remainder is a whole take above it stands
+  // there under anything. The edge that clears a lagged take also takes
+  // it from the remainder, so the unmet stands then (CG-3: clocked on
+  // cnt_en a cycle late, it changed on half its cycles).
   // None reads sel: a load on it remaps Rename 1's q_gv cone.
   logic [S*LU-1:0] ur_g_cq05h, ur_p_cq05h;
-  logic            ur_d_cq04h, ur_en_cq04h;
-  always_ff @(posedge ooe_core_clk)
-    if (rst_r01h) ur_d_cq04h <= 1'b1;
-    else          ur_d_cq04h <= cnt_en_cq03h || occ_l_cq00h != occ_cq01h;
-  assign ur_en_cq04h = ur_d_cq04h || tq_nz_cq03h;
-  always_ff @(posedge ooe_core_clk)
+  logic [S-1:0]    ur_oc_cq05h;     // the occupancy the register took with (1, not known, from reset)
+  logic            ur_o_cq02h;
+  logic [S-1:0]    ur_f_cq04h;      // frees reached each slot's remainders
+  logic [S-1:0]    ur_en_cq04h;
+  always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
-      ur_g_cq05h <= '0;
-      ur_p_cq05h <= '0;
-    end else if (ur_en_cq04h) begin
-      ur_g_cq05h <= unmet_g_cq04h;
-      ur_p_cq05h <= unmet_p_cq04h;
+      ur_o_cq02h <= 1'b1;
+      ur_f_cq04h <= '0;
+    end else begin
+      ur_o_cq02h <= occ_l_cq00h != occ_cq01h;
+      for (int s = 0; s < S; s++)
+        ur_f_cq04h[s] <= g_pair(gfsp_cq03h, s) != '0 || p_pair(pfsp_cq03h, s) != '0;
     end
+  end
+  // A class stands at the top when its register holds the ceiling of LU
+  // bits and its remainder is a whole take above it.
+  function automatic logic top_of(input logic [LU-1:0] u, input logic [HW-1:0] f);
+    top_of = u == '1 && $signed(f) >= $signed(HW'((1 << LU) - 1 + R));
+  endfunction
+  logic [S-1:0] hg_cq05h, hp_cq05h;        // a class standing at the top
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      hg_cq05h[s] = top_of(ur_g_cq05h[s * LU +: LU], ufg_cq04h[s * HW +: HW]);
+      hp_cq05h[s] = top_of(ur_p_cq05h[s * LU +: LU], ufp_cq04h[s * HW +: HW]);
+      ur_en_cq04h[s] = (ur_o_cq02h && !rst_r01h)
+                    || (ur_oc_cq05h[s] && ur_f_cq04h[s] && !(hg_cq05h[s] && hp_cq05h[s]))
+                    || (ur_oc_cq05h[s] && !tq_gs_cq03h[s * (R + 1)] && ur_g_cq05h[s * LU +: LU] != '0 && !hg_cq05h[s])
+                    || (ur_oc_cq05h[s] && !tq_ps_cq03h[s * (R + 1)] && ur_p_cq05h[s * LU +: LU] != '0 && !hp_cq05h[s]);
+    end
+  for (genvar s = 0; s < S; s++) begin : g_ur
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) begin
+        ur_g_cq05h[s * LU +: LU] <= '0;
+        ur_p_cq05h[s * LU +: LU] <= '0;
+        ur_oc_cq05h[s]           <= 1'b1;
+      end else if (ur_en_cq04h[s]) begin
+        ur_g_cq05h[s * LU +: LU] <= unmet_g_cq04h[s * LU +: LU];
+        ur_p_cq05h[s * LU +: LU] <= unmet_p_cq04h[s * LU +: LU];
+        ur_oc_cq05h[s]           <= occ_cq01h[s];
+      end
+    end
+  end
   // An unmet less a take, one-hot, at 0.
   function automatic logic [LU-1:0] less_oh(input logic [LU-1:0] u, input logic [R:0] oh, input logic on);
     logic [LU:0] d;
@@ -941,8 +978,8 @@ module ooe_rename #(
   // The go's change lead for its fits' clocks: a superset, from the
   // registered sel (a take may come), a registered take, the counters'
   // or pool registers' enable, a slot's occupancy changing, the unmet's
-  // register taking (OI-134; its tq_nz term is within cnt_en).
-  assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h || ur_d_cq04h;
+  // register taking (OI-134; its take terms are within cnt_en).
+  assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h || ur_o_cq02h || ur_f_cq04h != '0;
 `ifdef CCV_CHECK_RENAME
   // Free names on time: the pool less every slot's held, on time.
   function automatic logic [7:0] names_on(input logic [S*HW-1:0] u, input logic [R:0] tq, input int n, input int w);
