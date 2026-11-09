@@ -40,9 +40,9 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 403, AR 337, TI 400, OI 333, IS 190, CP 157, DA 116,
+Conventions 17, OA 404, AR 337, TI 400, OI 336, IS 190, CP 157, DA 116,
 RA 132 (tab 9851686b-2b0a), RI 59 (tab 8e4547bc-c469).
-OOE doc rev 373. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
+OOE doc rev 374. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release b15c89e8; tag refused (known).
 
 ## Open work (most urgent first)
@@ -78,6 +78,7 @@ Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release
    OA 401 re:AR 337 (RI-26, rcu_isd class decode 12.4 vs 12): OOE declares required 0.0 on iss_lead_cq03h (output-only, no keep) in ooe_rs.ngd.json + up to ccv_ooe; OOE recs (a) RCU in-side 13 (AR to DA, pending). (b) lead_pcopy would cost 45+9 flops. DA 116 (11-09) chose 13/0 and kept miu_rcu_data@rcu flopped (AR 334); OA 401 is the confirmation. Watch OI write the decl.
    OA 402 re:TI 396: TI built per-field lead budgets (ti-lead). OI writes ccv_ooe.ngd.json ooe_rcu_issue_payload.{lead_opcode,lead_done_row,lead_pred_we,lead_phys_dst} required 0.0 + ooe_rs iss_lead_cq03h required 0.0 (packed, no carries).
    OA 403 re:RA 132 (RI-31): (a) lead_phys_src2 copy on S0-S3, 32 iss_en flops, 0 out, payload kept (lead copies ~448 total); (b) lead_sec_mask EXACT == footprint (lead slots), 0 on cont; TI built it 7b003e98 (TI 400, lead_why amended).
+   OA 404 re:OI-134 (2ff049c7): go reads registered unmet (unmet_reg=1, RTL), cm128 -2.2% vs G at 160/128 (model), c_dst cap back 26.9 (DA 27.5 unused); recorded OOE doc rev 374 floor invariant. OI-134 closed.
 -23. CLOSED (OA 395): OI-133 fix 5559b4f/b90adff/11386e7 accepted, rope cleared (TI 387). Was OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
    consumer co-granted with its producer (always stale). First check ooe_sched RTL (rep_cq02h uses
    pre-grant iss_cq02h, may already catch it) -> if so model-only fix; else add gnt to mask within caps.
