@@ -75,13 +75,8 @@
       "NGD-7 wq_cq03h": 23.4
     },
     "ooe_rendep": {
-      "NGD-3 cp_cq01h": 33.7,
-      "NGD-3 gnt_idx_cq01h": 26.9,
-      "NGD-3 gnt_v_cq01h": 26.2,
-      "NGD-3 gsn_cq01h": 29.9,
-      "NGD-3 mem_cq01h": 34.5,
-      "NGD-3 psn_cq01h": 30.7,
-      "NGD-3 v_cq01h": 31.6
+      "NGD-3 gsn_cq01h": 28.5,
+      "NGD-3 psn_cq01h": 28.8
     },
     "ooe_rob_w": {
       "NGD-1": 29.9,
