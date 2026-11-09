@@ -220,7 +220,6 @@ typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     phys_src2;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     phys_dst;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     phys_old_dst;
-  logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    phys_pred_guard;
   logic                                          pred_neg;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    phys_pred_dst;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    phys_pred_old_dst;
@@ -243,6 +242,21 @@ typedef struct packed {
   logic                                          lead_merge_used;  // LEAD
   logic                                          lead_guard_used;  // LEAD
   logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    lead_guard_pred;  // LEAD
+  logic [ccv_prelim_pkg::CCV_L_W_OPCODE-1:0]     lead_opcode;  // LEAD
+  logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     lead_phys_dst;  // LEAD
+  logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     lead_dst_pos;  // LEAD
+  logic [ccv_params_pkg::CCV_W_CHWIDTH-1:0]      lead_dst_width;  // LEAD
+  logic [2-1:0]                                  lead_done_row;  // LEAD
+  logic                                          lead_pred_we;  // LEAD
+  logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    lead_phys_pred_dst;  // LEAD
+  logic                                          lead_cont;  // LEAD
+  logic                                          lead_pred_neg;  // LEAD
+  logic [ccv_prov_pkg::CCV_P_W_IMM-1:0]          lead_rpsrc;  // LEAD
+  logic [2*ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]   lead_phys_src;  // LEAD
+  logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     lead_phys_src2;  // LEAD
+  logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     lead_phys_old_dst;  // LEAD
+  logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     lead_old_dst_pos;  // LEAD
+  logic [3*ccv_params_pkg::CCV_W_PHYS_POS-1:0]   lead_src_pos;  // LEAD
 } ccv_ooe_rcu_issue_t;
 
 // LEAD fields are driven with valid, one cycle ahead of the
@@ -266,6 +280,8 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_LANE_DATA-1:0]    result;
   logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_valid;
   logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_pred_out;
+  logic                                          sfu_valid;
+  logic [ccv_params_pkg::CCV_W_LANE_DATA-1:0]    sfu_result;
 } ccv_lane_rcu_res_t;
 
 // LEAD fields are driven with valid, one cycle ahead of the

@@ -14,13 +14,16 @@
 // edge kill_ack_q <- 1, held (a level, RA-23) until the next kill's K. A
 // kill during a drain reloads the drain, takes its epoch and is answered
 // once.
-//   KILL_DRAIN = 2 + link_n(ooe_rcu_issue) + CCV_LAT_SFU + 1 + link_n(rcu_ooe_done)
+//   KILL_DRAIN = CCV_LAT_RCU_KILL_DRAIN = 2 + link_n(ooe_rcu_issue)
+//                + bnd_rx(ooe_rcu_issue) + CCV_LAT_SFU + 1 + link_n(rcu_ooe_done)
+//   (+ bnd_rx(rcu_ooe_done)), derived in params at the build's links: 16 at
+//   the defaults, the issue end flopped (RA-42: the last issue's A is K+3).
 // The drain counter and the ack epoch are small groups (allowance waivers,
 // rtl/cg-waivers.json); the ack and pending bits sit in the allowance.
 //
 // Done wake (rcu_ooe_done_wake): a flop written every cycle, D = any issue
 // valid on the wire, or any lane or SFU descriptor stage valid, or R's pipe
-// valid (the parent ORs the latter two from their modules' flops).
+// valid (each of rcu_lanes and rcu_r ORs its own flops into one term).
 //
 // Idle (rcu_idle_q, the block gate's quiesced): no busy term from any
 // module, no valid on any inbound channel, no kill or drain, no done wake.
@@ -45,19 +48,18 @@
 `define CCV_CLK rcu_core_clk
 `define CCV_RST rst_r01h
 module rcu_kill #(
-  parameter int LINK_ISS = 0,    // link_n(ooe_rcu_issue), from params/links.json
-  parameter int LINK_DONE = 0,   // link_n(rcu_ooe_done)
   parameter int NB = 6,          // busy terms from the other modules
+  parameter int ND = 2,          // done-wake terms: rcu_lanes' descriptor stages, R's pipe
   localparam int NS = ccv_params_pkg::CCV_ISSUE_RESOURCES,   // issue slots, 9
   localparam int NL = 32,        // lane-result copies
   localparam int NM = 4,         // MIU data slots
   localparam int NC = NS + NL + NM,
   localparam int WE = ccv_prov_pkg::CCV_P_W_KILL_EPOCH,
-  localparam int KILL_DRAIN = 2 + LINK_ISS + ccv_prov_pkg::CCV_LAT_SFU + 1 + LINK_DONE,
+  localparam int KILL_DRAIN = ccv_prov_pkg::CCV_LAT_RCU_KILL_DRAIN,
   localparam int WD = $clog2(KILL_DRAIN + 1)
 ) (
   input  logic          rcu_core_clk,
-  input  logic          rcu_rst_r00h,
+  input  logic          rst_n,
   // Kill: valid in K-1, epoch in K; migration's quiesce term.
   input  logic          kv_cr00h,     // kill_valid
   input  logic [WE-1:0] kep_cr01h,    // kill_epoch
@@ -70,7 +72,7 @@ module rcu_kill #(
   input  logic [NM-1:0] mv_cr00h,     // miu_rcu_data_s*_valid
   output logic [NC-1:0] cr_cr01h,     // credits: issue at [8:0], lane copies [40:9], MIU [44:41]
   // Wake and idle.
-  input  logic          dbusy_cr00h,  // a lane or SFU descriptor stage valid, or R's pipe valid
+  input  logic [ND-1:0] dbusy_cr00h,  // a lane or SFU descriptor stage valid, or R's pipe valid (each module's OR)
   input  logic [NB-1:0] busy_cr00h,   // each module's busy OR, from its flops
   output logic          dwake_cr01h,  // rcu_ooe_done_wake
   output logic          idle_cr01h,   // rcu_idle_q
@@ -81,10 +83,12 @@ module rcu_kill #(
   output logic          csr_cr_cr01h  // csr_credit
 );
 
-  logic rst_r01h;
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= rcu_rst_r00h;
+    rst_cr01h_n <= rst_n;
   end
+  wire rst_r01h = !rst_cr01h_n;
 
   // ---- Kill ------------------------------------------------------------
   logic kv_cr01h;
@@ -134,9 +138,13 @@ module rcu_kill #(
       dwake_q_cr01h <= 1'b0;
       idle_q_cr01h  <= 1'b0;
     end else begin
-      dwake_q_cr01h <= |iv_cr00h | dbusy_cr00h;
-      idle_q_cr01h  <= ~|busy_cr00h & ~dbusy_cr00h & ~|iv_cr00h & ~|lv_cr00h & ~|mv_cr00h &
-                       ~kv_cr00h & ~kv_cr01h & (kd_cr02h == '0) & ~dwake_q_cr01h;
+      dwake_q_cr01h <= |iv_cr00h | (|dbusy_cr00h);
+      // lane_rcu_res and kill land at no-flop ends: those inputs go straight
+      // into a flop (AR rev 285 (5)), so idle reads their captures, a cycle
+      // on; the clock gate's quiesce hysteresis (8) and each channel's wake
+      // cover the cycle.
+      idle_q_cr01h  <= ~|busy_cr00h & ~|dbusy_cr00h & ~|iv_cr00h & ~|cr_q_cr01h[NS +: NL] &
+                       ~|mv_cr00h & ~kv_cr01h & (kd_cr02h == '0) & ~dwake_q_cr01h;
     end
   end
   assign dwake_cr01h = dwake_q_cr01h;

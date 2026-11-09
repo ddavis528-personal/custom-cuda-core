@@ -74,40 +74,54 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_dec_ooe_uop", "xfer_signed", p.c2_f34, b, 0, 1);
   }
   {
-    const Bits b = randomBits(192, seed ^ 23757u);
+    const Bits b = randomBits(290, seed ^ 23757u);
     put(p.c3, b);
     p.eval();
-    bad += check("ccv_ooe_rcu_issue", "rob_tag", p.c3_f0, b, 185, 7);
-    bad += check("ccv_ooe_rcu_issue", "done_row", p.c3_f1, b, 183, 2);
-    bad += check("ccv_ooe_rcu_issue", "warp_id", p.c3_f2, b, 178, 5);
-    bad += check("ccv_ooe_rcu_issue", "issue_mask", p.c3_f3, b, 146, 32);
-    bad += check("ccv_ooe_rcu_issue", "phys_src", p.c3_f4, b, 130, 16);
-    bad += check("ccv_ooe_rcu_issue", "phys_src2", p.c3_f5, b, 122, 8);
-    bad += check("ccv_ooe_rcu_issue", "phys_dst", p.c3_f6, b, 114, 8);
-    bad += check("ccv_ooe_rcu_issue", "phys_old_dst", p.c3_f7, b, 106, 8);
-    bad += check("ccv_ooe_rcu_issue", "phys_pred_guard", p.c3_f8, b, 100, 6);
-    bad += check("ccv_ooe_rcu_issue", "pred_neg", p.c3_f9, b, 99, 1);
-    bad += check("ccv_ooe_rcu_issue", "phys_pred_dst", p.c3_f10, b, 93, 6);
-    bad += check("ccv_ooe_rcu_issue", "phys_pred_old_dst", p.c3_f11, b, 87, 6);
-    bad += check("ccv_ooe_rcu_issue", "pred_we", p.c3_f12, b, 86, 1);
-    bad += check("ccv_ooe_rcu_issue", "merge_en", p.c3_f13, b, 85, 1);
-    bad += check("ccv_ooe_rcu_issue", "cont", p.c3_f14, b, 84, 1);
-    bad += check("ccv_ooe_rcu_issue", "footprint", p.c3_f15, b, 80, 4);
-    bad += check("ccv_ooe_rcu_issue", "bypass_group", p.c3_f16, b, 77, 3);
-    bad += check("ccv_ooe_rcu_issue", "src_pos", p.c3_f17, b, 71, 6);
-    bad += check("ccv_ooe_rcu_issue", "src_width", p.c3_f18, b, 65, 6);
-    bad += check("ccv_ooe_rcu_issue", "dst_pos", p.c3_f19, b, 63, 2);
-    bad += check("ccv_ooe_rcu_issue", "old_dst_pos", p.c3_f20, b, 61, 2);
-    bad += check("ccv_ooe_rcu_issue", "dst_width", p.c3_f21, b, 59, 2);
-    bad += check("ccv_ooe_rcu_issue", "opcode", p.c3_f22, b, 50, 9);
-    bad += check("ccv_ooe_rcu_issue", "imm", p.c3_f23, b, 18, 32);
-    bad += check("ccv_ooe_rcu_issue", "chwidth", p.c3_f24, b, 16, 2);
-    bad += check("ccv_ooe_rcu_issue", "lead_sec_mask", p.c3_f25, b, 12, 4);
-    bad += check("ccv_ooe_rcu_issue", "lead_src_used", p.c3_f26, b, 9, 3);
-    bad += check("ccv_ooe_rcu_issue", "lead_imm_used", p.c3_f27, b, 8, 1);
-    bad += check("ccv_ooe_rcu_issue", "lead_merge_used", p.c3_f28, b, 7, 1);
-    bad += check("ccv_ooe_rcu_issue", "lead_guard_used", p.c3_f29, b, 6, 1);
-    bad += check("ccv_ooe_rcu_issue", "lead_guard_pred", p.c3_f30, b, 0, 6);
+    bad += check("ccv_ooe_rcu_issue", "rob_tag", p.c3_f0, b, 283, 7);
+    bad += check("ccv_ooe_rcu_issue", "done_row", p.c3_f1, b, 281, 2);
+    bad += check("ccv_ooe_rcu_issue", "warp_id", p.c3_f2, b, 276, 5);
+    bad += check("ccv_ooe_rcu_issue", "issue_mask", p.c3_f3, b, 244, 32);
+    bad += check("ccv_ooe_rcu_issue", "phys_src", p.c3_f4, b, 228, 16);
+    bad += check("ccv_ooe_rcu_issue", "phys_src2", p.c3_f5, b, 220, 8);
+    bad += check("ccv_ooe_rcu_issue", "phys_dst", p.c3_f6, b, 212, 8);
+    bad += check("ccv_ooe_rcu_issue", "phys_old_dst", p.c3_f7, b, 204, 8);
+    bad += check("ccv_ooe_rcu_issue", "pred_neg", p.c3_f8, b, 203, 1);
+    bad += check("ccv_ooe_rcu_issue", "phys_pred_dst", p.c3_f9, b, 197, 6);
+    bad += check("ccv_ooe_rcu_issue", "phys_pred_old_dst", p.c3_f10, b, 191, 6);
+    bad += check("ccv_ooe_rcu_issue", "pred_we", p.c3_f11, b, 190, 1);
+    bad += check("ccv_ooe_rcu_issue", "merge_en", p.c3_f12, b, 189, 1);
+    bad += check("ccv_ooe_rcu_issue", "cont", p.c3_f13, b, 188, 1);
+    bad += check("ccv_ooe_rcu_issue", "footprint", p.c3_f14, b, 184, 4);
+    bad += check("ccv_ooe_rcu_issue", "bypass_group", p.c3_f15, b, 181, 3);
+    bad += check("ccv_ooe_rcu_issue", "src_pos", p.c3_f16, b, 175, 6);
+    bad += check("ccv_ooe_rcu_issue", "src_width", p.c3_f17, b, 169, 6);
+    bad += check("ccv_ooe_rcu_issue", "dst_pos", p.c3_f18, b, 167, 2);
+    bad += check("ccv_ooe_rcu_issue", "old_dst_pos", p.c3_f19, b, 165, 2);
+    bad += check("ccv_ooe_rcu_issue", "dst_width", p.c3_f20, b, 163, 2);
+    bad += check("ccv_ooe_rcu_issue", "opcode", p.c3_f21, b, 154, 9);
+    bad += check("ccv_ooe_rcu_issue", "imm", p.c3_f22, b, 122, 32);
+    bad += check("ccv_ooe_rcu_issue", "chwidth", p.c3_f23, b, 120, 2);
+    bad += check("ccv_ooe_rcu_issue", "lead_sec_mask", p.c3_f24, b, 116, 4);
+    bad += check("ccv_ooe_rcu_issue", "lead_src_used", p.c3_f25, b, 113, 3);
+    bad += check("ccv_ooe_rcu_issue", "lead_imm_used", p.c3_f26, b, 112, 1);
+    bad += check("ccv_ooe_rcu_issue", "lead_merge_used", p.c3_f27, b, 111, 1);
+    bad += check("ccv_ooe_rcu_issue", "lead_guard_used", p.c3_f28, b, 110, 1);
+    bad += check("ccv_ooe_rcu_issue", "lead_guard_pred", p.c3_f29, b, 104, 6);
+    bad += check("ccv_ooe_rcu_issue", "lead_opcode", p.c3_f30, b, 95, 9);
+    bad += check("ccv_ooe_rcu_issue", "lead_phys_dst", p.c3_f31, b, 87, 8);
+    bad += check("ccv_ooe_rcu_issue", "lead_dst_pos", p.c3_f32, b, 85, 2);
+    bad += check("ccv_ooe_rcu_issue", "lead_dst_width", p.c3_f33, b, 83, 2);
+    bad += check("ccv_ooe_rcu_issue", "lead_done_row", p.c3_f34, b, 81, 2);
+    bad += check("ccv_ooe_rcu_issue", "lead_pred_we", p.c3_f35, b, 80, 1);
+    bad += check("ccv_ooe_rcu_issue", "lead_phys_pred_dst", p.c3_f36, b, 74, 6);
+    bad += check("ccv_ooe_rcu_issue", "lead_cont", p.c3_f37, b, 73, 1);
+    bad += check("ccv_ooe_rcu_issue", "lead_pred_neg", p.c3_f38, b, 72, 1);
+    bad += check("ccv_ooe_rcu_issue", "lead_rpsrc", p.c3_f39, b, 40, 32);
+    bad += check("ccv_ooe_rcu_issue", "lead_phys_src", p.c3_f40, b, 24, 16);
+    bad += check("ccv_ooe_rcu_issue", "lead_phys_src2", p.c3_f41, b, 16, 8);
+    bad += check("ccv_ooe_rcu_issue", "lead_phys_old_dst", p.c3_f42, b, 8, 8);
+    bad += check("ccv_ooe_rcu_issue", "lead_old_dst_pos", p.c3_f43, b, 6, 2);
+    bad += check("ccv_ooe_rcu_issue", "lead_src_pos", p.c3_f44, b, 0, 6);
   }
   {
     const Bits b = randomBits(344, seed ^ 31676u);
@@ -127,12 +141,14 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_rcu_lane_ops", "operand_byp", p.c4_f11, b, 0, 80);
   }
   {
-    const Bits b = randomBits(40, seed ^ 39595u);
+    const Bits b = randomBits(73, seed ^ 39595u);
     put(p.c5, b);
     p.eval();
-    bad += check("ccv_lane_rcu_res", "result", p.c5_f0, b, 8, 32);
-    bad += check("ccv_lane_rcu_res", "sec_valid", p.c5_f1, b, 4, 4);
-    bad += check("ccv_lane_rcu_res", "sec_pred_out", p.c5_f2, b, 0, 4);
+    bad += check("ccv_lane_rcu_res", "result", p.c5_f0, b, 41, 32);
+    bad += check("ccv_lane_rcu_res", "sec_valid", p.c5_f1, b, 37, 4);
+    bad += check("ccv_lane_rcu_res", "sec_pred_out", p.c5_f2, b, 33, 4);
+    bad += check("ccv_lane_rcu_res", "sfu_valid", p.c5_f3, b, 32, 1);
+    bad += check("ccv_lane_rcu_res", "sfu_result", p.c5_f4, b, 0, 32);
   }
   {
     const Bits b = randomBits(107, seed ^ 47514u);

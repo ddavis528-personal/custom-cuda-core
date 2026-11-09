@@ -61,7 +61,7 @@ module tb_layout_probe (
   output logic c2_f32,
   output logic [1:0] c2_f33,
   output logic c2_f34,
-  input  logic [191:0] c3,
+  input  logic [289:0] c3,
   output logic [6:0] c3_f0,
   output logic [1:0] c3_f1,
   output logic [4:0] c3_f2,
@@ -70,29 +70,43 @@ module tb_layout_probe (
   output logic [7:0] c3_f5,
   output logic [7:0] c3_f6,
   output logic [7:0] c3_f7,
-  output logic [5:0] c3_f8,
-  output logic c3_f9,
+  output logic c3_f8,
+  output logic [5:0] c3_f9,
   output logic [5:0] c3_f10,
-  output logic [5:0] c3_f11,
+  output logic c3_f11,
   output logic c3_f12,
   output logic c3_f13,
-  output logic c3_f14,
-  output logic [3:0] c3_f15,
-  output logic [2:0] c3_f16,
+  output logic [3:0] c3_f14,
+  output logic [2:0] c3_f15,
+  output logic [5:0] c3_f16,
   output logic [5:0] c3_f17,
-  output logic [5:0] c3_f18,
+  output logic [1:0] c3_f18,
   output logic [1:0] c3_f19,
   output logic [1:0] c3_f20,
-  output logic [1:0] c3_f21,
-  output logic [8:0] c3_f22,
-  output logic [31:0] c3_f23,
-  output logic [1:0] c3_f24,
-  output logic [3:0] c3_f25,
-  output logic [2:0] c3_f26,
+  output logic [8:0] c3_f21,
+  output logic [31:0] c3_f22,
+  output logic [1:0] c3_f23,
+  output logic [3:0] c3_f24,
+  output logic [2:0] c3_f25,
+  output logic c3_f26,
   output logic c3_f27,
   output logic c3_f28,
-  output logic c3_f29,
-  output logic [5:0] c3_f30,
+  output logic [5:0] c3_f29,
+  output logic [8:0] c3_f30,
+  output logic [7:0] c3_f31,
+  output logic [1:0] c3_f32,
+  output logic [1:0] c3_f33,
+  output logic [1:0] c3_f34,
+  output logic c3_f35,
+  output logic [5:0] c3_f36,
+  output logic c3_f37,
+  output logic c3_f38,
+  output logic [31:0] c3_f39,
+  output logic [15:0] c3_f40,
+  output logic [7:0] c3_f41,
+  output logic [7:0] c3_f42,
+  output logic [1:0] c3_f43,
+  output logic [5:0] c3_f44,
   input  logic [343:0] c4,
   output logic [35:0] c4_f0,
   output logic [95:0] c4_f1,
@@ -106,10 +120,12 @@ module tb_layout_probe (
   output logic [7:0] c4_f9,
   output logic [7:0] c4_f10,
   output logic [79:0] c4_f11,
-  input  logic [39:0] c5,
+  input  logic [72:0] c5,
   output logic [31:0] c5_f0,
   output logic [3:0] c5_f1,
   output logic [3:0] c5_f2,
+  output logic c5_f3,
+  output logic [31:0] c5_f4,
   input  logic [106:0] c6,
   output logic [6:0] c6_f0,
   output logic [1:0] c6_f1,
@@ -451,29 +467,43 @@ module tb_layout_probe (
   assign c3_f5 = s3.phys_src2;
   assign c3_f6 = s3.phys_dst;
   assign c3_f7 = s3.phys_old_dst;
-  assign c3_f8 = s3.phys_pred_guard;
-  assign c3_f9 = s3.pred_neg;
-  assign c3_f10 = s3.phys_pred_dst;
-  assign c3_f11 = s3.phys_pred_old_dst;
-  assign c3_f12 = s3.pred_we;
-  assign c3_f13 = s3.merge_en;
-  assign c3_f14 = s3.cont;
-  assign c3_f15 = s3.footprint;
-  assign c3_f16 = s3.bypass_group;
-  assign c3_f17 = s3.src_pos;
-  assign c3_f18 = s3.src_width;
-  assign c3_f19 = s3.dst_pos;
-  assign c3_f20 = s3.old_dst_pos;
-  assign c3_f21 = s3.dst_width;
-  assign c3_f22 = s3.opcode;
-  assign c3_f23 = s3.imm;
-  assign c3_f24 = s3.chwidth;
-  assign c3_f25 = s3.lead_sec_mask;
-  assign c3_f26 = s3.lead_src_used;
-  assign c3_f27 = s3.lead_imm_used;
-  assign c3_f28 = s3.lead_merge_used;
-  assign c3_f29 = s3.lead_guard_used;
-  assign c3_f30 = s3.lead_guard_pred;
+  assign c3_f8 = s3.pred_neg;
+  assign c3_f9 = s3.phys_pred_dst;
+  assign c3_f10 = s3.phys_pred_old_dst;
+  assign c3_f11 = s3.pred_we;
+  assign c3_f12 = s3.merge_en;
+  assign c3_f13 = s3.cont;
+  assign c3_f14 = s3.footprint;
+  assign c3_f15 = s3.bypass_group;
+  assign c3_f16 = s3.src_pos;
+  assign c3_f17 = s3.src_width;
+  assign c3_f18 = s3.dst_pos;
+  assign c3_f19 = s3.old_dst_pos;
+  assign c3_f20 = s3.dst_width;
+  assign c3_f21 = s3.opcode;
+  assign c3_f22 = s3.imm;
+  assign c3_f23 = s3.chwidth;
+  assign c3_f24 = s3.lead_sec_mask;
+  assign c3_f25 = s3.lead_src_used;
+  assign c3_f26 = s3.lead_imm_used;
+  assign c3_f27 = s3.lead_merge_used;
+  assign c3_f28 = s3.lead_guard_used;
+  assign c3_f29 = s3.lead_guard_pred;
+  assign c3_f30 = s3.lead_opcode;
+  assign c3_f31 = s3.lead_phys_dst;
+  assign c3_f32 = s3.lead_dst_pos;
+  assign c3_f33 = s3.lead_dst_width;
+  assign c3_f34 = s3.lead_done_row;
+  assign c3_f35 = s3.lead_pred_we;
+  assign c3_f36 = s3.lead_phys_pred_dst;
+  assign c3_f37 = s3.lead_cont;
+  assign c3_f38 = s3.lead_pred_neg;
+  assign c3_f39 = s3.lead_rpsrc;
+  assign c3_f40 = s3.lead_phys_src;
+  assign c3_f41 = s3.lead_phys_src2;
+  assign c3_f42 = s3.lead_phys_old_dst;
+  assign c3_f43 = s3.lead_old_dst_pos;
+  assign c3_f44 = s3.lead_src_pos;
   ccv_rcu_lane_ops_t s4;
   assign s4 = c4;
   assign c4_f0 = s4.sec_opcode;
@@ -493,6 +523,8 @@ module tb_layout_probe (
   assign c5_f0 = s5.result;
   assign c5_f1 = s5.sec_valid;
   assign c5_f2 = s5.sec_pred_out;
+  assign c5_f3 = s5.sfu_valid;
+  assign c5_f4 = s5.sfu_result;
   ccv_rcu_ooe_done_t s6;
   assign s6 = c6;
   assign c6_f0 = s6.rob_tag;

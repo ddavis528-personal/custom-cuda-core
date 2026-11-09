@@ -815,8 +815,8 @@ The first round against the numbered register ([`open-items.md`](open-items.md))
 - **Guard and predicate destination split (Q-21).** It was a payload fix,
   not an ISA question: Format C encodes the qualifier and the destination
   separately. The uop carries `pred_guard` + `pred_neg` and `pred_dst` +
-  `pred_we`, and the issue carries `phys_pred_guard`, `phys_pred_dst` and
-  `pred_we`. The memop's `phys_pred` is the destination.
+  `pred_we`, and the issue carries the guard's `lead_guard_pred` (in the
+  lead since RA's rev 109), `phys_pred_dst` and `pred_we`. The memop's `phys_pred` is the destination.
   - RCU now writes a lane result only on active lanes, so a lane the guard
     disables keeps its old value (invariant 10). This is what makes a guarded
     write to another predicate observable.
@@ -1169,7 +1169,7 @@ matters for the skeleton:
   `ctaid`), and exit is `sched_attr`'s serial code 3. OOE renames predicate
   logic's two sources and sends them in `imm` on `ccv_ooe_rcu_issue`, each
   `CCV_P_W_PHYS_PRED` bits and a negate (`CCV_P_W_IMM` is required to hold
-  both), and RCU reads them as it reads `phys_pred_guard`. DEC's stub
+  both), and RCU reads them as it reads the guard, `lead_guard_pred`. DEC's stub
   derives the fields from its table; the OOE adapter reads them, and the
   OOE model and stub write the renamed sources (edits in OI's files, in a
   commit of their own). The plog kernel gives predicate logic real values:
@@ -1248,7 +1248,7 @@ decisions.
 | `ooe_rcu_issue.merge_en`, `phys_old_dst`, `phys_pred_old_dst` | `merge_en` when the issue mask is not full or the op is guarded; `phys_old_dst` is the RAT's mapping before this write. A masked load's copy-only op (`CCV_OP_PRF_COPY`) issues on the lane sections with the load's issue fields, at least a cycle ahead of the load in the model (V-61) and beside it in the S1 stub; an unguarded one masked only by its issue mask would name the zero predicate, negated |
 | `ooe_miu_memop.phys_dst`, `phys_pred` → `miu_rcu_data` | echoed unchanged by MIU; RCU writes `load_data` to `phys_dst`, and `pred_result` to `phys_pred` only when `pred_we` |
 | operand slot of an ALU immediate | per opcode (the skeleton's table); RCU fills it at register read |
-| `ooe_rcu_issue.phys_pred_guard`, `phys_pred_dst` | the model's predicate RAT (OI-3); the S1 stub keeps fixed windows, `4·warp + index`. RCU writes the destination only when `pred_we`, merging by read-modify-write from `phys_pred_old_dst`: active lanes from the lanes' `sec_pred_out`, the rest kept (A-43) |
+| `ooe_rcu_issue.lead_guard_pred` (the guard, moved to the lead by RA's rev 109), `phys_pred_dst` | the model's predicate RAT (OI-3); the S1 stub keeps fixed windows, `4·warp + index`. RCU writes the destination only when `pred_we`, merging by read-modify-write from `phys_pred_old_dst`: active lanes from the lanes' `sec_pred_out`, the rest kept (A-43) |
 | `rcu_lane_ops.merge_data`, `lane_rcu_res.result` | the old destination's value per lane; an inactive lane returns it as its result, and checks it against the oracle's post-state, which for an inactive lane is the old value. RCU then writes every lane (per-lane write enables all on, A-44); for the copy-only op, only the inactive lanes, and an enabled lane's result is poison |
 | `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i*; its byte *k* is section *k* |
 | `rcu_lane_ops` per-section fields | S0 at the LSBs; `sec_opnd_pos`, `sec_opnd_width` and `operand_byp` section-major, entry 4*k* + *i* is section *k*'s port *i* (src0-src2, then merge). The S1 stubs send one full-width op a message: `section_en` 1111, `sec_owner` 0 for every section |

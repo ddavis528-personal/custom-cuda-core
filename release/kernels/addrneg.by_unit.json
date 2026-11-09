@@ -166,18 +166,18 @@
    "name": "thread_name",
    "ph": "M",
    "pid": 3,
-   "tid": 9,
+   "tid": 6,
    "args": {
-    "name": "ccv_ooe_miu_memop"
+    "name": "ccv_rcu_ooe_done"
    }
   },
   {
    "name": "thread_name",
    "ph": "M",
    "pid": 3,
-   "tid": 6,
+   "tid": 9,
    "args": {
-    "name": "ccv_rcu_ooe_done"
+    "name": "ccv_ooe_miu_memop"
    }
   },
   {
@@ -615,8 +615,8 @@
     "instr_uid": 4611686018427387904,
     "unit": "ccv_ooe_rcu_issue",
     "channel_id": 3,
-    "payload_lo": 256,
-    "payload_hi": 4980736
+    "payload_lo": 4294901760,
+    "payload_hi": 255
    }
   },
   {
@@ -656,7 +656,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -671,63 +671,62 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 3,
-   "tid": 3,
+   "tid": 6,
    "args": {
-    "instr_uid": 4611686018427387905,
-    "unit": "ccv_ooe_rcu_issue",
-    "channel_id": 3,
+    "instr_uid": 4611686018427387904,
+    "unit": "ccv_rcu_ooe_done",
+    "channel_id": 6,
     "payload_lo": 0,
     "payload_hi": 0
    }
   },
   {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
+   "name": "EV_RETIRE",
+   "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 44,
-   "pid": 3,
-   "tid": 3,
+   "ts": 45,
+   "pid": 1,
+   "tid": 4,
    "args": {
-    "instr_uid": 4611686018427387905,
-    "unit": "ccv_ooe_rcu_issue",
-    "channel_id": 3,
-    "payload_lo": 0,
-    "payload_hi": 0
+    "instr_uid": 4611686018427387904,
+    "unit": "UNIT_OOE",
+    "warp_id": 0,
+    "rob_slot": 0,
+    "active_mask": 4294967295
    }
   },
   {
-   "name": "EV_CH_XFER",
+   "name": "EV_RCU_GPR_WRITE",
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
-   "pid": 3,
-   "tid": 3,
+   "ts": 45,
+   "pid": 1,
+   "tid": 5,
    "args": {
-    "instr_uid": 4611686018427387905,
-    "unit": "ccv_ooe_rcu_issue",
-    "channel_id": 3,
-    "payload_lo": 0,
-    "payload_hi": 0
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "row": 1,
+    "lane_mask": 4294967295,
+    "port_secmask": 63
    }
   },
   {
-   "name": "EV_CH_XFER",
+   "name": "EV_RCU_IDLE",
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
-   "pid": 3,
-   "tid": 3,
+   "ts": 45,
+   "pid": 1,
+   "tid": 5,
    "args": {
-    "instr_uid": 4611686018427387905,
-    "unit": "ccv_ooe_rcu_issue",
-    "channel_id": 3,
-    "payload_lo": 61952,
-    "payload_hi": 1048576
+    "instr_uid": 0,
+    "unit": "UNIT_RCU",
+    "idle": 1,
+    "unused": 0
    }
   },
   {
@@ -753,45 +752,61 @@
    "s": "t",
    "ts": 44,
    "pid": 3,
-   "tid": 6,
+   "tid": 3,
    "args": {
-    "instr_uid": 4611686018427387904,
-    "unit": "ccv_rcu_ooe_done",
-    "channel_id": 6,
+    "instr_uid": 4611686018427387905,
+    "unit": "ccv_ooe_rcu_issue",
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 0
    }
   },
   {
-   "name": "EV_RETIRE",
-   "cat": "arbitration_sensitive",
-   "ph": "i",
-   "s": "t",
-   "ts": 46,
-   "pid": 1,
-   "tid": 4,
-   "args": {
-    "instr_uid": 4611686018427387904,
-    "unit": "UNIT_OOE",
-    "warp_id": 0,
-    "rob_slot": 0,
-    "active_mask": 4294967295
-   }
-  },
-  {
-   "name": "EV_RCU_GPR_WRITE",
+   "name": "EV_CH_XFER",
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 46,
-   "pid": 1,
-   "tid": 5,
+   "ts": 44,
+   "pid": 3,
+   "tid": 3,
    "args": {
-    "instr_uid": 0,
-    "unit": "UNIT_RCU",
-    "row": 1,
-    "lane_mask": 4294967295,
-    "port_secmask": 63
+    "instr_uid": 4611686018427387905,
+    "unit": "ccv_ooe_rcu_issue",
+    "channel_id": 3,
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 44,
+   "pid": 3,
+   "tid": 3,
+   "args": {
+    "instr_uid": 4611686018427387905,
+    "unit": "ccv_ooe_rcu_issue",
+    "channel_id": 3,
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 44,
+   "pid": 3,
+   "tid": 3,
+   "args": {
+    "instr_uid": 4611686018427387905,
+    "unit": "ccv_ooe_rcu_issue",
+    "channel_id": 3,
+    "payload_lo": 0,
+    "payload_hi": 0
    }
   },
   {
@@ -800,21 +815,6 @@
    "ph": "i",
    "s": "t",
    "ts": 46,
-   "pid": 1,
-   "tid": 5,
-   "args": {
-    "instr_uid": 0,
-    "unit": "UNIT_RCU",
-    "idle": 1,
-    "unused": 0
-   }
-  },
-  {
-   "name": "EV_RCU_IDLE",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 47,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -829,7 +829,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -844,7 +844,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 47,
+   "ts": 46,
    "pid": 3,
    "tid": 7,
    "args": {
@@ -860,7 +860,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 61,
+   "ts": 60,
    "pid": 3,
    "tid": 10,
    "args": {
@@ -876,7 +876,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 64,
+   "ts": 63,
    "pid": 3,
    "tid": 31,
    "args": {
@@ -892,7 +892,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 65,
+   "ts": 64,
    "pid": 3,
    "tid": 50,
    "args": {
@@ -908,7 +908,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 67,
+   "ts": 66,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -916,7 +916,7 @@
     "unit": "UNIT_RCU",
     "warp_mask": 1,
     "epoch": 1,
-    "kill_drain": 16
+    "kill_drain": 15
    }
   },
   {
@@ -924,7 +924,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 68,
+   "ts": 67,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -939,7 +939,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 68,
+   "ts": 67,
    "pid": 3,
    "tid": 12,
    "args": {
@@ -955,7 +955,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 84,
+   "ts": 82,
    "pid": 1,
    "tid": 5,
    "args": {
@@ -970,7 +970,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 84,
+   "ts": 82,
    "pid": 1,
    "tid": 5,
    "args": {

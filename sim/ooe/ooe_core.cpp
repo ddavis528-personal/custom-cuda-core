@@ -443,7 +443,7 @@ void Core::cycle(uint64_t now) {
   }
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
-                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
+                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.hop_new, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.hfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant, &wlog_.sel_ret, &wlog_.sel_brk, &wlog_.sel_hold})
@@ -1447,10 +1447,14 @@ void Core::cancel(unsigned e) {
 }
 
 /// One hop of transitive cancel: every issued, unconfirmed entry whose row
-/// is no longer ready -- a producer it issued on has missed (msd) or is not
-/// issued -- returns to Waiting. False when nothing changed. Run at the start
-/// of every cycle, as ooe_confirm's level rule (OI-50).
+/// is no longer ready -- a producer it issued on has missed (msd), is not
+/// issued, or was granted at the same edge as it (OI-133) -- returns to
+/// Waiting. False when nothing changed. Run at the start of every cycle, as
+/// ooe_confirm's level rule (OI-50).
 bool Core::cancelHop() {
+  // Granted at the last edge: issued, the hop's first cycle (the RTL's
+  // register of the last edge's grant).
+  auto fresh = [&](const RsEntry &y) { return y.valid && y.issued && !y.confirmed && y.issue_at + 1 == now_; };
   // Decide the whole hop first, so a return to Waiting in this hop does not
   // reach that entry's own dependants until the next.
   std::vector<unsigned> hop;
@@ -1458,13 +1462,21 @@ bool Core::cancelHop() {
     const RsEntry &y = rs_[i];
     if (i < wlog_.hop_iss.size()) wlog_.hop_iss[i] = y.valid && y.issued && !y.confirmed;
     if (i < wlog_.hop_msd.size()) wlog_.hop_msd[i] = y.valid && y.msd;
+    if (i < wlog_.hop_new.size()) wlog_.hop_new[i] = fresh(y);
     // OI-50's rule, as the RTL decides it: an issued, unconfirmed entry
     // returns to Waiting when a producer it depends on is not issued or has
-    // missed its L1 slot. A dependant issued on a producer that was replayed
-    // and re-issued within a hop is caught when that re-issue is replayed.
+    // missed its L1 slot. A producer cancelled and granted again at the
+    // same edge as its dependant (granted on the ready bit the producer's
+    // first issue woke: OA-17's stale grant) is issued in the hop's first
+    // cycle with it, so the hop also counts a producer granted at the
+    // dependant's own edge as gone (OI-133; L1_WAKE 16 exposed it).
+    // A dependant granted before such a re-grant saw the producer not
+    // issued for a cycle at least, and returned then.
     if (!(y.valid && y.issued && !y.confirmed)) continue;
+    const bool yf = fresh(y) && !cfg_.inject_no_cogrant;
     for (unsigned j = 0; j != n_; ++j)
-      if ((cell(i, j) & 1) && (!rs_[j].issued || rs_[j].msd)) {
+      if ((cell(i, j) & 1) && (!rs_[j].issued || rs_[j].msd || (yf && fresh(rs_[j])))) {
+        if (rs_[j].issued && !rs_[j].msd) count("cancel.cogrant");
         hop.push_back(i);
         break;
       }
@@ -1578,7 +1590,8 @@ void Core::confirmPass() {
 void Core::advanceWakes() {
   // Transitive cancel is a level, decided every cycle from the state as it
   // stands at the cycle's start (OI-50): an issued entry whose row is no
-  // longer ready returns to Waiting. A miss is seen from the cycle after
+  // longer ready returns to Waiting, and so does one whose producer was
+  // granted at the same edge as it (the co-grant arm, OI-133). A miss is seen from the cycle after
   // it (the hardware's FMISS, held as msd), so the first hop comes a cycle
   // after the miss, and each further hop a cycle after the last (V-59, V-67).
   const bool after_miss = miss_now_;
@@ -1641,7 +1654,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   if (r.complete || r.squashed) return;
   bool c;
-  if (r.u.shape.exit || r.u.cause || barNop(r.u) || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat ||
+  if (r.u.shape.exit || r.u.cause || barNop(r.u) || hintNop(r.u, !cfg_.inject_reconv_real) || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat ||
       r.fault_cause == kCauseBarrier) c = true;   // no-ops: faulted before or at dispatch
   else if (r.atomic) c = r.atom_final && r.miu_done && !r.copy_pending && r.rcu_dones_owed == 0;   // V-71
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
@@ -3401,6 +3414,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   for (unsigned i = 0; i != 3; ++i) is.src_w[i] = r.wsrc[i];
   is.dst_w = r.alloc_gpr ? r.wdst : 0;
   is.guarded = u.shape.guard;
+  is.pread = u.shape.guard || u.shape.pdata;
   is.gpr_reads = u.shape.gpr_reads;
   // The resource group and footprint. Sectioned: the entry's own resources
   // (resOf). Otherwise every op is full width.
@@ -3651,7 +3665,7 @@ std::array<unsigned, 4> Core::pairNeed(const std::vector<uint16_t> &adm, size_t 
 
 uint16_t Core::admBits(const Uop &u) const {
   const SchedAttr &a = u.attr;
-  const bool nop = u.shape.exit || u.cause || barNop(u);
+  const bool nop = u.shape.exit || u.cause || barNop(u) || hintNop(u, !cfg_.inject_reconv_real);
   const bool mem = !nop && a.rs_miu, atom = mem && a.mem_kind == kMemKAtomic;
   const bool wgpr = !nop && a.writes_gpr;
   const bool pred = !nop && u.pred_we && cfg_.rename_preds;
@@ -3770,7 +3784,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned fmt_reg = u.fmt_opnd == 3 ? u.dst : u.src[u.fmt_opnd % 3];
   const bool format_fault = !width_fault && ((u.fmt_rsv >> s.cw[fmt_reg & 15]) & 1u) &&
                             !cfg_.inject_no_format_fault;
-  const bool nop = u.shape.exit || u.cause || barNop(u) || bar_fault || width_fault || format_fault;
+  const bool nop = u.shape.exit || u.cause || barNop(u) || hintNop(u, !cfg_.inject_reconv_real) || bar_fault || width_fault || format_fault;
   const bool mem = !nop && a.rs_miu;
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
@@ -3788,7 +3802,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned ngpr = atomic ? 2 : wgpr ? 1 : 0;
   // go_static: what the go charges against the warp's allowances, from the
   // uop's decode-time bits (a fault found here, or a shared row, unseen).
-  const bool nop_d = u.shape.exit || u.cause || barNop(u);
+  const bool nop_d = u.shape.exit || u.cause || barNop(u) || hintNop(u, !cfg_.inject_reconv_real);
   const bool mem_d = !nop_d && a.rs_miu, atom_d = mem_d && a.mem_kind == kMemKAtomic;
   const bool wgpr_d = !nop_d && a.writes_gpr;
   const bool wpred_d = !nop_d && u.pred_we && cfg_.rename_preds;

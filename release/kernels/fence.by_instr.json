@@ -743,8 +743,8 @@
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 3,
-    "payload_lo": 61696,
-    "payload_hi": 786432
+    "payload_lo": 4294901760,
+    "payload_hi": 255
    }
   },
   {
@@ -759,8 +759,8 @@
     "instr_uid": 4611686018427387905,
     "unit": "instr",
     "channel_id": 3,
-    "payload_lo": 786688,
-    "payload_hi": 524288
+    "payload_lo": 4294901760,
+    "payload_hi": 1023
    }
   },
   {
@@ -800,7 +800,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -816,7 +816,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -832,7 +832,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -848,7 +848,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -864,7 +864,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -880,7 +880,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -896,7 +896,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -912,7 +912,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -928,7 +928,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -944,7 +944,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -960,7 +960,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -976,7 +976,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -992,7 +992,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1008,7 +1008,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1024,7 +1024,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1040,7 +1040,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1056,7 +1056,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1072,7 +1072,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1088,7 +1088,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1104,7 +1104,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1120,7 +1120,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1136,7 +1136,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1152,7 +1152,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1168,7 +1168,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1184,7 +1184,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1200,7 +1200,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1216,7 +1216,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1232,7 +1232,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1248,7 +1248,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1264,7 +1264,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1280,7 +1280,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1296,7 +1296,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -1312,7 +1312,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 44,
+   "ts": 43,
    "pid": 1001,
    "tid": 0,
    "args": {
@@ -1383,8 +1383,8 @@
     "instr_uid": 4611686018427387906,
     "unit": "instr",
     "channel_id": 3,
-    "payload_lo": 62208,
-    "payload_hi": 7340032
+    "payload_lo": 4294901760,
+    "payload_hi": 1
    }
   },
   {
@@ -1392,15 +1392,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 8176,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 16352
    }
   },
   {
@@ -1408,15 +1408,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 7920,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 15840
    }
   },
   {
@@ -1424,15 +1424,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 7664,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 15328
    }
   },
   {
@@ -1440,15 +1440,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 7408,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 14816
    }
   },
   {
@@ -1456,15 +1456,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 7152,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 14304
    }
   },
   {
@@ -1472,15 +1472,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 6896,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 13792
    }
   },
   {
@@ -1488,15 +1488,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 6640,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 13280
    }
   },
   {
@@ -1504,15 +1504,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 6384,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 12768
    }
   },
   {
@@ -1520,15 +1520,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 6128,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 12256
    }
   },
   {
@@ -1536,15 +1536,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 5872,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 11744
    }
   },
   {
@@ -1552,15 +1552,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 5616,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 11232
    }
   },
   {
@@ -1568,15 +1568,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 5360,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 10720
    }
   },
   {
@@ -1584,15 +1584,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 5104,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 10208
    }
   },
   {
@@ -1600,15 +1600,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 4848,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 9696
    }
   },
   {
@@ -1616,15 +1616,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 4592,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 9184
    }
   },
   {
@@ -1632,15 +1632,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 4336,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 8672
    }
   },
   {
@@ -1648,15 +1648,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 4080,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 8160
    }
   },
   {
@@ -1664,15 +1664,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 3824,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 7648
    }
   },
   {
@@ -1680,15 +1680,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 3568,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 7136
    }
   },
   {
@@ -1696,15 +1696,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 3312,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 6624
    }
   },
   {
@@ -1712,15 +1712,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 3056,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 6112
    }
   },
   {
@@ -1728,15 +1728,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 2800,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 5600
    }
   },
   {
@@ -1744,15 +1744,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 2544,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 5088
    }
   },
   {
@@ -1760,15 +1760,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 2288,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 4576
    }
   },
   {
@@ -1776,15 +1776,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 2032,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 4064
    }
   },
   {
@@ -1792,15 +1792,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 1776,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 3552
    }
   },
   {
@@ -1808,15 +1808,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 1520,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 3040
    }
   },
   {
@@ -1824,15 +1824,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 1264,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 2528
    }
   },
   {
@@ -1840,15 +1840,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 1008,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 2016
    }
   },
   {
@@ -1856,15 +1856,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 752,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 1504
    }
   },
   {
@@ -1872,15 +1872,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 496,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 992
    }
   },
   {
@@ -1888,15 +1888,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
    "pid": 1000,
    "tid": 0,
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 5,
-    "payload_lo": 240,
-    "payload_hi": 0
+    "payload_lo": 0,
+    "payload_hi": 480
    }
   },
   {
@@ -1904,7 +1904,503 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 48,
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 4,
+    "payload_lo": 1048577,
+    "payload_hi": 268435712
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 47,
    "pid": 1002,
    "tid": 0,
    "args": {
@@ -1921,502 +2417,6 @@
    "ph": "i",
    "s": "t",
    "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 48,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 4,
-    "payload_lo": 1048577,
-    "payload_hi": 268435712
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 49,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -2432,7 +2432,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 51,
+   "ts": 50,
    "pid": 1000,
    "tid": 0,
    "args": {
@@ -2448,7 +2448,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 51,
+   "ts": 50,
    "pid": 1001,
    "tid": 0,
    "args": {
@@ -2524,6 +2524,518 @@
    }
   },
   {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 16352
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 15840
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 15328
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 14816
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 14304
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 13792
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 13280
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 12768
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 12256
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 11744
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 11232
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 10720
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 10208
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 9696
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 9184
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 8672
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 8160
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 7648
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 7136
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 6624
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 6112
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 5600
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 5088
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 4576
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 4064
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 3552
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 3040
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 2528
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 2016
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 1504
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 992
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 51,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 5,
+    "payload_lo": 0,
+    "payload_hi": 480
+   }
+  },
+  {
    "name": "EV_OOE_MEMOP_HOLD_CYCLES",
    "cat": "arbitration_sensitive",
    "ph": "i",
@@ -2561,582 +3073,6 @@
    "ph": "i",
    "s": "t",
    "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 8176,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 7920,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 7664,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 7408,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 7152,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 6896,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 6640,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 6384,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 6128,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 5872,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 5616,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 5360,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 5104,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 4848,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 4592,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 4336,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 4080,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 3824,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 3568,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 3312,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 3056,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 2800,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 2544,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 2288,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 2032,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 1776,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 1520,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 1264,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 1008,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 752,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 496,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 5,
-    "payload_lo": 240,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1003,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387907,
-    "unit": "instr",
-    "channel_id": 3,
-    "payload_lo": 0,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1003,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387907,
-    "unit": "instr",
-    "channel_id": 3,
-    "payload_lo": 0,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1003,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387907,
-    "unit": "instr",
-    "channel_id": 3,
-    "payload_lo": 0,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
-   "pid": 1003,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387907,
-    "unit": "instr",
-    "channel_id": 3,
-    "payload_lo": 65024,
-    "payload_hi": 2883584
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 52,
    "pid": 1003,
    "tid": 0,
    "args": {
@@ -3152,11 +3088,27 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 53,
-   "pid": 1004,
+   "ts": 52,
+   "pid": 1002,
    "tid": 0,
    "args": {
-    "instr_uid": 4611686018427387908,
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "channel_id": 6,
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 52,
+   "pid": 1003,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387907,
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 0,
@@ -3168,11 +3120,11 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 53,
-   "pid": 1004,
+   "ts": 52,
+   "pid": 1003,
    "tid": 0,
    "args": {
-    "instr_uid": 4611686018427387908,
+    "instr_uid": 4611686018427387907,
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 0,
@@ -3184,11 +3136,11 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 53,
-   "pid": 1004,
+   "ts": 52,
+   "pid": 1003,
    "tid": 0,
    "args": {
-    "instr_uid": 4611686018427387908,
+    "instr_uid": 4611686018427387907,
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 0,
@@ -3200,15 +3152,31 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 53,
-   "pid": 1004,
+   "ts": 52,
+   "pid": 1003,
    "tid": 0,
    "args": {
-    "instr_uid": 4611686018427387908,
+    "instr_uid": 4611686018427387907,
     "unit": "instr",
     "channel_id": 3,
-    "payload_lo": 61440,
-    "payload_hi": 17301504
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_RETIRE",
+   "cat": "arbitration_sensitive",
+   "ph": "i",
+   "s": "t",
+   "ts": 54,
+   "pid": 1002,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387906,
+    "unit": "instr",
+    "warp_id": 0,
+    "rob_slot": 2,
+    "active_mask": 4294967295
    }
   },
   {
@@ -3233,42 +3201,10 @@
    "ph": "i",
    "s": "t",
    "ts": 53,
-   "pid": 1002,
+   "pid": 1004,
    "tid": 0,
    "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "channel_id": 6,
-    "payload_lo": 0,
-    "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_RETIRE",
-   "cat": "arbitration_sensitive",
-   "ph": "i",
-   "s": "t",
-   "ts": 55,
-   "pid": 1002,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387906,
-    "unit": "instr",
-    "warp_id": 0,
-    "rob_slot": 2,
-    "active_mask": 4294967295
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 54,
-   "pid": 1005,
-   "tid": 0,
-   "args": {
-    "instr_uid": 4611686018427387909,
+    "instr_uid": 4611686018427387908,
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 0,
@@ -3280,11 +3216,11 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 54,
-   "pid": 1005,
+   "ts": 53,
+   "pid": 1004,
    "tid": 0,
    "args": {
-    "instr_uid": 4611686018427387909,
+    "instr_uid": 4611686018427387908,
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 0,
@@ -3296,11 +3232,11 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 54,
-   "pid": 1005,
+   "ts": 53,
+   "pid": 1004,
    "tid": 0,
    "args": {
-    "instr_uid": 4611686018427387909,
+    "instr_uid": 4611686018427387908,
     "unit": "instr",
     "channel_id": 3,
     "payload_lo": 0,
@@ -3312,15 +3248,15 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 54,
-   "pid": 1005,
+   "ts": 53,
+   "pid": 1004,
    "tid": 0,
    "args": {
-    "instr_uid": 4611686018427387909,
+    "instr_uid": 4611686018427387908,
     "unit": "instr",
     "channel_id": 3,
-    "payload_lo": 62976,
-    "payload_hi": 2097152
+    "payload_lo": 0,
+    "payload_hi": 0
    }
   },
   {
@@ -3344,7 +3280,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 55,
+   "ts": 54,
    "pid": 1003,
    "tid": 0,
    "args": {
@@ -3360,7 +3296,71 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 56,
+   "ts": 54,
+   "pid": 1005,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387909,
+    "unit": "instr",
+    "channel_id": 3,
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 54,
+   "pid": 1005,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387909,
+    "unit": "instr",
+    "channel_id": 3,
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 54,
+   "pid": 1005,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387909,
+    "unit": "instr",
+    "channel_id": 3,
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 54,
+   "pid": 1005,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387909,
+    "unit": "instr",
+    "channel_id": 3,
+    "payload_lo": 0,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 55,
    "pid": 1004,
    "tid": 0,
    "args": {
@@ -3376,7 +3376,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 57,
+   "ts": 56,
    "pid": 1003,
    "tid": 0,
    "args": {
@@ -3392,7 +3392,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 57,
+   "ts": 56,
    "pid": 1005,
    "tid": 0,
    "args": {
@@ -3408,7 +3408,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 60,
+   "ts": 59,
    "pid": 1003,
    "tid": 0,
    "args": {
@@ -3424,7 +3424,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 60,
+   "ts": 59,
    "pid": 1003,
    "tid": 0,
    "args": {
@@ -3440,7 +3440,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 62,
+   "ts": 61,
    "pid": 1003,
    "tid": 0,
    "args": {
@@ -3456,7 +3456,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 64,
+   "ts": 63,
    "pid": 1003,
    "tid": 0,
    "args": {
@@ -3472,7 +3472,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 66,
+   "ts": 65,
    "pid": 1003,
    "tid": 0,
    "args": {
@@ -3488,7 +3488,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 68,
+   "ts": 67,
    "pid": 1003,
    "tid": 0,
    "args": {
@@ -3504,7 +3504,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 71,
+   "ts": 70,
    "pid": 1004,
    "tid": 0,
    "args": {
@@ -3520,7 +3520,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 72,
+   "ts": 71,
    "pid": 1005,
    "tid": 0,
    "args": {
@@ -3536,7 +3536,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 74,
+   "ts": 73,
    "pid": 1004,
    "tid": 0,
    "args": {
@@ -3552,7 +3552,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 74,
+   "ts": 73,
    "pid": 1005,
    "tid": 0,
    "args": {
@@ -3568,7 +3568,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 76,
+   "ts": 75,
    "pid": 1005,
    "tid": 0,
    "args": {
@@ -3584,7 +3584,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 76,
+   "ts": 75,
    "pid": 1005,
    "tid": 0,
    "args": {
@@ -3600,7 +3600,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 79,
+   "ts": 78,
    "pid": 1005,
    "tid": 0,
    "args": {
@@ -3616,7 +3616,7 @@
    "cat": "arbitration_sensitive",
    "ph": "i",
    "s": "t",
-   "ts": 79,
+   "ts": 78,
    "pid": 1006,
    "tid": 0,
    "args": {
@@ -3632,7 +3632,7 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
-   "ts": 80,
+   "ts": 79,
    "pid": 1006,
    "tid": 0,
    "args": {
