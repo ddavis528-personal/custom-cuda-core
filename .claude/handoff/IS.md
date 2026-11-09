@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-08. Keep this current at every task's end; it is what
+Updated 2026-11-09. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -48,7 +48,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 332, OA 394, IS 190, TI 385, OI 330, CP 157, DA 115, RA 117, RI 50.
+Conventions 17, AR 339, OA 409, IS 190, TI 400, OI 336, CP 157, DA 116, RA 133, RI 66.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Next pings Friday 2026-11-13.
@@ -61,6 +61,11 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
+- 2026-11-09 sweep: ccr-888218a3 (RI) NOT merged: conflicts in cg-waivers.json,
+  rcu_dec_pkg.sv (others' files; OA 405 raised it to AR, TI, RI). Retry next
+  sweep. perf-register.md union-resolved again (AR's J9 notes + TI's RA-43).
+  ISA-adjacent, no action: register pmov (Format K 63) executed as por (OA 396;
+  elision is a licence); params/ops.json new opcode table (TI 395).
 - O-85 follow-ups done: TI de03fd6 (TI-371) builds every collective incl.
   shfl.idx and _R forms (kernel coll; opcodes by name from ccv-sim). IS-21/O-72
   RMW atomics built (kernels atom, atomf); CAS landed 9894da1 (kernel cas,
