@@ -654,7 +654,7 @@ done
 # the first build's).
 for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write,no-spec" \
            "rename_ceil RENAME_FLOORS=4,8 0 -" \
-           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2" \
+           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2,unmet-now,no-last-take" \
            "rename_sec RENAME_SECTIONS=1 25 drop-free,no-lead,no-reads,no-merge,no-cw-write"; do
   set -- $cfg
   name=$1 env=$2 nseeds=$3 ctls=$4

@@ -41,7 +41,9 @@
 // attributes say it reads a source), no-grant (ooe_rs's grant never
 // reaches rename), no-take-q (the go's pool correction drops the lagged
 // take, a check-build input: OA's rev 208) and no-take-q2 (the names' pool
-// register drops the older take: OA's rev 219). The last two need names
+// register drops the older take: OA's rev 219), unmet-now (the go reads the
+// unmet on time, not its register: OI-134) and no-last-take (the register's
+// unmet, its last take not subtracted). The last four need names
 // that bind: run-rtl.sh's scarce build (RENAME_SCARCE), 144 rows and a
 // GPR ceiling of 24, the model's set alike.
 // The sectioned build (RENAME_SECTIONS) adds no-merge (no head's attributes
@@ -355,6 +357,8 @@ void clearInputs() {
   dut->flr_cq01h = dut->flm_cq01h = 0;
   dut->ctl_notq = control == "no-take-q";
   dut->ctl_notq2 = control == "no-take-q2";
+  dut->ctl_unow = control == "unmet-now";
+  dut->ctl_nolt = control == "no-last-take";
   clearAll(dut->run_cq01h, S * LB);
   clearAll(dut->ret_cq01h, S * LT);
   dut->reach_cq01h = 0;
