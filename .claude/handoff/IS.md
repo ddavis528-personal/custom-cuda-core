@@ -38,6 +38,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
   and `ifRev`; target paragraph ids, not text ids.
 
 ## Gate timing
+Disk (2026-11-09): the session allowance is ~39 GB and a full gate's build/
+peaks near 22 GB (cg alone 13 GB); one gate died 'No space left on device'.
+Before a full gate, if df shows under ~25 GB free: clear build/ but
+synth-cache/compiler/compiler.git, and `ccache -C` (5 GB). Kill a stuck gate
+by its process group (setsid gives it one): kill -TERM -- -<pgid>.
 The core full gate can pass 2 h, the background-task limit: start it with
 setsid nohup tools/bg-run.sh is-sweep-gate tools/gate-push.sh --full, then
 wait in 2 h slices. tools/heavy-units.json is TI's: on a conflict there,
