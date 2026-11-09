@@ -18,7 +18,9 @@
         "rcu_mem": "rtl/rcu/rcu_mem.sv",
         "rcu_mig": "rtl/rcu/rcu_mig.sv",
         "rcu_kill": "rtl/rcu/rcu_kill.sv",
-        "rcu_isd": "rtl/rcu/rcu_isd.sv"
+        "rcu_isd": "rtl/rcu/rcu_isd.sv",
+        "ccv_params_pkg": "rtl/generated/ccv_params_pkg.sv",
+        "rcu_dec_pkg": "rtl/rcu/rcu_dec_pkg.sv"
       },
       "params": {},
       "clock": "core_clk",
