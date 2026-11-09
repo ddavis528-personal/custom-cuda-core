@@ -150,14 +150,14 @@
     "rule": "CG-3",
     "target": "pcm_n_cr04h",
     "floor_pct": {
-      "medium": 59,
-      "high": 71
+      "medium": 49,
+      "high": 65
     },
     "measured_pct": {
-      "medium": 61,
-      "high": 73
+      "medium": 51,
+      "high": 67
     },
-    "why": "PC's merge mask (~active of S slot k's predicate-only copy, P7, 4 x 32 flops), one gate a slot, loaded under the PC's own valid (pcq, a flop). A mask changes on about 1 - 0.5^2 = 75% of its loads under the bench's active draw (all ones half the time, test/rcu/lanes_tb.cpp), so each gate sits at CG-3's 75% by chance: measured 61-74% in medium (slot 2 at 61% over 41 loads), 73-74% in high, the others at 75% or over (check-cg --unit rcu_lanes at c8dbab0; real traffic's all-ones runs would read lower still). Sharing lact's stage-2 gate (the same data a cycle on) took lact's own 64 flops a slot under 75% with it, and an enable on the mask's change would read an input (CG-5). Floors 2 points under the lowest gate in each scenario; idle never loads.",
+    "why": "PC's merge mask (~active of S slot k's predicate-only copy, P7, 4 x 32 flops), one gate a slot, loaded under the PC's own valid (pcq, a flop). A mask changes on about 1 - 0.5^2 = 75% of its loads under the bench's active draw (all ones half the time, test/rcu/lanes_tb.cpp), so each gate sits at CG-3's 75% by chance: measured 61-74% in medium (slot 2 at 61% over 41 loads), 73-74% in high, the others at 75% or over (check-cg --unit rcu_lanes at c8dbab0; real traffic's all-ones runs would read lower still). Sharing lact's stage-2 gate (the same data a cycle on) took lact's own 64 flops a slot under 75% with it, and an enable on the mask's change would read an input (CG-5). Floors 2 points under the lowest gate in each scenario; idle never loads. TI re-measured on the merged tree with RA-43 (full gate on 7ee18501, 2026-11-09): slot 1 at 51% over 51 loads in medium, slot 0 at 67% over 215 in high, the same draw by chance; floors re-set 2 under (OI-18: RI to confirm).",
     "by": "RI",
     "date": "2026-11-08"
   },
