@@ -50,8 +50,12 @@ After the generators, the sections run as parallel jobs, `CCV_JOBS` at a
 time (default every core; `CCV_JOBS=1` is serial), each section's log in
 `build/verify/<job>.log` with its time. A job that reads another's build
 products names it in `after` in `tools/verify.sh`; no two jobs that may run
-together share a build directory. check-cg and check-ngd measure their units
-`CCV_JOBS` at a time too, and share one Yosys netlist per unit through
+together share a build directory. A section's own build directory (`owns`
+there) is removed once it passes and every job that reads it is done, and
+check-cg and check-ngd remove each unit's work directory once it is measured
+(DA, 2026-11-09); a failed section keeps its own, and `CCV_KEEP_BUILD=1` and
+`CCV_KEEP_UNIT_BUILD=1` keep them all. check-cg and check-ngd measure their
+units `CCV_JOBS` at a time too, and share one Yosys netlist per unit through
 `build/synth-cache`, ABC's maps too, keyed by everything a run reads. The
 full gate clears it first; `tools/verify.sh --cached` keeps it for an
 intermediate run, whose result reads `CACHED PASS`.
