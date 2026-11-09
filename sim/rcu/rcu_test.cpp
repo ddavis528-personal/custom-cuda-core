@@ -326,8 +326,12 @@ void testKillDrain() {
   e.step();
   e.core.kill(0x1, 0);
   const unsigned d = e.core.killDrain();
-  const unsigned want = 2 + ccv::prov::kLatSfu + 1;   // abutted: 15 at SFU 12 (the default since Z)
+  const unsigned want = 2 + ccv::prov::kLatSfu + 1;   // no links, no boundary flop: 15 at SFU 12
   EXPECT(d == want, "KILL_DRAIN %u, not %u", d, want);
+  // The issue end is zero-cycle since RA-43 (no bnd_rx to add): the core's
+  // drain is the params' derived drain (RA-42's d + 1 held while it was flopped).
+  EXPECT(d == ccv::prov::kLatRcuKillDrain, "KILL_DRAIN %u, not the params' %u", d,
+         ccv::prov::kLatRcuKillDrain);
   e.step();   // K
   unsigned n = 0;
   while (!e.core.killQuiet() && n < 40) { e.step(); ++n; }

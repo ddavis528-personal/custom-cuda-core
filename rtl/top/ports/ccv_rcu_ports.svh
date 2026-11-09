@@ -31,38 +31,47 @@
   // ooe -> rcu, slot 0 of 9
   input  logic ooe_rcu_issue_s0_valid,
   input  ccv_ooe_rcu_issue_t ooe_rcu_issue_s0_payload,
+  output logic ooe_rcu_issue_s0_credit,
   output logic ooe_rcu_issue_s0_stall,
   // ooe -> rcu, slot 1 of 9
   input  logic ooe_rcu_issue_s1_valid,
   input  ccv_ooe_rcu_issue_t ooe_rcu_issue_s1_payload,
+  output logic ooe_rcu_issue_s1_credit,
   output logic ooe_rcu_issue_s1_stall,
   // ooe -> rcu, slot 2 of 9
   input  logic ooe_rcu_issue_s2_valid,
   input  ccv_ooe_rcu_issue_t ooe_rcu_issue_s2_payload,
+  output logic ooe_rcu_issue_s2_credit,
   output logic ooe_rcu_issue_s2_stall,
   // ooe -> rcu, slot 3 of 9
   input  logic ooe_rcu_issue_s3_valid,
   input  ccv_ooe_rcu_issue_t ooe_rcu_issue_s3_payload,
+  output logic ooe_rcu_issue_s3_credit,
   output logic ooe_rcu_issue_s3_stall,
   // ooe -> rcu, slot 4 of 9
   input  logic ooe_rcu_issue_s4_valid,
   input  ccv_ooe_rcu_issue_t ooe_rcu_issue_s4_payload,
+  output logic ooe_rcu_issue_s4_credit,
   output logic ooe_rcu_issue_s4_stall,
   // ooe -> rcu, slot 5 of 9
   input  logic ooe_rcu_issue_s5_valid,
   input  ccv_ooe_rcu_issue_t ooe_rcu_issue_s5_payload,
+  output logic ooe_rcu_issue_s5_credit,
   output logic ooe_rcu_issue_s5_stall,
   // ooe -> rcu, slot 6 of 9
   input  logic ooe_rcu_issue_s6_valid,
   input  ccv_ooe_rcu_issue_t ooe_rcu_issue_s6_payload,
+  output logic ooe_rcu_issue_s6_credit,
   output logic ooe_rcu_issue_s6_stall,
   // ooe -> rcu, slot 7 of 9
   input  logic ooe_rcu_issue_s7_valid,
   input  ccv_ooe_rcu_issue_t ooe_rcu_issue_s7_payload,
+  output logic ooe_rcu_issue_s7_credit,
   output logic ooe_rcu_issue_s7_stall,
   // ooe -> rcu, slot 8 of 9
   input  logic ooe_rcu_issue_s8_valid,
   input  ccv_ooe_rcu_issue_t ooe_rcu_issue_s8_payload,
+  output logic ooe_rcu_issue_s8_credit,
   output logic ooe_rcu_issue_s8_stall,
   input  logic ooe_rcu_issue_wake,
   // rcu -> lane, copy 0

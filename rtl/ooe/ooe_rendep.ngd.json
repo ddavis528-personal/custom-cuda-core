@@ -25,6 +25,12 @@
       "date": "2026-10-22",
       "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
+    "pp_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-11-08",
+      "why": "OA's response re:OI-135 (OA tab rev 397): granted at 2.0, driven from rename's keep copy d_ppk_cq03h, a register in Rename 1"
+    },
     "atom_cq01h": {
       "arrival": 2.0,
       "by": "OA",

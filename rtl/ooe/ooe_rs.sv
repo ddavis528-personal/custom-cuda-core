@@ -260,7 +260,7 @@ module ooe_rs #(
   logic [2*P*N-1:0] cd_cq02h;
   logic [P*N-1:0]   dz_cq02h;    // the rows' named terms alone, no row bits: the free enters named's root
   logic [2*P*N-1:0] cdz_cq02h;
-  // -- Confirmation, here (OI-45, OI-50; V-65) --------------------------------
+  // -- Confirmation, here (OI-45, OI-50 and its co-grant arm, OI-133; V-65) ----
   // This module's issued register: set at a grant (select's, issued from
   // the next edge), cleared by its own replays and frees, so it is
   // ooe_wake's issued flags (FISS) every cycle. The cancel's level rule and
@@ -271,11 +271,16 @@ module ooe_rs #(
   // matrix flops 18.3 NGD from the next state, over the 12 the dep output
   // holds them to (NGD-7). Confirmed entries are freed, and so are the
   // ones the registered squash frees.
-  logic [N-1:0] iss_cq02h, emp_cq02h, gone_cq02h, rep_cq02h, conf_cq02h, free_cq02h;
+  // The last edge's grant (ng), confirmation's co-grant term (OI-133): an
+  // entry and a producer it waits on, both granted at that edge, mean the
+  // producer was cancelled and granted again as the entry was granted on
+  // the ready bit its first issue woke; the entry returns.
+  logic [N-1:0] iss_cq02h, ng_cq02h, emp_cq02h, gone_cq02h, rep_cq02h, conf_cq02h, free_cq02h;
   always_comb begin
     gone_cq02h = ~iss_cq02h | msd_cq01h;
     for (int i = 0; i < N; i++) begin
-      rep_cq02h[i]  = iss_cq02h[i] && |(dep_cq02h[i * N +: N] & gone_cq02h);
+      rep_cq02h[i]  = iss_cq02h[i] && (|(dep_cq02h[i * N +: N] & gone_cq02h) ||
+                                       (ng_cq02h[i] && |(dep_cq02h[i * N +: N] & ng_cq02h)));
       conf_cq02h[i] = iss_cq02h[i] && emp_cq02h[i] && (cfin_cq01h[i] || !prod_cq02h[i]);
     end
   end
@@ -283,8 +288,13 @@ module ooe_rs #(
   // Outside any gate, within the module's allowance: a grant has no lead
   // here (select's grant register is ooe_sched's), nor has a replay.
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) iss_cq02h <= '0;
-    else          iss_cq02h <= (iss_cq02h & ~rep_cq02h & ~free_cq02h) | gnt_cq01h;
+    if (rst_r01h) begin
+      iss_cq02h <= '0;
+      ng_cq02h  <= '0;
+    end else begin
+      iss_cq02h <= (iss_cq02h & ~rep_cq02h & ~free_cq02h) | gnt_cq01h;
+      ng_cq02h  <= gnt_cq01h;
+    end
   end
   // The last edge's grant, one-hot, registered beside the grant itself
   // (lg_cq02h and its union lga_cq02h): the group ahead's entries, which

@@ -200,6 +200,11 @@ def build(d, pv, blocks):
     # receiving end's boundary stage takes its credit from its own valid flop,
     # and the block returns none.
     cor = ccv_links.credit_on_receipt(sorted(ends), ends)
+    # A zero-cycle end of the second kind (params/links.json
+    # no_flop_port_budget; AR's rev 326) builds as any no-flop end: validated
+    # here, with the rest of the file, and held to its port budget by
+    # tools/check-ngd.py.
+    ccv_links.no_flop_port_budget(sorted(ends), ends)
     for ci in cinst:
         c = ci["chan"]
         ci["cor"] = int((c["dst"], c["name"][4:]) in cor)

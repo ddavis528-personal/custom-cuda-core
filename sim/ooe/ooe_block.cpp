@@ -538,14 +538,13 @@ private:
       // is 0): rows in the phys_ fields, positions beside them.
       const auto row = [this](unsigned n) { return core_.nameRow(n); };
       const auto pos = [this](unsigned n) { return core_.namePos(n); };
-      put(is, c.ooe_rcu, "phys_src", (row(x.psrc[0]) << 8) | row(x.psrc[1]));
+      put(is, c.ooe_rcu, "phys_src", (row(x.psrc[0]) << ccv::prov::kWPhysReg) | row(x.psrc[1]));
       put(is, c.ooe_rcu, "phys_src2", row(x.psrc[2]));
       put(is, c.ooe_rcu, "src_pos",
           pos(x.psrc[0]) | pos(x.psrc[1]) << ccv::kWPhysPos | pos(x.psrc[2]) << (2 * ccv::kWPhysPos));
       if (x.send_imm) put(is, c.ooe_rcu, "imm", x.imm);
       put(is, c.ooe_rcu, "phys_dst", row(x.pdst));
       put(is, c.ooe_rcu, "dst_pos", pos(x.pdst));
-      put(is, c.ooe_rcu, "phys_pred_guard", x.ppguard);
       put(is, c.ooe_rcu, "phys_pred_dst", x.ppdst);
       put(is, c.ooe_rcu, "pred_we", x.pred_we);
       put(is, c.ooe_rcu, "merge_en", x.merge);
@@ -801,8 +800,11 @@ private:
       Bits msg = p.second;
       put(msg, c.ooe_rcu, "footprint", fp);
       // RA-31's lead (OA's rev 307): from the entry's static fields.
+      // RA-43: the guard lead on every slot (phys_pred_guard left the
+      // payload); then R's sources into their lead and the A-1 copies.
       putIssueLead(msg, c.ooe_rcu, s, fp, x.gpr_reads, x.send_imm, x.merge,
-                   x.res == ooe::Issue::kRcuOp && x.guarded, x.ppguard, k_.brk);
+                   x.pread, x.ppguard, k_.brk);
+      finishIssueLeads(msg, c.ooe_rcu, s, k_.brk);
       sendOn(c.ooe_rcu, s, msg, x.tid);
     }
     for (const auto &p : issues) {
@@ -814,6 +816,7 @@ private:
         Bits ct = msgOf(c.ooe_rcu);
         put(ct, c.ooe_rcu, "rob_tag", x.rob_tag);
         put(ct, c.ooe_rcu, "cont", 1);
+        finishIssueLeads(ct, c.ooe_rcu, s, k_.brk);
         sendOn(c.ooe_rcu, s, ct, x.tid);
       }
     }

@@ -108,6 +108,12 @@
       "by": "OA",
       "date": "2026-11-07",
       "why": "OA's response re:OI-120 (OA tab rev 373): the raw completion payload lands as cmpl_l does, from the link's last flop through OOE's 0-NGD boundary, so it takes cmpl_l's arrival 2 (OA OI-58, V-75)"
+    },
+    "iss_lead_cq03h": {
+      "required": 0.0,
+      "by": "OA",
+      "date": "2026-11-09",
+      "why": "DA 116 on RI-26 (13 NGD to RCU, 0 to OOE) and OA's revs 401-402: the issue register's lead slice leaves straight from its flops, up to ccv_ooe's port"
     }
   }
 }

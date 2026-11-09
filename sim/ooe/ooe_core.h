@@ -537,6 +537,8 @@ struct Config {
   bool inject_split_r_class = false;  ///< a collective and an RCU-only op go together at R (RA-29 (a))
   bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
+  bool inject_no_cogrant = false;     ///< the hop misses a co-granted dependant (OI-133)
+  bool inject_reconv_real = false;    ///< C_RECONV (serial 5) is no no-op: it renames and issues (OA rev 393)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
   bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
@@ -610,8 +612,10 @@ struct Config {
   /// slot's unmet floor, so the go reads last cycle's and takes from it the
   /// names its own last take wrote (then this take's, as above). It misses
   /// only frees, so it never reserves less than it should hold. 0: the go
-  /// reads unmet on time (arriving at 6 NGD).
-  unsigned unmet_reg = 0;
+  /// reads unmet on time (arriving at 6 NGD). 1 by default since OI-134
+  /// (RH, 95bf04d): clean at 192, 160 and 128 physical registers, equal to
+  /// the cycle at 192, coremark128 -2.22% at 160 and -2.16% at 128.
+  unsigned unmet_reg = 1;
   /// OA's response to OI-116 (rev 369 (b)), RH's S1 at 0 cost: 1 takes the
   /// split's floor term less the slot's own take a cycle late, from the
   /// registered unmet less the last take alone, with no subtraction in the
@@ -706,7 +710,11 @@ struct SchedAttr {
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3,
                kLatClsCollective = 5 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+// kSerNop: a hint with no architectural effect (C_RECONV, reconv.hint), a
+// no-op complete at rename like exit and a dispatch fault (RA-16 (f), OA's
+// rev 393).
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4,
+                  kSerNop = 5 };
 inline bool isBarrierSer(unsigned s) { return s == kSerBarrier || s == kSerArrive; }
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
@@ -782,6 +790,12 @@ struct Uop {
 inline bool barNop(const Uop &u) {
   return isBarrierSer(u.attr.serial) && !u.shape.guard && !u.shape.pdata;
 }
+/// serial 5 (RA-16 (f), OA's rev 393): C_RECONV, which DEC sends with
+/// every other attribute bit 0. Allocated with its pc and group mask,
+/// complete at allocation; no RS entry, no rename, no issue; it retires in
+/// order and its payload is ignored, so OOE stays opcode-blind. `on` false
+/// is the reconv-issues control (inject_reconv_real).
+inline bool hintNop(const Uop &u, bool on = true) { return on && u.attr.serial == kSerNop; }
 
 struct Done {           ///< ccv_rcu_ooe_done
   unsigned rob_tag = 0;
@@ -863,6 +877,7 @@ struct Issue {          ///< ccv_ooe_rcu_issue
   unsigned src_w[3] = {}, dst_w = 0;
   unsigned chwidth = 0;
   bool guarded = false;          ///< for the adapter's coverage only
+  bool pread = false;            ///< reads its predicate, guard or data (lead_guard_used, RA-43)
   uint8_t gpr_reads = 0;         ///< likewise
   /// The resource group the op issues on (ccv_ooe_rcu_issue's slots) and
   /// its footprint there: lane sections, MIU pipes, or R alone (footprint 0).
@@ -1699,7 +1714,7 @@ public:
     /// the entries it returned to Waiting; confirmation's inputs (issued and
     /// unconfirmed, the result final, a destination, the dependency bits)
     /// and the entries it confirmed. hop_live: a hop ran this cycle.
-    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, cf_iss, cf_fin, cf_prod, cf_dep;
+    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, hop_new, cf_iss, cf_fin, cf_prod, cf_dep;
     bool hop_live = false;
     /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
     /// in allocation order, and those freed; hfree: those freed by an L1
