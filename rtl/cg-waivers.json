@@ -108,10 +108,10 @@
    "ports": [
     "iv_cr01h"
    ],
-   "enable_ngd": 2.0,
-   "why": "Each slot's guard lead kept for A, g_gl's rg_hi_cr02h and rg_lo_cr02h (14 flops a slot; check-only rgu_cr02h and rgz_cr02h beside them), named in the netlist by the read wires g_guard[s].hi_cr02h and lo_cr02h; on R, its predicate sources rimm_cr02h (14 flops, lead_rpsrc[13:0]) share the gate. RA-43 took phys_pred_guard out of the payload, and R's imm out of R's: lead_guard_pred and lead_rpsrc are on ccv_ooe_rcu_issue only in A-1, beside the slot's valid, and are kept for A here (RA-31, RA-32, the split guard read, now on every slot). Nothing earlier names the issue, so the only enable is that valid, a wire from the zero-cycle end (rcu_pred.ngd.json, iv_cr01h 2.0). One gate a slot, nine gates, 140 flops: loaded every cycle instead they would be far past this module's 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction. The enable's arrival is the fanout term (iv_cr01h 2.0; AR 326, RA rev 106), within CG-2's 8.",
+   "enable_ngd": 2.1,
+   "why": "Each slot's guard lead kept for A, g_gl's rg_hi_cr02h and rg_lo_cr02h (14 flops a slot; check-only rgu_cr02h and rgz_cr02h beside them), named in the netlist by the read wires g_guard[s].hi_cr02h and lo_cr02h; on R, its predicate sources rimm_cr02h (14 flops, lead_rpsrc[13:0]) share the gate. RA-43 took phys_pred_guard out of the payload, and R's imm out of R's: lead_guard_pred and lead_rpsrc are on ccv_ooe_rcu_issue only in A-1, beside the slot's valid, and are kept for A here (RA-31, RA-32, the split guard read, now on every slot). Nothing earlier names the issue, so the only enable is that valid, a wire from the zero-cycle end (rcu_pred.ngd.json, iv_cr01h 2.1). One gate a slot, nine gates, 140 flops: loaded every cycle instead they would be far past this module's 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction. The enable's arrival is the fanout term (iv_cr01h 2.1, slot 8's valid at 68 loads; AR 326, RA rev 106), within CG-2's 8.",
    "by": "RI (Daniel's ruling, RA rev 87)",
-   "date": "2026-11-08",
+   "date": "2026-11-09",
    "lead": true
   },
   {
@@ -121,10 +121,10 @@
    "ports": [
     "iv_cr01h"
    ],
-   "enable_ngd": 2.0,
-   "why": "R's moved leads kept for A, imm_cr02h (32 flops) and rrow_cr02h (16 flops), one gate: RA-43 took R's imm and source rows out of its payload, and lead_rpsrc (movi's literal, call's link, the shuffles' lane and the predicate sources) and lead_phys_src are on ccv_ooe_rcu_issue only in A-1, beside R's valid; this capture holds them in A as the payload would (the schema's lead_why). rrow_cr02h is a copy of its own ((* keep *)), since it drives an output, the slices' R reads in A (rr_row_cr02h). The only enable is that valid, a wire from the zero-cycle end (rcu_r.ngd.json, iv_cr01h 2.0), within CG-2's 8. Loaded every cycle instead, the 48 flops would put the module past its 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction.",
+   "enable_ngd": 2.1,
+   "why": "R's moved leads kept for A, imm_cr02h (32 flops) and rrow_cr02h (16 flops), one gate: RA-43 took R's imm and source rows out of its payload, and lead_rpsrc (movi's literal, call's link, the shuffles' lane and the predicate sources) and lead_phys_src are on ccv_ooe_rcu_issue only in A-1, beside R's valid; this capture holds them in A as the payload would (the schema's lead_why). rrow_cr02h is a copy of its own ((* keep *)), since it drives an output, the slices' R reads in A (rr_row_cr02h). The only enable is that valid, a wire from the zero-cycle end (rcu_r.ngd.json, iv_cr01h 2.1), within CG-2's 8. Loaded every cycle instead, the 48 flops would put the module past its 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction.",
    "by": "RI (Daniel's ruling, RA rev 87)",
-   "date": "2026-11-08",
+   "date": "2026-11-09",
    "lead": true
   },
   {
@@ -159,20 +159,33 @@
    "date": "2026-11-05"
   },
   {
-    "module": "rcu_lanes",
-    "rule": "CG-3",
-    "target": "pcm_n_cr04h",
-    "floor_pct": {
-      "medium": 49,
-      "high": 65
-    },
-    "measured_pct": {
-      "medium": 51,
-      "high": 67
-    },
-    "why": "PC's merge mask (~active of S slot k's predicate-only copy, P7, 4 x 32 flops), one gate a slot, loaded under the PC's own valid (pcq, a flop). A mask changes on about 1 - 0.5^2 = 75% of its loads under the bench's active draw (all ones half the time, test/rcu/lanes_tb.cpp), so each gate sits at CG-3's 75% by chance: measured 51-74% in medium (slot 1 at 51% over 51 loads), 67-75% in high (slot 0 at 67% over 215) (check-cg --unit rcu_lanes at 346130d3). With 31-215 loads a slot the figure is the bench's draw, not the RTL: the regenerated rcu_dec_pkg (CAS_G/CAS_S, PXOR, C_RECONV) reshuffled lanes_tb's op pool and moved slot 1 from 61% (at c8dbab0) to 51% with no RTL change. Real traffic's all-ones runs would read lower still. Sharing lact's stage-2 gate (the same data a cycle on) took lact's own 64 flops a slot under 75% with it, and an enable on the mask's change would read an input (CG-5). Floors 2 points under the lowest gate in each scenario; idle never loads.",
-    "by": "RI",
-    "date": "2026-11-08"
+   "module": "rcu_lanes",
+   "rule": "CG-3",
+   "target": "pcm_n_cr04h",
+   "floor_pct": {
+    "medium": 49,
+    "high": 65
+   },
+   "measured_pct": {
+    "medium": 51,
+    "high": 67
+   },
+   "why": "PC's merge mask (~active of S slot k's predicate-only copy, P7, 4 x 32 flops), one gate a slot, loaded under the PC's own valid (pcq, a flop). A mask changes on about 1 - 0.5^2 = 75% of its loads under the bench's active draw (all ones half the time, test/rcu/lanes_tb.cpp), so each gate sits at CG-3's 75% by chance: measured 51-74% in medium (slot 1 at 51% over 51 loads), 67-75% in high (slot 0 at 67% over 215) (check-cg --unit rcu_lanes at 346130d3). With 31-215 loads a slot the figure is the bench's draw, not the RTL: the regenerated rcu_dec_pkg (CAS_G/CAS_S, PXOR, C_RECONV) reshuffled lanes_tb's op pool and moved slot 1 from 61% (at c8dbab0) to 51% with no RTL change. Real traffic's all-ones runs would read lower still. Sharing lact's stage-2 gate (the same data a cycle on) took lact's own 64 flops a slot under 75% with it, and an enable on the mask's change would read an input (CG-5). Floors 2 points under the lowest gate in each scenario; idle never loads.",
+   "by": "RI",
+   "date": "2026-11-08"
+  },
+  {
+   "module": "rcu_isd",
+   "rule": "CG-5",
+   "target": "cls_cr02h",
+   "ports": [
+    "iv_cr01h"
+   ],
+   "enable_ngd": 2.1,
+   "why": "The slot's class word, cls_cr02h (26 flops; one bit is constant), one gate: RA-43 decodes the op class into flops at A-1 from the slot's lead fields (lead_opcode, lead_done_row, lead_pred_we, lead_phys_dst), which are on ccv_ooe_rcu_issue only in A-1, beside the slot's valid (RA rev 117; one shared capture for the block, RI-25). Nothing earlier names the issue, so the only enable is that valid, a wire from the zero-cycle end (rcu_isd.ngd.json, iv_cr01h 2.1, the fanout term of slot 8's valid at 68 loads; AR 326, RA rev 106), within CG-2's 8. Loaded every cycle instead, 9 x 26 flops would be ungated against the block's 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2% (9 x 26 = 234), to fit at final construction.",
+   "by": "RI (Daniel's ruling, RA rev 87)",
+   "date": "2026-11-09",
+   "lead": true
   }
  ]
 }

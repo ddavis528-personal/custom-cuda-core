@@ -39,6 +39,7 @@
 #include <map>
 #include <memory>
 #include <random>
+#include "cls_pack.h"
 #include "dec_tb.h"
 #include <string>
 #include <type_traits>
@@ -186,14 +187,13 @@ struct Bench {
     for (const Iss &i : s1.iss) {
       put(dut->ng_cr02h, i.slot, 1, i.neg);
       put(dut->im_cr02h, i.slot * 32, 32, i.im);
-      put(dut->opc_cr02h, i.slot * 9, 9, i.opc);
+      // The class word rcu_isd holds from the lead (RA-43, RI-25); a copy's
+      // predicate-only form only on S slots, as the bench drives it.
+      put(dut->ocl_cr02h, i.slot * 27, 27,
+          clspack::clsWord(i.opc, i.drow,
+                           i.slot < kNK && i.pwe && i.dst == dectb::R::kZero));
       put(dut->cont_cr02h, i.slot, 1, i.cont);
-      put(dut->drw_cr02h, i.slot * 2, 2, i.drow);
-      if (i.slot < kNK) {
-        put(dut->ft_cr02h, i.slot * kNK, kNK, i.ft);
-        put(dut->swe_cr02h, i.slot, 1, i.pwe);
-        put(dut->sdst_cr02h, i.slot * 8, 8, i.dst);
-      }
+      if (i.slot < kNK) put(dut->ft_cr02h, i.slot * kNK, kNK, i.ft);
     }
     for (const Ld &l : s1.ld) put(dut->mr_cr02h, l.slot * 32, 32, l.pr);
     for (const Mg &m : s1.mg) {

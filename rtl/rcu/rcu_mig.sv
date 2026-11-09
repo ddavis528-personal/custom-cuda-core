@@ -22,7 +22,7 @@
 // slices' (rcu_bank_slice takes this module's request beside the R op's):
 //   R2: r2v_cr01h, a lead from dm_busy (the slices' select flops load it);
 //       r2row_cr02h, the next row's map entry; the slices select it in A
-//       unless the R op reads R2 (rr2, from its opcode), when this
+//       unless the R op reads R2 (rr2, from its class), when this
 //       module also holds back (dm_want's ~r2_busy term).
 //   RW: rwv_cr02h, the lead of a possible GPR restore write (flops only);
 //       rwsel_cr03h, the decision (rs_v_a1, not row 16); rwrow_cr03h, its
@@ -115,7 +115,7 @@ module rcu_mig #(
   output logic               busy_cr02h,    // to rcu_kill's idle
   // The R slot: its lead valid, then the payload's decode.
   input  logic               riv_cr01h,     // R issues next cycle
-  input  logic [rcu_dec_pkg::OPC_W-1:0] ropc_cr02h, // the R op's opcode (decoded here, rcu_dec_pkg)
+  input  logic [rcu_dec_pkg::CLS_W-1:0] rcls_cr02h, // the R op's class (rcu_isd's flops from the lead)
   input  logic               rmrg_cr02h,    // the R op's merge_en
   // R2 (the slices) and D0-D3 (rcu_pred): requests, then the rows read.
   output logic               r2v_cr01h,     // R2 lead
@@ -203,7 +203,6 @@ module rcu_mig #(
   // The R op's class (rcu_dec_pkg, the model's decode; the R slot carries
   // no atomic and no copy): it reads R2 when it merges into a GPR, and holds
   // RW when it writes a GPR or is a collective (the model's r2_busy, rw_busy).
-  wire [rcu_dec_pkg::CLS_W-1:0] rcls_cr02h = rcu_dec_pkg::rcu_cls(ropc_cr02h, '0, '0);
   wire rgd_cr02h  = rcls_cr02h[rcu_dec_pkg::CLS_GDST];
   wire rr2_cr02h  = rmrg_cr02h & rgd_cr02h;
   wire rrw_cr02h  = rgd_cr02h | (rcls_cr02h[rcu_dec_pkg::CLS_UNIT +: 3] == rcu_dec_pkg::U_COLL);

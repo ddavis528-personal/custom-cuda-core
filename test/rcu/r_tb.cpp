@@ -36,6 +36,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "cls_pack.h"
 #include "dec_tb.h"
 
 namespace {
@@ -157,7 +158,7 @@ struct Bench {
       dut->lps_cr01h = uint32_t(z >> 8) & 0xffffu;
     }
     if (const Op *o = op(c - 2)) {   // A: the payload, R0 and R1
-      dut->opc_cr02h = o->opc;
+      dut->ocl_cr02h = uint32_t(clspack::clsWord(o->opc, o->drow, false));   // rcu_isd's (RA-43, RI-25)
       dut->tag_cr02h = o->tag;
       dut->drow_cr02h = o->drow;
       dut->imask_cr02h = o->imask;

@@ -1,5 +1,5 @@
 {
-  "_comment": "Clock-gating and logic-depth units for RI's RCU RTL (tools/check-cg.py, tools/check-ngd.py; docs/rtl-coding-style.md, 'Local clock gating' and 'Logic depth'). Each bench is the module's value-model bench (test/rcu/*_tb.cpp) in its --cg mode, built by test/rcu/cg-build.sh at the unit's parameters: idle is reset and then no work, medium work on about a third of the cycles, high work every cycle. rcu_r is the R pipe at its one size, its crossbar helper inside it; rcu_pred the predicate file, rcu_kill the kill, wake, idle and credit flops rcu_mig migration's pairing, demotion and restore engines, each at its one size, rcu_lanes the lane path and rcu_mem the memop operands to MIU, each at its block size (COPIES 32; the 4-copy units, rcu_lanes_c4 and rcu_mem_c4, are local loops: test/rcu/cg-build.sh and test/rcu/run-rtl.sh). The gate measures the slice at its one real size, rcu_bank_slice (ROWS 192). The reduced unit (ROWS 32; RA-32 (2)) stays a local loop, test/rcu/cg-build.sh rcu_bank_slice_r32 and test/rcu/run-rtl.sh, out of the gate since 2026-11-05: a slice's ungated control (MW's selects, RI-9 (b), and the port valids, 35 flops) is fixed per slice, so at 32 rows it exceeds a 2% that scales with rows (26.5) while the real slice leaves it within 131, and check-cg excuses a finding only if every unit of the module takes it. rcu_bank_slice is the full-size slice (ROWS 192, M3's exit); its 205,000-cell netlist's replay harness builds with clang++ (replay_cxx; RI-10, TI's 31e21e0: 490 s, 1377 MiB), since g++ needed 13.6 GB at -O0. Its four units, rcu_bank_slice (K 1) and rcu_bank_slice_k0, _k2, _k3, stand for the block's 32 slices, one per byte section: K sets the section's owner decode (P2: an S or P slot 0..K) and its byte, and the block check times each instance by a unit at its parameters (Daniel, 2026-11-06); J, the lane group, is the parent's wiring and no parameter. rcu_clk is ccv_common_clk at RCU's NWAKE (38: issue, 32 lane copies, MIU, map, rau, pca, kill), its bench test/rcu/tb_cg_rcu_clk.sv, TI's scenarios at that width. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
+  "_comment": "Clock-gating and logic-depth units for RI's RCU RTL (tools/check-cg.py, tools/check-ngd.py; docs/rtl-coding-style.md, 'Local clock gating' and 'Logic depth'). Each bench is the module's value-model bench (test/rcu/*_tb.cpp) in its --cg mode, built by test/rcu/cg-build.sh at the unit's parameters: idle is reset and then no work, medium work on about a third of the cycles, high work every cycle. rcu_r is the R pipe at its one size, its crossbar helper inside it; rcu_pred the predicate file, rcu_isd each issue slot's class word from its lead (RA-43, RI-25), rcu_kill the kill, wake, idle and credit flops rcu_mig migration's pairing, demotion and restore engines, each at its one size, rcu_lanes the lane path and rcu_mem the memop operands to MIU, each at its block size (COPIES 32; the 4-copy units, rcu_lanes_c4 and rcu_mem_c4, are local loops: test/rcu/cg-build.sh and test/rcu/run-rtl.sh). The gate measures the slice at its one real size, rcu_bank_slice (ROWS 192). The reduced unit (ROWS 32; RA-32 (2)) stays a local loop, test/rcu/cg-build.sh rcu_bank_slice_r32 and test/rcu/run-rtl.sh, out of the gate since 2026-11-05: a slice's ungated control (MW's selects, RI-9 (b), and the port valids, 35 flops) is fixed per slice, so at 32 rows it exceeds a 2% that scales with rows (26.5) while the real slice leaves it within 131, and check-cg excuses a finding only if every unit of the module takes it. rcu_bank_slice is the full-size slice (ROWS 192, M3's exit); its 205,000-cell netlist's replay harness builds with clang++ (replay_cxx; RI-10, TI's 31e21e0: 490 s, 1377 MiB), since g++ needed 13.6 GB at -O0. Its four units, rcu_bank_slice (K 1) and rcu_bank_slice_k0, _k2, _k3, stand for the block's 32 slices, one per byte section: K sets the section's owner decode (P2: an S or P slot 0..K) and its byte, and the block check times each instance by a unit at its parameters (Daniel, 2026-11-06); J, the lane group, is the parent's wiring and no parameter. rcu_clk is ccv_common_clk at RCU's NWAKE (38: issue, 32 lane copies, MIU, map, rau, pca, kill), its bench test/rcu/tb_cg_rcu_clk.sv, TI's scenarios at that width. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
   "units": [
     {
       "name": "rcu_bank_slice",
@@ -118,6 +118,22 @@
         "build": "test/rcu/cg-build.sh rcu_pred {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "rcu_pred"
+      }
+    },
+    {
+      "name": "rcu_isd",
+      "module": "rcu_isd",
+      "files": [
+        "rtl/generated/ccv_params_pkg.sv",
+        "rtl/rcu/rcu_dec_pkg.sv",
+        "rtl/rcu/rcu_isd.sv"
+      ],
+      "params": {},
+      "clock": "rcu_core_clk",
+      "bench": {
+        "build": "test/rcu/cg-build.sh rcu_isd {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "rcu_isd"
       }
     },
     {

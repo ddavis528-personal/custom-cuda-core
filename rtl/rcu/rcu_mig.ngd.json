@@ -25,12 +25,6 @@
       "date": "2026-11-08",
       "why": "The R slot's opcode and merge_en from RCU's interface flop on the issue channel (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Decoded here by rcu_dec_pkg, the model's op-class decode (RI-21 (4)), to R2 and RW busy, which RA rev 81 times inside the module once it takes the opcode."
     },
-    "ropc_cr02h": {
-      "arrival": 1.4,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
-      "date": "2026-11-08",
-      "why": "The R slot's opcode and merge_en from RCU's interface flop on the issue channel (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Decoded here by rcu_dec_pkg, the model's op-class decode (RI-21 (4)), to R2 and RW busy, which RA rev 81 times inside the module once it takes the opcode."
-    },
     "rwrow_cr03h": {
       "by": "RI, pending RA (RI tab)",
       "date": "2026-11-08",
@@ -48,6 +42,12 @@
       "date": "2026-11-08",
       "required": 11.0,
       "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
+    },
+    "rcls_cr02h": {
+      "arrival": 1.4,
+      "by": "RI, under RA-43 (RA rev 113, rev 117) and the fanout term (AR 326, RA rev 106)",
+      "date": "2026-11-09",
+      "why": "Each slot's class word (rcu_dec_pkg::rcu_cls) straight from rcu_isd's flops, loaded in A-1 from the slot's lead fields (RA-43; one shared capture, RI-25), wire only; fanout is check-ngd's. This ends RA rev 117's interim on the opcode's class decode."
     }
   }
 }

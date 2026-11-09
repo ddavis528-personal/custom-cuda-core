@@ -52,6 +52,7 @@
 #include <vector>
 
 #include "ccv_params.h"
+#include "cls_pack.h"
 #include "dec_tb.h"
 
 namespace {
@@ -330,7 +331,7 @@ struct Bench {
     rOp(lie ? RSlot{true, false, false} : rc.v ? rc : RSlot{cfg.junk && coin(0.5), coin(0.5), coin(0.5)},
         ropc, rmrg);
     if (!rc.v && !cfg.junk) ropc = 0, rmrg = false;
-    dut->ropc_cr02h = ropc;
+    dut->rcls_cr02h = uint32_t(clspack::clsWord(ropc, 0, false));   // rcu_isd's (RA-43, RI-25)
     dut->rmrg_cr02h = rmrg;
 
     // A kill: valid in K-1, the mask in K.

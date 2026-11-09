@@ -1,0 +1,11 @@
+{
+  "module": "rcu_isd",
+  "ports": {
+    "iv_cr01h": {
+      "arrival": 2.1,
+      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
+      "date": "2026-11-09",
+      "why": "The slot's valid from the zero-cycle issue end (RA-43), wire only. The fanout term is 2.1: ooe_rcu_issue_s8_valid has 68 loads across the block (block read at chain-ri11)."
+    }
+  }
+}

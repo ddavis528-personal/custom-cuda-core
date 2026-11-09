@@ -15,6 +15,9 @@
 #                   retlow, pmovneg), each of which must fail
 #   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (spbown, nofwd,
 #                   nomerge, lgcorrupt), each of which must fail
+#   rcu_isd:        test/rcu/isd_tb.cpp (each slot's class from its lead, RA-43,
+#                   RI-25), and its control pcopy (the copy without its
+#                   predicate-only form), which must fail;
 #   rcu_kill:       test/rcu/kill_tb.cpp, and its control drain (KILL_DRAIN
 #                   - 1 in the value model), which must fail
 #   rcu_mig:        test/rcu/mig_tb.cpp (M5 and random traffic with kills), and
@@ -91,6 +94,13 @@ for c in nofwd nomerge spbown lgcorrupt; do
     say "rcu_pred control $c" "NOT CAUGHT ($B/rcu_pred.$c.log)"; fail=1
   fi
 done
+bench rcu_isd test/rcu/cg-build.sh rcu_isd "$B/rcu_isd" -- "$B/rcu_isd/tb"
+if [ -x "$B/rcu_isd/tb" ] && ! "$B/rcu_isd/tb" --control pcopy >"$B/rcu_isd.pcopy.log" 2>&1 &&
+   grep -q "control pcopy: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_isd.pcopy.log"; then
+  say "rcu_isd control pcopy" "caught"
+else
+  say "rcu_isd control pcopy" "NOT CAUGHT ($B/rcu_isd.pcopy.log)"; fail=1
+fi
 bench rcu_kill test/rcu/cg-build.sh rcu_kill "$B/rcu_kill" -- "$B/rcu_kill/tb"
 if [ -x "$B/rcu_kill/tb" ] && ! "$B/rcu_kill/tb" --control drain >"$B/rcu_kill.drain.log" 2>&1 &&
    grep -q "control drain: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_kill.drain.log"; then

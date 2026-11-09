@@ -111,8 +111,7 @@ module rcu_pred #(
   localparam int NQ = 13,                                // merge write ports
   localparam int NM = 4,                                 // MIU slots
   localparam int ND = 4,                                 // demotion read ports
-  localparam int NH = (ROWS + 7) / 8,                    // psel_hi bits, 6
-  localparam int WR = ccv_prov_pkg::CCV_P_W_PHYS_REG       // a GPR row index, 8
+  localparam int NH = (ROWS + 7) / 8                     // psel_hi bits, 6
 ) (
   input  logic               rcu_core_clk,
   input  logic               rst_n,
@@ -122,11 +121,8 @@ module rcu_pred #(
   input  logic [NS*WP-1:0]   lgp_cr01h,     // lead_guard_pred, each slot (RA-43: the payload has no guard)
   input  logic [NS-1:0]      ng_cr02h,      // pred_neg
   input  logic [NS*N-1:0]    im_cr02h,      // issue_mask
-  input  logic [NS*rcu_dec_pkg::OPC_W-1:0] opc_cr02h, // opcode (decoded here, rcu_dec_pkg)
+  input  logic [NS*rcu_dec_pkg::CLS_W-1:0] ocl_cr02h, // op class (rcu_isd's flops from the lead)
   input  logic [NS-1:0]      cont_cr02h,    // cont: a continuation, no class of its own
-  input  logic [NS*2-1:0]    drw_cr02h,     // done_row (an atomic's step)
-  input  logic [NK-1:0]      swe_cr02h,     // S slot s's pred_we (a copy's predicate-only form)
-  input  logic [NK*WR-1:0]   sdst_cr02h,    //   and phys_dst (the zero GPR)
   input  logic [2*WP+1:0]    lrp_cr01h,     // lead_rpsrc[13:0], R's in A-1 (RA-43): RA [5:0], neg [6]; RB [12:7], neg [13]
   input  logic [NK*NK-1:0]   ft_cr02h,      // S slot s's footprint, section k at s*NK + k
   output logic [NS*N-1:0]    act_cr03h,     // active_a[s]
@@ -173,19 +169,15 @@ module rcu_pred #(
   // S slot s sends a lane message (a lane op or a GPR copy; not a
   // predicate-only copy, which is pwe and the zero GPR). A continuation has
   // no class.
-  localparam logic [WR-1:0] ZG = WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
   logic [NS-1:0] gt_cr02h, pdt_cr02h;
   logic [NK-1:0] lm_cr02h;
   logic          br_cr02h;
   always_comb begin
     logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
-    logic                          pc_cr02h;
     lm_cr02h = '0;
     br_cr02h = 1'b0;
     for (int s = 0; s < NS; s++) begin
-      pc_cr02h = (s < NK) ? (swe_cr02h[s % NK] && sdst_cr02h[(s % NK)*WR +: WR] == ZG) : 1'b0;
-      c_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h[s*rcu_dec_pkg::OPC_W +: rcu_dec_pkg::OPC_W],
-                                     drw_cr02h[s*2 +: 2], pc_cr02h);
+      c_cr02h = ocl_cr02h[s*rcu_dec_pkg::CLS_W +: rcu_dec_pkg::CLS_W];
       gt_cr02h[s]  = !cont_cr02h[s] && c_cr02h[rcu_dec_pkg::CLS_GUARDED];
       pdt_cr02h[s] = !cont_cr02h[s] && c_cr02h[rcu_dec_pkg::CLS_PDATA];
       if (s < NK)

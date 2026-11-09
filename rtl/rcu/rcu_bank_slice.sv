@@ -87,7 +87,6 @@ module rcu_bank_slice #(
   localparam int WR = 8,        // a row index (CCV_P_W_PHYS_REG)
   localparam int NRR = 2,       // read ports whose valid comes with the row: R0, R1
   localparam int NK = 4,        // S slots, P slots, sections
-  localparam int OW = rcu_dec_pkg::OPC_W,
   localparam int NH = (ROWS + 15) / 16   // sel_hi bits
 ) (
   input  logic              rcu_core_clk,
@@ -105,8 +104,7 @@ module rcu_bank_slice #(
   input  logic [NK-1:0]     pv_cr00h,       // P slot j issues next cycle
   input  logic [NK-1:0]     pcont_cr01h,
   input  logic [NK*NK-1:0]  pfoot_cr01h,
-  input  logic [NK*OW-1:0]  popc_cr01h,     //   opcode (rcu_dec_pkg: base, index, data sources)
-  input  logic [NK*2-1:0]   pdrw_cr01h,     //   done_row (an atomic's step)
+  input  logic [NK*rcu_dec_pkg::CLS_W-1:0] pcls_cr01h, // class (rcu_isd's flops from the lead: base, index, data sources)
   input  logic [NK*3*WR-1:0] psrc_cr01h,
   // R2: the R op's phys_old_dst under the R valid lead (beside migration's).
   input  logic              r2v_cr00h,
@@ -133,7 +131,7 @@ module rcu_bank_slice #(
   // (generic write port NW-1). Its requests come from rcu_mig's flops.
   input  logic              g2_v_cr00h,     // migration's R2 lead
   input  logic [WR-1:0]     g2_row_cr01h,   //   its row
-  input  logic [rcu_dec_pkg::OPC_W-1:0] ropc_cr01h, // the R op's opcode (decoded here, rcu_dec_pkg)
+  input  logic [rcu_dec_pkg::CLS_W-1:0] rcls_cr01h, // the R op's class (rcu_isd's flops from the lead)
   input  logic              rmrg_cr01h,     //   and merge_en: it reads R2 (under R2's own lead)
   input  logic              gw_v_cr00h,     // migration's RW lead
   input  logic              gw_sel_cr01h,   //   the restore writes RW (else the R op does)
@@ -215,7 +213,6 @@ module rcu_bank_slice #(
   wire [NW-1:0] wr_en_cr01h = wr_v_cr01h | (NW'(gw_v_cr01h) << (NW - 1));
   // The R op reads R2 when it merges into a GPR (the model's decode,
   // rcu_dec_pkg; the R slot carries no atomic and no copy).
-  wire [rcu_dec_pkg::CLS_W-1:0] rcls_cr01h = rcu_dec_pkg::rcu_cls(ropc_cr01h, '0, '0);
   wire r2u_cr01h = rmrg_cr01h & rcls_cr01h[rcu_dec_pkg::CLS_GDST];
   wire r2r_cr01h = r2v_cr01h & r2u_cr01h;          // R2 is the R op's
   wire gws_cr01h = gw_v_cr01h & gw_sel_cr01h;      // RW is the restore's
@@ -245,7 +242,7 @@ module rcu_bank_slice #(
       pown_cr01h[j] = (K >= j) && pv_cr01h[j] && !pcont_cr01h[j] && pfoot_cr01h[j*NK + K];
       lsrc_cr01h  = lsrc_cr01h  | ({3*WR{sown_cr01h[j]}} & ssrc_cr01h[j*3*WR +: 3*WR]);
       lodst_cr01h = lodst_cr01h | ({WR{sown_cr01h[j]}} & sodst_cr01h[j*WR +: WR]);
-      c_cr01h = rcu_dec_pkg::rcu_cls(popc_cr01h[j*OW +: OW], pdrw_cr01h[2*j +: 2], 1'b0);
+      c_cr01h = pcls_cr01h[j*rcu_dec_pkg::CLS_W +: rcu_dec_pkg::CLS_W];
       sl_cr01h = {c_cr01h[rcu_dec_pkg::CLS_DSRC +: 2], c_cr01h[rcu_dec_pkg::CLS_XSRC +: 2],
                   c_cr01h[rcu_dec_pkg::CLS_BSRC +: 2]};
       for (int i = 0; i < 3; i++) begin

@@ -28,7 +28,8 @@
         "rcu_lanes": "rtl/rcu/rcu_lanes.sv",
         "rcu_mem": "rtl/rcu/rcu_mem.sv",
         "rcu_mig": "rtl/rcu/rcu_mig.sv",
-        "rcu_kill": "rtl/rcu/rcu_kill.sv"
+        "rcu_kill": "rtl/rcu/rcu_kill.sv",
+        "rcu_isd": "rtl/rcu/rcu_isd.sv"
       }
     }
   ]

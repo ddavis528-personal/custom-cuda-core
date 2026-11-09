@@ -9,35 +9,14 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include "cls_pack.h"
 #include "rcu_decode.h"
 
 using namespace ccv::skel;
+using namespace clspack;
 namespace R = ccv::rcu;
 
 namespace {
-
-// Field layout of a class vector, LSB first: name, width.
-struct Field { const char *name; unsigned w; };
-const Field kFields[] = {{"UNIT", 3},  {"RK", 5},      {"MK", 3},      {"GUARDED", 1},
-                         {"PDATA", 1}, {"GDST", 1},    {"ISLOT", 2},   {"IMMU", 1},
-                         {"IREG", 1},  {"READS", 3},   {"BSRC", 2},    {"XSRC", 2},
-                         {"DSRC", 2}};
-constexpr unsigned kNone = 7;   // UNIT of an opcode with no class (or an atomic on no step)
-
-unsigned src2(int s) { return s < 0 ? 3u : unsigned(s); }
-
-uint64_t pack(const R::OpClass &oc) {
-  const unsigned v[] = {unsigned(oc.unit), unsigned(oc.rk), unsigned(oc.mk), oc.guarded, oc.pdata,
-                        oc.gdst, src2(oc.imm_slot), oc.imm_used, oc.ireg, oc.reads & 7u,
-                        src2(oc.base_src), src2(oc.index_src), src2(oc.data_src)};
-  uint64_t r = 0;
-  unsigned at = 0, i = 0;
-  for (const Field &f : kFields) {
-    r |= uint64_t(v[i++] & ((1u << f.w) - 1)) << at;
-    at += f.w;
-  }
-  return r;
-}
 
 std::string hex(uint64_t v, unsigned w) {
   char b[32];
@@ -118,6 +97,59 @@ int main() {
   }
   std::printf("      default: c = %s;\n    endcase\n    rcu_cls = c;\n  endfunction\n\n",
               hex(none, W).c_str());
+  // rcu_cls_a1: the same class, built for depth (rcu_isd's lead capture,
+  // held to the issue end's 12; RA-43). One table per value of the select
+  // bits kSel, indexed by the other four of opc[7:0], each ANDed with its
+  // one-hot select and ORed; opc[8] holds only the copy. kSel is the split
+  // that maps shallowest (lead_opcode to flops 11.9 with the fanout term,
+  // pcopy an input, against 12.0 to 16.6 for the other 69 splits of four,
+  // and 15.6 for rcu_cls; 12.4 in rcu_isd with the pcopy compare, RI-26).
+  // isd_tb checks it against clsWord() on every input.
+  const unsigned kIdx[4] = {0, 1, 2, 4}, kSel[4] = {3, 5, 6, 7};
+  auto cat = [](const unsigned (&b)[4]) {
+    std::string s = "{";
+    for (int i = 3; i >= 0; --i) s += "opc[" + std::to_string(b[i]) + "]" + (i ? ", " : "}");
+    return s;
+  };
+  std::printf("  function automatic logic [CLS_W-1:0] rcu_cls_a1(input logic [OPC_W-1:0] opc,\n"
+              "                                                 input logic [1:0] drow,\n"
+              "                                                 input logic pcopy);\n"
+              "    logic [CLS_W-1:0] c, t;\n"
+              "    c = '0;\n");
+  for (unsigned h = 0; h != 16; ++h) {
+    std::printf("    case (%s)\n", cat(kIdx).c_str());
+    for (unsigned lo = 0; lo != 16; ++lo) {
+      unsigned code = 0;
+      for (unsigned i = 0; i != 4; ++i)
+        code |= ((lo >> i) & 1u) << kIdx[i] | ((h >> i) & 1u) << kSel[i];
+      uint64_t v[4];
+      for (unsigned row = 0; row != 4; ++row) {
+        v[row] = clsWord(code, row, false);
+        if (clsWord(code, row, true) != v[row]) {
+          std::fprintf(stderr, "gen_dec: opcode %u below 256 reads pcopy\n", code);
+          return 1;
+        }
+      }
+      if (v[0] == v[1] && v[1] == v[2] && v[2] == v[3])
+        std::printf("      %u: t = %s;\n", lo, hex(v[0], W).c_str());
+      else
+        std::printf("      %u: t = drow == 2'd0 ? %s : drow == 2'd1 ? %s :\n"
+                    "          drow == 2'd2 ? %s : %s;\n", lo, hex(v[0], W).c_str(),
+                    hex(v[1], W).c_str(), hex(v[2], W).c_str(), hex(v[3], W).c_str());
+    }
+    std::printf("      default: t = %s;\n    endcase\n", hex(none, W).c_str());
+    std::printf("    c = c | ({CLS_W{%s == 4'd%u}} & t);\n", cat(kSel).c_str(), h);
+  }
+  for (unsigned code = 256; code != 512; ++code)
+    if (code != kOpCopy && (clsWord(code, 0, false) != none || clsWord(code, 0, true) != none)) {
+      std::fprintf(stderr, "gen_dec: opcode %u above 255 has a class\n", code);
+      return 1;
+    }
+  std::printf("    if (opc[8])\n      c = &opc[7:0] ? (pcopy ? %s : %s) : %s;\n"
+              "    rcu_cls_a1 = c;\n  endfunction\n\n",
+              hex(clsWord(kOpCopy, 0, true), W).c_str(), hex(clsWord(kOpCopy, 0, false), W).c_str(),
+              hex(none, W).c_str());
+  static_assert(kOpCopy == 511, "the copy is the only opcode with opc[8] set");
   std::printf("  /* verilator lint_on UNUSEDPARAM */\nendpackage\n");
   return 0;
 }

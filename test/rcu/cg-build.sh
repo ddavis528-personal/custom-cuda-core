@@ -26,6 +26,8 @@ case "$unit" in
     vl rcu_r "" "" "$PWD/rtl/rcu/rcu_xbar.sv" "$PWD/rtl/rcu/rcu_r.sv" "$PWD/test/rcu/r_tb.cpp" ;;
   rcu_pred)
     vl rcu_pred "" "" "$PWD/rtl/rcu/rcu_pred.sv" "$PWD/test/rcu/pred_tb.cpp" ;;
+  rcu_isd)
+    vl rcu_isd "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_isd.sv" "$PWD/test/rcu/isd_tb.cpp" ;;
   rcu_kill)
     vl rcu_kill "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_kill.sv" "$PWD/test/rcu/kill_tb.cpp" ;;
   rcu_mig)

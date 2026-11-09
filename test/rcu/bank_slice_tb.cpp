@@ -64,6 +64,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "cls_pack.h"
 #include "dec_tb.h"
 
 #ifndef BS_ROWS
@@ -318,7 +319,7 @@ struct Bench {
     static const dectb::OpPool ng("an R op writing no GPR", 0, [&](const OpClass &oc) { return isR(oc) && !oc.gdst; });
     const bool g = ruse || (salt & 1u);
     const auto &ops = g ? gd.ops : ng.ops;
-    dut->ropc_cr01h = ops[(salt >> 1) % ops.size()];
+    dut->rcls_cr01h = uint32_t(clspack::clsWord(ops[(salt >> 1) % ops.size()], 0, false));
     dut->rmrg_cr01h = ruse || (!g && (salt & 2u));
   }
 
@@ -334,7 +335,7 @@ struct Bench {
     dut->mw_v_cr01h = 0;
     dut->g2_v_cr00h = 0;
     dut->gw_v_cr00h = 0;
-    dut->ropc_cr01h = 0;
+    dut->rcls_cr01h = uint32_t(clspack::clsWord(0, 0, false));
     dut->rmrg_cr01h = 0;
     dut->gw_sel_cr01h = 0;
     for (unsigned j = 0; j < 4; ++j) {
@@ -368,8 +369,8 @@ struct Bench {
         put(dut->pcont_cr01h, j, 1, y.cont);
         put(dut->pfoot_cr01h, 4 * j, 4, y.foot);
         for (unsigned i = 0; i < 3; ++i) put(dut->psrc_cr01h, (j * 3 + i) * 8, 8, y.src[i]);
-        put(dut->popc_cr01h, 9 * j, 9, y.opc);
-        put(dut->pdrw_cr01h, 2 * j, 2, y.drw);
+        // The class word rcu_isd holds from the lead (RA-43, RI-25).
+        put(dut->pcls_cr01h, 27 * j, 27, clspack::clsWord(y.opc, y.drw, false));
       }
     }
     for (const Write &w : next.wr) {
