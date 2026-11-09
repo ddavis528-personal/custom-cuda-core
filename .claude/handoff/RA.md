@@ -230,7 +230,8 @@ RI-32: P owner from lead_sec_mask built + asserted (psecX caught); block read S4
 OA 397-405 re-read after OA filled them (rev 408): OA 400/401/403 match what RA acted on; OA 398's miu_rcu_data zero-cycle is moot (DA 116 kept the flop).
 SWEEP GATE METHOD (2026-11-09): the full gate exceeds the 2h background limit (cg ~6.9ks, ngd ~6.7ks in parallel) and build/ can fill the disk. Split it: clear build/ except compiler, compiler.git, synth-cache; `tools/bg-run.sh X bash -c "tools/regen.sh >/dev/null && git diff --quiet && tools/verify.sh --only cg && tools/gate-export.sh $SCRATCH/gate-cg.tgz"`; clear build/ again; same with ngd; clear again; then `gate-push.sh --full --branches=ccr-126afa13-clcw9s --import=$SCRATCH/gate-cg.tgz,$SCRATCH/gate-ngd.tgz` -> SPLIT PASS.
 Sweep 2026-11-09 (pushed ad33acf6, SPLIT PASS 23/23): merged 3868632d, 57eff422, 9eb50716, c22116ce, infra-6msg93 (carries 183cc441). Skipped on conflicts already raised in OA 405 (Needs AR, TI, RI): 80102643 (perf-register.md), 888218a3 (perf-register.md, cg-waivers.json, rcu_dec_pkg.sv). Register: nothing for RA.
-Bookmarks: OA 409, RA 133, RI 66, TI 400, AR 339, DA 116, OI 336, Conventions 17, CP 157, IS 190.
+RA rev 134 (re:RI-33): ccv_rcu.sv clean on cg+ngd at 0339f719 (gate-scratch/RI), block read no findings; push waits on TI's 3 fixtures (gate-scope map, check-links no_flop control, links_split.json). Kill detector accepted: v on ungated core_clk, ep/mask on core_clk under own v flop (CG-5), DCGE 100%. Asked RI for block-read numbers -> fill spec Partition NGD table when they land.
+Bookmarks: OA 409, RA 134, RI 67, TI 400, AR 339, DA 116, OI 336, Conventions 17, CP 157, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
