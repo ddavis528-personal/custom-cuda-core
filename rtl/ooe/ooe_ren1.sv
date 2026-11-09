@@ -169,10 +169,11 @@ module ooe_ren1 #(
     end
     fidx = o;
   endfunction
-  // A lane's read: its candidate's value (zero where a pending port wrote
-  // it), and its pending writer lane-selected, that port's name ORed in.
+  // A lane's read: its candidate's value, or, where a pending port wrote
+  // it, that port's name, by its pending writer lane-selected. A mux, not
+  // an OR (the value is zero there): the name, bound late, stays at the end.
   function automatic logic [GW-1:0] fg(input int l, input int i);
-    logic [GW-1:0] v;
+    logic [GW-1:0] v, n;
     logic [R-1:0]  k;
     v = '0;
     k = '0;
@@ -180,11 +181,12 @@ module ooe_ren1 #(
       v = v | ({GW{lane_c_cq02h[l * NC + c]}} & c_gv_cq01h[ci(c, i) * GW +: GW]);
       k = k | ({R{lane_c_cq02h[l * NC + c]}} & c_gk_cq01h[ci(c, i) * R +: R]);
     end
-    for (int p = 0; p < R; p++) v = v | ({GW{k[p]}} & pw_gname_cq01h[p * GW +: GW]);
-    fg = v;
+    n = '0;
+    for (int p = 0; p < R; p++) n = n | ({GW{k[p]}} & pw_gname_cq01h[p * GW +: GW]);
+    fg = (k != '0) ? n : v;
   endfunction
   function automatic logic [PW-1:0] fp(input int l, input int i);
-    logic [PW-1:0] v;
+    logic [PW-1:0] v, n;
     logic [R-1:0]  k;
     v = '0;
     k = '0;
@@ -192,8 +194,9 @@ module ooe_ren1 #(
       v = v | ({PW{lane_c_cq02h[l * NC + c]}} & c_pv_cq01h[ci(c, i) * PW +: PW]);
       k = k | ({R{lane_c_cq02h[l * NC + c]}} & c_pk_cq01h[ci(c, i) * R +: R]);
     end
-    for (int p = 0; p < R; p++) v = v | ({PW{k[p]}} & pw_pname_cq01h[p * PW +: PW]);
-    fp = v;
+    n = '0;
+    for (int p = 0; p < R; p++) n = n | ({PW{k[p]}} & pw_pname_cq01h[p * PW +: PW]);
+    fp = (k != '0) ? n : v;
   endfunction
   function automatic logic [R-1:0] fl(input int l, input int i, input int k);
     logic [R-1:0] v;
