@@ -772,6 +772,19 @@ end
   register reset by the flopped reset still shares a gate with one that is
   not: check-cg follows the chain of plain flops from the port, and reset
   cycles, the flops' extra one included, are never counted.
+- **RST-2, the reset arrives in one cycle everywhere** (Daniel, 2026-11-09).
+  Every endpoint of a module, and of an assembled block, takes the reset in
+  the same cycle. An endpoint is every use of a net of the reset chain (the
+  port, the plain flops capturing it, inverters on it) but the next stage's
+  D pin: a flop's reset, enable or data pin, logic (an enable's cone among
+  it), an output, and a blackboxed child's reset port, which arrives at that
+  stage plus the child's own latency, its unit's at the instance's
+  parameters, recursively; a level with no state hands the reset on
+  unflopped. Where the cycles differ, the shallower endpoints take extra
+  reset flop stages: check-cg names them, instance by path, and the stages
+  each lacks ("needs +1 reset stage"). Structural like RST-1: no budget
+  takes it, a waiver may. The global balance across blocks and repeaters is
+  reported, not failed, until the reset tree is modelled (Q-37).
 
 **An enable group is what synthesis would gate**: the flops Yosys infers one
 enable for, read from the synthesised netlist, not from the source. A

@@ -105,7 +105,10 @@ flops or more, its enable cone within 8 NGD and its DCGE at least 75% in
 idle, medium and high scenarios; anything else must toggle 75% of the time.
 An enable comes only from the module's own flops, never an input (CG-5), and
 the reset is flopped before any use (RST-1; 2026-10-18): that is why valid
-leads a payload by a cycle, and why a lead field is rare.
+leads a payload by a cycle, and why a lead field is rare. The reset arrives
+in the same cycle at every endpoint of a module and of an assembled block,
+children at their units' latencies; check-cg names the shallower ones and
+the reset stages they lack (RST-2; Daniel, 2026-11-09).
 `tools/check-cg.py` measures it from each module's unit
 (`test/**/cg-units.json`, and every repeater the design instantiates,
 `rtl/top/rpt-units.json`). Each module may leave the larger of 2% of its
