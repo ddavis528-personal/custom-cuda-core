@@ -677,8 +677,8 @@ module ccv_rcu (
 
   // rcu_isd, one a slot: the slot's class, decoded from its lead in A-1
   // (RA-43, RI-25), and its lead copies (RA 131 (1)): cont and pred_neg on
-  // every slot for rcu_pred; on S0-S3 (LS) phys_src, phys_old_dst,
-  // old_dst_pos and src_pos for rcu_lanes. Their readers take the copies
+  // every slot for rcu_pred (cont on S0-S3 for rcu_lanes too); on S0-S3
+  // (LS) phys_src, phys_old_dst, old_dst_pos and src_pos for rcu_lanes. Their readers take the copies
   // from these flops in A in place of the payload, whose in-path from the
   // zero-cycle end was over 12.
   localparam int CW = 27;    // = rcu_dec_pkg::CLS_W (as OW above: not that package here)
@@ -972,7 +972,7 @@ module ccv_rcu (
     .lsrc_cr01h  (i_lsrc_cr01h[0 +: NK*3]),
     .limm_cr01h  (i_limm_cr01h[0 +: NK]),
     .lmrg_cr01h  (i_lmrg_cr01h[0 +: NK]),
-    .cont_cr02h  (i_cont_cr01h[0 +: NK]),
+    .cont_cr02h  (k_cont_cr02h[0 +: NK]),
     .foot_cr02h  (i_foot_cr01h[0 +: NK*NK]),
     .opc_cr02h   (i_opc_cr02h[0 +: NK*OW]),
     .imm_cr02h   (i_imm_cr02h[0 +: NK*32]),

@@ -54,6 +54,12 @@
       "by": "RI, under AR 336 (b) and RA rev 127; fanout term, AR 326, RA rev 106",
       "date": "2026-11-09",
       "why": "kill_v_q straight from ccv_rcu's kill detector flop (on the ungated clock, so a kill landing while RCU sleeps is seen in K), wire only; the fanout term across rcu_mig and rcu_kill is check-ngd's at the block read (RA rev 126 (b))."
+    },
+    "kmn_cr02h": {
+      "arrival": 1.4,
+      "by": "RI, under AR 338 and AR 339; fanout term, AR 326, RA rev 106",
+      "date": "2026-11-09",
+      "why": "kill_warp_mask straight from ccv_rcu's kill detector flop (a plain flop on the ungated clock, RCU's boundary flop for the input, AR 338), wire only, read only with kact_cr02h (kill_v_q a cycle on); the arrival is the fanout term, as kv_cr01h's."
     }
   }
 }
