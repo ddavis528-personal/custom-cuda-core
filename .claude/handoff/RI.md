@@ -51,8 +51,9 @@ architect may approve only if the end meets module NGD without the flop; can't m
    ri-wt7 branch ri-asm3 (from ri-asm2 6076da47 rcu_isd class word): 5d7ae9e3 merge TI 5271c5e7; 9ef18583
    kill detector (RA rev 127, AR 336 b: ungated kill_detect_v_cr01h in ccv_rcu, killsleep_tb + drop1/drop2,
    run-rtl all green), on gate-scratch/RI. RI-27 (rev 60/61) answered RA 126/127, AR 336, TI 394/395.
-   BLOCKERS for the push: RI-26 (rcu_isd lead_opcode 12.4 vs 12; asked RA/AR for in-side 13) and 165
-   CCV-L29 untagged nets in ccv_rcu.sv (held back from the working branch, so never linted: tag them).
+   18801bda: ccv_rcu nets stage-tagged (L29; lint 0, top Icarus/Verilator + killsleep as before;
+   scratchpad asm/verify4.sh; scratchpad tagnets.py). ccv_rcu.sv is now the source (ri-keep gen is stale).
+   BLOCKER for the push: RI-26 (rcu_isd lead_opcode 12.4 vs 12; asked RA/AR for in-side 13).
    ri-wt2 unit checks ~/ccv-logs/chk-isd.log (slices + isd consumers); read with scratchpad cgpol.py.
    Then: block NGD read (measured fanout term per class bit and for kill_detect's Q, RA 126 b), re-measure
    cont/pred_neg/footprint/srcs vs 12, check-1d, regen, split gate, push via gate-push.
