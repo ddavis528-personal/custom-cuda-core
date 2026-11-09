@@ -1283,9 +1283,8 @@ it.
   miu_rcu_data's flop (J11b g2''', TI 390, clean on OI-133's fix 11386e7,
   replacing J11's g2'' that ran with OA-17 failures) is S1 -0.26%, cm32
   +0.19%, cm128 +1.27%, vadd16_loop -2.79%. S1 over 0.2% and up to 0.5% is
-  Daniel's (DA 114); AR recommends keeping the flop (AR rev 334), since the
-  gain is S1 alone and both coremarks lose, and it stays flopped unless he
-  rules otherwise. J12 (TI 389, 8 ways, every run clean):
+  Daniel's (DA 114); Daniel kept the flop (DA rev 116, 2026-11-09, on AR rev
+  334's recommendation: the gain is S1 alone and both coremarks lose). J12 (TI 389, 8 ways, every run clean):
   PHYS_REGS 160 leaves S1 and cm32 flat but costs cm128 +1.17% (128:
   +2.89%), now that cm128 is no longer L1-bound and the name pool shows
   (stall.share.names 0 / 14,337 / 1,265,169). That fails AR rev 315's bar
