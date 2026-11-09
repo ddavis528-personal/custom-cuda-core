@@ -49,11 +49,18 @@ module ooe_ren1 #(
   // And its reads, from ooe_headrd (heads major within a slot: slot s's
   // instance gives h * 4 + i for its head h): GPR reads src0..2, the old
   // destination; predicate reads guard, old destination, q0, q1; each with
-  // its in-group writer, one-hot over the slot's heads.
+  // its pending writer, one-hot over the pending group's ports, and its
+  // in-group writer, one-hot over the slot's heads.
   input  logic [S*R*4*GW-1:0] c_gv_cq01h,
+  input  logic [S*R*4*R-1:0]  c_gk_cq01h,
   input  logic [S*R*4*R-1:0]  c_gw_cq01h,
   input  logic [S*R*4*PW-1:0] c_pv_cq01h,
+  input  logic [S*R*4*R-1:0]  c_pk_cq01h,
   input  logic [S*R*4*R-1:0]  c_pw_cq01h,
+  // The pending group's new names, per port (ooe_ren1n's, from the Rename 1
+  // register): a read's pending writer's name, ORed in after the lanes (#35).
+  input  logic [R*GW-1:0]     pw_gname_cq01h,
+  input  logic [R*PW-1:0]     pw_pname_cq01h,
   // The go: each lane's uop, and which candidate, one-hot; and each
   // candidate's writers before it in lane order, a thermometer per class
   // (b 0 GPR, 1 predicate).
@@ -162,16 +169,30 @@ module ooe_ren1 #(
     end
     fidx = o;
   endfunction
+  // A lane's read: its candidate's value (zero where a pending port wrote
+  // it), and its pending writer lane-selected, that port's name ORed in.
   function automatic logic [GW-1:0] fg(input int l, input int i);
     logic [GW-1:0] v;
+    logic [R-1:0]  k;
     v = '0;
-    for (int c = 0; c < NC; c++) v = v | ({GW{lane_c_cq02h[l * NC + c]}} & c_gv_cq01h[ci(c, i) * GW +: GW]);
+    k = '0;
+    for (int c = 0; c < NC; c++) begin
+      v = v | ({GW{lane_c_cq02h[l * NC + c]}} & c_gv_cq01h[ci(c, i) * GW +: GW]);
+      k = k | ({R{lane_c_cq02h[l * NC + c]}} & c_gk_cq01h[ci(c, i) * R +: R]);
+    end
+    for (int p = 0; p < R; p++) v = v | ({GW{k[p]}} & pw_gname_cq01h[p * GW +: GW]);
     fg = v;
   endfunction
   function automatic logic [PW-1:0] fp(input int l, input int i);
     logic [PW-1:0] v;
+    logic [R-1:0]  k;
     v = '0;
-    for (int c = 0; c < NC; c++) v = v | ({PW{lane_c_cq02h[l * NC + c]}} & c_pv_cq01h[ci(c, i) * PW +: PW]);
+    k = '0;
+    for (int c = 0; c < NC; c++) begin
+      v = v | ({PW{lane_c_cq02h[l * NC + c]}} & c_pv_cq01h[ci(c, i) * PW +: PW]);
+      k = k | ({R{lane_c_cq02h[l * NC + c]}} & c_pk_cq01h[ci(c, i) * R +: R]);
+    end
+    for (int p = 0; p < R; p++) v = v | ({PW{k[p]}} & pw_pname_cq01h[p * PW +: PW]);
     fp = v;
   endfunction
   function automatic logic [R-1:0] fl(input int l, input int i, input int k);
