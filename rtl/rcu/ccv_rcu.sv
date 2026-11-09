@@ -1049,21 +1049,21 @@ module ccv_rcu (
   );
 
   // ---- The kill detector (RA rev 127, AR 336 (b)) -------------------------
-  // kill_valid lands in K-1 and is in the gate's wake_cr01h OR, but a wake_cr01h opens
+  // kill_valid lands in K-1 and is in the gate's wake OR, but a wake opens
   // the gate only from the edge after next (ccv_common_clk), so asleep, the
   // edge that ends K-1 never reaches rcu_kill or rcu_mig. This flop takes it
-  // on the ungated clock, the one wake_cr01h detector CCV-L22 allows: kill_v_q in
+  // on the ungated clock, the one wake detector CCV-L22 allows: kill_v_q in
   // K for both, asleep as awake, with no cycle added (a hold, not a delay).
   // The edge that ends K, which takes the epoch and the warp mask, is the
-  // first the wake_cr01h opens. Its reset is flopped first (RST-1). Two flops,
-  // written every cycle, in the block's 2% (RA rev 127).
-  logic kill_detect_rst_cr01h_n, kill_detect_v_cr01h;
-  always_ff @(posedge core_clk) begin
-    kill_detect_rst_cr01h_n <= rst_n;
-    kill_detect_v_cr01h     <= kill_detect_rst_cr01h_n && kill_valid;
-  end
+  // first the wake opens. kill_valid goes straight into it (AR's rev 285 (5):
+  // a wake-tapped input's other loads go straight into a flop, RST-2), so it
+  // has no reset: OOE holds kill_valid low in reset, and rcu_kill and rcu_mig
+  // reset what it enables. One flop, written every cycle, in the block's 2%
+  // (RA rev 127, RA rev 130).
+  logic kill_detect_v_cr01h;
+  always_ff @(posedge core_clk) kill_detect_v_cr01h <= kill_valid;
 
-  // ---- rcu_kill: kill, the inbound credits, done's wake_cr01h and the block's idle_cr01h ---
+  // ---- rcu_kill: kill, the inbound credits, done's wake and the block's idle ---
   rcu_kill u_kill (
     .rcu_core_clk  (rcu_core_clk),
     .rst_n         (rst_n),
