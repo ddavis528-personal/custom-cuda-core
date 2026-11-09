@@ -164,6 +164,17 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
 # add to the baseline: a path written since meets the rule with the term.
 FANOUT_BASELINE = os.path.join(ROOT, "rtl", "ngd-fanout-baseline.json")
 EPS = 0.005
+# Wake taps (AR's register rev 336, on RI-25 (4), option (b)): a block input
+# that is not a credited channel's _wake but that the block ORs into its
+# clock gate's wake vector, as RCU's kill_valid (the kill fabric's level) is
+# into ccv_common_clk's `wake`. That tap is a wake source by the spec, so it
+# is held as a *_wake input is, at most PORT (12) NGD from the block input to
+# the wake flop: every level's wiring, glue and fanout term on the way plus
+# the clock gate's own depth into its flop (its unit's). Only the path into
+# that child port is excused from "straight into a flop": the input's every
+# other load still goes straight into one. Block input -> (child module,
+# child port).
+WAKE_TAPS = {"kill_valid": ("ccv_common_clk", "wake")}
 NEG = float("-inf")
 
 
@@ -1312,7 +1323,7 @@ def hidden_stages(name, t, ends, straight):
 
 
 def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, params=None,
-                ends=None, budgeted=None):
+                ends=None, budgeted=None, taps=None):
     """A block assembled, as a sum of parts (Daniel, 2026-11-06): no
     whole-block synthesis, no child synthesised with its parent. The
     hierarchy of `top` (the partition: the block's hardening wrapper, or the
@@ -1350,6 +1361,11 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
           straight into one. `budgeted` is the block's such channels,
           rtl_port_budget(name) when not given. Every other no-flop end is
           held straight in, as (c).
+      (f) wake (AR's rev 336, RI-25 (4) (b)): a *_wake input, and a listed
+          tap's path into the block clock's wake (`taps`, WAKE_TAPS when not
+          given), is a wake source, not a data port: held to PORT (12) NGD
+          into a flop, wiring, glue and fanout term included, not straight
+          in. A tap's other loads are held straight in, as (c).
 
     The fanout term at the boundary: an input wired to more than 4 pins on
     a level's net is a buffer tree before its flops, so it is not straight
@@ -1402,10 +1418,16 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                          " and %d more" % (len(paths) - 3) if len(paths) > 3 else ""),
                         "; ".join(others) or "none"))
 
-    def straight(mn, cell, port, out, path):
+    taps = WAKE_TAPS if taps is None else taps
+
+    def is_tap(tap, typ, pn):
+        return tap is not None and src_name(typ) == tap[0] and pn == tap[1]
+
+    def straight(mn, cell, port, out, path, tap=None):
         """Why `port` of instance (mn, cell) is not straight from (out) or
         into a flop: [] when it is, or when no unit times it (coverage says
-        so)."""
+        so). An input's path into `tap`, (child module, port), is not held
+        here but by tap_depth (f)."""
         where = "%s%s" % (path + "." if path else "", port)
         if mn in timings:
             t, why = timings[mn], []
@@ -1425,7 +1447,7 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                             where, "from input" if out else "to output", o))
                     continue
                 c, typ, pn, _ = t.cut[o]
-                if typ in st.lib or is_clock(pn):
+                if typ in st.lib or is_clock(pn) or not out and is_tap(tap, typ, pn):
                     continue
                 lg = t.p_io[(p, q)]
                 if lg > EPS:
@@ -1436,7 +1458,7 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                                "term before %s.%s" % (where, t.port_fan[p][0], dl, c, pn))
                 else:
                     why += straight(typ, (mn, c), pn, out,
-                                    "%s.%s" % (path, c) if path else c)
+                                    "%s.%s" % (path, c) if path else c, tap)
             return why
         u = found.get((mn, cell))
         if u is None:
@@ -1481,13 +1503,49 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
             return d
         u = found.get((mn, cell))
         return NEG if u is None else u.t.ir.get(port, NEG)
+
+    def tap_depth(mn, cell, port, tap):
+        """(f): the longest timed path from `port` of level (mn, cell) into
+        `tap`'s flops, through wires, glue and levels, each level's fanout
+        term included, the tap child's depth by its unit (reach). NEG where
+        the input reaches no tap."""
+        if mn not in timings:
+            return NEG
+        t, d = timings[mn], NEG
+        for (p, q), dl in t.io.items():
+            if p != port or q not in t.cut:
+                continue
+            c, typ, pn, _ = t.cut[q]
+            if typ in st.lib or is_clock(pn):
+                continue
+            sub = reach(typ, (mn, c), pn) if is_tap(tap, typ, pn) else \
+                tap_depth(typ, (mn, c), pn, tap)
+            d = max(d, dl + sub)
+        return d
     bud = rtl_port_budget(name) if budgeted is None else budgeted
     bpat = re.compile(r"^(?:%s)(?:_c\d+)?(?:_s\d+)?_(?:valid|payload)$"
                       % "|".join(re.escape(c) for c in sorted(bud))) if bud else None
     for i in t.ins:
-        # Wake and the reset are not data ports (RI-22 (3), AR 327).
-        if is_clock(i) or i in t.cut or i == "rst_n" or i.endswith("_wake"):
+        # Wake and the reset are not data ports (RI-22 (3), AR 327). A *_wake
+        # input, skipped here outright until AR's rev 336, is now held as a
+        # tap is ("checked as *_wake ports are, at most 12 NGD"; f): every
+        # load into a flop within PORT, normally the one into the block
+        # clock's wake OR. No assembled block in the repo had one then.
+        if is_clock(i) or i in t.cut or i == "rst_n":
             continue
+        if i.endswith("_wake"):
+            d = reach(st.top, None, i)
+            if d > PORT + EPS:
+                fails.append("block %s: input %s, a wake, reaches a flop %.1f NGD in, over the "
+                             "%g a wake is held to (AR's rev 336)" % (name, i, d, PORT))
+            continue
+        tap = taps.get(i)
+        if tap is not None:
+            d = tap_depth(st.top, None, i, tap)
+            if d > PORT + EPS:
+                fails.append("block %s: input %s's tap into %s.%s, a wake source (AR's rev 336, "
+                             "RI-25 (4) (b)), reaches the wake flop %.1f NGD in, over the %g a "
+                             "wake is held to" % (name, i, tap[0], tap[1], d, PORT))
         if bpat and bpat.match(i) and start != st.top:
             d, arr = reach(st.top, None, i), budgets.arrival(want, i)
             if d > STAGE - arr + EPS:
@@ -1496,7 +1554,7 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                              "flop %.1f NGD in, over the %g its budget leaves (%s arriving at "
                              "%g)" % (name, i, d, STAGE - arr, want, arr))
             continue
-        why = straight(st.top, None, i, False, "")
+        why = straight(st.top, None, i, False, "", tap)
         if why:
             fails.append("block %s: input %s does not go straight into a flop: a crossing "
                          "carries no logic, so it goes straight into a flop, the interface "
@@ -2115,6 +2173,44 @@ def selftest():
         else:
             expect(any("input r_payload" in x and want in x for x in f),
                    "a second-kind end's logic (%s) passed, or failed otherwise: %s" % (tag, f))
+    #    Wake (AR's rev 336, RI-25 (4) (b)): kill_valid, on the tap list,
+    #    goes into the block clock's wake (ngd_fx_wclk standing for
+    #    ccv_common_clk) and straight into kv_q. Its tap, and the x_wake
+    #    beside it, are held to 12 into the wake flop: 11.7 passes (N 4, G
+    #    8), where the tap off the list is refused as any input into logic;
+    #    the fixture's first step over 12, 12.9 (N 80, G 5), fails both.
+    #    The tap excuses only the wake path: glue on kill_valid's data load
+    #    (DG) is refused, as is another input, oth, ORed into the wake (OI).
+    ktap = {"kill_valid": ("ngd_fx_wclk", "wake")}
+    for tag, n, g, dg, oi in (("kv", 4, 8, 0, 0), ("kv_13", 80, 5, 0, 0),
+                              ("kv_dg", 4, 8, 1, 0), ("kv_oi", 4, 8, 0, 1)):
+        wu = funit("fx_wclk_%d_%d" % (n, g), "ngd_fx_wclk", {"N": n, "G": g})
+        kp = {"N": n, "G": g, "DG": dg, "OI": oi}
+        _, f = block_check("fx_" + tag, "ngd_fx_blk_kv", files, [], none, [wu], params=kp,
+                           taps=ktap)
+        tapf = [x for x in f if "kill_valid's tap into ngd_fx_wclk.wake" in x]
+        kvf = [x for x in f if "input kill_valid does not go straight" in x]
+        if tag == "kv":
+            expect(not f and 11 < wu.t.ir["wake"] <= PORT,
+                   "a wake tap within 12 (%.1f NGD) was refused, or tests nothing: %s"
+                   % (wu.t.ir["wake"], f))
+            _, f = block_check("fx_kv_off", "ngd_fx_blk_kv", files, [], none, [wu],
+                               params=kp, taps={})
+            expect(any("input kill_valid does not go straight" in x and "u_clk.wake" in x
+                       for x in f),
+                   "kill_valid into the wake, off the tap list, passed as straight into a "
+                   "flop: %s" % f)
+        elif tag == "kv_13":
+            expect(len(tapf) == 1 and "12.9 NGD in, over the 12" in tapf[0] and not kvf
+                   and any("input x_wake, a wake, reaches a flop 12.9" in x for x in f),
+                   "a wake tap, or a *_wake, at 12.9 NGD passed, or failed otherwise: %s" % f)
+        elif tag == "kv_dg":
+            expect(kvf and not tapf and "u_clk" not in kvf[0],
+                   "glue on a tapped input's data load passed, or failed otherwise: %s" % f)
+        else:
+            expect(any("input oth does not go straight" in x and "u_clk.wake" in x for x in f)
+                   and not tapf and not kvf,
+                   "an input off the tap list ORed into the wake passed: %s" % f)
     #    No child is synthesised: a child with a combinational loop, which
     #    the strict Yosys refuses to synthesise (OI-44), under a parent timed
     #    alone; the same hierarchy synthesised with its children kept, as
@@ -2184,7 +2280,7 @@ def selftest():
               "inner helpers alone and inside a parent, registers shared by an output and the "
               "rest, observation ports, budget files, ratchet, coverage, glue, the assembled "
               "block as a sum of parts, ABC's cache, the fanout term, one-cell captures, "
-              "second-kind no-flop ends (%d controls)"
+              "second-kind no-flop ends, wake taps (%d controls)"
               % checks)
     return 1 if bad else 0
 

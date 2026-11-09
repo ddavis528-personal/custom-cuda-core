@@ -398,6 +398,14 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
           oc.rk == RKind::VoteAll || oc.rk == RKind::Ballot) {
         x.rpa = psrc(is.imm);
         x.rpb = psrc(is.imm >> (w + 1));
+        // register pmov's ps1 repeats its ps0 (OA's rev 396): RCU refuses one
+        // whose two sources differ, physical predicate or negate (RA 119).
+        if (oc.rk == RKind::Pmov) {
+          const uint32_t fm = (1u << (w + 1)) - 1;
+          if ((is.imm & fm) != ((is.imm >> (w + 1)) & fm))
+            fail("seq %llu: pmov's ps1 (%u) is not its ps0 (%u)", seqOf(is.tid),
+                 unsigned((is.imm >> (w + 1)) & fm), unsigned(is.imm & fm));
+        }
         if (brk == "arch-pred-srcs") {
           auto arch = [&](uint32_t q) {
             const uint32_t v = rdPred(q & 3);
