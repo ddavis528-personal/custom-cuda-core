@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=66 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 66 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=67 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 67 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -57,7 +57,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Kill | drain everything for `KILL_DRAIN` = 15 (RA-43); ack as a level with epoch | Done | RA-14, RA-23 |
 | Reset | control state only, about 1,500 flops; no PRF or payload reset | Done | A-29 |
 | CSRs | none; a read-0 responder (RA-26) | Done | RA-26 |
-| Size | about 246,000 flops, 80% of them PRF rows | Partition | RA-11 |
+| Size | about 242,400 flops summed from the units at their instances (RI rev 47), 81% of them PRF rows; CCV\_P\_PHYS\_REGS stays 192 (AR 333), no area target (Daniel, 2026-11-02); RA-11 closed (RA rev 122) | Partition | RA-11 |
 | Address time | CCV\_LAT\_RCU\_ADDR\_BASE = 1: address valid at A+1, payload at A+2; RCU-internal, from the interface flop; the receiving interface flop's cycle is the link term bnd\_rx (AR row 300), counted only on the crossing, so the base and CCV\_LAT\_RCU\_ADDR stay 1 (AR row 301), and L1 wake goes 17 to 13; one more if M1 misses (RA rev 79) | Lane and memory; Partition | RA-7, RA-31 (1); PF-47 |
 | Issue lead slice | OOE sends section mask, source, imm and merge use (and on R's slot the guard predicate) a cycle ahead; RCU enables each field group from it; a clear bit is asserted as a promise | Partition; Pipeline (stage IL) | RA-31 (2), RA-39 |
 | Split guard read | guard row predecoded at A−1 from the lead; guard path about 16 NGD in A (about 22 without the lead) | Predicate file | RA-32 (1) |
@@ -80,7 +80,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Collective fold 5 → 3 | RCU now meets 3; folding the contract is OA's, then Daniel's | RA-8 |
 | Crossbar as an RCU sub-module | settled: `rcu_xbar`, an inner helper | RA-9 |
 | Q-18: the AGU stays in MIU | settled | RA-10 |
-| No area budget; floorplan | settled (Daniel, 2026-11-02) | RA-11, RA-12 |
+| No area budget; floorplan | settled (Daniel, 2026-11-02); 192 rows kept (AR 333, RA rev 122) | RA-11, RA-12 |
 | `dispatch_fault` deleted | settled, TI to apply | RA-13, RA-16 (e) |
 | Kill drain | settled, TI to add the parameter | RA-14, RA-16 (g) |
 | Ops on R | settled | RA-15 |
@@ -90,7 +90,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 
 | Row | Needs | Question | Status (2026-11-04) | Effect on this spec |
 | --- | --- | --- | --- | --- |
-| RA-16 | TI | schema and parameter changes (a)-(g) | open with TI, to be applied with RA-29 (a), (b); RA closes it on TI's notice | none |
+| RA-16 | TI | schema and parameter changes (a)-(g) | closed (RA rev 121): (a), (d)-(g) in TI's 9894da1; (b) SFU second result and (f) C\_RECONV in a0c2f68; register-form PMOV in 8dbc152 | none |
 | RA-18 | AR, OA, TI | call's link value | **settled**: `imm_kind` 6, OOE puts pc\[31:0\] + length in `imm` | R unit: call writes `imm` |
 | RA-19 | IS, CP | pmov #mask gated by the issue mask | **settled**: gated (ISA invariant 10); ccv-sim merges (CP-75) | as written |
 | RA-20 | IS, then TI | collective semantics | **settled as O-85** (Daniel), diagonal unballot | R unit collective rows updated |
