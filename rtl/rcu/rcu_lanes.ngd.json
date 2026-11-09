@@ -99,9 +99,9 @@
     },
     "odst_cr02h": {
       "arrival": 1.4,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
-      "date": "2026-11-08",
-      "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
+      "by": "RI, under RA 131 (1) and the fanout term (AR 326, RA rev 106)",
+      "date": "2026-11-09",
+      "why": "The slot's lead_phys_old_dst, the payload field's RA-43 lead copy, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
     },
     "opc_cr02h": {
       "arrival": 1.4,
@@ -111,9 +111,9 @@
     },
     "opos_cr02h": {
       "arrival": 1.4,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
-      "date": "2026-11-07",
-      "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
+      "by": "RI, under RA 131 (1) and the fanout term (AR 326, RA rev 106)",
+      "date": "2026-11-09",
+      "why": "The slot's lead_old_dst_pos, the payload field's RA-43 lead copy, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
     },
     "pd_cr02h": {
       "arrival": 1.4,
@@ -141,15 +141,15 @@
     },
     "spos_cr02h": {
       "arrival": 1.4,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
-      "date": "2026-11-07",
-      "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
+      "by": "RI, under RA 131 (1) and the fanout term (AR 326, RA rev 106)",
+      "date": "2026-11-09",
+      "why": "The slot's lead_src_pos, the payload field's RA-43 lead copy, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
     },
     "src_cr02h": {
       "arrival": 1.4,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
-      "date": "2026-11-08",
-      "why": "The issue channel's S slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's."
+      "by": "RI, under RA 131 (1) and the fanout term (AR 326, RA rev 106)",
+      "date": "2026-11-09",
+      "why": "The slot's lead_phys_src (rows 0-1; phys_src2, row 2, from the payload), the payload field's RA-43 lead copy, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
     },
     "swid_cr02h": {
       "arrival": 1.4,

@@ -7,9 +7,12 @@
 // loaded under the valid, held otherwise. Opcodes are drawn from every one
 // the decode names, the copy's included, atomics at every done_row, and the
 // copy's predicate-only form (pred_we and the zero GPR).
+// The slot's lead copies (RA 131 (1); ISD_LS, the unit's LS: 34 bits on
+// S0-S3, else 2) ride the same capture and are checked the same way.
 // --cg <idle|medium|high> <vcd> runs one clock-gating scenario
 // (tools/check-cg.py). --control pcopy models the copy without its
-// predicate-only form, and must fail: the check sees pcopy.
+// predicate-only form, and --control xfree the copies loaded every cycle
+// (not held off a valid); each must fail.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_isd.h"
 #include "verilated.h"
@@ -29,7 +32,10 @@
 
 namespace {
 
-constexpr unsigned kNS = 1, kOW = 9, kWR = 8, kCW = 27;
+#ifndef ISD_LS
+#define ISD_LS 0
+#endif
+constexpr unsigned kNS = 1, kOW = 9, kWR = 8, kCW = 27, kXW = ISD_LS ? 34 : 2;
 
 template <typename T> void put(T &s, unsigned lsb, unsigned w, uint64_t v) {
   for (unsigned i = 0; i < w; ++i) {
@@ -54,7 +60,7 @@ template <typename T> uint64_t get(const T &s, unsigned lsb, unsigned w) {
   return v;
 }
 
-struct Lead { unsigned opc = 0, drow = 0, dst = 0; bool pwe = false; };
+struct Lead { unsigned opc = 0, drow = 0, dst = 0; bool pwe = false; uint64_t x = 0; };
 
 extern int g_argc;
 extern char **g_argv;
@@ -65,11 +71,11 @@ struct Bench {
   std::unique_ptr<VerilatedVcdC> vcd;
   uint64_t t = 0, cyc = 0;
   unsigned fails = 0, checked = 0, cov_pcopy = 0, cov_atom = 0, cov_hold = 0;
-  bool ctl = false;
+  bool ctl = false, xfree = false;
   bool known[kNS] = {};
-  uint64_t want[kNS] = {};
+  uint64_t want[kNS] = {}, wantx[kNS] = {};
 
-  Bench(const char *vcd_path, bool control) : ctl(control) {
+  Bench(const char *vcd_path, bool control, bool xf) : ctl(control), xfree(xf) {
     ctx = std::make_unique<VerilatedContext>();
     ctx->commandArgs(g_argc, g_argv);
     if (vcd_path) ctx->traceEverOn(true);
@@ -101,6 +107,7 @@ struct Bench {
       put(dut->ldrw_cr01h, s * 2, 2, ld[s].drow);
       put(dut->lpwe_cr01h, s, 1, ld[s].pwe);
       put(dut->ldst_cr01h, s * kWR, kWR, ld[s].dst);
+      put(dut->lx_cr01h, s * kXW, kXW, ld[s].x);
     }
     dut->rcu_core_clk = 0;
     eval();
@@ -110,6 +117,7 @@ struct Bench {
     for (unsigned s = 0; s < kNS; ++s) {
       if ((v >> s) & 1u) {
         want[s] = model(ld[s]);
+        wantx[s] = ld[s].x;
         known[s] = true;
         const bool pc = ld[s].pwe && ld[s].dst == dectb::R::kZero && ld[s].opc == ccv::skel::kOpCopy;
         cov_pcopy += pc;
@@ -117,6 +125,7 @@ struct Bench {
                     ccv::skel::opByCode(ld[s].opc)->cls == ccv::skel::kAtomic;
       } else if (known[s]) {
         ++cov_hold;
+        if (xfree) wantx[s] = ld[s].x;
       }
       if (!known[s]) continue;
       ++checked;
@@ -125,6 +134,12 @@ struct Bench {
         std::fprintf(stderr, "isd: cycle %llu slot %u: class %07llx, want %07llx\n",
                      (unsigned long long)cyc, s, (unsigned long long)got,
                      (unsigned long long)want[s]);
+      ++checked;
+      const uint64_t gx = get(dut->x_cr02h, s * kXW, kXW);
+      if (gx != wantx[s] && ++fails <= 20)
+        std::fprintf(stderr, "isd: cycle %llu slot %u: lead copies %llx, want %llx\n",
+                     (unsigned long long)cyc, s, (unsigned long long)gx,
+                     (unsigned long long)wantx[s]);
     }
   }
 };
@@ -141,6 +156,7 @@ struct Gen {
     l.drow = below(4);
     l.pwe = below(2);
     l.dst = below(4) == 0 ? dectb::R::kZero : below(256);
+    l.x = r() & ((uint64_t(1) << kXW) - 1);
     return l;
   }
 };
@@ -148,8 +164,8 @@ struct Gen {
 int g_argc;
 char **g_argv;
 
-int run(const std::string &scenario, const char *vcd, bool ctl) {
-  Bench b(vcd, ctl);
+int run(const std::string &scenario, const char *vcd, bool ctl, bool xfree) {
+  Bench b(vcd, ctl, xfree);
   Gen g(0x15d0);
   Lead ld[kNS];
   const unsigned n = scenario.empty() ? 100000 : scenario == "idle" ? 3000 : 4000;
@@ -160,6 +176,7 @@ int run(const std::string &scenario, const char *vcd, bool ctl) {
       ld[s].drow = (i >> 1) & 3u;
       ld[s].pwe = i & 1u;
       ld[s].dst = dectb::R::kZero;
+      ld[s].x = (uint64_t(i) * 0x9e3779b97f4a7c15ull >> 20) & ((uint64_t(1) << kXW) - 1);
     }
     b.step((1u << kNS) - 1, ld);
   }
@@ -183,8 +200,8 @@ int run(const std::string &scenario, const char *vcd, bool ctl) {
                  b.cov_atom, b.cov_hold);
     ++b.fails;
   }
-  std::printf("isd%s %s: %llu cycles, %u values checked, %u mismatches: %s\n",
-              ctl ? ", control pcopy:" : "", scenario.empty() ? "random" : scenario.c_str(),
+  std::printf("isd%s%s %s: %llu cycles, %u values checked, %u mismatches: %s\n",
+              ISD_LS ? " (LS)" : "", ctl ? ", control pcopy:" : xfree ? ", control xfree:" : "", scenario.empty() ? "random" : scenario.c_str(),
               (unsigned long long)b.cyc, b.checked, b.fails, b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }
@@ -196,9 +213,16 @@ int main(int argc, char **argv) {
   g_argv = argv;
   std::string scenario;
   const char *vcd = nullptr;
-  bool ctl = false;
+  bool ctl = false, xfree = false;
   for (int i = 1; i + 1 < argc; ++i)
-    if (!std::strcmp(argv[i], "--control") && !std::strcmp(argv[i + 1], "pcopy")) ctl = true;
+    if (!std::strcmp(argv[i], "--control")) {
+      if (!std::strcmp(argv[i + 1], "pcopy")) ctl = true;
+      else if (!std::strcmp(argv[i + 1], "xfree")) xfree = true;
+      else {
+        std::fprintf(stderr, "isd: unknown control %s\n", argv[i + 1]);
+        return 2;
+      }
+    }
   for (int i = 1; i + 2 < argc; ++i)
     if (!std::strcmp(argv[i], "--cg")) {
       scenario = argv[i + 1];
@@ -208,5 +232,5 @@ int main(int argc, char **argv) {
         return 2;
       }
     }
-  return run(scenario, vcd, ctl);
+  return run(scenario, vcd, ctl, xfree);
 }

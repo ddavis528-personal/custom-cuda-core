@@ -26,8 +26,9 @@ case "$unit" in
     vl rcu_r "" "" "$PWD/rtl/rcu/rcu_xbar.sv" "$PWD/rtl/rcu/rcu_r.sv" "$PWD/test/rcu/r_tb.cpp" ;;
   rcu_pred)
     vl rcu_pred "" "" "$PWD/rtl/rcu/rcu_pred.sv" "$PWD/test/rcu/pred_tb.cpp" ;;
-  rcu_isd)
-    vl rcu_isd "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_isd.sv" "$PWD/test/rcu/isd_tb.cpp" ;;
+  rcu_isd|rcu_isd_s)
+    ls=0; [ "$unit" = rcu_isd_s ] && ls=1
+    vl rcu_isd "-GLS=$ls" "-DISD_LS=$ls" "$PWD/rtl/rcu/rcu_isd.sv" "$PWD/test/rcu/isd_tb.cpp" ;;
   ccv_rcu_killsleep)   # the whole block on its gate: a kill while asleep (RA rev 127)
     verilator --cc --exe --build -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style --public-flat-rw \
       --top-module ccv_rcu --Mdir "$dir" -o tb -DCCV_CHECK -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \

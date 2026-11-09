@@ -9,9 +9,9 @@
     },
     "cont_cr02h": {
       "arrival": 1.4,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
-      "date": "2026-11-08",
-      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Decoded inside by rcu_dec_pkg, the model's op-class decode (RI-21 (4)), which RA rev 81 times inside the module once it takes the opcode."
+      "by": "RI, under RA 131 (1) and the fanout term (AR 326, RA rev 106)",
+      "date": "2026-11-09",
+      "why": "The slot's lead_cont, the payload field's RA-43 lead copy, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
     },
     "dq_cr02h": {
       "by": "RI, pending RA (RI tab)",
@@ -93,9 +93,9 @@
     },
     "ng_cr02h": {
       "arrival": 1.4,
-      "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
-      "date": "2026-11-05",
-      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
+      "by": "RI, under RA 131 (1) and the fanout term (AR 326, RA rev 106)",
+      "date": "2026-11-09",
+      "why": "The slot's lead_pred_neg, the payload field's RA-43 lead copy, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
     },
     "pst_cr03h": {
       "by": "RI, pending RA (RI tab)",

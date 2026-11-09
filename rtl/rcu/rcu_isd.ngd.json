@@ -1,18 +1,17 @@
 {
   "module": "rcu_isd",
   "ports": {
+    "cls_cr02h": {
+      "required": 0.0,
+      "by": "RI (RA rev 126 (b), RA rev 129)",
+      "date": "2026-11-09",
+      "why": "The class word straight from its flops (flop-out 0.0), so its readers' arrival is the fanout term of the parent's net alone: 1.4 at slot 4's 34 loads (the bank slices and the R pipe), the measured term RA rev 126 (b) asked for."
+    },
     "iv_cr01h": {
       "arrival": 2.1,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-09",
       "why": "The slot's valid from the zero-cycle issue end (RA-43), wire only. The fanout term is 2.1: ooe_rcu_issue_s8_valid has 68 loads across the block (block read at chain-ri11)."
-    },
-    "lop_cr01h": {
-      "arrival": 12.0,
-      "carries": "ooe_rcu_issue_payload.lead_opcode",
-      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 396)",
-      "date": "2026-11-09",
-      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode (RA-43): OOE drives it from its lead flop, wire only, declared required 0 on OOE's side (0 + 13 <= 25). rcu_cls_a1 reaches the class flops 12.2 to 12.4 after it with the fanout term. Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
     },
     "ldrw_cr01h": {
       "arrival": 12.0,
@@ -21,13 +20,6 @@
       "date": "2026-11-09",
       "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row (RA-43): OOE drives it from its lead flop, wire only, declared required 0 on OOE's side (0 + 13 <= 25). rcu_cls_a1 reaches the class flops 12.2 to 12.4 after it with the fanout term. Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
     },
-    "lpwe_cr01h": {
-      "arrival": 12.0,
-      "carries": "ooe_rcu_issue_payload.lead_pred_we",
-      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 396)",
-      "date": "2026-11-09",
-      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we (RA-43): OOE drives it from its lead flop, wire only, declared required 0 on OOE's side (0 + 13 <= 25). rcu_cls_a1 reaches the class flops 12.2 to 12.4 after it with the fanout term. Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
-    },
     "ldst_cr01h": {
       "arrival": 12.0,
       "carries": "ooe_rcu_issue_payload.lead_phys_dst",
@@ -35,11 +27,25 @@
       "date": "2026-11-09",
       "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst (RA-43): OOE drives it from its lead flop, wire only, declared required 0 on OOE's side (0 + 13 <= 25). rcu_cls_a1 reaches the class flops 12.2 to 12.4 after it with the fanout term. Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
     },
-    "cls_cr02h": {
-      "required": 0.0,
-      "by": "RI (RA rev 126 (b), RA rev 129)",
+    "lop_cr01h": {
+      "arrival": 12.0,
+      "carries": "ooe_rcu_issue_payload.lead_opcode",
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 396)",
       "date": "2026-11-09",
-      "why": "The class word straight from its flops (flop-out 0.0), so its readers' arrival is the fanout term of the parent's net alone: 1.4 at slot 4's 34 loads (the bank slices and the R pipe), the measured term RA rev 126 (b) asked for."
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode (RA-43): OOE drives it from its lead flop, wire only, declared required 0 on OOE's side (0 + 13 <= 25). rcu_cls_a1 reaches the class flops 12.2 to 12.4 after it with the fanout term. Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "lpwe_cr01h": {
+      "arrival": 12.0,
+      "carries": "ooe_rcu_issue_payload.lead_pred_we",
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 396)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we (RA-43): OOE drives it from its lead flop, wire only, declared required 0 on OOE's side (0 + 13 <= 25). rcu_cls_a1 reaches the class flops 12.2 to 12.4 after it with the fanout term. Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "x_cr02h": {
+      "required": 0.0,
+      "by": "RI (RA 131 (1); as cls_cr02h, RA rev 126 (b))",
+      "date": "2026-11-09",
+      "why": "The slot's lead copies straight from their flops (flop-out 0.0), so their readers' arrival is the fanout term of the parent's net alone: rcu_pred's cont and pred_neg, and on S0-S3 rcu_lanes' phys_src, phys_old_dst, old_dst_pos and src_pos (RA 131 (1))."
     }
   }
 }

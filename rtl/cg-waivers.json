@@ -151,8 +151,21 @@
     "iv_cr01h"
    ],
    "enable_ngd": 2.1,
-   "why": "The slot's class word, cls_cr02h (26 flops; one bit is constant), one gate: RA-43 decodes the op class into flops at A-1 from the slot's lead fields (lead_opcode, lead_done_row, lead_pred_we, lead_phys_dst), which are on ccv_ooe_rcu_issue only in A-1, beside the slot's valid (RA rev 117; one shared capture for the block, RI-25). Nothing earlier names the issue, so the only enable is that valid, a wire from the zero-cycle end (rcu_isd.ngd.json, iv_cr01h 2.1, the fanout term of slot 8's valid at 68 loads; AR 326, RA rev 106), within CG-2's 8. Loaded every cycle instead, 9 x 26 flops would be ungated against the block's 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2% (9 x 26 = 234), to fit at final construction.",
+   "why": "The slot's class word, cls_cr02h (26 flops after synthesis: class bits 25 and 26 are equal and merge), one gate with its lead copies x_cr02h (its own entry): RA-43 decodes the op class into flops at A-1 from the slot's lead fields (lead_opcode, lead_done_row, lead_pred_we, lead_phys_dst), which are on ccv_ooe_rcu_issue only in A-1, beside the slot's valid (RA rev 117; one shared capture for the block, RI-25). Nothing earlier names the issue, so the only enable is that valid, a wire from the zero-cycle end (rcu_isd.ngd.json, iv_cr01h 2.1, the fanout term of slot 8's valid at 68 loads; AR 326, RA rev 106), within CG-2's 8. Loaded every cycle instead, 9 x 26 flops would be ungated against the block's 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2% (9 x 26 = 234), to fit at final construction.",
    "by": "RI (Daniel's ruling, RA rev 87)",
+   "date": "2026-11-09",
+   "lead": true
+  },
+  {
+   "module": "rcu_isd",
+   "rule": "CG-5",
+   "target": "x_cr02h",
+   "ports": [
+    "iv_cr01h"
+   ],
+   "enable_ngd": 2.1,
+   "why": "The slot's lead copies, x_cr02h (RA 131 (1)): lead_cont and lead_pred_neg on every slot, and on S0-S3 lead_phys_src, lead_phys_old_dst, lead_old_dst_pos and lead_src_pos (2 flops, or 34 on S0-S3), in cls_cr02h's gate: the payload fields RA-43 gave a lead copy because their in-path from the zero-cycle end was over 12, captured in A-1 so their readers (rcu_pred, rcu_lanes) take them from flops in A. They are on ccv_ooe_rcu_issue only in A-1, beside the slot's valid, so the only enable is that valid, a wire from the zero-cycle end (rcu_isd.ngd.json, iv_cr01h 2.1), within CG-2's 8. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109): each lead flop charged to the RCU block's per-instance 2% (4 x 34 + 5 x 2 = 146).",
+   "by": "RI (Daniel's ruling, RA rev 87; RA 131 (1))",
    "date": "2026-11-09",
    "lead": true
   }
