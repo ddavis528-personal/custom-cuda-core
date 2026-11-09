@@ -155,6 +155,37 @@
    "by": "RI (Daniel's ruling, RA rev 87; RA 131 (1))",
    "date": "2026-11-09",
    "lead": true
+  },
+  {
+   "module": "rcu_kill",
+   "rule": "CG-1",
+   "target": "cr_q_cr01h",
+   "max_flops": 41,
+   "measured_flops": 41,
+   "why": "RCU's credit returns on its inbound fixed-rate channels (Done, kill and reset tab, Credits RCU returns): one flop a slot, its D the slot's valid on the wire, so the credit returns in the cycle the payload lands; 9 issue slots, 32 lane-result copies, 4 MIU data slots, 45 flops written every cycle. They are the channels' own control pulses, captured every cycle like any receiver's: a repeater's are charged to its block's budget, not its own allowance (Daniel, 2026-10-19), and these are the same pulses at the block's own end, about 0.02% of RCU's 246,000 flops. A gate cannot hold them: the only enable that names a return is the valid itself, an input (CG-5). The module's allowance (7) takes its other single flops (reset, kvd_cr02h, kill_ack_q, its pending bit, done wake, idle, CSR responder; kill_v_q is ccv_rcu's kill detector, AR 336 (b), AR 338). Daniel's ruling on RI-14 (RA rev 88, DA rev 110, 2026-11-06): credit-return pulse flops are charged to the receiving block's per-instance 2%, marked credit for check-cg (TI rev 344). 45 to 41 (2026-11-08): miu_rcu_data has no credit port at RCU (RA-41, TI 9894da1; AR 331); the 9 issue credits stay for RA-43 (TI rev 385).",
+   "by": "RI",
+   "date": "2026-11-09",
+   "credit": true
+  },
+  {
+   "module": "rcu_kill",
+   "rule": "CG-4",
+   "target": "kd_cr02h",
+   "max_flops": 5,
+   "measured_flops": 4,
+   "why": "The kill drain counter (Done, kill and reset tab: kill_drain, loaded with KILL_DRAIN in K and counting to 0), 5 flops at KILL_DRAIN 16, its value at CCV_LAT_SFU 12 since Z (RA rev 95; 13 would still give 16), so max 5. Its enable is its own (kill_v_q or a nonzero count) and it changes on every enabled cycle, but 5 flops are under a gate's 8; a one-hot drain timer would make a gate of 16 to save 5. rcu_kill is the block's control residue, 60 flops (Partition tab), so its own allowance is the floor of 7: the reset, kvd_cr02h (kill_v_q a cycle on, AR 338), the done wake, the idle flop, the CSR responder, kill_ack_q and its pending bit take it. Restored 2026-11-09: d7925bc2 dropped it on a local policy read that did not hold the module's allowance; the gate's check-cg (chain-ri12) finds it needed.",
+   "by": "RI",
+   "date": "2026-11-09"
+  },
+  {
+   "module": "rcu_kill",
+   "rule": "CG-4",
+   "target": "kaep_q_cr03h",
+   "max_flops": 2,
+   "measured_flops": 2,
+   "why": "The kill ack epoch (CCV_P_W_KILL_EPOCH, 2 flops), loaded at K+1 from ccv_rcu's kill detector epoch flop under kvd_cr02h (kill_v_q a cycle on, this module's own flop: CG-5, AR 338); the tab's kill_ep_q and kill_ack_ep_q in one, since the ack is low from K's edge to ack-ready. Under a gate's 8, and nothing else shares its enable. rcu_kill is the block's control residue (Partition tab), so its own allowance is the floor of 7: the reset, kvd_cr02h, the done wake, the idle flop, the CSR responder, kill_ack_q and its pending bit take it. Restored 2026-11-09: d7925bc2 dropped it on a local policy read that did not hold the module's allowance; the gate's check-cg (chain-ri12) finds it needed.",
+   "by": "RI",
+   "date": "2026-11-09"
   }
  ]
 }
