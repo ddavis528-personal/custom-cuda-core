@@ -41,7 +41,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-09 (notices): Conventions 17, AR 336, OA 379, IS 190, TI 395, OI 324, CP 155, DA 115, RA 127, RI 61.
+Bookmarks 2026-11-09 (notices): Conventions 17, AR 336, OA 379, IS 190, TI 395, OI 324, CP 155, DA 115, RA 130, RI 62. (DA 116, TI 396, AR 337)
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
@@ -53,7 +53,8 @@ architect may approve only if the end meets module NGD without the flop; can't m
    run-rtl all green), on gate-scratch/RI. RI-27 (rev 60/61) answered RA 126/127, AR 336, TI 394/395.
    18801bda: ccv_rcu nets stage-tagged (L29; lint 0, top Icarus/Verilator + killsleep as before;
    scratchpad asm/verify4.sh; scratchpad tagnets.py). ccv_rcu.sv is now the source (ri-keep gen is stale).
-   BLOCKER for the push: RI-26 (rcu_isd lead_opcode 12.4 vs 12; asked RA/AR for in-side 13).
+   RI-26 RULED 13/0 (DA 116, RA 129): ef5f6f16 sets arrival 12.0 on the 4 lead ports (rcu_isd clean).
+   RI-28 (rev 62) reported arrivals. When TI's ti-lead lands: ccv_rcu.ngd.json ports ooe_rcu_issue_payload.<field> 12.0.
    ri-wt2 unit checks ~/ccv-logs/chk-isd.log (slices + isd consumers); read with scratchpad cgpol.py.
    Then: block NGD read (measured fanout term per class bit and for kill_detect's Q, RA 126 b), re-measure
    cont/pred_neg/footprint/srcs vs 12, check-1d, regen, split gate, push via gate-push.
