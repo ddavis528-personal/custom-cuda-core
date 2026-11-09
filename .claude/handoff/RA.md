@@ -226,7 +226,8 @@ RA rev 131 (re:RI-29, block read d7925bc2): payload over 12 (cont 15.6, pred_neg
 AR 338/339: kill (a) taken, wake exemption already built (TI 397); ack 17/18 no contract, Daniel only if KILL_DRAIN moves.
 RA rev 132 (re:RI-31): kill d33d8c70 + RI-29 copies 905d92bc/d0076837 accepted (block read now S0-S3 14.1, S4-S7 12.8, S8 12.4 vs 12). mr_cr02h is pred_result not merge (rev 131 corrected). (a) lead_phys_src2 S0-S3 (32) approved RCU-side; ASKED OA to drive/price, TI schema after. (b) ASKED OA if lead_sec_mask == footprint exactly (zero on cont): yes -> P-owner precompute + equality assert + extra-bit control; no -> lead_footprint copy. RI holds slice change; ccv_rcu.sv held. Spec landed (Partition rev 65, Done rev 34): lead_phys_src2 in S0-S3 copies, rcu_isd_s row (160), lead waiver ~412, lead_sec_mask exact + P-owner + equality assert, kill detector note.
 RA rev 133: OA 403 yes/exact (lead_phys_src2 driven, 32 OOE flops; lead_sec_mask exact, 0 on cont); RI building.
-Bookmarks: OA 403, RA 133, RI 65, TI 398, AR 339, DA 116, OI 331, Conventions 17, CP 157, IS 190.
+RI-32: P owner from lead_sec_mask built + asserted (psecX caught); block read S4-S8 clean; S0-S3 waited on lead_phys_src2. TI 400: 7b003e98 pushed lead_phys_src2 (S0-S3, stub refusal) + lead_sec_mask exact, with controls. Next: RI's clean block read -> ccv_rcu.sv in; RA fills spec NGD table.
+Bookmarks: OA 403, RA 133, RI 66, TI 400, AR 339, DA 116, OI 331, Conventions 17, CP 157, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
