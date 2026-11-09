@@ -149,7 +149,7 @@
       "arrival": 1.4,
       "by": "RI, under RA 131 (1) and the fanout term (AR 326, RA rev 106)",
       "date": "2026-11-09",
-      "why": "The slot's lead_phys_src (rows 0-1; phys_src2, row 2, from the payload), the payload field's RA-43 lead copy, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
+      "why": "The slot's lead_phys_src (rows 0-1) and lead_phys_src2 (row 2; RA 132, OA 403, TI 400), the payload fields' RA-43 lead copies, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
     },
     "swid_cr02h": {
       "arrival": 1.4,

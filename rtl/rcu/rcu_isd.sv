@@ -34,9 +34,10 @@
 // capture so their readers take them from flops in A: lead_cont and
 // lead_pred_neg on every slot (rcu_pred, 15.6 and 14.4 from the payload),
 // and on S0-S3 (LS = 1) lead_phys_src, lead_phys_old_dst, lead_old_dst_pos
-// and lead_src_pos (rcu_lanes' bypass selects, 12.7). x_cr02h packs them,
+// and lead_src_pos (rcu_lanes' bypass selects, 12.7), and lead_phys_src2
+// (RA 132, OA 403, TI 400: phys_src2's row, 14.1 from the payload). x_cr02h packs them,
 // LSB first: cont, pred_neg; with LS, phys_src (16: [15:8] is source 0's
-// row), phys_old_dst (8), old_dst_pos (2), src_pos (6).
+// row), phys_old_dst (8), old_dst_pos (2), src_pos (6), phys_src2 (8).
 //
 // Clock gating: one gate (CLS_W + XW flops), enabled by the slot's
 // valid, an input: a CG-5 lead waiver (Daniel's ruling on RI-15, RA rev
@@ -48,7 +49,7 @@ module rcu_isd #(
   localparam int OW = rcu_dec_pkg::OPC_W,                    // 9
   localparam int WR = ccv_prov_pkg::CCV_P_W_PHYS_REG,        // 8
   localparam int CW = rcu_dec_pkg::CLS_W,                    // 27
-  localparam int XW = 2 + (LS != 0 ? 2*WR + WR + 2 + 6 : 0)  // the lead copies: 2, or 34 on S0-S3
+  localparam int XW = 2 + (LS != 0 ? 2*WR + WR + 2 + 6 + WR : 0)  // the lead copies: 2, or 42 on S0-S3
 ) (
   input  logic          rcu_core_clk,
   // The slot's lead, in A-1 beside its valid.

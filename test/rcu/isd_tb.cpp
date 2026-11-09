@@ -7,7 +7,7 @@
 // loaded under the valid, held otherwise. Opcodes are drawn from every one
 // the decode names, the copy's included, atomics at every done_row, and the
 // copy's predicate-only form (pred_we and the zero GPR).
-// The slot's lead copies (RA 131 (1); ISD_LS, the unit's LS: 34 bits on
+// The slot's lead copies (RA 131 (1); ISD_LS, the unit's LS: 42 bits on
 // S0-S3, else 2) ride the same capture and are checked the same way.
 // --cg <idle|medium|high> <vcd> runs one clock-gating scenario
 // (tools/check-cg.py). --control pcopy models the copy without its
@@ -35,7 +35,7 @@ namespace {
 #ifndef ISD_LS
 #define ISD_LS 0
 #endif
-constexpr unsigned kNS = 1, kOW = 9, kWR = 8, kCW = 27, kXW = ISD_LS ? 34 : 2;
+constexpr unsigned kNS = 1, kOW = 9, kWR = 8, kCW = 27, kXW = ISD_LS ? 42 : 2;
 
 template <typename T> void put(T &s, unsigned lsb, unsigned w, uint64_t v) {
   for (unsigned i = 0; i < w; ++i) {

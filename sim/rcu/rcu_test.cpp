@@ -318,6 +318,36 @@ void testV60() {
   CONTROL("v60", e.failed("V-60") || e.failed("continuation"), "overlap passed");
 }
 
+/// lead_sec_mask is exact (OA 403, RA 133, TI 400): a mask wider than the
+/// footprint, or narrower, is refused.
+void testLeadSecExact() {
+  g_test = "leadsec";
+  {
+    Env e;
+    In in = Env::idleIn();
+    Issue a = laneOp(9, 3, 4, 1);
+    a.foot = 0x1;
+    a.lead.sec = 0x3;
+    in.iss[kSlotS0] = a;
+    e.step(in);
+    CONTROL("leadsec-wide", e.failed("wider than its footprint"), "a lead mask wider than its footprint passed");
+  }
+  {
+    Env e;
+    In in = Env::idleIn();
+    Issue a = laneOp(9, 3, 4, 1);
+    a.foot = 0x3;
+    a.lead.sec = 0x1;
+    in.iss[kSlotS0] = a;
+    in.iss[kSlotS0 + 1] = Issue();
+    in.iss[kSlotS0 + 1]->cont = true;
+    in.iss[kSlotS0 + 1]->tag = a.tag;
+    in.iss[kSlotS0 + 1]->tid = a.tid;
+    e.step(in);
+    CONTROL("leadsec-narrow", e.failed("outside its lead's mask"), "a lead mask narrower than its footprint passed");
+  }
+}
+
 /// Kill: the drain is KILL_DRAIN cycles from K's edge; ack-ready after it.
 void testKillDrain() {
   g_test = "kill-drain";
@@ -580,6 +610,7 @@ int main(int argc, char **argv) {
   testBypassWindow();
   testGuardForward();
   testV60();
+  testLeadSecExact();
   testKillDrain();
   testMigration("");
   testMigration("mig-row-order");

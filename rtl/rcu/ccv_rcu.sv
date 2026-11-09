@@ -107,6 +107,7 @@ module ccv_rcu (
   logic [NS*2-1:0] i_opos_cr02h;
   logic [NS*4-1:0] i_lsec_cr00h;
   logic [NS-1:0] i_lng_cr01h;        // lead_pred_neg: rcu_isd's lead copies (RA 131 (1))
+  logic [4*WR-1:0]   i_lps2_cr01h;   // S0-S3's lead_phys_src2 (RA 132, OA 403, TI 400)
   logic [4*2*WR-1:0] i_lpsrc_cr01h;  // S0-S3's lead_phys_src, lead_phys_old_dst, lead_old_dst_pos, lead_src_pos
   logic [4*WR-1:0] i_lodst_cr01h;
   logic [4*2-1:0] i_lopos_cr01h;
@@ -150,6 +151,7 @@ module ccv_rcu (
   assign i_lcont_cr00h[0] = ooe_rcu_issue_s0_payload.lead_cont;
   assign i_lng_cr01h[0] = ooe_rcu_issue_s0_payload.lead_pred_neg;
   assign i_lpsrc_cr01h[0*2*WR +: 2*WR] = ooe_rcu_issue_s0_payload.lead_phys_src;
+  assign i_lps2_cr01h[0*WR +: WR] = ooe_rcu_issue_s0_payload.lead_phys_src2;
   assign i_lodst_cr01h[0*WR +: WR] = ooe_rcu_issue_s0_payload.lead_phys_old_dst;
   assign i_lopos_cr01h[0*2 +: 2] = ooe_rcu_issue_s0_payload.lead_old_dst_pos;
   assign i_lspos_cr01h[0*6 +: 6] = ooe_rcu_issue_s0_payload.lead_src_pos;
@@ -188,6 +190,7 @@ module ccv_rcu (
   assign i_lcont_cr00h[1] = ooe_rcu_issue_s1_payload.lead_cont;
   assign i_lng_cr01h[1] = ooe_rcu_issue_s1_payload.lead_pred_neg;
   assign i_lpsrc_cr01h[1*2*WR +: 2*WR] = ooe_rcu_issue_s1_payload.lead_phys_src;
+  assign i_lps2_cr01h[1*WR +: WR] = ooe_rcu_issue_s1_payload.lead_phys_src2;
   assign i_lodst_cr01h[1*WR +: WR] = ooe_rcu_issue_s1_payload.lead_phys_old_dst;
   assign i_lopos_cr01h[1*2 +: 2] = ooe_rcu_issue_s1_payload.lead_old_dst_pos;
   assign i_lspos_cr01h[1*6 +: 6] = ooe_rcu_issue_s1_payload.lead_src_pos;
@@ -226,6 +229,7 @@ module ccv_rcu (
   assign i_lcont_cr00h[2] = ooe_rcu_issue_s2_payload.lead_cont;
   assign i_lng_cr01h[2] = ooe_rcu_issue_s2_payload.lead_pred_neg;
   assign i_lpsrc_cr01h[2*2*WR +: 2*WR] = ooe_rcu_issue_s2_payload.lead_phys_src;
+  assign i_lps2_cr01h[2*WR +: WR] = ooe_rcu_issue_s2_payload.lead_phys_src2;
   assign i_lodst_cr01h[2*WR +: WR] = ooe_rcu_issue_s2_payload.lead_phys_old_dst;
   assign i_lopos_cr01h[2*2 +: 2] = ooe_rcu_issue_s2_payload.lead_old_dst_pos;
   assign i_lspos_cr01h[2*6 +: 6] = ooe_rcu_issue_s2_payload.lead_src_pos;
@@ -264,6 +268,7 @@ module ccv_rcu (
   assign i_lcont_cr00h[3] = ooe_rcu_issue_s3_payload.lead_cont;
   assign i_lng_cr01h[3] = ooe_rcu_issue_s3_payload.lead_pred_neg;
   assign i_lpsrc_cr01h[3*2*WR +: 2*WR] = ooe_rcu_issue_s3_payload.lead_phys_src;
+  assign i_lps2_cr01h[3*WR +: WR] = ooe_rcu_issue_s3_payload.lead_phys_src2;
   assign i_lodst_cr01h[3*WR +: WR] = ooe_rcu_issue_s3_payload.lead_phys_old_dst;
   assign i_lopos_cr01h[3*2 +: 2] = ooe_rcu_issue_s3_payload.lead_old_dst_pos;
   assign i_lspos_cr01h[3*6 +: 6] = ooe_rcu_issue_s3_payload.lead_src_pos;
@@ -682,10 +687,10 @@ module ccv_rcu (
   // from these flops in A in place of the payload, whose in-path from the
   // zero-cycle end was over 12.
   localparam int CW = 27;    // = rcu_dec_pkg::CLS_W (as OW above: not that package here)
-  localparam int XS = 2 + 2*WR + WR + 2 + 6;   // an S slot's lead copies, 34
+  localparam int XS = 2 + 2*WR + WR + 2 + 6 + WR;   // an S slot's lead copies, 42
   logic [NS*CW-1:0] i_cls_cr02h;
   logic [NS-1:0]    k_cont_cr02h, k_ng_cr02h;   // every slot's cont and pred_neg, from its copies
-  logic [4*3*WR-1:0] k_src_cr02h;               // rcu_lanes' sources: rows 0-1 copies, row 2 phys_src2
+  logic [4*3*WR-1:0] k_src_cr02h;               // rcu_lanes' sources: the copies, rows 0-2
   logic [4*WR-1:0]  k_odst_cr02h;
   logic [4*2-1:0]   k_opos_cr02h;
   logic [4*6-1:0]   k_spos_cr02h;
@@ -699,7 +704,7 @@ module ccv_rcu (
         .ldrw_cr01h (i_ldrw_cr01h[s*2 +: 2]),
         .lpwe_cr01h (i_lpwe_cr01h[s]),
         .ldst_cr01h (i_ldst_cr01h[s*WR +: WR]),
-        .lx_cr01h   ({i_lspos_cr01h[s*6 +: 6], i_lopos_cr01h[s*2 +: 2], i_lodst_cr01h[s*WR +: WR],
+        .lx_cr01h   ({i_lps2_cr01h[s*WR +: WR], i_lspos_cr01h[s*6 +: 6], i_lopos_cr01h[s*2 +: 2], i_lodst_cr01h[s*WR +: WR],
                       i_lpsrc_cr01h[s*2*WR +: 2*WR], i_lng_cr01h[s], i_lcont_cr00h[s]}),
         .cls_cr02h  (i_cls_cr02h[s*CW +: CW]),
         .x_cr02h    (x_cr02h)
@@ -708,7 +713,7 @@ module ccv_rcu (
       assign k_ng_cr02h[s]   = x_cr02h[1];
       assign k_src_cr02h[(s*3 + 0)*WR +: WR] = x_cr02h[2 + WR +: WR];   // phys_src[15:8]
       assign k_src_cr02h[(s*3 + 1)*WR +: WR] = x_cr02h[2 +: WR];        // phys_src[7:0]
-      assign k_src_cr02h[(s*3 + 2)*WR +: WR] = i_src_cr01h[(s*3 + 2)*WR +: WR];   // phys_src2: payload only
+      assign k_src_cr02h[(s*3 + 2)*WR +: WR] = x_cr02h[2 + 3*WR + 2 + 6 +: WR];   // phys_src2 (RA 132)
       assign k_odst_cr02h[s*WR +: WR] = x_cr02h[2 + 2*WR +: WR];
       assign k_opos_cr02h[s*2 +: 2]   = x_cr02h[2 + 3*WR +: 2];
       assign k_spos_cr02h[s*6 +: 6]   = x_cr02h[2 + 3*WR + 2 +: 6];

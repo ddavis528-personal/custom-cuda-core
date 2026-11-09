@@ -74,6 +74,7 @@ so this is a build artifact rather than something to remember.
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/phys/tb_seq_rpt.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/rcu/kill_tb.cpp` | — | — |
+| `test/rcu/killsleep_tb.cpp` | — | — |
 | `test/rcu/lanes_tb.cpp` | — | — |
 | `test/rcu/mig_tb.cpp` | — | — |
 | `test/rcu/tb_cg_rcu_clk.sv` | — | `CCV_CG_HYST_W` |
