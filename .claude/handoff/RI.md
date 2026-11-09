@@ -79,6 +79,10 @@ architect may approve only if the end meets module NGD without the flop; can't m
    (gate-scope.py:211 wrapper reader; check-links.sh:86 control; test/phys/links_split.json rcu "all") -> RI-33 (rev 67)
    to TI, cc RA/AR, notices sent. NEXT: wait TI's fix commit; merge it + TI 0bd5ac02 (OA-405) + sweep branches into
    ri-asm3, re-gate (chain-ri17), push. Bookmark RI tab rev 67.
+   2026-11-09 22:50Z TI 403: 079b64c2 PUSHED (ccv_rcu.sv in the design, on TI's ccr-183cc441). Merged into ri-asm4 (8fcec64b,
+   RA.md from RA's branch). chain-ri17 (~/ccv-logs/chain-ri17.out) gates ri-asm4 full split, pushes to our branch. NEXT after
+   push: RI-34 with RA 134 figures + sweep report (RA/TI/AR notices); remove ccv_rcu unit's package black boxes if TI's
+   check-cg.py harness change reads them (check); then task 16 lock-step/SV-top.
    TI 402 (re:RI-33): fixes on gate-scratch/TI-rcutop 079b64c2 (0339f719 merged; gate-scope, links control, split,
    check-cg.py); TI gates + pushes ~23:30Z after the sweep's release gate. ri-asm4 (ri-wt7) = ri-asm3 + 7 sweep
    merges (TI 0bd5ac02 incl.; cg-waivers ours, perf-register TI's), regen+check-1d run ~/ccv-logs/asm4a.log.
