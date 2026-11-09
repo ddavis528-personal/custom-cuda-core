@@ -1,0 +1,29 @@
+{
+  "module": "ccv_ooe",
+  "ports": {
+    "ooe_rcu_issue_payload.lead_opcode": {
+      "required": 0.0,
+      "by": "OA (OA rev 402, re:RI-26)",
+      "date": "2026-11-09",
+      "why": "DA rev 116 (13 RCU / 0 OOE, re:RI-26): OOE's side of the zero-cycle issue end's lead_opcode is wire only, straight from ooe_rs's issue register's lead slice (iss_lead_cq03h, required 0.0 in ooe_rs.ngd.json), so RCU's in-side takes 13 (0 + 13 <= 25). Every slot; every other lead field and the payload keep the port's budget."
+    },
+    "ooe_rcu_issue_payload.lead_done_row": {
+      "required": 0.0,
+      "by": "OA (OA rev 402, re:RI-26)",
+      "date": "2026-11-09",
+      "why": "DA rev 116 (13 RCU / 0 OOE, re:RI-26): OOE's side of the zero-cycle issue end's lead_done_row is wire only, straight from ooe_rs's issue register's lead slice (iss_lead_cq03h, required 0.0 in ooe_rs.ngd.json), so RCU's in-side takes 13 (0 + 13 <= 25). Every slot; every other lead field and the payload keep the port's budget."
+    },
+    "ooe_rcu_issue_payload.lead_pred_we": {
+      "required": 0.0,
+      "by": "OA (OA rev 402, re:RI-26)",
+      "date": "2026-11-09",
+      "why": "DA rev 116 (13 RCU / 0 OOE, re:RI-26): OOE's side of the zero-cycle issue end's lead_pred_we is wire only, straight from ooe_rs's issue register's lead slice (iss_lead_cq03h, required 0.0 in ooe_rs.ngd.json), so RCU's in-side takes 13 (0 + 13 <= 25). Every slot; every other lead field and the payload keep the port's budget."
+    },
+    "ooe_rcu_issue_payload.lead_phys_dst": {
+      "required": 0.0,
+      "by": "OA (OA rev 402, re:RI-26)",
+      "date": "2026-11-09",
+      "why": "DA rev 116 (13 RCU / 0 OOE, re:RI-26): OOE's side of the zero-cycle issue end's lead_phys_dst is wire only, straight from ooe_rs's issue register's lead slice (iss_lead_cq03h, required 0.0 in ooe_rs.ngd.json), so RCU's in-side takes 13 (0 + 13 <= 25). Every slot; every other lead field and the payload keep the port's budget."
+    }
+  }
+}
