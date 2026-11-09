@@ -68,6 +68,13 @@ architect may approve only if the end meets module NGD without the flop; can't m
    (no findings) -> ccv_rcu.sv goes in (RA 133). chain-ri13 (push variant) KILLED; chain-ri14 gates ri-asm3 WITH
    ccv_rcu.sv from ri-wt7 (~/ccv-logs/chain-ri14.out). Don't edit ri-wt7 tracked files while it runs. ri-push12 obsolete.
    After push: RI-33 to RA/TI/AR (block in, commit for TI to merge); then lock-step/SV-top (task 16).
+   2026-11-09 PM: chain-ri14 CG failed (ccv_rcu flops, no unit; K3 slice idle DCGE) -> 41881d6d rcu_kdet + mv=|pk
+   (slice clean). rcu_kdet was WRONG: CCV-L22 allows the ungated wake detector only in a block top, and killsleep
+   controls poke ccv_rcu__DOT__kill_detect_v_cr01h. 5c015405 detector back in ccv_rcu (ep/km under kd_en = the valid
+   flop, CG-5), unit ccv_rcu in test/rcu/cg-units.json (children black boxes, bench killsleep_tb --cg; 34 in 1 gate,
+   DCGE 100%). check-cg's harness reads only the black boxes' files, so the unit also lists ccv_params_pkg,
+   rcu_dec_pkg, rcu_xbar, ccv_common_ctech_icg as black boxes (1ab94146, c9a310f8) -- tell TI in RI-33 (a tools fix
+   would be cleaner). chain-ri15 (~/ccv-logs/chain-ri15.out) gates ri-wt7 c9a310f8+regen, then pushes.
    chain-ri12 FAILED cg: rcu_kill cr_q/kd/kaep had no waivers (d7925bc2 dropped them on scratchpad cgpol.py, which
    is BROKEN: it measures no rcu_kill findings; do not trust it, use the gate's cg log). Restored in both trees
    (ri-asm3 222a3010, ri-push12 41a4fd05, identical file). chain-ri13 (cg at CCV_JOBS=2) running: ~/ccv-logs/chain-ri13.out.
