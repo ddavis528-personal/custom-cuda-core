@@ -471,7 +471,9 @@ module ooe_rob_w #(
         // Killed: a squash acting now, or its rank under the kill count. A
         // fill that lands goes to the fill pointer plus its rank less the count.
         kl_cq02h  = rd_s_cq02h[s] | (frk_cq02h < LA'(A) && kgt_cq02h[s * A + (frk_cq02h < LA'(A) ? 32'(frk_cq02h) : 0)]);
-        fsl_cq02h = kl_cq02h ? '0 : rotl(wkf_cq02h[s * D +: D], 32'(frk_cq02h));
+        fsl_cq02h = '0;
+        for (int r = 0; r < A; r++)
+          if (!kl_cq02h && frk_cq02h == LA'(r)) fsl_cq02h = rotl(wkf_cq02h[s * D +: D], r);
         if (fm_cq02h[l * S + s]) begin
           for (int i = 0; i < D; i++) fl_e_cq02h[(s * D + i) * A + l] = fsl_cq02h[i];
           fk_cq02h[l] = kl_cq02h;
