@@ -104,6 +104,22 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build", "cg")
+
+
+def keep_unit_build():
+    """CCV_KEEP_UNIT_BUILD=1 keeps every unit's work directory (debugging);
+    by default each is removed once its unit is measured (DA, 2026-11-09:
+    a gate's build/cg reached 13-15 GB, and the disk filled mid-gate)."""
+    return os.environ.get("CCV_KEEP_UNIT_BUILD", "") not in ("", "0")
+
+
+def clean_unit_build(path):
+    """Remove a measured unit's work directory, unless CCV_KEEP_UNIT_BUILD.
+    Only once everything later read is in memory: a unit that failed keeps
+    its directory, as the run stops or reports before this. The synthesis
+    cache (build/synth-cache) is never touched."""
+    if not keep_unit_build():
+        shutil.rmtree(path, ignore_errors=True)
 # Yosys, strict (tools/shim/yosys, OI-44): run alone, as under the gate.
 SHIM = os.path.join(ROOT, "tools", "shim")
 if SHIM not in os.environ.get("PATH", "").split(os.pathsep):
@@ -846,6 +862,8 @@ class Netlist:
         """reset: the unit's reset port as "name" or "!name", or None."""
         d = json.load(open(path))
         m = d["modules"][top]
+        # What unit_key reads of the netlist, kept so its file need not be.
+        self.key_info = net_key_info(d["modules"])
         self.ports = m["ports"]
         self.params = norm_params(m.get("parameter_default_values"))
         rbit = rhigh = None
@@ -1620,6 +1638,10 @@ endmodule
         if self.errors:
             return
         self.stats(replays)
+        # Measured: everything later read (findings, block budget, RST-2,
+        # coverage, the report) is in memory, unit_key's netlist parameters
+        # too (Netlist.key_info). The work directory goes (DA, 2026-11-09).
+        clean_unit_build(self.dir)
 
 
 def dcge(u, key, sc):
@@ -2027,7 +2049,11 @@ class Structure:
     of its own. Modules read -lib are leaves whose instances carry their
     parameter overrides. `top` is the read's top, as the netlist names it."""
 
-    def __init__(self, name, top, files, blackbox=(), params=None, defines=(), keep=()):
+    def __init__(self, name, top, files, blackbox=(), params=None, defines=(), keep=(),
+                 build=None):
+        """`build`: the caller's own build directory (check-ngd's, build/ngd),
+        so no check writes under another's, which the gate may clear once
+        that check is done; check-cg's by default."""
         self.name, self.files, self.blackbox = name, list(files), list(blackbox)
         self.params, self.defines = params, list(defines)
         texts, where = {}, {}
@@ -2047,7 +2073,7 @@ class Structure:
                     and not re.search(r"\b(package|interface)\b", raw)):
                 lib.add(f)
         self.lib_files = lib
-        work = os.path.join(BUILD, "struct_" + name)
+        work = os.path.join(build or BUILD, "struct_" + name)
         os.makedirs(work, exist_ok=True)
         jf = os.path.join(work, "struct.json")
         self.cmds = read_cmds(files, blackbox, params, top, defines, lib, defer=True) + [
@@ -2059,6 +2085,8 @@ class Structure:
             raise SystemExit("check-cg: %s: the structural read failed:\n%s"
                              % (name, (r.stdout + r.stderr)[-2000:]))
         self.mods = json.load(open(jf))["modules"]
+        # Read: nothing reads the file again (DA, 2026-11-09).
+        clean_unit_build(work)
         libmods = {n for n, w in where.items() if w in lib}
         bb = {m for m, v in self.mods.items() if v.get("attributes", {}).get("blackbox")}
         # Leaves read -lib, at their own parameters or (dynports) derived.
@@ -2128,15 +2156,26 @@ class Structure:
         return out
 
 
+def net_key_info(mods):
+    """What unit_key reads of a netlist's modules: each module's parameter
+    values, and which is the top."""
+    return ({n: v.get("parameter_default_values") for n, v in mods.items()},
+            next((n for n, v in mods.items() if v.get("attributes", {}).get("top")), None))
+
+
 def unit_key(spec, netlist):
     """What a unit measures: its module, every parameter's value as its own
-    netlist (`netlist`, the unit's synthesised JSON) records it, the names
-    its params set, and its defines. A unit read with defines stands for no
-    instance: a block is read without."""
-    d = json.load(open(netlist))["modules"]
-    m = d.get(spec["module"]) or next(v for v in d.values() if v.get("attributes", {}).get("top"))
+    netlist (`netlist`, the unit's synthesised JSON, or its net_key_info,
+    kept once the file is cleaned away) records it, the names its params
+    set, and its defines. A unit read with defines stands for no instance:
+    a block is read without."""
+    if isinstance(netlist, str):
+        netlist = net_key_info(json.load(open(netlist))["modules"])
+    pdv, top = netlist
+    # As the netlist's own module when it has one by that name, else its top.
+    m = pdv[spec["module"]] if spec["module"] in pdv else pdv[top]
     return (spec["module"],
-            tuple(sorted(norm_params(m.get("parameter_default_values")).items())),
+            tuple(sorted(norm_params(m).items())),
             frozenset(spec.get("params") or {}), tuple(spec.get("defines", [])))
 
 
@@ -2174,7 +2213,7 @@ def cg_keyed(units):
     # another unit): the block budget and RST-2 both look units up.
     for u in units:
         if u.nl is not None and getattr(u, "_ukey", (None,))[0] is not u.spec:
-            u._ukey = (u.spec, unit_key(u.spec, os.path.join(u.dir, "net.json")))
+            u._ukey = (u.spec, unit_key(u.spec, u.nl.key_info))
     return [(u, u._ukey[1]) for u in units if u.nl is not None]
 
 
@@ -3080,6 +3119,42 @@ def selftest():
         if not cond:
             bad.append(what)
 
+    # 0. Each unit's work directory goes once it is measured (DA,
+    #    2026-11-09), and nothing measured changes: cg_fx_good measured
+    #    with CCV_KEEP_UNIT_BUILD=1 keeps its directory, without it leaves
+    #    none, and the two read the same numbers, findings and unit_key. A
+    #    unit that failed keeps its directory. Every control below reads
+    #    the fixtures' units with their directories gone (unless kept).
+    runs, was = {}, os.environ.get("CCV_KEEP_UNIT_BUILD")
+    try:
+        for keep in ("1", "0"):
+            os.environ["CCV_KEEP_UNIT_BUILD"] = keep
+            x = fixture_unit("fx_keep%s" % keep, "cg_fx_good")
+            shutil.rmtree(x.dir, ignore_errors=True)
+            x.measure(vcds=vcds)
+            runs[keep] = x
+    finally:
+        if was is None:
+            os.environ.pop("CCV_KEEP_UNIT_BUILD", None)
+        else:
+            os.environ["CCV_KEEP_UNIT_BUILD"] = was
+    kept, gone = runs["1"], runs["0"]
+
+    def as_read(u):
+        return sorted(str(f).replace(u.name, "U") for f in
+                      source_findings(u) + unit_findings(u) + scenario_findings(u))
+    expect(os.path.isfile(os.path.join(kept.dir, "net.json")),
+           "with CCV_KEEP_UNIT_BUILD=1 a measured unit's work directory was removed")
+    expect(not os.path.exists(gone.dir),
+           "a measured unit's work directory was left: %s" % gone.dir)
+    expect(not kept.errors and not gone.errors and kept.data == gone.data
+           and kept.obs == gone.obs and as_read(kept) == as_read(gone)
+           and cg_keyed([kept])[0][1] == cg_keyed([gone])[0][1],
+           "a unit measured with its work directory cleaned reads otherwise than one kept")
+    expect(os.path.isdir(failing.dir), "a unit that failed lost its work directory")
+    expect(keep_unit_build() or not any(os.path.exists(u.dir) for u in allu),
+           "a fixture unit's work directory was left after it was measured")
+
     # 1. The compliant fixtures have nothing but their flopped reset and
     #    valid, which their allowance takes: a 20-flop gate, a 256-flop gate,
     #    and a free-running LFSR, which is ungated by measurement.
@@ -3257,6 +3332,8 @@ def selftest():
     expect(total == want == 520 and not cover,
            "a block's flops are not its instances' units' sum: %d, want %d (520): %s"
            % (total, want, cover))
+    expect(keep_unit_build() or not os.path.exists(os.path.join(BUILD, "struct_blk_fx_ok")),
+           "a structural read's work directory was left once read")
     mis = __import__("copy").copy(units["cg_fx_small"])
     mis.spec = dict(mis.spec, name="fx_small_misread", defines=["CG_FX_MISREAD"])
     mis.name = "fx_small_misread"

@@ -49,6 +49,12 @@
 #   CCV_JOBS=n               sections run n at a time after the generators
 #                            (default: every core; 1 is the serial gate).
 #                            Each section's log is build/verify/<job>.log.
+#   CCV_KEEP_BUILD=1         keep each section's build directory (owns,
+#                            below), which is otherwise removed once the
+#                            section passed and every section that reads it
+#                            is done (DA, 2026-11-09). A failed section's
+#                            stays. CCV_KEEP_UNIT_BUILD=1 keeps check-cg's
+#                            and check-ngd's per-unit work directories.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 # Every Yosys the gate runs, SymbiYosys's included, is the strict one: the
@@ -434,6 +440,20 @@ declare -A after=(
   [links]="kernel"         # the oracles, copied into its split tree
   [walkthrough]="skel kernel svh"
 )
+# The build directory each section alone writes, removed once it passed
+# and every job that names it in `after` is done (DA, 2026-11-09: a gate's
+# build/ peaked near 25 GB and twice filled the disk), unless
+# CCV_KEEP_BUILD=1; a failed section's stays, for its triage. Nothing after
+# the pool reads these (the walkthrough reads skel's, kernel's and svh's,
+# which are not here), nor does tools/gate-export.sh, which packs
+# build/verify and build/synth-cache, never removed here.
+declare -A owns=(
+  [cg]="build/cg"               # check-cg's units, structural reads, fixtures
+  [ngd]="build/ngd"             # check-ngd's, its structural reads too
+  [ooe_rtl]="build/ooe-rtl"
+  [rcu_rtl]="build/rcu-rtl"
+  [links]="build/links_split"   # the split tree check-links copies
+)
 LOGS=build/verify
 rm -rf "$LOGS" && mkdir -p "$LOGS"
 # check-cg and check-ngd share their Yosys netlists through this cache, keyed
@@ -489,6 +509,22 @@ ready() {
   local d
   for d in ${after[$1]:-}; do [ "${state[$d]}" = done ] || return 1; done
 }
+declare -A cleaned=()
+# Each passed section's own directory whose readers (the jobs that name it
+# in `after`) are all done; a record of each in build/verify/cleaned.
+clean_done() {
+  [ "${CCV_KEEP_BUILD:-0}" = 0 ] || return 0
+  local k r
+  for k in "${!owns[@]}"; do
+    [ "${outcome[$k]:-}" = pass ] && [ -z "${cleaned[$k]:-}" ] || continue
+    for r in "${!after[@]}"; do
+      case " ${after[$r]} " in *" $k "*) [ "${state[$r]}" = done ] || continue 2 ;; esac
+    done
+    cleaned[$k]=1
+    rm -rf ${owns[$k]}
+    echo "$k: ${owns[$k]}" >>"$LOGS/cleaned"
+  done
+}
 next=($ORDER)
 flush() {
   while [ ${#next[@]} -gt 0 ] && [ "${state[${next[0]}]}" = done ]; do
@@ -541,6 +577,7 @@ while :; do
   state[$j]=done
   printf '  [%s: %ds]\n' "$j" $((SECONDS - ${t0[$j]})) >>"$LOGS/$j.log"
   [ "$rc" = 0 ] && outcome[$j]=pass || { outcome[$j]=fail; fail=1; }
+  clean_done
   flush
 done
 for j in $ORDER; do
