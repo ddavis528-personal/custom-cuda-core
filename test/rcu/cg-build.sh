@@ -36,6 +36,8 @@ case "$unit" in
       "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/rcu/rcu_dec_pkg.sv" \
       "$PWD/rtl/ctech/sim/ccv_common_ctech_icg.sv" "$PWD/rtl/clk/ccv_common_clk.sv" \
       $(ls "$PWD"/rtl/rcu/*.sv | grep -v rcu_dec_pkg) "$PWD/test/rcu/killsleep_tb.cpp" ;;
+  rcu_kdet)
+    vl rcu_kdet "" "" "$PWD/rtl/rcu/rcu_kdet.sv" "$PWD/test/rcu/kdet_tb.cpp" ;;
   rcu_kill)
     vl rcu_kill "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_kill.sv" "$PWD/test/rcu/kill_tb.cpp" ;;
   rcu_mig)

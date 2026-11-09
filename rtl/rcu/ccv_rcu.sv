@@ -1118,7 +1118,7 @@ module ccv_rcu (
   // ---- The kill detector (RA rev 127, AR 336 (b)) -------------------------
   // kill_valid lands in K-1 and is in the gate's wake OR, but a wake opens
   // the gate only from the edge after next (ccv_common_clk), so asleep, the
-  // edge that ends K-1 never reaches rcu_kill or rcu_mig. This flop takes it
+  // edge that ends K-1 never reaches rcu_kill or rcu_mig. rcu_kdet's valid flop takes it
   // on the ungated clock, the one wake detector CCV-L22 allows: kill_v_q in
   // K for both, asleep as awake, with no cycle added (a hold, not a delay).
   // The edge that ends K, which takes the epoch and the warp mask, is the
@@ -1126,17 +1126,21 @@ module ccv_rcu (
   // flops, RCU's boundary flops for them (AR's rev 285 (5), AR 338): the
   // epoch and the warp mask of K are here in K+1, where rcu_mig reads the
   // mask with kill_v_q a cycle on and rcu_kill holds the epoch to the ack
-  // under its own flop. No reset: OOE holds kill_valid low in reset, and
-  // rcu_kill and rcu_mig reset what they enable. 1 + WE + NWP flops, written
-  // every cycle, in the block's 2% (RA rev 127, RA rev 130).
+  // under its own flop. rcu_kdet holds them: the epoch and the mask in one
+  // gate under its valid flop (RA rev 127, RA rev 130).
   logic        kill_detect_v_cr01h;
   logic [1:0]  kill_detect_ep_cr02h;    // kill_epoch's width (Icarus sizes $bits of a port as 0 here)
   logic [31:0] kill_detect_km_cr02h;    // kill_warp_mask's
-  always_ff @(posedge core_clk) begin
-    kill_detect_v_cr01h  <= kill_valid;
-    kill_detect_ep_cr02h <= kill_epoch;
-    kill_detect_km_cr02h <= kill_warp_mask;
-  end
+  rcu_kdet #(.WE(2), .NWP(32)) u_kdet (
+    .core_clk      (core_clk),
+    .rst_n         (rst_n),
+    .kill_valid    (kill_valid),
+    .kill_epoch    (kill_epoch),
+    .kill_warp_mask(kill_warp_mask),
+    .kv_cr01h      (kill_detect_v_cr01h),
+    .kep_cr02h     (kill_detect_ep_cr02h),
+    .km_cr02h      (kill_detect_km_cr02h)
+  );
 
   // ---- rcu_kill: kill, the inbound credits, done's wake and the block's idle ---
   rcu_kill u_kill (

@@ -45,7 +45,7 @@
 // K: RA-43's copies at A-1, flopped here); M0-M2 the base, index and data sources of the P slot owning pipe
 // K (rcu_dec_pkg, the model's decode), its owner from the leads (lead_sec_mask
 // the footprint exactly, OA 403, RA 133; asserted equal to the payload's),
-// loaded when any P slot 0..K does;
+// loaded when a P slot owns pipe K (pk_cr01h);
 // R2 the R op's phys_old_dst or migration's row. Each
 // is a 16:1 AND-OR on sel_lo per group of 16 rows, gated by its sel_hi
 // bit, then an NH:1 OR: the spec's read mux.
@@ -213,10 +213,11 @@ module rcu_bank_slice #(
   // L0-L3 load when an S slot reaches section K by its leads (RA-43:
   // lead_sec_mask a superset of the footprint, so the owner below is among
   // them, and a slot that reaches K by the lead alone loads the zero row);
-  // M0-M2 when a P slot 0..K issues (only those can own section K: a
-  // footprint's lowest bit is its slot).
+  // M0-M2 when a P slot owns pipe K (pk_cr01h: lead_sec_mask is the
+  // footprint exactly, RA 133), so a slice whose pipe no op uses holds
+  // its M rows.
   wire lv_cr01h = |sk_cr01h;
-  wire mv_cr01h = |pv_cr01h[K:0];
+  wire mv_cr01h = |pk_cr01h;   // the P owner of pipe K, exact from its leads (RA 133)
   wire [NR-1:0] rd_en_cr01h = {r2v_cr01h | g2_v_cr01h, {3{mv_cr01h}}, {4{lv_cr01h}}};
   wire [NW-1:0] wr_en_cr01h = wr_v_cr01h | (NW'(gw_v_cr01h) << (NW - 1));
   // The R op reads R2 when it merges into a GPR (the model's decode,

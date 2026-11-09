@@ -21,6 +21,9 @@
 #                   its controls pcopy (the copy without its predicate-only
 #                   form) and xfree (the copies not held off a valid), each
 #                   of which must fail;
+#   rcu_kdet:       test/rcu/kdet_tb.cpp, the kill detector, and its control
+#                   follow (the epoch and mask flopped every cycle), which
+#                   must fail
 #   rcu_kill:       test/rcu/kill_tb.cpp, and its control drain (KILL_DRAIN
 #                   - 1 in the value model), which must fail
 #   ccv_rcu_killsleep: test/rcu/killsleep_tb.cpp, the whole block on its gate:
@@ -119,6 +122,13 @@ for u in rcu_isd rcu_isd_s; do
     fi
   done
 done
+bench rcu_kdet test/rcu/cg-build.sh rcu_kdet "$B/rcu_kdet" -- "$B/rcu_kdet/tb"
+if [ -x "$B/rcu_kdet/tb" ] && ! "$B/rcu_kdet/tb" --control follow >"$B/rcu_kdet.follow.log" 2>&1 &&
+   grep -q "control follow: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_kdet.follow.log"; then
+  say "rcu_kdet control follow" "caught"
+else
+  say "rcu_kdet control follow" "NOT CAUGHT ($B/rcu_kdet.follow.log)"; fail=1
+fi
 bench rcu_kill test/rcu/cg-build.sh rcu_kill "$B/rcu_kill" -- "$B/rcu_kill/tb"
 if [ -x "$B/rcu_kill/tb" ] && ! "$B/rcu_kill/tb" --control drain >"$B/rcu_kill.drain.log" 2>&1 &&
    grep -q "control drain: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_kill.drain.log"; then
