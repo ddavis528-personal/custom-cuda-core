@@ -373,6 +373,8 @@ module ooe_rename #(
   (* keep *) logic [R*LS-1:0] p_slot_cq03h;
   (* keep *) logic [R*4-1:0]  p_dst_cq03h;
   (* keep *) logic [R*2-1:0]  p_pdst_cq03h;
+  logic [S*16*R-1:0]   p_gkm_cq03h;   // the pending group's writers, per slot and register (#35)
+  logic [S*4*R-1:0]    p_pkm_cq03h;
   logic [R*GW-1:0]     p_gname_cq03h;
   logic [R*PW-1:0]     p_pname_cq03h;
   logic [S*R*4*GW-1:0] c_gv_cq03h;
@@ -399,8 +401,8 @@ module ooe_rename #(
       .rat_cq02h(rat_cq02h[s * MW +: MW]), .h_src_cq01h(src_cq01h), .h_dst_cq01h(dst_cq01h),
       .h_gwe_cq01h(gwe_cq01h), .h_pguard_cq01h(pguard_cq01h), .h_pdst_cq01h(pdst_cq01h), .h_pwe_cq01h(pwe_cq01h),
       .h_pq_cq01h(pq_cq01h), .po_v_cq02h, .po_slot_cq02h, .po_dst_cq02h, .po_gwe_cq02h, .po_gname_cq02h,
-      .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .pw_v_cq01h(p_v_cq03h), .pw_slot_cq01h(p_slot_cq03h), .pw_dst_cq01h(p_dst_cq03h),
-      .pw_gwe_cq01h(p_gwe_cq03h), .pw_pdst_cq01h(p_pdst_cq03h), .pw_pwe_cq01h(p_pwe_cq03h),
+      .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .pw_v_cq01h(p_v_cq03h),
+      .pw_gkm_cq01h(p_gkm_cq03h[s * 16 * R +: 16 * R]), .pw_pkm_cq01h(p_pkm_cq03h[s * 4 * R +: 4 * R]),
       .h_gv_cq01h(c_gv_cq03h[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk_cq03h[s * R * 4 * R +: R * 4 * R]),
       .h_gw_cq01h(c_gw_cq01h[s * R * 4 * R +: R * 4 * R]),
       .h_pv_cq01h(c_pv_cq03h[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk_cq03h[s * R * 4 * R +: R * 4 * R]),
@@ -422,13 +424,16 @@ module ooe_rename #(
   logic [R*4*GW-1:0] l_g_cq02h;
   logic [R*4*R-1:0]  l_gl_cq02h, l_pl_cq02h;
   logic [R*4*PW-1:0] l_p_cq02h;
+  logic [S*16*R-1:0] l_gkm_cq02h;
+  logic [S*4*R-1:0]  l_pkm_cq02h;
   ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(XL + 10)) u_ren1 (
     .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h(c_xw_cq02h),
     .c_gv_cq01h(c_gv_cq03h), .c_gk_cq01h(c_gk_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq03h), .c_pk_cq01h(c_pk_cq03h),
     .c_pw_cq01h, .pw_gname_cq01h(p_gname_cq03h), .pw_pname_cq01h(p_pname_cq03h), .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v(l_v_cq02h), .l_slot(l_slot_cq02h), .l_dst(l_dst_cq02h), .l_gwe(l_gwe_cq02h),
     .l_pdst(l_pdst_cq02h), .l_pwe(l_pwe_cq02h), .l_idx(l_idx_cq02h), .l_br(l_br_cq02h), .l_ckpt(l_ckpt_cq02h),
-    .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_xw_cq02h));
+    .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_xw_cq02h),
+    .l_gkm(l_gkm_cq02h), .l_pkm(l_pkm_cq02h));
 
   // Port k's owner: the slot of the lane whose name index is k (each
   // writing lane's names, one-hot by port: GPR, then predicate).
@@ -552,6 +557,8 @@ module ooe_rename #(
       p_gwe_cq03h    <= l_gwe_cq02h;
       p_pdst_cq03h   <= l_pdst_cq02h;
       p_pwe_cq03h    <= l_pwe_cq02h;
+      p_gkm_cq03h    <= l_gkm_cq02h;
+      p_pkm_cq03h    <= l_pkm_cq02h;
       r_idx_cq03h    <= l_idx_cq02h;
       r_galloc_cq03h <= galloc_cq02h;
       r_palloc_cq03h <= palloc_cq02h;

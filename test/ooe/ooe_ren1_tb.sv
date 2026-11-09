@@ -80,6 +80,8 @@ module ooe_ren1_tb #(
   logic [S*MW-1:0]   crat_cq02h;
   logic [S*C*MW-1:0] ckpt_cq02h;
   logic [R*4-1:0]    pw_dst;
+  logic [S*16*R-1:0] q_gkm;             // the pending group's writers, per slot and register (#35)
+  logic [S*4*R-1:0]  q_pkm;
   // ooe_rat's capture of the group before last (OI-83 (b)), into the reads.
   logic [R-1:0]      po_v, po_gwe, po_pwe;
   logic [R*LS-1:0]   po_slot;
@@ -122,8 +124,7 @@ module ooe_ren1_tb #(
       .h_pguard_cq01h(pguard), .h_pdst_cq01h(pdst), .h_pwe_cq01h(pwe), .h_pq_cq01h(pq),
       .po_v_cq02h(po_v), .po_slot_cq02h(po_slot), .po_dst_cq02h(po_dst), .po_gwe_cq02h(po_gwe),
       .po_gname_cq02h(po_gname), .po_pdst_cq02h(po_pdst), .po_pwe_cq02h(po_pwe), .po_pname_cq02h(po_pname),
-      .pw_v_cq01h(q_v), .pw_slot_cq01h(q_slot), .pw_dst_cq01h(q_dst), .pw_gwe_cq01h(q_gwe),
-      .pw_pdst_cq01h(q_pdst), .pw_pwe_cq01h(q_pwe),
+      .pw_v_cq01h(q_v), .pw_gkm_cq01h(q_gkm[s * 16 * R +: 16 * R]), .pw_pkm_cq01h(q_pkm[s * 4 * R +: 4 * R]),
       .h_gv_cq01h(c_gv[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk[s * R * 4 * R +: R * 4 * R]),
       .h_gw_cq01h(c_gw[s * R * 4 * R +: R * 4 * R]),
       .h_pv_cq01h(c_pv[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk[s * R * 4 * R +: R * 4 * R]),
@@ -139,12 +140,14 @@ module ooe_ren1_tb #(
   logic [R*4*GW-1:0] l_g;
   logic [R*4*R-1:0]  l_gl, l_pl;
   logic [R*4*PW-1:0] l_p;
+  logic [S*16*R-1:0] l_gkm;
+  logic [S*4*R-1:0]  l_pkm;
   ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(1)) ooe_ren1 (
     .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0),
     .c_gv_cq01h(c_gv), .c_gk_cq01h(c_gk), .c_gw_cq01h(c_gw), .c_pv_cq01h(c_pv), .c_pk_cq01h(c_pk),
     .c_pw_cq01h(c_pw), .pw_gname_cq01h(q_gname), .pw_pname_cq01h(q_pname), .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v, .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl,
-    .l_x);
+    .l_x, .l_gkm, .l_pkm);
 
   // The Rename 1 register (in ooe_rename, gated by the go's sel), with the
   // free lists' heads beside it.
@@ -170,6 +173,8 @@ module ooe_ren1_tb #(
       q_gl     <= l_gl;
       q_pv     <= l_p;
       q_pl     <= l_pl;
+      q_gkm    <= l_gkm;
+      q_pkm    <= l_pkm;
       q_galloc <= galloc_cq02h;
       q_palloc <= palloc_cq02h;
     end

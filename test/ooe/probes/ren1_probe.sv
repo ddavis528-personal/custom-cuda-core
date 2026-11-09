@@ -79,8 +79,8 @@ module ren1_probe #(
     end
     ooe_headrd #(.S(S), .SL(s), .R(R), .A(R), .GW(GW), .PW(PW)) rd (.rat_cq02h(rat_cq02h[s * MW +: MW]),
       .h_src_cq01h(src), .h_dst_cq01h(dst), .h_gwe_cq01h(gwe), .h_pguard_cq01h(pguard), .h_pdst_cq01h(pdst),
-      .h_pwe_cq01h(pwe), .h_pq_cq01h(pq), .pw_v_cq01h(q_v), .pw_slot_cq01h(q_slot), .pw_dst_cq01h(q_dst),
-      .pw_gwe_cq01h(q_gwe), .pw_pdst_cq01h(q_pdst), .pw_pwe_cq01h(q_pwe),
+      .h_pwe_cq01h(pwe), .h_pq_cq01h(pq), .pw_v_cq01h(q_v),
+      .pw_gkm_cq01h(q_gkm[s * 16 * R +: 16 * R]), .pw_pkm_cq01h(q_pkm[s * 4 * R +: 4 * R]),
       .h_gv_cq01h(c_gv[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk[s * R * 4 * R +: R * 4 * R]),
       .h_gw_cq01h(c_gw[s * R * 4 * R +: R * 4 * R]),
       .h_pv_cq01h(c_pv[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk[s * R * 4 * R +: R * 4 * R]),
@@ -89,11 +89,12 @@ module ren1_probe #(
   logic [R-1:0] l_v, l_gwe, l_pwe, l_br, l_x;
   logic [R*LS-1:0] l_slot; logic [R*4-1:0] l_dst; logic [R*2-1:0] l_pdst; logic [R*2*R-1:0] l_idx;
   logic [R*LC-1:0] l_ckpt; logic [R*4*GW-1:0] l_g; logic [R*4*R-1:0] l_gl, l_pl; logic [R*4*PW-1:0] l_p;
+  logic [S*16*R-1:0] l_gkm, q_gkm; logic [S*4*R-1:0] l_pkm, q_pkm;
   ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(1)) r1 (.c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h,
     .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0), .c_gv_cq01h(c_gv), .c_gk_cq01h(c_gk),
     .c_gw_cq01h(c_gw), .c_pv_cq01h(c_pv), .c_pk_cq01h(c_pk), .c_pw_cq01h(c_pw), .pw_gname_cq01h(pg),
     .pw_pname_cq01h(pp), .lane_v_cq02h(lane_v), .lane_c_cq02h(lane_c), .wb_cq02h(wb), .l_v,
-    .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl, .l_x);
+    .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl, .l_x, .l_gkm, .l_pkm);
   logic en;
   assign en = |sel;
   always_ff @(posedge ooe_core_clk) begin
@@ -101,6 +102,7 @@ module ren1_probe #(
     if (en) begin
       q_slot <= l_slot; q_dst <= l_dst; q_gwe <= l_gwe; q_pwe <= l_pwe; q_br <= l_br; q_pdst <= l_pdst;
       q_idx <= l_idx; q_ckpt <= l_ckpt; q_g <= l_g; q_gl <= l_gl; q_pl <= l_pl; q_p <= l_p;
+      q_gkm <= l_gkm; q_pkm <= l_pkm;
     end
   end
 endmodule

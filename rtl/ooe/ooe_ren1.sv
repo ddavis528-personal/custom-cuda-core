@@ -81,7 +81,13 @@ module ooe_ren1 #(
   output logic [R*4*R-1:0]   l_gl,          //   or its writer's lane, one-hot
   output logic [R*4*PW-1:0]  l_p,           // guard, old destination, q0, q1
   output logic [R*4*R-1:0]   l_pl,
-  output logic [R*XW-1:0]    l_x
+  output logic [R*XW-1:0]    l_x,
+  // The group's writers, per slot and register, the last lane writing it,
+  // one-hot over the lanes (GPR: (s * 16 + e) * R; predicate: (s * 4 + e)
+  // * R), which the Rename 1 register holds for the next cycle's reads to
+  // index like a map (#35).
+  output logic [S*16*R-1:0]  l_gkm,
+  output logic [S*4*R-1:0]   l_pkm
 );
 
   // Candidate c = h * S + s's reads sit at slot s's instance, head h.
@@ -205,6 +211,32 @@ module ooe_ren1 #(
       v = v | ({R{lane_c_cq02h[l * NC + c]}} & (k == 0 ? cgl[(c * 4 + i) * R +: R] : cpl[(c * 4 + i) * R +: R]));
     fl = v;
   endfunction
+
+  // Slot s's register e's writer, by lane (k 0 GPR, 1 predicate): each
+  // lane's candidate in slot s writing e, the last such lane.
+  function automatic logic [R-1:0] kmap(input int s, input int e, input int k);
+    logic [R-1:0] m, w;
+    logic later;
+    for (int l = 0; l < R; l++) begin
+      m[l] = 1'b0;
+      for (int h = 0; h < R; h++)
+        m[l] = m[l] | (lane_c_cq02h[l * NC + h * S + s] &
+                       (k == 0 ? c_gwe_cq01h[h * S + s] && c_dst_cq01h[(h * S + s) * 4 +: 4] == 4'(e)
+                               : c_pwe_cq01h[h * S + s] && c_pdst_cq01h[(h * S + s) * 2 +: 2] == 2'(e)));
+      m[l] = m[l] & lane_v_cq02h[l];
+    end
+    later = 1'b0;
+    for (int l = R - 1; l >= 0; l--) begin
+      w[l]  = m[l] && !later;
+      later = later || m[l];
+    end
+    kmap = w;
+  endfunction
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      for (int e = 0; e < 16; e++) l_gkm[(s * 16 + e) * R +: R] = kmap(s, e, 0);
+      for (int e = 0; e < 4; e++)  l_pkm[(s * 4 + e) * R +: R]  = kmap(s, e, 1);
+    end
 
   always_comb
     for (int l = 0; l < R; l++) begin
