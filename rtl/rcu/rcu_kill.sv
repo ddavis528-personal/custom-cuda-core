@@ -28,13 +28,15 @@
 // Idle (rcu_idle_q, the block gate's quiesced): no busy term from any
 // module, no valid on any inbound channel, no kill or drain, no done wake.
 //
-// Credits. RCU never holds an inbound message on the issue, lane-result
-// and MIU-data channels: each slot's credit flop takes the slot's valid on
+// Credits. RCU never holds an inbound message on the issue and
+// lane-result channels: each slot's credit flop takes the slot's valid on
 // the wire, so its credit returns in the cycle the payload lands (valid
-// leads payload by a cycle). 45 flops: issue slots 0-8, lane-result copies
-// 0-31, MIU slots 0-3, written every cycle, the channels' own control
+// leads payload by a cycle). 41 flops: issue slots 0-8, lane-result copies
+// 0-31, written every cycle, the channels' own control
 // pulses (an allowance waiver, rtl/cg-waivers.json, as a repeater's pulses
-// go to the block's budget).
+// go to the block's budget). miu_rcu_data has no credit port at RCU (RA-41,
+// credit on receipt; AR 331). The issue credits leave the ports file with
+// RA-41 and return with RA-43 (AR 331): RCU keeps their 9 flops.
 //
 // CSRs (RA-26): no CSRs; a 1-entry responder answers each request the
 // cycle after it lands, done = 1 and data 0, with its credit in the same
@@ -52,8 +54,8 @@ module rcu_kill #(
   parameter int ND = 2,          // done-wake terms: rcu_lanes' descriptor stages, R's pipe
   localparam int NS = ccv_params_pkg::CCV_ISSUE_RESOURCES,   // issue slots, 9
   localparam int NL = 32,        // lane-result copies
-  localparam int NM = 4,         // MIU data slots
-  localparam int NC = NS + NL + NM,
+  localparam int NM = 4,         // MIU data slots (idle only: no credit, RA-41)
+  localparam int NC = NS + NL,
   localparam int WE = ccv_prov_pkg::CCV_P_W_KILL_EPOCH,
   localparam int KILL_DRAIN = ccv_prov_pkg::CCV_LAT_RCU_KILL_DRAIN,
   localparam int WD = $clog2(KILL_DRAIN + 1)
@@ -69,8 +71,8 @@ module rcu_kill #(
   // Inbound valids on the wire, each a cycle ahead of its payload.
   input  logic [NS-1:0] iv_cr00h,     // ooe_rcu_issue_s*_valid
   input  logic [NL-1:0] lv_cr00h,     // lane_rcu_res_c*_valid
-  input  logic [NM-1:0] mv_cr00h,     // miu_rcu_data_s*_valid
-  output logic [NC-1:0] cr_cr01h,     // credits: issue at [8:0], lane copies [40:9], MIU [44:41]
+  input  logic [NM-1:0] mv_cr00h,     // miu_rcu_data_s*_valid (idle)
+  output logic [NC-1:0] cr_cr01h,     // credits: issue at [8:0], lane copies [40:9]
   // Wake and idle.
   input  logic [ND-1:0] dbusy_cr00h,  // a lane or SFU descriptor stage valid, or R's pipe valid (each module's OR)
   input  logic [NB-1:0] busy_cr00h,   // each module's busy OR, from its flops
@@ -127,7 +129,7 @@ module rcu_kill #(
   logic [NC-1:0] cr_q_cr01h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) cr_q_cr01h <= '0;
-    else          cr_q_cr01h <= {mv_cr00h, lv_cr00h, iv_cr00h};
+    else          cr_q_cr01h <= {lv_cr00h, iv_cr00h};
   end
   assign cr_cr01h = cr_q_cr01h;
 

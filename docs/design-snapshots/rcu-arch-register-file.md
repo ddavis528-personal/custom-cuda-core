@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=25 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 25 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Register_file rev=26 exported=2026-11-08 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Register file*, at revision 26 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Register file
 
@@ -66,7 +66,7 @@ The owner of section k is the lead (cont = 0) S slot j ≤ k whose `footprint` h
 | Port | Lands in | Row select | Data for lane l | Lanes written | Section k written when |
 | --- | --- | --- | --- | --- | --- |
 | LW (lane) | A+6 | lane descriptor `lwb_d[k]` at depth 5 (predecoded at A) | `lane_rcu_res` c\_l `result`\[8k+7:8k\] | all 32; the GPR copy writes only lanes with `active` = 0 | descriptor valid, the op owns section k, it writes a GPR |
-| SW (SFU) | A+11 | SFU descriptor `swb_d` at depth 10 | the SFU second result (RA-3), byte k | all 32 | descriptor valid and k in the SFU destination's `secmask` (all four under `FULL_ROW`) |
+| SW (SFU) | A+11 | SFU descriptor `swb_d` at depth 10 | the SFU second result (RA-3), `sfu_result` byte k, never `result` (LW's): an SFU write and a lane write on the same lane in one cycle each land their own value (RA rev 120) | all 32 | descriptor valid and k in the SFU destination's `secmask` (all four under `FULL_ROW`) |
 | MW (load) | MIU payload cycle T | `mdat_lead_q[j]`, predecoded on the wire in T−1 | `load_data` lane word of slot j, shifted left 8·pos, byte k | lanes in the lead `active_mask` | `mdat_v_q[j]` and k in `secmask(dst_width, dst_pos)` of slot j (all four under `FULL_ROW`), and phys\_dst is not the zero register |
 | RW (R) | A+2 | `rres_a1` | R result (already merged with the old destination), shifted to pos, byte k; or a staged restore row | all 32 | R result valid and k in its `secmask` (all four under `FULL_ROW`); a restore row writes all four |
 

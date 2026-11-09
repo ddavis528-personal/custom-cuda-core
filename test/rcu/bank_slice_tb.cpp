@@ -622,6 +622,16 @@ void directed(Bench &b) {
   run(Cycle{{}, {{kSW, r2, 0xf, d1, 0xf}, {kRW, r3, 0xf, d2, 0xf}}, {}});
   run(Cycle{{}, {{kSW, r2, 0xfu & ~(1u << kK), d2, 0xf}}, {}});
   run(Cycle{{{1, r2}, {2, r3}}, {}, {}});
+  // LW and SW in the same cycle on every lane, each its own row and data
+  // (an SFU op landing beside a lane op: SW writes sfu_result, LW result;
+  // RA rev 120): each row holds its own port's bytes.
+  run(Cycle{{}, {{kLW, r1, 1u << kK, d1, 0xf}, {kSW, r2, 1u << kK, d2, 0xf}}, {}});
+  run(Cycle{{{0, r1}, {1, r2}}, {}, {}});
+  // A 16-bit SFU op at position 2 (RA rev 124): sfu_result arrives steered,
+  // SW's secmask is 1100; banks 2-3 take it, 0-1 keep their bytes, or take
+  // zero under FULL_ROW.
+  run(Cycle{{}, {{kSW, r2, 0xc, d1, 0xf}}, {}});
+  run(Cycle{{{2, r2}}, {}, {}});
   // The zero register reads 0.
   run(Cycle{{{3, kZero}}, {}, {}});
   // Loads: a 16-bit and a 4-bit one at positions covering K, and a slot
