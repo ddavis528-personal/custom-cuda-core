@@ -191,7 +191,8 @@ module ooe_wake #(
   localparam int FLA   = FLL + 1;       // a waiting timer was hinted: its lead line times from it
   localparam int FHNT  = FLA + 1;       // a spec timer was hinted: its L1 completion is coming
   localparam int FLM   = FHNT + 1;      // a spec timer's miss foreseen: its lead line is down
-  localparam int FAGE  = FLM + 1;       // AW
+  localparam int FNEW  = FLM + 1;       // granted at the last edge (confirmation's co-grant term, OI-133)
+  localparam int FAGE  = FNEW + 1;      // AW
   localparam int EW    = FAGE + AW;
   localparam int SW    = N * EW;
 
@@ -338,6 +339,7 @@ module ooe_wake #(
     n[FLA]        = fla;
     n[FHNT]       = fhnt;
     n[FLM]        = flm;
+    n[FNEW]       = grant;
     n[FAGE +: AW] = age;
     entry_next = n;
   endfunction
@@ -475,14 +477,18 @@ module ooe_wake #(
   // them over its own: issued, the held misses, final and prod. The stops
   // land at this edge, with the grants of the cycle that reads the same
   // state, so this module's issued bits are ooe_rs's issued register.
-  logic [N-1:0] msh_cq02h, prd_cq02h, rep_cq02h, conf_cq02h, stop_cq02h;
+  // The entries granted at the last edge (FNEW), for confirmation's
+  // co-grant term (OI-133): an entry's grant clocks it, and its age, 1
+  // after a grant, clocks it again at the next edge to clear it.
+  logic [N-1:0] msh_cq02h, prd_cq02h, nw_cq02h, rep_cq02h, conf_cq02h, stop_cq02h;
   always_comb
     for (int j = 0; j < N; j++) begin
       msh_cq02h[j] = held_miss(st_cq02h[j * EW +: EW]);
       prd_cq02h[j] = st_cq02h[j * EW + FPROD];
+      nw_cq02h[j]  = st_cq02h[j * EW + FNEW];
     end
   ooe_confirm #(.N(N)) u_confirm (
-    .iss_cq01h(is_cq02h), .dep_cq01h(dep_cq01h), .msd_cq01h(msh_cq02h), .fin_cq01h(fn_cq02h),
+    .iss_cq01h(is_cq02h), .dep_cq01h(dep_cq01h), .msd_cq01h(msh_cq02h), .new_cq01h(nw_cq02h), .fin_cq01h(fn_cq02h),
     .prod_cq01h(prd_cq02h), .replay_cq01h(rep_cq02h), .conf_cq01h(conf_cq02h)
   );
   assign stop_cq02h = rep_cq02h | conf_cq02h | sqf_cq01h;
@@ -497,6 +503,7 @@ module ooe_wake #(
   // Every stop lands on a clocked entry: no stop is lost. A miss pulse
   // clears on its own: its timer is issued and below saturation.
   `CCV_ASSERT(stop_clocked, (stop_cq02h & is_cq02h & ~ent_en_cq02h) == '0)
+  `CCV_ASSERT(new_clocked, (nw_cq02h & ~ent_en_cq02h) == '0)
   `CCV_ASSERT(miss_clocked, (miss_cq02h & ~ent_en_cq02h) == '0)
   // A completion names an issued timer (the model's check too).
   `CCV_ASSERT(cmpl_issued, (hit_cq01h & ~is_cq02h) == '0)

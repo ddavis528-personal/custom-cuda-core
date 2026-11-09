@@ -443,7 +443,7 @@ void Core::cycle(uint64_t now) {
   }
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
-                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
+                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.hop_new, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.hfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant, &wlog_.sel_ret, &wlog_.sel_brk, &wlog_.sel_hold})
@@ -1447,10 +1447,14 @@ void Core::cancel(unsigned e) {
 }
 
 /// One hop of transitive cancel: every issued, unconfirmed entry whose row
-/// is no longer ready -- a producer it issued on has missed (msd) or is not
-/// issued -- returns to Waiting. False when nothing changed. Run at the start
-/// of every cycle, as ooe_confirm's level rule (OI-50).
+/// is no longer ready -- a producer it issued on has missed (msd), is not
+/// issued, or was granted at the same edge as it (OI-133) -- returns to
+/// Waiting. False when nothing changed. Run at the start of every cycle, as
+/// ooe_confirm's level rule (OI-50).
 bool Core::cancelHop() {
+  // Granted at the last edge: issued, the hop's first cycle (the RTL's
+  // register of the last edge's grant).
+  auto fresh = [&](const RsEntry &y) { return y.valid && y.issued && !y.confirmed && y.issue_at + 1 == now_; };
   // Decide the whole hop first, so a return to Waiting in this hop does not
   // reach that entry's own dependants until the next.
   std::vector<unsigned> hop;
@@ -1458,13 +1462,21 @@ bool Core::cancelHop() {
     const RsEntry &y = rs_[i];
     if (i < wlog_.hop_iss.size()) wlog_.hop_iss[i] = y.valid && y.issued && !y.confirmed;
     if (i < wlog_.hop_msd.size()) wlog_.hop_msd[i] = y.valid && y.msd;
+    if (i < wlog_.hop_new.size()) wlog_.hop_new[i] = fresh(y);
     // OI-50's rule, as the RTL decides it: an issued, unconfirmed entry
     // returns to Waiting when a producer it depends on is not issued or has
-    // missed its L1 slot. A dependant issued on a producer that was replayed
-    // and re-issued within a hop is caught when that re-issue is replayed.
+    // missed its L1 slot. A producer cancelled and granted again at the
+    // same edge as its dependant (granted on the ready bit the producer's
+    // first issue woke: OA-17's stale grant) is issued in the hop's first
+    // cycle with it, so the hop also counts a producer granted at the
+    // dependant's own edge as gone (OI-133; L1_WAKE 16 exposed it).
+    // A dependant granted before such a re-grant saw the producer not
+    // issued for a cycle at least, and returned then.
     if (!(y.valid && y.issued && !y.confirmed)) continue;
+    const bool yf = fresh(y) && !cfg_.inject_no_cogrant;
     for (unsigned j = 0; j != n_; ++j)
-      if ((cell(i, j) & 1) && (!rs_[j].issued || rs_[j].msd)) {
+      if ((cell(i, j) & 1) && (!rs_[j].issued || rs_[j].msd || (yf && fresh(rs_[j])))) {
+        if (rs_[j].issued && !rs_[j].msd) count("cancel.cogrant");
         hop.push_back(i);
         break;
       }

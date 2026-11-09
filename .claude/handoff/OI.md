@@ -37,7 +37,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 320, RA 96, IS 190, TI 373, OA 382, OI 325, CP 155, DA 115, RI 35
+Conventions 17, AR 320, RA 96, IS 190, TI 373, OA 383, OI 328, CP 155, DA 115, RI 35
 (sweep 11-07 10:16). AR 314/OA 377: lead_fault = status==1, per slot, OI builds capture once TI's schema row lands (none to TI 362). Pings 11-06: all eight pinged; pongs OK from OA TI
 AR CP IS RI RH (RA's pending at 10:30). Answered pings from AR OA TI CP IS RA RI.
 Settings check passed 11-06 before merging TI's 350k window (DA 111): after this merge,
@@ -51,6 +51,13 @@ Settings check passed 11-06 before merging TI's 350k window (DA 111): after this
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+0. OI-133 (rev 328, rang OA+TI; task #41): OA-17 fires at lat_l1_wake=16 (seed 6 mode 6, seed 19
+   mode 7): consumer co-granted with a producer re-issued after cancel escapes OI-50's hop.
+   Fix awaiting OA: model cancelHop `|| rs_[j].issue_at == y.issue_at`; RTL ooe_sched rep_cq02h
+   mask `~iss | msd | gnt_cq04h`. Prototype (env COHOP) in scratchpad/l1w/src passes 16/17.
+   On OA's yes: model + RTL + test at 16 + control dropping the term.
+0b. #36 ooe_sched ratchet in wfs (oi-sched, uncommitted): fcp_cq04h per-entry force copies to
+   select's rhold. trio no-force control MISSED: trio_tb.cpp:273 must also clear fcp_cq04h (IData).
 1. TI 360 (task #26): PUSHED 95bf04d (SCOPED PASS 20/22); OI-130 rev 325 rang OA/TI/AR. Waiting on
    RH (sent 11-08 ~05:00): G/N floor_held_gate at 192/160(ren 12/44)/128(ren 8/24), S1 + cm128 warm.
    On RH's answer: add its numbers to OI-130 (no notice unless OA must act). OA owes: accept the fix;
