@@ -1,0 +1,18 @@
+# Known first divergences of the RCU's RTL block from its C++ model at the
+# block's ports (tools/check-rcu-block.sh; TI rev 394, RI-24 (3)).
+# One line a kernel: "<kernel> <signature>", the signature exactly as the job
+# prints it (the first diverging cycle; each port as expected-model/got-RTL).
+# A listed kernel must fail with exactly this first divergence: a different
+# one fails the job, and so does a listed kernel that passes (remove its line).
+# The negative control is enforced whatever this file says.
+#
+# 2026-11-10, first run (RI's ccv_rcu at b236de9f): the issue credit. The RTL
+# returns each ooe_rcu_issue credit from its flopped valid (rcu_kill,
+# cr_q <= {lv, iv}: credit at V+1, V the valid's cycle at the block's port);
+# the model returns it when it takes the message, the cycle its payload lands
+# (sim/rcu/rcu_block.cpp take(): credit at V+2). For RI: which one the spec's
+# credit timing is, and the other moves.
+vadd cycle 43: ooe_rcu_issue_s8_credit 0/1
+predlane cycle 43: ooe_rcu_issue_s0_credit 0/1, ooe_rcu_issue_s1_credit 0/1, ooe_rcu_issue_s2_credit 0/1, ooe_rcu_issue_s3_credit 0/1, ooe_rcu_issue_s8_credit 0/1
+plog cycle 43: ooe_rcu_issue_s0_credit 0/1, ooe_rcu_issue_s1_credit 0/1, ooe_rcu_issue_s2_credit 0/1, ooe_rcu_issue_s3_credit 0/1, ooe_rcu_issue_s8_credit 0/1
+vadd4 cycle 43: ooe_rcu_issue_s8_credit 0/1
