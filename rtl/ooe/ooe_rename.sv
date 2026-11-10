@@ -378,6 +378,7 @@ module ooe_rename #(
   logic [S*R*4*GW-1:0] c_gv_cq03h;
   logic [S*R*4*R-1:0]  c_gw_cq01h;
   logic [S*R*4*PW-1:0] c_pv_cq03h;
+  logic [S*R*4*R-1:0]  c_gk_cq03h, c_pk_cq03h;  // each read's pending writer, one-hot by port (#35)
   logic [S*R*4*R-1:0]  c_pw_cq01h;
   for (genvar s = 0; s < S; s++) begin : g_rd
     logic [R*3*4-1:0] src_cq01h;
@@ -399,10 +400,11 @@ module ooe_rename #(
       .h_gwe_cq01h(gwe_cq01h), .h_pguard_cq01h(pguard_cq01h), .h_pdst_cq01h(pdst_cq01h), .h_pwe_cq01h(pwe_cq01h),
       .h_pq_cq01h(pq_cq01h), .po_v_cq02h, .po_slot_cq02h, .po_dst_cq02h, .po_gwe_cq02h, .po_gname_cq02h,
       .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .pw_v_cq01h(p_v_cq03h), .pw_slot_cq01h(p_slot_cq03h), .pw_dst_cq01h(p_dst_cq03h),
-      .pw_gwe_cq01h(p_gwe_cq03h), .pw_gname_cq01h(p_gname_cq03h), .pw_pdst_cq01h(p_pdst_cq03h),
-      .pw_pwe_cq01h(p_pwe_cq03h), .pw_pname_cq01h(p_pname_cq03h),
-      .h_gv_cq01h(c_gv_cq03h[s * R * 4 * GW +: R * 4 * GW]), .h_gw_cq01h(c_gw_cq01h[s * R * 4 * R +: R * 4 * R]),
-      .h_pv_cq01h(c_pv_cq03h[s * R * 4 * PW +: R * 4 * PW]), .h_pw_cq01h(c_pw_cq01h[s * R * 4 * R +: R * 4 * R]));
+      .pw_gwe_cq01h(p_gwe_cq03h), .pw_pdst_cq01h(p_pdst_cq03h), .pw_pwe_cq01h(p_pwe_cq03h),
+      .h_gv_cq01h(c_gv_cq03h[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk_cq03h[s * R * 4 * R +: R * 4 * R]),
+      .h_gw_cq01h(c_gw_cq01h[s * R * 4 * R +: R * 4 * R]),
+      .h_pv_cq01h(c_pv_cq03h[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk_cq03h[s * R * 4 * R +: R * 4 * R]),
+      .h_pw_cq01h(c_pw_cq01h[s * R * 4 * R +: R * 4 * R]));
   end
   logic [R-1:0]      l_v_cq02h, l_gwe_cq02h, l_pwe_cq02h, l_br_cq02h;
   logic [R*XL-1:0]   l_x_cq02h;
@@ -422,7 +424,8 @@ module ooe_rename #(
   logic [R*4*PW-1:0] l_p_cq02h;
   ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(XL + 10)) u_ren1 (
     .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h(c_xw_cq02h),
-    .c_gv_cq01h(c_gv_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq03h), .c_pw_cq01h, .lane_v_cq02h, .lane_c_cq02h,
+    .c_gv_cq01h(c_gv_cq03h), .c_gk_cq01h(c_gk_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq03h), .c_pk_cq01h(c_pk_cq03h),
+    .c_pw_cq01h, .pw_gname_cq01h(p_gname_cq03h), .pw_pname_cq01h(p_pname_cq03h), .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v(l_v_cq02h), .l_slot(l_slot_cq02h), .l_dst(l_dst_cq02h), .l_gwe(l_gwe_cq02h),
     .l_pdst(l_pdst_cq02h), .l_pwe(l_pwe_cq02h), .l_idx(l_idx_cq02h), .l_br(l_br_cq02h), .l_ckpt(l_ckpt_cq02h),
     .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_xw_cq02h));

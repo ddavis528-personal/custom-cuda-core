@@ -9,6 +9,9 @@
 // SFU ops class as lane ops, as in the model (Unit Sfu awaits RA-16 (b)).
 package rcu_dec_pkg;
 
+  // Every class field and kind is named; each module reads the ones it needs.
+  /* verilator lint_off UNUSEDPARAM */
+
   localparam int unsigned OPC_W = 9;
   localparam int unsigned CLS_W = 27;
   localparam int unsigned CLS_UNIT = 0, CLS_UNIT_W = 3;
@@ -326,4 +329,357 @@ package rcu_dec_pkg;
     rcu_cls = c;
   endfunction
 
+  function automatic logic [CLS_W-1:0] rcu_cls_a1(input logic [OPC_W-1:0] opc,
+                                                 input logic [1:0] drow,
+                                                 input logic pcopy);
+    logic [CLS_W-1:0] c, t;
+    c = '0;
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h0000007;
+      1: t = 27'h7e1c02b;
+      2: t = 27'h7e1e043;
+      3: t = 27'h7e12000;
+      4: t = 27'h784e102;
+      5: t = 27'h7fce000;
+      6: t = 27'h7ecc800;
+      7: t = 27'h7e0c80b;
+      8: t = 27'h13cc202;
+      9: t = 27'h13cc202;
+      10: t = 27'h7e0c000;
+      11: t = 27'h7e1e043;
+      12: t = 27'h7ecf000;
+      13: t = 27'h7e12000;
+      14: t = 27'h7e12000;
+      15: t = 27'h7e12000;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd0}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h68ce102;
+      1: t = 27'h7ece000;
+      2: t = 27'h7ece800;
+      3: t = 27'h13cc202;
+      4: t = 27'h68ce102;
+      5: t = 27'h68ce102;
+      6: t = 27'h68ce102;
+      7: t = 27'h68ce102;
+      8: t = 27'h784e902;
+      9: t = 27'h7ece000;
+      10: t = 27'h7ece000;
+      11: t = 27'h7ece000;
+      12: t = 27'h7e4e000;
+      13: t = 27'h7e56000;
+      14: t = 27'h7e56000;
+      15: t = 27'h7e56000;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd1}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h7e56000;
+      1: t = 27'h7e56000;
+      2: t = 27'h7fce800;
+      3: t = 27'h7ecc000;
+      4: t = 27'h7ecc000;
+      5: t = 27'h7ecc000;
+      6: t = 27'h7e54000;
+      7: t = 27'h7ece000;
+      8: t = 27'h7e5e85c;
+      9: t = 27'h7eee85c;
+      10: t = 27'h7e5e864;
+      11: t = 27'h7eee864;
+      12: t = 27'h7e5e86c;
+      13: t = 27'h7eee86c;
+      14: t = 27'h7e1c874;
+      15: t = 27'h7e1c87c;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd2}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h7e4e000;
+      1: t = 27'h7fce000;
+      2: t = 27'h7fce000;
+      3: t = 27'h1acc202;
+      4: t = 27'h7e0c00b;
+      5: t = 27'h7e1c03b;
+      6: t = 27'h7e5e84c;
+      7: t = 27'h7ece854;
+      8: t = 27'h7e1e884;
+      9: t = 27'h7e4c88c;
+      10: t = 27'h664e102;
+      11: t = 27'h0ecc202;
+      12: t = 27'h784c302;
+      13: t = 27'h784d402;
+      14: t = 27'h7e0e102;
+      15: t = 27'h1e4c202;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd3}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h7e0c302;
+      1: t = 27'h7e0d402;
+      2: t = 27'h7e0c502;
+      3: t = 27'h7e0c000;
+      4: t = 27'h7e0c000;
+      5: t = 27'h7e56000;
+      6: t = 27'h7e56000;
+      7: t = 27'h7e56000;
+      8: t = 27'h7ece000;
+      9: t = 27'h7ece000;
+      10: t = 27'h7ece000;
+      11: t = 27'h7ece000;
+      12: t = 27'h7ece000;
+      13: t = 27'h7ece000;
+      14: t = 27'h7ece000;
+      15: t = 27'h7e4e000;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd4}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h7e56000;
+      1: t = 27'h7e56000;
+      2: t = 27'h7e56000;
+      3: t = 27'h7e56000;
+      4: t = 27'h7ece000;
+      5: t = 27'h7ece000;
+      6: t = 27'h7ece000;
+      7: t = 27'h7ece000;
+      8: t = 27'h7e4e000;
+      9: t = 27'h7fce000;
+      10: t = 27'h7e4e000;
+      11: t = 27'h7e56800;
+      12: t = 27'h7e4e800;
+      13: t = 27'h7ecc000;
+      14: t = 27'h7ecc000;
+      15: t = 27'h7e54000;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd5}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h7e54000;
+      1: t = 27'h7e54000;
+      2: t = 27'h7e1c023;
+      3: t = 27'h7e0c00b;
+      4: t = 27'h7e0e013;
+      5: t = 27'h7e4c01b;
+      6: t = 27'h7e4e000;
+      7: t = 27'h7e4e000;
+      8: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      9: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      10: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      11: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      12: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      13: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      14: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      15: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd6}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h784e102;
+      1: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      2: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      3: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      4: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      5: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      6: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      7: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      8: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      9: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      10: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      11: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      12: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      13: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      14: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      15: t = 27'h1acc202;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd7}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h68ce102;
+      1: t = 27'h13cc202;
+      2: t = 27'h784e102;
+      3: t = 27'h1acc202;
+      4: t = 27'h7e56000;
+      5: t = 27'h7ece800;
+      6: t = 27'h7ece800;
+      7: t = 27'h7ece800;
+      8: t = 27'h7e1c033;
+      9: t = 27'h7e0c000;
+      10: t = 27'h7e1c093;
+      11: t = 27'h0000007;
+      12: t = 27'h0000007;
+      13: t = 27'h0000007;
+      14: t = 27'h0000007;
+      15: t = 27'h0000007;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd8}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h7e56800;
+      1: t = 27'h7e56800;
+      2: t = 27'h7ece000;
+      3: t = 27'h7ece000;
+      4: t = 27'h7e4e800;
+      5: t = 27'h7e4e000;
+      6: t = 27'h7e4e000;
+      7: t = 27'h7e4e800;
+      8: t = 27'h0000007;
+      9: t = 27'h0000007;
+      10: t = 27'h0000007;
+      11: t = 27'h0000007;
+      12: t = 27'h0000007;
+      13: t = 27'h0000007;
+      14: t = 27'h0000007;
+      15: t = 27'h0000007;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd9}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h0000007;
+      1: t = 27'h0000007;
+      2: t = 27'h0000007;
+      3: t = 27'h0000007;
+      4: t = 27'h0000007;
+      5: t = 27'h0000007;
+      6: t = 27'h0000007;
+      7: t = 27'h0000007;
+      8: t = 27'h0000007;
+      9: t = 27'h0000007;
+      10: t = 27'h0000007;
+      11: t = 27'h0000007;
+      12: t = 27'h0000007;
+      13: t = 27'h0000007;
+      14: t = 27'h0000007;
+      15: t = 27'h0000007;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd10}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h0000007;
+      1: t = 27'h0000007;
+      2: t = 27'h0000007;
+      3: t = 27'h0000007;
+      4: t = 27'h0000007;
+      5: t = 27'h0000007;
+      6: t = 27'h0000007;
+      7: t = 27'h0000007;
+      8: t = 27'h0000007;
+      9: t = 27'h0000007;
+      10: t = 27'h0000007;
+      11: t = 27'h0000007;
+      12: t = 27'h0000007;
+      13: t = 27'h0000007;
+      14: t = 27'h0000007;
+      15: t = 27'h0000007;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd11}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h0000007;
+      1: t = 27'h0000007;
+      2: t = 27'h0000007;
+      3: t = 27'h0000007;
+      4: t = 27'h0000007;
+      5: t = 27'h0000007;
+      6: t = 27'h0000007;
+      7: t = 27'h0000007;
+      8: t = 27'h0000007;
+      9: t = 27'h0000007;
+      10: t = 27'h0000007;
+      11: t = 27'h0000007;
+      12: t = 27'h0000007;
+      13: t = 27'h0000007;
+      14: t = 27'h0000007;
+      15: t = 27'h0000007;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd12}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h0000007;
+      1: t = 27'h0000007;
+      2: t = 27'h0000007;
+      3: t = 27'h0000007;
+      4: t = 27'h0000007;
+      5: t = 27'h0000007;
+      6: t = 27'h0000007;
+      7: t = 27'h0000007;
+      8: t = 27'h0000007;
+      9: t = 27'h0000007;
+      10: t = 27'h0000007;
+      11: t = 27'h0000007;
+      12: t = 27'h0000007;
+      13: t = 27'h0000007;
+      14: t = 27'h0000007;
+      15: t = 27'h0000007;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd13}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h0000007;
+      1: t = 27'h0000007;
+      2: t = 27'h0000007;
+      3: t = 27'h0000007;
+      4: t = 27'h0000007;
+      5: t = 27'h0000007;
+      6: t = 27'h0000007;
+      7: t = 27'h0000007;
+      8: t = 27'h0000007;
+      9: t = 27'h0000007;
+      10: t = 27'h0000007;
+      11: t = 27'h0000007;
+      12: t = 27'h0000007;
+      13: t = 27'h0000007;
+      14: t = 27'h0000007;
+      15: t = 27'h0000007;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd14}} & t);
+    case ({opc[4], opc[2], opc[1], opc[0]})
+      0: t = 27'h0000007;
+      1: t = 27'h0000007;
+      2: t = 27'h0000007;
+      3: t = 27'h0000007;
+      4: t = 27'h0000007;
+      5: t = 27'h0000007;
+      6: t = 27'h0000007;
+      7: t = 27'h0000007;
+      8: t = 27'h0000007;
+      9: t = 27'h0000007;
+      10: t = 27'h0000007;
+      11: t = 27'h0000007;
+      12: t = 27'h0000007;
+      13: t = 27'h0000007;
+      14: t = 27'h0000007;
+      15: t = 27'h0000007;
+      default: t = 27'h0000007;
+    endcase
+    c = c | ({CLS_W{{opc[7], opc[6], opc[5], opc[3]} == 4'd15}} & t);
+    if (opc[8])
+      c = &opc[7:0] ? (pcopy ? 27'h7e0c806 : 27'h7e0c805) : 27'h0000007;
+    rcu_cls_a1 = c;
+  endfunction
+
+  /* verilator lint_on UNUSEDPARAM */
 endpackage
