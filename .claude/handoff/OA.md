@@ -40,7 +40,7 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 19, OA 410, AR 342, TI 406, OI 337, IS 190, CP 157, DA 119,
+Conventions 19, OA 411, AR 342, TI 406, OI 338, IS 190, CP 157, DA 119,
 RA 135 (tab 9851686b-2b0a), RI 69 (tab 8e4547bc-c469), MA 2 (tab 1f971016-3f72).
 OOE doc rev 374. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release b15c89e8; tag refused (known).
@@ -81,6 +81,7 @@ Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release
    OA 404 re:OI-134 (2ff049c7): go reads registered unmet (unmet_reg=1, RTL), cm128 -2.2% vs G at 160/128 (model), c_dst cap back 26.9 (DA 27.5 unused); recorded OOE doc rev 374 floor invariant. OI-134 closed.
    OA 405 (sweep 11-09): skipped ccr-80102643 (AR) + ccr-888218a3 (RI), perf-register/cg-waivers/rcu_dec_pkg conflicts vs TI; TI merged both 0bd5ac02 (TI 401). Next sweep picks it up.
    OA 406 (re:AR 340, DA 117): MA at sweep minute 35 in register skill section 5 (453db334). Notified AR.
+   OA 407 (re:OI-137, #35): cand_indep_pend (pending-group writer unseen in narrow placement) accepted if RH prices on/off within 0.5% S1/cm32/cm128 (model); over -> DA. OOE doc rev 376 Placement para. WATCH: RH figures on OI-137.
    RI session: session_01QPk2jvvXPLs4m8ZQbSk1g6 (roster). RI-34 (11-10): ccv_rcu.sv block top pushed 8fcec64b, per-slot issue ports; no action.
    REGISTER CELL SHAPE: a cell must be {"type":"cell","content":[{"type":"paragraph","content":[{"type":"text","text":"..",("marks":[{"type":"bold"}])}]}]}; a string content is silently dropped (OA 397-404 went in blank, refilled rev 408). Read every row back after insert.
    DISK: a full gate needs ~23 GB free; ccache capped at 2G (ccache -M 2G) after 11-09 filled the disk.
