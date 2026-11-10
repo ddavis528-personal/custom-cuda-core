@@ -1158,13 +1158,17 @@ module ccv_rcu (
   // through T + 7, and the valid keeps it low from there. On core_clk: a
   // wake arrives while asleep (CCV-L22's wake detector). Written every
   // cycle, no reset: they flush in CCV_WAKE_LAT cycles of reset, which
-  // holds the gate open (4 flops, in the module's allowance).
+  // holds the gate open (4 flops, in the module's allowance). kill_valid,
+  // wake_cr01h's top bit, is left out: the kill is a data input, which goes
+  // straight into a flop (AR's rev 285 (5)), and the kill detector's flop
+  // and rcu_kill's drain hold the block busy from K anyway.
   localparam int WL = ccv_params_pkg::CCV_WAKE_LAT;
   logic [WL-2:0] wake_detect_h_cr01h;
   logic          wake_detect_busy_cr01h;
+  wire           wake_detect_any_cr01h = |wake_cr01h[NWAKE-2:0];
   always_ff @(posedge core_clk) begin
-    wake_detect_h_cr01h    <= {wake_detect_h_cr01h[WL-3:0], |wake_cr01h};
-    wake_detect_busy_cr01h <= |wake_cr01h | |wake_detect_h_cr01h;
+    wake_detect_h_cr01h    <= {wake_detect_h_cr01h[WL-3:0], wake_detect_any_cr01h};
+    wake_detect_busy_cr01h <= wake_detect_any_cr01h | |wake_detect_h_cr01h;
   end
   // The issue wake, a cycle on, for the out-wakes that follow an issue at
   // A + 2: lane ops, MIU addresses and R's done. OOE's wake is at A - 4;
