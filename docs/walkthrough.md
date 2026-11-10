@@ -487,7 +487,7 @@ a script is one. Its sections:
 - RCU model unit tests (sim/rcu/; RI-2)
 - Stage 4c -- OOE RTL (rtl/ooe/)
 - RCU RTL benches (RI's test/rcu/run-rtl.sh)
-- RCU block -- ccv_rcu in lock-step with the model (TI rev 394)
+- RCU block -- ccv_rcu in lock-step with the model (RI's test/rcu/run-lockstep.sh)
 - SV top -- rtl/top/ (generated, tracked)
 - Formal proofs -- one credited link, and the block clock gate
 - Physical primitives -- sequential repeater
@@ -512,4 +512,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 6d4f0ea76172c25d (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 5166fdb812dca229 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
