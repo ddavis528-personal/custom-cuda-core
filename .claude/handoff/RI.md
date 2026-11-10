@@ -52,7 +52,10 @@ architect may approve only if the end meets module NGD without the flop; can't m
 -4. NOW (2026-11-10) task 16 lock-step: ri-wt7 branch ri-asm4 tip fca280c3 (on gate-scratch/RI; fixes ngd block check: kill_valid out of wake-detector OR), 63/63 kernels
    IDENTICAL (test/rcu/run-lockstep.sh), controls init/opnd caught; CAS own steps; kill ack K+KILL_DRAIN+1.
    Scoped gate on 9304d21d: all in-scope sections green but cg/ngd (2h bg limit killed it). Split gate in flight:
-   cg here (~/ccv-logs/chain-ri19-cg.sh -> gate-cg-ri19.tgz), then ngd here (RH can't push an export without
+   DETACHED (setsid nohup; a bg task dies at 2h): chain-ri19-cg.sh then chain-ri19-rest.sh (ngd, export,
+   gate-push --import, scoped); status ~/ccv-logs/chain-ri19.out. Sweep 2026-11-10: 5 branches merge clean on
+   ri-wt4 ri-sweep2 0d797b26 (rcu_blk passes there, known divergences); gate+push it after ri19. Bookmarks
+   Conv 19 AR 342 OA 410 IS 190 TI 406 OI 337 CP 157 DA 119 RA 135 RI 69. OI-136 settled by AR/merge. Then ngd here (RH can't push an export without
    Daniel's OK). RA rev 135 answer drafted in RI-37 (0). Then CCV_PUSH_BRANCHES=ccr-888218a3-20cauz tools/gate-push.sh
    --import=cg,ngd. After push: rows RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) from scratchpad ri36-rows.md (copy
    below if lost: rcu_ls job; credit-in-landing API; kill ack +1 tab amend; done wake issue term; clk gate payload
