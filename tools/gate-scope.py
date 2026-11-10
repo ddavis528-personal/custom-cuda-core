@@ -24,19 +24,23 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALL = "ALL"
 ALWAYS = ["s1a", "s1d", "iface", "vlint"]
 # Every section that reads RTL, its benches or its synthesis flow.
-RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "rcu_rtl", "top",
-       "formal", "phys", "svh", "links"]
+RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "rcu_rtl", "rcu_blk",
+       "top", "formal", "phys", "svh", "links"]
 # The sections that read RI's RCU RTL and its benches (RI-10; rcu_rtl, RI's
 # re:TI-371: test/rcu/run-rtl.sh), and, since RI's assembled ccv_rcu (RI-33)
 # makes rcu an RTL top (tools/ccv_links.py rtl_tops()), those that read its
 # generated wrapper rtl/top/wrap/ccv_rcu_w.sv or the no-flop rule it moves:
 # the SV top, SV-hosted C++ and the links split (which regenerates the top in
-# a copy of the tree and holds rcu's ends to the RTL-top rule).
-RCU_RTL = ["cg", "ngd", "rcu_rtl", "top", "svh", "links"]
+# a copy of the tree and holds rcu's ends to the RTL-top rule). And rcu_blk,
+# the block in lock-step with the model (TI rev 394, RI-24 (3);
+# tools/check-rcu-block.sh), which builds ccv_rcu from rtl/rcu/.
+RCU_RTL = ["cg", "ngd", "rcu_rtl", "rcu_blk", "top", "svh", "links"]
 # The readers of rtl/rcu/ outside check-cg and check-ngd that RCU_RTL maps,
 # each with the sections that read it; any other reader fails the selftest.
 RCU_READERS = {
     "rtl/top/wrap/ccv_rcu_w.sv": ["top", "svh", "links"],
+    "tools/check-rcu-block.sh": ["rcu_blk"],
+    "tools/check-rcu-block.py": ["rcu_blk"],
 }
 # First match wins: the more specific prefix comes first.
 MAP = [
@@ -48,7 +52,7 @@ MAP = [
     ("tools/shim/", ALL),
     ("tools/genout.py", ALL),
     ("tools/check-ngd.py", ["ngd"]),
-    ("tools/check-cg.py", ["cg", "ngd"]),          # check-ngd imports it
+    ("tools/check-cg.py", ["cg", "ngd", "rcu_blk"]),   # check-ngd and check-rcu-block import it
     ("tools/heavy-units.json", ["cg", "ngd"]),     # both read it, through check-cg
     ("tools/check-kernel.sh", ["kernel", "svh"]),
     ("tools/check-sv-hosted.sh", ["svh"]),
@@ -62,6 +66,11 @@ MAP = [
     ("tools/check-xprop.sh", ["xprop"]),
     ("tools/check-ctech.sh", ["ctech"]),
     ("tools/check-clockgate.sh", ["clockgate"]),
+    # The RCU block's lock-step job: its script, its harness generator (which
+    # reads the port list through check-port-dump.py and gen-top.py, both
+    # unscoped tools, so ALL) and its known divergences.
+    ("tools/check-rcu-block.sh", ["rcu_blk"]),
+    ("tools/check-rcu-block.py", ["rcu_blk"]),
     # Not the gate's: the push, sweep and release scripts and the summary.
     ("tools/gate-combine.py", ["iface"]),         # its selftest runs there
     ("tools/gate-export.sh", []),
@@ -78,8 +87,11 @@ MAP = [
     ("sim/ooe/", ["skel", "kernel", "ooe_unit", "ooe_rtl", "svh"]),
     # The RCU model (RI-2): built into both hosts (blocks.list), so the
     # kernels and the SV top read it, and its own harness.
-    ("sim/rcu/", ["skel", "kernel", "rcu_unit", "svh"]),
-    ("sim/skel/", ["skel", "kernel", "svh", "top"]),
+    # And the block's lock-step job, which replays the model's port dump
+    # into the RTL (rcu_blk).
+    ("sim/rcu/", ["skel", "kernel", "rcu_unit", "rcu_blk", "svh"]),
+    # The skeleton writes rcu_blk's port dumps (sim/skel/portdump.cpp).
+    ("sim/skel/", ["skel", "kernel", "rcu_blk", "svh", "top"]),
     ("sim/", ALL),
     ("rtl/lint/", ["s1d"] + RTL),
     # RI's RCU RTL (RI-10, RA-37): check-cg and check-ngd (their rtl/**
@@ -89,9 +101,10 @@ MAP = [
     # anything else reads it.
     ("rtl/rcu/", RCU_RTL),
     ("rtl/", RTL),
-    ("test/kernels/", ["kernel", "svh"]),
+    ("test/kernels/", ["kernel", "rcu_blk", "svh"]),
     ("test/ooe/", ["ooe_rtl", "cg", "ngd"]),
     ("test/rcu/", RCU_RTL),
+    ("test/rcublk/", ["rcu_blk"]),
     ("test/cg/", ["cg"]),
     ("test/ngd/", ["ngd"]),
     ("test/neg/", ["iface"]),
@@ -211,10 +224,10 @@ def selftest():
     expect(s != ALL and {"kernel", "ooe_unit", "ooe_rtl", "skel", "svh"} <= set(s),
            "an OOE model change skips a section that reads it: %s" % s)
     s, _ = scope(["sim/rcu/rcu_core.cpp"])
-    expect(s != ALL and {"kernel", "rcu_unit", "skel", "svh"} <= set(s),
+    expect(s != ALL and {"kernel", "rcu_unit", "rcu_blk", "skel", "svh"} <= set(s),
            "an RCU model change skips a section that reads it: %s" % s)
     s, _ = scope(["rtl/rcu/rcu_bank_slice.sv", "test/rcu/cg-units.json"])
-    expect(s != ALL and {"cg", "ngd", "rcu_rtl", "top", "svh", "links"} <= set(s)
+    expect(s != ALL and {"cg", "ngd", "rcu_rtl", "rcu_blk", "top", "svh", "links"} <= set(s)
            and "ooe_rtl" not in s,
            "an RCU RTL change is not scoped to check-cg, check-ngd, its benches and "
            "the sections that read its wrapper: %s" % s)
@@ -224,6 +237,14 @@ def selftest():
                "an RCU RTL change skips a section that reads %s: %s" % (x, s))
     s, _ = scope(["test/rcu/r_tb.cpp"])
     expect(s != ALL and "rcu_rtl" in s, "an RCU bench change skips the benches: %s" % s)
+    # The block's lock-step job (TI rev 394): the RTL, the model, the
+    # skeleton that dumps its ports, the kernels it runs, the job itself and
+    # its known divergences each reach it.
+    for p in ("rtl/rcu/ccv_rcu.sv", "sim/rcu/rcu_block.cpp", "sim/skel/portdump.cpp",
+              "test/kernels/vadd/kernel.cfg", "tools/check-rcu-block.sh",
+              "tools/check-rcu-block.py", "tools/check-cg.py", "test/rcublk/expected-fail.txt"):
+        s, _ = scope([p])
+        expect(s != ALL and "rcu_blk" in s, "%s skips the RCU block lock-step job: %s" % (p, s))
     # RCU_RTL holds only while nothing else reads rtl/rcu/: no RTL outside it
     # instantiates its modules but the readers RCU_READERS maps, each within
     # RCU_RTL, and no script but the two names it.
