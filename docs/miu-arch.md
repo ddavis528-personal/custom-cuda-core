@@ -19,8 +19,9 @@ section 2, not this file. Like every pinned summary, this one goes stale.
 
 ## 1. Who MA is, and what it owns
 
-**MA, MIU architecture.** MA mints `MA-n` in its own register tab. AR made
-that tab, empty, at Daniel's request. MA owns:
+**MA, MIU and DCU architecture.** MA mints `MA-n` in its own register tab.
+AR made that tab, empty, at Daniel's request. Daniel gave MA the DCU as well
+the same day (DA tab, 2026-11-10, second row). MA owns:
 
 - the MIU's block architecture;
 - its spec, the MIU tab of the per-block specs, which passes from AR to MA;
@@ -31,15 +32,23 @@ that tab, empty, at Daniel's request. MA owns:
   - disambiguation and ordering;
   - atomics passes, SPM passes and the st.pred drain;
   - per-port NGD budgets (`<module>.ngd.json`);
-- the MIU's side of every channel contract.
+- the MIU's side of every channel contract;
+- the DCU's block architecture as well: its spec (the DCU tab, which passes
+  from AR to MA and whose internals are "not drafted"), its lookup, tags,
+  data arrays, fills, writebacks and MLC side, and its side of every channel
+  contract. The L1-hit contract, `CCV_LAT_L1_HIT` = 7, spans MIU's AGU,
+  DCU's lookup and the data's return; owning both sides is what lets you
+  budget it.
 
 The other owners:
 
-- **DCU is not yet assigned.** Its tab is AR's, and its internals are "not
-  drafted". Whether MA takes DCU too is the first question to DA (section 8).
-  AR recommends yes: the L1-hit contract, `CCV_LAT_L1_HIT` = 7, spans MIU's
-  AGU, DCU's lookup and the data's return, and one side alone cannot budget
-  it. Until Daniel decides, a DCU question is a row with AR in Needs.
+- **MI and DI** implement the MIU and the DCU, as separate sessions (Daniel,
+  2026-11-10: "we will have separate agents (MI and DI) to own
+  implementation for those two units"). Their prefixes are reserved in the
+  Conventions tab, with no tab or session yet. Each starts from a handoff you
+  write when that block's architecture is ready, as RA wrote
+  `docs/rcu-impl.md` for RI: you make its register tab, its roster entry and
+  that file.
 - **AR** stays the top-level architect. AR owns:
   - partitioning and floorplan adjacency (Q-42);
   - cross-block contracts and conventions;
@@ -447,10 +456,11 @@ why in a row.
   - how a held load blocks: per warp, never across warps;
   - the coalescer;
   - the TLB's hit path and miss path;
-  - the DCU's lookup ports, if DA gives you DCU.
+  - the DCU's lookup ports, its geometry parameters (`CCV_DCU_SETS`,
+    `CCV_DCU_WAYS`) and where its misses park.
 
-  **Exit:** a behavioural spec precise enough for TI (or MI) to make the
-  stub spec-faithful. Then re-run S1, cm32 and cm128 at 8 ways, so the
+  **Exit:** a behavioural spec precise enough for TI to make the MIU and DCU
+  stubs spec-faithful. Then re-run S1, cm32 and cm128 at 8 ways, so the
   booked deltas that rest on the stub get re-checked against Daniel's 0.2%
   bar (DA 114). If the figures move a top-level parameter (`CCV_MIU_PIPES`,
   `CCV_DCACHE_LOOKUPS`, the L1 capacity), bring it to AR.
@@ -467,8 +477,10 @@ why in a row.
   kill. The deliverable is a module partition (sub-blocks, inner helpers,
   units) that the gate can time level by level.
 - **Phase 3, implementation plan.** Model first, as RCU did (RI's
-  `docs/rcu-impl.md`), unless your questions say otherwise. Settle with DA
-  who implements. Then plan:
+  `docs/rcu-impl.md`), unless your questions say otherwise. MI implements
+  the MIU and DI the DCU (DA tab, 2026-11-10); each block's plan becomes its
+  implementer's handoff (a miu-impl.md and a dcu-impl.md in docs). Plan, per
+  block:
   - the model behind the swap boundary (`sim/skel/blocks.list`);
   - the RTL's units for check-cg and check-ngd;
   - the MIU-internal checkers (Q-53).
@@ -498,9 +510,9 @@ with its answerer in Needs, and notify them (the register skill, section
 2). AR expects at least these:
 
 - **To DA:**
-  - Does MA take DCU as well? AR recommends yes (section 1).
-  - Who implements the MIU (an MI session, MA itself, or TI's stub first),
-    and when?
+  - Answered 2026-11-10: MA takes DCU, and MI and DI implement (section 1).
+    Still open: whether MIU and DCU go model-first, as RCU did (AR assumes
+    yes), and when each implementer starts.
   - What priority does it have on compute (RH, `CCV_JOBS`) against OOE's
     and RCU's closure?
 - **To AR:**
@@ -568,5 +580,5 @@ with its answerer in Needs, and notify them (the register skill, section
 
 The MIU tab of the per-block specs now opens with an owner line naming MA.
 From your first edit on, AR stops editing it. AR will send any cross-block
-text it needs there as a row in AR's tab with MA in Needs. The DCU tab stays
-AR's until DA answers section 8's first question.
+text it needs there as a row in AR's tab with MA in Needs. The DCU tab now
+opens with the same line (DA tab, 2026-11-10, second row).
