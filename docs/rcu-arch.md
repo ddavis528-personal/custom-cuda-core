@@ -121,8 +121,9 @@ state; PCA does.
   (preliminary) and `CCV_PRF_MEMOP_READ_BITS` = 3072 (arch).
 - **Latencies:** `CCV_LAT_RCU` = 3 for the RCU-only class,
   `CCV_LAT_COLLECTIVE` = 5 for the warp-collective class (the fold to 3, RA-8,
-  waits on Daniel with Phase 1's figures), `CCV_LAT_RCU_ADDR_BASE` = 1 from
-  issue to the address valid (RA-31, PF-47; it was a placeholder of 5), `CCV_LAT_LANE` = 7, and `CCV_LAT_HOP` = 2 per
+  waits on Daniel with Phase 1's figures), `CCV_LAT_RCU_ADDR_BASE` from
+  issue to the address valid (RA-31 and PF-47 take it to 1; params still
+  hold 5 until PF-47 is re-applied, so read params, not this line), `CCV_LAT_LANE` = 7, and `CCV_LAT_HOP` = 2 per
   crossing with no repeaters.
 
 **What RCU executes** (Q-28, Q-32, Q-38, Q-40): any op whose inputs are all
