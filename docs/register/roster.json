@@ -11,6 +11,7 @@
     "CP": {"session": "session_019cSebQ45AT3pSnPU71torg", "title": "CCV compiler implementation",   "tab": "099ebfed-9eea", "updated": "2026-10-19"},
     "RA": {"session": "session_01QPk2jzLmjd3MWXjayVUy9d", "title": "RCU block architecture",        "tab": "9851686b-2b0a", "updated": "2026-11-01"},
     "RI": {"session": "session_01QPk2jvvXPLs4m8ZQbSk1g6", "title": "RCU block implementation",      "tab": "8e4547bc-c469", "updated": "2026-11-04"},
+    "MA": {"session": null,                               "title": "MIU block architecture",        "tab": "1f971016-3f72", "updated": "2026-11-10"},
     "RH": {"session": "session_01QPk2jvfKM1V5rRfip8FC86", "title": "Run helper (offload worker for OI, TI; no register tab)", "tab": null, "updated": "2026-10-30"},
     "DA": {"session": null,                               "title": "Daniel (a person, not a session)", "tab": "d5076b00-ef1b", "updated": "2026-10-19"}
   },
