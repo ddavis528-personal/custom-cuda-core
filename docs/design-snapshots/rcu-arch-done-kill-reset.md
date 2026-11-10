@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=34 exported=2026-11-09 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 34 on 2026-11-09 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=35 exported=2026-11-10 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 35 on 2026-11-10 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -101,7 +101,7 @@ An address message (A+1) and a lane message (A+1) leave sooner. A load's data fr
 - `kill_ack_q` clears at the edge that ends K of the next kill, so the ack is low through that kill's drain.
 - A kill that arrives during a drain reloads `kill_drain`, ORs its mask into `mig_kmask`, takes the new epoch and is answered once, with the new epoch. RAU counts an ack only when its epoch matches (`CCV_P_W_KILL_EPOCH` = 2), so the earlier epoch's ack never appears, and needs not.
 
-Kill inputs and sleep (AR 336 (b), AR 338/339; RI-27, RI-29, RA revs 127, 130 and 131): ccv\_rcu's detector flops kill\_valid, kill\_epoch and kill\_warp\_mask on the ungated clock, at 0 NGD, with no enable and no reset; kill\_valid is a wake port. rcu\_kill and rcu\_mig load epoch and mask from those flops at K+1. The ack is high at K + KILL\_DRAIN + 2 = 17, the same awake and asleep, and a second kill across the wake is acked with the later epoch. M4 runs both cases, each with a control that drops the held kill and must fail.
+Kill inputs and sleep (AR 336 (b), AR 338/339; RI-27, RI-29, RI-33, RI-34; RA revs 127, 130, 131 and 134): the detector is in ccv\_rcu, its own CG unit of 35 flops. kill\_detect\_v\_cr01h flops kill\_valid on the ungated core\_clk every cycle, at 0 NGD and with no reset (it counts in the module's allowance); kill\_valid is a wake port. kill\_detect\_ep\_cr02h and kill\_detect\_km\_cr02h (34 flops) also sit on core\_clk, loaded under that valid flop (the module's own flop, CG-5; one gate, DCGE 100%) in the cycle after kill\_valid, which is when the epoch and mask arrive, since valid leads the payload. None of it depends on RCU's gated clock, so a kill that lands asleep is captured. rcu\_kill and rcu\_mig load epoch and mask from those flops at K+1. The ack is high at K + KILL\_DRAIN + 2 = 17, the same awake and asleep, and a second kill across the wake is acked with the later epoch. M4 runs both cases, each with a control that drops the held kill and must fail. Reset (RST-2, Daniel 2026-11-09): block rcu's reset arrives at cycle 1 at every endpoint (RI-34).
 
 What to measure: the implementation agent runs the kill checker with `KILL_DRAIN` − 1 as a negative control. It must fail on some kernel whose kill lands with an SFU op in flight. If no kernel can make it fail, the bound is loose, and the margin is recorded.
 
@@ -118,7 +118,7 @@ What to measure: the implementation agent runs the kill checker with `KILL_DRAIN
 | `kill_drain`, `kill_ack_q`, `kill_ack_ep_q`, `mig_kmask` (0) | the MIU lead predecode flops: they are written every cycle and are gated by the valid that is reset |
 | `lead_bt_q`, `lead_bm_q` (0): leads are checked even without a valid |  |
 
-About 1,500 flops reset, out of roughly 246,000. Every payload is ignored without its valid, and the `dirty-zero` control is unaffected: the zero registers are constants, not rows.
+About 1,500 flops reset, out of 247,468 (measured, RI-34). Every payload is ignored without its valid, and the `dirty-zero` control is unaffected: the zero registers are constants, not rows.
 
 **kill\_ack after reset** is 0 with epoch 0. RAU starts no kill before reset ends, so a level of 0 is an unanswered nothing. AR confirms with RA-23.
 
