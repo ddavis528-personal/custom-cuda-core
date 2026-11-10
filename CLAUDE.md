@@ -8,6 +8,9 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 **An OOE model session starts at `docs/ooe-4b.md`.**
 **An RCU model session starts at `docs/rcu-impl.md`;** its model is the RCU
 in both hosts since M0 (RA, 2026-11-04), and `CCV_RCU_IMPL=stub` selects the stub.
+**An MIU and DCU architecture session (MA) starts at `docs/miu-arch.md`** (DA
+tab revs 117-118, 2026-11-10; MI and DI implement them); the skeleton's MIU and
+DCU stay the stubs until MA's Phase 1 resource model lands (miu-arch.md section 7).
 
 ## Sources of truth: edit these, never what is generated from them
 

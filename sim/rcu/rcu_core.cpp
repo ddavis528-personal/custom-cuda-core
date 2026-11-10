@@ -338,7 +338,11 @@ void Core::checkIssues(const In &in, std::array<int, kRes> &owner) {
            want == kSlotS0 ? "S0-S3" : want == kSlotP0 ? "P0-P3" : "R");
     // The lead's promises (RA-31; Partition tab, superset rule): a clear
     // bit says the op does not use that group, which RCU then never loads.
+    // lead_sec_mask is exact (OA 403, RA 133, TI 400): RCU's bank slices
+    // take the P owner from it, so a set bit outside the footprint is
+    // refused as well as a clear one inside it.
     const char *why = (is.foot & ~is.lead.sec) ? "a section outside its lead's mask"
+                      : (is.lead.sec & ~is.foot) ? "a lead mask wider than its footprint"
                       : (oc.reads & ~is.lead.src) ? "a source its lead says is unused"
                       : oc.imm_used && !is.lead.imm ? "an immediate its lead says is unused"
                       : is.merge && !is.lead.merge ? "a merge its lead says is unused"

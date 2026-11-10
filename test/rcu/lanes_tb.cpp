@@ -43,6 +43,7 @@
 #include <vector>
 
 #include "ccv_params.h"
+#include "cls_pack.h"
 #include "dec_tb.h"
 
 #ifndef LN_COPIES
@@ -183,6 +184,9 @@ struct Bench {
         put(dut->cont_cr02h, s, 1, !x->v[s] || o.cont);
         put(dut->foot_cr02h, kK * s, kK, o.foot);
         put(dut->opc_cr02h, 9 * s, 9, o.opc);
+        // The class word rcu_isd holds from the lead (RA-43, RI-25).
+        put(dut->ocl_cr02h, 27 * s, 27,
+            clspack::clsWord(o.opc, o.drow, o.pwe && o.dst == dectb::R::kZero));
         put(dut->imm_cr02h, 32 * s, 32, o.imm);
         for (unsigned i = 0; i < 3; ++i) {
           put(dut->src_cr02h, (s * 3 + i) * 8, 8, o.src[i]);

@@ -64,7 +64,7 @@ module ren1_probe #(
     pp[l * PW +: PW] = PW'(q_idx[(l * 2 + 1) * R +: R]);
   end
   logic [S*R*4*GW-1:0] c_gv;
-  logic [S*R*4*R-1:0]  c_gw, c_pw;
+  logic [S*R*4*R-1:0]  c_gw, c_pw, c_gk, c_pk;
   logic [S*R*4*PW-1:0] c_pv;
   for (genvar s = 0; s < S; s++) begin : g_slot
     logic [R*12-1:0] src; logic [R*4-1:0] dst, pq; logic [R-1:0] gwe, pwe; logic [R*2-1:0] pguard, pdst;
@@ -80,16 +80,19 @@ module ren1_probe #(
     ooe_headrd #(.S(S), .SL(s), .R(R), .A(R), .GW(GW), .PW(PW)) rd (.rat_cq02h(rat_cq02h[s * MW +: MW]),
       .h_src_cq01h(src), .h_dst_cq01h(dst), .h_gwe_cq01h(gwe), .h_pguard_cq01h(pguard), .h_pdst_cq01h(pdst),
       .h_pwe_cq01h(pwe), .h_pq_cq01h(pq), .pw_v_cq01h(q_v), .pw_slot_cq01h(q_slot), .pw_dst_cq01h(q_dst),
-      .pw_gwe_cq01h(q_gwe), .pw_gname_cq01h(pg), .pw_pdst_cq01h(q_pdst), .pw_pwe_cq01h(q_pwe), .pw_pname_cq01h(pp),
-      .h_gv_cq01h(c_gv[s * R * 4 * GW +: R * 4 * GW]), .h_gw_cq01h(c_gw[s * R * 4 * R +: R * 4 * R]),
-      .h_pv_cq01h(c_pv[s * R * 4 * PW +: R * 4 * PW]), .h_pw_cq01h(c_pw[s * R * 4 * R +: R * 4 * R]));
+      .pw_gwe_cq01h(q_gwe), .pw_pdst_cq01h(q_pdst), .pw_pwe_cq01h(q_pwe),
+      .h_gv_cq01h(c_gv[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk[s * R * 4 * R +: R * 4 * R]),
+      .h_gw_cq01h(c_gw[s * R * 4 * R +: R * 4 * R]),
+      .h_pv_cq01h(c_pv[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk[s * R * 4 * R +: R * 4 * R]),
+      .h_pw_cq01h(c_pw[s * R * 4 * R +: R * 4 * R]));
   end
   logic [R-1:0] l_v, l_gwe, l_pwe, l_br, l_x;
   logic [R*LS-1:0] l_slot; logic [R*4-1:0] l_dst; logic [R*2-1:0] l_pdst; logic [R*2*R-1:0] l_idx;
   logic [R*LC-1:0] l_ckpt; logic [R*4*GW-1:0] l_g; logic [R*4*R-1:0] l_gl, l_pl; logic [R*4*PW-1:0] l_p;
   ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(1)) r1 (.c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h,
-    .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0), .c_gv_cq01h(c_gv), .c_gw_cq01h(c_gw),
-    .c_pv_cq01h(c_pv), .c_pw_cq01h(c_pw), .lane_v_cq02h(lane_v), .lane_c_cq02h(lane_c), .wb_cq02h(wb), .l_v,
+    .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0), .c_gv_cq01h(c_gv), .c_gk_cq01h(c_gk),
+    .c_gw_cq01h(c_gw), .c_pv_cq01h(c_pv), .c_pk_cq01h(c_pk), .c_pw_cq01h(c_pw), .pw_gname_cq01h(pg),
+    .pw_pname_cq01h(pp), .lane_v_cq02h(lane_v), .lane_c_cq02h(lane_c), .wb_cq02h(wb), .l_v,
     .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl, .l_x);
   logic en;
   assign en = |sel;
