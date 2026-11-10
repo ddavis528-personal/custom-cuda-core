@@ -30,7 +30,10 @@
 //
 // Done wake (rcu_ooe_done_wake): a flop written every cycle, D = any issue
 // valid on the wire, or any lane or SFU descriptor stage valid, or R's pipe
-// valid (each of rcu_lanes and rcu_r ORs its own flops into one term).
+// valid (each of rcu_lanes and rcu_r ORs its own flops into one term), or
+// OOE's issue wake a cycle on (ccv_rcu's wake detector): R's done lands at
+// A + 2, so its wake is due at A - 2, before any valid of the op is on the
+// wire (the block lock-step on vadd).
 //
 // Idle (rcu_idle_q, the block gate's quiesced): no busy term from any
 // module, no valid on any inbound channel, no kill or drain, no done wake.
@@ -58,7 +61,7 @@
 `define CCV_RST rst_r01h
 module rcu_kill #(
   parameter int NB = 6,          // busy terms from the other modules
-  parameter int ND = 2,          // done-wake terms: rcu_lanes' descriptor stages, R's pipe
+  parameter int ND = 3,          // done-wake terms: rcu_lanes' descriptor stages, R's pipe, the issue wake a cycle on
   localparam int NS = ccv_params_pkg::CCV_ISSUE_RESOURCES,   // issue slots, 9
   localparam int NL = 32,        // lane-result copies
   localparam int NM = 4,         // MIU data slots (idle only: no credit, RA-41)
@@ -81,7 +84,7 @@ module rcu_kill #(
   input  logic [NM-1:0] mv_cr00h,     // miu_rcu_data_s*_valid (idle)
   output logic [NC-1:0] cr_cr01h,     // credits: issue at [8:0], lane copies [40:9]
   // Wake and idle.
-  input  logic [ND-1:0] dbusy_cr00h,  // a lane or SFU descriptor stage valid, or R's pipe valid (each module's OR)
+  input  logic [ND-1:0] dbusy_cr00h,  // a lane or SFU descriptor stage valid, R's pipe valid (each module's OR), the issue wake a cycle on
   input  logic [NB-1:0] busy_cr00h,   // each module's busy OR, from its flops
   output logic          dwake_cr01h,  // rcu_ooe_done_wake
   output logic          idle_cr01h,   // rcu_idle_q
