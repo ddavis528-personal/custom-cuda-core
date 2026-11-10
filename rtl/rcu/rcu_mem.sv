@@ -66,9 +66,8 @@ module rcu_mem #(
   input  logic [NK-1:0]           iv_cr01h,        // slot j issues next cycle
   input  logic [NK*3-1:0]         lsrc_cr01h,      // lead_src_used
   // The payload and its op-class decode (A).
-  input  logic [NK*rcu_dec_pkg::OPC_W-1:0] opc_cr02h, // opcode (decoded here, rcu_dec_pkg)
+  input  logic [NK*rcu_dec_pkg::CLS_W-1:0] ocl_cr02h, // op class (rcu_isd's flops from the lead)
   input  logic [NK-1:0]           cont_cr02h,      // cont: a continuation, no class
-  input  logic [NK*2-1:0]         drw_cr02h,       // done_row (an atomic's step)
   input  logic [NK*NK-1:0]        foot_cr02h,      // footprint
   input  logic [NK*6-1:0]         spos_cr02h,      // src_pos, source i at 2i
   input  logic [NK*6-1:0]         swid_cr02h,      // src_width
@@ -127,10 +126,12 @@ module rcu_mem #(
   logic [NK-1:0]   mem_cr02h, fen_cr02h, psk_cr02h;
   logic [NK*2-1:0] bsl_cr02h, xsl_cr02h, dsl_cr02h;
   always_comb begin
+    // The class word: this module reads only its own fields.
+    /* verilator lint_off UNUSEDSIGNAL */
     logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
+    /* verilator lint_on UNUSEDSIGNAL */
     for (int j = 0; j < NK; j++) begin
-      c_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h[j*rcu_dec_pkg::OPC_W +: rcu_dec_pkg::OPC_W],
-                                     drw_cr02h[2*j +: 2], 1'b0);
+      c_cr02h = ocl_cr02h[j*rcu_dec_pkg::CLS_W +: rcu_dec_pkg::CLS_W];
       mem_cr02h[j] = !cont_cr02h[j] && c_cr02h[rcu_dec_pkg::CLS_UNIT +: 3] == rcu_dec_pkg::U_MEM;
       fen_cr02h[j] = c_cr02h[rcu_dec_pkg::CLS_MK +: 3] == rcu_dec_pkg::MK_FENCE;
       psk_cr02h[j] = c_cr02h[rcu_dec_pkg::CLS_MK +: 3] == rcu_dec_pkg::MK_PSTORE;

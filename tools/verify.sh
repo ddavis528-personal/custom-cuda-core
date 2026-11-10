@@ -49,6 +49,12 @@
 #   CCV_JOBS=n               sections run n at a time after the generators
 #                            (default: every core; 1 is the serial gate).
 #                            Each section's log is build/verify/<job>.log.
+#   CCV_KEEP_BUILD=1         keep each section's build directory (owns,
+#                            below), which is otherwise removed once the
+#                            section passed and every section that reads it
+#                            is done (DA, 2026-11-09). A failed section's
+#                            stays. CCV_KEEP_UNIT_BUILD=1 keeps check-cg's
+#                            and check-ngd's per-unit work directories.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 # Every Yosys the gate runs, SymbiYosys's included, is the strict one: the
@@ -319,6 +325,16 @@ job_rcu_rtl() {
   run "RCU RTL benches" ./test/rcu/run-rtl.sh
 }
 
+job_rcu_blk() {
+  section "RCU block -- ccv_rcu in lock-step with the model (TI rev 394)"
+  # RI's assembled RTL block driven from ccv-skel's port dump of the model
+  # (RA-34), every output compared each cycle, with its negative control
+  # caught. A first divergence test/rcublk/expected-fail.txt names is
+  # reported, not failed; any other fails. After the skeleton, whose binary
+  # writes the dumps; its own oracles, in build/rcu-blk.
+  run "RCU block == model" ./tools/check-rcu-block.sh
+}
+
 job_top() {
   section "SV top -- rtl/top/ (generated, tracked)"
   # The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
@@ -423,16 +439,32 @@ JOBS="${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)}"
 case "$JOBS" in ''|*[!0-9]*|0) echo "verify: CCV_JOBS must be a positive count"; exit 2 ;; esac
 # Print order. Each section's own comment says what it reads from.
 ORDER="s1a s1b s1c s1d iface xprop ctech cg ngd clockgate skel kernel ooe_unit rcu_unit ooe_rtl
-       rcu_rtl top formal phys svh links walkthrough vlint"
+       rcu_rtl rcu_blk top formal phys svh links walkthrough vlint"
 # Start order: the longest chain first, then the longest jobs, then the rest.
-START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys rcu_rtl iface xprop s1c s1b
+START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys rcu_rtl rcu_blk iface xprop s1c s1b
        s1d ooe_unit rcu_unit s1a clockgate walkthrough vlint"
 declare -A after=(
   [kernel]="skel"          # the binary check-skel builds
   [top]="skel"             # its wiring dump
   [svh]="skel kernel"      # both, and the oracles check-kernel makes
   [links]="kernel"         # the oracles, copied into its split tree
+  [rcu_blk]="skel"         # the binary that writes the port dumps
   [walkthrough]="skel kernel svh"
+)
+# The build directory each section alone writes, removed once it passed
+# and every job that names it in `after` is done (DA, 2026-11-09: a gate's
+# build/ peaked near 25 GB and twice filled the disk), unless
+# CCV_KEEP_BUILD=1; a failed section's stays, for its triage. Nothing after
+# the pool reads these (the walkthrough reads skel's, kernel's and svh's,
+# which are not here), nor does tools/gate-export.sh, which packs
+# build/verify and build/synth-cache, never removed here.
+declare -A owns=(
+  [cg]="build/cg"               # check-cg's units, structural reads, fixtures
+  [ngd]="build/ngd"             # check-ngd's, its structural reads too
+  [ooe_rtl]="build/ooe-rtl"
+  [rcu_rtl]="build/rcu-rtl"
+  [rcu_blk]="build/rcu-blk"
+  [links]="build/links_split"   # the split tree check-links copies
 )
 LOGS=build/verify
 rm -rf "$LOGS" && mkdir -p "$LOGS"
@@ -489,6 +521,22 @@ ready() {
   local d
   for d in ${after[$1]:-}; do [ "${state[$d]}" = done ] || return 1; done
 }
+declare -A cleaned=()
+# Each passed section's own directory whose readers (the jobs that name it
+# in `after`) are all done; a record of each in build/verify/cleaned.
+clean_done() {
+  [ "${CCV_KEEP_BUILD:-0}" = 0 ] || return 0
+  local k r
+  for k in "${!owns[@]}"; do
+    [ "${outcome[$k]:-}" = pass ] && [ -z "${cleaned[$k]:-}" ] || continue
+    for r in "${!after[@]}"; do
+      case " ${after[$r]} " in *" $k "*) [ "${state[$r]}" = done ] || continue 2 ;; esac
+    done
+    cleaned[$k]=1
+    rm -rf ${owns[$k]}
+    echo "$k: ${owns[$k]}" >>"$LOGS/cleaned"
+  done
+}
 next=($ORDER)
 flush() {
   while [ ${#next[@]} -gt 0 ] && [ "${state[${next[0]}]}" = done ]; do
@@ -541,6 +589,7 @@ while :; do
   state[$j]=done
   printf '  [%s: %ds]\n' "$j" $((SECONDS - ${t0[$j]})) >>"$LOGS/$j.log"
   [ "$rc" = 0 ] && outcome[$j]=pass || { outcome[$j]=fail; fail=1; }
+  clean_done
   flush
 done
 for j in $ORDER; do

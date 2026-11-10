@@ -65,7 +65,9 @@ fi
 
 # no_flop, on a copy of the design's own file with one entry changed: each
 # refused by name. A DPI block's sending end off no_flop is a second register
-# in series, a link stage no derive counts (AR's rev 309 (1)).
+# in series, a link stage no derive counts (AR's rev 309 (1)). The first
+# case takes one sending end of a DPI block (ooe) off; rcu, whose top is RTL
+# since RI-33, may take its sending ends off, so it is not the case's block.
 refused=0; missed=""
 while IFS='|' read -r want edit; do
   [ -z "$want" ] && continue
@@ -83,7 +85,7 @@ PY
     refused=$((refused + 1))
   fi
 done <<'CASES'
-rcu is a DPI block, so its sending end of rcu_ooe_done|nf[1]["channels"].remove("rcu_ooe_done")
+ooe is a DPI block, so its sending end of ooe_rcu_issue stays no_flop|nf[0]["block"].remove("ooe"); nf.append({"block": "ooe", "channels": "all", "except": ["ooe_rcu_issue"], "why": "x"})
 fet is a DPI block, so its sending end of|nf[0]["block"].remove("fet")
 says no why|nf[1].pop("why")
 has no end of channel 'fet_dec_instr'|nf[1]["channels"].append("fet_dec_instr")
