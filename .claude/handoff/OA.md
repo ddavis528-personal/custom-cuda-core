@@ -41,7 +41,7 @@ RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
 Conventions 17, OA 405, AR 339, TI 401, OI 336, IS 190, CP 157, DA 116,
-RA 133 (tab 9851686b-2b0a), RI 66 (tab 8e4547bc-c469).
+RA 133 (tab 9851686b-2b0a), RI 68 (tab 8e4547bc-c469).
 OOE doc rev 374. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release b15c89e8; tag refused (known).
 
@@ -80,6 +80,7 @@ Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release
    OA 403 re:RA 132 (RI-31): (a) lead_phys_src2 copy on S0-S3, 32 iss_en flops, 0 out, payload kept (lead copies ~448 total); (b) lead_sec_mask EXACT == footprint (lead slots), 0 on cont; TI built it 7b003e98 (TI 400, lead_why amended).
    OA 404 re:OI-134 (2ff049c7): go reads registered unmet (unmet_reg=1, RTL), cm128 -2.2% vs G at 160/128 (model), c_dst cap back 26.9 (DA 27.5 unused); recorded OOE doc rev 374 floor invariant. OI-134 closed.
    OA 405 (sweep 11-09): skipped ccr-80102643 (AR) + ccr-888218a3 (RI), perf-register/cg-waivers/rcu_dec_pkg conflicts vs TI; TI merged both 0bd5ac02 (TI 401). Next sweep picks it up.
+   RI session: session_01QPk2jvvXPLs4m8ZQbSk1g6 (roster). RI-34 (11-10): ccv_rcu.sv block top pushed 8fcec64b, per-slot issue ports; no action.
    REGISTER CELL SHAPE: a cell must be {"type":"cell","content":[{"type":"paragraph","content":[{"type":"text","text":"..",("marks":[{"type":"bold"}])}]}]}; a string content is silently dropped (OA 397-404 went in blank, refilled rev 408). Read every row back after insert.
    DISK: a full gate needs ~23 GB free; ccache capped at 2G (ccache -M 2G) after 11-09 filled the disk.
 -23. CLOSED (OA 395): OI-133 fix 5559b4f/b90adff/11386e7 accepted, rope cleared (TI 387). Was OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
