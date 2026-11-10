@@ -4,9 +4,13 @@
   ],
   "hard_reuse": ["lane"],
   "no_flop": [
-    {"block": ["fet", "dec", "ooe", "rcu", "lane", "miu", "spm", "dcu", "mlc", "rau", "syu", "pca", "cru", "exb"],
+    {"block": ["fet", "dec", "ooe", "lane", "miu", "spm", "dcu", "mlc", "rau", "syu", "pca", "cru", "exb"],
      "channels": "all",
-     "why": "The design's own list (params/links.json): every block is a DPI host or stub, so its ends are no-flop and the split's stages alone are repeated, as in the design."}
+     "why": "The design's own list (params/links.json): every block but rcu is a DPI host or stub, so its ends are no-flop and the split's stages alone are repeated, as in the design."},
+    {"block": "rcu",
+     "channels": ["lane_rcu_res", "ooe_rcu_issue", "ooe_rcu_map", "pca_rcu_mig", "rau_rcu_mig",
+                  "rcu_lane_ops", "rcu_miu_addr", "rcu_ooe_done", "rcu_pca_mig"],
+     "why": "The design's own rcu entry (params/links.json): ccv_rcu's top is RTL since RI-33, so \"all\" is refused (tools/ccv_links.py) and its no-flop ends are named; miu_rcu_data takes the boundary flop, as in the design."}
   ],
   "links": [
     {"channel": "fet_dec_instr", "route": "src:1 > dst:1", "why": "split between both ends"},

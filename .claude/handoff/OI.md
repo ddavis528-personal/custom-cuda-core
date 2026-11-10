@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-09 (#26 OI-134: CG-3 rework of the ur register)
+Updated 2026-11-09 (#34 pushed 4dfd22cc, full PASS; next #35)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,8 +37,10 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 332, RA 117, IS 190, TI 397, OA 402, OI 334, CP 157, DA 116, RI 54
-(sweep 11-08 plus notices). AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
+Conventions 17, AR 339, RA 133, IS 190, TI 400, OA 409, OI 337, CP 157, DA 116, RI 66
+(sweep 11-09). OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
+(perf-register.md) and RI 888218a3 (cg-waivers.json, rcu_dec_pkg.sv, perf-register.md); rung both.
+OA-399 leaves a LANE 8/SFU 13 rerun "if OI has not run 8/13": check against RI-11/OI-115. AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
 once TI's schema row lands. Pings 11-06: all OK. Settings: after TI's 350k merge `--check` may
 differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
 
@@ -50,6 +52,10 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-1. #34 ooe_rob_w PUSHED 4dfd22cc (full PASS, with the 11-09 sweep merge): hrb binary head, uft
+   thermometer, w_h head window copy; caps NGD-1 29.6, al_n 29.2, dn_tag 26.3, fl_slot 28.6, fl_v 29.5
+   (measured 29.54/29.12/26.22/28.50/29.49). CG passes within allowance (win_en group 37-39%, pch 0%).
+   Next: #35 ooe_rename, then #38, #39, DA 111b, #32. ccv_ooe.ngd.json withdrawn (1bc1e268) until ccv_ooe is RTL.
 0. #33 PUSHED (5eb3acb8, SCOPED PASS 23/23, with TI 21b4b80 merged); OI-135 closed at OI rev 334.
    Lesson: any load on ren1's l_x/l_v/tk_* remaps ooe_rename's q_gv cone (+0.5); take from c_xl per class.
 1. #26 OI-134: RH 95bf04d: U160 -2.22% vs G160, U128 -2.16%, L160 +1.87%, L128 -2.07%, U192 = G192.

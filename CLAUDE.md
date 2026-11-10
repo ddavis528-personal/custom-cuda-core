@@ -8,6 +8,9 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 **An OOE model session starts at `docs/ooe-4b.md`.**
 **An RCU model session starts at `docs/rcu-impl.md`;** its model is the RCU
 in both hosts since M0 (RA, 2026-11-04), and `CCV_RCU_IMPL=stub` selects the stub.
+**An MIU and DCU architecture session (MA) starts at `docs/miu-arch.md`** (DA
+tab revs 117-118, 2026-11-10; MI and DI implement them); the skeleton's MIU and
+DCU stay the stubs until MA's Phase 1 resource model lands (miu-arch.md section 7).
 
 ## Sources of truth: edit these, never what is generated from them
 
@@ -50,8 +53,12 @@ After the generators, the sections run as parallel jobs, `CCV_JOBS` at a
 time (default every core; `CCV_JOBS=1` is serial), each section's log in
 `build/verify/<job>.log` with its time. A job that reads another's build
 products names it in `after` in `tools/verify.sh`; no two jobs that may run
-together share a build directory. check-cg and check-ngd measure their units
-`CCV_JOBS` at a time too, and share one Yosys netlist per unit through
+together share a build directory. A section's own build directory (`owns`
+there) is removed once it passes and every job that reads it is done, and
+check-cg and check-ngd remove each unit's work directory once it is measured
+(DA, 2026-11-09); a failed section keeps its own, and `CCV_KEEP_BUILD=1` and
+`CCV_KEEP_UNIT_BUILD=1` keep them all. check-cg and check-ngd measure their
+units `CCV_JOBS` at a time too, and share one Yosys netlist per unit through
 `build/synth-cache`, ABC's maps too, keyed by everything a run reads. The
 full gate clears it first; `tools/verify.sh --cached` keeps it for an
 intermediate run, whose result reads `CACHED PASS`.

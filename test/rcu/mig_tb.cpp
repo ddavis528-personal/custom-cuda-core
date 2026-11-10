@@ -52,6 +52,7 @@
 #include <vector>
 
 #include "ccv_params.h"
+#include "cls_pack.h"
 #include "dec_tb.h"
 
 namespace {
@@ -330,15 +331,16 @@ struct Bench {
     rOp(lie ? RSlot{true, false, false} : rc.v ? rc : RSlot{cfg.junk && coin(0.5), coin(0.5), coin(0.5)},
         ropc, rmrg);
     if (!rc.v && !cfg.junk) ropc = 0, rmrg = false;
-    dut->ropc_cr02h = ropc;
+    dut->rcls_cr02h = uint32_t(clspack::clsWord(ropc, 0, false));   // rcu_isd's (RA-43, RI-25)
     dut->rmrg_cr02h = rmrg;
 
-    // A kill: valid in K-1, the mask in K.
-    dut->kv_cr00h = 0;
-    dut->km_cr01h = cfg.junk ? uint32_t(rng()) : 0;
-    if (kpend && t == kK) dut->km_cr01h = kmask;
+    // A kill: kill_v_q in K (ccv_rcu's kill detector flops the valid of
+    // K-1; RA rev 127), the mask in K+1 (the detector's mask flop, AR 338).
+    dut->kv_cr01h = 0;
+    dut->kmn_cr02h = cfg.junk ? uint32_t(rng()) : 0;
+    if (kpend && t == kK + 1) dut->kmn_cr02h = kmask;
     if (!rst_now && !kpend && cfg.pkill > 0 && t > last_kill + 40 && coin(cfg.pkill)) start_kill();
-    if (kpend && t + 1 == kK) dut->kv_cr00h = 1;
+    if (kpend && t == kK) dut->kv_cr01h = 1;
 
     // New migrations, at most CCV_TIER1_WARPS live (RAU's bound).
     if (!rst_now && live() < int(kQ) && coin(cfg.pnew)) new_mig();
@@ -510,7 +512,7 @@ struct Bench {
     std::fprintf(stderr, "%6llu R%d%d%d mv%d/%u cv%d/%u pv%d/%u.%u kv%d km%x | r2v%d gv%d rwsel%d/%u ov%d owk%d %u.%u mcr%d ccr%d pcr%d q%d b%d\n",
                  (unsigned long long)t, rs[t % 8].v, rs[t % 8].r2, rs[t % 8].rw, dut->mv_cr00h,
                  mpay >= 0 ? migs[mpay].warp : 99, dut->cv_cr00h, cpay >= 0 ? migs[cpay].warp : 99,
-                 dut->pv_cr00h, ppay >= 0 ? migs[ppay].warp : 99, ppay_row, dut->kv_cr00h, dut->km_cr01h,
+                 dut->pv_cr00h, ppay >= 0 ? migs[ppay].warp : 99, ppay_row, dut->kv_cr01h, dut->kmn_cr02h,
                  s.r2v, s.gv, s.rwsel, s.rwrow, s.ov, s.owk, s.ow, s.orow, s.mcr, s.ccr, s.pcr, s.quiet, s.busy);
   }
   void sample(Samp &s) {

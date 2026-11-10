@@ -64,6 +64,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "cls_pack.h"
 #include "dec_tb.h"
 
 #ifndef BS_ROWS
@@ -189,7 +190,7 @@ extern int g_argc;
 extern char **g_argv;
 extern bool g_nowt;   // --control nowt: expect no write-through (the run must fail)
 extern bool g_rfirst; // --control rfirst: expect migration's row on R2 beside the R op's (must fail)
-extern std::string g_ctl;   // --control lown|msrc: the L rows on slot 0, the M rows by port (must fail)
+extern std::string g_ctl;   // --control lown|msrc|lsecK|psecX: the L rows on slot 0, the M rows by port (must fail)
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
@@ -207,6 +208,8 @@ struct Bench {
   unsigned cov_m2 = 0, cov_m2r = 0, cov_m2n = 0, cov_mrw = 0, cov_mrwr = 0, cov_mrwn = 0;
   unsigned cov_lown[4]{}, cov_mown[4]{}, cov_stale = 0, cov_cont = 0;
   std::mt19937 erng{0x5107u + kK};
+  std::mt19937 lrng{0x1eadu + kK};   // the issue leads' noise and supersets
+  std::mt19937 prng{0x9eadu + kK};   // P's lead noise
   unsigned erow() { return unsigned(erng() % kRows); }
 
   /// The issue slots for c's L and M reads (P2): an owner of section K
@@ -317,7 +320,7 @@ struct Bench {
     static const dectb::OpPool ng("an R op writing no GPR", 0, [&](const OpClass &oc) { return isR(oc) && !oc.gdst; });
     const bool g = ruse || (salt & 1u);
     const auto &ops = g ? gd.ops : ng.ops;
-    dut->ropc_cr01h = ops[(salt >> 1) % ops.size()];
+    dut->rcls_cr01h = uint32_t(clspack::clsWord(ops[(salt >> 1) % ops.size()], 0, false));
     dut->rmrg_cr01h = ruse || (!g && (salt & 2u));
   }
 
@@ -333,12 +336,36 @@ struct Bench {
     dut->mw_v_cr01h = 0;
     dut->g2_v_cr00h = 0;
     dut->gw_v_cr00h = 0;
-    dut->ropc_cr01h = 0;
+    dut->rcls_cr01h = uint32_t(clspack::clsWord(0, 0, false));
     dut->rmrg_cr01h = 0;
     dut->gw_sel_cr01h = 0;
+    bool pownK = false;
+    for (unsigned j = 0; j <= kK && j < 4; ++j)
+      pownK = pownK || (next.ps[j].v && !next.ps[j].cont && ((next.ps[j].foot >> kK) & 1u));
     for (unsigned j = 0; j < 4; ++j) {
       put(dut->sv_cr00h, j, 1, next.ss[j].v);
       put(dut->pv_cr00h, j, 1, next.ps[j].v);
+      // S slot j's leads beside its valid (RA-43): lead_cont a copy;
+      // lead_sec_mask the footprint, now and then a superset, 0 on a
+      // continuation; off a valid, noise. lsecK (control): the owner's
+      // lead leaves out section K, so its L rows never load.
+      const Slot &x = next.ss[j];
+      const unsigned z = unsigned(lrng());   // its own stream: the draws stay as they were
+      unsigned ls = x.cont ? 0u : x.foot | ((z & 3u) == 0 ? (z >> 2) & 15u : 0u);
+      if (g_ctl == "lsecK" && x.v && !x.cont && ((x.foot >> kK) & 1u)) ls &= ~(1u << kK);
+      put(dut->slcont_cr00h, j, 1, x.v ? x.cont : (z >> 6) & 1u);
+      put(dut->slsec_cr00h, 4 * j, 4, x.v ? ls : (z >> 7) & 15u);
+      // P slot j's leads (RA 133): lead_sec_mask the footprint exactly, 0
+      // on a continuation; off a valid, noise. psecX (control): a lead slot
+      // without section K gets bit K, so the owner from the leads differs
+      // from the payload's and p_lead_is_footprint fires (only in a cycle
+      // no slot owns pipe K, so it is that assert and not one_p_owner).
+      const Slot &y = next.ps[j];
+      const unsigned zp = unsigned(prng());
+      unsigned lp = y.cont ? 0u : y.foot;
+      if (g_ctl == "psecX" && y.v && !y.cont && kK >= j && !((y.foot >> kK) & 1u) && !pownK) lp |= 1u << kK;
+      put(dut->plcont_cr00h, j, 1, y.v ? y.cont : zp & 1u);
+      put(dut->plsec_cr00h, 4 * j, 4, y.v ? lp : (zp >> 1) & 15u);
     }
     for (const Read &r : next.rd)
       if (r.port == 9) {
@@ -357,8 +384,8 @@ struct Bench {
         put(dut->pcont_cr01h, j, 1, y.cont);
         put(dut->pfoot_cr01h, 4 * j, 4, y.foot);
         for (unsigned i = 0; i < 3; ++i) put(dut->psrc_cr01h, (j * 3 + i) * 8, 8, y.src[i]);
-        put(dut->popc_cr01h, 9 * j, 9, y.opc);
-        put(dut->pdrw_cr01h, 2 * j, 2, y.drw);
+        // The class word rcu_isd holds from the lead (RA-43, RI-25).
+        put(dut->pcls_cr01h, 27 * j, 27, clspack::clsWord(y.opc, y.drw, false));
       }
     }
     for (const Write &w : next.wr) {
