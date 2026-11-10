@@ -135,7 +135,7 @@ struct Bench {
       if (en) {
         if (kv_q) {
           nkep = in.kep;
-          ndrain = g_drain;
+          ndrain = g_drain - 1;   // K is the drain's first cycle (RI-36)
           nack = false;
           rekills += pend;
           npend = true;

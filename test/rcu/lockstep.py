@@ -43,6 +43,12 @@ NP_ALL = param("CCV_L_OPERANDS_PER_LANE") + 1   # three sources and merge_data
 _DEC = open(os.path.join(ROOT, "rtl/rcu/rcu_dec_pkg.sv")).read()
 CLS_READS = int(re.search(r"CLS_READS = (\d+)", _DEC).group(1))
 CLS_ISLOT = int(re.search(r"CLS_ISLOT = (\d+)", _DEC).group(1))
+CLS_UNIT = int(re.search(r"CLS_UNIT = (\d+)", _DEC).group(1))
+CLS_MK = int(re.search(r"CLS_MK = (\d+)", _DEC).group(1))
+U_LANE, U_SFU = (int(re.search(r"U_%s = 3'd(\d)" % u, _DEC).group(1)) for u in ("LANE", "SFU"))
+MK_STORE, MK_FENCE = (int(re.search(r"MK_%s = 3'd(\d)" % u, _DEC).group(1)) for u in ("STORE", "FENCE"))
+MK_PSTORE = int(re.search(r"MK_PSTORE = 3'd(\d)", _DEC).group(1))
+NSLOTS = len(set(re.findall(r"\booe_rcu_issue_s(\d+)_valid\b", open(PORTS).read())))   # issue slots
 CLOCK = "core_clk"
 
 
@@ -144,14 +150,47 @@ def lead_mask(port, chans):
 
 
 def dec_classes():
-    """opcode -> class word, from rcu_dec_pkg.sv (generated from the model's
-    own decode, sim/rcu/rcu_decode.h): the same table both sides read."""
-    cls = {}
+    """(opcode, done_row) -> class word, from rcu_dec_pkg.sv (generated from
+    the model's own decode, sim/rcu/rcu_decode.h): the same table both sides
+    read. done_row is None but for an atomic, whose step it picks."""
+    cls, atom = {}, None
     for line in open(os.path.join(ROOT, "rtl/rcu/rcu_dec_pkg.sv")):
-        m = re.match(r"\s*(\d+): c = \d+'h([0-9a-fA-F]+);", line)
+        m = re.match(r"\s*(\d+): case \(drow\)", line)
         if m:
-            cls[int(m.group(1))] = int(m.group(2), 16)
+            atom = int(m.group(1))
+            continue
+        m = re.match(r"\s*2'd(\d): c = \d+'h([0-9a-fA-F]+);", line)
+        if m and atom is not None:
+            cls[(atom, int(m.group(1)))] = int(m.group(2), 16)
+            continue
+        if "endcase" in line:
+            atom = None
+        # A copy's two forms (pcopy ? a : b) differ only below CLS_READS.
+        m = re.match(r"\s*(\d+): c = (?:pcopy \? \d+'h[0-9a-fA-F]+ : )?\d+'h([0-9a-fA-F]+);", line)
+        if m:
+            cls[(int(m.group(1)), None)] = int(m.group(2), 16)
     return cls
+
+
+def lane_class(cls, op):
+    """The class of a lane message's opcode: an atomic's one lane step."""
+    if (op, None) in cls:
+        return cls[(op, None)]
+    steps = [c for (o, _), c in cls.items() if o == op and (c >> CLS_UNIT) & 7 in (U_LANE, U_SFU)]
+    return steps[0] if len(steps) == 1 else None
+
+
+def issues_at(snap, chans):
+    """The lead issues (no continuation) whose payload is in this sample:
+    slot -> {field: value}."""
+    f = {n: (l, w) for n, l, w, _ in chans["ooe_rcu_issue"]}
+    out = {}
+    for k in range(NSLOTS):
+        v = snap.get("ooe_rcu_issue_s%d_payload" % k, 0)
+        d = {n: (v >> l) & ((1 << w) - 1) for n, (l, w) in f.items()}
+        if not d["cont"]:
+            out[k] = d
+    return out
 
 
 # rcu_lane_ops' per-section fields: entries per section (LAYOUT in the
@@ -161,14 +200,17 @@ LANE_SEC_FIELDS = {"sec_opcode": 1, "sec_owner": 1, "sec_pred_data": 1,
                    "sec_opnd_pos": NP_ALL, "sec_opnd_width": NP_ALL, "operand_byp": NP_ALL}
 
 
-def lane_ops_care(fields, lead_pay, pay, cls):
+def lane_ops_care(fields, lead_pay, pay, cls, iss):
     """The bits of one rcu_lane_ops payload a lane consumes, in its payload
     cycle. A section section_en leaves clear carries nothing (RTL holds its
     data-gated flops; the model sends zeros). In a section that is held,
     an operand port's byte counts only when the op reads that port or takes
     its immediate there: the lane reads nothing else, and rcu_lanes loads
-    an operand byte only for a port in use (op_en). Everything else in the
-    payload is compared."""
+    an operand byte only for a port in use (op_en). merge_data counts only
+    where the section's op has merge_en (the schema: don't-care at 0); iss
+    is the issues the message came from (issues_at, two samples back), and
+    a section none of them covers keeps its merge_data compared. Everything
+    else in the payload is compared."""
     f = {n: (lsb, w) for n, lsb, w, _ in fields}
     lsb, w = f["section_en"]
     en = (lead_pay >> lsb) & ((1 << w) - 1)
@@ -186,7 +228,11 @@ def lane_ops_care(fields, lead_pay, pay, cls):
                 for i in range(ports):
                     care &= ~(0xff << (l + 32 * i + 8 * k))
             continue
-        c = cls.get((pay >> (olsb + k * wo)) & ((1 << wo) - 1))
+        own = [d for slot, d in iss.items() if slot < NK and (d["footprint"] >> k) & 1]
+        if len(own) == 1 and not own[0]["merge_en"]:
+            l, _ = f["merge_data"]
+            care &= ~(0xff << (l + 8 * k))
+        c = lane_class(cls, (pay >> (olsb + k * wo)) & ((1 << wo) - 1))
         if c is None:
             continue
         reads, islot = (c >> CLS_READS) & 7, (c >> CLS_ISLOT) & 3
@@ -197,11 +243,40 @@ def lane_ops_care(fields, lead_pay, pay, cls):
     return care
 
 
+def miu_addr_care(fields, pay, cls, iss):
+    """The bits of one rcu_miu_addr payload MIU reads: store_data only for a
+    store or a predicate store, base and index for every memop but a fence
+    (rcu_mem: a group the memop does not use holds its value, don't-care on
+    the wire; the model sends zeros). The memop is the issue in iss with the
+    message's rob_tag; with none, the whole payload is compared."""
+    f = {n: (l, w) for n, l, w, _ in fields}
+    l, w = f["rob_tag"]
+    tag = (pay >> l) & ((1 << w) - 1)
+    care = (1 << max(l + w for l, w in f.values())) - 1
+    for d in iss.values():
+        if d["rob_tag"] != tag:
+            continue
+        c = cls.get((d["opcode"], None), cls.get((d["opcode"], d["done_row"])))
+        if c is None:
+            break
+        mk = (c >> CLS_MK) & 7
+        drop = [] if mk in (MK_STORE, MK_PSTORE) else ["store_data"]
+        if mk == MK_FENCE:
+            drop += ["base_per_lane", "index_per_lane"]
+        for n in drop:
+            l, w = f[n]
+            care &= ~(((1 << w) - 1) << l)
+        break
+    return care
+
+
 def care_masks(outs, widths, chans, snaps):
     """Per cycle, the output bits that carry a message: a payload's lead
     fields in its valid cycle, the rest in the cycle after (the schema's
-    valid lead), narrowed on rcu_lane_ops to what a lane consumes
-    (lane_ops_care); every other output always."""
+    valid lead), narrowed on rcu_lane_ops and rcu_miu_addr to what their
+    receivers read (lane_ops_care, miu_addr_care); kill_ack_epoch while the
+    model's kill_ack is high (a level: RAU reads the epoch only with it);
+    every other output always."""
     cls = dec_classes()
     layout, off = [], 0
     for n in outs:
@@ -210,24 +285,31 @@ def care_masks(outs, widths, chans, snaps):
             full = (1 << w) - 1
             lm = lead_mask(n, chans) & full
             ch = re.sub(r"(_c\d+|_s\d+)?_payload$", "", n)
-            layout.append((off, n[:-len("_payload")] + "_valid", lm, full & ~lm,
-                           n if ch == "rcu_lane_ops" else None))
+            layout.append((off, n[:-len("_payload")] + "_valid", lm, full & ~lm, n,
+                           ch if ch in ("rcu_lane_ops", "rcu_miu_addr") else None))
+        elif n == "kill_ack_epoch":
+            layout.append((off, "kill_ack", (1 << w) - 1, 0, n, "ack"))
         else:
-            layout.append((off, None, (1 << w) - 1, 0, None))
+            layout.append((off, None, (1 << w) - 1, 0, n, None))
         off += w
     out, prev = [], {}
-    for s in snaps:
+    for t, s in enumerate(snaps):
+        iss = issues_at(snaps[t - 2], chans) if t >= 2 else {}
         m = 0
-        for o, v, now, nxt, lane in layout:
+        for o, v, now, nxt, n, kind in layout:
             if v is None:
                 m |= now << o
+            elif kind == "ack":
+                if s.get(v):
+                    m |= now << o
             else:
                 if s.get(v):
                     m |= now << o
                 if prev.get(v):
-                    if lane:
-                        nxt &= lane_ops_care(chans["rcu_lane_ops"], prev.get(lane, 0),
-                                             s.get(lane, 0), cls)
+                    if kind == "rcu_lane_ops":
+                        nxt &= lane_ops_care(chans[kind], prev.get(n, 0), s.get(n, 0), cls, iss)
+                    elif kind == "rcu_miu_addr":
+                        nxt &= miu_addr_care(chans[kind], s.get(n, 0), cls, iss)
                     m |= nxt << o
         out.append(m)
         prev = s
@@ -245,7 +327,8 @@ def fields_diff(port, a, b, chans):
     return "; ".join(diffs)
 
 
-def build(bdir, ins, outs, widths, trace=0):
+def build(bdir, ins, outs, widths, trace=0, watch=()):
+    bdir = os.path.abspath(bdir)
     iw = sum(widths[n] for n in ins)
     ow = sum(widths[n] for n in outs)
     conns, off = [".%s(clk)" % CLOCK], 0
@@ -274,12 +357,13 @@ module rcu_ls_tb;
   ccv_rcu dut (%(conns)s);
   // The register file powers up as the model's does (sim/rcu/rcu_block.cpp:
   // physical GPR p, lane l holds 0xdead0000 | p << 5 | l), so a read of a
-  // row nothing wrote compares like any other.
-  initial begin
+  // row nothing wrote compares like any other (+noinit, control init: not).
+  initial if (!$test$plusargs("noinit")) begin
 %(init)s
   end
   int n, fd, fi;
   string base;
+%(watch)s
   initial begin
     void'($value$plusargs("n=%%d", n));
     void'($value$plusargs("base=%%s", base));
@@ -301,7 +385,9 @@ module rcu_ls_tb;
     $finish;
   end
 endmodule
-""" % {"iw": iw, "ow": ow, "conns": ",\n    ".join(conns), "init": "\n".join(init)}
+""" % {"iw": iw, "ow": ow, "conns": ",\n    ".join(conns), "init": "\n".join(init),
+       "watch": "\n".join('  always @(dut.%s) $display("WATCH %%0d %s %%h", $time / 3, dut.%s);' % (w, w, w)
+                          for w in watch)}
     os.makedirs(bdir, exist_ok=True)
     tf = os.path.join(bdir, "rcu_ls_tb.sv")
     old = open(tf).read() if os.path.exists(tf) else None
@@ -327,6 +413,20 @@ endmodule
     return exe
 
 
+def flip_operand(snaps, outs, widths, chans, care):
+    """Control opnd: flip the expected value of the first operand bit a lane
+    consumes (the care mask holds it), on lane 0's rcu_lane_ops."""
+    port = "rcu_lane_ops_c00_payload"
+    off = sum(widths[n] for n in outs[:outs.index(port)])
+    lsb, w = next((l, w) for n, l, w, _ in chans["rcu_lane_ops"] if n == "operand")
+    for t, c in enumerate(care):
+        m = (c >> (off + lsb)) & ((1 << w) - 1)
+        if m:
+            snaps[t][port] = snaps[t].get(port, 0) ^ ((m & -m) << lsb)
+            return
+    sys.exit("lockstep: control opnd: no consumed operand bit in the dump")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", default=os.path.join(ROOT, "build/rcu-ls"))
@@ -340,11 +440,19 @@ def main():
                          "the spec returns a credit in the message's payload cycle, from "
                          "<ch>_v_q, as the RTL does; the skeleton's Receiver::pop can only "
                          "credit a cycle later (RI-36)")
+    ap.add_argument("--control", choices=("init", "opnd"),
+                    help="a negative control, which must diverge on every dump: init leaves "
+                         "the RTL's register file unmatched to the model's power-up; opnd flips "
+                         "one consumed operand bit of the dump's first lane message")
+    ap.add_argument("--watch", action="append", default=[], metavar="PATH",
+                    help="print a signal under ccv_rcu (e.g. u_pred.g_row[6].pq_cr02h) at each change, "
+                         "with its cycle (a triage aid)")
     ap.add_argument("dumps", nargs="+")
     a = ap.parse_args()
+    a.build = os.path.abspath(a.build)
     dirs = port_dirs()
     chans = chan_fields()
-    exe, fail = None, 0
+    exe, fail, diverged = None, 0, set()
     for d in a.dumps:
         widths, snaps = read_dump(d, set(dirs))
         missing = sorted(n for n in dirs if n not in widths and not n.startswith("csr_"))
@@ -361,7 +469,7 @@ def main():
             snaps = [dict(s, **{n: (snaps[t + a.credit_lead].get(n, 0) if t + a.credit_lead < len(snaps) else 0)
                                 for n in cr}) for t, s in enumerate(snaps)]
         if exe is None:
-            exe = build(a.build, ins, outs, widths, a.vcd)
+            exe = build(a.build, ins, outs, widths, a.vcd, a.watch)
         base = os.path.join(a.build, os.path.splitext(os.path.basename(d))[0])
         iw = sum(widths[n] for n in ins)
         with open(base + ".in", "w") as f:
@@ -370,7 +478,8 @@ def main():
         # Assertions report and the replay runs on, so the outputs are
         # compared to the end; each failing assertion is named once.
         r = subprocess.run([exe, "+n=%d" % len(snaps), "+base=" + base, "+verilator+error+limit+1000000"]
-                           + (["+vcd"] if a.vcd else []), capture_output=True, text=True)
+                           + (["+vcd"] if a.vcd else []) + (["+noinit"] if a.control == "init" else []),
+                           capture_output=True, text=True)
         asserts = {}
         for m in re.finditer(r"\[(\d+)\] %Error: (\S+): Assertion failed in (\S+)", r.stdout + r.stderr):
             key = re.sub(r"\[\d+\]", "[N]", m.group(3))
@@ -378,15 +487,22 @@ def main():
         for k, (c, cnt) in sorted(asserts.items(), key=lambda kv: kv[1][0]):
             print("%s: ASSERTION %s, first at cycle %d, %d failures" % (d, k, c, cnt))
             fail = 1
+            diverged.add(d)
+        for line in r.stdout.splitlines():
+            if line.startswith("WATCH "):
+                print("%s: %s" % (d, line))
         if "RCU-LS done" not in r.stdout:
             print("%s: replay stopped:\n%s" % (d, (r.stdout + r.stderr)[-1500:]))
             fail = 1
+            diverged.add(d)
         obs = [int(l, 16) for l in open(base + ".obs") if l.strip()]
         first = None
         # A wake output in the dump is derived, the latest legal one: the
         # RTL's must be high wherever it is (earlier is legal, later is not).
         wmask = pack({n: -1 for n in outs if n.endswith("_wake")}, outs, widths)
         care = care_masks(outs, widths, chans, snaps)
+        if a.control == "opnd":
+            flip_operand(snaps, outs, widths, chans, care)
         for t, s in enumerate(snaps[:len(obs)]):
             want = pack(s, outs, widths)
             if (obs[t] ^ want) & care[t] & ~wmask or want & wmask & ~obs[t]:
@@ -399,6 +515,7 @@ def main():
             print("%s: IDENTICAL, %d outputs over %d cycles" % (d, len(outs), len(snaps)))
             continue
         fail = 1
+        diverged.add(d)
         got, want, off, shown = obs[first] & care[first], pack(snaps[first], outs, widths) & care[first], 0, 0
         print("%s: DIVERGES at cycle %d of %d" % (d, first, len(snaps)))
         for n in outs:
@@ -429,6 +546,10 @@ def main():
                         seen.add(key)
                         fd = fields_diff(n, gv, wv, chans) if n.endswith("_payload") else ""
                         print("    %d %s: rtl %x model %x%s" % (t, n, gv, wv, (" [" + fd + "]") if fd else ""))
+    if a.control:
+        for d in a.dumps:
+            print("%s: control %s %s" % (d, a.control, "caught" if d in diverged else "NOT CAUGHT"))
+        return int(any(d not in diverged for d in a.dumps))
     return fail
 
 

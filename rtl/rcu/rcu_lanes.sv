@@ -817,8 +817,11 @@ module rcu_lanes #(
                           (immu_cr02h[s] & ~limm_cr02h[s]) | (mrg_cr02h[s] & ~lmrg_cr02h[s]);
       if (lmsg_cr02h[s])
         foot_bad_cr02h |= !foot_cr02h[s*NK + s] || (foot_cr02h[s*NK +: NK] & ((NK'(1) << s) - NK'(1))) != '0;
-      // A copy has old destination to merge, a GPR to write and no predicate.
-      cpy_bad_cr02h |= cpy_cr02h[s] & (~mrg_cr02h[s] | pwe_cr02h[s] | dst_cr02h[s*WR +: WR] == ZROW);
+      // A copy has old destination to merge and a GPR to write. A copy that
+      // also names a predicate, an atomic's (A-38: CAS's pd), leaves it to
+      // A2, which merges pd itself (OI-127): pred_we is ignored here, as the
+      // model ignores it (pv_n takes lane ops only); the lock-step on cas.
+      cpy_bad_cr02h |= cpy_cr02h[s] & (~mrg_cr02h[s] | dst_cr02h[s*WR +: WR] == ZROW);
     end
   end
   `CCV_ASSERT(lanes_own, !own_bad_cr02h)

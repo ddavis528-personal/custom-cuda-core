@@ -7,9 +7,9 @@
 // The whole block, every other input idle, runs on its own gate:
 //   awake   a kill while the gate is open: the reference ack latency
 //   case 1  a kill landing while asleep is acked with its epoch at the
-//           awake timing, high from K + KILL_DRAIN + 2: the drain is loaded
-//           at K's edge and ack-ready's edge sets the ack (a hold, not a
-//           delay)
+//           awake timing, high from K + KILL_DRAIN + 1: the drain is loaded
+//           at K's edge with KILL_DRAIN - 1, K its first cycle, and
+//           ack-ready's edge sets the ack (a hold, not a delay; RI-36)
 //   case 2  two kills a cycle apart across the wake keep the later epoch
 // --control drop1 / drop2 clear the detector's held kill in case 1 / in the
 // later kill of case 2 (the hold dropped), and each must fail.
@@ -149,10 +149,11 @@ int run(const std::string &ctl) {
   unsigned c1 = ~0u;
   if (!b.sleep()) b.fail("the gate never closed (%u %u)", 0, 0);
   else c1 = b.kill(3, false, 0, ctl == "drop1", false);
-  // The ack's timing (Done, kill and reset tab): the drain is loaded at K's
-  // edge with KILL_DRAIN and reaches 0 KILL_DRAIN edges on; ack-ready's edge
-  // sets kill_ack, high from K + KILL_DRAIN + 2. Asleep, the same.
-  if (awake != kDrain + 2) b.fail("awake: acked %u cycles after K, want KILL_DRAIN + 2 = %u", awake, kDrain + 2);
+  // The ack's timing (the model's, RI-36; the tab says K + KILL_DRAIN + 2):
+  // the drain is loaded at K's edge with KILL_DRAIN - 1 and reaches 0
+  // KILL_DRAIN - 1 edges on; ack-ready's edge sets kill_ack, high from
+  // K + KILL_DRAIN + 1. Asleep, the same.
+  if (awake != kDrain + 1) b.fail("awake: acked %u cycles after K, want KILL_DRAIN + 1 = %u", awake, kDrain + 1);
   if (c1 != ~0u && c1 != awake)
     b.fail("case 1: acked %u cycles after K, the awake latency %u", c1, awake);
   // Case 2: asleep, two kills a cycle apart across the wake.

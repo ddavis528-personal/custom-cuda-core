@@ -11,7 +11,10 @@
 // wake only from the edge after next, so a kill landing while RCU sleeps
 // would miss a kill_v_q on the gated clock; the epoch and the mask, in K,
 // meet the first edge the wake opens. RCU's pipe carries no warp id, so it
-// drains everything: at K's edge kill_drain is loaded with KILL_DRAIN and
+// drains everything: at K's edge kill_drain is loaded with KILL_DRAIN - 1
+// (K is the drain's first cycle, as the model counts it: the ack is high
+// from K + KILL_DRAIN + 1, the bound M4's KILL_DRAIN - 1 control holds
+// tight; the tab's K + KILL_DRAIN + 2 is a cycle over it, RI-36) and
 // counts to 0 and kill_ack_q clears; the epoch, flopped by the detector
 // at K's edge, is taken at K+1's (into the ack epoch itself: the ack is low
 // until ack-ready). The detector's three flops are RCU's boundary flops for
@@ -109,7 +112,7 @@ module rcu_kill #(
   // The ack is low from K's edge to ack-ready, so the ack epoch takes the
   // new epoch at K+1, from the detector's epoch flop under kvd_cr02h (kill_v_q
   // a cycle on, this module's own flop: CG-5, AR 338): it is the tab's
-  // kill_ep_q and kill_ack_ep_q in one, set 14 cycles before ack-ready.
+  // kill_ep_q and kill_ack_ep_q in one, set KILL_DRAIN - 2 cycles before ack-ready.
   logic [WE-1:0] kaep_q_cr03h;
   logic          kvd_cr02h;
   logic [WD-1:0] kd_cr02h;
@@ -126,7 +129,7 @@ module rcu_kill #(
       kvd_cr02h    <= 1'b0;
       kpend_cr02h  <= 1'b0;
     end else begin
-      if (kd_en_cr01h) kd_cr02h <= kv_cr01h ? WD'(KILL_DRAIN) : kd_cr02h - WD'(1);
+      if (kd_en_cr01h) kd_cr02h <= kv_cr01h ? WD'(KILL_DRAIN - 1) : kd_cr02h - WD'(1);
       kvd_cr02h <= kv_cr01h;
       if (kep_en_cr02h) kaep_q_cr03h <= kep_cr02h;
       if (ka_en_cr01h) begin
