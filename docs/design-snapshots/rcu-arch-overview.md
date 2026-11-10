@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=67 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 67 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Overview rev=68 exported=2026-11-10 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Overview*, at revision 68 on 2026-11-10 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # CCV RCU Architecture
 
@@ -57,7 +57,7 @@ It holds no warp state of its own beyond migration. Every select it uses is a pr
 | Kill | drain everything for `KILL_DRAIN` = 15 (RA-43); ack as a level with epoch | Done | RA-14, RA-23 |
 | Reset | control state only, about 1,500 flops; no PRF or payload reset | Done | A-29 |
 | CSRs | none; a read-0 responder (RA-26) | Done | RA-26 |
-| Size | about 242,400 flops summed from the units at their instances (RI rev 47), 81% of them PRF rows; CCV\_P\_PHYS\_REGS stays 192 (AR 333), no area target (Daniel, 2026-11-02); RA-11 closed (RA rev 122) | Partition | RA-11 |
+| Size | 247,468 flops measured at assembly (RI-34: check-cg at 8fcec64b, 15 units at their instances' parameters; estimated about 242,400 from the units, RI rev 47), about 80% of them PRF rows (196,608); the block's 2% allows 4,949.4 and its modules take 2,703 (55%); CCV\_P\_PHYS\_REGS stays 192 (AR 333), no area target (Daniel, 2026-11-02); RA-11 closed (RA rev 122) | Partition | RA-11 |
 | Address time | CCV\_LAT\_RCU\_ADDR\_BASE = 1: address valid at A+1, payload at A+2; RCU-internal, from the interface flop; the receiving interface flop's cycle is the link term bnd\_rx (AR row 300), counted only on the crossing, so the base and CCV\_LAT\_RCU\_ADDR stay 1 (AR row 301), and L1 wake goes 17 to 13; one more if M1 misses (RA rev 79) | Lane and memory; Partition | RA-7, RA-31 (1); PF-47 |
 | Issue lead slice | OOE sends section mask, source, imm and merge use (and on R's slot the guard predicate) a cycle ahead; RCU enables each field group from it; a clear bit is asserted as a promise | Partition; Pipeline (stage IL) | RA-31 (2), RA-39 |
 | Split guard read | guard row predecoded at A−1 from the lead; guard path about 16 NGD in A (about 22 without the lead) | Predicate file | RA-32 (1) |
