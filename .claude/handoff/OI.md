@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-09 (#34 pushed 4dfd22cc, full PASS; next #35)
+Updated 2026-11-10 (#35 pushed d86e3a14, full PASS; OI-137 rev 338 rung OA; RH pricing asked; next #38)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -37,8 +37,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 339, RA 133, IS 190, TI 400, OA 409, OI 337, CP 157, DA 116, RI 66
-(sweep 11-09). OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
+Conventions 19, AR 342, RA 135, IS 190, TI 406, OA 410, OI 338, CP 157, DA 119, RI 69
+(sweep 11-10; AR closed OI-136; DA 117-119: MIU next, MA/MI/DI). Earlier: OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
 (perf-register.md) and RI 888218a3 (cg-waivers.json, rcu_dec_pkg.sv, perf-register.md); rung both.
 OA-399 leaves a LANE 8/SFU 13 rerun "if OI has not run 8/13": check against RI-11/OI-115. AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
 once TI's schema row lands. Pings 11-06: all OK. Settings: after TI's 350k merge `--check` may
@@ -52,6 +52,12 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-2. #35 ooe_rename PUSHED d86e3a14 (full PASS, with the 11-10 sweep merge of 183cc441/126afa13/80102643/9eb50716):
+   flop-flop 24.73, one cap left (q_pname_cq03h 3.32). Model knob cand_indep_pend (on). OI-137 (rev 338, Needs OA)
+   rung OA; RH asked to price on vs off (U/G/L 192/160/128, CoreMark, S1). On RH's table: add to OI-137.
+   Asked DA (no answer yet) whether to add tasks for rendep/rob_w/go/sched to 25 after #39.
+   LESSON: the container is reclaimed when a turn ends, killing detached gates (3 lost 11-10). Run the gate
+   detached AND stay in the turn: `timeout 590 bash -c "until grep -q '^EXIT' $L; do sleep 20; done"` loops.
 -1. #34 ooe_rob_w PUSHED 4dfd22cc (full PASS, with the 11-09 sweep merge): hrb binary head, uft
    thermometer, w_h head window copy; caps NGD-1 29.6, al_n 29.2, dn_tag 26.3, fl_slot 28.6, fl_v 29.5
    (measured 29.54/29.12/26.22/28.50/29.49). CG passes within allowance (win_en group 37-39%, pch 0%).
