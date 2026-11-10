@@ -118,6 +118,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -689,6 +690,8 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None, keep=False):
     """Ungate a Yosys JSON netlist, map it with ABC and time it; `keep`, a
     block's level, keeps the netlist for Timing.slice_in()."""
     d = json.load(open(jsonfile))
+    # What cg.unit_key reads of the netlist, kept so its file need not be.
+    key_info = cg.net_key_info(d["modules"])
     capture = captures(d, set(blackbox), reset)
     cut = ungate(d, set(blackbox))
     ug = os.path.join(work, "ug.json")
@@ -756,6 +759,7 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None, keep=False):
                 q_out[q][p] = min(v, tr.q_out.get(q, {}).get(p, v))
         t.q_out = q_out
     t.cut, t.regname, t.capture = cut, reg_names(d), capture
+    t.key_info = key_info
     if keep:
         t._r = tr
     else:
@@ -829,6 +833,11 @@ class Unit:
                 budgets.inner):
             self.h = converge("u_" + self.name, self.module, s["files"], bbfiles, budgets, lib,
                               s.get("params"), s.get("defines", []), unit=self.name)
+        # Measured: the findings, the block checks and cg.unit_key (by
+        # self.t.key_info) read only what is in memory. Its work directory
+        # and its levels' go, unless CCV_KEEP_UNIT_BUILD (DA, 2026-11-09).
+        cg.clean_unit_build(work)
+        cg.clean_unit_build(os.path.join(BUILD, "h_u_" + self.name))
         return self.t
 
 
@@ -1226,7 +1235,10 @@ def time_level(tag, st, mn, kids, lib=LIB):
         raise SystemExit("check-ngd: %s, level %s: yosys failed:\n%s"
                          % (tag, src_name(mn), (r.stdout + r.stderr)[-2000:]))
     TIMED_ALONE.append(mn)
-    return map_and_time(sub, jf, set(kids) | st.lib, lib, keep=True)
+    t = map_and_time(sub, jf, set(kids) | st.lib, lib, keep=True)
+    # Timed: the Timing holds all that is read of it (DA, 2026-11-09).
+    cg.clean_unit_build(sub)
+    return t
 
 
 # Every level time_level() synthesised, in order: the selftest's record that
@@ -1277,7 +1289,7 @@ def converge(name, top, files, bbs, budgets, lib=LIB, params=None, defines=(), u
     driver's time to its receiver."""
     if st is None:
         st = cg.Structure("h_" + name, top, files, bbs, params, defines,
-                          keep=sorted(budgets.inner))
+                          keep=sorted(budgets.inner), build=BUILD)
     start = start or st.top
     out = []
     for mn in st.reachable(start):
@@ -1355,7 +1367,7 @@ def converge(name, top, files, bbs, budgets, lib=LIB, params=None, defines=(), u
 
 def ngd_keyed(units):
     """[(unit, cg.unit_key)] for every measured timing unit."""
-    return [(u, cg.unit_key(u.spec, u.jf)) for u in units
+    return [(u, cg.unit_key(u.spec, u.t.key_info)) for u in units
             if u.t is not None and getattr(u, "jf", None)]
 
 
@@ -1593,7 +1605,7 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
     stage at most (ceil(log4(2n/4)) <= ceil(log4(n/4)) + 1). `units` are the measured timing units. Returns (line,
     failures)."""
     inner = sorted(budgets.inner)
-    st = cg.Structure("b_" + name, top, files, bbs, params, keep=inner)
+    st = cg.Structure("b_" + name, top, files, bbs, params, keep=inner, build=BUILD)
     want = block or src_name(top)
     start = next((mn for mn in st.reachable() if src_name(mn) == want), st.top)
     timings = {}
@@ -2296,6 +2308,37 @@ def selftest():
     u = fixture("fx_ugap", "ngd_fx_asm_gap", files)
     u.measure(budgets=fb, modules=blk)
     expect("NGD-5 u_src.y>u_dst.a" in keys(u, fb), "a unit's glue passed: %s" % u.h)
+    #    Each unit's work directory and its levels' go once it is measured
+    #    (DA, 2026-11-09), and nothing measured changes: the same unit with
+    #    CCV_KEEP_UNIT_BUILD=1 keeps both, without it leaves neither, and
+    #    the two read the same findings, depths and cg.unit_key.
+    runs, was = {}, os.environ.get("CCV_KEEP_UNIT_BUILD")
+    try:
+        for keep in ("1", "0"):
+            os.environ["CCV_KEEP_UNIT_BUILD"] = keep
+            x = fixture("fx_ugap_keep%s" % keep, "ngd_fx_asm_gap", files)
+            for d in ("u_", "h_u_"):
+                shutil.rmtree(os.path.join(BUILD, d + x.name), ignore_errors=True)
+            x.measure(budgets=fb, modules=blk)
+            runs[keep] = x
+    finally:
+        if was is None:
+            os.environ.pop("CCV_KEEP_UNIT_BUILD", None)
+        else:
+            os.environ["CCV_KEEP_UNIT_BUILD"] = was
+    kept, gone = runs["1"], runs["0"]
+
+    def as_read(x):
+        return (sorted(str(f).replace(x.name, "U") for f in findings(x, fb)),
+                x.t.rr, x.t.ir, x.t.ro, x.t.io, cg.unit_key(x.spec, x.t.key_info))
+    expect(os.path.isfile(kept.jf) and glob.glob(os.path.join(BUILD, "h_u_" + kept.name, "*",
+                                                               "one.json")),
+           "with CCV_KEEP_UNIT_BUILD=1 a measured unit's work or level directory was removed")
+    expect(not os.path.exists(os.path.dirname(gone.jf))
+           and not os.path.exists(os.path.join(BUILD, "h_u_" + gone.name)),
+           "a measured unit's work or level directory was left: %s" % gone.jf)
+    expect(as_read(kept) == as_read(gone),
+           "a unit measured with its work directory cleaned reads otherwise than one kept")
     u = fixture("fx_uinner", "ngd_fx_asm_inner", files)
     u.measure(budgets=fi, modules=blk)
     expect(not keys(u, fi), "a unit with only an inner helper inside had findings: %s"

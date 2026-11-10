@@ -27,8 +27,17 @@ ALWAYS = ["s1a", "s1d", "iface", "vlint"]
 RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "rcu_rtl", "top",
        "formal", "phys", "svh", "links"]
 # The sections that read RI's RCU RTL and its benches (RI-10; rcu_rtl, RI's
-# re:TI-371: test/rcu/run-rtl.sh).
-RCU_RTL = ["cg", "ngd", "rcu_rtl"]
+# re:TI-371: test/rcu/run-rtl.sh), and, since RI's assembled ccv_rcu (RI-33)
+# makes rcu an RTL top (tools/ccv_links.py rtl_tops()), those that read its
+# generated wrapper rtl/top/wrap/ccv_rcu_w.sv or the no-flop rule it moves:
+# the SV top, SV-hosted C++ and the links split (which regenerates the top in
+# a copy of the tree and holds rcu's ends to the RTL-top rule).
+RCU_RTL = ["cg", "ngd", "rcu_rtl", "top", "svh", "links"]
+# The readers of rtl/rcu/ outside check-cg and check-ngd that RCU_RTL maps,
+# each with the sections that read it; any other reader fails the selftest.
+RCU_READERS = {
+    "rtl/top/wrap/ccv_rcu_w.sv": ["top", "svh", "links"],
+}
 # First match wins: the more specific prefix comes first.
 MAP = [
     # The sources of truth everything is generated from, and the gate itself.
@@ -73,10 +82,11 @@ MAP = [
     ("sim/skel/", ["skel", "kernel", "svh", "top"]),
     ("sim/", ALL),
     ("rtl/lint/", ["s1d"] + RTL),
-    # RI's RCU RTL (RI-10, RA-37): only check-cg and check-ngd (their rtl/**
-    # globs and test/rcu/cg-units.json) and RI's benches read it; lint and
-    # vlint always run.
-    # Nothing instantiates it yet; the selftest fails when something does.
+    # RI's RCU RTL (RI-10, RA-37): check-cg and check-ngd (their rtl/**
+    # globs and test/rcu/cg-units.json), RI's benches, and the sections that
+    # read the generated wrapper that instantiates ccv_rcu (RI-33,
+    # RCU_READERS); lint and vlint always run. The selftest fails when
+    # anything else reads it.
     ("rtl/rcu/", RCU_RTL),
     ("rtl/", RTL),
     ("test/kernels/", ["kernel", "svh"]),
@@ -204,14 +214,25 @@ def selftest():
     expect(s != ALL and {"kernel", "rcu_unit", "skel", "svh"} <= set(s),
            "an RCU model change skips a section that reads it: %s" % s)
     s, _ = scope(["rtl/rcu/rcu_bank_slice.sv", "test/rcu/cg-units.json"])
-    expect(s != ALL and {"cg", "ngd", "rcu_rtl"} <= set(s) and not {"ooe_rtl", "top", "svh"} & set(s),
-           "an RCU RTL change is not scoped to check-cg, check-ngd and its benches: %s" % s)
+    expect(s != ALL and {"cg", "ngd", "rcu_rtl", "top", "svh", "links"} <= set(s)
+           and "ooe_rtl" not in s,
+           "an RCU RTL change is not scoped to check-cg, check-ngd, its benches and "
+           "the sections that read its wrapper: %s" % s)
+    s, _ = scope(["rtl/rcu/ccv_rcu.sv"])
+    for x, js in RCU_READERS.items():
+        expect(s != ALL and set(js) <= set(s),
+               "an RCU RTL change skips a section that reads %s: %s" % (x, s))
     s, _ = scope(["test/rcu/r_tb.cpp"])
     expect(s != ALL and "rcu_rtl" in s, "an RCU bench change skips the benches: %s" % s)
     # RCU_RTL holds only while nothing else reads rtl/rcu/: no RTL outside it
-    # instantiates its modules, and no script but the two names it.
+    # instantiates its modules but the readers RCU_READERS maps, each within
+    # RCU_RTL, and no script but the two names it.
+    for x, js in RCU_READERS.items():
+        expect(set(js) <= set(RCU_RTL),
+               "RCU_READERS maps %s to sections outside RCU_RTL: %s" % (x, js))
     for x in rcu_rtl_readers():
-        bad.append("rtl/rcu/ is read by %s, outside RCU_RTL's sections: map it there" % x)
+        if x not in RCU_READERS:
+            bad.append("rtl/rcu/ is read by %s, outside RCU_RTL's sections: map it there" % x)
     # Its control: a tree where the top instantiates an RCU module and a
     # script names the directory must show both.
     import tempfile

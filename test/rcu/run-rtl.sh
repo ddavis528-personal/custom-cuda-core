@@ -7,15 +7,26 @@
 #                   section 1, and 3 for every owner slot), and its controls
 #                   nowt (no MIU write-through), rfirst (migration's row on
 #                   R2 beside the R op's), lown (the L rows on slot 0) and
-#                   msrc (the M rows by port, not the memop's sources), each
+#                   msrc (the M rows by port, not the memop's sources) and
+#                   lsecK (the owner's lead_sec_mask without section K) and
+#                   psecX (a P lead_sec_mask with an extra bit, RA 133), each
 #                   of which must fail
 #   rcu_xbar:       test/rcu/xbar_tb.cpp, 32 lanes
 #   rcu_r:          test/rcu/r_tb.cpp, and its negative controls (noalign,
-#                   retlow), each of which must fail
+#                   retlow, pmovneg), each of which must fail
 #   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (spbown, nofwd,
-#                   nomerge), each of which must fail
+#                   nomerge, lgcorrupt), each of which must fail
+#   rcu_isd(_s):    test/rcu/isd_tb.cpp (each slot's class from its lead, RA-43,
+#                   RI-25; _s: an S slot's lead copies too, RA 131 (1)), and
+#                   its controls pcopy (the copy without its predicate-only
+#                   form) and xfree (the copies not held off a valid), each
+#                   of which must fail;
 #   rcu_kill:       test/rcu/kill_tb.cpp, and its control drain (KILL_DRAIN
 #                   - 1 in the value model), which must fail
+#   ccv_rcu_killsleep: test/rcu/killsleep_tb.cpp, the whole block on its gate:
+#                   a kill landing while asleep, and two a cycle apart across
+#                   the wake (RA rev 127), and its controls drop1 and drop2
+#                   (the kill detector's held kill dropped), each must fail
 #   rcu_mig:        test/rcu/mig_tb.cpp (M5 and random traffic with kills), and
 #                   its controls rlie (the R op's R2/RW use hidden), cred (a
 #                   credit fewer at the receiver), wake (the wake a cycle
@@ -62,7 +73,14 @@ units="rcu_bank_slice_r32 rcu_bank_slice_r32_sec rcu_bank_slice_r32_k3"
 for u in $units; do
   bench "$u" test/rcu/cg-build.sh "$u" "$B/$u" -- "$B/$u/tb"
 done
-for c in nowt rfirst lown msrc; do
+# psecX: the slice refuses the lead (p_lead_is_footprint, RA 133).
+if [ -x "$B/rcu_bank_slice_r32/tb" ] && ! "$B/rcu_bank_slice_r32/tb" --control psecX >"$B/bs.psecX.log" 2>&1 &&
+   grep -q "Assertion failed in .*p_lead_is_footprint" "$B/bs.psecX.log"; then
+  say "rcu_bank_slice control psecX" "caught"
+else
+  say "rcu_bank_slice control psecX" "NOT CAUGHT ($B/bs.psecX.log)"; fail=1
+fi
+for c in nowt rfirst lown msrc lsecK; do
   if [ -x "$B/rcu_bank_slice_r32/tb" ] && ! "$B/rcu_bank_slice_r32/tb" --control "$c" >"$B/bs.$c.log" 2>&1 &&
      grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/bs.$c.log"; then
     say "rcu_bank_slice control $c" "caught"
@@ -73,7 +91,7 @@ done
 bench rcu_xbar verilator --cc --exe --build -j 0 -O2 -Wno-fatal --top-module rcu_xbar --Mdir "$B/xbar" -o tb \
   rtl/rcu/rcu_xbar.sv test/rcu/xbar_tb.cpp -- "$B/xbar/tb"
 bench rcu_r test/rcu/cg-build.sh rcu_r "$B/rcu_r" -- "$B/rcu_r/tb"
-for c in noalign retlow; do   # a control the bench does not catch is a failure
+for c in noalign retlow pmovneg; do   # a control the bench does not catch is a failure
   if [ -x "$B/rcu_r/tb" ] && ! "$B/rcu_r/tb" --control "$c" >"$B/rcu_r.$c.log" 2>&1 &&
      grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_r.$c.log"; then
     say "rcu_r control $c" "caught"
@@ -82,13 +100,24 @@ for c in noalign retlow; do   # a control the bench does not catch is a failure
   fi
 done
 bench rcu_pred test/rcu/cg-build.sh rcu_pred "$B/rcu_pred" -- "$B/rcu_pred/tb"
-for c in nofwd nomerge spbown; do
+for c in nofwd nomerge spbown lgcorrupt; do
   if [ -x "$B/rcu_pred/tb" ] && ! "$B/rcu_pred/tb" --control "$c" >"$B/rcu_pred.$c.log" 2>&1 &&
      grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_pred.$c.log"; then
     say "rcu_pred control $c" "caught"
   else
     say "rcu_pred control $c" "NOT CAUGHT ($B/rcu_pred.$c.log)"; fail=1
   fi
+done
+for u in rcu_isd rcu_isd_s; do
+  bench $u test/rcu/cg-build.sh $u "$B/$u" -- "$B/$u/tb"
+  for c in pcopy xfree; do
+    if [ -x "$B/$u/tb" ] && ! "$B/$u/tb" --control $c >"$B/$u.$c.log" 2>&1 &&
+       grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/$u.$c.log"; then
+      say "$u control $c" "caught"
+    else
+      say "$u control $c" "NOT CAUGHT ($B/$u.$c.log)"; fail=1
+    fi
+  done
 done
 bench rcu_kill test/rcu/cg-build.sh rcu_kill "$B/rcu_kill" -- "$B/rcu_kill/tb"
 if [ -x "$B/rcu_kill/tb" ] && ! "$B/rcu_kill/tb" --control drain >"$B/rcu_kill.drain.log" 2>&1 &&
@@ -97,6 +126,16 @@ if [ -x "$B/rcu_kill/tb" ] && ! "$B/rcu_kill/tb" --control drain >"$B/rcu_kill.d
 else
   say "rcu_kill control drain" "NOT CAUGHT ($B/rcu_kill.drain.log)"; fail=1
 fi
+# The whole block on its gate: a kill that lands while RCU sleeps (RA rev 127).
+bench ccv_rcu_killsleep test/rcu/cg-build.sh ccv_rcu_killsleep "$B/killsleep" -- "$B/killsleep/tb"
+for c in drop1 drop2; do
+  if [ -x "$B/killsleep/tb" ] && ! "$B/killsleep/tb" --control "$c" >"$B/killsleep.$c.log" 2>&1 &&
+     grep -q "control $c: .*: FAIL$" "$B/killsleep.$c.log"; then
+    say "ccv_rcu_killsleep control $c" "caught"
+  else
+    say "ccv_rcu_killsleep control $c" "NOT CAUGHT ($B/killsleep.$c.log)"; fail=1
+  fi
+done
 bench rcu_mig test/rcu/cg-build.sh rcu_mig "$B/rcu_mig" -- "$B/rcu_mig/tb"
 grep -h "^mig M5" "$B/rcu_mig.log" 2>/dev/null | sed 's/^/    /'
 for c in rlie cred wake stall2; do

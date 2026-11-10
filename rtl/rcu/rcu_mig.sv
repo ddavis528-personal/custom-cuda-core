@@ -22,7 +22,7 @@
 // slices' (rcu_bank_slice takes this module's request beside the R op's):
 //   R2: r2v_cr01h, a lead from dm_busy (the slices' select flops load it);
 //       r2row_cr02h, the next row's map entry; the slices select it in A
-//       unless the R op reads R2 (rr2, from its opcode), when this
+//       unless the R op reads R2 (rr2, from its class), when this
 //       module also holds back (dm_want's ~r2_busy term).
 //   RW: rwv_cr02h, the lead of a possible GPR restore write (flops only);
 //       rwsel_cr03h, the decision (rs_v_a1, not row 16); rwrow_cr03h, its
@@ -109,13 +109,13 @@ module rcu_mig #(
   output logic [WD-1:0]      odat_cr04h,    //   row_data
   output logic               owk_cr03h,     // rcu_pca_mig_wake
   // Kill: valid in K-1, the warp mask in K.
-  input  logic               kv_cr00h,
-  input  logic [NWP-1:0]     km_cr01h,
+  input  logic               kv_cr01h,      // kill_v_q, ccv_rcu's kill detector flop (K)
+  input  logic [NWP-1:0]     kmn_cr02h,     // kill_warp_mask of K, ccv_rcu's kill detector flop (K+1)
   output logic               quiet_cr02h,   // to rcu_kill: nothing of a killed warp held
   output logic               busy_cr02h,    // to rcu_kill's idle
   // The R slot: its lead valid, then the payload's decode.
   input  logic               riv_cr01h,     // R issues next cycle
-  input  logic [rcu_dec_pkg::OPC_W-1:0] ropc_cr02h, // the R op's opcode (decoded here, rcu_dec_pkg)
+  input  logic [rcu_dec_pkg::CLS_W-1:0] rcls_cr02h, // the R op's class (rcu_isd's flops from the lead)
   input  logic               rmrg_cr02h,    // the R op's merge_en
   // R2 (the slices) and D0-D3 (rcu_pred): requests, then the rows read.
   output logic               r2v_cr01h,     // R2 lead
@@ -203,7 +203,6 @@ module rcu_mig #(
   // The R op's class (rcu_dec_pkg, the model's decode; the R slot carries
   // no atomic and no copy): it reads R2 when it merges into a GPR, and holds
   // RW when it writes a GPR or is a collective (the model's r2_busy, rw_busy).
-  wire [rcu_dec_pkg::CLS_W-1:0] rcls_cr02h = rcu_dec_pkg::rcu_cls(ropc_cr02h, '0, '0);
   wire rgd_cr02h  = rcls_cr02h[rcu_dec_pkg::CLS_GDST];
   wire rr2_cr02h  = rmrg_cr02h & rgd_cr02h;
   wire rrw_cr02h  = rgd_cr02h | (rcls_cr02h[rcu_dec_pkg::CLS_UNIT +: 3] == rcu_dec_pkg::U_COLL);
@@ -211,28 +210,23 @@ module rcu_mig #(
   wire rwb_cr02h = rivq_cr02h & rrw_cr02h;   // the R op holds RW
 
   // ---- Kill --------------------------------------------------------------
-  // kv_q in K, the mask flopped at K's edge: kact and kmn act in K+1.
+  // kv_q in K, the mask flopped at K's edge by ccv_rcu's kill detector (its
+  // boundary flop, AR 338): kact and kmn act in K+1.
   // mig_kmask accumulates killed warps until each one's next map lands; a
   // land clears its warp two cycles on (P+2's edge, from flops: the entry's
   // warp and the mask, never the input), unless a kill of that warp acts in
   // P+1 or P+2 (it drops the map). A PCA row of the new migration lands at
   // least two cycles after its map (RI's ordering note; the bench holds it).
-  logic kvq_cr01h, kact_cr02h;
-  logic [NWP-1:0] kmn_cr02h, kmask_cr02h;
+  logic kact_cr02h;
+  wire  kvq_cr01h = kv_cr01h;   // kill_v_q: ccv_rcu's kill detector (RA rev 127)
+  logic [NWP-1:0] kmask_cr02h;
   logic [Q-1:0] mjl_cr02h, kmh_cr03h;   // entry i landed last cycle; its warp clears next
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
-      kvq_cr01h  <= 1'b0;
       kact_cr02h <= 1'b0;
     end else begin
-      kvq_cr01h  <= kv_cr00h;
       kact_cr02h <= kvq_cr01h;
     end
-  end
-  wire kmn_en_cr01h = kvq_cr01h;
-  always_ff @(posedge rcu_core_clk) begin
-    if (rst_r01h) kmn_cr02h <= '0;
-    else if (kmn_en_cr01h) kmn_cr02h <= km_cr01h;
   end
   // The killed-now test: a warp in this kill's mask, in K+1.
   function automatic logic killed(input logic [WW-1:0] w, input logic act, input logic [NWP-1:0] m);
@@ -278,7 +272,7 @@ module rcu_mig #(
     end
   end
   // kill_warp_mask lands at a no-flop end, so it goes straight into a flop
-  // (kmn, at K's edge; AR rev 285 (5), RA's ruling on RI-22 (7)) and joins
+  // (ccv_rcu's kill detector, at K's edge; AR rev 285 (5), AR 338) and joins
   // the mask a cycle on, in K+1. Every reader takes the mask with this
   // kill's warps ORed in for that cycle (inmask), which is the mask as it
   // stood when the raw input fed it: the clear never takes a warp the kill

@@ -99,7 +99,7 @@ module rcu_lanes #(
   // The payload (A); its op-class decode is this module's (rcu_dec_pkg).
   input  logic [NK-1:0]           cont_cr02h,      // cont: a continuation, no class
   input  logic [NK*NK-1:0]        foot_cr02h,      // footprint
-  input  logic [NK*WO-1:0]        opc_cr02h,       // opcode
+  input  logic [NK*WO-1:0]        opc_cr02h,       // opcode, carried to sec_opcode only
   input  logic [NK*32-1:0]        imm_cr02h,
   input  logic [NK*3*WR-1:0]      src_cr02h,       // source rows 0-2 (phys_src[15:8], [7:0], phys_src2)
   input  logic [NK*6-1:0]         spos_cr02h,      // src_pos, port i at 2i
@@ -115,6 +115,7 @@ module rcu_lanes #(
   input  logic [NK*WP-1:0]        pod_cr02h,       // phys_pred_old_dst
   input  logic [NK*WT-1:0]        tag_cr02h,       // rob_tag
   input  logic [NK*2-1:0]         drow_cr02h,      // done_row
+  input  logic [NK*rcu_dec_pkg::CLS_W-1:0] ocl_cr02h, // op class (rcu_isd's flops from the lead)
   // A+1.
   input  logic [NK*N-1:0]         acta_cr03h,      // rcu_pred: active_a
   input  logic [NK*N-1:0]         gv_cr03h,        // rcu_pred: gv_a, the guard, negated
@@ -181,8 +182,9 @@ module rcu_lanes #(
   end
   wire rst_r01h = !rst_cr01h_n;
 
-  // ---- The op-class decode (rcu_dec_pkg, the model's; RI-21 (4)) -------
-  // Per S slot, from opcode, done_row, and a copy's pred_we and phys_dst:
+  // ---- The op class (rcu_dec_pkg, the model's; RI-21 (4)) --------------
+  // Per S slot, rcu_isd's class word, decoded in A-1 from the lead's opcode,
+  // done_row, and a copy's pred_we and phys_dst (RA-43, RI-25):
   // cls 0 nothing to the lanes (a continuation, a predicate-only copy), 1 a
   // lane op, 2 SFU, 3 a GPR copy; writes a GPR; GPR source ports read; the
   // immediate's port (3 none) and whether it is read; pdata. The model
@@ -195,8 +197,7 @@ module rcu_lanes #(
     logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
     logic [2:0]                    u_cr02h;
     for (int s = 0; s < NK; s++) begin
-      c_cr02h = rcu_dec_pkg::rcu_cls(opc_cr02h[s*WO +: WO], drow_cr02h[2*s +: 2],
-                                     pwe_cr02h[s] && dst_cr02h[s*WR +: WR] == ZROW);
+      c_cr02h = ocl_cr02h[s*rcu_dec_pkg::CLS_W +: rcu_dec_pkg::CLS_W];
       u_cr02h = c_cr02h[rcu_dec_pkg::CLS_UNIT +: 3];
       cls_cr02h[2*s +: 2] = cont_cr02h[s] ? 2'd0 :
                             u_cr02h == rcu_dec_pkg::U_LANE ? 2'd1 :
@@ -805,7 +806,9 @@ module rcu_lanes #(
     lead_bad_cr02h = 1'b0;
     foot_bad_cr02h = 1'b0;
     cpy_bad_cr02h = 1'b0;
-    for (int k = 0; k < NK; k++) own_bad_cr02h |= $countones(own_cr02h[k*NK +: NK]) > 1;
+    // More than one bit, as x & (x - 1): not $countones, whose argument
+    // Icarus leaves out of always_comb's sensitivity.
+    for (int k = 0; k < NK; k++) own_bad_cr02h |= |(own_cr02h[k*NK +: NK] & (own_cr02h[k*NK +: NK] - NK'(1)));
     for (int s = 0; s < NK; s++) begin
       // The superset rule (RA-31): what the payload uses is within the lead.
       if (v_cr02h[s] && cls_cr02h[2*s +: 2] != 2'd0)
