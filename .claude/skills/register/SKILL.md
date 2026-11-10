@@ -113,7 +113,8 @@ Create one scheduled task that fires into your own session
 Pacific, out of Daniel's working hours (DA, 2026-10-19), with each prefix on
 its own minute so the sweeps don't land at once:
 `CRON_TZ=America/Los_Angeles <minute> 2 * * *`, with the minute set by prefix
-as AR 3, OA 7, TI 11, OI 15, CP 19, IS 23, RA 27, RI 31. Use this prompt:
+as AR 3, OA 7, TI 11, OI 15, CP 19, IS 23, RA 27, RI 31, MA 35 (DA 117,
+AR 340). Use this prompt:
 
 > Daily register sweep: run the register skill's section 4 (read every tab
 > since your bookmarks, answer rows with your prefix in Needs, notify per
