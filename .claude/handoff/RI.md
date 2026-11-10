@@ -49,6 +49,14 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-4. NOW (2026-11-10) task 16 lock-step: ri-wt7 branch ri-asm4 tip fca280c3 (on gate-scratch/RI; fixes ngd block check: kill_valid out of wake-detector OR), 63/63 kernels
+   IDENTICAL (test/rcu/run-lockstep.sh), controls init/opnd caught; CAS own steps; kill ack K+KILL_DRAIN+1.
+   Scoped gate on 9304d21d: all in-scope sections green but cg/ngd (2h bg limit killed it). Split gate in flight:
+   cg here (~/ccv-logs/chain-ri19-cg.sh -> gate-cg-ri19.tgz), then ngd here (RH can't push an export without
+   Daniel's OK). RA rev 135 answer drafted in RI-37 (0). Then CCV_PUSH_BRANCHES=ccr-888218a3-20cauz tools/gate-push.sh
+   --import=cg,ngd. After push: rows RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) from scratchpad ri36-rows.md (copy
+   below if lost: rcu_ls job; credit-in-landing API; kill ack +1 tab amend; done wake issue term; clk gate payload
+   hold), fill commit, notices. TI rev 405: 8fcec64b merged. Later: RTL event monitor, SV-top run with RTL.
 -3. NOW (2026-11-09; Daniel's order: class-word NGD -> gate+push ccv_rcu.sv -> lock-step/SV-top -> Q-53 ->
    SW write-back + KILL_DRAIN -> RA reconciliation + Daniel's sign-off). ri-wt7 branch ri-asm3, tip d0076837
    (on gate-scratch/RI): d33d8c70 AR 338/339 kill boundary flops (plain ungated detector flops; rcu_kill epoch at
