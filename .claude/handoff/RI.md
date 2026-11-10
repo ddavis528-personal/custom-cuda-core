@@ -89,7 +89,8 @@ architect may approve only if the end meets module NGD without the flop; can't m
    2026-11-10: PUSHED 8fcec64b; RI-34 + notices done. TI's 079b64c2 check-cg.py change is build cleanup only, so the
    unit's black boxes stay. A subagent computes per-slot-group block NGD figures (scratchpad ngdfig/). NEXT: RI-35
    to RA with that table (cc TI/AR), then task 16, Q-53 checkers, SW write-back/KILL_DRAIN, RA reconciliation.
-   Bookmarks: TI 403, RA 134, RI 68.
+   RI-35 (rev 69) written: per-slot NGD table (worst lead_opcode 24.4; miu_rcu_data end must stay flopped);
+   notices sent to RA, TI and AR. NEXT: task 16 (lock-step/SV-top), Q-53 checkers. Bookmarks: TI 403, RA 134, RI 69.
    TI 402 (re:RI-33): fixes on gate-scratch/TI-rcutop 079b64c2 (0339f719 merged; gate-scope, links control, split,
    check-cg.py); TI gates + pushes ~23:30Z after the sweep's release gate. ri-asm4 (ri-wt7) = ri-asm3 + 7 sweep
    merges (TI 0bd5ac02 incl.; cg-waivers ours, perf-register TI's), regen+check-1d run ~/ccv-logs/asm4a.log.
