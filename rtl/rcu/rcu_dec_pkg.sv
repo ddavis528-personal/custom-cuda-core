@@ -292,15 +292,15 @@ package rcu_dec_pkg;
             default: c = 27'h0000007;
           endcase
       125: case (drow)   // CAS_G: its step by done_row (OI-85)
-            2'd0: c = 27'h68ce102;   // ATOM.A1
-            2'd2: c = 27'h7ece000;   // ATOM.A2
-            2'd3: c = 27'h1e4c202;   // ATOM.A3
+            2'd0: c = 27'h68ce902;   // CAS.A1
+            2'd2: c = 27'h7fce800;   // CAS.A2
+            2'd3: c = 27'h1e4ca02;   // CAS.A3
             default: c = 27'h0000007;
           endcase
       126: case (drow)   // CAS_S: its step by done_row (OI-85)
-            2'd0: c = 27'h68ce102;   // ATOM.A1
-            2'd2: c = 27'h7ece000;   // ATOM.A2
-            2'd3: c = 27'h1e4c202;   // ATOM.A3
+            2'd0: c = 27'h68ce902;   // CAS.A1
+            2'd2: c = 27'h7fce800;   // CAS.A2
+            2'd3: c = 27'h1e4ca02;   // CAS.A3
             default: c = 27'h0000007;
           endcase
       127: c = 27'h1acc202;   // ST_SHARED
@@ -508,10 +508,10 @@ package rcu_dec_pkg;
           drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
       12: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
           drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
-      13: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
-          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
-      14: t = drow == 2'd0 ? 27'h68ce102 : drow == 2'd1 ? 27'h0000007 :
-          drow == 2'd2 ? 27'h7ece000 : 27'h1e4c202;
+      13: t = drow == 2'd0 ? 27'h68ce902 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7fce800 : 27'h1e4ca02;
+      14: t = drow == 2'd0 ? 27'h68ce902 : drow == 2'd1 ? 27'h0000007 :
+          drow == 2'd2 ? 27'h7fce800 : 27'h1e4ca02;
       15: t = 27'h1acc202;
       default: t = 27'h0000007;
     endcase
