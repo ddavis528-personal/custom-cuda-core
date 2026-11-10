@@ -49,17 +49,15 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--4. NOW (2026-11-10) task 16 lock-step: ri-wt7 branch ri-asm4 tip fca280c3 (on gate-scratch/RI; fixes ngd block check: kill_valid out of wake-detector OR), 63/63 kernels
-   IDENTICAL (test/rcu/run-lockstep.sh), controls init/opnd caught; CAS own steps; kill ack K+KILL_DRAIN+1.
-   Scoped gate on 9304d21d: all in-scope sections green but cg/ngd (2h bg limit killed it). Split gate in flight:
-   DETACHED (setsid nohup; a bg task dies at 2h): chain-ri19-cg.sh then chain-ri19-rest.sh (ngd, export,
-   gate-push --import, scoped); status ~/ccv-logs/chain-ri19.out. Sweep 2026-11-10: 5 branches merge clean on
-   ri-wt4 ri-sweep2 0d797b26 (rcu_blk passes there, known divergences); gate+push it after ri19. Bookmarks
-   Conv 19 AR 342 OA 410 IS 190 TI 406 OI 337 CP 157 DA 119 RA 135 RI 69. OI-136 settled by AR/merge. Then ngd here (RH can't push an export without
-   Daniel's OK). RA rev 135 answer drafted in RI-37 (0). Then CCV_PUSH_BRANCHES=ccr-888218a3-20cauz tools/gate-push.sh
-   --import=cg,ngd. After push: rows RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) from scratchpad ri36-rows.md (copy
-   below if lost: rcu_ls job; credit-in-landing API; kill ack +1 tab amend; done wake issue term; clk gate payload
-   hold), fill commit, notices. TI rev 405: 8fcec64b merged. Later: RTL event monitor, SV-top run with RTL.
+-4. NOW (2026-11-10) Last push fca280c3 (13:29, SPLIT SCOPED PASS 14/23; ngd leg by RH, Daniel OK'd RH
+   send-export to gate-scratch/*-export for passing legs). RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) written,
+   RI tab rev 70; notices sent. Lock-step 63/63; rcu_blk (TI) passes with its expected-fail.
+   Sweep 2026-11-10 on ri-wt4 branch ri-sweep2: merged 183cc441, 126afa13, 80102643, 9eb50716, 3868632d,
+   57eff422 (OI, clean now), c22116ce, infra; regen + quick checks running; then full split gate (cg here
+   detached with setsid nohup, ngd RH via gate-scratch/RI) and gate-push --full --import from ri-wt4.
+   Bookmarks Conv 19 AR 342 OA 410 IS 190 TI 406 OI 337 CP 157 DA 119 RA 135 RI 70.
+   Long runs: ALWAYS setsid nohup + a waiter; a bg task dies at 2h.
+   Next for task 16: model credit move once TI adds channel.h call; RTL event monitor; SV-top with RTL.
 -3. NOW (2026-11-09; Daniel's order: class-word NGD -> gate+push ccv_rcu.sv -> lock-step/SV-top -> Q-53 ->
    SW write-back + KILL_DRAIN -> RA reconciliation + Daniel's sign-off). ri-wt7 branch ri-asm3, tip d0076837
    (on gate-scratch/RI): d33d8c70 AR 338/339 kill boundary flops (plain ungated detector flops; rcu_kill epoch at
