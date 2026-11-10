@@ -7,7 +7,7 @@
   cvc5         present
   python3      present
   g++          present
-  build/ was not made by Verilator 5.052 2026-09-05 rev v5.052: cleared 31 entries
+  build/ was not made by Verilator 5.052 2026-09-05 rev v5.052: cleared 30 entries
   a build/ made by another Verilator is cleared (3 controls)
   Verilator 5.052: step() and if/else flops agree      PASS (200000 arrivals=697565 flushes=19790 resets=466 differences=0)
     control: one planted payload                       caught
@@ -59,7 +59,7 @@
   toolchain matches the pinned versions          PASS
   matrix covers every case, probes recorded      PASS
   usable subset named in the document            PASS
-  [s1a: 2s]
+  [s1a: 1s]
 
 == Stage 1b -- assertion primitive library ==
   icarus: compiles, fires, silences, quiet       PASS
@@ -71,7 +71,7 @@
   icarus: t_resp fires on a violation            PASS
   verilator: t_resp fires on a violation         PASS
   sby: library elaborates and property bites     PASS (label not in report)
-  [s1b: 2s]
+  [s1b: 3s]
 
 == Stage 1c -- event schema mechanism ==
   schema headers current and versioned           PASS
@@ -80,7 +80,7 @@
   stub stream round-trips into Perfetto JSON     PASS
   emitted cycles match the paper reference       PASS
   trace identity view: nesting, replay, none     PASS
-  [s1c: 2s]
+  [s1c: 8s]
 
 == Stage 1d -- coding style and lint ==
   style guide present                            PASS
@@ -113,7 +113,7 @@
   lint clean across rtl/, test/, spike/          PASS
   generated parameter files current              PASS
   C++ and RTL parameter values agree with source PASS
-  [s1d: 9s]
+  [s1d: 14s]
 
 == Interface checker convention ==
   payload structs generated                      55 of 55 channels, 0 field(s) open
@@ -159,7 +159,7 @@
   formal: outstanding checker covers reachable   PASS
   gate scope: every section named exists; schema, params, the gate, unmapped paths run all; RTL and model changes reach their sections
   split gate: another commit, tree or dirty run, a gap, a double, an imported failure or edited log are each refused (11 controls)
-  [iface: 10s]
+  [iface: 5s]
 
 == X-propagation ==
   optimistic if-chain: definite, arbitrary answer PASS (=1101, the last branch)
@@ -183,7 +183,7 @@
   verilator: sim view, enable in either phase    PASS (cycles=2000 edges=1039 mid_high_changes=2563 ref_samples=0)
     ...an ICG with no latch: caught              PASS (both simulators)
     ...a latch open on the high phase: caught    PASS (both simulators)
-  [ctech: 2s]
+  [ctech: 4s]
 
 == Local clock gating -- CG-1 to CG-5, RST-1 ==
   unit rpt            ccv_common_rpt    697 flops,  688 in  2 clock gates (0 groups under 8), worst enable  0.0 NGD
@@ -366,13 +366,13 @@
     waiver: rcu_lanes CG-3 pcm_n_cr04h measures 73.0% in medium, over the 51% it records; its floor may tighten
     waiver: rcu_lanes CG-3 pcm_n_cr04h measures 72.8% in high, over the 67% it records; its floor may tighten
     waiver: rcu_lanes CG-3 pcm_n_cr04h measures 73.2% in medium, over the 51% it records; its floor may tighten
-  block budget: rcu      247468 flops in 15 unit(s) at their instances' parameters (structural read 253.1 s), 4949.4 allowed, 2703 auto-waived in its modules (218 of them repeater control; 825 of them waived as lead or credit flops)
-  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2835 MiB, ooe_rob_w 1335 MiB, ooe_rs 2272 MiB, ooe_sched 975 MiB, rcu_bank_slice 1435 MiB, rcu_bank_slice_k0 1432 MiB, rcu_bank_slice_k2 1437 MiB, rcu_bank_slice_k3 1439 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1949 MiB)
-  unit wall time (report-only): ooe_rename 2258s, ooe_rs 1753s, ooe_go 1452s, ooe_wake 977s, rcu_bank_slice 748s, rcu_bank_slice_k2 734s; 35 unit(s) in all, 13215s summed
-  heavy-lock wait (report-only): 21651s summed, most rcu_bank_slice_k3 3208s
+  block budget: rcu      247468 flops in 15 unit(s) at their instances' parameters (structural read 260.7 s), 4949.4 allowed, 2703 auto-waived in its modules (218 of them repeater control; 825 of them waived as lead or credit flops)
+  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2843 MiB, ooe_rob_w 1335 MiB, ooe_rs 2303 MiB, ooe_sched 975 MiB, rcu_bank_slice 1435 MiB, rcu_bank_slice_k0 1432 MiB, rcu_bank_slice_k2 1437 MiB, rcu_bank_slice_k3 1439 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1949 MiB)
+  unit wall time (report-only): ooe_rename 2485s, ooe_rs 1366s, ooe_go 1362s, ooe_rob_w 1322s, ooe_rendep 1018s, ooe_freelist_gsec_fs1 956s; 35 unit(s) in all, 16788s summed
+  heavy-lock wait (report-only): 23893s summed, most rcu_bank_slice_k2 4910s
   24 module(s), 35 unit(s), 248 finding(s) auto-waived by a module budget, 85 waiver(s) in use, 0 on the ratchet
   form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, ratchet, coverage, module and block budgets as a sum of parts, enable sources and the reset, the reset's balance (RST-2), repeater instantiations, kept copies, the synthesis cache, heavy units one at a time (129 controls)
-  [cg: 9378s]
+  [cg: 10541s]
 
 == Logic depth -- NGD-1 to NGD-7 ==
   unit rpt              ccv_common_rpt flop-flop   2.4  in-flop   1.7  flop-out   0.0  in-out   0.0
@@ -464,7 +464,7 @@
   fanout ratchet: ooe_rs          3 path(s) over the stage with the fanout term, capped: NGD-1 28.8, NGD-3 prv_dep_cq01h 26.4, NGD-3 req_cq01h 28.4
   fanout ratchet: ooe_sched       6 path(s) over the stage with the fanout term, capped: NGD-1 30.5, NGD-3 cidx_cq03h 26.6, NGD-3 res_cq03h 29, NGD-3 siss_cq03h 27.1, NGD-3 sslot_cq03h 27.3, NGD-3 vel_cq03h 28.2
   inner helpers: ccv_common_csa inside its parent, ooe_confirm inside its parent, ooe_headrd inside its parent, ooe_pick inside its parent, ooe_ratread alone, within 16 (no module instantiates it yet), ooe_ready inside its parent, ooe_ren1 inside its parent, ooe_ren1n inside its parent, ooe_rencred alone, within 16 (no module instantiates it yet), ooe_select inside its parent, rcu_xbar inside its parent
-  block rcu      sum of parts: 2 level(s) timed alone for convergence, 49 of 49 instance(s) on units at their parameters, the boundary held by its parts (structural read 237.7 s)
+  block rcu      sum of parts: 2 level(s) timed alone for convergence, 49 of 49 instance(s) on units at their parameters, the boundary held by its parts (structural read 308.4 s)
   pending: lead field lead_done_row of ooe_rcu_issue: ccv_ooe's sending side declares no budget for it, so its default (required 12) stands; DA tab rev 116 has both sides declared (not both tops RTL yet)
   lead budgets: ooe_rcu_issue.lead_done_row across the zero-cycle end, 0 sending and 10 receiving declaration(s), worst required + in 25 of 25
   pending: lead field lead_opcode of ooe_rcu_issue: ccv_ooe's sending side declares no budget for it, so its default (required 12) stands; DA tab rev 116 has both sides declared (not both tops RTL yet)
@@ -473,18 +473,18 @@
   lead budgets: ooe_rcu_issue.lead_phys_dst across the zero-cycle end, 0 sending and 10 receiving declaration(s), worst required + in 25 of 25
   pending: lead field lead_pred_we of ooe_rcu_issue: ccv_ooe's sending side declares no budget for it, so its default (required 12) stands; DA tab rev 116 has both sides declared (not both tops RTL yet)
   lead budgets: ooe_rcu_issue.lead_pred_we across the zero-cycle end, 0 sending and 10 receiving declaration(s), worst required + in 25 of 25
-  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 842 MiB, ooe_rob_w 1798 MiB, ooe_rs 2399 MiB, ooe_sched 546 MiB, rcu_bank_slice 1425 MiB, rcu_bank_slice_k0 1422 MiB, rcu_bank_slice_k2 1427 MiB, rcu_bank_slice_k3 1428 MiB; every other unit's commands within 2048 MiB (largest rcu_pred, 1514 MiB)
-  unit wall time (report-only): ooe_rename 2449s, ooe_rendep 966s, ooe_go 669s, rcu_top 519s, rcu_mem 469s, ooe_freelist_gsec_fs1 407s; 48 unit(s) in all, 8805s summed
-  heavy-lock wait (report-only): 26003s summed, most rcu_bank_slice_k2 3690s
+  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 842 MiB, ooe_rob_w 1798 MiB, ooe_rs 2399 MiB, ooe_sched 546 MiB, rcu_bank_slice 1425 MiB, rcu_bank_slice_k0 1422 MiB, rcu_bank_slice_k2 1427 MiB, rcu_bank_slice_k3 1429 MiB; every other unit's commands within 2048 MiB (largest rcu_pred, 1514 MiB)
+  unit wall time (report-only): ooe_rename 2289s, ooe_go 1002s, rcu_top 495s, ooe_rendep 444s, ooe_freelist_gsec 381s, rcu_pred 367s; 48 unit(s) in all, 8424s summed
+  heavy-lock wait (report-only): 29022s summed, most ooe_rob_w 5590s
   48 unit(s), 408 port budget(s) in 32 module file(s), stage 25 NGD, ports 12 by default
   timing pass against ABC, outputs, inputs, the stage, paths straight through, inner helpers alone and inside a parent, registers shared by an output and the rest, observation ports, budget files, ratchet, coverage, glue, the assembled block as a sum of parts, ABC's cache, the fanout term, one-cell captures, second-kind no-flop ends, per-field lead budgets on both sides, wake taps (119 controls)
-  [ngd: 10274s]
+  [ngd: 11013s]
 
 == Clock gating (exploratory) ==
   enable inferred from the if-enable form        PASS
   one ICG shared across all 8 flops              PASS
   yosys still has no clockgate pass              as expected (F-17)
-  [clockgate: 0s]
+  [clockgate: 1s]
 
 == Stage 3 -- skeleton (S0: plumbing) ==
   skeleton builds (checker bank Verilated in)    PASS
@@ -509,7 +509,7 @@
   --break wrong-class: every channel's set enforced PASS (55 channels)
   trace -> Perfetto JSON, one track per channel  PASS (55)
   port dumps == rtl/top/ports, every block       PASS (14 types; controls refused)
-  [skel: 15s]
+  [skel: 16s]
 
 == Stage 3 -- skeleton (S1: vadd) ==
   oracle addrhigh from the pinned ccv-sim        PASS (9 records)
@@ -832,7 +832,7 @@
   kernels issue out of order                     PASS (ahead=1507 depth=25 kernels=44 of 63)
   --break dcu-one-miss: the stall bound fails    PASS (warp 1 finished at 597, within 300 of stalled warp 0's 551)
   --in-order: the same traces in program order   PASS (fails the floor: nothing reordered)
-  [kernel: 278s]
+  [kernel: 360s]
 
 == Stage 4b -- OOE model unit tests (sim/ooe/) ==
   OOE unit tests                                       PASS
@@ -887,12 +887,12 @@
   control cas-no-pd                                    caught
   control no-cogrant                                   caught
   control reconv-issues                                caught
-  [ooe_unit: 134s]
+  [ooe_unit: 163s]
 
 == RCU model unit tests (sim/rcu/; RI-2) ==
   RCU unit tests                                       PASS
   RCU unit-test controls caught                        PASS (7)
-  [rcu_unit: 4s]
+  [rcu_unit: 6s]
 
 == Stage 4c -- OOE RTL (rtl/ooe/) ==
   pick rcu (30 entries, 5 resources) == model          PASS (200000 issued=288854 lost=144063 multi-issue=80523 fails=0)
@@ -1103,7 +1103,7 @@
     control pay-with-valid (trio)                      caught
     control no-c9h (trio)                              caught
     control no-force (trio, idle_r assertion)          caught
-  [ooe_rtl: 2194s]
+  [ooe_rtl: 3172s]
 
 == RCU RTL benches (RI's test/rcu/run-rtl.sh) ==
   rcu_dec_pkg current with the model's decode          PASS
@@ -1151,10 +1151,10 @@
   rcu_mem_c4                                           PASS (320700 values checked)
   rcu_mem control align                                caught
   rcu_mem control pstlane                              caught
-  [rcu_rtl: 311s]
+  [rcu_rtl: 302s]
 
 == RCU block -- ccv_rcu in lock-step with the model (TI rev 394) ==
-  harness: ccv_rcu under Verilator                           built (117s, peak 559 MiB)
+  harness: ccv_rcu under Verilator                           built (251s, peak 1129 MiB)
     226 inputs, 184 outputs compared each cycle (csr_rsp and csr_credit held to 0), 35 output wakes noted against the wake rule, not compared
   vadd                                                       KNOWN DIVERGENCE (test/rcublk/expected-fail.txt)
     cycle 43: ooe_rcu_issue_s8_credit 0/1
@@ -1169,7 +1169,7 @@
     cycle 43: ooe_rcu_issue_s8_credit 0/1
     after it (+keep): %Error: rcu_bank_slice.sv:541: Assertion failed in rcublk_tb.dut.g_k[3].g_j[7].u_slice.write_row_named: CCV write_row_named failed
   control corrupt-output (vadd, kill_ack at cycle 42)        FAIL caught
-  [rcu_blk: 125s]
+  [rcu_blk: 258s]
 
 == SV top -- rtl/top/ (generated, tracked) ==
   verilator -Wall: top (synthesis view)          PASS
@@ -1184,7 +1184,7 @@
     ...and refuses 14 impure copies: top, wrapper, reuse, gate, units, credit on receipt PASS
   SV top wiring == C++ skeleton wiring           PASS (71729 bits)
     ...and rejects a lane swapped in a copy      PASS
-  [top: 90s]
+  [top: 101s]
 
 == Formal proofs -- one credited link, and the block clock gate ==
   safety, N=0: every property, for all time      PASS (proved)
@@ -1232,7 +1232,7 @@
     ...a latch open on the high phase: the clean-clock properties fail PASS (cex 1)
     ...witness: reach_gated                      PASS (12 frames)
     ...witness: reach_woken                      PASS (18 frames)
-  [formal: 234s]
+  [formal: 291s]
 
 == Physical primitives -- sequential repeater ==
   repeater: verilator -Wall, ten shapes          PASS
@@ -1246,7 +1246,7 @@
     ...lead-gated: invisible in sim, refused by netlist PASS
     ...bnd-gated: invisible in sim, refused by netlist PASS
     ...raw-reset: invisible in sim, refused by netlist PASS
-  [phys: 15s]
+  [phys: 33s]
 
 == SV-hosted C++ -- the skeleton's blocks inside the SV top ==
   verilator -Wall: shims, top, testbench         PASS
@@ -1388,7 +1388,7 @@ cycles=63)
   with OOE's bypass: the same KERNEL line        PASS (64 runs, no-lane-bypass among them)
     ...u_dec one cycle late: caught              PASS (differing_cycles=105)
     ...u_lane_05 one cycle late: caught          PASS (differing_cycles=71)
-  [svh: 166s]
+  [svh: 225s]
 
 == Hardening wrappers -- params/links.json ==
   links.json: malformed configurations refused   PASS (12 cases, each by name)
@@ -1403,7 +1403,7 @@ cycles=63)
   split: every S1 kernel == ccv-sim              PASS (vadd 186 cycles)
   split: every kernel with OOE's bypass          PASS (CCV_LAT_LANE 11, still forwarded at 4; byp's 3)
   split: SV repeaters == C++ link model          PASS (63 kernels, 45 controls, skew caught)
-  [links: 361s]
+  [links: 424s]
 
 == Walkthrough -- docs/walkthrough.md ==
   walkthrough current
@@ -1411,7 +1411,7 @@ cycles=63)
 
 == Verilator lint ==
   clean
-  [vlint: 1s]
+  [vlint: 2s]
 
 == pending stages ==
   Stage 2  partition CLOSED (14 blocks, 45 instances, 48 channels); topology,
