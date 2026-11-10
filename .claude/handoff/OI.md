@@ -54,7 +54,7 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
 ## Open work (most urgent first; DA approved this order 11-07)
 -2. #35 ooe_rename PUSHED d86e3a14 (full PASS, with the 11-10 sweep merge of 183cc441/126afa13/80102643/9eb50716):
    flop-flop 24.73, one cap left (q_pname_cq03h 3.32). Model knob cand_indep_pend (on). OI-137 (rev 338, Needs OA)
-   rung OA; RH asked to price on vs off (U/G/L 192/160/128, CoreMark, S1). On RH's table: add to OI-137.
+   rung OA; RH asked to price on vs off (U/G/L 192/160/128, CoreMark, S1). On RH's table: add to OI-137. OA-407 (OA rev 411): accepted if on/off within 0.5% on S1, cm32, cm128; over goes to DA. RH started 13:33 (S1 first, CoreMark ~8.5 h).
    Asked DA (no answer yet) whether to add tasks for rendep/rob_w/go/sched to 25 after #39.
    LESSON: the container is reclaimed when a turn ends, killing detached gates (3 lost 11-10). Run the gate
    detached AND stay in the turn: `timeout 590 bash -c "until grep -q '^EXIT' $L; do sleep 20; done"` loops.
