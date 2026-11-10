@@ -144,28 +144,42 @@ module ooe_ren1n #(
   // candidate, and the candidate's kind.
   logic [R*2-1:0] nw_al, npos;
   logic [R-1:0]   nwant, nkind;
+  // Whether a position, at width w, is the lane's home: each read's compare
+  // is from the register alone, so nwant selects one bit rather than
+  // comparing the selected position (#35).
+  function automatic logic eqh(input logic [1:0] v, input logic [1:0] w, input logic [1:0] home);
+    eqh = (w == 2'd1) ? (v[1] == home[1] && !home[0]) : (v == home);
+  endfunction
   always_comb
     for (int l = 0; l < R; l++) begin
       logic [1:0]    w, p, home;
+      logic          peq;
       logic [LS-1:0] sl;
       sl    = q_slot_cq01h[l * LS +: LS];
       w     = q_nal_cq01h[l * 2 +: 2];
       home  = q_nhm_cq01h[l * 2 +: 2];
       p     = home;
+      peq   = eqh(home, w, home);
       // The first narrow source placement sees (q_gs: no in-group or pending
       // writer, nor the zero row; #35, cand_indep_pend in the model).
       for (int i = 2; i >= 0; i--)
         if (q_na_cq01h[l * 5 + 1 + i] && q_gs_cq01h[l * 4 + i] && q_nw_cq01h[l * 10 + i * 2 +: 2] != 2'd0)
-          p = q_g_cq01h[(l * 4 + i) * GW +: 2];
+        begin
+          p   = q_g_cq01h[(l * 4 + i) * GW +: 2];
+          peq = eqh(q_g_cq01h[(l * 4 + i) * GW +: 2], w, home);
+        end
       // A merge keeps its old destination's position, at its width.
       if (q_na_cq01h[l * 5 + 4] && q_gs_cq01h[l * 4 + 3] && q_nw_cq01h[l * 10 + 8 +: 2] == w)
-        p = q_g_cq01h[(l * 4 + 3) * GW +: 2];
+      begin
+        p   = q_g_cq01h[(l * 4 + 3) * GW +: 2];
+        peq = eqh(q_g_cq01h[(l * 4 + 3) * GW +: 2], w, home);
+      end
       if (w == 2'd1) p[0] = 1'b0;
       if (w == 2'd0) p = 2'd0;
       nw_al[l * 2 +: 2] = w;
       npos[l * 2 +: 2]  = p;
       nkind[l]          = w == 2'd1;
-      nwant[l]          = NS != 0 && q_gwe_cq01h[l] && w != 2'd0 && p == home &&
+      nwant[l]          = NS != 0 && q_gwe_cq01h[l] && w != 2'd0 && peq &&
                           cand_v_cq01h[32'(sl) * 2 + (w == 2'd1)];
     end
   // A lane takes the candidate it wants unless an earlier lane of its slot

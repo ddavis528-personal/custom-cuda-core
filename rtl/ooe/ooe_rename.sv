@@ -616,20 +616,19 @@ module ooe_rename #(
   // The new names out, from the q_ copy (its reads unused).
   logic [R*4*GW-1:0] q_gx_cq03h;
   logic [R*4*PW-1:0] q_px_cq03h;
-  // The group before this one's new names, for its reads (#35): as the
-  // Rename 2 register holds them, pq_ for the names out, pr_ for Rename 2's,
-  // each (* keep *) beside m_gname (NGD-7).
-  (* keep *) logic [R*GW-1:0] pq_gname_cq04h, pr_gname_cq04h;
-  logic [R*PW-1:0]            pr_pname_cq04h;
+  // The group before this one's new names, for its reads (#35), as the
+  // Rename 2 register holds them: Rename 2 reads m_gname/m_pname, and pq_ is
+  // a (* keep *) copy for the names out (NGD-7).
+  (* keep *) logic [R*GW-1:0] pq_gname_cq04h;
   logic [R*GW-1:0]            r_gname_cq03h;
   logic [R*PW-1:0]            r_pname_cq03h;
-  logic                       pn_en_cq03h;
-  assign pn_en_cq03h = p_v_cq03h != '0;
+  logic [R*GW-1:0]            m_gname_cq04h;      // each GPR name: its row and, with sections, its position
+  logic [R*PW-1:0]            m_pname_cq04h;
+  logic                       r2_en_cq03h;
+  assign r2_en_cq03h = p_v_cq03h != '0;
   always_ff @(posedge ooe_core_clk)
-    if (pn_en_cq03h) begin
+    if (r2_en_cq03h) begin
       pq_gname_cq04h <= r_gname_cq03h;
-      pr_gname_cq04h <= r_gname_cq03h;
-      pr_pname_cq04h <= r_pname_cq03h;
     end
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .S(S)) u_ren1n (
     .q_idx_cq01h(q_idx_cq03h), .q_galloc_cq01h(q_galloc_cq03h), .q_palloc_cq01h(q_palloc_cq03h),
@@ -647,7 +646,7 @@ module ooe_rename #(
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .S(S)) u_ren1nr (
     .q_idx_cq01h(r_idx_cq03h), .q_galloc_cq01h(r_galloc_cq03h), .q_palloc_cq01h(r_palloc_cq03h),
     .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(q_gl_cq03h), .q_p_cq01h(q_pv_cq03h), .q_pl_cq01h(q_pl_cq03h),
-    .q_gk_cq01h(q_gk_cq03h), .q_pk_cq01h(q_pk_cq03h), .pn_gname_cq01h(pr_gname_cq04h), .pn_pname_cq01h(pr_pname_cq04h),
+    .q_gk_cq01h(q_gk_cq03h), .q_pk_cq01h(q_pk_cq03h), .pn_gname_cq01h(m_gname_cq04h), .pn_pname_cq01h(m_pname_cq04h),
     .q_gs_cq01h(q_gs_cq03h),
     .q_slot_cq01h(n_slot_cq03h), .q_gwe_cq01h(n_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(w_cq03h),
     .q_nal_cq01h(nr_al_cq03h), .q_nhm_cq01h(nr_hm_cq03h),
@@ -1138,12 +1137,9 @@ module ooe_rename #(
   // ooe_rs's request (its lead's twin, from Rename 2's copies: while Rename 1
   // holds a lane or the request is set, to clear it).
   logic [R-1:0]       m_v_cq04h, m_gwe_cq04h, m_pwe_cq04h, m_cv_cq04h;
-  logic [R*GW-1:0]    m_gname_cq04h;      // each GPR name: its row and, with sections, its position
-  logic [R*PW-1:0]    m_pname_cq04h;
   logic [2*R*LP-1:0]  m_pp_cq04h;
   logic [R*CW-1:0]    m_cvc_cq04h;
-  logic               r2_en_cq03h, rq_en_cq03h;
-  assign r2_en_cq03h = p_v_cq03h != '0;
+  logic               rq_en_cq03h;
   assign rq_en_cq03h = r2_en_cq03h || req_cq04h != '0;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) m_v_cq04h <= '0;
