@@ -476,18 +476,33 @@ why in a row.
   stores and the drain, atomics and SPM passes, faults, discard, replay and
   kill. The deliverable is a module partition (sub-blocks, inner helpers,
   units) that the gate can time level by level.
-- **Phase 3, implementation plan.** Model first, as RCU did (RI's
-  `docs/rcu-impl.md`), unless your questions say otherwise. MI implements
-  the MIU and DI the DCU (DA tab, 2026-11-10); each block's plan becomes its
-  implementer's handoff (a miu-impl.md and a dcu-impl.md in docs). Plan, per
-  block:
+- **Phase 3, implementation plan.** Both blocks start with the C++ model,
+  as RCU did (RI's `docs/rcu-impl.md`). Daniel, 2026-11-10 (DA tab): "both
+  MIU and DCU implementation should start with the C++ model. Emphasis
+  should be put on making sure that all important events are covered in the
+  model. Of course, the model may evolve as the RTL uncovers timing
+  limitations." MI implements the MIU and DI the DCU; each block's plan
+  becomes its implementer's handoff (a miu-impl.md and a dcu-impl.md in
+  docs). Plan, per block:
+  - the important events the model must cover, named in the architecture
+    and carried into the handoff as coverage bins, each with a negative
+    control that must fail. At least: L1 hit and miss on every pipe; a fill
+    and its notice and hint; a held request; a write-back; a split
+    footprint; a TLB miss and walk; every fault; discard, replay and kill
+    against an in-flight miss; an atomic and an SPM pass; the st.pred
+    drain; a full buffer on every queue; same-line and cross-warp ordering
+    hazards; a DCU request held behind a memory stall. The architecture
+    decides the full list; this is AR's floor;
   - the model behind the swap boundary (`sim/skel/blocks.list`);
   - the RTL's units for check-cg and check-ngd;
   - the MIU-internal checkers (Q-53).
 - **Phase 4, verification and closure:**
   - every stub control, carried to the model and the RTL;
   - SV-hosted equivalence;
-  - kernel coverage bins for MIU's paths;
+  - kernel coverage bins for every event in Phase 3's list, MIU's and
+    DCU's, with the kernels or directed stimulus that reach each;
+  - where the RTL finds a timing limit, the model changes with it (and the
+    spec, by an MA row, when a contract moves), and the bins re-run.
   - the performance items that the measurements make worth reopening.
 
 **Compute is the constraint. Design for the gate from day one:**
@@ -511,8 +526,8 @@ with its answerer in Needs, and notify them (the register skill, section
 
 - **To DA:**
   - Answered 2026-11-10: MA takes DCU, and MI and DI implement (section 1).
-    Still open: whether MIU and DCU go model-first, as RCU did (AR assumes
-    yes), and when each implementer starts.
+    Both start with the C++ model, covering every important event (DA tab,
+    2026-11-10, third row). Still open: when each implementer starts.
   - What priority does it have on compute (RH, `CCV_JOBS`) against OOE's
     and RCU's closure?
 - **To AR:**
