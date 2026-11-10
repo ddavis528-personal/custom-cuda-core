@@ -547,8 +547,9 @@ private:
     return can(ch().dcu_miu, slot) && credits(ch().dcu_miu, slot) > resv_[slot];
   }
 
-  /// L1 (OI-5): a small direct-mapped array, so a load that revisits a line
-  /// hits, and MIU can complete it at the L1 contract. A hit answers the
+  /// L1 (OI-5): a small set-associative array, 8 ways x 64 sets by default
+  /// (CCV_DCU_WAYS; the DCU spec's 8 ways, since 31168a3), so a load that
+  /// revisits a line hits, and MIU can complete it at the L1 contract. A hit answers the
   /// cycle it arrives, ahead of any miss in flight: the contract is MIU's to
   /// keep (CCV_LAT_L1_HIT), and an answer early enough lets it.
   /// Write-back and write-allocate, with ownership (DCU spec rev 8; AR,
