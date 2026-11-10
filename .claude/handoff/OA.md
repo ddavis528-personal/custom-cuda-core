@@ -41,7 +41,7 @@ RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
 Conventions 19, OA 410, AR 342, TI 406, OI 337, IS 190, CP 157, DA 119,
-RA 135 (tab 9851686b-2b0a), RI 69, MA 2 (tab 1f971016-3f72) (tab 8e4547bc-c469).
+RA 135 (tab 9851686b-2b0a), RI 69 (tab 8e4547bc-c469), MA 2 (tab 1f971016-3f72).
 OOE doc rev 374. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
 Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release b15c89e8; tag refused (known).
 
