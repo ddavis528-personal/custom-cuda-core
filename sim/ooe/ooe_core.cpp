@@ -48,7 +48,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
                                      {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge}, {"fl_direct", &fl_direct}, {"fl_two_step", &fl_two_step},
-                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"split_r_class", &split_r_class}, {"ret_now", &ret_now}, {"go_static", &go_static},
+                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_indep_pend", &cand_indep_pend}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"split_r_class", &split_r_class}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
@@ -794,6 +794,8 @@ void Core::candStart() {
   }
   cand_ret_.clear();
   std::fill(row_claim_.begin(), row_claim_.end(), 0);
+  grp_written_prev_ = grp_written_;
+  grp_written_prev_.resize(slot_.size(), 0);
   grp_written_.assign(slot_.size(), 0);
   // cand 2: the find without the last cand_lag groups' allocations, and
   // void in their rows.
@@ -826,7 +828,9 @@ unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
   auto align = [&](unsigned p) { return w == 1 ? (p & 2u) : (p & 3u); };
   // cand_indep: a register written earlier in the group is not seen.
   auto unseen = [&](unsigned a) {
-    return cfg_.cand && cfg_.cand_indep && slot < grp_written_.size() && ((grp_written_[slot] >> (a & 15)) & 1u);
+    if (!cfg_.cand || !cfg_.cand_indep || slot >= grp_written_.size()) return false;
+    const unsigned wr = grp_written_[slot] | (cfg_.cand_indep_pend && slot < grp_written_prev_.size() ? grp_written_prev_[slot] : 0u);
+    return ((wr >> (a & 15)) & 1u) != 0;
   };
   // A register's width as rename has it: its committed width (the table
   // the issue's codes come from), not its name's. They differ only where an
