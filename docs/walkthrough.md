@@ -371,7 +371,7 @@ The gate's enable reads only flops of its own block. The wake is registered
 first (Q-49):
 
 ```systemverilog
-wire           en    = !sleep || wake_q || override_q || !rst_n_q;
+wire           en    = !sleep || override_q || !rst_n_q;
 ```
 
 The same top can be built with the C++ blocks inside it: `rtl/top/dpi/` holds
@@ -512,4 +512,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 5166fdb812dca229 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: af120ae47db80226 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
