@@ -37,8 +37,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 342, RA 135, IS 190, TI 406, OA 410, OI 338, CP 157, DA 119, RI 69
-(sweep 11-10; AR closed OI-136; DA 117-119: MIU next, MA/MI/DI). Earlier: OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
+Conventions 19, AR 343, RA 136, IS 190, TI 407, OA 411, OI 338, CP 157, DA 119, RI 70
+(sweep 11-12, nothing for OI; merged 126afa13 5, 183cc441 3, 3868632d 4, 888218a3 5, 9eb50716 6, c22116ce 1. Sweep 11-10; AR closed OI-136; DA 117-119: MIU next, MA/MI/DI). Earlier: OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
 (perf-register.md) and RI 888218a3 (cg-waivers.json, rcu_dec_pkg.sv, perf-register.md); rung both.
 OA-399 leaves a LANE 8/SFU 13 rerun "if OI has not run 8/13": check against RI-11/OI-115. AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
 once TI's schema row lands. Pings 11-06: all OK. Settings: after TI's 350k merge `--check` may
