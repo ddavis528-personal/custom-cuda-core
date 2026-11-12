@@ -1,6 +1,6 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-09 (late). Keep current at every task's end. Role and ownership:
+Updated 2026-11-10. Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -16,7 +16,10 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: ff5ddcca (2026-11-08, SPLIT PASS 23/23, chain-ri10): daily sweep merges (all remote
+- Last push: 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
+  (kill detector in the top, CG unit ccv_rcu, per-slot ngd.json), TI's 079b64c2 and the daily sweep merges.
+  RI-34 (RI tab rev 68) written; notices sent to TI (merge 8fcec64b), RA, AR, OA, OI.
+- Previous push: ff5ddcca (2026-11-08, SPLIT PASS 23/23, chain-ri10): daily sweep merges (all remote
   branches but OI's ccr-57eff422, aborted on a sim/ooe conflict), ri-sfu (SW from sfu_result, RA 120/124),
   lanes pcm_n_cr04h floors re-based 49/65. Before: 5ac616f (2026-11-07, SPLIT SCOPED PASS 22/22): TI's de03fd6 bundle (O-85, IS-21 atomics,
   #88 fix) and 31168a3 (stub DCU 8x64: rebaseline cycle counts) merged on 64fce0d (RA rev 98).
@@ -79,6 +82,20 @@ architect may approve only if the end meets module NGD without the flop; can't m
    (gate-scope.py:211 wrapper reader; check-links.sh:86 control; test/phys/links_split.json rcu "all") -> RI-33 (rev 67)
    to TI, cc RA/AR, notices sent. NEXT: wait TI's fix commit; merge it + TI 0bd5ac02 (OA-405) + sweep branches into
    ri-asm3, re-gate (chain-ri17), push. Bookmark RI tab rev 67.
+   2026-11-09 22:50Z TI 403: 079b64c2 PUSHED (ccv_rcu.sv in the design, on TI's ccr-183cc441). Merged into ri-asm4 (8fcec64b,
+   RA.md from RA's branch). chain-ri17 (~/ccv-logs/chain-ri17.out) gates ri-asm4 full split, pushes to our branch. NEXT after
+   push: RI-34 with RA 134 figures + sweep report (RA/TI/AR notices); remove ccv_rcu unit's package black boxes if TI's
+   check-cg.py harness change reads them (check); then task 16 lock-step/SV-top.
+   2026-11-10: PUSHED 8fcec64b; RI-34 + notices done. TI's 079b64c2 check-cg.py change is build cleanup only, so the
+   unit's black boxes stay. A subagent computes per-slot-group block NGD figures (scratchpad ngdfig/). NEXT: RI-35
+   to RA with that table (cc TI/AR), then task 16, Q-53 checkers, SW write-back/KILL_DRAIN, RA reconciliation.
+   RI-35 (rev 69) written: per-slot NGD table (worst lead_opcode 24.4; miu_rcu_data end must stay flopped);
+   notices sent to RA, TI and AR. NEXT: task 16 (lock-step/SV-top), Q-53 checkers. Bookmarks: TI 403, RA 134, RI 69.
+   TI 402 (re:RI-33): fixes on gate-scratch/TI-rcutop 079b64c2 (0339f719 merged; gate-scope, links control, split,
+   check-cg.py); TI gates + pushes ~23:30Z after the sweep's release gate. ri-asm4 (ri-wt7) = ri-asm3 + 7 sweep
+   merges (TI 0bd5ac02 incl.; cg-waivers ours, perf-register TI's), regen+check-1d run ~/ccv-logs/asm4a.log.
+   NEXT: when TI pushes, merge TI's pushed commit into ri-asm4, full split gate, push; then RA 134 figures
+   (CG: 2703 of 4949.4 used, 825 lead/credit; rev 123 slice waiver gone; NGD per slot group via blk_ngd_dbg.py).
    RA 134 (re:RI-33): detector accepted. After ccv_rcu.sv lands, post in RI tab for the spec's NGD table: block read
    numbers per slot group (the 13 fields, other ports), lead waiver total, 2% use, whether rev 123's slice waiver is gone.
    chain-ri12 FAILED cg: rcu_kill cr_q/kd/kaep had no waivers (d7925bc2 dropped them on scratchpad cgpol.py, which
