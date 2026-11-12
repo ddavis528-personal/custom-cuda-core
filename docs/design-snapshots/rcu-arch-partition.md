@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=66 exported=2026-11-10 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 66 on 2026-11-10 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=67 exported=2026-11-10 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 67 on 2026-11-10 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -87,6 +87,8 @@ The table above is the design budget. These are the assembled block's figures: t
 | every output | 1.4 worst | straight from a flop (the rcu\_lane\_ops fanout term); every stall output is constant 0 |
 
 Not measured: the wrapper level's outputs and the repeater's flop-to-out on flopped ends.
+
+RA rev 117's interim arrivals (0 on rcu\_lanes' opc\_cr02h and the slice's popc\_cr01h) have ended: rcu\_isd's class flops replace them, and the `ngd.json` files of rcu\_bank\_slice, rcu\_lanes and rcu\_mem say so (RI-34/35 at 8fcec64b).
 
 Every register that drives a block output and something else is split into NGD-7 `(* keep *)` copies: the lead flops, the done valid, the lane-op and address valids, `dm_v_q` against its own use.
 
