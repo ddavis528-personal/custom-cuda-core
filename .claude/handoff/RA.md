@@ -233,14 +233,7 @@ Sweep 2026-11-09 (pushed ad33acf6, SPLIT PASS 23/23): merged 3868632d, 57eff422,
 RA rev 134 (re:RI-33): ccv_rcu.sv clean on cg+ngd at 0339f719 (gate-scratch/RI), block read no findings; push waits on TI's 3 fixtures (gate-scope map, check-links no_flop control, links_split.json). Kill detector accepted: v on ungated core_clk, ep/mask on core_clk under own v flop (CG-5), DCGE 100%. Asked RI for block-read numbers (landed as RI-35, folded below).
 RI-34/35 folded into spec (Partition rev 66, Done rev 35, Overview rev 68; snapshots refreshed 2026-11-10); ccv_rcu.sv pushed 8fcec64b and in the design via TI 079b64c2; RA rev 123 interim ended; spec NGD table filled (Partition 'Measured at assembly': lead_opcode 24.4 all slots, 0.6 margin, the block's closest; miu_rcu_data end stays flopped, 27.4 at nominal 13). Measured block rcu 247,468 flops; 2% 4,949.4; modules take 2,703 (55%). RA rev 117 interims also ended: rcu_bank_slice/rcu_lanes/rcu_mem .ngd.json read the class word from rcu_isd flops ('This ends RA rev 117's interim'), checked by RA 2026-11-10. Next spec touch: mark rev 117 ended in the Partition tab.
 RA rev 135 (re:TI 406, RCU block lock-step bb5c3750, first divergence cycle 43 on issue credit): spec intends the RTL's (credit in payload cycle A from v_q, Conventions tab); RI fixes the model's take() (sim/rcu/rcu_block.cpp), checks lane_rcu_res too, updates test/rcublk/expected-fail.txt; cycle-44 slice/pred assertions to read after. Pushed 0014df6c (spec RI-34/35 fold, SPLIT PASS). NOTE: a scoped gate that reaches cg/ngd also exceeds 2h; use the split method then too.
-Sweep 2026-11-10: merged infra-6msg93 4, ccr-80102643 3 (AR, now clean), ccr-9eb50716 3; ccr-183cc441 contained. Register: nothing for RA; DA 117-119 make MA the MIU/DCU architect (MI, DI reserved); OA 406 sweep minute RA :27 (trigger already :27). Waiting: RI on RA rev 135 (model issue credit) and cycle-44 assertions.
-RA rev 136 (re:RI-37) applied 2026-11-10: Done rev 42 (kill_drain loads KILL_DRAIN-1 at K's edge, K counts; ack from
-K+KILL_DRAIN+1 = 16, supersedes 17; M4 checker + KILL_DRAIN-1 control on RTL and model, killsleep cases; RAU acks by
-epoch; done wake adds OOE's issue wake a cycle on via ccv_rcu's ungated wake detector, for R done at A+2), Partition
-rev 67 (RA rev 117's interims ended). Snapshots refreshed. 11-10 sweep pushed 5d416b94 (SPLIT PASS).
-PENDING: TI's Receiver call in channel.h (RI-36 (2)), then RI moves the model's issue and lane_rcu_res credit to A and
-drops lockstep.py's shifted compare; RI-38 (block gate's sixth busy term; TI/AR; RA no objection).
-Bookmarks: OA 410, RA 136, RI 70, TI 406, AR 342, DA 119, OI 337, Conventions 19, CP 157, IS 190, MA 2.
+Bookmarks: OA 409, RA 135, RI 69, TI 406, AR 339, DA 116, OI 336, Conventions 17, CP 157, IS 190.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
