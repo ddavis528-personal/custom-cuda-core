@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=35 exported=2026-11-10 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 35 on 2026-11-10 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=42 exported=2026-11-10 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 42 on 2026-11-10 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -55,7 +55,7 @@ Each outbound wake is a flop, written every cycle. The receiver's gate holds thr
 | Wake | `D` of the flop | Why it covers the valid |
 | --- | --- | --- |
 | `rcu_lane_ops_c<NN>_wake` (each copy), `rcu_miu_addr_wake` | `ooe_rcu_issue_wake` | Lane and address valids are at A. OOE's own rule puts the issue wake in \[A−5, A−2\] for issue valid A−1, so RCU's flop is in \[A−4, A−1\]. |
-| `rcu_ooe_done_wake` | any `ooe_rcu_issue_s*_valid` (wire) OR any `lwb_d`/`swb_d` stage valid OR R pipe valid | R done valid at A+1, from issue valid at A−1 → wake at A. Lane done at A+6, from descriptor ages 1-5 → wake A+2..A+6. SFU likewise. |
+| `rcu_ooe_done_wake` | any `ooe_rcu_issue_s*_valid` (wire) OR any `lwb_d`/`swb_d` stage valid OR R pipe valid OR `ooe_rcu_issue_wake` a cycle on, through ccv\_rcu's ungated wake detector (RA rev 136) | R done valid at A+1, from issue valid at A−1 → wake at A. R's done payload lands at A+2, so its wake is due at A−2, before any of the op's valids reach RCU; only OOE's issue wake, taken a cycle on, covers it (RI-37 (2), RA rev 136). That term is a superset: a wake with no done costs OOE's done receiver DCGE, never correctness. Lane done at A+6, from descriptor ages 1-5 → wake A+2..A+6. SFU likewise. |
 | `rcu_pca_mig_wake` | `dm_busy_next` | Migration tab: 4-cycle lead counter. |
 
 ## Credits RCU returns
@@ -84,7 +84,7 @@ RCU's pipe carries no warp id: an issue carries only `rob_tag`. RCU therefore ca
 | --- | --- | --- | --- |
 | `kill_v_q` | 1 | every cycle | flopped `kill_valid` (cycle K−1 on the wire, so set in K) |
 | `kill_ep_q` | 2 | `kill_v_q` | `kill_epoch`, taken in K |
-| `kill_drain` | 5 | `kill_v_q` or `kill_drain != 0` | loaded with `KILL_DRAIN` in K, counts to 0 |
+| `kill_drain` | 5 | `kill_v_q` or `kill_drain != 0` | loaded with `KILL_DRAIN` − 1 at K's edge, K being the drain's first cycle (K counts; RA rev 136), counts to 0 |
 | `kill_ack_q` | 1 | `kill_v_q` or ack-ready | `kill_ack`, a level (RA-23) |
 | `kill_ack_ep_q` | 2 | ack-ready | `kill_ack_epoch` |
 
@@ -101,7 +101,7 @@ An address message (A+1) and a lane message (A+1) leave sooner. A load's data fr
 - `kill_ack_q` clears at the edge that ends K of the next kill, so the ack is low through that kill's drain.
 - A kill that arrives during a drain reloads `kill_drain`, ORs its mask into `mig_kmask`, takes the new epoch and is answered once, with the new epoch. RAU counts an ack only when its epoch matches (`CCV_P_W_KILL_EPOCH` = 2), so the earlier epoch's ack never appears, and needs not.
 
-Kill inputs and sleep (AR 336 (b), AR 338/339; RI-27, RI-29, RI-33, RI-34; RA revs 127, 130, 131 and 134): the detector is in ccv\_rcu, its own CG unit of 35 flops. kill\_detect\_v\_cr01h flops kill\_valid on the ungated core\_clk every cycle, at 0 NGD and with no reset (it counts in the module's allowance); kill\_valid is a wake port. kill\_detect\_ep\_cr02h and kill\_detect\_km\_cr02h (34 flops) also sit on core\_clk, loaded under that valid flop (the module's own flop, CG-5; one gate, DCGE 100%) in the cycle after kill\_valid, which is when the epoch and mask arrive, since valid leads the payload. None of it depends on RCU's gated clock, so a kill that lands asleep is captured. rcu\_kill and rcu\_mig load epoch and mask from those flops at K+1. The ack is high at K + KILL\_DRAIN + 2 = 17, the same awake and asleep, and a second kill across the wake is acked with the later epoch. M4 runs both cases, each with a control that drops the held kill and must fail. Reset (RST-2, Daniel 2026-11-09): block rcu's reset arrives at cycle 1 at every endpoint (RI-34).
+Kill inputs and sleep (AR 336 (b), AR 338/339; RI-27, RI-29, RI-33, RI-34; RA revs 127, 130, 131 and 134): the detector is in ccv\_rcu, its own CG unit of 35 flops. kill\_detect\_v\_cr01h flops kill\_valid on the ungated core\_clk every cycle, at 0 NGD and with no reset (it counts in the module's allowance); kill\_valid is a wake port. kill\_detect\_ep\_cr02h and kill\_detect\_km\_cr02h (34 flops) also sit on core\_clk, loaded under that valid flop (the module's own flop, CG-5; one gate, DCGE 100%) in the cycle after kill\_valid, which is when the epoch and mask arrive, since valid leads the payload. None of it depends on RCU's gated clock, so a kill that lands asleep is captured. rcu\_kill and rcu\_mig load epoch and mask from those flops at K+1. The ack is high from K + KILL\_DRAIN + 1 = 16 (RA rev 136, RI-37 (1); 17, at K + KILL\_DRAIN + 2, before), the same awake and asleep, and a second kill across the wake is acked with the later epoch. M4 runs both cases, each with a control that drops the held kill and must fail. M4's kill checker passes at this timing and its KILL\_DRAIN − 1 control fails; both stay on the RTL and the model, with killsleep's asleep-equals-awake and later-epoch cases. An earlier ack changes nothing for RAU, which counts the ack by epoch (AR 338/339). If the control ever stops failing, the bound is loose: record the margin, and never shorten it further without a row. Reset (RST-2, Daniel 2026-11-09): block rcu's reset arrives at cycle 1 at every endpoint (RI-34).
 
 What to measure: the implementation agent runs the kill checker with `KILL_DRAIN` − 1 as a negative control. It must fail on some kernel whose kill lands with an SFU op in flight. If no kernel can make it fail, the bound is loose, and the margin is recorded.
 
