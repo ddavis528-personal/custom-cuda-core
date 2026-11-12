@@ -101,7 +101,10 @@ inline bool decodeClass(unsigned opcode, unsigned done_row, bool pwe, unsigned d
   op = copy ? nullptr : opByCode(opcode);
   if (!copy && !op) return false;
   if (op && op->cls == kAtomic) {
-    op = atomStep(done_row);
+    // The atomic's own step: a CAS has its own (OI-127: guarded, A2 reads
+    // rs_cmp and rs_swap), as the block decodes it (rcu_block.cpp). Without
+    // the op, CAS took the generic ATOM steps: the lock-step on cas.
+    op = atomStep(done_row, op);
     if (!op) return false;
   }
   oc = classOf(op, copy, copy && pwe && dst == R::kZero);

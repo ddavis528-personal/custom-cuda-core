@@ -528,7 +528,8 @@ module rcu_pred #(
     end
     bad_q_cr01h = 1'b0;
     for (int q = 0; q < NQ; q++)
-      bad_q_cr01h = bad_q_cr01h | (qv_cr01h[q] && 32'(qrow_cr01h[q*WP +: WP]) >= ROWS);
+      bad_q_cr01h = bad_q_cr01h | (qv_cr01h[q] && 32'(qrow_cr01h[q*WP +: WP]) >= ROWS &&
+                                   32'(qrow_cr01h[q*WP +: WP]) != ccv_prov_pkg::CCV_P_PRED_ZERO);
     bad_m_cr01h = 1'b0;
     for (int j = 0; j < NM; j++)
       bad_m_cr01h = bad_m_cr01h | (ml_en_cr01h[j] && 32'(mp_cr01h[j*WP +: WP]) >= ROWS);
@@ -551,7 +552,9 @@ module rcu_pred #(
   end
   // Ports on one row in a cycle write disjoint lanes.
   `CCV_ASSERT(pred_write_disjoint, !overlap_cr02h)
-  // A write never names the zero predicate (A-64) or a row past the pool.
+  // A write never names a row past the pool. The zero predicate (A-64) is
+  // a write port's no-select: R's PR port names it, valid up, for an op
+  // that writes no predicate (rcu_r), and it writes nothing.
   `CCV_ASSERT(pred_write_row_named, !bad_q_cr01h)
   `CCV_ASSERT(pred_load_row_named, !bad_m_cr01h)
   // A demotion read names a row of the pool or the zero predicate.
