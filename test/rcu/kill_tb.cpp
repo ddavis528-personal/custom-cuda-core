@@ -58,7 +58,7 @@ template <typename T> uint64_t get(const T &s, unsigned lsb, unsigned w) {
 
 struct In {   // one cycle's inputs
   bool kv = false, mq = true, csr = false;
-  unsigned dbusy = 0;   // ND = 2 terms
+  unsigned dbusy = 0;   // ND = 3 terms
   unsigned kep = 0, busy = 0, mv = 0;
   uint32_t iv = 0, lv = 0;
 };
@@ -135,7 +135,7 @@ struct Bench {
       if (en) {
         if (kv_q) {
           nkep = in.kep;
-          ndrain = g_drain;
+          ndrain = g_drain - 1;   // K is the drain's first cycle (RI-36)
           nack = false;
           rekills += pend;
           npend = true;
@@ -201,7 +201,7 @@ struct Gen {
     for (unsigned s = 0; s < kNS; ++s) if (coin(p * 0.4)) in.iv |= 1u << s;
     for (unsigned c = 0; c < kNL; ++c) if (coin(p * 0.3)) in.lv |= 1u << c;
     for (unsigned j = 0; j < kNM; ++j) if (coin(p * 0.3)) in.mv |= 1u << j;
-    in.dbusy = (coin(p * 0.5) ? 1u : 0u) | (coin(p * 0.2) ? 2u : 0u);
+    in.dbusy = (coin(p * 0.5) ? 1u : 0u) | (coin(p * 0.2) ? 2u : 0u) | (coin(p * 0.1) ? 4u : 0u);
     for (unsigned b = 0; b < kNB; ++b) if (coin(p * 0.2)) in.busy |= 1u << b;
     in.csr = coin(p * 0.02);
     return in;
