@@ -52,10 +52,12 @@ architect may approve only if the end meets module NGD without the flop; can't m
 -4. NOW (2026-11-10) Last push fca280c3 (13:29, SPLIT SCOPED PASS 14/23; ngd leg by RH, Daniel OK'd RH
    send-export to gate-scratch/*-export for passing legs). RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) written,
    RI tab rev 70; notices sent. Lock-step 63/63; rcu_blk (TI) passes with its expected-fail.
-   Sweep 2026-11-10 on ri-wt4 branch ri-sweep2: merged 183cc441, 126afa13, 80102643, 9eb50716, 3868632d,
-   57eff422 (OI, clean now), c22116ce, infra; regen + quick checks running; then full split gate (cg here
-   detached with setsid nohup, ngd RH via gate-scratch/RI) and gate-push --full --import from ri-wt4.
-   Bookmarks Conv 19 AR 342 OA 410 IS 190 TI 406 OI 337 CP 157 DA 119 RA 135 RI 70.
+   Sweep: container restarted 2026-11-12 22:14 and killed chain-ri20 (bfba7f38 never pushed). Re-swept:
+   ri-wt4 ri-sweep2 0ace219f = bfba7f38 + 126afa13 (5, RA's RI-37 tab amend). Gate chain-ri21 detached (cg here,
+   ngd RH -> gate-scratch/RI-export, then gate-push --full --import); status ~/ccv-logs/chain-ri21.out.
+   AR 343 (re:RI-38): ccv_common_clk WAKE_HOLD -> CCV_WAKE_LAT+1 (TI); then ccv_rcu's wake detector may go (RI's call).
+   TI 407: run-lockstep.sh becomes the gate job, rcu_blk retired, channel.h landing-cycle credit coming.
+   Bookmarks Conv 19 AR 343 OA 411 IS 190 TI 407 OI 338 CP 157 DA 119 RA 136 RI 70 (MA tab: no bookmark yet).
    Long runs: ALWAYS setsid nohup + a waiter; a bg task dies at 2h.
    Next for task 16: model credit move once TI adds channel.h call; RTL event monitor; SV-top with RTL.
 -3. NOW (2026-11-09; Daniel's order: class-word NGD -> gate+push ccv_rcu.sv -> lock-step/SV-top -> Q-53 ->
