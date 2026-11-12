@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-09. Keep this current at every task's end; it is what
+Updated 2026-11-10. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -53,7 +53,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 17, AR 339, OA 409, IS 190, TI 400, OI 336, CP 157, DA 116, RA 133, RI 66.
+Conventions 19, AR 342, OA 410, IS 190, TI 406, OI 337, CP 157, DA 119, RA 135, RI 69.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Next pings Friday 2026-11-13.
@@ -66,9 +66,12 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
-- 2026-11-09 sweep: ccr-888218a3 (RI) NOT merged: conflicts in cg-waivers.json,
-  rcu_dec_pkg.sv (others' files; OA 405 raised it to AR, TI, RI). Retry next
-  sweep. perf-register.md union-resolved again (AR's J9 notes + TI's RA-43).
+- New agent MA (MIU+DCU architect; DA 117-119), MI/DI implement, C++ model
+  first. Sweep minute order: IS 23 (OA 406). MA will lean on the ISA's memory
+  semantics (O-72 atomics, O-83/O-84 per-thread memory, fence): answer its
+  ISA questions promptly; add MA to Friday pings once it is in the roster.
+- Gate build/ now prunes unit dirs (peaks a few GB); disk recipe below is a fallback.
+- 2026-11-09: RI/AR merge conflict resolved upstream (TI 401, RI-34); merged 11-10. perf-register.md union-resolved again (AR's J9 notes + TI's RA-43).
   ISA-adjacent, no action: register pmov (Format K 63) executed as por (OA 396;
   elision is a licence); params/ops.json new opcode table (TI 395).
 - O-85 follow-ups done: TI de03fd6 (TI-371) builds every collective incl.
