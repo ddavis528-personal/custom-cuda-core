@@ -464,6 +464,11 @@ def main():
     ap.add_argument("--watch", action="append", default=[], metavar="PATH",
                     help="print a signal under ccv_rcu (e.g. u_pred.g_row[6].pq_cr02h) at each change, "
                          "with its cycle (a triage aid)")
+    ap.add_argument("--replayed", action="store_true",
+                    help="each dump is a run that already happened (test/rcu/svh.py: the SV top "
+                         "with the RTL driving and the model shadowing): its outputs are "
+                         "<dump>.obs and its events <dump>.rtl.ev beside it, compared as a "
+                         "replay's; nothing is built or run")
     ap.add_argument("dumps", nargs="+")
     a = ap.parse_args()
     a.build = os.path.abspath(a.build)
@@ -487,18 +492,25 @@ def main():
             cr = [n for n in outs if n.endswith("_credit")]
             snaps = [dict(s, **{n: (snaps[t + a.credit_lead].get(n, 0) if t + a.credit_lead < len(snaps) else 0)
                                 for n in cr}) for t, s in enumerate(snaps)]
-        if exe is None:
+        if a.replayed:
+            base = os.path.splitext(d)[0]
+        elif exe is None:
             exe = build(a.build, ins, outs, widths, a.vcd, a.watch)
-        base = os.path.join(a.build, os.path.splitext(os.path.basename(d))[0])
+        if not a.replayed:
+            base = os.path.join(a.build, os.path.splitext(os.path.basename(d))[0])
         iw = sum(widths[n] for n in ins)
-        with open(base + ".in", "w") as f:
-            for s in snaps:
-                f.write("%0*x\n" % ((iw + 3) // 4, pack(s, ins, widths)))
-        # Assertions report and the replay runs on, so the outputs are
-        # compared to the end; each failing assertion is named once.
-        r = subprocess.run([exe, "+n=%d" % len(snaps), "+base=" + base, "+verilator+error+limit+1000000"]
-                           + (["+vcd"] if a.vcd else []) + (["+noinit"] if a.control == "init" else []),
-                           capture_output=True, text=True)
+        if a.replayed:
+            # The run happened in the SV top; its assertions are its own log's.
+            r = subprocess.CompletedProcess([], 0, "RCU-LS done\n", "")
+        else:
+            with open(base + ".in", "w") as f:
+                for s in snaps:
+                    f.write("%0*x\n" % ((iw + 3) // 4, pack(s, ins, widths)))
+            # Assertions report and the replay runs on, so the outputs are
+            # compared to the end; each failing assertion is named once.
+            r = subprocess.run([exe, "+n=%d" % len(snaps), "+base=" + base, "+verilator+error+limit+1000000"]
+                               + (["+vcd"] if a.vcd else []) + (["+noinit"] if a.control == "init" else []),
+                               capture_output=True, text=True)
         asserts = {}
         for m in re.finditer(r"\[(\d+)\] %Error: (\S+): Assertion failed in (\S+)", r.stdout + r.stderr):
             key = re.sub(r"\[\d+\]", "[N]", m.group(3))
