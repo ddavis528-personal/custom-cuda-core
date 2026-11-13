@@ -56,6 +56,7 @@ MAP = [
     ("tools/check-kernel.sh", ["kernel", "svh"]),
     ("tools/check-sv-hosted.sh", ["svh"]),
     ("tools/check-skel.sh", ["skel", "kernel", "svh", "top"]),
+    ("tools/build-skel.sh", ["skel", "kernel", "svh", "top"]),   # check-skel's build, check-kernel's control
     ("tools/check-if.sh", ["iface"]),
     ("tools/check-ooe-unit.sh", ["ooe_unit"]),
     ("tools/check-formal.sh", ["formal"]),

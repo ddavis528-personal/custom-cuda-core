@@ -5977,6 +5977,13 @@ KernelReport compareFinal(Kernel &k) {
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
     if (isParked(w) || cut(w)) continue;
     const Oracle &o = k.orcs[w];
+    // A partial oracle (PARTIAL=1) has no final state to compare: the run
+    // must stop short of its last record, so a warp that exits fails.
+    if (o.partial) {
+      if (k.finals.count(w))
+        k.fail("kernel: warp %u exited, but its oracle is partial: ccv-sim stopped at MAXSTEPS", w);
+      continue;
+    }
     // A run ccv-sim ended in a fault must end in CRU's fault too (TI-26);
     // CRU's stub held its fields to ccv-sim's as it took it.
     if (o.faults && !k.faults.count(w))
