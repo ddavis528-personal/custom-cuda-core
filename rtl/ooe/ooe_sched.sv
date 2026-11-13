@@ -277,6 +277,9 @@ module ooe_sched #(
     used_cq04h = {3'b0, dsc_cq04h};
     for (int e = NR; e < N; e++) begin
       cfp_cq04h = res_cq03h[e * 9 + 5 +: 4] & cokd_cq04h;
+      // An OR, not a count: no two grants, nor a grant and P0's discard,
+      // share a slot in a cycle (co-issued memops have disjoint footprints,
+      // V-60, and busy keeps a memop off P0 in a discard cycle; OA 413).
       if (gnt_cq04h[e]) used_cq04h = used_cq04h | (cfp_cq04h & (~cfp_cq04h + 4'd1));
     end
     cone_cq04h = 1'b0;
