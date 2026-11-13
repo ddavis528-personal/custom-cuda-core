@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 14 | 38 |
-| ⚠️ Some provisional | 26 | 139 |
-| ⛔ Some preliminary | 15 | 160 |
-| **Total** | **55** | **337** |
+| All decided | 15 | 40 |
+| ⚠️ Some provisional | 27 | 147 |
+| ⛔ Some preliminary | 13 | 151 |
+| **Total** | **55** | **338** |
 
 ## What still has to be decided
 
@@ -112,12 +112,6 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_W_COH_OP` | 4 | med | Coherent line request: acquire, release, probe response, writeback, grant acknowledgement. Follows the TL-C subset chosen. |
 
-### MMU session
-
-| Parameter | Value | Churn | Basis |
-|---|---|---|---|
-| `CCV_L_PAGE_SHIFT` | 12 | low | Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms. |
-
 ### MMU session, with the page-table format
 
 | Parameter | Value | Churn | Basis |
@@ -174,6 +168,18 @@ lane → rcu · rate 1 · execution
 | `sfu_valid` | `1` | 1 | literal |
 | `sfu_result` | `CCV_W_LANE_DATA` | 32 | CCV_W_LANE_DATA (isa) |
 | **total** | | **73** | |
+
+### `ccv_fet_miu_itlb_req`
+
+Fetch asking the walker for a translation on an ITLB miss: the virtual PAGE number (CCV_W_VA - CCV_L_PAGE_SHIFT bits), so no meaningless low bits can disagree with the TLB tag (arch open A-4).
+
+fet → miu · rate 1 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `virtual_page` | `CCV_W_VA-CCV_L_PAGE_SHIFT` | 48 | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (arch) |
+| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
+| **total** | | **56** | |
 
 ### `ccv_ooe_rau_status`
 
@@ -509,10 +515,10 @@ spm → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 3 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 5 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
 | `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `conflict_serialization` | `CCV_W_CONFLICT_SER` | 6 | CCV_W_CONFLICT_SER (arch) |
-| **total** | | **1033** | ⚠️ 3 provisional |
+| **total** | | **1035** | ⚠️ 5 provisional |
 
 ### `ccv_dcu_miu_rsp`
 
@@ -522,12 +528,12 @@ dcu → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 4 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 6 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
 | `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `hit` | `1` | 1 | literal |
 | `ownership_granted` | `1` | 1 | literal |
 | `mlc_miss` | `1` | 1 | literal |
-| **total** | | **1031** | ⚠️ 4 provisional |
+| **total** | | **1033** | ⚠️ 6 provisional |
 
 ### `ccv_mlc_dcu_rsp`
 
@@ -592,6 +598,23 @@ mlc → fet · rate 1 · memory
 | `req_id` | `CCV_P_W_REQ_FET_MLC` | 2 ⚠️ | CCV_P_W_REQ_FET_MLC (provisional) |
 | `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
 | **total** | | **1026** | ⚠️ 1026 provisional |
+
+### `ccv_rau_fet_launch`
+
+A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot. tier1_id is the tier-1 slot RAU placed the warp in (A-65): FET fetches it in that slot's binding group on ccv_fet_dec_instr and indexes its checkpoints by it, as OOE does from ccv_rau_ooe_alloc. live_mask (AR's response TI-27 (a)) is the warp's lanes, which FET picks among: lanes [0, n) with n = min(32, T - 32 x warp_in_cta), T the CTA's thread count from the grid descriptor (Q-50). A partial warp is always the low lanes (ISA section 5.3). 32 bits rather than a count, since a restore's mask on ccv_pca_fet_mig is arbitrary and FET loads one register from either.
+
+rau → fet · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `start_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
+| `code_bounds` | `2*(CCV_W_VA-CCV_L_PAGE_SHIFT)` | 96 | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (arch) |
+| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
+| `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
+| `live_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| **total** | | **210** | ⚠️ 3 provisional |
 
 ### `ccv_rau_ooe_alloc`
 
@@ -734,12 +757,12 @@ dcu → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 4 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
-| **total** | | **4** | ⚠️ 4 provisional |
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 6 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| **total** | | **6** | ⚠️ 6 provisional |
 
 ### `ccv_miu_ooe_cmpl_hint`
 
-A completion hint (OA-23; AR's response TI-23): MIU promises that the completion of rob_tag, waking RS entry rs_idx, leaves on the same slot of ccv_miu_ooe_cmpl with its valid exactly CCV_LAT_CMPL_HINT cycles after this hint's payload lands, so OOE's wake lines can rise two cycles ahead of the completion as its scheduler loop needs (OI-45). MIU keeps it by reserving the completion's slot and credit, and those of the load's data on ccv_miu_rcu_data (MIU spec, Mechanisms). Optional: a completion without a hint wakes a cycle late. rob_tag, not a generation bit, tells a stale hint: OOE acts only if that ROB slot is not squashed-pending (AR's rev 94, OA's rev 141).
+A completion hint (OA-23; AR's response TI-23): MIU promises that the completion of rob_tag, waking RS entry rs_idx, leaves on the same slot of ccv_miu_ooe_cmpl with its valid exactly CCV_LAT_CMPL_HINT cycles after this hint's payload lands, so OOE's wake lines can rise two cycles ahead of the completion as its scheduler loop needs (OI-45). MIU keeps it by reserving the completion's slot and credit, and those of the load's data on ccv_miu_rcu_data (MIU spec, Mechanisms). Optional: a completion without a hint wakes a cycle late. rob_tag, not a generation bit, tells a stale hint: OOE acts only if that ROB slot is not squashed-pending (AR's rev 94, OA's rev 141). no_hit (OA rev 413, OA 410, from MA's answer to OA 408): set, the message is advice and no promise, so notice_of's timing does not apply to it (notice_of.unless): MIU's address stage knows, from the address alone (the lane-group rule, a page split, a TLB miss or a bank conflict), that the global load issued at I has lost the L1-hit contract, and says so on the slot of the memop's lowest pipe, valid at I+12, payload at I+13, echoing rs_idx and rob_tag. OOE then clears the load's speculative wake before I+17, and its dependants wake on the completion. A refill hint on the same slot wins, and the no-hit is dropped; tag misses are not covered. Safe either way: a completion at CCV_LAT_L1_CMPL after a no-hit is legal, and an absent no-hit costs the 2-cycle cancel shadow. A no-hit on any memop but an outstanding global load is a protocol error. The MIU stub sends none until MA's Phase 1 model gives it the address facts.
 
 miu → ooe · rate 4 · memory
 
@@ -747,7 +770,8 @@ miu → ooe · rate 4 · memory
 |---|---|---|---|
 | `rs_idx` | `CCV_P_W_RS_IDX` | 6 ⚠️ | CCV_P_W_RS_IDX (provisional) |
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
-| **total** | | **13** | ⚠️ 13 provisional |
+| `no_hit` | `1` | 1 | literal |
+| **total** | | **14** | ⚠️ 13 provisional |
 
 ## ⛔ Carries a preliminary width
 
@@ -881,7 +905,7 @@ Lead fields (driven with valid, a cycle ahead of the rest): `section_en`, `sec_p
 
 ### `ccv_ooe_miu_memop`
 
-The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads. BULK DISCARD (A-41): mem_op 0xF discards every store of warp_id whose ROB index lies in the circular range (branch, tail]: rob_tag names the mispredicted branch and discard_tail, an overlay on disp, the warp's ROB tail, the youngest allocated entry inclusive. Every other field is reserved and zero. It is a command, not a memop: it gets no completion (A-53), the stores it discards still complete individually, and it is never sent in the same cycle as a memop of the same warp. mem_op, space and ordering arrive from DEC on ccv_dec_ooe_uop and pass through OOE unexamined (A-68); 0xF alone is OOE's own. mem_op 4 and 5 are a predicate transfer's uop (TI-36): MIU forms one address from lane 0, a load returns its word as pred_result, and a store completes at execute and drains after commit as a read-merge-write of its word, new = (old & ~m) | (d & m), m the address message's active_mask (MIU spec rev 25). SECTIONED (OI-33): pipes is the memop's footprint over MIU's pipes P0-P3, four at 32 bits, two at 16 and one at 8, at its data position; phys_dst is a row and dst_pos its position, echoed for the slice write-back. LOADS IN THE BULK DISCARD (AR's and OA's responses TI-21): the discard covers the warp's uncommitted loads in its range as well as its stores, each completed with status replay (ccv_miu_ooe_cmpl). A demotion's squash sends one for warp_id, whatever it holds, and drained waits only for the discarded loads' replay completions. A demotion's range is the whole ROB, branch == tail, which no other discard sends, since a mispredict's range is never empty. ATOMICS (OA's response re:TI rev 365, OI-127): a bulk discard exempts mem_op 2 (atomic-read) and 3 (atomic-write). A1 issues only at the ROB head (V-17), so a mispredict's range never covers an issued A1 or its A3, and a killed atomic finishes the pass in flight; MIU never replays them either, a lane whose line is not to be had going to a later pass. A discard of an empty ROB names no instruction and carries id class none; every memop carries instr, which MIU checks. LAUNCH-SLOT FORM (TI-31, AR's response; ISA O-45): slot_form set, the address is (window << 16) + (index << scale) + disp, where the window is the 32-bit word at launch_block_addr + 32 + 8 x arg_slot (ccv_rau_miu_cta). MIU keeps each CTA slot's sixteen windows in a table, filled a line at a time on first use: a memop whose window is not yet valid is an L1 miss, and completes as one. The table's valid bits clear on the slot's ccv_rau_miu_cta and on a kill; the windows are invariant within a launch (section 5.2, F-RO). F-RO, F-ADDR and F-ALIGN apply to the formed address as to any other. arg_slot is 4 bits, sixteen slots (OffArgs + 8k, k < 16). INTERLEAVED LOCAL FORM (IS-19, adopted by DA 2026-10-23; ISA v1.9 O-69): local_form set, disp is the unsigned byte offset b, and lane l's address is ((local_base + CCV_LANE_CONTEXTS) << 16) + (ctx << 22) + 128 x (b / 4) + 4l + b mod 4. local_base is the launch block's word at byte 24, which MIU's per-CTA table holds from the first line it already fills for the launch-slot form, on the same valid bit; ctx is the warp's hardware context, (CCV_P_CORE_ID << CCV_W_WARP_ID) | warp_id, which MIU forms itself, so no field carries it (OA's proposal IS-19). Word w of every lane's frame is one 128-byte line. A predicate transfer in this form (mem_op 4 or 5) is warp-scoped: its one address is the formula's with l = 0. base_per_lane is don't-care. F-ADDR, F-ALIGN and F-RO apply to the formed address. SIZED (O-80, DA tab rev 90; MIU spec rev 38): xfer_size and xfer_signed pass through from ccv_dec_ooe_uop. A nonzero xfer_size is the transfer, one byte (1) or two (2), and 0 leaves it at chwidth, rdata's width, as before. scale_en scales the index by the transfer size, and alignment (O-58) is the transfer's. A sized load's bytes are zero-extended, or sign-extended under xfer_signed, to chwidth before they leave on ccv_miu_rcu_data, which RCU writes at its dst_width as ever. A sized store moves rdata's low bytes. DONE_ROW (OI-85, OA's rev 282): the ROB entry's row this memop completes, 2 bits (0 the memop or an atomic's A1, 3 its A3), which MIU echoes on the completion.
+The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads. BULK DISCARD (A-41): mem_op 0xF discards every store of warp_id whose ROB index lies in the circular range (branch, tail]: rob_tag names the mispredicted branch and discard_tail, an overlay on disp, the warp's ROB tail, the youngest allocated entry inclusive. Every other field is reserved and zero. It is a command, not a memop: it gets no completion (A-53), the stores it discards still complete individually, and it is never sent in the same cycle as a memop of the same warp. mem_op, space and ordering arrive from DEC on ccv_dec_ooe_uop and pass through OOE unexamined (A-68); 0xF alone is OOE's own. mem_op 4 and 5 are a predicate transfer's uop (TI-36): MIU forms one address from lane 0, a load returns its word as pred_result, and a store completes at execute and drains after commit as a read-merge-write of its word, new = (old & ~m) | (d & m), m the address message's active_mask (MIU spec rev 25). SECTIONED (OI-33): pipes is the memop's footprint over MIU's pipes P0-P3, four at 32 bits, two at 16 and one at 8, at its data position; phys_dst is a row and dst_pos its position, echoed for the slice write-back. LOADS IN THE BULK DISCARD (AR's and OA's responses TI-21): the discard covers the warp's uncommitted loads in its range as well as its stores, each completed with status replay (ccv_miu_ooe_cmpl). A demotion's squash sends one for warp_id, whatever it holds, and drained waits only for the discarded loads' replay completions. A demotion's range is the whole ROB, branch == tail, which no other discard sends, since a mispredict's range is never empty. ATOMICS (OA's response re:TI rev 365, OI-127): a bulk discard exempts mem_op 2 (atomic-read) and 3 (atomic-write). A1 issues only at the ROB head (V-17), so a mispredict's range never covers an issued A1 or its A3, and a killed atomic finishes the pass in flight; MIU never replays them either, a lane whose line is not to be had going to a later pass. A discard of an empty ROB names no instruction and carries id class none; every memop carries instr, which MIU checks. LAUNCH-SLOT FORM (TI-31, AR's response; ISA O-45): slot_form set, the address is (window << 16) + (index << scale) + disp, where the window is the 32-bit word at launch_block_addr + 32 + 8 x arg_slot (ccv_rau_miu_cta). MIU keeps each CTA slot's sixteen windows in a table, filled a line at a time on first use: a memop whose window is not yet valid is an L1 miss, and completes as one. The table's valid bits clear on the slot's ccv_rau_miu_cta and on a kill; the windows are invariant within a launch (section 5.2, F-RO). F-RO, F-ADDR and F-ALIGN apply to the formed address as to any other. arg_slot is 4 bits, sixteen slots (OffArgs + 8k, k < 16). INTERLEAVED LOCAL FORM (IS-19, adopted by DA 2026-10-23; ISA v1.9 O-69): local_form set, disp is the unsigned byte offset b, and lane l's address is ((local_base + CCV_LANE_CONTEXTS) << 16) + (ctx << 22) + 128 x (b / 4) + 4l + b mod 4. local_base is the launch block's word at byte 24, which MIU's per-CTA table holds from the first line it already fills for the launch-slot form, on the same valid bit; ctx is the warp's hardware context, (CCV_P_CORE_ID << CCV_W_WARP_ID) | warp_id, which MIU forms itself, so no field carries it (OA's proposal IS-19). Word w of every lane's frame is one 128-byte line. A predicate transfer in this form (mem_op 4 or 5) is warp-scoped: its one address is the formula's with l = 0. base_per_lane is don't-care. F-ADDR, F-ALIGN and F-RO apply to the formed address. SIZED (O-80, DA tab rev 90; MIU spec rev 38): xfer_size and xfer_signed pass through from ccv_dec_ooe_uop. A nonzero xfer_size is the transfer, one byte (1) or two (2), and 0 leaves it at chwidth, rdata's width, as before. scale_en scales the index by the transfer size, and alignment (O-58) is the transfer's. A sized load's bytes are zero-extended, or sign-extended under xfer_signed, to chwidth before they leave on ccv_miu_rcu_data, which RCU writes at its dst_width as ever. A sized store moves rdata's low bytes. DONE_ROW (OI-85, OA's rev 282): the ROB entry's row this memop completes, 2 bits (0 the memop or an atomic's A1, 3 its A3), which MIU echoes on the completion. Credits (MA-5, AR rev 345; schema credits_param, CCV_MEMOP_CREDITS a slot): each credit is one entry of MIU's shared memop queue, returned on the memop's arrival slot when that entry frees, at its last completion; a bulk discard holds no entry, and its credit returns as MIU takes it. OOE sends a memop on the lowest credited slot of its footprint (OA rev 414).
 
 ooe → miu · rate 4 · memory
 
@@ -918,12 +942,12 @@ miu → spm · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 3 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 5 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
 | `bank_addr` | `CCV_SPM_BANKS*CCV_W_SPM_WORD` | 320 | CCV_SPM_BANKS (arch); CCV_W_SPM_WORD (arch) |
 | `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
 | `spm_op` | `CCV_L_W_SPM_OP` | 2 ⛔ | CCV_L_W_SPM_OP (preliminary, churn low) |
-| **total** | | **1477** | ⛔ 2 preliminary, ⚠️ 3 provisional |
+| **total** | | **1479** | ⛔ 2 preliminary, ⚠️ 5 provisional |
 
 ### `ccv_miu_dcu_req`
 
@@ -933,14 +957,14 @@ miu → dcu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 4 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 6 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `size` | `CCV_W_ACCESS_SIZE` | 3 | CCV_W_ACCESS_SIZE (arch) |
 | `coh_op` | `CCV_L_W_COH_OP` | 4 ⛔ | CCV_L_W_COH_OP (preliminary, churn med) |
 | `exclusive_req` | `1` | 1 | literal |
 | `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
-| **total** | | **1212** | ⛔ 4 preliminary, ⚠️ 52 provisional |
+| **total** | | **1214** | ⛔ 4 preliminary, ⚠️ 54 provisional |
 
 ### `ccv_dcu_mlc_req`
 
@@ -967,18 +991,6 @@ miu → fet · rate 1 · memory
 |---|---|---|---|
 | `itlb_refill` | `CCV_L_W_ITLB_ENTRY` | 64 ⛔ | CCV_L_W_ITLB_ENTRY (preliminary, churn low) |
 | **total** | | **64** | ⛔ 64 preliminary |
-
-### `ccv_fet_miu_itlb_req`
-
-Fetch asking the walker for a translation on an ITLB miss: the virtual PAGE number (CCV_W_VA - CCV_L_PAGE_SHIFT bits), so no meaningless low bits can disagree with the TLB tag (arch open A-4).
-
-fet → miu · rate 1 · memory
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `virtual_page` | `CCV_W_VA-CCV_L_PAGE_SHIFT` | 52 ⛔ | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (preliminary, churn low) |
-| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
-| **total** | | **60** | ⛔ 52 preliminary |
 
 ### `ccv_mlc_exb_req`
 
@@ -1023,23 +1035,6 @@ exb → EXTERNAL · rate 1 · memory
 |---|---|---|---|
 | `tl_out` | `CCV_L_W_TL_OUT` | 1225 ⛔ | CCV_L_W_TL_OUT (preliminary, churn **HIGH**) |
 | **total** | | **1225** | ⛔ 1225 preliminary |
-
-### `ccv_rau_fet_launch`
-
-A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot. tier1_id is the tier-1 slot RAU placed the warp in (A-65): FET fetches it in that slot's binding group on ccv_fet_dec_instr and indexes its checkpoints by it, as OOE does from ccv_rau_ooe_alloc. live_mask (AR's response TI-27 (a)) is the warp's lanes, which FET picks among: lanes [0, n) with n = min(32, T - 32 x warp_in_cta), T the CTA's thread count from the grid descriptor (Q-50). A partial warp is always the low lanes (ISA section 5.3). 32 bits rather than a count, since a restore's mask on ccv_pca_fet_mig is arbitrary and FET loads one register from either.
-
-rau → fet · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
-| `start_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
-| `code_bounds` | `2*(CCV_W_VA-CCV_L_PAGE_SHIFT)` | 104 ⛔ | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (preliminary, churn low) |
-| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
-| `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
-| `live_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
-| **total** | | **218** | ⛔ 104 preliminary, ⚠️ 3 provisional |
 
 ### `ccv_cru_rau_cfg`
 

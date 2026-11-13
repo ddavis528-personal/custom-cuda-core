@@ -27,13 +27,20 @@
 //   WAKE, at the next edge but one. `wake` is registered here first, so
 //   the one path from another block ends at a flop, never at the cell's
 //   enable (Q-49): a wake high in cycle T opens the edge that ends cycle
-//   T + 1. The gate then stays open through T + CCV_WAKE_LAT whatever the
-//   block reports (WAKE_HOLD more edges), so a valid that follows its wake
-//   by the Q-33 minimum is captured: the receiver's half of the wake
-//   contract, wake_keeps_rx, which tools/check-formal.sh proves against
-//   ccv_common_chk_wake. The block ORs into `wake` everything that must reach
-//   it while asleep: every inbound channel's _wake, and any credit, stall
-//   release or request it sleeps waiting for.
+//   T + 1. The gate then stays open through T + CCV_WAKE_LAT + 2 whatever
+//   the block reports (WAKE_HOLD = CCV_WAKE_LAT + 1 more edges; AR rev 343,
+//   re:RI-38). CCV_WAKE_LAT alone is the Q-33 minimum a valid follows its
+//   wake by; one cycle more is that valid's payload, which lands the cycle
+//   after it (a lead valid), and one more is the sleep path's lag: `sleep`
+//   sees `quiesced` two flops late, so a block that captures in cycle C and
+//   drops `quiesced` in C + 1 is still read as quiesced in C + 2. That is the
+//   receiver's half of the wake contract, wake_keeps_rx, which
+//   tools/check-formal.sh proves against ccv_common_chk_wake through
+//   T + CCV_WAKE_LAT + 2, with the lead payload's capture. The block ORs
+//   into `wake` everything that must reach it while asleep: every inbound
+//   channel's _wake, and any credit, stall release or request it sleeps
+//   waiting for. Its `quiesced` must drop from the cycle after it captures
+//   anything: a capture makes it busy the next cycle.
 //
 //   CG_OVERRIDE and RESET force the gate open. Override is the chicken bit,
 //   a CSR (Q-47). Reset is synchronous, so a block in reset must be clocked
@@ -46,7 +53,7 @@
 // port (CCV_CHECK only), which is what the wake checkers read.
 //
 // Timing: every input of the enable is a flop in this block -- the wake
-// register, the full flags, the hold counter, the override CSR, the reset
+// register (the hold counter), the full flags, the override CSR, the reset
 // pipeline; the thresholds reach only the flags' D -- so the
 // enable path is local, as a clock gate's must be: it sets up to the rising
 // edge at the root of the block's clock tree, earlier than the flops see it.
@@ -59,7 +66,7 @@
 
 module ccv_common_clk #(
   parameter int HYST_W    = ccv_prov_pkg::CCV_CG_HYST_W,
-  parameter int WAKE_HOLD = ccv_params_pkg::CCV_WAKE_LAT - 1,
+  parameter int WAKE_HOLD = ccv_params_pkg::CCV_WAKE_LAT + 1,
   parameter int NWAKE     = 1
 ) (
   input  logic              clk,          // core_clk, ungated
@@ -76,14 +83,20 @@ module ccv_common_clk #(
 );
 
   // Registered wake, then WAKE_HOLD more edges: open from T + 1 through
-  // T + 1 + WAKE_HOLD. Short of T + CCV_WAKE_LAT breaks Q-33.
-  if (WAKE_HOLD + 1 < ccv_params_pkg::CCV_WAKE_LAT) begin : g_bad_hold
-    ccv_common_clk_wake_hold_short_of_CCV_WAKE_LAT u_refuse ();
+  // T + 1 + WAKE_HOLD. Short of T + CCV_WAKE_LAT + 2 lets a block sleep
+  // before a lead valid's payload lands (AR rev 343): refused.
+  if (WAKE_HOLD + 1 < ccv_params_pkg::CCV_WAKE_LAT + 2) begin : g_bad_hold
+    ccv_common_clk_wake_hold_short_of_CCV_WAKE_LAT_plus_2 u_refuse ();
   end
 
-  localparam int HW = $clog2(WAKE_HOLD + 1);
+  // The wake register IS the hold counter: a wake loads it with every edge
+  // it opens, the registered one and WAKE_HOLD more, and it counts down to
+  // 0. One counter of $clog2(WAKE_HOLD + 2) bits, where a wake flop and a
+  // counter of WAKE_HOLD would take one flop more.
+  localparam int OPENS = WAKE_HOLD + 1;
+  localparam int HW = $clog2(OPENS + 1);
   localparam int CW = HYST_W;
-  localparam logic [HW-1:0] HOLD = HW'(WAKE_HOLD);
+  localparam logic [HW-1:0] OPEN = HW'(OPENS);
 
   // Every input is flopped before use (CG-5, RST-1; Daniel, 2026-10-18):
   // the reset, the block's two reports and the override CSR, each a cycle
@@ -107,8 +120,8 @@ module ccv_common_clk #(
   `CCV_ASSERT_KNOWN(hyst_s_known,   hyst_stall)
 
   // Consecutive quiesced / stalled cycles, saturating at the threshold, and
-  // whether each has reached it; the registered wake; edges still owed to
-  // it. On the ungated clock: they must see every cycle. Each full flag is
+  // whether each has reached it; the registered wake, as the edges still
+  // owed to it. On the ungated clock: they must see every cycle. Each full flag is
   // computed a cycle ahead, from the count it is loaded beside, so the
   // threshold compare is on no enable path: a count that has reached
   // max(threshold, 1) is one whose next value does. A threshold of 0 needs
@@ -117,23 +130,23 @@ module ccv_common_clk #(
   logic [CW-1:0] q_run_q, s_run_q;
   logic          q_full_q, s_full_q;
   logic [HW-1:0] hold_q;
-  logic          wake_q;
+  wire           woke  = |wake;
   wire           sleep = (q_full_q || s_full_q) && (hold_q == '0);
-  wire           en    = !sleep || wake_q || override_q || !rst_n_q;
+  wire           en    = !sleep || override_q || !rst_n_q;
 
   // The counters and their flags are one clock gate, clocked when either
   // counter moves (local clock gating, docs/rtl-coding-style.md): counting,
   // or clearing when the block reports busy. Full and staying full, or
   // clear and staying clear, both hold and the clock stops. Inside it each
   // counter holds by adding nothing, not through an if, so synthesis keeps
-  // the one enable. wake_q is the one path in from another block (Q-49);
-  // an enable that saw `wake` would put that path on a clock gate, so it
-  // is written every cycle. It and the hold counter, 3 flops, are too few
-  // for a gate and within the module's allowance (rtl-coding-style.md).
+  // the one enable. The hold counter takes the one path in from another
+  // block (Q-49); an enable that saw `wake` would put that path on a clock
+  // gate, so it is written every cycle. It and the four input flops, 7,
+  // are too few for a gate and within the module's allowance of fewer than
+  // 8 (rtl-coding-style.md).
   wire q_mv    = quiesced_q ? !q_full_q : (q_run_q != '0);
   wire s_mv    = stalled_q  ? !s_full_q : (s_run_q != '0);
   wire hyst_en = q_mv || s_mv;
-  wire hold_en = wake_q ? (hold_q != HOLD) : (hold_q != '0);
 
   always_ff @(posedge clk) begin
     if (!rst_n_q) begin
@@ -141,7 +154,6 @@ module ccv_common_clk #(
       s_run_q  <= '0;
       q_full_q <= 1'b0;
       s_full_q <= 1'b0;
-      wake_q   <= 1'b0;
       hold_q   <= '0;
     end else begin
       if (hyst_en) begin
@@ -150,8 +162,7 @@ module ccv_common_clk #(
         q_full_q <= quiesced_q && ((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce));
         s_full_q <= stalled_q  && ((CW+1)'(s_run_q) + 1'b1 >= (CW+1)'(hyst_stall));
       end
-      wake_q <= |wake;
-      if (hold_en) hold_q <= wake_q ? HOLD : hold_q - 1'b1;
+      hold_q <= woke ? OPEN : hold_q - HW'(hold_q != '0);
     end
   end
 
@@ -166,7 +177,7 @@ module ccv_common_clk #(
 
   // The promises, checked wherever this runs; tools/check-formal.sh proves
   // them, with their timing, for all time.
-  `CCV_ASSERT(wake_opens,     !(wake_q && gated))
+  `CCV_ASSERT(wake_opens,     !(hold_q != '0 && gated))
   `CCV_ASSERT(override_opens, !(override_q && gated))
 
 endmodule

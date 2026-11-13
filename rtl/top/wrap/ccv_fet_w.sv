@@ -466,7 +466,7 @@ module ccv_fet_w #(
   end
   // ccv_fet_miu_itlb_req, source end, no-flop (params/links.json no_flop)
   if (RPT_FET_MIU_ITLB_REQ > 0) begin : g_rpt_fet_miu_itlb_req
-    ccv_common_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(60)) u_rpt_fet_miu_itlb_req (
+    ccv_common_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(56)) u_rpt_fet_miu_itlb_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_fet_miu_itlb_req_valid}), .src_payload({b_fet_miu_itlb_req_payload}),
       .src_wake(b_fet_miu_itlb_req_wake), .src_credit({b_fet_miu_itlb_req_credit}), .src_stall({b_fet_miu_itlb_req_stall}),
@@ -488,7 +488,7 @@ module ccv_fet_w #(
   end
   // ccv_rau_fet_launch, destination end, no-flop (params/links.json no_flop)
   if (RPT_RAU_FET_LAUNCH > 0) begin : g_rpt_rau_fet_launch
-    ccv_common_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(218)) u_rpt_rau_fet_launch (
+    ccv_common_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(210)) u_rpt_rau_fet_launch (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rau_fet_launch_valid}), .src_payload({rau_fet_launch_payload}),
       .src_wake(rau_fet_launch_wake), .src_credit({rau_fet_launch_credit}), .src_stall({rau_fet_launch_stall}),
