@@ -325,14 +325,18 @@ job_rcu_rtl() {
   run "RCU RTL benches" ./test/rcu/run-rtl.sh
 }
 
-job_rcu_blk() {
-  section "RCU block -- ccv_rcu in lock-step with the model (TI rev 394)"
-  # RI's assembled RTL block driven from ccv-skel's port dump of the model
-  # (RA-34), every output compared each cycle, with its negative control
-  # caught. A first divergence test/rcublk/expected-fail.txt names is
-  # reported, not failed; any other fails. After the skeleton, whose binary
-  # writes the dumps; its own oracles, in build/rcu-blk.
-  run "RCU block == model" ./tools/check-rcu-block.sh
+job_rcu_ls() {
+  section "RCU block -- ccv_rcu in lock-step with the model (RI's test/rcu/run-lockstep.sh)"
+  # RI's block lock-step (RI-36, RI-37; it replaced TI's rcu_blk): every
+  # oracle kernel on the skeleton with the RCU model, its ports dumped and
+  # replayed into the assembled ccv_rcu under Verilator, assertions on, every
+  # output compared every cycle under its care masks, with RI's controls init
+  # and opnd caught; then TI's control corrupt-output (one compared output
+  # flipped at a cycle the clean replay matched, caught at that cycle and
+  # port). After the skeleton, whose binary writes the dumps, and check-kernel,
+  # whose oracles it runs; its own build in build/rcu-ls.
+  run "RCU block == model" ./test/rcu/run-lockstep.sh
+  run "RCU lock-step control corrupt-output" ./tools/rcu-ls-corrupt.py build/rcu-ls/k/vadd.vcd
 }
 
 job_top() {
@@ -439,16 +443,16 @@ JOBS="${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)}"
 case "$JOBS" in ''|*[!0-9]*|0) echo "verify: CCV_JOBS must be a positive count"; exit 2 ;; esac
 # Print order. Each section's own comment says what it reads from.
 ORDER="s1a s1b s1c s1d iface xprop ctech cg ngd clockgate skel kernel ooe_unit rcu_unit ooe_rtl
-       rcu_rtl rcu_blk top formal phys svh links walkthrough vlint"
+       rcu_rtl rcu_ls top formal phys svh links walkthrough vlint"
 # Start order: the longest chain first, then the longest jobs, then the rest.
-START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys rcu_rtl rcu_blk iface xprop s1c s1b
+START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys rcu_rtl rcu_ls iface xprop s1c s1b
        s1d ooe_unit rcu_unit s1a clockgate walkthrough vlint"
 declare -A after=(
   [kernel]="skel"          # the binary check-skel builds
   [top]="skel"             # its wiring dump
   [svh]="skel kernel"      # both, and the oracles check-kernel makes
   [links]="kernel"         # the oracles, copied into its split tree
-  [rcu_blk]="skel"         # the binary that writes the port dumps
+  [rcu_ls]="skel kernel"   # the binary that writes the port dumps, the oracles it runs
   [walkthrough]="skel kernel svh"
 )
 # The build directory each section alone writes, removed once it passed
@@ -463,7 +467,7 @@ declare -A owns=(
   [ngd]="build/ngd"             # check-ngd's, its structural reads too
   [ooe_rtl]="build/ooe-rtl"
   [rcu_rtl]="build/rcu-rtl"
-  [rcu_blk]="build/rcu-blk"
+  [rcu_ls]="build/rcu-ls"
   [links]="build/links_split"   # the split tree check-links copies
 )
 LOGS=build/verify

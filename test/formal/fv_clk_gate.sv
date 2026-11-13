@@ -26,9 +26,13 @@
 //                              the design's saturating counters
 //   FV_Q33    ccv_common_chk_wake on this gate's own `gated`, the sender's
 //             half ASSUMED and the receiver's asserted: proves
-//             wake_keeps_rx (the gate runs LAT cycles after any wake) and
+//             wake_keeps_rx at RX_HOLD 2 (the gate runs from LAT through
+//             LAT + 2 cycles after any wake; AR rev 343),
 //             q33_valid_meets_clock (so no valid that keeps the contract
-//             arrives in a cycle whose edge the gate withholds).
+//             arrives in a cycle whose edge the gate withholds) and
+//             q33_lead_payload (a valid in the wake window's last cycle,
+//             T + LAT, has its payload land in T + LAT + 1, a lead valid:
+//             that cycle's edge is not withheld either).
 //   FV_EPISODE  the thresholds free, moving as flops would (CSRs, Q-59),
 //             against a model of run LENGTHS: wherever each threshold has
 //             held one value through the current run of quiesced / stalled
@@ -44,7 +48,7 @@
 module fv_clk_gate #(
   parameter int HQ   = 3,
   parameter int HS   = 5,
-  parameter int HOLD = ccv_params_pkg::CCV_WAKE_LAT - 1
+  parameter int HOLD = ccv_params_pkg::CCV_WAKE_LAT + 1
 ) (
   input logic clk,
   input logic rst_n,
@@ -227,7 +231,7 @@ module fv_clk_gate #(
   // flops it, so they leave reset in the same cycle (the reset contract);
   // and held until that flop has been seen low, since it powers up anything.
   ccv_common_chk_wake #(.MODE(`CCV_MODE_ASSUME), .RX_MODE(`CCV_MODE_ASSERT),
-                     .LAT(ccv_params_pkg::CCV_WAKE_LAT)) u_contract (
+                     .LAT(ccv_params_pkg::CCV_WAKE_LAT), .RX_HOLD(2)) u_contract (
     .clk       (clk),
     .rst_n     (rd && reset_seen),
     .rx_gated  (gated),
@@ -236,6 +240,24 @@ module fv_clk_gate #(
   );
   always @(posedge clk) if (started && reset_seen && rd)
     q33_valid_meets_clock: assert (!(valid && gated));
+
+  // A lead valid: its payload lands the cycle after it. A valid in the last
+  // cycle of a wake's window, T + LAT, whatever the block reports, has its
+  // payload captured by the edge that ends T + LAT + 1 (AR rev 343).
+  localparam int LAT = ccv_params_pkg::CCV_WAKE_LAT;
+  logic [LAT:0] wk_h;    // [k]: a wake k + 1 cycles ago
+  logic         v_q;     // a valid last cycle: its payload lands now
+  always @(posedge clk) begin
+    if (!(rd && reset_seen)) begin
+      wk_h <= '0;
+      v_q  <= 1'b0;
+    end else begin
+      wk_h <= (LAT+1)'({wk_h, wake});
+      v_q  <= valid;
+    end
+  end
+  always @(posedge clk) if (started && reset_seen && rd)
+    q33_lead_payload: assert (!(v_q && wk_h[LAT] && gated));
 `endif
 
 `ifdef FV_REACH
