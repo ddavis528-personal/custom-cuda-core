@@ -546,6 +546,7 @@ struct Config {
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
   bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
+  bool inject_no_memop_credit = false;  ///< select grants a memop on a pipe MIU holds no credit for (MA-5)
   /// Sectioned select grants one more lane op a cycle onto sections already
   /// held, unchecked (V-60): the kernels' no-resource-cap control, which RCU
   /// must refuse.
@@ -1345,6 +1346,12 @@ public:
   /// The PRF read ports a migration holds this cycle (RCU's, TI-21): set
   /// before cycle(), as the other inputs are.
   void migrationReads(unsigned n) { mig_reads_ = n; }
+  /// MA-5 (AR 345/347, OA-412): the credits each ccv_ooe_miu_memop slot,
+  /// P0-P3, holds as the cycle starts, set before cycle(). Select grants a
+  /// memop only where a pipe of its footprint has one left after what
+  /// leaves this cycle, and sends it on the lowest such pipe. Never set,
+  /// every pipe has one (the unit tests that model no MIU).
+  void memopCredits(const std::array<unsigned, 4> &c) { mcred_ = c; mcred_set_ = true; }
   void barRelease(uint32_t warp_mask);
   void kill(uint32_t warp_mask, unsigned epoch);
 
@@ -2382,6 +2389,13 @@ private:
   unsigned cancel_depth_ = 0;
   std::vector<Issue> held_issues_;
   std::vector<Memop> held_memops_;
+  std::array<unsigned, 4> mcred_{};    ///< MA-5: MIU's credits per memop slot, as set
+  bool mcred_set_ = false;
+  std::array<unsigned, 4> mleft_{};    ///< MA-5: what this cycle's select may still send per slot
+  unsigned memop_pick_ = ~0u;          ///< MA-5: the slot doIssue sends the granted memop on
+  void memopCreditsLeft();
+  unsigned memopCredited(unsigned pipes) const;
+  void takeMemopCredit(unsigned port);
 };
 
 } // namespace ooe
