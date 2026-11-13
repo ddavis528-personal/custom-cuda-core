@@ -152,8 +152,11 @@ FINDINGS_BASELINE = {(m, k) for m, ks in {
 }.items() for k in ks}
 # Where design RTL lives, and what in it is not design: generated files,
 # the top level (instances and nets only), the ctech views, lint fixtures.
+# rtl/macro/ is the hard macros' behavioural views (AR's register rev 344):
+# library cells, as the ctech views are, with no unit of their own; a unit
+# reads one -lib, under "blackbox" (macro_files()).
 DESIGN_SKIP = ("rtl/include/", "rtl/generated/", "rtl/top/", "rtl/ctech/",
-               "rtl/lint/")
+               "rtl/lint/", "rtl/macro/")
 ICG = "ccv_common_ctech_icg"
 # A repeater's control pulses and its flopped reset, by register name
 # (rtl/phys/ccv_common_rpt.sv): counted against the hardening wrapper's
@@ -899,6 +902,10 @@ class Netlist:
                     self.alias[b].append((name, i))
         self.driver = {}
         self.flops, self.icgs, self.groups = [], [], {}
+        # A hard macro's enables (AR's register rev 344): (cell, pin, net)
+        # for each pin lint.MACROS lists. Its storage is no flop here: the
+        # cell is read -lib, so nothing of it is counted.
+        self.macro_ens = []
         for cname, c in self.cells.items():
             t = c["type"]
             con = c["connections"]
@@ -907,6 +914,10 @@ class Netlist:
                 continue
             if t == ICG:
                 self.icgs.append((cname, con["en"][0]))
+                continue
+            if lint.is_macro(cell_module(t)):
+                for pin in lint.MACROS[cell_module(t)]:
+                    self.macro_ens.append((cname, pin, con[pin][0]))
                 continue
             fm = FLOP_RE.match(t)
             if fm:
@@ -1732,6 +1743,17 @@ def source_findings(u, resets=None):
                         "only from the module's own flops" % (c, ", ".join(sorted(ins))), u.name)
             f.inputs, f.cone = set(ins), getattr(u, "icg_depth", {}).get(c)
             out.append(f)
+    # A hard macro's enables (AR's register rev 344) the same: ce and we
+    # (re and we) start only at the module's own flops. The macro registers
+    # them at its edge, so their depth is an ordinary path to an endpoint,
+    # check-ngd's NGD-8, not an ICG's.
+    for c, pin, en in sorted(nl.macro_ens, key=str):
+        ins = nl.cone_inputs(en)
+        if ins:
+            f = Finding("CG-5", u.module, {c}, "macro %s's %s comes from input %s, not only "
+                        "from the module's own flops" % (c, pin, ", ".join(sorted(ins))), u.name)
+            f.inputs = set(ins)
+            out.append(f)
     if nl.rbit is not None:
         loads = nl.reset_loads(resets)
         if loads:
@@ -2376,8 +2398,15 @@ def partitions(modules):
         wrap = os.path.join("rtl", "top", "wrap", "ccv_%s_w.sv" % b)
         top = "ccv_%s_w" % b if os.path.exists(os.path.join(ROOT, wrap)) else "ccv_%s" % b
         fs = files + ([wrap] if top.endswith("_w") else [])
-        out.append((b, top, fs, ["rtl/ctech/sim/%s.sv" % ICG]))
+        out.append((b, top, fs, ["rtl/ctech/sim/%s.sv" % ICG] + macro_files()))
     return out
+
+
+def macro_files():
+    """The hard macros' behavioural views (rtl/macro/), as a block's or a
+    unit's blackboxes: ports only, so a macro's storage is never flops."""
+    return sorted(os.path.relpath(f, ROOT) for f in
+                  glob.glob(os.path.join(ROOT, "rtl", "macro", "*.sv")))
 
 
 def reg_base(r):
@@ -3760,6 +3789,7 @@ def selftest():
     expect(widths == [3, 5], "the synthesis cache handed back a netlist after an -I header "
            "changed: %s flops, want [3, 5]" % widths)
     heavy_selftest(expect)
+    macro_selftest(expect)
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
@@ -3767,17 +3797,115 @@ def selftest():
               "ratchet, coverage, module and block budgets as a sum of parts, "
               "enable sources and the reset, the reset's balance (RST-2), repeater "
               "instantiations, kept copies, the "
-              "synthesis cache, heavy units one at a time (%d controls)" % checks)
+              "synthesis cache, heavy units one at a time, hard macros (%d controls)" % checks)
     return 1 if bad else 0
+
+
+MACRO_FX = "test/macro/sram_fx.sv"
+MACRO_NUMBERS = {}
+
+
+def macro_unit(name, bench=False, **params):
+    """test/macro/sram_fx.sv at `params`, its macros read -lib (macro_files),
+    with its bench (test/macro/tb_sram_fx.sv) when `bench`."""
+    bb = {os.path.basename(f)[:-3]: f for f in macro_files()}
+    spec = {"name": name, "module": "sram_fx", "files": [MACRO_FX], "params": params,
+            "blackbox": bb, "clock": "clk", "reset": "rst"}
+    if bench:
+        spec["bench"] = {
+            "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style "
+                     "-Irtl/include --top-module tb_sram_fx --Mdir {dir} -o tb "
+                     "rtl/ccv_assert_pkg.sv %s %s test/macro/tb_sram_fx.sv"
+                     % (" ".join(sorted(bb.values())), MACRO_FX),
+            "run": "{dir}/tb +scenario={scenario} +vcd={vcd} +n=1500",
+            "scope": "tb_sram_fx.u_fx"}
+    return Unit(spec, "selftest")
+
+
+def macro_selftest(expect):
+    """Hard macros (AR's register rev 344). sram_fx, a 512 x 128 one-port
+    macro (64 Kibit) and a 64 x 128 two-port one behind flopped enables,
+    measured with its bench: its flops are its own registers alone, every
+    macro enable is found, and the module passes (its six control flops
+    within its allowance). Controls: each macro enable from an input (ce,
+    re, we) is CG-5's; the same arrays inferred as flops, at a small size,
+    count every bit of storage, as the macro's do not; and a reset gating
+    ce makes the macro's pin an RST-2 endpoint, as no pin is otherwise."""
+    ok = macro_unit("fx_sram", bench=True)
+    ok.measure()
+    if ok.errors or ok.nl is None:
+        expect(False, "sram_fx not measured: %s" % (ok.errors or ["no netlist"])[0][:500])
+        return
+    own = source_findings(ok) + unit_findings(ok) + scenario_findings(ok)
+    mods = {"sram_fx": (MACRO_FX, lint.strip_comments(open(os.path.join(ROOT, MACRO_FX)).read()),
+                        1)}
+    own += form_check(mods, [ok]) + coverage_check(mods, [ok])
+    fails, _ = policy(own, mods, [ok], [], {})
+    expect(not fails, "the compliant macro fixture fails: %s" % fails)
+    ens = sorted((c, p) for c, p, _ in ok.nl.macro_ens)
+    expect(ens == [("g_macro.u_sram", "ce"), ("g_macro.u_sram", "we"),
+                   ("g_macro.u_sram2", "re"), ("g_macro.u_sram2", "we")],
+           "sram_fx's macro enables were not all found: %s" % ens)
+    nflops = len(ok.nl.flops)
+    expect(nflops < 100, "sram_fx counts %d flops: a macro's storage is counted" % nflops)
+    pins = [e for es in ok.rst_own.values() for e in es if "g_macro" in e]
+    expect(not any(f.rule == "RST-2" for f in own) and not pins,
+           "a macro with no reset is an RST-2 endpoint: %s" % pins)
+    gates = [g for g in ok.nl.groups.values() if g.gated]
+    MACRO_NUMBERS.update(flops=nflops, gated=sum(len(g.q) for g in gates), gates=len(gates),
+                         dcge={sc: min([dcge(ok, k, sc) for k, g in ok.nl.groups.items()
+                                        if g.gated and dcge(ok, k, sc) is not None] or [None])
+                               for sc in SCENARIOS if sc in ok.data})
+    for bit, cell, pin in ((1, "g_macro.u_sram", "ce"), (2, "g_macro.u_sram2", "re"),
+                           (4, "g_macro.u_sram", "we")):
+        x = macro_unit("fx_sram_en%d" % bit, EN_IN=bit)
+        x.synth()
+        f = [f for f in source_findings(x) if f.rule == "CG-5"]
+        expect(len(f) == 1 and cell in f[0].regs and "'s %s comes from input in_v" % pin
+               in f[0].msg, "a macro's %s from an input passed CG-5: %s"
+               % (pin, [str(y) for y in f]))
+        MACRO_NUMBERS.setdefault("cg5", []).append(str(f[0]) if f else "none")
+    small = dict(W=64, D=16, W2=16, D2=8)
+    counts = {}
+    for macro in (1, 0):
+        x = macro_unit("fx_sram_small%d" % macro, MACRO=macro, **small)
+        x.synth()
+        counts[macro] = len(x.nl.flops)
+    expect(counts[0] - counts[1] >= 64 * 16 + 16 * 8,
+           "the same arrays inferred as flops count %d flops, the macros %d: storage was not "
+           "counted, so the macros' absence proves nothing" % (counts[0], counts[1]))
+    MACRO_NUMBERS["small"] = counts
+    x = macro_unit("fx_sram_rst", RST_CE=1)
+    x.synth()
+    source_findings(x)
+    pins = [e for es in x.rst_own.values() for e in es if "g_macro" in e]
+    expect(pins == ["pin ce of g_macro.u_sram"], "a reset gating a macro's ce was not seen "
+           "at its pin: %s" % pins)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--selftest-macro", action="store_true",
+                    help="the hard macros' controls alone, with their numbers")
     ap.add_argument("--unit")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    if a.selftest_macro:
+        bad = []
+        macro_selftest(lambda c, what: c or bad.append(what))
+        for x in bad:
+            sys.stderr.write("check-cg selftest: %s\n" % x)
+        n = MACRO_NUMBERS
+        if "flops" in n:
+            print("  sram_fx: %d flops, %d in %d clock gates, lowest DCGE %s; as flops (small) "
+                  "%d against %d with the macros" % (
+                      n["flops"], n["gated"], n["gates"], n["dcge"],
+                      n.get("small", {}).get(0, -1), n.get("small", {}).get(1, -1)))
+            for x in n.get("cg5", []):
+                print("  control: " + x)
+        return 1 if bad else 0
     return main_check(a.unit, verbose=bool(a.unit))
 
 

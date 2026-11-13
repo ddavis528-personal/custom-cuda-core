@@ -413,7 +413,8 @@ job_vlint() {
                 rtl/if/ccv_common_chk_credit.sv:CCV_TRACE rtl/if/ccv_common_chk_atomic.sv: \
                 rtl/if/ccv_common_chk_lockstep.sv: rtl/if/ccv_common_chk_lockstep.sv:CCV_TRACE \
                 rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_outstanding.sv: rtl/if/ccv_common_chk_notice.sv: \
-                rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv:; do
+                rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv: \
+                rtl/macro/ccv_common_sram_1rw.sv: rtl/macro/ccv_common_sram_1r1w.sv:; do
       f=${spec%%:*}; def=${spec#*:}
       top=$(basename "$f" .sv)
       [ "$top" = "ccv_assert_smoke" ] && top=dut
