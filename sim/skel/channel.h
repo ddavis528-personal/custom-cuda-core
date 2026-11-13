@@ -269,6 +269,9 @@ private:
 enum class CreditAt {
   Pop,       ///< the cycle after the pop that consumes it (the default)
   Landing,   ///< the cycle its payload lands: credit = the flop of valid
+  Release,   ///< when the block calls release(): the resource the message
+             ///< holds frees (a memop's queue entry, MA-5, AR rev 345), one
+             ///< credit a cycle, the cycle after release() when the wire is free
 };
 
 class Receiver {
@@ -323,6 +326,11 @@ public:
     // its payload lands (t+1), whether or not the block pops then.
     if (land_credit_ && landing_)
       s_.dst().nxt.credit = true;
+    // CreditAt::Release: one owed credit a cycle, the wire being one bit.
+    if (rel_credit_ && owed_) {
+      s_.dst().nxt.credit = true;
+      --owed_;
+    }
     if (s_.has_lead && s_.dst().cur.valid)
       leads_.push_back(s_.dst().cur.payload);
   }
@@ -348,7 +356,7 @@ public:
   /// Under CreditAt::Landing, likewise: the credit went back the cycle the
   /// message landed (cycle() drove it), so pop drives none.
   void pop() {
-    const bool drives = !s_.cor && !land_credit_;
+    const bool drives = !s_.cor && !land_credit_ && !rel_credit_;
     if (drives && s_.dst().nxt.credit)
       ++leaks_;
     max_age_ = std::max(max_age_, now_ - buf_.front().arrived);
@@ -361,8 +369,28 @@ public:
   /// cycle -- and never change it: a message presented under one mode and
   /// popped under the other would lose its credit or return two. Landing on a credit-on-receipt slot changes nothing but
   /// pop (which drives none there anyway): the boundary stage returns it.
-  void creditAt(CreditAt c) { land_credit_ = c == CreditAt::Landing && !s_.cor; }
-  CreditAt creditAt() const { return land_credit_ ? CreditAt::Landing : CreditAt::Pop; }
+  void creditAt(CreditAt c) {
+    land_credit_ = c == CreditAt::Landing && !s_.cor;
+    rel_credit_ = c == CreditAt::Release && !s_.cor;
+  }
+  CreditAt creditAt() const {
+    return land_credit_ ? CreditAt::Landing : rel_credit_ ? CreditAt::Release : CreditAt::Pop;
+  }
+  /// CreditAt::Release: the resource one popped message held is free, so
+  /// its credit goes up next cycle, or the first cycle after with the
+  /// wire free, released credits in order.
+  /// More releases than pops is the block's error: counted, required 0.
+  void release() {
+    if (!rel_credit_) return;   // credits on pop or landing: nothing owed
+    if (released_ == received_) { ++over_released_; return; }
+    ++released_;
+    if (s_.dst().nxt.credit) ++owed_;   // the wire's one bit is taken
+    else s_.dst().nxt.credit = true;    // up next cycle, as pop() drives
+  }
+  /// Credits a CreditAt::Release block owes still: popped and not released,
+  /// plus released and not yet driven. A block's end-of-run quiesce.
+  uint64_t unreleased() const { return received_ - released_ + owed_; }
+  uint64_t overReleased() const { return over_released_; }
   void stall(bool on) { s_.dst().nxt.stall = on; }
 
   /// Negative-control hook: a credit for nothing. On a credit-on-receipt
@@ -394,6 +422,8 @@ private:
   std::deque<Bits> leads_;   ///< lead slices taken in valid cycles, in order
   bool landing_ = false;
   bool land_credit_ = false; ///< CreditAt::Landing
+  bool rel_credit_ = false;  ///< CreditAt::Release
+  uint64_t owed_ = 0, released_ = 0, over_released_ = 0;
   uint64_t received_ = 0, overflows_ = 0, leaks_ = 0, cor_late_ = 0;
   unsigned hold_ = 0;        ///< holdNext armed: 1 a cycle late, 2 dropped
   bool release_ = false;     ///< hand held_ to the block this cycle

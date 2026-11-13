@@ -64,7 +64,7 @@ so this is a build artifact rather than something to remember.
 | `sim/rcu/rcu_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/rcu/rcu_core.h` | — | `CCV_LAT_RCU`, `CCV_LAT_RCU_KILL_DRAIN` |
 | `sim/rcu/rcu_test.cpp` | — | `CCV_LAT_LANE_BYP`, `CCV_LAT_RCU_KILL_DRAIN` |
-| `sim/skel/kernel.cpp` | — | `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_MAX_CTA` |
+| `sim/skel/kernel.cpp` | — | `CCV_DCU_SETS`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_MAX_CTA` |
 | `sim/skel/ooe.cpp` | — | `CCV_DONE_SLOT_RCU` |
 | `sim/skel/portdump.cpp` | — | `CCV_P_PHYS_REGS` |
 | `sim/skel/stub.h` | — | — |
@@ -84,7 +84,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **15 of 55 channels** carry at least one
+appear above. **13 of 55 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
@@ -95,14 +95,12 @@ preliminary field:
 | `ccv_exb_ext_out` | `tl_out` |
 | `ccv_exb_mlc_rsp` | `probe_type` |
 | `ccv_ext_exb_in` | `tl_in` |
-| `ccv_fet_miu_itlb_req` | `virtual_page` |
 | `ccv_miu_dcu_req` | `coh_op` |
 | `ccv_miu_fet_itlb` | `itlb_refill` |
 | `ccv_miu_spm_req` | `spm_op` |
 | `ccv_mlc_exb_req` | `coh_op`, `ownership_class` |
 | `ccv_ooe_miu_memop` | `mem_op` |
 | `ccv_ooe_rcu_issue` | `bypass_group`, `opcode`, `lead_opcode` |
-| `ccv_rau_fet_launch` | `code_bounds` |
 | `ccv_rcu_lane_ops` | `sec_opcode`, `operand`, `sec_opnd_pos`, `sec_opnd_width`, `operand_byp` |
 
 ## High-churn parameters
@@ -129,7 +127,6 @@ to code that merely carries it, which will not.
 | `CCV_P_LAT_CLASSES` | 8 | med | LANE per-block session (register OA-4) |
 | `CCV_P_W_BYP_GROUP` | 3 | med | LANE per-block session (register OA-4) |
 | `CCV_P_W_SCHED_ATTR` | 21 | med | DEC per-block session, with the LANE and RCU op-class list (A-62, A-66) |
-| `CCV_L_PAGE_SHIFT` | 12 | low | MMU session |
 | `CCV_L_W_CLASS` | 3 | low | DEC block session -- is class derivable from opcode? |
 | `CCV_L_W_ITLB_ENTRY` | 64 | low | MMU session, with the page-table format |
 | `CCV_L_W_SPM_OP` | 2 | low | SPM block session |

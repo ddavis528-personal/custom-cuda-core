@@ -338,6 +338,10 @@ package ccv_params_pkg;
   // settled by the ISA -- not a knob (Payload widths pass (2026-09-25); IS-16, ISA v1.9 O-59 (2026-10-20))
   localparam int CCV_L_W_BAR_COUNT = 5;
 
+  // Page shift: 64 KiB pages (MA-2, AR rev 344, IS rev 192, MA-15; was 12, 4 KiB, preliminary), so one way of the 8-way L1, at 64 KiB or 512 KiB, fits in a page and a set index is known from the virtual address (MA-1). It sets the walker request's virtual_page and FET's code_bounds at page granularity; nothing in the ISA fixes 4 KiB (IS rev 192).
+  // decided at the block-level grill-me (Payload widths pass (2026-09-25))
+  localparam int CCV_L_PAGE_SHIFT = 16;
+
 endpackage
 
 // PLACEHOLDERS awaiting a per-block session. A module that
@@ -355,6 +359,14 @@ package ccv_prov_pkg;
   // D-cache lookups per cycle. It sets the rate of ccv_miu_dcu_req, ccv_dcu_miu_rsp and ccv_dcu_miu_fill_ntc (a notice promises its refill on the same response slot), each tied by rate_param, so tools/gen-interfaces.py refuses a rate that drifts from it.
   // PROVISIONAL -- decided by: Stage 4b sweep
   localparam int CCV_DCACHE_LOOKUPS = 4;
+
+  // L1 data cache sets, a power of two (MA-15, AR rev 344): with CCV_DCU_WAYS 8 and 128-byte lines, the 64 KiB baseline of Phase 1; 512 KiB reopens with AR's sweep. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_SETS still overrides it for a sweep.
+  // PROVISIONAL -- decided by: AR's L1 capacity sweep (MA-3 (a))
+  localparam int CCV_DCU_SETS = 64;
+
+  // L1 data cache ways, least recently used replaced (MA-15, AR rev 344). The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_WAYS still overrides it (1 to 16) for a sweep or a kernel that needs evictions.
+  // PROVISIONAL -- decided by: AR's L1 capacity sweep (MA-3 (a)); 8 ways since TI rev 234's sweep (AR rev 320)
+  localparam int CCV_DCU_WAYS = 8;
 
   // Cycles before the CSR-programmable demotion fallback fires. MLC miss is the primary trigger; this is the backstop.
   // PROVISIONAL -- decided by: Stage 4b sweep
@@ -383,6 +395,10 @@ package ccv_prov_pkg;
   // Threshold of the barrier-wait demotion trigger: how long a barrier wait may hold the ROB head before the warp demotes. A CSR (Q18). Starts at the fallback's value. Replaces the OOE model's demote_barrier knob.
   // PROVISIONAL -- decided by: RAU per-block session (register OA-8)
   localparam int CCV_DEMOTION_THRESHOLD_BARRIER = 50;
+
+  // Credits a slot of ccv_ooe_miu_memop holds (schema credits_param), in place of CCV_CREDIT_DEPTH: MIU's 40-entry shared memop queue over the channel's 4 slots: each credit is one entry of the shared queue, returned on the memop's arrival slot when it frees and OOE throttles its memop issue instead of MIU refusing an address (MA-5). MIU returns an entry-holding memop's credit on its arrival slot when the entry frees, a bulk discard's as it takes it. At least the credit loop, so the slot still runs at full rate; a repeated link adds its 2(N + bnd_rx) to it, as to CCV_CREDIT_DEPTH.  Requires: CCV_MEMOP_CREDITS >= CCV_CREDIT_DEPTH.
+  // PROVISIONAL -- decided by: MA (MIU memop queue sizing), ruled by AR
+  localparam int CCV_MEMOP_CREDITS = 10;
 
   // Width of the block clock gate's hysteresis thresholds, which are CSR fields (Q-47): up to 63 cycles. The thresholds are ccv_common_clk inputs; CCV_CG_HYST_QUIESCE and CCV_CG_HYST_STALL are their reset values.
   // PROVISIONAL -- decided by: the CSR map (Q-47)
@@ -660,7 +676,7 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: MLC and EXB per-block sessions
   localparam int CCV_P_TIMEOUT_MEM = 2048;
 
-  // Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.  Derived: = CCV_CREDIT_DEPTH * CCV_P_TIMEOUT_MEM.
+  // Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure), and for a channel whose credits stand for a resource its receiver holds through a memory access (schema: credits_param; ccv_ooe_miu_memop, MA-5). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.  Derived: = CCV_CREDIT_DEPTH * CCV_P_TIMEOUT_MEM.
   // PROVISIONAL -- decided by: with CCV_P_TIMEOUT_MEM
   localparam int CCV_P_TIMEOUT_BP = 8192;
 
@@ -676,13 +692,13 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: generated
   localparam int CCV_P_PRED_ZERO = 63;
 
-  // req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Eight outstanding scratchpad accesses: four slots, two deep.
+  // req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Thirty-two outstanding scratchpad accesses, against about 28 in flight at full rate (MA-6, AR rev 344, MA-15; was 3 bits, eight).
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
-  localparam int CCV_P_W_REQ_MIU_SPM = 3;
+  localparam int CCV_P_W_REQ_MIU_SPM = 5;
 
-  // req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen outstanding cache accesses: four slots, four deep, since hits and misses return at different times.
+  // req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixty-four outstanding cache accesses: hits alone hold about 24 at full rate (six cycles x four slots), and misses more, since hits and misses return at different times (MA-6, AR rev 344, MA-15; was 4 bits, sixteen, which capped lookups near 2.7 a cycle).
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
-  localparam int CCV_P_W_REQ_MIU_DCU = 4;
+  localparam int CCV_P_W_REQ_MIU_DCU = 6;
 
   // req_id on DCU -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen fills in flight, i.e. sixteen MSHRs.
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
@@ -783,10 +799,6 @@ package ccv_prelim_pkg;
   // Operands shipped to a lane per beat. Whether a lane receives one instruction's operands or several, and whether the destination is read back for accumulate, both change this.
   // PRELIMINARY -- churn: HIGH  (the FIELD may change shape, not just this number)
   localparam int CCV_L_OPERANDS_PER_LANE = 3;
-
-  // Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms.
-  // PRELIMINARY -- churn: LOW
-  localparam int CCV_L_PAGE_SHIFT = 12;
 
   // TL-C outbound, A + C + E plus a valid bit per TL channel, at 512-bit beat, 48-bit address, 6-bit source, 4-bit sink: A 641 (opcode 3, param 3, size 4, source 6, address 48, mask 64, data 512, corrupt 1), C 577 (A without mask), E 4 (sink), valids 3.
   // PRELIMINARY -- churn: HIGH  (the FIELD may change shape, not just this number)

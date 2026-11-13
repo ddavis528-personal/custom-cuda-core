@@ -258,28 +258,28 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_ooe_fet_ckpt_free", "free_mask", p.c13_f0, b, 0, 16);
   }
   {
-    const Bits b = randomBits(1477, seed ^ 110866u);
+    const Bits b = randomBits(1479, seed ^ 110866u);
     put(p.c14, b);
     p.eval();
-    bad += check("ccv_miu_spm_req", "req_id", p.c14_f0, b, 1474, 3);
+    bad += check("ccv_miu_spm_req", "req_id", p.c14_f0, b, 1474, 5);
     bad += check("ccv_miu_spm_req", "bank_addr", p.c14_f1, b, 1154, 320);
     bad += check("ccv_miu_spm_req", "write_data", p.c14_f2, b, 130, 1024);
     bad += check("ccv_miu_spm_req", "byte_mask", p.c14_f3, b, 2, 128);
     bad += check("ccv_miu_spm_req", "spm_op", p.c14_f4, b, 0, 2);
   }
   {
-    const Bits b = randomBits(1033, seed ^ 118785u);
+    const Bits b = randomBits(1035, seed ^ 118785u);
     put(p.c15, b);
     p.eval();
-    bad += check("ccv_spm_miu_rsp", "req_id", p.c15_f0, b, 1030, 3);
+    bad += check("ccv_spm_miu_rsp", "req_id", p.c15_f0, b, 1030, 5);
     bad += check("ccv_spm_miu_rsp", "read_data", p.c15_f1, b, 6, 1024);
     bad += check("ccv_spm_miu_rsp", "conflict_serialization", p.c15_f2, b, 0, 6);
   }
   {
-    const Bits b = randomBits(1212, seed ^ 126704u);
+    const Bits b = randomBits(1214, seed ^ 126704u);
     put(p.c16, b);
     p.eval();
-    bad += check("ccv_miu_dcu_req", "req_id", p.c16_f0, b, 1208, 4);
+    bad += check("ccv_miu_dcu_req", "req_id", p.c16_f0, b, 1208, 6);
     bad += check("ccv_miu_dcu_req", "phys_addr", p.c16_f1, b, 1160, 48);
     bad += check("ccv_miu_dcu_req", "size", p.c16_f2, b, 1157, 3);
     bad += check("ccv_miu_dcu_req", "coh_op", p.c16_f3, b, 1153, 4);
@@ -288,10 +288,10 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_miu_dcu_req", "byte_mask", p.c16_f6, b, 0, 128);
   }
   {
-    const Bits b = randomBits(1031, seed ^ 134623u);
+    const Bits b = randomBits(1033, seed ^ 134623u);
     put(p.c17, b);
     p.eval();
-    bad += check("ccv_dcu_miu_rsp", "req_id", p.c17_f0, b, 1027, 4);
+    bad += check("ccv_dcu_miu_rsp", "req_id", p.c17_f0, b, 1027, 6);
     bad += check("ccv_dcu_miu_rsp", "read_data", p.c17_f1, b, 3, 1024);
     bad += check("ccv_dcu_miu_rsp", "hit", p.c17_f2, b, 2, 1);
     bad += check("ccv_dcu_miu_rsp", "ownership_granted", p.c17_f3, b, 1, 1);
@@ -353,10 +353,10 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_miu_fet_itlb", "itlb_refill", p.c24_f0, b, 0, 64);
   }
   {
-    const Bits b = randomBits(60, seed ^ 197975u);
+    const Bits b = randomBits(56, seed ^ 197975u);
     put(p.c25, b);
     p.eval();
-    bad += check("ccv_fet_miu_itlb_req", "virtual_page", p.c25_f0, b, 8, 52);
+    bad += check("ccv_fet_miu_itlb_req", "virtual_page", p.c25_f0, b, 8, 48);
     bad += check("ccv_fet_miu_itlb_req", "asid", p.c25_f1, b, 0, 8);
   }
   {
@@ -389,13 +389,13 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_exb_ext_out", "tl_out", p.c28_f0, b, 0, 1225);
   }
   {
-    const Bits b = randomBits(218, seed ^ 229651u);
+    const Bits b = randomBits(210, seed ^ 229651u);
     put(p.c29, b);
     p.eval();
-    bad += check("ccv_rau_fet_launch", "warp_id", p.c29_f0, b, 213, 5);
-    bad += check("ccv_rau_fet_launch", "tier1_id", p.c29_f1, b, 211, 2);
-    bad += check("ccv_rau_fet_launch", "start_pc", p.c29_f2, b, 147, 64);
-    bad += check("ccv_rau_fet_launch", "code_bounds", p.c29_f3, b, 43, 104);
+    bad += check("ccv_rau_fet_launch", "warp_id", p.c29_f0, b, 205, 5);
+    bad += check("ccv_rau_fet_launch", "tier1_id", p.c29_f1, b, 203, 2);
+    bad += check("ccv_rau_fet_launch", "start_pc", p.c29_f2, b, 139, 64);
+    bad += check("ccv_rau_fet_launch", "code_bounds", p.c29_f3, b, 43, 96);
     bad += check("ccv_rau_fet_launch", "asid", p.c29_f4, b, 35, 8);
     bad += check("ccv_rau_fet_launch", "cta_slot", p.c29_f5, b, 32, 3);
     bad += check("ccv_rau_fet_launch", "live_mask", p.c29_f6, b, 0, 32);
@@ -608,17 +608,18 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_ext_exb_in", "tl_in", p.c52_f0, b, 0, 1176);
   }
   {
-    const Bits b = randomBits(4, seed ^ 419707u);
+    const Bits b = randomBits(6, seed ^ 419707u);
     put(p.c53, b);
     p.eval();
-    bad += check("ccv_dcu_miu_fill_ntc", "req_id", p.c53_f0, b, 0, 4);
+    bad += check("ccv_dcu_miu_fill_ntc", "req_id", p.c53_f0, b, 0, 6);
   }
   {
-    const Bits b = randomBits(13, seed ^ 427626u);
+    const Bits b = randomBits(14, seed ^ 427626u);
     put(p.c54, b);
     p.eval();
-    bad += check("ccv_miu_ooe_cmpl_hint", "rs_idx", p.c54_f0, b, 7, 6);
-    bad += check("ccv_miu_ooe_cmpl_hint", "rob_tag", p.c54_f1, b, 0, 7);
+    bad += check("ccv_miu_ooe_cmpl_hint", "rs_idx", p.c54_f0, b, 8, 6);
+    bad += check("ccv_miu_ooe_cmpl_hint", "rob_tag", p.c54_f1, b, 1, 7);
+    bad += check("ccv_miu_ooe_cmpl_hint", "no_hit", p.c54_f2, b, 0, 1);
   }
   return bad;
 }

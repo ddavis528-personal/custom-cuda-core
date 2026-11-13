@@ -18,7 +18,7 @@ module ccv_common_chk_bank (
   input logic [178:0]          valid,
   input logic [178:0]          credit,
   input logic [178:0]          stall,
-  input logic [71074:0]          payload,
+  input logic [71106:0]          payload,
   // Test override: switches EVERY multi-slot channel's atomic
   // check on. It can only add checks -- a channel the schema
   // marks atomic is checked whatever this says.
@@ -805,28 +805,28 @@ module ccv_common_chk_bank (
   ccv_common_chk_atomic #(.N(4)) u_miu_rcu_data_atomic (
     .clk(clk), .rst_n(rst_n), .enable(1'b0 | force_atomic),
     .valid(valid[105:102]), .credit(credit[105:102]));
-  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9)) u_ooe_miu_memop_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[106]), .ch_credit(credit[106]), .ch_stall(stall[106]),
     .ch_payload(payload[36468:36343])
 `ifdef CCV_TRACE
     , .ch_tid(tid[6847:6784])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9)) u_ooe_miu_memop_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[107]), .ch_credit(credit[107]), .ch_stall(stall[107]),
     .ch_payload(payload[36594:36469])
 `ifdef CCV_TRACE
     , .ch_tid(tid[6911:6848])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9)) u_ooe_miu_memop_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[108]), .ch_credit(credit[108]), .ch_stall(stall[108]),
     .ch_payload(payload[36720:36595])
 `ifdef CCV_TRACE
     , .ch_tid(tid[6975:6912])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9)) u_ooe_miu_memop_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[109]), .ch_credit(credit[109]), .ch_stall(stall[109]),
     .ch_payload(payload[36846:36721])
 `ifdef CCV_TRACE
@@ -912,30 +912,30 @@ module ccv_common_chk_bank (
     , .ch_tid(tid[7679:7616])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1477), .CHANNEL(14)) u_miu_spm_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1479), .CHANNEL(14)) u_miu_spm_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[120]), .ch_credit(credit[120]), .ch_stall(stall[120]),
-    .ch_payload(payload[38965:37489])
+    .ch_payload(payload[38967:37489])
 `ifdef CCV_TRACE
     , .ch_tid(tid[7743:7680])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1477), .CHANNEL(14)) u_miu_spm_req_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1479), .CHANNEL(14)) u_miu_spm_req_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[121]), .ch_credit(credit[121]), .ch_stall(stall[121]),
-    .ch_payload(payload[40442:38966])
+    .ch_payload(payload[40446:38968])
 `ifdef CCV_TRACE
     , .ch_tid(tid[7807:7744])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1477), .CHANNEL(14)) u_miu_spm_req_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1479), .CHANNEL(14)) u_miu_spm_req_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[122]), .ch_credit(credit[122]), .ch_stall(stall[122]),
-    .ch_payload(payload[41919:40443])
+    .ch_payload(payload[41925:40447])
 `ifdef CCV_TRACE
     , .ch_tid(tid[7871:7808])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1477), .CHANNEL(14)) u_miu_spm_req_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1479), .CHANNEL(14)) u_miu_spm_req_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[123]), .ch_credit(credit[123]), .ch_stall(stall[123]),
-    .ch_payload(payload[43396:41920])
+    .ch_payload(payload[43404:41926])
 `ifdef CCV_TRACE
     , .ch_tid(tid[7935:7872])
 `endif
@@ -943,30 +943,30 @@ module ccv_common_chk_bank (
   ccv_common_chk_atomic #(.N(4)) u_miu_spm_req_atomic (
     .clk(clk), .rst_n(rst_n), .enable(1'b0 | force_atomic),
     .valid(valid[123:120]), .credit(credit[123:120]));
-  ccv_common_chk_credit #(.PAYLOAD_W(1033), .CHANNEL(15)) u_spm_miu_rsp_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1035), .CHANNEL(15)) u_spm_miu_rsp_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[124]), .ch_credit(credit[124]), .ch_stall(stall[124]),
-    .ch_payload(payload[44429:43397])
+    .ch_payload(payload[44439:43405])
 `ifdef CCV_TRACE
     , .ch_tid(tid[7999:7936])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1033), .CHANNEL(15)) u_spm_miu_rsp_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1035), .CHANNEL(15)) u_spm_miu_rsp_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[125]), .ch_credit(credit[125]), .ch_stall(stall[125]),
-    .ch_payload(payload[45462:44430])
+    .ch_payload(payload[45474:44440])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8063:8000])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1033), .CHANNEL(15)) u_spm_miu_rsp_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1035), .CHANNEL(15)) u_spm_miu_rsp_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[126]), .ch_credit(credit[126]), .ch_stall(stall[126]),
-    .ch_payload(payload[46495:45463])
+    .ch_payload(payload[46509:45475])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8127:8064])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1033), .CHANNEL(15)) u_spm_miu_rsp_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1035), .CHANNEL(15)) u_spm_miu_rsp_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[127]), .ch_credit(credit[127]), .ch_stall(stall[127]),
-    .ch_payload(payload[47528:46496])
+    .ch_payload(payload[47544:46510])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8191:8128])
 `endif
@@ -974,30 +974,30 @@ module ccv_common_chk_bank (
   ccv_common_chk_atomic #(.N(4)) u_spm_miu_rsp_atomic (
     .clk(clk), .rst_n(rst_n), .enable(1'b0 | force_atomic),
     .valid(valid[127:124]), .credit(credit[127:124]));
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1214), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[48740:47529])
+    .ch_payload(payload[48758:47545])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1214), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[129]), .ch_credit(credit[129]), .ch_stall(stall[129]),
-    .ch_payload(payload[49952:48741])
+    .ch_payload(payload[49972:48759])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8319:8256])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1214), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[130]), .ch_credit(credit[130]), .ch_stall(stall[130]),
-    .ch_payload(payload[51164:49953])
+    .ch_payload(payload[51186:49973])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8383:8320])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1214), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[131]), .ch_credit(credit[131]), .ch_stall(stall[131]),
-    .ch_payload(payload[52376:51165])
+    .ch_payload(payload[52400:51187])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8447:8384])
 `endif
@@ -1005,30 +1005,30 @@ module ccv_common_chk_bank (
   ccv_common_chk_atomic #(.N(4)) u_miu_dcu_req_atomic (
     .clk(clk), .rst_n(rst_n), .enable(1'b0 | force_atomic),
     .valid(valid[131:128]), .credit(credit[131:128]));
-  ccv_common_chk_credit #(.PAYLOAD_W(1031), .CHANNEL(17)) u_dcu_miu_rsp_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1033), .CHANNEL(17)) u_dcu_miu_rsp_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[132]), .ch_credit(credit[132]), .ch_stall(stall[132]),
-    .ch_payload(payload[53407:52377])
+    .ch_payload(payload[53433:52401])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8511:8448])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1031), .CHANNEL(17)) u_dcu_miu_rsp_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1033), .CHANNEL(17)) u_dcu_miu_rsp_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[133]), .ch_credit(credit[133]), .ch_stall(stall[133]),
-    .ch_payload(payload[54438:53408])
+    .ch_payload(payload[54466:53434])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8575:8512])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1031), .CHANNEL(17)) u_dcu_miu_rsp_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1033), .CHANNEL(17)) u_dcu_miu_rsp_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[134]), .ch_credit(credit[134]), .ch_stall(stall[134]),
-    .ch_payload(payload[55469:54439])
+    .ch_payload(payload[55499:54467])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8639:8576])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(1031), .CHANNEL(17)) u_dcu_miu_rsp_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1033), .CHANNEL(17)) u_dcu_miu_rsp_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[135]), .ch_credit(credit[135]), .ch_stall(stall[135]),
-    .ch_payload(payload[56500:55470])
+    .ch_payload(payload[56532:55500])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8703:8640])
 `endif
@@ -1038,273 +1038,273 @@ module ccv_common_chk_bank (
     .valid(valid[135:132]), .credit(credit[135:132]));
   ccv_common_chk_credit #(.PAYLOAD_W(1082), .CHANNEL(18)) u_dcu_mlc_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[136]), .ch_credit(credit[136]), .ch_stall(stall[136]),
-    .ch_payload(payload[57582:56501])
+    .ch_payload(payload[57614:56533])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8767:8704])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1030), .CHANNEL(19)) u_mlc_dcu_rsp_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[137]), .ch_credit(credit[137]), .ch_stall(stall[137]),
-    .ch_payload(payload[58612:57583])
+    .ch_payload(payload[58644:57615])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8831:8768])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(51), .CHANNEL(20)) u_mlc_dcu_probe_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[138]), .ch_credit(credit[138]), .ch_stall(stall[138]),
-    .ch_payload(payload[58663:58613])
+    .ch_payload(payload[58695:58645])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8895:8832])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1027), .CHANNEL(21)) u_dcu_mlc_probe_ack_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[139]), .ch_credit(credit[139]), .ch_stall(stall[139]),
-    .ch_payload(payload[59690:58664])
+    .ch_payload(payload[59722:58696])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8959:8896])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(50), .CHANNEL(22)) u_fet_mlc_ifill_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[140]), .ch_credit(credit[140]), .ch_stall(stall[140]),
-    .ch_payload(payload[59740:59691])
+    .ch_payload(payload[59772:59723])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9023:8960])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1026), .CHANNEL(23)) u_mlc_fet_ifill_rsp_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[141]), .ch_credit(credit[141]), .ch_stall(stall[141]),
-    .ch_payload(payload[60766:59741])
+    .ch_payload(payload[60798:59773])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9087:9024])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(64), .CHANNEL(24)) u_miu_fet_itlb_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[142]), .ch_credit(credit[142]), .ch_stall(stall[142]),
-    .ch_payload(payload[60830:60767])
+    .ch_payload(payload[60862:60799])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9151:9088])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(60), .CHANNEL(25)) u_fet_miu_itlb_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(56), .CHANNEL(25)) u_fet_miu_itlb_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[143]), .ch_credit(credit[143]), .ch_stall(stall[143]),
-    .ch_payload(payload[60890:60831])
+    .ch_payload(payload[60918:60863])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9215:9152])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1090), .CHANNEL(26)) u_mlc_exb_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[144]), .ch_credit(credit[144]), .ch_stall(stall[144]),
-    .ch_payload(payload[61980:60891])
+    .ch_payload(payload[62008:60919])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9279:9216])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1082), .CHANNEL(27)) u_exb_mlc_rsp_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[145]), .ch_credit(credit[145]), .ch_stall(stall[145]),
-    .ch_payload(payload[63062:61981])
+    .ch_payload(payload[63090:62009])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9343:9280])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1225), .CHANNEL(28)) u_exb_ext_out_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[146]), .ch_credit(credit[146]), .ch_stall(stall[146]),
-    .ch_payload(payload[64287:63063])
+    .ch_payload(payload[64315:63091])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9407:9344])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(218), .CHANNEL(29)) u_rau_fet_launch_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(210), .CHANNEL(29)) u_rau_fet_launch_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[147]), .ch_credit(credit[147]), .ch_stall(stall[147]),
-    .ch_payload(payload[64505:64288])
+    .ch_payload(payload[64525:64316])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9471:9408])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(54), .CHANNEL(30)) u_rau_ooe_alloc_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[148]), .ch_credit(credit[148]), .ch_stall(stall[148]),
-    .ch_payload(payload[64559:64506])
+    .ch_payload(payload[64579:64526])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9535:9472])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(17), .CHANNEL(31)) u_ooe_rau_status_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[149]), .ch_credit(credit[149]), .ch_stall(stall[149]),
-    .ch_payload(payload[64576:64560])
+    .ch_payload(payload[64596:64580])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9599:9536])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(6), .CHANNEL(32)) u_rau_ooe_demote_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[150]), .ch_credit(credit[150]), .ch_stall(stall[150]),
-    .ch_payload(payload[64582:64577])
+    .ch_payload(payload[64602:64597])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9663:9600])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(71), .CHANNEL(33)) u_ooe_rau_drained_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[151]), .ch_credit(credit[151]), .ch_stall(stall[151]),
-    .ch_payload(payload[64653:64583])
+    .ch_payload(payload[64673:64603])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9727:9664])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(6), .CHANNEL(34), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_rau_rcu_mig_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[152]), .ch_credit(credit[152]), .ch_stall(stall[152]),
-    .ch_payload(payload[64659:64654])
+    .ch_payload(payload[64679:64674])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9791:9728])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(222), .CHANNEL(35), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_ooe_rcu_map_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[153]), .ch_credit(credit[153]), .ch_stall(stall[153]),
-    .ch_payload(payload[64881:64660])
+    .ch_payload(payload[64901:64680])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9855:9792])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1034), .CHANNEL(36)) u_rcu_pca_mig_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[154]), .ch_credit(credit[154]), .ch_stall(stall[154]),
-    .ch_payload(payload[65915:64882])
+    .ch_payload(payload[65935:64902])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9919:9856])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1034), .CHANNEL(37)) u_pca_rcu_mig_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[155]), .ch_credit(credit[155]), .ch_stall(stall[155]),
-    .ch_payload(payload[66949:65916])
+    .ch_payload(payload[66969:65936])
 `ifdef CCV_TRACE
     , .ch_tid(tid[9983:9920])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1056), .CHANNEL(38)) u_fet_pca_mig_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[156]), .ch_credit(credit[156]), .ch_stall(stall[156]),
-    .ch_payload(payload[68005:66950])
+    .ch_payload(payload[68025:66970])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10047:9984])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1056), .CHANNEL(39)) u_pca_fet_mig_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[157]), .ch_credit(credit[157]), .ch_stall(stall[157]),
-    .ch_payload(payload[69061:68006])
+    .ch_payload(payload[69081:68026])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10111:10048])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(8), .CHANNEL(40)) u_rau_fet_mig_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[158]), .ch_credit(credit[158]), .ch_stall(stall[158]),
-    .ch_payload(payload[69069:69062])
+    .ch_payload(payload[69089:69082])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10175:10112])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(6), .CHANNEL(41)) u_pca_rau_mig_done_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[159]), .ch_credit(credit[159]), .ch_stall(stall[159]),
-    .ch_payload(payload[69075:69070])
+    .ch_payload(payload[69095:69090])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10239:10176])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(11), .CHANNEL(42)) u_rau_pca_mig_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[160]), .ch_credit(credit[160]), .ch_stall(stall[160]),
-    .ch_payload(payload[69086:69076])
+    .ch_payload(payload[69106:69096])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10303:10240])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(5), .CHANNEL(43)) u_miu_rau_ready_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[161]), .ch_credit(credit[161]), .ch_stall(stall[161]),
-    .ch_payload(payload[69091:69087])
+    .ch_payload(payload[69111:69107])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10367:10304])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(277), .CHANNEL(44)) u_rau_miu_cta_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[162]), .ch_credit(credit[162]), .ch_stall(stall[162]),
-    .ch_payload(payload[69368:69092])
+    .ch_payload(payload[69388:69112])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10431:10368])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(111), .CHANNEL(45)) u_ooe_syu_bar_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[163]), .ch_credit(credit[163]), .ch_stall(stall[163]),
-    .ch_payload(payload[69479:69369])
+    .ch_payload(payload[69499:69389])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10495:10432])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(5), .CHANNEL(46)) u_syu_ooe_rel_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[164]), .ch_credit(credit[164]), .ch_stall(stall[164]),
-    .ch_payload(payload[69484:69480])
+    .ch_payload(payload[69504:69500])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10559:10496])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(37), .CHANNEL(47)) u_syu_fet_rel_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[165]), .ch_credit(credit[165]), .ch_stall(stall[165]),
-    .ch_payload(payload[69521:69485])
+    .ch_payload(payload[69541:69505])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10623:10560])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(5), .CHANNEL(48)) u_syu_rau_ready_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[166]), .ch_credit(credit[166]), .ch_stall(stall[166]),
-    .ch_payload(payload[69526:69522])
+    .ch_payload(payload[69546:69542])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10687:10624])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(58), .CHANNEL(49)) u_rau_syu_alloc_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[167]), .ch_credit(credit[167]), .ch_stall(stall[167]),
-    .ch_payload(payload[69584:69527])
+    .ch_payload(payload[69604:69547])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10751:10688])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(172), .CHANNEL(50)) u_ooe_cru_fault_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[168]), .ch_credit(credit[168]), .ch_stall(stall[168]),
-    .ch_payload(payload[69756:69585])
+    .ch_payload(payload[69776:69605])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10815:10752])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(74), .CHANNEL(51)) u_cru_rau_cfg_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[169]), .ch_credit(credit[169]), .ch_stall(stall[169]),
-    .ch_payload(payload[69830:69757])
+    .ch_payload(payload[69850:69777])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10879:10816])
 `endif
   );
   ccv_common_chk_credit #(.PAYLOAD_W(1176), .CHANNEL(52)) u_ext_exb_in_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[170]), .ch_credit(credit[170]), .ch_stall(stall[170]),
-    .ch_payload(payload[71006:69831])
+    .ch_payload(payload[71026:69851])
 `ifdef CCV_TRACE
     , .ch_tid(tid[10943:10880])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(4), .CHANNEL(53), .FIXED_LAT(1)) u_dcu_miu_fill_ntc_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(6), .CHANNEL(53), .FIXED_LAT(1)) u_dcu_miu_fill_ntc_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[171]), .ch_credit(credit[171]), .ch_stall(stall[171]),
-    .ch_payload(payload[71010:71007])
+    .ch_payload(payload[71032:71027])
 `ifdef CCV_TRACE
     , .ch_tid(tid[11007:10944])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(4), .CHANNEL(53), .FIXED_LAT(1)) u_dcu_miu_fill_ntc_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(6), .CHANNEL(53), .FIXED_LAT(1)) u_dcu_miu_fill_ntc_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[172]), .ch_credit(credit[172]), .ch_stall(stall[172]),
-    .ch_payload(payload[71014:71011])
+    .ch_payload(payload[71038:71033])
 `ifdef CCV_TRACE
     , .ch_tid(tid[11071:11008])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(4), .CHANNEL(53), .FIXED_LAT(1)) u_dcu_miu_fill_ntc_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(6), .CHANNEL(53), .FIXED_LAT(1)) u_dcu_miu_fill_ntc_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[173]), .ch_credit(credit[173]), .ch_stall(stall[173]),
-    .ch_payload(payload[71018:71015])
+    .ch_payload(payload[71044:71039])
 `ifdef CCV_TRACE
     , .ch_tid(tid[11135:11072])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(4), .CHANNEL(53), .FIXED_LAT(1)) u_dcu_miu_fill_ntc_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(6), .CHANNEL(53), .FIXED_LAT(1)) u_dcu_miu_fill_ntc_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[174]), .ch_credit(credit[174]), .ch_stall(stall[174]),
-    .ch_payload(payload[71022:71019])
+    .ch_payload(payload[71050:71045])
 `ifdef CCV_TRACE
     , .ch_tid(tid[11199:11136])
 `endif
@@ -1312,30 +1312,30 @@ module ccv_common_chk_bank (
   ccv_common_chk_atomic #(.N(4)) u_dcu_miu_fill_ntc_atomic (
     .clk(clk), .rst_n(rst_n), .enable(1'b0 | force_atomic),
     .valid(valid[174:171]), .credit(credit[174:171]));
-  ccv_common_chk_credit #(.PAYLOAD_W(13), .CHANNEL(54), .FIXED_LAT(1)) u_miu_ooe_cmpl_hint_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(14), .CHANNEL(54), .FIXED_LAT(1)) u_miu_ooe_cmpl_hint_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[175]), .ch_credit(credit[175]), .ch_stall(stall[175]),
-    .ch_payload(payload[71035:71023])
+    .ch_payload(payload[71064:71051])
 `ifdef CCV_TRACE
     , .ch_tid(tid[11263:11200])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(13), .CHANNEL(54), .FIXED_LAT(1)) u_miu_ooe_cmpl_hint_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(14), .CHANNEL(54), .FIXED_LAT(1)) u_miu_ooe_cmpl_hint_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[176]), .ch_credit(credit[176]), .ch_stall(stall[176]),
-    .ch_payload(payload[71048:71036])
+    .ch_payload(payload[71078:71065])
 `ifdef CCV_TRACE
     , .ch_tid(tid[11327:11264])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(13), .CHANNEL(54), .FIXED_LAT(1)) u_miu_ooe_cmpl_hint_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(14), .CHANNEL(54), .FIXED_LAT(1)) u_miu_ooe_cmpl_hint_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[177]), .ch_credit(credit[177]), .ch_stall(stall[177]),
-    .ch_payload(payload[71061:71049])
+    .ch_payload(payload[71092:71079])
 `ifdef CCV_TRACE
     , .ch_tid(tid[11391:11328])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(13), .CHANNEL(54), .FIXED_LAT(1)) u_miu_ooe_cmpl_hint_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(14), .CHANNEL(54), .FIXED_LAT(1)) u_miu_ooe_cmpl_hint_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[178]), .ch_credit(credit[178]), .ch_stall(stall[178]),
-    .ch_payload(payload[71074:71062])
+    .ch_payload(payload[71106:71093])
 `ifdef CCV_TRACE
     , .ch_tid(tid[11455:11392])
 `endif
@@ -1471,37 +1471,37 @@ module ccv_common_chk_bank (
   ccv_common_chk_outstanding #(.MAX(1)) u_fet_miu_itlb_req_outstanding (
     .clk(clk), .rst_n(rst_n), .enable(pair_enable),
     .req_valid(valid[143]), .rsp_valid(valid[142]));  // ccv_miu_fet_itlb
-  ccv_common_chk_notice #(.AHEAD(ccv_prov_pkg::CCV_LAT_FILL_NOTICE), .KW(4)) u_dcu_miu_fill_ntc_notice_s0 (
+  ccv_common_chk_notice #(.AHEAD(ccv_prov_pkg::CCV_LAT_FILL_NOTICE), .KW(6)) u_dcu_miu_fill_ntc_notice_s0 (
     .clk(clk), .rst_n(rst_n), .enable(pair_enable),
-    .ntc_valid(valid[171]), .ntc_keys({payload[71010:71007]}),
-    .msg_valid(valid[132]), .msg_keys({payload[53407:53404]}));  // ccv_dcu_miu_rsp
-  ccv_common_chk_notice #(.AHEAD(ccv_prov_pkg::CCV_LAT_FILL_NOTICE), .KW(4)) u_dcu_miu_fill_ntc_notice_s1 (
+    .ntc_valid(valid[171]), .ntc_keys({payload[71032:71027]}), .ntc_skip(1'b0),
+    .msg_valid(valid[132]), .msg_keys({payload[53433:53428]}));  // ccv_dcu_miu_rsp
+  ccv_common_chk_notice #(.AHEAD(ccv_prov_pkg::CCV_LAT_FILL_NOTICE), .KW(6)) u_dcu_miu_fill_ntc_notice_s1 (
     .clk(clk), .rst_n(rst_n), .enable(pair_enable),
-    .ntc_valid(valid[172]), .ntc_keys({payload[71014:71011]}),
-    .msg_valid(valid[133]), .msg_keys({payload[54438:54435]}));  // ccv_dcu_miu_rsp
-  ccv_common_chk_notice #(.AHEAD(ccv_prov_pkg::CCV_LAT_FILL_NOTICE), .KW(4)) u_dcu_miu_fill_ntc_notice_s2 (
+    .ntc_valid(valid[172]), .ntc_keys({payload[71038:71033]}), .ntc_skip(1'b0),
+    .msg_valid(valid[133]), .msg_keys({payload[54466:54461]}));  // ccv_dcu_miu_rsp
+  ccv_common_chk_notice #(.AHEAD(ccv_prov_pkg::CCV_LAT_FILL_NOTICE), .KW(6)) u_dcu_miu_fill_ntc_notice_s2 (
     .clk(clk), .rst_n(rst_n), .enable(pair_enable),
-    .ntc_valid(valid[173]), .ntc_keys({payload[71018:71015]}),
-    .msg_valid(valid[134]), .msg_keys({payload[55469:55466]}));  // ccv_dcu_miu_rsp
-  ccv_common_chk_notice #(.AHEAD(ccv_prov_pkg::CCV_LAT_FILL_NOTICE), .KW(4)) u_dcu_miu_fill_ntc_notice_s3 (
+    .ntc_valid(valid[173]), .ntc_keys({payload[71044:71039]}), .ntc_skip(1'b0),
+    .msg_valid(valid[134]), .msg_keys({payload[55499:55494]}));  // ccv_dcu_miu_rsp
+  ccv_common_chk_notice #(.AHEAD(ccv_prov_pkg::CCV_LAT_FILL_NOTICE), .KW(6)) u_dcu_miu_fill_ntc_notice_s3 (
     .clk(clk), .rst_n(rst_n), .enable(pair_enable),
-    .ntc_valid(valid[174]), .ntc_keys({payload[71022:71019]}),
-    .msg_valid(valid[135]), .msg_keys({payload[56500:56497]}));  // ccv_dcu_miu_rsp
+    .ntc_valid(valid[174]), .ntc_keys({payload[71050:71045]}), .ntc_skip(1'b0),
+    .msg_valid(valid[135]), .msg_keys({payload[56532:56527]}));  // ccv_dcu_miu_rsp
   ccv_common_chk_notice #(.AHEAD(ccv_params_pkg::CCV_LAT_CMPL_HINT), .KW(13)) u_miu_ooe_cmpl_hint_notice_s0 (
     .clk(clk), .rst_n(rst_n), .enable(pair_enable),
-    .ntc_valid(valid[175]), .ntc_keys({payload[71035:71030], payload[71029:71023]}),
+    .ntc_valid(valid[175]), .ntc_keys({payload[71064:71059], payload[71058:71052]}), .ntc_skip({payload[71051:71051]}),
     .msg_valid(valid[110]), .msg_keys({payload[36957:36952], payload[36966:36960]}));  // ccv_miu_ooe_cmpl
   ccv_common_chk_notice #(.AHEAD(ccv_params_pkg::CCV_LAT_CMPL_HINT), .KW(13)) u_miu_ooe_cmpl_hint_notice_s1 (
     .clk(clk), .rst_n(rst_n), .enable(pair_enable),
-    .ntc_valid(valid[176]), .ntc_keys({payload[71048:71043], payload[71042:71036]}),
+    .ntc_valid(valid[176]), .ntc_keys({payload[71078:71073], payload[71072:71066]}), .ntc_skip({payload[71065:71065]}),
     .msg_valid(valid[111]), .msg_keys({payload[37077:37072], payload[37086:37080]}));  // ccv_miu_ooe_cmpl
   ccv_common_chk_notice #(.AHEAD(ccv_params_pkg::CCV_LAT_CMPL_HINT), .KW(13)) u_miu_ooe_cmpl_hint_notice_s2 (
     .clk(clk), .rst_n(rst_n), .enable(pair_enable),
-    .ntc_valid(valid[177]), .ntc_keys({payload[71061:71056], payload[71055:71049]}),
+    .ntc_valid(valid[177]), .ntc_keys({payload[71092:71087], payload[71086:71080]}), .ntc_skip({payload[71079:71079]}),
     .msg_valid(valid[112]), .msg_keys({payload[37197:37192], payload[37206:37200]}));  // ccv_miu_ooe_cmpl
   ccv_common_chk_notice #(.AHEAD(ccv_params_pkg::CCV_LAT_CMPL_HINT), .KW(13)) u_miu_ooe_cmpl_hint_notice_s3 (
     .clk(clk), .rst_n(rst_n), .enable(pair_enable),
-    .ntc_valid(valid[178]), .ntc_keys({payload[71074:71069], payload[71068:71062]}),
+    .ntc_valid(valid[178]), .ntc_keys({payload[71106:71101], payload[71100:71094]}), .ntc_skip({payload[71093:71093]}),
     .msg_valid(valid[113]), .msg_keys({payload[37317:37312], payload[37326:37320]}));  // ccv_miu_ooe_cmpl
   ccv_common_chk_lockstep #(.INSTS(32), .N(1)) u_rcu_lane_ops_lockstep (
     .clk(clk), .rst_n(rst_n),

@@ -458,7 +458,7 @@ typedef struct packed {
 } ccv_miu_fet_itlb_t;
 
 typedef struct packed {
-  logic [ccv_params_pkg::CCV_W_VA-ccv_prelim_pkg::CCV_L_PAGE_SHIFT-1:0] virtual_page;
+  logic [ccv_params_pkg::CCV_W_VA-ccv_params_pkg::CCV_L_PAGE_SHIFT-1:0] virtual_page;
   logic [ccv_params_pkg::CCV_W_ASID-1:0]         asid;
 } ccv_fet_miu_itlb_req_t;
 
@@ -489,7 +489,7 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
   logic [ccv_params_pkg::CCV_W_TIER1_ID-1:0]     tier1_id;
   logic [ccv_params_pkg::CCV_W_VA-1:0]           start_pc;
-  logic [2*(ccv_params_pkg::CCV_W_VA-ccv_prelim_pkg::CCV_L_PAGE_SHIFT)-1:0] code_bounds;
+  logic [2*(ccv_params_pkg::CCV_W_VA-ccv_params_pkg::CCV_L_PAGE_SHIFT)-1:0] code_bounds;
   logic [ccv_params_pkg::CCV_W_ASID-1:0]         asid;
   logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]     cta_slot;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    live_mask;
@@ -663,6 +663,7 @@ typedef struct packed {
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_RS_IDX-1:0]       rs_idx;
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
+  logic                                          no_hit;
 } ccv_miu_ooe_cmpl_hint_t;
 
 // Ports per block, derived from the channel list.

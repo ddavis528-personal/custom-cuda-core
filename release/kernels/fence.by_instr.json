@@ -183,7 +183,7 @@
     "instr_uid": 9223372036854775808,
     "unit": "txn 0",
     "channel_id": 25,
-    "payload_lo": 256,
+    "payload_lo": 0,
     "payload_hi": 0
    }
   },
@@ -199,7 +199,7 @@
     "instr_uid": 9223372036854775808,
     "unit": "txn 0",
     "channel_id": 24,
-    "payload_lo": 1,
+    "payload_lo": 0,
     "payload_hi": 0
    }
   },

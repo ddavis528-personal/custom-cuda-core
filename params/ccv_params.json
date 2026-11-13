@@ -222,6 +222,20 @@
       "doc": "D-cache lookups per cycle. It sets the rate of ccv_miu_dcu_req, ccv_dcu_miu_rsp and ccv_dcu_miu_fill_ntc (a notice promises its refill on the same response slot), each tied by rate_param, so tools/gen-interfaces.py refuses a rate that drifts from it."
     },
     {
+      "name": "CCV_DCU_SETS",
+      "value": 64,
+      "status": "tunable",
+      "decided_at": "AR's L1 capacity sweep (MA-3 (a))",
+      "doc": "L1 data cache sets, a power of two (MA-15, AR rev 344): with CCV_DCU_WAYS 8 and 128-byte lines, the 64 KiB baseline of Phase 1; 512 KiB reopens with AR's sweep. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_SETS still overrides it for a sweep."
+    },
+    {
+      "name": "CCV_DCU_WAYS",
+      "value": 8,
+      "status": "tunable",
+      "decided_at": "AR's L1 capacity sweep (MA-3 (a)); 8 ways since TI rev 234's sweep (AR rev 320)",
+      "doc": "L1 data cache ways, least recently used replaced (MA-15, AR rev 344). The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_WAYS still overrides it (1 to 16) for a sweep or a kernel that needs evictions."
+    },
+    {
       "name": "CCV_SPM_BYTES",
       "value": 131072,
       "status": "arch",
@@ -620,6 +634,15 @@
       "status": "arch",
       "doc": "Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2(N + bnd_rx) longer, and its depth with it: N its stages, and bnd_rx 1 where its receiving end holds the boundary flop, a stage each way in front of a receiver that registers its own inputs and credit, as every DPI host does (AR's rev 309 (2)). Proved in tools/check-formal.sh: full rate at this depth, and not at one less.",
       "source": "Q-43, 2026-09-26"
+    },
+    {
+      "name": "CCV_MEMOP_CREDITS",
+      "value": 10,
+      "status": "tunable",
+      "require": "CCV_MEMOP_CREDITS >= CCV_CREDIT_DEPTH",
+      "decided_at": "MA (MIU memop queue sizing), ruled by AR",
+      "source": "MA-5, AR rev 345, TI rev 413 (2026-11-13)",
+      "doc": "Credits a slot of ccv_ooe_miu_memop holds (schema credits_param), in place of CCV_CREDIT_DEPTH: MIU's 40-entry shared memop queue over the channel's 4 slots: each credit is one entry of the shared queue, returned on the memop's arrival slot when it frees and OOE throttles its memop issue instead of MIU refusing an address (MA-5). MIU returns an entry-holding memop's credit on its arrival slot when the entry frees, a bulk discard's as it takes it. At least the credit loop, so the slot still runs at full rate; a repeated link adds its 2(N + bnd_rx) to it, as to CCV_CREDIT_DEPTH."
     },
     {
       "name": "CCV_RESCUE_DEPTH",
@@ -1279,7 +1302,7 @@
       "status": "provisional",
       "derive": "CCV_CREDIT_DEPTH * CCV_P_TIMEOUT_MEM",
       "source": "AR's response TI-22 (2026-10-21)",
-      "doc": "Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.",
+      "doc": "Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure), and for a channel whose credits stand for a resource its receiver holds through a memory access (schema: credits_param; ccv_ooe_miu_memop, MA-5). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.",
       "decided_at": "with CCV_P_TIMEOUT_MEM"
     },
     {
@@ -1365,18 +1388,18 @@
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",
-      "value": 3,
+      "value": 5,
       "status": "provisional",
       "source": "Payload spec response (2026-09-25)",
-      "doc": "req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Eight outstanding scratchpad accesses: four slots, two deep.",
+      "doc": "req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Thirty-two outstanding scratchpad accesses, against about 28 in flight at full rate (MA-6, AR rev 344, MA-15; was 3 bits, eight).",
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
       "name": "CCV_P_W_REQ_MIU_DCU",
-      "value": 4,
+      "value": 6,
       "status": "provisional",
       "source": "Payload spec response (2026-09-25)",
-      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen outstanding cache accesses: four slots, four deep, since hits and misses return at different times.",
+      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixty-four outstanding cache accesses: hits alone hold about 24 at full rate (six cycles x four slots), and misses more, since hits and misses return at different times (MA-6, AR rev 344, MA-15; was 4 bits, sixteen, which capped lookups near 2.7 a cycle).",
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
@@ -1555,12 +1578,12 @@
     },
     {
       "name": "CCV_L_PAGE_SHIFT",
-      "value": 12,
-      "status": "preliminary",
+      "value": 16,
+      "status": "arch",
       "churn": "low",
       "source": "Payload widths pass (2026-09-25)",
-      "doc": "Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms.",
-      "decided_at": "MMU session"
+      "doc": "Page shift: 64 KiB pages (MA-2, AR rev 344, IS rev 192, MA-15; was 12, 4 KiB, preliminary), so one way of the 8-way L1, at 64 KiB or 512 KiB, fits in a page and a set index is known from the virtual address (MA-1). It sets the walker request's virtual_page and FET's code_bounds at page granularity; nothing in the ISA fixes 4 KiB (IS rev 192).",
+      "decided_at": "MA (MIU/DCU architecture), agreed by AR"
     },
     {
       "status": "preliminary",
