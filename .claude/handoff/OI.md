@@ -63,6 +63,9 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
    (DA's RI-14) is already in cg-waivers.json.
    Branch HEAD also holds the 11-13 sweep merge and #50 (4c2a9746 l1_nohit, 739a64dc doc; OI-142 rev 343, no ring;
    tools/check-ooe-unit.sh control list +ignore-nohit, count 54). One gate-push carries them all once OA answers.
+-5b. #38 ooe_rs started 11-13: flop-flop 28.7 (18.9 without fanout, widest net 595 loads), prv_dep 26.4, req 28.4.
+   Worst cone starts at the head pointer hh_cq02h[2] and fans to hm_cq02h (45 endpoints), gnt_v, lgv and gnt_idx.
+   Trace it with path3 rr on the blif that holds prv_dep_cq01h (pass the absolute path).
 -5. #49 MA-5 model (TI rev 414 asked it): Core::memopCredits() from the block each cycle (Stub::credits on
    ooe_miu P0-P3); select grants a memop only on a credited pipe, sends on the lowest; discards wait for P0's.
    inject_no_memop_credit control, ooe_test testMemopCredits (Env mcred_depth). Opt-in: unit/RTL benches unchanged.
