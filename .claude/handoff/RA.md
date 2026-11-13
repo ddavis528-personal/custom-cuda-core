@@ -268,11 +268,19 @@ rcu_xbar one-hot sel[LANES*LANES] formed in rcu_r at cr03h (ixr/iru/ird/irb/iim,
 xbar decodes nothing, inner helper of rcu_r; R 23.9 NGD (adder form 32.3 withdrawn); asked one-hot assert + two-hot
 control in r_tb. Spec edit LANDED 11-13 (Docs was down until ~15:00): R unit tab rev 27 (Crossbar para, shfl
 compute cell, depth cell; "Why." para's old ~26 estimate kept as history); snapshot rcu-arch-r-unit.md refreshed.
-RI-40: next RI items are creditAtLanding (--credit-lead 0) then removing ccv_rcu's wake detector -> reword Done tab's
-done-wake term (RA rev 136 (2)) to AR 343's common hold when RI's landing row arrives.
+RI-40 wake-detector rewording: done (RA rev 138). RA 135 CLOSED (RI-43 d92b249f: model credits at landing,
+--credit-lead 0, control 'lead').
+RA rev 138 (re:RI-43, RI-45; RI notified): RI-43 c64b7417 drops the detector's busy hold (common hold AR 343 covers
+it; done-wake flop and rev 136 (2) term kept; rcu_kill NB 6->5). RI-45 28cd347a: model launch at c0 edge, demote/
+restore from c1, PCA row enters FIFO the cycle after landing (option A). Spec: Done rev 45 (done-wake cell, issue
+credit note, clock-gate paragraph), Migration rev 11 (Launch list item in cycles); snapshots refreshed.
+OI's pong arrived 11-13 (all nine answered). RI-41 631d7fc6 closes rev 137's assert ask (xbar_sel_onehot, control
+twohot). RI-42 / TI 422: CCV_RCU_RTL agreed (RTL drives, model shadows, per-cycle port+event compare plus end-of-run
+RTL GPR/pred dump vs oracle; runs in the full gate; controls shim delay, flipped output, unread-GPR flip); gap:
+guard_fwd/mig_*/restore_* events not yet derived (no kernel produces them). RI-44 7e10e72f pushed it.
 TI 420 (a46afef7): long tools self-detach; wait with tools/gate-wait.sh <job log> as the background task (exit 3 =
 rerun the wait, 4 = killed, restart the job); replaces the setsid/pgrep method once merged.
-Bookmarks: OA 414, RA 137, RI 71, TI 420, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 46.
+Bookmarks: OA 414, RA 138, RI 75, TI 422, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 46.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)

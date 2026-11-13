@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=10 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 10 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=11 exported=2026-11-13 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 11 on 2026-11-13 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Migration
 
@@ -54,6 +54,7 @@ So neither queue ever holds more unpaired halves than it has entries, and the tw
   - A demotion launches at the edge that ends a cycle in which `mig_dpick.v & ~dm_busy` holds.
   - A restore launches when `mig_rpick.v & ~rs_busy` holds and, in addition, the head of the restore FIFO is valid with `head.warp` equal to the picked warp (see Restore).
   - Launch copies `{warp, gpr_map, pred_map}` (157 b, a 4:1 one-hot AND-OR) into the engine, clears both entries, and sets both channels' credit-return flops. The credits are on the wire the next cycle.
+  - In cycles (RA rev 138, RI-45, 28cd347a): the launch is the edge that ends the flopped pick's cycle, c0, and demote and restore count from c1. A PCA row enters the restore FIFO the cycle after it lands, and from then it is the head a restore launch sees (option A, RI-22 (7)). The model matches the RTL here; the four \*\_demote block lock-step runs are the check.
 - **Map checks** are assertions only, no logic:
   - A restore map names no row 255 and no predicate 63 (A-64).
   - No two registers of a restore map share a row (TI-25).

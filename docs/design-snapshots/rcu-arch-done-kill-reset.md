@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=42 exported=2026-11-10 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 42 on 2026-11-10 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=45 exported=2026-11-13 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 45 on 2026-11-13 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -55,14 +55,14 @@ Each outbound wake is a flop, written every cycle. The receiver's gate holds thr
 | Wake | `D` of the flop | Why it covers the valid |
 | --- | --- | --- |
 | `rcu_lane_ops_c<NN>_wake` (each copy), `rcu_miu_addr_wake` | `ooe_rcu_issue_wake` | Lane and address valids are at A. OOE's own rule puts the issue wake in \[A−5, A−2\] for issue valid A−1, so RCU's flop is in \[A−4, A−1\]. |
-| `rcu_ooe_done_wake` | any `ooe_rcu_issue_s*_valid` (wire) OR any `lwb_d`/`swb_d` stage valid OR R pipe valid OR `ooe_rcu_issue_wake` a cycle on, through ccv\_rcu's ungated wake detector (RA rev 136) | R done valid at A+1, from issue valid at A−1 → wake at A. R's done payload lands at A+2, so its wake is due at A−2, before any of the op's valids reach RCU; only OOE's issue wake, taken a cycle on, covers it (RI-37 (2), RA rev 136). That term is a superset: a wake with no done costs OOE's done receiver DCGE, never correctness. Lane done at A+6, from descriptor ages 1-5 → wake A+2..A+6. SFU likewise. |
+| `rcu_ooe_done_wake` | any `ooe_rcu_issue_s*_valid` (wire) OR any `lwb_d`/`swb_d` stage valid OR R pipe valid OR `ooe_rcu_issue_wake` a cycle on, through ccv\_rcu's ungated wake detector (RA rev 136); its done-wake flop stays, and since RI-43 (c64b7417, RA rev 138) the detector holds no busy term | R done valid at A+1, from issue valid at A−1 → wake at A. R's done payload lands at A+2, so its wake is due at A−2, before any of the op's valids reach RCU; only OOE's issue wake, taken a cycle on, covers it (RI-37 (2), RA rev 136). That term is a superset: a wake with no done costs OOE's done receiver DCGE, never correctness. Lane done at A+6, from descriptor ages 1-5 → wake A+2..A+6. SFU likewise. |
 | `rcu_pca_mig_wake` | `dm_busy_next` | Migration tab: 4-cycle lead counter. |
 
 ## Credits RCU returns
 
 | Inbound channel | Credit flop `D` | Notes |
 | --- | --- | --- |
-| `ooe_rcu_issue_s*` | that slot's flopped valid (landed this cycle) | RCU never holds an issue |
+| `ooe_rcu_issue_s*` | that slot's flopped valid (landed this cycle) | RCU never holds an issue. The model and the RTL both return this credit, and lane\_rcu\_res\_c\*'s, in the landing cycle (creditAtLanding; lock-step --credit-lead 0 and its 'lead' control; RA rev 138, RI-43, closing RA rev 135) |
 | `lane_rcu_res_c*` | that copy's flopped valid |  |
 | `miu_rcu_data_s*` | none: no RCU credit port | The wrapper returns the credit on receipt, from its own `b_` valid flop (`ccv_common_rpt` `CREDIT_ON_RECEIPT`; RA-41, AR 330, TI 383, RA rev 116) |
 | `ooe_rcu_map`, `rau_rcu_mig` | entry launched or kill-dropped | Migration tab |
@@ -152,4 +152,4 @@ What may stay pending while the gate is closed:
 - Live FIFO rows waiting for a pairing: same.
 - `kill_ack_q` held high: it is a flop, and holds.
 
-RCU is asleep whenever no warp issues to it and no migration is in progress.
+RCU is asleep whenever no warp issues to it and no migration is in progress. The gate stays open through a payload by ccv\_common\_clk's own hold (AR 343, WAKE\_HOLD = CCV\_WAKE\_LAT + 1), proved by wake\_keeps\_rx and its hold − 1 control, so ccv\_rcu's wake detector holds no busy term (RI-43, RA rev 138). rcu\_kill's NB is 5 (6 before).
