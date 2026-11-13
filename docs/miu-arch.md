@@ -459,10 +459,12 @@ why in a row.
   - the DCU's lookup ports, its geometry parameters (`CCV_DCU_SETS`,
     `CCV_DCU_WAYS`) and where its misses park.
 
-  **Exit:** a behavioural spec precise enough for TI to make the MIU and DCU
-  stubs spec-faithful. Then re-run S1, cm32 and cm128 at 8 ways, so the
-  booked deltas that rest on the stub get re-checked against Daniel's 0.2%
-  bar (DA 114). If the figures move a top-level parameter (`CCV_MIU_PIPES`,
+  **Exit:** a behavioural spec precise enough for MI and DI to build the
+  timing models directly behind `CCV_MIU_IMPL` and `CCV_DCU_IMPL`, as RI
+  did for RCU (MA-14, AR's response 2026-11-13). TI's stubs stay the
+  functional reference, with their controls. When the models land, re-run
+  S1, cm32 and cm128 at 8 ways, so the booked deltas that rest on the stub
+  get re-checked against Daniel's 0.2% bar (DA 114). If the figures move a top-level parameter (`CCV_MIU_PIPES`,
   `CCV_DCACHE_LOOKUPS`, the L1 capacity), bring it to AR.
 - **Phase 2, microarchitecture.** For the L1-hit path, give the stages from
   holding to data out at `CCV_LAT_L1_HIT` - 1, with an NGD budget per port:
@@ -545,7 +547,8 @@ with its answerer in Needs, and notify them (the register skill, section
   - write-back section scheduling on `miu_rcu_data`;
   - the lead fields (RA-40).
 - **To TI:**
-  - the spec-faithful stub (Phase 1's exit);
+  - the stub kept as the functional reference while MI and DI build the
+    models (MA-14);
   - a home for MIU model and RTL files (sim/miu and rtl/miu, beside RCU's) and their
     entries in `tools/gate-scope.py`;
   - the units in `test/**/cg-units.json` and `ngd-units.json`;
