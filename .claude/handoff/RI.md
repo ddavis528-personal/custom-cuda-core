@@ -49,7 +49,13 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--4. NOW (2026-11-13) Last push 0ace219f (sweep, below); before it fca280c3 (13:29, SPLIT SCOPED PASS 14/23; ngd leg by RH, Daniel OK'd RH
+-5. NOW (2026-11-13) Task 16 event monitor: ri-wt7 branch ri-evmon, e9c48768 (on gate-scratch/RI):
+   test/rcu/evmon.py (RTL event monitor, compare, idle_check), lockstep controls init opnd ev gate row,
+   model gpr_row event, rcu_r SHFL_UP/DOWN/BFLY_R bug fix (amount from v(R1)) with one-hot rcu_xbar sel.
+   Checks green (63/63, 5 controls). Gate in flight: chain-ri22 (cg here; ngd asked of RH; rest polls
+   gate-scratch/RI-export, then gate-push). Status ~/ccv-logs/chain-ri22.out. After push: RI rows to RA
+   (SHFL_*_R bug, xbar sel interface) and TI (lockstep events + controls; mig/restore/guard_fwd not derived).
+-4. (2026-11-13) Last push 0ace219f (sweep, below); before it fca280c3 (13:29, SPLIT SCOPED PASS 14/23; ngd leg by RH, Daniel OK'd RH
    send-export to gate-scratch/*-export for passing legs). RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) written,
    RI tab rev 70; notices sent. Lock-step 63/63; rcu_blk (TI) passes with its expected-fail.
    Sweep pushed: 0ace219f (2026-11-13 02:10, SPLIT PASS 24/24; cg here chain-ri21, ngd RH via
