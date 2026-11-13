@@ -581,7 +581,16 @@ inline const OpInfo *opByCode(unsigned c) {
 /// wrap -- a reused id would let a response match the wrong request.
 class IdPool {
 public:
-  explicit IdPool(unsigned chan) : n_(1u << field(chan, "req_id").width) {}
+  /// `cap_env`, if set in the environment, narrows the pool below the
+  /// width for a coverage run: the exhaustion path a wider hop no longer
+  /// reaches (CCV_MIU_DCU_IDS; MA-6 widened MIU -> DCU to 64 ids).
+  explicit IdPool(unsigned chan, const char *cap_env = nullptr)
+      : n_(1u << field(chan, "req_id").width) {
+    if (const char *v = cap_env ? std::getenv(cap_env) : nullptr; v && *v) {
+      const unsigned c = unsigned(std::strtoul(v, nullptr, 10));
+      if (c >= 1 && c < n_) n_ = c;
+    }
+  }
   bool any() const { return used_.size() < n_; }
   unsigned take() {
     unsigned i = 0;
@@ -756,6 +765,16 @@ protected:
     for (const In &i : ins)
       if (i.ci->chan == chan) i.rx->creditAt(CreditAt::Landing);
   }
+  /// Every slot and instance of `chan` this block receives returns a
+  /// message's credit when the block calls release() for it, not on take()
+  /// (CreditAt::Release; MA-5, AR rev 345): a memop's credit stands for its
+  /// MIU queue entry. Call it in the first work(), before any message.
+  void creditAtRelease(unsigned chan) {
+    for (const In &i : ins)
+      if (i.ci->chan == chan) i.rx->creditAt(CreditAt::Release);
+  }
+  /// Under creditAtRelease: the resource one taken message held is free.
+  void release(unsigned chan, unsigned slot, unsigned inst = 0) { rx(chan, slot, inst).release(); }
   /// The oldest message on a slot, left in place.
   const Receiver::Msg &peek(unsigned chan, unsigned slot, unsigned inst = 0) {
     return rx(chan, slot, inst).front();
