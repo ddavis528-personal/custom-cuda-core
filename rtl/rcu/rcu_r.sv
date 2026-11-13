@@ -295,7 +295,7 @@ module rcu_r #(
       end
       for (int s = 0; s < N; s++) begin
         logic up_cr03h, dn_cr03h;
-        up_cr03h = (s <= l) ? oh_cr03h[l - s] : 1'b0;
+        up_cr03h = (l >= s) ? oh_cr03h[l - s] : 1'b0;
         dn_cr03h = (s >= l) ? oh_cr03h[s - l] : 1'b0;
         if (s == l) begin
           up_cr03h = up_cr03h | (c_cr03h > 5'(l));
