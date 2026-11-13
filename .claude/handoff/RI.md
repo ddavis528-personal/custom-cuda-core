@@ -1,10 +1,6 @@
 # RI handoff (RCU implementation)
 
-<<<<<<< HEAD
 Updated 2026-11-13. Keep current at every task's end. Role and ownership:
-=======
-Updated 2026-11-10. Keep current at every task's end. Role and ownership:
->>>>>>> origin/ccr-888218a3-20cauz
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -53,7 +49,6 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
-<<<<<<< HEAD
 -7. NOW (2026-11-13 ~14:00) Pushed 7e29cef5 (SPLIT PASS 24/24, full; cg here chain-ri24, ngd RH):
    daily sweep merges of all 9 remote branches + evmon e9c48768 + CCV-L04 fix 439179d9. rcu_ls (TI's gate job
    = run-lockstep.sh + rcu-ls-corrupt.py) passed with event compare. RI-39 (RA: SHFL_*_R bug, xbar one-hot sel,
@@ -76,8 +71,6 @@ architect may approve only if the end meets module NGD without the flop; can't m
    Bookmarks Conv 19 AR 343 OA 411 IS 190 TI 407 OI 338 CP 157 DA 119 RA 136 RI 70 (MA tab: no bookmark yet).
    Long runs: ALWAYS setsid nohup + a waiter; a bg task dies at 2h.
    Next for task 16: model credit move once TI adds channel.h call; RTL event monitor; SV-top with RTL.
-=======
->>>>>>> origin/ccr-888218a3-20cauz
 -3. NOW (2026-11-09; Daniel's order: class-word NGD -> gate+push ccv_rcu.sv -> lock-step/SV-top -> Q-53 ->
    SW write-back + KILL_DRAIN -> RA reconciliation + Daniel's sign-off). ri-wt7 branch ri-asm3, tip d0076837
    (on gate-scratch/RI): d33d8c70 AR 338/339 kill boundary flops (plain ungated detector flops; rcu_kill epoch at
