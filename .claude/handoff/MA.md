@@ -22,8 +22,8 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 06:57 UTC)
 
-Conventions 19, AR 347, TI 414, OA 414, IS 192, CP 157, OI 339, RA 136,
-RI 70, MA 45, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
+Conventions 19, AR 347, TI 419, OA 414, IS 192, CP 157, OI 339, RA 136,
+RI 70, MA 46, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
 
 ## State, 2026-11-13
 
@@ -52,7 +52,10 @@ RI 70, MA 45, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
 - MA-13 (DA): no compute priority; MI and DI start only after the grill-me with AR
   is finished, a summary is delivered to Daniel, and everything is documented.
 - session-home installed (`tools/setup-session-home.py --check` matches).
-- MA-15 (params/schema bundle) is on TI's branch ti-ma, not yet landed.
+- MA-15 items 1-4 and MA-5 credits landed (TI 419, eda137fa; MA 46 accepts). Entry-free
+  credit return is opt-in (CCV_MIU_MEMOP_CREDIT=entry) until OI's gating merges; item 5
+  (SRAM macros) is TI's next.
+- Branch pushed at aaab8cab after SCOPED PASS (gate 2h12m: ngd 7797s, cg 7163s).
 - Gate note: a scoped gate on a branch carrying many merges runs nearly every
   section; check-cg/check-ngd took over 1h serial. Run gate-push under the 2h
   background limit or via tools/bg-run.sh with the max timeout.
@@ -64,6 +67,6 @@ RI 70, MA 45, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
 2. Then: the summary to Daniel (all MA rows, decisions, what changed in the spec
    tabs), and confirm everything is documented. Only after that, MI and DI
    handoffs (docs/miu-impl.md, docs/dcu-impl.md).
-3. Track MA-15 landing (TI, ti-ma); close MA-15 and the TI parts of MA-2/3/5/6/12.
+3. Track MA-15 item 5 (SRAM macros, TI); then close MA-15 and the TI parts of MA-2/3/5/6/12.
 4. Phase 2: module partition, per-port NGD budgets, index-lead schema row (after
    AR's sweep), the payload-slot macro decision.
