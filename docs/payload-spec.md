@@ -43,9 +43,9 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 14 | 38 |
-| ⚠️ Some provisional | 26 | 139 |
-| ⛔ Some preliminary | 15 | 160 |
+| All decided | 15 | 40 |
+| ⚠️ Some provisional | 27 | 146 |
+| ⛔ Some preliminary | 13 | 151 |
 | **Total** | **55** | **337** |
 
 ## What still has to be decided
@@ -112,12 +112,6 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_W_COH_OP` | 4 | med | Coherent line request: acquire, release, probe response, writeback, grant acknowledgement. Follows the TL-C subset chosen. |
 
-### MMU session
-
-| Parameter | Value | Churn | Basis |
-|---|---|---|---|
-| `CCV_L_PAGE_SHIFT` | 12 | low | Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms. |
-
 ### MMU session, with the page-table format
 
 | Parameter | Value | Churn | Basis |
@@ -174,6 +168,18 @@ lane → rcu · rate 1 · execution
 | `sfu_valid` | `1` | 1 | literal |
 | `sfu_result` | `CCV_W_LANE_DATA` | 32 | CCV_W_LANE_DATA (isa) |
 | **total** | | **73** | |
+
+### `ccv_fet_miu_itlb_req`
+
+Fetch asking the walker for a translation on an ITLB miss: the virtual PAGE number (CCV_W_VA - CCV_L_PAGE_SHIFT bits), so no meaningless low bits can disagree with the TLB tag (arch open A-4).
+
+fet → miu · rate 1 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `virtual_page` | `CCV_W_VA-CCV_L_PAGE_SHIFT` | 48 | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (arch) |
+| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
+| **total** | | **56** | |
 
 ### `ccv_ooe_rau_status`
 
@@ -509,10 +515,10 @@ spm → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 3 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 5 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
 | `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `conflict_serialization` | `CCV_W_CONFLICT_SER` | 6 | CCV_W_CONFLICT_SER (arch) |
-| **total** | | **1033** | ⚠️ 3 provisional |
+| **total** | | **1035** | ⚠️ 5 provisional |
 
 ### `ccv_dcu_miu_rsp`
 
@@ -522,12 +528,12 @@ dcu → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 4 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 6 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
 | `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `hit` | `1` | 1 | literal |
 | `ownership_granted` | `1` | 1 | literal |
 | `mlc_miss` | `1` | 1 | literal |
-| **total** | | **1031** | ⚠️ 4 provisional |
+| **total** | | **1033** | ⚠️ 6 provisional |
 
 ### `ccv_mlc_dcu_rsp`
 
@@ -592,6 +598,23 @@ mlc → fet · rate 1 · memory
 | `req_id` | `CCV_P_W_REQ_FET_MLC` | 2 ⚠️ | CCV_P_W_REQ_FET_MLC (provisional) |
 | `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
 | **total** | | **1026** | ⚠️ 1026 provisional |
+
+### `ccv_rau_fet_launch`
+
+A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot. tier1_id is the tier-1 slot RAU placed the warp in (A-65): FET fetches it in that slot's binding group on ccv_fet_dec_instr and indexes its checkpoints by it, as OOE does from ccv_rau_ooe_alloc. live_mask (AR's response TI-27 (a)) is the warp's lanes, which FET picks among: lanes [0, n) with n = min(32, T - 32 x warp_in_cta), T the CTA's thread count from the grid descriptor (Q-50). A partial warp is always the low lanes (ISA section 5.3). 32 bits rather than a count, since a restore's mask on ccv_pca_fet_mig is arbitrary and FET loads one register from either.
+
+rau → fet · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `start_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
+| `code_bounds` | `2*(CCV_W_VA-CCV_L_PAGE_SHIFT)` | 96 | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (arch) |
+| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
+| `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
+| `live_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| **total** | | **210** | ⚠️ 3 provisional |
 
 ### `ccv_rau_ooe_alloc`
 
@@ -734,8 +757,8 @@ dcu → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 4 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
-| **total** | | **4** | ⚠️ 4 provisional |
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 6 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| **total** | | **6** | ⚠️ 6 provisional |
 
 ### `ccv_miu_ooe_cmpl_hint`
 
@@ -918,12 +941,12 @@ miu → spm · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 3 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 5 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
 | `bank_addr` | `CCV_SPM_BANKS*CCV_W_SPM_WORD` | 320 | CCV_SPM_BANKS (arch); CCV_W_SPM_WORD (arch) |
 | `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
 | `spm_op` | `CCV_L_W_SPM_OP` | 2 ⛔ | CCV_L_W_SPM_OP (preliminary, churn low) |
-| **total** | | **1477** | ⛔ 2 preliminary, ⚠️ 3 provisional |
+| **total** | | **1479** | ⛔ 2 preliminary, ⚠️ 5 provisional |
 
 ### `ccv_miu_dcu_req`
 
@@ -933,14 +956,14 @@ miu → dcu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 4 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 6 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `size` | `CCV_W_ACCESS_SIZE` | 3 | CCV_W_ACCESS_SIZE (arch) |
 | `coh_op` | `CCV_L_W_COH_OP` | 4 ⛔ | CCV_L_W_COH_OP (preliminary, churn med) |
 | `exclusive_req` | `1` | 1 | literal |
 | `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
-| **total** | | **1212** | ⛔ 4 preliminary, ⚠️ 52 provisional |
+| **total** | | **1214** | ⛔ 4 preliminary, ⚠️ 54 provisional |
 
 ### `ccv_dcu_mlc_req`
 
@@ -967,18 +990,6 @@ miu → fet · rate 1 · memory
 |---|---|---|---|
 | `itlb_refill` | `CCV_L_W_ITLB_ENTRY` | 64 ⛔ | CCV_L_W_ITLB_ENTRY (preliminary, churn low) |
 | **total** | | **64** | ⛔ 64 preliminary |
-
-### `ccv_fet_miu_itlb_req`
-
-Fetch asking the walker for a translation on an ITLB miss: the virtual PAGE number (CCV_W_VA - CCV_L_PAGE_SHIFT bits), so no meaningless low bits can disagree with the TLB tag (arch open A-4).
-
-fet → miu · rate 1 · memory
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `virtual_page` | `CCV_W_VA-CCV_L_PAGE_SHIFT` | 52 ⛔ | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (preliminary, churn low) |
-| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
-| **total** | | **60** | ⛔ 52 preliminary |
 
 ### `ccv_mlc_exb_req`
 
@@ -1023,23 +1034,6 @@ exb → EXTERNAL · rate 1 · memory
 |---|---|---|---|
 | `tl_out` | `CCV_L_W_TL_OUT` | 1225 ⛔ | CCV_L_W_TL_OUT (preliminary, churn **HIGH**) |
 | **total** | | **1225** | ⛔ 1225 preliminary |
-
-### `ccv_rau_fet_launch`
-
-A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot. tier1_id is the tier-1 slot RAU placed the warp in (A-65): FET fetches it in that slot's binding group on ccv_fet_dec_instr and indexes its checkpoints by it, as OOE does from ccv_rau_ooe_alloc. live_mask (AR's response TI-27 (a)) is the warp's lanes, which FET picks among: lanes [0, n) with n = min(32, T - 32 x warp_in_cta), T the CTA's thread count from the grid descriptor (Q-50). A partial warp is always the low lanes (ISA section 5.3). 32 bits rather than a count, since a restore's mask on ccv_pca_fet_mig is arbitrary and FET loads one register from either.
-
-rau → fet · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
-| `start_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
-| `code_bounds` | `2*(CCV_W_VA-CCV_L_PAGE_SHIFT)` | 104 ⛔ | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (preliminary, churn low) |
-| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
-| `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
-| `live_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
-| **total** | | **218** | ⛔ 104 preliminary, ⚠️ 3 provisional |
 
 ### `ccv_cru_rau_cfg`
 
