@@ -19,6 +19,7 @@ so this is a build artifact rather than something to remember.
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
+| `rtl/ooe/ooe_sched.sv` | — | `CCV_MEMOP_CREDITS` |
 | `rtl/rcu/ccv_rcu.sv` | `CCV_L_OPERANDS_PER_LANE`, `CCV_L_W_OPCODE` | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W`, `CCV_P_W_LANE_BYP_SEL`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
 | `rtl/rcu/rcu_bank_slice.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO` |
 | `rtl/rcu/rcu_isd.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_W_PHYS_REG` |
