@@ -307,6 +307,15 @@ struct Env {
   /// Load data past L1 becomes readable this many cycles after the
   /// completion lands (a longer ccv_miu_rcu_data link, in issue-time terms).
   unsigned data_after_cmpl = 0;
+  /// MA-5: MIU's credits per memop slot, each back mcred_ret cycles after
+  /// its memop leaves (-1: the core is told none, as before MA-5).
+  int mcred_depth = -1;
+  unsigned mcred_ret = 40;
+  std::array<unsigned, 4> mcred{};
+  std::multimap<uint64_t, unsigned> mcred_back;
+  bool mcred_init = false;
+  unsigned mcred_over = 0;              ///< memops sent on a slot with no credit
+  std::array<unsigned, 4> mcred_sent{}; ///< memops per slot
 
   struct Warp {
     unsigned id = 0, slot = 0, epoch = 0;
@@ -1310,6 +1319,12 @@ struct Env {
       for (const auto &b : read_busy) busy += b.first <= t && t < b.second;
       core.migrationReads(busy);
     }
+    if (mcred_depth >= 0) {
+      if (!mcred_init) mcred.fill(unsigned(mcred_depth)), mcred_init = true;
+      for (auto it = mcred_back.begin(); it != mcred_back.end() && it->first <= t; it = mcred_back.erase(it))
+        ++mcred[it->second];
+      core.memopCredits(mcred);
+    }
     if (g_pre_cycle_hook) g_pre_cycle_hook(core);
     const auto presets = std::move(preset_cw);
     preset_cw.clear();
@@ -1360,6 +1375,14 @@ struct Env {
     }
     for (const Issue &is : o.issues) onIssue(is);
     for (const Memop &m : o.memops) onMemop(m);
+    if (mcred_depth >= 0)
+      for (const Memop &m : o.memops) {
+        if (m.port >= 4) continue;
+        ++mcred_sent[m.port];
+        if (!mcred[m.port]) { ++mcred_over; continue; }
+        --mcred[m.port];
+        mcred_back.emplace(t + mcred_ret, m.port);
+      }
     // Sectioned lanes (OI-28): the lane ops leaving in one cycle use
     // disjoint sections of the four operand ports, each op every section its
     // operands sit in. Checked from the names alone, not the core's
@@ -4525,6 +4548,47 @@ void testReconv() {
   }
 }
 
+/// MA-5 (AR 345/347, OA-412): MIU holds a few credits per memop slot and
+/// returns each long after its memop. Select must grant a memop only on a
+/// credited pipe of its footprint, the lowest, so full-width loads spread
+/// past P0 once its credits are out, and nothing goes on an empty slot.
+/// The control grants as before MA-5, on the footprint's lowest pipe.
+void testMemopCredits() {
+  for (const bool sectioned : {true, false})
+    for (const bool control : {false, true}) {
+      g_test = control ? "memop credits (control)" : "memop credits";
+      Config c = baseConfig();
+      c.sectioned = sectioned;
+      c.inject_no_memop_credit = control;
+      Env e(c);
+      e.mcred_depth = 2;
+      e.mcred_ret = 40;
+      std::vector<Op> p;
+      for (unsigned k = 0; k != 12; ++k) {
+        Op ld; ld.k = kLoad; ld.dst = 1 + k % 8; ld.nsrc = 1; p.push_back(ld);
+      }
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      if (control) g_quiet = true;
+      const int saved = g_fail;
+      e.finish();
+      g_quiet = false;
+      const std::string mode = sectioned ? "sectioned" : "unsectioned";
+      if (control) {
+        g_fail = saved;
+        std::printf("  %-24s %s\n", ("control mcred " + mode).c_str(), e.mcred_over ? "caught" : "MISSED");
+        EXPECT(e.mcred_over != 0, "%s: a select blind to MIU's credits should overrun a slot", mode.c_str());
+        continue;
+      }
+      EXPECT(e.mcred_over == 0, "%s: %u memops sent on a slot with no credit", mode.c_str(), e.mcred_over);
+      EXPECT(e.w[0].retired.size() == p.size(), "%s: retired %zu of %zu", mode.c_str(), e.w[0].retired.size(),
+             p.size());
+      if (sectioned)
+        EXPECT(e.mcred_sent[1] + e.mcred_sent[2] + e.mcred_sent[3] != 0,
+               "sectioned: every memop went on P0 (%u), none on the next credited pipe", e.mcred_sent[0]);
+    }
+}
+
 /// OI-133 (OA-17 at L1_WAKE 16): a producer cancelled and granted again at
 /// the same edge as a dependant granted on the ready bit its first issue
 /// woke. The hop must return the dependant (its stale grant) and the
@@ -5849,6 +5913,7 @@ int main(int argc, char **argv) {
   testControls();
   testCogrant();
   testReconv();
+  testMemopCredits();
   std::printf("ooe-test: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
   return g_fail ? 1 : 0;
 }

@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-10 (#35 pushed d86e3a14, full PASS; OI-137 rev 338 rung OA; RH pricing asked; next #38)
+Updated 2026-11-13 (#49 model side: select gates memops on MIU credits, lowest credited pipe; RTL waits on TI 0da78445)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -52,6 +52,12 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-5. #49 MA-5 model (TI rev 414 asked it): Core::memopCredits() from the block each cycle (Stub::credits on
+   ooe_miu P0-P3); select grants a memop only on a credited pipe, sends on the lowest; discards wait for P0's.
+   inject_no_memop_credit control, ooe_test testMemopCredits (Env mcred_depth). Opt-in: unit/RTL benches unchanged.
+   RTL next, once TI's 0da78445 (gate-scratch/TI-ma, CCV_MEMOP_CREDITS 10) lands: ooe_select cok input
+   (proto scratchpad wt-sel, lost on container loss), select_tb/trio_tb drive cok from a new wlog_ sel_cok; tune
+   cidx/sdep/chas remap. Answer TI rev 414 in the OI tab after the push (re:TI, rings TI only if asking).
 -4. OA 410 (OA rev 413, task #50): model knob l1_nohit beside l1_spec (no_hit[1] on cmpl_hint, valid I+12/payload I+13,
    clear spec wake by I+14, deps wake cmpl+1; refill hint wins), negative control ignoring no-hit; RH prices.
    Needs TI's field; stub sends none until MA Phase 1. AR 345/347 final (346 withdrawn): credits per memop CHANNEL slot P0-P3, 10 each, send on lowest credited
