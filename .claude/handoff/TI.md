@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 422, AR 348, OA 414, RI 71, MA 46 (2026-11-13). MA (MIU/DCU architect,
+TI 424, AR 349, OA 414, RI 71, MA 46 (2026-11-13). MA (MIU/DCU architect,
 session_01QPk2jyUbWA7fW9YpUwqdxk) is not in the roster: notice.py says
 none, so compose with --to AR and edit the header by hand.
 
@@ -57,6 +57,12 @@ plus a send_later check-in. `tools/bg-run.sh <name> <cmd...>` for others.
 - Disk: deleting other sessions' /tmp/tmp.* was denied; ask the user.
 
 ## Open work (most urgent first)
+0. AR 349 cm128: cause = 20dfbaf0 entry-held memop credits outlive CCV_P_TIMEOUT_BP 8192
+   (no leak; in-order MIU behind 32-line deep-tier store scatters). Asked AR/MA (TI rev 424)
+   to rule CCV_P_TIMEOUT_MEMOP = MEMOP_CREDITS x TIMEOUT_MEM = 20480 (or 81920). On OK:
+   params + schema credits_param channel uses it, control (8192 fails), bounded cm128 in
+   check-kernel (no response_within_n in 12k cycles; ~65 s + 31 s oracle, 2.4 GB). Debug
+   worktrees /home/user/ti-bisect, ti-bisect-717 (clean); traced kernel.cpp + logs in scratchpad.
 1. RI-42 / RA-37 CCV_RCU_RTL (go at TI rev 422): once RI pushes test/rcu/ccv_rcu_svh.sv,
    TI adds gen-top second RCU DPI shim ccv_rcu_dpi, the check-sv-hosted.sh selector
    (SVHOST 45/46 + rcu=rtl divergences=0), controls: shim_delay on shadow, flipped RTL
