@@ -1,12 +1,14 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-10 (#35 pushed d86e3a14, full PASS; OI-137 rev 338 rung OA; RH pricing asked; next #38)
+Updated 2026-11-13 (#49 model side: select gates memops on MIU credits, lowest credited pipe; RTL waits on TI 0da78445)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; no need to ask
   for a go unless at a key decision point. Long performance runs go to RH
   (session_01QPk2jvfKM1V5rRfip8FC86).
+- Gates (TI rev 418): launch `setsid nohup <gate> > log 2>&1 < /dev/null &`, never as a harness background
+  task (2 h kill); wait in-turn on the log or `while kill -0 <pid>`. Until TI's self-detaching tools land.
 - Push only with `CCV_PUSH_BRANCHES=ccr-57eff422-5tdecg tools/gate-push.sh` (--full for a
   sweep merge), run detached (setsid nohup script), result to a log a wait loop watches.
   A manual git push is refused ("CI Bypass"). Never push red. No PRs. One gate or heavy
@@ -37,7 +39,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 343, RA 136, IS 190, TI 407, OA 411, OI 338, CP 157, DA 119, RI 70
+Conventions 19, AR 343, RA 136, IS 190, TI 407, OA 413, OI 341, CP 157, DA 119, RI 70
 (sweep 11-12, nothing for OI; merged 126afa13 5, 183cc441 3, 3868632d 4, 888218a3 5, 9eb50716 6, c22116ce 1. Sweep 11-10; AR closed OI-136; DA 117-119: MIU next, MA/MI/DI). Earlier: OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
 (perf-register.md) and RI 888218a3 (cg-waivers.json, rcu_dec_pkg.sv, perf-register.md); rung both.
 OA-399 leaves a LANE 8/SFU 13 rerun "if OI has not run 8/13": check against RI-11/OI-115. AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
@@ -52,6 +54,19 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-5. #49 MA-5 model (TI rev 414 asked it): Core::memopCredits() from the block each cycle (Stub::credits on
+   ooe_miu P0-P3); select grants a memop only on a credited pipe, sends on the lowest; discards wait for P0's.
+   inject_no_memop_credit control, ooe_test testMemopCredits (Env mcred_depth). Opt-in: unit/RTL benches unchanged.
+   RTL next, once TI's 0da78445 (gate-scratch/TI-ma, CCV_MEMOP_CREDITS 10) lands: ooe_select cok input
+   (proto scratchpad wt-sel, lost on container loss), select_tb/trio_tb drive cok from a new wlog_ sel_cok; tune
+   cidx/sdep/chas remap. PUSHED dca29edc (SCOPED PASS); OI-140 (OI rev 341, Needs TI) rung TI: merge before ti-ma.
+-4. OA 410 (OA rev 413, task #50): model knob l1_nohit beside l1_spec (no_hit[1] on cmpl_hint, valid I+12/payload I+13,
+   clear spec wake by I+14, deps wake cmpl+1; refill hint wins), negative control ignoring no-hit; RH prices.
+   Needs TI's field; stub sends none until MA Phase 1. AR 345/347 final (346 withdrawn): credits per memop CHANNEL slot P0-P3, 10 each, send on lowest credited
+   slot of footprint (OA-412, MA rev 44). OI-139 (rev 340, Needs OA, AR; rung both) supersedes OI-138: worst path unchanged.
+   OI-138 (rev 339, Needs MA, rung session_01QPk2jyUbWA7fW9YpUwqdxk, not in roster): credit gate 0 NGD (proto scratchpad/wt-sel).
+-3. OA-409 (OA rev 412, re:MA-5): IF memop credits become queue entries, ooe_select gates each P grant on that slot's credit; build it and measure grant NGD then. Waits on MA's decision.
+   Sweep 11-12 pushed ae8a6bdf (full PASS). RH CoreMark for OI-137 due ~07:00 UTC 11-13. Pong to OA sent 11-13.
 -2. #35 ooe_rename PUSHED d86e3a14 (full PASS, with the 11-10 sweep merge of 183cc441/126afa13/80102643/9eb50716):
    flop-flop 24.73, one cap left (q_pname_cq03h 3.32). Model knob cand_indep_pend (on). OI-137 (rev 338, Needs OA)
    rung OA; RH asked to price on vs off (U/G/L 192/160/128, CoreMark, S1). On RH's table: add to OI-137. OA-407 (OA rev 411): accepted if on/off within 0.5% on S1, cm32, cm128; over goes to DA. RH started 13:33 (S1 first, CoreMark ~8.5 h).
