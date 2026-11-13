@@ -13,6 +13,9 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 - Register: MA tab body `1f971016-3f72` in doc JApHYjaUESeq8tsGMGXMU5
   (Opens table and Responses table; columns ID|Decision|Severity|Impl|Needs|Description
   and Re|Date|Impl|Response). Notify per `.claude/skills/register/SKILL.md` section 2.
+- gate-push: always `CCV_PUSH_BRANCHES=claude/miu-dcu-microarch-spec-664pgr`, else it
+  finds no base and runs the full gate. Run detached (setsid nohup tools/bg-run.sh ...)
+  and watch the real PID with kill -0; a background watcher dies at 2h, the gate does not.
 - Daily sweep: trigger `trig_015gBGZ169gCKj4KbpYm5bhB`, 02:35 Pacific.
 - Docs edits: a `find` replace "as text" inherits the first run's formatting
   (bold/code); for whole paragraphs use a guarded markdown replace.
@@ -20,9 +23,9 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
   scratchpad script render.py (strips XML to `[id h=]` lines). Rebuild it if
   the scratchpad is gone.
 
-## Bookmarks (register revs, 2026-11-13 06:57 UTC)
+## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 347, TI 419, OA 414, IS 192, CP 157, OI 339, RA 136,
+Conventions 19, AR 348, TI 419, OA 414, IS 193, CP 157, OI 341, RA 136,
 RI 70, MA 46, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
 
 ## State, 2026-11-13
@@ -55,7 +58,11 @@ RI 70, MA 46, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
 - MA-15 items 1-4 and MA-5 credits landed (TI 419, eda137fa; MA 46 accepts). Entry-free
   credit return is opt-in (CCV_MIU_MEMOP_CREDIT=entry) until OI's gating merges; item 5
   (SRAM macros) is TI's next.
-- Branch pushed at aaab8cab after SCOPED PASS (gate 2h12m: ngd 7797s, cg 7163s).
+- Sweep 2026-11-13: merged 7 branches (TI 23, infra 23, OI dca29edc 8, +4 small); RA.md
+  conflict taken RA's side. Pushed 593010a0, SCOPED PASS 24/24 (2h43m). Friday pings: 8/9
+  pongs (OI none yet); AR, CP, RH rosters lack MA until they merge (sender=stale).
+- OI-139/140: OOE sends on lowest credited slot (28 flops, no NGD cost); OOE model gates on
+  MIU per-slot credits (dca29edc), so TI can make entry-free return the default.
 - Gate note: a scoped gate on a branch carrying many merges runs nearly every
   section; check-cg/check-ngd took over 1h serial. Run gate-push under the 2h
   background limit or via tools/bg-run.sh with the max timeout.
