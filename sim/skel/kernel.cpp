@@ -1123,13 +1123,12 @@ private:
     const Ch &c = ch();
     // A memop's credit stands for its queue entry (MA-5, AR rev 345): it
     // goes back when the memop's last completion leaves, a discard's as it
-    // is taken. Opt-in (CCV_MIU_MEMOP_CREDIT=entry) until OOE's select waits
-    // for a memop credit (OI): today OOE refuses to send without one, as a
-    // model error. By default the credit returns on take, as before.
+    // is taken. OOE's select waits for a credit (OI, efe09c78). The control
+    // --break memop-credit-on-take returns it on take, as before MA-5: then
+    // more memops hold a slot's queue entries than it has credits.
     if (!armed_) {
       armed_ = true;
-      const char *e = std::getenv("CCV_MIU_MEMOP_CREDIT");
-      at_entry_ = e && std::string(e) == "entry";
+      at_entry_ = k_.brk != "memop-credit-on-take";
       if (at_entry_) creditAtRelease(c.ooe_miu);
     }
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
@@ -1190,7 +1189,8 @@ private:
           continue;
         }
         // The slot's queue entries: never more than its credits.
-        if (++entries_[s] > kChans[c.ooe_miu].credits && at_entry_)
+        k_.peak("memop_entries_peak", entries_[s] + 1);
+        if (++entries_[s] > kChans[c.ooe_miu].credits)
           k_.fail("miu: %u memops hold queue entries on slot %u, over its %u credits (MA-5)",
                   entries_[s], s, unsigned(kChans[c.ooe_miu].credits));
         if (uidClass(m.tid) != IdClass::kInstr)
@@ -1469,12 +1469,13 @@ private:
   // lead-fault-replay sets it on a replay too (OA rev 376's first rule,
   // status nonzero), and --break lead-fault-drop never sets it on a fault;
   // OOE's equality must refuse both.
-  /// A completion to OOE, on the memop's arrival slot. Its last one (more
-  /// clear) frees the memop's queue entry, and so its credit (MA-5).
+  /// A completion to OOE, on the memop's arrival slot. Every memop gets
+  /// exactly one (ccv_miu_ooe), so it frees the memop's queue entry, and so
+  /// its credit (MA-5). An atomic's more = 1 is not a second completion of
+  /// this memop: OOE re-issues the steps as new memops (AR-21).
   void sendCmpl(unsigned slot, const Bits &m, uint64_t tid) {
     const Ch &c = ch();
     send(c.miu_ooe, slot, withLead(m), tid);
-    if (get(m, c.miu_ooe, "more")) return;
     if (!entries_[slot]) {
       k_.fail("miu: a last completion on slot %u, which holds no memop entry", slot);
       return;

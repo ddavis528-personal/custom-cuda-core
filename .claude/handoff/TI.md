@@ -47,7 +47,7 @@ still running: rerun at once). Before that lands: `setsid nohup ... &` plus a
 ## State (2026-11-13 ~09:10Z)
 - Landed eda137fa (MA-15 1-4, MA-5 memop credits_param 10/slot, no_hit +
   notice_of.unless, CCV_MIU_DCU_IDS, CreditAt::Release opt-in under
-  CCV_MIU_MEMOP_CREDIT=entry). Row 419 to MA AR OA OI.
+  opt-in). Row 419 to MA AR OA OI.
 - Gating: /home/user/ti-detach b5cb0fbb (self-detaching long tools,
   gate-wait.sh, check-detach.sh; backup gate-scratch/TI-detach). Job log
   /root/ccv-logs/job-gate-push-20261113-090713-20034.log. On pass: a
@@ -58,10 +58,12 @@ still running: rerun at once). Before that lands: `setsid nohup ... &` plus a
 - Disk: deleting other sessions' /tmp/tmp.* was denied; ask the user.
 
 ## Open work (most urgent first)
-1. #9 MA-5 entry-free credits: merge OI's dca29edc
-   (origin/ccr-57eff422-5tdecg), make CCV_MIU_MEMOP_CREDIT=entry the
-   default, controls memop-credit-on-take and inject_no_memop_credit; gate;
-   row to OI, MA.
+1. #9 MA-5 entry-free credits: built on ti-ma (merged OI's efe09c78/
+   dca29edc; entry-free the default; credit on every completion, as an
+   atomic's more=1 is not a second one; --break memop-credit-on-take and
+   inject_no_memop_credit on vadd4; bin memop_entries_peak=10). check-kernel
+   323 PASS, check-ooe-unit PASS. Gate it once ti-detach lands; then a row to
+   OI (one-line knob in sim/ooe/ooe_core.cpp, OI-18) and MA.
 2. #8 SRAM macros (AR 344): ccv_sram_1rw (byte wmask), ccv_sram_1r1w
    (read-before-write) as check-ngd/check-cg black boxes, behavioural models
    in both hosts, a flop-array control.

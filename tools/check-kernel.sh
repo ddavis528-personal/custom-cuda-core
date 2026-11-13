@@ -807,7 +807,7 @@ missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
 mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
-vadd4  full_line=4
+vadd4  full_line=4 memop_entries_peak=10
 swap   slot_reuse=2
 provswap redirect>0 slot_reuse>0
 stall  l1_late>0
@@ -1070,6 +1070,25 @@ if [ "$(grep -c '^CHECK miu: seq 8 lane' "$B/kernel_drop-writeback.log")" = 32 ]
   say "--break drop-writeback: evicted lines lost" "PASS (seq 8's 32 lanes reload stale; 32 words in memory)"
 else
   bad "--break drop-writeback" "a dropped writeback went unnoticed: $(grep '^KERNEL' "$B/kernel_drop-writeback.log")"
+fi
+# MA-5 (AR 345/347): a memop's credit stands for its MIU queue entry and
+# returns when its completion leaves, 10 a slot; OOE's select waits for one
+# (OI, efe09c78). vadd4 fills slot 0's 10 (memop_entries_peak, above).
+# --break memop-credit-on-take returns it as MIU takes the memop, as before:
+# vadd4 then holds up to 15 entries on slot 0, and MIU refuses each over 10.
+"$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break memop-credit-on-take >"$B/kernel_memop-credit-on-take.log" 2>&1
+if grep -q '^CHECK miu: 11 memops hold queue entries on slot 0, over its 10 credits (MA-5)' "$B/kernel_memop-credit-on-take.log"; then
+  say "--break memop-credit-on-take: over 10 entries" "PASS (vadd4, peak $(field "$B/kernel_memop-credit-on-take.log" memop_entries_peak))"
+else
+  bad "--break memop-credit-on-take" "credits returned on take went unnoticed: $(grep '^KERNEL' "$B/kernel_memop-credit-on-take.log")"
+fi
+# And OOE's side: inject_no_memop_credit grants a memop on a pipe whose slot
+# holds no credit; the send is refused (vadd4, slot 0).
+CCV_OOE_CONFIG=inject_no_memop_credit=1 "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl >"$B/kernel_no-memop-credit.log" 2>&1
+if grep -q '^CHECK ooe: no credit on ccv_ooe_miu_memop slot 0' "$B/kernel_no-memop-credit.log"; then
+  say "inject_no_memop_credit: a send with none refused" "PASS (vadd4, slot 0)"
+else
+  bad "inject_no_memop_credit" "a memop sent without a credit went unnoticed: $(grep '^KERNEL' "$B/kernel_no-memop-credit.log")"
 fi
 # DCU marks a line owned only on MLC's grant (ccv_mlc_dcu_rsp.ownership):
 # refused it, predswap's first spill (AcquireBlock) and vadd's whole-line
