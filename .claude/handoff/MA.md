@@ -20,10 +20,10 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
   scratchpad script render.py (strips XML to `[id h=]` lines). Rebuild it if
   the scratchpad is gone.
 
-## Bookmarks (register revs at 2026-11-13 start)
+## Bookmarks (register revs, 2026-11-13 06:57 UTC)
 
-Conventions 19, AR 343, TI 407, OA 411, IS 190, CP 157, OI 338, RA 136,
-RI 70, MA 3 (after MA-1..14), DA 119. Specs doc: MIU tab rev 91, DCU tab rev 20.
+Conventions 19, AR 347, TI 414, OA 414, IS 192, CP 157, OI 339, RA 136,
+RI 70, MA 45, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
 
 ## State, 2026-11-13
 
@@ -42,12 +42,28 @@ RI 70, MA 3 (after MA-1..14), DA 119. Specs doc: MIU tab rev 91, DCU tab rev 20.
 - Grill-me raised: MA-1..MA-14 (rev 3). Notices sent to AR, OA, IS, TI.
   MA-13 is DA's (compute priority; MI/DI start).
 
+- Agreed since: MA-1..8, MA-10..12, MA-14 (AR rev 344); MA-4 with OA (OA-408/410:
+  early 1-bit no_hit on ccv_miu_ooe_cmpl_hint, TI applied on ti-ma); MA-5 per-slot
+  credits (AR 345, re-affirmed 347 after the withdrawn 346): CCV_MEMOP_CREDITS = 10 a
+  slot, OOE sends on the first credited slot within pipes; MIU keeps one 40-entry
+  queue, each entry's arrival slot (2b) for the credit and lead pipe ctz(pipes) for
+  the address pairing, and a 4-bit owed count per slot (credit return is 1 pulse a
+  slot a cycle). OI-138 measured the select at 0 NGD, so the pool fallback is closed.
+- MA-13 (DA): no compute priority; MI and DI start only after the grill-me with AR
+  is finished, a summary is delivered to Daniel, and everything is documented.
+- session-home installed (`tools/setup-session-home.py --check` matches).
+- MA-15 (params/schema bundle) is on TI's branch ti-ma, not yet landed.
+- Gate note: a scoped gate on a branch carrying many merges runs nearly every
+  section; check-cg/check-ngd took over 1h serial. Run gate-push under the 2h
+  background limit or via tools/bg-run.sh with the max timeout.
+
 ## Open work, most urgent first
 
-1. Answers to MA-1 (L1_HIT at zero slack), MA-2 (64 KiB pages), MA-4
-   (contract eligibility), MA-5 (memop credit). These gate Phase 1's exit.
-2. When agreed: TI rows for CCV_L_PAGE_SHIFT, req_id widths, CCV_DCU_SETS/WAYS,
-   the DCU hold text; update the tabs' draft sections to decided.
-3. Phase 2: module partition, per-port NGD budgets, the lane-extract and
-   payload-slot area decision (MIU draft, "Entries").
-4. session-home skill not yet run (it writes /home/user/.claude; needs DA's ok).
+1. MA-9 (MIU-DCU boundary): waits on AR's capacity sweep (64 vs 512 KiB, L1_HIT
+   5/7/8). When it closes, the grill-me is finished.
+2. Then: the summary to Daniel (all MA rows, decisions, what changed in the spec
+   tabs), and confirm everything is documented. Only after that, MI and DI
+   handoffs (docs/miu-impl.md, docs/dcu-impl.md).
+3. Track MA-15 landing (TI, ti-ma); close MA-15 and the TI parts of MA-2/3/5/6/12.
+4. Phase 2: module partition, per-port NGD budgets, index-lead schema row (after
+   AR's sweep), the payload-slot macro decision.
