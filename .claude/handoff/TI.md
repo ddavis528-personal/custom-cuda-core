@@ -32,41 +32,36 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 419, AR 348, OA 414, MA 44 (2026-11-13). MA (MIU/DCU architect,
+TI 419, AR 348, OA 414, RI 71, MA 46 (2026-11-13). MA (MIU/DCU architect,
 session_01QPk2jyUbWA7fW9YpUwqdxk) is not in the roster: notice.py says
 none, so compose with --to AR and edit the header by hand.
 
 ## Long runs (DA, 2026-11-13)
-An idle container is reclaimed and kills detached jobs; a background task
-dies at 2 h. Run a gate detached and keep a background task alive on it:
-once ti-detach lands, `tools/gate-push.sh` detaches itself, and
-`tools/gate-wait.sh <job log>` as a background task waits (exit 3 =
-still running: rerun at once). Before that lands: `setsid nohup ... &` plus a
-`while kill -0 <pid>` watcher, restarted before 2 h. Add a send_later check-in.
+Landed in a46afef7: every long tool (verify, gate-push, daily-sweep,
+make-release) detaches itself and prints its job log. Wait with
+`tools/gate-wait.sh <job log>` as a background task (exit 3 = still
+running: rerun at once; 4 = killed by a container restart: rerun the job),
+plus a send_later check-in. `tools/bg-run.sh <name> <cmd...>` for others.
 
-## State (2026-11-13 ~09:10Z)
-- Landed eda137fa (MA-15 1-4, MA-5 memop credits_param 10/slot, no_hit +
-  notice_of.unless, CCV_MIU_DCU_IDS, CreditAt::Release opt-in under
-  opt-in). Row 419 to MA AR OA OI.
-- Gating: /home/user/ti-detach b5cb0fbb (self-detaching long tools,
-  gate-wait.sh, check-detach.sh; backup gate-scratch/TI-detach). Job log
-  /root/ccv-logs/job-gate-push-20261113-090713-20034.log. On pass: a
-  "gates detach: landed" row to AR OA OI RA RI RH IS CP MA (row 418 gave
-  the interim manual recipe).
-- Worktrees: custom-cuda-core, ti-ops, ti-ma, ti-detach. Backups to
-  gate-scratch/TI-<name> by plain push only (force-push is denied).
+## State (2026-11-13 ~13:50Z)
+- Daily sweep 11-13 landed a46afef7 on both push branches (full clean gate
+  PASS; release fb6d9f23; snapshot tag refused by the remote). It carries
+  ti-detach, ti-ma (MA-5 entry-free credits 20dfbaf0) and ti-sram (SRAM
+  macros 930f49e9) and every agent branch.
+- PENDING: four TI rows built but not written (docs service 404/503 at
+  ~13:45Z): scratchpad rAll.ops.json (rows rA-rD.json). Write them, then
+  notices: rA (detach landed) to AR OA OI RA RI RH IS CP MA; rB (MA-5
+  default, re:OI-140) to OI MA; rC (SRAM macros, re:MA-15 5, AR 344) to AR
+  MA; rD (sweep report) to no one.
+- RI-40 (rev 71): info only; RI's event-divergence line 'EVENTS DIVERGE'
+  is not what TI's control greps; RI moves to gate-wait.sh.
+- Worktree: ti-sram is the current one. Backups to gate-scratch/TI-<name>
+  by plain push only (force-push is denied).
 - Disk: deleting other sessions' /tmp/tmp.* was denied; ask the user.
 
 ## Open work (most urgent first)
-1. #9 MA-5 entry-free credits: built on ti-ma (merged OI's efe09c78/
-   dca29edc; entry-free the default; credit on every completion, as an
-   atomic's more=1 is not a second one; --break memop-credit-on-take and
-   inject_no_memop_credit on vadd4; bin memop_entries_peak=10). check-kernel
-   323 PASS, check-ooe-unit PASS. Gate it once ti-detach lands; then a row to
-   OI (one-line knob in sim/ooe/ooe_core.cpp, OI-18) and MA.
-2. #8 SRAM macros (AR 344): ccv_sram_1rw (byte wmask), ccv_sram_1r1w
-   (read-before-write) as check-ngd/check-cg black boxes, behavioural models
-   in both hosts, a flop-array control.
+1. Write the pending rows and notices (State above).
+2. Pongs: OI had not answered the 11-13 ping.
 3. MI/DI homes when their first files land.
 4. Older: RI-24 (3) job_rcu_rtl lock-step; RI-23 per-unit records +
    block_report.py.
