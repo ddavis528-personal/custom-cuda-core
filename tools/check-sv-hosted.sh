@@ -262,7 +262,8 @@ for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
   why=""
   grep -q "^SVHOST shims=46/46 skewed=none" "$RV/$k.log" || why="$why hosted"
   grep -q " violations=0$" "$RV/$k.log" || why="$why violations"
-  [ "$(lines "$B/svh_cpp_$k.log")" = "$(lines "$RV/$k.log")" ] || why="$why KERNEL"
+  # Not XFER: the C++ runs above are traced, these are not.
+  [ "$(lines "$B/svh_cpp_$k.log" | grep -v '^XFER ')" = "$(lines "$RV/$k.log")" ] || why="$why KERNEL"
   grep -qx "rcu=rtl divergences=0" "$RV/$k.cmp" || why="$why $(cat "$RV/$k.cmp")"
   [ -z "$why" ] || fails="$fails $k:${why# }"
 done
@@ -278,8 +279,9 @@ fi
 # reads, and the stored row at the next edge).
 missed=""
 for c in ev gate row; do
-  python3 test/rcu/svh.py compare "$RV/vadd" --control "$c" 2>/dev/null | tail -1 |
-    grep -qx "rcu=rtl divergences=[1-9][0-9]*" || missed="$missed $c"
+  # Captured first: compare exits 1 on a divergence, and pipefail is on.
+  out=$(python3 test/rcu/svh.py compare "$RV/vadd" --control "$c" 2>/dev/null)
+  echo "$out" | tail -1 | grep -qx "rcu=rtl divergences=[1-9][0-9]*" || missed="$missed $c"
 done
 rtl vadd skew "+ccv_shim_delay=u_rcu"
 grep -q "^SVHOST .* skewed=u_rcu$" "$RV/skew.log" && grep -qx "rcu=rtl divergences=[1-9][0-9]*" "$RV/skew.cmp" ||
