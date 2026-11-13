@@ -876,7 +876,8 @@ private:
 
 class Miu : public Stub {
 public:
-  Miu(int inst, Kernel &k) : Stub(inst, k), ids_(ch().miu_dcu), spm_ids_(ch().miu_spm) {}
+  Miu(int inst, Kernel &k)
+      : Stub(inst, k), ids_(ch().miu_dcu, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {}
   const char *kind() const override { return "miu"; }
 
 private:
