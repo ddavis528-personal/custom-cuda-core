@@ -45,8 +45,8 @@ module rcu_q53_chk #(
   localparam int NWP = 1 << WW,
   localparam int NP = ccv_params_pkg::CCV_PREDS,
   localparam int WP = ccv_prov_pkg::CCV_P_W_PHYS_PRED,
-  localparam int ROWS = ccv_params_pkg::CCV_P_PHYS_REGS,
-  localparam int PROWS = ccv_params_pkg::CCV_P_PRED_REGS,
+  localparam int ROWS = ccv_prov_pkg::CCV_P_PHYS_REGS,
+  localparam int PROWS = ccv_prov_pkg::CCV_P_PRED_REGS,
   localparam int H = 12                                   // A-1 .. A-12 kept
 ) (
   input logic              core_clk,
@@ -158,7 +158,7 @@ module rcu_q53_chk #(
   always_comb begin
     rz = 1'b0; rd = 1'b0;
     for (int a = 0; a < NG; a++) begin
-      rz |= map_g[a*WR +: WR] == WR'(ccv_params_pkg::CCV_P_PHYS_ZERO);
+      rz |= map_g[a*WR +: WR] == WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
       for (int b = 0; b < a; b++) rd |= map_g[a*WR +: WR] == map_g[b*WR +: WR];
     end
   end

@@ -338,9 +338,10 @@ def build(bdir, ins, outs, widths, trace=0, watch=()):
     bdir = os.path.abspath(bdir)
     iw = sum(widths[n] for n in ins)
     ow = sum(widths[n] for n in outs)
-    conns, off = [".%s(clk)" % CLOCK], 0
+    conns, off, ioff = [".%s(clk)" % CLOCK], 0, {}
     for p in ins:
         conns.append(".%s(in_v[%d +: %d])" % (p, off, widths[p]))
+        ioff[p] = off
         off += widths[p]
     off = 0
     for p in outs:
@@ -394,17 +395,16 @@ module rcu_ls_tb;
       if (t == 41) release dut.u_mig.dl_cr02h;
     end
     if (q53c == "rzero" || q53c == "rdup" || q53c == "iso") begin
-      if (t == 40) force dut.ooe_rcu_map_valid = 1'b1;
+      // Written into the stimulus (an input port's field cannot be forced).
+      if (t == 40) in_v[%(map_v)d] = 1'b1;
       if (t == 41) begin
-        release dut.ooe_rcu_map_valid;
-        force dut.ooe_rcu_map_payload.direction = 1'b1;
-        if (q53c == "rzero")    force dut.ooe_rcu_map_payload.gpr_map = 128'h0f0e0d0c0b0a090807060504030201ff;
-        else if (q53c == "rdup") force dut.ooe_rcu_map_payload.gpr_map = 128'h0f0e0d0c0b0a09080706050403020101;
-        else                     force dut.ooe_rcu_map_payload.gpr_map = 128'h0f0e0d0c0b0a09080706050403020100;
-      end
-      if (t == 42) begin
-        release dut.ooe_rcu_map_payload.direction;
-        release dut.ooe_rcu_map_payload.gpr_map;
+        ccv_ooe_rcu_map_t mp;
+        mp = in_v[%(map_p)d +: $bits(ccv_ooe_rcu_map_t)];
+        mp.direction = 1'b1;
+        if (q53c == "rzero")    mp.gpr_map = 128'h0f0e0d0c0b0a090807060504030201ff;
+        else if (q53c == "rdup") mp.gpr_map = 128'h0f0e0d0c0b0a09080706050403020101;
+        else                     mp.gpr_map = 128'h0f0e0d0c0b0a09080706050403020100;
+        in_v[%(map_p)d +: $bits(ccv_ooe_rcu_map_t)] = mp;
       end
     end
   endtask
@@ -438,6 +438,7 @@ module rcu_ls_tb;
 endmodule
 """ % {"iw": iw, "ow": ow, "conns": ",\n    ".join(conns), "init": "\n".join(init),
        "ev": evmon.sv("dut"),
+       "map_v": ioff["ooe_rcu_map_valid"], "map_p": ioff["ooe_rcu_map_payload"],
        "watch": "\n".join('  always @(dut.%s) $display("WATCH %%0d %s %%h", $time / 3, dut.%s);' % (w, w, w)
                           for w in watch)}
     os.makedirs(bdir, exist_ok=True)
@@ -549,7 +550,7 @@ def main():
         for m in re.finditer(r"\[(\d+)\] %Error: (\S+): Assertion failed in (\S+)", r.stdout + r.stderr):
             key = re.sub(r"\[\d+\]", "[N]", m.group(3))
             asserts.setdefault(key, [int(m.group(1)) // 3, 0])[1] += 1
-        if a.control in Q53C and any(k.endswith("q53_" + a.control) for k in asserts):
+        if a.control in Q53C and any(k.rstrip(":").endswith("q53_" + a.control) for k in asserts):
             q53hit.add(d)
         for k, (c, cnt) in sorted(asserts.items(), key=lambda kv: kv[1][0]):
             print("%s: ASSERTION %s, first at cycle %d, %d failures" % (d, k, c, cnt))
