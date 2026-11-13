@@ -13,7 +13,8 @@
 #                   of which must fail
 #   rcu_xbar:       test/rcu/xbar_tb.cpp, 32 lanes
 #   rcu_r:          test/rcu/r_tb.cpp, and its negative controls (noalign,
-#                   retlow, pmovneg, noireg), each of which must fail
+#                   retlow, pmovneg, noireg), each of which must fail, and twohot,
+#                   which the one-hot select assertion must stop
 #   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (spbown, nofwd,
 #                   nomerge, lgcorrupt), each of which must fail
 #   rcu_isd(_s):    test/rcu/isd_tb.cpp (each slot's class from its lead, RA-43,
@@ -99,6 +100,13 @@ for c in noalign retlow pmovneg noireg; do   # a control the bench does not catc
     say "rcu_r control $c" "NOT CAUGHT ($B/rcu_r.$c.log)"; fail=1
   fi
 done
+# twohot: the crossbar selects forced two-hot; rcu_r's one-hot assertion must stop the run.
+if [ -x "$B/rcu_r/tb" ] && ! "$B/rcu_r/tb" --control twohot >"$B/rcu_r.twohot.log" 2>&1 &&
+   grep -q "CCV xbar_sel_onehot failed" "$B/rcu_r.twohot.log"; then
+  say "rcu_r control twohot" "caught"
+else
+  say "rcu_r control twohot" "NOT CAUGHT ($B/rcu_r.twohot.log)"; fail=1
+fi
 bench rcu_pred test/rcu/cg-build.sh rcu_pred "$B/rcu_pred" -- "$B/rcu_pred/tb"
 for c in nofwd nomerge spbown lgcorrupt; do
   if [ -x "$B/rcu_pred/tb" ] && ! "$B/rcu_pred/tb" --control "$c" >"$B/rcu_pred.$c.log" 2>&1 &&

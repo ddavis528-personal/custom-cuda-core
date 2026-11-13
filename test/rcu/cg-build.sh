@@ -23,7 +23,7 @@ case "$unit" in
       "-DBS_ROWS=$rows -DBS_K=$k -DBS_FULL_ROW=$fr" \
       "$PWD/rtl/rcu/rcu_bank_slice.sv" "$PWD/test/rcu/bank_slice_tb.cpp" ;;
   rcu_r)
-    vl rcu_r "" "" "$PWD/rtl/rcu/rcu_xbar.sv" "$PWD/rtl/rcu/rcu_r.sv" "$PWD/test/rcu/r_tb.cpp" ;;
+    vl rcu_r "--public-flat-rw" "" "$PWD/rtl/rcu/rcu_xbar.sv" "$PWD/rtl/rcu/rcu_r.sv" "$PWD/test/rcu/r_tb.cpp" ;;
   rcu_pred)
     vl rcu_pred "" "" "$PWD/rtl/rcu/rcu_pred.sv" "$PWD/test/rcu/pred_tb.cpp" ;;
   rcu_isd|rcu_isd_s)
