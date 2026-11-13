@@ -63,7 +63,7 @@
 `define CCV_CLK rcu_core_clk
 `define CCV_RST rst_r01h
 module rcu_kill #(
-  parameter int NB = 6,          // busy terms from the other modules
+  parameter int NB = 5,          // busy terms from the other modules
   parameter int ND = 3,          // done-wake terms: rcu_lanes' descriptor stages, R's pipe, the issue wake a cycle on
   localparam int NS = ccv_params_pkg::CCV_ISSUE_RESOURCES,   // issue slots, 9
   localparam int NL = 32,        // lane-result copies

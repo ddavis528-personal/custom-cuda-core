@@ -710,7 +710,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
   const bool sent = out.lane || !out.dones.empty() || !out.addrs.empty() || out.pca;
   bool dead = false;
   for (const FifoEnt &e : fifo_) dead = dead || e.dead;
-  const bool idle = !input && !sent && gsched_.empty() && psched_.empty() && lanes_.empty() && dsched_.empty() &&
+  const bool idle = !input && !sent && !fifo_in_ && gsched_.empty() && psched_.empty() && lanes_.empty() && dsched_.empty() &&
                     late_.empty() && hist_.empty() && !dm_busy_ && !rs_busy_ && !dead && drain_ == 0 &&
                     !map_drops_ && !cmd_drops_ && !pca_pop_ && rpop_.empty();
   if (idle != idle_) ev(idle ? Ev::Idle : Ev::Wake);
@@ -895,41 +895,6 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
   }
   out.pca_credit = popped;
 
-  // Launch, from the picks flopped last cycle.
-  auto launch = [&](Pick &pk, unsigned dir) {
-    MapEnt *me = nullptr;
-    CmdEnt *ce = nullptr;
-    for (auto &m : mq_) if (m.id == pk.mi) me = &m;
-    for (auto &c : cq_) if (c.id == pk.ci) ce = &c;
-    if (!me || !ce) return false;   // dropped by a kill since
-    if (dir == 0) {
-      dm_busy_ = true;
-      dm_ = me->m;
-      dm_row_ = 0;
-      dm_wcnt_ = ccv::kWakeLat - 1;
-      dm_start_ = t;
-    } else {
-      rs_busy_ = true;
-      rs_ = me->m;
-      rs_next_ = 0;
-      rs_start_ = t;
-    }
-    ev(Ev::MigPair, me->m.warp, dir);
-    const unsigned mid = me->id, cid = ce->id;
-    mq_.erase(std::remove_if(mq_.begin(), mq_.end(), [&](const MapEnt &m) { return m.id == mid; }), mq_.end());
-    cq_.erase(std::remove_if(cq_.begin(), cq_.end(), [&](const CmdEnt &c) { return c.id == cid; }), cq_.end());
-    ++map_drops_;   // a launch returns both channels' credits next cycle
-    ++cmd_drops_;
-    return true;
-  };
-  if (dpick_.v && !dm_busy_) launch(dpick_, 0);
-  if (rpick_.v && !rs_busy_ && !fifo_.empty() && !fifo_.front().dead && fifo_.front().r.warp == rpick_.warp)
-    launch(rpick_, 1);
-  else if (!rs_busy_ && !fifo_.empty() && !fifo_.front().dead) {
-    ++st_.restore_holds;
-    ev(Ev::RestoreHold, fifo_.front().r.warp);
-  }
-
   // Demotion: a row a cycle, when R leaves R2 free (or the predicate row,
   // which reads D0-D3), there is a credit, and the wake has led by
   // CCV_WAKE_LAT. Read in A+1, sent valid A+1, payload A+2.
@@ -962,8 +927,9 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
       ++dm_row_;
     }
   }
-  // The launch cycle is c1 (the launch edge ended the pick's c0), whose
-  // edge already counts: the first decision is c4 (Migration tab, wake lead).
+  // The launch (below, at the end of c0) loads CCV_WAKE_LAT - 1; c1's edge
+  // is the first to count, so the first decision is c4 (Migration tab, wake
+  // lead).
   if (dm_busy_ && dm_wcnt_) --dm_wcnt_;
 
   // Restore: decide the next FIFO row of the warp in A, write it in A+2 on
@@ -998,6 +964,50 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
     }
   }
 
+  // Launch, at the edge that ends a cycle in which the flopped pick holds
+  // (Migration tab, Launch): this cycle is c0, so the engine is busy from
+  // c1, the launch credits are on the wire in c1, and the cycle's own
+  // demotion and restore decisions above saw the engine as it was in c0.
+  // (Launching at the top of the pick's cycle ran both engines a cycle
+  // early: the RTL's rcu_mig, held to the spec, is the reference.)
+  auto launch = [&](Pick &pk, unsigned dir) {
+    MapEnt *me = nullptr;
+    CmdEnt *ce = nullptr;
+    for (auto &m : mq_) if (m.id == pk.mi) me = &m;
+    for (auto &c : cq_) if (c.id == pk.ci) ce = &c;
+    if (!me || !ce) return false;   // dropped by a kill since
+    if (dir == 0) {
+      dm_busy_ = true;
+      dm_ = me->m;
+      dm_row_ = 0;
+      dm_wcnt_ = ccv::kWakeLat - 1;
+      dm_start_ = t + 1;   // c1
+    } else {
+      rs_busy_ = true;
+      rs_ = me->m;
+      rs_next_ = 0;
+      rs_start_ = t + 1;   // c1
+    }
+    ev(Ev::MigPair, me->m.warp, dir);
+    const unsigned mid = me->id, cid = ce->id;
+    mq_.erase(std::remove_if(mq_.begin(), mq_.end(), [&](const MapEnt &m) { return m.id == mid; }), mq_.end());
+    cq_.erase(std::remove_if(cq_.begin(), cq_.end(), [&](const CmdEnt &c) { return c.id == cid; }), cq_.end());
+    ++map_drops_;   // a launch returns both channels' credits next cycle
+    ++cmd_drops_;
+    return true;
+  };
+  if (dpick_.v && !dm_busy_) launch(dpick_, 0);
+  // The head: the FIFO's, or with it empty, the row in the capture flops
+  // (rcu_mig's head-now term).
+  const FifoEnt *hd = !fifo_.empty() ? &fifo_.front() : fifo_in_ ? &*fifo_in_ : nullptr;
+  if (rpick_.v && !rs_busy_ && hd && !hd->dead && hd->r.warp == rpick_.warp)
+    launch(rpick_, 1);
+  else if (!rs_busy_ && hd && !hd->dead) {
+    ++st_.restore_holds;
+    ev(Ev::RestoreHold, hd->r.warp);
+  }
+
+
   // Landing: a map, a command or a PCA row in its payload cycle, visible
   // to the pick from the next cycle.
   if (in.map) {
@@ -1023,10 +1033,16 @@ void Core::migrate(uint64_t t, const In &in, bool r2_busy, bool rw_busy, Out &ou
     if (cq_.size() >= kPairDepth) fail("a command lands with the pairing queue full (RA-28 (d))");
     cq_.push_back({*in.cmd, t, next_id_++});
   }
-  if (in.pca) {
+  // A PCA row lands in its payload cycle into capture flops beside the
+  // flopped valid and enters the FIFO a cycle on (rcu_mig; RA's ruling on
+  // RI-22 (7), option A), so the restore decides it from the cycle after
+  // that. The launch reads it at the head meanwhile (above).
+  if (fifo_in_) {
     if (fifo_.size() >= kFifoDepth) fail("restore FIFO overrun");
-    fifo_.push_back({*in.pca, ((kmask_ >> in.pca->warp) & 1u) != 0});
+    fifo_.push_back(*fifo_in_);
+    fifo_in_.reset();
   }
+  if (in.pca) fifo_in_ = FifoEnt{*in.pca, ((kmask_ >> in.pca->warp) & 1u) != 0};
 
   // The picks for the next cycle: the lowest (oldest) map entry with a
   // matching command, per direction, from entries landed before this cycle.
@@ -1086,13 +1102,14 @@ void Core::kill(uint32_t mask, unsigned epoch) {
   }
   for (size_t i = rs_inflight_; i < fifo_.size(); ++i)
     if (killed(fifo_[i].r.warp)) fifo_[i].dead = true;
+  if (fifo_in_ && killed(fifo_in_->r.warp)) fifo_in_->dead = true;
 }
 
 bool Core::killQuiet() const {
   if (drain_ != 0) return false;
   for (const FifoEnt &e : fifo_)
     if (e.dead) return false;
-  return true;
+  return !(fifo_in_ && fifo_in_->dead);
 }
 
 } // namespace rcu

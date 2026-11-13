@@ -20,11 +20,15 @@ and CCV_TRACE are not defined.
 
 Exit 0 when every dump is identical at every output on every cycle."""
 import argparse
+import hashlib
 import os
 import re
 import shutil
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import evmon  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PORTS = os.path.join(ROOT, "rtl/top/ports/ccv_rcu_ports.svh")
@@ -50,6 +54,9 @@ MK_STORE, MK_FENCE = (int(re.search(r"MK_%s = 3'd(\d)" % u, _DEC).group(1)) for 
 MK_PSTORE = int(re.search(r"MK_PSTORE = 3'd(\d)", _DEC).group(1))
 NSLOTS = len(set(re.findall(r"\booe_rcu_issue_s(\d+)_valid\b", open(PORTS).read())))   # issue slots
 CLOCK = "core_clk"
+# RCU's Q-53 checkers, bound into ccv_rcu in every replay: the module, then its bind.
+Q53 = ("test/rcu/rcu_q53_chk.sv", "test/rcu/rcu_q53_bind.svh")
+Q53C = ("arrival", "pair", "rzero", "rdup", "iso")
 
 
 def port_dirs():
@@ -331,9 +338,10 @@ def build(bdir, ins, outs, widths, trace=0, watch=()):
     bdir = os.path.abspath(bdir)
     iw = sum(widths[n] for n in ins)
     ow = sum(widths[n] for n in outs)
-    conns, off = [".%s(clk)" % CLOCK], 0
+    conns, off, ioff = [".%s(clk)" % CLOCK], 0, {}
     for p in ins:
         conns.append(".%s(in_v[%d +: %d])" % (p, off, widths[p]))
+        ioff[p] = off
         off += widths[p]
     off = 0
     for p in outs:
@@ -355,58 +363,108 @@ module rcu_ls_tb;
   logic [%(iw)d-1:0] in_v;
   wire  [%(ow)d-1:0] out_v;
   ccv_rcu dut (%(conns)s);
+  // RCU's Q-53 checkers (test/rcu/rcu_q53_chk.sv), bound into the block.
+`include "rcu_q53_bind.svh"
   // The register file powers up as the model's does (sim/rcu/rcu_block.cpp:
   // physical GPR p, lane l holds 0xdead0000 | p << 5 | l), so a read of a
   // row nothing wrote compares like any other (+noinit, control init: not).
   initial if (!$test$plusargs("noinit")) begin
 %(init)s
   end
-  int n, fd, fi;
+  int n, fd, fi, fe;
   string base;
+  // The Q-53 checkers' controls (lockstep.py --control arrival, pair, rzero,
+  // rdup), each a fault forced into the block, which its checker must name:
+  // arrival holds R's done valid a cycle after one ends; pair forces a
+  // demotion launch with nothing paired; rzero and rdup force a restore map
+  // onto the block's ports naming the zero register, or one row twice; iso
+  // forces one naming rows 0-15, which the kernel then reads unrestored.
+  string q53c = "";
+  logic  q53p = 1'b0;
+  int    q53t = -1;
+  task automatic rcu_q53_ctl(input int t);
+    if (q53c == "arrival") begin
+      if (q53t < 0 && q53p && !dut.rcu_ooe_done_s5_valid) begin
+        q53t = t;
+        force dut.rcu_ooe_done_s5_valid = 1'b1;
+      end else if (q53t >= 0 && t == q53t + 1) release dut.rcu_ooe_done_s5_valid;
+      q53p = dut.rcu_ooe_done_s5_valid;
+    end
+    if (q53c == "pair") begin
+      if (t == 40) force dut.u_mig.dl_cr02h = 1'b1;
+      if (t == 41) release dut.u_mig.dl_cr02h;
+    end
+    if (q53c == "rzero" || q53c == "rdup" || q53c == "iso") begin
+      // Written into the stimulus (an input port's field cannot be forced).
+      if (t == 40) in_v[%(map_v)d] = 1'b1;
+      if (t == 41) begin
+        ccv_ooe_rcu_map_t mp;
+        mp = in_v[%(map_p)d +: $bits(ccv_ooe_rcu_map_t)];
+        mp.direction = 1'b1;
+        if (q53c == "rzero")    mp.gpr_map = 128'h0f0e0d0c0b0a090807060504030201ff;
+        else if (q53c == "rdup") mp.gpr_map = 128'h0f0e0d0c0b0a09080706050403020101;
+        else                     mp.gpr_map = 128'h0f0e0d0c0b0a09080706050403020100;
+        in_v[%(map_p)d +: $bits(ccv_ooe_rcu_map_t)] = mp;
+      end
+    end
+  endtask
 %(watch)s
+%(ev)s
   initial begin
     void'($value$plusargs("n=%%d", n));
     void'($value$plusargs("base=%%s", base));
+    void'($value$plusargs("q53ctl=%%s", q53c));
     fi = $fopen({base, ".in"}, "r");
     fd = $fopen({base, ".obs"}, "w");
+    fe = $fopen({base, ".rtl.ev"}, "w");
     if ($test$plusargs("vcd")) begin
       $dumpfile({base, ".rtl.vcd"});
       $dumpvars(0, rcu_ls_tb);
     end
     for (int t = 0; t < n; t++) begin
       if ($fscanf(fi, "%%h", in_v) != 1) $fatal(1, "RCU-LS short stimulus at %%0d", t);
+      rcu_q53_ctl(t);
       #1;
       $fdisplay(fd, "%%h", out_v);
       $fflush(fd);
+      rcu_ev(t, fe);
       clk = 1'b1; #1; clk = 1'b0; #1;
     end
     $fclose(fd);
+    $fclose(fe);
     $display("RCU-LS done %%0d", n);
     $finish;
   end
 endmodule
 """ % {"iw": iw, "ow": ow, "conns": ",\n    ".join(conns), "init": "\n".join(init),
+       "ev": evmon.sv("dut"),
+       "map_v": ioff["ooe_rcu_map_valid"], "map_p": ioff["ooe_rcu_map_payload"],
        "watch": "\n".join('  always @(dut.%s) $display("WATCH %%0d %s %%h", $time / 3, dut.%s);' % (w, w, w)
                           for w in watch)}
     os.makedirs(bdir, exist_ok=True)
     tf = os.path.join(bdir, "rcu_ls_tb.sv")
     old = open(tf).read() if os.path.exists(tf) else None
     exe = os.path.join(bdir, "obj", "rcu_ls_tb")
-    tb += "// trace %d\n" % trace
+    rtl = sorted(os.path.join(ROOT, "rtl/rcu", f) for f in os.listdir(os.path.join(ROOT, "rtl/rcu"))
+                 if f.endswith(".sv") and f != "rcu_dec_pkg.sv")
+    # The binary is reused only for the same testbench and the same RTL.
+    h = hashlib.sha256()
+    for f in rtl + [os.path.join(ROOT, f) for f in ("rtl/rcu/rcu_dec_pkg.sv", "rtl/clk/ccv_common_clk.sv",
+                                                     "rtl/generated/ccv_params_pkg.sv") + Q53]:
+        h.update(open(f, "rb").read())
+    tb += "// trace %d, rtl %s\n" % (trace, h.hexdigest()[:16])
     if old == tb and os.path.exists(exe):
         return exe
     open(tf, "w").write(tb)
-    rtl = sorted(os.path.join(ROOT, "rtl/rcu", f) for f in os.listdir(os.path.join(ROOT, "rtl/rcu"))
-                 if f.endswith(".sv") and f != "rcu_dec_pkg.sv")
     cmd = (["verilator", "--binary", "--timing", "-j", "0", "-O2", "--assert",
             "-Wno-fatal", "-Wno-lint", "-Wno-style", "--top-module", "rcu_ls_tb"]
-           + ["-I" + os.path.join(ROOT, d) for d in ("rtl/include", "rtl/generated", "rtl/top/ports")]
+           + ["-I" + os.path.join(ROOT, d) for d in ("rtl/include", "rtl/generated", "rtl/top/ports", "test/rcu")]
            + (["--trace", "--trace-depth", str(trace)] if trace else [])
            + ["--Mdir", os.path.join(bdir, "obj"), "-o", "rcu_ls_tb"]
            + [os.path.join(ROOT, f) for f in ("rtl/generated/ccv_params_pkg.sv", "rtl/ccv_assert_pkg.sv",
                                               "rtl/rcu/rcu_dec_pkg.sv", "rtl/ctech/sim/ccv_common_ctech_icg.sv",
                                               "rtl/clk/ccv_common_clk.sv")]
-           + rtl + [tf])
+           + rtl + [os.path.join(ROOT, Q53[0]), tf])
     r = subprocess.run(cmd, cwd=bdir, capture_output=True, text=True)
     if r.returncode:
         sys.exit("lockstep: build failed:\n" + (r.stdout + r.stderr)[-3000:])
@@ -435,24 +493,36 @@ def main():
                     help="build with tracing to DEPTH and write <dump>.rtl.vcd")
     ap.add_argument("--triage", action="store_true",
                     help="past the first divergence, each port's own first one (open-loop: a triage aid)")
-    ap.add_argument("--credit-lead", type=int, default=1, metavar="N",
-                    help="cycles the RTL's credits lead the model's (default 1, 0 is strict): "
-                         "the spec returns a credit in the message's payload cycle, from "
-                         "<ch>_v_q, as the RTL does; the skeleton's Receiver::pop can only "
-                         "credit a cycle later (RI-36)")
-    ap.add_argument("--control", choices=("init", "opnd"),
+    ap.add_argument("--credit-lead", type=int, default=0, metavar="N",
+                    help="cycles the RTL's credits lead the model's (default 0, strict): the "
+                         "model credits issue and lane results in the landing cycle "
+                         "(creditAtLanding), as the RTL's <ch>_v_q does (RI-36); a triage aid")
+    ap.add_argument("--control", choices=("init", "opnd", "ev", "gate", "row", "lead") + Q53C,
                     help="a negative control, which must diverge on every dump: init leaves "
                          "the RTL's register file unmatched to the model's power-up; opnd flips "
-                         "one consumed operand bit of the dump's first lane message")
+                         "one consumed operand bit of the dump's first lane message; ev drops the "
+                         "model's first compared event; gate drops its first idle, so the clock "
+                         "gate's first sleep finds the model busy; row flips a bit of the first "
+                         "written row's value; lead holds the RTL's credits a cycle ahead of the "
+                         "model's (--credit-lead 1), so the strict credit compare must fail; "
+                         "arrival, pair, rzero, rdup and iso force a fault the Q-53 checker of that "
+                         "name must report (rcu_q53_ctl in the testbench)")
     ap.add_argument("--watch", action="append", default=[], metavar="PATH",
                     help="print a signal under ccv_rcu (e.g. u_pred.g_row[6].pq_cr02h) at each change, "
                          "with its cycle (a triage aid)")
+    ap.add_argument("--replayed", action="store_true",
+                    help="each dump is a run that already happened (test/rcu/svh.py: the SV top "
+                         "with the RTL driving and the model shadowing): its outputs are "
+                         "<dump>.obs and its events <dump>.rtl.ev beside it, compared as a "
+                         "replay's; nothing is built or run")
     ap.add_argument("dumps", nargs="+")
     a = ap.parse_args()
     a.build = os.path.abspath(a.build)
+    if a.control == "lead":
+        a.credit_lead = 1
     dirs = port_dirs()
     chans = chan_fields()
-    exe, fail, diverged = None, 0, set()
+    exe, fail, diverged, q53hit = None, 0, set(), set()
     for d in a.dumps:
         widths, snaps = read_dump(d, set(dirs))
         missing = sorted(n for n in dirs if n not in widths and not n.startswith("csr_"))
@@ -468,22 +538,32 @@ def main():
             cr = [n for n in outs if n.endswith("_credit")]
             snaps = [dict(s, **{n: (snaps[t + a.credit_lead].get(n, 0) if t + a.credit_lead < len(snaps) else 0)
                                 for n in cr}) for t, s in enumerate(snaps)]
-        if exe is None:
+        if a.replayed:
+            base = os.path.splitext(d)[0]
+        elif exe is None:
             exe = build(a.build, ins, outs, widths, a.vcd, a.watch)
-        base = os.path.join(a.build, os.path.splitext(os.path.basename(d))[0])
+        if not a.replayed:
+            base = os.path.join(a.build, os.path.splitext(os.path.basename(d))[0])
         iw = sum(widths[n] for n in ins)
-        with open(base + ".in", "w") as f:
-            for s in snaps:
-                f.write("%0*x\n" % ((iw + 3) // 4, pack(s, ins, widths)))
-        # Assertions report and the replay runs on, so the outputs are
-        # compared to the end; each failing assertion is named once.
-        r = subprocess.run([exe, "+n=%d" % len(snaps), "+base=" + base, "+verilator+error+limit+1000000"]
-                           + (["+vcd"] if a.vcd else []) + (["+noinit"] if a.control == "init" else []),
-                           capture_output=True, text=True)
+        if a.replayed:
+            # The run happened in the SV top; its assertions are its own log's.
+            r = subprocess.CompletedProcess([], 0, "RCU-LS done\n", "")
+        else:
+            with open(base + ".in", "w") as f:
+                for s in snaps:
+                    f.write("%0*x\n" % ((iw + 3) // 4, pack(s, ins, widths)))
+            # Assertions report and the replay runs on, so the outputs are
+            # compared to the end; each failing assertion is named once.
+            r = subprocess.run([exe, "+n=%d" % len(snaps), "+base=" + base, "+verilator+error+limit+1000000"]
+                               + (["+vcd"] if a.vcd else []) + (["+noinit"] if a.control == "init" else [])
+                               + (["+q53ctl=" + a.control] if a.control in Q53C else []),
+                               capture_output=True, text=True)
         asserts = {}
         for m in re.finditer(r"\[(\d+)\] %Error: (\S+): Assertion failed in (\S+)", r.stdout + r.stderr):
             key = re.sub(r"\[\d+\]", "[N]", m.group(3))
             asserts.setdefault(key, [int(m.group(1)) // 3, 0])[1] += 1
+        if a.control in Q53C and any(k.rstrip(":").endswith("q53_" + a.control) for k in asserts):
+            q53hit.add(d)
         for k, (c, cnt) in sorted(asserts.items(), key=lambda kv: kv[1][0]):
             print("%s: ASSERTION %s, first at cycle %d, %d failures" % (d, k, c, cnt))
             fail = 1
@@ -508,11 +588,50 @@ def main():
             if (obs[t] ^ want) & care[t] & ~wmask or want & wmask & ~obs[t]:
                 first = t
                 break
+        # The events: the model's log beside the dump (CCV_RCU_EVLOG), the
+        # RTL's from the monitor (test/rcu/evmon.py), every kind the monitor
+        # derives, every cycle the replay ran.
+        evs = ""
+        mev = os.path.splitext(d)[0] + ".ev"
+        if os.path.exists(mev):
+            mod = evmon.read(mev)
+            if a.control == "row":
+                t0 = min(t for t, v in mod.items() if any(e[0] == "gpr_row" for e in v))
+                i = next(i for i, e in enumerate(mod[t0]) if e[0] == "gpr_row")
+                e = mod[t0][i]
+                mod[t0][i] = e[:2] + (e[2] ^ 1,) + e[3:]
+            if a.control == "ev":
+                t0 = min(mod)
+                mod[t0] = mod[t0][1:]
+                if not mod[t0]:
+                    del mod[t0]
+            ed = evmon.compare(mod, evmon.read(base + ".rtl.ev"), len(obs))
+            if ed:
+                fail = 1
+                diverged.add(d)
+                print("%s: EVENTS DIVERGE at cycle %d: model %s, rtl %s" % (d, ed[0], ed[1], ed[2]))
+            iev = mev
+            if a.control == "gate":
+                # The model busy from reset to its second idle: the gate's
+                # first sleep must be caught.
+                iev = base + ".gate.ev"
+                lines = open(mev).readlines()
+                i0 = next(i for i, l in enumerate(lines) if l.split()[1:2] == ["idle"])
+                open(iev, "w").writelines(lines[:i0] + lines[i0 + 1:])
+            it = evmon.idle_check(iev, base + ".rtl.ev", len(obs))
+            if it is not None and not ed:
+                fail = 1
+                diverged.add(d)
+                print("%s: EVENTS DIVERGE at cycle %d: the clock gate closed while the model is busy" % (d, it))
+            evs = ", %d events" % sum(len(v) for v in mod.values())
+        elif a.control in ("ev", "gate", "row"):
+            sys.exit("lockstep: control %s: no model event log %s" % (a.control, mev))
         if first is None and len(obs) < len(snaps):
             print("%s: identical up to cycle %d" % (d, len(obs)))
             continue
         if first is None:
-            print("%s: IDENTICAL, %d outputs over %d cycles" % (d, len(outs), len(snaps)))
+            if d not in diverged:
+                print("%s: IDENTICAL, %d outputs over %d cycles%s" % (d, len(outs), len(snaps), evs))
             continue
         fail = 1
         diverged.add(d)
@@ -548,8 +667,9 @@ def main():
                         print("    %d %s: rtl %x model %x%s" % (t, n, gv, wv, (" [" + fd + "]") if fd else ""))
     if a.control:
         for d in a.dumps:
-            print("%s: control %s %s" % (d, a.control, "caught" if d in diverged else "NOT CAUGHT"))
-        return int(any(d not in diverged for d in a.dumps))
+            got = q53hit if a.control in Q53C else diverged
+            print("%s: control %s %s" % (d, a.control, "caught" if d in got else "NOT CAUGHT"))
+        return int(any(d not in (q53hit if a.control in Q53C else diverged) for d in a.dumps))
     return fail
 
 

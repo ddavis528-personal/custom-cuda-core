@@ -421,8 +421,10 @@ void testMigration(const char *brk) {
     EXPECT(rows[i].row == i && rows[i].warp == 2, "row %u is %u", i, rows[i].row);
     if (i < kArchGprs) EXPECT(rows[i].data[3] == e.gpr[dm.gpr[i]][3], "row %u's data", i);
   }
-  // Launch at 202 (pick at 201), wake counter CCV_WAKE_LAT - 1: first row at 205.
-  EXPECT(!at.empty() && at[0] == 202 + ccv::kWakeLat - 1, "first row at %llu",
+  // Pick at 201, the flopped pick holds through 202, launch at the edge that
+  // ends it (Migration tab, Launch: c0), 203; wake counter CCV_WAKE_LAT - 1:
+  // first row at 206.
+  EXPECT(!at.empty() && at[0] == 203 + ccv::kWakeLat - 1, "first row at %llu",
          at.empty() ? 0ull : (unsigned long long)at[0]);
   EXPECT(at.size() == kMigRows && at.back() - at[0] == kMigRows, "%u-row demote took %llu cycles (one R2 wait)",
          kMigRows, at.size() ? (unsigned long long)(at.back() - at[0]) : 0ull);

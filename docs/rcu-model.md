@@ -27,7 +27,10 @@ Choices the spec left open (RI-6, taken by RA rev 64):
 `rcu_block.cpp` packs the core's four-field events (`rcu::Ev`, which the
 unit tests read) into the schema's three fields. No RCU event names a single
 instruction, so uid is 0. `CCV_RCU_EVLOG=<file>` writes the core's own form, one
-event a line.
+event a line, and after each GPR_WRITE a `gpr_row` line: the row as that write
+leaves it, every lane in hex, which no trace event carries. The RTL lock-step
+(`test/rcu/run-lockstep.sh`) compares the log with the events `test/rcu/evmon.py`
+derives from the RTL's state, the rows' values included.
 `CCV_RCU_STATS=<file>` writes the core's counters as JSON at the end of a run
 (as OOE's `CCV_OOE_STATS`): op counts, bypass selects, operand reads
 forwarded from MW (`rsrc_fwd`), migration rows, waits and restore holds, and
