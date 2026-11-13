@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-12. Keep this current at every task's end; it is what
+Updated 2026-11-13. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -53,7 +53,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 343, OA 411, IS 190, TI 407, OI 338, CP 157, DA 119, RA 136, RI 70, MA 2.
+Conventions 19, AR 343, OA 411, IS 192, TI 407, OI 338, CP 157, DA 119, RA 136, RI 70, MA 3.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Next pings Friday 2026-11-13.
@@ -66,7 +66,7 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
-- 11-11 and 11-12 sweeps ran together on 11-12 (session idle); nothing for IS.
+- 11-12 sweep pushed (core 493d5698 full PASS). 11-13: answered MA-2 (re:MA-2, IS rev 191-192): ISA fixes no page size, all ISA regions 64 KiB-aligned, no objection to CCV_L_PAGE_SHIFT 16; AR owns cross-block cost. MA is active from session_01QPk2jyUbWA7fW9YpUwqdxk (not yet in roster): ping it Friday if the roster has it, else note.
 - New agent MA (MIU+DCU architect; DA 117-119), MI/DI implement, C++ model
   first. Sweep minute order: IS 23 (OA 406). MA will lean on the ISA's memory
   semantics (O-72 atomics, O-83/O-84 per-thread memory, fence): answer its
