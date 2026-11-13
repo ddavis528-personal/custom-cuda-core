@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 419, AR 348, OA 414, RI 71, MA 46 (2026-11-13). MA (MIU/DCU architect,
+TI 420, AR 348, OA 414, RI 71, MA 46 (2026-11-13). MA (MIU/DCU architect,
 session_01QPk2jyUbWA7fW9YpUwqdxk) is not in the roster: notice.py says
 none, so compose with --to AR and edit the header by hand.
 
@@ -48,11 +48,8 @@ plus a send_later check-in. `tools/bg-run.sh <name> <cmd...>` for others.
   PASS; release fb6d9f23; snapshot tag refused by the remote). It carries
   ti-detach, ti-ma (MA-5 entry-free credits 20dfbaf0) and ti-sram (SRAM
   macros 930f49e9) and every agent branch.
-- PENDING: four TI rows built but not written (docs service 404/503 at
-  ~13:45Z): scratchpad rAll.ops.json (rows rA-rD.json). Write them, then
-  notices: rA (detach landed) to AR OA OI RA RI RH IS CP MA; rB (MA-5
-  default, re:OI-140) to OI MA; rC (SRAM macros, re:MA-15 5, AR 344) to AR
-  MA; rD (sweep report) to no one.
+- Rows for all of it written at TI rev 420 (after a docs outage 13:45-14:20Z);
+  notices sent to AR OA OI RA RI RH IS CP MA.
 - RI-40 (rev 71): info only; RI's event-divergence line 'EVENTS DIVERGE'
   is not what TI's control greps; RI moves to gate-wait.sh.
 - Worktree: ti-sram is the current one. Backups to gate-scratch/TI-<name>
@@ -60,8 +57,7 @@ plus a send_later check-in. `tools/bg-run.sh <name> <cmd...>` for others.
 - Disk: deleting other sessions' /tmp/tmp.* was denied; ask the user.
 
 ## Open work (most urgent first)
-1. Write the pending rows and notices (State above).
-2. Pongs: OI had not answered the 11-13 ping.
-3. MI/DI homes when their first files land.
-4. Older: RI-24 (3) job_rcu_rtl lock-step; RI-23 per-unit records +
+1. Pongs: OI had not answered the 11-13 ping.
+2. MI/DI homes when their first files land.
+3. Older: RI-24 (3) job_rcu_rtl lock-step; RI-23 per-unit records +
    block_report.py.
