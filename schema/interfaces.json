@@ -864,7 +864,7 @@
       "dst": "dcu",
       "rate": 4,
       "rate_param": "CCV_DCACHE_LOOKUPS",
-      "backpressure": "held: DCU's owner states the hold (DCU spec rev 15, AR-25): a memory-path request, whose receiver holds it only while its miss buffers are full behind a memory stall, the backpressured class (AR's response TI-22), so it takes CCV_P_TIMEOUT_BP",
+      "backpressure": "held: DCU's owner states the hold (MA-12, AR rev 344, MA-15; it supersedes the wording of DCU spec rev 15, AR-25 and TI-22): DCU merges up to 4 requests into a line's miss buffer, and holds a request only while that line's merge list is full or every MLC req_id is in flight. Still a memory-path request in the backpressured class, so it takes CCV_P_TIMEOUT_BP",
       "group": "memory",
       "payload_fields": [
         "req_id",

@@ -547,8 +547,8 @@ private:
     return can(ch().dcu_miu, slot) && credits(ch().dcu_miu, slot) > resv_[slot];
   }
 
-  /// L1 (OI-5): a small set-associative array, 8 ways x 64 sets by default
-  /// (CCV_DCU_WAYS; the DCU spec's 8 ways, since 31168a3), so a load that
+  /// L1 (OI-5): a small set-associative array, CCV_DCU_WAYS x CCV_DCU_SETS
+  /// (8 x 64 by default; the DCU spec's 8 ways, since 31168a3), so a load that
   /// revisits a line hits, and MIU can complete it at the L1 contract. A hit answers the
   /// cycle it arrives, ahead of any miss in flight: the contract is MIU's to
   /// keep (CCV_LAT_L1_HIT), and an answer early enough lets it.
@@ -562,15 +562,16 @@ private:
   /// write-through: every store goes to MLC as a read-merge-write, the
   /// policy before rev 8, which the merged values survive but the timing
   /// does not.
-  /// CCV_DCU_SETS sets (default 64, a power of two) of CCV_DCU_WAYS ways
-  /// (default 8, 64 KiB), least recently used replaced: the DCU spec's 8
+  /// CCV_DCU_SETS sets (a power of two) of CCV_DCU_WAYS ways, defaults the
+  /// params' (64 and 8, 64 KiB; MA-15), each overridable from the
+  /// environment for a sweep; least recently used replaced: the DCU spec's 8
   /// ways, settled by TI rev 234's 1-to-8-way sweep (AR rev 320). Before it
   /// the default was 1 way, and three arrays 64 KiB apart (rbase<<16) fought
   /// for one set (J9). A kernel that needs evictions sets CCV_DCU_WAYS=1.
   static unsigned setsOf() {
     const char *v = std::getenv("CCV_DCU_SETS");
-    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 64;
-    return n >= 1 && n <= 65536 && !(n & (n - 1)) ? n : 64;
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : ccv::prov::kDcuSets;
+    return n >= 1 && n <= 65536 && !(n & (n - 1)) ? n : ccv::prov::kDcuSets;
   }
   const unsigned sets_ = setsOf();
   struct Way {
@@ -579,8 +580,8 @@ private:
   };
   static unsigned waysOf() {
     const char *v = std::getenv("CCV_DCU_WAYS");
-    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 8;
-    return n >= 1 && n <= 16 ? n : 8;
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : ccv::prov::kDcuWays;
+    return n >= 1 && n <= 16 ? n : ccv::prov::kDcuWays;
   }
   const unsigned ways_ = waysOf();
   std::vector<Way> l1_ = std::vector<Way>(size_t(sets_) * ways_);
@@ -4161,7 +4162,7 @@ public:
   const char *kind() const override { return "fet"; }
 
 private:
-  static constexpr unsigned kPage = 4096;
+  static constexpr uint64_t kPage = uint64_t(1) << ccv::kLPageShift;   // CCV_L_PAGE_SHIFT (64 KiB; MA-15)
   std::map<uint64_t, uint64_t> page_;       ///< virtual page -> physical page
   std::set<uint64_t> itlb_wait_;
   std::map<uint64_t, Line> line_;           ///< by virtual line address
@@ -5398,7 +5399,7 @@ private:
         const unsigned first = k_.brk == "whole-cta-mask" ? 0 : 32 * o.warp_in_cta;
         const unsigned n = !o.threads ? kLanes : o.threads <= first ? 0 : std::min(o.threads - first, kLanes);
         put(f, c.rau_fet, "live_mask", n == kLanes ? ~0u : (1u << n) - 1);
-        // code_bounds: [63:0] base, [103:64] length (placeholder split).
+        // code_bounds: [63:0] base, the rest length (placeholder split).
         const FieldDesc &cb = field(c.rau_fet, "code_bounds");
         f.set(cb.lsb, 64, o.code_base);
         f.set(cb.lsb + 64, cb.width - 64, o.code.size());

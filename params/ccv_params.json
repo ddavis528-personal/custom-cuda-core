@@ -222,6 +222,20 @@
       "doc": "D-cache lookups per cycle. It sets the rate of ccv_miu_dcu_req, ccv_dcu_miu_rsp and ccv_dcu_miu_fill_ntc (a notice promises its refill on the same response slot), each tied by rate_param, so tools/gen-interfaces.py refuses a rate that drifts from it."
     },
     {
+      "name": "CCV_DCU_SETS",
+      "value": 64,
+      "status": "tunable",
+      "decided_at": "AR's L1 capacity sweep (MA-3 (a))",
+      "doc": "L1 data cache sets, a power of two (MA-15, AR rev 344): with CCV_DCU_WAYS 8 and 128-byte lines, the 64 KiB baseline of Phase 1; 512 KiB reopens with AR's sweep. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_SETS still overrides it for a sweep."
+    },
+    {
+      "name": "CCV_DCU_WAYS",
+      "value": 8,
+      "status": "tunable",
+      "decided_at": "AR's L1 capacity sweep (MA-3 (a)); 8 ways since TI rev 234's sweep (AR rev 320)",
+      "doc": "L1 data cache ways, least recently used replaced (MA-15, AR rev 344). The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_WAYS still overrides it (1 to 16) for a sweep or a kernel that needs evictions."
+    },
+    {
       "name": "CCV_SPM_BYTES",
       "value": 131072,
       "status": "arch",
@@ -1365,18 +1379,18 @@
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",
-      "value": 3,
+      "value": 5,
       "status": "provisional",
       "source": "Payload spec response (2026-09-25)",
-      "doc": "req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Eight outstanding scratchpad accesses: four slots, two deep.",
+      "doc": "req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Thirty-two outstanding scratchpad accesses, against about 28 in flight at full rate (MA-6, AR rev 344, MA-15; was 3 bits, eight).",
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
       "name": "CCV_P_W_REQ_MIU_DCU",
-      "value": 4,
+      "value": 6,
       "status": "provisional",
       "source": "Payload spec response (2026-09-25)",
-      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen outstanding cache accesses: four slots, four deep, since hits and misses return at different times.",
+      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixty-four outstanding cache accesses: hits alone hold about 24 at full rate (six cycles x four slots), and misses more, since hits and misses return at different times (MA-6, AR rev 344, MA-15; was 4 bits, sixteen, which capped lookups near 2.7 a cycle).",
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
@@ -1555,12 +1569,12 @@
     },
     {
       "name": "CCV_L_PAGE_SHIFT",
-      "value": 12,
-      "status": "preliminary",
+      "value": 16,
+      "status": "arch",
       "churn": "low",
       "source": "Payload widths pass (2026-09-25)",
-      "doc": "Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms.",
-      "decided_at": "MMU session"
+      "doc": "Page shift: 64 KiB pages (MA-2, AR rev 344, IS rev 192, MA-15; was 12, 4 KiB, preliminary), so one way of the 8-way L1, at 64 KiB or 512 KiB, fits in a page and a set index is known from the virtual address (MA-1). It sets the walker request's virtual_page and FET's code_bounds at page granularity; nothing in the ISA fixes 4 KiB (IS rev 192).",
+      "decided_at": "MA (MIU/DCU architecture), agreed by AR"
     },
     {
       "status": "preliminary",
