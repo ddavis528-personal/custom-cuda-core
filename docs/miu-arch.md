@@ -459,10 +459,15 @@ why in a row.
   - the DCU's lookup ports, its geometry parameters (`CCV_DCU_SETS`,
     `CCV_DCU_WAYS`) and where its misses park.
 
-  **Exit:** a behavioural spec precise enough for TI to make the MIU and DCU
-  stubs spec-faithful. Then re-run S1, cm32 and cm128 at 8 ways, so the
-  booked deltas that rest on the stub get re-checked against Daniel's 0.2%
-  bar (DA 114). If the figures move a top-level parameter (`CCV_MIU_PIPES`,
+  **Exit:** a behavioural spec precise enough for MI and DI to build the
+  timing models directly behind `CCV_MIU_IMPL` and `CCV_DCU_IMPL`, as RI
+  did for RCU (MA-14, AR's response 2026-11-13). TI's stubs stay the
+  functional reference, with their controls. Meeting it does not start MI
+  and DI: Daniel's answer to MA-13 (recorded by MA, 2026-11-13) starts them
+  only once AR's questioning of MA has ended, a summary has reached Daniel,
+  and everything is documented here and in the spec. When the models land, re-run
+  S1, cm32 and cm128 at 8 ways, so the booked deltas that rest on the stub
+  get re-checked against Daniel's 0.2% bar (DA 114). If the figures move a top-level parameter (`CCV_MIU_PIPES`,
   `CCV_DCACHE_LOOKUPS`, the L1 capacity), bring it to AR.
 - **Phase 2, microarchitecture.** For the L1-hit path, give the stages from
   holding to data out at `CCV_LAT_L1_HIT` - 1, with an NGD budget per port:
@@ -527,9 +532,11 @@ with its answerer in Needs, and notify them (the register skill, section
 - **To DA:**
   - Answered 2026-11-10: MA takes DCU, and MI and DI implement (section 1).
     Both start with the C++ model, covering every important event (DA tab,
-    2026-11-10, third row). Still open: when each implementer starts.
-  - What priority does it have on compute (RH, `CCV_JOBS`) against OOE's
-    and RCU's closure?
+    2026-11-10, third row).
+  - Answered 2026-11-13 (MA-13, recorded by MA): MI and DI start only after
+    AR's questioning of MA ends, a summary reaches Daniel, and all is
+    documented (section 7, Phase 1 exit). No compute priority is needed;
+    Daniel adds a run helper if one is.
 - **To AR:**
   - The L1 capacity (64 or 512 KiB), which AR owes as a sweep at 8 ways.
   - Q-42, MIU's floorplan neighbours.
@@ -545,7 +552,8 @@ with its answerer in Needs, and notify them (the register skill, section
   - write-back section scheduling on `miu_rcu_data`;
   - the lead fields (RA-40).
 - **To TI:**
-  - the spec-faithful stub (Phase 1's exit);
+  - the stub kept as the functional reference while MI and DI build the
+    models (MA-14);
   - a home for MIU model and RTL files (sim/miu and rtl/miu, beside RCU's) and their
     entries in `tools/gate-scope.py`;
   - the units in `test/**/cg-units.json` and `ngd-units.json`;

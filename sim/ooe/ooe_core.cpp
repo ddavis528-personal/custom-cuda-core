@@ -56,7 +56,8 @@ std::string Config::apply(const std::string &spec) {
                                      {"owed_lag", &owed_lag},
                                      {"names_pool_lag", &names_pool_lag},
                                      {"full_rows", &full_rows},
-                                     {"inject_partial_taken_ok", &inject_partial_taken_ok}};
+                                     {"inject_partial_taken_ok", &inject_partial_taken_ok},
+                                     {"inject_no_memop_credit", &inject_no_memop_credit}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.

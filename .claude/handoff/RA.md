@@ -246,7 +246,11 @@ nothing for RA. TI 407: Receiver call coming in channel.h (name in TI's landing 
 rcu_blk; RA 135 closes, no harness fault. AR 343 (RI-38, option (a)): ccv_common_clk WAKE_HOLD to CCV_WAKE_LAT+1;
 RI may drop ccv_rcu's local wake detector. If it goes, Done tab's done-wake term ("via ccv_rcu's ungated wake
 detector", RA rev 136 (2)) must be re-worded to the common hold: watch RI's choice.
-Bookmarks: OA 411, RA 136, RI 70, TI 407, AR 343, DA 119, OI 338, Conventions 19, CP 157, IS 190, MA 2.
+TI 415 (notice 11-13, pointer only): landed 21d64a76 (release 43248f47): Stub::creditAtLanding / CreditAt::Landing
+for c.ooe_rcu and c.lane_rcu (RI moves the model's credits); rcu_ls replaces rcu_blk; ccv_common_clk WAKE_HOLD =
+CCV_WAKE_LAT+1 (AR 343). ccv_rcu's local wake detector: RI's choice, not yet made. When RI drops it, re-word Done
+tab's done-wake term (RA rev 136 (2)) to the common hold. AR 344-347 / TI 408-414: MA's memory side, nothing for RA.
+Bookmarks: OA 411, RA 136, RI 70, TI 415, AR 347, DA 119, OI 338, Conventions 19, CP 157, IS 190, MA 2.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
