@@ -89,22 +89,17 @@ module rcu_lanes #(
 ) (
   input  logic                    rcu_core_clk,
   input  logic                    rst_n,
-  input  logic                    iw_cr01h,        // ooe_rcu_issue_wake
+  input  logic                    iw_cr01h,        // ooe_rcu_issue_wake a cycle on (ccv_rcu's wake detector): wake at A - 2
   // The S slots' lead (A-1).
   input  logic [NK-1:0]           iv_cr01h,        // slot s issues next cycle
   input  logic [NK*NK-1:0]        lsec_cr01h,      // lead_sec_mask
   input  logic [NK*3-1:0]         lsrc_cr01h,      // lead_src_used
   input  logic [NK-1:0]           limm_cr01h,      // lead_imm_used
   input  logic [NK-1:0]           lmrg_cr01h,      // lead_merge_used
-  // The payload and its op-class decode (A).
-  input  logic [NK*2-1:0]         cls_cr02h,       // 0 nothing to the lanes, 1 lane, 2 SFU, 3 GPR copy
-  input  logic [NK-1:0]           gdst_cr02h,      // class: writes a GPR
-  input  logic [NK*3-1:0]         rds_cr02h,       // class: GPR source ports read
-  input  logic [NK*2-1:0]         isl_cr02h,       // class: the immediate's port, 3 none
-  input  logic [NK-1:0]           immu_cr02h,      // class: the immediate is read
-  input  logic [NK-1:0]           pdt_cr02h,       // class: pdata
+  // The payload (A); its op-class decode is this module's (rcu_dec_pkg).
+  input  logic [NK-1:0]           cont_cr02h,      // cont: a continuation, no class
   input  logic [NK*NK-1:0]        foot_cr02h,      // footprint
-  input  logic [NK*WO-1:0]        opc_cr02h,       // opcode
+  input  logic [NK*WO-1:0]        opc_cr02h,       // opcode, carried to sec_opcode only
   input  logic [NK*32-1:0]        imm_cr02h,
   input  logic [NK*3*WR-1:0]      src_cr02h,       // source rows 0-2 (phys_src[15:8], [7:0], phys_src2)
   input  logic [NK*6-1:0]         spos_cr02h,      // src_pos, port i at 2i
@@ -120,6 +115,7 @@ module rcu_lanes #(
   input  logic [NK*WP-1:0]        pod_cr02h,       // phys_pred_old_dst
   input  logic [NK*WT-1:0]        tag_cr02h,       // rob_tag
   input  logic [NK*2-1:0]         drow_cr02h,      // done_row
+  input  logic [NK*rcu_dec_pkg::CLS_W-1:0] ocl_cr02h, // op class (rcu_isd's flops from the lead)
   // A+1.
   input  logic [NK*N-1:0]         acta_cr03h,      // rcu_pred: active_a
   input  logic [NK*N-1:0]         gv_cr03h,        // rcu_pred: gv_a, the guard, negated
@@ -153,6 +149,15 @@ module rcu_lanes #(
   output logic [NK*WP-1:0]        plorow_cr07h,
   output logic [NK-1:0]           plmrg_cr07h,
   output logic [NK*N-1:0]         plmm_cr08h,
+  // PC, rcu_pred's predicate-only copy port for S slot k (P7): written at
+  // A+2 on ~active, from its old destination (merge, mm none). Its valid is
+  // every S issue's, as PR's is every R op's: the opcode arrives at A, too
+  // late for a valid at A, so an issue that is not a predicate-only copy
+  // writes the zero predicate, which is never written (A-64).
+  output logic [NK-1:0]           pcv_cr02h,
+  output logic [NK*WP-1:0]        pcrow_cr03h,
+  output logic [NK*WP-1:0]        pcorow_cr03h,
+  output logic [NK*N-1:0]         pcm_cr04h,
   // SW, the SFU's write port.
   output logic                    swv_cr11h,
   output logic [WR-1:0]           swrow_cr12h,
@@ -168,10 +173,43 @@ module rcu_lanes #(
 
   localparam logic [WR-1:0] ZROW = WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
   localparam int WS = $clog2(NK);       // a section index
+  localparam logic [WP-1:0] ZPRD = WP'(ccv_prov_pkg::CCV_P_PRED_ZERO);
 
-  logic rst_r01h;
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= !rst_n;
+    rst_cr01h_n <= rst_n;
+  end
+  wire rst_r01h = !rst_cr01h_n;
+
+  // ---- The op class (rcu_dec_pkg, the model's; RI-21 (4)) --------------
+  // Per S slot, rcu_isd's class word, decoded in A-1 from the lead's opcode,
+  // done_row, and a copy's pred_we and phys_dst (RA-43, RI-25):
+  // cls 0 nothing to the lanes (a continuation, a predicate-only copy), 1 a
+  // lane op, 2 SFU, 3 a GPR copy; writes a GPR; GPR source ports read; the
+  // immediate's port (3 none) and whether it is read; pdata. The model
+  // classes SFU ops as lane ops (Unit Sfu awaits RA-16 (b)), so cls 2 is
+  // never decoded yet.
+  logic [NK*2-1:0] cls_cr02h, isl_cr02h;
+  logic [NK-1:0]   gdst_cr02h, immu_cr02h, pdt_cr02h, pcp_cr02h;
+  logic [NK*3-1:0] rds_cr02h;
+  always_comb begin
+    logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
+    logic [2:0]                    u_cr02h;
+    for (int s = 0; s < NK; s++) begin
+      c_cr02h = ocl_cr02h[s*rcu_dec_pkg::CLS_W +: rcu_dec_pkg::CLS_W];
+      u_cr02h = c_cr02h[rcu_dec_pkg::CLS_UNIT +: 3];
+      cls_cr02h[2*s +: 2] = cont_cr02h[s] ? 2'd0 :
+                            u_cr02h == rcu_dec_pkg::U_LANE ? 2'd1 :
+                            u_cr02h == rcu_dec_pkg::U_SFU  ? 2'd2 :
+                            u_cr02h == rcu_dec_pkg::U_COPY ? 2'd3 : 2'd0;
+      pcp_cr02h[s]        = !cont_cr02h[s] && u_cr02h == rcu_dec_pkg::U_PCOPY;
+      gdst_cr02h[s]       = c_cr02h[rcu_dec_pkg::CLS_GDST];
+      rds_cr02h[3*s +: 3] = c_cr02h[rcu_dec_pkg::CLS_READS +: 3];
+      isl_cr02h[2*s +: 2] = c_cr02h[rcu_dec_pkg::CLS_ISLOT +: 2];
+      immu_cr02h[s]       = c_cr02h[rcu_dec_pkg::CLS_IMMU];
+      pdt_cr02h[s]        = c_cr02h[rcu_dec_pkg::CLS_PDATA];
+    end
   end
 
   function automatic logic [NK-1:0] secmask(input logic [1:0] w, input logic [1:0] pos);
@@ -207,6 +245,13 @@ module rcu_lanes #(
     lmrg_cr02h <= lmrg_cr01h;
   end
   assign lwk_cr02h = wk_cr02h;
+  // PC's valid: the issue valid's own copy, for the output alone (NGD-7).
+  (* keep *) logic [NK-1:0] pcvq_cr02h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rst_r01h) pcvq_cr02h <= '0;
+    else          pcvq_cr02h <= iv_cr01h;
+  end
+  assign pcv_cr02h = pcvq_cr02h;
   wire any_v_cr02h = |v_cr02h;
 
   // ---- A: ownership ----------------------------------------------------
@@ -269,7 +314,9 @@ module rcu_lanes #(
       for (int a = 1; a < DH + 1; a++) begin
         for (int e = 0; e < NK; e++) begin
           logic hit_cr02h;
-          hit_cr02h = rdp_cr02h[p] && r_cr02h != ZROW && hv_cr03h[(a-1)*NK + e] &&
+          // The port's read (rdp, from the opcode's decode) joins after the
+          // compares, so the decode runs beside them, not before.
+          hit_cr02h = r_cr02h != ZROW && hv_cr03h[(a-1)*NK + e] &&
                       hrow_cr03h[((a-1)*NK + e)*WR +: WR] == r_cr02h;
           if (a < BYP) begin
             young_cr02h[p] |= hit_cr02h;
@@ -279,7 +326,9 @@ module rcu_lanes #(
           end
         end
       end
-      multi_cr02h[p] = hits > 1;
+      bsel_cr02h[p*WB +: WB] = {WB{rdp_cr02h[p]}} & bsel_cr02h[p*WB +: WB];
+      young_cr02h[p] = rdp_cr02h[p] & young_cr02h[p];
+      multi_cr02h[p] = rdp_cr02h[p] & (hits > 1);
     end
   end
 
@@ -536,6 +585,32 @@ module rcu_lanes #(
   logic [DL*NK-1:0]    lmrg_cr03h;
   logic [NK*2-1:0]     ldpos_cr03h, ldwid_cr03h;    // stage 1 only
   logic [(DL-1)*NK*N-1:0] lact_cr03h;               // stages 2 .. DL, stage d at d-2
+  // PC at A+1: the copy's valid, which loads ~active for A+2, and its row
+  // (the zero predicate if the issue is no predicate-only copy); its old
+  // row is lwb_d's stage 1.
+  logic [NK-1:0]    pcq_cr03h;
+  logic [NK*WP-1:0] pcr_cr03h;
+  // ~active for PC's merge mask, a gate a slot under the PC's valid. Like any
+  // mask, it changes on about 1 - 0.5^2 of its loads under the bench's draw
+  // (all ones half the time), at CG-3's 75%: waived (rtl/cg-waivers.json).
+  // Sharing lact's stage-2 gate took lact under 75% with it.
+  logic [NK*N-1:0]  pcm_n_cr04h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rst_r01h) pcq_cr03h <= '0;
+    else          pcq_cr03h <= v_cr02h & pcp_cr02h;
+  end
+  for (genvar k = 0; k < NK; k++) begin : g_pc
+    wire pr_en_cr02h = v_cr02h[k];
+    wire pm_en_cr03h = pcq_cr03h[k];
+    always_ff @(posedge rcu_core_clk) begin
+      if (pr_en_cr02h) pcr_cr03h[k*WP +: WP] <= pcp_cr02h[k] ? pd_cr02h[k*WP +: WP] : ZPRD;
+    end
+    always_ff @(posedge rcu_core_clk) begin
+      if (pm_en_cr03h) pcm_n_cr04h[k*N +: N] <= ~acta_cr03h[k*N +: N];
+    end
+  end
+  assign pcrow_cr03h = pcr_cr03h;
+  assign pcm_cr04h   = pcm_n_cr04h;
   for (genvar k = 0; k < NK; k++) begin : g_lwb
     // Stage 1, from the payload.
     wire l1s_en_cr02h = lcl_cr02h[k];
@@ -614,6 +689,7 @@ module rcu_lanes #(
       plorow_cr07h[k*WP +: WP] = lpod_cr03h[((SR-1)*NK + k)*WP +: WP];
       plmrg_cr07h[k] = lmrg_cr03h[(SR-1)*NK + k];
       plmm_cr08h[k*N +: N] = lact_cr03h[((SW-2)*NK + k)*N +: N];
+      pcorow_cr03h[k*WP +: WP] = lpod_cr03h[k*WP +: WP];
       dnv_cr08h[k] = dv_cr03h[(SW-1)*NK + k];
     end
   end
@@ -622,7 +698,12 @@ module rcu_lanes #(
   // Stage 1: the valids and the SFU's slot; its fields come from lwb_d's
   // stage 1 at stage 2. Stage DS+1 holds the done payload.
   logic [DS-1:0]    ssv_cr03h, sdv_cr03h;    // SW writes; a done on slot 4
-  logic [DS*NK-1:0] sov_cr03h;               // sections the lanes return
+  // Sections the lanes return: stage 1 (ungated) and stages 2 on (shifted)
+  // are separate registers, so check-cg charges the ungated allowance with
+  // stage 1's NK flops only.
+  logic [NK-1:0]        sov1_cr03h;
+  logic [(DS-1)*NK-1:0] sovs_cr03h;
+  wire  [DS*NK-1:0]     sov_cr03h = {sovs_cr03h, sov1_cr03h};
   logic [NK-1:0]    ssl_cr03h;               // stage 1: the SFU's slot
   wire any_sfu_cr02h = |sfu_cr02h;
   logic [NK-1:0] sfo_cr02h;
@@ -638,12 +719,12 @@ module rcu_lanes #(
     if (rst_r01h) begin
       ssv_cr03h[0]       <= 1'b0;
       sdv_cr03h[0]       <= 1'b0;
-      sov_cr03h[0 +: NK] <= '0;
+      sov1_cr03h         <= '0;
       ssl_cr03h          <= '0;
     end else begin
       ssv_cr03h[0]       <= |(sfu_cr02h & gdst_cr02h);
       sdv_cr03h[0]       <= any_sfu_cr02h;
-      sov_cr03h[0 +: NK] <= sfo_cr02h;
+      sov1_cr03h         <= sfo_cr02h;
       ssl_cr03h          <= sfu_cr02h;
     end
   end
@@ -651,11 +732,11 @@ module rcu_lanes #(
     if (rst_r01h) begin
       ssv_cr03h[DS-1:1]       <= '0;
       sdv_cr03h[DS-1:1]       <= '0;
-      sov_cr03h[DS*NK-1:NK]   <= '0;
+      sovs_cr03h              <= '0;
     end else if (sv_en_cr02h) begin
       ssv_cr03h[DS-1:1]       <= ssv_cr03h[DS-2:0];
       sdv_cr03h[DS-1:1]       <= sdv_cr03h[DS-2:0];
-      sov_cr03h[DS*NK-1:NK]   <= sov_cr03h[(DS-1)*NK-1:0];
+      sovs_cr03h              <= sov_cr03h[(DS-1)*NK-1:0];
     end
   end
   logic [(DS-2)*WR-1:0] srow_cr03h;    // stages 2 .. DS-1 (SW's row and sections), stage d at d-2
@@ -725,7 +806,9 @@ module rcu_lanes #(
     lead_bad_cr02h = 1'b0;
     foot_bad_cr02h = 1'b0;
     cpy_bad_cr02h = 1'b0;
-    for (int k = 0; k < NK; k++) own_bad_cr02h |= $countones(own_cr02h[k*NK +: NK]) > 1;
+    // More than one bit, as x & (x - 1): not $countones, whose argument
+    // Icarus leaves out of always_comb's sensitivity.
+    for (int k = 0; k < NK; k++) own_bad_cr02h |= |(own_cr02h[k*NK +: NK] & (own_cr02h[k*NK +: NK] - NK'(1)));
     for (int s = 0; s < NK; s++) begin
       // The superset rule (RA-31): what the payload uses is within the lead.
       if (v_cr02h[s] && cls_cr02h[2*s +: 2] != 2'd0)
@@ -734,8 +817,11 @@ module rcu_lanes #(
                           (immu_cr02h[s] & ~limm_cr02h[s]) | (mrg_cr02h[s] & ~lmrg_cr02h[s]);
       if (lmsg_cr02h[s])
         foot_bad_cr02h |= !foot_cr02h[s*NK + s] || (foot_cr02h[s*NK +: NK] & ((NK'(1) << s) - NK'(1))) != '0;
-      // A copy has old destination to merge, a GPR to write and no predicate.
-      cpy_bad_cr02h |= cpy_cr02h[s] & (~mrg_cr02h[s] | pwe_cr02h[s] | dst_cr02h[s*WR +: WR] == ZROW);
+      // A copy has old destination to merge and a GPR to write. A copy that
+      // also names a predicate, an atomic's (A-38: CAS's pd), leaves it to
+      // A2, which merges pd itself (OI-127): pred_we is ignored here, as the
+      // model ignores it (pv_n takes lane ops only); the lock-step on cas.
+      cpy_bad_cr02h |= cpy_cr02h[s] & (~mrg_cr02h[s] | dst_cr02h[s*WR +: WR] == ZROW);
     end
   end
   `CCV_ASSERT(lanes_own, !own_bad_cr02h)
@@ -764,7 +850,7 @@ module rcu_lanes #(
   // Busy, from flops only (P10, RI-21): rcu_kill's idle and done wake.
   assign dbusy_cr03h = (|v_cr02h) | (|lv_cr03h) | (|ov_cr03h) | (|wv_cr03h) | (|dv_cr03h) | (|pv_cr03h) |
                        (|ssv_cr03h) | (|sdv_cr03h);
-  assign busy_cr03h  = dbusy_cr03h | (|hv_cr03h);
+  assign busy_cr03h  = dbusy_cr03h | (|hv_cr03h) | (|pcq_cr03h);
 
 endmodule
 `undef CCV_CLK

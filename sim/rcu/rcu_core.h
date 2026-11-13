@@ -70,10 +70,17 @@ constexpr unsigned kRW = 2;   ///< R's write, A+2: the A+2 rule (RA-29 (a))
 static_assert(kRW + 1 == ccv::prov::kLatRcu, "R writes at A+2, readable at A + CCV_LAT_RCU");
 /// The lane bypass window (Lane and memory tab): ages LAT_LANE_BYP to LAT_LANE - 2.
 constexpr unsigned kBypLo = ccv::prov::kLatLaneByp, kBypHi = ccv::prov::kLatLane - 2;
-/// KILL_DRAIN = 2 + link(issue) + CCV_LAT_SFU + 1 + link(done), 15 abutted at SFU 12, 16 at 13
-/// (Done tab). The parameter is RA-16 (g), still to land; the links' extra
-/// stages come from the block (Config).
-constexpr unsigned kKillDrainBase = 2 + ccv::prov::kLatSfu + 1;
+/// KILL_DRAIN = 2 + link(issue) + bnd_rx(issue) + CCV_LAT_SFU + 1 + link(done)
+/// + bnd_rx(done) (Done tab; RA-42). The base cites the params' derived
+/// CCV_LAT_RCU_KILL_DRAIN (RA rev 125), 15 at the defaults, where every link
+/// and boundary term is 0 since RA-43 made the issue end zero-cycle; the
+/// hosts add the issue and done ends' stages and bnd_rx on top (Config:
+/// rcu_block.cpp adds ci.stages + ci.bnd_rx), 0 at the defaults. Should a
+/// default ever gain a stage, the assert below fails rather than the hosts
+/// counting it twice.
+constexpr unsigned kKillDrainBase = ccv::prov::kLatRcuKillDrain;
+static_assert(kKillDrainBase == 2 + ccv::prov::kLatSfu + 1,
+              "CCV_LAT_RCU_KILL_DRAIN carries a default link or boundary stage: the hosts would add it twice");
 
 using Word = std::array<uint32_t, kLanes>;   ///< one 32-bit element a lane
 
@@ -92,9 +99,10 @@ inline uint32_t byteMask(unsigned secs) {
 
 /// What executes it (the op-class decode, Pipeline tab).
 enum class Unit : uint8_t { Lane, Sfu, Mem, ROnly, Coll, Copy, PredCopy };
+// Pmov last (code 18), so the kind codes rcu_dec_pkg and r_tb carry hold.
 enum class RKind : uint8_t { None, Bra, Call, Ret, Pand, Por, Pxor, PmovImm, Movi, ShflIdxImm,
                              ShflIdxReg, ShflUp, ShflDown, ShflBfly, VoteAny, VoteAll, Ballot,
-                             Unballot };
+                             Unballot, Pmov };
 enum class MemKind : uint8_t { None, Load, Store, PredLoad, PredStore, Fence };
 
 /// The decoded class fields (Pipeline tab, "Op-class decode"), filled by the
@@ -142,6 +150,10 @@ struct Issue {
 struct LaneRes {
   Word result{};
   std::array<uint8_t, kLanes> sec_valid{}, sec_pred_out{};
+  // The SFU result (RA-16 (b), RA's rev 115): written from RCU's own SFU
+  // descriptor through the SW port at A+11, beside the lane result.
+  std::array<uint8_t, kLanes> sfu_valid{};
+  Word sfu_result{};
 };
 struct MiuData {
   uint32_t active = 0, pred_result = 0;

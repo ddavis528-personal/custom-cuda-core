@@ -227,9 +227,12 @@ module ooe_rename #(
   output logic [S*LU-1:0]   chk_room_p_cq04h,
   // Controls: the pool's correction dropped (no lagged take subtracted),
   // or the names' older take, which their pool register takes (OA's rev
-  // 219).
+  // 219); the go reading the unmet on time, or the registered unmet with
+  // no last take subtracted (OI-134).
   input  logic              ctl_notq,
-  input  logic              ctl_notq2
+  input  logic              ctl_notq2,
+  input  logic              ctl_unow,
+  input  logic              ctl_nolt
 `endif
 );
 
@@ -242,6 +245,7 @@ module ooe_rename #(
   logic [4*LX-1:0]    px_cq04h;
   logic [4*(R+1)-1:0] pl_cq03h;
   logic [S*LU-1:0]    unmet_g_cq04h, unmet_p_cq04h, room_g_cq04h, room_p_cq04h;
+  logic [S*LU-1:0]    ug_go_cq05h, up_go_cq05h;   // the go's: the registered unmet less the last take (OI-134)
   logic               pool_en_cq04h;
   logic [R-1:0]      lane_v_cq02h;
   logic [R*NC-1:0]   lane_c_cq02h;
@@ -249,7 +253,7 @@ module ooe_rename #(
   logic [2*R-1:0]    wt_cq02h;
   ooe_go #(.S(S), .R(R), .PA(PA), .LU(LU), .LB(LB), .LT(LT)) u_go (
     .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .px_cq01h(px_cq04h), .pl_cq01h(pl_cq03h),
-    .unmet_g_cq01h(unmet_g_cq04h), .unmet_p_cq01h(unmet_p_cq04h), .room_g_cq01h(room_g_cq04h),
+    .unmet_g_cq01h(ug_go_cq05h), .unmet_p_cq01h(up_go_cq05h), .room_g_cq01h(room_g_cq04h),
     .room_p_cq01h(room_p_cq04h), .run_cq01h,
     .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h, .sq_l_cq00h, .dq_ev_cq01h, .rob_en_cq01h,
     .pool_en_cq01h(pool_en_cq04h), .take_cq02h, .sel_cq02h, .lane_v_cq02h, .lane_c_cq02h, .wb_cq02h, .wt_cq02h);
@@ -369,11 +373,12 @@ module ooe_rename #(
   (* keep *) logic [R*LS-1:0] p_slot_cq03h;
   (* keep *) logic [R*4-1:0]  p_dst_cq03h;
   (* keep *) logic [R*2-1:0]  p_pdst_cq03h;
-  logic [R*GW-1:0]     p_gname_cq03h;
-  logic [R*PW-1:0]     p_pname_cq03h;
+  logic [S*16*R-1:0]   p_gkm_cq03h;   // the pending group's writers, per slot and register (#35)
+  logic [S*4*R-1:0]    p_pkm_cq03h;
   logic [S*R*4*GW-1:0] c_gv_cq03h;
   logic [S*R*4*R-1:0]  c_gw_cq01h;
   logic [S*R*4*PW-1:0] c_pv_cq03h;
+  logic [S*R*4*R-1:0]  c_gk_cq03h, c_pk_cq03h;  // each read's pending writer, one-hot by port (#35)
   logic [S*R*4*R-1:0]  c_pw_cq01h;
   for (genvar s = 0; s < S; s++) begin : g_rd
     logic [R*3*4-1:0] src_cq01h;
@@ -394,11 +399,12 @@ module ooe_rename #(
       .rat_cq02h(rat_cq02h[s * MW +: MW]), .h_src_cq01h(src_cq01h), .h_dst_cq01h(dst_cq01h),
       .h_gwe_cq01h(gwe_cq01h), .h_pguard_cq01h(pguard_cq01h), .h_pdst_cq01h(pdst_cq01h), .h_pwe_cq01h(pwe_cq01h),
       .h_pq_cq01h(pq_cq01h), .po_v_cq02h, .po_slot_cq02h, .po_dst_cq02h, .po_gwe_cq02h, .po_gname_cq02h,
-      .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .pw_v_cq01h(p_v_cq03h), .pw_slot_cq01h(p_slot_cq03h), .pw_dst_cq01h(p_dst_cq03h),
-      .pw_gwe_cq01h(p_gwe_cq03h), .pw_gname_cq01h(p_gname_cq03h), .pw_pdst_cq01h(p_pdst_cq03h),
-      .pw_pwe_cq01h(p_pwe_cq03h), .pw_pname_cq01h(p_pname_cq03h),
-      .h_gv_cq01h(c_gv_cq03h[s * R * 4 * GW +: R * 4 * GW]), .h_gw_cq01h(c_gw_cq01h[s * R * 4 * R +: R * 4 * R]),
-      .h_pv_cq01h(c_pv_cq03h[s * R * 4 * PW +: R * 4 * PW]), .h_pw_cq01h(c_pw_cq01h[s * R * 4 * R +: R * 4 * R]));
+      .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .pw_v_cq01h(p_v_cq03h),
+      .pw_gkm_cq01h(p_gkm_cq03h[s * 16 * R +: 16 * R]), .pw_pkm_cq01h(p_pkm_cq03h[s * 4 * R +: 4 * R]),
+      .h_gv_cq01h(c_gv_cq03h[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk_cq03h[s * R * 4 * R +: R * 4 * R]),
+      .h_gw_cq01h(c_gw_cq01h[s * R * 4 * R +: R * 4 * R]),
+      .h_pv_cq01h(c_pv_cq03h[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk_cq03h[s * R * 4 * R +: R * 4 * R]),
+      .h_pw_cq01h(c_pw_cq01h[s * R * 4 * R +: R * 4 * R]));
   end
   logic [R-1:0]      l_v_cq02h, l_gwe_cq02h, l_pwe_cq02h, l_br_cq02h;
   logic [R*XL-1:0]   l_x_cq02h;
@@ -416,12 +422,18 @@ module ooe_rename #(
   logic [R*4*GW-1:0] l_g_cq02h;
   logic [R*4*R-1:0]  l_gl_cq02h, l_pl_cq02h;
   logic [R*4*PW-1:0] l_p_cq02h;
-  ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(XL + 10)) u_ren1 (
+  logic [R*4*R-1:0]  l_gk_cq02h, l_pk_cq02h;
+  logic [R*4-1:0]    l_gs_cq02h;
+  logic [S*16*R-1:0] l_gkm_cq02h;
+  logic [S*4*R-1:0]  l_pkm_cq02h;
+  ooe_ren1 #(.S(S), .R(R), .GW(GW), .GR(GR), .PW(PW), .LC(LC), .XW(XL + 10)) u_ren1 (
     .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h(c_xw_cq02h),
-    .c_gv_cq01h(c_gv_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq03h), .c_pw_cq01h, .lane_v_cq02h, .lane_c_cq02h,
+    .c_gv_cq01h(c_gv_cq03h), .c_gk_cq01h(c_gk_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq03h), .c_pk_cq01h(c_pk_cq03h),
+    .c_pw_cq01h, .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v(l_v_cq02h), .l_slot(l_slot_cq02h), .l_dst(l_dst_cq02h), .l_gwe(l_gwe_cq02h),
     .l_pdst(l_pdst_cq02h), .l_pwe(l_pwe_cq02h), .l_idx(l_idx_cq02h), .l_br(l_br_cq02h), .l_ckpt(l_ckpt_cq02h),
-    .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_xw_cq02h));
+    .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_xw_cq02h),
+    .l_gk(l_gk_cq02h), .l_pk(l_pk_cq02h), .l_gs(l_gs_cq02h), .l_gkm(l_gkm_cq02h), .l_pkm(l_pkm_cq02h));
 
   // Port k's owner: the slot of the lane whose name index is k (each
   // writing lane's names, one-hot by port: GPR, then predicate).
@@ -454,19 +466,37 @@ module ooe_rename #(
   (* keep *) logic [R*2*R-1:0] r_idx_cq03h;
   (* keep *) logic [R*GR-1:0]  r_galloc_cq03h;
   (* keep *) logic [R*PW-1:0]  r_palloc_cq03h;
-  (* keep *) logic [R*2*R-1:0] p_idx_cq03h;
-  (* keep *) logic [R*GR-1:0]  p_galloc_cq03h;
-  (* keep *) logic [R*PW-1:0]  p_palloc_cq03h;
   (* keep *) logic [R*4*GW-1:0] q_gv_cq03h;
   (* keep *) logic [R*4*GW-1:0] qo_gv_cq03h;   // the pending names again, for the names out (NGD-7)
   (* keep *) logic [R*5-1:0]    no_na_cq03h;   // and the narrow attributes
   (* keep *) logic [R*4*R-1:0] q_gl_cq03h;
+  // Each read's pending writer, by port (#35): ooe_ren1n takes that port's
+  // name, as the Rename 2 register's copy below holds it, over the value.
+  (* keep *) logic [R*4*R-1:0] q_gk_cq03h;
+  (* keep *) logic [R*4*R-1:0] qo_gk_cq03h;    // again, for the names out (NGD-7)
+  logic [R*4*R-1:0]            q_pk_cq03h;
+  (* keep *) logic [R*4-1:0]   q_gs_cq03h, qo_gs_cq03h;   // each read seen by placement (#35), twice (NGD-7)
   logic [R*4*R-1:0]  q_pl_cq03h;
   logic [R*4*PW-1:0] q_pv_cq03h;
   (* keep *) logic [R*XL-1:0] x_x_cq03h;
   (* keep *) logic [R*10-1:0] w_cq03h;         // each lane's width codes, to the names
   (* keep *) logic [R*4*R-1:0] qo_gl_cq03h;    // the in-group writer lanes again, for the names out (NGD-7)
   (* keep *) logic [R*10-1:0]  wq_cq03h;       // and the width codes
+  // Each lane's allocation width and home position, formed in Rename 1 so
+  // ooe_ren1n's placement starts from flops (#35): nq_ for the names out,
+  // nr_ for the r_ and p_ copies, each (* keep *) (NGD-7).
+  (* keep *) logic [R*2-1:0]  nq_al_cq03h, nq_hm_cq03h;
+  (* keep *) logic [R*2-1:0]  nr_al_cq03h, nr_hm_cq03h;
+  logic [R*2-1:0]             l_nal_cq02h, l_nhm_cq02h;
+  always_comb
+    for (int l = 0; l < R; l++) begin
+      logic [1:0]    w;
+      logic [LS-1:0] sl;
+      sl = l_slot_cq02h[l * LS +: LS];
+      w  = (FR != 0 || l_x_cq02h[l * XL + 3]) ? 2'd0 : l_w_cq02h[l * 10 + 6 +: 2];
+      l_nal_cq02h[l * 2 +: 2] = w;
+      l_nhm_cq02h[l * 2 +: 2] = (w == 2'd1) ? {sl[0], 1'b0} : 2'(sl);
+    end
   // The narrow names' own copies of the lanes' slot, write bit and width
   // codes, each (* keep *): the outputs' registers reach no placement
   // (NGD-7 at NS 4).
@@ -474,7 +504,27 @@ module ooe_rename #(
   (* keep *) logic [R-1:0]    n_gwe_cq03h;
   (* keep *) logic [R*8-1:0]  wo_cq03h;          // the first 8 bits of each lane's, out
   (* keep *) logic [R*2-1:0] o_c_cq03h;
+  (* keep *) logic [2*R*LP-1:0] d_ppk_cq03h;    // each lane's ports, ooe_rendep's port select alone (OA, re:OI-135)
   (* keep *) logic [R-1:0]   o_lv_cq03h;
+  // Each lane's ports, packed per class in lane order: a main on its
+  // class's next port, a copy on the RCU port after its main. Counted from
+  // the takes (tr: v && (!mem || cp), tm: v && mem), which load no bypass
+  // net again.
+  function automatic logic [2*R*LP-1:0] ports_tk(input logic [R-1:0] tr, input logic [R-1:0] tm,
+                                                  input logic [R-1:0] mem);
+    logic [LP-1:0] ri, mi;
+    logic [2*R*LP-1:0] pp;
+    ri = '0;
+    mi = '0;
+    pp = '0;
+    for (int l = 0; l < R; l++) begin
+      pp[l * LP +: LP]       = mem[l] ? LP'(R) + mi : ri;
+      pp[(R + l) * LP +: LP] = ri;
+      if (tm[l]) mi = mi + 1'b1;
+      if (tr[l]) ri = ri + 1'b1;
+    end
+    ports_tk = pp;
+  endfunction
   logic              r1_en_cq02h;
   assign r1_en_cq02h = sel_cq02h != '0;
   always_ff @(posedge ooe_core_clk) begin
@@ -510,17 +560,25 @@ module ooe_rename #(
       p_gwe_cq03h    <= l_gwe_cq02h;
       p_pdst_cq03h   <= l_pdst_cq02h;
       p_pwe_cq03h    <= l_pwe_cq02h;
+      p_gkm_cq03h    <= l_gkm_cq02h;
+      p_pkm_cq03h    <= l_pkm_cq02h;
       r_idx_cq03h    <= l_idx_cq02h;
       r_galloc_cq03h <= galloc_cq02h;
       r_palloc_cq03h <= palloc_cq02h;
-      p_idx_cq03h    <= l_idx_cq02h;
-      p_galloc_cq03h <= galloc_cq02h;
-      p_palloc_cq03h <= palloc_cq02h;
+      q_gk_cq03h     <= l_gk_cq02h;
+      qo_gk_cq03h    <= l_gk_cq02h;
+      q_pk_cq03h     <= l_pk_cq02h;
+      q_gs_cq03h     <= l_gs_cq02h;
+      qo_gs_cq03h    <= l_gs_cq02h;
       x_x_cq03h      <= l_x_cq02h;
       w_cq03h        <= l_w_cq02h;
       n_slot_cq03h   <= l_slot_cq02h;
       qo_gl_cq03h    <= l_gl_cq02h;
       wq_cq03h       <= l_w_cq02h;
+      nq_al_cq03h    <= l_nal_cq02h;
+      nq_hm_cq03h    <= l_nhm_cq02h;
+      nr_al_cq03h    <= l_nal_cq02h;
+      nr_hm_cq03h    <= l_nhm_cq02h;
       n_gwe_cq03h    <= l_gwe_cq02h;
       for (int l = 0; l < R; l++) wo_cq03h[l * 8 +: 8] <= l_w_cq02h[l * 10 +: 8];
       for (int l = 0; l < R; l++)
@@ -552,28 +610,46 @@ module ooe_rename #(
   logic [R*GR-1:0] sa_row_cq03h, rt_row_cq03h;
   logic [R*NSB-1:0] sa_sec_cq03h;
   // The other copies' sections and returns: unread (the q_ copy's go out).
-  logic [R-1:0]    r_sav_cq03h, r_rtv_cq03h, p_sav_cq03h, p_rtv_cq03h;
-  logic [R*GR-1:0] r_sar_cq03h, r_rtr_cq03h, p_sar_cq03h, p_rtr_cq03h;
-  logic [R*NSB-1:0] r_sas_cq03h, p_sas_cq03h;
+  logic [R-1:0]    r_sav_cq03h, r_rtv_cq03h;
+  logic [R*GR-1:0] r_sar_cq03h, r_rtr_cq03h;
+  logic [R*NSB-1:0] r_sas_cq03h;
   // The new names out, from the q_ copy (its reads unused).
   logic [R*4*GW-1:0] q_gx_cq03h;
   logic [R*4*PW-1:0] q_px_cq03h;
-  ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .FR(FR), .S(S)) u_ren1n (
+  // The group before this one's new names, for its reads (#35), as the
+  // Rename 2 register holds them: Rename 2 reads m_gname/m_pname, and pq_ is
+  // a (* keep *) copy for the names out (NGD-7).
+  (* keep *) logic [R*GW-1:0] pq_gname_cq04h;
+  logic [R*GW-1:0]            r_gname_cq03h;
+  logic [R*PW-1:0]            r_pname_cq03h;
+  logic [R*GW-1:0]            m_gname_cq04h;      // each GPR name: its row and, with sections, its position
+  logic [R*PW-1:0]            m_pname_cq04h;
+  logic                       r2_en_cq03h;
+  assign r2_en_cq03h = p_v_cq03h != '0;
+  always_ff @(posedge ooe_core_clk)
+    if (r2_en_cq03h) begin
+      pq_gname_cq04h <= r_gname_cq03h;
+    end
+  ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .S(S)) u_ren1n (
     .q_idx_cq01h(q_idx_cq03h), .q_galloc_cq01h(q_galloc_cq03h), .q_palloc_cq01h(q_palloc_cq03h),
     .q_g_cq01h(qo_gv_cq03h), .q_gl_cq01h(qo_gl_cq03h), .q_p_cq01h('0), .q_pl_cq01h('0),
+    .q_gk_cq01h(qo_gk_cq03h), .q_pk_cq01h('0), .pn_gname_cq01h(pq_gname_cq04h), .pn_pname_cq01h('0),
+    .q_gs_cq01h(qo_gs_cq03h),
     .q_slot_cq01h(n_slot_cq03h), .q_gwe_cq01h(n_gwe_cq03h), .q_na_cq01h(no_na_cq03h), .q_nw_cq01h(wq_cq03h),
+    .q_nal_cq01h(nq_al_cq03h), .q_nhm_cq01h(nq_hm_cq03h),
     .cand_v_cq01h(ncv_cq02h), .cand_row_cq01h(ncr_cq02h), .cand_same_cq01h(gcs_cq02h),
     .n_gname(q_gname_cq03h), .n_pname(q_pname_cq03h), .n_g(q_gx_cq03h), .n_p(q_px_cq03h),
     .n_sa_v(sa_v_cq03h), .n_sa_row(sa_row_cq03h), .n_sa_sec(sa_sec_cq03h), .n_rt_v(rt_v_cq03h), .n_rt_row(rt_row_cq03h));
   // Rename 2's, from the r_ copy: the new names and the reads.
-  logic [R*GW-1:0]   r_gname_cq03h;
-  logic [R*PW-1:0]   r_pname_cq03h;
   logic [R*4*GW-1:0] r_g_cq03h;
   logic [R*4*PW-1:0] r_p_cq03h;
-  ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .FR(FR), .S(S)) u_ren1nr (
+  ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .S(S)) u_ren1nr (
     .q_idx_cq01h(r_idx_cq03h), .q_galloc_cq01h(r_galloc_cq03h), .q_palloc_cq01h(r_palloc_cq03h),
     .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(q_gl_cq03h), .q_p_cq01h(q_pv_cq03h), .q_pl_cq01h(q_pl_cq03h),
+    .q_gk_cq01h(q_gk_cq03h), .q_pk_cq01h(q_pk_cq03h), .pn_gname_cq01h(m_gname_cq04h), .pn_pname_cq01h(m_pname_cq04h),
+    .q_gs_cq01h(q_gs_cq03h),
     .q_slot_cq01h(n_slot_cq03h), .q_gwe_cq01h(n_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(w_cq03h),
+    .q_nal_cq01h(nr_al_cq03h), .q_nhm_cq01h(nr_hm_cq03h),
     .cand_v_cq01h(ncv_cq02h), .cand_row_cq01h(ncr_cq02h), .cand_same_cq01h(gcs_cq02h),
     .n_gname(r_gname_cq03h), .n_pname(r_pname_cq03h), .n_g(r_g_cq03h), .n_p(r_p_cq03h),
     .n_sa_v(r_sav_cq03h), .n_sa_row(r_sar_cq03h), .n_sa_sec(r_sas_cq03h), .n_rt_v(r_rtv_cq03h), .n_rt_row(r_rtr_cq03h));
@@ -581,17 +657,6 @@ module ooe_rename #(
   assign q_g_cq03h = r_g_cq03h;
   assign q_p_cq03h = r_p_cq03h;
 `endif
-  // From the copy, the pending group's names alone (its reads unused).
-  logic [R*4*GW-1:0] p_g_cq03h;
-  logic [R*4*PW-1:0] p_p_cq03h;
-  ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .FR(FR), .S(S)) u_ren1np (
-    .q_idx_cq01h(p_idx_cq03h), .q_galloc_cq01h(p_galloc_cq03h), .q_palloc_cq01h(p_palloc_cq03h),
-    .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(q_gl_cq03h), .q_p_cq01h('0), .q_pl_cq01h('0),
-    .q_slot_cq01h(p_slot_cq03h), .q_gwe_cq01h(p_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(w_cq03h),
-    .cand_v_cq01h(ncv_cq02h), .cand_row_cq01h(ncr_cq02h), .cand_same_cq01h(gcs_cq02h),
-    .n_gname(p_gname_cq03h), .n_pname(p_pname_cq03h), .n_g(p_g_cq03h), .n_p(p_p_cq03h),
-    .n_sa_v(p_sav_cq03h), .n_sa_row(p_sar_cq03h), .n_sa_sec(p_sas_cq03h), .n_rt_v(p_rtv_cq03h), .n_rt_row(p_rtr_cq03h));
-
   // -- Rename's counters (slice 7b; OI-73, OI-74, OI-75; OA's revs 207, 208, 213-216)
   // The takes reach the counters a cycle late, from the Rename 1 register:
   // each class's take and each slot's names, one-hot. Each counter is
@@ -637,6 +702,25 @@ module ooe_rename #(
         tk_ps_cq02h[s * R + l] = tk_p_cq02h[l] && l_slot_cq02h[l * LS +: LS] == LS'(s);
       end
     end
+  // The same takes, each class's from its own x bits and then selected per
+  // lane (lane_c is one-hot or zero, as ooe_ren1's fx reads it), so the
+  // port select loads neither l_x nor the take terms.
+  logic [NC-1:0] cr_cq01h, cm_cq01h, cmem_cq01h;
+  logic [R-1:0]  kr_cq02h, km_cq02h, kmem_cq02h;
+  always_comb begin
+    for (int c = 0; c < NC; c++) begin
+      cr_cq01h[c]   = c_xl_cq01h[c * XL] && (!c_xl_cq01h[c * XL + 1] || c_xl_cq01h[c * XL + 2]);
+      cm_cq01h[c]   = c_xl_cq01h[c * XL] && c_xl_cq01h[c * XL + 1];
+      cmem_cq01h[c] = c_xl_cq01h[c * XL + 1];
+    end
+    for (int l = 0; l < R; l++) begin
+      kr_cq02h[l]   = lane_v_cq02h[l] && |(lane_c_cq02h[l * NC +: NC] & cr_cq01h);
+      km_cq02h[l]   = lane_v_cq02h[l] && |(lane_c_cq02h[l * NC +: NC] & cm_cq01h);
+      kmem_cq02h[l] = |(lane_c_cq02h[l * NC +: NC] & cmem_cq01h);
+    end
+  end
+  always_ff @(posedge ooe_core_clk)
+    if (r1_en_cq02h) d_ppk_cq03h <= ports_tk(kr_cq02h, km_cq02h, kmem_cq02h);
   logic [R:0]       tq_r_cq03h, tq_m_cq03h, tq_g_cq03h, tq_p_cq03h;
   logic [S*(R+1)-1:0] tq_gs_cq03h, tq_ps_cq03h;
   logic             tq_nz_cq03h, tq_en_cq02h;
@@ -850,10 +934,93 @@ module ooe_rename #(
       room_g_cq04h[s * LU +: LU]  = rem_of(ucg_cq04h[s * HW +: HW], tq_gs_cq03h[s * (R + 1) +: R + 1]);
       room_p_cq04h[s * LU +: LU]  = rem_of(ucp_cq04h[s * HW +: HW], tq_ps_cq03h[s * (R + 1) +: R + 1]);
     end
+  // OI-134 (OI-114's registered form, OA's rev 358): the go reads each
+  // slot's unmet a cycle late, from a register, less the names its last
+  // take wrote (the lagged take, tq_gs/tq_ps); none read on time. The
+  // register takes, per slot (its GPR and predicate unmets, and whether it
+  // was occupied), only when the unmet can move: a slot's occupancy
+  // changed at the last edge (every slot; and once out of reset, since a
+  // slot may be occupied from the first cycle, its lead held off in
+  // reset), or, in an occupied slot, frees reached the remainders at it
+  // or the slot's take of a class is registered now. A class whose unmet
+  // is 0 stands there under a take (its floor is met), and one at the
+  // ceiling of LU bits whose remainder is a whole take above it stands
+  // there under anything. The edge that clears a lagged take also takes
+  // it from the remainder, so the unmet stands then (CG-3: clocked on
+  // cnt_en a cycle late, it changed on half its cycles).
+  // None reads sel: a load on it remaps Rename 1's q_gv cone.
+  logic [S*LU-1:0] ur_g_cq05h, ur_p_cq05h;
+  logic [S-1:0]    ur_oc_cq05h;     // the occupancy the register took with (1, not known, from reset)
+  logic            ur_o_cq02h;
+  logic [S-1:0]    ur_f_cq04h;      // frees reached each slot's remainders
+  logic [S-1:0]    ur_en_cq04h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      ur_o_cq02h <= 1'b1;
+      ur_f_cq04h <= '0;
+    end else begin
+      ur_o_cq02h <= occ_l_cq00h != occ_cq01h;
+      for (int s = 0; s < S; s++)
+        ur_f_cq04h[s] <= g_pair(gfsp_cq03h, s) != '0 || p_pair(pfsp_cq03h, s) != '0;
+    end
+  end
+  // A class stands at the top when its register holds the ceiling of LU
+  // bits and its remainder is a whole take above it.
+  function automatic logic top_of(input logic [LU-1:0] u, input logic [HW-1:0] f);
+    top_of = u == '1 && $signed(f) >= $signed(HW'((1 << LU) - 1 + R));
+  endfunction
+  logic [S-1:0] hg_cq05h, hp_cq05h;        // a class standing at the top
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      hg_cq05h[s] = top_of(ur_g_cq05h[s * LU +: LU], ufg_cq04h[s * HW +: HW]);
+      hp_cq05h[s] = top_of(ur_p_cq05h[s * LU +: LU], ufp_cq04h[s * HW +: HW]);
+      ur_en_cq04h[s] = (ur_o_cq02h && !rst_r01h)
+                    || (ur_oc_cq05h[s] && ur_f_cq04h[s] && !(hg_cq05h[s] && hp_cq05h[s]))
+                    || (ur_oc_cq05h[s] && !tq_gs_cq03h[s * (R + 1)] && ur_g_cq05h[s * LU +: LU] != '0 && !hg_cq05h[s])
+                    || (ur_oc_cq05h[s] && !tq_ps_cq03h[s * (R + 1)] && ur_p_cq05h[s * LU +: LU] != '0 && !hp_cq05h[s]);
+    end
+  for (genvar s = 0; s < S; s++) begin : g_ur
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) begin
+        ur_g_cq05h[s * LU +: LU] <= '0;
+        ur_p_cq05h[s * LU +: LU] <= '0;
+        ur_oc_cq05h[s]           <= 1'b1;
+      end else if (ur_en_cq04h[s]) begin
+        ur_g_cq05h[s * LU +: LU] <= unmet_g_cq04h[s * LU +: LU];
+        ur_p_cq05h[s * LU +: LU] <= unmet_p_cq04h[s * LU +: LU];
+        ur_oc_cq05h[s]           <= occ_cq01h[s];
+      end
+    end
+  end
+  // An unmet less a take, one-hot, at 0.
+  function automatic logic [LU-1:0] less_oh(input logic [LU-1:0] u, input logic [R:0] oh, input logic on);
+    logic [LU:0] d;
+    d = {1'b0, u} - (on ? (LU + 1)'(oh_val(oh)) : '0);
+    less_oh = d[LU] ? '0 : d[LU-1:0];
+  endfunction
+`ifdef CCV_CHECK_RENAME
+  logic [S*LU-1:0] ux_g_cq05h, ux_p_cq05h;     // the controls' unmet: on time, or registered
+  logic            ux_lt_cq05h;                 // the last take subtracted
+  assign ux_g_cq05h  = ctl_unow ? unmet_g_cq04h : ur_g_cq05h;
+  assign ux_p_cq05h  = ctl_unow ? unmet_p_cq04h : ur_p_cq05h;
+  assign ux_lt_cq05h = !ctl_unow && !ctl_nolt;
+`else
+  logic [S*LU-1:0] ux_g_cq05h, ux_p_cq05h;
+  logic            ux_lt_cq05h;
+  assign ux_g_cq05h  = ur_g_cq05h;
+  assign ux_p_cq05h  = ur_p_cq05h;
+  assign ux_lt_cq05h = 1'b1;
+`endif
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      ug_go_cq05h[s * LU +: LU] = less_oh(ux_g_cq05h[s * LU +: LU], tq_gs_cq03h[s * (R + 1) +: R + 1], ux_lt_cq05h);
+      up_go_cq05h[s * LU +: LU] = less_oh(ux_p_cq05h[s * LU +: LU], tq_ps_cq03h[s * (R + 1) +: R + 1], ux_lt_cq05h);
+    end
   // The go's change lead for its fits' clocks: a superset, from the
   // registered sel (a take may come), a registered take, the counters'
-  // or pool registers' enable, a slot's occupancy changing.
-  assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h;
+  // or pool registers' enable, a slot's occupancy changing, the unmet's
+  // register taking (OI-134; its take terms are within cnt_en).
+  assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h || ur_o_cq02h || ur_f_cq04h != '0;
 `ifdef CCV_CHECK_RENAME
   // Free names on time: the pool less every slot's held, on time.
   function automatic logic [7:0] names_on(input logic [S*HW-1:0] u, input logic [R:0] tq, input int n, input int w);
@@ -908,7 +1075,7 @@ module ooe_rename #(
   // head (the go's registered sel, a superset of a take).
   ooe_rendep #(.N(N), .A(R), .NG(NN), .NP(NP), .NU(NU), .G(G), .CT(CT)) u_dep (
     .ooe_core_clk, .ooe_rst_r00h, .v_l_cq00h(|sel_cq02h), .v_cq01h(d_v_cq03h), .mem_cq01h(d_mem_cq03h),
-    .cp_cq01h(d_cp_cq03h), .atom_cq01h(d_atom_cq03h), .gwe_cq01h(p_gwe_cq03h), .gname_cq01h(r_gname_cq03h),
+    .cp_cq01h(d_cp_cq03h), .pp_cq01h(d_ppk_cq03h), .atom_cq01h(d_atom_cq03h), .gwe_cq01h(p_gwe_cq03h), .gname_cq01h(r_gname_cq03h),
     .pwe_cq01h(p_pwe_cq03h), .pname_cq01h(r_pname_cq03h), .gsv_cq01h(d_gsv_cq03h), .gsn_cq01h(r_g_cq03h),
     .psv_cq01h(d_psv_cq03h), .psn_cq01h(d_psn_cq03h), .cguard_cq01h(d_cguard_cq03h), .cg_cq01h(d_cg_cq03h),
     .cnone_cq01h(d_cnone_cq03h), .unit_cq01h(d_unit_cq03h), .pg_cq01h(d_pg_cq03h), .nob_cq01h(d_nob_cq03h),
@@ -919,23 +1086,6 @@ module ooe_rename #(
     .grp_dep_cq02h(grp_dep_cq04h), .grp_code_cq02h(grp_code_cq04h), .prv_dep_cq02h(prv_dep_cq04h),
     .prv_code_cq02h(prv_code_cq04h), .akind_cq02h(akind_cq04h), .acls_cq02h(acls_cq04h));
 
-  // Each lane's ports, packed per class in lane order: a main on its
-  // class's next port, a copy on the RCU port after its main.
-  function automatic logic [2*R*LP-1:0] ports_of(input logic [R-1:0] v, input logic [R-1:0] mem,
-                                                  input logic [R-1:0] cp);
-    logic [LP-1:0] ri, mi;
-    logic [2*R*LP-1:0] pp;
-    ri = '0;
-    mi = '0;
-    pp = '0;
-    for (int l = 0; l < R; l++) begin
-      pp[l * LP +: LP]       = mem[l] ? LP'(R) + mi : ri;
-      pp[(R + l) * LP +: LP] = ri;
-      if (v[l] && mem[l]) mi = mi + 1'b1;
-      if (v[l] && (!mem[l] || cp[l])) ri = ri + 1'b1;
-    end
-    ports_of = pp;
-  endfunction
   // The ports a group requests: the RCU ports its mains and copies take,
   // then the MIU ports, each class's from its first.
   function automatic logic [P-1:0] req_of(input logic [R-1:0] v, input logic [R-1:0] mem, input logic [R-1:0] cp);
@@ -987,12 +1137,9 @@ module ooe_rename #(
   // ooe_rs's request (its lead's twin, from Rename 2's copies: while Rename 1
   // holds a lane or the request is set, to clear it).
   logic [R-1:0]       m_v_cq04h, m_gwe_cq04h, m_pwe_cq04h, m_cv_cq04h;
-  logic [R*GW-1:0]    m_gname_cq04h;      // each GPR name: its row and, with sections, its position
-  logic [R*PW-1:0]    m_pname_cq04h;
   logic [2*R*LP-1:0]  m_pp_cq04h;
   logic [R*CW-1:0]    m_cvc_cq04h;
-  logic               r2_en_cq03h, rq_en_cq03h;
-  assign r2_en_cq03h = p_v_cq03h != '0;
+  logic               rq_en_cq03h;
   assign rq_en_cq03h = r2_en_cq03h || req_cq04h != '0;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) m_v_cq04h <= '0;
@@ -1009,7 +1156,7 @@ module ooe_rename #(
       m_cv_cq04h    <= d_cp_cq03h;
       m_gname_cq04h <= r_gname_cq03h;
       m_pname_cq04h <= r_pname_cq03h;
-      m_pp_cq04h    <= ports_of(d_v_cq03h, d_mem_cq03h, d_cp_cq03h);
+      m_pp_cq04h    <= ports_tk(d_v_cq03h & (~d_mem_cq03h | d_cp_cq03h), d_v_cq03h & d_mem_cq03h, d_mem_cq03h);
       for (int l = 0; l < R; l++)
         m_cvc_cq04h[l * CW +: CW] <= codes_of(d_unit_cq03h[l * 3 +: 3], d_pg_cq03h[l * 3 +: 3], d_nob_cq03h[l]);
     end

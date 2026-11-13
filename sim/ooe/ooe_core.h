@@ -221,6 +221,10 @@ struct Config {
   /// destination written earlier in the group counts as no narrow
   /// operand (the home position), and a conflict takes a fresh row.
   bool cand_indep = true;
+  /// With cand_indep (#35, OI row): a source or merged old destination the
+  /// group before this one wrote (the pending group, its names bound in the
+  /// same cycle as this group's reads) counts as no narrow operand too.
+  bool cand_indep_pend = true;
   /// cand 2's age: its find leaves out the last cand_lag groups'
   /// allocations, and a candidate in a row they allocated in is void
   /// (ooe_freelist registers Rename 2's allocations: 2).
@@ -537,9 +541,12 @@ struct Config {
   bool inject_split_r_class = false;  ///< a collective and an RCU-only op go together at R (RA-29 (a))
   bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
+  bool inject_no_cogrant = false;     ///< the hop misses a co-granted dependant (OI-133)
+  bool inject_reconv_real = false;    ///< C_RECONV (serial 5) is no no-op: it renames and issues (OA rev 393)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
   bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
+  bool inject_no_memop_credit = false;  ///< select grants a memop on a pipe MIU holds no credit for (MA-5)
   /// Sectioned select grants one more lane op a cycle onto sections already
   /// held, unchecked (V-60): the kernels' no-resource-cap control, which RCU
   /// must refuse.
@@ -590,6 +597,8 @@ struct Config {
   /// admission unit, OA's rev 189).
   bool inject_a1_base_only = false;
   bool inject_cas_split = false;
+  /// Control (OI-127): the CAS pair drops its second slot's pd.
+  bool inject_cas_no_pd = false;
   /// OI-79 (b)'s control: the take keeps a pair the width splits (its
   /// first slot taken, its second left for the next cycle): it skips both
   /// the take's cap and tryRename's cut at the last lane.
@@ -608,14 +617,27 @@ struct Config {
   /// slot's unmet floor, so the go reads last cycle's and takes from it the
   /// names its own last take wrote (then this take's, as above). It misses
   /// only frees, so it never reserves less than it should hold. 0: the go
-  /// reads unmet on time (arriving at 6 NGD).
-  unsigned unmet_reg = 0;
+  /// reads unmet on time (arriving at 6 NGD). 1 by default since OI-134
+  /// (RH, 95bf04d): clean at 192, 160 and 128 physical registers, equal to
+  /// the cycle at 192, coremark128 -2.22% at 160 and -2.16% at 128.
+  unsigned unmet_reg = 1;
   /// OA's response to OI-116 (rev 369 (b)), RH's S1 at 0 cost: 1 takes the
   /// split's floor term less the slot's own take a cycle late, from the
   /// registered unmet less the last take alone, with no subtraction in the
   /// split cycle (ooe_go with no per-take term). 0: the in-cycle
   /// subtraction (OI-114 as first built; go_tb's control floor-take-now).
   unsigned floor_take_lag = 1;
+  /// TI 360 (re:RA-11): under floor_take_lag 1 a slot's floor term is split
+  /// again while the allowance holding it is admitted against, so for a
+  /// cycle the slot's floor counts twice and the allowances can pass the
+  /// credit. 1 splits no floor term for a slot whose registered allowance
+  /// holds one (a registered bit gating the go's floor), so a floor still
+  /// unmet is granted every other cycle; 0 is (b) as first built.
+  unsigned floor_held_gate = 1;
+  /// ROB slice 4: 2 takes a fault only at the head as registered a cycle
+  /// before (ooe_rob_w's hrf), keeping it off the retire window's cones; 1
+  /// at the window's port 0; 0 on any port.
+  unsigned fault_head_only = 2;
   /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
   /// register keeps its old width (the model before this).
   bool inject_sibling_uncommitted = false;
@@ -693,7 +715,11 @@ struct SchedAttr {
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3,
                kLatClsCollective = 5 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+// kSerNop: a hint with no architectural effect (C_RECONV, reconv.hint), a
+// no-op complete at rename like exit and a dispatch fault (RA-16 (f), OA's
+// rev 393).
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4,
+                  kSerNop = 5 };
 inline bool isBarrierSer(unsigned s) { return s == kSerBarrier || s == kSerArrive; }
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
@@ -769,6 +795,12 @@ struct Uop {
 inline bool barNop(const Uop &u) {
   return isBarrierSer(u.attr.serial) && !u.shape.guard && !u.shape.pdata;
 }
+/// serial 5 (RA-16 (f), OA's rev 393): C_RECONV, which DEC sends with
+/// every other attribute bit 0. Allocated with its pc and group mask,
+/// complete at allocation; no RS entry, no rename, no issue; it retires in
+/// order and its payload is ignored, so OOE stays opcode-blind. `on` false
+/// is the reconv-issues control (inject_reconv_real).
+inline bool hintNop(const Uop &u, bool on = true) { return on && u.attr.serial == kSerNop; }
 
 struct Done {           ///< ccv_rcu_ooe_done
   unsigned rob_tag = 0;
@@ -850,6 +882,7 @@ struct Issue {          ///< ccv_ooe_rcu_issue
   unsigned src_w[3] = {}, dst_w = 0;
   unsigned chwidth = 0;
   bool guarded = false;          ///< for the adapter's coverage only
+  bool pread = false;            ///< reads its predicate, guard or data (lead_guard_used, RA-43)
   uint8_t gpr_reads = 0;         ///< likewise
   /// The resource group the op issues on (ccv_ooe_rcu_issue's slots) and
   /// its footprint there: lane sections, MIU pipes, or R alone (footprint 0).
@@ -1313,6 +1346,12 @@ public:
   /// The PRF read ports a migration holds this cycle (RCU's, TI-21): set
   /// before cycle(), as the other inputs are.
   void migrationReads(unsigned n) { mig_reads_ = n; }
+  /// MA-5 (AR 345/347, OA-412): the credits each ccv_ooe_miu_memop slot,
+  /// P0-P3, holds as the cycle starts, set before cycle(). Select grants a
+  /// memop only where a pipe of its footprint has one left after what
+  /// leaves this cycle, and sends it on the lowest such pipe. Never set,
+  /// every pipe has one (the unit tests that model no MIU).
+  void memopCredits(const std::array<unsigned, 4> &c) { mcred_ = c; mcred_set_ = true; }
   void barRelease(uint32_t warp_mask);
   void kill(uint32_t warp_mask, unsigned epoch);
 
@@ -1656,6 +1695,7 @@ private:
   }
   void err(const char *fmt, ...);
   void count(const std::string &k, uint64_t n = 1) { counters[k] += n; }
+  void namePressureStats();
 
   Config cfg_;
   uint64_t now_ = 0;
@@ -1685,7 +1725,7 @@ public:
     /// the entries it returned to Waiting; confirmation's inputs (issued and
     /// unconfirmed, the result final, a destination, the dependency bits)
     /// and the entries it confirmed. hop_live: a hop ran this cycle.
-    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, cf_iss, cf_fin, cf_prod, cf_dep;
+    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, hop_new, cf_iss, cf_fin, cf_prod, cf_dep;
     bool hop_live = false;
     /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
     /// in allocation order, and those freed; hfree: those freed by an L1
@@ -1789,6 +1829,13 @@ public:
       uint32_t gmask = 0;
       uint64_t pcn = 0, tgt = 0;
       unsigned pchi = 0;          ///< pc[47:32]: a ret's target is {pc[47:32], aux}
+      // Slice 4 (OI-125): what the allocation writes for the fault record,
+      // every entry: a rename-time fault and its cause, pc[31:1], pc[47:32]
+      // and the group mask (a rename-time fault's lanes).
+      bool fault = false;
+      unsigned cause = 0;
+      uint32_t pclo = 0, egmask = 0;
+      unsigned epchi = 0;
     };
     struct Ret {
       unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
@@ -1798,6 +1845,10 @@ public:
     /// rob_tags: issues owing RCU a done, RCU's dones, MIU's completions,
     /// copies issued and landed, RS entries freed.
     std::vector<unsigned> owe, done, cmpl, cpi, cpl, rsf;
+    /// Slice 4, beside cmpl (one each): its lead_fault (status 1) and the
+    /// fault's cause, lanes and address.
+    struct CmplFault { bool fault = false; unsigned cause = 0; uint32_t lanes = 0; uint64_t addr = 0; };
+    std::vector<CmplFault> cmplf;
     /// Slice 2, beside owe and done (one each): the row each owes or
     /// completes (OA's rev 282: 0 the main entry, 1 the copy, 2 an atomic's
     /// A2), and a done's outcome (taken, mask, aux).
@@ -1824,6 +1875,9 @@ public:
     std::vector<Ret> ret;
     /// Slice 3: each store committed (slot, index), from the retire.
     std::vector<std::pair<unsigned, unsigned>> commit;
+    /// Slice 4: each fault taken at retire (slot, index, cause, pc, lanes).
+    struct Fault { unsigned slot = 0, idx = 0, cause = 0; uint64_t pc = 0; uint32_t lanes = 0; uint64_t addr = 0; };
+    std::vector<Fault> fault;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;
   };
@@ -2042,6 +2096,7 @@ private:
   std::vector<std::array<unsigned, 4>> share_reg_;   ///< fits_stale 6: the allowances split for the next cycle
   std::vector<std::array<unsigned, 4>> share_hold_;  ///< fits_stale 6: and as split, before the split cycle's own takes (the pool's held)
   std::vector<std::array<unsigned, 2>> split_floor_; ///< fits_stale 6: each slot's floor term at the split, GPR and predicate (OI-114)
+  std::vector<std::array<unsigned, 2>> floor_held_; ///< floor_held_gate: the floor term of the allowance registered now, GPR and predicate (TI 360)
   std::vector<std::array<unsigned, 2>> unmet_now_;   ///< unmet_reg: each slot's unmet floor this cycle (registered for the next)
   std::vector<std::array<unsigned, 2>> last_take_;   ///< unmet_reg: the names each slot's last take wrote
   std::vector<std::array<unsigned, 4>> pend_a_, pend_b_;  ///< fits_stale 7: splits in flight, two cycles and one from use
@@ -2161,6 +2216,7 @@ private:
   std::vector<uint8_t> row_alloc_prev_;
   void retPending();
   std::vector<uint16_t> grp_written_;        ///< cand_indep: each slot's GPRs written this group
+  std::vector<uint16_t> grp_written_prev_;   ///< cand_indep_pend: and by the group before
   unsigned cand_row_ = kNoRow;               ///< planSlice's candidate, for allocSlice
   static unsigned candKind(unsigned w, unsigned pos) { return w == 1 ? 4 + ((pos >> 1) & 1u) : pos & 3u; }
   unsigned candFind(unsigned slot, unsigned kind, const std::vector<uint8_t> &sec) const;
@@ -2333,6 +2389,13 @@ private:
   unsigned cancel_depth_ = 0;
   std::vector<Issue> held_issues_;
   std::vector<Memop> held_memops_;
+  std::array<unsigned, 4> mcred_{};    ///< MA-5: MIU's credits per memop slot, as set
+  bool mcred_set_ = false;
+  std::array<unsigned, 4> mleft_{};    ///< MA-5: what this cycle's select may still send per slot
+  unsigned memop_pick_ = ~0u;          ///< MA-5: the slot doIssue sends the granted memop on
+  void memopCreditsLeft();
+  unsigned memopCredited(unsigned pipes) const;
+  void takeMemopCredit(unsigned port);
 };
 
 } // namespace ooe

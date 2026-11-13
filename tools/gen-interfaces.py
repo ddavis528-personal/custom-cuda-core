@@ -400,6 +400,17 @@ def main():
                     "carrying the whole payload, not a lead"); return 1
             if "lead_why" not in c:
                 err("lead_fields are set with no reason recorded"); return 1
+        # Credit on receipt (AR's rev 322, RA-41): the receiving block's
+        # promise, in words, that it takes every message the cycle it is
+        # presented from its boundary flop, kill, flush and reset included,
+        # with no skid of its own. params/links.json lists the end; this
+        # text is what lets it (tools/ccv_links.py).
+        cor = c.get("credit_on_receipt")
+        if cor is not None:
+            if not (isinstance(cor, str) and cor.strip()):
+                err("credit_on_receipt is the receiving block's promise, in words"); return 1
+            if c["dst"] == "EXTERNAL":
+                err("credit_on_receipt at EXTERNAL: no wrapper returns the credit"); return 1
         # Slot fields (OA's response OI-93): a field defined on the named
         # slots alone, each a slot index or a parameter naming one, and zero
         # on every other, which the skeleton's send and the SV checker bank
@@ -470,8 +481,13 @@ def main():
         if no is not None:
             names = {x["name"]: x for x in d["channels"]}
             other = names.get(no.get("channel"))
-            if set(no) != {"channel", "ahead", "keys"}:
-                err("notice_of needs exactly channel, ahead, keys"); return 1
+            if not {"channel", "ahead", "keys"} <= set(no) <= {"channel", "ahead", "keys", "unless"}:
+                err("notice_of needs exactly channel, ahead, keys, and optionally unless"); return 1
+            # unless (OA rev 413): a 1-bit field of the notice's own that,
+            # set, makes the message no promise (the hint's no_hit).
+            if "unless" in no and (no["unless"] not in c["payload_fields"] or
+                                   str(d["field_widths"].get(no["unless"])) != "1"):
+                err("notice_of unless must be a 1-bit field of %s" % c["name"]); return 1
             if other is None or other is c or "notice_of" in other:
                 err("notice_of %r is not another, non-notice channel" % no["channel"]); return 1
             if (other["src"], other["dst"], other["rate"]) != (c["src"], c["dst"], c["rate"]):
@@ -546,6 +562,21 @@ def main():
     for e in rate_drift(d, pv):
         sys.stderr.write(e + "\n")
         bad = 1
+    # credits_param (MA-5, AR rev 345): a channel whose slots hold more
+    # credits than the loop names the parameter; it must exist and be at
+    # least the loop, or the slot could not run at full rate.
+    for c in d["channels"]:
+        cp = c.get("credits_param")
+        if cp is None:
+            continue
+        if cp not in pv:
+            sys.stderr.write("channel %s: credits_param %s is not in params/ccv_params.json\n"
+                             % (c["name"], cp))
+            bad = 1
+        elif pv[cp] < pv["CCV_CREDIT_DEPTH"]:
+            sys.stderr.write("channel %s: %s = %d is under the credit loop, CCV_CREDIT_DEPTH = %d\n"
+                             % (c["name"], cp, pv[cp], pv["CCV_CREDIT_DEPTH"]))
+            bad = 1
     for c in d["channels"]:
         for ov in c.get("overlays", []):
             fw = num(field_width(d, c, ov["field"]))

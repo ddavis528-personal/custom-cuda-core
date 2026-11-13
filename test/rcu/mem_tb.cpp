@@ -38,6 +38,9 @@
 #include <type_traits>
 #include <vector>
 
+#include "cls_pack.h"
+#include "dec_tb.h"
+
 #ifndef MM_COPIES
 #define MM_COPIES 32
 #endif
@@ -78,6 +81,7 @@ enum Kind : unsigned { Load, Store, PLoad, PStore, Fence };
 struct Op {
   bool mem = false;   // false: a continuation
   unsigned kind = Load, foot = 0, lsrc = 0, tag = 0;
+  unsigned opc = 0, drow = 0;   // the payload the module decodes (test/rcu/dec_tb.h)
   unsigned sl[kM] = {3, 3, 3};   // base, index, data: source, 3 none
   unsigned spos[3]{}, swid[3]{};
   uint32_t act = 0, pst = 0;
@@ -152,12 +156,9 @@ struct Bench {
     if (const Group *x = g(c))
       for (unsigned j = 0; j < kK; ++j) {
         const Op &o = x->op[j];
-        put(dut->mem_cr02h, j, 1, x->v[j] && o.mem);
-        put(dut->fen_cr02h, j, 1, o.kind == Fence);
-        put(dut->psk_cr02h, j, 1, o.kind == PStore);
-        put(dut->bsl_cr02h, 2 * j, 2, o.sl[0]);
-        put(dut->xsl_cr02h, 2 * j, 2, o.sl[1]);
-        put(dut->dsl_cr02h, 2 * j, 2, o.sl[2]);
+        // The class word rcu_isd holds from the lead (RA-43, RI-25).
+        put(dut->ocl_cr02h, 27 * j, 27, clspack::clsWord(o.opc, o.drow, false));
+        put(dut->cont_cr02h, j, 1, x->v[j] && !o.mem);
         put(dut->foot_cr02h, kK * j, kK, o.foot);
         for (unsigned i = 0; i < 3; ++i) {
           put(dut->spos_cr02h, 6 * j + 2 * i, 2, o.spos[i]);
@@ -166,7 +167,7 @@ struct Bench {
         put(dut->tag_cr02h, kWT * j, kWT, o.tag);
       }
     else
-      dut->mem_cr02h = 0;   // the rest of the payload holds: no message
+      dut->cont_cr02h = 0;   // the rest of the payload holds: no valid, no message
     // A+1: rcu_pred's flops and the bank reads.
     if (const Group *x = g(c - 1)) {
       for (unsigned j = 0; j < kK; ++j) {
@@ -239,7 +240,7 @@ struct Gen {
   unsigned tag = 0;
   // Coverage.
   unsigned cov_kind[5]{}, cov_noidx = 0, cov_slot = 0, cov_w16 = 0, cov_w8 = 0, cov_split = 0,
-           cov_cont = 0, cov_multi = 0, cov_super = 0, cov_shared = 0;
+           cov_cont = 0, cov_multi = 0, cov_super = 0, cov_shared = 0, cov_atom = 0;
   explicit Gen(uint64_t seed) : r(seed) {}
   bool p(double q) { return std::uniform_real_distribution<double>(0, 1)(r) < q; }
   unsigned u(unsigned n) { return unsigned(r() % n); }
@@ -253,6 +254,22 @@ struct Gen {
     const auto &c = ok[u(unsigned(ok.size()))];
     w = c.first;
     pos = c.second;
+  }
+
+  // The opcodes the decode makes each kind of memop at a done_row.
+  static const dectb::OpPool &pool(unsigned kind, unsigned drow) {
+    static std::map<unsigned, dectb::OpPool> m;
+    const unsigned key = kind * 4 + drow;
+    auto it = m.find(key);
+    if (it == m.end()) {
+      using MK = dectb::R::MemKind;
+      const MK mk = kind == Load ? MK::Load : kind == Store ? MK::Store : kind == PLoad ? MK::PredLoad
+                    : kind == PStore ? MK::PredStore : MK::Fence;
+      it = m.emplace(key, dectb::OpPool("a memop kind", drow, [mk](const dectb::R::OpClass &oc) {
+             return oc.unit == dectb::R::Unit::Mem && oc.mk == mk;
+           })).first;
+    }
+    return it->second;
   }
 
   Group make() {
@@ -281,12 +298,17 @@ struct Gen {
         o.spos[i] = u(4);   // don't-care unless read
         o.swid[i] = u(3);
       }
-      auto src = [&] { return u(3); };
-      if (o.kind != Fence) {
-        o.sl[0] = o.kind == Load && p(0.15) ? 3 : src();   // a slot-form load has no base
-        o.sl[1] = (o.kind == Load || o.kind == Store) && p(0.6) ? src() : 3;
-        o.sl[2] = o.kind == Store ? src() : 3;
-      }
+      // An opcode the decode makes this kind, an atomic's step now and then
+      // (done_row 0 its A1, a load; 3 its A3, a store); its operand map.
+      o.drow = u(4) == 0 ? 3 : 0;
+      o.opc = pool(o.kind, o.drow).pick(r);
+      dectb::R::OpClass oc;
+      dectb::classOf(o.opc, o.drow, false, oc);
+      auto sl = [](int x) { return x < 0 ? 3u : unsigned(x); };
+      o.sl[0] = sl(oc.base_src);
+      o.sl[1] = sl(oc.index_src);
+      o.sl[2] = sl(oc.data_src);
+      cov_atom += o.drow != 0 && ccv::skel::opByCode(o.opc)->cls == ccv::skel::kAtomic;
       unsigned placed = 0;
       for (unsigned m = 0; m < kM; ++m) {
         const unsigned s = o.sl[m];
@@ -351,14 +373,16 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   for (unsigned i = 0; i < 6; ++i) b.step();
   if (scenario != "idle") {
     bool cov = gen.cov_noidx && gen.cov_slot && gen.cov_w16 && gen.cov_w8 && gen.cov_split && gen.cov_cont &&
-               gen.cov_multi && gen.cov_super && gen.cov_shared;
+               gen.cov_multi && gen.cov_super && gen.cov_atom;
+    // shared (two operands of one source) is counted, not required: no
+    // opcode's operand map reads a source twice (rcu_dec_pkg).
     for (unsigned k = 0; k < 5; ++k) cov = cov && gen.cov_kind[k];
     if (!cov) {
       std::fprintf(stderr, "rcu_mem: coverage: load %u store %u pload %u pstore %u fence %u noidx %u slot %u "
-                           "w16 %u w8 %u split %u cont %u multi %u super %u shared %u\n",
+                           "w16 %u w8 %u split %u cont %u multi %u super %u shared %u atom %u\n",
                    gen.cov_kind[0], gen.cov_kind[1], gen.cov_kind[2], gen.cov_kind[3], gen.cov_kind[4],
                    gen.cov_noidx, gen.cov_slot, gen.cov_w16, gen.cov_w8, gen.cov_split, gen.cov_cont,
-                   gen.cov_multi, gen.cov_super, gen.cov_shared);
+                   gen.cov_multi, gen.cov_super, gen.cov_shared, gen.cov_atom);
       ++b.fails;
     }
   }

@@ -40,67 +40,16 @@
   {
    "module": "ooe_go",
    "rule": "CG-3",
-   "target": "fits_cq02h",
-   "enable": "chg_cq02h[0]",
-   "floor_pct": {
-    "medium": 62,
-    "high": 59
-   },
-   "measured_pct": {
-    "medium": 64,
-    "high": 73
-   },
-   "why": "DA's decision (a), OA's response OI-66 (OA tab revs 174-179): the fits, per slot 20 flops with its take-enable, are recomputed every cycle from decq's heads, rename's pool and floors, the ROB room and the allowances held. Each gate's enable is the slot's change bit, the OR of its producers' register enables (OA's rev 174: decq's arrivals, the ROB room, the pool and floors) and of its own takes, squash, restore edge, held allowances and rotation, each lead exact in the model's bench (no-dq-ev, no-rob-en, no-pool-en controls). Even with exact leads the fits change on only 61-68% of enabled cycles: a warp streaming with credits and room to spare keeps fits of all ones while its heads move (OI's rev 163, a bench-held attribution: 130,007 enabled slot-cycles, 80,859 changing). Measured at 8ef3dff: slot 0 64/61%, slot 1 64/63%, slot 2 64/68% (medium/high), slot 3 never enabled; idle enables none. This entry is slot 0's gate (its enable fits_en[0]), held to its own floor, 2 under its measure (OA's rev 181; check-cg's enable key, TI's cd901fd). Slot 3's gate is never enabled in the unit's scenarios and so needs none. With the writer prefix counts in the same gate (OI-67, 2026-10-23), measured 64 / 73% (medium / high); the floors stand.",
-   "by": "OI",
-   "date": "2026-10-23"
-  },
-  {
-   "module": "ooe_go",
-   "rule": "CG-3",
-   "target": "fits_cq02h",
-   "enable": "chg_cq02h[1]",
-   "floor_pct": {
-    "medium": 62,
-    "high": 61
-   },
-   "measured_pct": {
-    "medium": 64,
-    "high": 73
-   },
-   "why": "DA's decision (a), OA's response OI-66 (OA tab revs 174-179): the fits, per slot 20 flops with its take-enable, are recomputed every cycle from decq's heads, rename's pool and floors, the ROB room and the allowances held. Each gate's enable is the slot's change bit, the OR of its producers' register enables (OA's rev 174: decq's arrivals, the ROB room, the pool and floors) and of its own takes, squash, restore edge, held allowances and rotation, each lead exact in the model's bench (no-dq-ev, no-rob-en, no-pool-en controls). Even with exact leads the fits change on only 61-68% of enabled cycles: a warp streaming with credits and room to spare keeps fits of all ones while its heads move (OI's rev 163, a bench-held attribution: 130,007 enabled slot-cycles, 80,859 changing). Measured at 8ef3dff: slot 0 64/61%, slot 1 64/63%, slot 2 64/68% (medium/high), slot 3 never enabled; idle enables none. This entry is slot 1's gate (its enable fits_en[1]), held to its own floor, 2 under its measure (OA's rev 181; check-cg's enable key, TI's cd901fd). Slot 3's gate is never enabled in the unit's scenarios and so needs none. With the writer prefix counts in the same gate (OI-67, 2026-10-23), measured 64 / 73% (medium / high); the floors stand.",
-   "by": "OI",
-   "date": "2026-10-23"
-  },
-  {
-   "module": "ooe_go",
-   "rule": "CG-3",
-   "target": "fits_cq02h",
-   "enable": "chg_cq02h[2]",
-   "floor_pct": {
-    "medium": 62,
-    "high": 66
-   },
-   "measured_pct": {
-    "medium": 64,
-    "high": 77
-   },
-   "why": "DA's decision (a), OA's response OI-66 (OA tab revs 174-179): the fits, per slot 20 flops with its take-enable, are recomputed every cycle from decq's heads, rename's pool and floors, the ROB room and the allowances held. Each gate's enable is the slot's change bit, the OR of its producers' register enables (OA's rev 174: decq's arrivals, the ROB room, the pool and floors) and of its own takes, squash, restore edge, held allowances and rotation, each lead exact in the model's bench (no-dq-ev, no-rob-en, no-pool-en controls). Even with exact leads the fits change on only 61-68% of enabled cycles: a warp streaming with credits and room to spare keeps fits of all ones while its heads move (OI's rev 163, a bench-held attribution: 130,007 enabled slot-cycles, 80,859 changing). Measured at 8ef3dff: slot 0 64/61%, slot 1 64/63%, slot 2 64/68% (medium/high), slot 3 never enabled; idle enables none. This entry is slot 2's gate (its enable fits_en[2]), held to its own floor, 2 under its measure (OA's rev 181; check-cg's enable key, TI's cd901fd). Slot 3's gate is never enabled in the unit's scenarios and so needs none. With the writer prefix counts in the same gate (OI-67, 2026-10-23), measured 64 / 77% (medium / high); the floors stand.",
-   "by": "OI",
-   "date": "2026-10-23"
-  },
-  {
-   "module": "ooe_go",
-   "rule": "CG-3",
    "target": "he_cq02h",
    "floor_pct": {
-    "medium": 64,
-    "high": 52
+    "medium": 63,
+    "high": 50
    },
    "measured_pct": {
-    "medium": 66,
-    "high": 54
+    "medium": 65,
+    "high": 52
    },
-   "why": "DA's decision (a), OA's response OI-66 (OA tab rev 179): the allowances held (20 flops, one-hot per credit) are recomputed every cycle from rename's pool and floors and the warps with a head; enabled on any slot's change bit, they change on 66% (medium) and 54% (high) of enabled cycles, measured at 8ef3dff; idle enables none. Floors 2 under.",
+   "why": "DA's decision (a), OA's response OI-66 (OA tab rev 179): the allowances held (20 flops, one-hot per credit) are recomputed every cycle from rename's pool and floors and the warps with a head; enabled on any slot's change bit, they change on 66% (medium) and 54% (high) of enabled cycles, measured at 8ef3dff; idle enables none. Floors 2 under. Re-measured by TI with RA-43's L1_CMPL 18 (the bench's model traffic moves; ooe_go's RTL has no latency in it): 65% and 51.9%, so the floors follow, 2 under (OI-18: OI to confirm).",
    "by": "OI",
    "date": "2026-10-23"
   },
@@ -146,8 +95,8 @@
     "mv_cr01h",
     "mwe_cr01h"
    ],
-   "enable_ngd": 2.5,
-   "why": "MIU's kept lead, each slot's m_hi_cr02h, m_lo_cr02h and m_am_cr02h (46 flops, one gate a slot). Its predicate-write lead (phys_pred, active_mask) is on ccv_miu_rcu_data only in T-1 (RA-40: the payload's own fields, leading, not copies), and the write and the guard forward need it in T, so this module keeps it a cycle. Nothing earlier names the write, so the only enable is the lead's own valid & pred_we, straight from RCU's interface flop on the channel (DA's ruling on RI-11: a flop at every block boundary; rcu_pred.ngd.json, arrival 0): the enable starts at a flop and its cone is one AND, within CG-2's 8. Loaded every cycle instead, the 4 x 46 flops would be 184 ungated flops against this module's 2% (57). Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction.",
+   "enable_ngd": 3.1,
+   "why": "MIU's kept lead, each slot's m_hi_cr02h, m_lo_cr02h and m_am_cr02h (46 flops, one gate a slot). Its predicate-write lead (phys_pred, active_mask) is on ccv_miu_rcu_data only in T-1 (RA-40: the payload's own fields, leading, not copies), and the write and the guard forward need it in T, so this module keeps it a cycle. Nothing earlier names the write, so the only enable is the lead's own valid & pred_we, straight from RCU's interface flop on the channel (DA's ruling on RI-11: a flop at every block boundary; rcu_pred.ngd.json, arrival 0): the enable starts at a flop and its cone is one AND, within CG-2's 8. Loaded every cycle instead, the 4 x 46 flops would be 184 ungated flops against this module's 2% (57). Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction. The enable's arrival rose to the fanout term (mwe_cr01h 1.4; AR 326, RA rev 106), so it reads 3.1: cone 1.7 plus 1.4, still within CG-2's 8.",
    "by": "RI (Daniel's ruling, RA rev 87)",
    "date": "2026-11-06",
    "lead": true
@@ -155,25 +104,67 @@
   {
    "module": "rcu_pred",
    "rule": "CG-5",
-   "target": "rg_hi_cr02h",
+   "target": "hi_cr02h",
    "ports": [
     "iv_cr01h"
    ],
-   "enable_ngd": 1.0,
-   "why": "R's guard lead kept for A, rg_hi_cr02h and rg_lo_cr02h (14 flops, one gate). lead_guard_pred (RA-31, RA-32, the split guard read) is on ccv_ooe_rcu_issue only in A-1, with R's valid, and is predecoded into these psel flops for A. The only enable is that valid, straight from RCU's interface flop (DA's ruling on RI-11; rcu_pred.ngd.json, arrival 0), a wire. Loaded every cycle instead, the 14 flops put the module one flop past its 2% (58 ungated against 57.4); a binary lead flop instead would put the decode on the branch path. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction.",
+   "enable_ngd": 2.1,
+   "why": "Each slot's guard lead kept for A, g_gl's rg_hi_cr02h and rg_lo_cr02h (14 flops a slot; check-only rgu_cr02h and rgz_cr02h beside them), named in the netlist by the read wires g_guard[s].hi_cr02h and lo_cr02h; on R, its predicate sources rimm_cr02h (14 flops, lead_rpsrc[13:0]) share the gate. RA-43 took phys_pred_guard out of the payload, and R's imm out of R's: lead_guard_pred and lead_rpsrc are on ccv_ooe_rcu_issue only in A-1, beside the slot's valid, and are kept for A here (RA-31, RA-32, the split guard read, now on every slot). Nothing earlier names the issue, so the only enable is that valid, a wire from the zero-cycle end (rcu_pred.ngd.json, iv_cr01h 2.1). One gate a slot, nine gates, 140 flops: loaded every cycle instead they would be far past this module's 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction. The enable's arrival is the fanout term (iv_cr01h 2.1, slot 8's valid at 68 loads; AR 326, RA rev 106), within CG-2's 8.",
    "by": "RI (Daniel's ruling, RA rev 87)",
-   "date": "2026-11-06",
+   "date": "2026-11-09",
+   "lead": true
+  },
+  {
+   "module": "rcu_r",
+   "rule": "CG-5",
+   "target": "imm_cr02h",
+   "ports": [
+    "iv_cr01h"
+   ],
+   "enable_ngd": 2.1,
+   "why": "R's moved leads kept for A, imm_cr02h (32 flops) and rrow_cr02h (16 flops), one gate: RA-43 took R's imm and source rows out of its payload, and lead_rpsrc (movi's literal, call's link, the shuffles' lane and the predicate sources) and lead_phys_src are on ccv_ooe_rcu_issue only in A-1, beside R's valid; this capture holds them in A as the payload would (the schema's lead_why). rrow_cr02h is a copy of its own ((* keep *)), since it drives an output, the slices' R reads in A (rr_row_cr02h). The only enable is that valid, a wire from the zero-cycle end (rcu_r.ngd.json, iv_cr01h 2.1), within CG-2's 8. Loaded every cycle instead, the 48 flops would put the module past its 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2%, to fit at final construction.",
+   "by": "RI (Daniel's ruling, RA rev 87)",
+   "date": "2026-11-09",
+   "lead": true
+  },
+  {
+   "module": "rcu_lanes",
+   "rule": "CG-3",
+   "target": "pcm_n_cr04h",
+   "floor_pct": {
+    "medium": 49,
+    "high": 65
+   },
+   "measured_pct": {
+    "medium": 51,
+    "high": 67
+   },
+   "why": "PC's merge mask (~active of S slot k's predicate-only copy, P7, 4 x 32 flops), one gate a slot, loaded under the PC's own valid (pcq, a flop). A mask changes on about 1 - 0.5^2 = 75% of its loads under the bench's active draw (all ones half the time, test/rcu/lanes_tb.cpp), so each gate sits at CG-3's 75% by chance: measured 61-74% in medium (slot 2 at 61% over 41 loads), 73-74% in high, the others at 75% or over (check-cg --unit rcu_lanes at c8dbab0; real traffic's all-ones runs would read lower still). Sharing lact's stage-2 gate (the same data a cycle on) took lact's own 64 flops a slot under 75% with it, and an enable on the mask's change would read an input (CG-5). Floors 2 points under the lowest gate in each scenario; idle never loads. TI re-measured on the merged tree with RA-43 (full gate on 7ee18501, 2026-11-09): slot 1 at 51% over 51 loads in medium, slot 0 at 67% over 215 in high, the same draw by chance; floors re-set 2 under (OI-18: RI to confirm).",
+   "by": "RI",
+   "date": "2026-11-08"
+  },
+  {
+   "module": "rcu_isd",
+   "rule": "CG-5",
+   "target": "cls_cr02h",
+   "ports": [
+    "iv_cr01h"
+   ],
+   "enable_ngd": 2.1,
+   "why": "The slot's class word, cls_cr02h (26 flops after synthesis: class bits 25 and 26 are equal and merge), and its lead copies x_cr02h (RA 131 (1): lead_cont and lead_pred_neg on every slot, and on S0-S3 lead_phys_src, lead_phys_old_dst, lead_old_dst_pos, lead_src_pos and lead_phys_src2, the last by RA 132, OA 403 and TI 400; 2 flops, or 42 on S0-S3), one gate: RA-43 decodes the op class into flops at A-1 from the slot's lead fields (lead_opcode, lead_done_row, lead_pred_we, lead_phys_dst), and the copies of the payload fields whose in-path from the zero-cycle end was over 12 ride the same capture, so their readers (rcu_pred, rcu_lanes) take them from flops in A. The leads are on ccv_ooe_rcu_issue only in A-1, beside the slot's valid (RA rev 117; one shared capture for the block, RI-25). Nothing earlier names the issue, so the only enable is that valid, a wire from the zero-cycle end (rcu_isd.ngd.json, iv_cr01h 2.1, the fanout term of slot 8's valid at 68 loads; AR 326, RA rev 106), within CG-2's 8. Loaded every cycle instead, 9 x 26 + 146 flops would be ungated against the block's 2%. Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109, 2026-11-06): module-level CG waivers for interface lead signals, each lead flop charged to the RCU block's per-instance 2% (9 x 26 + 4 x 34 + 5 x 2 = 380), to fit at final construction.",
+   "by": "RI (Daniel's ruling, RA rev 87; RA 131 (1))",
+   "date": "2026-11-09",
    "lead": true
   },
   {
    "module": "rcu_kill",
    "rule": "CG-1",
    "target": "cr_q_cr01h",
-   "max_flops": 45,
-   "measured_flops": 45,
-   "why": "RCU's credit returns on its inbound fixed-rate channels (Done, kill and reset tab, Credits RCU returns): one flop a slot, its D the slot's valid on the wire, so the credit returns in the cycle the payload lands; 9 issue slots, 32 lane-result copies, 4 MIU data slots, 45 flops written every cycle. They are the channels' own control pulses, captured every cycle like any receiver's: a repeater's are charged to its block's budget, not its own allowance (Daniel, 2026-10-19), and these are the same pulses at the block's own end, about 0.02% of RCU's 246,000 flops. A gate cannot hold them: the only enable that names a return is the valid itself, an input (CG-5). The module's allowance (7) takes its other 6 single flops (reset, kill_v_q, done wake, idle, CSR responder). Daniel's ruling on RI-14 (RA rev 88, DA rev 110, 2026-11-06): credit-return pulse flops are charged to the receiving block's per-instance 2%, marked credit for check-cg (TI rev 344).",
+   "max_flops": 41,
+   "measured_flops": 41,
+   "why": "RCU's credit returns on its inbound fixed-rate channels (Done, kill and reset tab, Credits RCU returns): one flop a slot, its D the slot's valid on the wire, so the credit returns in the cycle the payload lands; 9 issue slots, 32 lane-result copies, 4 MIU data slots, 45 flops written every cycle. They are the channels' own control pulses, captured every cycle like any receiver's: a repeater's are charged to its block's budget, not its own allowance (Daniel, 2026-10-19), and these are the same pulses at the block's own end, about 0.02% of RCU's 246,000 flops. A gate cannot hold them: the only enable that names a return is the valid itself, an input (CG-5). The module's allowance (7) takes its other single flops (reset, kvd_cr02h, kill_ack_q, its pending bit, done wake, idle, CSR responder; kill_v_q is ccv_rcu's kill detector, AR 336 (b), AR 338). Daniel's ruling on RI-14 (RA rev 88, DA rev 110, 2026-11-06): credit-return pulse flops are charged to the receiving block's per-instance 2%, marked credit for check-cg (TI rev 344). 45 to 41 (2026-11-08): miu_rcu_data has no credit port at RCU (RA-41, TI 9894da1; AR 331); the 9 issue credits stay for RA-43 (TI rev 385).",
    "by": "RI",
-   "date": "2026-11-06",
+   "date": "2026-11-09",
    "credit": true
   },
   {
@@ -182,19 +173,19 @@
    "target": "kd_cr02h",
    "max_flops": 5,
    "measured_flops": 4,
-   "why": "The kill drain counter (Done, kill and reset tab: kill_drain, loaded with KILL_DRAIN in K and counting to 0), 5 flops at KILL_DRAIN 16, its value at CCV_LAT_SFU 12 since Z (RA rev 95; 13 would still give 16), so max 5. Its enable is its own (kill_v_q or a nonzero count) and it changes on every enabled cycle, but 5 flops are under a gate's 8; a one-hot drain timer would make a gate of 16 to save 5. rcu_kill is the block's control residue, 60 flops (Partition tab), so its own allowance is the floor of 7: the reset, kill_v_q, the done wake, the idle flop, the CSR responder, kill_ack_q and its pending bit take it.",
+   "why": "The kill drain counter (Done, kill and reset tab: kill_drain, loaded with KILL_DRAIN in K and counting to 0), 5 flops at KILL_DRAIN 16, its value at CCV_LAT_SFU 12 since Z (RA rev 95; 13 would still give 16), so max 5. Its enable is its own (kill_v_q or a nonzero count) and it changes on every enabled cycle, but 5 flops are under a gate's 8; a one-hot drain timer would make a gate of 16 to save 5. rcu_kill is the block's control residue, 60 flops (Partition tab), so its own allowance is the floor of 7: the reset, kvd_cr02h (kill_v_q a cycle on, AR 338), the done wake, the idle flop, the CSR responder, kill_ack_q and its pending bit take it. Restored 2026-11-09: d7925bc2 dropped it on a local policy read that did not hold the module's allowance; the gate's check-cg (chain-ri12) finds it needed.",
    "by": "RI",
-   "date": "2026-11-05"
+   "date": "2026-11-09"
   },
   {
    "module": "rcu_kill",
    "rule": "CG-4",
-   "target": "kaep_q_cr02h",
+   "target": "kaep_q_cr03h",
    "max_flops": 2,
    "measured_flops": 2,
-   "why": "The kill ack epoch (CCV_P_W_KILL_EPOCH, 2 flops), loaded at K under kill_v_q (the tab's kill_ep_q and kill_ack_ep_q in one: the ack is low from K to ack-ready, so the ack epoch can take the epoch at K). Under a gate's 8, and nothing else shares its enable. rcu_kill is the block's control residue, 60 flops (Partition tab), so its own allowance is the floor of 7: the reset, kill_v_q, the done wake, the idle flop, the CSR responder, kill_ack_q and its pending bit take it.",
+   "why": "The kill ack epoch (CCV_P_W_KILL_EPOCH, 2 flops), loaded at K+1 from ccv_rcu's kill detector epoch flop under kvd_cr02h (kill_v_q a cycle on, this module's own flop: CG-5, AR 338); the tab's kill_ep_q and kill_ack_ep_q in one, since the ack is low from K's edge to ack-ready. Under a gate's 8, and nothing else shares its enable. rcu_kill is the block's control residue (Partition tab), so its own allowance is the floor of 7: the reset, kvd_cr02h, the done wake, the idle flop, the CSR responder, kill_ack_q and its pending bit take it. Restored 2026-11-09: d7925bc2 dropped it on a local policy read that did not hold the module's allowance; the gate's check-cg (chain-ri12) finds it needed.",
    "by": "RI",
-   "date": "2026-11-05"
+   "date": "2026-11-09"
   }
  ]
 }

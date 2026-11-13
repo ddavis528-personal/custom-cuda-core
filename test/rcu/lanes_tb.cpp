@@ -21,8 +21,9 @@
 // those bytes are not checked. The bypass selects are checked whole.
 //
 // Runs: random traffic. --cg <idle|medium|high> <vcd> runs one clock-gating
-// scenario (tools/check-cg.py). --control <bypage|immpos> expects a wrong
-// rule (a forward's age one more; the immediate's port at position 0):
+// scenario (tools/check-cg.py). --control <bypage|immpos|pcrow> expects a wrong
+// rule (a forward's age one more; the immediate's port at position 0; a PC row
+// from every issue's phys_pred_dst, not the zero predicate's):
 // the run must fail (test/rcu/run-rtl.sh). Exit 0 only with no mismatch.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_lanes.h"
@@ -42,6 +43,8 @@
 #include <vector>
 
 #include "ccv_params.h"
+#include "cls_pack.h"
+#include "dec_tb.h"
 
 #ifndef LN_COPIES
 #define LN_COPIES 32
@@ -86,7 +89,7 @@ struct Op {
   unsigned cls = None, foot = 0;
   unsigned lsec = 0, lsrc = 0;
   bool limm = false, lmrg = false;
-  bool gdst = false, immu = false, pdt = false, mrg = false, pwe = false;
+  bool gdst = false, immu = false, pdt = false, mrg = false, pwe = false, cont = false, pc = false;
   unsigned rds = 0, isl = 3, opc = 0, tag = 0, drow = 0;
   uint32_t imm = 0, act = 0, gv = 0;
   unsigned src[3]{}, spos[3]{}, swid[3]{};
@@ -178,14 +181,12 @@ struct Bench {
     if (const Group *x = g(c))
       for (unsigned s = 0; s < kK; ++s) {
         const Op &o = x->op[s];
-        put(dut->cls_cr02h, 2 * s, 2, x->v[s] ? o.cls : 0);
-        put(dut->gdst_cr02h, s, 1, o.gdst);
-        put(dut->rds_cr02h, 3 * s, 3, o.rds);
-        put(dut->isl_cr02h, 2 * s, 2, o.isl);
-        put(dut->immu_cr02h, s, 1, o.immu);
-        put(dut->pdt_cr02h, s, 1, o.pdt);
+        put(dut->cont_cr02h, s, 1, !x->v[s] || o.cont);
         put(dut->foot_cr02h, kK * s, kK, o.foot);
         put(dut->opc_cr02h, 9 * s, 9, o.opc);
+        // The class word rcu_isd holds from the lead (RA-43, RI-25).
+        put(dut->ocl_cr02h, 27 * s, 27,
+            clspack::clsWord(o.opc, o.drow, o.pwe && o.dst == dectb::R::kZero));
         put(dut->imm_cr02h, 32 * s, 32, o.imm);
         for (unsigned i = 0; i < 3; ++i) {
           put(dut->src_cr02h, (s * 3 + i) * 8, 8, o.src[i]);
@@ -205,7 +206,7 @@ struct Bench {
         put(dut->drow_cr02h, 2 * s, 2, o.drow);
       }
     else
-      dut->cls_cr02h = 0;   // the rest of the payload holds: no message
+      dut->cont_cr02h = 15;   // the rest of the payload holds: no message
     // A+1: rcu_pred's flops and the bank reads.
     if (const Group *x = g(c - 1)) {
       for (unsigned s = 0; s < kK; ++s) {
@@ -310,6 +311,19 @@ struct Bench {
         eq("done_row", get(dut->dnrow_cr09h, 2 * k, 2), g(a7)->op[k].drow, k);
       }
     }
+    // PC (P7): valid A on every S issue, rows A+1 (the zero predicate unless
+    // a predicate-only copy), m = ~active A+2.
+    for (unsigned k = 0; k < kK; ++k) {
+      const Group *x0 = g(c), *x1 = g(c - 1), *x2 = g(c - 2);
+      eq("pc_v", get(dut->pcv_cr02h, k, 1), x0 && x0->v[k], k);
+      if (x1 && x1->v[k]) {
+        const Op &o = x1->op[k];
+        eq("pc_row", get(dut->pcrow_cr03h, 6 * k, 6), o.pc || control == "pcrow" ? o.pd : 63u, k);
+        eq("pc_orow", get(dut->pcorow_cr03h, 6 * k, 6), o.pod, k);
+      }
+      if (x2 && x2->v[k] && x2->op[k].pc)
+        eq("pc_m", get(dut->pcm_cr04h, kN * k, kN), ~x2->op[k].act & kLanes, k);
+    }
     // SW: valid A+9, row A+10, write A+11; SFU done valid A+11, payload A+12.
     auto sfu = [](const Group *x) -> const Op * {
       if (x)
@@ -346,10 +360,20 @@ struct Bench {
 struct Gen {
   std::mt19937_64 r;
   std::string control;
-  unsigned cov_byp[2]{}, cov_imm_hi = 0, cov_copy = 0, cov_sfu = 0, cov_pdt = 0, cov_split = 0,
+  unsigned cov_atom = 0, cov_pcopy = 0, cov_byp[2]{}, cov_imm_hi = 0, cov_copy = 0, cov_sfu = 0, cov_pdt = 0, cov_split = 0,
            cov_super = 0, cov_multi = 0, cov_pwe = 0;
   explicit Gen(uint64_t seed) : r(seed) {}
   uint32_t u32() { return uint32_t(r()); }
+  // The opcodes the model's decode makes lane ops at a done_row.
+  static const dectb::OpPool &lanePool(unsigned drow) {
+    static std::map<unsigned, dectb::OpPool> m;
+    auto it = m.find(drow);
+    if (it == m.end())
+      it = m.emplace(drow, dectb::OpPool("a lane op", drow, [](const dectb::R::OpClass &oc) {
+             return oc.unit == dectb::R::Unit::Lane;
+           })).first;
+    return it->second;
+  }
   unsigned below(unsigned n) { return unsigned(r() % n); }
   bool p(double x) { return std::uniform_real_distribution<double>(0, 1)(r) < x; }
   unsigned row() { return p(0.08) ? kZero : below(10); }
@@ -408,8 +432,9 @@ struct Gen {
       if (!p(0.7)) continue;
       Op o;
       const unsigned roll = below(100);
-      o.cls = roll < 62 ? Lane : roll < 75 ? Copy : roll < 88 ? None : Sfu;
-      if (o.cls == Sfu && (s != 0 || taken)) o.cls = Lane;
+      // The model's decode classes SFU ops as lane ops (Unit Sfu awaits
+      // RA-16 (b)), so no opcode decodes to SFU yet: its share goes to lanes.
+      o.cls = roll < 75 ? Lane : roll < 88 ? Copy : None;
       if (o.cls == Sfu) {
         o.foot = 15;
       } else {
@@ -421,30 +446,41 @@ struct Gen {
       if (o.cls != None && (o.foot & (o.foot >> 1)) != o.foot >> 1) ++cov_split;   // a gap
       o.tag = below(128);
       o.drow = below(4);
-      o.opc = o.cls == Copy ? 511u : below(511);
+      o.opc = o.cls == Copy ? ccv::skel::kOpCopy : below(511);
       o.imm = u32();
       o.act = p(0.5) ? 0xffffffffu : u32();
       o.gv = u32();
       for (unsigned i = 0; i < 3; ++i) place(o.swid[i], o.spos[i]);
       place(o.dwid, o.dpos);
       o.opos = o.dpos;
+      // The payload the module decodes (test/rcu/dec_tb.h): a lane op's
+      // opcode (an atomic's A2 at done_row 2 among them), the copy's, or
+      // nothing to the lanes: a predicate-only copy (pred_we, the zero GPR)
+      // or a continuation.
+      bool pcopy = false;
       if (o.cls == Copy) {
         o.mrg = true;
         o.gdst = false;
         o.rds = 0;
-      } else {
-        o.rds = below(8);
-        if (p(0.3)) {
-          o.isl = below(3);
-          o.rds &= ~(1u << o.isl);
-        }
-        o.immu = o.isl != 3 || p(0.1);
-        o.pdt = p(0.2);
+      } else if (o.cls == None) {
+        pcopy = p(0.5);
+        o.cont = !pcopy;
+        if (pcopy) o.opc = ccv::skel::kOpCopy, o.pwe = true, o.pc = true, ++cov_pcopy;
         o.mrg = p(0.4);
-        o.gdst = o.cls == Lane ? p(0.8) : o.cls == Sfu ? p(0.9) : p(0.5);
-        o.pwe = o.cls == Lane && p(0.3);
+      } else {
+        o.opc = lanePool(o.drow).pick(r);
+        dectb::R::OpClass oc;
+        dectb::classOf(o.opc, o.drow, false, oc);
+        o.rds = oc.reads;
+        o.isl = oc.imm_slot < 0 ? 3u : unsigned(oc.imm_slot);
+        o.immu = oc.imm_used;
+        o.pdt = oc.pdata;
+        o.gdst = oc.gdst;
+        o.mrg = p(0.4);
+        o.pwe = p(0.3);
+        cov_atom += o.drow == 2 && ccv::skel::opByCode(o.opc)->cls == ccv::skel::kAtomic;
       }
-      o.dst = (o.gdst || o.cls == Copy) ? below(10) : row();
+      o.dst = pcopy ? kZero : (o.gdst || o.cls == Copy) ? below(10) : row();
       o.pd = below(48);
       o.pod = below(48);
       for (unsigned i = 0; i < 3; ++i)
@@ -514,11 +550,13 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   }
   for (unsigned i = 0; i < kSfu + 4; ++i) b.step();
   if (scenario != "idle") {
-    const bool cov = gen.cov_byp[0] && gen.cov_byp[1] && gen.cov_imm_hi && gen.cov_copy && gen.cov_sfu &&
-                     gen.cov_pdt && gen.cov_split && gen.cov_super && gen.cov_multi && gen.cov_pwe;
+    const bool cov = gen.cov_byp[0] && gen.cov_byp[1] && gen.cov_imm_hi && gen.cov_copy && gen.cov_atom &&
+                     gen.cov_pcopy && gen.cov_pdt && gen.cov_split && gen.cov_super && gen.cov_multi && gen.cov_pwe;
+    // sfu is counted, not required: no opcode decodes to SFU until the
+    // model classes it (RA-16 (b)).
     if (!cov) {
-      std::fprintf(stderr, "rcu_lanes: coverage: byp %u/%u imm_hi %u copy %u sfu %u pdata %u split %u "
-                           "super %u multi %u pwe %u\n", gen.cov_byp[0], gen.cov_byp[1], gen.cov_imm_hi,
+      std::fprintf(stderr, "rcu_lanes: coverage: atom %u pcopy %u byp %u/%u imm_hi %u copy %u sfu %u pdata %u split %u "
+                           "super %u multi %u pwe %u\n", gen.cov_atom, gen.cov_pcopy, gen.cov_byp[0], gen.cov_byp[1], gen.cov_imm_hi,
                    gen.cov_copy, gen.cov_sfu, gen.cov_pdt, gen.cov_split, gen.cov_super, gen.cov_multi,
                    gen.cov_pwe);
       ++b.fails;

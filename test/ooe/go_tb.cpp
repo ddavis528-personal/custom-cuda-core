@@ -58,6 +58,9 @@ void goConfig(Config &c) {
   c.decq_warp_max = 6;
   if (const char *k = std::getenv("GO_CONTROL"); k && std::string(k) == "pair-rounds") c.inject_pair_rounds = true;
   if (const char *k = std::getenv("GO_CONTROL"); k && std::string(k) == "floor-take-now") c.floor_take_lag = 0;
+  // TI 360: floor-held-off runs the model splitting the floor term under a
+  // registered allowance that holds one (the RTL gates it).
+  if (const char *k = std::getenv("GO_CONTROL"); k && std::string(k) == "floor-held-off") c.floor_held_gate = 0;
   if (const char *n = std::getenv("GO_NAMES")) {
     unsigned rows = 0, ceil = 0;
     if (std::sscanf(n, "%u,%u", &rows, &ceil) == 2) { c.phys_regs = rows; c.ren_ceil = ceil; }

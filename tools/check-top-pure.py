@@ -23,7 +23,11 @@ cell), and on ccv_top and on every wrapper module:
       in a generate block where the wrapper's stages are parameters, and
       u_ft_*). Under CCV_CHECK the top may also hold the one checker bank
   R2  no constant on any cell port, and none on the module's own ports: a
-      tie-off is a cell in a netlist, and a decision nobody owns
+      tie-off is a cell in a netlist, and a decision nobody owns. One
+      exception, owned by params/links.json credit_on_receipt (AR's rev
+      322, RA-41): a repeater elaborated with CREDIT_ON_RECEIPT loads its
+      boundary credit from its own valid flop and does not read dst_credit,
+      which its wrapper ties to 0, since the block has no credit port there
   R3  every bit a cell reads is driven, by exactly one cell output or module
       input port
   R4  every bit a cell drives is read, by a cell or a module output port:
@@ -64,6 +68,11 @@ must then fail, naming that rule:
       one of them: read from the elaborated netlist, not the generator
 
   rptunits  a unit the netlist has no repeater for              R8
+  cortie    FET's ifill repeater, elaborated, its dst_credit tied
+            to 0 as a credit-on-receipt end's is, without the
+            parameter                                            R2
+  corfree   RCU's issue repeater with CREDIT_ON_RECEIPT off, its
+            dst_credit still tied                                R2
 """
 import json
 import os
@@ -123,6 +132,17 @@ def elaborate(files, defines, tmp):
     return json.load(open(out))["modules"]
 
 
+def cor_unread(c, modules):
+    """A repeater elaborated with CREDIT_ON_RECEIPT (params/links.json
+    credit_on_receipt): its boundary credit comes from its own valid flop,
+    and dst_credit is not read."""
+    if base(c["type"]) != "ccv_common_rpt":
+        return False
+    pv = modules.get(c["type"], {}).get("parameter_default_values", {})
+    pv = dict(pv, **c.get("parameters", {}))
+    return pval(pv.get("CREDIT_ON_RECEIPT", "0")) == 1
+
+
 def check(where, mod, modules, allowed):
     """[(rule, message)] for everything in one module that is not an allowed
     cell or a net between cells. `allowed(name, base type)` returns None to
@@ -156,6 +176,9 @@ def check(where, mod, modules, allowed):
                             "%s: %s.%s is not connected" % (where, name, pname)))
         for pname, bits in c["connections"].items():
             dr = c["port_directions"][pname]
+            if pname == "dst_credit" and cor_unread(c, modules) and \
+                    all(b == "0" for b in bits):
+                continue        # R2's one exception: an input the cell never reads
             if any(isinstance(b, str) for b in bits):
                 bad.append(("R2", "%s: %s.%s is tied to a constant" % (where, name, pname)))
             for b in bits:
@@ -325,6 +348,7 @@ def check_reuse(modules, reuse):
 WRAP_FET = os.path.join(ROOT, "rtl", "top", "wrap", "ccv_fet_w.sv")
 RPT_UNITS = os.path.join(ROOT, "rtl", "top", "rpt-units.json")
 WRAP_LANE = os.path.join(ROOT, "rtl", "top", "wrap", "ccv_lane_w.sv")
+WRAP_RCU = os.path.join(ROOT, "rtl", "top", "wrap", "ccv_rcu_w.sv")
 STUB_FET = os.path.join(ROOT, "rtl", "top", "stubs", "ccv_fet.sv")
 MUTATIONS = {
     # (rule it must break, file it edits, the edit)
@@ -348,6 +372,13 @@ MUTATIONS = {
         "assign clk_gated = cg_gated;", "assign clk_gated = 1'b0;", 1)),
     "gateclk": ("R7", STUB_FET, lambda t: t.replace(
         ".clk         (core_clk),", ".clk         (rst_n),", 1)),
+    # R2's credit-on-receipt exception is the parameter's, not the port's.
+    "cortie": ("R2", WRAP_FET, lambda t: t.replace(
+        ".dst_credit({fet_mlc_ifill_credit})", ".dst_credit('0)", 1).replace(
+        "if (RPT_FET_MLC_IFILL > 0) begin", "if (1) begin", 1)),
+    "corfree": ("R2", WRAP_RCU, lambda t: t.replace(
+        ".DST_END(1'b1), .CREDIT_ON_RECEIPT(1'b1)) u_rpt_miu_rcu_data",
+        ".DST_END(1'b1), .CREDIT_ON_RECEIPT(1'b0)) u_rpt_miu_rcu_data", 1)),
     "rptunits": ("R8", RPT_UNITS, lambda t: t.replace(
         '"units": [', '"units": [{"name": "fx", "params": {"STAGES": 3, "SLOTS": 1, '
         '"PAYLOAD_W": 8, "LEAD_MASK": "8\'h0"}}' + ("," if '"units": []' not in t else ""),

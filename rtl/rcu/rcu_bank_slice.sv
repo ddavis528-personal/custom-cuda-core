@@ -8,8 +8,8 @@
 // Slice (K, J): byte section K of lanes 4J to 4J+3, ROWS rows of 32 bits
 // (lane l's byte at [8l+7:8l]). A complete bank for its 32 bits: every read
 // and write port, each with its own predecoded row select, its own row
-// enables, its own flopped reset. No logic crosses slices; J only names
-// which lanes the parent wires here.
+// enables, its own flopped reset. No logic crosses slices; J is no
+// parameter, only which lanes the parent (ccv_rcu) wires here.
 //
 // Row predecode. A row index r is held as two one-hots in flops, sel_hi
 // (r[7:4], NH bits, none for r >= ROWS) and sel_lo (r[3:0], 16 bits); row r
@@ -36,7 +36,17 @@
 // R0/R1's write-through of MW.
 //
 // Read ports: NR (8) whose valid leads, L0-L2 and L3 (merge data), M0-M2,
-// R2, in the order the parent wires them, on rd_*; R0 and R1 on rr_*. Each
+// R2, on rd_cr03h in that order; R0 and R1 on rr_*. The slice decodes
+// their rows itself (P2; Register file tab, Read ports; Partition tab,
+// "bank in 14": decode, owner, predecode): L0-L3 are phys_src[15:8],
+// [7:0], phys_src2 and phys_old_dst of the S slot owning section K (the
+// valid lead whose footprint has bit K), loaded when an S slot 0..K
+// reaches section K by its leads (valid, lead_cont 0, lead_sec_mask bit
+// K: RA-43's copies at A-1, flopped here); M0-M2 the base, index and data sources of the P slot owning pipe
+// K (rcu_dec_pkg, the model's decode), its owner from the leads (lead_sec_mask
+// the footprint exactly, OA 403, RA 133; asserted equal to the payload's),
+// loaded when a P slot owns pipe K (pk_cr01h);
+// R2 the R op's phys_old_dst or migration's row. Each
 // is a 16:1 AND-OR on sel_lo per group of 16 rows, gated by its sel_hi
 // bit, then an NH:1 OR: the spec's read mux.
 //
@@ -71,7 +81,6 @@
 module rcu_bank_slice #(
   parameter int ROWS = ccv_prov_pkg::CCV_P_PHYS_REGS,   // rows of the bank (32 for loops)
   parameter int K = 0,          // the byte section this slice holds
-  parameter int J = 0,          // its lanes are 4J to 4J+3 (wiring only)
   parameter int FULL_ROW = 1,   // AR-24's interim: SW, MW, RW write the whole row
   parameter int NR = 8,         // read ports whose valid leads: L0-L3, M0-M2, R2
   parameter int NW = 3,         // generic write ports: LW, SW, RW
@@ -79,13 +88,31 @@ module rcu_bank_slice #(
   localparam int L = 4,         // lanes
   localparam int WR = 8,        // a row index (CCV_P_W_PHYS_REG)
   localparam int NRR = 2,       // read ports whose valid comes with the row: R0, R1
+  localparam int NK = 4,        // S slots, P slots, sections
   localparam int NH = (ROWS + 15) / 16   // sel_hi bits
 ) (
   input  logic              rcu_core_clk,
   input  logic              rst_n,
-  // Read ports.
-  input  logic [NR-1:0]     rd_v_cr00h,     // port p reads next cycle
-  input  logic [NR*WR-1:0]  rd_row_cr01h,   //   this row
+  // Read ports L0-L3 and M0-M2: the issue channel's S and P slots, their
+  // valid leads, then their payload (from RCU's interface flop), the owner
+  // of section (pipe) K and its rows decoded here (P2).
+  input  logic [NK-1:0]     sv_cr00h,       // S slot s issues next cycle
+  input  logic [NK-1:0]     scont_cr01h,    //   continuation
+  input  logic [NK-1:0]     slcont_cr00h,   //   lead_cont, beside the valid (RA-43)
+  input  logic [NK*NK-1:0]  slsec_cr00h,    //   lead_sec_mask, slot s at s*NK (a superset of the footprint)
+  input  logic [NK*NK-1:0]  sfoot_cr01h,    //   footprint, slot s at s*NK
+  input  logic [NK*3*WR-1:0] ssrc_cr01h,    //   source i's row at (s*3 + i)*WR: phys_src[15:8], [7:0], phys_src2
+  input  logic [NK*WR-1:0]  sodst_cr01h,    //   phys_old_dst
+  input  logic [NK-1:0]     pv_cr00h,       // P slot j issues next cycle
+  input  logic [NK-1:0]     plcont_cr00h,   //   lead_cont, beside the valid (RA-43)
+  input  logic [NK*NK-1:0]  plsec_cr00h,    //   lead_sec_mask, slot j at j*NK (the footprint exactly: OA 403, RA 133)
+  input  logic [NK-1:0]     pcont_cr01h,
+  input  logic [NK*NK-1:0]  pfoot_cr01h,
+  input  logic [NK*rcu_dec_pkg::CLS_W-1:0] pcls_cr01h, // class (rcu_isd's flops from the lead: base, index, data sources)
+  input  logic [NK*3*WR-1:0] psrc_cr01h,
+  // R2: the R op's phys_old_dst under the R valid lead (beside migration's).
+  input  logic              r2v_cr00h,
+  input  logic [WR-1:0]     r2row_cr01h,
   output logic [NR*32-1:0]  rd_cr03h,       // port p's 4 lanes' byte K (lane l at p*32 + 8l)
   // R0 and R1: the R issue valid lead, then the payload's rows.
   input  logic              rv_cr02h,       // R issues next cycle (the lead's valid)
@@ -108,45 +135,72 @@ module rcu_bank_slice #(
   // (generic write port NW-1). Its requests come from rcu_mig's flops.
   input  logic              g2_v_cr00h,     // migration's R2 lead
   input  logic [WR-1:0]     g2_row_cr01h,   //   its row
-  input  logic              r2u_cr01h,      // the R op reads R2 (the decode, under R2's own lead)
+  input  logic [rcu_dec_pkg::CLS_W-1:0] rcls_cr01h, // the R op's class (rcu_isd's flops from the lead)
+  input  logic              rmrg_cr01h,     //   and merge_en: it reads R2 (under R2's own lead)
   input  logic              gw_v_cr00h,     // migration's RW lead
   input  logic              gw_sel_cr01h,   //   the restore writes RW (else the R op does)
   input  logic [WR-1:0]     gw_row_cr01h,   //   its row
   input  logic [31:0]       gw_dat_cr02h    //   its 4 lanes' byte K: every lane, the whole row
 );
 
-  logic rst_r01h;
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= !rst_n;
+    rst_cr01h_n <= rst_n;
   end
+  wire rst_r01h = !rst_cr01h_n;
 
   // One-hot predecode of a row index.
+  // Each predecode reads its half of the row index.
+  /* verilator lint_off UNUSEDSIGNAL */
   function automatic logic [NH-1:0] dec_hi(input logic [WR-1:0] r);
     for (int h = 0; h < NH; h++) dec_hi[h] = r[WR-1:4] == h[WR-5:0];
   endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
+  // Each predecode reads its half of the row index.
+  /* verilator lint_off UNUSEDSIGNAL */
   function automatic logic [15:0] dec_lo(input logic [WR-1:0] r);
     for (int i = 0; i < 16; i++) dec_lo[i] = r[3:0] == i[3:0];
   endfunction
+  /* verilator lint_on UNUSEDSIGNAL */
   // Does a register of width code w at position pos cover section K, and
   // which of its bytes sits there.
+  // K is a parameter: a bound is constant in some slices, by design.
+  /* verilator lint_off WIDTHEXPAND */
+  /* verilator lint_off CMPCONST */
   function automatic logic covers(input logic [1:0] w, input logic [1:0] pos);
     int span;
     span = (w == 2'd0) ? 4 : (w == 2'd1) ? 2 : 1;
     covers = (K >= pos) && (K < pos + span);
   endfunction
+  /* verilator lint_on WIDTHEXPAND */
+  /* verilator lint_on CMPCONST */
 
   // ---- Valids: each port's lead, flopped every cycle -------------------
-  logic [NR-1:0] rd_v_cr01h;
+  logic [NK-1:0] sv_cr01h, pv_cr01h;
+  logic [NK-1:0] sk_cr01h;   // S slot s reaches section K (its leads)
+  logic [NK-1:0] pk_cr01h;   // P slot j owns pipe K (its leads, exact)
+  logic          r2v_cr01h;
   logic [NW-1:0] wr_v_cr01h;
   logic          g2_v_cr01h, gw_v_cr01h;
   always_ff @(posedge rcu_core_clk) begin
     if (rst_r01h) begin
-      rd_v_cr01h <= '0;
+      sv_cr01h   <= '0;
+      sk_cr01h   <= '0;
+      pk_cr01h   <= '0;
+      pv_cr01h   <= '0;
+      r2v_cr01h  <= 1'b0;
       wr_v_cr01h <= '0;
       g2_v_cr01h <= 1'b0;
       gw_v_cr01h <= 1'b0;
     end else begin
-      rd_v_cr01h <= rd_v_cr00h;
+      sv_cr01h   <= sv_cr00h;
+      for (int j = 0; j < NK; j++)
+        sk_cr01h[j] <= (K >= j) && sv_cr00h[j] && !slcont_cr00h[j] && slsec_cr00h[j*NK + K];
+      pv_cr01h   <= pv_cr00h;
+      for (int j = 0; j < NK; j++)
+        pk_cr01h[j] <= (K >= j) && pv_cr00h[j] && !plcont_cr00h[j] && plsec_cr00h[j*NK + K];
+      r2v_cr01h  <= r2v_cr00h;
       wr_v_cr01h <= wr_v_cr00h;
       g2_v_cr01h <= g2_v_cr00h;
       gw_v_cr01h <= gw_v_cr00h;
@@ -156,16 +210,62 @@ module rcu_bank_slice #(
   // sections) is the R op's or migration's, selected in the row cycle:
   // R2's by the R op's decode (the R op first: migration holds back, the
   // Migration tab), RW's by migration's flopped decision.
-  wire [NR-1:0] rd_en_cr01h = rd_v_cr01h | (NR'(g2_v_cr01h) << (NR - 1));
+  // L0-L3 load when an S slot reaches section K by its leads (RA-43:
+  // lead_sec_mask a superset of the footprint, so the owner below is among
+  // them, and a slot that reaches K by the lead alone loads the zero row);
+  // M0-M2 when a P slot owns pipe K (pk_cr01h: lead_sec_mask is the
+  // footprint exactly, RA 133), so a slice whose pipe no op uses holds
+  // its M rows.
+  wire lv_cr01h = |sk_cr01h;
+  wire mv_cr01h = |pk_cr01h;   // the P owner of pipe K, exact from its leads (RA 133)
+  wire [NR-1:0] rd_en_cr01h = {r2v_cr01h | g2_v_cr01h, {3{mv_cr01h}}, {4{lv_cr01h}}};
   wire [NW-1:0] wr_en_cr01h = wr_v_cr01h | (NW'(gw_v_cr01h) << (NW - 1));
-  wire r2r_cr01h = rd_v_cr01h[NR-1] & r2u_cr01h;   // R2 is the R op's
+  // The R op reads R2 when it merges into a GPR (the model's decode,
+  // rcu_dec_pkg; the R slot carries no atomic and no copy).
+  wire r2u_cr01h = rmrg_cr01h & rcls_cr01h[rcu_dec_pkg::CLS_GDST];
+  wire r2r_cr01h = r2v_cr01h & r2u_cr01h;          // R2 is the R op's
   wire gws_cr01h = gw_v_cr01h & gw_sel_cr01h;      // RW is the restore's
   logic [NR*WR-1:0] rdr_cr01h;
   logic [NW*WR-1:0] wrr_cr01h;
   logic [NW*4-1:0]  wrs_cr01h;
+  localparam logic [WR-1:0] ZROW = WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
+  // The owner of section K: the valid lead (cont 0) slot whose footprint
+  // has bit K, at most one (V-60, asserted); its rows by AND-OR. M's rows
+  // are the owner's base, index and data sources (rcu_dec_pkg; 3: none,
+  // the zero register).
+  logic [NK-1:0] sown_cr01h, pown_cr01h;
+  logic [NK-1:0] pfo_cr01h;   // the payload's owner: the leads' check only
+  logic [3*WR-1:0] lsrc_cr01h;
+  logic [WR-1:0]   lodst_cr01h;
+  logic [3*WR-1:0] mrow_cr01h;
   always_comb begin
-    rdr_cr01h = rd_row_cr01h;
-    rdr_cr01h[(NR-1)*WR +: WR] = r2r_cr01h ? rd_row_cr01h[(NR-1)*WR +: WR] : g2_row_cr01h;
+    lsrc_cr01h  = '0;
+    lodst_cr01h = '0;
+    mrow_cr01h  = '0;
+    for (int j = 0; j < NK; j++) begin
+      // The class word: this module reads only its own fields.
+      /* verilator lint_off UNUSEDSIGNAL */
+      logic [rcu_dec_pkg::CLS_W-1:0] c_cr01h;
+      /* verilator lint_on UNUSEDSIGNAL */
+      logic [3*2-1:0]                sl_cr01h;
+      sown_cr01h[j] = (K >= j) && sv_cr01h[j] && !scont_cr01h[j] && sfoot_cr01h[j*NK + K];
+      // P's owner from its leads, a cycle ahead (RA 133): lead_sec_mask is
+      // the footprint exactly on a lead slot, asserted below against the
+      // payload's, so the rows' select starts at a flop.
+      pown_cr01h[j] = pk_cr01h[j];
+      pfo_cr01h[j]  = (K >= j) && pv_cr01h[j] && !pcont_cr01h[j] && pfoot_cr01h[j*NK + K];
+      lsrc_cr01h  = lsrc_cr01h  | ({3*WR{sown_cr01h[j]}} & ssrc_cr01h[j*3*WR +: 3*WR]);
+      lodst_cr01h = lodst_cr01h | ({WR{sown_cr01h[j]}} & sodst_cr01h[j*WR +: WR]);
+      c_cr01h = pcls_cr01h[j*rcu_dec_pkg::CLS_W +: rcu_dec_pkg::CLS_W];
+      sl_cr01h = {c_cr01h[rcu_dec_pkg::CLS_DSRC +: 2], c_cr01h[rcu_dec_pkg::CLS_XSRC +: 2],
+                  c_cr01h[rcu_dec_pkg::CLS_BSRC +: 2]};
+      for (int i = 0; i < 3; i++) begin
+        logic [WR-1:0] r_cr01h;
+        r_cr01h = sl_cr01h[2*i +: 2] == 2'd3 ? ZROW : psrc_cr01h[(j*3 + 32'(sl_cr01h[2*i +: 2]))*WR +: WR];
+        mrow_cr01h[i*WR +: WR] = mrow_cr01h[i*WR +: WR] | ({WR{pown_cr01h[j]}} & r_cr01h);
+      end
+    end
+    rdr_cr01h = {r2r_cr01h ? r2row_cr01h : g2_row_cr01h, mrow_cr01h, lodst_cr01h, lsrc_cr01h};
     wrr_cr01h = wr_row_cr01h;
     wrs_cr01h = wr_sec_cr01h;
     wrr_cr01h[(NW-1)*WR +: WR] = gws_cr01h ? gw_row_cr01h : wr_row_cr01h[(NW-1)*WR +: WR];
@@ -185,7 +285,6 @@ module rcu_bank_slice #(
   end
 
   // R0 and R1: decoded on the wire.
-  localparam logic [WR-1:0] ZROW = WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
   logic [NRR*NH-1:0] rr_hi_cr02h;
   logic [NRR*16-1:0] rr_lo_cr02h;
   always_comb begin
@@ -404,15 +503,20 @@ module rcu_bank_slice #(
   always_comb begin
     two_hits_cr02h = 1'b0;
     for (int r = 0; r < ROWS; r++)
-      two_hits_cr02h = two_hits_cr02h | !$onehot0(hit_cr02h[r*NP +: NP]);
+      // x & (x - 1) is "more than one bit": Icarus leaves a system
+      // function's argument out of always_comb's sensitivity ($onehot0 here
+      // read a stale X from time 0).
+      two_hits_cr02h = two_hits_cr02h | |(hit_cr02h[r*NP +: NP] & (hit_cr02h[r*NP +: NP] - NP'(1)));
     bad_rd_cr01h = 1'b0;
     for (int p = 0; p < NR; p++)
       bad_rd_cr01h = bad_rd_cr01h | (rd_en_cr01h[p] && 32'(rdr_cr01h[p*WR +: WR]) >= ROWS &&
                                      32'(rdr_cr01h[p*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
     bad_wr_cr01h = 1'b0;
     for (int p = 0; p < NW; p++)
-      bad_wr_cr01h = bad_wr_cr01h | (wr_v_cr01h[p] && 32'(wr_row_cr01h[p*WR +: WR]) >= ROWS);
-    bad_wr_cr01h = bad_wr_cr01h | (gws_cr01h && 32'(gw_row_cr01h) >= ROWS);
+      bad_wr_cr01h = bad_wr_cr01h | (wr_v_cr01h[p] && 32'(wr_row_cr01h[p*WR +: WR]) >= ROWS &&
+                                     32'(wr_row_cr01h[p*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
+    bad_wr_cr01h = bad_wr_cr01h | (gws_cr01h && 32'(gw_row_cr01h) >= ROWS &&
+                                   32'(gw_row_cr01h) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
     for (int q = 0; q < NRR; q++)
       bad_rd_cr01h = bad_rd_cr01h | (rv_cr03h && 32'(rr_row_cr03h[q*WR +: WR]) >= ROWS &&
                                      32'(rr_row_cr03h[q*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
@@ -425,9 +529,19 @@ module rcu_bank_slice #(
   `CCV_ASSERT(one_write_a_row, !two_hits_cr02h)
   // One load slot a bank a cycle (RA-28).
   `CCV_ASSERT(one_load_a_bank, $onehot0(mw_cov_cr01h))
+  // At most one lead owns section K among the S slots, and pipe K among
+  // the P slots (V-60).
+  `CCV_ASSERT(one_s_owner, $onehot0(sown_cr01h))
+  `CCV_ASSERT(one_p_owner, $onehot0(pown_cr01h))
+  // The P owner from the leads is the payload's (RA 133: equality, not a
+  // superset): a lead_sec_mask that differs from the footprint on bit K, or
+  // a lead_cont that differs from cont, is refused.
+  `CCV_ASSERT(p_lead_is_footprint, pk_cr01h == pfo_cr01h)
   // Rows past the pool are never named; a read may name the zero register.
   `CCV_ASSERT(read_row_named, !bad_rd_cr01h)
-  // A write never names the zero register (A-64) or a row past the pool.
+  // A write never names a row past the pool. The zero register (A-64) is
+  // a write port's no-select: R's port names it, valid up, for an op that
+  // writes no GPR (rcu_r), and it writes nothing (the predecode above).
   `CCV_ASSERT(write_row_named, !bad_wr_cr01h)
   // A load may name the zero register: a predicate-only load writes no row.
   `CCV_ASSERT(load_row_named, !bad_mw_cr01h)

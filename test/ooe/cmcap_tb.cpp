@@ -9,7 +9,9 @@
 //
 // Negative controls (CMCAP_CONTROL=<name>) perturb the drive and must be
 // caught: no-lead (the lead is never driven, so nothing is captured) and
-// late-pay (the payload is driven a cycle late).
+// late-pay (the payload is driven a cycle late). Slice 4: lead_fault (fv)
+// and the fault's fields likewise, in the lanes with a fault; no-fault-lead
+// never drives lead_fault.
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h).
 // Usage: cmcap_tb [seeds] | cmcap_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
@@ -25,6 +27,8 @@
 #include <vector>
 
 using ccv::ooe::Core;
+
+int ooeTestDirectedHooked(void (*hook)(const Core &));
 
 namespace {
 constexpr unsigned NC = CM_NC, PW = CM_PW, R = CM_R;
@@ -75,12 +79,22 @@ void fail(const char *what, unsigned k) {
 // a step after its lead), and what the outputs must show.
 std::vector<unsigned> pay_now, pay_prev;   // this step's payload, and the last's
 unsigned lead_prev = 0;                    // the lead the last step's completions call for
+using CF = Core::RobLog::CmplFault;
+std::vector<CF> fpay_now, fpay_prev;       // their fault fields
+unsigned flead_prev = 0;
+constexpr unsigned CW = 4, FW = CW + 32 + 64;
+void setFault(unsigned k, const CF &f) {
+  setField(dut->cmpl_f_cq01h, k * FW, CW, f.cause);
+  setField(dut->cmpl_f_cq01h, k * FW + CW, 32, f.lanes);
+  setField(dut->cmpl_f_cq01h, k * FW + CW + 32, 64, f.addr);
+}
 
 void hook(const Core &c) {
   if (c.serial() != current) {
     current = c.serial();
     ++cores;
     dut->cmpl_l_cq00h = 0;
+    dut->cmpl_lf_cq00h = 0;
     dut->ooe_rst_r00h = 1;
     tick();
     tick();
@@ -88,6 +102,9 @@ void hook(const Core &c) {
     pay_now.clear();
     pay_prev.clear();
     lead_prev = 0;
+    fpay_now.clear();
+    fpay_prev.clear();
+    flead_prev = 0;
   }
   ++cycles;
   // This model cycle's completions: their lead now, their payload at the
@@ -101,10 +118,18 @@ void hook(const Core &c) {
   const std::vector<unsigned> &pay = control == "late-pay" ? pay_prev : pay_now;
   for (unsigned k = 0; k != NC; ++k) setField(dut->cmpl_pay_cq01h, k * PW, PW, k < pay.size() ? pay[k] : 0);
   dut->cmpl_l_cq00h = lead;
+  std::vector<CF> cf(c.robLog().cmplf.begin(), c.robLog().cmplf.end());
+  if (cf.size() > NC) cf.resize(NC);
+  unsigned want_flead = 0;
+  for (unsigned k = 0; k != cf.size(); ++k) want_flead |= unsigned(cf[k].fault) << k;
+  dut->cmpl_lf_cq00h = control == "no-fault-lead" ? 0 : want_flead;
+  const std::vector<CF> &fpay = control == "late-pay" ? fpay_prev : fpay_now;
+  for (unsigned k = 0; k != NC; ++k) setFault(k, k < fpay.size() ? fpay[k] : CF{});
   // Before the edge: the outputs hold the last step's lead (cv) and the
   // payload driven a step ago, for the lead before it.
   const unsigned cv = dut->cv_cq01h;
   if (cv != lead_prev) fail("cv is not the last step's lead", 0);
+  if (unsigned(dut->fv_cq01h) != flead_prev) fail("fv is not the last step's lead_fault", 0);
   ++compared;
   tick();
   // After the edge: each slice's payload is what was driven before it, in
@@ -116,9 +141,20 @@ void hook(const Core &c) {
       const uint64_t want = k < pay_now.size() ? pay_now[k] : 0;
       if (getField(dut->pay_cq02h, (r * NC + k) * PW, PW) != want) fail("a slice's payload is not the one driven", k);
     }
+  for (unsigned k = 0; k != NC; ++k) {
+    if (!((flead_prev >> k) & 1u)) continue;
+    ++compared;
+    const CF want = k < fpay_now.size() ? fpay_now[k] : CF{};
+    if (getField(dut->f_cq02h, k * FW, CW) != want.cause || getField(dut->f_cq02h, k * FW + CW, 32) != want.lanes ||
+        getField(dut->f_cq02h, k * FW + CW + 32, 64) != want.addr)
+      fail("a fault's fields are not the ones driven", k);
+  }
   lead_prev = want_lead;
   pay_prev = pay_now;
   pay_now = cm;
+  flead_prev = want_flead;
+  fpay_prev = fpay_now;
+  fpay_now = cf;
 }
 } // namespace
 
@@ -131,7 +167,9 @@ int main(int argc, char **argv) {
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_cmcap>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
-  const int model_fails = cg.run(seeds, nullptr, hook);
+  // The directed tests too, outside a clock-gating run: the MIU faults
+  // (testMemFault) are among them, and the random tests have none.
+  const int model_fails = (cg.on() ? 0 : ooeTestDirectedHooked(hook)) + cg.run(seeds, nullptr, hook);
   cg.close();
   dut->final();
   std::printf("cmcap_tb control=%s seeds=%u cores=%llu cycles=%llu completions=%llu compared=%llu "

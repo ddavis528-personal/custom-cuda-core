@@ -2277,19 +2277,15 @@ module ccv_top (
     .rcu_miu_addr_wake(rcu_miu_addr_wake),
     .miu_rcu_data_s0_valid(miu_rcu_data_s0_valid),
     .miu_rcu_data_s0_payload(miu_rcu_data_s0_payload),
-    .miu_rcu_data_s0_credit(miu_rcu_data_s0_credit),
     .miu_rcu_data_s0_stall(miu_rcu_data_s0_stall),
     .miu_rcu_data_s1_valid(miu_rcu_data_s1_valid),
     .miu_rcu_data_s1_payload(miu_rcu_data_s1_payload),
-    .miu_rcu_data_s1_credit(miu_rcu_data_s1_credit),
     .miu_rcu_data_s1_stall(miu_rcu_data_s1_stall),
     .miu_rcu_data_s2_valid(miu_rcu_data_s2_valid),
     .miu_rcu_data_s2_payload(miu_rcu_data_s2_payload),
-    .miu_rcu_data_s2_credit(miu_rcu_data_s2_credit),
     .miu_rcu_data_s2_stall(miu_rcu_data_s2_stall),
     .miu_rcu_data_s3_valid(miu_rcu_data_s3_valid),
     .miu_rcu_data_s3_payload(miu_rcu_data_s3_payload),
-    .miu_rcu_data_s3_credit(miu_rcu_data_s3_credit),
     .miu_rcu_data_s3_stall(miu_rcu_data_s3_stall),
     .miu_rcu_data_wake(miu_rcu_data_wake),
     .rau_rcu_mig_valid(rau_rcu_mig_valid),
@@ -2311,7 +2307,11 @@ module ccv_top (
     .pca_rcu_mig_payload(pca_rcu_mig_payload),
     .pca_rcu_mig_credit(pca_rcu_mig_credit),
     .pca_rcu_mig_stall(pca_rcu_mig_stall),
-    .pca_rcu_mig_wake(pca_rcu_mig_wake)
+    .pca_rcu_mig_wake(pca_rcu_mig_wake),
+    .miu_rcu_data_s0_credit(miu_rcu_data_s0_credit),
+    .miu_rcu_data_s1_credit(miu_rcu_data_s1_credit),
+    .miu_rcu_data_s2_credit(miu_rcu_data_s2_credit),
+    .miu_rcu_data_s3_credit(miu_rcu_data_s3_credit)
 `ifdef CCV_CHECK
     , .clk_gated(rcu_clk_gated)
 `endif

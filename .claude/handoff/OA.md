@@ -27,8 +27,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Daily sweep (trig_017UEX7qaTRGT27eW6yQ1tJo, 02:07 PT)
 Skill section 4 (register-reader digest), then
-`CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf tools/daily-sweep.sh` in the
-background; `python3 tools/setup-session-home.py --check` (exit 1: ask DA to
+`CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf setsid nohup tools/bg-run.sh sweep-MMDD
+tools/daily-sweep.sh > /dev/null 2>&1 < /dev/null &` (detached, never a
+background task: TI rev 418), waited on by a run_in_background
+`while kill -0 <pid>` (or pgrep) loop, re-armed at its 2 h cap; `python3 tools/setup-session-home.py --check` (exit 1: ask DA to
 approve the install again); pings Fridays only (TI-49); report in a few lines.
 Session home installed 2026-10-31 with DA's approval (TI-50): /home/user/.claude
 holds the 400k window, the handoff hook and the agents link.
@@ -40,20 +42,87 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 17, OA 378, AR 315, TI 357, OI 317, IS 190, CP 155, DA 115,
-RA 95 (tab 9851686b-2b0a), RI 21 (tab 8e4547bc-c469).
-OOE doc rev 369. Pings Fri 2026-11-06: all 8 (AR IS TI OI CP RA RI RH) ponged, check ok. Next Fri 2026-11-13.
-Sweep 11-06: 7 branches (86 commits) + TI's 350k merge, full gate green, pushed a722ef6;
-release 2e95216; tag refused (known). session-home --check ok at 350k.
+Conventions 19, OA 414, AR 347, TI 412, OI 340, IS 190, CP 157, DA 119,
+RA 136 (tab 9851686b-2b0a), RI 70 (tab 8e4547bc-c469), MA 39 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, not yet in roster).
+OOE doc rev 377. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
+Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release b15c89e8; tag refused (known).
 
 ## Open work (most urgent first)
+-24. OA 387 re:RA 104/AR 325 (zero-cycle ooe_rcu_issue leads): YES on OOE side. pred_neg(+(a) bits),
+   R-slot phys_src0/1 (slot_fields), opcode (not class bits, A-66) move iss_pay -> iss_lead in ooe_rs;
+   no cycle, 0 net flops, out 0. RTL ooe_rs unit: gnt in 8.8/9.5/10.2 at LW 1/16/43; f-f 26.2/26.3/27.4
+   (17.6 w/o fanout) < cap 29.4. Watch: RA names (a) bits + approves; TI schema row; OI moves fields,
+   sets unit LW real; RH reprices g1'' (expect -3.48% S1, model). OOE doc rev 370 notes it.
+   OA 388 re:RA 108: (a) = no new field; guard leads zero on S/P today -> fill every slot (drop
+   slot_fields); + lead_rpsrc=imm[13:0] (R). Moved (0 OOE flops) or copied (<=167) per field, RA picks.
+   R lead read ~55b > 43 run: few tenths more fanout, OI re-measures. Approval waits on RI.
+   RA 109 picked: MOVED guard (all slots; phys_pred_guard leaves payload), rpsrc, phys_src (R);
+   COPIED opcode (rides on to lanes/MIU) = +81 OOE flops in iss_lead. Accepted (no row needed).
+   RA 111/RI 45: 14 RCU in-paths still >12 (worst lanes dst 20.7); RA asks dst/write fields, cont,
+   pred_neg, R imm[31:14] as copies. OA 390: clean, 225 flops (+120 for odst/opos/spos/src on S0-S3),
+   0 out, RTL unit LW 63/111: gnt 10.2, f-f 26.8/26.2. Now rests on RI re-run; else RA->AR->DA.
+   RA 113: APPROVED zero-cycle issue end under DA 115 (RI worst in-path 10.9). OA 391: copies 353
+   (src_pos 6) + opcode 81. Watch: TI schema row, OI build + unit LW + check-ngd, RH g1'' reprice.
+   TI 382: built RA-43 on ti-ra43 (d1c65ef; KILL_DRAIN 15, L1_CMPL 18, credit 4), edits sim/ooe+rcu.
+   OA 392: keep imm in R payload (copy); S copies 46 fine, src_width only if RI >12 (RA); ~504 flops.
+   RA 114 overruled: S copies 32 (no src_width/phys_src2), R imm MOVED to lead_rpsrc[31:0]. Checked:
+   nothing in OOE reads R's payload imm after grant (iss_pay -> channel only; tests read Issue struct)
+   -> no objection, no row. OOE copies now ~ 207+81+128 = 416.
+   OA 393 re:TI 383: R imm settled = move (RA 114), OA 392 withdrawn. C_RECONV = rename-time no-op,
+   DEC serial 5 (first spare), done at alloc, no RS/issue; skel op table + control; OI model+RTL nop.
+   OA 396: register PMOV EXECUTED on R as plog (imm_kind 1, ps1=ps0), not elided (compiler emits none,
+   copies w/ por; elision needs phys-pred refcount, only full-mask/unguarded/unneg). RA 119 confirmed;
+   TI built 8dbc152. Reopen only if compiler emits pmov. RA-16 has nothing of OA's.
+   OA 397: OI-135 pp_cq01h (rename R1 d_pp_cq03h -> ooe_rendep) arrival 2.0 granted, as OI-66; conditions: keep-copy for port vs m_pp_cq04h, fanout counted in rendep; watch OI push for rendep worst path and caps removed.
+   OA 398 re:TI J11b (rev 390, model, clean): g2''' S1 -0.26% cm128 +1.27% (RA's, DA 115); p192' (OOE cmpl/hint flopped) S1 +2.44% cm128 +5.10% loop +71% -> C9 worth more at 8-way. Asked TI/RH for C9 A6 point at 8-way vs w10''': <0.2 close, 0.2-0.5 DA, >0.5 DA.
+   OA 399 re:TI J13 (rev 392, model): C9 STANDS at 8-way, no return to DA. Bar = flopped-vs-0cyc gain = 2.44% S1 (p192'); J13 C9-vs-A6 +0.174% S1 / cm128 +0.459% / loop +3.33% is split cost, not the bar (OA 398 framing corrected). Open: reprice cmpl_split (OA's, <0.5%) after lead build; DA 8/13 rerun term still owed if OI has not run it.
+   OA 400 re:RA 126 (RI-25 (4) kill wake): OOE does not drive kill_valid (RAU does, schema from: rau); early kill wake only possible from RAU flops, RAU owner/TI call; OOE no objection, would not use it.
+   OA 401 re:AR 337 (RI-26, rcu_isd class decode 12.4 vs 12): OOE declares required 0.0 on iss_lead_cq03h (output-only, no keep) in ooe_rs.ngd.json + up to ccv_ooe; OOE recs (a) RCU in-side 13 (AR to DA, pending). (b) lead_pcopy would cost 45+9 flops. DA 116 (11-09) chose 13/0 and kept miu_rcu_data@rcu flopped (AR 334); OA 401 is the confirmation. Watch OI write the decl.
+   OA 402 re:TI 396: TI built per-field lead budgets (ti-lead). OI writes ccv_ooe.ngd.json ooe_rcu_issue_payload.{lead_opcode,lead_done_row,lead_pred_we,lead_phys_dst} required 0.0 + ooe_rs iss_lead_cq03h required 0.0 (packed, no carries).
+   OA 403 re:RA 132 (RI-31): (a) lead_phys_src2 copy on S0-S3, 32 iss_en flops, 0 out, payload kept (lead copies ~448 total); (b) lead_sec_mask EXACT == footprint (lead slots), 0 on cont; TI built it 7b003e98 (TI 400, lead_why amended).
+   OA 404 re:OI-134 (2ff049c7): go reads registered unmet (unmet_reg=1, RTL), cm128 -2.2% vs G at 160/128 (model), c_dst cap back 26.9 (DA 27.5 unused); recorded OOE doc rev 374 floor invariant. OI-134 closed.
+   OA 405 (sweep 11-09): skipped ccr-80102643 (AR) + ccr-888218a3 (RI), perf-register/cg-waivers/rcu_dec_pkg conflicts vs TI; TI merged both 0bd5ac02 (TI 401). Next sweep picks it up.
+   OA 406 (re:AR 340, DA 117): MA at sweep minute 35 in register skill section 5 (453db334). Notified AR.
+   OA 407 (re:OI-137, #35): cand_indep_pend (pending-group writer unseen in narrow placement) accepted if RH prices on/off within 0.5% S1/cm32/cm128 (model); over -> DA. OOE doc rev 376 Placement para. WATCH: RH figures on OI-137.
+   OA 408/409 (re:MA-4, MA-5): L1-hit contract view unchanged (cancel shadow 17->19, 1 hop/cycle; asked MA for early no-hit by issue+16 = PF-8 subset); every memop spends a credit, issue does not yet throttle (stub returns on take); entry credits need depth 8/slot or pool (TI), discard credit back on take, OI to gate P grant. WATCH MA/AR answers.
+   OA 410/411 (re:MA answers): no_hit[1] on ccv_miu_ooe_cmpl_hint accepted, raised with TI (advice; valid I+12, payload I+13; clears spec wake before I+17; OI knob l1_nohit, RH to price). OOE supports MA shared memop pool (40 entries, 3-bit rate-1 return sideband; per-slot credits stay 4 on take); OOE gate = registered allowance (>=4: up to 4, 1-3: one, 0: none) ~1 NGD. AR to rule pool. TI prefers per-slot 8 (TI rev 411) - pending AR.
+   OA 412 (re:AR rev 345, MA-5 RULED): per-slot memop credits 10/slot, NO pool (supersedes OA 411); OOE sends on lowest credited slot of footprint (not ctz(res)); grant request += (footprint & credit_held)!=0 ~2 NGD; slot choice in payload cycle. WATCH: OI model+NGD (if >25, AR takes pool); MA confirm memop slot j pairs with addr slot ctz(footprint); TI schema text, depth 10. Then OOE doc select text. SETTLED: AR 346 (pool) withdrawn by AR 347, AR 345 stands as OA 412 takes it; MA confirmed pairing (~3 NGD MIU side, MA rev 44). CLOSED: OI-139 select worst path unchanged (26.58 ff, res 28.86), pool not needed; TI schema on ti-ma (credits 10, no_hit); OOE doc rev 377 memop paragraph records credits + no_hit. Still WATCH: OI model no_hit + RH price.
+   RI session: session_01QPk2jvvXPLs4m8ZQbSk1g6 (roster). RI-34 (11-10): ccv_rcu.sv block top pushed 8fcec64b, per-slot issue ports; no action.
+   REGISTER CELL SHAPE: a cell must be {"type":"cell","content":[{"type":"paragraph","content":[{"type":"text","text":"..",("marks":[{"type":"bold"}])}]}]}; a string content is silently dropped (OA 397-404 went in blank, refilled rev 408). Read every row back after insert.
+   DISK: a full gate needs ~23 GB free; ccache capped at 2G (ccache -M 2G) after 11-09 filled the disk.
+-23. CLOSED (OA 395): OI-133 fix 5559b4f/b90adff/11386e7 accepted, rope cleared (TI 387). Was OA 386 re:OI-133 (OA-17 at L1_WAKE 16: co-grant w/ re-issued producer): YES to replaying a
+   consumer co-granted with its producer (always stale). First check ooe_sched RTL (rep_cq02h uses
+   pre-grant iss_cq02h, may already catch it) -> if so model-only fix; else add gnt to mask within caps.
+   Sweep L1_WAKE 12-20, control drops term; >1-cycle window back to OA. J11 unpriced till lands.
+-22. OA 384 re:TI J11 (RH, 8-way DCU, 88c31e7, model): Z S1 -2.47% (was -1.04); ISSUE FLOP at RCU
+   costs S1 +3.48%/cm32 +1.98% -> AR 308 premise gone; RA's under DA 115 (NGD w/o flop) else DA; no
+   OOE objection. g2'' (miu_rcu_data 0-cyc, L1_WAKE 16) fails OA-17 (stale grant confirms) = OI model
+   bug (a timing term not derived from L1_WAKE); cm figures void till fixed. C9 re-price at 8-way owed;
+   <=0.5% -> DA (DA 114 term). Watch: OI root cause, RA ruling, C9 re-price.
+   AR 323/324 reopened AR 308; OA 385: OOE side 0 NGD out (t+2 reg, OI-131), split 0/12 -> RCU in<=12
+   RA approves, >12 DA (OA signs OOE half). OI: issue-port check-ngd unit when payload assembled.
+-21. OA 383 re:OI-130 (95bf04d): OI-114 went (b); floor_held_gate fixes fits_stale double floor.
+   OA 394 re:OI-134 (RH, model): G S1 = everywhere; cm128 G=B@192, -1.57%@160, +2.75%@128 (redirect_wait);
+   N fails fits_stale. KEPT G, closed. Low-pri OI look at 128 (derived floor_take_lag / unmet_reg).
+   ooe_go caps all fell (NGD-1 26.x, hv 28.x), stand; no share retime. TI #72 rerun must be clean.
+-20. OA 381 re:OI-128: ROB slice 4 pushed adfa301, flops ACCEPTED (rob_w 5,395->8,275; cmcap 61->465);
+   optional fa one-hot->5b index (-108). Slice 4 done; next ROB slices.
+-19. TI-373: DCU stub default now 8x64 (31168a3): perf baselines moved. Any pricing OA judges
+   (OI-114 (b), PHYS 160, C9 reruns) must compare runs on the same side of 31168a3; never mix.
+-18. OA 380 re:TI IS-21 OOE's side: CAS pd rides A2 (renamed pd, pred_we, old pd, every pass; OI
+   model, RI step table; no field change). A1/A3 never bulk-discarded nor replayed (status 0/1):
+   OI-129 model f727aed; OA 382: copy also writes pd (A-43) ok, status-2 assert ok; RTL issue payload
+   later must carry A2's pd/pred_we/old pd. TI 366: DONE - pd rides DEC 2nd slot; schema text: mem_op 2/3 exempt, status never 2. OI-127 agrees.
 -17. OA 378 re:AR 315 PHYS_REGS 160 (Q-35; ~34k RCU flops, cycles flat, provisional): rerun to report
    floor stalls (OI-114), restore-alloc under demotion, sectioned-row fragmentation, memop-held regs
-   (cm128). No stalls -> no OA objection, to DA on area; else OA gives min PHYS.
+   (cm128). No stalls -> no OA objection, to DA on area; else OA gives min PHYS. AR 316 took the
+   four cases as criteria; TI 360: 160 has 18 fits_stale check fails (OI fix), provisional.
 -16. OA 376 re:OI-125 (slice 4 MIU fault capture CG): asked lead_fault (1b, with cv) on
    ccv_miu_ooe_cmpl -> AR confirm MIU knows fault at valid, TI schema row. No CG-3 waiver (b, 408
    flops, DA) unless (a) impossible. AR 314: yes; per-slot (4b), status==1 only (2=replay); MIU
-   spec 61. OA 377 accepted; OI builds after TI's schema row. Watch TI row + OI build.
+   spec 61. OA 377 accepted. TI pushed lead_fault 5a2f4aa (TI 363). OA 379: OI-125 items 5-6: pc/cause/
+   valid written at ALLOCATION (OA 370 amended); per-entry group mask 1,024/slot built (spec IS-4).
+   ROB payload ~2,294 flops/slot. Watch OI's build.
 -15. OA 370 re:OI-117 (ROB slice 4 fault PC): (b) per-entry PC, per spec (IS-4, payload table;
    rewind beats need every entry's PC). pc[31:1]/entry + pc[47:32]/slot (CCV_W_PC_WINDOW) = 4,032
    flops, written at fill from ccv_dec_ooe_uop.pc, assert upper match. No schema row, no S1 cost.
@@ -63,7 +132,7 @@ release 2e95216; tag refused (known). session-home --check ok at 350k.
    copies of unmet flops (fanout); if caps hold -> push, no S1 cost. Else (b): per-take term
    registered a cycle late, RH prices S1 w/ PHYS160; <0.5% mine, >0.5% DA. OI branch oi-floor114 1f3bb3c.
 -13. OA 365/366: zero-cycle ooe_rcu_issue -> AR 308: stays flopped, no splits (gain only
-   L1_CMPL -1, V-35 -1; L1_WAKE does NOT move - my 365 claim wrong). OI phys_src depth low
+   L1_CMPL -1, V-35 -1; L1_WAKE does NOT move - my 365 claim wrong). OI phys_src depth DONE (OI-131: 0 NGD after flop, out budget 0)
    prio. OA 364: C9 ports must be 0 NGD, <=4 pins (sum of parts boundary); OOE units per param set.
    AR 307 took C9 to DA in AR's session (+0.444% holds only with AR 296; lane cycle hits both).
 -12. C9 APPROVED by DA (DA tab 114, 11-06): OOE miu_ooe_cmpl+hint ends first kind, +0.444% S1

@@ -10,13 +10,14 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
   local top=$1 g=$2 d=$3; shift 3
   verilator --cc --exe --build --trace -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style $g \
     --top-module "$top" --Mdir "$dir" -o tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-    -CFLAGS "-std=c++17 -O2 $d" \
-    "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ccv_assert_pkg.sv" "$@"
+    -CFLAGS "-std=c++17 -O2 -I$PWD/sim/generated -I$PWD/sim/skel -I$PWD/sim/rcu -I$PWD/sim/include $d" \
+    "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/rcu/rcu_dec_pkg.sv" "$@"
 }
 case "$unit" in
-  rcu_bank_slice_r32|rcu_bank_slice|rcu_bank_slice_r32_sec)
+  rcu_bank_slice_r32|rcu_bank_slice|rcu_bank_slice_r32_sec|rcu_bank_slice_r32_k3|rcu_bank_slice_k[023])
     rows=192 k=1 fr=1
     case "$unit" in *_r32*) rows=32 ;; esac
+    case "$unit" in *_k0) k=0 ;; *_k2) k=2 ;; *_k3) k=3 ;; esac
     case "$unit" in *_sec) fr=0 ;; esac
     vl rcu_bank_slice "-GROWS=$rows -GK=$k -GFULL_ROW=$fr" \
       "-DBS_ROWS=$rows -DBS_K=$k -DBS_FULL_ROW=$fr" \
@@ -25,6 +26,16 @@ case "$unit" in
     vl rcu_r "" "" "$PWD/rtl/rcu/rcu_xbar.sv" "$PWD/rtl/rcu/rcu_r.sv" "$PWD/test/rcu/r_tb.cpp" ;;
   rcu_pred)
     vl rcu_pred "" "" "$PWD/rtl/rcu/rcu_pred.sv" "$PWD/test/rcu/pred_tb.cpp" ;;
+  rcu_isd|rcu_isd_s)
+    ls=0; [ "$unit" = rcu_isd_s ] && ls=1
+    vl rcu_isd "-GLS=$ls" "-DISD_LS=$ls" "$PWD/rtl/rcu/rcu_isd.sv" "$PWD/test/rcu/isd_tb.cpp" ;;
+  ccv_rcu_killsleep|ccv_rcu)   # ccv_rcu: the same bench, the unit's --cg scenarios; the whole block on its gate: a kill while asleep (RA rev 127)
+    verilator --cc --exe --build --trace -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style --public-flat-rw \
+      --top-module ccv_rcu --Mdir "$dir" -o tb -DCCV_CHECK -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -I"$PWD/rtl/top/ports" -CFLAGS "-std=c++17 -O2 -I$PWD/sim/generated" \
+      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/rcu/rcu_dec_pkg.sv" \
+      "$PWD/rtl/ctech/sim/ccv_common_ctech_icg.sv" "$PWD/rtl/clk/ccv_common_clk.sv" \
+      $(ls "$PWD"/rtl/rcu/*.sv | grep -v rcu_dec_pkg) "$PWD/test/rcu/killsleep_tb.cpp" ;;
   rcu_kill)
     vl rcu_kill "" "-I$PWD/sim/generated" "$PWD/rtl/rcu/rcu_kill.sv" "$PWD/test/rcu/kill_tb.cpp" ;;
   rcu_mig)

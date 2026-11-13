@@ -191,8 +191,29 @@ def block_ports(btype, chans, ninst, common, nb):
             if c[side] != btype:
                 continue
             fwd = "output" if side == "src" else "input"
-            P += chan_ports(c, fwd, owns_copies(c, btype, ninst))
+            cp = chan_ports(c, fwd, owns_copies(c, btype, ninst))
+            if side == "dst" and (btype, c["name"][4:]) in cor_ends():
+                # Credit on receipt: the wrapper returns this end's credit
+                # from its boundary flop, and the block has no credit port.
+                cp = [p for p in cp if not (p[6] and p[6][3] == "credit")]
+            P += cp
     return P
+
+
+_COR = []
+
+
+def cor_ends():
+    """The credit-on-receipt ends (params/links.json "credit_on_receipt",
+    read by tools/ccv_links.py; AR's rev 322, RA-41), as (block type, channel
+    without ccv_): flopped destination ends whose boundary stage loads its
+    credit from its own valid flop, the block taking every message the
+    cycle it is presented. Such a block has no credit port on that end; its
+    wrapper has, driven by the repeater."""
+    if not _COR:
+        ends, _ = ccv_links.schema_ends(ROOT)
+        _COR.append(ccv_links.credit_on_receipt(sorted(ends), ends))
+    return _COR[0]
 
 
 def copy_sfx(c, copy):
@@ -510,18 +531,23 @@ def wrapper_plan(binst, cinst, ports, names, ft, reuse):
     return plan
 
 
-def rpt_inst(L, name, stages, c, src, dst, boundary=0, dst_end=False):
+def rpt_inst(L, name, stages, c, src, dst, boundary=0, dst_end=False, cor=False):
     """One ccv_common_rpt for a channel instance. `src` and `dst` map a signal to
     its per-slot net names (a function of slot and sig); `boundary` is the
     end's boundary flops (bnd), 0 on a feedthrough; `dst_end` a destination
     end's, whose boundary stage is its last (DST_END: which lead slice is the
-    block's to budget)."""
+    block's to budget); `cor` a credit-on-receipt end's, whose boundary
+    stage returns the credit from its own valid flop, the block having no
+    credit port there (CREDIT_ON_RECEIPT; AR's rev 322)."""
     r = c["rate"]
     lead = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
             if c["lead_mask"] else "")
-    if boundary and dst_end and c["lead_mask"]:
+    if boundary and dst_end and (c["lead_mask"] or cor):
         lead += ", .DST_END(1'b1)"
+    if cor:
+        lead += ", .CREDIT_ON_RECEIPT(1'b1)"
     cat = lambda f, sig: "{%s}" % ", ".join(f(sl, sig) for sl in reversed(range(r)))
+    dcat = (lambda f, sig: "'0" if sig == "credit" else cat(f, sig)) if cor else cat
     L.append("  ccv_common_rpt #(.STAGES(%s), .BOUNDARY(%d), .SLOTS(%d), .PAYLOAD_W(%d)%s) %s ("
              % (stages, boundary, r, c["bits"], lead, name))
     L.append("    .clk(core_clk), .rst_n(rst_n),")
@@ -530,7 +556,7 @@ def rpt_inst(L, name, stages, c, src, dst, boundary=0, dst_end=False):
              % (src(None, "wake"), cat(src, "credit"), cat(src, "stall")))
     L.append("    .dst_valid(%s), .dst_payload(%s)," % (cat(dst, "valid"), cat(dst, "payload")))
     L.append("    .dst_wake(%s), .dst_credit(%s), .dst_stall(%s)"
-             % (dst(None, "wake"), cat(dst, "credit"), cat(dst, "stall")))
+             % (dst(None, "wake"), dcat(dst, "credit"), cat(dst, "stall")))
     L.append("`ifdef CCV_TRACE")
     L.append("    , .src_tid(%s), .dst_tid(%s)" % (cat(src, "tid"), cat(dst, "tid")))
     L.append("`endif")
@@ -601,6 +627,13 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
             for dr, w, name, tr, _d, typ, _m in chan_ports(ci["chan"], fwd, [None]):
                 fps.append((tr, "%-6s %s%s%s" % (dr, decl(w, typ), ft_side(o, side), name)))
     L += ["  , " + x for tr, x in fps if not tr]
+    # A credit-on-receipt end's credit: the wrapper's port, the repeater's
+    # output; the block has none (cor_ends).
+    for x, side, cp in ends:
+        c = cinst[x]["chan"]
+        if side == "dst" and (t, c["name"][4:]) in cor_ends():
+            L += ["  , output logic %s" % port_nm(c, cp, sl, "credit")
+                  for sl in range(c["rate"])]
     L += guarded([x for x in fps if x[0]], lambda x: x)
     L.append(");")
     L.append("")
@@ -641,12 +674,15 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
         nm = c["name"][4:] + copy_sfx(c, cp)
         prm = rpt_param(c, cp)
         b = bnd(t, c)
+        cor = side == "dst" and (t, c["name"][4:]) in cor_ends()
         L.append("  // %s, %s end%s" % (c["name"], "source" if side == "src" else "destination",
+                                       ", credit on receipt (params/links.json credit_on_receipt)"
+                                       if cor else
                                        "" if b else ", no-flop (params/links.json no_flop)"))
         if baked is not None and baked[prm] + b == 0:
             wire_inst(L, c, src, dst)
         elif baked is not None or b:
-            rpt_inst(L, "u_rpt_" + nm, prm, c, src, dst, b, side == "dst")
+            rpt_inst(L, "u_rpt_" + nm, prm, c, src, dst, b, side == "dst", cor)
         else:
             L.append("  if (%s > 0) begin : g_rpt_%s" % (prm, nm))
             sub = []
@@ -845,6 +881,13 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports, reuse=()):
                 trconns.append((tr, ".%s(%s)" % (pname, ex)))
             else:
                 conns.append(".%s(%s)" % (pname, ex))
+        # A credit-on-receipt end's credit: the wrapper's own port (cor_ends).
+        for x, side, cp in block_ends(t, i, ports[t], cinst):
+            ci = cinst[x]
+            if side == "dst" and (t, ci["chan"]["name"][4:]) in cor_ends():
+                for sl in range(ci["chan"]["rate"]):
+                    conns.append(".%s(%s)" % (port_nm(ci["chan"], cp, sl, "credit"),
+                                              seg_net(ci, sl, "credit", nsegs(ci) - 1)))
         for o, (x, j) in enumerate(ft.get(k, [])):
             ci = cinst[x]
             for side, jj in (("i", j - 1), ("o", j)):
@@ -1264,30 +1307,35 @@ def rpt_units(binst, cinst, names, ports, ft, plan):
     for k, (t, i) in enumerate(binst):
         _, vals, _ = plan[k]
         where = [(x, cp, rpt_param(cinst[x]["chan"], cp), bnd(t, cinst[x]["chan"]),
-                  side == "dst")
+                  side == "dst",
+                  side == "dst" and (t, cinst[x]["chan"]["name"][4:]) in cor_ends())
                  for x, side, cp in block_ends(t, i, ports[t], cinst)]
-        where += [(x, None, ft_param(cinst[x], o), 0, False)
+        where += [(x, None, ft_param(cinst[x], o), 0, False, False)
                   for o, (x, _) in enumerate(ft.get(k, []))]
-        for x, cp, prm, b, dend in where:
+        for x, cp, prm, b, dend, cor in where:
             st = vals[prm]
             if not st + b:
                 continue
             c = cinst[x]["chan"]
             # DST_END matters only where it moves the boundary's lead slice:
-            # a flopped destination end with link stages and a lead.
-            de = int(bool(b and dend and c["lead_mask"]))
-            key = (st, b, de, c["rate"], c["bits"], c["lead_mask"])
+            # a flopped destination end with link stages and a lead; and at
+            # a credit-on-receipt end, whose boundary stage it names.
+            co = int(bool(b and dend and cor))
+            de = int(bool(b and dend and (c["lead_mask"] or co)))
+            key = (st, b, de, co, c["rate"], c["bits"], c["lead_mask"])
             seen.setdefault(key, []).append("%s %s" % (names[k][2:], prm))
     units = []
-    for (st, b, de, r, w, lead), users in sorted(seen.items()):
+    for (st, b, de, co, r, w, lead), users in sorted(seen.items()):
         lit = "%d'h%x" % (w, lead)
+        extra = dict(({"DST_END": 1} if de else {}), **({"CREDIT_ON_RECEIPT": 1} if co else {}))
         units.append({
-            "name": "rpt_s%d%s%s_n%d_w%d_l%s" % (st, "_b%d" % b if b else "",
-                                                "_dst" if de else "", r, w, lead_tag(lead)),
+            "name": "rpt_s%d%s%s%s_n%d_w%d_l%s" % (st, "_b%d" % b if b else "",
+                                                  "_dst" if de else "", "_cor" if co else "",
+                                                  r, w, lead_tag(lead)),
             "module": "ccv_common_rpt",
             "files": ["rtl/phys/ccv_common_rpt.sv"],
             "params": dict({"STAGES": st, "BOUNDARY": b, "SLOTS": r, "PAYLOAD_W": w,
-                            "LEAD_MASK": lit}, **({"DST_END": 1} if de else {})),
+                            "LEAD_MASK": lit}, **extra),
             "clock": "clk",
             "reset": "!rst_n",
             "instances": users,
@@ -1298,9 +1346,9 @@ def rpt_units(binst, cinst, names, ports, ft, plan):
                 "build": ("verilator --binary --timing --trace --trace-max-width %d "
                           "-Wno-fatal -Wno-lint -Wno-style "
                           "-Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=%d "
-                          "-GBOUNDARY=%d -GDST_END=%d -GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb "
+                          "-GBOUNDARY=%d -GDST_END=%d%s -GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb "
                           "rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv"
-                          % (max(4096, r * w), st, b, de, r, w, lit)),
+                          % (max(4096, r * w), st, b, de, " -GCOR=1" if co else "", r, w, lit)),
                 "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
                 "scope": "tb_cg_rpt.dut"}})
     return json.dumps({

@@ -61,17 +61,13 @@ module rcu_mem #(
 ) (
   input  logic                    rcu_core_clk,
   input  logic                    rst_n,
-  input  logic                    iw_cr01h,        // ooe_rcu_issue_wake
+  input  logic                    iw_cr01h,        // ooe_rcu_issue_wake a cycle on (ccv_rcu's wake detector): wake at A - 2
   // The P slots' lead (A-1).
   input  logic [NK-1:0]           iv_cr01h,        // slot j issues next cycle
   input  logic [NK*3-1:0]         lsrc_cr01h,      // lead_src_used
   // The payload and its op-class decode (A).
-  input  logic [NK-1:0]           mem_cr02h,       // class: a memop (unit Mem), not a continuation
-  input  logic [NK-1:0]           fen_cr02h,       // class: a fence
-  input  logic [NK-1:0]           psk_cr02h,       // class: a predicate store
-  input  logic [NK*2-1:0]         bsl_cr02h,       // class: the base's source, 3 none
-  input  logic [NK*2-1:0]         xsl_cr02h,       // class: the index's source, 3 none
-  input  logic [NK*2-1:0]         dsl_cr02h,       // class: the store data's source, 3 none
+  input  logic [NK*rcu_dec_pkg::CLS_W-1:0] ocl_cr02h, // op class (rcu_isd's flops from the lead)
+  input  logic [NK-1:0]           cont_cr02h,      // cont: a continuation, no class
   input  logic [NK*NK-1:0]        foot_cr02h,      // footprint
   input  logic [NK*6-1:0]         spos_cr02h,      // src_pos, source i at 2i
   input  logic [NK*6-1:0]         swid_cr02h,      // src_width
@@ -91,10 +87,12 @@ module rcu_mem #(
   output logic [NK*N*32-1:0]      msd_cr04h        // store_data
 );
 
-  logic rst_r01h;
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= !rst_n;
+    rst_cr01h_n <= rst_n;
   end
+  wire rst_r01h = !rst_cr01h_n;
 
   function automatic logic [NK-1:0] secmask(input logic [1:0] w, input logic [1:0] pos);
     logic [NK-1:0] span;
@@ -120,6 +118,28 @@ module rcu_mem #(
     lsrc_cr02h <= lsrc_cr01h;
   end
   assign mwk_cr02h = wk_cr02h;
+
+  // ---- The op-class decode (rcu_dec_pkg, the model's; RI-21 (4)) -------
+  // Per slot: a memop (unit Mem, not a continuation), a fence, a predicate
+  // store, and the base's, index's and store data's sources (3 none). A P
+  // slot carries no copy.
+  logic [NK-1:0]   mem_cr02h, fen_cr02h, psk_cr02h;
+  logic [NK*2-1:0] bsl_cr02h, xsl_cr02h, dsl_cr02h;
+  always_comb begin
+    // The class word: this module reads only its own fields.
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic [rcu_dec_pkg::CLS_W-1:0] c_cr02h;
+    /* verilator lint_on UNUSEDSIGNAL */
+    for (int j = 0; j < NK; j++) begin
+      c_cr02h = ocl_cr02h[j*rcu_dec_pkg::CLS_W +: rcu_dec_pkg::CLS_W];
+      mem_cr02h[j] = !cont_cr02h[j] && c_cr02h[rcu_dec_pkg::CLS_UNIT +: 3] == rcu_dec_pkg::U_MEM;
+      fen_cr02h[j] = c_cr02h[rcu_dec_pkg::CLS_MK +: 3] == rcu_dec_pkg::MK_FENCE;
+      psk_cr02h[j] = c_cr02h[rcu_dec_pkg::CLS_MK +: 3] == rcu_dec_pkg::MK_PSTORE;
+      bsl_cr02h[2*j +: 2] = c_cr02h[rcu_dec_pkg::CLS_BSRC +: 2];
+      xsl_cr02h[2*j +: 2] = c_cr02h[rcu_dec_pkg::CLS_XSRC +: 2];
+      dsl_cr02h[2*j +: 2] = c_cr02h[rcu_dec_pkg::CLS_DSRC +: 2];
+    end
+  end
 
   // ---- A: the valid, and each slot's operand selects --------------------
   // Each operand's position and width, from its source's (a missing one's
@@ -251,15 +271,14 @@ module rcu_mem #(
       end
     end
   end
-  // Per slot: a memop off a valid slot; a source its lead did not promise;
+  // Per slot: a source its lead did not promise;
   // a footprint whose lowest pipe is not the slot, or an operand outside
   // it; a fence that reads; a predicate store that reads GPR data.
-  logic [NK-1:0] mv_bad_cr02h, prm_c_cr02h, ft_bad_cr02h, ow_bad_cr02h, fn_bad_cr02h, ps_bad_cr02h;
+  logic [NK-1:0] prm_c_cr02h, ft_bad_cr02h, ow_bad_cr02h, fn_bad_cr02h, ps_bad_cr02h;
   always_comb begin
     for (int j = 0; j < NK; j++) begin
       logic mm_cr02h;
       mm_cr02h = v_cr02h[j] && mem_cr02h[j];
-      mv_bad_cr02h[j] = mem_cr02h[j] && !v_cr02h[j];
       prm_c_cr02h[j]  = mm_cr02h && prm_bad_cr02h[j];
       ft_bad_cr02h[j] = mm_cr02h && (!foot_cr02h[j*NK + j] ||
                                      (foot_cr02h[j*NK +: NK] & NK'((1 << j) - 1)) != '0);
@@ -274,7 +293,6 @@ module rcu_mem #(
       ps_bad_cr02h[j] = mm_cr02h && psk_cr02h[j] && dsl_cr02h[2*j +: 2] != 2'd3;
     end
   end
-  `CCV_ASSERT(mem_valid, mv_bad_cr02h == '0)
   `CCV_ASSERT(mem_lead_promise, prm_c_cr02h == '0)
   `CCV_ASSERT(mem_foot, ft_bad_cr02h == '0)
   `CCV_ASSERT(mem_operand_owned, ow_bad_cr02h == '0)

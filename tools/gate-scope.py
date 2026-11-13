@@ -24,11 +24,23 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALL = "ALL"
 ALWAYS = ["s1a", "s1d", "iface", "vlint"]
 # Every section that reads RTL, its benches or its synthesis flow.
-RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "rcu_rtl", "top",
-       "formal", "phys", "svh", "links"]
+RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "rcu_rtl", "rcu_ls",
+       "top", "formal", "phys", "svh", "links"]
 # The sections that read RI's RCU RTL and its benches (RI-10; rcu_rtl, RI's
-# re:TI-371: test/rcu/run-rtl.sh).
-RCU_RTL = ["cg", "ngd", "rcu_rtl"]
+# re:TI-371: test/rcu/run-rtl.sh), and, since RI's assembled ccv_rcu (RI-33)
+# makes rcu an RTL top (tools/ccv_links.py rtl_tops()), those that read its
+# generated wrapper rtl/top/wrap/ccv_rcu_w.sv or the no-flop rule it moves:
+# the SV top, SV-hosted C++ and the links split (which regenerates the top in
+# a copy of the tree and holds rcu's ends to the RTL-top rule). And rcu_ls,
+# the block in lock-step with the model (RI's test/rcu/run-lockstep.sh, which
+# the gate adopted for TI's rcu_blk, RI-36, RI-37), which builds ccv_rcu
+# from rtl/rcu/, and its TI control tools/rcu-ls-corrupt.py.
+RCU_RTL = ["cg", "ngd", "rcu_rtl", "rcu_ls", "top", "svh", "links"]
+# The readers of rtl/rcu/ outside check-cg and check-ngd that RCU_RTL maps,
+# each with the sections that read it; any other reader fails the selftest.
+RCU_READERS = {
+    "rtl/top/wrap/ccv_rcu_w.sv": ["top", "svh", "links"],
+}
 # First match wins: the more specific prefix comes first.
 MAP = [
     # The sources of truth everything is generated from, and the gate itself.
@@ -39,7 +51,7 @@ MAP = [
     ("tools/shim/", ALL),
     ("tools/genout.py", ALL),
     ("tools/check-ngd.py", ["ngd"]),
-    ("tools/check-cg.py", ["cg", "ngd"]),          # check-ngd imports it
+    ("tools/check-cg.py", ["cg", "ngd"]),   # check-ngd imports it
     ("tools/heavy-units.json", ["cg", "ngd"]),     # both read it, through check-cg
     ("tools/check-kernel.sh", ["kernel", "svh"]),
     ("tools/check-sv-hosted.sh", ["svh"]),
@@ -53,6 +65,9 @@ MAP = [
     ("tools/check-xprop.sh", ["xprop"]),
     ("tools/check-ctech.sh", ["ctech"]),
     ("tools/check-clockgate.sh", ["clockgate"]),
+    # The RCU block lock-step's corrupt-output control (TI's; the lock-step
+    # itself is RI's, test/rcu/, in RCU_RTL).
+    ("tools/rcu-ls-corrupt.py", ["rcu_ls"]),
     # Not the gate's: the push, sweep and release scripts and the summary.
     ("tools/gate-combine.py", ["iface"]),         # its selftest runs there
     ("tools/gate-export.sh", []),
@@ -69,17 +84,21 @@ MAP = [
     ("sim/ooe/", ["skel", "kernel", "ooe_unit", "ooe_rtl", "svh"]),
     # The RCU model (RI-2): built into both hosts (blocks.list), so the
     # kernels and the SV top read it, and its own harness.
-    ("sim/rcu/", ["skel", "kernel", "rcu_unit", "svh"]),
-    ("sim/skel/", ["skel", "kernel", "svh", "top"]),
+    # And the block's lock-step job, which replays the model's port dump
+    # into the RTL (rcu_ls).
+    ("sim/rcu/", ["skel", "kernel", "rcu_unit", "rcu_ls", "svh"]),
+    # The skeleton writes rcu_ls's port dumps (sim/skel/portdump.cpp).
+    ("sim/skel/", ["skel", "kernel", "rcu_ls", "svh", "top"]),
     ("sim/", ALL),
     ("rtl/lint/", ["s1d"] + RTL),
-    # RI's RCU RTL (RI-10, RA-37): only check-cg and check-ngd (their rtl/**
-    # globs and test/rcu/cg-units.json) and RI's benches read it; lint and
-    # vlint always run.
-    # Nothing instantiates it yet; the selftest fails when something does.
+    # RI's RCU RTL (RI-10, RA-37): check-cg and check-ngd (their rtl/**
+    # globs and test/rcu/cg-units.json), RI's benches, and the sections that
+    # read the generated wrapper that instantiates ccv_rcu (RI-33,
+    # RCU_READERS); lint and vlint always run. The selftest fails when
+    # anything else reads it.
     ("rtl/rcu/", RCU_RTL),
     ("rtl/", RTL),
-    ("test/kernels/", ["kernel", "svh"]),
+    ("test/kernels/", ["kernel", "rcu_ls", "svh"]),
     ("test/ooe/", ["ooe_rtl", "cg", "ngd"]),
     ("test/rcu/", RCU_RTL),
     ("test/cg/", ["cg"]),
@@ -201,17 +220,38 @@ def selftest():
     expect(s != ALL and {"kernel", "ooe_unit", "ooe_rtl", "skel", "svh"} <= set(s),
            "an OOE model change skips a section that reads it: %s" % s)
     s, _ = scope(["sim/rcu/rcu_core.cpp"])
-    expect(s != ALL and {"kernel", "rcu_unit", "skel", "svh"} <= set(s),
+    expect(s != ALL and {"kernel", "rcu_unit", "rcu_ls", "skel", "svh"} <= set(s),
            "an RCU model change skips a section that reads it: %s" % s)
     s, _ = scope(["rtl/rcu/rcu_bank_slice.sv", "test/rcu/cg-units.json"])
-    expect(s != ALL and {"cg", "ngd", "rcu_rtl"} <= set(s) and not {"ooe_rtl", "top", "svh"} & set(s),
-           "an RCU RTL change is not scoped to check-cg, check-ngd and its benches: %s" % s)
+    expect(s != ALL and {"cg", "ngd", "rcu_rtl", "rcu_ls", "top", "svh", "links"} <= set(s)
+           and "ooe_rtl" not in s,
+           "an RCU RTL change is not scoped to check-cg, check-ngd, its benches and "
+           "the sections that read its wrapper: %s" % s)
+    s, _ = scope(["rtl/rcu/ccv_rcu.sv"])
+    for x, js in RCU_READERS.items():
+        expect(s != ALL and set(js) <= set(s),
+               "an RCU RTL change skips a section that reads %s: %s" % (x, s))
     s, _ = scope(["test/rcu/r_tb.cpp"])
     expect(s != ALL and "rcu_rtl" in s, "an RCU bench change skips the benches: %s" % s)
+    # The block's lock-step job (RI's, adopted for rcu_blk; RI-36, RI-37):
+    # the RTL, the model, the skeleton that dumps its ports, the kernels it
+    # runs, the port list and packages it reads, its scripts and TI's control
+    # each reach it.
+    for p in ("rtl/rcu/ccv_rcu.sv", "rtl/rcu/rcu_dec_pkg.sv", "sim/rcu/rcu_block.cpp",
+              "sim/skel/portdump.cpp", "sim/skel/channel.h", "test/kernels/vadd/kernel.cfg",
+              "rtl/top/ports/ccv_rcu_ports.svh", "rtl/generated/ccv_params_pkg.sv",
+              "test/rcu/run-lockstep.sh", "test/rcu/lockstep.py", "tools/rcu-ls-corrupt.py"):
+        s, _ = scope([p])
+        expect(s != ALL and "rcu_ls" in s, "%s skips the RCU block lock-step job: %s" % (p, s))
     # RCU_RTL holds only while nothing else reads rtl/rcu/: no RTL outside it
-    # instantiates its modules, and no script but the two names it.
+    # instantiates its modules but the readers RCU_READERS maps, each within
+    # RCU_RTL, and no script but the two names it.
+    for x, js in RCU_READERS.items():
+        expect(set(js) <= set(RCU_RTL),
+               "RCU_READERS maps %s to sections outside RCU_RTL: %s" % (x, js))
     for x in rcu_rtl_readers():
-        bad.append("rtl/rcu/ is read by %s, outside RCU_RTL's sections: map it there" % x)
+        if x not in RCU_READERS:
+            bad.append("rtl/rcu/ is read by %s, outside RCU_RTL's sections: map it there" % x)
     # Its control: a tree where the top instantiates an RCU module and a
     # script names the directory must show both.
     import tempfile

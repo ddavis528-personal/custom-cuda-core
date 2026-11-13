@@ -1,6 +1,10 @@
 # RI handoff (RCU implementation)
 
+<<<<<<< HEAD
 Updated 2026-11-13. Keep current at every task's end. Role and ownership:
+=======
+Updated 2026-11-10. Keep current at every task's end. Role and ownership:
+>>>>>>> origin/ccr-888218a3-20cauz
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -49,24 +53,17 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--6. NOW (2026-11-13 10:31 sweep) ri-wt4 branch ri-sweep3 = 7e29cef5: 439179d9 (evmon e9c48768 + CCV-L04 fix
-   '(l >= s)') + merges of all 9 remote branches (126afa13 8, 183cc441 55, 3868632d 7, 57eff422 17, 80102643 2,
-   9eb50716 15, c22116ce 1, infra 55, miu-dcu-spec 40), no conflicts, regen no change. chain-ri23 (439179d9)
-   killed in favour of one full gate: chain-ri24 (cg here, ngd asked of RH, gate-push --full). Status
-   ~/ccv-logs/chain-ri24.out. Fri pings sent to AR OA IS TI OI CP RA MA RH; pongs sent to AR TI IS RA.
-   Bookmarks: Conv 19 AR 348 OA 414 IS 193 TI 419 OI 341 CP 157 DA 119 RA 136 RI 70 MA 46. Nothing needs RI.
-   TI 418: gates detached (setsid nohup + kill -0 watcher); TI's self-detaching tools + tools/gate-wait.sh coming.
--5. (2026-11-13) Task 16 event monitor: ri-wt7 branch ri-evmon, e9c48768 (on gate-scratch/RI):
-   test/rcu/evmon.py (RTL event monitor, compare, idle_check), lockstep controls init opnd ev gate row,
-   model gpr_row event, rcu_r SHFL_UP/DOWN/BFLY_R bug fix (amount from v(R1)) with one-hot rcu_xbar sel.
-   Checks green (63/63, 5 controls). Gate in flight: chain-ri22 (cg here; ngd asked of RH; rest polls
-   gate-scratch/RI-export, then gate-push). Status ~/ccv-logs/chain-ri22.out. After push: RI rows to RA
-   (SHFL_*_R bug, xbar sel interface) and TI (lockstep events + controls; mig/restore/guard_fwd not derived).
-   TI notice rev 415 (05:55Z): branch ccr-183cc441-doowtf (21d64a76) lands channel.h creditAtLanding,
-   rcu_ls gate job (run-lockstep.sh + tools/rcu-ls-corrupt.py, which needs lockstep.py read_dump/port_dirs/main
-   and ': DIVERGES at cycle N ' -- e9c48768 keeps all of these; checked), and AR 343 clock-gate hold.
-   Next after push: merge it, call creditAtLanding in the model, drop --credit-lead 1, drop ccv_rcu's wake
-   detector; answer TI rev 415 in the RI tab.
+<<<<<<< HEAD
+-7. NOW (2026-11-13 ~14:00) Pushed 7e29cef5 (SPLIT PASS 24/24, full; cg here chain-ri24, ngd RH):
+   daily sweep merges of all 9 remote branches + evmon e9c48768 + CCV-L04 fix 439179d9. rcu_ls (TI's gate job
+   = run-lockstep.sh + rcu-ls-corrupt.py) passed with event compare. RI-39 (RA: SHFL_*_R bug, xbar one-hot sel,
+   amend Crossbar) and RI-40 (TI: re 415/418) written, RI tab rev 71, notices sent to RA and TI.
+   Bookmarks: Conv 19 AR 348 OA 414 IS 193 TI 419 OI 341 CP 157 DA 119 RA 136 RI 71 MA 46.
+   Fri pings 2026-11-13: pongs checked ok from AR OA IS TI CP RA MA RH; OI no pong yet (check next sweep).
+   NEXT task 16: (a) model: Stub::creditAtLanding(c.ooe_rcu)/(c.lane_rcu) in first work(), take() in landing
+   cycle; lockstep --credit-lead default 0; rerun 63 kernels. (b) drop ccv_rcu wake detector (AR 343 hold in
+   ccv_common_clk), CG/NGD units, lockstep. (c) SV-top with RTL (CCV_RCU_RTL in check-sv-hosted.sh, TI's).
+   (d) Q-53 checkers. Gate: setsid nohup + kill -0 watcher; tools/gate-wait.sh when TI lands it.
 -4. (2026-11-13) Last push 0ace219f (sweep, below); before it fca280c3 (13:29, SPLIT SCOPED PASS 14/23; ngd leg by RH, Daniel OK'd RH
    send-export to gate-scratch/*-export for passing legs). RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) written,
    RI tab rev 70; notices sent. Lock-step 63/63; rcu_blk (TI) passes with its expected-fail.
@@ -79,6 +76,8 @@ architect may approve only if the end meets module NGD without the flop; can't m
    Bookmarks Conv 19 AR 343 OA 411 IS 190 TI 407 OI 338 CP 157 DA 119 RA 136 RI 70 (MA tab: no bookmark yet).
    Long runs: ALWAYS setsid nohup + a waiter; a bg task dies at 2h.
    Next for task 16: model credit move once TI adds channel.h call; RTL event monitor; SV-top with RTL.
+=======
+>>>>>>> origin/ccr-888218a3-20cauz
 -3. NOW (2026-11-09; Daniel's order: class-word NGD -> gate+push ccv_rcu.sv -> lock-step/SV-top -> Q-53 ->
    SW write-back + KILL_DRAIN -> RA reconciliation + Daniel's sign-off). ri-wt7 branch ri-asm3, tip d0076837
    (on gate-scratch/RI): d33d8c70 AR 338/339 kill boundary flops (plain ungated detector flops; rcu_kill epoch at

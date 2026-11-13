@@ -23,6 +23,11 @@ The rules are docs/rtl-coding-style.md, "Local clock gating":
         cone starts only at the module's own flops, never an input.
   RST-1 the reset (2026-10-18): the reset port reaches nothing but the D
         pins of plain flops that capture it; every use is from those.
+  RST-2 the reset's balance (Daniel, 2026-11-09): reset arrives in the
+        same cycle at every endpoint of a module and of an assembled block,
+        a blackboxed child's at its reset port's stage plus its unit's
+        latency; the shallower ones are named with the stages they lack.
+        Across blocks and repeaters, reported only until Q-37's tree.
 
 A clock gate is a group of at least CCV_CG_MIN_FLOPS flops that Yosys infers
 one enable for; the unit's own reset does not split a group. A smaller group
@@ -37,12 +42,13 @@ trace is replayed into the unit's netlist, which must reproduce the bench's
 outputs on every cycle, so what is measured is what the bench ran.
 
 Exceptions, in order: the budgets, then the waivers, then the ratchet.
-CG-5 and RST-1 are structural: no budget takes them. Each module may leave the larger of CCV_CG_BUDGET_PCT of its
-flops and fewer than CCV_CG_MODULE_FLOPS flops outside the rules, smallest
-findings first, findings about flops only; what the modules take counts,
-per instance, against CCV_CG_BUDGET_PCT of each block with RTL, as a sum of
-parts (Daniel, 2026-11-06): no block is synthesised whole; a structural read
-of its hierarchy gives each instance and its parameters, and each instance's
+CG-5, RST-1 and RST-2 are structural: no budget takes them. Each module
+may leave the larger of CCV_CG_BUDGET_PCT of its flops and fewer than
+CCV_CG_MODULE_FLOPS flops outside the rules, smallest findings first,
+findings about flops only; what the modules take counts, per instance,
+against CCV_CG_BUDGET_PCT of each block with RTL, as a sum of parts
+(Daniel, 2026-11-06): no block is synthesised whole; a structural read of
+its hierarchy gives each instance and its parameters, and each instance's
 flops and takes are those of the unit measuring its module at those
 parameters (block_parts). An instance with flops and no unit at its
 parameters fails. What the sum cannot see is what synthesis of the whole
@@ -54,9 +60,9 @@ its flopped reset) are the channel's own, captured every cycle like any
 receiver's: they go straight to the block's budget, its hardening wrapper
 being the partition, and not to the repeater's own allowance, which its
 lead slice still meets (Daniel, 2026-10-19). Then rtl/cg-waivers.json:
-one entry per (module, rule, register), a rule of WAIVER_RULES (CG-1 to CG-5
-and RST-1), each with a reason; a waiver that excuses nothing, including one
-for what a budget already takes, is refused. A CG-5 waiver also names the
+one entry per (module, rule, register), a rule of WAIVER_RULES (CG-1 to
+CG-5, RST-1 and RST-2), each with a reason; a waiver that excuses nothing,
+including one for what a budget already takes, is refused. A CG-5 waiver also names the
 input ports it lets into the enable and states the enable's total depth,
 enable_ngd: the latest port's arrival (its <module>.ngd.json, else
 CCV_NGD_BUDGET - CCV_NGD_PORT) plus the mapped cone. It is refused when an
@@ -98,6 +104,22 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build", "cg")
+
+
+def keep_unit_build():
+    """CCV_KEEP_UNIT_BUILD=1 keeps every unit's work directory (debugging);
+    by default each is removed once its unit is measured (DA, 2026-11-09:
+    a gate's build/cg reached 13-15 GB, and the disk filled mid-gate)."""
+    return os.environ.get("CCV_KEEP_UNIT_BUILD", "") not in ("", "0")
+
+
+def clean_unit_build(path):
+    """Remove a measured unit's work directory, unless CCV_KEEP_UNIT_BUILD.
+    Only once everything later read is in memory: a unit that failed keeps
+    its directory, as the run stops or reports before this. The synthesis
+    cache (build/synth-cache) is never touched."""
+    if not keep_unit_build():
+        shutil.rmtree(path, ignore_errors=True)
 # Yosys, strict (tools/shim/yosys, OI-44): run alone, as under the gate.
 SHIM = os.path.join(ROOT, "tools", "shim")
 if SHIM not in os.environ.get("PATH", "").split(os.pathsep):
@@ -118,7 +140,7 @@ RATCHET_BASELINE = {"ooe_age", "ooe_decq", "ooe_freelist", "ooe_wake",
 # stood when the rules were made, as "<rule> <register or port>" in the
 # ratchet's "findings", ooe_rat's then on OI's branch (b9c3a44). Never add
 # to this.
-FINDING_RULES = ("CG-5", "RST-1")
+FINDING_RULES = ("CG-5", "RST-1", "RST-2")
 FINDINGS_BASELINE = {(m, k) for m, ks in {
     "ooe_age": ["CG-5 older_cq02h"],
     "ooe_confirm": ["CG-5 rep_cq02h", "RST-1 ooe_rst_r00h"],
@@ -178,7 +200,7 @@ NGD_DEFAULT_ARRIVAL = float(param("CCV_NGD_BUDGET")) - float(param("CCV_NGD_PORT
 # (OI-59): the input ports it lets into an enable, and that enable's total
 # depth, the latest port's arrival plus the cone, which must be within
 # CCV_NGD_CG_EN.
-WAIVER_RULES = ("CG-1", "CG-2", "CG-3", "CG-4", "CG-5", "RST-1")
+WAIVER_RULES = ("CG-1", "CG-2", "CG-3", "CG-4", "CG-5", "RST-1", "RST-2")
 WAIVER_KEYS = ("module", "rule", "target", "why", "by", "date")
 CG5_WAIVER_KEYS = ("ports", "enable_ngd")
 # A waiver carries its threshold, failing again past it (Daniel's decision,
@@ -840,7 +862,10 @@ class Netlist:
         """reset: the unit's reset port as "name" or "!name", or None."""
         d = json.load(open(path))
         m = d["modules"][top]
+        # What unit_key reads of the netlist, kept so its file need not be.
+        self.key_info = net_key_info(d["modules"])
         self.ports = m["ports"]
+        self.params = norm_params(m.get("parameter_default_values"))
         rbit = rhigh = None
         if reset:
             rbit = self.ports[reset.lstrip("!")]["bits"][0]
@@ -1024,6 +1049,150 @@ class Netlist:
     def outputs(self):
         return {n: p["bits"] for n, p in self.ports.items() if p["direction"] == "output"}
 
+    def reset_stages(self):
+        """RST-2: every net that carries the unit's reset, with its stage,
+        the flops on it since the port. As reset_nets, and through
+        inverters and buffers too (a reset flopped, then inverted, is still
+        the reset, a stage late), so that a chain continued past one is
+        followed rather than taken for an endpoint."""
+        if hasattr(self, "_rst2"):
+            return self._rst2
+        out = {}
+        if self.rbit is not None:
+            through = collections.defaultdict(list)    # net -> nets carrying it, same stage
+            plain = collections.defaultdict(list)      # net -> Q of plain flops on it
+            for c in self.cells.values():
+                con = c["connections"]
+                if c["type"] in ("$_NOT_", "$_BUF_"):
+                    through[con["A"][0]].append(con["Y"][0])
+                elif c["type"] == "$_DFF_P_":
+                    plain[con["D"][0]].append(con["Q"][0])
+            frontier, k = [self.rbit], 0
+            while frontier:
+                nxt = []
+                stack = list(frontier)
+                while stack:
+                    n = stack.pop()
+                    if n in out:
+                        continue
+                    out[n] = k
+                    stack += through.get(n, [])
+                    nxt += plain.get(n, [])
+                k += 1
+                frontier = [q for q in nxt if q not in out]
+        self._rst2 = out
+        return out
+
+    def reset_endpoints(self, child_resets=None):
+        """RST-2 (Daniel, 2026-11-09): where the unit's reset is used, by
+        stage. An endpoint is every use of a reset net (reset_stages) but
+        the D pin of a plain flop continuing the chain, or an inverter or
+        buffer on it: a flop's reset, set, enable or data pin, which is how
+        Yosys folds a synchronous reset into $_SDFF*_ cells or into D and
+        enable cones; logic, named by the registers, outputs and pins its
+        fan-out cone reaches (a clock gate's enable among them); an output;
+        and any other cell's pin. A blackboxed design child taking the reset
+        on its own reset port (child_resets, OI-71) is not an endpoint here:
+        its unit says when the reset arrives inside it. Returns ({stage:
+        {endpoint name}}, {instance: (module, stage on its reset port, its
+        parameters)})."""
+        child_resets = child_resets or {}
+        rn = self.reset_stages()
+        own, kids = collections.defaultdict(set), {}
+        if self.rbit is None:
+            return own, kids
+        logic = collections.defaultdict(set)
+        for n, p in self.ports.items():
+            if p["direction"] == "output":
+                for b in p["bits"]:
+                    if b in rn:
+                        own[rn[b]].add("output %s" % n)
+        for cn, c in self.cells.items():
+            con, t = c["connections"], c["type"]
+            if t in ("$_NOT_", "$_BUF_") and con["A"][0] in rn and con["Y"][0] in rn:
+                continue
+            if t in GATES:
+                for pin in GATES[t]:
+                    b = con[pin][0]
+                    if b in rn:
+                        logic[rn[b]].add(con["Y"][0])
+                continue
+            if t == "$_DFF_P_" and con["D"][0] in rn and con["Q"][0] in rn:
+                continue
+            if FLOP_RE.match(t):
+                for pin, bits in con.items():
+                    if pin in ("Q", "C"):
+                        continue
+                    for b in bits:
+                        if b in rn:
+                            own[rn[b]].add(self.reg_of(con["Q"][0]))
+                continue
+            dirs = c.get("port_directions", {})
+            mod = cell_module(t)
+            for pin, bits in con.items():
+                if dirs.get(pin, "input") != "input":
+                    continue
+                st = {rn[b] for b in bits if b in rn}
+                if not st:
+                    continue
+                if child_resets.get(mod) == pin and len(bits) == 1:
+                    kids[cn] = (mod, rn[bits[0]], norm_params(c.get("parameters")))
+                else:
+                    for k in st:
+                        own[k].add("pin %s of %s" % (pin, cn))
+        for k, nets in logic.items():
+            own[k] |= self.sinks(nets)
+        return own, kids
+
+    def reg_of(self, q):
+        return re.sub(r"(\[\d+\])+$", "", self.best(q)[0])
+
+    def sinks(self, nets):
+        """What the combinational fan-out of `nets` reaches: registers
+        (by name), outputs and other cells' pins."""
+        if not hasattr(self, "_fanout"):
+            fo = collections.defaultdict(list)
+            for cn, c in self.cells.items():
+                dirs = c.get("port_directions", {})
+                for pin, bits in c["connections"].items():
+                    if c["type"] in GATES:
+                        if pin == "Y":
+                            continue
+                    elif FLOP_RE.match(c["type"]):
+                        if pin in ("Q", "C"):
+                            continue
+                    elif dirs.get(pin, "input") != "input":
+                        continue
+                    for b in bits:
+                        if isinstance(b, int):
+                            fo[b].append((cn, pin))
+            self._fanout = fo
+            self._outbit = {b: n for n, bits in self.outputs().items() for b in bits
+                            if isinstance(b, int)}
+        out, seen, stack = set(), set(), list(nets)
+        while stack:
+            x = stack.pop()
+            if x in seen:
+                continue
+            seen.add(x)
+            if x in self._outbit:
+                out.add("output %s" % self._outbit[x])
+            for cn, pin in self._fanout.get(x, []):
+                c = self.cells[cn]
+                if c["type"] in GATES:
+                    stack.append(c["connections"]["Y"][0])
+                elif FLOP_RE.match(c["type"]):
+                    out.add(self.reg_of(c["connections"]["Q"][0]))
+                else:
+                    out.add("pin %s of %s" % (pin, cn))
+        return out
+
+
+def cell_module(t):
+    """The design module a cell instantiates, from Yosys's name for it."""
+    mm = re.match(r"^\\?\$paramod(?:\$[0-9a-f]+)?\\([^\\]+)", t)
+    return mm.group(1) if mm else t.lstrip("\\")
+
 
 def ranges(ix):
     ix = sorted(set(ix))
@@ -1181,10 +1350,10 @@ class Unit:
         s = self.spec
         defs = " ".join("-D%s" % d for d in s.get("defines", []))
         files = ["rtl/ccv_assert_pkg.sv"] + s["files"]
-        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated -Irtl/top/ports %s"
                 % (defs, " ".join(files))]
         for bb in sorted(s.get("blackbox", {})):
-            cmds.append("read_verilog -sv -lib -Irtl/include -Irtl/generated %s"
+            cmds.append("read_verilog -sv -lib -Irtl/include -Irtl/generated -Irtl/top/ports %s"
                         % s["blackbox"][bb])
         if s.get("params"):
             cmds.append("chparam %s %s" % (" ".join(
@@ -1340,7 +1509,8 @@ endmodule
         shutil.rmtree(hd, ignore_errors=True)
         r = run(["verilator"] + self.replay_make() + [
                  "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
-                 "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb"]
+                 "-Wno-style", "-Irtl/include", "-Irtl/generated",
+                 "-Irtl/top/ports", "--top-module", "cg_tb"]
                 # A blackboxed child may instantiate a shared cell (OI-77: ooe_freelist's
                 # ccv_common_csa). A library directory resolves only modules still
                 # missing, so the netlist's flattened copy never clashes.
@@ -1468,6 +1638,10 @@ endmodule
         if self.errors:
             return
         self.stats(replays)
+        # Measured: everything later read (findings, block budget, RST-2,
+        # coverage, the report) is in memory, unit_key's netlist parameters
+        # too (Netlist.key_info). The work directory goes (DA, 2026-11-09).
+        clean_unit_build(self.dir)
 
 
 def dcge(u, key, sc):
@@ -1564,7 +1738,88 @@ def source_findings(u, resets=None):
             name = u.spec["reset"].lstrip("!")
             out.append(Finding("RST-1", u.module, {name}, "reset %s is used before it is "
                                "flopped: %s" % (name, "; ".join(loads)), u.name))
+    # RST-2 (Daniel, 2026-11-09): the module's own endpoints in one cycle.
+    u.rst_own, u.rst_kids = nl.reset_endpoints(resets)
+    if len(u.rst_own) > 1:
+        out.append(rst2_finding(u.module, u.name, u.rst_own, set(),
+                                "its own registers"))
     return out
+
+
+def rst2_names(names, insts, k=6):
+    ns = sorted(names)
+    txt = ", ".join(("instance %s" % n) if n in insts else n for n in ns[:k])
+    return txt + (" and %d more" % (len(ns) - k) if len(ns) > k else "")
+
+
+def rst2_finding(module, unit, arr, insts, where):
+    """An RST-2 finding from arrivals by cycle, {cycle: {endpoint}}: every
+    group short of the deepest, by name, with the reset stages it lacks.
+    Its registers are the shallower endpoints, an instance by its path, as
+    a waiver names them."""
+    deep = max(arr)
+    regs, parts = set(), []
+    for k in sorted(arr):
+        if k == deep:
+            continue
+        regs |= set(arr[k])
+        parts.append("cycle %d at %s, needs +%d reset stage%s"
+                     % (k, rst2_names(arr[k], insts), deep - k, "s" if deep - k > 1 else ""))
+    return Finding("RST-2", module, regs, "reset arrives in %d different cycles in %s, the "
+                   "deepest %d (%s): %s" % (len(arr), where, deep,
+                                            rst2_names(arr[deep], insts, 3), "; ".join(parts)),
+                   unit)
+
+
+def rst2_match(units, mod, ps):
+    """The units of `mod` whose netlist parameters agree with an instance's
+    (its cell's, in the parent's netlist)."""
+    return [x for x in units if x.module == mod and x.nl is not None
+            and all(x.nl.params.get(p) == v for p, v in ps.items())]
+
+
+def reset_tree(units):
+    """RST-2 across blackboxed children, at module level: a unit's own
+    endpoints and, for each child it blackboxes, the stage on the child's
+    reset port plus the child's own latency (the unit that measures the
+    child's module at its cell's parameters), recursively, all in one
+    cycle. A unit's latency is its deepest arrival; a unit with no
+    endpoints, or a child with none, imposes nothing. Returns the findings,
+    the lines (a child whose latency is unknown) and {unit: latency}."""
+    have = [u for u in units if hasattr(u, "rst_own")]
+    memo, out, lines = {}, [], []
+
+    def lat(u, stack=()):
+        if u.name in memo:
+            return memo[u.name]
+        if u.name in stack:
+            return None
+        arr = collections.defaultdict(set)
+        for k, ns in u.rst_own.items():
+            arr[k] |= ns
+        insts = set()
+        for cn, (mod, k, ps) in sorted(u.rst_kids.items()):
+            ls = {lat(x, stack + (u.name,)) for x in rst2_match(have, mod, ps)}
+            if len(ls) != 1:
+                lines.append("RST-2: %s's child %s (%s): its reset latency is %s, so not "
+                             "checked here" % (u.name, cn, mod, "unknown (no unit measured "
+                             "at its parameters in this run)" if not ls else
+                             "ambiguous (%s)" % sorted(ls, key=str)))
+                continue
+            l = ls.pop()
+            if l is None:
+                continue
+            arr[k + l].add(cn)
+            insts.add(cn)
+        if len(arr) > 1 and insts:
+            out.append(rst2_finding(u.module, u.name, arr, insts,
+                                    "its registers and blackboxed children"))
+            u.rst2_tree = True
+        memo[u.name] = max(arr) if arr else None
+        return memo[u.name]
+    for u in have:
+        lat(u)
+    return out, lines, memo
 
 
 def scenario_findings(u):
@@ -1717,16 +1972,17 @@ def read_cmds(files, blackbox=(), params=None, top=None, defines=(), lib=(), def
     ds = " ".join("-D%s" % d for d in defines)
     full = [f for f in files if f not in lib]
     if defer:
-        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv"
-                % ds]
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated -Irtl/top/ports "
+                "rtl/ccv_assert_pkg.sv" % ds]
         if full:
-            cmds.append("read_verilog -sv -formal -defer %s -Irtl/include -Irtl/generated %s"
-                        % (ds, " ".join(full)))
+            cmds.append("read_verilog -sv -formal -defer %s -Irtl/include -Irtl/generated "
+                        "-Irtl/top/ports %s" % (ds, " ".join(full)))
     else:
-        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
+        cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated -Irtl/top/ports %s"
                 % (ds, " ".join(["rtl/ccv_assert_pkg.sv"] + full))]
     for f in [f for f in files if f in lib] + list(blackbox):
-        cmds.append("read_verilog -sv -lib %s -Irtl/include -Irtl/generated %s" % (ds, f))
+        cmds.append("read_verilog -sv -lib %s -Irtl/include -Irtl/generated -Irtl/top/ports %s"
+                    % (ds, f))
     if params:
         cmds.append("chparam %s %s" % (" ".join(
             "-set %s %s" % (k, v) for k, v in sorted(params.items())), top))
@@ -1793,7 +2049,11 @@ class Structure:
     of its own. Modules read -lib are leaves whose instances carry their
     parameter overrides. `top` is the read's top, as the netlist names it."""
 
-    def __init__(self, name, top, files, blackbox=(), params=None, defines=(), keep=()):
+    def __init__(self, name, top, files, blackbox=(), params=None, defines=(), keep=(),
+                 build=None):
+        """`build`: the caller's own build directory (check-ngd's, build/ngd),
+        so no check writes under another's, which the gate may clear once
+        that check is done; check-cg's by default."""
         self.name, self.files, self.blackbox = name, list(files), list(blackbox)
         self.params, self.defines = params, list(defines)
         texts, where = {}, {}
@@ -1813,7 +2073,7 @@ class Structure:
                     and not re.search(r"\b(package|interface)\b", raw)):
                 lib.add(f)
         self.lib_files = lib
-        work = os.path.join(BUILD, "struct_" + name)
+        work = os.path.join(build or BUILD, "struct_" + name)
         os.makedirs(work, exist_ok=True)
         jf = os.path.join(work, "struct.json")
         self.cmds = read_cmds(files, blackbox, params, top, defines, lib, defer=True) + [
@@ -1825,6 +2085,8 @@ class Structure:
             raise SystemExit("check-cg: %s: the structural read failed:\n%s"
                              % (name, (r.stdout + r.stderr)[-2000:]))
         self.mods = json.load(open(jf))["modules"]
+        # Read: nothing reads the file again (DA, 2026-11-09).
+        clean_unit_build(work)
         libmods = {n for n, w in where.items() if w in lib}
         bb = {m for m, v in self.mods.items() if v.get("attributes", {}).get("blackbox")}
         # Leaves read -lib, at their own parameters or (dynports) derived.
@@ -1894,15 +2156,26 @@ class Structure:
         return out
 
 
+def net_key_info(mods):
+    """What unit_key reads of a netlist's modules: each module's parameter
+    values, and which is the top."""
+    return ({n: v.get("parameter_default_values") for n, v in mods.items()},
+            next((n for n, v in mods.items() if v.get("attributes", {}).get("top")), None))
+
+
 def unit_key(spec, netlist):
     """What a unit measures: its module, every parameter's value as its own
-    netlist (`netlist`, the unit's synthesised JSON) records it, the names
-    its params set, and its defines. A unit read with defines stands for no
-    instance: a block is read without."""
-    d = json.load(open(netlist))["modules"]
-    m = d.get(spec["module"]) or next(v for v in d.values() if v.get("attributes", {}).get("top"))
+    netlist (`netlist`, the unit's synthesised JSON, or its net_key_info,
+    kept once the file is cleaned away) records it, the names its params
+    set, and its defines. A unit read with defines stands for no instance:
+    a block is read without."""
+    if isinstance(netlist, str):
+        netlist = net_key_info(json.load(open(netlist))["modules"])
+    pdv, top = netlist
+    # As the netlist's own module when it has one by that name, else its top.
+    m = pdv[spec["module"]] if spec["module"] in pdv else pdv[top]
     return (spec["module"],
-            tuple(sorted(norm_params(m.get("parameter_default_values")).items())),
+            tuple(sorted(norm_params(m).items())),
             frozenset(spec.get("params") or {}), tuple(spec.get("defines", [])))
 
 
@@ -1936,8 +2209,24 @@ def unit_regs(u):
 
 
 def cg_keyed(units):
-    return [(u, unit_key(u.spec, os.path.join(u.dir, "net.json"))) for u in units
-            if u.nl is not None]
+    # Kept per unit, for its spec as it stands (a copy read otherwise is
+    # another unit): the block budget and RST-2 both look units up.
+    for u in units:
+        if u.nl is not None and getattr(u, "_ukey", (None,))[0] is not u.spec:
+            u._ukey = (u.spec, unit_key(u.spec, u.nl.key_info))
+    return [(u, u._ukey[1]) for u in units if u.nl is not None]
+
+
+_STRUCTS = {}
+
+
+def structure(name, top, files, blackbox):
+    """A block's structural read, once per run: the block budget and RST-2
+    both walk it."""
+    k = (name, top, tuple(files), tuple(blackbox))
+    if k not in _STRUCTS:
+        _STRUCTS[k] = Structure(name, top, files, blackbox)
+    return _STRUCTS[k]
 
 
 def block_parts(name, top, files, blackbox, units):
@@ -1950,7 +2239,7 @@ def block_parts(name, top, files, blackbox, units):
     inner helper) counts nothing and its children are walked. Returns the
     total, the instances as [(module, multiplicity, flops per register,
     unit)], the failures and the structure."""
-    st = Structure("blk_" + name, top, files, blackbox)
+    st = structure("blk_" + name, top, files, blackbox)
     keyed = cg_keyed(units)
     mult, missing = collections.Counter(), collections.OrderedDict()
 
@@ -1980,6 +2269,89 @@ def block_parts(name, top, files, blackbox, units):
     inst = [(by[n].module, k, unit_regs(by[n]), n) for n, k in mult.items()]
     total = sum(len(by[n].nl.flops) * k for n, k in mult.items())
     return total, inst, fails, st
+
+
+def block_reset(name, top, files, blackbox, units):
+    """RST-2 over an assembled block (Daniel, 2026-11-09), on block_parts'
+    structural read and unit lookup: each instance with a unit arrives at
+    its own endpoints' cycle and, for each child its unit blackboxes, at
+    the stage on that child's reset port plus the child's latency, at the
+    child's parameters, recursively; a level with no state of its own (a
+    wrapper, wiring) hands the reset on unflopped, so each child fed
+    straight from one of its inputs arrives at its own latency. Every level
+    in one cycle, or a finding names the shallower instances and the reset
+    stages each lacks. Returns the findings and the block's latency."""
+    st = structure("blk_" + name, top, files, blackbox)
+    keyed = cg_keyed(units)
+    resets = child_resets(units)
+    out = []
+
+    def join(path, cn):
+        return "%s.%s" % (path, cn) if path else cn
+
+    def lat(mn, cell, path):
+        """(latency or None, the reset port it came in on)"""
+        u = find_unit(st, st.key(mn, cell), keyed)
+        arr, insts = collections.defaultdict(set), set()
+        if u is not None:
+            if not hasattr(u, "rst_own"):
+                return None, None
+            for k, ns in u.rst_own.items():
+                arr[k] |= {join(path, n) if path else n for n in ns}
+            bb = set(u.spec.get("blackbox", {}))
+            for cn, t in st.cells(mn):
+                if src_name(t) not in bb:
+                    continue
+                kp = join(path, cn)
+                l, _ = lat(t, (mn, cn), kp)
+                kid = u.rst_kids.get(cn)
+                if l is not None and kid is not None:
+                    arr[kid[1] + l].add(kp)
+                    insts.add(kp)
+            mod, port = u.module, (u.spec.get("reset") or "").lstrip("!") or None
+            done = getattr(u, "rst2_tree", False)
+        else:
+            m = st.mods[mn]
+            inbit = {b: n for n, p in m.get("ports", {}).items() if p["direction"] == "input"
+                     for b in p["bits"]}
+            ports = set()
+            for cn, t in st.cells(mn):
+                kp = join(path, cn)
+                l, rp = lat(t, (mn, cn), kp)
+                bits = m["cells"][cn]["connections"].get(rp or "", [])
+                if l is None or len(bits) != 1 or bits[0] not in inbit:
+                    continue
+                arr[l].add(kp)
+                insts.add(kp)
+                ports.add(inbit[bits[0]])
+            mod, port, done = src_name(mn), (ports.pop() if len(ports) == 1 else None), False
+        if len(arr) > 1 and insts and not done:
+            out.append(rst2_finding(mod, u.name if u else None, arr, insts,
+                                    "block %s at %s" % (name, path or top)))
+        return (max(arr) if arr else None), port
+    l, _ = lat(st.top, None, "")
+    return out, l
+
+
+def reset_global(units, blocks):
+    """The global balance, report-only until the reset tree is modelled
+    (Q-37: ccv_top fans rst_n to every block unflopped): each block's
+    latency and each repeater kind's, and the spread."""
+    lat = {}
+    for name, l in sorted(blocks.items()):
+        if l is not None:
+            lat["block " + name] = l
+    for u in units:
+        if u.module == RPT and getattr(u, "rst_own", None):
+            lat["repeater %s" % u.name] = max(u.rst_own)
+    lines = ["RST-2 global: %-40s reset arrives at cycle %d" % (k, v)
+             for k, v in sorted(lat.items())]
+    vals = set(lat.values())
+    lines.append("RST-2 global: spread %s over %d block(s) and repeater(s); report-only, not "
+                 "failed, until the reset tree is modelled (Q-37)"
+                 % ("%d cycle(s), %d to %d" % (max(vals) - min(vals), min(vals), max(vals))
+                    if vals else "unknown", len(lat)))
+    return lines
 
 
 def partitions(modules):
@@ -2279,7 +2651,12 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
     budgets' lines."""
     fails = []
     fratchet = fratchet or {}
+    blats = {}
+    for name, top, files, bbs in parts:
+        more, blats[name] = block_reset(name, top, files, bbs, units)
+        findings.extend(more)
     lines = module_budget(findings, units)
+    lines += reset_global(units, blats)
     for f in findings:
         if f.status != "open":
             continue
@@ -2465,6 +2842,15 @@ def main_check(only=None, verbose=False):
             continue
         findings += unit_findings(u) + scenario_findings(u)
     findings += form_check(modules, units) + coverage_check(modules, units)
+    more, rlines, rlat = reset_tree(units)
+    findings += more
+    for l in rlines:
+        print("  " + l)
+    for u in units:
+        if rlat.get(u.name) is not None and only:
+            off = any(f.rule == "RST-2" and f.unit == u.name for f in findings)
+            print("  RST-2: %s's reset arrives at cycle %d at %s" % (
+                u.name, rlat[u.name], "its deepest endpoints" if off else "every endpoint"))
     if only:
         for f in findings:
             print("    " + str(f))
@@ -2733,6 +3119,42 @@ def selftest():
         if not cond:
             bad.append(what)
 
+    # 0. Each unit's work directory goes once it is measured (DA,
+    #    2026-11-09), and nothing measured changes: cg_fx_good measured
+    #    with CCV_KEEP_UNIT_BUILD=1 keeps its directory, without it leaves
+    #    none, and the two read the same numbers, findings and unit_key. A
+    #    unit that failed keeps its directory. Every control below reads
+    #    the fixtures' units with their directories gone (unless kept).
+    runs, was = {}, os.environ.get("CCV_KEEP_UNIT_BUILD")
+    try:
+        for keep in ("1", "0"):
+            os.environ["CCV_KEEP_UNIT_BUILD"] = keep
+            x = fixture_unit("fx_keep%s" % keep, "cg_fx_good")
+            shutil.rmtree(x.dir, ignore_errors=True)
+            x.measure(vcds=vcds)
+            runs[keep] = x
+    finally:
+        if was is None:
+            os.environ.pop("CCV_KEEP_UNIT_BUILD", None)
+        else:
+            os.environ["CCV_KEEP_UNIT_BUILD"] = was
+    kept, gone = runs["1"], runs["0"]
+
+    def as_read(u):
+        return sorted(str(f).replace(u.name, "U") for f in
+                      source_findings(u) + unit_findings(u) + scenario_findings(u))
+    expect(os.path.isfile(os.path.join(kept.dir, "net.json")),
+           "with CCV_KEEP_UNIT_BUILD=1 a measured unit's work directory was removed")
+    expect(not os.path.exists(gone.dir),
+           "a measured unit's work directory was left: %s" % gone.dir)
+    expect(not kept.errors and not gone.errors and kept.data == gone.data
+           and kept.obs == gone.obs and as_read(kept) == as_read(gone)
+           and cg_keyed([kept])[0][1] == cg_keyed([gone])[0][1],
+           "a unit measured with its work directory cleaned reads otherwise than one kept")
+    expect(os.path.isdir(failing.dir), "a unit that failed lost its work directory")
+    expect(keep_unit_build() or not any(os.path.exists(u.dir) for u in allu),
+           "a fixture unit's work directory was left after it was measured")
+
     # 1. The compliant fixtures have nothing but their flopped reset and
     #    valid, which their allowance takes: a 20-flop gate, a 256-flop gate,
     #    and a free-running LFSR, which is ungated by measurement.
@@ -2910,6 +3332,8 @@ def selftest():
     expect(total == want == 520 and not cover,
            "a block's flops are not its instances' units' sum: %d, want %d (520): %s"
            % (total, want, cover))
+    expect(keep_unit_build() or not os.path.exists(os.path.join(BUILD, "struct_blk_fx_ok")),
+           "a structural read's work directory was left once read")
     mis = __import__("copy").copy(units["cg_fx_small"])
     mis.spec = dict(mis.spec, name="fx_small_misread", defines=["CG_FX_MISREAD"])
     mis.name = "fx_small_misread"
@@ -3123,6 +3547,77 @@ def selftest():
     fails, _ = run_policy(("cg_fx_form",), [wv("cg_fx_form", "CG-9", "d_q")])
     expect(any("not one a waiver may name" in x for x in fails),
            "a waiver of an unknown rule was accepted")
+    # 19c. RST-2 (Daniel, 2026-11-09): reset arrives in one cycle at every
+    #      endpoint. (a) cg_fx_rst2a's a_q at stage 1 and b_q at 2: caught,
+    #      a_q needing +1. Across a blackboxed child (cg_fx_good, latency 1),
+    #      at module level (reset_tree) and over the block's structural read
+    #      (block_reset): (b) the parent at 1 handing its flopped reset to
+    #      the child, which arrives at 2: caught, "needs +1"; (c) the same
+    #      padded a stage: passes; (d) the child on the raw port reset
+    #      beside the parent at 1: passes; a wrapper with no state feeding
+    #      (c), at 2, and the child, at 1, from its port: caught at the
+    #      wrapper. (e) A waiver clears (a); a stale one is refused.
+    good = units["cg_fx_good"]
+    gfile = "test/cg/fixtures/cg_fx_good.sv"
+
+    def rst2_unit(mod, kid=True):
+        x = Unit({"name": "fx_" + mod[6:], "module": mod,
+                  "files": ["test/cg/fixtures/%s.sv" % mod], "clock": "clk", "reset": "rst",
+                  "blackbox": {"cg_fx_good": gfile} if kid else {}}, "selftest")
+        x.synth()
+        return x
+    ua = rst2_unit("cg_fx_rst2a", kid=False)
+    fa = has("RST-2", "cg_fx_rst2a", None, source_findings(ua))
+    expect(len(fa) == 1 and fa[0].regs == {"a_q"} and "needs +1 reset stage" in fa[0].msg
+           and "b_q" in fa[0].msg,
+           "RST-2 missed a module whose flops take reset at stages 1 and 2: %s"
+           % [str(f) for f in fa])
+    expect(not has("RST-2", "cg_fx_good", None),
+           "RST-2 flagged a module whose endpoints all take reset at stage 1")
+    kids = {}
+    for v in "pbd":
+        kids[v] = rst2_unit("cg_fx_rst2" + v)
+        own = has("RST-2", kids[v].module, None, source_findings(kids[v], {"cg_fx_good": "rst"}))
+        expect(not own and set(kids[v].rst_own) == {2 if v == "b" else 1}
+               and set(kids[v].rst_kids) == {"u_kid"},
+               "RST-2: %s's own endpoints, or its child's reset port, read wrong: %s, %s, %s"
+               % (kids[v].module, dict(kids[v].rst_own), kids[v].rst_kids, own))
+    for v, want in (("p", True), ("b", False), ("d", False)):
+        mf, _, lats = reset_tree([kids[v], good])
+        hit = has("RST-2", kids[v].module, None, mf)
+        expect(bool(hit) == want and (not want or (hit[0].regs == {"p_q"}
+                                                    and "needs +1 reset stage" in hit[0].msg
+                                                    and "instance u_kid" in hit[0].msg))
+               and lats.get(kids[v].name) == (2 if v in "pb" else 1),
+               "RST-2 across a child (cg_fx_rst2%s) %s: %s, latency %s"
+               % (v, "missed" if want else "refused a balanced parent", [str(f) for f in hit],
+                  lats.get(kids[v].name)))
+        for f in kids[v].__dict__.keys() & {"rst2_tree"}:
+            delattr(kids[v], f)
+        bf, blat = block_reset("fx_rst2" + v, "cg_fx_rst2" + v,
+                               [gfile, "test/cg/fixtures/cg_fx_rst2%s.sv" % v], [],
+                               [kids[v], good])
+        hit = has("RST-2", kids[v].module, None, bf)
+        expect(bool(hit) == want and (not want or ("needs +1" in hit[0].msg
+                                                    and "block fx_rst2p" in hit[0].msg))
+               and blat == (2 if v in "pb" else 1),
+               "RST-2 over the block cg_fx_rst2%s %s: %s, latency %s"
+               % (v, "missed" if want else "refused a balanced parent", [str(f) for f in bf],
+                  blat))
+    bf, _ = block_reset("fx_rst2w", "cg_fx_rst2w",
+                        [gfile, "test/cg/fixtures/cg_fx_rst2b.sv",
+                         "test/cg/fixtures/cg_fx_rst2w.sv"], [], [kids["b"], good])
+    hit = has("RST-2", "cg_fx_rst2w", None, bf)
+    expect(len(bf) == 1 and hit and hit[0].regs == {"u_one"}
+           and "instance u_one, needs +1" in hit[0].msg,
+           "RST-2 missed a wrapper feeding children of latency 2 and 1: %s" % [str(f) for f in bf])
+    amod = {"cg_fx_rst2a": ("f", "", 1)}
+    fails, _ = policy(list(fa), amod, [ua], [wv("cg_fx_rst2a", "RST-2", "a_q")], {})
+    expect(fa and all(f.status == "waived" for f in fa) and not fails,
+           "an RST-2 waiver did not clear its finding: %s" % fails)
+    fails, _ = policy([], amod, [ua], [wv("cg_fx_rst2a", "RST-2", "b_q")], {})
+    expect(any("RST-2 b_q excuses nothing" in x for x in fails),
+           "a stale RST-2 waiver was accepted: %s" % fails)
     # 18. Every repeater instantiation is a unit, checked like any module.
     #     Its control pulses (valid, wake, credit and stall at each stage,
     #     and the flopped reset) count against its wrapper's budget, not its
@@ -3270,7 +3765,8 @@ def selftest():
     if not bad:
         print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
               "ratchet, coverage, module and block budgets as a sum of parts, "
-              "enable sources and the reset, repeater instantiations, kept copies, the "
+              "enable sources and the reset, the reset's balance (RST-2), repeater "
+              "instantiations, kept copies, the "
               "synthesis cache, heavy units one at a time (%d controls)" % checks)
     return 1 if bad else 0
 

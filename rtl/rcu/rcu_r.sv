@@ -14,8 +14,9 @@
 //
 // Port timing (local stages, cr01h = A-1 ... cr04h = A+2):
 //   cr01h  iv: the R issue valid lead (the op is in A next cycle)
-//   cr02h  A: the payload (kind decoded by the block's op-class decode, as
-//          the model's RKind). rw_v, pr_v: the RW and PR ports' valids
+//   cr02h  A: the payload, and its class word (rcu_isd decodes the lead's
+//          opcode in A-1 by rcu_dec_pkg, the model's op-class decode, to
+//          the model's RKind; RA-43, RI-25). rw_v, pr_v: the RW and PR ports' valids
 //   cr03h  A+1: the slices' rsrc (R0, R1 raw rows); R2's row; active, RA,
 //          RB and rlow from the predicate file's flops. RW's row and
 //          sections, PR's row and old row (no-select rows when the op writes no GPR or
@@ -52,11 +53,12 @@ module rcu_r #(
   input  logic                rst_n,
   // The R slot: the valid lead, then the payload.
   input  logic                iv_cr01h,        // R issues next cycle (the lead's valid)
-  input  logic [4:0]          kind_cr02h,      // the model's RKind
+  input  logic [rcu_dec_pkg::CLS_W-1:0] ocl_cr02h, // op class (rcu_isd's flops from the lead)
   input  logic [WT-1:0]       tag_cr02h,       // rob_tag
   input  logic [1:0]          drow_cr02h,      // done_row
   input  logic [N-1:0]        imask_cr02h,     // issue_mask
-  input  logic [31:0]         imm_cr02h,
+  input  logic [31:0]         lrp_cr01h,       // lead_rpsrc: R's whole imm, in A-1 only (RA-43)
+  input  logic [2*WR-1:0]     lps_cr01h,       // lead_phys_src, R0 at [7:0], R1 at [15:8]: R's rows, in A-1 only (RA-43)
   input  logic [WR-1:0]       dst_cr02h,       // phys_dst
   input  logic [1:0]          dpos_cr02h,      // dst_pos
   input  logic [1:0]          dwid_cr02h,      // dst_width
@@ -76,6 +78,8 @@ module rcu_r #(
   input  logic [N-1:0]        rpa_cr03h,       // RA, negate and forward applied
   input  logic [N-1:0]        rpb_cr03h,       // RB
   input  logic [N-1:0]        low_cr03h,       // rlow_a: one-hot of active's lowest lane
+  // R's source rows for the slices' reads in A, from this module's capture.
+  output logic [2*WR-1:0]     rr_row_cr02h,    // R0 at [7:0], R1 at [15:8]
   // RW: valid, row and sections, data on every lane.
   output logic                busy_cr03h,      // to rcu_kill's idle and done wake: R's pipe valid
   output logic                rw_v_cr02h,
@@ -103,14 +107,24 @@ module rcu_r #(
 
   // The model's RKind.
   localparam logic [4:0] K_BRA = 5'd1, K_CALL = 5'd2, K_RET = 5'd3, K_PAND = 5'd4,
-    K_POR = 5'd5, K_PXOR = 5'd6, K_PMOV = 5'd7, K_MOVI = 5'd8, K_SHI = 5'd9,
+    K_POR = 5'd5, K_PXOR = 5'd6, K_PMOVI = 5'd7, K_MOVI = 5'd8, K_SHI = 5'd9,
     K_SHR = 5'd10, K_SHU = 5'd11, K_SHD = 5'd12, K_SHB = 5'd13, K_VANY = 5'd14,
-    K_VALL = 5'd15, K_BAL = 5'd16, K_UNB = 5'd17;
+    K_VALL = 5'd15, K_BAL = 5'd16, K_UNB = 5'd17, K_PMOV = 5'd18;
 
-  logic rst_r01h;
+  // The op class (RI-21 (4)), rcu_isd's flops: this module reads only its
+  // own fields.
+  /* verilator lint_off UNUSEDSIGNAL */
+  wire [rcu_dec_pkg::CLS_W-1:0] cls_cr02h = ocl_cr02h;
+  /* verilator lint_on UNUSEDSIGNAL */
+  wire [4:0] kind_cr02h = cls_cr02h[rcu_dec_pkg::CLS_RK +: 5];
+  wire [2:0] unit_cr02h = cls_cr02h[rcu_dec_pkg::CLS_UNIT +: 3];
+
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_cr01h_n;
   always_ff @(posedge rcu_core_clk) begin
-    rst_r01h <= !rst_n;
+    rst_cr01h_n <= rst_n;
   end
+  wire rst_r01h = !rst_cr01h_n;
 
   function automatic logic [31:0] em(input logic [1:0] w);
     em = (w == 2'd0) ? 32'hffff_ffff : (w == 2'd1) ? 32'h0000_ffff :
@@ -143,6 +157,22 @@ module rcu_r #(
   assign rw_v_cr02h = iv_cr02h;
   assign pr_v_cr02h = iv_cr02h;
 
+  // ---- R's moved leads, kept for A (RA-43) --------------------------------
+  // R's payload carries neither its imm nor its source rows: lead_rpsrc and
+  // lead_phys_src, beside R's valid in A-1, are captured here under that
+  // valid and hold the values in A as the payload would (CG-5 lead waiver,
+  // Daniel's ruling on RI-15). The rows drive an output: their own copy.
+  wire rl_en_cr01h = iv_cr01h;
+  logic [31:0] imm_cr02h;
+  (* keep *) logic [2*WR-1:0] rrow_cr02h;
+  always_ff @(posedge rcu_core_clk) begin
+    if (rl_en_cr01h) begin
+      imm_cr02h  <= lrp_cr01h;
+      rrow_cr02h <= lps_cr01h;
+    end
+  end
+  assign rr_row_cr02h = rrow_cr02h;
+
   // ---- A: the payload into r_a -------------------------------------------
   wire k_call_cr02h = kind_cr02h == K_CALL;
   wire k_movi_cr02h = kind_cr02h == K_MOVI;
@@ -150,7 +180,8 @@ module rcu_r #(
   wire k_bal_cr02h  = kind_cr02h == K_BAL;
   wire k_vote_cr02h = kind_cr02h == K_VANY || kind_cr02h == K_VALL;
   wire k_unb_cr02h  = kind_cr02h == K_UNB;
-  wire k_plog_cr02h = kind_cr02h >= K_PAND && kind_cr02h <= K_PMOV;
+  wire k_plog_cr02h = (kind_cr02h >= K_PAND && kind_cr02h <= K_PMOVI) ||
+                      kind_cr02h == K_PMOV;
   wire k_br_cr02h   = kind_cr02h >= K_BRA && kind_cr02h <= K_RET;
   wire wg_cr02h     = k_call_cr02h | k_movi_cr02h | k_shf_cr02h | k_bal_cr02h;
   wire wp_cr02h     = k_plog_cr02h | k_vote_cr02h | k_unb_cr02h;
@@ -174,12 +205,21 @@ module rcu_r #(
   wire ix_en_cr02h = iv_cr02h;
   logic [N*5-1:0] ix_cr03h;
   logic           ixr_cr03h;     // the register-index form: idx from v(R1)
+  // The register-amount forms of up, down and butterfly (shfl_*_r, the
+  // class's ireg): each lane's amount is v(R1)'s low 5 bits, known only in
+  // A+1, so their selects are made there (sel_cr03h; out of 0..31 the lane
+  // keeps its own, O-85). iim: an immediate form, its index in ix.
+  logic           iru_cr03h, ird_cr03h, irb_cr03h, iim_cr03h;
   logic           kshf_cr03h, kimm_cr03h, kbal_cr03h;
   logic [31:0]    em_cr03h;      // em(dst width)
   always_ff @(posedge rcu_core_clk) begin
     if (ix_en_cr02h) begin
       ix_cr03h   <= ixv_cr02h;
       ixr_cr03h  <= kind_cr02h == K_SHR;
+      iru_cr03h  <= cls_cr02h[rcu_dec_pkg::CLS_IREG] && kind_cr02h == K_SHU;
+      ird_cr03h  <= cls_cr02h[rcu_dec_pkg::CLS_IREG] && kind_cr02h == K_SHD;
+      irb_cr03h  <= cls_cr02h[rcu_dec_pkg::CLS_IREG] && kind_cr02h == K_SHB;
+      iim_cr03h  <= kind_cr02h != K_SHR && !cls_cr02h[rcu_dec_pkg::CLS_IREG];
       kshf_cr03h <= k_shf_cr02h;
       kimm_cr03h <= k_call_cr02h | k_movi_cr02h;
       kbal_cr03h <= k_bal_cr02h;
@@ -238,13 +278,35 @@ module rcu_r #(
     end
   end
 
-  logic [N*5-1:0]  idx_cr03h;
+  // Each output lane's one-hot select. The register forms decode the
+  // lane's own amount c = v(R1)[4:0] once and rewire it: idx s takes oh[s],
+  // up oh[l - s] (and its own lane past 0), down oh[s - l] (its own past
+  // 31), butterfly oh[l ^ s]. The immediate forms decode their index.
+  logic [N*N-1:0]  sel_cr03h;
   logic [N*32-1:0] xo_cr03h;
   always_comb begin
-    for (int l = 0; l < N; l++)
-      idx_cr03h[l*5 +: 5] = ixr_cr03h ? rs1a_cr03h[l*32 +: 5] : ix_cr03h[l*5 +: 5];
+    for (int l = 0; l < N; l++) begin
+      logic [4:0]   c_cr03h;
+      logic [N-1:0] oh_cr03h, ohi_cr03h;
+      c_cr03h = rs1a_cr03h[l*32 +: 5];
+      for (int k = 0; k < N; k++) begin
+        oh_cr03h[k]  = c_cr03h == 5'(k);
+        ohi_cr03h[k] = ix_cr03h[l*5 +: 5] == 5'(k);
+      end
+      for (int s = 0; s < N; s++) begin
+        logic up_cr03h, dn_cr03h;
+        up_cr03h = (l >= s) ? oh_cr03h[l - s] : 1'b0;
+        dn_cr03h = (s >= l) ? oh_cr03h[s - l] : 1'b0;
+        if (s == l) begin
+          up_cr03h = up_cr03h | (c_cr03h > 5'(l));
+          dn_cr03h = dn_cr03h | (c_cr03h > 5'(N - 1 - l));
+        end
+        sel_cr03h[l*N + s] = (ixr_cr03h & oh_cr03h[s]) | (iru_cr03h & up_cr03h) | (ird_cr03h & dn_cr03h) |
+                             (irb_cr03h & oh_cr03h[l ^ s]) | (iim_cr03h & ohi_cr03h[s]);
+      end
+    end
   end
-  rcu_xbar #(.LANES(N), .W(32)) u_xbar (.src(rs0a_cr03h), .idx(idx_cr03h), .out(xo_cr03h));
+  rcu_xbar #(.LANES(N), .W(32)) u_xbar (.src(rs0a_cr03h), .sel(sel_cr03h), .out(xo_cr03h));
 
   // The result's masks by op, em applied: off the crossbar's path.
   wire [31:0] xm_cr03h   = {32{kshf_cr03h}} & em_cr03h;
@@ -296,7 +358,8 @@ module rcu_r #(
       K_PAND:  pv_cr03h = rpa_cr03h & rpb_cr03h;
       K_POR:   pv_cr03h = rpa_cr03h | rpb_cr03h;
       K_PXOR:  pv_cr03h = rpa_cr03h ^ rpb_cr03h;
-      K_PMOV:  pv_cr03h = imm_cr03h;
+      K_PMOVI: pv_cr03h = imm_cr03h;
+      K_PMOV:  pv_cr03h = rpa_cr03h;   // pmov: ps0, its negate applied
       K_VANY:  begin pv_cr03h = {N{pany_cr03h}}; pm_cr03h = act_cr03h; end
       K_VALL:  begin pv_cr03h = {N{pall_cr03h}}; pm_cr03h = act_cr03h; end
       default: begin   // unballot: lane l's bit l, 0 past rs's width
@@ -347,7 +410,8 @@ module rcu_r #(
 
   // ---- Checks ----------------------------------------------------------------
   // Every op on R has an R kind; an op that writes a predicate has pred_we.
-  wire bad_kind_cr02h = kind_cr02h == 5'd0 || kind_cr02h > K_UNB;
+  wire bad_kind_cr02h = kind_cr02h == 5'd0 || kind_cr02h > K_PMOV ||
+                        (unit_cr02h != rcu_dec_pkg::U_RONLY && unit_cr02h != rcu_dec_pkg::U_COLL);
   `CCV_ASSERT(r_kind_named, !(iv_cr02h && bad_kind_cr02h))
   `CCV_ASSERT(pred_write_has_we, !(iv_cr02h && wp_cr02h && !pwe_cr02h))
 

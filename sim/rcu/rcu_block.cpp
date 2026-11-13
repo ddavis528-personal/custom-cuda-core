@@ -15,11 +15,13 @@
 //     PCA rows) as the storage behind the core's queues: a message stays in
 //     its receiver until the core frees its entry, so its credit returns
 //     when the spec returns it.
-//   - CCV_RCU_EVLOG=<file>: the core's events, one a line.
+//   - CCV_RCU_EVLOG=<file>: the core's events, one a line, and after each
+//     GPR write the row's value (gpr_row), which no trace event carries.
 //===----------------------------------------------------------------------===//
 #include <string>
 #include "stub.h"
 #include "rcu_core.h"
+#include "rcu_decode.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -38,74 +40,6 @@ inline unsigned getSec(const Bits &b, unsigned chan, const char *f, unsigned k, 
 }
 inline void putSec(Bits &b, unsigned chan, const char *f, unsigned k, unsigned w, unsigned v) {
   b.set(field(chan, f).lsb + w * k, w, v);
-}
-
-/// The op-class decode (Pipeline tab) of an opcode, from the op table.
-R::OpClass classOf(const OpInfo *op, bool copy, bool pred_copy) {
-  R::OpClass oc;
-  if (copy) {
-    oc.unit = pred_copy ? R::Unit::PredCopy : R::Unit::Copy;
-    oc.guarded = true;   // a copy's active lanes are issue mask AND guard
-    return oc;
-  }
-  oc.guarded = op->guard;
-  oc.pdata = op->pdata;
-  oc.gdst = op->gdst;
-  for (unsigned i = 0; i != op->nsrc; ++i)
-    if (!(op->alu_imm >= 0 && int(i) == op->imm_slot)) oc.reads |= 1u << i;
-  oc.imm_used = op->alu_imm >= 0 || op->srd_sel >= 0 || op->cls == kPredLogic;
-  oc.base_src = op->base_src;
-  oc.index_src = op->index_src;
-  oc.data_src = op->data_src;
-  const bool mem = op->cls == kLoad || op->cls == kStore || op->cls == kFence;
-  if (mem) {
-    oc.unit = R::Unit::Mem;
-    oc.mk = op->cls == kFence ? R::MemKind::Fence
-            : op->cls == kLoad ? (op->pxfer ? R::MemKind::PredLoad : R::MemKind::Load)
-                               : (op->pxfer ? R::MemKind::PredStore : R::MemKind::Store);
-    // A predicate transfer's active mask is the issue mask (TI-36).
-    if (op->pxfer) oc.guarded = false;
-    return oc;
-  }
-  if (op->cross) {
-    // O-85's collectives, by the op table's name (TI, 2026-11-07). The _R
-    // shuffles take their index from source port 1; vote and ballot read
-    // their predicate from imm (imm_kind 1), as predicate logic does.
-    oc.unit = R::Unit::Coll;
-    const std::string nm = op->name;
-    const bool reg = nm.size() > 2 && nm.compare(nm.size() - 2, 2, "_R") == 0;
-    oc.rk = nm == "SHFL_IDX" ? R::RKind::ShflIdxImm
-            : nm == "SHFL_IDX_R" ? R::RKind::ShflIdxReg
-            : nm.rfind("SHFL_UP", 0) == 0 ? R::RKind::ShflUp
-            : nm.rfind("SHFL_DOWN", 0) == 0 ? R::RKind::ShflDown
-            : nm.rfind("SHFL_BFLY", 0) == 0 ? R::RKind::ShflBfly
-            : nm == "VOTE_ANY" ? R::RKind::VoteAny
-            : nm == "VOTE_ALL" ? R::RKind::VoteAll
-            : nm == "BALLOT" ? R::RKind::Ballot
-            : nm == "UNBALLOT" ? R::RKind::Unballot : R::RKind::None;
-    oc.ireg = reg && oc.rk != R::RKind::ShflIdxReg;
-    if (op->nsrc == 0) oc.imm_used = true;   // vote, ballot: the predicate in imm
-    return oc;
-  }
-  if (inRcu(op->cls)) {
-    oc.unit = R::Unit::ROnly;
-    switch (op->cls) {
-    case kBranch: oc.rk = op->ret ? R::RKind::Ret : op->gdst ? R::RKind::Call : R::RKind::Bra; break;
-    case kPredLogic:
-      oc.rk = !std::strcmp(op->name, "POR") ? R::RKind::Por
-              : !std::strcmp(op->name, "PAND") ? R::RKind::Pand
-              : !std::strcmp(op->name, "PXOR") ? R::RKind::Pxor : R::RKind::None;
-      break;
-    case kImm: oc.rk = op->pwrite ? R::RKind::PmovImm : R::RKind::Movi; break;
-    default: break;
-    }
-    // ret reads its link register as R0 (the op table lists it as nsrc).
-    if (op->ret) oc.reads |= 1u;
-    return oc;
-  }
-  oc.unit = R::Unit::Lane;
-  oc.imm_slot = op->alu_imm >= 0 ? op->imm_slot : -1;
-  return oc;
 }
 
 class RcuModel : public Stub, R::Hooks {
@@ -172,8 +106,16 @@ private:
   // ---- hooks --------------------------------------------------------------------
   void fail(const std::string &m) override { k_.fail("%s", m.c_str()); }
   void event(const R::Event &e) override {
-    if (evlog_)
+    if (evlog_) {
       std::fprintf(evlog_, "%llu %s %u %u %u %u\n", (unsigned long long)e.t, R::evName(e.ev), e.a, e.b, e.c, e.d);
+      // The log only: the row as the write leaves it, every lane, for the
+      // RTL lock-step's data compare (test/rcu/evmon.py).
+      if (e.ev == R::Ev::GprWrite) {
+        std::fprintf(evlog_, "%llu gpr_row %u", (unsigned long long)e.t, e.a);
+        for (unsigned l = 0; l != R::kLanes; ++l) std::fprintf(evlog_, " %x", k_.gpr[e.a][l]);
+        std::fprintf(evlog_, "\n");
+      }
+    }
     // The trace's events (schema/events.json, ids 33-47, TI's 6cbabba): the
     // core's four fields packed into the schema's three. No RCU event names
     // one instruction, so uid is 0. docs/rcu-model.md has the packing.
@@ -262,7 +204,7 @@ private:
   }
 
   // ---- decode ---------------------------------------------------------------------
-  R::Issue decode(const Receiver::Msg &m) {
+  R::Issue decode(const Receiver::Msg &m, unsigned slot) {
     const Ch &c = ch();
     const Bits &p = m.payload;
     R::Issue is;
@@ -272,8 +214,15 @@ private:
     is.done_row = unsigned(get(p, c.ooe_rcu, "done_row"));
     is.warp = unsigned(get(p, c.ooe_rcu, "warp_id"));
     is.issue_mask = uint32_t(get(p, c.ooe_rcu, "issue_mask"));
-    const unsigned ps = unsigned(get(p, c.ooe_rcu, "phys_src"));
-    is.src = {(ps >> 8) & 0xffu, ps & 0xffu, unsigned(get(p, c.ooe_rcu, "phys_src2"))};
+    // RA-43: R's sources ride the lead (moved); a copy that differs from its
+    // payload is OOE's broken promise, refused by name.
+    if (const IssueLeadCopy *x = issueLeadCopyBroken(p, c.ooe_rcu, slot))
+      k_.fail("rcu: issue %#llx on slot %u: %s %#llx differs from its payload's %s %#llx (a lead copy, RA-43)",
+              (unsigned long long)m.tid, slot, x->lead, (unsigned long long)get(p, c.ooe_rcu, x->lead),
+              x->field, (unsigned long long)get(p, c.ooe_rcu, x->field));
+    unsigned src[3];
+    issueSrcRows(p, c.ooe_rcu, slot, src);
+    is.src = {src[0], src[1], src[2]};
     for (unsigned i = 0; i != 3; ++i) {
       is.src_pos[i] = getSec(p, c.ooe_rcu, "src_pos", i, ccv::kWPhysPos);
       is.src_w[i] = getSec(p, c.ooe_rcu, "src_width", i, ccv::kWChwidth);
@@ -283,14 +232,14 @@ private:
     is.dst_w = unsigned(get(p, c.ooe_rcu, "dst_width"));
     is.old_dst = unsigned(get(p, c.ooe_rcu, "phys_old_dst"));
     is.old_pos = unsigned(get(p, c.ooe_rcu, "old_dst_pos"));
-    is.pguard = unsigned(get(p, c.ooe_rcu, "phys_pred_guard"));
+    is.pguard = issueGuardPred(p, c.ooe_rcu);
     is.pneg = get(p, c.ooe_rcu, "pred_neg") != 0;
     is.pdst = unsigned(get(p, c.ooe_rcu, "phys_pred_dst"));
     is.pold = unsigned(get(p, c.ooe_rcu, "phys_pred_old_dst"));
     is.pwe = get(p, c.ooe_rcu, "pred_we") != 0;
     is.merge = get(p, c.ooe_rcu, "merge_en") != 0;
     is.foot = unsigned(get(p, c.ooe_rcu, "footprint"));
-    is.imm = uint32_t(get(p, c.ooe_rcu, "imm"));
+    is.imm = issueImm(p, c.ooe_rcu, slot);
     is.opcode = unsigned(get(p, c.ooe_rcu, "opcode"));
     is.lead.sec = unsigned(get(p, c.ooe_rcu, "lead_sec_mask"));
     is.lead.src = unsigned(get(p, c.ooe_rcu, "lead_src_used"));
@@ -311,7 +260,9 @@ private:
     // port 0, index 1), A2 the lane op on T and rs, A3 a store of N (port 0).
     // The lanes still see the atomic's opcode, which names A2's operation.
     if (op && op->cls == kAtomic) {
-      const OpInfo *step = atomStep(is.done_row);
+      // A CAS's own steps (OI-127): guarded, and A2 reads rs_cmp and
+      // rs_swap and writes pd.
+      const OpInfo *step = atomStep(is.done_row, op);
       if (!step) {
         k_.fail("rcu: rob tag %u's atomic issued on row %u, no step of it", is.tag, is.done_row);
         is.oc.unit = R::Unit::Lane;
@@ -319,7 +270,25 @@ private:
       }
       op = step;
     }
-    is.oc = classOf(op, copy, copy && is.pwe && is.dst == R::kZero);
+    // A guarded or masked CAS's copy (A-38) names its pd as well as rd. A2
+    // merges pd's inactive lanes from the same old name on every pass
+    // (OI-127, OA rev 380), so the copy leaves the predicate to it: the
+    // core models a copy's predicate half only for ld.pred's (TI, 11-08).
+    // Only an atomic's copy names both (RI rev 48): a load writes a GPR or,
+    // ld.pred's, a predicate alone. The copy carries the copy opcode, not
+    // its class, and issues ahead of its atomic's first step, so RCU cannot
+    // see the class; the check reads it from ccv-sim's record of the
+    // instruction (a check, never a decision: pwe is cleared either way).
+    if (copy && is.pwe && is.dst != R::kZero) {
+      if (const Record *r = rec(is.tid, "rcu")) {
+        const OpInfo *o = opByName(r->op);
+        if (!o || o->cls != kAtomic)
+          k_.fail("rcu: a copy writes both a GPR and a predicate outside the atomic class "
+                  "(%s, rob tag %u)", r->op.c_str(), is.tag);
+      }
+      is.pwe = false;
+    }
+    is.oc = rcudec::classOf(op, copy, copy && is.pwe && is.dst == R::kZero);
     is.name = op ? op->name : "a copy";
     // call's link is OOE's pc + length in imm (imm_kind 6; RA-18, RA-30):
     // the core reads it as the spec says.
@@ -350,7 +319,7 @@ private:
     const Ch &c = ch();
     R::In in;
     for (unsigned s = 0; s != R::kRes; ++s)
-      if (has(c.ooe_rcu, s)) in.iss[s] = decode(take(c.ooe_rcu, s));
+      if (has(c.ooe_rcu, s)) in.iss[s] = decode(take(c.ooe_rcu, s), s);
     // Lane results: all 32 lanes, or it is not lockstep.
     unsigned n = 0;
     for (unsigned l = 0; l != R::kLanes; ++l) n += has(c.lane_rcu, 0, l);
@@ -365,6 +334,8 @@ private:
         r.result[l] = uint32_t(get(m.payload, c.lane_rcu, "result"));
         r.sec_valid[l] = uint8_t(get(m.payload, c.lane_rcu, "sec_valid"));
         r.sec_pred_out[l] = uint8_t(get(m.payload, c.lane_rcu, "sec_pred_out"));
+        r.sfu_valid[l] = uint8_t(get(m.payload, c.lane_rcu, "sfu_valid"));
+        r.sfu_result[l] = uint32_t(get(m.payload, c.lane_rcu, "sfu_result"));
       }
       in.lres = r;
     }

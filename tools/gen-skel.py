@@ -143,6 +143,8 @@ def build(d, pv, blocks):
                           # A backpressured channel (AR's response TI-22):
                           # its receiver's owner has stated the hold.
                           held=c.get("backpressure", "").startswith("held:"),
+                          credits_param=c.get("credits_param"),
+                          credits=pv[c["credits_param"]] if c.get("credits_param") else pv["CCV_CREDIT_DEPTH"],
                           latency_match=c.get("latency_match"),
                           lead=lead, lead_mask=lead_mask,
                           # slot_fields (OA's response OI-93): per field, a
@@ -196,6 +198,18 @@ def build(d, pv, blocks):
         # count as CCV_LAT_HOP + link_n + bnd_rx.
         ci["bnd_rx"] = int(c["dst"] != "EXTERNAL"
                            and (c["dst"], c["name"][4:]) not in nf)
+    # A credit-on-receipt end (params/links.json; AR's rev 322, RA-41): the
+    # receiving end's boundary stage takes its credit from its own valid flop,
+    # and the block returns none.
+    cor = ccv_links.credit_on_receipt(sorted(ends), ends)
+    # A zero-cycle end of the second kind (params/links.json
+    # no_flop_port_budget; AR's rev 326) builds as any no-flop end: validated
+    # here, with the rest of the file, and held to its port budget by
+    # tools/check-ngd.py.
+    ccv_links.no_flop_port_budget(sorted(ends), ends)
+    for ci in cinst:
+        c = ci["chan"]
+        ci["cor"] = int((c["dst"], c["name"][4:]) in cor)
     return binst, chans, cinst, slot, pbit
 
 
@@ -281,6 +295,8 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
     L.append("                       ///< it must equal slot / bind_group")
     L.append("  bool fixed_lat;      ///< receiver never stalls, credits on landing (A-47)")
     L.append("  bool held;           ///< backpressured: its receiver may hold behind a stall (TI-22)")
+    L.append("  uint16_t credits;    ///< a slot's credits abutted: CCV_CREDIT_DEPTH, or the")
+    L.append("                       ///< schema's credits_param (MA-5, AR rev 345)")
     L.append("};")
     L.append("")
     for c in chans:
@@ -308,7 +324,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
               if c["attrs"]["slot_binding"] == "bound" else 0)
         bk = ([f for f, _, _ in c["fields"]].index(c["binding_key"])
               if c["binding_key"] else -1)
-        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s, %s},'
+        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s, %s, %d},'
                  % (c["id"], c["name"], c["src"].upper(), c["dst"].upper(),
                     c["rate"], c["bits"], len(c["fields"]), c["name"],
                     c["ninst"],
@@ -316,7 +332,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
                     bg, ok, of,
                     "true" if c["attrs"]["lockstep"] else "false", cls, bk,
                     "true" if c["attrs"]["fixed_latency"] else "false",
-                    "true" if c["held"] else "false"))
+                    "true" if c["held"] else "false", c["credits"]))
     L.append("};")
     L.append("constexpr unsigned kNumChans = %d;" % len(chans))
     L.append("")
@@ -343,25 +359,32 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
     L.append("/// each way, so the round trip and credit depth grow by 2 x (stages +")
     L.append("/// bnd_rx), and a crossing is CCV_LAT_HOP + stages + bnd_rx (AR's revs")
     L.append("/// 300 and 301).")
+    L.append("/// cor: credit on receipt (params/links.json; AR's rev 322, RA-41): the")
+    L.append("/// receiving end's boundary stage loads its credit from its own valid")
+    L.append("/// flop, and the receiving block, which takes every message the cycle it")
+    L.append("/// is presented, returns none.")
     L.append("struct ChanInst {")
     L.append("  uint16_t chan; uint16_t inst; int16_t src; int16_t dst;")
     L.append("  uint32_t slot_base; uint64_t payload_base;")
     L.append("  uint16_t stages; uint16_t src_stages;")
-    L.append("  uint8_t bnd_src; uint8_t bnd_rx;")
+    L.append("  uint8_t bnd_src; uint8_t bnd_rx; uint8_t cor;")
     L.append("  /// Flops each way between the sender and the receiver.")
     L.append("  constexpr unsigned pipe() const { return stages + bnd_src + bnd_rx; }")
-    L.append("  /// Stages each way the round trip and credit depth count.")
-    L.append("  constexpr unsigned rtStages() const { return stages + bnd_rx; }")
+    L.append("  /// Stages each way the round trip and credit depth count. A credit-on-")
+    L.append("  /// receipt end's boundary flop returns the credit itself, flop to flop,")
+    L.append("  /// with no block register behind it: its loop is CCV_CREDIT_DEPTH + 2N,")
+    L.append("  /// as an RTL block's flopped end is (AR's rev 322).")
+    L.append("  constexpr unsigned rtStages() const { return stages + (cor ? 0 : bnd_rx); }")
     L.append("};")
     L.append("inline constexpr ChanInst kChanInsts[] = {")
     for ci in cinst:
-        L.append("  {%d, %d, %d, %d, %d, %d, %d, %d, %d, %d},"
+        L.append("  {%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d},"
                  % (ci["chan"]["id"], ci["inst"],
                     -1 if ci["src"] is None else ci["src"],
                     -1 if ci["dst"] is None else ci["dst"],
                     ci["slot_base"], ci["payload_base"],
                     ci["stages"], ci["src_stages"],
-                    ci["src_boundary"], ci["bnd_rx"]))
+                    ci["src_boundary"], ci["bnd_rx"], ci["cor"]))
     L.append("};")
     L.append("constexpr unsigned kNumChanInsts = %d;" % len(cinst))
     L.append("constexpr unsigned kNumSlots = %d;" % nslots)
@@ -456,8 +479,16 @@ def gen_sv(chans, cinst, nslots, pbits):
                 lm += ", .FIXED_LAT(1)"   # no stall, credit on landing (A-47)
             # A backpressured channel's response bound is the watchdog
             # CCV_P_TIMEOUT_BP, not CCV_P_TIMEOUT_N (AR's response TI-22).
-            tmo = "CCV_P_TIMEOUT_BP" if c["held"] else "CCV_P_TIMEOUT_N"
-            if ci["stages"] + ci["bnd_rx"]:
+            # A channel whose credits stand for a resource the receiver holds
+            # through a memory access (credits_param; MA-5, AR rev 345) is
+            # answered within the same watchdog.
+            tmo = "CCV_P_TIMEOUT_BP" if c["held"] or c["credits_param"] else "CCV_P_TIMEOUT_N"
+            # A credit-on-receipt end's boundary flop returns the credit
+            # itself, flop to flop (AR's rev 322): no stage more each way, so
+            # its loop, round trip and fixed-latency prompt are exact, and a
+            # register in series on that credit fails fixed_latency_prompt.
+            rx = 0 if ci["cor"] else ci["bnd_rx"]
+            if ci["stages"] + rx:
                 # A repeated link (params/links.json): the round trip and the
                 # response bound grow by 2N, and the stall rule counts the
                 # stages between this point and the sender. A flopped
@@ -465,12 +496,17 @@ def gen_sv(chans, cinst, nslots, pbits):
                 # inputs and credit, as every DPI host does, is one stage
                 # more each way (bnd_rx): the crossing's cycle forward, and
                 # the credit's back through the same flop.
-                n = ci["stages"] + ci["bnd_rx"]
+                n = ci["stages"] + rx
                 lm += (", .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + %d), "
                        ".TIMEOUT_N(ccv_prov_pkg::%s + %d), "
                        ".SRC_STAGES(%d)" % (2 * n, tmo, 2 * n, ci["src_stages"]))
-            elif c["held"]:
+            elif c["held"] or c["credits_param"]:
                 lm += ", .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)"
+            if c["credits_param"]:
+                # More credits than the loop (MA-5): the depth is the
+                # parameter's, plus the repeated link's 2N as the loop's.
+                n = ci["stages"] + rx
+                lm += ", .DEPTH(%s::%s + %d)" % (PKG[c["credits_param"]], c["credits_param"], 2 * n)
             if ci["src_boundary"]:
                 lm += ", .SRC_BOUNDARY(1)"   # the sender's interface flop
             L.append("  ccv_common_chk_credit #(.PAYLOAD_W(%d), .CHANNEL(%d)%s) "
@@ -554,8 +590,11 @@ def gen_sv(chans, cinst, nslots, pbits):
                          "u_%s_notice_s%d (" % (PKG[no["ahead"]], no["ahead"], kw,
                                                 c["name"][4:], s))
                 L.append("    .clk(clk), .rst_n(rst_n), .enable(pair_enable),")
-                L.append("    .ntc_valid(valid[%d]), .ntc_keys(%s),"
-                         % (ci["slot_base"] + s, keys(c, ci, s, no["keys"])))
+                # notice_of.unless (OA rev 413): a set bit of the notice's
+                # own payload makes that message no promise.
+                skip = (keys(c, ci, s, [no["unless"]]) if no.get("unless") else "1'b0")
+                L.append("    .ntc_valid(valid[%d]), .ntc_keys(%s), .ntc_skip(%s),"
+                         % (ci["slot_base"] + s, keys(c, ci, s, no["keys"]), skip))
                 L.append("    .msg_valid(valid[%d]), .msg_keys(%s));  // %s"
                          % (mi["slot_base"] + s, keys(m, mi, s, no["keys"]), m["name"]))
     for c in chans:

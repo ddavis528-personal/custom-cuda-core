@@ -16,10 +16,10 @@
 // Runs: random traffic (the bench's ordinary run). --cg <idle|medium|high>
 // <vcd> runs one clock-gating scenario (tools/check-cg.py): idle is reset
 // and then nothing; medium an op on about a third of the cycles; high one
-// on most. Inputs change only with a message. --control <noalign|retlow>
+// on most. Inputs change only with a message. --control <noalign|retlow|pmovneg|noireg>
 // expects a wrong rule (a source's position ignored; ret's aux from the
-// highest active lane): the run must fail (test/rcu/run-rtl.sh). Exit 0 only with no
-// mismatch.
+// highest active lane; a register-amount shuffle by its immediate): the
+// run must fail (test/rcu/run-rtl.sh). Exit 0 only with no mismatch.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_r.h"
 #include "verilated.h"
@@ -34,15 +34,19 @@
 #include <random>
 #include <string>
 #include <type_traits>
+#include <vector>
+
+#include "cls_pack.h"
+#include "dec_tb.h"
 
 namespace {
 
 constexpr unsigned kN = 32, kZero = 255, kPZero = 63;
-enum Kind : unsigned { None, Bra, Call, Ret, Pand, Por, Pxor, Pmov, Movi, ShI, ShR, ShU, ShD, ShB,
-                       VAny, VAll, Bal, Unb, kKinds };
-const char *kName[kKinds] = {"none", "bra", "call", "ret", "pand", "por", "pxor", "pmov", "movi",
+enum Kind : unsigned { None, Bra, Call, Ret, Pand, Por, Pxor, PmovI, Movi, ShI, ShR, ShU, ShD, ShB,
+                       VAny, VAll, Bal, Unb, Pmov, kKinds };
+const char *kName[kKinds] = {"none", "bra", "call", "ret", "pand", "por", "pxor", "pmov.i", "movi",
                              "shfl.idx.imm", "shfl.idx.reg", "shfl.up", "shfl.down", "shfl.bfly",
-                             "vote.any", "vote.all", "ballot", "unballot"};
+                             "vote.any", "vote.all", "ballot", "unballot", "pmov.p"};
 
 // ---- Port bits: plain integers and VlWide alike -----------------------
 template <typename T> void put(T &s, unsigned lsb, unsigned w, uint64_t v) {
@@ -73,16 +77,17 @@ unsigned span(unsigned w) { return w == 0 ? 4 : w == 1 ? 2 : 1; }
 unsigned secmask(unsigned w, unsigned pos) { return (((1u << span(w)) - 1u) << pos) & 15u; }
 uint32_t align(uint32_t row, unsigned pos, unsigned w) { return (row >> (8 * pos)) & em(w); }
 bool wg(unsigned k) { return k == Call || k == Movi || (k >= ShI && k <= ShB) || k == Bal; }
-bool wp(unsigned k) { return (k >= Pand && k <= Pmov) || k == VAny || k == VAll || k == Unb; }
+bool wp(unsigned k) { return (k >= Pand && k <= PmovI) || k == Pmov || k == VAny || k == VAll || k == Unb; }
 bool coll(unsigned k) { return (k >= ShI && k <= ShB) || k == VAny || k == VAll || k == Bal || k == Unb; }
 bool isbr(unsigned k) { return k >= Bra && k <= Ret; }
 bool uses0(unsigned k) { return k == Ret || (k >= ShI && k <= ShB) || k == Unb; }
-bool uses1(unsigned k) { return k == ShR; }
+bool uses1(unsigned k, bool ireg) { return k == ShR || ireg; }
 
 struct Op {
-  unsigned kind, tag, drow, dst, dpos, dwid, opos, pd, pold;
+  unsigned kind, opc, tag, drow, dst, dpos, dwid, opos, pd, pold;
   unsigned src[2], spos[2], swid[2];
   bool mrg, pwe;
+  bool ireg;   // shfl_{up,down,bfly}_r: each lane's amount from v(R1) (the class's ireg)
   uint32_t imask, imm, act, rpa, rpb;
   std::array<uint32_t, kN> rd[3];
   // The expected results.
@@ -102,7 +107,7 @@ struct Bench {
   unsigned fails = 0, checked = 0;
   std::map<uint64_t, Op> ops;                         // by valid cycle
   std::array<unsigned, kKinds> cov_kind{};
-  unsigned cov_merge = 0, cov_shift = 0, cov_ret_multi = 0,
+  unsigned cov_merge = 0, cov_shift = 0, cov_ret_multi = 0, cov_ireg = 0,
            cov_noact = 0;
 
   explicit Bench(const char *vcd_path) {
@@ -143,12 +148,21 @@ struct Bench {
     dut->rst_n = !rst;
     const uint64_t c = cyc;
     dut->iv_cr01h = op(c - 1) != nullptr;   // the valid comes with the lead
+    // R's moved leads (RA-43), in A-1 only: its whole imm and its source
+    // rows. Off a valid they carry noise, which the module must not keep.
+    if (const Op *o = op(c - 1)) {
+      dut->lrp_cr01h = o->imm;
+      dut->lps_cr01h = o->src[0] | o->src[1] << 8;
+    } else {
+      const uint64_t z = (c + 1) * 0x9e3779b97f4a7c15ull;
+      dut->lrp_cr01h = uint32_t(z >> 32);
+      dut->lps_cr01h = uint32_t(z >> 8) & 0xffffu;
+    }
     if (const Op *o = op(c - 2)) {   // A: the payload, R0 and R1
-      dut->kind_cr02h = o->kind;
+      dut->ocl_cr02h = uint32_t(clspack::clsWord(o->opc, o->drow, false));   // rcu_isd's (RA-43, RI-25)
       dut->tag_cr02h = o->tag;
       dut->drow_cr02h = o->drow;
       dut->imask_cr02h = o->imask;
-      dut->imm_cr02h = o->imm;
       dut->dst_cr02h = o->dst;
       dut->dpos_cr02h = o->dpos;
       dut->dwid_cr02h = o->dwid;
@@ -178,6 +192,7 @@ struct Bench {
     const Op *o2 = op(c - 2), *o3 = op(c - 3), *o4 = op(c - 4);
     eq("rw_v", dut->rw_v_cr02h, o2 != nullptr);
     eq("pr_v", dut->pr_v_cr02h, o2 != nullptr);
+    if (o2) eq("rr_row", dut->rr_row_cr02h, o2->src[0] | o2->src[1] << 8);
     eq("dn_v", dut->dn_v_cr03h, o3 ? (coll(o3->kind) ? 2u : 1u) : 0u);
     if (o3) {
       eq("rw_row", dut->rw_row_cr03h, wg(o3->kind) ? o3->dst : kZero);
@@ -215,6 +230,22 @@ struct Bench {
   }
 };
 
+// The opcodes the model's decode makes each R kind (test/rcu/dec_tb.h).
+const dectb::OpPool &pool(unsigned k) {
+  static const std::vector<dectb::OpPool> pools = [] {
+    std::vector<dectb::OpPool> v;
+    for (unsigned i = 1; i < kKinds; ++i)
+      v.emplace_back(kName[i], 0u, [i](const dectb::R::OpClass &oc) {
+        return (oc.unit == dectb::R::Unit::ROnly || oc.unit == dectb::R::Unit::Coll) &&
+               unsigned(oc.rk) == i;
+      }, false, true);
+    return v;
+  }();
+  return pools[k - 1];
+}
+// A kind no opcode decodes to is never drawn.
+bool decodable(unsigned k) { return !pool(k).empty(); }
+
 struct Gen {
   std::mt19937_64 r;
   std::string control;
@@ -232,7 +263,12 @@ struct Gen {
 
   void op(Bench &b, uint64_t c) {
     Op o{};
-    o.kind = 1 + below(kKinds - 1);
+    do o.kind = 1 + below(kKinds - 1); while (!decodable(o.kind));
+    o.opc = pool(o.kind).pick(r);   // an opcode the decode makes this kind
+    {
+      dectb::R::OpClass oc;
+      o.ireg = dectb::classOf(o.opc, 1, false, oc) && oc.ireg;
+    }
     o.tag = below(128);
     o.drow = below(4);
     o.dst = row();
@@ -254,7 +290,7 @@ struct Gen {
       for (auto &w : rd) w = u32();
     // The sources: a row and a placement each.
     for (unsigned s = 0; s < 2; ++s) {
-      const bool used = s == 0 ? uses0(o.kind) : uses1(o.kind);
+      const bool used = s == 0 ? uses0(o.kind) : uses1(o.kind, o.ireg);
       if (!used) {
         o.src[s] = 0;
         o.spos[s] = o.swid[s] = 0;
@@ -281,7 +317,8 @@ struct Gen {
     const uint32_t e = em(o.dwid), act = o.act;
     std::array<uint32_t, kN> gnew{}, old{};
     for (unsigned l = 0; l < kN; ++l) old[l] = o.mrg ? align(o.rd[2][l], o.opos, o.dwid) : 0u;
-    const unsigned cc = o.imm & 31u;
+    const unsigned ci = o.imm & 31u;
+    auto amt = [&](unsigned l) { return o.ireg && control != "noireg" ? v[1][l] & 31u : ci; };
     auto shfl = [&](auto idx) {
       for (unsigned l = 0; l < kN; ++l) gnew[l] = v[0][idx(l) & 31u] & e;
     };
@@ -312,13 +349,14 @@ struct Gen {
     case Pand: o.pval = o.rpa & o.rpb; break;
     case Por: o.pval = o.rpa | o.rpb; break;
     case Pxor: o.pval = o.rpa ^ o.rpb; break;
-    case Pmov: o.pval = o.imm; break;
+    case PmovI: o.pval = o.imm; break;
+    case Pmov: o.pval = control == "pmovneg" ? ~o.rpa : o.rpa; break;   // rpa: negate applied
     case Movi: gnew.fill(o.imm & e); break;
-    case ShI: shfl([&](unsigned) { return cc; }); break;
+    case ShI: shfl([&](unsigned) { return ci; }); break;
     case ShR: shfl([&](unsigned l) { return v[1][l]; }); break;
-    case ShU: shfl([&](unsigned l) { return l < cc ? l : l - cc; }); break;
-    case ShD: shfl([&](unsigned l) { return l + cc >= kN ? l : l + cc; }); break;
-    case ShB: shfl([&](unsigned l) { return l ^ cc; }); break;
+    case ShU: shfl([&](unsigned l) { return l < amt(l) ? l : l - amt(l); }); break;
+    case ShD: shfl([&](unsigned l) { return l + amt(l) >= kN ? l : l + amt(l); }); break;
+    case ShB: shfl([&](unsigned l) { return l ^ amt(l); }); break;
     case VAny:
     case VAll: {
       const bool r = o.kind == VAny ? (o.rpa & act) != 0 : (o.rpa & act) == act;
@@ -344,6 +382,7 @@ struct Gen {
     if (wg(o.kind) && o.mrg && act != ~0u) ++b.cov_merge;
     if (wg(o.kind) && o.dpos) ++b.cov_shift;
     if (!act) ++b.cov_noact;
+    if (o.ireg && act) ++b.cov_ireg;
   }
 };
 
@@ -369,11 +408,11 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   for (int i = 0; i < 6; ++i) b.step();
   bool cov = true;
   if (scenario != "idle") {
-    for (unsigned k = 1; k < kKinds; ++k) cov &= b.cov_kind[k] != 0;
-    cov &= b.cov_merge && b.cov_shift && b.cov_ret_multi && b.cov_noact;
+    for (unsigned k = 1; k < kKinds; ++k) cov &= b.cov_kind[k] != 0 || !decodable(k);
+    cov &= b.cov_merge && b.cov_shift && b.cov_ret_multi && b.cov_noact && b.cov_ireg;
     if (!cov) {
-      std::fprintf(stderr, "rcu_r: coverage: merge %u shift %u ret_multi %u noact %u; kinds",
-                   b.cov_merge, b.cov_shift, b.cov_ret_multi, b.cov_noact);
+      std::fprintf(stderr, "rcu_r: coverage: merge %u shift %u ret_multi %u noact %u ireg %u; kinds",
+                   b.cov_merge, b.cov_shift, b.cov_ret_multi, b.cov_noact, b.cov_ireg);
       for (unsigned k = 1; k < kKinds; ++k) std::fprintf(stderr, " %s %u", kName[k], b.cov_kind[k]);
       std::fputc('\n', stderr);
       ++b.fails;

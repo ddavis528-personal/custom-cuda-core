@@ -64,6 +64,17 @@ fi
 SKEL="$B/skel/ccv-skel"
 say "skeleton builds (checker bank Verilated in)" "PASS"
 
+# -- a Receiver's credit timing, alone (sim/skel/channel_test.cpp) ---------
+# CreditAt::Pop credits a cycle after the pop, unchanged; CreditAt::Landing
+# in the landing cycle, as an RTL receiver's <ch>_v_q (RI-36 (2), RI-37 (0)),
+# with its controls (a late take counted; the modes distinguishable).
+if g++ -std=c++17 -O1 -I"$R/sim/skel" -o "$B/channel-test" "$R/sim/skel/channel_test.cpp" \
+     >"$B/channel-test.log" 2>&1 && "$B/channel-test" >>"$B/channel-test.log" 2>&1; then
+  say "Receiver credit: Pop at landing+1, Landing at landing" "PASS (controls caught)"
+else
+  bad "Receiver credit timing" "$(grep -m1 -E 'FAIL|error' "$B/channel-test.log")"
+fi
+
 # Keys are matched WHOLE -- preceded by a space or the line start. A bare
 # `violations=` also matches inside `class_violations=`, which comes first on
 # the line, so a run with 186 checker violations read as 0: this gate would
@@ -149,6 +160,7 @@ for seed in 1 2 3; do
   [ "$(field "$log" mismatches)" = "0" ] || why="$why; payload mismatches"
   [ "$(field "$log" overflows)" = "0" ]  || why="$why; receive overflow"
   [ "$(field "$log" credit_leaks)" = "0" ] || why="$why; $(field "$log" credit_leaks) credit(s) lost"
+  [ "$(field "$log" cor_late)" = "0" ] || why="$why; credit on receipt: $(field "$log" cor_late) landed message-cycle(s) not taken"
   [ "$(field "$log" credits_home)" = "$X_SLOTS" ] || why="$why; credits home on $(field "$log" credits_home) of $X_SLOTS slots"
   [ "$(field "$log" idle_slots)" = "0" ] || why="$why; $(field "$log" idle_slots) idle slot(s)"
   [ "$(field "$log" sent)" = "$(field "$log" received)" ] || why="$why; sent != received"

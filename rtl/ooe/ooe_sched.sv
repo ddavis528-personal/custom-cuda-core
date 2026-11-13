@@ -18,7 +18,9 @@
 //   completion by its channel's valid), ooe_rs's
 //   allocation lead (a row written at this edge), the stop lead,
 //   OI-50's replay rule over iss, dep and msd as they stand after this
-//   edge (an entry returns to Waiting at the next cycle's hop), and the
+//   edge (an entry returns to Waiting at the next cycle's hop; a producer
+//   granted at this edge is not issued until after it, so the rule's
+//   co-grant arm, OI-133, needs no term of its own here), and the
 //   replay lead, a producer some row reads replayed at this edge: ooe_wake
 //   takes the stop at this edge, so the lines it gives this module drop at
 //   the next one, which the stop lead's capture precedes (a grandchild of
@@ -140,7 +142,9 @@ module ooe_sched #(
 
   // -- Leads ----------------------------------------------------------------
   // The stop lead: OI-50's replay rule, an issued entry with a producer
-  // not issued or missed, over the state after this edge.
+  // not issued or missed, over the state after this edge (a producer
+  // granted with it at this edge counts as not issued here: the co-grant
+  // arm, OI-133, which ooe_rs and ooe_wake decide from their last grant).
   // The same rule gives this cycle's replays (rep): ooe_rs and ooe_wake
   // take them at this edge, so issued after it is iss less rep (OA's
   // response OI-45: the model's order, a replayed entry requesting at
@@ -242,12 +246,16 @@ module ooe_sched #(
   localparam int RW = IRK > 2 ? $clog2(IRK) : 1;
   logic          rg_cq04h;
   (* keep *) logic force_cq04h;          // kept apart from its copy force_l (gnt_l)
+  // and a copy per RCU entry for select (fcp), each (* keep *): one force
+  // register's inverse fed every RCU request, 750 loads, 4 NGD of fanout
+  // at the head of the flop-to-flop path.
+  (* keep *) logic [NR-1:0] fcp_cq04h;
   (* keep *) logic [RW-1:0] rrun_cq04h;  // and rrun_l
   logic [RW-1:0] rnx_cq04h;
   assign rg_cq04h  = (gnt_cq04h[NR-1:0] & rrq_cq04h) != '0;
   assign rnx_cq04h = !rg_cq04h ? '0 : 32'(rrun_cq04h) >= IRK - 1 ? rrun_cq04h : rrun_cq04h + 1'b1;
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
-    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .hold_cq03h(hold_cq04h), .rhold_cq03h(force_cq04h),
+    .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .hold_cq03h(hold_cq04h), .rhold_cq03h(fcp_cq04h),
     .vel_cq03h(vel_cq03h),
     .iss_cq03h(siss_cq03h), .dep_cq03h(sdep_cq03h), .slot_cq03h(sslot_cq03h), .res_cq03h(res_cq03h),
     .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h), .older_r_cq03h(older_r_cq03h),
@@ -338,6 +346,7 @@ module ooe_sched #(
     assign rrq_cq04h     = '0;
     assign rrun_cq04h    = '0;
     assign force_l_cq04h = 1'b0;
+    assign fcp_cq04h     = '0;
     assign rrun_l_cq04h  = '0;
   end else begin : g_idle_r
     always_ff @(posedge ooe_core_clk) begin
@@ -347,12 +356,14 @@ module ooe_sched #(
         force_cq04h   <= 1'b0;
         rrun_l_cq04h  <= '0;
         force_l_cq04h <= 1'b0;
+        fcp_cq04h     <= '0;
       end else if (gnt_en_cq03h) begin
         rrq_cq04h     <= rbit_cq03h;
         rrun_cq04h    <= rnx_cq04h;
         force_cq04h   <= mig_cq02h && 32'(rnx_cq04h) >= IRK - 2;
         rrun_l_cq04h  <= rnx_cq04h;
         force_l_cq04h <= mig_cq02h && 32'(rnx_cq04h) >= IRK - 2;
+        fcp_cq04h     <= {NR{mig_cq02h && 32'(rnx_cq04h) >= IRK - 2}};
       end
     end
   end

@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=52 exported=2026-11-06 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 52 on 2026-11-06 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Partition_and_checks rev=67 exported=2026-11-10 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Partition and checks*, at revision 67 on 2026-11-10 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Partition and checks
 
@@ -15,8 +15,8 @@ Three rules from `docs/rtl-coding-style.md` decide the cuts:
 
 So:
 
-1. **Every module decodes the issue payload itself.** The raw `ooe_rcu_issue_s*_payload` and the flopped valids are wired from the block's ports to every module that acts in A. Each module decodes the op-class fields it needs, from the generated op-class table (Pipeline tab). The duplicated decode is a few hundred gates per module, against a through-path that is illegal.
-2. **A predicate read in A and its consumer share a module.** The guard read, `active`, the branch outcome and the R predicate sources all depend on a predicate read in A, so they live with the predicate file, in `rcu_pred`.
+1. **The class is decoded once, in rcu\_isd (RI-25, RA rev 126).** The raw `ooe_rcu_issue_s*_payload` and the flopped valids are wired from the block's ports to every module that acts in A. The op-class fields come from rcu\_isd: at A−1, under each slot's lead valid, it decodes the slot's lead\_opcode (with lead\_done\_row, lead\_pred\_we and lead\_phys\_dst) into the 27-bit class word rcu\_cls and flops it for A. Lanes, the 32 slices, pred, mig, r and mem read rcu\_cls instead of decoding the opcode; each consumer's arrival is the measured fanout term of the bit it reads, with keep-copies per consumer group if needed. The encoding is defined once in rcu\_dec\_pkg, from the generated op-class table (Pipeline tab). Until RA rev 126 each module decoded the class itself into its own lead flops (RA-43); RI-25 measured those decodes as the block's deepest paths. The payload's opcode stays as a copy.
+2. **A predicate read in A and its consumer share a module.** The guard read, `active`, the branch outcome and the R predicate sources all depend on a predicate read in A (so does the lanes' lead field sec\_pred\_bit\_a: rcu\_pred loads it at A's edge from active by section ownership and its Q is wired to the rcu\_lane\_ops port; RA rev 98, re:RI-20), so they live with the predicate file, in `rcu_pred`.
 3. **A register file is the only module whose outputs are combinational.** Each read port's AND-OR is driven from the file's own predecode flops. The receiving module's budget pays for the rest of the path.
 4. **Write data enters a register file directly from the block port or from the writer's flops.** Steering such as MW's position shift is inside the file.
 
@@ -29,21 +29,23 @@ So:
 | `rcu_pred` | 1 | 48 × 32 predicate file; every predicate read and write port; guard, MIU `pred_result` forward, `active`, branch outcome, `lead_br_*` (`(* keep *)`), `br_*_a`, `rpsrc_a`, `active_a[s]` | 2,500 |
 | `rcu_r` (+ `rcu_xbar` helper) | 1 | R pipe A+1/A+2: `r_a`, `rlow_a`, `rres_a1`, `rpres_a1`; RW data merge and steer; done slots 5 and 6 (`done_v_q`, tags, `done_b*_q`, `done_aux_q`) | 2,300 |
 | `rcu_lanes` | 1 | section ownership; 32 `rcu_lane_ops` payload, valid and lead flops; bypass tracker; `lwb_d[0..3]`, `swb_d`; done slots 0-4; `rcu_lane_ops` wakes | 12,900 |
-| `rcu_mem` | 1 | memop operand assembly; 4 `rcu_miu_addr` payloads (3,111 b each); MIU lead predecode flops (about 110 per slot); `rcu_miu_addr_wake` | 12,950 |
+| `rcu_mem` | 1 | memop operand assembly; 4 `rcu_miu_addr` payloads (3,111 b each); no MIU lead capture (the slices and rcu\_pred hold it, RI-20); `rcu_miu_addr_wake` | 12,560 (RI-20, as built) |
 | `rcu_mig` | 1 | Migration tab | 6,300 |
-| `rcu_kill` | 1 | kill drain and ack; `rcu_ooe_done_wake`; `rcu_idle_q`; credit-return flops for issue, lane-result and MIU-data slots; CSR tie-offs | 60 |
-| **Total** |  |  | **about 246,000**, 80% of it PRF rows |
+| `rcu_kill` | 1 | kill drain and ack; `rcu_ooe_done_wake`; `rcu_idle_q`; credit-return flops for issue and lane-result slots (ooe\_rcu\_issue\_s0..s8\_credit among them); none for MIU data, whose wrapper returns the credit on receipt (RA-41; AR 330, RA rev 116); CSR tie-offs | 60 |
+| `rcu_isd` | 1 | the shared issue-lead capture for the zero-cycle ooe\_rcu\_issue end: per slot, under the slot's lead valid at A−1, it flops rcu\_cls (the class word decoded from lead\_opcode, with lead\_done\_row, lead\_pred\_we and lead\_phys\_dst; 26 flops a slot, since class bits 25 and 26 are equal for every input and merge, RI-27) for A, and the every-slot copies lead\_cont and lead\_pred\_neg (RI-29, RA rev 131). Lanes, the 32 slices, pred, mig, r and mem take rcu\_cls instead of decoding the opcode; each consumer's arrival is the measured fanout term of the bit it reads, with keep-copies per consumer group if needed. The encoding is defined once in rcu\_dec\_pkg; rcu\_isd has its own unit. Its four lead\_opcode-class inputs have RCU in-side 13 (Daniel, DA 116). Its flops, with rcu\_isd\_s's, are one CG-5 lead waiver of about 412 flops (9 × 26 + 146 + 32) counted in the block's 2% (RI-25, RA revs 126 and 130-133) | 252 (9 × 26 class, bits 25 and 26 merged; 9 × 2 cont, pred\_neg) |
+| `rcu_isd_s` | 1 | the S0-S3 lead copies: lead\_phys\_src (2 × 8), lead\_phys\_src2 (8), lead\_phys\_old\_dst (8), lead\_old\_dst\_pos (2) and lead\_src\_pos (3 × 2), captured at A−1 under the class word's gate and flopped for A. rcu\_lanes and the slices read them from these flops, never from the payload (RI-29, RI-31, OA 403, RA revs 131-133). Its own unit; part of rcu\_isd's lead waiver | 160 (4 × 40) |
+| **Total** |  |  | **247,468 measured** (RI-34: check-cg at 8fcec64b, 15 units at their instances' parameters; the estimates above sum to about 246,000), 80% of it PRF rows |
 
 Each sequential module flops `rst_n` once for itself (RST-1). Reset values: Done, kill and reset tab.
 
 ## Port NGD budgets (`<module>.ngd.json`)
 
-RA writes these files with the implementation. A block input starts at its interface flop with 0 NGD (every block boundary has a flop on each side; Conventions tab), so a module input fed from a block port has the whole 25 to spend, its fanout across the RCU included. The 12-a-side default applies only between modules inside the RCU; no NGD is budgeted across a block boundary. Ports not listed keep the default 12 a side. There is no whole-RCU synthesis (Daniel, 2026-11-06, TI-51). The block's NGD and clock-gating limits are a sum of parts from module runs, so these port budgets are the contract the RCU is assembled from. Every RCU module needs a check-cg / check-ngd unit at each parameter set the RCU instantiates it with: the full-size slice (ROWS = CCV\_P\_PHYS\_REGS) and every other module at its defaults. The block's 2% is the sum of its modules' take per instance.
+RA writes these files with the implementation. A block input starts at its interface flop with 0 NGD (every block boundary has a flop on each side; Conventions tab; at RCU's two zero-cycle ends, lane\_rcu\_res and ooe\_rcu\_issue, that flop is the sender's, and RCU's in-side is held to 12 in ccv\_rcu.ngd.json, RA rev 106 and RA-43, except 13 on lead\_opcode, lead\_done\_row, lead\_pred\_we and lead\_phys\_dst, whose OOE out-side is declared 0: Daniel, DA 116; RI-26, RA revs 128 and 129), so a module input fed from a block port has the whole 25 to spend, its fanout across the RCU included. The 12-a-side default applies only between modules inside the RCU; no NGD is budgeted across a block boundary. Ports not listed keep the default 12 a side. There is no whole-RCU synthesis (Daniel, 2026-11-06, TI-51). The block's NGD and clock-gating limits are a sum of parts from module runs, so these port budgets are the contract the RCU is assembled from. Every RCU module needs a check-cg / check-ngd unit at each parameter set the RCU instantiates it with: the full-size slice (ROWS = CCV\_P\_PHYS\_REGS) and every other module at its defaults. The block's 2% is the sum of its modules' take per instance.
 
 | Path | Driver side | Receiver side | Total | Notes |
 | --- | --- | --- | --- | --- |
 | issue lead `lead_guard_pred` → `pred` `psel` flops (A−1); `psel` → 48:1 read → negate, forward → `lead_br_*` flops (A) | block port, 2 | `pred` in: 12 | 14 (A−1); about 16 in A | the split guard read (RA-32, Predicate file tab): the guard's row is predecoded at A−1 from the issue lead, so the A path starts at flops. Without the guard lead it is the old single-cycle path, pred in 23, about 22, still the tightest in RCU |
-| issue payload → `bank` read predecode flops | 2 | `bank` in: 14 | 16 | op-class decode 5, owner 3, predecode 3, port mux 2 |
+| issue payload → `bank` read predecode flops | 2 | `bank` in: 14 | 16 | class from rcu\_cls flops (no decode; RA rev 126), owner 3, predecode 3, port mux 2; measured at assembly in the table below (RI-35) |
 | issue payload → `lanes` payload, bypass flops | 2 | `lanes` in: 18 | 20 | ownership, the age 4-6 compare, immediate substitution |
 | issue payload → `mem` payload flops | 2 | `mem` in: 14 | 16 |  |
 | issue payload → `mig` `dm_v_q`, `rs_v_a1` | 2 | `mig` in: 12 | 14 | the R2/RW-free decode |
@@ -60,6 +62,33 @@ RA writes these files with the implementation. A block input starts at its inter
 | `mig` `rs_f` → `bank` RW D | `mig` out: 3 | 5 | 8 |  |
 | `mig` R2 row request → `bank` R2 predecode | `mig` out: 8 | `bank` in: 14 | 22 | without the stall and R2-busy terms (Migration tab); the bank applies its own R2 decode |
 | every module's busy OR → `kill` `rcu_idle_q` | out: 5 | `kill` in: 5 | 10 |  |
+
+### Measured at assembly (RI-34, RI-35; 8fcec64b)
+
+The table above is the design budget. These are the assembled block's figures: the gate's block check for rcu passes at 8fcec64b, two levels timed alone, 49 of 49 instances on units at their parameters, and the block read converges with no findings. Each figure is on ccv\_rcu's port, arrival plus depth to the first flop, against 25, the fanout term included. The arrival is 12 on the four class-word lead fields (in-side 13, DA 116) and 13 elsewhere (in-side 12), per field in ccv\_rcu.ngd.json. Read at a whole-port 13, lead\_opcode would be 25.4, so the per-field arrivals are part of the contract.
+
+| Issue lead field | S0-S3 (rcu\_isd\_s) | S4-S7 (rcu\_isd) | S8 | Notes |
+| --- | --- | --- | --- | --- |
+| lead\_done\_row | 21.5 | 21.9 | 21.9 |  |
+| lead\_opcode | 24.4 | 24.4 | 24.4 | 12.4 in to lop\_cr01h, 0.6 under its 13; the block's closest |
+| lead\_phys\_dst | 18.2 | 18.0 | 18.0 | the pcopy compare |
+| lead\_pred\_we | 17.7 | 17.0 | 17.0 |  |
+
+| Input | Total | Worst endpoint and notes |
+| --- | --- | --- |
+| other issue lead fields | 17.0 | sec\_mask into the slice's plsec\_cr00h (exact owner, RA 133); guard\_pred 16.4 into rcu\_pred |
+| issue payload, outside the lead fields | 23.9 | rcu\_pred im\_cr02h, 10.9 in |
+| issue valid | 21.2 | rcu\_kill, 8.2 in |
+| lane\_rcu\_res payload / valid | 23.4 / 14.7 | slice wr\_dat\_cr02h, 10.4 in (zero-cycle end, RA rev 95) |
+| map and mig payloads / valids, mig credit and stall | 13.0 / 14.7 |  |
+| wakes and the kill\_valid tap | 6.0 in | wake rule 12; kill\_valid is a wake port (AR 336 (b)) |
+| kill\_epoch, kill\_warp\_mask | 13.0 | into the top's own detector flops (Done tab) |
+| miu\_rcu\_data payload | about 14.4 | 14.4 in to rcu\_pred mr\_cr02h behind the flopped end. Read at a nominal 13 arrival it would be 27.4, so this end stays flopped (Daniel, DA 116, on AR 334) |
+| every output | 1.4 worst | straight from a flop (the rcu\_lane\_ops fanout term); every stall output is constant 0 |
+
+Not measured: the wrapper level's outputs and the repeater's flop-to-out on flopped ends.
+
+RA rev 117's interim arrivals (0 on rcu\_lanes' opc\_cr02h and the slice's popc\_cr01h) have ended: rcu\_isd's class flops replace them, and the `ngd.json` files of rcu\_bank\_slice, rcu\_lanes and rcu\_mem say so (RI-34/35 at 8fcec64b).
 
 Every register that drives a block output and something else is split into NGD-7 `(* keep *)` copies: the lead flops, the done valid, the lane-op and address valids, `dm_v_q` against its own use.
 
@@ -88,20 +117,24 @@ The remedies, in order:
 
 ### The issue lead slice (RA-31, AR rev 266, OA rev 307)
 
-OOE sends a lead slice on every `ccv_ooe_rcu_issue` slot. It is driven from a flop beside `valid` in A−1, so it arrives a cycle ahead of the payload in A. Cont slots carry zero. TI writes the fields into the schema as `lead_fields`. OOE builds every bit from the selected RS entry's static fields, so the slice carries no opcode and RCU decodes none from it.
+OOE sends a lead slice on every `ccv_ooe_rcu_issue` slot. It is driven from a flop beside `valid` in A−1, so it arrives a cycle ahead of the payload in A. Cont slots carry zero. TI writes the fields into the schema as `lead_fields`. OOE builds every bit from the selected RS entry's static fields, so the slice carried no opcode until RA-43. Since then (RA rev 108/109, OA-387, OA-390) it carries lead\_opcode on every slot. RCU's op-class decode reads it at A−1 once, in rcu\_isd, which flops the class word rcu\_cls for every consumer (Partition rule 1; RI-25, RA rev 126).
 
 | Field | Width | Slots | Meaning (OA's definitions) | RCU's use |
 | --- | --- | --- | --- | --- |
-| `lead_sec_mask` | CCV\_SECTIONS | all | the op's section footprint | per-section enable of the lane-op payload sections, the bypass selects and the address data sections |
+| `lead_sec_mask` | CCV\_SECTIONS | all | the op's section footprint. Exact, not a superset: equal to the footprint on lead slots, 0 on continuations (OA 403) | per-section enable of the lane-op payload sections, the bypass selects and the address data sections; the slices precompute the P-slot section owner from it in A−1 (4 ungated flops a slice). Because ownership needs it exact, RCU asserts equality with the payload's footprint at its input, not only the subset; a negative control sets one extra bit and must fail, and TI's stub refuses a mismatch (RI-31, OA 403, TI 398, RA revs 132-133) |
 | `lead_src_used[i]` | 3 | all | `src_valid[i]` | enable of operand field group i (lane-op source i; on an address slot, base, index or store data) |
 | `lead_imm_used` | 1 | all | `imm_kind` not none, which covers every value OOE substitutes into imm | enable of the imm field group |
 | `lead_merge_used` | 1 | all | the write merges, so the old destination is read | enable of the merge-data (old dst) group and its read select |
 | `lead_guard_used` | 1 | R slot | the guard is not the always-true predicate | enable of the split guard read's `psel` flops |
 | `lead_guard_pred` | CCV\_P\_W\_PHYS\_PRED | R slot | the guard's renamed physical predicate; its negate stays in the payload | the A−1 predecode of the split guard read (Predicate file tab) |
+| lead\_guard\_used, lead\_guard\_pred (extended) | 1; 6 | all (RA rev 108/109) | the same fields, now driven on every slot for the zero-cycle issue end (RA-43). lead\_guard\_used: the op reads its predicate (guard or data) and it is not the always-true one. lead\_guard\_pred is moved: phys\_pred\_guard leaves the payload (TI 382) | every slot's guard read starts from the psel flops |
+| lead\_opcode | 9 | all | a copy of the slot's opcode; the payload keeps its own (RA rev 108/109, OA-387) | rcu\_isd's op-class decode in A−1, into rcu\_cls (Partition rule 1; RI-25, RA rev 126) |
+| lead\_phys\_src, lead\_phys\_src2, lead\_rpsrc | 16; 8; 32 | R slot | R's phys\_src and phys\_src2, moved from the payload; R's imm, all of \[31:0\] (widened from \[13:0\], RA-43), also moved: imm leaves R's payload (RA rev 114, TI 382) | the R0/R1 row selects and R's predicate sources, from flops; movi and the call link read imm from the lead\_rpsrc capture flop, which holds it at A |
+| RA-43 lead copies (TI names them in the schema) | 23 a slot (32 with lead\_opcode); 40 more on S0-S3 | all; S0-S3 | copies at A−1, payload kept. Every slot: phys\_dst 8, dst\_pos 2, dst\_width 2, done\_row 2, pred\_we 1, phys\_pred\_dst 6, cont 1, pred\_neg 1. S0-S3: phys\_old\_dst 8, old\_dst\_pos 2, src\_pos 6 (3×2), phys\_src 16 (2×8), phys\_src2 8 (lead\_phys\_src2; RI-31, OA 403, RA revs 132-133): only the fields whose in-path was over 12 (RI rev 47, RI-29, RI-31). src\_width is not copied and stays payload (RA rev 114, TI 382). OOE: gated on iss\_en, out-depth 0, gnt in 10.2 (OA-390; OA priced 345 flops before RA rev 114 narrowed the S-slot copies and made R's imm a move; lead\_phys\_src2 adds 32, OA 403) | the destination, write, cont and negate paths in lanes, pred and the slices start from flops: consumers read the copies from rcu\_isd (every slot) and rcu\_isd\_s (S0-S3), never the payload, with keep-copies of a capture flop where a fanout term puts a port over 12 (RI-29, RA rev 131). Port budgets: lead\_opcode, lead\_done\_row, lead\_pred\_we and lead\_phys\_dst have RCU in-side 13 and OOE out-side declared 0 (Daniel, DA 116; RI-26, RA revs 128-129); every other lead field and the payload stay at 12. About 412 capture flops in rcu\_isd and rcu\_isd\_s against the block's 2% (about 4,850) |
 
 **Timing in RCU.**
 
-- Each module that owns a field group registers the bits it uses, with the issue valid, into its own copy of `iss_lead_q[s]` (Conventions tab) at A−1's edge. These are RCU's own flops, as CG-5 requires.
+- The class bits come from rcu\_isd's rcu\_cls flops and the S0-S3 copies from rcu\_isd\_s's flops (RA revs 126 and 131-133); no module keeps its own copy of those. For the enable bits (sec\_mask, src\_used, imm\_used, merge\_used, guard), each module that owns a field group registers the bits it uses, with the issue valid, into its own copy of `iss_lead_q[s]` (Conventions tab) at A−1's edge. These are RCU's own flops, as CG-5 requires.
 - A group's enable at A's edge is `iss_v_q[s] & iss_lead_q[s][bit]`.
 - A group that loads after A carries the bit forward with the op. The bit is piped beside the op's valid in the same stage flops, and it is never recomputed from the payload.
 - `iss_lead_q[s]` loads every issued cycle and is counted against the module's allowance for ungated flops, about 81 per module that takes all nine slots.
@@ -143,7 +176,7 @@ In each module (sim-only, `ifdef CCV_ASSERT`):
 
 Q-53 checkers owed by RCU's RTL:
 
-- The **arrival-cycle checker** on `rcu_ooe_done` per class: valid at A+1, A+7 or A+12 after the issue that names its `rob_tag`.
+- The **arrival-cycle checker** on `rcu_ooe_done` per class: valid at A+1, A+6 or A+11 after the issue that names its `rob_tag`.
 - **A-35's two isolation assertions.** Every lane of a newly allocated row is written by a lane result, the merge path or the copy before any read of it. This is a bind module with a 192 × 32 shadow, cleared by OOE's allocation, which it observes through the SV top. The companion assertion now reads: a launched warp's map is all zero registers (A-64).
 - The **A-45 pairing checker**: every launch pairs one map with one command of the same warp and direction.
 
@@ -166,7 +199,7 @@ RA does not run these. The implementation agent (RI; handoff `docs/rcu-impl.md`)
 | --- | --- | --- | --- |
 | M0 | The cycle-accurate C++ model | tools/check-kernel.sh and tools/check-sv-hosted.sh with the model as RCU in both hosts; the model's unit tests; then block lock-step of the RTL against it (every output and event, every cycle) | every kernel passes against ccv-sim's oracle and every control above fails, with the model; every output and event on this spec's cycle, hazards and stalls included; kernel cycles reported against the stub's. From then on, the assembled block runs lock-step with no mismatch |
 | M1 | NGD per module and per port | `tools/check-ngd.py` at full size, plus each module's unit | every path ≤ 25, every port within its `.ngd.json`, all with check-ngd's fanout term counted (RA-33, Daniel's option (a)); the `pred` guard path in A ≤ 16 with the guard lead (≤ 23 without it) |
-| M2 | Clock gating | `tools/check-cg.py`: idle, medium and high scenarios (RA-34), driven by checked replays of ccv-skel port traces: high = coremark128 and vadd, medium = the same with two idle cycles after each, idle = reset and no issue; DCGE counts only from traces made after the stub's RA-19 merge fix | each module within its 2% / 8-flop allowance; block within 2% per instance, which also carries every RCU end's ungated boundary lead slice, in and out (835: ooe\_rcu\_issue 144 and miu\_rcu\_data 204 in, rcu\_ooe\_done 231 and rcu\_lane\_ops 32 × 8 out; DA rev 108, AR rev 292, TI rev 332), the boundary control flops (420, TI rev 332), every slice's below-75% row gate (RA rev 80), the lead holds waived at module level (198 as built, RI-17: MIU 4 × 46 and R 14; Daniel, 2026-11-06, RA rev 87: interface lead signals may be waived, to fit this 2% at final construction) and rcu\_kill's credit-return pulses (45; Daniel, 2026-11-06, RA rev 88); about 2,500 of about 4,700 flops at 192 rows (TI's bar: 62,750 + 50 × the modules' take); if over, shrink lead fields first; no waiver except one Daniel signs |
+| M2 | Clock gating | `tools/check-cg.py`: idle, medium and high scenarios (RA-34), driven by checked replays of ccv-skel port traces: high = coremark128 and vadd, medium = the same with two idle cycles after each, idle = reset and no issue; DCGE counts only from traces made after the stub's RA-19 merge fix | each module within its 2% / 8-flop allowance; block within 2% per instance, which also carries every RCU end's ungated boundary lead slice, in and out (835: ooe\_rcu\_issue 144 and miu\_rcu\_data 204 in, rcu\_ooe\_done 231 and rcu\_lane\_ops 32 × 8 out; DA rev 108, AR rev 292, TI rev 332), the boundary control flops (420, TI rev 332), every slice's below-75% row gate (RA rev 80), the lead holds waived at module level (198 as built, RI-17: MIU 4 × 46 and R 14; Daniel, 2026-11-06, RA rev 87: interface lead signals may be waived, to fit this 2% at final construction) and rcu\_kill's credit-return pulses (41 since RA-41 dropped MIU data's 4; 45 before; 32 only in the interim while issue was also credit-on-receipt, before RA-43; AR 330, TI 383, RA rev 116; Daniel, 2026-11-06, RA rev 88); estimated about 2,500 of about 4,700 flops at 192 rows (TI's bar: 62,750 + 50 × the modules' take); measured at 8fcec64b (RI-34): block rcu 247,468 flops, 2% allows 4,949.4, its modules take 2,703 auto-waived (55%), of which 825 are waived lead or credit flops and 218 repeater control; RA rev 123's interim slice waiver is gone (the slice loads its M rows only when a P slot owns pipe K, RA 133; K3's idle DCGE 93%); if over, shrink lead fields first; no waiver except one Daniel signs |
 | M3 | Bank slice synthesis | Yosys (`tools/shim/yosys`) on one slice at 192 rows × 4 lanes, through check-ngd and check-cg; a reduced unit at 32 rows for loops | completes as a light unit, within 2,048 MiB (stand-in 1,350); read AND-OR within the bank-out budget of 11 at 192 rows, fanout term included (stand-in 8.3, 11.0 with fanout); flop count within 1% of 6,550 |
 | M4 | Kill drain bound | the kill checker with `KILL_DRAIN` − 1 | fails on some kernel, or the margin is recorded |
 | M5 | Migration throughput | demote and restore under an R-heavy kernel | 17 rows within 68 cycles of launch (K = 4) |

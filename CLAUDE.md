@@ -8,6 +8,9 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 **An OOE model session starts at `docs/ooe-4b.md`.**
 **An RCU model session starts at `docs/rcu-impl.md`;** its model is the RCU
 in both hosts since M0 (RA, 2026-11-04), and `CCV_RCU_IMPL=stub` selects the stub.
+**An MIU and DCU architecture session (MA) starts at `docs/miu-arch.md`** (DA
+tab revs 117-118, 2026-11-10; MI and DI implement them); the skeleton's MIU and
+DCU stay the stubs until MA's Phase 1 resource model lands (miu-arch.md section 7).
 
 ## Sources of truth: edit these, never what is generated from them
 
@@ -18,6 +21,10 @@ in both hosts since M0 (RA, 2026-11-04), and `CCV_RCU_IMPL=stub` selects the stu
   and its value over the quote), and `tools/check-isa-params.py` holds it to
   the ISA document in the pinned compiler snapshot (IS-11).
 - `params/links.json`: repeater stages per channel.
+- `params/ops.json`: the opcode table, a row per opcode (its position + 1),
+  appended only. `tools/gen-ops.py` writes the skeleton's C++ table
+  (`sim/generated/ccv_ops.h`) and `ccv_ops_pkg` (`rtl/generated/`), whose
+  `ccv_op_attr(opcode)` an RTL module's own decode reads (RI-21 (4)).
 - Generated, never hand-edited: `sim/generated/`, `rtl/generated/`,
   `rtl/top/`, `docs/payload-spec.md`, `docs/trust-report.md` and
   `docs/walkthrough.md`. Regenerate them with `tools/gen-*.py`;
@@ -46,8 +53,12 @@ After the generators, the sections run as parallel jobs, `CCV_JOBS` at a
 time (default every core; `CCV_JOBS=1` is serial), each section's log in
 `build/verify/<job>.log` with its time. A job that reads another's build
 products names it in `after` in `tools/verify.sh`; no two jobs that may run
-together share a build directory. check-cg and check-ngd measure their units
-`CCV_JOBS` at a time too, and share one Yosys netlist per unit through
+together share a build directory. A section's own build directory (`owns`
+there) is removed once it passes and every job that reads it is done, and
+check-cg and check-ngd remove each unit's work directory once it is measured
+(DA, 2026-11-09); a failed section keeps its own, and `CCV_KEEP_BUILD=1` and
+`CCV_KEEP_UNIT_BUILD=1` keep them all. check-cg and check-ngd measure their
+units `CCV_JOBS` at a time too, and share one Yosys netlist per unit through
 `build/synth-cache`, ABC's maps too, keyed by everything a run reads. The
 full gate clears it first; `tools/verify.sh --cached` keeps it for an
 intermediate run, whose result reads `CACHED PASS`.
@@ -101,7 +112,10 @@ flops or more, its enable cone within 8 NGD and its DCGE at least 75% in
 idle, medium and high scenarios; anything else must toggle 75% of the time.
 An enable comes only from the module's own flops, never an input (CG-5), and
 the reset is flopped before any use (RST-1; 2026-10-18): that is why valid
-leads a payload by a cycle, and why a lead field is rare.
+leads a payload by a cycle, and why a lead field is rare. The reset arrives
+in the same cycle at every endpoint of a module and of an assembled block,
+children at their units' latencies; check-cg names the shallower ones and
+the reset stages they lack (RST-2; Daniel, 2026-11-09).
 `tools/check-cg.py` measures it from each module's unit
 (`test/**/cg-units.json`, and every repeater the design instantiates,
 `rtl/top/rpt-units.json`). Each module may leave the larger of 2% of its

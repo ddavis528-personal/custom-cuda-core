@@ -126,8 +126,10 @@ void Core::gatherWrites(uint64_t t, const In &in, std::vector<GWrite> &gw, std::
            (unsigned long long)t, ccv::prov::kLatLane);
     } else {
       const LaneRes &r = *in.lres;
+      // sec_valid describes the lane result (LW's) alone: an SFU op's
+      // sections come from RCU's own descriptor (RA-16 (b)).
       unsigned want = 0;
-      for (const LaneDesc &d : ds) want |= d.secs;
+      for (const LaneDesc &d : ds) if (!d.sfu) want |= d.secs;
       for (unsigned l = 0; l != kLanes; ++l)
         if (r.sec_valid[l] != want) {
           // The lanes' sec_valid must equal the descriptors' (Lane and
@@ -136,16 +138,43 @@ void Core::gatherWrites(uint64_t t, const In &in, std::vector<GWrite> &gw, std::
                secBits(r.sec_valid[l]).c_str(), secBits(want).c_str());
           break;
         }
+      // An SFU result is taken only for an SFU op due now (RA-16 (b)), and
+      // an SFU op due now has one on every lane.
+      bool sfu = false;
+      for (const LaneDesc &d : ds) sfu = sfu || d.sfu;
+      for (unsigned l = 0; l != kLanes; ++l)
+        if (r.sfu_valid[l] && !sfu) fail("lane %u sfu_valid with no SFU op in flight (RA-16 (b))", l);
+        else if (!r.sfu_valid[l] && sfu) { fail("lane %u has no sfu_valid for the SFU op due (RA-16 (b))", l); break; }
       for (const LaneDesc &d : ds) {
         // A copy lands within CCV_LAT_LANE of RCU taking it: the contract
         // OOE clears the load's copy-pending on (late-copy breaks it).
         if (d.copy && t - d.acc > ccv::prov::kLatLane)
           fail("seq %llu's copy reached the PRF %llu cycles after RCU took it; CCV_LAT_LANE is %u",
                seqOf(d.tid), (unsigned long long)(t - d.acc), ccv::prov::kLatLane);
-        // SW (A+11): not modelled yet (RA-3's field). When it is, it writes
-        // like MW and RW: all four banks zero-extended under full_row (RA's
-        // response RI-5, Register file tab rev 7), secmask otherwise.
-        if (d.sfu) { fail("an SFU result is not modelled yet (RA-3's field)"); continue; }
+        // SW (A+11) writes sfu_result, never result, which is LW's (RA rev
+        // 120). The lane sends sfu_result already steered, like result (RA
+        // rev 124): RCU writes byte k for every k in the op's secmask, all
+        // four under full_row (RA's response RI-5, Register file tab rev 7),
+        // where the lane owes zeros outside the element. A lane op due the
+        // same cycle writes LW beside it. sw-from-result feeds SW from
+        // result; sw-resteer masks and shifts sfu_result again.
+        if (d.sfu) {
+          if (d.gdst) {
+            const unsigned ss = cfg_.full_row ? kAllSecs : secMask(d.dst_w, d.dst_pos) & kAllSecs;
+            GWrite g{kSW, d.dst, ss, kAll, {}};
+            const Word &src = cfg_.brk == "sw-from-result" ? r.result : r.sfu_result;
+            const uint32_t em = elemMask(d.dst_w) << (8 * d.dst_pos);
+            for (unsigned l = 0; l != kLanes; ++l) {
+              if (cfg_.full_row && (src[l] & ~em))
+                fail("lane %u's sfu_result %08x for r%u has bits outside its %u-bit element at position %u",
+                     l, src[l], d.dst, 32u >> d.dst_w, d.dst_pos);
+              g.data[l] = cfg_.brk == "sw-resteer" ? (src[l] & elemMask(d.dst_w)) << (8 * d.dst_pos) : src[l];
+            }
+            gw.push_back(g);
+            ++st_.gpr_writes;
+          }
+          continue;
+        }
         // LW writes every bank the op owns (Register file tab, LW's enable):
         // a chwidth widening names its old width in dst_width (AR-24) and
         // its footprint covers the new one. The Lane and memory tab's
@@ -309,12 +338,16 @@ void Core::checkIssues(const In &in, std::array<int, kRes> &owner) {
            want == kSlotS0 ? "S0-S3" : want == kSlotP0 ? "P0-P3" : "R");
     // The lead's promises (RA-31; Partition tab, superset rule): a clear
     // bit says the op does not use that group, which RCU then never loads.
+    // lead_sec_mask is exact (OA 403, RA 133, TI 400): RCU's bank slices
+    // take the P owner from it, so a set bit outside the footprint is
+    // refused as well as a clear one inside it.
     const char *why = (is.foot & ~is.lead.sec) ? "a section outside its lead's mask"
+                      : (is.lead.sec & ~is.foot) ? "a lead mask wider than its footprint"
                       : (oc.reads & ~is.lead.src) ? "a source its lead says is unused"
                       : oc.imm_used && !is.lead.imm ? "an immediate its lead says is unused"
                       : is.merge && !is.lead.merge ? "a merge its lead says is unused"
-                      : s == kSlotR && oc.guarded && (!is.lead.guard || is.lead.gpred != is.pguard)
-                          ? "a guard its lead does not name"
+                      : (oc.guarded || oc.pdata) && !is.lead.guard && !(is.pguard == kPZero && is.pneg)
+                          ? "a predicate its lead says is unused"
                       : nullptr;
     if (why)
       fail("seq %llu, %s, reads %s (lead sections %s, sources %s)", seq(s), is.name, why,
@@ -388,10 +421,19 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
         const uint32_t v = rdPred(p);
         return (q >> w) & 1u ? ~v : v;
       };
-      if (oc.rk == RKind::Pand || oc.rk == RKind::Por || oc.rk == RKind::Pxor || oc.rk == RKind::VoteAny ||
+      if (oc.rk == RKind::Pand || oc.rk == RKind::Por || oc.rk == RKind::Pxor || oc.rk == RKind::Pmov ||
+          oc.rk == RKind::VoteAny ||
           oc.rk == RKind::VoteAll || oc.rk == RKind::Ballot) {
         x.rpa = psrc(is.imm);
         x.rpb = psrc(is.imm >> (w + 1));
+        // register pmov's ps1 repeats its ps0 (OA's rev 396): RCU refuses one
+        // whose two sources differ, physical predicate or negate (RA 119).
+        if (oc.rk == RKind::Pmov) {
+          const uint32_t fm = (1u << (w + 1)) - 1;
+          if ((is.imm & fm) != ((is.imm >> (w + 1)) & fm))
+            fail("seq %llu: pmov's ps1 (%u) is not its ps0 (%u)", seqOf(is.tid),
+                 unsigned((is.imm >> (w + 1)) & fm), unsigned(is.imm & fm));
+        }
         if (brk == "arch-pred-srcs") {
           auto arch = [&](uint32_t q) {
             const uint32_t v = rdPred(q & 3);
@@ -745,6 +787,9 @@ void Core::issueR(uint64_t t, const Issue &is, uint32_t active, const Word &r0, 
   case RKind::Pand: pw = true; pval = rpa & rpb; break;
   case RKind::Por: pw = true; pval = rpa | rpb; break;
   case RKind::Pxor: pw = true; pval = rpa ^ rpb; break;
+  // register pmov (OA's rev 396): pd = ps0 under its negate; ps1 repeats it
+  // and is not read. pmov-negate inverts ps0's negate.
+  case RKind::Pmov: pw = true; pval = cfg_.brk == "pmov-negate" ? ~rpa : rpa; break;
   case RKind::PmovImm:   // merged by the issue mask (RA-19); pmov-all-lanes writes all 32
     pw = true;
     pval = is.imm;

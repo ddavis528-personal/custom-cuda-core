@@ -41,7 +41,9 @@
 // attributes say it reads a source), no-grant (ooe_rs's grant never
 // reaches rename), no-take-q (the go's pool correction drops the lagged
 // take, a check-build input: OA's rev 208) and no-take-q2 (the names' pool
-// register drops the older take: OA's rev 219). The last two need names
+// register drops the older take: OA's rev 219), unmet-now (the go reads the
+// unmet on time, not its register: OI-134) and no-last-take (the register's
+// unmet, its last take not subtracted). The last four need names
 // that bind: run-rtl.sh's scarce build (RENAME_SCARCE), 144 rows and a
 // GPR ceiling of 24, the model's set alike.
 // The sectioned build (RENAME_SECTIONS) adds no-merge (no head's attributes
@@ -87,6 +89,9 @@ void renameConfig(Config &c) {
 // leaves a trace the netlist's replay cannot follow (its group's grant never
 // comes). The comparison runs keep them, and stop there (fault).
 bool g_cg_no_faults = false;
+// pend-follows: the model's placement sees the pending group's writes
+// (cand_indep_pend off), which the RTL's does not (#35).
+bool g_pend_follows = false;
 void renameSectioned(Config &c) {
   if (g_cg_no_faults)
     c.inject_no_width_fault = c.inject_no_sized_fault = c.inject_no_converged_fault = c.inject_no_format_fault = true;
@@ -99,6 +104,7 @@ void renameSectioned(Config &c) {
     c.cand_lag = d.cand_lag;
     c.cand_return = d.cand_return;
     c.cand_indep = d.cand_indep;
+    c.cand_indep_pend = d.cand_indep_pend && !g_pend_follows;
     c.cand_home = d.cand_home;
     c.ret_late = d.ret_late;
   }
@@ -355,6 +361,8 @@ void clearInputs() {
   dut->flr_cq01h = dut->flm_cq01h = 0;
   dut->ctl_notq = control == "no-take-q";
   dut->ctl_notq2 = control == "no-take-q2";
+  dut->ctl_unow = control == "unmet-now";
+  dut->ctl_nolt = control == "no-last-take";
   clearAll(dut->run_cq01h, S * LB);
   clearAll(dut->ret_cq01h, S * LT);
   dut->reach_cq01h = 0;
@@ -701,6 +709,7 @@ void newCore(const Core &c) {
   skip = c.slots() != S || cfg.ckpts != C || cfg.rename_width > R || cfg.retire_per_rob > RP ||
          cfg.pred_zero != (1u << PW) - 1 || cfg.sectioned != (RENAME_NS != 0) ||
          (RENAME_NS && (cfg.full_rows || cfg.place != 0 || cfg.cand != 2 || cfg.cand_lag != 2 || !cfg.cand_return || !cfg.cand_indep ||
+                        cfg.cand_indep_pend == g_pend_follows ||
                         !cfg.cand_home || !cfg.ret_late)) || !cfg.rename_preds || gf.capacity() != NG || pf.capacity() != NP ||
          gf.bufferCap() != FB || gf.banks() != FK || pf.bufferCap() != FB || pf.banks() != FK || c.rsEntries() != N ||
          c.rsRcuEntries() != NR || cfg.ren_floor != FLG || cfg.ren_ceil != CLG || cfg.pred_ren_floor != FLP ||
@@ -781,6 +790,7 @@ void post(const Core &c) {
 int main(int argc, char **argv) {
   const unsigned seeds = argc > 1 && argv[1][0] != '-' ? unsigned(std::atoi(argv[1])) : 25;
   if (const char *c = std::getenv("RENAME_CONTROL")) control = c;
+  g_pend_follows = control == "pend-follows";
   {
     Config base;
     Core c(base);

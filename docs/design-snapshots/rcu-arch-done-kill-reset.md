@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=24 exported=2026-11-05 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 24 on 2026-11-05 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=42 exported=2026-11-10 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 42 on 2026-11-10 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -19,8 +19,8 @@ This tab covers everything RCU tells OOE and RAU about completion and teardown: 
 | --- | --- | --- | --- | --- | --- |
 | RCU-only (bra, call, ret, pand/por/pxor, pmov, movi) | 5 (`CCV_DONE_SLOT_RCU`) | A | A+1 | A+2 | R pipe (`rres_a1` stage) |
 | Warp collective (shfl, vote, ballot, unballot) | 6 | A | A+1 | A+2 | R pipe |
-| Lane op, lead section k | k (0-3) | A+6 | A+7 | A+8 | `lwb_d[k]` descriptor, age 6 (CCV\_LAT\_LANE − 2) |
-| SFU op | 4 | A+11 | A+12 | A+13 | `swb_d` descriptor, age 11 (CCV\_LAT\_SFU − 2) |
+| Lane op, lead section k | k (0-3) | A+5 | A+6 | A+7 | `lwb_d[k]` descriptor, age 5 (CCV\_LAT\_LANE − 2) |
+| SFU op | 4 | A+10 | A+11 | A+12 | `swb_d` descriptor, age 10 (CCV\_LAT\_SFU − 2) |
 | PRF copy (GPR or predicate), any memop | none |  |  |  | OI-4; masked-load copy: done\_row 1 completes on MIU's cmpl |
 
 A collective's done goes out at A+1, 3 cycles before `CCV_LAT_COLLECTIVE` = 5. The contract text allows an early finish (V-35: "RCU may finish sooner"). Its result is readable from A+3, so dependants woken at 5 read a landed value. RA-29 asks AR to confirm that an early done on a `fixed_latency` slot is legal; otherwise slot 6's valid is delayed 3 cycles through 3 more flop stages (rob\_tag and done\_row only, 9 b).
@@ -55,7 +55,7 @@ Each outbound wake is a flop, written every cycle. The receiver's gate holds thr
 | Wake | `D` of the flop | Why it covers the valid |
 | --- | --- | --- |
 | `rcu_lane_ops_c<NN>_wake` (each copy), `rcu_miu_addr_wake` | `ooe_rcu_issue_wake` | Lane and address valids are at A. OOE's own rule puts the issue wake in \[A−5, A−2\] for issue valid A−1, so RCU's flop is in \[A−4, A−1\]. |
-| `rcu_ooe_done_wake` | any `ooe_rcu_issue_s*_valid` (wire) OR any `lwb_d`/`swb_d` stage valid OR R pipe valid | R done valid at A+1, from issue valid at A−1 → wake at A. Lane done at A+7, from descriptor ages 1-6 → wake A+2..A+7. SFU likewise. |
+| `rcu_ooe_done_wake` | any `ooe_rcu_issue_s*_valid` (wire) OR any `lwb_d`/`swb_d` stage valid OR R pipe valid OR `ooe_rcu_issue_wake` a cycle on, through ccv\_rcu's ungated wake detector (RA rev 136) | R done valid at A+1, from issue valid at A−1 → wake at A. R's done payload lands at A+2, so its wake is due at A−2, before any of the op's valids reach RCU; only OOE's issue wake, taken a cycle on, covers it (RI-37 (2), RA rev 136). That term is a superset: a wake with no done costs OOE's done receiver DCGE, never correctness. Lane done at A+6, from descriptor ages 1-5 → wake A+2..A+6. SFU likewise. |
 | `rcu_pca_mig_wake` | `dm_busy_next` | Migration tab: 4-cycle lead counter. |
 
 ## Credits RCU returns
@@ -64,7 +64,7 @@ Each outbound wake is a flop, written every cycle. The receiver's gate holds thr
 | --- | --- | --- |
 | `ooe_rcu_issue_s*` | that slot's flopped valid (landed this cycle) | RCU never holds an issue |
 | `lane_rcu_res_c*` | that copy's flopped valid |  |
-| `miu_rcu_data_s*` | that slot's flopped valid |  |
+| `miu_rcu_data_s*` | none: no RCU credit port | The wrapper returns the credit on receipt, from its own `b_` valid flop (`ccv_common_rpt` `CREDIT_ON_RECEIPT`; RA-41, AR 330, TI 383, RA rev 116) |
 | `ooe_rcu_map`, `rau_rcu_mig` | entry launched or kill-dropped | Migration tab |
 | `pca_rcu_mig` | row written or dead row popped | Migration tab (TI-13) |
 
@@ -84,14 +84,14 @@ RCU's pipe carries no warp id: an issue carries only `rob_tag`. RCU therefore ca
 | --- | --- | --- | --- |
 | `kill_v_q` | 1 | every cycle | flopped `kill_valid` (cycle K−1 on the wire, so set in K) |
 | `kill_ep_q` | 2 | `kill_v_q` | `kill_epoch`, taken in K |
-| `kill_drain` | 5 | `kill_v_q` or `kill_drain != 0` | loaded with `KILL_DRAIN` in K, counts to 0 |
+| `kill_drain` | 5 | `kill_v_q` or `kill_drain != 0` | loaded with `KILL_DRAIN` − 1 at K's edge, K being the drain's first cycle (K counts; RA rev 136), counts to 0 |
 | `kill_ack_q` | 1 | `kill_v_q` or ack-ready | `kill_ack`, a level (RA-23) |
 | `kill_ack_ep_q` | 2 | ack-ready | `kill_ack_epoch` |
 
-`KILL_DRAIN` = 2 + `link_n(ooe_rcu_issue)` + `CCV_LAT_SFU` + 1 + `link_n(rcu_ooe_done)`, which is 16 with abutted links (CCV\_LAT\_SFU 13 since the boundary flops, AR rev 285; 15 before). It covers:
+`KILL_DRAIN` = 2 + `link_n(ooe_rcu_issue)` + `bnd_rx(ooe_rcu_issue)` + `CCV_LAT_SFU` + 1 + `link_n(rcu_ooe_done)`, which is 15 at the defaults: abutted links, the issue end zero-cycle (bnd\_rx 0 since RA-43, AR 329; 16 with it flopped) and CCV\_LAT\_SFU 12 since lane\_rcu\_res's end at RCU went zero-cycle (RA rev 95). The issue end's bnd\_rx counts on the crossing, never in the base (AR revs 288, 300 and 301); 17 before RA rev 95. It covers:
 
-- the last issue that OOE may send before it reacts to the same kill (valid by K+1, payload A = K+2);
-- that issue's longest RCU life: an SFU done payload at A+13, which is on the wire to OOE until it lands.
+- the last issue that OOE may send before it reacts to the same kill (valid at RCU's interface flop by K+1 + bnd\_rx(ooe\_rcu\_issue), so payload A = K+2 with the issue end zero-cycle, RA-43);
+- that issue's longest RCU life: an SFU done payload at A+12, which is on the wire to OOE until it lands.
 
 An address message (A+1) and a lane message (A+1) leave sooner. A load's data from MIU is MIU's own drain, and RCU writes whatever lands.
 
@@ -100,6 +100,8 @@ An address message (A+1) and a lane message (A+1) leave sooner. A load's data fr
 - At its edge: `kill_ack_q` ← 1 and `kill_ack_ep_q` ← `kill_ep_q`.
 - `kill_ack_q` clears at the edge that ends K of the next kill, so the ack is low through that kill's drain.
 - A kill that arrives during a drain reloads `kill_drain`, ORs its mask into `mig_kmask`, takes the new epoch and is answered once, with the new epoch. RAU counts an ack only when its epoch matches (`CCV_P_W_KILL_EPOCH` = 2), so the earlier epoch's ack never appears, and needs not.
+
+Kill inputs and sleep (AR 336 (b), AR 338/339; RI-27, RI-29, RI-33, RI-34; RA revs 127, 130, 131 and 134): the detector is in ccv\_rcu, its own CG unit of 35 flops. kill\_detect\_v\_cr01h flops kill\_valid on the ungated core\_clk every cycle, at 0 NGD and with no reset (it counts in the module's allowance); kill\_valid is a wake port. kill\_detect\_ep\_cr02h and kill\_detect\_km\_cr02h (34 flops) also sit on core\_clk, loaded under that valid flop (the module's own flop, CG-5; one gate, DCGE 100%) in the cycle after kill\_valid, which is when the epoch and mask arrive, since valid leads the payload. None of it depends on RCU's gated clock, so a kill that lands asleep is captured. rcu\_kill and rcu\_mig load epoch and mask from those flops at K+1. The ack is high from K + KILL\_DRAIN + 1 = 16 (RA rev 136, RI-37 (1); 17, at K + KILL\_DRAIN + 2, before), the same awake and asleep, and a second kill across the wake is acked with the later epoch. M4 runs both cases, each with a control that drops the held kill and must fail. M4's kill checker passes at this timing and its KILL\_DRAIN − 1 control fails; both stay on the RTL and the model, with killsleep's asleep-equals-awake and later-epoch cases. An earlier ack changes nothing for RAU, which counts the ack by epoch (AR 338/339). If the control ever stops failing, the bound is loose: record the margin, and never shorten it further without a row. Reset (RST-2, Daniel 2026-11-09): block rcu's reset arrives at cycle 1 at every endpoint (RI-34).
 
 What to measure: the implementation agent runs the kill checker with `KILL_DRAIN` − 1 as a negative control. It must fail on some kernel whose kill lands with an SFU op in flight. If no kernel can make it fail, the bound is loose, and the margin is recorded.
 
@@ -116,7 +118,7 @@ What to measure: the implementation agent runs the kill checker with `KILL_DRAIN
 | `kill_drain`, `kill_ack_q`, `kill_ack_ep_q`, `mig_kmask` (0) | the MIU lead predecode flops: they are written every cycle and are gated by the valid that is reset |
 | `lead_bt_q`, `lead_bm_q` (0): leads are checked even without a valid |  |
 
-About 1,500 flops reset, out of roughly 246,000. Every payload is ignored without its valid, and the `dirty-zero` control is unaffected: the zero registers are constants, not rows.
+About 1,500 flops reset, out of 247,468 (measured, RI-34). Every payload is ignored without its valid, and the `dirty-zero` control is unaffected: the zero registers are constants, not rows.
 
 **kill\_ack after reset** is 0 with epoch 0. RAU starts no kill before reset ends, so a level of 0 is an unanswered nothing. AR confirms with RA-23.
 

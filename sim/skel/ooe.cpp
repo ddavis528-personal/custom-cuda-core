@@ -47,6 +47,9 @@ private:
     // instruction of the warp has written is still the zero register (A-64).
     unsigned psrc[3] = {}, pold = 0, pnew = 0, ppguard = 0, ppold = 0;
     bool issued = false, rcu = false, miu = false, committed = false;
+    // serial 5 (C_RECONV; RA-16 (f), OA's rev 393): complete at allocation,
+    // with no rename and no issue, as exit is complete once it issues.
+    bool nop = false;
     // A masked load's copy-only op (A-38) sends no done: OOE clears this at
     // the copy's contracted wake, issue + CCV_LAT_LANE, as for a lane op.
     bool copy_pending = false;
@@ -54,7 +57,7 @@ private:
     // A memop completes on MIU's completion alone: RCU sends no done for it
     // (OI-4).
     bool complete() const {
-      return op->cls == kExit ? issued
+      return op->cls == kExit || nop ? issued
                               : issued && (attrMem(attr) ? miu : rcu) && !copy_pending;
     }
   };
@@ -77,6 +80,7 @@ private:
   // records only whether one has been written since launch (A-64).
   std::array<std::array<unsigned, 16>, 32> rat_;
   std::deque<unsigned> free_;
+  std::array<unsigned, 32> decq_back_{};   ///< decode-queue slots to return, per tier-1 slot
   std::set<unsigned> used_;     ///< registers ever allocated (coverage)
   bool pw_[32][4] = {};
   static constexpr unsigned kRob = 128;
@@ -112,8 +116,20 @@ private:
     // A uop waits in the channel -- its credit unreturned -- while the ROB
     // is full or no physical register is free: rename stalls, never drops.
     for (unsigned s = 0; s != kChans[c.dec_ooe].rate; ++s)
-      while (has(c.dec_ooe, s) && rob_.size() != kRob && !free_.empty())
+      while (has(c.dec_ooe, s) && rob_.size() != kRob && !free_.empty()) {
         dispatch(take(c.dec_ooe, s));
+        // A uop leaves the decode queue as it renames: one slot back to its
+        // tier-1 slot, the uop slot's binding group (TI-46 (b), A-65).
+        ++decq_back_[s / std::max(1u, unsigned(kChans[c.dec_ooe].bind_group))];
+      }
+    for (unsigned t = 0; t != kChans[c.ooe_cred].rate; ++t)
+      if (decq_back_[t] && can(c.ooe_cred, t)) {
+        Bits m = msgOf(c.ooe_cred);
+        put(m, c.ooe_cred, "tier1_id", t);
+        put(m, c.ooe_cred, "credit_count", decq_back_[t]);
+        send(c.ooe_cred, t, m, makeUid(IdClass::kNone, 0));
+        decq_back_[t] = 0;
+      }
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
       while (has(c.rcu_ooe, s)) {
         Receiver::Msg m = take(c.rcu_ooe, s);
@@ -152,6 +168,10 @@ private:
         if (E *e = byTag(unsigned(get(m.payload, c.miu_ooe, "rob_tag")))) e->miu = true;
         else k_.fail("ooe: completion for a tag not in the ROB");
       }
+    // The wake hint ahead of a completion: the stub schedules nothing early,
+    // so it takes the hint and ignores it.
+    for (unsigned s = 0; s != kChans[c.cmpl_hint].rate; ++s)
+      while (has(c.cmpl_hint, s)) take(c.cmpl_hint, s);
     for (E &e : rob_)
       if (e.copy_pending && now_ >= e.copy_wake) e.copy_pending = false;
     issueOne();
@@ -256,21 +276,23 @@ private:
     if (e.ordering != 0 && !(attrMem(e.attr) && attrMemKind(e.attr) == kMemKFence))
       k_.fail("ooe: pc 0x%llx has ordering %u but is not a fence",
               (unsigned long long)e.pc, e.ordering);
+    e.nop = attrSerial(e.attr) == kSerNop;
+    e.issued = e.nop;
     // Rename: sources and old destinations read the RAT before this
-    // instruction's own writes update it (A-64).
+    // instruction's own writes update it (A-64). A no-op renames nothing.
     auto q = [&](unsigned a) { return pw_[e.warp][a & 3] ? physPred(e.warp, a) : ccv::prov::kPredZero; };
     for (unsigned i = 0; i != 3; ++i) e.psrc[i] = rat_[e.warp][e.src[i] & 15];
     e.pold = rat_[e.warp][e.dst & 15];
     e.ppguard = q(e.pguard);
     e.ppold = q(e.pdst);
-    if (e.op->gdst) {
+    if (e.op->gdst && !e.nop) {
       e.pnew = free_.front();
       free_.pop_front();
       if (!used_.insert(e.pnew).second) k_.hit("reg_reuse");   // came back from a retire
       rat_[e.warp][e.dst & 15] = e.pnew;
       if (e.warp == 0) k_.ratOf(0)[e.dst & 15] = e.pnew;   // the final compare's map
     }
-    if (e.pwe) pw_[e.warp][e.pdst & 3] = true;
+    if (e.pwe && !e.nop) pw_[e.warp][e.pdst & 3] = true;
     e.tag = next_tag_;
     next_tag_ = (next_tag_ + 1) % kRob;
     emit(now_, e.tid, EV_DISPATCH, UNIT_OOE, e.warp, e.tag);
@@ -279,6 +301,7 @@ private:
 
   /// Registers an entry reads and writes, as (kind, index) pairs.
   static void regs(const E &e, std::vector<unsigned> &rd, std::vector<unsigned> &wr) {
+    if (e.nop) return;
     for (unsigned i = 0; i != e.op->nsrc; ++i) rd.push_back(e.src[i]);
     if (e.op->guard || e.op->pdata) rd.push_back(100 + e.pguard);
     if (e.op->cls == kPredLogic) {    // its sources are qualifiers in imm
@@ -342,7 +365,8 @@ private:
     put(is, c.ooe_rcu, "rob_tag", e.tag);
     put(is, c.ooe_rcu, "warp_id", e.warp);
     put(is, c.ooe_rcu, "issue_mask", issue_mask);
-    put(is, c.ooe_rcu, "phys_src", (e.psrc[0] << 8) | e.psrc[1]);
+    // On R, finishIssueLeads moves them to the lead (RA 109 (b)).
+    put(is, c.ooe_rcu, "phys_src", (e.psrc[0] << ccv::prov::kWPhysReg) | e.psrc[1]);
     put(is, c.ooe_rcu, "phys_src2", e.psrc[2]);
     // srd's value is identity, which OOE holds, so it goes in the immediate
     // here and RCU substitutes it like any other: warp_base for %ctatid
@@ -360,7 +384,6 @@ private:
     }
     if (!mem) put(is, c.ooe_rcu, "imm", imm);
     put(is, c.ooe_rcu, "phys_dst", e.op->gdst ? e.pnew : 0);
-    put(is, c.ooe_rcu, "phys_pred_guard", e.ppguard);
     put(is, c.ooe_rcu, "phys_pred_dst", physPred(e.warp, e.pdst));
     put(is, c.ooe_rcu, "pred_we", e.pwe);
     put(is, c.ooe_rcu, "merge_en", merge);
@@ -377,16 +400,22 @@ private:
     put(is, c.ooe_rcu, "opcode", opcodeOf(e.op));
     put(is, c.ooe_rcu, "bypass_group", attrBypGroup(e.attr));
     put(is, c.ooe_rcu, "footprint", slot == kSlotR ? 0u : maskOf(kChw32, 0));
+    // The guard's predicate moved to the lead on every slot (RA 109 (a)):
+    // a guard or a predicate read as data (sel's, st.pred's) names it.
     putIssueLead(is, c.ooe_rcu, slot, slot == kSlotR ? 0u : maskOf(kChw32, 0), srcValidOf(e.op),
-                 !mem, merge, e.op->guard, e.ppguard, k_.brk);
+                 !mem, merge, e.op->guard || e.op->pdata, e.ppguard, k_.brk);
     // A lead and its continuation: the rest of its full-width group.
     auto sendGroup = [&](unsigned lead, const Bits &m) {
-      send(c.ooe_rcu, lead, m, e.tid);
+      // R's source rows to the lead, then the copies (RA-43), last.
+      Bits ld = m;
+      finishIssueLeads(ld, c.ooe_rcu, lead, k_.brk);
+      send(c.ooe_rcu, lead, ld, e.tid);
       if (lead == kSlotR) return;
       for (unsigned k = 1; k != kSecs; ++k) {
         Bits ct = msgOf(c.ooe_rcu);
         put(ct, c.ooe_rcu, "rob_tag", e.tag);
         put(ct, c.ooe_rcu, "cont", 1);
+        finishIssueLeads(ct, c.ooe_rcu, lead + k, k_.brk);
         send(c.ooe_rcu, lead + k, ct, e.tid);
       }
     };
@@ -398,7 +427,7 @@ private:
       Bits cp = is;
       put(cp, c.ooe_rcu, "opcode", kOpCopy);
       if (!e.op->guard) {
-        put(cp, c.ooe_rcu, "phys_pred_guard", ccv::prov::kPredZero);
+        put(cp, c.ooe_rcu, "lead_guard_pred", ccv::prov::kPredZero);
         put(cp, c.ooe_rcu, "pred_neg", 1);
       }
       // skip-copy: OOE issues the load alone, so the inactive lanes keep
@@ -459,7 +488,7 @@ private:
     // free-new: retire frees the write's own new register instead of the
     // one it replaced, so a live value is reallocated once the list wraps.
     const unsigned freed = k_.brk == "free-new" ? e.pnew : e.pold;
-    if (e.op->gdst && freed != ccv::prov::kPhysZero) free_.push_back(freed);
+    if (e.op->gdst && !e.nop && freed != ccv::prov::kPhysZero) free_.push_back(freed);
     rob_.pop_front();
   }
 

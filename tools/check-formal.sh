@@ -17,6 +17,10 @@
 #   full_bandwidth, N = 0, 1, 2: a launch      the same at a credit depth one
 #     every cycle at the credit-loop depth       short of the loop (Q-43)
 #     (Q-43)
+#   credit on receipt (FV_COR), N = 0-2:       a receiver's own credit flop in
+#     safety, full rate at 4 + 2N              series (FV_COR_SERIES): full
+#                                                bandwidth fails; one taking a
+#                                                message late: credit_per_msg
 #   non-vacuity: messages flow and the         (reach_* are asserted false:
 #     buffer fills, under the safety proofs'     their counterexamples ARE
 #     (absent) assumptions                       the witnesses)
@@ -251,6 +255,39 @@ for n in 0 1 2; do
   fi
 done
 
+# -- credit on receipt (FV_COR; AR's rev 322, RA-41) ------------------------------
+# The destination end's boundary stage loads its credit from its own valid flop
+# (ccv_common_rpt CREDIT_ON_RECEIPT), the receiver taking every message the
+# cycle it lands: safety, and full rate at the same depth, 4 + 2N, not one less.
+# Its controls: a receiver that registers its own credit behind the boundary
+# flop (rcu_kill's flop, FV_COR_SERIES) -- the register in series credit on
+# receipt removes -- runs below full rate at that depth; and one that takes a
+# landed message late or never (FV_COR_LATE) breaks credit_per_msg.
+for n in 0 1; do
+  depth=$((LOOP + 2 * n))
+  r=$(prove "cor_safety_n$n" $n $depth "FV_BUILT FV_COR" -response_within_n,-conservation)
+  [ "$r" = proved ] && say "credit on receipt, N=$n: safety" "PASS (proved)" ||
+    bad "credit on receipt safety, N=$n" "$r ($B/cor_safety_n$n/abc.log)"
+  r=$(prove_bmc "cor_cons_n$n" $n $depth "FV_BUILT FV_COR" conservation)
+  [ "$r" = "bounded 40" ] && say "  ...conservation" "PASS (bounded, 40 cycles)" ||
+    bad "credit on receipt conservation, N=$n" "$r ($B/cor_cons_n$n/abc.log)"
+done
+for n in 0 1 2; do
+  depth=$((LOOP + 2 * n))
+  r=$(prove "cor_bw_n$n" $n $depth "FV_BUILT FV_COR FV_GREEDY" full_bandwidth)
+  r2=$(prove "cor_bw_short_n$n" $n $((depth - 1)) "FV_BUILT FV_COR FV_GREEDY" full_bandwidth)
+  r3=$(prove "cor_series_n$n" $n $depth "FV_BUILT FV_COR_SERIES FV_GREEDY" full_bandwidth)
+  if [ "$r" = proved ] && [ "${r2%% *}" = cex ] && [ "${r3%% *}" = cex ]; then
+    say "credit on receipt, full bandwidth, N=$n" "PASS (proved at $depth; $((depth - 1)): cex; flop in series: cex)"
+  else
+    bad "credit on receipt full bandwidth, N=$n" \
+        "depth $depth: $r; depth $((depth - 1)): $r2; flop in series at $depth: $r3"
+  fi
+done
+r=$(prove "cor_late" 1 $((LOOP + 2)) "FV_BUILT FV_COR FV_COR_LATE" credit_per_msg)
+[ "${r%% *}" = cex ] && say "  ...a message taken late: credit_per_msg fails" "PASS ($r)" ||
+  bad "credit on receipt, taken late" "$r: not refuted"
+
 # -- the properties can fail: mutants ---------------------------------------
 for spec in "double_pop:FV_MUT_DOUBLE_POP:credit_per_msg" \
             "double_pop_cons:FV_MUT_DOUBLE_POP:conservation"; do
@@ -297,9 +334,12 @@ done
 #     and WAKE_HOLD more, override / reset /     enable
 #     te open it
 #   Q-33 with ccv_common_chk_wake: the sender's   a wake hold one short of
-#     half assumed, the receiver's half          CCV_WAKE_LAT: wake_keeps_rx
-#     (wake_keeps_rx) and "no valid meets a
-#     withheld edge" proved
+#     half assumed, the receiver's half          CCV_WAKE_LAT + 1:
+#     (wake_keeps_rx, through T + LAT + 2;       wake_keeps_rx; the old hold,
+#     AR rev 343), "no valid meets a withheld    CCV_WAKE_LAT - 1:
+#     edge", and a lead valid's payload, a       q33_lead_payload
+#     cycle after a valid at T + LAT, is
+#     captured (q33_lead_payload) proved
 #   episode: the thresholds free, as CSRs     a threshold sampled only in
 #     (Q-59); wherever one held its value       reset; a count that wraps at
 #     through the current run, `gated` is       the largest threshold
@@ -309,7 +349,7 @@ done
 
 pkgval() { sed -n "s/.*localparam int $1 = \([0-9]*\);/\1/p" rtl/generated/ccv_params_pkg.sv; }
 LAT=$(pkgval CCV_WAKE_LAT)
-HOLD=$((LAT - 1))       # the gate's default: registered wake, then LAT - 1
+HOLD=$((LAT + 1))       # the gate's default: registered wake, then LAT + 1 (AR rev 343)
 # Two configurations: small hysteresis (the corners close together), and the
 # CSR reset values every block gets. The clean-clock and Q-33 proofs leave
 # the thresholds free (FV_FREE_HYST): any value, changing at any time.
@@ -319,13 +359,14 @@ for cfg in "3 5 $HOLD" "$(pkgval CCV_CG_HYST_QUIESCE) $(pkgval CCV_CG_HYST_STALL
   ok=1; what=""
   for spec in "glitch:FV_ASYNC FV_FREE_HYST:all" "cycle::all" \
               "q33_rx:FV_Q33 FV_FREE_HYST:wake_keeps_rx" \
-              "q33_valid:FV_Q33 FV_FREE_HYST:q33_valid_meets_clock"; do
+              "q33_valid:FV_Q33 FV_FREE_HYST:q33_valid_meets_clock" \
+              "q33_lead:FV_Q33 FV_FREE_HYST:q33_lead_payload"; do
     IFS=: read -r nm def tgt <<<"$spec"
     r=$(prove_cg "cg_${nm}_$tag" "$def" "$tgt" $hq $hs $hold)
     [ "$r" = proved ] || { ok=0; what="$what $nm: $r ($B/cg_${nm}_$tag/abc.log)"; }
   done
   [ $ok = 1 ] &&
-    say "clock gate ($hq/$hs/$hold): glitch, cycle, Q-33" "PASS (proved)" ||
+    say "clock gate ($hq/$hs/$hold): glitch, cycle, Q-33, lead payload" "PASS (proved)" ||
     bad "clock gate ($hq/$hs/$hold)" "${what# }"
 done
 
@@ -339,21 +380,23 @@ r=$(prove_cg "cg_episode" "FV_EPISODE FV_FREE_HYST" episode 3 5 $HOLD)
 mkdir -p "$B/cg_mut"
 G=rtl/clk/ccv_common_clk.sv
 I=rtl/ctech/sim/ccv_common_ctech_icg.sv
-sed 's/  logic          wake_q;/  logic          wake_q, wake_d1;/; s/      wake_q <= |wake;/      wake_d1 <= |wake;\n      wake_q <= wake_d1;/' \
+sed 's/^  wire           woke  = |wake;$/  logic          woke;\n  always_ff @(posedge clk) woke <= |wake;/' \
   $G >"$B/cg_mut/wake_late.sv"
-sed 's/= !sleep || wake_q || override_q || !rst_n_q;/= !sleep || wake_q || (|wake) || override_q || !rst_n_q;/' \
+sed 's/= !sleep || override_q || !rst_n_q;/= !sleep || (|wake) || override_q || !rst_n_q;/' \
   $G >"$B/cg_mut/wake_comb.sv"
-sed "s/      if (hold_en) hold_q <= wake_q ? HOLD : hold_q - 1'b1;/      if (hold_en) hold_q <= wake_q ? HOLD - 1'b1 : hold_q - 1'b1;/" $G >"$B/cg_mut/hold_short.sv"
+sed "s/      hold_q <= woke ? OPEN : /      hold_q <= woke ? OPEN - 1'b1 : /" $G >"$B/cg_mut/hold_short.sv"
+sed "s/      hold_q <= woke ? OPEN : /      hold_q <= woke ? OPEN - HW'(2) : /" $G >"$B/cg_mut/hold_old.sv"
 sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 2'd2 >= (CW+1)'(hyst_quiesce))/" $G >"$B/cg_mut/hyst_early.sv"
 sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/(q_run_q + 1'b1 >= CW'(hyst_quiesce))/" $G >"$B/cg_mut/hyst_wrap.sv"
-sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(thr_rst))/; s/^  logic          wake_q;\$/  logic          wake_q;\n  logic [CW-1:0] thr_rst;\n  always_ff @(posedge clk) if (!rst_n) thr_rst <= hyst_quiesce;/" $G >"$B/cg_mut/thr_reset.sv"
+sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(thr_rst))/; s/^  logic \[HW-1:0\] hold_q;\$/  logic [HW-1:0] hold_q;\n  logic [CW-1:0] thr_rst;\n  always_ff @(posedge clk) if (!rst_n) thr_rst <= hyst_quiesce;/" $G >"$B/cg_mut/thr_reset.sv"
 sed 's/ || override_q || !rst_n_q;/ || override_q;/' $G >"$B/cg_mut/no_reset.sv"
 awk '/always_latch begin/{print "  assign en_l = en | te;"; skip=2; next} skip>0{skip--; next} {print}' \
   $I >"$B/cg_mut/no_latch.sv"
 sed 's/    if (!clk) en_l = en | te;/    if (clk) en_l = en | te;/' $I >"$B/cg_mut/high_latch.sv"
 for spec in "wake_late:g::wake_second_edge:a wake a cycle later still" \
             "wake_comb:g::spec:the wake back on the enable path, unregistered" \
-            "hold_short:g:FV_Q33:wake_keeps_rx:wake hold one short of CCV_WAKE_LAT" \
+            "hold_short:g:FV_Q33:wake_keeps_rx:wake hold one short of CCV_WAKE_LAT + 1" \
+            "hold_old:g:FV_Q33:q33_lead_payload:the old wake hold, CCV_WAKE_LAT - 1" \
             "hyst_early:g::spec:hysteresis one short" \
             "hyst_wrap:g:FV_EPISODE FV_FREE_HYST:episode:a count that wraps at the largest threshold" \
             "thr_reset:g:FV_EPISODE FV_FREE_HYST:episode:a threshold sampled only in reset" \

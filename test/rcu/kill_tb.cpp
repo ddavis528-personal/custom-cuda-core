@@ -5,7 +5,7 @@
 // (kill_v_q, kill_ep_q, kill_drain, kill_ack_q, kill_ack_ep_q, ack-ready
 // with migration's quiesce term), the credit flops, the done wake, the
 // idle term and the CSR responder. KILL_DRAIN is the tab's formula at the
-// build's links (KT_LINK_ISS, KT_LINK_DONE) and CCV_LAT_SFU.
+// build's links, bnd_rx included: CCV_LAT_RCU_KILL_DRAIN (RA-42).
 //
 // Runs: directed kills (one alone, one during a drain, a late quiesce),
 // then random traffic. --cg <idle|medium|high> <vcd> runs one clock-gating
@@ -27,17 +27,11 @@
 
 #include "ccv_params.h"
 
-#ifndef KT_LINK_ISS
-#define KT_LINK_ISS 0
-#endif
-#ifndef KT_LINK_DONE
-#define KT_LINK_DONE 0
-#endif
 
 namespace {
 
 constexpr unsigned kNS = 9, kNL = 32, kNM = 4, kNB = 6;
-unsigned g_drain = 2 + KT_LINK_ISS + ccv::prov::kLatSfu + 1 + KT_LINK_DONE;
+unsigned g_drain = ccv::prov::kLatRcuKillDrain;   // links and bnd_rx in (RA-42)
 
 template <typename T> void put(T &s, unsigned lsb, unsigned w, uint64_t v) {
   for (unsigned i = 0; i < w; ++i) {
@@ -64,7 +58,7 @@ template <typename T> uint64_t get(const T &s, unsigned lsb, unsigned w) {
 
 struct In {   // one cycle's inputs
   bool kv = false, mq = true, csr = false;
-  unsigned dbusy = 0;   // ND = 2 terms
+  unsigned dbusy = 0;   // ND = 3 terms
   unsigned kep = 0, busy = 0, mv = 0;
   uint32_t iv = 0, lv = 0;
 };
@@ -79,10 +73,10 @@ struct Bench {
   uint64_t t = 0, cyc = 0;
   unsigned fails = 0, checked = 0, acks = 0, rekills = 0;
   // The model's registers.
-  bool kv_q = false, ack = false, pend = false, dwake = false, idle = false, csr = false;
-  unsigned kep = 0, aep = 0, drain = 0;
+  bool kv_q = false, kvd = false, ack = false, pend = false, dwake = false, idle = false, csr = false;
+  unsigned kep = 0, kep_q = 0, aep = 0, drain = 0;   // kep_q: the detector's epoch flop (no reset)
   uint64_t cr = 0;
-  bool rst_q = false;   // the module's flopped reset (RST-1)
+  bool rst_q = true;    // the module's flopped reset (RST-1): unknown, so held, until the first edge
 
   explicit Bench(const char *vcd_path) {
     ctx = std::make_unique<VerilatedContext>();
@@ -113,8 +107,8 @@ struct Bench {
 
   void step(const In &in, bool rst = false) {
     dut->rst_n = !rst;
-    dut->kv_cr00h = in.kv;
-    dut->kep_cr01h = in.kep;
+    dut->kv_cr01h = kv_q;   // ccv_rcu's kill detector: kill_valid flopped (RA rev 127)
+    dut->kep_cr02h = kep_q;   // the detector's epoch flop: kill_epoch of the cycle before (AR 338)
     dut->mq_cr01h = in.mq;
     dut->iv_cr00h = in.iv;
     dut->lv_cr00h = in.lv;
@@ -129,7 +123,7 @@ struct Bench {
     const bool rr = rst_q;
     rst_q = rst;
     if (rr) {
-      kv_q = ack = pend = dwake = idle = csr = false;
+      kv_q = kvd = ack = pend = dwake = idle = csr = false;
       aep = drain = 0;
       cr = 0;
     } else {
@@ -141,8 +135,7 @@ struct Bench {
       if (en) {
         if (kv_q) {
           nkep = in.kep;
-          naep = in.kep;   // the ack epoch takes it at K: the ack is low until ack-ready
-          ndrain = g_drain;
+          ndrain = g_drain - 1;   // K is the drain's first cycle (RI-36)
           nack = false;
           rekills += pend;
           npend = true;
@@ -155,12 +148,19 @@ struct Bench {
           }
         }
       }
-      const bool nidle = !in.busy && !in.dbusy && !in.iv && !in.lv && !in.mv && !in.kv && !kv1 &&
+      // lane results and kill land at no-flop ends: idle reads their
+      // captures (the credit flops' lane field, kv_q), a cycle on.
+      // The ack epoch takes the detector's epoch at K+1 (kvd, kill_v_q a
+      // cycle on; AR 338): the ack is low from K's edge until ack-ready.
+      if (kvd) naep = kep_q;
+      const bool lv_q = ((cr >> kNS) & ((uint64_t(1) << kNL) - 1)) != 0;
+      const bool nidle = !in.busy && !in.dbusy && !in.iv && !lv_q && !in.mv && !kv1 &&
                          drain == 0 && !dwake;
       dwake = in.iv || in.dbusy;
       idle = nidle;
-      cr = uint64_t(in.iv) | uint64_t(in.lv) << kNS | uint64_t(in.mv) << (kNS + kNL);
+      cr = uint64_t(in.iv) | uint64_t(in.lv) << kNS;   // no MIU credit (RA-41)
       csr = in.csr;
+      kvd = kv_q;
       kv_q = in.kv;
       ack = nack;
       pend = npend;
@@ -168,12 +168,13 @@ struct Bench {
       drain = ndrain;
       aep = naep;
     }
+    kep_q = in.kep;   // the detector: a plain flop on the ungated clock
     dut->rcu_core_clk = 1;
     eval();
     if (!rr) {
       chk("kill_ack", dut->kack_cr02h, ack);
-      chk("kill_ack_epoch", dut->kaep_cr02h, aep);
-      chk("credits", get(dut->cr_cr01h, 0, kNS + kNL + kNM), cr);
+      chk("kill_ack_epoch", dut->kaep_cr03h, aep);
+      chk("credits", get(dut->cr_cr01h, 0, kNS + kNL), cr);
       chk("done wake", dut->dwake_cr01h, dwake);
       chk("idle", dut->idle_cr01h, idle);
       chk("csr done", dut->csr_done_cr01h, csr);
@@ -200,7 +201,7 @@ struct Gen {
     for (unsigned s = 0; s < kNS; ++s) if (coin(p * 0.4)) in.iv |= 1u << s;
     for (unsigned c = 0; c < kNL; ++c) if (coin(p * 0.3)) in.lv |= 1u << c;
     for (unsigned j = 0; j < kNM; ++j) if (coin(p * 0.3)) in.mv |= 1u << j;
-    in.dbusy = (coin(p * 0.5) ? 1u : 0u) | (coin(p * 0.2) ? 2u : 0u);
+    in.dbusy = (coin(p * 0.5) ? 1u : 0u) | (coin(p * 0.2) ? 2u : 0u) | (coin(p * 0.1) ? 4u : 0u);
     for (unsigned b = 0; b < kNB; ++b) if (coin(p * 0.2)) in.busy |= 1u << b;
     in.csr = coin(p * 0.02);
     return in;

@@ -23,7 +23,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 
 ## Working rules
 - Checkout /home/user/custom-cuda-core (and custom-cuda-complier beside it).
-  Push only to `ccr-c22116ce-1vzyjg`; never to a requester's branch. Check
+  Push only to `ccr-c22116ce-1vzyjg`; never to a requester's branch.
+  Exception (DA, 2026-11-10): after a split-gate leg reads PASS or PARTIAL PASS,
+  `tools/gate-scratch.sh send-export <PREFIX> <x.tgz>` to a gate-scratch/*-export
+  branch is allowed (the requester's, or RH's own). Exports only; never a red gate. Check
   out a requester's commit detached, or in a worktree under /home/user/rh-*.
 - Fresh container: `./tools/setup-toolchain.sh` once.
 - The disk allowance is about 39 GB in all. A gate's build/ needs 5 GB or more, so
@@ -50,12 +53,52 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- TI's J6-J8 on f4ce0fd (TI's Z tip; DA: TI's pending perf runs go to RH).
-  Worktree /home/user/rh-tip. J6 = rh-jobs/j6.sh 192 160 128 (PHYS_REGS, as
-  J1; log ~/ccv-logs/j6). J7+J8 = rh-jobs/j78.sh, which waits for j6 (log
-  ~/ccv-logs/j78): J2's set plus J4's 512 KiB, cold runs capped at 3x warm;
-  vadd16 rel-* with full_rows=1; coremarkpl128 (adds an 8 GB swap2, so watch the
-  disk). One table per job to TI, each beside the J1-J4 numbers.
+- RI ngd leg on 439179d9 (one-line CCV-L04 fix over e9c48768), started 09:19Z 11-13:
+  rh-jobs/ri-gate/ngd5.sh, worktree /home/user/rh-ri18 (detached), result
+  ~/ccv-logs/ri-gate-439179d9.result. It self-exports to gate-scratch/RI-export on
+  (PARTIAL) PASS. Verify with ls-remote and the sha256 of export.tgz, send RI the
+  lines, then rm -rf rh-ri18/build. Template: ngd3.sh (sed the sha, CCV_JOBS).
+- RI ngd legs done and sent: 9304d21 FAIL (rcu kill_valid 4.8 NGD); fca280c3,
+  bfba7f38, 0ace219f (export bf1e702d...), e9c48768 (export c3be7623..., RI-export
+  0793ba3d) PARTIAL PASS. RI is now a regular sender (DA granted exports 11-10).
+- OI #35 DONE and sent 09:20Z 11-13 (rh-jobs/oi35, logs ~/ccv-logs/oi35, worktree
+  /home/user/rh-oi35 at d86e3a14). cand_indep_pend ON == OFF on every run: it is
+  read only in placePos, which returns early unless sectioned=1 (default 0). U == G
+  because unmet_reg defaults to 1 since f4d5ee10. Offered OI a sectioned=1 rerun
+  (about 9 h of cm128); awaiting configs.
+- Gates detach (TI rev 418): `setsid nohup <job> >/dev/null 2>&1 </dev/null &`.
+  Only watchers (rh-jobs/watchjob.sh '<pgrep pat>' 7100 <file>) are background
+  tasks. Container restarts (11-13 07:07Z, and earlier) still kill detached jobs
+  and turn swap off: `swapon /home/user/rh-swap`, clear the gate's build/, relaunch.
+- Earlier idle since 2026-11-08 17:51Z. Kept: rh-j11b-w10pp, -g2pp and -p192
+  (88c31e7 merged with 11386e7, plus ba39e6a; experiment trees, never commit) until TI says.
+- DONE 2026-11-08, all sent:
+  - J12 (TI): PHYS sweep on 88c31e7 merged with 95bf04d; logs ~/ccv-logs/j12.
+  - OI-134 and U192 (OI): unmet_reg=1 clean at all sizes, equal at 192.
+  - J11b (TI): g2 and p192 clean on the OI-133 fix; p192 costs cm128 +5.10%, loop +71%.
+  - J13 (TI): C9 at 8 ways is identical to C9h; S1 +0.174%, cm128 +0.459% over A6.
+  - J11, and OI's TI 360 pricing.
+  Scripts are in rh-jobs/{j11,j12,oi134,oi360}.
+- J10 DONE and sent (AR revs 319/320). de03fd6 + TI's MIU-stub patch
+  (rh-jobs/j10/miu.patch, fixed hunk) + ba39e6a (CCV_RCU_STATS), never pushed.
+  Points w9'/w10'/g1'/g2' x DCU 1 way / 8x64 x CCV_MIU_MULTI; S1, cm32 and
+  cm128 at w10'; pl32/pl128 model reruns clean (14,297,482 / 23,612,557).
+  Logs ~/ccv-logs/j10, scripts rh-jobs/j10 (j10b.sh, j10table.py). Worktrees and
+  swap removed. J9 traces dropped (TI: AR no longer needs them).
+- J9 DONE and sent: vadd16_loop's step is 2a7f125 (lane_rcu_res zero-cycle),
+  an L1 set conflict on the 64x1 default DCU (three arrays in 64 KiB windows 3,
+  4 and 5). Scripts rh-jobs/j9, logs ~/ccv-logs/j9{,w,g}.
+- DONE and sent to TI (2026-11-07), f4ce0fd, worktree /home/user/rh-tip
+  (oracles cleared; TI rev 367: the pl32 divergence was RI's interim call-link
+  line, fixed on ti-o85. Next from TI: clean model reruns of pl32/pl128 after
+  its next push). Logs in ~/ccv-logs/j6 and ~/ccv-logs/j78 (summary).
+  - J6: PHYS sweep. J7: dcu8/cold/512K; all cold runs hang. pl32 with the RCU
+    model diverges: R14 lane 2 0x240 vs 0x3a6c.
+  - Bisect for RI: pl32 is clean with CCV_RCU_IMPL=stub (14,295,719). With the
+    model, the first CHECK is between --cycles 1,649,413 and 1,650,878: seq
+    188276/188278 operand 0 (R14), oracle 0. Probes are in ~/ccv-logs/j78/bisect.
+  - J8: vadd16 248/6,675; pl128 on the stub is 23,605,166, clean, 7,975 s,
+    13.95 GB.
 - TI's perf runs (TI, from 2026-11-04). Worktrees: /home/user/rh-ti (36e2049,
   for J1/J2/J5/J3b comparisons) and /home/user/rh-j3 (e533ecd pinned locally).
   New jobs start from b341691 (TI's pin of e533ecd).

@@ -224,8 +224,17 @@ def gen_sv(d):
 # flop (params/links.json no_flop; AR's revs 300 and 301), else 0. A whole
 # crossing is CCV_LAT_HOP + link_n(...) + bnd_rx(...), and a block's own
 # base never holds it.
+# done_slots() and gpr_write_ports() read the pipe list, the file's `pipes`
+# (RA-16 (a); AR's rev 265, TI's rev 284): each pipe names its done class and
+# its GPR write pipe. done_slots() is the sum over the done classes of the
+# most issues a cycle any pipe of the class makes (pipes of one class share
+# sections, and select gives a section one op a cycle); gpr_write_ports() is
+# the number of distinct GPR write pipes, so two pipes that share one share
+# its port. A pipe with no done class completes elsewhere; one with no write
+# pipe writes no GPR.
 # A derived parameter is never more settled than its inputs: a settled width
 # that follows a provisional count would move without its tier saying so.
+PIPE_FUNCS = ("done_slots", "gpr_write_ports")
 FUNCS = {"cdiv": lambda a, b: -(-a // b),
          "clog2": lambda x: max(0, (x - 1).bit_length()),
          "max": lambda a, b: max(a, b)}
@@ -258,13 +267,49 @@ def schema_channels():
         return {c["name"][4:] for c in json.load(f)["channels"]}
 
 
-def names_in(expr):
+def names_in(expr, pipes=None):
+    """The parameters an expression reads, those of the pipe list's issue
+    rates included when it calls done_slots()."""
     import ast
-    return {n.id for n in ast.walk(ast.parse(expr, mode="eval"))
-            if isinstance(n, ast.Name) and n.id not in FUNCS}
+    tree = ast.parse(expr, mode="eval")
+    out = {n.id for n in ast.walk(tree)
+           if isinstance(n, ast.Name) and n.id not in FUNCS and n.id not in PIPE_FUNCS}
+    if any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+           and n.func.id == "done_slots" for n in ast.walk(tree)):
+        for q in (pipes or {}).get("list", []):
+            if q.get("done_class") is not None:
+                out |= names_in(str(q.get("issues", "0")))
+    return out
 
 
-def evaluate(expr, values, links=None):
+def pipe_counts(pipes, values, links):
+    """(done slots, GPR write ports) from the pipe list, or ValueError."""
+    lst = (pipes or {}).get("list")
+    if not lst:
+        raise ValueError("no pipe list (params/ccv_params.json's pipes.list)")
+    names, classes, writes = set(), {}, set()
+    for q in lst:
+        nm = q.get("name")
+        if not nm or nm in names:
+            raise ValueError("pipe %r: a pipe needs a name of its own" % nm)
+        names.add(nm)
+        for k in ("done_class", "gpr_write"):
+            if k not in q:
+                raise ValueError("pipe %s says nothing of %s (null if none)" % (nm, k))
+        if q["done_class"] is not None:
+            if "issues" not in q:
+                raise ValueError("pipe %s has done class %s but no issues a cycle"
+                                 % (nm, q["done_class"]))
+            n = evaluate(str(q["issues"]), values, links)
+            if n < 1:
+                raise ValueError("pipe %s issues %d a cycle" % (nm, n))
+            classes[q["done_class"]] = max(classes.get(q["done_class"], 0), n)
+        if q["gpr_write"] is not None:
+            writes.add(q["gpr_write"])
+    return sum(classes.values()), len(writes)
+
+
+def evaluate(expr, values, links=None, pipes=None):
     import ast
     ops = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
            ast.Mult: lambda a, b: a * b, ast.FloorDiv: lambda a, b: a // b,
@@ -294,6 +339,10 @@ def evaluate(expr, values, links=None):
                 raise ValueError("link_n names no channel: %r (names are "
                                  "without ccv_)" % n.args[0].value)
             return (links if links is not None else {}).get(n.args[0].value, 0)
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id in PIPE_FUNCS and not n.args and not n.keywords):
+            ds, wp = pipe_counts(pipes, values, links)
+            return ds if n.func.id == "done_slots" else wp
         if isinstance(n, ast.Name):
             if n.id not in values:
                 raise ValueError("unknown parameter %s" % n.id)
@@ -315,24 +364,25 @@ def check_derived(d, links=None):
     derived parameter is more settled than what it derives from."""
     values = {p["name"]: p["value"] for p in d["params"]}
     tiers = {p["name"]: tier(p) for p in d["params"]}
+    pipes = d.get("pipes")
     if links is None:
         links = link_stages()
     bad = []
     for p in d["params"]:
         try:
             if "derive" in p:
-                looser = [x for x in sorted(names_in(p["derive"]))
+                looser = [x for x in sorted(names_in(p["derive"], pipes))
                           if TIER_RANK[tiers.get(x, "settled")] > TIER_RANK[tiers[p["name"]]]]
                 if looser:
                     bad.append("%s is %s but derives from %s: a derived value is "
                                "never more settled than its inputs"
                                % (p["name"], tiers[p["name"]],
                                   ", ".join("%s (%s)" % (x, tiers[x]) for x in looser)))
-                want = evaluate(p["derive"], values, links)
+                want = evaluate(p["derive"], values, links, pipes)
                 if want != p["value"]:
                     bad.append("%s = %d, but %s gives %d: set it to %d"
                                % (p["name"], p["value"], p["derive"], want, want))
-            if "require" in p and not evaluate(p["require"], values, links):
+            if "require" in p and not evaluate(p["require"], values, links, pipes):
                 bad.append("%s = %d breaks its requirement %s"
                            % (p["name"], p["value"], p["require"]))
         except (ValueError, SyntaxError, TypeError) as e:
@@ -377,10 +427,24 @@ def selftest(d):
              # read budget to hold at every width, a footprint minimum
              # cannot exceed the sections, and the resource count follows.
              ("CCV_MIU_PIPES", "value", 2, "CCV_PRF_MEMOP_READ_BITS"),
+             # RA-16 (d): R's own read budget, three rows.
+             ("CCV_PRF_RCU_READ_BITS", "value", 2048, "CCV_PRF_RCU_READ_BITS"),
              ("CCV_P_FOOT_MIN_SFU", "value", 5, "CCV_P_FOOT_MIN_SFU"),
              ("CCV_ISSUE_RESOURCES", "value", 8, "CCV_ISSUE_RESOURCES"),
              # OA's response TI-9: the done pool is the sum over the pipes.
              ("CCV_DONE_SLOTS", "value", 5, "CCV_DONE_SLOTS"),
+             # RA-16 (a): the pipe list. A hand-set count that disagrees
+             # with it is refused; FP in a done class of its own adds its
+             # sections' worth of slots; collectives in RCU-only's class
+             # would take one slot for two classes; a write pipe of their
+             # own is a fifth port; a pipe that drops its write pipe a third.
+             ("CCV_DONE_SLOTS", "value", 8, "CCV_DONE_SLOTS"),
+             ("CCV_PRF_GPR_WRITE_PORTS", "value", 3, "CCV_PRF_GPR_WRITE_PORTS"),
+             ("pipe:lane_fp:done_class", "pipe", "fp", "CCV_DONE_SLOTS"),
+             ("pipe:r_collective:done_class", "pipe", "rcu", "CCV_DONE_SLOTS"),
+             ("pipe:r_collective:gpr_write", "pipe", "collective", "CCV_PRF_GPR_WRITE_PORTS"),
+             ("pipe:load:gpr_write", "pipe", None, "CCV_PRF_GPR_WRITE_PORTS"),
+             ("pipe:sfu:issues", "pipe", "CCV_SECTIONS // CCV_P_FOOT_MIN_ADDR", "CCV_DONE_SLOTS"),
              # TI-1: imm carries predicate logic's two renamed sources.
              ("CCV_P_W_IMM", "value", 12, "CCV_P_W_IMM"),
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
@@ -404,21 +468,36 @@ def selftest(d):
     cases += [("bnd_rx:lane_rcu_res", "bnd", 1, "CCV_LAT_LANE"),
               ("bnd_rx:lane_rcu_res", "bnd", 1, "CCV_LAT_SFU"),
               ("bnd_rx:rcu_lane_ops", "bnd", 1, "CCV_LAT_LANE"),
-              ("bnd_rx:ooe_rcu_issue", "bnd", 0, "CCV_LAT_L1_CMPL"),
+              # Zero-cycle since RA-43 (AR's rev 329): its flop put back is
+              # a cycle on the crossing (RA-41's control was the reverse).
+              ("bnd_rx:ooe_rcu_issue", "bnd", 1, "CCV_LAT_L1_CMPL"),
+              ("bnd_rx:ooe_rcu_issue", "bnd", 1, "CCV_LAT_RCU_KILL_DRAIN"),
               ("bnd_rx:miu_rcu_data", "bnd", 0, "CCV_LAT_L1_WAKE"),
               ("bnd_rx:dcu_miu_rsp", "bnd", 1, "CCV_LAT_L1_HIT"),
               ("bnd_rx:miu_ooe_cmpl", "bnd", 1, "CCV_LAT_L1_CMPL"),
               # Counted in the parameter as well, the issue flop is taken
-              # twice (AR's rev 301): refused.
+              # twice (AR's rev 301): refused. Since RA-43 the end is
+              # zero-cycle, so the flop is put back for the case first
+              # (extra), or the control would have nothing to count.
               ("CCV_LAT_RCU_ADDR", "derive",
-               "CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", "CCV_LAT_RCU_ADDR")]
+               "CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", "CCV_LAT_RCU_ADDR",
+               {"bnd_rx:ooe_rcu_issue": 1})]
     missed = []
-    for name, key, v, who in cases:
+    for name, key, v, who, *extra in cases:
         m, lk = copy.deepcopy(d), dict(links)
+        for e in extra:
+            lk.update(e)
         if key == "links":
             lk[name[len("link_n('"):-2]] = v
         if key == "bnd":
             lk[name] = v
+        if key == "pipe":
+            _, pn, attr = name.split(":")
+            hit = [q for q in m["pipes"]["list"] if q["name"] == pn]
+            if not hit:
+                missed.append("%s: no pipe %s to mutate" % (name, pn))
+            for q in hit:
+                q[attr] = v
         for p in m["params"]:
             if p["name"] == name:
                 p[key] = v
@@ -427,7 +506,7 @@ def selftest(d):
     # AR's rev 301 (2): with the issue flop counted once, on the crossing,
     # the L1 latencies are 17 and 19 at the defaults and 13 and 15 under
     # PF-47 (CCV_LAT_RCU_ADDR_BASE 1); counted twice, 18 and 20.
-    def l1(base=None, addr_derive=None):
+    def l1(base=None, addr_derive=None, lk=links):
         m = copy.deepcopy(d)
         for p in m["params"]:
             if base is not None and p["name"] == "CCV_LAT_RCU_ADDR_BASE":
@@ -439,22 +518,27 @@ def selftest(d):
             moved = False
             for p in m["params"]:
                 if "derive" in p:
-                    w = evaluate(p["derive"], vals, links)
+                    w = evaluate(p["derive"], vals, lk, m.get("pipes"))
                     if w != p["value"]:
                         p["value"] = vals[p["name"]] = w
                         moved = True
             if not moved:
                 break
         return vals["CCV_LAT_L1_WAKE"], vals["CCV_LAT_L1_CMPL"]
-    if links.get("bnd_rx:ooe_rcu_issue") and not any(
+    # RA-43 (AR's rev 329): with the issue's end at RCU zero-cycle, 17 and
+    # 18 at the defaults. AR's rev 301's three still hold with that end
+    # flopped, which is how they are run now.
+    flop = dict(links, **{"bnd_rx:ooe_rcu_issue": 1})
+    if links.get("bnd_rx:ooe_rcu_issue") == 0 and not any(
             v for k, v in links.items() if not k.startswith("bnd_rx:")):
         for got, want, what in (
-                (l1(), (17, 19), "the defaults"),
-                (l1(base=1), (13, 15), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1)"),
-                (l1(addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')"),
+                (l1(), (17, 18), "the defaults, the issue's end zero-cycle (RA-43)"),
+                (l1(lk=flop), (17, 19), "the defaults, the issue's end flopped"),
+                (l1(base=1, lk=flop), (13, 15), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), flopped"),
+                (l1(addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", lk=flop),
                  (18, 20), "the issue flop counted twice (the control)")):
             if got != want:
-                missed.append("L1_WAKE/L1_CMPL at %s: %s, want %s (AR's rev 301)"
+                missed.append("L1_WAKE/L1_CMPL at %s: %s, want %s (AR's revs 301, 329)"
                               % (what, got, want))
     if missed:
         sys.stderr.write("".join("%s\n" % x for x in missed))
@@ -475,7 +559,7 @@ def settle(d):
         changed = []
         for p in d["params"]:
             if "derive" in p:
-                want = evaluate(p["derive"], values, links)
+                want = evaluate(p["derive"], values, links, d.get("pipes"))
                 if want != p["value"]:
                     changed.append("%s %d -> %d" % (p["name"], p["value"], want))
                     p["value"] = values[p["name"]] = want

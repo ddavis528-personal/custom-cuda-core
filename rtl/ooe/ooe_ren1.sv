@@ -22,7 +22,9 @@
 // The in-group override: a read whose writer is a lower head h' of the
 // candidate's slot carries the lane holding (h', s), one-hot over the lanes
 // (it is before this one); ooe_ren1n returns that lane's new name. Else the
-// read is ooe_headrd's value (the pending group over the flops), a name.
+// read is ooe_headrd's value (the captured group over the flops), a name,
+// and its pending writer, one-hot by port, whose name ooe_ren1n binds in
+// Rename 2 (#35).
 //
 // test/ooe/ren1_tb.cpp drives this beside ooe_headrd and ooe_rat
 // (test/ooe/ooe_ren1_tb.sv) from the model's renames and compares each lane,
@@ -32,6 +34,7 @@ module ooe_ren1 #(
   parameter int S  = 4,                  // tier-1 slots (CCV_TIER1_WARPS)
   parameter int R  = 4,                  // lanes, and heads a slot (CCV_ISSUE_WIDTH)
   parameter int GW = 10,                 // GPR name (CCV_P_W_PHYS_REG + CCV_W_PHYS_POS)
+  parameter int GR = 8,                  // its row (CCV_P_W_PHYS_REG)
   parameter int PW = 6,                  // predicate name (CCV_P_W_PHYS_PRED)
   parameter int LC = 2,                  // a checkpoint id (CCV_P_BR_CKPTS)
   parameter int XW = 1,                  // other fields the lanes carry
@@ -49,10 +52,13 @@ module ooe_ren1 #(
   // And its reads, from ooe_headrd (heads major within a slot: slot s's
   // instance gives h * 4 + i for its head h): GPR reads src0..2, the old
   // destination; predicate reads guard, old destination, q0, q1; each with
-  // its in-group writer, one-hot over the slot's heads.
+  // its pending writer, one-hot over the pending group's ports, and its
+  // in-group writer, one-hot over the slot's heads.
   input  logic [S*R*4*GW-1:0] c_gv_cq01h,
+  input  logic [S*R*4*R-1:0]  c_gk_cq01h,
   input  logic [S*R*4*R-1:0]  c_gw_cq01h,
   input  logic [S*R*4*PW-1:0] c_pv_cq01h,
+  input  logic [S*R*4*R-1:0]  c_pk_cq01h,
   input  logic [S*R*4*R-1:0]  c_pw_cq01h,
   // The go: each lane's uop, and which candidate, one-hot; and each
   // candidate's writers before it in lane order, a thermometer per class
@@ -74,7 +80,17 @@ module ooe_ren1 #(
   output logic [R*4*R-1:0]   l_gl,          //   or its writer's lane, one-hot
   output logic [R*4*PW-1:0]  l_p,           // guard, old destination, q0, q1
   output logic [R*4*R-1:0]   l_pl,
-  output logic [R*XW-1:0]    l_x
+  output logic [R*4*R-1:0]   l_gk,          // each read's pending writer, one-hot by port:
+  output logic [R*4*R-1:0]   l_pk,          //   ooe_ren1n takes its name over the value (#35)
+  output logic [R*4-1:0]     l_gs,          // each GPR read seen by narrow placement: no in-group or
+                                            //   pending writer, not the zero row (#35)
+  output logic [R*XW-1:0]    l_x,
+  // The group's writers, per slot and register, the last lane writing it,
+  // one-hot over the lanes (GPR: (s * 16 + e) * R; predicate: (s * 4 + e)
+  // * R), which the Rename 1 register holds for the next cycle's reads to
+  // index like a map (#35).
+  output logic [S*16*R-1:0]  l_gkm,
+  output logic [S*4*R-1:0]   l_pkm
 );
 
   // Candidate c = h * S + s's reads sit at slot s's instance, head h.
@@ -162,6 +178,8 @@ module ooe_ren1 #(
     end
     fidx = o;
   endfunction
+  // A lane's read (k 0 GPR, 1 predicate): its candidate's value, and its
+  // pending writer, by port, lane-selected (#35).
   function automatic logic [GW-1:0] fg(input int l, input int i);
     logic [GW-1:0] v;
     v = '0;
@@ -174,6 +192,24 @@ module ooe_ren1 #(
     for (int c = 0; c < NC; c++) v = v | ({PW{lane_c_cq02h[l * NC + c]}} & c_pv_cq01h[ci(c, i) * PW +: PW]);
     fp = v;
   endfunction
+  // Placement sees a read whose writer is in neither group, nor the zero
+  // row, formed per candidate (its reads and writers are early) and then
+  // lane-selected, one bit (#35).
+  function automatic logic fs(input int l, input int i);
+    logic v;
+    v = 1'b0;
+    for (int c = 0; c < NC; c++)
+      v = v | (lane_c_cq02h[l * NC + c] & (c_gw_cq01h[ci(c, i) * R +: R] == '0) & (c_gk_cq01h[ci(c, i) * R +: R] == '0) &
+               (c_gv_cq01h[ci(c, i) * GW + (GW - GR) +: GR] != '1));
+    fs = v;
+  endfunction
+  function automatic logic [R-1:0] fk(input int l, input int i, input int k);
+    logic [R-1:0] v;
+    v = '0;
+    for (int c = 0; c < NC; c++)
+      v = v | ({R{lane_c_cq02h[l * NC + c]}} & (k == 0 ? c_gk_cq01h[ci(c, i) * R +: R] : c_pk_cq01h[ci(c, i) * R +: R]));
+    fk = v;
+  endfunction
   function automatic logic [R-1:0] fl(input int l, input int i, input int k);
     logic [R-1:0] v;
     v = '0;
@@ -181,6 +217,32 @@ module ooe_ren1 #(
       v = v | ({R{lane_c_cq02h[l * NC + c]}} & (k == 0 ? cgl[(c * 4 + i) * R +: R] : cpl[(c * 4 + i) * R +: R]));
     fl = v;
   endfunction
+
+  // Slot s's register e's writer, by lane (k 0 GPR, 1 predicate): each
+  // lane's candidate in slot s writing e, the last such lane.
+  function automatic logic [R-1:0] kmap(input int s, input int e, input int k);
+    logic [R-1:0] m, w;
+    logic later;
+    for (int l = 0; l < R; l++) begin
+      m[l] = 1'b0;
+      for (int h = 0; h < R; h++)
+        m[l] = m[l] | (lane_c_cq02h[l * NC + h * S + s] &
+                       (k == 0 ? c_gwe_cq01h[h * S + s] && c_dst_cq01h[(h * S + s) * 4 +: 4] == 4'(e)
+                               : c_pwe_cq01h[h * S + s] && c_pdst_cq01h[(h * S + s) * 2 +: 2] == 2'(e)));
+      m[l] = m[l] & lane_v_cq02h[l];
+    end
+    later = 1'b0;
+    for (int l = R - 1; l >= 0; l--) begin
+      w[l]  = m[l] && !later;
+      later = later || m[l];
+    end
+    kmap = w;
+  endfunction
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      for (int e = 0; e < 16; e++) l_gkm[(s * 16 + e) * R +: R] = kmap(s, e, 0);
+      for (int e = 0; e < 4; e++)  l_pkm[(s * 4 + e) * R +: R]  = kmap(s, e, 1);
+    end
 
   always_comb
     for (int l = 0; l < R; l++) begin
@@ -197,6 +259,9 @@ module ooe_ren1 #(
         l_p[(l * 4 + i) * PW +: PW] = fp(l, i);
         l_gl[(l * 4 + i) * R +: R]  = fl(l, i, 0);
         l_pl[(l * 4 + i) * R +: R]  = fl(l, i, 1);
+        l_gk[(l * 4 + i) * R +: R]  = fk(l, i, 0);
+        l_gs[l * 4 + i]             = fs(l, i);
+        l_pk[(l * 4 + i) * R +: R]  = fk(l, i, 1);
       end
     end
   assign l_v = lane_v_cq02h;

@@ -661,7 +661,7 @@ module ccv_ooe_w #(
   end
   // ccv_ooe_rcu_issue, source end, no-flop (params/links.json no_flop)
   if (RPT_OOE_RCU_ISSUE > 0) begin : g_rpt_ooe_rcu_issue
-    ccv_common_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .BOUNDARY(0), .SLOTS(9), .PAYLOAD_W(193), .LEAD_MASK(193'hffff)) u_rpt_ooe_rcu_issue (
+    ccv_common_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .BOUNDARY(0), .SLOTS(9), .PAYLOAD_W(290), .LEAD_MASK(290'hffffffffffffffffffffffffffffff)) u_rpt_ooe_rcu_issue (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_ooe_rcu_issue_s8_valid, b_ooe_rcu_issue_s7_valid, b_ooe_rcu_issue_s6_valid, b_ooe_rcu_issue_s5_valid, b_ooe_rcu_issue_s4_valid, b_ooe_rcu_issue_s3_valid, b_ooe_rcu_issue_s2_valid, b_ooe_rcu_issue_s1_valid, b_ooe_rcu_issue_s0_valid}), .src_payload({b_ooe_rcu_issue_s8_payload, b_ooe_rcu_issue_s7_payload, b_ooe_rcu_issue_s6_payload, b_ooe_rcu_issue_s5_payload, b_ooe_rcu_issue_s4_payload, b_ooe_rcu_issue_s3_payload, b_ooe_rcu_issue_s2_payload, b_ooe_rcu_issue_s1_payload, b_ooe_rcu_issue_s0_payload}),
       .src_wake(b_ooe_rcu_issue_wake), .src_credit({b_ooe_rcu_issue_s8_credit, b_ooe_rcu_issue_s7_credit, b_ooe_rcu_issue_s6_credit, b_ooe_rcu_issue_s5_credit, b_ooe_rcu_issue_s4_credit, b_ooe_rcu_issue_s3_credit, b_ooe_rcu_issue_s2_credit, b_ooe_rcu_issue_s1_credit, b_ooe_rcu_issue_s0_credit}), .src_stall({b_ooe_rcu_issue_s8_stall, b_ooe_rcu_issue_s7_stall, b_ooe_rcu_issue_s6_stall, b_ooe_rcu_issue_s5_stall, b_ooe_rcu_issue_s4_stall, b_ooe_rcu_issue_s3_stall, b_ooe_rcu_issue_s2_stall, b_ooe_rcu_issue_s1_stall, b_ooe_rcu_issue_s0_stall}),
@@ -991,7 +991,7 @@ module ccv_ooe_w #(
   end
   // ccv_miu_ooe_cmpl_hint, destination end, no-flop (params/links.json no_flop)
   if (RPT_MIU_OOE_CMPL_HINT > 0) begin : g_rpt_miu_ooe_cmpl_hint
-    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL_HINT), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(13)) u_rpt_miu_ooe_cmpl_hint (
+    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL_HINT), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(14)) u_rpt_miu_ooe_cmpl_hint (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({miu_ooe_cmpl_hint_s3_valid, miu_ooe_cmpl_hint_s2_valid, miu_ooe_cmpl_hint_s1_valid, miu_ooe_cmpl_hint_s0_valid}), .src_payload({miu_ooe_cmpl_hint_s3_payload, miu_ooe_cmpl_hint_s2_payload, miu_ooe_cmpl_hint_s1_payload, miu_ooe_cmpl_hint_s0_payload}),
       .src_wake(miu_ooe_cmpl_hint_wake), .src_credit({miu_ooe_cmpl_hint_s3_credit, miu_ooe_cmpl_hint_s2_credit, miu_ooe_cmpl_hint_s1_credit, miu_ooe_cmpl_hint_s0_credit}), .src_stall({miu_ooe_cmpl_hint_s3_stall, miu_ooe_cmpl_hint_s2_stall, miu_ooe_cmpl_hint_s1_stall, miu_ooe_cmpl_hint_s0_stall}),

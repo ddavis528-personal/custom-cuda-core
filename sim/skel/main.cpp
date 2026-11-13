@@ -90,8 +90,33 @@
 //   bar-full-last  SYU takes the CTA's last warp as 32 lanes
 //   addr-wrap      MIU takes a .global address modulo 2^48, so F-ADDR never fires
 //   late-lead      the lane mask goes out with the operands, a cycle late
+//   cor-late       each credit-on-receipt slot's first message reaches its
+//                  block a cycle after it is presented (AR's rev 322 (b))
+//   cor-drop       ...and never: the block drops it
+//   lead-copy-corrupt   OOE's issue lead_phys_dst differs from its payload
+//                  (RA-43): RCU refuses the copy by name
+//   lead-guard-corrupt  OOE's moved guard lead (lead_guard_pred) names the
+//                  wrong predicate (RA 109 (a)): RCU reads the wrong guard
+//   lead-src-corrupt    R's moved source lead names the wrong first row
+//                  (RA 109 (b)): R reads the wrong register
 //   ignore-mask    RCU's predicate merge drops the active mask (A-43)
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
+//   sfu-valid-stray  lane 3 drives sfu_valid with no SFU op in flight, which
+//                  RCU must refuse (RA-16 (b), RA's rev 115)
+//   nop-real-op    DEC gives the C_ADD whose sum is stored serial 5, C_RECONV's
+//                  no-op, so OOE completes it at rename (RA-16 (f), OA's rev 393)
+//   pmov-negate    RCU inverts register pmov's ps0 negate (OA's rev 396); with
+//                  CCV_DEC_POR_COPY_AS_PMOV=1, predlane's copy writes ~P0
+//   pmov-ps1       DEC sends register pmov's ps1 with ps0's negate flipped;
+//                  RCU must refuse it (RA 119)
+//   lead-src2-copy OOE's issue lead_phys_src2 on S0 differs from its payload's
+//                  phys_src2 by one bit (a copy on S0-S3 since RA's rev 132,
+//                  OA's rev 403 on RI-31): RCU refuses the copy by name
+//   lead-sec-superset  OOE's lead_sec_mask sets a section beyond the footprint
+//                  (R's, footprint 0), legal while it was a superset: RCU
+//                  refuses it, exact since OA's rev 403
+//   lead-sec-cont  OOE's continuations carry a nonzero lead_sec_mask: RCU
+//                  refuses it (a continuation's is zero, OA's rev 403)
 //===----------------------------------------------------------------------===//
 #include "Vccv_common_chk_bank.h"
 #include "verilated.h"
@@ -178,6 +203,9 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
   bank.pair_enable = 1;
   if (brk == "late-lead")
     for (Slot &s : m.slots()) s.late_lead = true;
+  if (brk == "cor-late" || brk == "cor-drop")
+    for (unsigned s = 0; s != kNumSlots; ++s)
+      if (m.slots()[s].cor) m.rx(s).holdNext(brk == "cor-drop");
 
   // Finished: the rule is KernelEnd's, shared with the SV-hosted run.
   KernelEnd end;
@@ -251,8 +279,9 @@ int main(int argc, char **argv) {
                       brk == "no-st-wait" || brk == "early-mark" || brk == "beats-dead" ||
                       brk == "no-ro" || brk == "atom-one-slot" || brk == "atom-lane-old" ||
                       brk == "atom-one-pass" || brk == "atom-no-more" || brk == "atom-descending" ||
+                      brk == "cas-pd-first" || brk == "cas-pd-inverted" || brk == "cas-swap-always" ||
                       brk == "no-window-fill" || brk == "window-from-base" ||
-                      brk == "scalar-base" || brk == "zero-cta-slot" || brk == "lanectx-literal" || brk == "call-link-literal" || brk == "shfl-wrap" || brk == "coll-issue-only" || brk == "unballot-lowest" || brk == "lanectx-as-ctatid" || brk == "drop-pred-copy" || brk == "pdata-guard" || brk == "ldpred-whole-word" || brk == "stpred-whole-word" ||
+                      brk == "scalar-base" || brk == "zero-cta-slot" || brk == "lanectx-literal" || brk == "call-link-literal" || brk == "shfl-wrap" || brk == "coll-issue-only" || brk == "r-write-coll-late" || brk == "unballot-lowest" || brk == "lanectx-as-ctatid" || brk == "drop-pred-copy" || brk == "pdata-guard" || brk == "ldpred-whole-word" || brk == "stpred-whole-word" ||
                       brk == "xfer-low-lane" || brk == "resume-mid" || brk == "whole-cta-mask" ||
                       brk == "no-kill" || brk == "withheld-ack" || brk == "stale-ack" ||
                       brk == "stale-epoch" ||
@@ -260,20 +289,27 @@ int main(int argc, char **argv) {
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "cta-per-warp" || brk == "cta-shared" || brk == "no-wait-mark" || brk == "bar-own-warp" || brk == "bar-no-exit" ||
                       brk == "bar-full-last" || brk == "addr-wrap" ||
-                      brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
+                      brk == "conflate-pred" || brk == "late-lead" || brk == "cor-late" || brk == "cor-drop" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
                       brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
                       brk == "ignore-mask" || brk == "skip-read-partial" ||
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
                       brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
-                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-fault-replay" || brk == "lead-fault-drop" || brk == "lead-src-clear" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
+                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-fault-replay" || brk == "lead-fault-drop" || brk == "lead-src-clear" || brk == "lead-copy-corrupt" || brk == "lead-guard-corrupt" || brk == "lead-src-corrupt" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
                       brk == "xfer-unsigned" || brk == "xfer-ignored" || brk == "chw-mark-always" ||
                       brk == "ret-no-stay" || brk == "pred-taken-any" || brk == "ret-held-by-lanes" ||
                       // .shared and SPM (TI's rev 230); FET's barrier parking (TI-40)
                       brk == "spm-one-pass" || brk == "spm-no-wait" || brk == "spm-shared-region" ||
                       brk == "bar-park-off" || brk == "held-over-r" || brk == "held-no-clear" ||
-                      brk == "borrow-partial";
+                      brk == "borrow-partial" ||
+                      // the SFU result on ccv_lane_rcu_res (RA-16 (b))
+                      brk == "sfu-valid-stray" ||
+                      // serial 5 on a real op (RA-16 (f))
+                      brk == "nop-real-op" ||
+                      // register pmov's negate (OA's rev 396)
+                      brk == "pmov-negate" || brk == "pmov-ps1" ||
+                      brk == "lead-src2-copy" || brk == "lead-sec-superset" || brk == "lead-sec-cont";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;
@@ -396,8 +432,10 @@ int main(int argc, char **argv) {
 
     // The credit a fixed-latency receiver owes a valid forced at cycle v:
     // its payload lands 2 + N cycles on, and the credit goes back then.
+    // A credit-on-receipt slot owes none: its boundary flop returns the
+    // credit at exactly that cycle (fixed-all delays it there instead).
     auto prompt = [&](unsigned k, uint64_t v, unsigned late = 0) {
-      if (kChans[m.chanInstOf(k).chan].fixed_lat &&
+      if (kChans[m.chanInstOf(k).chan].fixed_lat && !m.slots()[k].cor &&
           c == v + 2 + m.chanInstOf(k).pipe() + late)
         m.rx(k).forceCredit();
     };
@@ -450,10 +488,14 @@ int main(int argc, char **argv) {
           if (kChans[ci.chan].fixed_lat) prompt(ci.slot_base, kBreakAt);
           else if (c == kBreakAt + 3) m.rx(ci.slot_base).forceCredit();
         }
-      // fixed-all: every fixed-latency slot's credit, one cycle late.
+      // fixed-all: every fixed-latency slot's credit, one cycle late. On a
+      // credit-on-receipt slot that is a flop in series on the boundary
+      // stage's credit, the register credit on receipt removes (AR's rev
+      // 322 (b)): the bank's fixed_latency_prompt must see it.
       if (brk == "fixed-all")
         for (unsigned k = 0; k != kNumSlots; ++k) {
           if (!kChans[m.chanInstOf(k).chan].fixed_lat) continue;
+          if (m.slots()[k].cor) m.slots()[k].cor_series = true;
           if (c == kBreakAt) m.tx(k).forceValid(wellFormed(m, k));
           prompt(k, kBreakAt, 1);
         }
@@ -465,11 +507,12 @@ int main(int argc, char **argv) {
 
   // -- summary: one line, machine-readable, for tools/check-skel.sh --------
   const ExerciseTotals t = exerciseTotals();
-  uint64_t overflows = 0, leaks = 0;
+  uint64_t overflows = 0, leaks = 0, cor_late = 0;
   unsigned idle = 0, home = 0;
   for (unsigned k = 0; k != kNumSlots; ++k) {
     overflows += m.rx(k).overflows();
     leaks += m.rx(k).leaks();
+    cor_late += m.rx(k).corLate();
     if (m.rx(k).received() == 0) ++idle;
     // Conservation: after the drain, every sender holds all its credits.
     if (m.tx(k).credits() == m.tx(k).depth()) ++home;
@@ -478,7 +521,7 @@ int main(int argc, char **argv) {
               "slots=%u sent=%llu received=%llu mismatches=%llu "
               "tid_mismatches=%llu class_violations=%llu "
               "class_violation_channels=%u overflows=%llu credit_leaks=%llu "
-              "credits_home=%u idle_slots=%u violations=%d\n",
+              "cor_late=%llu credits_home=%u idle_slots=%u violations=%d\n",
               (unsigned long long)cycles, kNumBlkInsts, kNumChans,
               kNumChanInsts, kNumSlots, (unsigned long long)t.sent,
               (unsigned long long)t.received,
@@ -486,7 +529,8 @@ int main(int argc, char **argv) {
               (unsigned long long)t.tid_mismatches,
               (unsigned long long)t.class_violations,
               t.class_violation_channels,
-              (unsigned long long)overflows, (unsigned long long)leaks, home,
+              (unsigned long long)overflows, (unsigned long long)leaks,
+              (unsigned long long)cor_late, home,
               idle, ctx->errorCount());
 
   if (!trace.empty() && brk == "none") return xferCheck(trace);

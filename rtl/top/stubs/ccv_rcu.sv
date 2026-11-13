@@ -380,13 +380,9 @@ module ccv_rcu (
 `ifdef CCV_TRACE
   assign rcu_miu_addr_s3_tid = '0;
 `endif
-  assign miu_rcu_data_s0_credit = '0;
   assign miu_rcu_data_s0_stall = '0;
-  assign miu_rcu_data_s1_credit = '0;
   assign miu_rcu_data_s1_stall = '0;
-  assign miu_rcu_data_s2_credit = '0;
   assign miu_rcu_data_s2_stall = '0;
-  assign miu_rcu_data_s3_credit = '0;
   assign miu_rcu_data_s3_stall = '0;
   assign rau_rcu_mig_credit = '0;
   assign rau_rcu_mig_stall = '0;

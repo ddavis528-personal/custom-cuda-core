@@ -34,7 +34,7 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"share_return", &share_return},
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
       {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
@@ -48,7 +48,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
                                      {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge}, {"fl_direct", &fl_direct}, {"fl_two_step", &fl_two_step},
-                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"split_r_class", &split_r_class}, {"ret_now", &ret_now}, {"go_static", &go_static},
+                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_indep_pend", &cand_indep_pend}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"split_r_class", &split_r_class}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
@@ -443,7 +443,7 @@ void Core::cycle(uint64_t now) {
   }
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
-                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
+                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.hop_new, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.hfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant, &wlog_.sel_ret, &wlog_.sel_brk, &wlog_.sel_hold})
@@ -497,7 +497,32 @@ void Core::cycle(uint64_t now) {
   sendRedirect();
   readyRegister();
   requestRegister();
+  namePressureStats();
   if (check_invariants) checkInvariants();
+}
+
+/// TI 361 / AR 315-316 / OA 378: what holds the names when they are scarce,
+/// sampled at each cycle's end. rename.frag: the rows owned by a slot with
+/// fewer than all their sections live (sectioned), per cycle as a histogram
+/// and its peak. gpr_held_by_memop: the GPR names (rows, sectioned) written
+/// by memory ops still in flight (allocated, not complete), likewise.
+void Core::namePressureStats() {
+  if (cfg_.sectioned && kPos_ > 1) {
+    const uint8_t full = uint8_t((1u << kPos_) - 1);
+    unsigned frag = 0;
+    for (unsigned r = 0; r != rowOwner_.size(); ++r)
+      if (rowOwner_[r] && (rowSec_[r] & full) != full) ++frag;
+    ++histograms["rename.frag"][frag];
+    uint64_t &pk = counters["rename.frag.peak"];
+    pk = std::max<uint64_t>(pk, frag);
+  }
+  unsigned held = 0;
+  for (const Slot &s : slot_)
+    for (const RobEntry &r : s.rob)
+      if (r.valid && !r.squashed && r.is_mem && r.alloc_gpr && !r.complete) ++held;
+  ++histograms["gpr_held_by_memop"][held];
+  uint64_t &pk = counters["gpr_held_by_memop.peak"];
+  pk = std::max<uint64_t>(pk, held);
 }
 
 bool Core::busy() const {
@@ -769,6 +794,8 @@ void Core::candStart() {
   }
   cand_ret_.clear();
   std::fill(row_claim_.begin(), row_claim_.end(), 0);
+  grp_written_prev_ = grp_written_;
+  grp_written_prev_.resize(slot_.size(), 0);
   grp_written_.assign(slot_.size(), 0);
   // cand 2: the find without the last cand_lag groups' allocations, and
   // void in their rows.
@@ -801,7 +828,9 @@ unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
   auto align = [&](unsigned p) { return w == 1 ? (p & 2u) : (p & 3u); };
   // cand_indep: a register written earlier in the group is not seen.
   auto unseen = [&](unsigned a) {
-    return cfg_.cand && cfg_.cand_indep && slot < grp_written_.size() && ((grp_written_[slot] >> (a & 15)) & 1u);
+    if (!cfg_.cand || !cfg_.cand_indep || slot >= grp_written_.size()) return false;
+    const unsigned wr = grp_written_[slot] | (cfg_.cand_indep_pend && slot < grp_written_prev_.size() ? grp_written_prev_[slot] : 0u);
+    return ((wr >> (a & 15)) & 1u) != 0;
   };
   // A register's width as rename has it: its committed width (the table
   // the issue's codes come from), not its name's. They differ only where an
@@ -1422,10 +1451,14 @@ void Core::cancel(unsigned e) {
 }
 
 /// One hop of transitive cancel: every issued, unconfirmed entry whose row
-/// is no longer ready -- a producer it issued on has missed (msd) or is not
-/// issued -- returns to Waiting. False when nothing changed. Run at the start
-/// of every cycle, as ooe_confirm's level rule (OI-50).
+/// is no longer ready -- a producer it issued on has missed (msd), is not
+/// issued, or was granted at the same edge as it (OI-133) -- returns to
+/// Waiting. False when nothing changed. Run at the start of every cycle, as
+/// ooe_confirm's level rule (OI-50).
 bool Core::cancelHop() {
+  // Granted at the last edge: issued, the hop's first cycle (the RTL's
+  // register of the last edge's grant).
+  auto fresh = [&](const RsEntry &y) { return y.valid && y.issued && !y.confirmed && y.issue_at + 1 == now_; };
   // Decide the whole hop first, so a return to Waiting in this hop does not
   // reach that entry's own dependants until the next.
   std::vector<unsigned> hop;
@@ -1433,13 +1466,21 @@ bool Core::cancelHop() {
     const RsEntry &y = rs_[i];
     if (i < wlog_.hop_iss.size()) wlog_.hop_iss[i] = y.valid && y.issued && !y.confirmed;
     if (i < wlog_.hop_msd.size()) wlog_.hop_msd[i] = y.valid && y.msd;
+    if (i < wlog_.hop_new.size()) wlog_.hop_new[i] = fresh(y);
     // OI-50's rule, as the RTL decides it: an issued, unconfirmed entry
     // returns to Waiting when a producer it depends on is not issued or has
-    // missed its L1 slot. A dependant issued on a producer that was replayed
-    // and re-issued within a hop is caught when that re-issue is replayed.
+    // missed its L1 slot. A producer cancelled and granted again at the
+    // same edge as its dependant (granted on the ready bit the producer's
+    // first issue woke: OA-17's stale grant) is issued in the hop's first
+    // cycle with it, so the hop also counts a producer granted at the
+    // dependant's own edge as gone (OI-133; L1_WAKE 16 exposed it).
+    // A dependant granted before such a re-grant saw the producer not
+    // issued for a cycle at least, and returned then.
     if (!(y.valid && y.issued && !y.confirmed)) continue;
+    const bool yf = fresh(y) && !cfg_.inject_no_cogrant;
     for (unsigned j = 0; j != n_; ++j)
-      if ((cell(i, j) & 1) && (!rs_[j].issued || rs_[j].msd)) {
+      if ((cell(i, j) & 1) && (!rs_[j].issued || rs_[j].msd || (yf && fresh(rs_[j])))) {
+        if (rs_[j].issued && !rs_[j].msd) count("cancel.cogrant");
         hop.push_back(i);
         break;
       }
@@ -1553,7 +1594,8 @@ void Core::confirmPass() {
 void Core::advanceWakes() {
   // Transitive cancel is a level, decided every cycle from the state as it
   // stands at the cycle's start (OI-50): an issued entry whose row is no
-  // longer ready returns to Waiting. A miss is seen from the cycle after
+  // longer ready returns to Waiting, and so does one whose producer was
+  // granted at the same edge as it (the co-grant arm, OI-133). A miss is seen from the cycle after
   // it (the hardware's FMISS, held as msd), so the first hop comes a cycle
   // after the miss, and each further hop a cycle after the last (V-59, V-67).
   const bool after_miss = miss_now_;
@@ -1616,7 +1658,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   if (r.complete || r.squashed) return;
   bool c;
-  if (r.u.shape.exit || r.u.cause || barNop(r.u) || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat ||
+  if (r.u.shape.exit || r.u.cause || barNop(r.u) || hintNop(r.u, !cfg_.inject_reconv_real) || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat ||
       r.fault_cause == kCauseBarrier) c = true;   // no-ops: faulted before or at dispatch
   else if (r.atomic) c = r.atom_final && r.miu_done && !r.copy_pending && r.rcu_dones_owed == 0;   // V-71
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
@@ -1739,6 +1781,7 @@ void Core::takeCompletions() {
     const unsigned idx = c.rob_tag & ((1u << ccv::prov::kWRobIdx) - 1);
     if (parts & 1) {
       roblog_.cmpl.push_back(c.rob_tag);
+      roblog_.cmplf.push_back({c.status == kCmplFault, c.cause, c.lane_mask, c.address});
       if (!r->at_miu || r->miu_done) {
         err("V-43: a second completion for rob tag %u", c.rob_tag);
         return;
@@ -1889,6 +1932,12 @@ void Core::atomCmpl(unsigned slot, unsigned idx, const Cmpl &c) {
   }
   RsEntry &x = rs_[c.rs_idx];
   if (!x.issued) err("OI-58: a completion for RS entry %u, not issued", c.rs_idx);
+  // A bulk discard exempts mem_op 2 and 3 (ccv_ooe_miu_memop; TI rev
+  // 366): an atomic's read or write completes with status 0 or 1, never 2.
+  if (c.status == kCmplReplay) {
+    err("OI-127: rob tag %u, an atomic's %s, completed with status replay", tag, a1 ? "read" : "write");
+    return;
+  }
   if (a1) {
     if (c.more) err("V-72: rob tag %u's atomic read completes with more", tag);
     if (c.status) {
@@ -2596,10 +2645,16 @@ void Core::retire() {
       if (after_branch) { count("retire.branch_ends_window"); break; }
       after_branch = cfg_.resolve_lag && cfg_.branch_ends_window && r.u.attr.branch;
       if (r.fault) {
+        // fault_head_only (ROB slice 4): 1 takes it on the window's port 0
+        // alone; 2 only once it was the head a cycle before (the RTL's
+        // registered head), so a fault behind older retirees waits there.
+        if ((n && cfg_.fault_head_only) || (cfg_.fault_head_only >= 2 && s.head_since >= now_)) {
+          count("retire.fault_waits_head");
+          break;
+        }
         // Faults are taken at retirement: stop, report, let RAU's kill clean
         // up (Faults; V-24). OOE does not squash.
         s.fault_stop = true;
-        robStop("fault");
         Status st;
         st.warp = s.warp;
         st.fault_taken = true;
@@ -2616,6 +2671,7 @@ void Core::retire() {
         f.address = s.fa_valid && s.fa_idx == s.head ? s.fa_addr : 0;
         if (r.at_miu && (!s.fa_valid || s.fa_idx != s.head || s.fa_addr != r.fault_addr))
           err("V-74: the fault-address register does not hold rob tag %u's address", tagOf(si, s.head));
+        roblog_.fault.push_back({si, s.head, r.fault_cause, r.u.pc, r.fault_lanes, f.address});
         out.faults.push_back(f);
         count("fault");
         ev("fault", s.warp, r.fault_cause, r.u.pc, r.u.tid);
@@ -2937,6 +2993,30 @@ bool Core::migInFlight() const {
   return false;
 }
 
+/// MA-5 (AR 345/347, OA-412): what each ccv_ooe_miu_memop slot may still
+/// carry this cycle. With the payload stage, last cycle's grants leave now
+/// and spend their credits first.
+void Core::memopCreditsLeft() {
+  for (unsigned p = 0; p != 4; ++p) mleft_[p] = mcred_set_ ? mcred_[p] : ~0u;
+  if (mcred_set_ && cfg_.payload_stages)
+    for (const Memop &m : held_memops_)
+      if (m.port < 4 && mleft_[m.port]) --mleft_[m.port];
+}
+
+/// The pipes of a footprint (bit p for P<p>) whose slots hold a credit;
+/// inject_no_memop_credit (the control) takes every pipe as credited.
+unsigned Core::memopCredited(unsigned pipes) const {
+  pipes &= 0xFu;
+  if (cfg_.inject_no_memop_credit) return pipes;
+  unsigned m = 0;
+  for (unsigned p = 0; p != 4; ++p) m |= unsigned(mleft_[p] != 0) << p;
+  return pipes & m;
+}
+
+void Core::takeMemopCredit(unsigned port) {
+  if (port < 4 && mleft_[port] && mleft_[port] != ~0u) --mleft_[port];
+}
+
 void Core::selectSectioned() {
   constexpr unsigned kP0 = 5, kR = 4, kRc = 9;
   // RA-29 (a): RCU-only ops and warp-collectives are one issue class at R,
@@ -2964,11 +3044,13 @@ void Core::selectSectioned() {
   }
   std::vector<bool> memop_block(slot_.size(), false);
   // A bulk discard takes P0 for the cycle, and no memop of its warp goes
-  // with it (V-23).
-  if (!discards_.empty()) {
+  // with it (V-23); it waits while P0 holds no MIU credit (MA-5).
+  if (!discards_.empty() && !memopCredited(1u)) count("select.discard_no_credit");
+  if (!discards_.empty() && memopCredited(1u)) {
     Memop d = discards_.front();
     discards_.pop_front();
     d.port = 0;
+    takeMemopCredit(0);
     busy |= 1u << kP0;
     const int si = slotOf(d.warp);
     if (si >= 0) memop_block[si] = true;
@@ -3003,6 +3085,8 @@ void Core::selectSectioned() {
     if (!atomIssueOk(e)) return false;
     if (x.cls != RsCls::kMiu) return true;
     if (memop_block[x.slot] || !rowConfirmed(e)) return false;
+    // MA-5: a pipe of its footprint holds an MIU credit.
+    if (!memopCredited(x.res >> kP0)) { count("select.memop_no_credit"); return false; }
     // V-61: the copy went in an earlier cycle (or has confirmed and freed).
     if (r.copy && e == r.rs_main && r.rs_copy != kNoEntry &&
         (!rs_[r.rs_copy].issued || rs_[r.rs_copy].issue_at >= now_))
@@ -3161,8 +3245,15 @@ void Core::selectSectioned() {
       const unsigned want = resEntry(e) & 0xFu;
       if ((want & ~x.res) != 0) err("V-63: rob tag %u has an operand outside its footprint", tagOf(x.slot, x.rob));
     }
+    // MA-5: the memop goes on the lowest credited pipe of its footprint
+    // (an injected second memop keeps its own).
+    if (!x.copy && x.cls == RsCls::kMiu && !isExtra(e)) {
+      const unsigned cp = memopCredited(x.res >> kP0);
+      memop_pick_ = cp ? unsigned(__builtin_ctz(cp)) : ~0u;
+    }
     if (x.copy) issueCopy(x.slot, x.rob, port);
     else doIssue(e, port, false, 0);
+    memop_pick_ = ~0u;
     req_gnt_now_[e] = 1;
     ++issued;
   }
@@ -3195,6 +3286,7 @@ void Core::selectSectioned() {
 
 void Core::select() {
   unsigned reads = 0;   // this cycle's PRF operand reads (the non-sectioned select's)
+  memopCreditsLeft();   // MA-5
   // An atomic's read issuable but for the head (AR-21's head wait).
   for (Slot &s : slot_)
     for (unsigned k = 0; k != s.count; ++k) {
@@ -3210,9 +3302,10 @@ void Core::select() {
   std::vector<bool> memop_block(slot_.size(), false);
   // Bulk discards first: each takes a memop slot, and no memop of the same
   // warp goes in the same cycle (V-23).
-  while (!discards_.empty() && mports != cfg_.memop_width) {
+  while (!discards_.empty() && mports != cfg_.memop_width && memopCredited(1u << mports)) {
     Memop d = discards_.front();
     discards_.pop_front();
+    takeMemopCredit(mports);
     d.port = mports++;
     const int si = slotOf(d.warp);
     if (si >= 0) memop_block[si] = true;
@@ -3271,6 +3364,8 @@ void Core::select() {
         const unsigned si = (rr_select_ + k) % slot_.size();
         if (ports == cfg_.issue_width) break;
         if (miu && (mports == cfg_.memop_width || memop_block[si])) continue;
+        // MA-5: the memop leaves on its issue port's slot, which holds a credit.
+        if (miu && ports < 4 && !memopCredited(1u << ports)) { count("select.memop_no_credit"); continue; }
         if (cancelled & (1ull << si)) continue;
         const unsigned e = oldest(si, miu);
         if (e == kNoEntry) continue;
@@ -3362,6 +3457,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   for (unsigned i = 0; i != 3; ++i) is.src_w[i] = r.wsrc[i];
   is.dst_w = r.alloc_gpr ? r.wdst : 0;
   is.guarded = u.shape.guard;
+  is.pread = u.shape.guard || u.shape.pdata;
   is.gpr_reads = u.shape.gpr_reads;
   // The resource group and footprint. Sectioned: the entry's own resources
   // (resOf). Otherwise every op is full width.
@@ -3395,9 +3491,15 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     is.pdst = step == 1 ? r.atom_t : step == 2 ? r.ptmp_n : noGpr();
     is.merge = step == 1 && r.copy;
     is.pold = is.merge ? r.pold : 0;
-    is.ppdst = 0;
-    is.pred_we = false;
-    is.ppold = 0;
+    // A2 writes a CAS's pd (OI-127, OA rev 380): its renamed name,
+    // pred_we and the old name for the A-43 merge, on every pass. merge
+    // then covers A2's N as well, from row 0 (pold 0): N's inactive lanes
+    // are never stored, since A3 runs under the same mask.
+    const bool a2pd = step == 2 && u.pred_we;
+    is.ppdst = a2pd ? r.ppnew : 0;
+    is.pred_we = a2pd;
+    is.ppold = a2pd && r.merge ? r.ppold : 0;
+    if (a2pd) is.merge = r.merge;
     const unsigned m = resEntry(step == 1 ? r.rs_main : step == 2 ? r.rs_a2 : r.rs_a3);
     is.res = step == 2 ? Issue::kLaneOp : Issue::kMemop;
     is.footprint = uint8_t(!cfg_.sectioned ? 0xFu : step == 2 ? m & 0xFu : m >> 5);
@@ -3536,7 +3638,10 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   if (r.is_mem && !lane_step) {
     Memop m;
     m.tid = u.tid;
-    m.port = cfg_.sectioned ? port - 5 : port;   // sectioned: the pipe, P0-P3
+    // Sectioned: the pipe, P0-P3, the lowest credited one of its footprint
+    // (MA-5).
+    m.port = !cfg_.sectioned ? port : memop_pick_ != ~0u ? memop_pick_ : port - 5;
+    takeMemopCredit(m.port);
     m.rob_tag = is.rob_tag;
     m.warp = s.warp;
     m.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
@@ -3606,7 +3711,7 @@ std::array<unsigned, 4> Core::pairNeed(const std::vector<uint16_t> &adm, size_t 
 
 uint16_t Core::admBits(const Uop &u) const {
   const SchedAttr &a = u.attr;
-  const bool nop = u.shape.exit || u.cause || barNop(u);
+  const bool nop = u.shape.exit || u.cause || barNop(u) || hintNop(u, !cfg_.inject_reconv_real);
   const bool mem = !nop && a.rs_miu, atom = mem && a.mem_kind == kMemKAtomic;
   const bool wgpr = !nop && a.writes_gpr;
   const bool pred = !nop && u.pred_we && cfg_.rename_preds;
@@ -3725,7 +3830,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned fmt_reg = u.fmt_opnd == 3 ? u.dst : u.src[u.fmt_opnd % 3];
   const bool format_fault = !width_fault && ((u.fmt_rsv >> s.cw[fmt_reg & 15]) & 1u) &&
                             !cfg_.inject_no_format_fault;
-  const bool nop = u.shape.exit || u.cause || barNop(u) || bar_fault || width_fault || format_fault;
+  const bool nop = u.shape.exit || u.cause || barNop(u) || hintNop(u, !cfg_.inject_reconv_real) || bar_fault || width_fault || format_fault;
   const bool mem = !nop && a.rs_miu;
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
@@ -3743,7 +3848,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned ngpr = atomic ? 2 : wgpr ? 1 : 0;
   // go_static: what the go charges against the warp's allowances, from the
   // uop's decode-time bits (a fault found here, or a shared row, unseen).
-  const bool nop_d = u.shape.exit || u.cause || barNop(u);
+  const bool nop_d = u.shape.exit || u.cause || barNop(u) || hintNop(u, !cfg_.inject_reconv_real);
   const bool mem_d = !nop_d && a.rs_miu, atom_d = mem_d && a.mem_kind == kMemKAtomic;
   const bool wgpr_d = !nop_d && a.writes_gpr;
   const bool wpred_d = !nop_d && u.pred_we && cfg_.rename_preds;
@@ -4056,6 +4161,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
         dep(r.rs_a2, r.psrc[2], false, int(Config::kGrpInt));
       }
       if (u.shape.guard) dep(r.rs_a2, r.ppguard, true, -1);
+      // A2 merges a CAS's pd from the old one (A-43).
+      if (u.pred_we && r.merge) dep(r.rs_a2, r.ppold, true, -1);
       gprod_[r.ptmp_n] = {r.rs_a2, kNoEntry};
       dep(r.rs_a3, r.ptmp_n, false, int(Config::kGrpAddr));
     } else {
@@ -4078,7 +4185,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     if (a.branch && u.pred_taken && u.backward) s.home_ctr = (s.home_ctr + 1) & 3u;
     // This uop is now the producer of its destinations.
     if (wgpr) gprod_[r.pnew] = {atomic ? r.rs_a3 : r.rs_main, copy ? r.rs_copy : kNoEntry};
-    if (u.pred_we) pprod_[r.ppnew] = {r.rs_main, kNoEntry};
+    // An atomic's pd, as its rd, wakes its consumers once, on A3's last
+    // pass (V-71); A2's last write lands before A3 reads N.
+    if (u.pred_we) pprod_[r.ppnew] = {atomic ? r.rs_a3 : r.rs_main, kNoEntry};
   }
   if (u.cause) {
     // Fetch's or decode's, as DEC sent it (TI's 75b6a19).
@@ -4139,6 +4248,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       q.tgt = q.pcn + uint64_t(2 * int64_t(int32_t(u.imm)));
       q.pchi = unsigned((u.pc >> 32) & 0xffffu);
     }
+    q.fault = r.fault;
+    q.cause = r.fault ? r.fault_cause : 0;
+    q.pclo = uint32_t((u.pc >> 1) & 0x7fffffffu);
+    q.epchi = unsigned((u.pc >> 32) & 0xffffu);
+    q.egmask = u.group_mask;
     roblog_.alloc.push_back(q);
     if (r.atomic) robStop("atomic");
   }
@@ -4176,6 +4290,10 @@ void Core::restoreStep() {
     }
     return rlog_.ren[base + k];
   };
+  // restore.alloc_wait (TI 361, AR 315): a cycle the restore has registers
+  // left to allocate and the free pool gives it none.
+  if ((s.restore_gpr && !gprAllowed(si, 1)) || (s.restore_pred && cfg_.rename_preds && !predAllowed(si, 1)))
+    count("restore.alloc_wait");
   for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr) {
     const unsigned a = kArchGprs - s.restore_gpr;
     // TI-25: its own row, at its parked position and committed width.
@@ -4313,6 +4431,7 @@ void Core::rename() {
     // fits_stale 6: no split is registered while a restore owns the ports.
     for (auto &x : share_reg_) x = {0, 0, 0, 0};
     for (auto &x : share_hold_) x = {0, 0, 0, 0};
+    for (auto &x : floor_held_) x = {0, 0};
     restoreStep();
     count("stall.restore");
     goRoomNext();
@@ -4595,9 +4714,16 @@ void Core::rename() {
           split_floor_[si][0] = unmetFloor(si, false);
           if (cfg_.rename_preds) split_floor_[si][1] = unmetFloor(si, true);
         }
+        if (cfg_.floor_held_gate && cfg_.floor_take_lag && si < floor_held_.size())
+          for (unsigned b = 0; b != 2; ++b)
+            if (floor_held_[si][b] && split_floor_[si][b]) {
+              split_floor_[si][b] = 0;
+              count(b ? "rename.floor_held_gate_pred" : "rename.floor_held_gate");
+            }
         split[si][2] += split_floor_[si][0];
         split[si][3] += split_floor_[si][1];
       }
+      floor_held_ = split_floor_;
       share_ = share_reg_;
       share_reg_ = split;
       share_hold_ = split;
@@ -4695,6 +4821,12 @@ void Core::rename() {
       cu.attr_raw = (cu.attr_raw & ~(1u << 10)) | (it2->attr_raw & (1u << 10));
       for (unsigned i = 0; i != 2; ++i) cu.cas_src[i] = it2->src[i];
       cu.cas_reads = uint8_t(it2->shape.gpr_reads & 3u);
+      // CAS's pd (OI-127; TI rev 366): DEC puts it in the second slot,
+      // beside rd. The pair renames it with the rest.
+      if (!cfg_.inject_cas_no_pd) {
+        cu.pred_we = it2->pred_we;
+        cu.pred_dst = it2->pred_dst;
+      }
     }
     if (young) count("rename.refill");
     ren_pair_last_ = pair && budget < 2 && !cfg_.inject_pair_split;

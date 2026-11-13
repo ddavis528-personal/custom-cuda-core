@@ -1,0 +1,221 @@
+{
+  "module": "ccv_rcu",
+  "ports": {
+    "ooe_rcu_issue_s0_payload.lead_done_row": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldrw_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s1_payload.lead_done_row": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldrw_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s2_payload.lead_done_row": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldrw_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s3_payload.lead_done_row": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldrw_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s4_payload.lead_done_row": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldrw_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s5_payload.lead_done_row": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldrw_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s6_payload.lead_done_row": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldrw_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s7_payload.lead_done_row": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldrw_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s8_payload.lead_done_row": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_done_row, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldrw_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s0_payload.lead_opcode": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops 12.4 in (lop_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s1_payload.lead_opcode": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops 12.4 in (lop_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s2_payload.lead_opcode": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops 12.4 in (lop_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s3_payload.lead_opcode": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops 12.4 in (lop_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s4_payload.lead_opcode": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops 12.4 in (lop_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s5_payload.lead_opcode": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops 12.4 in (lop_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s6_payload.lead_opcode": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops 12.4 in (lop_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s7_payload.lead_opcode": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops 12.4 in (lop_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s8_payload.lead_opcode": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_opcode, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops 12.4 in (lop_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s0_payload.lead_phys_dst": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldst_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s1_payload.lead_phys_dst": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldst_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s2_payload.lead_phys_dst": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldst_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s3_payload.lead_phys_dst": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldst_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s4_payload.lead_phys_dst": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldst_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s5_payload.lead_phys_dst": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldst_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s6_payload.lead_phys_dst": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldst_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s7_payload.lead_phys_dst": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldst_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s8_payload.lead_phys_dst": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_phys_dst, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (ldst_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s0_payload.lead_pred_we": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (lpwe_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s1_payload.lead_pred_we": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (lpwe_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s2_payload.lead_pred_we": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (lpwe_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s3_payload.lead_pred_we": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (lpwe_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s4_payload.lead_pred_we": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (lpwe_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s5_payload.lead_pred_we": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (lpwe_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s6_payload.lead_pred_we": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (lpwe_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s7_payload.lead_pred_we": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (lpwe_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    },
+    "ooe_rcu_issue_s8_payload.lead_pred_we": {
+      "arrival": 12.0,
+      "by": "DA rev 116 (13 RCU / 0 OOE, re:RI-26; RA rev 129, AR 337, TI rev 399)",
+      "date": "2026-11-09",
+      "why": "RCU's in-side 13 on the zero-cycle issue end's lead_pred_we, every slot (RA-43): OOE drives it from its lead flop, wire only, required 0 on OOE's side (0 + 13 <= 25). It reaches rcu_isd's class flops (lpwe_cr01h carries it). Only the four class-word lead fields take 13; every other lead field and the payload stay at 12."
+    }
+  }
+}

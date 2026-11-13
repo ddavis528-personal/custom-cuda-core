@@ -151,8 +151,11 @@ enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
 // at retire (TI-40).
 // kAtomic: a Format M read-modify-write (O-72; IS-21, AR-21): two decode
 // slots, a pair, which OOE splits into A1 (read), A2 (lane op), A3 (write).
+// kNop: a hint with no architectural effect (C_RECONV, reconv.hint; RA-16
+// (f), OA's rev 393), serial 5: OOE completes it at rename, and it runs
+// nowhere.
 enum UopClass : uint8_t { kAlu, kLoad, kStore, kBranch, kExit, kPredLogic, kImm,
-                          kFence, kBarArrive, kBarWait, kAtomic };
+                          kFence, kBarArrive, kBarWait, kAtomic, kNop };
 struct OpInfo {
   const char *name;
   UopClass cls;
@@ -228,7 +231,9 @@ inline bool execRcu(const OpInfo *op) { return inRcu(op->cls) || op->cross; }
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatRcu = 0, kLatLane = 1, kLatL1 = 2, kLatCompletion = 3,
                   kLatSfu = 4, kLatCollective = 5 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+// serial 5, no-op: complete at rename (C_RECONV; RA-16 (f), OA's rev 393).
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4,
+                  kSerNop = 5 };
 // Above bypass_group (CCV_P_W_SCHED_ATTR 21): the CAS pair's first and second
 // slots (17, 18; TI-39, OA's rev 189), ret (19: OOE takes its target from
 // ccv_rcu_ooe_done.aux and sets stay; AR-24 (b)), and commit_width
@@ -262,13 +267,16 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
                       : op->cls == kAtomic ? kMemKAtomic : kMemKLoad;
   const bool ctl = op->cls == kExit || isBarrier(op);
   const unsigned ser = op->cls == kExit ? kSerExit : op->cls == kBarWait ? kSerBarrier
-                     : op->cls == kBarArrive ? kSerArrive : op->chw ? kSerChwidth : kSerNone;
+                     : op->cls == kBarArrive ? kSerArrive : op->cls == kNop ? kSerNop
+                     : op->chw ? kSerChwidth : kSerNone;
   // A cross-lane op (shfl) is RCU's but warp-collective: lat_class 5 at
   // CCV_LAT_COLLECTIVE (Daniel's responses OA-4; AR's rev 259, TI's rev
   // 274). RCU may finish it sooner, which V-35 allows; its dependants wake
   // at 5.
   // An atomic wakes its dependants on its last write's completion (A-46).
-  const unsigned lat = op->cls == kLoad ? kLatL1
+  // A no-op (serial 5) sets no other bit: lat_class 0 (RA-16 (f)).
+  const unsigned lat = op->cls == kNop ? kLatRcu
+                     : op->cls == kLoad ? kLatL1
                      : op->cls == kStore || op->cls == kFence || op->cls == kAtomic ? kLatCompletion
                      : op->cross ? kLatCollective
                      : execRcu(op) || ctl ? kLatRcu : kLatLane;
@@ -308,232 +316,14 @@ inline bool attrMem(uint32_t a) { return (a >> 13) & 1u; }
 inline unsigned attrMemKind(uint32_t a) { return (a >> 7) & 3u; }
 inline bool attrBranch(uint32_t a) { return (a >> 6) & 1u; }
 inline unsigned attrBypGroup(uint32_t a) { return (a >> 14) & 7u; }
+inline unsigned attrSerial(uint32_t a) { return (a >> 3) & 7u; }
 /// A per-lane input: a GPR source, or the lane's own index.
 inline bool perLaneInput(const OpInfo *op, const Record &r) {
   return !r.gprUses().empty() || op->srd_sel >= 0 || op->chw;
 }
-inline constexpr OpInfo kOps[] = {
-  //                            nsrc gdst  pread  pwrite guard  pdata  base idx data disp scl alu slot
-  {"POR",           kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"MOVI48",        kImm,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
-  // srd #0 (%ctatid): the immediate is warp_base, and the lane ORs its index.
-  {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0, 0, true},
-  {"LD_GLOBAL",     kLoad,      1, true,  false, false, false, false,  0, -1, -1,  0, -1, -1, -1},
-  {"MADLO",         kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"SETP_LT",       kAlu,       2, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1},
-  {"BRA_PRED",      kBranch,    0, false, true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
-  {"LD_GLOBAL_IDX", kLoad,      2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
-  {"C_ADD",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  // add under a guard (Format Ap): the guard switches lanes off, and they
-  // keep the destination's old value, carried as merge_data (A-33, A-44).
-  {"ADD_P",         kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
-  {"ST_GLOBAL_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
-  // O-80's sized forms (DA tab rev 90): the base + index layout, rdata's
-  // width untouched; the transfer is the opcode's (xferOf).
-  {"SZ_GLOBAL_LD_U8",  kLoad,   2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
-  {"SZ_GLOBAL_LD_S8",  kLoad,   2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
-  {"SZ_GLOBAL_LD_U16", kLoad,   2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
-  {"SZ_GLOBAL_LD_S16", kLoad,   2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
-  {"SZ_GLOBAL_ST_8",   kStore,  3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
-  {"SZ_GLOBAL_ST_16",  kStore,  3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
-  {"C_EXIT",        kExit,      0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"MOVI",          kImm,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
-  // sel's qualifier is DATA: every issue-mask lane writes rd, choosing rs0 or
-  // rs1 by it. So no enable narrowing, and the predicate rides as pred_data.
-  // (Format A always encodes rs2; the sel kernel names R2 for it, which the
-  // oracle folds into the rs1 use.)
-  {"SEL",           kAlu,       2, true,  true,  false, false, true,  -1, -1, -1, -1, -1, -1, -1},
-  // srd #1 (%ctaid): the immediate is the value; the lane passes it through.
-  {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0, 1, false},
-  // srd #2 (%lanectx, O-64): the immediate is the hardware warp context
-  // << 5, the core's index above it; the lane ORs its index, as for #0.
-  {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0, 2, true},
-  // srd #3 (%privoff, O-83): the immediate is the private run's offset from
-  // local_base in windows, 3 * CCV_LANE_CONTEXTS, the same on every lane,
-  // warp and CTA of a device; the lane passes it through, as for #1.
-  {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0, 3, false},
-  // A guarded load (Format Dp): MIU writes the active lanes, and the inactive
-  // ones keep their old value through a copy-only op (A-33, A-38).
-  {"LD_GLOBAL_P",   kLoad,      1, true,  true,  false, true,  false,  0, -1, -1,  0, -1, -1, -1},
-  // rope's (CP's release kernel, TI-30). The lanes return ccv-sim's results,
-  // so a row is the operand shape and where the op runs.
-  {"ADD",           kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"MUL_LO",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_MUL_LO",      kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_MOV",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_ADDI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"C_SHLI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  // The 32-bit forms with a separate destination (Format A's immediate
-  // forms): rd = rs op imm, the immediate in operand slot 1.
-  {"SHLI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"ADDI48",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"C_SHRI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  // mad.lo under a guard: as add.p, the guard's off lanes keep the old value.
-  {"MADLO_P",       kAlu,       3, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
-  // Format C" compares (O-32): no qualifier, every issue-mask lane written.
-  {"SETP_EQ_NP",    kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"SETP_LE_U_NP",  kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"SETP_LT_U_NP",  kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"SETP_LT_NPI",   kAlu,       1, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  1},
-  // FP: integer lanes' timing for now, FP's bypass group (OI-16).
-  {"C_FMUL",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
-  {"FNEG_F0",       kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
-  {"FFMA_F0",       kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
-  {"FFMA_ACC_F0",   kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
-  {"ST_GLOBAL",     kStore,     2, false, false, false, false, false,  1, -1,  0,  0, -1, -1, -1},
-  {"C_BRA",         kBranch,    0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  // pmov.imm: bit n of the immediate is lane n's predicate bit on the
-  // issue-mask lanes, the rest kept from the old predicate (RA-19): an
-  // immediate RCU writes and merges.
-  {"PMOV_IMM",      kImm,       0, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  0},
-  // shfl.idx: each guarded issue lane takes the source register at one lane,
-  // active or not (Format G): RCU, which holds every lane's register.
-  {"SHFL_IDX",      kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
-  // The rest of Format G's collectives (O-85, RA-20; DA tab rev 100, ISA
-  // v1.9 section 3, CP-76's opcode points). Each acts on its participating
-  // lanes, issue mask AND guard, and writes only them. shfl.up/down/bfly read
-  // lane l - c, l + c, l ^ c, a source outside 0..31 keeping the lane's own;
-  // the _R forms take c per lane from the low 5 bits of the index register
-  // ([22:19]), src_arch's second field. vote.any/all and ballot read one
-  // predicate, which rides in imm as predicate logic's do (imm_kind 1);
-  // unballot is diagonal: lane l's bit l of its own rs.
-  {"SHFL_IDX_R",    kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
-  {"SHFL_UP",       kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
-  {"SHFL_UP_R",     kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
-  {"SHFL_DOWN",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
-  {"SHFL_DOWN_R",   kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
-  {"SHFL_BFLY",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
-  {"SHFL_BFLY_R",   kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
-  {"VOTE_ANY",      kAlu,       0, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
-  {"VOTE_ALL",      kAlu,       0, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
-  {"BALLOT",        kAlu,       0, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
-  {"UNBALLOT",      kAlu,       1, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, true},
-  // The launch-slot forms (O-45; TI-31): [slot, rindex, scale, disp], the
-  // window from launch slot `slot`, so no base register (base -1).
-  {"LD_GLOBAL_SLOT", kLoad,     1, true,  false, false, false, false, -1,  0, -1,  2,  1, -1, -1, -1, false, false, -1, 0},
-  {"ST_GLOBAL_SLOT", kStore,    2, false, false, false, false, false, -1,  1,  0,  2,  1, -1, -1, -1, false, false, -1, 0},
-  // Predicate transfers (O-19, O-62, O-63; TI-36): [mask in quals, rbase,
-  // disp]. ld.pred writes its predicate; st.pred reads it as data, renamed
-  // as sel's selector is (pdata), never as a guard.
-  {"LD_PRED_G",     kLoad,      1, false, false, true,  false, false,  0, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true},
-  {"ST_PRED_G",     kStore,     1, false, true,  false, false, true,   0, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true},
-  // The interleaved local forms (O-69; IS-19): [rdata, b] and [mask in
-  // quals, b], no base register; the predicate forms crack as ld.pred's.
-  {"LD_LOCAL",      kLoad,      0, true,  false, false, false, false, -1, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, false, true},
-  {"ST_LOCAL",      kStore,     1, false, false, false, false, false, -1, -1,  0,  0, -1, -1, -1, -1, false, false, -1, -1, false, true},
-  {"LD_PRED_LOCAL", kLoad,      0, false, false, true,  false, false, -1, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true,  true},
-  {"ST_PRED_LOCAL", kStore,     0, false, true,  false, false, true,  -1, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true,  true},
-  // A fence (Format E, IS-11): its immediate is the ordering MIU takes.
-  // The barriers (O-27): bar.arrive #id and bar.wait #id, the id their
-  // immediate. bar.init and bar.wait.phase have no row yet: no kernel the
-  // compiler emits uses them (F-118), and DEC refuses what it cannot decode.
-  {"C_FENCE",       kFence,     0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_BAR_ARRIVE",  kBarArrive, 0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_BAR_WAIT",    kBarWait,   0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  // CoreMark-derived's (AR-20, AR-24): the integer ALU forms, register and
-  // immediate, 32-bit and compressed, as their siblings above.
-  {"ADDI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"ANDI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"ORI",           kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"MULI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"SHRI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"SRAI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"C_ANDI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"AND",           kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"ANDN",          kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"OR",            kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"XOR",           kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"SUB",           kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"MUL_HI_U",      kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_AND",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_ANDN",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_OR",          kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_XOR",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_SUB",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_NEG",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_NOT",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  // mad.acc: rd = rs0 * rs1 + rd, the accumulator its third source.
-  {"MAD_ACC",       kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  // cvt.sext reads rs0 only; the 32-bit form's other register fields are
-  // listed by ccv-sim but unread.
-  {"CVT_SEXT",      kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, true},
-  // Guarded forms (Format Ap): off lanes keep the old destination (A-33).
-  {"ADDI_P",        kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0,  1},
-  {"MOV_P",         kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, true},
-  // The compares not yet here: Format C" (no qualifier), register and
-  // immediate.
-  {"SETP_LT_NP",    kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"SETP_NE_NP",    kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"SETP_EQ_NPI",   kAlu,       1, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"SETP_NE_NPI",   kAlu,       1, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"SETP_LT_U_NPI", kAlu,       1, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  1},
-  {"PAND",          kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
-  // Control flow. bra is c.bra's 32-bit form. call writes its link register
-  // (rd, or R14 for call.short) with the next instruction's address, low
-  // 32 bits (CP-9, AR-22); RCU writes it, as it does movi. ret jumps each
-  // lane to {PC[47:32], rs}: the link register is its source (AR-24 (b)).
-  {"BRA",           kBranch,    0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"CALL",          kBranch,    0, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"C_RET",         kBranch,    1, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, true},
-  // chwidth (O-6): a register's element width, held by rename until it
-  // retires. The uop reads the register and writes it: a widening clears
-  // the bits it exposes, so the value may change (AR-24 (c)).
-  {"C_CHWIDTH",     kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 1},
-  {"CHWIDTH_MULTI", kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 2},
-  // The four-warp corpus's (CP-62, AR-24). .shared, as .global's forms are
-  // laid out: [rdata, rbase, disp] and [rdata, rbase, rindex, scale, disp];
-  // a store's data first among its sources.
-  {"LD_SHARED",     kLoad,      1, true,  false, false, false, false,  0, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  // Format M's simple RMW atomics (O-72, O-73; IS-21): rd the old value;
-  // sources rbase, rindex, rs in that order (srcRegs reads them from the
-  // encoding, since ccv-sim's record folds a repeated register); imms
-  // [scale-enable, displacement]. DEC sends each as a pair of decode slots
-  // (OI-80 (d), DA tab rev 94): the first the address, the second rs and rd.
-  {"ATOM_ADD_G",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_MIN_S_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_MIN_U_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_MAX_S_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_MAX_U_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_AND_G",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_OR_G",    kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_XOR_G",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_EXCH_G",  kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_ADD_S",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ATOM_MIN_S_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ATOM_MIN_U_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ATOM_MAX_S_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ATOM_MAX_U_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ATOM_AND_S",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ATOM_OR_S",    kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ATOM_XOR_S",   kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ATOM_EXCH_S",  kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ATOM_ADD_F_G", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, false},
-  {"ATOM_ADD_F_S", kAtomic,    3, true,  false, false, false, false,  0,  1,  2,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ST_SHARED",     kStore,     2, false, false, false, false, false,  1, -1,  0,  0, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"LD_SHARED_IDX", kLoad,      2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  {"ST_SHARED_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
-  // c.ld.global: [rdata, rbase], no displacement.
-  {"C_LD_GLOBAL",   kLoad,      1, true,  false, false, false, false,  0, -1, -1, -1, -1, -1, -1},
-  // Its store (Format K, coremark-derived-priv): st.global's row, no displacement.
-  {"C_ST_GLOBAL",   kStore,     2, false, false, false, false, false,  1, -1,  0, -1, -1, -1, -1},
-  {"C_ORI",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
-  // Guarded forms, as add.p and mad.lo.p: off lanes keep the destination.
-  {"SUB_P",         kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
-  {"MUL_HI_U_P",    kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
-  // coremark-derived-priv's guarded forms (CP-63, compiler d9ddd2c): the
-  // unguarded op's row with its guard read.
-  {"OR_P",          kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
-  {"SHLI_P",        kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0,  1},
-  {"SHRI_P",        kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0,  1},
-  // FP and SFU: integer lanes' timing for now, as C_FMUL's (OI-16), in
-  // their bypass groups.
-  {"C_FADD",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
-  {"FSUB",          kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
-  {"CVT_F32_S32_P", kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
-  {"RCP_U32",       kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
-  {"RSQRT_F32",     kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
-  {"RCP_F32_P",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
-};
+// The table itself is generated from params/ops.json (RI-21 (4)): a row
+// per opcode, its opcode the row's position + 1, appended only.
+#include "ccv_ops.h"
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
 
@@ -545,22 +335,128 @@ constexpr unsigned kSecs = ccv::kSections;
 constexpr unsigned kSlotS0 = 0, kSlotP0 = kSecs, kSlotR = kSecs + ccv::kMiuPipes;
 static_assert(kSlotR + 1 == ccv::kIssueResources, "S0-S3, P0-P3, R");
 static_assert(kSlotR == ccv::kIssueSlotR, "R's slot (CCV_ISSUE_SLOT_R)");
-/// ccv_ooe_rcu_issue's lead (RA-31; OA's rev 307, AR's rev 267): what OOE
-/// knows at select from the RS entry's static fields, opcode-blind, sent a
-/// cycle ahead so RCU enables only the operand groups the op uses. Every
-/// bit is a superset; a clear bit is a promise. The guard's is R's alone
-/// (slot_fields). lead-src-clear promises no source on every op: RCU must
-/// refuse each op that reads one.
-inline void putIssueLead(Bits &m, unsigned chan, unsigned slot, unsigned fp, unsigned src_used,
+/// ccv_ooe_rcu_issue's lead (RA-31; OA's rev 307, AR's rev 267; RA's revs
+/// 108-113, RA-43, OA's revs 387-391): what OOE knows at select from the RS
+/// entry's static fields, opcode-blind, sent a cycle ahead so RCU's end can
+/// be zero-cycle. Three kinds (schema lead_why):
+///  - ENABLES, a superset each: lead_src_used, lead_imm_used,
+///    lead_merge_used, lead_guard_used. A clear bit is a promise.
+///    lead_sec_mask is EXACT (OA's rev 403 on RI-31): the footprint, bit for
+///    bit, on a lead's slot, and zero on a continuation. lead-sec-superset
+///    sets a section beyond the footprint on every lead that leaves one
+///    (R's, footprint 0), which RCU must refuse (legal before rev 403);
+///    lead-sec-cont sets one on every continuation (fillIssueLeadCopies).
+///    lead-src-clear promises no source on every op: RCU must refuse each op
+///    that reads one.
+///  - MOVED (no payload copy left): lead_guard_pred on every slot, the op's
+///    guard or data predicate (RA 109 (a)); lead_phys_src and
+///    lead_phys_src2 on R, R's source rows (RA 109 (b); placeIssueSrcRows;
+///    on S0-S3 both are copies, lead_phys_src2's since RA's rev 132 and OA's
+///    rev 403 on RI-31),
+///    and lead_rpsrc on R, R's whole imm (RA's rev 114 (2); issueImm).
+///    RCU reads them from the lead (issueGuardPred, issueSrcRows).
+///  - COPIES, equal to their payload field (kIssueLeadCopies).
+///    A sender calls finishIssueLeads last on every slot, continuations too.
+/// putIssueLead sets the enables and the guard: guard_used is set when the
+/// op reads its predicate, as guard or data, and it is not the always-true
+/// one; guard_pred is the predicate whatever guard_used says.
+inline void putIssueLead(Bits &m, unsigned chan, unsigned /*slot*/, unsigned fp, unsigned src_used,
                          bool imm_used, bool merge, bool guard_used, unsigned guard_pred,
                          const std::string &brk) {
-  put(m, chan, "lead_sec_mask", fp);
+  // lead-sec-superset: the lowest section outside the footprint, on every
+  // lead that leaves one (R's, whose footprint is 0, and a narrow op's).
+  const unsigned out = ~fp & 0xFu;
+  put(m, chan, "lead_sec_mask", fp | (brk == "lead-sec-superset" ? out & (0u - out) : 0u));
   put(m, chan, "lead_src_used", brk == "lead-src-clear" ? 0u : src_used & 7u);
   put(m, chan, "lead_imm_used", imm_used);
   put(m, chan, "lead_merge_used", merge);
-  const bool r = slot == kSlotR && guard_used;
-  put(m, chan, "lead_guard_used", r);
-  put(m, chan, "lead_guard_pred", r ? guard_pred : 0u);
+  put(m, chan, "lead_guard_used", guard_used);
+  // lead-guard-corrupt (RA 109 (a)): a moved lead names the wrong
+  // predicate on a guarded op. No payload copy is left to compare, so RCU
+  // reads the wrong guard, and the result must be wrong.
+  const unsigned gp = brk == "lead-guard-corrupt" && guard_used ? guard_pred ^ 1u : guard_pred;
+  put(m, chan, "lead_guard_pred", gp);
+}
+/// The source rows: in the payload on S0-S3 and P0-P3, in the lead on R
+/// (moved) and on S0-S3 (a copy). A sender puts phys_src and phys_src2 as
+/// ever; on a slot that does not carry them (R) this moves them to the lead
+/// and clears the payload's. lead-src-corrupt (RA 109 (b)) names a wrong
+/// first-source row in R's moved lead.
+inline void placeIssueSrcRows(Bits &m, unsigned chan, unsigned slot, const std::string &brk) {
+  if ((field(chan, "phys_src").slots >> slot) & 1u) return;   // a copy, if any: fillIssueLeadCopies
+  const uint64_t ps = get(m, chan, "phys_src"), ps2 = get(m, chan, "phys_src2");
+  put(m, chan, "phys_src", 0);
+  put(m, chan, "phys_src2", 0);
+  if (!((field(chan, "lead_phys_src").slots >> slot) & 1u)) return;
+  put(m, chan, "lead_phys_src", brk == "lead-src-corrupt" ? ps ^ (1u << ccv::prov::kWPhysReg) : ps);
+  put(m, chan, "lead_phys_src2", ps2);
+  // R's imm moves to lead_rpsrc too (RA's rev 114 (2)).
+  if ((field(chan, "lead_rpsrc").slots >> slot) & 1u && !((field(chan, "imm").slots >> slot) & 1u)) {
+    put(m, chan, "lead_rpsrc", get(m, chan, "imm"));
+    put(m, chan, "imm", 0);
+  }
+}
+/// The immediate as RCU reads it: the payload's where it carries one, R's
+/// moved lead_rpsrc on R (RA's rev 114 (2)).
+inline uint32_t issueImm(const Bits &m, unsigned chan, unsigned slot) {
+  return uint32_t(get(m, chan, (field(chan, "imm").slots >> slot) & 1u ? "imm" : "lead_rpsrc"));
+}
+/// The lead copies (RA-43, RA 109 (c)): each lead field and the payload
+/// field it mirrors. A copy is filled only on a slot that carries both.
+struct IssueLeadCopy { const char *lead, *field; };
+inline constexpr IssueLeadCopy kIssueLeadCopies[] = {
+    {"lead_opcode", "opcode"},           {"lead_phys_dst", "phys_dst"},
+    {"lead_dst_pos", "dst_pos"},         {"lead_dst_width", "dst_width"},
+    {"lead_done_row", "done_row"},       {"lead_pred_we", "pred_we"},
+    {"lead_phys_pred_dst", "phys_pred_dst"}, {"lead_cont", "cont"},
+    {"lead_pred_neg", "pred_neg"},       {"lead_phys_src", "phys_src"},
+    {"lead_phys_old_dst", "phys_old_dst"}, {"lead_old_dst_pos", "old_dst_pos"},
+    {"lead_src_pos", "src_pos"},         {"lead_phys_src2", "phys_src2"},
+};
+inline bool issueCopyOn(unsigned chan, const IssueLeadCopy &x, unsigned slot) {
+  return (field(chan, x.lead).slots >> slot) & (field(chan, x.field).slots >> slot) & 1u;
+}
+/// Fill every copy from the payload as built: call it last, on a lead's slot
+/// and on each continuation alike. lead-copy-corrupt (the control) flips a
+/// bit of lead_phys_dst on every slot that is not a continuation, which the
+/// receiving RCU must refuse by name.
+inline void fillIssueLeadCopies(Bits &m, unsigned chan, unsigned slot, const std::string &brk) {
+  for (const IssueLeadCopy &x : kIssueLeadCopies)
+    if (issueCopyOn(chan, x, slot)) put(m, chan, x.lead, get(m, chan, x.field));
+  if (brk == "lead-copy-corrupt" && !get(m, chan, "cont"))
+    put(m, chan, "lead_phys_dst", get(m, chan, "lead_phys_dst") ^ 1u);
+  // lead-src2-copy (RA's rev 132, OA's rev 403 on RI-31): S0's
+  // lead_phys_src2 copy off by one bit on every lead there.
+  if (brk == "lead-src2-copy" && slot == 0 && !get(m, chan, "cont"))
+    put(m, chan, "lead_phys_src2", get(m, chan, "lead_phys_src2") ^ 1u);
+  // lead-sec-cont (OA's rev 403): a continuation's section mask set.
+  if (brk == "lead-sec-cont" && get(m, chan, "cont"))
+    put(m, chan, "lead_sec_mask", 1u << (slot % kSecs));
+}
+/// What a sender does last on each ccv_ooe_rcu_issue slot, once it knows the
+/// slot: R's source rows to their lead, then every copy (RA-43).
+inline void finishIssueLeads(Bits &m, unsigned chan, unsigned slot, const std::string &brk) {
+  placeIssueSrcRows(m, chan, slot, brk);
+  fillIssueLeadCopies(m, chan, slot, brk);
+}
+/// The first copy on this slot that differs from its payload field, or null.
+inline const IssueLeadCopy *issueLeadCopyBroken(const Bits &m, unsigned chan, unsigned slot) {
+  for (const IssueLeadCopy &x : kIssueLeadCopies)
+    if (issueCopyOn(chan, x, slot) && get(m, chan, x.lead) != get(m, chan, x.field)) return &x;
+  return nullptr;
+}
+/// The moved fields, as RCU reads them: the guard's predicate from the lead
+/// on every slot, the source rows from the payload where it carries them
+/// and from the lead on R.
+inline unsigned issueGuardPred(const Bits &m, unsigned chan) {
+  return unsigned(get(m, chan, "lead_guard_pred"));
+}
+inline void issueSrcRows(const Bits &m, unsigned chan, unsigned slot, unsigned src[3]) {
+  const bool pl = (field(chan, "phys_src").slots >> slot) & 1u;
+  const unsigned ps = unsigned(get(m, chan, pl ? "phys_src" : "lead_phys_src"));
+  src[0] = (ps >> ccv::prov::kWPhysReg) & ((1u << ccv::prov::kWPhysReg) - 1u);
+  src[1] = ps & ((1u << ccv::prov::kWPhysReg) - 1u);
+  src[2] = unsigned(get(m, chan, pl ? "phys_src2" : "lead_phys_src2"));
 }
 /// chwidth's codes, and the sections (or pipes) a register of each spans.
 enum : unsigned { kChw32 = 0, kChw16 = 1, kChw8 = 2, kChw4 = 3 };
@@ -582,7 +478,17 @@ constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
 inline constexpr OpInfo kAtomA1 = {"ATOM.A1", kLoad,  2, true,  false, false, false, false,  0,  1, -1, -1, -1, -1, -1};
 inline constexpr OpInfo kAtomA2 = {"ATOM.A2", kAlu,   2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1};
 inline constexpr OpInfo kAtomA3 = {"ATOM.A3", kStore, 1, false, false, false, false, false, -1, -1,  0, -1, -1, -1, -1};
-inline const OpInfo *atomStep(unsigned row) {
+/// A CAS (OI-127, OA rev 380): its steps are guarded by its qualifier, and
+/// A2 reads T, rs_cmp and rs_swap, and writes N and pd, merging pd's
+/// inactive lanes from its old name (A-43).
+inline constexpr OpInfo kCasA1 = {"CAS.A1", kLoad,  2, true,  true,  false, true,  false,  0,  1, -1, -1, -1, -1, -1};
+inline constexpr OpInfo kCasA2 = {"CAS.A2", kAlu,   3, true,  true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1};
+inline constexpr OpInfo kCasA3 = {"CAS.A3", kStore, 1, false, true,  false, true,  false, -1, -1,  0, -1, -1, -1, -1};
+/// A Format M compare-and-swap (CAS_G, CAS_S).
+inline bool isCas(const OpInfo *op) { return op && !std::strncmp(op->name, "CAS_", 4); }
+/// The step's shape; `op`, the atomic's own row, picks a CAS's.
+inline const OpInfo *atomStep(unsigned row, const OpInfo *op = nullptr) {
+  if (isCas(op)) return row == 0 ? &kCasA1 : row == 2 ? &kCasA2 : row == 3 ? &kCasA3 : nullptr;
   return row == 0 ? &kAtomA1 : row == 2 ? &kAtomA2 : row == 3 ? &kAtomA3 : nullptr;
 }
 static_assert(kOpCopy > kNumOps, "the copy-only op's code collides with the table");
@@ -627,6 +533,12 @@ inline std::vector<unsigned> srcRegs(const OpInfo *op, const Record &r, unsigned
     // named (an atomic on .shared with rbase = rindex = R0).
     uint32_t w = 0;
     for (unsigned b = 0; b != 4 && b < r.bytes.size(); ++b) w |= uint32_t(r.bytes[b]) << (8 * b);
+    // CAS (Format M', 48 bits): rs_cmp [22:19], rs_swap [26:23], rindex
+    // [35:32]: {rbase, rindex, rs_cmp, rs_swap}.
+    if (isCas(op)) {
+      ok = r.bytes.size() >= 6;
+      return {(w >> 15) & 15u, ok ? r.bytes[4] & 15u : 0u, (w >> 19) & 15u, (w >> 23) & 15u};
+    }
     ok = r.bytes.size() >= 4;
     return {(w >> 15) & 15u, (w >> 23) & 15u, (w >> 19) & 15u};
   }
@@ -669,7 +581,16 @@ inline const OpInfo *opByCode(unsigned c) {
 /// wrap -- a reused id would let a response match the wrong request.
 class IdPool {
 public:
-  explicit IdPool(unsigned chan) : n_(1u << field(chan, "req_id").width) {}
+  /// `cap_env`, if set in the environment, narrows the pool below the
+  /// width for a coverage run: the exhaustion path a wider hop no longer
+  /// reaches (CCV_MIU_DCU_IDS; MA-6 widened MIU -> DCU to 64 ids).
+  explicit IdPool(unsigned chan, const char *cap_env = nullptr)
+      : n_(1u << field(chan, "req_id").width) {
+    if (const char *v = cap_env ? std::getenv(cap_env) : nullptr; v && *v) {
+      const unsigned c = unsigned(std::strtoul(v, nullptr, 10));
+      if (c >= 1 && c < n_) n_ = c;
+    }
+  }
   bool any() const { return used_.size() < n_; }
   unsigned take() {
     unsigned i = 0;
@@ -835,6 +756,25 @@ protected:
   }
   Blk myType() const { return inst() < 0 ? Blk::EXTERNAL : kBlkInsts[inst()].type; }
 
+  /// Every slot and instance of `chan` this block receives returns its
+  /// credits in the landing cycle (Receiver::creditAt, CreditAt::Landing;
+  /// RI-36 (2), RI-37 (0)): valid at t, credit at t+1, as an RTL receiver's
+  /// <ch>_v_q, where take() would credit at t+2. Call it in the first
+  /// work(), before any message; take() each message the cycle it lands.
+  void creditAtLanding(unsigned chan) {
+    for (const In &i : ins)
+      if (i.ci->chan == chan) i.rx->creditAt(CreditAt::Landing);
+  }
+  /// Every slot and instance of `chan` this block receives returns a
+  /// message's credit when the block calls release() for it, not on take()
+  /// (CreditAt::Release; MA-5, AR rev 345): a memop's credit stands for its
+  /// MIU queue entry. Call it in the first work(), before any message.
+  void creditAtRelease(unsigned chan) {
+    for (const In &i : ins)
+      if (i.ci->chan == chan) i.rx->creditAt(CreditAt::Release);
+  }
+  /// Under creditAtRelease: the resource one taken message held is free.
+  void release(unsigned chan, unsigned slot, unsigned inst = 0) { rx(chan, slot, inst).release(); }
   /// The oldest message on a slot, left in place.
   const Receiver::Msg &peek(unsigned chan, unsigned slot, unsigned inst = 0) {
     return rx(chan, slot, inst).front();
@@ -930,6 +870,19 @@ enum : unsigned { kPoolDone = ~0u, kRcuOnlyDone = ~0u - 1 };
 /// The class that completes on CCV_DONE_SLOT_RCU: what RCU executes alone at
 /// CCV_LAT_RCU (a cross-lane op is RCU's too, but warp-collective).
 inline bool rcuOnlyDone(const OpInfo *op) { return inRcu(op->cls) || isBarrier(op); }
+/// R's GPR write (RA-16 (a), RA-29 (a); AR's rev 265): one write port, RW,
+/// for every class R executes, because each writes at A+2: the RCU-only
+/// class (movi, call's link) at CCV_LAT_RCU - 1, and the collectives early,
+/// at the same cycle, though their dependants wake at CCV_LAT_COLLECTIVE
+/// (V-35 allows it). params' pipe list counts RW once for both
+/// (CCV_PRF_GPR_WRITE_PORTS), which holds only while this does. `coll_late`
+/// is the control: collectives write at A + CCV_LAT_COLLECTIVE - 1 instead,
+/// which the RCU stub must refuse.
+constexpr unsigned kRWriteAt = ccv::prov::kLatRcu - 1;
+static_assert(kRWriteAt == 2, "R writes at A+2 (RA-29 (a))");
+inline unsigned rWriteAt(const OpInfo *op, bool coll_late) {
+  return op->cross && coll_late ? ccv::prov::kLatCollective - 1 : kRWriteAt;
+}
 
 /// OOE's implementation behind the swap boundary: the S1 stub (ooe.cpp).
 std::unique_ptr<Block> makeOoe(int inst, Kernel &k);

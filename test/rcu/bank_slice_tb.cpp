@@ -13,6 +13,14 @@
 //   write (the write-through, on its lanes). --control nowt expects none:
 //   the run must fail (test/rcu/run-rtl.sh).
 //
+// L0-L3 and M0-M2 come from the issue slots (P2): the bench encodes each
+// read as the S (P) slot owning section K, its rows on the sources the
+// port reads (M: the memop's base, index and data sources, an opcode that
+// has them, test/rcu/dec_tb.h), beside leads elsewhere, the owner's
+// continuations, and idle slots whose stale payload claims K. --control
+// lown puts the L rows on slot 0, msrc the M rows on src slot = port: the
+// run must fail.
+//
 // Written by LW (owned sections), SW and RW (secmask, or the whole row zero
 // above the register under FULL_ROW), and MW (per MIU slot: the slot that
 // covers the bank, its byte K - pos, a 4-bit load's low nibble). The bench
@@ -21,7 +29,7 @@
 // reads and loads.
 //
 // Migration (rcu_mig) beside the R op on R2 and RW: R2 is the R op's when
-// its lead and its decode (r2u) say it reads R2, else migration's under
+// its lead and its decode (of its opcode and merge_en) say it reads R2, else migration's under
 // migration's lead; RW writes the restore's row, every lane and section,
 // when migration's lead and its decision (gw_sel) say so, the R op's write
 // ignored, else the R op's. The traffic covers each mix: R alone, migration
@@ -52,8 +60,12 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <vector>
+
+#include "cls_pack.h"
+#include "dec_tb.h"
 
 #ifndef BS_ROWS
 #define BS_ROWS 192
@@ -122,16 +134,63 @@ struct Write {
   unsigned other = 0;
 };
 struct Load { unsigned slot, row, w, pos, lm; std::array<uint32_t, kL> word; };
+// An S or P slot of the issue channel as the slice reads it (P2): valid,
+// continuation, footprint, its three source rows (phys_src[15:8], [7:0],
+// phys_src2), phys_old_dst (S) or opcode and done_row (P). `drive` false:
+// the payload holds (an idle slot).
+struct Slot {
+  bool v = false, cont = false, drive = false;
+  unsigned foot = 0, src[3]{}, odst = 0, opc = 0, drw = 0;
+};
 struct Cycle {   // what one cycle's valids started
   std::vector<Read> rd;
   std::vector<Write> wr;
   std::vector<Load> ld;
+  std::array<Slot, 4> ss{}, ps{};   // filled by Bench::encode
 };
+
+// The memops that read each set of M ports (bit i: M0 base, M1 index, M2
+// data), each source on its own src slot: (opcode, done_row).
+struct MemOps {
+  std::array<std::vector<std::pair<unsigned, unsigned>>, 8> by;
+  MemOps() {
+    for (unsigned drw = 0; drw < 4; ++drw)
+      for (unsigned c : dectb::allOpcodes()) {
+        dectb::R::OpClass oc;
+        if (!dectb::classOf(c, drw, false, oc) || oc.unit != dectb::R::Unit::Mem) continue;
+        const int src[3] = {oc.base_src, oc.index_src, oc.data_src};
+        for (unsigned m = 1; m < 8; ++m) {
+          bool ok = true;
+          unsigned used = 0;
+          for (unsigned i = 0; i < 3; ++i)
+            if ((m >> i) & 1u) {
+              if (src[i] < 0 || ((used >> src[i]) & 1u)) ok = false;
+              else used |= 1u << src[i];
+            }
+          if (ok) by[m].push_back({c, drw});
+        }
+      }
+    if (by[1].empty() || by[3].empty() || by[5].empty()) {
+      std::fprintf(stderr, "bank_slice: no memop reads base, base and index, or base and data\n");
+      std::exit(2);
+    }
+  }
+  int src(unsigned opc, unsigned drw, unsigned i) const {
+    dectb::R::OpClass oc;
+    dectb::classOf(opc, drw, false, oc);
+    return i == 0 ? oc.base_src : i == 1 ? oc.index_src : oc.data_src;
+  }
+};
+const MemOps &memOps() {
+  static const MemOps m;
+  return m;
+}
 
 extern int g_argc;
 extern char **g_argv;
 extern bool g_nowt;   // --control nowt: expect no write-through (the run must fail)
 extern bool g_rfirst; // --control rfirst: expect migration's row on R2 beside the R op's (must fail)
+extern std::string g_ctl;   // --control lown|msrc|lsecK|psecX: the L rows on slot 0, the M rows by port (must fail)
 
 struct Bench {
   std::unique_ptr<VerilatedContext> ctx;
@@ -147,6 +206,79 @@ struct Bench {
   unsigned cov_read = 0, cov_zero = 0, cov_lw = 0, cov_lw_skip = 0, cov_zfill = 0, cov_mw = 0,
            cov_mw_nib = 0, cov_mw_shift = 0, cov_hold = 0, cov_same = 0;
   unsigned cov_m2 = 0, cov_m2r = 0, cov_m2n = 0, cov_mrw = 0, cov_mrwr = 0, cov_mrwn = 0;
+  unsigned cov_lown[4]{}, cov_mown[4]{}, cov_stale = 0, cov_cont = 0;
+  std::mt19937 erng{0x5107u + kK};
+  std::mt19937 lrng{0x1eadu + kK};   // the issue leads' noise and supersets
+  std::mt19937 prng{0x9eadu + kK};   // P's lead noise
+  unsigned erow() { return unsigned(erng() % kRows); }
+
+  /// The issue slots for c's L and M reads (P2): an owner of section K
+  /// among slots 0..K, the rest leads elsewhere, continuations of the
+  /// owner, idle, or idle with a stale payload that would claim K.
+  void encode(Cycle &c) {
+    unsigned lrow[4], mrow[3], lm = 0, mm = 0;
+    for (const Read &r : c.rd) {
+      if (r.port < 4) lrow[r.port] = r.row, lm |= 1u << r.port;
+      else if (r.port < 7) mrow[r.port - 4] = r.row, mm |= 1u << (r.port - 4);
+    }
+    auto fill = [&](std::array<Slot, 4> &sl, bool own, bool mem) {
+      const unsigned o = own ? unsigned(erng() % (kK + 1)) : 4;
+      unsigned ofoot = 0;
+      if (own) {
+        ofoot = (1u << o) | (1u << kK);
+        for (unsigned b = o + 1; b < 4; ++b)
+          if (erng() % 4 == 0) ofoot |= 1u << b;
+      }
+      for (unsigned j = 0; j < 4; ++j) {
+        Slot &x = sl[j];
+        x = Slot{};
+        for (auto &r : x.src) r = erow();
+        x.odst = erow();
+        if (mem) {
+          const auto &any = memOps().by[1];
+          std::tie(x.opc, x.drw) = any[erng() % any.size()];
+        }
+        if (j == o) {
+          x.v = x.drive = true;
+          x.foot = ofoot;
+        } else if ((ofoot >> j) & 1u) {   // inside the owner's footprint: its continuation
+          x.v = x.drive = erng() % 2;
+          x.cont = true;
+          x.foot = erng() % 16;
+          cov_cont += x.v;
+        } else if (j != kK && erng() % 3 == 0) {   // a lead elsewhere
+          x.v = x.drive = true;
+          x.foot = 1u << j;
+        } else if (erng() % 3 == 0) {   // idle, its stale payload claiming K
+          x.drive = true;
+          x.foot = (1u << j) | (j <= kK ? 1u << kK : 0u);
+          cov_stale += j <= kK;
+        }
+      }
+      return o;
+    };
+    const unsigned so = fill(c.ss, lm != 0 || erng() % 4 == 0, false);
+    if (so < 4) {
+      Slot &x = c.ss[g_ctl == "lown" ? 0 : so];
+      if (lm) ++cov_lown[so];
+      for (unsigned i = 0; i < 3; ++i)
+        if ((lm >> i) & 1u) x.src[i] = lrow[i];
+      if (lm & 8u) x.odst = lrow[3];
+    }
+    const unsigned po = fill(c.ps, mm != 0 || erng() % 4 == 0, true);
+    if (po < 4 && mm) {
+      Slot &x = c.ps[po];
+      ++cov_mown[po];
+      const auto &ops = memOps().by[mm];
+      if (ops.empty()) {
+        std::fprintf(stderr, "bank_slice: no memop reads M ports %x\n", mm);
+        std::exit(2);
+      }
+      std::tie(x.opc, x.drw) = ops[erng() % ops.size()];
+      for (unsigned i = 0; i < 3; ++i)
+        if ((mm >> i) & 1u) x.src[g_ctl == "msrc" ? i : unsigned(memOps().src(x.opc, x.drw, i))] = mrow[i];
+    }
+  }
 
   Bench(const char *vcd_path) {
     ctx = std::make_unique<VerilatedContext>();
@@ -177,21 +309,85 @@ struct Bench {
   }
 
   /// One cycle: `next` starts now (valids); s1's rows and s2's data go in.
-  void step(const Cycle &next, bool rst = false) {
+  // The R op's opcode and merge_en, which the slice decodes to "reads R2"
+  // (merge_en and a GPR destination; test/rcu/dec_tb.h); salt picks among
+  // the opcodes, and among the ways not to read R2.
+  void rOp(bool ruse, unsigned salt) {
+    using dectb::R::OpClass;
+    using dectb::R::Unit;
+    auto isR = [](const OpClass &oc) { return oc.unit == Unit::ROnly || oc.unit == Unit::Coll; };
+    static const dectb::OpPool gd("an R op writing a GPR", 0, [&](const OpClass &oc) { return isR(oc) && oc.gdst; });
+    static const dectb::OpPool ng("an R op writing no GPR", 0, [&](const OpClass &oc) { return isR(oc) && !oc.gdst; });
+    const bool g = ruse || (salt & 1u);
+    const auto &ops = g ? gd.ops : ng.ops;
+    dut->rcls_cr01h = uint32_t(clspack::clsWord(ops[(salt >> 1) % ops.size()], 0, false));
+    dut->rmrg_cr01h = ruse || (!g && (salt & 2u));
+  }
+
+  void step(const Cycle &next_in, bool rst = false) {
+    Cycle next = next_in;
+    encode(next);
     dut->rst_n = !rst;
-    dut->rd_v_cr00h = 0;
+    dut->sv_cr00h = 0;
+    dut->pv_cr00h = 0;
+    dut->r2v_cr00h = 0;
     dut->wr_v_cr00h = 0;
     dut->rv_cr02h = 0;
     dut->mw_v_cr01h = 0;
     dut->g2_v_cr00h = 0;
     dut->gw_v_cr00h = 0;
-    dut->r2u_cr01h = 0;
+    dut->rcls_cr01h = uint32_t(clspack::clsWord(0, 0, false));
+    dut->rmrg_cr01h = 0;
     dut->gw_sel_cr01h = 0;
+    bool pownK = false;
+    for (unsigned j = 0; j <= kK && j < 4; ++j)
+      pownK = pownK || (next.ps[j].v && !next.ps[j].cont && ((next.ps[j].foot >> kK) & 1u));
+    for (unsigned j = 0; j < 4; ++j) {
+      put(dut->sv_cr00h, j, 1, next.ss[j].v);
+      put(dut->pv_cr00h, j, 1, next.ps[j].v);
+      // S slot j's leads beside its valid (RA-43): lead_cont a copy;
+      // lead_sec_mask the footprint, now and then a superset, 0 on a
+      // continuation; off a valid, noise. lsecK (control): the owner's
+      // lead leaves out section K, so its L rows never load.
+      const Slot &x = next.ss[j];
+      const unsigned z = unsigned(lrng());   // its own stream: the draws stay as they were
+      unsigned ls = x.cont ? 0u : x.foot | ((z & 3u) == 0 ? (z >> 2) & 15u : 0u);
+      if (g_ctl == "lsecK" && x.v && !x.cont && ((x.foot >> kK) & 1u)) ls &= ~(1u << kK);
+      put(dut->slcont_cr00h, j, 1, x.v ? x.cont : (z >> 6) & 1u);
+      put(dut->slsec_cr00h, 4 * j, 4, x.v ? ls : (z >> 7) & 15u);
+      // P slot j's leads (RA 133): lead_sec_mask the footprint exactly, 0
+      // on a continuation; off a valid, noise. psecX (control): a lead slot
+      // without section K gets bit K, so the owner from the leads differs
+      // from the payload's and p_lead_is_footprint fires (only in a cycle
+      // no slot owns pipe K, so it is that assert and not one_p_owner).
+      const Slot &y = next.ps[j];
+      const unsigned zp = unsigned(prng());
+      unsigned lp = y.cont ? 0u : y.foot;
+      if (g_ctl == "psecX" && y.v && !y.cont && kK >= j && !((y.foot >> kK) & 1u) && !pownK) lp |= 1u << kK;
+      put(dut->plcont_cr00h, j, 1, y.v ? y.cont : zp & 1u);
+      put(dut->plsec_cr00h, 4 * j, 4, y.v ? lp : (zp >> 1) & 15u);
+    }
     for (const Read &r : next.rd)
-      if (!isRR(r.port)) {
-        if (r.rlead) put(dut->rd_v_cr00h, rdIdx(r.port), 1, 1);
+      if (r.port == 9) {
+        if (r.rlead) dut->r2v_cr00h = 1;
         if (r.mig) dut->g2_v_cr00h = 1;
       }
+    for (unsigned j = 0; j < 4; ++j) {
+      const Slot &x = s1.ss[j], &y = s1.ps[j];
+      if (x.drive) {
+        put(dut->scont_cr01h, j, 1, x.cont);
+        put(dut->sfoot_cr01h, 4 * j, 4, x.foot);
+        for (unsigned i = 0; i < 3; ++i) put(dut->ssrc_cr01h, (j * 3 + i) * 8, 8, x.src[i]);
+        put(dut->sodst_cr01h, 8 * j, 8, x.odst);
+      }
+      if (y.drive) {
+        put(dut->pcont_cr01h, j, 1, y.cont);
+        put(dut->pfoot_cr01h, 4 * j, 4, y.foot);
+        for (unsigned i = 0; i < 3; ++i) put(dut->psrc_cr01h, (j * 3 + i) * 8, 8, y.src[i]);
+        // The class word rcu_isd holds from the lead (RA-43, RI-25).
+        put(dut->pcls_cr01h, 27 * j, 27, clspack::clsWord(y.opc, y.drw, false));
+      }
+    }
     for (const Write &w : next.wr) {
       if (w.rlead) put(dut->wr_v_cr00h, w.port, 1, 1);
       if (w.mig) dut->gw_v_cr00h = 1;
@@ -201,12 +397,10 @@ struct Bench {
     for (const Read &r : s1.rd) {
       if (isRR(r.port)) {
         dut->rv_cr02h = 1;
-      } else if (r.port != 9) {
-        put(dut->rd_row_cr01h, rdIdx(r.port) * 8, 8, r.row);
-      } else {   // R2: the R op's row and migration's
-        put(dut->rd_row_cr01h, rdIdx(r.port) * 8, 8, r.ruse ? r.row : r.other);
+      } else if (r.port == 9) {   // R2: the R op's row and migration's
+        dut->r2row_cr01h = r.ruse ? r.row : r.other;
         dut->g2_row_cr01h = r.ruse ? r.other : r.row;
-        dut->r2u_cr01h = r.ruse;
+        rOp(r.ruse, r.row ^ r.other);
       }
     }
     for (const Load &l : s1.ld) put(dut->mw_v_cr01h, l.slot, 1, 1);
@@ -342,6 +536,8 @@ struct Bench {
       const bool cov = covers(ld.w, ld.pos);
       if (!(cov || kFullRow) || ld.row == kZero) continue;
       ++cov_mw;
+      // A shifted load (pos != 0) that still covers section K: none can at
+      // K = 0, which only pos 0 covers, so the bin is required for K > 0.
       if (cov && ld.pos != 0) ++cov_mw_shift;
       if (cov && ld.w == 3) ++cov_mw_nib;
       for (unsigned l = 0; l < kL; ++l) {
@@ -453,6 +649,16 @@ void directed(Bench &b) {
   run(Cycle{{}, {{kSW, r2, 0xf, d1, 0xf}, {kRW, r3, 0xf, d2, 0xf}}, {}});
   run(Cycle{{}, {{kSW, r2, 0xfu & ~(1u << kK), d2, 0xf}}, {}});
   run(Cycle{{{1, r2}, {2, r3}}, {}, {}});
+  // LW and SW in the same cycle on every lane, each its own row and data
+  // (an SFU op landing beside a lane op: SW writes sfu_result, LW result;
+  // RA rev 120): each row holds its own port's bytes.
+  run(Cycle{{}, {{kLW, r1, 1u << kK, d1, 0xf}, {kSW, r2, 1u << kK, d2, 0xf}}, {}});
+  run(Cycle{{{0, r1}, {1, r2}}, {}, {}});
+  // A 16-bit SFU op at position 2 (RA rev 124): sfu_result arrives steered,
+  // SW's secmask is 1100; banks 2-3 take it, 0-1 keep their bytes, or take
+  // zero under FULL_ROW.
+  run(Cycle{{}, {{kSW, r2, 0xc, d1, 0xf}}, {}});
+  run(Cycle{{{2, r2}}, {}, {}});
   // The zero register reads 0.
   run(Cycle{{{3, kZero}}, {}, {}});
   // Loads: a 16-bit and a 4-bit one at positions covering K, and a slot
@@ -477,6 +683,7 @@ int g_argc;
 char **g_argv;
 bool g_nowt = false;
 bool g_rfirst = false;
+std::string g_ctl;
 
 int run(const std::string &scenario, const char *vcd) {
   Bench b(vcd);
@@ -495,7 +702,7 @@ int run(const std::string &scenario, const char *vcd) {
   b.step(none);
   b.step(none);
   if (scenario != "idle" && (!b.cov_read || !b.cov_zero || !b.cov_lw || !b.cov_lw_skip || !b.cov_mw ||
-                             !b.cov_mw_nib || !b.cov_mw_shift || !b.cov_hold || (kFullRow && !b.cov_zfill))) {
+                             !b.cov_mw_nib || (kK > 0 && !b.cov_mw_shift) || !b.cov_hold || (kFullRow && !b.cov_zfill))) {
     std::fprintf(stderr, "bank_slice: coverage: read %u zero %u lw %u lw_skip %u zfill %u mw %u nib %u shift %u hold %u\n",
                  b.cov_read, b.cov_zero, b.cov_lw, b.cov_lw_skip, b.cov_zfill, b.cov_mw, b.cov_mw_nib,
                  b.cov_mw_shift, b.cov_hold);
@@ -506,12 +713,22 @@ int run(const std::string &scenario, const char *vcd) {
                  b.cov_m2, b.cov_m2r, b.cov_m2n, b.cov_mrw, b.cov_mrwr, b.cov_mrwn);
     ++b.fails;
   }
+  {
+    bool own = b.cov_stale && b.cov_cont;
+    for (unsigned j = 0; j <= kK; ++j) own = own && b.cov_lown[j] && b.cov_mown[j];
+    if (scenario != "idle" && !own) {
+      std::fprintf(stderr, "bank_slice: coverage: L owners %u %u %u %u, M owners %u %u %u %u, stale %u, cont %u\n",
+                   b.cov_lown[0], b.cov_lown[1], b.cov_lown[2], b.cov_lown[3], b.cov_mown[0], b.cov_mown[1],
+                   b.cov_mown[2], b.cov_mown[3], b.cov_stale, b.cov_cont);
+      ++b.fails;
+    }
+  }
   if (scenario != "idle" && !g_nowt && !b.cov_wt) {
     std::fprintf(stderr, "bank_slice: coverage: no write-through\n");
     ++b.fails;
   }
   std::printf("bank_slice: rows %u K %u full_row %d%s %s: %llu cycles, %u reads checked, %u mismatches: %s\n",
-              kRows, kK, int(kFullRow), g_nowt ? ", control nowt:" : g_rfirst ? ", control rfirst:" : "", scenario.empty() ? "directed+random" : scenario.c_str(),
+              kRows, kK, int(kFullRow), g_nowt ? ", control nowt:" : g_rfirst ? ", control rfirst:" : g_ctl.empty() ? "" : (", control " + g_ctl + ":").c_str(), scenario.empty() ? "directed+random" : scenario.c_str(),
               (unsigned long long)b.cyc, b.cov_read, b.fails, b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }
@@ -526,6 +743,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i)
     if (!std::strcmp(argv[i], "--control") && !std::strcmp(argv[i + 1], "nowt")) g_nowt = true;
     else if (!std::strcmp(argv[i], "--control") && !std::strcmp(argv[i + 1], "rfirst")) g_rfirst = true;
+    else if (!std::strcmp(argv[i], "--control")) g_ctl = argv[i + 1];
   for (int i = 1; i + 2 < argc; ++i)
     if (!std::strcmp(argv[i], "--cg")) {
       scenario = argv[i + 1];
