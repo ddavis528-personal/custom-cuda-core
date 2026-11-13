@@ -39,7 +39,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 348, RA 137, IS 193, TI 420, OA 414, OI 342, CP 157, DA 119, RI 71, MA 48
+Conventions 19, AR 348, RA 137, IS 193, TI 420, OA 414, OI 343, CP 157, DA 119, RI 71, MA 48
 (sweep 11-13 (late, by hand): merged 8 branches incl. TI a46afef7 (MEMOP_CREDITS, no_hit, gate detach:
 use tools/bg-run.sh / gate-wait.sh now), not pushed: waits on OI-141. Pings sent 11-13 15:20 UTC to AR OA IS TI CP RA RI RH; check pongs Sat. sweep 11-12, nothing for OI; merged 126afa13 5, 183cc441 3, 3868632d 4, 888218a3 5, 9eb50716 6, c22116ce 1. Sweep 11-10; AR closed OI-136; DA 117-119: MIU next, MA/MI/DI). Earlier: OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
 (perf-register.md) and RI 888218a3 (cg-waivers.json, rcu_dec_pkg.sv, perf-register.md); rung both.
@@ -61,6 +61,8 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
    (2) chas_cq03h arrival 4.0 in ooe_sched.ngd.json (now 25.2 at arrival 13, no cap).
    On OA's yes: add both, run $SP/v2chk.sh and $SP/ngdv.sh, then gate-push. The cret credit waiver
    (DA's RI-14) is already in cg-waivers.json.
+   Branch HEAD also holds the 11-13 sweep merge and #50 (4c2a9746 l1_nohit, 739a64dc doc; OI-142 rev 343, no ring;
+   tools/check-ooe-unit.sh control list +ignore-nohit, count 54). One gate-push carries them all once OA answers.
 -5. #49 MA-5 model (TI rev 414 asked it): Core::memopCredits() from the block each cycle (Stub::credits on
    ooe_miu P0-P3); select grants a memop only on a credited pipe, sends on the lowest; discards wait for P0's.
    inject_no_memop_credit control, ooe_test testMemopCredits (Env mcred_depth). Opt-in: unit/RTL benches unchanged.
