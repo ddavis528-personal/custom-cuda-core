@@ -738,11 +738,17 @@ it.
     - Even at 7, more hits are late than on time.
     - So this axis measures the stubs' turnaround, not the L1's. It is
       re-run on MA's Phase 1 resource model.
-  - coremark128 has no figures. It fails operand checks within its first
-    few thousand records and never finishes. That happens at 9167efab and
-    at release fb6d9f23, with the RCU stub and with perfect fetch too.
-    coremark32 is clean on the same builds. It goes to TI as a defect (AR
-    rev 349). The gate runs neither coremark.
+  - coremark128 has no figures yet. AR's runs had not finished after 5
+    hours, and AR took that for a defect (AR rev 349). TI found otherwise
+    (TI rev 424):
+    - The memop credit watchdog, `CCV_P_TIMEOUT_BP` = 8192, no longer
+      fits MA-5's entry-held credits behind the stub's slow store
+      scatters. AR rev 350 takes a per-slot `CCV_P_TIMEOUT_MEMOP` =
+      20480 on conditions.
+    - The operand CHECKs AR saw are those held at the `--cycles` bound.
+    - 9167efab's own `dec_ooe_uop` failure comes from merging OI's
+      efe09c78 without TI's d3bf0562.
+    The axis is re-run once both are fixed on AR's branch.
 
 ### PF-34 Same-address combining for atomics, built from lane adds
 
