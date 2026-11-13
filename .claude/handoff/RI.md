@@ -55,6 +55,11 @@ architect may approve only if the end meets module NGD without the flop; can't m
    Checks green (63/63, 5 controls). Gate in flight: chain-ri22 (cg here; ngd asked of RH; rest polls
    gate-scratch/RI-export, then gate-push). Status ~/ccv-logs/chain-ri22.out. After push: RI rows to RA
    (SHFL_*_R bug, xbar sel interface) and TI (lockstep events + controls; mig/restore/guard_fwd not derived).
+   TI notice rev 415 (05:55Z): branch ccr-183cc441-doowtf (21d64a76) lands channel.h creditAtLanding,
+   rcu_ls gate job (run-lockstep.sh + tools/rcu-ls-corrupt.py, which needs lockstep.py read_dump/port_dirs/main
+   and ': DIVERGES at cycle N ' -- e9c48768 keeps all of these; checked), and AR 343 clock-gate hold.
+   Next after push: merge it, call creditAtLanding in the model, drop --credit-lead 1, drop ccv_rcu's wake
+   detector; answer TI rev 415 in the RI tab.
 -4. (2026-11-13) Last push 0ace219f (sweep, below); before it fca280c3 (13:29, SPLIT SCOPED PASS 14/23; ngd leg by RH, Daniel OK'd RH
    send-export to gate-scratch/*-export for passing legs). RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) written,
    RI tab rev 70; notices sent. Lock-step 63/63; rcu_blk (TI) passes with its expected-fail.
