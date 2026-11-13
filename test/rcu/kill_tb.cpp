@@ -30,7 +30,7 @@
 
 namespace {
 
-constexpr unsigned kNS = 9, kNL = 32, kNM = 4, kNB = 6;
+constexpr unsigned kNS = 9, kNL = 32, kNM = 4, kNB = 5;
 unsigned g_drain = ccv::prov::kLatRcuKillDrain;   // links and bnd_rx in (RA-42)
 
 template <typename T> void put(T &s, unsigned lsb, unsigned w, uint64_t v) {
