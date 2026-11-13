@@ -756,6 +756,16 @@ protected:
     for (const In &i : ins)
       if (i.ci->chan == chan) i.rx->creditAt(CreditAt::Landing);
   }
+  /// Every slot and instance of `chan` this block receives returns a
+  /// message's credit when the block calls release() for it, not on take()
+  /// (CreditAt::Release; MA-5, AR rev 345): a memop's credit stands for its
+  /// MIU queue entry. Call it in the first work(), before any message.
+  void creditAtRelease(unsigned chan) {
+    for (const In &i : ins)
+      if (i.ci->chan == chan) i.rx->creditAt(CreditAt::Release);
+  }
+  /// Under creditAtRelease: the resource one taken message held is free.
+  void release(unsigned chan, unsigned slot, unsigned inst = 0) { rx(chan, slot, inst).release(); }
   /// The oldest message on a slot, left in place.
   const Receiver::Msg &peek(unsigned chan, unsigned slot, unsigned inst = 0) {
     return rx(chan, slot, inst).front();

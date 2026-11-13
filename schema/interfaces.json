@@ -671,6 +671,7 @@
     },
     {
       "name": "ccv_ooe_miu_memop",
+      "credits_param": "CCV_MEMOP_CREDITS",
       "src": "ooe",
       "dst": "miu",
       "rate": 4,

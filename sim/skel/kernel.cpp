@@ -1120,6 +1120,14 @@ private:
 
   void work() override {
     const Ch &c = ch();
+    // A memop's credit stands for its queue entry (MA-5, AR rev 345): it
+    // goes back when the memop's last completion leaves, a discard's as it
+    // is taken. memop-credit-on-take returns it on take, as before, so OOE
+    // can hold more memops in MIU than it has entries: refused below.
+    if (!armed_) {
+      armed_ = true;
+      if (k_.brk != "memop-credit-on-take") creditAtRelease(c.ooe_miu);
+    }
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
       while (has(c.fill_ntc, s))
         notice(unsigned(get(take(c.fill_ntc, s).payload, c.fill_ntc, "req_id")));
@@ -1173,9 +1181,14 @@ private:
         if (ord != 0 && get(m.payload, c.ooe_miu, "mem_op") != kMemFence)
           k_.fail("miu: rob tag %u has ordering %u but is not a fence", tag, ord);
         if (get(m.payload, c.ooe_miu, "mem_op") == kMemBulkDiscard) {
+          release(c.ooe_miu, s);   // a discard holds no entry
           discard(m.payload);
           continue;
         }
+        // The slot's queue entries: never more than its credits.
+        if (++entries_[s] > kChans[c.ooe_miu].credits)
+          k_.fail("miu: %u memops hold queue entries on slot %u, over its %u credits (MA-5)",
+                  entries_[s], s, unsigned(kChans[c.ooe_miu].credits));
         if (uidClass(m.tid) != IdClass::kInstr)
           k_.fail("miu: rob tag %u is a memop with id class %u; only a discard may carry none",
                   tag, unsigned(uidClass(m.tid)));
@@ -1325,7 +1338,7 @@ private:
         continue;
       }
       if (t.at == now_ && free(c.miu_rcu, t.data.slot) && free(c.miu_ooe, t.cmpl.slot)) {
-        send(c.miu_ooe, t.cmpl.slot, withLead(t.cmpl.msg), t.cmpl.tid);
+        sendCmpl(t.cmpl.slot, t.cmpl.msg, t.cmpl.tid);
         if (k_.brk == "late-hit-data")
           // The data a cycle behind its completion: dependants woken by the
           // contract read the register before the load lands.
@@ -1346,7 +1359,8 @@ private:
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
         if (free(chan, it->slot)) {
-          send(chan, it->slot, chan == c.miu_ooe ? withLead(it->msg) : it->msg, it->tid);
+          if (chan == c.miu_ooe) sendCmpl(it->slot, it->msg, it->tid);
+          else send(chan, it->slot, it->msg, it->tid);
           it = q.erase(it);
         } else
           ++it;
@@ -1451,6 +1465,22 @@ private:
   // lead-fault-replay sets it on a replay too (OA rev 376's first rule,
   // status nonzero), and --break lead-fault-drop never sets it on a fault;
   // OOE's equality must refuse both.
+  /// A completion to OOE, on the memop's arrival slot. Its last one (more
+  /// clear) frees the memop's queue entry, and so its credit (MA-5).
+  void sendCmpl(unsigned slot, const Bits &m, uint64_t tid) {
+    const Ch &c = ch();
+    send(c.miu_ooe, slot, withLead(m), tid);
+    if (get(m, c.miu_ooe, "more")) return;
+    if (!entries_[slot]) {
+      k_.fail("miu: a last completion on slot %u, which holds no memop entry", slot);
+      return;
+    }
+    --entries_[slot];
+    release(c.ooe_miu, slot);
+  }
+  bool armed_ = false;
+  std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
+
   Bits withLead(Bits m) {
     const Ch &c = ch();
     const unsigned st = unsigned(get(m, c.miu_ooe, "status"));
@@ -2282,7 +2312,7 @@ private:
                             {job_.memop_slot, cmpl(job_), job_.tid}});
         } else if (now_ == job_.promised && can(c.miu_ooe, job_.memop_slot) &&
                    can(c.miu_rcu, job_.addr_slot)) {
-          send(c.miu_ooe, job_.memop_slot, withLead(cmpl(job_)), job_.tid);
+          sendCmpl(job_.memop_slot, cmpl(job_), job_.tid);
           send(c.miu_rcu, job_.addr_slot, d, job_.tid);
         } else {
           to_rcu_.push_back({job_.addr_slot, d, job_.tid});

@@ -557,6 +557,21 @@ def main():
     for e in rate_drift(d, pv):
         sys.stderr.write(e + "\n")
         bad = 1
+    # credits_param (MA-5, AR rev 345): a channel whose slots hold more
+    # credits than the loop names the parameter; it must exist and be at
+    # least the loop, or the slot could not run at full rate.
+    for c in d["channels"]:
+        cp = c.get("credits_param")
+        if cp is None:
+            continue
+        if cp not in pv:
+            sys.stderr.write("channel %s: credits_param %s is not in params/ccv_params.json\n"
+                             % (c["name"], cp))
+            bad = 1
+        elif pv[cp] < pv["CCV_CREDIT_DEPTH"]:
+            sys.stderr.write("channel %s: %s = %d is under the credit loop, CCV_CREDIT_DEPTH = %d\n"
+                             % (c["name"], cp, pv[cp], pv["CCV_CREDIT_DEPTH"]))
+            bad = 1
     for c in d["channels"]:
         for ov in c.get("overlays", []):
             fw = num(field_width(d, c, ov["field"]))
