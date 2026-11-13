@@ -1,6 +1,6 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-10. Keep current at every task's end. Role and ownership:
+Updated 2026-11-13. Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -49,6 +49,58 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-9. NOW (2026-11-13 ~17:30) ri-credit still GATING in ri-wt7 (c64b7417, ~/ccv-logs/ri26-push.log, waiter
+   br1te6r4h; ON PUSH as -8 says). TI rev 422 = GO on RI-42 (RTL drives the SV top, model shadows; TI does the
+   gen-top ccv_rcu_dpi + check-sv-hosted selector SVHOST 45/46 "rcu=rtl divergences=0" + controls once wrapper is
+   pushed).
+   ri-wt4 branch ri-q53: 28cd347a (on 43b38bc9 regen, b7903354 Q-53): model launch at c0 (was a cycle early) and
+   fifo_in_ (PCA row enters FIFO a cycle after landing, RTL hn_pw); Q-53 fixes. check4: skel/kernel/lockstep 0,
+   67 PASS (63 + 4 *_demote), 11 controls caught. Gate-push after ri-credit lands; RI row to RA on the two model
+   timing fixes.
+   ri-wt9 branch ri-svh (from c64b7417), UNCOMMITTED: test/rcu/svh.py (prep/compare; generates u_rtl instance
+   with _tid outputs from the shadow -- the RTL ties tids 0 and lanes then find no oracle record), ccv_rcu_svh.sv
+   (cg_override forced: shims' wakes are 0; exports ccv_rcu_rtl_gpr/pred, zero rows 255/63 read 0, flip control
+   +ccv_rcu_svh_flip), lockstep.py --replayed. LOCAL TI PATCH (do NOT commit; offer TI as diff): kernel.h
+   hw_gpr/hw_pred + gprAt/predAt at snapshotFinal and final compare; dpi_host.cpp under CCV_RCU_RTL binds scope
+   "tb.u_top.u_rcu.u_blk" (no TOP. prefix). Builds: scratchpad svh/build.sh (no host patch), build-fin.sh.
+   Results: 63/63 kernels finish clean, divergences=0 (shadow final compare); vadd RTL final compare clean, flip
+   control gpr_mismatch=1. Sweep with RTL final compare: build/rcu-svh/fin/sweep.out (waiter b4sotw1u2).
+   NEXT: merge ri-q53 into ri-svh, demote runs (stall/vadd4/swap/provswap, env as check-sv-hosted), commit
+   (excluding sim/skel), gate-push; answer TI 422 in RI tab with the design + host diff.
+-8. NOW (2026-11-13 ~16:00) Pushed 631d7fc6 (SCOPED PASS 14/24, ri-wt4 ri-xsel): rcu_r xbar_sel_onehot assert +
+   r_tb --control twohot (RA rev 137). RI-41 (RA, TI: merge 631d7fc6) written, RI tab rev 72, notices sent.
+   GATING NOW: ri-wt7 branch ri-credit (on 631d7fc6), log ~/ccv-logs/ri26-push.log (setsid; scoped gate, cg+ngd
+   ~2.5h): d92b249f model creditAtLanding(ooe_rcu, lane_rcu) + lockstep --credit-lead default 0; 33c084e6 lockstep
+   control lead (must diverge); c64b7417 ccv_rcu wake detector busy hold removed (AR 343), rcu_kill NB 6->5,
+   kill_tb kNB 5; wake_detect_iw flop kept (done wake). Local checks: run-rtl 0, lockstep 63/63 + 6 controls,
+   cg/ngd rcu_kill + ccv_rcu 0, kernel 0.
+   ON PUSH: RI row to RA (+TI merge): (a) landing credits, lead control; (b) wake detector gone, so RA can reword
+   the Done tab's done-wake term; notices RA, TI. Then (c) SV-top with RTL, (d) Q-53 checkers.
+   TI-420 (rev 420): tools self-detach; wait with tools/gate-wait.sh <job log> (3=rerun at 110 min, 4=killed);
+   only once a46afef7 is merged into my branches. OI pong received 15:44 (checked ok): pings settled.
+   Bookmarks: TI 420, RI 72 (others as -7).
+-7. NOW (2026-11-13 ~14:00) Pushed 7e29cef5 (SPLIT PASS 24/24, full; cg here chain-ri24, ngd RH):
+   daily sweep merges of all 9 remote branches + evmon e9c48768 + CCV-L04 fix 439179d9. rcu_ls (TI's gate job
+   = run-lockstep.sh + rcu-ls-corrupt.py) passed with event compare. RI-39 (RA: SHFL_*_R bug, xbar one-hot sel,
+   amend Crossbar) and RI-40 (TI: re 415/418) written, RI tab rev 71, notices sent to RA and TI.
+   Bookmarks: Conv 19 AR 348 OA 414 IS 193 TI 419 OI 341 CP 157 DA 119 RA 136 RI 71 MA 46.
+   Fri pings 2026-11-13: pongs checked ok from AR OA IS TI CP RA MA RH; OI no pong yet (check next sweep).
+   NEXT task 16: (a) model: Stub::creditAtLanding(c.ooe_rcu)/(c.lane_rcu) in first work(), take() in landing
+   cycle; lockstep --credit-lead default 0; rerun 63 kernels. (b) drop ccv_rcu wake detector (AR 343 hold in
+   ccv_common_clk), CG/NGD units, lockstep. (c) SV-top with RTL (CCV_RCU_RTL in check-sv-hosted.sh, TI's).
+   (d) Q-53 checkers. Gate: setsid nohup + kill -0 watcher; tools/gate-wait.sh when TI lands it.
+-4. (2026-11-13) Last push 0ace219f (sweep, below); before it fca280c3 (13:29, SPLIT SCOPED PASS 14/23; ngd leg by RH, Daniel OK'd RH
+   send-export to gate-scratch/*-export for passing legs). RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) written,
+   RI tab rev 70; notices sent. Lock-step 63/63; rcu_blk (TI) passes with its expected-fail.
+   Sweep pushed: 0ace219f (2026-11-13 02:10, SPLIT PASS 24/24; cg here chain-ri21, ngd RH via
+   gate-scratch/RI-export) = bfba7f38 sweep merges + 126afa13. Two container restarts on 11-12 killed
+   chain-ri20 and the first chain-ri21 run: relaunch detached and re-arm the waiter after any restart.
+   OA ping 2026-11-13 answered with pong (me=ok).
+   AR 343 (re:RI-38): ccv_common_clk WAKE_HOLD -> CCV_WAKE_LAT+1 (TI); then ccv_rcu's wake detector may go (RI's call).
+   TI 407: run-lockstep.sh becomes the gate job, rcu_blk retired, channel.h landing-cycle credit coming.
+   Bookmarks Conv 19 AR 343 OA 411 IS 190 TI 407 OI 338 CP 157 DA 119 RA 136 RI 70 (MA tab: no bookmark yet).
+   Long runs: ALWAYS setsid nohup + a waiter; a bg task dies at 2h.
+   Next for task 16: model credit move once TI adds channel.h call; RTL event monitor; SV-top with RTL.
 -3. NOW (2026-11-09; Daniel's order: class-word NGD -> gate+push ccv_rcu.sv -> lock-step/SV-top -> Q-53 ->
    SW write-back + KILL_DRAIN -> RA reconciliation + Daniel's sign-off). ri-wt7 branch ri-asm3, tip d0076837
    (on gate-scratch/RI): d33d8c70 AR 338/339 kill boundary flops (plain ungated detector flops; rcu_kill epoch at
