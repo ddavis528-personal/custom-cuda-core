@@ -240,7 +240,17 @@ epoch; done wake adds OOE's issue wake a cycle on via ccv_rcu's ungated wake det
 rev 67 (RA rev 117's interims ended). Snapshots refreshed. 11-10 sweep pushed 5d416b94 (SPLIT PASS).
 PENDING: TI's Receiver call in channel.h (RI-36 (2)), then RI moves the model's issue and lane_rcu_res credit to A and
 drops lockstep.py's shifted compare; RI-38 (block gate's sixth busy term; TI/AR; RA no objection).
-Bookmarks: OA 410, RA 136, RI 70, TI 406, AR 342, DA 119, OI 337, Conventions 19, CP 157, IS 190, MA 2.
+Sweep 2026-11-12 (covers 11-11's firing too): merged ccr-183cc441 3, ccr-3868632d 4, ccr-57eff422 9 (OI #35
+ooe_rename), ccr-888218a3 5 (RI lock-step, fca280c3), ccr-9eb50716 6, ccr-c22116ce 1, infra-6msg93 3. Register:
+nothing for RA. TI 407: Receiver call coming in channel.h (name in TI's landing row), rcu_ls gate job replaces
+rcu_blk; RA 135 closes, no harness fault. AR 343 (RI-38, option (a)): ccv_common_clk WAKE_HOLD to CCV_WAKE_LAT+1;
+RI may drop ccv_rcu's local wake detector. If it goes, Done tab's done-wake term ("via ccv_rcu's ungated wake
+detector", RA rev 136 (2)) must be re-worded to the common hold: watch RI's choice.
+TI 415 (notice 11-13, pointer only): landed 21d64a76 (release 43248f47): Stub::creditAtLanding / CreditAt::Landing
+for c.ooe_rcu and c.lane_rcu (RI moves the model's credits); rcu_ls replaces rcu_blk; ccv_common_clk WAKE_HOLD =
+CCV_WAKE_LAT+1 (AR 343). ccv_rcu's local wake detector: RI's choice, not yet made. When RI drops it, re-word Done
+tab's done-wake term (RA rev 136 (2)) to the common hold. AR 344-347 / TI 408-414: MA's memory side, nothing for RA.
+Bookmarks: OA 411, RA 136, RI 70, TI 415, AR 347, DA 119, OI 338, Conventions 19, CP 157, IS 190, MA 2.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
