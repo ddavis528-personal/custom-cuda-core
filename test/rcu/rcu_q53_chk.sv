@@ -33,6 +33,8 @@
 //                (RI-42); this is the half RCU itself sees.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
+`define CCV_CLK core_clk
+`define CCV_RST rst
 module rcu_q53_chk #(
   parameter int NS = 9,                                   // issue slots
   parameter int ND = 7,                                   // done slots
@@ -137,21 +139,27 @@ module rcu_q53_chk #(
   `CCV_ASSERT_AT(core_clk, rst, q53_one,
                  !(mapq && mc[map_w][map_d] != 0 && !(kap && kmq[map_w])) &&
                  !(cmdq && cc[cmd_w][cmd_d] != 0 && !(kap && kmq[cmd_w])))
-  always_ff @(posedge core_clk) begin
+  // The counters' next state, combinational (CCV-L04), then flopped.
+  logic [1:0] mc_n [NWP][2];
+  logic [1:0] cc_n [NWP][2];
+  always_comb
     for (int w = 0; w < NWP; w++)
       for (int d = 0; d < 2; d++) begin
-        automatic logic [1:0] m = (kap && kmq[w]) ? 2'd0 : mc[w][d];
-        automatic logic [1:0] c = (kap && kmq[w]) ? 2'd0 : cc[w][d];
+        mc_n[w][d] = (kap && kmq[w]) ? 2'd0 : mc[w][d];
+        cc_n[w][d] = (kap && kmq[w]) ? 2'd0 : cc[w][d];
         if ((dl && dl_w == w && d == 0) || (rl && rl_w == w && d == 1)) begin
-          if (m != 0) m = m - 1'b1;
-          if (c != 0) c = c - 1'b1;
+          if (mc_n[w][d] != 0) mc_n[w][d] = mc_n[w][d] - 1'b1;
+          if (cc_n[w][d] != 0) cc_n[w][d] = cc_n[w][d] - 1'b1;
         end
-        if (mapq && map_w == w && map_d == d && m != 2'd3) m = m + 1'b1;
-        if (cmdq && cmd_w == w && cmd_d == d && c != 2'd3) c = c + 1'b1;
-        mc[w][d] <= rst ? 2'd0 : m;
-        cc[w][d] <= rst ? 2'd0 : c;
+        if (mapq && map_w == w && map_d == d && mc_n[w][d] != 2'd3) mc_n[w][d] = mc_n[w][d] + 1'b1;
+        if (cmdq && cmd_w == w && cmd_d == d && cc_n[w][d] != 2'd3) cc_n[w][d] = cc_n[w][d] + 1'b1;
       end
-  end
+  always_ff @(posedge core_clk)
+    for (int w = 0; w < NWP; w++)
+      for (int d = 0; d < 2; d++) begin
+        mc[w][d] <= rst ? 2'd0 : mc_n[w][d];
+        cc[w][d] <= rst ? 2'd0 : cc_n[w][d];
+      end
 
   // ---- q53_rzero, q53_rdup ----------------------------------------------
   logic rz, rd;
@@ -201,14 +209,20 @@ module rcu_q53_chk #(
       ibad[s] &= ivq[s];
     end
   `CCV_ASSERT_AT(core_clk, rst, q53_iso, ibad == '0)
-  always_ff @(posedge core_clk) begin
-    automatic logic [255:0] g = ugn;
-    automatic logic [63:0]  p = upn;
+  logic [255:0] ug_n;
+  logic [63:0]  up_n;
+  always_comb begin
+    ug_n = ugn;
+    up_n = upn;
     if (mapq && map_d) begin
-      for (int a = 0; a < NG; a++) g[map_g[a*WR +: WR]] = 1'b1;
-      for (int q = 0; q < NP; q++) p[map_p[q*WP +: WP]] = 1'b1;
+      for (int a = 0; a < NG; a++) ug_n[map_g[a*WR +: WR]] = 1'b1;
+      for (int q = 0; q < NP; q++) up_n[map_p[q*WP +: WP]] = 1'b1;
     end
-    ug <= rst ? '0 : g;
-    up <= rst ? '0 : p;
+  end
+  always_ff @(posedge core_clk) begin
+    ug <= rst ? '0 : ug_n;
+    up <= rst ? '0 : up_n;
   end
 endmodule
+`undef CCV_CLK
+`undef CCV_RST
