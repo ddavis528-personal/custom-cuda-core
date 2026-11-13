@@ -13,7 +13,7 @@
 #                   of which must fail
 #   rcu_xbar:       test/rcu/xbar_tb.cpp, 32 lanes
 #   rcu_r:          test/rcu/r_tb.cpp, and its negative controls (noalign,
-#                   retlow, pmovneg), each of which must fail
+#                   retlow, pmovneg, noireg), each of which must fail
 #   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (spbown, nofwd,
 #                   nomerge, lgcorrupt), each of which must fail
 #   rcu_isd(_s):    test/rcu/isd_tb.cpp (each slot's class from its lead, RA-43,
@@ -91,7 +91,7 @@ done
 bench rcu_xbar verilator --cc --exe --build -j 0 -O2 -Wno-fatal --top-module rcu_xbar --Mdir "$B/xbar" -o tb \
   rtl/rcu/rcu_xbar.sv test/rcu/xbar_tb.cpp -- "$B/xbar/tb"
 bench rcu_r test/rcu/cg-build.sh rcu_r "$B/rcu_r" -- "$B/rcu_r/tb"
-for c in noalign retlow pmovneg; do   # a control the bench does not catch is a failure
+for c in noalign retlow pmovneg noireg; do   # a control the bench does not catch is a failure
   if [ -x "$B/rcu_r/tb" ] && ! "$B/rcu_r/tb" --control "$c" >"$B/rcu_r.$c.log" 2>&1 &&
      grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_r.$c.log"; then
     say "rcu_r control $c" "caught"

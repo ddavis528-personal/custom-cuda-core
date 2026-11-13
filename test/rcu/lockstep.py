@@ -20,11 +20,15 @@ and CCV_TRACE are not defined.
 
 Exit 0 when every dump is identical at every output on every cycle."""
 import argparse
+import hashlib
 import os
 import re
 import shutil
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import evmon  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PORTS = os.path.join(ROOT, "rtl/top/ports/ccv_rcu_ports.svh")
@@ -361,14 +365,16 @@ module rcu_ls_tb;
   initial if (!$test$plusargs("noinit")) begin
 %(init)s
   end
-  int n, fd, fi;
+  int n, fd, fi, fe;
   string base;
 %(watch)s
+%(ev)s
   initial begin
     void'($value$plusargs("n=%%d", n));
     void'($value$plusargs("base=%%s", base));
     fi = $fopen({base, ".in"}, "r");
     fd = $fopen({base, ".obs"}, "w");
+    fe = $fopen({base, ".rtl.ev"}, "w");
     if ($test$plusargs("vcd")) begin
       $dumpfile({base, ".rtl.vcd"});
       $dumpvars(0, rcu_ls_tb);
@@ -378,26 +384,34 @@ module rcu_ls_tb;
       #1;
       $fdisplay(fd, "%%h", out_v);
       $fflush(fd);
+      rcu_ev(t, fe);
       clk = 1'b1; #1; clk = 1'b0; #1;
     end
     $fclose(fd);
+    $fclose(fe);
     $display("RCU-LS done %%0d", n);
     $finish;
   end
 endmodule
 """ % {"iw": iw, "ow": ow, "conns": ",\n    ".join(conns), "init": "\n".join(init),
+       "ev": evmon.sv("dut"),
        "watch": "\n".join('  always @(dut.%s) $display("WATCH %%0d %s %%h", $time / 3, dut.%s);' % (w, w, w)
                           for w in watch)}
     os.makedirs(bdir, exist_ok=True)
     tf = os.path.join(bdir, "rcu_ls_tb.sv")
     old = open(tf).read() if os.path.exists(tf) else None
     exe = os.path.join(bdir, "obj", "rcu_ls_tb")
-    tb += "// trace %d\n" % trace
+    rtl = sorted(os.path.join(ROOT, "rtl/rcu", f) for f in os.listdir(os.path.join(ROOT, "rtl/rcu"))
+                 if f.endswith(".sv") and f != "rcu_dec_pkg.sv")
+    # The binary is reused only for the same testbench and the same RTL.
+    h = hashlib.sha256()
+    for f in rtl + [os.path.join(ROOT, f) for f in ("rtl/rcu/rcu_dec_pkg.sv", "rtl/clk/ccv_common_clk.sv",
+                                                     "rtl/generated/ccv_params_pkg.sv")]:
+        h.update(open(f, "rb").read())
+    tb += "// trace %d, rtl %s\n" % (trace, h.hexdigest()[:16])
     if old == tb and os.path.exists(exe):
         return exe
     open(tf, "w").write(tb)
-    rtl = sorted(os.path.join(ROOT, "rtl/rcu", f) for f in os.listdir(os.path.join(ROOT, "rtl/rcu"))
-                 if f.endswith(".sv") and f != "rcu_dec_pkg.sv")
     cmd = (["verilator", "--binary", "--timing", "-j", "0", "-O2", "--assert",
             "-Wno-fatal", "-Wno-lint", "-Wno-style", "--top-module", "rcu_ls_tb"]
            + ["-I" + os.path.join(ROOT, d) for d in ("rtl/include", "rtl/generated", "rtl/top/ports")]
@@ -440,10 +454,13 @@ def main():
                          "the spec returns a credit in the message's payload cycle, from "
                          "<ch>_v_q, as the RTL does; the skeleton's Receiver::pop can only "
                          "credit a cycle later (RI-36)")
-    ap.add_argument("--control", choices=("init", "opnd"),
+    ap.add_argument("--control", choices=("init", "opnd", "ev", "gate", "row"),
                     help="a negative control, which must diverge on every dump: init leaves "
                          "the RTL's register file unmatched to the model's power-up; opnd flips "
-                         "one consumed operand bit of the dump's first lane message")
+                         "one consumed operand bit of the dump's first lane message; ev drops the "
+                         "model's first compared event; gate drops its first idle, so the clock "
+                         "gate's first sleep finds the model busy; row flips a bit of the first "
+                         "written row's value")
     ap.add_argument("--watch", action="append", default=[], metavar="PATH",
                     help="print a signal under ccv_rcu (e.g. u_pred.g_row[6].pq_cr02h) at each change, "
                          "with its cycle (a triage aid)")
@@ -508,11 +525,50 @@ def main():
             if (obs[t] ^ want) & care[t] & ~wmask or want & wmask & ~obs[t]:
                 first = t
                 break
+        # The events: the model's log beside the dump (CCV_RCU_EVLOG), the
+        # RTL's from the monitor (test/rcu/evmon.py), every kind the monitor
+        # derives, every cycle the replay ran.
+        evs = ""
+        mev = os.path.splitext(d)[0] + ".ev"
+        if os.path.exists(mev):
+            mod = evmon.read(mev)
+            if a.control == "row":
+                t0 = min(t for t, v in mod.items() if any(e[0] == "gpr_row" for e in v))
+                i = next(i for i, e in enumerate(mod[t0]) if e[0] == "gpr_row")
+                e = mod[t0][i]
+                mod[t0][i] = e[:2] + (e[2] ^ 1,) + e[3:]
+            if a.control == "ev":
+                t0 = min(mod)
+                mod[t0] = mod[t0][1:]
+                if not mod[t0]:
+                    del mod[t0]
+            ed = evmon.compare(mod, evmon.read(base + ".rtl.ev"), len(obs))
+            if ed:
+                fail = 1
+                diverged.add(d)
+                print("%s: EVENTS DIVERGE at cycle %d: model %s, rtl %s" % (d, ed[0], ed[1], ed[2]))
+            iev = mev
+            if a.control == "gate":
+                # The model busy from reset to its second idle: the gate's
+                # first sleep must be caught.
+                iev = base + ".gate.ev"
+                lines = open(mev).readlines()
+                i0 = next(i for i, l in enumerate(lines) if l.split()[1:2] == ["idle"])
+                open(iev, "w").writelines(lines[:i0] + lines[i0 + 1:])
+            it = evmon.idle_check(iev, base + ".rtl.ev", len(obs))
+            if it is not None and not ed:
+                fail = 1
+                diverged.add(d)
+                print("%s: EVENTS DIVERGE at cycle %d: the clock gate closed while the model is busy" % (d, it))
+            evs = ", %d events" % sum(len(v) for v in mod.values())
+        elif a.control in ("ev", "gate", "row"):
+            sys.exit("lockstep: control %s: no model event log %s" % (a.control, mev))
         if first is None and len(obs) < len(snaps):
             print("%s: identical up to cycle %d" % (d, len(obs)))
             continue
         if first is None:
-            print("%s: IDENTICAL, %d outputs over %d cycles" % (d, len(outs), len(snaps)))
+            if d not in diverged:
+                print("%s: IDENTICAL, %d outputs over %d cycles%s" % (d, len(outs), len(snaps), evs))
             continue
         fail = 1
         diverged.add(d)
