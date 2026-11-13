@@ -317,6 +317,14 @@ private:
   // ---- the cycle ---------------------------------------------------------------------
   void work() override {
     const Ch &c = ch();
+    // Issue and lane results credit in the landing cycle (RI-36, RI-40 (a)):
+    // valid at t, credit at t+1, as the RTL's <ch>_v_q returns them. Both are
+    // taken the cycle they land, below.
+    if (!armed_) {
+      armed_ = true;
+      creditAtLanding(c.ooe_rcu);
+      creditAtLanding(c.lane_rcu);
+    }
     R::In in;
     for (unsigned s = 0; s != R::kRes; ++s)
       if (has(c.ooe_rcu, s)) in.iss[s] = decode(take(c.ooe_rcu, s), s);
@@ -462,6 +470,7 @@ private:
   R::Core core_;
   std::FILE *evlog_ = nullptr;
   unsigned seen_map_ = 0, seen_cmd_ = 0, seen_pca_ = 0;
+  bool armed_ = false;
   std::map<uint64_t, uint64_t> lane_tid_;   ///< the lane message's tid, by its results' cycle
 };
 

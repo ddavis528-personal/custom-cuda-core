@@ -449,11 +449,10 @@ def main():
                     help="build with tracing to DEPTH and write <dump>.rtl.vcd")
     ap.add_argument("--triage", action="store_true",
                     help="past the first divergence, each port's own first one (open-loop: a triage aid)")
-    ap.add_argument("--credit-lead", type=int, default=1, metavar="N",
-                    help="cycles the RTL's credits lead the model's (default 1, 0 is strict): "
-                         "the spec returns a credit in the message's payload cycle, from "
-                         "<ch>_v_q, as the RTL does; the skeleton's Receiver::pop can only "
-                         "credit a cycle later (RI-36)")
+    ap.add_argument("--credit-lead", type=int, default=0, metavar="N",
+                    help="cycles the RTL's credits lead the model's (default 0, strict): the "
+                         "model credits issue and lane results in the landing cycle "
+                         "(creditAtLanding), as the RTL's <ch>_v_q does (RI-36); a triage aid")
     ap.add_argument("--control", choices=("init", "opnd", "ev", "gate", "row"),
                     help="a negative control, which must diverge on every dump: init leaves "
                          "the RTL's register file unmatched to the model's power-up; opnd flips "
