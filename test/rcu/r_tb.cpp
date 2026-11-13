@@ -16,10 +16,10 @@
 // Runs: random traffic (the bench's ordinary run). --cg <idle|medium|high>
 // <vcd> runs one clock-gating scenario (tools/check-cg.py): idle is reset
 // and then nothing; medium an op on about a third of the cycles; high one
-// on most. Inputs change only with a message. --control <noalign|retlow|pmovneg>
+// on most. Inputs change only with a message. --control <noalign|retlow|pmovneg|noireg>
 // expects a wrong rule (a source's position ignored; ret's aux from the
-// highest active lane): the run must fail (test/rcu/run-rtl.sh). Exit 0 only with no
-// mismatch.
+// highest active lane; a register-amount shuffle by its immediate): the
+// run must fail (test/rcu/run-rtl.sh). Exit 0 only with no mismatch.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_r.h"
 #include "verilated.h"
@@ -81,12 +81,13 @@ bool wp(unsigned k) { return (k >= Pand && k <= PmovI) || k == Pmov || k == VAny
 bool coll(unsigned k) { return (k >= ShI && k <= ShB) || k == VAny || k == VAll || k == Bal || k == Unb; }
 bool isbr(unsigned k) { return k >= Bra && k <= Ret; }
 bool uses0(unsigned k) { return k == Ret || (k >= ShI && k <= ShB) || k == Unb; }
-bool uses1(unsigned k) { return k == ShR; }
+bool uses1(unsigned k, bool ireg) { return k == ShR || ireg; }
 
 struct Op {
   unsigned kind, opc, tag, drow, dst, dpos, dwid, opos, pd, pold;
   unsigned src[2], spos[2], swid[2];
   bool mrg, pwe;
+  bool ireg;   // shfl_{up,down,bfly}_r: each lane's amount from v(R1) (the class's ireg)
   uint32_t imask, imm, act, rpa, rpb;
   std::array<uint32_t, kN> rd[3];
   // The expected results.
@@ -106,7 +107,7 @@ struct Bench {
   unsigned fails = 0, checked = 0;
   std::map<uint64_t, Op> ops;                         // by valid cycle
   std::array<unsigned, kKinds> cov_kind{};
-  unsigned cov_merge = 0, cov_shift = 0, cov_ret_multi = 0,
+  unsigned cov_merge = 0, cov_shift = 0, cov_ret_multi = 0, cov_ireg = 0,
            cov_noact = 0;
 
   explicit Bench(const char *vcd_path) {
@@ -264,6 +265,10 @@ struct Gen {
     Op o{};
     do o.kind = 1 + below(kKinds - 1); while (!decodable(o.kind));
     o.opc = pool(o.kind).pick(r);   // an opcode the decode makes this kind
+    {
+      dectb::R::OpClass oc;
+      o.ireg = dectb::classOf(o.opc, 1, false, oc) && oc.ireg;
+    }
     o.tag = below(128);
     o.drow = below(4);
     o.dst = row();
@@ -285,7 +290,7 @@ struct Gen {
       for (auto &w : rd) w = u32();
     // The sources: a row and a placement each.
     for (unsigned s = 0; s < 2; ++s) {
-      const bool used = s == 0 ? uses0(o.kind) : uses1(o.kind);
+      const bool used = s == 0 ? uses0(o.kind) : uses1(o.kind, o.ireg);
       if (!used) {
         o.src[s] = 0;
         o.spos[s] = o.swid[s] = 0;
@@ -312,7 +317,8 @@ struct Gen {
     const uint32_t e = em(o.dwid), act = o.act;
     std::array<uint32_t, kN> gnew{}, old{};
     for (unsigned l = 0; l < kN; ++l) old[l] = o.mrg ? align(o.rd[2][l], o.opos, o.dwid) : 0u;
-    const unsigned cc = o.imm & 31u;
+    const unsigned ci = o.imm & 31u;
+    auto amt = [&](unsigned l) { return o.ireg && control != "noireg" ? v[1][l] & 31u : ci; };
     auto shfl = [&](auto idx) {
       for (unsigned l = 0; l < kN; ++l) gnew[l] = v[0][idx(l) & 31u] & e;
     };
@@ -346,11 +352,11 @@ struct Gen {
     case PmovI: o.pval = o.imm; break;
     case Pmov: o.pval = control == "pmovneg" ? ~o.rpa : o.rpa; break;   // rpa: negate applied
     case Movi: gnew.fill(o.imm & e); break;
-    case ShI: shfl([&](unsigned) { return cc; }); break;
+    case ShI: shfl([&](unsigned) { return ci; }); break;
     case ShR: shfl([&](unsigned l) { return v[1][l]; }); break;
-    case ShU: shfl([&](unsigned l) { return l < cc ? l : l - cc; }); break;
-    case ShD: shfl([&](unsigned l) { return l + cc >= kN ? l : l + cc; }); break;
-    case ShB: shfl([&](unsigned l) { return l ^ cc; }); break;
+    case ShU: shfl([&](unsigned l) { return l < amt(l) ? l : l - amt(l); }); break;
+    case ShD: shfl([&](unsigned l) { return l + amt(l) >= kN ? l : l + amt(l); }); break;
+    case ShB: shfl([&](unsigned l) { return l ^ amt(l); }); break;
     case VAny:
     case VAll: {
       const bool r = o.kind == VAny ? (o.rpa & act) != 0 : (o.rpa & act) == act;
@@ -376,6 +382,7 @@ struct Gen {
     if (wg(o.kind) && o.mrg && act != ~0u) ++b.cov_merge;
     if (wg(o.kind) && o.dpos) ++b.cov_shift;
     if (!act) ++b.cov_noact;
+    if (o.ireg && act) ++b.cov_ireg;
   }
 };
 
@@ -402,10 +409,10 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   bool cov = true;
   if (scenario != "idle") {
     for (unsigned k = 1; k < kKinds; ++k) cov &= b.cov_kind[k] != 0 || !decodable(k);
-    cov &= b.cov_merge && b.cov_shift && b.cov_ret_multi && b.cov_noact;
+    cov &= b.cov_merge && b.cov_shift && b.cov_ret_multi && b.cov_noact && b.cov_ireg;
     if (!cov) {
-      std::fprintf(stderr, "rcu_r: coverage: merge %u shift %u ret_multi %u noact %u; kinds",
-                   b.cov_merge, b.cov_shift, b.cov_ret_multi, b.cov_noact);
+      std::fprintf(stderr, "rcu_r: coverage: merge %u shift %u ret_multi %u noact %u ireg %u; kinds",
+                   b.cov_merge, b.cov_shift, b.cov_ret_multi, b.cov_noact, b.cov_ireg);
       for (unsigned k = 1; k < kKinds; ++k) std::fprintf(stderr, " %s %u", kName[k], b.cov_kind[k]);
       std::fputc('\n', stderr);
       ++b.fails;
