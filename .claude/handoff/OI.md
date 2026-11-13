@@ -54,7 +54,8 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
 ## Open work (most urgent first; DA approved this order 11-07)
 -4. OA 410 (OA rev 413, task #50): model knob l1_nohit beside l1_spec (no_hit[1] on cmpl_hint, valid I+12/payload I+13,
    clear spec wake by I+14, deps wake cmpl+1; refill hint wins), negative control ignoring no-hit; RH prices.
-   Needs TI's field; stub sends none until MA Phase 1. AR-345 ruled MA-5 per-slot 10 credits (CCV_MEMOP_CREDITS, TI lands it); MA accepted.
+   Needs TI's field; stub sends none until MA Phase 1. AR 345/347 final (346 withdrawn): credits per memop CHANNEL slot P0-P3, 10 each, send on lowest credited
+   slot of footprint (OA-412, MA rev 44). OI-139 (rev 340, Needs OA, AR; rung both) supersedes OI-138: worst path unchanged.
    OI-138 (rev 339, Needs MA, rung session_01QPk2jyUbWA7fW9YpUwqdxk, not in roster): credit gate 0 NGD (proto scratchpad/wt-sel).
 -3. OA-409 (OA rev 412, re:MA-5): IF memop credits become queue entries, ooe_select gates each P grant on that slot's credit; build it and measure grant NGD then. Waits on MA's decision.
    Sweep 11-12 pushed ae8a6bdf (full PASS). RH CoreMark for OI-137 due ~07:00 UTC 11-13. Pong to OA sent 11-13.
