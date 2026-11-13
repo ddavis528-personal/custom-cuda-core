@@ -256,7 +256,9 @@ struct Kernel {
       "atomic_pair", "atomic", "atomic_repass", "atomic_write", "atomic_lane",
       "atomic_acquire", "atomic_hold_wait",
       // CAS (OI-127): its lane op on an active lane, and on a guarded-off one.
-      "cas_lane", "cas_lane_off"};
+      "cas_lane", "cas_lane_off",
+      // MIU's memop queue entries held on one slot, at most (MA-5).
+      "memop_entries_peak"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory
