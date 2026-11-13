@@ -1061,8 +1061,12 @@ def ext_ports(chans):
     return P
 
 
-def gen_shim(btype, P, own_ports=False):
-    """A block type whose behaviour is the C++ skeleton's, over DPI-C."""
+def gen_shim(btype, P, own_ports=False, shadow=False):
+    """A block type whose behaviour is the C++ skeleton's, over DPI-C.
+    shadow: module ccv_<btype>_dpi, the model shadowing the block's RTL
+    inside a wrapper that takes the block's name (RCU's, RI-42/44:
+    test/rcu/ccv_rcu_svh.sv). It registers as its parent's path, since the
+    host binds a shim to its block by the path's last name."""
     S = dpi_ports(P)
     O = [p for p in S if p[0] == "output"]
     sw = sum(p[1] for p in S)
@@ -1070,7 +1074,7 @@ def gen_shim(btype, P, own_ports=False):
     ext = btype == "ext"
     # EXTERNAL is testbench, not a block, so its shim is named as one
     # (tb_ext, in test/top/) rather than in the design's namespace (OI-37).
-    mod = "tb_ext" if ext else "ccv_%s" % btype
+    mod = "tb_ext" if ext else "ccv_%s%s" % (btype, "_dpi" if shadow else "")
     L = [BANNER]
     L.append("// SV-HOSTED C++ for %s: the C++ skeleton's %s, run through DPI-C" % (
         mod, "testbench end of EXTERNAL" if ext else "functional stub"))
@@ -1098,7 +1102,7 @@ def gen_shim(btype, P, own_ports=False):
                      lambda p: "%-6s %s%s" % (p[0], decl(p[1], p[5]), p[2]))
         L.append(");")
     else:
-        L.append("module ccv_%s (" % btype)
+        L.append("module ccv_%s%s (" % (btype, "_dpi" if shadow else ""))
         L.append("  `include \"ccv_%s_ports.svh\"" % btype)
         L.append(");")
     if not ext:
@@ -1114,6 +1118,12 @@ def gen_shim(btype, P, own_ports=False):
     L.append("    input bit [%d:0] sample, output bit [%d:0] drive);" % (sw - 1, ow - 1))
     L.append("")
     L.append("  int h;")
+    if shadow:
+        L.append("  // The wrapper's path: this instance's, its last name dropped.")
+        L.append("  function automatic string parent_path(input string p);")
+        L.append("    for (int i = p.len() - 1; i >= 0; i--) if (p[i] == \".\") return p.substr(0, i - 1);")
+        L.append("    return p;")
+        L.append("  endfunction")
     L.append("  bit skew;              // negative control: one extra register")
     # The count starts in the initial block, not in its declaration: a
     # declared value that a process also assigns is PROCASSINIT under
@@ -1122,7 +1132,8 @@ def gen_shim(btype, P, own_ports=False):
     L.append("  bit [%d:0] drv, q, q2;" % (ow - 1))
     L.append("  initial begin")
     L.append("    cyc = 0;")
-    L.append("    h = ccv_dpi_register($sformatf(\"%m\"));")
+    L.append("    h = ccv_dpi_register(%s);" % (
+        "parent_path($sformatf(\"%m\"))" if shadow else "$sformatf(\"%m\")"))
     L.append("    skew = ccv_dpi_skew(h);")
     L.append("  end")
     if ext:
@@ -1382,6 +1393,10 @@ def main():
                         gen_stub(t, ports[t])))
         targets.append((os.path.join(TOPDIR, "dpi", "ccv_%s.sv" % t),
                         gen_shim(t, ports[t])))
+    # RCU's model as the shadow of its RTL in the SV top (CCV_RCU_RTL,
+    # RI-44): outside dpi/, which the plain SV-hosted build globs.
+    targets.append((os.path.join(TOPDIR, "dpi-shadow", "ccv_rcu_dpi.sv"),
+                    gen_shim("rcu", ports["rcu"], shadow=True)))
     names = [inst_name(t, i, ninst[t]) for t, i in binst]
     ft = feedthroughs(binst, cinst)
     plan = wrapper_plan(binst, cinst, ports, names, ft, reuse)
