@@ -56,7 +56,7 @@ the rules above, gated; pings on Fridays; report in a few lines.
 Conventions 19, AR 348, OA 414, IS 193, TI 419, OI 341, CP 157, DA 119, RA 136, RI 70, MA 46.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
-Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Pings Friday 2026-11-13 sent to AR, OA, TI, OI, CP, RA, RI, MA, RH (MA now in roster, session_01QPk2jyUbWA7fW9YpUwqdxk); check pongs Saturday 11-14 with notice.py check. Next pings Friday 2026-11-20.
+Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Pings Friday 2026-11-13 sent to AR, OA, TI, OI, CP, RA, RI, MA, RH (MA now in roster, session_01QPk2jyUbWA7fW9YpUwqdxk); all nine ponged 11-13, each checked with notice.py check (Saturday check done). Next pings Friday 2026-11-20.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
 
