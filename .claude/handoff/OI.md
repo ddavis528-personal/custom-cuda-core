@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-13 (#49 model side: select gates memops on MIU credits, lowest credited pipe; RTL waits on TI 0da78445)
+Updated 2026-11-13 (#49 RTL committed ef19544c, on gate-scratch/OI; waits on OA for OI-141 (rev 342))
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -54,6 +54,12 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-6. #49 MA-5 RTL committed locally as ef19544c (gate-scratch/OI). OI-141 (rev 342, Needs OA; OA rung) asks for:
+   (1) a feedback entry in rtl/ooe/ooe_sched.feedback.json: "cok_nx_cq02h": {"from": {"ca_cq04h": 2},
+   "loop": ["cok_cq03h","cokd_cq04h","ccnt_cq04h"], "by": "OA"}. With it, lint is clean (tested, then reverted).
+   (2) chas_cq03h arrival 4.0 in ooe_sched.ngd.json (now 25.2 at arrival 13, no cap).
+   On OA's yes: add both, run $SP/v2chk.sh and $SP/ngdv.sh, then gate-push. The cret credit waiver
+   (DA's RI-14) is already in cg-waivers.json.
 -5. #49 MA-5 model (TI rev 414 asked it): Core::memopCredits() from the block each cycle (Stub::credits on
    ooe_miu P0-P3); select grants a memop only on a credited pipe, sends on the lowest; discards wait for P0's.
    inject_no_memop_credit control, ooe_test testMemopCredits (Env mcred_depth). Opt-in: unit/RTL benches unchanged.
