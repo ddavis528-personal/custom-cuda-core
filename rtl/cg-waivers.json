@@ -186,6 +186,17 @@
    "why": "The kill ack epoch (CCV_P_W_KILL_EPOCH, 2 flops), loaded at K+1 from ccv_rcu's kill detector epoch flop under kvd_cr02h (kill_v_q a cycle on, this module's own flop: CG-5, AR 338); the tab's kill_ep_q and kill_ack_ep_q in one, since the ack is low from K's edge to ack-ready. Under a gate's 8, and nothing else shares its enable. rcu_kill is the block's control residue (Partition tab), so its own allowance is the floor of 7: the reset, kvd_cr02h, the done wake, the idle flop, the CSR responder, kill_ack_q and its pending bit take it. Restored 2026-11-09: d7925bc2 dropped it on a local policy read that did not hold the module's allowance; the gate's check-cg (chain-ri12) finds it needed.",
    "by": "RI",
    "date": "2026-11-09"
+  },
+  {
+   "module": "ooe_sched",
+   "rule": "CG-1",
+   "target": "cret_cq03h",
+   "max_flops": 4,
+   "measured_flops": 4,
+   "why": "MA-5's credit returns (AR 345/347, OA-412): one flop a memop channel slot, P0-P3, its D the slot's credit-return lead from MIU (cret_cq02h), so the return counts in the cycle its credit lands. A gate cannot hold them: the only enable that names a return is the return itself, an input (CG-5). The module's allowance (7) takes its other single flops (reset, alc, chg, gl, ready_en, stop and the bulk-discard capture dsc). Daniel's ruling on RI-14 (RA rev 88, DA rev 110, 2026-11-06): credit-return pulse flops are charged to the receiving block's per-instance 2%, marked credit.",
+   "by": "OI (Daniel's ruling on RI-14)",
+   "date": "2026-11-13",
+   "credit": true
   }
  ]
 }

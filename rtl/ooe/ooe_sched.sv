@@ -127,6 +127,7 @@ module ooe_sched #(
   input  logic [NM*NM-1:0]  older_m_cq03h,
   input  logic [3:0]        busy_cq03h,    // MIU pipes a bulk discard took
   input  logic [S-1:0]      block_cq03h,
+  input  logic [3:0]        cret_cq02h,    // MA-5: a credit back per memop slot next cycle (a lead)
   input  logic [NR-1:0]     ret_cq03h,     // an RCU entry is a ret (not a copy)
   input  logic [NR-1:0]     brk_cq03h,     // an RCU entry is a branch or call, not a ret (not a copy)
   input  logic              mig_cq02h,     // a migration is in flight next cycle (RA-17; a lead)
@@ -254,12 +255,68 @@ module ooe_sched #(
   logic [RW-1:0] rnx_cq04h;
   assign rg_cq04h  = (gnt_cq04h[NR-1:0] & rrq_cq04h) != '0;
   assign rnx_cq04h = !rg_cq04h ? '0 : 32'(rrun_cq04h) >= IRK - 1 ? rrun_cq04h : rrun_cq04h + 1'b1;
+
+  // MA-5 (AR 345/347, OA-412): MIU's credits per memop channel slot,
+  // P0-P3, CCV_MEMOP_CREDITS each; a memop goes on the lowest credited slot
+  // of its footprint. cnx is A, the credits left once this cycle's
+  // departures (last cycle's grants, and a bulk discard on P0) are out,
+  // with this cycle's returns in. The flag select reads is registered:
+  // set for the next cycle when A covers a grant made now, A >= 2, or
+  // A == 1 with no grant possible now (flag clear). At A == 1 and no event
+  // it alternates, so the enable takes A == 1 too.
+  localparam int MCW = $clog2(ccv_prov_pkg::CCV_MEMOP_CREDITS + 1);
+  logic [3:0]    cret_cq03h;              // a credit back on each slot this cycle
+  logic [3:0]    cok_cq03h;               // the slots select may grant on
+  logic [3:0]    cokd_cq04h;              // the flags last cycle's grants read (held between grants)
+  logic          dsc_cq04h;               // last cycle's bulk discard (P0)
+  logic [3:0]    used_cq04h, cok_nx_cq02h, cfp_cq04h;
+  logic [MCW-1:0] ccnt_cq04h [4];          // last cycle's A
+  logic [MCW-1:0] cnx_cq03h [4];
+  logic          cone_cq04h, cc_en_cq03h;
+  always_comb begin
+    used_cq04h = {3'b0, dsc_cq04h};
+    for (int e = NR; e < N; e++) begin
+      cfp_cq04h = res_cq03h[e * 9 + 5 +: 4] & cokd_cq04h;
+      if (gnt_cq04h[e]) used_cq04h = used_cq04h | (cfp_cq04h & (~cfp_cq04h + 4'd1));
+    end
+    cone_cq04h = 1'b0;
+    for (int s = 0; s < 4; s++) begin
+      cnx_cq03h[s] = ccnt_cq04h[s] - MCW'(used_cq04h[s]) + MCW'(cret_cq03h[s]);
+      cone_cq04h   = cone_cq04h || ccnt_cq04h[s] == MCW'(1);
+    end
+  end
+  // The flag's next value reads the same A, apart: the counter is a
+  // stage-04 register (its own state, with the grants that leave it), the
+  // flag a stage-03 one select reads beside ready, so A reaches the flag
+  // only through the select loop (CCV-L23's declared feedback).
+  logic [MCW-1:0] ca_cq04h [4];
+  always_comb
+    for (int s = 0; s < 4; s++) begin
+      ca_cq04h[s]     = ccnt_cq04h[s] - MCW'(used_cq04h[s]) + MCW'(cret_cq03h[s]);
+      cok_nx_cq02h[s] = ca_cq04h[s] >= MCW'(2) || (ca_cq04h[s] == MCW'(1) && !cok_cq03h[s]);
+    end
+  assign cc_en_cq03h = gnt_cq04h[N-1:NR] != '0 || dsc_cq04h || cret_cq03h != '0 || cone_cq04h || rst_r01h;
+  // cret and dsc capture pulses from outside (CG-5: no enable of this
+  // module's own flops can know of them); cokd is read only the cycle
+  // after a grant, so it rides the grant register's enable.
+  always_ff @(posedge ooe_core_clk) begin
+    cret_cq03h <= cret_cq02h;
+    dsc_cq04h  <= busy_cq03h[0];
+  end
+  always_ff @(posedge ooe_core_clk)
+    if (gnt_en_cq03h) cokd_cq04h <= cok_cq03h;
+  always_ff @(posedge ooe_core_clk)
+    if (cc_en_cq03h)
+      for (int s = 0; s < 4; s++) begin
+        ccnt_cq04h[s] <= rst_r01h ? MCW'(ccv_prov_pkg::CCV_MEMOP_CREDITS) : cnx_cq03h[s];
+        cok_cq03h[s]  <= rst_r01h ? 1'b1 : cok_nx_cq02h[s];
+      end
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
     .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .hold_cq03h(hold_cq04h), .rhold_cq03h(fcp_cq04h),
     .vel_cq03h(vel_cq03h),
     .iss_cq03h(siss_cq03h), .dep_cq03h(sdep_cq03h), .slot_cq03h(sslot_cq03h), .res_cq03h(res_cq03h),
     .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h), .older_r_cq03h(older_r_cq03h),
-    .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h), .block_cq03h(block_cq03h),
+    .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h), .block_cq03h(block_cq03h), .cok_cq03h(cok_cq03h),
     .cand_cq03h(cand_cq03h), .grant_cq03h(grant_cq03h), .lost_cq03h(lost_cq03h));
   (* keep *) logic [N-1:0] gnt_out_cq04h;  // the grant register's leaving copy
   (* keep *) logic [N-1:0] gnt_w_cq04h;    // and ooe_wake's
