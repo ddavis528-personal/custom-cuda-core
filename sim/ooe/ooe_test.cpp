@@ -4576,7 +4576,7 @@ void testMemopCredits() {
       const std::string mode = sectioned ? "sectioned" : "unsectioned";
       if (control) {
         g_fail = saved;
-        std::printf("  %-24s %s\n", ("control mcred " + mode).c_str(), e.mcred_over ? "caught" : "MISSED");
+        std::printf("  %-24s %s\n", ("control mcred-" + mode).c_str(), e.mcred_over ? "caught" : "MISSED");
         EXPECT(e.mcred_over != 0, "%s: a select blind to MIU's credits should overrun a slot", mode.c_str());
         continue;
       }
