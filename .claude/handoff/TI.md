@@ -57,12 +57,15 @@ plus a send_later check-in. `tools/bg-run.sh <name> <cmd...>` for others.
 - Disk: deleting other sessions' /tmp/tmp.* was denied; ask the user.
 
 ## Open work (most urgent first)
-0. AR 349 cm128: cause = 20dfbaf0 entry-held memop credits outlive CCV_P_TIMEOUT_BP 8192
-   (no leak; in-order MIU behind 32-line deep-tier store scatters). Asked AR/MA (TI rev 424)
-   to rule CCV_P_TIMEOUT_MEMOP = MEMOP_CREDITS x TIMEOUT_MEM = 20480 (or 81920). On OK:
-   params + schema credits_param channel uses it, control (8192 fails), bounded cm128 in
-   check-kernel (no response_within_n in 12k cycles; ~65 s + 31 s oracle, 2.4 GB). Debug
-   worktrees /home/user/ti-bisect, ti-bisect-717 (clean); traced kernel.cpp + logs in scratchpad.
+0. AR 349/350 cm128 (ti-sram d696586b, on gate-scratch/TI-sram, NOT gated): AR 350 ruled
+   CCV_P_TIMEOUT_MEMOP 20480 per slot (provisional; stub-only 81920 marked MA-14 if its hold
+   passes 20480). Done: param/schema timeout_param, gen-skel, BPAGE hold report; check-kernel
+   bounded cm128 45000 cycles from a PARTIAL=1 oracle (24 s; hold 20163; control = bank rebuilt
+   at 8192 via tools/build-skel.sh fires). cm32 unbounded clean (2,778,125 cycles, ~15 min,
+   hold 6185). cm128 unbounded: bg-run job cm128-full (binary scratchpad bin/ccv-skel-memop20480,
+   log scratchpad cm128-full.log, empty until exit; ~6 h expected, started 18:26 UTC);
+   tools/gate-wait.sh /root/ccv-logs/cm128-full.log (exit 3 = rerun). Then: widen if needed,
+   gate-push, row to AR+MA (cycles, wall, max hold, post-J12 cm128 runs affected).
 1. RI-42 / RA-37 CCV_RCU_RTL (go at TI rev 422): once RI pushes test/rcu/ccv_rcu_svh.sv,
    TI adds gen-top second RCU DPI shim ccv_rcu_dpi, the check-sv-hosted.sh selector
    (SVHOST 45/46 + rcu=rtl divergences=0), controls: shim_delay on shadow, flipped RTL
