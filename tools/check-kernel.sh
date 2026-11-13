@@ -767,8 +767,12 @@ fi
 cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 while read -r k want; do
   [ -z "$k" ] && continue
-  log="$B/kernel_$k.log"
-  "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+  # k@VAR=N: the run under that environment, for a bin only a narrower
+  # resource reaches (gather@CCV_MIU_DCU_IDS=16: MIU waits for a DCU id,
+  # which MA-6's 64 ids leave unreached by any kernel).
+  env=""; case "$k" in *@*) env=${k#*@}; k=${k%%@*} ;; esac
+  log="$B/kernel_$k${env:+_${env##*=}}.log"
+  env $env "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
   why=""
   for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
     [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
@@ -787,7 +791,8 @@ while read -r k want; do
   fi
 done <<'KERNELS'
 unal   line_split=3 lines_peak=2 partial_line=2 full_line=0
-gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0 hit_under_miss=2
+gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait=0
+gather@CCV_MIU_DCU_IDS=16 lines_peak=32 dcu_id_wait>0 hit_under_miss=2
 loop   redirect=99 ckpt_free=1 reg_reuse>0
 brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
@@ -1056,7 +1061,10 @@ if [ "$(cover "$B/kernel_write-through.log" store_hit)" = 0 ] &&
 else
   bad "--break write-through" "store_hit not tied to the write-back policy: $(grep '^KERNEL' "$B/kernel_write-through.log")"
 fi
-"$SKEL" --kernel build/oracle/slotform/oracle.jsonl --break drop-writeback >"$B/kernel_drop-writeback.log" 2>&1
+# Under 16 MIU -> DCU ids, the pinned timing: with MA-6's 64, seq 8's last
+# eight lanes request their line before the eviction drops it, and load it
+# fresh (24 stale, the same 32 words lost), so the pin is held where it was set.
+CCV_MIU_DCU_IDS=16 "$SKEL" --kernel build/oracle/slotform/oracle.jsonl --break drop-writeback >"$B/kernel_drop-writeback.log" 2>&1
 if [ "$(grep -c '^CHECK miu: seq 8 lane' "$B/kernel_drop-writeback.log")" = 32 ] &&
    [ "$(field "$B/kernel_drop-writeback.log" mem_mismatch)" = 32 ]; then
   say "--break drop-writeback: evicted lines lost" "PASS (seq 8's 32 lanes reload stale; 32 words in memory)"
