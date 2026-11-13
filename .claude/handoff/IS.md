@@ -53,10 +53,10 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 343, OA 411, IS 193, TI 418, OI 338, CP 157, DA 119, RA 136, RI 70, MA 3.
+Conventions 19, AR 348, OA 414, IS 193, TI 419, OI 341, CP 157, DA 119, RA 136, RI 70, MA 46.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
-Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Next pings Friday 2026-11-13.
+Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Pings Friday 2026-11-13 sent to AR, OA, TI, OI, CP, RA, RI, MA, RH (MA now in roster, session_01QPk2jyUbWA7fW9YpUwqdxk); check pongs Saturday 11-14 with notice.py check. Next pings Friday 2026-11-20.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
 
@@ -66,7 +66,7 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
-- 11-12 sweep pushed (core 493d5698 full PASS). 11-13: answered MA-2 (re:MA-2, IS rev 191-192): ISA fixes no page size, all ISA regions 64 KiB-aligned, no objection to CCV_L_PAGE_SHIFT 16; AR owns cross-block cost. MA is active from session_01QPk2jyUbWA7fW9YpUwqdxk (not yet in roster): ping it Friday if the roster has it, else note.
+- 11-12 sweep pushed (core 493d5698 full PASS). 11-13: answered MA-2 (re:MA-2, IS rev 191-192): ISA fixes no page size, all ISA regions 64 KiB-aligned, no objection to CCV_L_PAGE_SHIFT 16; AR owns cross-block cost. AR agreed (AR 348) and TI landed CCV_L_PAGE_SHIFT 16 (eda137fa, MA-15). MA-10: Q-60 whole-TLB invalidate only, no ASID; MA-11 line-granular per-warp ordering; none changes the ISA. DA (MA tab, 11-13): MI/DI start only after AR grill-me + summary to Daniel.
 - New agent MA (MIU+DCU architect; DA 117-119), MI/DI implement, C++ model
   first. Sweep minute order: IS 23 (OA 406). MA will lean on the ISA's memory
   semantics (O-72 atomics, O-83/O-84 per-thread memory, fence): answer its
