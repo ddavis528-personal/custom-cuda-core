@@ -260,7 +260,20 @@ Sweep 2026-11-13 (Fri): merged 183cc441 58, infra-6msg93 58, 80102643 2, 3868632
 DA re:MA-13 (in MA tab): MI/DI wait for MA's grill with AR. Answered pings today from OA, AR, TI, IS.
 Pings sent 2026-11-13 to AR, OA, IS, TI, OI (session_01DMw4Ft...), CP, RI, MA (session_01QPk2jyUb...), RH. Pongs: check
 on the next sweep with notice.py check.
-Bookmarks: OA 414, RA 136, RI 70, TI 419, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 46.
+Sweep 11-13 pushed aeda6467 (SCOPED PASS 24/24, detached gate). Pongs 11-13: CP, OA, AR, IS, RI, RH, MA, TI all ok;
+OI none (check next sweep). Answered pings from OA, AR, TI, IS, RI, MA, CP. Detach note: `$!` after `setsid nohup ... &`
+is setsid's pid, which exits at once; find the gate's own pid with `pgrep -f gate-push.sh` and watch that.
+RA rev 137 (re:RI-39, RI notified): accepted register-amount shuffle fix (amount per lane from v(R1)[4:0], IREG) and
+rcu_xbar one-hot sel[LANES*LANES] formed in rcu_r at cr03h (ixr/iru/ird/irb/iim, class flops under ix_en_cr02h);
+xbar decodes nothing, inner helper of rcu_r; R 23.9 NGD (adder form 32.3 withdrawn); asked one-hot assert + two-hot
+control in r_tb. PENDING (Docs service was down 11-13): R unit tab (node 10fb0241-f5be, was rev 26) edit may not have
+landed. Check: search "decodes nothing". If absent, replace blocks m1nafg6nm10.3853 (Crossbar para; keep ret/unballot
+sentences), m1nafg6nm10.3200 (shfl compute cell: c=imm[4:0] imm forms; c[l]=v(R1)[l][4:0] for *_R; RTL forms sel, no
+idx), m1nafg6nm10.15363 (depth cell: align 2, select fanout 1, one-hot compare into sel 3, xbar 6, em 1, fanout ~3;
+23.9 measured). Leave the "Why." paragraph's old ~26 estimate (historical). Then refresh rcu-arch R unit snapshot.
+RI-40: next RI items are creditAtLanding (--credit-lead 0) then removing ccv_rcu's wake detector -> reword Done tab's
+done-wake term (RA rev 136 (2)) to AR 343's common hold when RI's landing row arrives.
+Bookmarks: OA 414, RA 137, RI 71, TI 419, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 46.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
