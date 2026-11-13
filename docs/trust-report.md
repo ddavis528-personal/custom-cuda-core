@@ -28,6 +28,7 @@ so this is a build artifact rather than something to remember.
 | `rtl/rcu/rcu_mig.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG` |
 | `rtl/rcu/rcu_pred.sv` | — | `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO`, `CCV_P_W_PHYS_PRED` |
 | `rtl/rcu/rcu_r.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_PRED_ZERO`, `CCV_P_W_ROB_TAG` |
+| `rtl/top/dpi-shadow/ccv_rcu_dpi.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_cru.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dec.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
