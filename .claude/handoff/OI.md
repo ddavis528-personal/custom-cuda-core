@@ -52,6 +52,8 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-3. OA-409 (OA rev 412, re:MA-5): IF memop credits become queue entries, ooe_select gates each P grant on that slot's credit; build it and measure grant NGD then. Waits on MA's decision.
+   Sweep 11-12 pushed ae8a6bdf (full PASS). RH CoreMark for OI-137 due ~07:00 UTC 11-13. Pong to OA sent 11-13.
 -2. #35 ooe_rename PUSHED d86e3a14 (full PASS, with the 11-10 sweep merge of 183cc441/126afa13/80102643/9eb50716):
    flop-flop 24.73, one cap left (q_pname_cq03h 3.32). Model knob cand_indep_pend (on). OI-137 (rev 338, Needs OA)
    rung OA; RH asked to price on vs off (U/G/L 192/160/128, CoreMark, S1). On RH's table: add to OI-137. OA-407 (OA rev 411): accepted if on/off within 0.5% on S1, cm32, cm128; over goes to DA. RH started 13:33 (S1 first, CoreMark ~8.5 h).
