@@ -65,6 +65,7 @@ FULL=0
 CACHED=0
 BASE=""
 ONLY="" SKIP=""
+CCV_ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
     --full)    FULL=1 ;;
@@ -79,6 +80,10 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# A long run never runs under its caller (tools/detach.sh; DA, 2026-11-13):
+# it detaches and returns; tools/gate-wait.sh waits for it.
+. "$(dirname "$0")/detach.sh"; ccv_detach "$0" ${CCV_ARGS[@]+"${CCV_ARGS[@]}"}
+
 
 fail=0
 section() { printf '\n== %s ==\n' "$1"; }
@@ -188,6 +193,8 @@ job_s1a() {
   # re-measure is --full, and runs in CI on a schedule.
   run "toolchain versions pinned" ./tools/check-toolchain.sh
   run "1a exit criteria" ./tools/check-1a.sh
+  # The long tools detach and gate-wait waits (DA, 2026-11-13), with controls.
+  run "long tools detach; gate-wait waits" ./tools/check-detach.sh
   if [ "$FULL" = "1" ]; then
     run "matrix unchanged since last measured" python3 tools/check-matrix-drift.py
   fi
