@@ -16,7 +16,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
+- Last push: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
   (kill detector in the top, CG unit ccv_rcu, per-slot ngd.json), TI's 079b64c2 and the daily sweep merges.
   RI-34 (RI tab rev 68) written; notices sent to TI (merge 8fcec64b), RA, AR, OA, OI.
 - Previous push: ff5ddcca (2026-11-08, SPLIT PASS 23/23, chain-ri10): daily sweep merges (all remote
@@ -49,24 +49,15 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--9. NOW (2026-11-13 ~17:30) ri-credit still GATING in ri-wt7 (c64b7417, ~/ccv-logs/ri26-push.log, waiter
-   br1te6r4h; ON PUSH as -8 says). TI rev 422 = GO on RI-42 (RTL drives the SV top, model shadows; TI does the
-   gen-top ccv_rcu_dpi + check-sv-hosted selector SVHOST 45/46 "rcu=rtl divergences=0" + controls once wrapper is
-   pushed).
-   ri-wt4 branch ri-q53: 28cd347a (on 43b38bc9 regen, b7903354 Q-53): model launch at c0 (was a cycle early) and
-   fifo_in_ (PCA row enters FIFO a cycle after landing, RTL hn_pw); Q-53 fixes. check4: skel/kernel/lockstep 0,
-   67 PASS (63 + 4 *_demote), 11 controls caught. Gate-push after ri-credit lands; RI row to RA on the two model
-   timing fixes.
-   ri-wt9 branch ri-svh (from c64b7417), UNCOMMITTED: test/rcu/svh.py (prep/compare; generates u_rtl instance
-   with _tid outputs from the shadow -- the RTL ties tids 0 and lanes then find no oracle record), ccv_rcu_svh.sv
-   (cg_override forced: shims' wakes are 0; exports ccv_rcu_rtl_gpr/pred, zero rows 255/63 read 0, flip control
-   +ccv_rcu_svh_flip), lockstep.py --replayed. LOCAL TI PATCH (do NOT commit; offer TI as diff): kernel.h
-   hw_gpr/hw_pred + gprAt/predAt at snapshotFinal and final compare; dpi_host.cpp under CCV_RCU_RTL binds scope
-   "tb.u_top.u_rcu.u_blk" (no TOP. prefix). Builds: scratchpad svh/build.sh (no host patch), build-fin.sh.
-   Results: 63/63 kernels finish clean, divergences=0 (shadow final compare); vadd RTL final compare clean, flip
-   control gpr_mismatch=1. Sweep with RTL final compare: build/rcu-svh/fin/sweep.out (waiter b4sotw1u2).
-   NEXT: merge ri-q53 into ri-svh, demote runs (stall/vadd4/swap/provswap, env as check-sv-hosted), commit
-   (excluding sim/skel), gate-push; answer TI 422 in RI tab with the design + host diff.
+-10. NOW (2026-11-13 late) Pushed 7e10e72f (SCOPED PASS 15/24, ri-svh in ri-wt9; holds c64b7417 ri-credit and
+   ri-q53 28cd347a): RTL in the SV top (test/rcu/ccv_rcu_svh.sv, svh.py prep/compare, lockstep --replayed), Q-53
+   checkers, model launch at c0 + fifo_in_, rcu_test migration first row 206. Rows (RI tab rev 75): RI-44 to TI
+   (answer rev 422: wrapper interface + host diff spelled per hunk; diff file at scratchpad
+   svh/ti-host-rcu-rtl.diff, offered as gate-scratch/RI commit if TI wants a file), RI-45 to RA (timing fixes).
+   Notices sent TI (RI-43,44) and RA (RI-43,45). WAIT: TI's merge + gen-top ccv_rcu_dpi + SVHOST 45/46 selector;
+   RA's answer on RI-43 (Done tab busy-hold clause) and RI-45.
+   NEXT (Daniel's order): exit table M1-M7; SW write-back same-lane (task 20); RA-43 (task 18); block report
+   (task 22); RA reconciliation; Daniel's sign-off. ri-wt9 free again (worktree for next work).
 -8. NOW (2026-11-13 ~16:00) Pushed 631d7fc6 (SCOPED PASS 14/24, ri-wt4 ri-xsel): rcu_r xbar_sel_onehot assert +
    r_tb --control twohot (RA rev 137). RI-41 (RA, TI: merge 631d7fc6) written, RI tab rev 72, notices sent.
    GATING NOW: ri-wt7 branch ri-credit (on 631d7fc6), log ~/ccv-logs/ri26-push.log (setsid; scoped gate, cg+ngd
