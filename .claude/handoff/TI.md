@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 420, AR 348, OA 414, RI 71, MA 46 (2026-11-13). MA (MIU/DCU architect,
+TI 422, AR 348, OA 414, RI 71, MA 46 (2026-11-13). MA (MIU/DCU architect,
 session_01QPk2jyUbWA7fW9YpUwqdxk) is not in the roster: notice.py says
 none, so compose with --to AR and edit the header by hand.
 
@@ -57,7 +57,11 @@ plus a send_later check-in. `tools/bg-run.sh <name> <cmd...>` for others.
 - Disk: deleting other sessions' /tmp/tmp.* was denied; ask the user.
 
 ## Open work (most urgent first)
-1. Pongs: OI had not answered the 11-13 ping.
+1. RI-42 / RA-37 CCV_RCU_RTL (go at TI rev 422): once RI pushes test/rcu/ccv_rcu_svh.sv,
+   TI adds gen-top second RCU DPI shim ccv_rcu_dpi, the check-sv-hosted.sh selector
+   (SVHOST 45/46 + rcu=rtl divergences=0), controls: shim_delay on shadow, flipped RTL
+   output, unread-GPR flip vs end-of-run RTL GPR/pred dump. In the full gate.
+   RI-41 631d7fc6 rides the 11-14 sweep.
 2. MI/DI homes when their first files land.
 3. Older: RI-24 (3) job_rcu_rtl lock-step; RI-23 per-unit records +
    block_report.py.
