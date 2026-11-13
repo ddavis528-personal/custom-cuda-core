@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-13 (#49 RTL committed ef19544c, on gate-scratch/OI; waits on OA for OI-141 (rev 342))
+Updated 2026-11-13 (a2c1513a PUSHED, SCOPED PASS: MA-5 RTL+model, l1_nohit, sweep 11-13; OI-141 closed by OI-144 rev 345)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -39,9 +39,9 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 348, RA 137, IS 193, TI 420, OA 414, OI 343, CP 157, DA 119, RI 71, MA 48
+Conventions 19, AR 348, RA 137, IS 193, TI 420, OA 415, OI 345, CP 157, DA 119, RI 71, MA 48
 (sweep 11-13 (late, by hand): merged 8 branches incl. TI a46afef7 (MEMOP_CREDITS, no_hit, gate detach:
-use tools/bg-run.sh / gate-wait.sh now), not pushed: waits on OI-141. Pings sent 11-13 15:20 UTC to AR OA IS TI CP RA RI RH; check pongs Sat. sweep 11-12, nothing for OI; merged 126afa13 5, 183cc441 3, 3868632d 4, 888218a3 5, 9eb50716 6, c22116ce 1. Sweep 11-10; AR closed OI-136; DA 117-119: MIU next, MA/MI/DI). Earlier: OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
+use tools/bg-run.sh / gate-wait.sh now), pushed in a2c1513a. Pongs 11-13: all 8 OK. Pings sent 11-13 15:20 UTC to AR OA IS TI CP RA RI RH; check pongs Sat. sweep 11-12, nothing for OI; merged 126afa13 5, 183cc441 3, 3868632d 4, 888218a3 5, 9eb50716 6, c22116ce 1. Sweep 11-10; AR closed OI-136; DA 117-119: MIU next, MA/MI/DI). Earlier: OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
 (perf-register.md) and RI 888218a3 (cg-waivers.json, rcu_dec_pkg.sv, perf-register.md); rung both.
 OA-399 leaves a LANE 8/SFU 13 rerun "if OI has not run 8/13": check against RI-11/OI-115. AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
 once TI's schema row lands. Pings 11-06: all OK. Settings: after TI's 350k merge `--check` may
@@ -55,14 +55,14 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
--6. #49 MA-5 RTL committed locally as ef19544c (gate-scratch/OI). OI-141 (rev 342, Needs OA; OA rung) asks for:
-   (1) a feedback entry in rtl/ooe/ooe_sched.feedback.json: "cok_nx_cq02h": {"from": {"ca_cq04h": 2},
-   "loop": ["cok_cq03h","cokd_cq04h","ccnt_cq04h"], "by": "OA"}. With it, lint is clean (tested, then reverted).
-   (2) chas_cq03h arrival 4.0 in ooe_sched.ngd.json (now 25.2 at arrival 13, no cap).
-   On OA's yes: add both, run $SP/v2chk.sh and $SP/ngdv.sh, then gate-push. The cret credit waiver
-   (DA's RI-14) is already in cg-waivers.json.
-   Branch HEAD also holds the 11-13 sweep merge and #50 (4c2a9746 l1_nohit, 739a64dc doc; OI-142 rev 343, no ring;
-   tools/check-ooe-unit.sh control list +ignore-nohit, count 54). One gate-push carries them all once OA answers.
+-7. DA 11-13 approved, after #39: #51 ooe_rendep to 25 (gsn_cq01h 28.5, psn_cq01h 28.8); #52 ooe_rob_w
+   (NGD-1 29.6, al_n 29.2, dn_tag 26.3, fl_slot 28.6, fl_v 29.5); #53 ooe_go (NGD-1 26.1, ha 27.9, hv 28.9,
+   pl 27.2, px 28.0, reach 25.3, wt 25.0; leave port-budget caps under 25); #54 ooe_sched (NGD-1 26.7,
+   cidx 25.6, res 29.0, vel 28.2). Order: #38, #39, #51-#54, DA 111b, #32 (optional).
+   Blocked: #40/#42 (TI schema), #46 (lead set), l1_nohit price (MA stub sends no no-hits),
+   cand_indep_pend price (OI-143 rev 344: needs sectioned on).
+   Gate note: the first a2c1513a gate was OOM-killed in cg (check-cg python 4.6 GB beside ngd's ABC);
+   the identical rerun passed. If it recurs, rerun with fewer CCV_JOBS and raise a TI row.
 -5b. #38 ooe_rs started 11-13: flop-flop 28.7 (18.9 without fanout, widest net 595 loads), prv_dep 26.4, req 28.4.
    Worst cone starts at the head pointer hh_cq02h[2] and fans to hm_cq02h (45 endpoints), gnt_v, lgv and gnt_idx.
    Trace it with path3 rr on the blif that holds prv_dep_cq01h (pass the absolute path).
