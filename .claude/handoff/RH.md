@@ -23,7 +23,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 
 ## Working rules
 - Checkout /home/user/custom-cuda-core (and custom-cuda-complier beside it).
-  Push only to `ccr-c22116ce-1vzyjg`; never to a requester's branch. Check
+  Push only to `ccr-c22116ce-1vzyjg`; never to a requester's branch.
+  Exception (DA, 2026-11-10): after a split-gate leg reads PASS or PARTIAL PASS,
+  `tools/gate-scratch.sh send-export <PREFIX> <x.tgz>` to a gate-scratch/*-export
+  branch is allowed (the requester's, or RH's own). Exports only; never a red gate. Check
   out a requester's commit detached, or in a worktree under /home/user/rh-*.
 - Fresh container: `./tools/setup-toolchain.sh` once.
 - The disk allowance is about 39 GB in all. A gate's build/ needs 5 GB or more, so

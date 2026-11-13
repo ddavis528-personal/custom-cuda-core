@@ -513,8 +513,10 @@ module rcu_bank_slice #(
                                      32'(rdr_cr01h[p*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
     bad_wr_cr01h = 1'b0;
     for (int p = 0; p < NW; p++)
-      bad_wr_cr01h = bad_wr_cr01h | (wr_v_cr01h[p] && 32'(wr_row_cr01h[p*WR +: WR]) >= ROWS);
-    bad_wr_cr01h = bad_wr_cr01h | (gws_cr01h && 32'(gw_row_cr01h) >= ROWS);
+      bad_wr_cr01h = bad_wr_cr01h | (wr_v_cr01h[p] && 32'(wr_row_cr01h[p*WR +: WR]) >= ROWS &&
+                                     32'(wr_row_cr01h[p*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
+    bad_wr_cr01h = bad_wr_cr01h | (gws_cr01h && 32'(gw_row_cr01h) >= ROWS &&
+                                   32'(gw_row_cr01h) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
     for (int q = 0; q < NRR; q++)
       bad_rd_cr01h = bad_rd_cr01h | (rv_cr03h && 32'(rr_row_cr03h[q*WR +: WR]) >= ROWS &&
                                      32'(rr_row_cr03h[q*WR +: WR]) != ccv_prov_pkg::CCV_P_PHYS_ZERO);
@@ -537,7 +539,9 @@ module rcu_bank_slice #(
   `CCV_ASSERT(p_lead_is_footprint, pk_cr01h == pfo_cr01h)
   // Rows past the pool are never named; a read may name the zero register.
   `CCV_ASSERT(read_row_named, !bad_rd_cr01h)
-  // A write never names the zero register (A-64) or a row past the pool.
+  // A write never names a row past the pool. The zero register (A-64) is
+  // a write port's no-select: R's port names it, valid up, for an op that
+  // writes no GPR (rcu_r), and it writes nothing (the predecode above).
   `CCV_ASSERT(write_row_named, !bad_wr_cr01h)
   // A load may name the zero register: a predicate-only load writes no row.
   `CCV_ASSERT(load_row_named, !bad_mw_cr01h)

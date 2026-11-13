@@ -61,7 +61,7 @@ module rcu_mem #(
 ) (
   input  logic                    rcu_core_clk,
   input  logic                    rst_n,
-  input  logic                    iw_cr01h,        // ooe_rcu_issue_wake
+  input  logic                    iw_cr01h,        // ooe_rcu_issue_wake a cycle on (ccv_rcu's wake detector): wake at A - 2
   // The P slots' lead (A-1).
   input  logic [NK-1:0]           iv_cr01h,        // slot j issues next cycle
   input  logic [NK*3-1:0]         lsrc_cr01h,      // lead_src_used

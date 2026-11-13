@@ -80,7 +80,7 @@
   stub stream round-trips into Perfetto JSON     PASS
   emitted cycles match the paper reference       PASS
   trace identity view: nesting, replay, none     PASS
-  [s1c: 8s]
+  [s1c: 3s]
 
 == Stage 1d -- coding style and lint ==
   style guide present                            PASS
@@ -113,7 +113,7 @@
   lint clean across rtl/, test/, spike/          PASS
   generated parameter files current              PASS
   C++ and RTL parameter values agree with source PASS
-  [s1d: 14s]
+  [s1d: 11s]
 
 == Interface checker convention ==
   payload structs generated                      55 of 55 channels, 0 field(s) open
@@ -159,7 +159,7 @@
   formal: outstanding checker covers reachable   PASS
   gate scope: every section named exists; schema, params, the gate, unmapped paths run all; RTL and model changes reach their sections
   split gate: another commit, tree or dirty run, a gap, a double, an imported failure or edited log are each refused (11 controls)
-  [iface: 5s]
+  [iface: 4s]
 
 == X-propagation ==
   optimistic if-chain: definite, arbitrary answer PASS (=1101, the last branch)
@@ -183,7 +183,7 @@
   verilator: sim view, enable in either phase    PASS (cycles=2000 edges=1039 mid_high_changes=2563 ref_samples=0)
     ...an ICG with no latch: caught              PASS (both simulators)
     ...a latch open on the high phase: caught    PASS (both simulators)
-  [ctech: 4s]
+  [ctech: 3s]
 
 == Local clock gating -- CG-1 to CG-5, RST-1 ==
   unit rpt            ccv_common_rpt    697 flops,  688 in  2 clock gates (0 groups under 8), worst enable  0.0 NGD
@@ -197,76 +197,76 @@
   unit ooe_wake       ooe_wake         1659 flops, 1648 in 47 clock gates (0 groups under 8), worst enable  6.1 NGD
     idle   23975 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 16074 cycles, activity 0.001, 47 gates enabled, lowest DCGE 100%
-    high    3278 cycles, activity 0.005, 47 gates enabled, lowest DCGE 100%
+    high    3282 cycles, activity 0.005, 47 gates enabled, lowest DCGE 100%
   unit ooe_age_rcu    ooe_age           902 flops,  900 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
     idle   23991 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 26990 cycles, activity 0.028,  1 gates enabled, lowest DCGE 98%
-    high    6218 cycles, activity 0.109,  1 gates enabled, lowest DCGE 100%
+    high    6222 cycles, activity 0.108,  1 gates enabled, lowest DCGE 100%
   unit ooe_age_miu    ooe_age           227 flops,  225 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
     idle   23991 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 26990 cycles, activity 0.011,  1 gates enabled, lowest DCGE 77%
-    high    6218 cycles, activity 0.063,  1 gates enabled, lowest DCGE 100%
+    high    6222 cycles, activity 0.062,  1 gates enabled, lowest DCGE 100%
   unit ooe_rs         ooe_rs           18767 flops, 18524 in 60 clock gates (0 groups under 8), worst enable  7.8 NGD
     idle   23999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 27006 cycles, activity 0.022, 27 gates enabled, lowest DCGE 77%
-    high    6234 cycles, activity 0.067, 58 gates enabled, lowest DCGE 89%
+    high    6238 cycles, activity 0.067, 58 gates enabled, lowest DCGE 89%
   unit ooe_decq       ooe_decq         1004 flops,  986 in 12 clock gates (0 groups under 8), worst enable  4.2 NGD
     idle   23991 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 26990 cycles, activity 0.021, 10 gates enabled, lowest DCGE 98%
-    high    6218 cycles, activity 0.061, 10 gates enabled, lowest DCGE 86%
+    high    6222 cycles, activity 0.061, 10 gates enabled, lowest DCGE 86%
   unit ooe_freelist_gpr ooe_freelist     1500 flops, 1101 in 11 clock gates (192 groups under 8), worst enable  6.2 NGD
     idle   23983 cycles, activity 0.002,  7 gates enabled, lowest DCGE 100%
     medium 26974 cycles, activity 0.003, 11 gates enabled, lowest DCGE 93%
-    high    6202 cycles, activity 0.004, 11 gates enabled, lowest DCGE 88%
+    high    6206 cycles, activity 0.004, 11 gates enabled, lowest DCGE 88%
   unit ooe_freelist_gsec ooe_freelist     2822 flops, 2409 in 23 clock gates (193 groups under 8), worst enable  7.8 NGD
     idle   11991 cycles, activity 0.001,  7 gates enabled, lowest DCGE 100%
     medium 13277 cycles, activity 0.002, 21 gates enabled, lowest DCGE 6%
-    high    3107 cycles, activity 0.004, 23 gates enabled, lowest DCGE 10%
+    high    3111 cycles, activity 0.004, 23 gates enabled, lowest DCGE 10%
   unit ooe_freelist_pred ooe_freelist      516 flops,  405 in 11 clock gates (48 groups under 8), worst enable  6.2 NGD
     idle   23983 cycles, activity 0.009,  7 gates enabled, lowest DCGE 100%
     medium 26974 cycles, activity 0.009, 11 gates enabled, lowest DCGE 97%
-    high    6202 cycles, activity 0.010, 11 gates enabled, lowest DCGE 94%
+    high    6206 cycles, activity 0.010, 11 gates enabled, lowest DCGE 94%
   unit ooe_freelist_gsec_fs1 ooe_freelist     2822 flops, 2409 in 23 clock gates (193 groups under 8), worst enable  7.8 NGD
     idle   11991 cycles, activity 0.004,  7 gates enabled, lowest DCGE 100%
     medium 13277 cycles, activity 0.007, 21 gates enabled, lowest DCGE 6%
-    high    3107 cycles, activity 0.014, 23 gates enabled, lowest DCGE 10%
+    high    3111 cycles, activity 0.014, 23 gates enabled, lowest DCGE 10%
   unit ooe_freelist_pred_fs1 ooe_freelist      516 flops,  405 in 11 clock gates (48 groups under 8), worst enable  6.2 NGD
     idle   23983 cycles, activity 0.022,  7 gates enabled, lowest DCGE 100%
     medium 26974 cycles, activity 0.023, 11 gates enabled, lowest DCGE 97%
-    high    6202 cycles, activity 0.025, 11 gates enabled, lowest DCGE 94%
+    high    6206 cycles, activity 0.025, 11 gates enabled, lowest DCGE 94%
   unit ooe_rat        ooe_rat          5469 flops, 5376 in 29 clock gates (0 groups under 8), worst enable  2.9 NGD
     idle   24005 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 27020 cycles, activity 0.011, 22 gates enabled, lowest DCGE 81%
-    high    6248 cycles, activity 0.045, 22 gates enabled, lowest DCGE 90%
+    high    6252 cycles, activity 0.045, 22 gates enabled, lowest DCGE 91%
   unit ooe_sched      ooe_sched         343 flops,  337 in  3 clock gates (0 groups under 8), worst enable  7.5 NGD
     idle   11995 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  7652 cycles, activity 0.001,  3 gates enabled, lowest DCGE 80%
-    high    1608 cycles, activity 0.008,  3 gates enabled, lowest DCGE 98%
+    high    1612 cycles, activity 0.008,  3 gates enabled, lowest DCGE 97%
   unit ooe_prodmap    ooe_prodmap      1790 flops, 1787 in  3 clock gates (0 groups under 8), worst enable  4.0 NGD
     idle   23999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 27006 cycles, activity 0.019,  3 gates enabled, lowest DCGE 81%
-    high    6234 cycles, activity 0.068,  3 gates enabled, lowest DCGE 84%
+    high    6238 cycles, activity 0.068,  3 gates enabled, lowest DCGE 84%
   unit ooe_rendep     ooe_rendep       1884 flops, 1880 in  2 clock gates (0 groups under 8), worst enable  1.7 NGD
     idle   23999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 27006 cycles, activity 0.011,  2 gates enabled, lowest DCGE 100%
-    high    6234 cycles, activity 0.034,  2 gates enabled, lowest DCGE 100%
+    high    6238 cycles, activity 0.034,  2 gates enabled, lowest DCGE 100%
   unit ooe_go         ooe_go           1322 flops, 1300 in  7 clock gates (0 groups under 8), worst enable  5.9 NGD
     idle   23991 cycles, activity 0.014,  1 gates enabled, lowest DCGE 100%
     medium 26990 cycles, activity 0.025,  6 gates enabled, lowest DCGE 65%
-    high    6288 cycles, activity 0.050,  6 gates enabled, lowest DCGE 52%
-  unit ooe_rename     ooe_rename       1777 flops, 1749 in 14 clock gates (0 groups under 8), worst enable  7.2 NGD
+    high    6291 cycles, activity 0.051,  6 gates enabled, lowest DCGE 52%
+  unit ooe_rename     ooe_rename       2265 flops, 2237 in 14 clock gates (0 groups under 8), worst enable  7.2 NGD
     idle   23990 cycles, activity 0.119,  4 gates enabled, lowest DCGE 100%
     medium 26984 cycles, activity 0.123, 13 gates enabled, lowest DCGE 11%
-    high    6436 cycles, activity 0.131, 13 gates enabled, lowest DCGE 23%
+    high    6427 cycles, activity 0.131, 13 gates enabled, lowest DCGE 23%
   unit ooe_cmcap      ooe_cmcap         465 flops,  456 in  5 clock gates (0 groups under 8), worst enable  2.2 NGD
     idle   23991 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 26990 cycles, activity 0.001,  1 gates enabled, lowest DCGE 100%
-    high    6218 cycles, activity 0.004,  1 gates enabled, lowest DCGE 100%
+    high    6222 cycles, activity 0.004,  1 gates enabled, lowest DCGE 100%
   unit ooe_rob_w      ooe_rob_w        8316 flops, 8267 in 94 clock gates (7 groups under 8), worst enable  8.0 NGD
     idle   12003 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  9714 cycles, activity 0.014, 83 gates enabled, lowest DCGE 0%
     high    2654 cycles, activity 0.033, 83 gates enabled, lowest DCGE 0%
-  unit ccv_rcu        ccv_rcu            35 flops,   34 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
+  unit ccv_rcu        ccv_rcu            40 flops,   34 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
     idle    2999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  3999 cycles, activity 0.000,  1 gates enabled, lowest DCGE 100%
     high    3999 cycles, activity 0.000,  1 gates enabled, lowest DCGE 100%
@@ -292,8 +292,8 @@
     high    6005 cycles, activity 0.443,  7 gates enabled, lowest DCGE 99%
   unit rcu_pred       rcu_pred         3127 flops, 3081 in 88 clock gates (0 groups under 8), worst enable  5.5 NGD
     idle    3001 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium  4015 cycles, activity 0.066, 88 gates enabled, lowest DCGE 89%
-    high    4015 cycles, activity 0.209, 88 gates enabled, lowest DCGE 92%
+    medium  4015 cycles, activity 0.067, 88 gates enabled, lowest DCGE 89%
+    high    4015 cycles, activity 0.211, 88 gates enabled, lowest DCGE 92%
   unit rcu_isd        rcu_isd            28 flops,   28 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
     idle    2999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  3999 cycles, activity 0.141,  1 gates enabled, lowest DCGE 99%
@@ -304,16 +304,16 @@
     high    3999 cycles, activity 0.435,  1 gates enabled, lowest DCGE 100%
   unit rcu_kill       rcu_kill           54 flops,    0 in  0 clock gates (3 groups under 8), worst enable  0.0 NGD
     idle    2999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium  3999 cycles, activity 0.163,  0 gates enabled, lowest DCGE -
-    high    3999 cycles, activity 0.356,  0 gates enabled, lowest DCGE -
+    medium  3999 cycles, activity 0.160,  0 gates enabled, lowest DCGE -
+    high    3999 cycles, activity 0.352,  0 gates enabled, lowest DCGE -
   unit rcu_mig        rcu_mig          7383 flops, 7268 in 16 clock gates (14 groups under 8), worst enable  5.5 NGD
     idle    3007 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  4018 cycles, activity 0.175, 15 gates enabled, lowest DCGE 99%
     high    4113 cycles, activity 0.248, 15 gates enabled, lowest DCGE 99%
   unit rcu_lanes      rcu_lanes        6888 flops, 6811 in 106 clock gates (5 groups under 8), worst enable  7.2 NGD
     idle    3015 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
-    medium  6015 cycles, activity 0.147, 94 gates enabled, lowest DCGE 51%
-    high    6015 cycles, activity 0.424, 94 gates enabled, lowest DCGE 67%
+    medium  6015 cycles, activity 0.146, 94 gates enabled, lowest DCGE 55%
+    high    6015 cycles, activity 0.423, 94 gates enabled, lowest DCGE 69%
   unit rcu_mem        rcu_mem          12558 flops, 12540 in 20 clock gates (4 groups under 8), worst enable  2.9 NGD
     idle    3005 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  6005 cycles, activity 0.136, 20 gates enabled, lowest DCGE 95%
@@ -343,10 +343,10 @@
   module budget: unit ooe_prodmap   1790 flops, 35.8 allowed, 3 auto-waived in 3 finding(s)
   module budget: unit ooe_rendep    1884 flops, 37.7 allowed, 4 auto-waived in 4 finding(s)
   module budget: unit ooe_go        1322 flops, 26.4 allowed, 22 auto-waived in 7 finding(s)
-  module budget: unit ooe_rename    1777 flops, 35.5 allowed, 28 auto-waived in 10 finding(s)
+  module budget: unit ooe_rename    2265 flops, 45.3 allowed, 38 auto-waived in 11 finding(s)
   module budget: unit ooe_cmcap      465 flops,  9.3 allowed, 9 auto-waived in 3 finding(s)
   module budget: unit ooe_rob_w     8316 flops, 166.3 allowed, 129 auto-waived in 32 finding(s)
-  module budget: unit ccv_rcu         35 flops,  7.0 allowed, 1 auto-waived in 1 finding(s)
+  module budget: unit ccv_rcu         40 flops,  7.0 allowed, 6 auto-waived in 4 finding(s)
   module budget: unit rcu_bank_slice  6556 flops, 131.1 allowed, 40 auto-waived in 20 finding(s)
   module budget: unit rcu_bank_slice_k0  6553 flops, 131.1 allowed, 37 auto-waived in 20 finding(s)
   module budget: unit rcu_bank_slice_k2  6559 flops, 131.2 allowed, 43 auto-waived in 20 finding(s)
@@ -363,16 +363,18 @@
   RST-2 global: repeater rpt                             reset arrives at cycle 1
   RST-2 global: repeater rpt_s0_b1_dst_cor_n4_w1114_lh8b1fbf9f64 reset arrives at cycle 1
   RST-2 global: spread 0 cycle(s), 1 to 1 over 3 block(s) and repeater(s); report-only, not failed, until the reset tree is modelled (Q-37)
-    waiver: rcu_lanes CG-3 pcm_n_cr04h measures 73.0% in medium, over the 51% it records; its floor may tighten
-    waiver: rcu_lanes CG-3 pcm_n_cr04h measures 72.8% in high, over the 67% it records; its floor may tighten
-    waiver: rcu_lanes CG-3 pcm_n_cr04h measures 73.2% in medium, over the 51% it records; its floor may tighten
-  block budget: rcu      247468 flops in 15 unit(s) at their instances' parameters (structural read 260.7 s), 4949.4 allowed, 2703 auto-waived in its modules (218 of them repeater control; 825 of them waived as lead or credit flops)
-  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2843 MiB, ooe_rob_w 1335 MiB, ooe_rs 2303 MiB, ooe_sched 975 MiB, rcu_bank_slice 1435 MiB, rcu_bank_slice_k0 1432 MiB, rcu_bank_slice_k2 1437 MiB, rcu_bank_slice_k3 1439 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1949 MiB)
-  unit wall time (report-only): ooe_rename 2485s, ooe_rs 1366s, ooe_go 1362s, ooe_rob_w 1322s, ooe_rendep 1018s, ooe_freelist_gsec_fs1 956s; 35 unit(s) in all, 16788s summed
-  heavy-lock wait (report-only): 23893s summed, most rcu_bank_slice_k2 4910s
-  24 module(s), 35 unit(s), 248 finding(s) auto-waived by a module budget, 85 waiver(s) in use, 0 on the ratchet
+    waiver: rcu_lanes CG-3 pcm_n_cr04h measures 71.4% in high, over the 67% it records; its floor may tighten
+    waiver: rcu_lanes CG-3 pcm_n_cr04h measures 68.8% in high, over the 67% it records; its floor may tighten
+    waiver: rcu_lanes CG-3 pcm_n_cr04h measures 54.9% in medium, over the 51% it records; its floor may tighten
+    waiver: rcu_lanes CG-3 pcm_n_cr04h measures 71.1% in medium, over the 51% it records; its floor may tighten
+    waiver: rcu_lanes CG-3 pcm_n_cr04h measures 71.8% in high, over the 67% it records; its floor may tighten
+  block budget: rcu      247473 flops in 15 unit(s) at their instances' parameters (structural read 200.1 s), 4949.5 allowed, 2708 auto-waived in its modules (218 of them repeater control; 825 of them waived as lead or credit flops)
+  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2843 MiB, ooe_rob_w 1335 MiB, ooe_rs 2303 MiB, ooe_sched 2394 MiB, rcu_bank_slice 1435 MiB, rcu_bank_slice_k0 1432 MiB, rcu_bank_slice_k2 1437 MiB, rcu_bank_slice_k3 1439 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1945 MiB)
+  unit wall time (report-only): ooe_go 1228s, ooe_rs 1184s, ooe_rendep 905s, ooe_wake 867s, ooe_rename 793s, ccv_rcu 743s; 35 unit(s) in all, 11976s summed
+  heavy-lock wait (report-only): 22048s summed, most rcu_bank_slice_k2 3467s
+  24 module(s), 35 unit(s), 252 finding(s) auto-waived by a module budget, 84 waiver(s) in use, 0 on the ratchet
   form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, ratchet, coverage, module and block budgets as a sum of parts, enable sources and the reset, the reset's balance (RST-2), repeater instantiations, kept copies, the synthesis cache, heavy units one at a time (129 controls)
-  [cg: 10541s]
+  [cg: 8786s]
 
 == Logic depth -- NGD-1 to NGD-7 ==
   unit rpt              ccv_common_rpt flop-flop   2.4  in-flop   1.7  flop-out   0.0  in-out   0.0
@@ -409,12 +411,12 @@
     without the fanout term flop-flop  16.9  in-flop  16.9  flop-out   0.0; widest net 194 loads
   unit ooe_go           ooe_go         flop-flop  26.0  in-flop  26.8  flop-out  24.9  in-out   0.0
     without the fanout term flop-flop  21.2  in-flop  21.2  flop-out  21.2; widest net 992 loads
-  unit ooe_rename       ooe_rename     flop-flop  27.3  in-flop  23.8  flop-out  27.5  in-out   0.0
-    without the fanout term flop-flop  21.8  in-flop  21.8  flop-out  21.8; widest net 252 loads
+  unit ooe_rename       ooe_rename     flop-flop  24.7  in-flop  22.0  flop-out  18.4  in-out   0.0
+    without the fanout term flop-flop  21.7  in-flop  21.7  flop-out  13.6; widest net 271 loads
   unit ooe_cmcap        ooe_cmcap      flop-flop   1.9  in-flop   1.9  flop-out   0.0  in-out   0.0
   unit ooe_rob_w        ooe_rob_w      flop-flop  29.5  in-flop  27.5  flop-out   3.3  in-out   0.0
     without the fanout term flop-flop  23.8  in-flop  23.8  flop-out   2.7; widest net 1104 loads
-  unit ccv_rcu          ccv_rcu        flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out   0.0
+  unit ccv_rcu          ccv_rcu        flop-flop   3.3  in-flop   5.6  flop-out   0.0  in-out   0.0
   unit rcu_bank_slice   rcu_bank_slice flop-flop  19.0  in-flop  15.9  flop-out  11.0  in-out   0.0
     without the fanout term flop-flop  12.3  in-flop  12.5  flop-out   8.3; widest net 385 loads
   unit rcu_bank_slice_k0 rcu_bank_slice flop-flop  19.0  in-flop  15.9  flop-out  11.0  in-out   0.0
@@ -427,11 +429,11 @@
     without the fanout term flop-flop  17.1  in-flop  17.1  flop-out   7.6; widest net 1793 loads
   unit rcu_pred         rcu_pred       flop-flop  21.7  in-flop  14.9  flop-out   8.3  in-out   0.0
     without the fanout term flop-flop  15.6  in-flop  13.5  flop-out   6.2; widest net 196 loads
-  unit rcu_isd          rcu_isd        flop-flop   0.0  in-flop  12.4  flop-out   0.0  in-out   0.0
-    without the fanout term flop-flop   0.0  in-flop   9.3  flop-out   0.0; widest net 33 loads
-  unit rcu_isd_s        rcu_isd        flop-flop   0.0  in-flop  12.4  flop-out   0.0  in-out   0.0
-    without the fanout term flop-flop   0.0  in-flop   9.1  flop-out   0.0; widest net 40 loads
-  unit rcu_kill         rcu_kill       flop-flop   6.7  in-flop   6.5  flop-out   0.0  in-out   0.0
+  unit rcu_isd          rcu_isd        flop-flop   0.0  in-flop  12.7  flop-out   0.0  in-out   0.0
+    without the fanout term flop-flop   0.0  in-flop   9.5  flop-out   0.0; widest net 38 loads
+  unit rcu_isd_s        rcu_isd        flop-flop   0.0  in-flop  12.8  flop-out   0.0  in-out   0.0
+    without the fanout term flop-flop   0.0  in-flop   9.7  flop-out   0.0; widest net 32 loads
+  unit rcu_kill         rcu_kill       flop-flop   6.7  in-flop   6.4  flop-out   0.0  in-out   0.0
     without the fanout term flop-flop   6.5  in-flop   6.5  flop-out   0.0; widest net 46 loads
   unit rcu_mig          rcu_mig        flop-flop  21.4  in-flop  17.8  flop-out  10.9  in-out   0.0
     without the fanout term flop-flop  16.7  in-flop  15.7  flop-out   7.3; widest net 1155 loads
@@ -449,22 +451,22 @@
   unit ooe_confirm      ooe_confirm    flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  11.0
   unit ooe_ratread      ooe_ratread    flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  20.7
   unit ooe_rencred      ooe_rencred    flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  14.2
-  unit ooe_headrd       ooe_headrd     flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  15.9
-  unit ooe_ren1         ooe_ren1       flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  11.0
-  unit ooe_ren1n        ooe_ren1n      flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  24.9
+  unit ooe_headrd       ooe_headrd     flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  13.5
+  unit ooe_ren1         ooe_ren1       flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  10.5
+  unit ooe_ren1n        ooe_ren1n      flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  22.4
   unit rcu_xbar         rcu_xbar       flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  12.2
-  unit rcu_top          ccv_rcu        flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out   0.0
+  unit rcu_top          ccv_rcu        flop-flop   3.3  in-flop   5.6  flop-out   0.0  in-out   0.0
   unit rpt_s0_b1_dst_cor_n4_w1114_lh8b1fbf9f64 ccv_common_rpt flop-flop   2.4  in-flop   1.7  flop-out   0.0  in-out   0.0
     without the fanout term flop-flop   1.7  in-flop   1.7  flop-out   0.0; widest net 13 loads
   fanout ratchet: ooe_go         12 path(s) over the stage with the fanout term, capped: NGD-1 26.1, NGD-2 lane_c_cq02h 22.4, NGD-2 lane_v_cq02h 24.5, NGD-2 take_cq02h 19.3, NGD-2 wb_cq02h 24.5, NGD-2 wt_cq02h 25, NGD-3 ha_cq01h 27.9, NGD-3 hv_cq01h 28.9, NGD-3 pl_cq01h 27.2, NGD-3 px_cq01h 28, NGD-3 reach_cq01h 25.3, NGD-7 utw_cq02h 17
   fanout ratchet: ooe_ratread    43 path(s) over the stage with the fanout term, capped: NGD-6 po_dst_cq02h>ren_pold_cq01h 17.9, NGD-6 po_dst_cq02h>ren_psrc_cq01h 17.9, NGD-6 po_pdst_cq02h>ren_ppguard_cq01h 16.7, NGD-6 po_pdst_cq02h>ren_ppold_cq01h 16.7, NGD-6 po_pdst_cq02h>ren_ppq_cq01h 16.7, NGD-6 pw_dst_cq01h>ren_pold_cq01h 18.2, NGD-6 pw_dst_cq01h>ren_psrc_cq01h 18.3, NGD-6 pw_pdst_cq01h>ren_ppguard_cq01h 17.6, NGD-6 pw_pdst_cq01h>ren_ppold_cq01h 17.6, NGD-6 pw_pdst_cq01h>ren_ppq_cq01h 17.6, NGD-6 pw_slot_cq01h>ren_pold_cq01h 18, NGD-6 pw_slot_cq01h>ren_ppguard_cq01h 17.1, NGD-6 pw_slot_cq01h>ren_ppold_cq01h 17.1, NGD-6 pw_slot_cq01h>ren_ppq_cq01h 17.1, NGD-6 pw_slot_cq01h>ren_psrc_cq01h 18, NGD-6 ren_dst_cq01h>ren_pold_cq01h 20.8, NGD-6 ren_dst_cq01h>ren_psrc_cq01h 20.8, NGD-6 ren_gwe_cq01h>ren_pold_cq01h 17.9, NGD-6 ren_gwe_cq01h>ren_psrc_cq01h 17.9, NGD-6 ren_pdst_cq01h>ren_ppguard_cq01h 17.6, NGD-6 ren_pdst_cq01h>ren_ppold_cq01h 17.6, NGD-6 ren_pdst_cq01h>ren_ppq_cq01h 17.6, NGD-6 ren_pguard_cq01h>ren_ppguard_cq01h 16.9, NGD-6 ren_pq_cq01h>ren_ppq_cq01h 16.9, NGD-6 ren_pwe_cq01h>ren_ppguard_cq01h 16.9, NGD-6 ren_pwe_cq01h>ren_ppold_cq01h 16.9, NGD-6 ren_pwe_cq01h>ren_ppq_cq01h 16.9, NGD-6 ren_rst_cq01h>ren_pold_cq01h 18.6, NGD-6 ren_rst_cq01h>ren_ppguard_cq01h 17.6, NGD-6 ren_rst_cq01h>ren_ppold_cq01h 17.6, NGD-6 ren_rst_cq01h>ren_ppq_cq01h 17.6, NGD-6 ren_rst_cq01h>ren_psrc_cq01h 18.6, NGD-6 ren_slot_cq01h>ren_pold_cq01h 20.6, NGD-6 ren_slot_cq01h>ren_ppguard_cq01h 19.6, NGD-6 ren_slot_cq01h>ren_ppold_cq01h 19.6, NGD-6 ren_slot_cq01h>ren_ppq_cq01h 19.6, NGD-6 ren_slot_cq01h>ren_psrc_cq01h 20.6, NGD-6 ren_src_cq01h>ren_psrc_cq01h 20.1, NGD-6 ren_v_cq01h>ren_pold_cq01h 17.9, NGD-6 ren_v_cq01h>ren_ppguard_cq01h 16.9, NGD-6 ren_v_cq01h>ren_ppold_cq01h 16.9, NGD-6 ren_v_cq01h>ren_ppq_cq01h 16.9, NGD-6 ren_v_cq01h>ren_psrc_cq01h 17.9
-  fanout ratchet: ooe_rename     10 path(s) over the stage with the fanout term, capped: NGD-1 27.3, NGD-2 q_gname_cq03h 27.6, NGD-2 q_pname_cq03h 3.4, NGD-3 c_dst_cq01h 25.9, NGD-3 c_src_cq01h 25.2, NGD-3 po_dst_cq02h 25.7, NGD-7 no_na_cq03h 21.7, NGD-7 qo_gl_cq03h 21.5, NGD-7 qo_gv_cq03h 21.8, NGD-7 wq_cq03h 21.9
+  fanout ratchet: ooe_rename      1 path(s) over the stage with the fanout term, capped: NGD-2 q_pname_cq03h 3.32
   fanout ratchet: ooe_rendep      2 path(s) over the stage with the fanout term, capped: NGD-3 gsn_cq01h 28.5, NGD-3 psn_cq01h 28.8
   fanout ratchet: ooe_rob_w       5 path(s) over the stage with the fanout term, capped: NGD-1 29.6, NGD-3 al_n_cq02h 29.2, NGD-3 dn_tag_cq02h 26.3, NGD-3 fl_slot_cq02h 28.6, NGD-3 fl_v_cq02h 29.5
   fanout ratchet: ooe_rs          3 path(s) over the stage with the fanout term, capped: NGD-1 28.8, NGD-3 prv_dep_cq01h 26.4, NGD-3 req_cq01h 28.4
   fanout ratchet: ooe_sched       6 path(s) over the stage with the fanout term, capped: NGD-1 30.5, NGD-3 cidx_cq03h 26.6, NGD-3 res_cq03h 29, NGD-3 siss_cq03h 27.1, NGD-3 sslot_cq03h 27.3, NGD-3 vel_cq03h 28.2
   inner helpers: ccv_common_csa inside its parent, ooe_confirm inside its parent, ooe_headrd inside its parent, ooe_pick inside its parent, ooe_ratread alone, within 16 (no module instantiates it yet), ooe_ready inside its parent, ooe_ren1 inside its parent, ooe_ren1n inside its parent, ooe_rencred alone, within 16 (no module instantiates it yet), ooe_select inside its parent, rcu_xbar inside its parent
-  block rcu      sum of parts: 2 level(s) timed alone for convergence, 49 of 49 instance(s) on units at their parameters, the boundary held by its parts (structural read 308.4 s)
+  block rcu      sum of parts: 2 level(s) timed alone for convergence, 49 of 49 instance(s) on units at their parameters, the boundary held by its parts (structural read 229.8 s)
   pending: lead field lead_done_row of ooe_rcu_issue: ccv_ooe's sending side declares no budget for it, so its default (required 12) stands; DA tab rev 116 has both sides declared (not both tops RTL yet)
   lead budgets: ooe_rcu_issue.lead_done_row across the zero-cycle end, 0 sending and 10 receiving declaration(s), worst required + in 25 of 25
   pending: lead field lead_opcode of ooe_rcu_issue: ccv_ooe's sending side declares no budget for it, so its default (required 12) stands; DA tab rev 116 has both sides declared (not both tops RTL yet)
@@ -474,17 +476,17 @@
   pending: lead field lead_pred_we of ooe_rcu_issue: ccv_ooe's sending side declares no budget for it, so its default (required 12) stands; DA tab rev 116 has both sides declared (not both tops RTL yet)
   lead budgets: ooe_rcu_issue.lead_pred_we across the zero-cycle end, 0 sending and 10 receiving declaration(s), worst required + in 25 of 25
   heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 842 MiB, ooe_rob_w 1798 MiB, ooe_rs 2399 MiB, ooe_sched 546 MiB, rcu_bank_slice 1425 MiB, rcu_bank_slice_k0 1422 MiB, rcu_bank_slice_k2 1427 MiB, rcu_bank_slice_k3 1429 MiB; every other unit's commands within 2048 MiB (largest rcu_pred, 1514 MiB)
-  unit wall time (report-only): ooe_rename 2289s, ooe_go 1002s, rcu_top 495s, ooe_rendep 444s, ooe_freelist_gsec 381s, rcu_pred 367s; 48 unit(s) in all, 8424s summed
-  heavy-lock wait (report-only): 29022s summed, most ooe_rob_w 5590s
+  unit wall time (report-only): ooe_rename 1096s, ooe_go 862s, ooe_rendep 732s, ooe_wake 547s, ccv_rcu 466s, rcu_top 424s; 48 unit(s) in all, 7270s summed
+  heavy-lock wait (report-only): 24934s summed, most rcu_bank_slice_k2 3677s
   48 unit(s), 408 port budget(s) in 32 module file(s), stage 25 NGD, ports 12 by default
   timing pass against ABC, outputs, inputs, the stage, paths straight through, inner helpers alone and inside a parent, registers shared by an output and the rest, observation ports, budget files, ratchet, coverage, glue, the assembled block as a sum of parts, ABC's cache, the fanout term, one-cell captures, second-kind no-flop ends, per-field lead budgets on both sides, wake taps (119 controls)
-  [ngd: 11013s]
+  [ngd: 9010s]
 
 == Clock gating (exploratory) ==
   enable inferred from the if-enable form        PASS
   one ICG shared across all 8 flops              PASS
   yosys still has no clockgate pass              as expected (F-17)
-  [clockgate: 1s]
+  [clockgate: 0s]
 
 == Stage 3 -- skeleton (S0: plumbing) ==
   skeleton builds (checker bank Verilated in)    PASS
@@ -509,7 +511,7 @@
   --break wrong-class: every channel's set enforced PASS (55 channels)
   trace -> Perfetto JSON, one track per channel  PASS (55)
   port dumps == rtl/top/ports, every block       PASS (14 types; controls refused)
-  [skel: 16s]
+  [skel: 12s]
 
 == Stage 3 -- skeleton (S1: vadd) ==
   oracle addrhigh from the pinned ccv-sim        PASS (9 records)
@@ -832,7 +834,7 @@
   kernels issue out of order                     PASS (ahead=1507 depth=25 kernels=44 of 63)
   --break dcu-one-miss: the stall bound fails    PASS (warp 1 finished at 597, within 300 of stalled warp 0's 551)
   --in-order: the same traces in program order   PASS (fails the floor: nothing reordered)
-  [kernel: 360s]
+  [kernel: 279s]
 
 == Stage 4b -- OOE model unit tests (sim/ooe/) ==
   OOE unit tests                                       PASS
@@ -887,12 +889,12 @@
   control cas-no-pd                                    caught
   control no-cogrant                                   caught
   control reconv-issues                                caught
-  [ooe_unit: 163s]
+  [ooe_unit: 128s]
 
 == RCU model unit tests (sim/rcu/; RI-2) ==
   RCU unit tests                                       PASS
   RCU unit-test controls caught                        PASS (7)
-  [rcu_unit: 6s]
+  [rcu_unit: 4s]
 
 == Stage 4c -- OOE RTL (rtl/ooe/) ==
   pick rcu (30 entries, 5 resources) == model          PASS (200000 issued=288854 lost=144063 multi-issue=80523 fails=0)
@@ -910,7 +912,7 @@
     control youngest-wins (miu)                        caught
     control any-wins (miu)                             caught
     control no-mask (miu)                              caught
-  ready (45 entries) == model, live                    PASS (25 cycles=80263 skipped=44945 compared=616864 ready=358151 mismatches=0 model_failures=0)
+  ready (45 entries) == model, live                    PASS (25 cycles=80272 skipped=44971 compared=616587 ready=358266 mismatches=0 model_failures=0)
     control code-shift (ready)                         caught
     control no-late (ready)                            caught
   csa (1 operands of 8 bits) == arithmetic             PASS (200000 exact=100000 bad=0)
@@ -929,42 +931,42 @@
     control drop-op (csa 16 x 8)                       caught
   csa (18 operands of 9 bits) == arithmetic            PASS (200000 exact=100000 bad=0)
     control drop-op (csa 18 x 9)                       caught
-  freelist gpr (192 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=80063 allocs=69151 frees=61322 sec_allocs=0 sec_frees=0 returns=0 candidates=0 skipped=0 mismatches=0 model_failures=0)
+  freelist gpr (192 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=80072 allocs=69164 frees=61341 sec_allocs=0 sec_frees=0 returns=0 candidates=0 skipped=0 mismatches=0 model_failures=0)
     control drop-free (freelist gpr)                   caught
     control extra-alloc (freelist gpr)                 caught
     control no-lead (freelist gpr)                     caught
     control wrong-owner (freelist gpr)                 caught
     control one-step (freelist gpr)                    caught
-  freelist gsec (192 entries, 4 ports) == model, live  PASS (25 cores=200 cycles=40477 allocs=34595 frees=30729 sec_allocs=34595 sec_frees=30631 returns=3051 candidates=323016 skipped=39686 mismatches=0 model_failures=0)
+  freelist gsec (192 entries, 4 ports) == model, live  PASS (25 cores=200 cycles=40486 allocs=34608 frees=30748 sec_allocs=34608 sec_frees=30644 returns=3074 candidates=323088 skipped=39686 mismatches=0 model_failures=0)
     control drop-sec-free (freelist gsec)              caught
     control sa-early (freelist gsec)                   caught
     control no-lead (freelist gsec)                    caught
     control one-step (freelist gsec)                   caught
-  freelist pred (48 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=80063 allocs=9413 frees=7444 sec_allocs=0 sec_frees=0 returns=0 candidates=0 skipped=0 mismatches=0 model_failures=0)
+  freelist pred (48 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=80072 allocs=9413 frees=7444 sec_allocs=0 sec_frees=0 returns=0 candidates=0 skipped=0 mismatches=0 model_failures=0)
     control drop-free (freelist pred)                  caught
     control extra-alloc (freelist pred)                caught
     control no-lead (freelist pred)                    caught
     control wrong-owner (freelist pred)                caught
     control one-step (freelist pred)                   caught
-  age rcu (30 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=80263 allocs=75449 multi-alloc=23659 pairs=22108342 mismatches=0 model_failures=0)
+  age rcu (30 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=80272 allocs=75459 multi-alloc=23652 pairs=22118192 mismatches=0 model_failures=0)
     control no-valid (age rcu)                         caught
     control port-reverse (age rcu)                     caught
     control no-lead (age rcu)                          caught
-  age miu (15 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=80263 allocs=24058 multi-alloc=4425 pairs=3963596 mismatches=0 model_failures=0)
+  age miu (15 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=80272 allocs=24060 multi-alloc=4432 pairs=3955440 mismatches=0 model_failures=0)
     control no-valid (age miu)                         caught
     control port-reverse (age miu)                     caught
     control no-lead (age miu)                          caught
-  cmcap (4 lanes, 4 slices) == model, a cycle late     PASS (25 cores=267 cycles=90824 completions=18426 compared=164536 mismatches=0 model_failures=0)
+  cmcap (4 lanes, 4 slices) == model, a cycle late     PASS (25 cores=267 cycles=90833 completions=18428 compared=164553 mismatches=0 model_failures=0)
     control no-lead (cmcap)                            caught
     control late-pay (cmcap)                           caught
     control no-fault-lead (cmcap)                      caught
-  decq (15 entries, 4 slots, 6 in, 4 out) == model, live PASS (25 cores=200 cycles=80063 arrivals=103135 taken=97954 flushes=2379 heads=401742 pool-full=1290 mismatches=0 model_failures=0)
+  decq (15 entries, 4 slots, 6 in, 4 out) == model, live PASS (25 cores=200 cycles=80072 arrivals=103134 taken=97970 flushes=2379 heads=401776 pool-full=1288 mismatches=0 model_failures=0)
     control drop-flush (decq)                          caught
     control enq-swap (decq)                            caught
     control no-enq-lead (decq)                         caught
     control no-take-enable (decq)                      caught
     control no-free-lag (decq)                         caught
-  go (4 slots, 4 a cycle) == model, live               PASS (25 cores=299 cycles=209378 takes=114281 writers=91346 restore_cycles=7 pair-heads=132946 skipped=852 mismatches=0 model_failures=0)
+  go (4 slots, 4 a cycle) == model, live               PASS (25 cores=299 cycles=209411 takes=114263 writers=91329 restore_cycles=7 pair-heads=132946 skipped=852 mismatches=0 model_failures=0)
     control no-hold (go)                               caught
     control no-rbusy (go)                              caught
     control no-squash (go)                             caught
@@ -978,11 +980,11 @@
     control no-corr (go)                               caught
     control no-pair-bit (go)                           caught
     control pair-rounds (go)                           caught
-  go == model, live, scarce names                      PASS (5 cores=139 cycles=144895 takes=35458 writers=27705 restore_cycles=7 pair-heads=130230 skipped=692 mismatches=0 model_failures=0)
+  go == model, live, scarce names                      PASS (5 cores=139 cycles=145078 takes=35424 writers=27676 restore_cycles=7 pair-heads=130454 skipped=692 mismatches=0 model_failures=0)
     control floor-take-now (go, scarce)                caught
     control floor-held-off (go, scarce)                caught
-  rob (4 slots) == model, live                         PASS (25 cores=119 cycles=36054 allocs=38997 nops=292 events=120853 retires=38900 gpr-frees=58628 pred-frees=3728 resolves=3712 redirects=0 ckpt-frees=3712 stopped=9 skipped=109 squashes=0 squashed=0 held=0 killed=0 held-releases=0 discards=0 commits=2968 faults=6 mismatches=0 model_failures=0)
-  rob == model, mispredicting                          PASS (25 cores=119 cycles=42971 allocs=50129 nops=1288 events=136794 retires=38947 gpr-frees=79146 pred-frees=3738 resolves=3713 redirects=1209 ckpt-frees=2504 stopped=6 skipped=112 squashes=1209 squashed=11131 held=2784 killed=952 held-releases=2784 discards=364 commits=2973 faults=6 mismatches=0 model_failures=0)
+  rob (4 slots) == model, live                         PASS (25 cores=119 cycles=36089 allocs=38997 nops=292 events=120861 retires=38909 gpr-frees=58642 pred-frees=3729 resolves=3712 redirects=0 ckpt-frees=3712 stopped=8 skipped=110 squashes=0 squashed=0 held=0 killed=0 held-releases=0 discards=0 commits=2970 faults=6 mismatches=0 model_failures=0)
+  rob == model, mispredicting                          PASS (25 cores=119 cycles=42910 allocs=50146 nops=1293 events=136763 retires=38921 gpr-frees=79177 pred-frees=3733 resolves=3712 redirects=1209 ckpt-frees=2503 stopped=7 skipped=111 squashes=1209 squashed=11167 held=2794 killed=960 held-releases=2793 discards=363 commits=2971 faults=6 mismatches=0 model_failures=0)
     control drop-free (rob)                            caught
     control no-copy (rob)                              caught
     control no-lead (rob)                              caught
@@ -1007,7 +1009,7 @@
     control no-fault-lead (rob)                        caught
     control fault-addr (rob)                           caught
     control two-resolutions (rob)                      caught
-  wake (45 timers, 4 lines) == model, live             PASS (25 cores=267 cycles=90824 skipped=53869 grants=30702 cmpls=3153 misses=398 stops=35214 fins=23644 compared=2170392 raised=65047 extra_leads=1398 mismatches=0 model_failures=0)
+  wake (45 timers, 4 lines) == model, live             PASS (25 cores=267 cycles=90833 skipped=53895 grants=30709 cmpls=3152 misses=395 stops=35216 fins=23645 compared=2169356 raised=65054 extra_leads=1396 mismatches=0 model_failures=0)
     control late-grant (wake)                          caught
     control drop-cmpl (wake)                           caught
     control no-dep (wake)                              caught
@@ -1015,31 +1017,31 @@
     control no-cmpl-lead (wake)                        caught
     control no-sq-lead (wake)                          caught
     control no-hint (wake)                             caught
-  confirm (45 entries) == model, live                  PASS (25 cores=200 cycles=80269 held=16075 replays=907 confirms=82106 oa17=pass mismatches=0 model_failures=0)
+  confirm (45 entries) == model, live                  PASS (25 cores=200 cycles=80278 held=16069 replays=904 confirms=82122 oa17=pass mismatches=0 model_failures=0)
     control no-msd (confirm)                           caught
     control msd-pulse (confirm)                        caught
     control no-fin (confirm)                           caught
     control no-dep (confirm)                           caught
     control no-new (confirm)                           caught
-  prodmap (45 entries, 768 GPR names) == model, live   PASS (25 cores=267 cycles=90824 writes=100960 copies=3113 names=41528704 live=1515894 mismatches=0 model_failures=0)
+  prodmap (45 entries, 768 GPR names) == model, live   PASS (25 cores=267 cycles=90833 writes=100972 copies=3113 names=41535616 live=1516033 mismatches=0 model_failures=0)
     control no-ename (prodmap)                         caught
     control port-swap (prodmap)                        caught
     control no-lead (prodmap)                          caught
   rendep: CT default == rendep-params.py               PASS
-  rendep (45 entries, 4 uops) == model, live           PASS (25 cores=267 cycles=90824 rows=100397 cells=66781 grp=4070 prv=7935 masked_extra=19742 codes_skipped=35102 preds_skipped=1628 mismatches=0 model_failures=0)
+  rendep (45 entries, 4 uops) == model, live           PASS (25 cores=267 cycles=90833 rows=100409 cells=66777 grp=4058 prv=7936 masked_extra=19747 codes_skipped=35107 preds_skipped=1628 mismatches=0 model_failures=0)
     control no-map (rendep)                            caught
     control late-code (rendep)                         caught
     control no-copy-src (rendep)                       caught
     control no-spec (rendep)                           caught
-  rename lookup + ooe_rs assembled == model            PASS (25 cores=267 cycles=90824 allocs=104073 rows=1657994 cells=181226 preds_off_cycles=5772 kinds=1713461 held-cols=3198 mismatches=0 model_failures=0)
+  rename lookup + ooe_rs assembled == model            PASS (25 cores=267 cycles=90833 allocs=104085 rows=1658050 cells=180924 preds_off_cycles=5772 kinds=1713517 held-cols=3199 mismatches=0 model_failures=0)
     control stale-live (rnrs)                          caught
     control wrong-names (rnrs)                         caught
     control no-spec (rnrs)                             caught
-  rencred (rename's credits) == model, live            PASS (90270 uops=102244 late_frees=18591 draws=48 mismatches=0 model_failures=0)
+  rencred (rename's credits) == model, live            PASS (90279 uops=102260 late_frees=18587 draws=48 mismatches=0 model_failures=0)
     control no-late (rencred)                          caught
     control no-draw (rencred)                          caught
     control no-rob-free (rencred)                      caught
-  rs (45 entries, 4 ports a class) == model, live      PASS (25 cores=267 cycles=90824 allocs=104073 in-group=4285 frees=104073 same-edge=0 rows=1713461 cells=389671 stale=2428852 kinds=1713461 held-cols=3198 mismatches=0 model_failures=0)
+  rs (45 entries, 4 ports a class) == model, live      PASS (25 cores=267 cycles=90833 allocs=104085 in-group=4273 frees=104085 same-edge=0 rows=1713517 cells=389279 stale=2429200 kinds=1713517 held-cols=3199 mismatches=0 model_failures=0)
     control no-msd (rs)                                caught
     control drop-squash-free (rs)                      caught
     control drop-group (rs)                            caught
@@ -1051,7 +1053,7 @@
     control no-cmpl-lead (rs)                          caught
     control no-fin (rs)                                caught
     control no-kind (rs)                               caught
-  rat (4 slots, 4 ports) == model, live                PASS (25 cores=267 cycles=90270 skipped=554 renames=100720 in-group=53681 checkpoints=7659 restores=2481 squashes=7 releases=503 retires=66059 restore-writes=36 mismatches=0 model_failures=0)
+  rat (4 slots, 4 ports) == model, live                PASS (25 cores=267 cycles=90279 skipped=554 renames=100732 in-group=53652 checkpoints=7659 restores=2481 squashes=7 releases=503 retires=66059 restore-writes=36 mismatches=0 model_failures=0)
     control port-reverse (rat)                         caught
     control drop-restore (rat)                         caught
     control drop-retire (rat)                          caught
@@ -1059,7 +1061,7 @@
     control no-pending (rat)                           caught
     control no-lead (rat)                              caught
     control pend-over-event (rat)                      caught
-  Rename 1 (lanes, names, reads) == model, live        PASS (25 cores=267 cycles=47904 skipped=42920 stopped=2 lanes=52150 in-group=29562 gpr-names=37334 pred-names=4919 mismatches=0 model_failures=0)
+  Rename 1 (lanes, names, reads) == model, live        PASS (25 cores=267 cycles=47904 skipped=42929 stopped=2 lanes=52150 in-group=29562 gpr-names=37334 pred-names=4919 mismatches=0 model_failures=0)
     control lane-swap (ren1)                           caught
     control name-reverse (ren1)                        caught
     control drop-restore (ren1)                        caught
@@ -1079,18 +1081,19 @@
     control no-take-q2 (rename_scarce)                 caught
     control unmet-now (rename_scarce)                  caught
     control no-last-take (rename_scarce)               caught
-  rename_sec (go, Rename 1 and 2, free lists) == model, live PASS (25 cores=267 cycles=48838 skipped=48 stopped=98 takes=57433 lanes=57141 nops=292 gpr-names=40968 pred-names=5732 frees=36567 rows=58820 cells=39642 grp=2162 prv=4053 masked=10619 narrow-lanes=7340 mismatches=0 model_failures=0)
+  rename_sec (go, Rename 1 and 2, free lists) == model, live PASS (25 cores=267 cycles=48838 skipped=48 stopped=98 takes=57433 lanes=57141 nops=292 gpr-names=40968 pred-names=5732 frees=36571 rows=58820 cells=39642 grp=2162 prv=4053 masked=10618 narrow-lanes=7340 mismatches=0 model_failures=0)
     control drop-free (rename_sec)                     caught
     control no-lead (rename_sec)                       caught
     control no-reads (rename_sec)                      caught
     control no-merge (rename_sec)                      caught
     control no-cw-write (rename_sec)                   caught
-  select (45 entries, 9 resources) == model, live      PASS (25 cycles=99184 followed=22434 candidates=55631 grants=21450 memops=4016 held=79 mismatches=0 model_failures=0)
+    control pend-follows (rename_sec)                  caught
+  select (45 entries, 9 resources) == model, live      PASS (25 cycles=99192 followed=22414 candidates=55842 grants=21447 memops=4018 held=79 mismatches=0 model_failures=0)
     control no-order (select)                          caught
     control no-conf (select)                           caught
     control no-busy (select)                           caught
     control no-hold (select)                           caught
-  rs + wake + sched assembled == model                 PASS (25 cores=251 compared=51 cycles=114217 skipped=80990 grants=27334 grant_diverged_cores=0 first_grant_divergence_mean=0 squash_ready_skipped=3962 held=79 migs=1581 forced=298 issued_slots=27334 mismatches=0 model_failures=0)
+  rs + wake + sched assembled == model                 PASS (25 cores=251 compared=51 cycles=114225 skipped=81018 grants=27331 grant_diverged_cores=0 first_grant_divergence_mean=0 squash_ready_skipped=3973 held=79 migs=1581 forced=298 issued_slots=27331 mismatches=0 model_failures=0)
     control no-msd (trio)                              caught
     control no-miss-lead (trio)                        caught
     control late-leads (trio)                          caught
@@ -1103,7 +1106,7 @@
     control pay-with-valid (trio)                      caught
     control no-c9h (trio)                              caught
     control no-force (trio, idle_r assertion)          caught
-  [ooe_rtl: 3172s]
+  [ooe_rtl: 2347s]
 
 == RCU RTL benches (RI's test/rcu/run-rtl.sh) ==
   rcu_dec_pkg current with the model's decode          PASS
@@ -1144,32 +1147,32 @@
   rcu_mig control cred                                 caught
   rcu_mig control wake                                 caught
   rcu_mig control stall2                               caught
-  rcu_lanes_c4                                         PASS (1400091 values checked)
+  rcu_lanes_c4                                         PASS (1394714 values checked)
   rcu_lanes control bypage                             caught
   rcu_lanes control immpos                             caught
   rcu_lanes control pcrow                              caught
   rcu_mem_c4                                           PASS (320700 values checked)
   rcu_mem control align                                caught
   rcu_mem control pstlane                              caught
-  [rcu_rtl: 302s]
+  [rcu_rtl: 225s]
 
 == RCU block -- ccv_rcu in lock-step with the model (TI rev 394) ==
-  harness: ccv_rcu under Verilator                           built (251s, peak 1129 MiB)
+  harness: ccv_rcu under Verilator                           built (174s, peak 1129 MiB)
     226 inputs, 184 outputs compared each cycle (csr_rsp and csr_credit held to 0), 35 output wakes noted against the wake rule, not compared
   vadd                                                       KNOWN DIVERGENCE (test/rcublk/expected-fail.txt)
     cycle 43: ooe_rcu_issue_s8_credit 0/1
-    after it (+keep): %Error: rcu_bank_slice.sv:541: Assertion failed in rcublk_tb.dut.g_k[3].g_j[7].u_slice.write_row_named: CCV write_row_named failed
+    after it (+keep): MISMATCH cycle 46 port rcu_ooe_done_s6_payload expected 0 got 10000000000000000000000000
   predlane                                                   KNOWN DIVERGENCE (test/rcublk/expected-fail.txt)
     cycle 43: ooe_rcu_issue_s0_credit 0/1, ooe_rcu_issue_s1_credit 0/1, ooe_rcu_issue_s2_credit 0/1, ooe_rcu_issue_s3_credit 0/1, ooe_rcu_issue_s8_credit 0/1
-    after it (+keep): %Error: rcu_pred.sv:555: Assertion failed in rcublk_tb.dut.u_pred.pred_write_row_named: CCV pred_write_row_named failed
+    after it (+keep): MISMATCH cycle 45 port rcu_lane_ops_c00_payload expected 180c060300000000000000000000000000000000f00f00000000000000000000000000000000000000000 got 180c060300000000000000000000000000000000000000000000000000000000000000000000000000000
   plog                                                       KNOWN DIVERGENCE (test/rcublk/expected-fail.txt)
     cycle 43: ooe_rcu_issue_s0_credit 0/1, ooe_rcu_issue_s1_credit 0/1, ooe_rcu_issue_s2_credit 0/1, ooe_rcu_issue_s3_credit 0/1, ooe_rcu_issue_s8_credit 0/1
-    after it (+keep): %Error: rcu_bank_slice.sv:541: Assertion failed in rcublk_tb.dut.g_k[3].g_j[7].u_slice.write_row_named: CCV write_row_named failed
+    after it (+keep): MISMATCH cycle 45 port rcu_lane_ops_c00_payload expected 180c060300000000000000000000000000000000f00f00000000000000000000000000000000000000000 got 180c060300000000000000000000000000000000000000000000000000000000000000000000000000000
   vadd4                                                      KNOWN DIVERGENCE (test/rcublk/expected-fail.txt)
     cycle 43: ooe_rcu_issue_s8_credit 0/1
-    after it (+keep): %Error: rcu_bank_slice.sv:541: Assertion failed in rcublk_tb.dut.g_k[3].g_j[7].u_slice.write_row_named: CCV write_row_named failed
+    after it (+keep): MISMATCH cycle 46 port rcu_ooe_done_s6_payload expected 0 got 200000000000000000000000000
   control corrupt-output (vadd, kill_ack at cycle 42)        FAIL caught
-  [rcu_blk: 258s]
+  [rcu_blk: 182s]
 
 == SV top -- rtl/top/ (generated, tracked) ==
   verilator -Wall: top (synthesis view)          PASS
@@ -1184,7 +1187,7 @@
     ...and refuses 14 impure copies: top, wrapper, reuse, gate, units, credit on receipt PASS
   SV top wiring == C++ skeleton wiring           PASS (71729 bits)
     ...and rejects a lane swapped in a copy      PASS
-  [top: 101s]
+  [top: 91s]
 
 == Formal proofs -- one credited link, and the block clock gate ==
   safety, N=0: every property, for all time      PASS (proved)
@@ -1232,7 +1235,7 @@
     ...a latch open on the high phase: the clean-clock properties fail PASS (cex 1)
     ...witness: reach_gated                      PASS (12 frames)
     ...witness: reach_woken                      PASS (18 frames)
-  [formal: 291s]
+  [formal: 243s]
 
 == Physical primitives -- sequential repeater ==
   repeater: verilator -Wall, ten shapes          PASS
@@ -1246,7 +1249,7 @@
     ...lead-gated: invisible in sim, refused by netlist PASS
     ...bnd-gated: invisible in sim, refused by netlist PASS
     ...raw-reset: invisible in sim, refused by netlist PASS
-  [phys: 33s]
+  [phys: 19s]
 
 == SV-hosted C++ -- the skeleton's blocks inside the SV top ==
   verilator -Wall: shims, top, testbench         PASS
@@ -1388,7 +1391,7 @@ cycles=63)
   with OOE's bypass: the same KERNEL line        PASS (64 runs, no-lane-bypass among them)
     ...u_dec one cycle late: caught              PASS (differing_cycles=105)
     ...u_lane_05 one cycle late: caught          PASS (differing_cycles=71)
-  [svh: 225s]
+  [svh: 174s]
 
 == Hardening wrappers -- params/links.json ==
   links.json: malformed configurations refused   PASS (12 cases, each by name)
@@ -1403,7 +1406,7 @@ cycles=63)
   split: every S1 kernel == ccv-sim              PASS (vadd 186 cycles)
   split: every kernel with OOE's bypass          PASS (CCV_LAT_LANE 11, still forwarded at 4; byp's 3)
   split: SV repeaters == C++ link model          PASS (63 kernels, 45 controls, skew caught)
-  [links: 424s]
+  [links: 319s]
 
 == Walkthrough -- docs/walkthrough.md ==
   walkthrough current
@@ -1411,7 +1414,7 @@ cycles=63)
 
 == Verilator lint ==
   clean
-  [vlint: 2s]
+  [vlint: 1s]
 
 == pending stages ==
   Stage 2  partition CLOSED (14 blocks, 45 instances, 48 channels); topology,
