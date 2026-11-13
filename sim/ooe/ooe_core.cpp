@@ -2993,6 +2993,30 @@ bool Core::migInFlight() const {
   return false;
 }
 
+/// MA-5 (AR 345/347, OA-412): what each ccv_ooe_miu_memop slot may still
+/// carry this cycle. With the payload stage, last cycle's grants leave now
+/// and spend their credits first.
+void Core::memopCreditsLeft() {
+  for (unsigned p = 0; p != 4; ++p) mleft_[p] = mcred_set_ ? mcred_[p] : ~0u;
+  if (mcred_set_ && cfg_.payload_stages)
+    for (const Memop &m : held_memops_)
+      if (m.port < 4 && mleft_[m.port]) --mleft_[m.port];
+}
+
+/// The pipes of a footprint (bit p for P<p>) whose slots hold a credit;
+/// inject_no_memop_credit (the control) takes every pipe as credited.
+unsigned Core::memopCredited(unsigned pipes) const {
+  pipes &= 0xFu;
+  if (cfg_.inject_no_memop_credit) return pipes;
+  unsigned m = 0;
+  for (unsigned p = 0; p != 4; ++p) m |= unsigned(mleft_[p] != 0) << p;
+  return pipes & m;
+}
+
+void Core::takeMemopCredit(unsigned port) {
+  if (port < 4 && mleft_[port] && mleft_[port] != ~0u) --mleft_[port];
+}
+
 void Core::selectSectioned() {
   constexpr unsigned kP0 = 5, kR = 4, kRc = 9;
   // RA-29 (a): RCU-only ops and warp-collectives are one issue class at R,
@@ -3020,11 +3044,13 @@ void Core::selectSectioned() {
   }
   std::vector<bool> memop_block(slot_.size(), false);
   // A bulk discard takes P0 for the cycle, and no memop of its warp goes
-  // with it (V-23).
-  if (!discards_.empty()) {
+  // with it (V-23); it waits while P0 holds no MIU credit (MA-5).
+  if (!discards_.empty() && !memopCredited(1u)) count("select.discard_no_credit");
+  if (!discards_.empty() && memopCredited(1u)) {
     Memop d = discards_.front();
     discards_.pop_front();
     d.port = 0;
+    takeMemopCredit(0);
     busy |= 1u << kP0;
     const int si = slotOf(d.warp);
     if (si >= 0) memop_block[si] = true;
@@ -3059,6 +3085,8 @@ void Core::selectSectioned() {
     if (!atomIssueOk(e)) return false;
     if (x.cls != RsCls::kMiu) return true;
     if (memop_block[x.slot] || !rowConfirmed(e)) return false;
+    // MA-5: a pipe of its footprint holds an MIU credit.
+    if (!memopCredited(x.res >> kP0)) { count("select.memop_no_credit"); return false; }
     // V-61: the copy went in an earlier cycle (or has confirmed and freed).
     if (r.copy && e == r.rs_main && r.rs_copy != kNoEntry &&
         (!rs_[r.rs_copy].issued || rs_[r.rs_copy].issue_at >= now_))
@@ -3217,8 +3245,15 @@ void Core::selectSectioned() {
       const unsigned want = resEntry(e) & 0xFu;
       if ((want & ~x.res) != 0) err("V-63: rob tag %u has an operand outside its footprint", tagOf(x.slot, x.rob));
     }
+    // MA-5: the memop goes on the lowest credited pipe of its footprint
+    // (an injected second memop keeps its own).
+    if (!x.copy && x.cls == RsCls::kMiu && !isExtra(e)) {
+      const unsigned cp = memopCredited(x.res >> kP0);
+      memop_pick_ = cp ? unsigned(__builtin_ctz(cp)) : ~0u;
+    }
     if (x.copy) issueCopy(x.slot, x.rob, port);
     else doIssue(e, port, false, 0);
+    memop_pick_ = ~0u;
     req_gnt_now_[e] = 1;
     ++issued;
   }
@@ -3251,6 +3286,7 @@ void Core::selectSectioned() {
 
 void Core::select() {
   unsigned reads = 0;   // this cycle's PRF operand reads (the non-sectioned select's)
+  memopCreditsLeft();   // MA-5
   // An atomic's read issuable but for the head (AR-21's head wait).
   for (Slot &s : slot_)
     for (unsigned k = 0; k != s.count; ++k) {
@@ -3266,9 +3302,10 @@ void Core::select() {
   std::vector<bool> memop_block(slot_.size(), false);
   // Bulk discards first: each takes a memop slot, and no memop of the same
   // warp goes in the same cycle (V-23).
-  while (!discards_.empty() && mports != cfg_.memop_width) {
+  while (!discards_.empty() && mports != cfg_.memop_width && memopCredited(1u << mports)) {
     Memop d = discards_.front();
     discards_.pop_front();
+    takeMemopCredit(mports);
     d.port = mports++;
     const int si = slotOf(d.warp);
     if (si >= 0) memop_block[si] = true;
@@ -3327,6 +3364,8 @@ void Core::select() {
         const unsigned si = (rr_select_ + k) % slot_.size();
         if (ports == cfg_.issue_width) break;
         if (miu && (mports == cfg_.memop_width || memop_block[si])) continue;
+        // MA-5: the memop leaves on its issue port's slot, which holds a credit.
+        if (miu && ports < 4 && !memopCredited(1u << ports)) { count("select.memop_no_credit"); continue; }
         if (cancelled & (1ull << si)) continue;
         const unsigned e = oldest(si, miu);
         if (e == kNoEntry) continue;
@@ -3599,7 +3638,10 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   if (r.is_mem && !lane_step) {
     Memop m;
     m.tid = u.tid;
-    m.port = cfg_.sectioned ? port - 5 : port;   // sectioned: the pipe, P0-P3
+    // Sectioned: the pipe, P0-P3, the lowest credited one of its footprint
+    // (MA-5).
+    m.port = !cfg_.sectioned ? port : memop_pick_ != ~0u ? memop_pick_ : port - 5;
+    takeMemopCredit(m.port);
     m.rob_tag = is.rob_tag;
     m.warp = s.warp;
     m.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
