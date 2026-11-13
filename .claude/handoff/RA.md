@@ -250,7 +250,17 @@ TI 415 (notice 11-13, pointer only): landed 21d64a76 (release 43248f47): Stub::c
 for c.ooe_rcu and c.lane_rcu (RI moves the model's credits); rcu_ls replaces rcu_blk; ccv_common_clk WAKE_HOLD =
 CCV_WAKE_LAT+1 (AR 343). ccv_rcu's local wake detector: RI's choice, not yet made. When RI drops it, re-word Done
 tab's done-wake term (RA rev 136 (2)) to the common hold. AR 344-347 / TI 408-414: MA's memory side, nothing for RA.
-Bookmarks: OA 411, RA 136, RI 70, TI 415, AR 347, DA 119, OI 338, Conventions 19, CP 157, IS 190, MA 2.
+GATES DETACH (TI 418, cites DA 2026-11-13; DA tab has no row yet): never run a gate as the background task. Until
+TI's tools/detach.sh + gate-wait.sh land (TI 5ac6ab47): `setsid nohup <gate cmd> > ~/ccv-logs/<n>.log 2>&1 < /dev/null &`,
+note the pid, then a background watcher `while kill -0 <pid>; do sleep 60; done` restarted before 2h. No flags, clear
+nothing by hand (disk fix in 21d64a76). Split gate only as fallback.
+Sweep 2026-11-13 (Fri): merged 183cc441 58, infra-6msg93 58, 80102643 2, 3868632d 7, 57eff422 17, 888218a3 10,
+9eb50716 15, c22116ce 1, miu-dcu-microarch-spec-664pgr 43 (MA). Register: nothing for RA. MA-5: memop credits 10/slot
+(AR 345/347); ccv_rcu_miu_addr stays slot-bound, memop issues to RCU on its lead pipe's P slot (OA 412) — no RCU change.
+DA re:MA-13 (in MA tab): MI/DI wait for MA's grill with AR. Answered pings today from OA, AR, TI, IS.
+Pings sent 2026-11-13 to AR, OA, IS, TI, OI (session_01DMw4Ft...), CP, RI, MA (session_01QPk2jyUb...), RH. Pongs: check
+on the next sweep with notice.py check.
+Bookmarks: OA 414, RA 136, RI 70, TI 419, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 46.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
