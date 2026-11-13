@@ -1,10 +1,10 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-07. Keep this current at every task's end; it is what
+Updated 2026-11-13. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
-- Worktree /home/user/ti-ret. Push only to `ccr-183cc441-doowtf` and
+- Push only to `ccr-183cc441-doowtf` and
   `claude/custom-cuda-core-infra-6msg93`, each after
   `git merge-base --is-ancestor origin/<b> HEAD`. No PRs. Never bare `git stash`.
 - Push with `CCV_PUSH_BRANCHES=ccr-183cc441-doowtf,claude/custom-cuda-core-infra-6msg93
@@ -31,37 +31,40 @@ below); then `CCV_PUSH_BRANCHES=... tools/daily-sweep.sh` in the background
 few lines.
 
 ## Register bookmarks (revs read through)
-Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
-(outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 321, OA 380, IS 190, TI 377, OI 324, CP 156, DA 115,
-RA 96, RI 34 (2026-11-07 evening). Latest TI open: TI-51 (rev 346).
-Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
-pongs. Pings 2026-11-06 sent to AR OA IS OI CP RA RI; all seven ponged ok.
+Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
+TI 419, AR 348, OA 414, MA 44 (2026-11-13). MA (MIU/DCU architect,
+session_01QPk2jyUbWA7fW9YpUwqdxk) is not in the roster: notice.py says
+none, so compose with --to AR and edit the header by hand.
 
-## State (2026-11-09 ~08:30Z)
-- PUSHED on both branches, in order: 5271c5e7 (RA 119, RA 124, RI-21 (4)
-  ops.json/gen-ops, RI 70cfd51 merge, rcu_lanes floors, bank_slice heavy),
-  ea8ae6f1 (RST-2 reset same-cycle check, DA 2026-11-09; kill_valid wake tap
-  at 12 + *_wake bounded, AR 336), 4d6065fd (per-field lead budgets, DA 116
-  13 RCU / 0 OOE), 7b003e98 (RI-31: lead_phys_src2 copy S0-S3, lead_sec_mask
-  exact). TI rows 393-400 written and notified.
-- Worktrees: custom-cuda-core, ti-ops, ti-lead, ti-src2 (all at pushed tips).
-  Back up unpushed work to origin gate-scratch/TI-<name> (new branches; an
-  overwrite needs force-push, denied). Container restarts lose local work.
-- User (2026-11-08): "Clear anything required to make room". A gate's cg
-  section leaves ~15 GB in build/cg; delete finished sections' build dirs and
-  ccache when free disk drops under ~5 GB mid-gate.
-- RI-23 (TI 393): TI takes block_report into tools/ once ri-blkrpt lands:
-  check-cg/check-ngd write per-unit group/NGD records at a clean gate.
-- RI-24 (TI 394): TI owes (1) ccv_rcu.sv into SV-hosted under CCV_RCU_RTL on
-  RI's push, (2) shims drive _wake high into RTL receivers now, a staged
-  one-cycle lead later, (3) job_rcu_rtl block lock-step from
-  ccv-skel --port-dump VCDs + event-log diff.
-- RI follow-ups: rcu_core.cpp:317 superset -> equality, then run
-  lead-sec-superset on the model RCU too. OI: FS=1 freelist units (TI 397).
+## Long runs (DA, 2026-11-13)
+An idle container is reclaimed and kills detached jobs; a background task
+dies at 2 h. Run a gate detached and keep a background task alive on it:
+once ti-detach lands, `tools/gate-push.sh` detaches itself, and
+`tools/gate-wait.sh <job log>` as a background task waits (exit 3 =
+still running: rerun at once). Before that lands: `setsid nohup ... &` plus a
+`while kill -0 <pid>` watcher, restarted before 2 h. Add a send_later check-in.
+
+## State (2026-11-13 ~09:10Z)
+- Landed eda137fa (MA-15 1-4, MA-5 memop credits_param 10/slot, no_hit +
+  notice_of.unless, CCV_MIU_DCU_IDS, CreditAt::Release opt-in under
+  CCV_MIU_MEMOP_CREDIT=entry). Row 419 to MA AR OA OI.
+- Gating: /home/user/ti-detach b5cb0fbb (self-detaching long tools,
+  gate-wait.sh, check-detach.sh; backup gate-scratch/TI-detach). Job log
+  /root/ccv-logs/job-gate-push-20261113-090713-20034.log. On pass: a
+  "gates detach: landed" row to AR OA OI RA RI RH IS CP MA (row 418 gave
+  the interim manual recipe).
+- Worktrees: custom-cuda-core, ti-ops, ti-ma, ti-detach. Backups to
+  gate-scratch/TI-<name> by plain push only (force-push is denied).
+- Disk: deleting other sessions' /tmp/tmp.* was denied; ask the user.
 
 ## Open work (most urgent first)
-1. RI-24 (3) job_rcu_rtl lock-step harness; (2) shim _wake.
-2. RI-23 per-unit records + tools/block_report.py.
-3. #97 ri-sfu merge with its four check-rcu-unit controls.
-4. Blocked: #59, #78, #22, #33, #96 (ccv_rcu.sv), #41, #34/#38/#46.
+1. #9 MA-5 entry-free credits: merge OI's dca29edc
+   (origin/ccr-57eff422-5tdecg), make CCV_MIU_MEMOP_CREDIT=entry the
+   default, controls memop-credit-on-take and inject_no_memop_credit; gate;
+   row to OI, MA.
+2. #8 SRAM macros (AR 344): ccv_sram_1rw (byte wmask), ccv_sram_1r1w
+   (read-before-write) as check-ngd/check-cg black boxes, behavioural models
+   in both hosts, a flop-array control.
+3. MI/DI homes when their first files land.
+4. Older: RI-24 (3) job_rcu_rtl lock-step; RI-23 per-unit records +
+   block_report.py.
