@@ -25,8 +25,8 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 348, TI 419, OA 414, IS 193, CP 157, OI 341, RA 136,
-RI 70, MA 46, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
+Conventions 19, AR 348, TI 420, OA 414, IS 193, CP 157, OI 341, RA 136,
+RI 70, MA 48, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
 
 ## State, 2026-11-13
 
@@ -55,7 +55,7 @@ RI 70, MA 46, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
 - MA-13 (DA): no compute priority; MI and DI start only after the grill-me with AR
   is finished, a summary is delivered to Daniel, and everything is documented.
 - session-home installed (`tools/setup-session-home.py --check` matches).
-- MA-15 items 1-4 and MA-5 credits landed (TI 419, eda137fa; MA 46 accepts). Entry-free
+- MA-15 items 1-4 and MA-5 credits landed (TI 420, eda137fa; MA 46 accepts). Entry-free
   credit return is opt-in (CCV_MIU_MEMOP_CREDIT=entry) until OI's gating merges; item 5
   (SRAM macros) is TI's next.
 - Sweep 2026-11-13: merged 7 branches (TI 23, infra 23, OI dca29edc 8, +4 small); RA.md
@@ -74,6 +74,9 @@ RI 70, MA 46, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
 2. Then: the summary to Daniel (all MA rows, decisions, what changed in the spec
    tabs), and confirm everything is documented. Only after that, MI and DI
    handoffs (docs/miu-impl.md, docs/dcu-impl.md).
-3. Track MA-15 item 5 (SRAM macros, TI); then close MA-15 and the TI parts of MA-2/3/5/6/12.
+3. MA-15 closed (MA 47-48; TI-420, a46afef7): all 5 items in, entry-free credits default.
+   For DI's handoff: rtl/macro/ccv_common_sram_{1rw,1r1w}.sv; 1r1w same-cycle read of the
+   written word returns OLD data (DCU forwards fills itself); W a multiple of 8 (pad tags).
+   TI's a46afef7 adds tools/gate-wait.sh <job log> (exit 3 rerun, 4 killed) once merged.
 4. Phase 2: module partition, per-port NGD budgets, index-lead schema row (after
    AR's sweep), the payload-slot macro decision.
