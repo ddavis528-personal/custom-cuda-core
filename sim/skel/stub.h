@@ -747,6 +747,15 @@ protected:
   }
   Blk myType() const { return inst() < 0 ? Blk::EXTERNAL : kBlkInsts[inst()].type; }
 
+  /// Every slot and instance of `chan` this block receives returns its
+  /// credits in the landing cycle (Receiver::creditAt, CreditAt::Landing;
+  /// RI-36 (2), RI-37 (0)): valid at t, credit at t+1, as an RTL receiver's
+  /// <ch>_v_q, where take() would credit at t+2. Call it in the first
+  /// work(), before any message; take() each message the cycle it lands.
+  void creditAtLanding(unsigned chan) {
+    for (const In &i : ins)
+      if (i.ci->chan == chan) i.rx->creditAt(CreditAt::Landing);
+  }
   /// The oldest message on a slot, left in place.
   const Receiver::Msg &peek(unsigned chan, unsigned slot, unsigned inst = 0) {
     return rx(chan, slot, inst).front();

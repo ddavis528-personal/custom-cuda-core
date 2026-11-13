@@ -290,7 +290,7 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (ports spec 2026-09-23; AR's rev 289 (re:RI-11), 2 to 3)
   localparam int CCV_DRAIN_WAIT = 3;
 
-  // Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_common_chk_wake). The receiver's side is ccv_common_clk: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this, so a valid that follows the wake by exactly this much is still captured.
+  // Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_common_chk_wake). The receiver's side is ccv_common_clk: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this + 2 (WAKE_HOLD = this + 1; AR rev 343, RI-38), so a valid that follows the wake by exactly this much, and its payload a cycle later, are captured while the sleep decision's two-flop lag on quiesced catches up.
   // decided at the block-level grill-me (ports spec 2026-09-23)
   localparam int CCV_WAKE_LAT = 4;
 

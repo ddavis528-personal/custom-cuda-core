@@ -19,7 +19,19 @@
 //   - no valid the cycle after a stall -- the stall seen THIS cycle gates the
 //     valid launched for next cycle (test/smoke/credit_smoke.sv used a
 //     registered stall, one cycle late, and violated this at 14 of 28 phases)
-//   - the receiver returns one credit per message it consumes
+//   - the receiver returns one credit per message it consumes: by default
+//     (CreditAt::Pop) the cycle after the pop that consumes it, so a message
+//     taken the cycle it lands (valid at t, payload at t+1) credits at t+2;
+//     under CreditAt::Landing (Receiver::creditAt; RI-36 (2), RI-37 (0)) in
+//     the landing cycle itself, t+1, from the receiver's flop of valid, as an
+//     RTL receiver's `<ch>_credit = <ch>_v_q` does. A two-phase model cannot
+//     decide that credit in the landing cycle (what a block writes there is
+//     seen a cycle later), so it is a mode, armed before the first message:
+//     Receiver::cycle drives the credit in the valid cycle, nxt, and pop
+//     drives none. The block must then take each message the cycle it
+//     lands, as the RTL does, or corLate() counts it -- the same promise as
+//     credit on receipt (Slot::cor, RA-41), whose credit is the boundary
+//     stage's flop of valid rather than the block's own.
 //   - LEAD fields (schema lead_fields) are the exception to "the payload
 //     follows valid": that slice of the same register is written with valid.
 //     On the wire it carries the lead of the message whose valid is up, while
@@ -253,6 +265,12 @@ private:
 };
 
 /// Consumer end.
+/// When a Receiver returns a message's credit (see THE PROTOCOL above).
+enum class CreditAt {
+  Pop,       ///< the cycle after the pop that consumes it (the default)
+  Landing,   ///< the cycle its payload lands: credit = the flop of valid
+};
+
 class Receiver {
 public:
   struct Msg {
@@ -272,7 +290,7 @@ public:
     // cycle it lands here. One still buffered from an earlier cycle was
     // taken late, or dropped: counted every cycle it stays, and required 0
     // (AR's rev 322 (b)).
-    if (s_.cor)
+    if (s_.cor || land_credit_)
       cor_late_ += buf_.size() + held_.size();
     if (release_) {                 // holdNext(false): a cycle late
       for (Msg &m : held_) buf_.push_back(m);
@@ -301,6 +319,10 @@ public:
         ++overflows_;
     }
     landing_ = s_.dst().cur.valid;
+    // CreditAt::Landing: the credit is the flop of this valid, up the cycle
+    // its payload lands (t+1), whether or not the block pops then.
+    if (land_credit_ && landing_)
+      s_.dst().nxt.credit = true;
     if (s_.has_lead && s_.dst().cur.valid)
       leads_.push_back(s_.dst().cur.payload);
   }
@@ -322,14 +344,25 @@ public:
   /// On a credit-on-receipt slot (Slot::cor) the block has no credit: the
   /// wrapper's boundary stage returned it when the message was presented,
   /// and the SV top has no port for one, so pop drives none.
+  ///
+  /// Under CreditAt::Landing, likewise: the credit went back the cycle the
+  /// message landed (cycle() drove it), so pop drives none.
   void pop() {
-    if (!s_.cor && s_.dst().nxt.credit)
+    const bool drives = !s_.cor && !land_credit_;
+    if (drives && s_.dst().nxt.credit)
       ++leaks_;
     max_age_ = std::max(max_age_, now_ - buf_.front().arrived);
     buf_.pop_front();
-    if (!s_.cor) s_.dst().nxt.credit = true;
+    if (drives) s_.dst().nxt.credit = true;
     ++received_;
   }
+  /// When this receiver returns credits (CreditAt; THE PROTOCOL above).
+  /// Set it before the first message is presented -- a block's first
+  /// cycle -- and never change it: a message presented under one mode and
+  /// popped under the other would lose its credit or return two. Landing on a credit-on-receipt slot changes nothing but
+  /// pop (which drives none there anyway): the boundary stage returns it.
+  void creditAt(CreditAt c) { land_credit_ = c == CreditAt::Landing && !s_.cor; }
+  CreditAt creditAt() const { return land_credit_ ? CreditAt::Landing : CreditAt::Pop; }
   void stall(bool on) { s_.dst().nxt.stall = on; }
 
   /// Negative-control hook: a credit for nothing. On a credit-on-receipt
@@ -346,8 +379,9 @@ public:
   uint64_t received() const { return received_; }
   uint64_t overflows() const { return overflows_; }
   uint64_t leaks() const { return leaks_; }
-  /// Credit on receipt: message-cycles a landed message sat here past the
-  /// cycle it landed in (taken late or never). Required 0.
+  /// Credit on receipt or CreditAt::Landing: message-cycles a landed
+  /// message sat here past the cycle it landed in (taken late or never).
+  /// Required 0.
   uint64_t corLate() const { return cor_late_; }
   /// The longest a message waited here, from landing to being taken: a
   /// backpressured channel's measured maximum age (AR's response TI-22).
@@ -359,6 +393,7 @@ private:
   std::deque<Msg> buf_;
   std::deque<Bits> leads_;   ///< lead slices taken in valid cycles, in order
   bool landing_ = false;
+  bool land_credit_ = false; ///< CreditAt::Landing
   uint64_t received_ = 0, overflows_ = 0, leaks_ = 0, cor_late_ = 0;
   unsigned hold_ = 0;        ///< holdNext armed: 1 a cycle late, 2 dropped
   bool release_ = false;     ///< hand held_ to the block this cycle

@@ -334,9 +334,12 @@ done
 #     and WAKE_HOLD more, override / reset /     enable
 #     te open it
 #   Q-33 with ccv_common_chk_wake: the sender's   a wake hold one short of
-#     half assumed, the receiver's half          CCV_WAKE_LAT: wake_keeps_rx
-#     (wake_keeps_rx) and "no valid meets a
-#     withheld edge" proved
+#     half assumed, the receiver's half          CCV_WAKE_LAT + 1:
+#     (wake_keeps_rx, through T + LAT + 2;       wake_keeps_rx; the old hold,
+#     AR rev 343), "no valid meets a withheld    CCV_WAKE_LAT - 1:
+#     edge", and a lead valid's payload, a       q33_lead_payload
+#     cycle after a valid at T + LAT, is
+#     captured (q33_lead_payload) proved
 #   episode: the thresholds free, as CSRs     a threshold sampled only in
 #     (Q-59); wherever one held its value       reset; a count that wraps at
 #     through the current run, `gated` is       the largest threshold
@@ -346,7 +349,7 @@ done
 
 pkgval() { sed -n "s/.*localparam int $1 = \([0-9]*\);/\1/p" rtl/generated/ccv_params_pkg.sv; }
 LAT=$(pkgval CCV_WAKE_LAT)
-HOLD=$((LAT - 1))       # the gate's default: registered wake, then LAT - 1
+HOLD=$((LAT + 1))       # the gate's default: registered wake, then LAT + 1 (AR rev 343)
 # Two configurations: small hysteresis (the corners close together), and the
 # CSR reset values every block gets. The clean-clock and Q-33 proofs leave
 # the thresholds free (FV_FREE_HYST): any value, changing at any time.
@@ -356,13 +359,14 @@ for cfg in "3 5 $HOLD" "$(pkgval CCV_CG_HYST_QUIESCE) $(pkgval CCV_CG_HYST_STALL
   ok=1; what=""
   for spec in "glitch:FV_ASYNC FV_FREE_HYST:all" "cycle::all" \
               "q33_rx:FV_Q33 FV_FREE_HYST:wake_keeps_rx" \
-              "q33_valid:FV_Q33 FV_FREE_HYST:q33_valid_meets_clock"; do
+              "q33_valid:FV_Q33 FV_FREE_HYST:q33_valid_meets_clock" \
+              "q33_lead:FV_Q33 FV_FREE_HYST:q33_lead_payload"; do
     IFS=: read -r nm def tgt <<<"$spec"
     r=$(prove_cg "cg_${nm}_$tag" "$def" "$tgt" $hq $hs $hold)
     [ "$r" = proved ] || { ok=0; what="$what $nm: $r ($B/cg_${nm}_$tag/abc.log)"; }
   done
   [ $ok = 1 ] &&
-    say "clock gate ($hq/$hs/$hold): glitch, cycle, Q-33" "PASS (proved)" ||
+    say "clock gate ($hq/$hs/$hold): glitch, cycle, Q-33, lead payload" "PASS (proved)" ||
     bad "clock gate ($hq/$hs/$hold)" "${what# }"
 done
 
@@ -376,21 +380,23 @@ r=$(prove_cg "cg_episode" "FV_EPISODE FV_FREE_HYST" episode 3 5 $HOLD)
 mkdir -p "$B/cg_mut"
 G=rtl/clk/ccv_common_clk.sv
 I=rtl/ctech/sim/ccv_common_ctech_icg.sv
-sed 's/  logic          wake_q;/  logic          wake_q, wake_d1;/; s/      wake_q <= |wake;/      wake_d1 <= |wake;\n      wake_q <= wake_d1;/' \
+sed 's/^  wire           woke  = |wake;$/  logic          woke;\n  always_ff @(posedge clk) woke <= |wake;/' \
   $G >"$B/cg_mut/wake_late.sv"
-sed 's/= !sleep || wake_q || override_q || !rst_n_q;/= !sleep || wake_q || (|wake) || override_q || !rst_n_q;/' \
+sed 's/= !sleep || override_q || !rst_n_q;/= !sleep || (|wake) || override_q || !rst_n_q;/' \
   $G >"$B/cg_mut/wake_comb.sv"
-sed "s/      if (hold_en) hold_q <= wake_q ? HOLD : hold_q - 1'b1;/      if (hold_en) hold_q <= wake_q ? HOLD - 1'b1 : hold_q - 1'b1;/" $G >"$B/cg_mut/hold_short.sv"
+sed "s/      hold_q <= woke ? OPEN : /      hold_q <= woke ? OPEN - 1'b1 : /" $G >"$B/cg_mut/hold_short.sv"
+sed "s/      hold_q <= woke ? OPEN : /      hold_q <= woke ? OPEN - HW'(2) : /" $G >"$B/cg_mut/hold_old.sv"
 sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 2'd2 >= (CW+1)'(hyst_quiesce))/" $G >"$B/cg_mut/hyst_early.sv"
 sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/(q_run_q + 1'b1 >= CW'(hyst_quiesce))/" $G >"$B/cg_mut/hyst_wrap.sv"
-sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(thr_rst))/; s/^  logic          wake_q;\$/  logic          wake_q;\n  logic [CW-1:0] thr_rst;\n  always_ff @(posedge clk) if (!rst_n) thr_rst <= hyst_quiesce;/" $G >"$B/cg_mut/thr_reset.sv"
+sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(thr_rst))/; s/^  logic \[HW-1:0\] hold_q;\$/  logic [HW-1:0] hold_q;\n  logic [CW-1:0] thr_rst;\n  always_ff @(posedge clk) if (!rst_n) thr_rst <= hyst_quiesce;/" $G >"$B/cg_mut/thr_reset.sv"
 sed 's/ || override_q || !rst_n_q;/ || override_q;/' $G >"$B/cg_mut/no_reset.sv"
 awk '/always_latch begin/{print "  assign en_l = en | te;"; skip=2; next} skip>0{skip--; next} {print}' \
   $I >"$B/cg_mut/no_latch.sv"
 sed 's/    if (!clk) en_l = en | te;/    if (clk) en_l = en | te;/' $I >"$B/cg_mut/high_latch.sv"
 for spec in "wake_late:g::wake_second_edge:a wake a cycle later still" \
             "wake_comb:g::spec:the wake back on the enable path, unregistered" \
-            "hold_short:g:FV_Q33:wake_keeps_rx:wake hold one short of CCV_WAKE_LAT" \
+            "hold_short:g:FV_Q33:wake_keeps_rx:wake hold one short of CCV_WAKE_LAT + 1" \
+            "hold_old:g:FV_Q33:q33_lead_payload:the old wake hold, CCV_WAKE_LAT - 1" \
             "hyst_early:g::spec:hysteresis one short" \
             "hyst_wrap:g:FV_EPISODE FV_FREE_HYST:episode:a count that wraps at the largest threshold" \
             "thr_reset:g:FV_EPISODE FV_FREE_HYST:episode:a threshold sampled only in reset" \
