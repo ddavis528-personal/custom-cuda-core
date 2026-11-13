@@ -49,6 +49,18 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-8. NOW (2026-11-13 ~16:00) Pushed 631d7fc6 (SCOPED PASS 14/24, ri-wt4 ri-xsel): rcu_r xbar_sel_onehot assert +
+   r_tb --control twohot (RA rev 137). RI-41 (RA, TI: merge 631d7fc6) written, RI tab rev 72, notices sent.
+   GATING NOW: ri-wt7 branch ri-credit (on 631d7fc6), log ~/ccv-logs/ri26-push.log (setsid; scoped gate, cg+ngd
+   ~2.5h): d92b249f model creditAtLanding(ooe_rcu, lane_rcu) + lockstep --credit-lead default 0; 33c084e6 lockstep
+   control lead (must diverge); c64b7417 ccv_rcu wake detector busy hold removed (AR 343), rcu_kill NB 6->5,
+   kill_tb kNB 5; wake_detect_iw flop kept (done wake). Local checks: run-rtl 0, lockstep 63/63 + 6 controls,
+   cg/ngd rcu_kill + ccv_rcu 0, kernel 0.
+   ON PUSH: RI row to RA (+TI merge): (a) landing credits, lead control; (b) wake detector gone, so RA can reword
+   the Done tab's done-wake term; notices RA, TI. Then (c) SV-top with RTL, (d) Q-53 checkers.
+   TI-420 (rev 420): tools self-detach; wait with tools/gate-wait.sh <job log> (3=rerun at 110 min, 4=killed);
+   only once a46afef7 is merged into my branches. OI pong received 15:44 (checked ok): pings settled.
+   Bookmarks: TI 420, RI 72 (others as -7).
 -7. NOW (2026-11-13 ~14:00) Pushed 7e29cef5 (SPLIT PASS 24/24, full; cg here chain-ri24, ngd RH):
    daily sweep merges of all 9 remote branches + evmon e9c48768 + CCV-L04 fix 439179d9. rcu_ls (TI's gate job
    = run-lockstep.sh + rcu-ls-corrupt.py) passed with event compare. RI-39 (RA: SHFL_*_R bug, xbar one-hot sel,
