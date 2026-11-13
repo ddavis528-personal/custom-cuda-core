@@ -7,6 +7,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; no need to ask
   for a go unless at a key decision point. Long performance runs go to RH
   (session_01QPk2jvfKM1V5rRfip8FC86).
+- Gates (TI rev 418): launch `setsid nohup <gate> > log 2>&1 < /dev/null &`, never as a harness background
+  task (2 h kill); wait in-turn on the log or `while kill -0 <pid>`. Until TI's self-detaching tools land.
 - Push only with `CCV_PUSH_BRANCHES=ccr-57eff422-5tdecg tools/gate-push.sh` (--full for a
   sweep merge), run detached (setsid nohup script), result to a log a wait loop watches.
   A manual git push is refused ("CI Bypass"). Never push red. No PRs. One gate or heavy
