@@ -49,7 +49,14 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--5. NOW (2026-11-13) Task 16 event monitor: ri-wt7 branch ri-evmon, e9c48768 (on gate-scratch/RI):
+-6. NOW (2026-11-13 10:31 sweep) ri-wt4 branch ri-sweep3 = 7e29cef5: 439179d9 (evmon e9c48768 + CCV-L04 fix
+   '(l >= s)') + merges of all 9 remote branches (126afa13 8, 183cc441 55, 3868632d 7, 57eff422 17, 80102643 2,
+   9eb50716 15, c22116ce 1, infra 55, miu-dcu-spec 40), no conflicts, regen no change. chain-ri23 (439179d9)
+   killed in favour of one full gate: chain-ri24 (cg here, ngd asked of RH, gate-push --full). Status
+   ~/ccv-logs/chain-ri24.out. Fri pings sent to AR OA IS TI OI CP RA MA RH; pongs sent to AR TI IS RA.
+   Bookmarks: Conv 19 AR 348 OA 414 IS 193 TI 419 OI 341 CP 157 DA 119 RA 136 RI 70 MA 46. Nothing needs RI.
+   TI 418: gates detached (setsid nohup + kill -0 watcher); TI's self-detaching tools + tools/gate-wait.sh coming.
+-5. (2026-11-13) Task 16 event monitor: ri-wt7 branch ri-evmon, e9c48768 (on gate-scratch/RI):
    test/rcu/evmon.py (RTL event monitor, compare, idle_check), lockstep controls init opnd ev gate row,
    model gpr_row event, rcu_r SHFL_UP/DOWN/BFLY_R bug fix (amount from v(R1)) with one-hot rcu_xbar sel.
    Checks green (63/63, 5 controls). Gate in flight: chain-ri22 (cg here; ngd asked of RH; rest polls
