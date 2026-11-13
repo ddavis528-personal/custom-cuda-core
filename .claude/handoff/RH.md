@@ -65,6 +65,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   read only in placePos, which returns early unless sectioned=1 (default 0). U == G
   because unmet_reg defaults to 1 since f4d5ee10. Offered OI a sectioned=1 rerun
   (about 9 h of cm128); awaiting configs.
+- TI-420 (a46afef7, on TI's branches): long tools self-detach (tools/detach.sh) and write
+  ~/ccv-logs/job-*.log. Wait with `tools/gate-wait.sh <job log>` as the background task
+  (110 min cap; exit 3 = still running, rerun it; exit 4 = killed by a restart, relaunch).
+  It replaces watchjob.sh for gates on a commit that has it; older commits keep the
+  setsid-nohup + watchjob.sh pattern below.
 - Gates detach (TI rev 418): `setsid nohup <job> >/dev/null 2>&1 </dev/null &`.
   Only watchers (rh-jobs/watchjob.sh '<pgrep pat>' 7100 <file>) are background
   tasks. Container restarts (11-13 07:07Z, and earlier) still kill detached jobs
