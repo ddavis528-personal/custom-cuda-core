@@ -188,6 +188,13 @@ struct Config {
   /// Speculative wake of L1-load dependants at CCV_LAT_L1_WAKE, cancelled on
   /// a miss (A-46). Off while MIU completes no load at the L1 contract.
   bool l1_spec = true;
+  /// OA 410 (OA rev 413, MA's answer to OA 408): a completion hint with
+  /// no_hit set says a spec global load has lost the L1-hit contract (valid
+  /// I+12, payload I+13). Taken, it clears the load's speculative wake at
+  /// once, as a miss would at I+16, and its dependants wake on the
+  /// completion. A refill hint for the same load in the cycle wins. Off:
+  /// a no-hit is ignored and the miss cancels at the contract, as before.
+  bool l1_nohit = false;
   // -- narrow registers and lane sections (OI-28 to OI-33, Daniel's 2026-10-08) -
   /// Sectioned lanes: a register is a slice of a PRF row, named row * 4 +
   /// position, an op claims the union of its operands' sections widened to
@@ -546,6 +553,7 @@ struct Config {
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
   bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
+  bool inject_ignore_nohit = false;     ///< l1_nohit's control: a no-hit hint clears nothing (OA 410)
   bool inject_no_memop_credit = false;  ///< select grants a memop on a pipe MIU holds no credit for (MA-5)
   /// Sectioned select grants one more lane op a cycle onto sections already
   /// held, unchecked (V-60): the kernels' no-resource-cap control, which RCU
@@ -1335,7 +1343,7 @@ public:
   void cmpl(const Cmpl &c);
   /// OA-23's completion hint: the completion for rob_tag comes two cycles
   /// from now (read only under Config::miss_lead).
-  void hint(unsigned rob_tag);
+  void hint(unsigned rob_tag, bool no_hit = false);
   uint64_t now() const { return now_; }   ///< the last cycle run
   /// R held no op at the last cycle's select: a migration's row may use
   /// its PRF port (RA-17).
@@ -2085,7 +2093,7 @@ private:
   bool ren_floors_in_share_ = false;      ///< rename's admission: the allowance holds the floors (fits_stale 6)
   bool ren_pair_last_ = false;            ///< OI-79 (b): the pair tried takes the cycle's last lane
   bool ren_pair_cut_ = false;             ///< and the go's terms admitted it: the width cuts the take there
-  std::vector<unsigned> hints_;           ///< completion hints sent before this cycle (miss_lead)
+  std::vector<std::pair<unsigned, bool>> hints_;  ///< completion hints before this cycle: rob tag, no_hit (miss_lead, l1_nohit)
   /// req_rows_late: each row's state one and two updates ago (bit 0
   /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle, 4
   /// held miss, 5 miss pulse, 6 final, 7 produces), and issued as

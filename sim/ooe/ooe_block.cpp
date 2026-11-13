@@ -400,7 +400,11 @@ private:
         auto e = rs_sent_.find(tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u hinted for RS entry %u, but its memop named entry %u", tag, rs, e->second);
-        rxAct(16, [this, tag] { core_.hint(tag); });
+        // OA 410: no_hit makes the hint advice (notice_of.unless): no
+        // completion is promised, and the bank does not hold one to it.
+        const bool no_hit = hasField(c.cmpl_hint, "no_hit") && get(m.payload, c.cmpl_hint, "no_hit");
+        rxAct(16, [this, tag, no_hit] { core_.hint(tag, no_hit); });
+        if (no_hit) continue;
         rx_hinted_.insert(tag);
       }
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)

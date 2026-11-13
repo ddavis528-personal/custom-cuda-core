@@ -43,7 +43,7 @@ std::string Config::apply(const std::string &spec) {
       {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}, {"cmpl_split", &cmpl_split}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
-  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
+  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
@@ -57,7 +57,8 @@ std::string Config::apply(const std::string &spec) {
                                      {"names_pool_lag", &names_pool_lag},
                                      {"full_rows", &full_rows},
                                      {"inject_partial_taken_ok", &inject_partial_taken_ok},
-                                     {"inject_no_memop_credit", &inject_no_memop_credit}};
+                                     {"inject_no_memop_credit", &inject_no_memop_credit},
+                                     {"inject_ignore_nohit", &inject_ignore_nohit}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -315,7 +316,7 @@ void Core::uop(const Uop &u) {
 }
 void Core::done(const Done &d) { dones_.push_back(d); }
 void Core::cmpl(const Cmpl &c) { cmpls_.push_back(c); }
-void Core::hint(unsigned rob_tag) { hints_.push_back(rob_tag); }
+void Core::hint(unsigned rob_tag, bool no_hit) { hints_.push_back({rob_tag, no_hit}); }
 void Core::alloc(const Alloc &a) { allocs_.push_back(a); }
 void Core::demote(unsigned warp) { demotes_.push_back(warp); }
 void Core::barRelease(uint32_t m) { released_ |= m; }
@@ -343,8 +344,28 @@ void Core::cycle(uint64_t now) {
   // OA-23's hints, two cycles ahead of their completions: ooe_wake keeps a
   // spec load's lead line on one that comes by its miss's lead (the
   // completion at the L1 contract), and drops it otherwise.
-  for (unsigned tag : hints_) {
+  std::set<unsigned> refill;
+  for (const auto &h : hints_)
+    if (!h.second) refill.insert(h.first);
+  for (const auto &h : hints_) {
+    const unsigned tag = h.first;
     RobEntry *r = byTag(tag, nullptr);
+    if (h.second) {
+      // OA 410: a no-hit names an outstanding global load; a refill hint
+      // for the same load wins, and the no-hit is dropped.
+      if (!r || !r->is_load || r->u.space != 0 || r->atomic)
+        err("OA 410: a no-hit hint for rob tag %u, not an outstanding global load", tag);
+      if (!r || refill.count(tag) || r->rs_main == kNoEntry) continue;
+      RsEntry &x = rs_[r->rs_main];
+      if (x.valid && x.issued && x.spec) {
+        count("load.no_hit");
+        if (cfg_.l1_nohit && !cfg_.inject_ignore_nohit) {
+          cancel(r->rs_main);
+          count("cancel.no_hit");
+        }
+      }
+      continue;
+    }
     if (!r || r->rs_main == kNoEntry) continue;
     RsEntry &x = rs_[r->rs_main];
     if (x.valid && x.issued && x.spec && now_ + 2 <= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
