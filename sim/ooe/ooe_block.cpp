@@ -867,6 +867,13 @@ private:
 
   void work() override {
     takeInputs();
+    // MA-5 (AR 345/347): MIU's credits per memop slot, so select sends no
+    // memop where sendOn would find none.
+    {
+      std::array<unsigned, 4> mc{};
+      for (unsigned p = 0; p != 4; ++p) mc[p] = Stub::credits(ch().ooe_miu, p);
+      core_.memopCredits(mc);
+    }
     core_.cycle(now_);
     takeUops();
     sendOutputs();
