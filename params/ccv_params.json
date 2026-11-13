@@ -1306,6 +1306,15 @@
       "decided_at": "with CCV_P_TIMEOUT_MEM"
     },
     {
+      "name": "CCV_P_TIMEOUT_MEMOP",
+      "value": 20480,
+      "status": "provisional",
+      "derive": "CCV_MEMOP_CREDITS * CCV_P_TIMEOUT_MEM",
+      "source": "AR rev 350 (re TI rev 424, AR 349); MA confirms per slot",
+      "doc": "Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). The spec's MIU parks misses and never blocks one warp behind another (AR rev 321, MA-14), so a slot's memop waits behind at most its own slot's CCV_MEMOP_CREDITS - 1 others, one memory-length stall each: the CCV_P_TIMEOUT_BP rule applied to MA-5's credits. A watchdog and a sizing signal, provisional until MA's Phase 1 model: each gate run reports the channel's longest credit hold (BPAGE). The MIU stub's cross-warp head-of-line block (MA-14's deviation) is not what it is sized to.",
+      "decided_at": "with CCV_P_TIMEOUT_MEM"
+    },
+    {
       "name": "CCV_W_ASID",
       "value": 8,
       "status": "arch",

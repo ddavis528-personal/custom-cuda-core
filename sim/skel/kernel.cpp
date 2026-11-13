@@ -6199,13 +6199,17 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
   // Each backpressured channel's longest wait from landing to take, over its
   // slots: the measure CCV_P_TIMEOUT_BP is a watchdog over (AR's response
   // TI-22). Not part of the KERNEL line the two hosts compare.
+  // A credits_param channel (MA-5) reports the longest credit hold too,
+  // landing to release, against its own watchdog (timeout_param, AR rev 350).
   for (const ChanInst &ci : kChanInsts) {
-    if (!kChans[ci.chan].held) continue;
+    const auto &ch = kChans[ci.chan];
+    const bool cp = ch.credits != ccv::kCreditDepth;
+    if (!ch.held && !cp) continue;
     uint64_t age = 0;
-    for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
-      age = std::max(age, m.rx(ci.slot_base + s).maxAge());
-    std::printf("BPAGE %s max=%llu watchdog=%u\n", kChans[ci.chan].name,
-                (unsigned long long)age, unsigned(ccv::prov::kTimeoutBp));
+    for (unsigned s = 0; s != ch.rate; ++s)
+      age = std::max({age, m.rx(ci.slot_base + s).maxAge(), m.rx(ci.slot_base + s).maxHold()});
+    std::printf("BPAGE %s max=%llu watchdog=%u\n", ch.name, (unsigned long long)age,
+                unsigned(ch.watchdog));
   }
   std::printf("COVER");
   for (const char *b : Kernel::kCoverBins)
