@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=26 exported=2026-11-08 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 26 on 2026-11-08 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=27 exported=2026-11-13 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 27 on 2026-11-13 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # R unit and crossbar
 
@@ -64,7 +64,7 @@ In A+2 the RW port writes `steer(merge(new, old, mask), pos)` into the sections 
 | `movi`, `movi48` | `active` = issue\_mask | new = `imm` & em, every lane | GPR rd | slot 5 |
 | `shfl.idx` (immediate index) | `active` = issue\_mask & guard | new\[l\] = v(R0)\[`imm`\[4:0\]\] & em | GPR rd | slot 6: valid A+1, payload A+2 |
 | `shfl.idx` (register index) | as above | idx\[l\] = v(R1)\[l\]\[4:0\]; new\[l\] = xbar(v(R0), idx)\[l\] & em | GPR rd | slot 6 |
-| `shfl.up`, `.down`, `.bfly` | as above | idx\[l\] = l − c, l + c, l XOR c with c = `imm`\[4:0\]; out of 0..31 → idx\[l\] = l; no segment or clamp (\[26:24\] reserved) (O-85) | GPR rd | slot 6 |
+| `shfl.up`, `.down`, `.bfly` | as above | idx\[l\] = l − c, l + c, l XOR c with c = `imm`\[4:0\] for the immediate forms and c\[l\] = v(R1)\[l\]\[4:0\] per lane for SHFL\_UP\_R, SHFL\_DOWN\_R and SHFL\_BFLY\_R (IREG class; RA rev 137, RI-39); out of 0..31 → idx\[l\] = l; no segment or clamp (\[26:24\] reserved) (O-85). The RTL forms `sel` directly and builds no idx. | GPR rd | slot 6 |
 | `vote.any` | RA (ps) | r = OR over active lanes of ps; p = {32{r}} | predicate pd, merge mask = active | slot 6 |
 | `vote.all` | RA (ps) | r = AND over active lanes of ps (1 when none active) | predicate pd, merge mask = active | slot 6 |
 | `ballot` | RA (ps) | new\[l\] = ps & active (32 bits, truncated to rd's width by em); written on active lanes only | GPR rd | slot 6 |
@@ -81,7 +81,7 @@ Barriers do not reach the RCU in the first build (TI-40, TI-42; RA-25 closed by 
 
 ## Crossbar
 
-`rcu_xbar` is a combinational inner helper of `rcu_r` (timed as its parent's logic, and held alone to 16 NGD until instantiated). Inputs: `src[32][32]` (v(R0)), `idx[32][5]`. Output: `out[l] = src[idx[l]]`. Each output lane decodes its index to a 32-bit one-hot (3 NGD) and takes a 32:1 AND-OR of 32-bit words (6 NGD): about 9 NGD, 32 × 32 × 32 AND-OR cells. The immediate-index form uses the same structure with every `idx[l]` equal. `ret` uses the one-hot `rlow_a` into the same kind of AND-OR, separately. `unballot` needs no crossbar: lane l takes bit l of its own rs.
+`rcu_xbar` is a combinational inner helper of `rcu_r` (timed as its parent's logic, and held alone to 16 NGD until instantiated). It decodes nothing (RA rev 137, RI-39, 7e29cef5). Inputs: `src[32][32]` (v(R0)) and `sel[LANES*LANES]`, one-hot per output lane. Output: `out[l] = OR over s of (sel[l*LANES+s] & src[s])`, a 32:1 AND-OR of 32-bit words per lane (6 NGD), 32 × 32 × 32 AND-OR cells. `rcu_r` forms `sel` at cr03h from one-hot compares for every form at once (index `ixr`, up `iru`, down `ird`, butterfly `irb`, immediate `iim`), each qualified by its class flop taken under `ix_en_cr02h`. R measures 23.9 NGD flop to flop; the per-lane adder form (32.3) is withdrawn. Exactly one `sel` bit per active output lane, held by a one-hot assert in r\_tb with a two-hot control; an inactive lane may be all-zero. `ret` uses the one-hot `rlow_a` into the same kind of AND-OR, separately. `unballot` needs no crossbar: lane l takes bit l of its own rs.
 
 ## Depth (estimates, with the fanout term, for the implementation to measure)
 
@@ -90,7 +90,7 @@ Barriers do not reach the RCU in the first build (TI-40, TI-42; RA-25 closed by 
 | A | `phys_src` from the interface flop 0, fanout to the 32 slices about 2.5, binary decode in the slice 2, R0 or R1 read 11.0 (measured, with fanout), MIU write-through mux 2, into the slice's `rsrc` | measured 18.4 (15.9 in the slice + 2.5 fanout), RCU input within 25 from the interface flop |
 | A | the write-through match: row compare against the MW select flops 3, AND lane mask, section and valid 1, fanout to the 64 bits about 3, after the port's 4.5 | about 11.5, in parallel |
 | A+1 | R2 read 11.0, align 2, into `old` | 13 |
-| A+1 | register-index shfl from `rsrc`: align 2, select fanout 1, decode 3, crossbar 6, em 1, fanout of the one-hots about 3 | 16 |
+| A+1 | register-index and register-amount shfl from `rsrc`: align 2, select fanout 1, one-hot compare into sel 3 (in `rcu_r` at cr03h), crossbar 6, em 1, fanout of the one-hots about 3; R measured 23.9 flop to flop (RI-39) | 16 |
 | A+1 | `ret` from `rsrc`: align 3, pick 5 (`aux`), broadcast about 2, compare 5, AND 1, into `branch_mask` | 16 |
 | A+1 | `unballot` from `rsrc`: align 3, bit select 0 (a wire), into `rpres_a1` | 4 |
 | A+1 | `vote`: OR or AND over 32 from `rpsrc_a`, into `rpres_a1` | 6 |

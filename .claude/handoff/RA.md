@@ -266,14 +266,13 @@ is setsid's pid, which exits at once; find the gate's own pid with `pgrep -f gat
 RA rev 137 (re:RI-39, RI notified): accepted register-amount shuffle fix (amount per lane from v(R1)[4:0], IREG) and
 rcu_xbar one-hot sel[LANES*LANES] formed in rcu_r at cr03h (ixr/iru/ird/irb/iim, class flops under ix_en_cr02h);
 xbar decodes nothing, inner helper of rcu_r; R 23.9 NGD (adder form 32.3 withdrawn); asked one-hot assert + two-hot
-control in r_tb. PENDING (Docs service was down 11-13): R unit tab (node 10fb0241-f5be, was rev 26) edit may not have
-landed. Check: search "decodes nothing". If absent, replace blocks m1nafg6nm10.3853 (Crossbar para; keep ret/unballot
-sentences), m1nafg6nm10.3200 (shfl compute cell: c=imm[4:0] imm forms; c[l]=v(R1)[l][4:0] for *_R; RTL forms sel, no
-idx), m1nafg6nm10.15363 (depth cell: align 2, select fanout 1, one-hot compare into sel 3, xbar 6, em 1, fanout ~3;
-23.9 measured). Leave the "Why." paragraph's old ~26 estimate (historical). Then refresh rcu-arch R unit snapshot.
+control in r_tb. Spec edit LANDED 11-13 (Docs was down until ~15:00): R unit tab rev 27 (Crossbar para, shfl
+compute cell, depth cell; "Why." para's old ~26 estimate kept as history); snapshot rcu-arch-r-unit.md refreshed.
 RI-40: next RI items are creditAtLanding (--credit-lead 0) then removing ccv_rcu's wake detector -> reword Done tab's
 done-wake term (RA rev 136 (2)) to AR 343's common hold when RI's landing row arrives.
-Bookmarks: OA 414, RA 137, RI 71, TI 419, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 46.
+TI 420 (a46afef7): long tools self-detach; wait with tools/gate-wait.sh <job log> as the background task (exit 3 =
+rerun the wait, 4 = killed, restart the job); replaces the setsid/pgrep method once merged.
+Bookmarks: OA 414, RA 137, RI 71, TI 420, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 46.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
