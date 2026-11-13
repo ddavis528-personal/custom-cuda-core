@@ -453,19 +453,22 @@ def main():
                     help="cycles the RTL's credits lead the model's (default 0, strict): the "
                          "model credits issue and lane results in the landing cycle "
                          "(creditAtLanding), as the RTL's <ch>_v_q does (RI-36); a triage aid")
-    ap.add_argument("--control", choices=("init", "opnd", "ev", "gate", "row"),
+    ap.add_argument("--control", choices=("init", "opnd", "ev", "gate", "row", "lead"),
                     help="a negative control, which must diverge on every dump: init leaves "
                          "the RTL's register file unmatched to the model's power-up; opnd flips "
                          "one consumed operand bit of the dump's first lane message; ev drops the "
                          "model's first compared event; gate drops its first idle, so the clock "
                          "gate's first sleep finds the model busy; row flips a bit of the first "
-                         "written row's value")
+                         "written row's value; lead holds the RTL's credits a cycle ahead of the "
+                         "model's (--credit-lead 1), so the strict credit compare must fail")
     ap.add_argument("--watch", action="append", default=[], metavar="PATH",
                     help="print a signal under ccv_rcu (e.g. u_pred.g_row[6].pq_cr02h) at each change, "
                          "with its cycle (a triage aid)")
     ap.add_argument("dumps", nargs="+")
     a = ap.parse_args()
     a.build = os.path.abspath(a.build)
+    if a.control == "lead":
+        a.credit_lead = 1
     dirs = port_dirs()
     chans = chan_fields()
     exe, fail, diverged = None, 0, set()
