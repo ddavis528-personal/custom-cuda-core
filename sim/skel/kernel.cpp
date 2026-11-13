@@ -1122,11 +1122,14 @@ private:
     const Ch &c = ch();
     // A memop's credit stands for its queue entry (MA-5, AR rev 345): it
     // goes back when the memop's last completion leaves, a discard's as it
-    // is taken. memop-credit-on-take returns it on take, as before, so OOE
-    // can hold more memops in MIU than it has entries: refused below.
+    // is taken. Opt-in (CCV_MIU_MEMOP_CREDIT=entry) until OOE's select waits
+    // for a memop credit (OI): today OOE refuses to send without one, as a
+    // model error. By default the credit returns on take, as before.
     if (!armed_) {
       armed_ = true;
-      if (k_.brk != "memop-credit-on-take") creditAtRelease(c.ooe_miu);
+      const char *e = std::getenv("CCV_MIU_MEMOP_CREDIT");
+      at_entry_ = e && std::string(e) == "entry";
+      if (at_entry_) creditAtRelease(c.ooe_miu);
     }
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
       while (has(c.fill_ntc, s))
@@ -1186,7 +1189,7 @@ private:
           continue;
         }
         // The slot's queue entries: never more than its credits.
-        if (++entries_[s] > kChans[c.ooe_miu].credits)
+        if (++entries_[s] > kChans[c.ooe_miu].credits && at_entry_)
           k_.fail("miu: %u memops hold queue entries on slot %u, over its %u credits (MA-5)",
                   entries_[s], s, unsigned(kChans[c.ooe_miu].credits));
         if (uidClass(m.tid) != IdClass::kInstr)
@@ -1478,7 +1481,7 @@ private:
     --entries_[slot];
     release(c.ooe_miu, slot);
   }
-  bool armed_ = false;
+  bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
 
   Bits withLead(Bits m) {

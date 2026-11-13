@@ -642,7 +642,7 @@
       "require": "CCV_MEMOP_CREDITS >= CCV_CREDIT_DEPTH",
       "decided_at": "MA (MIU memop queue sizing), ruled by AR",
       "source": "MA-5, AR rev 345, TI rev 413 (2026-11-13)",
-      "doc": "Credits a slot of ccv_ooe_miu_memop holds (schema credits_param), in place of CCV_CREDIT_DEPTH: MIU's 40 memop-queue entries over the channel's 4 slots, so a credit stands for a free queue entry and OOE throttles its memop issue instead of MIU refusing an address (MA-5). MIU returns an entry-holding memop's credit on its arrival slot when the entry frees, a bulk discard's as it takes it. At least the credit loop, so the slot still runs at full rate; a repeated link adds its 2(N + bnd_rx) to it, as to CCV_CREDIT_DEPTH."
+      "doc": "Credits a slot of ccv_ooe_miu_memop holds (schema credits_param), in place of CCV_CREDIT_DEPTH: MIU's 40-entry shared memop queue over the channel's 4 slots: each credit is one entry of the shared queue, returned on the memop's arrival slot when it frees and OOE throttles its memop issue instead of MIU refusing an address (MA-5). MIU returns an entry-holding memop's credit on its arrival slot when the entry frees, a bulk discard's as it takes it. At least the credit loop, so the slot still runs at full rate; a repeated link adds its 2(N + bnd_rx) to it, as to CCV_CREDIT_DEPTH."
     },
     {
       "name": "CCV_RESCUE_DEPTH",
@@ -1302,7 +1302,7 @@
       "status": "provisional",
       "derive": "CCV_CREDIT_DEPTH * CCV_P_TIMEOUT_MEM",
       "source": "AR's response TI-22 (2026-10-21)",
-      "doc": "Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.",
+      "doc": "Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure), and for a channel whose credits stand for a resource its receiver holds through a memory access (schema: credits_param; ccv_ooe_miu_memop, MA-5). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.",
       "decided_at": "with CCV_P_TIMEOUT_MEM"
     },
     {

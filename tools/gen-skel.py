@@ -479,7 +479,10 @@ def gen_sv(chans, cinst, nslots, pbits):
                 lm += ", .FIXED_LAT(1)"   # no stall, credit on landing (A-47)
             # A backpressured channel's response bound is the watchdog
             # CCV_P_TIMEOUT_BP, not CCV_P_TIMEOUT_N (AR's response TI-22).
-            tmo = "CCV_P_TIMEOUT_BP" if c["held"] else "CCV_P_TIMEOUT_N"
+            # A channel whose credits stand for a resource the receiver holds
+            # through a memory access (credits_param; MA-5, AR rev 345) is
+            # answered within the same watchdog.
+            tmo = "CCV_P_TIMEOUT_BP" if c["held"] or c["credits_param"] else "CCV_P_TIMEOUT_N"
             # A credit-on-receipt end's boundary flop returns the credit
             # itself, flop to flop (AR's rev 322): no stage more each way, so
             # its loop, round trip and fixed-latency prompt are exact, and a
@@ -497,7 +500,7 @@ def gen_sv(chans, cinst, nslots, pbits):
                 lm += (", .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + %d), "
                        ".TIMEOUT_N(ccv_prov_pkg::%s + %d), "
                        ".SRC_STAGES(%d)" % (2 * n, tmo, 2 * n, ci["src_stages"]))
-            elif c["held"]:
+            elif c["held"] or c["credits_param"]:
                 lm += ", .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)"
             if c["credits_param"]:
                 # More credits than the loop (MA-5): the depth is the
@@ -587,8 +590,11 @@ def gen_sv(chans, cinst, nslots, pbits):
                          "u_%s_notice_s%d (" % (PKG[no["ahead"]], no["ahead"], kw,
                                                 c["name"][4:], s))
                 L.append("    .clk(clk), .rst_n(rst_n), .enable(pair_enable),")
-                L.append("    .ntc_valid(valid[%d]), .ntc_keys(%s),"
-                         % (ci["slot_base"] + s, keys(c, ci, s, no["keys"])))
+                # notice_of.unless (OA rev 413): a set bit of the notice's
+                # own payload makes that message no promise.
+                skip = (keys(c, ci, s, [no["unless"]]) if no.get("unless") else "1'b0")
+                L.append("    .ntc_valid(valid[%d]), .ntc_keys(%s), .ntc_skip(%s),"
+                         % (ci["slot_base"] + s, keys(c, ci, s, no["keys"]), skip))
                 L.append("    .msg_valid(valid[%d]), .msg_keys(%s));  // %s"
                          % (mi["slot_base"] + s, keys(m, mi, s, no["keys"]), m["name"]))
     for c in chans:

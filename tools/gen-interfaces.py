@@ -481,8 +481,13 @@ def main():
         if no is not None:
             names = {x["name"]: x for x in d["channels"]}
             other = names.get(no.get("channel"))
-            if set(no) != {"channel", "ahead", "keys"}:
-                err("notice_of needs exactly channel, ahead, keys"); return 1
+            if not {"channel", "ahead", "keys"} <= set(no) <= {"channel", "ahead", "keys", "unless"}:
+                err("notice_of needs exactly channel, ahead, keys, and optionally unless"); return 1
+            # unless (OA rev 413): a 1-bit field of the notice's own that,
+            # set, makes the message no promise (the hint's no_hit).
+            if "unless" in no and (no["unless"] not in c["payload_fields"] or
+                                   str(d["field_widths"].get(no["unless"])) != "1"):
+                err("notice_of unless must be a 1-bit field of %s" % c["name"]); return 1
             if other is None or other is c or "notice_of" in other:
                 err("notice_of %r is not another, non-notice channel" % no["channel"]); return 1
             if (other["src"], other["dst"], other["rate"]) != (c["src"], c["dst"], c["rate"]):
