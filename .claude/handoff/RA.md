@@ -302,7 +302,10 @@ TI 426: RI-44 landed 6061d0ee (RCU RTL in SV top 46/46, 0 divergences; shim rena
 RA rev 143: M7 met (that is the selector). Split-links tree (CCV_LAT_LANE 7-11) fails with RCU RTL: RTL must be
 correct at every derived CCV_LAT_LANE; RI's fix; phase-5 EXIT ITEM; TI skips it (CCV_SVH_RCU_RTL=0) until then.
 TI's kill kernel with an SFU op in flight is accepted as the lane op (SFU = lane under the interim).
-Bookmarks: OA 414, RA 143, RI 77, TI 426, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 54.
+RI-49: RTL needs no change (pipes follow ccv_prov_pkg; passes at LAT_LANE 11); test fixes a61a79ca (ri-lat);
+split file lacked miu_rcu_data@rcu credit_on_receipt. RA rev 144: accepted, 7+11 suffice; rev 143 item closes when
+a61a79ca merged and check-links passes without CCV_SVH_RCU_RTL=0 (TI adds the entry).
+Bookmarks: OA 414, RA 144, RI 78, TI 426, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 54.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -333,7 +336,7 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
 
 ## Open work, most urgent first
 - PHASE 5 (rcu-impl.md): spec reconciled (RA rev 140/141); RI's rev 140 items closed (RA rev 142). Before DA
-  sign-off: RI's fix for the RTL at every derived CCV_LAT_LANE (rev 143; split-links skip); M7 met (rev 143); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
+  sign-off: a61a79ca merged + TI's split-file credit entry, skip dropped (rev 143/144); M7 met (rev 143); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
   ADDR_BASE. Reported to Daniel 2026-11-14.
 - RI M0 (model) ACCEPTED at RA rev 68 (5968894; RI rev 5); TI asked to make the model makeRcu's default. RI on to phase 2 (bank slice, r/xbar). RA-36 done (TI rev 317, e60ae23). AR rev 284 sets the PHYS_REGS order: OI's check answer, 160 on a 2nd 4-warp kernel, OA on Q-35, then DA.
 - RA-11 PHYS_REGS sweep (TI rev 315): RA rev 67 gave RCU flops 246k/212k/179k at 192/160/128, notice AR; decision AR + DA. 160 ~free; 128 waits OI's fits_stale/V-N check failures. RA-19 stub fix landed (TI rev 314, 9ce7381).
