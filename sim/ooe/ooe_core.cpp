@@ -43,7 +43,7 @@ std::string Config::apply(const std::string &spec) {
       {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}, {"cmpl_split", &cmpl_split}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
-  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
+  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
@@ -57,7 +57,8 @@ std::string Config::apply(const std::string &spec) {
                                      {"names_pool_lag", &names_pool_lag},
                                      {"full_rows", &full_rows},
                                      {"inject_partial_taken_ok", &inject_partial_taken_ok},
-                                     {"inject_no_memop_credit", &inject_no_memop_credit}};
+                                     {"inject_no_memop_credit", &inject_no_memop_credit},
+                                     {"inject_ignore_nohit", &inject_ignore_nohit}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -315,7 +316,7 @@ void Core::uop(const Uop &u) {
 }
 void Core::done(const Done &d) { dones_.push_back(d); }
 void Core::cmpl(const Cmpl &c) { cmpls_.push_back(c); }
-void Core::hint(unsigned rob_tag) { hints_.push_back(rob_tag); }
+void Core::hint(unsigned rob_tag, bool no_hit) { hints_.push_back({rob_tag, no_hit}); }
 void Core::alloc(const Alloc &a) { allocs_.push_back(a); }
 void Core::demote(unsigned warp) { demotes_.push_back(warp); }
 void Core::barRelease(uint32_t m) { released_ |= m; }
@@ -343,8 +344,28 @@ void Core::cycle(uint64_t now) {
   // OA-23's hints, two cycles ahead of their completions: ooe_wake keeps a
   // spec load's lead line on one that comes by its miss's lead (the
   // completion at the L1 contract), and drops it otherwise.
-  for (unsigned tag : hints_) {
+  std::set<unsigned> refill;
+  for (const auto &h : hints_)
+    if (!h.second) refill.insert(h.first);
+  for (const auto &h : hints_) {
+    const unsigned tag = h.first;
     RobEntry *r = byTag(tag, nullptr);
+    if (h.second) {
+      // OA 410: a no-hit names an outstanding global load; a refill hint
+      // for the same load wins, and the no-hit is dropped.
+      if (!r || !r->is_load || r->u.space != 0 || r->atomic)
+        err("OA 410: a no-hit hint for rob tag %u, not an outstanding global load", tag);
+      if (!r || refill.count(tag) || r->rs_main == kNoEntry) continue;
+      RsEntry &x = rs_[r->rs_main];
+      if (x.valid && x.issued && x.spec) {
+        count("load.no_hit");
+        if (cfg_.l1_nohit && !cfg_.inject_ignore_nohit) {
+          cancel(r->rs_main);
+          count("cancel.no_hit");
+        }
+      }
+      continue;
+    }
     if (!r || r->rs_main == kNoEntry) continue;
     RsEntry &x = rs_[r->rs_main];
     if (x.valid && x.issued && x.spec && now_ + 2 <= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
@@ -452,6 +473,8 @@ void Core::cycle(uint64_t now) {
   wlog_.sel_res.assign(n_, 0);
   wlog_.sel_cidx.assign(n_, 0);
   wlog_.sel_busy = wlog_.sel_block = 0;
+  wlog_.sel_cok = 0xF;
+  wlog_.sel_cret = 0;
   wlog_.sel_live = false;
   wlog_.sel_mig = false;
   wlog_.ralloc.clear();
@@ -480,6 +503,7 @@ void Core::cycle(uint64_t now) {
   control();           // RAU's alloc and demote, kill, barrier release
   retire();
   select();
+  memopCreditsNext();  // MA-5: ooe_sched's credit flag for the next cycle
   // Payload read (OA-1): what select granted leaves on the channels a cycle
   // later, so this cycle's grants wait and last cycle's go out.
   if (cfg_.payload_stages) {
@@ -2998,24 +3022,40 @@ bool Core::migInFlight() const {
 /// carry this cycle. With the payload stage, last cycle's grants leave now
 /// and spend their credits first.
 void Core::memopCreditsLeft() {
-  for (unsigned p = 0; p != 4; ++p) mleft_[p] = mcred_set_ ? mcred_[p] : ~0u;
-  if (mcred_set_ && cfg_.payload_stages)
+  if (!mcred_set_) return;
+  static_assert(sizeof(mleft_) == sizeof(mcred_), "four slots");
+  const bool first = mprev_[0] == ~0u;
+  for (unsigned p = 0; p != 4; ++p) {
+    mleft_[p] = mcred_[p];
+    // What came back since last cycle: the credits now less last cycle's
+    // A (its departures already out of it).
+    if (!first && mcred_[p] > mprev_[p]) wlog_.sel_cret |= 1u << p;
+  }
+  if (cfg_.payload_stages)
     for (const Memop &m : held_memops_)
       if (m.port < 4 && mleft_[m.port]) --mleft_[m.port];
+  wlog_.sel_cok = mcok_;
 }
 
-/// The pipes of a footprint (bit p for P<p>) whose slots hold a credit;
-/// inject_no_memop_credit (the control) takes every pipe as credited.
+/// The flag for the next cycle, as ooe_sched registers it (see
+/// memopCredits()); A is mleft_, before this cycle's grants.
+void Core::memopCreditsNext() {
+  if (!mcred_set_) return;
+  unsigned nx = 0;
+  for (unsigned p = 0; p != 4; ++p) {
+    const unsigned a = mleft_[p];
+    nx |= unsigned(a >= 2 || (a == 1 && !((mcok_ >> p) & 1u))) << p;
+    mprev_[p] = a;
+  }
+  mcok_ = nx;
+}
+
+/// The pipes of a footprint (bit p for P<p>) whose slots may take a memop
+/// this cycle; inject_no_memop_credit (the control) takes every pipe.
 unsigned Core::memopCredited(unsigned pipes) const {
   pipes &= 0xFu;
-  if (cfg_.inject_no_memop_credit) return pipes;
-  unsigned m = 0;
-  for (unsigned p = 0; p != 4; ++p) m |= unsigned(mleft_[p] != 0) << p;
-  return pipes & m;
-}
-
-void Core::takeMemopCredit(unsigned port) {
-  if (port < 4 && mleft_[port] && mleft_[port] != ~0u) --mleft_[port];
+  if (cfg_.inject_no_memop_credit || !mcred_set_) return pipes;
+  return pipes & mcok_;
 }
 
 void Core::selectSectioned() {
@@ -3051,7 +3091,6 @@ void Core::selectSectioned() {
     Memop d = discards_.front();
     discards_.pop_front();
     d.port = 0;
-    takeMemopCredit(0);
     busy |= 1u << kP0;
     const int si = slotOf(d.warp);
     if (si >= 0) memop_block[si] = true;
@@ -3306,7 +3345,6 @@ void Core::select() {
   while (!discards_.empty() && mports != cfg_.memop_width && memopCredited(1u << mports)) {
     Memop d = discards_.front();
     discards_.pop_front();
-    takeMemopCredit(mports);
     d.port = mports++;
     const int si = slotOf(d.warp);
     if (si >= 0) memop_block[si] = true;
@@ -3642,7 +3680,6 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     // Sectioned: the pipe, P0-P3, the lowest credited one of its footprint
     // (MA-5).
     m.port = !cfg_.sectioned ? port : memop_pick_ != ~0u ? memop_pick_ : port - 5;
-    takeMemopCredit(m.port);
     m.rob_tag = is.rob_tag;
     m.warp = s.warp;
     m.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
