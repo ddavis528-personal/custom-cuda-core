@@ -53,12 +53,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- RI ngd leg on 439179d9 (one-line CCV-L04 fix over e9c48768), started 09:19Z 11-13:
-  rh-jobs/ri-gate/ngd5.sh, worktree /home/user/rh-ri18 (detached), result
-  ~/ccv-logs/ri-gate-439179d9.result. It self-exports to gate-scratch/RI-export on
-  (PARTIAL) PASS. Verify with ls-remote and the sha256 of export.tgz, send RI the
-  lines, then rm -rf rh-ri18/build. Template: ngd3.sh (sed the sha, CCV_JOBS).
-- RI ngd legs done and sent: 9304d21 FAIL (rcu kill_valid 4.8 NGD); fca280c3,
+- Nothing running (12:10Z 11-13). OI is weighing a sectioned=1 rerun of #35.
+- RI ngd 7e29cef5 (RI's 11-13 daily-sweep merge, which replaces 439179d9; RI asked RH to
+  stop that leg) DONE: PARTIAL PASS, ngd 5558 s at CCV_JOBS=4, export d4485d9c...,
+  RI-export 37e33198, sent. Template: rh-jobs/ri-gate/ngd3.sh (sed the sha, CCV_JOBS).
+- Earlier RI ngd legs done and sent: 9304d21 FAIL (rcu kill_valid 4.8 NGD); fca280c3,
   bfba7f38, 0ace219f (export bf1e702d...), e9c48768 (export c3be7623..., RI-export
   0793ba3d) PARTIAL PASS. RI is now a regular sender (DA granted exports 11-10).
 - OI #35 DONE and sent 09:20Z 11-13 (rh-jobs/oi35, logs ~/ccv-logs/oi35, worktree
@@ -66,11 +65,17 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   read only in placePos, which returns early unless sectioned=1 (default 0). U == G
   because unmet_reg defaults to 1 since f4d5ee10. Offered OI a sectioned=1 rerun
   (about 9 h of cm128); awaiting configs.
+- TI-420 (a46afef7, on TI's branches): long tools self-detach (tools/detach.sh) and write
+  ~/ccv-logs/job-*.log. Wait with `tools/gate-wait.sh <job log>` as the background task
+  (110 min cap; exit 3 = still running, rerun it; exit 4 = killed by a restart, relaunch).
+  It replaces watchjob.sh for gates on a commit that has it; older commits keep the
+  setsid-nohup + watchjob.sh pattern below.
 - Gates detach (TI rev 418): `setsid nohup <job> >/dev/null 2>&1 </dev/null &`.
   Only watchers (rh-jobs/watchjob.sh '<pgrep pat>' 7100 <file>) are background
   tasks. Container restarts (11-13 07:07Z, and earlier) still kill detached jobs
   and turn swap off: `swapon /home/user/rh-swap`, clear the gate's build/, relaunch.
-- Earlier idle since 2026-11-08 17:51Z. Kept: rh-j11b-w10pp, -g2pp and -p192
+- Pings 11-13: AR, IS, RA, RI, TI and CP ponged. MA (session_01QPk2jyUbWA7fW9YpUwqdxk)
+  is not in RH's roster copy, so its pong read sender=stale. Kept: rh-j11b-w10pp, -g2pp and -p192
   (88c31e7 merged with 11386e7, plus ba39e6a; experiment trees, never commit) until TI says.
 - DONE 2026-11-08, all sent:
   - J12 (TI): PHYS sweep on 88c31e7 merged with 95bf04d; logs ~/ccv-logs/j12.
