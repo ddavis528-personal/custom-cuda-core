@@ -44,12 +44,13 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 19, OA 414, AR 348, TI 420, OI 341, IS 193, CP 157, DA 119,
+Conventions 19, OA 415, AR 348, TI 420, OI 342, IS 193, CP 157, DA 119,
 RA 136 (tab 9851686b-2b0a), RI 70 (tab 8e4547bc-c469), MA 46 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
 OOE doc rev 377. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
 Sweep 11-13: 6 branches (76 commits), full gate green, pushed 0bc98973 (first push 503'd, credential service; retried by hand); release 63625551; tag refused (known).
 
 ## Open work (most urgent first)
+- OA 413 (rev 415, 11-13): signed OI-141's CCV-L23 feedback entry for cok_nx_cq02h (offset 2, loop cok/cokd/ccnt) and chas_cq03h arrival 4.0 (OI-53). Watch OI push ef19544c; the flag rule goes into the OOE doc's memop paragraph.
 -24. OA 387 re:RA 104/AR 325 (zero-cycle ooe_rcu_issue leads): YES on OOE side. pred_neg(+(a) bits),
    R-slot phys_src0/1 (slot_fields), opcode (not class bits, A-66) move iss_pay -> iss_lead in ooe_rs;
    no cycle, 0 net flops, out 0. RTL ooe_rs unit: gnt in 8.8/9.5/10.2 at LW 1/16/43; f-f 26.2/26.3/27.4
