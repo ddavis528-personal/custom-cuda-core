@@ -49,6 +49,14 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-13. NOW (2026-11-14) RA rev 143 (RA bookmark 143): M7 met; RTL must be correct at every derived CCV_LAT_LANE (7-11),
+   RI's phase-5 exit item. ri-wt10 branch ri-lat (TI 6061d0ee + ri-exit merged, cd8c9a06): a61a79ca lanes_tb kWB /
+   age width / per-age cov bins from params; rcu_q53_chk arrival lat from CCV_LAT_LANE/SFU. RTL needed NO change.
+   Split tree (build/lsplit, script scratchpad/split-repro.sh): with params/links.json's credit_on_receipt
+   (miu_rcu_data@rcu) added, all 67 lockstep + 12 controls PASS, check-sv-hosted RCU RTL 63 kernels div 0 + controls.
+   Without it the RTL drives no miu_rcu_data credit (RA-41) -> TI: links_split.json must carry credit_on_receipt,
+   then drop CCV_SVH_RCU_RTL=0 in check-links. Base lanes bench identical (505/430). Base lockstep run: ri-lat-base.log.
+   NEXT: gate-push ri-lat after ri32 (3c304f94 gating); RI row to RA+TI; merge rename (in ri-lat already).
 -12. NOW (2026-11-14) Pushed 5516e643 (SCOPED PASS 21/24, ri-exit in ri-wt9): RA rev 140 items (1)(2)(3)(7)(8)
    (pzero, lanes SFU + swlate, M5 from c1 68/64, M0 cycles vs stub, waiver texts, 21 ngd budgets -> "RA rev 140").
    RI-48 written (RI tab rev 77), notices RA + TI. WAIT: RA on which 4 of 25 budgets, RA's report to DA; MA on
