@@ -15,7 +15,8 @@
 //     PCA rows) as the storage behind the core's queues: a message stays in
 //     its receiver until the core frees its entry, so its credit returns
 //     when the spec returns it.
-//   - CCV_RCU_EVLOG=<file>: the core's events, one a line.
+//   - CCV_RCU_EVLOG=<file>: the core's events, one a line, and after each
+//     GPR write the row's value (gpr_row), which no trace event carries.
 //===----------------------------------------------------------------------===//
 #include <string>
 #include "stub.h"
@@ -105,8 +106,16 @@ private:
   // ---- hooks --------------------------------------------------------------------
   void fail(const std::string &m) override { k_.fail("%s", m.c_str()); }
   void event(const R::Event &e) override {
-    if (evlog_)
+    if (evlog_) {
       std::fprintf(evlog_, "%llu %s %u %u %u %u\n", (unsigned long long)e.t, R::evName(e.ev), e.a, e.b, e.c, e.d);
+      // The log only: the row as the write leaves it, every lane, for the
+      // RTL lock-step's data compare (test/rcu/evmon.py).
+      if (e.ev == R::Ev::GprWrite) {
+        std::fprintf(evlog_, "%llu gpr_row %u", (unsigned long long)e.t, e.a);
+        for (unsigned l = 0; l != R::kLanes; ++l) std::fprintf(evlog_, " %x", k_.gpr[e.a][l]);
+        std::fprintf(evlog_, "\n");
+      }
+    }
     // The trace's events (schema/events.json, ids 33-47, TI's 6cbabba): the
     // core's four fields packed into the schema's three. No RCU event names
     // one instruction, so uid is 0. docs/rcu-model.md has the packing.
@@ -308,6 +317,14 @@ private:
   // ---- the cycle ---------------------------------------------------------------------
   void work() override {
     const Ch &c = ch();
+    // Issue and lane results credit in the landing cycle (RI-36, RI-40 (a)):
+    // valid at t, credit at t+1, as the RTL's <ch>_v_q returns them. Both are
+    // taken the cycle they land, below.
+    if (!armed_) {
+      armed_ = true;
+      creditAtLanding(c.ooe_rcu);
+      creditAtLanding(c.lane_rcu);
+    }
     R::In in;
     for (unsigned s = 0; s != R::kRes; ++s)
       if (has(c.ooe_rcu, s)) in.iss[s] = decode(take(c.ooe_rcu, s), s);
@@ -453,6 +470,7 @@ private:
   R::Core core_;
   std::FILE *evlog_ = nullptr;
   unsigned seen_map_ = 0, seen_cmd_ = 0, seen_pca_ = 0;
+  bool armed_ = false;
   std::map<uint64_t, uint64_t> lane_tid_;   ///< the lane message's tid, by its results' cycle
 };
 

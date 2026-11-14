@@ -360,6 +360,7 @@ public:
     if (drives && s_.dst().nxt.credit)
       ++leaks_;
     max_age_ = std::max(max_age_, now_ - buf_.front().arrived);
+    if (rel_credit_) held_since_.push_back(buf_.front().arrived);
     buf_.pop_front();
     if (drives) s_.dst().nxt.credit = true;
     ++received_;
@@ -384,6 +385,12 @@ public:
     if (!rel_credit_) return;   // credits on pop or landing: nothing owed
     if (released_ == received_) { ++over_released_; return; }
     ++released_;
+    // The hold, landing to release, oldest first: the age the RTL checker's
+    // response_within_n bounds, matched as it matches credits to messages.
+    if (!held_since_.empty()) {
+      max_hold_ = std::max(max_hold_, now_ - held_since_.front());
+      held_since_.pop_front();
+    }
     if (s_.dst().nxt.credit) ++owed_;   // the wire's one bit is taken
     else s_.dst().nxt.credit = true;    // up next cycle, as pop() drives
   }
@@ -414,6 +421,9 @@ public:
   /// The longest a message waited here, from landing to being taken: a
   /// backpressured channel's measured maximum age (AR's response TI-22).
   uint64_t maxAge() const { return max_age_; }
+  /// CreditAt::Release: the longest a message's credit was held, landing
+  /// to release (oldest first, as the checker matches them), or 0.
+  uint64_t maxHold() const { return max_hold_; }
 
 private:
   Slot &s_;
@@ -429,6 +439,8 @@ private:
   bool release_ = false;     ///< hand held_ to the block this cycle
   std::deque<Msg> held_;     ///< what holdNext keeps from the block
   uint64_t now_ = 0, max_age_ = 0;   ///< the cycle, and the longest wait (maxAge)
+  std::deque<uint64_t> held_since_;  ///< CreditAt::Release: landings of popped, unreleased
+  uint64_t max_hold_ = 0;            ///< the longest credit hold (maxHold)
 };
 
 } // namespace skel

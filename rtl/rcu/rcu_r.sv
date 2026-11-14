@@ -205,12 +205,21 @@ module rcu_r #(
   wire ix_en_cr02h = iv_cr02h;
   logic [N*5-1:0] ix_cr03h;
   logic           ixr_cr03h;     // the register-index form: idx from v(R1)
+  // The register-amount forms of up, down and butterfly (shfl_*_r, the
+  // class's ireg): each lane's amount is v(R1)'s low 5 bits, known only in
+  // A+1, so their selects are made there (sel_cr03h; out of 0..31 the lane
+  // keeps its own, O-85). iim: an immediate form, its index in ix.
+  logic           iru_cr03h, ird_cr03h, irb_cr03h, iim_cr03h;
   logic           kshf_cr03h, kimm_cr03h, kbal_cr03h;
   logic [31:0]    em_cr03h;      // em(dst width)
   always_ff @(posedge rcu_core_clk) begin
     if (ix_en_cr02h) begin
       ix_cr03h   <= ixv_cr02h;
       ixr_cr03h  <= kind_cr02h == K_SHR;
+      iru_cr03h  <= cls_cr02h[rcu_dec_pkg::CLS_IREG] && kind_cr02h == K_SHU;
+      ird_cr03h  <= cls_cr02h[rcu_dec_pkg::CLS_IREG] && kind_cr02h == K_SHD;
+      irb_cr03h  <= cls_cr02h[rcu_dec_pkg::CLS_IREG] && kind_cr02h == K_SHB;
+      iim_cr03h  <= kind_cr02h != K_SHR && !cls_cr02h[rcu_dec_pkg::CLS_IREG];
       kshf_cr03h <= k_shf_cr02h;
       kimm_cr03h <= k_call_cr02h | k_movi_cr02h;
       kbal_cr03h <= k_bal_cr02h;
@@ -269,13 +278,49 @@ module rcu_r #(
     end
   end
 
-  logic [N*5-1:0]  idx_cr03h;
+  // Each output lane's one-hot select. The register forms decode the
+  // lane's own amount c = v(R1)[4:0] once and rewire it: idx s takes oh[s],
+  // up oh[l - s] (and its own lane past 0), down oh[s - l] (its own past
+  // 31), butterfly oh[l ^ s]. The immediate forms decode their index.
+  logic [N*N-1:0]  sel_cr03h;
   logic [N*32-1:0] xo_cr03h;
   always_comb begin
-    for (int l = 0; l < N; l++)
-      idx_cr03h[l*5 +: 5] = ixr_cr03h ? rs1a_cr03h[l*32 +: 5] : ix_cr03h[l*5 +: 5];
+    for (int l = 0; l < N; l++) begin
+      logic [4:0]   c_cr03h;
+      logic [N-1:0] oh_cr03h, ohi_cr03h;
+      c_cr03h = rs1a_cr03h[l*32 +: 5];
+      for (int k = 0; k < N; k++) begin
+        oh_cr03h[k]  = c_cr03h == 5'(k);
+        ohi_cr03h[k] = ix_cr03h[l*5 +: 5] == 5'(k);
+      end
+      for (int s = 0; s < N; s++) begin
+        logic up_cr03h, dn_cr03h;
+        up_cr03h = (l >= s) ? oh_cr03h[l - s] : 1'b0;
+        dn_cr03h = (s >= l) ? oh_cr03h[s - l] : 1'b0;
+        if (s == l) begin
+          up_cr03h = up_cr03h | (c_cr03h > 5'(l));
+          dn_cr03h = dn_cr03h | (c_cr03h > 5'(N - 1 - l));
+        end
+        sel_cr03h[l*N + s] = (ixr_cr03h & oh_cr03h[s]) | (iru_cr03h & up_cr03h) | (ird_cr03h & dn_cr03h) |
+                             (irb_cr03h & oh_cr03h[l ^ s]) | (iim_cr03h & ohi_cr03h[s]);
+      end
+    end
   end
-  rcu_xbar #(.LANES(N), .W(32)) u_xbar (.src(rs0a_cr03h), .idx(idx_cr03h), .out(xo_cr03h));
+  rcu_xbar #(.LANES(N), .W(32)) u_xbar (.src(rs0a_cr03h), .sel(sel_cr03h), .out(xo_cr03h));
+
+  // The selects are one-hot (RA rev 137): an output lane takes exactly one
+  // source lane while a crossbar form is set, none while no form is.
+  logic [N-1:0] selbad_cr03h;
+  always_comb begin
+    for (int l = 0; l < N; l++) begin
+      logic [N-1:0] row_cr03h;
+      row_cr03h = sel_cr03h[l*N +: N];
+      selbad_cr03h[l] = (ixr_cr03h | iru_cr03h | ird_cr03h | irb_cr03h | iim_cr03h)
+                        ? (row_cr03h == '0 || (row_cr03h & (row_cr03h - 1'b1)) != '0)
+                        : row_cr03h != '0;
+    end
+  end
+  `CCV_ASSERT(xbar_sel_onehot, !(|selbad_cr03h))
 
   // The result's masks by op, em applied: off the crossbar's path.
   wire [31:0] xm_cr03h   = {32{kshf_cr03h}} & em_cr03h;

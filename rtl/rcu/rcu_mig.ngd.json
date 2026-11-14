@@ -3,18 +3,18 @@
   "ports": {
     "dq_cr03h": {
       "arrival": 18.0,
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "why": "The demotion rows from rcu_pred, which leaves them at 18 (rcu_pred.ngd.json dq_cr02h, pending RA); mig captures them in at most 7 (dm_pay)."
     },
     "r2row_cr02h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 11.0,
       "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
     },
     "r2v_cr01h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 11.0,
       "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
@@ -26,19 +26,19 @@
       "why": "The R slot's opcode and merge_en from RCU's interface flop on the issue channel (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Decoded here by rcu_dec_pkg, the model's op-class decode (RI-21 (4)), to R2 and RW busy, which RA rev 81 times inside the module once it takes the opcode."
     },
     "rwrow_cr03h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 11.0,
       "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
     },
     "rwsel_cr03h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 11.0,
       "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
     },
     "rwv_cr02h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 11.0,
       "why": "Fans out to the 32 bank slices in ccv_rcu: check-ngd's fanout term for 32 loads is 1.4 NGD, and the slices take it at the default 13, so this end leaves by 11 (its unit's flop-out is at most 10.9)."
