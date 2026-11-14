@@ -2,7 +2,7 @@
   "module": "rcu_pred",
   "ports": {
     "act_cr03h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 0.0,
       "why": "Straight from its flop, with no other load inside: the receiving port's arrival is 0 (RA tab rev 78, re:RI-11), so this end leaves at 0. The assembled block's convergence (check-ngd block_check) needs the two to meet."
@@ -14,7 +14,7 @@
       "why": "The slot's lead_cont, the payload field's RA-43 lead copy, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
     },
     "dq_cr02h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-05",
       "required": 18.0,
       "why": "The demotion reads D0-D3 to rcu_mig's dm_pay (Partition tab: pred out 5, mig in 8). The rows that drive it also start the merge write path (old read, merge, row D), 17.6 NGD with the fanout term; held to the output's budget (NGD-7) they need 18, leaving mig 7 to capture the row (its R2 capture is 3). Copying the 1,536 row flops for the output is the alternative."
@@ -26,7 +26,7 @@
       "why": "The S slots' footprint, from the issue channel's slots at RCU's interface flop (DA's ruling on RI-11), wire only; fanout inside the block is check-ngd's. It decides section ownership for sec_pred_bit_a, which RA rev 98 moves here (Predicate file tab, step 4; Partition rule 2)."
     },
     "gv_cr03h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 0.0,
       "why": "Straight from its flop, with no other load inside: the receiving port's arrival is 0 (RA tab rev 78, re:RI-11), so this end leaves at 0. The assembled block's convergence (check-ngd block_check) needs the two to meet."
@@ -56,7 +56,7 @@
       "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1)."
     },
     "low_cr03h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 0.0,
       "why": "Straight from its flop, with no other load inside: the receiving port's arrival is 0 (RA tab rev 78, re:RI-11), so this end leaves at 0. The assembled block's convergence (check-ngd block_check) needs the two to meet."
@@ -98,7 +98,7 @@
       "why": "The slot's lead_pred_neg, the payload field's RA-43 lead copy, straight from rcu_isd's flops (loaded in A-1 under the slot's valid; RA 131 (1)), wire only; the arrival is the fanout term."
     },
     "pst_cr03h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 0.0,
       "why": "Straight from its flop, with no other load inside: the receiving port's arrival is 0 (RA tab rev 78, re:RI-11), so this end leaves at 0. The assembled block's convergence (check-ngd block_check) needs the two to meet."
@@ -110,13 +110,13 @@
       "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1). Renamed for RA-43 by RI (2026-11-08): the port now takes the lead in A-1, captured in this module under the slot's valid; arrival kept pending RA's restatement for the zero-cycle end."
     },
     "rpa_cr03h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 0.0,
       "why": "Straight from its flop, with no other load inside: the receiving port's arrival is 0 (RA tab rev 78, re:RI-11), so this end leaves at 0. The assembled block's convergence (check-ngd block_check) needs the two to meet."
     },
     "rpb_cr03h": {
-      "by": "RI, pending RA (RI tab)",
+      "by": "RA rev 140",
       "date": "2026-11-08",
       "required": 0.0,
       "why": "Straight from its flop, with no other load inside: the receiving port's arrival is 0 (RA tab rev 78, re:RI-11), so this end leaves at 0. The assembled block's convergence (check-ngd block_check) needs the two to meet."
