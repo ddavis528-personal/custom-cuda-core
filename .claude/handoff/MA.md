@@ -26,7 +26,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
 Conventions 19, AR 350, TI 424, OA 414, IS 193, CP 157, OI 341, RA 136,
-RI 70, MA 53, DA 119. RA 140 read (item 6 answered MA 53). Specs doc: MIU tab rev 104, DCU tab rev 23.
+RI 70, MA 54, DA 119. RA 141 read (item 6 settled MA 54: one GPR load a cycle at position 0). Specs doc: MIU tab rev 104, DCU tab rev 23.
 
 ## State, 2026-11-13
 
