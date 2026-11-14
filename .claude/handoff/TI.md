@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 434, RA 146, RI 81, OI 349, AR 351, OA 416, MA 54, IS 193, CP 157,
+TI 435, RA 146, RI 81, OI 349, AR 351, OA 416, MA 54, IS 193, CP 157,
 DA 119, Conventions 19 (2026-11-14). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
@@ -58,9 +58,7 @@ restart: rerun the job). Logs in /root/ccv-logs/.
    (worktree /home/user/ti-det, branch ti-sfu). RI merges it into
    ri-sfuclass and gates the pair; TI pushes nothing of it till then.
    OI-148: OOE's go; ring OI only if the joint gate fails an OOE check.
-2. PF-47 (OI-145 (9)): CCV_LAT_RCU_ADDR_BASE 5 -> 1 (AR 351, RA 145);
-   check-ngd ccv_rcu + ooe_wake, SV-hosted with RCU RTL; gate; row to AR,
-   RA, OI (AR re-books PF-33/PF-47). If ooe_wake fails, ask OI for the fix.
+2. PF-47 (OI-145 (9)): committed locally (4a325bd5, 0c927c53; held-over-r to warp 0), NOT pushed. Proof clean (ngd ccv_rcu+ooe_wake, skel, svh) but cm128 bounded: ccv_dec_ooe_uop hold 8252 > 8192 (123 response_within_n). TI rev 435 asks AR to rule (a) 20480 (b) stub-only (c) base 2. Act on AR's answer, then gate.
 3. AR 350 cm128 unbounded: the first run was OOM-killed (needs > 6.5 GB,
    ~6 h). Rerun ALONE (scratchpad bin/ccv-skel-memop20480, oracle
    scratchpad oracle/coremark128). Answer AR+MA: cycles, wall, max hold;
