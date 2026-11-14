@@ -704,6 +704,51 @@ it.
   `CCV_LAT_L1_WAKE` saves 2.0% of cycles, linear from 16 to 10 (-5.9% at
   13, -9.9% at 11). 13 is `CCV_LAT_RCU_ADDR_BASE` back to 2, Daniel's
   placeholder (OA-5); 11 adds one crossing fewer, this entry.
+- **L1 capacity and hit latency (AR rev 344, for MA's L1 baseline;
+  AR's run, 2026-11-13, on 9167efab, stub MIU and DCU at 8 ways):** this
+  ranks the configurations; it does not book them, since the stub MIU's
+  cross-warp head-of-line block (MA-14) stands. Every run is clean.
+  `CCV_LAT_L1_HIT` (through `CCV_LAT_L1_HIT_BASE`) was 5, 7 and 8 at
+  64 sets (64 KiB) and 512 sets (512 KiB), with cycles counted from the
+  first fetch:
+
+  | `CCV_LAT_L1_HIT` | coremark32, 64 KiB | coremark32, 512 KiB | 512 against 64 |
+  |---|---|---|---|
+  | 5 | 3,026,228 | 2,829,989 | -6.48% |
+  | 7 | 3,015,188 | 2,818,799 | -6.51% |
+  | 8 | 3,015,301 | 2,819,010 | -6.51% |
+
+  - Capacity: 512 KiB saves 6.5% on coremark32, the same at every hit
+    latency. Misses fall from 1,284 to 507. That is in line with the 7.1%
+    and 8.4% this entry's neighbours booked on coremark128 (PF-46).
+  - S1 does not move: it is 3,918 cycles in all six configurations. No S1
+    kernel takes a single L1 hit. `loop`, `brs` and `merge` make no DCU
+    lookup, and the rest take only compulsory misses (`gather`'s 64 at
+    most). S1 cannot price either axis.
+  - Hit latency: going from 7 to 8 costs +0.004%. Going from 7 to 5 costs
+    +0.37%, which is worse, not better.
+    - At 5 the stub misses the contract cycle on most hits:
+
+      | `CCV_LAT_L1_HIT` | `l1_late` | on time (`l1_hit`) | `reexec` |
+      |---|---|---|---|
+      | 7 | 45,113 | 34,248 | 73,919 |
+      | 5 | 72,273 | 7,088 | 91,286 |
+
+    - A late hit is taken as a miss (A-46).
+    - Even at 7, more hits are late than on time.
+    - So this axis measures the stubs' turnaround, not the L1's. It is
+      re-run on MA's Phase 1 resource model.
+  - coremark128 has no figures yet. AR's runs had not finished after 5
+    hours, and AR took that for a defect (AR rev 349). TI found otherwise
+    (TI rev 424):
+    - The memop credit watchdog, `CCV_P_TIMEOUT_BP` = 8192, no longer
+      fits MA-5's entry-held credits behind the stub's slow store
+      scatters. AR rev 350 takes a per-slot `CCV_P_TIMEOUT_MEMOP` =
+      20480 on conditions.
+    - The operand CHECKs AR saw are those held at the `--cycles` bound.
+    - 9167efab's own `dec_ooe_uop` failure comes from merging OI's
+      efe09c78 without TI's d3bf0562.
+    The axis is re-run once both are fixed on AR's branch.
 
 ### PF-34 Same-address combining for atomics, built from lane adds
 
