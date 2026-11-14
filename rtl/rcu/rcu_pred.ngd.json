@@ -107,7 +107,7 @@
       "arrival": 1.4,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-05",
-      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1). Renamed for RA-43 by RI (2026-11-08): the port now takes the lead in A-1, captured in this module under the slot's valid; arrival kept pending RA's restatement for the zero-cycle end."
+      "why": "The issue channel's slots from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. gd_cr02h is the S and P slots' guard read on the wire (Predicate file tab, the guard path, step 1). Renamed for RA-43 by RI (2026-11-08): the port now takes the lead in A-1, captured in this module under the slot's valid; arrival restated by RA rev 142 for the zero-cycle end."
     },
     "rpa_cr03h": {
       "by": "RA rev 140",
