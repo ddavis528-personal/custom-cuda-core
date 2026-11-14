@@ -107,7 +107,7 @@ There are 8 RCU entries in `rtl/cg-waivers.json`, all written by RI as the owner
 - Credit waiver, under Daniel's ruling (RA rev 88): rcu_kill CG-1, the credit-return pulses, 41 flops.
 - Owner waivers with no ruling cited, for Daniel to sign or refuse:
   - rcu_lanes CG-3, `pcm_n_cr04h`: PC's merge mask, 4 × 32 flops. Its floors are medium 49% and high 65%; measured 51% and 67%.
-  - rcu_kill CG-4, `kd_cr02h`: the kill drain counter, 4 flops (max 5).
+  - rcu_kill CG-4, `kd_cr02h`: the kill drain counter, 4 flops (max 4: $clog2(KILL_DRAIN + 1) at KILL_DRAIN 15).
   - rcu_kill CG-4, `kaep_q_cr03h`: the kill ack epoch, 2 flops.
 
 `rtl/cg-ratchet.json`, `rtl/ngd-ratchet.json` and `rtl/stage-ratchet.json` have no RCU entry.
