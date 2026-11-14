@@ -18,9 +18,12 @@
 //                kill (rcu_mig's dl, demotion, and rl, restore).
 //   q53_one      one migration a warp: a map or command never lands beside
 //                another of the same warp and direction still waiting.
-//   q53_rzero,   A-64's restore half: a restore map names no zero register,
-//   q53_rdup     and gives each architectural register a row of its own
-//                (TI-25 (1)); the model checks the same (sim/rcu/rcu_core.cpp).
+//   q53_rzero,   A-64's restore half: a restore map names no zero GPR row
+//   q53_pzero,   (CCV_P_PHYS_ZERO), no zero predicate (CCV_P_PRED_ZERO; RA rev
+//   q53_rdup     140 (7)), and gives each architectural register a row of its
+//                own (TI-25 (1)); the model checks the same
+//                (sim/rcu/rcu_core.cpp). Checked as the map lands: launch copies
+//                it unchanged into the engine (Migration tab, Launch).
 //
 //   q53_iso      A-35, RCU's half at the block (the model's, rcu_core.cpp: TI-13):
 //                a restore's GPR rows and predicates are unwritten from its
@@ -162,9 +165,10 @@ module rcu_q53_chk #(
       end
 
   // ---- q53_rzero, q53_rdup ----------------------------------------------
-  logic rz, rd;
+  logic rz, rd, pz;
   always_comb begin
-    rz = 1'b0; rd = 1'b0;
+    rz = 1'b0; rd = 1'b0; pz = 1'b0;
+    for (int q = 0; q < NP; q++) pz |= map_p[q*WP +: WP] == WP'(ccv_prov_pkg::CCV_P_PRED_ZERO);
     for (int a = 0; a < NG; a++) begin
       rz |= map_g[a*WR +: WR] == WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
       for (int b = 0; b < a; b++) rd |= map_g[a*WR +: WR] == map_g[b*WR +: WR];
@@ -172,6 +176,7 @@ module rcu_q53_chk #(
   end
   `CCV_ASSERT_AT(core_clk, rst, q53_rzero, !(mapq && map_d && rz))
   `CCV_ASSERT_AT(core_clk, rst, q53_rdup, !(mapq && map_d && rd))
+  `CCV_ASSERT_AT(core_clk, rst, q53_pzero, !(mapq && map_d && pz))
 
   // ---- q53_iso -------------------------------------------------------------
   logic [NS*2*WR-1:0] lsq;
