@@ -67,6 +67,7 @@ module ooe_select #(
   input  logic [NM*NM-1:0]   older_m_cq03h, // the MIU class's
   input  logic [RM-1:0]      busy_cq03h,    // MIU pipes a bulk discard took (only P0, V-23)
   input  logic [S-1:0]       block_cq03h,   // slots with a bulk discard
+  input  logic [RM-1:0]      cok_cq03h,     // memop channel slots (P0-P3) with an MIU credit (MA-5)
   output logic [N-1:0]       cand_cq03h,    // requests this cycle
   output logic [N-1:0]       grant_cq03h,   // issues this cycle
   output logic [N-1:0]       lost_cq03h     // won a resource, lost another
@@ -76,12 +77,17 @@ module ooe_select #(
   logic [NR*RR-1:0] req_r;
   logic [NM*RM-1:0] req_m;
   logic [LS-1:0]    sl;
+  // A memop's copy is an RCU-class entry (A-38: the copy issues on RCU), so
+  // its index is below NR and the copy's issued bit is read from those.
+  localparam int CW = $clog2(NR);
+  logic [2**CW-1:0] iss_rc;
+  assign iss_rc = (2**CW)'(iss_cq03h[NR-1:0]);
 
   always_comb begin
     for (int e = 0; e < N; e++) begin
       sl          = slot_cq03h[e * LS +: LS];
       conf[e]     = dep_cq03h[e * N +: N] == '0;
-      copy_ok[e]  = !chas_cq03h[e] || iss_cq03h[cidx_cq03h[e * W +: W]];
+      copy_ok[e]  = !chas_cq03h[e] || iss_rc[cidx_cq03h[e * W +: CW]];
       order_ok[e] = 1'b1;
       if (e >= NR)
         for (int j = NR; j < N; j++)
@@ -92,7 +98,7 @@ module ooe_select #(
       if (e < NR) req[e] = req[e] && !(rhold_cq03h[e] && res_cq03h[e * 9 + 4]);
       if (e >= NR)
         req[e] = req[e] && (res_cq03h[e * 9 + RR +: RM] & busy_cq03h) == '0 && conf[e] && !block_cq03h[sl] &&
-                 copy_ok[e] && order_ok[e];
+                 (res_cq03h[e * 9 + RR +: RM] & cok_cq03h) != '0 && copy_ok[e] && order_ok[e];
     end
     for (int e = 0; e < NR; e++) req_r[e * RR +: RR] = req[e] ? res_cq03h[e * 9 +: RR] : '0;
     for (int e = 0; e < NM; e++) req_m[e * RM +: RM] = req[NR + e] ? res_cq03h[(NR + e) * 9 + RR +: RM] : '0;

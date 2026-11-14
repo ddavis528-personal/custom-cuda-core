@@ -237,6 +237,7 @@
       "name": "ooe_sched",
       "module": "ooe_sched",
       "files": [
+        "rtl/generated/ccv_params_pkg.sv",
         "rtl/ooe/ooe_ready.sv",
         "rtl/ooe/ooe_pick.sv",
         "rtl/ooe/ooe_select.sv",
