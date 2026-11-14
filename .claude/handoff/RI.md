@@ -29,6 +29,10 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   commit via gate-scratch/RI, exact arms and what to report; it replies with a table.
 
 ## Working rules beyond CLAUDE.md
+- Daily sweep (TI rev 429, re:OA-414): start tools/daily-sweep.sh only from a tree that holds a46afef7 (our
+  branch does since 468fb286), or with CCV_FOREGROUND=1; a pre-a46afef7 sweep would merge in the detaching
+  make-release, which returns 0 at once, and push the merge ungated. Until TI's 518cb3c3 (detach exits 5) is
+  in our branch, check: git merge-base --is-ancestor a46afef7 HEAD before the sweep.
 - Container gets reclaimed when idle: keep a run_in_background until-loop waiter on any
   detached job (setsid nohup ... & disown). Restarts killed runs 3 times and lost commits once.
 - Send every unverified commit to gate-scratch/RI (tools/gate-scratch.sh) before gating.
