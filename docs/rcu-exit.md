@@ -17,10 +17,10 @@ commands below.
 | Row | Verdict |
 |---|---|
 | M0, block lock-step | MET |
-| M1, NGD | MET, except the pred guard path in A: **17.0 against 16** (raised to RA) |
+| M1, NGD | MET. The pred guard path in A is 13.6 without the fanout term and 17.0 with it, against RA's restated target of ≤ 16 and ≤ 25 (RA on RI-46, rev 139) |
 | M2, clock gating | MET |
-| M3, bank slice | MET on flops, AND-OR and memory. The AND-OR sits exactly at its limit. Whether a heavy-listed unit is a "light unit" is for RA or DA to rule |
-| M4, kill drain | MET by the recorded margin. The RTL control at KILL_DRAIN − 1 fails as it should |
+| M3, bank slice | MET. The AND-OR sits exactly at its limit. "Light" means the unit's own peak is within 2,048 MiB (RA, rev 139) |
+| M4, kill drain | MET, by rcu_kill's control at KILL_DRAIN − 1 (RA, rev 139). The kernel margin waits on a kill kernel from TI |
 | M5, migration | MET: 65 and 67 cycles, against a bound of 68 |
 | M6, kernels | MET |
 | M7, swap boundary | MET with the model. The RTL passes locally, pending TI's selector in the gate (RI-44) |
@@ -49,7 +49,7 @@ The pred guard path in A, which must be ≤ 16 with the guard lead, comes from `
 
 The guard result is 1.0 over, and only through the fanout term. The lead flops also drive the branch-outcome and sec_pred logic, and that fanout costs 3.4 NGD.
 
-RI's proposal to RA is a kept copy of the guard-lead flops for the guard-result path alone. That takes the 13.6 cone off the shared net, and costs up to 126 more lead flops. Those are waived lead flops, charged to the block's 2%, which has about 2,245 flops of headroom. The alternative is for RA to restate the target.
+RA's ruling on RI-46 (rev 139): the target is restated as ≤ 16 without the fanout term and ≤ 25 with it, with the guard lead in use. The old 16 was RA-32's estimate, made without the term. So there's no kept copy. That copy would have bought 1 NGD for up to 126 more waived lead flops, and doubled the load on lead_guard_pred's receiving flops. `test/rcu/guard-ngd.py` stays the check, and any growth past 16 without the term goes back to RA.
 
 **M2: clock gating.**
 - Block rcu: 247,473 flops. 2% allows 4,949.5. Its modules take 2,704, auto-waived (55%). That includes 825 waived lead or credit flops and 218 repeater control flops.
@@ -60,14 +60,16 @@ RI's proposal to RA is a kept copy of the guard-lead flops for the guard-result 
 - Flops: 6,556 (k0 6,553, k2 6,559, k3 6,562), within 0.2% of 6,550.
 - Read AND-OR: 11.0 with the fanout term (8.3 without), against a limit of 11, so there is no margin.
 - Peak memory: 1,435 MiB, against 2,048.
-- The four slice units are on `tools/heavy-units.json` so that each runs alone. Four side by side ran a 15 GB container out of memory on 2026-11-08 (TI #91). Each one's own peak is within the light limit. RA or DA should rule whether that meets "completes as a light unit".
+- The four slice units are on `tools/heavy-units.json` so that each runs alone. Four side by side ran a 15 GB container out of memory on 2026-11-08 (TI #91). That's a scheduling choice. "Light" means the unit's own peak is within 2,048 MiB, so the row is MET (RA, rev 139; RA rewords the row to say so).
+- Any change that raises the AND-OR goes to RA before it lands.
 
 **M4: kill drain.**
 - KILL_DRAIN is 15, derived (RA-43's zero-cycle issue).
 - RTL: rcu_kill's bench control `drain`, at KILL_DRAIN − 1, fails as it must. So do ccv_rcu_killsleep's drop1 and drop2.
 - Kernels: 61 kernels were run in ccv-skel with `CCV_RCU_KILL_DRAIN_CUT` at 0 and 1. The 8 that kill (addrhigh, addrneg, divchw, roconst, rogated, rokill, rolaunch and rolimit) were also run at cuts 2, 5 and 15. All pass. The cut does take effect: for example, rokill goes from 103 to 102 cycles.
 - No kernel has RCU work in flight when its kill lands, so the margin is recorded as the whole drain, as on 2026-11-05 (`docs/rcu-model.md`).
-- A kernel that fails would need a kill with an SFU op in flight. That's a kernel for TI.
+- MET by rcu_kill's KILL_DRAIN − 1 control, on the RTL and the model (RA, rev 139).
+- RA has asked TI for one kill kernel with an SFU op in flight when the kill lands, so the drain is exercised end to end; it doesn't block sign-off. RI records its margin when the kernel lands. Note that the lane stub sends no SFU result yet (`sim/skel/kernel.cpp`, RA-16 (b)), so that kernel needs an SFU-capable stub. The same gap means no kernel or lock-step run exercises SW write-back (`sfu_result`) through the assembled block yet. That path is covered by the model's test and the slice bench's LW + SW same-lane case.
 
 **M5: migration.**
 - From `test/rcu/cg-build.sh rcu_mig` and the bench `tb`: `mig M5 demotion 65 cycles (R idle 17), restore 67 (R idle 31), bound 68: met`.
@@ -104,8 +106,7 @@ There are 8 RCU entries in `rtl/cg-waivers.json`, all written by RI as the owner
 
 ## Still open before sign-off
 
-1. **M1 guard path:** RA's choice between the kept lead copy and restating the target.
-2. **M3 wording:** "light unit".
-3. **M7 in the gate:** TI's selector, and the merge of 7e10e72f (RI-44).
-4. **Daniel:** the three owner waivers above, and the sign-off.
-5. **RA:** reconciling the spec with what was built (`docs/rcu-impl.md`, phase 5).
+1. **M7 in the gate:** TI's selector, and the merge of 7e10e72f (RI-44).
+2. **Daniel:** the three owner waivers above (RI-47; RA has no architectural objection), and the sign-off.
+3. **RA:** reconciling the spec with what was built (`docs/rcu-impl.md`, phase 5). RA started on 2026-11-14 and will report to DA.
+4. **Not blocking:** TI's kill kernel with an SFU op in flight (M4's kernel margin), and the end-to-end SW check through the block.
