@@ -21,9 +21,10 @@
 // those bytes are not checked. The bypass selects are checked whole.
 //
 // Runs: random traffic. --cg <idle|medium|high> <vcd> runs one clock-gating
-// scenario (tools/check-cg.py). --control <bypage|immpos|pcrow> expects a wrong
+// scenario (tools/check-cg.py); the random run alone issues SFU ops (RA rev 140
+// (3)). --control <bypage|immpos|pcrow|swlate> expects a wrong
 // rule (a forward's age one more; the immediate's port at position 0; a PC row
-// from every issue's phys_pred_dst, not the zero predicate's):
+// from every issue's phys_pred_dst, not the zero predicate's; SW a cycle late):
 // the run must fail (test/rcu/run-rtl.sh). Exit 0 only with no mismatch.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_lanes.h"
@@ -38,6 +39,7 @@
 #include <map>
 #include <memory>
 #include <random>
+#include <set>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -185,8 +187,11 @@ struct Bench {
         put(dut->foot_cr02h, kK * s, kK, o.foot);
         put(dut->opc_cr02h, 9 * s, 9, o.opc);
         // The class word rcu_isd holds from the lead (RA-43, RI-25).
+        // An SFU op: its lane opcode's class with UNIT SFU, as the model's
+        // decode will class it once RA-16 (b) lands.
         put(dut->ocl_cr02h, 27 * s, 27,
-            clspack::clsWord(o.opc, o.drow, o.pwe && o.dst == dectb::R::kZero));
+            o.cls == Sfu ? clspack::sfuWord(o.opc, o.drow)
+                         : clspack::clsWord(o.opc, o.drow, o.pwe && o.dst == dectb::R::kZero));
         put(dut->imm_cr02h, 32 * s, 32, o.imm);
         for (unsigned i = 0; i < 3; ++i) {
           put(dut->src_cr02h, (s * 3 + i) * 8, 8, o.src[i]);
@@ -333,7 +338,9 @@ struct Bench {
     };
     const Op *s9 = sfu(g(c - (kSfu - 3))), *s10 = sfu(g(c - (kSfu - 2))), *s11 = sfu(g(c - (kSfu - 1))),
              *s12 = sfu(g(c - kSfu));
-    eq("sw_v", dut->swv_cr11h, s9 && s9->gdst);
+    // swlate: SW expected a cycle late; must fail.
+    const Op *sv = control == "swlate" ? s10 : s9;
+    eq("sw_v", dut->swv_cr11h, sv && sv->gdst);
     if (s10 && s10->gdst) {
       eq("sw_row", dut->swrow_cr12h, s10->dst);
       eq("sw_sec", dut->swsec_cr12h, secmask(s10->dwid, s10->dpos));
@@ -361,7 +368,12 @@ struct Gen {
   std::mt19937_64 r;
   std::string control;
   unsigned cov_atom = 0, cov_pcopy = 0, cov_byp[2]{}, cov_imm_hi = 0, cov_copy = 0, cov_sfu = 0, cov_pdt = 0, cov_split = 0,
-           cov_super = 0, cov_multi = 0, cov_pwe = 0;
+           cov_super = 0, cov_multi = 0, cov_pwe = 0, cov_sw = 0;
+  // SFU ops (the random run only: the clock-gating scenarios keep their
+  // mix). An SFU result lands on the lane-result path kSfu - kLat cycles
+  // after a lane op issued with it would, so that later group issues nothing.
+  bool sfu = false;
+  std::set<uint64_t> noLane;
   explicit Gen(uint64_t seed) : r(seed) {}
   uint32_t u32() { return uint32_t(r()); }
   // The opcodes the model's decode makes lane ops at a done_row.
@@ -435,6 +447,8 @@ struct Gen {
       // The model's decode classes SFU ops as lane ops (Unit Sfu awaits
       // RA-16 (b)), so no opcode decodes to SFU yet: its share goes to lanes.
       o.cls = roll < 75 ? Lane : roll < 88 ? Copy : None;
+      // RA rev 140 (3): SFU ops on slot 0, the whole group, one a group.
+      if (sfu && s == 0 && roll >= 60 && roll < 75) o.cls = Sfu;
       if (o.cls == Sfu) {
         o.foot = 15;
       } else {
@@ -468,7 +482,7 @@ struct Gen {
         if (pcopy) o.opc = ccv::skel::kOpCopy, o.pwe = true, o.pc = true, ++cov_pcopy;
         o.mrg = p(0.4);
       } else {
-        o.opc = lanePool(o.drow).pick(r);
+        o.opc = lanePool(o.drow).pick(r);   // an SFU op: a lane opcode, UNIT SFU
         dectb::R::OpClass oc;
         dectb::classOf(o.opc, o.drow, false, oc);
         o.rds = oc.reads;
@@ -510,7 +524,11 @@ struct Gen {
         }
       }
       if (o.cls == Copy) ++cov_copy;
-      if (o.cls == Sfu) ++cov_sfu;
+      if (o.cls == Sfu) {
+        ++cov_sfu;
+        cov_sw += o.gdst;
+        noLane.insert(a + (kSfu - kLat));
+      }
       if (o.pdt && o.cls != None) ++cov_pdt;
       if (o.isl != 3 && s > 0 && o.cls != None) ++cov_imm_hi;
       if (o.pwe) ++cov_pwe;
@@ -534,6 +552,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   b.step();   // the flopped reset (RST-1) falls a cycle after its input
   Gen gen(0x1a9e5 + scenario.size());
   gen.control = control;
+  gen.sfu = scenario.empty();
   const unsigned n = scenario == "idle" ? 3000 : 6000;
   for (unsigned i = 0; i < n; ++i) {
     const uint64_t a = b.cyc + 1;   // the group whose lead is driven this cycle
@@ -542,6 +561,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
     // (the forwarded ones) still occur; a fixed stride of 3 never forwards.
     if (scenario == "medium") go = gen.p(0.3);
     else if (scenario != "idle") go = gen.p(0.9);
+    if (go && gen.noLane.erase(a)) go = false;   // an SFU result lands in its lane-result cycle
     if (go) b.gs[a] = gen.make(a);
     else gen.hist.erase(std::remove_if(gen.hist.begin(), gen.hist.end(),
                                        [&](const Gen::Prod &h) { return a - h.a > kHi; }),
@@ -552,8 +572,12 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   if (scenario != "idle") {
     const bool cov = gen.cov_byp[0] && gen.cov_byp[1] && gen.cov_imm_hi && gen.cov_copy && gen.cov_atom &&
                      gen.cov_pcopy && gen.cov_pdt && gen.cov_split && gen.cov_super && gen.cov_multi && gen.cov_pwe;
-    // sfu is counted, not required: no opcode decodes to SFU until the
-    // model classes it (RA-16 (b)).
+    // sfu and sw are required in the random run (RA rev 140 (3)); the
+    // clock-gating scenarios issue none.
+    if (gen.sfu && !(gen.cov_sfu && gen.cov_sw)) {
+      std::fprintf(stderr, "rcu_lanes: coverage: sfu %u sw %u\n", gen.cov_sfu, gen.cov_sw);
+      ++b.fails;
+    }
     if (!cov) {
       std::fprintf(stderr, "rcu_lanes: coverage: atom %u pcopy %u byp %u/%u imm_hi %u copy %u sfu %u pdata %u split %u "
                            "super %u multi %u pwe %u\n", gen.cov_atom, gen.cov_pcopy, gen.cov_byp[0], gen.cov_byp[1], gen.cov_imm_hi,
@@ -562,9 +586,10 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
       ++b.fails;
     }
   }
-  std::printf("rcu_lanes: %s%s%s: %llu cycles, %u copies, %u values checked, %u mismatches: %s\n",
+  std::printf("rcu_lanes: %s%s%s: %llu cycles, %u copies, %u SFU ops (%u SW), %u values checked, %u mismatches: %s\n",
               scenario.empty() ? "random" : scenario.c_str(), control.empty() ? "" : ", control ",
-              control.c_str(), (unsigned long long)b.cyc, kN, b.checked, b.fails, b.fails ? "FAIL" : "PASS");
+              control.c_str(), (unsigned long long)b.cyc, kN, gen.cov_sfu, gen.cov_sw, b.checked, b.fails,
+              b.fails ? "FAIL" : "PASS");
   return b.fails ? 1 : 0;
 }
 

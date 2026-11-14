@@ -807,7 +807,7 @@ missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
 mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
-vadd4  full_line=4
+vadd4  full_line=4 memop_entries_peak=10
 swap   slot_reuse=2
 provswap redirect>0 slot_reuse>0
 stall  l1_late>0
@@ -1071,6 +1071,77 @@ if [ "$(grep -c '^CHECK miu: seq 8 lane' "$B/kernel_drop-writeback.log")" = 32 ]
 else
   bad "--break drop-writeback" "a dropped writeback went unnoticed: $(grep '^KERNEL' "$B/kernel_drop-writeback.log")"
 fi
+# MA-5 (AR 345/347): a memop's credit stands for its MIU queue entry and
+# returns when its completion leaves, 10 a slot; OOE's select waits for one
+# (OI, efe09c78). vadd4 fills slot 0's 10 (memop_entries_peak, above).
+# --break memop-credit-on-take returns it as MIU takes the memop, as before:
+# vadd4 then holds up to 15 entries on slot 0, and MIU refuses each over 10.
+"$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break memop-credit-on-take >"$B/kernel_memop-credit-on-take.log" 2>&1
+if grep -q '^CHECK miu: 11 memops hold queue entries on slot 0, over its 10 credits (MA-5)' "$B/kernel_memop-credit-on-take.log"; then
+  say "--break memop-credit-on-take: over 10 entries" "PASS (vadd4, peak $(field "$B/kernel_memop-credit-on-take.log" memop_entries_peak))"
+else
+  bad "--break memop-credit-on-take" "credits returned on take went unnoticed: $(grep '^KERNEL' "$B/kernel_memop-credit-on-take.log")"
+fi
+# And OOE's side: inject_no_memop_credit grants a memop on a pipe whose slot
+# holds no credit; the send is refused (vadd4, slot 0).
+CCV_OOE_CONFIG=inject_no_memop_credit=1 "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl >"$B/kernel_no-memop-credit.log" 2>&1
+if grep -q '^CHECK ooe: no credit on ccv_ooe_miu_memop slot 0' "$B/kernel_no-memop-credit.log"; then
+  say "inject_no_memop_credit: a send with none refused" "PASS (vadd4, slot 0)"
+else
+  bad "inject_no_memop_credit" "a memop sent without a credit went unnoticed: $(grep '^KERNEL' "$B/kernel_no-memop-credit.log")"
+fi
+# Memop credits against their own watchdog (AR 349/350). A memop credit is
+# held from landing to its MIU queue entry's release (MA-5), and behind the
+# stub's in-order queue coremark128's outlive CCV_P_TIMEOUT_BP (8192), so the
+# channel's is CCV_P_TIMEOUT_MEMOP (20480, CCV_MEMOP_CREDITS x
+# CCV_P_TIMEOUT_MEM). coremark128 is run 45000 cycles, over twice that bound,
+# from a partial oracle (PARTIAL=1, tools/gen-oracle.sh: 10000 records a
+# warp, where 45000 cycles retire about 1300 in all). It must raise no
+# response_within_n and no CHECK but the operand lines a bounded run's
+# flushHeld() reports, and no assertion but quiesced_at_end, the cut-off
+# run's, and its longest memop hold must pass 8192, or the control below
+# proves nothing. It guards the watchdogs and those checks only: the unbounded runs
+# AR 350 asks for (coremark32 and coremark128 to their end) are outside the
+# gate. Control: the bank rebuilt with the memop watchdog at
+# CCV_P_TIMEOUT_BP (tools/build-skel.sh, an incremental build) fires.
+cb=$B/cm128-bounded; rm -rf "$cb"; mkdir -p "$cb"
+cp -r test/bench/coremark128 "$cb/coremark128"
+sed -i 's/^MAXSTEPS=.*/MAXSTEPS=40000/' "$cb/coremark128/kernel.cfg"
+echo PARTIAL=1 >>"$cb/coremark128/kernel.cfg"
+cbl=$B/kernel_cm128-bounded.log
+if ! CCV_ORACLE_DIR="$cb/o" tools/gen-oracle.sh "$cb/coremark128" >"$cb/oracle.log" 2>&1; then
+  bad "coremark128, 45000 cycles: memop watchdog" "no partial oracle: $(grep -m1 FAIL "$cb/oracle.log")"
+else
+  "$SKEL" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cbl" 2>&1
+  rwn=$(grep -c 'response_within_n' "$cbl")
+  other=$(grep '^CHECK' "$cbl" | grep -vc '^CHECK lane [0-9]*: seq [0-9]* operand ')
+  asrt=$(grep '%Error' "$cbl" | grep -vc 'quiesced_at_end')
+  mh=$(sed -n 's/^BPAGE ccv_ooe_miu_memop max=\([0-9]*\) .*/\1/p' "$cbl")
+  ret=$(field "$cbl" retired)
+  if [ "$rwn" = 0 ] && [ "$other" = 0 ] && [ "$asrt" = 0 ] && [ "$(field "$cbl" finished)" = 0 ] &&
+     [ "${ret:-0}" -gt 1000 ] && [ "${mh:-0}" -gt 8192 ]; then
+    rm -rf "$B/skel-memop8192"; cp -a "$B/skel" "$B/skel-memop8192"
+    sed 's/ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP/ccv_prov_pkg::CCV_P_TIMEOUT_BP/' \
+      rtl/generated/ccv_common_chk_bank.sv >"$cb/bank-memop8192.sv"
+    if ! grep -q CCV_P_TIMEOUT_MEMOP rtl/generated/ccv_common_chk_bank.sv; then
+      bad "coremark128: memop watchdog control" "the bank names no CCV_P_TIMEOUT_MEMOP to narrow"
+    elif ! tools/build-skel.sh "$B/skel-memop8192" "$cb/bank-memop8192.sv"; then
+      bad "coremark128: memop watchdog control" "the 8192 bank does not build ($B/skel-memop8192.log)"
+    else
+      "$B/skel-memop8192/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 2>&1 |
+        grep -m1 'u_ooe_miu_memop_s[0-9]*.*response_within_n' >"$cb/ctl.log"
+      if [ -s "$cb/ctl.log" ]; then
+        say "coremark128, 45000 cycles: memop watchdog" "PASS (longest hold $mh of 20480; at 8192 it fires)"
+      else
+        bad "coremark128: memop watchdog control" "with the memop watchdog at 8192, no response_within_n on ccv_ooe_miu_memop"
+      fi
+    fi
+    rm -rf "$B/skel-memop8192" "$B/skel-memop8192.log"
+  else
+    bad "coremark128, 45000 cycles: memop watchdog" "$rwn response_within_n, $other CHECK not operand, $asrt assertions not quiesced_at_end, finished=$(field "$cbl" finished), retired=$ret, memop hold ${mh:-none} (want 0, 0, 0, 0, >1000, >8192)"
+  fi
+fi
+rm -rf "$cb/o"
 # DCU marks a line owned only on MLC's grant (ccv_mlc_dcu_rsp.ownership):
 # refused it, predswap's first spill (AcquireBlock) and vadd's whole-line
 # store (AcquirePerm) each stop at DCU's check.
