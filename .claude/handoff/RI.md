@@ -52,7 +52,7 @@ architect may approve only if the end meets module NGD without the flop; can't m
 -14. NOW (2026-11-14 ~08:00) Pushed 468fb286 (SCOPED PASS 24/24, ri-lat in ri-wt10): a61a79ca (lanes_tb, Q-53
    arrival take derived lane latencies) + 3c304f94 merged. TI rev 427 (TI bookmark 427): 5516e643 landed in
    c99dc88d; asked where a61a79ca is. Answered RI-50 (RI tab rev 79), notices TI+RA. 72a84674 (rcu-exit M7 in
-   the gate; open item 1 = TI's links_split credit entry) gating as job-gate-push-20261114-080343-18560.log.
+   the gate; open item 1 = TI's links_split credit entry) pushed too (SCOPED PASS 4/24): branch tip 72a84674.
    WAITING: TI merges 468fb286, adds credit_on_receipt miu_rcu_data@rcu to test/phys/links_split.json, drops
    CCV_SVH_RCU_RTL=0 from check-links -> close task 32 / RA rev 143. Then TI kill kernel; DA waivers (RI-47)+sign-off.
 -13. NOW (2026-11-14) RA rev 143 (RA bookmark 143): M7 met; RTL must be correct at every derived CCV_LAT_LANE (7-11),
