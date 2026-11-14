@@ -59,6 +59,10 @@ architect may approve only if the end meets module NGD without the flop; can't m
    NEXT after push: RI row answering RA rev 140 ((1)-(3),(7),(8) done, the 21-vs-25 question, A-64 pointer:
    q53_rzero/q53_pzero + mig_restore_map at landing, launch copies unchanged; (6) waits on MA), notice RA cc TI;
    block report (task 22, after the gate: synthesis memory); then RA reports to DA for sign-off.
+   TI rev 425 (re:RA 140 (3),(4)): SFU class = TI op table + OI unit-4 issue + RI decode (RTL has U_SFU; model
+   needs Unit Sfu from the op table), all land together, no date; kill kernel = rokill variant w/ lane op in flight
+   (TI, after AR 350); rcu_dec_pkg -> ops.json after sign-off, then RI switches import. Say in row: RTL half ready.
+   TI tab bookmark rev 425.
 -11. NOW (2026-11-14) Pushed cd25d3bd (SCOPED PASS 14/24, ri-exit in ri-wt9): docs/rcu-exit.md (exit table
    at 7e10e72f) + test/rcu/guard-ngd.py (M1 guard path: 17.0 vs 16 on map w/ fanout; 13.6 without). RI tab rev 76:
    RI-46 to RA (M1 guard: keep a lead copy or restate; M3 "light unit" wording; M4 margin = whole drain; then
