@@ -27,7 +27,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Daily sweep (trig_017UEX7qaTRGT27eW6yQ1tJo, 02:07 PT)
 Skill section 4 (register-reader digest), then
-Once a46afef7 is merged here (TI-420): `CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf
+Since 11-14 (a46afef7 merged; TI-420): `CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf
 tools/daily-sweep.sh` self-detaches and prints its job log; wait with
 `tools/gate-wait.sh <job log>` as a run_in_background task (exit 3: still
 running at 110 min, rerun gate-wait; 4: killed, rerun the job). Before it
@@ -44,12 +44,15 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 19, OA 415, AR 348, TI 420, OI 342, IS 193, CP 157, DA 119,
-RA 136 (tab 9851686b-2b0a), RI 70 (tab 8e4547bc-c469), MA 46 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
-OOE doc rev 377. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
+Conventions 19, OA 416, AR 350, TI 434, OI 347, IS 193, CP 157, DA 119,
+RA 144 (tab 9851686b-2b0a), RI 79 (tab 8e4547bc-c469), MA 54 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
+OOE doc rev 378. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
 Sweep 11-13: 6 branches (76 commits), full gate green, pushed 0bc98973 (first push 503'd, credential service; retried by hand); release 63625551; tag refused (known).
 
 ## Open work (most urgent first)
+- Sweep 11-14: 8 branches (209 commits) pushed abd2a025 UNGATED (old daily-sweep + new detaching make-release; OA 414, rev 416). Full clean gate run after: PASS. No release cut (ccr-126afa13 gained a commit); next sweep cuts it. TI fixed: 518cb3c3, a detached tool exits 5.
+- OI-143: RH's on-vs-off price for cand_indep_pend is identical in all 36 runs because sectioned=0 (placePos returns early); OA 407's 0.5% test passes only vacuously. The real price waits on sectioned=1 (OI-32); OI will ask RH then (~9 h cm128).
+- OI-142: l1_nohit model built (off by default); no price until MA Phase 1's stub sends no-hits.
 - OA 413 (rev 415, 11-13): signed OI-141's CCV-L23 feedback entry for cok_nx_cq02h (offset 2, loop cok/cokd/ccnt) and chas_cq03h arrival 4.0 (OI-53). Watch OI push ef19544c; the flag rule goes into the OOE doc's memop paragraph.
 -24. OA 387 re:RA 104/AR 325 (zero-cycle ooe_rcu_issue leads): YES on OOE side. pred_neg(+(a) bits),
    R-slot phys_src0/1 (slot_fields), opcode (not class bits, A-66) move iss_pay -> iss_lead in ooe_rs;
