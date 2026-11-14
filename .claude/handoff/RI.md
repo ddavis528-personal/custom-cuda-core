@@ -63,6 +63,10 @@ architect may approve only if the end meets module NGD without the flop; can't m
    the pair, pushes; or sends via gate-scratch/RI. Notices TI, OI (session_01DMw4FtFbGoVboMGxWpLBuv), RA.
    TI rev 431 AGREED: TI rings when its SFU half (ops.json, gen-ops, lane stub SFU, DEC routing) is on its branch;
    then merge into ri-sfuclass, run lnorm1/transp4 + run-rtl + lockstep + svh, gate-push, notify OI for go.
+   DONE: merged TI c27ff714 (gate-scratch/TI-sfu); fixed lanes_lockstep (sec_valid = lane ops only; SFU on
+   sfu_valid), control sfusec; ri-sfuclass tip d2d4525d clean on RCU side (lockstep all, svh 63 div=0, run-rtl).
+   RI-52 (rev 81): TI must fix check-kernel held-over-r regex (warp 3 -> warp 1, same on c27ff714 alone). Then
+   merge TI fix, regen, gate-push ri-sfuclass, notify TI+OI (OI go). ri-wt3 is detached at c27ff714 (scratch).
 -14. NOW (2026-11-14 ~08:00) Pushed 468fb286 (SCOPED PASS 24/24, ri-lat in ri-wt10): a61a79ca (lanes_tb, Q-53
    arrival take derived lane latencies) + 3c304f94 merged. TI rev 427 (TI bookmark 427): 5516e643 landed in
    c99dc88d; asked where a61a79ca is. Answered RI-50 (RI tab rev 79), notices TI+RA. 72a84674 (rcu-exit M7 in
