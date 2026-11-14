@@ -58,7 +58,9 @@ architect may approve only if the end meets module NGD without the flop; can't m
    RA rev 142 (RA bookmark 142): 21 budgets right; all rev 140 RI items closed; (6) closed (one_load_a_bank holds
    under FULL_ROW; per bank when FULL_ROW goes). 4 whys edited -> 7e9bf49d in ri-wt9 (local, NOT pushed; push with
    the block report). Left before DA sign-off: TI M7 selector + kill kernel; RI-47 waivers (DA).
-   NEXT: block report (task 22, agent drafting to scratchpad blockrep/report.md), commit as doc, gate-push.
+   Block report docs/rcu-block-report.md (7acd52eb) + 7e9bf49d + 3c304f94 GATING: ~/ccv-logs/ri32-push.log.
+   NEXT: after push, RI row (RA rev 142 done: 4 whys; block report; lanes CG-3 measures 54.9/68.8 > recorded 51/67,
+   floors left as RI-47 put them), notice RA cc TI/DA. Then wait: TI M7 selector + kill kernel, DA waivers/sign-off.
 -11. NOW (2026-11-14) Pushed cd25d3bd (SCOPED PASS 14/24, ri-exit in ri-wt9): docs/rcu-exit.md (exit table
    at 7e10e72f) + test/rcu/guard-ngd.py (M1 guard path: 17.0 vs 16 on map w/ fanout; 13.6 without). RI tab rev 76:
    RI-46 to RA (M1 guard: keep a lead copy or restate; M3 "light unit" wording; M4 margin = whole drain; then
