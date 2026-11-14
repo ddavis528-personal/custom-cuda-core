@@ -56,7 +56,9 @@ architect may approve only if the end meets module NGD without the flop; can't m
    (miu_rcu_data@rcu) added, all 67 lockstep + 12 controls PASS, check-sv-hosted RCU RTL 63 kernels div 0 + controls.
    Without it the RTL drives no miu_rcu_data credit (RA-41) -> TI: links_split.json must carry credit_on_receipt,
    then drop CCV_SVH_RCU_RTL=0 in check-links. Base lanes bench identical (505/430). Base lockstep run: ri-lat-base.log.
-   NEXT: gate-push ri-lat after ri32 (3c304f94 gating); RI row to RA+TI; merge rename (in ri-lat already).
+   RI-49 written (RI tab rev 78), notices TI+RA. RA rev 144 (bookmark 144): accepted; 7 and 11 suffice; closes when
+   a61a79ca merged and check-links passes without CCV_SVH_RCU_RTL=0 (TI). Chain scratchpad/chain-lat.sh: after ri32
+   push, merge tip into ri-lat, gate-push (log ~/ccv-logs/ri33-chain.log, ri33-push.log).
 -12. NOW (2026-11-14) Pushed 5516e643 (SCOPED PASS 21/24, ri-exit in ri-wt9): RA rev 140 items (1)(2)(3)(7)(8)
    (pzero, lanes SFU + swlate, M5 from c1 68/64, M0 cycles vs stub, waiver texts, 21 ngd budgets -> "RA rev 140").
    RI-48 written (RI tab rev 77), notices RA + TI. WAIT: RA on which 4 of 25 budgets, RA's report to DA; MA on
