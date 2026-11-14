@@ -64,6 +64,18 @@ inline uint64_t clsWord(unsigned opc, unsigned drow, bool pcopy) {
   return pack(oc);
 }
 
+/// An SFU op's class word: the lane opcode's class with UNIT SFU. The
+/// model's decode classes no opcode SFU until RA-16 (b), so the lanes bench
+/// drives this to reach SW, done slot 4 and swb_d (RA rev 140 (3)).
+inline uint64_t sfuWord(unsigned opc, unsigned drow) {
+  R::OpClass oc;
+  using namespace ccv::skel;
+  const OpInfo *d;
+  rcudec::decodeClass(opc, drow & 3u, false, 1, oc, d);
+  oc.unit = R::Unit::Sfu;
+  return pack(oc);
+}
+
 }  // namespace clspack
 
 #endif

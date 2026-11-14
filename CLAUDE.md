@@ -111,7 +111,8 @@ idle container (reclaimed, with what it runs); both lost gates daily (DA,
 2026-11-13). So `tools/verify.sh`, `gate-push.sh`, `daily-sweep.sh`,
 `make-release.sh` and `bg-run.sh`'s command detach themselves
 (`tools/detach.sh`: their own session, `setsid nohup`), print a pid and a
-job log in `$CCV_LOGDIR`, and return at once. Then run
+job log in `$CCV_LOGDIR`, and return at once with exit 5, never 0, so an
+older caller reading it as the gate's stops (OA-414). Then run
 `tools/gate-wait.sh [<job log>]` (default the newest) as the session's
 background task: it ends with the job's result and exit status, or with
 `waiting` (exit 3) before 2 hours, when you run it again at once, or

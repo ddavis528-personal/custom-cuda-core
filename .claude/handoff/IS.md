@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-12. Keep this current at every task's end; it is what
+Updated 2026-11-14. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -45,7 +45,7 @@ synth-cache/compiler/compiler.git, and `ccache -C` (5 GB). Kill a stuck gate
 by its process group (setsid gives it one): kill -TERM -- -<pgid>.
 The core full gate can pass 2 h, the background-task limit: start it with
 setsid nohup tools/bg-run.sh is-sweep-gate tools/gate-push.sh --full, then
-wait in 2 h slices. tools/heavy-units.json is TI's: on a conflict there,
+wait in 2 h slices. TI gates-detach (TI 418, 2026-11-13): never run a gate as a background task; setsid nohup ... &, watcher `while kill -0 <pid>`, TI-420 (a46afef7, 11-13): long tools now self-detach; wait with tools/gate-wait.sh <job log> as a background task (exit 3 = rerun the wait, 4 = gate killed). TI re:OA-414 (rev 429): a sweep begun before a46afef7 can push ungated; IS sweeps merge ccr-183cc441-doowtf (TI) first, gate-push.sh detaches (CCV-JOB-EXIT in its job log); its inner verify.sh runs in the foreground (CCV_DETACHED), so its push stays gated. Wait with tools/gate-wait.sh <job log>. 518cb3c3 (detach exits 5) pending. tools/heavy-units.json is TI's: on a conflict there,
 take TI's branch's version.
 
 ## Daily sweep (scheduled task trig_015FmjgTTHxM4zTcmDTMf4tG, 02:23 PT)
@@ -53,10 +53,10 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 343, OA 411, IS 190, TI 407, OI 338, CP 157, DA 119, RA 136, RI 70, MA 2.
+Conventions 19, AR 351, OA 416, IS 193, TI 429, OI 348, CP 157, DA 119, RA 145, RI 79, MA 54.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
-Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Next pings Friday 2026-11-13.
+Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Pings Friday 2026-11-13 sent to AR, OA, TI, OI, CP, RA, RI, MA, RH (MA now in roster, session_01QPk2jyUbWA7fW9YpUwqdxk); all nine ponged 11-13, each checked with notice.py check (Saturday check done). Next pings Friday 2026-11-20.
 Read through the register-reader subagent; this file is the durable
 bookmark store.
 
@@ -66,7 +66,7 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
-- 11-11 and 11-12 sweeps ran together on 11-12 (session idle); nothing for IS.
+- 11-12 sweep pushed (core 493d5698 full PASS). 11-13: answered MA-2 (re:MA-2, IS rev 191-192): ISA fixes no page size, all ISA regions 64 KiB-aligned, no objection to CCV_L_PAGE_SHIFT 16; AR owns cross-block cost. AR agreed (AR 348) and TI landed CCV_L_PAGE_SHIFT 16 (eda137fa, MA-15). MA-10: Q-60 whole-TLB invalidate only, no ASID; MA-11 line-granular per-warp ordering; none changes the ISA. DA (MA tab, 11-13): MI/DI start only after AR grill-me + summary to Daniel.
 - New agent MA (MIU+DCU architect; DA 117-119), MI/DI implement, C++ model
   first. Sweep minute order: IS 23 (OA 406). MA will lean on the ISA's memory
   semantics (O-72 atomics, O-83/O-84 per-thread memory, fence): answer its

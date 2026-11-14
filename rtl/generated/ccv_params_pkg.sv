@@ -680,6 +680,10 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: with CCV_P_TIMEOUT_MEM
   localparam int CCV_P_TIMEOUT_BP = 8192;
 
+  // Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). The spec's MIU parks misses and never blocks one warp behind another (AR rev 321, MA-14), so a slot's memop waits behind at most its own slot's CCV_MEMOP_CREDITS - 1 others, one memory-length stall each: the CCV_P_TIMEOUT_BP rule applied to MA-5's credits. A watchdog and a sizing signal, provisional until MA's Phase 1 model: each gate run reports the channel's longest credit hold (BPAGE). The MIU stub's cross-warp head-of-line block (MA-14's deviation) is not what it is sized to.  Derived: = CCV_MEMOP_CREDITS * CCV_P_TIMEOUT_MEM.
+  // PROVISIONAL -- decided by: with CCV_P_TIMEOUT_MEM
+  localparam int CCV_P_TIMEOUT_MEMOP = 20480;
+
   // Predicate physical register index, sized by CCV_P_PRED_REGS (it was 8, addressing 256 entries against a 16-deep file). The predicate file is a SEPARATE namespace with its own RAT; sharing CCV_P_W_PHYS_REG would recouple two files that were deliberately split. One index past the pool is reserved for the hardwired zero predicate (A-64, A-67).  Derived: = clog2(CCV_P_PRED_REGS + 1).
   // PROVISIONAL -- decided by: Stage 4a -- OOE rename session sizes the predicate RAT
   localparam int CCV_P_W_PHYS_PRED = 6;

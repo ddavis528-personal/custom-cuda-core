@@ -145,6 +145,11 @@ def build(d, pv, blocks):
                           held=c.get("backpressure", "").startswith("held:"),
                           credits_param=c.get("credits_param"),
                           credits=pv[c["credits_param"]] if c.get("credits_param") else pv["CCV_CREDIT_DEPTH"],
+                          # Its response bound (AR rev 350): the schema's
+                          # timeout_param, else CCV_P_TIMEOUT_BP for a held or
+                          # credits_param channel, else CCV_P_TIMEOUT_N.
+                          timeout_param=c.get("timeout_param"),
+                          watchdog=pv[c["timeout_param"]] if c.get("timeout_param") else pv["CCV_P_TIMEOUT_BP"],
                           latency_match=c.get("latency_match"),
                           lead=lead, lead_mask=lead_mask,
                           # slot_fields (OA's response OI-93): per field, a
@@ -297,6 +302,8 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
     L.append("  bool held;           ///< backpressured: its receiver may hold behind a stall (TI-22)")
     L.append("  uint16_t credits;    ///< a slot's credits abutted: CCV_CREDIT_DEPTH, or the")
     L.append("                       ///< schema's credits_param (MA-5, AR rev 345)")
+    L.append("  uint32_t watchdog;   ///< a held or credits_param channel's response bound:")
+    L.append("                       ///< the schema's timeout_param, else CCV_P_TIMEOUT_BP")
     L.append("};")
     L.append("")
     for c in chans:
@@ -324,7 +331,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
               if c["attrs"]["slot_binding"] == "bound" else 0)
         bk = ([f for f, _, _ in c["fields"]].index(c["binding_key"])
               if c["binding_key"] else -1)
-        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s, %s, %d},'
+        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s, %s, %d, %d},'
                  % (c["id"], c["name"], c["src"].upper(), c["dst"].upper(),
                     c["rate"], c["bits"], len(c["fields"]), c["name"],
                     c["ninst"],
@@ -332,7 +339,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
                     bg, ok, of,
                     "true" if c["attrs"]["lockstep"] else "false", cls, bk,
                     "true" if c["attrs"]["fixed_latency"] else "false",
-                    "true" if c["held"] else "false", c["credits"]))
+                    "true" if c["held"] else "false", c["credits"], c["watchdog"]))
     L.append("};")
     L.append("constexpr unsigned kNumChans = %d;" % len(chans))
     L.append("")
@@ -482,7 +489,9 @@ def gen_sv(chans, cinst, nslots, pbits):
             # A channel whose credits stand for a resource the receiver holds
             # through a memory access (credits_param; MA-5, AR rev 345) is
             # answered within the same watchdog.
-            tmo = "CCV_P_TIMEOUT_BP" if c["held"] or c["credits_param"] else "CCV_P_TIMEOUT_N"
+            # Its own watchdog where the schema names one (timeout_param;
+            # AR rev 350: ccv_ooe_miu_memop's credit outlives the BP rule).
+            tmo = (c["timeout_param"] or "CCV_P_TIMEOUT_BP") if c["held"] or c["credits_param"] else "CCV_P_TIMEOUT_N"
             # A credit-on-receipt end's boundary flop returns the credit
             # itself, flop to flop (AR's rev 322): no stage more each way, so
             # its loop, round trip and fixed-latency prompt are exact, and a
@@ -501,7 +510,7 @@ def gen_sv(chans, cinst, nslots, pbits):
                        ".TIMEOUT_N(ccv_prov_pkg::%s + %d), "
                        ".SRC_STAGES(%d)" % (2 * n, tmo, 2 * n, ci["src_stages"]))
             elif c["held"] or c["credits_param"]:
-                lm += ", .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)"
+                lm += ", .TIMEOUT_N(%s::%s)" % (PKG[tmo], tmo)
             if c["credits_param"]:
                 # More credits than the loop (MA-5): the depth is the
                 # parameter's, plus the repeated link's 2N as the loop's.

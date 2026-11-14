@@ -37,6 +37,7 @@ namespace {
 
 int g_fail = 0;
 bool g_quiet = false;     ///< a negative control's expected failures
+int g_mcred_depth = int(ccv::prov::kMemopCredits);   ///< MA-5: every Env's MIU credits a slot (-1 none)
 bool g_row_no_hold = false;   ///< testRowHold: select issues past 3 dones in flight
 unsigned g_row_over = 0;      ///< testRowHold: OI-90's check fired
 /// Called after every core cycle of every Env: an RTL testbench compiled
@@ -302,15 +303,18 @@ struct Env {
   // contract knobs
   unsigned fetch_delay = 3;          ///< FET to OOE, so stale uops are in flight
   unsigned miss_pct = 0;             ///< loads that miss L1
+  bool nohit = false;                ///< OA 410: MIU sends a no-hit hint for each L1 miss (I+13)
+  std::multimap<uint64_t, unsigned> nohits;  ///< no-hit hints due, by cycle: rob tag
   unsigned miss_extra = 25;          ///< past-L1 latency beyond CCV_LAT_L1_CMPL
   bool rcu_fast = false;             ///< dones earlier than the bound
   /// Load data past L1 becomes readable this many cycles after the
   /// completion lands (a longer ccv_miu_rcu_data link, in issue-time terms).
   unsigned data_after_cmpl = 0;
-  /// MA-5: MIU's credits per memop slot, each back mcred_ret cycles after
-  /// its memop leaves (-1: the core is told none, as before MA-5).
-  int mcred_depth = -1;
-  unsigned mcred_ret = 40;
+  /// MA-5: MIU's credits per memop slot (CCV_MEMOP_CREDITS), each back
+  /// mcred_ret cycles after its memop leaves, about when an L1 hit's entry
+  /// frees (-1: the core is told none, as before MA-5).
+  int mcred_depth = g_mcred_depth;
+  unsigned mcred_ret = ccv::prov::kLatL1Cmpl + 2;
   std::array<unsigned, 4> mcred{};
   std::multimap<uint64_t, unsigned> mcred_back;
   bool mcred_init = false;
@@ -1234,6 +1238,10 @@ struct Env {
       // A hit the channel has no room for at the L1 contract completes
       // later, which is a miss.
       hit = hit && when == t + cfg.lat_l1_cmpl;
+      // OA 410: the address stage's no-hit, payload at I+13 (t is I plus the
+      // payload stage); ooe_block defers it a cycle under rx_lag 16.
+      if (!hit && nohit)
+        nohits.insert({t + 12 + ((cfg.rx_lag & 16) ? 1 : 0), m.rob_tag});
       hit_of[m.tid] = hit;
       if (gpr(m.pdst)) {
         // Readable at the L1 wake on a hit; on a miss, after the completion.
@@ -1275,6 +1283,10 @@ struct Env {
     // defers it, so the core takes it one cycle ahead of its completion.
     for (auto r = cmpls.equal_range(t + ((core.config().rx_lag & 16) ? 1 : 2)); r.first != r.second; ++r.first)
       if (r.first->second.status != kCmplReplay) core.hint(r.first->second.rob_tag);
+    for (auto it = nohits.begin(); it != nohits.end() && it->first <= t;) {
+      if (pend.count(it->second)) core.hint(it->second, true);
+      it = nohits.erase(it);
+    }
     // TI-21: a restore's rows hold a PRF write port (OA's rev 132): count
     // the cycles its landings would have found the ports short.
     if (!write_busy.empty()) {
@@ -1680,6 +1692,53 @@ void testL1Spec() {
       EXPECT(e.core.counters["cancel.replay"] == 2, "replays %llu",
              (unsigned long long)e.core.counters["cancel.replay"]);
       EXPECT(issueCount(e, 5) == 1, "the store issued %u times", issueCount(e, 5));
+    }
+  }
+}
+
+/// OA 410 (l1_nohit): MIU's no-hit at I+13 clears a spec load's wake before
+/// CCV_LAT_L1_WAKE, so on a miss its child and grandchild wait for the
+/// completion and nothing replays. Knob off, the no-hit is ignored and both
+/// replay as in l1-spec; the control (a no-hit that clears nothing) must
+/// show the replays again.
+void testL1NoHit() {
+  for (const int mode : {0, 1, 2}) {   // 0: l1_nohit; 1: knob off; 2: the control
+    g_test = mode == 0 ? "l1-nohit" : mode == 1 ? "l1-nohit off" : "l1-nohit (control)";
+    Config c = baseConfig();
+    c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
+    c.l1_nohit = mode != 1;
+    c.inject_ignore_nohit = mode == 2;
+    Env e(c);
+    e.keep_log = true;
+    e.miss_pct = 100;
+    e.miss_extra = 10;
+    e.nohit = true;
+    std::vector<Op> p;
+    Op ld; ld.k = kLoad; ld.dst = 1; ld.nsrc = 1; p.push_back(ld);               // tid 1
+    Op a; a.k = kLane; a.dst = 3; a.src[0] = 1; a.nsrc = 1; p.push_back(a);     // tid 2: child
+    Op g; g.k = kLane; g.dst = 4; g.src[0] = 3; g.nsrc = 1; p.push_back(g);     // tid 3: grandchild
+    Op st; st.k = kStore; st.src[0] = 4; st.src[1] = 4; st.nsrc = 2; p.push_back(st);  // tid 4
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    if (mode == 2) g_quiet = true;
+    const int saved = g_fail;
+    e.finish();
+    g_quiet = false;
+    const unsigned replays = unsigned(e.core.counters["cancel.replay"]);
+    if (mode == 2) {
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control ignore-nohit", replays ? "caught" : "MISSED");
+      EXPECT(replays != 0, "a no-hit that clears nothing should leave the shadow's replays");
+      continue;
+    }
+    EXPECT(e.core.counters["load.no_hit"] == 1, "no-hits taken %llu", (unsigned long long)e.core.counters["load.no_hit"]);
+    EXPECT(e.w[0].retired.size() == p.size(), "retired %zu of %zu", e.w[0].retired.size(), p.size());
+    if (mode == 0) {
+      EXPECT(replays == 0, "replays %u after a no-hit", replays);
+      EXPECT(issueCount(e, 2) == 1 && issueCount(e, 3) == 1, "child %u, grandchild %u issues", issueCount(e, 2),
+             issueCount(e, 3));
+    } else {
+      EXPECT(replays == 2, "knob off: replays %u, as l1-spec's miss", replays);
     }
   }
 }
@@ -5914,6 +5973,7 @@ int main(int argc, char **argv) {
   testCogrant();
   testReconv();
   testMemopCredits();
+  testL1NoHit();
   std::printf("ooe-test: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
   return g_fail ? 1 : 0;
 }

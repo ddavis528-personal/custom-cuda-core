@@ -672,6 +672,7 @@
     {
       "name": "ccv_ooe_miu_memop",
       "credits_param": "CCV_MEMOP_CREDITS",
+      "timeout_param": "CCV_P_TIMEOUT_MEMOP",
       "src": "ooe",
       "dst": "miu",
       "rate": 4,

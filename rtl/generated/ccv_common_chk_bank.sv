@@ -805,28 +805,28 @@ module ccv_common_chk_bank (
   ccv_common_chk_atomic #(.N(4)) u_miu_rcu_data_atomic (
     .clk(clk), .rst_n(rst_n), .enable(1'b0 | force_atomic),
     .valid(valid[105:102]), .credit(credit[105:102]));
-  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[106]), .ch_credit(credit[106]), .ch_stall(stall[106]),
     .ch_payload(payload[36468:36343])
 `ifdef CCV_TRACE
     , .ch_tid(tid[6847:6784])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[107]), .ch_credit(credit[107]), .ch_stall(stall[107]),
     .ch_payload(payload[36594:36469])
 `ifdef CCV_TRACE
     , .ch_tid(tid[6911:6848])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[108]), .ch_credit(credit[108]), .ch_stall(stall[108]),
     .ch_payload(payload[36720:36595])
 `ifdef CCV_TRACE
     , .ch_tid(tid[6975:6912])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(126), .CHANNEL(9), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP), .DEPTH(ccv_prov_pkg::CCV_MEMOP_CREDITS + 0)) u_ooe_miu_memop_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[109]), .ch_credit(credit[109]), .ch_stall(stall[109]),
     .ch_payload(payload[36846:36721])
 `ifdef CCV_TRACE

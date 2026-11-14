@@ -30,7 +30,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GENERATED = ["rtl/generated", "sim/generated", "rtl/top", "rtl/top/dpi",
+GENERATED = ["rtl/generated", "sim/generated", "rtl/top", "rtl/top/dpi", "rtl/top/dpi-shadow",
              "rtl/top/ports", "rtl/top/stubs", "rtl/top/wrap", "test/top"]
 MANIFEST = ".generated"
 

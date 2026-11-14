@@ -21,8 +21,7 @@
 //   - every _stall output 0: RCU never stalls an inbound channel;
 //   - done slots 0-4 and 6: branch_taken, branch_mask, aux and the lead
 //     branch fields 0 (the Done tab: only slot 5, R's, carries a branch);
-//   - rcu_kill's CSR request marker 0 until Q-59 defines one; its sixth
-//     busy term is the wake detector's (five modules have one);
+//   - rcu_kill's CSR request marker 0 until Q-59 defines one;
 //   - the predicate file's unused merge fields (PL, PR, PG lanes all ones;
 //     PC takes none of the new value; PG merges nothing);
 //   - the gate's stalled 0 and override 0: the block's idle_cr01h (rcu_kill)
@@ -1146,30 +1145,11 @@ module ccv_rcu (
     end
   end
 
-  // ---- The wake detector: quiesced held off through each wake's message ---
-  // The gate holds the clock open through T + CCV_WAKE_LAT for a wake in T,
-  // the edge that takes the valid; the payload lands a cycle later, and the
-  // gate reads quiesced through two flops of its own (quiesced_q, then the
-  // full flag). rcu_kill's idle drops only once the valid is on the wire, so
-  // a block idle before the wake slept through T + 5 and T + 6 with the
-  // payload landing (the block lock-step, test/rcu/lockstep.py, on vadd).
-  // wake_detect_busy_cr01h is high T + 1 .. T + CCV_WAKE_LAT, a busy term
-  // of rcu_kill's idle: idle is low T + 2 .. T + 5, the gate's full flag low
-  // through T + 7, and the valid keeps it low from there. On core_clk: a
-  // wake arrives while asleep (CCV-L22's wake detector). Written every
-  // cycle, no reset: they flush in CCV_WAKE_LAT cycles of reset, which
-  // holds the gate open (4 flops, in the module's allowance). kill_valid,
-  // wake_cr01h's top bit, is left out: the kill is a data input, which goes
-  // straight into a flop (AR's rev 285 (5)), and the kill detector's flop
-  // and rcu_kill's drain hold the block busy from K anyway.
-  localparam int WL = ccv_params_pkg::CCV_WAKE_LAT;
-  logic [WL-2:0] wake_detect_h_cr01h;
-  logic          wake_detect_busy_cr01h;
-  wire           wake_detect_any_cr01h = |wake_cr01h[NWAKE-2:0];
-  always_ff @(posedge core_clk) begin
-    wake_detect_h_cr01h    <= {wake_detect_h_cr01h[WL-3:0], wake_detect_any_cr01h};
-    wake_detect_busy_cr01h <= wake_detect_any_cr01h | |wake_detect_h_cr01h;
-  end
+  // ---- The issue wake, a cycle on -----------------------------------------
+  // No busy hold of the block's own through a wake's message: ccv_common_clk
+  // holds the clock open through T + CCV_WAKE_LAT + 2 for a wake in T, the
+  // lead payload's capture with it (AR rev 343, re:RI-38), so the block no
+  // longer keeps rcu_kill's idle low across T + 1 .. T + CCV_WAKE_LAT.
   // The issue wake, a cycle on, for the out-wakes that follow an issue at
   // A + 2: lane ops, MIU addresses and R's done. OOE's wake is at A - 4;
   // this flop is high at A - 3, so rcu_lanes', rcu_mem's and rcu_kill's
@@ -1197,7 +1177,7 @@ module ccv_rcu (
     .mv_cr00h      (md_v_cr00h),
     .cr_cr01h      (k_cr_cr01h),
     .dbusy_cr00h   ({wake_detect_iw_cr01h, r_busy_cr03h, l_dbusy_cr03h}),
-    .busy_cr00h    ({wake_detect_busy_cr01h, p_busy_cr03h, m_busy_cr03h, r_busy_cr03h, l_busy_cr03h, g_busy_cr02h}),
+    .busy_cr00h    ({p_busy_cr03h, m_busy_cr03h, r_busy_cr03h, l_busy_cr03h, g_busy_cr02h}),
     .dwake_cr01h   (k_dwake_cr01h),
     .idle_cr01h    (idle_cr01h),
     .csr_v_cr00h   (1'b0),

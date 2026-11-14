@@ -40,6 +40,9 @@ RCU_RTL = ["cg", "ngd", "rcu_rtl", "rcu_ls", "top", "svh", "links"]
 # each with the sections that read it; any other reader fails the selftest.
 RCU_READERS = {
     "rtl/top/wrap/ccv_rcu_w.sv": ["top", "svh", "links"],
+    # RCU's RTL in the SV top (CCV_RCU_RTL, RI-44): svh runs it, and links
+    # runs check-sv-hosted whole on its split tree.
+    "tools/check-sv-hosted.sh": ["svh", "links"],
 }
 # First match wins: the more specific prefix comes first.
 MAP = [
@@ -56,6 +59,7 @@ MAP = [
     ("tools/check-kernel.sh", ["kernel", "svh"]),
     ("tools/check-sv-hosted.sh", ["svh"]),
     ("tools/check-skel.sh", ["skel", "kernel", "svh", "top"]),
+    ("tools/build-skel.sh", ["skel", "kernel", "svh", "top"]),   # check-skel's build, check-kernel's control
     ("tools/check-if.sh", ["iface"]),
     ("tools/check-ooe-unit.sh", ["ooe_unit"]),
     ("tools/check-formal.sh", ["formal"]),
