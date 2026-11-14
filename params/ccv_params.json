@@ -1123,7 +1123,7 @@
     },
     {
       "name": "CCV_LAT_RCU_ADDR",
-      "value": 5,
+      "value": 1,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -1132,7 +1132,7 @@
     },
     {
       "name": "CCV_LAT_L1_WAKE",
-      "value": 17,
+      "value": 13,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -1141,7 +1141,7 @@
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 18,
+      "value": 14,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
