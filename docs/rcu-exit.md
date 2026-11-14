@@ -23,7 +23,7 @@ commands below.
 | M4, kill drain | MET, by rcu_kill's control at KILL_DRAIN − 1 (RA, rev 139). The kernel margin waits on a kill kernel from TI |
 | M5, migration | MET, from c1 (RA rev 140): demotion 68 and restore 64 cycles, against a bound of 68. Demotion has no margin |
 | M6, kernels | MET |
-| M7, swap boundary | MET with the model. The RTL passes locally, pending TI's selector in the gate (RI-44) |
+| M7, swap boundary | MET, with the model and with the RTL, in the gate (TI's selector, 6061d0ee; gate 468fb286) |
 
 ## The rows
 
@@ -89,12 +89,12 @@ RA's ruling on RI-46 (rev 139): the target is restated as ≤ 16 without the fan
 
 **M7: swap boundary.**
 - Gate, with the model as RCU in both hosts: 67 of 67 SV-hosted runs equal their C++-hosted runs.
-- RTL as RCU in the SV top (`test/rcu/ccv_rcu_svh.sv`), run locally with TI's host diff (RI-44):
+- RTL as RCU in the SV top (`test/rcu/ccv_rcu_svh.sv`), in the gate since TI's selector (6061d0ee, RI-44). The gate on 468fb286 (`verify-468fb286-20261114-0556.log`, SCOPED PASS 24/24) prints `RCU RTL in the SV top: == C++, == model PASS (63 kernels, rcu=rtl divergences=0)`. Run locally as well:
   - 63 of 63 kernels clean, divergences=0;
   - the RTL's final register compare clean;
   - the four `*_demote` runs clean;
   - the compare's controls (ev, gate, row) and the flip control fail as they must.
-- This goes into the gate once TI adds the SVHOST 45/46 selector.
+- Every derived CCV_LAT_LANE (RA rev 143): the RTL needs no change. The lanes bench and the Q-53 arrival check take the derived latencies (a61a79ca), and the split tree (`test/phys/links_split.json`, CCV_LAT_LANE 11) passes locally with `credit_on_receipt` for `miu_rcu_data@rcu` added. check-links still runs it with `CCV_SVH_RCU_RTL=0` until TI adds that entry and drops the skip (RI-49, RI-50).
 
 ## Waivers for Daniel's signature
 
@@ -114,7 +114,7 @@ There are 8 RCU entries in `rtl/cg-waivers.json`, all written by RI as the owner
 
 ## Still open before sign-off
 
-1. **M7 in the gate:** TI's selector, and the merge of 7e10e72f (RI-44).
+1. **The split tree with the RTL:** TI merges 468fb286, adds the `credit_on_receipt` entry to `test/phys/links_split.json` and drops `CCV_SVH_RCU_RTL=0` from check-links (RI-49, RI-50; RA rev 143).
 2. **Daniel:** the three owner waivers above (RI-47; RA has no architectural objection), and the sign-off.
 3. **RA:** reconciling the spec with what was built (`docs/rcu-impl.md`, phase 5). RA's phase-5 items for RI (rev 140) are all closed (RA rev 142). That includes (6): under the full-row interim every GPR load overlaps section 0, so MIU never co-issues two and `one_load_a_bank` holds as built; it narrows to per bank when FULL_ROW goes (RA rev 141, MA 54). RA reports to DA.
 4. **Block report:** `docs/rcu-block-report.md` (cells, flops, gating, DCGE, the 2% budget, depth histogram) at 5516e643.
