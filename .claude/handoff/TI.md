@@ -54,15 +54,17 @@ restart: rerun the job). Logs in /root/ccv-logs/.
   push only. Disk: deleting other sessions' /tmp/tmp.* was denied; ask.
 
 ## Open work (most urgent first)
-1. SFU class (OI-145 (3)): TI's half on gate-scratch/TI-sfu 996866d1
-   (worktree /home/user/ti-det, branch ti-sfu). RI merges it into
-   ri-sfuclass and gates the pair; TI pushes nothing of it till then.
-   OI-148: OOE's go; ring OI only if the joint gate fails an OOE check.
-2. PF-47 (OI-145 (9)): committed locally (4a325bd5, 0c927c53; held-over-r to warp 0), NOT pushed. Proof clean (ngd ccv_rcu+ooe_wake, skel, svh) but cm128 bounded: ccv_dec_ooe_uop hold 8252 > 8192 (123 response_within_n). TI rev 435 asks AR to rule (a) 20480 (b) stub-only (c) base 2. Act on AR's answer, then gate.
-3. AR 350 cm128 unbounded: the first run was OOM-killed (needs > 6.5 GB,
-   ~6 h). Rerun ALONE (scratchpad bin/ccv-skel-memop20480, oracle
-   scratchpad oracle/coremark128). Answer AR+MA: cycles, wall, max hold;
-   widen the stub to 81920 (MA-14) only if hold > 20480.
+1. PF-47 + SFU pair, ti-sram 880f2d1c (backed up to gate-scratch/TI-sram), NOT pushed:
+   PF-47 (base 1; RCU_ADDR 1, L1_WAKE 13, L1_CMPL 14), CCV_P_TIMEOUT_UOP (AR 352 (a):
+   derive = CCV_P_TIMEOUT_MEMOP, require >=, on ccv_dec_ooe_uop; chain walk in its doc),
+   8192 control needs memop AND uop to fire, RI's SFU pair 9f513f3b merged (held-over-r
+   on warp 1). check-kernel, svh, ngd pass. AR 352 (4): before pushing, report uop and memop
+   longest holds on UNBOUNDED cm32 and cm128 with AR 350 cond. 1. Running detached,
+   binary scratchpad bin/ccv-skel-pf47sfu: /root/ccv-logs/cm32-pf47sfu.log and
+   /root/ccv-logs/unbounded-pf47sfu.log (cm128; its cm32 leg failed: no oracle, ignore).
+   Wait with gate-wait. Then: TI row to AR, MA, RA, OI, RI (holds, cycles, wall); then
+   gate-push (scoped); AR re-books PF-33/PF-47. If cm128 uop hold > 20480: ask AR.
+3. AR 350 cm128 unbounded is the run above (same report).
 4. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
 5. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
    ooe_rs from a flop. RI-21 (4): rcu_dec_pkg switch after sign-off.
