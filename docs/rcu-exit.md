@@ -21,7 +21,7 @@ commands below.
 | M2, clock gating | MET |
 | M3, bank slice | MET. The AND-OR sits exactly at its limit. "Light" means the unit's own peak is within 2,048 MiB (RA, rev 139) |
 | M4, kill drain | MET, by rcu_kill's control at KILL_DRAIN − 1 (RA, rev 139). The kernel margin waits on a kill kernel from TI |
-| M5, migration | MET: 65 and 67 cycles, against a bound of 68 |
+| M5, migration | MET, from c1 (RA rev 140): demotion 68 and restore 64 cycles, against a bound of 68. Demotion has no margin |
 | M6, kernels | MET |
 | M7, swap boundary | MET with the model. The RTL passes locally, pending TI's selector in the gate (RI-44) |
 
@@ -29,8 +29,14 @@ commands below.
 
 **M0 (tail): block lock-step.**
 - `rcu_ls` passes 63 kernels, every output and event compared every cycle, the four `*_demote` runs included.
-- 11 controls are caught: init, opnd, ev, gate, row, lead, arrival, pair, rzero, rdup and iso, plus the corrupt-output control.
+- 12 controls are caught: init, opnd, ev, gate, row, lead, arrival, pair, rzero, pzero, rdup and iso, plus the corrupt-output control.
+- The restore map is checked as it lands (RA rev 140 (7); A-64): no GPR row 255 (`q53_rzero`) and no predicate 63 (`q53_pzero`) in `test/rcu/rcu_q53_chk.sv`, bound into every replay, and `mig_restore_map` in `rtl/rcu/rcu_mig.sv`. Launch copies that map unchanged. The lock-step controls rzero and pzero catch each fault.
 - The model's unit tests pass, and their 7 controls are caught.
+- Kernel cycles, the model against the stub (RA rev 140 (8)): all 63 kernels finish clean with each. In total, 54,729 cycles against 54,665, a geometric mean of 1.015.
+  - 33 kernels are equal.
+  - 21 are 1 to 4 cycles faster (narrowadd 230 against 234, borrow 99 against 102).
+  - 9 are slower. 8 of them are the 8 kill kernels, by 10 to 13 cycles (addrneg 83 against 70, rokill 104 against 94). The ninth is rope, 705 against 704.
+  - The causes aren't traced kernel by kernel. The kill kernels' gap isn't the drain: cutting it to 0 moves rokill by one cycle (M4).
 - `rcu_rtl` runs every module bench, and every control is caught.
 
 **M1: NGD.**
@@ -69,10 +75,12 @@ RA's ruling on RI-46 (rev 139): the target is restated as ≤ 16 without the fan
 - Kernels: 61 kernels were run in ccv-skel with `CCV_RCU_KILL_DRAIN_CUT` at 0 and 1. The 8 that kill (addrhigh, addrneg, divchw, roconst, rogated, rokill, rolaunch and rolimit) were also run at cuts 2, 5 and 15. All pass. The cut does take effect: for example, rokill goes from 103 to 102 cycles.
 - No kernel has RCU work in flight when its kill lands, so the margin is recorded as the whole drain, as on 2026-11-05 (`docs/rcu-model.md`).
 - MET by rcu_kill's KILL_DRAIN − 1 control, on the RTL and the model (RA, rev 139).
-- RA has asked TI for one kill kernel with an SFU op in flight when the kill lands, so the drain is exercised end to end; it doesn't block sign-off. RI records its margin when the kernel lands. Note that the lane stub sends no SFU result yet (`sim/skel/kernel.cpp`, RA-16 (b)), so that kernel needs an SFU-capable stub. The same gap means no kernel or lock-step run exercises SW write-back (`sfu_result`) through the assembled block yet. That path is covered by the model's test and the slice bench's LW + SW same-lane case.
+- RA has asked TI for one kill kernel with an SFU op in flight when the kill lands, so the drain is exercised end to end; it doesn't block sign-off. RI records its margin when the kernel lands. Note that the lane stub sends no SFU result yet (`sim/skel/kernel.cpp`, RA-16 (b)), so that kernel needs an SFU-capable stub. The same gap means no kernel or lock-step run exercises SW write-back (`sfu_result`) through the assembled block yet. That path is covered by the model's test and the slice bench's LW + SW same-lane case. The lanes bench drives SFU ops itself, as a lane opcode with UNIT SFU (505 ops, 430 of them writing SW), through swb_d, SW and done slot 4. Its control `swlate`, SW expected a cycle late, fails as it must (RA rev 140 (3)).
 
 **M5: migration.**
-- From `test/rcu/cg-build.sh rcu_mig` and the bench `tb`: `mig M5 demotion 65 cycles (R idle 17), restore 67 (R idle 31), bound 68: met`.
+- Counted from c1, the cycle after the launch's edge, when the launch's map or command credit is on the wire and a demotion's wake is high (RA rev 140 (2)). The bench fails a demotion whose wake doesn't rise in c1.
+- From `test/rcu/cg-build.sh rcu_mig` and the bench `tb`: `mig M5 from c1: demotion 68 cycles (R idle 20), restore 64 (R idle 28), bound 68: met`.
+- Demotion sits exactly at the bound: any added cycle on that path goes to RA before it lands.
 - The random run gives 673 demotions, 571 restores, 108 kills, and 0 mismatches in 66,800 values.
 
 **M6: kernels.**
