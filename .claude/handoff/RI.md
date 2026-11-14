@@ -61,6 +61,8 @@ architect may approve only if the end meets module NGD without the flop; can't m
    ri-sfuclass (ri-wt10) 26ab1517 + 30e363cc (dec_pkg regen). Alone it fails lnorm1/transp4 (lane stub runs no SFU op,
    result at LAT_LANE not sfu_result at LAT_SFU). RI-51 (rev 80) proposes: RI merges TI's half when on a branch, gates
    the pair, pushes; or sends via gate-scratch/RI. Notices TI, OI (session_01DMw4FtFbGoVboMGxWpLBuv), RA.
+   TI rev 431 AGREED: TI rings when its SFU half (ops.json, gen-ops, lane stub SFU, DEC routing) is on its branch;
+   then merge into ri-sfuclass, run lnorm1/transp4 + run-rtl + lockstep + svh, gate-push, notify OI for go.
 -14. NOW (2026-11-14 ~08:00) Pushed 468fb286 (SCOPED PASS 24/24, ri-lat in ri-wt10): a61a79ca (lanes_tb, Q-53
    arrival take derived lane latencies) + 3c304f94 merged. TI rev 427 (TI bookmark 427): 5516e643 landed in
    c99dc88d; asked where a61a79ca is. Answered RI-50 (RI tab rev 79), notices TI+RA. 72a84674 (rcu-exit M7 in
