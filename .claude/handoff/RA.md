@@ -313,7 +313,9 @@ snapshots refreshed. TI 430 / RI-51: 7079fc14, check-links runs the RCU RTL with
 SFU class pair: TI's op-table half + RI 30e363cc (ri-sfuclass); OI needs no code; ADDR_BASE is AR's. No RA reply due.
 TI 434: 518cb3c3 (detach exits 5) landed on TI's branch; TI 429 warning moot once merged here.
 2026-11-14 sweep: merged 183cc441 (79), 888218a3 (7), 9eb50716 (125), c22116ce (1), miu-dcu-spec (1); SCOPED PASS, pushed ffd61757.
-Bookmarks: OA 416, RA 146, RI 80, TI 434, AR 351, DA 119, OI 348, Conventions 19, CP 157, IS 193, MA 54.
+TI 435 / RA rev 147: PF-47=1 clean on RCU side; ccv_dec_ooe_uop holds 8252 > 8192 (cm128) behind the MIU stub's queue;
+AR rules its bound; RA declines fallback (c) PF-47=2, prefers (a)/(b). PF-47 held at TI until AR rules.
+Bookmarks: OA 416, RA 147, RI 80, TI 435, AR 351, DA 119, OI 348, Conventions 19, CP 157, IS 193, MA 54.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
