@@ -61,6 +61,13 @@ architect may approve only if the end meets module NGD without the flop; can't m
    Block report docs/rcu-block-report.md (7acd52eb) + 7e9bf49d + 3c304f94 GATING: ~/ccv-logs/ri32-push.log.
    NEXT: after push, RI row (RA rev 142 done: 4 whys; block report; lanes CG-3 measures 54.9/68.8 > recorded 51/67,
    floors left as RI-47 put them), notice RA cc TI/DA. Then wait: TI M7 selector + kill kernel, DA waivers/sign-off.
+   TI rev 426 (TI bookmark 426): RI-44 landed 6061d0ee (ccr-183cc441-doowtf, SCOPED PASS 24/24): RCU RTL in SV top,
+   46/46, controls caught; M7 needs nothing more from TI. TI renamed shim ccv_rcu_dpi -> rcu_dpi in test/rcu/svh.py,
+   ccv_rcu_svh.sv (CCV-L28): TAKE IT (merge 6061d0ee after ri32 push). OPEN for RI+RA: check-links split tree
+   (CCV_LAT_LANE 7->11) fails with RCU RTL (miu_rcu_data fixed_latency_prompt, lockstep.py crash), skipped there.
+   Answer in row: RTL verified at base latencies only (lanes' LAT/LSF/DH/DL/DS follow ccv_prov_pkg, but stage names,
+   lane-result landing, KILL_DRAIN, miu_rcu_data fixed latency are timed to the base links); RA rules whether RTL
+   must take other latencies; if so RI investigates. Then record M7 in rcu-exit.md (gate, 46/46, the split skip).
 -11. NOW (2026-11-14) Pushed cd25d3bd (SCOPED PASS 14/24, ri-exit in ri-wt9): docs/rcu-exit.md (exit table
    at 7e10e72f) + test/rcu/guard-ngd.py (M1 guard path: 17.0 vs 16 on map w/ fanout; 13.6 without). RI tab rev 76:
    RI-46 to RA (M1 guard: keep a lead copy or restate; M3 "light unit" wording; M4 margin = whole drain; then
