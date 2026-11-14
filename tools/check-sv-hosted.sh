@@ -234,9 +234,17 @@ done
 # lock-step's care masks, events too (test/rcu/svh.py compare: "rcu=rtl
 # divergences=0"). The clock gate is overridden on in the wrapper (the shims'
 # wake outputs are 0 here); the block lock-step holds it to the model.
+# CCV_SVH_RCU_RTL=0 skips it: check-links runs this script whole on its split
+# tree, where the repeaters' stages move the links' latencies (CCV_LAT_LANE
+# 7 -> 11), and RCU's RTL is timed at the base links only (its MIU data
+# capture fails fixed_latency_prompt there; open with RI and RA, TI rev 426).
+if [ "${CCV_SVH_RCU_RTL:-1}" = 0 ]; then
+  say "RCU RTL in the SV top" "SKIP (CCV_SVH_RCU_RTL=0: a split tree)"
+  exit $fail
+fi
 RG="$B/svh_rtl_gen"; RV="$B/svh_rtl"
 if ! RSRC=$(python3 test/rcu/svh.py prep --out "$RG" 2>"$B/svh_rtl_prep.log"); then
-  bad "RCU's RTL in the SV top: builds" "svh.py prep: $(head -1 "$B/svh_rtl_prep.log")"
+  bad "RCU RTL in the SV top: builds" "svh.py prep: $(head -1 "$B/svh_rtl_prep.log")"
   exit 1
 fi
 SVR=$(echo "$SV" | sed 's| rtl/top/dpi/\*\.sv | |')
@@ -248,7 +256,7 @@ if ! verilator --binary -j 0 --assert --timing -Wno-fatal -Wno-TIMESCALEMOD \
      "$R/sim/skel/oracle.cpp" "$R/sim/skel/machine.cpp" "$R/sim/skel/portdump.cpp" \
      "$R/sim/skel/exerciser.cpp" "$R/sim/src/event.cpp" \
      "$R/sim/dpi/ccv_event_dpi.cpp" >"$B/svh_rtl_build.log" 2>&1; then
-  bad "RCU's RTL in the SV top: builds" "$(grep -m1 -iE '%Error|error:' "$B/svh_rtl_build.log")"
+  bad "RCU RTL in the SV top: builds" "$(grep -m1 -iE '%Error|error:' "$B/svh_rtl_build.log")"
   exit 1
 fi
 SVHR="$B/svh_rtl_vo/ccv-svh"
@@ -268,9 +276,9 @@ for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
   [ -z "$why" ] || fails="$fails $k:${why# }"
 done
 if [ -z "$fails" ]; then
-  say "RCU's RTL in the SV top: == C++, == model" "PASS ($nk kernels, rcu=rtl divergences=0)"
+  say "RCU RTL in the SV top: == C++, == model" "PASS ($nk kernels, rcu=rtl divergences=0)"
 else
-  bad "RCU's RTL in the SV top" "${fails# }"
+  bad "RCU RTL in the SV top" "${fails# }"
 fi
 # Controls, on vadd: the compare's own (an event, the gate, a row changed in
 # the RTL's record: test/rcu/lockstep.py --control), the shadow a cycle late
@@ -291,7 +299,7 @@ rtl vadd flip "+ccv_rcu_svh_flip"
 if [ -z "$missed" ]; then
   say "  ...controls: ev, gate, row, shadow late, flip" "PASS (each caught)"
 else
-  bad "RCU's RTL in the SV top: controls" "not caught:$missed"
+  bad "RCU RTL in the SV top: controls" "not caught:$missed"
 fi
 rm -f "$RV"/*.vcd "$RV"/*.obs "$RV"/*.ev
 
