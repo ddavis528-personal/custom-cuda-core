@@ -66,6 +66,8 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
    grp_code 21.4/21.0 and gnt_idx/gnt_v 25.8/25.3 (regress); v3 A/B factoring, grant last: gsn 21.6
    psn 23.7 and Verilator emits broken C++ (rnrs build). Floor: name fanout ~4 + compare ~6 + 16..144-term
    masked OR ~6..10. Files + logs: scratchpad/rd51/. Next lever needs OA: gsn/psn arrival 6 (rev 194).
+   #52 try 1 11-14 (reverted): window terms per retire-count candidate from hoh flops, count picks last
+   (benches pass): flop-flop 29.5->31.1 (fa_oh remapped), dn_tag 26.2->29.4, fl_v 29.5->31.2. scratchpad/rob52/.
    Bookmarks since: TI 435, RI 82 (RI-53: SFU pair pushed 9f513f3b; merge at sweep).
    Blocked: #40/#42 (TI schema), #46 (lead set), l1_nohit price (MA stub sends no no-hits),
    cand_indep_pend price (OI-143 rev 344: needs sectioned on).
