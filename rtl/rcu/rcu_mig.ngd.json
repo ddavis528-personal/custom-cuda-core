@@ -5,7 +5,7 @@
       "arrival": 18.0,
       "by": "RA rev 140",
       "date": "2026-11-08",
-      "why": "The demotion rows from rcu_pred, which leaves them at 18 (rcu_pred.ngd.json dq_cr02h, pending RA); mig captures them in at most 7 (dm_pay)."
+      "why": "The demotion rows from rcu_pred, which leaves them at 18 (rcu_pred.ngd.json dq_cr02h, RA rev 140); mig captures them in at most 7 (dm_pay)."
     },
     "r2row_cr02h": {
       "by": "RA rev 140",

@@ -8,8 +8,9 @@
 // connections. Each check is a CCV_ASSERT_AT, so a failure reads as any
 // other assertion's (the block lock-step, test/rcu/lockstep.py, counts them).
 //
-//   q53_arrival  every rcu_ooe_done valid comes at A+1 (slots 5, 6), A+6
-//                (lane slots 0-3) or A+11 (SFU slot 4) after the issue that
+//   q53_arrival  every rcu_ooe_done valid comes at A+1 (slots 5, 6),
+//                A+CCV_LAT_LANE-1 (lane slots 0-3; A+6 at the base links) or
+//                A+CCV_LAT_SFU-1 (SFU slot 4; A+11) after the issue that
 //                names its rob_tag and done_row (the Done tab's table: an
 //                issue's valid is on the wire at A-1, its payload at A; a
 //                done's valid at A+L, its payload at A+L+1).
@@ -52,7 +53,9 @@ module rcu_q53_chk #(
   localparam int WP = ccv_prov_pkg::CCV_P_W_PHYS_PRED,
   localparam int ROWS = ccv_prov_pkg::CCV_P_PHYS_REGS,
   localparam int PROWS = ccv_prov_pkg::CCV_P_PRED_REGS,
-  localparam int H = 12                                   // A-1 .. A-12 kept
+  localparam int LAT = ccv_prov_pkg::CCV_LAT_LANE,        // derived from the links
+  localparam int LSF = ccv_prov_pkg::CCV_LAT_SFU,
+  localparam int H = LSF                                  // A-1 .. A-LSF kept
 ) (
   input logic              core_clk,
   input logic              rst_n,
@@ -88,7 +91,7 @@ module rcu_q53_chk #(
 );
   wire rst = !rst_n;
   function automatic int lat(int k);
-    return (k == 5 || k == 6) ? 1 : (k == 4) ? 11 : 6;
+    return (k == 5 || k == 6) ? 1 : (k == 4) ? LSF - 1 : LAT - 1;
   endfunction
 
   // ---- q53_arrival -------------------------------------------------------

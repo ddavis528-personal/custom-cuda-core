@@ -80,7 +80,7 @@ so this is a build artifact rather than something to remember.
 | `test/rcu/killsleep_tb.cpp` | — | — |
 | `test/rcu/lanes_tb.cpp` | — | — |
 | `test/rcu/mig_tb.cpp` | — | — |
-| `test/rcu/rcu_q53_chk.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO`, `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
+| `test/rcu/rcu_q53_chk.sv` | — | `CCV_LAT_LANE`, `CCV_LAT_SFU`, `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO`, `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
 | `test/rcu/tb_cg_rcu_clk.sv` | — | `CCV_CG_HYST_W` |
 | `test/smoke/credit_smoke.sv` | — | `CCV_P_TIMEOUT_N` |
 
