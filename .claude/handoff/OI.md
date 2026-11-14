@@ -61,6 +61,12 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
    (NGD-1 29.6, al_n 29.2, dn_tag 26.3, fl_slot 28.6, fl_v 29.5); #53 ooe_go (NGD-1 26.1, ha 27.9, hv 28.9,
    pl 27.2, px 28.0, reach 25.3, wt 25.0; leave port-budget caps under 25); #54 ooe_sched (NGD-1 26.7,
    cidx 25.6, res 29.0, vel 28.2). Order: #51-#54 next, then DA 111b, #32 (optional).
+   #51 PARKED 11-14 (tree back at HEAD): 3 flat rewrites, none reach 19 internal (gsn/psn arrive 6).
+   v1 flat masks: gsn 21.1 psn 22.7 (benches pass); v2 G-2 name muxed per entry: rows fixed but
+   grp_code 21.4/21.0 and gnt_idx/gnt_v 25.8/25.3 (regress); v3 A/B factoring, grant last: gsn 21.6
+   psn 23.7 and Verilator emits broken C++ (rnrs build). Floor: name fanout ~4 + compare ~6 + 16..144-term
+   masked OR ~6..10. Files + logs: scratchpad/rd51/. Next lever needs OA: gsn/psn arrival 6 (rev 194).
+   Bookmarks since: TI 435, RI 82 (RI-53: SFU pair pushed 9f513f3b; merge at sweep).
    Blocked: #40/#42 (TI schema), #46 (lead set), l1_nohit price (MA stub sends no no-hits),
    cand_indep_pend price (OI-143 rev 344: needs sectioned on).
    Gate note: the first a2c1513a gate was OOM-killed in cg (check-cg python 4.6 GB beside ngd's ABC);
