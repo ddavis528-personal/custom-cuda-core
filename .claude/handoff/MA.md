@@ -16,9 +16,11 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 - gate-push: always `CCV_PUSH_BRANCHES=claude/miu-dcu-microarch-spec-664pgr`, else it
   finds no base and runs the full gate. Run detached (setsid nohup tools/bg-run.sh ...)
   and watch the real PID with kill -0; a background watcher dies at 2h, the gate does not.
-- Daily sweep: trigger `trig_015gBGZ169gCKj4KbpYm5bhB`, 02:35 Pacific. Until 518cb3c3 (make-release
-  detach exits 5) is in this branch, run it as `CCV_FOREGROUND=1 tools/daily-sweep.sh` (TI 429:
-  a sweep begun before a46afef7 otherwise pushes its merge ungated).
+- Daily sweep: trigger `trig_015gBGZ169gCKj4KbpYm5bhB`, 02:35 Pacific.
+- gate-push and verify.sh now detach themselves (518cb3c3 in this branch): run
+  `CCV_PUSH_BRANCHES=claude/miu-dcu-microarch-spec-664pgr tools/gate-push.sh`, then
+  `tools/gate-wait.sh <job log>` as a background task (exit 3: run it again; 4: killed by a
+  restart, start the job again).
 - Docs edits: a `find` replace "as text" inherits the first run's formatting
   (bold/code); for whole paragraphs use a guarded markdown replace.
 - A rendered copy of a tab: read with `{"kind":"view"}` and render with the
@@ -27,8 +29,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 350, TI 424, OA 414, IS 193, CP 157, OI 341, RA 136,
-RI 70, MA 54, DA 119. TI 429 read. RA 141 read (item 6 settled MA 54: one GPR load a cycle at position 0). Specs doc: MIU tab rev 104, DCU tab rev 23.
+Conventions 19, AR 351, TI 434, OA 416, IS 193, CP 157, OI 348, RA 146, RI 79, MA 54, DA 119.
 
 ## State, 2026-11-13
 
@@ -70,6 +71,11 @@ RI 70, MA 54, DA 119. TI 429 read. RA 141 read (item 6 settled MA 54: one GPR lo
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- Sweep 2026-11-14: merged 9 branches (+3 updates after a restart killed the first gate);
+  RA.md conflicts kept RA's newest (d4d4976c). Pushed 9d3acbae, SCOPED PASS 24/24.
+  For Phase 1: OI-142's l1_nohit knob waits on MA's model sending no-hits; AR 351 set
+  CCV_LAT_RCU_ADDR_BASE = 1 (L1_WAKE 13, L1_CMPL 14), so PF-33's merge numbers move.
 
 0. MA rev 51-52 (re:AR-350, TI-424): memop watchdog CCV_P_TIMEOUT_MEMOP = CCV_MEMOP_CREDITS x
    CCV_P_TIMEOUT_MEM = 20480 (spec MIU blocks a warp only on its own; rev 50's 81920 withdrawn,
