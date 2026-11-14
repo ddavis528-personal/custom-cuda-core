@@ -162,8 +162,12 @@ for m in lanes mem; do
   for u in $us; do bench "$u" test/rcu/cg-build.sh "$u" "$B/$u" -- "$B/$u/tb"; done
   case $m in lanes) cs="bypage immpos pcrow swlate sfusec" ;; mem) cs="align pstlane" ;; esac
   for c in $cs; do
+    # A control is caught by the bench's own compare, or, for sfusec, by the
+    # RTL's lanes_lockstep assertion, which stops the run before it reports.
+    want="control $c: .* [1-9][0-9]* mismatches: FAIL$"
+    [ "$c" = sfusec ] && want="Assertion failed in TOP\.rcu_lanes\.lanes_lockstep"
     if [ -x "$B/rcu_${m}_c4/tb" ] && ! "$B/rcu_${m}_c4/tb" --control "$c" >"$B/rcu_$m.$c.log" 2>&1 &&
-       grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_$m.$c.log"; then
+       grep -q "$want" "$B/rcu_$m.$c.log"; then
       say "rcu_$m control $c" "caught"
     else
       say "rcu_$m control $c" "NOT CAUGHT ($B/rcu_$m.$c.log)"; fail=1
