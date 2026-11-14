@@ -82,6 +82,7 @@ module ooe_trio #(
   input  logic [NR-1:0]     ret_cq03h,
   input  logic [NR-1:0]     brk_cq03h,
   input  logic              mig_cq02h,
+  input  logic [3:0]        cret_cq02h,    // MA-5: MIU credit returns, a lead
   input  logic [N-1:0]      chas_cq03h,
   input  logic [N*W-1:0]    cidx_cq03h,
   input  logic [NR*NR-1:0]  older_r_cq03h,
@@ -189,7 +190,7 @@ module ooe_trio #(
     .vel_cq03h(vel_cq03h), .siss_cq03h(siss_cq03h), .sdep_cq03h(sdep_cq03h), .sslot_cq03h(sslot_cq03h),
     .res_cq03h(res_cq03h), .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h),
     .older_r_cq03h(older_r_cq03h), .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h),
-    .block_cq03h(block_cq03h), .ret_cq03h(s_ret), .brk_cq03h(brk_cq03h), .mig_cq02h(s_mig),
+    .block_cq03h(block_cq03h), .ret_cq03h(s_ret), .brk_cq03h(brk_cq03h), .mig_cq02h(s_mig), .cret_cq02h(cret_cq02h),
     .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w), .gnt_l_cq04h(gnt_l));
 endmodule
 `undef CCV_CLK
