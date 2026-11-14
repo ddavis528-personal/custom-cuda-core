@@ -263,7 +263,9 @@ lat=$(sed -n 's/^static constexpr uint32_t kLatLane = \([0-9]*\);/\1/p' sim/gene
 [ -z "$why" ] && say "split: every kernel with OOE's bypass" "PASS (CCV_LAT_LANE $lat, still forwarded at 4; byp's $nb)" ||
   bad "split: kernels with OOE's bypass" "${why# }"
 
-./tools/check-sv-hosted.sh >build/svh_suite.log 2>&1
+# Not RCU's RTL: it is timed at the base links only (check-sv-hosted.sh,
+# CCV_SVH_RCU_RTL; open with RI and RA).
+CCV_SVH_RCU_RTL=0 ./tools/check-sv-hosted.sh >build/svh_suite.log 2>&1
 if grep -q "FAIL" build/svh_suite.log; then
   bad "split: SV-hosted == C++-hosted" "$(grep -m1 FAIL build/svh_suite.log | xargs)"
 else

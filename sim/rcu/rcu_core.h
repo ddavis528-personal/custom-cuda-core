@@ -407,6 +407,7 @@ private:
   std::map<uint64_t, unsigned> rpop_;   ///< restore writes' FIFO pops, by W
   unsigned next_id_ = 0;
   std::deque<FifoEnt> fifo_;
+  std::optional<FifoEnt> fifo_in_;   ///< a PCA row in its capture flops: in the FIFO a cycle after it lands
   unsigned rs_inflight_ = 0;    ///< FIFO head entries decided, not yet written
   bool rs_last_ = false;        ///< the predicate row is decided, not yet written
   unsigned map_drops_ = 0, cmd_drops_ = 0;   ///< kill-dropped entries' credits owed
