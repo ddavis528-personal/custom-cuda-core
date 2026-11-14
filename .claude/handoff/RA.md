@@ -305,7 +305,10 @@ TI's kill kernel with an SFU op in flight is accepted as the lane op (SFU = lane
 RI-49: RTL needs no change (pipes follow ccv_prov_pkg; passes at LAT_LANE 11); test fixes a61a79ca (ri-lat);
 split file lacked miu_rcu_data@rcu credit_on_receipt. RA rev 144: accepted, 7+11 suffice; rev 143 item closes when
 a61a79ca merged and check-links passes without CCV_SVH_RCU_RTL=0 (TI adds the entry).
-Bookmarks: OA 414, RA 144, RI 78, TI 426, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 54.
+RI-50: lane-latency test fixes pushed 468fb286; closes when TI runs the split tree without the skip.
+AR 351 / RA rev 145: PF-47 = 1 confirmed from RTL (rcu_miu_addr valid m_v_cr03h at A's edge, payload m_*_cr04h at
+A+1's; M1 covers slice read 11.0 + rcu_mem mux).
+Bookmarks: OA 414, RA 145, RI 79, TI 426, AR 351, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 54.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
