@@ -3013,8 +3013,11 @@ private:
     else if (n != 0) {
       std::vector<Receiver::Msg> ms;
       for (unsigned l = 0; l != kLanes; ++l) ms.push_back(take(c.lane_rcu, 0, l));
-      const bool lane_part = get(ms[0].payload, c.lane_rcu, "sec_valid") != 0;
-      const bool sfu_part = get(ms[0].payload, c.lane_rcu, "sfu_valid") != 0;
+      bool lane_part = false, sfu_part = false;
+      for (const Receiver::Msg &m : ms) {
+        lane_part = lane_part || get(m.payload, c.lane_rcu, "sec_valid") != 0;
+        sfu_part = sfu_part || get(m.payload, c.lane_rcu, "sfu_valid") != 0;
+      }
       auto oldest = [&](bool sfu) {
         for (auto it = alu_.begin(); it != alu_.end(); ++it)
           if (isSfu(*it) == sfu) return it;
@@ -3025,8 +3028,11 @@ private:
         if (!(sfu ? sfu_part : lane_part)) continue;
         auto it = oldest(sfu);
         if (it == alu_.end()) {
-          k_.fail(sfu ? "rcu: lane sfu_valid with no SFU op in flight (RA-16 (b))"
-                      : "rcu: lane results for nothing");
+          if (!sfu) k_.fail("rcu: lane results for nothing");
+          else
+            for (unsigned l = 0; l != kLanes; ++l)
+              if (get(ms[l].payload, c.lane_rcu, "sfu_valid"))
+                k_.fail("rcu: lane %u sfu_valid with no SFU op in flight (RA-16 (b))", l);
           continue;
         }
         const Alu a = *it;
