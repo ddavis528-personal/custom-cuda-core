@@ -188,6 +188,13 @@ struct Config {
   /// Speculative wake of L1-load dependants at CCV_LAT_L1_WAKE, cancelled on
   /// a miss (A-46). Off while MIU completes no load at the L1 contract.
   bool l1_spec = true;
+  /// OA 410 (OA rev 413, MA's answer to OA 408): a completion hint with
+  /// no_hit set says a spec global load has lost the L1-hit contract (valid
+  /// I+12, payload I+13). Taken, it clears the load's speculative wake at
+  /// once, as a miss would at I+16, and its dependants wake on the
+  /// completion. A refill hint for the same load in the cycle wins. Off:
+  /// a no-hit is ignored and the miss cancels at the contract, as before.
+  bool l1_nohit = false;
   // -- narrow registers and lane sections (OI-28 to OI-33, Daniel's 2026-10-08) -
   /// Sectioned lanes: a register is a slice of a PRF row, named row * 4 +
   /// position, an op claims the union of its operands' sections widened to
@@ -546,6 +553,7 @@ struct Config {
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
   bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
+  bool inject_ignore_nohit = false;     ///< l1_nohit's control: a no-hit hint clears nothing (OA 410)
   bool inject_no_memop_credit = false;  ///< select grants a memop on a pipe MIU holds no credit for (MA-5)
   /// Sectioned select grants one more lane op a cycle onto sections already
   /// held, unchecked (V-60): the kernels' no-resource-cap control, which RCU
@@ -1335,7 +1343,7 @@ public:
   void cmpl(const Cmpl &c);
   /// OA-23's completion hint: the completion for rob_tag comes two cycles
   /// from now (read only under Config::miss_lead).
-  void hint(unsigned rob_tag);
+  void hint(unsigned rob_tag, bool no_hit = false);
   uint64_t now() const { return now_; }   ///< the last cycle run
   /// R held no op at the last cycle's select: a migration's row may use
   /// its PRF port (RA-17).
@@ -1348,9 +1356,12 @@ public:
   void migrationReads(unsigned n) { mig_reads_ = n; }
   /// MA-5 (AR 345/347, OA-412): the credits each ccv_ooe_miu_memop slot,
   /// P0-P3, holds as the cycle starts, set before cycle(). Select grants a
-  /// memop only where a pipe of its footprint has one left after what
-  /// leaves this cycle, and sends it on the lowest such pipe. Never set,
-  /// every pipe has one (the unit tests that model no MIU).
+  /// memop only on a pipe of its footprint whose credit flag is set, and
+  /// sends it on the lowest such pipe. The flag is ooe_sched's register:
+  /// set for the next cycle when what is left after this cycle's departures
+  /// (A) covers a grant made now, A >= 2, or A == 1 with no grant possible
+  /// now (flag clear). Never set, every pipe has one (the unit tests that
+  /// model no MIU).
   void memopCredits(const std::array<unsigned, 4> &c) { mcred_ = c; mcred_set_ = true; }
   void barRelease(uint32_t warp_mask);
   void kill(uint32_t warp_mask, unsigned epoch);
@@ -1747,6 +1758,9 @@ public:
     std::vector<uint8_t> sel_ret, sel_brk, sel_hold;
     std::vector<unsigned> sel_res, sel_cidx;
     unsigned sel_busy = 0, sel_block = 0;
+    /// MA-5: the memop slots select found credited, and the credits that
+    /// came back this cycle (ooe_sched's return input, a cycle ahead).
+    unsigned sel_cok = 0xF, sel_cret = 0;
     bool sel_live = false;
     /// RA-17's: a migration is in flight this cycle (under idle_r_k).
     bool sel_mig = false;
@@ -2079,7 +2093,7 @@ private:
   bool ren_floors_in_share_ = false;      ///< rename's admission: the allowance holds the floors (fits_stale 6)
   bool ren_pair_last_ = false;            ///< OI-79 (b): the pair tried takes the cycle's last lane
   bool ren_pair_cut_ = false;             ///< and the go's terms admitted it: the width cuts the take there
-  std::vector<unsigned> hints_;           ///< completion hints sent before this cycle (miss_lead)
+  std::vector<std::pair<unsigned, bool>> hints_;  ///< completion hints before this cycle: rob tag, no_hit (miss_lead, l1_nohit)
   /// req_rows_late: each row's state one and two updates ago (bit 0
   /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle, 4
   /// held miss, 5 miss pulse, 6 final, 7 produces), and issued as
@@ -2391,11 +2405,13 @@ private:
   std::vector<Memop> held_memops_;
   std::array<unsigned, 4> mcred_{};    ///< MA-5: MIU's credits per memop slot, as set
   bool mcred_set_ = false;
-  std::array<unsigned, 4> mleft_{};    ///< MA-5: what this cycle's select may still send per slot
+  std::array<unsigned, 4> mleft_{};    ///< MA-5: A, the credits left after this cycle's departures
+  std::array<unsigned, 4> mprev_{~0u, ~0u, ~0u, ~0u};  ///< MA-5: last cycle's A (~0u: none yet)
+  unsigned mcok_ = 0xF;                ///< MA-5: the slots select may grant on (ooe_sched's cok)
   unsigned memop_pick_ = ~0u;          ///< MA-5: the slot doIssue sends the granted memop on
   void memopCreditsLeft();
+  void memopCreditsNext();
   unsigned memopCredited(unsigned pipes) const;
-  void takeMemopCredit(unsigned port);
 };
 
 } // namespace ooe

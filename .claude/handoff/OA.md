@@ -27,10 +27,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Daily sweep (trig_017UEX7qaTRGT27eW6yQ1tJo, 02:07 PT)
 Skill section 4 (register-reader digest), then
-`CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf setsid nohup tools/bg-run.sh sweep-MMDD
-tools/daily-sweep.sh > /dev/null 2>&1 < /dev/null &` (detached, never a
-background task: TI rev 418), waited on by a run_in_background
-`while kill -0 <pid>` (or pgrep) loop, re-armed at its 2 h cap; `python3 tools/setup-session-home.py --check` (exit 1: ask DA to
+Once a46afef7 is merged here (TI-420): `CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf
+tools/daily-sweep.sh` self-detaches and prints its job log; wait with
+`tools/gate-wait.sh <job log>` as a run_in_background task (exit 3: still
+running at 110 min, rerun gate-wait; 4: killed, rerun the job). Before it
+lands: the TI-418 recipe (setsid nohup bg-run, kill -0 waiter). A 503 from
+the proxy's credential service on push: retry by hand (11-13); `python3 tools/setup-session-home.py --check` (exit 1: ask DA to
 approve the install again); pings Fridays only (TI-49); report in a few lines.
 Session home installed 2026-10-31 with DA's approval (TI-50): /home/user/.claude
 holds the 400k window, the handoff hook and the agents link.
@@ -42,10 +44,10 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 19, OA 414, AR 347, TI 412, OI 340, IS 190, CP 157, DA 119,
-RA 136 (tab 9851686b-2b0a), RI 70 (tab 8e4547bc-c469), MA 39 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, not yet in roster).
+Conventions 19, OA 414, AR 348, TI 420, OI 341, IS 193, CP 157, DA 119,
+RA 136 (tab 9851686b-2b0a), RI 70 (tab 8e4547bc-c469), MA 46 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
 OOE doc rev 377. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
-Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release b15c89e8; tag refused (known).
+Sweep 11-13: 6 branches (76 commits), full gate green, pushed 0bc98973 (first push 503'd, credential service; retried by hand); release 63625551; tag refused (known).
 
 ## Open work (most urgent first)
 -24. OA 387 re:RA 104/AR 325 (zero-cycle ooe_rcu_issue leads): YES on OOE side. pred_neg(+(a) bits),
