@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=46 exported=2026-11-14 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 46 on 2026-11-14 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=47 exported=2026-11-14 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 47 on 2026-11-14 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -27,7 +27,7 @@ This tab covers everything RCU tells OOE and RAU about completion and teardown: 
 
 A collective's done goes out at A+1, 3 cycles before `CCV_LAT_COLLECTIVE` = 5. The contract allows an early finish (V-35: "RCU may finish sooner"), and AR agreed it on a `fixed_latency` slot (RA-29 (c)). Its result is readable from A+3, so dependants woken at 5 read a landed value.
 
-**SFU interim (RA rev 140 (3)).** Until RA-16 (b) settles, the four SFU ops are classed as lane ops (OI-16): they take lane slots 0-3 and enter the bypass history. Slot 4, `swb_d` and the SW write port are built but unexercised, and the kill drain's SFU term is unreached. RA asks RI for an SFU bench.
+**SFU interim (RA rev 140 (3)).** Until RA-16 (b) settles, the three SFU ops (RCP\_U32, RSQRT\_F32, RCP\_F32\_P; RA rev 146) are classed as lane ops (OI-16): they take lane slots 0-3 and enter the bypass history. Slot 4, `swb_d` and the SW write port are built but unexercised, and the kill drain's SFU term is unreached. RA asks RI for an SFU bench.
 
 ### Per-slot registers
 

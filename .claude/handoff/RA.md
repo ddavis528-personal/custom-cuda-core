@@ -308,7 +308,12 @@ a61a79ca merged and check-links passes without CCV_SVH_RCU_RTL=0 (TI adds the en
 RI-50: lane-latency test fixes pushed 468fb286; closes when TI runs the split tree without the skip.
 AR 351 / RA rev 145: PF-47 = 1 confirmed from RTL (rcu_miu_addr valid m_v_cr03h at A's edge, payload m_*_cr04h at
 A+1's; M1 covers slice read 11.0 + rcu_mem mux).
-Bookmarks: OA 414, RA 145, RI 79, TI 429, AR 351, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 54.
+RA rev 146 (OI-145/146): three SFU ops (RCP_U32, RSQRT_F32, RCP_F32_P), not four; C_FADD is FP. Spec Done 47 / Lane 18,
+snapshots refreshed. TI 430 / RI-51: 7079fc14, check-links runs the RCU RTL without the skip: rev 143 CLOSED.
+SFU class pair: TI's op-table half + RI 30e363cc (ri-sfuclass); OI needs no code; ADDR_BASE is AR's. No RA reply due.
+TI 434: 518cb3c3 (detach exits 5) landed on TI's branch; TI 429 warning moot once merged here.
+2026-11-14 sweep: merged 183cc441 (79), 888218a3 (7), 9eb50716 (125), c22116ce (1), miu-dcu-spec (1); SCOPED PASS, pushed ffd61757.
+Bookmarks: OA 416, RA 146, RI 80, TI 434, AR 351, DA 119, OI 348, Conventions 19, CP 157, IS 193, MA 54.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -338,13 +343,10 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
-- NEXT SWEEP (TI 429 WARNING): a sweep begun from a tree before a46afef7 can push its merge UNGATED (new
-  make-release/gate tools detach and return 0). Until 518cb3c3 (detach exits 5) is on this branch: merge
-  ccr-183cc441-doowtf FIRST, alone, and check 518cb3c3 is an ancestor; or run CCV_FOREGROUND=1. After that, launch
-  gates per TI 420 and wait with tools/gate-wait.sh <job log> (exit 3 = rerun wait, 4 = killed). Verify the push
-  only after gate-summary reads PASS.
+- NEXT SWEEP: check 518cb3c3 is an ancestor after the merge (TI 434: on TI's branch); if not, CCV_FOREGROUND=1.
+  If it is, launch gates per TI 420 and wait with tools/gate-wait.sh <job log> (exit 3 = rerun, 4 = killed).
 - PHASE 5 (rcu-impl.md): spec reconciled (RA rev 140/141); RI's rev 140 items closed (RA rev 142). Before DA
-  sign-off: a61a79ca merged + TI's split-file credit entry, skip dropped (rev 143/144); M7 met (rev 143); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
+  sign-off: rev 143 CLOSED (TI 430); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
   ADDR_BASE. Reported to Daniel 2026-11-14.
 - RI M0 (model) ACCEPTED at RA rev 68 (5968894; RI rev 5); TI asked to make the model makeRcu's default. RI on to phase 2 (bank slice, r/xbar). RA-36 done (TI rev 317, e60ae23). AR rev 284 sets the PHYS_REGS order: OI's check answer, 160 on a 2nd 4-warp kernel, OA on Q-35, then DA.
 - RA-11 PHYS_REGS sweep (TI rev 315): RA rev 67 gave RCU flops 246k/212k/179k at 192/160/128, notice AR; decision AR + DA. 160 ~free; 128 waits OI's fits_stale/V-N check failures. RA-19 stub fix landed (TI rev 314, 9ce7381).
