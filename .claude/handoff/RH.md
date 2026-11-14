@@ -69,6 +69,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   (110 min cap; exit 3 = still running, rerun it; exit 4 = killed by a restart, relaunch).
   It replaces watchjob.sh for gates on a commit that has it; older commits keep the
   setsid-nohup + watchjob.sh pattern below.
+- TI rev 429 (re:OA-414): RH runs no daily sweep. If it ever does, from a tree before
+  518cb3c3 use CCV_FOREGROUND=1 tools/daily-sweep.sh (or merge ccr-183cc441-doowtf first).
 - Gates detach (TI rev 418): `setsid nohup <job> >/dev/null 2>&1 </dev/null &`.
   Only watchers (rh-jobs/watchjob.sh '<pgrep pat>' 7100 <file>) are background
   tasks. Container restarts (11-13 07:07Z, and earlier) still kill detached jobs
