@@ -76,9 +76,8 @@
       "NGD-3 fl_v_cq02h": 29.5
     },
     "ooe_rs": {
-      "NGD-1": 28.8,
-      "NGD-3 prv_dep_cq01h": 26.4,
-      "NGD-3 req_cq01h": 28.4
+      "NGD-3 prv_dep_cq01h": 25.2,
+      "NGD-3 req_cq01h": 26.4
     },
     "ooe_sched": {
       "NGD-1": 26.7,

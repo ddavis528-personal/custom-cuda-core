@@ -229,9 +229,14 @@ module ooe_rs #(
   // Copies of the valid bits (OA rev 325, step 1): allocation's grant
   // broadcast to the 3N-bit row write is the block's widest net, so each
   // copy's grants drive one group of it, g1 the dep rows, g2 and g3 the code
-  // rows' halves, and g the rest (hit, prod, the column flags). Written and
-  // reset exactly as valid_cq02h; (* keep *) or synthesis merges them back.
-  (* keep *) logic [N-1:0] vc1_cq02h, vc2_cq02h, vc3_cq02h;
+  // rows' halves, and vc0's g the rest (hit, prod, the column flags). Each
+  // holds an entry taken from allocation: valid, or held by C9 (hh_cq02h,
+  // below), written from valid's and hh's next values, so no grant starts
+  // at hh (it reached 595 loads): an hh bit rises only on a free, which
+  // fires its class's enable, and falls on hhv, in both. Reset as
+  // valid_cq02h; (* keep *) or synthesis merges them back.
+  (* keep *) logic [N-1:0] vc0_cq02h, vc1_cq02h, vc2_cq02h, vc3_cq02h;
+  logic [N-1:0] tk_nx_cq02h;            // their next value: valid's, or held
   (* keep *) logic [P*N-1:0] g1_cq02h, g2_cq02h, g3_cq02h;
   (* keep *) logic [N-1:0] prod_cq02h;   // payload: read only while its entry is valid
   // The prod bits' copy for ooe_sched (NGD-7: the register starts paths
@@ -254,6 +259,7 @@ module ooe_rs #(
   logic             sq_en_cq01h;          // the registered squash's lead's flop
   logic [N-1:0]     hr_cq02h, hm_cq02h;   // the column flags, from RCU rows and MIU rows
   logic [P*N-1:0]   g_cq02h;
+  logic [P*N-1:0]   gs_cq02h;   // each port's slot: the entry it takes if it asks (g, less the request)
   logic [P-1:0]     gv_cq02h;
   logic [P*W-1:0]   gi_cq02h;
   logic [P*N-1:0]   d_cq02h;
@@ -319,14 +325,18 @@ module ooe_rs #(
   logic         hhv_cq02h;                       // some entry held (hh): the class enables' term, one flop
   assign rmask_cq02h = valid_cq02h & ~(conf_cq02h & ~hc_cq02h | sqf_cq01h) & ~lga_cq02h;
   always_comb begin
-    g_cq02h = grants(valid_cq02h | hh_cq02h, req_cq01h);
-    g1_cq02h = grants(vc1_cq02h | hh_cq02h, req_cq01h);
-    g2_cq02h = grants(vc2_cq02h | hh_cq02h, req_cq01h);
-    g3_cq02h = grants(vc3_cq02h | hh_cq02h, req_cq01h);
-    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{rmask_cq02h}}, row_code_cq01h, grp_dep_cq01h,
+    // A row names a port of its group only when that port asks
+    // (grp_named_req), so the rows take the slots, gs, and the request
+    // stays off their paths; g is gs where its port asks.
+    gs_cq02h = grants(vc0_cq02h, {P{1'b1}});
+    for (int p = 0; p < P; p++) g_cq02h[p * N +: N] = gs_cq02h[p * N +: N] & {N{req_cq01h[p]}};
+    g1_cq02h = grants(vc1_cq02h, req_cq01h);
+    g2_cq02h = grants(vc2_cq02h, req_cq01h);
+    g3_cq02h = grants(vc3_cq02h, req_cq01h);
+    {cd_cq02h, d_cq02h} = rows_of(gs_cq02h, row_dep_cq01h & {P{rmask_cq02h}}, row_code_cq01h, grp_dep_cq01h,
                                   grp_code_cq01h, lg_cq02h, prv_dep_cq01h, prv_code_cq01h,
                                   valid_cq02h & ~lga_cq02h);
-    {cdz_cq02h, dz_cq02h} = rows_of(g_cq02h, '0, row_code_cq01h, grp_dep_cq01h,
+    {cdz_cq02h, dz_cq02h} = rows_of(gs_cq02h, '0, row_code_cq01h, grp_dep_cq01h,
                                     grp_code_cq01h, lg_cq02h, prv_dep_cq01h, prv_code_cq01h,
                                     valid_cq02h & ~lga_cq02h);
     for (int p = 0; p < P; p++) begin
@@ -369,7 +379,7 @@ module ooe_rs #(
       lga_cq02h <= '0;
     end else if (lg_en_cq02h) begin
       lg_cq02h  <= g_cq02h;
-      lgv_cq02h <= gv_cq02h;
+      lgv_cq02h <= req_cq01h;
       lga_cq02h <= ga_cq02h;
     end
   end
@@ -400,6 +410,12 @@ module ooe_rs #(
   `CCV_ASSERT(squash_free_valid, (sqf_cq01h & ~valid_cq02h) == '0)
   // Every request and every free was led.
   `CCV_ASSERT(req_led, (req_cq01h & ~req_en_cq01h) == '0)
+  // A row names a port of its own group only when that port asks (rename's
+  // group dependencies are its allocating uops'): the rows read gs.
+  logic [P-1:0] gnr_bad_cq01h;
+  always_comb
+    for (int p = 0; p < P; p++) gnr_bad_cq01h[p] = req_cq01h[p] && (grp_dep_cq01h[p * P +: P] & ~req_cq01h) != '0;
+  `CCV_ASSERT(grp_named_req, gnr_bad_cq01h == '0)
   `CCV_ASSERT(free_led, sq_en_cq01h || (free_cq02h & ~cf_en_cq03h) == '0)
 
   // The next state. An entry a port takes gets the port's row; every other
@@ -418,7 +434,7 @@ module ooe_rs #(
   logic [N-1:0]     hr_nx_cq02h, hm_nx_cq02h, named_r_cq02h, named_m_cq02h;
   logic [2*N*N-1:0] dep2_cq02h;    // each cell's bit, twice, as the line selects lie
   logic             hit_cq02h, ga1_cq02h, ga2_cq02h, ga3_cq02h;
-  logic [A-1:0]     nt_r_cq02h, nt_m_cq02h, ny_r_cq02h, ny_m_cq02h;
+  logic [A-1:0]     nt_r_cq01h, nt_m_cq01h, ny_r_cq02h, ny_m_cq02h;
   always_comb begin
     for (int c = 0; c < N * N; c++) dep2_cq02h[c * 2 +: 2] = {2{dep_cq02h[c]}};
     named_r_cq02h = '0;
@@ -462,14 +478,17 @@ module ooe_rs #(
       // The free enters at the root: a port's row names column j through
       // its own input (masked, rmask) or through a grant it names (dz, the
       // row less its input), so (rmask & X) | Y, X free of the free.
+      // A port writes a row when it asks: every request is granted
+      // (alloc_granted), so its request stands for its grant's OR (gv),
+      // and the column flags wait on no grant but the rows' own (dz).
       for (int p = 0; p < A; p++) begin
-        nt_r_cq02h[p] = gv_cq02h[p] & row_dep_cq01h[p * N + j];
-        nt_m_cq02h[p] = gv_cq02h[A + p] & row_dep_cq01h[(A + p) * N + j];
-        ny_r_cq02h[p] = gv_cq02h[p] & dz_cq02h[p * N + j];
-        ny_m_cq02h[p] = gv_cq02h[A + p] & dz_cq02h[(A + p) * N + j];
+        nt_r_cq01h[p] = req_cq01h[p] & row_dep_cq01h[p * N + j];
+        nt_m_cq01h[p] = req_cq01h[A + p] & row_dep_cq01h[(A + p) * N + j];
+        ny_r_cq02h[p] = req_cq01h[p] & dz_cq02h[p * N + j];
+        ny_m_cq02h[p] = req_cq01h[A + p] & dz_cq02h[(A + p) * N + j];
       end
-      named_r_cq02h[j] = (rmask_cq02h[j] & (|nt_r_cq02h)) | (|ny_r_cq02h);
-      named_m_cq02h[j] = (rmask_cq02h[j] & (|nt_m_cq02h)) | (|ny_m_cq02h);
+      named_r_cq02h[j] = (rmask_cq02h[j] & (|nt_r_cq01h)) | (|ny_r_cq02h);
+      named_m_cq02h[j] = (rmask_cq02h[j] & (|nt_m_cq01h)) | (|ny_m_cq02h);
     end
     // Emptiness in parallel with the rows: a kept row's from its flops less
     // the frees; a new one's from its port's inputs, before any grant (a
@@ -538,6 +557,7 @@ module ooe_rs #(
   // term, as hh & hr would put the enable over CG-2's 8).
   assign hc_cq02h = cmn_cq01h | hcq_cq02h;
   assign clr_cq02h = free_cq02h | hh_cq02h;
+  assign tk_nx_cq02h = valid_nx_cq02h | (conf_cq02h & hc_cq02h);
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       hcq_cq02h <= '0;
@@ -701,24 +721,26 @@ module ooe_rs #(
     if (rst_r01h) begin
       valid_cq02h   <= '0;
       valid_o_cq02h <= '0;
-      vc1_cq02h <= '0; vc2_cq02h <= '0; vc3_cq02h <= '0;
+      vc0_cq02h <= '0; vc1_cq02h <= '0; vc2_cq02h <= '0; vc3_cq02h <= '0;
       hr_cq02h      <= '0;
       hm_cq02h      <= '0;
     end else begin
       if (rcu_en_cq01h) begin
         valid_cq02h[NR-1:0]   <= valid_nx_cq02h[NR-1:0];
         valid_o_cq02h[NR-1:0] <= valid_nx_cq02h[NR-1:0];
-        vc1_cq02h[NR-1:0] <= valid_nx_cq02h[NR-1:0];
-        vc2_cq02h[NR-1:0] <= valid_nx_cq02h[NR-1:0];
-        vc3_cq02h[NR-1:0] <= valid_nx_cq02h[NR-1:0];
+        vc0_cq02h[NR-1:0] <= tk_nx_cq02h[NR-1:0];
+        vc1_cq02h[NR-1:0] <= tk_nx_cq02h[NR-1:0];
+        vc2_cq02h[NR-1:0] <= tk_nx_cq02h[NR-1:0];
+        vc3_cq02h[NR-1:0] <= tk_nx_cq02h[NR-1:0];
         hr_cq02h              <= hr_nx_cq02h;
       end
       if (miu_en_cq01h) begin
         valid_cq02h[N-1:NR]   <= valid_nx_cq02h[N-1:NR];
         valid_o_cq02h[N-1:NR] <= valid_nx_cq02h[N-1:NR];
-        vc1_cq02h[N-1:NR] <= valid_nx_cq02h[N-1:NR];
-        vc2_cq02h[N-1:NR] <= valid_nx_cq02h[N-1:NR];
-        vc3_cq02h[N-1:NR] <= valid_nx_cq02h[N-1:NR];
+        vc0_cq02h[N-1:NR] <= tk_nx_cq02h[N-1:NR];
+        vc1_cq02h[N-1:NR] <= tk_nx_cq02h[N-1:NR];
+        vc2_cq02h[N-1:NR] <= tk_nx_cq02h[N-1:NR];
+        vc3_cq02h[N-1:NR] <= tk_nx_cq02h[N-1:NR];
         hm_cq02h              <= hm_nx_cq02h;
       end
     end
