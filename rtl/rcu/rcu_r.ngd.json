@@ -41,13 +41,13 @@
       "arrival": 1.4,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-05",
-      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Renamed for RA-43 by RI (2026-11-08): the port now takes the lead in A-1, captured in this module under the slot's valid; arrival kept pending RA's restatement for the zero-cycle end."
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Renamed for RA-43 by RI (2026-11-08): the port now takes the lead in A-1, captured in this module under the slot's valid; arrival restated by RA rev 142 for the zero-cycle end."
     },
     "lps_cr01h": {
       "arrival": 1.4,
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",
       "date": "2026-11-05",
-      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Renamed for RA-43 by RI (2026-11-08): the port now takes the lead in A-1, captured in this module under the slot's valid; arrival kept pending RA's restatement for the zero-cycle end."
+      "why": "The issue channel's slot 8 from RCU's interface flop (DA's ruling on RI-11: a flop at every block boundary, in the wrapper), wire only; fanout inside the block is check-ngd's. Renamed for RA-43 by RI (2026-11-08): the port now takes the lead in A-1, captured in this module under the slot's valid; arrival restated by RA rev 142 for the zero-cycle end."
     },
     "iv_cr01h": {
       "by": "RA (RA tab rev 78, re:RI-11; AR rev 285/287; fanout term, AR 326, RA rev 106 re:RI-22 (5))",

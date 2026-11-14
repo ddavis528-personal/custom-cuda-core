@@ -116,5 +116,6 @@ There are 8 RCU entries in `rtl/cg-waivers.json`, all written by RI as the owner
 
 1. **M7 in the gate:** TI's selector, and the merge of 7e10e72f (RI-44).
 2. **Daniel:** the three owner waivers above (RI-47; RA has no architectural objection), and the sign-off.
-3. **RA:** reconciling the spec with what was built (`docs/rcu-impl.md`, phase 5). RA started on 2026-11-14 and will report to DA.
-4. **Not blocking:** TI's kill kernel with an SFU op in flight (M4's kernel margin), and the end-to-end SW check through the block.
+3. **RA:** reconciling the spec with what was built (`docs/rcu-impl.md`, phase 5). RA's phase-5 items for RI (rev 140) are all closed (RA rev 142). That includes (6): under the full-row interim every GPR load overlaps section 0, so MIU never co-issues two and `one_load_a_bank` holds as built; it narrows to per bank when FULL_ROW goes (RA rev 141, MA 54). RA reports to DA.
+4. **Block report:** `docs/rcu-block-report.md` (cells, flops, gating, DCGE, the 2% budget, depth histogram) at 5516e643.
+5. **Not blocking:** TI's kill kernel with a lane op in flight, an rokill variant (M4's kernel margin; TI rev 425; an SFU op once the SFU class lands), and the end-to-end SW check through the block.

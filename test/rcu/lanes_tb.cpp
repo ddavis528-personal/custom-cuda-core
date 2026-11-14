@@ -54,9 +54,12 @@
 
 namespace {
 
-constexpr unsigned kN = LN_COPIES, kK = 4, kP = 4, kZero = 255, kWB = 5;
+constexpr unsigned kN = LN_COPIES, kK = 4, kP = 4, kZero = 255, kWB = ccv::prov::kWLaneBypSel;
 constexpr unsigned kLat = ccv::prov::kLatLane, kByp = ccv::prov::kLatLaneByp, kSfu = ccv::prov::kLatSfu;
 constexpr unsigned kHi = kLat - 2;   // the oldest age forwarded
+// Forwarded ages kByp .. kHi, each a coverage bin; the select's age field
+// is CCV_P_W_LANE_BYP_AGE wide (both follow the links through kLat).
+constexpr unsigned kNAge = kHi - kByp + 1, kAgeMask = (1u << ccv::prov::kWLaneBypAge) - 1;
 
 template <typename T> void put(T &s, unsigned lsb, unsigned w, uint64_t v) {
   for (unsigned i = 0; i < w; ++i) {
@@ -367,7 +370,7 @@ struct Bench {
 struct Gen {
   std::mt19937_64 r;
   std::string control;
-  unsigned cov_atom = 0, cov_pcopy = 0, cov_byp[2]{}, cov_imm_hi = 0, cov_copy = 0, cov_sfu = 0, cov_pdt = 0, cov_split = 0,
+  unsigned cov_atom = 0, cov_pcopy = 0, cov_byp[kNAge]{}, cov_imm_hi = 0, cov_copy = 0, cov_sfu = 0, cov_pdt = 0, cov_split = 0,
            cov_super = 0, cov_multi = 0, cov_pwe = 0, cov_sw = 0;
   // SFU ops (the random run only: the clock-gating scenarios keep their
   // mix). An SFU result lands on the lane-result path kSfu - kLat cycles
@@ -519,7 +522,7 @@ struct Gen {
           const uint64_t age = a - h.a;
           if (h.a >= a || age < kByp || age > kHi || h.row != o.prow(i) || h.pos != o.ppos(i)) continue;
           const unsigned ag = unsigned(age - kByp) + (control == "bypage" ? 1u : 0u);
-          o.byp[i] = 1u | h.lead << 1 | (ag & 3u) << 3;
+          o.byp[i] = 1u | h.lead << 1 | (ag & kAgeMask) << 3;
           ++cov_byp[age - kByp];
         }
       }
@@ -570,7 +573,9 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
   }
   for (unsigned i = 0; i < kSfu + 4; ++i) b.step();
   if (scenario != "idle") {
-    const bool cov = gen.cov_byp[0] && gen.cov_byp[1] && gen.cov_imm_hi && gen.cov_copy && gen.cov_atom &&
+    bool cov_ages = true;
+    for (unsigned g = 0; g < kNAge; ++g) cov_ages = cov_ages && gen.cov_byp[g];
+    const bool cov = cov_ages && gen.cov_imm_hi && gen.cov_copy && gen.cov_atom &&
                      gen.cov_pcopy && gen.cov_pdt && gen.cov_split && gen.cov_super && gen.cov_multi && gen.cov_pwe;
     // sfu and sw are required in the random run (RA rev 140 (3)); the
     // clock-gating scenarios issue none.
