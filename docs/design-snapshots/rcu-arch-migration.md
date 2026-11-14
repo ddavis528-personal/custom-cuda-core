@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=11 exported=2026-11-13 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 11 on 2026-11-13 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Migration rev=14 exported=2026-11-14 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Migration*, at revision 14 on 2026-11-14 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Migration
 
@@ -42,17 +42,17 @@ So neither queue ever holds more unpaired halves than it has entries, and the tw
 
 | Register | Width × entries | Enable | Meaning |
 | --- | --- | --- | --- |
-| `mig_mq_v[i]` | 1 × 4 | land or launch or kill drop | entry holds a map |
+| `mig_mq_v[i]` | 1 × 4 | qv\_en: land or launch or kill drop | entry holds a map |
 | `mig_mq[i]` | (5 + 1 + 128 + 24) × 4 = 632 | land into i | `{warp, dir, gpr_map, pred_map}` |
-| `mig_cq_v[i]`, `mig_cq[i]` | (1 + 6) × 4 | land, launch, kill drop | `{warp, dir}` |
-| `mig_mq_free`, `mig_cq_free` | 4 one-hot each | every cycle | the lowest free entry of the `_v` flops' next values (after this cycle's land, launch and kill drop), so lands on consecutive cycles take different entries (RI-6 (b)) |
-| `mig_dpick`, `mig_rpick` | 1 + 4 + 4 each | every cycle | the flopped pick: the lowest map entry that has a matching command, and its command entry. One pick for demote, one for restore. |
+| `mig_cq_v[i]`, `mig_cq[i]` | (1 + 6) × 4 | qv\_en: land, launch, kill drop | `{warp, dir}` |
+| `mig_mq_free`, `mig_cq_free` | 4 one-hot each | qv\_en | the lowest free entry of the `_v` flops' next values (after this cycle's land, launch and kill drop), so lands on consecutive cycles take different entries (RI-6 (b)) |
+| `mig_dpick`, `mig_rpick` | 1 + 4 + 4 each | every cycle | the flopped picks. Demote: the lowest map entry that has a matching command, and its command entry. Restore: the paired map and command of the restore FIFO head's warp. |
 
 - **Landing.** The valid input is flopped in T−1 (`mig_mq_rxv`). The payload lands in T, into the entry that `mig_mq_free` names, with that entry's write enable driven by the flopped valid. Credits guarantee a free entry. Commands land the same way.
 - **Match.** `m[i][j] = mq_v[i] & cq_v[j] & (mq[i].warp == cq[j].warp) & (mq[i].dir == cq[j].dir)` is about 5 NGD. The demote and restore priority picks (16 → one-hot) add about 6 NGD. Both are flopped. An entry that lands in T can be picked at the end of T+1.
 - **Launch.**
   - A demotion launches at the edge that ends a cycle in which `mig_dpick.v & ~dm_busy` holds.
-  - A restore launches when `mig_rpick.v & ~rs_busy` holds and, in addition, the head of the restore FIFO is valid with `head.warp` equal to the picked warp (see Restore).
+  - A restore launches when mig\_rpick.v & \~rs\_busy holds; mig\_rpick is the pair of the restore FIFO head's warp, so the head is valid and its warp is the picked warp (see Restore).
   - Launch copies `{warp, gpr_map, pred_map}` (157 b, a 4:1 one-hot AND-OR) into the engine, clears both entries, and sets both channels' credit-return flops. The credits are on the wire the next cycle.
   - In cycles (RA rev 138, RI-45, 28cd347a): the launch is the edge that ends the flopped pick's cycle, c0, and demote and restore count from c1. A PCA row enters the restore FIFO the cycle after it lands, and from then it is the head a restore launch sees (option A, RI-22 (7)). The model matches the RTL here; the four \*\_demote block lock-step runs are the check.
 - **Map checks** are assertions only, no logic:
@@ -65,7 +65,7 @@ So neither queue ever holds more unpaired halves than it has entries, and the tw
 | --- | --- | --- | --- |
 | `dm_busy` | 1 | launch, last row sent, kill | engine owns a warp |
 | `dm_warp`, `dm_gpr[16]`, `dm_pred[4]` | 5, 128, 24 | launch | the paired map |
-| `dm_row` | 5 | `dm_v_q` or launch | next row to send, 0..16; 17 = done |
+| dm\_oh | 18 | `dm_v_q` or launch | next row to send, one-hot over rows 0..16 and done; row 16 is its own bit |
 | `dm_wcnt` | 2 | launch or `dm_wcnt != 0` | wake lead counter, loaded with `CCV_WAKE_LAT` − 1 |
 | `dm_cred` | 3 | `dm_v_q` or credit return (flopped) | `rcu_pca_mig` credits, reset `CCV_CREDIT_DEPTH` |
 | `dm_v_q` | 1 | every cycle | `rcu_pca_mig_valid` (the wire) |
@@ -76,16 +76,16 @@ So neither queue ever holds more unpaired halves than it has entries, and the tw
 Per cycle, with the demotion row's decision cycle A:
 
 1. **A (stage I).**
-   - Next row: `row = dm_row + dm_v_q`. Remaining credits: `cred = dm_cred - dm_v_q + cred_ret_q`.
+   - Next row: dm\_oh, shifted one place by dm\_v\_q. Remaining credits: cred = dm\_cred - dm\_v\_q + cred\_ret\_q.
    - `dm_want = dm_busy & (dm_wcnt == 0) & (row <= 16) & (cred != 0) & (row == 16 | ~r2_busy)`, where `r2_busy = issue_s8_valid_q & r_reads[2]` comes from the slot-8 decode in A.
-   - `dm_v_q <= dm_want & ~rcu_pca_mig_stall`.
+   - dm\_v\_q <= dm\_want & \~stall\_q, where stall\_q (ostq\_cr03h) is rcu\_pca\_mig\_stall flopped first, as CG-5 requires. At most one row follows a stall, and RESCUE\_DEPTH holds it (RA rev 110).
    - For a GPR row, the R2 port's predecode flops (`sel_hi`/`sel_lo` of every bank's R2) load the predecode of `dm_gpr[row]`: a 16:1 mux on flops (about 4 NGD), then the predecode (3 NGD), then the 2:1 port mux against the R op's R2 source (2 NGD). When the R op owns R2 they load the op's source. When neither does, they load 0.
-   - For the predicate row, D0-D3's predecode flops load `dm_pred[p]`.
-   - `dm_r16_q <= (row == 16)`.
+   - For the predicate row, D0-D3's predecode flops load dm\_pred\[p\]; their leads start from row 14 on.
+   - dm\_r16\_q <= dm\_oh's row-16 bit.
 2. **A+1 (stage R).** R2 reads the row in all 4 banks, and D0-D3 read the 4 predicates. `rcu_pca_mig_valid` = `dm_v_q` is on the wire. At the end of A+1, enabled by `dm_v_q`:
    - `dm_pay.row_data` = `dm_r16_q ? {896'b0, D3, D2, D1, D0} : {R2.b3, R2.b2, R2.b1, R2.b0}`. P\_p sits at \[32p+31:32p\], lane l at bit 32p+l.
-   - `dm_pay.mig_row` = `dm_row` (the row being read), `dm_pay.warp_id` = `dm_warp`.
-   - `dm_row` advances. `dm_cred` decrements.
+   - dm\_pay.mig\_row = the row being read, encoded from dm\_oh; dm\_pay.warp\_id = dm\_warp.
+   - dm\_oh advances. dm\_cred decrements.
 3. **A+2.** `rcu_pca_mig_payload` = `dm_pay` is on the wire.
 
 **Zero registers need no logic.** Row 255 and predicate 63 predecode to no select, so their AND-OR reads return 0. That is what the demotion contract asks for: "a demotion map may name zero registers (RCU sends zeros)".
@@ -94,7 +94,7 @@ Per cycle, with the demotion row's decision cycle A:
 
 **End.** At the edge where `dm_v_q` sends row 16, `dm_busy` clears and `dm_wake_q` drops. Its payload still goes out the next cycle, from `dm_pay`.
 
-**Read order and stability.** Rows go out in order 0..16, one per sent cycle (the `mig-row-order` control stays failing). RCU reads the PRF live, with no snapshot. That is safe only if no write to the warp's 17 rows is in flight and none of them is reallocated until RAU's done (RA-24). The checker `chk_dm_stable` asserts that no GPR or predicate write port selects a row in `dm_gpr` or `dm_pred` while `dm_busy`.
+**Read order and stability.** Rows go out in order 0..16, one per sent cycle (the mig-row-order control stays failing). RCU reads the PRF live, with no snapshot. That is safe only if no write to the warp's 17 rows is in flight and none of them is reallocated until RAU's done (RA-24). The checker chk\_dm\_stable asserts that no GPR or predicate write port selects a row in dm\_gpr or dm\_pred while dm\_busy. It is in the model only (rcu\_core.cpp:266); the RTL is held to it through lock-step against the model.
 
 **Timeline, no R-op conflict, credits available.**
 
@@ -111,6 +111,7 @@ Per cycle, with the demotion row's decision cycle A:
 | `rs_f_v[i]`, `rs_f_dead[i]` | 2 × 4 | land, pop, kill | FIFO entry holds a row; the row is a killed warp's |
 | `rs_f[i]` | (5 + 17 + 1024) × 4 = 4,184 | land into i | `{warp, row one-hot (17, decoded at land), row_data}` |
 | `rs_hd`, `rs_tl` | 4 one-hot each | pop, land | head and tail pointers |
+| pwq, prowq, pdatq | 1,034 in all | the flopped pca\_rcu\_mig valid | the PCA capture: warp, mig\_row and row\_data of the row that lands; it enters the FIFO the next cycle |
 | `rs_v_a1`, `rs_v_a2`, `rs_last_a1` | 1 each | every cycle | a restore write is in its A+1 / A+2; the A+1 write is row 16 |
 | `rs_sel_a1`, `rs_sel_a2` | 4 one-hot each | every cycle | which entry the write reads |
 | `rs_cr_q` | 1 | every cycle | `pca_rcu_mig_credit` (the wire) |
@@ -140,9 +141,9 @@ Per cycle, with the demotion row's decision cycle A:
 
 ## Kill
 
-`kill_valid` (cycle K−1, flopped) and `kill_warp_mask` (cycle K, flopped into `mig_kmask[31:0]`, OR-accumulated) act from K+1:
+kill\_valid (cycle K−1, flopped) and kill\_warp\_mask (cycle K, flopped in ccv\_rcu's kill detector, then OR-accumulated into mig\_kmask\[31:0\]) act from K+1:
 
-- **Pairing entries.** Map and command entries of a killed warp are dropped and their credits returned. Each channel returns one credit a cycle, so the credits a cycle frees (a launch's one, a kill's several) add into a per-channel pending count, `mig_mcr_n` and `mig_ccr_n` (3 bits each, enabled while nonzero or freeing), and one credit goes out each cycle while it is nonzero (RI-6 (a)). A launch's credit is therefore on the wire the next cycle at the earliest. A row that lands for a warp whose `mig_kmask` bit is set is marked dead. A `ooe_rcu_map` landing for warp w clears `mig_kmask[w]`; a new map comes only after RAU relaunches, which is after every ack. The clear may lag the map's landing by up to 2 cycles (RI-19: from flops, keeping the 32:1 select off the credit paths). That is safe because only landing PCA rows test kmask, and a relaunched warp's first PCA row follows a whole demotion paired on that first map (at least 17 cycles; RA rev 96). Map and command entries are dropped by the kill event itself, never by kmask's level: a relaunched warp's command can land before its map or during the lag, and must pair.
+- **Pairing entries.** Map and command entries of a killed warp are dropped and their credits returned. Each channel returns one credit a cycle, so the credits a cycle frees (a launch's one, a kill's several) add into a per-channel pending count, `mig_mcr_n` and `mig_ccr_n` (4 bits each, enabled while nonzero or freeing; a kill's drops are first counted in a 3-bit count per channel and join a cycle later), and one credit goes out each cycle while it is nonzero (RI-6 (a)). A launch's credit is therefore on the wire the next cycle at the earliest. A row that lands for a warp whose `mig_kmask` bit is set is marked dead. A `ooe_rcu_map` landing for warp w clears `mig_kmask[w]`; a new map comes only after RAU relaunches, which is after every ack. The clear may lag the map's landing by up to 2 cycles (RI-19: from flops, keeping the 32:1 select off the credit paths). That is safe because only landing PCA rows test kmask, and a relaunched warp's first PCA row follows a whole demotion paired on that first map (at least 17 cycles; RA rev 96). Map and command entries are dropped by the kill event itself, never by kmask's level: a relaunched warp's command can land before its map or during the lag, and must pair.
 - **Demotion of a killed warp.** It stops at a row boundary: `dm_busy` clears at the first edge from K+1. A row whose valid is already out still sends its payload, since valid is binding.
 - **Restore of a killed warp.** `rs_busy` clears. Its FIFO rows are marked dead. A dead head entry is popped without a write, and its credit is returned at the next edge, so PCA's in-flight rows drain. The FIFO pops at most one entry a cycle: when a restore write's pop and a dead head's pop fall in the same cycle, the write pops first and the dead head the next cycle (RI-6 (c)).
 - **Quiesce contribution.** The kill tab's ack takes the AND of:
@@ -154,7 +155,7 @@ Per cycle, with the demotion row's decision cycle A:
 
 ## Flops and checks
 
-About 6,300 flops, every one of them behind its land, launch or send enable. The large arrays are `rs_f` (4,184 flops), `dm_pay` (1,034) and `mig_mq` (632).
+7,383 flops as built (RA rev 140 (phase 5)), every one of them behind its land, launch or send enable; the free and valid registers behind qv\_en. The large arrays are rs\_f (4,184 flops), the PCA capture pwq/prowq/pdatq (1,034), dm\_pay (1,034) and mig\_mq (632).
 
 Assertions in `rcu_mig`:
 
