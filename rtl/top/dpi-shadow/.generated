@@ -1,5 +1,5 @@
 {
  "gen-top": [
-  "ccv_rcu_dpi.sv"
+  "rcu_dpi.sv"
  ]
 }

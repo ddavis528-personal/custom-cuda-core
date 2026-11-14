@@ -226,7 +226,7 @@ done
 # -- RCU's RTL in the top (CCV_RCU_RTL; RI-42/44, TI rev 422) -----------------
 # The top built with rtl/rcu/ in place of RCU's shim: test/rcu/ccv_rcu_svh.sv
 # takes the name ccv_rcu, drives the top from the RTL and runs the model
-# beside it as a shadow (rtl/top/dpi-shadow/ccv_rcu_dpi.sv, gen-top), whose
+# beside it as a shadow (rtl/top/dpi-shadow/rcu_dpi.sv, gen-top), whose
 # outputs only the compare reads, but for the trace ids the RTL does not
 # carry. Every kernel: the KERNEL line the C++ host prints (its end-of-run
 # compare reads the RTL's register files, Kernel::gprAt), no checker
@@ -240,7 +240,7 @@ if ! RSRC=$(python3 test/rcu/svh.py prep --out "$RG" 2>"$B/svh_rtl_prep.log"); t
   exit 1
 fi
 SVR=$(echo "$SV" | sed 's| rtl/top/dpi/\*\.sv | |')
-SVR="$SVR $(ls rtl/top/dpi/*.sv | grep -v '/ccv_rcu\.sv$' | tr '\n' ' ') rtl/top/dpi-shadow/ccv_rcu_dpi.sv $(echo "$RSRC" | tr '\n' ' ')"
+SVR="$SVR $(ls rtl/top/dpi/*.sv | grep -v '/ccv_rcu\.sv$' | tr '\n' ' ') rtl/top/dpi-shadow/rcu_dpi.sv $(echo "$RSRC" | tr '\n' ' ')"
 if ! verilator --binary -j 0 --assert --timing -Wno-fatal -Wno-TIMESCALEMOD \
      -DCCV_CHECK -DCCV_TRACE -DCCV_RCU_RTL $INC --top-module tb --Mdir "$B/svh_rtl_vo" -o ccv-svh \
      -CFLAGS "-std=c++17 -O1 -DCCV_RCU_RTL -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \

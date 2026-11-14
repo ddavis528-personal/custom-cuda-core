@@ -1063,7 +1063,7 @@ def ext_ports(chans):
 
 def gen_shim(btype, P, own_ports=False, shadow=False):
     """A block type whose behaviour is the C++ skeleton's, over DPI-C.
-    shadow: module ccv_<btype>_dpi, the model shadowing the block's RTL
+    shadow: module <btype>_dpi, the model shadowing the block's RTL
     inside a wrapper that takes the block's name (RCU's, RI-42/44:
     test/rcu/ccv_rcu_svh.sv). It registers as its parent's path, since the
     host binds a shim to its block by the path's last name."""
@@ -1074,7 +1074,7 @@ def gen_shim(btype, P, own_ports=False, shadow=False):
     ext = btype == "ext"
     # EXTERNAL is testbench, not a block, so its shim is named as one
     # (tb_ext, in test/top/) rather than in the design's namespace (OI-37).
-    mod = "tb_ext" if ext else "ccv_%s%s" % (btype, "_dpi" if shadow else "")
+    mod = "tb_ext" if ext else ("%s_dpi" % btype if shadow else "ccv_%s" % btype)
     L = [BANNER]
     L.append("// SV-HOSTED C++ for %s: the C++ skeleton's %s, run through DPI-C" % (
         mod, "testbench end of EXTERNAL" if ext else "functional stub"))
@@ -1102,7 +1102,7 @@ def gen_shim(btype, P, own_ports=False, shadow=False):
                      lambda p: "%-6s %s%s" % (p[0], decl(p[1], p[5]), p[2]))
         L.append(");")
     else:
-        L.append("module ccv_%s%s (" % (btype, "_dpi" if shadow else ""))
+        L.append("module %s (" % ("%s_dpi" % btype if shadow else "ccv_%s" % btype))
         L.append("  `include \"ccv_%s_ports.svh\"" % btype)
         L.append(");")
     if not ext:
@@ -1395,7 +1395,9 @@ def main():
                         gen_shim(t, ports[t])))
     # RCU's model as the shadow of its RTL in the SV top (CCV_RCU_RTL,
     # RI-44): outside dpi/, which the plain SV-hosted build globs.
-    targets.append((os.path.join(TOPDIR, "dpi-shadow", "ccv_rcu_dpi.sv"),
+    # Named as RCU's sub-block (rcu_<name>, CCV-L28): after ccv_rcu only a
+    # wrapper's _w may follow.
+    targets.append((os.path.join(TOPDIR, "dpi-shadow", "rcu_dpi.sv"),
                     gen_shim("rcu", ports["rcu"], shadow=True)))
     names = [inst_name(t, i, ninst[t]) for t, i in binst]
     ft = feedthroughs(binst, cinst)

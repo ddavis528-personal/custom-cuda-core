@@ -8,7 +8,7 @@
 //             trace ids alone (CCV_TRACE's _tid, which the RTL ties to 0)
 //             are the shadow's, so the host's checks find each message's
 //             oracle record;
-//   u_shadow  the C++ RCU through its DPI shim (gen-top's ccv_rcu_dpi), whose
+//   u_shadow  the C++ RCU through its DPI shim (gen-top's rcu_dpi), whose
 //             outputs drive nothing. It does what the model does behind its
 //             ports (Kernel::gpr/pred, the RAT on a map, the per-instruction
 //             oracle checks, the coverage bins), on what the RTL's
