@@ -1,6 +1,6 @@
 # RA handoff (RCU block architect)
 
-Updated 2026-11-06. Keep this current at every task's end; it is what
+Updated 2026-11-14. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules (written for TI);
 docs/rcu-arch.md (AR's handoff to RA) holds the role. This holds RA's own.
 
@@ -280,7 +280,21 @@ RTL GPR/pred dump vs oracle; runs in the full gate; controls shim delay, flipped
 guard_fwd/mig_*/restore_* events not yet derived (no kernel produces them). RI-44 7e10e72f pushed it.
 TI 420 (a46afef7): long tools self-detach; wait with tools/gate-wait.sh <job log> as the background task (exit 3 =
 rerun the wait, 4 = killed, restart the job); replaces the setsid/pgrep method once merged.
-Bookmarks: OA 414, RA 138, RI 75, TI 422, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 46.
+RA rev 139 (re RI-46/47): M1 restated (guard <=16 w/o fanout term, <=25 with; no keep copy); M3 met (light
+unit = own peak <=2,048 MiB); M4 met by bench control, TI asked for a kill kernel with work in flight; RI-47's three
+waivers are DA's, RA no objection.
+RA rev 140 = PHASE 5 RECONCILIATION (spec vs build at 7e10e72f; recon-A/B/C in scratchpad, lost with container):
+(1) 25 pending-RA .ngd.json budgets adopted, RI rewrites owner text; (2) M5 from c1, RI makes mig_tb count from c1
+(demotion 68); (3) SFU ops classed as lane ops (OI-16 interim), RI shows swb_d->SW->slot 4 bench + control; kill
+kernel ask = "a lane op in flight"; (4) rcu_dec_pkg from model not ccv_ops_pkg: TI/RI, switch after sign-off (TI 425);
+(5) lead_bt_q/lead_bm_q no reset accepted; (6) full-row one GPR landing/cycle asked of MA; (7) Q-53: restore half
+done, allocation half with CCV_RCU_RTL; RI adds pred-63 restore-map check + A-64 check; (8) RI adds M0 kernel cycles,
+fixes two rcu_kill waiver texts; (9) ADDR_BASE 5 pending OI.
+RA rev 141 (re MA 53): full-row interim => every reg at pos 0, all GPR loads overlap section 0, MIU never co-issues
+two (one_load_a_bank = $onehot0(mw_cov) holds); narrows per bank when FULL_ROW goes. MA 54 confirmed, gating withdrawn.
+Spec amended 2026-11-14 by three forks: Overview 76, Conventions 20, Pipeline 33, Register file 37, Predicate 13,
+R unit 32, Lane 17, Migration 14, Done 46, Partition 69; all ten snapshots refreshed.
+Bookmarks: OA 414, RA 141, RI 76, TI 425, AR 348, DA 119, OI 341, Conventions 19, CP 157, IS 193, MA 54.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -310,6 +324,9 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
+- PHASE 5 (rcu-impl.md): spec reconciled (RA rev 140/141). Before DA sign-off: RI's rev 140 items (1)(2)(3)(7)(8);
+  TI's selector for M7; TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
+  ADDR_BASE. Reported to Daniel 2026-11-14.
 - RI M0 (model) ACCEPTED at RA rev 68 (5968894; RI rev 5); TI asked to make the model makeRcu's default. RI on to phase 2 (bank slice, r/xbar). RA-36 done (TI rev 317, e60ae23). AR rev 284 sets the PHYS_REGS order: OI's check answer, 160 on a 2nd 4-warp kernel, OA on Q-35, then DA.
 - RA-11 PHYS_REGS sweep (TI rev 315): RA rev 67 gave RCU flops 246k/212k/179k at 192/160/128, notice AR; decision AR + DA. 160 ~free; 128 waits OI's fits_stale/V-N check failures. RA-19 stub fix landed (TI rev 314, 9ce7381).
 - RA-40 closed: TI landed MIU lead_fields (b85595b, TI rev 311), AR MIU spec rev 48; closure at RA rev 66.
