@@ -238,6 +238,9 @@ module ooe_rs #(
   (* keep *) logic [N-1:0] vc0_cq02h, vc1_cq02h, vc2_cq02h, vc3_cq02h;
   logic [N-1:0] tk_nx_cq02h;            // their next value: valid's, or held
   (* keep *) logic [P*N-1:0] g1_cq02h, g2_cq02h, g3_cq02h;
+  // Their slots, the request left out (as gs is g's): a slot is always a
+  // free entry, so a row clears there whether or not its port asks.
+  (* keep *) logic [P*N-1:0] gs1_cq02h, gs2_cq02h, gs3_cq02h;
   (* keep *) logic [N-1:0] prod_cq02h;   // payload: read only while its entry is valid
   // The prod bits' copy for ooe_sched (NGD-7: the register starts paths
   // inside deeper than the output's budget allows).
@@ -330,9 +333,14 @@ module ooe_rs #(
     // stays off their paths; g is gs where its port asks.
     gs_cq02h = grants(vc0_cq02h, {P{1'b1}});
     for (int p = 0; p < P; p++) g_cq02h[p * N +: N] = gs_cq02h[p * N +: N] & {N{req_cq01h[p]}};
-    g1_cq02h = grants(vc1_cq02h, req_cq01h);
-    g2_cq02h = grants(vc2_cq02h, req_cq01h);
-    g3_cq02h = grants(vc3_cq02h, req_cq01h);
+    gs1_cq02h = grants(vc1_cq02h, {P{1'b1}});
+    gs2_cq02h = grants(vc2_cq02h, {P{1'b1}});
+    gs3_cq02h = grants(vc3_cq02h, {P{1'b1}});
+    for (int p = 0; p < P; p++) begin
+      g1_cq02h[p * N +: N] = gs1_cq02h[p * N +: N] & {N{req_cq01h[p]}};
+      g2_cq02h[p * N +: N] = gs2_cq02h[p * N +: N] & {N{req_cq01h[p]}};
+      g3_cq02h[p * N +: N] = gs3_cq02h[p * N +: N] & {N{req_cq01h[p]}};
+    end
     {cd_cq02h, d_cq02h} = rows_of(gs_cq02h, row_dep_cq01h & {P{rmask_cq02h}}, row_code_cq01h, grp_dep_cq01h,
                                   grp_code_cq01h, lg_cq02h, prv_dep_cq01h, prv_code_cq01h,
                                   valid_cq02h & ~lga_cq02h);
@@ -442,14 +450,17 @@ module ooe_rs #(
     for (int i = 0; i < N; i++) begin
       // One-hot AND-OR (an entry is granted to one port at most): the kept
       // row where no port takes it, else the taking port's row; each group
-      // of the row through its own grant copy.
+      // of the row through its own grant copy. The kept row clears on a
+      // slot (ga1-ga3, from gs1-gs3), asked for or not: a slot is a free
+      // entry, whose row only the column leads read, so the request
+      // reaches the row only through the taking port's grant.
       hit_cq02h = 1'b0;
       ga1_cq02h = 1'b0; ga2_cq02h = 1'b0; ga3_cq02h = 1'b0;
       for (int p = 0; p < P; p++) begin
         hit_cq02h = hit_cq02h | g_cq02h[p * N + i];
-        ga1_cq02h = ga1_cq02h | g1_cq02h[p * N + i];
-        ga2_cq02h = ga2_cq02h | g2_cq02h[p * N + i];
-        ga3_cq02h = ga3_cq02h | g3_cq02h[p * N + i];
+        ga1_cq02h = ga1_cq02h | gs1_cq02h[p * N + i];
+        ga2_cq02h = ga2_cq02h | gs2_cq02h[p * N + i];
+        ga3_cq02h = ga3_cq02h | gs3_cq02h[p * N + i];
       end
       dep_nx_cq02h[i * N +: N]           = dep_cq02h[i * N +: N] & ~clr_cq02h & {N{!ga1_cq02h}};
       code_nx_cq02h[i * 2 * N +: N]      = code_cq02h[i * 2 * N +: N] & dep2_cq02h[i * 2 * N +: N] & {N{!ga2_cq02h}};
