@@ -53,7 +53,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- Nothing running (12:10Z 11-13). OI is weighing a sectioned=1 rerun of #35.
+- Nothing running or queued (15:50Z 11-13). OI declined the sectioned=1 rerun (OI-143 records #35).
 - RI ngd 7e29cef5 (RI's 11-13 daily-sweep merge, which replaces 439179d9; RI asked RH to
   stop that leg) DONE: PARTIAL PASS, ngd 5558 s at CCV_JOBS=4, export d4485d9c...,
   RI-export 37e33198, sent. Template: rh-jobs/ri-gate/ngd3.sh (sed the sha, CCV_JOBS).
@@ -63,8 +63,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI #35 DONE and sent 09:20Z 11-13 (rh-jobs/oi35, logs ~/ccv-logs/oi35, worktree
   /home/user/rh-oi35 at d86e3a14). cand_indep_pend ON == OFF on every run: it is
   read only in placePos, which returns early unless sectioned=1 (default 0). U == G
-  because unmet_reg defaults to 1 since f4d5ee10. Offered OI a sectioned=1 rerun
-  (about 9 h of cm128); awaiting configs.
+  because unmet_reg defaults to 1 since f4d5ee10. OI declined a sectioned=1 rerun.
 - TI-420 (a46afef7, on TI's branches): long tools self-detach (tools/detach.sh) and write
   ~/ccv-logs/job-*.log. Wait with `tools/gate-wait.sh <job log>` as the background task
   (110 min cap; exit 3 = still running, rerun it; exit 4 = killed by a restart, relaunch).
