@@ -2387,6 +2387,10 @@ private:
   static_assert(ccv::prov::kLatLaneBase >= 1 + 2 * kLatHop, "no room for the lane pipeline");
   static_assert(ccv::prov::kLatLaneByp >= kPipe,
                 "a dependant at CCV_LAT_LANE_BYP would arrive before its producer's result");
+  /// An SFU op's pipeline: CCV_LAT_SFU - CCV_LAT_LANE cycles longer, the
+  /// link terms the same on both (RA's rev 95: LANE 7, SFU 12).
+  static constexpr unsigned kPipeSfu = kPipe + ccv::prov::kLatSfu - ccv::prov::kLatLane;
+  static_assert(ccv::prov::kLatSfu >= ccv::prov::kLatLane, "SFU is no faster than a lane op");
 
   struct Out { Bits msg; uint64_t tid, at; };
   /// This lane's results by arrival cycle, with the lead section of the op
@@ -2449,22 +2453,56 @@ private:
         // predicate out rides on its lead section.
         put(r, c.lane_rcu, "sec_valid", en);
       }
-      // No SFU op runs yet, so no SFU result rides out (RA-16 (b)).
-      // sfu-valid-stray: lane 3's first message carries one anyway.
+      const unsigned opc = getSec(m.payload, c.rcu_lane, "sec_opcode", 0, ccv::prelim::kWOpcode);
+      const OpInfo *op = opByCode(opc);
+      // An SFU op (lat_class 4; OI-145 (3), RI-51): its value rides out as
+      // sfu_result, with sfu_valid, at CCV_LAT_SFU - 1 after RCU took the
+      // issue, never as a lane result: no sec_valid, no lane bypass from it
+      // (RCU's model, rcu_core.cpp). sfu-at-lane-lat sends it at the lane's
+      // latency instead, which RCU must refuse.
+      if (op && op->byp == int(kBypSfu) && opc != kOpCopy) {
+        Bits sr = msgOf(c.lane_rcu);
+        put(sr, c.lane_rcu, "sfu_valid", 1u);
+        put(sr, c.lane_rcu, "sfu_result", uint32_t(get(r, c.lane_rcu, "result")));
+        put(sr, c.lane_rcu, "sec_valid", 0u);
+        enqueue(sr, m.tid, now_ + (k_.brk == "sfu-at-lane-lat" ? kPipe : kPipeSfu), true);
+        continue;
+      }
+      // sfu-valid-stray: lane 3's first lane message carries an SFU result
+      // for no SFU op in flight.
       const bool stray = k_.brk == "sfu-valid-stray" && lane_ == 3 && !sfu_stray_;
       put(r, c.lane_rcu, "sfu_valid", stray ? 1u : 0u);
       put(r, c.lane_rcu, "sfu_result", stray ? 0x5f0e5f0eu : 0u);
       sfu_stray_ = sfu_stray_ || stray;
       h.v = uint32_t(get(r, c.lane_rcu, "result"));
       // The copy-only op writes only inactive lanes and is never a producer.
-      if (getSec(m.payload, c.rcu_lane, "sec_opcode", 0, ccv::prelim::kWOpcode) != kOpCopy)
-        hist_.push_back(h);
-      q_.push_back({r, m.tid, now_ + kPipe});
+      if (opc != kOpCopy) hist_.push_back(h);
+      enqueue(r, m.tid, now_ + kPipe, false);
     }
     if (!q_.empty() && q_.front().at <= now_ && can(c.lane_rcu, 0, lane_)) {
       send(c.lane_rcu, 0, q_.front().msg, q_.front().tid, lane_);
       q_.pop_front();
     }
+  }
+  /// One message per cycle at most: an SFU result due the cycle a lane
+  /// result is rides in the same message (RCU takes both from it).
+  void enqueue(Bits msg, uint64_t tid, uint64_t at, bool sfu) {
+    const Ch &c = ch();
+    auto it = q_.begin();
+    while (it != q_.end() && it->at < at) ++it;
+    if (it != q_.end() && it->at == at) {
+      if (sfu) {
+        put(it->msg, c.lane_rcu, "sfu_valid", 1u);
+        put(it->msg, c.lane_rcu, "sfu_result", uint32_t(get(msg, c.lane_rcu, "sfu_result")));
+      } else {
+        put(msg, c.lane_rcu, "sfu_valid", 1u);
+        put(msg, c.lane_rcu, "sfu_result", uint32_t(get(it->msg, c.lane_rcu, "sfu_result")));
+        it->msg = msg;
+        it->tid = tid;
+      }
+      return;
+    }
+    q_.insert(it, {msg, tid, at});
   }
   bool busy() const override { return !q_.empty(); }
 
@@ -2965,14 +3003,36 @@ private:
     if (k_.brk == "no-rcu-bypass") issues();
 
     // Lane results, one message a cycle: all 32 lanes, or it is not lockstep.
+    // A message holds a lane op's results (sec_valid), an SFU op's
+    // (sfu_valid, at CCV_LAT_SFU; OI-145 (3)), or both: each lands on the
+    // oldest op of its kind in flight, since an SFU op answers after lane
+    // ops RCU took later.
     unsigned n = 0;
     for (unsigned l = 0; l != kLanes; ++l) n += has(c.lane_rcu, 0, l);
     if (n != 0 && n != kLanes) k_.fail("rcu: %u of 32 lanes answered", n);
-    else if (n != 0 && alu_.empty()) k_.fail("rcu: lane results for nothing");
     else if (n != 0) {
-      const Alu a = alu_.front();
-      alu_.pop_front();
-      land(a);
+      std::vector<Receiver::Msg> ms;
+      for (unsigned l = 0; l != kLanes; ++l) ms.push_back(take(c.lane_rcu, 0, l));
+      const bool lane_part = get(ms[0].payload, c.lane_rcu, "sec_valid") != 0;
+      const bool sfu_part = get(ms[0].payload, c.lane_rcu, "sfu_valid") != 0;
+      auto oldest = [&](bool sfu) {
+        for (auto it = alu_.begin(); it != alu_.end(); ++it)
+          if (isSfu(*it) == sfu) return it;
+        return alu_.end();
+      };
+      if (!lane_part && !sfu_part) k_.fail("rcu: a lane message with no result in it");
+      for (int sfu = 0; sfu != 2; ++sfu) {
+        if (!(sfu ? sfu_part : lane_part)) continue;
+        auto it = oldest(sfu);
+        if (it == alu_.end()) {
+          k_.fail(sfu ? "rcu: lane sfu_valid with no SFU op in flight (RA-16 (b))"
+                      : "rcu: lane results for nothing");
+          continue;
+        }
+        const Alu a = *it;
+        alu_.erase(it);
+        land(a, ms);
+      }
     }
 
     for (unsigned s = 0; s != kChans[c.miu_rcu].rate; ++s)
@@ -3054,22 +3114,30 @@ private:
     }
   }
 
-  /// A lane op's results: every section it held, from all 32 lanes.
-  void land(const Alu &a) {
+  static bool isSfu(const Alu &a) { return !a.copy && a.op && a.op->byp == int(kBypSfu); }
+  /// A lane op's results: every section it held, from all 32 lanes; an SFU
+  /// op's, its sfu_result (RA-16 (b): RCU writes it from its own SFU
+  /// descriptor, at CCV_LAT_SFU).
+  void land(const Alu &a, const std::vector<Receiver::Msg> &ms) {
     const Ch &c = ch();
+    const bool sfu = isSfu(a);
     uint32_t po_mask = 0;
     for (unsigned l = 0; l != kLanes; ++l) {
-      Receiver::Msg m = take(c.lane_rcu, 0, l);
-      if (m.tid != a.tid) k_.fail("rcu: lane %u answered for another instruction", l);
-      if (get(m.payload, c.lane_rcu, "sec_valid") != a.foot)
+      const Receiver::Msg &m = ms[l];
+      // A shared message carries the lane op's tid; the SFU part is matched
+      // by kind and age, not by it.
+      if (!sfu && m.tid != a.tid) k_.fail("rcu: lane %u answered for another instruction", l);
+      if (!sfu && get(m.payload, c.lane_rcu, "sec_valid") != a.foot)
         k_.fail("rcu: lane %u's results hold sections %x, not seq %llu's %x", l,
                 unsigned(get(m.payload, c.lane_rcu, "sec_valid")),
                 (unsigned long long)uidSeq(a.tid), a.foot);
-      // The SFU result (RA-16 (b)): RCU writes it from its own SFU
-      // descriptor, and the stub runs no SFU op, so any sfu_valid is stray.
-      if (get(m.payload, c.lane_rcu, "sfu_valid"))
-        k_.fail("rcu: lane %u sfu_valid with no SFU op in flight (RA-16 (b))", l);
-      const uint32_t v = uint32_t(get(m.payload, c.lane_rcu, "result"));
+      if (sfu && !get(m.payload, c.lane_rcu, "sfu_valid"))
+        k_.fail("rcu: lane %u has no SFU result for seq %llu", l, (unsigned long long)uidSeq(a.tid));
+      if (sfu && now_ - a.accepted != ccv::prov::kLatSfu - 1)
+        k_.fail("rcu: seq %llu's SFU result reached the PRF %llu cycles after RCU took it, "
+                "not CCV_LAT_SFU - 1 = %u", (unsigned long long)uidSeq(a.tid),
+                (unsigned long long)(now_ - a.accepted), ccv::prov::kLatSfu - 1);
+      const uint32_t v = uint32_t(get(m.payload, c.lane_rcu, sfu ? "sfu_result" : "result"));
       if (a.copy) {
         // The copy writes only the load's inactive lanes (A-38, A-44).
         if (!((a.active >> l) & 1u)) k_.gpr[a.pdst][l] = v;

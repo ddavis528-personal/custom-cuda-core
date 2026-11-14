@@ -220,7 +220,9 @@ def sched_attr(x, E):
     lat = (E["kLatRcu"] if c == "kNop" else E["kLatL1"] if c == "kLoad"
            else E["kLatCompletion"] if c in ("kStore", "kFence", "kAtomic")
            else E["kLatCollective"] if x["cross"]
-           else E["kLatRcu"] if exec_rcu(x) or ctl else E["kLatLane"])
+           else E["kLatRcu"] if exec_rcu(x) or ctl
+           else E["kLatSfu"] if byp_group(x, E) == E["kBypSfu"] and x["byp"] != -1
+           else E["kLatLane"])
     return (int(x["ret"]) << E["kAttrRetBit"] | byp_group(x, E) << 14 |
             int(mem) << 13 | int(exec_rcu(x) or ctl) << 12 | int(x["cross"]) << 11 |
             int(x["gdst"]) << 10 | int(x["pwrite"]) << 9 | (memk if mem else 0) << 7 |
@@ -444,6 +446,12 @@ def selftest(d):
     y = dict(x, cls="kLoad")
     if sched_attr(x, E) == sched_attr(y, E):
         missed.append("sched_attr does not see the class")
+    # ...and the SFU bypass group must move lat_class to 4, and only it.
+    z = dict(DEFAULT, **[r for r in d["ops"] if r.get("byp") == "kBypSfu"][0])
+    if sched_attr(z, E) & 7 != E["kLatSfu"]:
+        missed.append("an SFU op is not lat_class 4")
+    if sched_attr(dict(z, byp="kBypFp"), E) & 7 != E["kLatLane"]:
+        missed.append("lat_class 4 reaches an op outside the SFU group")
     if missed:
         sys.stderr.write("".join("gen-ops selftest: %s\n" % s for s in missed))
         return 1
