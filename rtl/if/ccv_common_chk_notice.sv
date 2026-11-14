@@ -34,6 +34,10 @@ module ccv_common_chk_notice #(
   input logic          enable,
   input logic          ntc_valid,
   input logic [KW-1:0] ntc_keys,     // the notice's key fields, from its payload
+  // From the notice's payload too: set, this message promises nothing (the
+  // schema's notice_of.unless, e.g. the hint's no_hit; OA rev 413). Tie 0
+  // where every message is a promise.
+  input logic          ntc_skip,
   input logic          msg_valid,
   input logic [KW-1:0] msg_keys      // the partner's key fields, from its payload
 );
@@ -51,7 +55,7 @@ module ccv_common_chk_notice #(
   logic [AHEAD*KW-1:0] key_q;
   always_ff @(posedge clk) begin
     if (!rst_n) due_q <= '0;
-    else        due_q <= {ntc_q, due_q[AHEAD-1:1]};
+    else        due_q <= {ntc_q && !ntc_skip, due_q[AHEAD-1:1]};
   end
   always_ff @(posedge clk) begin
     key_q <= {ntc_keys, key_q[AHEAD*KW-1:KW]};

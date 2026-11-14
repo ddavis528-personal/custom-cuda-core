@@ -82,12 +82,13 @@ void Kernel::flushHeld() {
 void Kernel::snapshotFinal(unsigned w) {
   Final &f = finals[w];
   const std::vector<unsigned> &r = ratOf(w);
-  for (unsigned a = 0; a != kArchGprs; ++a) f.gpr[a] = gpr[r[a]];
+  for (unsigned a = 0; a != kArchGprs; ++a)
+    for (unsigned l = 0; l != kLanes; ++l) f.gpr[a][l] = gprAt(r[a], l);
   std::vector<unsigned> pmap = w < prat.size() ? prat[w] : std::vector<unsigned>();
   if (pmap.empty())
     for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(w, p));
   if (brk == "swap-prat0" && w == 0) std::swap(pmap[0], pmap[1]);   // the control, here too
-  for (unsigned p = 0; p != kArchPreds; ++p) f.pred[p] = pred[pmap[p]];
+  for (unsigned p = 0; p != kArchPreds; ++p) f.pred[p] = predAt(pmap[p]);
 }
 
 void Kernel::checkParked(unsigned w) {
@@ -547,8 +548,8 @@ private:
     return can(ch().dcu_miu, slot) && credits(ch().dcu_miu, slot) > resv_[slot];
   }
 
-  /// L1 (OI-5): a small set-associative array, 8 ways x 64 sets by default
-  /// (CCV_DCU_WAYS; the DCU spec's 8 ways, since 31168a3), so a load that
+  /// L1 (OI-5): a small set-associative array, CCV_DCU_WAYS x CCV_DCU_SETS
+  /// (8 x 64 by default; the DCU spec's 8 ways, since 31168a3), so a load that
   /// revisits a line hits, and MIU can complete it at the L1 contract. A hit answers the
   /// cycle it arrives, ahead of any miss in flight: the contract is MIU's to
   /// keep (CCV_LAT_L1_HIT), and an answer early enough lets it.
@@ -562,15 +563,16 @@ private:
   /// write-through: every store goes to MLC as a read-merge-write, the
   /// policy before rev 8, which the merged values survive but the timing
   /// does not.
-  /// CCV_DCU_SETS sets (default 64, a power of two) of CCV_DCU_WAYS ways
-  /// (default 8, 64 KiB), least recently used replaced: the DCU spec's 8
+  /// CCV_DCU_SETS sets (a power of two) of CCV_DCU_WAYS ways, defaults the
+  /// params' (64 and 8, 64 KiB; MA-15), each overridable from the
+  /// environment for a sweep; least recently used replaced: the DCU spec's 8
   /// ways, settled by TI rev 234's 1-to-8-way sweep (AR rev 320). Before it
   /// the default was 1 way, and three arrays 64 KiB apart (rbase<<16) fought
   /// for one set (J9). A kernel that needs evictions sets CCV_DCU_WAYS=1.
   static unsigned setsOf() {
     const char *v = std::getenv("CCV_DCU_SETS");
-    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 64;
-    return n >= 1 && n <= 65536 && !(n & (n - 1)) ? n : 64;
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : ccv::prov::kDcuSets;
+    return n >= 1 && n <= 65536 && !(n & (n - 1)) ? n : ccv::prov::kDcuSets;
   }
   const unsigned sets_ = setsOf();
   struct Way {
@@ -579,8 +581,8 @@ private:
   };
   static unsigned waysOf() {
     const char *v = std::getenv("CCV_DCU_WAYS");
-    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 8;
-    return n >= 1 && n <= 16 ? n : 8;
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : ccv::prov::kDcuWays;
+    return n >= 1 && n <= 16 ? n : ccv::prov::kDcuWays;
   }
   const unsigned ways_ = waysOf();
   std::vector<Way> l1_ = std::vector<Way>(size_t(sets_) * ways_);
@@ -875,7 +877,8 @@ private:
 
 class Miu : public Stub {
 public:
-  Miu(int inst, Kernel &k) : Stub(inst, k), ids_(ch().miu_dcu), spm_ids_(ch().miu_spm) {}
+  Miu(int inst, Kernel &k)
+      : Stub(inst, k), ids_(ch().miu_dcu, "CCV_MIU_DCU_IDS"), spm_ids_(ch().miu_spm) {}
   const char *kind() const override { return "miu"; }
 
 private:
@@ -1119,6 +1122,16 @@ private:
 
   void work() override {
     const Ch &c = ch();
+    // A memop's credit stands for its queue entry (MA-5, AR rev 345): it
+    // goes back when the memop's last completion leaves, a discard's as it
+    // is taken. OOE's select waits for a credit (OI, efe09c78). The control
+    // --break memop-credit-on-take returns it on take, as before MA-5: then
+    // more memops hold a slot's queue entries than it has credits.
+    if (!armed_) {
+      armed_ = true;
+      at_entry_ = k_.brk != "memop-credit-on-take";
+      if (at_entry_) creditAtRelease(c.ooe_miu);
+    }
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
       while (has(c.fill_ntc, s))
         notice(unsigned(get(take(c.fill_ntc, s).payload, c.fill_ntc, "req_id")));
@@ -1172,9 +1185,15 @@ private:
         if (ord != 0 && get(m.payload, c.ooe_miu, "mem_op") != kMemFence)
           k_.fail("miu: rob tag %u has ordering %u but is not a fence", tag, ord);
         if (get(m.payload, c.ooe_miu, "mem_op") == kMemBulkDiscard) {
+          release(c.ooe_miu, s);   // a discard holds no entry
           discard(m.payload);
           continue;
         }
+        // The slot's queue entries: never more than its credits.
+        k_.peak("memop_entries_peak", entries_[s] + 1);
+        if (++entries_[s] > kChans[c.ooe_miu].credits)
+          k_.fail("miu: %u memops hold queue entries on slot %u, over its %u credits (MA-5)",
+                  entries_[s], s, unsigned(kChans[c.ooe_miu].credits));
         if (uidClass(m.tid) != IdClass::kInstr)
           k_.fail("miu: rob tag %u is a memop with id class %u; only a discard may carry none",
                   tag, unsigned(uidClass(m.tid)));
@@ -1324,7 +1343,7 @@ private:
         continue;
       }
       if (t.at == now_ && free(c.miu_rcu, t.data.slot) && free(c.miu_ooe, t.cmpl.slot)) {
-        send(c.miu_ooe, t.cmpl.slot, withLead(t.cmpl.msg), t.cmpl.tid);
+        sendCmpl(t.cmpl.slot, t.cmpl.msg, t.cmpl.tid);
         if (k_.brk == "late-hit-data")
           // The data a cycle behind its completion: dependants woken by the
           // contract read the register before the load lands.
@@ -1345,7 +1364,8 @@ private:
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
         if (free(chan, it->slot)) {
-          send(chan, it->slot, chan == c.miu_ooe ? withLead(it->msg) : it->msg, it->tid);
+          if (chan == c.miu_ooe) sendCmpl(it->slot, it->msg, it->tid);
+          else send(chan, it->slot, it->msg, it->tid);
           it = q.erase(it);
         } else
           ++it;
@@ -1450,6 +1470,23 @@ private:
   // lead-fault-replay sets it on a replay too (OA rev 376's first rule,
   // status nonzero), and --break lead-fault-drop never sets it on a fault;
   // OOE's equality must refuse both.
+  /// A completion to OOE, on the memop's arrival slot. Every memop gets
+  /// exactly one (ccv_miu_ooe), so it frees the memop's queue entry, and so
+  /// its credit (MA-5). An atomic's more = 1 is not a second completion of
+  /// this memop: OOE re-issues the steps as new memops (AR-21).
+  void sendCmpl(unsigned slot, const Bits &m, uint64_t tid) {
+    const Ch &c = ch();
+    send(c.miu_ooe, slot, withLead(m), tid);
+    if (!entries_[slot]) {
+      k_.fail("miu: a last completion on slot %u, which holds no memop entry", slot);
+      return;
+    }
+    --entries_[slot];
+    release(c.ooe_miu, slot);
+  }
+  bool armed_ = false, at_entry_ = false;
+  std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
+
   Bits withLead(Bits m) {
     const Ch &c = ch();
     const unsigned st = unsigned(get(m, c.miu_ooe, "status"));
@@ -2281,7 +2318,7 @@ private:
                             {job_.memop_slot, cmpl(job_), job_.tid}});
         } else if (now_ == job_.promised && can(c.miu_ooe, job_.memop_slot) &&
                    can(c.miu_rcu, job_.addr_slot)) {
-          send(c.miu_ooe, job_.memop_slot, withLead(cmpl(job_)), job_.tid);
+          sendCmpl(job_.memop_slot, cmpl(job_), job_.tid);
           send(c.miu_rcu, job_.addr_slot, d, job_.tid);
         } else {
           to_rcu_.push_back({job_.addr_slot, d, job_.tid});
@@ -4161,7 +4198,7 @@ public:
   const char *kind() const override { return "fet"; }
 
 private:
-  static constexpr unsigned kPage = 4096;
+  static constexpr uint64_t kPage = uint64_t(1) << ccv::kLPageShift;   // CCV_L_PAGE_SHIFT (64 KiB; MA-15)
   std::map<uint64_t, uint64_t> page_;       ///< virtual page -> physical page
   std::set<uint64_t> itlb_wait_;
   std::map<uint64_t, Line> line_;           ///< by virtual line address
@@ -5398,7 +5435,7 @@ private:
         const unsigned first = k_.brk == "whole-cta-mask" ? 0 : 32 * o.warp_in_cta;
         const unsigned n = !o.threads ? kLanes : o.threads <= first ? 0 : std::min(o.threads - first, kLanes);
         put(f, c.rau_fet, "live_mask", n == kLanes ? ~0u : (1u << n) - 1);
-        // code_bounds: [63:0] base, [103:64] length (placeholder split).
+        // code_bounds: [63:0] base, the rest length (placeholder split).
         const FieldDesc &cb = field(c.rau_fet, "code_bounds");
         f.set(cb.lsb, 64, o.code_base);
         f.set(cb.lsb + 64, cb.width - 64, o.code.size());
@@ -5941,6 +5978,13 @@ KernelReport compareFinal(Kernel &k) {
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
     if (isParked(w) || cut(w)) continue;
     const Oracle &o = k.orcs[w];
+    // A partial oracle (PARTIAL=1) has no final state to compare: the run
+    // must stop short of its last record, so a warp that exits fails.
+    if (o.partial) {
+      if (k.finals.count(w))
+        k.fail("kernel: warp %u exited, but its oracle is partial: ccv-sim stopped at MAXSTEPS", w);
+      continue;
+    }
     // A run ccv-sim ended in a fault must end in CRU's fault too (TI-26);
     // CRU's stub held its fields to ccv-sim's as it took it.
     if (o.faults && !k.faults.count(w))
@@ -5956,7 +6000,7 @@ KernelReport compareFinal(Kernel &k) {
         // Within the register's final width: ccv-sim keeps the bits above
         // a narrow element as the slice last held them (AR-24).
         const uint32_t em = elemMask(o.final_widths >> 2 * a & 3u);
-        const uint32_t got = fin != k.finals.end() ? fin->second.gpr[a][l] : k.gpr[rat[a]][l];
+        const uint32_t got = fin != k.finals.end() ? fin->second.gpr[a][l] : k.gprAt(rat[a], l);
         if ((got & em) != (o.final_gpr[a][l] & em)) {
           if (r.gpr_mismatch++ < 4)
             std::fprintf(stderr, "FINAL %s%sR%u lane %u: machine %08x, ccv-sim %08x\n", who,
@@ -5968,7 +6012,7 @@ KernelReport compareFinal(Kernel &k) {
       for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(w, p));
     if (k.brk == "swap-prat0" && w == 0) std::swap(pmap[0], pmap[1]);
     for (unsigned p = 0; p != kArchPreds; ++p) {
-      const uint32_t got = fin != k.finals.end() ? fin->second.pred[p] : k.pred[pmap[p]];
+      const uint32_t got = fin != k.finals.end() ? fin->second.pred[p] : k.predAt(pmap[p]);
       if (got != o.final_pred[p]) {
         ++r.pred_mismatch;
         std::fprintf(stderr, "FINAL %s%sP%u: machine %08x, ccv-sim %08x\n", who, wn.c_str(), p,
@@ -6163,13 +6207,17 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
   // Each backpressured channel's longest wait from landing to take, over its
   // slots: the measure CCV_P_TIMEOUT_BP is a watchdog over (AR's response
   // TI-22). Not part of the KERNEL line the two hosts compare.
+  // A credits_param channel (MA-5) reports the longest credit hold too,
+  // landing to release, against its own watchdog (timeout_param, AR rev 350).
   for (const ChanInst &ci : kChanInsts) {
-    if (!kChans[ci.chan].held) continue;
+    const auto &ch = kChans[ci.chan];
+    const bool cp = ch.credits != ccv::kCreditDepth;
+    if (!ch.held && !cp) continue;
     uint64_t age = 0;
-    for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
-      age = std::max(age, m.rx(ci.slot_base + s).maxAge());
-    std::printf("BPAGE %s max=%llu watchdog=%u\n", kChans[ci.chan].name,
-                (unsigned long long)age, unsigned(ccv::prov::kTimeoutBp));
+    for (unsigned s = 0; s != ch.rate; ++s)
+      age = std::max({age, m.rx(ci.slot_base + s).maxAge(), m.rx(ci.slot_base + s).maxHold()});
+    std::printf("BPAGE %s max=%llu watchdog=%u\n", ch.name, (unsigned long long)age,
+                unsigned(ch.watchdog));
   }
   std::printf("COVER");
   for (const char *b : Kernel::kCoverBins)

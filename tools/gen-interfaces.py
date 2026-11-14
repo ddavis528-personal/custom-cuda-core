@@ -481,8 +481,13 @@ def main():
         if no is not None:
             names = {x["name"]: x for x in d["channels"]}
             other = names.get(no.get("channel"))
-            if set(no) != {"channel", "ahead", "keys"}:
-                err("notice_of needs exactly channel, ahead, keys"); return 1
+            if not {"channel", "ahead", "keys"} <= set(no) <= {"channel", "ahead", "keys", "unless"}:
+                err("notice_of needs exactly channel, ahead, keys, and optionally unless"); return 1
+            # unless (OA rev 413): a 1-bit field of the notice's own that,
+            # set, makes the message no promise (the hint's no_hit).
+            if "unless" in no and (no["unless"] not in c["payload_fields"] or
+                                   str(d["field_widths"].get(no["unless"])) != "1"):
+                err("notice_of unless must be a 1-bit field of %s" % c["name"]); return 1
             if other is None or other is c or "notice_of" in other:
                 err("notice_of %r is not another, non-notice channel" % no["channel"]); return 1
             if (other["src"], other["dst"], other["rate"]) != (c["src"], c["dst"], c["rate"]):
@@ -557,6 +562,36 @@ def main():
     for e in rate_drift(d, pv):
         sys.stderr.write(e + "\n")
         bad = 1
+    # credits_param (MA-5, AR rev 345): a channel whose slots hold more
+    # credits than the loop names the parameter; it must exist and be at
+    # least the loop, or the slot could not run at full rate.
+    # timeout_param (AR rev 350): a channel whose response bound is its own
+    # watchdog, not CCV_P_TIMEOUT_BP or CCV_P_TIMEOUT_N; it must exist and be
+    # at least CCV_P_TIMEOUT_BP, which every held channel already gets.
+    for c in d["channels"]:
+        tp = c.get("timeout_param")
+        if tp is None:
+            continue
+        if tp not in pv:
+            sys.stderr.write("channel %s: timeout_param %s is not in params/ccv_params.json\n"
+                             % (c["name"], tp))
+            bad = 1
+        elif pv[tp] < pv["CCV_P_TIMEOUT_BP"]:
+            sys.stderr.write("channel %s: %s = %d is under CCV_P_TIMEOUT_BP = %d\n"
+                             % (c["name"], tp, pv[tp], pv["CCV_P_TIMEOUT_BP"]))
+            bad = 1
+    for c in d["channels"]:
+        cp = c.get("credits_param")
+        if cp is None:
+            continue
+        if cp not in pv:
+            sys.stderr.write("channel %s: credits_param %s is not in params/ccv_params.json\n"
+                             % (c["name"], cp))
+            bad = 1
+        elif pv[cp] < pv["CCV_CREDIT_DEPTH"]:
+            sys.stderr.write("channel %s: %s = %d is under the credit loop, CCV_CREDIT_DEPTH = %d\n"
+                             % (c["name"], cp, pv[cp], pv["CCV_CREDIT_DEPTH"]))
+            bad = 1
     for c in d["channels"]:
         for ov in c.get("overlays", []):
             fw = num(field_width(d, c, ov["field"]))

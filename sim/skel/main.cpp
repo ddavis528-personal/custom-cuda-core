@@ -294,6 +294,7 @@ int main(int argc, char **argv) {
                       brk == "ignore-mask" || brk == "skip-read-partial" ||
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
                       brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
+                      brk == "memop-credit-on-take" ||
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
                       brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-fault-replay" || brk == "lead-fault-drop" || brk == "lead-src-clear" || brk == "lead-copy-corrupt" || brk == "lead-guard-corrupt" || brk == "lead-src-corrupt" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||

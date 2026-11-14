@@ -148,7 +148,7 @@ every channel for 2000 cycles, through the same wiring and the same checker
 bank:
 
 ```
-SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=221709 received=221709 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 cor_late=0 credits_home=179 idle_slots=0 violations=0
+SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=222333 received=222333 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 cor_late=0 credits_home=179 idle_slots=0 violations=0
 ```
 
 ## 5. One channel, from the schema down
@@ -333,7 +333,7 @@ otherwise:
     .core_clk(core_clk),
     .rst_n(rst_n),
     ...
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1214)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
     ...
 ```
@@ -408,9 +408,9 @@ SV top under `CCV_CHECK`.
 One of them: slot 0 of the channel from section 5.
 
 ```systemverilog
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1214), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[48740:47529])
+    .ch_payload(payload[48758:47545])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
@@ -426,11 +426,11 @@ check:
 
 ```
 [20000] %Error: ccv_common_chk_credit.sv:317: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
-SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=210292 received=210292 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=53 cor_late=0 credits_home=161 idle_slots=0 violations=26
+SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=211069 received=211069 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=54 cor_late=0 credits_home=161 idle_slots=0 violations=31
 ```
 
 The C++ receivers count the same leak from their side:
-`credit_leaks=53`, and only
+`credit_leaks=54`, and only
 161 of 179 slots have all
 their credits home at the end.
 
@@ -512,4 +512,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: af120ae47db80226 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: a76cdef2252b514f (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

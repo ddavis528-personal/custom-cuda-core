@@ -123,3 +123,11 @@ module ccv_common_rpt_gated (
     .hyst_quiesce(6'd8), .hyst_stall(6'd16), .wake(1'b0), .cg_override(1'b1),
     .te(1'b0), .gclk(gclk), .gated());
 endmodule
+
+// -- CCV-L27: a hard macro is named one, in rtl/macro/ -------------------
+
+// A module of a macro type outside rtl/macro/: its storage would leave
+// check-cg's counts and its inside check-ngd's by its name alone.
+module ccv_common_sram_wide (input logic a, output logic b);
+  assign b = a;
+endmodule
