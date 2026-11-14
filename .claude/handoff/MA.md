@@ -25,8 +25,8 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 348, TI 420, OA 414, IS 193, CP 157, OI 341, RA 136,
-RI 70, MA 48, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
+Conventions 19, AR 350, TI 424, OA 414, IS 193, CP 157, OI 341, RA 136,
+RI 70, MA 54, DA 119. RA 141 read (item 6 settled MA 54: one GPR load a cycle at position 0). Specs doc: MIU tab rev 104, DCU tab rev 23.
 
 ## State, 2026-11-13
 
@@ -68,6 +68,14 @@ RI 70, MA 48, DA 119. Specs doc: MIU tab rev 104, DCU tab rev 23.
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+0. MA rev 51-52 (re:AR-350, TI-424): memop watchdog CCV_P_TIMEOUT_MEMOP = CCV_MEMOP_CREDITS x
+   CCV_P_TIMEOUT_MEM = 20480 (spec MIU blocks a warp only on its own; rev 50's 81920 withdrawn,
+   it was the stub's global head-of-line queue); TI applies
+   with an 8192 control and a bounded cm128 check. Caveat for Phase 1: measure DCU miss rounds
+   per 32-line memop; if >1 it joins the derive. AR-349 answer and the MA-9 close wait on
+   Daniel's OK of: close MA-9 with latency moved to the timing model; partition a Phase 2
+   decision priced on configurable boundary latencies; 64 KiB stays baseline.
 
 1. MA-9 (MIU-DCU boundary): waits on AR's capacity sweep (64 vs 512 KiB, L1_HIT
    5/7/8). When it closes, the grill-me is finished.
