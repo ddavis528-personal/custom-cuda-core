@@ -54,7 +54,11 @@ architect may approve only if the end meets module NGD without the flop; can't m
    RI-48 written (RI tab rev 77), notices RA + TI. WAIT: RA on which 4 of 25 budgets, RA's report to DA; MA on
    (6) multi GPR loads/cycle; TI merge 5516e643, SVHOST selector, kill kernel (rokill variant).
    TI rev 425: SFU class = TI op table + OI unit-4 + RI model decode (RTL ready); rcu_dec_pkg import switch
-   after sign-off. TI tab bookmark 425. NEXT: block report (task 22: build is free now).
+   after sign-off. TI tab bookmark 425.
+   RA rev 142 (RA bookmark 142): 21 budgets right; all rev 140 RI items closed; (6) closed (one_load_a_bank holds
+   under FULL_ROW; per bank when FULL_ROW goes). 4 whys edited -> 7e9bf49d in ri-wt9 (local, NOT pushed; push with
+   the block report). Left before DA sign-off: TI M7 selector + kill kernel; RI-47 waivers (DA).
+   NEXT: block report (task 22, agent drafting to scratchpad blockrep/report.md), commit as doc, gate-push.
 -11. NOW (2026-11-14) Pushed cd25d3bd (SCOPED PASS 14/24, ri-exit in ri-wt9): docs/rcu-exit.md (exit table
    at 7e10e72f) + test/rcu/guard-ngd.py (M1 guard path: 17.0 vs 16 on map w/ fanout; 13.6 without). RI tab rev 76:
    RI-46 to RA (M1 guard: keep a lead copy or restate; M3 "light unit" wording; M4 margin = whole drain; then
