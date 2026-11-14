@@ -49,20 +49,12 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--12. NOW (2026-11-14) RA rev 140 phase-5 items, ri-exit in ri-wt9 (on cd25d3bd): 85b3bc5c (rev 139 rulings in
-   rcu-exit.md), 9e83f791 ((1) .ngd.json "RA rev 140": 21 entries, RA counted 25 -> ask which 4; (8) kill
-   waiver texts, kd max 4), c032993b ((2) mig_tb M5 from c1: demotion 68, restore 64, bound 68), 61959827
-   ((7) q53_pzero + mig_restore_map pred 63, lockstep control pzero caught; (3) lanes_tb SFU ops on slot 0,
-   random run only, sfuWord in cls_pack.h, 505 SFU/430 SW, control swlate caught; (8) M0 cycles vs stub:
-   54,729 vs 54,665, 33 equal, 21 faster, 9 slower (the 8 kill kernels +10..13, rope +1)), 6906c327.
-   GATING: ~/ccv-logs/ri31-push.log (setsid gate-push, scoped, cg/ngd ~2.5h).
-   NEXT after push: RI row answering RA rev 140 ((1)-(3),(7),(8) done, the 21-vs-25 question, A-64 pointer:
-   q53_rzero/q53_pzero + mig_restore_map at landing, launch copies unchanged; (6) waits on MA), notice RA cc TI;
-   block report (task 22, after the gate: synthesis memory); then RA reports to DA for sign-off.
-   TI rev 425 (re:RA 140 (3),(4)): SFU class = TI op table + OI unit-4 issue + RI decode (RTL has U_SFU; model
-   needs Unit Sfu from the op table), all land together, no date; kill kernel = rokill variant w/ lane op in flight
-   (TI, after AR 350); rcu_dec_pkg -> ops.json after sign-off, then RI switches import. Say in row: RTL half ready.
-   TI tab bookmark rev 425.
+-12. NOW (2026-11-14) Pushed 5516e643 (SCOPED PASS 21/24, ri-exit in ri-wt9): RA rev 140 items (1)(2)(3)(7)(8)
+   (pzero, lanes SFU + swlate, M5 from c1 68/64, M0 cycles vs stub, waiver texts, 21 ngd budgets -> "RA rev 140").
+   RI-48 written (RI tab rev 77), notices RA + TI. WAIT: RA on which 4 of 25 budgets, RA's report to DA; MA on
+   (6) multi GPR loads/cycle; TI merge 5516e643, SVHOST selector, kill kernel (rokill variant).
+   TI rev 425: SFU class = TI op table + OI unit-4 + RI model decode (RTL ready); rcu_dec_pkg import switch
+   after sign-off. TI tab bookmark 425. NEXT: block report (task 22: build is free now).
 -11. NOW (2026-11-14) Pushed cd25d3bd (SCOPED PASS 14/24, ri-exit in ri-wt9): docs/rcu-exit.md (exit table
    at 7e10e72f) + test/rcu/guard-ngd.py (M1 guard path: 17.0 vs 16 on map w/ fanout; 13.6 without). RI tab rev 76:
    RI-46 to RA (M1 guard: keep a lead copy or restate; M3 "light unit" wording; M4 margin = whole drain; then
