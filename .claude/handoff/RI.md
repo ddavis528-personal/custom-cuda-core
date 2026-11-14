@@ -1,6 +1,6 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-13. Keep current at every task's end. Role and ownership:
+Updated 2026-11-14. Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -49,6 +49,12 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-14. NOW (2026-11-14 ~08:00) Pushed 468fb286 (SCOPED PASS 24/24, ri-lat in ri-wt10): a61a79ca (lanes_tb, Q-53
+   arrival take derived lane latencies) + 3c304f94 merged. TI rev 427 (TI bookmark 427): 5516e643 landed in
+   c99dc88d; asked where a61a79ca is. Answered RI-50 (RI tab rev 79), notices TI+RA. 72a84674 (rcu-exit M7 in
+   the gate; open item 1 = TI's links_split credit entry) gating as job-gate-push-20261114-080343-18560.log.
+   WAITING: TI merges 468fb286, adds credit_on_receipt miu_rcu_data@rcu to test/phys/links_split.json, drops
+   CCV_SVH_RCU_RTL=0 from check-links -> close task 32 / RA rev 143. Then TI kill kernel; DA waivers (RI-47)+sign-off.
 -13. NOW (2026-11-14) RA rev 143 (RA bookmark 143): M7 met; RTL must be correct at every derived CCV_LAT_LANE (7-11),
    RI's phase-5 exit item. ri-wt10 branch ri-lat (TI 6061d0ee + ri-exit merged, cd8c9a06): a61a79ca lanes_tb kWB /
    age width / per-age cov bins from params; rcu_q53_chk arrival lat from CCV_LAT_LANE/SFU. RTL needed NO change.
