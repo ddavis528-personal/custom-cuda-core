@@ -19,9 +19,13 @@
 // on most. Inputs change only with a message. --control <noalign|retlow|pmovneg|noireg>
 // expects a wrong rule (a source's position ignored; ret's aux from the
 // highest active lane; a register-amount shuffle by its immediate): the
-// run must fail (test/rcu/run-rtl.sh). Exit 0 only with no mismatch.
+// run must fail (test/rcu/run-rtl.sh). --control twohot sets every
+// crossbar form's flop at once a hundred cycles in: the crossbar selects go
+// two-hot, and rcu_r's xbar_sel_onehot assertion must fire (RA rev 137).
+// Exit 0 only with no mismatch.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_r.h"
+#include "Vrcu_r___024root.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 
@@ -404,6 +408,14 @@ int run(const std::string &scenario, const char *vcd, const std::string &control
       if (g.p(0.9)) g.op(b, c);
     }
     b.step();
+    if (control == "twohot" && i == 100) {
+      // Every crossbar form at once: some lane's select goes two-hot,
+      // which rcu_r's xbar_sel_onehot must catch at the next edge.
+      b.dut->rootp->rcu_r__DOT__ixr_cr03h = 1;
+      b.dut->rootp->rcu_r__DOT__iru_cr03h = 1;
+      b.dut->rootp->rcu_r__DOT__irb_cr03h = 1;
+      b.dut->rootp->rcu_r__DOT__iim_cr03h = 1;
+    }
   }
   for (int i = 0; i < 6; ++i) b.step();
   bool cov = true;

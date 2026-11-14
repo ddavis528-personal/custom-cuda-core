@@ -82,12 +82,13 @@ void Kernel::flushHeld() {
 void Kernel::snapshotFinal(unsigned w) {
   Final &f = finals[w];
   const std::vector<unsigned> &r = ratOf(w);
-  for (unsigned a = 0; a != kArchGprs; ++a) f.gpr[a] = gpr[r[a]];
+  for (unsigned a = 0; a != kArchGprs; ++a)
+    for (unsigned l = 0; l != kLanes; ++l) f.gpr[a][l] = gprAt(r[a], l);
   std::vector<unsigned> pmap = w < prat.size() ? prat[w] : std::vector<unsigned>();
   if (pmap.empty())
     for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(w, p));
   if (brk == "swap-prat0" && w == 0) std::swap(pmap[0], pmap[1]);   // the control, here too
-  for (unsigned p = 0; p != kArchPreds; ++p) f.pred[p] = pred[pmap[p]];
+  for (unsigned p = 0; p != kArchPreds; ++p) f.pred[p] = predAt(pmap[p]);
 }
 
 void Kernel::checkParked(unsigned w) {
@@ -5977,6 +5978,13 @@ KernelReport compareFinal(Kernel &k) {
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
     if (isParked(w) || cut(w)) continue;
     const Oracle &o = k.orcs[w];
+    // A partial oracle (PARTIAL=1) has no final state to compare: the run
+    // must stop short of its last record, so a warp that exits fails.
+    if (o.partial) {
+      if (k.finals.count(w))
+        k.fail("kernel: warp %u exited, but its oracle is partial: ccv-sim stopped at MAXSTEPS", w);
+      continue;
+    }
     // A run ccv-sim ended in a fault must end in CRU's fault too (TI-26);
     // CRU's stub held its fields to ccv-sim's as it took it.
     if (o.faults && !k.faults.count(w))
@@ -5992,7 +6000,7 @@ KernelReport compareFinal(Kernel &k) {
         // Within the register's final width: ccv-sim keeps the bits above
         // a narrow element as the slice last held them (AR-24).
         const uint32_t em = elemMask(o.final_widths >> 2 * a & 3u);
-        const uint32_t got = fin != k.finals.end() ? fin->second.gpr[a][l] : k.gpr[rat[a]][l];
+        const uint32_t got = fin != k.finals.end() ? fin->second.gpr[a][l] : k.gprAt(rat[a], l);
         if ((got & em) != (o.final_gpr[a][l] & em)) {
           if (r.gpr_mismatch++ < 4)
             std::fprintf(stderr, "FINAL %s%sR%u lane %u: machine %08x, ccv-sim %08x\n", who,
@@ -6004,7 +6012,7 @@ KernelReport compareFinal(Kernel &k) {
       for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(w, p));
     if (k.brk == "swap-prat0" && w == 0) std::swap(pmap[0], pmap[1]);
     for (unsigned p = 0; p != kArchPreds; ++p) {
-      const uint32_t got = fin != k.finals.end() ? fin->second.pred[p] : k.pred[pmap[p]];
+      const uint32_t got = fin != k.finals.end() ? fin->second.pred[p] : k.predAt(pmap[p]);
       if (got != o.final_pred[p]) {
         ++r.pred_mismatch;
         std::fprintf(stderr, "FINAL %s%sP%u: machine %08x, ccv-sim %08x\n", who, wn.c_str(), p,
@@ -6199,13 +6207,17 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
   // Each backpressured channel's longest wait from landing to take, over its
   // slots: the measure CCV_P_TIMEOUT_BP is a watchdog over (AR's response
   // TI-22). Not part of the KERNEL line the two hosts compare.
+  // A credits_param channel (MA-5) reports the longest credit hold too,
+  // landing to release, against its own watchdog (timeout_param, AR rev 350).
   for (const ChanInst &ci : kChanInsts) {
-    if (!kChans[ci.chan].held) continue;
+    const auto &ch = kChans[ci.chan];
+    const bool cp = ch.credits != ccv::kCreditDepth;
+    if (!ch.held && !cp) continue;
     uint64_t age = 0;
-    for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
-      age = std::max(age, m.rx(ci.slot_base + s).maxAge());
-    std::printf("BPAGE %s max=%llu watchdog=%u\n", kChans[ci.chan].name,
-                (unsigned long long)age, unsigned(ccv::prov::kTimeoutBp));
+    for (unsigned s = 0; s != ch.rate; ++s)
+      age = std::max({age, m.rx(ci.slot_base + s).maxAge(), m.rx(ci.slot_base + s).maxHold()});
+    std::printf("BPAGE %s max=%llu watchdog=%u\n", ch.name, (unsigned long long)age,
+                unsigned(ch.watchdog));
   }
   std::printf("COVER");
   for (const char *b : Kernel::kCoverBins)

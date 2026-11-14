@@ -13,7 +13,8 @@
 #                   of which must fail
 #   rcu_xbar:       test/rcu/xbar_tb.cpp, 32 lanes
 #   rcu_r:          test/rcu/r_tb.cpp, and its negative controls (noalign,
-#                   retlow, pmovneg, noireg), each of which must fail
+#                   retlow, pmovneg, noireg), each of which must fail, and twohot,
+#                   which the one-hot select assertion must stop
 #   rcu_pred:       test/rcu/pred_tb.cpp, and its negative controls (spbown, nofwd,
 #                   nomerge, lgcorrupt), each of which must fail
 #   rcu_isd(_s):    test/rcu/isd_tb.cpp (each slot's class from its lead, RA-43,
@@ -31,9 +32,11 @@
 #                   its controls rlie (the R op's R2/RW use hidden), cred (a
 #                   credit fewer at the receiver), wake (the wake a cycle
 #                   early), each of which must fail
-#   rcu_lanes:      test/rcu/lanes_tb.cpp, 4 copies (--full adds 32), and its
-#                   controls bypage (a forward's age one more) and immpos (the
-#                   immediate at position 0), each of which must fail
+#   rcu_lanes:      test/rcu/lanes_tb.cpp, 4 copies (--full adds 32), SFU ops
+#                   through SW and done slot 4 included, and its controls
+#                   bypage (a forward's age one more), immpos (the immediate
+#                   at position 0), pcrow (a PC row from every issue) and
+#                   swlate (SW a cycle late), each of which must fail
 #   rcu_mem:        test/rcu/mem_tb.cpp, 4 lanes (--full adds 32), and its
 #                   controls align (operands not right-aligned) and pstlane
 #                   (a predicate store's word in lane 1), each of which must fail
@@ -99,6 +102,13 @@ for c in noalign retlow pmovneg noireg; do   # a control the bench does not catc
     say "rcu_r control $c" "NOT CAUGHT ($B/rcu_r.$c.log)"; fail=1
   fi
 done
+# twohot: the crossbar selects forced two-hot; rcu_r's one-hot assertion must stop the run.
+if [ -x "$B/rcu_r/tb" ] && ! "$B/rcu_r/tb" --control twohot >"$B/rcu_r.twohot.log" 2>&1 &&
+   grep -q "CCV xbar_sel_onehot failed" "$B/rcu_r.twohot.log"; then
+  say "rcu_r control twohot" "caught"
+else
+  say "rcu_r control twohot" "NOT CAUGHT ($B/rcu_r.twohot.log)"; fail=1
+fi
 bench rcu_pred test/rcu/cg-build.sh rcu_pred "$B/rcu_pred" -- "$B/rcu_pred/tb"
 for c in nofwd nomerge spbown lgcorrupt; do
   if [ -x "$B/rcu_pred/tb" ] && ! "$B/rcu_pred/tb" --control "$c" >"$B/rcu_pred.$c.log" 2>&1 &&
@@ -149,7 +159,7 @@ done
 for m in lanes mem; do
   us="rcu_${m}_c4"; [ "${1:-}" = --full ] && us="$us rcu_$m"
   for u in $us; do bench "$u" test/rcu/cg-build.sh "$u" "$B/$u" -- "$B/$u/tb"; done
-  case $m in lanes) cs="bypage immpos pcrow" ;; mem) cs="align pstlane" ;; esac
+  case $m in lanes) cs="bypage immpos pcrow swlate" ;; mem) cs="align pstlane" ;; esac
   for c in $cs; do
     if [ -x "$B/rcu_${m}_c4/tb" ] && ! "$B/rcu_${m}_c4/tb" --control "$c" >"$B/rcu_$m.$c.log" 2>&1 &&
        grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_$m.$c.log"; then

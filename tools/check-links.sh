@@ -263,6 +263,8 @@ lat=$(sed -n 's/^static constexpr uint32_t kLatLane = \([0-9]*\);/\1/p' sim/gene
 [ -z "$why" ] && say "split: every kernel with OOE's bypass" "PASS (CCV_LAT_LANE $lat, still forwarded at 4; byp's $nb)" ||
   bad "split: kernels with OOE's bypass" "${why# }"
 
+# RCU's RTL included: it holds at every derived CCV_LAT_LANE (RI-49; RA's
+# rev 144), the split tree carrying miu_rcu_data@rcu's credit_on_receipt.
 ./tools/check-sv-hosted.sh >build/svh_suite.log 2>&1
 if grep -q "FAIL" build/svh_suite.log; then
   bad "split: SV-hosted == C++-hosted" "$(grep -m1 FAIL build/svh_suite.log | xargs)"

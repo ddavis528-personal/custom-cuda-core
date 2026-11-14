@@ -308,6 +308,20 @@ module rcu_r #(
   end
   rcu_xbar #(.LANES(N), .W(32)) u_xbar (.src(rs0a_cr03h), .sel(sel_cr03h), .out(xo_cr03h));
 
+  // The selects are one-hot (RA rev 137): an output lane takes exactly one
+  // source lane while a crossbar form is set, none while no form is.
+  logic [N-1:0] selbad_cr03h;
+  always_comb begin
+    for (int l = 0; l < N; l++) begin
+      logic [N-1:0] row_cr03h;
+      row_cr03h = sel_cr03h[l*N +: N];
+      selbad_cr03h[l] = (ixr_cr03h | iru_cr03h | ird_cr03h | irb_cr03h | iim_cr03h)
+                        ? (row_cr03h == '0 || (row_cr03h & (row_cr03h - 1'b1)) != '0)
+                        : row_cr03h != '0;
+    end
+  end
+  `CCV_ASSERT(xbar_sel_onehot, !(|selbad_cr03h))
+
   // The result's masks by op, em applied: off the crossbar's path.
   wire [31:0] xm_cr03h   = {32{kshf_cr03h}} & em_cr03h;
   wire [31:0] immv_cr03h = {32{kimm_cr03h}} & imm_cr03h & em_cr03h;
