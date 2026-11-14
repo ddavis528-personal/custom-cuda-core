@@ -1315,6 +1315,16 @@
       "decided_at": "with CCV_P_TIMEOUT_MEM"
     },
     {
+      "name": "CCV_P_TIMEOUT_UOP",
+      "value": 20480,
+      "status": "provisional",
+      "derive": "CCV_P_TIMEOUT_MEMOP",
+      "require": "CCV_P_TIMEOUT_UOP >= CCV_P_TIMEOUT_MEMOP",
+      "source": "AR 352 (re:TI 435): option (a); a channel whose credits wait on another channel's credits has a watchdog no shorter than that channel's",
+      "doc": "Outstanding-message watchdog for ccv_dec_ooe_uop. The decode queue holds DEC's uops while rename stalls, and rename stalls behind ccv_ooe_miu_memop's credits, each held up to CCV_P_TIMEOUT_MEMOP; a held uop waits at most until the oldest outstanding memop slot returns, plus OOE's issue latency, which is in the noise against it, so the two are taken equal (AR 352). CCV_P_TIMEOUT_BP (8192) was derived when a memop answered within CCV_P_TIMEOUT_MEM; under PF-47 coremark128 held a uop credit 8252 cycles. The held: chain upstream of memop was walked (AR 352 (2)): ccv_rau_rcu_mig and ccv_ooe_rcu_map are sent only once the warp holds no memop (OOE's map on a demotion after the drain, RAU's notice after ccv_ooe_rau_drained; a restore after its bounded allocate), ccv_miu_dcu_req is downstream of memop, and the fetch side holds no message (FET is paced by ccv_ooe_fet_decq_credit counts, and ccv_fet_dec_instr carries no credit), so none of them takes this bound. Provisional with CCV_P_TIMEOUT_MEMOP until MA's Phase 1.",
+      "decided_at": "with CCV_P_TIMEOUT_MEMOP"
+    },
+    {
       "name": "CCV_W_ASID",
       "value": 8,
       "status": "arch",
