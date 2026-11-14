@@ -173,8 +173,8 @@ fi
 # the wrapper's repeater returns the credit from its boundary valid flop, so
 # a block that takes a landed message a cycle late, or drops it, must fail
 # in the SV-hosted run by name -- not only as a divergence from the oracle.
-# A configuration with no such end (test/phys/links_split.json) has nothing
-# for the control to hold late: said so, never passed.
+# A configuration with no such end has nothing for the control to hold
+# late: said so, never passed.
 ncor=$(python3 -c 'import json, os
 print(len(json.load(open(os.environ.get("CCV_LINKS", "params/links.json"))).get("credit_on_receipt", [])))')
 [ "$ncor" -gt 0 ] || say "SV top: credit on receipt, late or dropped" "SKIP -- no credit_on_receipt end in this configuration"
