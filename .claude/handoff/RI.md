@@ -49,6 +49,14 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-11. NOW (2026-11-14) Pushed cd25d3bd (SCOPED PASS 14/24, ri-exit in ri-wt9): docs/rcu-exit.md (exit table
+   at 7e10e72f) + test/rcu/guard-ngd.py (M1 guard path: 17.0 vs 16 on map w/ fanout; 13.6 without). RI tab rev 76:
+   RI-46 to RA (M1 guard: keep a lead copy or restate; M3 "light unit" wording; M4 margin = whole drain; then
+   reconcile), RI-47 to DA (sign/refuse 3 owner waivers: lanes pcm_n_cr04h CG-3, kill kd_cr02h + kaep_q_cr03h CG-4;
+   sign-off after RA). Notices: RA (46,47), TI (46). DA has no session: its sweep reads RI-47.
+   RA rev 138 accepted RI-43/RI-45 (RA tab bookmark rev 138). KILL_DRAIN already 15 (RA-42 done).
+   NEXT: on RA's M1 answer, the lead copy in rcu_pred if asked; block report (task 22); SW write-back same-lane
+   (task 20); then reconciliation + DA sign-off.
 -10. NOW (2026-11-13 late) Pushed 7e10e72f (SCOPED PASS 15/24, ri-svh in ri-wt9; holds c64b7417 ri-credit and
    ri-q53 28cd347a): RTL in the SV top (test/rcu/ccv_rcu_svh.sv, svh.py prep/compare, lockstep --replayed), Q-53
    checkers, model launch at c0 + fifo_in_, rcu_test migration first row 206. Rows (RI tab rev 75): RI-44 to TI
