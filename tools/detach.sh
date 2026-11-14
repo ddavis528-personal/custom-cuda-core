@@ -8,8 +8,13 @@
 # gates were lost both ways, again and again (DA, 2026-11-13). So a long
 # entry point never runs under the caller: it re-launches itself in its own
 # session (setsid nohup), writes its log, prints its pid and log and how to
-# wait, and returns at once, exit 0. The job's own exit status is the last
-# line of its log ("CCV-JOB-EXIT <n>"), which tools/gate-wait.sh reads.
+# wait, and returns at once with status 5, never 0: a caller that tests it
+# must not read "detached" as "passed". A daily sweep begun from a tree
+# before the detach called the new make-release.sh, took its 0 for a green
+# gate and pushed a merge ungated (OA-414, 2026-11-14). 5 is no tool's
+# result: 1 is red, 3 a conflict or gate-wait's "still running", 4 its
+# "killed". The job's own exit status is the last line of its log
+# ("CCV-JOB-EXIT <n>"), which tools/gate-wait.sh reads.
 #
 # Stays in the foreground: a call from another such tool (CCV_DETACHED is
 # set in the job's environment, so gate-push.sh's own verify.sh runs inside
@@ -35,5 +40,6 @@ ccv_detach() {
   echo "$name: detached as pid $pid; log $log"
   echo "$name: wait with tools/gate-wait.sh $log, as a background task: it returns the"
   echo "$name: job's result, or 'still running' before 2 hours; then run it again."
-  exit 0
+  echo "$name: exit 5 means detached, not passed"
+  exit 5
 }
