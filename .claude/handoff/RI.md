@@ -67,6 +67,9 @@ architect may approve only if the end meets module NGD without the flop; can't m
    sfu_valid), control sfusec; ri-sfuclass tip d2d4525d clean on RCU side (lockstep all, svh 63 div=0, run-rtl).
    RI-52 (rev 81): TI must fix check-kernel held-over-r regex (warp 3 -> warp 1, same on c27ff714 alone). Then
    merge TI fix, regen, gate-push ri-sfuclass, notify TI+OI (OI go). ri-wt3 is detached at c27ff714 (scratch).
+   TI rev 433: fix 996866d1 merged (ri-sfuclass 444f31b3), check-kernel PASS on the pair. NEXT: when the sweep
+   gate (4be9f37b) pushes, merge origin/ccr-888218a3-20cauz into ri-sfuclass, gate-push (tools/ changed: all
+   sections), then notices TI+OI+RA naming the commit.
 -14. NOW (2026-11-14 ~08:00) Pushed 468fb286 (SCOPED PASS 24/24, ri-lat in ri-wt10): a61a79ca (lanes_tb, Q-53
    arrival take derived lane latencies) + 3c304f94 merged. TI rev 427 (TI bookmark 427): 5516e643 landed in
    c99dc88d; asked where a61a79ca is. Answered RI-50 (RI tab rev 79), notices TI+RA. 72a84674 (rcu-exit M7 in
