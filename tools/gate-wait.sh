@@ -39,8 +39,10 @@ while ! ended; do
 done
 rc=$(sed -n 's/^CCV-JOB-EXIT \([0-9]*\)$/\1/p' "$log" | tail -1)
 grep -v -e '^[[:space:]]*$' -e '^CCV-JOB-' "$log" | tail -6
-# A gate's own log, if the job names one: its summary, not the log.
-glog=$(grep -o '/[^ ]*ccv-logs/[^ )]*\.log' "$log" | grep -v '/job-' | tail -1)
+# A gate's own log, if the job names one: its summary, not the log. Only
+# a verify-*.log is a gate's: a release-*.log is make-release's, whose gate
+# log is elsewhere and which says its own verdict (it read NO RESULT here).
+glog=$(grep -o '/[^ ]*ccv-logs/verify-[^ )]*\.log' "$log" | tail -1)
 [ -n "$glog" ] && [ -f "$glog" ] && [ -x "$(dirname "$0")/gate-summary.py" ] &&
   python3 "$(dirname "$0")/gate-summary.py" "$glog" 2>/dev/null | head -3
 echo "gate-wait: done: exit $rc; log $log"
