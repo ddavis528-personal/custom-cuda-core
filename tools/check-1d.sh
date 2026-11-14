@@ -99,7 +99,8 @@ for want in "CCV-L28: module widget:" "CCV-L28: module ccv_nosuch:" \
             "CCV-L28: block fet's module is ccv_fetch" \
             "CCV-L28: block common is a reserved" "CCV-L28: block top is a reserved" \
             "CCV-L28: block ooe_w is not one" "CCV-L28: block Lane is not one" \
-            "CCV-L28: module ccv_core_top:"; do
+            "CCV-L28: module ccv_core_top:" \
+            "CCV-L27: module ccv_common_sram_wide is named as a hard macro"; do
   grep -qF "$want" "$TMP/names.log" || nmiss="$nmiss [$want]"
 done
 nn=$(grep -c "CCV-L2[28]" "$TMP/names.log")

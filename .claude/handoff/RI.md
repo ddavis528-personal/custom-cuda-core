@@ -1,6 +1,6 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-10. Keep current at every task's end. Role and ownership:
+Updated 2026-11-13. Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -16,7 +16,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
+- Last push: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
   (kill detector in the top, CG unit ccv_rcu, per-slot ngd.json), TI's 079b64c2 and the daily sweep merges.
   RI-34 (RI tab rev 68) written; notices sent to TI (merge 8fcec64b), RA, AR, OA, OI.
 - Previous push: ff5ddcca (2026-11-08, SPLIT PASS 23/23, chain-ri10): daily sweep merges (all remote
@@ -49,6 +49,49 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-10. NOW (2026-11-13 late) Pushed 7e10e72f (SCOPED PASS 15/24, ri-svh in ri-wt9; holds c64b7417 ri-credit and
+   ri-q53 28cd347a): RTL in the SV top (test/rcu/ccv_rcu_svh.sv, svh.py prep/compare, lockstep --replayed), Q-53
+   checkers, model launch at c0 + fifo_in_, rcu_test migration first row 206. Rows (RI tab rev 75): RI-44 to TI
+   (answer rev 422: wrapper interface + host diff spelled per hunk; diff file at scratchpad
+   svh/ti-host-rcu-rtl.diff, offered as gate-scratch/RI commit if TI wants a file), RI-45 to RA (timing fixes).
+   Notices sent TI (RI-43,44) and RA (RI-43,45). WAIT: TI's merge + gen-top ccv_rcu_dpi + SVHOST 45/46 selector;
+   RA's answer on RI-43 (Done tab busy-hold clause) and RI-45.
+   NEXT (Daniel's order): exit table M1-M7; SW write-back same-lane (task 20); RA-43 (task 18); block report
+   (task 22); RA reconciliation; Daniel's sign-off. ri-wt9 free again (worktree for next work).
+-8. NOW (2026-11-13 ~16:00) Pushed 631d7fc6 (SCOPED PASS 14/24, ri-wt4 ri-xsel): rcu_r xbar_sel_onehot assert +
+   r_tb --control twohot (RA rev 137). RI-41 (RA, TI: merge 631d7fc6) written, RI tab rev 72, notices sent.
+   GATING NOW: ri-wt7 branch ri-credit (on 631d7fc6), log ~/ccv-logs/ri26-push.log (setsid; scoped gate, cg+ngd
+   ~2.5h): d92b249f model creditAtLanding(ooe_rcu, lane_rcu) + lockstep --credit-lead default 0; 33c084e6 lockstep
+   control lead (must diverge); c64b7417 ccv_rcu wake detector busy hold removed (AR 343), rcu_kill NB 6->5,
+   kill_tb kNB 5; wake_detect_iw flop kept (done wake). Local checks: run-rtl 0, lockstep 63/63 + 6 controls,
+   cg/ngd rcu_kill + ccv_rcu 0, kernel 0.
+   ON PUSH: RI row to RA (+TI merge): (a) landing credits, lead control; (b) wake detector gone, so RA can reword
+   the Done tab's done-wake term; notices RA, TI. Then (c) SV-top with RTL, (d) Q-53 checkers.
+   TI-420 (rev 420): tools self-detach; wait with tools/gate-wait.sh <job log> (3=rerun at 110 min, 4=killed);
+   only once a46afef7 is merged into my branches. OI pong received 15:44 (checked ok): pings settled.
+   Bookmarks: TI 420, RI 72 (others as -7).
+-7. NOW (2026-11-13 ~14:00) Pushed 7e29cef5 (SPLIT PASS 24/24, full; cg here chain-ri24, ngd RH):
+   daily sweep merges of all 9 remote branches + evmon e9c48768 + CCV-L04 fix 439179d9. rcu_ls (TI's gate job
+   = run-lockstep.sh + rcu-ls-corrupt.py) passed with event compare. RI-39 (RA: SHFL_*_R bug, xbar one-hot sel,
+   amend Crossbar) and RI-40 (TI: re 415/418) written, RI tab rev 71, notices sent to RA and TI.
+   Bookmarks: Conv 19 AR 348 OA 414 IS 193 TI 419 OI 341 CP 157 DA 119 RA 136 RI 71 MA 46.
+   Fri pings 2026-11-13: pongs checked ok from AR OA IS TI CP RA MA RH; OI no pong yet (check next sweep).
+   NEXT task 16: (a) model: Stub::creditAtLanding(c.ooe_rcu)/(c.lane_rcu) in first work(), take() in landing
+   cycle; lockstep --credit-lead default 0; rerun 63 kernels. (b) drop ccv_rcu wake detector (AR 343 hold in
+   ccv_common_clk), CG/NGD units, lockstep. (c) SV-top with RTL (CCV_RCU_RTL in check-sv-hosted.sh, TI's).
+   (d) Q-53 checkers. Gate: setsid nohup + kill -0 watcher; tools/gate-wait.sh when TI lands it.
+-4. (2026-11-13) Last push 0ace219f (sweep, below); before it fca280c3 (13:29, SPLIT SCOPED PASS 14/23; ngd leg by RH, Daniel OK'd RH
+   send-export to gate-scratch/*-export for passing legs). RI-36 (TI), RI-37 (RA), RI-38 (TI, AR) written,
+   RI tab rev 70; notices sent. Lock-step 63/63; rcu_blk (TI) passes with its expected-fail.
+   Sweep pushed: 0ace219f (2026-11-13 02:10, SPLIT PASS 24/24; cg here chain-ri21, ngd RH via
+   gate-scratch/RI-export) = bfba7f38 sweep merges + 126afa13. Two container restarts on 11-12 killed
+   chain-ri20 and the first chain-ri21 run: relaunch detached and re-arm the waiter after any restart.
+   OA ping 2026-11-13 answered with pong (me=ok).
+   AR 343 (re:RI-38): ccv_common_clk WAKE_HOLD -> CCV_WAKE_LAT+1 (TI); then ccv_rcu's wake detector may go (RI's call).
+   TI 407: run-lockstep.sh becomes the gate job, rcu_blk retired, channel.h landing-cycle credit coming.
+   Bookmarks Conv 19 AR 343 OA 411 IS 190 TI 407 OI 338 CP 157 DA 119 RA 136 RI 70 (MA tab: no bookmark yet).
+   Long runs: ALWAYS setsid nohup + a waiter; a bg task dies at 2h.
+   Next for task 16: model credit move once TI adds channel.h call; RTL event monitor; SV-top with RTL.
 -3. NOW (2026-11-09; Daniel's order: class-word NGD -> gate+push ccv_rcu.sv -> lock-step/SV-top -> Q-53 ->
    SW write-back + KILL_DRAIN -> RA reconciliation + Daniel's sign-off). ri-wt7 branch ri-asm3, tip d0076837
    (on gate-scratch/RI): d33d8c70 AR 338/339 kill boundary flops (plain ungated detector flops; rcu_kill epoch at

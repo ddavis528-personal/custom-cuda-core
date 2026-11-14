@@ -100,6 +100,15 @@ The rules, as findings:
   NGD-7  a register that drives an output, on any path it starts, to a flop
          or to any output, over that output's required time (the strictest
          of those it drives)
+  NGD-8  a hard macro's pin (AR's register rev 344): its every input pin is
+         an endpoint, as a flop's D, since the macro registers its index,
+         controls and write data at its edge; its read data starts the next
+         stage at 0 NGD, as a flop's Q (no clock-to-out until the library
+         gives one, Q-48). So a path from a flop, an input at its arrival or
+         a macro's output to a macro's input pin is held to the stage, and
+         one from a macro's output to a flop to the stage, to an output to
+         its required time. The macro is a unit's "blackbox" (lint.MACROS),
+         never measured inside: there is nothing in it to measure.
 
 Modules that broke a default when the rule was made sit on
 rtl/ngd-ratchet.json, awaiting budgets from OA or a redesign; the list only
@@ -1031,6 +1040,7 @@ def findings(u, budgets, parents=frozenset()):
     if t.rr > STAGE + EPS:
         out.append(("NGD-1", "NGD-1 %s (unit %s): flop to flop %.1f NGD, over the %g stage"
                     % (mod, u.name, t.rr, STAGE)))
+    out += macro_findings(u, budgets)
     if budgets.is_inner(mod):
         if mod not in parents:
             for (i, o), d in sorted(t.io.items()):
@@ -1068,6 +1078,59 @@ def findings(u, budgets, parents=frozenset()):
     return out
 
 
+def macro_pins(t):
+    """A unit's hard-macro pins (lint.MACROS), cut out of its netlist as a
+    blackbox: ({cut name: "cell.pin"} for its input pins, the same for its
+    outputs), clocks aside."""
+    ins, outs = {}, {}
+    for nm, (cell, typ, pin, d) in t.cut.items():
+        if not cg.lint.is_macro(src_name(typ)) or is_clock(pin):
+            continue
+        (ins if d == "input" else outs)[nm] = "%s.%s" % (cell.lstrip("\\"), pin)
+    return ins, outs
+
+
+def macro_findings(u, budgets):
+    """NGD-8 (AR's register rev 344): a hard macro's input pins are
+    endpoints, its outputs launch at 0. Cut out, an input pin is an output
+    of the netlist and an output pin an input, so the depths are those
+    Timing already has: flops to the pin (ro), an input to it (io, at the
+    input's arrival), a macro output to it (io, from 0); from a macro
+    output to the flops (ir) and to an output (io, against its required
+    time). Keyed by the macro pin."""
+    t, mod, out = u.t, u.module, []
+    pins_in, pins_out = macro_pins(t)
+    if not pins_in and not pins_out:
+        return out
+    where = "%s (unit %s)" % (mod, u.name)
+    for p, nm in sorted(pins_in.items()):
+        worst = (t.ro.get(p, NEG), "its flops")
+        for (i, o), d in t.io.items():
+            if o != p or is_clock(i) or (i in t.cut and i not in pins_out):
+                continue
+            a = 0.0 if i in pins_out else budgets.arrival(mod, i)
+            what = ("macro output %s" % pins_out[i]) if i in pins_out else \
+                "input %s, arriving at %g," % (i, a)
+            worst = max(worst, (a + d, what))
+        if worst[0] > STAGE + EPS:
+            out.append(("NGD-8 %s" % nm, "NGD-8 %s: macro input %s, an endpoint, is reached "
+                        "from %s at %.1f NGD, over the %g stage" % (where, nm, worst[1],
+                                                                     worst[0], STAGE)))
+    for q, nm in sorted(pins_out.items()):
+        if t.ir.get(q, NEG) > STAGE + EPS:
+            out.append(("NGD-8 %s" % nm, "NGD-8 %s: macro output %s, launched at 0, reaches a "
+                        "flop at %.1f NGD, over the %g stage" % (where, nm, t.ir[q], STAGE)))
+        for (i, o), d in sorted(t.io.items()):
+            if i != q or o in t.cut or budgets.observation(mod, o):
+                continue
+            req = budgets.required(mod, o)
+            if d > req + EPS:
+                out.append(("NGD-8 %s>%s" % (nm, o), "NGD-8 %s: macro output %s, launched at "
+                            "0, reaches output %s at %.1f NGD, required at %g"
+                            % (where, nm, o, d, req)))
+    return out
+
+
 def finding_value(u, budgets, key):
     """The depth a finding reads, for the fanout ratchet's caps: NGD-1's flop
     to flop, NGD-2's output ready time, NGD-3's arrival plus logic, NGD-6's
@@ -1083,6 +1146,8 @@ def finding_value(u, budgets, key):
     if kind == "NGD-6":
         i, o = rest.split(">", 1)
         return t.io.get((i, o))
+    if kind == "NGD-8":
+        return None
     if kind == "NGD-7":
         w = shared_worst(u, budgets).get(rest)
         return w[4] if w else None
@@ -2656,6 +2721,7 @@ def selftest():
     abc_delay("map -r", lib2)
     expect(len(glob.glob(os.path.join(ccache, "abc-*.blif"))) == n0 + 1,
            "the ABC cache keyed map -r as map")
+    macro_selftest(expect)
     for x in bad:
         sys.stderr.write("check-ngd selftest: %s\n" % x)
     if not bad:
@@ -2663,15 +2729,84 @@ def selftest():
               "inner helpers alone and inside a parent, registers shared by an output and the "
               "rest, observation ports, budget files, ratchet, coverage, glue, the assembled "
               "block as a sum of parts, ABC's cache, the fanout term, one-cell captures, "
-              "second-kind no-flop ends, per-field lead budgets on both sides, wake taps (%d "
-              "controls)"
+              "second-kind no-flop ends, per-field lead budgets on both sides, wake taps, "
+              "hard macros' pins (%d controls)"
               % checks)
     return 1 if bad else 0
+
+
+MACRO_FX = "test/macro/sram_fx.sv"
+
+
+def macro_unit(name, **params):
+    """test/macro/sram_fx.sv at `params`, its macros read -lib as a unit
+    names them (cg.macro_files())."""
+    return Unit({"name": name, "module": "sram_fx", "files": [MACRO_FX], "params": params,
+                 "reset": "rst",
+                 "blackbox": {os.path.basename(f)[:-3]: f for f in cg.macro_files()}},
+                "selftest")
+
+
+def macro_selftest(expect):
+    """NGD-8 (AR's register rev 344): sram_fx, a 512 x 128 one-port macro
+    (64 Kibit) and a 64 x 128 two-port one, passes with its index through
+    an adder and its read data through an XOR tree into a flop; each pin is
+    found, its depths counted. Its controls: the index through a multiply
+    (an input pin is an endpoint), the read data through one (rdata
+    launches at 0 and what follows counts), and the same arrays inferred as
+    flops, which fail the stage (NGD-1: the read mux behind 32,773-load
+    index nets, the fanout term's). A macro has no unit: it is no design
+    module."""
+    none = Budgets()
+    ok = macro_unit("fx_sram")
+    ok.measure()
+    pin_in, pin_out = macro_pins(ok.t)
+    expect(sorted(pin_out.values()) == ["g_macro.u_sram.rdata", "g_macro.u_sram2.rdata"]
+           and len(pin_in) == 11,
+           "sram_fx's macro pins were not all found: in %s, out %s"
+           % (sorted(pin_in.values()), sorted(pin_out.values())))
+    k = {x for x, _ in findings(ok, none)}
+    expect(not k, "the compliant macro fixture has findings: %s" % findings(ok, none))
+    addr = next((p for p, n in pin_in.items() if n == "g_macro.u_sram.addr"), None)
+    rd = next((p for p, n in pin_out.items() if n == "g_macro.u_sram.rdata"), None)
+    expect(addr is not None and ok.t.ro.get(addr, NEG) > 4.0 and
+           rd is not None and ok.t.ir.get(rd, NEG) > 4.0,
+           "sram_fx's index logic to addr, or its rdata to acc_q, was not timed: %s, %s"
+           % (ok.t.ro.get(addr), ok.t.ir.get(rd)))
+    MACRO_NUMBERS.update(ok=ok.t, addr=ok.t.ro.get(addr), rdata=ok.t.ir.get(rd))
+    deep = macro_unit("fx_sram_idx", DEEP_IDX=1)
+    deep.measure()
+    k = {x for x, _ in findings(deep, none)}
+    expect("NGD-8 g_macro.u_sram.addr" in k, "an index over the stage into a macro's addr "
+           "passed: %s" % findings(deep, none))
+    rdeep = macro_unit("fx_sram_rd", DEEP_RD=1)
+    rdeep.measure()
+    k = {x for x, _ in findings(rdeep, none)}
+    expect("NGD-8 g_macro.u_sram.rdata" in k, "read data over the stage from a macro's rdata "
+           "passed: %s" % findings(rdeep, none))
+    flops = macro_unit("fx_sram_flops", MACRO=0)
+    flops.measure()
+    k = {x for x, _ in findings(flops, none)}
+    expect(flops.t.nflops >= 512 * 128 + 64 * 128 and "NGD-1" in k,
+           "the macros' arrays inferred as %d flops passed the stage (%.1f NGD): %s"
+           % (flops.t.nflops, flops.t.rr, findings(flops, none)))
+    MACRO_NUMBERS.update(flops=flops.t, deep_idx=deep.t.ro.get(addr),
+                         deep_rd=rdeep.t.ir.get(rd))
+    dm = design_modules()
+    expect(not any(cg.lint.is_macro(m) for m in dm) and not
+           any(m.startswith("ccv_common_sram") for m in dm),
+           "a hard macro is a design module, so would need a unit: %s"
+           % sorted(m for m in dm if m.startswith("ccv_common_sram")))
+
+
+MACRO_NUMBERS = {}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--selftest-macro", action="store_true",
+                    help="the hard macros' controls alone (NGD-8), with their numbers")
     ap.add_argument("--unit")
     ap.add_argument("--seed-fanout", action="store_true",
                     help="write the fanout baseline and ratchet from this run (once)")
@@ -2679,6 +2814,19 @@ def main():
     os.makedirs(BUILD, exist_ok=True)
     if a.selftest:
         return selftest()
+    if a.selftest_macro:
+        bad = []
+        macro_selftest(lambda c, what: c or bad.append(what))
+        for x in bad:
+            sys.stderr.write("check-ngd selftest: %s\n" % x)
+        n = MACRO_NUMBERS
+        if "ok" in n:
+            print("  sram_fx: flop to flop %.1f, index to addr %.1f, rdata to a flop %.1f NGD; "
+                  "controls: index %.1f, rdata %.1f, as %d flops %.1f flop to flop"
+                  % (n["ok"].rr, n["addr"], n["rdata"], n.get("deep_idx") or NEG,
+                     n.get("deep_rd") or NEG, n["flops"].nflops if "flops" in n else 0,
+                     n["flops"].rr if "flops" in n else NEG))
+        return 1 if bad else 0
     return main_check(a.unit, a.seed_fanout)
 
 

@@ -1,7 +1,8 @@
 //===-- xbar_tb.cpp - rcu_xbar against the crossbar's rule -----------------===//
 //
-// out[l] = src[idx[l]] (R unit tab, Crossbar; the model's shfl): every lane
-// index, the immediate form (every idx equal), and random indices and data.
+// out[l] = src[idx[l]] (R unit tab, Crossbar; the model's shfl), the index
+// given one-hot: every lane index, the immediate form (every idx equal), and
+// random indices and data.
 // A wrong lane fails the run. Built and run by test/rcu/run-rtl.sh.
 //===----------------------------------------------------------------------===//
 #include "Vrcu_xbar.h"
@@ -23,10 +24,7 @@ int main(int argc, char **argv) {
     for (unsigned l = 0; l < 32; ++l)
       idx[l] = t < 32 ? unsigned(t) : t < 64 ? (l ^ unsigned(t)) & 31u : rng() & 31u;
     for (unsigned l = 0; l < 32; ++l) x.src[l] = src[l];
-    for (unsigned w = 0; w < 5; ++w) x.idx[w] = 0;
-    for (unsigned l = 0; l < 32; ++l)
-      for (unsigned b = 0; b < 5; ++b)
-        if ((idx[l] >> b) & 1u) x.idx[(l * 5 + b) / 32] |= 1u << ((l * 5 + b) % 32);
+    for (unsigned l = 0; l < 32; ++l) x.sel[l] = 1u << idx[l];
     x.eval();
     for (unsigned l = 0; l < 32; ++l, ++checks)
       if (x.out[l] != src[idx[l]] && ++fails <= 10)

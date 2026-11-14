@@ -85,6 +85,12 @@ for k in "${kdirs[@]}"; do
     rm -rf "${O:?}/$name"; rc=1; continue
   fi
   maxsteps=$(sed -n 's/^MAXSTEPS=//p' "$k/kernel.cfg")
+  # PARTIAL=1: ccv-sim stops at MAXSTEPS with lanes still active (exit 1),
+  # and each run gets a placeholder final record marked "partial", for a
+  # skeleton run bounded by --cycles short of the last record (check-kernel's
+  # bounded coremark128, AR rev 350). The skeleton compares nothing against
+  # it, and a warp that exits on one fails (Oracle::partial).
+  partial=$(sed -n 's/^PARTIAL=//p' "$k/kernel.cfg")
   ooecfg=$(sed -n 's/^OOE_CONFIG=//p' "$k/kernel.cfg")
   out=$O/$name
   rm -rf "$out" && mkdir -p "$out"
@@ -114,6 +120,16 @@ for k in "${kdirs[@]}"; do
       ${entry:+-entry "$entry"} ${maxsteps:+-max-steps "$maxsteps"} \
       -fairness="$fair" -oracle "$o" >/dev/null
     st=$?
+    if [ "$partial" = 1 ]; then
+      [ $st = 1 ] && [ -n "$maxsteps" ] || ok=0
+      fs=("$o"); [ -n "$warps" ] && fs=("$out"/oracle*.jsonl)   # a -cta run writes every warp's
+      for f in "${fs[@]}"; do
+        grep -q '^{"final"' "$f" && { ok=0; continue; }
+        n=$(grep -vc '^{"init"' "$f")
+        python3 -c 'import json,sys; print(json.dumps({"final": {"gpr": [[0]*32]*16, "pred": [0]*4, "mem": [], "issue_groups": int(sys.argv[1]), "partial": 1}}, separators=(",", ":")))' "$n" >>"$f"
+      done
+      st=0
+    fi
     # A clean run exits 0, a fault 3: either must be the one kernel.cfg names.
     # A kernel of several warps faults in its first; the rest run clean, as
     # the runs the context's kill cuts short (V-24).

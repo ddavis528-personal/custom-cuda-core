@@ -29,6 +29,7 @@
 #include "oracle.h"
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -154,6 +155,13 @@ struct Kernel {
   std::map<uint64_t, uint8_t> mem;                 ///< testbench memory
   std::vector<std::array<uint32_t, kLanes>> gpr;   ///< RCU physical GPRs
   std::vector<uint32_t> pred;                      ///< RCU physical predicates
+  /// The RTL's register files, where RCU's RTL runs in the SV top
+  /// (CCV_RCU_RTL, RI-44): the end-of-run state is read from them, not from
+  /// the shadow model's gpr/pred. Unset, gprAt and predAt read gpr and pred.
+  std::function<uint32_t(unsigned, unsigned)> hw_gpr;
+  std::function<uint32_t(unsigned)> hw_pred;
+  uint32_t gprAt(unsigned row, unsigned l) const { return hw_gpr ? hw_gpr(row, l) : gpr[row][l]; }
+  uint32_t predAt(unsigned row) const { return hw_pred ? hw_pred(row) : pred[row]; }
   /// OOE's committed GPR map, by warp, which the final compare reads.
   std::vector<std::vector<unsigned>> rat;
   /// OOE's committed predicate map, by warp, which the final compare reads
@@ -256,7 +264,9 @@ struct Kernel {
       "atomic_pair", "atomic", "atomic_repass", "atomic_write", "atomic_lane",
       "atomic_acquire", "atomic_hold_wait",
       // CAS (OI-127): its lane op on an active lane, and on a guarded-off one.
-      "cas_lane", "cas_lane_off"};
+      "cas_lane", "cas_lane_off",
+      // MIU's memop queue entries held on one slot, at most (MA-5).
+      "memop_entries_peak"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory

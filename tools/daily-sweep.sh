@@ -25,6 +25,10 @@ for a in "$@"; do
     *) echo "usage: $0 [--branches=a,b] [--no-push] [--skip=b1,b2]" >&2; exit 2 ;;
   esac
 done
+# A long run never runs under its caller (tools/detach.sh; DA, 2026-11-13):
+# it detaches and returns; tools/gate-wait.sh waits for it.
+. "$(dirname "$0")/detach.sh"; ccv_detach "$0" "$@"
+
 GENERATED='^(sim/generated/|rtl/generated/|rtl/top/|docs/payload-spec\.md$|docs/trust-report\.md$|docs/walkthrough\.md$)'
 clean_tree
 with_retry git fetch -q --prune origin || die "cannot fetch origin"
