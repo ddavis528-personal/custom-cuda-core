@@ -6,9 +6,9 @@
 //       ooe_rat drives its maps straight out and no rename field passes
 //       through it.
 //
-// An inner helper (ooe_ratread.ngd.json): combinational, no flops, timed in
-// its parent, ooe_rename's Rename 1, whose register captures what it
-// returns. Each rename port reads its three GPR sources, its old GPR
+// The RAT bench's reader (test/ooe/ooe_rat_read.sv), not the design's:
+// ooe_rename reads the maps through ooe_headrd, one per slot, so this
+// module left rtl/ with its NGD unit (2026-11-14). Combinational, no flops. Each rename port reads its three GPR sources, its old GPR
 // destination, its guard, its old predicate destination and predicate
 // logic's two sources from its slot's speculative maps as ooe_rat's flops
 // hold them, with the captured group's writes over them (the group before

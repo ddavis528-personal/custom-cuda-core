@@ -12,19 +12,6 @@
       }
     },
     {
-      "name": "ooe_ratread",
-      "module": "ooe_ratread",
-      "files": [
-        "rtl/ooe/ooe_ratread.sv"
-      ],
-      "params": {
-        "S": 4,
-        "A": 4,
-        "GW": 10,
-        "PW": 6
-      }
-    },
-    {
       "name": "ooe_rencred",
       "module": "ooe_rencred",
       "files": [
