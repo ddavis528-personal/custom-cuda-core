@@ -40,7 +40,7 @@ int main() {
               "// decodes it: pcopy is the copy's \"writes a predicate and the zero GPR\"\n"
               "// (pwe && dst == 0), read only for the copy's opcode; done_row picks an\n"
               "// atomic's step. A continuation has no class: its caller gates it.\n"
-              "// SFU ops class as lane ops, as in the model (Unit Sfu awaits RA-16 (b)).\n"
+              "// The op table's kBypSfu rows class as U_SFU, as in the model (RA rev 146).\n"
               "package rcu_dec_pkg;\n\n"
               "  // Every class field and kind is named; each module reads the ones it needs.\n"
               "  /* verilator lint_off UNUSEDPARAM */\n\n");

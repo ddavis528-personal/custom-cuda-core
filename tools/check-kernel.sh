@@ -965,9 +965,11 @@ for kb in transp4:held-over-r borrow:borrow-partial; do
 done
 CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --cycles 20000 2>&1 |
   head -c 2000000 >"$B/kernel_warp-cap.log"
-# Warp 0 is the first caught since PF-47 (CCV_LAT_L1_WAKE 13, AR rev 351);
-# warp 3 from RA's rev 95 (LANE 7, SFU 12), warp 2 before.
-ctl held-over-r "^CHECK ooe: warp 0 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
+# With both PF-47 (CCV_LAT_L1_WAKE 13, AR rev 351) and transp4's SFU ops at
+# lat_class 4 (OI-145 (3), RI-52), warps 0, 1 and 2 are caught, warp 1 most
+# (139 of 246 refusals); warp 0 with PF-47 alone, warp 1 with the SFU class
+# alone, warp 3 from RA's rev 95 (LANE 7, SFU 12), warp 2 before.
+ctl held-over-r "^CHECK ooe: warp 1 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
 ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
 ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
 # A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every

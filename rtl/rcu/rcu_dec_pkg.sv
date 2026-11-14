@@ -6,7 +6,7 @@
 // decodes it: pcopy is the copy's "writes a predicate and the zero GPR"
 // (pwe && dst == 0), read only for the copy's opcode; done_row picks an
 // atomic's step. A continuation has no class: its caller gates it.
-// SFU ops class as lane ops, as in the model (Unit Sfu awaits RA-16 (b)).
+// The op table's kBypSfu rows class as U_SFU, as in the model (RA rev 146).
 package rcu_dec_pkg;
 
   // Every class field and kind is named; each module reads the ones it needs.
@@ -317,9 +317,9 @@ package rcu_dec_pkg;
       138: c = 27'h7ece000;   // C_FADD
       139: c = 27'h7ece000;   // FSUB
       140: c = 27'h7e4e800;   // CVT_F32_S32_P
-      141: c = 27'h7e4e000;   // RCP_U32
-      142: c = 27'h7e4e000;   // RSQRT_F32
-      143: c = 27'h7e4e800;   // RCP_F32_P
+      141: c = 27'h7e4e001;   // RCP_U32
+      142: c = 27'h7e4e001;   // RSQRT_F32
+      143: c = 27'h7e4e801;   // RCP_F32_P
       144: c = 27'h7e1c033;   // PXOR
       145: c = 27'h7e0c000;   // C_RECONV
       146: c = 27'h7e1c093;   // PMOV
@@ -542,9 +542,9 @@ package rcu_dec_pkg;
       2: t = 27'h7ece000;
       3: t = 27'h7ece000;
       4: t = 27'h7e4e800;
-      5: t = 27'h7e4e000;
-      6: t = 27'h7e4e000;
-      7: t = 27'h7e4e800;
+      5: t = 27'h7e4e001;
+      6: t = 27'h7e4e001;
+      7: t = 27'h7e4e801;
       8: t = 27'h0000007;
       9: t = 27'h0000007;
       10: t = 27'h0000007;
