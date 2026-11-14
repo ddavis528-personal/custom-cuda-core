@@ -453,7 +453,12 @@ void hook(const Core &c) {
     setBit(dut->siss_cq03h, e, v && sw.sel_iss[e]);
     for (unsigned j = 0; j != N; ++j) setBit(dut->sdep_cq03h, e * N + j, v && !sw.sel_conf[e] && j == e);
     setField(dut->sslot_cq03h, e * LS, LS, v ? sw.sel_slot[e] : 0);
-    setField(dut->res_cq03h, e * 9, 9, v ? sw.sel_res[e] : 0);
+    // An MIU-class row keeps its footprint until rewritten (ooe_rs frees a
+    // row a cycle after its grant; RS free lag 1): ooe_sched reads a
+    // granted memop's pipes from it the cycle after (MA-5's credits).
+    static std::vector<unsigned> res_h(N, 0);
+    if (v || e < NR) res_h[e] = v ? sw.sel_res[e] : 0;
+    setField(dut->res_cq03h, e * 9, 9, res_h[e]);
     setBit(dut->chas_cq03h, e, v && sw.sel_chas[e]);
     if (e < NR) {
       setBit(dut->ret_cq03h, e, v && sw.sel_ret[e]);
@@ -467,6 +472,7 @@ void hook(const Core &c) {
   for (unsigned e = 0; e != NM; ++e)
     for (unsigned j = 0; j != NM; ++j) setBit(dut->older_m_cq03h, e * NM + j, t.age[NR + j] < t.age[NR + e]);
   dut->busy_cq03h = sw.sel_busy >> 5;
+  dut->cret_cq02h = tp1.w.sel_cret;  // MA-5's credit returns, a cycle ahead (a lead)
   dut->mig_cq02h = tp1.w.sel_mig;   // RA-17's migration, a cycle ahead (a lead)
   migs += sw.sel_mig;
   forced += sw.sel_mig && ((sw.sel_busy >> 4) & 1u);
