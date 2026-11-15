@@ -127,6 +127,12 @@
       "date": "2026-10-30",
       "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
     },
+    "fl_m_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-11-15",
+      "why": "OA 418 (re:OI-151, OA tab): Rename 2's fill valids per slot, fl_v with the lane's slot decoded and registered by Rename 2 (A x SA bits), lane bit WID wired to this instance, at arrival 2 as fl_v; it replaces fl_slot (#52)."
+    },
     "fl_mem_cq02h": {
       "arrival": 2.0,
       "by": "OA",
@@ -194,12 +200,6 @@
       "why": "OA's rev 287 (re:OI-93, OA tab): a branch's fill fields, at the measured arrival, 2, in NGD from the launching flop: Rename 2's register, as the other fill ports (fl_tgt: Rename 2 registers the taken target's add) Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
     },
     "fl_rs_cq02h": {
-      "arrival": 2.0,
-      "by": "OA",
-      "date": "2026-10-30",
-      "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
-    },
-    "fl_slot_cq02h": {
       "arrival": 2.0,
       "by": "OA",
       "date": "2026-10-30",
