@@ -60,10 +60,9 @@ restart: rerun the job). Logs in /root/ccv-logs/.
    skeleton (OI's ooe_block.cpp: notify OI on landing), bins l1_inelig/l1_nohit/
    l1_nohit_drop + --break no-nohit, advance() one-line loads first (TI-440).
    check-kernel passes. Pin a9241c2 + -priv benches (incl. coremarkpl32priv).
-   Perf job /root/ccv-logs/nohit-priv.log: cm32priv k0=k1=2,253,475 (l1_inelig 0:
-   -priv coalesces, the knob does nothing). cm128priv k1 OOM-killed by the bisect;
-   k0 running (wait task b73mbp07u). If k0 shows l1_inelig=0, k1 is identical by
-   construction: no rerun. Then: TI row to AR (cc OI, MA), gate-push.
+   Results row TI 444 written (AR, OI, MA notified): -priv has no ineligible load.
+   NEXT: gate-push ti-nohit AFTER the opchk job (memory: the session's cgroup
+   OOM-kills at ~11 GB total; never two cm128 runs or a gate beside one).
    Also queued: RA 148 stub RCU address from CCV_LAT_RCU_ADDR_BASE (+ RTL refusal).
    AR 355 (2) done: TI 443; AR 359 closed it. AR 359 (4) asks: name the block
    behind cm128priv's 672 operand CHECKs (64 KiB, perfect fetch, warm MLC; 21
