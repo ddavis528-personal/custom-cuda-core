@@ -29,7 +29,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 60, DA 119.
+Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 60, DA 120.
 
 ## State, 2026-11-13
 
@@ -121,5 +121,5 @@ Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
    TI's a46afef7 adds tools/gate-wait.sh <job log> (exit 3 rerun, 4 killed) once merged.
 4. Phase 2 (TI-445, DA ruling: a module's owner (MI/DI) sets/moves an NGD port budget where
    check-ngd times the connection (parent has a unit) and passes; MA still sets the budgets
-   for unmeasured parents and the MIU/DCU block boundaries): module partition, per-port NGD budgets, index-lead schema row (after
+   for unmeasured parents, the MIU/DCU block boundaries and boundary-wired ports; DA rev 120): module partition, per-port NGD budgets, index-lead schema row (after
    AR's sweep), the payload-slot macro decision.
