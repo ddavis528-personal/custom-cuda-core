@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 439, RA 147, RI 82, OI 349, AR 353, OA 418, MA 56, IS 193, CP 157,
+TI 439, RA 147, RI 82, OI 350, AR 353, OA 418, MA 56, IS 193, CP 157,
 DA 119, Conventions 19 (2026-11-15). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
@@ -54,9 +54,8 @@ restart: rerun the job). Logs in /root/ccv-logs/.
   push only. Disk: deleting other sessions' /tmp/tmp.* was denied; ask.
 
 ## Open work (most urgent first)
-1. OI owes: sim/ooe/ooe_test.cpp testL1NoHit pins c.lat_l1_wake = 17 (TI's
-   edit); OI derives no-hit time from CCV_LAT_L1_NOHIT, drops the pin, adds
-   the L1_WAKE-1 boundary control. AR re-books PF-33/PF-47.
+1. OI-149 done (58d758ce): no-hit pin gone, WAKE-1 controls; OI added 3
+   control names to tools/check-ooe-unit.sh (57). AR still to re-book PF-33/PF-47.
 2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
 3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
    ooe_rs from a flop. RI-21 (4): rcu_dec_pkg switch after sign-off.
