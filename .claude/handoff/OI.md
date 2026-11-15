@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-15 (#52 rewrite measured, OI-152 next; sweep 11-15 28d4ca0c PUSHED full PASS; #56 closed; #55 l1-nohit at CCV_LAT_L1_NOHIT; before: 613b7f6c PUSHED, full PASS: #38 29ee4ffd, #39 8c4a4dce + cg-build path fix, sweep merge 11-14; OI-147 answers TI 428)
+Updated 2026-11-15 (#52 waits on OA, OI-152; sweep 11-15 28d4ca0c PUSHED full PASS; #56 closed; #55 l1-nohit at CCV_LAT_L1_NOHIT; before: 613b7f6c PUSHED, full PASS: #38 29ee4ffd, #39 8c4a4dce + cg-build path fix, sweep merge 11-14; OI-147 answers TI 428)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -59,17 +59,16 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
--11. #52 ooe_rob_w (OA 417/418 grant; DA: WID stays a param, add units ooe_rob_w_1..3): worktree
-   /home/user/wt-s54 (base 4a24bf67, uncommitted). (B) done: Rename 2 sends fl_m (fill valids per slot,
-   arrival 2) for fl_slot; tb decodes it per g_w[w]; ngd.json fl_m entry by OA. Then the landed count
-   rewrite: lk (a arriving land k, from kc flops) + nfr (nfe, a squash as none arriving); every nle/nlg
-   use is now a pick by nfr of flop terms. Benches pass (killed=962, every control caught).
-   ooe_rob_w: NGD-1 29.1, al_n 29.1, dn_tag 26.2, fl_v 7.0 (meets rule: drop cap), fl_m 29.3;
-   _1/_2: same but fl_m 28.7, dn 25.7/26.0. Blocker: a fl_m cap key needs a fanout-baseline entry
-   (rtl/ngd-fanout-baseline.json, seeded once; precedent DA's c_dst ruling) -> OI-152 to OA. Also tell OA
-   (C): dn_tag is TI's generated repeater, cm_tag via cmcap at 0 NGD (DA 114). Scratch: scratchpad/rob52b
-   (rewrite.py, bench2.sh with RTL=, units3.sh -> ngd3_/cg3_ logs). Bookmarks: OA 420, TI 445, DA 120.
-   OI-150/151 used; next free OI-152.
+-11. #52 ooe_rob_w WAITS ON OA (OI-152, OI rev 355, OA rung): committed locally 6c5cc570 on branch oi-52 in
+   /home/user/wt-s54 (base 4a24bf67; patch in scratchpad/rob52b). fl_m from Rename 2 replaces fl_slot (OA 418 (B));
+   landed count rewritten (lk from kc flops, nfr = nfe with a squash as none arriving; nlg/nle/nk gone);
+   cmt_tag now resets (CG replay at WID>0); units ooe_rob_w_1..3 (DA: WID stays a param). Bench + 24 controls
+   pass; CG passes on all 4 units. NGD (rob_w/_1/_2/_3): NGD-1 29.1/29.1/29.1/30.1 (cap 29.6), al_n 29.1,
+   dn_tag 26.2/25.7/26.0/26.2, fl_m 29.3/28.7/28.7/29.3, fl_v 7.0 (drop cap). Asked OA: (1) fl_m cap key
+   (baseline line in rtl/ngd-fanout-baseline.json is TI's: propose 31.7, cap 29.3, drop fl_slot/fl_v);
+   (2) WID 3 NGD-1 30.1 = ABC remap of the untouched retire window (w_h -> hoh_nx -> w): cap 30.1 or park;
+   (3) dn_tag via TI's repeater, cm_tag via cmcap at 0 NGD (DA 114). On a ruling: edit ngd-ratchet.json
+   caps, merge origin, gate-push. Bookmarks: OA 420, TI 445, DA 120. Next free OI-153.
 -10. #54 ooe_sched PARKED like #51/#53 (scratchpad/s54/NOTES.md, fcp-split.patch; worktree /home/user/wt-s54):
    ooe_pick alone (flopped) is 20.1 with FB=1, 10.4 without: res/vel (arrival 4) cannot reach 25 inside.
    fcp_cq04h's 30 copies merge into one flop (same D): a register per entry takes NGD-1 26.6 -> 25.4 but res
