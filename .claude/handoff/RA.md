@@ -315,7 +315,10 @@ TI 434: 518cb3c3 (detach exits 5) landed on TI's branch; TI 429 warning moot onc
 2026-11-14 sweep: merged 183cc441 (79), 888218a3 (7), 9eb50716 (125), c22116ce (1), miu-dcu-spec (1); SCOPED PASS, pushed ffd61757.
 TI 435 / RA rev 147: PF-47=1 clean on RCU side; ccv_dec_ooe_uop holds 8252 > 8192 (cm128) behind the MIU stub's queue;
 AR rules its bound; RA declines fallback (c) PF-47=2, prefers (a)/(b). PF-47 held at TI until AR rules.
-Bookmarks: OA 416, RA 147, RI 80, TI 435, AR 351, DA 119, OI 348, Conventions 19, CP 157, IS 193, MA 54.
+RI-53 (RI 82): SFU pair 9f513f3b pushed on RI's branch, matches rev 146; TI to merge. TI 436: AR 352 bound, cm32/cm128
+unbounded clean with PF-47=1 (uop 8252, memop 19201 of 20480); PF-47 pushing. TI-440 / RA rev 148: model (RI) and stub
+(TI) time the address from CCV_LAT_RCU_ADDR_BASE; RTL stays at 1, a check refuses RTL at base != 1; low priority.
+Bookmarks: OA 416, RA 148, RI 82, TI 440, AR 351, DA 119, OI 348, Conventions 19, CP 157, IS 193, MA 54.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
