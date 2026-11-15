@@ -756,7 +756,9 @@ it.
     | coremark32 | 2,776,587 | 2,580,427 | -7.06% |
     | coremark128 | 73,617,464 | 5,529,486 | -92.5% |
 
-    coremark32 confirms the 6.5% above (misses 1,284 to 507).
+    coremark32 confirms the 6.5% above (misses 1,284 to 507). The
+    hit-latency rows above are contract slack, not hit latency (TI rev
+    440, AR rev 356; see PF-47).
     coremark128 does not book L1's size. Its L1 misses are 747,598 at
     64 KiB (the base-5 run) against 3,095 at 512 KiB. PF-46 booked
     interleaved coremark128 at 64 KiB in 2,838,912 cycles (13b4cfd), and
@@ -1317,15 +1319,23 @@ it.
   | coremark32 | 2,778,125 | 2,776,587 | -0.055% |
   | coremark128 | 74,270,259 | 73,617,464 | -0.88% |
 
-  This is not PF-33's 2% a cycle. At wake 13 the stub MIU delivers most
-  hits after their contract cycle, and A-46 takes a late hit as a miss.
-  On coremark32, `l1_hit` falls from 38,919 to 7,788, `l1_late` rises from
-  40,442 to 71,573, and `reexec` from 75,181 to 90,972. PF-33's hit-5
-  point showed the same. So the figure is the stub's turnaround, a floor;
-  the gain is booked on MA's Phase 1 model. The decision stands: RA rev
-  145 met the timing in the RTL. At base 5, coremark128 also failed one
-  operand CHECK (seq 179681, R14, all 32 lanes) while its final state was
-  exact; that is the model's to root-cause (AR rev 355).
+  **Corrected (TI rev 440, AR rev 356):** this table does not price
+  PF-47. Neither RCU model nor stub reads `CCV_LAT_RCU_ADDR_BASE`; both
+  send the address at A+1, which is base 1. So the base-5 column ran
+  base-1 timing under a contract 4 cycles looser, and the column measures
+  contract slack, not the base. The same holds for PF-33's hit-latency
+  points, which moved only the stub MIU's due cycle.
+  The late hits are gathers. 94% are loads over 8 lines, which DCU looks
+  up at 4 lines a cycle (PF-46), so they cannot meet 8 cycles from the
+  address. 5.2% are 1-line loads queued behind them; TI fixes those in the
+  stub. In the spec, such gathers lose the hit contract by MA-4's
+  eligibility rule, and the no-hit reaches OOE before the wake (MA rev
+  57). They are slow misses with no cancel shadow, not late hits. The stub
+  sends no no-hit, which is why it looks late. PF-47's gain waits for a
+  stub that sends the no-hit (AR rev 356) and an RCU that honours the
+  base. The decision stands: RA rev 145 met the timing in the RTL. The
+  base-5 operand CHECK (seq 179681) ran that inconsistent configuration;
+  it is OI's to say whether it reproduces in a real one.
 
   The all-kernel sum includes rope, which runs clean before the change and
   after it fails OI's OA-17 check on L1 speculation (it passes with
