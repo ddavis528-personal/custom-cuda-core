@@ -43,7 +43,7 @@ restart: rerun the job). Logs in /root/ccv-logs/.
 
 ## State (2026-11-15)
 - Landed 11-15: bd1cc5a2 (SCOPED PASS 24/24 since e48fa517) on both working
-  branches: PF-47 (base 5 kept for L1_WAKE 17/19 at base 5; ooe_wake defaults
+  branches: PF-47 (base 1: RCU_ADDR 1, L1_WAKE 13, L1_CMPL 14; ooe_wake defaults
   13/15), CCV_P_TIMEOUT_UOP, RI's SFU pair, CCV_LAT_MIU_NOHIT_A2=2 (MA 56),
   CCV_LAT_L1_NOHIT (AR 353/354; require NOHIT+2 <= L1_WAKE, OA 416).
   TI row rev 439 rang OI, AR, MA, OA.
