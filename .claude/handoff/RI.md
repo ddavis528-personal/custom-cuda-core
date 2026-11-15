@@ -59,6 +59,8 @@ architect may approve only if the end meets module NGD without the flop; can't m
    (short RI row or note), update handoff, task 35 done. Bookmark RI 84.
    TI-448: (b) addr-late + merge in ti-nohit gate today; (c) RA 148 stub/refusal 11-16; (d) kill kernel 11-17;
    (a) DA-tab record waits on Daniel confirming to TI directly (asked Daniel). Bookmark TI 448.
+   RA 150: sign-off report to DA 11-17 (with TI's rokill kernel); reconciliation on tip after ti-nohit; needs
+   the waiver signature in the DA tab; nothing more from RI. Bookmark RA 150.
 -17. DONE (2026-11-15) Sweep 2026-11-15 + RA 148/AR 356 (2): pushed ce5f44dd (full clean gate PASS; ri-sweep15
    in ri-wt12) = TI doowtf bd1cc5a2 + 8f00fdf8 (model times address from CCV_LAT_RCU_ADDR; base 2 tried:
    correct, only base-1-tuned bins move, ~/ccv-logs/ri-addrbase2-check-kernel.log) + sweep merges (126afa13,
