@@ -29,7 +29,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 354, TI 438, OA 417, IS 193, CP 157, OI 348, RA 146, RI 79, MA 56, DA 119.
+Conventions 19, AR 354, TI 440, OA 417, IS 193, CP 157, OI 348, RA 146, RI 79, MA 57, DA 119.
 
 ## State, 2026-11-13
 
@@ -71,6 +71,10 @@ Conventions 19, AR 354, TI 438, OA 417, IS 193, CP 157, OI 348, RA 146, RI 79, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- MA 57 (re:TI-440): stub late hits are 94% gathers over 8 lines. Spec: they lose the contract
+  (MA-4) and send the no-hit; no port widening now. Phase 1 prices tag ports 4/6/8 against
+  the gather share. Asked TI for the private-window vs .global split and a lines histogram.
 
 - MA 55-56 (re:TI-437, AR 353-354, TI 438): no-hit settled. CCV_LAT_MIU_NOHIT_A2 = 2 (A1 at H,
   A2 at H+1, launch H+2); CCV_LAT_L1_NOHIT = issue-to-H + 2 + HOP = 9 under PF-47 (TI applied).
