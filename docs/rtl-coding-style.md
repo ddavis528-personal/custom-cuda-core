@@ -1093,6 +1093,10 @@ because nothing would catch a split the other end cannot meet:
   `ccv_rcu.ngd.json`, say): the other end is another block's, paired only
   once both tops are RTL, and the split is an interface contract between
   two owners, raised as a register row.
+- a child's port wired straight to its block's boundary port, at any depth
+  (RA, re:TI 445): convergence takes the block's input as arriving at 0
+  and holds the pin by its leaf's measurement, so any budget there passes
+  it, and the other end is again another block's.
 
 A change that passes only because the check could not see the other end is
 not covered; neither is a ratchet entry, which still only shrinks.
