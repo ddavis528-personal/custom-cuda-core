@@ -1152,9 +1152,9 @@
       "name": "CCV_LAT_MIU_NOHIT_A2",
       "value": 2,
       "status": "provisional",
-      "source": "AR 353 (re:TI-437): (2) MA confirms the count",
-      "doc": "MIU's stages from holding both the memop and its address to the no-hit leaving on ccv_miu_ooe_cmpl_hint: the address stage's decision from the address alone (OA 410) and its output flop. 2 is the count that gave OA 410's I+13 at CCV_LAT_RCU_ADDR_BASE 5; provisional until MA states A2's count (AR 353 (2)).",
-      "decided_at": "MA, AR 353 (2)"
+      "source": "AR 353 (re:TI-437) (2); MA 56: A1 at H, A2 at H+1, the hint launches at H+2, valid at OOE H+3, payload H+4; A2 gated by A1's own valid flop",
+      "doc": "MIU's stages from holding both the memop and its address to the no-hit leaving on ccv_miu_ooe_cmpl_hint: the address stage's decision from the address alone (OA 410) and its output flop. 2 is the count that gave OA 410's I+13 at CCV_LAT_RCU_ADDR_BASE 5; confirmed by MA rev 56; provisional with MIU's Phase 1 model.",
+      "decided_at": "MA rev 56 (re:AR 353 (2))"
     },
     {
       "name": "CCV_LAT_L1_NOHIT",
