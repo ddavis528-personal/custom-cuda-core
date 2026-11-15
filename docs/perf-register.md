@@ -759,14 +759,20 @@ it.
     coremark32 confirms the 6.5% above (misses 1,284 to 507). The
     hit-latency rows above are contract slack, not hit latency (TI rev
     440, AR rev 356; see PF-47).
-    coremark128 does not book L1's size. Its L1 misses are 747,598 at
-    64 KiB (the base-5 run) against 3,095 at 512 KiB. PF-46 booked
-    interleaved coremark128 at 64 KiB in 2,838,912 cycles (13b4cfd), and
-    at 8 KiB direct-mapped in 3,340,054, with 512 KiB saving 7.1%. So the
-    kernel's working set has grown past 64 KiB since then, or its data now
-    alias in L1's sets. TI bisects it (AR rev 355); until then this row is
-    a symptom, not a size. The longest credit holds at 512 KiB are
-    `ccv_dec_ooe_uop` 8,253 and `ccv_ooe_miu_memop` 19,176 of 20,480.
+    The longest credit holds at 512 KiB are `ccv_dec_ooe_uop` 8,253 and
+    `ccv_ooe_miu_memop` 19,176 of 20,480.
+  - **Withdrawn as an L1 figure (TI rev 443, AR rev 359):** both tables
+    above ran plain coremark-derived (correctness only since AR rev 358)
+    with no environment: a cold MLC, so every L1 miss went to memory, and
+    real fetch. coremark128's 747,598 misses at about 100 cycles are the
+    whole 73.6M run; there was no regression. PF-46's figures are at
+    perfect fetch and a warm MLC. TI's set dump puts plain coremark128's
+    hot set between 64 and 128 KiB (64 sets x 8 ways 726,773 misses,
+    128 x 8 24,195, 512 KiB 4,065), and capacity misses, not aliasing:
+    fully associative (896,370) and a hashed index (1,166,591) miss more
+    under LRU, so the modulo index stays. -priv coalesces to 408k line
+    accesses and takes about 63k misses at 64 KiB. L1's size is re-opened:
+    AR re-runs this sweep on -priv at perfect fetch and a warm MLC.
 
 ### PF-34 Same-address combining for atomics, built from lane adds
 
@@ -1212,6 +1218,13 @@ it.
   frames and data in the run as compiled, runs clean at 1,234,051 cycles at
   one warp and 64 KiB, 1.3% over TI's scratch bound of 1,218,411: the
   prologue's `srd` and add, which the bound never paid.
+- **Re-booked (TI rev 443, AR rev 359, on bd1cc5a2):** at PF-46's own
+  conditions (perfect fetch, warm MLC, 64 sets x 8 ways), coremark128
+  -priv runs in 2,132,774 cycles against the 2,838,912 booked here
+  (-24.9%), and -priv is the figure of record (AR revs 357 and 358). Plain
+  coremark128 is a projection only, 4.8M to 5.2M against 10,164,145: it
+  did not finish within the container's memory. The no-hit knob (PF-47)
+  changes nothing on -priv, which has no ineligible load (TI rev 444).
 
 ### PF-47 RCU's issue-to-address time from 5 to 1 or 2
 
@@ -1336,6 +1349,13 @@ it.
   base. The decision stands: RA rev 145 met the timing in the RTL. The
   base-5 operand CHECK (seq 179681) ran that inconsistent configuration;
   it is OI's to say whether it reproduces in a real one.
+  These coremark figures are plain layout at a cold MLC (AR revs 358 and
+  359). On -priv, no load is ineligible, so the no-hit changes nothing:
+  coremark32 -priv runs 2,253,475 cycles with the knob off and on, and S1
+  stays at 3,917 (TI rev 444). The no-hit acts only on plain gathers. PF-47
+  is re-booked on -priv at base 1, with the L1 re-run (PF-33). Operand
+  CHECKs also fire on -priv with an exact final state (TI revs 443 and
+  444; first at seq 67052); TI is finding which block, for its owner.
 
   The all-kernel sum includes rope, which runs clean before the change and
   after it fails OI's OA-17 check on L1 speculation (it passes with
