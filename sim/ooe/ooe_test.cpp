@@ -1705,6 +1705,12 @@ void testL1NoHit() {
   for (const int mode : {0, 1, 2}) {   // 0: l1_nohit; 1: knob off; 2: the control
     g_test = mode == 0 ? "l1-nohit" : mode == 1 ? "l1-nohit off" : "l1-nohit (control)";
     Config c = baseConfig();
+    // OA 410's contract puts the no-hit's payload at I+13, before the wake at
+    // the L1_WAKE of its day (17). PF-47 (AR 352) brought L1_WAKE to 13, where
+    // the no-hit lands with the wake and no longer clears it; that timing is
+    // put to OA, MA and AR in TI rev 437. Until they rule, the mechanism is
+    // tested at the wake it was specified against.
+    c.lat_l1_wake = 17;
     c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
     c.l1_nohit = mode != 1;
     c.inject_ignore_nohit = mode == 2;

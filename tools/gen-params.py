@@ -526,17 +526,18 @@ def selftest(d):
                 break
         return vals["CCV_LAT_L1_WAKE"], vals["CCV_LAT_L1_CMPL"]
     # RA-43 (AR's rev 329): with the issue's end at RCU zero-cycle, 17 and
-    # 18 at the defaults. AR's rev 301's three still hold with that end
+    # 18 at base 5 (13 and 14 at PF-47's base 1, the default since AR 352). AR's rev 301's three still hold with that end
     # flopped, which is how they are run now.
     flop = dict(links, **{"bnd_rx:ooe_rcu_issue": 1})
     if links.get("bnd_rx:ooe_rcu_issue") == 0 and not any(
             v for k, v in links.items() if not k.startswith("bnd_rx:")):
         for got, want, what in (
-                (l1(), (17, 18), "the defaults, the issue's end zero-cycle (RA-43)"),
-                (l1(lk=flop), (17, 19), "the defaults, the issue's end flopped"),
+                (l1(base=5), (17, 18), "base 5, the issue's end zero-cycle (RA-43)"),
+                (l1(base=5, lk=flop), (17, 19), "base 5, the issue's end flopped"),
+                (l1(base=1), (13, 14), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), zero-cycle"),
                 (l1(base=1, lk=flop), (13, 15), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), flopped"),
-                (l1(addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", lk=flop),
-                 (18, 20), "the issue flop counted twice (the control)")):
+                (l1(base=5, addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", lk=flop),
+                 (18, 20), "base 5, the issue flop counted twice (the control)")):
             if got != want:
                 missed.append("L1_WAKE/L1_CMPL at %s: %s, want %s (AR's revs 301, 329)"
                               % (what, got, want))
