@@ -56,8 +56,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - Nothing running (10:30Z 11-15). AR 355 (3) for OI DONE and sent: 8dbf290b (gate-scratch/OI,
   debug only), cm128 warm, CCV_DBG_SEQ=179681: no CHECK (check_failures 0, 5,698,966 cycles);
   DBGHELD R14 0x10 vs 0x5b0 at seq 179681, whose issue was cancelled behind seq 179680's load
-  miss. Dump ~/ccv-logs/ar355/dbg.gz (sha c5ce73a6); script rh-jobs/ar355; worktree
-  /home/user/rh-ar355 kept until OI is done. A gzip sent inline as base64 costs ~50k tokens:
+  miss. OI agreed and closed it (OI rev 351); worktree and dump dropped. Script rh-jobs/ar355. A gzip sent inline as base64 costs ~50k tokens:
   send filtered plain-text windows instead.
 - RI ngd 7e29cef5 (RI's 11-13 daily-sweep merge, which replaces 439179d9; RI asked RH to
   stop that leg) DONE: PARTIAL PASS, ngd 5558 s at CCV_JOBS=4, export d4485d9c...,
