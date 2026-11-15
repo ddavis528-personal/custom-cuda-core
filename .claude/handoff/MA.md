@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 63, DA 121.
+Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 65, DA 121.
 
 ## State, 2026-11-13
 
@@ -74,6 +74,12 @@ Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- 2026-11-15 late: doc check done (MIU tab rev 128, DCU tab rev 37: drafts -> decided, Strawman B
+  chosen, 512 KiB geometry, req_id/wire totals). AR 362 agreed B with 6 conditions (MA rev 65);
+  TI-449 lands the index lead + require 11-16. Q-42 stays open (AR, floorplan abutment).
+  Summary to Daniel delivered as a Claude doc: https://claude.ai/artifact/AEUqHyXyixyuxytWxc7mGd
+  NEXT, after Daniel reads it: docs/miu-impl.md, docs/dcu-impl.md; MI/DI start after TI-449's gate.
 
 - 2026-11-15: MA-9 CLOSED (DA rev 121): MIU and DCU stay separate; merge/direct return is Phase 2,
   priced on MI/DI's timing model (boundary hops as configurable latencies) + AR's PF-33/PF-47 at
