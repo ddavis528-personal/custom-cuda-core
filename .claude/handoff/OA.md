@@ -43,8 +43,11 @@ AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
 CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
+## OI-150 (OA 417, rev 419, 11-15)
+Arrivals kept. go: producer encodings (decq one-hot need, Rename thermometer pool) granted at 2. rendep gsn/psn: arrival 2 only if Rename precomputes the one-hot index at no latency. sched res/vel: OI to model-price the fallback a cycle later (OA rules if under 0.5% S1, else DA). ooe_rob_w wid_cq00h: arrival 0, one-hot flop, within the ratchet caps. DA 111b is not in the DA tab: record it verbatim once OI cites its source.
+
 ## Register bookmarks (revs read through)
-Conventions 19, OA 418, AR 356, TI 440, OI 350, IS 193, CP 157, DA 119,
+Conventions 19, OA 419, AR 356, TI 440, OI 353, IS 193, CP 157, DA 119,
 RA 148 (tab 9851686b-2b0a), RI 82 (tab 8e4547bc-c469), MA 57 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
 OOE doc rev 381. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
 Sweep 11-15: 5 branches (116 commits), full gate green, pushed 6aa0c403; release 6fa7fc1f; tag refused (known). Sunday, no pings.
