@@ -68,7 +68,10 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
    masked OR ~6..10. Files + logs: scratchpad/rd51/. Next lever needs OA: gsn/psn arrival 6 (rev 194).
    #52 try 1 11-14 (reverted): window terms per retire-count candidate from hoh flops, count picks last
    (benches pass): flop-flop 29.5->31.1 (fa_oh remapped), dn_tag 26.2->29.4, fl_v 29.5->31.2. scratchpad/rob52/.
-   Bookmarks since: TI 435, RI 82 (RI-53: SFU pair pushed 9f513f3b; merge at sweep).
+   TI-437 (11-15): PF-47 (L1 wake 13, TI 86d99d29) lands OA 410's no-hit (payload I+13) with the wake; TI
+   pinned testL1NoHit to lat_l1_wake 17 in our test. OA/MA/AR rule the contract; when it moves, OI reverts
+   that pin (TI's ask). Merge TI's PF-47 branch at the sweep, then rerun OOE benches (wake 13/15).
+   Bookmarks since: TI 437, RI 82 (RI-53: SFU pair pushed 9f513f3b; merge at sweep).
    Blocked: #40/#42 (TI schema), #46 (lead set), l1_nohit price (MA stub sends no no-hits),
    cand_indep_pend price (OI-143 rev 344: needs sectioned on).
    Gate note: the first a2c1513a gate was OOM-killed in cg (check-cg python 4.6 GB beside ngd's ABC);
