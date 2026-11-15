@@ -305,7 +305,7 @@ int main(int argc, char **argv) {
                       brk == "bar-park-off" || brk == "held-over-r" || brk == "held-no-clear" ||
                       brk == "borrow-partial" ||
                       // the SFU result on ccv_lane_rcu_res (RA-16 (b))
-                      brk == "sfu-valid-stray" ||
+                      brk == "sfu-valid-stray" || brk == "sfu-at-lane-lat" ||
                       // serial 5 on a real op (RA-16 (f))
                       brk == "nop-real-op" ||
                       // register pmov's negate (OA's rev 396)
