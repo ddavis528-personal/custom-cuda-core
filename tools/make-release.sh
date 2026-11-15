@@ -97,6 +97,7 @@ if ! ./tools/verify.sh >"$VLOG" 2>&1; then
 fi
 GATE=$(grep -A1 '== result ==' "$VLOG" | tail -1 | xargs)
 [ "$GATE" = PASS ] || die "the gate's log has no PASS result (read: '$GATE'); no snapshot without its record"
+echo "make-release: gate PASS on $SHA7 (its log ships as release/verify.log)"
 
 # -- 2. the artifacts that are not already built by the gate ---------------
 # Every S1 kernel's trace and both Perfetto views, not only vadd's.

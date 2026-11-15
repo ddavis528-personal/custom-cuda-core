@@ -275,11 +275,14 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
   // at 5.
   // An atomic wakes its dependants on its last write's completion (A-46).
   // A no-op (serial 5) sets no other bit: lat_class 0 (RA-16 (f)).
+  // An SFU op (bypass group SFU: RCP_U32, RSQRT_F32, RCP_F32_P) is a lane's,
+  // at CCV_LAT_SFU: lat_class 4, slot 4 (OI-145 (3), RA's rev 146, RI-51).
   const unsigned lat = op->cls == kNop ? kLatRcu
                      : op->cls == kLoad ? kLatL1
                      : op->cls == kStore || op->cls == kFence || op->cls == kAtomic ? kLatCompletion
                      : op->cross ? kLatCollective
-                     : execRcu(op) || ctl ? kLatRcu : kLatLane;
+                     : execRcu(op) || ctl ? kLatRcu
+                     : op->byp == int(kBypSfu) ? kLatSfu : kLatLane;
   return uint32_t(op->ret) << kAttrRetBit |
          uint32_t(bypGroupOf(op)) << 14 |
          uint32_t(mem) << 13 | uint32_t(execRcu(op) || ctl) << 12 |
