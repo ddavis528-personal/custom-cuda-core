@@ -44,12 +44,13 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## Register bookmarks (revs read through)
-Conventions 19, OA 416, AR 350, TI 434, OI 347, IS 193, CP 157, DA 119,
-RA 144 (tab 9851686b-2b0a), RI 79 (tab 8e4547bc-c469), MA 54 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
+Conventions 19, OA 417, AR 352, TI 437, OI 349, IS 193, CP 157, DA 119,
+RA 147 (tab 9851686b-2b0a), RI 79 (tab 8e4547bc-c469), MA 54 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
 OOE doc rev 378. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
 Sweep 11-13: 6 branches (76 commits), full gate green, pushed 0bc98973 (first push 503'd, credential service; retried by hand); release 63625551; tag refused (known).
 
 ## Open work (most urgent first)
+- OA 415 (rev 417, 11-15, re TI-437): PF-47 (AR 351/352: RCU_ADDR_BASE 5->1, L1_WAKE 13, L1_CMPL 14) left no_hit at I+13 = wake. MA rev 39 times no-hit from the address (H = I+2*HOP+RCU_ADDR; valid H+3), so at base 1 it is valid I+8/payload I+9, margin 4 kept. Asked AR to rule it as L1_WAKE-5/-4 (or CCV_LAT_L1_NOHIT), MA to confirm the pipe from H, TI the schema text and harness t+12 -> t+lat_l1_wake-5, OI to unpin testL1NoHit (pinned to wake 17). Then OOE doc memop paragraph: replace I+12/I+13/I+17 with the relative form.
 - Sweep 11-14: 8 branches (209 commits) pushed abd2a025 UNGATED (old daily-sweep + new detaching make-release; OA 414, rev 416). Full clean gate run after: PASS. No release cut (ccr-126afa13 gained a commit); next sweep cuts it. TI fixed: 518cb3c3, a detached tool exits 5.
 - OI-143: RH's on-vs-off price for cand_indep_pend is identical in all 36 runs because sectioned=0 (placePos returns early); OA 407's 0.5% test passes only vacuously. The real price waits on sectioned=1 (OI-32); OI will ask RH then (~9 h cm128).
 - OI-142: l1_nohit model built (off by default); no price until MA Phase 1's stub sends no-hits.
