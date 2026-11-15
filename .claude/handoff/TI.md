@@ -64,12 +64,16 @@ restart: rerun the job). Logs in /root/ccv-logs/.
    NEXT: gate-push ti-nohit AFTER the opchk job (memory: the session's cgroup
    OOM-kills at ~11 GB total; never two cm128 runs or a gate beside one).
    Also queued: RA 148 stub RCU address from CCV_LAT_RCU_ADDR_BASE (+ RTL refusal).
-   AR 355 (2) done: TI 443; AR 359 closed it. AR 359 (4) asks: name the block
-   behind cm128priv's 672 operand CHECKs (64 KiB, perfect fetch, warm MLC; 21
-   uops, operand 0, all 32 lanes, never reexec'd, no def mismatch) and raise it
-   in the owner's tab (may be AR 355 (3)'s seq 179681, OI's). Job
-   /root/ccv-logs/opchk.log (scratchpad/opchk/run.sh): model, CCV_RCU_IMPL=stub,
-   CCV_OOE_IMPL=stub, serial after nohit-priv's pid 16531.
+   AR 359 (4) ROOT-CAUSED, TI's own stub MIU: a hit late for want of a credit
+   queued data+cmpl for the same cycle's drain; cmpl could leave AT the
+   contract with data behind -> stale operand read, no replay. Fix 5663e208
+   (cmpl via late_faults_ at now_+1). RCU-stub run also failed (896); the OOE
+   stub cannot run cm128priv (fails from seq 2; filled the disk - cap logs!).
+   Verify: /root/ccv-logs/opfix.log (cm128priv 64 KiB warm/perfect, expect 0
+   CHECKs, was 672). Then TI row to AR (cc OI, MA, RI): owner is TI, fixed;
+   say whether seq 179681 (AR 355 (3), OI) is the same. Follow-up: a cover
+   bin for the credit-starved late hit so the gate reaches this path.
+   RI-54 merged (ce5f44dd) + addr-late control (b7afe051): answer in landing row.
    Daily sweep 11-15: register quiet; repo half (daily-sweep.sh) deferred while
    the perf run holds the machine; run it from a fresh worktree.
 1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
