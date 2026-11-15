@@ -54,34 +54,18 @@ restart: rerun the job). Logs in /root/ccv-logs/.
   push only. Disk: deleting other sessions' /tmp/tmp.* was denied; ask.
 
 ## Open work (most urgent first)
-0. Branch ti-nohit (worktree /home/user/ti-sram) 5cf502aa, backed up to
-   gate-scratch/TI-sram, NOT pushed: AR 356 (1) stub MIU MA-4 eligibility +
-   early no-hit at CCV_LAT_L1_NOHIT, held completion, OOE l1_nohit on in the
-   skeleton (OI's ooe_block.cpp: notify OI on landing), bins l1_inelig/l1_nohit/
-   l1_nohit_drop + --break no-nohit, advance() one-line loads first (TI-440).
-   check-kernel passes. Pin a9241c2 + -priv benches (incl. coremarkpl32priv).
-   Results row TI 444 written (AR, OI, MA notified): -priv has no ineligible load.
-   NEXT: gate-push ti-nohit AFTER the opchk job (memory: the session's cgroup
-   OOM-kills at ~11 GB total; never two cm128 runs or a gate beside one).
-   Also queued: RA 148 stub RCU address from CCV_LAT_RCU_ADDR_BASE (+ RTL refusal).
-   AR 359 (4) ROOT-CAUSED, TI's own stub MIU: a hit late for want of a credit
-   queued data+cmpl for the same cycle's drain; cmpl could leave AT the
-   contract with data behind -> stale operand read, no replay. Fix 5663e208
-   (cmpl via late_faults_ at now_+1). RCU-stub run also failed (896); the OOE
-   stub cannot run cm128priv (fails from seq 2; filled the disk - cap logs!).
-   Verify: /root/ccv-logs/opfix.log (cm128priv 64 KiB warm/perfect, expect 0
-   CHECKs, was 672). Then TI row to AR (cc OI, MA, RI): owner is TI, fixed;
-   say whether seq 179681 (AR 355 (3), OI) is the same. Follow-up: a cover
-   bin for the credit-starved late hit so the gate reaches this path.
-   DA 2026-11-15 budget ruling: TI 445/446, docs 8baa12c7 + ea9bca63. TODO after
-   ti-nohit lands: check-ngd refuses a non-architect 'by' on budgets of
-   unmeasured-parent modules, block boundary ports/lead fields, and child pins
-   wired straight to a block port; a negative control each. Not in DA tab yet.
-   Stub MIU second fix 28f9ab48 (cmpl held while its data is queued); verify
-   job /root/ccv-logs/opfix2.log (was 32 CHECKs after 5663e208).
-   RI-54 merged (ce5f44dd) + addr-late control (b7afe051): answer in landing row.
-   Daily sweep 11-15: register quiet; repo half (daily-sweep.sh) deferred while
-   the perf run holds the machine; run it from a fresh worktree.
+0. LANDED 11-15: a5481843 (SCOPED PASS 24/24 since bd1cc5a2) on both working
+   branches: AR 356 (1) stub MIU MA-4 eligibility + early no-hit, OOE l1_nohit
+   on in the skeleton (OI's ooe_block.cpp), AR 359 (4) fix (TI's stub MIU: a
+   credit-late hit's cmpl could leave at the contract ahead of its data; fixes
+   5663e208 + 28f9ab48; cm128priv 64 KiB warm/perfect 0 CHECKs, was 672,
+   2,124,002 cycles), RI-54 merge + addr-late control, CCV_DCU_SETS 512,
+   DA 2026-11-15 budget rule docs. Landing row: see TI tab after rev 449.
+   NEXT (11-16): task 21 AR 362/MA 65 set_index/bank lead on ccv_miu_dcu_req +
+   page-offset require; task 19 RA 148; check-ngd 'by' enforcement of the
+   budget rule (unmeasured-parent modules, boundary ports/leads, boundary-
+   wired child pins), a negative control each; cover bin for the
+   credit-starved late hit. Daily sweep repo half: fresh worktree.
 1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
 2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
 3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
