@@ -55,7 +55,7 @@ architect may approve only if the end meets module NGD without the flop; can't m
    9f513f3b, PF-47 base 1) + 8f00fdf8 (model times address from CCV_LAT_RCU_ADDR; base 2 tried: correct, only
    base-1-tuned bins move, ~/ccv-logs/ri-addrbase2-check-kernel.log) + sweep merges (126afa13 8, 57eff422 14,
    80102643 18, 9eb50716 4, c22116ce 1, miu-dcu-spec 17; no conflicts) + 0fe15d9a (unit test addr-cycle, control
-   addr-late caught). Full gate-push: job-gate-push-20261115-103727-27756.log (waiter bc0wsjpep). Killed the
+   addr-late caught). Full gate-push: job-gate-push-20261115-103748-27855.log (waiter bgfhs6qh9). Killed the
    earlier scoped gate of 8f00fdf8 alone. ON PUSH: RI-54 re:TI-440/RA 148/AR 356 (2): ask TI to add addr-late to
    tools/check-rcu-unit.sh's control list (count 8); notices TI, RA, AR. Not Friday: no pings. session-home
    --check matches (from ri-wt). MA tab has no roster node: unread.
