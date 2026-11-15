@@ -834,16 +834,19 @@ module rcu_lanes #(
   `CCV_ASSERT(lanes_byp_multi, multi_cr02h == '0)
   // One SFU op a cycle (swb_d has one entry a stage).
   `CCV_ASSERT(lanes_sfu_one, $countones(sfu_cr02h) < 2)
-  // The lanes' results: every copy in the same cycle (lockstep), exactly
-  // when results are due, holding exactly the sections due (CG-5: never an
-  // enable, only checked).
-  wire [NK-1:0] due_cr07h = ov_cr03h[(DL-2)*NK +: NK] | sov_cr03h[(DS-2)*NK +: NK];
-  wire [NK-1:0] due_cr08h = ov_cr03h[(DL-1)*NK +: NK] | sov_cr03h[(DS-1)*NK +: NK];
+  // The lanes' results: every copy in the same cycle (lockstep), a message
+  // exactly when a lane or an SFU result is due, its sec_valid exactly the
+  // lane ops' sections due: an SFU result rides on sfu_valid, never
+  // sec_valid (lane_rcu's contract, RA-16 (b); RI-51). CG-5: never an
+  // enable, only checked.
+  wire [NK-1:0] due_cr07h  = ov_cr03h[(DL-2)*NK +: NK] | sov_cr03h[(DS-2)*NK +: NK];
+  wire [NK-1:0] due_cr08h  = ov_cr03h[(DL-1)*NK +: NK] | sov_cr03h[(DS-1)*NK +: NK];
+  wire [NK-1:0] ldue_cr08h = ov_cr03h[(DL-1)*NK +: NK];
   logic lres_bad_cr08h;
   always_comb begin
     lres_bad_cr08h = 1'b0;
     for (int c = 0; c < N; c++)
-      lres_bad_cr08h |= lrv_cr07h[c] != (|due_cr07h) || ((|due_cr08h) && lsv_cr08h[c*NK +: NK] != due_cr08h);
+      lres_bad_cr08h |= lrv_cr07h[c] != (|due_cr07h) || ((|due_cr08h) && lsv_cr08h[c*NK +: NK] != ldue_cr08h);
   end
   `CCV_ASSERT(lanes_lockstep, !lres_bad_cr08h)
 

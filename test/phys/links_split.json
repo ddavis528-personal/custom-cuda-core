@@ -22,5 +22,8 @@
     {"channel": "miu_rcu_data", "route": "src:3 > dst:0"},
     {"channel": "exb_ext_out", "route": "src:1 > dst:0", "why": "EXTERNAL end holds none"},
     {"channel": "ext_exb_in", "route": "src:0 > dst:1"}
+  ],
+  "credit_on_receipt": [
+    {"end": "miu_rcu_data@rcu", "why": "As params/links.json (AR's rev 322, RA-41): the design's own end, so the split tree keeps its contract (RI-49; RA's rev 144). Without it RCU's RTL, which has no credit port on this end, fails miu_rcu_data's fixed_latency_prompt here."}
   ]
 }
