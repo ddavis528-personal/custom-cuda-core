@@ -73,6 +73,12 @@ restart: rerun the job). Logs in /root/ccv-logs/.
    CHECKs, was 672). Then TI row to AR (cc OI, MA, RI): owner is TI, fixed;
    say whether seq 179681 (AR 355 (3), OI) is the same. Follow-up: a cover
    bin for the credit-starved late hit so the gate reaches this path.
+   DA 2026-11-15 budget ruling: TI 445/446, docs 8baa12c7 + ea9bca63. TODO after
+   ti-nohit lands: check-ngd refuses a non-architect 'by' on budgets of
+   unmeasured-parent modules, block boundary ports/lead fields, and child pins
+   wired straight to a block port; a negative control each. Not in DA tab yet.
+   Stub MIU second fix 28f9ab48 (cmpl held while its data is queued); verify
+   job /root/ccv-logs/opfix2.log (was 32 CHECKs after 5663e208).
    RI-54 merged (ce5f44dd) + addr-late control (b7afe051): answer in landing row.
    Daily sweep 11-15: register quiet; repo half (daily-sweep.sh) deferred while
    the perf run holds the machine; run it from a fresh worktree.
