@@ -1520,6 +1520,10 @@ it.
   2% single-thread (AR-24). In the corpus sweep, hit base 9 against 7 cost
   sgemm 7.9% (DCU tab, Capacity).
 - **Signal:** AR's re-booked PF-33/PF-47 sweeps on coremark-derived-priv at
-  512 KiB with hit base 7, 8 and 9 (MA rev 62). The alternative is worth
-  building if 512 KiB needs a slower hit than 64 or 128 KiB would, and a
-  product configuration ships below 512 KiB. Owner: MA; raised by Daniel.
+  512 KiB with hit base 7, 8 and 9 (MA rev 62), measured in AR 363 on
+  a5481843: each hit cycle costs 0.6% on cm128priv and 2.5% on cm32priv.
+  The ceiling of this entry is a cycle saved when configured down: +0.59%
+  at 128 KiB and +1.14% at 64 KiB per cycle (AR 363). Hit stays 7 at
+  512 KiB (MA rev 66). The alternative is worth building if 512 KiB needs a
+  slower hit than 64 or 128 KiB would, and a product configuration ships
+  below 512 KiB. Owner: MA; raised by Daniel.

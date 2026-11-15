@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 361, TI 450, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 65, DA 121.
+Conventions 19, AR 364, TI 450, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 66, DA 121.
 
 ## State, 2026-11-13
 
@@ -82,6 +82,9 @@ Conventions 19, AR 361, TI 450, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
   NEXT, after Daniel reads it: docs/miu-impl.md, docs/dcu-impl.md; MI/DI start after TI-449's gate.
   TI-450 (a5481843): the cm128priv CHECK bug was the stub MIU's completion ahead of late data;
   fixed, cm128priv clean; also landed no-hit and CCV_DCU_SETS 512. Summary doc rev 12 says so.
+  AR 363 (PF-33/PF-47 at 512 KiB, a5481843): 0.6%/hit cycle cm128priv, 2.5% cm32priv; configured
+  down +0.59% (128K)/+1.14% (64K) per cycle. MA rev 66: L1_HIT stays 7; hit 8 only on DI's measured
+  timing need. PF-51 Signal updated.
 
 - 2026-11-15: MA-9 CLOSED (DA rev 121): MIU and DCU stay separate; merge/direct return is Phase 2,
   priced on MI/DI's timing model (boundary hops as configurable latencies) + AR's PF-33/PF-47 at
