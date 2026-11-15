@@ -52,6 +52,11 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-18. NOW (2026-11-15 17:46) Daniel SIGNED the 3 owner CG waivers (RI-47) in conversation. 05af449c on ri-signoff
+   (ri-wt12; = ce5f44dd + ri-asm handoff + cg-waivers "by" names signature + rcu-exit.md to ce5f44dd, open list
+   refreshed). Scoped gate-push: job-gate-push-20261115-174608-425.log (waiter b4z0hvuku; check-cg/ngd in scope,
+   ~3.5h). RI-55 (RI tab rev 84) written, notices TI + RA (asked for dates). ON PUSH: tell TI the commit to merge
+   (short RI row or note), update handoff, task 35 done. Bookmark RI 84.
 -17. DONE (2026-11-15) Sweep 2026-11-15 + RA 148/AR 356 (2): pushed ce5f44dd (full clean gate PASS; ri-sweep15
    in ri-wt12) = TI doowtf bd1cc5a2 + 8f00fdf8 (model times address from CCV_LAT_RCU_ADDR; base 2 tried:
    correct, only base-1-tuned bins move, ~/ccv-logs/ri-addrbase2-check-kernel.log) + sweep merges (126afa13,
