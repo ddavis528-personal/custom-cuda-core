@@ -29,7 +29,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 354, TI 441, OA 417, IS 193, CP 158, OI 348, RA 146, RI 79, MA 59, DA 119. CP 158.
+Conventions 19, AR 358, TI 442, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 59, DA 119.
 
 ## State, 2026-11-13
 
@@ -71,6 +71,10 @@ Conventions 19, AR 354, TI 441, OA 417, IS 193, CP 158, OI 348, RA 146, RI 79, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- Sweep 2026-11-15: AR 358 made coremark-derived-priv the perf baseline (MA 59 taken); TI 442
+  moved benches (cm32priv/cm128priv). AR 356: stub gets MA-4 eligibility + no-hit, knob off/on
+  runs pending (TI). AR re-books PF-33/PF-47 on -priv: the MA-9 merge numbers come from those.
 
 - MA 57-58 (TI 440-441): cm32 gathers are all 25-32 lines (one per lane), PF-46 per-thread
   blocks via ordinary .global, none in IS-24's window: ports closed as a fix (no 6/8-port
