@@ -748,8 +748,11 @@ void Core::issueMem(const Issue &is, unsigned slot, uint32_t active, uint32_t ps
     if (oc.mk == MemKind::PredStore) ad.data[0] = pstore;   // lane 0, raw (TI-36)
     else if (oc.mk == MemKind::Store && oc.data_src >= 0) ad.data = opnd(oc.data_src);
   }
-  if (kAddrLaunch == 0) out.addrs.push_back(ad);
-  else asched_[now_ + kAddrLaunch].push_back(ad);
+  // addr-late: one cycle past the param, which the unit test's addr-cycle
+  // check must refuse (AR 356 (2)).
+  const unsigned d = kAddrLaunch + (cfg_.brk == "addr-late" ? 1u : 0u);
+  if (d == 0) out.addrs.push_back(ad);
+  else asched_[now_ + d].push_back(ad);
 }
 
 // ---- the R pipe ----------------------------------------------------------------------
