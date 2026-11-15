@@ -318,7 +318,11 @@ AR rules its bound; RA declines fallback (c) PF-47=2, prefers (a)/(b). PF-47 hel
 RI-53 (RI 82): SFU pair 9f513f3b pushed on RI's branch, matches rev 146; TI to merge. TI 436: AR 352 bound, cm32/cm128
 unbounded clean with PF-47=1 (uop 8252, memop 19201 of 20480); PF-47 pushing. TI-440 / RA rev 148: model (RI) and stub
 (TI) time the address from CCV_LAT_RCU_ADDR_BASE; RTL stays at 1, a check refuses RTL at base != 1; low priority.
-Bookmarks: OA 416, RA 148, RI 82, TI 440, AR 351, DA 119, OI 348, Conventions 19, CP 157, IS 193, MA 54.
+AR 356 agrees with rev 148 (RI builds; control fails when model/stub differ from the param). PF-47 landed (TI bd1cc5a2,
+CCV_LAT_L1_NOHIT; OA final). AR 357/358: perf benches price coremark-derived-priv.
+2026-11-15 sweep: merged 183cc441 (57), 57eff422 (14), 80102643 (18), 9eb50716 (4), c22116ce (1), miu-dcu-spec (16);
+518cb3c3 now on this branch: gates detach, wait with tools/gate-wait.sh.
+Bookmarks: OA 418, RA 148, RI 82, TI 441, AR 358, DA 119, OI 350, Conventions 19, CP 158, IS 194, MA 59.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -348,8 +352,7 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
-- NEXT SWEEP: check 518cb3c3 is an ancestor after the merge (TI 434: on TI's branch); if not, CCV_FOREGROUND=1.
-  If it is, launch gates per TI 420 and wait with tools/gate-wait.sh <job log> (exit 3 = rerun, 4 = killed).
+- GATES: 518cb3c3 is merged (2026-11-15): launch gate-push, then tools/gate-wait.sh <job log> (exit 3 = rerun, 4 = killed).
 - PHASE 5 (rcu-impl.md): spec reconciled (RA rev 140/141); RI's rev 140 items closed (RA rev 142). Before DA
   sign-off: rev 143 CLOSED (TI 430); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
   ADDR_BASE. Reported to Daniel 2026-11-14.
