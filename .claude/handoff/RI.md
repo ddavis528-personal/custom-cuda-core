@@ -16,7 +16,8 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
+- Last push: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
+  Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
   (kill detector in the top, CG unit ccv_rcu, per-slot ngd.json), TI's 079b64c2 and the daily sweep merges.
   RI-34 (RI tab rev 68) written; notices sent to TI (merge 8fcec64b), RA, AR, OA, OI.
@@ -51,15 +52,13 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
--17. NOW (2026-11-15 10:40) Sweep 2026-11-15 + RA 148/AR 356 (2): ri-sweep15 in ri-wt12 = TI doowtf bd1cc5a2 (has
-   9f513f3b, PF-47 base 1) + 8f00fdf8 (model times address from CCV_LAT_RCU_ADDR; base 2 tried: correct, only
-   base-1-tuned bins move, ~/ccv-logs/ri-addrbase2-check-kernel.log) + sweep merges (126afa13 8, 57eff422 14,
-   80102643 18, 9eb50716 4, c22116ce 1, miu-dcu-spec 17; no conflicts) + 0fe15d9a (unit test addr-cycle, control
-   addr-late caught). Full gate-push: job-gate-push-20261115-103748-27855.log (waiter bgfhs6qh9). Killed the
-   earlier scoped gate of 8f00fdf8 alone. ON PUSH: RI-54 re:TI-440/RA 148/AR 356 (2): ask TI to add addr-late to
-   tools/check-rcu-unit.sh's control list (count 8); notices TI, RA, AR. Not Friday: no pings. session-home
-   --check matches (from ri-wt). MA tab has no roster node: unread.
-   Bookmarks: Conv 19 AR 358 OA 418 IS 194 TI 442 OI 350 CP 158 DA 119 RA 148 RI 82 MA 54.
+-17. DONE (2026-11-15) Sweep 2026-11-15 + RA 148/AR 356 (2): pushed ce5f44dd (full clean gate PASS; ri-sweep15
+   in ri-wt12) = TI doowtf bd1cc5a2 + 8f00fdf8 (model times address from CCV_LAT_RCU_ADDR; base 2 tried:
+   correct, only base-1-tuned bins move, ~/ccv-logs/ri-addrbase2-check-kernel.log) + sweep merges (126afa13,
+   57eff422, 80102643, 9eb50716, c22116ce, miu-dcu-spec) + 0fe15d9a (unit test addr-cycle, control addr-late).
+   RI-54 (RI tab rev 83) written; notices TI, RA, AR. WAITING: TI adds addr-late to tools/check-rcu-unit.sh
+   (count 8), stub timing + RTL base!=1 refusal (TI's); TI merges ce5f44dd. MA tab has no roster node: unread.
+   Bookmarks: Conv 19 AR 358 OA 418 IS 194 TI 442 OI 350 CP 158 DA 119 RA 148 RI 83 MA 54.
 -16. NOW (2026-11-14 ~17:50) SFU pair PUSHED 9f513f3b (SCOPED PASS 24/24). OI-148 (OI rev 349) gave go. RI-53
    (RI tab rev 82) written, notices TI+OI+RA. Task 33 done; RA 146 done. Bookmarks: OI 349, RI 82.
    WAITING: TI merges 9f513f3b; TI kill kernel; DA's RI-47 waivers + sign-off after RA's report.
