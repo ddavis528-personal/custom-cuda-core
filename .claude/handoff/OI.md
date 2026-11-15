@@ -39,7 +39,7 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 351, RA 146, IS 193, TI 434, OA 416, OI 348, CP 157, DA 119, RI 81, MA 54
+Conventions 19, AR 355, RA 146, IS 193, TI 439, OA 418, OI 350, CP 157, DA 119, RI 82, MA 56
 (sweep 11-14: merged 183cc441 66, 9eb50716 25, 126afa13 2, 888218a3 1, c22116ce 1, miu-dcu-spec 1; pushed 613b7f6c (full PASS).
 Pongs to Friday's pings: all OK. TI 518cb3c3 (detached tool exits 5) not yet in OI's branch: merge it next.
 AR 349 (Needs TI, MA): coremark128 operand mismatch lane 0 seq 917 + dec_ooe_uop response_within_n; not OI's yet. sweep 11-13 (late, by hand): merged 8 branches incl. TI a46afef7 (MEMOP_CREDITS, no_hit, gate detach:
@@ -57,6 +57,10 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-8. #56 AR 355 (3): base-5 cm128 operand CHECK seq 179681 (warp 0, R14). Debug build 8dbf290b on
+   gate-scratch/OI (worktree /home/user/wt-dbg355, ADDR_BASE 5, CCV_DBG_SEQ dumps DBGHELD/DBGEXEC/DBG).
+   RH asked 11-15 to run it unbounded (DCU 64x8) and return the dumps. Then root-cause, OI row, ring AR.
+   Hypothesis: spec-wake consumer ran on a stale operand, no replay (base 5: wake 17, cmpl 18).
 -7. DA 11-13 approved, after #39: #51 ooe_rendep to 25 (gsn_cq01h 28.5, psn_cq01h 28.8); #52 ooe_rob_w
    (NGD-1 29.6, al_n 29.2, dn_tag 26.3, fl_slot 28.6, fl_v 29.5); #53 ooe_go (NGD-1 26.1, ha 27.9, hv 28.9,
    pl 27.2, px 28.0, reach 25.3, wt 25.0; leave port-budget caps under 25); #54 ooe_sched (NGD-1 26.7,
