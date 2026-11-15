@@ -223,10 +223,10 @@
     },
     {
       "name": "CCV_DCU_SETS",
-      "value": 64,
+      "value": 512,
       "status": "tunable",
-      "decided_at": "AR's L1 capacity sweep (MA-3 (a))",
-      "doc": "L1 data cache sets, a power of two (MA-15, AR rev 344): with CCV_DCU_WAYS 8 and 128-byte lines, the 64 KiB baseline of Phase 1; 512 KiB reopens with AR's sweep. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_SETS still overrides it for a sweep."
+      "decided_at": "DA, 2026-11-15 (MA 61): the L1 is built for 512 KiB",
+      "doc": "L1 data cache sets, a power of two (MA-15, AR rev 344): with CCV_DCU_WAYS 8 and 128-byte lines, 512 KiB, built for from the start (DA, 2026-11-15, MA 61): growing later is the hard direction; 128 and 64 sets are configured-down points, reached through the override below. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_SETS still overrides it for a sweep."
     },
     {
       "name": "CCV_DCU_WAYS",
