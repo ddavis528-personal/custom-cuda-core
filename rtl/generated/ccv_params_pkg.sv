@@ -588,21 +588,29 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_L1_HIT = 7;
 
-  // RCU's time from the issue's landing to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop, RCU's own time only. A boundary flop on the issue end would be the crossing's bnd_rx, counted in CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL, never in this base (AR's revs 300 and 301 (re:RI-16)); since RA-43 the end is zero-cycle, bnd_rx(ccv_ooe_rcu_issue) 0 (AR's rev 332). 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. PF-47 (docs/perf-register.md), still to be reapplied, takes it to 1, and CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 14 (AR rev 301; 14 with RA-43, AR rev 332). Tunable: RCU's session confirms or moves it.
-  // PROVISIONAL -- decided by: RCU per-block session; AR's revs 300 and 301 (re:RI-16)
-  localparam int CCV_LAT_RCU_ADDR_BASE = 5;
+  // RCU's time from the issue's landing to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop, RCU's own time only. A boundary flop on the issue end would be the crossing's bnd_rx, counted in CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL, never in this base (AR's revs 300 and 301 (re:RI-16)); since RA-43 the end is zero-cycle, bnd_rx(ccv_ooe_rcu_issue) 0 (AR's rev 332). 1 is PF-47 (docs/perf-register.md), reapplied at AR's rev 351 and confirmed by RA's rev 145, which takes CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 14 (AR rev 301; 14 with RA-43, AR rev 332). It was 5, a placeholder (Daniel, 2026-10-08, register OA-5). Tunable: RCU's session confirms or moves it.
+  // PROVISIONAL -- decided by: AR's rev 351 (PF-47 reapplied), RA's rev 145
+  localparam int CCV_LAT_RCU_ADDR_BASE = 1;
 
   // RCU's issue-to-address time (A-61). Inside RCU, so no link and no boundary flop enters it; the crossings either side, bnd_rx included, are counted where it is used (AR's rev 301: counted here as well, CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL would take the issue flop twice, 18 and 20).  Derived: = CCV_LAT_RCU_ADDR_BASE.
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_RCU_ADDR = 5;
+  localparam int CCV_LAT_RCU_ADDR = 1;
 
   // Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16)).  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue')).
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_L1_WAKE = 17;
+  localparam int CCV_LAT_L1_WAKE = 13;
 
   // Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16)).  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl').
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_L1_CMPL = 18;
+  localparam int CCV_LAT_L1_CMPL = 14;
+
+  // MIU's stages from holding both the memop and its address to the no-hit leaving on ccv_miu_ooe_cmpl_hint: the address stage's decision from the address alone (OA 410) and its output flop. 2 is the count that gave OA 410's I+13 at CCV_LAT_RCU_ADDR_BASE 5; confirmed by MA rev 56; provisional with MIU's Phase 1 model.
+  // PROVISIONAL -- decided by: MA rev 56 (re:AR 353 (2))
+  localparam int CCV_LAT_MIU_NOHIT_A2 = 2;
+
+  // Issue to a no-hit's payload landing on ccv_miu_ooe_cmpl_hint (OA 410); its valid is a cycle earlier. MIU's address stage decides the no-hit from the address alone, so it starts where CCV_LAT_L1_WAKE does, from the max of the memop's and the address's paths, then CCV_LAT_MIU_NOHIT_A2 stages and the hint's crossing back to OOE. 13 at CCV_LAT_RCU_ADDR_BASE 5 (OA 410's I+13), 9 at PF-47's base 1. The require keeps OA 410's flop at payload and clear the next cycle ahead of the speculative wake, so a latency change that would land the no-hit with the wake fails here, not in a unit test (AR 353 (1)); the margin 2 is OOE's, measured exactly (OA 416: a flop at the payload and the clear the next cycle; nothing in OOE assumes I+13).  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_MIU_NOHIT_A2 + CCV_LAT_HOP + link_n('miu_ooe_cmpl_hint') + bnd_rx('miu_ooe_cmpl_hint').  Requires: CCV_LAT_L1_NOHIT + 2 <= CCV_LAT_L1_WAKE.
+  // PROVISIONAL -- decided by: AR 353, AR 354; margin OA 416; A2 MA rev 56
+  localparam int CCV_LAT_L1_NOHIT = 9;
 
   // After a miss, from the completion's arrival at OOE to the dependant's earliest select (OA's response OI-26). Two parts. The data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read, so the dependant reaches RCU no sooner than the data (OI-13): MIU sends the data to RCU and the completion to OOE over different links. Plus 1: the wake is driven by the completion's arrival rather than a timer, so it cannot be raised a cycle early and reaches the ready stage a cycle after a timed wake would (OA-1). 1 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring.  Derived: = max(0, CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue')) + 1) + 1.
   // PROVISIONAL -- decided by: generated
@@ -683,6 +691,10 @@ package ccv_prov_pkg;
   // Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). The spec's MIU parks misses and never blocks one warp behind another (AR rev 321, MA-14), so a slot's memop waits behind at most its own slot's CCV_MEMOP_CREDITS - 1 others, one memory-length stall each: the CCV_P_TIMEOUT_BP rule applied to MA-5's credits. A watchdog and a sizing signal, provisional until MA's Phase 1 model: each gate run reports the channel's longest credit hold (BPAGE). The MIU stub's cross-warp head-of-line block (MA-14's deviation) is not what it is sized to.  Derived: = CCV_MEMOP_CREDITS * CCV_P_TIMEOUT_MEM.
   // PROVISIONAL -- decided by: with CCV_P_TIMEOUT_MEM
   localparam int CCV_P_TIMEOUT_MEMOP = 20480;
+
+  // Outstanding-message watchdog for ccv_dec_ooe_uop. The decode queue holds DEC's uops while rename stalls, and rename stalls behind ccv_ooe_miu_memop's credits, each held up to CCV_P_TIMEOUT_MEMOP; a held uop waits at most until the oldest outstanding memop slot returns, plus OOE's issue latency, which is in the noise against it, so the two are taken equal (AR 352). CCV_P_TIMEOUT_BP (8192) was derived when a memop answered within CCV_P_TIMEOUT_MEM; under PF-47 coremark128 held a uop credit 8252 cycles. The held: chain upstream of memop was walked (AR 352 (2)): ccv_rau_rcu_mig and ccv_ooe_rcu_map are sent only once the warp holds no memop (OOE's map on a demotion after the drain, RAU's notice after ccv_ooe_rau_drained; a restore after its bounded allocate), ccv_miu_dcu_req is downstream of memop, and the fetch side holds no message (FET is paced by ccv_ooe_fet_decq_credit counts, and ccv_fet_dec_instr carries no credit), so none of them takes this bound. Provisional with CCV_P_TIMEOUT_MEMOP until MA's Phase 1.  Derived: = CCV_P_TIMEOUT_MEMOP.  Requires: CCV_P_TIMEOUT_UOP >= CCV_P_TIMEOUT_MEMOP.
+  // PROVISIONAL -- decided by: with CCV_P_TIMEOUT_MEMOP
+  localparam int CCV_P_TIMEOUT_UOP = 20480;
 
   // Predicate physical register index, sized by CCV_P_PRED_REGS (it was 8, addressing 256 entries against a 16-deep file). The predicate file is a SEPARATE namespace with its own RAT; sharing CCV_P_W_PHYS_REG would recouple two files that were deliberately split. One index past the pool is reserved for the hardwired zero predicate (A-64, A-67).  Derived: = clog2(CCV_P_PRED_REGS + 1).
   // PROVISIONAL -- decided by: Stage 4a -- OOE rename session sizes the predicate RAT

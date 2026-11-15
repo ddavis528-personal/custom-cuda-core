@@ -542,7 +542,7 @@ inline constexpr FieldDesc kF_ccv_miu_ooe_cmpl_hint[] = {
 inline constexpr ChanDesc kChans[] = {
   {0, "ccv_fet_dec_instr", Blk::FET, Blk::DEC, 8, 162, 12, kF_ccv_fet_dec_instr, 1, false, 2, Order::kSlotGroup, -1, false, 2, 1, false, false, 4, 8192},
   {1, "ccv_ooe_fet_decq_credit", Blk::OOE, Blk::FET, 4, 7, 3, kF_ccv_ooe_fet_decq_credit, 1, false, 1, Order::kSlotGroup, -1, false, 1, 0, false, false, 4, 8192},
-  {2, "ccv_dec_ooe_uop", Blk::DEC, Blk::OOE, 6, 236, 35, kF_ccv_dec_ooe_uop, 1, false, 0, Order::kField, 0, false, 2, -1, false, true, 4, 8192},
+  {2, "ccv_dec_ooe_uop", Blk::DEC, Blk::OOE, 6, 236, 35, kF_ccv_dec_ooe_uop, 1, false, 0, Order::kField, 0, false, 2, -1, false, true, 4, 20480},
   {3, "ccv_ooe_rcu_issue", Blk::OOE, Blk::RCU, 9, 290, 45, kF_ccv_ooe_rcu_issue, 1, false, 1, Order::kNone, -1, false, 2, -1, true, false, 4, 8192},
   {4, "ccv_rcu_lane_ops", Blk::RCU, Blk::LANE, 1, 344, 12, kF_ccv_rcu_lane_ops, 32, false, 0, Order::kNone, -1, true, 2, -1, true, false, 4, 8192},
   {5, "ccv_lane_rcu_res", Blk::LANE, Blk::RCU, 1, 73, 5, kF_ccv_lane_rcu_res, 32, false, 0, Order::kNone, -1, true, 2, -1, true, false, 4, 8192},

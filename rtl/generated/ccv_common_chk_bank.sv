@@ -132,42 +132,42 @@ module ccv_common_chk_bank (
   ccv_common_chk_atomic #(.N(4)) u_ooe_fet_decq_credit_atomic (
     .clk(clk), .rst_n(rst_n), .enable(1'b0 | force_atomic),
     .valid(valid[11:8]), .credit(credit[11:8]));
-  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_dec_ooe_uop_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_UOP)) u_dec_ooe_uop_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[12]), .ch_credit(credit[12]), .ch_stall(stall[12]),
     .ch_payload(payload[1559:1324])
 `ifdef CCV_TRACE
     , .ch_tid(tid[831:768])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_dec_ooe_uop_s1 (
+  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_UOP)) u_dec_ooe_uop_s1 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[13]), .ch_credit(credit[13]), .ch_stall(stall[13]),
     .ch_payload(payload[1795:1560])
 `ifdef CCV_TRACE
     , .ch_tid(tid[895:832])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_dec_ooe_uop_s2 (
+  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_UOP)) u_dec_ooe_uop_s2 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[14]), .ch_credit(credit[14]), .ch_stall(stall[14]),
     .ch_payload(payload[2031:1796])
 `ifdef CCV_TRACE
     , .ch_tid(tid[959:896])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_dec_ooe_uop_s3 (
+  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_UOP)) u_dec_ooe_uop_s3 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[15]), .ch_credit(credit[15]), .ch_stall(stall[15]),
     .ch_payload(payload[2267:2032])
 `ifdef CCV_TRACE
     , .ch_tid(tid[1023:960])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_dec_ooe_uop_s4 (
+  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_UOP)) u_dec_ooe_uop_s4 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[16]), .ch_credit(credit[16]), .ch_stall(stall[16]),
     .ch_payload(payload[2503:2268])
 `ifdef CCV_TRACE
     , .ch_tid(tid[1087:1024])
 `endif
   );
-  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_dec_ooe_uop_s5 (
+  ccv_common_chk_credit #(.PAYLOAD_W(236), .CHANNEL(2), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_UOP)) u_dec_ooe_uop_s5 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[17]), .ch_credit(credit[17]), .ch_stall(stall[17]),
     .ch_payload(payload[2739:2504])
 `ifdef CCV_TRACE

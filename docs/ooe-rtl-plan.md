@@ -527,6 +527,10 @@ Built (`rtl/ooe/`):
   (101,453 renames, 59,615 in-group, none differ; the four controls
   caught). `ooe_ratread` is 13.3 NGD alone, under the 16 an uninstantiated
   helper is held to; `ooe_rat` is 11.7 flop to flop and 12.5 input to flop.
+  *Since 2026-11-14:* ooe_rename reads through `ooe_headrd` (one per slot),
+  so `ooe_ratread` is the RAT bench's reader alone and moved to
+  `test/ooe/ooe_ratread.sv`, its NGD unit and its 43 NGD-6 fanout caps
+  (worst 20.8) with it (#39).
   Three entries stay: `ret_dst` and `ret_gwe` from the default arrival of
   13 (NGD-3; `ret_gwe` at 25.2, within synthesis noise; an arrival budget
   for retire's ports clears both), and

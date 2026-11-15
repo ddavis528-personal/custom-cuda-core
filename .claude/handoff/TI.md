@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-13. Keep this current at every task's end; it is what
+Updated 2026-11-14. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -32,45 +32,39 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 424, AR 349, OA 414, RI 71, MA 46 (2026-11-13). MA (MIU/DCU architect,
-session_01QPk2jyUbWA7fW9YpUwqdxk) is not in the roster: notice.py says
-none, so compose with --to AR and edit the header by hand.
+TI 435, RA 146, RI 81, OI 349, AR 351, OA 416, MA 54, IS 193, CP 157,
+DA 119, Conventions 19 (2026-11-14). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
-## Long runs (DA, 2026-11-13)
-Landed in a46afef7: every long tool (verify, gate-push, daily-sweep,
-make-release) detaches itself and prints its job log. Wait with
-`tools/gate-wait.sh <job log>` as a background task (exit 3 = still
-running: rerun at once; 4 = killed by a container restart: rerun the job),
-plus a send_later check-in. `tools/bg-run.sh <name> <cmd...>` for others.
+## Long runs
+Every long tool detaches itself and exits 5 (never 0) when it does (OA-414,
+518cb3c3). Wait with `tools/gate-wait.sh <job log>` as a background task,
+timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
+restart: rerun the job). Logs in /root/ccv-logs/.
 
-## State (2026-11-13 ~13:50Z)
-- Daily sweep 11-13 landed a46afef7 on both push branches (full clean gate
-  PASS; release fb6d9f23; snapshot tag refused by the remote). It carries
-  ti-detach, ti-ma (MA-5 entry-free credits 20dfbaf0) and ti-sram (SRAM
-  macros 930f49e9) and every agent branch.
-- Rows for all of it written at TI rev 420 (after a docs outage 13:45-14:20Z);
-  notices sent to AR OA OI RA RI RH IS CP MA.
-- RI-40 (rev 71): info only; RI's event-divergence line 'EVENTS DIVERGE'
-  is not what TI's control greps; RI moves to gate-wait.sh.
-- Worktree: ti-sram is the current one. Backups to gate-scratch/TI-<name>
-  by plain push only (force-push is denied).
-- Disk: deleting other sessions' /tmp/tmp.* was denied; ask the user.
+## State (2026-11-14 ~16:00Z)
+- Landed 11-14: 6061d0ee (RI-44), 7079fc14 (RI-49), 518cb3c3 (OA-414),
+  then the daily sweep e48fa517 (full clean gate PASS; release ca10124c;
+  snapshot tag refused by the remote, as always).
+- Daily sweep conflicts were all .claude/handoff/RA.md: take RA's newest.
+  scratchpad premerge.sh pre-merges every branch, keeping ours on RA.md.
+- Local, ungated: gate-wait reads only verify-*.log (it printed NO RESULT
+  for a sweep's release log); make-release prints its gate verdict. Rides
+  the next gate-push.
+- Worktree: /home/user/ti-sram. Backups to gate-scratch/TI-<name>, plain
+  push only. Disk: deleting other sessions' /tmp/tmp.* was denied; ask.
 
 ## Open work (most urgent first)
-0. AR 349/350 cm128 (ti-sram d696586b, on gate-scratch/TI-sram, NOT gated): AR 350 ruled
-   CCV_P_TIMEOUT_MEMOP 20480 per slot (provisional; stub-only 81920 marked MA-14 if its hold
-   passes 20480). Done: param/schema timeout_param, gen-skel, BPAGE hold report; check-kernel
-   bounded cm128 45000 cycles from a PARTIAL=1 oracle (24 s; hold 20163; control = bank rebuilt
-   at 8192 via tools/build-skel.sh fires). cm32 unbounded clean (2,778,125 cycles, ~15 min,
-   hold 6185). cm128 unbounded: bg-run job cm128-full (binary scratchpad bin/ccv-skel-memop20480,
-   log scratchpad cm128-full.log, empty until exit; ~6 h expected, started 18:26 UTC);
-   tools/gate-wait.sh /root/ccv-logs/cm128-full.log (exit 3 = rerun). Then: widen if needed,
-   gate-push, row to AR+MA (cycles, wall, max hold, post-J12 cm128 runs affected).
-1. RI-42 / RA-37 CCV_RCU_RTL (go at TI rev 422): once RI pushes test/rcu/ccv_rcu_svh.sv,
-   TI adds gen-top second RCU DPI shim ccv_rcu_dpi, the check-sv-hosted.sh selector
-   (SVHOST 45/46 + rcu=rtl divergences=0), controls: shim_delay on shadow, flipped RTL
-   output, unread-GPR flip vs end-of-run RTL GPR/pred dump. In the full gate.
-   RI-41 631d7fc6 rides the 11-14 sweep.
-2. MI/DI homes when their first files land.
-3. Older: RI-24 (3) job_rcu_rtl lock-step; RI-23 per-unit records +
-   block_report.py.
+1. PF-47 + SFU pair, ti-sram 880f2d1c (backed up to gate-scratch/TI-sram), NOT pushed:
+   PF-47 (base 1; RCU_ADDR 1, L1_WAKE 13, L1_CMPL 14), CCV_P_TIMEOUT_UOP (AR 352 (a):
+   derive = CCV_P_TIMEOUT_MEMOP, require >=, on ccv_dec_ooe_uop; chain walk in its doc),
+   8192 control needs memop AND uop to fire, RI's SFU pair 9f513f3b merged (held-over-r
+   on warp 1). check-kernel, svh, ngd pass. AR 352 (4): before pushing, report uop and memop
+   longest holds on UNBOUNDED cm32 and cm128 with AR 350 cond. 1. Running detached,
+   binary scratchpad bin/ccv-skel-pf47sfu: /root/ccv-logs/cm32-pf47sfu.log and
+   /root/ccv-logs/unbounded-pf47sfu.log (cm128; its cm32 leg failed: no oracle, ignore).
+   Wait with gate-wait. Then: TI row to AR, MA, RA, OI, RI (holds, cycles, wall); then
+   gate-push (scoped); AR re-books PF-33/PF-47. If cm128 uop hold > 20480: ask AR.
+3. AR 350 cm128 unbounded is the run above (same report).
+4. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
+5. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
+   ooe_rs from a flop. RI-21 (4): rcu_dec_pkg switch after sign-off.
