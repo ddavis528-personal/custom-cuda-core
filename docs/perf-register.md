@@ -69,7 +69,7 @@ it.
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
-| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266), still 1 under RI-11, whose cycle is a link term (AR rev 300); held: TI reverted it (rev 288) until OI fixes ooe_wake NGD-3 and the rs_tb no-msd control; 2 if RCU's M1 misses |
+| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266), still 1 under RI-11, whose cycle is a link term (AR rev 300); landed in bd1cc5a2 (TI rev 439, RA rev 145 confirming the RTL), re-booked on the stubs (AR rev 355); 2 if RCU's M1 misses |
 | PF-48 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
 | PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
 | PF-50 | Packed contiguous lanes for narrow ops | OOE, LANE, RCU, MIU, schema | deferred (DA, 2026-11-03) |
@@ -740,15 +740,31 @@ it.
       re-run on MA's Phase 1 resource model.
   - coremark128 has no figures yet. AR's runs had not finished after 5
     hours, and AR took that for a defect (AR rev 349). TI found otherwise
-    (TI rev 424):
-    - The memop credit watchdog, `CCV_P_TIMEOUT_BP` = 8192, no longer
-      fits MA-5's entry-held credits behind the stub's slow store
-      scatters. AR rev 350 takes a per-slot `CCV_P_TIMEOUT_MEMOP` =
-      20480 on conditions.
-    - The operand CHECKs AR saw are those held at the `--cycles` bound.
-    - 9167efab's own `dec_ooe_uop` failure comes from merging OI's
-      efe09c78 without TI's d3bf0562.
-    The axis is re-run once both are fixed on AR's branch.
+    (TI rev 424): the memop credit watchdog, `CCV_P_TIMEOUT_BP` = 8192, no
+    longer fit MA-5's entry-held credits behind the stub's slow store
+    scatters (AR rev 350 took a per-slot `CCV_P_TIMEOUT_MEMOP` = 20480,
+    and AR rev 352 put `ccv_dec_ooe_uop` on the same bound); the operand
+    CHECKs AR saw were those held at the `--cycles` bound.
+  - **Re-run on bd1cc5a2 (AR's runs, 2026-11-15, at
+    `CCV_LAT_RCU_ADDR_BASE` 1 and `CCV_LAT_L1_HIT` 7; the 64 KiB
+    coremark128 figure is TI's, rev 436, on 880f2d1c, which simulates the
+    same: its coremark32 matches AR's to the cycle):** every run finishes
+    clean.
+
+    | | 64 KiB | 512 KiB | 512 against 64 |
+    |---|---|---|---|
+    | coremark32 | 2,776,587 | 2,580,427 | -7.06% |
+    | coremark128 | 73,617,464 | 5,529,486 | -92.5% |
+
+    coremark32 confirms the 6.5% above (misses 1,284 to 507).
+    coremark128 does not book L1's size. Its L1 misses are 747,598 at
+    64 KiB (the base-5 run) against 3,095 at 512 KiB. PF-46 booked
+    interleaved coremark128 at 64 KiB in 2,838,912 cycles (13b4cfd), and
+    at 8 KiB direct-mapped in 3,340,054, with 512 KiB saving 7.1%. So the
+    kernel's working set has grown past 64 KiB since then, or its data now
+    alias in L1's sets. TI bisects it (AR rev 355); until then this row is
+    a symptom, not a size. The longest credit holds at 512 KiB are
+    `ccv_dec_ooe_uop` 8,253 and `ccv_ooe_miu_memop` 19,176 of 20,480.
 
 ### PF-34 Same-address combining for atomics, built from lane adds
 
@@ -1288,6 +1304,28 @@ it.
   | loop | 2,942 to 2,842 (-3.4%) | 2,942 to 2,842 |
   | S1 (sweep.sh's ten kernels) | 4,034 to 3,918 (-2.88%) | 4,037 to 3,921 (-2.87%) |
   | all 63 kernels | 56,067 to 54,749 (-2.35%) | 56,011 to 54,685 (-2.37%) |
+- **Landed and re-booked (TI rev 439, bd1cc5a2; AR rev 355, 2026-11-15):**
+  base 5 to 1 takes `CCV_LAT_L1_WAKE` from 17 to 13 and `CCV_LAT_L1_CMPL`
+  from 18 to 14. MIU's no-hit moves with the address to payload I+9
+  (`CCV_LAT_L1_NOHIT`, derived from the address's arrival, AR revs 353
+  and 354, MA rev 56, OA rev 418). On the stubs (L1 8x64, AR's runs at
+  base 1 and 5 on the same commit):
+
+  | | base 5 | base 1 | change |
+  |---|---|---|---|
+  | S1 (ten kernels) | 3,917 | 3,917 | 0 |
+  | coremark32 | 2,778,125 | 2,776,587 | -0.055% |
+  | coremark128 | 74,270,259 | 73,617,464 | -0.88% |
+
+  This is not PF-33's 2% a cycle. At wake 13 the stub MIU delivers most
+  hits after their contract cycle, and A-46 takes a late hit as a miss.
+  On coremark32, `l1_hit` falls from 38,919 to 7,788, `l1_late` rises from
+  40,442 to 71,573, and `reexec` from 75,181 to 90,972. PF-33's hit-5
+  point showed the same. So the figure is the stub's turnaround, a floor;
+  the gain is booked on MA's Phase 1 model. The decision stands: RA rev
+  145 met the timing in the RTL. At base 5, coremark128 also failed one
+  operand CHECK (seq 179681, R14, all 32 lanes) while its final state was
+  exact; that is the model's to root-cause (AR rev 355).
 
   The all-kernel sum includes rope, which runs clean before the change and
   after it fails OI's OA-17 check on L1 speculation (it passes with
