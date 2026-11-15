@@ -906,6 +906,9 @@ private:
     uint64_t serial = 0;             ///< names it to the DCU responses
     uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
     bool frame = false;              ///< its lanes span windows: O-30 frames (AR-23)
+    /// MA-4's eligibility lost from the address alone (lane group, page,
+    /// bank): never an L1 hit, and MIU says so early with a no-hit (AR 356).
+    bool inelig = false;
     /// A predicate transfer (TI-36): one word at lane 0's address. A store
     /// carries its predicate's word, merged into memory's after commit.
     bool pxfer = false;
@@ -948,6 +951,7 @@ private:
   }
   /// A hit's completion and data, held for the contract cycle.
   struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
+  std::vector<Timed> held_;   ///< ineligible loads' completions, held past the contract (MA-4)
   std::deque<Timed> timed_;
 
   std::map<unsigned, Memop> memop_;
@@ -1071,7 +1075,7 @@ private:
   std::deque<Q> to_rcu_, to_ooe_, to_dcu_, to_fet_;
   /// Hints promised to OOE (OA-23), each launched at its cycle; and the
   /// credits held back for hinted completions and their data, by slot.
-  struct Hint { uint64_t at; Q q; };
+  struct Hint { uint64_t at; Q q; bool no_hit = false; unsigned tag = 0; };
   std::deque<Hint> hints_;
   std::map<std::pair<unsigned, unsigned>, unsigned> resv_;
   /// The replay drain (TI-21): requests a bulk discard abandoned at DCU, by
@@ -1137,6 +1141,23 @@ private:
         notice(unsigned(get(take(c.fill_ntc, s).payload, c.fill_ntc, "req_id")));
     for (auto it = hints_.begin(); it != hints_.end();) {
       if (it->at != now_) { ++it; continue; }
+      if (it->no_hit) {
+        // A no-hit is advice, never a promise (OA 410): it holds no credit,
+        // so a refill hint on its slot this cycle wins, and it is dropped
+        // when its slot has no free credit or its load is no longer
+        // outstanding (a no-hit on anything else is a protocol error).
+        bool refill = false, live = false;
+        for (const Hint &h : hints_) refill = refill || (!h.no_hit && h.at == now_ && h.q.slot == it->q.slot);
+        for (const Job &j : jobs_) live = live || (!j.store && j.tag == it->tag);
+        if (refill || !live || !free(c.cmpl_hint, it->q.slot)) {
+          k_.hit("l1_nohit_drop");
+        } else {
+          send(c.cmpl_hint, it->q.slot, it->q.msg, it->q.tid);
+          k_.hit("l1_nohit");
+        }
+        it = hints_.erase(it);
+        continue;
+      }
       if (!can(c.cmpl_hint, it->q.slot))
         k_.fail("miu: the hint promised on slot %u at cycle %llu has no credit",
                 it->q.slot, (unsigned long long)now_);
@@ -1361,6 +1382,14 @@ private:
     for (auto it = late_faults_.begin(); it != late_faults_.end();)
       if (it->first <= now_) { to_ooe_.push_back(it->second); it = late_faults_.erase(it); }
       else ++it;
+    for (auto it = held_.begin(); it != held_.end();)
+      if (it->at <= now_) {
+        to_rcu_.push_back(it->data);
+        to_ooe_.push_back(it->cmpl);
+        it = held_.erase(it);
+      } else {
+        ++it;
+      }
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
         if (free(chan, it->slot)) {
@@ -1872,7 +1901,64 @@ private:
       to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
       return;
     }
+    if (j.global && j.active) eligibility(j, mo);
     launch(j);
+  }
+
+  /// MA-4's eligibility for the L1-hit contract (MIU tab, MA's Phase 1
+  /// draft; AR 356): a global load keeps it only if every active lane's
+  /// line is its group's leader's, the access stays in one page, and its
+  /// leaders' lookups meet no bank conflict (DCU's 4 banks by line address
+  /// bits [8:7]); a tag miss is not known from the address, and stays the
+  /// contract's miss. The memop's F pipes split the warp into F groups of
+  /// 32/F consecutive lanes, a group's leader its lowest active lane. A
+  /// load that loses it is never an L1 hit, and A2 says so early: a no-hit
+  /// on ccv_miu_ooe_cmpl_hint, payload at I + CCV_LAT_L1_NOHIT, on the
+  /// memop's slot (OA 410, MA 56). no-nohit: none is sent, so l1_nohit is
+  /// never reached.
+  void eligibility(Job &j, const Memop &mo) {
+    const Ch &c = ch();
+    const unsigned pipes = unsigned(get(mo.msg, c.ooe_miu, "pipes"));
+    const unsigned f = pipes ? unsigned(__builtin_popcount(pipes)) : 1u;
+    const unsigned per = kLanes / f;
+    const uint64_t page = j.addr[__builtin_ctz(j.active)] >> ccv::kLPageShift;
+    std::vector<uint64_t> leads;
+    bool ok = true;
+    for (unsigned g = 0; g != f; ++g) {
+      bool have = false;
+      uint64_t lead = 0;
+      for (unsigned l = g * per; l != (g + 1) * per; ++l) {
+        if (!(j.active >> l & 1u)) continue;
+        const uint64_t line = keyOf(j, l);
+        if (j.addr[l] >> ccv::kLPageShift != page) ok = false;
+        if (!have) {
+          have = true;
+          lead = line;
+          if (std::find(leads.begin(), leads.end(), line) == leads.end()) leads.push_back(line);
+        } else if (line != lead) {
+          ok = false;
+        }
+      }
+    }
+    for (size_t a = 0; a != leads.size(); ++a)
+      for (size_t b = a + 1; b != leads.size(); ++b)
+        if ((leads[a] / kLine) % 4 == (leads[b] / kLine) % 4) ok = false;
+    if (ok) return;
+    j.inelig = true;
+    j.hit = false;
+    k_.hit("l1_inelig");
+    if (k_.brk == "no-nohit") return;
+    const uint64_t issue = mo.at - crossing(c.ooe_miu);
+    const uint64_t at = issue + ccv::prov::kLatL1Nohit - crossing(c.cmpl_hint);
+    if (at <= now_) {   // MIU reached it too late to say so in time
+      k_.hit("l1_nohit_drop");
+      return;
+    }
+    Bits m = msgOf(c.cmpl_hint);
+    put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
+    put(m, c.cmpl_hint, "rob_tag", j.tag);
+    put(m, c.cmpl_hint, "no_hit", 1);
+    hints_.push_back({at, {j.memop_slot, m, j.tid}, true, j.tag});
   }
 
   /// A .shared access's passes (TI's rev 230): each active lane, in
@@ -2162,13 +2248,21 @@ private:
   void advance() {
     const Ch &c = ch();
     const unsigned rate = kChans[c.miu_dcu].rate;
-    // Up to one line request per DCU slot per cycle, the oldest job's first.
+    // Up to one line request per DCU slot per cycle, the oldest job's first,
+    // but a just-started one-line global load first of all (TI-440): its
+    // one lookup can still meet the L1 contract, which an older gather's
+    // remaining lines cannot.
     bool want = false;
     for (const Job &j : jobs_) want = want || j.next != j.lines.size();
     if (want && !ids_.any()) k_.hit("dcu_id_wait");
+    std::vector<Job *> order;
+    for (Job &j : jobs_)
+      if (j.global && !j.store && j.lines.size() == 1 && j.next == 0) order.push_back(&j);
+    for (Job &j : jobs_)
+      if (std::find(order.begin(), order.end(), &j) == order.end()) order.push_back(&j);
     unsigned s = 0;
-    for (Job &job_ : jobs_)
-    for (; s != rate && job_.next != job_.lines.size(); ++s) {
+    for (Job *jp : order)
+    for (Job &job_ = *jp; s != rate && job_.next != job_.lines.size(); ++s) {
       if (!can(c.miu_dcu, s) || !ids_.any()) continue;
       const LineReq &lr = job_.lines[job_.next++];
       Bits r = msgOf(c.miu_dcu);
@@ -2327,6 +2421,11 @@ private:
       } else if (job_.hit && job_.global && now_ <= job_.due) {
         timed_.push_back({job_.due, {job_.addr_slot, d, job_.tid},
                           {job_.memop_slot, cmpl(job_), job_.tid}});
+      } else if (job_.inelig && now_ <= job_.due) {
+        // An ineligible load completes past the contract's cycle, never on
+        // or before it (MA-4: no completion at H+7; A-46, V-44).
+        held_.push_back({job_.due + 1, {job_.addr_slot, d, job_.tid},
+                         {job_.memop_slot, cmpl(job_), job_.tid}});
       } else {
         if (job_.hit) k_.hit("l1_late");
         to_rcu_.push_back({job_.addr_slot, d, job_.tid});
@@ -2336,7 +2435,7 @@ private:
   }
 
   bool busy() const override {
-    return !jobs_.empty() || !late_faults_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||

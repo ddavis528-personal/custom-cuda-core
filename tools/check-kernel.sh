@@ -138,6 +138,9 @@
 #     reads the value its lane forwards          bypass): four stale operands;
 #     (A-59, TI-8)                               an OOE bypassing at 3: RCU
 #                                                refuses it
+#   a load MA-4 takes off the L1-hit        no-nohit (gather): its
+#     contract gets the early no-hit           l1_nohit bin goes unreached
+#     (AR 356, OA 410)
 #   a notice's partner follows on its slot  late-refill, notice-wrong-id,
 #     exactly its lead later, same keys        late-cmpl, hint-wrong-tag
 #     (OA-23, TI-23)                           (vadd): the bank's notice check
@@ -790,15 +793,15 @@ while read -r k want; do
     bad "$k: == ccv-sim, reaches its bins" "${why# }"
   fi
 done <<'KERNELS'
-unal   line_split=3 lines_peak=2 partial_line=2 full_line=0
-gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait=0
+unal   line_split=3 lines_peak=2 partial_line=2 full_line=0 l1_inelig=2 l1_nohit=2
+gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait=0 l1_inelig=1 l1_nohit=1
 gather@CCV_MIU_DCU_IDS=16 lines_peak=32 dcu_id_wait>0 hit_under_miss=2
 loop   redirect=99 ckpt_free=1 reg_reuse>0
 brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
-hit    l1_hit=4 l1_late=0
+hit    l1_hit=4 l1_late=0 l1_inelig=0
 late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=3
 plog   merge=3
@@ -1520,6 +1523,16 @@ fi
 # dependants meet the contract cycle: R6's second reader, seq 13, issues a
 # cycle after seq 11 while one lane op issues a cycle (TI-9), and finds the
 # data in place.
+# MA-4 (AR 356): gather's 32-line load loses the L1-hit contract from its
+# address, and MIU says so with the early no-hit; with --break no-nohit it
+# sends none, and the bin the table above holds gather to goes unreached.
+"$SKEL" --kernel build/oracle/gather/oracle.jsonl --break no-nohit >"$B/kernel_no-nohit.log" 2>&1
+if [ "$(cover "$B/kernel_no-nohit.log" l1_inelig)" = 1 ] && [ "$(cover "$B/kernel_no-nohit.log" l1_nohit)" = 0 ] &&
+   [ "$(field "$B/kernel_no-nohit.log" finished)" = 1 ]; then
+  say "--break no-nohit: gather's l1_nohit unreached" "PASS (ineligible 1, no-hit 0; a dropped no-hit is safe)"
+else
+  bad "--break no-nohit" "the no-hit bin did not depend on MIU: $(grep '^COVER' "$B/kernel_no-nohit.log" | tr ' ' '\n' | grep '^l1_' | xargs)"
+fi
 for brk in late-hit-data no-rcu-bypass; do
   l1ctl "$brk"
   n=$(grep -c "^CHECK lane [0-9]*: seq \(5\|7\|9\|11\) operand 1 " "$B/kernel_$brk.log")
