@@ -9,6 +9,9 @@
 #                gate-push.sh's own verify.sh does
 #   waiting      gate-wait at its limit says so, exit 3
 #   killed       a job gone with no exit status: gate-wait exit 4
+#   fail-closed  detaching returns 5, so a caller that reads the status as
+#                the gate's stops (OA-414); control: a detach that returns 0
+#                lets that caller push
 # Prints one line per claim; exits 0 when every claim and control holds.
 set -uo pipefail
 R=$(cd "$(dirname "$0")/.." && pwd)
@@ -67,6 +70,21 @@ if [ "$rc" = 7 ] && ! grep -q detached <<<"$out"; then
 else
   fail "nested" "exit $rc: $out"
 fi
+# fail-closed: a caller from before the detach, which reads the tool's
+# status as the gate's (OA-414: an old daily-sweep.sh calling the new
+# make-release.sh), must stop, not push. Control: the same caller over a
+# detach.sh that still returns 0 pushes.
+oldcaller() { bash -c "'$1' 1 >/dev/null 2>&1 && echo pushed || echo stopped:\$?"; }
+r=$(oldcaller "$T/longtool.sh")
+sed 's/^  exit 5$/  exit 0/' "$R/tools/detach.sh" >"$T/detach0.sh"
+sed "s|$R/tools/detach.sh|$T/detach0.sh|" "$T/longtool.sh" >"$T/longtool0.sh"; chmod +x "$T/longtool0.sh"
+r0=$(oldcaller "$T/longtool0.sh")
+if [ "$r" = stopped:5 ] && [ "$r0" = pushed ]; then
+  say "fail-closed: an old caller stops on exit 5" "PASS (control: exit 0 pushed)"
+else
+  fail "fail-closed" "caller: $r; control over exit 0: $r0"
+fi
+sleep 2
 # waiting: a longer job, a 1-second limit.
 "$T/longtool.sh" 6 >/dev/null; sleep 1; log=$(joblog)
 CCV_WAIT_MAX=1 "$R/tools/gate-wait.sh" "$log" >"$T/wait" 2>&1; rc=$?

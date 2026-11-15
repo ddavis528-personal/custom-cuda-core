@@ -475,6 +475,10 @@ def selftest(d):
               ("bnd_rx:miu_rcu_data", "bnd", 0, "CCV_LAT_L1_WAKE"),
               ("bnd_rx:dcu_miu_rsp", "bnd", 1, "CCV_LAT_L1_HIT"),
               ("bnd_rx:miu_ooe_cmpl", "bnd", 1, "CCV_LAT_L1_CMPL"),
+              # AR 353: the no-hit's crossing is in its latency, and a no-hit
+              # that lands with the wake is refused by its require.
+              ("bnd_rx:miu_ooe_cmpl_hint", "bnd", 1, "CCV_LAT_L1_NOHIT"),
+              ("CCV_LAT_MIU_NOHIT_A2", "value", 6, "CCV_LAT_L1_NOHIT"),
               # Counted in the parameter as well, the issue flop is taken
               # twice (AR's rev 301): refused. Since RA-43 the end is
               # zero-cycle, so the flop is put back for the case first
@@ -524,22 +528,30 @@ def selftest(d):
                         moved = True
             if not moved:
                 break
+        l1.nohit = vals["CCV_LAT_L1_NOHIT"]
         return vals["CCV_LAT_L1_WAKE"], vals["CCV_LAT_L1_CMPL"]
     # RA-43 (AR's rev 329): with the issue's end at RCU zero-cycle, 17 and
-    # 18 at the defaults. AR's rev 301's three still hold with that end
+    # 18 at base 5 (13 and 14 at PF-47's base 1, the default since AR 352). AR's rev 301's three still hold with that end
     # flopped, which is how they are run now.
     flop = dict(links, **{"bnd_rx:ooe_rcu_issue": 1})
     if links.get("bnd_rx:ooe_rcu_issue") == 0 and not any(
             v for k, v in links.items() if not k.startswith("bnd_rx:")):
         for got, want, what in (
-                (l1(), (17, 18), "the defaults, the issue's end zero-cycle (RA-43)"),
-                (l1(lk=flop), (17, 19), "the defaults, the issue's end flopped"),
+                (l1(base=5), (17, 18), "base 5, the issue's end zero-cycle (RA-43)"),
+                (l1(base=5, lk=flop), (17, 19), "base 5, the issue's end flopped"),
+                (l1(base=1), (13, 14), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), zero-cycle"),
                 (l1(base=1, lk=flop), (13, 15), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), flopped"),
-                (l1(addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", lk=flop),
-                 (18, 20), "the issue flop counted twice (the control)")):
+                (l1(base=5, addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", lk=flop),
+                 (18, 20), "base 5, the issue flop counted twice (the control)")):
             if got != want:
                 missed.append("L1_WAKE/L1_CMPL at %s: %s, want %s (AR's revs 301, 329)"
                               % (what, got, want))
+        # AR 353: the no-hit moves with the address, OA 410's I+13 at base 5
+        # and 9 at PF-47's base 1, and it never lands with the wake.
+        for base, want in ((5, 13), (1, 9)):
+            l1(base=base)
+            if l1.nohit != want:
+                missed.append("L1_NOHIT at base %d: %s, want %s (AR 353)" % (base, l1.nohit, want))
     if missed:
         sys.stderr.write("".join("%s\n" % x for x in missed))
         return 1

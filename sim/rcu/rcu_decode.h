@@ -85,7 +85,11 @@ inline R::OpClass classOf(const OpInfo *op, bool copy, bool pred_copy) {
     if (op->ret) oc.reads |= 1u;
     return oc;
   }
-  oc.unit = R::Unit::Lane;
+  // The SFU class (RA rev 140 (3), RA rev 146): the op table's kBypSfu rows,
+  // RCP_U32, RSQRT_F32 and RCP_F32_P, go to a lane's SFU (unit 4), their
+  // result on sfu_result into SW. Every other ALU op, C_FADD's FP included,
+  // stays a lane op.
+  oc.unit = op->byp == int(kBypSfu) ? R::Unit::Sfu : R::Unit::Lane;
   oc.imm_slot = op->alu_imm >= 0 ? op->imm_slot : -1;
   return oc;
 }
