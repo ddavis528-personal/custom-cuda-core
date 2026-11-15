@@ -192,7 +192,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds AR's.
    TI 445 (FYI AR): owners may move NGD port budgets where check-ngd's
    convergence times the connection (the parent has a unit). Architects still
    set block-boundary/lead budgets and those of unmeasured parents (AR: the top
-   level). Attributed to Daniel, but no DA row quotes him; told Daniel 11-15. Setup: ~/l1sweep/wp (worktree), benchp/ (-priv cfgs),
+   level). DA 120 (TI recorded it) quotes Daniel and adds child ports wired to the
+   boundary (RA 149) to the architect's. Closed. Setup: ~/l1sweep/wp (worktree), benchp/ (-priv cfgs),
    oraclep/, sweepp2.sh, runsp/. cm128 at 4.4 GB each: at most 2 at once.
    The no-hit gains nothing on -priv (TI 444: no ineligible load). RI-54 (FYI):
    the RCU model honours CCV_LAT_RCU_ADDR (ce5f44dd, TI merges).
