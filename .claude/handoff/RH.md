@@ -56,9 +56,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 ## Jobs in flight
 - Nothing running (23:16Z 11-15). AR-361 DONE, all tables sent to AR: pre-fix sweep (ar361.sh,
   60bceb62; CHECKs on cm128 at sets<512 = TI 450 bug) and post-fix (ar361f.sh, a5481843: required
-  four + the 128-set four, all clean; h7/64 2,124,002 = AR's). Keep rh-ar361-* and rh-ar361f-*
-  trees, the priv oracles in rh-ar361-ora and the logs in ~/ccv-logs/ar361{,f} until AR releases them
-  (~8.4 GB). Tabulate: python3 rh-jobs/ar361/table.py <logdir>.
+  four + the 128-set four, all clean; h7/64 2,124,002 = AR's). AR booked it (AR 363, PF-33/PF-47) and
+  released trees and oracles (deleted). Keep logs ~/ccv-logs/ar361{,f} until MA answers AR 363.
+  Tabulate: python3 rh-jobs/ar361/table.py <logdir>.
 - AR 355 (3) for OI DONE and sent: 8dbf290b (gate-scratch/OI,
   debug only), cm128 warm, CCV_DBG_SEQ=179681: no CHECK (check_failures 0, 5,698,966 cycles);
   DBGHELD R14 0x10 vs 0x5b0 at seq 179681, whose issue was cancelled behind seq 179680's load
