@@ -1373,8 +1373,14 @@ private:
           send(c.miu_rcu, t.data.slot, t.data.msg, t.data.tid);
         k_.hit("l1_hit");
       } else {
+        // Late: the data goes when it can, and the completion a cycle on,
+        // past the contract. Queued for this cycle's drain, the completion
+        // could leave in the contract cycle with its data still behind
+        // (miu_rcu out of credit, miu_ooe not): OOE takes that for the hit
+        // and its woken dependants read the register before the load lands
+        // (AR 359 (4): coremark128priv's operand CHECKs).
         to_rcu_.push_back(t.data);
-        to_ooe_.push_back(t.cmpl);
+        late_faults_.push_back({now_ + 1, t.cmpl});
         k_.hit("l1_late");
       }
     }
