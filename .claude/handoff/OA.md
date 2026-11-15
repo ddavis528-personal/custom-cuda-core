@@ -12,6 +12,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
   Record Daniel's decisions verbatim in the DA tab (table m8yvbw8rqgz.231).
 - Report to Daniel in a few lines: what changed, then any decision that is
   his. He is a senior microprocessor design engineer; write as to a peer.
+- TI-445 (DA, 11-15): a module's owner sets/moves an NGD port budget where check-ngd's convergence times the connection (parent has a unit), check-ngd passing. OA still sets budgets for OOE modules with no measured parent (ooe_rename, sched, rs, rat, decq, age, rencred, rob_w) and every block-boundary/lead budget; rendep/go/ready/select/wake/pick/confirm etc. are now OI's own. OA reviewed: no budget seen that this lets through without convergence holding.
 - Mine to rule: admission-cost changes under 0.5% on S1, the audit and the
   out-of-order floors. Over 0.5%, a waiver, or any exception narrowing one of
   DA's rules (CG, NGD, lint) goes to DA with figures and a recommendation.
@@ -47,7 +48,7 @@ RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 Arrivals kept. go: producer encodings (decq one-hot need, Rename thermometer pool) granted at 2. rendep gsn/psn: arrival 2 only if Rename precomputes the one-hot index at no latency. sched res/vel: OI to model-price the fallback a cycle later (OA rules if under 0.5% S1, else DA). ooe_rob_w wid_cq00h: arrival 0, one-hot flop, within the ratchet caps. OI-151/OA 418 (rev 420): WID strap withdrawn (over caps); WID stays a param with units at 1-3. DA's 11-15 ruling was given in OI's session; record it only once Daniel confirms the wording. #52 rob_w: Rename 2 per-slot fill valids and OOE-capture per-slot dn/cm valids granted at 2; OI measures before pushing.
 
 ## Register bookmarks (revs read through)
-Conventions 19, OA 420, AR 356, TI 440, OI 354, IS 193, CP 157, DA 119,
+Conventions 19, OA 420, AR 356, TI 445, OI 354, IS 193, CP 157, DA 119,
 RA 148 (tab 9851686b-2b0a), RI 82 (tab 8e4547bc-c469), MA 57 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
 OOE doc rev 381. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
 Sweep 11-15: 5 branches (116 commits), full gate green, pushed 6aa0c403; release 6fa7fc1f; tag refused (known). Sunday, no pings.
