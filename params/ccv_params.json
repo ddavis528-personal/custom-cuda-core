@@ -1163,8 +1163,8 @@
       "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_MIU_NOHIT_A2 + CCV_LAT_HOP + link_n('miu_ooe_cmpl_hint') + bnd_rx('miu_ooe_cmpl_hint')",
       "require": "CCV_LAT_L1_NOHIT + 2 <= CCV_LAT_L1_WAKE",
       "source": "AR 353 (re:TI-437): option (i), the no-hit moves with the address",
-      "doc": "Issue to a no-hit's payload landing on ccv_miu_ooe_cmpl_hint (OA 410); its valid is a cycle earlier. MIU's address stage decides the no-hit from the address alone, so it starts where CCV_LAT_L1_WAKE does, from the max of the memop's and the address's paths, then CCV_LAT_MIU_NOHIT_A2 stages and the hint's crossing back to OOE. 13 at CCV_LAT_RCU_ADDR_BASE 5 (OA 410's I+13), 9 at PF-47's base 1. The require keeps OA 410's flop at payload and clear the next cycle ahead of the speculative wake, so a latency change that would land the no-hit with the wake fails here, not in a unit test (AR 353 (1)); the margin 2 is provisional until OA gives OOE's (AR 353 (3)).",
-      "decided_at": "AR 353; margin OA, A2 MA"
+      "doc": "Issue to a no-hit's payload landing on ccv_miu_ooe_cmpl_hint (OA 410); its valid is a cycle earlier. MIU's address stage decides the no-hit from the address alone, so it starts where CCV_LAT_L1_WAKE does, from the max of the memop's and the address's paths, then CCV_LAT_MIU_NOHIT_A2 stages and the hint's crossing back to OOE. 13 at CCV_LAT_RCU_ADDR_BASE 5 (OA 410's I+13), 9 at PF-47's base 1. The require keeps OA 410's flop at payload and clear the next cycle ahead of the speculative wake, so a latency change that would land the no-hit with the wake fails here, not in a unit test (AR 353 (1)); the margin 2 is OOE's, measured exactly (OA 416: a flop at the payload and the clear the next cycle; nothing in OOE assumes I+13).",
+      "decided_at": "AR 353, AR 354; margin OA 416; A2 MA rev 56"
     },
     {
       "name": "CCV_LAT_L1_MISS_WAKE",
