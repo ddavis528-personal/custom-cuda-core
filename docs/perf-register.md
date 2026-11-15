@@ -773,6 +773,25 @@ it.
     under LRU, so the modulo index stays. -priv coalesces to 408k line
     accesses and takes about 63k misses at 64 KiB. L1's size is re-opened:
     AR re-runs this sweep on -priv at perfect fetch and a warm MLC.
+  - **Re-run on -priv (AR rev 360; AR's runs, 2026-11-15, on 661cbe41,
+    base 1, perfect fetch, warm MLC, 8 ways):** every run is exact, with
+    0 violations.
+
+    | -priv | 64 KiB | 128 KiB | 256 KiB | 512 KiB |
+    |---|---|---|---|---|
+    | coremark128 | 2,132,774 | 1,946,702 (-8.72%) | 1,927,810 (-9.61%) | 1,925,434 (-9.72%) |
+    | L1 misses | 83,218 | 9,161 | 1,802 | 1,388 |
+    | coremark32 | 1,142,050 | 1,140,115 (-0.17%) | 1,140,115 | 1,140,115 |
+
+    S1 is 1,638 cycles at both 64 and 512 KiB. coremark128's hot set
+    (4 warps of per-thread data) lies between 64 and 128 KiB, and 128 KiB
+    takes 8.7 of 512 KiB's 9.7 points. The hot set grows with resident
+    warps, so the size stays the corpus sweep's (DA tab rev 95). AR
+    recommends 64 KiB stays Phase 1's baseline and 128 KiB is the first
+    point MA's resource model prices; it is over 0.5%, so it is MA's to
+    approve, with the area for Daniel. coremark128's operand CHECKs fall
+    as L1 grows (21, 4, 0 and 1 uops), so they are on the miss path
+    (TI's).
 
 ### PF-34 Same-address combining for atomics, built from lane adds
 
