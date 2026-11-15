@@ -325,7 +325,10 @@ CCV_LAT_L1_NOHIT; OA final). AR 357/358: perf benches price coremark-derived-pri
 RI-54 (RI 83): model times address from the param, addr-late control; TI merges ce5f44dd. TI-445 / RA rev 149: owner may
 move a budget convergence proves (TI cites Daniel; NOT in DA tab at 119; asked DA to record); gap: child port wired to a
 ccv_rcu block port stays RA's.
-Bookmarks: OA 418, RA 149, RI 83, TI 445, AR 358, DA 119, OI 350, Conventions 19, CP 158, IS 194, MA 59.
+TI-446: boundary-wired child pins stay architect's (ea9bca63); check-ngd enforces after ti-nohit. DA 120 (recorded by TI):
+the budget ruling. RI-55: Daniel signed RI-47's 3 waivers in RI's session (NOT yet in DA tab; TI 448 asking him).
+RA rev 150: RCU sign-off report to DA on 2026-11-17.
+Bookmarks: OA 418, RA 150, RI 84, TI 448, DA 120, AR 358, OI 350, Conventions 19, CP 158, IS 194, MA 59.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -356,6 +359,11 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
 
 ## Open work, most urgent first
 - GATES: 518cb3c3 is merged (2026-11-15): launch gate-push, then tools/gate-wait.sh <job log> (exit 3 = rerun, 4 = killed).
+- RCU SIGN-OFF (RA rev 150, due 2026-11-17): (1) after ti-nohit lands (TI 448: 2026-11-15) and TI 448 (c) (stub addr
+  timing + RTL refusal at base != 1, 2026-11-16), delta-reconcile spec vs tip: SFU class (rev 146), PF-47=1 addr stages
+  (rev 145), addr from param (rev 148/RI-54), waivers (RI-47); fix spec tabs via a subagent, refresh snapshots.
+  (2) when TI's rokill kernel lands (TI 448 (d), 2026-11-17) and the waiver signature is in the DA tab, report to Daniel
+  for sign-off; SFU-in-flight kill variant listed post-sign-off.
 - PHASE 5 (rcu-impl.md): spec reconciled (RA rev 140/141); RI's rev 140 items closed (RA rev 142). Before DA
   sign-off: rev 143 CLOSED (TI 430); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
   ADDR_BASE. Reported to Daniel 2026-11-14.
