@@ -655,6 +655,12 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
     }
   }
 
+  // Addresses whose launch comes this cycle (CCV_LAT_RCU_ADDR over 1).
+  if (auto da = asched_.find(t); da != asched_.end()) {
+    for (Addr &a : da->second) out.addrs.push_back(a);
+    asched_.erase(da);
+  }
+
   // Dones launched this cycle: lane ops' at A+5 from their descriptors.
   if (auto dd = dsched_.find(t); dd != dsched_.end()) {
     for (Done &d : dd->second) out.dones.push_back(d);
@@ -710,7 +716,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
   const bool sent = out.lane || !out.dones.empty() || !out.addrs.empty() || out.pca;
   bool dead = false;
   for (const FifoEnt &e : fifo_) dead = dead || e.dead;
-  const bool idle = !input && !sent && !fifo_in_ && gsched_.empty() && psched_.empty() && lanes_.empty() && dsched_.empty() &&
+  const bool idle = !input && !sent && !fifo_in_ && gsched_.empty() && psched_.empty() && lanes_.empty() && dsched_.empty() && asched_.empty() &&
                     late_.empty() && hist_.empty() && !dm_busy_ && !rs_busy_ && !dead && drain_ == 0 &&
                     !map_drops_ && !cmd_drops_ && !pca_pop_ && rpop_.empty();
   if (idle != idle_) ev(idle ? Ev::Idle : Ev::Wake);
@@ -721,8 +727,8 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
 // ---- memops ----------------------------------------------------------------------
 
 void Core::issueMem(const Issue &is, unsigned slot, uint32_t active, uint32_t pstore, Out &out) {
-  // Valid at A+1 on the memop's lead pipe's slot (RA-21; CCV_LAT_RCU_ADDR_BASE
-  // = 1, PF-47). Operands right-aligned at their width and position; a
+  // Valid at A + CCV_LAT_RCU_ADDR on the memop's lead pipe's slot (RA-21; RA
+  // rev 148: from the param, 1 since PF-47). Operands are read here, in A. Operands right-aligned at their width and position; a
   // missing one is 0. A fence carries only rob_tag and active_mask.
   Addr ad;
   ad.slot = slot;
@@ -742,7 +748,8 @@ void Core::issueMem(const Issue &is, unsigned slot, uint32_t active, uint32_t ps
     if (oc.mk == MemKind::PredStore) ad.data[0] = pstore;   // lane 0, raw (TI-36)
     else if (oc.mk == MemKind::Store && oc.data_src >= 0) ad.data = opnd(oc.data_src);
   }
-  out.addrs.push_back(ad);
+  if (kAddrLaunch == 0) out.addrs.push_back(ad);
+  else asched_[now_ + kAddrLaunch].push_back(ad);
 }
 
 // ---- the R pipe ----------------------------------------------------------------------

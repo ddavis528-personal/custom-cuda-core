@@ -66,6 +66,10 @@ static_assert(kDoneColl < kDoneSlots, "the collective done slot is a slot");
 /// W = A + LAT - 1 for the fixed-latency write-backs (Pipeline tab).
 constexpr unsigned kLaneW = ccv::prov::kLatLane - 1;
 constexpr unsigned kSfuW = ccv::prov::kLatSfu - 1;
+/// An address launches at A + CCV_LAT_RCU_ADDR - 1, valid at A + CCV_LAT_RCU_ADDR
+/// (RA rev 148, re:TI-440): at 1 it launches in A, as the RTL's structural pipe
+/// does, which is correct only there.
+constexpr unsigned kAddrLaunch = ccv::prov::kLatRcuAddr - 1;
 constexpr unsigned kRW = 2;   ///< R's write, A+2: the A+2 rule (RA-29 (a))
 static_assert(kRW + 1 == ccv::prov::kLatRcu, "R writes at A+2, readable at A + CCV_LAT_RCU");
 /// The lane bypass window (Lane and memory tab): ages LAT_LANE_BYP to LAT_LANE - 2.
@@ -387,6 +391,7 @@ private:
   std::vector<PWrite> pnow_;
   std::map<uint64_t, std::vector<LaneDesc>> lanes_;   ///< by W (A+6), then SFU at A+11
   std::map<uint64_t, std::vector<Done>> dsched_;      ///< dones by launch cycle
+  std::map<uint64_t, std::vector<Addr>> asched_;      ///< addresses by launch cycle
   std::deque<Producer> hist_;
   struct Deferred { uint64_t at; LaneMsg msg; LaneDesc d; };
   std::deque<Deferred> late_;   ///< held lane messages (late-copy, movi-in-lane)
