@@ -58,7 +58,7 @@ architect may approve only if the end meets module NGD without the flop; can't m
    57eff422, 80102643, 9eb50716, c22116ce, miu-dcu-spec) + 0fe15d9a (unit test addr-cycle, control addr-late).
    RI-54 (RI tab rev 83) written; notices TI, RA, AR. WAITING: TI adds addr-late to tools/check-rcu-unit.sh
    (count 8), stub timing + RTL base!=1 refusal (TI's); TI merges ce5f44dd. MA tab has no roster node: unread.
-   Bookmarks: Conv 19 AR 358 OA 418 IS 194 TI 445 OI 350 CP 158 DA 119 RA 149 RI 83 MA 54.
+   Bookmarks: Conv 19 AR 358 OA 418 IS 194 TI 445 OI 350 CP 158 DA 120 RA 149 RI 83 MA 54. (DA 120 records TI-445 + RA 149's carve-out.)
    TI-445 (DA ruling, FYI): RI may set/move NGD port budgets of modules below ccv_rcu, check-ngd passing
    (by/why named); ccv_rcu block-boundary and lead budgets stay RA's. RA 149: also any child port wired
    straight to a ccv_rcu block port (e.g. rcu_mem miu_addr sender, rcu_pred guard input) stays RA's. No answer owed.
