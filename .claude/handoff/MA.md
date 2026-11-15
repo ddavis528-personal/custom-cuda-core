@@ -21,6 +21,9 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
   `CCV_PUSH_BRANCHES=claude/miu-dcu-microarch-spec-664pgr tools/gate-push.sh`, then
   `tools/gate-wait.sh <job log>` as a background task (exit 3: run it again; 4: killed by a
   restart, start the job again).
+- Daniel (2026-11-15): MA has standing permission to record his rulings in the DA tab (node
+  d5076b00-ef1b, table m8yvbw8rqgz.231; columns title(re:) | date | actions | decision with his
+  words quoted; end "Recorded by MA in Daniel's session"). Notify TI/AR as the row needs.
 - Docs edits: a `find` replace "as text" inherits the first run's formatting
   (bold/code); for whole paragraphs use a guarded markdown replace.
 - A rendered copy of a tab: read with `{"kind":"view"}` and render with the
@@ -29,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 62, DA 120.
+Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 63, DA 121.
 
 ## State, 2026-11-13
 
@@ -71,6 +74,12 @@ Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- 2026-11-15: MA-9 CLOSED (DA rev 121): MIU and DCU stay separate; merge/direct return is Phase 2,
+  priced on MI/DI's timing model (boundary hops as configurable latencies) + AR's PF-33/PF-47 at
+  512 KiB base 7/8/9. MA rev 63 answers AR-349 (Q-42 can close). The grill-me is finished. NEXT:
+  documentation check of the MIU/DCU tabs (no 'proposed' drafts, no superseded numbers), then
+  Daniel's summary, then docs/miu-impl.md and docs/dcu-impl.md.
 
 - MA 61-62 (DA in session, 2026-11-15): L1 BUILT FOR 512 KiB (8w, 512 sets, 128 B), configured
   down by sets only; supersedes MA 60. TI to set CCV_DCU_SETS 512. DCU tab Geometry updated (rev 24;
