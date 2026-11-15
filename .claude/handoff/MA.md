@@ -29,7 +29,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 358, TI 444, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 59, DA 119.
+Conventions 19, AR 361, TI 444, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 60, DA 119.
 
 ## State, 2026-11-13
 
@@ -72,6 +72,11 @@ Conventions 19, AR 358, TI 444, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
 
 ## Open work, most urgent first
 
+- MA 60 (re:AR 360): capacity on -priv: cm128priv 64/128/256/512 KiB = 2.133M/1.947M/1.928M/1.925M
+  (128 KiB takes 8.7 of 9.7 pts); cm32priv -0.17%, S1 flat. Accepted: 64 KiB baseline, Phase 1
+  resource model prices 64 and 128 KiB; area delta to Daniel in the summary (corpus sweep DA rev 95
+  decides). AR 360 (2): operand CHECKs track misses/evictions (672/128/0/32 lines), cm128priv only;
+  TI naming the owner; MA checks the spec's fill/return order against the cause.
 - TI-444 (cc MA, no ask): -priv has no ineligible load, knob k0=k1 (cm32priv 2,253,475; cm128priv
   22.78M cold, k1 OOM-killed); PF-33/PF-47 can re-book on -priv. 128 operand CHECKs on cm128priv
   (consumer reads before load lands, no replay): TI bisecting with RCU/OOE stubs; if it lands on
