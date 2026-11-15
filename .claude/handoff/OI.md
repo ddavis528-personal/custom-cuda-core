@@ -59,6 +59,10 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-10. #54 ooe_sched PARKED like #51/#53 (scratchpad/s54/NOTES.md, fcp-split.patch; worktree /home/user/wt-s54):
+   ooe_pick alone (flopped) is 20.1 with FB=1, 10.4 without: res/vel (arrival 4) cannot reach 25 inside.
+   fcp_cq04h's 30 copies merge into one flop (same D): a register per entry takes NGD-1 26.6 -> 25.4 but res
+   28.9 -> 29.5 (over cap). Needs OA: res/vel arrival, the fallback moved, or a registered R bit (input contract).
 -9. #53 ooe_go PARKED like #51 (scratchpad/go53/NOTES.md, e1e2.patch, e3.patch): internal rewrites give
    ha -1.1 at best, hv/px/pl stay 27.5-28.3 (ABC remap moves others +-1). Needs OA: decq/rename
    registering nwh / px thermometer / run needs, or the arrival 2 on those ports. Asked DA 11-15.
