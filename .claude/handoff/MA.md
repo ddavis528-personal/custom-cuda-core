@@ -29,7 +29,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 60, DA 120.
+Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 62, DA 120.
 
 ## State, 2026-11-13
 
@@ -72,7 +72,11 @@ Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
 
 ## Open work, most urgent first
 
-- MA 60 (re:AR 360): capacity on -priv: cm128priv 64/128/256/512 KiB = 2.133M/1.947M/1.928M/1.925M
+- MA 61-62 (DA in session, 2026-11-15): L1 BUILT FOR 512 KiB (8w, 512 sets, 128 B), configured
+  down by sets only; supersedes MA 60. TI to set CCV_DCU_SETS 512. DCU tab Geometry updated (rev 24;
+  the Capacity item's history below it still reads as history). Pinged AR for the PF-33/PF-47 status
+  on -priv at 512 KiB, hit base 7/8/9: that curve is the MA-9 number.
+- MA 60 (re:AR 360, superseded by 61): capacity on -priv: cm128priv 64/128/256/512 KiB = 2.133M/1.947M/1.928M/1.925M
   (128 KiB takes 8.7 of 9.7 pts); cm32priv -0.17%, S1 flat. Accepted: 64 KiB baseline, Phase 1
   resource model prices 64 and 128 KiB; area delta to Daniel in the summary (corpus sweep DA rev 95
   decides). AR 360 (2): operand CHECKs track misses/evictions (672/128/0/32 lines), cm128priv only;
