@@ -127,7 +127,7 @@ done
 # free-list grant, read from the candidate buffer's head.
 read -r rat_g _ < <(python3 test/ooe/rat-params.py)
 rat_set=$(echo "$rat_g" | tr ',' '\n' | sed -n 's/^-G\([A-Z]*\)=\(.*\)$/-set \1 \2/p' | tr '\n' ' ')
-rat_src="rtl/ccv_assert_pkg.sv rtl/ooe/ooe_rat.sv rtl/ooe/ooe_ratread.sv test/ooe/ooe_rat_read.sv"
+rat_src="rtl/ccv_assert_pkg.sv rtl/ooe/ooe_rat.sv test/ooe/ooe_ratread.sv test/ooe/ooe_rat_read.sv"
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated $rat_src;
              chparam $rat_set ooe_rat_read; hierarchy -top ooe_rat_read;
              chformal -remove; synth -flatten -top ooe_rat_read; write_json $out/rat.json"; ungate $out/rat

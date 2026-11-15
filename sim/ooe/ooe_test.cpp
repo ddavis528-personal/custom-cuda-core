@@ -303,7 +303,9 @@ struct Env {
   // contract knobs
   unsigned fetch_delay = 3;          ///< FET to OOE, so stale uops are in flight
   unsigned miss_pct = 0;             ///< loads that miss L1
-  bool nohit = false;                ///< OA 410: MIU sends a no-hit hint for each L1 miss (I+13)
+  bool nohit = false;                ///< OA 410: MIU sends a no-hit hint for each L1 miss
+  /// Issue to the no-hit's payload landing (CCV_LAT_L1_NOHIT; AR 353).
+  unsigned nohit_lat = ccv::prov::kLatL1Nohit;
   std::multimap<uint64_t, unsigned> nohits;  ///< no-hit hints due, by cycle: rob tag
   unsigned miss_extra = 25;          ///< past-L1 latency beyond CCV_LAT_L1_CMPL
   bool rcu_fast = false;             ///< dones earlier than the bound
@@ -1238,10 +1240,11 @@ struct Env {
       // A hit the channel has no room for at the L1 contract completes
       // later, which is a miss.
       hit = hit && when == t + cfg.lat_l1_cmpl;
-      // OA 410: the address stage's no-hit, payload at I+13 (t is I plus the
-      // payload stage); ooe_block defers it a cycle under rx_lag 16.
+      // OA 410: the address stage's no-hit, payload at I+CCV_LAT_L1_NOHIT (t
+      // is I plus the payload stage; AR 353); ooe_block defers it a cycle
+      // under rx_lag 16.
       if (!hit && nohit)
-        nohits.insert({t + 12 + ((cfg.rx_lag & 16) ? 1 : 0), m.rob_tag});
+        nohits.insert({t + nohit_lat - 1 + ((cfg.rx_lag & 16) ? 1 : 0), m.rob_tag});
       hit_of[m.tid] = hit;
       if (gpr(m.pdst)) {
         // Readable at the L1 wake on a hit; on a miss, after the completion.
@@ -1696,21 +1699,26 @@ void testL1Spec() {
   }
 }
 
-/// OA 410 (l1_nohit): MIU's no-hit at I+13 clears a spec load's wake before
-/// CCV_LAT_L1_WAKE, so on a miss its child and grandchild wait for the
-/// completion and nothing replays. Knob off, the no-hit is ignored and both
-/// replay as in l1-spec; the control (a no-hit that clears nothing) must
-/// show the replays again.
+/// OA 410 (l1_nohit): MIU's no-hit, its payload at CCV_LAT_L1_NOHIT, clears a
+/// spec load's wake before CCV_LAT_L1_WAKE, so on a miss its child and
+/// grandchild wait for the completion and nothing replays. Knob off, the
+/// no-hit is ignored and both replay as in l1-spec. Two controls must show the
+/// replays again: a no-hit that clears nothing, and one landing at L1_WAKE - 1,
+/// inside the margin CCV_LAT_L1_NOHIT + 2 <= CCV_LAT_L1_WAKE (OA 416); at
+/// L1_WAKE - 2 it still clears. Run at the generated contract and at
+/// CCV_LAT_RCU_ADDR_BASE 5's (wake 17, no-hit 13; the param's doc).
 void testL1NoHit() {
-  for (const int mode : {0, 1, 2}) {   // 0: l1_nohit; 1: knob off; 2: the control
-    g_test = mode == 0 ? "l1-nohit" : mode == 1 ? "l1-nohit off" : "l1-nohit (control)";
+  struct Lat { const char *name; unsigned wake, nohit; };
+  const Lat lats[] = {{"", ccv::prov::kLatL1Wake, ccv::prov::kLatL1Nohit}, {"-base5", 17, 13}};
+  for (const Lat &lt : lats)
+  for (const int mode : {0, 1, 2, 3, 4}) {
+    // 0: l1_nohit; 1: knob off; 2: control, ignore; 3: control, at L1_WAKE - 1;
+    // 4: at L1_WAKE - 2, the margin's edge, still clears.
+    static const char *const names[] = {"l1-nohit", "l1-nohit off", "l1-nohit (control)",
+                                        "l1-nohit (control wake-1)", "l1-nohit wake-2"};
+    g_test = std::string(names[mode]) + (*lt.name ? " base5" : "");
     Config c = baseConfig();
-    // OA 410's contract puts the no-hit's payload at I+13, before the wake at
-    // the L1_WAKE of its day (17). PF-47 (AR 352) brought L1_WAKE to 13, where
-    // the no-hit lands with the wake and no longer clears it; that timing is
-    // put to OA, MA and AR in TI rev 437. Until they rule, the mechanism is
-    // tested at the wake it was specified against.
-    c.lat_l1_wake = 17;
+    c.lat_l1_wake = lt.wake;
     c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
     c.l1_nohit = mode != 1;
     c.inject_ignore_nohit = mode == 2;
@@ -1719,6 +1727,7 @@ void testL1NoHit() {
     e.miss_pct = 100;
     e.miss_extra = 10;
     e.nohit = true;
+    e.nohit_lat = mode == 3 ? lt.wake - 1 : mode == 4 ? lt.wake - 2 : lt.nohit;
     std::vector<Op> p;
     Op ld; ld.k = kLoad; ld.dst = 1; ld.nsrc = 1; p.push_back(ld);               // tid 1
     Op a; a.k = kLane; a.dst = 3; a.src[0] = 1; a.nsrc = 1; p.push_back(a);     // tid 2: child
@@ -1726,20 +1735,26 @@ void testL1NoHit() {
     Op st; st.k = kStore; st.src[0] = 4; st.src[1] = 4; st.nsrc = 2; p.push_back(st);  // tid 4
     Op ex; ex.k = kExit; p.push_back(ex);
     e.launch(0, 0, p);
-    if (mode == 2) g_quiet = true;
+    const bool control = mode == 2 || mode == 3;
+    if (control) g_quiet = true;
     const int saved = g_fail;
     e.finish();
     g_quiet = false;
     const unsigned replays = unsigned(e.core.counters["cancel.replay"]);
-    if (mode == 2) {
+    if (control) {
+      // A no-hit too late leaves the child's speculative issue at the wake:
+      // replayed (ignored), or pulled back as it lands (at L1_WAKE - 1, which
+      // counts no replay), so the child issues more than once.
       g_fail = saved;
-      std::printf("  %-24s %s\n", "control ignore-nohit", replays ? "caught" : "MISSED");
-      EXPECT(replays != 0, "a no-hit that clears nothing should leave the shadow's replays");
+      const bool caught = replays != 0 || issueCount(e, 2) != 1;
+      const std::string what = std::string(mode == 2 ? "control ignore-nohit" : "control nohit-wake-1") + lt.name;
+      std::printf("  %-24s %s\n", what.c_str(), caught ? "caught" : "MISSED");
+      EXPECT(caught, "a no-hit that clears nothing in time should leave the child's speculative issue");
       continue;
     }
     EXPECT(e.core.counters["load.no_hit"] == 1, "no-hits taken %llu", (unsigned long long)e.core.counters["load.no_hit"]);
     EXPECT(e.w[0].retired.size() == p.size(), "retired %zu of %zu", e.w[0].retired.size(), p.size());
-    if (mode == 0) {
+    if (mode != 1) {
       EXPECT(replays == 0, "replays %u after a no-hit", replays);
       EXPECT(issueCount(e, 2) == 1 && issueCount(e, 3) == 1, "child %u, grandchild %u issues", issueCount(e, 2),
              issueCount(e, 3));
