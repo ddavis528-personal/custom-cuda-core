@@ -792,6 +792,36 @@ it.
     approve, with the area for Daniel. coremark128's operand CHECKs fall
     as L1 grows (21, 4, 0 and 1 uops), so they are on the miss path
     (TI's).
+  - **Built at 512 KiB, configured down by sets (DA 121 (a)); hit
+    latency priced (AR rev 363; AR's and RH's runs, 2026-11-15, on
+    a5481843, -priv, base 1, perfect fetch, warm MLC, 8 ways):** every run
+    is exact, with 0 CHECKs and 0 violations. a5481843 carries TI 450's
+    stub-MIU fix: a late hit's completion no longer leaves ahead of its
+    queued data. That fix was the operand CHECKs above, and it supersedes
+    the pre-fix figures where they differ (cm128 hit 9 at 512 KiB was
+    1,951,851; below 512 sets, the pre-fix hit 8 and 9 runs carried
+    CHECKs). coremark32 and S1 did not move.
+
+    | coremark128 -priv | hit 7 | hit 8 | hit 9 |
+    |---|---|---|---|
+    | 512 KiB | 1,924,529 | 1,936,319 (+0.61%) | 1,944,298 (+1.03%) |
+    | 128 KiB | 1,946,773 | 1,958,293 (+0.59%) | 1,966,878 (+1.03%) |
+    | 64 KiB | 2,124,002 | 2,148,171 (+1.14%) | not run |
+
+    coremark32 -priv runs 1,140,115, 1,168,776 (+2.51%) and 1,196,408
+    (+4.94%) at hits 7, 8 and 9 at both 512 and 128 KiB, and +2.50% and
+    +4.91% at 64 KiB. S1 is 1,640 cycles at every hit latency, because no
+    S1 load is an L1 hit (l1_hit 0 on all ten). So S1 cannot price the hit
+    latency, and coremark32, a single warp that hides none of it, is the
+    honest figure: about 2.5% a cycle, against 0.6% on coremark128's four
+    warps. Each step is over 0.5%, so the latency is MA's to set as the
+    owning architect, against the timing MI's and DI's model shows. AR's
+    view: hit 8 is the most to take without a measured timing need. Under
+    DA 121 (a), a configured-down L1 carries the 512 KiB latency. One
+    cycle costs about the same at 128 KiB (+0.59%) and about twice as much
+    at 64 KiB (+1.14%), where 9x the misses of 128 KiB keep more loads in replay.
+    That bounds PF-51 (MA's): one hit cycle at the configured size. 128 KiB
+    at hit 7 is +1.16% against 512 KiB, and 64 KiB is +10.36%.
 
 ### PF-34 Same-address combining for atomics, built from lane adds
 
@@ -1375,6 +1405,13 @@ it.
   is re-booked on -priv at base 1, with the L1 re-run (PF-33). Operand
   CHECKs also fire on -priv with an exact final state (TI revs 443 and
   444; first at seq 67052); TI is finding which block, for its owner.
+  **Re-booked on -priv (AR rev 363, on a5481843, 512 KiB, hit 7,
+  perfect fetch, warm MLC, 8 ways; AR's and RH's runs):** base 5 against
+  base 1 is coremark128 1,985,883 vs 1,924,529, coremark32 1,257,402 vs
+  1,140,115, and S1 1,684 vs 1,640. Base 1 is worth 3.09%, 9.33% and
+  2.61%, and 3.02% on coremark128 at 128 KiB (2,007,445 vs 1,946,773).
+  Every run is exact. The CHECKs were TI's stub MIU (TI 450, a5481843),
+  not this change. Base 1 stands.
 
   The all-kernel sum includes rope, which runs clean before the change and
   after it fails OI's OA-17 check on L1 speculation (it passes with

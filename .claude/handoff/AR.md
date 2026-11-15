@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 361 .575224, AR 362 .577132.
-  - **The next AR row inserts after .577132.**
+  - Latest rows: AR 362 .577132, AR 363 .579939 (tab rev 364).
+  - **The next AR row inserts after .579939.**
 - **Other tabs:**
 
   | Tab | Node |
@@ -90,7 +90,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 362, OA 418, TI 449, RA 148, RI 83,
+- **Bookmarks** (revs read through): AR 364, OA 418, TI 450, RA 148, RI 83,
   IS 194, CP 159, OI 350, DA 121, MA 65, Conventions 19.
 - **Insert a row:** update with ref {"object":"node","id":"bc521c46-9710"},
   engine "prose", container {"kind":"project","id":"JApHYjaUESeq8tsGMGXMU5"}.
@@ -173,35 +173,14 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
-1. **L1 re-book at 512 KiB (answers MA 61/62).**
-   - Setup in ~/l1sweep:
-     - h7b1, h8b1, h9b1 and h7b5 are worktrees at 65805f7a (661cbe41 +
-       ce5f44dd, RI's RCU model honouring CCV_LAT_RCU_ADDR);
-     - runs: sweeph2.sh into runsh/;
-     - env: CCV_FET_PERFECT=1 CCV_MLC_WARM=1 CCV_DCU_SETS=512 CCV_DCU_WAYS=8.
-   - AR's runs are done, all clean except the known hit-7 operand CHECK
-     (1 uop × 32 lanes on cm128):
-
-     | -priv, 512 KiB | hit 7 | hit 8 | hit 9 |
-     |---|---|---|---|
-     | cm128 | 1,925,434 | 1,936,319 (+0.57%) | 1,951,851 (+1.37%) |
-     | cm32 | 1,140,115 | 1,168,776 (+2.51%) | 1,196,408 (+4.94%) |
-     | S1 | 1,638 | 1,638 | 1,638 |
-
-     S1 sits flat because its loads are misses or late hits (l1_hit 0).
-   - RH's part (AR 361; RH reports by message):
-     - calibration: cm32 at 512 KiB, hit 7, equals 1,140,115;
-     - (a) base 5 at 512 KiB, hit 7: cm128, cm32, S1;
-     - (b) 128 KiB at hit 8/9: cm128, cm32;
-     - (c) 64 KiB at hit 8/9.
-   - Then:
-     - write one AR row after .577132, Needs MA: the hit curve, PF-47 base 5
-       vs 1, and the configured-down points;
-     - notify MA;
-     - update perf-register PF-33/PF-47 (PF-51 is MA's);
-     - run check-docs, commit, push.
-   - Memory: a cm128 run peaks at about 7 GB at its end, so run one at a
-     time on 15 GB. Kill a script and its xargs before their children.
+1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
+   Post-fix (a5481843), cm128 hit 7/8/9: 512 KiB 1,924,529 / +0.61% / +1.03%;
+   128 KiB 1,946,773 / +0.59% / +1.03%; 64 KiB 2,124,002 / +1.14% (hit 8).
+   cm32: +2.51% / +4.94%. S1 1,640 flat (no L1 hits). Base 5: +3.19% cm128,
+   +10.29% cm32, +2.68% S1. AR's view: hit 8 only on a measured timing need.
+   perf-register PF-33 and PF-47 are booked. Wait for MA's answer.
+   RH may delete its trees; AR's own are in ~/l1sweep (f*/h*/wp; delete them
+   once MA answers). One cm128 at a time (about 7 GB at its end).
 2. **AR 362, Strawman B (set_index + bank lead on ccv_miu_dcu_req at H+1).**
    MA 65 accepted all six conditions:
    - SETS × LINE ≤ 2^PAGE_SHIFT;
