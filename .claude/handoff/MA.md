@@ -29,7 +29,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 358, TI 442, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 59, DA 119.
+Conventions 19, AR 358, TI 444, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 59, DA 119.
 
 ## State, 2026-11-13
 
@@ -72,7 +72,11 @@ Conventions 19, AR 358, TI 442, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
 
 ## Open work, most urgent first
 
-- Sweep 2026-11-15: AR 358 made coremark-derived-priv the perf baseline (MA 59 taken); TI 442
+- TI-444 (cc MA, no ask): -priv has no ineligible load, knob k0=k1 (cm32priv 2,253,475; cm128priv
+  22.78M cold, k1 OOM-killed); PF-33/PF-47 can re-book on -priv. 128 operand CHECKs on cm128priv
+  (consumer reads before load lands, no replay): TI bisecting with RCU/OOE stubs; if it lands on
+  the MIU/DCU stubs it comes to MA.
+- Sweep 2026-11-15 pushed 313d6c04, SCOPED PASS 24/24 (ngd 2.6h). AR 358 made coremark-derived-priv the perf baseline (MA 59 taken); TI 442
   moved benches (cm32priv/cm128priv). AR 356: stub gets MA-4 eligibility + no-hit, knob off/on
   runs pending (TI). AR re-books PF-33/PF-47 on -priv: the MA-9 merge numbers come from those.
 
