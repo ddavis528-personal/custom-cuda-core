@@ -965,8 +965,11 @@ for kb in transp4:held-over-r borrow:borrow-partial; do
 done
 CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --cycles 20000 2>&1 |
   head -c 2000000 >"$B/kernel_warp-cap.log"
-# Warp 3 is the first caught since RA's rev 95 (LANE 7, SFU 12); warp 2 before.
-ctl held-over-r "^CHECK ooe: warp 3 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
+# With both PF-47 (CCV_LAT_L1_WAKE 13, AR rev 351) and transp4's SFU ops at
+# lat_class 4 (OI-145 (3), RI-52), warps 0, 1 and 2 are caught, warp 1 most
+# (139 of 246 refusals); warp 0 with PF-47 alone, warp 1 with the SFU class
+# alone, warp 3 from RA's rev 95 (LANE 7, SFU 12), warp 2 before.
+ctl held-over-r "^CHECK ooe: warp 1 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
 ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
 ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
 # A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every
@@ -1094,7 +1097,8 @@ fi
 # held from landing to its MIU queue entry's release (MA-5), and behind the
 # stub's in-order queue coremark128's outlive CCV_P_TIMEOUT_BP (8192), so the
 # channel's is CCV_P_TIMEOUT_MEMOP (20480, CCV_MEMOP_CREDITS x
-# CCV_P_TIMEOUT_MEM). coremark128 is run 45000 cycles, over twice that bound,
+# CCV_P_TIMEOUT_MEM); ccv_dec_ooe_uop's, whose credits wait on memop's,
+# derives from it (CCV_P_TIMEOUT_UOP, AR 352). coremark128 is run 45000 cycles, over twice that bound,
 # from a partial oracle (PARTIAL=1, tools/gen-oracle.sh: 10000 records a
 # warp, where 45000 cycles retire about 1300 in all). It must raise no
 # response_within_n and no CHECK but the operand lines a bounded run's
@@ -1117,23 +1121,29 @@ else
   other=$(grep '^CHECK' "$cbl" | grep -vc '^CHECK lane [0-9]*: seq [0-9]* operand ')
   asrt=$(grep '%Error' "$cbl" | grep -vc 'quiesced_at_end')
   mh=$(sed -n 's/^BPAGE ccv_ooe_miu_memop max=\([0-9]*\) .*/\1/p' "$cbl")
+  uh=$(sed -n 's/^BPAGE ccv_dec_ooe_uop max=\([0-9]*\) .*/\1/p' "$cbl")
   ret=$(field "$cbl" retired)
   if [ "$rwn" = 0 ] && [ "$other" = 0 ] && [ "$asrt" = 0 ] && [ "$(field "$cbl" finished)" = 0 ] &&
      [ "${ret:-0}" -gt 1000 ] && [ "${mh:-0}" -gt 8192 ]; then
     rm -rf "$B/skel-memop8192"; cp -a "$B/skel" "$B/skel-memop8192"
-    sed 's/ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP/ccv_prov_pkg::CCV_P_TIMEOUT_BP/' \
+    sed -e 's/ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP/ccv_prov_pkg::CCV_P_TIMEOUT_BP/' \
+        -e 's/ccv_prov_pkg::CCV_P_TIMEOUT_UOP/ccv_prov_pkg::CCV_P_TIMEOUT_BP/' \
       rtl/generated/ccv_common_chk_bank.sv >"$cb/bank-memop8192.sv"
-    if ! grep -q CCV_P_TIMEOUT_MEMOP rtl/generated/ccv_common_chk_bank.sv; then
-      bad "coremark128: memop watchdog control" "the bank names no CCV_P_TIMEOUT_MEMOP to narrow"
+    if ! grep -q CCV_P_TIMEOUT_MEMOP rtl/generated/ccv_common_chk_bank.sv ||
+       ! grep -q CCV_P_TIMEOUT_UOP rtl/generated/ccv_common_chk_bank.sv; then
+      bad "coremark128: memop watchdog control" "the bank names no CCV_P_TIMEOUT_MEMOP or CCV_P_TIMEOUT_UOP to narrow"
     elif ! tools/build-skel.sh "$B/skel-memop8192" "$cb/bank-memop8192.sv"; then
       bad "coremark128: memop watchdog control" "the 8192 bank does not build ($B/skel-memop8192.log)"
     else
-      "$B/skel-memop8192/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 2>&1 |
-        grep -m1 'u_ooe_miu_memop_s[0-9]*.*response_within_n' >"$cb/ctl.log"
-      if [ -s "$cb/ctl.log" ]; then
-        say "coremark128, 45000 cycles: memop watchdog" "PASS (longest hold $mh of 20480; at 8192 it fires)"
-      else
+      "$B/skel-memop8192/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cb/ctl.log" 2>&1
+      # Both at 8192 must fire (AR 352 (3)): memop's, and dec_ooe_uop's,
+      # whose credits wait on memop's (CCV_P_TIMEOUT_UOP).
+      if ! grep -q 'u_ooe_miu_memop_s[0-9]*.*response_within_n' "$cb/ctl.log"; then
         bad "coremark128: memop watchdog control" "with the memop watchdog at 8192, no response_within_n on ccv_ooe_miu_memop"
+      elif ! grep -q 'u_dec_ooe_uop_s[0-9]*.*response_within_n' "$cb/ctl.log"; then
+        bad "coremark128: uop watchdog control" "with the uop watchdog at 8192, no response_within_n on ccv_dec_ooe_uop (hold ${uh:-none})"
+      else
+        say "coremark128, 45000 cycles: memop and uop watchdogs" "PASS (longest holds memop $mh, uop ${uh:-none}, of 20480; at 8192 both fire)"
       fi
     fi
     rm -rf "$B/skel-memop8192" "$B/skel-memop8192.log"

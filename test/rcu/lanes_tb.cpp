@@ -224,17 +224,23 @@ struct Bench {
       for (unsigned j = 0; j < kK * kP * kN; ++j) put(dut->rd_cr03h, 8 * j, 8, x->rd[j]);
     }
     // A+6: the lanes' results, as due; their valid a cycle before (A+5).
-    auto dueAt = [&](uint64_t cc) {
+    // sec_valid holds the lane ops' sections only: an SFU result rides on
+    // sfu_valid (lane_rcu's contract, RA-16 (b); RI-51), but its message is
+    // valid all the same.
+    auto dueAt = [&](uint64_t cc, bool sfu) {
       unsigned d = 0;
       if (const Group *x = g(cc - (kLat - 1)))
         for (unsigned s = 0; s < kK; ++s)
           if (x->v[s] && (x->op[s].cls == Lane || x->op[s].cls == Copy)) d |= x->op[s].foot;
-      if (const Group *x = g(cc - (kSfu - 1)))
-        for (unsigned s = 0; s < kK; ++s)
-          if (x->v[s] && x->op[s].cls == Sfu) d |= x->op[s].foot;
+      if (sfu)
+        if (const Group *x = g(cc - (kSfu - 1)))
+          for (unsigned s = 0; s < kK; ++s)
+            if (x->v[s] && x->op[s].cls == Sfu) d |= x->op[s].foot;
       return d;
     };
-    const unsigned due = dueAt(c), due1 = dueAt(c + 1);
+    // sfusec: the SFU sections in sec_valid as well, which lanes_lockstep
+    // must refuse.
+    const unsigned due = dueAt(c, control == "sfusec"), due1 = dueAt(c + 1, true);
     for (unsigned l = 0; l < kN; ++l) {
       put(dut->lrv_cr07h, l, 1, due1 != 0);
       put(dut->lsv_cr08h, l * kK, kK, due);

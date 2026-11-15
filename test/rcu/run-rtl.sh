@@ -36,7 +36,8 @@
 #                   through SW and done slot 4 included, and its controls
 #                   bypage (a forward's age one more), immpos (the immediate
 #                   at position 0), pcrow (a PC row from every issue) and
-#                   swlate (SW a cycle late), each of which must fail
+#                   swlate (SW a cycle late), sfusec (an SFU result in
+#                   sec_valid as well), each of which must fail
 #   rcu_mem:        test/rcu/mem_tb.cpp, 4 lanes (--full adds 32), and its
 #                   controls align (operands not right-aligned) and pstlane
 #                   (a predicate store's word in lane 1), each of which must fail
@@ -159,10 +160,14 @@ done
 for m in lanes mem; do
   us="rcu_${m}_c4"; [ "${1:-}" = --full ] && us="$us rcu_$m"
   for u in $us; do bench "$u" test/rcu/cg-build.sh "$u" "$B/$u" -- "$B/$u/tb"; done
-  case $m in lanes) cs="bypage immpos pcrow swlate" ;; mem) cs="align pstlane" ;; esac
+  case $m in lanes) cs="bypage immpos pcrow swlate sfusec" ;; mem) cs="align pstlane" ;; esac
   for c in $cs; do
+    # A control is caught by the bench's own compare, or, for sfusec, by the
+    # RTL's lanes_lockstep assertion, which stops the run before it reports.
+    want="control $c: .* [1-9][0-9]* mismatches: FAIL$"
+    [ "$c" = sfusec ] && want="Assertion failed in TOP\.rcu_lanes\.lanes_lockstep"
     if [ -x "$B/rcu_${m}_c4/tb" ] && ! "$B/rcu_${m}_c4/tb" --control "$c" >"$B/rcu_$m.$c.log" 2>&1 &&
-       grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/rcu_$m.$c.log"; then
+       grep -q "$want" "$B/rcu_$m.$c.log"; then
       say "rcu_$m control $c" "caught"
     else
       say "rcu_$m control $c" "NOT CAUGHT ($B/rcu_$m.$c.log)"; fail=1
