@@ -1396,9 +1396,17 @@ private:
       } else {
         ++it;
       }
+    // A completion never leaves ahead of its load's data: OOE wakes the
+    // load's dependants on it, hit or miss (OA-23), and they would read the
+    // register before the load lands (AR 359 (4)). to_rcu_ drains first, so
+    // data and completion may still leave together.
+    auto dataQueued = [&](uint64_t tid) {
+      for (const Q &q : to_rcu_) if (q.tid == tid) return true;
+      return false;
+    };
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
-        if (free(chan, it->slot)) {
+        if (free(chan, it->slot) && !(chan == c.miu_ooe && dataQueued(it->tid))) {
           if (chan == c.miu_ooe) sendCmpl(it->slot, it->msg, it->tid);
           else send(chan, it->slot, it->msg, it->tid);
           it = q.erase(it);
