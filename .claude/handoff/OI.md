@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-14 (613b7f6c PUSHED, full PASS: #38 29ee4ffd, #39 8c4a4dce + cg-build path fix, sweep merge 11-14; OI-147 answers TI 428)
+Updated 2026-11-15 (#55 l1-nohit at CCV_LAT_L1_NOHIT; before: 613b7f6c PUSHED, full PASS: #38 29ee4ffd, #39 8c4a4dce + cg-build path fix, sweep merge 11-14; OI-147 answers TI 428)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -68,10 +68,11 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
    masked OR ~6..10. Files + logs: scratchpad/rd51/. Next lever needs OA: gsn/psn arrival 6 (rev 194).
    #52 try 1 11-14 (reverted): window terms per retire-count candidate from hoh flops, count picks last
    (benches pass): flop-flop 29.5->31.1 (fa_oh remapped), dn_tag 26.2->29.4, fl_v 29.5->31.2. scratchpad/rob52/.
-   TI-437 (11-15): PF-47 (L1 wake 13, TI 86d99d29) lands OA 410's no-hit (payload I+13) with the wake; TI
-   pinned testL1NoHit to lat_l1_wake 17 in our test. OA/MA/AR rule the contract; when it moves, OI reverts
-   that pin (TI's ask). Merge TI's PF-47 branch at the sweep, then rerun OOE benches (wake 13/15).
-   Bookmarks since: TI 437, RI 82 (RI-53: SFU pair pushed 9f513f3b; merge at sweep).
+   #55 done 11-15 (AR 353/354, MA 56, OA 416, TI 438/439): merged TI bd1cc5a2 (PF-47 + CCV_LAT_L1_NOHIT
+   9 at base 1); testL1NoHit sends at Env::nohit_lat (the param), wake-17 pin gone, runs at base 1 and
+   base 5 (17/13); new controls ignore-nohit-base5, nohit-wake-1(-base5) (at WAKE-1 the child issues
+   twice, no replay counted); margin 2 holds in the model. check-ooe-unit count 57 (tools/: tell TI).
+   Bookmarks since: TI 439, OA 418, MA 56, AR 354, RI 82 (RI-53: SFU pair 9f513f3b; merge at sweep).
    Blocked: #40/#42 (TI schema), #46 (lead set), l1_nohit price (MA stub sends no no-hits),
    cand_indep_pend price (OI-143 rev 344: needs sectioned on).
    Gate note: the first a2c1513a gate was OOM-killed in cg (check-cg python 4.6 GB beside ngd's ABC);

@@ -189,10 +189,11 @@ struct Config {
   /// a miss (A-46). Off while MIU completes no load at the L1 contract.
   bool l1_spec = true;
   /// OA 410 (OA rev 413, MA's answer to OA 408): a completion hint with
-  /// no_hit set says a spec global load has lost the L1-hit contract (valid
-  /// I+12, payload I+13). Taken, it clears the load's speculative wake at
-  /// once, as a miss would at I+16, and its dependants wake on the
-  /// completion. A refill hint for the same load in the cycle wins. Off:
+  /// no_hit set says a spec global load has lost the L1-hit contract
+  /// (payload I+CCV_LAT_L1_NOHIT, its valid a cycle earlier; AR 353). Taken,
+  /// it clears the load's speculative wake at once, ahead of
+  /// CCV_LAT_L1_WAKE by the margin 2 (OA 416), and its dependants wake on
+  /// the completion. A refill hint for the same load in the cycle wins. Off:
   /// a no-hit is ignored and the miss cancels at the contract, as before.
   bool l1_nohit = false;
   // -- narrow registers and lane sections (OI-28 to OI-33, Daniel's 2026-10-08) -
