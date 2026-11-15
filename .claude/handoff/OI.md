@@ -57,6 +57,9 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-9. #53 ooe_go PARKED like #51 (scratchpad/go53/NOTES.md, e1e2.patch, e3.patch): internal rewrites give
+   ha -1.1 at best, hv/px/pl stay 27.5-28.3 (ABC remap moves others +-1). Needs OA: decq/rename
+   registering nwh / px thermometer / run needs, or the arrival 2 on those ports. Asked DA 11-15.
 -8. #56 AR 355 (3): base-5 cm128 operand CHECK seq 179681 (warp 0, R14). Debug build 8dbf290b on
    gate-scratch/OI (worktree /home/user/wt-dbg355, ADDR_BASE 5, CCV_DBG_SEQ dumps DBGHELD/DBGEXEC/DBG).
    RH asked 11-15 to run it unbounded (DCU 64x8) and return the dumps. Then root-cause, OI row, ring AR.
