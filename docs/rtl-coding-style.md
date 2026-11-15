@@ -994,7 +994,9 @@ floor(`CCV_NGD_BUDGET` / 2) = 12, derived, so it follows the stage:
   within the rest, 12.
 
 Two defaults meet within the stage, so a port that fits them needs no one's
-plan. A port over 12 needs explicit budgets from the architect.
+plan. A port over 12 needs explicit budgets, in the module's budget file
+(below): set by the module's owner where the convergence check times the
+connection, by the architect where it does not yet.
 
 **Nothing straight through a module** (Daniel, 2026-10-18). A path from an
 input port to an output port is refused, logic or a plain wire. Logic is
@@ -1064,10 +1066,36 @@ today only `rtl/clk/ccv_common_clk.ngd.json`. An example:
 
 An input's `arrival` or an output's `required` time, in NGD from the flop
 that launches it, or `observation`, with who set it, when and why. The
-architect sets them (OA for OOE); the module's owner keeps the file and
-declares an inner helper. The module is checked against its file, and an
-assembled block is checked from all of them: the budgets must **converge**,
-each driver's required time no later than its receiver's arrival.
+module's owner keeps the file and declares an inner helper. The module is
+checked against its file, and an assembled block is checked from all of
+them: the budgets must **converge**, each driver's required time no later
+than its receiver's arrival.
+
+**Who may move a budget** (Daniel, 2026-11-15). A budget is a split of 25
+NGD between the two ends of a connection, and convergence is the check that
+the split holds. So where the check times the connection, a budget is the
+implementation's to set: the module's owner may raise, lower or add one
+without an architect's sign-off, provided check-ngd passes, both the module
+against its file (NGD-1 to NGD-3, NGD-7) and the convergence of the level
+that instantiates it. `by` names who set it and `why` says what it buys;
+an architect still reads the change in the register, but nothing waits on
+them. A connection is timed when the module is instantiated by a parent
+that check-ngd measures, a unit in `test/**/cg-units.json` or
+`ngd-units.json` (`rcu_r` in `ccv_rcu`, `ooe_ready` in `ooe_sched`, say), and
+both ends of a change must sit in such levels. Where the check does not
+time it yet, a budget still needs its architect (OA for OOE, RA for RCU),
+because nothing would catch a split the other end cannot meet:
+
+- a module no measured parent instantiates yet (today `ooe_rename`,
+  `ooe_sched`, `ooe_rs`, `ooe_rat`, `ooe_decq`, `ooe_age`, `ooe_rencred`,
+  `ooe_rob_w`: their ports face a `ccv_ooe` top not yet in RTL);
+- a block's own boundary ports, their lead-field budgets included (in
+  `ccv_rcu.ngd.json`, say): the other end is another block's, paired only
+  once both tops are RTL, and the split is an interface contract between
+  two owners, raised as a register row.
+
+A change that passes only because the check could not see the other end is
+not covered; neither is a ratchet entry, which still only shrinks.
 
 Seven rules, checked by `tools/check-ngd.py` on every module at its units'
 parameters (`test/**/cg-units.json`; `test/**/ngd-units.json` for a module
@@ -1212,12 +1240,12 @@ output net is timed in two parts, the child's loads in its unit and the
 parent's pins at its level, each with its own fanout term, where the whole
 would take one tree over both, short of it by one INV stage at most. The
 block budget of local clock gating (2% per instance) is
-summed from the same read by `tools/check-cg.py`. Today no block top is RTL,
-so neither runs on the tree; the fixtures exercise both.
+summed from the same read by `tools/check-cg.py`. Today RCU's top is RTL
+(`ccv_rcu`), so both run on it; the fixtures exercise both.
 
 **The ratchet.** What broke the rules when they were made sits on
 `rtl/ngd-ratchet.json`: ports over a default (NGD-2, NGD-3, 2026-10-17),
-each awaiting the architect's budgets or a redesign; paths straight through
+each awaiting budgets (see *Who may move a budget*) or a redesign; paths straight through
 or glue (NGD-5, 2026-10-18, keyed `from>to`), each awaiting a redesign that
 groups the logic with one sequential side, or the module's declaration as an
 inner helper; inner helpers over 16 alone (NGD-6, 2026-10-19, keyed
