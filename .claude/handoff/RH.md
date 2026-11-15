@@ -7,7 +7,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - RH runs long CPU-, memory- and disk-heavy jobs that other agents hand off: gates,
   check-cg/check-ngd sweeps, Yosys/SBY runs, kernel and SV-hosted runs,
   experiment sweeps, bisects. Takes jobs from OI first; TI may send them too.
-  Other senders: ask Daniel first.
+  AR is a regular sender too (DA in RH's session, 2026-11-15). Results go to AR by
+  message, never as a register write. Other senders: ask Daniel first.
 - No register tab, so RH never writes to the register. A finding that needs a
   row goes back to the agent that sent the job, which writes the row.
 - Jobs arrive by `send_message` and results go back the same way, with `priority`
@@ -53,6 +54,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
+- AR-361 sweep for AR (MA 61), started 17:58Z 11-15: rh-jobs/ar361/ar361.sh (resumable),
+  summary ~/ccv-logs/ar361/summary, worktrees rh-ar361-{cal,b5,h8,h9} on 60bceb62 (b5 merged
+  with ccr-888218a3-20cauz), priv oracles /home/user/rh-ar361-ora. Send AR the calibration
+  (target 1,140,115), then the full table by message. Fallback trig_011U9dwjP4aaeHt7wuunpEpG.
 - Nothing running (10:30Z 11-15). AR 355 (3) for OI DONE and sent: 8dbf290b (gate-scratch/OI,
   debug only), cm128 warm, CCV_DBG_SEQ=179681: no CHECK (check_failures 0, 5,698,966 cycles);
   DBGHELD R14 0x10 vs 0x5b0 at seq 179681, whose issue was cancelled behind seq 179680's load
