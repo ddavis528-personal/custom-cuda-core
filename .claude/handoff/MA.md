@@ -76,6 +76,10 @@ Conventions 19, AR 361, TI 445, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
   down by sets only; supersedes MA 60. TI to set CCV_DCU_SETS 512. DCU tab Geometry updated (rev 24;
   the Capacity item's history below it still reads as history). Pinged AR for the PF-33/PF-47 status
   on -priv at 512 KiB, hit base 7/8/9: that curve is the MA-9 number.
+  DA: fixed 512 KiB hit latency at every configured size for the first implementation; the
+  size-following latency is PF-51 in docs/perf-register.md (owner MA). TI-447: CCV_DCU_SETS 512
+  in params (6d36c1b2, lands with ti-nohit). Asked Daniel whether TI should log the 512 KiB decision
+  in the DA tab.
 - MA 60 (re:AR 360, superseded by 61): capacity on -priv: cm128priv 64/128/256/512 KiB = 2.133M/1.947M/1.928M/1.925M
   (128 KiB takes 8.7 of 9.7 pts); cm32priv -0.17%, S1 flat. Accepted: 64 KiB baseline, Phase 1
   resource model prices 64 and 128 KiB; area delta to Daniel in the summary (corpus sweep DA rev 95
