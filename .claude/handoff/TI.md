@@ -65,7 +65,12 @@ restart: rerun the job). Logs in /root/ccv-logs/.
    k0 running (wait task b73mbp07u). If k0 shows l1_inelig=0, k1 is identical by
    construction: no rerun. Then: TI row to AR (cc OI, MA), gate-push.
    Also queued: RA 148 stub RCU address from CCV_LAT_RCU_ADDR_BASE (+ RTL refusal).
-   AR 355 (2) done: TI 443 (no regression; 73.6M was cold MLC; capacity misses).
+   AR 355 (2) done: TI 443; AR 359 closed it. AR 359 (4) asks: name the block
+   behind cm128priv's 672 operand CHECKs (64 KiB, perfect fetch, warm MLC; 21
+   uops, operand 0, all 32 lanes, never reexec'd, no def mismatch) and raise it
+   in the owner's tab (may be AR 355 (3)'s seq 179681, OI's). Job
+   /root/ccv-logs/opchk.log (scratchpad/opchk/run.sh): model, CCV_RCU_IMPL=stub,
+   CCV_OOE_IMPL=stub, serial after nohit-priv's pid 16531.
    Daily sweep 11-15: register quiet; repo half (daily-sweep.sh) deferred while
    the perf run holds the machine; run it from a fresh worktree.
 1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
