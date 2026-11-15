@@ -54,10 +54,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- AR-361 sweep for AR (MA 61), started 17:58Z 11-15: rh-jobs/ar361/ar361.sh (resumable),
-  summary ~/ccv-logs/ar361/summary, worktrees rh-ar361-{cal,b5,h8,h9} on 60bceb62 (b5 merged
-  with ccr-888218a3-20cauz), priv oracles /home/user/rh-ar361-ora. Send AR the calibration
-  (target 1,140,115), then the full table by message. Fallback trig_011U9dwjP4aaeHt7wuunpEpG.
+- AR-361 post-fix (AR, after TI 450 a5481843) RUNNING from 20:05Z 11-15: rh-jobs/ar361/ar361f.sh
+  (resumable, cm128priv only, one at a time), summary ~/ccv-logs/ar361f/summary, worktrees
+  rh-ar361f-{h9,b5,h8,h7} on a5481843 (has ce5f44dd, no merge). Required: h9/512, b5/512, h8/64,
+  h7/64 ("== required done"), then the same four at 128 sets ("== all done"). Send AR the table
+  (rh-jobs/ar361/table.py, point L at ar361f) by message. Watcher bjkupy8va.
+  Pre-fix sweep (ar361.sh, 60bceb62) DONE 20:05Z, full table sent to AR; keep the rh-ar361-* trees
+  and logs (AR: pre-fix numbers go in the row). The CHECKs on cm128 at sets<512 were the TI 450 bug.
 - Nothing running (10:30Z 11-15). AR 355 (3) for OI DONE and sent: 8dbf290b (gate-scratch/OI,
   debug only), cm128 warm, CCV_DBG_SEQ=179681: no CHECK (check_failures 0, 5,698,966 cycles);
   DBGHELD R14 0x10 vs 0x5b0 at seq 179681, whose issue was cancelled behind seq 179680's load
