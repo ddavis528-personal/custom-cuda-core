@@ -29,7 +29,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 352, TI 437, OA 416, IS 193, CP 157, OI 348, RA 146, RI 79, MA 55, DA 119.
+Conventions 19, AR 354, TI 438, OA 417, IS 193, CP 157, OI 348, RA 146, RI 79, MA 56, DA 119.
 
 ## State, 2026-11-13
 
@@ -72,8 +72,9 @@ Conventions 19, AR 352, TI 437, OA 416, IS 193, CP 157, OI 348, RA 146, RI 79, M
 
 ## Open work, most urgent first
 
-- MA 55 (re:TI-437): no-hit moves with PF-47 (valid I+8, payload I+9; margin to the wake
-  stays 3); proposed CCV_LAT_L1_NOHIT = CCV_LAT_L1_WAKE - 5, derived. Waits on AR's ruling.
+- MA 55-56 (re:TI-437, AR 353-354, TI 438): no-hit settled. CCV_LAT_MIU_NOHIT_A2 = 2 (A1 at H,
+  A2 at H+1, launch H+2); CCV_LAT_L1_NOHIT = issue-to-H + 2 + HOP = 9 under PF-47 (TI applied).
+  MA 55's L1_WAKE-5 withdrawn (it moved with L1_HIT).
 - Phase 1 model: report max memop hold against CCV_P_TIMEOUT_MEMOP 20480 (stub's cm128 hit
   19201, TI 436, from its global head-of-line block); send the no-hit for OI-142's knob.
 
