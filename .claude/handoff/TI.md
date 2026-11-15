@@ -59,12 +59,15 @@ restart: rerun the job). Logs in /root/ccv-logs/.
    early no-hit at CCV_LAT_L1_NOHIT, held completion, OOE l1_nohit on in the
    skeleton (OI's ooe_block.cpp: notify OI on landing), bins l1_inelig/l1_nohit/
    l1_nohit_drop + --break no-nohit, advance() one-line loads first (TI-440).
-   check-kernel passes. Perf job /root/ccv-logs/nohit.log (S1 3,917 both; cm32,
-   cm128 knob off/on running). Then: TI row to AR (cc OI, MA), gate-push.
+   check-kernel passes. Pin a9241c2 + -priv benches (incl. coremarkpl32priv).
+   Perf job /root/ccv-logs/nohit-priv.log: cm32priv k0=k1=2,253,475 (l1_inelig 0:
+   -priv coalesces, the knob does nothing). cm128priv k1 OOM-killed by the bisect;
+   k0 running (wait task b73mbp07u). If k0 shows l1_inelig=0, k1 is identical by
+   construction: no rerun. Then: TI row to AR (cc OI, MA), gate-push.
    Also queued: RA 148 stub RCU address from CCV_LAT_RCU_ADDR_BASE (+ RTL refusal).
-   AR 355 (2) cm128 64 KiB bisect: subagent in /home/user/ti-bis (removes it).
+   AR 355 (2) done: TI 443 (no regression; 73.6M was cold MLC; capacity misses).
    Daily sweep 11-15: register quiet; repo half (daily-sweep.sh) deferred while
-   perf runs and the bisect hold all 4 cores; run it from a fresh worktree.
+   the perf run holds the machine; run it from a fresh worktree.
 1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
 2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
 3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
