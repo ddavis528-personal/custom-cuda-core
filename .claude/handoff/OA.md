@@ -45,10 +45,10 @@ CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
 ## OI-150 (OA 417, rev 419, 11-15)
-Arrivals kept. go: producer encodings (decq one-hot need, Rename thermometer pool) granted at 2. rendep gsn/psn: arrival 2 only if Rename precomputes the one-hot index at no latency. sched res/vel: OI to model-price the fallback a cycle later (OA rules if under 0.5% S1, else DA). ooe_rob_w wid_cq00h: arrival 0, one-hot flop, within the ratchet caps. OI-151/OA 418 (rev 420): WID strap withdrawn (over caps); WID stays a param with units at 1-3. DA's 11-15 ruling was given in OI's session; record it only once Daniel confirms the wording. #52 rob_w: Rename 2 per-slot fill valids and OOE-capture per-slot dn/cm valids granted at 2; OI measures before pushing.
+Arrivals kept. go: producer encodings (decq one-hot need, Rename thermometer pool) granted at 2. rendep gsn/psn: arrival 2 only if Rename precomputes the one-hot index at no latency. sched res/vel: OI to model-price the fallback a cycle later (OA rules if under 0.5% S1, else DA). ooe_rob_w wid_cq00h: arrival 0, one-hot flop, within the ratchet caps. OI-151/OA 418 (rev 420): WID strap withdrawn (over caps); WID stays a param with units at 1-3. DA's 11-15 ruling was given in OI's session; record it only once Daniel confirms the wording. #52 rob_w: Rename 2 per-slot fill valids and OOE-capture per-slot dn/cm valids granted at 2; OI measures before pushing. OI-152/OA 419 (rev 421): fl_m cap 29.3 (baseline 31.7, TI adds the line), fl_v/fl_slot caps removed; the NGD-1 rise to 30.1 at WID 3 (ABC remap of the retire window) is DA's call, and OA recommends holding 29.6 and isolating the retire window in a child first; (C) withdrawn. Waiting on Daniel.
 
 ## Register bookmarks (revs read through)
-Conventions 19, OA 420, AR 356, TI 445, OI 354, IS 193, CP 157, DA 120,
+Conventions 19, OA 421, AR 356, TI 445, OI 355, IS 193, CP 157, DA 120,
 RA 148 (tab 9851686b-2b0a), RI 82 (tab 8e4547bc-c469), MA 57 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
 OOE doc rev 381. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
 Sweep 11-15: 5 branches (116 commits), full gate green, pushed 6aa0c403; release 6fa7fc1f; tag refused (known). Sunday, no pings.
