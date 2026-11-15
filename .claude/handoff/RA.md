@@ -322,7 +322,10 @@ AR 356 agrees with rev 148 (RI builds; control fails when model/stub differ from
 CCV_LAT_L1_NOHIT; OA final). AR 357/358: perf benches price coremark-derived-priv.
 2026-11-15 sweep: merged 183cc441 (57), 57eff422 (14), 80102643 (18), 9eb50716 (4), c22116ce (1), miu-dcu-spec (16);
 518cb3c3 now on this branch: gates detach, wait with tools/gate-wait.sh.
-Bookmarks: OA 418, RA 148, RI 82, TI 441, AR 358, DA 119, OI 350, Conventions 19, CP 158, IS 194, MA 59.
+RI-54 (RI 83): model times address from the param, addr-late control; TI merges ce5f44dd. TI-445 / RA rev 149: owner may
+move a budget convergence proves (TI cites Daniel; NOT in DA tab at 119; asked DA to record); gap: child port wired to a
+ccv_rcu block port stays RA's.
+Bookmarks: OA 418, RA 149, RI 83, TI 445, AR 358, DA 119, OI 350, Conventions 19, CP 158, IS 194, MA 59.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
