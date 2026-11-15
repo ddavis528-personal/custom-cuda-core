@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 439, RA 147, RI 82, OI 350, AR 353, OA 418, MA 56, IS 193, CP 157,
+TI 441, RA 148, RI 82, OI 350, AR 356, OA 418, MA 57, IS 193, CP 157,
 DA 119, Conventions 19 (2026-11-15). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
@@ -54,8 +54,18 @@ restart: rerun the job). Logs in /root/ccv-logs/.
   push only. Disk: deleting other sessions' /tmp/tmp.* was denied; ask.
 
 ## Open work (most urgent first)
-1. OI-149 done (58d758ce): no-hit pin gone, WAKE-1 controls; OI added 3
-   control names to tools/check-ooe-unit.sh (57). AR still to re-book PF-33/PF-47.
+0. Branch ti-nohit (worktree /home/user/ti-sram) 5cf502aa, backed up to
+   gate-scratch/TI-sram, NOT pushed: AR 356 (1) stub MIU MA-4 eligibility +
+   early no-hit at CCV_LAT_L1_NOHIT, held completion, OOE l1_nohit on in the
+   skeleton (OI's ooe_block.cpp: notify OI on landing), bins l1_inelig/l1_nohit/
+   l1_nohit_drop + --break no-nohit, advance() one-line loads first (TI-440).
+   check-kernel passes. Perf job /root/ccv-logs/nohit.log (S1 3,917 both; cm32,
+   cm128 knob off/on running). Then: TI row to AR (cc OI, MA), gate-push.
+   Also queued: RA 148 stub RCU address from CCV_LAT_RCU_ADDR_BASE (+ RTL refusal).
+   AR 355 (2) cm128 64 KiB bisect: subagent in /home/user/ti-bis (removes it).
+   Daily sweep 11-15: register quiet; repo half (daily-sweep.sh) deferred while
+   perf runs and the bisect hold all 4 cores; run it from a fresh worktree.
+1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
 2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
 3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
    ooe_rs from a flop. RI-21 (4): rcu_dec_pkg switch after sign-off.
