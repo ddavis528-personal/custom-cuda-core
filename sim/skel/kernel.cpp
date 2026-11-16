@@ -504,6 +504,19 @@ private:
   }
 };
 
+// AR 362: ccv_miu_dcu_req's index lead, the lookup's phys_addr bits
+// [log2 line + CCV_W_DCU_SET - 1 : log2 line] (the set; a sweep's smaller
+// CCV_DCU_SETS uses its low bits) and [log2 line + CCV_W_DCU_BANK - 1 :
+// log2 line] (the bank, MA-4's [8:7]): page offset, the same in the VA and
+// the PA (CCV_DCU_SETS's require).
+inline uint64_t indexLeadSet(uint64_t pa) {
+  static_assert((1u << 7) == kLine, "a line is 128 bytes");
+  return (pa >> 7) & ((uint64_t(1) << ccv::prov::kWDcuSet) - 1);
+}
+inline uint64_t indexLeadBank(uint64_t pa) {
+  return (pa >> 7) & ((uint64_t(1) << ccv::kWDcuBank) - 1);
+}
+
 // ---- DCU: a small L1; a write is read-modify-write of the line ------------------
 //
 // dcu_mlc_req carries no byte mask, so a partial store cannot go below DCU
@@ -514,7 +527,6 @@ private:
 // 2026-10-21: a warp stalled on a long miss must not hold the others' up).
 // Requests to one line keep their order: a line with a miss in flight takes
 // nothing more until it is answered. One queued request starts a cycle.
-
 class Dcu : public Stub {
 public:
   Dcu(int inst, Kernel &k) : Stub(inst, k), ids_(ch().dcu_mlc) {}
@@ -677,11 +689,32 @@ private:
     busy_lines_.insert(pa);
   }
 
+  /// AR 362: the lead's set index and bank are copies of the lookup's
+  /// phys_addr bits, bit for bit, and DCU refuses either that differs, by
+  /// name (--break dcu-set-lead, dcu-bank-lead). The stub reads its set from
+  /// the payload, so the lead changes no state here (AR 362 (3)).
+  void checkIndexLead(unsigned s, const Bits &req) {
+    const Ch &c = ch();
+    const uint64_t pa = get(req, c.miu_dcu, "phys_addr");
+    const uint64_t set = indexLeadSet(pa), bank = indexLeadBank(pa);
+    const uint64_t ls = get(req, c.miu_dcu, "lead_set_index");
+    const uint64_t lb = get(req, c.miu_dcu, "lead_bank");
+    if (ls != set)
+      k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
+              (unsigned long long)pa, (unsigned long long)set);
+    if (lb != bank)
+      k_.fail("dcu: slot %u req_id %u lead_bank %llx is not its phys_addr %llx's bank %llx",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)lb,
+              (unsigned long long)pa, (unsigned long long)bank);
+  }
+
   void work() override {
     const Ch &c = ch();
     for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
       while (has(c.miu_dcu, s)) {
         Receiver::Msg m = take(c.miu_dcu, s);
+        checkIndexLead(s, m.payload);
         const Op o{s, m.payload, m.tid};
         const Line *l = readHit(m.payload);
         if (l) {
@@ -1530,6 +1563,15 @@ private:
   bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
 
+  /// AR 362: the lookup's set and bank lead it, from the formed address
+  /// (the stub's line is its leader's). --break dcu-set-lead and
+  /// dcu-bank-lead send a wrong one, which DCU must refuse by name.
+  void putIndexLead(Bits &r, uint64_t pa) {
+    const Ch &c = ch();
+    put(r, c.miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
+    put(r, c.miu_dcu, "lead_bank", indexLeadBank(pa) ^ (k_.brk == "dcu-bank-lead" ? 1u : 0u));
+  }
+
   Bits withLead(Bits m) {
     const Ch &c = ch();
     const unsigned st = unsigned(get(m, c.miu_ooe, "status"));
@@ -1607,6 +1649,7 @@ private:
         const unsigned id = ids_.take();
         put(r, c.miu_dcu, "req_id", id);
         put(r, c.miu_dcu, "phys_addr", line);
+        putIndexLead(r, line);
         put(r, c.miu_dcu, "size", kSizeLine);
         put(r, c.miu_dcu, "coh_op", kCohRead);
         send(c.miu_dcu, s, r, makeUid(IdClass::kTxn, uidSeq(mo.tid), 0, /*owned=*/true));
@@ -2283,6 +2326,7 @@ private:
       const unsigned id = ids_.take();
       put(r, c.miu_dcu, "req_id", id);
       put(r, c.miu_dcu, "phys_addr", lr.line);
+      putIndexLead(r, lr.line);
       put(r, c.miu_dcu, "size", kSizeLine);
       const bool wr = job_.store && job_.rmw != 1;   // a drain's read first
       put(r, c.miu_dcu, "coh_op", wr ? kCohWrite : job_.atom == 1 ? kCohAcquireData : kCohRead);
