@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 365, TI 461, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 68, DA 123.
+Conventions 19, AR 365, TI 464, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 69, DA 123.
 
 ## State, 2026-11-13
 
@@ -90,7 +90,7 @@ Conventions 19, AR 365, TI 461, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
   banks. SETTLED (MA rev 68): AR 364 agreed 8 banks (16 buys <0.2% open-loop); the bank is
   set_index's low 3 bits, so no bank field: lead = 9 bits/slot, 36 DCU lead flops (my 48 was wrong).
   DCU gets an age bound on hole-filling, CCV_DCU_BANK_AGE (start 16; AR saw 729-cycle starvation);
-  Phase 1 model sets it. TI-453: macro library is TI's 2nd priority (after RA 148); told TI the lead width derives from
+  Phase 1 model sets it. TI 464: macro library landed 0b270eb3, checked against DA 123 (MA rev 69, matches); told TI the lead width derives from
   CCV_DCU_SETS only. Spec tabs updated (MIU rev 136, DCU rev 39) and summary doc (rev 19).
 
 - 2026-11-15 late: doc check done (MIU tab rev 128, DCU tab rev 37: drafts -> decided, Strawman B
