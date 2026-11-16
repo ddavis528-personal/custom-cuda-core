@@ -41,7 +41,7 @@ Every long tool detaches itself and exits 5 (never 0) when it does (OA-414,
 timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
 restart: rerun the job). Logs in /root/ccv-logs/.
 
-## State (2026-11-15)
+## State (2026-11-16)
 - Landed 11-15: bd1cc5a2 (SCOPED PASS 24/24 since e48fa517) on both working
   branches: PF-47 (base 1: RCU_ADDR 1, L1_WAKE 13, L1_CMPL 14; ooe_wake defaults
   13/15), CCV_P_TIMEOUT_UOP, RI's SFU pair, CCV_LAT_MIU_NOHIT_A2=2 (MA 56),
@@ -67,6 +67,17 @@ restart: rerun the job). Logs in /root/ccv-logs/.
    wired child pins), a negative control each; cover bin for the
    credit-starved late hit. Daily sweep repo half: fresh worktree.
 0b. 11-16: RCU waivers signed (DA rev 122, Daniel in TI's session); RI's 05af449c landed as 93f0d75c (TI 451). OA 419 baseline line: OI carried it (0bd67c2b), nothing for TI. Dated to RI: RA 148 11-17, lane-op kill kernel 11-18.
+0c. LANDED 11-16: 1861cc51 (SCOPED PASS 24/24) on both working branches:
+   AR 362/364 (DCU_BANKS 8 on PA[9:7], BANK_AGE 16, W_DCU_SET, page require,
+   lead_set_index only; stub MIU drives, stub DCU checks, break dcu-set-lead),
+   RI-57 kill kernel rokilllane + bin kill_lane, and an OI-18 edit to
+   sim/ooe/ooe_core.cpp (epoch check before slot lookup). TI 457 rang RI, RA,
+   OI, AR, MA. Daily sweep 11-16 repo half running from /home/user/ti-sweep
+   (branch ti-sweep16; log job-daily-sweep-20261116-125856-*.log).
+   NEXT: task 22 MA-16/DA 123 macro library (due 11-18): sram_1rw 2-cycle read
+   + ce-not-back-to-back assertion (RTL, sram.h, check-ngd NGD-8), sram_1r1w ->
+   ccv_common_rf_1r1w (area 3/bit) and move its users; task 19 RA 148 (11-17);
+   check-ngd budget-rule 'by' enforcement; credit-starved late-hit cover bin.
 1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
 2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
 3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves

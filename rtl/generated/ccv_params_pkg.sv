@@ -102,13 +102,9 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (grill-me 2026-09-23)
   localparam int CCV_TLB_XLAT_PER_CYCLE = 4;
 
-  // L1 data cache banks, by line address bits [8:7], the low bits of the set index: a group's leaders whose lookups meet in one bank conflict, and the load loses MA-4's L1-hit eligibility. ccv_miu_dcu_req's lead carries a lookup's bank (AR 362).
-  // decided at the block-level grill-me (MA-4 (MIU tab, MA's Phase 1 draft; AR 356, AR 362))
-  localparam int CCV_DCU_BANKS = 4;
-
-  // ccv_miu_dcu_req's lead bank: a lookup's bank, physical address bits [8:7].  Derived: = clog2(CCV_DCU_BANKS).
-  // decided at the block-level grill-me (AR 362 (4), MA rev 65)
-  localparam int CCV_W_DCU_BANK = 2;
+  // L1 data banks, each a half-rate 1RW SRAM (DA rev 123), 64 KiB each at 512 KiB: four lookups a cycle need at least 8. A lookup's bank is its line address's low clog2(CCV_DCU_BANKS) bits, [9:7] at 8, which are the set index's low bits, so ccv_miu_dcu_req's lead_set_index carries it and no bank field is sent (AR 364). Both counts are powers of two and the banks no more than the sets. MA-4's L1-hit eligibility refuses a group whose leaders' lookups meet in one bank.  Requires: (CCV_DCU_BANKS <= CCV_DCU_SETS) * (2 ** clog2(CCV_DCU_BANKS) == CCV_DCU_BANKS) * (2 ** clog2(CCV_DCU_SETS) == CCV_DCU_SETS) == 1.
+  // decided at the block-level grill-me (AR 364, MA-16 (MA rev 68; DA rev 123))
+  localparam int CCV_DCU_BANKS = 8;
 
   // Scratchpad capacity, 128 KB.
   // decided at the block-level grill-me (grill-me 2026-09-23)
@@ -368,11 +364,15 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: Stage 4b sweep
   localparam int CCV_DCACHE_LOOKUPS = 4;
 
-  // L1 data cache sets, a power of two (MA-15, AR rev 344): with CCV_DCU_WAYS 8 and 128-byte lines, 512 KiB, built for from the start (DA, 2026-11-15, MA 61): growing later is the hard direction; 128 and 64 sets are configured-down points, reached through the override below. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_SETS still overrides it for a sweep. A way, sets times line bytes, fits in a page (AR 362 (1), MA rev 65): the set index and bank are page offset, the same in the VA and the PA, so MIU sends them as ccv_miu_dcu_req's lead a cycle ahead of the PA with no synonym. It holds with no headroom at 512 sets: an L1 past 512 KiB adds ways, not sets.  Requires: CCV_DCU_SETS * CCV_P_LINE_BYTES <= 2 ** CCV_L_PAGE_SHIFT.
+  // L1 data cache sets, a power of two (MA-15, AR rev 344): with CCV_DCU_WAYS 8 and 128-byte lines, 512 KiB, built for from the start (DA, 2026-11-15, MA 61): growing later is the hard direction; 128 and 64 sets are configured-down points, reached through the override below. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_SETS still overrides it for a sweep. A way, sets times line bytes, fits in a page (AR 362 (1), MA rev 65): the set index, and the bank within it, are page offset, the same in the VA and the PA, so MIU sends them as ccv_miu_dcu_req's lead a cycle ahead of the PA with no synonym. It holds with no headroom at 512 sets: an L1 past 512 KiB adds ways, not sets.  Requires: CCV_DCU_SETS * CCV_P_LINE_BYTES <= 2 ** CCV_L_PAGE_SHIFT.
   // PROVISIONAL -- decided by: DA, 2026-11-15 (MA 61): the L1 is built for 512 KiB
   localparam int CCV_DCU_SETS = 512;
 
-  // ccv_miu_dcu_req's lead set_index: a lookup's set, physical address bits [log2 CCV_P_LINE_BYTES + this - 1 : log2 CCV_P_LINE_BYTES], [15:7] at 512 sets. A sweep's smaller CCV_DCU_SETS override uses its low bits.  Derived: = clog2(CCV_DCU_SETS).
+  // DCU's age bound on hole-filling, in cycles: a lookup that lost its bank waits at most this long; once a waiter reaches it, its bank takes no new lookup or fill until that waiter is served.
+  // PROVISIONAL -- decided by: MA rev 68 (MA-16, AR 364): a start; MA's Phase 1 model sets it against AR's 729-cycle starvation case
+  localparam int CCV_DCU_BANK_AGE = 16;
+
+  // ccv_miu_dcu_req's lead set_index: a lookup's set, physical address bits [log2 CCV_P_LINE_BYTES + this - 1 : log2 CCV_P_LINE_BYTES], [15:7] at 512 sets. A sweep's smaller CCV_DCU_SETS override uses its low bits. Its low clog2(CCV_DCU_BANKS) bits are the lookup's bank (AR 364).  Derived: = clog2(CCV_DCU_SETS).
   // PROVISIONAL -- decided by: AR 362 (4), MA rev 65: follows CCV_DCU_SETS
   localparam int CCV_W_DCU_SET = 9;
 

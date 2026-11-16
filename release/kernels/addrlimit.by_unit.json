@@ -1367,7 +1367,7 @@
     "instr_uid": 11529215046068469763,
     "unit": "ccv_miu_dcu_req",
     "channel_id": 16,
-    "payload_lo": 2047,
+    "payload_lo": 511,
     "payload_hi": 0
    }
   },

@@ -963,7 +963,7 @@
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
     "channel_id": 16,
-    "payload_lo": 2047,
+    "payload_lo": 511,
     "payload_hi": 0
    }
   },
