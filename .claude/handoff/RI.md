@@ -1,6 +1,6 @@
 # RI handoff (RCU implementation)
 
-Updated 2026-11-13. Keep current at every task's end. Role and ownership:
+Updated 2026-11-14. Keep current at every task's end. Role and ownership:
 docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch-*.md
 (live doc https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB wins).
 
@@ -16,7 +16,9 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
+- Last push: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
+  Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
+  RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
   (kill detector in the top, CG unit ccv_rcu, per-slot ngd.json), TI's 079b64c2 and the daily sweep merges.
   RI-34 (RI tab rev 68) written; notices sent to TI (merge 8fcec64b), RA, AR, OA, OI.
 - Previous push: ff5ddcca (2026-11-08, SPLIT PASS 23/23, chain-ri10): daily sweep merges (all remote
@@ -29,6 +31,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
   commit via gate-scratch/RI, exact arms and what to report; it replies with a table.
 
 ## Working rules beyond CLAUDE.md
+- Daily sweep: tools/daily-sweep.sh is safe from our branch (518cb3c3 in since 9f513f3b; detach exits 5).
 - Container gets reclaimed when idle: keep a run_in_background until-loop waiter on any
   detached job (setsid nohup ... & disown). Restarts killed runs 3 times and lost commits once.
 - Send every unverified commit to gate-scratch/RI (tools/gate-scratch.sh) before gating.
@@ -44,11 +47,85 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Zero-cycle receiving ends only if IPC justifies; lane_rcu_res stays flopped; RI-16 runs decide (RA 91).
 
 ## Register
-Bookmarks 2026-11-09 (notices): Conventions 17, AR 336, OA 379, IS 190, TI 395, OI 324, CP 155, DA 115, RA 130, RI 63. (DA 116, TI 396, AR 337)
+Bookmarks 2026-11-09 (notices; RA since read to rev 140): Conventions 17, AR 336, OA 379, IS 190, TI 395, OI 324, CP 155, DA 115, RA 130, RI 63. (DA 116, TI 396, AR 337)
 DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% Daniel; >0.5%
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-17. DONE (2026-11-15) Sweep 2026-11-15 + RA 148/AR 356 (2): pushed ce5f44dd (full clean gate PASS; ri-sweep15
+   in ri-wt12) = TI doowtf bd1cc5a2 + 8f00fdf8 (model times address from CCV_LAT_RCU_ADDR; base 2 tried:
+   correct, only base-1-tuned bins move, ~/ccv-logs/ri-addrbase2-check-kernel.log) + sweep merges (126afa13,
+   57eff422, 80102643, 9eb50716, c22116ce, miu-dcu-spec) + 0fe15d9a (unit test addr-cycle, control addr-late).
+   RI-54 (RI tab rev 83) written; notices TI, RA, AR. WAITING: TI adds addr-late to tools/check-rcu-unit.sh
+   (count 8), stub timing + RTL base!=1 refusal (TI's); TI merges ce5f44dd. MA tab has no roster node: unread.
+   Bookmarks: Conv 19 AR 358 OA 418 IS 194 TI 445 OI 350 CP 158 DA 120 RA 149 RI 83 MA 54. (DA 120 records TI-445 + RA 149's carve-out.)
+   TI-445 (DA ruling, FYI): RI may set/move NGD port budgets of modules below ccv_rcu, check-ngd passing
+   (by/why named); ccv_rcu block-boundary and lead budgets stay RA's. RA 149: also any child port wired
+   straight to a ccv_rcu block port (e.g. rcu_mem miu_addr sender, rcu_pred guard input) stays RA's. No answer owed.
+-16. NOW (2026-11-14 ~17:50) SFU pair PUSHED 9f513f3b (SCOPED PASS 24/24). OI-148 (OI rev 349) gave go. RI-53
+   (RI tab rev 82) written, notices TI+OI+RA. Task 33 done; RA 146 done. Bookmarks: OI 349, RI 82.
+   WAITING: TI merges 9f513f3b; TI kill kernel; DA's RI-47 waivers + sign-off after RA's report.
+   TODO: docs/rcu-exit.md open items (split tree done by TI 7079fc14; SFU class landed 9f513f3b).
+-15. NOW (2026-11-14 ~11:30) Sweep 2026-11-14: ri-sweep14 in ri-wt9 merged 9 branches clean (TI doowtf 3, c22116ce 4,
+   3868632d 10, miu-dcu-spec 13, 126afa13 17, 80102643 61, 57eff422 30, 9eb50716 9); full gate-push running:
+   job-gate-push-20261114-103347-8366.log (wait with tools/gate-wait.sh). session-home --check matches (from ri-wt).
+   Bookmarks: Conv 19 AR 351 OA 416 IS 193 TI 430 OI 348 CP 157 DA 119 RA 146 RI 80 MA 54. Not Friday: no pings.
+   RA 143 CLOSED (TI 7079fc14 verified). SFU class (RA 146: RCP_U32, RSQRT_F32, RCP_F32_P only): RI half on local
+   ri-sfuclass (ri-wt10) 26ab1517 + 30e363cc (dec_pkg regen). Alone it fails lnorm1/transp4 (lane stub runs no SFU op,
+   result at LAT_LANE not sfu_result at LAT_SFU). RI-51 (rev 80) proposes: RI merges TI's half when on a branch, gates
+   the pair, pushes; or sends via gate-scratch/RI. Notices TI, OI (session_01DMw4FtFbGoVboMGxWpLBuv), RA.
+   TI rev 431 AGREED: TI rings when its SFU half (ops.json, gen-ops, lane stub SFU, DEC routing) is on its branch;
+   then merge into ri-sfuclass, run lnorm1/transp4 + run-rtl + lockstep + svh, gate-push, notify OI for go.
+   DONE: merged TI c27ff714 (gate-scratch/TI-sfu); fixed lanes_lockstep (sec_valid = lane ops only; SFU on
+   sfu_valid), control sfusec; ri-sfuclass tip d2d4525d clean on RCU side (lockstep all, svh 63 div=0, run-rtl).
+   RI-52 (rev 81): TI must fix check-kernel held-over-r regex (warp 3 -> warp 1, same on c27ff714 alone). Then
+   merge TI fix, regen, gate-push ri-sfuclass, notify TI+OI (OI go). ri-wt3 is detached at c27ff714 (scratch).
+   TI rev 433: fix 996866d1 merged (ri-sfuclass 444f31b3), check-kernel PASS on the pair. NEXT: when the sweep
+   gate (4be9f37b) pushes, merge origin/ccr-888218a3-20cauz into ri-sfuclass, gate-push (tools/ changed: all
+   sections), then notices TI+OI+RA naming the commit.
+-14. NOW (2026-11-14 ~08:00) Pushed 468fb286 (SCOPED PASS 24/24, ri-lat in ri-wt10): a61a79ca (lanes_tb, Q-53
+   arrival take derived lane latencies) + 3c304f94 merged. TI rev 427 (TI bookmark 427): 5516e643 landed in
+   c99dc88d; asked where a61a79ca is. Answered RI-50 (RI tab rev 79), notices TI+RA. 72a84674 (rcu-exit M7 in
+   the gate; open item 1 = TI's links_split credit entry) pushed too (SCOPED PASS 4/24): branch tip 72a84674.
+   WAITING: TI merges 468fb286, adds credit_on_receipt miu_rcu_data@rcu to test/phys/links_split.json, drops
+   CCV_SVH_RCU_RTL=0 from check-links -> close task 32 / RA rev 143. Then TI kill kernel; DA waivers (RI-47)+sign-off.
+-13. NOW (2026-11-14) RA rev 143 (RA bookmark 143): M7 met; RTL must be correct at every derived CCV_LAT_LANE (7-11),
+   RI's phase-5 exit item. ri-wt10 branch ri-lat (TI 6061d0ee + ri-exit merged, cd8c9a06): a61a79ca lanes_tb kWB /
+   age width / per-age cov bins from params; rcu_q53_chk arrival lat from CCV_LAT_LANE/SFU. RTL needed NO change.
+   Split tree (build/lsplit, script scratchpad/split-repro.sh): with params/links.json's credit_on_receipt
+   (miu_rcu_data@rcu) added, all 67 lockstep + 12 controls PASS, check-sv-hosted RCU RTL 63 kernels div 0 + controls.
+   Without it the RTL drives no miu_rcu_data credit (RA-41) -> TI: links_split.json must carry credit_on_receipt,
+   then drop CCV_SVH_RCU_RTL=0 in check-links. Base lanes bench identical (505/430). Base lockstep run: ri-lat-base.log.
+   RI-49 written (RI tab rev 78), notices TI+RA. RA rev 144 (bookmark 144): accepted; 7 and 11 suffice; closes when
+   a61a79ca merged and check-links passes without CCV_SVH_RCU_RTL=0 (TI). Chain scratchpad/chain-lat.sh: after ri32
+   push, merge tip into ri-lat, gate-push (log ~/ccv-logs/ri33-chain.log, ri33-push.log).
+-12. NOW (2026-11-14) Pushed 5516e643 (SCOPED PASS 21/24, ri-exit in ri-wt9): RA rev 140 items (1)(2)(3)(7)(8)
+   (pzero, lanes SFU + swlate, M5 from c1 68/64, M0 cycles vs stub, waiver texts, 21 ngd budgets -> "RA rev 140").
+   RI-48 written (RI tab rev 77), notices RA + TI. WAIT: RA on which 4 of 25 budgets, RA's report to DA; MA on
+   (6) multi GPR loads/cycle; TI merge 5516e643, SVHOST selector, kill kernel (rokill variant).
+   TI rev 425: SFU class = TI op table + OI unit-4 + RI model decode (RTL ready); rcu_dec_pkg import switch
+   after sign-off. TI tab bookmark 425.
+   RA rev 142 (RA bookmark 142): 21 budgets right; all rev 140 RI items closed; (6) closed (one_load_a_bank holds
+   under FULL_ROW; per bank when FULL_ROW goes). 4 whys edited -> 7e9bf49d in ri-wt9 (local, NOT pushed; push with
+   the block report). Left before DA sign-off: TI M7 selector + kill kernel; RI-47 waivers (DA).
+   Block report docs/rcu-block-report.md (7acd52eb) + 7e9bf49d + 3c304f94 GATING: ~/ccv-logs/ri32-push.log.
+   NEXT: after push, RI row (RA rev 142 done: 4 whys; block report; lanes CG-3 measures 54.9/68.8 > recorded 51/67,
+   floors left as RI-47 put them), notice RA cc TI/DA. Then wait: TI M7 selector + kill kernel, DA waivers/sign-off.
+   TI rev 426 (TI bookmark 426): RI-44 landed 6061d0ee (ccr-183cc441-doowtf, SCOPED PASS 24/24): RCU RTL in SV top,
+   46/46, controls caught; M7 needs nothing more from TI. TI renamed shim ccv_rcu_dpi -> rcu_dpi in test/rcu/svh.py,
+   ccv_rcu_svh.sv (CCV-L28): TAKE IT (merge 6061d0ee after ri32 push). OPEN for RI+RA: check-links split tree
+   (CCV_LAT_LANE 7->11) fails with RCU RTL (miu_rcu_data fixed_latency_prompt, lockstep.py crash), skipped there.
+   Answer in row: RTL verified at base latencies only (lanes' LAT/LSF/DH/DL/DS follow ccv_prov_pkg, but stage names,
+   lane-result landing, KILL_DRAIN, miu_rcu_data fixed latency are timed to the base links); RA rules whether RTL
+   must take other latencies; if so RI investigates. Then record M7 in rcu-exit.md (gate, 46/46, the split skip).
+-11. NOW (2026-11-14) Pushed cd25d3bd (SCOPED PASS 14/24, ri-exit in ri-wt9): docs/rcu-exit.md (exit table
+   at 7e10e72f) + test/rcu/guard-ngd.py (M1 guard path: 17.0 vs 16 on map w/ fanout; 13.6 without). RI tab rev 76:
+   RI-46 to RA (M1 guard: keep a lead copy or restate; M3 "light unit" wording; M4 margin = whole drain; then
+   reconcile), RI-47 to DA (sign/refuse 3 owner waivers: lanes pcm_n_cr04h CG-3, kill kd_cr02h + kaep_q_cr03h CG-4;
+   sign-off after RA). Notices: RA (46,47), TI (46). DA has no session: its sweep reads RI-47.
+   RA rev 138 accepted RI-43/RI-45 (RA tab bookmark rev 138). KILL_DRAIN already 15 (RA-42 done).
+   NEXT: on RA's M1 answer, the lead copy in rcu_pred if asked; block report (task 22); SW write-back same-lane
+   (task 20); then reconciliation + DA sign-off.
 -10. NOW (2026-11-13 late) Pushed 7e10e72f (SCOPED PASS 15/24, ri-svh in ri-wt9; holds c64b7417 ri-credit and
    ri-q53 28cd347a): RTL in the SV top (test/rcu/ccv_rcu_svh.sv, svh.py prep/compare, lockstep --replayed), Q-53
    checkers, model launch at c0 + fifo_in_, rcu_test migration first row 206. Rows (RI tab rev 75): RI-44 to TI

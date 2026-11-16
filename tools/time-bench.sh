@@ -21,7 +21,14 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 SKEL=build/skel/ccv-skel
 [ -x "$SKEL" ] || tools/check-skel.sh >/dev/null || { echo "time-bench: no $SKEL" >&2; exit 1; }
-if [ $# -gt 0 ]; then benches=("$@"); else benches=(test/bench/*/); fi
+# By default every bench but the correctness-only ones (ROLE=correctness:
+# plain coremark-derived, whose layout lost to option W; AR 358).
+if [ $# -gt 0 ]; then
+  benches=("$@")
+else
+  benches=()
+  for b in test/bench/*/; do grep -q '^ROLE=correctness' "$b/kernel.cfg" || benches+=("$b"); done
+fi
 benches=("${benches[@]%/}")
 CCV_ORACLE_DIR=build/bench-oracle tools/gen-oracle.sh "${benches[@]}" || exit 1
 # Every chwidth in a converged warp (F-197), and its control: one with a lane

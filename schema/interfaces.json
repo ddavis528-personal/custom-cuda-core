@@ -876,9 +876,16 @@
         "coh_op",
         "exclusive_req",
         "write_data",
-        "byte_mask"
+        "byte_mask",
+        "lead_set_index",
+        "lead_bank"
       ],
-      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask.",
+      "lead_fields": [
+        "lead_set_index",
+        "lead_bank"
+      ],
+      "lead_why": "The L1 index lead (AR 362 Strawman B, MA revs 64-65; DA rev 121): DCU starts its array read, speculatively, at H+2, a cycle before the PA's payload lands at H+3, which keeps CCV_LAT_L1_HIT at 7 at 512 KiB. On every slot that carries a lookup, lead_set_index is the lookup's set, physical address bits [log2 CCV_P_LINE_BYTES + CCV_W_DCU_SET - 1 : log2 CCV_P_LINE_BYTES] ([15:7] at 512 sets), and lead_bank its bank, bits [8:7] (CCV_DCU_BANKS 4, MA-4); both are page offset, the same in the VA and the PA, since a way fits in a page (CCV_DCU_SETS's require, AR 362 (1)), so MIU sends them from the address A1 finally forms for the slot's group leader, chosen by lane position, never by an address compare (AR 362 (2)). They launch with the slot's valid at H+1, from MIU's own flops (CG-5; the flop that also feeds A2 has a (* keep *) copy for the output, AR 362 (5)), a cycle ahead of the payload. COPIES: the payload keeps the full phys_addr, which the tag compare uses, and each lead equals its bits, bit for bit; the DCU stub refuses a lead that differs, by name. DCU changes no state, LRU included, on the lead alone: a lookup the payload drops (a fault, a TLB miss, a page split or a bank conflict found at A2) leaves the arrays as they were, and a store writes on the PA-verified lookup (AR 362 (3)). MLC's probes and fills reach the arrays on their own payloads, unchanged (AR 362 (6)). DCU's capture flops, 11 a slot and 44 in all, are a lead waiver (\"lead\": true) counted in DCU's 2% (AR 362 (5); DA's ruling on RI-15).",
+      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index and bank lead it by a cycle (AR 362).",
       "id_classes": [
         "txn"
       ],
@@ -1751,6 +1758,8 @@
     "branch_mask": "CCV_W_LANE_MASK",
     "lead_br_taken": "1",
     "lead_fault": "1",
+    "lead_set_index": "CCV_W_DCU_SET",
+    "lead_bank": "CCV_W_DCU_BANK",
     "lead_br_mask": "CCV_W_LANE_MASK",
     "target_pc": "CCV_W_VA",
     "fetch_epoch": "CCV_P_W_FETCH_EPOCH",

@@ -504,6 +504,19 @@ private:
   }
 };
 
+// AR 362: ccv_miu_dcu_req's index lead, the lookup's phys_addr bits
+// [log2 line + CCV_W_DCU_SET - 1 : log2 line] (the set; a sweep's smaller
+// CCV_DCU_SETS uses its low bits) and [log2 line + CCV_W_DCU_BANK - 1 :
+// log2 line] (the bank, MA-4's [8:7]): page offset, the same in the VA and
+// the PA (CCV_DCU_SETS's require).
+inline uint64_t indexLeadSet(uint64_t pa) {
+  static_assert((1u << 7) == kLine, "a line is 128 bytes");
+  return (pa >> 7) & ((uint64_t(1) << ccv::prov::kWDcuSet) - 1);
+}
+inline uint64_t indexLeadBank(uint64_t pa) {
+  return (pa >> 7) & ((uint64_t(1) << ccv::kWDcuBank) - 1);
+}
+
 // ---- DCU: a small L1; a write is read-modify-write of the line ------------------
 //
 // dcu_mlc_req carries no byte mask, so a partial store cannot go below DCU
@@ -514,7 +527,6 @@ private:
 // 2026-10-21: a warp stalled on a long miss must not hold the others' up).
 // Requests to one line keep their order: a line with a miss in flight takes
 // nothing more until it is answered. One queued request starts a cycle.
-
 class Dcu : public Stub {
 public:
   Dcu(int inst, Kernel &k) : Stub(inst, k), ids_(ch().dcu_mlc) {}
@@ -677,11 +689,32 @@ private:
     busy_lines_.insert(pa);
   }
 
+  /// AR 362: the lead's set index and bank are copies of the lookup's
+  /// phys_addr bits, bit for bit, and DCU refuses either that differs, by
+  /// name (--break dcu-set-lead, dcu-bank-lead). The stub reads its set from
+  /// the payload, so the lead changes no state here (AR 362 (3)).
+  void checkIndexLead(unsigned s, const Bits &req) {
+    const Ch &c = ch();
+    const uint64_t pa = get(req, c.miu_dcu, "phys_addr");
+    const uint64_t set = indexLeadSet(pa), bank = indexLeadBank(pa);
+    const uint64_t ls = get(req, c.miu_dcu, "lead_set_index");
+    const uint64_t lb = get(req, c.miu_dcu, "lead_bank");
+    if (ls != set)
+      k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
+              (unsigned long long)pa, (unsigned long long)set);
+    if (lb != bank)
+      k_.fail("dcu: slot %u req_id %u lead_bank %llx is not its phys_addr %llx's bank %llx",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)lb,
+              (unsigned long long)pa, (unsigned long long)bank);
+  }
+
   void work() override {
     const Ch &c = ch();
     for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
       while (has(c.miu_dcu, s)) {
         Receiver::Msg m = take(c.miu_dcu, s);
+        checkIndexLead(s, m.payload);
         const Op o{s, m.payload, m.tid};
         const Line *l = readHit(m.payload);
         if (l) {
@@ -906,6 +939,9 @@ private:
     uint64_t serial = 0;             ///< names it to the DCU responses
     uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
     bool frame = false;              ///< its lanes span windows: O-30 frames (AR-23)
+    /// MA-4's eligibility lost from the address alone (lane group, page,
+    /// bank): never an L1 hit, and MIU says so early with a no-hit (AR 356).
+    bool inelig = false;
     /// A predicate transfer (TI-36): one word at lane 0's address. A store
     /// carries its predicate's word, merged into memory's after commit.
     bool pxfer = false;
@@ -948,6 +984,7 @@ private:
   }
   /// A hit's completion and data, held for the contract cycle.
   struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
+  std::vector<Timed> held_;   ///< ineligible loads' completions, held past the contract (MA-4)
   std::deque<Timed> timed_;
 
   std::map<unsigned, Memop> memop_;
@@ -1071,7 +1108,7 @@ private:
   std::deque<Q> to_rcu_, to_ooe_, to_dcu_, to_fet_;
   /// Hints promised to OOE (OA-23), each launched at its cycle; and the
   /// credits held back for hinted completions and their data, by slot.
-  struct Hint { uint64_t at; Q q; };
+  struct Hint { uint64_t at; Q q; bool no_hit = false; unsigned tag = 0; };
   std::deque<Hint> hints_;
   std::map<std::pair<unsigned, unsigned>, unsigned> resv_;
   /// The replay drain (TI-21): requests a bulk discard abandoned at DCU, by
@@ -1137,6 +1174,23 @@ private:
         notice(unsigned(get(take(c.fill_ntc, s).payload, c.fill_ntc, "req_id")));
     for (auto it = hints_.begin(); it != hints_.end();) {
       if (it->at != now_) { ++it; continue; }
+      if (it->no_hit) {
+        // A no-hit is advice, never a promise (OA 410): it holds no credit,
+        // so a refill hint on its slot this cycle wins, and it is dropped
+        // when its slot has no free credit or its load is no longer
+        // outstanding (a no-hit on anything else is a protocol error).
+        bool refill = false, live = false;
+        for (const Hint &h : hints_) refill = refill || (!h.no_hit && h.at == now_ && h.q.slot == it->q.slot);
+        for (const Job &j : jobs_) live = live || (!j.store && j.tag == it->tag);
+        if (refill || !live || !free(c.cmpl_hint, it->q.slot)) {
+          k_.hit("l1_nohit_drop");
+        } else {
+          send(c.cmpl_hint, it->q.slot, it->q.msg, it->q.tid);
+          k_.hit("l1_nohit");
+        }
+        it = hints_.erase(it);
+        continue;
+      }
       if (!can(c.cmpl_hint, it->q.slot))
         k_.fail("miu: the hint promised on slot %u at cycle %llu has no credit",
                 it->q.slot, (unsigned long long)now_);
@@ -1352,8 +1406,14 @@ private:
           send(c.miu_rcu, t.data.slot, t.data.msg, t.data.tid);
         k_.hit("l1_hit");
       } else {
+        // Late: the data goes when it can, and the completion a cycle on,
+        // past the contract. Queued for this cycle's drain, the completion
+        // could leave in the contract cycle with its data still behind
+        // (miu_rcu out of credit, miu_ooe not): OOE takes that for the hit
+        // and its woken dependants read the register before the load lands
+        // (AR 359 (4): coremark128priv's operand CHECKs).
         to_rcu_.push_back(t.data);
-        to_ooe_.push_back(t.cmpl);
+        late_faults_.push_back({now_ + 1, t.cmpl});
         k_.hit("l1_late");
       }
     }
@@ -1361,9 +1421,25 @@ private:
     for (auto it = late_faults_.begin(); it != late_faults_.end();)
       if (it->first <= now_) { to_ooe_.push_back(it->second); it = late_faults_.erase(it); }
       else ++it;
+    for (auto it = held_.begin(); it != held_.end();)
+      if (it->at <= now_) {
+        to_rcu_.push_back(it->data);
+        to_ooe_.push_back(it->cmpl);
+        it = held_.erase(it);
+      } else {
+        ++it;
+      }
+    // A completion never leaves ahead of its load's data: OOE wakes the
+    // load's dependants on it, hit or miss (OA-23), and they would read the
+    // register before the load lands (AR 359 (4)). to_rcu_ drains first, so
+    // data and completion may still leave together.
+    auto dataQueued = [&](uint64_t tid) {
+      for (const Q &q : to_rcu_) if (q.tid == tid) return true;
+      return false;
+    };
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
-        if (free(chan, it->slot)) {
+        if (free(chan, it->slot) && !(chan == c.miu_ooe && dataQueued(it->tid))) {
           if (chan == c.miu_ooe) sendCmpl(it->slot, it->msg, it->tid);
           else send(chan, it->slot, it->msg, it->tid);
           it = q.erase(it);
@@ -1487,6 +1563,15 @@ private:
   bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
 
+  /// AR 362: the lookup's set and bank lead it, from the formed address
+  /// (the stub's line is its leader's). --break dcu-set-lead and
+  /// dcu-bank-lead send a wrong one, which DCU must refuse by name.
+  void putIndexLead(Bits &r, uint64_t pa) {
+    const Ch &c = ch();
+    put(r, c.miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
+    put(r, c.miu_dcu, "lead_bank", indexLeadBank(pa) ^ (k_.brk == "dcu-bank-lead" ? 1u : 0u));
+  }
+
   Bits withLead(Bits m) {
     const Ch &c = ch();
     const unsigned st = unsigned(get(m, c.miu_ooe, "status"));
@@ -1564,6 +1649,7 @@ private:
         const unsigned id = ids_.take();
         put(r, c.miu_dcu, "req_id", id);
         put(r, c.miu_dcu, "phys_addr", line);
+        putIndexLead(r, line);
         put(r, c.miu_dcu, "size", kSizeLine);
         put(r, c.miu_dcu, "coh_op", kCohRead);
         send(c.miu_dcu, s, r, makeUid(IdClass::kTxn, uidSeq(mo.tid), 0, /*owned=*/true));
@@ -1872,7 +1958,64 @@ private:
       to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
       return;
     }
+    if (j.global && j.active) eligibility(j, mo);
     launch(j);
+  }
+
+  /// MA-4's eligibility for the L1-hit contract (MIU tab, MA's Phase 1
+  /// draft; AR 356): a global load keeps it only if every active lane's
+  /// line is its group's leader's, the access stays in one page, and its
+  /// leaders' lookups meet no bank conflict (DCU's 4 banks by line address
+  /// bits [8:7]); a tag miss is not known from the address, and stays the
+  /// contract's miss. The memop's F pipes split the warp into F groups of
+  /// 32/F consecutive lanes, a group's leader its lowest active lane. A
+  /// load that loses it is never an L1 hit, and A2 says so early: a no-hit
+  /// on ccv_miu_ooe_cmpl_hint, payload at I + CCV_LAT_L1_NOHIT, on the
+  /// memop's slot (OA 410, MA 56). no-nohit: none is sent, so l1_nohit is
+  /// never reached.
+  void eligibility(Job &j, const Memop &mo) {
+    const Ch &c = ch();
+    const unsigned pipes = unsigned(get(mo.msg, c.ooe_miu, "pipes"));
+    const unsigned f = pipes ? unsigned(__builtin_popcount(pipes)) : 1u;
+    const unsigned per = kLanes / f;
+    const uint64_t page = j.addr[__builtin_ctz(j.active)] >> ccv::kLPageShift;
+    std::vector<uint64_t> leads;
+    bool ok = true;
+    for (unsigned g = 0; g != f; ++g) {
+      bool have = false;
+      uint64_t lead = 0;
+      for (unsigned l = g * per; l != (g + 1) * per; ++l) {
+        if (!(j.active >> l & 1u)) continue;
+        const uint64_t line = keyOf(j, l);
+        if (j.addr[l] >> ccv::kLPageShift != page) ok = false;
+        if (!have) {
+          have = true;
+          lead = line;
+          if (std::find(leads.begin(), leads.end(), line) == leads.end()) leads.push_back(line);
+        } else if (line != lead) {
+          ok = false;
+        }
+      }
+    }
+    for (size_t a = 0; a != leads.size(); ++a)
+      for (size_t b = a + 1; b != leads.size(); ++b)
+        if ((leads[a] / kLine) % 4 == (leads[b] / kLine) % 4) ok = false;
+    if (ok) return;
+    j.inelig = true;
+    j.hit = false;
+    k_.hit("l1_inelig");
+    if (k_.brk == "no-nohit") return;
+    const uint64_t issue = mo.at - crossing(c.ooe_miu);
+    const uint64_t at = issue + ccv::prov::kLatL1Nohit - crossing(c.cmpl_hint);
+    if (at <= now_) {   // MIU reached it too late to say so in time
+      k_.hit("l1_nohit_drop");
+      return;
+    }
+    Bits m = msgOf(c.cmpl_hint);
+    put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
+    put(m, c.cmpl_hint, "rob_tag", j.tag);
+    put(m, c.cmpl_hint, "no_hit", 1);
+    hints_.push_back({at, {j.memop_slot, m, j.tid}, true, j.tag});
   }
 
   /// A .shared access's passes (TI's rev 230): each active lane, in
@@ -2162,19 +2305,28 @@ private:
   void advance() {
     const Ch &c = ch();
     const unsigned rate = kChans[c.miu_dcu].rate;
-    // Up to one line request per DCU slot per cycle, the oldest job's first.
+    // Up to one line request per DCU slot per cycle, the oldest job's first,
+    // but a just-started one-line global load first of all (TI-440): its
+    // one lookup can still meet the L1 contract, which an older gather's
+    // remaining lines cannot.
     bool want = false;
     for (const Job &j : jobs_) want = want || j.next != j.lines.size();
     if (want && !ids_.any()) k_.hit("dcu_id_wait");
+    std::vector<Job *> order;
+    for (Job &j : jobs_)
+      if (j.global && !j.store && j.lines.size() == 1 && j.next == 0) order.push_back(&j);
+    for (Job &j : jobs_)
+      if (std::find(order.begin(), order.end(), &j) == order.end()) order.push_back(&j);
     unsigned s = 0;
-    for (Job &job_ : jobs_)
-    for (; s != rate && job_.next != job_.lines.size(); ++s) {
+    for (Job *jp : order)
+    for (Job &job_ = *jp; s != rate && job_.next != job_.lines.size(); ++s) {
       if (!can(c.miu_dcu, s) || !ids_.any()) continue;
       const LineReq &lr = job_.lines[job_.next++];
       Bits r = msgOf(c.miu_dcu);
       const unsigned id = ids_.take();
       put(r, c.miu_dcu, "req_id", id);
       put(r, c.miu_dcu, "phys_addr", lr.line);
+      putIndexLead(r, lr.line);
       put(r, c.miu_dcu, "size", kSizeLine);
       const bool wr = job_.store && job_.rmw != 1;   // a drain's read first
       put(r, c.miu_dcu, "coh_op", wr ? kCohWrite : job_.atom == 1 ? kCohAcquireData : kCohRead);
@@ -2327,6 +2479,11 @@ private:
       } else if (job_.hit && job_.global && now_ <= job_.due) {
         timed_.push_back({job_.due, {job_.addr_slot, d, job_.tid},
                           {job_.memop_slot, cmpl(job_), job_.tid}});
+      } else if (job_.inelig && now_ <= job_.due) {
+        // An ineligible load completes past the contract's cycle, never on
+        // or before it (MA-4: no completion at H+7; A-46, V-44).
+        held_.push_back({job_.due + 1, {job_.addr_slot, d, job_.tid},
+                         {job_.memop_slot, cmpl(job_), job_.tid}});
       } else {
         if (job_.hit) k_.hit("l1_late");
         to_rcu_.push_back({job_.addr_slot, d, job_.tid});
@@ -2336,7 +2493,7 @@ private:
   }
 
   bool busy() const override {
-    return !jobs_.empty() || !late_faults_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
