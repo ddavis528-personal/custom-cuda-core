@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 364, TI 450, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 66, DA 121.
+Conventions 19, AR 364, TI 450, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 67, DA 123.
 
 ## State, 2026-11-13
 
@@ -74,6 +74,14 @@ Conventions 19, AR 364, TI 450, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- 2026-11-16: DA rev 123 (Daniel): SRAM is 1RW (6T) only, accessed every other cycle; banking for
+  bandwidth; 1R1W or every-cycle arrays are RF at 3x area/bit; tags RF, data SRAM. MA-16 (rev 67,
+  Needs AR, TI): DCU data >= 8 half-rate banks (bits [9:7], lead bank field 2->3 bits, 48 lead flops),
+  2-cycle read assumed (fits hit 7 under B), tags RF banked like data (not 4 copies), LRU + MIU window
+  table RF, MIU memop payload store (46 Kbit) RF or 2 half-rate banks. TI: macro library; AR: 8 vs 16
+  banks. NEXT: when AR/TI answer, update DCU tab (Ports, Arrays paras, rev 37) and MIU tab
+  (payload store, window table), and the summary doc's DCU table.
 
 - 2026-11-15 late: doc check done (MIU tab rev 128, DCU tab rev 37: drafts -> decided, Strawman B
   chosen, 512 KiB geometry, req_id/wire totals). AR 362 agreed B with 6 conditions (MA rev 65);
