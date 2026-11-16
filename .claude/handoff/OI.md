@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-15 (#52 waits on OA, OI-152; sweep 11-15 28d4ca0c PUSHED full PASS; #56 closed; #55 l1-nohit at CCV_LAT_L1_NOHIT; before: 613b7f6c PUSHED, full PASS: #38 29ee4ffd, #39 8c4a4dce + cg-build path fix, sweep merge 11-14; OI-147 answers TI 428)
+Updated 2026-11-16 (#52 PUSHED b1570e4d SCOPED PASS, caps NGD-1 30.1/al_n 29.2/dn_tag 26.3/fl_m 29.3; OI-155 rings TI on baseline+heavy-units; next: refactor experiment 1 cdb5d3ae in wt-s54 branch oi-rw, unmeasured; before: sweep 11-15 28d4ca0c PUSHED)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -59,6 +59,9 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-12. #52 REFACTOR (TOP PRIORITY, DA): wt-s54 branch oi-rw, cdb5d3ae = window head copies per port-term group
+   (hwc 4 groups, wwc per half). Measure: scratchpad/rob52b/bench2.sh RTL=wt-s54 file, then
+   CCV_KEEP_UNIT_BUILD=1 check-ngd --unit ooe_rob_w_3 (PATH tools/shim), trace scratchpad/fo/p4.py. Then ck/wok path.
 -11. #52 ooe_rob_w WAITS ON OA (OI-152, OI rev 355, OA rung): committed locally 6c5cc570 on branch oi-52 in
    /home/user/wt-s54 (base 4a24bf67; patch in scratchpad/rob52b). fl_m from Rename 2 replaces fl_slot (OA 418 (B));
    landed count rewritten (lk from kc flops, nfr = nfe with a squash as none arriving; nlg/nle/nk gone);
