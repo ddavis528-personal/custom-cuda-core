@@ -25,8 +25,8 @@ every message.
 ## 1. The kernel, from the compiler
 
 `c[i] = a[i] + b[i]` for 32 threads. The core pins one compiler snapshot,
-`tools/compiler.lock`: the `release` branch at `e533ecd` (source
-`45ce995`). The kernel is that snapshot's own hand-scheduled listing,
+`tools/compiler.lock`: the `release` branch at `a9241c2` (source
+`807056d`). The kernel is that snapshot's own hand-scheduled listing,
 test/elementwise.s in the compiler repository, and `test/kernels/vadd/kernel.cfg`
 gives the launch block and memory it runs against.
 
@@ -169,7 +169,9 @@ independent slots, each its own credited link.
     "coh_op",
     "exclusive_req",
     "write_data",
-    "byte_mask"
+    "byte_mask",
+    "lead_set_index",
+    "lead_bank"
   ]
 }
 ```
@@ -186,6 +188,8 @@ typedef struct packed {
   logic                                          exclusive_req;
   logic [ccv_params_pkg::CCV_W_DATA-1:0]         write_data;
   logic [ccv_params_pkg::CCV_W_DATA/8-1:0]       byte_mask;
+  logic [ccv_prov_pkg::CCV_W_DCU_SET-1:0]        lead_set_index;  // LEAD
+  logic [ccv_params_pkg::CCV_W_DCU_BANK-1:0]     lead_bank;  // LEAD
 } ccv_miu_dcu_req_t;
 ```
 
@@ -333,7 +337,7 @@ otherwise:
     .core_clk(core_clk),
     .rst_n(rst_n),
     ...
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1214)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1225), .LEAD_MASK(1225'h7ff)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
     ...
 ```
@@ -408,9 +412,9 @@ SV top under `CCV_CHECK`.
 One of them: slot 0 of the channel from section 5.
 
 ```systemverilog
-  ccv_common_chk_credit #(.PAYLOAD_W(1214), .CHANNEL(16), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1225), .CHANNEL(16), .LEAD_MASK(1225'h7ff), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[48758:47545])
+    .ch_payload(payload[48769:47545])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
@@ -512,4 +516,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: e05494b3ea6948e3 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 0be7847ae998bb29 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
