@@ -346,6 +346,8 @@ module ooe_rob_w #(
   // its entry is the head's.
   logic [S-1:0]        fa_v_cq02h;
   logic [S*D-1:0]      fa_oh_cq02h;
+  // Its entry in binary too (#52): the age compare reads it, not an encode.
+  logic [S*LD-1:0]     fax_cq02h, fax_nx_cq02h;
   logic [S*CW-1:0]     fa_c_cq02h;
   logic [S*32-1:0]     fa_l_cq02h;
   logic [S*VA-1:0]     fa_a_cq02h;
@@ -1429,7 +1431,7 @@ module ooe_rob_w #(
   logic [D-1:0]    fok_cq02h;
   always_comb begin
     {fhb_cq02h, fai_cq02h, fcp_cq02h, fwp_cq02h, fkp_cq02h, fka_cq02h, fca_cq02h, fok_cq02h} = '0;
-    {fa_c_nx_cq02h, fa_l_nx_cq02h, fa_a_nx_cq02h, fa_oh_nx_cq02h} = '0;
+    {fa_c_nx_cq02h, fa_l_nx_cq02h, fa_a_nx_cq02h, fa_oh_nx_cq02h, fax_nx_cq02h} = '0;
     // A squashed entry's completion (held, or squashed now) marks nothing.
     for (int e = 0; e < S * D; e++)
       mf_nx_cq02h[e] = (mf_cq02h[e] | (cfe_cq02h[e] & v_cq02h[e] & ~hd_cq02h[e] &
@@ -1439,7 +1441,7 @@ module ooe_rob_w #(
       fa_en_cq02h[s] = (|cf_q_cq02h) | rel_q_cq02h[s] | (rd_s_cq02h[s] & fa_v_cq02h[s]);
       fok_cq02h = v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D] & ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]);
       fhb_cq02h = hrb_cq02h[s * LD +: LD];
-      fai_cq02h = enc(fa_oh_cq02h[s * D +: D]);
+      fai_cq02h = fax_cq02h[s * LD +: LD];
       fca_cq02h = fa_v_cq02h[s] & ~(rd_s_cq02h[s] & |(sqm_cq02h[s * D +: D] & fa_oh_cq02h[s * D +: D]));
       fka_cq02h = {fai_cq02h < fhb_cq02h, fai_cq02h};
       for (int p = 0; p < NM; p++) begin
@@ -1467,11 +1469,13 @@ module ooe_rob_w #(
         fa_a_nx_cq02h[s * VA +: VA] = fa_a_nx_cq02h[s * VA +: VA] | ({VA{fwp_cq02h[p]}} & cf_addr_cq02h[p * VA +: VA]);
         for (int i = 0; i < D; i++)
           fa_oh_nx_cq02h[s * D + i] = fa_oh_nx_cq02h[s * D + i] | (fwp_cq02h[p] & cm_tag_cq02h[p * TW +: LD] == LD'(i));
+        fax_nx_cq02h[s * LD +: LD] = fax_nx_cq02h[s * LD +: LD] | ({LD{fwp_cq02h[p]}} & cm_tag_cq02h[p * TW +: LD]);
       end
       // Held unless a port wins, in the data: the clock's enable stays
       // fa_en, from flops (CG-5), not the ports' compare.
       fa_oh_nx_cq02h[s * D +: D]  = fa_oh_nx_cq02h[s * D +: D]  | ({D{~fa_new_cq02h[s]}}  & fa_oh_cq02h[s * D +: D]);
       fa_c_nx_cq02h[s * CW +: CW] = fa_c_nx_cq02h[s * CW +: CW] | ({CW{~fa_new_cq02h[s]}} & fa_c_cq02h[s * CW +: CW]);
+      fax_nx_cq02h[s * LD +: LD]  = fax_nx_cq02h[s * LD +: LD]  | ({LD{~fa_new_cq02h[s]}} & fax_cq02h[s * LD +: LD]);
       fa_l_nx_cq02h[s * 32 +: 32] = fa_l_nx_cq02h[s * 32 +: 32] | ({32{~fa_new_cq02h[s]}} & fa_l_cq02h[s * 32 +: 32]);
       fa_a_nx_cq02h[s * VA +: VA] = fa_a_nx_cq02h[s * VA +: VA] | ({VA{~fa_new_cq02h[s]}} & fa_a_cq02h[s * VA +: VA]);
     end
@@ -1489,6 +1493,7 @@ module ooe_rob_w #(
     always_ff @(posedge ooe_core_clk) begin
       if (fa_en_cq02h[gs]) begin
         fa_oh_cq02h[gs * D +: D]     <= fa_oh_nx_cq02h[gs * D +: D];
+        fax_cq02h[gs * LD +: LD]     <= fax_nx_cq02h[gs * LD +: LD];
         fa_c_cq02h[gs * CW +: CW]    <= fa_c_nx_cq02h[gs * CW +: CW];
         fa_l_cq02h[gs * 32 +: 32]    <= fa_l_nx_cq02h[gs * 32 +: 32];
         fa_a_cq02h[gs * VA +: VA]    <= fa_a_nx_cq02h[gs * VA +: VA];
@@ -2142,6 +2147,11 @@ module ooe_rob_w #(
       end
     end
   `CCV_ASSERT(window_group_copies, hwc_bad_cq02h == '0)
+  logic [S-1:0] fax_bad_cq02h;
+  always_comb
+    for (int s = 0; s < S; s++)
+      fax_bad_cq02h[s] = fa_v_cq02h[s] && fax_cq02h[s * LD +: LD] != enc(fa_oh_cq02h[s * D +: D]);
+  `CCV_ASSERT(fault_entry_binary, fax_bad_cq02h == '0)
   `CCV_ASSERT(landed_count_copies, kcd_cq02h == kc_cq02h && kce_cq02h == kc_cq02h)
   logic [S-1:0] uft_bad_cq02h;
   always_comb
