@@ -761,7 +761,9 @@ module ooe_rob_w #(
   logic [S*KC-1:0] kc_nx_cq02h;
   logic [S*NC-1:0] uxa_all_cq02h;              // for the kill count's bound (asserted)
   logic [NC-1:0]   ox_cq02h, ux_cq02h, uxa_cq02h, sc_cq02h;
-  logic [D-1:0]    hm_cq02h, xr_cq02h, wok_cq02h;
+  logic [D-1:0]    hm_cq02h, xr_cq02h, wok_cq02h, wke_cq02h;
+  logic [S-1:0]    wbk_cq02h;                  // a wrong candidate retiring now (#52)
+  logic [S*RP-1:0] wpo_cq02h;                  // each port's entry under the prefix's mask (asserted)
   logic [D:0]      dt_cq02h, rsel_cq02h, mku_cq02h, mkd_cq02h;
   logic [LB-1:0]   r0u_cq02h, r0d_cq02h, rdf_cq02h;
   logic            rsq_cq02h, rcht_cq02h;
@@ -805,7 +807,7 @@ module ooe_rob_w #(
     {w_nx_cq02h, wg_nx_cq02h, wp_nx_cq02h, wgf_nx_cq02h, wpf_nx_cq02h, wn_nx_cq02h} = '0;
     {stv_cq02h, stp_cq02h, sso_cq02h} = '0;
     {ox_cq02h, ux_cq02h, uxa_cq02h, sc_cq02h} = '0;
-    {hm_cq02h, xr_cq02h, wok_cq02h, wk_cq02h, gfe_v_cq02h, pfe_v_cq02h} = '0;
+    {hm_cq02h, xr_cq02h, wok_cq02h, wke_cq02h, wk_cq02h, gfe_v_cq02h, pfe_v_cq02h, wbk_cq02h, wpo_cq02h} = '0;
     {wk0_cq02h, wk2_cq02h, wk3_cq02h, hw_nx_cq02h} = '0;
     {th_nx_cq02h, tk_cq02h, ufm_nx_cq02h, ufl_cq02h} = '0;
     {yn_cq02h, yt_cq02h, yd_cq02h, ye_cq02h, yk_cq02h, yg_cq02h} = '0;
@@ -1021,6 +1023,15 @@ module ooe_rob_w #(
       // picked now or squashing now, and no held entry; no allocation now
       // either when there is a pick (it is younger).
       wok_cq02h  = ~pfx_cq02h[s * D +: D] & ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]) & ~hd_cq02h[s * D +: D];
+      // The prefix itself stays off the window (#52): the next window's
+      // first port is older than every entry but those retiring now, so a
+      // wrong candidate among those (wbk, from the window and the head's
+      // flops) masks it; a later port's older entries are earlier ports,
+      // whose branch ends the window (wns). So the entry terms (wke) and
+      // wbk give what wok gives the window (asserted).
+      wke_cq02h  = ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]) & ~hd_cq02h[s * D +: D];
+      for (int j = 0; j < RP; j++)
+        wbk_cq02h[s] = wbk_cq02h[s] | (w_cq02h[s * RP + j] & |(cw_e_cq02h[s * D +: D] & rotl(hoh_cq02h[s * D +: D], j)));
       anyp_cq02h = |cw_e_cq02h[s * D +: D];
       gfe_v_cq02h = gwe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~ufq_cq02h[s * D +: D];
       pfe_v_cq02h = pwe_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~ufq_cq02h[s * D +: D];
@@ -1081,7 +1092,8 @@ module ooe_rob_w #(
           for (int i = 0; i < D; i++)
             ock_cq02h[r] = ock_cq02h[r] | (wk0_cq02h[i] & oc1_cq02h[(s * D + i) * NR + r]);
         end
-        coks_cq02h[s * RP + k]   = |(wk2_cq02h & cmp_old_cq02h[s * D +: D] & wok_cq02h);
+        coks_cq02h[s * RP + k]   = |(wk2_cq02h & cmp_old_cq02h[s * D +: D] & wke_cq02h) & ~wbk_cq02h[s];
+        wpo_cq02h[s * RP + k]    = |(wk2_cq02h & wok_cq02h);
         // wk is one-hot, so the window's mask (wok: the pick's prefix, late
         // among the flops' cones) enters once, last, as the port's own.
         ckp_cq02h[s * RP + k]    = |(wk2_cq02h & ya_cq02h[s * D +: D]) |
@@ -1090,7 +1102,7 @@ module ooe_rob_w #(
                                      |(wk2_cq02h & ym_cq02h[s * D +: D])));
         ckq_cq02h[s * RP + k]    = |(wk2_cq02h & yb_cq02h[s * D +: D]) && drk_cq02h == ock_cq02h &&
                                    |(wk2_cq02h & ykm_cq02h[s * D +: D]);
-        cok_cq02h                = |(wk2_cq02h & wok_cq02h) & (ckp_cq02h[s * RP + k] | (ckq_cq02h[s * RP + k] & cmk_cq02h));
+        cok_cq02h                = |(wk2_cq02h & wke_cq02h) & ~wbk_cq02h[s] & (ckp_cq02h[s * RP + k] | (ckq_cq02h[s * RP + k] & cmk_cq02h));
         cokp_cq02h[s * RP + k]   = cok_cq02h;
         w_nx_cq02h[s * RP + k]   = (cok_cq02h | nak_cq02h) && wpr_cq02h && wns_cq02h;
         wpr_cq02h                = wpr_cq02h && (cok_cq02h | nak_cq02h);
@@ -2158,6 +2170,7 @@ module ooe_rob_w #(
   `CCV_ASSERT(fault_not_nop, (al_flt_cq02h & al_nop_cq02h) == '0)
   // A faulting entry never completes, so the window stops at it.
   `CCV_ASSERT(port_complete_is_entry, cokp_cq02h == coks_cq02h)
+  `CCV_ASSERT(window_under_prefix, (w_nx_cq02h & ~wn_nx_cq02h & ~wpo_cq02h) == '0)
   `CCV_ASSERT(fault_never_done, ((fle_cq02h | mf_cq02h) & v_cq02h & cmp_old_cq02h) == '0)
   `CCV_ASSERT(pc_window, pcw_bad_cq02h == '0)
   `CCV_ASSERT(owed_no_underflow, ow_uf_cq02h == '0)
