@@ -90,7 +90,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 365, OA 418, TI 453, RA 148, RI 83,
+- **Bookmarks** (revs read through): AR 365, OA 418, TI 454, RA 148, RI 83,
   IS 194, CP 159, OI 350, DA 123, MA 67, Conventions 19.
 - **Insert a row:** update with ref {"object":"node","id":"bc521c46-9710"},
   engine "prose", container {"kind":"project","id":"JApHYjaUESeq8tsGMGXMU5"}.
@@ -191,7 +191,7 @@ Credit rules (TI-49):
    - Tools: ~/l1sweep/bank (extract.py, banksim.py, cm32.ev, cm128.ev).
      Dump with `--port-dump dcu=<vcd>`; the payload follows its valid by
      a cycle.
-   - Wait for MA's closed-loop figure and TI's lead fix.
+   - TI 454 took it all (lands in the 11-17 gate). Wait for MA's closed-loop figure.
 2. **AR 362, Strawman B (set_index + bank lead on ccv_miu_dcu_req at H+1).**
    MA 65 accepted all six conditions:
    - SETS × LINE ≤ 2^PAGE_SHIFT;
