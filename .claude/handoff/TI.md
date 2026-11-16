@@ -74,6 +74,10 @@ restart: rerun the job). Logs in /root/ccv-logs/.
    sim/ooe/ooe_core.cpp (epoch check before slot lookup). TI 457 rang RI, RA,
    OI, AR, MA. Daily sweep 11-16 repo half running from /home/user/ti-sweep
    (branch ti-sweep16; log job-daily-sweep-20261116-125856-*.log).
+   OI-157/IS OOM: check-cg holds change counts, not traces (b3e2305f = 804d1e6f
+   on ti-sweep16); sweep restarted 14:14 UTC with it (log
+   job-daily-sweep-20261116-141403-25526.log). TI 458-460. After it lands:
+   merge RI's be4ba8af (ccr-888218a3-20cauz, docs only) via scoped gate, ring RI.
    NEXT: task 22 MA-16/DA 123 macro library (due 11-18): sram_1rw 2-cycle read
    + ce-not-back-to-back assertion (RTL, sram.h, check-ngd NGD-8), sram_1r1w ->
    ccv_common_rf_1r1w (area 3/bit) and move its users; task 19 RA 148 (11-17);
