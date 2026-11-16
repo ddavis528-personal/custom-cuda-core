@@ -78,8 +78,8 @@ date. A date in another agent's row is read as a priority, not a deadline.
    OI, AR, MA. Daily sweep 11-16 repo half running from /home/user/ti-sweep
    (branch ti-sweep16; log job-daily-sweep-20261116-125856-*.log).
    OI-157/IS OOM: check-cg holds change counts, not traces (b3e2305f = 804d1e6f
-   on ti-sweep16); sweep restarted 14:14 UTC with it (log
-   job-daily-sweep-20261116-141403-25526.log). TI 458-460. After it lands:
+   on ti-sweep16); LANDED: the 11-16 sweep's full gate passed on 804d1e6f,
+   pushed to both working branches and release (21d2fb26). TI 458-460. After it lands:
    merge RI's b2748371 (ccr-888218a3-20cauz, docs only; contains be4ba8af, RI-61) via scoped gate, ring RI.
    NEXT, in priority order (no dates, DA 2026-11-16): task 19 RA 148 (unblocks
    RI's RCU RTL); task 22 MA-16/DA 123 macro library: sram_1rw 2-cycle read
