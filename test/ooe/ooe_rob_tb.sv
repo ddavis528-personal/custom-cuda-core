@@ -132,6 +132,10 @@ module ooe_rob_tb #(
   logic [S*NG*NSB-1:0] gf_w;
   logic [S*NP-1:0]     pf_w;
   for (genvar w = 0; w < S; w++) begin : g_w
+    // Rename 2's per-slot fill valids (OA 418, #52): the decode Rename 2
+    // registers, done here by the bench, which stands in for it.
+    logic [A-1:0] fl_m_w;
+    always_comb for (int l = 0; l < A; l++) fl_m_w[l] = fl_v_cq02h[l] && fl_slot_cq02h[l * LS +: LS] == LS'(w);
     ooe_rob_w #(.SA(S), .WID(w), .D(D), .RP(RP), .A(A), .ND(ND), .NM(NM), .GW(GW), .GR(GR), .NG(NG), .NS(NS), .PW(PW), .NP(NP), .LB(LB), .LT(LT), .NK(NK), .PCW(PCW), .CW(CW), .VA(VA), .BS(BS)) u_w (
       .ooe_core_clk, .ooe_rst_r00h,
       .al_l_cq01h(al_l_cq01h[w * ($bits(al_l_cq01h) / S) +: $bits(al_l_cq01h) / S]),
@@ -145,7 +149,7 @@ module ooe_rob_tb #(
       .fl_l_cq01h,
       .fl_brl_cq01h,
       .fl_v_cq02h,
-      .fl_slot_cq02h,
+      .fl_m_cq02h(fl_m_w),
       .fl_nop_cq02h,
       .fl_mem_cq02h,
       .fl_rs_cq02h,

@@ -21,6 +21,9 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
   `CCV_PUSH_BRANCHES=claude/miu-dcu-microarch-spec-664pgr tools/gate-push.sh`, then
   `tools/gate-wait.sh <job log>` as a background task (exit 3: run it again; 4: killed by a
   restart, start the job again).
+- Daniel (2026-11-15): MA has standing permission to record his rulings in the DA tab (node
+  d5076b00-ef1b, table m8yvbw8rqgz.231; columns title(re:) | date | actions | decision with his
+  words quoted; end "Recorded by MA in Daniel's session"). Notify TI/AR as the row needs.
 - Docs edits: a `find` replace "as text" inherits the first run's formatting
   (bold/code); for whole paragraphs use a guarded markdown replace.
 - A rendered copy of a tab: read with `{"kind":"view"}` and render with the
@@ -29,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 354, TI 440, OA 417, IS 193, CP 157, OI 348, RA 146, RI 79, MA 57, DA 119.
+Conventions 19, AR 365, TI 453, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 68, DA 123.
 
 ## State, 2026-11-13
 
@@ -72,9 +75,60 @@ Conventions 19, AR 354, TI 440, OA 417, IS 193, CP 157, OI 348, RA 146, RI 79, M
 
 ## Open work, most urgent first
 
-- MA 57 (re:TI-440): stub late hits are 94% gathers over 8 lines. Spec: they lose the contract
-  (MA-4) and send the no-hit; no port widening now. Phase 1 prices tag ports 4/6/8 against
-  the gather share. Asked TI for the private-window vs .global split and a lines histogram.
+- 2026-11-16: DA rev 123 (Daniel): SRAM is 1RW (6T) only, accessed every other cycle; banking for
+  bandwidth; 1R1W or every-cycle arrays are RF at 3x area/bit; tags RF, data SRAM. MA-16 (rev 67,
+  Needs AR, TI): DCU data >= 8 half-rate banks (bits [9:7], lead bank field 2->3 bits, 48 lead flops),
+  2-cycle read assumed (fits hit 7 under B), tags RF banked like data (not 4 copies), LRU + MIU window
+  table RF, MIU memop payload store (46 Kbit) RF or 2 half-rate banks. TI: macro library; AR: 8 vs 16
+  banks. SETTLED (MA rev 68): AR 364 agreed 8 banks (16 buys <0.2% open-loop); the bank is
+  set_index's low 3 bits, so no bank field: lead = 9 bits/slot, 36 DCU lead flops (my 48 was wrong).
+  DCU gets an age bound on hole-filling, CCV_DCU_BANK_AGE (start 16; AR saw 729-cycle starvation);
+  Phase 1 model sets it. TI-453: macro library on 11-18; told TI the lead width derives from
+  CCV_DCU_SETS only. Spec tabs updated (MIU rev 136, DCU rev 39) and summary doc (rev 19).
+
+- 2026-11-15 late: doc check done (MIU tab rev 128, DCU tab rev 37: drafts -> decided, Strawman B
+  chosen, 512 KiB geometry, req_id/wire totals). AR 362 agreed B with 6 conditions (MA rev 65);
+  TI-449 lands the index lead + require 11-16. Q-42 stays open (AR, floorplan abutment).
+  Summary to Daniel delivered as a Claude doc: https://claude.ai/artifact/AEUqHyXyixyuxytWxc7mGd
+  NEXT, after Daniel reads it: docs/miu-impl.md, docs/dcu-impl.md; MI/DI start after TI-449's gate.
+  TI-450 (a5481843): the cm128priv CHECK bug was the stub MIU's completion ahead of late data;
+  fixed, cm128priv clean; also landed no-hit and CCV_DCU_SETS 512. Summary doc rev 12 says so.
+  AR 363 (PF-33/PF-47 at 512 KiB, a5481843): 0.6%/hit cycle cm128priv, 2.5% cm32priv; configured
+  down +0.59% (128K)/+1.14% (64K) per cycle. MA rev 66: L1_HIT stays 7; hit 8 only on DI's measured
+  timing need. PF-51 Signal updated.
+
+- 2026-11-15: MA-9 CLOSED (DA rev 121): MIU and DCU stay separate; merge/direct return is Phase 2,
+  priced on MI/DI's timing model (boundary hops as configurable latencies) + AR's PF-33/PF-47 at
+  512 KiB base 7/8/9. MA rev 63 answers AR-349 (Q-42 can close). The grill-me is finished. NEXT:
+  documentation check of the MIU/DCU tabs (no 'proposed' drafts, no superseded numbers), then
+  Daniel's summary, then docs/miu-impl.md and docs/dcu-impl.md.
+
+- MA 61-62 (DA in session, 2026-11-15): L1 BUILT FOR 512 KiB (8w, 512 sets, 128 B), configured
+  down by sets only; supersedes MA 60. TI to set CCV_DCU_SETS 512. DCU tab Geometry updated (rev 24;
+  the Capacity item's history below it still reads as history). Pinged AR for the PF-33/PF-47 status
+  on -priv at 512 KiB, hit base 7/8/9: that curve is the MA-9 number.
+  DA: fixed 512 KiB hit latency at every configured size for the first implementation; the
+  size-following latency is PF-51 in docs/perf-register.md (owner MA). TI-447: CCV_DCU_SETS 512
+  in params (6d36c1b2, lands with ti-nohit). Asked Daniel whether TI should log the 512 KiB decision
+  in the DA tab.
+- MA 60 (re:AR 360, superseded by 61): capacity on -priv: cm128priv 64/128/256/512 KiB = 2.133M/1.947M/1.928M/1.925M
+  (128 KiB takes 8.7 of 9.7 pts); cm32priv -0.17%, S1 flat. Accepted: 64 KiB baseline, Phase 1
+  resource model prices 64 and 128 KiB; area delta to Daniel in the summary (corpus sweep DA rev 95
+  decides). AR 360 (2): operand CHECKs track misses/evictions (672/128/0/32 lines), cm128priv only;
+  TI naming the owner; MA checks the spec's fill/return order against the cause.
+- TI-444 (cc MA, no ask): -priv has no ineligible load, knob k0=k1 (cm32priv 2,253,475; cm128priv
+  22.78M cold, k1 OOM-killed); PF-33/PF-47 can re-book on -priv. 128 operand CHECKs on cm128priv
+  (consumer reads before load lands, no replay): TI bisecting with RCU/OOE stubs; if it lands on
+  the MIU/DCU stubs it comes to MA.
+- Sweep 2026-11-15 pushed 313d6c04, SCOPED PASS 24/24 (ngd 2.6h). AR 358 made coremark-derived-priv the perf baseline (MA 59 taken); TI 442
+  moved benches (cm32priv/cm128priv). AR 356: stub gets MA-4 eligibility + no-hit, knob off/on
+  runs pending (TI). AR re-books PF-33/PF-47 on -priv: the MA-9 merge numbers come from those.
+
+- MA 57-58 (TI 440-441): cm32 gathers are all 25-32 lines (one per lane), PF-46 per-thread
+  blocks via ordinary .global, none in IS-24's window: ports closed as a fix (no 6/8-port
+  pricing in Phase 1). CP-82: coremark-derived-priv already uses the window; MA 59 asks AR to make it the
+  sweep baseline (.global secondary); Phase 1 sizes on the window form.
+  1-line late loads are stub effects; endorsed TI's AR 356 stub change (first pass first).
 
 - MA 55-56 (re:TI-437, AR 353-354, TI 438): no-hit settled. CCV_LAT_MIU_NOHIT_A2 = 2 (A1 at H,
   A2 at H+1, launch H+2); CCV_LAT_L1_NOHIT = issue-to-H + 2 + HOP = 9 under PF-47 (TI applied).
@@ -104,5 +158,7 @@ Conventions 19, AR 354, TI 440, OA 417, IS 193, CP 157, OI 348, RA 146, RI 79, M
    For DI's handoff: rtl/macro/ccv_common_sram_{1rw,1r1w}.sv; 1r1w same-cycle read of the
    written word returns OLD data (DCU forwards fills itself); W a multiple of 8 (pad tags).
    TI's a46afef7 adds tools/gate-wait.sh <job log> (exit 3 rerun, 4 killed) once merged.
-4. Phase 2: module partition, per-port NGD budgets, index-lead schema row (after
+4. Phase 2 (TI-445, DA ruling: a module's owner (MI/DI) sets/moves an NGD port budget where
+   check-ngd times the connection (parent has a unit) and passes; MA still sets the budgets
+   for unmeasured parents, the MIU/DCU block boundaries and boundary-wired ports; DA rev 120): module partition, per-port NGD budgets, index-lead schema row (after
    AR's sweep), the payload-slot macro decision.

@@ -398,6 +398,8 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_CONFLICT_SER-1:0] conflict_serialization;
 } ccv_spm_miu_rsp_t;
 
+// LEAD fields are driven with valid, one cycle ahead of the
+// rest of the payload (schema lead_fields).
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_REQ_MIU_DCU-1:0]  req_id;
   logic [ccv_prov_pkg::CCV_P_W_PA-1:0]           phys_addr;
@@ -406,6 +408,8 @@ typedef struct packed {
   logic                                          exclusive_req;
   logic [ccv_params_pkg::CCV_W_DATA-1:0]         write_data;
   logic [ccv_params_pkg::CCV_W_DATA/8-1:0]       byte_mask;
+  logic [ccv_prov_pkg::CCV_W_DCU_SET-1:0]        lead_set_index;  // LEAD
+  logic [ccv_params_pkg::CCV_W_DCU_BANK-1:0]     lead_bank;  // LEAD
 } ccv_miu_dcu_req_t;
 
 typedef struct packed {
