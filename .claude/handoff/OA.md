@@ -12,6 +12,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
   Record Daniel's decisions verbatim in the DA tab (table m8yvbw8rqgz.231).
 - Report to Daniel in a few lines: what changed, then any decision that is
   his. He is a senior microprocessor design engineer; write as to a peer.
+- TI-445 and DA rev 120 (11-15; DA 120 adds: architect also keeps boundary-wired budgets): a module's owner sets/moves an NGD port budget where check-ngd's convergence times the connection (parent has a unit), check-ngd passing. OA still sets budgets for OOE modules with no measured parent (ooe_rename, sched, rs, rat, decq, age, rencred, rob_w) and every block-boundary/lead budget; rendep/go/ready/select/wake/pick/confirm etc. are now OI's own. OA reviewed: no budget seen that this lets through without convergence holding.
 - Mine to rule: admission-cost changes under 0.5% on S1, the audit and the
   out-of-order floors. Over 0.5%, a waiver, or any exception narrowing one of
   DA's rules (CG, NGD, lint) goes to DA with figures and a recommendation.
@@ -43,10 +44,14 @@ AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
 CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
+## OI-150 (OA 417, rev 419, 11-15)
+Arrivals kept. go: producer encodings (decq one-hot need, Rename thermometer pool) granted at 2. rendep gsn/psn: arrival 2 only if Rename precomputes the one-hot index at no latency. sched res/vel: OI to model-price the fallback a cycle later (OA rules if under 0.5% S1, else DA). ooe_rob_w wid_cq00h: arrival 0, one-hot flop, within the ratchet caps. OI-151/OA 418 (rev 420): WID strap withdrawn (over caps); WID stays a param with units at 1-3. DA's 11-15 ruling was given in OI's session; record it only once Daniel confirms the wording. #52 rob_w: Rename 2 per-slot fill valids and OOE-capture per-slot dn/cm valids granted at 2; OI measures before pushing. OI-152/OA 419 (rev 421): fl_m cap 29.3 (baseline 31.7, TI adds the line), fl_v/fl_slot caps removed; the NGD-1 rise to 30.1 at WID 3 (ABC remap of the retire window) is DA's call, and OA recommends holding 29.6 and isolating the retire window in a child first; (C) withdrawn. Waiting on Daniel.
+
 ## Register bookmarks (revs read through)
-Conventions 19, OA 418, AR 354, TI 439, OI 349, IS 193, CP 157, DA 119,
-RA 147 (tab 9851686b-2b0a), RI 79 (tab 8e4547bc-c469), MA 56 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
+Conventions 19, OA 421, AR 356, TI 445, OI 355, IS 193, CP 157, DA 120,
+RA 148 (tab 9851686b-2b0a), RI 82 (tab 8e4547bc-c469), MA 57 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
 OOE doc rev 381. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
+Sweep 11-15: 5 branches (116 commits), full gate green, pushed 6aa0c403; release 6fa7fc1f; tag refused (known). Sunday, no pings.
 Sweep 11-13: 6 branches (76 commits), full gate green, pushed 0bc98973 (first push 503'd, credential service; retried by hand); release 63625551; tag refused (known).
 
 ## Open work (most urgent first)
