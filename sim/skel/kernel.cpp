@@ -2630,7 +2630,13 @@ private:
       send(c.lane_rcu, 0, q_.front().msg, q_.front().tid, lane_);
       q_.pop_front();
     }
+    // Coverage only (RI-57, TI 452): the lanes' results still to send, read
+    // by RAU's kill_lane bin; no block decides anything on it.
+    k_.lane_inflight += q_.size();
+    k_.lane_inflight -= counted_;
+    counted_ = q_.size();
   }
+  size_t counted_ = 0;   ///< this lane's share of k_.lane_inflight
   /// One message per cycle at most: an SFU result due the cycle a lane
   /// result is rides in the same message (RCU takes both from it).
   void enqueue(Bits msg, uint64_t tid, uint64_t at, bool sfu) {
@@ -5399,6 +5405,9 @@ private:
   void killStep() {
     if (kill_ == Kill::kValid) {
       fabOut("kill_valid", 1);
+      // RI-57 (TI 452): a lane op is in flight as the kill goes out, its
+      // result not yet sent to RCU, so RCU takes it under the kill.
+      if (k_.lane_inflight) k_.hit("kill_lane");
       kill_ = Kill::kWait;
       return;
     }

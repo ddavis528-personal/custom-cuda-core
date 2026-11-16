@@ -826,7 +826,8 @@ rolimit ro_fault=1 fault=1 kill=1
 rolaunch ro_fault=1 fault=1 kill=1
 rogated ro_fault=1 fault=1 split=1 kill=1
 roload ro_fault=0 fault=0 kill=0
-rokill ro_fault=1 fault=1 kill=1
+rokill ro_fault=1 fault=1 kill=1 kill_lane=0
+rokilllane ro_fault=1 fault=1 kill=1 kill_lane=1
 slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0 dcu_evict=32
 lanectx redirect=0 split=0
 lanectx2 redirect=0 split=0
