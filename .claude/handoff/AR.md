@@ -90,7 +90,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 365, OA 418, TI 454, RA 148, RI 83,
+- **Bookmarks** (revs read through): AR 365, OA 418, TI 455, RA 148, RI 83,
   IS 194, CP 159, OI 350, DA 123, MA 67, Conventions 19.
 - **Insert a row:** update with ref {"object":"node","id":"bc521c46-9710"},
   engine "prose", container {"kind":"project","id":"JApHYjaUESeq8tsGMGXMU5"}.
@@ -192,17 +192,14 @@ Credit rules (TI-49):
      Dump with `--port-dump dcu=<vcd>`; the payload follows its valid by
      a cycle.
    - TI 454 took it all (lands in the 11-17 gate). Wait for MA's closed-loop figure.
-2. **AR 362, Strawman B (set_index + bank lead on ccv_miu_dcu_req at H+1).**
-   MA 65 accepted all six conditions:
-   - SETS × LINE ≤ 2^PAGE_SHIFT;
-   - the index comes from the final formed address, A1 closing in 25 NGD;
-   - the array read is speculative, with no state change on the lead alone;
-   - the interface shape;
-   - DCU's 44 capture flops are a lead waiver, and MIU needs a keep copy;
-   - probes and fills don't change.
-
-   TI 449 builds it on 11-16 after ti-nohit. When it lands, check the build
-   against the six conditions. Nothing is owed before then.
+2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
+   against the six conditions.** The page-offset require has refusal
+   mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
+   its set from the payload (no state on the lead); the dcu-set-lead
+   control is in check-kernel; probes and fills are unchanged. lead_bank
+   goes, and banks become 8, in the 11-17 gate (TI 454). (2) A1 closing in
+   25 NGD and (5) the lead waiver and keep copy come with MI's and DI's
+   RTL; check them there. No reply owed.
 3. **Q-42 stays open** (full abutment: clock/reset trees, the kill
    broadcast, the CSR star, non-adjacent channels). DA 121 settles only
    MIU/DCU; MA 63's "can close" was withdrawn in MA 65.
