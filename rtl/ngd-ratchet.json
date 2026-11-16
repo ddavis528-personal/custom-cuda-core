@@ -24,11 +24,10 @@
       "NGD-3 psn_cq01h": 28.8
     },
     "ooe_rob_w": {
-      "NGD-1": 29.6,
+      "NGD-1": 30.1,
       "NGD-3 al_n_cq02h": 29.2,
       "NGD-3 dn_tag_cq02h": 26.3,
-      "NGD-3 fl_slot_cq02h": 28.6,
-      "NGD-3 fl_v_cq02h": 29.5
+      "NGD-3 fl_m_cq02h": 29.3
     },
     "ooe_rs": {
       "NGD-3 prv_dep_cq01h": 25.1
