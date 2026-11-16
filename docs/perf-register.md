@@ -73,6 +73,7 @@ it.
 | PF-48 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
 | PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
 | PF-50 | Packed contiguous lanes for narrow ops | OOE, LANE, RCU, MIU, schema | deferred (DA, 2026-11-03) |
+| PF-51 | L1 hit latency that follows the configured L1 size | DCU, MIU, OOE, params | deferred (DA, 2026-11-15) |
 
 ## Entries
 
@@ -1573,3 +1574,32 @@ it.
   (RCU spec measure M2), and the power estimate, once there is one. If
   partly-busy lanes dominate narrow workloads' clock power, this is the
   lever. Owner: AR (cross-block); raised by RA.
+
+### PF-51 L1 hit latency that follows the configured L1 size
+
+- **Now:** the L1 is built for 512 KiB: 8 ways, 512 sets of 128-byte lines
+  (Daniel, 2026-11-15; register MA rev 61). A smaller configuration (128 or
+  64 KiB) reduces `CCV_DCU_SETS` only. It keeps the 512 KiB hit pipeline and
+  the same `CCV_LAT_L1_HIT`, so the contract latencies that derive from it do
+  not change. Daniel accepts that fixed latency at every size for the first
+  implementation.
+- **Alternative:** the DCU's hit pipeline drops a stage when it is built
+  smaller, and `CCV_LAT_L1_HIT` derives from the set count, so a 64 or
+  128 KiB L1 hits a cycle or two sooner.
+- **Cost:**
+  - The DCU's pipeline is parameterized by size, and each configuration is
+    timed and verified on its own: check-ngd and check-cg units at each size.
+  - The contract latencies (`CCV_LAT_L1_WAKE`, `CCV_LAT_L1_CMPL`,
+    `CCV_LAT_L1_NOHIT`) derive from the set count, so OOE's speculative wake
+    timing and the RCU's derived parameters follow the configuration.
+- **Gain:** on code that fits a small L1, each cycle of L1 wake costs about
+  2% single-thread (AR-24). In the corpus sweep, hit base 9 against 7 cost
+  sgemm 7.9% (DCU tab, Capacity).
+- **Signal:** AR's re-booked PF-33/PF-47 sweeps on coremark-derived-priv at
+  512 KiB with hit base 7, 8 and 9 (MA rev 62), measured in AR 363 on
+  a5481843: each hit cycle costs 0.6% on cm128priv and 2.5% on cm32priv.
+  The ceiling of this entry is a cycle saved when configured down: +0.59%
+  at 128 KiB and +1.14% at 64 KiB per cycle (AR 363). Hit stays 7 at
+  512 KiB (MA rev 66). The alternative is worth building if 512 KiB needs a
+  slower hit than 64 or 128 KiB would, and a product configuration ships
+  below 512 KiB. Owner: MA; raised by Daniel.
