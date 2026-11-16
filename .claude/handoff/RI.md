@@ -12,6 +12,10 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Daily sweep scheduled task trig_01YVAyULgv3K9NymwVJXZybD, 02:31 America/Los_Angeles.
 - Toolchain: ./tools/setup-toolchain.sh (log ~/ccv-logs/setup-toolchain.log).
 
+## Dates (DA via TI-461, 2026-11-16)
+- No task carries a date: best effort in priority order; a dependency is met by reordering. Never put a
+  due date on a row, handoff item or promise. Dates in older items below are history or priority, not deadlines.
+
 ## Repos, branches, push
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
@@ -64,15 +68,15 @@ architect may approve only if the end meets module NGD without the flop; can't m
 -19. DONE (2026-11-16) Daily sweep, PASS full, pushed ac0c899e: ri-sweep16 in ri-wt13 = origin 05af449c + doowtf 26, miu-dcu-spec 19,
    57eff422 15, 80102643 15, 9eb50716 11, 126afa13 10, 3868632d 6, c22116ce 5, ri-asm 9 (no conflicts).
    Full gate-push log ~/ccv-logs/job-gate-push-20261116-103527-2546.log. Register: nothing for RI. RA 151: RCU has
-   no SRAM macro (DA 123's 1RW rule moves nothing); report still on 11-17 with the rokill kernel; RA 148
-   stub/refusal slips to 11-19. MA tab: tab e87b52b6-d6d0, node 1f971016-3f72 (not in roster).
+   no SRAM macro (DA 123's 1RW rule moves nothing); report follows the rokill kernel; RA 148
+   stub/refusal is TI's first in priority order. MA tab: tab e87b52b6-d6d0, node 1f971016-3f72 (not in roster).
    Bookmarks: Conv 19 AR 365 OA 421 IS 194 TI 456 OI 358 CP 159 DA 123 RA 151 RI 89 MA 68.
 -18. DONE (2026-11-15) Daniel SIGNED the 3 owner CG waivers (RI-47) in conversation. 05af449c on ri-signoff
    (ri-wt12; = ce5f44dd + ri-asm handoff + cg-waivers "by" names signature + rcu-exit.md to ce5f44dd, open list
    refreshed). Scoped gate-push: job-gate-push-20261115-174608-425.log (waiter b4z0hvuku; check-cg/ngd in scope,
    ~3.5h). RI-55 (RI tab rev 84) written, notices TI + RA (asked for dates). ON PUSH: tell TI the commit to merge
    (short RI row or note), update handoff, task 35 done. PUSHED 05af449c (SCOPED PASS 21/24); RI-56 (rev 85)
-   asks TI to merge it, notice sent. NEXT: daily sweep merges TI a5481843; RA report 11-17. Bookmark RI 85.
+   asks TI to merge it, notice sent. NEXT: daily sweep merges TI a5481843; then RA's report. Bookmark RI 85.
    DA 122 (via TI): Daniel confirmed the signature to TI; recorded in DA tab. TI gating its merge of 05af449c.
    RA's report has all it needs. Bookmark DA 122.
    TI-451: 05af449c merged as 93f0d75c on both TI working branches. Dates slipped: (c) stub/refusal 11-17,

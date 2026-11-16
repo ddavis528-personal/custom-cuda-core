@@ -124,6 +124,6 @@ There are 8 RCU entries in `rtl/cg-waivers.json`, all written by RI as the owner
 3. **Block report:** `docs/rcu-block-report.md` (cells, flops, gating, DCGE, the 2% budget, depth histogram) at 5516e643.
 4. **Not blocking, TI's:**
    - the SFU variant of the kill kernel, which needs a lane stub that sends SFU results; then the end-to-end SW check through the block. RI records its margin when it lands.
-   - the stub's address timed from the param, with the RTL refused at a base other than 1 (RI-54; RA rev 148; TI, 11-19).
+   - the stub's address timed from the param, with the RTL refused at a base other than 1 (RI-54; RA rev 148; TI).
 
 Closed since 2026-11-14: the split tree with the RTL (TI 7079fc14; RA rev 143), the SFU class in the model's decode (RA rev 146, 9f513f3b), the address cycle (RA rev 148, ce5f44dd), `addr-late` in `tools/check-rcu-unit.sh`'s control list (TI a5481843), and the kill kernel with lane ops in flight, rokilllane (TI 1861cc51, rev 457; margin 15, RI-58).
