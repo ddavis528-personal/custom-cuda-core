@@ -80,7 +80,7 @@ date. A date in another agent's row is read as a priority, not a deadline.
    OI-157/IS OOM: check-cg holds change counts, not traces (b3e2305f = 804d1e6f
    on ti-sweep16); LANDED: the 11-16 sweep's full gate passed on 804d1e6f,
    pushed to both working branches and release (21d2fb26). TI 458-460. After it lands:
-   merge RI's b2748371 (ccr-888218a3-20cauz, docs only; contains be4ba8af, RI-61) via scoped gate, ring RI.
+   LANDED 7192d4fc: RI's b2748371 + no-dates CLAUDE.md (SCOPED PASS 4/24); TI 462 rang OI, IS; TI 463 rang RI.
    NEXT, in priority order (no dates, DA 2026-11-16): task 19 RA 148 (unblocks
    RI's RCU RTL); task 22 MA-16/DA 123 macro library: sram_1rw 2-cycle read
    + ce-not-back-to-back assertion (RTL, sram.h, check-ngd NGD-8), sram_1r1w ->
