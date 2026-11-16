@@ -18,7 +18,7 @@
 #   lead  the RTL's credits held a cycle ahead of the model's (RI-36): the
 #         model credits issue and lane results the cycle they land, so the
 #         strict compare must see the old one-cycle lead
-#   arrival, pair, rzero, rdup, iso  a fault forced into the block that the
+#   arrival, pair, rzero, pzero, rdup, iso  a fault forced into the block that the
 #         Q-53 checker of that name (test/rcu/rcu_q53_chk.sv, bound into
 #         every replay) must report
 # Migration: stall, vadd4, swap and provswap again under CCV_RAU_DEMOTE=mlc
@@ -78,7 +78,7 @@ for d in "${dumps[@]}"; do
 done
 [ -s "$D/vadd.vcd" ] ||
   env -u CCV_RCU_IMPL CCV_RCU_EVLOG="$D/vadd.ev" "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --port-dump "rcu=$D/vadd.vcd" >"$D/vadd.skel.log" 2>&1
-for c in init opnd ev gate row lead arrival pair rzero rdup iso; do
+for c in init opnd ev gate row lead arrival pair rzero pzero rdup iso; do
   if python3 test/rcu/lockstep.py --build "$B" --control "$c" "$D/vadd.vcd" >"$B/control.$c.log" 2>&1; then
     say "lockstep control $c" "caught"
   else

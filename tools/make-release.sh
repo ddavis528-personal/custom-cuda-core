@@ -43,6 +43,10 @@ for a in "$@"; do
     *) echo "usage: $0 [--branch=<name>] [--push] [--allow-unmerged=<b>,...]" >&2; exit 2 ;;
   esac
 done
+# A long run never runs under its caller (tools/detach.sh; DA, 2026-11-13):
+# it detaches and returns; tools/gate-wait.sh waits for it.
+. "$(dirname "$0")/detach.sh"; ccv_detach "$0" "$@"
+
 MAXFILE=$((5 * 1024 * 1024))       # no single artifact above 5 MB
 MAXTOTAL=$((25 * 1024 * 1024))     # nor all of release/ above 25 MB
 
@@ -93,6 +97,7 @@ if ! ./tools/verify.sh >"$VLOG" 2>&1; then
 fi
 GATE=$(grep -A1 '== result ==' "$VLOG" | tail -1 | xargs)
 [ "$GATE" = PASS ] || die "the gate's log has no PASS result (read: '$GATE'); no snapshot without its record"
+echo "make-release: gate PASS on $SHA7 (its log ships as release/verify.log)"
 
 # -- 2. the artifacts that are not already built by the gate ---------------
 # Every S1 kernel's trace and both Perfetto views, not only vadd's.

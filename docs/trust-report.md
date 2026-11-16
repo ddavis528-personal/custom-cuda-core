@@ -19,15 +19,17 @@ so this is a build artifact rather than something to remember.
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
+| `rtl/ooe/ooe_sched.sv` | — | `CCV_MEMOP_CREDITS` |
 | `rtl/rcu/ccv_rcu.sv` | `CCV_L_OPERANDS_PER_LANE`, `CCV_L_W_OPCODE` | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W`, `CCV_P_W_LANE_BYP_SEL`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
 | `rtl/rcu/rcu_bank_slice.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO` |
 | `rtl/rcu/rcu_isd.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_W_PHYS_REG` |
 | `rtl/rcu/rcu_kill.sv` | — | `CCV_LAT_RCU_KILL_DRAIN`, `CCV_P_W_KILL_EPOCH` |
 | `rtl/rcu/rcu_lanes.sv` | `CCV_L_OPERANDS_PER_LANE`, `CCV_L_W_OPCODE` | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_PHYS_ZERO`, `CCV_P_PRED_ZERO`, `CCV_P_W_LANE_BYP_SEL`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_ROB_TAG` |
 | `rtl/rcu/rcu_mem.sv` | — | `CCV_P_W_ROB_TAG` |
-| `rtl/rcu/rcu_mig.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG` |
+| `rtl/rcu/rcu_mig.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_PRED_ZERO`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG` |
 | `rtl/rcu/rcu_pred.sv` | — | `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO`, `CCV_P_W_PHYS_PRED` |
 | `rtl/rcu/rcu_r.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_PRED_ZERO`, `CCV_P_W_ROB_TAG` |
+| `rtl/top/dpi-shadow/rcu_dpi.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_cru.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/dpi/ccv_dec.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
@@ -63,8 +65,8 @@ so this is a build artifact rather than something to remember.
 | `sim/rcu/rcu_block.cpp` | — | — |
 | `sim/rcu/rcu_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/rcu/rcu_core.h` | — | `CCV_LAT_RCU`, `CCV_LAT_RCU_KILL_DRAIN` |
-| `sim/rcu/rcu_test.cpp` | — | `CCV_LAT_LANE_BYP`, `CCV_LAT_RCU_KILL_DRAIN` |
-| `sim/skel/kernel.cpp` | — | `CCV_DCU_SETS`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_MAX_CTA` |
+| `sim/rcu/rcu_test.cpp` | — | `CCV_LAT_LANE_BYP`, `CCV_LAT_RCU_ADDR`, `CCV_LAT_RCU_KILL_DRAIN` |
+| `sim/skel/kernel.cpp` | — | `CCV_DCU_SETS`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA` |
 | `sim/skel/ooe.cpp` | — | `CCV_DONE_SLOT_RCU` |
 | `sim/skel/portdump.cpp` | — | `CCV_P_PHYS_REGS` |
 | `sim/skel/stub.h` | — | — |
@@ -78,7 +80,7 @@ so this is a build artifact rather than something to remember.
 | `test/rcu/killsleep_tb.cpp` | — | — |
 | `test/rcu/lanes_tb.cpp` | — | — |
 | `test/rcu/mig_tb.cpp` | — | — |
-| `test/rcu/rcu_q53_chk.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO`, `CCV_P_PRED_REGS`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
+| `test/rcu/rcu_q53_chk.sv` | — | `CCV_LAT_LANE`, `CCV_LAT_SFU`, `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO`, `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
 | `test/rcu/tb_cg_rcu_clk.sv` | — | `CCV_CG_HYST_W` |
 | `test/smoke/credit_smoke.sv` | — | `CCV_P_TIMEOUT_N` |
 

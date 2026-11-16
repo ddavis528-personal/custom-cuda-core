@@ -7,7 +7,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - RH runs long CPU-, memory- and disk-heavy jobs that other agents hand off: gates,
   check-cg/check-ngd sweeps, Yosys/SBY runs, kernel and SV-hosted runs,
   experiment sweeps, bisects. Takes jobs from OI first; TI may send them too.
-  Other senders: ask Daniel first.
+  AR is a regular sender too (DA in RH's session, 2026-11-15). Results go to AR by
+  message, never as a register write. Other senders: ask Daniel first.
 - No register tab, so RH never writes to the register. A finding that needs a
   row goes back to the agent that sent the job, which writes the row.
 - Jobs arrive by `send_message` and results go back the same way, with `priority`
@@ -53,24 +54,39 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- RI ngd leg on 439179d9 (one-line CCV-L04 fix over e9c48768), started 09:19Z 11-13:
-  rh-jobs/ri-gate/ngd5.sh, worktree /home/user/rh-ri18 (detached), result
-  ~/ccv-logs/ri-gate-439179d9.result. It self-exports to gate-scratch/RI-export on
-  (PARTIAL) PASS. Verify with ls-remote and the sha256 of export.tgz, send RI the
-  lines, then rm -rf rh-ri18/build. Template: ngd3.sh (sed the sha, CCV_JOBS).
-- RI ngd legs done and sent: 9304d21 FAIL (rcu kill_valid 4.8 NGD); fca280c3,
+- Nothing running (23:16Z 11-15). AR-361 DONE, all tables sent to AR: pre-fix sweep (ar361.sh,
+  60bceb62; CHECKs on cm128 at sets<512 = TI 450 bug) and post-fix (ar361f.sh, a5481843: required
+  four + the 128-set four, all clean; h7/64 2,124,002 = AR's). AR booked it (AR 363, PF-33/PF-47) and
+  released trees and oracles (deleted). Keep logs ~/ccv-logs/ar361{,f} until MA answers AR 363.
+  Tabulate: python3 rh-jobs/ar361/table.py <logdir>.
+- AR 355 (3) for OI DONE and sent: 8dbf290b (gate-scratch/OI,
+  debug only), cm128 warm, CCV_DBG_SEQ=179681: no CHECK (check_failures 0, 5,698,966 cycles);
+  DBGHELD R14 0x10 vs 0x5b0 at seq 179681, whose issue was cancelled behind seq 179680's load
+  miss. OI agreed and closed it (OI rev 351); worktree and dump dropped. Script rh-jobs/ar355. A gzip sent inline as base64 costs ~50k tokens:
+  send filtered plain-text windows instead.
+- RI ngd 7e29cef5 (RI's 11-13 daily-sweep merge, which replaces 439179d9; RI asked RH to
+  stop that leg) DONE: PARTIAL PASS, ngd 5558 s at CCV_JOBS=4, export d4485d9c...,
+  RI-export 37e33198, sent. Template: rh-jobs/ri-gate/ngd3.sh (sed the sha, CCV_JOBS).
+- Earlier RI ngd legs done and sent: 9304d21 FAIL (rcu kill_valid 4.8 NGD); fca280c3,
   bfba7f38, 0ace219f (export bf1e702d...), e9c48768 (export c3be7623..., RI-export
   0793ba3d) PARTIAL PASS. RI is now a regular sender (DA granted exports 11-10).
 - OI #35 DONE and sent 09:20Z 11-13 (rh-jobs/oi35, logs ~/ccv-logs/oi35, worktree
   /home/user/rh-oi35 at d86e3a14). cand_indep_pend ON == OFF on every run: it is
   read only in placePos, which returns early unless sectioned=1 (default 0). U == G
-  because unmet_reg defaults to 1 since f4d5ee10. Offered OI a sectioned=1 rerun
-  (about 9 h of cm128); awaiting configs.
+  because unmet_reg defaults to 1 since f4d5ee10. OI declined a sectioned=1 rerun.
+- TI-420 (a46afef7, on TI's branches): long tools self-detach (tools/detach.sh) and write
+  ~/ccv-logs/job-*.log. Wait with `tools/gate-wait.sh <job log>` as the background task
+  (110 min cap; exit 3 = still running, rerun it; exit 4 = killed by a restart, relaunch).
+  It replaces watchjob.sh for gates on a commit that has it; older commits keep the
+  setsid-nohup + watchjob.sh pattern below.
+- TI rev 429 (re:OA-414): RH runs no daily sweep. If it ever does, from a tree before
+  518cb3c3 use CCV_FOREGROUND=1 tools/daily-sweep.sh (or merge ccr-183cc441-doowtf first).
 - Gates detach (TI rev 418): `setsid nohup <job> >/dev/null 2>&1 </dev/null &`.
   Only watchers (rh-jobs/watchjob.sh '<pgrep pat>' 7100 <file>) are background
   tasks. Container restarts (11-13 07:07Z, and earlier) still kill detached jobs
   and turn swap off: `swapon /home/user/rh-swap`, clear the gate's build/, relaunch.
-- Earlier idle since 2026-11-08 17:51Z. Kept: rh-j11b-w10pp, -g2pp and -p192
+- Pings 11-13: AR, IS, RA, RI, TI and CP ponged. MA (session_01QPk2jyUbWA7fW9YpUwqdxk)
+  is not in RH's roster copy, so its pong read sender=stale. Kept: rh-j11b-w10pp, -g2pp and -p192
   (88c31e7 merged with 11386e7, plus ba39e6a; experiment trees, never commit) until TI says.
 - DONE 2026-11-08, all sent:
   - J12 (TI): PHYS sweep on 88c31e7 merged with 95bf04d; logs ~/ccv-logs/j12.

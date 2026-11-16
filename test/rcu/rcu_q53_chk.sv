@@ -8,8 +8,9 @@
 // connections. Each check is a CCV_ASSERT_AT, so a failure reads as any
 // other assertion's (the block lock-step, test/rcu/lockstep.py, counts them).
 //
-//   q53_arrival  every rcu_ooe_done valid comes at A+1 (slots 5, 6), A+6
-//                (lane slots 0-3) or A+11 (SFU slot 4) after the issue that
+//   q53_arrival  every rcu_ooe_done valid comes at A+1 (slots 5, 6),
+//                A+CCV_LAT_LANE-1 (lane slots 0-3; A+6 at the base links) or
+//                A+CCV_LAT_SFU-1 (SFU slot 4; A+11) after the issue that
 //                names its rob_tag and done_row (the Done tab's table: an
 //                issue's valid is on the wire at A-1, its payload at A; a
 //                done's valid at A+L, its payload at A+L+1).
@@ -18,9 +19,12 @@
 //                kill (rcu_mig's dl, demotion, and rl, restore).
 //   q53_one      one migration a warp: a map or command never lands beside
 //                another of the same warp and direction still waiting.
-//   q53_rzero,   A-64's restore half: a restore map names no zero register,
-//   q53_rdup     and gives each architectural register a row of its own
-//                (TI-25 (1)); the model checks the same (sim/rcu/rcu_core.cpp).
+//   q53_rzero,   A-64's restore half: a restore map names no zero GPR row
+//   q53_pzero,   (CCV_P_PHYS_ZERO), no zero predicate (CCV_P_PRED_ZERO; RA rev
+//   q53_rdup     140 (7)), and gives each architectural register a row of its
+//                own (TI-25 (1)); the model checks the same
+//                (sim/rcu/rcu_core.cpp). Checked as the map lands: launch copies
+//                it unchanged into the engine (Migration tab, Launch).
 //
 //   q53_iso      A-35, RCU's half at the block (the model's, rcu_core.cpp: TI-13):
 //                a restore's GPR rows and predicates are unwritten from its
@@ -49,7 +53,9 @@ module rcu_q53_chk #(
   localparam int WP = ccv_prov_pkg::CCV_P_W_PHYS_PRED,
   localparam int ROWS = ccv_prov_pkg::CCV_P_PHYS_REGS,
   localparam int PROWS = ccv_prov_pkg::CCV_P_PRED_REGS,
-  localparam int H = 12                                   // A-1 .. A-12 kept
+  localparam int LAT = ccv_prov_pkg::CCV_LAT_LANE,        // derived from the links
+  localparam int LSF = ccv_prov_pkg::CCV_LAT_SFU,
+  localparam int H = LSF                                  // A-1 .. A-LSF kept
 ) (
   input logic              core_clk,
   input logic              rst_n,
@@ -85,7 +91,7 @@ module rcu_q53_chk #(
 );
   wire rst = !rst_n;
   function automatic int lat(int k);
-    return (k == 5 || k == 6) ? 1 : (k == 4) ? 11 : 6;
+    return (k == 5 || k == 6) ? 1 : (k == 4) ? LSF - 1 : LAT - 1;
   endfunction
 
   // ---- q53_arrival -------------------------------------------------------
@@ -162,9 +168,10 @@ module rcu_q53_chk #(
       end
 
   // ---- q53_rzero, q53_rdup ----------------------------------------------
-  logic rz, rd;
+  logic rz, rd, pz;
   always_comb begin
-    rz = 1'b0; rd = 1'b0;
+    rz = 1'b0; rd = 1'b0; pz = 1'b0;
+    for (int q = 0; q < NP; q++) pz |= map_p[q*WP +: WP] == WP'(ccv_prov_pkg::CCV_P_PRED_ZERO);
     for (int a = 0; a < NG; a++) begin
       rz |= map_g[a*WR +: WR] == WR'(ccv_prov_pkg::CCV_P_PHYS_ZERO);
       for (int b = 0; b < a; b++) rd |= map_g[a*WR +: WR] == map_g[b*WR +: WR];
@@ -172,6 +179,7 @@ module rcu_q53_chk #(
   end
   `CCV_ASSERT_AT(core_clk, rst, q53_rzero, !(mapq && map_d && rz))
   `CCV_ASSERT_AT(core_clk, rst, q53_rdup, !(mapq && map_d && rd))
+  `CCV_ASSERT_AT(core_clk, rst, q53_pzero, !(mapq && map_d && pz))
 
   // ---- q53_iso -------------------------------------------------------------
   logic [NS*2*WR-1:0] lsq;

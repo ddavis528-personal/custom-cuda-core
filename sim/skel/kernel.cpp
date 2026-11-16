@@ -82,12 +82,13 @@ void Kernel::flushHeld() {
 void Kernel::snapshotFinal(unsigned w) {
   Final &f = finals[w];
   const std::vector<unsigned> &r = ratOf(w);
-  for (unsigned a = 0; a != kArchGprs; ++a) f.gpr[a] = gpr[r[a]];
+  for (unsigned a = 0; a != kArchGprs; ++a)
+    for (unsigned l = 0; l != kLanes; ++l) f.gpr[a][l] = gprAt(r[a], l);
   std::vector<unsigned> pmap = w < prat.size() ? prat[w] : std::vector<unsigned>();
   if (pmap.empty())
     for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(w, p));
   if (brk == "swap-prat0" && w == 0) std::swap(pmap[0], pmap[1]);   // the control, here too
-  for (unsigned p = 0; p != kArchPreds; ++p) f.pred[p] = pred[pmap[p]];
+  for (unsigned p = 0; p != kArchPreds; ++p) f.pred[p] = predAt(pmap[p]);
 }
 
 void Kernel::checkParked(unsigned w) {
@@ -503,6 +504,19 @@ private:
   }
 };
 
+// AR 362: ccv_miu_dcu_req's index lead, the lookup's phys_addr bits
+// [log2 line + CCV_W_DCU_SET - 1 : log2 line] (the set; a sweep's smaller
+// CCV_DCU_SETS uses its low bits) and [log2 line + CCV_W_DCU_BANK - 1 :
+// log2 line] (the bank, MA-4's [8:7]): page offset, the same in the VA and
+// the PA (CCV_DCU_SETS's require).
+inline uint64_t indexLeadSet(uint64_t pa) {
+  static_assert((1u << 7) == kLine, "a line is 128 bytes");
+  return (pa >> 7) & ((uint64_t(1) << ccv::prov::kWDcuSet) - 1);
+}
+inline uint64_t indexLeadBank(uint64_t pa) {
+  return (pa >> 7) & ((uint64_t(1) << ccv::kWDcuBank) - 1);
+}
+
 // ---- DCU: a small L1; a write is read-modify-write of the line ------------------
 //
 // dcu_mlc_req carries no byte mask, so a partial store cannot go below DCU
@@ -513,7 +527,6 @@ private:
 // 2026-10-21: a warp stalled on a long miss must not hold the others' up).
 // Requests to one line keep their order: a line with a miss in flight takes
 // nothing more until it is answered. One queued request starts a cycle.
-
 class Dcu : public Stub {
 public:
   Dcu(int inst, Kernel &k) : Stub(inst, k), ids_(ch().dcu_mlc) {}
@@ -676,11 +689,32 @@ private:
     busy_lines_.insert(pa);
   }
 
+  /// AR 362: the lead's set index and bank are copies of the lookup's
+  /// phys_addr bits, bit for bit, and DCU refuses either that differs, by
+  /// name (--break dcu-set-lead, dcu-bank-lead). The stub reads its set from
+  /// the payload, so the lead changes no state here (AR 362 (3)).
+  void checkIndexLead(unsigned s, const Bits &req) {
+    const Ch &c = ch();
+    const uint64_t pa = get(req, c.miu_dcu, "phys_addr");
+    const uint64_t set = indexLeadSet(pa), bank = indexLeadBank(pa);
+    const uint64_t ls = get(req, c.miu_dcu, "lead_set_index");
+    const uint64_t lb = get(req, c.miu_dcu, "lead_bank");
+    if (ls != set)
+      k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
+              (unsigned long long)pa, (unsigned long long)set);
+    if (lb != bank)
+      k_.fail("dcu: slot %u req_id %u lead_bank %llx is not its phys_addr %llx's bank %llx",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)lb,
+              (unsigned long long)pa, (unsigned long long)bank);
+  }
+
   void work() override {
     const Ch &c = ch();
     for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
       while (has(c.miu_dcu, s)) {
         Receiver::Msg m = take(c.miu_dcu, s);
+        checkIndexLead(s, m.payload);
         const Op o{s, m.payload, m.tid};
         const Line *l = readHit(m.payload);
         if (l) {
@@ -905,6 +939,9 @@ private:
     uint64_t serial = 0;             ///< names it to the DCU responses
     uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
     bool frame = false;              ///< its lanes span windows: O-30 frames (AR-23)
+    /// MA-4's eligibility lost from the address alone (lane group, page,
+    /// bank): never an L1 hit, and MIU says so early with a no-hit (AR 356).
+    bool inelig = false;
     /// A predicate transfer (TI-36): one word at lane 0's address. A store
     /// carries its predicate's word, merged into memory's after commit.
     bool pxfer = false;
@@ -947,6 +984,7 @@ private:
   }
   /// A hit's completion and data, held for the contract cycle.
   struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
+  std::vector<Timed> held_;   ///< ineligible loads' completions, held past the contract (MA-4)
   std::deque<Timed> timed_;
 
   std::map<unsigned, Memop> memop_;
@@ -1070,7 +1108,7 @@ private:
   std::deque<Q> to_rcu_, to_ooe_, to_dcu_, to_fet_;
   /// Hints promised to OOE (OA-23), each launched at its cycle; and the
   /// credits held back for hinted completions and their data, by slot.
-  struct Hint { uint64_t at; Q q; };
+  struct Hint { uint64_t at; Q q; bool no_hit = false; unsigned tag = 0; };
   std::deque<Hint> hints_;
   std::map<std::pair<unsigned, unsigned>, unsigned> resv_;
   /// The replay drain (TI-21): requests a bulk discard abandoned at DCU, by
@@ -1123,13 +1161,12 @@ private:
     const Ch &c = ch();
     // A memop's credit stands for its queue entry (MA-5, AR rev 345): it
     // goes back when the memop's last completion leaves, a discard's as it
-    // is taken. Opt-in (CCV_MIU_MEMOP_CREDIT=entry) until OOE's select waits
-    // for a memop credit (OI): today OOE refuses to send without one, as a
-    // model error. By default the credit returns on take, as before.
+    // is taken. OOE's select waits for a credit (OI, efe09c78). The control
+    // --break memop-credit-on-take returns it on take, as before MA-5: then
+    // more memops hold a slot's queue entries than it has credits.
     if (!armed_) {
       armed_ = true;
-      const char *e = std::getenv("CCV_MIU_MEMOP_CREDIT");
-      at_entry_ = e && std::string(e) == "entry";
+      at_entry_ = k_.brk != "memop-credit-on-take";
       if (at_entry_) creditAtRelease(c.ooe_miu);
     }
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
@@ -1137,6 +1174,23 @@ private:
         notice(unsigned(get(take(c.fill_ntc, s).payload, c.fill_ntc, "req_id")));
     for (auto it = hints_.begin(); it != hints_.end();) {
       if (it->at != now_) { ++it; continue; }
+      if (it->no_hit) {
+        // A no-hit is advice, never a promise (OA 410): it holds no credit,
+        // so a refill hint on its slot this cycle wins, and it is dropped
+        // when its slot has no free credit or its load is no longer
+        // outstanding (a no-hit on anything else is a protocol error).
+        bool refill = false, live = false;
+        for (const Hint &h : hints_) refill = refill || (!h.no_hit && h.at == now_ && h.q.slot == it->q.slot);
+        for (const Job &j : jobs_) live = live || (!j.store && j.tag == it->tag);
+        if (refill || !live || !free(c.cmpl_hint, it->q.slot)) {
+          k_.hit("l1_nohit_drop");
+        } else {
+          send(c.cmpl_hint, it->q.slot, it->q.msg, it->q.tid);
+          k_.hit("l1_nohit");
+        }
+        it = hints_.erase(it);
+        continue;
+      }
       if (!can(c.cmpl_hint, it->q.slot))
         k_.fail("miu: the hint promised on slot %u at cycle %llu has no credit",
                 it->q.slot, (unsigned long long)now_);
@@ -1190,7 +1244,8 @@ private:
           continue;
         }
         // The slot's queue entries: never more than its credits.
-        if (++entries_[s] > kChans[c.ooe_miu].credits && at_entry_)
+        k_.peak("memop_entries_peak", entries_[s] + 1);
+        if (++entries_[s] > kChans[c.ooe_miu].credits)
           k_.fail("miu: %u memops hold queue entries on slot %u, over its %u credits (MA-5)",
                   entries_[s], s, unsigned(kChans[c.ooe_miu].credits));
         if (uidClass(m.tid) != IdClass::kInstr)
@@ -1351,8 +1406,14 @@ private:
           send(c.miu_rcu, t.data.slot, t.data.msg, t.data.tid);
         k_.hit("l1_hit");
       } else {
+        // Late: the data goes when it can, and the completion a cycle on,
+        // past the contract. Queued for this cycle's drain, the completion
+        // could leave in the contract cycle with its data still behind
+        // (miu_rcu out of credit, miu_ooe not): OOE takes that for the hit
+        // and its woken dependants read the register before the load lands
+        // (AR 359 (4): coremark128priv's operand CHECKs).
         to_rcu_.push_back(t.data);
-        to_ooe_.push_back(t.cmpl);
+        late_faults_.push_back({now_ + 1, t.cmpl});
         k_.hit("l1_late");
       }
     }
@@ -1360,9 +1421,25 @@ private:
     for (auto it = late_faults_.begin(); it != late_faults_.end();)
       if (it->first <= now_) { to_ooe_.push_back(it->second); it = late_faults_.erase(it); }
       else ++it;
+    for (auto it = held_.begin(); it != held_.end();)
+      if (it->at <= now_) {
+        to_rcu_.push_back(it->data);
+        to_ooe_.push_back(it->cmpl);
+        it = held_.erase(it);
+      } else {
+        ++it;
+      }
+    // A completion never leaves ahead of its load's data: OOE wakes the
+    // load's dependants on it, hit or miss (OA-23), and they would read the
+    // register before the load lands (AR 359 (4)). to_rcu_ drains first, so
+    // data and completion may still leave together.
+    auto dataQueued = [&](uint64_t tid) {
+      for (const Q &q : to_rcu_) if (q.tid == tid) return true;
+      return false;
+    };
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
-        if (free(chan, it->slot)) {
+        if (free(chan, it->slot) && !(chan == c.miu_ooe && dataQueued(it->tid))) {
           if (chan == c.miu_ooe) sendCmpl(it->slot, it->msg, it->tid);
           else send(chan, it->slot, it->msg, it->tid);
           it = q.erase(it);
@@ -1469,12 +1546,13 @@ private:
   // lead-fault-replay sets it on a replay too (OA rev 376's first rule,
   // status nonzero), and --break lead-fault-drop never sets it on a fault;
   // OOE's equality must refuse both.
-  /// A completion to OOE, on the memop's arrival slot. Its last one (more
-  /// clear) frees the memop's queue entry, and so its credit (MA-5).
+  /// A completion to OOE, on the memop's arrival slot. Every memop gets
+  /// exactly one (ccv_miu_ooe), so it frees the memop's queue entry, and so
+  /// its credit (MA-5). An atomic's more = 1 is not a second completion of
+  /// this memop: OOE re-issues the steps as new memops (AR-21).
   void sendCmpl(unsigned slot, const Bits &m, uint64_t tid) {
     const Ch &c = ch();
     send(c.miu_ooe, slot, withLead(m), tid);
-    if (get(m, c.miu_ooe, "more")) return;
     if (!entries_[slot]) {
       k_.fail("miu: a last completion on slot %u, which holds no memop entry", slot);
       return;
@@ -1484,6 +1562,15 @@ private:
   }
   bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
+
+  /// AR 362: the lookup's set and bank lead it, from the formed address
+  /// (the stub's line is its leader's). --break dcu-set-lead and
+  /// dcu-bank-lead send a wrong one, which DCU must refuse by name.
+  void putIndexLead(Bits &r, uint64_t pa) {
+    const Ch &c = ch();
+    put(r, c.miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
+    put(r, c.miu_dcu, "lead_bank", indexLeadBank(pa) ^ (k_.brk == "dcu-bank-lead" ? 1u : 0u));
+  }
 
   Bits withLead(Bits m) {
     const Ch &c = ch();
@@ -1562,6 +1649,7 @@ private:
         const unsigned id = ids_.take();
         put(r, c.miu_dcu, "req_id", id);
         put(r, c.miu_dcu, "phys_addr", line);
+        putIndexLead(r, line);
         put(r, c.miu_dcu, "size", kSizeLine);
         put(r, c.miu_dcu, "coh_op", kCohRead);
         send(c.miu_dcu, s, r, makeUid(IdClass::kTxn, uidSeq(mo.tid), 0, /*owned=*/true));
@@ -1870,7 +1958,64 @@ private:
       to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
       return;
     }
+    if (j.global && j.active) eligibility(j, mo);
     launch(j);
+  }
+
+  /// MA-4's eligibility for the L1-hit contract (MIU tab, MA's Phase 1
+  /// draft; AR 356): a global load keeps it only if every active lane's
+  /// line is its group's leader's, the access stays in one page, and its
+  /// leaders' lookups meet no bank conflict (DCU's 4 banks by line address
+  /// bits [8:7]); a tag miss is not known from the address, and stays the
+  /// contract's miss. The memop's F pipes split the warp into F groups of
+  /// 32/F consecutive lanes, a group's leader its lowest active lane. A
+  /// load that loses it is never an L1 hit, and A2 says so early: a no-hit
+  /// on ccv_miu_ooe_cmpl_hint, payload at I + CCV_LAT_L1_NOHIT, on the
+  /// memop's slot (OA 410, MA 56). no-nohit: none is sent, so l1_nohit is
+  /// never reached.
+  void eligibility(Job &j, const Memop &mo) {
+    const Ch &c = ch();
+    const unsigned pipes = unsigned(get(mo.msg, c.ooe_miu, "pipes"));
+    const unsigned f = pipes ? unsigned(__builtin_popcount(pipes)) : 1u;
+    const unsigned per = kLanes / f;
+    const uint64_t page = j.addr[__builtin_ctz(j.active)] >> ccv::kLPageShift;
+    std::vector<uint64_t> leads;
+    bool ok = true;
+    for (unsigned g = 0; g != f; ++g) {
+      bool have = false;
+      uint64_t lead = 0;
+      for (unsigned l = g * per; l != (g + 1) * per; ++l) {
+        if (!(j.active >> l & 1u)) continue;
+        const uint64_t line = keyOf(j, l);
+        if (j.addr[l] >> ccv::kLPageShift != page) ok = false;
+        if (!have) {
+          have = true;
+          lead = line;
+          if (std::find(leads.begin(), leads.end(), line) == leads.end()) leads.push_back(line);
+        } else if (line != lead) {
+          ok = false;
+        }
+      }
+    }
+    for (size_t a = 0; a != leads.size(); ++a)
+      for (size_t b = a + 1; b != leads.size(); ++b)
+        if ((leads[a] / kLine) % 4 == (leads[b] / kLine) % 4) ok = false;
+    if (ok) return;
+    j.inelig = true;
+    j.hit = false;
+    k_.hit("l1_inelig");
+    if (k_.brk == "no-nohit") return;
+    const uint64_t issue = mo.at - crossing(c.ooe_miu);
+    const uint64_t at = issue + ccv::prov::kLatL1Nohit - crossing(c.cmpl_hint);
+    if (at <= now_) {   // MIU reached it too late to say so in time
+      k_.hit("l1_nohit_drop");
+      return;
+    }
+    Bits m = msgOf(c.cmpl_hint);
+    put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
+    put(m, c.cmpl_hint, "rob_tag", j.tag);
+    put(m, c.cmpl_hint, "no_hit", 1);
+    hints_.push_back({at, {j.memop_slot, m, j.tid}, true, j.tag});
   }
 
   /// A .shared access's passes (TI's rev 230): each active lane, in
@@ -2160,19 +2305,28 @@ private:
   void advance() {
     const Ch &c = ch();
     const unsigned rate = kChans[c.miu_dcu].rate;
-    // Up to one line request per DCU slot per cycle, the oldest job's first.
+    // Up to one line request per DCU slot per cycle, the oldest job's first,
+    // but a just-started one-line global load first of all (TI-440): its
+    // one lookup can still meet the L1 contract, which an older gather's
+    // remaining lines cannot.
     bool want = false;
     for (const Job &j : jobs_) want = want || j.next != j.lines.size();
     if (want && !ids_.any()) k_.hit("dcu_id_wait");
+    std::vector<Job *> order;
+    for (Job &j : jobs_)
+      if (j.global && !j.store && j.lines.size() == 1 && j.next == 0) order.push_back(&j);
+    for (Job &j : jobs_)
+      if (std::find(order.begin(), order.end(), &j) == order.end()) order.push_back(&j);
     unsigned s = 0;
-    for (Job &job_ : jobs_)
-    for (; s != rate && job_.next != job_.lines.size(); ++s) {
+    for (Job *jp : order)
+    for (Job &job_ = *jp; s != rate && job_.next != job_.lines.size(); ++s) {
       if (!can(c.miu_dcu, s) || !ids_.any()) continue;
       const LineReq &lr = job_.lines[job_.next++];
       Bits r = msgOf(c.miu_dcu);
       const unsigned id = ids_.take();
       put(r, c.miu_dcu, "req_id", id);
       put(r, c.miu_dcu, "phys_addr", lr.line);
+      putIndexLead(r, lr.line);
       put(r, c.miu_dcu, "size", kSizeLine);
       const bool wr = job_.store && job_.rmw != 1;   // a drain's read first
       put(r, c.miu_dcu, "coh_op", wr ? kCohWrite : job_.atom == 1 ? kCohAcquireData : kCohRead);
@@ -2325,6 +2479,11 @@ private:
       } else if (job_.hit && job_.global && now_ <= job_.due) {
         timed_.push_back({job_.due, {job_.addr_slot, d, job_.tid},
                           {job_.memop_slot, cmpl(job_), job_.tid}});
+      } else if (job_.inelig && now_ <= job_.due) {
+        // An ineligible load completes past the contract's cycle, never on
+        // or before it (MA-4: no completion at H+7; A-46, V-44).
+        held_.push_back({job_.due + 1, {job_.addr_slot, d, job_.tid},
+                         {job_.memop_slot, cmpl(job_), job_.tid}});
       } else {
         if (job_.hit) k_.hit("l1_late");
         to_rcu_.push_back({job_.addr_slot, d, job_.tid});
@@ -2334,7 +2493,7 @@ private:
   }
 
   bool busy() const override {
-    return !jobs_.empty() || !late_faults_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
@@ -2385,6 +2544,10 @@ private:
   static_assert(ccv::prov::kLatLaneBase >= 1 + 2 * kLatHop, "no room for the lane pipeline");
   static_assert(ccv::prov::kLatLaneByp >= kPipe,
                 "a dependant at CCV_LAT_LANE_BYP would arrive before its producer's result");
+  /// An SFU op's pipeline: CCV_LAT_SFU - CCV_LAT_LANE cycles longer, the
+  /// link terms the same on both (RA's rev 95: LANE 7, SFU 12).
+  static constexpr unsigned kPipeSfu = kPipe + ccv::prov::kLatSfu - ccv::prov::kLatLane;
+  static_assert(ccv::prov::kLatSfu >= ccv::prov::kLatLane, "SFU is no faster than a lane op");
 
   struct Out { Bits msg; uint64_t tid, at; };
   /// This lane's results by arrival cycle, with the lead section of the op
@@ -2447,22 +2610,56 @@ private:
         // predicate out rides on its lead section.
         put(r, c.lane_rcu, "sec_valid", en);
       }
-      // No SFU op runs yet, so no SFU result rides out (RA-16 (b)).
-      // sfu-valid-stray: lane 3's first message carries one anyway.
+      const unsigned opc = getSec(m.payload, c.rcu_lane, "sec_opcode", 0, ccv::prelim::kWOpcode);
+      const OpInfo *op = opByCode(opc);
+      // An SFU op (lat_class 4; OI-145 (3), RI-51): its value rides out as
+      // sfu_result, with sfu_valid, at CCV_LAT_SFU - 1 after RCU took the
+      // issue, never as a lane result: no sec_valid, no lane bypass from it
+      // (RCU's model, rcu_core.cpp). sfu-at-lane-lat sends it at the lane's
+      // latency instead, which RCU must refuse.
+      if (op && op->byp == int(kBypSfu) && opc != kOpCopy) {
+        Bits sr = msgOf(c.lane_rcu);
+        put(sr, c.lane_rcu, "sfu_valid", 1u);
+        put(sr, c.lane_rcu, "sfu_result", uint32_t(get(r, c.lane_rcu, "result")));
+        put(sr, c.lane_rcu, "sec_valid", 0u);
+        enqueue(sr, m.tid, now_ + (k_.brk == "sfu-at-lane-lat" ? kPipe : kPipeSfu), true);
+        continue;
+      }
+      // sfu-valid-stray: lane 3's first lane message carries an SFU result
+      // for no SFU op in flight.
       const bool stray = k_.brk == "sfu-valid-stray" && lane_ == 3 && !sfu_stray_;
       put(r, c.lane_rcu, "sfu_valid", stray ? 1u : 0u);
       put(r, c.lane_rcu, "sfu_result", stray ? 0x5f0e5f0eu : 0u);
       sfu_stray_ = sfu_stray_ || stray;
       h.v = uint32_t(get(r, c.lane_rcu, "result"));
       // The copy-only op writes only inactive lanes and is never a producer.
-      if (getSec(m.payload, c.rcu_lane, "sec_opcode", 0, ccv::prelim::kWOpcode) != kOpCopy)
-        hist_.push_back(h);
-      q_.push_back({r, m.tid, now_ + kPipe});
+      if (opc != kOpCopy) hist_.push_back(h);
+      enqueue(r, m.tid, now_ + kPipe, false);
     }
     if (!q_.empty() && q_.front().at <= now_ && can(c.lane_rcu, 0, lane_)) {
       send(c.lane_rcu, 0, q_.front().msg, q_.front().tid, lane_);
       q_.pop_front();
     }
+  }
+  /// One message per cycle at most: an SFU result due the cycle a lane
+  /// result is rides in the same message (RCU takes both from it).
+  void enqueue(Bits msg, uint64_t tid, uint64_t at, bool sfu) {
+    const Ch &c = ch();
+    auto it = q_.begin();
+    while (it != q_.end() && it->at < at) ++it;
+    if (it != q_.end() && it->at == at) {
+      if (sfu) {
+        put(it->msg, c.lane_rcu, "sfu_valid", 1u);
+        put(it->msg, c.lane_rcu, "sfu_result", uint32_t(get(msg, c.lane_rcu, "sfu_result")));
+      } else {
+        put(msg, c.lane_rcu, "sfu_valid", 1u);
+        put(msg, c.lane_rcu, "sfu_result", uint32_t(get(it->msg, c.lane_rcu, "sfu_result")));
+        it->msg = msg;
+        it->tid = tid;
+      }
+      return;
+    }
+    q_.insert(it, {msg, tid, at});
   }
   bool busy() const override { return !q_.empty(); }
 
@@ -2963,14 +3160,42 @@ private:
     if (k_.brk == "no-rcu-bypass") issues();
 
     // Lane results, one message a cycle: all 32 lanes, or it is not lockstep.
+    // A message holds a lane op's results (sec_valid), an SFU op's
+    // (sfu_valid, at CCV_LAT_SFU; OI-145 (3)), or both: each lands on the
+    // oldest op of its kind in flight, since an SFU op answers after lane
+    // ops RCU took later.
     unsigned n = 0;
     for (unsigned l = 0; l != kLanes; ++l) n += has(c.lane_rcu, 0, l);
     if (n != 0 && n != kLanes) k_.fail("rcu: %u of 32 lanes answered", n);
-    else if (n != 0 && alu_.empty()) k_.fail("rcu: lane results for nothing");
     else if (n != 0) {
-      const Alu a = alu_.front();
-      alu_.pop_front();
-      land(a);
+      std::vector<Receiver::Msg> ms;
+      for (unsigned l = 0; l != kLanes; ++l) ms.push_back(take(c.lane_rcu, 0, l));
+      bool lane_part = false, sfu_part = false;
+      for (const Receiver::Msg &m : ms) {
+        lane_part = lane_part || get(m.payload, c.lane_rcu, "sec_valid") != 0;
+        sfu_part = sfu_part || get(m.payload, c.lane_rcu, "sfu_valid") != 0;
+      }
+      auto oldest = [&](bool sfu) {
+        for (auto it = alu_.begin(); it != alu_.end(); ++it)
+          if (isSfu(*it) == sfu) return it;
+        return alu_.end();
+      };
+      if (!lane_part && !sfu_part) k_.fail("rcu: a lane message with no result in it");
+      for (int sfu = 0; sfu != 2; ++sfu) {
+        if (!(sfu ? sfu_part : lane_part)) continue;
+        auto it = oldest(sfu);
+        if (it == alu_.end()) {
+          if (!sfu) k_.fail("rcu: lane results for nothing");
+          else
+            for (unsigned l = 0; l != kLanes; ++l)
+              if (get(ms[l].payload, c.lane_rcu, "sfu_valid"))
+                k_.fail("rcu: lane %u sfu_valid with no SFU op in flight (RA-16 (b))", l);
+          continue;
+        }
+        const Alu a = *it;
+        alu_.erase(it);
+        land(a, ms);
+      }
     }
 
     for (unsigned s = 0; s != kChans[c.miu_rcu].rate; ++s)
@@ -3052,22 +3277,30 @@ private:
     }
   }
 
-  /// A lane op's results: every section it held, from all 32 lanes.
-  void land(const Alu &a) {
+  static bool isSfu(const Alu &a) { return !a.copy && a.op && a.op->byp == int(kBypSfu); }
+  /// A lane op's results: every section it held, from all 32 lanes; an SFU
+  /// op's, its sfu_result (RA-16 (b): RCU writes it from its own SFU
+  /// descriptor, at CCV_LAT_SFU).
+  void land(const Alu &a, const std::vector<Receiver::Msg> &ms) {
     const Ch &c = ch();
+    const bool sfu = isSfu(a);
     uint32_t po_mask = 0;
     for (unsigned l = 0; l != kLanes; ++l) {
-      Receiver::Msg m = take(c.lane_rcu, 0, l);
-      if (m.tid != a.tid) k_.fail("rcu: lane %u answered for another instruction", l);
-      if (get(m.payload, c.lane_rcu, "sec_valid") != a.foot)
+      const Receiver::Msg &m = ms[l];
+      // A shared message carries the lane op's tid; the SFU part is matched
+      // by kind and age, not by it.
+      if (!sfu && m.tid != a.tid) k_.fail("rcu: lane %u answered for another instruction", l);
+      if (!sfu && get(m.payload, c.lane_rcu, "sec_valid") != a.foot)
         k_.fail("rcu: lane %u's results hold sections %x, not seq %llu's %x", l,
                 unsigned(get(m.payload, c.lane_rcu, "sec_valid")),
                 (unsigned long long)uidSeq(a.tid), a.foot);
-      // The SFU result (RA-16 (b)): RCU writes it from its own SFU
-      // descriptor, and the stub runs no SFU op, so any sfu_valid is stray.
-      if (get(m.payload, c.lane_rcu, "sfu_valid"))
-        k_.fail("rcu: lane %u sfu_valid with no SFU op in flight (RA-16 (b))", l);
-      const uint32_t v = uint32_t(get(m.payload, c.lane_rcu, "result"));
+      if (sfu && !get(m.payload, c.lane_rcu, "sfu_valid"))
+        k_.fail("rcu: lane %u has no SFU result for seq %llu", l, (unsigned long long)uidSeq(a.tid));
+      if (sfu && now_ - a.accepted != ccv::prov::kLatSfu - 1)
+        k_.fail("rcu: seq %llu's SFU result reached the PRF %llu cycles after RCU took it, "
+                "not CCV_LAT_SFU - 1 = %u", (unsigned long long)uidSeq(a.tid),
+                (unsigned long long)(now_ - a.accepted), ccv::prov::kLatSfu - 1);
+      const uint32_t v = uint32_t(get(m.payload, c.lane_rcu, sfu ? "sfu_result" : "result"));
       if (a.copy) {
         // The copy writes only the load's inactive lanes (A-38, A-44).
         if (!((a.active >> l) & 1u)) k_.gpr[a.pdst][l] = v;
@@ -5976,6 +6209,13 @@ KernelReport compareFinal(Kernel &k) {
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
     if (isParked(w) || cut(w)) continue;
     const Oracle &o = k.orcs[w];
+    // A partial oracle (PARTIAL=1) has no final state to compare: the run
+    // must stop short of its last record, so a warp that exits fails.
+    if (o.partial) {
+      if (k.finals.count(w))
+        k.fail("kernel: warp %u exited, but its oracle is partial: ccv-sim stopped at MAXSTEPS", w);
+      continue;
+    }
     // A run ccv-sim ended in a fault must end in CRU's fault too (TI-26);
     // CRU's stub held its fields to ccv-sim's as it took it.
     if (o.faults && !k.faults.count(w))
@@ -5991,7 +6231,7 @@ KernelReport compareFinal(Kernel &k) {
         // Within the register's final width: ccv-sim keeps the bits above
         // a narrow element as the slice last held them (AR-24).
         const uint32_t em = elemMask(o.final_widths >> 2 * a & 3u);
-        const uint32_t got = fin != k.finals.end() ? fin->second.gpr[a][l] : k.gpr[rat[a]][l];
+        const uint32_t got = fin != k.finals.end() ? fin->second.gpr[a][l] : k.gprAt(rat[a], l);
         if ((got & em) != (o.final_gpr[a][l] & em)) {
           if (r.gpr_mismatch++ < 4)
             std::fprintf(stderr, "FINAL %s%sR%u lane %u: machine %08x, ccv-sim %08x\n", who,
@@ -6003,7 +6243,7 @@ KernelReport compareFinal(Kernel &k) {
       for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(w, p));
     if (k.brk == "swap-prat0" && w == 0) std::swap(pmap[0], pmap[1]);
     for (unsigned p = 0; p != kArchPreds; ++p) {
-      const uint32_t got = fin != k.finals.end() ? fin->second.pred[p] : k.pred[pmap[p]];
+      const uint32_t got = fin != k.finals.end() ? fin->second.pred[p] : k.predAt(pmap[p]);
       if (got != o.final_pred[p]) {
         ++r.pred_mismatch;
         std::fprintf(stderr, "FINAL %s%sP%u: machine %08x, ccv-sim %08x\n", who, wn.c_str(), p,
@@ -6198,13 +6438,17 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
   // Each backpressured channel's longest wait from landing to take, over its
   // slots: the measure CCV_P_TIMEOUT_BP is a watchdog over (AR's response
   // TI-22). Not part of the KERNEL line the two hosts compare.
+  // A credits_param channel (MA-5) reports the longest credit hold too,
+  // landing to release, against its own watchdog (timeout_param, AR rev 350).
   for (const ChanInst &ci : kChanInsts) {
-    if (!kChans[ci.chan].held) continue;
+    const auto &ch = kChans[ci.chan];
+    const bool cp = ch.credits != ccv::kCreditDepth;
+    if (!ch.held && !cp) continue;
     uint64_t age = 0;
-    for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
-      age = std::max(age, m.rx(ci.slot_base + s).maxAge());
-    std::printf("BPAGE %s max=%llu watchdog=%u\n", kChans[ci.chan].name,
-                (unsigned long long)age, unsigned(ccv::prov::kTimeoutBp));
+    for (unsigned s = 0; s != ch.rate; ++s)
+      age = std::max({age, m.rx(ci.slot_base + s).maxAge(), m.rx(ci.slot_base + s).maxHold()});
+    std::printf("BPAGE %s max=%llu watchdog=%u\n", ch.name, (unsigned long long)age,
+                unsigned(ch.watchdog));
   }
   std::printf("COVER");
   for (const char *b : Kernel::kCoverBins)

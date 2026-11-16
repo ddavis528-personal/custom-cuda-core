@@ -154,6 +154,11 @@ struct Oracle {
   uint32_t final_pred[kArchPreds] = {};
   std::vector<std::pair<uint64_t, uint32_t>> final_mem;
   unsigned issue_groups = 0;
+  /// A run ccv-sim stopped at kernel.cfg's MAXSTEPS (PARTIAL=1, tools/gen-oracle.sh):
+  /// its final record is a placeholder, for a run bounded by --cycles well
+  /// short of the last record. Nothing is compared against it, and a warp
+  /// that exits on it fails (Kernel's end-of-run check).
+  bool partial = false;
   unsigned stalls = 0;   ///< barrier waits ccv-sim retried, dropped at load (TI-40)
   std::vector<Record::StallTry> tries;   ///< the tries since the last record, at load
 

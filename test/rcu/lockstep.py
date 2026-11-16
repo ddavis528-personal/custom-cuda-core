@@ -56,7 +56,7 @@ NSLOTS = len(set(re.findall(r"\booe_rcu_issue_s(\d+)_valid\b", open(PORTS).read(
 CLOCK = "core_clk"
 # RCU's Q-53 checkers, bound into ccv_rcu in every replay: the module, then its bind.
 Q53 = ("test/rcu/rcu_q53_chk.sv", "test/rcu/rcu_q53_bind.svh")
-Q53C = ("arrival", "pair", "rzero", "rdup", "iso")
+Q53C = ("arrival", "pair", "rzero", "pzero", "rdup", "iso")
 
 
 def port_dirs():
@@ -376,8 +376,9 @@ module rcu_ls_tb;
   // The Q-53 checkers' controls (lockstep.py --control arrival, pair, rzero,
   // rdup), each a fault forced into the block, which its checker must name:
   // arrival holds R's done valid a cycle after one ends; pair forces a
-  // demotion launch with nothing paired; rzero and rdup force a restore map
-  // onto the block's ports naming the zero register, or one row twice; iso
+  // demotion launch with nothing paired; rzero, pzero and rdup force a
+  // restore map onto the block's ports naming the zero GPR row, the zero
+  // predicate (RA rev 140 (7)), or one row twice; iso
   // forces one naming rows 0-15, which the kernel then reads unrestored.
   string q53c = "";
   logic  q53p = 1'b0;
@@ -394,7 +395,7 @@ module rcu_ls_tb;
       if (t == 40) force dut.u_mig.dl_cr02h = 1'b1;
       if (t == 41) release dut.u_mig.dl_cr02h;
     end
-    if (q53c == "rzero" || q53c == "rdup" || q53c == "iso") begin
+    if (q53c == "rzero" || q53c == "pzero" || q53c == "rdup" || q53c == "iso") begin
       // Written into the stimulus (an input port's field cannot be forced).
       if (t == 40) in_v[%(map_v)d] = 1'b1;
       if (t == 41) begin
@@ -404,6 +405,9 @@ module rcu_ls_tb;
         if (q53c == "rzero")    mp.gpr_map = 128'h0f0e0d0c0b0a090807060504030201ff;
         else if (q53c == "rdup") mp.gpr_map = 128'h0f0e0d0c0b0a09080706050403020101;
         else                     mp.gpr_map = 128'h0f0e0d0c0b0a09080706050403020100;
+        // pzero: rows 0-15 as iso, and P0 the zero predicate.
+        if (q53c == "pzero") mp.pred_map[0 +: ccv_prov_pkg::CCV_P_W_PHYS_PRED] =
+            ccv_prov_pkg::CCV_P_W_PHYS_PRED'(ccv_prov_pkg::CCV_P_PRED_ZERO);
         in_v[%(map_p)d +: $bits(ccv_ooe_rcu_map_t)] = mp;
       end
     end
@@ -505,7 +509,7 @@ def main():
                          "gate's first sleep finds the model busy; row flips a bit of the first "
                          "written row's value; lead holds the RTL's credits a cycle ahead of the "
                          "model's (--credit-lead 1), so the strict credit compare must fail; "
-                         "arrival, pair, rzero, rdup and iso force a fault the Q-53 checker of that "
+                         "arrival, pair, rzero, pzero, rdup and iso force a fault the Q-53 checker of that "
                          "name must report (rcu_q53_ctl in the testbench)")
     ap.add_argument("--watch", action="append", default=[], metavar="PATH",
                     help="print a signal under ccv_rcu (e.g. u_pred.g_row[6].pq_cr02h) at each change, "

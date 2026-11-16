@@ -153,6 +153,9 @@ private:
     // (TI-1) and the final compare reads through Kernel::prat0 (OI-3).
     // CCV_OOE_CONFIG=rename_preds=0 restores the fixed physPred windows.
     c.memop_rcu_done = false; // RCU sends no done for a memop (OI-4)
+    // MIU sends the early no-hit by MA-4's eligibility (AR 356), so OOE
+    // takes it (OA 410). CCV_OOE_CONFIG=l1_nohit=0 ignores it, as before.
+    c.l1_nohit = true;
     // Sectioned lanes (OI-29 to OI-33): registers are slices of rows, and
     // select grants the nine resources one op each (V-60). Every S1 op is
     // full width, so a cycle carries one lane op, one memop and one RCU op.
@@ -400,7 +403,11 @@ private:
         auto e = rs_sent_.find(tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u hinted for RS entry %u, but its memop named entry %u", tag, rs, e->second);
-        rxAct(16, [this, tag] { core_.hint(tag); });
+        // OA 410: no_hit makes the hint advice (notice_of.unless): no
+        // completion is promised, and the bank does not hold one to it.
+        const bool no_hit = hasField(c.cmpl_hint, "no_hit") && get(m.payload, c.cmpl_hint, "no_hit");
+        rxAct(16, [this, tag, no_hit] { core_.hint(tag, no_hit); });
+        if (no_hit) continue;
         rx_hinted_.insert(tag);
       }
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)

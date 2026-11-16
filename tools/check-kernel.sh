@@ -138,6 +138,9 @@
 #     reads the value its lane forwards          bypass): four stale operands;
 #     (A-59, TI-8)                               an OOE bypassing at 3: RCU
 #                                                refuses it
+#   a load MA-4 takes off the L1-hit        no-nohit (gather): its
+#     contract gets the early no-hit           l1_nohit bin goes unreached
+#     (AR 356, OA 410)
 #   a notice's partner follows on its slot  late-refill, notice-wrong-id,
 #     exactly its lead later, same keys        late-cmpl, hint-wrong-tag
 #     (OA-23, TI-23)                           (vadd): the bank's notice check
@@ -188,6 +191,8 @@
 #     (OI-125, AR rev 314)                     refuses each replay's lead;
 #                                              lead-fault-drop (roconst):
 #                                              and a fault with none
+#   a lookup's set and bank lead it, copies   dcu-set-lead, dcu-bank-lead
+#     of its PA bits (AR 362)                  (hit): DCU refuses each
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -790,15 +795,15 @@ while read -r k want; do
     bad "$k: == ccv-sim, reaches its bins" "${why# }"
   fi
 done <<'KERNELS'
-unal   line_split=3 lines_peak=2 partial_line=2 full_line=0
-gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait=0
+unal   line_split=3 lines_peak=2 partial_line=2 full_line=0 l1_inelig=2 l1_nohit=2
+gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait=0 l1_inelig=1 l1_nohit=1
 gather@CCV_MIU_DCU_IDS=16 lines_peak=32 dcu_id_wait>0 hit_under_miss=2
 loop   redirect=99 ckpt_free=1 reg_reuse>0
 brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
-hit    l1_hit=4 l1_late=0
+hit    l1_hit=4 l1_late=0 l1_inelig=0
 late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=3
 plog   merge=3
@@ -807,7 +812,7 @@ missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
 mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
-vadd4  full_line=4
+vadd4  full_line=4 memop_entries_peak=10
 swap   slot_reuse=2
 provswap redirect>0 slot_reuse>0
 stall  l1_late>0
@@ -965,8 +970,11 @@ for kb in transp4:held-over-r borrow:borrow-partial; do
 done
 CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --cycles 20000 2>&1 |
   head -c 2000000 >"$B/kernel_warp-cap.log"
-# Warp 3 is the first caught since RA's rev 95 (LANE 7, SFU 12); warp 2 before.
-ctl held-over-r "^CHECK ooe: warp 3 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
+# With both PF-47 (CCV_LAT_L1_WAKE 13, AR rev 351) and transp4's SFU ops at
+# lat_class 4 (OI-145 (3), RI-52), warps 0, 1 and 2 are caught, warp 1 most
+# (139 of 246 refusals); warp 0 with PF-47 alone, warp 1 with the SFU class
+# alone, warp 3 from RA's rev 95 (LANE 7, SFU 12), warp 2 before.
+ctl held-over-r "^CHECK ooe: warp 1 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
 ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
 ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
 # A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every
@@ -1071,6 +1079,84 @@ if [ "$(grep -c '^CHECK miu: seq 8 lane' "$B/kernel_drop-writeback.log")" = 32 ]
 else
   bad "--break drop-writeback" "a dropped writeback went unnoticed: $(grep '^KERNEL' "$B/kernel_drop-writeback.log")"
 fi
+# MA-5 (AR 345/347): a memop's credit stands for its MIU queue entry and
+# returns when its completion leaves, 10 a slot; OOE's select waits for one
+# (OI, efe09c78). vadd4 fills slot 0's 10 (memop_entries_peak, above).
+# --break memop-credit-on-take returns it as MIU takes the memop, as before:
+# vadd4 then holds up to 15 entries on slot 0, and MIU refuses each over 10.
+"$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break memop-credit-on-take >"$B/kernel_memop-credit-on-take.log" 2>&1
+if grep -q '^CHECK miu: 11 memops hold queue entries on slot 0, over its 10 credits (MA-5)' "$B/kernel_memop-credit-on-take.log"; then
+  say "--break memop-credit-on-take: over 10 entries" "PASS (vadd4, peak $(field "$B/kernel_memop-credit-on-take.log" memop_entries_peak))"
+else
+  bad "--break memop-credit-on-take" "credits returned on take went unnoticed: $(grep '^KERNEL' "$B/kernel_memop-credit-on-take.log")"
+fi
+# And OOE's side: inject_no_memop_credit grants a memop on a pipe whose slot
+# holds no credit; the send is refused (vadd4, slot 0).
+CCV_OOE_CONFIG=inject_no_memop_credit=1 "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl >"$B/kernel_no-memop-credit.log" 2>&1
+if grep -q '^CHECK ooe: no credit on ccv_ooe_miu_memop slot 0' "$B/kernel_no-memop-credit.log"; then
+  say "inject_no_memop_credit: a send with none refused" "PASS (vadd4, slot 0)"
+else
+  bad "inject_no_memop_credit" "a memop sent without a credit went unnoticed: $(grep '^KERNEL' "$B/kernel_no-memop-credit.log")"
+fi
+# Memop credits against their own watchdog (AR 349/350). A memop credit is
+# held from landing to its MIU queue entry's release (MA-5), and behind the
+# stub's in-order queue coremark128's outlive CCV_P_TIMEOUT_BP (8192), so the
+# channel's is CCV_P_TIMEOUT_MEMOP (20480, CCV_MEMOP_CREDITS x
+# CCV_P_TIMEOUT_MEM); ccv_dec_ooe_uop's, whose credits wait on memop's,
+# derives from it (CCV_P_TIMEOUT_UOP, AR 352). coremark128 is run 45000 cycles, over twice that bound,
+# from a partial oracle (PARTIAL=1, tools/gen-oracle.sh: 10000 records a
+# warp, where 45000 cycles retire about 1300 in all). It must raise no
+# response_within_n and no CHECK but the operand lines a bounded run's
+# flushHeld() reports, and no assertion but quiesced_at_end, the cut-off
+# run's, and its longest memop hold must pass 8192, or the control below
+# proves nothing. It guards the watchdogs and those checks only: the unbounded runs
+# AR 350 asks for (coremark32 and coremark128 to their end) are outside the
+# gate. Control: the bank rebuilt with the memop watchdog at
+# CCV_P_TIMEOUT_BP (tools/build-skel.sh, an incremental build) fires.
+cb=$B/cm128-bounded; rm -rf "$cb"; mkdir -p "$cb"
+cp -r test/bench/coremark128 "$cb/coremark128"
+sed -i 's/^MAXSTEPS=.*/MAXSTEPS=40000/' "$cb/coremark128/kernel.cfg"
+echo PARTIAL=1 >>"$cb/coremark128/kernel.cfg"
+cbl=$B/kernel_cm128-bounded.log
+if ! CCV_ORACLE_DIR="$cb/o" tools/gen-oracle.sh "$cb/coremark128" >"$cb/oracle.log" 2>&1; then
+  bad "coremark128, 45000 cycles: memop watchdog" "no partial oracle: $(grep -m1 FAIL "$cb/oracle.log")"
+else
+  "$SKEL" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cbl" 2>&1
+  rwn=$(grep -c 'response_within_n' "$cbl")
+  other=$(grep '^CHECK' "$cbl" | grep -vc '^CHECK lane [0-9]*: seq [0-9]* operand ')
+  asrt=$(grep '%Error' "$cbl" | grep -vc 'quiesced_at_end')
+  mh=$(sed -n 's/^BPAGE ccv_ooe_miu_memop max=\([0-9]*\) .*/\1/p' "$cbl")
+  uh=$(sed -n 's/^BPAGE ccv_dec_ooe_uop max=\([0-9]*\) .*/\1/p' "$cbl")
+  ret=$(field "$cbl" retired)
+  if [ "$rwn" = 0 ] && [ "$other" = 0 ] && [ "$asrt" = 0 ] && [ "$(field "$cbl" finished)" = 0 ] &&
+     [ "${ret:-0}" -gt 1000 ] && [ "${mh:-0}" -gt 8192 ]; then
+    rm -rf "$B/skel-memop8192"; cp -a "$B/skel" "$B/skel-memop8192"
+    sed -e 's/ccv_prov_pkg::CCV_P_TIMEOUT_MEMOP/ccv_prov_pkg::CCV_P_TIMEOUT_BP/' \
+        -e 's/ccv_prov_pkg::CCV_P_TIMEOUT_UOP/ccv_prov_pkg::CCV_P_TIMEOUT_BP/' \
+      rtl/generated/ccv_common_chk_bank.sv >"$cb/bank-memop8192.sv"
+    if ! grep -q CCV_P_TIMEOUT_MEMOP rtl/generated/ccv_common_chk_bank.sv ||
+       ! grep -q CCV_P_TIMEOUT_UOP rtl/generated/ccv_common_chk_bank.sv; then
+      bad "coremark128: memop watchdog control" "the bank names no CCV_P_TIMEOUT_MEMOP or CCV_P_TIMEOUT_UOP to narrow"
+    elif ! tools/build-skel.sh "$B/skel-memop8192" "$cb/bank-memop8192.sv"; then
+      bad "coremark128: memop watchdog control" "the 8192 bank does not build ($B/skel-memop8192.log)"
+    else
+      "$B/skel-memop8192/ccv-skel" --kernel "$cb/o/coremark128/oracle.jsonl" --cycles 45000 >"$cb/ctl.log" 2>&1
+      # Both at 8192 must fire (AR 352 (3)): memop's, and dec_ooe_uop's,
+      # whose credits wait on memop's (CCV_P_TIMEOUT_UOP).
+      if ! grep -q 'u_ooe_miu_memop_s[0-9]*.*response_within_n' "$cb/ctl.log"; then
+        bad "coremark128: memop watchdog control" "with the memop watchdog at 8192, no response_within_n on ccv_ooe_miu_memop"
+      elif ! grep -q 'u_dec_ooe_uop_s[0-9]*.*response_within_n' "$cb/ctl.log"; then
+        bad "coremark128: uop watchdog control" "with the uop watchdog at 8192, no response_within_n on ccv_dec_ooe_uop (hold ${uh:-none})"
+      else
+        say "coremark128, 45000 cycles: memop and uop watchdogs" "PASS (longest holds memop $mh, uop ${uh:-none}, of 20480; at 8192 both fire)"
+      fi
+    fi
+    rm -rf "$B/skel-memop8192" "$B/skel-memop8192.log"
+  else
+    bad "coremark128, 45000 cycles: memop watchdog" "$rwn response_within_n, $other CHECK not operand, $asrt assertions not quiesced_at_end, finished=$(field "$cbl" finished), retired=$ret, memop hold ${mh:-none} (want 0, 0, 0, 0, >1000, >8192)"
+  fi
+fi
+rm -rf "$cb/o"
 # DCU marks a line owned only on MLC's grant (ccv_mlc_dcu_rsp.ownership):
 # refused it, predswap's first spill (AcquireBlock) and vadd's whole-line
 # store (AcquirePerm) each stop at DCU's check.
@@ -1206,6 +1292,19 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-fault-drop.log" check_failures)"
 else
   bad "--break lead-fault-drop" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-fault-drop.log")"
 fi
+# AR 362: ccv_miu_dcu_req's set index and bank lead the PA by a cycle, as
+# copies of its bits. dcu-set-lead and dcu-bank-lead send a wrong one on
+# every lookup; DCU must refuse each by name, and nothing else.
+for b in set bank; do
+  "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break dcu-$b-lead >"$B/kernel_dcu-$b-lead.log" 2>&1
+  n=$(grep -c "^CHECK dcu: slot [0-9]* req_id [0-9]* lead_$( [ $b = set ] && echo set_index || echo bank ) " "$B/kernel_dcu-$b-lead.log")
+  if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_dcu-$b-lead.log" check_failures)" = "$n" ] &&
+     [ "$(field "$B/kernel_dcu-$b-lead.log" dcu_lookups)" = "$n" ]; then
+    say "--break dcu-$b-lead: DCU refuses each wrong lead" "PASS ($n lookups)"
+  else
+    bad "--break dcu-$b-lead" "$n refused: $(grep '^KERNEL' "$B/kernel_dcu-$b-lead.log")"
+  fi
+done
 # F-ADDR (O-75; CP-34's kernels): a .global address is the exact sum, and
 # one outside [0, 2^48) faults. Taken modulo 2^48, addrhigh's lanes 16-31
 # store at the bottom of memory and lanes 0-15 land too, and addrneg's load
@@ -1439,6 +1538,16 @@ fi
 # dependants meet the contract cycle: R6's second reader, seq 13, issues a
 # cycle after seq 11 while one lane op issues a cycle (TI-9), and finds the
 # data in place.
+# MA-4 (AR 356): gather's 32-line load loses the L1-hit contract from its
+# address, and MIU says so with the early no-hit; with --break no-nohit it
+# sends none, and the bin the table above holds gather to goes unreached.
+"$SKEL" --kernel build/oracle/gather/oracle.jsonl --break no-nohit >"$B/kernel_no-nohit.log" 2>&1
+if [ "$(cover "$B/kernel_no-nohit.log" l1_inelig)" = 1 ] && [ "$(cover "$B/kernel_no-nohit.log" l1_nohit)" = 0 ] &&
+   [ "$(field "$B/kernel_no-nohit.log" finished)" = 1 ]; then
+  say "--break no-nohit: gather's l1_nohit unreached" "PASS (ineligible 1, no-hit 0; a dropped no-hit is safe)"
+else
+  bad "--break no-nohit" "the no-hit bin did not depend on MIU: $(grep '^COVER' "$B/kernel_no-nohit.log" | tr ' ' '\n' | grep '^l1_' | xargs)"
+fi
 for brk in late-hit-data no-rcu-bypass; do
   l1ctl "$brk"
   n=$(grep -c "^CHECK lane [0-9]*: seq \(5\|7\|9\|11\) operand 1 " "$B/kernel_$brk.log")

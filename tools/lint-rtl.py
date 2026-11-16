@@ -536,6 +536,26 @@ class Cls:
         self.kind, self.block, self.typ, self.why = kind, block, typ, why
 
 
+# Hard macros (AR's register rev 344; docs/rtl-coding-style.md, "Hard
+# macros"): a large data or tag array is a library macro, never a flop
+# array. Each is a common module of a macro type, ccv_common_sram_<ports>,
+# whose behavioural view is in rtl/macro/ (CCV-L27): the name is what lets
+# check-ngd time its pins as a register's (inputs endpoints, outputs
+# launched at 0) and check-cg count none of its storage, so only that
+# directory may carry one. Each is listed with its enables, the pins CG-5
+# holds to the instantiating module's own flops.
+MACROS = {
+    "ccv_common_sram_1rw": ("ce", "we"),
+    "ccv_common_sram_1r1w": ("re", "we"),
+}
+MACRO_TYPES = ("sram",)
+
+
+def is_macro(name):
+    """Whether a module (by its source name) is a hard macro."""
+    return name in MACROS
+
+
 SHAPES = ("ccv_<block>, ccv_<block>_w, <block>_<name>, ccv_common_<type>, "
           "<block>_common_<type> or ccv_top")
 
@@ -1050,6 +1070,25 @@ def check_file(path, rel):
             add("CCV-L27", spans[0][3],
                 "module %s in rtl/ctech/ is not a ctech cell. A view holds "
                 "only ccv_common_ctech_<cell>, one per cell" % spans[0][2])
+
+        # -- CCV-L27: a hard macro is named one, in rtl/macro/ ------------
+        # Like a ctech cell, a macro is a library cell: its name is what
+        # takes its storage out of check-cg's counts and its inside out of
+        # check-ngd's, so a module of a macro type is one of MACROS, in
+        # rtl/macro/, and that directory holds nothing else.
+        in_macro = rel.startswith("rtl/macro/")
+        for s0, e0, n, ln in spans:
+            if cls[n].typ in MACRO_TYPES and not (in_macro and is_macro(n)):
+                add("CCV-L27", ln,
+                    "module %s is named as a hard macro %s. A macro is one of "
+                    "the cells tools/lint-rtl.py MACROS lists, with its "
+                    "enables, in rtl/macro/<macro>.sv"
+                    % (n, "outside rtl/macro/" if not in_macro else
+                       "MACROS does not list"))
+        if in_macro and spans and not is_macro(spans[0][2]):
+            add("CCV-L27", spans[0][3],
+                "module %s in rtl/macro/ is not a hard macro: the directory "
+                "holds only the cells MACROS lists" % spans[0][2])
 
         # -- CCV-L22: only a block top gates, and a sub-block never sees
         # the ungated clock --------------------------------------------------

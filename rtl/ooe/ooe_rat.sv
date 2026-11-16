@@ -10,7 +10,7 @@
 //       slot maps every register to the zero registers), OA's response
 //       OI-41 (restore-allocate takes its registers through rename's ports,
 //       writing both maps) and OA's response OI-46 (reopened: the read is
-//       Rename 1's logic in ooe_rename, ooe_ratread; ooe_rat drives its maps
+//       Rename 1's logic in ooe_rename, ooe_headrd's; ooe_rat drives its maps
 //       straight out).
 //
 // Per tier-1 slot: the speculative maps (rat, prat), the committed maps
@@ -46,14 +46,14 @@
 // captured group, a cycle older, can meet its slot's event at the edge it
 // would write: the event wins and the slot's captured writes are dropped
 // (OI-83 (b) (3)). The
-// reads are not here: ooe_ratread reads rat_cq02h, the flops, with the
-// pending group's writes and the in-group override in front.
+// reads are not here: ooe_rename's ooe_headrd reads rat_cq02h, the flops, with
+// the pending group's writes and the in-group override in front.
 //
 // Checkpoint live bits are not kept here: branch resolution owns them.
 //
 // The reference is the model's Slot maps and checkpoints, which log what
 // reached them each cycle (Core::ratLog); test/ooe/rat_tb.cpp drives this
-// module and ooe_ratread together (test/ooe/ooe_rat_read.sv) from the log
+// module and the bench's reader, test/ooe/ooe_ratread.sv, together (test/ooe/ooe_rat_read.sv) from the log
 // and compares every read, and after the edge every map and every live
 // checkpoint with the model's an edge before.
 //

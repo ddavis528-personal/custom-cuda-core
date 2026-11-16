@@ -277,6 +277,7 @@
     },
     {
       "name": "ccv_dec_ooe_uop",
+      "timeout_param": "CCV_P_TIMEOUT_UOP",
       "src": "dec",
       "dst": "ooe",
       "rate": 6,
@@ -672,6 +673,7 @@
     {
       "name": "ccv_ooe_miu_memop",
       "credits_param": "CCV_MEMOP_CREDITS",
+      "timeout_param": "CCV_P_TIMEOUT_MEMOP",
       "src": "ooe",
       "dst": "miu",
       "rate": 4,
@@ -874,9 +876,16 @@
         "coh_op",
         "exclusive_req",
         "write_data",
-        "byte_mask"
+        "byte_mask",
+        "lead_set_index",
+        "lead_bank"
       ],
-      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask.",
+      "lead_fields": [
+        "lead_set_index",
+        "lead_bank"
+      ],
+      "lead_why": "The L1 index lead (AR 362 Strawman B, MA revs 64-65; DA rev 121): DCU starts its array read, speculatively, at H+2, a cycle before the PA's payload lands at H+3, which keeps CCV_LAT_L1_HIT at 7 at 512 KiB. On every slot that carries a lookup, lead_set_index is the lookup's set, physical address bits [log2 CCV_P_LINE_BYTES + CCV_W_DCU_SET - 1 : log2 CCV_P_LINE_BYTES] ([15:7] at 512 sets), and lead_bank its bank, bits [8:7] (CCV_DCU_BANKS 4, MA-4); both are page offset, the same in the VA and the PA, since a way fits in a page (CCV_DCU_SETS's require, AR 362 (1)), so MIU sends them from the address A1 finally forms for the slot's group leader, chosen by lane position, never by an address compare (AR 362 (2)). They launch with the slot's valid at H+1, from MIU's own flops (CG-5; the flop that also feeds A2 has a (* keep *) copy for the output, AR 362 (5)), a cycle ahead of the payload. COPIES: the payload keeps the full phys_addr, which the tag compare uses, and each lead equals its bits, bit for bit; the DCU stub refuses a lead that differs, by name. DCU changes no state, LRU included, on the lead alone: a lookup the payload drops (a fault, a TLB miss, a page split or a bank conflict found at A2) leaves the arrays as they were, and a store writes on the PA-verified lookup (AR 362 (3)). MLC's probes and fills reach the arrays on their own payloads, unchanged (AR 362 (6)). DCU's capture flops, 11 a slot and 44 in all, are a lead waiver (\"lead\": true) counted in DCU's 2% (AR 362 (5); DA's ruling on RI-15).",
+      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index and bank lead it by a cycle (AR 362).",
       "id_classes": [
         "txn"
       ],
@@ -1582,7 +1591,7 @@
       "id_classes": [
         "instr"
       ],
-      "doc": "A completion hint (OA-23; AR's response TI-23): MIU promises that the completion of rob_tag, waking RS entry rs_idx, leaves on the same slot of ccv_miu_ooe_cmpl with its valid exactly CCV_LAT_CMPL_HINT cycles after this hint's payload lands, so OOE's wake lines can rise two cycles ahead of the completion as its scheduler loop needs (OI-45). MIU keeps it by reserving the completion's slot and credit, and those of the load's data on ccv_miu_rcu_data (MIU spec, Mechanisms). Optional: a completion without a hint wakes a cycle late. rob_tag, not a generation bit, tells a stale hint: OOE acts only if that ROB slot is not squashed-pending (AR's rev 94, OA's rev 141). no_hit (OA rev 413, OA 410, from MA's answer to OA 408): set, the message is advice and no promise, so notice_of's timing does not apply to it (notice_of.unless): MIU's address stage knows, from the address alone (the lane-group rule, a page split, a TLB miss or a bank conflict), that the global load issued at I has lost the L1-hit contract, and says so on the slot of the memop's lowest pipe, valid at I+12, payload at I+13, echoing rs_idx and rob_tag. OOE then clears the load's speculative wake before I+17, and its dependants wake on the completion. A refill hint on the same slot wins, and the no-hit is dropped; tag misses are not covered. Safe either way: a completion at CCV_LAT_L1_CMPL after a no-hit is legal, and an absent no-hit costs the 2-cycle cancel shadow. A no-hit on any memop but an outstanding global load is a protocol error. The MIU stub sends none until MA's Phase 1 model gives it the address facts.",
+      "doc": "A completion hint (OA-23; AR's response TI-23): MIU promises that the completion of rob_tag, waking RS entry rs_idx, leaves on the same slot of ccv_miu_ooe_cmpl with its valid exactly CCV_LAT_CMPL_HINT cycles after this hint's payload lands, so OOE's wake lines can rise two cycles ahead of the completion as its scheduler loop needs (OI-45). MIU keeps it by reserving the completion's slot and credit, and those of the load's data on ccv_miu_rcu_data (MIU spec, Mechanisms). Optional: a completion without a hint wakes a cycle late. rob_tag, not a generation bit, tells a stale hint: OOE acts only if that ROB slot is not squashed-pending (AR's rev 94, OA's rev 141). no_hit (OA rev 413, OA 410, from MA's answer to OA 408): set, the message is advice and no promise, so notice_of's timing does not apply to it (notice_of.unless): MIU's address stage knows, from the address alone (the lane-group rule, a page split, a TLB miss or a bank conflict), that the global load issued at I has lost the L1-hit contract, and says so on the slot of the memop's lowest pipe, payload at I + CCV_LAT_L1_NOHIT (valid a cycle earlier), echoing rs_idx and rob_tag. The no-hit moves with the address (AR 353): CCV_LAT_L1_NOHIT is derived from the same start as CCV_LAT_L1_WAKE, 13 at CCV_LAT_RCU_ADDR_BASE 5 (OA 410's I+13) and 9 at PF-47's base 1, and its require keeps it ahead of the wake. OOE then clears the load's speculative wake before I + CCV_LAT_L1_WAKE, and its dependants wake on the completion. A refill hint on the same slot wins, and the no-hit is dropped; tag misses are not covered. Safe either way: a completion at CCV_LAT_L1_CMPL after a no-hit is legal, and an absent no-hit costs the 2-cycle cancel shadow. A no-hit on any memop but an outstanding global load is a protocol error. The MIU stub sends none until MA's Phase 1 model gives it the address facts.",
       "slot_attrs": {
         "ordering": "none",
         "fixed_latency": true
@@ -1749,6 +1758,8 @@
     "branch_mask": "CCV_W_LANE_MASK",
     "lead_br_taken": "1",
     "lead_fault": "1",
+    "lead_set_index": "CCV_W_DCU_SET",
+    "lead_bank": "CCV_W_DCU_BANK",
     "lead_br_mask": "CCV_W_LANE_MASK",
     "target_pc": "CCV_W_VA",
     "fetch_epoch": "CCV_P_W_FETCH_EPOCH",

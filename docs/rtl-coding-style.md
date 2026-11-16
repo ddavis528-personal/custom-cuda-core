@@ -25,7 +25,7 @@ Four layers, deliberately not one:
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
-| `tools/check-ngd.py` | NGD-1 … NGD-7, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block as a sum of parts. |
+| `tools/check-ngd.py` | NGD-1 … NGD-8, logic depth and hard macros (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block as a sum of parts. |
 
 **On Verible.** §6 adds it as a fourth tool and says "lint enforces it" is
 load-bearing for the whole X-safety approach. That second part is right and
@@ -601,6 +601,10 @@ CCV-L08's clock check and from this rule. The name says which cell, the
 directory which view. A library view's `lib_cells.v` holds the library's port
 declarations, not our RTL, and is not linted.
 
+A hard macro is tied the same way: `ccv_common_sram_<ports>`, one of the
+cells `MACROS` lists, in `rtl/macro/`, and nothing else there (see *Hard
+macros*).
+
 ### The top level: block instances and nets, nothing else
 
 `ccv_top` holds hardening wrappers and the nets between them, and each
@@ -990,7 +994,9 @@ floor(`CCV_NGD_BUDGET` / 2) = 12, derived, so it follows the stage:
   within the rest, 12.
 
 Two defaults meet within the stage, so a port that fits them needs no one's
-plan. A port over 12 needs explicit budgets from the architect.
+plan. A port over 12 needs explicit budgets, in the module's budget file
+(below): set by the module's owner where the convergence check times the
+connection, by the architect where it does not yet.
 
 **Nothing straight through a module** (Daniel, 2026-10-18). A path from an
 input port to an output port is refused, logic or a plain wire. Logic is
@@ -1060,10 +1066,40 @@ today only `rtl/clk/ccv_common_clk.ngd.json`. An example:
 
 An input's `arrival` or an output's `required` time, in NGD from the flop
 that launches it, or `observation`, with who set it, when and why. The
-architect sets them (OA for OOE); the module's owner keeps the file and
-declares an inner helper. The module is checked against its file, and an
-assembled block is checked from all of them: the budgets must **converge**,
-each driver's required time no later than its receiver's arrival.
+module's owner keeps the file and declares an inner helper. The module is
+checked against its file, and an assembled block is checked from all of
+them: the budgets must **converge**, each driver's required time no later
+than its receiver's arrival.
+
+**Who may move a budget** (Daniel, 2026-11-15). A budget is a split of 25
+NGD between the two ends of a connection, and convergence is the check that
+the split holds. So where the check times the connection, a budget is the
+implementation's to set: the module's owner may raise, lower or add one
+without an architect's sign-off, provided check-ngd passes, both the module
+against its file (NGD-1 to NGD-3, NGD-7) and the convergence of the level
+that instantiates it. `by` names who set it and `why` says what it buys;
+an architect still reads the change in the register, but nothing waits on
+them. A connection is timed when the module is instantiated by a parent
+that check-ngd measures, a unit in `test/**/cg-units.json` or
+`ngd-units.json` (`rcu_r` in `ccv_rcu`, `ooe_ready` in `ooe_sched`, say), and
+both ends of a change must sit in such levels. Where the check does not
+time it yet, a budget still needs its architect (OA for OOE, RA for RCU),
+because nothing would catch a split the other end cannot meet:
+
+- a module no measured parent instantiates yet (today `ooe_rename`,
+  `ooe_sched`, `ooe_rs`, `ooe_rat`, `ooe_decq`, `ooe_age`, `ooe_rencred`,
+  `ooe_rob_w`: their ports face a `ccv_ooe` top not yet in RTL);
+- a block's own boundary ports, their lead-field budgets included (in
+  `ccv_rcu.ngd.json`, say): the other end is another block's, paired only
+  once both tops are RTL, and the split is an interface contract between
+  two owners, raised as a register row.
+- a child's port wired straight to its block's boundary port, at any depth
+  (RA, re:TI 445): convergence takes the block's input as arriving at 0
+  and holds the pin by its leaf's measurement, so any budget there passes
+  it, and the other end is again another block's.
+
+A change that passes only because the check could not see the other end is
+not covered; neither is a ratchet entry, which still only shrinks.
 
 Seven rules, checked by `tools/check-ngd.py` on every module at its units'
 parameters (`test/**/cg-units.json`; `test/**/ngd-units.json` for a module
@@ -1208,12 +1244,12 @@ output net is timed in two parts, the child's loads in its unit and the
 parent's pins at its level, each with its own fanout term, where the whole
 would take one tree over both, short of it by one INV stage at most. The
 block budget of local clock gating (2% per instance) is
-summed from the same read by `tools/check-cg.py`. Today no block top is RTL,
-so neither runs on the tree; the fixtures exercise both.
+summed from the same read by `tools/check-cg.py`. Today RCU's top is RTL
+(`ccv_rcu`), so both run on it; the fixtures exercise both.
 
 **The ratchet.** What broke the rules when they were made sits on
 `rtl/ngd-ratchet.json`: ports over a default (NGD-2, NGD-3, 2026-10-17),
-each awaiting the architect's budgets or a redesign; paths straight through
+each awaiting budgets (see *Who may move a budget*) or a redesign; paths straight through
 or glue (NGD-5, 2026-10-18, keyed `from>to`), each awaiting a redesign that
 groups the logic with one sequential side, or the module's declaration as an
 inner helper; inner helpers over 16 alone (NGD-6, 2026-10-19, keyed
@@ -1222,6 +1258,66 @@ by an output and the module's own paths (NGD-7, 2026-10-19, keyed by
 register), each awaiting a copy. The list only shrinks: an entry that now meets the rule, or one
 that was not there when its rule was made, is refused. A design module no
 unit measures is refused.
+
+### Hard macros: SRAM arrays, NGD-8
+
+AR's register rev 344, on TI's proposal (revs 408-410), accepted by MA
+(MA-3, MA-15 item 5). A large data or tag array is a **hard macro**, never a
+flop array, and never inside the NGD count. Yosys maps an inferred memory to
+flops and a read mux; behind index nets of tens of thousands of loads the
+fanout term alone puts that over the stage (the fixture's 512 x 128 array as
+flops: 74,381 flops, 31.1 NGD flop to flop), and its storage would be the
+module's flops in every clock-gating count. So an array is one of two
+macros, parameterised by its width `W` (bits, a multiple of 8) and depth `D`
+(words, 2 or more), whose behavioural views are in `rtl/macro/`:
+
+- `ccv_common_sram_1rw`: one port. `ce`, `we`, `addr` (`$clog2(D)` bits),
+  `wdata` (W), `wmask` (W/8, a bit per byte, byte 0 in bit 0); `rdata` (W).
+  `ce && we` writes the bytes `wmask` selects and reads nothing that cycle;
+  `ce && !we` reads, the word on `rdata` from the next cycle; `!ce` does
+  nothing.
+- `ccv_common_sram_1r1w`: a read port (`re`, `raddr`, `rdata`) and a write
+  port (`we`, `waddr`, `wdata`, `wmask`) on one clock. A read of the word
+  written at the same edge returns the OLD word (read before write); the
+  data is on `rdata` the next cycle.
+
+In both, every input is sampled at the clock edge, by the macro's own input
+register; `rdata` holds the last word read until the next read (not X); an
+unwritten word is unknown; there is no reset. The C++ host's model is
+`sim/skel/sram.h`, held to the RTL cycle for cycle by `tools/check-skel.sh`
+(`test/vl/vl_sram_tb.cpp`, with its controls).
+
+**The timing model** (`tools/check-ngd.py`, NGD-8). The macro's input
+register is the stage boundary: each input pin is a timing endpoint, as a
+flop's D pin, so the instantiating module's index logic, controls and write
+data into it are an ordinary path that ends there, held to the stage from
+its flops (and from an input at its port arrival). `rdata` starts the next
+stage at 0 NGD, as a flop's Q: the logic after it is counted, to a flop
+within the stage, to an output within its required time. No clock-to-out
+is charged until the library gives one (Q-48). A unit names each macro it
+instantiates under `"blackbox"`, as it does the ctech ICG, so the macro is
+read ports only and cut out of the netlist; nothing inside it is measured,
+and it has no unit of its own (`rtl/macro/` is no design module's
+directory). The instantiating module's own rules all still hold: no path
+straight through it, its outputs and inputs to their budgets.
+
+**Clock gating** (`tools/check-cg.py`). The macro's storage is not flops: it
+counts in neither the module's flop total, its 2% allowance, the block's,
+nor any DCGE. Its enables -- `ce` and `we`, `re` and `we` -- come from the
+instantiating module's own flops (CG-5), as every enable does; the macro
+registers them, so their depth is NGD-8's, not CG-2's. A macro has no
+reset, so it is no RST-2 endpoint, unless the module's reset reaches one of
+its pins through logic, where it is used as at a flop's D pin.
+
+**The name.** A macro is one of the cells `tools/lint-rtl.py` lists in
+`MACROS`, with its enables, named `ccv_common_sram_<ports>` and in
+`rtl/macro/` (CCV-L27): the name is what takes its storage out of the
+counts, so no other module may carry it. Its file is the only place a
+memory array is written. The fixture, `test/macro/sram_fx.sv` (a 64 Kibit
+one-port macro and a two-port one), passes both checks, and its controls
+fail them: an index through a multiply (NGD-8 at `addr`), read data through
+one (NGD-8 at `rdata`), the arrays inferred as flops (NGD-1), and each
+enable from an input (CG-5) (`--selftest`, or `--selftest-macro` alone).
 
 ### CCV-L26 — nothing Yosys cannot parse
 

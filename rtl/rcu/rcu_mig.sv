@@ -792,10 +792,12 @@ module rcu_mig #(
   `CCV_ASSERT(mig_rs_oflops, rsc_o_cr02h == rs_can_cr02h && (!rs_can_cr02h || e16_o_cr02h == e_16_cr02h))
   // Row 16 is the last of a restore: nothing of the warp follows it.
   `CCV_ASSERT(mig_rs_last, !(rs_l16_cr04h && rs_v_cr04h && rs_v_cr03h))
-  // A restore map names no zero register (A-64) and no row twice (TI-25).
+  // A restore map names no zero register, GPR row or predicate (A-64; RA rev
+  // 140 (7)), and no row twice (TI-25).
   logic map_bad_cr01h;
   always_comb begin
     map_bad_cr01h = 1'b0;
+    for (int q = 0; q < NP; q++) map_bad_cr01h |= mp_cr01h[q*WP +: WP] == WP'(ccv_prov_pkg::CCV_P_PRED_ZERO);
     for (int a = 0; a < NG; a++) begin
       map_bad_cr01h |= mg_cr01h[a*WR +: WR] == ZROW;
       for (int b = 0; b < a; b++) map_bad_cr01h |= mg_cr01h[a*WR +: WR] == mg_cr01h[b*WR +: WR];

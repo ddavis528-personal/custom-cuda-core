@@ -565,6 +565,21 @@ def main():
     # credits_param (MA-5, AR rev 345): a channel whose slots hold more
     # credits than the loop names the parameter; it must exist and be at
     # least the loop, or the slot could not run at full rate.
+    # timeout_param (AR rev 350): a channel whose response bound is its own
+    # watchdog, not CCV_P_TIMEOUT_BP or CCV_P_TIMEOUT_N; it must exist and be
+    # at least CCV_P_TIMEOUT_BP, which every held channel already gets.
+    for c in d["channels"]:
+        tp = c.get("timeout_param")
+        if tp is None:
+            continue
+        if tp not in pv:
+            sys.stderr.write("channel %s: timeout_param %s is not in params/ccv_params.json\n"
+                             % (c["name"], tp))
+            bad = 1
+        elif pv[tp] < pv["CCV_P_TIMEOUT_BP"]:
+            sys.stderr.write("channel %s: %s = %d is under CCV_P_TIMEOUT_BP = %d\n"
+                             % (c["name"], tp, pv[tp], pv["CCV_P_TIMEOUT_BP"]))
+            bad = 1
     for c in d["channels"]:
         cp = c.get("credits_param")
         if cp is None:

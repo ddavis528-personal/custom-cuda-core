@@ -21,8 +21,9 @@
 // be caught: no-order (every memop sees no older unissued memop of its
 // warp), no-conf (every source counts as confirmed) and no-busy (a bulk
 // discard takes nothing), and no-hold (the ret hold, OA's rev 293, holds
-// nothing). The random runs are followed by testRetHold's mix (every third
-// branch a ret) under ret_hold, so the hold is exercised.
+// nothing), and no-cok (every MIU pipe holds a credit, MA-5). The random
+// runs are followed by testRetHold's mix (every third branch a ret) under
+// ret_hold, so the hold is exercised.
 // Usage: select_tb [seeds]
 //===----------------------------------------------------------------------===//
 #include "Vooe_select.h"
@@ -113,6 +114,7 @@ void hook(const Core &c) {
   dut->busy_cq03h = control == "no-busy" ? 0 : w.sel_busy >> 5;
   for (unsigned e = 0; e != NR; ++e) setBit(dut->rhold_cq03h, e, (w.sel_busy >> 4) & 1u);   // RA-17's force: R taken for a migration's row
   dut->block_cq03h = control == "no-busy" ? 0 : w.sel_block;
+  dut->cok_cq03h = control == "no-cok" ? 0xF : w.sel_cok;   // MA-5's MIU credits
   for (unsigned e = 0; e != NR; ++e)
     for (unsigned j = 0; j != NR; ++j)
       setBit(dut->older_r_cq03h, e * NR + j, c.rsAge(j) < c.rsAge(e));

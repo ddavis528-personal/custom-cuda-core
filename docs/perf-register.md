@@ -69,10 +69,11 @@ it.
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted (DA, 2026-10-26: option W; 2026-10-30: IS-25), built in the skeleton (TI, 5fe7177) |
-| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266), still 1 under RI-11, whose cycle is a link term (AR rev 300); held: TI reverted it (rev 288) until OI fixes ooe_wake NGD-3 and the rs_tb no-msd control; 2 if RCU's M1 misses |
+| PF-47 | RCU's issue-to-address time from 5 to 1 or 2 | RCU, MIU | adopted at 1 (RA-31, AR rev 266), still 1 under RI-11, whose cycle is a link term (AR rev 300); landed in bd1cc5a2 (TI rev 439, RA rev 145 confirming the RTL), re-booked on the stubs (AR rev 355); 2 if RCU's M1 misses |
 | PF-48 | End-to-end parity on register state | RCU, LANE, MIU, PCA, OOE | deferred (DA, 2026-11-02) |
 | PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
 | PF-50 | Packed contiguous lanes for narrow ops | OOE, LANE, RCU, MIU, schema | deferred (DA, 2026-11-03) |
+| PF-51 | L1 hit latency that follows the configured L1 size | DCU, MIU, OOE, params | deferred (DA, 2026-11-15) |
 
 ## Entries
 
@@ -704,6 +705,124 @@ it.
   `CCV_LAT_L1_WAKE` saves 2.0% of cycles, linear from 16 to 10 (-5.9% at
   13, -9.9% at 11). 13 is `CCV_LAT_RCU_ADDR_BASE` back to 2, Daniel's
   placeholder (OA-5); 11 adds one crossing fewer, this entry.
+- **L1 capacity and hit latency (AR rev 344, for MA's L1 baseline;
+  AR's run, 2026-11-13, on 9167efab, stub MIU and DCU at 8 ways):** this
+  ranks the configurations; it does not book them, since the stub MIU's
+  cross-warp head-of-line block (MA-14) stands. Every run is clean.
+  `CCV_LAT_L1_HIT` (through `CCV_LAT_L1_HIT_BASE`) was 5, 7 and 8 at
+  64 sets (64 KiB) and 512 sets (512 KiB), with cycles counted from the
+  first fetch:
+
+  | `CCV_LAT_L1_HIT` | coremark32, 64 KiB | coremark32, 512 KiB | 512 against 64 |
+  |---|---|---|---|
+  | 5 | 3,026,228 | 2,829,989 | -6.48% |
+  | 7 | 3,015,188 | 2,818,799 | -6.51% |
+  | 8 | 3,015,301 | 2,819,010 | -6.51% |
+
+  - Capacity: 512 KiB saves 6.5% on coremark32, the same at every hit
+    latency. Misses fall from 1,284 to 507. That is in line with the 7.1%
+    and 8.4% this entry's neighbours booked on coremark128 (PF-46).
+  - S1 does not move: it is 3,918 cycles in all six configurations. No S1
+    kernel takes a single L1 hit. `loop`, `brs` and `merge` make no DCU
+    lookup, and the rest take only compulsory misses (`gather`'s 64 at
+    most). S1 cannot price either axis.
+  - Hit latency: going from 7 to 8 costs +0.004%. Going from 7 to 5 costs
+    +0.37%, which is worse, not better.
+    - At 5 the stub misses the contract cycle on most hits:
+
+      | `CCV_LAT_L1_HIT` | `l1_late` | on time (`l1_hit`) | `reexec` |
+      |---|---|---|---|
+      | 7 | 45,113 | 34,248 | 73,919 |
+      | 5 | 72,273 | 7,088 | 91,286 |
+
+    - A late hit is taken as a miss (A-46).
+    - Even at 7, more hits are late than on time.
+    - So this axis measures the stubs' turnaround, not the L1's. It is
+      re-run on MA's Phase 1 resource model.
+  - coremark128 has no figures yet. AR's runs had not finished after 5
+    hours, and AR took that for a defect (AR rev 349). TI found otherwise
+    (TI rev 424): the memop credit watchdog, `CCV_P_TIMEOUT_BP` = 8192, no
+    longer fit MA-5's entry-held credits behind the stub's slow store
+    scatters (AR rev 350 took a per-slot `CCV_P_TIMEOUT_MEMOP` = 20480,
+    and AR rev 352 put `ccv_dec_ooe_uop` on the same bound); the operand
+    CHECKs AR saw were those held at the `--cycles` bound.
+  - **Re-run on bd1cc5a2 (AR's runs, 2026-11-15, at
+    `CCV_LAT_RCU_ADDR_BASE` 1 and `CCV_LAT_L1_HIT` 7; the 64 KiB
+    coremark128 figure is TI's, rev 436, on 880f2d1c, which simulates the
+    same: its coremark32 matches AR's to the cycle):** every run finishes
+    clean.
+
+    | | 64 KiB | 512 KiB | 512 against 64 |
+    |---|---|---|---|
+    | coremark32 | 2,776,587 | 2,580,427 | -7.06% |
+    | coremark128 | 73,617,464 | 5,529,486 | -92.5% |
+
+    coremark32 confirms the 6.5% above (misses 1,284 to 507). The
+    hit-latency rows above are contract slack, not hit latency (TI rev
+    440, AR rev 356; see PF-47).
+    The longest credit holds at 512 KiB are `ccv_dec_ooe_uop` 8,253 and
+    `ccv_ooe_miu_memop` 19,176 of 20,480.
+  - **Withdrawn as an L1 figure (TI rev 443, AR rev 359):** both tables
+    above ran plain coremark-derived (correctness only since AR rev 358)
+    with no environment: a cold MLC, so every L1 miss went to memory, and
+    real fetch. coremark128's 747,598 misses at about 100 cycles are the
+    whole 73.6M run; there was no regression. PF-46's figures are at
+    perfect fetch and a warm MLC. TI's set dump puts plain coremark128's
+    hot set between 64 and 128 KiB (64 sets x 8 ways 726,773 misses,
+    128 x 8 24,195, 512 KiB 4,065), and capacity misses, not aliasing:
+    fully associative (896,370) and a hashed index (1,166,591) miss more
+    under LRU, so the modulo index stays. -priv coalesces to 408k line
+    accesses and takes about 63k misses at 64 KiB. L1's size is re-opened:
+    AR re-runs this sweep on -priv at perfect fetch and a warm MLC.
+  - **Re-run on -priv (AR rev 360; AR's runs, 2026-11-15, on 661cbe41,
+    base 1, perfect fetch, warm MLC, 8 ways):** every run is exact, with
+    0 violations.
+
+    | -priv | 64 KiB | 128 KiB | 256 KiB | 512 KiB |
+    |---|---|---|---|---|
+    | coremark128 | 2,132,774 | 1,946,702 (-8.72%) | 1,927,810 (-9.61%) | 1,925,434 (-9.72%) |
+    | L1 misses | 83,218 | 9,161 | 1,802 | 1,388 |
+    | coremark32 | 1,142,050 | 1,140,115 (-0.17%) | 1,140,115 | 1,140,115 |
+
+    S1 is 1,638 cycles at both 64 and 512 KiB. coremark128's hot set
+    (4 warps of per-thread data) lies between 64 and 128 KiB, and 128 KiB
+    takes 8.7 of 512 KiB's 9.7 points. The hot set grows with resident
+    warps, so the size stays the corpus sweep's (DA tab rev 95). AR
+    recommends 64 KiB stays Phase 1's baseline and 128 KiB is the first
+    point MA's resource model prices; it is over 0.5%, so it is MA's to
+    approve, with the area for Daniel. coremark128's operand CHECKs fall
+    as L1 grows (21, 4, 0 and 1 uops), so they are on the miss path
+    (TI's).
+  - **Built at 512 KiB, configured down by sets (DA 121 (a)); hit
+    latency priced (AR rev 363; AR's and RH's runs, 2026-11-15, on
+    a5481843, -priv, base 1, perfect fetch, warm MLC, 8 ways):** every run
+    is exact, with 0 CHECKs and 0 violations. a5481843 carries TI 450's
+    stub-MIU fix: a late hit's completion no longer leaves ahead of its
+    queued data. That fix was the operand CHECKs above, and it supersedes
+    the pre-fix figures where they differ (cm128 hit 9 at 512 KiB was
+    1,951,851; below 512 sets, the pre-fix hit 8 and 9 runs carried
+    CHECKs). coremark32 and S1 did not move.
+
+    | coremark128 -priv | hit 7 | hit 8 | hit 9 |
+    |---|---|---|---|
+    | 512 KiB | 1,924,529 | 1,936,319 (+0.61%) | 1,944,298 (+1.03%) |
+    | 128 KiB | 1,946,773 | 1,958,293 (+0.59%) | 1,966,878 (+1.03%) |
+    | 64 KiB | 2,124,002 | 2,148,171 (+1.14%) | not run |
+
+    coremark32 -priv runs 1,140,115, 1,168,776 (+2.51%) and 1,196,408
+    (+4.94%) at hits 7, 8 and 9 at both 512 and 128 KiB, and +2.50% and
+    +4.91% at 64 KiB. S1 is 1,640 cycles at every hit latency, because no
+    S1 load is an L1 hit (l1_hit 0 on all ten). So S1 cannot price the hit
+    latency, and coremark32, a single warp that hides none of it, is the
+    honest figure: about 2.5% a cycle, against 0.6% on coremark128's four
+    warps. Each step is over 0.5%, so the latency is MA's to set as the
+    owning architect, against the timing MI's and DI's model shows. AR's
+    view: hit 8 is the most to take without a measured timing need. Under
+    DA 121 (a), a configured-down L1 carries the 512 KiB latency. One
+    cycle costs about the same at 128 KiB (+0.59%) and about twice as much
+    at 64 KiB (+1.14%), where 9x the misses of 128 KiB keep more loads in replay.
+    That bounds PF-51 (MA's): one hit cycle at the configured size. 128 KiB
+    at hit 7 is +1.16% against 512 KiB, and 64 KiB is +10.36%.
 
 ### PF-34 Same-address combining for atomics, built from lane adds
 
@@ -1149,6 +1268,13 @@ it.
   frames and data in the run as compiled, runs clean at 1,234,051 cycles at
   one warp and 64 KiB, 1.3% over TI's scratch bound of 1,218,411: the
   prologue's `srd` and add, which the bound never paid.
+- **Re-booked (TI rev 443, AR rev 359, on bd1cc5a2):** at PF-46's own
+  conditions (perfect fetch, warm MLC, 64 sets x 8 ways), coremark128
+  -priv runs in 2,132,774 cycles against the 2,838,912 booked here
+  (-24.9%), and -priv is the figure of record (AR revs 357 and 358). Plain
+  coremark128 is a projection only, 4.8M to 5.2M against 10,164,145: it
+  did not finish within the container's memory. The no-hit knob (PF-47)
+  changes nothing on -priv, which has no ineligible load (TI rev 444).
 
 ### PF-47 RCU's issue-to-address time from 5 to 1 or 2
 
@@ -1243,6 +1369,50 @@ it.
   | loop | 2,942 to 2,842 (-3.4%) | 2,942 to 2,842 |
   | S1 (sweep.sh's ten kernels) | 4,034 to 3,918 (-2.88%) | 4,037 to 3,921 (-2.87%) |
   | all 63 kernels | 56,067 to 54,749 (-2.35%) | 56,011 to 54,685 (-2.37%) |
+- **Landed and re-booked (TI rev 439, bd1cc5a2; AR rev 355, 2026-11-15):**
+  base 5 to 1 takes `CCV_LAT_L1_WAKE` from 17 to 13 and `CCV_LAT_L1_CMPL`
+  from 18 to 14. MIU's no-hit moves with the address to payload I+9
+  (`CCV_LAT_L1_NOHIT`, derived from the address's arrival, AR revs 353
+  and 354, MA rev 56, OA rev 418). On the stubs (L1 8x64, AR's runs at
+  base 1 and 5 on the same commit):
+
+  | | base 5 | base 1 | change |
+  |---|---|---|---|
+  | S1 (ten kernels) | 3,917 | 3,917 | 0 |
+  | coremark32 | 2,778,125 | 2,776,587 | -0.055% |
+  | coremark128 | 74,270,259 | 73,617,464 | -0.88% |
+
+  **Corrected (TI rev 440, AR rev 356):** this table does not price
+  PF-47. Neither RCU model nor stub reads `CCV_LAT_RCU_ADDR_BASE`; both
+  send the address at A+1, which is base 1. So the base-5 column ran
+  base-1 timing under a contract 4 cycles looser, and the column measures
+  contract slack, not the base. The same holds for PF-33's hit-latency
+  points, which moved only the stub MIU's due cycle.
+  The late hits are gathers. 94% are loads over 8 lines, which DCU looks
+  up at 4 lines a cycle (PF-46), so they cannot meet 8 cycles from the
+  address. 5.2% are 1-line loads queued behind them; TI fixes those in the
+  stub. In the spec, such gathers lose the hit contract by MA-4's
+  eligibility rule, and the no-hit reaches OOE before the wake (MA rev
+  57). They are slow misses with no cancel shadow, not late hits. The stub
+  sends no no-hit, which is why it looks late. PF-47's gain waits for a
+  stub that sends the no-hit (AR rev 356) and an RCU that honours the
+  base. The decision stands: RA rev 145 met the timing in the RTL. The
+  base-5 operand CHECK (seq 179681) ran that inconsistent configuration;
+  it is OI's to say whether it reproduces in a real one.
+  These coremark figures are plain layout at a cold MLC (AR revs 358 and
+  359). On -priv, no load is ineligible, so the no-hit changes nothing:
+  coremark32 -priv runs 2,253,475 cycles with the knob off and on, and S1
+  stays at 3,917 (TI rev 444). The no-hit acts only on plain gathers. PF-47
+  is re-booked on -priv at base 1, with the L1 re-run (PF-33). Operand
+  CHECKs also fire on -priv with an exact final state (TI revs 443 and
+  444; first at seq 67052); TI is finding which block, for its owner.
+  **Re-booked on -priv (AR rev 363, on a5481843, 512 KiB, hit 7,
+  perfect fetch, warm MLC, 8 ways; AR's and RH's runs):** base 5 against
+  base 1 is coremark128 1,985,883 vs 1,924,529, coremark32 1,257,402 vs
+  1,140,115, and S1 1,684 vs 1,640. Base 1 is worth 3.09%, 9.33% and
+  2.61%, and 3.02% on coremark128 at 128 KiB (2,007,445 vs 1,946,773).
+  Every run is exact. The CHECKs were TI's stub MIU (TI 450, a5481843),
+  not this change. Base 1 stands.
 
   The all-kernel sum includes rope, which runs clean before the change and
   after it fails OI's OA-17 check on L1 speculation (it passes with
@@ -1404,3 +1574,32 @@ it.
   (RCU spec measure M2), and the power estimate, once there is one. If
   partly-busy lanes dominate narrow workloads' clock power, this is the
   lever. Owner: AR (cross-block); raised by RA.
+
+### PF-51 L1 hit latency that follows the configured L1 size
+
+- **Now:** the L1 is built for 512 KiB: 8 ways, 512 sets of 128-byte lines
+  (Daniel, 2026-11-15; register MA rev 61). A smaller configuration (128 or
+  64 KiB) reduces `CCV_DCU_SETS` only. It keeps the 512 KiB hit pipeline and
+  the same `CCV_LAT_L1_HIT`, so the contract latencies that derive from it do
+  not change. Daniel accepts that fixed latency at every size for the first
+  implementation.
+- **Alternative:** the DCU's hit pipeline drops a stage when it is built
+  smaller, and `CCV_LAT_L1_HIT` derives from the set count, so a 64 or
+  128 KiB L1 hits a cycle or two sooner.
+- **Cost:**
+  - The DCU's pipeline is parameterized by size, and each configuration is
+    timed and verified on its own: check-ngd and check-cg units at each size.
+  - The contract latencies (`CCV_LAT_L1_WAKE`, `CCV_LAT_L1_CMPL`,
+    `CCV_LAT_L1_NOHIT`) derive from the set count, so OOE's speculative wake
+    timing and the RCU's derived parameters follow the configuration.
+- **Gain:** on code that fits a small L1, each cycle of L1 wake costs about
+  2% single-thread (AR-24). In the corpus sweep, hit base 9 against 7 cost
+  sgemm 7.9% (DCU tab, Capacity).
+- **Signal:** AR's re-booked PF-33/PF-47 sweeps on coremark-derived-priv at
+  512 KiB with hit base 7, 8 and 9 (MA rev 62), measured in AR 363 on
+  a5481843: each hit cycle costs 0.6% on cm128priv and 2.5% on cm32priv.
+  The ceiling of this entry is a cycle saved when configured down: +0.59%
+  at 128 KiB and +1.14% at 64 KiB per cycle (AR 363). Hit stays 7 at
+  512 KiB (MA rev 66). The alternative is worth building if 512 KiB needs a
+  slower hit than 64 or 128 KiB would, and a product configuration ships
+  below 512 KiB. Owner: MA; raised by Daniel.

@@ -103,8 +103,23 @@ the clean one with `--full`, an ancestry check, push to
 `$CCV_PUSH_BRANCHES`, clear build but the synthesis cache) and `tools/daily-sweep.sh` (merge every
 remote branch but release and `gate-scratch/*`, regen, `tools/make-release.sh --push`, push,
 clear; it stops, exit 3, on a conflict outside generated files). Read a
-gate's result with `tools/gate-summary.py <log>`, not the log, and run a
-long job as `tools/bg-run.sh <name> <cmd...>`, which ends in one line.
+gate's result with `tools/gate-summary.py <log>`, not the log, and run any
+other long job as `tools/bg-run.sh <name> <cmd...>`, which ends in one line.
+
+A gate outlives a session's background task (killed at 2 hours) and an
+idle container (reclaimed, with what it runs); both lost gates daily (DA,
+2026-11-13). So `tools/verify.sh`, `gate-push.sh`, `daily-sweep.sh`,
+`make-release.sh` and `bg-run.sh`'s command detach themselves
+(`tools/detach.sh`: their own session, `setsid nohup`), print a pid and a
+job log in `$CCV_LOGDIR`, and return at once with exit 5, never 0, so an
+older caller reading it as the gate's stops (OA-414). Then run
+`tools/gate-wait.sh [<job log>]` (default the newest) as the session's
+background task: it ends with the job's result and exit status, or with
+`waiting` (exit 3) before 2 hours, when you run it again at once, or
+`killed` (exit 4) after a restart, when you start the job again. While it
+waits the session is active, so the container stays. Calls between these
+tools, CI, and `CCV_FOREGROUND=1` run in place; `tools/check-detach.sh`
+holds it, with controls.
 
 Local clock gating (Daniel, 2026-10-16; `docs/rtl-coding-style.md`): every
 register behind an `if` on an enable named `<name>_en`; a clock gate is 8
@@ -138,8 +153,13 @@ register or port).
 
 Logic depth (Daniel, 2026-10-17; `docs/rtl-coding-style.md`): 25 NGD of
 combinational logic between flops, the flop outside it. Each module port has
-12 NGD a side by default; a port over it needs the architect's budgets, one
-file per module beside its RTL (`<module>.ngd.json`). Nothing straight
+12 NGD a side by default; a port over it needs budgets, one file per module
+beside its RTL (`<module>.ngd.json`). Where convergence times the connection
+(the module's parent has a unit), its owner sets them, check-ngd passing;
+where it does not yet (no measured parent, a block boundary port, or a
+child port wired straight to one), its
+architect does (Daniel, 2026-11-15; `docs/rtl-coding-style.md`, "Who may
+move a budget"). Nothing straight
 through a module, input to output, not even a wire, nor logic in a parent
 between its children (2026-10-18): connect a wire directly, group logic with
 one sequential side, or declare a combinational module an inner helper in

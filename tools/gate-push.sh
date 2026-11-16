@@ -37,6 +37,10 @@ for a in "$@"; do
     *) echo "usage: $0 [--branches=a,b] [--no-push] [--keep-build] [--full] [--import=a.tgz,..]" >&2; exit 2 ;;
   esac
 done
+# A long run never runs under its caller (tools/detach.sh; DA, 2026-11-13):
+# it detaches and returns; tools/gate-wait.sh waits for it.
+. "$(dirname "$0")/detach.sh"; ccv_detach "$0" "$@"
+
 clean_tree
 [ "$PUSH" = 1 ] && ancestry           # fail before the gate, not after it
 regen_commit

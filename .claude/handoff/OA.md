@@ -12,6 +12,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
   Record Daniel's decisions verbatim in the DA tab (table m8yvbw8rqgz.231).
 - Report to Daniel in a few lines: what changed, then any decision that is
   his. He is a senior microprocessor design engineer; write as to a peer.
+- TI-445 and DA rev 120 (11-15; DA 120 adds: architect also keeps boundary-wired budgets): a module's owner sets/moves an NGD port budget where check-ngd's convergence times the connection (parent has a unit), check-ngd passing. OA still sets budgets for OOE modules with no measured parent (ooe_rename, sched, rs, rat, decq, age, rencred, rob_w) and every block-boundary/lead budget; rendep/go/ready/select/wake/pick/confirm etc. are now OI's own. OA reviewed: no budget seen that this lets through without convergence holding.
 - Mine to rule: admission-cost changes under 0.5% on S1, the audit and the
   out-of-order floors. Over 0.5%, a waiver, or any exception narrowing one of
   DA's rules (CG, NGD, lint) goes to DA with figures and a recommendation.
@@ -27,10 +28,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds OA's.
 
 ## Daily sweep (trig_017UEX7qaTRGT27eW6yQ1tJo, 02:07 PT)
 Skill section 4 (register-reader digest), then
-`CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf setsid nohup tools/bg-run.sh sweep-MMDD
-tools/daily-sweep.sh > /dev/null 2>&1 < /dev/null &` (detached, never a
-background task: TI rev 418), waited on by a run_in_background
-`while kill -0 <pid>` (or pgrep) loop, re-armed at its 2 h cap; `python3 tools/setup-session-home.py --check` (exit 1: ask DA to
+Since 11-14 (a46afef7 merged; TI-420): `CCV_PUSH_BRANCHES=ccr-9eb50716-lecnjf
+tools/daily-sweep.sh` self-detaches and prints its job log; wait with
+`tools/gate-wait.sh <job log>` as a run_in_background task (exit 3: still
+running at 110 min, rerun gate-wait; 4: killed, rerun the job). Before it
+lands: the TI-418 recipe (setsid nohup bg-run, kill -0 waiter). A 503 from
+the proxy's credential service on push: retry by hand (11-13); `python3 tools/setup-session-home.py --check` (exit 1: ask DA to
 approve the install again); pings Fridays only (TI-49); report in a few lines.
 Session home installed 2026-10-31 with DA's approval (TI-50): /home/user/.claude
 holds the 400k window, the handoff hook and the agents link.
@@ -41,13 +44,22 @@ AR session_01FnGhxke3r33MeArLeQJRcD, IS session_01989HiTNh4Gx7XMSsdvdE7Z,
 CP session_019cSebQ45AT3pSnPU71torg, RA session_01QPk2jzLmjd3MWXjayVUy9d,
 RI (session not yet on the roster). OA is session_01TbX2MyX6quhjarDR7J2bMR.
 
+## OI-150 (OA 417, rev 419, 11-15)
+Arrivals kept. go: producer encodings (decq one-hot need, Rename thermometer pool) granted at 2. rendep gsn/psn: arrival 2 only if Rename precomputes the one-hot index at no latency. sched res/vel: OI to model-price the fallback a cycle later (OA rules if under 0.5% S1, else DA). ooe_rob_w wid_cq00h: arrival 0, one-hot flop, within the ratchet caps. OI-151/OA 418 (rev 420): WID strap withdrawn (over caps); WID stays a param with units at 1-3. DA's 11-15 ruling was given in OI's session; record it only once Daniel confirms the wording. #52 rob_w: Rename 2 per-slot fill valids and OOE-capture per-slot dn/cm valids granted at 2; OI measures before pushing. OI-152/OA 419 (rev 421): fl_m cap 29.3 (baseline 31.7, TI adds the line), fl_v/fl_slot caps removed; the NGD-1 rise to 30.1 at WID 3 (ABC remap of the retire window) is DA's call, and OA recommends holding 29.6 and isolating the retire window in a child first; (C) withdrawn. Waiting on Daniel.
+
 ## Register bookmarks (revs read through)
-Conventions 19, OA 414, AR 347, TI 412, OI 340, IS 190, CP 157, DA 119,
-RA 136 (tab 9851686b-2b0a), RI 70 (tab 8e4547bc-c469), MA 39 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, not yet in roster).
-OOE doc rev 377. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
-Sweep 11-08: 7 branches (194 commits), full gate green, pushed fd3b0aac; release b15c89e8; tag refused (known).
+Conventions 19, OA 421, AR 356, TI 445, OI 355, IS 193, CP 157, DA 120,
+RA 148 (tab 9851686b-2b0a), RI 82 (tab 8e4547bc-c469), MA 57 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
+OOE doc rev 381. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
+Sweep 11-15: 5 branches (116 commits), full gate green, pushed 6aa0c403; release 6fa7fc1f; tag refused (known). Sunday, no pings.
+Sweep 11-13: 6 branches (76 commits), full gate green, pushed 0bc98973 (first push 503'd, credential service; retried by hand); release 63625551; tag refused (known).
 
 ## Open work (most urgent first)
+- OA 415/416 (revs 417-418, 11-15, re TI-437, AR 353/354, MA 55): no-hit under PF-47. AR 354 derives CCV_LAT_L1_NOHIT from the address's arrival + A2 + launch + crossing (superseding OA 415's L1_WAKE-5 form): payload I+9 at wake 13. OOE margin measured in the model (l1-nohit, rx_lag 16): the payload by L1_WAKE-2 passes, at L1_WAKE-1 it replays, so require NOHIT+2 <= L1_WAKE is final. Nothing in OOE hard-codes I+13; only ooe_test.cpp t+12. TI landed NOHIT at bd1cc5a2 (TI-439); MA rev 56 confirmed; OOE doc rev 381 has the derived form. Watch: OI unpins testL1NoHit and adds the L1_WAKE-1 control.
+- Sweep 11-14: 8 branches (209 commits) pushed abd2a025 UNGATED (old daily-sweep + new detaching make-release; OA 414, rev 416). Full clean gate run after: PASS. No release cut (ccr-126afa13 gained a commit); next sweep cuts it. TI fixed: 518cb3c3, a detached tool exits 5.
+- OI-143: RH's on-vs-off price for cand_indep_pend is identical in all 36 runs because sectioned=0 (placePos returns early); OA 407's 0.5% test passes only vacuously. The real price waits on sectioned=1 (OI-32); OI will ask RH then (~9 h cm128).
+- OI-142: l1_nohit model built (off by default); no price until MA Phase 1's stub sends no-hits.
+- OA 413 (rev 415, 11-13): signed OI-141's CCV-L23 feedback entry for cok_nx_cq02h (offset 2, loop cok/cokd/ccnt) and chas_cq03h arrival 4.0 (OI-53). Watch OI push ef19544c; the flag rule goes into the OOE doc's memop paragraph.
 -24. OA 387 re:RA 104/AR 325 (zero-cycle ooe_rcu_issue leads): YES on OOE side. pred_neg(+(a) bits),
    R-slot phys_src0/1 (slot_fields), opcode (not class bits, A-66) move iss_pay -> iss_lead in ooe_rs;
    no cycle, 0 net flops, out 0. RTL ooe_rs unit: gnt in 8.8/9.5/10.2 at LW 1/16/43; f-f 26.2/26.3/27.4

@@ -36,20 +36,10 @@ mkdir -p "$B"
 
 # -- build ---------------------------------------------------------------
 # Block implementations, one list for both hosts (sim/skel/blocks.list).
-BLOCKS=$(grep -v '^#' sim/skel/blocks.list | sed "s|^|$R/|" | tr '\n' ' ')
 VCOMMON="--cc --exe --build -j 0 -Wno-fatal -Wno-TIMESCALEMOD -Irtl/include -Irtl/generated"
-if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_common_chk_bank \
-     --Mdir "$B/skel" -o ccv-skel \
-     -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
-     rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv \
-     rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv \
-     rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv \
-     rtl/if/ccv_common_chk_wake.sv \
-     rtl/generated/ccv_common_chk_bank.sv \
-     "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" "$R/sim/skel/portdump.cpp" \
-     "$R/sim/skel/exerciser.cpp" $BLOCKS \
-     "$R/sim/skel/oracle.cpp" "$R/sim/src/event.cpp" \
-     "$R/sim/dpi/ccv_event_dpi.cpp" >"$B/skel.log" 2>&1; then
+# tools/build-skel.sh (its log $B/skel.log), shared with check-kernel's
+# control builds.
+if ! tools/build-skel.sh "$B/skel"; then
   bad "skeleton builds" "$(grep -m1 -i error "$B/skel.log")"
   exit 1
 fi
@@ -73,6 +63,39 @@ if g++ -std=c++17 -O1 -I"$R/sim/skel" -o "$B/channel-test" "$R/sim/skel/channel_
   say "Receiver credit: Pop at landing+1, Landing at landing" "PASS (controls caught)"
 else
   bad "Receiver credit timing" "$(grep -m1 -E 'FAIL|error' "$B/channel-test.log")"
+fi
+
+# -- the SRAM hard macros' cycle model (sim/skel/sram.h) -------------------
+# AR's register rev 344: alone, its contract and controls (sram_test.cpp);
+# then in lockstep with the macros' RTL views (rtl/macro/, Verilated), every
+# rdata compared before every edge on one random stream, which must also
+# catch each control: a write-before-read 1r1w, an ignored wmask, a read a
+# cycle late (test/vl/vl_sram_tb.cpp).
+if g++ -std=c++17 -O1 -I"$R/sim/skel" -o "$B/sram-test" "$R/sim/skel/sram_test.cpp" \
+     >"$B/sram-test.log" 2>&1 && "$B/sram-test" >>"$B/sram-test.log" 2>&1; then
+  say "SRAM model alone: its contract" "PASS (controls wbr, nomask, early caught)"
+else
+  bad "SRAM model alone" "$(grep -m1 -E 'FAIL|error' "$B/sram-test.log")"
+fi
+rm -rf "$B/vl-sram"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style \
+     -Irtl/include -CFLAGS "-std=c++17 -I$R/sim/skel" --top-module vl_sram_top \
+     --Mdir "$B/vl-sram" -o vl_sram rtl/ccv_assert_pkg.sv rtl/macro/ccv_common_sram_1rw.sv \
+     rtl/macro/ccv_common_sram_1r1w.sv test/vl/vl_sram_top.sv "$R/test/vl/vl_sram_tb.cpp" \
+     >"$B/vl-sram.log" 2>&1; then
+  bad "SRAM model == RTL, cycle for cycle" "the lockstep does not build ($B/vl-sram.log)"
+elif ! out=$("$B/vl-sram/vl_sram" 100000 2>&1); then
+  bad "SRAM model == RTL, cycle for cycle" "$(echo "$out" | head -2 | tr '\n' ' ')"
+else
+  missed=""
+  for c in wbr nomask late; do
+    VL_CONTROL=$c "$B/vl-sram/vl_sram" 20000 >/dev/null 2>&1 && missed="$missed $c"
+  done
+  if [ -n "$missed" ]; then
+    bad "SRAM model == RTL, cycle for cycle" "control(s) not caught:$missed"
+  else
+    say "SRAM model == RTL, cycle for cycle" "PASS ($(echo "$out" | tail -1 | sed 's/^agree //'); wbr, nomask, late caught)"
+  fi
 fi
 
 # Keys are matched WHOLE -- preceded by a space or the line start. A bare

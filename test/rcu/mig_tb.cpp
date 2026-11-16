@@ -24,7 +24,11 @@
 // M5 (docs/rcu-impl.md, phase 4): with the R slot busy 3 cycles of every 4,
 // every op reading R2 and writing a GPR (OOE's idle-R rule at K = 4, its
 // worst phase of the four), the 17 rows of a demotion and of a restore each
-// take at most 68 cycles from the first cycle a row can be decided.
+// take at most 68 cycles counted from c1, the cycle after the launch edge
+// (Migration tab, Launch: c0 the launch edge; RA rev 138, rev 140 (2)). c1
+// is read from the launch's own credit: launch sets the map and command
+// credit-return flops, so their credit is on the wire in c1; a demotion's
+// wake is high from c1 too (Wake lead), which the measure checks.
 //
 // Runs: M5, then random traffic with kills (--seed n picks another run). --cg <idle|medium|high> <vcd>
 // runs one clock-gating scenario (tools/check-cg.py). Negative controls,
@@ -168,7 +172,7 @@ struct Bench {
   std::array<bool, 8> stall{};
   // Coverage and M5 marks.
   unsigned dm_done = 0, rs_done = 0, kills = 0, dm_killed = 0, rs_killed = 0, held = 0, stalls = 0;
-  uint64_t t_wake = 0, t_v16 = 0, t_land0 = 0, t_gv = 0;
+  uint64_t t_wake = 0, t_v16 = 0, t_land0 = 0, t_gv = 0, t_c1 = 0;
   bool rst_now = false, rst_q = false;
 
   Bench(const char *vcd_path, unsigned seed, Ctl c) : rng(seed), ctl(c) {
@@ -571,6 +575,7 @@ struct Bench {
       ++mcred;
     }
     if (s.ccr) {
+      if (!t_c1) t_c1 = t;   // M5: the first launch's credit is on the wire in c1
       if (cout <= 0) err("command credit with none owed");
       --cout;
       ++ccred;
@@ -740,8 +745,15 @@ M5 measure(Ctl ctl) {
       for (unsigned i = 0; i < 400 && !b.migs[id].done; ++i) b.step();
       b.drain(200);
       uint64_t w = ~0ull;
-      if (b.migs[id].done && !dir && b.t_v16 && b.t_wake) w = b.t_v16 - b.t_wake - 3;
-      if (b.migs[id].done && dir && b.t_gv && b.t_land0) w = b.t_gv - b.t_land0;
+      // From c1 (RA rev 140 (2)): the demotion to row 16's valid, the
+      // restore to row 16's write.
+      if (b.migs[id].done && b.t_c1 && !dir && b.t_v16) w = b.t_v16 - b.t_c1;
+      if (b.migs[id].done && b.t_c1 && dir && b.t_gv) w = b.t_gv - b.t_c1;
+      if (!dir && b.t_c1 && b.t_wake != b.t_c1) {
+        std::fprintf(stderr, "mig M5: demotion wake at %llu, not c1 %llu\n", (unsigned long long)b.t_wake,
+                     (unsigned long long)b.t_c1);
+        ++r.fails;
+      }
       if (w == ~0ull) {
         std::fprintf(stderr, "mig M5: %s phase %d did not finish\n", dir ? "restore" : "demotion", ph);
         ++r.fails;
@@ -765,7 +777,7 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl, const char *cname
     const bool ok = r.dm <= bound && r.rs <= bound;
     char buf[256];
     std::snprintf(buf, sizeof buf,
-                  "M5 demotion %llu cycles (R idle %llu), restore %llu (R idle %llu), bound %llu: %s",
+                  "M5 from c1: demotion %llu cycles (R idle %llu), restore %llu (R idle %llu), bound %llu: %s",
                   (unsigned long long)r.dm, (unsigned long long)r.dm0, (unsigned long long)r.rs,
                   (unsigned long long)r.rs0, (unsigned long long)bound, ok ? "met" : "MISSED");
     m5 = buf;

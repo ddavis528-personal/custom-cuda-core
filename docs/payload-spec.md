@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 15 | 40 |
 | ⚠️ Some provisional | 27 | 147 |
-| ⛔ Some preliminary | 13 | 151 |
-| **Total** | **55** | **338** |
+| ⛔ Some preliminary | 13 | 153 |
+| **Total** | **55** | **340** |
 
 ## What still has to be decided
 
@@ -762,7 +762,7 @@ dcu → miu · rate 4 · memory
 
 ### `ccv_miu_ooe_cmpl_hint`
 
-A completion hint (OA-23; AR's response TI-23): MIU promises that the completion of rob_tag, waking RS entry rs_idx, leaves on the same slot of ccv_miu_ooe_cmpl with its valid exactly CCV_LAT_CMPL_HINT cycles after this hint's payload lands, so OOE's wake lines can rise two cycles ahead of the completion as its scheduler loop needs (OI-45). MIU keeps it by reserving the completion's slot and credit, and those of the load's data on ccv_miu_rcu_data (MIU spec, Mechanisms). Optional: a completion without a hint wakes a cycle late. rob_tag, not a generation bit, tells a stale hint: OOE acts only if that ROB slot is not squashed-pending (AR's rev 94, OA's rev 141). no_hit (OA rev 413, OA 410, from MA's answer to OA 408): set, the message is advice and no promise, so notice_of's timing does not apply to it (notice_of.unless): MIU's address stage knows, from the address alone (the lane-group rule, a page split, a TLB miss or a bank conflict), that the global load issued at I has lost the L1-hit contract, and says so on the slot of the memop's lowest pipe, valid at I+12, payload at I+13, echoing rs_idx and rob_tag. OOE then clears the load's speculative wake before I+17, and its dependants wake on the completion. A refill hint on the same slot wins, and the no-hit is dropped; tag misses are not covered. Safe either way: a completion at CCV_LAT_L1_CMPL after a no-hit is legal, and an absent no-hit costs the 2-cycle cancel shadow. A no-hit on any memop but an outstanding global load is a protocol error. The MIU stub sends none until MA's Phase 1 model gives it the address facts.
+A completion hint (OA-23; AR's response TI-23): MIU promises that the completion of rob_tag, waking RS entry rs_idx, leaves on the same slot of ccv_miu_ooe_cmpl with its valid exactly CCV_LAT_CMPL_HINT cycles after this hint's payload lands, so OOE's wake lines can rise two cycles ahead of the completion as its scheduler loop needs (OI-45). MIU keeps it by reserving the completion's slot and credit, and those of the load's data on ccv_miu_rcu_data (MIU spec, Mechanisms). Optional: a completion without a hint wakes a cycle late. rob_tag, not a generation bit, tells a stale hint: OOE acts only if that ROB slot is not squashed-pending (AR's rev 94, OA's rev 141). no_hit (OA rev 413, OA 410, from MA's answer to OA 408): set, the message is advice and no promise, so notice_of's timing does not apply to it (notice_of.unless): MIU's address stage knows, from the address alone (the lane-group rule, a page split, a TLB miss or a bank conflict), that the global load issued at I has lost the L1-hit contract, and says so on the slot of the memop's lowest pipe, payload at I + CCV_LAT_L1_NOHIT (valid a cycle earlier), echoing rs_idx and rob_tag. The no-hit moves with the address (AR 353): CCV_LAT_L1_NOHIT is derived from the same start as CCV_LAT_L1_WAKE, 13 at CCV_LAT_RCU_ADDR_BASE 5 (OA 410's I+13) and 9 at PF-47's base 1, and its require keeps it ahead of the wake. OOE then clears the load's speculative wake before I + CCV_LAT_L1_WAKE, and its dependants wake on the completion. A refill hint on the same slot wins, and the no-hit is dropped; tag misses are not covered. Safe either way: a completion at CCV_LAT_L1_CMPL after a no-hit is legal, and an absent no-hit costs the 2-cycle cancel shadow. A no-hit on any memop but an outstanding global load is a protocol error. The MIU stub sends none until MA's Phase 1 model gives it the address facts.
 
 miu → ooe · rate 4 · memory
 
@@ -951,7 +951,7 @@ miu → spm · rate 4 · memory
 
 ### `ccv_miu_dcu_req`
 
-Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask.
+Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index and bank lead it by a cycle (AR 362).
 
 miu → dcu · rate 4 · memory
 
@@ -964,7 +964,11 @@ miu → dcu · rate 4 · memory
 | `exclusive_req` | `1` | 1 | literal |
 | `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
-| **total** | | **1214** | ⛔ 4 preliminary, ⚠️ 54 provisional |
+| `lead_set_index` | `CCV_W_DCU_SET` | 9 ⚠️ | CCV_W_DCU_SET (tunable) |
+| `lead_bank` | `CCV_W_DCU_BANK` | 2 | CCV_W_DCU_BANK (arch) |
+| **total** | | **1225** | ⛔ 4 preliminary, ⚠️ 63 provisional |
+
+Lead fields (driven with valid, a cycle ahead of the rest): `lead_set_index`, `lead_bank`.
 
 ### `ccv_dcu_mlc_req`
 

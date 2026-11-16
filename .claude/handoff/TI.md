@@ -1,10 +1,10 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-07. Keep this current at every task's end; it is what
+Updated 2026-11-15. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
-- Worktree /home/user/ti-ret. Push only to `ccr-183cc441-doowtf` and
+- Push only to `ccr-183cc441-doowtf` and
   `claude/custom-cuda-core-infra-6msg93`, each after
   `git merge-base --is-ancestor origin/<b> HEAD`. No PRs. Never bare `git stash`.
 - Push with `CCV_PUSH_BRANCHES=ccr-183cc441-doowtf,claude/custom-cuda-core-infra-6msg93
@@ -31,37 +31,43 @@ below); then `CCV_PUSH_BRANCHES=... tools/daily-sweep.sh` in the background
 few lines.
 
 ## Register bookmarks (revs read through)
-Full bookmarks and ping records: /home/user/ti-register-bookmarks.json
-(outside the repo, so the sweep's clean-tree check is not tripped).
-Conventions 17, AR 321, OA 380, IS 190, TI 377, OI 324, CP 156, DA 115,
-RA 96, RI 34 (2026-11-07 evening). Latest TI open: TI-51 (rev 346).
-Pings are weekly, on Fridays (DA, 2026-10-30); Saturday's sweep checks the
-pongs. Pings 2026-11-06 sent to AR OA IS OI CP RA RI; all seven ponged ok.
+Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
+TI 441, RA 148, RI 82, OI 350, AR 356, OA 418, MA 57, IS 193, CP 157,
+DA 119, Conventions 19 (2026-11-15). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
-## State (2026-11-09 ~08:30Z)
-- PUSHED on both branches, in order: 5271c5e7 (RA 119, RA 124, RI-21 (4)
-  ops.json/gen-ops, RI 70cfd51 merge, rcu_lanes floors, bank_slice heavy),
-  ea8ae6f1 (RST-2 reset same-cycle check, DA 2026-11-09; kill_valid wake tap
-  at 12 + *_wake bounded, AR 336), 4d6065fd (per-field lead budgets, DA 116
-  13 RCU / 0 OOE), 7b003e98 (RI-31: lead_phys_src2 copy S0-S3, lead_sec_mask
-  exact). TI rows 393-400 written and notified.
-- Worktrees: custom-cuda-core, ti-ops, ti-lead, ti-src2 (all at pushed tips).
-  Back up unpushed work to origin gate-scratch/TI-<name> (new branches; an
-  overwrite needs force-push, denied). Container restarts lose local work.
-- User (2026-11-08): "Clear anything required to make room". A gate's cg
-  section leaves ~15 GB in build/cg; delete finished sections' build dirs and
-  ccache when free disk drops under ~5 GB mid-gate.
-- RI-23 (TI 393): TI takes block_report into tools/ once ri-blkrpt lands:
-  check-cg/check-ngd write per-unit group/NGD records at a clean gate.
-- RI-24 (TI 394): TI owes (1) ccv_rcu.sv into SV-hosted under CCV_RCU_RTL on
-  RI's push, (2) shims drive _wake high into RTL receivers now, a staged
-  one-cycle lead later, (3) job_rcu_rtl block lock-step from
-  ccv-skel --port-dump VCDs + event-log diff.
-- RI follow-ups: rcu_core.cpp:317 superset -> equality, then run
-  lead-sec-superset on the model RCU too. OI: FS=1 freelist units (TI 397).
+## Long runs
+Every long tool detaches itself and exits 5 (never 0) when it does (OA-414,
+518cb3c3). Wait with `tools/gate-wait.sh <job log>` as a background task,
+timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
+restart: rerun the job). Logs in /root/ccv-logs/.
+
+## State (2026-11-15)
+- Landed 11-15: bd1cc5a2 (SCOPED PASS 24/24 since e48fa517) on both working
+  branches: PF-47 (base 1: RCU_ADDR 1, L1_WAKE 13, L1_CMPL 14; ooe_wake defaults
+  13/15), CCV_P_TIMEOUT_UOP, RI's SFU pair, CCV_LAT_MIU_NOHIT_A2=2 (MA 56),
+  CCV_LAT_L1_NOHIT (AR 353/354; require NOHIT+2 <= L1_WAKE, OA 416).
+  TI row rev 439 rang OI, AR, MA, OA.
+- cm128 unbounded (AR 350/352) answered at TI rev 436: 73.6M cycles, holds
+  uop 8252, memop 19201 (< 20480).
+- Daily sweep conflicts were all .claude/handoff/RA.md: take RA's newest.
+- Worktree: /home/user/ti-sram. Backups to gate-scratch/TI-<name>, plain
+  push only. Disk: deleting other sessions' /tmp/tmp.* was denied; ask.
 
 ## Open work (most urgent first)
-1. RI-24 (3) job_rcu_rtl lock-step harness; (2) shim _wake.
-2. RI-23 per-unit records + tools/block_report.py.
-3. #97 ri-sfu merge with its four check-rcu-unit controls.
-4. Blocked: #59, #78, #22, #33, #96 (ccv_rcu.sv), #41, #34/#38/#46.
+0. LANDED 11-15: a5481843 (SCOPED PASS 24/24 since bd1cc5a2) on both working
+   branches: AR 356 (1) stub MIU MA-4 eligibility + early no-hit, OOE l1_nohit
+   on in the skeleton (OI's ooe_block.cpp), AR 359 (4) fix (TI's stub MIU: a
+   credit-late hit's cmpl could leave at the contract ahead of its data; fixes
+   5663e208 + 28f9ab48; cm128priv 64 KiB warm/perfect 0 CHECKs, was 672,
+   2,124,002 cycles), RI-54 merge + addr-late control, CCV_DCU_SETS 512,
+   DA 2026-11-15 budget rule docs. Landing row: see TI tab after rev 449.
+   NEXT (11-16): task 21 AR 362/MA 65 set_index/bank lead on ccv_miu_dcu_req +
+   page-offset require; task 19 RA 148; check-ngd 'by' enforcement of the
+   budget rule (unmeasured-parent modules, boundary ports/leads, boundary-
+   wired child pins), a negative control each; cover bin for the
+   credit-starved late hit. Daily sweep repo half: fresh worktree.
+0b. 11-16: RCU waivers signed (DA rev 122, Daniel in TI's session); RI's 05af449c landed as 93f0d75c (TI 451). OA 419 baseline line: OI carried it (0bd67c2b), nothing for TI. Dated to RI: RA 148 11-17, lane-op kill kernel 11-18.
+1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
+2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
+3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
+   ooe_rs from a flop. RI-21 (4): rcu_dec_pkg switch after sign-off.
