@@ -62,7 +62,7 @@ architect may approve only if the end meets module NGD without the flop; can't m
    CCV_RCU_KILL_DRAIN_CUT 0-15 passes on rokilllane (kill_lane 1) and rokill; cycles 1214->1206 by cut 8 then flat
    (rokill 104->94 by cut 10). Margin = whole drain 15. Logs ri-wt14/build/margin/. RI-58 (rev 87) + RI-59 correction
    (rev 88: model drops killed entries at Core::kill, not by epoch); notices RA. TODO after sweep push: rcu-exit.md
-   M4 + open list: DONE, be4ba8af pushed (SCOPED PASS 4/24 on ac0c899e); RI-60 (rev 89) asks TI to merge; TI 460: merges it after its sweep. b2748371 (dates dropped, TI-461) pushed SCOPED PASS; RI-61 (rev 90) asks TI to merge it instead; notice sent.
+   M4 + open list: DONE, be4ba8af pushed (SCOPED PASS 4/24 on ac0c899e); RI-60 (rev 89) asks TI to merge; TI 460: merges it after its sweep. b2748371 (dates dropped, TI-461) pushed SCOPED PASS; RI-61 (rev 90); TI 463: landed as 7192d4fc on both TI branches. Bookmark TI 463.
    Next sweep merges TI 1861cc51. Waiting: RA's sign-off report, then Daniel. Sweep 11-16 (item -19 in ri-wt13's handoff) merged
    doowtf 26, miu-dcu 19, 57eff422 15, 80102643 15, 9eb50716 11, 126afa13 10, 3868632d 6, c22116ce 5.
 -19. DONE (2026-11-16) Daily sweep, PASS full, pushed ac0c899e: ri-sweep16 in ri-wt13 = origin 05af449c + doowtf 26, miu-dcu-spec 19,
