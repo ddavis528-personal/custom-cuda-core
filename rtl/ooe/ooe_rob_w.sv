@@ -4,7 +4,7 @@
 // them, identical, slot WID each, so no synthesis run holds more than one
 // warp's ROB. All state is the slot's own. Three things cross warps, and
 // each instance reads them whole: Rename 2's fill lanes (it takes those
-// with fl_slot == WID), RCU's dones and MIU's completions and the branch
+// whose slot is WID, as Rename 2's per-slot valid fl_m), RCU's dones and MIU's completions and the branch
 // outcome on done slot BS (it takes those whose rob_tag's slot bits are
 // WID). Its frees and their leads are its own; ooe_freelist ORs the SA
 // instances' at its input (its FS sources). The per-slot ports are one
@@ -129,7 +129,9 @@ module ooe_rob_w #(
   input  logic                fl_l_cq01h,
   input  logic                fl_brl_cq01h,    // a branch among next cycle's fills (the records' lead)
   input  logic [A-1:0]        fl_v_cq02h,
-  input  logic [A*LS-1:0]     fl_slot_cq02h,
+  // This slot's fills: fl_v with the lane's slot this instance's, decoded and
+  // registered per slot by Rename 2 (OA 418, #52), lane bit WID wired here.
+  input  logic [A-1:0]        fl_m_cq02h,
   input  logic [A-1:0]        fl_nop_cq02h,
   input  logic [A-1:0]        fl_mem_cq02h,
   input  logic [A*2-1:0]      fl_rs_cq02h,     // its RS entries
@@ -437,15 +439,24 @@ module ooe_rob_w #(
         end
   end
   // The fills, per slot (NGD-3, #34): the lanes' slots decoded once (fm),
-  // their counts as thresholds (nfg: more than t arrive; nlg: more than k
-  // land, killed none in a squash, else the first kill count of them), and
+  // their count as thresholds (nfg: more than t arrive) and one-hot (nfe),
+  // how many of them land per count (lk: none in a squash, else all but
+  // the first kill count of them), and
   // each lane's entry from its rank among its slot's lanes before it, with
   // the fill pointer turned back by the kill count (wk) and the kill count
   // as thresholds (kgt), both from flops. Equivalent to counting lane by
   // lane, and no serial count in the fill's path.
   logic [A*S-1:0]     fm_cq02h;                // lane l's fill is for slot s (l * S + s)
-  logic [S*A-1:0]     nfg_cq02h, nlg_cq02h, kgt_cq02h;
-  logic [S*(A+1)-1:0] nfe_cq02h, nle_cq02h;    // exactly k arrive, land
+  logic [S*A-1:0]     nfg_cq02h, kgt_cq02h;
+  logic [S*(A+1)-1:0] nfe_cq02h;               // exactly k arrive
+  logic [S*(A+1)-1:0] nfr_cq02h;               // the same, none in a squash
+  // How many land, per count arriving, from flops (#52): a arriving land k
+  // (bit (s * (A + 1) + a) * (A + 1) + k), a less the kill count. A squash
+  // lands none, so a use of the count landing picks by nfr, which counts
+  // none arriving then: each such use is a pick by nfr of terms from flops,
+  // so only nfr's fanout is late, not a count derived from it, and the
+  // squash stays off the terms.
+  logic [S*(A+1)*(A+1)-1:0] lk_cq02h;
   logic [S*D-1:0]     wkf_cq02h;
   logic [LA-1:0]      frk_cq02h;               // a fill's rank among its slot's lanes before it
   logic [D-1:0]       fsl_cq02h;
@@ -453,7 +464,7 @@ module ooe_rob_w #(
     {frk_cq02h, fsl_cq02h, kl_cq02h} = '0;
     for (int l = 0; l < A; l++)
       for (int s = 0; s < S; s++)
-        fm_cq02h[l * S + s] = fl_v_cq02h[l] && fl_slot_cq02h[l * LS +: LS] == LS'(WID + s);
+        fm_cq02h[l * S + s] = fl_m_cq02h[l];
     for (int s = 0; s < S; s++) begin
       nfl_cq02h[s * LA +: LA] = '0;
       for (int l = 0; l < A; l++) nfl_cq02h[s * LA +: LA] = nfl_cq02h[s * LA +: LA] + LA'(fm_cq02h[l * S + s]);
@@ -464,15 +475,14 @@ module ooe_rob_w #(
         nfg_cq02h[s * A + t] = nfl_cq02h[s * LA +: LA] > LA'(t);
         kgt_cq02h[s * A + t] = (kc_cq02h[s * KC +: KC] >> (t + 1)) != '0;
       end
-      for (int k = 0; k < A; k++) begin
-        nlg_cq02h[s * A + k] = 1'b0;
-        for (int j = 0; j + k < A; j++)
-          nlg_cq02h[s * A + k] = nlg_cq02h[s * A + k] | (kc_cq02h[s * KC + j] & nfg_cq02h[s * A + k + j]);
-        nlg_cq02h[s * A + k] = nlg_cq02h[s * A + k] & ~rd_s_cq02h[s];
+      for (int a = 0; a < A + 1; a++) begin
+        for (int k = 1; k < A + 1; k++)
+          lk_cq02h[(s * (A + 1) + a) * (A + 1) + k] = a >= k && kc_cq02h[s * KC + (a >= k ? a - k : 0)];
+        lk_cq02h[(s * (A + 1) + a) * (A + 1)] = ~|lk_cq02h[(s * (A + 1) + a) * (A + 1) + 1 +: A];
       end
       for (int k = 0; k < A + 1; k++) begin
         nfe_cq02h[s * (A + 1) + k] = (k == 0 || nfg_cq02h[s * A + (k > 0 ? k - 1 : 0)]) && (k == A || !nfg_cq02h[s * A + (k < A ? k : 0)]);
-        nle_cq02h[s * (A + 1) + k] = (k == 0 || nlg_cq02h[s * A + (k > 0 ? k - 1 : 0)]) && (k == A || !nlg_cq02h[s * A + (k < A ? k : 0)]);
+        nfr_cq02h[s * (A + 1) + k] = k == 0 ? nfe_cq02h[s * (A + 1)] | rd_s_cq02h[s] : nfe_cq02h[s * (A + 1) + k] & ~rd_s_cq02h[s];
       end
     end
     fl_e_cq02h = '0;
@@ -740,7 +750,11 @@ module ooe_rob_w #(
   logic [A-1:0]    uxg_cq02h;
   logic [D+A:0]    ugd_cq02h;                  // a release's thresholds: ufh more than t
   logic [D:0]      uxr_cq02h;                  // a release's: ux more than m, picked by nlv
-  logic [A:0]      nk_cq02h;                   // the kill count's step, one-hot
+  // A term from flops for each count arriving, picked by nfe (lk, #52).
+  logic [NC-1:0]   yn_cq02h, yt_cq02h;
+  logic [D-1:0]    yd_cq02h, ye_cq02h;
+  logic [KC-1:0]   yk_cq02h;
+  logic            yg_cq02h;
   logic            anyp_cq02h;
   logic [S*A-1:0]  ugt_nx_cq02h;
   logic [S*RP-1:0] w_nx_cq02h, wg_nx_cq02h, wp_nx_cq02h, wgf_nx_cq02h, wpf_nx_cq02h, wn_nx_cq02h;
@@ -772,7 +786,8 @@ module ooe_rob_w #(
     {ox_cq02h, ux_cq02h, uxa_cq02h, sc_cq02h} = '0;
     {hm_cq02h, xr_cq02h, wok_cq02h, wk_cq02h, gfe_v_cq02h, pfe_v_cq02h} = '0;
     {th_nx_cq02h, tk_cq02h, ufm_nx_cq02h, ufl_cq02h} = '0;
-    {dt_cq02h, rsel_cq02h, mku_cq02h, mkd_cq02h, nk_cq02h, ug_cq02h, uxg_cq02h, ugd_cq02h, uxr_cq02h} = '0;
+    {yn_cq02h, yt_cq02h, yd_cq02h, ye_cq02h, yk_cq02h, yg_cq02h} = '0;
+    {dt_cq02h, rsel_cq02h, mku_cq02h, mkd_cq02h, ug_cq02h, uxg_cq02h, ugd_cq02h, uxr_cq02h} = '0;
     {r0u_cq02h, r0d_cq02h, rdf_cq02h, rsq_cq02h, rcht_cq02h, ochs_cq02h, r0_cq02h} = '0;
     {anyp_cq02h, wpr_cq02h, nak_cq02h, mkj_cq02h, wns_cq02h, cok_cq02h} = '0;
     {coks_cq02h, cokp_cq02h, drk_cq02h, ock_cq02h, cmk_cq02h, ckp_cq02h, ckq_cq02h, hkb_cq02h} = '0;
@@ -789,20 +804,27 @@ module ooe_rob_w #(
       // after every fill arriving (a squash's kill count).
       ux_cq02h = '0;
       uxa_cq02h = '0;
-      for (int k = 0; k < A + 1; k++) begin
-        ux_cq02h  = ux_cq02h  | ({NC{nle_cq02h[s * (A + 1) + k]}} & (ufh_cq02h[s * NC +: NC] >> k));
-        uxa_cq02h = uxa_cq02h | ({NC{nfe_cq02h[s * (A + 1) + k]}} & (ufh_cq02h[s * NC +: NC] >> k));
-        uxt_cq02h = uxt_cq02h | ({NC{nle_cq02h[s * (A + 1) + k]}} & (uft_cq02h[s * NC +: NC] >> k));
+      for (int a = 0; a < A + 1; a++) begin
+        yn_cq02h = '0;
+        yt_cq02h = '0;
+        for (int k = 0; k < A + 1; k++) begin
+          yn_cq02h = yn_cq02h | ({NC{lk_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & (ufh_cq02h[s * NC +: NC] >> k));
+          yt_cq02h = yt_cq02h | ({NC{lk_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & (uft_cq02h[s * NC +: NC] >> k));
+        end
+        ux_cq02h  = ux_cq02h  | ({NC{nfr_cq02h[s * (A + 1) + a]}} & yn_cq02h);
+        uxt_cq02h = uxt_cq02h | ({NC{nfr_cq02h[s * (A + 1) + a]}} & yt_cq02h);
+        uxa_cq02h = uxa_cq02h | ({NC{nfe_cq02h[s * (A + 1) + a]}} & (ufh_cq02h[s * NC +: NC] >> a));
       end
       // The kill count less this cycle's kills.
-      // nk is n when the fills arriving number f and those landing f - n,
-      // both one-hot, so no subtraction sits on the count's path.
+      // a arriving and k landing take a - k from it: per a, from flops,
+      // picked by nfe, so no subtraction sits on the count's path. (A
+      // squash's own count is set below, from every fill arriving.)
       kc_nx_cq02h[s * KC +: KC] = '0;
-      for (int n = 0; n < A + 1; n++) begin
-        nk_cq02h[n] = 1'b0;
-        for (int f = n; f < A + 1; f++)
-          nk_cq02h[n] = nk_cq02h[n] | (nfe_cq02h[s * (A + 1) + f] & nle_cq02h[s * (A + 1) + f - n]);
-        kc_nx_cq02h[s * KC +: KC] = kc_nx_cq02h[s * KC +: KC] | ({KC{nk_cq02h[n]}} & (kc_cq02h[s * KC +: KC] >> n));
+      for (int a = 0; a < A + 1; a++) begin
+        yk_cq02h = '0;
+        for (int k = 0; k < a + 1; k++)
+          yk_cq02h = yk_cq02h | ({KC{lk_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & (kc_cq02h[s * KC +: KC] >> (a - k)));
+        kc_nx_cq02h[s * KC +: KC] = kc_nx_cq02h[s * KC +: KC] | ({KC{nfe_cq02h[s * (A + 1) + a]}} & yk_cq02h);
       end
       och_nx_cq02h[s * NC +: NC] = '0;
       ufh_nx_cq02h[s * NC +: NC] = '0;
@@ -818,8 +840,13 @@ module ooe_rob_w #(
       // The unfilled mask: the fills that land leave it (the first nlv from
       // the fill pointer), this cycle's allocations join it.
       ufl_cq02h = '0;
-      for (int k = 0; k < A; k++)
-        if (nlg_cq02h[s * A + k]) ufl_cq02h = ufl_cq02h | rotl(woh_cq02h[s * D +: D], k);
+      for (int a = 0; a < A + 1; a++) begin
+        yd_cq02h = '0;
+        for (int k = 1; k < A + 1; k++)
+          for (int q = 0; q < k; q++)
+            yd_cq02h = yd_cq02h | ({D{lk_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & rotl(woh_cq02h[s * D +: D], q));
+        ufl_cq02h = ufl_cq02h | ({D{nfr_cq02h[s * (A + 1) + a]}} & yd_cq02h);
+      end
       ufm_nx_cq02h[s * D +: D] = (ufq_cq02h[s * D +: D] & ~ufl_cq02h) | al_e_cq02h[s * D +: D];
       // More than j unfilled after this cycle: the go's count picks which
       // of the fills' thresholds applies (ux more than j - a, for a count a).
@@ -829,8 +856,11 @@ module ooe_rob_w #(
       for (int t = 0; t < 2 * A + 1; t++) ug_cq02h[t] = uft_cq02h[s * NC + t];
       for (int m = 0; m < A; m++) begin
         uxg_cq02h[m] = 1'b0;
-        for (int k = 0; k < A + 1; k++)
-          uxg_cq02h[m] = uxg_cq02h[m] | (nle_cq02h[s * (A + 1) + k] & ug_cq02h[m + k + 1]);
+        for (int a = 0; a < A + 1; a++) begin
+          yg_cq02h = 1'b0;
+          for (int k = 0; k < A + 1; k++) yg_cq02h = yg_cq02h | (lk_cq02h[(s * (A + 1) + a) * (A + 1) + k] & ug_cq02h[m + k + 1]);
+          uxg_cq02h[m] = uxg_cq02h[m] | (nfr_cq02h[s * (A + 1) + a] & yg_cq02h);
+        end
       end
       for (int j = 0; j < A; j++) begin
         ugt_nx_cq02h[s * A + j] = 1'b0;
@@ -849,9 +879,11 @@ module ooe_rob_w #(
                                    ((nret_cq02h[s * LA +: LA] == LA'(k)) & (|(tk_cq02h & D'((64'(1) << (i + 1)) - 1))));
       end
       woh_nx_cq02h[s * D +: D] = '0;
-      for (int k = 0; k < A + 1; k++)
-        woh_nx_cq02h[s * D +: D] = woh_nx_cq02h[s * D +: D] |
-                                   ({D{nle_cq02h[s * (A + 1) + k]}} & rotl(woh_cq02h[s * D +: D], k));
+      for (int a = 0; a < A + 1; a++) begin
+        ye_cq02h = '0;
+        for (int k = 0; k < A + 1; k++) ye_cq02h = ye_cq02h | ({D{lk_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & rotl(woh_cq02h[s * D +: D], k));
+        woh_nx_cq02h[s * D +: D] = woh_nx_cq02h[s * D +: D] | ({D{nfr_cq02h[s * (A + 1) + a]}} & ye_cq02h);
+      end
       uxa_all_cq02h[s * NC +: NC] = '0;
       if (rd_t_cq02h[s]) begin
         // The squash (no allocation in its cycle, asserted): the tail and
@@ -897,8 +929,11 @@ module ooe_rob_w #(
         for (int t = 0; t < D + A + 1; t++) ugd_cq02h[t] = t < NC ? uft_cq02h[s * NC + (t < NC ? t : 0)] : 1'b0;
         for (int m = 1; m < D + 1; m++) begin
           uxr_cq02h[m] = 1'b0;
-          for (int k = 0; k < A + 1; k++)
-            uxr_cq02h[m] = uxr_cq02h[m] | (nle_cq02h[s * (A + 1) + k] & ugd_cq02h[m + k]);
+          for (int a = 0; a < A + 1; a++) begin
+            yg_cq02h = 1'b0;
+            for (int k = 0; k < A + 1; k++) yg_cq02h = yg_cq02h | (lk_cq02h[(s * (A + 1) + a) * (A + 1) + k] & ugd_cq02h[m + k]);
+            uxr_cq02h[m] = uxr_cq02h[m] | (nfr_cq02h[s * (A + 1) + a] & yg_cq02h);
+          end
         end
         for (int i = 0; i < D; i++) begin
           ufm_nx_cq02h[s * D + i] = 1'b0;
@@ -1667,8 +1702,11 @@ module ooe_rob_w #(
     if (rst_r01h)         cmt_v_cq03h <= '0;
     else if (rb_en_cq02h) cmt_v_cq03h <= cmt_nx_cq02h;
   end
+  // Reset, so the slot's bits read the same before the first store commits
+  // in the RTL as in a netlist that folds them to WID * D (CG replay, #52).
   always_ff @(posedge ooe_core_clk)
-    if (rf_en_cq02h) cmt_tag_cq03h <= ctag_nx_cq02h;
+    if (rst_r01h)         cmt_tag_cq03h <= '0;
+    else if (rf_en_cq02h) cmt_tag_cq03h <= ctag_nx_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       gfree_cq03h <= '0;
@@ -1685,8 +1723,7 @@ module ooe_rob_w #(
   // fill's branch fields, so its enable is from this module's flops (CG-5);
   // a done reads it no earlier than two cycles after the fill (asserted).
   localparam int RW = 1 + 1 + 32 + PCW + PCW + 16;   // ptaken, ret, gmask, pcn, tgt, pchi
-  logic [A-1:0]      fp_v_cq02h;                    // the fill register: a branch lane
-  logic [A*LS-1:0]   fp_slot_cq02h;
+  logic [A-1:0]      fp_v_cq02h;                    // the fill register: this slot's branch lane
   logic [A*LK-1:0]   fp_ck_cq02h;
   logic [A*RW-1:0]   fp_rec_cq02h;
   logic              fp_q_cq02h;                    // the register holds a branch
@@ -1699,8 +1736,7 @@ module ooe_rob_w #(
   end
   always_ff @(posedge ooe_core_clk) begin
     if (fbr_en_cq02h) begin
-      fp_v_cq02h    <= fl_v_cq02h & fl_br_cq02h & ~fl_nop_cq02h & ~fk_cq02h;   // a killed fill writes no record
-      fp_slot_cq02h <= fl_slot_cq02h;
+      fp_v_cq02h    <= fl_m_cq02h & fl_br_cq02h & ~fl_nop_cq02h & ~fk_cq02h;   // a killed fill writes no record
       fp_ck_cq02h   <= fl_ckpt_cq02h;
       for (int l = 0; l < A; l++)
         fp_rec_cq02h[l * RW +: RW] <= {fl_ptaken_cq02h[l], fl_ret_cq02h[l], fl_gmask_cq02h[l * 32 +: 32],
@@ -1715,7 +1751,7 @@ module ooe_rob_w #(
     rw_nx_cq02h = '0;
     for (int r = 0; r < S * NK; r++)
       for (int l = 0; l < A; l++)
-        if (fp_v_cq02h[l] && fp_slot_cq02h[l * LS +: LS] == LS'(WID + r / NK) && fp_ck_cq02h[l * LK +: LK] == LK'(r % NK)) begin
+        if (fp_v_cq02h[l] && fp_ck_cq02h[l * LK +: LK] == LK'(r % NK)) begin   // S is 1: every record this slot's
           rw_en_cq02h[r] = fp_q_cq02h;
           rw_nx_cq02h[r * RW +: RW] = rw_nx_cq02h[r * RW +: RW] | fp_rec_cq02h[l * RW +: RW];
         end
@@ -2080,8 +2116,9 @@ module ooe_rob_w #(
     end
     bo_early_cq02h = 1'b0;
     for (int l = 0; l < A; l++)
+      // bo_br_nx is this slot's done, and fp_v holds only this slot's lanes.
       if (dn_q_cq02h[BS] && bo_br_nx_cq02h && fp_q_cq02h && fp_v_cq02h[l] &&
-          fp_slot_cq02h[l * LS +: LS] == dn_tag_cq02h[BS * TW + LD +: LS] && fp_ck_cq02h[l * LK +: LK] == bo_ck_nx_cq02h)
+          fp_ck_cq02h[l * LK +: LK] == bo_ck_nx_cq02h)
         bo_early_cq02h = 1'b1;
   end
   `CCV_ASSERT(branch_done_on_bs, dn_brx_cq02h == '0)

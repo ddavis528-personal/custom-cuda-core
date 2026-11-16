@@ -389,6 +389,93 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "g_w[0].u_w"
       }
+    },
+    {
+      "name": "ooe_rob_w_1",
+      "module": "ooe_rob_w",
+      "files": [
+        "rtl/ooe/ooe_rob_w.sv"
+      ],
+      "params": {
+        "SA": 4,
+        "WID": 1,
+        "D": 32,
+        "RP": 2,
+        "A": 4,
+        "ND": 7,
+        "NM": 4,
+        "GW": 10,
+        "GR": 8,
+        "NG": 192,
+        "NS": 4,
+        "PW": 6,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rob_w {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "g_w[1].u_w"
+      }
+    },
+    {
+      "name": "ooe_rob_w_2",
+      "module": "ooe_rob_w",
+      "files": [
+        "rtl/ooe/ooe_rob_w.sv"
+      ],
+      "params": {
+        "SA": 4,
+        "WID": 2,
+        "D": 32,
+        "RP": 2,
+        "A": 4,
+        "ND": 7,
+        "NM": 4,
+        "GW": 10,
+        "GR": 8,
+        "NG": 192,
+        "NS": 4,
+        "PW": 6,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rob_w {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "g_w[2].u_w"
+      }
+    },
+    {
+      "name": "ooe_rob_w_3",
+      "module": "ooe_rob_w",
+      "files": [
+        "rtl/ooe/ooe_rob_w.sv"
+      ],
+      "params": {
+        "SA": 4,
+        "WID": 3,
+        "D": 32,
+        "RP": 2,
+        "A": 4,
+        "ND": 7,
+        "NM": 4,
+        "GW": 10,
+        "GR": 8,
+        "NG": 192,
+        "NS": 4,
+        "PW": 6,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rob_w {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "g_w[3].u_w"
+      }
     }
   ]
 }
