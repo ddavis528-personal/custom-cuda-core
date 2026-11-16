@@ -16,7 +16,8 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
+- Last push: 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
+  Before: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
   Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
   (kill detector in the top, CG unit ccv_rcu, per-slot ngd.json), TI's 079b64c2 and the daily sweep merges.
@@ -52,6 +53,27 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-18. DONE (2026-11-15) Daniel SIGNED the 3 owner CG waivers (RI-47) in conversation. 05af449c on ri-signoff
+   (ri-wt12; = ce5f44dd + ri-asm handoff + cg-waivers "by" names signature + rcu-exit.md to ce5f44dd, open list
+   refreshed). Scoped gate-push: job-gate-push-20261115-174608-425.log (waiter b4z0hvuku; check-cg/ngd in scope,
+   ~3.5h). RI-55 (RI tab rev 84) written, notices TI + RA (asked for dates). ON PUSH: tell TI the commit to merge
+   (short RI row or note), update handoff, task 35 done. PUSHED 05af449c (SCOPED PASS 21/24); RI-56 (rev 85)
+   asks TI to merge it, notice sent. NEXT: daily sweep merges TI a5481843; RA report 11-17. Bookmark RI 85.
+   DA 122 (via TI): Daniel confirmed the signature to TI; recorded in DA tab. TI gating its merge of 05af449c.
+   RA's report has all it needs. Bookmark DA 122.
+   TI-451: 05af449c merged as 93f0d75c on both TI working branches. Dates slipped: (c) stub/refusal 11-17,
+   (d) kill kernel 11-18, so RA's report (tied to the kernel) likely 11-18. On the kernel: record M4 margin in
+   rcu-exit.md. Bookmark TI 451.
+   RI-57 (rev 86): Daniel asked TI whether the plain rokill kernel (no SFU) can land before 11-18; notice sent.
+   Relay TI's answer to Daniel. Bookmark RI 86.
+   TI-452: plain rokill kernel lands 11-17 (SFU variant later); RA 148 stub/refusal moves to 11-18. Tell RA?
+   RA ties its report to the kernel, so 11-17. Bookmark TI 452.
+   TI-448: (b) addr-late + merge in ti-nohit gate today; (c) RA 148 stub/refusal 11-16; (d) kill kernel 11-17;
+   (a) DA-tab record waits on Daniel confirming to TI directly (asked Daniel). Bookmark TI 448.
+   RA 150: sign-off report to DA 11-17 (with TI's rokill kernel); reconciliation on tip after ti-nohit; needs
+   the waiver signature in the DA tab; nothing more from RI. Bookmark RA 150.
+   TI-450: a5481843 landed (ti-nohit): RI-54 merged, addr-late in check-rcu-unit (8), AR 359 (4) stub MIU fix,
+   CCV_DCU_SETS 512. Next sweep merges it. Bookmark TI 450.
 -17. DONE (2026-11-15) Sweep 2026-11-15 + RA 148/AR 356 (2): pushed ce5f44dd (full clean gate PASS; ri-sweep15
    in ri-wt12) = TI doowtf bd1cc5a2 + 8f00fdf8 (model times address from CCV_LAT_RCU_ADDR; base 2 tried:
    correct, only base-1-tuned bins move, ~/ccv-logs/ri-addrbase2-check-kernel.log) + sweep merges (126afa13,
