@@ -318,7 +318,20 @@ AR rules its bound; RA declines fallback (c) PF-47=2, prefers (a)/(b). PF-47 hel
 RI-53 (RI 82): SFU pair 9f513f3b pushed on RI's branch, matches rev 146; TI to merge. TI 436: AR 352 bound, cm32/cm128
 unbounded clean with PF-47=1 (uop 8252, memop 19201 of 20480); PF-47 pushing. TI-440 / RA rev 148: model (RI) and stub
 (TI) time the address from CCV_LAT_RCU_ADDR_BASE; RTL stays at 1, a check refuses RTL at base != 1; low priority.
-Bookmarks: OA 416, RA 148, RI 82, TI 440, AR 351, DA 119, OI 348, Conventions 19, CP 157, IS 193, MA 54.
+AR 356 agrees with rev 148 (RI builds; control fails when model/stub differ from the param). PF-47 landed (TI bd1cc5a2,
+CCV_LAT_L1_NOHIT; OA final). AR 357/358: perf benches price coremark-derived-priv.
+2026-11-15 sweep: merged 183cc441 (57), 57eff422 (14), 80102643 (18), 9eb50716 (4), c22116ce (1), miu-dcu-spec (16);
+518cb3c3 now on this branch: gates detach, wait with tools/gate-wait.sh.
+RI-54 (RI 83): model times address from the param, addr-late control; TI merges ce5f44dd. TI-445 / RA rev 149: owner may
+move a budget convergence proves (TI cites Daniel; NOT in DA tab at 119; asked DA to record); gap: child port wired to a
+ccv_rcu block port stays RA's.
+TI-446: boundary-wired child pins stay architect's (ea9bca63); check-ngd enforces after ti-nohit. DA 120 (recorded by TI):
+the budget ruling. RI-55: Daniel signed RI-47's 3 waivers in RI's session (NOT yet in DA tab; TI 448 asking him).
+RA rev 150: RCU sign-off report to DA on 2026-11-17.
+DA 122: Daniel's waiver signature recorded (sign-off condition met). TI 452/RI-57: rokill lands 11-17. TI 453: RA 148's
+TI half slips to 11-19 (post-sign-off). DA 123: arrays 1RW SRAM half-rate or RF (3x/bit); RA rev 151: RCU has no SRAM
+macro (flop arrays), unaffected.
+Bookmarks: OA 418, RA 151, RI 86, TI 453, DA 123, AR 358, OI 350, Conventions 19, CP 158, IS 194, MA 59.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -348,8 +361,12 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
-- NEXT SWEEP: check 518cb3c3 is an ancestor after the merge (TI 434: on TI's branch); if not, CCV_FOREGROUND=1.
-  If it is, launch gates per TI 420 and wait with tools/gate-wait.sh <job log> (exit 3 = rerun, 4 = killed).
+- GATES: 518cb3c3 is merged (2026-11-15): launch gate-push, then tools/gate-wait.sh <job log> (exit 3 = rerun, 4 = killed).
+- RCU SIGN-OFF (RA rev 150, due 2026-11-17): (1) after ti-nohit lands (TI 448: 2026-11-15) and TI 448 (c) (stub addr
+  timing + RTL refusal at base != 1, now 2026-11-19, post-sign-off: don't wait), delta-reconcile spec vs tip: SFU class (rev 146), PF-47=1 addr stages
+  (rev 145), addr from param (rev 148/RI-54), waivers (RI-47); fix spec tabs via a subagent, refresh snapshots.
+  (2) when TI's rokill kernel lands (TI 448 (d), 2026-11-17) (waiver signature: DA 122, done), report to Daniel
+  for sign-off; SFU-in-flight kill variant listed post-sign-off.
 - PHASE 5 (rcu-impl.md): spec reconciled (RA rev 140/141); RI's rev 140 items closed (RA rev 142). Before DA
   sign-off: rev 143 CLOSED (TI 430); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
   ADDR_BASE. Reported to Daniel 2026-11-14.
