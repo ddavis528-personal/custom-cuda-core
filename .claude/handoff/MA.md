@@ -29,7 +29,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 354, TI 441, OA 417, IS 193, CP 157, OI 348, RA 146, RI 79, MA 58, DA 119.
+Conventions 19, AR 354, TI 441, OA 417, IS 193, CP 158, OI 348, RA 146, RI 79, MA 59, DA 119. CP 158.
 
 ## State, 2026-11-13
 
@@ -74,7 +74,8 @@ Conventions 19, AR 354, TI 441, OA 417, IS 193, CP 157, OI 348, RA 146, RI 79, M
 
 - MA 57-58 (TI 440-441): cm32 gathers are all 25-32 lines (one per lane), PF-46 per-thread
   blocks via ordinary .global, none in IS-24's window: ports closed as a fix (no 6/8-port
-  pricing in Phase 1). Asked IS (cc AR, CP) whether those blocks belong in option W's window.
+  pricing in Phase 1). CP-82: coremark-derived-priv already uses the window; MA 59 asks AR to make it the
+  sweep baseline (.global secondary); Phase 1 sizes on the window form.
   1-line late loads are stub effects; endorsed TI's AR 356 stub change (first pass first).
 
 - MA 55-56 (re:TI-437, AR 353-354, TI 438): no-hit settled. CCV_LAT_MIU_NOHIT_A2 = 2 (A1 at H,

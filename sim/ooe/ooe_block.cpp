@@ -153,6 +153,9 @@ private:
     // (TI-1) and the final compare reads through Kernel::prat0 (OI-3).
     // CCV_OOE_CONFIG=rename_preds=0 restores the fixed physPred windows.
     c.memop_rcu_done = false; // RCU sends no done for a memop (OI-4)
+    // MIU sends the early no-hit by MA-4's eligibility (AR 356), so OOE
+    // takes it (OA 410). CCV_OOE_CONFIG=l1_nohit=0 ignores it, as before.
+    c.l1_nohit = true;
     // Sectioned lanes (OI-29 to OI-33): registers are slices of rows, and
     // select grants the nine resources one op each (V-60). Every S1 op is
     // full width, so a cycle carries one lane op, one memop and one RCU op.

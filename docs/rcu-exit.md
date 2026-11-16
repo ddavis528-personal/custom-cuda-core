@@ -8,9 +8,11 @@ built."
 
 Measured at 7e10e72f (2026-11-13). The gate is
 `verify-7e10e72f-20261113-2049.log`, SCOPED PASS 15/24, with check-cg and
-check-ngd included. The last full gate is 7e29cef5, SPLIT PASS 24/24. The
-figures the gate doesn't print were measured at the same commit by the
-commands below.
+check-ngd included. The figures the gate doesn't print were measured at the
+same commit by the commands below. Confirmed since by the full clean gate on
+ce5f44dd (`verify-ce5f44dd-20261115-1037.log`, PASS, 2026-11-15), which
+carries the SFU class (RA rev 146), the split tree with the RTL (TI 7079fc14)
+and the address timed from `CCV_LAT_RCU_ADDR` (RA rev 148).
 
 ## Summary
 
@@ -94,7 +96,8 @@ RA's ruling on RI-46 (rev 139): the target is restated as ≤ 16 without the fan
   - the RTL's final register compare clean;
   - the four `*_demote` runs clean;
   - the compare's controls (ev, gate, row) and the flip control fail as they must.
-- Every derived CCV_LAT_LANE (RA rev 143): the RTL needs no change. The lanes bench and the Q-53 arrival check take the derived latencies (a61a79ca), and the split tree (`test/phys/links_split.json`, CCV_LAT_LANE 11) passes locally with `credit_on_receipt` for `miu_rcu_data@rcu` added. check-links still runs it with `CCV_SVH_RCU_RTL=0` until TI adds that entry and drops the skip (RI-49, RI-50).
+- Every derived CCV_LAT_LANE (RA rev 143): the RTL needs no change. The lanes bench and the Q-53 arrival check take the derived latencies (a61a79ca). The split tree (`test/phys/links_split.json`, CCV_LAT_LANE 11) carries `credit_on_receipt` for `miu_rcu_data@rcu`, and its SV-hosted run includes RCU's RTL (TI 7079fc14, RI-49, RI-50). The full gate on ce5f44dd prints `split: every kernel with OOE's bypass PASS (CCV_LAT_LANE 11, ...)`.
+- The address cycle (RA rev 148, AR 356 (2)): the model launches an address at A + CCV_LAT_RCU_ADDR - 1 (8f00fdf8), the RTL's structural pipe at A, the same at base 1. The unit test `addr-cycle` holds the model to the param, and its control `addr-late` fails as it must (0fe15d9a). At base 2, tried and reverted, every kernel still equals ccv-sim; only checks tuned to base 1 move (RI-54). The RTL stays structural at 1; TI adds a check that refuses it at any other base (RA rev 148).
 
 ## Waivers for Daniel's signature
 
@@ -105,7 +108,7 @@ There are 8 RCU entries in `rtl/cg-waivers.json`, all written by RI as the owner
   - rcu_r CG-5: imm and rrow, 48 flops.
   - rcu_isd CG-5: the class word and its lead copies (RA 131).
 - Credit waiver, under Daniel's ruling (RA rev 88): rcu_kill CG-1, the credit-return pulses, 41 flops.
-- Owner waivers with no ruling cited, for Daniel to sign or refuse:
+- Owner waivers, signed by Daniel on 2026-11-15 (RI-47, RI-55; each entry's `by` says so):
   - rcu_lanes CG-3, `pcm_n_cr04h`: PC's merge mask, 4 × 32 flops. Its floors are medium 49% and high 65%; measured 51% and 67%.
   - rcu_kill CG-4, `kd_cr02h`: the kill drain counter, 4 flops (max 4: $clog2(KILL_DRAIN + 1) at KILL_DRAIN 15).
   - rcu_kill CG-4, `kaep_q_cr03h`: the kill ack epoch, 2 flops.
@@ -114,8 +117,11 @@ There are 8 RCU entries in `rtl/cg-waivers.json`, all written by RI as the owner
 
 ## Still open before sign-off
 
-1. **The split tree with the RTL:** TI merges 468fb286, adds the `credit_on_receipt` entry to `test/phys/links_split.json` and drops `CCV_SVH_RCU_RTL=0` from check-links (RI-49, RI-50; RA rev 143).
-2. **Daniel:** the three owner waivers above (RI-47; RA has no architectural objection), and the sign-off.
-3. **RA:** reconciling the spec with what was built (`docs/rcu-impl.md`, phase 5). RA's phase-5 items for RI (rev 140) are all closed (RA rev 142). That includes (6): under the full-row interim every GPR load overlaps section 0, so MIU never co-issues two and `one_load_a_bank` holds as built; it narrows to per bank when FULL_ROW goes (RA rev 141, MA 54). RA reports to DA.
-4. **Block report:** `docs/rcu-block-report.md` (cells, flops, gating, DCGE, the 2% budget, depth histogram) at 5516e643.
-5. **Not blocking:** TI's kill kernel with a lane op in flight, an rokill variant (M4's kernel margin; TI rev 425; an SFU op once the SFU class lands), and the end-to-end SW check through the block.
+1. **Daniel:** the sign-off, after RA's report. The three owner waivers are signed (2026-11-15, RI-55).
+2. **RA:** reconciling the spec with what was built (`docs/rcu-impl.md`, phase 5). RA's phase-5 items for RI (rev 140) are all closed (RA rev 142). That includes (6): under the full-row interim every GPR load overlaps section 0, so MIU never co-issues two and `one_load_a_bank` holds as built; it narrows to per bank when FULL_ROW goes (RA rev 141, MA 54). RA reports to DA.
+3. **Block report:** `docs/rcu-block-report.md` (cells, flops, gating, DCGE, the 2% budget, depth histogram) at 5516e643.
+4. **Not blocking, TI's:**
+   - the kill kernel with a lane op in flight, an rokill variant (M4's kernel margin; TI rev 425), and its SFU variant, which needs a lane stub that sends SFU results; then the end-to-end SW check through the block. RI records the margin when it lands.
+   - `addr-late` in `tools/check-rcu-unit.sh`'s control list (7 to 8), and the stub's address timed from the param with the RTL refused at a base other than 1 (RI-54; RA rev 148).
+
+Closed since 2026-11-14: the split tree with the RTL (TI 7079fc14; RA rev 143), the SFU class in the model's decode (RA rev 146, 9f513f3b), and the address cycle (RA rev 148, ce5f44dd).
