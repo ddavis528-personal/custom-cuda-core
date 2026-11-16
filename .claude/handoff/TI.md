@@ -81,11 +81,12 @@ date. A date in another agent's row is read as a priority, not a deadline.
    on ti-sweep16); LANDED: the 11-16 sweep's full gate passed on 804d1e6f,
    pushed to both working branches and release (21d2fb26). TI 458-460. After it lands:
    LANDED 7192d4fc: RI's b2748371 + no-dates CLAUDE.md (SCOPED PASS 4/24); TI 462 rang OI, IS; TI 463 rang RI.
-   NEXT, in priority order (no dates, DA 2026-11-16): task 19 RA 148 (unblocks
-   RI's RCU RTL); task 22 MA-16/DA 123 macro library: sram_1rw 2-cycle read
-   + ce-not-back-to-back assertion (RTL, sram.h, check-ngd NGD-8), sram_1r1w ->
-   ccv_common_rf_1r1w (area 3/bit) and move its users; check-ngd budget-rule
-   'by' enforcement; credit-starved late-hit cover bin; SFU kill variant.
+   NEXT, in priority order (no dates, DA 2026-11-16): task 22 MA-16/DA 123
+   macro library: sram_1rw 2-cycle read + ce-not-back-to-back assertion (RTL,
+   sram.h, check-ngd NGD-8), sram_1r1w -> ccv_common_rf_1r1w (area 3/bit) and
+   move its users (RCU uses none: RA rev 151); check-ngd budget-rule 'by'
+   enforcement; credit-starved late-hit cover bin; task 19 RA 148 (RA rev
+   148/150: low priority, post-sign-off, nothing waits on it); SFU kill variant.
 1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
 2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
 3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
