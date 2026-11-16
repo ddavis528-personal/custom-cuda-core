@@ -153,8 +153,13 @@ register or port).
 
 Logic depth (Daniel, 2026-10-17; `docs/rtl-coding-style.md`): 25 NGD of
 combinational logic between flops, the flop outside it. Each module port has
-12 NGD a side by default; a port over it needs the architect's budgets, one
-file per module beside its RTL (`<module>.ngd.json`). Nothing straight
+12 NGD a side by default; a port over it needs budgets, one file per module
+beside its RTL (`<module>.ngd.json`). Where convergence times the connection
+(the module's parent has a unit), its owner sets them, check-ngd passing;
+where it does not yet (no measured parent, a block boundary port, or a
+child port wired straight to one), its
+architect does (Daniel, 2026-11-15; `docs/rtl-coding-style.md`, "Who may
+move a budget"). Nothing straight
 through a module, input to output, not even a wire, nor logic in a parent
 between its children (2026-10-18): connect a wire directly, group logic with
 one sequential side, or declare a combinational module an inner helper in

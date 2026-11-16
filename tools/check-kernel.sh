@@ -138,6 +138,9 @@
 #     reads the value its lane forwards          bypass): four stale operands;
 #     (A-59, TI-8)                               an OOE bypassing at 3: RCU
 #                                                refuses it
+#   a load MA-4 takes off the L1-hit        no-nohit (gather): its
+#     contract gets the early no-hit           l1_nohit bin goes unreached
+#     (AR 356, OA 410)
 #   a notice's partner follows on its slot  late-refill, notice-wrong-id,
 #     exactly its lead later, same keys        late-cmpl, hint-wrong-tag
 #     (OA-23, TI-23)                           (vadd): the bank's notice check
@@ -188,6 +191,8 @@
 #     (OI-125, AR rev 314)                     refuses each replay's lead;
 #                                              lead-fault-drop (roconst):
 #                                              and a fault with none
+#   a lookup's set and bank lead it, copies   dcu-set-lead, dcu-bank-lead
+#     of its PA bits (AR 362)                  (hit): DCU refuses each
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -790,15 +795,15 @@ while read -r k want; do
     bad "$k: == ccv-sim, reaches its bins" "${why# }"
   fi
 done <<'KERNELS'
-unal   line_split=3 lines_peak=2 partial_line=2 full_line=0
-gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait=0
+unal   line_split=3 lines_peak=2 partial_line=2 full_line=0 l1_inelig=2 l1_nohit=2
+gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait=0 l1_inelig=1 l1_nohit=1
 gather@CCV_MIU_DCU_IDS=16 lines_peak=32 dcu_id_wait>0 hit_under_miss=2
 loop   redirect=99 ckpt_free=1 reg_reuse>0
 brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
-hit    l1_hit=4 l1_late=0
+hit    l1_hit=4 l1_late=0 l1_inelig=0
 late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=3
 plog   merge=3
@@ -1287,6 +1292,19 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-fault-drop.log" check_failures)"
 else
   bad "--break lead-fault-drop" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-fault-drop.log")"
 fi
+# AR 362: ccv_miu_dcu_req's set index and bank lead the PA by a cycle, as
+# copies of its bits. dcu-set-lead and dcu-bank-lead send a wrong one on
+# every lookup; DCU must refuse each by name, and nothing else.
+for b in set bank; do
+  "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break dcu-$b-lead >"$B/kernel_dcu-$b-lead.log" 2>&1
+  n=$(grep -c "^CHECK dcu: slot [0-9]* req_id [0-9]* lead_$( [ $b = set ] && echo set_index || echo bank ) " "$B/kernel_dcu-$b-lead.log")
+  if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_dcu-$b-lead.log" check_failures)" = "$n" ] &&
+     [ "$(field "$B/kernel_dcu-$b-lead.log" dcu_lookups)" = "$n" ]; then
+    say "--break dcu-$b-lead: DCU refuses each wrong lead" "PASS ($n lookups)"
+  else
+    bad "--break dcu-$b-lead" "$n refused: $(grep '^KERNEL' "$B/kernel_dcu-$b-lead.log")"
+  fi
+done
 # F-ADDR (O-75; CP-34's kernels): a .global address is the exact sum, and
 # one outside [0, 2^48) faults. Taken modulo 2^48, addrhigh's lanes 16-31
 # store at the bottom of memory and lanes 0-15 land too, and addrneg's load
@@ -1520,6 +1538,16 @@ fi
 # dependants meet the contract cycle: R6's second reader, seq 13, issues a
 # cycle after seq 11 while one lane op issues a cycle (TI-9), and finds the
 # data in place.
+# MA-4 (AR 356): gather's 32-line load loses the L1-hit contract from its
+# address, and MIU says so with the early no-hit; with --break no-nohit it
+# sends none, and the bin the table above holds gather to goes unreached.
+"$SKEL" --kernel build/oracle/gather/oracle.jsonl --break no-nohit >"$B/kernel_no-nohit.log" 2>&1
+if [ "$(cover "$B/kernel_no-nohit.log" l1_inelig)" = 1 ] && [ "$(cover "$B/kernel_no-nohit.log" l1_nohit)" = 0 ] &&
+   [ "$(field "$B/kernel_no-nohit.log" finished)" = 1 ]; then
+  say "--break no-nohit: gather's l1_nohit unreached" "PASS (ineligible 1, no-hit 0; a dropped no-hit is safe)"
+else
+  bad "--break no-nohit" "the no-hit bin did not depend on MIU: $(grep '^COVER' "$B/kernel_no-nohit.log" | tr ' ' '\n' | grep '^l1_' | xargs)"
+fi
 for brk in late-hit-data no-rcu-bypass; do
   l1ctl "$brk"
   n=$(grep -c "^CHECK lane [0-9]*: seq \(5\|7\|9\|11\) operand 1 " "$B/kernel_$brk.log")
