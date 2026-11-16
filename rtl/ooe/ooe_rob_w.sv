@@ -390,7 +390,7 @@ module ooe_rob_w #(
   // Group 0: the dones' match; 1: the completions' and the allocations';
   // 2: the completion terms; 3: the stops and the frees. Each is hoh and w,
   // asserted.
-  localparam int NWG = 4, NWS = 2, DWS = D / NWS;
+  localparam int NWG = 4, NWS = 1, DWS = D / NWS;
   logic [S*NWG*D-1:0]     hwc_cq02h, hw_nx_cq02h;
   logic [S*NWG*NWS*RP-1:0] wwc_cq02h;
   always_comb
@@ -433,6 +433,9 @@ module ooe_rob_w #(
   // is free) and its names go to the free lists through the kill register.
   localparam int KC = 2 * A + 1;
   logic [S*KC-1:0] kc_cq02h;
+  // Copies of kc for the D-wide terms (the unfilled mask's yd; the fill
+  // pointer's ye and wkf), each (* keep *), so no kc flop drives them all.
+  logic [S*KC-1:0] kcd_cq02h, kce_cq02h;
   // The squash acting (R + 1): rd_s and sp_s are the window's own state at
   // stage 02 (the squash acts on it), rd_q and sq_p their stage-03 copies
   // for the redirect and the discard (CCV-L23; synthesis merges each pair).
@@ -472,7 +475,7 @@ module ooe_rob_w #(
   // none arriving then: each such use is a pick by nfr of terms from flops,
   // so only nfr's fanout is late, not a count derived from it, and the
   // squash stays off the terms.
-  logic [S*(A+1)*(A+1)-1:0] lk_cq02h;
+  logic [S*(A+1)*(A+1)-1:0] lk_cq02h, lkd_cq02h, lke_cq02h;
   logic [S*D-1:0]     wkf_cq02h;
   logic [LA-1:0]      frk_cq02h;               // a fill's rank among its slot's lanes before it
   logic [D-1:0]       fsl_cq02h;
@@ -486,7 +489,7 @@ module ooe_rob_w #(
       for (int l = 0; l < A; l++) nfl_cq02h[s * LA +: LA] = nfl_cq02h[s * LA +: LA] + LA'(fm_cq02h[l * S + s]);
       wkf_cq02h[s * D +: D] = '0;
       for (int k = 0; k < KC; k++)
-        if (kc_cq02h[s * KC + k]) wkf_cq02h[s * D +: D] = wkf_cq02h[s * D +: D] | rotl(woh_cq02h[s * D +: D], (D - k % D) % D);
+        if (kce_cq02h[s * KC + k]) wkf_cq02h[s * D +: D] = wkf_cq02h[s * D +: D] | rotl(woh_cq02h[s * D +: D], (D - k % D) % D);
       for (int t = 0; t < A; t++) begin
         nfg_cq02h[s * A + t] = nfl_cq02h[s * LA +: LA] > LA'(t);
         kgt_cq02h[s * A + t] = (kc_cq02h[s * KC +: KC] >> (t + 1)) != '0;
@@ -495,6 +498,12 @@ module ooe_rob_w #(
         for (int k = 1; k < A + 1; k++)
           lk_cq02h[(s * (A + 1) + a) * (A + 1) + k] = a >= k && kc_cq02h[s * KC + (a >= k ? a - k : 0)];
         lk_cq02h[(s * (A + 1) + a) * (A + 1)] = ~|lk_cq02h[(s * (A + 1) + a) * (A + 1) + 1 +: A];
+        for (int k = 1; k < A + 1; k++) begin
+          lkd_cq02h[(s * (A + 1) + a) * (A + 1) + k] = a >= k && kcd_cq02h[s * KC + (a >= k ? a - k : 0)];
+          lke_cq02h[(s * (A + 1) + a) * (A + 1) + k] = a >= k && kce_cq02h[s * KC + (a >= k ? a - k : 0)];
+        end
+        lkd_cq02h[(s * (A + 1) + a) * (A + 1)] = ~|lkd_cq02h[(s * (A + 1) + a) * (A + 1) + 1 +: A];
+        lke_cq02h[(s * (A + 1) + a) * (A + 1)] = ~|lke_cq02h[(s * (A + 1) + a) * (A + 1) + 1 +: A];
       end
       for (int k = 0; k < A + 1; k++) begin
         nfe_cq02h[s * (A + 1) + k] = (k == 0 || nfg_cq02h[s * A + (k > 0 ? k - 1 : 0)]) && (k == A || !nfg_cq02h[s * A + (k < A ? k : 0)]);
@@ -861,7 +870,7 @@ module ooe_rob_w #(
         yd_cq02h = '0;
         for (int k = 1; k < A + 1; k++)
           for (int q = 0; q < k; q++)
-            yd_cq02h = yd_cq02h | ({D{lk_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & rotl(woh_cq02h[s * D +: D], q));
+            yd_cq02h = yd_cq02h | ({D{lkd_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & rotl(woh_cq02h[s * D +: D], q));
         ufl_cq02h = ufl_cq02h | ({D{nfr_cq02h[s * (A + 1) + a]}} & yd_cq02h);
       end
       ufm_nx_cq02h[s * D +: D] = (ufq_cq02h[s * D +: D] & ~ufl_cq02h) | al_e_cq02h[s * D +: D];
@@ -898,7 +907,7 @@ module ooe_rob_w #(
       woh_nx_cq02h[s * D +: D] = '0;
       for (int a = 0; a < A + 1; a++) begin
         ye_cq02h = '0;
-        for (int k = 0; k < A + 1; k++) ye_cq02h = ye_cq02h | ({D{lk_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & rotl(woh_cq02h[s * D +: D], k));
+        for (int k = 0; k < A + 1; k++) ye_cq02h = ye_cq02h | ({D{lke_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & rotl(woh_cq02h[s * D +: D], k));
         woh_nx_cq02h[s * D +: D] = woh_nx_cq02h[s * D +: D] | ({D{nfr_cq02h[s * (A + 1) + a]}} & ye_cq02h);
       end
       uxa_all_cq02h[s * NC +: NC] = '0;
@@ -1270,6 +1279,18 @@ module ooe_rob_w #(
         assign wwc_cq02h[((gs * NWG + g) * NWS + c) * RP +: RP] = wwc_s_cq02h;
       end
     end
+    // The landed-count copies for the D-wide terms (#52), each its own.
+    (* keep *) logic [KC-1:0] kcd_s_cq02h, kce_s_cq02h;
+    always_ff @(posedge ooe_core_clk)
+      if (rst_r01h) begin
+        kcd_s_cq02h <= KC'(1);
+        kce_s_cq02h <= KC'(1);
+      end else if (fp_en_cq02h[gs]) begin
+        kcd_s_cq02h <= kc_nx_cq02h[gs * KC +: KC];
+        kce_s_cq02h <= kc_nx_cq02h[gs * KC +: KC];
+      end
+    assign kcd_cq02h[gs * KC +: KC] = kcd_s_cq02h;
+    assign kce_cq02h[gs * KC +: KC] = kce_s_cq02h;
     assign wg_cq02h[gs * RP +: RP]    = wg_s_cq02h;
     assign wp_cq02h[gs * RP +: RP]    = wp_s_cq02h;
     assign wgf_cq02h[gs * RP +: RP]   = wgf_s_cq02h;
@@ -2121,6 +2142,7 @@ module ooe_rob_w #(
       end
     end
   `CCV_ASSERT(window_group_copies, hwc_bad_cq02h == '0)
+  `CCV_ASSERT(landed_count_copies, kcd_cq02h == kc_cq02h && kce_cq02h == kc_cq02h)
   logic [S-1:0] uft_bad_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
