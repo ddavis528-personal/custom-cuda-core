@@ -170,8 +170,7 @@ independent slots, each its own credited link.
     "exclusive_req",
     "write_data",
     "byte_mask",
-    "lead_set_index",
-    "lead_bank"
+    "lead_set_index"
   ]
 }
 ```
@@ -189,7 +188,6 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_DATA-1:0]         write_data;
   logic [ccv_params_pkg::CCV_W_DATA/8-1:0]       byte_mask;
   logic [ccv_prov_pkg::CCV_W_DCU_SET-1:0]        lead_set_index;  // LEAD
-  logic [ccv_params_pkg::CCV_W_DCU_BANK-1:0]     lead_bank;  // LEAD
 } ccv_miu_dcu_req_t;
 ```
 
@@ -337,7 +335,7 @@ otherwise:
     .core_clk(core_clk),
     .rst_n(rst_n),
     ...
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1225), .LEAD_MASK(1225'h7ff)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1223), .LEAD_MASK(1223'h1ff)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
     ...
 ```
@@ -412,9 +410,9 @@ SV top under `CCV_CHECK`.
 One of them: slot 0 of the channel from section 5.
 
 ```systemverilog
-  ccv_common_chk_credit #(.PAYLOAD_W(1225), .CHANNEL(16), .LEAD_MASK(1225'h7ff), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1223), .CHANNEL(16), .LEAD_MASK(1223'h1ff), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[48769:47545])
+    .ch_payload(payload[48767:47545])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
@@ -516,4 +514,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 0be7847ae998bb29 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: b346d9b0d2df56cc (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

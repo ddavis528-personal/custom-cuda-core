@@ -504,17 +504,13 @@ private:
   }
 };
 
-// AR 362: ccv_miu_dcu_req's index lead, the lookup's phys_addr bits
-// [log2 line + CCV_W_DCU_SET - 1 : log2 line] (the set; a sweep's smaller
-// CCV_DCU_SETS uses its low bits) and [log2 line + CCV_W_DCU_BANK - 1 :
-// log2 line] (the bank, MA-4's [8:7]): page offset, the same in the VA and
-// the PA (CCV_DCU_SETS's require).
+// AR 362, AR 364: ccv_miu_dcu_req's index lead, the lookup's phys_addr bits
+// [log2 line + CCV_W_DCU_SET - 1 : log2 line], its set (a sweep's smaller
+// CCV_DCU_SETS uses its low bits), whose low clog2(CCV_DCU_BANKS) bits are its
+// bank: page offset, the same in the VA and the PA (CCV_DCU_SETS's require).
 inline uint64_t indexLeadSet(uint64_t pa) {
   static_assert((1u << 7) == kLine, "a line is 128 bytes");
   return (pa >> 7) & ((uint64_t(1) << ccv::prov::kWDcuSet) - 1);
-}
-inline uint64_t indexLeadBank(uint64_t pa) {
-  return (pa >> 7) & ((uint64_t(1) << ccv::kWDcuBank) - 1);
 }
 
 // ---- DCU: a small L1; a write is read-modify-write of the line ------------------
@@ -689,24 +685,19 @@ private:
     busy_lines_.insert(pa);
   }
 
-  /// AR 362: the lead's set index and bank are copies of the lookup's
-  /// phys_addr bits, bit for bit, and DCU refuses either that differs, by
-  /// name (--break dcu-set-lead, dcu-bank-lead). The stub reads its set from
-  /// the payload, so the lead changes no state here (AR 362 (3)).
+  /// AR 362: the lead's set index is a copy of the lookup's phys_addr
+  /// bits, bit for bit, and DCU refuses one that differs, by name (--break
+  /// dcu-set-lead). The stub reads its set from the payload, so the lead
+  /// changes no state here (AR 362 (3)).
   void checkIndexLead(unsigned s, const Bits &req) {
     const Ch &c = ch();
     const uint64_t pa = get(req, c.miu_dcu, "phys_addr");
-    const uint64_t set = indexLeadSet(pa), bank = indexLeadBank(pa);
+    const uint64_t set = indexLeadSet(pa);
     const uint64_t ls = get(req, c.miu_dcu, "lead_set_index");
-    const uint64_t lb = get(req, c.miu_dcu, "lead_bank");
     if (ls != set)
       k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
               s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
               (unsigned long long)pa, (unsigned long long)set);
-    if (lb != bank)
-      k_.fail("dcu: slot %u req_id %u lead_bank %llx is not its phys_addr %llx's bank %llx",
-              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)lb,
-              (unsigned long long)pa, (unsigned long long)bank);
   }
 
   void work() override {
@@ -1563,13 +1554,12 @@ private:
   bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
 
-  /// AR 362: the lookup's set and bank lead it, from the formed address
-  /// (the stub's line is its leader's). --break dcu-set-lead and
-  /// dcu-bank-lead send a wrong one, which DCU must refuse by name.
+  /// AR 362: the lookup's set index leads it, from the formed address
+  /// (the stub's line is its leader's); its bank is the index's low bits
+  /// (AR 364). --break dcu-set-lead sends a wrong one, which DCU must refuse
+  /// by name.
   void putIndexLead(Bits &r, uint64_t pa) {
-    const Ch &c = ch();
-    put(r, c.miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
-    put(r, c.miu_dcu, "lead_bank", indexLeadBank(pa) ^ (k_.brk == "dcu-bank-lead" ? 1u : 0u));
+    put(r, ch().miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
   }
 
   Bits withLead(Bits m) {
@@ -1965,8 +1955,8 @@ private:
   /// MA-4's eligibility for the L1-hit contract (MIU tab, MA's Phase 1
   /// draft; AR 356): a global load keeps it only if every active lane's
   /// line is its group's leader's, the access stays in one page, and its
-  /// leaders' lookups meet no bank conflict (DCU's 4 banks by line address
-  /// bits [8:7]); a tag miss is not known from the address, and stays the
+  /// leaders' lookups meet no bank conflict (DCU's CCV_DCU_BANKS banks by
+  /// the line address's low bits, [9:7] at 8; AR 364); a tag miss is not known from the address, and stays the
   /// contract's miss. The memop's F pipes split the warp into F groups of
   /// 32/F consecutive lanes, a group's leader its lowest active lane. A
   /// load that loses it is never an L1 hit, and A2 says so early: a no-hit
@@ -1999,7 +1989,7 @@ private:
     }
     for (size_t a = 0; a != leads.size(); ++a)
       for (size_t b = a + 1; b != leads.size(); ++b)
-        if ((leads[a] / kLine) % 4 == (leads[b] / kLine) % 4) ok = false;
+        if ((leads[a] / kLine) % ccv::kDcuBanks == (leads[b] / kLine) % ccv::kDcuBanks) ok = false;
     if (ok) return;
     j.inelig = true;
     j.hit = false;

@@ -450,11 +450,15 @@ def selftest(d):
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
              # AR 362 (1): a way must fit in a page, or ccv_miu_dcu_req's
              # set-index lead is no longer page offset: more sets, or a
-             # smaller page, is refused; the lead's widths follow the counts.
+             # smaller page, is refused; the lead's width follows the sets.
              ("CCV_DCU_SETS", "value", 1024, "CCV_DCU_SETS"),
              ("CCV_L_PAGE_SHIFT", "value", 15, "CCV_DCU_SETS"),
              ("CCV_DCU_SETS", "value", 256, "CCV_W_DCU_SET"),
-             ("CCV_DCU_BANKS", "value", 8, "CCV_W_DCU_BANK"),
+             # AR 364: the banks are the set index's low bits, so no more
+             # banks than sets, and both powers of two.
+             ("CCV_DCU_BANKS", "value", 1024, "CCV_DCU_BANKS"),
+             ("CCV_DCU_BANKS", "value", 6, "CCV_DCU_BANKS"),
+             ("CCV_DCU_SETS", "value", 384, "CCV_DCU_BANKS"),
              ("CCV_P_PHYS_ZERO", "value", 191, "CCV_P_PHYS_ZERO"),
              ("CCV_P_PRED_REGS", "value", 64, "CCV_P_W_PHYS_PRED"),
              # A-70: an epoch that can wrap within one flight is refused,
