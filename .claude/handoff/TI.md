@@ -66,7 +66,7 @@ restart: rerun the job). Logs in /root/ccv-logs/.
    budget rule (unmeasured-parent modules, boundary ports/leads, boundary-
    wired child pins), a negative control each; cover bin for the
    credit-starved late hit. Daily sweep repo half: fresh worktree.
-0b. OA 419 (re:OI-152): on OI's #52 push (waits on DA's NGD-1 ruling, WID 3 30.1 vs 29.6), add rtl/ngd-fanout-baseline.json line ooe_rob_w fl_m_cq02h at 31.7 (fl_v's); OI lowers its caps. Nothing to do before that push.
+0b. 11-16: RCU waivers signed (DA rev 122, Daniel in TI's session); RI's 05af449c landed as 93f0d75c (TI 451). OA 419 baseline line: OI carried it (0bd67c2b), nothing for TI. Dated to RI: RA 148 11-17, lane-op kill kernel 11-18.
 1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
 2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
 3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
