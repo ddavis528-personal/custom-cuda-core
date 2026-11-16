@@ -66,6 +66,8 @@ architect may approve only if the end meets module NGD without the flop; can't m
    rcu-exit.md. Bookmark TI 451.
    RI-57 (rev 86): Daniel asked TI whether the plain rokill kernel (no SFU) can land before 11-18; notice sent.
    Relay TI's answer to Daniel. Bookmark RI 86.
+   TI-452: plain rokill kernel lands 11-17 (SFU variant later); RA 148 stub/refusal moves to 11-18. Tell RA?
+   RA ties its report to the kernel, so 11-17. Bookmark TI 452.
    TI-448: (b) addr-late + merge in ti-nohit gate today; (c) RA 148 stub/refusal 11-16; (d) kill kernel 11-17;
    (a) DA-tab record waits on Daniel confirming to TI directly (asked Daniel). Bookmark TI 448.
    RA 150: sign-off report to DA 11-17 (with TI's rokill kernel); reconciliation on tip after ti-nohit; needs
