@@ -59,6 +59,8 @@ architect may approve only if the end meets module NGD without the flop; can't m
    ~3.5h). RI-55 (RI tab rev 84) written, notices TI + RA (asked for dates). ON PUSH: tell TI the commit to merge
    (short RI row or note), update handoff, task 35 done. PUSHED 05af449c (SCOPED PASS 21/24); RI-56 (rev 85)
    asks TI to merge it, notice sent. NEXT: daily sweep merges TI a5481843; RA report 11-17. Bookmark RI 85.
+   DA 122 (via TI): Daniel confirmed the signature to TI; recorded in DA tab. TI gating its merge of 05af449c.
+   RA's report has all it needs. Bookmark DA 122.
    TI-448: (b) addr-late + merge in ti-nohit gate today; (c) RA 148 stub/refusal 11-16; (d) kill kernel 11-17;
    (a) DA-tab record waits on Daniel confirming to TI directly (asked Daniel). Bookmark TI 448.
    RA 150: sign-off report to DA 11-17 (with TI's rokill kernel); reconciliation on tip after ti-nohit; needs
