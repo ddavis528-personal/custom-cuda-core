@@ -328,7 +328,10 @@ ccv_rcu block port stays RA's.
 TI-446: boundary-wired child pins stay architect's (ea9bca63); check-ngd enforces after ti-nohit. DA 120 (recorded by TI):
 the budget ruling. RI-55: Daniel signed RI-47's 3 waivers in RI's session (NOT yet in DA tab; TI 448 asking him).
 RA rev 150: RCU sign-off report to DA on 2026-11-17.
-Bookmarks: OA 418, RA 150, RI 84, TI 448, DA 120, AR 358, OI 350, Conventions 19, CP 158, IS 194, MA 59.
+DA 122: Daniel's waiver signature recorded (sign-off condition met). TI 452/RI-57: rokill lands 11-17. TI 453: RA 148's
+TI half slips to 11-19 (post-sign-off). DA 123: arrays 1RW SRAM half-rate or RF (3x/bit); RA rev 151: RCU has no SRAM
+macro (flop arrays), unaffected.
+Bookmarks: OA 418, RA 151, RI 86, TI 453, DA 123, AR 358, OI 350, Conventions 19, CP 158, IS 194, MA 59.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -360,9 +363,9 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
 ## Open work, most urgent first
 - GATES: 518cb3c3 is merged (2026-11-15): launch gate-push, then tools/gate-wait.sh <job log> (exit 3 = rerun, 4 = killed).
 - RCU SIGN-OFF (RA rev 150, due 2026-11-17): (1) after ti-nohit lands (TI 448: 2026-11-15) and TI 448 (c) (stub addr
-  timing + RTL refusal at base != 1, 2026-11-16), delta-reconcile spec vs tip: SFU class (rev 146), PF-47=1 addr stages
+  timing + RTL refusal at base != 1, now 2026-11-19, post-sign-off: don't wait), delta-reconcile spec vs tip: SFU class (rev 146), PF-47=1 addr stages
   (rev 145), addr from param (rev 148/RI-54), waivers (RI-47); fix spec tabs via a subagent, refresh snapshots.
-  (2) when TI's rokill kernel lands (TI 448 (d), 2026-11-17) and the waiver signature is in the DA tab, report to Daniel
+  (2) when TI's rokill kernel lands (TI 448 (d), 2026-11-17) (waiver signature: DA 122, done), report to Daniel
   for sign-off; SFU-in-flight kill variant listed post-sign-off.
 - PHASE 5 (rcu-impl.md): spec reconciled (RA rev 140/141); RI's rev 140 items closed (RA rev 142). Before DA
   sign-off: rev 143 CLOSED (TI 430); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
