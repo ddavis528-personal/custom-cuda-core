@@ -1259,10 +1259,11 @@ register), each awaiting a copy. The list only shrinks: an entry that now meets 
 that was not there when its rule was made, is refused. A design module no
 unit measures is refused.
 
-### Hard macros: SRAM arrays, NGD-8
+### Hard macros: SRAM and register-file arrays, NGD-8
 
 AR's register rev 344, on TI's proposal (revs 408-410), accepted by MA
-(MA-3, MA-15 item 5). A large data or tag array is a **hard macro**, never a
+(MA-3, MA-15 item 5); the every-other-cycle SRAM and the register file are
+DA's (Daniel, 2026-11-16, DA tab rev 123; MA-16). A large data or tag array is a **hard macro**, never a
 flop array, and never inside the NGD count. Yosys maps an inferred memory to
 flops and a read mux; behind index nets of tens of thousands of loads the
 fanout term alone puts that over the stage (the fixture's 512 x 128 array as
@@ -1271,28 +1272,38 @@ module's flops in every clock-gating count. So an array is one of two
 macros, parameterised by its width `W` (bits, a multiple of 8) and depth `D`
 (words, 2 or more), whose behavioural views are in `rtl/macro/`:
 
-- `ccv_common_sram_1rw`: one port. `ce`, `we`, `addr` (`$clog2(D)` bits),
-  `wdata` (W), `wmask` (W/8, a bit per byte, byte 0 in bit 0); `rdata` (W).
-  `ce && we` writes the bytes `wmask` selects and reads nothing that cycle;
-  `ce && !we` reads, the word on `rdata` from the next cycle; `!ce` does
-  nothing.
-- `ccv_common_sram_1r1w`: a read port (`re`, `raddr`, `rdata`) and a write
-  port (`we`, `waddr`, `wdata`, `wmask`) on one clock. A read of the word
-  written at the same edge returns the OLD word (read before write); the
-  data is on `rdata` the next cycle.
+- `ccv_common_sram_1rw`: an SRAM (6T), one port, **accessed at most every
+  other cycle**: `ce` is never set two cycles running, the bank busy the
+  cycle after an access (its assertion `sram_ce_every_other`; the C++
+  model counts each violation). Every-cycle bandwidth comes from banking.
+  `ce`, `we`, `addr` (`$clog2(D)` bits), `wdata` (W), `wmask` (W/8, a bit
+  per byte, byte 0 in bit 0); `rdata` (W). `ce && we` writes the bytes
+  `wmask` selects and reads nothing that cycle; `ce && !we` reads, the
+  address registered at the edge that samples it and the word on `rdata`
+  two cycles on, after the next edge; `!ce` does nothing.
+- `ccv_common_rf_1r1w`: a **register file**, for an array that needs a read
+  and a write together or unrestricted every-cycle access; never a 1R1W
+  SRAM. A read port (`re`, `raddr`, `rdata`) and a write port (`we`,
+  `waddr`, `wdata`, `wmask`) on one clock, each usable every cycle. A read
+  of the word written at the same edge returns the OLD word (read before
+  write); the data is on `rdata` the next cycle. Its area is 3 times an
+  SRAM's per bit, the weight any area report gives it.
 
 In both, every input is sampled at the clock edge, by the macro's own input
-register; `rdata` holds the last word read until the next read (not X); an
-unwritten word is unknown; there is no reset. The C++ host's model is
+register; `rdata` holds the last word read until the next read's data (not
+X); an unwritten word is unknown; there is no reset. The C++ host's model is
 `sim/skel/sram.h`, held to the RTL cycle for cycle by `tools/check-skel.sh`
-(`test/vl/vl_sram_tb.cpp`, with its controls).
+(`test/vl/vl_sram_tb.cpp`, with its controls: among them a 1rw read
+sampled a cycle early, and `ce` two cycles running, which the RTL's
+assertion must stop by name).
 
 **The timing model** (`tools/check-ngd.py`, NGD-8). The macro's input
 register is the stage boundary: each input pin is a timing endpoint, as a
 flop's D pin, so the instantiating module's index logic, controls and write
 data into it are an ordinary path that ends there, held to the stage from
 its flops (and from an input at its port arrival). `rdata` starts the next
-stage at 0 NGD, as a flop's Q: the logic after it is counted, to a flop
+stage at 0 NGD, as a flop's Q (the 1rw's two read edges are both inside
+the macro, so its pins time the same): the logic after it is counted, to a flop
 within the stage, to an output within its required time. No clock-to-out
 is charged until the library gives one (Q-48). A unit names each macro it
 instantiates under `"blackbox"`, as it does the ctech ICG, so the macro is
@@ -1310,11 +1321,13 @@ reset, so it is no RST-2 endpoint, unless the module's reset reaches one of
 its pins through logic, where it is used as at a flop's D pin.
 
 **The name.** A macro is one of the cells `tools/lint-rtl.py` lists in
-`MACROS`, with its enables, named `ccv_common_sram_<ports>` and in
+`MACROS`, with its enables, named `ccv_common_sram_<ports>` or
+`ccv_common_rf_<ports>` and in
 `rtl/macro/` (CCV-L27): the name is what takes its storage out of the
 counts, so no other module may carry it. Its file is the only place a
 memory array is written. The fixture, `test/macro/sram_fx.sv` (a 64 Kibit
-one-port macro and a two-port one), passes both checks, and its controls
+one-port SRAM, accessed every other command, and a register file), passes
+both checks, and its controls
 fail them: an index through a multiply (NGD-8 at `addr`), read data through
 one (NGD-8 at `rdata`), the arrays inferred as flops (NGD-1), and each
 enable from an input (CG-5) (`--selftest`, or `--selftest-macro` alone).

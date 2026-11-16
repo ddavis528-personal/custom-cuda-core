@@ -538,17 +538,19 @@ class Cls:
 
 # Hard macros (AR's register rev 344; docs/rtl-coding-style.md, "Hard
 # macros"): a large data or tag array is a library macro, never a flop
-# array. Each is a common module of a macro type, ccv_common_sram_<ports>,
+# array. Each is a common module of a macro type, ccv_common_<sram|rf>_<ports>,
 # whose behavioural view is in rtl/macro/ (CCV-L27): the name is what lets
 # check-ngd time its pins as a register's (inputs endpoints, outputs
 # launched at 0) and check-cg count none of its storage, so only that
 # directory may carry one. Each is listed with its enables, the pins CG-5
-# holds to the instantiating module's own flops.
+# holds to the instantiating module's own flops. An SRAM is one port, every
+# other cycle; a read and a write together, or every cycle, is a register
+# file, 3 times an SRAM's area per bit (DA tab rev 123, MA-16).
 MACROS = {
     "ccv_common_sram_1rw": ("ce", "we"),
-    "ccv_common_sram_1r1w": ("re", "we"),
+    "ccv_common_rf_1r1w": ("re", "we"),
 }
-MACRO_TYPES = ("sram",)
+MACRO_TYPES = ("sram", "rf")
 
 
 def is_macro(name):

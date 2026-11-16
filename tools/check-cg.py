@@ -3858,10 +3858,11 @@ def macro_unit(name, bench=False, **params):
 
 
 def macro_selftest(expect):
-    """Hard macros (AR's register rev 344). sram_fx, a 512 x 128 one-port
-    macro (64 Kibit) and a 64 x 128 two-port one behind flopped enables,
+    """Hard macros (AR's register rev 344, DA tab rev 123). sram_fx, a 512 x
+    128 one-port SRAM (64 Kibit, every other cycle) and a 64 x 128 1R1W
+    register file behind flopped enables,
     measured with its bench: its flops are its own registers alone, every
-    macro enable is found, and the module passes (its six control flops
+    macro enable is found, and the module passes (its seven control flops
     within its allowance). Controls: each macro enable from an input (ce,
     re, we) is CG-5's; the same arrays inferred as flops, at a small size,
     count every bit of storage, as the macro's do not; and a reset gating
@@ -3878,8 +3879,8 @@ def macro_selftest(expect):
     fails, _ = policy(own, mods, [ok], [], {})
     expect(not fails, "the compliant macro fixture fails: %s" % fails)
     ens = sorted((c, p) for c, p, _ in ok.nl.macro_ens)
-    expect(ens == [("g_macro.u_sram", "ce"), ("g_macro.u_sram", "we"),
-                   ("g_macro.u_sram2", "re"), ("g_macro.u_sram2", "we")],
+    expect(ens == [("g_macro.u_rf", "re"), ("g_macro.u_rf", "we"),
+                   ("g_macro.u_sram", "ce"), ("g_macro.u_sram", "we")],
            "sram_fx's macro enables were not all found: %s" % ens)
     nflops = len(ok.nl.flops)
     expect(nflops < 100, "sram_fx counts %d flops: a macro's storage is counted" % nflops)
@@ -3891,7 +3892,7 @@ def macro_selftest(expect):
                          dcge={sc: min([dcge(ok, k, sc) for k, g in ok.nl.groups.items()
                                         if g.gated and dcge(ok, k, sc) is not None] or [None])
                                for sc in SCENARIOS if sc in ok.data})
-    for bit, cell, pin in ((1, "g_macro.u_sram", "ce"), (2, "g_macro.u_sram2", "re"),
+    for bit, cell, pin in ((1, "g_macro.u_sram", "ce"), (2, "g_macro.u_rf", "re"),
                            (4, "g_macro.u_sram", "we")):
         x = macro_unit("fx_sram_en%d" % bit, EN_IN=bit)
         x.synth()

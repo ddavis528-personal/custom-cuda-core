@@ -9,14 +9,22 @@
 // under "blackbox", as it does the ctech ICG), since a hard macro has
 // nothing inside to measure. It is the one place a memory array is written.
 //
-// ONE PORT, W bits wide (a whole number of bytes), D words deep. Every input
-// is sampled at the rising edge of clk, as the macro's own input register
-// does it -- that register is the stage boundary:
+// ONE PORT, W bits wide (a whole number of bytes), D words deep, accessed
+// at most every other cycle (DA, 2026-11-16, DA tab rev 123; MA-16): a 6T
+// array's bank is busy the cycle after an access, so ce is never set two
+// cycles running, and every-cycle bandwidth comes from banking. An array
+// that needs every cycle, or a read and a write together, is a register
+// file (ccv_common_rf_1r1w), not this. Every input is sampled at the rising
+// edge of clk, as the macro's own input register does it -- that register
+// is the stage boundary:
 //   ce && we   write: each byte b with wmask[b] set takes wdata's byte b at
 //              addr; a write takes the port's cycle, so nothing is read.
-//   ce && !we  read: rdata is word addr from the next cycle on.
-//   !ce        nothing: the array and rdata hold.
-// rdata holds the last word read until the next read (not X), so a
+//   ce && !we  read: rdata is word addr from two cycles on (the address
+//              registered at the edge that samples ce, the data at the
+//              edge after it, the bank busy in between).
+//   !ce        nothing: the array holds, and rdata holds after a read's
+//              data has arrived.
+// rdata holds the last word read until the next read's data (not X), so a
 // lockstep check of two models compares it on every cycle.
 //
 // The timing model (tools/check-ngd.py, NGD-8): every input pin is a timing
@@ -45,10 +53,13 @@ module ccv_common_sram_1rw #(
 );
 `define CCV_CLK clk
 `define CCV_RST 1'b0
-  logic [W-1:0] mem_q [D];
-  logic [W-1:0] rdata_q;
-  wire          wr_en = ce & we;
-  wire          rd_en = ce & ~we;
+  logic [W-1:0]  mem_q [D];
+  logic [W-1:0]  rdata_q;
+  logic [AW-1:0] raddr_q;
+  logic          rd_pend_q, ce_q;
+  wire           wr_en = ce & we;
+  wire           rd_en = ce & ~we;
+  wire           rd_done_en = rd_pend_q;
 
   always_ff @(posedge clk) begin
     if (wr_en) begin
@@ -58,8 +69,18 @@ module ccv_common_sram_1rw #(
     end
   end
 
+  // A read: the address at the edge that samples ce, the word at the next.
   always_ff @(posedge clk) begin
-    if (rd_en) rdata_q <= mem_q[addr];
+    ce_q      <= ce;
+    rd_pend_q <= rd_en;
+  end
+
+  always_ff @(posedge clk) begin
+    if (rd_en) raddr_q <= addr;
+  end
+
+  always_ff @(posedge clk) begin
+    if (rd_done_en) rdata_q <= mem_q[raddr_q];
   end
 
   assign rdata = rdata_q;
@@ -71,6 +92,9 @@ module ccv_common_sram_1rw #(
   `CCV_ASSERT_KNOWN_IF(sram_addr_known, ce, addr)
   `CCV_ASSERT_KNOWN_IF(sram_wmask_known, ce & we, wmask)
   `CCV_ASSERT(sram_addr_in_range, !ce || 32'(addr) < D)
+  // Every other cycle at most (DA tab rev 123): the bank is busy the cycle
+  // after an access.
+  `CCV_ASSERT(sram_ce_every_other, !(ce && ce_q))
 `undef CCV_CLK
 `undef CCV_RST
 endmodule

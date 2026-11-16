@@ -108,7 +108,12 @@ The rules, as findings:
          a macro's output to a macro's input pin is held to the stage, and
          one from a macro's output to a flop to the stage, to an output to
          its required time. The macro is a unit's "blackbox" (lint.MACROS),
-         never measured inside: there is nothing in it to measure.
+         never measured inside: there is nothing in it to measure. The
+         1RW SRAM's read takes two cycles, its data at the second edge
+         (DA tab rev 123, MA-16): both edges are inside the macro, so its
+         pins time as above, and the parent's flop that takes rdata is the
+         one its read-valid reaches two cycles on (a lockstep's matter, not
+         a depth's; check-skel.sh). The 1R1W register file reads in one.
 
 Modules that broke a default when the rule was made sit on
 rtl/ngd-ratchet.json, awaiting budgets or a redesign; the list only
@@ -2748,8 +2753,8 @@ def macro_unit(name, **params):
 
 
 def macro_selftest(expect):
-    """NGD-8 (AR's register rev 344): sram_fx, a 512 x 128 one-port macro
-    (64 Kibit) and a 64 x 128 two-port one, passes with its index through
+    """NGD-8 (AR's register rev 344): sram_fx, a 512 x 128 one-port SRAM
+    (64 Kibit, every other cycle) and a 64 x 128 1R1W register file, passes with its index through
     an adder and its read data through an XOR tree into a flop; each pin is
     found, its depths counted. Its controls: the index through a multiply
     (an input pin is an endpoint), the read data through one (rdata
@@ -2761,7 +2766,7 @@ def macro_selftest(expect):
     ok = macro_unit("fx_sram")
     ok.measure()
     pin_in, pin_out = macro_pins(ok.t)
-    expect(sorted(pin_out.values()) == ["g_macro.u_sram.rdata", "g_macro.u_sram2.rdata"]
+    expect(sorted(pin_out.values()) == ["g_macro.u_rf.rdata", "g_macro.u_sram.rdata"]
            and len(pin_in) == 11,
            "sram_fx's macro pins were not all found: in %s, out %s"
            % (sorted(pin_in.values()), sorted(pin_out.values())))
@@ -2794,9 +2799,9 @@ def macro_selftest(expect):
                          deep_rd=rdeep.t.ir.get(rd))
     dm = design_modules()
     expect(not any(cg.lint.is_macro(m) for m in dm) and not
-           any(m.startswith("ccv_common_sram") for m in dm),
+           any(m.startswith(("ccv_common_sram", "ccv_common_rf")) for m in dm),
            "a hard macro is a design module, so would need a unit: %s"
-           % sorted(m for m in dm if m.startswith("ccv_common_sram")))
+           % sorted(m for m in dm if m.startswith(("ccv_common_sram", "ccv_common_rf"))))
 
 
 MACRO_NUMBERS = {}

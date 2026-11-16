@@ -1,13 +1,21 @@
-// tools/check-skel.sh: the SRAM macros' RTL (rtl/macro/, Verilated through
+// tools/check-skel.sh: the array macros' RTL (rtl/macro/, Verilated through
 // test/vl/vl_sram_top.sv) and their C++ model (sim/skel/sram.h) driven by
 // the same random stream, every rdata compared before every edge. Every
 // word is written whole first, so neither reads what its simulator left in
-// an unwritten word. The stream reads the word the 1r1w writes at the same
-// edge about one cycle in four (read before write). Any difference fails.
+// an unwritten word. The 1RW SRAM is accessed at most every other cycle
+// (DA tab rev 123), its read data two cycles on; the register file every
+// cycle, reading the word it writes at the same edge about one cycle in
+// four (read before write). Any difference fails, and so does a violation
+// the model counts.
 // Controls, each of which must be caught (VL_CONTROL=...):
-//   wbr      the model's 1r1w applies its write before its read
+//   wbr      the model's register file applies its write before its read
 //   nomask   the model writes every byte whatever wmask says
-//   late     the model's edge a cycle late: its data a cycle after the RTL's
+//   late     the model's 1rw edge a cycle late: its data a cycle after the RTL's
+//   early    the model's 1rw data compared a cycle ahead of the RTL's: a read
+//            sampled a cycle early
+//   b2b      the stream sets the 1rw's ce two cycles running once: the RTL's
+//            sram_ce_every_other assertion stops the run (check-skel.sh
+//            requires its message) and the model counts the violation
 #include "Vvl_sram_top.h"
 #include "verilated.h"
 #include "sram.h"
@@ -35,21 +43,24 @@ int main(int argc, char **argv) {
   ctx->commandArgs(argc, argv);
   auto m = std::make_unique<Vvl_sram_top>(ctx.get());
   ccv::skel::Sram1rw a(40, 12);
-  ccv::skel::Sram1r1w b(56, 10);
+  ccv::skel::Rf1r1w b(56, 10);
   std::mt19937_64 rng(20261113);
   auto pick = [&](unsigned n) { return unsigned(rng() % n); };
   unsigned long diffs = 0, collide = 0, reads = 0;
   bool pend = false;     // control late: the edge held back a cycle
   ccv::skel::Sram1rw a_late = a;
+  bool ce_last = false;  // the 1rw's ce at the last edge
+  uint64_t rtl_last = 0; // control early: the RTL's rdata a cycle ago
   m->clk = 0;
   m->eval();
-  const unsigned long init = 12;
+  const unsigned long init = 24;  // 12 words written, every other cycle
   for (unsigned long t = 0; t != init + cycles; ++t) {
     const bool fill = t < init;
     // The inputs, the same to both.
-    a.ce = fill || pick(4) != 0;
+    a.ce = fill ? t % 2 == 0 : !ce_last && pick(4) != 0;
+    if (control == "b2b" && (t == init + 100 || t == init + 101)) a.ce = true;
     a.we = fill || pick(2);
-    a.addr = fill ? unsigned(t) : pick(12);
+    a.addr = fill ? unsigned(t / 2) : pick(12);
     a.wdata = bits(40, rng());
     a.wmask = bits(5, fill ? 0x1f : rng());
     b.we = (fill && t < 10) || (!fill && pick(3) != 0);
@@ -66,13 +77,16 @@ int main(int argc, char **argv) {
     // Before the edge: rdata as both hold it.
     if (!fill) {
       const uint64_t ma = (control == "late" ? a_late : a).rdata().get(0, 40);
-      if (m->rdata != ma || m->rdata2 != b.rdata().get(0, 56)) {
+      const uint64_t ra = control == "early" ? rtl_last : uint64_t(m->rdata);
+      if (ra != ma || m->rdata2 != b.rdata().get(0, 56)) {
         if (++diffs <= 3)
           std::printf("cycle %lu: rtl %010llx %014llx, model %010llx %014llx\n", t,
                       (unsigned long long)m->rdata, (unsigned long long)m->rdata2,
                       (unsigned long long)ma, (unsigned long long)b.rdata().get(0, 56));
       }
     }
+    rtl_last = m->rdata;
+    ce_last = a.ce;
     collide += b.re && b.we && b.raddr == b.waddr;
     reads += a.ce && !a.we;
     // The edge.
@@ -99,7 +113,9 @@ int main(int argc, char **argv) {
     }
   }
   m->final();
-  std::printf("%s cycles=%lu reads=%lu same-word=%lu diffs=%lu\n",
-              diffs ? "DIFFER" : "agree", cycles, reads, collide, diffs);
-  return diffs ? 1 : 0;
+  const uint64_t viol = a.violations();
+  std::printf("%s cycles=%lu reads=%lu same-word=%lu diffs=%lu violations=%llu\n",
+              diffs || viol ? "DIFFER" : "agree", cycles, reads, collide, diffs,
+              (unsigned long long)viol);
+  return diffs || viol ? 1 : 0;
 }
