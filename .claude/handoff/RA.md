@@ -331,7 +331,14 @@ RA rev 150: RCU sign-off report to DA on 2026-11-17.
 DA 122: Daniel's waiver signature recorded (sign-off condition met). TI 452/RI-57: rokill lands 11-17. TI 453: RA 148's
 TI half slips to 11-19 (post-sign-off). DA 123: arrays 1RW SRAM half-rate or RF (3x/bit); RA rev 151: RCU has no SRAM
 macro (flop arrays), unaffected.
-Bookmarks: OA 418, RA 151, RI 86, TI 453, DA 123, AR 358, OI 350, Conventions 19, CP 158, IS 194, MA 59.
+Sweep 11-16: nothing for RA; merged 183cc441 (61), 3868632d (6), 57eff422 (15),
+80102643 (15), 9eb50716 (11), c22116ce (5), miu-dcu-spec (19); pushed 0043a4b1
+(SCOPED PASS, but ngd 5.0 h and cg 4.8 h: OOE units re-synthesized).
+Sign-off inputs in: TI 457 rokilllane kernel at 1861cc51; RI-58 M4 margin passes
+at every drain cut 0-15 (cut matters to 8); RI-59: the model drops a killed
+warp's entries at the kill (Core::kill), not by epoch -- check the spec says
+no epoch for the model.
+Bookmarks: OA 421, RA 151, RI 86, TI 456, AR 365, DA 123, OI 358, Conventions 19, CP 159, IS 194, MA 68.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
