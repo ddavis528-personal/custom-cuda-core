@@ -92,6 +92,10 @@ Credit rules (TI-49):
 
 - **Bookmarks** (revs read through): AR 365, OA 421, TI 457, RA 151, RI 86,
   IS 194, CP 159, OI 358, DA 123, MA 68, Conventions 19.
+- **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
+  priority order; a dependency is met by reordering, never a due date. No date
+  on a row, a handoff item or a promise; an old row's date is its priority.
+  Dates here record when something happened, never when it is due.
 - **Last sweep 2026-11-16:** 7 branches merged (doowtf, miu-dcu-microarch-spec,
   57eff422, 126afa13, 9eb50716, 3868632d, c22116ce); full gate PASS (about
   4.5 h; ngd and cg take most of it); pushed de433e3b; session home matches.
@@ -198,7 +202,7 @@ Credit rules (TI-49):
    - MA 68 accepted (CCV_DCU_BANK_AGE 16, tunable). TI 457 landed it at
      1861cc51 (8 banks, lead_set_index only, 36 lead flops waived, banks <=
      sets require, gen-params controls); AR checked it; no reply owed. It
-     merges in the 11-17 sweep. Wait for MA's closed-loop figure.
+     merges in the next sweep. Wait for MA's closed-loop figure.
 2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
    against the six conditions.** The page-offset require has refusal
    mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
