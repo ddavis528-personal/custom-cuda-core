@@ -381,29 +381,23 @@ module ooe_rob_w #(
   // it), so a slot's count is its highest port retiring.
   logic [S*LA-1:0] nret_cq02h;                 // per slot, entries retiring
   logic [S*LA-1:0] nret_o_cq02h;               // the same, from the outputs' copy
-  // The same again, from the head's own copy of the window: the head's next
-  // value (and the window's next, through it) reads its own decode (NGD-1, #34).
-  logic [S*RP-1:0] w_h_cq02h;
-  logic [S*LA-1:0] nret_h_cq02h;
   // The window's own head, per group of its port terms (#52, DA 2026-11-16):
   // NWG copies of hoh and NWS of the window per copy, each (* keep *), each
   // forming its own next head (hw_nx) from its own flops, so no one net
   // selects every entry for every port term (fanout 34-36 a level, 4 levels).
-  // Group 0: the dones' match; 1: the completions' and the allocations';
-  // 2: the completion terms; 3: the stops and the frees. Each is hoh and w,
-  // asserted.
-  localparam int NWG = 4, NWS = 2, DWS = D / NWS;
+  // Group 0: the dones' match, the completions' and the allocations';
+  // 1: the completion terms; 2: the stops and the frees. Each is hoh and w,
+  // asserted; hoh and the head-read copies load from the groups' next heads.
+  localparam int NWG = 3, NWS = 2, DWS = D / NWS;
   logic [S*NWG*D-1:0]     hwc_cq02h, hw_nx_cq02h;
   logic [S*NWG*NWS*RP-1:0] wwc_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
       nret_cq02h[s * LA +: LA]   = '0;
       nret_o_cq02h[s * LA +: LA] = '0;
-      nret_h_cq02h[s * LA +: LA] = '0;
       for (int k = 0; k < RP; k++) begin
         if (w_cq02h[s * RP + k])   nret_cq02h[s * LA +: LA]   = LA'(k + 1);
         if (w_o_cq02h[s * RP + k]) nret_o_cq02h[s * LA +: LA] = LA'(k + 1);
-        if (w_h_cq02h[s * RP + k]) nret_h_cq02h[s * LA +: LA] = LA'(k + 1);
       end
     end
   assign rgl_cq02h     = w_o_cq02h & wg_o_cq02h;
@@ -758,7 +752,7 @@ module ooe_rob_w #(
   // -- The pointers and the next window ---------------------------------------------
   // The go's count (its take's 14) and the window's own count select among
   // shifts and rotations formed from flops, each as an AND-OR.
-  logic [S*D-1:0]  hoh_nx_cq02h, toh_nx_cq02h, woh_nx_cq02h;
+  logic [S*D-1:0]  toh_nx_cq02h, woh_nx_cq02h;
   logic [S*NC-1:0] och_nx_cq02h, ufh_nx_cq02h, uft_nx_cq02h;
   logic [NC-1:0]   uxt_cq02h;                  // ux, as a thermometer
   logic [S*LB-1:0] run_nx_cq02h;
@@ -785,7 +779,7 @@ module ooe_rob_w #(
   logic            anyp_cq02h;
   logic [S*A-1:0]  ugt_nx_cq02h;
   logic [S*RP-1:0] w_nx_cq02h, wg_nx_cq02h, wp_nx_cq02h, wgf_nx_cq02h, wpf_nx_cq02h, wn_nx_cq02h;
-  logic [D-1:0]    wk_cq02h, wk0_cq02h, wk1_cq02h, wk2_cq02h, wk3_cq02h;
+  logic [D-1:0]    wk_cq02h, wk0_cq02h, wk2_cq02h, wk3_cq02h;
   logic [D-1:0]    stv_cq02h;                  // each entry's store, filled
   logic [D-1:0]    stp_cq02h;                  // each entry's stop at port k: a branch, or a second store next
   logic            sso_cq02h;
@@ -805,14 +799,14 @@ module ooe_rob_w #(
   (* keep *) logic [S*RP-1:0] ckp_cq02h, ckq_cq02h;
   always_comb begin
     // Defaults: every output and temporary assigned on every path.
-    {hoh_nx_cq02h, toh_nx_cq02h, woh_nx_cq02h} = '0;
+    {toh_nx_cq02h, woh_nx_cq02h} = '0;
     {och_nx_cq02h, ufh_nx_cq02h, uft_nx_cq02h, uxt_cq02h, run_nx_cq02h, reach_nx_cq02h} = '0;
     {kc_nx_cq02h, uxa_all_cq02h, ugt_nx_cq02h} = '0;
     {w_nx_cq02h, wg_nx_cq02h, wp_nx_cq02h, wgf_nx_cq02h, wpf_nx_cq02h, wn_nx_cq02h} = '0;
     {stv_cq02h, stp_cq02h, sso_cq02h} = '0;
     {ox_cq02h, ux_cq02h, uxa_cq02h, sc_cq02h} = '0;
     {hm_cq02h, xr_cq02h, wok_cq02h, wk_cq02h, gfe_v_cq02h, pfe_v_cq02h} = '0;
-    {wk0_cq02h, wk1_cq02h, wk2_cq02h, wk3_cq02h, hw_nx_cq02h} = '0;
+    {wk0_cq02h, wk2_cq02h, wk3_cq02h, hw_nx_cq02h} = '0;
     {th_nx_cq02h, tk_cq02h, ufm_nx_cq02h, ufl_cq02h} = '0;
     {yn_cq02h, yt_cq02h, yd_cq02h, ye_cq02h, yk_cq02h, yg_cq02h} = '0;
     {dt_cq02h, rsel_cq02h, mku_cq02h, mkd_cq02h, ug_cq02h, uxg_cq02h, ugd_cq02h, uxr_cq02h} = '0;
@@ -896,11 +890,8 @@ module ooe_rob_w #(
           if (al_n_cq02h[s * LA +: LA] == LA'(a))
             ugt_nx_cq02h[s * A + j] = ugt_nx_cq02h[s * A + j] | (a > j ? 1'b1 : uxg_cq02h[j - a]);
       end
-      hoh_nx_cq02h[s * D +: D] = '0;
       th_nx_cq02h[s * D +: D]  = '0;
       for (int k = 0; k < RP + 1; k++) begin
-        hoh_nx_cq02h[s * D +: D] = hoh_nx_cq02h[s * D +: D] |
-                                   ({D{nret_h_cq02h[s * LA +: LA] == LA'(k)}} & rotl(hoh_cq02h[s * D +: D], k));
         tk_cq02h = rotl(hoh_cq02h[s * D +: D], k);
         for (int i = 0; i < D; i++)
           th_nx_cq02h[s * D + i] = th_nx_cq02h[s * D + i] |
@@ -937,7 +928,6 @@ module ooe_rob_w #(
         ochs_cq02h = och_nx_cq02h[s * NC +: NC];
       end
       if (rel_q_cq02h[s]) begin
-        hoh_nx_cq02h[s * D +: D]   = D'(1);
         th_nx_cq02h[s * D +: D]    = '1;
         toh_nx_cq02h[s * D +: D]   = D'(1);
         och_nx_cq02h[s * NC +: NC] = NC'(1);
@@ -1049,9 +1039,8 @@ module ooe_rob_w #(
       end
       for (int k = 0; k < RP; k++) begin
         wk0_cq02h = rotl(hw_nx_cq02h[(s * NWG + 0) * D +: D], k);
-        wk1_cq02h = rotl(hw_nx_cq02h[(s * NWG + 1) * D +: D], k);
-        wk2_cq02h = rotl(hw_nx_cq02h[(s * NWG + 2) * D +: D], k);
-        wk3_cq02h = rotl(hw_nx_cq02h[(s * NWG + 3) * D +: D], k);
+        wk2_cq02h = rotl(hw_nx_cq02h[(s * NWG + 1) * D +: D], k);
+        wk3_cq02h = rotl(hw_nx_cq02h[(s * NWG + 2) * D +: D], k);
         // This cycle's allocations reach the window apart from the entries
         // (the go's take arrives late, OA's rev 279 (b)): which allocation
         // lane lands on port k is known from the pointers (one lane at
@@ -1061,7 +1050,7 @@ module ooe_rob_w #(
         // completes, so the dones' path is the same and it ends the window.
         nak_cq02h = 1'b0;
         for (int j = 0; j < A; j++) begin
-          mkj_cq02h = |(rotl(toh_cq02h[s * D +: D], j) & wk1_cq02h);
+          mkj_cq02h = |(rotl(toh_cq02h[s * D +: D], j) & wk0_cq02h);
           nak_cq02h = nak_cq02h | (mkj_cq02h & al_nop_cq02h[s * A + j] & ~anyp_cq02h);
         end
         // Two prefixes, so the dones' AND stays apart from the stops'. A
@@ -1077,7 +1066,7 @@ module ooe_rob_w #(
         // meets a compare, not a decode across the entries.
         hkb_cq02h = '0;
         for (int i = 0; i < D; i++)
-          hkb_cq02h = hkb_cq02h | ({LD{wk1_cq02h[i]}} & LD'(i));
+          hkb_cq02h = hkb_cq02h | ({LD{wk0_cq02h[i]}} & LD'(i));
         cmk_cq02h = 1'b0;
         for (int p = 0; p < NM; p++)
           cmk_cq02h = cmk_cq02h | (cm_q_cq02h[p] & ~cf_q_cq02h[p] &&
@@ -1177,11 +1166,11 @@ module ooe_rob_w #(
         och_cq02h[gs * NC +: NC]        <= och_nx_cq02h[gs * NC +: NC];
         run_cq02h[gs * LB +: LB]        <= run_nx_cq02h[gs * LB +: LB];
         reach_q_cq02h[gs]               <= reach_nx_cq02h[gs];
-        hoh_cq02h[gs * D +: D]          <= hoh_nx_cq02h[gs * D +: D];
-        hrg_cq02h[gs * D +: D]          <= hoh_nx_cq02h[gs * D +: D];
-        hrn_cq02h[gs * D +: D]          <= hoh_nx_cq02h[gs * D +: D];
-        hrp_cq02h[gs * D +: D]          <= hoh_nx_cq02h[gs * D +: D];
-        hrf_cq02h[gs * D +: D]          <= hoh_nx_cq02h[gs * D +: D];
+        hoh_cq02h[gs * D +: D]          <= hw_nx_cq02h[(gs * NWG + 0) * D +: D];
+        hrg_cq02h[gs * D +: D]          <= hw_nx_cq02h[(gs * NWG + 0) * D +: D];
+        hrn_cq02h[gs * D +: D]          <= hw_nx_cq02h[(gs * NWG + 1) * D +: D];
+        hrp_cq02h[gs * D +: D]          <= hw_nx_cq02h[(gs * NWG + 2) * D +: D];
+        hrf_cq02h[gs * D +: D]          <= hw_nx_cq02h[(gs * NWG + 2) * D +: D];
         hrb_cq02h[gs * LD +: LD]        <= hrb_nx_cq02h[gs * LD +: LD];
         thq_cq02h[gs * D +: D]          <= th_nx_cq02h[gs * D +: D];
         hd_cq02h[gs * D +: D]           <= hd_nx_cq02h[gs * D +: D];
@@ -1234,11 +1223,9 @@ module ooe_rob_w #(
     // slot's own registers, so every flow counts one gate a slot.
     (* keep *) logic [RP-1:0] w_s_cq02h, wg_s_cq02h, wp_s_cq02h, wgf_s_cq02h, wpf_s_cq02h, wn_s_cq02h;
     (* keep *) logic [RP-1:0] w_so_cq02h, wg_so_cq02h, wp_so_cq02h, wgf_so_cq02h, wpf_so_cq02h;
-    (* keep *) logic [RP-1:0] w_sh_cq02h;
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
         w_s_cq02h    <= '0;
-        w_sh_cq02h   <= '0;
         wg_s_cq02h   <= '0;
         wp_s_cq02h   <= '0;
         wgf_s_cq02h  <= '0;
@@ -1251,7 +1238,6 @@ module ooe_rob_w #(
         wpf_so_cq02h <= '0;
       end else if (win_en_cq02h[gs]) begin
         w_s_cq02h    <= w_nx_cq02h[gs * RP +: RP];
-        w_sh_cq02h   <= w_nx_cq02h[gs * RP +: RP];
         wg_s_cq02h   <= wg_nx_cq02h[gs * RP +: RP];
         wp_s_cq02h   <= wp_nx_cq02h[gs * RP +: RP];
         wgf_s_cq02h  <= wgf_nx_cq02h[gs * RP +: RP];
@@ -1265,7 +1251,6 @@ module ooe_rob_w #(
       end
     end
     assign w_cq02h[gs * RP +: RP]     = w_s_cq02h;
-    assign w_h_cq02h[gs * RP +: RP]   = w_sh_cq02h;
     // The window's head copies and their windows (#52), each group its own.
     for (genvar g = 0; g < NWG; g++) begin : g_hw
       (* keep *) logic [D-1:0] hwc_s_cq02h;
@@ -2135,7 +2120,6 @@ module ooe_rob_w #(
   always_comb
     for (int s = 0; s < S; s++) hrb_bad_cq02h[s] = hrb_cq02h[s * LD +: LD] != enc(hrf_cq02h[s * D +: D]);
   `CCV_ASSERT(head_read_binary, hrb_bad_cq02h == '0)
-  `CCV_ASSERT(window_head_copy, w_h_cq02h == w_cq02h)
   logic [S-1:0] hwc_bad_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
