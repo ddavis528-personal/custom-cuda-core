@@ -604,6 +604,51 @@ void testIdle() {
 
 } // namespace
 
+/// A memop's address (RA rev 148, AR 356 (2)): launched at A + CCV_LAT_RCU_ADDR
+/// - 1, so valid at A + CCV_LAT_RCU_ADDR, whatever the param says; base from
+/// the operand read in A. addr-late launches it a cycle past the param and
+/// must be refused here by name.
+bool addrCycleOk(const char *brk, std::string &why) {
+  Env e(brk);
+  e.t = 20;
+  In in = Env::idleIn();
+  Issue is;
+  is.tag = 9;
+  is.tid = 9;
+  is.issue_mask = ~0u;
+  is.src = {3, kZero, kZero};
+  is.oc.unit = Unit::Mem;
+  is.oc.mk = MemKind::Load;
+  is.oc.reads = 1;
+  is.oc.base_src = 0;
+  in.iss[kSlotP0] = is;
+  const uint64_t a = e.t;
+  long at = -1;
+  Addr got;
+  for (unsigned k = 0; k != kAddrLaunch + 4 && at < 0; ++k) {
+    const uint64_t now = e.t;
+    Out o = k == 0 ? e.step(in) : e.step();
+    if (!o.addrs.empty()) { at = long(now - a); got = o.addrs[0]; }
+  }
+  if (at != long(kAddrLaunch)) {
+    why = "address launched at A+" + std::to_string(at) + ", not A+" + std::to_string(kAddrLaunch) +
+          " (CCV_LAT_RCU_ADDR " + std::to_string(ccv::prov::kLatRcuAddr) + ")";
+    return false;
+  }
+  if (got.tag != 9 || got.slot != 0 || got.base[0] != e.gpr[3][0] || got.base[31] != e.gpr[3][31]) {
+    why = "address payload wrong";
+    return false;
+  }
+  return true;
+}
+void testAddrCycle() {
+  g_test = "addr-cycle";
+  std::string why;
+  const bool ok = addrCycleOk("", why);
+  EXPECT(ok, "%s", why.c_str());
+  CONTROL("addr-late", !addrCycleOk("addr-late", why), "addr-late passed the address-cycle check");
+}
+
 int main(int argc, char **argv) {
   for (int i = 1; i < argc; ++i)
     if (!std::strcmp(argv[i], "-v")) g_verbose = true;
@@ -621,6 +666,7 @@ int main(int argc, char **argv) {
   testSfuWrite();
   testSfuNarrow();
   testIdle();
+  testAddrCycle();
   std::printf("rcu-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
   return g_fail ? 1 : 0;
 }

@@ -448,6 +448,13 @@ def selftest(d):
              # TI-1: imm carries predicate logic's two renamed sources.
              ("CCV_P_W_IMM", "value", 12, "CCV_P_W_IMM"),
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
+             # AR 362 (1): a way must fit in a page, or ccv_miu_dcu_req's
+             # set-index lead is no longer page offset: more sets, or a
+             # smaller page, is refused; the lead's widths follow the counts.
+             ("CCV_DCU_SETS", "value", 1024, "CCV_DCU_SETS"),
+             ("CCV_L_PAGE_SHIFT", "value", 15, "CCV_DCU_SETS"),
+             ("CCV_DCU_SETS", "value", 256, "CCV_W_DCU_SET"),
+             ("CCV_DCU_BANKS", "value", 8, "CCV_W_DCU_BANK"),
              ("CCV_P_PHYS_ZERO", "value", 191, "CCV_P_PHYS_ZERO"),
              ("CCV_P_PRED_REGS", "value", 64, "CCV_P_W_PHYS_PRED"),
              # A-70: an epoch that can wrap within one flight is refused,

@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 15 | 40 |
 | ⚠️ Some provisional | 27 | 147 |
-| ⛔ Some preliminary | 13 | 151 |
-| **Total** | **55** | **338** |
+| ⛔ Some preliminary | 13 | 153 |
+| **Total** | **55** | **340** |
 
 ## What still has to be decided
 
@@ -951,7 +951,7 @@ miu → spm · rate 4 · memory
 
 ### `ccv_miu_dcu_req`
 
-Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask.
+Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index and bank lead it by a cycle (AR 362).
 
 miu → dcu · rate 4 · memory
 
@@ -964,7 +964,11 @@ miu → dcu · rate 4 · memory
 | `exclusive_req` | `1` | 1 | literal |
 | `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
-| **total** | | **1214** | ⛔ 4 preliminary, ⚠️ 54 provisional |
+| `lead_set_index` | `CCV_W_DCU_SET` | 9 ⚠️ | CCV_W_DCU_SET (tunable) |
+| `lead_bank` | `CCV_W_DCU_BANK` | 2 | CCV_W_DCU_BANK (arch) |
+| **total** | | **1225** | ⛔ 4 preliminary, ⚠️ 63 provisional |
+
+Lead fields (driven with valid, a cycle ahead of the rest): `lead_set_index`, `lead_bank`.
 
 ### `ccv_dcu_mlc_req`
 

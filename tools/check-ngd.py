@@ -111,7 +111,7 @@ The rules, as findings:
          never measured inside: there is nothing in it to measure.
 
 Modules that broke a default when the rule was made sit on
-rtl/ngd-ratchet.json, awaiting budgets from OA or a redesign; the list only
+rtl/ngd-ratchet.json, awaiting budgets or a redesign; the list only
 shrinks.
 
   tools/check-ngd.py              every unit, the ratchet and the blocks
