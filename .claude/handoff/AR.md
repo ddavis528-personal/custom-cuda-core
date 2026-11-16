@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 362 .577132, AR 363 .579939 (tab rev 364).
-  - **The next AR row inserts after .579939.**
+  - Latest rows: AR 363 .579939, AR 364 .582383 (tab rev 365).
+  - **The next AR row inserts after .582383.**
 - **Other tabs:**
 
   | Tab | Node |
@@ -90,8 +90,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 364, OA 418, TI 450, RA 148, RI 83,
-  IS 194, CP 159, OI 350, DA 121, MA 65, Conventions 19.
+- **Bookmarks** (revs read through): AR 365, OA 418, TI 453, RA 148, RI 83,
+  IS 194, CP 159, OI 350, DA 123, MA 67, Conventions 19.
 - **Insert a row:** update with ref {"object":"node","id":"bc521c46-9710"},
   engine "prose", container {"kind":"project","id":"JApHYjaUESeq8tsGMGXMU5"}.
   The payload is
@@ -181,6 +181,17 @@ Credit rules (TI-49):
    perf-register PF-33 and PF-47 are booked. Wait for MA's answer.
    RH may delete its trees; AR's own are in ~/l1sweep (f*/h*/wp; delete them
    once MA answers). One cm128 at a time (about 7 GB at its end).
+1b. **MA-16 / DA 123 (SRAM is 1RW at half rate; a register file is 3x
+   per bit): AR 364 answered (row .582383; notices to MA and TI).**
+   - 8 half-rate banks by [9:7]. Open-loop port-trace replay (late loads,
+     8 vs 16 banks): cm128 3.30/1.92%, cm32 2.49/1.46%; 16 buys under 0.2%.
+   - No separate bank field (AR 362 (4)'s was AR's error): TI drops it and
+     adds the require BANKS <= SETS.
+   - DCU needs an age bound on hole-filling (it starves at 4x).
+   - Tools: ~/l1sweep/bank (extract.py, banksim.py, cm32.ev, cm128.ev).
+     Dump with `--port-dump dcu=<vcd>`; the payload follows its valid by
+     a cycle.
+   - Wait for MA's closed-loop figure and TI's lead fix.
 2. **AR 362, Strawman B (set_index + bank lead on ccv_miu_dcu_req at H+1).**
    MA 65 accepted all six conditions:
    - SETS × LINE ≤ 2^PAGE_SHIFT;
