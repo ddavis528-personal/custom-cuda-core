@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 365, TI 456, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 68, DA 123.
+Conventions 19, AR 365, TI 457, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 68, DA 123.
 
 ## State, 2026-11-13
 
