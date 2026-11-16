@@ -7,7 +7,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - RH runs long CPU-, memory- and disk-heavy jobs that other agents hand off: gates,
   check-cg/check-ngd sweeps, Yosys/SBY runs, kernel and SV-hosted runs,
   experiment sweeps, bisects. Takes jobs from OI first; TI may send them too.
-  Other senders: ask Daniel first.
+  AR is a regular sender too (DA in RH's session, 2026-11-15). Results go to AR by
+  message, never as a register write. Other senders: ask Daniel first.
 - No register tab, so RH never writes to the register. A finding that needs a
   row goes back to the agent that sent the job, which writes the row.
 - Jobs arrive by `send_message` and results go back the same way, with `priority`
@@ -53,11 +54,15 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- Nothing running (10:30Z 11-15). AR 355 (3) for OI DONE and sent: 8dbf290b (gate-scratch/OI,
+- Nothing running (23:16Z 11-15). AR-361 DONE, all tables sent to AR: pre-fix sweep (ar361.sh,
+  60bceb62; CHECKs on cm128 at sets<512 = TI 450 bug) and post-fix (ar361f.sh, a5481843: required
+  four + the 128-set four, all clean; h7/64 2,124,002 = AR's). AR booked it (AR 363, PF-33/PF-47) and
+  released trees and oracles (deleted). Keep logs ~/ccv-logs/ar361{,f} until MA answers AR 363.
+  Tabulate: python3 rh-jobs/ar361/table.py <logdir>.
+- AR 355 (3) for OI DONE and sent: 8dbf290b (gate-scratch/OI,
   debug only), cm128 warm, CCV_DBG_SEQ=179681: no CHECK (check_failures 0, 5,698,966 cycles);
   DBGHELD R14 0x10 vs 0x5b0 at seq 179681, whose issue was cancelled behind seq 179680's load
-  miss. Dump ~/ccv-logs/ar355/dbg.gz (sha c5ce73a6); script rh-jobs/ar355; worktree
-  /home/user/rh-ar355 kept until OI is done. A gzip sent inline as base64 costs ~50k tokens:
+  miss. OI agreed and closed it (OI rev 351); worktree and dump dropped. Script rh-jobs/ar355. A gzip sent inline as base64 costs ~50k tokens:
   send filtered plain-text windows instead.
 - RI ngd 7e29cef5 (RI's 11-13 daily-sweep merge, which replaces 439179d9; RI asked RH to
   stop that leg) DONE: PARTIAL PASS, ngd 5558 s at CCV_JOBS=4, export d4485d9c...,
