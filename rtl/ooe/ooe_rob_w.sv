@@ -477,7 +477,7 @@ module ooe_rob_w #(
       end
       for (int a = 0; a < A + 1; a++) begin
         for (int k = 1; k < A + 1; k++)
-          lk_cq02h[(s * (A + 1) + a) * (A + 1) + k] = k <= a && kc_cq02h[s * KC + (k <= a ? a - k : 0)];
+          lk_cq02h[(s * (A + 1) + a) * (A + 1) + k] = a >= k && kc_cq02h[s * KC + (a >= k ? a - k : 0)];
         lk_cq02h[(s * (A + 1) + a) * (A + 1)] = ~|lk_cq02h[(s * (A + 1) + a) * (A + 1) + 1 +: A];
       end
       for (int k = 0; k < A + 1; k++) begin
@@ -822,7 +822,7 @@ module ooe_rob_w #(
       kc_nx_cq02h[s * KC +: KC] = '0;
       for (int a = 0; a < A + 1; a++) begin
         yk_cq02h = '0;
-        for (int k = 0; k <= a; k++)
+        for (int k = 0; k < a + 1; k++)
           yk_cq02h = yk_cq02h | ({KC{lk_cq02h[(s * (A + 1) + a) * (A + 1) + k]}} & (kc_cq02h[s * KC +: KC] >> (a - k)));
         kc_nx_cq02h[s * KC +: KC] = kc_nx_cq02h[s * KC +: KC] | ({KC{nfe_cq02h[s * (A + 1) + a]}} & yk_cq02h);
       end
