@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-16 (#52 PUSHED b1570e4d SCOPED PASS, caps NGD-1 30.1/al_n 29.2/dn_tag 26.3/fl_m 29.3; OI-155 rings TI on baseline+heavy-units; next: refactor experiment 1 cdb5d3ae in wt-s54 branch oi-rw, unmeasured; before: sweep 11-15 28d4ca0c PUSHED)
+Updated 2026-11-16 (sweep 11-16 b727ad88 PUSHED full PASS at CCV_JOBS=2 after check-cg OOM (OI-157, TI fixed 804d1e6f). #52: DA said push e6 with al_n/dn_tag caps raised (dfd2ff12 on oi-rw), restructure to OA = OI-158; OA 420 chose (b) retire pick stage + al_n/fl_m flopped on arrival, price first: knob rob_retire_lag 9b395ee1 on oi-rw (suite PASS lag 0/1). Next: merge oi-rw, measure ooe_rob_w_1..3, scoped gate-push, then RH price S1/cm32/cm128, then OI row re:OA-420)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -39,7 +39,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 358, RA 148, IS 194, TI 444, OA 418, OI 351, CP 159, DA 119, RI 82, MA 59
+Conventions 19, AR 365, RA 151, IS 195, TI 462, OA 422, OI 362, CP 159, DA 123, RI 86, MA 68
+(11-16: DA via TI-461: no dated tasks, best effort in priority order, reorder for deps. OI-156 confirmed TI 457's Core::uop edit; #58 = RTL OOE epoch drop at the boundary capture. OI-157 check-cg OOM -> TI 458/462 fixed. IS 195: same OOM, FYI.)
 (sweep 11-15: merged ccr-80102643 18, miu-dcu-microarch-spec 17, 126afa13 8, 9eb50716 4, c22116ce 1;
 pushed 28d4ca0c (full PASS); settings check OK. TI 444 (cc OI): cm128priv 128 operand CHECKs at default DCU
 (seq 180579 R14, 500455 R2), TI isolating with stub RCU/OOE; OI acts only if it lands on OOE. sweep 11-14: merged 183cc441 66, 9eb50716 25, 126afa13 2, 888218a3 1, c22116ce 1, miu-dcu-spec 1; pushed 613b7f6c (full PASS).
