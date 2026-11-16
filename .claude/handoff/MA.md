@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 365, TI 457, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 68, DA 123.
+Conventions 19, AR 365, TI 461, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 68, DA 123.
 
 ## State, 2026-11-13
 
@@ -75,8 +75,11 @@ Conventions 19, AR 365, TI 457, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
 
 ## Open work, most urgent first
 
+- DA ruling (TI-461, 2026-11-16): no task carries a date; best effort in priority order; a dependency
+  is met by reordering, never a due date. No dates on rows, handoff items or promises.
+
 - Sweep 2026-11-16: 9 branches merged (merge commits; 2 slow, multiple merge bases). TI-455: AR 362
-  lead landed (e6b1dd68); CCV_DCU_BANK_AGE 16 in TI's 11-17 gate. Only MI/DI blocker left: Daniel reads
+  lead landed (e6b1dd68); TI 457: AR 364 + DCU_BANKS 8, DCU_BANK_AGE 16, lead_set_index at 1861cc51. Only MI/DI blocker left: Daniel reads
   the summary, then docs/miu-impl.md + docs/dcu-impl.md. CP-83: coremark-derived-pl-priv in a9241c2.
 
 - 2026-11-16: DA rev 123 (Daniel): SRAM is 1RW (6T) only, accessed every other cycle; banking for
@@ -87,7 +90,7 @@ Conventions 19, AR 365, TI 457, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
   banks. SETTLED (MA rev 68): AR 364 agreed 8 banks (16 buys <0.2% open-loop); the bank is
   set_index's low 3 bits, so no bank field: lead = 9 bits/slot, 36 DCU lead flops (my 48 was wrong).
   DCU gets an age bound on hole-filling, CCV_DCU_BANK_AGE (start 16; AR saw 729-cycle starvation);
-  Phase 1 model sets it. TI-453: macro library on 11-18; told TI the lead width derives from
+  Phase 1 model sets it. TI-453: macro library is TI's 2nd priority (after RA 148); told TI the lead width derives from
   CCV_DCU_SETS only. Spec tabs updated (MIU rev 136, DCU rev 39) and summary doc (rev 19).
 
 - 2026-11-15 late: doc check done (MIU tab rev 128, DCU tab rev 37: drafts -> decided, Strawman B
