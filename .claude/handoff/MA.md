@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 365, TI 453, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 68, DA 123.
+Conventions 19, AR 365, TI 456, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 68, DA 123.
 
 ## State, 2026-11-13
 
@@ -74,6 +74,10 @@ Conventions 19, AR 365, TI 453, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- Sweep 2026-11-16: 9 branches merged (merge commits; 2 slow, multiple merge bases). TI-455: AR 362
+  lead landed (e6b1dd68); CCV_DCU_BANK_AGE 16 in TI's 11-17 gate. Only MI/DI blocker left: Daniel reads
+  the summary, then docs/miu-impl.md + docs/dcu-impl.md. CP-83: coremark-derived-pl-priv in a9241c2.
 
 - 2026-11-16: DA rev 123 (Daniel): SRAM is 1RW (6T) only, accessed every other cycle; banking for
   bandwidth; 1R1W or every-cycle arrays are RF at 3x area/bit; tags RF, data SRAM. MA-16 (rev 67,
