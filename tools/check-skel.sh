@@ -93,8 +93,9 @@ else
   for c in wbr nomask late early; do
     VL_CONTROL=$c "$B/vl-sram/vl_sram" 20000 >/dev/null 2>&1 && missed="$missed $c"
   done
-  VL_CONTROL=b2b "$B/vl-sram/vl_sram" 20000 2>&1 | grep -q "CCV sram_ce_every_other failed" \
-    || missed="$missed b2b"
+  # The RTL's assertion stops the run (non-zero), so read its output whole.
+  b2b=$(VL_CONTROL=b2b "$B/vl-sram/vl_sram" 20000 2>&1 || true)
+  case "$b2b" in *"CCV sram_ce_every_other failed"*) ;; *) missed="$missed b2b" ;; esac
   if [ -n "$missed" ]; then
     bad "SRAM model == RTL, cycle for cycle" "control(s) not caught:$missed"
   else
