@@ -392,7 +392,7 @@ module ooe_rob_w #(
   // Group 0: the dones' match; 1: the completions' and the allocations';
   // 2: the completion terms; 3: the stops and the frees. Each is hoh and w,
   // asserted.
-  localparam int NWG = 4, NWS = 1, DWS = D / NWS;
+  localparam int NWG = 4, NWS = 2, DWS = D / NWS;
   logic [S*NWG*D-1:0]     hwc_cq02h, hw_nx_cq02h;
   logic [S*NWG*NWS*RP-1:0] wwc_cq02h;
   always_comb
