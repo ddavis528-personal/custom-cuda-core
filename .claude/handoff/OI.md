@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-15 (#55 l1-nohit at CCV_LAT_L1_NOHIT; before: 613b7f6c PUSHED, full PASS: #38 29ee4ffd, #39 8c4a4dce + cg-build path fix, sweep merge 11-14; OI-147 answers TI 428)
+Updated 2026-11-15 (#52 waits on OA, OI-152; sweep 11-15 28d4ca0c PUSHED full PASS; #56 closed; #55 l1-nohit at CCV_LAT_L1_NOHIT; before: 613b7f6c PUSHED, full PASS: #38 29ee4ffd, #39 8c4a4dce + cg-build path fix, sweep merge 11-14; OI-147 answers TI 428)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -39,8 +39,10 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 351, RA 146, IS 193, TI 434, OA 416, OI 348, CP 157, DA 119, RI 81, MA 54
-(sweep 11-14: merged 183cc441 66, 9eb50716 25, 126afa13 2, 888218a3 1, c22116ce 1, miu-dcu-spec 1; pushed 613b7f6c (full PASS).
+Conventions 19, AR 358, RA 148, IS 194, TI 444, OA 418, OI 351, CP 159, DA 119, RI 82, MA 59
+(sweep 11-15: merged ccr-80102643 18, miu-dcu-microarch-spec 17, 126afa13 8, 9eb50716 4, c22116ce 1;
+pushed 28d4ca0c (full PASS); settings check OK. TI 444 (cc OI): cm128priv 128 operand CHECKs at default DCU
+(seq 180579 R14, 500455 R2), TI isolating with stub RCU/OOE; OI acts only if it lands on OOE. sweep 11-14: merged 183cc441 66, 9eb50716 25, 126afa13 2, 888218a3 1, c22116ce 1, miu-dcu-spec 1; pushed 613b7f6c (full PASS).
 Pongs to Friday's pings: all OK. TI 518cb3c3 (detached tool exits 5) not yet in OI's branch: merge it next.
 AR 349 (Needs TI, MA): coremark128 operand mismatch lane 0 seq 917 + dec_ooe_uop response_within_n; not OI's yet. sweep 11-13 (late, by hand): merged 8 branches incl. TI a46afef7 (MEMOP_CREDITS, no_hit, gate detach:
 use tools/bg-run.sh / gate-wait.sh now), pushed in a2c1513a. Pongs 11-13: all 8 OK. Pings sent 11-13 15:20 UTC to AR OA IS TI CP RA RI RH; check pongs Sat. sweep 11-12, nothing for OI; merged 126afa13 5, 183cc441 3, 3868632d 4, 888218a3 5, 9eb50716 6, c22116ce 1. Sweep 11-10; AR closed OI-136; DA 117-119: MIU next, MA/MI/DI). Earlier: OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
@@ -57,6 +59,25 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-11. #52 ooe_rob_w WAITS ON OA (OI-152, OI rev 355, OA rung): committed locally 6c5cc570 on branch oi-52 in
+   /home/user/wt-s54 (base 4a24bf67; patch in scratchpad/rob52b). fl_m from Rename 2 replaces fl_slot (OA 418 (B));
+   landed count rewritten (lk from kc flops, nfr = nfe with a squash as none arriving; nlg/nle/nk gone);
+   cmt_tag now resets (CG replay at WID>0); units ooe_rob_w_1..3 (DA: WID stays a param). Bench + 24 controls
+   pass; CG passes on all 4 units. NGD (rob_w/_1/_2/_3): NGD-1 29.1/29.1/29.1/30.1 (cap 29.6), al_n 29.1,
+   dn_tag 26.2/25.7/26.0/26.2, fl_m 29.3/28.7/28.7/29.3, fl_v 7.0 (drop cap). Asked OA: (1) fl_m cap key
+   (baseline line in rtl/ngd-fanout-baseline.json is TI's: propose 31.7, cap 29.3, drop fl_slot/fl_v);
+   (2) WID 3 NGD-1 30.1 = ABC remap of the untouched retire window (w_h -> hoh_nx -> w): cap 30.1 or park;
+   (3) dn_tag via TI's repeater, cm_tag via cmcap at 0 NGD (DA 114). On a ruling: edit ngd-ratchet.json
+   caps, merge origin, gate-push. Bookmarks: OA 420, TI 445, DA 120. Next free OI-153.
+-10. #54 ooe_sched PARKED like #51/#53 (scratchpad/s54/NOTES.md, fcp-split.patch; worktree /home/user/wt-s54):
+   ooe_pick alone (flopped) is 20.1 with FB=1, 10.4 without: res/vel (arrival 4) cannot reach 25 inside.
+   fcp_cq04h's 30 copies merge into one flop (same D): a register per entry takes NGD-1 26.6 -> 25.4 but res
+   28.9 -> 29.5 (over cap). Needs OA: res/vel arrival, the fallback moved, or a registered R bit (input contract).
+-9. #53 ooe_go PARKED like #51 (scratchpad/go53/NOTES.md, e1e2.patch, e3.patch): internal rewrites give
+   ha -1.1 at best, hv/px/pl stay 27.5-28.3 (ABC remap moves others +-1). Needs OA: decq/rename
+   registering nwh / px thermometer / run needs, or the arrival 2 on those ports. Asked DA 11-15.
+-8. #56 CLOSED (OI 351): RH's base-5 run clean; seq 179681's held mismatch was a cancelled spec issue
+   reissued correctly (Kernel::failHeld drops it). Worktree /home/user/wt-dbg355 can go.
 -7. DA 11-13 approved, after #39: #51 ooe_rendep to 25 (gsn_cq01h 28.5, psn_cq01h 28.8); #52 ooe_rob_w
    (NGD-1 29.6, al_n 29.2, dn_tag 26.3, fl_slot 28.6, fl_v 29.5); #53 ooe_go (NGD-1 26.1, ha 27.9, hv 28.9,
    pl 27.2, px 28.0, reach 25.3, wt 25.0; leave port-budget caps under 25); #54 ooe_sched (NGD-1 26.7,
