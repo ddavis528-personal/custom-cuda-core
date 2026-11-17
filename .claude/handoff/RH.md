@@ -54,7 +54,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- Nothing running (23:16Z 11-15). AR-361 DONE, all tables sent to AR: pre-fix sweep (ar361.sh,
+- OI OA-420 pricing (OI-158) RUNNING from 05:17Z 11-17: rh-jobs/oi420/oi420.sh (resumable), worktree
+  rh-oi420 at a5dc7eed, summary ~/ccv-logs/oi420/summary. rob_retire_lag 0 vs 1, all else default; S1
+  (all kernels), cm32, cm128. Report per run cycles, IPC, retire.head_wait.rob_full, stall.rob_full,
+  delta %; S1 sum decides (<0.5% OA rules, else DA). Watcher bq4o7jvio, fallback 07:16Z.
+- AR-361 DONE, all tables sent to AR: pre-fix sweep (ar361.sh,
   60bceb62; CHECKs on cm128 at sets<512 = TI 450 bug) and post-fix (ar361f.sh, a5481843: required
   four + the 128-set four, all clean; h7/64 2,124,002 = AR's). AR booked it (AR 363, PF-33/PF-47) and
   released trees and oracles (deleted). Keep logs ~/ccv-logs/ar361{,f} until MA answers AR 363.
