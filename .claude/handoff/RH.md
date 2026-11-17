@@ -57,7 +57,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - Nothing running (09:30Z 11-17). OI OA-424 (CMPL 14 vs 15, TI-474) DONE and sent. The first c15 run was broken
   (stub MIU sent data with cmpl at due; logs in ~/ccv-logs/oi424/c15-v1). Rerun with OI's stub-MIU patch
   (rh-jobs/oi424/oi424b.sh) is clean: S1 +0.05%, cm32p -0.35%, cm128p +0.45% (reexec 8.0k -> 23.8k).
-  Trees rh-oi424-{b14,c15} (local patches, never push) kept until OI says; logs a day after that.
+  OI booked it as OI-162 (rev 366); trees dropped. rm ~/ccv-logs/oi424 after 09:30Z 11-18.
 - OI OA-421 priv pricing DONE and sent: rh-jobs/oi420/oi420p.sh, a5dc7eed,
   cm32priv +0.15%, cm128priv +0.06% (lag 1 vs 0), all clean. Worktree dropped. OI booked it as OI-161
   (rev 365) and released the logs: rm ~/ccv-logs/oi420p after 07:20Z 11-18.
