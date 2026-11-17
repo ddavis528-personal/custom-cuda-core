@@ -6158,6 +6158,17 @@ static std::unique_ptr<Block> makeRcu(int inst, Kernel &k) {
   return makeRcuModel(inst, k);
 }
 
+/// MA's Phase 1 DCU resource model (sim/dcu/dcu_p1.cpp; MA-21, DA rev 125):
+/// the stub's function with the banks' timing, for Phase 1's sweeps.
+/// CCV_DCU_IMPL=p1 selects it; the stub stays the default and the reference.
+std::unique_ptr<Block> makeDcuP1(int inst, Kernel &k);
+
+static std::unique_ptr<Block> makeDcu(int inst, Kernel &k) {
+  const char *impl = std::getenv("CCV_DCU_IMPL");
+  if (impl && std::string(impl) == "p1") return makeDcuP1(inst, k);
+  return std::make_unique<Dcu>(inst, k);
+}
+
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   if (inst < 0) return std::make_unique<Testbench>(inst, k);
   switch (kBlkInsts[inst].type) {
@@ -6167,7 +6178,7 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   case Blk::RCU:  return makeRcu(inst, k);          // CCV_RCU_IMPL
   case Blk::LANE: return std::make_unique<Lane>(inst, k);
   case Blk::MIU:  return std::make_unique<Miu>(inst, k);
-  case Blk::DCU:  return std::make_unique<Dcu>(inst, k);
+  case Blk::DCU:  return makeDcu(inst, k);          // CCV_DCU_IMPL
   case Blk::MLC:  return std::make_unique<Mlc>(inst, k);
   case Blk::EXB:  return std::make_unique<Exb>(inst, k);
   case Blk::RAU:  return std::make_unique<Rau>(inst, k);
@@ -6464,6 +6475,15 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
                         "frame_lookups", "st_ld_wait", "fet_perfect_taken", "fet_perfect_split"})
     std::printf(" %s=%llu", b, (unsigned long long)(k.cover.count(b) ? k.cover.at(b) : 0));
   std::printf("\n");
+  // MA's Phase 1 model's measures (CCV_DCU_IMPL=p1; MA-21), when it ran.
+  bool p1 = false;
+  for (const auto &kv : k.cover)
+    if (kv.first.compare(0, 3, "p1_") == 0) {
+      if (!p1) std::printf("P1");
+      p1 = true;
+      std::printf(" %s=%llu", kv.first.c_str(), (unsigned long long)kv.second);
+    }
+  if (p1) std::printf("\n");
 }
 
 } // namespace skel
