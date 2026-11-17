@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 367, TI 469, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 75, DA 123.
+Conventions 19, AR 367, TI 470, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 75, DA 123.
 
 ## State, 2026-11-13
 
@@ -77,7 +77,8 @@ Conventions 19, AR 367, TI 469, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
 
 - TI-467 (DA, 2026-11-17): macro size per instance, RF 512 B-8 KiB, SRAM 4-32 KiB (check-ngd MACRO-1,
   rtl/macro-waivers.json). MA-18 (rev 74): no waiver. Data bank = 2 x (512w x 512b, 32 KiB) SRAM, 16 in all
-  (MA rev 75, TI-469: size penalty 20% at a type's minimum, 0 at max; 16 KiB fallback only if timing fails);
+  (MA rev 75, TI-469: size penalty 20% at a type's minimum, 0 at max; 16 KiB fallback only if timing fails;
+  TI 470: 512w SRAM addr setup 13.1, rdata launch 18.5, 6.5 NGD left: flopped rdata fits);
   tag RF word = the set (8 x 35 tags + 7 PLRU, 64 x 288 b, 2,304 B, 8 instances; hit's LRU write-back dropped
   if a fill wrote the set since its read); payload store RF only (5,760 B, or 2 x 2,880 B); window table RF
   512 B passes: TI-468 (DA) rules limits inclusive. Size waivers are written by the block architect (MA
