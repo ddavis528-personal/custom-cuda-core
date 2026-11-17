@@ -1231,6 +1231,27 @@ def macro_cost(typ, w, d):
     return pen, w * d * k * (1.0 + pen / 100.0)
 
 
+def macro_efficiency(macros):
+    """The array efficiency of a block (Daniel, 2026-11-17): one number for
+    all its hard macros, register files and SRAMs together, the bits they
+    hold over what they cost in SRAM bits at the largest legal SRAM
+    (macro_cost's weight): 1.0 for arrays all of 32 KiB SRAMs, less for
+    smaller ones (0.83 at the smallest SRAM) and for register files (0.33
+    at the largest, 0.22 with byte enables). `macros` is [(macro, W, D)],
+    one per instance. Returns (instances, bits, efficiency or None)."""
+    bits = sum(w * d for _, w, d in macros)
+    cost = sum(macro_cost(typ, w, d)[1] for typ, w, d in macros)
+    return len(macros), bits, (bits / cost if cost else None)
+
+
+def macro_efficiency_text(macros):
+    n, bits, e = macro_efficiency(macros)
+    if not n:
+        return "arrays: none"
+    return "arrays: %d macro(s), %d KiB, efficiency %.3f (a 32 KiB SRAM is 1.0)" % (
+        n, bits // 8192, e)
+
+
 def macro_size(insts, waivers):
     """MACRO-1 (Daniel, 2026-11-17): one register-file instance holds from
     CCV_MACRO_RF_MIN_BYTES to CCV_MACRO_RF_MAX_BYTES (512 B to 8 KiB), one
@@ -1334,6 +1355,14 @@ def macro_size_selftest(expect, ok, small):
         expect(abs(macro_cost(typ, 64, n)[1] - 64 * n * k) < 1e-6,
                "MACRO-1: %s at its largest size weighs %g SRAM bits, not %g times its bits"
                % (typ, macro_cost(typ, 64, n)[1], k))
+    # The block metric (Daniel, 2026-11-17): a 32 KiB SRAM is 1.0, an 8 KiB
+    # register file 1/3, the smallest SRAM 1/1.2; a mix is bits over cost.
+    big, rf8 = ("ccv_common_sram_1rw", 512, 512), ("ccv_common_rf_1r1w", 64, 1024)
+    small = ("ccv_common_sram_1rw", 512, 64)
+    e = [macro_efficiency(x)[2] for x in ([big, big], [rf8], [small], [big, rf8])]
+    want = [1.0, 1 / 3.0, 1 / 1.2, (512 * 512 + 64 * 1024) / (512 * 512 + 3.0 * 64 * 1024)]
+    expect(all(abs(x - y) < 1e-9 for x, y in zip(e, want)) and macro_efficiency([])[2] is None,
+           "MACRO-1: block array efficiency %s, not %s" % (e, want))
     p_sram, w_sram = macro_cost("ccv_common_sram_1rw", 512, 512)
     p_be, w_be = macro_cost("ccv_common_rf_1r1w_be", 512, 128)
     expect(abs(w_sram - 512 * 512) < 1e-6 and
@@ -2009,6 +2038,7 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
         timings[st.top] = time_level(name, st, st.top, level_kids(st, st.top, budgets), lib)
     keyed = ngd_keyed(units)
     found, missing, n = {}, collections.OrderedDict(), [0]
+    arrays = []     # (macro, W, D) per macro instance, every path counted
 
     def walk(mn, cell, path):
         if mn not in (st.top, start) and not src_name(mn).endswith("_w") \
@@ -2020,6 +2050,12 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                 missing.setdefault(key, []).append(path)
             else:
                 found[(mn, cell)] = u
+                arrays.extend((getattr(u.t, "macros", None) or {}).values())
+        elif mn == start and start != st.top:
+            # The block's own module: its macros from its own unit, if any.
+            own = [u for u in units if u.module == src_name(start)]
+            if own:
+                arrays.extend((getattr(own[0].t, "macros", None) or {}).values())
         for cn, t in st.cells(mn):
             walk(t, (mn, cn), "%s.%s" % (path, cn) if path else cn)
     walk(st.top, None, "")
@@ -2233,8 +2269,9 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                                lambda p, out: straight(start, None, p, out, ""))
     line = ("block %-8s sum of parts: %d level(s) timed alone for convergence, %d of %d "
             "instance(s) on units at their parameters, the boundary held by its parts "
-            "(structural read %.1f s)" % (name, len(timings), n[0] - sum(
-                len(p) for p in missing.values()), n[0], st.seconds))
+            "(structural read %.1f s); %s" % (name, len(timings), n[0] - sum(
+                len(p) for p in missing.values()), n[0], st.seconds,
+                macro_efficiency_text(arrays)))
     return line, fails
 
 
@@ -3080,6 +3117,7 @@ def selftest():
 
 
 MACRO_FX = "test/macro/sram_fx.sv"
+MACRO_FX_BLK = "test/macro/sram_fx_blk.sv"
 
 
 def macro_unit(name, **params):
@@ -3141,6 +3179,14 @@ def macro_selftest(expect):
            % (flops.t.nflops, flops.t.rr, findings(flops, none)))
     MACRO_NUMBERS.update(flops=flops.t, deep_idx=deep.t.ro.get(addr),
                          deep_rd=rdeep.t.ir.get(rd))
+    # The block's array efficiency (Daniel, 2026-11-17): a block of two
+    # sram_fx counts each instance's macros, four in all.
+    line, _ = block_check("fx_mac", "ngd_fx_blk_mac", [MACRO_FX, MACRO_FX_BLK],
+                          cg.macro_files(), none, [ok])
+    want = macro_efficiency_text(list(ok.t.macros.values()) * 2)
+    expect(want in line and "4 macro(s)" in want, "the block line does not give its array "
+           "efficiency, %r: %s" % (want, line))
+    MACRO_NUMBERS.update(block=want)
     macro_contract_selftest(expect)
     small = macro_unit("fx_sram_small", D=32, W2=128, D2=16)
     small.measure()
@@ -3311,6 +3357,8 @@ def main():
                                   tm["g_macro.u_sram.rdata"], n["mux"], tm["g_macro.u_rf.raddr"],
                                   tm["g_macro.u_rf.wdata"], tm["g_macro.u_rf.rdata"],
                                   n["slice"][0], n["slice"][1], n.get("fold") or NEG))
+        if "block" in n:
+            print("  block of two sram_fx (Daniel, 2026-11-17): %s" % n["block"])
         return 1 if bad else 0
     return main_check(a.unit, a.seed_fanout)
 

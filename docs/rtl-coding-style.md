@@ -1352,6 +1352,31 @@ SRAM-bit equivalents, every run. Its controls check the line: no penalty at
 the largest size, the full 20% at the smallest, 10% at the middle, more below
 the smallest, none above the largest, and the weights.
 
+**Array efficiency, a block statistic** (Daniel, 2026-11-17). Each block
+publishes one number for all its arrays, register files and SRAMs together:
+the bits its macros hold over what they cost in SRAM bits at the largest
+legal SRAM. Cost is each instance's size penalty times its type's weight. A
+block whose arrays are all 32 KiB SRAMs scores 1.0. Others score:
+
+| Arrays | Efficiency |
+|---|---|
+| All 32 KiB SRAMs | 1.0 |
+| All 4 KiB SRAMs (the smallest) | 0.83 |
+| 8 KiB register files | 0.33 |
+| 8 KiB register files with byte enables | 0.22 |
+
+A mix weighs each instance by its bits. check-ngd's block line gives it with
+the block's other figures, every gate: `arrays: N macro(s), K KiB,
+efficiency E (a 32 KiB SRAM is 1.0)`. It counts every instance path once,
+at its unit's parameters, the block's own module included. A block report
+(such as `docs/rcu-block-report.md`) carries the figure from that line. Its
+controls are in check-ngd's selftest:
+
+- the metric for all large SRAMs, a large register file, the smallest SRAM,
+  and a mix;
+- a fixture block of two `sram_fx`, whose line must give its four macros'
+  figure, 0.612.
+
 **The timing model** (`tools/check-ngd.py`, NGD-8; Daniel, 2026-11-17).
 A macro's pins are timing endpoints and start points, never a path
 through, and each is dearer than a flop's. Each input pin is an endpoint
