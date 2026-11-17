@@ -35,7 +35,7 @@ std::string Config::apply(const std::string &spec) {
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
-      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"resolve_lag", &resolve_lag},
+      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
@@ -225,6 +225,7 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   cand_ret_.clear();
   ret_pend_.clear();
   free_defer_.clear();
+  ret_defer_.clear();
   squash_at_.clear();
   squash_held_.clear();
   name_free_.clear();
@@ -489,6 +490,13 @@ void Core::cycle(uint64_t now) {
   golog_ = GoLog();
   out.clear();
   retired.clear();
+  // rob_retire_lag: the registered pick acts now, before any squash or kill
+  // (it is older than any flush target, OA 420 (2)).
+  {
+    const auto due = std::move(ret_defer_);
+    ret_defer_.clear();
+    for (const auto &f : due) f();
+  }
   squashDue();
   // resolve_lag: branches whose resolution is due, oldest first per slot,
   // in the phase a same-cycle resolution has.
@@ -2649,7 +2657,12 @@ void Core::control() {
 // ---- retire (V-19, V-24) -------------------------------------------------------------------
 
 void Core::retire() {
-  unsigned ports = 0;
+  unsigned ports = 0, bars_picked = 0;
+  // rob_retire_lag (OA 420): a pick's effects wait for the next cycle's start.
+  auto act = [this](std::function<void()> f) {
+    if (cfg_.rob_retire_lag) ret_defer_.push_back(std::move(f));
+    else f();
+  };
   for (unsigned k = 0; k != slot_.size(); ++k) {
     const unsigned si = (rr_select_ + k) % slot_.size();
     Slot &s = slot_[si];
@@ -2686,7 +2699,6 @@ void Core::retire() {
         Status st;
         st.warp = s.warp;
         st.fault_taken = true;
-        out.status.push_back(st);
         Fault f;
         f.tid = r.u.tid;
         f.warp = s.warp;
@@ -2700,7 +2712,7 @@ void Core::retire() {
         if (r.at_miu && (!s.fa_valid || s.fa_idx != s.head || s.fa_addr != r.fault_addr))
           err("V-74: the fault-address register does not hold rob tag %u's address", tagOf(si, s.head));
         roblog_.fault.push_back({si, s.head, r.fault_cause, r.u.pc, r.fault_lanes, f.address});
-        out.faults.push_back(f);
+        act([this, st, f] { out.status.push_back(st); out.faults.push_back(f); });
         count("fault");
         ev("fault", s.warp, r.fault_cause, r.u.pc, r.u.tid);
         break;
@@ -2714,10 +2726,14 @@ void Core::retire() {
         c.port = cfg_.commit_per_slot ? si : ports;
         ++ports;
         c.rob_tag = tagOf(si, s.head);
-        out.commits.push_back(c);
+        act([this, c] { out.commits.push_back(c); });
         r.committed = true;
         roblog_.commit.push_back({si, s.head});
       }
+      const unsigned idx = s.head;
+      act([this, si, idx] {
+      Slot &s = slot_[si];
+      RobEntry &r = s.rob[idx];
       // Commit the mapping; free the one it replaced: no older instruction
       // can still read it, and every younger one reads the new name.
       if (r.alloc_gpr || r.u.pred_we) {
@@ -2734,7 +2750,7 @@ void Core::retire() {
       {
         RobLog::Ret q;
         q.slot = si;
-        q.idx = s.head;
+        q.idx = idx;
         q.gwe = r.alloc_gpr;
         q.dst = r.u.dst & 15;
         q.gname = r.pnew;
@@ -2762,6 +2778,7 @@ void Core::retire() {
           s.cprat[r.u.pred_dst & 3] = r.ppnew;
         }
       }
+      });
       if (r.u.attr.serial == kSerChwidth) {
         s.chwidth = r.u.imm & 3u;     // temporary: A-75 names the field
         s.cw[r.u.dst & 15] = uint8_t(r.u.imm & 3u);   // the committed table (OI-57)
@@ -2780,7 +2797,7 @@ void Core::retire() {
       // leaves before it retires, so no report is recalled.
       const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
                            !r.fault && !r.u.cause;
-      if (bar_rep && !out.bars.empty()) { count("stall.bar_port"); robStop("barrier port"); break; }
+      if (bar_rep && bars_picked) { count("stall.bar_port"); robStop("barrier port"); break; }
       if (bar_rep) {
         Bar b;
         b.tid = r.u.tid;
@@ -2793,7 +2810,8 @@ void Core::retire() {
         b.guard_mask = !r.u.shape.exit && r.u.shape.guard ? r.bar_guard : ~0u;
         b.phase_mask = b.kind == kBarWaitPhase ? r.bar_phase : 0;
         b.held = (b.kind == kBarWait || b.kind == kBarWaitPhase) && s.bar_hold && !s.bar_retired && r.u.all_waiting;
-        out.bars.push_back(b);
+        ++bars_picked;
+        act([this, b] { out.bars.push_back(b); });
         count(b.kind == kBarExit ? "bar.report.exit" : b.kind == kBarArrive ? "bar.report.arrive"
               : b.kind == kBarWaitPhase ? (b.held ? "bar.report.phase_held" : "bar.report.phase") : b.held ? "bar.report.wait_held" : "bar.report.wait");
         if (b.held) {
@@ -2842,8 +2860,10 @@ void Core::retire() {
       retired.push_back(rt);
       ev("retire", s.warp, rt.rob_tag, r.u.group_mask, r.u.tid);
       ++s.retired_since_restore;
-      r = RobEntry();
-      robFreed(si, s.head, true);
+      act([this, si, idx] {
+        slot_[si].rob[idx] = RobEntry();
+        robFreed(si, idx, true);
+      });
       s.head = (s.head + 1) % cfg_.rob_depth;
       --s.count;
       ++n;
