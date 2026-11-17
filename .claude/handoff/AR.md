@@ -282,6 +282,18 @@ Credit rules (TI-49):
      RCU fix, L1_CMPL 15). Never push it. Prepared by
      /root/l1sweep/stride-prep.sh (skeleton plus build/bench-oracle). Run
      hash 0 and 1 at the winner, strict and default, on the same binary.
+     DONE 22:10Z: 88 runs (11 benches; b and af at q2 fixed; h0/h1; s0/s1),
+     all clean. Tabulate with `python3 /root/l1sweep/stride/tab.py`.
+     - transpose and colwalk issue only 428-529 lookups; hash moves their
+       cycles under 0.1%, but colwalk-p128b is +4.0% (s0) / +0.69% (s1).
+     - sgemm late 25% -> 5-6% with hash, yet cycles +0.9/+1.7% at s0.
+     - (b) wait max 2,434-2,484 on sgemm at h0, against af's 54-61.
+     - colwalk p16k/p32k take 2x cycles (131k vs 66k) whatever the hash:
+       not banks; L1 sets?
+   - Strict so far: q0 is out (cm32 shared +30%, 4.5M re-passes), and
+     cm128priv b_q0 wait max 1,019. Best two: b_q2 and af_q2. chain-rot.sh
+     runs them with rot (QS=2 STS="b af" run.sh L rot) after each lane's
+     "LANE L fixed DONE".
    - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
      TI does the bench configs (they need gen-oracle's LOAD) and the pin
      bump.
