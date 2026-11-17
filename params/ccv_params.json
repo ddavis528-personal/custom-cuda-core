@@ -441,6 +441,118 @@
       "doc": "Logic depth an inner helper (a combinational module declared inner in its <module>.ngd.json, timed as its parent's logic) is held to, input to output, while no module instantiates it: floor(2 * CCV_NGD_BUDGET / 3). Inside a parent its logic is the parent's and the stage applies; alone, the whole stage would be optimistic, since the parent's own logic will share it. tools/check-ngd.py, NGD-6."
     },
     {
+      "name": "CCV_NGD_SRAM_ADDR_MARGIN",
+      "value": 6,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_SRAM_ADDR_MARGIN < CCV_NGD_BUDGET",
+      "doc": "Margin, in NGD, added to a one-hot decode of the address to make a 1RW SRAM's address setup: its addr pin, and ce and we, which qualify the word lines, must arrive by CCV_NGD_BUDGET - (decode(D) + this). decode(D) is the depth tools/check-ngd.py measures for a one-hot decode of $clog2(D) bits to D lines, fanout term included (NGD-8)."
+    },
+    {
+      "name": "CCV_NGD_RF_ADDR_MARGIN",
+      "value": 4,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_RF_ADDR_MARGIN < CCV_NGD_BUDGET",
+      "doc": "Margin, in NGD, added to a one-hot decode of the address to make a register file's address setup, read (raddr, re) and write (waddr, we) alike: those pins must arrive by CCV_NGD_BUDGET - (decode(D) + this). tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_SRAM_DATA_SETUP",
+      "value": 8,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_SRAM_DATA_SETUP < CCV_NGD_BUDGET",
+      "doc": "Setup, in NGD, of a 1RW SRAM's write data (wdata; an SRAM has no byte mask): it must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_RF_DATA_SETUP",
+      "value": 6,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_RF_DATA_SETUP < CCV_NGD_BUDGET",
+      "doc": "Setup, in NGD, of a register file's write data and, on the _be one, its byte mask (wdata, wmask): they must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_MACRO_READ_DYN_PCT",
+      "value": 150,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_MACRO_READ_DYN_PCT >= 100",
+      "doc": "How much faster a macro's dynamic read mux is than a static one, in percent: a macro's read data launches at mux(W, D) * 100 / this plus its read guardband, where mux(W, D) is the depth tools/check-ngd.py measures for a static combinational D:1 read mux W bits wide, fanout term included (NGD-8). 150 is the 1.5x Daniel set."
+    },
+    {
+      "name": "CCV_NGD_SRAM_READ_GUARD",
+      "value": 6,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_SRAM_READ_GUARD < CCV_NGD_BUDGET",
+      "doc": "Guardband, in NGD, added to a 1RW SRAM's read mux (CCV_NGD_MACRO_READ_DYN_PCT) to give its rdata's clock-to-out: logic after rdata starts there. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_RF_READ_GUARD",
+      "value": 4,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_RF_READ_GUARD < CCV_NGD_BUDGET",
+      "doc": "Guardband, in NGD, added to a register file's read mux (CCV_NGD_MACRO_READ_DYN_PCT) to give its rdata's clock-to-out: logic after rdata starts there. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_MACRO_AREA_RF_PCT",
+      "value": 300,
+      "status": "target",
+      "source": "Daniel, 2026-11-16 (DA tab rev 123, MA-16: a register file is 3 times an SRAM's area per bit)",
+      "require": "CCV_MACRO_AREA_RF_PCT >= 100",
+      "doc": "A register-file macro's area per bit (ccv_common_rf_1r1w, ccv_common_rf_1r1w_be), in percent of a 1RW SRAM's (ccv_common_sram_1rw), each at its most efficient, largest legal size (CCV_MACRO_RF_MAX_BYTES, CCV_MACRO_SRAM_MAX_BYTES; Daniel, 2026-11-17): the weight any area count of the arrays gives it, before CCV_MACRO_SIZE_PENALTY_PCT's size penalty. docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_AREA_BYTE_EN_PCT",
+      "value": 150,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (byte enables on a register file only, at 1.5 times its area)",
+      "require": "CCV_MACRO_AREA_BYTE_EN_PCT >= 100",
+      "doc": "Byte enables' area, in percent of the register file without them, both at the largest legal size (Daniel, 2026-11-17): ccv_common_rf_1r1w_be's area per bit is CCV_MACRO_AREA_RF_PCT * this / 100 of an SRAM's (4.5 times at 300 and 150). Only a register file has byte enables; an SRAM writes whole words (Daniel, 2026-11-17). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MIN_BYTES",
+      "value": 512,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them)",
+      "require": "CCV_MACRO_RF_MIN_BYTES >= 1",
+      "doc": "The smallest register file (ccv_common_rf_1r1w and _be) one instance may be, in bytes, W x D / 8, the bound itself allowed: anything smaller belongs in flops. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MAX_BYTES",
+      "value": 8192,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them)",
+      "require": "CCV_MACRO_RF_MAX_BYTES > CCV_MACRO_RF_MIN_BYTES",
+      "doc": "The largest register file one instance may be, in bytes (8 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MIN_BYTES",
+      "value": 4096,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MIN_BYTES >= 1",
+      "doc": "The smallest 1RW SRAM (ccv_common_sram_1rw) one instance may be, in bytes, W x D / 8 (4 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MAX_BYTES",
+      "value": 32768,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MAX_BYTES > CCV_MACRO_SRAM_MIN_BYTES",
+      "doc": "The largest 1RW SRAM one instance may be, in bytes (32 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SIZE_PENALTY_PCT",
+      "value": 20,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array efficiency: best at a macro type's largest legal size, falling linearly to a 20 percent penalty at its smallest)",
+      "require": "CCV_MACRO_SIZE_PENALTY_PCT >= 0",
+      "doc": "Power and area per bit of a hard-macro instance over the most efficient one of its type, in percent: 0 at the type's largest legal size (CCV_MACRO_RF_MAX_BYTES, CCV_MACRO_SRAM_MAX_BYTES), this at its smallest (the _MIN_BYTES), linear in bytes between; below the smallest (a waived instance) the line continues, above the largest it stays 0. It multiplies the type's own weight (CCV_MACRO_AREA_RF_PCT, CCV_MACRO_AREA_BYTE_EN_PCT). tools/check-ngd.py reports it per instance (MACRO-1). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
       "name": "CCV_NGD_CG_EN",
       "value": 8,
       "status": "target",

@@ -101,14 +101,25 @@ The rules, as findings:
          or to any output, over that output's required time (the strictest
          of those it drives)
   NGD-8  a hard macro's pin (AR's register rev 344): its every input pin is
-         an endpoint, as a flop's D, since the macro registers its index,
-         controls and write data at its edge; its read data starts the next
-         stage at 0 NGD, as a flop's Q (no clock-to-out until the library
-         gives one, Q-48). So a path from a flop, an input at its arrival or
-         a macro's output to a macro's input pin is held to the stage, and
-         one from a macro's output to a flop to the stage, to an output to
-         its required time. The macro is a unit's "blackbox" (lint.MACROS),
-         never measured inside: there is nothing in it to measure.
+         an endpoint and its read data a start point, never a path through,
+         and each dearer than a flop's (Daniel, 2026-11-17). An address pin
+         (ce, we and re with it: they qualify the word lines) sets up a
+         one-hot decode of its D words plus CCV_NGD_<SRAM|RF>_ADDR_MARGIN
+         before the edge; write data and mask, CCV_NGD_<SRAM|RF>_DATA_SETUP;
+         read data launches at a static D:1 read mux W bits wide over
+         CCV_NGD_MACRO_READ_DYN_PCT / 100 (a dynamic mux), plus
+         CCV_NGD_<SRAM|RF>_READ_GUARD. The decode and the mux are measured,
+         synthesised and timed as a unit is, the fanout term included
+         (macro_ref()). So a path from a flop, an input at its arrival or
+         a macro's output at its launch to a macro's input pin is held to
+         the stage less that pin's setup, and one from a macro's output, at
+         its launch, to a flop to the stage, to an output to its required
+         time. The macro is a unit's "blackbox" (lint.MACROS), never
+         measured inside. The read address is sampled a cycle before its
+         data leaves (the 1RW SRAM's, two cycles: DA tab rev 123, MA-16),
+         so it is an endpoint as the write address is; the parent's flop
+         that takes rdata is the one its read-valid reaches (a lockstep's
+         matter, not a depth's; check-skel.sh).
 
 Modules that broke a default when the rule was made sit on
 rtl/ngd-ratchet.json, awaiting budgets or a redesign; the list only
@@ -407,7 +418,7 @@ class Timing:
     note). `abc` is ABC's own longest path, BUFs at their genlib delay;
     the timing pass's, taken the same way, must equal it."""
 
-    def __init__(self, blif, abc, lib=LIB):
+    def __init__(self, blif, abc, lib=LIB, widen=None):
         ins, outs, latches, gates = parse_blif(blif)
         self.abc = abc
         driver = {o: (g, a) for g, a, o in gates}
@@ -421,6 +432,25 @@ class Timing:
         loads = collections.Counter(x for _, a, _ in gates for _, x in a)
         loads.update(d for d, _ in latches)
         loads.update(outs)
+        if widen:
+            # A k-bit slice of a W-bit mux (macro_ref()): `widen` is (the
+            # input port whose logic every bit shares, W / k). A net that
+            # depends on that port alone is shared by the W bits, so each of
+            # its loads that is not itself shared is one of W / k copies.
+            port, w = widen
+            shared = {i for i in ins if base(i) == port}
+            changed = True
+            while changed:
+                changed = False
+                for g, a, o in gates:
+                    if o not in shared and a and all(x in shared for _, x in a):
+                        shared.add(o)
+                        changed = True
+            per_bit = collections.Counter(x for _, a, o in gates if o not in shared
+                                          for _, x in a)
+            per_bit.update(o for o in outs)
+            for n in shared:
+                loads[n] += int(math.ceil((w - 1) * per_bit.get(n, 0)))
         inv = delay(lib, "INV", "A")
 
         def fo(n):
@@ -695,13 +725,14 @@ def captures(d, blackbox=(), reset=None):
     return out
 
 
-def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None, keep=False):
+def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None, keep=False, widen=None):
     """Ungate a Yosys JSON netlist, map it with ABC and time it; `keep`, a
     block's level, keeps the netlist for Timing.slice_in()."""
     d = json.load(open(jsonfile))
     # What cg.unit_key reads of the netlist, kept so its file need not be.
     key_info = cg.net_key_info(d["modules"])
     capture = captures(d, set(blackbox), reset)
+    macros = macro_cells(d)
     cut = ungate(d, set(blackbox))
     ug = os.path.join(work, "ug.json")
     json.dump(d, open(ug, "w"))
@@ -717,7 +748,7 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None, keep=False):
         if r.returncode or not m:
             raise SystemExit("check-ngd: %s: ABC failed:\n%s"
                              % (work, (r.stdout + r.stderr)[-2000:]))
-        t = Timing(out, float(m.group(1)), lib)
+        t = Timing(out, float(m.group(1)), lib, widen)
         if abs(t.abc_like - t.abc) > EPS:
             raise SystemExit("check-ngd: %s: the timing pass's longest path, %.2f NGD, is not "
                              "ABC's, %.2f (%s)" % (work, t.abc_like, t.abc, how))
@@ -767,7 +798,7 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB, reset=None, keep=False):
             for p, v in outs.items():
                 q_out[q][p] = min(v, tr.q_out.get(q, {}).get(p, v))
         t.q_out = q_out
-    t.cut, t.regname, t.capture = cut, reg_names(d), capture
+    t.cut, t.regname, t.capture, t.macros = cut, reg_names(d), capture, macros
     t.key_info = key_info
     if keep:
         t._r = tr
@@ -1090,44 +1121,371 @@ def macro_pins(t):
     return ins, outs
 
 
+# A hard macro's pin timing (Daniel, 2026-11-17): its pins are endpoints and
+# start points, never a path through, but dearer than a flop's. Each input
+# pin is of a class, by macro: an address (the word lines' decode: ce, we
+# and re qualify them, so they are timed as the address), or write data.
+#   address setup  decode(D) + CCV_NGD_<SRAM|RF>_ADDR_MARGIN
+#   data setup     CCV_NGD_<SRAM|RF>_DATA_SETUP
+#   rdata launch   mux(W, D) * 100 / CCV_NGD_MACRO_READ_DYN_PCT
+#                  + CCV_NGD_<SRAM|RF>_READ_GUARD
+# decode(D) and mux(W, D) are measured, not assumed: macro_ref() synthesises
+# a static one-hot decode and a static AND-OR read mux and times them as any
+# unit is, the fanout term included. The read address is sampled a cycle
+# before its data leaves (the 1RW SRAM's two), so it is an endpoint like
+# the write address, with the same setup.
+# Only the _be register file has a byte mask (Daniel, 2026-11-17), timed
+# as write data.
+MACRO_PIN_CLASS = {
+    "ccv_common_sram_1rw": {"addr": "addr", "ce": "addr", "we": "addr", "wdata": "data"},
+    "ccv_common_rf_1r1w": {"raddr": "addr", "re": "addr", "waddr": "addr", "we": "addr",
+                           "wdata": "data"},
+    "ccv_common_rf_1r1w_be": {"raddr": "addr", "re": "addr", "waddr": "addr", "we": "addr",
+                              "wdata": "data", "wmask": "data"},
+}
+MACRO_KIND = {"ccv_common_sram_1rw": "SRAM", "ccv_common_rf_1r1w": "RF",
+              "ccv_common_rf_1r1w_be": "RF"}
+
+
+# The selftest's knob controls set a knob here, in place of its parameter.
+MACRO_KNOB_SET = {}
+
+
+def macro_knob(kind, what):
+    n = "CCV_NGD_%s_%s" % (kind, what) if kind else "CCV_NGD_%s" % what
+    return float(MACRO_KNOB_SET.get(n, cg.param(n)))
+
+
+def macro_dyn():
+    """The static read mux's depth over the dynamic one's."""
+    return macro_knob(None, "MACRO_READ_DYN_PCT") / 100.0
+MACRO_REF_SV = """
+module ngd_ref_dec #(parameter int D = 2, localparam int AW = $clog2(D))
+  (input logic [AW-1:0] a, output logic [D-1:0] y);
+  always_comb for (int i = 0; i < D; i++) y[i] = a == AW'(i);
+endmodule
+module ngd_ref_muxw #(parameter int W = 1, parameter int D = 2, localparam int AW = $clog2(D))
+  (input logic [W*D-1:0] d, input logic [AW-1:0] s, output logic [W-1:0] y);
+  always_comb begin
+    y = '0;
+    for (int i = 0; i < D; i++) y |= d[i*W +: W] & {W{s == AW'(i)}};
+  end
+endmodule
+"""
+_macro_ref = {}
+MACRO_SLICE = 8
+
+
+def macro_cells(d):
+    """{cell: (macro, W, D)} for every hard macro a Yosys JSON netlist
+    instantiates: W is its rdata's width, D its parameter, or the
+    macro's default where the instance leaves it."""
+    out = {}
+    for m in d["modules"].values():
+        for cn, c in m.get("cells", {}).items():
+            typ = src_name(c["type"])
+            if not cg.lint.is_macro(typ):
+                continue
+            if typ not in MACRO_PIN_CLASS:
+                raise SystemExit("check-ngd: hard macro %s has no pin timing (MACRO_PIN_CLASS)"
+                                 % typ)
+            dp = c.get("parameters", {}).get("D")
+            if dp is None:
+                src = open(os.path.join(ROOT, "rtl", "macro", typ + ".sv")).read()
+                dp = re.search(r"parameter\s+int\s+D\s*=\s*(\d+)", src).group(1)
+                depth = int(dp)
+            else:
+                depth = int(dp, 2) if isinstance(dp, str) else int(dp)
+            out[cn] = (typ, len(c["connections"]["rdata"]), depth)
+    return out
+
+
+MACRO_WAIVERS = os.path.join(ROOT, "rtl", "macro-waivers.json")
+WAIVER_FIELDS = ("module", "instance", "macro", "W", "D", "why", "by", "date")
+
+
+def macro_size_limits(kind):
+    """(least, most) bytes one instance of a `kind` ("RF" or "SRAM") macro
+    may hold, each bound allowed."""
+    return (int(cg.param("CCV_MACRO_%s_MIN_BYTES" % kind)),
+            int(cg.param("CCV_MACRO_%s_MAX_BYTES" % kind)))
+
+
+def macro_cost(typ, w, d):
+    """(penalty, weight) of one instance (Daniel, 2026-11-17): penalty is
+    its power and area per bit over the most efficient instance of its
+    type, in percent: 0 at the type's largest legal size,
+    CCV_MACRO_SIZE_PENALTY_PCT at its smallest, linear in bytes between,
+    continued below the smallest and 0 above the largest. weight is its
+    area in SRAM bits at the largest size: W x D x the type's weight
+    (CCV_MACRO_AREA_RF_PCT, times CCV_MACRO_AREA_BYTE_EN_PCT with byte
+    enables) x (1 + penalty)."""
+    lo, hi = macro_size_limits(MACRO_KIND[typ])
+    nb = w * d / 8.0
+    pen = float(cg.param("CCV_MACRO_SIZE_PENALTY_PCT")) * max(0.0, hi - nb) / (hi - lo)
+    k = 1.0
+    if MACRO_KIND[typ] == "RF":
+        k = float(cg.param("CCV_MACRO_AREA_RF_PCT")) / 100.0
+        if typ.endswith("_be"):
+            k *= float(cg.param("CCV_MACRO_AREA_BYTE_EN_PCT")) / 100.0
+    return pen, w * d * k * (1.0 + pen / 100.0)
+
+
+def macro_efficiency(macros):
+    """The array efficiency of a block (Daniel, 2026-11-17): one number for
+    all its hard macros, register files and SRAMs together, the bits they
+    hold over what they cost in SRAM bits at the largest legal SRAM
+    (macro_cost's weight): 1.0 for arrays all of 32 KiB SRAMs, less for
+    smaller ones (0.83 at the smallest SRAM) and for register files (0.33
+    at the largest, 0.22 with byte enables). `macros` is [(macro, W, D)],
+    one per instance. Returns (instances, bits, efficiency or None)."""
+    bits = sum(w * d for _, w, d in macros)
+    cost = sum(macro_cost(typ, w, d)[1] for typ, w, d in macros)
+    return len(macros), bits, (bits / cost if cost else None)
+
+
+def macro_efficiency_text(macros):
+    n, bits, e = macro_efficiency(macros)
+    if not n:
+        return "arrays: none"
+    return "arrays: %d macro(s), %d KiB, efficiency %.3f (a 32 KiB SRAM is 1.0)" % (
+        n, bits // 8192, e)
+
+
+def macro_size(insts, waivers):
+    """MACRO-1 (Daniel, 2026-11-17): one register-file instance holds from
+    CCV_MACRO_RF_MIN_BYTES to CCV_MACRO_RF_MAX_BYTES (512 B to 8 KiB), one
+    SRAM from CCV_MACRO_SRAM_MIN_BYTES to CCV_MACRO_SRAM_MAX_BYTES (4 KiB
+    to 32 KiB), W x D / 8 bytes at the parameters a unit gives it. Outside
+    that, a waiver in rtl/macro-waivers.json names the instance at exactly
+    that macro, W and D, with its justification (why) and its author (by,
+    the block's architect): a change of size fails again. Daniel approves
+    each before the block is complete (approved); one without it is listed
+    as awaiting it (Daniel, 2026-11-17). `insts` is [(module, instance, macro, W,
+    D)]. Returns (lines, failures): a waiver that excuses nothing, or lacks
+    a field, is refused."""
+    lines, fails, used = [], [], set()
+    for i, x in enumerate(waivers):
+        miss = [f for f in WAIVER_FIELDS if not str(x.get(f, "")).strip()]
+        if miss:
+            fails.append("MACRO-1 waiver %d (%s.%s) lacks %s" % (
+                i, x.get("module"), x.get("instance"), ", ".join(miss)))
+            used.add(i)
+    for mod, inst, typ, w, d in sorted(set(insts)):
+        lo, hi = macro_size_limits(MACRO_KIND[typ])
+        nb = w * d / 8.0
+        if lo <= nb <= hi:
+            continue
+        what = "%s %s.%s, %d x %d bits (%g bytes), %s the %d to %d bytes one %s instance may " \
+               "hold" % (typ, mod, inst, d, w, nb, "under" if nb < lo else "over", lo, hi,
+                         MACRO_KIND[typ])
+        hit = [i for i, x in enumerate(waivers)
+               if (x.get("module"), x.get("instance"), x.get("macro"), x.get("W"), x.get("D"))
+               == (mod, inst, typ, w, d)]
+        used |= set(hit)
+        good = [i for i in hit if all(str(waivers[i].get(f, "")).strip() for f in WAIVER_FIELDS)]
+        if good:
+            x = waivers[good[0]]
+            lines.append("MACRO-1 waived: %s (by %s; %s)" % (
+                what, x["by"], "approved %s" % x["approved"] if str(x.get("approved", "")).strip()
+                else "awaiting Daniel's approval, due before the block is complete"))
+        else:
+            fails.append("MACRO-1 %s: refactor, or waive it with its justification in "
+                         "rtl/macro-waivers.json" % what)
+    for i, x in enumerate(waivers):
+        if i not in used:
+            fails.append("MACRO-1 waiver %d (%s.%s, %s %s x %s) excuses nothing: no unit "
+                         "instantiates it at that size outside the limits" % (
+                             i, x.get("module"), x.get("instance"), x.get("macro"),
+                             x.get("D"), x.get("W")))
+    return lines, fails
+
+
+def macro_insts(units):
+    """[(module, instance, macro, W, D)] for every hard macro the units'
+    netlists instantiate, at their parameters."""
+    return [(u.module, cell.lstrip("\\"), typ, w, d) for u in units
+            for cell, (typ, w, d) in (getattr(u.t, "macros", None) or {}).items()]
+
+
+def macro_size_selftest(expect, ok, small):
+    """MACRO-1's controls: the compliant fixture (an 8 KiB SRAM, a 1 KiB
+    register file) passes; the fixture shrunk (a 2 KiB SRAM, a 256-byte
+    register file) fails both, and a waiver of each excuses it; the bounds
+    themselves pass and one byte past each fails; a waiver of another size,
+    one without its why, and one that excuses nothing are refused."""
+    lines, fails = macro_size(macro_insts([ok]), [])
+    expect(not fails and not lines, "MACRO-1: the compliant fixture failed: %s" % fails)
+    si = macro_insts([small])
+    _, fails = macro_size(si, [])
+    expect(len(fails) == 2 and any("u_sram" in f and "under" in f for f in fails)
+           and any("u_rf" in f and "under" in f for f in fails),
+           "MACRO-1: a 2 KiB SRAM and a 256-byte register file passed: %s" % fails)
+    wv = [{"module": m, "instance": i, "macro": t, "W": w, "D": d, "why": "selftest",
+           "by": "TI", "date": "2026-11-17"} for m, i, t, w, d in sorted(set(si))]
+    lines, fails = macro_size(si, wv)
+    expect(not fails and len(lines) == 2 and all("awaiting" in l for l in lines),
+           "MACRO-1: waivers of the small fixture did not excuse it, or were not listed as "
+           "awaiting approval: %s %s" % (lines, fails))
+    lines, _ = macro_size(si, [dict(x, approved="DA, 2026-11-17") for x in wv])
+    expect(len(lines) == 2 and not any("awaiting" in l for l in lines),
+           "MACRO-1: approved waivers still listed as awaiting approval: %s" % lines)
+    _, fails = macro_size(si, [dict(wv[0], D=wv[0]["D"] * 2), wv[1]])
+    expect(len(fails) == 2, "MACRO-1: a waiver of another size excused an instance: %s" % fails)
+    _, fails = macro_size(si, [dict(wv[0], why=" "), wv[1]])
+    expect(len(fails) == 2 and any("lacks why" in f for f in fails),
+           "MACRO-1: a waiver without its justification was taken: %s" % fails)
+    _, fails = macro_size(macro_insts([ok]), wv)
+    expect(len(fails) == 2 and all("excuses nothing" in f for f in fails),
+           "MACRO-1: waivers that excuse nothing were not refused: %s" % fails)
+    # The efficiency line (Daniel, 2026-11-17): 0 at the largest, the full
+    # penalty at the smallest, half way at the middle, more below, none above.
+    full = float(cg.param("CCV_MACRO_SIZE_PENALTY_PCT"))
+    for typ in ("ccv_common_sram_1rw", "ccv_common_rf_1r1w"):
+        lo, hi = macro_size_limits(MACRO_KIND[typ])
+        got = [macro_cost(typ, 8, n)[0] for n in (hi, lo, (lo + hi) // 2, lo // 2, hi * 2)]
+        expect(abs(got[0]) < 1e-9 and abs(got[1] - full) < 1e-9 and abs(got[2] - full / 2) < 1e-6
+               and got[3] > full and abs(got[4]) < 1e-9,
+               "MACRO-1: %s's efficiency penalty at its largest, smallest, middle, half the "
+               "smallest and twice the largest: %s" % (typ, got))
+    # The types' weights hold at each one's largest size (Daniel, 2026-11-17):
+    # an 8 KiB register file is exactly 3 times its bits, 4.5 with byte enables.
+    for typ, k in (("ccv_common_rf_1r1w", 3.0), ("ccv_common_rf_1r1w_be", 4.5)):
+        n = macro_size_limits("RF")[1] * 8 // 64
+        expect(abs(macro_cost(typ, 64, n)[1] - 64 * n * k) < 1e-6,
+               "MACRO-1: %s at its largest size weighs %g SRAM bits, not %g times its bits"
+               % (typ, macro_cost(typ, 64, n)[1], k))
+    # The block metric (Daniel, 2026-11-17): a 32 KiB SRAM is 1.0, an 8 KiB
+    # register file 1/3, the smallest SRAM 1/1.2; a mix is bits over cost.
+    big, rf8 = ("ccv_common_sram_1rw", 512, 512), ("ccv_common_rf_1r1w", 64, 1024)
+    small = ("ccv_common_sram_1rw", 512, 64)
+    e = [macro_efficiency(x)[2] for x in ([big, big], [rf8], [small], [big, rf8])]
+    want = [1.0, 1 / 3.0, 1 / 1.2, (512 * 512 + 64 * 1024) / (512 * 512 + 3.0 * 64 * 1024)]
+    expect(all(abs(x - y) < 1e-9 for x, y in zip(e, want)) and macro_efficiency([])[2] is None,
+           "MACRO-1: block array efficiency %s, not %s" % (e, want))
+    p_sram, w_sram = macro_cost("ccv_common_sram_1rw", 512, 512)
+    p_be, w_be = macro_cost("ccv_common_rf_1r1w_be", 512, 128)
+    expect(abs(w_sram - 512 * 512) < 1e-6 and
+           abs(w_be - 512 * 128 * 4.5 * (1 + p_be / 100.0)) < 1e-6,
+           "MACRO-1: the weights of a largest SRAM (%g) and an 8 KiB _be RF (%g)" % (w_sram, w_be))
+    for typ in ("ccv_common_sram_1rw", "ccv_common_rf_1r1w", "ccv_common_rf_1r1w_be"):
+        lo, hi = macro_size_limits(MACRO_KIND[typ])
+        at = [("m", "u", typ, 64, lo * 8 // 64), ("m", "v", typ, 64, hi * 8 // 64)]
+        past = [("m", "u", typ, 8, lo - 1), ("m", "v", typ, 64, hi * 8 // 64 + 1)]
+        expect(not macro_size(at, [])[1] and len(macro_size(past, [])[1]) == 2,
+               "MACRO-1: %s's bounds (%d, %d bytes) not held exactly: %s %s"
+               % (typ, lo, hi, macro_size(at, [])[1], macro_size(past, [])[1]))
+
+
+def macro_ref(what, w, d):
+    """The depth of a static reference circuit, as the gate times a unit:
+    "dec", a one-hot decode of $clog2(d) bits to d lines; "mux", a d:1
+    AND-OR read mux w bits wide, its select decoded. The mux is synthesised
+    MACRO_SLICE bits wide and timed as w bits (Timing's `widen`): its
+    select logic is shared by the w bits, so each of its nets drives
+    w / MACRO_SLICE copies of every per-bit load. A slice of one bit would
+    not do: ABC shares a decoded select only across bits it can see, and
+    one bit's mux read 2.5 NGD over the whole 64 x 128 mux, a slice of 4
+    or more exactly it (64 x 32, 64 x 128, 128 x 128). The depth is input
+    to output, the better of ABC's two maps, as a critical input's is
+    (map_and_time); "muxw", the mux synthesised whole, is the selftest's
+    check on the slice."""
+    key = (what, 1 if what == "dec" else w, d)
+    if key not in _macro_ref:
+        name = "macro_ref/%s_w%d_d%d" % key
+        work = os.path.join(BUILD, name)
+        os.makedirs(work, exist_ok=True)
+        sv = os.path.join(work, "ref.sv")
+        open(sv, "w").write(MACRO_REF_SV)
+        k = min(w, MACRO_SLICE) if what == "mux" else w
+        params = {"D": d} if what == "dec" else {"D": d, "W": k}
+        top = "ngd_ref_dec" if what == "dec" else "ngd_ref_muxw"
+        work, jf = synth(name, top, [os.path.relpath(sv, ROOT)], params=params)
+        t = map_and_time(work, jf, keep=True,
+                         widen=("s", w / k) if what == "mux" and w > k else None)
+        _macro_ref[key] = min(max(x.io.values()) for x in (t, t._r))
+    return _macro_ref[key]
+
+
+def macro_timing(typ, w, d):
+    """A macro's pin times: ({pin class: its setup}, its rdata's launch)."""
+    k = MACRO_KIND[typ]
+    return ({"addr": macro_ref("dec", 1, d) + macro_knob(k, "ADDR_MARGIN"),
+             "data": macro_knob(k, "DATA_SETUP")},
+            macro_ref("mux", w, d) / macro_dyn() + macro_knob(k, "READ_GUARD"))
+
+
+def macro_pin_times(t):
+    """{cut name: (its setup, or its launch for an output pin; how it was
+    set)} for a unit's macro pins (Daniel, 2026-11-17)."""
+    out = {}
+    for nm, (cell, typ, pin, dr) in t.cut.items():
+        if cell not in t.macros or is_clock(pin):
+            continue
+        mac, w, d = t.macros[cell]
+        setup, launch = macro_timing(mac, w, d)
+        k = MACRO_KIND[mac]
+        if dr != "input":
+            out[nm] = (launch, "launches at %.1f NGD (a %d-word %d-bit read mux, %.1f static, / %g + %g "
+                       "guard)" % (launch, d, w, macro_ref("mux", w, d), macro_dyn(),
+                          macro_knob(k, "READ_GUARD")))
+            continue
+        cls = MACRO_PIN_CLASS[mac].get(pin)
+        if cls is None:
+            raise SystemExit("check-ngd: %s pin %s has no timing class (MACRO_PIN_CLASS)"
+                             % (mac, pin))
+        why = ("one-hot decode of %d words %.1f + %g margin" % (d, macro_ref("dec", 1, d),
+                                                                macro_knob(k, "ADDR_MARGIN"))
+               if cls == "addr" else "%s data setup" % k)
+        out[nm] = (setup[cls], "sets up %.1f NGD before the edge (%s)" % (setup[cls], why))
+    return out
+
+
 def macro_findings(u, budgets):
-    """NGD-8 (AR's register rev 344): a hard macro's input pins are
-    endpoints, its outputs launch at 0. Cut out, an input pin is an output
-    of the netlist and an output pin an input, so the depths are those
-    Timing already has: flops to the pin (ro), an input to it (io, at the
-    input's arrival), a macro output to it (io, from 0); from a macro
-    output to the flops (ir) and to an output (io, against its required
-    time). Keyed by the macro pin."""
+    """NGD-8: a hard macro's pins are endpoints and start points, never a
+    path through (AR's register rev 344), and dearer than a flop's (Daniel,
+    2026-11-17): an input pin must arrive its setup before the edge, at
+    CCV_NGD_BUDGET less it, and read data launches late, at its clock to
+    out (macro_pin_times()). Cut out, an input pin is an output of the
+    netlist and an output pin an input, so the depths are those Timing
+    already has: flops to the pin (ro), an input to it (io, at the input's
+    arrival), a macro output to it (io, from that macro's launch); from a
+    macro output, at its launch, to the flops (ir) and to an output (io,
+    against its required time). Keyed by the macro pin."""
     t, mod, out = u.t, u.module, []
     pins_in, pins_out = macro_pins(t)
     if not pins_in and not pins_out:
         return out
+    times = macro_pin_times(t)
     where = "%s (unit %s)" % (mod, u.name)
     for p, nm in sorted(pins_in.items()):
+        setup, how = times[p]
         worst = (t.ro.get(p, NEG), "its flops")
         for (i, o), d in t.io.items():
             if o != p or is_clock(i) or (i in t.cut and i not in pins_out):
                 continue
-            a = 0.0 if i in pins_out else budgets.arrival(mod, i)
-            what = ("macro output %s" % pins_out[i]) if i in pins_out else \
-                "input %s, arriving at %g," % (i, a)
+            a = times[i][0] if i in pins_out else budgets.arrival(mod, i)
+            what = ("macro output %s, launched at %.1f," % (pins_out[i], a)) if i in pins_out \
+                else "input %s, arriving at %g," % (i, a)
             worst = max(worst, (a + d, what))
-        if worst[0] > STAGE + EPS:
-            out.append(("NGD-8 %s" % nm, "NGD-8 %s: macro input %s, an endpoint, is reached "
-                        "from %s at %.1f NGD, over the %g stage" % (where, nm, worst[1],
-                                                                     worst[0], STAGE)))
+        if worst[0] > STAGE - setup + EPS:
+            out.append(("NGD-8 %s" % nm, "NGD-8 %s: macro input %s, an endpoint that %s, is "
+                        "reached from %s at %.1f NGD, over the %.1f the stage leaves it"
+                        % (where, nm, how, worst[1], worst[0], STAGE - setup)))
     for q, nm in sorted(pins_out.items()):
-        if t.ir.get(q, NEG) > STAGE + EPS:
-            out.append(("NGD-8 %s" % nm, "NGD-8 %s: macro output %s, launched at 0, reaches a "
-                        "flop at %.1f NGD, over the %g stage" % (where, nm, t.ir[q], STAGE)))
+        launch, how = times[q]
+        if launch + t.ir.get(q, NEG) > STAGE + EPS:
+            out.append(("NGD-8 %s" % nm, "NGD-8 %s: macro output %s, which %s, reaches a flop "
+                        "at %.1f NGD, over the %g stage" % (where, nm, how,
+                                                            launch + t.ir[q], STAGE)))
         for (i, o), d in sorted(t.io.items()):
             if i != q or o in t.cut or budgets.observation(mod, o):
                 continue
             req = budgets.required(mod, o)
-            if d > req + EPS:
-                out.append(("NGD-8 %s>%s" % (nm, o), "NGD-8 %s: macro output %s, launched at "
-                            "0, reaches output %s at %.1f NGD, required at %g"
-                            % (where, nm, o, d, req)))
+            if launch + d > req + EPS:
+                out.append(("NGD-8 %s>%s" % (nm, o), "NGD-8 %s: macro output %s, which %s, "
+                            "reaches output %s at %.1f NGD, required at %g"
+                            % (where, nm, how, o, launch + d, req)))
     return out
 
 
@@ -1680,6 +2038,7 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
         timings[st.top] = time_level(name, st, st.top, level_kids(st, st.top, budgets), lib)
     keyed = ngd_keyed(units)
     found, missing, n = {}, collections.OrderedDict(), [0]
+    arrays = []     # (macro, W, D) per macro instance, every path counted
 
     def walk(mn, cell, path):
         if mn not in (st.top, start) and not src_name(mn).endswith("_w") \
@@ -1691,6 +2050,12 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                 missing.setdefault(key, []).append(path)
             else:
                 found[(mn, cell)] = u
+                arrays.extend((getattr(u.t, "macros", None) or {}).values())
+        elif mn == start and start != st.top:
+            # The block's own module: its macros from its own unit, if any.
+            own = [u for u in units if u.module == src_name(start)]
+            if own:
+                arrays.extend((getattr(own[0].t, "macros", None) or {}).values())
         for cn, t in st.cells(mn):
             walk(t, (mn, cn), "%s.%s" % (path, cn) if path else cn)
     walk(st.top, None, "")
@@ -1904,8 +2269,9 @@ def block_check(name, top, files, bbs, budgets, units, block=None, lib=LIB, para
                                lambda p, out: straight(start, None, p, out, ""))
     line = ("block %-8s sum of parts: %d level(s) timed alone for convergence, %d of %d "
             "instance(s) on units at their parameters, the boundary held by its parts "
-            "(structural read %.1f s)" % (name, len(timings), n[0] - sum(
-                len(p) for p in missing.values()), n[0], st.seconds))
+            "(structural read %.1f s); %s" % (name, len(timings), n[0] - sum(
+                len(p) for p in missing.values()), n[0], st.seconds,
+                macro_efficiency_text(arrays)))
     return line, fails
 
 
@@ -1974,6 +2340,21 @@ def main_check(only=None, seed=False):
     fan = load(RATCHET, "fanout", {})
     fails = policy(units, budgets, ratchet, modules, fan=fan,
                    fan_base=load(FANOUT_BASELINE, "modules", {}))
+    # The macros' own contract (Daniel, 2026-11-17): every pin timed, and
+    # byte enables on the _be register file alone.
+    fails += ["NGD-8 macro contract: " + x for x in macro_contract()]
+    # Each macro instance's size (Daniel, 2026-11-17), a waiver outside it.
+    lines, more = macro_size(macro_insts(units), load(MACRO_WAIVERS, "waivers", []))
+    for l in lines:
+        print("  " + l)
+    for mod, inst, typ, w, d in sorted(set(macro_insts(units))):
+        pen, wt = macro_cost(typ, w, d)
+        print("  macro %s.%s: %s %d x %d bits, %g bytes, %.1f%% over its type's best per bit, "
+              "%.0f SRAM-bit equivalents" % (mod, inst, typ, d, w, w * d / 8.0, pen, wt))
+    print("  macro sizes (MACRO-1): %d instance(s) at their units' parameters; RF %d to %d "
+          "bytes, SRAM %d to %d" % ((len(set(macro_insts(units))),) + macro_size_limits("RF")
+                                    + macro_size_limits("SRAM")))
+    fails += more
     if seed:
         seed_fanout(units, budgets, ratchet, modules)
     for mod in sorted(fan):
@@ -2736,6 +3117,7 @@ def selftest():
 
 
 MACRO_FX = "test/macro/sram_fx.sv"
+MACRO_FX_BLK = "test/macro/sram_fx_blk.sv"
 
 
 def macro_unit(name, **params):
@@ -2748,12 +3130,15 @@ def macro_unit(name, **params):
 
 
 def macro_selftest(expect):
-    """NGD-8 (AR's register rev 344): sram_fx, a 512 x 128 one-port macro
-    (64 Kibit) and a 64 x 128 two-port one, passes with its index through
-    an adder and its read data through an XOR tree into a flop; each pin is
+    """NGD-8 (AR's register rev 344): sram_fx, a 512 x 128 one-port SRAM
+    (64 Kibit, every other cycle, whole words) and a 64 x 128 1R1W register
+    file with byte enables, passes with its index through
+    an adder and its read data into a flop through one XOR (the SRAM's) or
+    an XOR tree (the register file's); each pin is
     found, its depths counted. Its controls: the index through a multiply
-    (an input pin is an endpoint), the read data through one (rdata
-    launches at 0 and what follows counts), and the same arrays inferred as
+    (an input pin is an endpoint), the read data through one (what follows
+    rdata counts), the pins' own times (macro_pin_selftest), and the same
+    arrays inferred as
     flops, which fail the stage (NGD-1: the read mux behind 32,773-load
     index nets, the fanout term's). A macro has no unit: it is no design
     module."""
@@ -2761,16 +3146,18 @@ def macro_selftest(expect):
     ok = macro_unit("fx_sram")
     ok.measure()
     pin_in, pin_out = macro_pins(ok.t)
-    expect(sorted(pin_out.values()) == ["g_macro.u_sram.rdata", "g_macro.u_sram2.rdata"]
-           and len(pin_in) == 11,
+    expect(sorted(pin_out.values()) == ["g_macro.u_rf.rdata", "g_macro.u_sram.rdata"]
+           and len(pin_in) == 10,
            "sram_fx's macro pins were not all found: in %s, out %s"
            % (sorted(pin_in.values()), sorted(pin_out.values())))
     k = {x for x, _ in findings(ok, none)}
     expect(not k, "the compliant macro fixture has findings: %s" % findings(ok, none))
     addr = next((p for p, n in pin_in.items() if n == "g_macro.u_sram.addr"), None)
     rd = next((p for p, n in pin_out.items() if n == "g_macro.u_sram.rdata"), None)
+    # The SRAM's read data takes one XOR into acc_q (its launch leaves
+    # little more; Daniel, 2026-11-17): timed, not deep.
     expect(addr is not None and ok.t.ro.get(addr, NEG) > 4.0 and
-           rd is not None and ok.t.ir.get(rd, NEG) > 4.0,
+           rd is not None and ok.t.ir.get(rd, NEG) > 1.0,
            "sram_fx's index logic to addr, or its rdata to acc_q, was not timed: %s, %s"
            % (ok.t.ro.get(addr), ok.t.ir.get(rd)))
     MACRO_NUMBERS.update(ok=ok.t, addr=ok.t.ro.get(addr), rdata=ok.t.ir.get(rd))
@@ -2792,11 +3179,146 @@ def macro_selftest(expect):
            % (flops.t.nflops, flops.t.rr, findings(flops, none)))
     MACRO_NUMBERS.update(flops=flops.t, deep_idx=deep.t.ro.get(addr),
                          deep_rd=rdeep.t.ir.get(rd))
+    # The block's array efficiency (Daniel, 2026-11-17): a block of two
+    # sram_fx counts each instance's macros, four in all.
+    line, _ = block_check("fx_mac", "ngd_fx_blk_mac", [MACRO_FX, MACRO_FX_BLK],
+                          cg.macro_files(), none, [ok])
+    want = macro_efficiency_text(list(ok.t.macros.values()) * 2)
+    expect(want in line and "4 macro(s)" in want, "the block line does not give its array "
+           "efficiency, %r: %s" % (want, line))
+    MACRO_NUMBERS.update(block=want)
+    macro_contract_selftest(expect)
+    small = macro_unit("fx_sram_small", D=32, W2=128, D2=16)
+    small.measure()
+    macro_size_selftest(expect, ok, small)
+    macro_pin_selftest(expect, ok, none)
+
+
+def macro_ports(typ):
+    """A macro's input pins, clk aside, from its behavioural view."""
+    src = cg.lint.strip_comments(open(os.path.join(ROOT, "rtl", "macro", typ + ".sv")).read())
+    return {m.group(1) for m in re.finditer(r"\binput\s+logic\s*(?:\[[^\]]*\])?\s*(\w+)", src)
+            } - {"clk"}
+
+
+def macro_contract(ports_of=None):
+    """Failures of the macro contract: every macro lint lists has its pins'
+    timing (MACRO_PIN_CLASS), every input pin of its view a class; and only
+    a register file has a byte mask, the _be one (Daniel, 2026-11-17): an
+    SRAM writes whole words. `ports_of` stands in for macro_ports()."""
+    ports_of = ports_of or macro_ports
+    out = []
+    if not set(MACRO_PIN_CLASS) == set(cg.lint.MACROS) == set(MACRO_KIND):
+        out.append("the macros lint lists (%s) are not those check-ngd times (%s)"
+                   % (sorted(cg.lint.MACROS), sorted(MACRO_PIN_CLASS)))
+    for typ in sorted(cg.lint.MACROS):
+        if not os.path.exists(os.path.join(ROOT, "rtl", "macro", typ + ".sv")):
+            out.append("macro %s has no view in rtl/macro/" % typ)
+            continue
+        ports = ports_of(typ)
+        if ports != set(MACRO_PIN_CLASS.get(typ, {})):
+            out.append("%s's input pins %s are not the ones check-ngd times %s"
+                       % (typ, sorted(ports), sorted(MACRO_PIN_CLASS.get(typ, {}))))
+        masked = "wmask" in ports
+        if masked != (typ.startswith("ccv_common_rf_") and typ.endswith("_be")):
+            out.append("%s %s a byte mask: only a register file's _be macro has byte "
+                       "enables (Daniel, 2026-11-17)" % (typ, "has" if masked else "lacks"))
+    return out
+
+
+def macro_contract_selftest(expect):
+    """The contract holds of the views as they are; an SRAM view that gains
+    a byte mask, and a _be one that loses it, each fail it."""
+    f = macro_contract()
+    expect(not f, "the macro contract fails: %s" % f)
+    gain = macro_contract(lambda t: macro_ports(t) | ({"wmask"} if "sram" in t else set()))
+    expect(any("ccv_common_sram_1rw has a byte mask" in x for x in gain),
+           "an SRAM with a byte mask passed the macro contract: %s" % gain)
+    lose = macro_contract(lambda t: macro_ports(t) - ({"wmask"} if t.endswith("_be") else set()))
+    expect(any("_be lacks a byte mask" in x for x in lose),
+           "a _be register file without its byte mask passed the macro contract: %s" % lose)
+
+
+def macro_pin_selftest(expect, ok, none):
+    """A macro's pins are dearer than a flop's (Daniel, 2026-11-17): each
+    setup and the read data's launch are what the knobs and the measured
+    references make them, per macro; read data folded through 12 NGD, fine
+    after a flop, fails after rdata (FOLD_RD); each knob moves its own
+    macro's pins and no other's; and the reference mux's slice, timed w
+    bits wide, reads as the mux synthesised w bits wide does."""
+    pin_in, pin_out = macro_pins(ok.t)
+    times = macro_pin_times(ok.t)
+    by = {n: times[p][0] for p, n in list(pin_in.items()) + list(pin_out.items())}
+    want = {}
+    for cell, kind, w, d in (("g_macro.u_sram", "SRAM", 512, 128), ("g_macro.u_rf", "RF", 64, 128)):
+        a = macro_ref("dec", 1, d) + macro_knob(kind, "ADDR_MARGIN")
+        for pin, cls in MACRO_PIN_CLASS[{"SRAM": "ccv_common_sram_1rw",
+                                         "RF": "ccv_common_rf_1r1w_be"}[kind]].items():
+            want["%s.%s" % (cell, pin)] = a if cls == "addr" else macro_knob(kind, "DATA_SETUP")
+        want[cell + ".rdata"] = macro_ref("mux", w, d) / macro_dyn() + macro_knob(kind, "READ_GUARD")
+    expect(set(by) == set(want) and all(abs(by[n] - want[n]) < EPS for n in want),
+           "sram_fx's macro pin times are not the knobs' and references': %s, want %s"
+           % (sorted(by.items()), sorted(want.items())))
+    expect(by["g_macro.u_sram.addr"] - by["g_macro.u_rf.raddr"] == 2.0 and
+           by["g_macro.u_sram.wdata"] == 8.0 and by["g_macro.u_rf.wdata"] == 6.0,
+           "the SRAM's and the register file's knobs are not their own (DA, 2026-11-17: "
+           "margins 6 and 4, data setups 8 and 6): %s" % sorted(by.items()))
+    dec, mux = macro_ref("dec", 1, 128), macro_ref("mux", 512, 128)
+    expect(2.0 < dec < 12.0 and 8.0 < mux < 40.0 and macro_ref("mux", 512, 128) >
+           macro_ref("mux", 8, 128) + 2.0,
+           "the references are not a decode and a read mux, nor the mux's select fanout "
+           "counted w wide: decode %.1f, mux %.1f, its 8-bit slice alone %.1f"
+           % (dec, mux, macro_ref("mux", 8, 128)))
+    one, full = macro_ref("mux", 64, 128), macro_ref("muxw", 64, 128)
+    expect(abs(one - full) <= 0.5, "the reference mux's %d-bit slice timed 64 wide reads %.2f "
+           "NGD, the mux synthesised 64 wide %.2f: the slice is not the mux"
+           % (MACRO_SLICE, one, full))
+    MACRO_NUMBERS.update(times=by, dec=dec, mux=mux, slice=(one, full))
+    # FOLD_RD: the fold from a flop would fit; from rdata, launched late, not.
+    fold = macro_unit("fx_sram_fold", FOLD_RD=1)
+    fold.measure()
+    rd = next(p for p, n in macro_pins(fold.t)[1].items() if n == "g_macro.u_sram.rdata")
+    k = {x for x, _ in findings(fold, none)}
+    expect(fold.t.ir.get(rd, NEG) <= STAGE and "NGD-8 g_macro.u_sram.rdata" in k,
+           "read data folded through %.1f NGD after rdata, launched at %.1f, passed (or "
+           "would fail from a flop too, proving nothing): %s"
+           % (fold.t.ir.get(rd, NEG), by["g_macro.u_sram.rdata"], findings(fold, none)))
+    MACRO_NUMBERS.update(fold=fold.t.ir.get(rd))
+    # Each knob, set just past the fixture's slack on its pin, fails that
+    # pin and no pin of the other macro.
+    depth = {n: ok.t.ro.get(p, NEG) for p, n in pin_in.items()}
+    depth.update({n: ok.t.ir.get(p, NEG) for p, n in pin_out.items()})
+    for knob, pin in (("CCV_NGD_SRAM_ADDR_MARGIN", "g_macro.u_sram.addr"),
+                      ("CCV_NGD_RF_ADDR_MARGIN", "g_macro.u_rf.waddr"),
+                      ("CCV_NGD_SRAM_DATA_SETUP", "g_macro.u_sram.wdata"),
+                      ("CCV_NGD_RF_DATA_SETUP", "g_macro.u_rf.wdata"),
+                      ("CCV_NGD_SRAM_READ_GUARD", "g_macro.u_sram.rdata"),
+                      ("CCV_NGD_RF_READ_GUARD", "g_macro.u_rf.rdata"),
+                      ("CCV_NGD_MACRO_READ_DYN_PCT", "g_macro.u_sram.rdata")):
+        # An input pin's setup, or an output's launch, plus its depth: the
+        # stage less that is the knob's slack on this pin.
+        slack = STAGE - by[pin] - depth[pin]
+        if knob.endswith("DYN_PCT"):
+            # The dynamic mux's speed-up cut until this pin's launch is past
+            # its slack: both macros' read data launch later, so only this
+            # pin's own failure is asked.
+            mux = macro_ref("mux", 512, 128)
+            MACRO_KNOB_SET[knob] = mux * 100.0 / (mux / macro_dyn() + slack + 0.5)
+        else:
+            MACRO_KNOB_SET[knob] = float(cg.param(knob)) + slack + 0.5
+        try:
+            k = {x for x, _ in findings(ok, none)}
+        finally:
+            MACRO_KNOB_SET.clear()
+        other = "g_macro.u_rf" if "u_sram" in pin else "g_macro.u_sram"
+        expect("NGD-8 " + pin in k and (knob.endswith("DYN_PCT") or
+                                        not any(other in x for x in k)),
+               "%s, past %s's slack, did not fail it alone: %s" % (knob, pin, sorted(k)))
     dm = design_modules()
     expect(not any(cg.lint.is_macro(m) for m in dm) and not
-           any(m.startswith("ccv_common_sram") for m in dm),
+           any(m.startswith(("ccv_common_sram", "ccv_common_rf")) for m in dm),
            "a hard macro is a design module, so would need a unit: %s"
-           % sorted(m for m in dm if m.startswith("ccv_common_sram")))
+           % sorted(m for m in dm if m.startswith(("ccv_common_sram", "ccv_common_rf"))))
 
 
 MACRO_NUMBERS = {}
@@ -2826,6 +3348,17 @@ def main():
                   % (n["ok"].rr, n["addr"], n["rdata"], n.get("deep_idx") or NEG,
                      n.get("deep_rd") or NEG, n["flops"].nflops if "flops" in n else 0,
                      n["flops"].rr if "flops" in n else NEG))
+        if "times" in n:
+            tm = n["times"]
+            print("  pin times (Daniel, 2026-11-17): SRAM 128x512 addr setup %.1f (decode %.1f), "
+                  "data %.1f, rdata launch %.1f (mux %.1f); RF 128x64 addr %.1f, data %.1f, "
+                  "rdata %.1f; the mux's slice at 64x128 %.1f vs synthesised %.1f; the fold from "
+                  "rdata %.1f" % (tm["g_macro.u_sram.addr"], n["dec"], tm["g_macro.u_sram.wdata"],
+                                  tm["g_macro.u_sram.rdata"], n["mux"], tm["g_macro.u_rf.raddr"],
+                                  tm["g_macro.u_rf.wdata"], tm["g_macro.u_rf.rdata"],
+                                  n["slice"][0], n["slice"][1], n.get("fold") or NEG))
+        if "block" in n:
+            print("  block of two sram_fx (Daniel, 2026-11-17): %s" % n["block"])
         return 1 if bad else 0
     return main_check(a.unit, a.seed_fanout)
 
