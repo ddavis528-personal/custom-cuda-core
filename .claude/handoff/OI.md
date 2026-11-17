@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-15 (#52 waits on OA, OI-152; sweep 11-15 28d4ca0c PUSHED full PASS; #56 closed; #55 l1-nohit at CCV_LAT_L1_NOHIT; before: 613b7f6c PUSHED, full PASS: #38 29ee4ffd, #39 8c4a4dce + cg-build path fix, sweep merge 11-14; OI-147 answers TI 428)
+Updated 2026-11-17 (#52 e6 PUSHED a5dc7eed. OA 421 adopted retire pick (b) on S1 +0.16%; cm32 +0.50%/cm128 +0.92% to DA, OA recommends accept. OI-160 (rev 364): cost all retire pick (alloc flop 0 in model); probe scratchpad/rpprobe rp_probe2.sv: 17.0 NGD f2f, 18.1 from dn_q (run2.py breaks down by endpoint). Pending: RH's answer on coremark-derived-priv (asked 11-17) -> short OI row; DA's answer -> build (b) in ooe_rob_w. check-cg OOM: CCV_JOBS=2. OI bookmark 364, OA 423)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
@@ -39,7 +39,8 @@ approve the install again, never reinstall unasked).
   /home/user/custom-cuda-core's copy current, not only the branch's.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 358, RA 148, IS 194, TI 444, OA 418, OI 351, CP 159, DA 119, RI 82, MA 59
+Conventions 19, AR 365, RA 151, IS 195, TI 462, OA 422, OI 362, CP 159, DA 123, RI 86, MA 68
+(11-16: DA via TI-461: no dated tasks, best effort in priority order, reorder for deps. OI-156 confirmed TI 457's Core::uop edit; #58 = RTL OOE epoch drop at the boundary capture. OI-157 check-cg OOM -> TI 458/462 fixed. IS 195: same OOM, FYI.)
 (sweep 11-15: merged ccr-80102643 18, miu-dcu-microarch-spec 17, 126afa13 8, 9eb50716 4, c22116ce 1;
 pushed 28d4ca0c (full PASS); settings check OK. TI 444 (cc OI): cm128priv 128 operand CHECKs at default DCU
 (seq 180579 R14, 500455 R2), TI isolating with stub RCU/OOE; OI acts only if it lands on OOE. sweep 11-14: merged 183cc441 66, 9eb50716 25, 126afa13 2, 888218a3 1, c22116ce 1, miu-dcu-spec 1; pushed 613b7f6c (full PASS).
@@ -59,6 +60,15 @@ differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
   whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
 
 ## Open work (most urgent first; DA approved this order 11-07)
+-12. #52 REFACTOR (TOP PRIORITY, DA): wt-s54 branch oi-rw (local only), experiments on b1570e4d, each bench+controls PASS.
+   WID 3 NGD-1 / al_n / dn_tag / fl_m / cm_tag: pushed caps 30.1/29.2/26.3/29.3/-.
+   e1 cdb5d3ae hwc per group (NWG4 NWS2): 29.2/29.1/26.9/28.7. e2 bf4bed96 kcd/kce copies + NWS1: 29.5/29.8.
+   e3 fax binary fault entry: 28.7/29.6/26.9/29.3/25.4(new!). e4 0fdf9627 NWS2: 28.7. e5 NWG3, hoh+hr copies load
+   hw_nx, w_h/nret_h/hoh_nx gone: 28.5/29.8/26.9/29.3/25.4. e6 window reads wbk (retiring wrong cand), not pfx: 28.9
+   (cm_tag gone; ck->ckfa_s/sq_rt/ckf 28.8 = the pick itself). ABC noise ~+-0.4 between runs.
+   Remaining families: window loop wwc->hw_nx->w (28.5-28.9), ck->pick prefix (28.8), md->gfree 27.7, lke->rc 27.8,
+   inputs al_n 29.6, fl_m 29.3, dn_tag 26.9 (endpoint w_nx fanout). Caps only fall: no experiment pushable as is.
+   Tools: scratchpad/rob52b/bench2.sh, check-ngd --unit ooe_rob_w_3 with CCV_KEEP_UNIT_BUILD=1, scratchpad/fo/p4.py.
 -11. #52 ooe_rob_w WAITS ON OA (OI-152, OI rev 355, OA rung): committed locally 6c5cc570 on branch oi-52 in
    /home/user/wt-s54 (base 4a24bf67; patch in scratchpad/rob52b). fl_m from Rename 2 replaces fl_slot (OA 418 (B));
    landed count rewritten (lk from kc flops, nfr = nfe with a squash as none arriving; nlg/nle/nk gone);
