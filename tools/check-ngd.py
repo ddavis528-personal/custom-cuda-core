@@ -2948,8 +2948,10 @@ def macro_selftest(expect):
     expect(not k, "the compliant macro fixture has findings: %s" % findings(ok, none))
     addr = next((p for p, n in pin_in.items() if n == "g_macro.u_sram.addr"), None)
     rd = next((p for p, n in pin_out.items() if n == "g_macro.u_sram.rdata"), None)
+    # The SRAM's read data takes one XOR into acc_q (its launch leaves
+    # little more; Daniel, 2026-11-17): timed, not deep.
     expect(addr is not None and ok.t.ro.get(addr, NEG) > 4.0 and
-           rd is not None and ok.t.ir.get(rd, NEG) > 4.0,
+           rd is not None and ok.t.ir.get(rd, NEG) > 1.0,
            "sram_fx's index logic to addr, or its rdata to acc_q, was not timed: %s, %s"
            % (ok.t.ro.get(addr), ok.t.ir.get(rd)))
     MACRO_NUMBERS.update(ok=ok.t, addr=ok.t.ro.get(addr), rdata=ok.t.ir.get(rd))
