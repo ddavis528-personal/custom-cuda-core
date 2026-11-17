@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 365, TI 464, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 69, DA 123.
+Conventions 19, AR 365, TI 465, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 70, DA 123.
 
 ## State, 2026-11-13
 
@@ -74,6 +74,11 @@ Conventions 19, AR 365, TI 464, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- TI-465 (DA, 2026-11-17): macro pin timing. Addr setup = decode + 6 (SRAM) / 4 (RF); data setup 8/6;
+  rdata launch = static D:1 mux / 1.5 + 6/4 (128w SRAM 512b: 18.6, about 6 NGD left). MA rev 70: Phase 1 sizes
+  macros (words x width) per bank to fit, rdata straight into a flop; any shortfall is a hit stage on DI's
+  measured need (PF-51). Carry into docs/dcu-impl.md and the Phase 1 resource model.
 
 - DA ruling (TI-461, 2026-11-16): no task carries a date; best effort in priority order; a dependency
   is met by reordering, never a due date. No dates on rows, handoff items or promises.
