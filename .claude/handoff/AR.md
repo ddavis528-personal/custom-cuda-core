@@ -90,7 +90,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 365, OA 421, TI 457, RA 151, RI 86,
+- **Bookmarks** (revs read through): AR 365, OA 421, TI 465, RA 151, RI 86,
   IS 194, CP 159, OI 358, DA 123, MA 68, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -203,6 +203,16 @@ Credit rules (TI-49):
      1861cc51 (8 banks, lead_set_index only, 36 lead flops waived, banks <=
      sets require, gen-params controls); AR checked it; no reply owed. It
      merges in the next sweep. Wait for MA's closed-loop figure.
+1c. **Macro pins (DA via TI 465, re: MA-16 and AR 344; Needs MA, AR; asks
+   AR nothing, no row).** Pins are endpoints, dearer than a flop: the
+   address setup is the decode plus 6 (SRAM) or 4 (RF); the data setup is
+   8 or 6; the rdata launch is a static D:1 mux / 1.5 plus 6 or 4. The
+   knobs are CCV_NGD_* in params, landing in TI's NGD-8. At 128 words an
+   SRAM 512b has an address setup of 11.5 and an rdata launch of 18.6,
+   leaving about 6 NGD, so a flop sits close behind rdata. TI 464's
+   macros: SRAM 1RW at every other cycle with a 2-cycle read; RF 1R1W at
+   every cycle, 3x the area. If DCU's hit latency moves, it is MA's call:
+   hit 8 and 9 are priced in PF-33 (+0.61%/+1.03% cm128), with S1 flat.
 2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
    against the six conditions.** The page-offset require has refusal
    mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
