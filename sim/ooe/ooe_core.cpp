@@ -2670,7 +2670,13 @@ void Core::retire() {
     // Head-stall timer: the demotion triggers' input (Demotion; Q18).
     if (s.count) {
       const unsigned h = tagOf(si, s.head);
-      if (s.head_seen != h) { s.head_seen = h; s.head_since = now_; s.stalled_reported = s.miss_reported = false; }
+      // rob_alloc_lag: an entry held past its allocation is not yet in the
+      // ROB's window, so it becomes the head (fault_head_only 2's
+      // registered head) only once it reaches it.
+      const RobEntry &hr = s.rob[s.head];
+      if (s.head_seen != h && !(hr.alloc_held && now_ < hr.ret_at)) {
+        s.head_seen = h; s.head_since = now_; s.stalled_reported = s.miss_reported = false;
+      }
     }
     unsigned n = 0, slot_commits = 0;
     bool after_branch = false;
