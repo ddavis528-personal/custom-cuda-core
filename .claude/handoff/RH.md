@@ -55,10 +55,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- MA-1 RUNNING from 18:29Z 11-17: rh-jobs/ma1/ma1.sh at MA's tip cc5f3f04 (claude/miu-dcu-microarch-spec-664pgr),
-  worktree rh-ma1, ~/ccv-logs/ma1 (KEEP: MA's reference for later p1 deltas; write s1-cycles.tsv). Ways 8,
-  defaults; S1 + cm32/cm128/cm32priv/cm128priv. No per-reason late bins at the stubs; AR 364 squeezed
-  skipped pending MA's setup. Next from MA: CCV_DCU_IMPL=p1 matrices. Watcher bkw9utv5p, fallback 20:30Z.
+- MA-1 RUNNING from 18:29Z 11-17: rh-jobs/ma1/ma1.sh at MA's tip cc5f3f04, worktree rh-ma1, ~/ccv-logs/ma1
+  (KEEP: MA's reference for p1 deltas; rh-jobs/ma1/table.py writes s1-cycles.tsv and the table). Ways 8,
+  defaults. Only cm128 left at 19:05Z. No per-reason late bins at the stubs; the squeezed cm128 was dropped (AR 373).
+- MA-2 QUEUED (waits for ma1.sh): rh-jobs/ma2/ma2.sh, p1 at dd04f733 (gate-scratch/MA), worktree rh-ma2,
+  ~/ccv-logs/ma2. 6 points STORE {a,af,b} x QDEPTH {0,2}, ARB fixed, WAYS 8, IMPL p1. S1 via
+  sim/dcu/p1-run.sh, then benches in 2 lanes (128-class one at a time). MA sends 2 rotating points
+  later: append them. Report P1 measures + p1_qNN summed, p99.9. Watcher bn5zm1zfe, fallback 20:33Z.
 - OI OA-424 (CMPL 14 vs 15, TI-474) DONE and sent. The first c15 run was broken
   (stub MIU sent data with cmpl at due; logs in ~/ccv-logs/oi424/c15-v1). Rerun with OI's stub-MIU patch
   (rh-jobs/oi424/oi424b.sh) is clean: S1 +0.05%, cm32p -0.35%, cm128p +0.45% (reexec 8.0k -> 23.8k).
