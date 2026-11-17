@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 366 .588100, AR 367 .589591 (tab rev 369).
-  - **The next AR row inserts after .589591**, labelled AR 368.
+  - Latest rows: AR 367 .589591, AR 368 .591363 (tab rev 370).
+  - **The next AR row inserts after .591363**, labelled AR 369.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 369, OA 421, TI 474, RA 151, RI 86,
-  IS 194, CP 159, OI 358, DA 123, MA 76, Conventions 19.
+- **Bookmarks** (revs read through): AR 370, OA 426, TI 474, RA 151, RI 86,
+  IS 194, CP 159, OI 358, DA 123, MA 77, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -280,6 +280,17 @@ Credit rules (TI-49):
    to 4, which raises cm128 late loads from 4.14 to 4.91% through the
    same-line wait; the forwarding write buffer removes that. (AR first
    wrote that the gap did not move late loads; measured, and corrected.)
+   OA 424: the ECC late cancel rides OOE's miss path, so HIT stays 7 and
+   CMPL goes 14 -> 15, and OA asks AR to own the term. AR 368 (row
+   .591363, rev 370; OA, TI and RA rung) gives:
+   - a new CCV_LAT_L1_ECC (MA's count, 1), on CMPL's derive only;
+   - contract text for ccv_miu_ooe_cmpl, ccv_miu_rcu_data and L1_HIT's
+     doc;
+   - the order: TI lands it after OI prices it and OA rules;
+   - an ask to RA: confirm RCU takes the corrected second data write to
+     the same phys_dst.
+   SPM's decode adds to LAT_SPM_BASE (2 -> 3) instead, since A-46 bars
+   speculative SPM wakes. Wait for RA, OI's price and OA's ruling.
 2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
    against the six conditions.** The page-offset require has refusal
    mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
