@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-17 (#52 e6 PUSHED a5dc7eed SCOPED PASS at CCV_JOBS=2 (two container restarts killed earlier runs; al_n cap+baseline 29.7 under DA's #52 approval, flagged to DA). RH asked 11-17 to price rob_retire_lag 0/1 on S1/cm32/cm128 (IPC, ROB-full stalls). Next: on RH's table write OI-159 re:OA-420, ring OA; under 0.5% S1 OA rules, else DA. Then RTL: shift-plus-pick depth first. check-cg OOM: use CCV_JOBS=2 until TI 804d1e6f is merged)
+Updated 2026-11-17 (#52 e6 PUSHED a5dc7eed + handoff acb5ea8e. RH priced rob_retire_lag 1: S1 +0.16%, cm32 +0.50%, cm128 +0.92%; OI-159 written (rev 363), OA rung. Waiting on OA's ruling on (b) (cm128 over 0.5%: OA to say if DA). On adopt: RTL shift-plus-pick depth probe first, then the rest. check-cg OOM: CCV_JOBS=2 until TI 804d1e6f merged. OI bookmark 363)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
