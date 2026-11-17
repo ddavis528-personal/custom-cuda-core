@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 367, TI 474, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 76, DA 123.
+Conventions 19, AR 367, TI 474, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 78, DA 123. (AR 369 and OA 426 read for AR-367/OA-424.)
 
 ## State, 2026-11-13
 
@@ -80,7 +80,9 @@ Conventions 19, AR 367, TI 474, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
   bits (keeps 2 x 512x576 per bank; else 4 x 512x288, 10% penalty); loads use data speculatively at
   L1_HIT 7, non-zero syndrome cancels +1 cycle and replays (asked OA if the scheduler takes it; else
   L1_HIT 8, AR prices); store merge reads corrected data; encode in its own stage (fill +1 stage);
-  spare rows ~11.5k flops. Waiting: Daniel on (a), OA on the cancel, TI's BIST coding style. Then
+  spare rows ~11.5k flops. OA 424: OOE takes the cancel as a miss; L1_HIT stays 7, cmpl derive 14 to 15 (OA's row
+  for TI); MA rev 78 confirmed the 1-cycle syndrome (~15 NGD). AR 367: ECC'd merge (gap 4) is in
+  Phase 1's store variants (MA rev 77). Waiting: Daniel on (a), TI's BIST coding style. Then
   update the DCU tab arrays paragraph and carry it into dcu-impl.md. TI-472/473: no action (TI-473
   fixed 128w SRAM launch to 16.3; 512w stays TI-470's 18.5, 6.5 left).
 - TI-467 (DA, 2026-11-17): macro size per instance, RF 512 B-8 KiB, SRAM 4-32 KiB (check-ngd MACRO-1,
