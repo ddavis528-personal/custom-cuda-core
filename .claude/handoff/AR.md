@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 364 .582383, AR 365 .586009 (tab rev 366).
-  - **The next AR row inserts after .586009**, labelled AR 366.
+  - Latest rows: AR 365 .586009, AR 366 .588100 (tab rev 367).
+  - **The next AR row inserts after .588100**, labelled AR 367.
 - **Other tabs:**
 
   | Tab | Node |
@@ -91,7 +91,7 @@ Credit rules (TI-49):
   | Conventions | 55232329-ff5c |
 
 - **Bookmarks** (revs read through): AR 366, OA 421, TI 466, RA 151, RI 86,
-  IS 194, CP 159, OI 358, DA 123, MA 70, Conventions 19.
+  IS 194, CP 159, OI 358, DA 123, MA 71, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -223,6 +223,14 @@ Credit rules (TI-49):
      deferred queue up to 15 at 2x.
    AR's view: (b) only if MA's model shows (a) costing over 0.2% on S1.
    Tool: banksim.py with rmw or rmwd (banksim_v1.py is the old one).
+   MA-17 (crossed) took (a): the store's read in its slot, then a
+   whole-line write in a later free slot, and same-line lookups wait for
+   it. AR 366 (row .588100, rev 367; MA rung) replayed that with age 16
+   and the same-line wait (banksim.py ... rmw a16 sl). cm128 late loads:
+   3.30 -> 4.14% (not material); at 2x, 7.05 -> 9.10%, with p99 8 -> 17
+   and max 33 -> 104 (material). 40% of the 2x rise is the same-line
+   wait. AR's view: Phase 1 models MA-17 (5)'s forwarding write buffer
+   too, and decides on closed-loop S1. Nothing owed.
 2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
    against the six conditions.** The page-offset require has refusal
    mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
