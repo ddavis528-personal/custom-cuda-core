@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-15 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-16 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -90,8 +90,15 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 365, OA 418, TI 455, RA 148, RI 83,
-  IS 194, CP 159, OI 350, DA 123, MA 67, Conventions 19.
+- **Bookmarks** (revs read through): AR 365, OA 421, TI 457, RA 151, RI 86,
+  IS 194, CP 159, OI 358, DA 123, MA 68, Conventions 19.
+- **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
+  priority order; a dependency is met by reordering, never a due date. No date
+  on a row, a handoff item or a promise; an old row's date is its priority.
+  Dates here record when something happened, never when it is due.
+- **Last sweep 2026-11-16:** 7 branches merged (doowtf, miu-dcu-microarch-spec,
+  57eff422, 126afa13, 9eb50716, 3868632d, c22116ce); full gate PASS (about
+  4.5 h; ngd and cg take most of it); pushed de433e3b; session home matches.
 - **Insert a row:** update with ref {"object":"node","id":"bc521c46-9710"},
   engine "prose", container {"kind":"project","id":"JApHYjaUESeq8tsGMGXMU5"}.
   The payload is
@@ -178,9 +185,10 @@ Credit rules (TI-49):
    128 KiB 1,946,773 / +0.59% / +1.03%; 64 KiB 2,124,002 / +1.14% (hit 8).
    cm32: +2.51% / +4.94%. S1 1,640 flat (no L1 hits). Base 5: +3.19% cm128,
    +10.29% cm32, +2.68% S1. AR's view: hit 8 only on a measured timing need.
-   perf-register PF-33 and PF-47 are booked. Wait for MA's answer.
-   RH may delete its trees; AR's own are in ~/l1sweep (f*/h*/wp; delete them
-   once MA answers). One cm128 at a time (about 7 GB at its end).
+   perf-register PF-33 and PF-47 are booked. MA accepted: HIT 7 stays.
+   The f*/h*/wp worktrees are removed (11-16). ~/l1sweep keeps the scripts,
+   the run logs, bank/ and oracle/oraclep (5.8 GB, regenerable; delete if
+   the disk is tight). One cm128 at a time (about 7 GB at its end).
 1b. **MA-16 / DA 123 (SRAM is 1RW at half rate; a register file is 3x
    per bit): AR 364 answered (row .582383; notices to MA and TI).**
    - 8 half-rate banks by [9:7]. Open-loop port-trace replay (late loads,
@@ -191,13 +199,16 @@ Credit rules (TI-49):
    - Tools: ~/l1sweep/bank (extract.py, banksim.py, cm32.ev, cm128.ev).
      Dump with `--port-dump dcu=<vcd>`; the payload follows its valid by
      a cycle.
-   - TI 454 took it all (lands in the 11-17 gate). Wait for MA's closed-loop figure.
+   - MA 68 accepted (CCV_DCU_BANK_AGE 16, tunable). TI 457 landed it at
+     1861cc51 (8 banks, lead_set_index only, 36 lead flops waived, banks <=
+     sets require, gen-params controls); AR checked it; no reply owed. It
+     merges in the next sweep. Wait for MA's closed-loop figure.
 2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
    against the six conditions.** The page-offset require has refusal
    mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
    its set from the payload (no state on the lead); the dcu-set-lead
    control is in check-kernel; probes and fills are unchanged. lead_bank
-   goes, and banks become 8, in the 11-17 gate (TI 454). (2) A1 closing in
+   is gone and banks are 8 at 1861cc51 (TI 457). (2) A1 closing in
    25 NGD and (5) the lead waiver and keep copy come with MI's and DI's
    RTL; check them there. No reply owed.
 3. **Q-42 stays open** (full abutment: clock/reset trees, the kill
