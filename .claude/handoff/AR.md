@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 370 .596551, AR 371 .599641 (tab rev 372).
-  - **The next AR row inserts after .599641**, labelled AR 372.
+  - Latest rows: AR 373 .604516, AR 374 .608275 (tab rev 375).
+  - **The next AR row inserts after .608275**, labelled AR 375.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 372, OA 426, TI 477, RA 153, RI 86,
-  IS 197, CP 159, OI 358, DA 124, MA 82, Conventions 19.
+- **Bookmarks** (revs read through): AR 375, OA 428, TI 478, RA 154, RI 90,
+  IS 197, CP 159, OI 366, DA 125, MA 88, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -206,6 +206,13 @@ Credit rules (TI-49):
      v1.9 at compiler 103976f (F-MACHINE §12.3/12.5/12.7/12.8; pin bump is
      TI's). Waiting on: TI landing it.
      Owe nothing.
+0a. **L1_CMPL 15: RULED (OA 426, re OI-162; AR 368 closes on TI landing
+   it).** CCV_LAT_L1_ECC = 1, CMPL 14 -> 15; HIT 7, WAKE 13 and NOHIT 9
+   are unchanged. Priced at S1 +0.05%, cm32-priv -0.35%, cm128-priv +0.45%
+   (mostly reexec, 7,992 -> 23,757). RA 154 closed RA 153. TI 478 landed
+   it (5c1fe873; ooe_wake unit 9682b03a): param, CMPL and rcu_data
+   contract text checked against AR 368, match. AR 368 CLOSED; reaches
+   this branch in the next sweep. Nothing owed.
 0. **SPM is RF: DECIDED (DA rev 124, "use RF"; AR 371, row .599641,
    Needs TI).** Each of the 32 banks is a ccv_common_rf_1r1w, 1024 x 32,
    at about 3.32x per bit (efficiency about 0.30). It runs at full rate and
@@ -219,6 +226,38 @@ Credit rules (TI-49):
    - TI 477 landed MACRO-1 (ddc700a1: size limits, architect-written
      waivers, size penalty, per-block efficiency). SPM's 4 KiB RF (and the
      2 KiB fallback) is in range, so AR owes no waiver.
+0-. **MIU/DCU Phase 1 sweeps (DA rev 125: all start now, split MA / RH / AR;
+   MA-21).** MA builds the closed-loop p1 model and RH runs it. AR's three
+   asks are answered in AR 373 (.604516; notices to MA, CP, TI):
+   - (1) Open-loop screen: ~/l1sweep/bank/banksim_p1.py, grid in
+     ~/l1sweep/bank/p1/grid.txt (90 runs). Step (ii) goes from 24 points to
+     8: (a), (a+f) and (b) at depths 0 and 2, fixed order, then rotating
+     order on the best two. At x1, depth 2 equals an unbounded queue, and
+     fixed equals rotating (the stub issues one lookup a cycle). The 4x
+     squeeze is past capacity everywhere and is kept only as the age-bound
+     check (deferred max 30). Late loads (a / a+f / b): cm128 4.91 / 4.10 /
+     4.12%, cm32 3.56 / 2.60 / 3.45%.
+   - (2) Stride kernel: transpose and sgemm at n256 and n512 are at the
+     pin, and TI is asked for their bench configs. colwalk-pP (1 to 32 KiB
+     plus a 128 B control) is asked of CP, spec in the row.
+   - (3) AR books every result in perf-register.md as PF rows, citing
+     MA's rows and RH's runs.
+   MA rev 88 took the 8 points: p1 model in (CCV_DCU_IMPL=p1, S1 clean),
+   depth 0 a re-pass at +6, each point at an optimistic and a strict
+   contract bound. Waiting on: MA's p1 results, CP's kernel, TI's configs.
+   - AR 374 (.608275; Daniel asked whether AR should help with runs):
+     offered to run every CCV_P1_STRICT=1 point on cm32, cm128 and both
+     priv forms (32 runs; RH runs the defaults) plus step (iv)'s stride
+     runs. Needs: p1 on a branch (none on any remote yet), its invocation,
+     and MA's yes. One cm128 at a time (about 7 GB; disk had 15 GB free).
+0b. **MA-20 bank scheduling: answered, AR 372 (.601453; notice to MA).**
+   All three go into Phase 1, (1) fairness and (3) the conflict queue priced
+   together first. The 729-cycle wait was deferred work behind loads, not
+   slot order. (2) is the within-page hash only (bank = PA[9:7]^[12:10]^
+   [15:13]; bits above 15 are translated). Open-loop: cm32 2.60/2.69/2.64%,
+   cm128 4.14/4.03/3.96% (plain/within/cross); tool
+   ~/l1sweep/bank/banksim_h.py (hp|hx). MA rev 85 accepted as written;
+   MA-20 closed into Phase 1. Wait for its figures.
 1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
    Post-fix (a5481843), cm128 hit 7/8/9: 512 KiB 1,924,529 / +0.61% / +1.03%;
    128 KiB 1,946,773 / +0.59% / +1.03%; 64 KiB 2,124,002 / +1.14% (hit 8).
