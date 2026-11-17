@@ -331,7 +331,14 @@ RA rev 150: RCU sign-off report to DA on 2026-11-17.
 DA 122: Daniel's waiver signature recorded (sign-off condition met). TI 452/RI-57: rokill lands 11-17. TI 453: RA 148's
 TI half slips to 11-19 (post-sign-off). DA 123: arrays 1RW SRAM half-rate or RF (3x/bit); RA rev 151: RCU has no SRAM
 macro (flop arrays), unaffected.
-Bookmarks: OA 418, RA 151, RI 86, TI 453, DA 123, AR 358, OI 350, Conventions 19, CP 158, IS 194, MA 59.
+Sweep 11-16: nothing for RA; merged 183cc441 (61), 3868632d (6), 57eff422 (15),
+80102643 (15), 9eb50716 (11), c22116ce (5), miu-dcu-spec (19); pushed 0043a4b1
+(SCOPED PASS, but ngd 5.0 h and cg 4.8 h: OOE units re-synthesized).
+Sign-off inputs in: TI 457 rokilllane kernel at 1861cc51; RI-58 M4 margin passes
+at every drain cut 0-15 (cut matters to 8); RI-59: the model drops a killed
+warp's entries at the kill (Core::kill), not by epoch -- check the spec says
+no epoch for the model.
+Bookmarks: OA 421, RA 151, RI 86, TI 456, AR 365, DA 123, OI 358, Conventions 19, CP 159, IS 194, MA 68.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -362,11 +369,11 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
 
 ## Open work, most urgent first
 - GATES: 518cb3c3 is merged (2026-11-15): launch gate-push, then tools/gate-wait.sh <job log> (exit 3 = rerun, 4 = killed).
-- RCU SIGN-OFF (RA rev 150, due 2026-11-17): (1) after ti-nohit lands (TI 448: 2026-11-15) and TI 448 (c) (stub addr
-  timing + RTL refusal at base != 1, now 2026-11-19, post-sign-off: don't wait), delta-reconcile spec vs tip: SFU class (rev 146), PF-47=1 addr stages
-  (rev 145), addr from param (rev 148/RI-54), waivers (RI-47); fix spec tabs via a subagent, refresh snapshots.
-  (2) when TI's rokill kernel lands (TI 448 (d), 2026-11-17) (waiver signature: DA 122, done), report to Daniel
-  for sign-off; SFU-in-flight kill variant listed post-sign-off.
+- RCU SIGN-OFF (RA rev 150): delta reconciliation DONE 2026-11-16 vs TI tip ccr-183cc441 (1861cc51):
+  mechanisms all match; 13 stale-text edits applied (Done 51, Lane 19, Pipeline 34, Overview 80,
+  Partition 72), snapshots refreshed. Report sent to Daniel; WAITING on his sign-off (record it as an RA row
+  once given). Post-sign-off: TI half of RA 148 (stub addr from param, RTL refusal at base != 1); SFU-in-flight
+  kill kernel. TI-461 claims a DA no-dates ruling (not in DA tab yet); if confirmed, drop dates here.
 - PHASE 5 (rcu-impl.md): spec reconciled (RA rev 140/141); RI's rev 140 items closed (RA rev 142). Before DA
   sign-off: rev 143 CLOSED (TI 430); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
   ADDR_BASE. Reported to Daniel 2026-11-14.

@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-15 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-17 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -73,8 +73,10 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 363 .579939, AR 364 .582383 (tab rev 365).
-  - **The next AR row inserts after .582383.**
+  - Latest rows: AR 370 .596551, AR 371 .599641 (tab rev 372).
+  - **The next AR row inserts after .599641**, labelled AR 372.
+  - A whole row can't be replaced; replace its last cell's paragraph
+    (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
 
   | Tab | Node |
@@ -90,8 +92,15 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 365, OA 418, TI 455, RA 148, RI 83,
-  IS 194, CP 159, OI 350, DA 123, MA 67, Conventions 19.
+- **Bookmarks** (revs read through): AR 372, OA 426, TI 477, RA 153, RI 86,
+  IS 197, CP 159, OI 358, DA 124, MA 82, Conventions 19.
+- **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
+  priority order; a dependency is met by reordering, never a due date. No date
+  on a row, a handoff item or a promise; an old row's date is its priority.
+  Dates here record when something happened, never when it is due.
+- **Last sweep 2026-11-16:** 7 branches merged (doowtf, miu-dcu-microarch-spec,
+  57eff422, 126afa13, 9eb50716, 3868632d, c22116ce); full gate PASS (about
+  4.5 h; ngd and cg take most of it); pushed de433e3b; session home matches.
 - **Insert a row:** update with ref {"object":"node","id":"bc521c46-9710"},
   engine "prose", container {"kind":"project","id":"JApHYjaUESeq8tsGMGXMU5"}.
   The payload is
@@ -166,6 +175,9 @@ Credit rules (TI-49):
   - MA-13 still holds: MI and DI start only once the grill-me is finished,
     Daniel's summary is delivered and everything is documented.
 
+- **DA 124 (two rows, .125982 and .127235):** the machine-error system
+  (AR 370) and SPM as RF (AR 371).
+
 ## Params at HEAD
 - L1: HIT_BASE 7, RCU_ADDR_BASE 1, L1_WAKE 13, L1_CMPL 14, L1_NOHIT 9.
   Hit 8 gives 14/15; hit 9 gives 15/16; base 5 gives ADDR 5, WAKE 17,
@@ -173,14 +185,49 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+00. **Machine-error system: DECIDED (DA rev 124; AR 370, row .596551,
+   tab rev 372; notices to MA, IS, TI).** Daniel answered AR 369 (a)-(d):
+   core-fatal yes; clean-line refetch "only if we keep track of how many
+   times this has happened to the same line" (no forever loop on a real
+   bad bit); F-MACHINE yes; polling yes.
+   - CE corrected and counted. A clean-line UE is refetched, with
+     CCV_DCU_UE_TRACK entries (MA sizes it) keyed by location (bank, set,
+     way). A second UE at a recorded location, or a UE with the table full,
+     is core-fatal and logged for spare-row repair.
+   - Core-fatal: dirty-line UE, writeback victim, fill, or a hard error.
+     ccv_dcu_cru_err (ue, ce_alert) goes to CRU, which latches
+     MACHINE_CHECK, kills every grid via RAU, and writes F-MACHINE (code 10,
+     Execute, lowest priority; IS O-86, §12.7 exception) into every live
+     record. The host polls and resets.
+   - ccv_common_err in DCU (MA 81), host-only. No ue on dcu_miu_rsp or
+     spm_miu. F-MACHINE is written only by the core-fatal path in v1.
+   - MA-19 (MA rev 82) took it: CCV_DCU_UE_TRACK 16 (one per spare row),
+     key bank/instance/row, DCU tab rev 46. IS rev 197 wrote O-86 in ISA
+     v1.9 at compiler 103976f (F-MACHINE §12.3/12.5/12.7/12.8; pin bump is
+     TI's). Waiting on: TI landing it.
+     Owe nothing.
+0. **SPM is RF: DECIDED (DA rev 124, "use RF"; AR 371, row .599641,
+   Needs TI).** Each of the 32 banks is a ccv_common_rf_1r1w, 1024 x 32,
+   at about 3.32x per bit (efficiency about 0.30). It runs at full rate and
+   has no SECDED, so LAT_SPM_BASE stays 2. SPM is outside the fault system
+   until PF-48.
+   - No byte enables: a sub-word write is a read-modify-write (read port,
+     then the write port next cycle), taking that bank's read slot.
+   - Fallback: if check-ngd finds the 1024-word read launch too deep, use
+     2 x 512 RFs per bank.
+   - The specs doc's SPM tab carries it ("Arrays, decided", rev 4).
+   - TI 477 landed MACRO-1 (ddc700a1: size limits, architect-written
+     waivers, size penalty, per-block efficiency). SPM's 4 KiB RF (and the
+     2 KiB fallback) is in range, so AR owes no waiver.
 1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
    Post-fix (a5481843), cm128 hit 7/8/9: 512 KiB 1,924,529 / +0.61% / +1.03%;
    128 KiB 1,946,773 / +0.59% / +1.03%; 64 KiB 2,124,002 / +1.14% (hit 8).
    cm32: +2.51% / +4.94%. S1 1,640 flat (no L1 hits). Base 5: +3.19% cm128,
    +10.29% cm32, +2.68% S1. AR's view: hit 8 only on a measured timing need.
-   perf-register PF-33 and PF-47 are booked. Wait for MA's answer.
-   RH may delete its trees; AR's own are in ~/l1sweep (f*/h*/wp; delete them
-   once MA answers). One cm128 at a time (about 7 GB at its end).
+   perf-register PF-33 and PF-47 are booked. MA accepted: HIT 7 stays.
+   The f*/h*/wp worktrees are removed (11-16). ~/l1sweep keeps the scripts,
+   the run logs, bank/ and oracle/oraclep (5.8 GB, regenerable; delete if
+   the disk is tight). One cm128 at a time (about 7 GB at its end).
 1b. **MA-16 / DA 123 (SRAM is 1RW at half rate; a register file is 3x
    per bit): AR 364 answered (row .582383; notices to MA and TI).**
    - 8 half-rate banks by [9:7]. Open-loop port-trace replay (late loads,
@@ -191,13 +238,65 @@ Credit rules (TI-49):
    - Tools: ~/l1sweep/bank (extract.py, banksim.py, cm32.ev, cm128.ev).
      Dump with `--port-dump dcu=<vcd>`; the payload follows its valid by
      a cycle.
-   - TI 454 took it all (lands in the 11-17 gate). Wait for MA's closed-loop figure.
+   - MA 68 accepted (CCV_DCU_BANK_AGE 16, tunable). TI 457 landed it at
+     1861cc51 (8 banks, lead_set_index only, 36 lead flops waived, banks <=
+     sets require, gen-params controls); AR checked it; no reply owed. It
+     merges in the next sweep. Wait for MA's closed-loop figure.
+1c. **Macro pins (DA via TI 465, re: MA-16 and AR 344; Needs MA, AR; asks
+   AR nothing, no row).** Pins are endpoints, dearer than a flop: the
+   address setup is the decode plus 6 (SRAM) or 4 (RF); the data setup is
+   8 or 6; the rdata launch is a static D:1 mux / 1.5 plus 6 or 4. The
+   knobs are CCV_NGD_* in params, landing in TI's NGD-8. At 128 words an
+   SRAM 512b has an address setup of 11.5 and an rdata launch of 18.6,
+   leaving about 6 NGD, so a flop sits close behind rdata. TI 464's
+   macros: SRAM 1RW at every other cycle with a 2-cycle read; RF 1R1W at
+   every cycle, 3x the area. If DCU's hit latency moves, it is MA's call:
+   hit 8 and 9 are priced in PF-33 (+0.61%/+1.03% cm128), with S1 flat.
+1d. **TI 466 (DA: no SRAM byte enables; rf_1r1w_be at 4.5x SRAM per bit):
+   AR 365 answered (row .586009, rev 366; MA rung).** DCU stores become
+   read-modify-write. AR 365 corrects AR 364: the lead's speculative read
+   covers stores too. On 8 half-rate banks, cm128 late loads:
+   - (a) the store's slot read serves as the RMW read: 3.30 -> 4.10%
+     (2x: 7.03 -> 8.28%);
+   - (b) a 1-bit lead_store with the read deferred: late loads unchanged,
+     deferred queue up to 15 at 2x.
+   AR's view: (b) only if MA's model shows (a) costing over 0.2% on S1.
+   Tool: banksim.py with rmw or rmwd (banksim_v1.py is the old one).
+   MA-17 (crossed) took (a): the store's read in its slot, then a
+   whole-line write in a later free slot, and same-line lookups wait for
+   it. AR 366 (row .588100, rev 367; MA rung) replayed that with age 16
+   and the same-line wait (banksim.py ... rmw a16 sl). cm128 late loads:
+   3.30 -> 4.14% (not material); at 2x, 7.05 -> 9.10%, with p99 8 -> 17
+   and max 33 -> 104 (material). 40% of the 2x rise is the same-line
+   wait. AR's view: Phase 1 models MA-17 (5)'s forwarding write buffer
+   too, and decides on closed-loop S1. Nothing owed.
+   MA 72/73 agreed: Phase 1 runs (a), (a) + a forwarding write buffer, and
+   (b), all closed-loop on S1; the cheapest within 0.2% of the best wins.
+   Closed. Wait for Phase 1.
+   MA rev 76 on TI 474 (SECDED): speculative ECC keeps hit 7 only if OA
+   takes a late cancel, else hit 8. AR 367 (row .589591, rev 369; MA rung)
+   says hit 8 is already priced (cm128 +0.61%, cm32 +2.51%, S1 flat), so
+   it is within the bar. The ECC'd store merge stretches the gap from 3
+   to 4, which raises cm128 late loads from 4.14 to 4.91% through the
+   same-line wait; the forwarding write buffer removes that. (AR first
+   wrote that the gap did not move late loads; measured, and corrected.)
+   OA 424: the ECC late cancel rides OOE's miss path, so HIT stays 7 and
+   CMPL goes 14 -> 15, and OA asks AR to own the term. AR 368 (row
+   .591363, rev 370; OA, TI and RA rung) gives:
+   - a new CCV_LAT_L1_ECC (MA's count, 1), on CMPL's derive only;
+   - contract text for ccv_miu_ooe_cmpl, ccv_miu_rcu_data and L1_HIT's
+     doc;
+   - the order: TI lands it after OI prices it and OA rules;
+   - an ask to RA: confirm RCU takes the corrected second data write to
+     the same phys_dst.
+   SPM's decode adds to LAT_SPM_BASE (2 -> 3) instead, since A-46 bars
+   speculative SPM wakes. Wait for RA, OI's price and OA's ruling.
 2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
    against the six conditions.** The page-offset require has refusal
    mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
    its set from the payload (no state on the lead); the dcu-set-lead
    control is in check-kernel; probes and fills are unchanged. lead_bank
-   goes, and banks become 8, in the 11-17 gate (TI 454). (2) A1 closing in
+   is gone and banks are 8 at 1861cc51 (TI 457). (2) A1 closing in
    25 NGD and (5) the lead waiver and keep copy come with MI's and DI's
    RTL; check them there. No reply owed.
 3. **Q-42 stays open** (full abutment: clock/reset trees, the kill

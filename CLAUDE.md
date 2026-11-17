@@ -230,6 +230,11 @@ repo's `docs/register/roster.json`, which CP checks against this one in its
 daily sweep). Instructions given only in conversation do not
 survive a compaction; put them here or in the handoff.
 
+No task carries a date (Daniel, 2026-11-16). All work is best effort, in
+priority order; a dependency is met by moving the task it waits on up the
+order, never by setting a due date. Don't put a date on a row, a handoff item
+or a promise to another agent; read a date in an older row as its priority.
+
 Keep bulky reading out of the session's own context: the subagents in
 `.claude/agents/` return a few lines each. `register-reader` (a notice's
 rows, or a sweep's read since the bookmarks), `gate-triage` (why the gate is

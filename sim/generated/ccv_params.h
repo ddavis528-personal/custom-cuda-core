@@ -164,6 +164,62 @@ static constexpr uint32_t kNgdPort = 12;
 /// physical target, not a structure size (Daniel, 2026-10-19 (an inner helper no module instantiates yet: floor(2 * 25 / 3), not the full stage))
 static constexpr uint32_t kNgdInner = 16;
 
+/// Margin, in NGD, added to a one-hot decode of the address to make a 1RW SRAM's address setup: its addr pin, and ce and we, which qualify the word lines, must arrive by CCV_NGD_BUDGET - (decode(D) + this). decode(D) is the depth tools/check-ngd.py measures for a one-hot decode of $clog2(D) bits to D lines, fanout term included (NGD-8).  Requires: CCV_NGD_SRAM_ADDR_MARGIN < CCV_NGD_BUDGET.
+/// physical target, not a structure size (Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, "Hard macros"))
+static constexpr uint32_t kNgdSramAddrMargin = 6;
+
+/// Margin, in NGD, added to a one-hot decode of the address to make a register file's address setup, read (raddr, re) and write (waddr, we) alike: those pins must arrive by CCV_NGD_BUDGET - (decode(D) + this). tools/check-ngd.py, NGD-8.  Requires: CCV_NGD_RF_ADDR_MARGIN < CCV_NGD_BUDGET.
+/// physical target, not a structure size (Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, "Hard macros"))
+static constexpr uint32_t kNgdRfAddrMargin = 4;
+
+/// Setup, in NGD, of a 1RW SRAM's write data (wdata; an SRAM has no byte mask): it must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8.  Requires: CCV_NGD_SRAM_DATA_SETUP < CCV_NGD_BUDGET.
+/// physical target, not a structure size (Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, "Hard macros"))
+static constexpr uint32_t kNgdSramDataSetup = 8;
+
+/// Setup, in NGD, of a register file's write data and, on the _be one, its byte mask (wdata, wmask): they must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8.  Requires: CCV_NGD_RF_DATA_SETUP < CCV_NGD_BUDGET.
+/// physical target, not a structure size (Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, "Hard macros"))
+static constexpr uint32_t kNgdRfDataSetup = 6;
+
+/// How much faster a macro's dynamic read mux is than a static one, in percent: a macro's read data launches at mux(W, D) * 100 / this plus its read guardband, where mux(W, D) is the depth tools/check-ngd.py measures for a static combinational D:1 read mux W bits wide, fanout term included (NGD-8). 150 is the 1.5x Daniel set.  Requires: CCV_NGD_MACRO_READ_DYN_PCT >= 100.
+/// physical target, not a structure size (Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, "Hard macros"))
+static constexpr uint32_t kNgdMacroReadDynPct = 150;
+
+/// Guardband, in NGD, added to a 1RW SRAM's read mux (CCV_NGD_MACRO_READ_DYN_PCT) to give its rdata's clock-to-out: logic after rdata starts there. tools/check-ngd.py, NGD-8.  Requires: CCV_NGD_SRAM_READ_GUARD < CCV_NGD_BUDGET.
+/// physical target, not a structure size (Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, "Hard macros"))
+static constexpr uint32_t kNgdSramReadGuard = 6;
+
+/// Guardband, in NGD, added to a register file's read mux (CCV_NGD_MACRO_READ_DYN_PCT) to give its rdata's clock-to-out: logic after rdata starts there. tools/check-ngd.py, NGD-8.  Requires: CCV_NGD_RF_READ_GUARD < CCV_NGD_BUDGET.
+/// physical target, not a structure size (Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, "Hard macros"))
+static constexpr uint32_t kNgdRfReadGuard = 4;
+
+/// A register-file macro's area per bit (ccv_common_rf_1r1w, ccv_common_rf_1r1w_be), in percent of a 1RW SRAM's (ccv_common_sram_1rw), each at its most efficient, largest legal size (CCV_MACRO_RF_MAX_BYTES, CCV_MACRO_SRAM_MAX_BYTES; Daniel, 2026-11-17): the weight any area count of the arrays gives it, before CCV_MACRO_SIZE_PENALTY_PCT's size penalty. docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_AREA_RF_PCT >= 100.
+/// physical target, not a structure size (Daniel, 2026-11-16 (DA tab rev 123, MA-16: a register file is 3 times an SRAM's area per bit))
+static constexpr uint32_t kMacroAreaRfPct = 300;
+
+/// Byte enables' area, in percent of the register file without them, both at the largest legal size (Daniel, 2026-11-17): ccv_common_rf_1r1w_be's area per bit is CCV_MACRO_AREA_RF_PCT * this / 100 of an SRAM's (4.5 times at 300 and 150). Only a register file has byte enables; an SRAM writes whole words (Daniel, 2026-11-17). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_AREA_BYTE_EN_PCT >= 100.
+/// physical target, not a structure size (Daniel, 2026-11-17 (byte enables on a register file only, at 1.5 times its area))
+static constexpr uint32_t kMacroAreaByteEnPct = 150;
+
+/// The smallest register file (ccv_common_rf_1r1w and _be) one instance may be, in bytes, W x D / 8, the bound itself allowed: anything smaller belongs in flops. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_RF_MIN_BYTES >= 1.
+/// physical target, not a structure size (Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them))
+static constexpr uint32_t kMacroRfMinBytes = 512;
+
+/// The largest register file one instance may be, in bytes (8 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_RF_MAX_BYTES > CCV_MACRO_RF_MIN_BYTES.
+/// physical target, not a structure size (Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them))
+static constexpr uint32_t kMacroRfMaxBytes = 8192;
+
+/// The smallest 1RW SRAM (ccv_common_sram_1rw) one instance may be, in bytes, W x D / 8 (4 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_SRAM_MIN_BYTES >= 1.
+/// physical target, not a structure size (Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them))
+static constexpr uint32_t kMacroSramMinBytes = 4096;
+
+/// The largest 1RW SRAM one instance may be, in bytes (32 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_SRAM_MAX_BYTES > CCV_MACRO_SRAM_MIN_BYTES.
+/// physical target, not a structure size (Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them))
+static constexpr uint32_t kMacroSramMaxBytes = 32768;
+
+/// Power and area per bit of a hard-macro instance over the most efficient one of its type, in percent: 0 at the type's largest legal size (CCV_MACRO_RF_MAX_BYTES, CCV_MACRO_SRAM_MAX_BYTES), this at its smallest (the _MIN_BYTES), linear in bytes between; below the smallest (a waived instance) the line continues, above the largest it stays 0. It multiplies the type's own weight (CCV_MACRO_AREA_RF_PCT, CCV_MACRO_AREA_BYTE_EN_PCT). tools/check-ngd.py reports it per instance (MACRO-1). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_SIZE_PENALTY_PCT >= 0.
+/// physical target, not a structure size (Daniel, 2026-11-17 (array efficiency: best at a macro type's largest legal size, falling linearly to a 20 percent penalty at its smallest))
+static constexpr uint32_t kMacroSizePenaltyPct = 20;
+
 /// Logic depth allowed into a local clock gate's enable, in NGD from the flops and inputs that feed it. An ICG's enable sets up to the rising edge at the root of its clock branch, earlier than the flops behind it, so it gets a fraction of the cycle. tools/check-cg.py measures every enable group Yosys infers (CG-2, docs/rtl-coding-style.md).  Requires: CCV_NGD_CG_EN < CCV_NGD_BUDGET.
 /// physical target, not a structure size (Daniel, 2026-10-16 (local clock gating))
 static constexpr uint32_t kNgdCgEn = 8;

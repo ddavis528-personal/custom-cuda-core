@@ -7,7 +7,7 @@
   cvc5         present
   python3      present
   g++          present
-  build/ made by Verilator 5.052 2026-09-05 rev v5.052
+  build/ was not made by Verilator 5.052 2026-09-05 rev v5.052: cleared 36 entries
   a build/ made by another Verilator is cleared (3 controls)
   Verilator 5.052: step() and if/else flops agree      PASS (200000 arrivals=697565 flushes=19790 resets=466 differences=0)
     control: one planted payload                       caught
@@ -28,11 +28,11 @@
 
 == generated artifacts ==
   generated event headers from schema/events.json (hash 2e08856f4ac360b5)
-  generated parameter definitions from params/ccv_params.json (200 parameters)
+  generated parameter definitions from params/ccv_params.json (214 parameters)
   generated interface topology from schema/interfaces.json (55 channels, 14 blocks)
   generated docs/payload-spec.md (15 settled, 27 prov, 13 prelim channels)
   event schema headers up to date (hash 2e08856f4ac360b5)
-  parameter definitions up to date (200 parameters)
+  parameter definitions up to date (214 parameters)
   derived parameters: 61 mutation(s), each refused by name
   generated the opcode table from params/ops.json (146 opcodes)
   opcode table up to date (146 opcodes)
@@ -78,7 +78,7 @@
   icarus: t_resp fires on a violation            PASS
   verilator: t_resp fires on a violation         PASS
   sby: library elaborates and property bites     PASS (label not in report)
-  [s1b: 2s]
+  [s1b: 8s]
 
 == Stage 1c -- event schema mechanism ==
   schema headers current and versioned           PASS
@@ -87,7 +87,7 @@
   stub stream round-trips into Perfetto JSON     PASS
   emitted cycles match the paper reference       PASS
   trace identity view: nesting, replay, none     PASS
-  [s1c: 1s]
+  [s1c: 6s]
 
 == Stage 1d -- coding style and lint ==
   style guide present                            PASS
@@ -120,7 +120,7 @@
   lint clean across rtl/, test/, spike/          PASS
   generated parameter files current              PASS
   C++ and RTL parameter values agree with source PASS
-  [s1d: 8s]
+  [s1d: 12s]
 
 == Interface checker convention ==
   payload structs generated                      55 of 55 channels, 0 field(s) open
@@ -166,7 +166,7 @@
   formal: outstanding checker covers reachable   PASS
   gate scope: every section named exists; schema, params, the gate, unmapped paths run all; RTL and model changes reach their sections
   split gate: another commit, tree or dirty run, a gap, a double, an imported failure or edited log are each refused (11 controls)
-  [iface: 4s]
+  [iface: 6s]
 
 == X-propagation ==
   optimistic if-chain: definite, arbitrary answer PASS (=1101, the last branch)
@@ -190,7 +190,7 @@
   verilator: sim view, enable in either phase    PASS (cycles=2000 edges=1039 mid_high_changes=2563 ref_samples=0)
     ...an ICG with no latch: caught              PASS (both simulators)
     ...a latch open on the high phase: caught    PASS (both simulators)
-  [ctech: 2s]
+  [ctech: 7s]
 
 == Local clock gating -- CG-1 to CG-5, RST-1 ==
   unit rpt            ccv_common_rpt    697 flops,  688 in  2 clock gates (0 groups under 8), worst enable  0.0 NGD
@@ -269,19 +269,19 @@
     idle   23991 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium 26967 cycles, activity 0.001,  1 gates enabled, lowest DCGE 100%
     high    6195 cycles, activity 0.004,  1 gates enabled, lowest DCGE 100%
-  unit ooe_rob_w      ooe_rob_w        8308 flops, 8259 in 94 clock gates (7 groups under 8), worst enable  8.0 NGD
+  unit ooe_rob_w      ooe_rob_w        8428 flops, 8379 in 94 clock gates (7 groups under 8), worst enable  8.0 NGD
     idle   12003 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  9710 cycles, activity 0.014, 83 gates enabled, lowest DCGE 0%
     high    2562 cycles, activity 0.033, 83 gates enabled, lowest DCGE 0%
-  unit ooe_rob_w_1    ooe_rob_w        8309 flops, 8260 in 94 clock gates (7 groups under 8), worst enable  8.0 NGD
+  unit ooe_rob_w_1    ooe_rob_w        8429 flops, 8380 in 94 clock gates (7 groups under 8), worst enable  8.0 NGD
     idle   12003 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  9710 cycles, activity 0.014, 83 gates enabled, lowest DCGE 0%
     high    2562 cycles, activity 0.034, 83 gates enabled, lowest DCGE 0%
-  unit ooe_rob_w_2    ooe_rob_w        8309 flops, 8260 in 94 clock gates (7 groups under 8), worst enable  8.0 NGD
+  unit ooe_rob_w_2    ooe_rob_w        8429 flops, 8380 in 94 clock gates (7 groups under 8), worst enable  8.0 NGD
     idle   12003 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  9710 cycles, activity 0.012, 83 gates enabled, lowest DCGE 0%
     high    2562 cycles, activity 0.029, 83 gates enabled, lowest DCGE 0%
-  unit ooe_rob_w_3    ooe_rob_w        8309 flops, 8260 in 94 clock gates (7 groups under 8), worst enable  8.0 NGD
+  unit ooe_rob_w_3    ooe_rob_w        8429 flops, 8380 in 94 clock gates (7 groups under 8), worst enable  8.0 NGD
     idle   12003 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
     medium  9710 cycles, activity 0.009,  2 gates enabled, lowest DCGE 85%
     high    2562 cycles, activity 0.023,  2 gates enabled, lowest DCGE 81%
@@ -364,10 +364,10 @@
   module budget: unit ooe_go        1322 flops, 26.4 allowed, 22 auto-waived in 7 finding(s)
   module budget: unit ooe_rename    2265 flops, 45.3 allowed, 38 auto-waived in 11 finding(s)
   module budget: unit ooe_cmcap      465 flops,  9.3 allowed, 9 auto-waived in 3 finding(s)
-  module budget: unit ooe_rob_w     8308 flops, 166.2 allowed, 129 auto-waived in 32 finding(s)
-  module budget: unit ooe_rob_w_1   8309 flops, 166.2 allowed, 129 auto-waived in 32 finding(s)
-  module budget: unit ooe_rob_w_2   8309 flops, 166.2 allowed, 129 auto-waived in 32 finding(s)
-  module budget: unit ooe_rob_w_3   8309 flops, 166.2 allowed, 49 auto-waived in 28 finding(s)
+  module budget: unit ooe_rob_w     8428 flops, 168.6 allowed, 149 auto-waived in 32 finding(s)
+  module budget: unit ooe_rob_w_1   8429 flops, 168.6 allowed, 149 auto-waived in 32 finding(s)
+  module budget: unit ooe_rob_w_2   8429 flops, 168.6 allowed, 149 auto-waived in 32 finding(s)
+  module budget: unit ooe_rob_w_3   8429 flops, 168.6 allowed, 49 auto-waived in 28 finding(s)
   module budget: unit ccv_rcu         36 flops,  7.0 allowed, 2 auto-waived in 2 finding(s)
   module budget: unit rcu_bank_slice  6556 flops, 131.1 allowed, 40 auto-waived in 20 finding(s)
   module budget: unit rcu_bank_slice_k0  6553 flops, 131.1 allowed, 37 auto-waived in 20 finding(s)
@@ -386,13 +386,13 @@
   RST-2 global: repeater rpt_s0_b1_dst_cor_n4_w1114_lh8b1fbf9f64 reset arrives at cycle 1
   RST-2 global: spread 0 cycle(s), 1 to 1 over 3 block(s) and repeater(s); report-only, not failed, until the reset tree is modelled (Q-37)
     waiver: rcu_lanes CG-3 pcm_n_cr04h measures 69.4% in medium, over the 51% it records; its floor may tighten
-  block budget: rcu      247473 flops in 15 unit(s) at their instances' parameters (structural read 253.9 s), 4949.5 allowed, 2704 auto-waived in its modules (218 of them repeater control; 825 of them waived as lead or credit flops)
-  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2849 MiB, ooe_rob_w 1355 MiB, ooe_rob_w_1 1356 MiB, ooe_rob_w_2 1356 MiB, ooe_rob_w_3 1356 MiB, ooe_rs 2273 MiB, ooe_sched 1009 MiB, rcu_bank_slice 1435 MiB, rcu_bank_slice_k0 1432 MiB, rcu_bank_slice_k2 1437 MiB, rcu_bank_slice_k3 1439 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1947 MiB)
-  unit wall time (report-only): ooe_rename 1222s, ooe_rs 1172s, ooe_wake 1085s, ooe_rob_w_2 1019s, ooe_rob_w_3 1001s, ccv_rcu 956s; 38 unit(s) in all, 14837s summed
-  heavy-lock wait (report-only): 32172s summed, most ooe_rob_w_3 3851s
+  block budget: rcu      247473 flops in 15 unit(s) at their instances' parameters (structural read 261.5 s), 4949.5 allowed, 2704 auto-waived in its modules (218 of them repeater control; 825 of them waived as lead or credit flops)
+  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 2845 MiB, ooe_rob_w 1362 MiB, ooe_rob_w_1 1362 MiB, ooe_rob_w_2 1362 MiB, ooe_rob_w_3 1362 MiB, ooe_rs 2303 MiB, ooe_sched 2395 MiB, rcu_bank_slice 1435 MiB, rcu_bank_slice_k0 1432 MiB, rcu_bank_slice_k2 1437 MiB, rcu_bank_slice_k3 1439 MiB; every other unit's commands within 2048 MiB (largest ooe_go, 1951 MiB)
+  unit wall time (report-only): ooe_rename 2534s, ooe_rs 2061s, ooe_rob_w 1525s, ccv_rcu 1379s, ooe_rendep 1318s, ooe_rob_w_3 1197s; 38 unit(s) in all, 21226s summed
+  heavy-lock wait (report-only): 47520s summed, most rcu_bank_slice_k0 5002s
   24 module(s), 38 unit(s), 287 finding(s) auto-waived by a module budget, 81 waiver(s) in use, 0 on the ratchet
   form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, ratchet, coverage, module and block budgets as a sum of parts, enable sources and the reset, the reset's balance (RST-2), repeater instantiations, kept copies, the synthesis cache, heavy units one at a time, hard macros (244 controls)
-  [cg: 12202s]
+  [cg: 17908s]
 
 == Logic depth -- NGD-1 to NGD-7 ==
   unit rpt              ccv_common_rpt flop-flop   2.4  in-flop   1.7  flop-out   0.0  in-out   0.0
@@ -432,14 +432,14 @@
   unit ooe_rename       ooe_rename     flop-flop  24.7  in-flop  22.0  flop-out  18.4  in-out   0.0
     without the fanout term flop-flop  21.7  in-flop  21.7  flop-out  13.6; widest net 271 loads
   unit ooe_cmcap        ooe_cmcap      flop-flop   1.9  in-flop   1.9  flop-out   0.0  in-out   0.0
-  unit ooe_rob_w        ooe_rob_w      flop-flop  29.0  in-flop  27.3  flop-out   3.3  in-out   0.0
-    without the fanout term flop-flop  23.8  in-flop  23.8  flop-out   2.7; widest net 1047 loads
-  unit ooe_rob_w_1      ooe_rob_w      flop-flop  29.1  in-flop  25.2  flop-out   3.3  in-out   0.0
-    without the fanout term flop-flop  23.8  in-flop  23.7  flop-out   2.7; widest net 1048 loads
-  unit ooe_rob_w_2      ooe_rob_w      flop-flop  29.8  in-flop  25.2  flop-out   3.3  in-out   0.0
+  unit ooe_rob_w        ooe_rob_w      flop-flop  28.8  in-flop  27.3  flop-out   3.3  in-out   0.0
+    without the fanout term flop-flop  23.8  in-flop  23.8  flop-out   2.7; widest net 1048 loads
+  unit ooe_rob_w_1      ooe_rob_w      flop-flop  29.2  in-flop  27.3  flop-out   3.3  in-out   0.0
     without the fanout term flop-flop  23.8  in-flop  23.7  flop-out   2.7; widest net 1047 loads
-  unit ooe_rob_w_3      ooe_rob_w      flop-flop  29.1  in-flop  25.2  flop-out   3.3  in-out   0.0
-    without the fanout term flop-flop  23.8  in-flop  23.8  flop-out   2.7; widest net 1049 loads
+  unit ooe_rob_w_2      ooe_rob_w      flop-flop  28.8  in-flop  27.3  flop-out   3.3  in-out   0.0
+    without the fanout term flop-flop  23.8  in-flop  23.8  flop-out   2.7; widest net 1047 loads
+  unit ooe_rob_w_3      ooe_rob_w      flop-flop  28.9  in-flop  27.3  flop-out   3.3  in-out   0.0
+    without the fanout term flop-flop  23.8  in-flop  23.8  flop-out   2.7; widest net 1047 loads
   unit ccv_rcu          ccv_rcu        flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out   0.0
   unit rcu_bank_slice   rcu_bank_slice flop-flop  19.0  in-flop  15.9  flop-out  11.0  in-out   0.0
     without the fanout term flop-flop  12.3  in-flop  12.5  flop-out   8.3; widest net 385 loads
@@ -480,14 +480,15 @@
   unit rcu_top          ccv_rcu        flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out   0.0
   unit rpt_s0_b1_dst_cor_n4_w1114_lh8b1fbf9f64 ccv_common_rpt flop-flop   2.4  in-flop   1.7  flop-out   0.0  in-out   0.0
     without the fanout term flop-flop   1.7  in-flop   1.7  flop-out   0.0; widest net 13 loads
+  macro sizes (MACRO-1): 0 instance(s) at their units' parameters; RF 512 to 8192 bytes, SRAM 4096 to 32768
   fanout ratchet: ooe_go         12 path(s) over the stage with the fanout term, capped: NGD-1 26.1, NGD-2 lane_c_cq02h 22.4, NGD-2 lane_v_cq02h 24.5, NGD-2 take_cq02h 19.3, NGD-2 wb_cq02h 24.5, NGD-2 wt_cq02h 25, NGD-3 ha_cq01h 27.9, NGD-3 hv_cq01h 28.9, NGD-3 pl_cq01h 27.2, NGD-3 px_cq01h 28, NGD-3 reach_cq01h 25.3, NGD-7 utw_cq02h 17
   fanout ratchet: ooe_rename      1 path(s) over the stage with the fanout term, capped: NGD-2 q_pname_cq03h 3.32
   fanout ratchet: ooe_rendep      2 path(s) over the stage with the fanout term, capped: NGD-3 gsn_cq01h 28.5, NGD-3 psn_cq01h 28.8
-  fanout ratchet: ooe_rob_w       4 path(s) over the stage with the fanout term, capped: NGD-1 30.1, NGD-3 al_n_cq02h 29.2, NGD-3 dn_tag_cq02h 26.3, NGD-3 fl_m_cq02h 29.3
+  fanout ratchet: ooe_rob_w       4 path(s) over the stage with the fanout term, capped: NGD-1 29.2, NGD-3 al_n_cq02h 29.7, NGD-3 dn_tag_cq02h 26.9, NGD-3 fl_m_cq02h 29.3
   fanout ratchet: ooe_rs          1 path(s) over the stage with the fanout term, capped: NGD-3 prv_dep_cq01h 25.1
   fanout ratchet: ooe_sched       4 path(s) over the stage with the fanout term, capped: NGD-1 26.7, NGD-3 cidx_cq03h 25.6, NGD-3 res_cq03h 29, NGD-3 vel_cq03h 28.2
   inner helpers: ccv_common_csa inside its parent, ooe_confirm inside its parent, ooe_headrd inside its parent, ooe_pick inside its parent, ooe_ready inside its parent, ooe_ren1 inside its parent, ooe_ren1n inside its parent, ooe_rencred alone, within 16 (no module instantiates it yet), ooe_select inside its parent, rcu_xbar inside its parent
-  block rcu      sum of parts: 2 level(s) timed alone for convergence, 49 of 49 instance(s) on units at their parameters, the boundary held by its parts (structural read 213.7 s)
+  block rcu      sum of parts: 2 level(s) timed alone for convergence, 49 of 49 instance(s) on units at their parameters, the boundary held by its parts (structural read 231.3 s); arrays: none
   pending: lead field lead_done_row of ooe_rcu_issue: ccv_ooe's sending side declares no budget for it, so its default (required 12) stands; DA tab rev 116 has both sides declared (not both tops RTL yet)
   lead budgets: ooe_rcu_issue.lead_done_row across the zero-cycle end, 0 sending and 10 receiving declaration(s), worst required + in 25 of 25
   pending: lead field lead_opcode of ooe_rcu_issue: ccv_ooe's sending side declares no budget for it, so its default (required 12) stands; DA tab rev 116 has both sides declared (not both tops RTL yet)
@@ -496,12 +497,12 @@
   lead budgets: ooe_rcu_issue.lead_phys_dst across the zero-cycle end, 0 sending and 10 receiving declaration(s), worst required + in 25 of 25
   pending: lead field lead_pred_we of ooe_rcu_issue: ccv_ooe's sending side declares no budget for it, so its default (required 12) stands; DA tab rev 116 has both sides declared (not both tops RTL yet)
   lead budgets: ooe_rcu_issue.lead_pred_we across the zero-cycle end, 0 sending and 10 receiving declaration(s), worst required + in 25 of 25
-  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 842 MiB, ooe_rob_w 1784 MiB, ooe_rob_w_1 1772 MiB, ooe_rob_w_2 1786 MiB, ooe_rob_w_3 1769 MiB, ooe_rs 2242 MiB, ooe_sched 548 MiB, rcu_bank_slice 1425 MiB, rcu_bank_slice_k0 1422 MiB, rcu_bank_slice_k2 1427 MiB, rcu_bank_slice_k3 1428 MiB; every other unit's commands within 2048 MiB (largest rcu_pred, 1514 MiB)
-  unit wall time (report-only): ooe_rename 1126s, ooe_rendep 1043s, ccv_rcu 601s, rcu_top 589s, ooe_rob_w_1 561s, ooe_ren1 369s; 50 unit(s) in all, 7043s summed
-  heavy-lock wait (report-only): 39759s summed, most rcu_bank_slice 4264s
+  heavy units one at a time (CCV_HEAVY_SERIAL): ooe_decq 842 MiB, ooe_rob_w 1779 MiB, ooe_rob_w_1 1784 MiB, ooe_rob_w_2 1784 MiB, ooe_rob_w_3 1784 MiB, ooe_rs 2242 MiB, ooe_sched 548 MiB, rcu_bank_slice 1425 MiB, rcu_bank_slice_k0 1422 MiB, rcu_bank_slice_k2 1427 MiB, rcu_bank_slice_k3 1428 MiB; every other unit's commands within 2048 MiB (largest rcu_pred, 1514 MiB)
+  unit wall time (report-only): ooe_rename 2386s, ooe_rendep 584s, ooe_freelist_gsec_fs1 516s, ooe_freelist_gsec 504s, ccv_rcu 434s, rcu_r 397s; 50 unit(s) in all, 9170s summed
+  heavy-lock wait (report-only): 57151s summed, most rcu_bank_slice 5740s
   50 unit(s), 409 port budget(s) in 31 module file(s), stage 25 NGD, ports 12 by default
-  timing pass against ABC, outputs, inputs, the stage, paths straight through, inner helpers alone and inside a parent, registers shared by an output and the rest, observation ports, budget files, ratchet, coverage, glue, the assembled block as a sum of parts, ABC's cache, the fanout term, one-cell captures, second-kind no-flop ends, per-field lead budgets on both sides, wake taps, hard macros' pins (126 controls)
-  [ngd: 12775s]
+  timing pass against ABC, outputs, inputs, the stage, paths straight through, inner helpers alone and inside a parent, registers shared by an output and the rest, observation ports, budget files, ratchet, coverage, glue, the assembled block as a sum of parts, ABC's cache, the fanout term, one-cell captures, second-kind no-flop ends, per-field lead budgets on both sides, wake taps, hard macros' pins (158 controls)
+  [ngd: 18584s]
 
 == Clock gating (exploratory) ==
   enable inferred from the if-enable form        PASS
@@ -512,8 +513,8 @@
 == Stage 3 -- skeleton (S0: plumbing) ==
   skeleton builds (checker bank Verilated in)    PASS
   Receiver credit: Pop at landing+1, Landing at landing PASS (controls caught)
-  SRAM model alone: its contract                 PASS (controls wbr, nomask, early caught)
-  SRAM model == RTL, cycle for cycle             PASS (cycles=100000 reads=37273 same-word=16466 diffs=0; wbr, nomask, late caught)
+  SRAM model alone: its contract                 PASS (controls wbr, nomask, mask, early, b2b caught)
+  SRAM model == RTL, cycle for cycle             PASS (cycles=100000 reads=21516 same-word=35367 diffs=0 violations=0; wbr, wbr3, nomask, mask, late, early, b2b caught)
   slots re-derived: 55 types, 117 instances      PASS (179 slots, 16 groups)
   trace id absent from synthesis, present in trace PASS
   C++ field offsets == SV packed structs         PASS (rounds=64)
@@ -535,7 +536,7 @@
   --break wrong-class: every channel's set enforced PASS (55 channels)
   trace -> Perfetto JSON, one track per channel  PASS (55)
   port dumps == rtl/top/ports, every block       PASS (14 types; controls refused)
-  [skel: 8s]
+  [skel: 22s]
 
 == Stage 3 -- skeleton (S1: vadd) ==
   oracle addrhigh from the pinned ccv-sim        PASS (9 records)
@@ -866,7 +867,7 @@
   kernels issue out of order                     PASS (ahead=1513 depth=25 kernels=45 of 64)
   --break dcu-one-miss: the stall bound fails    PASS (warp 1 finished at 597, within 300 of stalled warp 0's 551)
   --in-order: the same traces in program order   PASS (fails the floor: nothing reordered)
-  [kernel: 301s]
+  [kernel: 450s]
 
 == Stage 4b -- OOE model unit tests (sim/ooe/) ==
   OOE unit tests                                       PASS
@@ -927,12 +928,12 @@
   control ignore-nohit-base5                           caught
   control nohit-wake-1                                 caught
   control nohit-wake-1-base5                           caught
-  [ooe_unit: 94s]
+  [ooe_unit: 139s]
 
 == RCU model unit tests (sim/rcu/; RI-2) ==
   RCU unit tests                                       PASS
   RCU unit-test controls caught                        PASS (8)
-  [rcu_unit: 5s]
+  [rcu_unit: 7s]
 
 == Stage 4c -- OOE RTL (rtl/ooe/) ==
   pick rcu (30 entries, 5 resources) == model          PASS (200000 issued=288854 lost=144063 multi-issue=80523 fails=0)
@@ -1145,7 +1146,7 @@
     control pay-with-valid (trio)                      caught
     control no-c9h (trio)                              caught
     control no-force (trio, idle_r assertion)          caught
-  [ooe_rtl: 1513s]
+  [ooe_rtl: 3570s]
 
 == RCU RTL benches (RI's test/rcu/run-rtl.sh) ==
   rcu_dec_pkg current with the model's decode          PASS
@@ -1197,7 +1198,7 @@
   rcu_mem_c4                                           PASS (320700 values checked)
   rcu_mem control align                                caught
   rcu_mem control pstlane                              caught
-  [rcu_rtl: 27s]
+  [rcu_rtl: 424s]
 
 == RCU block -- ccv_rcu in lock-step with the model (RI's test/rcu/run-lockstep.sh) ==
   lockstep addrhigh                                    PASS (218 outputs over 91 cycles, 14 events)
@@ -1281,7 +1282,7 @@
   lockstep control rdup                                caught
   lockstep control iso                                 caught
 control corrupt-output (vadd.vcd, rcu_ooe_done_s5_valid at cycle 44): caught
-  [rcu_ls: 211s]
+  [rcu_ls: 515s]
 
 == SV top -- rtl/top/ (generated, tracked) ==
   verilator -Wall: top (synthesis view)          PASS
@@ -1296,7 +1297,7 @@ control corrupt-output (vadd.vcd, rcu_ooe_done_s5_valid at cycle 44): caught
     ...and refuses 14 impure copies: top, wrapper, reuse, gate, units, credit on receipt PASS
   SV top wiring == C++ skeleton wiring           PASS (71797 bits)
     ...and rejects a lane swapped in a copy      PASS
-  [top: 72s]
+  [top: 157s]
 
 == Formal proofs -- one credited link, and the block clock gate ==
   safety, N=0: every property, for all time      PASS (proved)
@@ -1345,7 +1346,7 @@ control corrupt-output (vadd.vcd, rcu_ooe_done_s5_valid at cycle 44): caught
     ...a latch open on the high phase: the clean-clock properties fail PASS (cex 1)
     ...witness: reach_gated                      PASS (12 frames)
     ...witness: reach_woken                      PASS (20 frames)
-  [formal: 252s]
+  [formal: 349s]
 
 == Physical primitives -- sequential repeater ==
   repeater: verilator -Wall, ten shapes          PASS
@@ -1359,7 +1360,7 @@ control corrupt-output (vadd.vcd, rcu_ooe_done_s5_valid at cycle 44): caught
     ...lead-gated: invisible in sim, refused by netlist PASS
     ...bnd-gated: invisible in sim, refused by netlist PASS
     ...raw-reset: invisible in sim, refused by netlist PASS
-  [phys: 13s]
+  [phys: 30s]
 
 == SV-hosted C++ -- the skeleton's blocks inside the SV top ==
   verilator -Wall: shims, top, testbench         PASS
@@ -1505,7 +1506,7 @@ cycles=63)
     ...u_lane_05 one cycle late: caught          PASS (differing_cycles=72)
   RCU RTL in the SV top: == C++, == model        PASS (64 kernels, rcu=rtl divergences=0)
     ...controls: ev, gate, row, shadow late, flip PASS (each caught)
-  [svh: 262s]
+  [svh: 622s]
 
 == Hardening wrappers -- params/links.json ==
   links.json: malformed configurations refused   PASS (12 cases, each by name)
@@ -1520,11 +1521,11 @@ cycles=63)
   split: every S1 kernel == ccv-sim              PASS (vadd 186 cycles)
   split: every kernel with OOE's bypass          PASS (CCV_LAT_LANE 11, still forwarded at 4; byp's 3)
   split: SV repeaters == C++ link model          PASS (64 kernels, 45 controls, skew caught)
-  [links: 504s]
+  [links: 910s]
 
 == Walkthrough -- docs/walkthrough.md ==
   walkthrough current
-  [walkthrough: 1s]
+  [walkthrough: 2s]
 
 == Verilator lint ==
   clean
