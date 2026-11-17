@@ -22,7 +22,7 @@ and the address timed from `CCV_LAT_RCU_ADDR` (RA rev 148).
 | M1, NGD | MET. The pred guard path in A is 13.6 without the fanout term and 17.0 with it, against RA's restated target of ≤ 16 and ≤ 25 (RA on RI-46, rev 139) |
 | M2, clock gating | MET |
 | M3, bank slice | MET. The AND-OR sits exactly at its limit. "Light" means the unit's own peak is within 2,048 MiB (RA, rev 139) |
-| M4, kill drain | MET, by rcu_kill's control at KILL_DRAIN − 1 (RA, rev 139). The kernel margin waits on a kill kernel from TI |
+| M4, kill drain | MET, by rcu_kill's control at KILL_DRAIN − 1 (RA, rev 139). Kernel margin with a lane op in flight: the whole drain, 15 (rokilllane, RI-58) |
 | M5, migration | MET, from c1 (RA rev 140): demotion 68 and restore 64 cycles, against a bound of 68. Demotion has no margin |
 | M6, kernels | MET |
 | M7, swap boundary | MET, with the model and with the RTL, in the gate (TI's selector, 6061d0ee; gate 468fb286) |
@@ -75,9 +75,11 @@ RA's ruling on RI-46 (rev 139): the target is restated as ≤ 16 without the fan
 - KILL_DRAIN is 15, derived (RA-43's zero-cycle issue).
 - RTL: rcu_kill's bench control `drain`, at KILL_DRAIN − 1, fails as it must. So do ccv_rcu_killsleep's drop1 and drop2.
 - Kernels: 61 kernels were run in ccv-skel with `CCV_RCU_KILL_DRAIN_CUT` at 0 and 1. The 8 that kill (addrhigh, addrneg, divchw, roconst, rogated, rokill, rolaunch and rolimit) were also run at cuts 2, 5 and 15. All pass. The cut does take effect: for example, rokill goes from 103 to 102 cycles.
-- No kernel has RCU work in flight when its kill lands, so the margin is recorded as the whole drain, as on 2026-11-05 (`docs/rcu-model.md`).
+- No kernel had RCU work in flight when its kill landed, so the margin was recorded as the whole drain, as on 2026-11-05 (`docs/rcu-model.md`).
+- rokilllane (TI 3eaaadc7 and 1861cc51, TI rev 457) kills a warp with lane ops in flight (its kill_lane bin is 1; rokill, its control, is 0). On 2026-11-16 it and rokill were run at every cut from 0 to 15. All pass, so the margin is the whole drain, 15 (RI-58, rev 87). The cut takes effect: rokilllane goes from 1214 to 1206 cycles by cut 8, then holds; rokill from 104 to 94 by cut 10, then holds. Past those cuts something other than the RCU's drain sets when the kill ends.
+- The drain isn't what keeps these kernels correct: the model drops a killed warp's entries at the kill (`sim/rcu/rcu_core.cpp`, `Core::kill`), and a result that arrives later finds no entry (RI-59, rev 88). So no kernel tests the drain's length; rcu_kill's RTL control does.
 - MET by rcu_kill's KILL_DRAIN − 1 control, on the RTL and the model (RA, rev 139).
-- RA has asked TI for one kill kernel with an SFU op in flight when the kill lands, so the drain is exercised end to end; it doesn't block sign-off. RI records its margin when the kernel lands. Note that the lane stub sends no SFU result yet (`sim/skel/kernel.cpp`, RA-16 (b)), so that kernel needs an SFU-capable stub. The same gap means no kernel or lock-step run exercises SW write-back (`sfu_result`) through the assembled block yet. That path is covered by the model's test and the slice bench's LW + SW same-lane case. The lanes bench drives SFU ops itself, as a lane opcode with UNIT SFU (505 ops, 430 of them writing SW), through swb_d, SW and done slot 4. Its control `swlate`, SW expected a cycle late, fails as it must (RA rev 140 (3)).
+- RA has also asked TI for a kill kernel with an SFU op in flight when the kill lands, so the drain is exercised end to end; it doesn't block sign-off. RI records its margin when the kernel lands. Note that the lane stub sends no SFU result yet (`sim/skel/kernel.cpp`, RA-16 (b)), so that kernel needs an SFU-capable stub. The same gap means no kernel or lock-step run exercises SW write-back (`sfu_result`) through the assembled block yet. That path is covered by the model's test and the slice bench's LW + SW same-lane case. The lanes bench drives SFU ops itself, as a lane opcode with UNIT SFU (505 ops, 430 of them writing SW), through swb_d, SW and done slot 4. Its control `swlate`, SW expected a cycle late, fails as it must (RA rev 140 (3)).
 
 **M5: migration.**
 - Counted from c1, the cycle after the launch's edge, when the launch's map or command credit is on the wire and a demotion's wake is high (RA rev 140 (2)). The bench fails a demotion whose wake doesn't rise in c1.
@@ -121,7 +123,7 @@ There are 8 RCU entries in `rtl/cg-waivers.json`, all written by RI as the owner
 2. **RA:** reconciling the spec with what was built (`docs/rcu-impl.md`, phase 5). RA's phase-5 items for RI (rev 140) are all closed (RA rev 142). That includes (6): under the full-row interim every GPR load overlaps section 0, so MIU never co-issues two and `one_load_a_bank` holds as built; it narrows to per bank when FULL_ROW goes (RA rev 141, MA 54). RA reports to DA.
 3. **Block report:** `docs/rcu-block-report.md` (cells, flops, gating, DCGE, the 2% budget, depth histogram) at 5516e643.
 4. **Not blocking, TI's:**
-   - the kill kernel with a lane op in flight, an rokill variant (M4's kernel margin; TI rev 425), and its SFU variant, which needs a lane stub that sends SFU results; then the end-to-end SW check through the block. RI records the margin when it lands.
-   - `addr-late` in `tools/check-rcu-unit.sh`'s control list (7 to 8), and the stub's address timed from the param with the RTL refused at a base other than 1 (RI-54; RA rev 148).
+   - the SFU variant of the kill kernel, which needs a lane stub that sends SFU results; then the end-to-end SW check through the block. RI records its margin when it lands.
+   - the stub's address timed from the param, with the RTL refused at a base other than 1 (RI-54; RA rev 148; TI).
 
-Closed since 2026-11-14: the split tree with the RTL (TI 7079fc14; RA rev 143), the SFU class in the model's decode (RA rev 146, 9f513f3b), and the address cycle (RA rev 148, ce5f44dd).
+Closed since 2026-11-14: the split tree with the RTL (TI 7079fc14; RA rev 143), the SFU class in the model's decode (RA rev 146, 9f513f3b), the address cycle (RA rev 148, ce5f44dd), `addr-late` in `tools/check-rcu-unit.sh`'s control list (TI a5481843), and the kill kernel with lane ops in flight, rokilllane (TI 1861cc51, rev 457; margin 15, RI-58).

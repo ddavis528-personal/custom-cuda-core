@@ -191,8 +191,8 @@
 #     (OI-125, AR rev 314)                     refuses each replay's lead;
 #                                              lead-fault-drop (roconst):
 #                                              and a fault with none
-#   a lookup's set and bank lead it, copies   dcu-set-lead, dcu-bank-lead
-#     of its PA bits (AR 362)                  (hit): DCU refuses each
+#   a lookup's set index leads it, a copy     dcu-set-lead (hit): DCU
+#     of its PA bits (AR 362, AR 364)          refuses each
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -826,7 +826,8 @@ rolimit ro_fault=1 fault=1 kill=1
 rolaunch ro_fault=1 fault=1 kill=1
 rogated ro_fault=1 fault=1 split=1 kill=1
 roload ro_fault=0 fault=0 kill=0
-rokill ro_fault=1 fault=1 kill=1
+rokill ro_fault=1 fault=1 kill=1 kill_lane=0
+rokilllane ro_fault=1 fault=1 kill=1 kill_lane=1
 slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0 dcu_evict=32
 lanectx redirect=0 split=0
 lanectx2 redirect=0 split=0
@@ -1292,19 +1293,17 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_lead-fault-drop.log" check_failures)"
 else
   bad "--break lead-fault-drop" "$n refused: $(grep '^KERNEL' "$B/kernel_lead-fault-drop.log")"
 fi
-# AR 362: ccv_miu_dcu_req's set index and bank lead the PA by a cycle, as
-# copies of its bits. dcu-set-lead and dcu-bank-lead send a wrong one on
-# every lookup; DCU must refuse each by name, and nothing else.
-for b in set bank; do
-  "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break dcu-$b-lead >"$B/kernel_dcu-$b-lead.log" 2>&1
-  n=$(grep -c "^CHECK dcu: slot [0-9]* req_id [0-9]* lead_$( [ $b = set ] && echo set_index || echo bank ) " "$B/kernel_dcu-$b-lead.log")
-  if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_dcu-$b-lead.log" check_failures)" = "$n" ] &&
-     [ "$(field "$B/kernel_dcu-$b-lead.log" dcu_lookups)" = "$n" ]; then
-    say "--break dcu-$b-lead: DCU refuses each wrong lead" "PASS ($n lookups)"
-  else
-    bad "--break dcu-$b-lead" "$n refused: $(grep '^KERNEL' "$B/kernel_dcu-$b-lead.log")"
-  fi
-done
+# AR 362: ccv_miu_dcu_req's set index leads the PA by a cycle, a copy of
+# its bits (its low bits are the bank, AR 364). dcu-set-lead sends a wrong one
+# on every lookup; DCU must refuse each by name, and nothing else.
+"$SKEL" --kernel build/oracle/hit/oracle.jsonl --break dcu-set-lead >"$B/kernel_dcu-set-lead.log" 2>&1
+n=$(grep -c "^CHECK dcu: slot [0-9]* req_id [0-9]* lead_set_index " "$B/kernel_dcu-set-lead.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_dcu-set-lead.log" check_failures)" = "$n" ] &&
+   [ "$(field "$B/kernel_dcu-set-lead.log" dcu_lookups)" = "$n" ]; then
+  say "--break dcu-set-lead: DCU refuses each wrong lead" "PASS ($n lookups)"
+else
+  bad "--break dcu-set-lead" "$n refused: $(grep '^KERNEL' "$B/kernel_dcu-set-lead.log")"
+fi
 # F-ADDR (O-75; CP-34's kernels): a .global address is the exact sum, and
 # one outside [0, 2^48) faults. Taken modulo 2^48, addrhigh's lanes 16-31
 # store at the bottom of memory and lanes 0-15 land too, and addrneg's load
