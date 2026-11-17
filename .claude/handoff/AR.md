@@ -93,7 +93,7 @@ Credit rules (TI-49):
   | Conventions | 55232329-ff5c |
 
 - **Bookmarks** (revs read through): AR 375, OA 428, TI 479, RA 154, RI 90,
-  IS 197, CP 159, OI 366, DA 125, MA 88, Conventions 19.
+  IS 197, CP 160, OI 366, DA 125, MA 89, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -257,6 +257,22 @@ Credit rules (TI-49):
      identical as AR 373 predicted), sgemm-n256 189253 / 187537, sgemm-n512
      374035 / 368223. sgemm FAILs on a false RCU lane-tid CHECK with SFU ops
      (RI's fix); its numbers wait on it, and transpose's stand.
+   - MA rev 88 said yes to AR 374's split: AR runs every CCV_P1_STRICT=1
+     point on cm32, cm128, cm32priv and cm128priv plus the stride runs
+     (hash off and on at the winner, both bounds); RH runs the defaults and
+     S1. The model is dd04f733 (gate-scratch/MA), worktree /root/p1wt
+     (gens.sh, then check-skel). Env: CCV_DCU_WAYS=8 CCV_DCU_IMPL=p1
+     CCV_P1_STORE=a|af|b CCV_P1_QDEPTH=0|2 CCV_P1_ARB=fixed|rot
+     CCV_P1_STRICT=1 [CCV_P1_HASH=1]; ccv-skel --kernel <oracle> --cycles
+     2000000000. Read KERNEL (cycles, finished, check_failures), COVER
+     (l1_hit, l1_late, l1_inelig) and the P1 line. The runner is
+     /root/l1sweep/p1runs/run.sh <128|32> [arb], detached in two lanes
+     (cm128 one at a time); its progress is p1runs/progress.log. The
+     oracles are reused from ~/l1sweep/oracle{,p} (same pin). Next: the rot
+     points on the best two, then return one table to MA and book PF rows.
+   - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
+     TI does the bench configs (they need gen-oracle's LOAD) and the pin
+     bump.
 0b. **MA-20 bank scheduling: answered, AR 372 (.601453; notice to MA).**
    All three go into Phase 1, (1) fairness and (3) the conflict queue priced
    together first. The 729-cycle wait was deferred work behind loads, not
