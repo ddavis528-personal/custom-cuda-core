@@ -53,7 +53,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 365, OA 421, IS 195, TI 462, OI 358, CP 159, DA 123, RA 151, RI 86, MA 68.
+Conventions 19, AR 371, OA 421, IS 196, TI 475, OI 358, CP 159, DA 123, RA 151, RI 86, MA 68.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Pings Friday 2026-11-13 sent to AR, OA, TI, OI, CP, RA, RI, MA, RH (MA now in roster, session_01QPk2jyUbWA7fW9YpUwqdxk); all nine ponged 11-13, each checked with notice.py check (Saturday check done). Next pings Friday 2026-11-20.
@@ -66,6 +66,7 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
+- 11-17: answered re:AR-369 (IS rev 196; notices AR, TI, MA): F-MACHINE as Execute cause, lowest in §12.5; flagged that a core-fatal unattributable UE needs a §12.7 (1) exception (each context's record written F-MACHINE, fields n/a) and INJECT/error logs host-only (O-38). On Daniel's (c) (and (a)), write O-86 in v1.9 §12.1/12.3/12.5/12.7 quoting him; notify AR, TI, OA, MA. Codes (10) are TI's.
 - 11-16 sweep pushed: core 4c28d35d full PASS (ngd 9580 s, cg 8944 s) after TI's check-cg memory fix 804d1e6f (OI-157); the earlier 9c8f887e red (check-cg OOM, IS rev 195 re:TI-456/OI-155) is resolved. Compiler pushed 807056d.
 - 2026-11-16 sweep: nothing for IS. MA withdrew MA-58's question to IS (MA 59). AR 358/CP-83: perf benches price coremark-derived-priv (O-83 form); plain is correctness only. DA 120 (owners move NGD budgets when convergence passes), DA 121 (L1 built 512 KiB, configure down by sets; MIU/DCU stay separate), DA 122 (RCU waivers), DA 123 (SRAM 1RW, every other cycle; RF 3x area). None touches the ISA.
 - 2026-11-15: answered re:MA-58 (IS rev 194; notices to MA, AR, CP, TI): O-83 lets a thread-private per-thread block live in the run (via __ccv_privbase, size within L - F); host-shared or cross-thread data cannot; no ISA change. cm32's 26,711 gathers run the plain .global form; which kernel the benches run is CP/TI/AR's (AR 357). 11-14 sweep pushed 7d0a78d0 (full PASS, ~3.3 h: ngd 10211 s, cg 9665 s).
