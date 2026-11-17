@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 363 .579939, AR 364 .582383 (tab rev 365).
-  - **The next AR row inserts after .582383.**
+  - Latest rows: AR 364 .582383, AR 365 .586009 (tab rev 366).
+  - **The next AR row inserts after .586009**, labelled AR 366.
 - **Other tabs:**
 
   | Tab | Node |
@@ -90,8 +90,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 365, OA 421, TI 465, RA 151, RI 86,
-  IS 194, CP 159, OI 358, DA 123, MA 68, Conventions 19.
+- **Bookmarks** (revs read through): AR 366, OA 421, TI 466, RA 151, RI 86,
+  IS 194, CP 159, OI 358, DA 123, MA 70, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -213,6 +213,16 @@ Credit rules (TI-49):
    macros: SRAM 1RW at every other cycle with a 2-cycle read; RF 1R1W at
    every cycle, 3x the area. If DCU's hit latency moves, it is MA's call:
    hit 8 and 9 are priced in PF-33 (+0.61%/+1.03% cm128), with S1 flat.
+1d. **TI 466 (DA: no SRAM byte enables; rf_1r1w_be at 4.5x SRAM per bit):
+   AR 365 answered (row .586009, rev 366; MA rung).** DCU stores become
+   read-modify-write. AR 365 corrects AR 364: the lead's speculative read
+   covers stores too. On 8 half-rate banks, cm128 late loads:
+   - (a) the store's slot read serves as the RMW read: 3.30 -> 4.10%
+     (2x: 7.03 -> 8.28%);
+   - (b) a 1-bit lead_store with the read deferred: late loads unchanged,
+     deferred queue up to 15 at 2x.
+   AR's view: (b) only if MA's model shows (a) costing over 0.2% on S1.
+   Tool: banksim.py with rmw or rmwd (banksim_v1.py is the old one).
 2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
    against the six conditions.** The page-offset require has refusal
    mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
