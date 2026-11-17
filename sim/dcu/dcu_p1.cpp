@@ -12,7 +12,9 @@
 // fixed | rot, CCV_P1_HASH = 0 | 1, CCV_DCU_BANK_AGE, CCV_P1_GAP (a store
 // hit's read to its write, 4 with ECC), CCV_P1_DLAT (cycles from a bank's
 // grant to the response, calibrated against the stub's slack),
-// CCV_DCU_BANKS, CCV_P1_STRICT=1 (a hit that waited at its bank answers
+// CCV_DCU_BANKS, CCV_P1_QDEPTH (lookups a bank may hold waiting; past it a
+// loser re-passes from MIU and arrives again CCV_P1_REPASS = 6 cycles on;
+// unlimited by default), CCV_P1_STRICT=1 (a hit that waited at its bank answers
 // CCV_P1_PAD = 5 cycles later still, past the stub's slack, so it loses the
 // contract as the spec says; 0 lets the stub's slack absorb short waits,
 // the optimistic bound). Its measures print as the P1 line (coverage p1_*).
@@ -53,6 +55,8 @@ public:
     age_ = envU("CCV_DCU_BANK_AGE", ccv::prov::kDcuBankAge);
     gap_ = envU("CCV_P1_GAP", 4);
     dlat_ = envU("CCV_P1_DLAT", 0);
+    qdepth_ = envU("CCV_P1_QDEPTH", 1u << 30);
+    repass_ = envU("CCV_P1_REPASS", 6);
     pad_ = envU("CCV_P1_STRICT", 0) ? envU("CCV_P1_PAD", 5) : 0;
     banks_ = envU("CCV_DCU_BANKS", ccv::kDcuBanks);
     if (!banks_ || (banks_ & (banks_ - 1))) banks_ = ccv::kDcuBanks;
@@ -245,6 +249,10 @@ private:
         checkIndexLead(s, m.payload);
         arrive(Op{s, m.payload, m.tid});
       }
+    while (!again_.empty() && again_.front().first <= now_) {
+      arrive(again_.front().second);
+      again_.pop_front();
+    }
     schedule();
     if (has(c.mlc_dcu, 0)) {
       Receiver::Msg m = take(c.mlc_dcu, 0);
@@ -440,6 +448,16 @@ private:
   StoreVar store_ = kStA;
   bool rot_ = false, hash_ = false;
   unsigned age_ = 16, gap_ = 4, dlat_ = 0, pad_ = 0, banks_ = 8, lb_ = 3;
+  unsigned qdepth_ = 1u << 30, repass_ = 6;
+  std::deque<std::pair<uint64_t, Op>> again_;   ///< re-passes, by the cycle they return
+  /// A re-passed lookup's first arrival, by its MIU req_id, so its wait and
+  /// the strict contract count from there.
+  std::map<uint64_t, uint64_t> born_;
+  uint64_t bornOf(const Op &o) {
+    const uint64_t id = get(o.req, ch().miu_dcu, "req_id");
+    auto it = born_.find(id);
+    return it == born_.end() ? now_ : it->second;
+  }
   unsigned waited_ = 0;   ///< the lookup being served waited this many cycles
   static unsigned envU(const char *n, unsigned d) {
     const char *v = std::getenv(n);
@@ -554,6 +572,7 @@ private:
         k_.hit(waitBin(now_ - a.born));
       }
       waited_ = unsigned(now_ - a.born);
+      born_.erase(get(a.op.req, ch().miu_dcu, "req_id"));
       serveLook(a.op);
       waited_ = 0;
       break;
@@ -638,7 +657,7 @@ private:
           in.erase(in.begin() + win);
           ptr_[b] = o.slot + 1;
           bfree_[b] = now_ + 2;
-          serve(Acc{Acc::kLook, now_, now_, lineOf(o.req), o});
+          serve(Acc{Acc::kLook, bornOf(o), now_, lineOf(o.req), o});
         } else if (old != bq_[b].size()) {
           const Acc a = bq_[b][old];
           bq_[b].erase(bq_[b].begin() + old);
@@ -649,9 +668,21 @@ private:
       } else if (!in.empty()) {
         k_.hit("p1_bank_busy", in.size());
       }
+      // A loser waits in its bank's queue while it has room
+      // (CCV_P1_QDEPTH, MA-20 (3)); else it re-passes from MIU's load
+      // queue and arrives again CCV_P1_REPASS cycles on (today's scheme).
+      size_t waiting = 0;
+      for (const Acc &a : bq_[b]) waiting += a.k == Acc::kLook;
       for (const Op &o : in) {
         k_.hit("p1_lost");
-        bq_[b].push_back({Acc::kLook, now_, now_, lineOf(o.req), o});
+        if (waiting < qdepth_) {
+          bq_[b].push_back({Acc::kLook, bornOf(o), now_, lineOf(o.req), o});
+          ++waiting;
+        } else {
+          k_.hit("p1_repass");
+          born_.emplace(get(o.req, ch().miu_dcu, "req_id"), now_);
+          again_.push_back({now_ + repass_, o});
+        }
       }
       in.clear();
       size_t looks = 0;
@@ -663,7 +694,7 @@ private:
 
   bool busy() const override {
     if (!q_.empty() || !miss_.empty() || !to_mlc_.empty() || !to_miu_.empty() ||
-        !promised_.empty() || !timed_.empty())
+        !promised_.empty() || !timed_.empty() || !again_.empty())
       return true;
     for (const auto &q : bq_)
       if (!q.empty()) return true;
