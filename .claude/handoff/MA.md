@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 371, TI 475, OA 421, IS 194, CP 159, OI 358, RA 153, RI 86, MA 81, DA 123. (AR 369 and OA 426 read for AR-367/OA-424.)
+Conventions 19, AR 372, TI 476, OA 421, IS 196, CP 159, OI 358, RA 153, RI 86, MA 82, DA 124. (AR 369 and OA 426 read for AR-367/OA-424.)
 
 ## State, 2026-11-13
 
@@ -91,8 +91,10 @@ Conventions 19, AR 371, TI 475, OA 421, IS 194, CP 159, OI 358, RA 153, RI 86, M
   (clean: invalidate + refetch; dirty: AR's). AR 369 proposed the machine-error system
   (CE count, clean UE refetch, attributable UE -> F-MACHINE, unattributable -> core-fatal via
   ccv_<blk>_cru_err, ccv_common_err). MA rev 81: agree, but a dirty-line UE is core-fatal for DCU
-  (no ue on dcu_miu_rsp; SPM's ue passes through MIU). Waiting: Daniel on AR 369 (a)-(d) and MA's
-  change; TI's BIST coding style. Then
+  (no ue on dcu_miu_rsp; SPM's ue passes through MIU). DECIDED as AR 370 (DA rev 124), MA's change
+  folded in; clean-line refetch bounded by a per-location track table. MA-19 (rev 82, Needs TI):
+  CCV_DCU_UE_TRACK = 16, 13-bit locations; DCU tab rev 46 holds it and ccv_common_err. TI-476:
+  flop arrays scan only. SPM is RF (AR 371), so DCU data is the only SRAM. Waiting: TI's BIST style. Then
   update the DCU tab arrays paragraph and carry it into dcu-impl.md. TI-472/473: no action (TI-473
   fixed 128w SRAM launch to 16.3; 512w stays TI-470's 18.5, 6.5 left).
 - TI-467 (DA, 2026-11-17): macro size per instance, RF 512 B-8 KiB, SRAM 4-32 KiB (check-ngd MACRO-1,
