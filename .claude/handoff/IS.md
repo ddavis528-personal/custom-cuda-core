@@ -53,7 +53,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 372, OA 421, IS 197, TI 475, OI 358, CP 159, DA 124, RA 151, RI 86, MA 68.
+Conventions 19, AR 372, OA 428, IS 197, TI 477, OI 366, CP 159, DA 124, RA 154, RI 90, MA 82.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Pings Friday 2026-11-13 sent to AR, OA, TI, OI, CP, RA, RI, MA, RH (MA now in roster, session_01QPk2jyUbWA7fW9YpUwqdxk); all nine ponged 11-13, each checked with notice.py check (Saturday check done). Next pings Friday 2026-11-20.
@@ -66,6 +66,7 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
+- 11-17 sweep: nothing for IS (MA 81 superseded by DA 124/AR 370; TI 476 BIST/macros ruling, not ISA). Compiler: no peer commits; 103976f (O-86) pushed. Core: merged ccr-183cc441-doowtf, ccr-57eff422-5tdecg, ccr-80102643-4n8bv4, ccr-9eb50716-lecnjf, ccr-c22116ce-1vzyjg, claude/miu-dcu-microarch-spec-664pgr; full gate run.
 - 11-17: O-86 done. AR-369 answered (IS rev 196); Daniel decided (DA rev 124, AR 370); O-86 written in ISA v1.9 (compiler 103976f, VERIFY PASS, pushed): F-MACHINE §12.3 (Execute or core-wide; v1 core-wide only), last in §12.5, §12.7 core-wide exception, host-only error state, §12.8. IS rev 197, notices AR, TI, OA, MA. TI owns code 10 and the re-pin. Also DA rev 124: SPM arrays are RFs (AR 371), no ECC.
 - 11-16 sweep pushed: core 4c28d35d full PASS (ngd 9580 s, cg 8944 s) after TI's check-cg memory fix 804d1e6f (OI-157); the earlier 9c8f887e red (check-cg OOM, IS rev 195 re:TI-456/OI-155) is resolved. Compiler pushed 807056d.
 - 2026-11-16 sweep: nothing for IS. MA withdrew MA-58's question to IS (MA 59). AR 358/CP-83: perf benches price coremark-derived-priv (O-83 form); plain is correctness only. DA 120 (owners move NGD budgets when convergence passes), DA 121 (L1 built 512 KiB, configure down by sets; MIU/DCU stay separate), DA 122 (RCU waivers), DA 123 (SRAM 1RW, every other cycle; RF 3x area). None touches the ISA.
