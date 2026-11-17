@@ -211,8 +211,7 @@ Credit rules (TI-49):
      then the write port next cycle), taking that bank's read slot.
    - Fallback: if check-ngd finds the 1024-word read launch too deep, use
      2 x 512 RFs per bank.
-   - AR still owes the SPM tab of the specs doc (DJeg9Hh8rkPDecq4hrAz35)
-     updated to match AR 371.
+   - The specs doc's SPM tab carries it ("Arrays, decided", rev 4).
 1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
    Post-fix (a5481843), cm128 hit 7/8/9: 512 KiB 1,924,529 / +0.61% / +1.03%;
    128 KiB 1,946,773 / +0.59% / +1.03%; 64 KiB 2,124,002 / +1.14% (hit 8).
