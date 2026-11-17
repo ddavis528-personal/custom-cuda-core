@@ -90,7 +90,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 367, OA 421, TI 469, RA 151, RI 86,
+- **Bookmarks** (revs read through): AR 367, OA 421, TI 474, RA 151, RI 86,
   IS 194, CP 159, OI 358, DA 123, MA 74, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -202,6 +202,19 @@ Credit rules (TI-49):
    legal size and rises linearly to +20% at its smallest
    (CCV_MACRO_SIZE_PENALTY_PCT). So a 4 KiB SRAM is 1.20x, and a 4 KiB RF
    is about 3 x 1.107 = 3.32x.
+   TI 474 (DA, Needs MA, AR, OA): every array gets a BIST override, BIST
+   ports punched up to the block wrapper and tied off there, a spare row,
+   and column repair if it is over 8 KiB. Every SRAM gets SECDED. For SPM
+   that means:
+   - (39,32) on 32-bit words (+22%) against (72,64) on (iv)'s 64-bit
+     words (+12.5%);
+   - decode needs a read cycle (LAT_SPM_BASE 2 -> 3) or speculative use
+     with replay;
+   - every write narrower than a slice is read-modify-write, so (iv)
+     makes a lone one-line store read-modify-write while (i) writes a
+     32-bit word straight;
+   - a spare row of 39 or 72 flops a bank.
+   GEMM reads SPM far more than it writes it, so (iv) still leads.
    AR's lean is (iv). No S1 kernel touches SPM, so the bar cannot price
    it; it needs a GEMM-like kernel.
 1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
