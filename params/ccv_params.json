@@ -441,6 +441,62 @@
       "doc": "Logic depth an inner helper (a combinational module declared inner in its <module>.ngd.json, timed as its parent's logic) is held to, input to output, while no module instantiates it: floor(2 * CCV_NGD_BUDGET / 3). Inside a parent its logic is the parent's and the stage applies; alone, the whole stage would be optimistic, since the parent's own logic will share it. tools/check-ngd.py, NGD-6."
     },
     {
+      "name": "CCV_NGD_SRAM_ADDR_MARGIN",
+      "value": 6,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_SRAM_ADDR_MARGIN < CCV_NGD_BUDGET",
+      "doc": "Margin, in NGD, added to a one-hot decode of the address to make a 1RW SRAM's address setup: its addr pin, and ce and we, which qualify the word lines, must arrive by CCV_NGD_BUDGET - (decode(D) + this). decode(D) is the depth tools/check-ngd.py measures for a one-hot decode of $clog2(D) bits to D lines, fanout term included (NGD-8)."
+    },
+    {
+      "name": "CCV_NGD_RF_ADDR_MARGIN",
+      "value": 4,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_RF_ADDR_MARGIN < CCV_NGD_BUDGET",
+      "doc": "Margin, in NGD, added to a one-hot decode of the address to make a register file's address setup, read (raddr, re) and write (waddr, we) alike: those pins must arrive by CCV_NGD_BUDGET - (decode(D) + this). tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_SRAM_DATA_SETUP",
+      "value": 8,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_SRAM_DATA_SETUP < CCV_NGD_BUDGET",
+      "doc": "Setup, in NGD, of a 1RW SRAM's write data and byte mask (wdata, wmask): they must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_RF_DATA_SETUP",
+      "value": 6,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_RF_DATA_SETUP < CCV_NGD_BUDGET",
+      "doc": "Setup, in NGD, of a register file's write data and byte mask (wdata, wmask): they must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_MACRO_READ_DYN_PCT",
+      "value": 150,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_MACRO_READ_DYN_PCT >= 100",
+      "doc": "How much faster a macro's dynamic read mux is than a static one, in percent: a macro's read data launches at mux(W, D) * 100 / this plus its read guardband, where mux(W, D) is the depth tools/check-ngd.py measures for a static combinational D:1 read mux W bits wide, fanout term included (NGD-8). 150 is the 1.5x Daniel set."
+    },
+    {
+      "name": "CCV_NGD_SRAM_READ_GUARD",
+      "value": 6,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_SRAM_READ_GUARD < CCV_NGD_BUDGET",
+      "doc": "Guardband, in NGD, added to a 1RW SRAM's read mux (CCV_NGD_MACRO_READ_DYN_PCT) to give its rdata's clock-to-out: logic after rdata starts there. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_RF_READ_GUARD",
+      "value": 4,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_RF_READ_GUARD < CCV_NGD_BUDGET",
+      "doc": "Guardband, in NGD, added to a register file's read mux (CCV_NGD_MACRO_READ_DYN_PCT) to give its rdata's clock-to-out: logic after rdata starts there. tools/check-ngd.py, NGD-8."
+    },
+    {
       "name": "CCV_NGD_CG_EN",
       "value": 8,
       "status": "target",

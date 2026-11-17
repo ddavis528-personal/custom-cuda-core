@@ -27,10 +27,13 @@
 // rdata holds the last word read until the next read's data (not X), so a
 // lockstep check of two models compares it on every cycle.
 //
-// The timing model (tools/check-ngd.py, NGD-8): every input pin is a timing
-// endpoint, as a flop's D pin, so the parent's logic into it counts within
-// the stage; rdata starts the next stage at 0 NGD, as a flop's Q. No
-// clock-to-out is charged until the library gives one (Q-48). Storage is
+// The timing model (tools/check-ngd.py, NGD-8; Daniel, 2026-11-17): every
+// input pin is a timing endpoint and rdata a start point, never a path
+// through, each dearer than a flop's: addr, ce and we set up a one-hot
+// decode of D words plus CCV_NGD_SRAM_ADDR_MARGIN before the edge, wdata
+// and wmask CCV_NGD_SRAM_DATA_SETUP; rdata launches at a static W-bit D:1
+// read mux / 1.5 (CCV_NGD_MACRO_READ_DYN_PCT) + CCV_NGD_SRAM_READ_GUARD,
+// the decode and mux measured as check-ngd times any logic. Storage is
 // not flops: check-cg counts none of it. ce and we must come from the
 // parent's own flops (CG-5), as every enable does.
 //

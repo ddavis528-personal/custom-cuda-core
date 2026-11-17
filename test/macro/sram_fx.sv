@@ -18,8 +18,9 @@
 //        reads at op_q's low bits every command, so a read can meet the
 //        write to its own word (read before write); its data the cycle
 //        after (rv2_q).
-// Read data folds into acc_q and acc2_q through an XOR tree of the whole
-// word; out_q, its own register (NGD-7), carries the two out.
+// Read data folds into acc_q and acc2_q: the rf's through an XOR tree of
+// the whole word; the 1rw's, whose data launches later, its low slice
+// alone (FOLD_RD, below); out_q, its own register (NGD-7), carries the two out.
 //
 // The parameters that make the controls, each 0 in the compliant fixture:
 //   MACRO = 0     every macro replaced by the same array inferred here, as
@@ -29,7 +30,13 @@
 //   DEEP_IDX = 1  the 1rw's index through a 16 x 16 multiply: an input
 //                 pin is an endpoint, so check-ngd counts the logic to it
 //   DEEP_RD = 1   the 1rw's read data through a multiply into acc_q:
-//                 rdata launches at 0 and what follows it counts
+//                 what follows rdata counts
+//   FOLD_RD = 1   the 1rw's read data through the XOR fold of the whole
+//                 word (12 NGD) into acc_q: within the stage from a flop,
+//                 over it from rdata, which launches late (its read mux;
+//                 Daniel, 2026-11-17). The compliant fixture takes one
+//                 slice of it, through one XOR, as a design must; the flop
+//                 array (MACRO = 0) takes the fold, so no column is unread.
 //   RST_CE = 1    the 1rw's ce gated by the flopped reset: check-cg's RST-2
 //                 then sees the reset reach the macro's pin, as it would a
 //                 flop's D (a macro has no reset, so it is otherwise none)
@@ -39,6 +46,7 @@ module sram_fx #(
   parameter int DEEP_IDX = 0,
   parameter int DEEP_RD = 0,
   parameter int RST_CE = 0,
+  parameter int FOLD_RD = 0,
   parameter int W = 512,
   parameter int D = 128,
   parameter int W2 = 64,
@@ -183,7 +191,8 @@ module sram_fx #(
     assign rd2[j] = ^col2;
   end
   assign rmul = rd * rdata[W-1 -: 16];
-  wire  [15:0] rd_use = DEEP_RD != 0 ? rmul : rd;
+  wire  [15:0] rd_use = DEEP_RD != 0 ? rmul :
+                        FOLD_RD != 0 || MACRO == 0 ? rd : rdata[15:0];
   wire         acc_en = rv_q, acc2_en = rv2_q, out_en = o_v_q;
 
   always_ff @(posedge clk) begin

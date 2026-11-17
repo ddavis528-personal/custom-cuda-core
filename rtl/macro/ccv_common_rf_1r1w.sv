@@ -24,10 +24,12 @@
 //              (read before write).
 //   neither    rdata holds the last word read (not X).
 //
-// The timing model, storage and enables are ccv_common_sram_1rw's: inputs
-// are endpoints, rdata launches at 0 NGD (no clock-to-out until Q-48), no
-// storage counts as flops, and re and we come from the parent's own flops
-// (CG-5).
+// The timing model, storage and enables are ccv_common_sram_1rw's, with
+// the register file's own knobs (CCV_NGD_RF_*; Daniel, 2026-11-17): raddr,
+// re, waddr and we set up a decode plus CCV_NGD_RF_ADDR_MARGIN, wdata and
+// wmask CCV_NGD_RF_DATA_SETUP; rdata launches at the read mux / 1.5 plus
+// CCV_NGD_RF_READ_GUARD. No storage counts as flops, and re and we come
+// from the parent's own flops (CG-5).
 //
 // No reset: the macro has none. Its contents are unknown until written.
 //===----------------------------------------------------------------------===//

@@ -1297,20 +1297,45 @@ X); an unwritten word is unknown; there is no reset. The C++ host's model is
 sampled a cycle early, and `ce` two cycles running, which the RTL's
 assertion must stop by name).
 
-**The timing model** (`tools/check-ngd.py`, NGD-8). The macro's input
-register is the stage boundary: each input pin is a timing endpoint, as a
-flop's D pin, so the instantiating module's index logic, controls and write
-data into it are an ordinary path that ends there, held to the stage from
-its flops (and from an input at its port arrival). `rdata` starts the next
-stage at 0 NGD, as a flop's Q (the 1rw's two read edges are both inside
-the macro, so its pins time the same): the logic after it is counted, to a flop
-within the stage, to an output within its required time. No clock-to-out
-is charged until the library gives one (Q-48). A unit names each macro it
-instantiates under `"blackbox"`, as it does the ctech ICG, so the macro is
-read ports only and cut out of the netlist; nothing inside it is measured,
-and it has no unit of its own (`rtl/macro/` is no design module's
-directory). The instantiating module's own rules all still hold: no path
-straight through it, its outputs and inputs to their budgets.
+**The timing model** (`tools/check-ngd.py`, NGD-8; Daniel, 2026-11-17).
+A macro's pins are timing endpoints and start points, never a path
+through, and each is dearer than a flop's. Each input pin is an endpoint
+with a setup; `rdata` is a start point with a launch (its clock-to-out):
+
+| Pin | SRAM (`ccv_common_sram_1rw`) | Register file (`ccv_common_rf_1r1w`) |
+|---|---|---|
+| address (`addr`; `raddr`, `waddr`), and the enables with it (`ce`, `we`; `re`, `we`), which qualify the word lines | setup: one-hot decode of D words + `CCV_NGD_SRAM_ADDR_MARGIN` (6) | setup: one-hot decode of D words + `CCV_NGD_RF_ADDR_MARGIN` (4) |
+| write data and mask (`wdata`, `wmask`) | setup: `CCV_NGD_SRAM_DATA_SETUP` (8) | setup: `CCV_NGD_RF_DATA_SETUP` (6) |
+| read data (`rdata`) | launch: static W-bit D:1 read mux x 100 / `CCV_NGD_MACRO_READ_DYN_PCT` (150) + `CCV_NGD_SRAM_READ_GUARD` (6) | launch: the same mux / 1.5 + `CCV_NGD_RF_READ_GUARD` (4) |
+
+The decode and the read mux are not assumed: check-ngd synthesises a
+static one-hot decode and a static AND-OR read mux (its select decoded) at
+the instance's W and D, and times them as it times any unit, the fanout
+term included. The mux is synthesised one bit wide and timed W bits wide,
+its select logic shared by the W bits (a control holds that to the mux
+synthesised whole). The divisor is the dynamic read mux's speed over a
+static one's; the margins and guardbands are knobs in
+`params/ccv_params.json`. So the instantiating module's logic into an
+input pin is held to the stage less that pin's setup, from its flops, from
+an input at its port arrival, or from another macro's `rdata` at that
+macro's launch; and the logic after `rdata`, from its launch, to a flop
+within the stage, to an output within its required time. The read address
+is sampled a cycle before its data leaves (the SRAM's two cycles before),
+so it is an endpoint with the write address's setup.
+
+At the fixture's sizes these come to: a 128-word 512-bit SRAM, address
+setup 11.5 (decode 5.5), data 8, read data launched at 18.6 (a static mux
+of 18.9); a 128-word 64-bit register file, address 9.5, data 6, read data
+at 15.1. Read data wants a flop close behind it: the fixture's SRAM read
+data takes one XOR into its accumulator, and the XOR fold of the whole
+word it used before (12 NGD) is now a control that must fail.
+
+A unit names each macro it instantiates under `"blackbox"`, as it does the
+ctech ICG, so the macro is read ports only and cut out of the netlist;
+nothing inside it is measured, and it has no unit of its own (`rtl/macro/`
+is no design module's directory). The instantiating module's own rules all
+still hold: no path straight through it, its outputs and inputs to their
+budgets.
 
 **Clock gating** (`tools/check-cg.py`). The macro's storage is not flops: it
 counts in neither the module's flop total, its 2% allowance, the block's,
@@ -1329,8 +1354,12 @@ memory array is written. The fixture, `test/macro/sram_fx.sv` (a 64 Kibit
 one-port SRAM, accessed every other command, and a register file), passes
 both checks, and its controls
 fail them: an index through a multiply (NGD-8 at `addr`), read data through
-one (NGD-8 at `rdata`), the arrays inferred as flops (NGD-1), and each
-enable from an input (CG-5) (`--selftest`, or `--selftest-macro` alone).
+one (NGD-8 at `rdata`), read data through a fold that would fit after a
+flop but not after `rdata`'s launch (NGD-8), each pin-timing knob set past
+its pin's slack (that pin fails, the other macro's do not), the one-bit
+reference mux held to the mux synthesised whole, the arrays inferred as
+flops (NGD-1), and each enable from an input (CG-5) (`--selftest`, or
+`--selftest-macro` alone).
 
 ### CCV-L26 — nothing Yosys cannot parse
 
