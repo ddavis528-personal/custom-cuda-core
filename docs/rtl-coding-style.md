@@ -1259,47 +1259,167 @@ register), each awaiting a copy. The list only shrinks: an entry that now meets 
 that was not there when its rule was made, is refused. A design module no
 unit measures is refused.
 
-### Hard macros: SRAM arrays, NGD-8
+### Hard macros: SRAM and register-file arrays, NGD-8
 
 AR's register rev 344, on TI's proposal (revs 408-410), accepted by MA
-(MA-3, MA-15 item 5). A large data or tag array is a **hard macro**, never a
+(MA-3, MA-15 item 5); the every-other-cycle SRAM and the register file are
+DA's (Daniel, 2026-11-16, DA tab rev 123; MA-16); byte enables on a
+register file alone, and the pin timing below, are Daniel's (2026-11-17).
+A large data or tag array is a **hard macro**, never a
 flop array, and never inside the NGD count. Yosys maps an inferred memory to
 flops and a read mux; behind index nets of tens of thousands of loads the
 fanout term alone puts that over the stage (the fixture's 512 x 128 array as
 flops: 74,381 flops, 31.1 NGD flop to flop), and its storage would be the
-module's flops in every clock-gating count. So an array is one of two
-macros, parameterised by its width `W` (bits, a multiple of 8) and depth `D`
-(words, 2 or more), whose behavioural views are in `rtl/macro/`:
+module's flops in every clock-gating count. So an array is one of three
+macros, parameterised by its width `W` (bits; a multiple of 8 with byte
+enables) and depth `D` (words, 2 or more), whose behavioural views are in
+`rtl/macro/`:
 
-- `ccv_common_sram_1rw`: one port. `ce`, `we`, `addr` (`$clog2(D)` bits),
-  `wdata` (W), `wmask` (W/8, a bit per byte, byte 0 in bit 0); `rdata` (W).
-  `ce && we` writes the bytes `wmask` selects and reads nothing that cycle;
-  `ce && !we` reads, the word on `rdata` from the next cycle; `!ce` does
-  nothing.
-- `ccv_common_sram_1r1w`: a read port (`re`, `raddr`, `rdata`) and a write
-  port (`we`, `waddr`, `wdata`, `wmask`) on one clock. A read of the word
-  written at the same edge returns the OLD word (read before write); the
-  data is on `rdata` the next cycle.
+- `ccv_common_sram_1rw`: an SRAM (6T), one port, **accessed at most every
+  other cycle**: `ce` is never set two cycles running, the bank busy the
+  cycle after an access (its assertion `sram_ce_every_other`; the C++
+  model counts each violation). Every-cycle bandwidth comes from banking.
+  `ce`, `we`, `addr` (`$clog2(D)` bits), `wdata` (W); `rdata` (W). **No
+  byte enables**: `ce && we` writes the whole word and reads nothing that
+  cycle; `ce && !we` reads, the
+  address registered at the edge that samples it and the word on `rdata`
+  two cycles on, after the next edge; `!ce` does nothing.
+- `ccv_common_rf_1r1w`: a **register file**, for an array that needs a read
+  and a write together or unrestricted every-cycle access; never a 1R1W
+  SRAM. A read port (`re`, `raddr`, `rdata`) and a write port (`we`,
+  `waddr`, `wdata`) on one clock, each usable every cycle, whole words. A
+  read of the word written at the same edge returns the OLD word (read
+  before write); the data is on `rdata` the next cycle. Its area is 3
+  times an SRAM's per bit (`CCV_MACRO_AREA_RF_PCT`), the weight any area
+  count of the arrays gives it.
+- `ccv_common_rf_1r1w_be`: the same register file with **byte enables**,
+  `wmask` (W/8, a bit per byte, byte 0 in bit 0) on its write port: `we`
+  writes the bytes `wmask` selects. It is the only macro with byte
+  enables, and they cost 1.5 times the register file's area per bit
+  (`CCV_MACRO_AREA_BYTE_EN_PCT`), 4.5 times an SRAM's. An array that writes
+  part of a word is this, or an SRAM or plain register file that merges the
+  bytes itself (a read, a merge, a whole-word write).
 
-In both, every input is sampled at the clock edge, by the macro's own input
-register; `rdata` holds the last word read until the next read (not X); an
-unwritten word is unknown; there is no reset. The C++ host's model is
+`check-ngd` holds the contract (NGD-8, every run): each macro's input
+pins are the ones it times, and only a register file's `_be` macro has a
+`wmask` (its controls: an SRAM view that gains one, a `_be` view that
+loses it). An SRAM cannot take a mask at all: it has no such port.
+
+In all three, every input is sampled at the clock edge, by the macro's own input
+register; `rdata` holds the last word read until the next read's data (not
+X); an unwritten word is unknown; there is no reset. The C++ host's model is
 `sim/skel/sram.h`, held to the RTL cycle for cycle by `tools/check-skel.sh`
-(`test/vl/vl_sram_tb.cpp`, with its controls).
+(`test/vl/vl_sram_tb.cpp`, all three macros, with its controls: among
+them a 1rw read sampled a cycle early, `ce` two cycles running, which the
+RTL's assertion must stop by name, the `_be` register file's mask ignored,
+and a byte mask honoured by the plain one).
 
-**The timing model** (`tools/check-ngd.py`, NGD-8). The macro's input
-register is the stage boundary: each input pin is a timing endpoint, as a
-flop's D pin, so the instantiating module's index logic, controls and write
-data into it are an ordinary path that ends there, held to the stage from
-its flops (and from an input at its port arrival). `rdata` starts the next
-stage at 0 NGD, as a flop's Q: the logic after it is counted, to a flop
-within the stage, to an output within its required time. No clock-to-out
-is charged until the library gives one (Q-48). A unit names each macro it
-instantiates under `"blackbox"`, as it does the ctech ICG, so the macro is
-read ports only and cut out of the netlist; nothing inside it is measured,
-and it has no unit of its own (`rtl/macro/` is no design module's
-directory). The instantiating module's own rules all still hold: no path
-straight through it, its outputs and inputs to their budgets.
+**Size limits** (`tools/check-ngd.py`, MACRO-1; Daniel, 2026-11-17). One
+instance holds W x D / 8 bytes, at the parameters its unit gives it:
+
+| Macro | Least | Most |
+|---|---|---|
+| register file (`ccv_common_rf_1r1w`, `_be`) | 512 B (`CCV_MACRO_RF_MIN_BYTES`) | 8 KiB (`CCV_MACRO_RF_MAX_BYTES`) |
+| SRAM (`ccv_common_sram_1rw`) | 4 KiB (`CCV_MACRO_SRAM_MIN_BYTES`) | 32 KiB (`CCV_MACRO_SRAM_MAX_BYTES`) |
+
+Each bound is allowed (Daniel, 2026-11-17). A smaller array is flops or a smaller macro kind; a
+larger one is split into instances (banks, ways). Outside the limits an
+instance needs a waiver in `rtl/macro-waivers.json`, written by the
+block's architect and approved by Daniel before the block is complete
+(Daniel, 2026-11-17; `approved` records it, and check-ngd lists each
+waiver still awaiting it): the module, the
+instance as check-ngd names it, the macro, its exact W and D (a change of
+size fails again), `why` (the justification: what it holds, why it cannot
+be resized, split or built otherwise, what was measured), `by` and `date`.
+A waiver that excuses nothing, or lacks a field, is refused. Its controls
+(check-ngd's selftest): the fixture shrunk to a 2 KiB SRAM and a 256-byte
+register file fails both and passes with their waivers; each bound passes
+and one byte past it fails; a waiver of another size, one without its
+`why`, and one that excuses nothing are refused.
+
+**Size and efficiency** (Daniel, 2026-11-17). An array type is most
+efficient, in power and area per bit, at its largest legal size. Per bit it
+costs `CCV_MACRO_SIZE_PENALTY_PCT` (20%) more at its smallest legal size, and
+the penalty is linear in bytes in between. A waived instance below the
+smallest continues the line; one above the largest gets no credit for it. So
+two 16 KiB SRAMs cost about 11.4% more per bit than one of 32 KiB, and a
+512 B register file 20% more than one of 8 KiB. The penalty multiplies the
+type's own weight (3 times an SRAM's per bit for a register file, 4.5 times
+with byte enables). Those weights compare the types each at its largest,
+most efficient size (Daniel, 2026-11-17): an 8 KiB register file against
+a 32 KiB SRAM. check-ngd prints each instance's penalty and its area in
+SRAM-bit equivalents, every run. Its controls check the line: no penalty at
+the largest size, the full 20% at the smallest, 10% at the middle, more below
+the smallest, none above the largest, and the weights.
+
+**Array efficiency, a block statistic** (Daniel, 2026-11-17). Each block
+publishes one number for all its arrays, register files and SRAMs together:
+the bits its macros hold over what they cost in SRAM bits at the largest
+legal SRAM. Cost is each instance's size penalty times its type's weight. A
+block whose arrays are all 32 KiB SRAMs scores 1.0. Others score:
+
+| Arrays | Efficiency |
+|---|---|
+| All 32 KiB SRAMs | 1.0 |
+| All 4 KiB SRAMs (the smallest) | 0.83 |
+| 8 KiB register files | 0.33 |
+| 8 KiB register files with byte enables | 0.22 |
+
+A mix weighs each instance by its bits. check-ngd's block line gives it with
+the block's other figures, every gate: `arrays: N macro(s), K KiB,
+efficiency E (a 32 KiB SRAM is 1.0)`. It counts every instance path once,
+at its unit's parameters, the block's own module included. A block report
+(such as `docs/rcu-block-report.md`) carries the figure from that line. Its
+controls are in check-ngd's selftest:
+
+- the metric for all large SRAMs, a large register file, the smallest SRAM,
+  and a mix;
+- a fixture block of two `sram_fx`, whose line must give its four macros'
+  figure, 0.612.
+
+**The timing model** (`tools/check-ngd.py`, NGD-8; Daniel, 2026-11-17).
+A macro's pins are timing endpoints and start points, never a path
+through, and each is dearer than a flop's. Each input pin is an endpoint
+with a setup; `rdata` is a start point with a launch (its clock-to-out):
+
+| Pin | SRAM (`ccv_common_sram_1rw`) | Register file (`ccv_common_rf_1r1w`) |
+|---|---|---|
+| address (`addr`; `raddr`, `waddr`), and the enables with it (`ce`, `we`; `re`, `we`), which qualify the word lines (Daniel, 2026-11-17) | setup: one-hot decode of D words + `CCV_NGD_SRAM_ADDR_MARGIN` (6) | setup: one-hot decode of D words + `CCV_NGD_RF_ADDR_MARGIN` (4) |
+| write data (`wdata`; and `wmask` on the `_be` register file) | setup: `CCV_NGD_SRAM_DATA_SETUP` (8) | setup: `CCV_NGD_RF_DATA_SETUP` (6) |
+| read data (`rdata`) | launch: static W-bit D:1 read mux x 100 / `CCV_NGD_MACRO_READ_DYN_PCT` (150) + `CCV_NGD_SRAM_READ_GUARD` (6) | launch: the same mux / 1.5 + `CCV_NGD_RF_READ_GUARD` (4) |
+
+The decode and the read mux are not assumed: check-ngd synthesises a
+static one-hot decode and a static AND-OR read mux (its select decoded) at
+the instance's W and D, and times them as it times any unit, the fanout
+term included. The mux is synthesised 8 bits wide and timed W bits wide,
+its select logic shared by the W bits: a slice of 4 bits or more reads
+exactly what the whole mux does (64 x 32, 64 x 128 and 128 x 128 checked),
+one of a single bit up to 2.9 NGD more, since ABC shares a decoded select
+only across bits it sees. A control holds the slice to the mux synthesised
+whole at 64 x 128. The divisor is the dynamic read mux's speed over a
+static one's; the margins and guardbands are knobs in
+`params/ccv_params.json`. So the instantiating module's logic into an
+input pin is held to the stage less that pin's setup, from its flops, from
+an input at its port arrival, or from another macro's `rdata` at that
+macro's launch; and the logic after `rdata`, from its launch, to a flop
+within the stage, to an output within its required time. The read address
+is sampled a cycle before its data leaves (the SRAM's two cycles before),
+so it is an endpoint with the write address's setup.
+
+At the fixture's sizes these come to: a 128-word 512-bit SRAM, address
+setup 11.5 (decode 5.5), data 8, read data launched at 16.3 (a static mux
+of 15.4), 8.7 left for logic after it; a 128-word 64-bit register file,
+address 9.5, data 6, read data at 13.5. Read data wants a flop close
+behind it: the fixture's SRAM read
+data takes one XOR into its accumulator, and the XOR fold of the whole
+word it used before (12 NGD) is now a control that must fail.
+
+A unit names each macro it instantiates under `"blackbox"`, as it does the
+ctech ICG, so the macro is read ports only and cut out of the netlist;
+nothing inside it is measured, and it has no unit of its own (`rtl/macro/`
+is no design module's directory). The instantiating module's own rules all
+still hold: no path straight through it, its outputs and inputs to their
+budgets.
 
 **Clock gating** (`tools/check-cg.py`). The macro's storage is not flops: it
 counts in neither the module's flop total, its 2% allowance, the block's,
@@ -1310,14 +1430,21 @@ reset, so it is no RST-2 endpoint, unless the module's reset reaches one of
 its pins through logic, where it is used as at a flop's D pin.
 
 **The name.** A macro is one of the cells `tools/lint-rtl.py` lists in
-`MACROS`, with its enables, named `ccv_common_sram_<ports>` and in
+`MACROS`, with its enables, named `ccv_common_sram_<ports>` or
+`ccv_common_rf_<ports>` and in
 `rtl/macro/` (CCV-L27): the name is what takes its storage out of the
 counts, so no other module may carry it. Its file is the only place a
 memory array is written. The fixture, `test/macro/sram_fx.sv` (a 64 Kibit
-one-port macro and a two-port one), passes both checks, and its controls
+one-port SRAM, accessed every other command, and a register file with byte
+enables), passes
+both checks, and its controls
 fail them: an index through a multiply (NGD-8 at `addr`), read data through
-one (NGD-8 at `rdata`), the arrays inferred as flops (NGD-1), and each
-enable from an input (CG-5) (`--selftest`, or `--selftest-macro` alone).
+one (NGD-8 at `rdata`), read data through a fold that would fit after a
+flop but not after `rdata`'s launch (NGD-8), each pin-timing knob set past
+its pin's slack (that pin fails, the other macro's do not), the one-bit
+reference mux held to the mux synthesised whole, the arrays inferred as
+flops (NGD-1), and each enable from an input (CG-5) (`--selftest`, or
+`--selftest-macro` alone).
 
 ### CCV-L26 — nothing Yosys cannot parse
 

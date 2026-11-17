@@ -287,13 +287,16 @@ void Core::noteRefused(unsigned warp) {
 
 /// Into the decode queue, after this cycle's rename: renamed from the next.
 void Core::uop(const Uop &u) {
-  const int si = slotOf(u.warp);
-  if (si < 0) { err("uop for warp %u, which holds no tier-1 slot", u.warp); return; }
   // A uop fetched before its warp's last epoch change is wrong-path (A-70).
+  // A killed warp's uop still on the link from DEC is one (RI-57, rokilllane
+  // on test/phys/links_split.json): OOE advanced the epoch at the kill and
+  // may have released the slot since, so the epoch is checked first.
   if (u.fetch_epoch != epoch_[u.warp % kWarpIds]) {
     ev("epoch_drop", u.warp, u.fetch_epoch, 0, u.tid);
     return;
   }
+  const int si = slotOf(u.warp);
+  if (si < 0) { err("uop for warp %u, which holds no tier-1 slot", u.warp); return; }
   // V-36, an input assumption: only a fence (mem_op 0xE) carries an
   // ordering; DEC's output refuses any other (TI's a4fa218).
   if (u.ordering && u.mem_op != kMemOpFence)

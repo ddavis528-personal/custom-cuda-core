@@ -722,7 +722,7 @@ module ccv_miu_w #(
   end
   // ccv_miu_dcu_req, source end, no-flop (params/links.json no_flop)
   if (RPT_MIU_DCU_REQ > 0) begin : g_rpt_miu_dcu_req
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1225), .LEAD_MASK(1225'h7ff)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1223), .LEAD_MASK(1223'h1ff)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_dcu_req_s3_valid, b_miu_dcu_req_s2_valid, b_miu_dcu_req_s1_valid, b_miu_dcu_req_s0_valid}), .src_payload({b_miu_dcu_req_s3_payload, b_miu_dcu_req_s2_payload, b_miu_dcu_req_s1_payload, b_miu_dcu_req_s0_payload}),
       .src_wake(b_miu_dcu_req_wake), .src_credit({b_miu_dcu_req_s3_credit, b_miu_dcu_req_s2_credit, b_miu_dcu_req_s1_credit, b_miu_dcu_req_s0_credit}), .src_stall({b_miu_dcu_req_s3_stall, b_miu_dcu_req_s2_stall, b_miu_dcu_req_s1_stall, b_miu_dcu_req_s0_stall}),

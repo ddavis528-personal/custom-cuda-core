@@ -1353,7 +1353,13 @@ class Unit:
         self.nl = None
         self.data = {}       # scenario -> dict(stats)
         self.errors = []     # measurement failures: the unit is not measured
-        self.obs = {}        # scenario -> the replay's lines, as integers
+        self.obs = {}        # scenario -> the replay's lines, as integers (keep_obs only)
+        # A unit keeps its replay's lines only for the selftest's comparisons:
+        # held for every unit to the end of a run, they took check-cg past
+        # the container's memory (OI-157). What is read later is data's
+        # "chg", the counted cycles' changes, by value.
+        self.keep_obs = False
+        self.counted = {}    # scenario -> the counted cycles (keep_obs only)
 
     # -- synthesis ----------------------------------------------------------
     def synth(self):
@@ -1570,7 +1576,8 @@ endmodule
                 continue
             obs = [int(l, 16) for l in open(base + ".obs").read().split()]
             res[sc] = (snaps, obs)
-            self.obs[sc] = obs
+            if self.keep_obs:
+                self.obs[sc] = obs
         return res
 
     def stats(self, replays):
@@ -1614,7 +1621,14 @@ endmodule
                         g_en[key] += 1
                         if diff & masks[key]:
                             g_use[key] += 1
-            self.data[sc] = {"cycles": len(counted), "obs": obs, "counted": counted,
+            # Each counted cycle's change (obs[t] ^ obs[t + 1]), counted by
+            # value, the unchanged ones left out: all a change rate needs
+            # (changed()), held in place of the trace (OI-157).
+            chg = collections.Counter(obs[t] ^ obs[t + 1] for t in counted)
+            chg.pop(0, None)
+            if self.keep_obs:
+                self.counted[sc] = counted
+            self.data[sc] = {"cycles": len(counted), "chg": dict(chg),
                              "activity": toggles / float(iw * max(1, len(counted))),
                              "en": g_en, "use": g_use}
 
@@ -1632,9 +1646,8 @@ endmodule
                 if reg_is(name, reg):
                     byname[name] |= 1 << self.qpos[q]
         dat = self.data[sc]
-        obs = dat["obs"]
         for name, mask in byname.items():
-            ch = sum(1 for t in dat["counted"] if (obs[t] ^ obs[t + 1]) & mask)
+            ch = changed(dat, mask)
             out[name] = 100.0 * ch / max(1, dat["cycles"])
         return out
 
@@ -1653,6 +1666,11 @@ endmodule
         # coverage, the report) is in memory, unit_key's netlist parameters
         # too (Netlist.key_info). The work directory goes (DA, 2026-11-09).
         clean_unit_build(self.dir)
+
+
+def changed(dat, mask):
+    """How many of a scenario's counted cycles change any flop in mask."""
+    return sum(n for d, n in dat["chg"].items() if d & mask)
 
 
 def dcge(u, key, sc):
@@ -1934,8 +1952,7 @@ def coverage_check(modules, units):
             worst = None
             for sc in SCENARIOS:
                 dat = u.data[sc]
-                obs = dat["obs"]
-                ch = sum(1 for t in dat["counted"] if (obs[t] ^ obs[t + 1]) & mask)
+                ch = changed(dat, mask)
                 rate = 100.0 * ch / max(1, dat["cycles"])
                 if rate < DCGE_MIN and (worst is None or rate < worst[1]):
                     worst = (sc, rate)
@@ -2922,12 +2939,14 @@ FIXTURE_DIR = os.path.join(ROOT, "test", "cg", "fixtures")
 
 
 def fixture_unit(name, module, scope=None):
-    return Unit({
+    u = Unit({
         "name": name, "module": module,
         "files": ["test/cg/fixtures/%s.sv" % module],
         "clock": "clk", "reset": "rst",
         "bench": {"scope": scope or "tb_cg_fixture.u_" + module.split("_")[-1]},
     }, "selftest")
+    u.keep_obs = True
+    return u
 
 
 MEASURED_FIXTURES = ("cg_fx_good", "cg_fx_form", "cg_fx_deep", "cg_fx_dcge", "cg_fx_small",
@@ -3231,6 +3250,22 @@ def selftest():
            "a clang++ replay differs from the g++ one: %s"
            % (cl.errors[:1] or sorted(sc for sc in ref.obs if cl.obs.get(sc) != ref.obs[sc])))
     expect(cl.data == ref.data, "a clang++ replay measured otherwise than g++'s")
+    # 8c. OI-157: a unit holds its scenarios' changes by value, not the
+    #     trace. Every mask's change count from them equals the trace's, and a
+    #     unit that is not the selftest's keeps no trace.
+    expect(ref.obs and set(ref.counted) == set(ref.obs), "the selftest's unit kept no trace")
+    for sc, obs in sorted(ref.obs.items()):
+        dat, counted = ref.data[sc], ref.counted[sc]
+        masks = [1 << p for p in range(max(obs, default=0).bit_length())]
+        masks += [g for g in (sum(1 << p for p in lay["q"]) for lay in ref.layout.values()) if g]
+        for mask in masks:
+            want = sum(1 for t in counted if (obs[t] ^ obs[t + 1]) & mask)
+            expect(changed(dat, mask) == want, "%s: changed() counts %d cycles for mask %x, "
+                   "the trace %d" % (sc, changed(dat, mask), mask, want))
+    plain = Unit(dict(ref.spec, name="fx_plain"), "selftest")
+    plain.measure(vcds=vcds)
+    expect(not plain.errors and not plain.obs and plain.data == ref.data,
+           "a unit not the selftest's kept its trace, or measured otherwise without it")
     u = fixture_unit("fx_swap_clang", "cg_fx_good", scope="tb_cg_fixture.u_dcge")
     u.spec["replay_cxx"] = "clang++"
     u.measure(vcds=vcds)
@@ -3823,10 +3858,11 @@ def macro_unit(name, bench=False, **params):
 
 
 def macro_selftest(expect):
-    """Hard macros (AR's register rev 344). sram_fx, a 512 x 128 one-port
-    macro (64 Kibit) and a 64 x 128 two-port one behind flopped enables,
+    """Hard macros (AR's register rev 344, DA tab rev 123). sram_fx, a 512 x
+    128 one-port SRAM (64 Kibit, every other cycle) and a 64 x 128 1R1W
+    register file behind flopped enables,
     measured with its bench: its flops are its own registers alone, every
-    macro enable is found, and the module passes (its six control flops
+    macro enable is found, and the module passes (its seven control flops
     within its allowance). Controls: each macro enable from an input (ce,
     re, we) is CG-5's; the same arrays inferred as flops, at a small size,
     count every bit of storage, as the macro's do not; and a reset gating
@@ -3843,8 +3879,8 @@ def macro_selftest(expect):
     fails, _ = policy(own, mods, [ok], [], {})
     expect(not fails, "the compliant macro fixture fails: %s" % fails)
     ens = sorted((c, p) for c, p, _ in ok.nl.macro_ens)
-    expect(ens == [("g_macro.u_sram", "ce"), ("g_macro.u_sram", "we"),
-                   ("g_macro.u_sram2", "re"), ("g_macro.u_sram2", "we")],
+    expect(ens == [("g_macro.u_rf", "re"), ("g_macro.u_rf", "we"),
+                   ("g_macro.u_sram", "ce"), ("g_macro.u_sram", "we")],
            "sram_fx's macro enables were not all found: %s" % ens)
     nflops = len(ok.nl.flops)
     expect(nflops < 100, "sram_fx counts %d flops: a macro's storage is counted" % nflops)
@@ -3856,7 +3892,7 @@ def macro_selftest(expect):
                          dcge={sc: min([dcge(ok, k, sc) for k, g in ok.nl.groups.items()
                                         if g.gated and dcge(ok, k, sc) is not None] or [None])
                                for sc in SCENARIOS if sc in ok.data})
-    for bit, cell, pin in ((1, "g_macro.u_sram", "ce"), (2, "g_macro.u_sram2", "re"),
+    for bit, cell, pin in ((1, "g_macro.u_sram", "ce"), (2, "g_macro.u_rf", "re"),
                            (4, "g_macro.u_sram", "we")):
         x = macro_unit("fx_sram_en%d" % bit, EN_IN=bit)
         x.synth()
