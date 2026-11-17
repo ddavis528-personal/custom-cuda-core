@@ -219,7 +219,7 @@ module ccv_dcu_w #(
 
   // ccv_miu_dcu_req, destination end, no-flop (params/links.json no_flop)
   if (RPT_MIU_DCU_REQ > 0) begin : g_rpt_miu_dcu_req
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1225), .LEAD_MASK(1225'h7ff)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1223), .LEAD_MASK(1223'h1ff)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({miu_dcu_req_s3_valid, miu_dcu_req_s2_valid, miu_dcu_req_s1_valid, miu_dcu_req_s0_valid}), .src_payload({miu_dcu_req_s3_payload, miu_dcu_req_s2_payload, miu_dcu_req_s1_payload, miu_dcu_req_s0_payload}),
       .src_wake(miu_dcu_req_wake), .src_credit({miu_dcu_req_s3_credit, miu_dcu_req_s2_credit, miu_dcu_req_s1_credit, miu_dcu_req_s0_credit}), .src_stall({miu_dcu_req_s3_stall, miu_dcu_req_s2_stall, miu_dcu_req_s1_stall, miu_dcu_req_s0_stall}),
