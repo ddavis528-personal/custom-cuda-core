@@ -54,7 +54,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- Nothing running (06:30Z 11-17). OI OA-420 pricing DONE and sent: a5dc7eed, rob_retire_lag 1 vs 0,
+- Nothing running (07:20Z 11-17). OI OA-421 priv pricing DONE and sent: rh-jobs/oi420/oi420p.sh, a5dc7eed,
+  cm32priv +0.15%, cm128priv +0.06% (lag 1 vs 0), all clean. Worktree dropped; keep ~/ccv-logs/oi420p
+  until OI confirms.
+- OI OA-420 pricing DONE and sent: a5dc7eed, rob_retire_lag 1 vs 0,
   all clean. S1 sum +0.16% (mean per-kernel +0.42%; mostly +1 cycle at drain), cm32 +0.50%, cm128 +0.92%.
   stall.rob_full absent (0); used retire.head_wait.rob_full. OI booked it as OI-159 (rev 363); worktree
   and logs dropped (too early: OI asked a follow-up 2 min later, answered from the script).
