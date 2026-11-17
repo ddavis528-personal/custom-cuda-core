@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 372 .601453, AR 373 .604516 (tab rev 374).
-  - **The next AR row inserts after .604516**, labelled AR 374.
+  - Latest rows: AR 373 .604516, AR 374 .608275 (tab rev 375).
+  - **The next AR row inserts after .608275**, labelled AR 375.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,7 +92,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 374, OA 428, TI 478, RA 154, RI 90,
+- **Bookmarks** (revs read through): AR 375, OA 428, TI 478, RA 154, RI 90,
   IS 197, CP 159, OI 366, DA 125, MA 88, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -245,6 +245,11 @@ Credit rules (TI-49):
    MA rev 88 took the 8 points: p1 model in (CCV_DCU_IMPL=p1, S1 clean),
    depth 0 a re-pass at +6, each point at an optimistic and a strict
    contract bound. Waiting on: MA's p1 results, CP's kernel, TI's configs.
+   - AR 374 (.608275; Daniel asked whether AR should help with runs):
+     offered to run every CCV_P1_STRICT=1 point on cm32, cm128 and both
+     priv forms (32 runs; RH runs the defaults) plus step (iv)'s stride
+     runs. Needs: p1 on a branch (none on any remote yet), its invocation,
+     and MA's yes. One cm128 at a time (about 7 GB; disk had 15 GB free).
 0b. **MA-20 bank scheduling: answered, AR 372 (.601453; notice to MA).**
    All three go into Phase 1, (1) fairness and (3) the conflict queue priced
    together first. The 729-cycle wait was deferred work behind loads, not
