@@ -462,7 +462,7 @@
       "status": "target",
       "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
       "require": "CCV_NGD_SRAM_DATA_SETUP < CCV_NGD_BUDGET",
-      "doc": "Setup, in NGD, of a 1RW SRAM's write data and byte mask (wdata, wmask): they must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
+      "doc": "Setup, in NGD, of a 1RW SRAM's write data (wdata; an SRAM has no byte mask): it must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
     },
     {
       "name": "CCV_NGD_RF_DATA_SETUP",
@@ -470,7 +470,7 @@
       "status": "target",
       "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
       "require": "CCV_NGD_RF_DATA_SETUP < CCV_NGD_BUDGET",
-      "doc": "Setup, in NGD, of a register file's write data and byte mask (wdata, wmask): they must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
+      "doc": "Setup, in NGD, of a register file's write data and, on the _be one, its byte mask (wdata, wmask): they must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
     },
     {
       "name": "CCV_NGD_MACRO_READ_DYN_PCT",
@@ -495,6 +495,22 @@
       "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
       "require": "CCV_NGD_RF_READ_GUARD < CCV_NGD_BUDGET",
       "doc": "Guardband, in NGD, added to a register file's read mux (CCV_NGD_MACRO_READ_DYN_PCT) to give its rdata's clock-to-out: logic after rdata starts there. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_MACRO_AREA_RF_PCT",
+      "value": 300,
+      "status": "target",
+      "source": "Daniel, 2026-11-16 (DA tab rev 123, MA-16: a register file is 3 times an SRAM's area per bit)",
+      "require": "CCV_MACRO_AREA_RF_PCT >= 100",
+      "doc": "A register-file macro's area per bit (ccv_common_rf_1r1w, ccv_common_rf_1r1w_be), in percent of a 1RW SRAM's (ccv_common_sram_1rw): the weight any area count of the arrays gives it. docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_AREA_BYTE_EN_PCT",
+      "value": 150,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (byte enables on a register file only, at 1.5 times its area)",
+      "require": "CCV_MACRO_AREA_BYTE_EN_PCT >= 100",
+      "doc": "Byte enables' area, in percent of the register file without them: ccv_common_rf_1r1w_be's area per bit is CCV_MACRO_AREA_RF_PCT * this / 100 of an SRAM's (4.5 times at 300 and 150). Only a register file has byte enables; an SRAM writes whole words (Daniel, 2026-11-17). docs/rtl-coding-style.md, \"Hard macros\"."
     },
     {
       "name": "CCV_NGD_CG_EN",

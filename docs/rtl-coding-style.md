@@ -1263,39 +1263,56 @@ unit measures is refused.
 
 AR's register rev 344, on TI's proposal (revs 408-410), accepted by MA
 (MA-3, MA-15 item 5); the every-other-cycle SRAM and the register file are
-DA's (Daniel, 2026-11-16, DA tab rev 123; MA-16). A large data or tag array is a **hard macro**, never a
+DA's (Daniel, 2026-11-16, DA tab rev 123; MA-16); byte enables on a
+register file alone, and the pin timing below, are Daniel's (2026-11-17).
+A large data or tag array is a **hard macro**, never a
 flop array, and never inside the NGD count. Yosys maps an inferred memory to
 flops and a read mux; behind index nets of tens of thousands of loads the
 fanout term alone puts that over the stage (the fixture's 512 x 128 array as
 flops: 74,381 flops, 31.1 NGD flop to flop), and its storage would be the
-module's flops in every clock-gating count. So an array is one of two
-macros, parameterised by its width `W` (bits, a multiple of 8) and depth `D`
-(words, 2 or more), whose behavioural views are in `rtl/macro/`:
+module's flops in every clock-gating count. So an array is one of three
+macros, parameterised by its width `W` (bits; a multiple of 8 with byte
+enables) and depth `D` (words, 2 or more), whose behavioural views are in
+`rtl/macro/`:
 
 - `ccv_common_sram_1rw`: an SRAM (6T), one port, **accessed at most every
   other cycle**: `ce` is never set two cycles running, the bank busy the
   cycle after an access (its assertion `sram_ce_every_other`; the C++
   model counts each violation). Every-cycle bandwidth comes from banking.
-  `ce`, `we`, `addr` (`$clog2(D)` bits), `wdata` (W), `wmask` (W/8, a bit
-  per byte, byte 0 in bit 0); `rdata` (W). `ce && we` writes the bytes
-  `wmask` selects and reads nothing that cycle; `ce && !we` reads, the
+  `ce`, `we`, `addr` (`$clog2(D)` bits), `wdata` (W); `rdata` (W). **No
+  byte enables**: `ce && we` writes the whole word and reads nothing that
+  cycle; `ce && !we` reads, the
   address registered at the edge that samples it and the word on `rdata`
   two cycles on, after the next edge; `!ce` does nothing.
 - `ccv_common_rf_1r1w`: a **register file**, for an array that needs a read
   and a write together or unrestricted every-cycle access; never a 1R1W
   SRAM. A read port (`re`, `raddr`, `rdata`) and a write port (`we`,
-  `waddr`, `wdata`, `wmask`) on one clock, each usable every cycle. A read
-  of the word written at the same edge returns the OLD word (read before
-  write); the data is on `rdata` the next cycle. Its area is 3 times an
-  SRAM's per bit, the weight any area report gives it.
+  `waddr`, `wdata`) on one clock, each usable every cycle, whole words. A
+  read of the word written at the same edge returns the OLD word (read
+  before write); the data is on `rdata` the next cycle. Its area is 3
+  times an SRAM's per bit (`CCV_MACRO_AREA_RF_PCT`), the weight any area
+  count of the arrays gives it.
+- `ccv_common_rf_1r1w_be`: the same register file with **byte enables**,
+  `wmask` (W/8, a bit per byte, byte 0 in bit 0) on its write port: `we`
+  writes the bytes `wmask` selects. It is the only macro with byte
+  enables, and they cost 1.5 times the register file's area per bit
+  (`CCV_MACRO_AREA_BYTE_EN_PCT`), 4.5 times an SRAM's. An array that writes
+  part of a word is this, or an SRAM or plain register file that merges the
+  bytes itself (a read, a merge, a whole-word write).
 
-In both, every input is sampled at the clock edge, by the macro's own input
+`check-ngd` holds the contract (NGD-8, every run): each macro's input
+pins are the ones it times, and only a register file's `_be` macro has a
+`wmask` (its controls: an SRAM view that gains one, a `_be` view that
+loses it). An SRAM cannot take a mask at all: it has no such port.
+
+In all three, every input is sampled at the clock edge, by the macro's own input
 register; `rdata` holds the last word read until the next read's data (not
 X); an unwritten word is unknown; there is no reset. The C++ host's model is
 `sim/skel/sram.h`, held to the RTL cycle for cycle by `tools/check-skel.sh`
-(`test/vl/vl_sram_tb.cpp`, with its controls: among them a 1rw read
-sampled a cycle early, and `ce` two cycles running, which the RTL's
-assertion must stop by name).
+(`test/vl/vl_sram_tb.cpp`, all three macros, with its controls: among
+them a 1rw read sampled a cycle early, `ce` two cycles running, which the
+RTL's assertion must stop by name, the `_be` register file's mask ignored,
+and a byte mask honoured by the plain one).
 
 **The timing model** (`tools/check-ngd.py`, NGD-8; Daniel, 2026-11-17).
 A macro's pins are timing endpoints and start points, never a path
@@ -1305,7 +1322,7 @@ with a setup; `rdata` is a start point with a launch (its clock-to-out):
 | Pin | SRAM (`ccv_common_sram_1rw`) | Register file (`ccv_common_rf_1r1w`) |
 |---|---|---|
 | address (`addr`; `raddr`, `waddr`), and the enables with it (`ce`, `we`; `re`, `we`), which qualify the word lines | setup: one-hot decode of D words + `CCV_NGD_SRAM_ADDR_MARGIN` (6) | setup: one-hot decode of D words + `CCV_NGD_RF_ADDR_MARGIN` (4) |
-| write data and mask (`wdata`, `wmask`) | setup: `CCV_NGD_SRAM_DATA_SETUP` (8) | setup: `CCV_NGD_RF_DATA_SETUP` (6) |
+| write data (`wdata`; and `wmask` on the `_be` register file) | setup: `CCV_NGD_SRAM_DATA_SETUP` (8) | setup: `CCV_NGD_RF_DATA_SETUP` (6) |
 | read data (`rdata`) | launch: static W-bit D:1 read mux x 100 / `CCV_NGD_MACRO_READ_DYN_PCT` (150) + `CCV_NGD_SRAM_READ_GUARD` (6) | launch: the same mux / 1.5 + `CCV_NGD_RF_READ_GUARD` (4) |
 
 The decode and the read mux are not assumed: check-ngd synthesises a
@@ -1351,7 +1368,8 @@ its pins through logic, where it is used as at a flop's D pin.
 `rtl/macro/` (CCV-L27): the name is what takes its storage out of the
 counts, so no other module may carry it. Its file is the only place a
 memory array is written. The fixture, `test/macro/sram_fx.sv` (a 64 Kibit
-one-port SRAM, accessed every other command, and a register file), passes
+one-port SRAM, accessed every other command, and a register file with byte
+enables), passes
 both checks, and its controls
 fail them: an index through a multiply (NGD-8 at `addr`), read data through
 one (NGD-8 at `rdata`), read data through a fold that would fit after a

@@ -1134,13 +1134,17 @@ def macro_pins(t):
 # unit is, the fanout term included. The read address is sampled a cycle
 # before its data leaves (the 1RW SRAM's two), so it is an endpoint like
 # the write address, with the same setup.
+# Only the _be register file has a byte mask (Daniel, 2026-11-17), timed
+# as write data.
 MACRO_PIN_CLASS = {
-    "ccv_common_sram_1rw": {"addr": "addr", "ce": "addr", "we": "addr",
-                            "wdata": "data", "wmask": "data"},
+    "ccv_common_sram_1rw": {"addr": "addr", "ce": "addr", "we": "addr", "wdata": "data"},
     "ccv_common_rf_1r1w": {"raddr": "addr", "re": "addr", "waddr": "addr", "we": "addr",
-                           "wdata": "data", "wmask": "data"},
+                           "wdata": "data"},
+    "ccv_common_rf_1r1w_be": {"raddr": "addr", "re": "addr", "waddr": "addr", "we": "addr",
+                              "wdata": "data", "wmask": "data"},
 }
-MACRO_KIND = {"ccv_common_sram_1rw": "SRAM", "ccv_common_rf_1r1w": "RF"}
+MACRO_KIND = {"ccv_common_sram_1rw": "SRAM", "ccv_common_rf_1r1w": "RF",
+              "ccv_common_rf_1r1w_be": "RF"}
 
 
 # The selftest's knob controls set a knob here, in place of its parameter.
@@ -2151,6 +2155,9 @@ def main_check(only=None, seed=False):
     fan = load(RATCHET, "fanout", {})
     fails = policy(units, budgets, ratchet, modules, fan=fan,
                    fan_base=load(FANOUT_BASELINE, "modules", {}))
+    # The macros' own contract (Daniel, 2026-11-17): every pin timed, and
+    # byte enables on the _be register file alone.
+    fails += ["NGD-8 macro contract: " + x for x in macro_contract()]
     if seed:
         seed_fanout(units, budgets, ratchet, modules)
     for mod in sorted(fan):
@@ -2926,7 +2933,8 @@ def macro_unit(name, **params):
 
 def macro_selftest(expect):
     """NGD-8 (AR's register rev 344): sram_fx, a 512 x 128 one-port SRAM
-    (64 Kibit, every other cycle) and a 64 x 128 1R1W register file, passes with its index through
+    (64 Kibit, every other cycle, whole words) and a 64 x 128 1R1W register
+    file with byte enables, passes with its index through
     an adder and its read data into a flop through one XOR (the SRAM's) or
     an XOR tree (the register file's); each pin is
     found, its depths counted. Its controls: the index through a multiply
@@ -2941,7 +2949,7 @@ def macro_selftest(expect):
     ok.measure()
     pin_in, pin_out = macro_pins(ok.t)
     expect(sorted(pin_out.values()) == ["g_macro.u_rf.rdata", "g_macro.u_sram.rdata"]
-           and len(pin_in) == 11,
+           and len(pin_in) == 10,
            "sram_fx's macro pins were not all found: in %s, out %s"
            % (sorted(pin_in.values()), sorted(pin_out.values())))
     k = {x for x, _ in findings(ok, none)}
@@ -2973,7 +2981,53 @@ def macro_selftest(expect):
            % (flops.t.nflops, flops.t.rr, findings(flops, none)))
     MACRO_NUMBERS.update(flops=flops.t, deep_idx=deep.t.ro.get(addr),
                          deep_rd=rdeep.t.ir.get(rd))
+    macro_contract_selftest(expect)
     macro_pin_selftest(expect, ok, none)
+
+
+def macro_ports(typ):
+    """A macro's input pins, clk aside, from its behavioural view."""
+    src = cg.lint.strip_comments(open(os.path.join(ROOT, "rtl", "macro", typ + ".sv")).read())
+    return {m.group(1) for m in re.finditer(r"\binput\s+logic\s*(?:\[[^\]]*\])?\s*(\w+)", src)
+            } - {"clk"}
+
+
+def macro_contract(ports_of=None):
+    """Failures of the macro contract: every macro lint lists has its pins'
+    timing (MACRO_PIN_CLASS), every input pin of its view a class; and only
+    a register file has a byte mask, the _be one (Daniel, 2026-11-17): an
+    SRAM writes whole words. `ports_of` stands in for macro_ports()."""
+    ports_of = ports_of or macro_ports
+    out = []
+    if not set(MACRO_PIN_CLASS) == set(cg.lint.MACROS) == set(MACRO_KIND):
+        out.append("the macros lint lists (%s) are not those check-ngd times (%s)"
+                   % (sorted(cg.lint.MACROS), sorted(MACRO_PIN_CLASS)))
+    for typ in sorted(cg.lint.MACROS):
+        if not os.path.exists(os.path.join(ROOT, "rtl", "macro", typ + ".sv")):
+            out.append("macro %s has no view in rtl/macro/" % typ)
+            continue
+        ports = ports_of(typ)
+        if ports != set(MACRO_PIN_CLASS.get(typ, {})):
+            out.append("%s's input pins %s are not the ones check-ngd times %s"
+                       % (typ, sorted(ports), sorted(MACRO_PIN_CLASS.get(typ, {}))))
+        masked = "wmask" in ports
+        if masked != (typ.startswith("ccv_common_rf_") and typ.endswith("_be")):
+            out.append("%s %s a byte mask: only a register file's _be macro has byte "
+                       "enables (Daniel, 2026-11-17)" % (typ, "has" if masked else "lacks"))
+    return out
+
+
+def macro_contract_selftest(expect):
+    """The contract holds of the views as they are; an SRAM view that gains
+    a byte mask, and a _be one that loses it, each fail it."""
+    f = macro_contract()
+    expect(not f, "the macro contract fails: %s" % f)
+    gain = macro_contract(lambda t: macro_ports(t) | ({"wmask"} if "sram" in t else set()))
+    expect(any("ccv_common_sram_1rw has a byte mask" in x for x in gain),
+           "an SRAM with a byte mask passed the macro contract: %s" % gain)
+    lose = macro_contract(lambda t: macro_ports(t) - ({"wmask"} if t.endswith("_be") else set()))
+    expect(any("_be lacks a byte mask" in x for x in lose),
+           "a _be register file without its byte mask passed the macro contract: %s" % lose)
 
 
 def macro_pin_selftest(expect, ok, none):
@@ -2990,7 +3044,7 @@ def macro_pin_selftest(expect, ok, none):
     for cell, kind, w, d in (("g_macro.u_sram", "SRAM", 512, 128), ("g_macro.u_rf", "RF", 64, 128)):
         a = macro_ref("dec", 1, d) + macro_knob(kind, "ADDR_MARGIN")
         for pin, cls in MACRO_PIN_CLASS[{"SRAM": "ccv_common_sram_1rw",
-                                         "RF": "ccv_common_rf_1r1w"}[kind]].items():
+                                         "RF": "ccv_common_rf_1r1w_be"}[kind]].items():
             want["%s.%s" % (cell, pin)] = a if cls == "addr" else macro_knob(kind, "DATA_SETUP")
         want[cell + ".rdata"] = macro_ref("mux", w, d) / macro_dyn() + macro_knob(kind, "READ_GUARD")
     expect(set(by) == set(want) and all(abs(by[n] - want[n]) < EPS for n in want),

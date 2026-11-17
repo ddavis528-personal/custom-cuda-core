@@ -11,10 +11,12 @@
 // other command, one to the SRAM:
 //   1rw  (W x D, 64 Kibit by default), on a command whose ptr_q is odd, so
 //        never two cycles running (consecutive commands count ptr_q up by
-//        one; DA tab rev 123): op_q[15] writes, else reads, at op_q[6:0] +
-//        ptr_q -- the index through an adder -- with a byte mask from
-//        op_q[14:8]. Its read data comes back two cycles after (rv1_q, rv_q).
-//   rf   (W2 x D2): writes op_q[14] at waddr op_q's low bits ^ ptr_q, and
+//        one; DA tab rev 123): op_q[15] writes a whole word (an SRAM has no
+//        byte enables; Daniel, 2026-11-17), else reads, at op_q[6:0] +
+//        ptr_q -- the index through an adder. Its read data comes back two
+//        cycles after (rv1_q, rv_q).
+//   rf   (W2 x D2), the register file with byte enables
+//        (ccv_common_rf_1r1w_be): writes op_q[14] at waddr op_q's low bits ^ ptr_q, and
 //        reads at op_q's low bits every command, so a read can meet the
 //        write to its own word (read before write); its data the cycle
 //        after (rv2_q).
@@ -96,7 +98,6 @@ module sram_fx #(
   wire            ce = EN_IN[0] ? in_v : RST_CE != 0 ? c1 & ~rst_q : c1;
   wire            we = EN_IN[2] ? in_v : op_q[15];
   logic [W-1:0]   wdata;
-  wire [W/8-1:0]  wmask = {(W / 64){op_q[14:8], 1'b1}};
   logic [W-1:0]   rdata;
 
   // -- the register file ------------------------------------------------------------
@@ -130,12 +131,12 @@ module sram_fx #(
 
   if (MACRO != 0) begin : g_macro
     ccv_common_sram_1rw #(.W(W), .D(D)) u_sram (
-      .clk, .ce, .we, .addr, .wdata, .wmask, .rdata);
-    ccv_common_rf_1r1w #(.W(W2), .D(D2)) u_rf (
+      .clk, .ce, .we, .addr, .wdata, .rdata);
+    ccv_common_rf_1r1w_be #(.W(W2), .D(D2)) u_rf (
       .clk, .re(re2), .raddr(raddr2), .rdata(rdata2),
       .we(we2), .waddr(waddr2), .wdata(wdata2), .wmask(wmask2));
   end else begin : g_flops
-    // The same arrays as flops: ccv_common_sram_1rw's and _rf_1r1w's bodies.
+    // The same arrays as flops: ccv_common_sram_1rw's and _rf_1r1w_be's bodies.
     logic [W-1:0]  mem_q [D];
     logic [W-1:0]  rdata_q;
     logic [AW-1:0] raddr_q;
@@ -145,11 +146,7 @@ module sram_fx #(
     wire           wr_en = ce & we, rd_en = ce & ~we, rd_done_en = rd_pend_q;
     wire           wr2_en = we2, rd2_en = re2;
     always_ff @(posedge clk) begin
-      if (wr_en) begin
-        for (int b = 0; b < W / 8; b++) begin
-          if (wmask[b]) mem_q[addr][b*8 +: 8] <= wdata[b*8 +: 8];
-        end
-      end
+      if (wr_en) mem_q[addr] <= wdata;
     end
     always_ff @(posedge clk) begin
       rd_pend_q <= rd_en;
