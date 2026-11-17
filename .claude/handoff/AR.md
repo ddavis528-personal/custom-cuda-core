@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 367 .589591, AR 368 .591363 (tab rev 370).
-  - **The next AR row inserts after .591363**, labelled AR 369.
+  - Latest rows: AR 368 .591363, AR 369 .593482 (tab rev 371).
+  - **The next AR row inserts after .593482**, labelled AR 370.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 370, OA 426, TI 474, RA 151, RI 86,
-  IS 194, CP 159, OI 358, DA 123, MA 77, Conventions 19.
+- **Bookmarks** (revs read through): AR 371, OA 426, TI 475, RA 153, RI 86,
+  IS 194, CP 159, OI 358, DA 123, MA 79, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -182,6 +182,26 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+00. **Machine-error (fault) system for ECC (TI 475 (4): DA asked AR to
+   define it and its interface).** AR 369 (row .593482, rev 371;
+   proposal; IS, MA and TI rung) is pending Daniel's answers to (a)-(d),
+   asked in session.
+   - CE: corrected and counted.
+   - A UE in a clean L1 line: refetched.
+   - An attributable UE: completion status 1 with a new cause F-MACHINE
+     (code 10; an ISA amendment by IS), fatal to the context.
+   - An unattributable UE: a sticky level on a new gather
+     ccv_<blk>_cru_err to CRU, which latches MACHINE_CHECK and kills every
+     grid.
+   - ccv_common_err in each SRAM-bearing block, on the CSR star: CE and UE
+     counts, a first-error log, a CE alert threshold, INJECT.
+   - Out of scope: RF parity (PF-48), poison, a trap handler.
+   TI 475 also rules:
+   - the 32 KiB limit counts data bits before ECC;
+   - BIST broadcast groups of up to 32 KiB;
+   - ECC sits outside the wrapper, and hiding its latency is the block
+     architect's.
+   RA 153 confirmed RCU takes the second write; MA 79 set L1_ECC = 1.
 0. **SPM against the macro rulings (AR's spec; raised with Daniel in
    session, waiting on his answer).** TI 467 (DA: SRAM 4-32 KiB, RF
    512 B-8 KiB a macro, waivers in rtl/macro-waivers.json; Needs MA, AR,
