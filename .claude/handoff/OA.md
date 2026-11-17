@@ -51,10 +51,10 @@ TI-474 (DA array test: BIST, spare row, column repair, SECDED) -> OA 423 (rev 42
 MA rev 76 (ECC late cancel) -> OA 424 (rev 426): it rides OOE's miss path; L1_HIT stays 7, cmpl one cycle later after the syndrome and withheld on a non-zero one; CCV_LAT_L1_CMPL derive +1 (14 to 15). OI prices CMPL 15 (rule under 0.5% S1); MA confirms the syndrome is one cycle; AR owns the derive (AR 368: CCV_LAT_L1_ECC=1 on CMPL only); TI lands it. MA confirmed a one-cycle syndrome (rev 78). OI-162 priced CMPL 15 (S1 +0.05%, cm32priv -0.35%, cm128priv +0.45%); OA 426 (rev 428) ruled it; TI lands AR 368 with the stub MIU patch. Doc rev 383: memop paragraph (SECDED) and CMPL formula (+L1_ECC). AR 370/IS O-86 (DA 124): ECC fault system; core-fatal via CRU MACHINE_CHECK + RAU kill; no OOE change in v1. RA 153: RCU takes the corrected beat as is; (3) answered in OA 425 (rev 427): the PRF_COPY lands before the first beat.
 
 ## Register bookmarks (revs read through)
-Conventions 19, OA 428, AR 372, TI 477, OI 366, IS 197, CP 159, DA 124,
+Conventions 19, OA 428, AR 372, TI 478, OI 366, IS 197, CP 159, DA 124,
 RA 154 (tab 9851686b-2b0a), RI 90 (tab 8e4547bc-c469), MA 82 (tab 1f971016-3f72; MA session session_01QPk2jyUbWA7fW9YpUwqdxk, roster entry merged 11-13).
-OOE doc rev 383. Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
-Sweep 11-17: 7 branches (170 commits), full gate green, pushed f6e40f9a; release bbb19d12; tag refused. Tuesday, no pings. Read: nothing for OA; RA 154 closes RA 153 via OA 425; DA 124 ECC fault system + SPM as RF (no OOE change); OI rob_w retire stage and TI's CMPL 15 (AR 368) still not landed.
+OOE doc rev 384 (As-applied para now states today's L1_WAKE 13 / L1_CMPL 15). Pings Fri 2026-11-13 sent to all 8 roster sessions (AR IS TI OI CP RA RI RH; MA none); all 8 ponged, check ok. Next Fri 2026-11-20.
+Sweep 11-17: 7 branches (170 commits), full gate green, pushed f6e40f9a; release bbb19d12; tag refused. Tuesday, no pings. Read: nothing for OA; RA 154 closes RA 153 via OA 425; DA 124 ECC fault system + SPM as RF (no OOE change); OI rob_w retire stage and TI's CMPL 15 (AR 368) landed later at 9682b03a (TI-478; OI asked to move ooe_wake LAT_MISS default to 16).
 Sweep 11-16: 7 branches (133 commits), full gate green (~5.5 h, heavy units serial), pushed 3b3db127; release b4603666; tag refused. Monday, no pings.
 Sweep 11-15: 5 branches (116 commits), full gate green, pushed 6aa0c403; release 6fa7fc1f; tag refused (known). Sunday, no pings.
 Sweep 11-13: 6 branches (76 commits), full gate green, pushed 0bc98973 (first push 503'd, credential service; retried by hand); release 63625551; tag refused (known).
