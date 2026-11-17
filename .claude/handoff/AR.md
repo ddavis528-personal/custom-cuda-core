@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 371 .599641, AR 372 .601453 (tab rev 373).
-  - **The next AR row inserts after .601453**, labelled AR 373.
+  - Latest rows: AR 372 .601453, AR 373 .604516 (tab rev 374).
+  - **The next AR row inserts after .604516**, labelled AR 374.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 373, OA 428, TI 478, RA 154, RI 90,
-  IS 197, CP 159, OI 366, DA 124, MA 85, Conventions 19.
+- **Bookmarks** (revs read through): AR 374, OA 428, TI 478, RA 154, RI 90,
+  IS 197, CP 159, OI 366, DA 125, MA 86, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -226,6 +226,23 @@ Credit rules (TI-49):
    - TI 477 landed MACRO-1 (ddc700a1: size limits, architect-written
      waivers, size penalty, per-block efficiency). SPM's 4 KiB RF (and the
      2 KiB fallback) is in range, so AR owes no waiver.
+0-. **MIU/DCU Phase 1 sweeps (DA rev 125: all start now, split MA / RH / AR;
+   MA-21).** MA builds the closed-loop p1 model and RH runs it. AR's three
+   asks are answered in AR 373 (.604516; notices to MA, CP, TI):
+   - (1) Open-loop screen: ~/l1sweep/bank/banksim_p1.py, grid in
+     ~/l1sweep/bank/p1/grid.txt (90 runs). Step (ii) goes from 24 points to
+     8: (a), (a+f) and (b) at depths 0 and 2, fixed order, then rotating
+     order on the best two. At x1, depth 2 equals an unbounded queue, and
+     fixed equals rotating (the stub issues one lookup a cycle). The 4x
+     squeeze is past capacity everywhere and is kept only as the age-bound
+     check (deferred max 30). Late loads (a / a+f / b): cm128 4.91 / 4.10 /
+     4.12%, cm32 3.56 / 2.60 / 3.45%.
+   - (2) Stride kernel: transpose and sgemm at n256 and n512 are at the
+     pin, and TI is asked for their bench configs. colwalk-pP (1 to 32 KiB
+     plus a 128 B control) is asked of CP, spec in the row.
+   - (3) AR books every result in perf-register.md as PF rows, citing
+     MA's rows and RH's runs.
+   Waiting on: MA's p1 results, CP's kernel, TI's configs.
 0b. **MA-20 bank scheduling: answered, AR 372 (.601453; notice to MA).**
    All three go into Phase 1, (1) fairness and (3) the conflict queue priced
    together first. The 729-cycle wait was deferred work behind loads, not
