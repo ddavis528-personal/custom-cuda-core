@@ -93,7 +93,7 @@ Credit rules (TI-49):
   | Conventions | 55232329-ff5c |
 
 - **Bookmarks** (revs read through): AR 371, OA 426, TI 475, RA 153, RI 86,
-  IS 194, CP 159, OI 358, DA 123, MA 79, Conventions 19.
+  IS 194, CP 159, OI 358, DA 123, MA 81, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -202,6 +202,12 @@ Credit rules (TI-49):
    - ECC sits outside the wrapper, and hiding its latency is the block
      architect's.
    RA 153 confirmed RCU takes the second write; MA 79 set L1_ECC = 1.
+   MA 80/81 agree with AR 369 (1), (3) and (4) for DCU, with one change
+   to (2): a UE in a dirty L1 line is core-fatal, not attributable (other
+   contexts' bytes, and the writeback would hit it anyway). So DCU needs
+   no ue on dcu_miu_rsp; (2) stays for SPM, which MIU passes through. One
+   ccv_common_err in DCU (16 arrays). AR accepts (DCU is MA's); no row
+   yet. Write the final row when Daniel answers (a)-(d), folding this in.
 0. **SPM against the macro rulings (AR's spec; raised with Daniel in
    session, waiting on his answer).** TI 467 (DA: SRAM 4-32 KiB, RF
    512 B-8 KiB a macro, waivers in rtl/macro-waivers.json; Needs MA, AR,
