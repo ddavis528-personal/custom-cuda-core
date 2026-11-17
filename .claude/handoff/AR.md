@@ -90,7 +90,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 367, OA 421, TI 468, RA 151, RI 86,
+- **Bookmarks** (revs read through): AR 367, OA 421, TI 469, RA 151, RI 86,
   IS 194, CP 159, OI 358, DA 123, MA 74, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -198,6 +198,10 @@ Credit rules (TI-49):
    - (iv) 64-bit bank words, 512 x 64b at 4 KiB: two vertically adjacent
      lines in one access, so streaming stays at full rate and random
      access is half.
+   TI 469 (DA): a macro's per-bit cost is lowest at its type's largest
+   legal size and rises linearly to +20% at its smallest
+   (CCV_MACRO_SIZE_PENALTY_PCT). So a 4 KiB SRAM is 1.20x, and a 4 KiB RF
+   is about 3 x 1.107 = 3.32x.
    AR's lean is (iv). No S1 kernel touches SPM, so the bar cannot price
    it; it needs a GEMM-like kernel.
 1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
