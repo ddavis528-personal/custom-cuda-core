@@ -93,7 +93,7 @@ Credit rules (TI-49):
   | Conventions | 55232329-ff5c |
 
 - **Bookmarks** (revs read through): AR 374, OA 428, TI 478, RA 154, RI 90,
-  IS 197, CP 159, OI 366, DA 125, MA 86, Conventions 19.
+  IS 197, CP 159, OI 366, DA 125, MA 88, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -242,7 +242,9 @@ Credit rules (TI-49):
      plus a 128 B control) is asked of CP, spec in the row.
    - (3) AR books every result in perf-register.md as PF rows, citing
      MA's rows and RH's runs.
-   Waiting on: MA's p1 results, CP's kernel, TI's configs.
+   MA rev 88 took the 8 points: p1 model in (CCV_DCU_IMPL=p1, S1 clean),
+   depth 0 a re-pass at +6, each point at an optimistic and a strict
+   contract bound. Waiting on: MA's p1 results, CP's kernel, TI's configs.
 0b. **MA-20 bank scheduling: answered, AR 372 (.601453; notice to MA).**
    All three go into Phase 1, (1) fairness and (3) the conflict queue priced
    together first. The 729-cycle wait was deferred work behind loads, not
