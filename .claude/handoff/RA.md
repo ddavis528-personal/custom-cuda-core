@@ -338,7 +338,13 @@ Sign-off inputs in: TI 457 rokilllane kernel at 1861cc51; RI-58 M4 margin passes
 at every drain cut 0-15 (cut matters to 8); RI-59: the model drops a killed
 warp's entries at the kill (Core::kill), not by epoch -- check the spec says
 no epoch for the model.
-Bookmarks: OA 421, RA 151, RI 86, TI 456, AR 365, DA 123, OI 358, Conventions 19, CP 159, IS 194, MA 68.
+Sweep 11-17: nothing for RA; merged 183cc441 (62), 3868632d (43), 57eff422 (24), 80102643 (17),
+9eb50716 (7), c22116ce (9), miu-dcu-spec (15). DA 124 x2 (ECC machine-error system; SPM is RF), no RCU effect.
+RA 152 (MACRO-1: RCU has no macro), RA 153 (SECDED corrected 2nd miu_rcu_data write: RCU takes it, no change;
+conditions taken by MA 79 and OA 425), RA 154 (153 closed). WATCH: OA 424/426 moves CCV_LAT_L1_CMPL 14->15;
+when it lands, fix the Partition/Overview "L1_CMPL 14" text (RA rev 145 reapply note) and refresh snapshots.
+TI-461 (no dated tasks) and TI-467 (macro limits) are recorded only in the TI tab; asked Daniel.
+Bookmarks: OA 428, RA 154, RI 90, TI 477, AR 372, DA 124, OI 366, Conventions 19, CP 159, IS 197, MA 82.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
