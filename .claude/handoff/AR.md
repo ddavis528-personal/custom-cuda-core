@@ -90,8 +90,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 367, OA 421, TI 467, RA 151, RI 86,
-  IS 194, CP 159, OI 358, DA 123, MA 73, Conventions 19.
+- **Bookmarks** (revs read through): AR 367, OA 421, TI 468, RA 151, RI 86,
+  IS 194, CP 159, OI 358, DA 123, MA 74, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -186,8 +186,9 @@ Credit rules (TI-49):
    RA), TI 466 (no SRAM byte enables) and DA 123 (SRAM every other cycle)
    meet in SPM: 32 banks of 4 KiB with 32-bit words, one pass a cycle,
    byte-masked writes (kernel.cpp class Spm).
-   - 4 KiB is exactly the SRAM minimum: it fits only if the bound is
-     inclusive (TI built it inclusive, pending Daniel).
+   - 4 KiB is exactly the SRAM minimum. TI 468 (DA): the limits are
+     inclusive, so it fits. Size waivers are the block architect's (AR's
+     for SPM), approved by DA before the block is complete.
    - At half rate a pass every cycle is impossible on 32 SRAM banks.
    - A sub-word store becomes read-modify-write.
    Options put to Daniel:
