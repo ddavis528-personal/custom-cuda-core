@@ -1314,15 +1314,20 @@ them a 1rw read sampled a cycle early, `ce` two cycles running, which the
 RTL's assertion must stop by name, the `_be` register file's mask ignored,
 and a byte mask honoured by the plain one).
 
-**Size limits** (`tools/check-ngd.py`, MACRO-1; Daniel, 2026-11-17). One
+**Size and shape limits** (`tools/check-ngd.py`, MACRO-1; Daniel, 2026-11-17). One
 instance holds W x D / 8 bytes, at the parameters its unit gives it:
 
-| Macro | Least | Most |
-|---|---|---|
-| register file (`ccv_common_rf_1r1w`, `_be`) | 512 B (`CCV_MACRO_RF_MIN_BYTES`) | 8 KiB (`CCV_MACRO_RF_MAX_BYTES`) |
-| SRAM (`ccv_common_sram_1rw`) | 4 KiB (`CCV_MACRO_SRAM_MIN_BYTES`) | 32 KiB (`CCV_MACRO_SRAM_MAX_BYTES`) |
+| Macro | Least | Most | Widest word (W) | Most words (D) |
+|---|---|---|---|---|
+| register file (`ccv_common_rf_1r1w`, `_be`) | 512 B (`CCV_MACRO_RF_MIN_BYTES`) | 8 KiB (`CCV_MACRO_RF_MAX_BYTES`) | 256 bits (`CCV_MACRO_RF_MAX_W`) | 1024 (`CCV_MACRO_RF_MAX_WORDS`) |
+| SRAM (`ccv_common_sram_1rw`) | 4 KiB (`CCV_MACRO_SRAM_MIN_BYTES`) | 32 KiB (`CCV_MACRO_SRAM_MAX_BYTES`) | 128 data bits and their SECDED check bits, 137 (`CCV_MACRO_SRAM_MAX_DATA_W`, `CCV_MACRO_SRAM_MAX_W`) | 4096 (`CCV_MACRO_SRAM_MAX_WORDS`) |
 
-Each bound is allowed (Daniel, 2026-11-17). A smaller array is flops or a smaller macro kind; a
+Each bound is allowed (Daniel, 2026-11-17). The shape limits, width and
+words, are set by layout: no instance may outgrow the dimensions that can be
+repeated over top (Daniel, 2026-11-17). An SRAM's W counts its SECDED check
+bits (every SRAM carries them, TI-474 (6), outside the macro), so 128 data
+bits make 137; a register file's 256 is its whole word. An array wider or
+deeper is split, across instances, by columns or by rows. A smaller array is flops or a smaller macro kind; a
 larger one is split into instances (banks, ways). Outside the limits an
 instance needs a waiver in `rtl/macro-waivers.json`, written by the
 block's architect and approved by Daniel before the block is complete
@@ -1334,8 +1339,9 @@ be resized, split or built otherwise, what was measured), `by` and `date`.
 A waiver that excuses nothing, or lacks a field, is refused. Its controls
 (check-ngd's selftest): the fixture shrunk to a 2 KiB SRAM and a 256-byte
 register file fails both and passes with their waivers; each bound passes
-and one byte past it fails; a waiver of another size, one without its
-`why`, and one that excuses nothing are refused.
+and one byte past it fails; each shape bound passes and one bit or one word
+past it fails, alone, and its waiver excuses it; a waiver of another size,
+one without its `why`, and one that excuses nothing are refused.
 
 **Size and efficiency** (Daniel, 2026-11-17). An array type is most
 efficient, in power and area per bit, at its largest legal size. Per bit it

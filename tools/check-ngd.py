@@ -1211,6 +1211,15 @@ def macro_size_limits(kind):
             int(cg.param("CCV_MACRO_%s_MAX_BYTES" % kind)))
 
 
+def macro_shape_limits(kind):
+    """(widest W, most words D) one instance of a `kind` macro may be, each
+    bound allowed (MACRO-1, Daniel, 2026-11-17, set by layout): an SRAM's W
+    is CCV_MACRO_SRAM_MAX_DATA_W and its SECDED check bits
+    (CCV_MACRO_SRAM_MAX_W), a register file's CCV_MACRO_RF_MAX_W."""
+    return (int(cg.param("CCV_MACRO_%s_MAX_W" % kind)),
+            int(cg.param("CCV_MACRO_%s_MAX_WORDS" % kind)))
+
+
 def macro_cost(typ, w, d):
     """(penalty, weight) of one instance (Daniel, 2026-11-17): penalty is
     its power and area per bit over the most efficient instance of its
@@ -1256,7 +1265,10 @@ def macro_size(insts, waivers):
     """MACRO-1 (Daniel, 2026-11-17): one register-file instance holds from
     CCV_MACRO_RF_MIN_BYTES to CCV_MACRO_RF_MAX_BYTES (512 B to 8 KiB), one
     SRAM from CCV_MACRO_SRAM_MIN_BYTES to CCV_MACRO_SRAM_MAX_BYTES (4 KiB
-    to 32 KiB), W x D / 8 bytes at the parameters a unit gives it. Outside
+    to 32 KiB), W x D / 8 bytes at the parameters a unit gives it, and is
+    no wider and no deeper than its kind's shape (macro_shape_limits: an
+    SRAM 128 data bits and their SECDED bits, 4096 words; a register file
+    256 bits, 1024 words; Daniel, 2026-11-17). Outside
     that, a waiver in rtl/macro-waivers.json names the instance at exactly
     that macro, W and D, with its justification (why) and its author (by,
     the block's architect): a change of size fails again. Daniel approves
@@ -1272,13 +1284,22 @@ def macro_size(insts, waivers):
                 i, x.get("module"), x.get("instance"), ", ".join(miss)))
             used.add(i)
     for mod, inst, typ, w, d in sorted(set(insts)):
-        lo, hi = macro_size_limits(MACRO_KIND[typ])
+        kind = MACRO_KIND[typ]
+        lo, hi = macro_size_limits(kind)
+        mw, md = macro_shape_limits(kind)
         nb = w * d / 8.0
-        if lo <= nb <= hi:
+        why = []
+        if not lo <= nb <= hi:
+            why.append("%s the %d to %d bytes one %s instance may hold"
+                       % ("under" if nb < lo else "over", lo, hi, kind))
+        if w > mw:
+            why.append("wider than the %d bits one %s word may be" % (mw, kind))
+        if d > md:
+            why.append("deeper than the %d words one %s instance may hold" % (md, kind))
+        if not why:
             continue
-        what = "%s %s.%s, %d x %d bits (%g bytes), %s the %d to %d bytes one %s instance may " \
-               "hold" % (typ, mod, inst, d, w, nb, "under" if nb < lo else "over", lo, hi,
-                         MACRO_KIND[typ])
+        what = "%s %s.%s, %d x %d bits (%g bytes), %s" % (typ, mod, inst, d, w, nb,
+                                                          "; ".join(why))
         hit = [i for i, x in enumerate(waivers)
                if (x.get("module"), x.get("instance"), x.get("macro"), x.get("W"), x.get("D"))
                == (mod, inst, typ, w, d)]
@@ -1313,7 +1334,8 @@ def macro_size_selftest(expect, ok, small):
     register file) passes; the fixture shrunk (a 2 KiB SRAM, a 256-byte
     register file) fails both, and a waiver of each excuses it; the bounds
     themselves pass and one byte past each fails; a waiver of another size,
-    one without its why, and one that excuses nothing are refused."""
+    one without its why, and one that excuses nothing are refused; each
+    shape bound (width, words) passes and one past it fails, alone."""
     lines, fails = macro_size(macro_insts([ok]), [])
     expect(not fails and not lines, "MACRO-1: the compliant fixture failed: %s" % fails)
     si = macro_insts([small])
@@ -1375,6 +1397,37 @@ def macro_size_selftest(expect, ok, small):
         expect(not macro_size(at, [])[1] and len(macro_size(past, [])[1]) == 2,
                "MACRO-1: %s's bounds (%d, %d bytes) not held exactly: %s %s"
                % (typ, lo, hi, macro_size(at, [])[1], macro_size(past, [])[1]))
+    # The shape (Daniel, 2026-11-17, set by layout): an SRAM's word is 128
+    # data bits and their SECDED bits, 137, a register file's 256; an SRAM
+    # holds at most 4096 words, a register file 1024. Each bound passes,
+    # one past it fails, each within the size limits so only the shape
+    # speaks; a waiver at exactly that W and D excuses it.
+    expect(macro_shape_limits("SRAM") == (137, 4096) and
+           macro_shape_limits("RF") == (256, 1024),
+           "MACRO-1: the shape limits are %s and %s, not Daniel's (137, 4096) and (256, 1024)"
+           % (macro_shape_limits("SRAM"), macro_shape_limits("RF")))
+    for typ in ("ccv_common_sram_1rw", "ccv_common_rf_1r1w", "ccv_common_rf_1r1w_be"):
+        mw, md = macro_shape_limits(MACRO_KIND[typ])
+        lo, hi = macro_size_limits(MACRO_KIND[typ])
+        dw = -(-lo * 8 // mw)           # words that make the widest word legal in bytes
+        wd = -(-lo * 8 // md)           # bits that make the deepest array legal
+        at = [("m", "w", typ, mw, dw), ("m", "d", typ, wd, md)]
+        past = [("m", "w", typ, mw + 1, dw), ("m", "d", typ, wd, md + 1)]
+        okb = all(lo <= w * d / 8.0 <= hi for _, _, _, w, d in at + past)
+        _, fa = macro_size(at, [])
+        _, fp = macro_size(past, [])
+        expect(okb and not fa and len(fp) == 2 and
+               any(".w," in f and "wider" in f and "under" not in f and "over" not in f
+                   for f in fp) and
+               any(".d," in f and "deeper" in f and "under" not in f and "over" not in f
+                   for f in fp),
+               "MACRO-1: %s's shape bounds (%d bits, %d words) not held exactly: %s %s"
+               % (typ, mw, md, fa, fp))
+        wv = [{"module": m, "instance": i, "macro": t, "W": w, "D": d, "why": "selftest",
+               "by": "TI", "date": "2026-11-17"} for m, i, t, w, d in past]
+        lines, fails = macro_size(past, wv)
+        expect(not fails and len(lines) == 2,
+               "MACRO-1: waivers of %s's shape did not excuse it: %s %s" % (typ, lines, fails))
 
 
 def macro_ref(what, w, d):
@@ -3118,6 +3171,9 @@ def selftest():
 
 MACRO_FX = "test/macro/sram_fx.sv"
 MACRO_FX_BLK = "test/macro/sram_fx_blk.sv"
+# The compliant fixture's SRAM, W x D (sram_fx's defaults): 8 KiB, 128 bits
+# wide, within an SRAM's shape (MACRO-1; Daniel, 2026-11-17).
+FX_SRAM_W, FX_SRAM_D = 128, 512
 
 
 def macro_unit(name, **params):
@@ -3130,7 +3186,7 @@ def macro_unit(name, **params):
 
 
 def macro_selftest(expect):
-    """NGD-8 (AR's register rev 344): sram_fx, a 512 x 128 one-port SRAM
+    """NGD-8 (AR's register rev 344): sram_fx, a 512-word x 128-bit one-port SRAM
     (64 Kibit, every other cycle, whole words) and a 64 x 128 1R1W register
     file with byte enables, passes with its index through
     an adder and its read data into a flop through one XOR (the SRAM's) or
@@ -3139,7 +3195,7 @@ def macro_selftest(expect):
     (an input pin is an endpoint), the read data through one (what follows
     rdata counts), the pins' own times (macro_pin_selftest), and the same
     arrays inferred as
-    flops, which fail the stage (NGD-1: the read mux behind 32,773-load
+    flops, which fail the stage (NGD-1: the read mux behind tens-of-thousands-load
     index nets, the fanout term's). A macro has no unit: it is no design
     module."""
     none = Budgets()
@@ -3188,7 +3244,7 @@ def macro_selftest(expect):
            "efficiency, %r: %s" % (want, line))
     MACRO_NUMBERS.update(block=want)
     macro_contract_selftest(expect)
-    small = macro_unit("fx_sram_small", D=32, W2=128, D2=16)
+    small = macro_unit("fx_sram_small", D=128, W2=128, D2=16)
     small.measure()
     macro_size_selftest(expect, ok, small)
     macro_pin_selftest(expect, ok, none)
@@ -3250,7 +3306,7 @@ def macro_pin_selftest(expect, ok, none):
     times = macro_pin_times(ok.t)
     by = {n: times[p][0] for p, n in list(pin_in.items()) + list(pin_out.items())}
     want = {}
-    for cell, kind, w, d in (("g_macro.u_sram", "SRAM", 512, 128), ("g_macro.u_rf", "RF", 64, 128)):
+    for cell, kind, w, d in (("g_macro.u_sram", "SRAM", FX_SRAM_W, FX_SRAM_D), ("g_macro.u_rf", "RF", 64, 128)):
         a = macro_ref("dec", 1, d) + macro_knob(kind, "ADDR_MARGIN")
         for pin, cls in MACRO_PIN_CLASS[{"SRAM": "ccv_common_sram_1rw",
                                          "RF": "ccv_common_rf_1r1w_be"}[kind]].items():
@@ -3302,7 +3358,7 @@ def macro_pin_selftest(expect, ok, none):
             # The dynamic mux's speed-up cut until this pin's launch is past
             # its slack: both macros' read data launch later, so only this
             # pin's own failure is asked.
-            mux = macro_ref("mux", 512, 128)
+            mux = macro_ref("mux", FX_SRAM_W, FX_SRAM_D)
             MACRO_KNOB_SET[knob] = mux * 100.0 / (mux / macro_dyn() + slack + 0.5)
         else:
             MACRO_KNOB_SET[knob] = float(cg.param(knob)) + slack + 0.5
