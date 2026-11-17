@@ -93,7 +93,7 @@ Credit rules (TI-49):
   | Conventions | 55232329-ff5c |
 
 - **Bookmarks** (revs read through): AR 372, OA 426, TI 476, RA 153, RI 86,
-  IS 196, CP 159, OI 358, DA 124, MA 82, Conventions 19.
+  IS 197, CP 159, OI 358, DA 124, MA 82, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -202,8 +202,10 @@ Credit rules (TI-49):
    - ccv_common_err in DCU (MA 81), host-only. No ue on dcu_miu_rsp or
      spm_miu. F-MACHINE is written only by the core-fatal path in v1.
    - MA-19 (MA rev 82) took it: CCV_DCU_UE_TRACK 16 (one per spare row),
-     key bank/instance/row, DCU tab rev 46. Waiting on: TI landing it,
-     IS O-86. Owe nothing.
+     key bank/instance/row, DCU tab rev 46. IS rev 197 wrote O-86 in ISA
+     v1.9 at compiler 103976f (F-MACHINE §12.3/12.5/12.7/12.8; pin bump is
+     TI's). Waiting on: TI landing it.
+     Owe nothing.
 0. **SPM is RF: DECIDED (DA rev 124, "use RF"; AR 371, row .599641,
    Needs TI).** Each of the 32 banks is a ccv_common_rf_1r1w, 1024 x 32,
    at about 3.32x per bit (efficiency about 0.30). It runs at full rate and
