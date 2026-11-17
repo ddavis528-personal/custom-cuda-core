@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=47 exported=2026-11-14 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 47 on 2026-11-14 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Done,_kill_and_reset rev=51 exported=2026-11-16 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Done, kill and reset*, at revision 51 on 2026-11-16 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Done, kill and reset
 
@@ -22,12 +22,12 @@ This tab covers everything RCU tells OOE and RAU about completion and teardown: 
 | RCU-only (bra, call, ret, pand/por/pxor, pmov, movi) | 5 (`CCV_DONE_SLOT_RCU`) | A | A+1 | A+2 | R pipe (`rres_a1` stage) |
 | Warp collective (shfl, vote, ballot, unballot) | 6 | A | A+1 | A+2 | R pipe |
 | Lane op, lead section k | k (0-3) | A+5 | A+6 | A+7 | `lwb_d[k]` stage 6, loaded at the edge ending A+6 (LAT-1) |
-| SFU op | 4 | A+10 | A+11 | A+12 | `swb_d` stage 11, loaded at the edge ending A+11 (built, unexercised: SFU interim) |
+| SFU op | 4 | A+10 | A+11 | A+12 | `swb_d` stage 11, loaded at the edge ending A+11 (exercised by the lanes bench and the model; no kernel yet) |
 | PRF copy (GPR or predicate), any memop | none |  |  |  | OI-4; masked-load copy: done\_row 1 completes on MIU's cmpl |
 
 A collective's done goes out at A+1, 3 cycles before `CCV_LAT_COLLECTIVE` = 5. The contract allows an early finish (V-35: "RCU may finish sooner"), and AR agreed it on a `fixed_latency` slot (RA-29 (c)). Its result is readable from A+3, so dependants woken at 5 read a landed value.
 
-**SFU interim (RA rev 140 (3)).** Until RA-16 (b) settles, the three SFU ops (RCP\_U32, RSQRT\_F32, RCP\_F32\_P; RA rev 146) are classed as lane ops (OI-16): they take lane slots 0-3 and enter the bypass history. Slot 4, `swb_d` and the SW write port are built but unexercised, and the kill drain's SFU term is unreached. RA asks RI for an SFU bench.
+**SFU interim ended (RA rev 146; RI-53, 9f513f3b).** RCP\_U32, RSQRT\_F32 and RCP\_F32\_P decode as U\_SFU (C\_FADD stays a lane op). They go through `swb_d`, SW at A+11 and done slot 4, never the lane slots or the bypass history; the result rides `sfu_valid`, never `sec_valid`. The lane stub sends SFU results at `CCV_LAT_SFU`. No kernel issues an SFU op yet: the drain's SFU term is covered by the lanes bench and the model.
 
 ### Per-slot registers
 
@@ -97,7 +97,7 @@ As built in `rcu_kill`: `kill_drain` is clog2(`KILL_DRAIN` + 1) = 4 flops, and t
 `KILL_DRAIN` = 2 + `link_n(ooe_rcu_issue)` + `bnd_rx(ooe_rcu_issue)` + `CCV_LAT_SFU` + 1 + `link_n(rcu_ooe_done)` + `bnd_rx(rcu_ooe_done)`, which is 15 at the defaults: abutted links, both ends zero-cycle (the issue end since RA-43, AR 329) and `CCV_LAT_SFU` 12 since `lane_rcu_res`'s end at RCU went zero-cycle (RA rev 95). The issue end's `bnd_rx` counts on the crossing, never in the base (AR revs 288, 300 and 301). It covers:
 
 - the last issue that OOE may send before it reacts to the same kill (valid at RCU's interface flop by K+1 + bnd\_rx(ooe\_rcu\_issue), so payload A = K+2 with the issue end zero-cycle, RA-43);
-- that issue's longest RCU life: an SFU done payload at A+12, which is on the wire to OOE until it lands (unreached under the SFU interim).
+- that issue's longest RCU life: an SFU done payload at A+12, which is on the wire to OOE until it lands (reachable since SFU ops decode U\_SFU, RA rev 146; no kernel exercises it yet).
 
 An address message (A+1) and a lane message (A+1) leave sooner. A load's data from MIU is MIU's own drain, and RCU writes whatever lands.
 
@@ -109,7 +109,7 @@ An address message (A+1) and a lane message (A+1) leave sooner. A load's data fr
 
 Kill inputs and sleep (AR 336 (b), AR 338/339; RI-27, RI-29, RI-33, RI-34; RA revs 127, 130, 131 and 134): the detector is in `ccv_rcu`, its own CG unit of 36 flops. `kill_detect_v_cr01h` flops `kill_valid` on the ungated `core_clk` every cycle, at 0 NGD and with no reset (it counts in the module's allowance); `kill_valid` is a wake port. `wake_detect_iw_cr01h`, beside it, takes `ooe_rcu_issue_wake` the same way, also without reset. `kill_detect_ep_cr02h` and `kill_detect_km_cr02h` (34 flops) also sit on `core_clk`, loaded under that valid flop (the module's own flop, CG-5; one gate, DCGE 100%) in the cycle after `kill_valid`, when the epoch and mask arrive, since valid leads the payload. None of it depends on RCU's gated clock, so a kill that lands asleep is captured. `rcu_kill` and `rcu_mig` load epoch and mask from those flops at K+1. The ack is high from K + `KILL_DRAIN` + 1 = 16 (RA rev 136, RI-37 (1)), the same awake and asleep, and a second kill across the wake is acked with the later epoch. An earlier ack changes nothing for RAU, which counts the ack by epoch (AR 338/339). Reset (RST-2, Daniel 2026-11-09): block rcu's reset arrives at cycle 1 at every endpoint (RI-34).
 
-M4 is met (RA rev 139 (3)). The kill checker passes at this timing on the RTL and the model, with killsleep's asleep-equals-awake and later-epoch cases; each control that drops the held kill fails, and so does the bench's `KILL_DRAIN` − 1 control, so the margin is recorded as the whole drain. No kernel yet lands a kill with an SFU op in flight (SFU interim); RA asks TI for a kill kernel. The bound is never shortened without a row.
+M4 is met (RA rev 139 (3)). The kill checker passes at this timing on the RTL and the model, with killsleep's asleep-equals-awake and later-epoch cases; each control that drops the held kill fails, and so does the bench's `KILL_DRAIN` − 1 control, so the margin is recorded as the whole drain. rokilllane (RI-57, 3eaaadc7) lands a kill with lane ops in flight: its kill\_lane bin is 1, rokill's 0 (its control); RI-58: it passes at every drain cut 0-15, the cut taking effect to 8. A kill with an SFU op in flight is post-sign-off (RA rev 150). The bound is never shortened without a row.
 
 ## Reset (RST-1, A-29)
 
