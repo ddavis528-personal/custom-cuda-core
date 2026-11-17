@@ -91,7 +91,7 @@ Credit rules (TI-49):
   | Conventions | 55232329-ff5c |
 
 - **Bookmarks** (revs read through): AR 366, OA 421, TI 466, RA 151, RI 86,
-  IS 194, CP 159, OI 358, DA 123, MA 71, Conventions 19.
+  IS 194, CP 159, OI 358, DA 123, MA 73, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -231,6 +231,9 @@ Credit rules (TI-49):
    and max 33 -> 104 (material). 40% of the 2x rise is the same-line
    wait. AR's view: Phase 1 models MA-17 (5)'s forwarding write buffer
    too, and decides on closed-loop S1. Nothing owed.
+   MA 72/73 agreed: Phase 1 runs (a), (a) + a forwarding write buffer, and
+   (b), all closed-loop on S1; the cheapest within 0.2% of the best wins.
+   Closed. Wait for Phase 1.
 2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
    against the six conditions.** The page-offset require has refusal
    mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
