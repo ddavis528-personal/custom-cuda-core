@@ -64,7 +64,7 @@ B. Task 27: MACRO-1 size limits (DA 11-17, TI 467 rang MA AR RA): RF 512 B-
    rtl/macro-waivers.json. Commit 2c032fa9 on branch ti-size, worktree
    /home/user/ti-size, backed up to gate-scratch/TI-size. After A lands:
    merge the landed tip into ti-size, gate-push from there, landing row.
-C0. Daniel 11-17 (TI 469): efficiency penalty 0 at max size, linear to 20% at min (CCV_MACRO_SIZE_PENALTY_PCT); TI 469 said 6.4% for the 5,760 B RF, it is 6.3%: correct it in the landing row.
+C0. Daniel 11-17 (TI 469): efficiency penalty 0 at max size, linear to 20% at min (CCV_MACRO_SIZE_PENALTY_PCT); (6.4% for the 5,760 B RF corrected to 6.3% in TI 470; MA moved data to 16 x 32 KiB, 512 words: launch 18.5, 6.5 NGD left.)
 C. Daniel 11-17 (TI 468): limits inclusive; size waivers by the block architect, DA approves before block completion; ce/we/re take the address setup.
 
 No task carries a date (Daniel, 2026-11-16): everything is best effort, in
