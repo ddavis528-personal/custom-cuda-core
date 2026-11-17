@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 372, TI 477, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 82, DA 124 (2026-11-17 sweep).
+Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 83, DA 124 (2026-11-17 sweep; TI 478 read).
 
 ## State, 2026-11-13
 
@@ -74,6 +74,9 @@ Conventions 19, AR 372, TI 477, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- TI-478: AR 368 landed (9682b03a; L1_ECC 1, L1_CMPL 15). MA rev 83 took it: impl docs must require
+  data at L1_HIT, completion L1_ECC later (zero syndrome), late hit completes at due + 1.
 
 - TI-474 (DA via TI): BIST override, ports up to block wrapper tied off, 1 spare row per instance,
   column repair >8 KiB, SECDED on every SRAM. MA rev 76 answered: asks the 32 KiB limit count data
