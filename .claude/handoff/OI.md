@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-16 (sweep 11-16 b727ad88 PUSHED full PASS at CCV_JOBS=2 after check-cg OOM (OI-157, TI fixed 804d1e6f). #52: DA said push e6 with al_n/dn_tag caps raised (dfd2ff12 on oi-rw), restructure to OA = OI-158; OA 420 chose (b) retire pick stage + al_n/fl_m flopped on arrival, price first: knob rob_retire_lag 9b395ee1 on oi-rw (suite PASS lag 0/1). Next: merge oi-rw, measure ooe_rob_w_1..3, scoped gate-push, then RH price S1/cm32/cm128, then OI row re:OA-420)
+Updated 2026-11-17 (#52 e6 PUSHED a5dc7eed SCOPED PASS at CCV_JOBS=2 (two container restarts killed earlier runs; al_n cap+baseline 29.7 under DA's #52 approval, flagged to DA). RH asked 11-17 to price rob_retire_lag 0/1 on S1/cm32/cm128 (IPC, ROB-full stalls). Next: on RH's table write OI-159 re:OA-420, ring OA; under 0.5% S1 OA rules, else DA. Then RTL: shift-plus-pick depth first. check-cg OOM: use CCV_JOBS=2 until TI 804d1e6f is merged)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
