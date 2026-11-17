@@ -292,8 +292,8 @@ in the same cycle, and gets 32 results back 4 cycles later:
     104  EV_WAKEUP                      ooe          
     105  EV_WAKEUP                      ooe          
     105  EV_ISSUE                       ooe          
-    107  EV_OOE_CANCEL_REPLAY           ooe          
     106  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    108  EV_OOE_CANCEL_REPLAY           ooe          
     108  ccv_rcu_lane_ops               rcu  -> lane   x32
     112  ccv_lane_rcu_res               lane -> rcu    x32
     113  ccv_rcu_ooe_done               rcu  -> ooe       
@@ -514,4 +514,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: b7d2b74f2a1ccd2c (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 9d2a8b03266ae3a6 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

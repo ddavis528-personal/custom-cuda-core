@@ -641,7 +641,7 @@ static constexpr uint32_t kLatRcuKillDrain = 15;
 /// PROVISIONAL -- decided by: RCU per-block session
 static constexpr uint32_t kLatCollective = 5;
 
-/// Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48) and each flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46).  Derived: = CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + bnd_rx('miu_dcu_req') + link_n('dcu_miu_rsp') + bnd_rx('dcu_miu_rsp').
+/// Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48) and each flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). A hit's data leaves on ccv_miu_rcu_data at exactly this cycle and its completion on ccv_miu_ooe_cmpl CCV_LAT_L1_ECC cycles later: the data at L1_HIT, the completion at L1_HIT + L1_ECC (A-46, A-47 amended by AR 368); no completion then is the miss indication.  Derived: = CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + bnd_rx('miu_dcu_req') + link_n('dcu_miu_rsp') + bnd_rx('dcu_miu_rsp').
 /// PROVISIONAL -- decided by: generated
 static constexpr uint32_t kLatL1Hit = 7;
 
@@ -657,9 +657,13 @@ static constexpr uint32_t kLatRcuAddr = 1;
 /// PROVISIONAL -- decided by: generated
 static constexpr uint32_t kLatL1Wake = 13;
 
-/// Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16)).  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl').
+/// The flopped syndrome stages between an L1 hit's data leaving MIU and its completion being decided (AR 368). A term of its own, not folded into CCV_LAT_L1_HIT_BASE, so the data's time and the completion's stay distinct; 0 if DCU ever checks before launch. The data lands at CCV_LAT_L1_HIT and is speculative until its completion; a load whose syndrome is non-zero gets no completion then (the miss indication) and its corrected data later. Tunable: MA's to move.  Requires: CCV_LAT_L1_ECC >= 0.
+/// PROVISIONAL -- decided by: AR 368, OA 426 (priced by OI-162); MA's count
+static constexpr uint32_t kLatL1Ecc = 1;
+
+/// Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then CCV_LAT_L1_ECC syndrome stages after the hit's data leaves (AR 368, OA 426: 14 to 15), then the completion's crossing back to OOE. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16)).  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_L1_ECC + CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl').
 /// PROVISIONAL -- decided by: generated
-static constexpr uint32_t kLatL1Cmpl = 14;
+static constexpr uint32_t kLatL1Cmpl = 15;
 
 /// MIU's stages from holding both the memop and its address to the no-hit leaving on ccv_miu_ooe_cmpl_hint: the address stage's decision from the address alone (OA 410) and its output flop. 2 is the count that gave OA 410's I+13 at CCV_LAT_RCU_ADDR_BASE 5; confirmed by MA rev 56; provisional with MIU's Phase 1 model.
 /// PROVISIONAL -- decided by: MA rev 56 (re:AR 353 (2))

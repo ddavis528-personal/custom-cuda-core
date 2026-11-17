@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 372, TI 476, OA 421, IS 196, CP 159, OI 358, RA 153, RI 86, MA 82, DA 124. (AR 369 and OA 426 read for AR-367/OA-424.)
+Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 83, DA 124 (2026-11-17 sweep; TI 478 read).
 
 ## State, 2026-11-13
 
@@ -74,6 +74,9 @@ Conventions 19, AR 372, TI 476, OA 421, IS 196, CP 159, OI 358, RA 153, RI 86, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- TI-478: AR 368 landed (9682b03a; L1_ECC 1, L1_CMPL 15). MA rev 83 took it: impl docs must require
+  data at L1_HIT, completion L1_ECC later (zero syndrome), late hit completes at due + 1.
 
 - TI-474 (DA via TI): BIST override, ports up to block wrapper tied off, 1 spare row per instance,
   column repair >8 KiB, SECDED on every SRAM. MA rev 76 answered: asks the 32 KiB limit count data
@@ -124,6 +127,10 @@ Conventions 19, AR 372, TI 476, OA 421, IS 196, CP 159, OI 358, RA 153, RI 86, M
 - DA ruling (TI-461, 2026-11-16): no task carries a date; best effort in priority order; a dependency
   is met by reordering, never a due date. No dates on rows, handoff items or promises.
 
+- Sweep 2026-11-17: register had nothing for MA. Merged ccr-126afa13 9, ccr-183cc441 62,
+  ccr-3868632d 33, ccr-57eff422 24, ccr-80102643 17, ccr-9eb50716 7, ccr-c22116ce 9 (all clean);
+  full gate PASS on db5a70de (ngd 3.9h, cg 3.6h), pushed. Criss-cross sweep merges have ~8
+  merge bases and take minutes each: run them via tools/bg-run.sh, never in the foreground.
 - Sweep 2026-11-16: 9 branches merged (merge commits; 2 slow, multiple merge bases). TI-455: AR 362
   lead landed (e6b1dd68); TI 457: AR 364 + DCU_BANKS 8, DCU_BANK_AGE 16, lead_set_index at 1861cc51. Only MI/DI blocker left: Daniel reads
   the summary, then docs/miu-impl.md + docs/dcu-impl.md. CP-83: coremark-derived-pl-priv in a9241c2.
