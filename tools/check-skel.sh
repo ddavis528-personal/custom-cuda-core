@@ -65,15 +65,19 @@ else
   bad "Receiver credit timing" "$(grep -m1 -E 'FAIL|error' "$B/channel-test.log")"
 fi
 
-# -- the SRAM hard macros' cycle model (sim/skel/sram.h) -------------------
-# AR's register rev 344: alone, its contract and controls (sram_test.cpp);
-# then in lockstep with the macros' RTL views (rtl/macro/, Verilated), every
-# rdata compared before every edge on one random stream, which must also
-# catch each control: a write-before-read 1r1w, an ignored wmask, a read a
-# cycle late (test/vl/vl_sram_tb.cpp).
+# -- the array macros' cycle model (sim/skel/sram.h) ----------------------
+# AR's register rev 344, DA tab rev 123 and MA-16: alone, its contract and
+# controls (sram_test.cpp); then in lockstep with the macros' RTL views
+# (rtl/macro/, Verilated), every rdata compared before every edge on one
+# random stream, which must also catch each control: a write-before-read
+# register file (each of the two), an ignored wmask on the _be register file,
+# a byte mask on the plain one (Daniel, 2026-11-17: only the _be one has
+# byte enables), a 1rw read a cycle late and a cycle early,
+# and a 1rw ce two cycles running, which the RTL's own assertion must stop
+# by name (test/vl/vl_sram_tb.cpp).
 if g++ -std=c++17 -O1 -I"$R/sim/skel" -o "$B/sram-test" "$R/sim/skel/sram_test.cpp" \
      >"$B/sram-test.log" 2>&1 && "$B/sram-test" >>"$B/sram-test.log" 2>&1; then
-  say "SRAM model alone: its contract" "PASS (controls wbr, nomask, early caught)"
+  say "SRAM model alone: its contract" "PASS (controls wbr, nomask, mask, early, b2b caught)"
 else
   bad "SRAM model alone" "$(grep -m1 -E 'FAIL|error' "$B/sram-test.log")"
 fi
@@ -81,20 +85,23 @@ rm -rf "$B/vl-sram"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style \
      -Irtl/include -CFLAGS "-std=c++17 -I$R/sim/skel" --top-module vl_sram_top \
      --Mdir "$B/vl-sram" -o vl_sram rtl/ccv_assert_pkg.sv rtl/macro/ccv_common_sram_1rw.sv \
-     rtl/macro/ccv_common_sram_1r1w.sv test/vl/vl_sram_top.sv "$R/test/vl/vl_sram_tb.cpp" \
+     rtl/macro/ccv_common_rf_1r1w.sv rtl/macro/ccv_common_rf_1r1w_be.sv test/vl/vl_sram_top.sv "$R/test/vl/vl_sram_tb.cpp" \
      >"$B/vl-sram.log" 2>&1; then
   bad "SRAM model == RTL, cycle for cycle" "the lockstep does not build ($B/vl-sram.log)"
 elif ! out=$("$B/vl-sram/vl_sram" 100000 2>&1); then
   bad "SRAM model == RTL, cycle for cycle" "$(echo "$out" | head -2 | tr '\n' ' ')"
 else
   missed=""
-  for c in wbr nomask late; do
+  for c in wbr wbr3 nomask mask late early; do
     VL_CONTROL=$c "$B/vl-sram/vl_sram" 20000 >/dev/null 2>&1 && missed="$missed $c"
   done
+  # The RTL's assertion stops the run (non-zero), so read its output whole.
+  b2b=$(VL_CONTROL=b2b "$B/vl-sram/vl_sram" 20000 2>&1 || true)
+  case "$b2b" in *"CCV sram_ce_every_other failed"*) ;; *) missed="$missed b2b" ;; esac
   if [ -n "$missed" ]; then
     bad "SRAM model == RTL, cycle for cycle" "control(s) not caught:$missed"
   else
-    say "SRAM model == RTL, cycle for cycle" "PASS ($(echo "$out" | tail -1 | sed 's/^agree //'); wbr, nomask, late caught)"
+    say "SRAM model == RTL, cycle for cycle" "PASS ($(echo "$out" | tail -1 | sed 's/^agree //'); wbr, wbr3, nomask, mask, late, early, b2b caught)"
   fi
 fi
 

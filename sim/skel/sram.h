@@ -1,23 +1,33 @@
-//===-- sram.h - the SRAM hard macros' cycle model ----------------*- C++ -*-===//
+//===-- sram.h - the array macros' cycle model      ----------------*- C++ -*-===//
 //
-// The C++ host's view of rtl/macro/ccv_common_sram_1rw.sv and
-// ccv_common_sram_1r1w.sv (AR's register rev 344; docs/rtl-coding-style.md,
-// "Hard macros"), cycle for cycle, for a block model that keeps an array as
-// its RTL will: behind a macro's ports, its index flopped at the macro's
-// edge and its data a cycle later.
+// The C++ host's view of rtl/macro/ccv_common_sram_1rw.sv,
+// ccv_common_rf_1r1w.sv and ccv_common_rf_1r1w_be.sv (AR's register rev
+// 344; DA tab rev 123 and MA-16; byte enables, Daniel, 2026-11-17;
+// docs/rtl-coding-style.md, "Hard macros"), cycle for cycle, for a block
+// model that keeps an array as its RTL will: behind a macro's ports, its
+// index flopped at the macro's edge.
 //
 // A cycle is: set the inputs, read rdata() (the value since the last edge),
 // then edge(). Every input is sampled at the edge, as the macro's input
 // register does it, so an edge's effect is visible only after it:
-//   Sram1rw   ce && we: write the bytes wmask selects (no read that cycle);
-//             ce && !we: rdata is word addr after the edge; !ce: nothing.
-//   Sram1r1w  we: write; re: rdata is word raddr after the edge, as it stood
-//             BEFORE this edge's write (read before write).
+//   Sram1rw   ce && we: write the whole word (no read that cycle; an SRAM
+//             has no byte enables);
+//             ce && !we: rdata is word addr after the NEXT edge (two cycles:
+//             the bank is busy in between); !ce: nothing. ce is never set
+//             two cycles running (DA tab rev 123): each time it is, the
+//             model counts a violation (violations()), as the RTL's
+//             sram_ce_every_other assertion fires.
+//   Rf1r1w    a register file, every cycle: we: write; re: rdata is word
+//             raddr after the edge, as it stood BEFORE this edge's write
+//             (read before write). Rf1r1w(w, d) writes whole words, as
+//             ccv_common_rf_1r1w; Rf1r1w(w, d, true) only the bytes
+//             wmask selects, as ccv_common_rf_1r1w_be.
 // rdata holds the last word read when there is no read, as the RTL's. An
 // unwritten word reads as zero here and as whatever the simulator gives in
 // RTL; a lockstep check writes before it reads (sram_test.cpp).
 //
-// W is in bits, a multiple of 8; wmask has a bit per byte, byte 0 in bit 0.
+// W is in bits, a multiple of 8 with byte enables; wmask has a bit per
+// byte, byte 0 in bit 0, and is read only with byte enables.
 // Data is Bits (bits.h): bit i of a word is bit i of the RTL's vector.
 //===----------------------------------------------------------------------===//
 #ifndef CCV_SKEL_SRAM_H
@@ -41,11 +51,12 @@ inline void writeBytes(Bits &dst, const Bits &src, const Bits &mask) {
 }
 } // namespace sram_detail
 
-/// One port: read or write, a cycle each.
+/// One port, every other cycle at most: a write, or a read whose data
+/// arrives two edges on.
 class Sram1rw {
 public:
   Sram1rw(uint32_t w, uint32_t d) : w_(w), mem_(d, Bits(w)), rdata_(w) {
-    assert(w % 8 == 0 && d >= 2);
+    assert(w >= 1 && d >= 2);
   }
   uint32_t width() const { return w_; }
   uint32_t depth() const { return uint32_t(mem_.size()); }
@@ -53,31 +64,48 @@ public:
   // The inputs, as the pins hold them this cycle.
   bool ce = false, we = false;
   uint32_t addr = 0;
-  Bits wdata, wmask;
+  Bits wdata;
 
   const Bits &rdata() const { return rdata_; }
+  /// Edges that sampled ce set the cycle after one that did.
+  uint64_t violations() const { return violations_; }
 
   void edge() {
+    // A read sampled at the last edge delivers its word at this one, as
+    // the array stood before this edge's write (the RTL's nonblocking read).
+    if (pend_) rdata_ = mem_[paddr_];
+    pend_ = false;
+    violations_ += ce && ceLast_;
+    ceLast_ = ce;
     if (!ce) return;
     assert(addr < mem_.size());
-    if (we)
-      sram_detail::writeBytes(mem_[addr], wdata, wmask);
-    else
-      rdata_ = mem_[addr];
+    if (we) {
+      assert(wdata.size() == w_);
+      mem_[addr] = wdata;
+    } else {
+      pend_ = true;
+      paddr_ = addr;
+    }
   }
 
 private:
   uint32_t w_;
   std::vector<Bits> mem_;
   Bits rdata_;
+  bool pend_ = false, ceLast_ = false;
+  uint32_t paddr_ = 0;
+  uint64_t violations_ = 0;
 };
 
-/// A read port and a write port on one clock, read before write.
-class Sram1r1w {
+/// A register file: a read port and a write port on one clock, each every
+/// cycle, read before write; byte enables only if `byteEn`.
+class Rf1r1w {
 public:
-  Sram1r1w(uint32_t w, uint32_t d) : w_(w), mem_(d, Bits(w)), rdata_(w) {
-    assert(w % 8 == 0 && d >= 2);
+  Rf1r1w(uint32_t w, uint32_t d, bool byteEn = false)
+      : w_(w), byteEn_(byteEn), mem_(d, Bits(w)), rdata_(w) {
+    assert(d >= 2 && (!byteEn || w % 8 == 0));
   }
+  bool byteEnables() const { return byteEn_; }
   uint32_t width() const { return w_; }
   uint32_t depth() const { return uint32_t(mem_.size()); }
 
@@ -94,13 +122,17 @@ public:
       rdata_ = mem_[raddr];
     }
     if (we) {
-      assert(waddr < mem_.size());
-      sram_detail::writeBytes(mem_[waddr], wdata, wmask);
+      assert(waddr < mem_.size() && wdata.size() == w_);
+      if (byteEn_)
+        sram_detail::writeBytes(mem_[waddr], wdata, wmask);
+      else
+        mem_[waddr] = wdata;
     }
   }
 
 private:
   uint32_t w_;
+  bool byteEn_;
   std::vector<Bits> mem_;
   Bits rdata_;
 };
