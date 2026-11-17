@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 372, TI 476, OA 421, IS 196, CP 159, OI 358, RA 153, RI 86, MA 82, DA 124. (AR 369 and OA 426 read for AR-367/OA-424.)
+Conventions 19, AR 373, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 86, DA 125 (2026-11-17 sweep; TI 478 read).
 
 ## State, 2026-11-13
 
@@ -74,6 +74,24 @@ Conventions 19, AR 372, TI 476, OA 421, IS 196, CP 159, OI 358, RA 153, RI 86, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- PHASE 1 SWEEPS (Daniel, DA rev 125: start all now, split MA/RH/AR). MA-21 (rev 86, Needs AR) is the plan.
+  MA: build closed-loop model CCV_DCU_IMPL=p1 (+MIU p1) in own files (sim/dcu, sim/miu; add to
+  sim/skel/blocks.list; select in makeKernelBlock like makeRcu), stubs stay the reference. Knobs: store
+  variant a/af/b (gap 4), arb fixed/rotating, queue depth 0/2/4/8, BANK_AGE, hash. Counters: late loads by
+  reason, re-passes p99/max, per-bank queue occupancy, age holds, fill-lookup collisions.
+  RH (session_01QPk2jvfKM1V5rRfip8FC86; MA now a sender per DA 125): job MA-1 = baseline at branch tip
+  (S1, cm32, cm128, cm32priv, cm128priv, cm128 squeezed 4x), logs ~/ccv-logs/ma1. Then MA's grids.
+  AR: open-loop screen of the 24-point grid, stride microbenchmark kernel, booking.
+
+- MA-20 closed by AR 372 (MA rev 85 accepts): Phase 1 prices (1)+(3) together first (fixed vs rotating
+  on re-pass tail; oldest-first only after A1 NGD check); queue head owns BANK_AGE, entries are deferred
+  work under the bound, 99.9th pct sizing; (2) within-page hash only, bank = PA[9:7]^PA[12:10]^PA[15:13],
+  bar >0.2% over (1). 729-cycle wait was deferred work vs on-time loads, not slot order. When (3)
+  lands, fix the age-owner text in both spec tabs; carry all into dcu-impl.md.
+
+- TI-478: AR 368 landed (9682b03a; L1_ECC 1, L1_CMPL 15). MA rev 83 took it: impl docs must require
+  data at L1_HIT, completion L1_ECC later (zero syndrome), late hit completes at due + 1.
 
 - TI-474 (DA via TI): BIST override, ports up to block wrapper tied off, 1 spare row per instance,
   column repair >8 KiB, SECDED on every SRAM. MA rev 76 answered: asks the 32 KiB limit count data
@@ -124,6 +142,10 @@ Conventions 19, AR 372, TI 476, OA 421, IS 196, CP 159, OI 358, RA 153, RI 86, M
 - DA ruling (TI-461, 2026-11-16): no task carries a date; best effort in priority order; a dependency
   is met by reordering, never a due date. No dates on rows, handoff items or promises.
 
+- Sweep 2026-11-17: register had nothing for MA. Merged ccr-126afa13 9, ccr-183cc441 62,
+  ccr-3868632d 33, ccr-57eff422 24, ccr-80102643 17, ccr-9eb50716 7, ccr-c22116ce 9 (all clean);
+  full gate PASS on db5a70de (ngd 3.9h, cg 3.6h), pushed. Criss-cross sweep merges have ~8
+  merge bases and take minutes each: run them via tools/bg-run.sh, never in the foreground.
 - Sweep 2026-11-16: 9 branches merged (merge commits; 2 slow, multiple merge bases). TI-455: AR 362
   lead landed (e6b1dd68); TI 457: AR 364 + DCU_BANKS 8, DCU_BANK_AGE 16, lead_set_index at 1861cc51. Only MI/DI blocker left: Daniel reads
   the summary, then docs/miu-impl.md + docs/dcu-impl.md. CP-83: coremark-derived-pl-priv in a9241c2.
