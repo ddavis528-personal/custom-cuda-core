@@ -2483,7 +2483,13 @@ private:
       } else {
         if (job_.hit) k_.hit("l1_late");
         to_rcu_.push_back({job_.addr_slot, d, job_.tid});
-        to_ooe_.push_back({job_.memop_slot, cmpl(job_), job_.tid});
+        // Past the data's cycle but not the completion's (CCV_LAT_L1_ECC
+        // apart): the completion still goes past the contract, or OOE takes
+        // it for a hit whose dependants read the register before the data.
+        if (job_.global && now_ <= job_.due)
+          late_faults_.push_back({job_.due + 1, {job_.memop_slot, cmpl(job_), job_.tid}});
+        else
+          to_ooe_.push_back({job_.memop_slot, cmpl(job_), job_.tid});
       }
     }
   }
