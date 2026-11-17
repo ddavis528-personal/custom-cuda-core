@@ -57,7 +57,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - Nothing running (06:30Z 11-17). OI OA-420 pricing DONE and sent: a5dc7eed, rob_retire_lag 1 vs 0,
   all clean. S1 sum +0.16% (mean per-kernel +0.42%; mostly +1 cycle at drain), cm32 +0.50%, cm128 +0.92%.
   stall.rob_full absent (0); used retire.head_wait.rob_full. OI booked it as OI-159 (rev 363); worktree
-  and logs dropped.
+  and logs dropped (too early: OI asked a follow-up 2 min later, answered from the script).
+  Rule: after a release, keep ~/ccv-logs/<job> (small) for a day; drop only worktrees at once.
 - AR-361 DONE, all tables sent to AR: pre-fix sweep (ar361.sh,
   60bceb62; CHECKs on cm128 at sets<512 = TI 450 bug) and post-fix (ar361f.sh, a5481843: required
   four + the 128-set four, all clean; h7/64 2,124,002 = AR's). AR booked it (AR 363, PF-33/PF-47) and
