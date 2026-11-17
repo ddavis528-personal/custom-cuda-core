@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 366, TI 466, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 72, DA 123.
+Conventions 19, AR 367, TI 466, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 73, DA 123.
 
 ## State, 2026-11-13
 
@@ -81,7 +81,9 @@ Conventions 19, AR 366, TI 466, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
   fill buffer. DCU tab rev 41 (.14745, Arrays para). Fallback: idle-cycle write buffer with forwarding.
   AR 365 (open-loop): (a)=MA-17, cm128 late loads 3.30->4.10% (2x 7.03->8.28%); (b) 1-bit lead_store,
   read deferred: late loads unchanged, DCU deferred queue 5 (2x 15). MA rev 72: (a) now; (b) only if Phase 1
-  shows >0.2% on S1. Summary doc rev 20 updated.
+  shows >0.2% on S1. Summary doc rev 20 updated. AR 366 (MA-17 as written): cm128 3.30->4.14%; 2x
+  7.05->9.10%, 40% of it same-line wait. MA rev 73: Phase 1 runs (a), (a+f: forwarding write buffer), (b)
+  closed-loop on S1; cheapest within 0.2% of best wins.
 
 - TI-465 (DA, 2026-11-17): macro pin timing. Addr setup = decode + 6 (SRAM) / 4 (RF); data setup 8/6;
   rdata launch = static D:1 mux / 1.5 + 6/4 (128w SRAM 512b: 18.6, about 6 NGD left). MA rev 70: Phase 1 sizes
