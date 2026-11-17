@@ -447,6 +447,16 @@ struct Config {
   /// as the RTL does (OA's rev 278: to become the default; it waits on
   /// go_tb's divergence at CAS pairs under the lag, OI-87).
   unsigned retire_lag = 0;
+  /// OA 420 (re:OI-158, #52): a retire pick stage. 1 registers the pick:
+  /// the head and the next pick move at once (bandwidth holds), while the
+  /// pick's effects land a cycle later: the entry's free (rename's room and
+  /// the go's run), the RAT commit and the old names' free-list return, and
+  /// the pick's messages (ccv_ooe_miu_retire, ccv_ooe_syu_bar, the fault's
+  /// report). The allocation lag OA 420 (4) adds (al_n/fl_m flopped) costs
+  /// nothing here: the go subtracts last cycle's take from the registered
+  /// run, the room it counts now, and no done reaches an entry the cycle
+  /// after its allocation (the issue pipeline's own floor).
+  unsigned rob_retire_lag = 0;
   /// ROB slice 2's timing (OI-86): a branch's resolution (squash, RAT
   /// restore, redirect, checkpoint free) acts resolve_lag cycles after it
   /// completes, the redirect then leaving from flops (with DA, OA's rev
@@ -2228,6 +2238,8 @@ private:
   /// ret_owner_), and the allocations of the group before last (cand_lag 2).
   std::vector<unsigned> ret_pend_;
   std::vector<std::pair<unsigned, unsigned>> free_defer_;   ///< ret_late: (slot, name) freed next cycle
+  /// rob_retire_lag: last cycle's picks' effects, applied as this one starts.
+  std::vector<std::function<void()>> ret_defer_;
   std::vector<uint8_t> row_alloc_prev_;
   void retPending();
   std::vector<uint16_t> grp_written_;        ///< cand_indep: each slot's GPRs written this group
