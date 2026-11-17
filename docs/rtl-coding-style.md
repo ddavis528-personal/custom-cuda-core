@@ -1314,6 +1314,26 @@ them a 1rw read sampled a cycle early, `ce` two cycles running, which the
 RTL's assertion must stop by name, the `_be` register file's mask ignored,
 and a byte mask honoured by the plain one).
 
+**Size limits** (`tools/check-ngd.py`, MACRO-1; Daniel, 2026-11-17). One
+instance holds W x D / 8 bytes, at the parameters its unit gives it:
+
+| Macro | Least | Most |
+|---|---|---|
+| register file (`ccv_common_rf_1r1w`, `_be`) | 512 B (`CCV_MACRO_RF_MIN_BYTES`) | 8 KiB (`CCV_MACRO_RF_MAX_BYTES`) |
+| SRAM (`ccv_common_sram_1rw`) | 4 KiB (`CCV_MACRO_SRAM_MIN_BYTES`) | 32 KiB (`CCV_MACRO_SRAM_MAX_BYTES`) |
+
+Each bound is allowed. A smaller array is flops or a smaller macro kind; a
+larger one is split into instances (banks, ways). Outside the limits an
+instance needs a waiver in `rtl/macro-waivers.json`: the module, the
+instance as check-ngd names it, the macro, its exact W and D (a change of
+size fails again), `why` (the justification: what it holds, why it cannot
+be resized, split or built otherwise, what was measured), `by` and `date`.
+A waiver that excuses nothing, or lacks a field, is refused. Its controls
+(check-ngd's selftest): the fixture shrunk to a 2 KiB SRAM and a 256-byte
+register file fails both and passes with their waivers; each bound passes
+and one byte past it fails; a waiver of another size, one without its
+`why`, and one that excuses nothing are refused.
+
 **The timing model** (`tools/check-ngd.py`, NGD-8; Daniel, 2026-11-17).
 A macro's pins are timing endpoints and start points, never a path
 through, and each is dearer than a flop's. Each input pin is an endpoint

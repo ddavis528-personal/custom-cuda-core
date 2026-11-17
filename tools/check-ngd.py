@@ -1200,6 +1200,103 @@ def macro_cells(d):
     return out
 
 
+MACRO_WAIVERS = os.path.join(ROOT, "rtl", "macro-waivers.json")
+WAIVER_FIELDS = ("module", "instance", "macro", "W", "D", "why", "by", "date")
+
+
+def macro_size_limits(kind):
+    """(least, most) bytes one instance of a `kind` ("RF" or "SRAM") macro
+    may hold, each bound allowed."""
+    return (int(cg.param("CCV_MACRO_%s_MIN_BYTES" % kind)),
+            int(cg.param("CCV_MACRO_%s_MAX_BYTES" % kind)))
+
+
+def macro_size(insts, waivers):
+    """MACRO-1 (Daniel, 2026-11-17): one register-file instance holds from
+    CCV_MACRO_RF_MIN_BYTES to CCV_MACRO_RF_MAX_BYTES (512 B to 8 KiB), one
+    SRAM from CCV_MACRO_SRAM_MIN_BYTES to CCV_MACRO_SRAM_MAX_BYTES (4 KiB
+    to 32 KiB), W x D / 8 bytes at the parameters a unit gives it. Outside
+    that, a waiver in rtl/macro-waivers.json names the instance at exactly
+    that macro, W and D, with its justification (why) and its author (by):
+    a change of size fails again. `insts` is [(module, instance, macro, W,
+    D)]. Returns (lines, failures): a waiver that excuses nothing, or lacks
+    a field, is refused."""
+    lines, fails, used = [], [], set()
+    for i, x in enumerate(waivers):
+        miss = [f for f in WAIVER_FIELDS if not str(x.get(f, "")).strip()]
+        if miss:
+            fails.append("MACRO-1 waiver %d (%s.%s) lacks %s" % (
+                i, x.get("module"), x.get("instance"), ", ".join(miss)))
+            used.add(i)
+    for mod, inst, typ, w, d in sorted(set(insts)):
+        lo, hi = macro_size_limits(MACRO_KIND[typ])
+        nb = w * d / 8.0
+        if lo <= nb <= hi:
+            continue
+        what = "%s %s.%s, %d x %d bits (%g bytes), %s the %d to %d bytes one %s instance may " \
+               "hold" % (typ, mod, inst, d, w, nb, "under" if nb < lo else "over", lo, hi,
+                         MACRO_KIND[typ])
+        hit = [i for i, x in enumerate(waivers)
+               if (x.get("module"), x.get("instance"), x.get("macro"), x.get("W"), x.get("D"))
+               == (mod, inst, typ, w, d)]
+        used |= set(hit)
+        good = [i for i in hit if all(str(waivers[i].get(f, "")).strip() for f in WAIVER_FIELDS)]
+        if good:
+            lines.append("MACRO-1 waived: %s (by %s)" % (what, waivers[good[0]]["by"]))
+        else:
+            fails.append("MACRO-1 %s: refactor, or waive it with its justification in "
+                         "rtl/macro-waivers.json" % what)
+    for i, x in enumerate(waivers):
+        if i not in used:
+            fails.append("MACRO-1 waiver %d (%s.%s, %s %s x %s) excuses nothing: no unit "
+                         "instantiates it at that size outside the limits" % (
+                             i, x.get("module"), x.get("instance"), x.get("macro"),
+                             x.get("D"), x.get("W")))
+    return lines, fails
+
+
+def macro_insts(units):
+    """[(module, instance, macro, W, D)] for every hard macro the units'
+    netlists instantiate, at their parameters."""
+    return [(u.module, cell.lstrip("\\"), typ, w, d) for u in units
+            for cell, (typ, w, d) in (getattr(u.t, "macros", None) or {}).items()]
+
+
+def macro_size_selftest(expect, ok, small):
+    """MACRO-1's controls: the compliant fixture (an 8 KiB SRAM, a 1 KiB
+    register file) passes; the fixture shrunk (a 2 KiB SRAM, a 256-byte
+    register file) fails both, and a waiver of each excuses it; the bounds
+    themselves pass and one byte past each fails; a waiver of another size,
+    one without its why, and one that excuses nothing are refused."""
+    lines, fails = macro_size(macro_insts([ok]), [])
+    expect(not fails and not lines, "MACRO-1: the compliant fixture failed: %s" % fails)
+    si = macro_insts([small])
+    _, fails = macro_size(si, [])
+    expect(len(fails) == 2 and any("u_sram" in f and "under" in f for f in fails)
+           and any("u_rf" in f and "under" in f for f in fails),
+           "MACRO-1: a 2 KiB SRAM and a 256-byte register file passed: %s" % fails)
+    wv = [{"module": m, "instance": i, "macro": t, "W": w, "D": d, "why": "selftest",
+           "by": "TI", "date": "2026-11-17"} for m, i, t, w, d in sorted(set(si))]
+    lines, fails = macro_size(si, wv)
+    expect(not fails and len(lines) == 2, "MACRO-1: waivers of the small fixture did not "
+           "excuse it: %s %s" % (lines, fails))
+    _, fails = macro_size(si, [dict(wv[0], D=wv[0]["D"] * 2), wv[1]])
+    expect(len(fails) == 2, "MACRO-1: a waiver of another size excused an instance: %s" % fails)
+    _, fails = macro_size(si, [dict(wv[0], why=" "), wv[1]])
+    expect(len(fails) == 2 and any("lacks why" in f for f in fails),
+           "MACRO-1: a waiver without its justification was taken: %s" % fails)
+    _, fails = macro_size(macro_insts([ok]), wv)
+    expect(len(fails) == 2 and all("excuses nothing" in f for f in fails),
+           "MACRO-1: waivers that excuse nothing were not refused: %s" % fails)
+    for typ in ("ccv_common_sram_1rw", "ccv_common_rf_1r1w", "ccv_common_rf_1r1w_be"):
+        lo, hi = macro_size_limits(MACRO_KIND[typ])
+        at = [("m", "u", typ, 64, lo * 8 // 64), ("m", "v", typ, 64, hi * 8 // 64)]
+        past = [("m", "u", typ, 8, lo - 1), ("m", "v", typ, 64, hi * 8 // 64 + 1)]
+        expect(not macro_size(at, [])[1] and len(macro_size(past, [])[1]) == 2,
+               "MACRO-1: %s's bounds (%d, %d bytes) not held exactly: %s %s"
+               % (typ, lo, hi, macro_size(at, [])[1], macro_size(past, [])[1]))
+
+
 def macro_ref(what, w, d):
     """The depth of a static reference circuit, as the gate times a unit:
     "dec", a one-hot decode of $clog2(d) bits to d lines; "mux", a d:1
@@ -2158,6 +2255,14 @@ def main_check(only=None, seed=False):
     # The macros' own contract (Daniel, 2026-11-17): every pin timed, and
     # byte enables on the _be register file alone.
     fails += ["NGD-8 macro contract: " + x for x in macro_contract()]
+    # Each macro instance's size (Daniel, 2026-11-17), a waiver outside it.
+    lines, more = macro_size(macro_insts(units), load(MACRO_WAIVERS, "waivers", []))
+    for l in lines:
+        print("  " + l)
+    print("  macro sizes (MACRO-1): %d instance(s) at their units' parameters; RF %d to %d "
+          "bytes, SRAM %d to %d" % ((len(set(macro_insts(units))),) + macro_size_limits("RF")
+                                    + macro_size_limits("SRAM")))
+    fails += more
     if seed:
         seed_fanout(units, budgets, ratchet, modules)
     for mod in sorted(fan):
@@ -2982,6 +3087,9 @@ def macro_selftest(expect):
     MACRO_NUMBERS.update(flops=flops.t, deep_idx=deep.t.ro.get(addr),
                          deep_rd=rdeep.t.ir.get(rd))
     macro_contract_selftest(expect)
+    small = macro_unit("fx_sram_small", D=32, W2=128, D2=16)
+    small.measure()
+    macro_size_selftest(expect, ok, small)
     macro_pin_selftest(expect, ok, none)
 
 
