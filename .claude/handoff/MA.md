@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 370, TI 475, OA 421, IS 194, CP 159, OI 358, RA 153, RI 86, MA 80, DA 123. (AR 369 and OA 426 read for AR-367/OA-424.)
+Conventions 19, AR 371, TI 475, OA 421, IS 194, CP 159, OI 358, RA 153, RI 86, MA 81, DA 123. (AR 369 and OA 426 read for AR-367/OA-424.)
 
 ## State, 2026-11-13
 
@@ -88,7 +88,11 @@ Conventions 19, AR 370, TI 475, OA 421, IS 194, CP 159, OI 358, RA 153, RI 86, M
   TI-475 (DA) answered (a): 32 KiB is logical size before ECC, so 2 x 512x576 per bank stays, no
   waiver; BIST groups <=32 KiB; ECC outside the wrapper; ECC events to AR's fault system. DCU tab
   rev 45 has a new arrays item recording TI-474/475; MA rev 80 proposed the 2-bit-error handling
-  (clean: invalidate + refetch; dirty: AR's). Waiting: TI's BIST coding style, AR's fault system. Then
+  (clean: invalidate + refetch; dirty: AR's). AR 369 proposed the machine-error system
+  (CE count, clean UE refetch, attributable UE -> F-MACHINE, unattributable -> core-fatal via
+  ccv_<blk>_cru_err, ccv_common_err). MA rev 81: agree, but a dirty-line UE is core-fatal for DCU
+  (no ue on dcu_miu_rsp; SPM's ue passes through MIU). Waiting: Daniel on AR 369 (a)-(d) and MA's
+  change; TI's BIST coding style. Then
   update the DCU tab arrays paragraph and carry it into dcu-impl.md. TI-472/473: no action (TI-473
   fixed 128w SRAM launch to 16.3; 512w stays TI-470's 18.5, 6.5 left).
 - TI-467 (DA, 2026-11-17): macro size per instance, RF 512 B-8 KiB, SRAM 4-32 KiB (check-ngd MACRO-1,
