@@ -1345,7 +1345,9 @@ smallest continues the line; one above the largest gets no credit for it. So
 two 16 KiB SRAMs cost about 11.4% more per bit than one of 32 KiB, and a
 512 B register file 20% more than one of 8 KiB. The penalty multiplies the
 type's own weight (3 times an SRAM's per bit for a register file, 4.5 times
-with byte enables). check-ngd prints each instance's penalty and its area in
+with byte enables). Those weights compare the types each at its largest,
+most efficient size (Daniel, 2026-11-17): an 8 KiB register file against
+a 32 KiB SRAM. check-ngd prints each instance's penalty and its area in
 SRAM-bit equivalents, every run. Its controls check the line: no penalty at
 the largest size, the full 20% at the smallest, 10% at the middle, more below
 the smallest, none above the largest, and the weights.

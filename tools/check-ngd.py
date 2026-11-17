@@ -1327,6 +1327,13 @@ def macro_size_selftest(expect, ok, small):
                and got[3] > full and abs(got[4]) < 1e-9,
                "MACRO-1: %s's efficiency penalty at its largest, smallest, middle, half the "
                "smallest and twice the largest: %s" % (typ, got))
+    # The types' weights hold at each one's largest size (Daniel, 2026-11-17):
+    # an 8 KiB register file is exactly 3 times its bits, 4.5 with byte enables.
+    for typ, k in (("ccv_common_rf_1r1w", 3.0), ("ccv_common_rf_1r1w_be", 4.5)):
+        n = macro_size_limits("RF")[1] * 8 // 64
+        expect(abs(macro_cost(typ, 64, n)[1] - 64 * n * k) < 1e-6,
+               "MACRO-1: %s at its largest size weighs %g SRAM bits, not %g times its bits"
+               % (typ, macro_cost(typ, 64, n)[1], k))
     p_sram, w_sram = macro_cost("ccv_common_sram_1rw", 512, 512)
     p_be, w_be = macro_cost("ccv_common_rf_1r1w_be", 512, 128)
     expect(abs(w_sram - 512 * 512) < 1e-6 and

@@ -502,7 +502,7 @@
       "status": "target",
       "source": "Daniel, 2026-11-16 (DA tab rev 123, MA-16: a register file is 3 times an SRAM's area per bit)",
       "require": "CCV_MACRO_AREA_RF_PCT >= 100",
-      "doc": "A register-file macro's area per bit (ccv_common_rf_1r1w, ccv_common_rf_1r1w_be), in percent of a 1RW SRAM's (ccv_common_sram_1rw): the weight any area count of the arrays gives it. docs/rtl-coding-style.md, \"Hard macros\"."
+      "doc": "A register-file macro's area per bit (ccv_common_rf_1r1w, ccv_common_rf_1r1w_be), in percent of a 1RW SRAM's (ccv_common_sram_1rw), each at its most efficient, largest legal size (CCV_MACRO_RF_MAX_BYTES, CCV_MACRO_SRAM_MAX_BYTES; Daniel, 2026-11-17): the weight any area count of the arrays gives it, before CCV_MACRO_SIZE_PENALTY_PCT's size penalty. docs/rtl-coding-style.md, \"Hard macros\"."
     },
     {
       "name": "CCV_MACRO_AREA_BYTE_EN_PCT",
@@ -510,7 +510,7 @@
       "status": "target",
       "source": "Daniel, 2026-11-17 (byte enables on a register file only, at 1.5 times its area)",
       "require": "CCV_MACRO_AREA_BYTE_EN_PCT >= 100",
-      "doc": "Byte enables' area, in percent of the register file without them: ccv_common_rf_1r1w_be's area per bit is CCV_MACRO_AREA_RF_PCT * this / 100 of an SRAM's (4.5 times at 300 and 150). Only a register file has byte enables; an SRAM writes whole words (Daniel, 2026-11-17). docs/rtl-coding-style.md, \"Hard macros\"."
+      "doc": "Byte enables' area, in percent of the register file without them, both at the largest legal size (Daniel, 2026-11-17): ccv_common_rf_1r1w_be's area per bit is CCV_MACRO_AREA_RF_PCT * this / 100 of an SRAM's (4.5 times at 300 and 150). Only a register file has byte enables; an SRAM writes whole words (Daniel, 2026-11-17). docs/rtl-coding-style.md, \"Hard macros\"."
     },
     {
       "name": "CCV_MACRO_RF_MIN_BYTES",
