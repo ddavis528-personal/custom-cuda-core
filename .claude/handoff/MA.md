@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 365, TI 465, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 70, DA 123.
+Conventions 19, AR 365, TI 466, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 71, DA 123.
 
 ## State, 2026-11-13
 
@@ -74,6 +74,12 @@ Conventions 19, AR 365, TI 465, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- TI-466 (DA, 2026-11-17): no SRAM byte enables; only ccv_common_rf_1r1w_be has wmask (4.5x SRAM/bit).
+  MA-17 (rev 71, Needs AR, TI FYI): store hit = its lookup's line read + D3 merge + whole-line write in the
+  bank's next free slot (2 slots a store); same-line lookups wait for the write; partial miss merges in the
+  fill buffer. DCU tab rev 41 (.14745, Arrays para). Fallback: idle-cycle write buffer with forwarding.
+  Waiting on AR's closed-loop run with the store write slot. Summary doc not yet updated for this.
 
 - TI-465 (DA, 2026-11-17): macro pin timing. Addr setup = decode + 6 (SRAM) / 4 (RF); data setup 8/6;
   rdata launch = static D:1 mux / 1.5 + 6/4 (128w SRAM 512b: 18.6, about 6 NGD left). MA rev 70: Phase 1 sizes
