@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 83, DA 124 (2026-11-17 sweep; TI 478 read).
+Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 84, DA 124 (2026-11-17 sweep; TI 478 read).
 
 ## State, 2026-11-13
 
@@ -74,6 +74,11 @@ Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- MA-20 (rev 84, Needs AR; Daniel asked): Phase 1 bank studies: (1) fair arbitration (rotating /
+  oldest-first) vs slot order; (2) XOR-hashed set index (lead timing, probe hash); (3) per-bank
+  conflict queue in DCU sized at 99.9th pct of waiter occupancy, overflow to MIU re-pass; also settles
+  who tracks BANK_AGE (DCU tab vs MIU tab disagree). Waiting on AR.
 
 - TI-478: AR 368 landed (9682b03a; L1_ECC 1, L1_CMPL 15). MA rev 83 took it: impl docs must require
   data at L1_HIT, completion L1_ECC later (zero syndrome), late hit completes at due + 1.
