@@ -3090,9 +3090,11 @@ def macro_pin_selftest(expect, ok, none):
         # stage less that is the knob's slack on this pin.
         slack = STAGE - by[pin] - depth[pin]
         if knob.endswith("DYN_PCT"):
-            # A dynamic mux no faster than the static: both macros' read
-            # data launch later, so only this pin's own failure is asked.
-            MACRO_KNOB_SET[knob] = 100
+            # The dynamic mux's speed-up cut until this pin's launch is past
+            # its slack: both macros' read data launch later, so only this
+            # pin's own failure is asked.
+            mux = macro_ref("mux", 512, 128)
+            MACRO_KNOB_SET[knob] = mux * 100.0 / (mux / macro_dyn() + slack + 0.5)
         else:
             MACRO_KNOB_SET[knob] = float(cg.param(knob)) + slack + 0.5
         try:

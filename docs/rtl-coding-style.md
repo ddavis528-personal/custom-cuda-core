@@ -1344,9 +1344,10 @@ is sampled a cycle before its data leaves (the SRAM's two cycles before),
 so it is an endpoint with the write address's setup.
 
 At the fixture's sizes these come to: a 128-word 512-bit SRAM, address
-setup 11.5 (decode 5.5), data 8, read data launched at 18.6 (a static mux
-of 18.9); a 128-word 64-bit register file, address 9.5, data 6, read data
-at 15.1. Read data wants a flop close behind it: the fixture's SRAM read
+setup 11.5 (decode 5.5), data 8, read data launched at 16.3 (a static mux
+of 15.4), 8.7 left for logic after it; a 128-word 64-bit register file,
+address 9.5, data 6, read data at 13.5. Read data wants a flop close
+behind it: the fixture's SRAM read
 data takes one XOR into its accumulator, and the XOR fold of the whole
 word it used before (12 NGD) is now a control that must fail.
 
