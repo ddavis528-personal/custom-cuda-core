@@ -92,7 +92,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 375, OA 428, TI 478, RA 154, RI 90,
+- **Bookmarks** (revs read through): AR 375, OA 428, TI 479, RA 154, RI 90,
   IS 197, CP 159, OI 366, DA 125, MA 88, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -250,6 +250,13 @@ Credit rules (TI-49):
      priv forms (32 runs; RH runs the defaults) plus step (iv)'s stride
      runs. Needs: p1 on a branch (none on any remote yet), its invocation,
      and MA's yes. One cm128 at a time (about 7 GB; disk had 15 GB free).
+   - TI 479: the stride benches are built on ti-stride (also
+     gate-scratch/TI-stride, not yet gated) at test/bench/{transpose,sgemm}-
+     n{256,512}; run one with tools/time-bench.sh <dir>. Cycles (stub FET /
+     perfect): transpose-n256 and n512 both 38649 / 37469 (428 DCU lookups,
+     identical as AR 373 predicted), sgemm-n256 189253 / 187537, sgemm-n512
+     374035 / 368223. sgemm FAILs on a false RCU lane-tid CHECK with SFU ops
+     (RI's fix); its numbers wait on it, and transpose's stand.
 0b. **MA-20 bank scheduling: answered, AR 372 (.601453; notice to MA).**
    All three go into Phase 1, (1) fairness and (3) the conflict queue priced
    together first. The 729-cycle wait was deferred work behind loads, not
