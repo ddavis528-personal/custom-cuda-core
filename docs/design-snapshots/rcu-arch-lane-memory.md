@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Lane_and_memory_paths rev=18 exported=2026-11-14 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Lane and memory paths*, at revision 18 on 2026-11-14 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Lane_and_memory_paths rev=19 exported=2026-11-16 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Lane and memory paths*, at revision 19 on 2026-11-16 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Lane and memory paths
 
@@ -31,7 +31,7 @@ Every per-section field is written for every section the op owns, not only its l
 
 A lane consumer issued in A reads the PRF in A+1. A lane producer issued in A\_p lands in A\_p + `CCV_LAT_LANE` − 1. So the lanes must forward exactly when the age a = A − A\_p satisfies `CCV_LAT_LANE_BYP` ≤ a ≤ `CCV_LAT_LANE` − 2 (4 to 5 at `CCV_LAT_LANE` 7, RA rev 95); at a ≥ 6 the PRF read has the value. The tracker:
 
-- **History:** a shift register, depth `CCV_LAT_LANE` − 2, of per-section entries pushed in A for every lane-class op that writes a GPR: {valid, dst row, dst pos}; the producer's lead section is implicit in the entry's position. Copies are not pushed. An SFU result reaches the PRF at A\_p + 11 and has no lane-local bypass; under the SFU interim (RA rev 140 (3)) SFU ops are lane-class and are pushed like lane ops.
+- **History:** a shift register, depth `CCV_LAT_LANE` − 2, of per-section entries pushed in A for every lane-class op that writes a GPR: {valid, dst row, dst pos}; the producer's lead section is implicit in the entry's position. Copies are not pushed. An SFU result reaches the PRF at A\_p + 11 and has no lane-local bypass; SFU ops are not pushed: the history takes lane ops that write a GPR only (RA rev 146).
 - **Compare (stage I):** for each owner o, operand port i (0-3), the source's (row, pos) on the wire against every history entry at ages `CCV_LAT_LANE_BYP` to `CCV_LAT_LANE` − 2 (8 entries: two ages of four sections; the 2-bit age field covers them): a 10-bit equality. At most one matches (single assignment; asserted).
 - **Select:** on a match, `operand_byp`\[k\]\[i\] = {age − `CCV_LAT_LANE_BYP` (2 bits), producer's lead section (2), forward = 1}, LSB first; else 0. Written for every k o owns. Flopped at A's edge (`byp_a`), moved into the payload at A+1's edge.
 
@@ -39,7 +39,7 @@ A lane consumer issued in A reads the PRF in A+1. A lane producer issued in A\_p
 
 At A each owned section pushes a descriptor into `lwb_d[k]`, depth `CCV_LAT_LANE` − 1: {valid, writes this bank (the op owns section k and writes a GPR: the Register file tab's LW enable), dst row (binary), lane mask (all ones; \~`active` for the GPR copy)}, and the op's lead section adds {`pred_we`, pd and old-destination predicate rows (binary), rob\_tag, done\_row, unit}. `active` comes from `rcu_pred`'s `active_a` at A+1 into stage 2. The banks written are the op's footprint, never `secmask(dst_width, dst_pos)`: they differ for chwidth's widening, whose `dst_width` names the old width (AR-24) while its footprint covers the new one, and the new upper sections must be written (RI-4). In A+6 (`cr08h`) bank k's LW port writes `lane_rcu_res` c\_l `result`\[8k+7:8k\] under the descriptor (Register file tab), and PLk writes the predicate (Predicate file tab). The lanes' `sec_valid` is asserted equal to the sections the op owns (`ov|sov`); it is never an enable (CG-5).
 
-SFU ops push into `swb_d`, depth `CCV_LAT_SFU` − 1, and write the SFU result field (RA-3) through SW in A+11. Under the SFU interim (RA rev 140 (3)) the three SFU ops (RCP\_U32, RSQRT\_F32, RCP\_F32\_P; RA rev 146) are classed as lane ops (OI-16) and take lane slots 0-3, so `swb_d` and SW are built but unexercised until RA-16 (b) settles; RA asks RI for an SFU bench.
+SFU ops push into `swb_d`, depth `CCV_LAT_SFU` − 1, and write the SFU result field (RA-3) through SW in A+11. Since RA rev 146 the three SFU ops decode U\_SFU and go through `swb_d`, SW at A+11 and done slot 4; C\_FADD stays a lane op.
 
 All 32 lane copies must deliver a result in the same cycle (lockstep). There is no per-side valid flop: the descriptors drive the writes, and each copy's valid is asserted against them.
 

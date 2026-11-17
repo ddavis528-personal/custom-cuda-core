@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 365, TI 453, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, MA 68, DA 123.
+Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 83, DA 124 (2026-11-17 sweep; TI 478 read).
 
 ## State, 2026-11-13
 
@@ -75,6 +75,66 @@ Conventions 19, AR 365, TI 453, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
 
 ## Open work, most urgent first
 
+- TI-478: AR 368 landed (9682b03a; L1_ECC 1, L1_CMPL 15). MA rev 83 took it: impl docs must require
+  data at L1_HIT, completion L1_ECC later (zero syndrome), late hit completes at due + 1.
+
+- TI-474 (DA via TI): BIST override, ports up to block wrapper tied off, 1 spare row per instance,
+  column repair >8 KiB, SECDED on every SRAM. MA rev 76 answered: asks the 32 KiB limit count data
+  bits (keeps 2 x 512x576 per bank; else 4 x 512x288, 10% penalty); loads use data speculatively at
+  L1_HIT 7, non-zero syndrome cancels +1 cycle and replays (asked OA if the scheduler takes it; else
+  L1_HIT 8, AR prices); store merge reads corrected data; encode in its own stage (fill +1 stage);
+  spare rows ~11.5k flops. OA 424: OOE takes the cancel as a miss; L1_HIT stays 7, cmpl derive 14 to 15 (OA's row
+  for TI); MA rev 78 confirmed the 1-cycle syndrome (~15 NGD). AR 367: ECC'd merge (gap 4) is in
+  Phase 1's store variants (MA rev 77). AR-368: new CCV_LAT_L1_ECC (MA's, = 1), cmpl 14->15, contract text for
+  TI. MA rev 79 took RA 153's MIU conditions (corrected beat via fill return path/RA-28 (a), data
+  before completion, kill as miss, MI injected-syndrome knob + DED test): carry into impl docs.
+  TI-475 (DA) answered (a): 32 KiB is logical size before ECC, so 2 x 512x576 per bank stays, no
+  waiver; BIST groups <=32 KiB; ECC outside the wrapper; ECC events to AR's fault system. DCU tab
+  rev 45 has a new arrays item recording TI-474/475; MA rev 80 proposed the 2-bit-error handling
+  (clean: invalidate + refetch; dirty: AR's). AR 369 proposed the machine-error system
+  (CE count, clean UE refetch, attributable UE -> F-MACHINE, unattributable -> core-fatal via
+  ccv_<blk>_cru_err, ccv_common_err). MA rev 81: agree, but a dirty-line UE is core-fatal for DCU
+  (no ue on dcu_miu_rsp; SPM's ue passes through MIU). DECIDED as AR 370 (DA rev 124), MA's change
+  folded in; clean-line refetch bounded by a per-location track table. MA-19 (rev 82, Needs TI):
+  CCV_DCU_UE_TRACK = 16, 13-bit locations; DCU tab rev 46 holds it and ccv_common_err. TI-476:
+  flop arrays scan only. SPM is RF (AR 371), so DCU data is the only SRAM. Waiting: TI's BIST style. Then
+  update the DCU tab arrays paragraph and carry it into dcu-impl.md. TI-472/473: no action (TI-473
+  fixed 128w SRAM launch to 16.3; 512w stays TI-470's 18.5, 6.5 left).
+- TI-467 (DA, 2026-11-17): macro size per instance, RF 512 B-8 KiB, SRAM 4-32 KiB (check-ngd MACRO-1,
+  rtl/macro-waivers.json). MA-18 (rev 74): no waiver. Data bank = 2 x (512w x 512b, 32 KiB) SRAM, 16 in all
+  (MA rev 75, TI-469: size penalty 20% at a type's minimum, 0 at max; 16 KiB fallback only if timing fails;
+  TI 470: 512w SRAM addr setup 13.1, rdata launch 18.5, 6.5 NGD left: flopped rdata fits);
+  tag RF word = the set (8 x 35 tags + 7 PLRU, 64 x 288 b, 2,304 B, 8 instances; hit's LRU write-back dropped
+  if a fill wrote the set since its read); payload store RF only (5,760 B, or 2 x 2,880 B); window table RF
+  512 B passes: TI-468 (DA) rules limits inclusive. Size waivers are written by the block architect (MA
+  for MIU/DCU), DA approves before block completion. DCU tab rev 43, MIU tab rev 137.
+
+- TI-466 (DA, 2026-11-17): no SRAM byte enables; only ccv_common_rf_1r1w_be has wmask (4.5x SRAM/bit).
+  MA-17 (rev 71, Needs AR, TI FYI): store hit = its lookup's line read + D3 merge + whole-line write in the
+  bank's next free slot (2 slots a store); same-line lookups wait for the write; partial miss merges in the
+  fill buffer. DCU tab rev 41 (.14745, Arrays para). Fallback: idle-cycle write buffer with forwarding.
+  AR 365 (open-loop): (a)=MA-17, cm128 late loads 3.30->4.10% (2x 7.03->8.28%); (b) 1-bit lead_store,
+  read deferred: late loads unchanged, DCU deferred queue 5 (2x 15). MA rev 72: (a) now; (b) only if Phase 1
+  shows >0.2% on S1. Summary doc rev 20 updated. AR 366 (MA-17 as written): cm128 3.30->4.14%; 2x
+  7.05->9.10%, 40% of it same-line wait. MA rev 73: Phase 1 runs (a), (a+f: forwarding write buffer), (b)
+  closed-loop on S1; cheapest within 0.2% of best wins.
+
+- TI-465 (DA, 2026-11-17): macro pin timing. Addr setup = decode + 6 (SRAM) / 4 (RF); data setup 8/6;
+  rdata launch = static D:1 mux / 1.5 + 6/4 (128w SRAM 512b: 18.6, about 6 NGD left). MA rev 70: Phase 1 sizes
+  macros (words x width) per bank to fit, rdata straight into a flop; any shortfall is a hit stage on DI's
+  measured need (PF-51). Carry into docs/dcu-impl.md and the Phase 1 resource model.
+
+- DA ruling (TI-461, 2026-11-16): no task carries a date; best effort in priority order; a dependency
+  is met by reordering, never a due date. No dates on rows, handoff items or promises.
+
+- Sweep 2026-11-17: register had nothing for MA. Merged ccr-126afa13 9, ccr-183cc441 62,
+  ccr-3868632d 33, ccr-57eff422 24, ccr-80102643 17, ccr-9eb50716 7, ccr-c22116ce 9 (all clean);
+  full gate PASS on db5a70de (ngd 3.9h, cg 3.6h), pushed. Criss-cross sweep merges have ~8
+  merge bases and take minutes each: run them via tools/bg-run.sh, never in the foreground.
+- Sweep 2026-11-16: 9 branches merged (merge commits; 2 slow, multiple merge bases). TI-455: AR 362
+  lead landed (e6b1dd68); TI 457: AR 364 + DCU_BANKS 8, DCU_BANK_AGE 16, lead_set_index at 1861cc51. Only MI/DI blocker left: Daniel reads
+  the summary, then docs/miu-impl.md + docs/dcu-impl.md. CP-83: coremark-derived-pl-priv in a9241c2.
+
 - 2026-11-16: DA rev 123 (Daniel): SRAM is 1RW (6T) only, accessed every other cycle; banking for
   bandwidth; 1R1W or every-cycle arrays are RF at 3x area/bit; tags RF, data SRAM. MA-16 (rev 67,
   Needs AR, TI): DCU data >= 8 half-rate banks (bits [9:7], lead bank field 2->3 bits, 48 lead flops),
@@ -83,7 +143,7 @@ Conventions 19, AR 365, TI 453, OA 418, IS 194, CP 158, OI 350, RA 148, RI 82, M
   banks. SETTLED (MA rev 68): AR 364 agreed 8 banks (16 buys <0.2% open-loop); the bank is
   set_index's low 3 bits, so no bank field: lead = 9 bits/slot, 36 DCU lead flops (my 48 was wrong).
   DCU gets an age bound on hole-filling, CCV_DCU_BANK_AGE (start 16; AR saw 729-cycle starvation);
-  Phase 1 model sets it. TI-453: macro library on 11-18; told TI the lead width derives from
+  Phase 1 model sets it. TI 464: macro library landed 0b270eb3, checked against DA 123 (MA rev 69, matches); told TI the lead width derives from
   CCV_DCU_SETS only. Spec tabs updated (MIU rev 136, DCU rev 39) and summary doc (rev 19).
 
 - 2026-11-15 late: doc check done (MIU tab rev 128, DCU tab rev 37: drafts -> decided, Strawman B

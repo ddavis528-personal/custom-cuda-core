@@ -1,6 +1,6 @@
 # IS handoff (ISA owner)
 
-Updated 2026-11-15. Keep this current at every task's end; it is what
+Updated 2026-11-16. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds IS's.
 
 ## Role and working rules
@@ -53,7 +53,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 357, OA 418, IS 194, TI 441, OI 350, CP 158, DA 119, RA 148, RI 82, MA 58.
+Conventions 19, AR 372, OA 428, IS 197, TI 477, OI 366, CP 159, DA 124, RA 154, RI 90, MA 82.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Pings Friday 2026-11-13 sent to AR, OA, TI, OI, CP, RA, RI, MA, RH (MA now in roster, session_01QPk2jyUbWA7fW9YpUwqdxk); all nine ponged 11-13, each checked with notice.py check (Saturday check done). Next pings Friday 2026-11-20.
@@ -66,6 +66,10 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
+- 11-17 sweep: nothing for IS (MA 81 superseded by DA 124/AR 370; TI 476 BIST/macros ruling, not ISA). Compiler: no peer commits; 103976f (O-86) pushed. Core: merged ccr-183cc441-doowtf, ccr-57eff422-5tdecg, ccr-80102643-4n8bv4, ccr-9eb50716-lecnjf, ccr-c22116ce-1vzyjg, claude/miu-dcu-microarch-spec-664pgr; full gate run.
+- 11-17: O-86 done. AR-369 answered (IS rev 196); Daniel decided (DA rev 124, AR 370); O-86 written in ISA v1.9 (compiler 103976f, VERIFY PASS, pushed): F-MACHINE §12.3 (Execute or core-wide; v1 core-wide only), last in §12.5, §12.7 core-wide exception, host-only error state, §12.8. IS rev 197, notices AR, TI, OA, MA. TI owns code 10 and the re-pin. Also DA rev 124: SPM arrays are RFs (AR 371), no ECC.
+- 11-16 sweep pushed: core 4c28d35d full PASS (ngd 9580 s, cg 8944 s) after TI's check-cg memory fix 804d1e6f (OI-157); the earlier 9c8f887e red (check-cg OOM, IS rev 195 re:TI-456/OI-155) is resolved. Compiler pushed 807056d.
+- 2026-11-16 sweep: nothing for IS. MA withdrew MA-58's question to IS (MA 59). AR 358/CP-83: perf benches price coremark-derived-priv (O-83 form); plain is correctness only. DA 120 (owners move NGD budgets when convergence passes), DA 121 (L1 built 512 KiB, configure down by sets; MIU/DCU stay separate), DA 122 (RCU waivers), DA 123 (SRAM 1RW, every other cycle; RF 3x area). None touches the ISA.
 - 2026-11-15: answered re:MA-58 (IS rev 194; notices to MA, AR, CP, TI): O-83 lets a thread-private per-thread block live in the run (via __ccv_privbase, size within L - F); host-shared or cross-thread data cannot; no ISA change. cm32's 26,711 gathers run the plain .global form; which kernel the benches run is CP/TI/AR's (AR 357). 11-14 sweep pushed 7d0a78d0 (full PASS, ~3.3 h: ngd 10211 s, cg 9665 s).
 - 11-12 sweep pushed (core 493d5698 full PASS). 11-13: answered MA-2 (re:MA-2, IS rev 191-192): ISA fixes no page size, all ISA regions 64 KiB-aligned, no objection to CCV_L_PAGE_SHIFT 16; AR owns cross-block cost. AR agreed (AR 348) and TI landed CCV_L_PAGE_SHIFT 16 (eda137fa, MA-15). MA-10: Q-60 whole-TLB invalidate only, no ASID; MA-11 line-granular per-warp ordering; none changes the ISA. DA (MA tab, 11-13): MI/DI start only after AR grill-me + summary to Daniel.
 - New agent MA (MIU+DCU architect; DA 117-119), MI/DI implement, C++ model
@@ -97,7 +101,7 @@ Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
   default), DA 108 (boundary lead slice counts on receiver's 2%), DA (CI):
   GitHub CI gates only release/weekly/dispatch; red ubuntu-latest runs ignored.
   RA-19 closed in both sims (CP 20db9c9, TI 9ce7381).
-- ISA decisions this cycle: O-73 to O-85. O-85 (RA-20, DA 2026-11-02, DA tab
+- ISA decisions this cycle: O-73 to O-86. O-85 (RA-20, DA 2026-11-02, DA tab
   rev 100): warp-collective semantics, diagonal unballot; compiler a70f392.
   RA-19: pmov merges by issue mask (3f202bc). Waiting: TI opcodes, CP ccv-sim.
   DA-tab decision rows are written in Daniel's session by the agent he answers. Latest: O-83 (interleaved
