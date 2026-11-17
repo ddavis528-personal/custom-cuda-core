@@ -60,11 +60,11 @@ A. Task 26: gate-push of 117e8117 (ti-nohit, worktree /home/user/ti-sram;
    log /root/ccv-logs/job-gate-push-20261117-031815-29294.log. On pass:
    landing row to MA, AR with corrected launches (SRAM 16.3, RF 13.5).
 B. Task 27: MACRO-1 size limits (DA 11-17, TI 467 rang MA AR RA): RF 512 B-
-   8 KiB, SRAM 4-32 KiB per instance, inclusive (asked Daniel), waivers in
+   8 KiB, SRAM 4-32 KiB per instance, inclusive (DA), waivers in
    rtl/macro-waivers.json. Commit 2c032fa9 on branch ti-size, worktree
    /home/user/ti-size, backed up to gate-scratch/TI-size. After A lands:
    merge the landed tip into ti-size, gate-push from there, landing row.
-C. Open question to Daniel: are ce/we/re timed with the address setup?
+C. Daniel 11-17 (TI 468): limits inclusive; size waivers by the block architect, DA approves before block completion; ce/we/re take the address setup.
 
 No task carries a date (Daniel, 2026-11-16): everything is best effort, in
 priority order. A dependency is met by moving its task up, never by a due

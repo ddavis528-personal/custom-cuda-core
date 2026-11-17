@@ -1322,9 +1322,12 @@ instance holds W x D / 8 bytes, at the parameters its unit gives it:
 | register file (`ccv_common_rf_1r1w`, `_be`) | 512 B (`CCV_MACRO_RF_MIN_BYTES`) | 8 KiB (`CCV_MACRO_RF_MAX_BYTES`) |
 | SRAM (`ccv_common_sram_1rw`) | 4 KiB (`CCV_MACRO_SRAM_MIN_BYTES`) | 32 KiB (`CCV_MACRO_SRAM_MAX_BYTES`) |
 
-Each bound is allowed. A smaller array is flops or a smaller macro kind; a
+Each bound is allowed (Daniel, 2026-11-17). A smaller array is flops or a smaller macro kind; a
 larger one is split into instances (banks, ways). Outside the limits an
-instance needs a waiver in `rtl/macro-waivers.json`: the module, the
+instance needs a waiver in `rtl/macro-waivers.json`, written by the
+block's architect and approved by Daniel before the block is complete
+(Daniel, 2026-11-17; `approved` records it, and check-ngd lists each
+waiver still awaiting it): the module, the
 instance as check-ngd names it, the macro, its exact W and D (a change of
 size fails again), `why` (the justification: what it holds, why it cannot
 be resized, split or built otherwise, what was measured), `by` and `date`.
@@ -1341,7 +1344,7 @@ with a setup; `rdata` is a start point with a launch (its clock-to-out):
 
 | Pin | SRAM (`ccv_common_sram_1rw`) | Register file (`ccv_common_rf_1r1w`) |
 |---|---|---|
-| address (`addr`; `raddr`, `waddr`), and the enables with it (`ce`, `we`; `re`, `we`), which qualify the word lines | setup: one-hot decode of D words + `CCV_NGD_SRAM_ADDR_MARGIN` (6) | setup: one-hot decode of D words + `CCV_NGD_RF_ADDR_MARGIN` (4) |
+| address (`addr`; `raddr`, `waddr`), and the enables with it (`ce`, `we`; `re`, `we`), which qualify the word lines (Daniel, 2026-11-17) | setup: one-hot decode of D words + `CCV_NGD_SRAM_ADDR_MARGIN` (6) | setup: one-hot decode of D words + `CCV_NGD_RF_ADDR_MARGIN` (4) |
 | write data (`wdata`; and `wmask` on the `_be` register file) | setup: `CCV_NGD_SRAM_DATA_SETUP` (8) | setup: `CCV_NGD_RF_DATA_SETUP` (6) |
 | read data (`rdata`) | launch: static W-bit D:1 read mux x 100 / `CCV_NGD_MACRO_READ_DYN_PCT` (150) + `CCV_NGD_SRAM_READ_GUARD` (6) | launch: the same mux / 1.5 + `CCV_NGD_RF_READ_GUARD` (4) |
 

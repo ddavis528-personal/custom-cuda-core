@@ -1217,8 +1217,10 @@ def macro_size(insts, waivers):
     SRAM from CCV_MACRO_SRAM_MIN_BYTES to CCV_MACRO_SRAM_MAX_BYTES (4 KiB
     to 32 KiB), W x D / 8 bytes at the parameters a unit gives it. Outside
     that, a waiver in rtl/macro-waivers.json names the instance at exactly
-    that macro, W and D, with its justification (why) and its author (by):
-    a change of size fails again. `insts` is [(module, instance, macro, W,
+    that macro, W and D, with its justification (why) and its author (by,
+    the block's architect): a change of size fails again. Daniel approves
+    each before the block is complete (approved); one without it is listed
+    as awaiting it (Daniel, 2026-11-17). `insts` is [(module, instance, macro, W,
     D)]. Returns (lines, failures): a waiver that excuses nothing, or lacks
     a field, is refused."""
     lines, fails, used = [], [], set()
@@ -1242,7 +1244,10 @@ def macro_size(insts, waivers):
         used |= set(hit)
         good = [i for i in hit if all(str(waivers[i].get(f, "")).strip() for f in WAIVER_FIELDS)]
         if good:
-            lines.append("MACRO-1 waived: %s (by %s)" % (what, waivers[good[0]]["by"]))
+            x = waivers[good[0]]
+            lines.append("MACRO-1 waived: %s (by %s; %s)" % (
+                what, x["by"], "approved %s" % x["approved"] if str(x.get("approved", "")).strip()
+                else "awaiting Daniel's approval, due before the block is complete"))
         else:
             fails.append("MACRO-1 %s: refactor, or waive it with its justification in "
                          "rtl/macro-waivers.json" % what)
@@ -1278,8 +1283,12 @@ def macro_size_selftest(expect, ok, small):
     wv = [{"module": m, "instance": i, "macro": t, "W": w, "D": d, "why": "selftest",
            "by": "TI", "date": "2026-11-17"} for m, i, t, w, d in sorted(set(si))]
     lines, fails = macro_size(si, wv)
-    expect(not fails and len(lines) == 2, "MACRO-1: waivers of the small fixture did not "
-           "excuse it: %s %s" % (lines, fails))
+    expect(not fails and len(lines) == 2 and all("awaiting" in l for l in lines),
+           "MACRO-1: waivers of the small fixture did not excuse it, or were not listed as "
+           "awaiting approval: %s %s" % (lines, fails))
+    lines, _ = macro_size(si, [dict(x, approved="DA, 2026-11-17") for x in wv])
+    expect(len(lines) == 2 and not any("awaiting" in l for l in lines),
+           "MACRO-1: approved waivers still listed as awaiting approval: %s" % lines)
     _, fails = macro_size(si, [dict(wv[0], D=wv[0]["D"] * 2), wv[1]])
     expect(len(fails) == 2, "MACRO-1: a waiver of another size excused an instance: %s" % fails)
     _, fails = macro_size(si, [dict(wv[0], why=" "), wv[1]])
