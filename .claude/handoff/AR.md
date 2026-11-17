@@ -92,7 +92,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 372, OA 428, TI 477, RA 154, RI 90,
+- **Bookmarks** (revs read through): AR 372, OA 428, TI 478, RA 154, RI 90,
   IS 197, CP 159, OI 366, DA 124, MA 82, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -209,7 +209,10 @@ Credit rules (TI-49):
 0a. **L1_CMPL 15: RULED (OA 426, re OI-162; AR 368 closes on TI landing
    it).** CCV_LAT_L1_ECC = 1, CMPL 14 -> 15; HIT 7, WAKE 13 and NOHIT 9
    are unchanged. Priced at S1 +0.05%, cm32-priv -0.35%, cm128-priv +0.45%
-   (mostly reexec, 7,992 -> 23,757). RA 154 closed RA 153. Nothing owed.
+   (mostly reexec, 7,992 -> 23,757). RA 154 closed RA 153. TI 478 landed
+   it (5c1fe873; ooe_wake unit 9682b03a): param, CMPL and rcu_data
+   contract text checked against AR 368, match. AR 368 CLOSED; reaches
+   this branch in the next sweep. Nothing owed.
 0. **SPM is RF: DECIDED (DA rev 124, "use RF"; AR 371, row .599641,
    Needs TI).** Each of the 32 banks is a ccv_common_rf_1r1w, 1024 x 32,
    at about 3.32x per bit (efficiency about 0.30). It runs at full rate and
