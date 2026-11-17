@@ -57,6 +57,10 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-22. DONE (2026-11-17) TI-479: lane-tid check fired falsely on SFU-only answers (sgemm, stride benches). Fix 536c9210
+   (ri-sfutid in ri-wt; core marks LaneMsg lane/sfu, block keeps sfu_tid_ at kSfuW), SCOPED PASS 10/24, pushed. Benches
+   on gate-scratch/TI-stride in ri-wt15 (scratch, detached): sgemm-n256/n512 + transpose-n256 PASS, cycles unchanged.
+   RI-62 (rev 91) asks TI to merge; MA named. Bookmark RI 91.
 -21. DONE (2026-11-17) Daily sweep, PASS full, pushed 93bf1bb7 (ri-sweep17 in ri-wt): doowtf 38 (incl. TI rokilllane
    1861cc51), miu-dcu-spec 25, 3868632d 42, 80102643 17, 57eff422 24, 9eb50716 7, c22116ce 9; no conflicts. First run
    died on a full disk: deleted build/ in ri-wt3..14 (stale). Register: nothing for RI. RA 152 (no RCU macros), RA 153/154
