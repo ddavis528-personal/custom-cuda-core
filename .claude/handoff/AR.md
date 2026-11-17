@@ -92,7 +92,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 372, OA 426, TI 476, RA 153, RI 86,
+- **Bookmarks** (revs read through): AR 372, OA 426, TI 477, RA 153, RI 86,
   IS 197, CP 159, OI 358, DA 124, MA 82, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -216,6 +216,9 @@ Credit rules (TI-49):
    - Fallback: if check-ngd finds the 1024-word read launch too deep, use
      2 x 512 RFs per bank.
    - The specs doc's SPM tab carries it ("Arrays, decided", rev 4).
+   - TI 477 landed MACRO-1 (ddc700a1: size limits, architect-written
+     waivers, size penalty, per-block efficiency). SPM's 4 KiB RF (and the
+     2 KiB fallback) is in range, so AR owes no waiver.
 1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
    Post-fix (a5481843), cm128 hit 7/8/9: 512 KiB 1,924,529 / +0.61% / +1.03%;
    128 KiB 1,946,773 / +0.59% / +1.03%; 64 KiB 2,124,002 / +1.14% (hit 8).
