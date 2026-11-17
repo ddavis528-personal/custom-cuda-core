@@ -1376,10 +1376,11 @@ private:
 
     if (jobs_.size() < kMiuPipes) start();
     advance();
-    // A hit's completion and data leave together at the contract cycle, or
-    // not as a hit at all: if either channel has no credit then, both go
-    // late and OOE takes it for a miss (A-46), never a completion on time
-    // with its data behind it.
+    // A hit's data leaves at the contract's data cycle and its completion
+    // CCV_LAT_L1_ECC cycles later (AR 368, OA 426: the syndrome stages), or
+    // not as a hit at all: if the data has no credit then, both go late and
+    // OOE takes it for a miss (A-46), never a completion on time with its
+    // data behind it. With no ECC stage the two leave together, as before.
     while (!timed_.empty() && timed_.front().at <= now_) {
       Timed t = timed_.front();
       timed_.pop_front();
@@ -1387,10 +1388,13 @@ private:
         to_rcu_.push_back(t.data);
         continue;
       }
-      if (t.at == now_ && free(c.miu_rcu, t.data.slot) && free(c.miu_ooe, t.cmpl.slot)) {
-        sendCmpl(t.cmpl.slot, t.cmpl.msg, t.cmpl.tid);
+      constexpr uint64_t kEcc = ccv::prov::kLatL1Ecc;
+      if (t.at == now_ && free(c.miu_rcu, t.data.slot) &&
+          (kEcc != 0 || free(c.miu_ooe, t.cmpl.slot))) {
+        if (kEcc == 0) sendCmpl(t.cmpl.slot, t.cmpl.msg, t.cmpl.tid);
+        else late_faults_.push_back({now_ + kEcc, t.cmpl});
         if (k_.brk == "late-hit-data")
-          // The data a cycle behind its completion: dependants woken by the
+          // The data a cycle behind its contract: dependants woken by the
           // contract read the register before the load lands.
           timed_.push_front({now_ + 1, t.data, t.cmpl, true});
         else
@@ -1404,7 +1408,7 @@ private:
         // and its woken dependants read the register before the load lands
         // (AR 359 (4): coremark128priv's operand CHECKs).
         to_rcu_.push_back(t.data);
-        late_faults_.push_back({now_ + 1, t.cmpl});
+        late_faults_.push_back({now_ + ccv::prov::kLatL1Ecc + 1, t.cmpl});
         k_.hit("l1_late");
       }
     }
@@ -2466,8 +2470,10 @@ private:
           to_rcu_.push_back({job_.addr_slot, d, job_.tid});
           to_ooe_.push_back({job_.memop_slot, cmpl(job_), job_.tid});
         }
-      } else if (job_.hit && job_.global && now_ <= job_.due) {
-        timed_.push_back({job_.due, {job_.addr_slot, d, job_.tid},
+      } else if (job_.hit && job_.global && now_ + ccv::prov::kLatL1Ecc <= job_.due) {
+        // Queued for the data's cycle, CCV_LAT_L1_ECC ahead of the
+        // completion's contract (AR 368).
+        timed_.push_back({job_.due - ccv::prov::kLatL1Ecc, {job_.addr_slot, d, job_.tid},
                           {job_.memop_slot, cmpl(job_), job_.tid}});
       } else if (job_.inelig && now_ <= job_.due) {
         // An ineligible load completes past the contract's cycle, never on
