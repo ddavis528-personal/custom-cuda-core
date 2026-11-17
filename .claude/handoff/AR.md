@@ -270,6 +270,18 @@ Credit rules (TI-49):
      (cm128 one at a time); its progress is p1runs/progress.log. The
      oracles are reused from ~/l1sweep/oracle{,p} (same pin). Next: the rot
      points on the best two, then return one table to MA and book PF rows.
+     Tabulate with `python3 /root/l1sweep/p1runs/tab.py`. 13/24 were done at
+     21:11Z, all finished with check 0. (b) is cheapest on cycles everywhere,
+     but cm32 shared (b) q2 has wait max 63,472 (1,100 waits >= 64). A
+     suspected starvation, for MA in the table row: a lookup that re-passes
+     is not in bq_, so arrive()'s (b) fast path (olderSameLine) cannot see
+     it. A stream of stores to its line keeps held_ up, and the age bound
+     covers only bq_ waiters. Confirm with the q0 points.
+   - Stride runs: /root/stridewt is a local-only merge of dd04f733 (p1) and
+     gate-scratch/TI-stride e978faa2 (benches, colwalk at a293afe, the sgemm
+     RCU fix, L1_CMPL 15). Never push it. Prepared by
+     /root/l1sweep/stride-prep.sh (skeleton plus build/bench-oracle). Run
+     hash 0 and 1 at the winner, strict and default, on the same binary.
    - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
      TI does the bench configs (they need gen-oracle's LOAD) and the pin
      bump.
