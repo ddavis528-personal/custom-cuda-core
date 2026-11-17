@@ -1,0 +1,80 @@
+//===-- ccv_common_rf_1r1w.sv - 1R1W register-file macro: behavioural view ---===//
+//
+// Spec: docs/rtl-coding-style.md, "Hard macros" (AR register rev 344; TI
+//       revs 408-410; MA-3, MA-15 item 5; DA tab rev 123 and MA-16, which
+//       made it a register file in place of the 1R1W SRAM; byte enables
+//       only on ccv_common_rf_1r1w_be, Daniel, 2026-11-17).
+//
+// An array that needs a read and a write together, or unrestricted
+// every-cycle access, is a register file, never an SRAM (an SRAM is one
+// port, every other cycle: ccv_common_sram_1rw) and never a flop array.
+// Its area is 3 times an SRAM's per bit (DA tab rev 123;
+// CCV_MACRO_AREA_RF_PCT), the weight any area report gives it. This file is the macro's behavioural view, for
+// simulation; synthesis and the gate's depth and clock-gating checks read
+// it -lib, ports only (see ccv_common_sram_1rw.sv). It is one of the
+// three places a memory array is written (rtl/macro/).
+//
+// ONE READ PORT AND ONE WRITE PORT on one clock, each usable every cycle,
+// W bits wide, D words deep, whole words only: a register file that must
+// write part of a word is ccv_common_rf_1r1w_be, the same with a byte mask,
+// at 1.5 times this one's area per bit (Daniel, 2026-11-17). Every input is
+// sampled at the rising edge of clk, by the macro's own input register, the
+// stage boundary:
+//   we         write: wdata replaces the word at waddr.
+//   re         read: rdata is word raddr from the next cycle on. A read of
+//              the word written in the same cycle returns the OLD word
+//              (read before write).
+//   neither    rdata holds the last word read (not X).
+//
+// The timing model, storage and enables are ccv_common_sram_1rw's, with
+// the register file's own knobs (CCV_NGD_RF_*; Daniel, 2026-11-17): raddr,
+// re, waddr and we set up a decode plus CCV_NGD_RF_ADDR_MARGIN, wdata
+// CCV_NGD_RF_DATA_SETUP; rdata launches at the read mux / 1.5 plus
+// CCV_NGD_RF_READ_GUARD. No storage counts as flops, and re and we come
+// from the parent's own flops (CG-5).
+//
+// No reset: the macro has none. Its contents are unknown until written.
+//===----------------------------------------------------------------------===//
+`include "ccv_assert.svh"
+
+module ccv_common_rf_1r1w #(
+  parameter int W = 64,                       // bits per word
+  parameter int D = 64,                       // words, 2 or more
+  localparam int AW = $clog2(D)
+) (
+  input  logic          clk,
+  input  logic          re,
+  input  logic [AW-1:0] raddr,
+  output logic [W-1:0]  rdata,
+  input  logic          we,
+  input  logic [AW-1:0] waddr,
+  input  logic [W-1:0]  wdata
+);
+`define CCV_CLK clk
+`define CCV_RST 1'b0
+  logic [W-1:0] mem_q [D];
+  logic [W-1:0] rdata_q;
+  wire          wr_en = we;
+  wire          rd_en = re;
+
+  always_ff @(posedge clk) begin
+    if (wr_en) mem_q[waddr] <= wdata;
+  end
+
+  // Nonblocking: the read samples the array as it stood before this
+  // edge's write, which is read before write.
+  always_ff @(posedge clk) begin
+    if (rd_en) rdata_q <= mem_q[raddr];
+  end
+
+  assign rdata = rdata_q;
+
+  `CCV_ASSERT_KNOWN(rf_re_known, re)
+  `CCV_ASSERT_KNOWN(rf_we_known, we)
+  `CCV_ASSERT_KNOWN_IF(rf_raddr_known, re, raddr)
+  `CCV_ASSERT_KNOWN_IF(rf_waddr_known, we, waddr)
+  `CCV_ASSERT(rf_raddr_in_range, !re || 32'(raddr) < D)
+  `CCV_ASSERT(rf_waddr_in_range, !we || 32'(waddr) < D)
+`undef CCV_CLK
+`undef CCV_RST
+endmodule

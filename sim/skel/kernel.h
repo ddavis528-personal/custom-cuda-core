@@ -188,6 +188,9 @@ struct Kernel {
   /// A kill RAU has broadcast and not seen through: the owners whose ack at
   /// its epoch has not come (kFabs kill_ack order), else 0.
   uint32_t kill_unacked = 0;
+  /// Lane results still to send, summed over the lanes: coverage only (the
+  /// kill_lane bin, RI-57), never read by a block to decide anything.
+  size_t lane_inflight = 0;
   /// A demoted warp, as the blocks that moved it saw it (TI-24). Observed for
   /// the check at the end, never read by a block: the resume PC RAU got, the
   /// rows RCU read out (each arch register's row name, in the map OOE sent),
@@ -246,7 +249,7 @@ struct Kernel {
       "l1_inelig", "l1_nohit", "l1_nohit_drop",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
-      "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill",
+      "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill", "kill_lane",
       "slot_form", "window_fill", "dcu_lookups", "frame_lookups", "local_form",
       "pred_xfer", "pred_merge", "pred_copy", "crack_split",
       // Fences and barriers (IS-11, TI-40).
