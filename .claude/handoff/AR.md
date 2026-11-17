@@ -73,8 +73,10 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 365 .586009, AR 366 .588100 (tab rev 367).
-  - **The next AR row inserts after .588100**, labelled AR 367.
+  - Latest rows: AR 366 .588100, AR 367 .589591 (tab rev 369).
+  - **The next AR row inserts after .589591**, labelled AR 368.
+  - A whole row can't be replaced; replace its last cell's paragraph
+    (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
 
   | Tab | Node |
@@ -90,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 367, OA 421, TI 474, RA 151, RI 86,
-  IS 194, CP 159, OI 358, DA 123, MA 74, Conventions 19.
+- **Bookmarks** (revs read through): AR 369, OA 421, TI 474, RA 151, RI 86,
+  IS 194, CP 159, OI 358, DA 123, MA 76, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -271,6 +273,13 @@ Credit rules (TI-49):
    MA 72/73 agreed: Phase 1 runs (a), (a) + a forwarding write buffer, and
    (b), all closed-loop on S1; the cheapest within 0.2% of the best wins.
    Closed. Wait for Phase 1.
+   MA rev 76 on TI 474 (SECDED): speculative ECC keeps hit 7 only if OA
+   takes a late cancel, else hit 8. AR 367 (row .589591, rev 369; MA rung)
+   says hit 8 is already priced (cm128 +0.61%, cm32 +2.51%, S1 flat), so
+   it is within the bar. The ECC'd store merge stretches the gap from 3
+   to 4, which raises cm128 late loads from 4.14 to 4.91% through the
+   same-line wait; the forwarding write buffer removes that. (AR first
+   wrote that the gap did not move late loads; measured, and corrected.)
 2. **AR 362, Strawman B: LANDED (e6b1dd68, TI 455) and checked by AR
    against the six conditions.** The page-offset require has refusal
    mutations; lead_set_index is a copy of the PA bits; the stub DCU reads
