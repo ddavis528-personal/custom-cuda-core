@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 84, DA 124 (2026-11-17 sweep; TI 478 read).
+Conventions 19, AR 373, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 85, DA 124 (2026-11-17 sweep; TI 478 read).
 
 ## State, 2026-11-13
 
@@ -75,10 +75,11 @@ Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, M
 
 ## Open work, most urgent first
 
-- MA-20 (rev 84, Needs AR; Daniel asked): Phase 1 bank studies: (1) fair arbitration (rotating /
-  oldest-first) vs slot order; (2) XOR-hashed set index (lead timing, probe hash); (3) per-bank
-  conflict queue in DCU sized at 99.9th pct of waiter occupancy, overflow to MIU re-pass; also settles
-  who tracks BANK_AGE (DCU tab vs MIU tab disagree). Waiting on AR.
+- MA-20 closed by AR 372 (MA rev 85 accepts): Phase 1 prices (1)+(3) together first (fixed vs rotating
+  on re-pass tail; oldest-first only after A1 NGD check); queue head owns BANK_AGE, entries are deferred
+  work under the bound, 99.9th pct sizing; (2) within-page hash only, bank = PA[9:7]^PA[12:10]^PA[15:13],
+  bar >0.2% over (1). 729-cycle wait was deferred work vs on-time loads, not slot order. When (3)
+  lands, fix the age-owner text in both spec tabs; carry all into dcu-impl.md.
 
 - TI-478: AR 368 landed (9682b03a; L1_ECC 1, L1_CMPL 15). MA rev 83 took it: impl docs must require
   data at L1_HIT, completion L1_ECC later (zero syndrome), late hit completes at due + 1.
