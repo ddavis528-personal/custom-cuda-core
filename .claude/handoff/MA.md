@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 367, TI 470, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 75, DA 123.
+Conventions 19, AR 367, TI 474, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 76, DA 123.
 
 ## State, 2026-11-13
 
@@ -75,6 +75,14 @@ Conventions 19, AR 367, TI 470, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
 
 ## Open work, most urgent first
 
+- TI-474 (DA via TI): BIST override, ports up to block wrapper tied off, 1 spare row per instance,
+  column repair >8 KiB, SECDED on every SRAM. MA rev 76 answered: asks the 32 KiB limit count data
+  bits (keeps 2 x 512x576 per bank; else 4 x 512x288, 10% penalty); loads use data speculatively at
+  L1_HIT 7, non-zero syndrome cancels +1 cycle and replays (asked OA if the scheduler takes it; else
+  L1_HIT 8, AR prices); store merge reads corrected data; encode in its own stage (fill +1 stage);
+  spare rows ~11.5k flops. Waiting: Daniel on (a), OA on the cancel, TI's BIST coding style. Then
+  update the DCU tab arrays paragraph and carry it into dcu-impl.md. TI-472/473: no action (TI-473
+  fixed 128w SRAM launch to 16.3; 512w stays TI-470's 18.5, 6.5 left).
 - TI-467 (DA, 2026-11-17): macro size per instance, RF 512 B-8 KiB, SRAM 4-32 KiB (check-ngd MACRO-1,
   rtl/macro-waivers.json). MA-18 (rev 74): no waiver. Data bank = 2 x (512w x 512b, 32 KiB) SRAM, 16 in all
   (MA rev 75, TI-469: size penalty 20% at a type's minimum, 0 at max; 16 KiB fallback only if timing fails;
