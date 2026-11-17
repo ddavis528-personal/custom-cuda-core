@@ -55,10 +55,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- MA-1 RUNNING from 18:29Z 11-17: rh-jobs/ma1/ma1.sh at MA's tip cc5f3f04, worktree rh-ma1, ~/ccv-logs/ma1
+- MA-1 DONE and sent 19:41Z 11-17 (all clean): rh-jobs/ma1/ma1.sh at cc5f3f04, worktree dropped, ~/ccv-logs/ma1
   (KEEP: MA's reference for p1 deltas; rh-jobs/ma1/table.py writes s1-cycles.tsv and the table). Ways 8,
-  defaults. Only cm128 left at 19:05Z. No per-reason late bins at the stubs; the squeezed cm128 was dropped (AR 373).
-- MA-2 QUEUED (waits for ma1.sh): rh-jobs/ma2/ma2.sh, p1 at dd04f733 (gate-scratch/MA), worktree rh-ma2,
+  defaults. No per-reason late bins at the stubs; the squeezed cm128 was dropped (AR 373).
+- MA-2 RUNNING from 19:41Z: rh-jobs/ma2/ma2.sh, p1 at dd04f733 (gate-scratch/MA), worktree rh-ma2,
   ~/ccv-logs/ma2. 6 points STORE {a,af,b} x QDEPTH {0,2}, ARB fixed, WAYS 8, IMPL p1. S1 via
   sim/dcu/p1-run.sh, then benches in 2 lanes (128-class one at a time). MA sends 2 rotating points
   later: append them. Report P1 measures + p1_qNN summed, p99.9. Watcher bn5zm1zfe, fallback 20:33Z.
