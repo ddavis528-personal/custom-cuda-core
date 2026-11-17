@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 367, TI 466, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 73, DA 123.
+Conventions 19, AR 367, TI 467, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, MA 74, DA 123.
 
 ## State, 2026-11-13
 
@@ -74,6 +74,12 @@ Conventions 19, AR 367, TI 466, OA 421, IS 194, CP 159, OI 358, RA 151, RI 86, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- TI-467 (DA, 2026-11-17): macro size per instance, RF 512 B-8 KiB, SRAM 4-32 KiB (check-ngd MACRO-1,
+  rtl/macro-waivers.json). MA-18 (rev 74): no waiver. Data bank = 4 x (512w x 256b, 16 KiB) SRAM, 32 in all;
+  tag RF word = the set (8 x 35 tags + 7 PLRU, 64 x 288 b, 2,304 B, 8 instances; hit's LRU write-back dropped
+  if a fill wrote the set since its read); payload store RF only (5,760 B, or 2 x 2,880 B); window table RF
+  512 B at the inclusive minimum (widen if Daniel rules strict). DCU tab rev 43, MIU tab rev 137.
 
 - TI-466 (DA, 2026-11-17): no SRAM byte enables; only ccv_common_rf_1r1w_be has wmask (4.5x SRAM/bit).
   MA-17 (rev 71, Needs AR, TI FYI): store hit = its lookup's line read + D3 merge + whole-line write in the
