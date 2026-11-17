@@ -16,7 +16,9 @@
 // are skipped.
 //
 // Negative controls (ROB_CONTROL=<name>) perturb the driving and must be
-// caught: drop-free (one RS free in a cycle never reaches the ROB: V-58's
+// caught: no-alloc-lag (the model without rob_alloc_lag, OA 422: the ROB
+// flops the allocation on arrival, so a no-op or a fault reaches the head
+// a cycle later), drop-free (one RS free in a cycle never reaches the ROB: V-58's
 // count stays up), no-copy (a copy is never in flight), no-lead (an
 // allocation's lead never comes), fill-order (a cycle's fills in reverse
 // lane order: each entry takes another's fields) and nop-real (a no-op is
@@ -105,6 +107,9 @@ void robConfig(Config &c) {
   // Slice 4: the RTL takes a fault at its registered head; fault-any-port
   // and fault-port0 run the model taking it on any port, or on port 0.
   c.fault_head_only = ctl && std::string(ctl) == "fault-any-port" ? 0 : ctl && std::string(ctl) == "fault-port0" ? 1 : 2;
+  // OA 422: the ROB flops the allocation on arrival, so a no-op reaches the
+  // head window a cycle later; no-alloc-lag runs the model without it.
+  c.rob_alloc_lag = ctl && std::string(ctl) == "no-alloc-lag" ? 0 : 1;
 }
 
 namespace {
