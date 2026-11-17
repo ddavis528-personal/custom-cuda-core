@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-17 (#52 e6 PUSHED a5dc7eed + handoff acb5ea8e. RH priced rob_retire_lag 1: S1 +0.16%, cm32 +0.50%, cm128 +0.92%; OI-159 written (rev 363), OA rung. Waiting on OA's ruling on (b) (cm128 over 0.5%: OA to say if DA). On adopt: RTL shift-plus-pick depth probe first, then the rest. check-cg OOM: CCV_JOBS=2 until TI 804d1e6f merged. OI bookmark 363)
+Updated 2026-11-17 (#52 e6 PUSHED a5dc7eed. OA 421 adopted retire pick (b) on S1 +0.16%; cm32 +0.50%/cm128 +0.92% to DA, OA recommends accept. OI-160 (rev 364): cost all retire pick (alloc flop 0 in model); probe scratchpad/rpprobe rp_probe2.sv: 17.0 NGD f2f, 18.1 from dn_q (run2.py breaks down by endpoint). Pending: RH's answer on coremark-derived-priv (asked 11-17) -> short OI row; DA's answer -> build (b) in ooe_rob_w. check-cg OOM: CCV_JOBS=2. OI bookmark 364, OA 423)
 survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
