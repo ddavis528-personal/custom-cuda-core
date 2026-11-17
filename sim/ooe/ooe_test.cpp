@@ -4628,6 +4628,37 @@ void testReconv() {
   }
 }
 
+/// rob_alloc_lag (OA 420 (4), OA 422): ooe_rob_w flops the allocation on
+/// arrival, so a no-op (complete at its allocation) reaches the head window
+/// a cycle later. No-ops at an empty ROB's head wait that cycle under 1 and
+/// never under 0, at retire_lag 0 and 1; all retire everything in order.
+void testRobAllocLag() {
+  for (const unsigned rl : {0u, 1u})
+  for (const unsigned lag : {0u, 1u}) {
+    char name[48];
+    std::snprintf(name, sizeof name, "rob alloc lag %u, retire_lag %u", lag, rl);
+    g_test = name;
+    Config c = baseConfig();
+    c.retire_lag = rl;
+    c.rob_alloc_lag = lag;
+    Env e(c);
+    std::vector<Op> p;
+    for (unsigned k = 0; k != 3; ++k) { Op r; r.k = kReconv; p.push_back(r); }
+    Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    Op r; r.k = kReconv; p.push_back(r);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    const unsigned waits = unsigned(e.core.counters["retire.alloc_lag_wait"]);
+    EXPECT(lag ? waits > 0 : waits == 0, "lag %u: %u no-op waits", lag, waits);
+    EXPECT(e.core.counters["errors"] == 0, "errors");
+    const std::vector<uint64_t> &rt = e.w[0].retired;
+    bool order = rt.size() == p.size();
+    for (size_t k = 0; order && k != rt.size(); ++k) order = rt[k] == k + 1;
+    EXPECT(order, "retired %zu uops, want all %zu in order", rt.size(), p.size());
+  }
+}
+
 /// MA-5 (AR 345/347, OA-412): MIU holds a few credits per memop slot and
 /// returns each long after its memop. Select must grant a memop only on a
 /// credited pipe of its footprint, the lowest, so full-width loads spread
@@ -5872,6 +5903,7 @@ int main(int argc, char **argv) {
   testFinalBeforeProducer();
   testFloorCeiling();
   testResolveLagRetire();
+  testRobAllocLag();
   testRetHold();
   testIdleR();
   testRClass();

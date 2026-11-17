@@ -457,6 +457,13 @@ struct Config {
   /// run, the room it counts now, and no done reaches an entry the cycle
   /// after its allocation (the issue pipeline's own floor).
   unsigned rob_retire_lag = 0;
+  /// OA 420 (4) / OA 422: ooe_rob_w flops al_n/al_nop on arrival, so an
+  /// allocation reaches the entries, and an allocated no-op the head window,
+  /// a cycle later. 1 holds a no-op (complete at its allocation) from
+  /// retiring for that cycle; nothing else moves (no done reaches an entry
+  /// the cycle after its allocation, and the ROB's run register still
+  /// counts the take, so the go's room is unchanged).
+  unsigned rob_alloc_lag = 0;
   /// ROB slice 2's timing (OI-86): a branch's resolution (squash, RAT
   /// restore, redirect, checkpoint free) acts resolve_lag cycles after it
   /// completes, the redirect then leaving from flops (with DA, OA's rev
@@ -1462,6 +1469,7 @@ private:
     uint64_t rcu_issue_at = 0;     ///< the latest issue to RCU
     bool complete = false;
     uint64_t ret_at = 0;           ///< retire_lag: the first cycle it may retire
+    bool alloc_held = false;       ///< rob_alloc_lag: a no-op held a cycle past its allocation
     bool res_pend = false;         ///< resolve_lag: complete and resolve at res_at
     uint64_t res_at = 0;
     bool rel_pend = false;         ///< defer_release_lag: release at rel_at

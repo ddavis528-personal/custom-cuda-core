@@ -35,7 +35,7 @@ std::string Config::apply(const std::string &spec) {
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
-      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"resolve_lag", &resolve_lag},
+      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
@@ -2676,6 +2676,7 @@ void Core::retire() {
     bool after_branch = false;
     while (n != cfg_.retire_per_rob && s.count && !s.fault_stop) {
       RobEntry &r = s.rob[s.head];
+      if (r.complete && now_ < r.ret_at && r.alloc_held) count("retire.alloc_lag_wait");
       if (!r.complete || now_ < r.ret_at) break;
       // resolve_lag: a branch retires only once its resolution has acted;
       // under retire_lag 0 it would otherwise retire in its completion's
@@ -4319,7 +4320,16 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   }
   s.tail = (s.tail + 1) % cfg_.rob_depth;
   ++s.count;
-  if (nop) complete(si, idx);
+  if (nop) {
+    complete(si, idx);
+    // rob_alloc_lag: the ROB's allocation flop shows a no-op to the head
+    // window that many cycles after the earliest it retires now, the next
+    // cycle's retire (retire() runs before rename()), whatever retire_lag.
+    if (s.rob[idx].complete && cfg_.rob_alloc_lag) {
+      s.rob[idx].ret_at = std::max<uint64_t>(s.rob[idx].ret_at, now_ + 1 + cfg_.rob_alloc_lag);
+      s.rob[idx].alloc_held = true;
+    }
+  }
   ev("dispatch", s.warp, tagOf(si, idx), 0, u.tid);
   const unsigned took[4] = {need_rcu, need_miu, ngpr,
                             !nop && u.pred_we && cfg_.rename_preds ? 1u : 0u};
