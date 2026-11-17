@@ -1328,9 +1328,12 @@ with a setup; `rdata` is a start point with a launch (its clock-to-out):
 The decode and the read mux are not assumed: check-ngd synthesises a
 static one-hot decode and a static AND-OR read mux (its select decoded) at
 the instance's W and D, and times them as it times any unit, the fanout
-term included. The mux is synthesised one bit wide and timed W bits wide,
-its select logic shared by the W bits (a control holds that to the mux
-synthesised whole). The divisor is the dynamic read mux's speed over a
+term included. The mux is synthesised 8 bits wide and timed W bits wide,
+its select logic shared by the W bits: a slice of 4 bits or more reads
+exactly what the whole mux does (64 x 32, 64 x 128 and 128 x 128 checked),
+one of a single bit up to 2.9 NGD more, since ABC shares a decoded select
+only across bits it sees. A control holds the slice to the mux synthesised
+whole at 64 x 128. The divisor is the dynamic read mux's speed over a
 static one's; the margins and guardbands are knobs in
 `params/ccv_params.json`. So the instantiating module's logic into an
 input pin is held to the stage less that pin's setup, from its flops, from

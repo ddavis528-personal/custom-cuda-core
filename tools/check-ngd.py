@@ -433,10 +433,10 @@ class Timing:
         loads.update(d for d, _ in latches)
         loads.update(outs)
         if widen:
-            # One bit of a W-bit slice (macro_ref()): `widen` is (the input
-            # port whose logic every bit shares, W). A net that depends on
-            # that port alone is shared by the W bits, so each of its loads
-            # that is not itself shared is one of W copies.
+            # A k-bit slice of a W-bit mux (macro_ref()): `widen` is (the
+            # input port whose logic every bit shares, W / k). A net that
+            # depends on that port alone is shared by the W bits, so each of
+            # its loads that is not itself shared is one of W / k copies.
             port, w = widen
             shared = {i for i in ins if base(i) == port}
             changed = True
@@ -450,7 +450,7 @@ class Timing:
                                           for _, x in a)
             per_bit.update(o for o in outs)
             for n in shared:
-                loads[n] += (w - 1) * per_bit.get(n, 0)
+                loads[n] += int(math.ceil((w - 1) * per_bit.get(n, 0)))
         inv = delay(lib, "INV", "A")
 
         def fo(n):
@@ -1171,15 +1171,9 @@ module ngd_ref_muxw #(parameter int W = 1, parameter int D = 2, localparam int A
     for (int i = 0; i < D; i++) y |= d[i*W +: W] & {W{s == AW'(i)}};
   end
 endmodule
-module ngd_ref_mux #(parameter int D = 2, localparam int AW = $clog2(D))
-  (input logic [D-1:0] d, input logic [AW-1:0] s, output logic y);
-  always_comb begin
-    y = 1'b0;
-    for (int i = 0; i < D; i++) y |= d[i] & (s == AW'(i));
-  end
-endmodule
 """
 _macro_ref = {}
+MACRO_SLICE = 8
 
 
 def macro_cells(d):
@@ -1210,10 +1204,15 @@ def macro_ref(what, w, d):
     """The depth of a static reference circuit, as the gate times a unit:
     "dec", a one-hot decode of $clog2(d) bits to d lines; "mux", a d:1
     AND-OR read mux w bits wide, its select decoded. The mux is synthesised
-    one bit wide and timed as w bits (Timing's `widen`): its select logic is
-    shared by the w bits, so each of its nets drives w copies of every
-    per-bit load. The depth is input to output, the better of ABC's two
-    maps, as a critical input's is (map_and_time)."""
+    MACRO_SLICE bits wide and timed as w bits (Timing's `widen`): its
+    select logic is shared by the w bits, so each of its nets drives
+    w / MACRO_SLICE copies of every per-bit load. A slice of one bit would
+    not do: ABC shares a decoded select only across bits it can see, and
+    one bit's mux read 2.5 NGD over the whole 64 x 128 mux, a slice of 4
+    or more exactly it (64 x 32, 64 x 128, 128 x 128). The depth is input
+    to output, the better of ABC's two maps, as a critical input's is
+    (map_and_time); "muxw", the mux synthesised whole, is the selftest's
+    check on the slice."""
     key = (what, 1 if what == "dec" else w, d)
     if key not in _macro_ref:
         name = "macro_ref/%s_w%d_d%d" % key
@@ -1221,11 +1220,12 @@ def macro_ref(what, w, d):
         os.makedirs(work, exist_ok=True)
         sv = os.path.join(work, "ref.sv")
         open(sv, "w").write(MACRO_REF_SV)
-        # "muxw", the same mux synthesised w bits wide, is the selftest's
-        # check on the one-bit slice.
-        params = {"D": d, "W": w} if what == "muxw" else {"D": d}
-        work, jf = synth(name, "ngd_ref_" + what, [os.path.relpath(sv, ROOT)], params=params)
-        t = map_and_time(work, jf, keep=True, widen=("s", w) if what == "mux" else None)
+        k = min(w, MACRO_SLICE) if what == "mux" else w
+        params = {"D": d} if what == "dec" else {"D": d, "W": k}
+        top = "ngd_ref_dec" if what == "dec" else "ngd_ref_muxw"
+        work, jf = synth(name, top, [os.path.relpath(sv, ROOT)], params=params)
+        t = map_and_time(work, jf, keep=True,
+                         widen=("s", w / k) if what == "mux" and w > k else None)
         _macro_ref[key] = min(max(x.io.values()) for x in (t, t._r))
     return _macro_ref[key]
 
@@ -3035,7 +3035,7 @@ def macro_pin_selftest(expect, ok, none):
     setup and the read data's launch are what the knobs and the measured
     references make them, per macro; read data folded through 12 NGD, fine
     after a flop, fails after rdata (FOLD_RD); each knob moves its own
-    macro's pins and no other's; and the one-bit reference mux, timed w
+    macro's pins and no other's; and the reference mux's slice, timed w
     bits wide, reads as the mux synthesised w bits wide does."""
     pin_in, pin_out = macro_pins(ok.t)
     times = macro_pin_times(ok.t)
@@ -3056,13 +3056,14 @@ def macro_pin_selftest(expect, ok, none):
            "margins 6 and 4, data setups 8 and 6): %s" % sorted(by.items()))
     dec, mux = macro_ref("dec", 1, 128), macro_ref("mux", 512, 128)
     expect(2.0 < dec < 12.0 and 8.0 < mux < 40.0 and macro_ref("mux", 512, 128) >
-           macro_ref("mux", 1, 128) + 2.0,
+           macro_ref("mux", 8, 128) + 2.0,
            "the references are not a decode and a read mux, nor the mux's select fanout "
-           "counted w wide: decode %.1f, mux %.1f, one bit %.1f"
-           % (dec, mux, macro_ref("mux", 1, 128)))
-    one, full = macro_ref("mux", 64, 32), macro_ref("muxw", 64, 32)
-    expect(abs(one - full) <= 1.5, "the one-bit reference mux timed 64 wide reads %.2f NGD, "
-           "the mux synthesised 64 wide %.2f: the slice is not the mux" % (one, full))
+           "counted w wide: decode %.1f, mux %.1f, its 8-bit slice alone %.1f"
+           % (dec, mux, macro_ref("mux", 8, 128)))
+    one, full = macro_ref("mux", 64, 128), macro_ref("muxw", 64, 128)
+    expect(abs(one - full) <= 0.5, "the reference mux's %d-bit slice timed 64 wide reads %.2f "
+           "NGD, the mux synthesised 64 wide %.2f: the slice is not the mux"
+           % (MACRO_SLICE, one, full))
     MACRO_NUMBERS.update(times=by, dec=dec, mux=mux, slice=(one, full))
     # FOLD_RD: the fold from a flop would fit; from rdata, launched late, not.
     fold = macro_unit("fx_sram_fold", FOLD_RD=1)
@@ -3140,7 +3141,7 @@ def main():
             tm = n["times"]
             print("  pin times (Daniel, 2026-11-17): SRAM 128x512 addr setup %.1f (decode %.1f), "
                   "data %.1f, rdata launch %.1f (mux %.1f); RF 128x64 addr %.1f, data %.1f, "
-                  "rdata %.1f; one-bit mux at 64 wide %.1f vs synthesised %.1f; the fold from "
+                  "rdata %.1f; the mux's slice at 64x128 %.1f vs synthesised %.1f; the fold from "
                   "rdata %.1f" % (tm["g_macro.u_sram.addr"], n["dec"], tm["g_macro.u_sram.wdata"],
                                   tm["g_macro.u_sram.rdata"], n["mux"], tm["g_macro.u_rf.raddr"],
                                   tm["g_macro.u_rf.wdata"], tm["g_macro.u_rf.rdata"],
