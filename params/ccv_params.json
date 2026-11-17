@@ -545,6 +545,14 @@
       "doc": "The largest 1RW SRAM one instance may be, in bytes (32 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
     },
     {
+      "name": "CCV_MACRO_SIZE_PENALTY_PCT",
+      "value": 20,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array efficiency: best at a macro type's largest legal size, falling linearly to a 20 percent penalty at its smallest)",
+      "require": "CCV_MACRO_SIZE_PENALTY_PCT >= 0",
+      "doc": "Power and area per bit of a hard-macro instance over the most efficient one of its type, in percent: 0 at the type's largest legal size (CCV_MACRO_RF_MAX_BYTES, CCV_MACRO_SRAM_MAX_BYTES), this at its smallest (the _MIN_BYTES), linear in bytes between; below the smallest (a waived instance) the line continues, above the largest it stays 0. It multiplies the type's own weight (CCV_MACRO_AREA_RF_PCT, CCV_MACRO_AREA_BYTE_EN_PCT). tools/check-ngd.py reports it per instance (MACRO-1). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
       "name": "CCV_NGD_CG_EN",
       "value": 8,
       "status": "target",

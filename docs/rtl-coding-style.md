@@ -1337,6 +1337,19 @@ register file fails both and passes with their waivers; each bound passes
 and one byte past it fails; a waiver of another size, one without its
 `why`, and one that excuses nothing are refused.
 
+**Size and efficiency** (Daniel, 2026-11-17). An array type is most
+efficient, in power and area per bit, at its largest legal size. Per bit it
+costs `CCV_MACRO_SIZE_PENALTY_PCT` (20%) more at its smallest legal size, and
+the penalty is linear in bytes in between. A waived instance below the
+smallest continues the line; one above the largest gets no credit for it. So
+two 16 KiB SRAMs cost about 11.4% more per bit than one of 32 KiB, and a
+512 B register file 20% more than one of 8 KiB. The penalty multiplies the
+type's own weight (3 times an SRAM's per bit for a register file, 4.5 times
+with byte enables). check-ngd prints each instance's penalty and its area in
+SRAM-bit equivalents, every run. Its controls check the line: no penalty at
+the largest size, the full 20% at the smallest, 10% at the middle, more below
+the smallest, none above the largest, and the weights.
+
 **The timing model** (`tools/check-ngd.py`, NGD-8; Daniel, 2026-11-17).
 A macro's pins are timing endpoints and start points, never a path
 through, and each is dearer than a flop's. Each input pin is an endpoint

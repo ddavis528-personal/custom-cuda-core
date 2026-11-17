@@ -1211,6 +1211,26 @@ def macro_size_limits(kind):
             int(cg.param("CCV_MACRO_%s_MAX_BYTES" % kind)))
 
 
+def macro_cost(typ, w, d):
+    """(penalty, weight) of one instance (Daniel, 2026-11-17): penalty is
+    its power and area per bit over the most efficient instance of its
+    type, in percent: 0 at the type's largest legal size,
+    CCV_MACRO_SIZE_PENALTY_PCT at its smallest, linear in bytes between,
+    continued below the smallest and 0 above the largest. weight is its
+    area in SRAM bits at the largest size: W x D x the type's weight
+    (CCV_MACRO_AREA_RF_PCT, times CCV_MACRO_AREA_BYTE_EN_PCT with byte
+    enables) x (1 + penalty)."""
+    lo, hi = macro_size_limits(MACRO_KIND[typ])
+    nb = w * d / 8.0
+    pen = float(cg.param("CCV_MACRO_SIZE_PENALTY_PCT")) * max(0.0, hi - nb) / (hi - lo)
+    k = 1.0
+    if MACRO_KIND[typ] == "RF":
+        k = float(cg.param("CCV_MACRO_AREA_RF_PCT")) / 100.0
+        if typ.endswith("_be"):
+            k *= float(cg.param("CCV_MACRO_AREA_BYTE_EN_PCT")) / 100.0
+    return pen, w * d * k * (1.0 + pen / 100.0)
+
+
 def macro_size(insts, waivers):
     """MACRO-1 (Daniel, 2026-11-17): one register-file instance holds from
     CCV_MACRO_RF_MIN_BYTES to CCV_MACRO_RF_MAX_BYTES (512 B to 8 KiB), one
@@ -1297,6 +1317,21 @@ def macro_size_selftest(expect, ok, small):
     _, fails = macro_size(macro_insts([ok]), wv)
     expect(len(fails) == 2 and all("excuses nothing" in f for f in fails),
            "MACRO-1: waivers that excuse nothing were not refused: %s" % fails)
+    # The efficiency line (Daniel, 2026-11-17): 0 at the largest, the full
+    # penalty at the smallest, half way at the middle, more below, none above.
+    full = float(cg.param("CCV_MACRO_SIZE_PENALTY_PCT"))
+    for typ in ("ccv_common_sram_1rw", "ccv_common_rf_1r1w"):
+        lo, hi = macro_size_limits(MACRO_KIND[typ])
+        got = [macro_cost(typ, 8, n)[0] for n in (hi, lo, (lo + hi) // 2, lo // 2, hi * 2)]
+        expect(abs(got[0]) < 1e-9 and abs(got[1] - full) < 1e-9 and abs(got[2] - full / 2) < 1e-6
+               and got[3] > full and abs(got[4]) < 1e-9,
+               "MACRO-1: %s's efficiency penalty at its largest, smallest, middle, half the "
+               "smallest and twice the largest: %s" % (typ, got))
+    p_sram, w_sram = macro_cost("ccv_common_sram_1rw", 512, 512)
+    p_be, w_be = macro_cost("ccv_common_rf_1r1w_be", 512, 128)
+    expect(abs(w_sram - 512 * 512) < 1e-6 and
+           abs(w_be - 512 * 128 * 4.5 * (1 + p_be / 100.0)) < 1e-6,
+           "MACRO-1: the weights of a largest SRAM (%g) and an 8 KiB _be RF (%g)" % (w_sram, w_be))
     for typ in ("ccv_common_sram_1rw", "ccv_common_rf_1r1w", "ccv_common_rf_1r1w_be"):
         lo, hi = macro_size_limits(MACRO_KIND[typ])
         at = [("m", "u", typ, 64, lo * 8 // 64), ("m", "v", typ, 64, hi * 8 // 64)]
@@ -2268,6 +2303,10 @@ def main_check(only=None, seed=False):
     lines, more = macro_size(macro_insts(units), load(MACRO_WAIVERS, "waivers", []))
     for l in lines:
         print("  " + l)
+    for mod, inst, typ, w, d in sorted(set(macro_insts(units))):
+        pen, wt = macro_cost(typ, w, d)
+        print("  macro %s.%s: %s %d x %d bits, %g bytes, %.1f%% over its type's best per bit, "
+              "%.0f SRAM-bit equivalents" % (mod, inst, typ, d, w, w * d / 8.0, pen, wt))
     print("  macro sizes (MACRO-1): %d instance(s) at their units' parameters; RF %d to %d "
           "bytes, SRAM %d to %d" % ((len(set(macro_insts(units))),) + macro_size_limits("RF")
                                     + macro_size_limits("SRAM")))
