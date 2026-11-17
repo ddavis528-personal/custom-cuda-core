@@ -90,7 +90,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 366, OA 421, TI 466, RA 151, RI 86,
+- **Bookmarks** (revs read through): AR 367, OA 421, TI 467, RA 151, RI 86,
   IS 194, CP 159, OI 358, DA 123, MA 73, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -180,6 +180,25 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+0. **SPM against the macro rulings (AR's spec; raised with Daniel in
+   session, waiting on his answer).** TI 467 (DA: SRAM 4-32 KiB, RF
+   512 B-8 KiB a macro, waivers in rtl/macro-waivers.json; Needs MA, AR,
+   RA), TI 466 (no SRAM byte enables) and DA 123 (SRAM every other cycle)
+   meet in SPM: 32 banks of 4 KiB with 32-bit words, one pass a cycle,
+   byte-masked writes (kernel.cpp class Spm).
+   - 4 KiB is exactly the SRAM minimum: it fits only if the bound is
+     inclusive (TI built it inclusive, pending Daniel).
+   - At half rate a pass every cycle is impossible on 32 SRAM banks.
+   - A sub-word store becomes read-modify-write.
+   Options put to Daniel:
+   - (i) SRAM half rate, 1x area;
+   - (ii) RF 32 x 4 KiB, full rate, 3x area (4.5x with byte enables);
+   - (iii) 64 x 2 KiB SRAM sub-banks, under the minimum, so a waiver;
+   - (iv) 64-bit bank words, 512 x 64b at 4 KiB: two vertically adjacent
+     lines in one access, so streaming stays at full rate and random
+     access is half.
+   AR's lean is (iv). No S1 kernel touches SPM, so the bar cannot price
+   it; it needs a GEMM-like kernel.
 1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
    Post-fix (a5481843), cm128 hit 7/8/9: 512 KiB 1,924,529 / +0.61% / +1.03%;
    128 KiB 1,946,773 / +0.59% / +1.03%; 64 KiB 2,124,002 / +1.14% (hit 8).
