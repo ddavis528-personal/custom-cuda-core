@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Pipeline rev=33 exported=2026-11-14 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Pipeline*, at revision 33 on 2026-11-14 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=Pipeline rev=34 exported=2026-11-16 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *Pipeline*, at revision 34 on 2026-11-16 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # Pipeline
 
@@ -25,7 +25,7 @@ Since RA-43, in stage IL from lead\_opcode (before it, in stage I), the RCU deco
 
 | Field (bits) | Values | Used by |
 | --- | --- | --- |
-| `UNIT` (3) | lane, SFU, memop, R-only, collective, copy, pred-copy, none (`U_NONE`). Interim: no opcode decodes SFU; RCP\_U32, RSQRT\_F32, RCP\_F32\_P and C\_FADD class as lane ops (OI-16), so SW and slot 4 are not reached | write-back routing, done slot |
+| `UNIT` (3) | lane, SFU, memop, R-only, collective, copy, pred-copy, none (`U_NONE`). RCP\_U32, RSQRT\_F32 and RCP\_F32\_P decode U\_SFU (RA rev 146); C\_FADD stays a lane op. | write-back routing, done slot |
 | `RK` (5) | bra, call, ret, pand, por, pxor, pmov-imm, movi, shfl-idx-imm, shfl-idx-reg, shfl-up, shfl-down, shfl-bfly, vote-any, vote-all, ballot, unballot; pmov (register form) is its own kind, `RK_PMOV` | R unit |
 | `MK` (3) | none, load, store, pred-load, pred-store, fence. No atomic kind: an atomic decodes as its step, by done\_row (OI-85) | memop operands |
 | `GUARDED` (1) | 0/1 | `active` (an unguarded op's guard is ignored) |
