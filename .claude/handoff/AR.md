@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-16 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-17 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 368 .591363, AR 369 .593482 (tab rev 371).
-  - **The next AR row inserts after .593482**, labelled AR 370.
+  - Latest rows: AR 370 .596551, AR 371 .599641 (tab rev 372).
+  - **The next AR row inserts after .599641**, labelled AR 372.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 371, OA 426, TI 475, RA 153, RI 86,
-  IS 194, CP 159, OI 358, DA 123, MA 81, Conventions 19.
+- **Bookmarks** (revs read through): AR 372, OA 426, TI 476, RA 153, RI 86,
+  IS 196, CP 159, OI 358, DA 124, MA 81, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -175,6 +175,9 @@ Credit rules (TI-49):
   - MA-13 still holds: MI and DI start only once the grill-me is finished,
     Daniel's summary is delivered and everything is documented.
 
+- **DA 124 (two rows, .125982 and .127235):** the machine-error system
+  (AR 370) and SPM as RF (AR 371).
+
 ## Params at HEAD
 - L1: HIT_BASE 7, RCU_ADDR_BASE 1, L1_WAKE 13, L1_CMPL 14, L1_NOHIT 9.
   Hit 8 gives 14/15; hit 9 gives 15/16; base 5 gives ADDR 5, WAKE 17,
@@ -182,69 +185,34 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
-00. **Machine-error (fault) system for ECC (TI 475 (4): DA asked AR to
-   define it and its interface).** AR 369 (row .593482, rev 371;
-   proposal; IS, MA and TI rung) is pending Daniel's answers to (a)-(d),
-   asked in session.
-   - CE: corrected and counted.
-   - A UE in a clean L1 line: refetched.
-   - An attributable UE: completion status 1 with a new cause F-MACHINE
-     (code 10; an ISA amendment by IS), fatal to the context.
-   - An unattributable UE: a sticky level on a new gather
-     ccv_<blk>_cru_err to CRU, which latches MACHINE_CHECK and kills every
-     grid.
-   - ccv_common_err in each SRAM-bearing block, on the CSR star: CE and UE
-     counts, a first-error log, a CE alert threshold, INJECT.
-   - Out of scope: RF parity (PF-48), poison, a trap handler.
-   TI 475 also rules:
-   - the 32 KiB limit counts data bits before ECC;
-   - BIST broadcast groups of up to 32 KiB;
-   - ECC sits outside the wrapper, and hiding its latency is the block
-     architect's.
-   RA 153 confirmed RCU takes the second write; MA 79 set L1_ECC = 1.
-   MA 80/81 agree with AR 369 (1), (3) and (4) for DCU, with one change
-   to (2): a UE in a dirty L1 line is core-fatal, not attributable (other
-   contexts' bytes, and the writeback would hit it anyway). So DCU needs
-   no ue on dcu_miu_rsp; (2) stays for SPM, which MIU passes through. One
-   ccv_common_err in DCU (16 arrays). AR accepts (DCU is MA's); no row
-   yet. Write the final row when Daniel answers (a)-(d), folding this in.
-0. **SPM against the macro rulings (AR's spec; raised with Daniel in
-   session, waiting on his answer).** TI 467 (DA: SRAM 4-32 KiB, RF
-   512 B-8 KiB a macro, waivers in rtl/macro-waivers.json; Needs MA, AR,
-   RA), TI 466 (no SRAM byte enables) and DA 123 (SRAM every other cycle)
-   meet in SPM: 32 banks of 4 KiB with 32-bit words, one pass a cycle,
-   byte-masked writes (kernel.cpp class Spm).
-   - 4 KiB is exactly the SRAM minimum. TI 468 (DA): the limits are
-     inclusive, so it fits. Size waivers are the block architect's (AR's
-     for SPM), approved by DA before the block is complete.
-   - At half rate a pass every cycle is impossible on 32 SRAM banks.
-   - A sub-word store becomes read-modify-write.
-   Options put to Daniel:
-   - (i) SRAM half rate, 1x area;
-   - (ii) RF 32 x 4 KiB, full rate, 3x area (4.5x with byte enables);
-   - (iii) 64 x 2 KiB SRAM sub-banks, under the minimum, so a waiver;
-   - (iv) 64-bit bank words, 512 x 64b at 4 KiB: two vertically adjacent
-     lines in one access, so streaming stays at full rate and random
-     access is half.
-   TI 469 (DA): a macro's per-bit cost is lowest at its type's largest
-   legal size and rises linearly to +20% at its smallest
-   (CCV_MACRO_SIZE_PENALTY_PCT). So a 4 KiB SRAM is 1.20x, and a 4 KiB RF
-   is about 3 x 1.107 = 3.32x.
-   TI 474 (DA, Needs MA, AR, OA): every array gets a BIST override, BIST
-   ports punched up to the block wrapper and tied off there, a spare row,
-   and column repair if it is over 8 KiB. Every SRAM gets SECDED. For SPM
-   that means:
-   - (39,32) on 32-bit words (+22%) against (72,64) on (iv)'s 64-bit
-     words (+12.5%);
-   - decode needs a read cycle (LAT_SPM_BASE 2 -> 3) or speculative use
-     with replay;
-   - every write narrower than a slice is read-modify-write, so (iv)
-     makes a lone one-line store read-modify-write while (i) writes a
-     32-bit word straight;
-   - a spare row of 39 or 72 flops a bank.
-   GEMM reads SPM far more than it writes it, so (iv) still leads.
-   AR's lean is (iv). No S1 kernel touches SPM, so the bar cannot price
-   it; it needs a GEMM-like kernel.
+00. **Machine-error system: DECIDED (DA rev 124; AR 370, row .596551,
+   tab rev 372; notices to MA, IS, TI).** Daniel answered AR 369 (a)-(d):
+   core-fatal yes; clean-line refetch "only if we keep track of how many
+   times this has happened to the same line" (no forever loop on a real
+   bad bit); F-MACHINE yes; polling yes.
+   - CE corrected and counted. A clean-line UE is refetched, with
+     CCV_DCU_UE_TRACK entries (MA sizes it) keyed by location (bank, set,
+     way). A second UE at a recorded location, or a UE with the table full,
+     is core-fatal and logged for spare-row repair.
+   - Core-fatal: dirty-line UE, writeback victim, fill, or a hard error.
+     ccv_dcu_cru_err (ue, ce_alert) goes to CRU, which latches
+     MACHINE_CHECK, kills every grid via RAU, and writes F-MACHINE (code 10,
+     Execute, lowest priority; IS O-86, §12.7 exception) into every live
+     record. The host polls and resets.
+   - ccv_common_err in DCU (MA 81), host-only. No ue on dcu_miu_rsp or
+     spm_miu. F-MACHINE is written only by the core-fatal path in v1.
+   - Waiting on: TI landing it, MA's spec text, IS's O-86. Owe nothing.
+0. **SPM is RF: DECIDED (DA rev 124, "use RF"; AR 371, row .599641,
+   Needs TI).** Each of the 32 banks is a ccv_common_rf_1r1w, 1024 x 32,
+   at about 3.32x per bit (efficiency about 0.30). It runs at full rate and
+   has no SECDED, so LAT_SPM_BASE stays 2. SPM is outside the fault system
+   until PF-48.
+   - No byte enables: a sub-word write is a read-modify-write (read port,
+     then the write port next cycle), taking that bank's read slot.
+   - Fallback: if check-ngd finds the 1024-word read launch too deep, use
+     2 x 512 RFs per bank.
+   - AR still owes the SPM tab of the specs doc (DJeg9Hh8rkPDecq4hrAz35)
+     updated to match AR 371.
 1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
    Post-fix (a5481843), cm128 hit 7/8/9: 512 KiB 1,924,529 / +0.61% / +1.03%;
    128 KiB 1,946,773 / +0.59% / +1.03%; 64 KiB 2,124,002 / +1.14% (hit 8).
