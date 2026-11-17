@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 370 .596551, AR 371 .599641 (tab rev 372).
-  - **The next AR row inserts after .599641**, labelled AR 372.
+  - Latest rows: AR 371 .599641, AR 372 .601453 (tab rev 373).
+  - **The next AR row inserts after .601453**, labelled AR 373.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 372, OA 428, TI 478, RA 154, RI 90,
-  IS 197, CP 159, OI 366, DA 124, MA 82, Conventions 19.
+- **Bookmarks** (revs read through): AR 373, OA 428, TI 478, RA 154, RI 90,
+  IS 197, CP 159, OI 366, DA 124, MA 84, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -226,6 +226,13 @@ Credit rules (TI-49):
    - TI 477 landed MACRO-1 (ddc700a1: size limits, architect-written
      waivers, size penalty, per-block efficiency). SPM's 4 KiB RF (and the
      2 KiB fallback) is in range, so AR owes no waiver.
+0b. **MA-20 bank scheduling: answered, AR 372 (.601453; notice to MA).**
+   All three go into Phase 1, (1) fairness and (3) the conflict queue priced
+   together first. The 729-cycle wait was deferred work behind loads, not
+   slot order. (2) is the within-page hash only (bank = PA[9:7]^[12:10]^
+   [15:13]; bits above 15 are translated). Open-loop: cm32 2.60/2.69/2.64%,
+   cm128 4.14/4.03/3.96% (plain/within/cross); tool
+   ~/l1sweep/bank/banksim_h.py (hp|hx). Wait for MA's Phase 1 figures.
 1. **L1 at 512 KiB: DONE, AR 363 (row .579939, Needs MA, notice sent).**
    Post-fix (a5481843), cm128 hit 7/8/9: 512 KiB 1,924,529 / +0.61% / +1.03%;
    128 KiB 1,946,773 / +0.59% / +1.03%; 64 KiB 2,124,002 / +1.14% (hit 8).
