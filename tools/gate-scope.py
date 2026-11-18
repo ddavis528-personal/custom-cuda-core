@@ -91,6 +91,12 @@ MAP = [
     # And the block's lock-step job, which replays the model's port dump
     # into the RTL (rcu_ls).
     ("sim/rcu/", ["skel", "kernel", "rcu_unit", "rcu_ls", "svh"]),
+    # The MIU and DCU models (MA-21, MA-22): built into every skeleton and the
+    # SV top from blocks.list, selected by CCV_DCU_IMPL / CCV_MIU_IMPL, so the
+    # kernels, the SV top, check-links' split tree and check-top's wiring
+    # dump build them.
+    ("sim/dcu/", ["skel", "kernel", "svh", "links", "top"]),
+    ("sim/miu/", ["skel", "kernel", "svh", "links", "top"]),
     # The skeleton writes rcu_ls's port dumps (sim/skel/portdump.cpp).
     ("sim/skel/", ["skel", "kernel", "rcu_ls", "svh", "top"]),
     ("sim/", ALL),
@@ -233,6 +239,11 @@ def selftest():
     s, _ = scope(["sim/rcu/rcu_core.cpp"])
     expect(s != ALL and {"kernel", "rcu_unit", "rcu_ls", "skel", "svh"} <= set(s),
            "an RCU model change skips a section that reads it: %s" % s)
+    for d in ("sim/dcu/dcu_p1.cpp", "sim/miu/miu_p1.cpp"):
+        s, _ = scope([d])
+        expect(s != ALL and {"skel", "kernel", "svh", "links", "top"} <= set(s)
+               and "ooe_rtl" not in s and "cg" not in s,
+               "a MIU or DCU model change is not scoped to the sections that build it: %s" % s)
     s, _ = scope(["rtl/rcu/rcu_bank_slice.sv", "test/rcu/cg-units.json"])
     expect(s != ALL and {"cg", "ngd", "rcu_rtl", "rcu_ls", "top", "svh", "links"} <= set(s)
            and "ooe_rtl" not in s,

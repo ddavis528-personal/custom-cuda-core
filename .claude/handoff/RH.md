@@ -1,4 +1,5 @@
 # RH handoff (run helper)
+- Before every push: `git fetch origin ccr-c22116ce-1vzyjg && git merge --no-edit FETCH_HEAD` (TI merged the current ci.yml in at 873b3715, DA go-ahead; never drop it).
 
 Updated 2026-10-30. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
@@ -8,7 +9,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   check-cg/check-ngd sweeps, Yosys/SBY runs, kernel and SV-hosted runs,
   experiment sweeps, bisects. Takes jobs from OI first; TI may send them too.
   AR is a regular sender too (DA in RH's session, 2026-11-15). Results go to AR by
-  message, never as a register write. Other senders: ask Daniel first.
+  message, never as a register write. MA too (DA in RH's session, 2026-11-17): results to MA by
+  message, priority later. Other senders: ask Daniel first.
 - No register tab, so RH never writes to the register. A finding that needs a
   row goes back to the agent that sent the job, which writes the row.
 - Jobs arrive by `send_message` and results go back the same way, with `priority`
@@ -54,13 +56,36 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- Nothing running (09:30Z 11-17). OI OA-424 (CMPL 14 vs 15, TI-474) DONE and sent. The first c15 run was broken
+- MA-1 DONE and sent 19:41Z 11-17 (all clean): rh-jobs/ma1/ma1.sh at cc5f3f04, worktree dropped, ~/ccv-logs/ma1
+  (KEEP: MA's reference for p1 deltas; rh-jobs/ma1/table.py writes s1-cycles.tsv and the table). Ways 8,
+  defaults. No per-reason late bins at the stubs; the squeezed cm128 was dropped (AR 373).
+- OI OA-428 QUEUED (#58, rx_lag=80 = E at 5e1f3789): rh-jobs/oi427/oi428.sh, uses rh-oi427b, ~/ccv-logs/oi428. A = OA-427's A0.
+  Each lane waits for 427s. Table:
+  `table.py A0 A0=~/ccv-logs/oi427 E=~/ccv-logs/oi428 --ctr=stall.decq,stall.decq_warp_max` (labels: A0 is OI's A).
+  Ruling: S1 <= +0.5% -> OA, else DA. Do not drop rh-oi427b before 428 done.
+- OA-427 S1 + cm32priv A0/A/B SENT 05:40Z (B S1 +0.002%; A0 == A exactly). OA-428 S1 SENT 05:55Z: E +0.946% (DA rules); stall.decq* 0.
+  cm128priv for both now after MA-4 (~12:00-14:30Z); OI told. OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
+- MA-4 early SENT 06:35Z: b wait_max fixed (198/588), b cycles unchanged (q0 identical, q2 -5). Next: a.q8 cm128 ~09:00Z.
+- OI OA-427 RUNNING from 05:05Z (OI-164 opt 2): rh-jobs/oi427/oi427.sh, worktrees rh-oi427 (15ef1bd4, A/B/C/D) and
+  rh-oi427b (5e1f3789, A0; oracles symlinked from rh-oi427, inputs identical). ~/ccv-logs/oi427. S1 (ruling: B <= +0.5%) + cm32priv
+  now; cm128priv waits for ma3/ma4. Send S1 early. Table: cycles, IPC, Δ% vs A; A0==A; branch.free_held/kept/withdrawn.
+- MA-4 (replaces the dafb933f plan) at c94f0ae6 (MA's born_ measurement fix + way-pred/LDFIRST knobs, off by default):
+  rh-jobs/ma4/ma4.sh c94f0ae6, worktree rh-ma4, ~/ccv-logs/ma4/points = b.q0.fixed b.q2.fixed b.q2.rot b.q4.fixed
+  a.q8.fixed a.q2.fixed.ldf b.q2.fixed.ldf a.q2.fixed (control: must match MA-3 a.q2.fixed) a.q16.fixed (MA 05:44Z: q8 ahead of LDFIRST). cm32 + cm128, S1. Benches wait for
+  ma3.sh (started 05:46Z); ETA ~12:00Z. Sanity: b p1_wait_max <= a few hundred. Table: python3 rh-jobs/ma4/table.py.
+- MA-3 DONE and sent 05:46Z (a points, all clean; control == MA-2 exactly; q4 -1%/-3.2%, rot a wash). rh-ma3 dropped 05:48Z for disk (rebuild from 13e584e5).
+- MA-2 DONE and sent 02:58Z 11-18 (30/30 clean): rh-jobs/ma2/ma2.sh, p1 at dd04f733 (gate-scratch/MA),
+  worktree rh-ma2 dropped 03:07Z for disk (rebuild from dd04f733 if needed), ~/ccv-logs/ma2.
+  Table via python3 rh-jobs/ma2/table.py [extra points]. q0 +35/42% on cm32/cm128 (repass); q2 at about stub level;
+  b.q2 cm128 5,290,859, but b's wait_max is 70k-229k (fixed arb). A container restart at ~00:30Z killed 3 cm128 runs;
+  they were relaunched and rerun from scratch. After a restart: swapon /home/user/rh-swap.
+- OI OA-424 (CMPL 14 vs 15, TI-474) DONE and sent. The first c15 run was broken
   (stub MIU sent data with cmpl at due; logs in ~/ccv-logs/oi424/c15-v1). Rerun with OI's stub-MIU patch
   (rh-jobs/oi424/oi424b.sh) is clean: S1 +0.05%, cm32p -0.35%, cm128p +0.45% (reexec 8.0k -> 23.8k).
-  OI booked it as OI-162 (rev 366); trees dropped. rm ~/ccv-logs/oi424 after 09:30Z 11-18.
+  OI booked it as OI-162 (rev 366); trees dropped. Logs removed 11-18 09:36Z.
 - OI OA-421 priv pricing DONE and sent: rh-jobs/oi420/oi420p.sh, a5dc7eed,
   cm32priv +0.15%, cm128priv +0.06% (lag 1 vs 0), all clean. Worktree dropped. OI booked it as OI-161
-  (rev 365) and released the logs: rm ~/ccv-logs/oi420p after 07:20Z 11-18.
+  (rev 365) and released the logs: logs removed 11-18 09:36Z.
 - OI OA-420 pricing DONE and sent: a5dc7eed, rob_retire_lag 1 vs 0,
   all clean. S1 sum +0.16% (mean per-kernel +0.42%; mostly +1 cycle at drain), cm32 +0.50%, cm128 +0.92%.
   stall.rob_full absent (0); used retire.head_wait.rob_full. OI booked it as OI-159 (rev 363); worktree
