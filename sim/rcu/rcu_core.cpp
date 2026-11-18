@@ -644,6 +644,7 @@ void Core::cycle(uint64_t t, const In &in, Out &out) {
   if (any_lane) {
     if (!in.lane_can) fail("rcu_lane_ops sent without a credit (a fixed-latency channel)");
     out.lane = msg;
+    for (const LaneDesc &d : descs) (d.sfu ? out.lane->sfu : out.lane->lane) = true;
     for (const LaneDesc &d : descs) {
       const uint64_t w = d.a + (d.sfu ? kSfuW : kLaneW);
       lanes_[w].push_back(d);
