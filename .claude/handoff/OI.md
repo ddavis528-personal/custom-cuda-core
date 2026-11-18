@@ -19,7 +19,7 @@ Updated 2026-11-18 00:30 UTC. Survives a compaction. CLAUDE.md holds the repo's 
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-164. Pings Fridays.
+  Next free ID: OI-166. Pings Fridays.
 - A fresh worktree needs sim/generated: `python3 tools/gen-params.py; tools/gen-ops.py;
   tools/gen-interfaces.py` before sim/ooe/run-tests.sh (the 18 FAIL lines it prints are
   controls; the verdict is the "ooe-test:" line).
@@ -29,7 +29,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 367, OA 428, TI 478, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
+OI 369, OA 428, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
 
 ## Trees and runs in flight
 - 5e1f3789 (LAT_MISS 16) pushed 11-18 via an imported split gate; OI-163 written, TI rung.
@@ -38,17 +38,15 @@ OI 367, OA 428, TI 478, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
   (new control no-alloc-lag); model tests pass. Bench helper scratchpad/af/rob-only.sh.
 
 ## Open work (most urgent first)
-1. #61 OA 422 in ooe_rob_w. Step 1 (registered retire pick) pushed 69c50111. Step 2 (arrival
-   flops) committed 65d9b55e: next: NGD running (bg-run ngd-rob, log /root/ccv-logs/ngd-rob.log;
-   gate-wait it if the task ends) `python3 tools/check-ngd.py --unit
-   ooe_rob_w_1` (and _2, _3, ooe_rob_w): lower caps in rtl/ngd-ratchet.json to the measure; check-cg;
-   gate-push from wt-61. Before step 2: NGD-1 28.82 (ck->ckfa_s), al_n 29.6, fl_m 28.8 (arrives 2,
-   26.8 after: an arrival flop cannot fix it; needs an internal cut ~1050 flops, or back to OA with
-   its path), dn_tag 25.04. Then RH prices rob_alloc_lag=1 (with rob_retire_lag 0/1) on S1,
-   cm32-priv, cm128-priv. Then an OI row to OA: the go needs no change (the run register takes
-   the arriving count late, exact); the no-op/fault cost is now modelled (corrects OI-160's "0");
-   whatever is still over 25 with its path (fl_m, ckfa_s). Design notes: scratchpad/af/plan.md.
-2. #58 ooe_decq arrival-side A-70 epoch drop (TI-457 / OI-156) + decq_tb case.
+1. #61 OA 422 in ooe_rob_w: PARKED on OA (OI-164, rev 368, OA rung). Step 1 pushed 69c50111.
+   Step 2 in /home/user/wt-61 (branch oi-af): 65d9b55e + b50beabf (ckfa direct, bo_oh valid
+   folded, wkf reduce-OR), unpushed; bench + 25 controls pass. NGD-1 31.3 vs cap 28.9 (cone
+   ck->free->ckf RTL-identical to base; ABC variance). DA (11-18): stop logical optimization;
+   repipeline (move logic between stages) or add a cycle. Await OA's cut, then build it.
+   Remove /home/user/wt-61base (git worktree remove) when done. Probes scratchpad/af.
+2. #58 A-70 arrival epoch drop: PARKED on OA (OI-165, rev 369, OA rung). RTL has no warp-to-slot
+   table/per-warp epoch; proposed a DEC receiver module ahead of ooe_decq (decq unchanged).
 3. #52/#53/#54/#51 NGD-to-25 refactors: PARKED on OA (notes scratchpad rob52b, go53, s54, rd51).
-4. #57 DA 111b: a timing unit per OOE instance at its parameters (scratchpad/s54/cover.py).
+4. #57 DA 111b: done. TI's coverage check (3e687018, check-ngd/check-cg) fails an instance with no
+   unit; scan (scratchpad/s54/cover.py) found none missing.
 5. Blocked/parked: #40, #42 (TI schema), #46 (lead set), #32 (optional fa index).
