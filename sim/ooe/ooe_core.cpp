@@ -2056,6 +2056,7 @@ void Core::freeCkptsFrom(unsigned slot, unsigned idx) {
     } else if (r.valid && r.u.attr.branch && cfg_.ckpt_free_lag && !cfg_.inject_free_held_kept) {
       // ckpt_free_lag: a younger branch resolved right a cycle ago has its
       // free still held; FET frees it at this redirect, so it is withdrawn.
+      if (free_held_ >> (slot * cfg_.ckpts + r.u.ckpt) & 1) count("branch.free_withdrawn");
       free_held_ &= ~(uint64_t(1) << (slot * cfg_.ckpts + r.u.ckpt));
     }
   }
@@ -2287,6 +2288,7 @@ void Core::squashDue() {
         r.ckpt_live = false;
         withdrawFree(uint64_t(1) << (si * cfg_.ckpts + r.u.ckpt));
       } else if (r.valid && r.u.attr.branch && cfg_.ckpt_free_lag && !cfg_.inject_free_held_kept) {
+        if (free_held_ >> (si * cfg_.ckpts + r.u.ckpt) & 1) count("branch.free_withdrawn");
         free_held_ &= ~(uint64_t(1) << (si * cfg_.ckpts + r.u.ckpt));   // as freeCkptsFrom's
       }
     }
