@@ -343,9 +343,12 @@ Sweep 11-18: nothing for RA; merged 183cc441 (74), 57eff422 (25), c22116ce (17),
 RA 156 (macro shape limits: RCU has no macro). CCV_LAT_L1_CMPL 14->15 landed (TI 478, 9682b03a): spec
 updated (Overview 82, Partition 73, Lane 20, R unit 33: CMPL 15 and SECDED late-cancel lines), snapshots refreshed.
 Open elsewhere (not RA): DCU L1_HIT 7/8/9 menu (AR 376-381, MA-23) for DA; a hit of 8/9 moves
-ccv_miu_rcu_data timing, recheck the spec then. Snapshot export route: Docs create (object blob, engine blob,
+ccv_miu_rcu_data timing, recheck the spec then. TI-483 (11-18, SECDED helpers b407ff71): decode needs 2 flops
+after rdata (rdata, syndrome) vs CCV_LAT_L1_ECC 1; if MA/AR raise L1_ECC to 2, L1_CMPL moves to 16: recheck spec CMPL lines.
+TI-484 (0767fe1c): RA 153 (5) met (CCV_MIU_ECC_INJECT, bin l1_ecc_fix, controls ecc-no-fix,
+ecc-cmpl-on-time, both hosts); double-error test waits on AR 370; real MIU owes the same runs (MA/MI). Snapshot export route: Docs create (object blob, engine blob,
 payload {from:{object:file,id:<tab id>},format:markdown}) per tab, then Artifact read with the asset id as path.
-Bookmarks: OA 436, RA 156, RI 91, TI 480, AR 384, DA 127, OI 374, Conventions 19, CP 160, IS 197, MA 97.
+Bookmarks: OA 436, RA 156, RI 91, TI 483, AR 384, DA 127, OI 374, Conventions 19, CP 160, IS 197, MA 97.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
