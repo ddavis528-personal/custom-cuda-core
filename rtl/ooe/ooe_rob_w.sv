@@ -452,7 +452,7 @@ module ooe_rob_w #(
   // output's copy, |rd_nx), and synthesis would merge the two (NGD-7).
   (* keep *) logic [S-1:0] rd_s_cq02h;
   (* keep *) logic [S-1:0] rd_t_cq02h;   // its copy for the pointers' and counts' next values (NGD-1)
-  logic [S-1:0]    rd_q_cq03h, ckfa_s_cq02h;   // ckfa_s: a checkpoint frees (the register's enable)
+  logic [S-1:0]    rd_q_cq03h;
   (* keep *) logic [S-1:0] rd_o_cq03h;        // its copy for rd_l (NGD-7)
   logic            kl_cq02h;
   always_comb begin
@@ -2075,36 +2075,60 @@ module ooe_rob_w #(
       pick_cq02h[s * D +: D] = cw_e_cq02h[s * D +: D] & ~pfx_cq02h[s * D +: D];
       free_cq02h[s * D +: D] = crt_e_cq02h[s * D +: D] & ~pfx_cq02h[s * D +: D];
     end
-  // Each checkpoint's free: a balanced OR over the slot's entries (ABC
-  // keeps an accumulating loop's chain, 32 deep).
+  // The candidates' superset the resolution's registers are clocked on:
+  // without the held and squash terms, so each enable stays within CG-2's 8.
+  logic [S*D-1:0] cnx_cq02h;
+  assign cnx_cq02h = v_cq02h & cmp_q_cq02h & br_cq02h & ~rsv_cq02h;
+  // The checkpoint frees leave a cycle after the resolution (OA 427, re:
+  // OI-164): the resolution registers its free entries (frp), and each
+  // checkpoint's free is taken from them a cycle later, at their records'
+  // checkpoints (a free entry is filled and valid, so no fill rewrites its
+  // record while it waits; asserted below). A pick in the slot holds them
+  // a cycle more: those younger than it its squash then drops (sqa), and
+  // FET frees those itself at the redirect; the older ones go out after.
+  // Only a valid, filled entry in the squash is younger: one that retired
+  // while its free waited may sit where the squash's range wraps (its
+  // position free, or taken by an allocation not yet filled).
+  logic [S*D-1:0]  frp_cq02h, frp_nx_cq02h, fre_cq02h;
+  logic [S-1:0]    frv_cq02h, cfl_cq02h, frp_en_cq02h, ap_cq02h;
   logic [S*NK-1:0] ckf_nx_cq02h;
   logic [D-1:0]    ckm_cq02h;
   always_comb begin
     ckf_nx_cq02h = '0;
     ckm_cq02h = '0;
-    for (int s = 0; s < S; s++)
-      for (int c = 0; c < NK; c++) begin
-        for (int i = 0; i < D; i++) ckm_cq02h[i] = free_cq02h[s * D + i] && ck_cq02h[(s * D + i) * LK +: LK] == LK'(c);
-        ckf_nx_cq02h[s * NK + c] = |ckm_cq02h;
-      end
-  end
-  // Any checkpoint frees: the slot's free entries that hold a checkpoint
-  // (every ck < NK; a constant 1 when NK is a power of two), without the
-  // per-checkpoint compare and its OR, which ABC mapped 3 NGD deeper on
-  // some netlists than on others.
-  logic [S-1:0]   ckfa_nx_cq02h;
-  logic [S*D-1:0] ckin_cq02h;
-  always_comb
     for (int s = 0; s < S; s++) begin
-      for (int i = 0; i < D; i++)
-        ckin_cq02h[s * D + i] = 32'(ck_cq02h[(s * D + i) * LK +: LK]) < NK;
-      ckfa_nx_cq02h[s] = |(free_cq02h[s * D +: D] & ckin_cq02h[s * D +: D]);
+      ap_cq02h[s] = |cw_e_cq02h[s * D +: D];
+      fre_cq02h[s * D +: D] = frp_cq02h[s * D +: D] & ~(sqa_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~ufm_cq02h[s * D +: D]);
+      frp_nx_cq02h[s * D +: D] = free_cq02h[s * D +: D] | (fre_cq02h[s * D +: D] & {D{ap_cq02h[s]}});
+      for (int c = 0; c < NK; c++) begin
+        for (int i = 0; i < D; i++) ckm_cq02h[i] = fre_cq02h[s * D + i] && ck_cq02h[(s * D + i) * LK +: LK] == LK'(c);
+        ckf_nx_cq02h[s * NK + c] = (|ckm_cq02h) & ~ap_cq02h[s];
+      end
+      // Clocked on a superset of the candidates (the frees), frv (frp may
+      // hold one) and cfl (ckf may hold one), so each clears a cycle after.
+      frp_en_cq02h[s] = (|cnx_cq02h[s * D +: D]) | frv_cq02h[s] | cfl_cq02h[s];
     end
+  end
+  for (genvar gs = 0; gs < S; gs++) begin : g_frp
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) begin
+        frp_cq02h[gs * D +: D]   <= '0;
+        frv_cq02h[gs]            <= 1'b0;
+        cfl_cq02h[gs]            <= 1'b0;
+        ckf_cq03h[gs * NK +: NK] <= '0;
+      end else if (frp_en_cq02h[gs]) begin
+        frp_cq02h[gs * D +: D]   <= frp_nx_cq02h[gs * D +: D];
+        frv_cq02h[gs]            <= |cnx_cq02h[gs * D +: D];   // a pick is a candidate
+        cfl_cq02h[gs]            <= frv_cq02h[gs];
+        ckf_cq03h[gs * NK +: NK] <= ckf_nx_cq02h[gs * NK +: NK];
+      end
+    end
+  end
   // The resolution registers: the mispredict's one-hot entry, the entries
   // its squash takes (the pick's prefix: every position after the branch
   // up to the head, and this cycle's allocations, which may land on an
   // entry retiring now), whether the branch retires now, and the redirect's
-  // lead, which is the squash's at R + 1; the checkpoint frees.
+  // lead, which is the squash's at R + 1.
   logic [S*D-1:0] sqm_nx_cq02h;
   logic [S-1:0]   sq_rt_nx_cq02h;
   always_comb
@@ -2115,11 +2139,9 @@ module ooe_rob_w #(
   // Clocked on a superset of the candidates, without the held and squash
   // terms (a pick is within the candidates, and a register loaded with no
   // pick holds no squash), so the enable stays within CG-2's 8.
-  logic [S*D-1:0] cnx_cq02h;
-  assign cnx_cq02h = v_cq02h & cmp_q_cq02h & br_cq02h & ~rsv_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
-      rs_en_cq02h[s] = (|cnx_cq02h[s * D +: D]) | rd_s_cq02h[s] | ckfa_s_cq02h[s];
+      rs_en_cq02h[s] = (|cnx_cq02h[s * D +: D]) | rd_s_cq02h[s];
     end
   for (genvar gs = 0; gs < S; gs++) begin : g_res
     always_ff @(posedge ooe_core_clk) begin
@@ -2128,15 +2150,11 @@ module ooe_rob_w #(
         rd_t_cq02h[gs]                <= 1'b0;
         rd_q_cq03h[gs]                <= 1'b0;
         rd_o_cq03h[gs]                <= 1'b0;
-        ckf_cq03h[gs * NK +: NK]      <= '0;
-        ckfa_s_cq02h[gs]              <= 1'b0;
       end else if (rs_en_cq02h[gs]) begin
         rd_s_cq02h[gs]                <= |pick_cq02h[gs * D +: D];
         rd_t_cq02h[gs]                <= |pick_cq02h[gs * D +: D];
         rd_q_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
         rd_o_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
-        ckf_cq03h[gs * NK +: NK]      <= ckf_nx_cq02h[gs * NK +: NK];
-        ckfa_s_cq02h[gs]              <= ckfa_nx_cq02h[gs];
       end
     end
     always_ff @(posedge ooe_core_clk) begin
@@ -2391,6 +2409,8 @@ module ooe_rob_w #(
   `CCV_ASSERT(no_done_at_alloc, ((dn_e_cq02h | cm_e_cq02h) & as_q_cq02h) == '0)
   `CCV_ASSERT(kill_count_bounded, kc_over_cq02h == '0)
   `CCV_ASSERT(held_never_retires, (rt_e_cq02h & (hd_cq02h | sqe_cq02h)) == '0)
+  // A free entry's record holds while its free waits (OA 427): no fill writes it.
+  `CCV_ASSERT(free_record_holds, ((frp_cq02h | free_cq02h) & fd_en_cq02h) == '0)
   // Every fill lands two cycles after its allocation (OA's rev 295, OI-94):
   // per slot, the fills arriving now are the go's allocations two cycles
   // ago, killed ones included. The kill count and the model's
