@@ -8,7 +8,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   check-cg/check-ngd sweeps, Yosys/SBY runs, kernel and SV-hosted runs,
   experiment sweeps, bisects. Takes jobs from OI first; TI may send them too.
   AR is a regular sender too (DA in RH's session, 2026-11-15). Results go to AR by
-  message, never as a register write. Other senders: ask Daniel first.
+  message, never as a register write. MA too (DA in RH's session, 2026-11-17): results to MA by
+  message, priority later. Other senders: ask Daniel first.
 - No register tab, so RH never writes to the register. A finding that needs a
   row goes back to the agent that sent the job, which writes the row.
 - Jobs arrive by `send_message` and results go back the same way, with `priority`
@@ -54,7 +55,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - 2026-10-30: introduced to OI by send_message (delivered). No jobs yet.
 
 ## Jobs in flight
-- Nothing running (09:30Z 11-17). OI OA-424 (CMPL 14 vs 15, TI-474) DONE and sent. The first c15 run was broken
+- MA-1 RUNNING from 18:29Z 11-17: rh-jobs/ma1/ma1.sh at MA's tip cc5f3f04 (claude/miu-dcu-microarch-spec-664pgr),
+  worktree rh-ma1, ~/ccv-logs/ma1 (KEEP: MA's reference for later p1 deltas; write s1-cycles.tsv). Ways 8,
+  defaults; S1 + cm32/cm128/cm32priv/cm128priv. No per-reason late bins at the stubs; AR 364 squeezed
+  skipped pending MA's setup. Next from MA: CCV_DCU_IMPL=p1 matrices. Watcher bkw9utv5p, fallback 20:30Z.
+- OI OA-424 (CMPL 14 vs 15, TI-474) DONE and sent. The first c15 run was broken
   (stub MIU sent data with cmpl at due; logs in ~/ccv-logs/oi424/c15-v1). Rerun with OI's stub-MIU patch
   (rh-jobs/oi424/oi424b.sh) is clean: S1 +0.05%, cm32p -0.35%, cm128p +0.45% (reexec 8.0k -> 23.8k).
   OI booked it as OI-162 (rev 366); trees dropped. rm ~/ccv-logs/oi424 after 09:30Z 11-18.
