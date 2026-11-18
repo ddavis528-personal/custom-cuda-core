@@ -209,6 +209,28 @@ else
   bad "with OOE's bypass: the same KERNEL line" "differ:$diffs"
 fi
 
+# -- an L1 hit's injected syndrome, both hosts --------------------------------
+# RA 153 (5): MIU's injected syndrome (CCV_MIU_ECC_INJECT=1, every hit: its
+# data on time with a bit flipped, no completion then, the corrected data
+# and completion later) must run the same on both hosts, clean, the
+# corrected beat counted (l1_ecc_fix), and so must its control ecc-no-fix,
+# which fails on both.
+diffs=""
+for spec in hit transp4 spinwait hit:ecc-no-fix; do
+  IFS=: read -r k brk <<<"$spec"
+  a=$(CCV_MIU_ECC_INJECT=1 cpp "$k" ${brk:+--break "$brk"} | grep -E '^(KERNEL|COVER) ')
+  s=$(CCV_MIU_ECC_INJECT=1 svh "$k" ${brk:++ccv_break=$brk} | grep -E '^(KERNEL|COVER) ')
+  fix=$(grep '^COVER' <<<"$s" | tr ' ' '\n' | sed -n 's/^l1_ecc_fix=//p')
+  clean=$(grep '^KERNEL' <<<"$s" | grep -c ' gpr_mismatch=0 .*check_failures=0 ')
+  want=1; [ -n "$brk" ] && want=0
+  [ -n "$a" ] && [ "$a" = "$s" ] && [ "${fix:-0}" -gt 0 ] && [ "$clean" = "$want" ] || diffs="$diffs $spec"
+done
+if [ -z "$diffs" ]; then
+  say "injected L1 syndromes: the same KERNEL line" "PASS (hit, transp4, spinwait clean; ecc-no-fix fails on both)"
+else
+  bad "injected L1 syndromes: the same KERNEL line" "differ, unclean or uncorrected:$diffs"
+fi
+
 # -- the partner: one block one cycle late must not compare equal ------------
 for inst in u_dec u_lane_05; do
   svh vadd "+ccv_trace=$B/svh_skew.ccvtrace" "+ccv_shim_delay=$inst" >"$B/svh_skew.log"

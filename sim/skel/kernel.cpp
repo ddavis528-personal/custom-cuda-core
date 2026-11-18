@@ -976,6 +976,21 @@ private:
   /// A hit's completion and data, held for the contract cycle.
   struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
   std::vector<Timed> held_;   ///< ineligible loads' completions, held past the contract (MA-4)
+  /// An L1 hit's injected syndrome (RA 153 (5), MA's re: SECDED on every
+  /// SRAM, DA rulings TI-474 to TI-476): CCV_MIU_ECC_INJECT=N takes every
+  /// Nth hit that writes a register as a single-bit error the syndrome
+  /// stages find. Its data leaves on time with one bit flipped, as the
+  /// speculative data would; no completion at the contract (the miss
+  /// indication, CCV_LAT_L1_ECC's contract); the corrected data and then
+  /// the completion CCV_LAT_L1_ECC + 2 cycles after the data, as a miss's
+  /// would come (held_, data before completion). 0, the default: none.
+  const unsigned ecc_every_ = [] {
+    const char *v = std::getenv("CCV_MIU_ECC_INJECT");
+    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
+  }();
+  unsigned ecc_hits_ = 0;
+  /// Corrected beats alone (the controls), each at its cycle.
+  std::vector<std::pair<uint64_t, Q>> ecc_beats_;
   std::deque<Timed> timed_;
 
   std::map<unsigned, Memop> memop_;
@@ -1391,6 +1406,27 @@ private:
       constexpr uint64_t kEcc = ccv::prov::kLatL1Ecc;
       if (t.at == now_ && free(c.miu_rcu, t.data.slot) &&
           (kEcc != 0 || free(c.miu_ooe, t.cmpl.slot))) {
+        const bool ecc = eccInject(t.data);
+        if (ecc) {
+          // The speculative data, one bit wrong, on time; the corrected
+          // beat and its completion as a miss's (held_). The controls:
+          // ecc-no-fix completes on time and never corrects; ecc-cmpl-on-time
+          // corrects later but completes on time, so OOE keeps the
+          // dependants that read the bad value.
+          Q bad = t.data;
+          flipLoadBit(bad.msg);
+          send(c.miu_rcu, bad.slot, bad.msg, bad.tid);
+          if (k_.brk == "ecc-no-fix") {
+            late_faults_.push_back({now_ + kEcc, t.cmpl});
+          } else if (k_.brk == "ecc-cmpl-on-time") {
+            late_faults_.push_back({now_ + kEcc, t.cmpl});
+            ecc_beats_.push_back({now_ + kEcc + 2, t.data});
+          } else {
+            held_.push_back({now_ + kEcc + 2, t.data, t.cmpl});
+          }
+          k_.hit("l1_ecc_fix");
+          continue;
+        }
         if (kEcc == 0) sendCmpl(t.cmpl.slot, t.cmpl.msg, t.cmpl.tid);
         else late_faults_.push_back({now_ + kEcc, t.cmpl});
         if (k_.brk == "late-hit-data")
@@ -1415,6 +1451,9 @@ private:
 
     for (auto it = late_faults_.begin(); it != late_faults_.end();)
       if (it->first <= now_) { to_ooe_.push_back(it->second); it = late_faults_.erase(it); }
+      else ++it;
+    for (auto it = ecc_beats_.begin(); it != ecc_beats_.end();)
+      if (it->first <= now_) { to_rcu_.push_back(it->second); it = ecc_beats_.erase(it); }
       else ++it;
     for (auto it = held_.begin(); it != held_.end();)
       if (it->at <= now_) {
@@ -1545,6 +1584,23 @@ private:
   /// exactly one (ccv_miu_ooe), so it frees the memop's queue entry, and so
   /// its credit (MA-5). An atomic's more = 1 is not a second completion of
   /// this memop: OOE re-issues the steps as new memops (AR-21).
+  /// Whether this hit's data takes an injected syndrome (ecc_every_): a
+  /// load that writes a register, one hit in ecc_every_.
+  bool eccInject(const Q &d) {
+    const Ch &c = ch();
+    if (!ecc_every_ || !uint32_t(get(d.msg, c.miu_rcu, "active_mask")) ||
+        unsigned(get(d.msg, c.miu_rcu, "phys_dst")) == ccv::prov::kPhysZero)
+      return false;
+    return ++ecc_hits_ % ecc_every_ == 0;
+  }
+  /// One bit of the lowest active lane's data flipped: what a single-bit
+  /// error in the array leaves in the speculative data.
+  void flipLoadBit(Bits &m) {
+    const Ch &c = ch();
+    const unsigned l = __builtin_ctz(uint32_t(get(m, c.miu_rcu, "active_mask")));
+    putLane(m, c.miu_rcu, "load_data", l, getLane(m, c.miu_rcu, "load_data", l) ^ 1u);
+  }
+
   void sendCmpl(unsigned slot, const Bits &m, uint64_t tid) {
     const Ch &c = ch();
     send(c.miu_ooe, slot, withLead(m), tid);
@@ -2495,7 +2551,7 @@ private:
   }
 
   bool busy() const override {
-    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
