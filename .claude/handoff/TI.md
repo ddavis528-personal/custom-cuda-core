@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 480, AR 374, DA 125, MA 89, RI 91, CP 160, OI 367 (others per the
+TI 481, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
 JSON file). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
@@ -42,18 +42,20 @@ timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
 restart: rerun the job). Logs in /root/ccv-logs/.
 
 ## State (2026-11-18)
-- Both working branches at 358ace66 (SCOPED PASS 24/24 since 56768c79):
-  ti-stride (AR 373 (2) stride benches + LOAD key, pin a293afe7, gate-scope
-  sim/dcu + sim/miu for MA-22, RI's 536c9210 sgemm fix) and ti-shape (DA
-  2026-11-17 macro shape limits: SRAM W <= 128 + SECDED = 137, D <= 4096;
-  RF W <= 256, D <= 1024; fixture SRAM now 128 x 512). Rows TI-480 (to AR,
-  MA, CP, RI) and TI-481 (to MA, AR, RA) at rev 480, notices sent.
+- Both working branches at 36866ec7 (daily sweep 11-18, full gate PASS;
+  release 6a90f970, tag local only). It carries 3eb6e8d0 (AR 380 / OA 433:
+  warp_id + fetch_epoch lead on ccv_dec_ooe_uop, check-kernel uop-late-lead
+  control on lanectx), row TI-482 (rev 481) to OI, AR, OA, notices sent.
+  OA 434 ruled OI-170 option (a): a lead waiver for decrx enq_slot (OI writes it).
+- 358ace66: ti-stride (AR 373 (2) stride benches + LOAD key, pin a293afe7,
+  gate-scope sim/dcu + sim/miu, RI's 536c9210) and ti-shape (DA 2026-11-17
+  macro shape limits). Rows TI-480, TI-481.
 - Earlier landed: 9682b03a (AR 368 L1_ECC, TI 478), 117e8117, ddc700a1.
-- Daily sweep 11-17 done (release 2e2b5313); its tag push is refused from
+- Daily sweeps 11-17 (release 2e2b5313) and 11-18 (6a90f970) done; its tag push is refused from
   here, local only.
 - Disk: a gate failed on a full disk; cleared idle worktrees' synth-cache.
   Scratchpad priv/ (4.3 GB) is unknown, left alone. Worktree ti-size is on
-  branch ti-next at 358ace66; ti-bench is free.
+  branch ti-next at 36866ec7; ti-bench is free.
 - Open small: task 35, drop the ooe_wake LAT_MISS 16 override in
   test/ooe/cg-units.json once OI's 5e1f3789 (OI-163) is in the base.
   AR may answer the colwalk-p128b anomaly (perfect fetch slower than stub).
