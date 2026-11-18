@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 375, OA 428, TI 479, RA 154, RI 90,
-  IS 197, CP 160, OI 366, DA 125, MA 89, Conventions 19.
+- **Bookmarks** (revs read through): AR 378, OA 428, TI 480, RA 154, RI 90,
+  IS 197, CP 160, OI 366, DA 125, MA 91, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -270,7 +270,22 @@ Credit rules (TI-49):
      (cm128 one at a time); its progress is p1runs/progress.log. The
      oracles are reused from ~/l1sweep/oracle{,p} (same pin). Next: the rot
      points on the best two, then return one table to MA and book PF rows.
-     Tabulate with `python3 /root/l1sweep/p1runs/tab.py`. 13/24 were done at
+     **2026-11-18 ~03:00Z: the container was replaced and /root was lost**
+     (/root/l1sweep: logs, scripts, ev traces, oracles, worktrees). Only
+     /home/user survives, so keep everything under /home/user/ar-work. The
+     numbers recovered from the transcript are in
+     ar-work/results/recovered-2026-11-18.md (17 strict, all 88 stride, the
+     p128b cuts, way prediction). ar-work/rebuild.sh (detached; its log is
+     rebuild.log) reinstalls the toolchain, makes worktree ar-work/p1wt at
+     dd04f733, builds the skeleton and the oracles in ar-work/oracle, then
+     reruns the lost points in two lanes (progress in ar-work/runs/
+     progress.log; tabulate with ar-work/tab.py). Lane A: cm128 a/af/b q2,
+     rot (b, af q2) on cm128priv and cm128, then cm128 q0 x3. Lane B: rot on
+     cm32priv and cm32, then cm32 b_q0. The stride build (local merge) is
+     gone too; its results are recovered, so it is rebuilt only if asked.
+     ~/l1sweep/bank's banksim and the ev traces are gone; extract.py would
+     have to be rewritten to replay them.
+     Old note: tabulate with `python3 /root/l1sweep/p1runs/tab.py` (gone). 13/24 were done at
      21:11Z, all finished with check 0. (b) is cheapest on cycles everywhere,
      but cm32 shared (b) q2 has wait max 63,472 (1,100 waits >= 64). A
      suspected starvation, for MA in the table row: a lookup that re-passes
@@ -297,6 +312,29 @@ Credit rules (TI-49):
    - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
      TI does the bench configs (they need gen-oracle's LOAD) and the pin
      bump.
+0c. **AR 375 (.609311; TI rung) and AR 376 (.612527; MA rung), rev 376-378.**
+   AR 375 answers TI-480 and TI-481.
+   - p128b's perfect-fetch gap is the OOE window share at 3 or more warps
+     on a latency-bound kernel. No PF.
+   - Stride summary.
+   - AR's arrays (corrected at rev 377): SPM is legal. SYU arrived lanes
+     become 2 rf of 32 x 256 (contexts stay the rows; an exit reads row c at
+     every id). PCA rows become SRAM, 2 parity banks x 8 slices of 137 x 256
+     (238 rows used; padded over the 4 KiB minimum; a row a cycle for
+     MIGRATION_CYCLES 17). PCA divergence state becomes 5 rf of 28 x 212.
+     FET checkpoints stay flops.
+   - OWED: write these into the SYU and PCA spec tabs (specs doc SYU node
+     1f8b4472-68c1, PCA 94b3a0ea-7224). Size FET's I-cache, ITLB and
+     predictor, RAU's grid table and LANE's SFU tables within the limits.
+   AR 376 answers MA-23 (Needs MA, DA).
+   - (B) is PF-33's hit 9 (cm128 +1.03%, cm32 +4.94%).
+   - (C): an XOR-folded partial-tag predictor of 3 or 4 bits is right on
+     99.1-99.4% of cm128priv hits (MRU 18.6%). Cost about 1% of (B)'s.
+     It needs 16,384 predictor flops, and the folded bits either ride the
+     lead or the compare sits in front of the data address.
+   - A question to MA: can the tag read move into the lead cycle (B at +1)?
+   - AR's view (B)+(C); Daniel rules. AR confirms (C) closed-loop when MA's
+     knob lands.
 0b. **MA-20 bank scheduling: answered, AR 372 (.601453; notice to MA).**
    All three go into Phase 1, (1) fairness and (3) the conflict queue priced
    together first. The 729-cycle wait was deferred work behind loads, not
