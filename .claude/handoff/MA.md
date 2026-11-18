@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 19, AR 384 (AR 381), TI 480, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 97, DA 126.
+Conventions 19, AR 384 (AR 381), TI 483 (TI-484 answered), OA 436, IS 197, CP 160, OI 374, RA 156, RI 91, MA 99, DA 127.
 
 ## State, 2026-11-13
 
@@ -76,19 +76,24 @@ Conventions 19, AR 384 (AR 381), TI 480, OA 428, IS 197, CP 159, OI 366, RA 154,
 ## Open work, most urgent first
 
 - PHASE 1 SWEEPS (DA rev 125; plan MA-21). Model sim/dcu/dcu_p1.cpp, runner sim/dcu/p1-run.sh
-  <oracle dir> <out.tsv> [K=V]; small kernels in build/oracle (64). Knobs: CCV_P1_STORE a|af|b, CCV_P1_ARB
-  fixed|rot, CCV_P1_HASH, CCV_DCU_BANK_AGE, CCV_P1_QDEPTH, CCV_P1_STRICT (pad 5), CCV_P1_REPASS 6,
-  CCV_P1_WAYPRED 0|1..16 (fold bits), CCV_P1_WPSEL index|recent (a6c7de10, AR 381), CCV_P1_LDFIRST
-  (DA rev 126, loads-first). Fixes: 13e584e5 (pend_ guard), c94f0ae6 (born_ leak on (b) merge: bogus waits).
-  Pushed through c94f0ae6 (SCOPED PASS); a6c7de10 + this handoff in their own gate-push.
-  RH (session_01QPk2jvfKM1V5rRfip8FC86) MA-4 at c94f0ae6, cm32 / cm128: a.q2 2,664,173 / 5,455,658;
-  a.q4 -0.95% / -3.20%; a.q8 -1.19% / -4.69% (q still at cap 8); a.q16 cm32 -1.28% (max 8: depth >8 buys
-  ~0); b.q2 cm32 2,653,662, cm128 5,310,989 (MA-2 had 5,290,859: check vs RH's a.q2 control); b.q2.rot
-  cm128 5,278,683; b.q4 cm32 2,637,367, cm128 5,253,827. LDFIRST: a.q2 cm32 +2 cycles, b no change.
-  Pending from RH (cm128): a.q2.ldf, b.q2.ldf, a.q2 control, a.q16; then full table.
-  Leaning: queue depth 8 (price an entry: store data+mask), LDFIRST model-only, (b) store variant (AR
-  381 preview: b beats af everywhere, cm128 -1.64%); rot undecided. Then write MA rows, fix age-owner text
-  in both spec tabs. Next steps after: BANK_AGE 8/16/32/64; hash with stride (AR's step (ii) table).
+  <oracle dir> <out.tsv> [K=V]; oracle build/oracle (gate cleanup deletes it: CCV_FOREGROUND=1
+  tools/gen-oracle.sh). Knobs: STORE a|af|b, ARB fixed|rot, HASH, BANK_AGE, QDEPTH, STRICT/PAD, REPASS,
+  GAP (default 4), DLAT, WAYPRED 1..16 + WPSEL index|recent, LDFIRST, DEFCAP (b3c74623: (b) defers no
+  more than N data-holding entries per bank). Counters p1_data_peak / p1_data_sum_peak (acc4479a).
+  BASELINE MOVED with the 11-18 sweep merge (stub S1 55,572 -> 56,933): give RH pre-merge shas for
+  comparability. gate-scratch/MA = 85045a15 (pre-merge base + counters + DEFCAP).
+  Results cm128 gap 4: a.q2 5,455,658, a.q8 5,199,588, a.q8.rot 5,191,161, a.q16 5,216,535; b.q2
+  5,310,989, b.q8 5,189,898, b.q12 5,154,723, b.q16 5,141,670, b.q16.rot 5,138,164. cm32 flat at q8+.
+  SECDED (TI-483, b407ff71; MA rev 98): store corrected read syn+fix 30.8 NGD = 2 stages, so GAP 5.
+  Gap 5: a.q8.rot 5,227,944 (+0.71%), b.q16 5,165,866 (+0.47%): b.q16 leads a.q8.rot by 1.19% but
+  holds 2.5x the data (peaks per bank / summed: a.q8.rot 18/109, b.q16 43/264; ~1,152 b/entry; extra ~5%
+  of L1 data bits, ~14% area-equiv as RF). Settled: LDFIRST model-only (neutral); rot not worth it at
+  b.q16; knees (a) 8, (b) 12-16.
+  IN FLIGHT: RH MA-7 at 85045a15, cm128 gap 5: b.q16 DEFCAP 18 / 8 / 24, then a.q16. Decide: if
+  capped (b) at 18 keeps most of 1.19%, (b) wins at equal storage; else area-for-perf trade to Daniel.
+  Alternative to ask AR: MIU-held store data (pointer in the DCU entry). Then MA rows, age-owner text
+  in both spec tabs. Next: BANK_AGE 8/16/32/64; hash with stride.
+- TI-484 (MA rev 99): miu-impl.md must require MI's MIU to pass the CCV_MIU_ECC_INJECT runs (0767fe1c).
 - MA-23 (DCU data array shape; MA rev 90-97): (A) parallel 8-way, hit 7, 512 tiny SRAMs w/ waivers; (B)
   tag-then-data hit 9; (B)+(C2) way prediction in the payload cycle, hit 8 (mispredict 9), 2nd bank access.
   AR 381 closed loop (h7 base / h8 / h9 / h8+wp3 index): cm32priv +1.00/+2.12/+1.00; cm32 ~0; cm128priv
