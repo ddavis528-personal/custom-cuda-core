@@ -1,0 +1,35 @@
+{
+ "module": "ooe_decrx",
+ "ports": {
+  "adv_cq01h": {
+   "arrival": 8.0,
+   "by": "OA",
+   "date": "2026-11-18",
+   "why": "OA 429 (re:OI-166): driven by the same flopped squash and notice pulses as ooe_decq's flush_cq01h (8), in NGD from the launching flop"
+  },
+  "adn_cq01h": {
+   "arrival": 8.0,
+   "by": "OA",
+   "date": "2026-11-18",
+   "why": "OA 429 (re:OI-166): driven by the same flopped squash and notice pulses as ooe_decq's flush_cq01h (8), in NGD from the launching flop"
+  },
+  "rel_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-18",
+   "why": "OA 429 (re:OI-166): the release pulse, from a flop, in NGD from the launching flop"
+  },
+  "al_v_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-18",
+   "why": "OA 429 (re:OI-166): from ccv_rau_ooe_alloc's boundary receive flops, as enq_l, in NGD from the launching flop"
+  },
+  "al_warp_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-18",
+   "why": "OA 429 (re:OI-166): from ccv_rau_ooe_alloc's boundary receive flops, as enq_l, in NGD from the launching flop"
+  }
+ }
+}
