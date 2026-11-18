@@ -71,7 +71,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-6 RUNNING: rh-jobs/ma6/ma6.sh <commit> <tag> "<cm32 pts>" "<cm128 pts>" (worktree rh-ma6-<tag>, logs ~/ccv-logs/ma6/<tag>,
   cm128 serialized by flock rh-jobs/cm128.lock). Tag c94f (c94f0ae6) from 17:35Z: cm32 b.q16.fixed; cm128 b.q16.rot b.q12.fixed (~19:10Z).
   Tag 2554 (2554709e = c94f0ae6 + WPSEL knob + p1_data_peak/p1_data_sum_peak, launched 18:10Z): cm128 a.q8.rot b.q8.rot;
-  rh-jobs/ma6/cand.sh queues the candidate there after c94f b.q16.rot (writes ~/ccv-logs/ma6/cand). Check cycles == MA-5.
+  a.q8.rot/b.q8.rot == MA-5 (SENT). cand = b.q16.fixed (rot only -0.068%). +MA 20:16Z: gap-5 pair a.q8.rot.g5 b.q16.fixed.g5
+  via rh-jobs/ma6/ma6g.sh (CCV_P1_GAP=5; TI-483), ~22:05Z; send Δ vs gap 4. rh-ma6-c94f dropped.
+  rh-jobs/ma6/cand.sh queued the candidate there after c94f b.q16.rot (writes ~/ccv-logs/ma6/cand). Check cycles == MA-5.
   Table: python3 rh-jobs/ma6/table.py ~/ccv-logs/ma6/<tag> (needs points file). At new sha also cm128 b.q16.fixed (or b.q16.rot if c94f b.q16.rot beats MA-5 b.q16 5,141,670 by >0.1%); no other 1-3 reruns.
   Table: python3 rh-jobs/ma5/table.py <logdir> with a points file (write one per tag).
 - MA-5 DONE and SENT 17:32Z (all clean; b.q16 -1.11% vs a.q8, b not at knee at 8; a knee at 8). rh-ma4 dropped 17:33Z; logs kept.
