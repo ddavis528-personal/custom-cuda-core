@@ -1436,9 +1436,22 @@ refused, a size waiver no excuse), one (137,128) code word, (72,64) at 4096
 words, a 2048 x 137 SRAM that is 32 KiB of data (passes; counted on all its
 bits, over), and two (72,64) code words held to the 137-bit shape.
 
-Still to come under the same rulings: error injection from the SRAM model
-and its coverage bin, the double-error test in a block, the BIST override,
-the spare row and column repair in a common wrapper, and the BIST
+**Injection, MIU's side** (RA 153 (5)). The MIU stub takes every Nth L1
+hit that writes a register as a single-bit error when `CCV_MIU_ECC_INJECT=N`:
+its data leaves on time with a bit flipped (the speculative data), no
+completion at the contract (the miss indication, `CCV_LAT_L1_ECC`), and the
+corrected data and then the completion follow `CCV_LAT_L1_ECC` + 2 cycles
+after, as a miss's would. Coverage bin `l1_ecc_fix`. check-kernel runs hit,
+transp4 and spinwait with every hit injected, clean; its controls on hit:
+`ecc-no-fix` (completes on time, never corrects: dependants read the bad
+bit, two registers end wrong) and `ecc-cmpl-on-time` (corrects later but
+completes on time: all five dependants read the bad bit). check-sv-hosted
+requires the same results on both hosts, the control's included.
+
+Still to come under the same rulings: the double-error test, which needs
+the machine-error path (AR 370); error injection in the SRAM model itself
+for a block model that keeps its arrays behind `Sram1rw`; the BIST
+override, the spare row and column repair in a common wrapper; and the BIST
 broadcast groups (TI-475 (1)).
 
 **The timing model** (`tools/check-ngd.py`, NGD-8; Daniel, 2026-11-17).
