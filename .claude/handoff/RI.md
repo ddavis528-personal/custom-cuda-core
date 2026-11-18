@@ -57,12 +57,17 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-21. DONE (2026-11-17) Daily sweep, PASS full, pushed 93bf1bb7 (ri-sweep17 in ri-wt): doowtf 38 (incl. TI rokilllane
+   1861cc51), miu-dcu-spec 25, 3868632d 42, 80102643 17, 57eff422 24, 9eb50716 7, c22116ce 9; no conflicts. First run
+   died on a full disk: deleted build/ in ri-wt3..14 (stale). Register: nothing for RI. RA 152 (no RCU macros), RA 153/154
+   (RCU takes the L1-ECC second data beat as is), AR 370/DA 124 machine check uses RAU's kill (TI's). Bookmarks: Conv 19
+   AR 372 OA 428 IS 197 TI 477 OI 366 CP 159 DA 124 RA 154 RI 90 MA 82. Waiting: RA's sign-off report, then Daniel.
 -20. DONE (2026-11-16 13:15) TI 457: rokilllane kill kernel at 1861cc51 (TI doowtf; NOT in ri-sweep16, whose full gate
    runs in ri-wt13, job-gate-push-20261116-103527-2546.log). Measured in ri-wt14 (detached 1861cc51, scratch): every
    CCV_RCU_KILL_DRAIN_CUT 0-15 passes on rokilllane (kill_lane 1) and rokill; cycles 1214->1206 by cut 8 then flat
    (rokill 104->94 by cut 10). Margin = whole drain 15. Logs ri-wt14/build/margin/. RI-58 (rev 87) + RI-59 correction
    (rev 88: model drops killed entries at Core::kill, not by epoch); notices RA. TODO after sweep push: rcu-exit.md
-   M4 + open list: DONE, be4ba8af pushed (SCOPED PASS 4/24 on ac0c899e); RI-60 (rev 89) asks TI to merge; TI 460: merges it today after its sweep lands.
+   M4 + open list: DONE, be4ba8af pushed (SCOPED PASS 4/24 on ac0c899e); RI-60 (rev 89) asks TI to merge; TI 460: merges it after its sweep. b2748371 (dates dropped, TI-461) pushed SCOPED PASS; RI-61 (rev 90); TI 463: landed as 7192d4fc on both TI branches. Bookmark TI 463.
    Next sweep merges TI 1861cc51. Waiting: RA's sign-off report, then Daniel. Sweep 11-16 (item -19 in ri-wt13's handoff) merged
    doowtf 26, miu-dcu 19, 57eff422 15, 80102643 15, 9eb50716 11, 126afa13 10, 3868632d 6, c22116ce 5.
 -19. DONE (2026-11-16) Daily sweep, PASS full, pushed ac0c899e: ri-sweep16 in ri-wt13 = origin 05af449c + doowtf 26, miu-dcu-spec 19,
@@ -70,7 +75,7 @@ architect may approve only if the end meets module NGD without the flop; can't m
    Full gate-push log ~/ccv-logs/job-gate-push-20261116-103527-2546.log. Register: nothing for RI. RA 151: RCU has
    no SRAM macro (DA 123's 1RW rule moves nothing); report follows the rokill kernel; RA 148
    stub/refusal is TI's first in priority order. MA tab: tab e87b52b6-d6d0, node 1f971016-3f72 (not in roster).
-   Bookmarks: Conv 19 AR 365 OA 421 IS 194 TI 456 OI 358 CP 159 DA 123 RA 151 RI 89 MA 68.
+   Bookmarks: Conv 19 AR 365 OA 421 IS 194 TI 456 OI 358 CP 159 DA 123 RA 151 RI 90 MA 68.
 -18. DONE (2026-11-15) Daniel SIGNED the 3 owner CG waivers (RI-47) in conversation. 05af449c on ri-signoff
    (ri-wt12; = ce5f44dd + ri-asm handoff + cg-waivers "by" names signature + rcu-exit.md to ce5f44dd, open list
    refreshed). Scoped gate-push: job-gate-push-20261115-174608-425.log (waiter b4z0hvuku; check-cg/ngd in scope,
