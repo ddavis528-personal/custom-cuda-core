@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-17 20:20 UTC. Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
+Updated 2026-11-18 00:30 UTC. Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
@@ -19,7 +19,7 @@ Updated 2026-11-17 20:20 UTC. Survives a compaction. CLAUDE.md holds the repo's 
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-163. Pings Fridays.
+  Next free ID: OI-164. Pings Fridays.
 - A fresh worktree needs sim/generated: `python3 tools/gen-params.py; tools/gen-ops.py;
   tools/gen-interfaces.py` before sim/ooe/run-tests.sh (the 18 FAIL lines it prints are
   controls; the verdict is the "ooe-test:" line).
@@ -29,19 +29,18 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 366, OA 428, TI 478, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
+OI 367, OA 428, TI 478, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
 
 ## Trees and runs in flight
-- /home/user/wt-s54 (branch oi-rw): 5e1f3789 ooe_wake LAT_MISS default 16 (TI-478, AR 368),
-  gate-push in flight, job log /root/ccv-logs/job-gate-push-20261117-193015-15524.log.
-  On PASS: OI-163 answering TI-478 (default now 16, TI can drop its override), ring TI.
+- 5e1f3789 (LAT_MISS 16) pushed 11-18 via an imported split gate; OI-163 written, TI rung.
 - /home/user/wt-61 (branch oi-af, on 5e1f3789): 9165f35c model knob rob_alloc_lag;
   65d9b55e ooe_rob_w allocation flopped on arrival (OA 422). rob bench + 25 controls pass
   (new control no-alloc-lag); model tests pass. Bench helper scratchpad/af/rob-only.sh.
 
 ## Open work (most urgent first)
 1. #61 OA 422 in ooe_rob_w. Step 1 (registered retire pick) pushed 69c50111. Step 2 (arrival
-   flops) committed 65d9b55e: next, after the wt-s54 gate, `python3 tools/check-ngd.py --unit
+   flops) committed 65d9b55e: next: NGD running (bg-run ngd-rob, log /root/ccv-logs/ngd-rob.log;
+   gate-wait it if the task ends) `python3 tools/check-ngd.py --unit
    ooe_rob_w_1` (and _2, _3, ooe_rob_w): lower caps in rtl/ngd-ratchet.json to the measure; check-cg;
    gate-push from wt-61. Before step 2: NGD-1 28.82 (ck->ckfa_s), al_n 29.6, fl_m 28.8 (arrives 2,
    26.8 after: an arrival flop cannot fix it; needs an internal cut ~1050 flops, or back to OA with

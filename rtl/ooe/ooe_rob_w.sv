@@ -511,6 +511,7 @@ module ooe_rob_w #(
   // squash stays off the terms.
   logic [S*(A+1)*(A+1)-1:0] lk_cq02h, lkd_cq02h, lke_cq02h;
   logic [S*D-1:0]     wkf_cq02h;
+  logic [KC-1:0]      wkt_cq02h;
   logic [LA-1:0]      frk_cq02h;               // a fill's rank among its slot's lanes before it
   logic [D-1:0]       fsl_cq02h;
   always_comb begin
@@ -521,9 +522,13 @@ module ooe_rob_w #(
     for (int s = 0; s < S; s++) begin
       nfl_cq02h[s * LA +: LA] = '0;
       for (int l = 0; l < A; l++) nfl_cq02h[s * LA +: LA] = nfl_cq02h[s * LA +: LA] + LA'(fm_cq02h[l * S + s]);
-      wkf_cq02h[s * D +: D] = '0;
-      for (int k = 0; k < KC; k++)
-        if (kce_cq02h[s * KC + k]) wkf_cq02h[s * D +: D] = wkf_cq02h[s * D +: D] | rotl(woh_cq02h[s * D +: D], (D - k % D) % D);
+      // Per entry, a reduce-OR over the kill counts (an accumulating loop
+      // mapped as a serial chain, 14 gates on some netlists).
+      for (int i = 0; i < D; i++) begin
+        for (int k = 0; k < KC; k++)
+          wkt_cq02h[k] = kce_cq02h[s * KC + k] & woh_cq02h[s * D + (i + k) % D];
+        wkf_cq02h[s * D + i] = |wkt_cq02h;
+      end
       for (int t = 0; t < A; t++) begin
         nfg_cq02h[s * A + t] = nfl_cq02h[s * LA +: LA] > LA'(t);
         kgt_cq02h[s * A + t] = (kc_cq02h[s * KC +: KC] >> (t + 1)) != '0;
@@ -1932,7 +1937,7 @@ module ooe_rob_w #(
   // only a branch's done is an outcome.
   logic            bo_v_cq02h, bo_taken_cq02h, bo_wrong_cq02h;
   logic [TW-1:0]   bo_tag_cq02h;
-  logic [S*D-1:0]  bo_oh_cq02h;                     // the done's entry, one-hot (off the resolution's path)
+  logic [S*D-1:0]  bo_oh_cq02h;                     // the branch done's entry, one-hot, bo_v folded in (off the resolution's path)
   logic [LK-1:0]   bo_ck_cq02h;
   logic [31:0]     bo_mask_cq02h, bo_aux_cq02h;
   logic [LK-1:0]   bo_ck_nx_cq02h;
@@ -1962,12 +1967,22 @@ module ooe_rob_w #(
     if (rst_r01h) bo_v_cq02h <= 1'b0;
     else          bo_v_cq02h <= dn_q_cq02h[BS] && bo_br_nx_cq02h;
   end
-  logic bo_en_cq02h;
+  logic bo_en_cq02h, boh_en_cq02h;
   assign bo_en_cq02h = dn_q_cq02h[BS];
+  // The entry a branch's done names: bo_v && its one-hot, per entry from
+  // its own br (the tag is one-hot, so the OR in bo_v reduces to it), so
+  // the verdict's bypass reads one flop an entry. Loaded on a done, and on
+  // the cycle after a branch's, to clear.
+  assign boh_en_cq02h = dn_q_cq02h[BS] | bo_v_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) bo_oh_cq02h <= '0;
+    else if (boh_en_cq02h)
+      for (int e = 0; e < S * D; e++)
+        bo_oh_cq02h[e] <= dn_q_cq02h[BS] && dn_tag_cq02h[BS * TW +: TW] == TW'(WID * D + e) && br_cq02h[e];
+  end
   always_ff @(posedge ooe_core_clk) begin
     if (bo_en_cq02h) begin
       bo_tag_cq02h   <= dn_tag_cq02h[BS * TW +: TW];
-      for (int e = 0; e < S * D; e++) bo_oh_cq02h[e] <= dn_tag_cq02h[BS * TW +: TW] == TW'(WID * D + e);
       bo_ck_cq02h    <= bo_ck_nx_cq02h;
       bo_taken_cq02h <= dn_taken_cq02h;
       bo_mask_cq02h  <= dn_mask_cq02h;
@@ -2042,7 +2057,7 @@ module ooe_rob_w #(
         for (int c = 0; c < NK; c++)
           wr_e_cq02h[s * D + i] = wr_e_cq02h[s * D + i] |
                                   (ck_cq02h[(s * D + i) * LK +: LK] == LK'(c) && out_cq02h[(s * NK + c) * OWD + OWD - 1]);
-        if (bo_v_cq02h && bo_oh_cq02h[s * D + i]) wr_e_cq02h[s * D + i] = bo_wrong_cq02h;
+        if (bo_oh_cq02h[s * D + i]) wr_e_cq02h[s * D + i] = bo_wrong_cq02h;
         cw_e_cq02h[s * D + i]  = cand_cq02h[s * D + i] & wr_e_cq02h[s * D + i];
         crt_e_cq02h[s * D + i] = cand_cq02h[s * D + i] & ~wr_e_cq02h[s * D + i];
       end
@@ -2073,6 +2088,18 @@ module ooe_rob_w #(
         ckf_nx_cq02h[s * NK + c] = |ckm_cq02h;
       end
   end
+  // Any checkpoint frees: the slot's free entries that hold a checkpoint
+  // (every ck < NK; a constant 1 when NK is a power of two), without the
+  // per-checkpoint compare and its OR, which ABC mapped 3 NGD deeper on
+  // some netlists than on others.
+  logic [S-1:0]   ckfa_nx_cq02h;
+  logic [S*D-1:0] ckin_cq02h;
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      for (int i = 0; i < D; i++)
+        ckin_cq02h[s * D + i] = 32'(ck_cq02h[(s * D + i) * LK +: LK]) < NK;
+      ckfa_nx_cq02h[s] = |(free_cq02h[s * D +: D] & ckin_cq02h[s * D +: D]);
+    end
   // The resolution registers: the mispredict's one-hot entry, the entries
   // its squash takes (the pick's prefix: every position after the branch
   // up to the head, and this cycle's allocations, which may land on an
@@ -2109,7 +2136,7 @@ module ooe_rob_w #(
         rd_q_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
         rd_o_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
         ckf_cq03h[gs * NK +: NK]      <= ckf_nx_cq02h[gs * NK +: NK];
-        ckfa_s_cq02h[gs]              <= |ckf_nx_cq02h[gs * NK +: NK];
+        ckfa_s_cq02h[gs]              <= ckfa_nx_cq02h[gs];
       end
     end
     always_ff @(posedge ooe_core_clk) begin
