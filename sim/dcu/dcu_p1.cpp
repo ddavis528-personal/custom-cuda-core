@@ -677,6 +677,7 @@ private:
   }
   void schedule() {
     if (arr_.size() != banks_) arr_.resize(banks_);
+    size_t dsum = 0;
     for (unsigned b = 0; b != banks_; ++b) {
       std::vector<Op> &in = arr_[b];
       std::stable_sort(in.begin(), in.end(),
@@ -760,7 +761,18 @@ private:
       for (const Acc &a : bq_[b]) looks += a.k == Acc::kLook;
       k_.hit(occBin(looks));
       k_.peak("p1_defer_peak", bq_[b].size());
+      // Entries that hold a line or a store's data and mask (MA-5 area): a
+      // fill or store write, a store's read, a store lookup; peak per bank,
+      // and summed over the banks each cycle.
+      size_t data = 0;
+      for (const Acc &a : bq_[b])
+        data += a.k == Acc::kFillW || a.k == Acc::kStoreW || a.k == Acc::kStoreR ||
+                (a.k == Acc::kLook &&
+                 !isRead(unsigned(get(a.op.req, ch().miu_dcu, "coh_op"))));
+      k_.peak("p1_data_peak", data);
+      dsum += data;
     }
+    k_.peak("p1_data_sum_peak", dsum);
   }
 
   bool busy() const override {
