@@ -1728,7 +1728,7 @@ private:
   void freePred(unsigned slot, unsigned p);
   void freeCkptsFrom(unsigned slot, unsigned idx);
   void withdrawFree(uint64_t m);   ///< drop frees not yet sent, held ones included
-  void advanceEpoch(unsigned slot);
+  void advanceEpoch(unsigned slot, bool notice);
   void epochNotice(unsigned slot);
   void releaseSlot(unsigned slot);
   void ev(const char *name, unsigned warp = 0, uint64_t a = 0, uint64_t b = 0,
@@ -2322,6 +2322,24 @@ public:
   std::vector<DecqView> decodeQueue() const;
   /// Slots whose decode-queue uops a squash dropped since this cycle began.
   uint32_t decqFlushed() const { return decq_flushed_; }
+  /// ooe_decrx's bench (test/ooe/decrx_tb.cpp, OA 428): the arrivals as
+  /// uop() met them since this cycle began (each warp, fetch_epoch, and
+  /// whether it was kept, with its slot), and the cycle's epoch advances
+  /// (a slot per advance: a redirect's, adv; an epoch notice's, a
+  /// demotion's or a kill's, adn), slot releases and allocations (slot,
+  /// warp).
+  struct RxArrival { unsigned warp, fetch_epoch; int slot; bool kept; };
+  struct RxLog {
+    std::vector<RxArrival> arr;
+    std::vector<unsigned> adv, adn;
+    uint32_t rel = 0;
+    std::vector<std::pair<unsigned, unsigned>> alloc;
+  };
+  const RxLog &rxLog() const { return rxlog_; }
+  int slotOfWarp(unsigned warp) const { return slotOf(warp); }
+private:
+  RxLog rxlog_;
+public:
   /// The first RCU-class entry index past the last; MIU entries follow.
   unsigned rsRcuEntries() const { return cfg_.rs_rcu; }
   bool rsReady(unsigned e) const { return rowReady(e); }

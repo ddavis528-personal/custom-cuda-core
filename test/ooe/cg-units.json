@@ -99,6 +99,25 @@
       }
     },
     {
+      "name": "ooe_decrx",
+      "module": "ooe_decrx",
+      "files": [
+        "rtl/ooe/ooe_decrx.sv"
+      ],
+      "params": {
+        "S": 4,
+        "NW": 32,
+        "EP": 3
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_decrx {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_decrx_tb.u_rx"
+      }
+    },
+    {
       "name": "ooe_freelist_gpr",
       "module": "ooe_freelist",
       "files": [

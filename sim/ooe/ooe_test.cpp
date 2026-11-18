@@ -5880,7 +5880,17 @@ int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_c
   g_pre_cycle_hook = pre;
   g_cycle_hook = post;
   g_config_hook = cfg;
-  if (scenario == "idle") {
+  if (scenario == "rx") {
+    // ooe_decrx's bench (test/ooe/decrx_tb.cpp): the random tests, and the
+    // directed ones that release slots, demote, restore and kill, so a
+    // warp's epoch is saved at a release and loaded at its next allocation.
+    testRandom(seeds);
+    testSwap();
+    testDemote();
+    testKill();
+    testFinalExit();
+    testAtomicKill();
+  } else if (scenario == "idle") {
     for (int mode = 0; mode != 8; ++mode) {
       Env e(randomConfig(2, mode));
       for (unsigned k = 0; k != idle_cycles; ++k) e.step();
