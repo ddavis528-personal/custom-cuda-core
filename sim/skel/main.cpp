@@ -203,6 +203,7 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
   bank.pair_enable = 1;
   if (brk == "late-lead")
     for (Slot &s : m.slots()) s.late_lead = true;
+  if (brk == "uop-late-lead") uopLateLead(m);
   if (brk == "cor-late" || brk == "cor-drop")
     for (unsigned s = 0; s != kNumSlots; ++s)
       if (m.slots()[s].cor) m.rx(s).holdNext(brk == "cor-drop");
@@ -289,7 +290,7 @@ int main(int argc, char **argv) {
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "cta-per-warp" || brk == "cta-shared" || brk == "no-wait-mark" || brk == "bar-own-warp" || brk == "bar-no-exit" ||
                       brk == "bar-full-last" || brk == "addr-wrap" ||
-                      brk == "conflate-pred" || brk == "late-lead" || brk == "cor-late" || brk == "cor-drop" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "no-nohit" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
+                      brk == "conflate-pred" || brk == "late-lead" || brk == "uop-late-lead" || brk == "cor-late" || brk == "cor-drop" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "no-nohit" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
                       brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
                       brk == "ignore-mask" || brk == "skip-read-partial" ||
                       brk == "ordering-on-load" || brk == "memop-ordering" ||

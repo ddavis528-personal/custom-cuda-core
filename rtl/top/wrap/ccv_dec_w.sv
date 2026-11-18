@@ -211,7 +211,7 @@ module ccv_dec_w #(
   end
   // ccv_dec_ooe_uop, source end, no-flop (params/links.json no_flop)
   if (RPT_DEC_OOE_UOP > 0) begin : g_rpt_dec_ooe_uop
-    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .BOUNDARY(0), .SLOTS(6), .PAYLOAD_W(236)) u_rpt_dec_ooe_uop (
+    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .BOUNDARY(0), .SLOTS(6), .PAYLOAD_W(236), .LEAD_MASK(236'hf8000000000000000000000007000000000000000000000000000000000)) u_rpt_dec_ooe_uop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_dec_ooe_uop_s5_valid, b_dec_ooe_uop_s4_valid, b_dec_ooe_uop_s3_valid, b_dec_ooe_uop_s2_valid, b_dec_ooe_uop_s1_valid, b_dec_ooe_uop_s0_valid}), .src_payload({b_dec_ooe_uop_s5_payload, b_dec_ooe_uop_s4_payload, b_dec_ooe_uop_s3_payload, b_dec_ooe_uop_s2_payload, b_dec_ooe_uop_s1_payload, b_dec_ooe_uop_s0_payload}),
       .src_wake(b_dec_ooe_uop_wake), .src_credit({b_dec_ooe_uop_s5_credit, b_dec_ooe_uop_s4_credit, b_dec_ooe_uop_s3_credit, b_dec_ooe_uop_s2_credit, b_dec_ooe_uop_s1_credit, b_dec_ooe_uop_s0_credit}), .src_stall({b_dec_ooe_uop_s5_stall, b_dec_ooe_uop_s4_stall, b_dec_ooe_uop_s3_stall, b_dec_ooe_uop_s2_stall, b_dec_ooe_uop_s1_stall, b_dec_ooe_uop_s0_stall}),
