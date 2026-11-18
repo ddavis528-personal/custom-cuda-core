@@ -58,6 +58,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-1 DONE and sent 19:41Z 11-17 (all clean): rh-jobs/ma1/ma1.sh at cc5f3f04, worktree dropped, ~/ccv-logs/ma1
   (KEEP: MA's reference for p1 deltas; rh-jobs/ma1/table.py writes s1-cycles.tsv and the table). Ways 8,
   defaults. No per-reason late bins at the stubs; the squeezed cm128 was dropped (AR 373).
+- OI OA-428 QUEUED (#58, rx_lag=80 = E at 5e1f3789): rh-jobs/oi427/oi428.sh, uses rh-oi427b, ~/ccv-logs/oi428. A = OA-427's A0.
+  Each lane waits for 427s. Table:
+  `table.py A0 A0=~/ccv-logs/oi427 E=~/ccv-logs/oi428 --ctr=stall.decq,stall.decq_warp_max` (labels: A0 is OI's A).
+  Ruling: S1 <= +0.5% -> OA, else DA. Do not drop rh-oi427b before 428 done.
+- OA-427 S1 + cm32priv A0/A/B SENT 05:40Z (B S1 +0.002%; A0 == A exactly).
 - OI OA-427 RUNNING from 05:05Z (OI-164 opt 2): rh-jobs/oi427/oi427.sh, worktrees rh-oi427 (15ef1bd4, A/B/C/D) and
   rh-oi427b (5e1f3789, A0; oracles symlinked from rh-oi427, inputs identical). ~/ccv-logs/oi427. S1 (ruling: B <= +0.5%) + cm32priv
   now; cm128priv waits for ma3/ma4. Send S1 early. Table: cycles, IPC, Δ% vs A; A0==A; branch.free_held/kept/withdrawn.
