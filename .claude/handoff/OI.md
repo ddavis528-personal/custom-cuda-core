@@ -29,21 +29,22 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 369, OA 428, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
+OI 369, OA 430, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
 
 ## Trees and runs in flight
-- 5e1f3789 (LAT_MISS 16) pushed 11-18 via an imported split gate; OI-163 written, TI rung.
-- /home/user/wt-61 (branch oi-af, on 5e1f3789): 9165f35c model knob rob_alloc_lag;
-  65d9b55e ooe_rob_w allocation flopped on arrival (OA 422). rob bench + 25 controls pass
-  (new control no-alloc-lag); model tests pass. Bench helper scratchpad/af/rob-only.sh.
+- 5e1f3789 (LAT_MISS 16) pushed 11-18. /home/user/wt-61 (branch oi-af, unpushed): 9165f35c
+  rob_alloc_lag knob; 65d9b55e+b50beabf alloc flopped (OA 422); deb4265a ckpt frees a cycle
+  after resolution (OA 427 option 2: RTL frp/frv/cfl, model ckpt_free_lag, rob bench control
+  no-free-lag); 15ef1bd4 directed test control (Env junk_prog, miss_add). Model suite + rob bench
+  + 27 controls pass. 15ef1bd4 on gate-scratch/OI; RH asked to price A/B/C/D (defaults,
+  ckpt_free_lag, rob_alloc_lag, both) on S1, cm32-priv, cm128-priv vs 5e1f3789.
 
 ## Open work (most urgent first)
-1. #61 OA 422 in ooe_rob_w: PARKED on OA (OI-164, rev 368, OA rung). Step 1 pushed 69c50111.
-   Step 2 in /home/user/wt-61 (branch oi-af): 65d9b55e + b50beabf (ckfa direct, bo_oh valid
-   folded, wkf reduce-OR), unpushed; bench + 25 controls pass. NGD-1 31.3 vs cap 28.9 (cone
-   ck->free->ckf RTL-identical to base; ABC variance). DA (11-18): stop logical optimization;
-   repipeline (move logic between stages) or add a cycle. Await OA's cut, then build it.
-   Remove /home/user/wt-61base (git worktree remove) when done. Probes scratchpad/af.
+1. #61 OA 427 option 2: built (see trees). NGD /root/ccv-logs/ngd-rob.log: frp (ck->registered
+   free) 28.84, ckf 21.7; +33 flops; CG pass (new gate 38 flops, enable 7.3, DCGE 100%). Other cones
+   over caps after step 2 (fka 30.1, sq_rt 29.9, fa_oh 29.9, run 29.4, fl_m NGD-3 29.3 vs 28.8; base
+   measured 28.8): need repipelining. On RH's price: write OI-166 to OA (NGD, flops, CG, price,
+   the over-cap cones), ring OA. <= +0.5% S1: ruled, land it; over: bring option 1 figures.
 2. #58 A-70 arrival epoch drop: PARKED on OA (OI-165, rev 369, OA rung). RTL has no warp-to-slot
    table/per-warp epoch; proposed a DEC receiver module ahead of ooe_decq (decq unchanged).
 3. #52/#53/#54/#51 NGD-to-25 refactors: PARKED on OA (notes scratchpad rob52b, go53, s54, rd51).
