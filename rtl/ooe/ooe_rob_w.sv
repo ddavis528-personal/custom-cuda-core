@@ -717,7 +717,7 @@ module ooe_rob_w #(
   always_comb
     for (int e = 0; e < S * D; e++) begin
       outq_cq02h[e] = (oc_cq02h[e * NR * RCW +: NR * RCW] != '0) | (am_cq02h[e] & ~(md_cq02h[e] | mf_cq02h[e])) | cp_cq02h[e];
-      sqe_cq02h[e]  = rd_s_cq02h[e / D] & sqm_cq02h[e] & v_cq02h[e] & ~hd_cq02h[e];
+      sqe_cq02h[e]  = sqm_cq02h[e] & v_cq02h[e] & ~hd_cq02h[e];
       // An unfilled entry has issued nothing, so owes nothing (asserted,
       // unfilled_owes_none): the held set needs no unfilled mask, which
       // keeps the fill pointer's decode off the room's path (NGD-1).
@@ -799,6 +799,9 @@ module ooe_rob_w #(
   logic [S*NC-1:0] och_nx_cq02h, ufh_nx_cq02h, uft_nx_cq02h;
   logic [NC-1:0]   uxt_cq02h;                  // ux, as a thermometer
   logic [S*LB-1:0] run_nx_cq02h;
+  logic [S*D-1:0]  te_q_cq02h, te_nx_cq02h, te_b_cq02h;   // the tail past the registered allocation, a flop (OA 431)
+  logic [S*LA-1:0] te_n_cq02h;
+  logic [S-1:0]    te_en_cq02h;
   logic [S-1:0]    reach_nx_cq02h, reach_q_cq02h;
   logic [S*D-1:0]  hrel_q_cq02h;               // the release register (below)
   logic [S*KC-1:0] kc_nx_cq02h;
@@ -811,6 +814,7 @@ module ooe_rob_w #(
   logic [LB-1:0]   r0u_cq02h, r0d_cq02h, rdf_cq02h;
   logic            rsq_cq02h, rcht_cq02h;
   logic [NC-1:0]   ochs_cq02h;                 // a squash's or release's occupancy, without the count
+  logic [NC-1:0]   oxe_cq02h;                  // ox past the registered allocation
   logic [S*LB-1:0] r0_cq02h;                   // the run before the count (asserted to cover it)
   logic [2*A:0]    ug_cq02h;
   logic [A-1:0]    uxg_cq02h;
@@ -1035,7 +1039,7 @@ module ooe_rob_w #(
       reach_nx_cq02h[s] = ~|hm_cq02h;
       rcht_cq02h = ~|hd_cq02h[s * D +: D];
       for (int k = 0; k < D; k++) begin
-        xr_cq02h[k] = |(rotl(toh_cq02h[s * D +: D], k) & hd_cq02h[s * D +: D]);
+        xr_cq02h[k] = |(rotl(te_q_cq02h[s * D +: D], k) & hd_cq02h[s * D +: D]);
       end
       dt_cq02h = '0;
       for (int k = 0; k < D; k++) begin
@@ -1060,7 +1064,10 @@ module ooe_rob_w #(
       // the held flops); reaching the head, D less the occupancy (ox; a
       // squash's or a release's, ochs), whose terms are flops only. With no
       // held entry dt is 0, so the two meet in an OR, not a mux.
-      rsel_cq02h = rsq_cq02h ? ochs_cq02h : ox_cq02h;
+      oxe_cq02h = '0;
+      for (int j = 0; j < A + 1; j++)
+        oxe_cq02h = oxe_cq02h | ({NC{al_r_cq02h[s * LA +: LA] == LA'(j)}} & (ox_cq02h << j));
+      rsel_cq02h = rsq_cq02h ? ochs_cq02h : oxe_cq02h;
       for (int b = 0; b < LB; b++) begin
         for (int u = 0; u < NC; u++) begin
           mku_cq02h[u] = ((u >> b) & 1) != 0;
@@ -1070,7 +1077,7 @@ module ooe_rob_w #(
         r0d_cq02h[b] = |(rsel_cq02h & mkd_cq02h);
       end
       r0_cq02h[s * LB +: LB] = r0u_cq02h | ({LB{rcht_cq02h}} & r0d_cq02h);
-      rdf_cq02h = (r0_cq02h[s * LB +: LB] - LB'(al_r_cq02h[s * LA +: LA])) - LB'(al_n_cq02h[s * LA +: LA]);
+      rdf_cq02h = r0_cq02h[s * LB +: LB] - LB'(al_n_cq02h[s * LA +: LA]);
       run_nx_cq02h[s * LB +: LB] = rsq_cq02h ? ({LB{reach_nx_cq02h[s]}} & r0d_cq02h) : rdf_cq02h;
       // The write bits an entry completing at this edge reads are its
       // fill's, a cycle or more before (a no-op's are none). An entry not
@@ -1079,14 +1086,14 @@ module ooe_rob_w #(
       // What the next window may take: nothing younger than a mispredict
       // picked now or squashing now, and no held entry; no allocation now
       // either when there is a pick (it is younger).
-      wok_cq02h  = ~pfx_cq02h[s * D +: D] & ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]) & ~hd_cq02h[s * D +: D];
+      wok_cq02h  = ~pfx_cq02h[s * D +: D] & ~sqm_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D];
       // The prefix itself stays off the window (#52): the next window's
       // first port is older than every entry but those retiring now, so a
       // wrong candidate among those (wbk, from the window and the head's
       // flops) masks it; a later port's older entries are earlier ports,
       // whose branch ends the window (wns). So the entry terms (wke) and
       // wbk give what wok gives the window (asserted).
-      wke_cq02h  = ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]) & ~hd_cq02h[s * D +: D];
+      wke_cq02h  = ~sqm_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D];
       for (int j = 0; j < RP; j++)
         wbk_cq02h[s] = wbk_cq02h[s] | (w_cq02h[s * RP + j] & |(cw_e_cq02h[s * D +: D] & rotl(hoh_cq02h[s * D +: D], j)));
       anyp_cq02h = |cw_e_cq02h[s * D +: D];
@@ -1247,6 +1254,17 @@ module ooe_rob_w #(
                         rd_s_cq02h[s] | (|hd_cq02h[s * D +: D]);
       win_en_cq02h[s] = ptr_en_cq02h[s] | fp_en_cq02h[s] | cm_en_cq02h[s] | ft_q_cq02h[s];
     end
+  // te_q: the tail one-hot past the registered allocation (toh rotated by al_r), its
+  // own flop so the squash read starts there (OA 431, re:OI-167).
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      te_en_cq02h[s] = tl_en_cq02h[s] | asq_en_cq02h[s];
+      te_b_cq02h[s * D +: D] = tl_en_cq02h[s] ? toh_nx_cq02h[s * D +: D] : toh_cq02h[s * D +: D];
+      te_n_cq02h[s * LA +: LA] = asq_en_cq02h[s] ? al_n_cq02h[s * LA +: LA] : al_r_cq02h[s * LA +: LA];
+      te_nx_cq02h[s * D +: D] = '0;
+      for (int j = 0; j < A + 1; j++)
+        te_nx_cq02h[s * D +: D] = te_nx_cq02h[s * D +: D] | ({D{te_n_cq02h[s * LA +: LA] == LA'(j)}} & rotl(te_b_cq02h[s * D +: D], j));
+    end
   for (genvar gs = 0; gs < S; gs++) begin : g_slot
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
@@ -1280,6 +1298,10 @@ module ooe_rob_w #(
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h)                toh_cq02h[gs * D +: D] <= D'(1);
       else if (tl_en_cq02h[gs])    toh_cq02h[gs * D +: D] <= toh_nx_cq02h[gs * D +: D];
+    end
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h)                te_q_cq02h[gs * D +: D] <= D'(1);
+      else if (te_en_cq02h[gs])    te_q_cq02h[gs * D +: D] <= te_nx_cq02h[gs * D +: D];
     end
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
@@ -1524,14 +1546,14 @@ module ooe_rob_w #(
     // A squashed entry's completion (held, or squashed now) marks nothing.
     for (int e = 0; e < S * D; e++)
       mf_nx_cq02h[e] = (mf_cq02h[e] | (cfe_cq02h[e] & v_cq02h[e] & ~hd_cq02h[e] &
-                        ~(rd_s_cq02h[e / D] & sqm_cq02h[e]))) & ~rel_e_cq02h[e];
+                        ~sqm_cq02h[e])) & ~rel_e_cq02h[e];
     for (int s = 0; s < S; s++) begin
       mf_en_cq02h[s] = (|cf_q_cq02h) | (|mf_cq02h[s * D +: D]);
       fa_en_cq02h[s] = (|cf_q_cq02h) | rel_q_cq02h[s] | (rd_s_cq02h[s] & fa_v_cq02h[s]);
-      fok_cq02h = v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D] & ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]);
+      fok_cq02h = v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D] & ~sqm_cq02h[s * D +: D];
       fhb_cq02h = hrb_cq02h[s * LD +: LD];
       fai_cq02h = fax_cq02h[s * LD +: LD];
-      fca_cq02h = fa_v_cq02h[s] & ~(rd_s_cq02h[s] & |(sqm_cq02h[s * D +: D] & fa_oh_cq02h[s * D +: D]));
+      fca_cq02h = fa_v_cq02h[s] & ~|(sqm_cq02h[s * D +: D] & fa_oh_cq02h[s * D +: D]);
       fka_cq02h = {fai_cq02h < fhb_cq02h, fai_cq02h};
       for (int p = 0; p < NM; p++) begin
         fcp_cq02h[p] = 1'b0;
@@ -1612,7 +1634,7 @@ module ooe_rob_w #(
     for (int s = 0; s < S; s++) begin
       ft_nx_cq02h[s] = (|(hrf_cq02h[s * D +: D] & v_cq02h[s * D +: D] & ~hd_cq02h[s * D +: D] &
                           (fle_cq02h[s * D +: D] | mf_cq02h[s * D +: D] | cfe_cq02h[s * D +: D]) &
-                          ~({D{rd_s_cq02h[s]}} & sqm_cq02h[s * D +: D]))) && !fst_cq02h[s];
+                          ~sqm_cq02h[s * D +: D])) && !fst_cq02h[s];
       ft_en_cq02h[s] = ft_nx_cq02h[s] | ft_q_cq02h[s] | rel_q_cq02h[s];
     end
   always_comb begin
@@ -2028,7 +2050,7 @@ module ooe_rob_w #(
   logic [S-1:0]   rs_en_cq02h;
   logic [S*D-1:0] sqa_cq02h;                       // in the squash acting now
   always_comb
-    for (int e = 0; e < S * D; e++) sqa_cq02h[e] = rd_s_cq02h[e / D] & sqm_cq02h[e];
+    for (int e = 0; e < S * D; e++) sqa_cq02h[e] = sqm_cq02h[e];
   assign cand_cq02h   = v_cq02h & cmp_q_cq02h & br_cq02h & ~rsv_cq02h & ~hd_cq02h & ~sqa_cq02h;
   assign rsv_nx_cq02h = (rsv_cq02h | cand_cq02h | sqe_cq02h) & ~fd_en_cq02h;
   always_comb
@@ -2133,7 +2155,7 @@ module ooe_rob_w #(
   logic [S-1:0]   sq_rt_nx_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
-      sqm_nx_cq02h[s * D +: D] = pfx_cq02h[s * D +: D] | aq_e_cq02h[s * D +: D];
+      sqm_nx_cq02h[s * D +: D] = pfx_cq02h[s * D +: D] | (aq_e_cq02h[s * D +: D] & {D{|cw_e_cq02h[s * D +: D]}});   // empty with no pick (OA 431)
       sq_rt_nx_cq02h[s]        = |(pick_cq02h[s * D +: D] & rt_e_cq02h[s * D +: D]);
     end
   // Clocked on a superset of the candidates, without the held and squash
@@ -2150,18 +2172,19 @@ module ooe_rob_w #(
         rd_t_cq02h[gs]                <= 1'b0;
         rd_q_cq03h[gs]                <= 1'b0;
         rd_o_cq03h[gs]                <= 1'b0;
+        sqm_cq02h[gs * D +: D]        <= '0;
       end else if (rs_en_cq02h[gs]) begin
         rd_s_cq02h[gs]                <= |pick_cq02h[gs * D +: D];
         rd_t_cq02h[gs]                <= |pick_cq02h[gs * D +: D];
         rd_q_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
         rd_o_cq03h[gs]                <= |pick_cq02h[gs * D +: D];
+        sqm_cq02h[gs * D +: D]        <= sqm_nx_cq02h[gs * D +: D];
       end
     end
     always_ff @(posedge ooe_core_clk) begin
       if (rs_en_cq02h[gs]) begin
         sp_s_cq02h[gs * D +: D] <= pick_cq02h[gs * D +: D];
         sq_p_cq03h[gs * D +: D] <= pick_cq02h[gs * D +: D];
-        sqm_cq02h[gs * D +: D]  <= sqm_nx_cq02h[gs * D +: D];
         sq_rt_cq02h[gs]         <= sq_rt_nx_cq02h[gs];
       end
     end
@@ -2256,6 +2279,16 @@ module ooe_rob_w #(
       end
       rt_bad_cq02h[e] = rt_e_cq02h[e] && (rc_cq02h[e * 2 +: 2] != 2'd0 || oc_cq02h[e * NR * RCW +: NR * RCW] != '0);
     end
+  // OA 431: te_q is the tail past the registered allocation, and a squash
+  // mask is held only with its pick (the fold dropped rd_s from its readers).
+  logic [S-1:0] te_bad_cq02h, sqm_bad_cq02h;
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      te_bad_cq02h[s]  = te_q_cq02h[s * D +: D] != rotl(toh_cq02h[s * D +: D], int'(al_r_cq02h[s * LA +: LA]));
+      sqm_bad_cq02h[s] = !rd_s_cq02h[s] && sqm_cq02h[s * D +: D] != '0;
+    end
+  `CCV_ASSERT(te_is_tail_past_alloc, te_bad_cq02h == '0)
+  `CCV_ASSERT(sqm_only_with_pick, sqm_bad_cq02h == '0)
   `CCV_ASSERT(unfilled_mask, ufq_cq02h == ufm_cq02h)
   `CCV_ASSERT(head_read_copies, hrg_cq02h == hoh_cq02h && hrn_cq02h == hoh_cq02h && hrp_cq02h == hoh_cq02h &&
               hrf_cq02h == hoh_cq02h)
@@ -2385,7 +2418,7 @@ module ooe_rob_w #(
   logic [S-1:0] r0_short_cq02h;
   always_comb
     for (int s = 0; s < S; s++)
-      r0_short_cq02h[s] = (LB + 1)'(al_n_cq02h[s * LA +: LA]) + (LB + 1)'(al_r_cq02h[s * LA +: LA]) > {1'b0, r0_cq02h[s * LB +: LB]};
+      r0_short_cq02h[s] = (LB + 1)'(al_n_cq02h[s * LA +: LA]) > {1'b0, r0_cq02h[s * LB +: LB]};
   `CCV_ASSERT(run_covers_count, r0_short_cq02h == '0)
   // A squash's cycle allocates nothing in its slot (the go holds it: the
   // model drops the warp's decode queue first); the fills it leaves owed fit
