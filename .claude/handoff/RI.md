@@ -57,6 +57,11 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-23. DONE (2026-11-18) Daily sweep, PASS full, pushed 54347d2f (ri-sweep18 in ri-wt): c22116ce 92, 57eff422 24,
+   9eb50716 11, 80102643 9, miu-dcu-spec 8; no conflicts. Register: nothing for RI. RA 155: RCU reconciled; RA's report
+   is with Daniel, who holds final sign-off pending review. RA 156: no RCU macros. OA 434 cites RCU's lead waivers as
+   precedent. Bookmarks: Conv 19 AR 384 OA 436 IS 197 TI 480 OI 374 CP 160 DA 127 RA 156 RI 91 MA 97.
+   Waiting: Daniel's sign-off.
 -22. DONE (2026-11-17) TI-479: lane-tid check fired falsely on SFU-only answers (sgemm, stride benches). Fix 536c9210
    (ri-sfutid in ri-wt; core marks LaneMsg lane/sfu, block keeps sfu_tid_ at kSfuW), SCOPED PASS 10/24, pushed. Benches
    on gate-scratch/TI-stride in ri-wt15 (scratch, detached): sgemm-n256/n512 + transpose-n256 PASS, cycles unchanged.
