@@ -1255,11 +1255,15 @@ module ooe_rob_w #(
       win_en_cq02h[s] = ptr_en_cq02h[s] | fp_en_cq02h[s] | cm_en_cq02h[s] | ft_q_cq02h[s];
     end
   // te_q: the tail one-hot past the registered allocation (toh rotated by al_r), its
-  // own flop so the squash read starts there (OA 431, re:OI-167).
+  // own flop so the squash read starts there (OA 431, re:OI-167). It moves only on an
+  // arrival (al_q), a release or a squash: in the cycle after an arrival alone (ar_q)
+  // the tail takes toh_eff, which te_q already holds, and the count is 0 (CG-3). Off
+  // a release or squash toh_nx is toh_eff, so te starts from toh_nx in every enabled
+  // cycle, never from toh's own hold mux, which stays toh's gate (CG-4).
   always_comb
     for (int s = 0; s < S; s++) begin
-      te_en_cq02h[s] = tl_en_cq02h[s] | asq_en_cq02h[s];
-      te_b_cq02h[s * D +: D] = tl_en_cq02h[s] ? toh_nx_cq02h[s * D +: D] : toh_cq02h[s * D +: D];
+      te_en_cq02h[s] = al_q_cq02h[s] | rel_q_cq02h[s] | rd_s_cq02h[s];
+      te_b_cq02h[s * D +: D] = toh_nx_cq02h[s * D +: D];
       te_n_cq02h[s * LA +: LA] = asq_en_cq02h[s] ? al_n_cq02h[s * LA +: LA] : al_r_cq02h[s * LA +: LA];
       te_nx_cq02h[s * D +: D] = '0;
       for (int j = 0; j < A + 1; j++)
