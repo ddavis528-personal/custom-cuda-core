@@ -25,7 +25,8 @@
 // CCV_P1_LDFIRST = 0 | 1 (a bank takes an on-time load before an on-time
 // store; the store waits as deferred work), CCV_P1_DEFCAP (under (b), a
 // bank holding this many entries with data takes a store as a lookup instead
-// of deferring it; unlimited by default). Its measures
+// of deferring it, and queues no store past it: the store re-passes and its
+// data stays in MIU; unlimited by default). Its measures
 // print as the P1 line (coverage p1_*).
 //
 // The banks' waiters are held without limit, so the occupancy histogram
@@ -467,8 +468,8 @@ private:
   unsigned age_ = 16, gap_ = 4, dlat_ = 0, pad_ = 0, banks_ = 8, lb_ = 3;
   unsigned wp_ = 0;   ///< CCV_P1_WAYPRED: way-prediction fold bits, 0 off
   bool wprecent_ = false;   ///< CCV_P1_WPSEL=recent: most recent fold match
-  bool ldfirst_ = false;
-  unsigned defcap_ = 1u << 30;   ///< CCV_P1_DEFCAP: (b) defers no store past this many data entries   ///< CCV_P1_LDFIRST: on-time loads beat on-time stores
+  bool ldfirst_ = false;   ///< CCV_P1_LDFIRST: on-time loads beat on-time stores
+  unsigned defcap_ = 1u << 30;   ///< CCV_P1_DEFCAP: a bank's cap on entries holding data
 
   /// Way prediction (MA-23 (C2), AR 376-378): each way keeps a wp_-bit XOR
   /// fold of its tag; the payload's PA fold picks the valid way that matches
@@ -580,7 +581,8 @@ private:
       bool contested = olderSameLine(bankOf(pa), pa) || held(pa) || repassing(pa);
       for (const Op &e : arr_[bankOf(pa)]) contested |= lineOf(e.req) == pa;
       // CCV_P1_DEFCAP: a bank whose entries holding data are at the cap
-      // takes the store as a lookup instead (bounded storage, MA-6).
+      // takes the store as a lookup instead (bounded storage, MA-6); it
+      // waits in the bank only below the cap, else re-passes (schedule()).
       if (!contested && dataHeld(bankOf(pa)) >= defcap_) {
         contested = true;
         k_.hit("p1_defcap");
@@ -764,7 +766,13 @@ private:
       for (const Acc &a : bq_[b]) waiting += a.k == Acc::kLook;
       for (const Op &o : in) {
         k_.hit("p1_lost");
-        if (waiting < qdepth_) {
+        // CCV_P1_DEFCAP also bounds a store that waits as a lookup: it holds
+        // its data and mask here, so at the cap it re-passes and its data
+        // stays in MIU (RH on MA-7: else the cap never bounds data_peak).
+        const bool capped =
+            !isRead(unsigned(get(o.req, ch().miu_dcu, "coh_op"))) && dataHeld(b) >= defcap_;
+        if (capped) k_.hit("p1_defcap_repass");
+        if (waiting < qdepth_ && !capped) {
           bq_[b].push_back({Acc::kLook, bornOf(o), now_, lineOf(o.req), o});
           ++waiting;
         } else {
