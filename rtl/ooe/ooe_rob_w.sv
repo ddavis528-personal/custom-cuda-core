@@ -2171,12 +2171,28 @@ module ooe_rob_w #(
   // is a wrong candidate, and its wrong bit is one of those), and the cycle
   // after a pick, to clear. With no wrong outcome these registers, which
   // change only on a pick, stay clocked off (CG-3; asserted below).
-  logic [S-1:0] rs_w_cq02h;
-  always_comb
+  // The wrong term is a flop per slot, loaded each cycle with the next
+  // value of the OR of the slot's records' wrong bits and the bypassed
+  // done's verdict (asserted to cover them below), so the enable is the
+  // candidates' AND-OR with one flop more, within CG-2's 8. The valid term
+  // is left out of the candidates here, which only widens the superset.
+  logic [S-1:0]    rs_w_cq02h, rs_w_nx_cq02h;
+  logic [S*NK-1:0] ow_w_nx_cq02h;
+  logic            bo_vw_nx_cq02h;
+  always_comb begin
+    bo_vw_nx_cq02h = dn_q_cq02h[BS] & bo_br_nx_cq02h & bo_wrong_nx_cq02h;
+    for (int r = 0; r < S * NK; r++)
+      ow_w_nx_cq02h[r] = ow_en_cq02h[r] ? (!rw_en_cq02h[r] && bo_wrong_cq02h) : ow_w_cq02h[r];
     for (int s = 0; s < S; s++) begin
-      rs_w_cq02h[s]  = (|ow_w_cq02h[s * NK +: NK]) | (bo_v_cq02h & bo_wrong_cq02h);
-      rs_en_cq02h[s] = ((|cnx_cq02h[s * D +: D]) & rs_w_cq02h[s]) | rd_s_cq02h[s];
+      rs_w_nx_cq02h[s] = (|ow_w_nx_cq02h[s * NK +: NK]) | bo_vw_nx_cq02h;
+      rs_en_cq02h[s]   = (|(cmp_q_cq02h[s * D +: D] & br_cq02h[s * D +: D] & ~rsv_cq02h[s * D +: D] & {D{rs_w_cq02h[s]}}))
+                       | rd_s_cq02h[s];
     end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) rs_w_cq02h <= '0;
+    else          rs_w_cq02h <= rs_w_nx_cq02h;
+  end
   for (genvar gs = 0; gs < S; gs++) begin : g_res
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
@@ -2305,6 +2321,18 @@ module ooe_rob_w #(
   always_comb
     for (int s = 0; s < S; s++) pk_off_cq02h[s] = (|pick_cq02h[s * D +: D]) && !rs_en_cq02h[s];
   `CCV_ASSERT(pick_within_rs_en, pk_off_cq02h == '0)
+  // The flopped wrong term covers the records' wrong bits (those written
+  // since reset: a record's wrong bit is not reset) and the bypass's.
+  logic [S*NK-1:0] rw_seen_cq02h;
+  logic [S-1:0]    rs_wm_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) rw_seen_cq02h <= '0;
+    else          rw_seen_cq02h <= rw_seen_cq02h | rw_en_cq02h;
+  end
+  always_comb
+    for (int s = 0; s < S; s++)
+      rs_wm_cq02h[s] = (|(ow_w_cq02h[s * NK +: NK] & rw_seen_cq02h[s * NK +: NK])) | (bo_v_cq02h & bo_wrong_cq02h);
+  `CCV_ASSERT(rs_w_covers_wrong, (rs_wm_cq02h & ~rs_w_cq02h) == '0)
   `CCV_ASSERT(unfilled_mask, ufq_cq02h == ufm_cq02h)
   `CCV_ASSERT(head_read_copies, hrg_cq02h == hoh_cq02h && hrn_cq02h == hoh_cq02h && hrp_cq02h == hoh_cq02h &&
               hrf_cq02h == hoh_cq02h)
