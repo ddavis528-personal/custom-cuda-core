@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-18 00:30 UTC. Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
+Updated 2026-11-18 06:30 UTC. Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
@@ -19,7 +19,7 @@ Updated 2026-11-18 00:30 UTC. Survives a compaction. CLAUDE.md holds the repo's 
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-169. Pings Fridays.
+  Next free ID: OI-170. Pings Fridays.
 - A fresh worktree needs sim/generated: `python3 tools/gen-params.py; tools/gen-ops.py;
   tools/gen-interfaces.py` before sim/ooe/run-tests.sh (the 18 FAIL lines it prints are
   controls; the verdict is the "ooe-test:" line).
@@ -29,7 +29,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 372, OA 431, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
+OI 373, OA 433, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
 
 ## Trees and runs in flight
 - 5e1f3789 (LAT_MISS 16) pushed 11-18 via an imported split gate; OI-163 written, TI rung.
@@ -43,13 +43,12 @@ OI 372, OA 431, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
    OI-167 (rev 371) asks OA for the repipeline or an added cycle; OA rung. Commits on oi-af through
    ec15c9cb in wt-61 (db0d1341 decrx on top: push #61 without it). NGD log /root/ccv-logs/ngd-rob.log.
    Remove /home/user/wt-61base when done. Probes scratchpad/af.
-2. #58: ooe_decrx on oi-af in wt-61 (db0d1341 build, d880c931 OA 429 budgets: check-ngd pass).
-   OA 429: keep+flop in decrx, ruled on RH's rx_lag=80 price (pending). Blocker found: decq asserts
-   no_enq_at_flush; flopped uops land in flush cycle (1177/25 seeds). OI-168 (rev 372) to OA, rung:
-   (B) recommended, decq's late flush drops staged arrivals. Then build the flop (enq_l/v/slot/pay
-   from decrx flops, NGD-7 copies), bench checks the flopped outputs. OA 429 (i) DONE (probe, not committed): FET's last-sent
-   epoch = OOE's at every drained queue with no squash due, 12486 checks, 0 mismatches, 6 doubles in;
-   report it in the next OI row (with OI-168's follow-up).
+2. #58: built and benched on oi-rx in /home/user/wt-58 (picks of db0d1341, d880c931, fd9a13df on
+   5e1f3789, plus a handoff commit). PUSH HELD: RH priced the cycle (E = rx_lag 80) at S1 +0.946%,
+   cm32 +3.575%, cm128 pending. OI-169 (rev 373) asks DA to rule and OA for a no-cycle form; OA rung.
+   OA 429 (i) is reported there. #61: OA 431's cut (te_q + sqm fold) is e29ea4ac on oi-af in wt-61;
+   rob bench passes with 26 controls. Next: check-ngd --unit ooe_rob_w (OA measured 28.5), lower caps,
+   push #61 without decrx (cherry-pick #61 commits onto origin tip).
 3. #52/#53/#54/#51 NGD-to-25 refactors: PARKED on OA (notes scratchpad rob52b, go53, s54, rd51).
 4. #57 DA 111b: done. TI's coverage check (3e687018, check-ngd/check-cg) fails an instance with no
    unit; scan (scratchpad/s54/cover.py) found none missing.
