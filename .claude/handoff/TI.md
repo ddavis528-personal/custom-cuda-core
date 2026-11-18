@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 482, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
+TI 483, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
 JSON file). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
@@ -42,7 +42,10 @@ timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
 restart: rerun the job). Logs in /root/ccv-logs/.
 
 ## State (2026-11-18)
-- Both working branches at b407ff71 (SCOPED PASS 24/24): RAS phase 1,
+- Both working branches at 0767fe1c: MIU stub injected L1 syndrome
+  (CCV_MIU_ECC_INJECT, bin l1_ecc_fix, controls ecc-no-fix/ecc-cmpl-on-time,
+  both hosts; RA 153 (5)); row TI-484 (rev 483) to RA, MA, OI, sent.
+- b407ff71 (SCOPED PASS 24/24): RAS phase 1,
   SECDED enc/syn/fix (rtl/common inner helpers, K=128 units 14.5/15.4/15.4),
   sim/skel/secded.h, check-skel lockstep + controls col/nocorr/dedsec; SRAM
   DATA_W/ECC_K, MACRO-1 on data bits + check-bit width; ooe_wake LAT_MISS
@@ -67,8 +70,9 @@ restart: rerun the job). Logs in /root/ccv-logs/.
 
 ## Open work (priority order)
 A. Task 28, array RAS (DA rulings TI 474-476): SECDED part landed
-   (b407ff71, TI-483). Next: model single-flip injection on Sram1rw reads +
-   coverage bin + control, DED test, MIU stub hook (MA re RA 153); then the
+   (b407ff71, TI-483); MIU stub injection landed (0767fe1c, TI-484). Left:
+   DED test (needs AR 370's machine-error path), Sram1rw injection when a
+   block model keeps arrays behind it; then the
    common wrapper (BIST override + spare row outside the macro + spare
    column above 8 KiB logical; macros only, flop arrays scan); BIST
    broadcast groups of up to 32 KiB logical in parallel (group/ID params,
