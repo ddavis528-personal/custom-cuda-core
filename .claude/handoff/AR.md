@@ -275,16 +275,26 @@ Credit rules (TI-49):
      /home/user survives, so keep everything under /home/user/ar-work. The
      numbers recovered from the transcript are in
      ar-work/results/recovered-2026-11-18.md (17 strict, all 88 stride, the
-     p128b cuts, way prediction). ar-work/rebuild.sh (detached; its log is
-     rebuild.log) reinstalls the toolchain, makes worktree ar-work/p1wt at
-     dd04f733, builds the skeleton and the oracles in ar-work/oracle, then
-     reruns the lost points in two lanes (progress in ar-work/runs/
-     progress.log; tabulate with ar-work/tab.py). Lane A: cm128 a/af/b q2,
-     rot (b, af q2) on cm128priv and cm128, then cm128 q0 x3. Lane B: rot on
-     cm32priv and cm32, then cm32 b_q0. The stride build (local merge) is
-     gone too; its results are recovered, so it is rebuilt only if asked.
-     ~/l1sweep/bank's banksim and the ev traces are gone; extract.py would
-     have to be rewritten to replay them.
+     p128b cuts, way prediction). The rebuild moved to MA's 258f642b
+     (gate-scratch/MA). It adds CCV_P1_WAYPRED=0|3|4, and 13e584e5 fixes
+     the (b) starvation: (a) and (af) are unchanged, (b) must be rerun.
+     ar-work/rebuild2.sh (log rebuild.log) built wt7, wt8 and wt9:
+     CCV_LAT_L1_HIT_BASE, HIT, WAKE and CMPL shifted +0/+1/+2 in params. HIT
+     is build-time, not an env knob. Oracles are in ar-work/oracle (5.7 GB).
+     Lanes (ar-work/run.sh name:wl:store:q:arb:hit:wp; progress in
+     ar-work/runs/progress.log; tabulate with ar-work/tab.py):
+     - A (128-class, serial): cm128 af and b q2 h7; cm128priv b q2 h7;
+       cm128priv and cm128 af q2 at h8, h9 and h8wp3; rot b and af q2 on
+       both; cm128 a q2.
+     - B: cm32priv and cm32 b q2 h7; af q2 h8, h9 and h8wp3 on both;
+       cm32priv h7wp3; rot.
+     Control: cm32priv af q2 h7 must equal 2,088,721.
+     sgemm is not on 258f642b (TI's 358ace66 has it); add it later.
+     MA-23: AR 377 (VA = PA; the fold is over VA bits above the page), AR
+     378 (rows .616053, .618036): (B)+(C2) at hit 8, linear about +0.614%
+     cm128 and +2.534% cm32 against (A), S1 flat; 3-bit fold. MA agrees
+     and recommends it to DA. These runs confirm it closed-loop; then
+     answer MA and DA in one row.
      Old note: tabulate with `python3 /root/l1sweep/p1runs/tab.py` (gone). 13/24 were done at
      21:11Z, all finished with check 0. (b) is cheapest on cycles everywhere,
      but cm32 shared (b) q2 has wait max 63,472 (1,100 waits >= 64). A
