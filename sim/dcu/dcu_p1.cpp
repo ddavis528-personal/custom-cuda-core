@@ -17,7 +17,10 @@
 // unlimited by default), CCV_P1_STRICT=1 (a hit that waited at its bank answers
 // CCV_P1_PAD = 5 cycles later still, past the stub's slack, so it loses the
 // contract as the spec says; 0 lets the stub's slack absorb short waits,
-// the optimistic bound). Its measures print as the P1 line (coverage p1_*).
+// the optimistic bound), CCV_P1_WAYPRED = 0 | 3 | 4 (MA-23 (C2): fold bits of
+// a per-way partial tag; a hit on a mispredicted way takes a second bank
+// access and answers 1 cycle late, or CCV_P1_PAD under STRICT). Its measures
+// print as the P1 line (coverage p1_*).
 //
 // The banks' waiters are held without limit, so the occupancy histogram
 // (p1_qNN, lookups waiting in one bank each cycle) sizes MA-20 (3)'s queue
@@ -58,6 +61,7 @@ public:
     qdepth_ = envU("CCV_P1_QDEPTH", 1u << 30);
     repass_ = envU("CCV_P1_REPASS", 6);
     pad_ = envU("CCV_P1_STRICT", 0) ? envU("CCV_P1_PAD", 5) : 0;
+    wp_ = envU("CCV_P1_WAYPRED", 0);
     banks_ = envU("CCV_DCU_BANKS", ccv::kDcuBanks);
     if (!banks_ || (banks_ & (banks_ - 1))) banks_ = ccv::kDcuBanks;
     lb_ = unsigned(__builtin_ctz(banks_));
@@ -450,6 +454,32 @@ private:
   StoreVar store_ = kStA;
   bool rot_ = false, hash_ = false;
   unsigned age_ = 16, gap_ = 4, dlat_ = 0, pad_ = 0, banks_ = 8, lb_ = 3;
+  unsigned wp_ = 0;   ///< CCV_P1_WAYPRED: way-prediction fold bits, 0 off
+
+  /// Way prediction (MA-23 (C2), AR 376-378): each way keeps a wp_-bit XOR
+  /// fold of its tag; the payload's PA fold picks the first valid way that
+  /// matches, and the data read starts on it. A hit whose predicted way is
+  /// wrong re-reads on the full compare's way: one more bank access, and a
+  /// hit one cycle past its contract (CCV_P1_STRICT: past the stub's slack).
+  /// Returns the cycles the hit is delayed, 0 when predicted right.
+  unsigned wayPredict(uint64_t pa) {
+    if (!wp_) return 0;
+    auto fold = [&](uint64_t line) {
+      uint64_t t = line / kLine / sets_, f = 0;
+      for (; t; t >>= wp_) f ^= t & ((1u << wp_) - 1);
+      return f;
+    };
+    const Way *set = &l1_[size_t((pa / kLine) % sets_) * ways_];
+    const uint64_t f = fold(pa);
+    for (unsigned i = 0; i != ways_; ++i)
+      if (set[i].valid && fold(set[i].line) == f) {
+        if (set[i].line == pa) { k_.hit("p1_wp_right"); return 0; }
+        break;
+      }
+    k_.hit("p1_wp_wrong");
+    bfree_[bankOf(pa)] += 2;
+    return pad_ ? pad_ : 1;
+  }
   unsigned qdepth_ = 1u << 30, repass_ = 6;
   std::deque<std::pair<uint64_t, Op>> again_;   ///< re-passes, by the cycle they return
   std::map<uint64_t, unsigned> pend_;   ///< line -> lookups out on a re-pass
@@ -548,12 +578,13 @@ private:
     if (!isRead(co) && k_.brk != "write-through") {
       Way &wy = way(pa);
       if (wy.valid && wy.line == pa && wy.owned) {
+        const unsigned late = wayPredict(pa);
         mergeInto(wy.data, o.req);
         wy.dirty = true;
         shadow(wy);
-        timed_.push_back({now_ + dlat_, {o.slot, rspFor(o.req), o.tid}});
+        timed_.push_back({now_ + dlat_ + late, {o.slot, rspFor(o.req), o.tid}});
         k_.hit("store_hit");
-        storeWrite(pa, now_);
+        storeWrite(pa, now_ + late);
         return;
       }
     }
@@ -565,7 +596,8 @@ private:
         put(r, ch().dcu_miu, "hit", 1);
         // Strict (CCV_P1_STRICT): a hit that waited for its bank has lost
         // the contract (MA-7), so it answers past the stub's slack.
-        timed_.push_back({now_ + dlat_ + (waited_ ? pad_ : 0), {o.slot, r, o.tid}});
+        const unsigned late = wayPredict(pa);
+        timed_.push_back({now_ + dlat_ + std::max(waited_ ? pad_ : 0u, late), {o.slot, r, o.tid}});
         return;
       }
     }
