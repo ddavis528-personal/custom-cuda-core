@@ -545,6 +545,46 @@
       "doc": "The largest 1RW SRAM one instance may be, in bytes (32 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
     },
     {
+      "name": "CCV_MACRO_SRAM_MAX_DATA_W",
+      "value": 128,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MAX_DATA_W >= 8",
+      "doc": "The widest data word one 1RW SRAM (ccv_common_sram_1rw) instance may hold, in bits, before its SECDED check bits (every SRAM has them; TI-474 (6)): the macro's own W may be this plus those, CCV_MACRO_SRAM_MAX_W, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MAX_W",
+      "value": 137,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "derive": "CCV_MACRO_SRAM_MAX_DATA_W + clog2(CCV_MACRO_SRAM_MAX_DATA_W + clog2(CCV_MACRO_SRAM_MAX_DATA_W) + 1) + 1",
+      "doc": "The widest word, in bits, one 1RW SRAM instance may be (its W): CCV_MACRO_SRAM_MAX_DATA_W and its SECDED check bits, the Hamming bits r (the least with 2^r >= data + r + 1) and one overall parity, 128 + 9. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MAX_WORDS",
+      "value": 4096,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MAX_WORDS >= 1",
+      "doc": "The most words (D) one 1RW SRAM instance may hold, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MAX_W",
+      "value": 256,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_RF_MAX_W >= 8",
+      "doc": "The widest word, in bits, one register-file instance (ccv_common_rf_1r1w, _be) may be (its W), the bound allowed. A register file carries no ECC (TI-474 (6) asks it of SRAMs). tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MAX_WORDS",
+      "value": 1024,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_RF_MAX_WORDS >= 1",
+      "doc": "The most words (D) one register-file instance may hold, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
       "name": "CCV_MACRO_SIZE_PENALTY_PCT",
       "value": 20,
       "status": "target",
@@ -1239,7 +1279,7 @@
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-46, A-48; A-61",
       "derive": "CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + bnd_rx('miu_dcu_req') + link_n('dcu_miu_rsp') + bnd_rx('dcu_miu_rsp')",
-      "doc": "Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48) and each flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46)."
+      "doc": "Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48) and each flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). A hit's data leaves on ccv_miu_rcu_data at exactly this cycle and its completion on ccv_miu_ooe_cmpl CCV_LAT_L1_ECC cycles later: the data at L1_HIT, the completion at L1_HIT + L1_ECC (A-46, A-47 amended by AR 368); no completion then is the miss indication."
     },
     {
       "name": "CCV_LAT_HOP",
@@ -1276,13 +1316,22 @@
       "doc": "Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16))."
     },
     {
+      "name": "CCV_LAT_L1_ECC",
+      "value": 1,
+      "status": "tunable",
+      "decided_at": "AR 368, OA 426 (priced by OI-162); MA's count",
+      "source": "DA ruling TI-474 (6): SECDED on every SRAM; TI-475 (3): the block architect hides its latency",
+      "require": "CCV_LAT_L1_ECC >= 0",
+      "doc": "The flopped syndrome stages between an L1 hit's data leaving MIU and its completion being decided (AR 368). A term of its own, not folded into CCV_LAT_L1_HIT_BASE, so the data's time and the completion's stay distinct; 0 if DCU ever checks before launch. The data lands at CCV_LAT_L1_HIT and is speculative until its completion; a load whose syndrome is non-zero gets no completion then (the miss indication) and its corrected data later. Tunable: MA's to move."
+    },
+    {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 14,
+      "value": 15,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
-      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl')",
-      "doc": "Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16))."
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_L1_ECC + CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl')",
+      "doc": "Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then CCV_LAT_L1_ECC syndrome stages after the hit's data leaves (AR 368, OA 426: 14 to 15), then the completion's crossing back to OOE. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16))."
     },
     {
       "name": "CCV_LAT_MIU_NOHIT_A2",
