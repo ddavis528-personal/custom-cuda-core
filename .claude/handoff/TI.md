@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 481, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
+TI 482, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
 JSON file). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
@@ -42,6 +42,11 @@ timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
 restart: rerun the job). Logs in /root/ccv-logs/.
 
 ## State (2026-11-18)
+- Both working branches at b407ff71 (SCOPED PASS 24/24): RAS phase 1,
+  SECDED enc/syn/fix (rtl/common inner helpers, K=128 units 14.5/15.4/15.4),
+  sim/skel/secded.h, check-skel lockstep + controls col/nocorr/dedsec; SRAM
+  DATA_W/ECC_K, MACRO-1 on data bits + check-bit width; ooe_wake LAT_MISS
+  override dropped (task 35). Row TI-483 (rev 482) to MA, AR, RA, OI, sent.
 - Both working branches at 36866ec7 (daily sweep 11-18, full gate PASS;
   release 6a90f970, tag local only). It carries 3eb6e8d0 (AR 380 / OA 433:
   warp_id + fetch_epoch lead on ccv_dec_ooe_uop, check-kernel uop-late-lead
@@ -61,17 +66,13 @@ restart: rerun the job). Logs in /root/ccv-logs/.
   AR may answer the colwalk-p128b anomaly (perfect fetch slower than stub).
 
 ## Open work (priority order)
-A. Task 28, array RAS (DA rulings TI 474-476, all rang MA AR OA): macros only
-   (flop arrays: scan). A common wrapper: BIST override + spare row outside
-   the macro + spare column above 8 KiB logical; NO ECC in it. BIST broadcast
-   groups of up to 32 KiB logical, groups in parallel (group/ID params; check
-   group sizes, chain completeness, tie-off only at the block wrapper). TI's
-   proposal: narrow req struct with a pattern, local compare, rsp flopped
-   chain, repair registers loaded by ID, req flopped per wrapper (CG-5 and NGD
-   clean). MACRO-1 size and efficiency on logical bits via DATA_W. ECC:
-   common SECDED enc/dec for architects (latency is theirs), static width
-   check, model single-flip injection + bin + control, DED unit test, MIU
-   stub hook (MA re RA 153).
+A. Task 28, array RAS (DA rulings TI 474-476): SECDED part landed
+   (b407ff71, TI-483). Next: model single-flip injection on Sram1rw reads +
+   coverage bin + control, DED test, MIU stub hook (MA re RA 153); then the
+   common wrapper (BIST override + spare row outside the macro + spare
+   column above 8 KiB logical; macros only, flop arrays scan); BIST
+   broadcast groups of up to 32 KiB logical in parallel (group/ID params,
+   group-size and chain checks, tie-off only at the block wrapper).
 B. Task 30, AR 370 (DA rev 124) + MA-19 + IS 197: F-MACHINE code 10 in
    CCV_W_FAULT_CAUSE; pin is a293afe7 now (check it has ISA v1.9 O-86);
    ccv_dcu_cru_err rate 1 (ue, ce_alert); CRU MACHINE_CHECK, kill all, every
