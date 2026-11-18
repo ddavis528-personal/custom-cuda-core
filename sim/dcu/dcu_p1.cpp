@@ -23,7 +23,9 @@
 // CCV_P1_WPSEL = index | recent (among the ways whose fold matches, the
 // predictor picks the lowest way index, or the most recently used; AR 381),
 // CCV_P1_LDFIRST = 0 | 1 (a bank takes an on-time load before an on-time
-// store; the store waits as deferred work). Its measures
+// store; the store waits as deferred work), CCV_P1_DEFCAP (under (b), a
+// bank holding this many entries with data takes a store as a lookup instead
+// of deferring it; unlimited by default). Its measures
 // print as the P1 line (coverage p1_*).
 //
 // The banks' waiters are held without limit, so the occupancy histogram
@@ -70,6 +72,7 @@ public:
     wp_ = envU("CCV_P1_WAYPRED", 0);
     if (wp_ > 16) wp_ = 16;
     ldfirst_ = envU("CCV_P1_LDFIRST", 0) != 0;
+    defcap_ = envU("CCV_P1_DEFCAP", 1u << 30);
     banks_ = envU("CCV_DCU_BANKS", ccv::kDcuBanks);
     if (!banks_ || (banks_ & (banks_ - 1))) banks_ = ccv::kDcuBanks;
     lb_ = unsigned(__builtin_ctz(banks_));
@@ -464,7 +467,8 @@ private:
   unsigned age_ = 16, gap_ = 4, dlat_ = 0, pad_ = 0, banks_ = 8, lb_ = 3;
   unsigned wp_ = 0;   ///< CCV_P1_WAYPRED: way-prediction fold bits, 0 off
   bool wprecent_ = false;   ///< CCV_P1_WPSEL=recent: most recent fold match
-  bool ldfirst_ = false;   ///< CCV_P1_LDFIRST: on-time loads beat on-time stores
+  bool ldfirst_ = false;
+  unsigned defcap_ = 1u << 30;   ///< CCV_P1_DEFCAP: (b) defers no store past this many data entries   ///< CCV_P1_LDFIRST: on-time loads beat on-time stores
 
   /// Way prediction (MA-23 (C2), AR 376-378): each way keeps a wp_-bit XOR
   /// fold of its tag; the payload's PA fold picks the valid way that matches
@@ -541,6 +545,14 @@ private:
     defer(Acc::kStoreW, line, read_at + gap_);
     if (store_ != kStAF) ++held_[line];
   }
+  /// Entries of bank b that hold a line or a store's data and mask.
+  size_t dataHeld(unsigned b) const {
+    size_t n = 0;
+    for (const Acc &a : bq_[b])
+      n += a.k == Acc::kFillW || a.k == Acc::kStoreW || a.k == Acc::kStoreR ||
+           (a.k == Acc::kLook && !isRead(unsigned(get(a.op.req, ch().miu_dcu, "coh_op"))));
+    return n;
+  }
   bool held(uint64_t line) const {
     auto it = held_.find(line);
     return it != held_.end() && it->second;
@@ -567,6 +579,12 @@ private:
       // line stays held and starves it).
       bool contested = olderSameLine(bankOf(pa), pa) || held(pa) || repassing(pa);
       for (const Op &e : arr_[bankOf(pa)]) contested |= lineOf(e.req) == pa;
+      // CCV_P1_DEFCAP: a bank whose entries holding data are at the cap
+      // takes the store as a lookup instead (bounded storage, MA-6).
+      if (!contested && dataHeld(bankOf(pa)) >= defcap_) {
+        contested = true;
+        k_.hit("p1_defcap");
+      }
       if (wy.valid && wy.line == pa && wy.owned && !contested) {
         mergeInto(wy.data, o.req);
         wy.dirty = true;
@@ -764,11 +782,7 @@ private:
       // Entries that hold a line or a store's data and mask (MA-5 area): a
       // fill or store write, a store's read, a store lookup; peak per bank,
       // and summed over the banks each cycle.
-      size_t data = 0;
-      for (const Acc &a : bq_[b])
-        data += a.k == Acc::kFillW || a.k == Acc::kStoreW || a.k == Acc::kStoreR ||
-                (a.k == Acc::kLook &&
-                 !isRead(unsigned(get(a.op.req, ch().miu_dcu, "coh_op"))));
+      const size_t data = dataHeld(b);
       k_.peak("p1_data_peak", data);
       dsum += data;
     }
