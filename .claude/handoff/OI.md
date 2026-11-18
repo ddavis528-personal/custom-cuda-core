@@ -47,8 +47,9 @@ OI 372, OA 431, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
    OA 429: keep+flop in decrx, ruled on RH's rx_lag=80 price (pending). Blocker found: decq asserts
    no_enq_at_flush; flopped uops land in flush cycle (1177/25 seeds). OI-168 (rev 372) to OA, rung:
    (B) recommended, decq's late flush drops staged arrivals. Then build the flop (enq_l/v/slot/pay
-   from decrx flops, NGD-7 copies), bench checks the flopped outputs. Also OA 429 (i): check FET
-   V-56/V-57 count sees two notices for the six double-advance cases.
+   from decrx flops, NGD-7 copies), bench checks the flopped outputs. OA 429 (i) DONE (probe, not committed): FET's last-sent
+   epoch = OOE's at every drained queue with no squash due, 12486 checks, 0 mismatches, 6 doubles in;
+   report it in the next OI row (with OI-168's follow-up).
 3. #52/#53/#54/#51 NGD-to-25 refactors: PARKED on OA (notes scratchpad rob52b, go53, s54, rd51).
 4. #57 DA 111b: done. TI's coverage check (3e687018, check-ngd/check-cg) fails an instance with no
    unit; scan (scratchpad/s54/cover.py) found none missing.
