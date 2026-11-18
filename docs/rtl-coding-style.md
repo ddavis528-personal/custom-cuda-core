@@ -1315,7 +1315,10 @@ RTL's assertion must stop by name, the `_be` register file's mask ignored,
 and a byte mask honoured by the plain one).
 
 **Size and shape limits** (`tools/check-ngd.py`, MACRO-1; Daniel, 2026-11-17). One
-instance holds W x D / 8 bytes, at the parameters its unit gives it:
+instance holds DATA_W x D / 8 bytes of data, at the parameters its unit gives
+it: the size and the efficiency below count data bits only, before ECC, the
+spare row and the spare column (DA rulings TI-475 (2), TI-476 (2)); the shape
+counts the whole word, W. A register file's DATA_W is its W:
 
 | Macro | Least | Most | Widest word (W) | Most words (D) |
 |---|---|---|---|---|
@@ -1381,7 +1384,62 @@ controls are in check-ngd's selftest:
 - the metric for all large SRAMs, a large register file, the smallest SRAM,
   and a mix;
 - a fixture block of two `sram_fx`, whose line must give its four macros'
-  figure, 0.612.
+  figure, 0.601.
+
+### Array reliability: SECDED (DA rulings TI-474 to TI-476)
+
+Every SRAM holds SECDED ECC (Daniel, 2026-11-17). The SRAM wrapper holds no
+ECC logic: the encode and decode are the block's own, and where their
+latency hides is the block architect's choice (TI-475 (3)). Register files
+and flop arrays carry none. Error events and corrected-error counts go to the
+architectural fault system (AR's, TI-475 (4)), not to BIST.
+
+**The word.** `ccv_common_sram_1rw`'s `W` is the whole word, check bits
+included; `DATA_W` its data bits; `ECC_K` the data bits of each SECDED code
+word (default `DATA_W`, one code word). A code word of k data bits takes
+R(k) = clog2(k + clog2(k) + 1) + 1 check bits: (72,64), (137,128). So
+W = DATA_W + (DATA_W / ECC_K) x R(ECC_K), and check-ngd's MACRO-1 fails an
+SRAM whose W is anything else, waiver or not, and one whose `ECC_K` does not
+divide `DATA_W`. The widest word, 137, is one (137,128) code word; two
+(72,64) code words, 144 bits, are over it.
+
+**The code**, in `rtl/common/` (inner helpers, combinational, timed in their
+parent), and `sim/skel/secded.h` for a model, bit for bit:
+
+| Helper | Does | At K = 128 |
+|---|---|---|
+| `ccv_common_secded_enc` | data to check bits | 14.5 NGD |
+| `ccv_common_secded_syn` | data and stored check bits to the syndrome (zero: no error) | 15.4 NGD |
+| `ccv_common_secded_fix` | data and syndrome to the corrected data `q`, `sec` (one bit wrong, corrected) and `ded` (two or more; `q` not to be used) | 15.4 NGD (10.7 to `q`) |
+
+A Hsiao code: data bit i's column is the i-th R-bit vector of odd weight 3
+or more, by weight and then by value; a check bit's is its unit vector.
+
+**What it costs a pipeline.** The encode, 14.5 NGD, with the SRAM's data
+setup (8), leaves its input about 2.5 NGD after a flop: encode from flops,
+or flop the check bits. The decode cannot follow the SRAM's late `rdata`
+(18.1 at 128 x 512) in its stage, and the syndrome and the fix together
+are over 25: flop `rdata` (with at most a slice of logic), then the
+syndrome, then fix. Or use the data speculatively from the `rdata` flop
+and replay when the flopped syndrome is nonzero, which is a single error
+only one time in very many reads.
+
+**Its checks.** check-skel holds the RTL to the C++ code at 37 and 128 data
+bits, on random words with none, one, two or three bits flipped (every one
+of data and check bits a candidate): check bits, `q`, `sec`, `ded` and the
+syndrome agree, one error is corrected and two are detected. Its controls:
+the model's columns swapped, a single error's `q` taken uncorrected, and two
+errors taken as one, each caught. check-ngd's MACRO-1 controls: the
+fixture's SRAM (128 bits, 120 of them data), a word without its check bits,
+one a check bit short, a code word that does not divide the data (each
+refused, a size waiver no excuse), one (137,128) code word, (72,64) at 4096
+words, a 2048 x 137 SRAM that is 32 KiB of data (passes; counted on all its
+bits, over), and two (72,64) code words held to the 137-bit shape.
+
+Still to come under the same rulings: error injection from the SRAM model
+and its coverage bin, the double-error test in a block, the BIST override,
+the spare row and column repair in a common wrapper, and the BIST
+broadcast groups (TI-475 (1)).
 
 **The timing model** (`tools/check-ngd.py`, NGD-8; Daniel, 2026-11-17).
 A macro's pins are timing endpoints and start points, never a path
