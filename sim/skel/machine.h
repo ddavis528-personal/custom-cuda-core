@@ -17,6 +17,7 @@
 #include "ccv_skel_wiring.h"
 
 #include <functional>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -90,6 +91,17 @@ private:
   std::vector<uint64_t> fab_cur_, fab_nxt_;
   uint64_t now_ = 0;
 };
+
+/// Negative control --break uop-late-lead (OA 433, DA tab rev 127):
+/// ccv_dec_ooe_uop's lead fields (warp_id, fetch_epoch; AR 380) driven
+/// with the rest of the payload, a cycle late, while OOE still takes them
+/// with valid. Every other channel's lead stays on time.
+inline void uopLateLead(Machine &m) {
+  for (const ChanInst &ci : kChanInsts)
+    if (std::string(kChans[ci.chan].name) == "ccv_dec_ooe_uop")
+      for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
+        m.slots()[ci.slot_base + s].late_lead = true;
+}
 
 /// Checks the generated field table tiles every payload exactly -- no gap,
 /// no overlap. A layout bug here would reach a swapped-in RTL block as

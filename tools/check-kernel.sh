@@ -43,6 +43,8 @@
 #                                                names it; nothing retires it
 #   the lane mask is on the wire with valid,  late-lead: every lane takes a
 #     a cycle ahead of the operands (Q-40)       stale mask
+#   a uop's warp and epoch lead it (AR 380)  uop-late-lead (lanectx): a uop
+#                                                runs as the other warp
 #   a masked-off lane does not compute, and   ignore-mask (pguard): its poison
 #     RCU merges predicates by the mask (A-43)   lands in P1
 #   final predicates are read through OOE's   swap-prat0 (pguard): P0 and P1
@@ -624,6 +626,21 @@ if [ "$(grep -c "^CHECK lane [0-9]*: sections 0 owned 00; " "$B/kernel_late-lead
 else
   bad "--break late-lead" "a mask arriving with the operands went unnoticed"
 fi
+# warp_id and fetch_epoch are ccv_dec_ooe_uop's LEAD fields (AR 380, OA 432,
+# DA tab rev 127): driven with valid, a cycle ahead, so OOE's decode receive
+# keeps or drops a uop in the lead cycle. Driven late, with the rest, OOE
+# takes the previous uop's warp and epoch off the wire: with two warps
+# (lanectx), a uop runs as the other warp's -- its credit back to the wrong
+# FET slot, its lanes on the wrong context -- and the run fails. (One warp
+# cannot catch it: the stale lead holds the same values.)
+"$SKEL" --kernel build/oracle/lanectx/oracle.jsonl --break uop-late-lead \
+  >"$B/kernel_uop-late-lead.log" 2>&1
+if grep -q "^CHECK fet: tier-1 slot [0-9]*'s credits return to " "$B/kernel_uop-late-lead.log" &&
+   [ "$(field "$B/kernel_uop-late-lead.log" gpr_mismatch)" != 0 ]; then
+  say "--break uop-late-lead: a uop runs as the other warp" "PASS (lanectx)"
+else
+  bad "--break uop-late-lead" "a uop's warp and epoch arriving with the payload went unnoticed"
+fi
 # A masked-off lane never computes: its predicate output is poison, and RCU
 # merges predicates by read-modify-write under the active mask (A-43). If the
 # merge drops the mask, pguard's guarded compare (lanes 16-31 off) puts poison
@@ -641,6 +658,8 @@ fi
 #                                                names it; nothing retires it
 #   the lane mask is on the wire with valid,  late-lead: every lane takes a
 #     a cycle ahead of the operands (Q-40)       stale mask
+#   a uop's warp and epoch lead it (AR 380)  uop-late-lead (lanectx): a uop
+#                                                runs as the other warp
 #   a masked-off lane does not compute, and   ignore-mask (pguard): its poison
 #     RCU merges predicates by the mask (A-43)   lands in P1
 
