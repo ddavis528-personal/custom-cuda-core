@@ -334,10 +334,14 @@ private:
     if (n != 0 && n != R::kLanes) k_.fail("rcu: %u of 32 lanes answered", n);
     if (n == R::kLanes) {
       R::LaneRes r;
-      const auto want = lane_tid_.find(now_);
+      // A message with lane results carries the lane op's tid, shared with an
+      // SFU result or not; an SFU result alone carries its own op's (TI-479).
+      const auto lw = lane_tid_.find(now_), sw = sfu_tid_.find(now_);
       for (unsigned l = 0; l != R::kLanes; ++l) {
         Receiver::Msg m = take(c.lane_rcu, 0, l);
-        if (want != lane_tid_.end() && m.tid != want->second)
+        const bool sfu_only = !get(m.payload, c.lane_rcu, "sec_valid") && get(m.payload, c.lane_rcu, "sfu_valid");
+        const auto want = sfu_only ? sw : lw;
+        if (want != (sfu_only ? sfu_tid_.end() : lane_tid_.end()) && m.tid != want->second)
           k_.fail("rcu: lane %u answered for another instruction", l);
         r.result[l] = uint32_t(get(m.payload, c.lane_rcu, "result"));
         r.sec_valid[l] = uint8_t(get(m.payload, c.lane_rcu, "sec_valid"));
@@ -348,6 +352,7 @@ private:
       in.lres = r;
     }
     lane_tid_.erase(now_);
+    sfu_tid_.erase(now_);
     for (unsigned j = 0; j != R::kPipes; ++j) {
       if (!has(c.miu_rcu, j)) continue;
       Receiver::Msg m = take(c.miu_rcu, j);
@@ -397,7 +402,8 @@ private:
 
     if (out.lane && in.lane_can) {
       for (unsigned l = 0; l != R::kLanes; ++l) send(c.rcu_lane, 0, laneMsg(*out.lane, l), out.lane->tid, l);
-      lane_tid_[now_ + R::kLaneW] = out.lane->tid;
+      if (out.lane->lane) lane_tid_[now_ + R::kLaneW] = out.lane->tid;
+      if (out.lane->sfu) sfu_tid_[now_ + R::kSfuW] = out.lane->tid;
     }
     for (const R::Done &d : out.dones) {
       if (d.slot >= R::kDoneSlots || !can(c.rcu_ooe, d.slot)) continue;
@@ -472,6 +478,7 @@ private:
   unsigned seen_map_ = 0, seen_cmd_ = 0, seen_pca_ = 0;
   bool armed_ = false;
   std::map<uint64_t, uint64_t> lane_tid_;   ///< the lane message's tid, by its results' cycle
+  std::map<uint64_t, uint64_t> sfu_tid_;    ///< the same for its SFU result, at kSfuW (TI-479)
 };
 
 } // namespace

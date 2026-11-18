@@ -3858,8 +3858,8 @@ def macro_unit(name, bench=False, **params):
 
 
 def macro_selftest(expect):
-    """Hard macros (AR's register rev 344, DA tab rev 123). sram_fx, a 512 x
-    128 one-port SRAM (64 Kibit, every other cycle) and a 64 x 128 1R1W
+    """Hard macros (AR's register rev 344, DA tab rev 123). sram_fx, a 512-word x
+    128-bit one-port SRAM (64 Kibit, every other cycle) and a 64 x 128 1R1W
     register file behind flopped enables,
     measured with its bench: its flops are its own registers alone, every
     macro enable is found, and the module passes (its seven control flops

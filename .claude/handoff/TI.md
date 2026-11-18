@@ -32,8 +32,8 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 441, RA 148, RI 82, OI 350, AR 356, OA 418, MA 57, IS 193, CP 157,
-DA 119, Conventions 19 (2026-11-15). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
+TI 480, AR 374, DA 125, MA 89, RI 91, CP 160, OI 367 (others per the
+JSON file). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
 Every long tool detaches itself and exits 5 (never 0) when it does (OA-414,
@@ -41,31 +41,45 @@ Every long tool detaches itself and exits 5 (never 0) when it does (OA-414,
 timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
 restart: rerun the job). Logs in /root/ccv-logs/.
 
-## State (2026-11-16)
-- Landed 11-15: bd1cc5a2 (SCOPED PASS 24/24 since e48fa517) on both working
-  branches: PF-47 (base 1: RCU_ADDR 1, L1_WAKE 13, L1_CMPL 14; ooe_wake defaults
-  13/15), CCV_P_TIMEOUT_UOP, RI's SFU pair, CCV_LAT_MIU_NOHIT_A2=2 (MA 56),
-  CCV_LAT_L1_NOHIT (AR 353/354; require NOHIT+2 <= L1_WAKE, OA 416).
-  TI row rev 439 rang OI, AR, MA, OA.
-- cm128 unbounded (AR 350/352) answered at TI rev 436: 73.6M cycles, holds
-  uop 8252, memop 19201 (< 20480).
-- Daily sweep conflicts were all .claude/handoff/RA.md: take RA's newest.
-- Worktree: /home/user/ti-sram. Backups to gate-scratch/TI-<name>, plain
-  push only. Disk: deleting other sessions' /tmp/tmp.* was denied; ask.
+## State (2026-11-18)
+- Both working branches at 358ace66 (SCOPED PASS 24/24 since 56768c79):
+  ti-stride (AR 373 (2) stride benches + LOAD key, pin a293afe7, gate-scope
+  sim/dcu + sim/miu for MA-22, RI's 536c9210 sgemm fix) and ti-shape (DA
+  2026-11-17 macro shape limits: SRAM W <= 128 + SECDED = 137, D <= 4096;
+  RF W <= 256, D <= 1024; fixture SRAM now 128 x 512). Rows TI-480 (to AR,
+  MA, CP, RI) and TI-481 (to MA, AR, RA) at rev 480, notices sent.
+- Earlier landed: 9682b03a (AR 368 L1_ECC, TI 478), 117e8117, ddc700a1.
+- Daily sweep 11-17 done (release 2e2b5313); its tag push is refused from
+  here, local only.
+- Disk: a gate failed on a full disk; cleared idle worktrees' synth-cache.
+  Scratchpad priv/ (4.3 GB) is unknown, left alone. Worktree ti-size is on
+  branch ti-next at 358ace66; ti-bench is free.
+- Open small: task 35, drop the ooe_wake LAT_MISS 16 override in
+  test/ooe/cg-units.json once OI's 5e1f3789 (OI-163) is in the base.
+  AR may answer the colwalk-p128b anomaly (perfect fetch slower than stub).
 
 ## Open work (priority order)
-IN FLIGHT 11-17 (urgent first):
-A. Task 26: gate-push of 117e8117 (ti-nohit, worktree /home/user/ti-sram;
-   macro pin timing TI 465 + no SRAM byte enables / rf_1r1w_be TI 466), job
-   log /root/ccv-logs/job-gate-push-20261117-031815-29294.log. On pass:
-   landing row to MA, AR with corrected launches (SRAM 16.3, RF 13.5).
-B. Task 27: MACRO-1 size limits (DA 11-17, TI 467 rang MA AR RA): RF 512 B-
-   8 KiB, SRAM 4-32 KiB per instance, inclusive (DA), waivers in
-   rtl/macro-waivers.json. Commit 2c032fa9 on branch ti-size, worktree
-   /home/user/ti-size, backed up to gate-scratch/TI-size. After A lands:
-   merge the landed tip into ti-size, gate-push from there, landing row.
-C0. Daniel 11-17 (TI 469): efficiency penalty 0 at max size, linear to 20% at min (CCV_MACRO_SIZE_PENALTY_PCT); (6.4% for the 5,760 B RF corrected to 6.3% in TI 470; MA moved data to 16 x 32 KiB, 512 words: launch 18.5, 6.5 NGD left.)
-C. Daniel 11-17 (TI 468): limits inclusive; size waivers by the block architect, DA approves before block completion; ce/we/re take the address setup.
+A. Task 28, array RAS (DA rulings TI 474-476, all rang MA AR OA): macros only
+   (flop arrays: scan). A common wrapper: BIST override + spare row outside
+   the macro + spare column above 8 KiB logical; NO ECC in it. BIST broadcast
+   groups of up to 32 KiB logical, groups in parallel (group/ID params; check
+   group sizes, chain completeness, tie-off only at the block wrapper). TI's
+   proposal: narrow req struct with a pattern, local compare, rsp flopped
+   chain, repair registers loaded by ID, req flopped per wrapper (CG-5 and NGD
+   clean). MACRO-1 size and efficiency on logical bits via DATA_W. ECC:
+   common SECDED enc/dec for architects (latency is theirs), static width
+   check, model single-flip injection + bin + control, DED unit test, MIU
+   stub hook (MA re RA 153).
+B. Task 30, AR 370 (DA rev 124) + MA-19 + IS 197: F-MACHINE code 10 in
+   CCV_W_FAULT_CAUSE; pin is a293afe7 now (check it has ISA v1.9 O-86);
+   ccv_dcu_cru_err rate 1 (ue, ce_alert); CRU MACHINE_CHECK, kill all, every
+   live record F-MACHINE; ccv_common_err (counts, first-error log, ERR_CTRL
+   threshold + INJECT, track table, host-only) on the CSR star;
+   CCV_DCU_UE_TRACK 16. Note: MA's 224 "scan-only" track flops still owe CG.
+C. Task 31, AR 371: SPM banks ccv_common_rf_1r1w 1024x32 (4 KiB, no ECC);
+   stub sub-word RMW charged as a bank conflict; CCV_SPM_BANKS doc; check-ngd
+   on the 1024-word read (fallback 2 x 512).
+E. Offer Daniel cost/bit instead of efficiency if wanted (TI chose bits/cost).
 
 No task carries a date (Daniel, 2026-11-16): everything is best effort, in
 priority order. A dependency is met by moving its task up, never by a due
