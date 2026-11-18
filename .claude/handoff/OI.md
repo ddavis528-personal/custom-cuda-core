@@ -19,7 +19,7 @@ Updated 2026-11-18 00:30 UTC. Survives a compaction. CLAUDE.md holds the repo's 
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-167. Pings Fridays.
+  Next free ID: OI-168. Pings Fridays.
 - A fresh worktree needs sim/generated: `python3 tools/gen-params.py; tools/gen-ops.py;
   tools/gen-interfaces.py` before sim/ooe/run-tests.sh (the 18 FAIL lines it prints are
   controls; the verdict is the "ooe-test:" line).
@@ -29,7 +29,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 370, OA 428, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
+OI 371, OA 428, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
 
 ## Trees and runs in flight
 - 5e1f3789 (LAT_MISS 16) pushed 11-18 via an imported split gate; OI-163 written, TI rung.
@@ -38,12 +38,11 @@ OI 370, OA 428, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
   (new control no-alloc-lag); model tests pass. Bench helper scratchpad/af/rob-only.sh.
 
 ## Open work (most urgent first)
-1. #61 OA 422 in ooe_rob_w: PARKED on OA (OI-164, rev 368, OA rung). Step 1 pushed 69c50111.
-   Step 2 in /home/user/wt-61 (branch oi-af): 65d9b55e + b50beabf (ckfa direct, bo_oh valid
-   folded, wkf reduce-OR), unpushed; bench + 25 controls pass. NGD-1 31.3 vs cap 28.9 (cone
-   ck->free->ckf RTL-identical to base; ABC variance). DA (11-18): stop logical optimization;
-   repipeline (move logic between stages) or add a cycle. Await OA's cut, then build it.
-   Remove /home/user/wt-61base (git worktree remove) when done. Probes scratchpad/af.
+1. #61 OA 427 option 2: priced by RH (S1 B +0.002%, D +0.007%; cm32 B +0.087%; cm128 later),
+   ruled. Cannot push: ooe_rob_w NGD-1 30.1 vs cap 28.9 (fka, sq_rt, fa_oh, run), fl_m 29.3 vs 28.8.
+   OI-167 (rev 371) asks OA for the repipeline or an added cycle; OA rung. Commits on oi-af through
+   ec15c9cb in wt-61 (db0d1341 decrx on top: push #61 without it). NGD log /root/ccv-logs/ngd-rob.log.
+   Remove /home/user/wt-61base when done. Probes scratchpad/af.
 2. #58 OA 428: ooe_decrx built, local commit db0d1341 on oi-af (wt-61, on top of #61's
    commits). Bench 25 seeds + 6 controls pass (test/ooe/run-rtl.sh decrx; rebuild with
    scratchpad/rxbuild.sh); CG pass; NGD f2f 17.0, inputs need arrival budgets (OA).
