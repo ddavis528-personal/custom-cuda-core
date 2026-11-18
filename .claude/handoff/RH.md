@@ -66,9 +66,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OA-427 S1 + cm32priv A0/A/B SENT 05:40Z (B S1 +0.002%; A0 == A exactly). OA-428 S1 SENT 05:55Z: E +0.946% (DA rules); stall.decq* 0.
   OA-427 cm128priv DONE + full table SENT 13:33Z (B +0.420%, C 0, D=B, A0==A). OA-428 cm128priv E +1.118% SENT 13:46Z. Both DONE; worktrees rh-oi427/rh-oi427b dropped 13:47Z; logs ~/ccv-logs/oi427,oi428 kept until OI releases (+1 day). OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
-  Table ~/ccv-logs/ma4/table.md. MA released rh-ma4 (keep logs) but MA-5 reuses it; drop after MA-5.
+  Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
-- MA-5 RUNNING from 11:50Z at c94f0ae6 in rh-ma4: rh-jobs/ma5/ma5.sh (no arg), ~/ccv-logs/ma5. S1 b.q8.fixed/b.q8.rot;
+- MA-5 DONE and SENT 17:32Z (all clean; b.q16 -1.11% vs a.q8, b not at knee at 8; a knee at 8). rh-ma4 dropped 17:33Z; logs kept.
+  Was: MA-5 from 11:50Z at c94f0ae6 in rh-ma4: rh-jobs/ma5/ma5.sh (no arg), ~/ccv-logs/ma5. S1 b.q8.fixed/b.q8.rot;
   cm32 b.q8.fixed b.q8.rot a.q8.rot now; cm128 b.q8.fixed b.q8.rot a.q8.rot b.q16.fixed b.q6.fixed a.q6.fixed after OI's
   oi428 exits (cm128 started 13:46Z, ~38 min each, ~17:35Z). Send cm32+S1 early, cm128 1-3 ~17:30Z, all at end with q histogram:
   python3 rh-jobs/ma5/table.py (histogram rows for q8/q16 points appended).
