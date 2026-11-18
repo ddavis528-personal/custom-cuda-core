@@ -9,3 +9,4 @@ sim/ooe/ooe_core.cpp
 sim/ooe/ooe_block.cpp
 sim/rcu/rcu_core.cpp
 sim/rcu/rcu_block.cpp
+sim/dcu/dcu_p1.cpp
