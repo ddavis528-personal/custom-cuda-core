@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
 
-Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 83, DA 124 (2026-11-17 sweep; TI 478 read).
+Conventions 19, AR 375, TI 479, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 89, DA 125.
 
 ## State, 2026-11-13
 
@@ -74,6 +74,33 @@ Conventions 19, AR 372, TI 478, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, M
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- PHASE 1 SWEEPS (Daniel, DA rev 125: start all now, split MA/RH/AR). MA-21 (rev 86, Needs AR) is the plan.
+  STATUS: model landed and pushed (0f951e22 + regen + dd04f733, SCOPED PASS): sim/dcu/dcu_p1.cpp, runner
+  sim/dcu/p1-run.sh, CCV_DCU_IMPL=p1; knobs CCV_P1_STORE a|af|b, CCV_P1_ARB fixed|rot, CCV_P1_HASH,
+  CCV_DCU_BANK_AGE, CCV_P1_QDEPTH, CCV_P1_STRICT (pad 5), CCV_P1_REPASS 6. Grid cut by AR 373 to
+  (a),(af),(b) x QDEPTH 0/2 fixed, then rot on best two (send RH those 2 points; RH appends).
+  Split (AR 374, MA rev 88): AR runs strict-bound points (4 coremarks + stride, TI 479 benches on
+  gate-scratch/TI-stride; sgemm needs CCV_RCU_IMPL=stub); RH runs default-bound points + S1.
+  RH MA-1 baseline (stub): S1 55,572; cm32 2,575,410; cm128 5,461,519; cm32priv 2,081,906; cm128priv 2,983,133.
+  RH MA-2 S1: q0 +4.2% (57,93x), q2 55,658 (+0.15%) all variants; af==a; b cuts lookups 1313->1040; q p99.9 0.
+  RH benches running (~6 h, two lanes). Then: pick best two -> rot; BANK_AGE 8/16/32/64; hash off/on with
+  stride; size queue from p1_qNN p99.9; winner = cheapest within 0.2% of best cycles, tail tiebreak.
+  Write MA rows per result; fix age-owner text in both spec tabs when the queue lands. MA-22 (TI): map
+  sim/dcu/ in gate-scope.py (unmapped -> full gate).
+  MA: build closed-loop model CCV_DCU_IMPL=p1 (+MIU p1) in own files (sim/dcu, sim/miu; add to
+  sim/skel/blocks.list; select in makeKernelBlock like makeRcu), stubs stay the reference. Knobs: store
+  variant a/af/b (gap 4), arb fixed/rotating, queue depth 0/2/4/8, BANK_AGE, hash. Counters: late loads by
+  reason, re-passes p99/max, per-bank queue occupancy, age holds, fill-lookup collisions.
+  RH (session_01QPk2jvfKM1V5rRfip8FC86; MA now a sender per DA 125): job MA-1 = baseline at branch tip
+  (S1, cm32, cm128, cm32priv, cm128priv, cm128 squeezed 4x), logs ~/ccv-logs/ma1. Then MA's grids.
+  AR: open-loop screen of the 24-point grid, stride microbenchmark kernel, booking.
+
+- MA-20 closed by AR 372 (MA rev 85 accepts): Phase 1 prices (1)+(3) together first (fixed vs rotating
+  on re-pass tail; oldest-first only after A1 NGD check); queue head owns BANK_AGE, entries are deferred
+  work under the bound, 99.9th pct sizing; (2) within-page hash only, bank = PA[9:7]^PA[12:10]^PA[15:13],
+  bar >0.2% over (1). 729-cycle wait was deferred work vs on-time loads, not slot order. When (3)
+  lands, fix the age-owner text in both spec tabs; carry all into dcu-impl.md.
 
 - TI-478: AR 368 landed (9682b03a; L1_ECC 1, L1_CMPL 15). MA rev 83 took it: impl docs must require
   data at L1_HIT, completion L1_ECC later (zero syndrome), late hit completes at due + 1.

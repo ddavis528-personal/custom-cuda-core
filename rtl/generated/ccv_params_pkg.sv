@@ -222,6 +222,26 @@ package ccv_params_pkg;
   // physical target, not a structure size (Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them))
   localparam int CCV_MACRO_SRAM_MAX_BYTES = 32768;
 
+  // The widest data word one 1RW SRAM (ccv_common_sram_1rw) instance may hold, in bits, before its SECDED check bits (every SRAM has them; TI-474 (6)): the macro's own W may be this plus those, CCV_MACRO_SRAM_MAX_W, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_SRAM_MAX_DATA_W >= 8.
+  // physical target, not a structure size (Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them))
+  localparam int CCV_MACRO_SRAM_MAX_DATA_W = 128;
+
+  // The widest word, in bits, one 1RW SRAM instance may be (its W): CCV_MACRO_SRAM_MAX_DATA_W and its SECDED check bits, the Hamming bits r (the least with 2^r >= data + r + 1) and one overall parity, 128 + 9. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, "Hard macros".  Derived: = CCV_MACRO_SRAM_MAX_DATA_W + clog2(CCV_MACRO_SRAM_MAX_DATA_W + clog2(CCV_MACRO_SRAM_MAX_DATA_W) + 1) + 1.
+  // physical target, not a structure size (Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them))
+  localparam int CCV_MACRO_SRAM_MAX_W = 137;
+
+  // The most words (D) one 1RW SRAM instance may hold, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_SRAM_MAX_WORDS >= 1.
+  // physical target, not a structure size (Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them))
+  localparam int CCV_MACRO_SRAM_MAX_WORDS = 4096;
+
+  // The widest word, in bits, one register-file instance (ccv_common_rf_1r1w, _be) may be (its W), the bound allowed. A register file carries no ECC (TI-474 (6) asks it of SRAMs). tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_RF_MAX_W >= 8.
+  // physical target, not a structure size (Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them))
+  localparam int CCV_MACRO_RF_MAX_W = 256;
+
+  // The most words (D) one register-file instance may hold, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_RF_MAX_WORDS >= 1.
+  // physical target, not a structure size (Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them))
+  localparam int CCV_MACRO_RF_MAX_WORDS = 1024;
+
   // Power and area per bit of a hard-macro instance over the most efficient one of its type, in percent: 0 at the type's largest legal size (CCV_MACRO_RF_MAX_BYTES, CCV_MACRO_SRAM_MAX_BYTES), this at its smallest (the _MIN_BYTES), linear in bytes between; below the smallest (a waived instance) the line continues, above the largest it stays 0. It multiplies the type's own weight (CCV_MACRO_AREA_RF_PCT, CCV_MACRO_AREA_BYTE_EN_PCT). tools/check-ngd.py reports it per instance (MACRO-1). docs/rtl-coding-style.md, "Hard macros".  Requires: CCV_MACRO_SIZE_PENALTY_PCT >= 0.
   // physical target, not a structure size (Daniel, 2026-11-17 (array efficiency: best at a macro type's largest legal size, falling linearly to a 20 percent penalty at its smallest))
   localparam int CCV_MACRO_SIZE_PENALTY_PCT = 20;

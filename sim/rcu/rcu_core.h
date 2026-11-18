@@ -203,6 +203,9 @@ struct LaneMsg {
   std::array<std::array<uint32_t, kPorts>, kLanes> opnd{};   ///< ports 0-2, then merge_data
   std::array<uint8_t, kLanes> pred_bit{}, pred_data{};       ///< per lane, a bit per section
   uint64_t tid = 0;                                          ///< the lowest slot's op
+  /// What it holds, for the host's tid check (TI-479): lane results land at
+  /// kLaneW, an SFU op's alone at kSfuW, each with this message's tid.
+  bool lane = false, sfu = false;
 };
 struct Done {
   unsigned slot = 0, tag = 0, row = 0;

@@ -110,10 +110,10 @@ inline constexpr FieldDesc kF_ccv_ooe_fet_decq_credit[] = {
   {"released", 0, 1, false},
 };
 inline constexpr FieldDesc kF_ccv_dec_ooe_uop[] = {
-  {"warp_id", 231, 5, false},
+  {"warp_id", 231, 5, true},
   {"pc", 167, 64, false},
   {"group_mask", 135, 32, false},
-  {"fetch_epoch", 132, 3, false},
+  {"fetch_epoch", 132, 3, true},
   {"uop_class", 129, 3, false},
   {"sched_attr", 108, 21, false},
   {"mem_op", 104, 4, false},

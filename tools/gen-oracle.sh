@@ -19,7 +19,10 @@
 # (ccv-sim -max-steps, for a kernel past its default limit), an optional
 # OOE_CONFIG=<name=value,...> (the OOE model's settings the kernel runs under,
 # written beside its records for both hosts: narrowadd's full_rows), an optional
-# FAULT=<cause> (the run
+# LOAD=<addr>:<file> (ccv-sim -load, a release kernel's launch.txt 'load'
+# line: a file of little-endian words beside its SOURCE, written at addr
+# before the pokes, and so in every run's init memory; one per line, AR 373),
+# an optional FAULT=<cause> (the run
 # ends in that fault, ccv-sim's exit 3, its record and state at the fault
 # written; TI-26, TI-28; with several warps, the first), then one poke per
 # line. A kernel of several CTAS is CTAS CTAs of one warp, CTAID upward, each
@@ -65,6 +68,11 @@ for k in "${kdirs[@]}"; do
   esac
   args=()
   while read -r p; do args+=(-poke "$p"); done < <(grep -E '^0x' "$k/kernel.cfg")
+  while read -r l; do
+    lf="$(dirname "$srcpath")/${l#*:}"
+    [ -f "$lf" ] || { printf '  %-46s FAIL (LOAD %s: no such file at the pin)\n' "oracle $name from the pinned ccv-sim" "$l"; lf=/nonexistent; }
+    args=("-load=${l%%:*}=$lf" "${args[@]}")
+  done < <(sed -n 's/^LOAD=//p' "$k/kernel.cfg")
   ctaid=$(sed -n 's/^CTAID=//p' "$k/kernel.cfg")
   ctas=$(sed -n 's/^CTAS=//p' "$k/kernel.cfg")
   # THREADS=<n>: a CTA of n threads (ccv-sim -threads), so a warp of fewer

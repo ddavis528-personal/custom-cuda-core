@@ -545,6 +545,46 @@
       "doc": "The largest 1RW SRAM one instance may be, in bytes (32 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
     },
     {
+      "name": "CCV_MACRO_SRAM_MAX_DATA_W",
+      "value": 128,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MAX_DATA_W >= 8",
+      "doc": "The widest data word one 1RW SRAM (ccv_common_sram_1rw) instance may hold, in bits, before its SECDED check bits (every SRAM has them; TI-474 (6)): the macro's own W may be this plus those, CCV_MACRO_SRAM_MAX_W, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MAX_W",
+      "value": 137,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "derive": "CCV_MACRO_SRAM_MAX_DATA_W + clog2(CCV_MACRO_SRAM_MAX_DATA_W + clog2(CCV_MACRO_SRAM_MAX_DATA_W) + 1) + 1",
+      "doc": "The widest word, in bits, one 1RW SRAM instance may be (its W): CCV_MACRO_SRAM_MAX_DATA_W and its SECDED check bits, the Hamming bits r (the least with 2^r >= data + r + 1) and one overall parity, 128 + 9. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MAX_WORDS",
+      "value": 4096,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MAX_WORDS >= 1",
+      "doc": "The most words (D) one 1RW SRAM instance may hold, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MAX_W",
+      "value": 256,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_RF_MAX_W >= 8",
+      "doc": "The widest word, in bits, one register-file instance (ccv_common_rf_1r1w, _be) may be (its W), the bound allowed. A register file carries no ECC (TI-474 (6) asks it of SRAMs). tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MAX_WORDS",
+      "value": 1024,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_RF_MAX_WORDS >= 1",
+      "doc": "The most words (D) one register-file instance may hold, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
       "name": "CCV_MACRO_SIZE_PENALTY_PCT",
       "value": 20,
       "status": "target",

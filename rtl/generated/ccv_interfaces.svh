@@ -171,11 +171,13 @@ typedef struct packed {
   logic                                          released;
 } ccv_ooe_fet_decq_credit_t;
 
+// LEAD fields are driven with valid, one cycle ahead of the
+// rest of the payload (schema lead_fields).
 typedef struct packed {
-  logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
+  logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;  // LEAD
   logic [ccv_params_pkg::CCV_W_VA-1:0]           pc;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    group_mask;
-  logic [ccv_prov_pkg::CCV_P_W_FETCH_EPOCH-1:0]  fetch_epoch;
+  logic [ccv_prov_pkg::CCV_P_W_FETCH_EPOCH-1:0]  fetch_epoch;  // LEAD
   logic [ccv_prelim_pkg::CCV_L_W_CLASS-1:0]      uop_class;
   logic [ccv_prelim_pkg::CCV_P_W_SCHED_ATTR-1:0] sched_attr;
   logic [ccv_prelim_pkg::CCV_L_W_MEM_OP-1:0]     mem_op;
