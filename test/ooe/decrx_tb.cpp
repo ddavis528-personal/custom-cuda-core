@@ -16,26 +16,28 @@
 // for a warp allocated or released in its own drive is counted and fails
 // the bench (the RTL has no bypass for it).
 //
-// The RTL runs one log behind, so the event lead (ev_l) and the arrival
-// lead (arv_l) go a tick before their events and uops. Per drive, after the
-// edge: every port's kept valid, slot and payload must be the model's keep
-// of that drive's arrivals (OA 429's flop: ooe_decq takes them next cycle;
-// a dropped uop takes no decode-queue entry, so it never counts against
-// ooe_decq's credits: used_cq02h is decq_tb's), and every slot's valid,
-// warp and epoch the model's. OA 428's ordering invariant is the bench's
-// assertion: every slot ooe_decq flushes in a drive had its advance (or its
-// release) driven no later than that drive.
-//
-// A uop kept in one drive reaches ooe_decq in the next; if its slot
-// flushes then, ooe_decq's late flush drops it (OA 430, re:OI-168 (B)).
-// Each such uop must be stale: by the RTL's own tables after that drive, its
-// slot holds no warp, or another, or its warp's epoch is not the uop's.
-// A right-path uop so dropped fails the bench (flush-dropped counts them
-// all, right-path-dropped those that fail).
+// The RTL runs one log behind, so the event lead (ev_l) goes a tick before
+// its events. The arrivals are the lead form's (OA 432, re:OI-169): each
+// port's valid, warp_id and fetch_epoch land a cycle ahead of the payload,
+// and ooe_decrx compares them then. So each drive presents the next edge's
+// arrivals beside this edge's events, and its verdict (kept valid and slot,
+// from the flops ooe_decq takes them from) lands with their payload, at the
+// next edge. The model's keep includes that edge's events; the RTL's does
+// not. So, per arrival: a uop the model keeps must be kept, at its slot, and
+// its slot must not flush at that edge (ooe_decq's late flush would drop a
+// right-path uop); a uop the model drops may be kept only when its slot
+// flushes at that edge (OA 430, re:OI-168 (B): ooe_decq's late flush drops
+// it), and is counted (flush-dropped); any other keep differs. A dropped uop
+// takes no decode-queue entry, so it never counts against ooe_decq's
+// credits: used_cq02h is decq_tb's. Every slot's valid, warp and epoch must
+// be the model's. OA 428's ordering invariant is the bench's assertion:
+// every slot ooe_decq flushes in a drive had its advance (or its release)
+// driven no later than that drive.
 //
 // Negative controls (DECRX_CONTROL=<name>) must be caught: adv-late (OA's:
 // each advance reaches the RTL one drive late; caught by the ordering
-// count and a right-path drop), no-adv-bypass (every arrival of a slot
+// count and a right-path drop), late-lead (OA 432's: the lead fields come a
+// cycle late, each port's warp_id and fetch_epoch the last drive's), no-adv-bypass (every arrival of a slot
 // advancing in its drive has its slot's old and advanced epochs swapped,
 // so the RTL decides as a compare without the bypass would: it keeps the
 // old epoch's uops the model drops), no-double (a notice beside a redirect on one slot advances it
@@ -80,11 +82,11 @@ struct Edge {
 Edge pend;
 bool have_pend = false;
 uint32_t late_adv = 0, late_adn = 0;
-// A kept uop held a cycle (OA 429's flop) whose slot flushes as it reaches
-// ooe_decq: dropped there, and stale.
+// A stale uop kept in its lead cycle whose slot flushes as it reaches
+// ooe_decq: dropped there (OA 430). A right-path one so dropped fails.
 uint64_t held_flush = 0, right_path = 0;
-struct Kept { unsigned slot, warp, ep; };
-std::vector<Kept> prev_kept;   // the RTL's kept uops of the last drive
+// late-lead: the last drive's lead fields, per port.
+unsigned last_warp[E] = {}, last_ep[E] = {};
 unsigned long long cycles = 0, arrivals = 0, kept = 0, dropped = 0, advs = 0, doubles = 0, reloc = 0, rels = 0, allocs = 0, flushes = 0,
                    same_drive = 0, cores = 0, mismatches = 0, order_fails = 0;
 
@@ -132,7 +134,7 @@ bool hasEvents(const Edge &e) {
   return !e.log.adv.empty() || !e.log.adn.empty() || e.log.rel || !e.log.alloc.empty();
 }
 
-void drive(const Edge &e, bool lead, bool arv_lead) {
+void drive(const Edge &e, const Edge *nx, bool lead) {
   ++cycles;
   uint32_t adv = 0, adn = 0;
   for (unsigned s : e.log.adv) {
@@ -181,17 +183,21 @@ void drive(const Edge &e, bool lead, bool arv_lead) {
   // there: the control tests the ordering invariant, not the lead.
   if (control == "adv-late" && (late_adv | late_adn)) lead = true;
   dut->ev_l_cq00h = lead && control != "no-ev-lead";
-  dut->arv_l_cq00h = arv_lead;
-  // The arrivals, in arrival order.
-  if (e.log.arr.size() > E) { fail("more arrivals than ports", 0, unsigned(e.log.arr.size()), E); return; }
+  // The next edge's arrivals, in arrival order: their lead cycle is this
+  // drive.
+  static const std::vector<Core::RxArrival> none;
+  const auto &arr = nx ? nx->log.arr : none;
+  if (arr.size() > E) { fail("more arrivals than ports", 0, unsigned(arr.size()), E); return; }
+  const uint32_t nfl = nx ? nx->fl : 0;
   dut->arv_v_cq01h = 0;
-  for (unsigned k = 0; k != e.log.arr.size(); ++k) {
-    const auto &a = e.log.arr[k];
+  unsigned cur_warp[E] = {}, cur_ep[E] = {};
+  for (unsigned k = 0; k != arr.size(); ++k) {
+    const auto &a = arr[k];
     unsigned ep = a.fetch_epoch;
     if (control == "keep-stale" && !a.kept) {
       // The drop's warp's live epoch, so the RTL keeps what the model dropped.
       for (unsigned s = 0; s != S; ++s)
-        if (e.sv[s] && e.sw[s] == a.warp) ep = e.se[s];
+        if (nx->sv[s] && nx->sw[s] == a.warp) ep = nx->se[s];
     }
     if (control == "no-adv-bypass")
       // The bypassed compare made to decide as one without it: an arrival
@@ -206,41 +212,34 @@ void drive(const Edge &e, bool lead, bool arv_lead) {
           if (ep == old) ep = adv;
           else if (ep == adv) ep = old;
         }
+    cur_warp[k] = a.warp;
+    cur_ep[k] = ep;
     dut->arv_v_cq01h |= 1u << k;
-    setField(dut->arv_warp_cq01h, k * LW, LW, a.warp);
-    setField(dut->arv_ep_cq01h, k * EP, EP, ep);
-    setField(dut->arv_pay_cq01h, k * P, P, (arrivals + k) & 0xffffu);
-    if ((al_warps | rel_warps) >> a.warp & 1u) { ++same_drive; fail("an arrival for a warp allocated or released in its cycle", a.warp, 0, 0); }
+    setField(dut->arv_warp_cq01h, k * LW, LW, control == "late-lead" ? last_warp[k] : a.warp);
+    setField(dut->arv_ep_cq01h, k * EP, EP, control == "late-lead" ? last_ep[k] : ep);
+    if ((al_warps | rel_warps) >> a.warp & 1u) { ++same_drive; fail("an arrival led in its warp's allocation or release", a.warp, 0, 0); }
   }
+  for (unsigned k = 0; k != E; ++k) { last_warp[k] = cur_warp[k]; last_ep[k] = cur_ep[k]; }
   tick();
-  // After the edge: the kept uops, from the flops ooe_decq takes them from.
-  std::vector<Kept> now_kept;
-  for (unsigned k = 0; k != e.log.arr.size(); ++k) {
-    const auto &a = e.log.arr[k];
+  // After the edge: the verdict, from the flops ooe_decq takes it from, with
+  // the payload.
+  for (unsigned k = 0; k != arr.size(); ++k) {
+    const auto &a = arr[k];
     (a.kept ? kept : dropped) += 1;
     const bool v = dut->enq_v_cq02h >> k & 1u;
-    if (v != a.kept) { fail("keep differs", k, v, a.kept); continue; }
+    if (a.kept && !v) { fail("a kept uop dropped", k, v, a.kept); continue; }
     if (v) {
       const unsigned g = getField(dut->enq_slot_cq02h, k * LS, LS);
-      if (g != unsigned(a.slot)) fail("kept slot differs", k, g, unsigned(a.slot));
-      const unsigned py = getField(dut->enq_pay_cq02h, k * P, P);
-      if (py != ((arrivals + k) & 0xffffu)) fail("kept payload differs", k, py, unsigned((arrivals + k) & 0xffffu));
-      now_kept.push_back({g, a.warp, a.fetch_epoch});
+      if (a.kept && g != unsigned(a.slot)) { fail("kept slot differs", k, g, unsigned(a.slot)); continue; }
+      const bool gfl = nfl >> g & 1u;
+      if (a.kept && gfl) { ++right_path; fail("a right-path uop dropped by ooe_decq's late flush", k, g, a.warp); }
+      else if (!a.kept && gfl) ++held_flush;
+      else if (!a.kept) fail("a dropped uop kept, its slot not flushed", k, g, a.warp);
     }
   }
-  arrivals += e.log.arr.size();
-  for (unsigned k = unsigned(e.log.arr.size()); k != E; ++k)
+  arrivals += arr.size();
+  for (unsigned k = unsigned(arr.size()); k != E; ++k)
     if (dut->enq_v_cq02h >> k & 1u) fail("an idle port kept", k, 1, 0);
-  // The last drive's kept uops reach ooe_decq now: those whose slot
-  // flushes now are dropped there, and must be stale by the RTL's tables.
-  for (const Kept &u : prev_kept) {
-    if (!(e.fl >> u.slot & 1u)) continue;
-    ++held_flush;
-    if ((dut->sv_cq02h >> u.slot & 1u) && getField(dut->sw_cq02h, u.slot * LW, LW) == u.warp &&
-        getField(dut->se_cq02h, u.slot * EP, EP) == u.ep)
-      ++right_path, fail("a right-path uop dropped by ooe_decq's late flush", u.slot, u.ep, u.warp);
-  }
-  prev_kept = std::move(now_kept);
   // After the edge: the slots as the model left them.
   for (unsigned s = 0; s != S; ++s) {
     const bool v = dut->sv_cq02h >> s & 1u;
@@ -264,7 +263,6 @@ void resetDut() {
   dut->rel_cq01h = 0;
   dut->al_v_cq01h = 0;
   dut->arv_v_cq01h = 0;
-  dut->arv_l_cq00h = 0;
   dut->ooe_rst_r00h = 1;
   tick();
   tick();
@@ -280,7 +278,7 @@ Edge cur;
 bool have_cur = false;
 
 void push(Edge &&e) {
-  if (have_pend) drive(pend, hasEvents(e), !e.log.arr.empty());
+  if (have_pend) drive(pend, &e, hasEvents(e));
   pend = std::move(e);
   have_pend = true;
 }
@@ -307,11 +305,11 @@ void post(const Core &c) {
 void pre(const Core &c) {
   if (c.serial() != current) {
     if (have_cur) { push(std::move(cur)); have_cur = false; }
-    if (have_pend) { drive(pend, false, false); have_pend = false; }
+    if (have_pend) { drive(pend, nullptr, false); have_pend = false; }
     current = c.serial();
     ++cores;
     late_adv = late_adn = 0;
-    prev_kept.clear();
+    for (unsigned k = 0; k != E; ++k) last_warp[k] = last_ep[k] = 0;
     resetDut();
     // A null edge ahead of the core's first cycle carries the lead of its
     // launches.
@@ -327,7 +325,7 @@ void pre(const Core &c) {
 
 void flushLast() {
   if (have_cur) { push(std::move(cur)); have_cur = false; }
-  if (have_pend) { drive(pend, false, false); have_pend = false; }
+  if (have_pend) { drive(pend, nullptr, false); have_pend = false; }
 }
 } // namespace
 

@@ -109,8 +109,7 @@
         "S": 4,
         "E": 6,
         "NW": 32,
-        "EP": 3,
-        "P": 16
+        "EP": 3
       },
       "clock": "ooe_core_clk",
       "reset": "ooe_rst_r00h",

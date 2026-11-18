@@ -17,15 +17,17 @@
 // and an allocation loads the row. So one copy of each warp's epoch is live
 // at a time, and nothing keeps two in step.
 //
-// The arrivals are this module's too (OA 429, re:OI-166: the keep and its
-// flop both here, ooe_decq's enq cone unchanged). Each uop is compared by
-// ooe_decrx_keep, an inner helper timed here, and the kept valid, its slot
-// and its payload are flopped: ooe_decq takes them a cycle after they land,
-// from these flops, with its lead (enq_l) this module's flop of DEC's
-// channel valid. So a uop kept under an epoch a flush of its slot ends can
-// reach ooe_decq in that flush's cycle; ooe_decq's late flush drops it
-// (OA 430, re:OI-168 (B)), and decrx_tb checks that every uop so dropped
-// is stale.
+// The arrivals are this module's too, in their lead cycle (OA 432, re:OI-169:
+// warp_id and fetch_epoch are lead fields of ccv_dec_ooe_uop, beside each
+// port's valid, a cycle ahead of the payload). Each uop is compared there by
+// ooe_decrx_keep, an inner helper timed here, and the kept valid and its slot
+// are flopped on the edge the payload lands: ooe_decq takes them with the
+// payload, from these flops (its lead and the payload come from OOE's
+// boundary, not through this module). So no cycle is added (OA 429's flop
+// form added one: OI-169's price). A uop kept under an epoch a flush of its
+// slot ends reaches ooe_decq in that flush's cycle; ooe_decq's late flush
+// drops it (OA 430, re:OI-168 (B)), and decrx_tb checks that every uop so
+// dropped is stale.
 //
 // Events (OOE's own pulses, flopped where they start): per slot, a
 // redirect's advance (adv) and an epoch notice's (adn: a demotion or a
@@ -48,12 +50,12 @@
 // compares every keep, every slot and every resident warp's epoch.
 //
 // Local clock gating: the tables are one gate on the event lead's flop
-// (ev_q); the kept uops one gate on the arrival lead's flop and its
-// successor (aq, aqq: the second clears the valids). The leads' flops and
-// enq_l's are outside them. Reset line: the leads, each slot's valid,
-// every warp's epoch and the kept valids reset; a slot's warp and its
-// three epochs are payload under its valid, the kept slots and payloads
-// under theirs.
+// (ev_q). The verdict (kept valids and slots) captures lead fields as they
+// land, so no flop of this module's leads its edge: it is ungated, a lead
+// capture as ooe_cmcap's cv is (OI-170 asks OA how it is to be counted).
+// Reset line: the event lead, each slot's valid, every warp's epoch and the
+// kept valids reset; a slot's warp and its three epochs are payload under
+// its valid, the kept slots under theirs.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -63,7 +65,6 @@ module ooe_decrx #(
   parameter int E  = 6,                  // arrivals a cycle (ccv_dec_ooe_uop's rate)
   parameter int NW = 32,                 // warp_ids (2 ** CCV_W_WARP_ID)
   parameter int EP = 3,                  // fetch epoch bits (CCV_P_W_FETCH_EPOCH)
-  parameter int P  = 16,                 // the uop's payload bits, as ooe_decq takes them
   localparam int LS = $clog2(S),
   localparam int LW = $clog2(NW)
 ) (
@@ -75,15 +76,11 @@ module ooe_decrx #(
   input  logic [S-1:0]     rel_cq01h,      // slot s is released
   input  logic [S-1:0]     al_v_cq01h,     // a warp takes slot s (launch or restore)
   input  logic [S*LW-1:0]  al_warp_cq01h,  // the warp
-  input  logic             arv_l_cq00h,    // DEC's channel valid: uops arrive next cycle
-  input  logic [E-1:0]     arv_v_cq01h,    // port k carries a uop
-  input  logic [E*LW-1:0]  arv_warp_cq01h, // its warp_id
-  input  logic [E*EP-1:0]  arv_ep_cq01h,   // its fetch_epoch
-  input  logic [E*P-1:0]   arv_pay_cq01h,  // its payload
-  output logic             enq_l_cq01h,    // ooe_decq's lead: kept uops come next cycle
-  output logic [E-1:0]     enq_v_cq02h,    // port k's uop was kept
-  output logic [E*LS-1:0]  enq_slot_cq02h, // its slot
-  output logic [E*P-1:0]   enq_pay_cq02h   // its payload
+  input  logic [E-1:0]     arv_v_cq01h,    // port k carries a uop (the valid: its payload lands next cycle)
+  input  logic [E*LW-1:0]  arv_warp_cq01h, // its warp_id (a lead field)
+  input  logic [E*EP-1:0]  arv_ep_cq01h,   // its fetch_epoch (a lead field)
+  output logic [E-1:0]     enq_v_cq02h,    // port k's uop was kept: with its payload, at ooe_decq
+  output logic [E*LS-1:0]  enq_slot_cq02h  // its slot
 );
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
@@ -211,42 +208,20 @@ module ooe_decrx #(
       s2i_cq02h <= s2_nx_cq01h;
     end
 
-  // The arrivals: each compared (the inner helper), the kept ones flopped
-  // with their slots and payloads, ooe_decq's inputs a cycle later. The
-  // arrival lead's flop (aq) clocks them, and its successor (aqq) once
-  // more, to clear the valids; enq_l is a third flop of the lead, the
-  // output's own.
-  logic aq_cq01h, aqq_cq02h;
-  (* keep *) logic enq_lo_cq01h;
-  always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) begin
-      aq_cq01h     <= 1'b0;
-      aqq_cq02h    <= 1'b0;
-      enq_lo_cq01h <= 1'b0;
-    end else begin
-      aq_cq01h     <= arv_l_cq00h;
-      aqq_cq02h    <= aq_cq01h;
-      enq_lo_cq01h <= arv_l_cq00h;
-    end
-  end
-  assign enq_l_cq01h = enq_lo_cq01h;
+  // The arrivals, in their lead cycle: each compared (the inner helper), and
+  // the verdict flopped on the edge the payload lands, ooe_decq's inputs
+  // beside it. The valids reset; a slot is read only under its valid.
   logic [E-1:0]    kv_cq01h;
   logic [E*LS-1:0] ks_cq01h;
   ooe_decrx_keep #(.S(S), .E(E), .NW(NW), .EP(EP)) u_keep (
     .arv_v_cq01h, .arv_warp_cq01h, .arv_ep_cq01h, .adv_cq01h, .adn_cq01h,
     .sv_cq02h, .sw_cq02h(swi_cq02h), .se_cq02h(sei_cq02h), .sn_cq02h(sni_cq02h), .s2_cq02h(s2i_cq02h),
     .enq_v_cq01h(kv_cq01h), .enq_slot_cq01h(ks_cq01h));
-  logic kq_en_cq01h;
-  assign kq_en_cq01h = aq_cq01h || aqq_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) enq_v_cq02h <= '0;
-    else if (kq_en_cq01h) enq_v_cq02h <= kv_cq01h;
+    else enq_v_cq02h <= kv_cq01h;
   end
-  always_ff @(posedge ooe_core_clk)
-    if (kq_en_cq01h) begin
-      enq_slot_cq02h <= ks_cq01h;
-      enq_pay_cq02h  <= arv_pay_cq01h;
-    end
+  always_ff @(posedge ooe_core_clk) enq_slot_cq02h <= ks_cq01h;
 
   // The input contract.
   `CCV_ASSERT_KNOWN(ev_l_known, ev_l_cq00h)
@@ -255,10 +230,7 @@ module ooe_decrx #(
   `CCV_ASSERT_KNOWN(rel_known, rel_cq01h)
   `CCV_ASSERT_KNOWN(al_v_known, al_v_cq01h)
   `CCV_ASSERT_KNOWN_IF(al_known, al_v_cq01h != '0, al_warp_cq01h)
-  `CCV_ASSERT_KNOWN(arv_l_known, arv_l_cq00h)
   `CCV_ASSERT_KNOWN(arv_v_known, arv_v_cq01h)
-  // Every arrival comes under its lead.
-  `CCV_ASSERT(arv_led, arv_v_cq01h == '0 || aq_cq01h)
   // Every event comes under its lead.
   `CCV_ASSERT(ev_led, (adv_cq01h == '0 && adn_cq01h == '0 && rel_cq01h == '0 && al_v_cq01h == '0) || ev_q_cq01h)
   // An advance or a release names a slot that holds a warp.
