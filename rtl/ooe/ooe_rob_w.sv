@@ -1963,7 +1963,7 @@ module ooe_rob_w #(
   // only a branch's done is an outcome.
   logic            bo_v_cq02h, bo_taken_cq02h, bo_wrong_cq02h;
   logic [TW-1:0]   bo_tag_cq02h;
-  logic [S*D-1:0]  bo_oh_cq02h;                     // the branch done's entry, one-hot, bo_v folded in (off the resolution's path)
+  logic [S*D-1:0]  bo_oh_cq02h;                     // the last cycle's done's entry, one-hot (off the resolution's path)
   logic [LK-1:0]   bo_ck_cq02h;
   logic [31:0]     bo_mask_cq02h, bo_aux_cq02h;
   logic [LK-1:0]   bo_ck_nx_cq02h;
@@ -1995,16 +1995,18 @@ module ooe_rob_w #(
   end
   logic bo_en_cq02h, boh_en_cq02h;
   assign bo_en_cq02h = dn_q_cq02h[BS];
-  // The entry a branch's done names: bo_v && its one-hot, per entry from
-  // its own br (the tag is one-hot, so the OR in bo_v reduces to it), so
-  // the verdict's bypass reads one flop an entry. Loaded on a done, and on
-  // the cycle after a branch's, to clear.
-  assign boh_en_cq02h = dn_q_cq02h[BS] | bo_v_cq02h;
+  // The entry the last cycle's done names, one-hot, zero with no done, so
+  // the verdict's bypass reads one flop an entry. Its branch bit need not
+  // be folded in: the bypass reaches only cw_e and crt_e, which cand masks
+  // with br. Loaded on a done and cleared the cycle after one, an enable of
+  // its own flops that changes it nearly every time (CG-3; a fold of br had
+  // held it at zero over non-branch dones).
+  assign boh_en_cq02h = dn_q_cq02h[BS] | (|bo_oh_cq02h);
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) bo_oh_cq02h <= '0;
     else if (boh_en_cq02h)
       for (int e = 0; e < S * D; e++)
-        bo_oh_cq02h[e] <= dn_q_cq02h[BS] && dn_tag_cq02h[BS * TW +: TW] == TW'(WID * D + e) && br_cq02h[e];
+        bo_oh_cq02h[e] <= dn_q_cq02h[BS] && dn_tag_cq02h[BS * TW +: TW] == TW'(WID * D + e);
   end
   always_ff @(posedge ooe_core_clk) begin
     if (bo_en_cq02h) begin
