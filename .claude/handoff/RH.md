@@ -58,8 +58,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-1 DONE and sent 19:41Z 11-17 (all clean): rh-jobs/ma1/ma1.sh at cc5f3f04, worktree dropped, ~/ccv-logs/ma1
   (KEEP: MA's reference for p1 deltas; rh-jobs/ma1/table.py writes s1-cycles.tsv and the table). Ways 8,
   defaults. No per-reason late bins at the stubs; the squeezed cm128 was dropped (AR 373).
+- MA-3 QUEUED (waiting for MA's commit id, which fixes the b-store starvation model bug; MA-2's b numbers are VOID, a/af stand):
+  `setsid nohup rh-jobs/ma3/ma3.sh <commit> >~/ccv-logs/ma3.nohup 2>&1 </dev/null &` (fetches gate-scratch/MA,
+  worktree rh-ma3, ~/ccv-logs/ma3). Points st.qN.arb: b.q0/b.q2 fixed, a.q2/b.q2 rot, a.q4/b.q4 fixed, then
+  a.q0/a.q2 fixed controls (MA may drop them: write ~/ccv-logs/ma3/points). Plain cm32 + cm128 in 2 lanes, S1 check.
+  Table: python3 rh-jobs/ma3/table.py (adds store_deferred, w16_31/w32_63/w64up). About 6-7 h.
 - MA-2 DONE and sent 02:58Z 11-18 (30/30 clean): rh-jobs/ma2/ma2.sh, p1 at dd04f733 (gate-scratch/MA),
-  worktree rh-ma2 KEPT for MA's 2 rotating points (CCV_P1_ARB=rot; append them with the same build), ~/ccv-logs/ma2.
+  worktree rh-ma2 kept until MA releases MA-2 (the rotating points moved to MA-3), ~/ccv-logs/ma2.
   Table via python3 rh-jobs/ma2/table.py [extra points]. q0 +35/42% on cm32/cm128 (repass); q2 at about stub level;
   b.q2 cm128 5,290,859, but b's wait_max is 70k-229k (fixed arb). A container restart at ~00:30Z killed 3 cm128 runs;
   they were relaunched and rerun from scratch. After a restart: swapon /home/user/rh-swap.
