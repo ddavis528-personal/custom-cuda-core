@@ -88,6 +88,10 @@ module ooe_rendep #(
   input  logic [A-1:0]      v_cq01h,        // uop u renames
   input  logic [A-1:0]      mem_cq01h,      // its main entry is MIU class
   input  logic [A-1:0]      cp_cq01h,       // it has a copy (a masked load)
+  // Each uop's ports, from rename's Rename 1 register (its ports_of): its
+  // main's (u) and its copy's (A + u), each class's packed in order. Only
+  // a valid uop's are read; the counts below check them.
+  input  logic [2*A*3-1:0]  pp_cq01h,
   input  logic [A-1:0]      atom_cq01h,     // an atomic (AR-21): asserted absent
   input  logic [A-1:0]      gwe_cq01h,      // it writes a GPR
   input  logic [A*LG-1:0]   gname_cq01h,    //   its new name
@@ -103,6 +107,7 @@ module ooe_rendep #(
   input  logic [A*3-1:0]    unit_cq01h,     // as a producer: its lat_class
   input  logic [A*3-1:0]    pg_cq01h,       //   its bypass group
   input  logic [A-1:0]      nob_cq01h,      //   no bypass (a memop, a cross-lane op)
+  input  logic [A-1:0]      spec_cq01h,     // its main's wake is speculative (an L1-contracted global load)
   // ooe_prodmap's entries (their names and codes, two edges after
   // allocation or more).
   input  logic [N-1:0]      eg_cq01h,
@@ -120,7 +125,11 @@ module ooe_rendep #(
   output logic [P*P-1:0]    grp_dep_cq02h,
   output logic [2*P*P-1:0]  grp_code_cq02h,
   output logic [P*P-1:0]    prv_dep_cq02h,
-  output logic [2*P*P-1:0]  prv_code_cq02h
+  output logic [2*P*P-1:0]  prv_code_cq02h,
+  // Each port's entry's timer kind and latency class, ooe_wake's, which
+  // ooe_rs stores with the row (OA, re:OI-104).
+  output logic [2*P-1:0]    akind_cq02h,
+  output logic [3*P-1:0]    acls_cq02h
 );
 
   logic rst_r01h;
@@ -176,9 +185,11 @@ module ooe_rendep #(
   `CCV_ASSERT(grp_led, v_cq01h == '0 || grp_l_cq01h)
 
   // -- This group's ports --------------------------------------------------------
-  // Port of uop u's main entry and of its copy, and per port the producer it
-  // holds: its names and its code per consumer group.
-  logic [A*3-1:0]   pm_cq01h, pcp_cq01h;            // port within its class (0..A-1)
+  // Port of uop u's main entry and of its copy (rename registers them a
+  // stage early: counting them here put the one-hot port select's fanout
+  // behind the counts), and per port the producer it holds: its names and
+  // its code per consumer group.
+  logic [A*3-1:0]   pm_cq01h, pcp_cq01h;            // the counts' ports, checked against pp
   logic [P-1:0]     pv_cq01h, pgv_cq01h, ppv_cq01h;       // the port is taken; it produces a GPR, a predicate
   logic [P*LG-1:0]  pgn_cq01h;
   logic [P*LQ-1:0]  ppn_cq01h;
@@ -209,6 +220,13 @@ module ooe_rendep #(
   end
   // Rename takes no more than A entries a class (V-55's per-cycle bound).
   `CCV_ASSERT(ports_fit, nr <= A && nm <= A)
+  logic [A-1:0] pp_ok_cq01h;
+  always_comb
+    for (int u = 0; u < A; u++)
+      pp_ok_cq01h[u] = !v_cq01h[u] ||
+                       (pp_cq01h[u * 3 +: 3] == pm_cq01h[u * 3 +: 3] &&
+                        (!cp_cq01h[u] || pp_cq01h[(A + u) * 3 +: 3] == pcp_cq01h[u * 3 +: 3]));
+  `CCV_ASSERT(pp_counted, &pp_ok_cq01h)
 
   // -- The earlier groups' producers, by port ------------------------------------
   // G-1: the stage register's group (this module registered its ports at the
@@ -256,13 +274,25 @@ module ooe_rendep #(
         for (int s = 0; s < 4; s++)
           cps_cq01h[(2 * u + k) * 4 + s]   = k == 0 ? psv_cq01h[u * 4 + s] : (s == 0 && cguard_cq01h[u]);
         for (int q = 0; q < P; q++)
-          coh_cq01h[(2 * u + k) * P + q]   = cv_cq01h[2 * u + k] && 32'(k == 0 ? pm_cq01h[u * 3 +: 3] : pcp_cq01h[u * 3 +: 3]) == q;
+          coh_cq01h[(2 * u + k) * P + q]   = cv_cq01h[2 * u + k] && 32'(pp_cq01h[(k * A + u) * 3 +: 3]) == q;
       end
 
   // Each port's producer, through the one-hot select: consumer c's uop
   // on the port it sits on (a copy produces its GPR alone, with no bypass).
+  // Its timer's {class, kind} too, as the model's wakeKindClass: a main is
+  // timed, or a memop's (speculative for an L1-contracted global load),
+  // and a copy is a copy, each at the uop's lat_class.
+  localparam logic [1:0] KTIMED = 2'd0, KCOPY = 2'd1, KSPEC = 2'd2, KMEM = 2'd3;
+  logic [5*P-1:0] pkc_cq01h;
+  logic [5*P-1:0] akc_cq02h;              // its register, in the stage register (below)
+  always_comb
+    for (int q = 0; q < P; q++) begin
+      akind_cq02h[q * 2 +: 2] = akc_cq02h[q * 5 +: 2];
+      acls_cq02h[q * 3 +: 3]  = akc_cq02h[q * 5 + 2 +: 3];
+    end
   always_comb begin
     pv_cq01h = '0; pgv_cq01h = '0; ppv_cq01h = '0; pgn_cq01h = '0; ppn_cq01h = '0; pcv_cq01h = '0; pprod_cq01h = '0;
+    pkc_cq01h = '0;
     for (int q = 0; q < P; q++)
       for (int c = 0; c < C; c++)
         if (coh_cq01h[c * P + q]) begin
@@ -274,9 +304,13 @@ module ooe_rendep #(
             ppn_cq01h[q * LQ +: LQ]    = ppn_cq01h[q * LQ +: LQ] | pname_cq01h[(c / 2) * LQ +: LQ];
             pcv_cq01h[q * CVW +: CVW]  = pcv_cq01h[q * CVW +: CVW] | pcv_c_cq01h[(c / 2) * CVW +: CVW];
             pprod_cq01h[q]             = pprod_cq01h[q] | gwe_cq01h[c / 2] | pwe_cq01h[c / 2];
+            pkc_cq01h[q * 5 +: 5]      = pkc_cq01h[q * 5 +: 5] |
+                                         {unit_cq01h[(c / 2) * 3 +: 3],
+                                          !mem_cq01h[c / 2] ? KTIMED : spec_cq01h[c / 2] ? KSPEC : KMEM};
           end else begin
             pcv_cq01h[q * CVW +: CVW]  = pcv_cq01h[q * CVW +: CVW] | {G{LATE}};
             pprod_cq01h[q]             = 1'b1;
+            pkc_cq01h[q * 5 +: 5]      = pkc_cq01h[q * 5 +: 5] | {unit_cq01h[(c / 2) * 3 +: 3], KCOPY};
           end
         end
   end
@@ -426,6 +460,7 @@ module ooe_rendep #(
   always_ff @(posedge ooe_core_clk) begin
     if (st_en_cq02h) begin
       row_prod_cq02h <= pprod_cq01h & pv_cq01h;
+      akc_cq02h      <= pkc_cq01h;
       row_dep_cq02h  <= rd_cq02h;
       row_code_cq02h <= rc_cq02h;
       grp_dep_cq02h  <= gd_cq01h;

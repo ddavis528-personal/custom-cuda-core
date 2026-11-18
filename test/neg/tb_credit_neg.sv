@@ -39,7 +39,10 @@ module tb;
 
   // The low byte LEADS: it is due with valid (lead_known_at_valid). No other
   // case drives it unknown, so the mask changes no other case's result.
-  ccv_common_chk_credit #(.PAYLOAD_W(32), .LEAD_MASK(32'h0000_00ff)) u_chk (
+  // Bits 15 (a lead bit) and 14 are a field this slot does not carry
+  // (ZERO_MASK, slot_fields): zero in every case but the absent ones.
+  ccv_common_chk_credit #(.PAYLOAD_W(32), .LEAD_MASK(32'h0000_80ff),
+                          .ZERO_MASK(32'h0000_c000)) u_chk (
     .clk(clk), .rst_n(rst_n), .ch_valid(v), .ch_payload(pl),
     .ch_credit(cr), .ch_stall(st));
 
@@ -124,6 +127,30 @@ module tb;
       else if (cname == "xlead_before") begin
         v  = (c == S);
         if (c == S - 1) pl[7:0] = 'x;
+        cr = (c == S + 3);
+      end
+
+      // A field the slot does not carry, set when the payload is due.
+      else if (cname == "absent") begin
+        v  = (c == S);
+        if (c == S + 1) pl[14] = 1'b1;
+        cr = (c == S + 3);
+      end
+
+      // Its lead bit set in the valid cycle.
+      else if (cname == "absent_lead") begin
+        v  = (c == S);
+        if (c == S) pl[15] = 1'b1;
+        cr = (c == S + 3);
+      end
+
+      // The legal limit: both set in cycles nothing is due in, the lead bit
+      // the cycle after valid and the rest in valid's own. Must be quiet.
+      else if (cname == "absent_idle") begin
+        v  = (c == S);
+        if (c == S) pl[14] = 1'b1;
+        if (c == S + 1) pl[15] = 1'b1;
+        if (c == S + 5) pl[15:14] = 2'b11;
         cr = (c == S + 3);
       end
 

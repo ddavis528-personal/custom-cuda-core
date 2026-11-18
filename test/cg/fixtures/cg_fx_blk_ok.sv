@@ -1,6 +1,7 @@
 // check-cg fixture: a block whose 2% holds what its modules auto-waived.
-// cg_fx_small's 4 flops are within its own module allowance, and count
-// here: 2 x 128 + 4 = 260 flops, 2% is 5.2, used 4. tools/check-cg.py --selftest.
+// What cg_fx_small and cg_fx_wide auto-waive in their own allowances counts
+// here: 2 x 257 + 6 = 520 flops, 2% is 10.4, used 8 (each instance's unit's
+// count, summed: Daniel, 2026-11-06). tools/check-cg.py --selftest.
 module cg_fx_blk_ok (
   input  logic        clk,
   input  logic        rst,

@@ -222,6 +222,7 @@ std::string Oracle::load(const std::string &path) {
         for (unsigned r = 0; r != kArchPreds; ++r) final_pred[r] = uint32_t(p[r].u());
         final_mem = words(f.at("mem"));
         issue_groups = unsigned(f.at("issue_groups").u());
+        partial = f.has("partial") && f.at("partial").u() != 0;
         have_final = true;
       } else {
         Record r;

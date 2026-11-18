@@ -5,14 +5,13 @@
 // whatever that link is clocked by (core_clk today), so clk/rst_n
 // are generic formals.
 //
-// STAGES flops in every direction of one credited channel instance -- its
-// SLOTS slots and its one wake -- so a link can span more distance than one
-// cycle allows while every block keeps its flops-on-both-sides boundary.
-// Forward: valid, payload (with its lead slice) and trace id per slot, and
-// wake. Backward: credit and stall per slot. STAGES = 0 is wires, which is
-// how every hardening wrapper holds one of these for every channel end
-// whether or not the link is repeated: the hierarchy does not change when a
-// stage count does (params/links.json).
+// STAGES + BOUNDARY flops in every direction of one credited channel
+// instance -- its SLOTS slots and its one wake: STAGES so a link can span
+// more distance than one cycle allows (params/links.json), BOUNDARY the
+// block's own boundary register (below). Forward: valid, payload (with its
+// lead slice) and trace id per slot, and wake. Backward: credit and stall per
+// slot. An end with neither is wired straight through by its wrapper, never
+// through this module (a feedthrough module, NGD-5).
 //
 // THE ENABLES, which are the point of the widget beyond "some flops". A
 // clock enable comes only from this module's own flops (CG-5, Daniel,
@@ -40,6 +39,36 @@
 //   wrapper's ungated budget, not this module's (Daniel, 2026-10-19); the
 //   first stage's lead counts against this module's.
 //
+// THE BOUNDARY FLOP (Daniel, 2026-11-05; AR 285/287, re:RI-11): BOUNDARY
+// more stages, default 1, at the block's side of the end -- the block's
+// boundary register, built here instead of in the block: at a source end the
+// sender's last flop, at a destination end the receiver's first, for every
+// signal of the end (valid, payload, lead, wake forward; credit and stall
+// back), never in series with a block's own: the block drives and takes
+// these ports with logic, not registers. A flopped receiving end adds a
+// cycle to its crossing, bnd_rx (AR's revs 300, 301); a flopped sending end
+// adds none, replacing the sender's output register (AR's rev 285).
+// CCV_RT_ABUT counts both for such a block; in front of a block that still
+// registers its inputs and credit (a DPI host), a flopped receiving end is a
+// stage each way in the round trip and credit depth (docs/physical.md). A stage
+// is a stage, so the boundary is built exactly as a link stage is.
+// BOUNDARY = 0 is the zero-cycle option, for an end whose block registers the
+// port itself with 0 NGD (checked at the wrapper by check-ngd) or a DPI host
+// (params/links.json "no_flop"). STAGES + BOUNDARY = 0 is wires.
+//
+// CREDIT ON RECEIPT (CREDIT_ON_RECEIPT 1; AR's rev 322, RA-41): at a
+// flopped destination end (DST_END, BOUNDARY 1) whose block promises to take
+// every message the cycle it is presented from the boundary flop, under
+// kill, flush and reset included, with no skid of its own (the schema's
+// credit_on_receipt contract; params/links.json credit_on_receipt), the
+// boundary stage's credit flop loads from that stage's own valid flop, flop
+// to flop: the credit leaves the cycle after the message is presented, the
+// cycle a block taking it then would return it, with no second register in
+// series behind the boundary for a derive not to count. dst_credit is then
+// unused: the block has no credit port on that end (tools/gen-top.py). Only
+// this flop's input changes; every other stage, and the rest of this stage,
+// is built as above.
+//
 // What a repeated link changes, which the widget itself cannot: the round
 // trip grows by 2 * STAGES, and credit depth, drain wait and every checker's
 // ROUND_TRIP grow with it (docs/physical.md). Every slot of a channel
@@ -53,6 +82,14 @@
 
 module ccv_common_rpt #(
   parameter int STAGES    = 1,
+  parameter int BOUNDARY  = 1,
+  // A destination end: the block takes this module's output, so its boundary
+  // stage is the last. With link stages the first is a link stage; without,
+  // the first is the boundary, as at every source end.
+  parameter bit DST_END   = 1'b0,
+  // The boundary stage's credit is its own valid, a cycle on (above). Only
+  // at a flopped destination end; refused anywhere else.
+  parameter bit CREDIT_ON_RECEIPT = 1'b0,
   parameter int SLOTS     = 1,
   parameter int PAYLOAD_W = 32,
   parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0
@@ -81,31 +118,46 @@ module ccv_common_rpt #(
   localparam int W = PAYLOAD_W;
   localparam int S = SLOTS;
   localparam bit HAS_LEAD = (LEAD_MASK != '0);
+  // Every stage this end holds: the link's and the block's boundary.
+  localparam int NST = STAGES + BOUNDARY;
+  // The first stage is the block's boundary stage. Its lead slice, written
+  // every cycle (its valid is this module's input), is then the boundary
+  // flop's, bnd_lead_q: it counts against the block's per-instance 2%, as
+  // the block's own capture did (Daniel, 2026-11-05, DA tab rev 108; AR's rev
+  // 289 (3)), where a link stage's lead_q counts against this module's own
+  // allowance (tools/check-cg.py RPT_BOUNDARY).
+  localparam bit BND_FIRST = (BOUNDARY != 0) && (!DST_END || STAGES == 0);
+
+  // Credit on receipt loads the BOUNDARY stage, the last of a destination
+  // end's: anywhere else there is no boundary flop to take it from.
+  if (CREDIT_ON_RECEIPT && !(DST_END && BOUNDARY == 1)) begin : g_cor_refused
+    $error("ccv_common_rpt: CREDIT_ON_RECEIPT needs a flopped destination end (DST_END, BOUNDARY 1)");
+  end
 
   // The reset, flopped before any use (RST-1): every flop below leaves reset
   // a cycle after rst_n does. A repeater of no stages has nothing to reset.
   logic rst_n_q;
-  if (STAGES > 0) begin : g_rst
+  if (NST > 0) begin : g_rst
     always_ff @(posedge clk) rst_n_q <= rst_n;
   end else begin : g_norst
     assign rst_n_q = rst_n;
   end
 
-  // Node k is the link after k stages: node 0 is the sender's side, node
-  // STAGES the receiver's. Flat vectors with part-selects (CCV-L26), node
+  // Node k is the end after k stages: node 0 is the sender's side, node
+  // NST the receiver's. Flat vectors with part-selects (CCV-L26), node
   // major, slot minor; each stage drives its own node by continuous assign.
-  wire [(STAGES+1)*S-1:0]   v, cr, st;
-  wire [STAGES:0]           wk;
-  wire [(STAGES+1)*S*W-1:0] p;
+  wire [(NST+1)*S-1:0]   v, cr, st;
+  wire [NST:0]           wk;
+  wire [(NST+1)*S*W-1:0] p;
 `ifdef CCV_TRACE
-  wire [(STAGES+1)*S*64-1:0] t;
+  wire [(NST+1)*S*64-1:0] t;
 `endif
 
   assign v[0 +: S]          = src_valid;
   assign wk[0]              = src_wake;
   assign p[0 +: S*W]        = src_payload;
-  assign cr[STAGES*S +: S]  = dst_credit;
-  assign st[STAGES*S +: S]  = dst_stall;
+  assign cr[NST*S +: S]  = dst_credit;
+  assign st[NST*S +: S]  = dst_stall;
 `ifdef CCV_TRACE
   assign t[0 +: S*64]       = src_tid;
 `endif
@@ -115,12 +167,16 @@ module ccv_common_rpt #(
   // because Yosys refuses the same assertion label once per generate scope.
   `CCV_ASSERT_KNOWN(valid_known, src_valid)
 
-  for (genvar k = 0; k < STAGES; k++) begin : g_stage
+  for (genvar k = 0; k < NST; k++) begin : g_stage
     logic [S-1:0] valid_q, credit_q, stall_q;
     logic         wake_q;
     // The payload's clock enable, named as one (docs/rtl-coding-style.md,
     // "Local clock gating"): this stage's own valid flop.
     wire  [S-1:0] pay_en = valid_q;
+    // The credit this stage takes: the next node's, or, at the boundary stage
+    // of a credit-on-receipt end, its own valid flop.
+    localparam bit COR_HERE = CREDIT_ON_RECEIPT && (k == NST - 1);
+    wire  [S-1:0] credit_d = COR_HERE ? valid_q : cr[(k+1)*S +: S];
 
     always_ff @(posedge clk) begin
       if (!rst_n_q) begin
@@ -131,7 +187,7 @@ module ccv_common_rpt #(
       end else begin
         valid_q  <= v[k*S +: S];
         wake_q   <= wk[k];
-        credit_q <= cr[(k+1)*S +: S];
+        credit_q <= credit_d;
         stall_q  <= st[(k+1)*S +: S];
       end
     end
@@ -147,20 +203,32 @@ module ccv_common_rpt #(
 
       if (HAS_LEAD) begin : g_lead
         // The lead slice, taken in its valid's cycle: it rides with it.
-        logic [W-1:0] lead_q;
-        if (k == 0) begin : g_in
+        logic [W-1:0] lead_d;
+        if (k == 0 && BND_FIRST) begin : g_bnd
+          // The block's boundary flop: its valid is this module's input, so
+          // written every cycle, as valid, and the block's to budget.
+          logic [W-1:0] bnd_lead_q;
+          always_ff @(posedge clk) begin
+            bnd_lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
+          end
+          assign lead_d = bnd_lead_q;
+        end else if (k == 0) begin : g_in
           // Its valid is this module's input: written every cycle, as valid.
+          logic [W-1:0] lead_q;
           always_ff @(posedge clk) begin
             lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
           end
+          assign lead_d = lead_q;
         end else begin : g_flop
           // Its valid is the previous stage's valid flop: a clock enable.
+          logic [W-1:0] lead_q;
           wire lead_en = v[k*S+j];
           always_ff @(posedge clk) begin
             if (lead_en) lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
           end
+          assign lead_d = lead_q;
         end
-        assign p[((k+1)*S+j)*W +: W] = (pay_q & ~LEAD_MASK) | lead_q;
+        assign p[((k+1)*S+j)*W +: W] = (pay_q & ~LEAD_MASK) | lead_d;
       end else begin : g_nolead
         assign p[((k+1)*S+j)*W +: W] = pay_q;
       end
@@ -181,13 +249,13 @@ module ccv_common_rpt #(
     assign st[k*S +: S]    = stall_q;
   end
 
-  assign dst_valid   = v[STAGES*S +: S];
-  assign dst_wake    = wk[STAGES];
-  assign dst_payload = p[STAGES*S*W +: S*W];
+  assign dst_valid   = v[NST*S +: S];
+  assign dst_wake    = wk[NST];
+  assign dst_payload = p[NST*S*W +: S*W];
   assign src_credit  = cr[0 +: S];
   assign src_stall   = st[0 +: S];
 `ifdef CCV_TRACE
-  assign dst_tid     = t[STAGES*S*64 +: S*64];
+  assign dst_tid     = t[NST*S*64 +: S*64];
 `endif
 
 endmodule

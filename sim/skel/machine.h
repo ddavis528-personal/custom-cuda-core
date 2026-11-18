@@ -23,6 +23,8 @@
 namespace ccv {
 namespace skel {
 
+class PortDump;
+
 class Block {
 public:
   struct Out { const ChanInst *ci; unsigned slot; Sender *tx; };
@@ -74,6 +76,10 @@ public:
   /// cycle and what they drive for the next. Undriven, a fabric reads 0.
   std::vector<uint64_t> &fabCur() { return fab_cur_; }
   std::vector<uint64_t> &fabNxt() { return fab_nxt_; }
+
+  /// A block's ports, written every cycle as it starts (RA-34;
+  /// ccv-skel --port-dump). Not owned.
+  PortDump *dump = nullptr;
 
 private:
   std::vector<Slot> slots_;

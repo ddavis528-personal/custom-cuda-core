@@ -25,7 +25,7 @@ Four layers, deliberately not one:
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
-| `tools/check-ngd.py` | NGD-1 … NGD-7, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
+| `tools/check-ngd.py` | NGD-1 … NGD-8, logic depth and hard macros (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block as a sum of parts. |
 
 **On Verible.** §6 adds it as a fourth tool and says "lint enforces it" is
 load-bearing for the whole X-safety approach. That second part is right and
@@ -601,6 +601,10 @@ CCV-L08's clock check and from this rule. The name says which cell, the
 directory which view. A library view's `lib_cells.v` holds the library's port
 declarations, not our RTL, and is not linted.
 
+A hard macro is tied the same way: `ccv_common_sram_<ports>`, one of the
+cells `MACROS` lists, in `rtl/macro/`, and nothing else there (see *Hard
+macros*).
+
 ### The top level: block instances and nets, nothing else
 
 `ccv_top` holds hardening wrappers and the nets between them, and each
@@ -772,6 +776,19 @@ end
   register reset by the flopped reset still shares a gate with one that is
   not: check-cg follows the chain of plain flops from the port, and reset
   cycles, the flops' extra one included, are never counted.
+- **RST-2, the reset arrives in one cycle everywhere** (Daniel, 2026-11-09).
+  Every endpoint of a module, and of an assembled block, takes the reset in
+  the same cycle. An endpoint is every use of a net of the reset chain (the
+  port, the plain flops capturing it, inverters on it) but the next stage's
+  D pin: a flop's reset, enable or data pin, logic (an enable's cone among
+  it), an output, and a blackboxed child's reset port, which arrives at that
+  stage plus the child's own latency, its unit's at the instance's
+  parameters, recursively; a level with no state hands the reset on
+  unflopped. Where the cycles differ, the shallower endpoints take extra
+  reset flop stages: check-cg names them, instance by path, and the stages
+  each lacks ("needs +1 reset stage"). Structural like RST-1: no budget
+  takes it, a waiver may. The global balance across blocks and repeaters is
+  reported, not failed, until the reset tree is modelled (Q-37).
 
 **An enable group is what synthesis would gate**: the flops Yosys infers one
 enable for, read from the synthesised netlist, not from the source. A
@@ -857,8 +874,27 @@ breaks them fails in any bench, not only the one that knew the rule.
     over the block's whole hierarchy (its hardening wrapper, the block and
     its repeaters, every common module once for each place it is used), the
     flops its modules auto-waived must stay within 2% of the block's flops.
-    Explicit waivers do not count here. This applies once a block top is RTL,
-    not a generated stub; today none is.
+    So do the flops of a lead waiver (`"lead": true`, any rule): a module
+    may waive the flops that hold an interface lead signal, on the condition
+    that they fit its block's 2% at final construction (Daniel's ruling on
+    RI-15, 2026-11-06, RA rev 87; RI-17), and this is that check. So do the
+    flops of a credit waiver (`"credit": true`), flops that capture a
+    credit-return pulse (Daniel on RI-14, 2026-11-06, RA rev 88). Only those
+    flops take the marks. Other explicit waivers do not count here. This applies once a
+    block top is RTL, not a generated stub.
+  - The block's numbers are a **sum of parts** (Daniel, 2026-11-06): a
+    final synthesis of a whole block is infeasible within the gate's runtime
+    and memory, so nothing above a module is synthesised. The hierarchy is
+    read structurally (Yosys's front end, `hierarchy` and `proc`; no `synth`,
+    `opt`, `techmap` or `abc`, and a file of leaves read `-lib`, its ports
+    only), giving each instance's module and parameters. Each instance's
+    flops, and each finding's, are those of the unit that measures its
+    module at the instance's parameters, from the unit's own replayed
+    netlist; the block's are their sum. An instance with flops and no unit
+    at its parameters fails, naming the module and the parameters: the unit
+    is written at those parameters, not the instance's flops counted as
+    none. A unit counts the children it flattens; those it blackboxes are
+    counted by their own units.
 - **By waiver, last.** `rtl/cg-waivers.json` holds one entry per module,
   rule and register, with who wrote it, when, and why the rule cannot or
   should not be met, citing what was measured. Waivers are the last resort:
@@ -894,7 +930,13 @@ are; they count against the hardening wrapper's 2%, the block's partition,
 not the repeater's own allowance (Daniel, 2026-10-19), since a repeater is
 little else and would fail on them alone: two stages of one narrow slot are
 9 such flops, and a 4-slot channel 14 at one stage. Its first stage's lead
-slice, written every cycle too, stays within its own allowance. That is what
+slice, written every cycle too, stays within its own allowance when that
+stage is a link stage. When it is the boundary flop (`BOUNDARY` 1 at a
+source end, or at a destination end with no link stage; `bnd_lead_q`), the
+slice is the capture the block's own budget held before the end was
+flopped, and it counts against the wrapper's 2% as the control pulses do
+(Daniel, DA tab rev 108; AR rev 289). A destination end's boundary behind
+link stages is the last stage, enabled like any later stage. That is what
 limits leads on a repeated link: one 64-bit slot at one stage passes, and
 with a 16-bit lead it does not (the selftest's controls, with a two-stage
 16-bit slot whose control pulses pass its allowance and count against a
@@ -925,7 +967,17 @@ part of a register.
 Daniel, 2026-10-17). The flop's own clock-to-Q and setup are outside it:
 every depth here is measured with the flops cut out, so the whole 25 is
 logic. An NGD is a NAND2 at fanout 4; `tools/ngd.genlib` holds the gates
-at their fanout-of-4 delays, and broadcast fanout and wire are not in it. The
+at their fanout-of-4 delays, and wire is not in it. Fanout past 4 is costed
+apart (RA-33; Daniel, 2026-11-02): a net with N loads is timed as if a tree
+of inverters at fanout 4 drove them, ceil(log4(N / 4)) stages at an INV's
+0.68 NGD each, so a select driving 1,024 bit-cells adds 4 stages, 2.7 NGD,
+to every path through it. Enforced since Daniel, 2026-11-04: every
+depth NGD-1 to NGD-6 and a block's own checks count it, and the 25 includes
+the tree. The paths it put over the stage then sit, each capped at its
+depth, in `rtl/ngd-fanout-baseline.json`; `rtl/ngd-ratchet.json`'s
+`fanout` holds the caps, which only fall, and an entry leaves once its path
+meets the stage. NGD-7, and a block's outputs straight from a flop, are
+measured without it. The
 static gates are costed by logical effort. The XOR family (XOR2, XNOR2, XOR3,
 XNOR3; Daniel, 2026-10-24) is taken from sky130hd's Liberty, pin by pin, over
 its NAND2 (`tools/genlib-xor.py`), and a path is timed at the delay of the pin
@@ -942,7 +994,9 @@ floor(`CCV_NGD_BUDGET` / 2) = 12, derived, so it follows the stage:
   within the rest, 12.
 
 Two defaults meet within the stage, so a port that fits them needs no one's
-plan. A port over 12 needs explicit budgets from the architect.
+plan. A port over 12 needs explicit budgets, in the module's budget file
+(below): set by the module's owner where the convergence check times the
+connection, by the architect where it does not yet.
 
 **Nothing straight through a module** (Daniel, 2026-10-18). A path from an
 input port to an output port is refused, logic or a plain wire. Logic is
@@ -1012,10 +1066,40 @@ today only `rtl/clk/ccv_common_clk.ngd.json`. An example:
 
 An input's `arrival` or an output's `required` time, in NGD from the flop
 that launches it, or `observation`, with who set it, when and why. The
-architect sets them (OA for OOE); the module's owner keeps the file and
-declares an inner helper. The module is checked against its file, and an
-assembled block is checked from all of them: the budgets must **converge**,
-each driver's required time no later than its receiver's arrival.
+module's owner keeps the file and declares an inner helper. The module is
+checked against its file, and an assembled block is checked from all of
+them: the budgets must **converge**, each driver's required time no later
+than its receiver's arrival.
+
+**Who may move a budget** (Daniel, 2026-11-15). A budget is a split of 25
+NGD between the two ends of a connection, and convergence is the check that
+the split holds. So where the check times the connection, a budget is the
+implementation's to set: the module's owner may raise, lower or add one
+without an architect's sign-off, provided check-ngd passes, both the module
+against its file (NGD-1 to NGD-3, NGD-7) and the convergence of the level
+that instantiates it. `by` names who set it and `why` says what it buys;
+an architect still reads the change in the register, but nothing waits on
+them. A connection is timed when the module is instantiated by a parent
+that check-ngd measures, a unit in `test/**/cg-units.json` or
+`ngd-units.json` (`rcu_r` in `ccv_rcu`, `ooe_ready` in `ooe_sched`, say), and
+both ends of a change must sit in such levels. Where the check does not
+time it yet, a budget still needs its architect (OA for OOE, RA for RCU),
+because nothing would catch a split the other end cannot meet:
+
+- a module no measured parent instantiates yet (today `ooe_rename`,
+  `ooe_sched`, `ooe_rs`, `ooe_rat`, `ooe_decq`, `ooe_age`, `ooe_rencred`,
+  `ooe_rob_w`: their ports face a `ccv_ooe` top not yet in RTL);
+- a block's own boundary ports, their lead-field budgets included (in
+  `ccv_rcu.ngd.json`, say): the other end is another block's, paired only
+  once both tops are RTL, and the split is an interface contract between
+  two owners, raised as a register row.
+- a child's port wired straight to its block's boundary port, at any depth
+  (RA, re:TI 445): convergence takes the block's input as arriving at 0
+  and holds the pin by its leaf's measurement, so any budget there passes
+  it, and the other end is again another block's.
+
+A change that passes only because the check could not see the other end is
+not covered; neither is a ratchet entry, which still only shrinks.
 
 Seven rules, checked by `tools/check-ngd.py` on every module at its units'
 parameters (`test/**/cg-units.json`; `test/**/ngd-units.json` for a module
@@ -1051,30 +1135,121 @@ timing pass over the mapped netlist then splits every path by where it starts
 and ends: an input or a flop, an output or a flop. Its longest path must equal
 ABC's own, or the run stops.
 
-**The assembled block, from its budget files and then whole.** Once a block
-top is RTL, it is checked twice. First from the budget files, quickly: each
-level of its hierarchy that instantiates others is mapped alone, its
-children cut out, each child's output starting at its required time and each
-child's input to be reached by its arrival, the block's own inputs arriving
-at 13, inner helpers flattened into their parents. So every connection must
-converge to 25 as the files say, and any glue between children is NGD-5. Then timed whole, synthesised flattened with its
-hardening wrapper: every flop to flop path within 25, whatever the files
-said. That pass is still needed, but it should find only corner cases, where
-synthesis did across a boundary what it could not module by module (two
-64-bit parities in series map shallower than their halves; a large function
-split across a port may map deeper or shallower than its halves add up to).
-And its boundary
-is **registered on both sides** (`docs/skeleton.md`): every output straight
-from a flop, every input into its flops within 12. With a link at 0 repeater
-stages, its default in `params/links.json`, a block port is wired straight to
-its neighbour's, so the blocks' own RTL is what keeps the rule. The block
-budget of local clock gating (2% per instance) is checked on the same
-assembly by `tools/check-cg.py`. Today no block top is RTL, so neither runs
-on the tree; the fixtures exercise both.
+**The assembled block, as a sum of parts** (Daniel, 2026-11-06). A final
+synthesis of a whole block is infeasible within the gate's runtime and
+memory, so a block's depth is checked from its modules' runs and a
+structural read of its hierarchy (Yosys's front end, `hierarchy` and `proc`:
+each instance, its parameters, and the parent's own glue); nothing above a
+module is synthesised, and no child is synthesised with its parent. Once a
+block top is RTL:
+
+- **Coverage.** Every instance in the block, its wrapper's repeaters
+  included, is measured by a unit at the instance's parameters. So each
+  module's own paths are held to the stage and its ports to its budgets
+  (NGD-1 to NGD-3, NGD-5, NGD-7). An instance no unit times at its
+  parameters fails, naming the module and the parameters.
+- **Convergence.** Each level of the hierarchy that instantiates others,
+  and the block's own top level, is mapped alone, its children black boxes,
+  each child's output starting at its required time and each child's input
+  to be reached by its arrival, the block's own inputs arriving at 0,
+  straight from the interface module's flop in its wrapper, inner helpers
+  flattened into their parents as their logic. So every connection must
+  converge to 25 as the files say, and any glue between children is NGD-5.
+  The parent's wires carry the fanout term (RA-33) too: a net in the level
+  is timed with ceil(log4(N / 4)) INV stages for its N pins in the parent
+  (each cut child input on it, each output port, each of the parent's own
+  gate inputs and flop D pins). A child-to-child wire converges only when
+  the driver's required time plus that term is within each receiver's
+  arrival; a boundary input or the parent's own flop as the source is held
+  the same way. Each side counts its own net and no other: a child's unit
+  counts the loads inside the child on its port's net (its output port
+  counted once, as one load), the level counts only the pins on the
+  parent's net, so a load is never counted twice.
+  With nothing straight through a module (NGD-5), a flop-to-flop path
+  across modules is two port segments, so convergence and each unit's port
+  checks bound it to 25.
+- **The boundary** is **registered on both sides with nothing between**
+  (`docs/skeleton.md`; AR's rev 285 (5): a crossing carries no logic): every
+  output straight from a flop, every input straight into one. By parts: at
+  each level a boundary port meets the level's own flop with no logic
+  between, or reaches a child's pin by a wire only, and that pin is held
+  the same way, down to a leaf, whose unit's measurement at the instance's
+  parameters must show it straight from or into a flop. The measurement,
+  not the budget, is what holds: a budget of 0 would force it, but a leaf's
+  budget is a bound the architect may set higher. The fanout term applies
+  at an input: one wired to more than 4 pins on the parent's net is a
+  buffer tree before its flops, not straight into one. An output is held
+  by its shape (straight from a flop), without the term; the load past the
+  crossing is the receiving block's input net, which counts it there.
+  A one-cell capture is straight in (AR's rev 326, re:RI-22 (3)): a port
+  bit that reaches nothing but flops' D pins, each flop's synchronous reset
+  the flopped reset (RST-1) and its enable, if any, from the module's own
+  flops (CG-5), counts at 0 NGD plus its own net's fanout term, though its
+  timed depth is the reset AND's 1.7. Any other gate on the bit is logic,
+  held as such.
+  A wake is not a data port (AR's rev 336, on RI-25 (4) (b)): a `*_wake`
+  input, and a block input check-ngd lists in `WAKE_TAPS` on its path into
+  the block clock's `wake` (RCU's `kill_valid` into `ccv_common_clk`), is
+  held to 12 NGD into the wake flop, wiring, glue, fanout term and the
+  clock gate's own OR included, not straight in; a tapped input's every
+  other load still goes straight into a flop.
+
+The flops are the interface module's boundary stage, built in the hardening
+wrapper (`ccv_common_rpt` `BOUNDARY`, default 1; Daniel, 2026-11-05), so the
+block's own paths run from them within the stage; at a no-flop end
+(`params/links.json` `no_flop`) they are the block's own registers at 0 NGD.
+A no-flop receiving end of the second kind (`no_flop_port_budget`; AR's rev
+326), zero-cycle for performance with logic before the block's first
+register (today `lane_rcu_res` at RCU, RA's rev 95 under DA 114), is held
+instead to the receiving block's input budget for each slot's valid and
+payload, from the wrapper's port at 0 through every level into a flop: 12
+NGD by default, or what the block's `<block>.ngd.json` gives the port. Its
+link takes no repeater stage, and its sender stays at 0 NGD.
+A lead field of such a payload may take its own budget, split across the
+crossing (DA tab rev 116, re:RI-26 and re:AR-334, 2026-11-09: on
+`ooe_rcu_issue` at RCU, lead_opcode, lead_done_row, lead_pred_we and
+lead_phys_dst arrive at 12, 13 NGD in, and OOE's out-side on them is
+required 0, so 0 + 13 <= 25, no cycle and no flops added). The key is
+`<channel>[_s<n>]_payload.<lead field>`, channel without `ccv_`, no `_s<n>`
+for every slot (`"ooe_rcu_issue_payload.lead_opcode": {"arrival": 12.0, ...}`
+in `ccv_rcu.ngd.json`, `"required": 0.0` in `ccv_ooe.ngd.json`); a module
+port inside a block that carries the field keeps its own name and adds
+`"carries": "ooe_rcu_issue_payload.lead_opcode"` beside its arrival or
+required. check-ngd holds the field's bits at the receiving block to 25
+less its arrival, the payload's other bits to the port's budget, and every
+pair of sending required and receiving arrival on the field to required +
+(25 - arrival) <= 25; a side with no declaration takes its default, and
+fails as undeclared only once both blocks' tops are RTL.
+The 12-a-side port budget stays only between modules inside a block.
+
+**No hidden stage** (AR's rev 310, on TI rev 351): at a flopped end the
+wrapper's repeater holds the boundary flop, so the block's own port there
+must not be a register of its own too: two in series is a link stage no
+derive counts. check-ngd refuses a port of the block's (a slot's valid and
+payload together, its lead fields riding the payload) taken whole straight
+from the block's flops at a flopped sending end, or straight into them at a
+flopped receiving end. Per port, not per bit: a port with logic on any bit
+is the block's own logic, timed to its port budget, and held tags straight
+from flops beside it are fine. The fix is to drop the block's register, or
+to name the end `no_flop`, where the block's flop is the boundary and the
+straight-from-flop rule above holds instead. Wake and credit returns are not
+held here, and latency stays a dynamic check (V-35).
+
+**What a sum of parts does not see**, which the flattened pass it replaces
+did: synthesis across a boundary (a constant, an unused output or a
+duplicated register only the whole would simplify, or two halves of a
+function that map shallower together: two 64-bit parities in series), which
+makes the parts conservative; and one net's loads as a whole: a child's
+output net is timed in two parts, the child's loads in its unit and the
+parent's pins at its level, each with its own fanout term, where the whole
+would take one tree over both, short of it by one INV stage at most. The
+block budget of local clock gating (2% per instance) is
+summed from the same read by `tools/check-cg.py`. Today RCU's top is RTL
+(`ccv_rcu`), so both run on it; the fixtures exercise both.
 
 **The ratchet.** What broke the rules when they were made sits on
 `rtl/ngd-ratchet.json`: ports over a default (NGD-2, NGD-3, 2026-10-17),
-each awaiting the architect's budgets or a redesign; paths straight through
+each awaiting budgets (see *Who may move a budget*) or a redesign; paths straight through
 or glue (NGD-5, 2026-10-18, keyed `from>to`), each awaiting a redesign that
 groups the logic with one sequential side, or the module's declaration as an
 inner helper; inner helpers over 16 alone (NGD-6, 2026-10-19, keyed
@@ -1083,6 +1258,199 @@ by an output and the module's own paths (NGD-7, 2026-10-19, keyed by
 register), each awaiting a copy. The list only shrinks: an entry that now meets the rule, or one
 that was not there when its rule was made, is refused. A design module no
 unit measures is refused.
+
+### Hard macros: SRAM and register-file arrays, NGD-8
+
+AR's register rev 344, on TI's proposal (revs 408-410), accepted by MA
+(MA-3, MA-15 item 5); the every-other-cycle SRAM and the register file are
+DA's (Daniel, 2026-11-16, DA tab rev 123; MA-16); byte enables on a
+register file alone, and the pin timing below, are Daniel's (2026-11-17).
+A large data or tag array is a **hard macro**, never a
+flop array, and never inside the NGD count. Yosys maps an inferred memory to
+flops and a read mux; behind index nets of tens of thousands of loads the
+fanout term alone puts that over the stage (the fixture's 512 x 128 array as
+flops: 74,381 flops, 31.1 NGD flop to flop), and its storage would be the
+module's flops in every clock-gating count. So an array is one of three
+macros, parameterised by its width `W` (bits; a multiple of 8 with byte
+enables) and depth `D` (words, 2 or more), whose behavioural views are in
+`rtl/macro/`:
+
+- `ccv_common_sram_1rw`: an SRAM (6T), one port, **accessed at most every
+  other cycle**: `ce` is never set two cycles running, the bank busy the
+  cycle after an access (its assertion `sram_ce_every_other`; the C++
+  model counts each violation). Every-cycle bandwidth comes from banking.
+  `ce`, `we`, `addr` (`$clog2(D)` bits), `wdata` (W); `rdata` (W). **No
+  byte enables**: `ce && we` writes the whole word and reads nothing that
+  cycle; `ce && !we` reads, the
+  address registered at the edge that samples it and the word on `rdata`
+  two cycles on, after the next edge; `!ce` does nothing.
+- `ccv_common_rf_1r1w`: a **register file**, for an array that needs a read
+  and a write together or unrestricted every-cycle access; never a 1R1W
+  SRAM. A read port (`re`, `raddr`, `rdata`) and a write port (`we`,
+  `waddr`, `wdata`) on one clock, each usable every cycle, whole words. A
+  read of the word written at the same edge returns the OLD word (read
+  before write); the data is on `rdata` the next cycle. Its area is 3
+  times an SRAM's per bit (`CCV_MACRO_AREA_RF_PCT`), the weight any area
+  count of the arrays gives it.
+- `ccv_common_rf_1r1w_be`: the same register file with **byte enables**,
+  `wmask` (W/8, a bit per byte, byte 0 in bit 0) on its write port: `we`
+  writes the bytes `wmask` selects. It is the only macro with byte
+  enables, and they cost 1.5 times the register file's area per bit
+  (`CCV_MACRO_AREA_BYTE_EN_PCT`), 4.5 times an SRAM's. An array that writes
+  part of a word is this, or an SRAM or plain register file that merges the
+  bytes itself (a read, a merge, a whole-word write).
+
+`check-ngd` holds the contract (NGD-8, every run): each macro's input
+pins are the ones it times, and only a register file's `_be` macro has a
+`wmask` (its controls: an SRAM view that gains one, a `_be` view that
+loses it). An SRAM cannot take a mask at all: it has no such port.
+
+In all three, every input is sampled at the clock edge, by the macro's own input
+register; `rdata` holds the last word read until the next read's data (not
+X); an unwritten word is unknown; there is no reset. The C++ host's model is
+`sim/skel/sram.h`, held to the RTL cycle for cycle by `tools/check-skel.sh`
+(`test/vl/vl_sram_tb.cpp`, all three macros, with its controls: among
+them a 1rw read sampled a cycle early, `ce` two cycles running, which the
+RTL's assertion must stop by name, the `_be` register file's mask ignored,
+and a byte mask honoured by the plain one).
+
+**Size and shape limits** (`tools/check-ngd.py`, MACRO-1; Daniel, 2026-11-17). One
+instance holds W x D / 8 bytes, at the parameters its unit gives it:
+
+| Macro | Least | Most | Widest word (W) | Most words (D) |
+|---|---|---|---|---|
+| register file (`ccv_common_rf_1r1w`, `_be`) | 512 B (`CCV_MACRO_RF_MIN_BYTES`) | 8 KiB (`CCV_MACRO_RF_MAX_BYTES`) | 256 bits (`CCV_MACRO_RF_MAX_W`) | 1024 (`CCV_MACRO_RF_MAX_WORDS`) |
+| SRAM (`ccv_common_sram_1rw`) | 4 KiB (`CCV_MACRO_SRAM_MIN_BYTES`) | 32 KiB (`CCV_MACRO_SRAM_MAX_BYTES`) | 128 data bits and their SECDED check bits, 137 (`CCV_MACRO_SRAM_MAX_DATA_W`, `CCV_MACRO_SRAM_MAX_W`) | 4096 (`CCV_MACRO_SRAM_MAX_WORDS`) |
+
+Each bound is allowed (Daniel, 2026-11-17). The shape limits, width and
+words, are set by layout: no instance may outgrow the dimensions that can be
+repeated over top (Daniel, 2026-11-17). An SRAM's W counts its SECDED check
+bits (every SRAM carries them, TI-474 (6), outside the macro), so 128 data
+bits make 137; a register file's 256 is its whole word. An array wider or
+deeper is split, across instances, by columns or by rows. A smaller array is flops or a smaller macro kind; a
+larger one is split into instances (banks, ways). Outside the limits an
+instance needs a waiver in `rtl/macro-waivers.json`, written by the
+block's architect and approved by Daniel before the block is complete
+(Daniel, 2026-11-17; `approved` records it, and check-ngd lists each
+waiver still awaiting it): the module, the
+instance as check-ngd names it, the macro, its exact W and D (a change of
+size fails again), `why` (the justification: what it holds, why it cannot
+be resized, split or built otherwise, what was measured), `by` and `date`.
+A waiver that excuses nothing, or lacks a field, is refused. Its controls
+(check-ngd's selftest): the fixture shrunk to a 2 KiB SRAM and a 256-byte
+register file fails both and passes with their waivers; each bound passes
+and one byte past it fails; each shape bound passes and one bit or one word
+past it fails, alone, and its waiver excuses it; a waiver of another size,
+one without its `why`, and one that excuses nothing are refused.
+
+**Size and efficiency** (Daniel, 2026-11-17). An array type is most
+efficient, in power and area per bit, at its largest legal size. Per bit it
+costs `CCV_MACRO_SIZE_PENALTY_PCT` (20%) more at its smallest legal size, and
+the penalty is linear in bytes in between. A waived instance below the
+smallest continues the line; one above the largest gets no credit for it. So
+two 16 KiB SRAMs cost about 11.4% more per bit than one of 32 KiB, and a
+512 B register file 20% more than one of 8 KiB. The penalty multiplies the
+type's own weight (3 times an SRAM's per bit for a register file, 4.5 times
+with byte enables). Those weights compare the types each at its largest,
+most efficient size (Daniel, 2026-11-17): an 8 KiB register file against
+a 32 KiB SRAM. check-ngd prints each instance's penalty and its area in
+SRAM-bit equivalents, every run. Its controls check the line: no penalty at
+the largest size, the full 20% at the smallest, 10% at the middle, more below
+the smallest, none above the largest, and the weights.
+
+**Array efficiency, a block statistic** (Daniel, 2026-11-17). Each block
+publishes one number for all its arrays, register files and SRAMs together:
+the bits its macros hold over what they cost in SRAM bits at the largest
+legal SRAM. Cost is each instance's size penalty times its type's weight. A
+block whose arrays are all 32 KiB SRAMs scores 1.0. Others score:
+
+| Arrays | Efficiency |
+|---|---|
+| All 32 KiB SRAMs | 1.0 |
+| All 4 KiB SRAMs (the smallest) | 0.83 |
+| 8 KiB register files | 0.33 |
+| 8 KiB register files with byte enables | 0.22 |
+
+A mix weighs each instance by its bits. check-ngd's block line gives it with
+the block's other figures, every gate: `arrays: N macro(s), K KiB,
+efficiency E (a 32 KiB SRAM is 1.0)`. It counts every instance path once,
+at its unit's parameters, the block's own module included. A block report
+(such as `docs/rcu-block-report.md`) carries the figure from that line. Its
+controls are in check-ngd's selftest:
+
+- the metric for all large SRAMs, a large register file, the smallest SRAM,
+  and a mix;
+- a fixture block of two `sram_fx`, whose line must give its four macros'
+  figure, 0.612.
+
+**The timing model** (`tools/check-ngd.py`, NGD-8; Daniel, 2026-11-17).
+A macro's pins are timing endpoints and start points, never a path
+through, and each is dearer than a flop's. Each input pin is an endpoint
+with a setup; `rdata` is a start point with a launch (its clock-to-out):
+
+| Pin | SRAM (`ccv_common_sram_1rw`) | Register file (`ccv_common_rf_1r1w`) |
+|---|---|---|
+| address (`addr`; `raddr`, `waddr`), and the enables with it (`ce`, `we`; `re`, `we`), which qualify the word lines (Daniel, 2026-11-17) | setup: one-hot decode of D words + `CCV_NGD_SRAM_ADDR_MARGIN` (6) | setup: one-hot decode of D words + `CCV_NGD_RF_ADDR_MARGIN` (4) |
+| write data (`wdata`; and `wmask` on the `_be` register file) | setup: `CCV_NGD_SRAM_DATA_SETUP` (8) | setup: `CCV_NGD_RF_DATA_SETUP` (6) |
+| read data (`rdata`) | launch: static W-bit D:1 read mux x 100 / `CCV_NGD_MACRO_READ_DYN_PCT` (150) + `CCV_NGD_SRAM_READ_GUARD` (6) | launch: the same mux / 1.5 + `CCV_NGD_RF_READ_GUARD` (4) |
+
+The decode and the read mux are not assumed: check-ngd synthesises a
+static one-hot decode and a static AND-OR read mux (its select decoded) at
+the instance's W and D, and times them as it times any unit, the fanout
+term included. The mux is synthesised 8 bits wide and timed W bits wide,
+its select logic shared by the W bits: a slice of 4 bits or more reads
+exactly what the whole mux does (64 x 32, 64 x 128 and 128 x 128 checked),
+one of a single bit up to 2.9 NGD more, since ABC shares a decoded select
+only across bits it sees. A control holds the slice to the mux synthesised
+whole at 64 x 128. The divisor is the dynamic read mux's speed over a
+static one's; the margins and guardbands are knobs in
+`params/ccv_params.json`. So the instantiating module's logic into an
+input pin is held to the stage less that pin's setup, from its flops, from
+an input at its port arrival, or from another macro's `rdata` at that
+macro's launch; and the logic after `rdata`, from its launch, to a flop
+within the stage, to an output within its required time. The read address
+is sampled a cycle before its data leaves (the SRAM's two cycles before),
+so it is an endpoint with the write address's setup.
+
+At the fixture's sizes these come to: a 128-word 512-bit SRAM, address
+setup 11.5 (decode 5.5), data 8, read data launched at 16.3 (a static mux
+of 15.4), 8.7 left for logic after it; a 128-word 64-bit register file,
+address 9.5, data 6, read data at 13.5. Read data wants a flop close
+behind it: the fixture's SRAM read
+data takes one XOR into its accumulator, and the XOR fold of the whole
+word it used before (12 NGD) is now a control that must fail.
+
+A unit names each macro it instantiates under `"blackbox"`, as it does the
+ctech ICG, so the macro is read ports only and cut out of the netlist;
+nothing inside it is measured, and it has no unit of its own (`rtl/macro/`
+is no design module's directory). The instantiating module's own rules all
+still hold: no path straight through it, its outputs and inputs to their
+budgets.
+
+**Clock gating** (`tools/check-cg.py`). The macro's storage is not flops: it
+counts in neither the module's flop total, its 2% allowance, the block's,
+nor any DCGE. Its enables -- `ce` and `we`, `re` and `we` -- come from the
+instantiating module's own flops (CG-5), as every enable does; the macro
+registers them, so their depth is NGD-8's, not CG-2's. A macro has no
+reset, so it is no RST-2 endpoint, unless the module's reset reaches one of
+its pins through logic, where it is used as at a flop's D pin.
+
+**The name.** A macro is one of the cells `tools/lint-rtl.py` lists in
+`MACROS`, with its enables, named `ccv_common_sram_<ports>` or
+`ccv_common_rf_<ports>` and in
+`rtl/macro/` (CCV-L27): the name is what takes its storage out of the
+counts, so no other module may carry it. Its file is the only place a
+memory array is written. The fixture, `test/macro/sram_fx.sv` (a 64 Kibit
+one-port SRAM, accessed every other command, and a register file with byte
+enables), passes
+both checks, and its controls
+fail them: an index through a multiply (NGD-8 at `addr`), read data through
+one (NGD-8 at `rdata`), read data through a fold that would fit after a
+flop but not after `rdata`'s launch (NGD-8), each pin-timing knob set past
+its pin's slack (that pin fails, the other macro's do not), the one-bit
+reference mux held to the mux synthesised whole, the arrays inferred as
+flops (NGD-1), and each enable from an input (CG-5) (`--selftest`, or
+`--selftest-macro` alone).
 
 ### CCV-L26 — nothing Yosys cannot parse
 

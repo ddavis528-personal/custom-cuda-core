@@ -46,7 +46,7 @@ module ooe_rnrs #(
   input  logic [A*NS*LG-1:0] d_gsn_cq01h,
   input  logic [A*4-1:0]    d_psv_cq01h,
   input  logic [A*4*LQ-1:0] d_psn_cq01h,
-  input  logic [A-1:0]      d_cguard_cq01h, d_cnone_cq01h, d_nob_cq01h,
+  input  logic [A-1:0]      d_cguard_cq01h, d_cnone_cq01h, d_nob_cq01h, d_spec_cq01h,
   input  logic [A*3-1:0]    d_cg_cq01h, d_unit_cq01h, d_pg_cq01h,
   // ooe_prodmap's Rename 3 (the group a cycle on).
   input  logic              m_v_l_cq00h,
@@ -74,6 +74,8 @@ module ooe_rnrs #(
   output logic [N-1:0]      valid_out_cq02h,
   output logic [N*N-1:0]    dep_cq02h,
   output logic [2*N*N-1:0]  code_cq02h,
+  output logic [2*N-1:0]    kind_o_cq02h,   // ooe_rs's stored kind and class per entry (OA, re:OI-104)
+  output logic [3*N-1:0]    cls_o_cq02h,
   output logic [N-1:0]      hcol_cq02h,
   output logic [P*N-1:0]    rd_row_dep,     // rename's stage register, for the bench's reports
   output logic [P-1:0]      chk_bad,        // the assertion's ports, for the bench's reports
@@ -91,28 +93,55 @@ module ooe_rnrs #(
   logic [P*P-1:0]  grp_dep, prv_dep;
   logic [2*P*P-1:0] grp_code, prv_code;
   logic [N-1:0]    prod_o;
+  logic [2*P-1:0]  akind;      // each port's kind and class, rendep to ooe_rs (OA, re:OI-104)
+  logic [3*P-1:0]  acls;
   ooe_prodmap #(.N(N), .NR(NR), .A(A), .NG(NG), .NP(NP)) u_map (
     .ooe_core_clk, .ooe_rst_r00h, .v_l_cq00h(m_v_l_cq00h), .v_cq01h(m_v_cq01h), .gwe_cq01h(m_gwe_cq01h),
     .gname_cq01h(m_gname_cq01h), .pwe_cq01h(m_pwe_cq01h), .pname_cq01h(m_pname_cq01h), .pm_cq01h(m_pm_cq01h),
     .cv_cq01h(m_cv_cq01h), .pc_cq01h(m_pc_cq01h), .cvc_cq01h(m_cvc_cq01h), .gnt_v_cq02h(gnt_v_cq03h),
     .gnt_idx_cq02h(gnt_idx_cq03h), .eg_cq03h(eg), .egn_cq03h(egn), .ec_cq03h(ec), .ep_cq03h(ep), .epn_cq03h(epn),
     .ecv_cq03h(ecv));
+  // Each uop's ports, as rename's Rename 1 register gives them (ports_of):
+  // a main on its class's next port, a copy on the RCU port after its main.
+  logic [2*A*3-1:0] d_pp_cq01h;
+  always_comb begin
+    logic [2:0] ri, mi;
+    ri = '0;
+    mi = '0;
+    d_pp_cq01h = '0;
+    for (int u = 0; u < A; u++) begin
+      d_pp_cq01h[u * 3 +: 3]       = d_mem_cq01h[u] ? 3'(A) + mi : ri;
+      d_pp_cq01h[(A + u) * 3 +: 3] = ri;
+      if (d_v_cq01h[u] && d_mem_cq01h[u]) mi = mi + 1'b1;
+      if (d_v_cq01h[u] && (!d_mem_cq01h[u] || d_cp_cq01h[u])) ri = ri + 1'b1;
+    end
+  end
   ooe_rendep #(.N(N), .A(A), .NG(NG), .NP(NP)) u_dep (
     .ooe_core_clk, .ooe_rst_r00h, .v_l_cq00h(d_v_l_cq00h), .v_cq01h(d_v_cq01h), .mem_cq01h(d_mem_cq01h),
-    .cp_cq01h(d_cp_cq01h), .atom_cq01h(d_atom_cq01h), .gwe_cq01h(d_gwe_cq01h), .gname_cq01h(d_gname_cq01h),
+    .cp_cq01h(d_cp_cq01h), .pp_cq01h(d_pp_cq01h), .atom_cq01h(d_atom_cq01h), .gwe_cq01h(d_gwe_cq01h), .gname_cq01h(d_gname_cq01h),
     .pwe_cq01h(d_pwe_cq01h), .pname_cq01h(d_pname_cq01h), .gsv_cq01h(d_gsv_cq01h), .gsn_cq01h(d_gsn_cq01h),
     .psv_cq01h(d_psv_cq01h), .psn_cq01h(d_psn_cq01h), .cguard_cq01h(d_cguard_cq01h), .cg_cq01h(d_cg_cq01h),
-    .cnone_cq01h(d_cnone_cq01h), .unit_cq01h(d_unit_cq01h), .pg_cq01h(d_pg_cq01h), .nob_cq01h(d_nob_cq01h),
+    .cnone_cq01h(d_cnone_cq01h), .unit_cq01h(d_unit_cq01h), .pg_cq01h(d_pg_cq01h), .nob_cq01h(d_nob_cq01h), .spec_cq01h(d_spec_cq01h),
     .eg_cq01h(eg), .egn_cq01h(egn), .ep_cq01h(ep), .epn_cq01h(epn), .ecv_cq01h(ecv),
     .gnt_v_cq01h(gnt_v_cq03h), .gnt_idx_cq01h(gnt_idx_cq03h),
     .row_prod_cq02h(row_prod), .row_dep_cq02h(row_dep), .row_code_cq02h(row_code), .grp_dep_cq02h(grp_dep),
-    .grp_code_cq02h(grp_code), .prv_dep_cq02h(prv_dep), .prv_code_cq02h(prv_code));
+    .grp_code_cq02h(grp_code), .prv_dep_cq02h(prv_dep), .prv_code_cq02h(prv_code),
+    .akind_cq02h(akind), .acls_cq02h(acls));
+  // ooe_rs's issue register is trio_tb's to check; unread here.
+  /* verilator lint_off UNUSEDSIGNAL */
+  logic [8:0] rs_iss_v_nc;
+  logic [8:0] rs_iss_pay_nc;
+  logic [8:0] rs_iss_lead_nc;
+  /* verilator lint_on UNUSEDSIGNAL */
   ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC)) u_rs (
     .ooe_core_clk, .ooe_rst_r00h, .req_l_cq00h, .req_cq01h, .row_prod_cq01h(row_prod), .row_dep_cq01h(row_dep | ctl_row_cq01h),
     .row_code_cq01h(row_code), .grp_dep_cq01h(grp_dep), .grp_code_cq01h(grp_code), .prv_dep_cq01h(prv_dep),
     .prv_code_cq01h(prv_code), .sqf_cq01h, .msd_cq01h, .cfin_cq01h, .wtl3_cq00h, .fin_cq00h, .gnt_cq01h,
     .cmpl_l_cq00h, .cmpl_idx_cq00h, .sq_l_cq00h, .gnt_v_cq03h, .gnt_idx_cq03h, .valid_out_cq02h, .dep_cq02h,
-    .code_cq02h, .prod_o_cq02h(prod_o), .hcol_cq02h);
+    .code_cq02h, .prod_o_cq02h(prod_o), .hcol_cq02h,
+    .akind_cq01h(akind), .acls_cq01h(acls), .kind_o_cq02h, .cls_o_cq02h,
+    .pay_cq01h('0), .lead_cq01h('0), .home_cq01h('0), .gnt_l_cq01h(1'b0), .iss_v_cq03h(rs_iss_v_nc),
+    .iss_lead_cq03h(rs_iss_lead_nc), .iss_pay_cq03h(rs_iss_pay_nc));   // the payload: trio_tb's
   assign rd_row_dep = row_dep;
   assign dbg_eg = eg;
   assign dbg_ep = ep;
@@ -151,7 +180,10 @@ module ooe_rnrs #(
         for (int s = 0; s < 4; s++)
           if (psv_q[p * 4 + s] && ep[j] && epn[j * LQ +: LQ] == psn_q[(p * 4 + s) * LQ +: LQ]) named[j] = 1'b1;
       end
-      if (gnt_v_cq03h[p] && (row & ~grp_e & ~(named & valid_out_cq02h)) != '0) chk_bad[p] = 1'b1;
+      // C9h (OA rev 372): an entry an L1 hit's confirmation freed at the
+      // edge stays off the mask, and ooe_rs clears its column at the next,
+      // while it holds it (hh): exempt for that cycle alone.
+      if (gnt_v_cq03h[p] && (row & ~grp_e & ~(named & valid_out_cq02h) & ~u_rs.hh_cq02h) != '0) chk_bad[p] = 1'b1;
     end
   end
   `CCV_ASSERT(surviving_named, chk_bad == '0)

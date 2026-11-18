@@ -6,10 +6,12 @@
 
 // HARDENING WRAPPER ccv_mlc_w: ccv_mlc and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. An end
-// whose link has no stages here is connected straight through.
+// and links"). Nothing but instances and nets, like the top. Each end's
+// repeater holds the block's boundary flop (BOUNDARY 1) and its link's
+// stages; a no-flop end (params/links.json no_flop) whose link has no
+// stages here is connected straight through.
 // Each end's stages are a parameter the top sets from params/links.json;
-// at 0 the end is wired straight through, with no repeater.
+// at 0 a no-flop end is wired straight through, with no repeater.
 `include "ccv_interfaces.svh"
 
 module ccv_mlc_w #(
@@ -138,9 +140,9 @@ module ccv_mlc_w #(
 `endif
   );
 
-  // ccv_dcu_mlc_req, destination end
+  // ccv_dcu_mlc_req, destination end, no-flop (params/links.json no_flop)
   if (RPT_DCU_MLC_REQ > 0) begin : g_rpt_dcu_mlc_req
-    ccv_common_rpt #(.STAGES(RPT_DCU_MLC_REQ), .SLOTS(1), .PAYLOAD_W(1082)) u_rpt_dcu_mlc_req (
+    ccv_common_rpt #(.STAGES(RPT_DCU_MLC_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1082)) u_rpt_dcu_mlc_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dcu_mlc_req_valid}), .src_payload({dcu_mlc_req_payload}),
       .src_wake(dcu_mlc_req_wake), .src_credit({dcu_mlc_req_credit}), .src_stall({dcu_mlc_req_stall}),
@@ -160,9 +162,9 @@ module ccv_mlc_w #(
     assign {b_dcu_mlc_req_tid} = {dcu_mlc_req_tid};
 `endif
   end
-  // ccv_mlc_dcu_rsp, source end
+  // ccv_mlc_dcu_rsp, source end, no-flop (params/links.json no_flop)
   if (RPT_MLC_DCU_RSP > 0) begin : g_rpt_mlc_dcu_rsp
-    ccv_common_rpt #(.STAGES(RPT_MLC_DCU_RSP), .SLOTS(1), .PAYLOAD_W(1030)) u_rpt_mlc_dcu_rsp (
+    ccv_common_rpt #(.STAGES(RPT_MLC_DCU_RSP), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1030)) u_rpt_mlc_dcu_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_mlc_dcu_rsp_valid}), .src_payload({b_mlc_dcu_rsp_payload}),
       .src_wake(b_mlc_dcu_rsp_wake), .src_credit({b_mlc_dcu_rsp_credit}), .src_stall({b_mlc_dcu_rsp_stall}),
@@ -182,9 +184,9 @@ module ccv_mlc_w #(
     assign {mlc_dcu_rsp_tid} = {b_mlc_dcu_rsp_tid};
 `endif
   end
-  // ccv_mlc_dcu_probe, source end
+  // ccv_mlc_dcu_probe, source end, no-flop (params/links.json no_flop)
   if (RPT_MLC_DCU_PROBE > 0) begin : g_rpt_mlc_dcu_probe
-    ccv_common_rpt #(.STAGES(RPT_MLC_DCU_PROBE), .SLOTS(1), .PAYLOAD_W(51)) u_rpt_mlc_dcu_probe (
+    ccv_common_rpt #(.STAGES(RPT_MLC_DCU_PROBE), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(51)) u_rpt_mlc_dcu_probe (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_mlc_dcu_probe_valid}), .src_payload({b_mlc_dcu_probe_payload}),
       .src_wake(b_mlc_dcu_probe_wake), .src_credit({b_mlc_dcu_probe_credit}), .src_stall({b_mlc_dcu_probe_stall}),
@@ -204,9 +206,9 @@ module ccv_mlc_w #(
     assign {mlc_dcu_probe_tid} = {b_mlc_dcu_probe_tid};
 `endif
   end
-  // ccv_dcu_mlc_probe_ack, destination end
+  // ccv_dcu_mlc_probe_ack, destination end, no-flop (params/links.json no_flop)
   if (RPT_DCU_MLC_PROBE_ACK > 0) begin : g_rpt_dcu_mlc_probe_ack
-    ccv_common_rpt #(.STAGES(RPT_DCU_MLC_PROBE_ACK), .SLOTS(1), .PAYLOAD_W(1027)) u_rpt_dcu_mlc_probe_ack (
+    ccv_common_rpt #(.STAGES(RPT_DCU_MLC_PROBE_ACK), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1027)) u_rpt_dcu_mlc_probe_ack (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dcu_mlc_probe_ack_valid}), .src_payload({dcu_mlc_probe_ack_payload}),
       .src_wake(dcu_mlc_probe_ack_wake), .src_credit({dcu_mlc_probe_ack_credit}), .src_stall({dcu_mlc_probe_ack_stall}),
@@ -226,9 +228,9 @@ module ccv_mlc_w #(
     assign {b_dcu_mlc_probe_ack_tid} = {dcu_mlc_probe_ack_tid};
 `endif
   end
-  // ccv_fet_mlc_ifill, destination end
+  // ccv_fet_mlc_ifill, destination end, no-flop (params/links.json no_flop)
   if (RPT_FET_MLC_IFILL > 0) begin : g_rpt_fet_mlc_ifill
-    ccv_common_rpt #(.STAGES(RPT_FET_MLC_IFILL), .SLOTS(1), .PAYLOAD_W(50)) u_rpt_fet_mlc_ifill (
+    ccv_common_rpt #(.STAGES(RPT_FET_MLC_IFILL), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(50)) u_rpt_fet_mlc_ifill (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({fet_mlc_ifill_valid}), .src_payload({fet_mlc_ifill_payload}),
       .src_wake(fet_mlc_ifill_wake), .src_credit({fet_mlc_ifill_credit}), .src_stall({fet_mlc_ifill_stall}),
@@ -248,9 +250,9 @@ module ccv_mlc_w #(
     assign {b_fet_mlc_ifill_tid} = {fet_mlc_ifill_tid};
 `endif
   end
-  // ccv_mlc_fet_ifill_rsp, source end
+  // ccv_mlc_fet_ifill_rsp, source end, no-flop (params/links.json no_flop)
   if (RPT_MLC_FET_IFILL_RSP > 0) begin : g_rpt_mlc_fet_ifill_rsp
-    ccv_common_rpt #(.STAGES(RPT_MLC_FET_IFILL_RSP), .SLOTS(1), .PAYLOAD_W(1026)) u_rpt_mlc_fet_ifill_rsp (
+    ccv_common_rpt #(.STAGES(RPT_MLC_FET_IFILL_RSP), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1026)) u_rpt_mlc_fet_ifill_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_mlc_fet_ifill_rsp_valid}), .src_payload({b_mlc_fet_ifill_rsp_payload}),
       .src_wake(b_mlc_fet_ifill_rsp_wake), .src_credit({b_mlc_fet_ifill_rsp_credit}), .src_stall({b_mlc_fet_ifill_rsp_stall}),
@@ -270,9 +272,9 @@ module ccv_mlc_w #(
     assign {mlc_fet_ifill_rsp_tid} = {b_mlc_fet_ifill_rsp_tid};
 `endif
   end
-  // ccv_mlc_exb_req, source end
+  // ccv_mlc_exb_req, source end, no-flop (params/links.json no_flop)
   if (RPT_MLC_EXB_REQ > 0) begin : g_rpt_mlc_exb_req
-    ccv_common_rpt #(.STAGES(RPT_MLC_EXB_REQ), .SLOTS(1), .PAYLOAD_W(1090)) u_rpt_mlc_exb_req (
+    ccv_common_rpt #(.STAGES(RPT_MLC_EXB_REQ), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1090)) u_rpt_mlc_exb_req (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_mlc_exb_req_valid}), .src_payload({b_mlc_exb_req_payload}),
       .src_wake(b_mlc_exb_req_wake), .src_credit({b_mlc_exb_req_credit}), .src_stall({b_mlc_exb_req_stall}),
@@ -292,9 +294,9 @@ module ccv_mlc_w #(
     assign {mlc_exb_req_tid} = {b_mlc_exb_req_tid};
 `endif
   end
-  // ccv_exb_mlc_rsp, destination end
+  // ccv_exb_mlc_rsp, destination end, no-flop (params/links.json no_flop)
   if (RPT_EXB_MLC_RSP > 0) begin : g_rpt_exb_mlc_rsp
-    ccv_common_rpt #(.STAGES(RPT_EXB_MLC_RSP), .SLOTS(1), .PAYLOAD_W(1082)) u_rpt_exb_mlc_rsp (
+    ccv_common_rpt #(.STAGES(RPT_EXB_MLC_RSP), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(1082)) u_rpt_exb_mlc_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({exb_mlc_rsp_valid}), .src_payload({exb_mlc_rsp_payload}),
       .src_wake(exb_mlc_rsp_wake), .src_credit({exb_mlc_rsp_credit}), .src_stall({exb_mlc_rsp_stall}),

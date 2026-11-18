@@ -55,16 +55,8 @@ module ren1_probe #(
     .unmet_g_cq01h, .unmet_p_cq01h, .run_cq01h, .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h,
     .sq_l_cq00h, .dq_ev_cq01h, .rob_en_cq01h, .pool_en_cq01h, .take_cq02h, .sel_cq02h(sel), .lane_v_cq02h(lane_v),
     .lane_c_cq02h(lane_c), .wb_cq02h(wb), .wt_cq02h);
-  // The pending group's names, as ooe_ren1n binds them (here: the lanes' index bits
-  // stand in, as the bind is Rename 2's).
-  logic [R*GW-1:0] pg;
-  logic [R*PW-1:0] pp;
-  always_comb for (int l = 0; l < R; l++) begin
-    pg[l * GW +: GW] = GW'(q_idx[l * 2 * R +: R]);
-    pp[l * PW +: PW] = PW'(q_idx[(l * 2 + 1) * R +: R]);
-  end
   logic [S*R*4*GW-1:0] c_gv;
-  logic [S*R*4*R-1:0]  c_gw, c_pw;
+  logic [S*R*4*R-1:0]  c_gw, c_pw, c_gk, c_pk;
   logic [S*R*4*PW-1:0] c_pv;
   for (genvar s = 0; s < S; s++) begin : g_slot
     logic [R*12-1:0] src; logic [R*4-1:0] dst, pq; logic [R-1:0] gwe, pwe; logic [R*2-1:0] pguard, pdst;
@@ -79,18 +71,22 @@ module ren1_probe #(
     end
     ooe_headrd #(.S(S), .SL(s), .R(R), .A(R), .GW(GW), .PW(PW)) rd (.rat_cq02h(rat_cq02h[s * MW +: MW]),
       .h_src_cq01h(src), .h_dst_cq01h(dst), .h_gwe_cq01h(gwe), .h_pguard_cq01h(pguard), .h_pdst_cq01h(pdst),
-      .h_pwe_cq01h(pwe), .h_pq_cq01h(pq), .pw_v_cq01h(q_v), .pw_slot_cq01h(q_slot), .pw_dst_cq01h(q_dst),
-      .pw_gwe_cq01h(q_gwe), .pw_gname_cq01h(pg), .pw_pdst_cq01h(q_pdst), .pw_pwe_cq01h(q_pwe), .pw_pname_cq01h(pp),
-      .h_gv_cq01h(c_gv[s * R * 4 * GW +: R * 4 * GW]), .h_gw_cq01h(c_gw[s * R * 4 * R +: R * 4 * R]),
-      .h_pv_cq01h(c_pv[s * R * 4 * PW +: R * 4 * PW]), .h_pw_cq01h(c_pw[s * R * 4 * R +: R * 4 * R]));
+      .h_pwe_cq01h(pwe), .h_pq_cq01h(pq), .pw_v_cq01h(q_v),
+      .pw_gkm_cq01h(q_gkm[s * 16 * R +: 16 * R]), .pw_pkm_cq01h(q_pkm[s * 4 * R +: 4 * R]),
+      .h_gv_cq01h(c_gv[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk[s * R * 4 * R +: R * 4 * R]),
+      .h_gw_cq01h(c_gw[s * R * 4 * R +: R * 4 * R]),
+      .h_pv_cq01h(c_pv[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk[s * R * 4 * R +: R * 4 * R]),
+      .h_pw_cq01h(c_pw[s * R * 4 * R +: R * 4 * R]));
   end
   logic [R-1:0] l_v, l_gwe, l_pwe, l_br, l_x;
   logic [R*LS-1:0] l_slot; logic [R*4-1:0] l_dst; logic [R*2-1:0] l_pdst; logic [R*2*R-1:0] l_idx;
   logic [R*LC-1:0] l_ckpt; logic [R*4*GW-1:0] l_g; logic [R*4*R-1:0] l_gl, l_pl; logic [R*4*PW-1:0] l_p;
+  logic [S*16*R-1:0] l_gkm, q_gkm; logic [S*4*R-1:0] l_pkm, q_pkm;
   ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(1)) r1 (.c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h,
-    .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0), .c_gv_cq01h(c_gv), .c_gw_cq01h(c_gw),
-    .c_pv_cq01h(c_pv), .c_pw_cq01h(c_pw), .lane_v_cq02h(lane_v), .lane_c_cq02h(lane_c), .wb_cq02h(wb), .l_v,
-    .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl, .l_x);
+    .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0), .c_gv_cq01h(c_gv), .c_gk_cq01h(c_gk),
+    .c_gw_cq01h(c_gw), .c_pv_cq01h(c_pv), .c_pk_cq01h(c_pk), .c_pw_cq01h(c_pw),
+    .lane_v_cq02h(lane_v), .lane_c_cq02h(lane_c), .wb_cq02h(wb), .l_v,
+    .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl, .l_x, .l_gk(), .l_pk(), .l_gs(), .l_gkm, .l_pkm);
   logic en;
   assign en = |sel;
   always_ff @(posedge ooe_core_clk) begin
@@ -98,6 +94,7 @@ module ren1_probe #(
     if (en) begin
       q_slot <= l_slot; q_dst <= l_dst; q_gwe <= l_gwe; q_pwe <= l_pwe; q_br <= l_br; q_pdst <= l_pdst;
       q_idx <= l_idx; q_ckpt <= l_ckpt; q_g <= l_g; q_gl <= l_gl; q_pl <= l_pl; q_p <= l_p;
+      q_gkm <= l_gkm; q_pkm <= l_pkm;
     end
   end
 endmodule

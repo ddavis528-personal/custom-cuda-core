@@ -22,7 +22,9 @@
 #     the Yosys netlist                            lead enabled by its input
 #                                                  valid (CG-5); raw-reset: the
 #                                                  pulses reset by rst_n itself
-#                                                  (RST-1). Both invisible in
+#                                                  (RST-1); bnd-gated: the
+#                                                  boundary flop's lead so
+#                                                  enabled. All invisible in
 #                                                  simulation, refused there
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -41,14 +43,16 @@ INC="-Irtl/include -Irtl/generated"
 # -- lint --------------------------------------------------------------------
 if command -v verilator >/dev/null 2>&1; then
   lf=""
-  for G in "-GSTAGES=0" "-GSTAGES=1 -GPAYLOAD_W=8" "-GSTAGES=3 -GPAYLOAD_W=20 -GLEAD_MASK=20'hf"; do
+  for G in "-GSTAGES=0" "-GSTAGES=1 -GPAYLOAD_W=8" "-GSTAGES=3 -GPAYLOAD_W=20 -GLEAD_MASK=20'hf" \
+           "-GSTAGES=0 -GBOUNDARY=1 -GPAYLOAD_W=20 -GLEAD_MASK=20'hf" \
+           "-GSTAGES=2 -GBOUNDARY=1 -GDST_END=1 -GPAYLOAD_W=20 -GLEAD_MASK=20'hf"; do
     for D in "" "-DCCV_TRACE"; do
       verilator --lint-only --assert -Wall -Wno-DECLFILENAME $D $INC \
         --top-module ccv_common_rpt $G rtl/ccv_assert_pkg.sv $RPT >"$B/lint.log" 2>&1 ||
         lf="$lf [$G $D]"
     done
   done
-  [ -z "$lf" ] && say "repeater: verilator -Wall, six shapes" "PASS" ||
+  [ -z "$lf" ] && say "repeater: verilator -Wall, ten shapes" "PASS" ||
     bad "repeater: verilator -Wall" "$lf: $(grep -m1 '^%' "$B/lint.log")"
 fi
 
@@ -125,7 +129,7 @@ fi
 # -- the enables, on the netlist ---------------------------------------------
 if command -v yosys >/dev/null 2>&1; then
   if out=$(python3 tools/check-rpt-enables.py 2>&1); then
-    say "enables on the netlist: payload, lead, pulses" "PASS (5 shapes)"
+    say "enables on the netlist: payload, lead, pulses" "PASS (9 shapes)"
   else
     bad "repeater enables on the netlist" "$(echo "$out" | grep -m1 '^  ')"
   fi
@@ -139,6 +143,7 @@ mut() {   # $1 name, $2 sed expression
 mut enable-now 's/        if (pay_en\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /'
 mut lead-late  's/            if (lead_en) lead_q <= /            if (pay_en[j]) lead_q <= /'
 mut lead-gated 's/            lead_q <= p\[(k\*S+j)\*W +: W\] \& LEAD_MASK;/            if (v[k*S+j]) lead_q <= p[(k*S+j)*W +: W] \& LEAD_MASK;/'
+mut bnd-gated  's/          bnd_lead_q <= p\[(k\*S+j)\*W +: W\] \& LEAD_MASK;/          if (v[k*S+j]) bnd_lead_q <= p[(k*S+j)*W +: W] \& LEAD_MASK;/'
 mut raw-reset  's/      if (!rst_n_q) begin/      if (!rst_n) begin/'
 mut credit-short 's/    assign cr\[k\*S +: S\]    = credit_q;/    assign cr[k*S +: S]    = cr[(k+1)*S +: S];/'
 mut free-run   's/        if (pay_en\[j\]) pay_q <= /        pay_q <= /'
@@ -172,7 +177,7 @@ if command -v iverilog >/dev/null 2>&1; then
   fi
   # lead-gated and raw-reset change no value: clean in simulation, refused on
   # the netlist (a clock enable or a reset straight from an input).
-  for m in lead-gated raw-reset; do
+  for m in lead-gated bnd-gated raw-reset; do
     cmd=$(build iv 2 "$B/mut/$m.sv" "" "$m")
     o=$(run "$cmd")
     if [ "$(field "$o" data_errors)" = "0" ] && ! grep -q failed <<<"$o" &&

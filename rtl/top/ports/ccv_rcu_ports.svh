@@ -518,22 +518,18 @@
   // miu -> rcu, slot 0 of 4
   input  logic miu_rcu_data_s0_valid,
   input  ccv_miu_rcu_data_t miu_rcu_data_s0_payload,
-  output logic miu_rcu_data_s0_credit,
   output logic miu_rcu_data_s0_stall,
   // miu -> rcu, slot 1 of 4
   input  logic miu_rcu_data_s1_valid,
   input  ccv_miu_rcu_data_t miu_rcu_data_s1_payload,
-  output logic miu_rcu_data_s1_credit,
   output logic miu_rcu_data_s1_stall,
   // miu -> rcu, slot 2 of 4
   input  logic miu_rcu_data_s2_valid,
   input  ccv_miu_rcu_data_t miu_rcu_data_s2_payload,
-  output logic miu_rcu_data_s2_credit,
   output logic miu_rcu_data_s2_stall,
   // miu -> rcu, slot 3 of 4
   input  logic miu_rcu_data_s3_valid,
   input  ccv_miu_rcu_data_t miu_rcu_data_s3_payload,
-  output logic miu_rcu_data_s3_credit,
   output logic miu_rcu_data_s3_stall,
   input  logic miu_rcu_data_wake,
   // rau -> rcu

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The daily sweep's repository half (the register half needs the docs tools,
-# so it stays in the model's turn): merge every remote branch but release,
-# regen and commit, the release (whose gate is the push's gate), push, clear.
+# so it stays in the model's turn): merge every remote branch but release
+# and gate-scratch/*, regen and commit, the release (whose gate is the push's gate), push, clear.
 #
 #   tools/daily-sweep.sh [--branches=a,b] [--no-push] [--skip=b1,b2]
 #
@@ -25,6 +25,10 @@ for a in "$@"; do
     *) echo "usage: $0 [--branches=a,b] [--no-push] [--skip=b1,b2]" >&2; exit 2 ;;
   esac
 done
+# A long run never runs under its caller (tools/detach.sh; DA, 2026-11-13):
+# it detaches and returns; tools/gate-wait.sh waits for it.
+. "$(dirname "$0")/detach.sh"; ccv_detach "$0" "$@"
+
 GENERATED='^(sim/generated/|rtl/generated/|rtl/top/|docs/payload-spec\.md$|docs/trust-report\.md$|docs/walkthrough\.md$)'
 clean_tree
 with_retry git fetch -q --prune origin || die "cannot fetch origin"
@@ -32,7 +36,8 @@ WHEN=$(TZ=America/Los_Angeles date +'%Y-%m-%d, %H:%M')
 merged=""
 for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
   b=${rb#origin/}
-  case "$b" in HEAD|origin|release) continue ;; esac
+  # gate-scratch/*: unverified commits and exports in transit (DA, 2026-11-01).
+  case "$b" in HEAD|origin|release|gate-scratch/*) continue ;; esac
   case ",$SKIP," in *",$b,"*) continue ;; esac
   n=$(git rev-list --count "HEAD..$rb")
   [ "$n" -gt 0 ] || continue

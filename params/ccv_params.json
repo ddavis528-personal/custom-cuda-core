@@ -25,6 +25,28 @@
     "are that one number under three names, which is why a future non-abutting",
     "interface moves all of them together."
   ],
+  "pipes": {
+    "_comment": [
+      "The execution pipes (RA-16 (a); AR's revs 263 and 265, TI's rev 284), one list",
+      "from which CCV_DONE_SLOTS and CCV_PRF_GPR_WRITE_PORTS derive, and",
+      "tools/gen-params.py refuses either if it disagrees. Each pipe names its done",
+      "class (null: it completes on another channel) and its GPR write pipe (null:",
+      "it writes no GPR). done_slots() sums, over the done classes, the most issues",
+      "a cycle any pipe of the class makes: pipes of one class share sections, and",
+      "select gives a section one op a cycle. gpr_write_ports() counts the distinct",
+      "write pipes. The collectives run in R and share R's write port, which holds",
+      "only while every R-pipe class writes at A+2 (call's link and every collective",
+      "mode); the RCU stub checks it at each R write (--break r-write-coll-late)."
+    ],
+    "list": [
+      {"name": "lane_int", "done_class": "lane", "gpr_write": "lane", "issues": "CCV_SECTIONS // CCV_P_FOOT_MIN_INT"},
+      {"name": "lane_fp", "done_class": "lane", "gpr_write": "lane", "issues": "CCV_SECTIONS // CCV_P_FOOT_MIN_FP"},
+      {"name": "sfu", "done_class": "sfu", "gpr_write": "sfu", "issues": "CCV_SECTIONS // CCV_P_FOOT_MIN_SFU"},
+      {"name": "load", "done_class": null, "gpr_write": "load"},
+      {"name": "r_rcu", "done_class": "rcu", "gpr_write": "r", "issues": "1"},
+      {"name": "r_collective", "done_class": "collective", "gpr_write": "r", "issues": "1"}
+    ]
+  },
   "params": [
     {
       "name": "CCV_WARP_LANES",
@@ -132,6 +154,14 @@
       "doc": "Slots on ccv_ooe_rcu_issue, one per select resource, in this order: the lane sections S0-S3, the MIU pipes P0-P3, and the RCU unit R. An op takes its lowest resource's slot and marks the rest of its footprint continuation."
     },
     {
+      "name": "CCV_ISSUE_SLOT_R",
+      "value": 8,
+      "status": "arch",
+      "source": "RA-31 (OA's rev 307, AR's rev 267)",
+      "derive": "CCV_SECTIONS + CCV_MIU_PIPES",
+      "doc": "The slot of ccv_ooe_rcu_issue that the RCU unit R issues on, the last of CCV_ISSUE_RESOURCES. R alone carries lead_rpsrc, imm's copy, and its source rows only in lead_phys_src and lead_phys_src2 (RA-43, RA's rev 109 (b)); the guard lead rides every slot since RA's rev 108."
+    },
+    {
       "name": "CCV_W_PHYS_POS",
       "value": 2,
       "status": "arch",
@@ -147,6 +177,14 @@
       "derive": "3 * CCV_WARP_LANES * CCV_W_LANE_DATA",
       "require": "CCV_MIU_PIPES * 3 * (CCV_WARP_LANES * CCV_W_LANE_DATA // CCV_SECTIONS) == CCV_PRF_MEMOP_READ_BITS",
       "doc": "PRF read bandwidth for memop operands, a budget line kept as a check: base, index and store data, three full rows for one 32-bit memop or three slices each for four 8-bit ones, the same at every width. The requirement fails if the pipes and sections stop matching. Memop reads never use a lane port, or memory serialises with ALU work."
+    },
+    {
+      "name": "CCV_PRF_RCU_READ_BITS",
+      "value": 3072,
+      "status": "arch",
+      "source": "RA-16 (d); AR's revs 263 and 265, TI's rev 284",
+      "derive": "3 * CCV_WARP_LANES * CCV_W_LANE_DATA",
+      "doc": "PRF read bandwidth into R, RCU's own unit, a budget line (RA-16 (d)): three full rows of CCV_WARP_LANES x CCV_W_LANE_DATA bits a cycle for R's operand reads, beside the lanes' ports and the memops' (CCV_L_PRF_LANE_READ_BITS, CCV_PRF_MEMOP_READ_BITS)."
     },
     {
       "name": "CCV_ROB_INSTANCES",
@@ -181,7 +219,45 @@
       "value": 4,
       "status": "tunable",
       "decided_at": "Stage 4b sweep",
-      "doc": "D-cache lookups per cycle."
+      "doc": "D-cache lookups per cycle. It sets the rate of ccv_miu_dcu_req, ccv_dcu_miu_rsp and ccv_dcu_miu_fill_ntc (a notice promises its refill on the same response slot), each tied by rate_param, so tools/gen-interfaces.py refuses a rate that drifts from it."
+    },
+    {
+      "name": "CCV_DCU_SETS",
+      "value": 512,
+      "status": "tunable",
+      "decided_at": "DA, 2026-11-15 (MA 61): the L1 is built for 512 KiB",
+      "doc": "L1 data cache sets, a power of two (MA-15, AR rev 344): with CCV_DCU_WAYS 8 and 128-byte lines, 512 KiB, built for from the start (DA, 2026-11-15, MA 61): growing later is the hard direction; 128 and 64 sets are configured-down points, reached through the override below. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_SETS still overrides it for a sweep. A way, sets times line bytes, fits in a page (AR 362 (1), MA rev 65): the set index, and the bank within it, are page offset, the same in the VA and the PA, so MIU sends them as ccv_miu_dcu_req's lead a cycle ahead of the PA with no synonym. It holds with no headroom at 512 sets: an L1 past 512 KiB adds ways, not sets.",
+      "require": "CCV_DCU_SETS * CCV_P_LINE_BYTES <= 2 ** CCV_L_PAGE_SHIFT"
+    },
+    {
+      "name": "CCV_DCU_BANKS",
+      "value": 8,
+      "status": "arch",
+      "source": "AR 364, MA-16 (MA rev 68; DA rev 123)",
+      "require": "(CCV_DCU_BANKS <= CCV_DCU_SETS) * (2 ** clog2(CCV_DCU_BANKS) == CCV_DCU_BANKS) * (2 ** clog2(CCV_DCU_SETS) == CCV_DCU_SETS) == 1",
+      "doc": "L1 data banks, each a half-rate 1RW SRAM (DA rev 123), 64 KiB each at 512 KiB: four lookups a cycle need at least 8. A lookup's bank is its line address's low clog2(CCV_DCU_BANKS) bits, [9:7] at 8, which are the set index's low bits, so ccv_miu_dcu_req's lead_set_index carries it and no bank field is sent (AR 364). Both counts are powers of two and the banks no more than the sets. MA-4's L1-hit eligibility refuses a group whose leaders' lookups meet in one bank."
+    },
+    {
+      "name": "CCV_DCU_BANK_AGE",
+      "value": 16,
+      "status": "tunable",
+      "decided_at": "MA rev 68 (MA-16, AR 364): a start; MA's Phase 1 model sets it against AR's 729-cycle starvation case",
+      "doc": "DCU's age bound on hole-filling, in cycles: a lookup that lost its bank waits at most this long; once a waiter reaches it, its bank takes no new lookup or fill until that waiter is served."
+    },
+    {
+      "name": "CCV_W_DCU_SET",
+      "value": 9,
+      "status": "tunable",
+      "decided_at": "AR 362 (4), MA rev 65: follows CCV_DCU_SETS",
+      "derive": "clog2(CCV_DCU_SETS)",
+      "doc": "ccv_miu_dcu_req's lead set_index: a lookup's set, physical address bits [log2 CCV_P_LINE_BYTES + this - 1 : log2 CCV_P_LINE_BYTES], [15:7] at 512 sets. A sweep's smaller CCV_DCU_SETS override uses its low bits. Its low clog2(CCV_DCU_BANKS) bits are the lookup's bank (AR 364)."
+    },
+    {
+      "name": "CCV_DCU_WAYS",
+      "value": 8,
+      "status": "tunable",
+      "decided_at": "AR's L1 capacity sweep (MA-3 (a)); 8 ways since TI rev 234's sweep (AR rev 320)",
+      "doc": "L1 data cache ways, least recently used replaced (MA-15, AR rev 344). The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_WAYS still overrides it (1 to 16) for a sweep or a kernel that needs evictions."
     },
     {
       "name": "CCV_SPM_BYTES",
@@ -331,7 +407,7 @@
       "status": "arch",
       "source": "arch opens A-1, A-22 (2026-09-27)",
       "derive": "clog2(CCV_MIGRATION_CYCLES)",
-      "doc": "Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, 16 and up predicate and divergence state. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does."
+      "doc": "Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, row 16 the predicate state alone (CCV_W_PRED_STATE, 128 bits; PCA spec rev 17, AR-25): divergence state migrates through FET. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does."
     },
     {
       "name": "CCV_W_PRED_STATE",
@@ -363,6 +439,158 @@
       "source": "Daniel, 2026-10-19 (an inner helper no module instantiates yet: floor(2 * 25 / 3), not the full stage)",
       "derive": "2 * CCV_NGD_BUDGET // 3",
       "doc": "Logic depth an inner helper (a combinational module declared inner in its <module>.ngd.json, timed as its parent's logic) is held to, input to output, while no module instantiates it: floor(2 * CCV_NGD_BUDGET / 3). Inside a parent its logic is the parent's and the stage applies; alone, the whole stage would be optimistic, since the parent's own logic will share it. tools/check-ngd.py, NGD-6."
+    },
+    {
+      "name": "CCV_NGD_SRAM_ADDR_MARGIN",
+      "value": 6,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_SRAM_ADDR_MARGIN < CCV_NGD_BUDGET",
+      "doc": "Margin, in NGD, added to a one-hot decode of the address to make a 1RW SRAM's address setup: its addr pin, and ce and we, which qualify the word lines, must arrive by CCV_NGD_BUDGET - (decode(D) + this). decode(D) is the depth tools/check-ngd.py measures for a one-hot decode of $clog2(D) bits to D lines, fanout term included (NGD-8)."
+    },
+    {
+      "name": "CCV_NGD_RF_ADDR_MARGIN",
+      "value": 4,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_RF_ADDR_MARGIN < CCV_NGD_BUDGET",
+      "doc": "Margin, in NGD, added to a one-hot decode of the address to make a register file's address setup, read (raddr, re) and write (waddr, we) alike: those pins must arrive by CCV_NGD_BUDGET - (decode(D) + this). tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_SRAM_DATA_SETUP",
+      "value": 8,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_SRAM_DATA_SETUP < CCV_NGD_BUDGET",
+      "doc": "Setup, in NGD, of a 1RW SRAM's write data (wdata; an SRAM has no byte mask): it must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_RF_DATA_SETUP",
+      "value": 6,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_RF_DATA_SETUP < CCV_NGD_BUDGET",
+      "doc": "Setup, in NGD, of a register file's write data and, on the _be one, its byte mask (wdata, wmask): they must arrive by CCV_NGD_BUDGET - this. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_MACRO_READ_DYN_PCT",
+      "value": 150,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_MACRO_READ_DYN_PCT >= 100",
+      "doc": "How much faster a macro's dynamic read mux is than a static one, in percent: a macro's read data launches at mux(W, D) * 100 / this plus its read guardband, where mux(W, D) is the depth tools/check-ngd.py measures for a static combinational D:1 read mux W bits wide, fanout term included (NGD-8). 150 is the 1.5x Daniel set."
+    },
+    {
+      "name": "CCV_NGD_SRAM_READ_GUARD",
+      "value": 6,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_SRAM_READ_GUARD < CCV_NGD_BUDGET",
+      "doc": "Guardband, in NGD, added to a 1RW SRAM's read mux (CCV_NGD_MACRO_READ_DYN_PCT) to give its rdata's clock-to-out: logic after rdata starts there. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_NGD_RF_READ_GUARD",
+      "value": 4,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (hard macro pin timing; docs/rtl-coding-style.md, \"Hard macros\")",
+      "require": "CCV_NGD_RF_READ_GUARD < CCV_NGD_BUDGET",
+      "doc": "Guardband, in NGD, added to a register file's read mux (CCV_NGD_MACRO_READ_DYN_PCT) to give its rdata's clock-to-out: logic after rdata starts there. tools/check-ngd.py, NGD-8."
+    },
+    {
+      "name": "CCV_MACRO_AREA_RF_PCT",
+      "value": 300,
+      "status": "target",
+      "source": "Daniel, 2026-11-16 (DA tab rev 123, MA-16: a register file is 3 times an SRAM's area per bit)",
+      "require": "CCV_MACRO_AREA_RF_PCT >= 100",
+      "doc": "A register-file macro's area per bit (ccv_common_rf_1r1w, ccv_common_rf_1r1w_be), in percent of a 1RW SRAM's (ccv_common_sram_1rw), each at its most efficient, largest legal size (CCV_MACRO_RF_MAX_BYTES, CCV_MACRO_SRAM_MAX_BYTES; Daniel, 2026-11-17): the weight any area count of the arrays gives it, before CCV_MACRO_SIZE_PENALTY_PCT's size penalty. docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_AREA_BYTE_EN_PCT",
+      "value": 150,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (byte enables on a register file only, at 1.5 times its area)",
+      "require": "CCV_MACRO_AREA_BYTE_EN_PCT >= 100",
+      "doc": "Byte enables' area, in percent of the register file without them, both at the largest legal size (Daniel, 2026-11-17): ccv_common_rf_1r1w_be's area per bit is CCV_MACRO_AREA_RF_PCT * this / 100 of an SRAM's (4.5 times at 300 and 150). Only a register file has byte enables; an SRAM writes whole words (Daniel, 2026-11-17). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MIN_BYTES",
+      "value": 512,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them)",
+      "require": "CCV_MACRO_RF_MIN_BYTES >= 1",
+      "doc": "The smallest register file (ccv_common_rf_1r1w and _be) one instance may be, in bytes, W x D / 8, the bound itself allowed: anything smaller belongs in flops. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MAX_BYTES",
+      "value": 8192,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them)",
+      "require": "CCV_MACRO_RF_MAX_BYTES > CCV_MACRO_RF_MIN_BYTES",
+      "doc": "The largest register file one instance may be, in bytes (8 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MIN_BYTES",
+      "value": 4096,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MIN_BYTES >= 1",
+      "doc": "The smallest 1RW SRAM (ccv_common_sram_1rw) one instance may be, in bytes, W x D / 8 (4 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MAX_BYTES",
+      "value": 32768,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array size limits per macro instance, a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MAX_BYTES > CCV_MACRO_SRAM_MIN_BYTES",
+      "doc": "The largest 1RW SRAM one instance may be, in bytes (32 KiB), the bound itself allowed. tools/check-ngd.py, MACRO-1; outside the range an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MAX_DATA_W",
+      "value": 128,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MAX_DATA_W >= 8",
+      "doc": "The widest data word one 1RW SRAM (ccv_common_sram_1rw) instance may hold, in bits, before its SECDED check bits (every SRAM has them; TI-474 (6)): the macro's own W may be this plus those, CCV_MACRO_SRAM_MAX_W, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MAX_W",
+      "value": 137,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "derive": "CCV_MACRO_SRAM_MAX_DATA_W + clog2(CCV_MACRO_SRAM_MAX_DATA_W + clog2(CCV_MACRO_SRAM_MAX_DATA_W) + 1) + 1",
+      "doc": "The widest word, in bits, one 1RW SRAM instance may be (its W): CCV_MACRO_SRAM_MAX_DATA_W and its SECDED check bits, the Hamming bits r (the least with 2^r >= data + r + 1) and one overall parity, 128 + 9. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SRAM_MAX_WORDS",
+      "value": 4096,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_SRAM_MAX_WORDS >= 1",
+      "doc": "The most words (D) one 1RW SRAM instance may hold, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MAX_W",
+      "value": 256,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_RF_MAX_W >= 8",
+      "doc": "The widest word, in bits, one register-file instance (ccv_common_rf_1r1w, _be) may be (its W), the bound allowed. A register file carries no ECC (TI-474 (6) asks it of SRAMs). tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_RF_MAX_WORDS",
+      "value": 1024,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array shape limits per macro instance, set by layout: dimensions that can be repeated over top; a waiver outside them)",
+      "require": "CCV_MACRO_RF_MAX_WORDS >= 1",
+      "doc": "The most words (D) one register-file instance may hold, the bound allowed. tools/check-ngd.py, MACRO-1; outside it an instance needs a waiver with its justification (rtl/macro-waivers.json). docs/rtl-coding-style.md, \"Hard macros\"."
+    },
+    {
+      "name": "CCV_MACRO_SIZE_PENALTY_PCT",
+      "value": 20,
+      "status": "target",
+      "source": "Daniel, 2026-11-17 (array efficiency: best at a macro type's largest legal size, falling linearly to a 20 percent penalty at its smallest)",
+      "require": "CCV_MACRO_SIZE_PENALTY_PCT >= 0",
+      "doc": "Power and area per bit of a hard-macro instance over the most efficient one of its type, in percent: 0 at the type's largest legal size (CCV_MACRO_RF_MAX_BYTES, CCV_MACRO_SRAM_MAX_BYTES), this at its smallest (the _MIN_BYTES), linear in bytes between; below the smallest (a waived instance) the line continues, above the largest it stays 0. It multiplies the type's own weight (CCV_MACRO_AREA_RF_PCT, CCV_MACRO_AREA_BYTE_EN_PCT). tools/check-ngd.py reports it per instance (MACRO-1). docs/rtl-coding-style.md, \"Hard macros\"."
     },
     {
       "name": "CCV_NGD_CG_EN",
@@ -580,28 +808,39 @@
       "name": "CCV_CREDIT_DEPTH",
       "value": 4,
       "status": "arch",
-      "doc": "Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2N longer, and its depth with it. Proved in tools/check-formal.sh: full rate at this depth, and not at one less.",
+      "doc": "Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2(N + bnd_rx) longer, and its depth with it: N its stages, and bnd_rx 1 where its receiving end holds the boundary flop, a stage each way in front of a receiver that registers its own inputs and credit, as every DPI host does (AR's rev 309 (2)). Proved in tools/check-formal.sh: full rate at this depth, and not at one less.",
       "source": "Q-43, 2026-09-26"
     },
     {
+      "name": "CCV_MEMOP_CREDITS",
+      "value": 10,
+      "status": "tunable",
+      "require": "CCV_MEMOP_CREDITS >= CCV_CREDIT_DEPTH",
+      "decided_at": "MA (MIU memop queue sizing), ruled by AR",
+      "source": "MA-5, AR rev 345, TI rev 413 (2026-11-13)",
+      "doc": "Credits a slot of ccv_ooe_miu_memop holds (schema credits_param), in place of CCV_CREDIT_DEPTH: MIU's 40-entry shared memop queue over the channel's 4 slots: each credit is one entry of the shared queue, returned on the memop's arrival slot when it frees and OOE throttles its memop issue instead of MIU refusing an address (MA-5). MIU returns an entry-holding memop's credit on its arrival slot when the entry frees, a bulk discard's as it takes it. At least the credit loop, so the slot still runs at full rate; a repeated link adds its 2(N + bnd_rx) to it, as to CCV_CREDIT_DEPTH."
+    },
+    {
       "name": "CCV_RESCUE_DEPTH",
-      "value": 2,
+      "value": 3,
       "status": "arch",
-      "doc": "Storage a stalling receiver reserves to catch everything already in flight. Equals the round trip: no unwinding, no negative acknowledgement.",
-      "source": "ports spec 2026-09-23"
+      "derive": "CCV_RT_ABUT + 1",
+      "doc": "Storage a stalling receiver reserves to catch everything already in flight: the round trip plus the cycle a stall spends in the sender's interface flop (the boundary stage, rtl/phys/ccv_common_rpt.sv; proved in tools/check-formal.sh, built: no valid two cycles after a stall at the wrapper, and not one). No unwinding, no negative acknowledgement. One more payload entry per stalling receiver than the round trip alone; credits are unaffected.",
+      "source": "ports spec 2026-09-23; AR's rev 289 (re:RI-11), 2 to 3"
     },
     {
       "name": "CCV_DRAIN_WAIT",
-      "value": 2,
+      "value": 3,
       "status": "arch",
-      "doc": "Cycles to wait after asserting stall before nothing is in flight. Equals the round trip, which is what lets sleep entry, chwidth change and demotion share one mechanism and one proof.",
-      "source": "ports spec 2026-09-23"
+      "derive": "CCV_RT_ABUT + 1",
+      "doc": "Cycles to wait after asserting stall before nothing is in flight: the round trip plus the cycle a stall spends in the sender's interface flop (as CCV_RESCUE_DEPTH). One wait for sleep entry, chwidth change and demotion, which is what lets them share one mechanism and one proof, a cycle longer than the round trip alone.",
+      "source": "ports spec 2026-09-23; AR's rev 289 (re:RI-11), 2 to 3"
     },
     {
       "name": "CCV_WAKE_LAT",
       "value": 4,
       "status": "arch",
-      "doc": "Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_common_chk_wake). The receiver's side is ccv_common_clk: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this, so a valid that follows the wake by exactly this much is still captured.",
+      "doc": "Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_common_chk_wake). The receiver's side is ccv_common_clk: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this + 2 (WAKE_HOLD = this + 1; AR rev 343, RI-38), so a valid that follows the wake by exactly this much, and its payload a cycle later, are captured while the sleep decision's two-flop lag on quiesced catches up.",
       "source": "ports spec 2026-09-23"
     },
     {
@@ -693,11 +932,11 @@
     },
     {
       "name": "CCV_P_DECQ",
-      "value": 13,
+      "value": 15,
       "status": "provisional",
-      "decided_at": "OOE per-block session; DA's response OA-21 (2026-10-20)",
+      "decided_at": "DA-106 (2026-11-04)",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; DA's response OA-21",
-      "doc": "Decode queue depth ahead of rename. 13 since rename interleaves warps uop by uop (option (c), DA's response OA-21): decq registers the take and pops it an edge late, and the extra entry covers the uop in flight; DEC's credit pool follows it. Was 12."
+      "doc": "Decode queue depth ahead of rename. 15 with decq_free_lag 1, was 13 (DA-106, OA's rev 327): a freed entry's credit returns an edge late, and the two extra entries cover it; DEC's credit pool follows it. 13 was for rename's take popped an edge late (option (c), DA's response OA-21); 12 before that."
     },
     {
       "name": "CCV_P_RS_WARP_CAP",
@@ -801,9 +1040,9 @@
       "name": "CCV_LAT_LANE_BASE",
       "value": 7,
       "status": "tunable",
-      "decided_at": "LANE per-block session",
-      "source": "OOE Stage 4 session (2026-10-02), interface change set",
-      "doc": "Lane pipeline depth with abutted links, from RCU accepting the issue to the lane result in the PRF. An assumption until LANE's session confirms it as a contract."
+      "decided_at": "LANE per-block session; AR's revs 300 and 301 (re:RI-16)",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; 7 to 8 at AR's rev 287 (re:RI-11), back to 7 at AR's revs 300 and 301 (re:RI-16)",
+      "doc": "Lane pipeline depth with abutted links and no boundary flops, from RCU accepting the issue to the lane result in the PRF: the blocks' own time only. A flopped receiving end on either lane channel is a crossing's bnd_rx, counted in CCV_LAT_LANE, never here (AR's revs 300 and 301 (re:RI-16)). An assumption until LANE's session confirms it as a contract."
     },
     {
       "name": "CCV_LAT_L1_HIT_BASE",
@@ -828,8 +1067,8 @@
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-48",
-      "derive": "CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + link_n('lane_rcu_res')",
-      "doc": "Contracted lane latency: base plus the repeater stages out and back, from params/links.json (A-48). The lane channels are lockstep, so every copy has the same stages."
+      "derive": "CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res')",
+      "doc": "Contracted lane latency: base plus, out and back, the repeater stages (params/links.json; A-48) and a flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). 7 at the defaults: ccv_lane_rcu_res's end at RCU is zero-cycle (RA's rev 95, under DA 114; it was flopped, 8, from AR's rev 301), and that link takes no repeater stage, ever. The lane channels are lockstep, so every copy has the same stages."
     },
     {
       "name": "CCV_LAT_LANE_BYP",
@@ -847,7 +1086,7 @@
       "decided_at": "generated",
       "source": "TI, lane-local bypass in the stubs (2026-10-08); A-59, register TI-8",
       "derive": "max(1, clog2(CCV_LAT_LANE - CCV_LAT_LANE_BYP))",
-      "doc": "How far back a lane's bypass reaches, in bits: a forwarded result is named by its age, the cycles between the producer's and the dependant's arrival at the lane, less CCV_LAT_LANE_BYP. Ages run from CCV_LAT_LANE_BYP up to CCV_LAT_LANE - 1, after which RCU's register file holds the value. The links stretch the window: stages on either lane channel delay the write-back but not the dependant, so this follows params/links.json through CCV_LAT_LANE."
+      "doc": "How far back a lane's bypass reaches, in bits: a forwarded result is named by its age, the cycles between the producer's and the dependant's arrival at the lane, less CCV_LAT_LANE_BYP. The lane forwards ages CCV_LAT_LANE_BYP up to CCV_LAT_LANE - 2; at CCV_LAT_LANE - 1 RCU's register file read serves the value (RA's count, AR's rev 288). The links stretch the window: stages on either lane channel delay the write-back but not the dependant, so this follows params/links.json through CCV_LAT_LANE."
     },
     {
       "name": "CCV_P_W_LANE_BYP_SEL",
@@ -925,9 +1164,27 @@
       "value": 7,
       "status": "provisional",
       "decided_at": "LANE per-block session",
-      "source": "OA's response TI-9 (2026-10-09); OA's response IS-7 (2026-10-09)",
-      "derive": "CCV_SECTIONS // CCV_P_FOOT_MIN_INT + CCV_SECTIONS // CCV_P_FOOT_MIN_SFU + 2",
-      "doc": "Slots on ccv_rcu_ooe_done, a free pool. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). The lane term counts results per section per fixed-latency class, not per unit, so FP's minimum adds no term while FP shares the lane's latency class: select gives a section to one op a cycle, so an FP op and an integer op in one section cannot complete together. A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here (four slots), a bank write port per section, and a lat_class code of its own (OA's response IS-7)."
+      "source": "OA's response TI-9 (2026-10-09); OA's response IS-7 (2026-10-09); the pipe list, RA-16 (a) (AR's rev 265, TI's rev 284)",
+      "derive": "done_slots()",
+      "doc": "Slots on ccv_rcu_ooe_done, a free pool, derived from the pipe list (pipes in this file; RA-16 (a)): 4 + 1 + 2, as CCV_SECTIONS // CCV_P_FOOT_MIN_INT + CCV_SECTIONS // CCV_P_FOOT_MIN_SFU + 2 gave before it. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). The lane term counts results per section per fixed-latency class, not per unit, so FP's minimum adds no term while FP shares the lane's latency class: select gives a section to one op a cycle, so an FP op and an integer op in one section cannot complete together. A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here (four slots), a bank write port per section, and a lat_class code of its own (OA's response IS-7)."
+    },
+    {
+      "name": "CCV_DONE_SLOT_RCU",
+      "value": 5,
+      "status": "provisional",
+      "decided_at": "OOE architect",
+      "source": "AR's RCU spec rev 14; OA's response OI-93 (OA's rev 287, 2026-10-31)",
+      "derive": "CCV_DONE_SLOTS - 2",
+      "doc": "The one slot of ccv_rcu_ooe_done that R's RCU-only latency class completes on (CCV_LAT_RCU: branch, ret, barrier arrive and wait, and the predicate logic, pmov and movi that RCU executes alone), and that no other class takes. R issues one op a cycle and the class has one fixed latency, so at most one such done lands a cycle: one slot, never contended, and one outcome register in OOE rather than one per slot. branch_taken, branch_mask and aux are defined only on it. The other classes take the lowest free of the rest, which CCV_DONE_SLOTS sizes for them: four lane, one SFU, one warp-collective. One name for OOE, the RCU stub and the checks, so none can disagree with a constant (OA's response OI-93)."
+    },
+    {
+      "name": "CCV_PRF_GPR_WRITE_PORTS",
+      "value": 4,
+      "status": "provisional",
+      "decided_at": "RCU per-block session",
+      "source": "RA-16 (a), RA-29 (a); AR's revs 263 and 265, TI's rev 284",
+      "derive": "gpr_write_ports()",
+      "doc": "GPR write ports on each RCU PRF bank, derived from the pipe list (pipes in this file): one per GPR write pipe, lane (LW), SFU (SW), load (MW) and R (RW). The collectives run in R and write at A+2, as RCU-only ops do, so they share RW: the RCU stub checks that every R-pipe class writes at A+2 (call's link and every collective mode), and a class that wrote at another offset would need a port of its own. Whether to fold to 3 is Daniel's, with Phase 1's figures (RA-29)."
     },
     {
       "name": "CCV_P_W_BYP_GROUP",
@@ -982,12 +1239,30 @@
       "doc": "Bypass penalty from integer or FP to SFU and from SFU to integer or FP, in cycles after the producer's fastest bypass point, capped at the PRF read. With today's values a lane producer's wake for an SFU consumer lands at CCV_LAT_LANE_BYP + 3 = CCV_LAT_LANE, the PRF read (OA's response OI-16). SFU's own fastest bypass point is not yet named (OA proposes CCV_LAT_SFU_BYP, for DA); until it is, an SFU producer wakes every consumer at CCV_LAT_SFU."
     },
     {
+      "name": "CCV_LAT_SFU_BASE",
+      "value": 12,
+      "status": "tunable",
+      "decided_at": "LANE per-block session; AR's revs 300 and 301 (re:RI-16)",
+      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder, as CCV_LAT_SFU; 12 to 13 at AR's rev 287 (re:RI-11); the base, 12, at AR's revs 300 and 301 (re:RI-16)",
+      "doc": "The SFU's latency with abutted links and no boundary flops, as CCV_LAT_LANE_BASE is the lane's: the blocks' own time only. A placeholder until a LANE session confirms it."
+    },
+    {
       "name": "CCV_LAT_SFU",
       "value": 12,
       "status": "tunable",
-      "decided_at": "LANE per-block session",
-      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder",
-      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF. A placeholder until a LANE session confirms it."
+      "decided_at": "generated",
+      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder; 12 to 13 at AR's rev 287 (re:RI-11); derived from CCV_LAT_SFU_BASE at AR's revs 300 and 301 (re:RI-16)",
+      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF, counted as CCV_LAT_LANE is: base plus each lane crossing's repeater stages and bnd_rx (AR's revs 300 and 301 (re:RI-16)). 12 at the defaults (RA's rev 95: ccv_lane_rcu_res's end at RCU zero-cycle). RCU's kill drain follows it (2 + the issue link's stages and bnd_rx + this + 1 + the done link's: 16 at the defaults, its issue end flopped; 17 before RA's rev 95), derived, never written as a number (AR's rev 288).",
+      "derive": "CCV_LAT_SFU_BASE + link_n('rcu_lane_ops') + bnd_rx('rcu_lane_ops') + link_n('lane_rcu_res') + bnd_rx('lane_rcu_res')"
+    },
+    {
+      "name": "CCV_LAT_RCU_KILL_DRAIN",
+      "value": 15,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "RA-14, RA-16 (g), RA-23 and RA-30; AR's revs 263 and 288 (derived, never a number)",
+      "doc": "RCU's kill drain: the cycles from kill_valid landing at RCU until RCU may raise kill_ack (the level of RA-23, AR's rev 264), so long that everything RCU accepted before the kill has finished as scheduled and its done has landed in OOE. RCU keeps no warp identity, so it searches for nothing: a counter of about 5 bits, loaded with this, and its quiescence is the count expired, no demotion row of a killed warp left to send, and no command, map or restore row held for one (AR's rev 264). 2 (the kill flopped, CG-5 and RST-1, and the last accepted issue) + the issue crossing's repeater stages and bnd_rx + CCV_LAT_SFU, the longest class + 1 + the done crossing's: 15 at the defaults, ccv_ooe_rcu_issue's end at RCU zero-cycle (bnd_rx 0; RA-43, AR's rev 329), 16 while it was flopped.",
+      "derive": "2 + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_SFU + 1 + link_n('rcu_ooe_done') + bnd_rx('rcu_ooe_done')"
     },
     {
       "name": "CCV_LAT_COLLECTIVE",
@@ -1003,8 +1278,8 @@
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-46, A-48; A-61",
-      "derive": "CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + link_n('dcu_miu_rsp')",
-      "doc": "Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46)."
+      "derive": "CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + bnd_rx('miu_dcu_req') + link_n('dcu_miu_rsp') + bnd_rx('dcu_miu_rsp')",
+      "doc": "Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48) and each flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). A hit's data leaves on ccv_miu_rcu_data at exactly this cycle and its completion on ccv_miu_ooe_cmpl CCV_LAT_L1_ECC cycles later: the data at L1_HIT, the completion at L1_HIT + L1_ECC (A-46, A-47 amended by AR 368); no completion then is the miss indication."
     },
     {
       "name": "CCV_LAT_HOP",
@@ -1012,42 +1287,69 @@
       "status": "arch",
       "source": "channel protocol (channel.h); made explicit for A-61",
       "derive": "CCV_RT_ABUT // 2 + 1",
-      "doc": "One channel crossing with no repeater stages, from the sender launching a message to the receiver holding its payload: the valid crosses in half the round trip and the payload lands one cycle after its valid. A whole crossing is CCV_LAT_HOP + link_n(channel). Latencies that are linear in their crossings fold this into their base; a max over paths with different numbers of crossings (CCV_LAT_L1_WAKE) cannot, so it is named."
+      "doc": "One channel crossing with no repeater stages, from the sender launching a message to the receiver holding its payload: the valid crosses in half the round trip and the payload lands one cycle after its valid. A whole crossing is CCV_LAT_HOP + link_n(channel) + bnd_rx(channel): the repeater stages and, where the receiving end holds the boundary flop, its cycle (AR's revs 300 and 301 (re:RI-16)). Latencies that are linear in their crossings fold this into their base; a max over paths with different numbers of crossings (CCV_LAT_L1_WAKE) cannot, so it is named."
     },
     {
       "name": "CCV_LAT_RCU_ADDR_BASE",
-      "value": 5,
+      "value": 1,
       "status": "tunable",
-      "decided_at": "RCU per-block session",
-      "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08)",
-      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. Tunable: RCU's session confirms or moves it."
+      "decided_at": "AR's rev 351 (PF-47 reapplied), RA's rev 145",
+      "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08); 5 to 6 at AR's rev 287 (re:RI-11), back to 5 at AR's revs 300 and 301 (re:RI-16); 5 to 1 at AR's rev 351 (PF-47, OI-145 (9)), confirmed by RA's rev 145",
+      "doc": "RCU's time from the issue's landing to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop, RCU's own time only. A boundary flop on the issue end would be the crossing's bnd_rx, counted in CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL, never in this base (AR's revs 300 and 301 (re:RI-16)); since RA-43 the end is zero-cycle, bnd_rx(ccv_ooe_rcu_issue) 0 (AR's rev 332). 1 is PF-47 (docs/perf-register.md), reapplied at AR's rev 351 and confirmed by RA's rev 145, which takes CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 14 (AR rev 301; 14 with RA-43, AR rev 332). It was 5, a placeholder (Daniel, 2026-10-08, register OA-5). Tunable: RCU's session confirms or moves it."
     },
     {
       "name": "CCV_LAT_RCU_ADDR",
-      "value": 5,
+      "value": 1,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
       "derive": "CCV_LAT_RCU_ADDR_BASE",
-      "doc": "RCU's issue-to-address time (A-61). Inside RCU, so no link enters it; the crossings either side are counted where it is used."
+      "doc": "RCU's issue-to-address time (A-61). Inside RCU, so no link and no boundary flop enters it; the crossings either side, bnd_rx included, are counted where it is used (AR's rev 301: counted here as well, CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL would take the issue flop twice, 18 and 20)."
     },
     {
       "name": "CCV_LAT_L1_WAKE",
-      "value": 16,
+      "value": 13,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
-      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue'))",
-      "doc": "Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels."
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue'))",
+      "doc": "Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16))."
+    },
+    {
+      "name": "CCV_LAT_L1_ECC",
+      "value": 1,
+      "status": "tunable",
+      "decided_at": "AR 368, OA 426 (priced by OI-162); MA's count",
+      "source": "DA ruling TI-474 (6): SECDED on every SRAM; TI-475 (3): the block architect hides its latency",
+      "require": "CCV_LAT_L1_ECC >= 0",
+      "doc": "The flopped syndrome stages between an L1 hit's data leaving MIU and its completion being decided (AR 368). A term of its own, not folded into CCV_LAT_L1_HIT_BASE, so the data's time and the completion's stay distinct; 0 if DCU ever checks before launch. The data lands at CCV_LAT_L1_HIT and is speculative until its completion; a load whose syndrome is non-zero gets no completion then (the miss indication) and its corrected data later. Tunable: MA's to move."
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 18,
+      "value": 15,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
-      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl')",
-      "doc": "Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE."
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_L1_ECC + CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl')",
+      "doc": "Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then CCV_LAT_L1_ECC syndrome stages after the hit's data leaves (AR 368, OA 426: 14 to 15), then the completion's crossing back to OOE. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16))."
+    },
+    {
+      "name": "CCV_LAT_MIU_NOHIT_A2",
+      "value": 2,
+      "status": "provisional",
+      "source": "AR 353 (re:TI-437) (2); MA 56: A1 at H, A2 at H+1, the hint launches at H+2, valid at OOE H+3, payload H+4; A2 gated by A1's own valid flop",
+      "doc": "MIU's stages from holding both the memop and its address to the no-hit leaving on ccv_miu_ooe_cmpl_hint: the address stage's decision from the address alone (OA 410) and its output flop. 2 is the count that gave OA 410's I+13 at CCV_LAT_RCU_ADDR_BASE 5; confirmed by MA rev 56; provisional with MIU's Phase 1 model.",
+      "decided_at": "MA rev 56 (re:AR 353 (2))"
+    },
+    {
+      "name": "CCV_LAT_L1_NOHIT",
+      "value": 9,
+      "status": "provisional",
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_MIU_NOHIT_A2 + CCV_LAT_HOP + link_n('miu_ooe_cmpl_hint') + bnd_rx('miu_ooe_cmpl_hint')",
+      "require": "CCV_LAT_L1_NOHIT + 2 <= CCV_LAT_L1_WAKE",
+      "source": "AR 353 (re:TI-437): option (i), the no-hit moves with the address",
+      "doc": "Issue to a no-hit's payload landing on ccv_miu_ooe_cmpl_hint (OA 410); its valid is a cycle earlier. MIU's address stage decides the no-hit from the address alone, so it starts where CCV_LAT_L1_WAKE does, from the max of the memop's and the address's paths, then CCV_LAT_MIU_NOHIT_A2 stages and the hint's crossing back to OOE. 13 at CCV_LAT_RCU_ADDR_BASE 5 (OA 410's I+13), 9 at PF-47's base 1. The require keeps OA 410's flop at payload and clear the next cycle ahead of the speculative wake, so a latency change that would land the no-hit with the wake fails here, not in a unit test (AR 353 (1)); the margin 2 is OOE's, measured exactly (OA 416: a flop at the payload and the clear the next cycle; nothing in OOE assumes I+13).",
+      "decided_at": "AR 353, AR 354; margin OA 416; A2 MA rev 56"
     },
     {
       "name": "CCV_LAT_L1_MISS_WAKE",
@@ -1055,7 +1357,7 @@
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE model session, register OI-13 (ratified by OA 2026-10-07); the +1, OA's response OI-26 (2026-10-08)",
-      "derive": "max(0, CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue')) + 1) + 1",
+      "derive": "max(0, CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue')) + 1) + 1",
       "doc": "After a miss, from the completion's arrival at OOE to the dependant's earliest select (OA's response OI-26). Two parts. The data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read, so the dependant reaches RCU no sooner than the data (OI-13): MIU sends the data to RCU and the completion to OOE over different links. Plus 1: the wake is driven by the completion's arrival rather than a timer, so it cannot be raised a cycle early and reaches the ready stage a cycle after a timed wake would (OA-1). 1 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring."
     },
     {
@@ -1179,7 +1481,7 @@
       "value": 1,
       "status": "provisional",
       "decided_at": "IS's revs 164 and 170 (IS-24); DA tab rev 95 (option W)",
-      "source": "ISA v1.9 \u00a75.9 (O-83): 'CCV_PRIV_WINDOWS = 2^k, k >= 0, is a device constant'; the ISA states no value, so it is the device's; IS-24 proposed 1 to start, which ccv-sim's -priv-windows defaults to",
+      "source": "ISA v1.9 §5.9 (O-83): 'CCV_PRIV_WINDOWS = 2^k, k >= 0, is a device constant'; the ISA states no value, so it is the device's; IS-24 proposed 1 to start, which ccv-sim's -priv-windows defaults to",
       "require": "2 ** clog2(CCV_PRIV_WINDOWS) == CCV_PRIV_WINDOWS",
       "doc": "The 64 KiB windows each thread's O-83 region spans: L = CCV_PRIV_WINDOWS * 64 KiB bytes. The run's base window is W = local_base + %privoff, aligned by the runtime to CCV_PRIV_WINDOWS. MIU interleaves a .global access when rbase(d) >> k == W >> k, d the lowest lane of the issue mask, forms each lane's b = ((rbase(l) - W) << 16) + (rindex(l) << scale) + disp, raises F-ADDR for b outside [0, L), and places lane l's byte at R(ctx) + 128 * (b / 4) + 4l + b % 4, R(ctx) = ((W + CCV_PRIV_WINDOWS) << 16) + ctx * 32 * L. The run's own windows [W, W + CCV_PRIV_WINDOWS) name logical offsets only, so an ordinary access there is F-ADDR. A thread's O-30 frame takes the region's bottom F bytes with R15 = W (O-84); F is the compiler's and the runtime's, never MIU's. ccv-sim takes it as -priv-windows (tools/gen-oracle.sh)."
     },
@@ -1203,8 +1505,27 @@
       "status": "provisional",
       "derive": "CCV_CREDIT_DEPTH * CCV_P_TIMEOUT_MEM",
       "source": "AR's response TI-22 (2026-10-21)",
-      "doc": "Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.",
+      "doc": "Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure), and for a channel whose credits stand for a resource its receiver holds through a memory access (schema: credits_param; ccv_ooe_miu_memop, MA-5). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.",
       "decided_at": "with CCV_P_TIMEOUT_MEM"
+    },
+    {
+      "name": "CCV_P_TIMEOUT_MEMOP",
+      "value": 20480,
+      "status": "provisional",
+      "derive": "CCV_MEMOP_CREDITS * CCV_P_TIMEOUT_MEM",
+      "source": "AR rev 350 (re TI rev 424, AR 349); MA confirms per slot",
+      "doc": "Outstanding-message watchdog for ccv_ooe_miu_memop, whose credit stands for an MIU queue entry held for the memop's life (MA-5). The spec's MIU parks misses and never blocks one warp behind another (AR rev 321, MA-14), so a slot's memop waits behind at most its own slot's CCV_MEMOP_CREDITS - 1 others, one memory-length stall each: the CCV_P_TIMEOUT_BP rule applied to MA-5's credits. A watchdog and a sizing signal, provisional until MA's Phase 1 model: each gate run reports the channel's longest credit hold (BPAGE). The MIU stub's cross-warp head-of-line block (MA-14's deviation) is not what it is sized to.",
+      "decided_at": "with CCV_P_TIMEOUT_MEM"
+    },
+    {
+      "name": "CCV_P_TIMEOUT_UOP",
+      "value": 20480,
+      "status": "provisional",
+      "derive": "CCV_P_TIMEOUT_MEMOP",
+      "require": "CCV_P_TIMEOUT_UOP >= CCV_P_TIMEOUT_MEMOP",
+      "source": "AR 352 (re:TI 435): option (a); a channel whose credits wait on another channel's credits has a watchdog no shorter than that channel's",
+      "doc": "Outstanding-message watchdog for ccv_dec_ooe_uop. The decode queue holds DEC's uops while rename stalls, and rename stalls behind ccv_ooe_miu_memop's credits, each held up to CCV_P_TIMEOUT_MEMOP; a held uop waits at most until the oldest outstanding memop slot returns, plus OOE's issue latency, which is in the noise against it, so the two are taken equal (AR 352). CCV_P_TIMEOUT_BP (8192) was derived when a memop answered within CCV_P_TIMEOUT_MEM; under PF-47 coremark128 held a uop credit 8252 cycles. The held: chain upstream of memop was walked (AR 352 (2)): ccv_rau_rcu_mig and ccv_ooe_rcu_map are sent only once the warp holds no memop (OOE's map on a demotion after the drain, RAU's notice after ccv_ooe_rau_drained; a restore after its bounded allocate), ccv_miu_dcu_req is downstream of memop, and the fetch side holds no message (FET is paced by ccv_ooe_fet_decq_credit counts, and ccv_fet_dec_instr carries no credit), so none of them takes this bound. Provisional with CCV_P_TIMEOUT_MEMOP until MA's Phase 1.",
+      "decided_at": "with CCV_P_TIMEOUT_MEMOP"
     },
     {
       "name": "CCV_W_ASID",
@@ -1285,22 +1606,22 @@
       "derive": "15 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS)",
       "decided_at": "DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)",
       "source": "OOE session (2026-10-03), A-66",
-      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: commit_width (1: a chwidth.multi sibling that commits its register's width at retire without serial's hold, which sits on the last sibling only; AR-24 (c), OA's rev 222), ret (1: the branch is a ret, so OOE takes its target from ccv_rcu_ooe_done.aux and sets the redirect's stay; AR-24 (b), OA's rev 223), pair_second and pair_first (1 each: a pair's two decode slots under one ROB entry; TI-39, OA's rev 189. A uop that needs k rows of any RS class, or k names, occupies k slots, at most one row per class and one name a slot: the CAS pair, and every single-slot RMW atomic, which DEC emits as a pair (OI-80 (d), DA tab rev 94)), bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
+      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: commit_width (1: a chwidth.multi sibling that commits its register's width at retire without serial's hold, which sits on the last sibling only; AR-24 (c), OA's rev 222), ret (1: the branch is a ret, so OOE takes its target from ccv_rcu_ooe_done.aux and sets the redirect's stay; AR-24 (b), OA's rev 223), pair_second and pair_first (1 each: a pair's two decode slots under one ROB entry; TI-39, OA's rev 189. A uop that needs k rows of any RS class, or k names, occupies k slots, at most one row per class and one name a slot: the CAS pair, and every single-slot RMW atomic, which DEC emits as a pair (OI-80 (d), DA tab rev 94)), bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5 no-op: complete at rename (C_RECONV; RA-16 (f), OA's rev 393), 6-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",
-      "value": 3,
+      "value": 5,
       "status": "provisional",
       "source": "Payload spec response (2026-09-25)",
-      "doc": "req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Eight outstanding scratchpad accesses: four slots, two deep.",
+      "doc": "req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Thirty-two outstanding scratchpad accesses, against about 28 in flight at full rate (MA-6, AR rev 344, MA-15; was 3 bits, eight).",
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
       "name": "CCV_P_W_REQ_MIU_DCU",
-      "value": 4,
+      "value": 6,
       "status": "provisional",
       "source": "Payload spec response (2026-09-25)",
-      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen outstanding cache accesses: four slots, four deep, since hits and misses return at different times.",
+      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixty-four outstanding cache accesses: hits alone hold about 24 at full rate (six cycles x four slots), and misses more, since hits and misses return at different times (MA-6, AR rev 344, MA-15; was 4 bits, sixteen, which capped lookups near 2.7 a cycle).",
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
@@ -1479,12 +1800,12 @@
     },
     {
       "name": "CCV_L_PAGE_SHIFT",
-      "value": 12,
-      "status": "preliminary",
+      "value": 16,
+      "status": "arch",
       "churn": "low",
       "source": "Payload widths pass (2026-09-25)",
-      "doc": "Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms.",
-      "decided_at": "MMU session"
+      "doc": "Page shift: 64 KiB pages (MA-2, AR rev 344, IS rev 192, MA-15; was 12, 4 KiB, preliminary), so one way of the 8-way L1, at 64 KiB or 512 KiB, fits in a page and a set index is known from the virtual address (MA-1). It sets the walker request's virtual_page and FET's code_bounds at page granularity; nothing in the ISA fixes 4 KiB (IS rev 192).",
+      "decided_at": "MA (MIU/DCU architecture), agreed by AR"
     },
     {
       "status": "preliminary",

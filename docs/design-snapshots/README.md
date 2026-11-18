@@ -13,6 +13,7 @@ it.** Never edit one by hand: refresh it.
 | [`interface-changes.md`](interface-changes.md) | the same doc, Changes tab | **closed** |
 | [`ooe-diagrams.md`](ooe-diagrams.md) | the OOE doc's four diagrams, as text | hand-transcribed; see below |
 | [`ar-handoff.md`](ar-handoff.md) | [AR handoff — CCV top-level architecture](https://claude.ai/artifact/5vrJfQoctw1tnTcSVZCAvY) | **closed**: the top-level architect's handoff of 2026-10-18, kept as the state of the role at that date |
+| `rcu-arch-*.md` (10 files, one per tab: [overview](rcu-arch-overview.md), [conventions](rcu-arch-conventions.md), [pipeline](rcu-arch-pipeline.md), [register file](rcu-arch-register-file.md), [predicate file](rcu-arch-predicate-file.md), [R unit](rcu-arch-r-unit.md), [lane and memory](rcu-arch-lane-memory.md), [migration](rcu-arch-migration.md), [done, kill and reset](rcu-arch-done-kill-reset.md), [partition](rcu-arch-partition.md)) | [CCV RCU Architecture](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB) | **living**: the RCU block architect's (RA's) RTL-depth spec |
 
 Each snapshot starts with a header naming its source, tab, revision, export
 date and status; `tools/check-docs.sh` refuses one without it.
@@ -34,6 +35,9 @@ not snapshotted here.
 - **The OOE microarchitecture doc**, whenever it changes, in the same commit
   as the code or interface change that follows from it. The commit then
   carries both the design text and what was built from it.
+- **The RCU architecture doc** (RA's), whenever a tab changes, all ten tabs
+  together, so the copies share one export date. The RCU implementation is
+  built against these copies.
 - **The Review tab** no longer changes. `tools/check-docs.sh` still holds: every A-n from A-25 onward that the repo cites
   must be in `interface-review.md`. The check needs no access to the live
   doc.
@@ -56,6 +60,14 @@ The export needs the Claude Docs connector, so an agent session does it:
 
    Use `interface-review` / `interface-changes` with `--tab Review` /
    `--tab Changes` and `--status closed` for the other two.
+
+For the RCU doc, each tab is wrapped the same way as `rcu-arch-<tab>`, with
+`--doc "CCV RCU Architecture"`, the tab's name and the revision its export
+reports. An inline export arrives as base64. To get the bytes without
+passing them through the session, have the Docs `create` call write a blob
+from the tab (`{"from": {"object": "file", "id": <tab>}, "format":
+"markdown"}`), then save its asset with the Artifact tool's `read` and
+`path`.
 
 The export turns each drawn diagram into a one-line placeholder.
 `snapshot-doc.py` replaces it with that diagram's section of

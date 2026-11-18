@@ -32,7 +32,7 @@ module ooe_rendep_tb #(
   input  logic [A*NS*LG-1:0] d_gsn_cq01h,
   input  logic [A*4-1:0]    d_psv_cq01h,
   input  logic [A*4*LQ-1:0] d_psn_cq01h,
-  input  logic [A-1:0]      d_cguard_cq01h, d_cnone_cq01h, d_nob_cq01h,
+  input  logic [A-1:0]      d_cguard_cq01h, d_cnone_cq01h, d_nob_cq01h, d_spec_cq01h,
   input  logic [A*3-1:0]    d_cg_cq01h, d_unit_cq01h, d_pg_cq01h,
   // ooe_prodmap's Rename 3 (the group a cycle on).
   input  logic              m_v_l_cq00h,
@@ -51,6 +51,8 @@ module ooe_rendep_tb #(
   output logic [2*P*P-1:0]  grp_code_cq02h,
   output logic [P*P-1:0]    prv_dep_cq02h,
   output logic [2*P*P-1:0]  prv_code_cq02h,
+  output logic [2*P-1:0]    akind_cq02h,
+  output logic [3*P-1:0]    acls_cq02h,
   // ooe_prodmap's entries, for the bench's reports.
   output logic [N-1:0]      dbg_eg, dbg_ep,
   output logic [N*LG-1:0]   dbg_egn,
@@ -65,16 +67,31 @@ module ooe_rendep_tb #(
     .gname_cq01h(m_gname_cq01h), .pwe_cq01h(m_pwe_cq01h), .pname_cq01h(m_pname_cq01h), .pm_cq01h(m_pm_cq01h),
     .cv_cq01h(m_cv_cq01h), .pc_cq01h(m_pc_cq01h), .cvc_cq01h(m_cvc_cq01h), .gnt_v_cq02h(gnt_v), .gnt_idx_cq02h(gnt_idx),
     .eg_cq03h(eg), .egn_cq03h(egn), .ec_cq03h(ec), .ep_cq03h(ep), .epn_cq03h(epn), .ecv_cq03h(ecv));
+  // Each uop's ports, as rename's Rename 1 register gives them (ports_of):
+  // a main on its class's next port, a copy on the RCU port after its main.
+  logic [2*A*3-1:0] d_pp_cq01h;
+  always_comb begin
+    logic [2:0] ri, mi;
+    ri = '0;
+    mi = '0;
+    d_pp_cq01h = '0;
+    for (int u = 0; u < A; u++) begin
+      d_pp_cq01h[u * 3 +: 3]       = d_mem_cq01h[u] ? 3'(A) + mi : ri;
+      d_pp_cq01h[(A + u) * 3 +: 3] = ri;
+      if (d_v_cq01h[u] && d_mem_cq01h[u]) mi = mi + 1'b1;
+      if (d_v_cq01h[u] && (!d_mem_cq01h[u] || d_cp_cq01h[u])) ri = ri + 1'b1;
+    end
+  end
   ooe_rendep #(.N(N), .A(A), .NG(NG), .NP(NP)) u_dep (
     .ooe_core_clk, .ooe_rst_r00h, .v_l_cq00h(d_v_l_cq00h), .v_cq01h(d_v_cq01h), .mem_cq01h(d_mem_cq01h),
-    .cp_cq01h(d_cp_cq01h), .atom_cq01h(d_atom_cq01h), .gwe_cq01h(d_gwe_cq01h), .gname_cq01h(d_gname_cq01h),
+    .cp_cq01h(d_cp_cq01h), .pp_cq01h(d_pp_cq01h), .atom_cq01h(d_atom_cq01h), .gwe_cq01h(d_gwe_cq01h), .gname_cq01h(d_gname_cq01h),
     .pwe_cq01h(d_pwe_cq01h), .pname_cq01h(d_pname_cq01h), .gsv_cq01h(d_gsv_cq01h), .gsn_cq01h(d_gsn_cq01h),
     .psv_cq01h(d_psv_cq01h), .psn_cq01h(d_psn_cq01h), .cguard_cq01h(d_cguard_cq01h), .cg_cq01h(d_cg_cq01h),
-    .cnone_cq01h(d_cnone_cq01h), .unit_cq01h(d_unit_cq01h), .pg_cq01h(d_pg_cq01h), .nob_cq01h(d_nob_cq01h),
+    .cnone_cq01h(d_cnone_cq01h), .unit_cq01h(d_unit_cq01h), .pg_cq01h(d_pg_cq01h), .nob_cq01h(d_nob_cq01h), .spec_cq01h(d_spec_cq01h),
     .eg_cq01h(eg), .egn_cq01h(egn), .ep_cq01h(ep), .epn_cq01h(epn), .ecv_cq01h(ecv),
     .gnt_v_cq01h(gnt_v), .gnt_idx_cq01h(gnt_idx),
     .row_prod_cq02h, .row_dep_cq02h, .row_code_cq02h, .grp_dep_cq02h, .grp_code_cq02h, .prv_dep_cq02h,
-    .prv_code_cq02h);
+    .prv_code_cq02h, .akind_cq02h, .acls_cq02h);
   // ec (the copy flag) is ooe_prodmap's; the lookup treats a copy's GPR
   // name as any producer's.
   logic unused;

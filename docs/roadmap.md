@@ -22,6 +22,15 @@ stubs the OOE model needs to be exercised.**
     ./tools/verify.sh            # green
 ```
 
+**RCU (2026-11-04; RA-36):** the block architecture is complete to RTL
+depth and snapshotted ([`design-snapshots/rcu-arch-overview.md`](design-snapshots/rcu-arch-overview.md)
+and its tabs). Its implementation session, RI, has started, model first:
+[`rcu-impl.md`](rcu-impl.md). The model met M0 (RI-8, accepted by RA
+2026-11-04) and is the RCU in both hosts; `CCV_RCU_IMPL=stub` selects the
+stub. RI's exit criteria are
+the Partition tab's M1 to M7
+([`design-snapshots/rcu-arch-partition.md`](design-snapshots/rcu-arch-partition.md)).
+
 **To hand back to the planning track:**
 [`rtl-findings-stage1.md`](rtl-findings-stage1.md) covers what Stage 1 found
 about the strategy, organised for that audience rather than this one. The
@@ -400,8 +409,10 @@ its parent (alone, before any parent instantiates it, within 16 NGD,
 2026-10-19), a register that drives an output held on every path it starts
 to that output's budget (2026-10-19), and a generated wrapper's feedthrough the one wire allowed (an
 end with no stages has no repeater); an
-assembled block checked from those files for convergence to 25, level by
-level, then timed whole, its ports registered on both sides.
+assembled block checked as a sum of parts from module-level runs (Daniel,
+2026-11-06; no whole-block synthesis): each level timed alone for
+convergence to 25, every instance on a unit at its parameters, its ports
+registered on both sides by its parts.
 `tools/check-ngd.py` measures every module at its units' parameters on
 ABC's mapping, with a timing pass that must agree with ABC's own longest
 path. No module is over the stage flop to flop. What broke the rules when
@@ -409,7 +420,7 @@ they were made, 153 findings in nine OOE modules (`ooe_rat`'s 46 with OI's
 next merge), is on `rtl/ngd-ratchet.json`: ports over the default for OA's
 budgets or a redesign, and paths straight through (and `ooe_select`'s glue
 around its two picks) for a regrouping or an inner declaration. No block
-top is RTL yet, so the whole-block pass runs on fixtures only.
+top is RTL yet, so the block checks run on fixtures only.
 
 ### CI harness ✅
 

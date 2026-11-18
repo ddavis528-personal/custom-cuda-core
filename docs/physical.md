@@ -21,10 +21,70 @@ changes around it.
 | backward | credit, stall | every cycle, reset low |
 | — | the reset | flopped once, `rst_n_q`, before any use (RST-1) |
 
-`STAGES = 0` is wires, used only for a feedthrough the floorplan routes
-across a wrapper where the distance needs no stage: a channel end with no
-stages has no repeater at all (below). The module is reusable (`clk`/`rst_n`
-are generic formals).
+**The boundary flop (`BOUNDARY`, default 1; Daniel, 2026-11-05, AR's revs
+285, 287).** The module holds `STAGES + BOUNDARY` stages: `STAGES` for the
+link's distance, `BOUNDARY` the block's own boundary register, built here
+instead of in the block, at the block's side of the end: at a source end the
+sender's last flop, at a destination end the receiver's first, for every
+signal (valid, payload, lead and wake forward; credit and stall back). They
+are never in series with a block's own: a block with flopped ends drives and
+takes its ports with logic. A flopped RECEIVING end adds one cycle to its
+crossing, `bnd_rx` (AR's revs 300 and 301): a crossing is `CCV_LAT_HOP +
+link_n + bnd_rx`, in `params/ccv_params.json`'s derives (`bnd_rx('channel')`)
+and in both hosts' links, and a block's own latency base never holds it. A
+flopped sending end adds none forward: it replaces the sender's own output
+register (AR's rev 285). `CCV_RT_ABUT` counts both flops for a block that
+takes and drives the ports with logic; in front of a block that still
+registers its own inputs and credit, as every DPI host does, a flopped
+receiving end is one stage more each way, so the hosts' checkers
+(`ROUND_TRIP`, `TIMEOUT_N`) and credit depth count it as a link stage. A boundary
+stage is built exactly as a link stage is. `BOUNDARY = 0` is the zero-cycle
+option, for an end listed in `params/links.json` `no_flop` (below).
+`STAGES + BOUNDARY = 0` is wires, used only for a feedthrough the floorplan
+routes across a wrapper where the distance needs no stage, or a no-flop end
+of an unrepeated link: such an end has no repeater at all (below). The module
+is reusable (`clk`/`rst_n` are generic formals).
+
+**Credit on receipt (`CREDIT_ON_RECEIPT`; AR's rev 322, RA-41; TI rev
+379).** At a receiving end listed in `params/links.json` `credit_on_receipt`
+(today `ooe_rcu_issue@rcu` and `miu_rcu_data@rcu`, no other), the boundary
+stage loads its credit flop from its own valid flop, so the credit goes back
+the cycle after a message is presented, with no register of the block's in
+series. That is the receiving block's promise, written into the channel's
+schema contract (`credit_on_receipt`): it takes every message the cycle it
+is presented, under kill, flush and reset included (one landing during a
+kill is taken and voided, never left or refused), it has no skid of its own
+there, and its storage is never borrowed from the credit. The wrapper has no
+credit port to the block on that end; the repeater's `dst_credit`, unread, is
+tied to 0, the one constant `tools/check-top-pure.py` allows (R2). The round
+trip there is the abutted one, `CCV_RT_ABUT + 2N` with no `bnd_rx`, in
+both hosts' checkers (`ROUND_TRIP`, `TIMEOUT_N`), so a flop in series on the
+credit fires the fixed-latency prompt (`--break fixed-all`). Refused: the
+attribute on a zero-cycle end (no boundary flop to load from: the repeater's
+elaboration and `tools/ccv_links.py`), on a sending end, and on any end whose
+channel carries no `credit_on_receipt` contract. Proved in
+`test/formal/fv_link.sv` (`FV_COR`: safety, conservation, full bandwidth at
+the abutted depth, which a flop in series, `FV_COR_SERIES`, fails); a block
+that takes a landed message a cycle late or drops it fails by name in both
+hosts (`--break cor-late`, `cor-drop`; the receivers' `cor_late`, required 0).
+
+Two things the boundary flop moves (TI's rev 326 row re:RI-11; AR rev 289,
+DA tab rev 108), neither binding while every end is no-flop:
+- **Stall.** A sender that takes stall into its launch decision ahead of its
+  first flop stops a cycle later with the flop in the wrapper (proved in
+  `test/formal/fv_link.sv` under `FV_BUILT`). So `CCV_RESCUE_DEPTH` and
+  `CCV_DRAIN_WAIT` are the round trip plus one, 3, and the credit checker's
+  stall rule is `1 + SRC_BOUNDARY + 2 × SRC_STAGES` cycles (`SRC_BOUNDARY`,
+  set by `tools/gen-skel.py` for every receiver whose sender's end is
+  flopped). Credits are unaffected.
+- **Leads.** A flopped end takes its lead slice in valid's cycle, so where
+  the boundary flop is the repeater's first stage its lead flops
+  (`bnd_lead_q`) are written every cycle under no enable (CG-5). They are
+  the capture the block's own budget held before, and `tools/check-cg.py`
+  counts them against the wrapper's 2%, the block's, per instance
+  (`RPT_BOUNDARY`); a link stage's lead stays on the repeater's own
+  allowance. A destination end's boundary behind link stages is the last
+  stage, gated by the stage before's valid, so it adds no ungated lead.
 
 **The payload enable is the stage's own valid flop.** The payload follows
 valid by one cycle, so the cycle it sits on a stage's input is exactly the
@@ -59,6 +119,11 @@ None is repeated today.
 The widget adds latency. What must move with it is outside the widget.
 
 **The round trip grows by 2N.** For a link with N stages each way:
+
+(A flopped receiving end in front of a block that registers its own inputs
+and credit, as every DPI host does, is one stage more each way: read N as
+N + bnd_rx throughout; AR's rev 309 (2). Not at a credit-on-receipt end,
+whose credit the boundary stage returns itself: N there.)
 
 - every checker on it takes `ROUND_TRIP = CCV_RT_ABUT + 2N`;
 - credit depth is at least that;
@@ -156,11 +221,24 @@ generated `ccv_<blk>_ports.svh`. Block RTL and its port list therefore stay
 the swap boundary: C++ shim, stub or RTL, inside a wrapper that doesn't
 change.
 
-**A channel end has a repeater only where its link has stages there**
-(Daniel, 2026-10-18: a wire through a module of its own is an unnecessary
-obfuscation, and NGD-5 refuses one in any design module). An end with none
-is connected straight through, `assign`s between the block's port and the
-wrapper's. A parameterised wrapper chooses with a generate-if on the stage
+**A channel end has a repeater wherever it has a flop: its link's stages
+there, or its boundary flop** (Daniel, 2026-10-18: a wire through a module of
+its own is an unnecessary obfuscation, and NGD-5 refuses one in any design
+module; 2026-11-05: one flop on every end by default). An end with neither, a
+no-flop end of an unrepeated link, is connected straight through, `assign`s
+between the block's port and the wrapper's.
+
+**No-flop ends (`"no_flop"` in `params/links.json`).** Each entry names a
+block type (or a list), `"channels"` (`"all"` or a list of the type's
+channels) and a `"why"`; `tools/ccv_links.py` refuses an unknown key, block or
+channel, a duplicate, a missing why, and `"all"` for a type whose RTL top
+exists. AR's rev 287 (1) allows no-flop only for an end whose block register
+drives or takes the port with 0 NGD (held at the wrapper by
+`tools/check-ngd.py`: every input straight into a flop, every output straight
+from one), a feedthrough, or a DPI host. Today every block is a DPI host or
+stub, so every type is listed and the generated top is what it was; a block
+leaves the list in the same change that brings its RTL top, and its ends take
+the flops then. A parameterised wrapper chooses with a generate-if on the stage
 count the top sets, so a new split still changes parameters only; a
 hard-reuse template has its ends fixed. A feedthrough always has its
 repeater, of no stages if the distance needs none: the one feedthrough

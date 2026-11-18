@@ -41,7 +41,9 @@
 // attributes say it reads a source), no-grant (ooe_rs's grant never
 // reaches rename), no-take-q (the go's pool correction drops the lagged
 // take, a check-build input: OA's rev 208) and no-take-q2 (the names' pool
-// register drops the older take: OA's rev 219). The last two need names
+// register drops the older take: OA's rev 219), unmet-now (the go reads the
+// unmet on time, not its register: OI-134) and no-last-take (the register's
+// unmet, its last take not subtracted). The last four need names
 // that bind: run-rtl.sh's scarce build (RENAME_SCARCE), 144 rows and a
 // GPR ceiling of 24, the model's set alike.
 // The sectioned build (RENAME_SECTIONS) adds no-merge (no head's attributes
@@ -87,6 +89,9 @@ void renameConfig(Config &c) {
 // leaves a trace the netlist's replay cannot follow (its group's grant never
 // comes). The comparison runs keep them, and stop there (fault).
 bool g_cg_no_faults = false;
+// pend-follows: the model's placement sees the pending group's writes
+// (cand_indep_pend off), which the RTL's does not (#35).
+bool g_pend_follows = false;
 void renameSectioned(Config &c) {
   if (g_cg_no_faults)
     c.inject_no_width_fault = c.inject_no_sized_fault = c.inject_no_converged_fault = c.inject_no_format_fault = true;
@@ -99,6 +104,7 @@ void renameSectioned(Config &c) {
     c.cand_lag = d.cand_lag;
     c.cand_return = d.cand_return;
     c.cand_indep = d.cand_indep;
+    c.cand_indep_pend = d.cand_indep_pend && !g_pend_follows;
     c.cand_home = d.cand_home;
     c.ret_late = d.ret_late;
   }
@@ -108,7 +114,7 @@ namespace {
 constexpr unsigned S = RENAME_S, R = RENAME_R, RP = RENAME_RP, C = RENAME_C, GW = RENAME_GW, PW = RENAME_PW,
                    NG = RENAME_NG, NP = RENAME_NP;
 constexpr unsigned N = RENAME_N, NR = RENAME_NR, FLG = RENAME_FLG, CLG = RENAME_CLG, FLP = RENAME_FLP, CLP = RENAME_CLP;
-constexpr unsigned NC = S * R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R + 2, FB = 8, FK = 4, XW = 20,
+constexpr unsigned NC = S * R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R + 2, FB = 8, FK = 4, XW = 21,
                    P = 2 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w ? w : 1; }
 constexpr unsigned LS = bits(S), LC = bits(C), LX = bits(XM + 1), W = bits(N);
@@ -176,6 +182,7 @@ void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model
 struct Uop {
   Core::RatLog::Ren r;
   unsigned pm = 0, pc = 0;   // its main entry's port, its copy's
+  uint8_t kc[2] = {};        // its entries' {class, kind}, the model's wakeKindClass (OA, re:OI-104)
 };
 struct Grp {
   std::vector<Uop> grp;
@@ -226,6 +233,12 @@ Grp snapGroup(const Core &c) {
     x.r = r;
     x.pm = r.mem ? R + mi++ : ri++;
     x.pc = r.copy != kNoEntry ? ri++ : 0;
+    for (unsigned k = 0; k != 2; ++k) {
+      const unsigned e = k == 0 ? r.main : r.copy;
+      if (e == kNoEntry) continue;
+      const auto kc = c.wakeKindClass(e);
+      x.kc[k] = uint8_t((kc.second << 2) | kc.first);
+    }
     if (x.pm < P) y.port_of[r.main] = x.pm;
     if (r.copy != kNoEntry && x.pc < P) y.port_of[r.copy] = x.pc;
     y.grp.push_back(x);
@@ -281,6 +294,8 @@ void compareRows(const Grp &y, const Grp *a) {
       ++rows;
       const bool prod = k == 1 || x.r.gwe || x.r.pwe;
       if (getBit(dut->row_prod_cq04h, p) != prod) fail("row_prod", p, 0, getBit(dut->row_prod_cq04h, p), prod);
+      const unsigned kc = getField(dut->akind_cq04h, p * 2, 2) | getField(dut->acls_cq04h, p * 3, 3) << 2;
+      if (kc != x.kc[k]) fail("kind and class", p, 0, kc, x.kc[k]);
       std::vector<uint8_t> want_row(N, 0), want_grp(P, 0), want_prv(P, 0);
       std::vector<uint8_t> code_row(N, 0), code_grp(P, 0), code_prv(P, 0);
       for (unsigned j = 0; j != N; ++j) {
@@ -346,6 +361,8 @@ void clearInputs() {
   dut->flr_cq01h = dut->flm_cq01h = 0;
   dut->ctl_notq = control == "no-take-q";
   dut->ctl_notq2 = control == "no-take-q2";
+  dut->ctl_unow = control == "unmet-now";
+  dut->ctl_nolt = control == "no-last-take";
   clearAll(dut->run_cq01h, S * LB);
   clearAll(dut->ret_cq01h, S * LT);
   dut->reach_cq01h = 0;
@@ -432,6 +449,7 @@ unsigned attrOf(const Core::RatLog::Ren &r) {
   x |= (r.cgroup == 7 ? 0u : r.cgroup & 7u) << 11;
   x |= (r.unit & 7u) << 14;
   x |= (r.pgroup & 7u) << 17;
+  x |= unsigned(r.spec && control != "no-spec") << 20;
   return x;
 }
 
@@ -615,13 +633,15 @@ void step(const Cycle &P, const Cycle &N) {
       if (got != sat(want, LU)) fail(what, s, 0, got, sat(want, LU));
     };
     if (std::getenv("RENAME_VERBOSE") && mismatches < 3 &&
-        (getField(dut->chk_unmet_g_cq04h, s * LU, LU) != sat(g.unmet_g[s], LU) ||
+        (getField(dut->chk_unmet_g_cq04h, s * LU, LU) != sat(s < g.unmet_on_g.size() ? g.unmet_on_g[s] : g.unmet_g[s], LU) ||
          getField(dut->chk_room_g_cq04h, s * LU, LU) != sat(g.room_g[s], LU)))
       std::fprintf(stderr, "  step %llu of core %llu: slot %u occ %d unmet_g %u room_g %u, rtl %u %u\n", core_steps, cores, s,
                    int(g.occ[s]), g.unmet_g[s], g.room_g[s], getField(dut->chk_unmet_g_cq04h, s * LU, LU),
                    getField(dut->chk_room_g_cq04h, s * LU, LU));
-    chk("unmet GPR floor differs", dut->chk_unmet_g_cq04h, g.unmet_g[s]);
-    chk("unmet predicate floor differs", dut->chk_unmet_p_cq04h, g.unmet_p[s]);
+    // OI-114's registered form: the check ports are the unmet floors as
+    // formed this cycle, before ooe_rename's register.
+    chk("unmet GPR floor differs", dut->chk_unmet_g_cq04h, s < g.unmet_on_g.size() ? g.unmet_on_g[s] : g.unmet_g[s]);
+    chk("unmet predicate floor differs", dut->chk_unmet_p_cq04h, s < g.unmet_on_p.size() ? g.unmet_on_p[s] : g.unmet_p[s]);
     chk("GPR room differs", dut->chk_room_g_cq04h, g.room_g[s]);
     chk("predicate room differs", dut->chk_room_p_cq04h, g.room_p[s]);
   }
@@ -689,6 +709,7 @@ void newCore(const Core &c) {
   skip = c.slots() != S || cfg.ckpts != C || cfg.rename_width > R || cfg.retire_per_rob > RP ||
          cfg.pred_zero != (1u << PW) - 1 || cfg.sectioned != (RENAME_NS != 0) ||
          (RENAME_NS && (cfg.full_rows || cfg.place != 0 || cfg.cand != 2 || cfg.cand_lag != 2 || !cfg.cand_return || !cfg.cand_indep ||
+                        cfg.cand_indep_pend == g_pend_follows ||
                         !cfg.cand_home || !cfg.ret_late)) || !cfg.rename_preds || gf.capacity() != NG || pf.capacity() != NP ||
          gf.bufferCap() != FB || gf.banks() != FK || pf.bufferCap() != FB || pf.banks() != FK || c.rsEntries() != N ||
          c.rsRcuEntries() != NR || cfg.ren_floor != FLG || cfg.ren_ceil != CLG || cfg.pred_ren_floor != FLP ||
@@ -769,6 +790,7 @@ void post(const Core &c) {
 int main(int argc, char **argv) {
   const unsigned seeds = argc > 1 && argv[1][0] != '-' ? unsigned(std::atoi(argv[1])) : 25;
   if (const char *c = std::getenv("RENAME_CONTROL")) control = c;
+  g_pend_follows = control == "pend-follows";
   {
     Config base;
     Core c(base);

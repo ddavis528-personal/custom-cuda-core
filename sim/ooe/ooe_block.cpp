@@ -1,3 +1,4 @@
+#include <functional>
 //===-- ooe_block.cpp - the OOE model at the swap boundary ---------------===//
 //
 // Packs and unpacks OOE's channels around ooe::Core, and nothing else: the
@@ -17,9 +18,11 @@
 #include "ooe_core.h"
 
 #include <cstdlib>
+#include <deque>
 #include <fstream>
 #include <map>
 #include <set>
+#include <cstdio>
 #include <tuple>
 
 namespace ccv {
@@ -75,6 +78,9 @@ public:
     };
   }
   ~OoeModel() override {
+    if (std::getenv("CCV_RX_CLS"))
+      std::fprintf(stderr, "RXCLS replay=%llu hinted=%llu atomic_fence=%llu shared=%llu load=%llu ordered=%llu store=%llu\n", (unsigned long long)rx_cls_[0],
+                   (unsigned long long)rx_cls_[1], (unsigned long long)rx_cls_[2], (unsigned long long)rx_cls_[3], (unsigned long long)rx_cls_[4], (unsigned long long)rx_cls_[5], (unsigned long long)rx_cls_[6]);
     // Sizing-sweep data (docs/ooe-model.md, "Sweeps"): every counter and
     // histogram, as JSON, when CCV_OOE_STATS names a file.
     const char *path = std::getenv("CCV_OOE_STATS");
@@ -104,6 +110,21 @@ private:
   /// rob tag -> the row its last done-owing issue, and its last memop, named
   /// (OI-85): a done or completion must echo it.
   std::map<unsigned, unsigned> row_sent_, cmpl_row_sent_;
+  /// The rob_tags whose done is the RCU-only class's, from their issue: R's
+  /// resource, not a warp-collective (OA's response OI-93).
+  std::set<unsigned> rcu_only_;
+  // A branch's or call's done carries its outcome on the lead fields too
+  // (AR rev 260, RCU spec rev 20); a ret's lead is don't-care. By uid at
+  // decode, by rob tag from issue. TI's check, OI-18. Bounded (OI-96): a
+  // uid leaves at its issue, its rob tag keeping the uid so a replay's
+  // re-issue keeps the mark; a uid never issued (a wrong path's) is pruned
+  // once kLeadWindow decodes are newer, far past what can be in flight.
+  static constexpr uint64_t kLeadWindow = uint64_t(1) << 16;
+  std::map<uint64_t, uint64_t> br_lead_tid_;      // uid -> its decode count
+  std::deque<std::pair<uint64_t, uint64_t>> br_lead_age_;   // (decode count, uid), in order
+  uint64_t decoded_ = 0;
+  std::set<unsigned> br_lead_;
+  std::map<unsigned, uint64_t> br_lead_uid_;      // rob tag -> the marked uid it holds
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   /// TI-46 (b), DA tab rev 96: decode-queue credits back to FET, one slot
   /// a tier-1 warp. A slot's return is what left the queue since the last:
@@ -132,6 +153,9 @@ private:
     // (TI-1) and the final compare reads through Kernel::prat0 (OI-3).
     // CCV_OOE_CONFIG=rename_preds=0 restores the fixed physPred windows.
     c.memop_rcu_done = false; // RCU sends no done for a memop (OI-4)
+    // MIU sends the early no-hit by MA-4's eligibility (AR 356), so OOE
+    // takes it (OA 410). CCV_OOE_CONFIG=l1_nohit=0 ignores it, as before.
+    c.l1_nohit = true;
     // Sectioned lanes (OI-29 to OI-33): registers are slices of rows, and
     // select grants the nine resources one op each (V-60). Every S1 op is
     // full width, so a cycle carries one lane op, one memop and one RCU op.
@@ -146,11 +170,11 @@ private:
     c.decq_warp_max = 0;
     unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop;
     for (const ChanInst &ci : kChanInsts) {
-      if (ci.chan == chanId("ccv_ooe_fet_redirect")) c.redirect_lat = ccv::kLatHop + ci.stages;
-      if (ci.chan == chanId("ccv_ooe_rcu_issue")) c.issue_link = ccv::kLatHop + ci.stages;
-      if (ci.chan == chanId("ccv_rcu_ooe_done")) c.done_link = ccv::kLatHop + ci.stages;
-      if (ci.chan == chanId("ccv_miu_rcu_data")) data_link = ccv::kLatHop + ci.stages;
-      if (ci.chan == chanId("ccv_miu_ooe_cmpl")) cmpl_link = ccv::kLatHop + ci.stages;
+      if (ci.chan == chanId("ccv_ooe_fet_redirect")) c.redirect_lat = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_ooe_rcu_issue")) c.issue_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_rcu_ooe_done")) c.done_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_miu_rcu_data")) data_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_miu_ooe_cmpl")) cmpl_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
     }
     // CCV_LAT_L1_MISS_WAKE is generated from the same links (OI-13), plus
     // the cycle an event-driven wake loses against a timed one (OA's
@@ -214,6 +238,22 @@ private:
     u.fetch_epoch = unsigned(get(p, c.dec_ooe, "fetch_epoch"));
     u.attr_raw = uint32_t(get(p, c.dec_ooe, "sched_attr"));
     u.attr = ooe::SchedAttr::decode(u.attr_raw);
+    // A cross-lane op is warp-collective: lat_class 5, CCV_LAT_COLLECTIVE
+    // (CCV_P_W_SCHED_ATTR; Daniel's responses OA-4; AR's rev 259). TI's
+    // check, OI-18.
+    if (((u.attr_raw >> 11) & 1u) && (u.attr_raw & 7u) != kLatCollective)
+      k_.fail("ooe: seq %llu is cross-lane with lat_class %u; a warp-collective op is lat_class %u",
+              (unsigned long long)uidSeq(m.tid), u.attr_raw & 7u, unsigned(kLatCollective));
+    ++decoded_;
+    if (((u.attr_raw >> 6) & 1u) && !((u.attr_raw >> kAttrRetBit) & 1u)) {
+      br_lead_tid_[m.tid] = decoded_;
+      br_lead_age_.emplace_back(decoded_, m.tid);
+    }
+    while (!br_lead_age_.empty() && br_lead_age_.front().first + kLeadWindow < decoded_) {
+      const auto t = br_lead_tid_.find(br_lead_age_.front().second);
+      if (t != br_lead_tid_.end() && t->second == br_lead_age_.front().first) br_lead_tid_.erase(t);
+      br_lead_age_.pop_front();
+    }
     u.mem_op = unsigned(get(p, c.dec_ooe, "mem_op"));
     u.space = unsigned(get(p, c.dec_ooe, "space"));
     u.ordering = unsigned(get(p, c.dec_ooe, "ordering"));
@@ -264,6 +304,11 @@ private:
       u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1
                   : ik == kImmLaneCtx ? (k_.brk == "lanectx-as-ctatid" ? 0 : 2)
                   : ik == kImmPrivOff ? 3 : -1;
+      // RA-18: imm_kind 6, call's link (pc + bytes(ilen) into imm). The
+      // code is TI's to add to the schema and stub.h's enum (OI-112); until
+      // then it is named here.
+      constexpr unsigned kIkCallLink = 6;
+      u.shape.call_link = ik == kIkCallLink;
       if (pu > kPredUseData) {
         k_.fail("ooe: pred_use %u is not a code", pu);
         u.cause = 2;   // F-ILLEGAL: an encoding naming nothing
@@ -272,8 +317,21 @@ private:
     return u;
   }
 
+  /// RI-11 pricing: acts deferred a cycle (Config::rx_lag), in arrival order.
+  std::vector<std::function<void()>> rx_due_, rx_next_;
+  std::set<unsigned> rx_hinted_;      ///< tags hinted, not yet completed
+  uint64_t rx_cls_[7] = {0, 0, 0, 0, 0, 0, 0};   ///< completions by class (bits 128 << i)
+  std::map<unsigned, unsigned> rx_kind_;   ///< rob tag -> 1 atomic/fence, 2 shared, 3 other
+  void rxAct(unsigned bit, std::function<void()> f) {
+    if (core_.config().rx_lag & bit) rx_next_.push_back(std::move(f));
+    else f();
+  }
   void takeInputs() {
     const Ch &c = ch();
+    rx_due_.swap(rx_next_);
+    rx_next_.clear();
+    for (auto &f : rx_due_) f();
+    rx_due_.clear();
     if (has(c.rau_ooe, 0)) {
       Receiver::Msg m = take(c.rau_ooe, 0);
       ooe::Alloc a;
@@ -284,16 +342,18 @@ private:
       a.warp_in_cta = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
       a.barrier_count = unsigned(get(m.payload, c.rau_ooe, "barrier_count"));
       a.cta_slot = unsigned(get(m.payload, c.rau_ooe, "cta_slot"));
-      core_.alloc(a);
+      rxAct(1, [this, a] { core_.alloc(a); });
     }
     if (hasIn(demote_) && has(unsigned(demote_), 0)) {
       Receiver::Msg m = take(unsigned(demote_), 0);
-      core_.demote(unsigned(get(m.payload, unsigned(demote_), "warp_id")));
+      const unsigned dw = unsigned(get(m.payload, unsigned(demote_), "warp_id"));
+      rxAct(2, [this, dw] { core_.demote(dw); });
     }
     if (hasIn(rel_) && has(unsigned(rel_), 0)) {
       Receiver::Msg m = take(unsigned(rel_), 0);
       // A held wait's answer names its warp (TI-40); the core takes a mask.
-      core_.barRelease(uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id"));
+      const uint32_t bm = uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id");
+      rxAct(4, [this, bm] { core_.barRelease(bm); });
       cred_rel_ |= uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id");
     }
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
@@ -306,12 +366,30 @@ private:
         auto r = row_sent_.find(d.rob_tag);
         if (r != row_sent_.end() && r->second != drow)
           k_.fail("ooe: rob tag %u done for row %u, but its issue named row %u", d.rob_tag, drow, r->second);
+        // The RCU-only class on its one slot, every other class off it
+        // (CCV_DONE_SLOT_RCU; OA's response OI-93). TI's check, OI-18.
+        const bool ro = rcu_only_.count(d.rob_tag) != 0;
+        if (ro != (s == ccv::prov::kDoneSlotRcu))
+          k_.fail("ooe: rob tag %u (%s) done on slot %u; the RCU-only class completes on slot %u "
+                  "(CCV_DONE_SLOT_RCU) and no other class does", d.rob_tag, ro ? "RCU-only" : "pool", s,
+                  ccv::prov::kDoneSlotRcu);
+        // Refused once here; the core counts the row its issue named.
+        d.row = r != row_sent_.end() ? r->second : drow;
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
+        // The lead (a cycle ahead; the slot hands it over with the payload)
+        // must say what the payload says, on a branch or a call.
+        if (br_lead_.count(d.rob_tag) && hasField(c.rcu_ooe, "lead_br_taken")) {
+          const bool lt = get(m.payload, c.rcu_ooe, "lead_br_taken") != 0;
+          const uint32_t lm = uint32_t(get(m.payload, c.rcu_ooe, "lead_br_mask"));
+          if (lt != d.branch_taken || lm != d.branch_mask)
+            k_.fail("ooe: rob tag %u branch done's lead (taken %u, mask %08x) is not its payload (taken %u, "
+                    "mask %08x)", d.rob_tag, unsigned(lt), lm, unsigned(d.branch_taken), d.branch_mask);
+        }
         // TI's d347d2c names the field branch_aux, renamed aux after it.
         for (const char *f : {"aux", "branch_aux"})
           if (hasField(c.rcu_ooe, f)) d.aux = uint32_t(get(m.payload, c.rcu_ooe, f));
-        core_.done(d);
+        rxAct(8, [this, d] { core_.done(d); });
       }
     // Completion hints (OA-23), taken as they land, as a fixed-latency
     // channel's must be: each names the memop's RS entry, and the model
@@ -325,7 +403,12 @@ private:
         auto e = rs_sent_.find(tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u hinted for RS entry %u, but its memop named entry %u", tag, rs, e->second);
-        core_.hint(tag);
+        // OA 410: no_hit makes the hint advice (notice_of.unless): no
+        // completion is promised, and the bank does not hold one to it.
+        const bool no_hit = hasField(c.cmpl_hint, "no_hit") && get(m.payload, c.cmpl_hint, "no_hit");
+        rxAct(16, [this, tag, no_hit] { core_.hint(tag, no_hit); });
+        if (no_hit) continue;
+        rx_hinted_.insert(tag);
       }
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)
       while (has(c.miu_ooe, s)) {
@@ -337,6 +420,15 @@ private:
         x.lane_mask = uint32_t(get(m.payload, c.miu_ooe, "lane_mask"));
         x.address = get(m.payload, c.miu_ooe, "address");
         x.mlc_miss = get(m.payload, c.miu_ooe, "mlc_miss") != 0;
+        // The fault lead (OI-125; AR's rev 314): a cycle ahead with the
+        // valid (the slot hands it over with the payload), lead_fault ==
+        // (status == 1) on every completion; never set by a replay.
+        if (hasField(c.miu_ooe, "lead_fault")) {
+          const bool lf = get(m.payload, c.miu_ooe, "lead_fault") != 0;
+          if (lf != (x.status == 1))
+            k_.fail("ooe: rob tag %u completion's lead_fault %u is not its status %u == fault", x.rob_tag,
+                    unsigned(lf), x.status);
+        }
         // MIU echoes the memop's RS entry (OA-23): any other is a completion
         // that would wake the wrong entry.
         const unsigned rs = unsigned(get(m.payload, c.miu_ooe, "rs_idx"));
@@ -346,11 +438,22 @@ private:
         auto cr = cmpl_row_sent_.find(x.rob_tag);
         if (cr != cmpl_row_sent_.end() && cr->second != crow)
           k_.fail("ooe: rob tag %u completed for row %u, but its memop named row %u", x.rob_tag, crow, cr->second);
+        x.row = cr != cmpl_row_sent_.end() ? cr->second : crow;
         auto e = rs_sent_.find(x.rob_tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u completed for RS entry %u, but its memop "
                   "named entry %u", x.rob_tag, rs, e->second);
-        core_.cmpl(x);
+        // RI-11 split (OA rev 350, AR rev 298): bit 32 flops every completion;
+        // 128 a replay (the miss's cancel), 256 a hinted (noticed) refill,
+        // 512 any other (on-completion classes, faults).
+        const bool hinted = rx_hinted_.erase(x.rob_tag) != 0;
+        auto kd = rx_kind_.find(x.rob_tag);
+        const unsigned kind = kd != rx_kind_.end() ? kd->second : 3;
+        // 128 replay, 256 hinted refill, 512 atomic or fence, 1024 shared, 2048 global load (unordered: the timed wake's confirm), 4096 ordered global, 8192 global store
+        const unsigned ci = x.status == ooe::kCmplReplay ? 0 : hinted ? 1 : kind == 1 ? 2 : kind == 2 ? 3 : kind == 4 ? 5 : kind == 5 ? 6 : 4;
+        const unsigned cb = 128u << ci;
+        rxAct((core_.config().rx_lag & 32) ? 32u : cb, [this, x] { core_.cmpl(x); });
+        rx_cls_[ci]++;
       }
   }
 
@@ -391,6 +494,7 @@ private:
         if (taken.count(s)) { held.insert(w); continue; }
         if (held.count(w) || oldest[w] != std::make_tuple(r->front().arrived, s, size_t(0)))
           continue;
+        if ((core_.config().rx_lag & 64) && r->front().arrived + 1 > now_) continue;
         if (best < 0 || r->front().arrived < when) { best = int(s); when = r->front().arrived; }
       }
       if (best < 0) return;
@@ -423,20 +527,31 @@ private:
       put(is, c.ooe_rcu, "done_row", x.row);   // OI-85
       // A copy and a memop's RCU issue owe no done (A-38, OI-4).
       if (!x.copy && x.res != ooe::Issue::kMemop) row_sent_[x.rob_tag] = x.row;
+      if (x.res == ooe::Issue::kRcuOp && x.byp_group != kBypCollective) rcu_only_.insert(x.rob_tag);
+      else rcu_only_.erase(x.rob_tag);
+      if (const auto t = br_lead_tid_.find(x.tid); t != br_lead_tid_.end()) {
+        br_lead_.insert(x.rob_tag);
+        br_lead_uid_[x.rob_tag] = x.tid;
+        br_lead_tid_.erase(t);
+      } else if (const auto b = br_lead_uid_.find(x.rob_tag); b != br_lead_uid_.end() && b->second == x.tid) {
+        // a replay's re-issue of the marked op: the mark stays
+      } else {
+        br_lead_.erase(x.rob_tag);
+        br_lead_uid_.erase(x.rob_tag);
+      }
       put(is, c.ooe_rcu, "warp_id", x.warp);
       put(is, c.ooe_rcu, "issue_mask", x.issue_mask);
       // A name is a row and a position (sectioned; unsectioned the position
       // is 0): rows in the phys_ fields, positions beside them.
       const auto row = [this](unsigned n) { return core_.nameRow(n); };
       const auto pos = [this](unsigned n) { return core_.namePos(n); };
-      put(is, c.ooe_rcu, "phys_src", (row(x.psrc[0]) << 8) | row(x.psrc[1]));
+      put(is, c.ooe_rcu, "phys_src", (row(x.psrc[0]) << ccv::prov::kWPhysReg) | row(x.psrc[1]));
       put(is, c.ooe_rcu, "phys_src2", row(x.psrc[2]));
       put(is, c.ooe_rcu, "src_pos",
           pos(x.psrc[0]) | pos(x.psrc[1]) << ccv::kWPhysPos | pos(x.psrc[2]) << (2 * ccv::kWPhysPos));
       if (x.send_imm) put(is, c.ooe_rcu, "imm", x.imm);
       put(is, c.ooe_rcu, "phys_dst", row(x.pdst));
       put(is, c.ooe_rcu, "dst_pos", pos(x.pdst));
-      put(is, c.ooe_rcu, "phys_pred_guard", x.ppguard);
       put(is, c.ooe_rcu, "phys_pred_dst", x.ppdst);
       put(is, c.ooe_rcu, "pred_we", x.pred_we);
       put(is, c.ooe_rcu, "merge_en", x.merge);
@@ -484,6 +599,7 @@ private:
         // hint (OA-23).
         put(mo, c.ooe_miu, "rs_idx", x.rs_idx);
         rs_sent_[x.rob_tag] = x.rs_idx;
+        rx_kind_[x.rob_tag] = (x.mem_op == ooe::kMemOpAtomicRead || x.mem_op == ooe::kMemOpAtomicWrite || x.mem_op == ooe::kMemOpFence) ? 1 : x.space == kSpaceShared ? 2 : x.ordering ? 4 : (x.mem_op == kMemStore || x.mem_op == kMemPredStore) ? 5 : 3;
         put(mo, c.ooe_miu, "issue_mask", x.issue_mask);
         put(mo, c.ooe_miu, "phys_dst", core_.nameRow(x.pdst));
         put(mo, c.ooe_miu, "dst_pos", core_.namePos(x.pdst));
@@ -690,6 +806,12 @@ private:
         s = (s + 1) % (kSlotR + 1);
       Bits msg = p.second;
       put(msg, c.ooe_rcu, "footprint", fp);
+      // RA-31's lead (OA's rev 307): from the entry's static fields.
+      // RA-43: the guard lead on every slot (phys_pred_guard left the
+      // payload); then R's sources into their lead and the A-1 copies.
+      putIssueLead(msg, c.ooe_rcu, s, fp, x.gpr_reads, x.send_imm, x.merge,
+                   x.pread, x.ppguard, k_.brk);
+      finishIssueLeads(msg, c.ooe_rcu, s, k_.brk);
       sendOn(c.ooe_rcu, s, msg, x.tid);
     }
     for (const auto &p : issues) {
@@ -701,6 +823,7 @@ private:
         Bits ct = msgOf(c.ooe_rcu);
         put(ct, c.ooe_rcu, "rob_tag", x.rob_tag);
         put(ct, c.ooe_rcu, "cont", 1);
+        finishIssueLeads(ct, c.ooe_rcu, s, k_.brk);
         sendOn(c.ooe_rcu, s, ct, x.tid);
       }
     }
@@ -751,6 +874,13 @@ private:
 
   void work() override {
     takeInputs();
+    // MA-5 (AR 345/347): MIU's credits per memop slot, so select sends no
+    // memop where sendOn would find none.
+    {
+      std::array<unsigned, 4> mc{};
+      for (unsigned p = 0; p != 4; ++p) mc[p] = Stub::credits(ch().ooe_miu, p);
+      core_.memopCredits(mc);
+    }
     core_.cycle(now_);
     takeUops();
     sendOutputs();

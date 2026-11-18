@@ -25,8 +25,8 @@ every message.
 ## 1. The kernel, from the compiler
 
 `c[i] = a[i] + b[i]` for 32 threads. The core pins one compiler snapshot,
-`tools/compiler.lock`: the `release` branch at `d9ddd2c` (source
-`f5fa030`). The kernel is that snapshot's own hand-scheduled listing,
+`tools/compiler.lock`: the `release` branch at `a293afe` (source
+`b9ae2c9`). The kernel is that snapshot's own hand-scheduled listing,
 test/elementwise.s in the compiler repository, and `test/kernels/vadd/kernel.cfg`
 gives the launch block and memory it runs against.
 
@@ -148,7 +148,7 @@ every channel for 2000 cycles, through the same wiring and the same checker
 bank:
 
 ```
-SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=220771 received=220771 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=179 idle_slots=0 violations=0
+SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=222333 received=222333 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 cor_late=0 credits_home=179 idle_slots=0 violations=0
 ```
 
 ## 5. One channel, from the schema down
@@ -169,7 +169,8 @@ independent slots, each its own credited link.
     "coh_op",
     "exclusive_req",
     "write_data",
-    "byte_mask"
+    "byte_mask",
+    "lead_set_index"
   ]
 }
 ```
@@ -186,6 +187,7 @@ typedef struct packed {
   logic                                          exclusive_req;
   logic [ccv_params_pkg::CCV_W_DATA-1:0]         write_data;
   logic [ccv_params_pkg::CCV_W_DATA/8-1:0]       byte_mask;
+  logic [ccv_prov_pkg::CCV_W_DCU_SET-1:0]        lead_set_index;  // LEAD
 } ccv_miu_dcu_req_t;
 ```
 
@@ -215,7 +217,7 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
+KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/55 violations=0
 XFER events=660 launched=660 match=yes channels_seen=33
 ```
 
@@ -241,11 +243,11 @@ instruction can be followed across every block it touches. Seq 12,
      41  ccv_fet_dec_instr              fet  -> dec       
      43  ccv_dec_ooe_uop                dec  -> ooe       
      47  EV_DISPATCH                    ooe          
-     66  EV_WAKEUP                      ooe          
+     63  EV_WAKEUP                      ooe          
      91  EV_OOE_MEMOP_HOLD_CYCLES       ooe          
      91  EV_ISSUE                       ooe          
-     92  ccv_ooe_rcu_issue              ooe  -> rcu     x4
      92  ccv_ooe_miu_memop              ooe  -> miu       
+     92  ccv_ooe_rcu_issue              ooe  -> rcu     x4
      94  ccv_rcu_miu_addr               rcu  -> miu       
      96  ccv_miu_dcu_req                miu  -> dcu       
      98  ccv_dcu_mlc_req                dcu  -> mlc       
@@ -287,20 +289,20 @@ in the same cycle, and gets 32 results back 4 cycles later:
      47  ccv_fet_dec_instr              fet  -> dec       
      49  ccv_dec_ooe_uop                dec  -> ooe       
      53  EV_DISPATCH                    ooe          
-    107  EV_WAKEUP                      ooe          
-    108  EV_WAKEUP                      ooe          
-    108  EV_ISSUE                       ooe          
-    109  ccv_ooe_rcu_issue              ooe  -> rcu     x4
-    111  EV_OOE_CANCEL_REPLAY           ooe          
-    111  ccv_rcu_lane_ops               rcu  -> lane   x32
-    115  ccv_lane_rcu_res               lane -> rcu    x32
-    117  ccv_rcu_ooe_done               rcu  -> ooe       
+    104  EV_WAKEUP                      ooe          
+    105  EV_WAKEUP                      ooe          
+    105  EV_ISSUE                       ooe          
+    106  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    108  EV_OOE_CANCEL_REPLAY           ooe          
+    108  ccv_rcu_lane_ops               rcu  -> lane   x32
+    112  ccv_lane_rcu_res               lane -> rcu    x32
+    113  ccv_rcu_ooe_done               rcu  -> ooe       
     133  EV_ISSUE                       ooe          
     134  ccv_ooe_rcu_issue              ooe  -> rcu     x4
     136  ccv_rcu_lane_ops               rcu  -> lane   x32
     140  ccv_lane_rcu_res               lane -> rcu    x32
-    142  ccv_rcu_ooe_done               rcu  -> ooe       
-    144  EV_RETIRE                      ooe          
+    141  ccv_rcu_ooe_done               rcu  -> ooe       
+    143  EV_RETIRE                      ooe          
 ```
 
 The trace converts to Perfetto (`tools/trace2perfetto.py`), with a track per
@@ -333,7 +335,7 @@ otherwise:
     .core_clk(core_clk),
     .rst_n(rst_n),
     ...
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1223), .LEAD_MASK(1223'h1ff)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
     ...
 ```
@@ -371,7 +373,7 @@ The gate's enable reads only flops of its own block. The wake is registered
 first (Q-49):
 
 ```systemverilog
-wire           en    = !sleep || wake_q || override_q || !rst_n_q;
+wire           en    = !sleep || override_q || !rst_n_q;
 ```
 
 The same top can be built with the C++ blocks inside it: `rtl/top/dpi/` holds
@@ -381,8 +383,8 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
-TRACES records=734/734 equal=yes byte_identical=no differing_cycles=0
+KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/55 violations=0
+TRACES records=767/767 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -408,9 +410,9 @@ SV top under `CCV_CHECK`.
 One of them: slot 0 of the channel from section 5.
 
 ```systemverilog
-  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(16)) u_miu_dcu_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1223), .CHANNEL(16), .LEAD_MASK(1223'h1ff), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[46432:45221])
+    .ch_payload(payload[48767:47545])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
@@ -425,8 +427,8 @@ now (section 10), and caught in simulation by the checker's end-of-test
 check:
 
 ```
-[20000] %Error: ccv_common_chk_credit.sv:293: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
-SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=209728 received=209728 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=54 credits_home=161 idle_slots=0 violations=18
+[20000] %Error: ccv_common_chk_credit.sv:317: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
+SKEL cycles=2000 blocks=45 chan_types=55 chan_insts=117 slots=179 sent=211069 received=211069 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=54 cor_late=0 credits_home=161 idle_slots=0 violations=31
 ```
 
 The C++ receivers count the same leak from their side:
@@ -484,7 +486,10 @@ a script is one. Its sections:
 - Stage 3 -- skeleton (S0: plumbing)
 - Stage 3 -- skeleton (S1: vadd)
 - Stage 4b -- OOE model unit tests (sim/ooe/)
+- RCU model unit tests (sim/rcu/; RI-2)
 - Stage 4c -- OOE RTL (rtl/ooe/)
+- RCU RTL benches (RI's test/rcu/run-rtl.sh)
+- RCU block -- ccv_rcu in lock-step with the model (RI's test/rcu/run-lockstep.sh)
 - SV top -- rtl/top/ (generated, tracked)
 - Formal proofs -- one credited link, and the block clock gate
 - Physical primitives -- sequential repeater
@@ -492,6 +497,7 @@ a script is one. Its sections:
 - Hardening wrappers -- params/links.json
 - Walkthrough -- docs/walkthrough.md
 - Verilator lint
+- scope -- the sections the change since $BASE needs
 
 It includes 29 lint rules (`tools/lint-rtl.py`). Each has a
 counter-example that must fire, and a paragraph in
@@ -502,10 +508,10 @@ counter-example that must fire, and a paragraph in
 From `docs/open-items.md`, which numbers every open item and never reuses an
 ID:
 
-- **Open:** Q-10, Q-17, Q-18, Q-42, Q-45, Q-50, Q-57, Q-60
+- **Open:** Q-10, Q-17, Q-42, Q-45, Q-50, Q-57, Q-60
 - **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-36, Q-37, Q-46, Q-48, Q-53, Q-59
 
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 5fb45d07ece8ed2f (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 8177745850caeea4 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

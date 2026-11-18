@@ -107,12 +107,33 @@ void init() {
   g->trace = plusarg("ccv_trace");
   if (!g->trace.empty() && !ccv::traceWriter().open(g->trace))
     die("cannot open trace %s", g->trace.c_str());
+  // Only a traced run checks launches against the bank's XFER events (OI-92).
+  setLogLaunches(!g->trace.empty() && g->k.brk == "none");
+#ifdef CCV_RCU_RTL
+  // RCU's RTL in the top (RI-44): the end-of-run compare reads its register
+  // files through the wrapper's exports (test/rcu/ccv_rcu_svh.sv).
+  {
+    const svScope rs = svGetScopeFromName("tb.u_top.u_rcu.u_blk");
+    if (!rs) die("CCV_RCU_RTL: no scope tb.u_top.u_rcu.u_blk");
+    g->k.hw_gpr = [rs](unsigned row, unsigned l) {
+      svSetScope(rs);
+      return uint32_t(ccv_rcu_rtl_gpr(int(row), int(l)));
+    };
+    g->k.hw_pred = [rs](unsigned row) {
+      svSetScope(rs);
+      return uint32_t(ccv_rcu_rtl_pred(int(row)));
+    };
+  }
+#endif
   g->skew_name = plusarg("ccv_shim_delay");
   if (unsigned bad = checkFieldTiling()) die("%s%d broken field table(s)", "", int(bad));
   g->m = std::make_unique<Machine>(
       ccv::kCreditDepth, [](int inst) { return makeKernelBlock(inst, g->k); });
   if (g->k.brk == "late-lead")
     for (Slot &s : g->m->slots()) s.late_lead = true;
+  if (g->k.brk == "cor-late" || g->k.brk == "cor-drop")
+    for (unsigned s = 0; s != kNumSlots; ++s)
+      if (g->m->slots()[s].cor) g->m->rx(s).holdNext(g->k.brk == "cor-drop");
 }
 
 /// kBlkInsts index of an instance name, by gen-top.py's naming rule; -1 for

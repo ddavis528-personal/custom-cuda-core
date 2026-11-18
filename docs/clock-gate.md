@@ -134,15 +134,36 @@ a cycle ahead, off every enable path.
 **Wake, registered (Q-49).** `wake` is registered inside the gate before it
 reaches anything, so the one path from another block ends at a flop, never
 at the ICG's enable. A wake high in cycle T opens the edge that ends cycle
-T + 1. The gate then stays open through T + `CCV_WAKE_LAT`, whatever the
-block reports: `WAKE_HOLD` = `CCV_WAKE_LAT` − 1 more edges after the register.
-A smaller `WAKE_HOLD` is refused at elaboration.
+T + 1. The gate then stays open through T + `CCV_WAKE_LAT` + 2, whatever
+the block reports: `WAKE_HOLD` = `CCV_WAKE_LAT` + 1 more edges after the
+register (AR rev 343, re:RI-38). A smaller `WAKE_HOLD` is refused at
+elaboration. The wake register is the hold counter itself: a wake loads it
+with every edge it opens, `WAKE_HOLD` + 1, and it counts down to 0.
 
 The hold is what makes Q-33 work from the receiver's side. A sender may put
 valid `CCV_WAKE_LAT` cycles after its wake, and the receiver must still be
 running then, even with nothing to do in between. `ccv_common_chk_wake` states
 that half as `wake_keeps_rx`. The register costs one of the 4 cycles
 `CCV_WAKE_LAT` allows, so no sender changes.
+
+**Why two cycles past `CCV_WAKE_LAT`** (AR rev 343, re:RI-38). Through
+T + `CCV_WAKE_LAT` alone, a block could sleep before a payload lands:
+- *The lead-valid payload.* A channel's payload lands a cycle after its
+  valid (a lead valid; RST-1). A valid in the window's last cycle,
+  T + `CCV_WAKE_LAT`, has its payload captured by the edge that ends
+  T + `CCV_WAKE_LAT` + 1, so that edge must be delivered too.
+- *The sleep path's lag.* The sleep decision sees `quiesced` two flops late:
+  through the input flop, then the hysteresis counter's full flag. A block
+  that captures in cycle C is busy from C + 1, but the gate reads it as
+  quiesced through C + 2. One more open cycle covers it.
+
+So the gate is open through T + `CCV_WAKE_LAT` + 2, and the rule for every
+block is: **its `quiesced` must drop from the cycle after it captures
+anything.** A capture makes the block busy the next cycle; a `quiesced` that
+lags further would let the gate close on work in flight.
+
+The common fix replaces a block's own detector for the case: RCU's local
+4-flop wake detector (RI-38) can go, which is RI's change.
 
 **What a block ORs into `wake`:** anything that must reach it while it sleeps.
 - every inbound channel's `_wake`;
@@ -161,16 +182,18 @@ that half as `wake_keeps_rx`. The register costs one of the 4 cycles
   (Q-46).
 
 **Where the gate's state lives.** The gate has two threshold counters of
-`CCV_CG_HYST_W` bits, each with a full flag, a hold counter, the wake
-register and the four input flops: 21 flops at the defaults. They run on the ungated clock, because
+`CCV_CG_HYST_W` bits, each with a full flag, the wake register (a hold
+counter of 3 bits at the default `WAKE_HOLD`) and the four input flops: 21
+flops at the defaults. They run on the ungated clock, because
 they must see every cycle and a gate clocked by its own output is a loop that
 timing analysis does not like. The counters and flags are one local clock
 gate of 14 flops, clocked only when a counter moves (4.7 NGD, DCGE 100% in
-every scenario; `tools/check-cg.py`); the wake register, the hold counter
-and the input flops, 7, are within the module's allowance of fewer than 8.
+every scenario; `tools/check-cg.py`); the wake register and the input
+flops, 7, are within the module's allowance of fewer than 8. A separate wake
+flop beside a hold counter of `WAKE_HOLD` would make 8, so the two are one.
 
 **Timing.** Every input of the enable is a flop of the gate's own: the wake
-register, the full flags, the hold counter, the flopped override and the
+register (the hold counter), the full flags, the flopped override and the
 flopped reset (CG-5). The thresholds reach only the flags' D. So the enable path is
 local, as a clock gate's must be, and shallow: 3.2 NGD. It sets up to the rising
 edge at the root of the block's clock tree, earlier than the flops see it.
@@ -203,8 +226,9 @@ Every proof starts from arbitrary flop contents with the first cycle in reset.
 | `spec`: `gated` equals a model built from input histories (shift registers, not the gate's counters) | as above | hysteresis one short; the wake back on the enable path, unregistered |
 | `wake_second_edge`, `wake_hold`, `override_opens`, `reset_opens`, `te_opens` | as above | the wake a cycle later still; reset left off the enable |
 | `episode`: wherever each threshold held one value through the current run, `gated` is what that value gives, against a model of run lengths | thresholds free, as CSRs | a threshold sampled only in reset; a count that wraps at the largest threshold |
-| `wake_keeps_rx`: running `CCV_WAKE_LAT` cycles after any wake | `ccv_common_chk_wake`, the sender's half assumed | a wake hold one short |
+| `wake_keeps_rx`: running from `CCV_WAKE_LAT` through `CCV_WAKE_LAT` + 2 cycles after any wake (`RX_HOLD` 2) | `ccv_common_chk_wake`, the sender's half assumed | a wake hold one short (`CCV_WAKE_LAT`) |
 | `q33_valid_meets_clock`: no contract-keeping valid arrives on a withheld edge | as above | |
+| `q33_lead_payload`: a valid at T + `CCV_WAKE_LAT` has its payload, a cycle later, land on a delivered edge | as above | the old hold, `CCV_WAKE_LAT` − 1 |
 | witnesses: the gate closes; a valid is captured right after a sleep | | |
 
 ## Decided, and open

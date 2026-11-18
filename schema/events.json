@@ -406,6 +406,201 @@
         "c": "issue_slot"
       },
       "tolerance": null
+    },
+    {
+      "name": "EV_RCU_GPR_WRITE",
+      "id": 33,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "A GPR row written; c is port << 4 | section_mask. Ports: LW 0, SW 1, MW 2, RW 3, RS 4. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "row",
+        "b": "lane_mask",
+        "c": "port_secmask"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_PRED_WRITE",
+      "id": 34,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "A predicate row written. Ports: PL 0, PM 1, PR 2, PC 3, PG 4. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "pred_row",
+        "b": "value_after",
+        "c": "port"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_BRANCH",
+      "id": 35,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "A branch resolved in R; taken is branch_mask != 0. aux as RI's model defines it (RI to document in docs/rcu-impl.md). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "rob_tag",
+        "b": "branch_mask",
+        "c": "aux"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_GUARD_FWD",
+      "id": 36,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "RCU taking an MIU predicate write (MIU to RCU) as a guard forward: a the issue slot, b the MIU slot, c the predicate row (RI-2 (d)). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "issue_slot",
+        "b": "miu_slot",
+        "c": "pred_row"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_RSRC_FWD",
+      "id": 37,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "An R source row forwarded from MIU (RA-39 fix (i), OA's rev 329). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "r_source",
+        "b": "miu_slot",
+        "c": "row"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_BYPASS_SEL",
+      "id": 38,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "An operand taken from a bypass rather than the PRF; c is select | section_mask << 8. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "issue_slot",
+        "b": "port",
+        "c": "select_secmask"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_KILL_DRAIN",
+      "id": 39,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "A kill's drain starts. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "warp_mask",
+        "b": "epoch",
+        "c": "kill_drain"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_KILL_ACK",
+      "id": 40,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "RCU acknowledges a kill. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "epoch",
+        "b": "unused",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_MIG_PAIR",
+      "id": 41,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "A migration's RAU notice and OOE map paired. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "warp_id",
+        "b": "direction",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_MIG_ROW_OUT",
+      "id": 42,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "A migration row sent (demotion). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "warp_id",
+        "b": "mig_row",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_MIG_ROW_IN",
+      "id": 43,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "A migration row written (restore). RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "warp_id",
+        "b": "mig_row",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_MIG_WAIT",
+      "id": 44,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "A migration's next row waits: reason 0, R holds R2 or RW; 1, no rcu_pca_mig credit or a stall. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "warp_id",
+        "b": "next_row",
+        "c": "reason"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_RESTORE_HOLD",
+      "id": 45,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "The warp at the restore FIFO's head waits for its pairing. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "warp_id",
+        "b": "unused",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_RESTORE_DONE",
+      "id": 46,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "A warp's restore completes. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "warp_id",
+        "b": "unused",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_RCU_IDLE",
+      "id": 47,
+      "class": "load_bearing",
+      "provisional": true,
+      "doc": "RCU quiesces (its block gate may close) or turns busy again. RCU's events (RI-2 (d), RI's rev 4): RCU has no internal arbitration (its migration pairing takes the oldest entry, fixed by the RCU spec's Migration tab), so each event's cycle follows from its inputs and all are load_bearing, exact between the RCU model (sim/rcu/) and the RCU RTL.",
+      "fields": {
+        "a": "idle",
+        "b": "unused",
+        "c": "unused"
+      },
+      "tolerance": null
     }
   ],
   "uid_layout": {

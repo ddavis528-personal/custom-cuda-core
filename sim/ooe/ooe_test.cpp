@@ -37,6 +37,9 @@ namespace {
 
 int g_fail = 0;
 bool g_quiet = false;     ///< a negative control's expected failures
+int g_mcred_depth = int(ccv::prov::kMemopCredits);   ///< MA-5: every Env's MIU credits a slot (-1 none)
+bool g_row_no_hold = false;   ///< testRowHold: select issues past 3 dones in flight
+unsigned g_row_over = 0;      ///< testRowHold: OI-90's check fired
 /// Called after every core cycle of every Env: an RTL testbench compiled
 /// with OOE_TEST_AS_LIBRARY uses it to check RTL against the live core.
 void (*g_cycle_hook)(const Core &) = nullptr;
@@ -44,6 +47,11 @@ void (*g_config_hook)(Config &) = nullptr;   // an RTL bench's settings, over ev
 /// An RTL bench's settings over each random test's own (randomConfig's last
 /// step): what the bench's build is for, whatever the seed and mode chose.
 void (*g_random_config_hook)(Config &) = nullptr;
+/// The random programs predict every branch FET's way (an RTL bench whose
+/// block has no squash yet, test/ooe/rob_tb.cpp): the draws are the same,
+/// only the prediction is the outcome.
+bool g_random_predict_all = false;
+unsigned g_random_ret_every = 0;   // every n-th random branch a ret (an RTL bench's ret_hold run)
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
 void (*g_pre_cycle_hook)(const Core &) = nullptr;
@@ -52,6 +60,7 @@ void (*g_pre_cycle_hook)(const Core &) = nullptr;
 /// clock-gating scenarios).
 unsigned g_dec_every = 1, g_dec_width = 6;
 std::string g_test;
+std::string g_random_only;   // testRandom runs only this test when set (testCogrant)
 #define EXPECT(c, ...)                                                      \
   do {                                                                      \
     if (!(c)) {                                                             \
@@ -71,19 +80,20 @@ uint32_t attr(bool miu, bool rcu, bool cross, bool wg, bool wp, unsigned memk, b
          uint32_t(wp) << 9 | memk << 7 | uint32_t(br) << 6 | ser << 3 | lat;
 }
 
-enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp, kAtomic };
+enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp, kAtomic, kColl, kReconv };
 
 /// A kind's unit (its lat_class) and its consumer group (Config::byp).
-unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp || k == kAtomic ? 1 : k == kSfu ? 4 : 0; }
+unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp || k == kAtomic ? 1 : k == kSfu ? 4 : k == kColl ? 5 : 0; }
 /// Its bypass group as a producer (sched_attr's bypass_group).
 unsigned pgroupOf(Kind k) {
-  return k == kSfu ? Config::kGrpSfu : k == kFp ? Config::kGrpFp : k == kPlogic ? Config::kGrpPred : Config::kGrpInt;
+  return k == kSfu ? Config::kGrpSfu : k == kFp ? Config::kGrpFp : k == kPlogic ? Config::kGrpPred
+       : k == kColl ? Config::kGrpColl : Config::kGrpInt;
 }
 /// Its group as a consumer: a memop consumes as address calculation, and
 /// an op RCU executes takes no bypass (V-48).
 int groupOf(Kind k) {
   if (k == kLoad || k == kStore || k == kAtomic) return int(Config::kGrpAddr);
-  if (k == kRcuOp || k == kPlogic || k == kBranch) return -1;
+  if (k == kRcuOp || k == kPlogic || k == kBranch || k == kColl) return -1;
   return int(pgroupOf(k));
 }
 
@@ -92,11 +102,16 @@ struct Op {
   Kind k = kLane;
   unsigned dst = 0, src[3] = {}, nsrc = 0, pdst = 0, pguard = 0, pq[2] = {};
   bool guard = false, cross = false, taken = false, pred_taken = false;
+  /// kColl: vote (a predicate destination, pdst) or ballot (a GPR), each
+  /// reading pq[0] as its predicate source, qualifiers in imm as pand's
+  /// (RA-29 (e)); neither, a shfl.
+  bool vote = false, ballot = false;
   uint32_t mask = kFullMask;
   uint32_t tmask = kFullMask;    ///< kBranch: the lanes that take it, when taken
   unsigned w = 0;                ///< sectioned: the destination's width code
   bool backward = false;         ///< a backward branch (OA-14's rotation)
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
+  unsigned pc_hi = 0;            ///< pc[47:32] (a warp's code window, CCV_W_PC_WINDOW)
   unsigned chw = 2;              ///< kChw: the width code it sets on dst
   unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
   // kAtomic (AR-21; O-72, TI-39): src[0] rbase, src[1] rindex (A1's
@@ -108,6 +123,7 @@ struct Op {
   unsigned passes = 1;
   bool red = false, afault = false;
   bool cas = false, late2 = false;
+  bool cas_pd = false;           ///< a CAS writes pd (pdst) from its second slot (OI-127)
   unsigned csrc[2] = {}, ncsrc = 0;
   /// kExit (TI-27): last, its fetch clears the warp's last live lanes, so
   /// FET fetches no further; final, the mark FET sends (the last exit's, or
@@ -136,6 +152,8 @@ struct Op {
   /// its done's aux.
   bool ret = false;
   uint32_t ret_to = 0;
+  bool call = false;   ///< kBranch: a call, its link in imm (RA-18, imm_kind 6)
+  unsigned ilen = 1;   ///< the instruction length code
   uint32_t lanes = 0;
 };
 
@@ -143,16 +161,17 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   Uop u;
   u.tid = tid;
   u.warp = warp;
-  u.pc = 0x1000 + 4 * (tid & 0xffff);
+  u.pc = (uint64_t(o.pc_hi) << 32) | (0x1000 + 4 * (tid & 0xffff));
   u.group_mask = o.mask;
   u.fetch_epoch = epoch;
-  u.ilen = 1;
+  u.ilen = o.ilen;
   for (unsigned i = 0; i != 3; ++i) u.src[i] = o.src[i];
   u.dst = o.dst;
   u.w = o.w;
   u.backward = o.backward;
   u.cause = o.cause;
   u.shape.srd = o.srd;
+  u.shape.call_link = o.call;
   u.fmt_rsv = o.fmt_rsv;
   u.fmt_opnd = o.fmt_opnd;
   for (unsigned i = 0; i != o.nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
@@ -164,6 +183,17 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   case kFp: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 1); break;     // a lane FP op
   case kSfu: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 4); break;   // a spare lane unit
   case kRcuOp: u.attr_raw = attr(0, 1, 0, 1, 0, 0, 0, 0, 0); break;
+  case kColl:                                                // a warp-collective: R, lat_class 5
+    u.attr_raw = attr(0, 0, 0, !o.vote, o.vote, 0, 0, 0, 5);
+    if (o.vote || o.ballot) {
+      u.shape.pred_logic = true;
+      u.imm = o.pq[0] | o.pq[1] << 3;
+    }
+    if (o.vote) {
+      u.pred_we = true;
+      u.pred_dst = o.pdst;
+    }
+    break;
   case kSetp:
     u.attr_raw = attr(0, 0, 0, 0, 1, 0, 0, 0, 1);
     u.pred_we = true;
@@ -219,6 +249,10 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.attr_raw = attr(0, 1, 0, o.chw_writes, 0, 0, 0, o.sibling ? 0 : 1, 0) | (o.sibling ? 1u << 20 : 0u);
     u.imm = o.chw;
     break;
+  case kReconv:   // C_RECONV: serial 5, every other attribute bit 0 (OA rev 393)
+    u.attr_raw = attr(0, 0, 0, 0, 0, 0, 0, kSerNop, 0);
+    u.imm = 0xA5;   // its payload, ignored
+    break;
   }
   // A chwidth carries FET's converged mark (O-81) unless the test diverges it.
   u.all_waiting = o.k == kBarrier ? o.aw && !o.arrive : o.k == kChw ? !o.diverged : o.mark;
@@ -246,6 +280,9 @@ Uop atomSecond(const Op &o, const Uop &first) {
   }
   u.src[2] = 0;
   u.dst = o.dst;
+  // A CAS's pd beside rd (OI-127; TI rev 366).
+  u.pred_we = o.cas && o.cas_pd;
+  u.pred_dst = u.pred_we ? o.pdst : 0;
   u.attr_raw = (first.attr_raw & ~(1u << 17)) | 1u << 18 | (o.red ? 0u : 1u << 10);   // writes_gpr: rd
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
@@ -266,11 +303,25 @@ struct Env {
   // contract knobs
   unsigned fetch_delay = 3;          ///< FET to OOE, so stale uops are in flight
   unsigned miss_pct = 0;             ///< loads that miss L1
+  bool nohit = false;                ///< OA 410: MIU sends a no-hit hint for each L1 miss
+  /// Issue to the no-hit's payload landing (CCV_LAT_L1_NOHIT; AR 353).
+  unsigned nohit_lat = ccv::prov::kLatL1Nohit;
+  std::multimap<uint64_t, unsigned> nohits;  ///< no-hit hints due, by cycle: rob tag
   unsigned miss_extra = 25;          ///< past-L1 latency beyond CCV_LAT_L1_CMPL
   bool rcu_fast = false;             ///< dones earlier than the bound
   /// Load data past L1 becomes readable this many cycles after the
   /// completion lands (a longer ccv_miu_rcu_data link, in issue-time terms).
   unsigned data_after_cmpl = 0;
+  /// MA-5: MIU's credits per memop slot (CCV_MEMOP_CREDITS), each back
+  /// mcred_ret cycles after its memop leaves, about when an L1 hit's entry
+  /// frees (-1: the core is told none, as before MA-5).
+  int mcred_depth = g_mcred_depth;
+  unsigned mcred_ret = ccv::prov::kLatL1Cmpl + 2;
+  std::array<unsigned, 4> mcred{};
+  std::multimap<uint64_t, unsigned> mcred_back;
+  bool mcred_init = false;
+  unsigned mcred_over = 0;              ///< memops sent on a slot with no credit
+  std::array<unsigned, 4> mcred_sent{}; ///< memops per slot
 
   struct Warp {
     unsigned id = 0, slot = 0, epoch = 0;
@@ -351,6 +402,8 @@ struct Env {
     bool started = false, hold = false, faulted = false, final = false;
     uint64_t t_ready = 0;
     unsigned T = 0;
+    unsigned P = 0;              ///< a CAS's pd, as A2 names it (OI-127)
+    bool has_p = false;          ///< P is named (pp0 is a register when pred_zero is not 0)
   };
   std::map<uint64_t, Atom> atom;
   unsigned atom_mlc_pct = 0;                     ///< atomic reads that report an MLC miss
@@ -381,6 +434,11 @@ struct Env {
     /// PF-41 (AR's revs 116-117): with provisional, a provisional warp is
     /// demoted the moment a ready parked warp appears, no threshold wait.
     bool preempt = false;
+    /// RA-17 (AR's answers to RA-6 and RA-8): a migration's rows go
+    /// through R's PRF ports, one in each cycle R holds no op, not a
+    /// read or write port of their own. Off: 17 rows in 17 cycles, as
+    /// TI-21 has them, on the ports charge_ports names.
+    bool r_ports = false;
   } swap;
   enum : unsigned { kNever = 0, kSwap = 1, kEvict = 2 };
   unsigned hop = ccv::kLatHop;
@@ -390,6 +448,21 @@ struct Env {
   std::map<std::pair<unsigned, size_t>, uint64_t> served;   ///< (warp, index) -> when its DRAM fill lands
   std::vector<std::pair<uint64_t, uint64_t>> read_busy, write_busy;   ///< migration port intervals
   uint64_t write_conflicts = 0;          ///< cycles a restore's write port would have been short
+  /// RA-17: a migration's rows under r_ports, each moved in a cycle R held
+  /// no op; done(last) runs at the cycle its last row moved.
+  struct Xfer { uint64_t from = 0; unsigned left = ccv::kMigrationCycles; std::function<void(uint64_t)> done; };
+  std::vector<Xfer> xfers;
+  uint64_t xfer_rows = 0, xfer_waits = 0;   ///< rows moved, and cycles a row waited on a busy R
+  uint64_t xfer_max = 0;                    ///< the longest migration, first row's cycle to last
+  /// A migration of 17 rows from cycle first: under r_ports, as R allows;
+  /// else in 17 cycles. done(last) at the cycle of its last row.
+  void migrate(uint64_t first, std::function<void(uint64_t)> done) {
+    if (!swap.r_ports) { done(first + ccv::kMigrationCycles - 1); return; }
+    Xfer x;
+    x.from = first;
+    x.done = std::move(done);
+    xfers.push_back(std::move(x));
+  }
   std::map<std::pair<unsigned, size_t>, uint64_t> tid_at;   ///< (warp, index) -> its latest correct-path tid
   std::map<unsigned, unsigned> slot_owner;                  ///< slot -> its latest occupant (launch, activate)
   // Measures: swaps, each demoted slot's empty time (from the miss at the
@@ -462,8 +535,9 @@ struct Env {
     // PCA's command beside it: the first row a hop on, 16 more, done to RAU,
     // RAU's decision, activate.
     const uint64_t first = a + 2 * hop;
-    write_busy.push_back({first, first + ccv::kMigrationCycles});
-    acts.insert({first + 16 + hop + 1 + hop, [this, id, slot] {
+    if (!swap.r_ports) write_busy.push_back({first, first + ccv::kMigrationCycles});
+    migrate(first, [this, id, slot](uint64_t last) {
+    acts.insert({last + hop + 1 + hop, [this, id, slot] {
       Alloc ac;
       ac.warp = id;
       ac.slot = slot;
@@ -480,6 +554,7 @@ struct Env {
       restore_busy = false;
       ++swaps;
     }});
+    });
   }
 
   /// RAU on OOE's report: a stalled head with an outstanding load.
@@ -588,9 +663,10 @@ struct Env {
     }
     const uint64_t migrate = t + hop + 1;            // drained to RAU, its decision
     const uint64_t first = migrate + 2 * hop;        // migrate to RCU, the first row to PCA
-    if (swap.charge_ports) read_busy.push_back({migrate + hop, migrate + hop + ccv::kMigrationCycles});
+    if (swap.charge_ports && !swap.r_ports) read_busy.push_back({migrate + hop, migrate + hop + ccv::kMigrationCycles});
     const unsigned slot = x->slot, id = x->id;
-    const uint64_t decide = first + 16 + hop + 1;     // done to RAU, its decision
+    this->migrate(first, [this, slot, id](uint64_t last) {
+    const uint64_t decide = last + hop + 1;           // done to RAU, its decision
     acts.insert({decide, [this, slot, id, decide] {
       // Free the slot (alloc_op 0) and, at the same decision, pick a parked
       // warp for it; the warp is parked, ready when its fill has landed.
@@ -609,10 +685,14 @@ struct Env {
       demote_busy = false;
       rauRestore(decide);
     }});
+    });
   }
 
   explicit Env(const Config &c, unsigned seed = 1) : cfg(c), core(c), rng(seed) {
-    core.on_error = [this](const std::string &m) { errors.push_back(m); };
+    core.on_error = [this](const std::string &m) {
+      if (m.rfind("OI-90", 0) == 0) ++g_row_over;
+      errors.push_back(m);
+    };
     const char *d = std::getenv("OOE_TEST_TRACE");
     core.on_event = [this, d](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
       // TI-21: a restored warp's first rename ends its slot's gap.
@@ -813,11 +893,13 @@ struct Env {
     auto it = m.find(preg);
     if (it == m.end()) return;    // never written: architectural state
     const uint64_t at = readableFor(it->second, pred ? -1 : group);
-    if (t < at && !pred && op_of[it->second.tid].k == kAtomic && op_of[tid].k != kAtomic) {
+    if (t < at && op_of[it->second.tid].k == kAtomic && op_of[tid].k != kAtomic) {
       // An atomic's consumers wake once, on its last write (V-71): an
       // earlier read is never a speculation a replay may clean up.
       errors.push_back("V-71: tid " + std::to_string(tid) + " reads atomic tid " + std::to_string(it->second.tid) +
-                       "'s result at " + std::to_string(t) + ", before its last pass");
+                       "'s result at " + std::to_string(t) + ", before its last pass (" + (pred ? "pp" : "p") +
+                       std::to_string(preg) + ", readable at " + std::to_string(at) + "; writer issues " +
+                       issues_of[it->second.tid] + "; reader issues " + issues_of[tid] + ")");
       return;
     }
     if (t < at) {
@@ -854,10 +936,14 @@ struct Env {
     for (unsigned i = 0; i != o.nsrc; ++i) checkRead(is.tid, is.psrc[i], false, group);
     if (is.merge && gpr(is.pdst) && o.k != kLoad) checkRead(is.tid, is.pold, false, group);
     if (o.guard || o.k == kBranch) checkRead(is.tid, is.ppguard, true, -1);
-    if (o.k == kPlogic) {
-      // the qualifier sources: the core renamed them; find them by RAT is
-      // not visible here, so they are checked through the predicate merge
-      // and the guard paths only.
+    if (o.k == kPlogic || (o.k == kColl && (o.vote || o.ballot))) {
+      // The qualifier sources, renamed into imm (TI-1; vote's and ballot's
+      // too, RA-29 (e)): each physical predicate, its negate above it, must
+      // be readable as the op issues.
+      constexpr unsigned w = ccv::prov::kWPhysPred;
+      if (!is.send_imm) violation(is.tid, "predicate sources without imm");
+      checkRead(is.tid, is.imm & ((1u << w) - 1), true, -1);
+      checkRead(is.tid, (is.imm >> (w + 1)) & ((1u << w) - 1), true, -1);
     }
     if (is.pred_we && is.merge) checkRead(is.tid, is.ppold, true, -1);
     // Results: when they are readable, and when they land.
@@ -874,6 +960,7 @@ struct Env {
       const unsigned bound = cfg.issue_link + lat - 1 + cfg.done_link;
       Done d;
       d.rob_tag = is.rob_tag;
+      d.row = is.row;   // RCU echoes the issue's row (OI-85)
       if (o.k == kBranch) {
         d.branch_taken = correct[is.tid] ? o.taken : rnd(2);
         d.branch_mask = d.branch_taken ? (correct[is.tid] ? o.tmask : kFullMask) : 0;
@@ -891,7 +978,7 @@ struct Env {
   /// operand read, never speculative), or A2, the lane op.
   void atomIssue(const Issue &is, const Op &o) {
     issues_of[is.tid] += std::to_string(t) + "@" + std::to_string(is.port) + "/a" + std::to_string(is.res) + " ";
-    const Atom &a = atom[is.tid];
+    Atom &a = atom[is.tid];
     if (is.res == Issue::kMemop) {
       const size_t before = viol[is.tid].size();
       if (gpr(is.pdst)) {
@@ -926,12 +1013,26 @@ struct Env {
     for (unsigned i = 1; i != 3; ++i)
       if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpInt));
     if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
+    // A CAS's pd: A2 writes it on every pass, merged from the old one
+    // (OI-127, OA rev 380); its consumers read it after the last (V-71).
+    const bool want_pd = o.cas && o.cas_pd;
+    if (is.pred_we != want_pd || (want_pd && is.ppdst == cfg.pred_zero))
+      errors.push_back("OI-127: tid " + std::to_string(is.tid) + "'s A2 pred_we " + std::to_string(is.pred_we) +
+                       " ppdst " + std::to_string(is.ppdst) + ", want " + (want_pd ? "its pd" : "none"));
+    if (is.pred_we) {
+      if (is.merge) checkRead(is.tid, is.ppold, true, -1);
+      if (a.has_p && a.P != is.ppdst) errors.push_back("OI-127: tid " + std::to_string(is.tid) + "'s A2 renames pd between passes");
+      a.P = is.ppdst;
+      a.has_p = true;
+      pready[is.ppdst] = {t, ~uint64_t(0) >> 1, is.tid, 1, 0, false, false};
+    }
     const unsigned lat = cfg.unitLat(1);
     gready[is.pdst] = {t, t + lat, is.tid, 1, Config::kGrpInt, true, false};
     gwriter[is.pdst] = {is.tid, t};
     landings.insert({t + lat, {is.pdst, is.tid}});
     Done d;
     d.rob_tag = is.rob_tag;
+    d.row = is.row;
     dones.insert({doneRoom(t + (rcu_fast ? 2 : cfg.issue_link + lat - 1 + cfg.done_link)), d});
   }
 
@@ -941,6 +1042,7 @@ struct Env {
     Atom &a = atom[m.tid];
     Cmpl c;
     c.rob_tag = m.rob_tag;
+    c.row = m.row;   // MIU echoes the memop's row (OI-85)
     c.rs_idx = m.rs_idx;
     const uint64_t when = cmplRoom(t + 4 + rnd(miss_extra));
     const std::string who = "tid " + std::to_string(m.tid);
@@ -986,6 +1088,7 @@ struct Env {
       if (!c.more) {
         a.final = true;
         if (gready.count(a.T)) gready[a.T].late = when + data_after_cmpl;
+        if (a.has_p && pready.count(a.P) && pready[a.P].tid == m.tid) pready[a.P].late = when + data_after_cmpl;
       }
     }
     cmpls.insert({when, c});
@@ -1084,6 +1187,7 @@ struct Env {
     (void)before;
     Cmpl c;
     c.rob_tag = m.rob_tag;
+    c.row = m.row;   // MIU echoes the memop's row (OI-85)
     c.rs_idx = m.rs_idx;
     uint64_t when;
     // TI-21: a load that misses to DRAM, once per program position (its
@@ -1136,6 +1240,11 @@ struct Env {
       // A hit the channel has no room for at the L1 contract completes
       // later, which is a miss.
       hit = hit && when == t + cfg.lat_l1_cmpl;
+      // OA 410: the address stage's no-hit, payload at I+CCV_LAT_L1_NOHIT (t
+      // is I plus the payload stage; AR 353); ooe_block defers it a cycle
+      // under rx_lag 16.
+      if (!hit && nohit)
+        nohits.insert({t + nohit_lat - 1 + ((cfg.rx_lag & 16) ? 1 : 0), m.rob_tag});
       hit_of[m.tid] = hit;
       if (gpr(m.pdst)) {
         // Readable at the L1 wake on a hit; on a miss, after the completion.
@@ -1173,8 +1282,14 @@ struct Env {
     }
     // OA-23's hint, two cycles ahead of its completion; none for an
     // abandoned load (PF-23).
-    for (auto r = cmpls.equal_range(t + 2); r.first != r.second; ++r.first)
+    // rx_lag 16 (C9h): the hint acts a cycle after it lands, as ooe_block
+    // defers it, so the core takes it one cycle ahead of its completion.
+    for (auto r = cmpls.equal_range(t + ((core.config().rx_lag & 16) ? 1 : 2)); r.first != r.second; ++r.first)
       if (r.first->second.status != kCmplReplay) core.hint(r.first->second.rob_tag);
+    for (auto it = nohits.begin(); it != nohits.end() && it->first <= t;) {
+      if (pend.count(it->second)) core.hint(it->second, true);
+      it = nohits.erase(it);
+    }
     // TI-21: a restore's rows hold a PRF write port (OA's rev 132): count
     // the cycles its landings would have found the ports short.
     if (!write_busy.empty()) {
@@ -1219,10 +1334,28 @@ struct Env {
       for (const auto &b : read_busy) busy += b.first <= t && t < b.second;
       core.migrationReads(busy);
     }
+    if (mcred_depth >= 0) {
+      if (!mcred_init) mcred.fill(unsigned(mcred_depth)), mcred_init = true;
+      for (auto it = mcred_back.begin(); it != mcred_back.end() && it->first <= t; it = mcred_back.erase(it))
+        ++mcred[it->second];
+      core.memopCredits(mcred);
+    }
     if (g_pre_cycle_hook) g_pre_cycle_hook(core);
     const auto presets = std::move(preset_cw);
     preset_cw.clear();
     core.cycle(t);
+    // RA-17: a migration's row moves in each cycle R held no op (its read
+    // or write in the cycle after; a cycle either way).
+    for (auto it = xfers.begin(); it != xfers.end();) {
+      if (t < it->from) { ++it; continue; }
+      if (!core.rIdle()) { ++xfer_waits; ++it; continue; }
+      ++xfer_rows;
+      if (--it->left) { ++it; continue; }
+      xfer_max = std::max<uint64_t>(xfer_max, t - it->from + 1);
+      auto done = std::move(it->done);
+      it = xfers.erase(it);
+      done(t + 1);
+    }
     for (const auto &pc : presets) core.presetWidths(pc.first, pc.second);
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
@@ -1257,6 +1390,14 @@ struct Env {
     }
     for (const Issue &is : o.issues) onIssue(is);
     for (const Memop &m : o.memops) onMemop(m);
+    if (mcred_depth >= 0)
+      for (const Memop &m : o.memops) {
+        if (m.port >= 4) continue;
+        ++mcred_sent[m.port];
+        if (!mcred[m.port]) { ++mcred_over; continue; }
+        --mcred[m.port];
+        mcred_back.emplace(t + mcred_ret, m.port);
+      }
     // Sectioned lanes (OI-28): the lane ops leaving in one cycle use
     // disjoint sections of the four operand ports, each op every section its
     // operands sit in. Checked from the names alone, not the core's
@@ -1366,6 +1507,7 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
                               bool narrow = false) {
   auto r = [&](unsigned k) { return unsigned(rng() % k); };
   std::vector<Op> p;
+  unsigned rets_seen = 0;
   // Sectioned: each architectural register has one width for the program,
   // as the committed chwidth table gives it: R0-R3 32-bit, the rest any.
   std::array<unsigned, 16> width{};
@@ -1386,7 +1528,16 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     else if (c < 66) { o.k = kStore; o.nsrc = 2; }
     else if (c < 74) { o.k = kSetp; o.nsrc = 2; o.pdst = r(4); }
     else if (c < 78 && preds_renamed) { o.k = kPlogic; o.pdst = r(4); o.pq[0] = r(4); o.pq[1] = r(4); }
-    else if (c < 88) { o.k = kBranch; o.pguard = r(4); o.taken = r(2); o.pred_taken = r(3) ? o.taken : !o.taken; }
+    else if (c < 88) {
+      o.k = kBranch; o.pguard = r(4); o.taken = r(2);
+      o.pred_taken = r(3) || g_random_predict_all ? o.taken : !o.taken;
+      if (g_random_ret_every && ++rets_seen % g_random_ret_every == 0) {
+        o.ret = true;
+        o.taken = true;
+        o.pred_taken = r(4) != 0;
+        o.ret_to = 0x2468;
+      }
+    }
     else { o.k = kLane; o.nsrc = 2; }
     if ((o.k == kLane || o.k == kLoad || o.k == kSetp) && r(5) == 0) { o.guard = true; o.pguard = r(4); }
     if ((o.k == kLane || o.k == kSfu || o.k == kLoad) && r(6) == 0) o.mask = 0x0000ffffu;
@@ -1548,6 +1699,71 @@ void testL1Spec() {
   }
 }
 
+/// OA 410 (l1_nohit): MIU's no-hit, its payload at CCV_LAT_L1_NOHIT, clears a
+/// spec load's wake before CCV_LAT_L1_WAKE, so on a miss its child and
+/// grandchild wait for the completion and nothing replays. Knob off, the
+/// no-hit is ignored and both replay as in l1-spec. Two controls must show the
+/// replays again: a no-hit that clears nothing, and one landing at L1_WAKE - 1,
+/// inside the margin CCV_LAT_L1_NOHIT + 2 <= CCV_LAT_L1_WAKE (OA 416); at
+/// L1_WAKE - 2 it still clears. Run at the generated contract and at
+/// CCV_LAT_RCU_ADDR_BASE 5's (wake 17, no-hit 13; the param's doc).
+void testL1NoHit() {
+  struct Lat { const char *name; unsigned wake, nohit; };
+  const Lat lats[] = {{"", ccv::prov::kLatL1Wake, ccv::prov::kLatL1Nohit}, {"-base5", 17, 13}};
+  for (const Lat &lt : lats)
+  for (const int mode : {0, 1, 2, 3, 4}) {
+    // 0: l1_nohit; 1: knob off; 2: control, ignore; 3: control, at L1_WAKE - 1;
+    // 4: at L1_WAKE - 2, the margin's edge, still clears.
+    static const char *const names[] = {"l1-nohit", "l1-nohit off", "l1-nohit (control)",
+                                        "l1-nohit (control wake-1)", "l1-nohit wake-2"};
+    g_test = std::string(names[mode]) + (*lt.name ? " base5" : "");
+    Config c = baseConfig();
+    c.lat_l1_wake = lt.wake;
+    c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
+    c.l1_nohit = mode != 1;
+    c.inject_ignore_nohit = mode == 2;
+    Env e(c);
+    e.keep_log = true;
+    e.miss_pct = 100;
+    e.miss_extra = 10;
+    e.nohit = true;
+    e.nohit_lat = mode == 3 ? lt.wake - 1 : mode == 4 ? lt.wake - 2 : lt.nohit;
+    std::vector<Op> p;
+    Op ld; ld.k = kLoad; ld.dst = 1; ld.nsrc = 1; p.push_back(ld);               // tid 1
+    Op a; a.k = kLane; a.dst = 3; a.src[0] = 1; a.nsrc = 1; p.push_back(a);     // tid 2: child
+    Op g; g.k = kLane; g.dst = 4; g.src[0] = 3; g.nsrc = 1; p.push_back(g);     // tid 3: grandchild
+    Op st; st.k = kStore; st.src[0] = 4; st.src[1] = 4; st.nsrc = 2; p.push_back(st);  // tid 4
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    const bool control = mode == 2 || mode == 3;
+    if (control) g_quiet = true;
+    const int saved = g_fail;
+    e.finish();
+    g_quiet = false;
+    const unsigned replays = unsigned(e.core.counters["cancel.replay"]);
+    if (control) {
+      // A no-hit too late leaves the child's speculative issue at the wake:
+      // replayed (ignored), or pulled back as it lands (at L1_WAKE - 1, which
+      // counts no replay), so the child issues more than once.
+      g_fail = saved;
+      const bool caught = replays != 0 || issueCount(e, 2) != 1;
+      const std::string what = std::string(mode == 2 ? "control ignore-nohit" : "control nohit-wake-1") + lt.name;
+      std::printf("  %-24s %s\n", what.c_str(), caught ? "caught" : "MISSED");
+      EXPECT(caught, "a no-hit that clears nothing in time should leave the child's speculative issue");
+      continue;
+    }
+    EXPECT(e.core.counters["load.no_hit"] == 1, "no-hits taken %llu", (unsigned long long)e.core.counters["load.no_hit"]);
+    EXPECT(e.w[0].retired.size() == p.size(), "retired %zu of %zu", e.w[0].retired.size(), p.size());
+    if (mode != 1) {
+      EXPECT(replays == 0, "replays %u after a no-hit", replays);
+      EXPECT(issueCount(e, 2) == 1 && issueCount(e, 3) == 1, "child %u, grandchild %u issues", issueCount(e, 2),
+             issueCount(e, 3));
+    } else {
+      EXPECT(replays == 2, "knob off: replays %u, as l1-spec's miss", replays);
+    }
+  }
+}
+
 void testL1WakeAfterCmpl() {
   // Slow links can put CCV_LAT_L1_WAKE after CCV_LAT_L1_CMPL (the links
   // split does): a miss is known before any dependant wakes, so nothing
@@ -1627,6 +1843,291 @@ void testSquash() {
   // Wrong-path stores that reached MIU went with one bulk discard each squash.
   EXPECT(discards <= 1, "%u bulk discards", discards);
   EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "register leak");
+}
+
+/// resolve_lag 1 under retire_lag 0 (OI-87): a branch completes and could
+/// retire in that cycle, before its resolution acts a cycle later; its
+/// squash would be lost and the wrong path retire. The branch waits at the
+/// head until it has acted. Random programs on four warps, mispredicting;
+/// the control lets the branch retire unresolved.
+void testResolveLagRetire() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "resolve-lag retire (control)" : "resolve-lag retire";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned waited = 0, mispredicts = 0;
+    for (unsigned seed = 1; seed != 4; ++seed) {
+      Config c = baseConfig();
+      c.retire_lag = 0;
+      c.resolve_lag = 1;
+      c.resolve_lag_ret_only = 0;   // every branch lags: these programs carry no rets
+      c.inject_retire_unresolved = control;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+      e.finish(20000);
+      waited += unsigned(e.core.counters["retire.res_pend"]);
+      mispredicts += unsigned(e.core.counters["branch.mispredict"]);
+      if (!control) EXPECT(e.core.counters["errors"] == 0, "errors");
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = g_fail != saved;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control retire-unresolved", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a branch retired before its resolution acted, unnoticed");
+      continue;
+    }
+    EXPECT(waited > 0, "no branch waited at the head for its resolution");
+    EXPECT(mispredicts > 0, "no mispredicts");
+  }
+}
+
+/// OA's rev 293: (b) with rets still at resolve_lag 1 (AR's lead is for
+/// branches and calls only). A ret resolves a cycle after its done, a
+/// branch in its done's cycle, so a branch done the cycle after a ret's
+/// would resolve beside it on the ROB's one outcome path; ret_hold keeps
+/// a branch or call off RCU the cycle after a ret is selected, and the core
+/// checks no branch resolves beside a ret. Random programs with every third
+/// branch a ret, some mispredicted, on four warps; the control drops the
+/// hold, and the check must fire.
+void testRetHold() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "ret hold (control)" : "ret hold";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned held = 0, rets = 0, errors = 0;
+    for (unsigned seed = 1; seed != 4; ++seed) {
+      Config c = baseConfig();
+      c.resolve_lag = 1;
+      c.resolve_lag_ret_only = 1;
+      c.squash_act_lag = 1;
+      c.ret_hold = 2;   // the default (OA's rev 320): a held win cancelled
+      c.inject_no_ret_hold = control;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      for (unsigned i = 0; i != 4; ++i) {
+        std::vector<Op> p = randomProgram(rng, 300, true);
+        unsigned nb = 0;
+        for (Op &o : p)
+          if (o.k == kBranch && ++nb % 3 == 0) {
+            o.ret = true;
+            o.taken = true;
+            o.pred_taken = rng() % 4 != 0;
+            o.ret_to = 0x2468;
+            ++rets;
+          }
+        e.launch(i, i, p);
+      }
+      e.finish(20000);
+      held += unsigned(e.core.counters["issue.ret_hold_cancel"]);
+      errors += unsigned(e.core.counters["errors"]);
+      if (!control) EXPECT(e.core.counters["errors"] == 0, "errors");
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = errors > 0;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control no-ret-hold", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a branch resolved beside a ret, unnoticed without the hold");
+      continue;
+    }
+    EXPECT(held > 0, "the hold never held a branch (%u rets)", rets);
+  }
+}
+
+/// RA-17 (OA's revs 298-299): a migration's rows use R's PRF ports, one in
+/// each cycle R holds no op (swap.r_ports), and select leaves R idle after
+/// idle_r_k - 1 cycles running with R granted while one is in flight. Three
+/// warps of RCU-only ops and collectives keep R busy every cycle it can be; warp 0's DRAM
+/// miss demotes it, and parked warps restore. With K = 4 every migration
+/// moves its 17 rows within 17 x 4 cycles and the check stays quiet; the
+/// control drops the force, and the check must fire.
+void testIdleR(bool controls = true, unsigned seeds = 3) {
+  for (const bool control : {false, true}) {
+    if (control && !controls) break;
+    g_test = control ? "idle R (control)" : "idle R";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned forced = 0, errors = 0, swaps = 0;
+    uint64_t rows = 0, waits = 0;
+    for (unsigned seed = 1; seed != seeds + 1; ++seed) {
+      Config c = baseConfig();
+      c.sectioned = true;
+      c.decq = 13;
+      c.idle_r_k = 4;
+      c.inject_no_idle_r = control;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 10;
+      e.swap.rau = true;
+      e.swap.r_ports = true;
+      e.swap.dram_pm = 40;
+      e.replay_spread = 60;
+      for (unsigned i = 0; i != 4; ++i) {
+        std::vector<Op> p;
+        if (i == 0) {
+          p = randomProgram(rng, 200, true);
+          for (Op &o : p)
+            if (o.k == kLoad) { o.dram = true; o.fill = e.swap.dram_hi; break; }
+        } else {
+          // Warp 3's are collectives: R's one class (RA-29 (a)) runs the
+          // count as RCU-only ops do.
+          for (unsigned j = 0; j != 600; ++j) { Op o; o.k = i == 3 ? kColl : kRcuOp; o.dst = j % 16; p.push_back(o); }
+          Op x; x.k = kExit; p.push_back(x);
+        }
+        e.launch(i, i, p);
+      }
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      if (control) { while (!e.done() && e.t < 20000) e.step(); }
+      else e.finish(200000);
+      forced += unsigned(e.core.counters["issue.idle_r"]);
+      errors += unsigned(e.core.counters["errors"]);
+      swaps += e.swaps;
+      rows += e.xfer_rows;
+      waits += e.xfer_waits;
+      if (!control) {
+        EXPECT(e.core.counters["errors"] == 0, "errors");
+        EXPECT(e.xfers.empty(), "%zu migrations unfinished", e.xfers.size());
+        EXPECT(e.xfer_max <= 17u * 4, "a migration took %llu cycles, over 17 x 4", (unsigned long long)e.xfer_max);
+      }
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = errors > 0;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control no-idle-r", caught ? "caught" : "MISSED");
+      EXPECT(caught, "R busy past K running beside a migration, unnoticed without the force");
+      continue;
+    }
+    EXPECT(swaps > 0 && rows > 0, "%u swaps, %llu rows", swaps, (unsigned long long)rows);
+    EXPECT(forced > 0 && waits > 0, "R never forced idle (%u) or never busy beside a row (%llu)", forced,
+           (unsigned long long)waits);
+    std::printf("      idle R (K 4): %u swaps, %llu rows, %llu row waits, %u forced idles\n", swaps,
+                (unsigned long long)rows, (unsigned long long)waits, forced);
+  }
+}
+
+/// RA-29 (a): RCU-only ops and warp-collectives are one issue class at R,
+/// at most one a cycle (OA's rev 305; RA's confirmation). Two warps of
+/// RCU-only ops and two of collectives, with lane work between, contend
+/// for R every cycle; select must grant one of them a cycle, and the
+/// check stays quiet. The control gives collectives R's own copy in the
+/// pick (inject_split_r_class), so one goes beside an RCU-only op, and the
+/// check must fire.
+void testRClass(bool controls = true, unsigned seeds = 3) {
+  for (const bool control : {false, true}) {
+    if (control && !controls) break;
+    g_test = control ? "R class (control)" : "R class";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned errors = 0, pairs = 0;
+    uint64_t coll = 0, rcu = 0, cycles = 0;
+    for (unsigned seed = 1; seed != seeds + 1; ++seed) {
+      Config c = baseConfig();
+      c.sectioned = true;
+      c.inject_split_r_class = control;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      for (unsigned i = 0; i != 4; ++i) {
+        std::vector<Op> p;
+        for (unsigned j = 0; j != 300; ++j) {
+          Op o;
+          o.k = rng() % 4 == 0 ? kLane : i < 2 ? kRcuOp : kColl;
+          o.dst = j % 16;
+          if (o.k == kLane || rng() % 3 == 0) { o.src[0] = (j + 15) % 16; o.nsrc = 1; }
+          p.push_back(o);
+        }
+        Op x; x.k = kExit; p.push_back(x);
+        e.launch(i, i, p);
+        for (const Op &o : p) { if (o.k == kColl) ++coll; else if (o.k == kRcuOp) ++rcu; }
+      }
+      if (control) { while (!e.done() && e.t < 20000) e.step(); }
+      else e.finish(100000);
+      cycles += e.t;
+      errors += unsigned(e.core.counters["errors"]);
+      pairs += unsigned(e.core.counters["issue.r_class_pair"]);
+      if (!control) EXPECT(e.core.counters["errors"] == 0, "errors");
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = errors > 0 && pairs > 0;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control split-r-class", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a collective beside an RCU-only op at R, unnoticed");
+      continue;
+    }
+    EXPECT(pairs == 0, "%u cycles granted two of R's class", pairs);
+    std::printf("      R class: %llu RCU-only ops, %llu collectives, %llu cycles, one a cycle\n",
+                (unsigned long long)rcu, (unsigned long long)coll, (unsigned long long)cycles);
+  }
+}
+
+/// RA-29 (e) (OA's rev 303): vote's and ballot's predicate source is
+/// renamed into imm as pand's and por's are (TI-1), on the same path and
+/// with the same dependency. Each warp sets predicates from lane compares
+/// and votes and ballots on them at once, with pand/por among them; the
+/// environment decodes each op's imm and holds both physical predicates
+/// readable at its issue. The control drops the sources' dependency
+/// (inject_pq_no_dep), so a vote issues before its setp lands, and the
+/// check must fire.
+void testPredSources(bool controls = true, unsigned seeds = 3) {
+  for (const bool control : {false, true}) {
+    if (control && !controls) break;
+    g_test = control ? "pred sources (control)" : "pred sources";
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    unsigned votes = 0, ballots = 0;
+    for (unsigned seed = 1; seed != seeds + 1; ++seed) {
+      Config c = baseConfig();
+      c.sectioned = true;
+      c.inject_pq_no_dep = control;
+      std::mt19937 rng(seed);
+      auto r = [&](unsigned n) { return unsigned(rng() % n); };
+      Env e(c, seed);
+      for (unsigned i = 0; i != 2; ++i) {
+        std::vector<Op> p;
+        for (unsigned j = 0; j != 150; ++j) {
+          Op s; s.k = kSetp; s.nsrc = 2; s.src[0] = r(16); s.src[1] = r(16); s.pdst = 1 + r(3); p.push_back(s);
+          Op o;
+          o.k = r(5) == 0 ? kPlogic : kColl;
+          o.pq[0] = s.pdst | (r(2) << 2);      // the qualifier's negate bit
+          o.pq[1] = r(4);
+          if (o.k == kColl) (r(2) ? o.vote : o.ballot) = true;
+          o.pdst = r(4);
+          o.dst = r(16);
+          p.push_back(o);
+          // A lane op after each: a ballot's reader, or the work between.
+          // (Denser predicate writes than this, a setp and a vote in every
+          // two uops, reach a V-04 under fits_stale 6 that is not this
+          // test's: raised as its own item.)
+          Op l; l.k = kLane; l.nsrc = 1; l.src[0] = o.k == kColl && o.ballot ? o.dst : r(16); l.dst = r(16);
+          p.push_back(l);
+          votes += o.vote;
+          ballots += o.ballot;
+        }
+        Op x; x.k = kExit; p.push_back(x);
+        e.launch(i, i, p);
+      }
+      e.finish(100000);
+    }
+    g_quiet = quiet;
+    if (control) {
+      const bool caught = g_fail > saved;
+      g_fail = saved;
+      std::printf("  %-24s %s\n", "control pq-no-dep", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a vote issued before its predicate source, unnoticed");
+      continue;
+    }
+    std::printf("      pred sources: %u votes, %u ballots, every source readable at issue\n", votes, ballots);
+  }
 }
 
 /// The floors and the ceiling, which binds: two slots, a ceiling well under
@@ -1978,6 +2479,48 @@ bool ctaSlot(bool control) {
   return ok;
 }
 
+/// RA-18 (OI-112): a call's link, imm_kind 6. OOE puts pc + bytes(ilen),
+/// the next instruction's address, in the issue's imm, and keeps the
+/// branch offset in its own record for the target. Each ilen code.
+bool callLink(bool control) {
+  bool ok = true;
+  for (unsigned ilen : {0u, 1u, 2u}) {
+    Config c = baseConfig();
+    c.inject_no_call_link = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op b; b.k = kBranch; b.call = true; b.ilen = ilen; b.taken = false; b.pred_taken = false; p.push_back(b);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(5, 0, p);
+    bool seen = false;
+    for (unsigned k = 0; k != 200 && !seen; ++k) {
+      e.step();
+      for (const Issue &is : e.log.back().issues)
+        if (is.warp == 5 && is.send_imm && !is.copy && is.res == Issue::kRcuOp) {
+          seen = true;
+          const uint32_t want = uint32_t(0x1000 + 4 * (is.tid & 0xffff) + 2 * (ilen + 1));   // makeUop's pc
+          if (is.imm != want) {
+            ok = false;
+            if (!control) EXPECT(false, "ilen %u: the link %08x, want %08x", ilen, is.imm, want);
+          }
+        }
+    }
+    if (!control) EXPECT(seen, "ilen %u: the call never issued", ilen);
+    if (!control) for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+void testCallLink() {
+  g_test = "call link (imm_kind 6)";
+  callLink(false);
+  const bool held = callLink(true);
+  std::printf("  %-24s %s\n", "control no-call-link", held ? "MISSED" : "caught");
+  g_test = "call link (control)";
+  EXPECT(!held, "a call issued with its branch offset for its link should fail the check");
+}
+
 /// O-64 (OA's rev 177): srd #2, %lanectx: OOE substitutes the hardware warp
 /// context, the core's index above warp_id, shifted 5 (the lane ORs its
 /// index in), as it does warp_in_cta for selector 0.
@@ -2143,6 +2686,53 @@ void testLdLocal() {
   std::printf("  %-24s %s\n", "control local-base", held ? "MISSED" : "caught");
   g_test = "ld.local (control)";
   EXPECT(!held, "a local form reading a base should wait for its producer");
+}
+
+/// RI-12 (RI's provswap, 2026-11-05): uops that reach the decode queue
+/// after a demotion's squash, in the new epoch, while the warp sits
+/// drained, are dropped when RAU frees the slot; none outlives it, and
+/// the release checks that none is queued. The control keeps them.
+bool releaseDrop(bool control) {
+  Config c = baseConfig();
+  c.l1_spec = false;
+  c.inject_keep_released_uops = control;
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 6; ++i) { Op a; a.k = kLane; a.dst = i; a.nsrc = 1; p.push_back(a); }
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  for (unsigned k = 0; k != 3; ++k) e.step();
+  e.core.demote(0);
+  bool drained = false;
+  for (unsigned k = 0; k != 200; ++k) {
+    e.step();
+    drained |= !e.log.back().drained.empty();
+  }
+  Op a; a.k = kLane; a.dst = 9; a.nsrc = 1;
+  for (unsigned i = 0; i != 2; ++i) e.core.uop(makeUop(a, 0, e.next_tid++, e.core.epoch(0), 0));
+  e.step();
+  const uint64_t drops0 = e.core.counters["decq.release_drop"];
+  Alloc f; f.warp = 0; f.slot = 0; f.op = kAllocFree;
+  e.core.alloc(f);
+  for (unsigned k = 0; k != 10; ++k) e.step();
+  const uint64_t drops = e.core.counters["decq.release_drop"] - drops0;
+  const bool ok = drained && drops == 2 && e.errors.empty() && e.core.counters["errors"] == 0;
+  if (!control) {
+    g_test = "release drops the warp's queued uops (RI-12)";
+    EXPECT(drained, "the demotion never drained");
+    EXPECT(drops == 2, "%llu uops dropped at the release, want 2", (unsigned long long)drops);
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+void testReleaseDrop() {
+  releaseDrop(false);
+  const bool held = releaseDrop(true);
+  std::printf("  %-24s %s\n", "control keep-released-uops", held ? "MISSED" : "caught");
+  g_test = "release drops the warp's queued uops (RI-12) (control)";
+  EXPECT(!held, "uops kept past the release should fail the release's check");
 }
 
 void testCtaSlot() {
@@ -2379,6 +2969,59 @@ void testFault() {
   e.core.kill(1u, 1);
   for (unsigned k = 0; k != 20; ++k) e.step();
   EXPECT(e.core.freeGprs() == c.phys_regs, "kill after a fault left %zu free", e.core.freeGprs());
+}
+
+/// ROB slice 4 (OI-125): rename-time faults in four sectioned warps, one a
+/// slot, each in its own code window (pc[47:32]), at a different place in
+/// its program, behind a load in one, with a second fault behind the first
+/// in another, and with partial group masks: each warp takes its first
+/// fault once, with its cause, pc and lanes, and retires what is older.
+/// test/ooe/rob_tb.cpp compares the ROB's fault record with these.
+void testSectionFaults() {
+  g_test = "sections: rename-time faults in four warps";
+  Config c = baseConfig();
+  c.sectioned = true;
+  c.l1_spec = false;
+  Env e(c);
+  e.keep_log = true;
+  const unsigned at[4] = {0, 2, 1, 3}, cause[4] = {2, 1, 2, 1};
+  const uint32_t mask[4] = {kFullMask, 0x0000ffffu, 0x00ff00ffu, 0x80000001u};
+  for (unsigned w = 0; w != 4; ++w) {
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 5; ++i) {
+      Op a;
+      a.k = (w == 1 && i == 0) ? kLoad : kLane;
+      a.dst = i;
+      a.nsrc = 1;
+      a.src[0] = i ? i - 1 : 0;
+      a.pc_hi = 0x1234u * (w + 1);
+      a.mask = mask[w];
+      if (i == at[w]) a.cause = cause[w];
+      if (w == 2 && i == 3) a.cause = 1;   // a second fault, never taken
+      p.push_back(a);
+    }
+    Op ex; ex.k = kExit; ex.pc_hi = 0x1234u * (w + 1); p.push_back(ex);
+    e.launch(w, w, p);
+  }
+  std::vector<unsigned> taken(4, 0), got(4, 0);
+  std::vector<uint64_t> pc(4, 0);
+  std::vector<uint32_t> lanes(4, 0);
+  for (unsigned k = 0; k != 300; ++k) {
+    e.step();
+    for (const Fault &f : e.log.back().faults)
+      if (f.warp < 4) { ++taken[f.warp]; got[f.warp] = f.cause; pc[f.warp] = f.pc; lanes[f.warp] = f.lane_mask; }
+  }
+  for (unsigned w = 0; w != 4; ++w) {
+    EXPECT(taken[w] == 1, "warp %u took %u faults", w, taken[w]);
+    EXPECT(got[w] == cause[w], "warp %u: cause %u, want %u", w, got[w], cause[w]);
+    EXPECT((pc[w] >> 32) == 0x1234u * (w + 1), "warp %u: pc %llx", w, (unsigned long long)pc[w]);
+    EXPECT(lanes[w] == mask[w], "warp %u: lanes %08x, want %08x", w, lanes[w], mask[w]);
+    EXPECT(e.warpOf(w)->retired.size() == at[w], "warp %u: %zu retired, want %u", w, e.warpOf(w)->retired.size(), at[w]);
+  }
+  e.core.kill(0xfu, 1);
+  for (unsigned k = 0; k != 40; ++k) e.step();
+  EXPECT(e.core.freeGprs() == c.phys_regs, "kill after the faults left %zu free", e.core.freeGprs());
+  for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
 }
 
 /// OI-84 (OA's rev 264): four warps, each with an atomic pair at its head
@@ -2696,13 +3339,16 @@ void testBarrierFault() {
 /// one run the older completes first, in the other the younger. Each must
 /// report the older's address and MIU's cause. The control lets every
 /// faulting completion write the register, so the younger's, landing
-/// second, overwrites the older's, and V-74 must fire.
-void testMemFault() {
+/// second, overwrites the older's, and V-74 must fire. sec runs it
+/// sectioned, the configuration test/ooe/rob_tb.cpp compares the ROB's RTL in.
+void testMemFault(bool sec = false) {
   for (const bool control : {false, true}) {
     unsigned caught = 0;
     for (const bool younger_first : {false, true}) {
-      g_test = control ? "mem fault (control)" : "mem fault";
+      g_test = sec ? (control ? "sections: mem fault (control)" : "sections: mem fault")
+                   : (control ? "mem fault (control)" : "mem fault");
       Config c = baseConfig();
+      c.sectioned = sec;
       c.l1_spec = false;
       c.inject_fa_youngest = control;
       Env e(c);
@@ -2759,8 +3405,10 @@ void testMemFault() {
       }
     }
     if (control) {
-      g_test = "mem fault (control)";
-      std::printf("  %-24s %s\n", "control fa-youngest", caught ? "caught" : "MISSED");
+      g_test = sec ? "sections: mem fault (control)" : "mem fault (control)";
+      // One line for both layouts (check-ooe-unit counts the lines); each
+      // layout's catch is still required.
+      if (sec) std::printf("  %-24s %s\n", "control fa-youngest", caught ? "caught" : "MISSED");
       EXPECT(caught, "a register taking every completion should break V-74");
     }
   }
@@ -3508,6 +4156,7 @@ void testRandom(unsigned seeds) {
     for (int mode = 0; mode != 8; ++mode) {
       g_test = "random seed " + std::to_string(seed) + " mode " + std::to_string(mode);
       if (const char *only = std::getenv("OOE_TEST_ONLY")) if (g_test != only) continue;
+      if (!g_random_only.empty() && g_test != g_random_only) continue;
       const bool groups = seed % 2 == 1, sec = (mode & 4) != 0;
       const Config c = randomConfig(seed, mode);
       std::mt19937 rng(seed * 4 + unsigned(mode));
@@ -3820,6 +4469,8 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       c.inject_a1_base_only = control == 3;
       c.inject_cas_split = control == 4;
       c.inject_pair_split = control == 5;
+      c.inject_cas_no_pd = control == 6;
+      c.inject_row_no_hold = g_row_no_hold;
       std::mt19937 rng(seed * 13 + unsigned(mode));
       Env e(c, seed * 11 + unsigned(mode));
       e.miss_pct = 30;
@@ -3850,6 +4501,15 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
               a.csrc[1] = rng() % 16;
               a.ncsrc = 2;
               a.late2 = rng() % 3 == 0;
+              // Half of them write pd (OI-127), which a later op reads.
+              if (rng() % 2 == 0) {
+                a.cas_pd = true;
+                a.pdst = 1 + rng() % 3;
+                if (k + 2 < prog.size() && (prog[k + 2].k == kLane || prog[k + 2].k == kSetp) && !prog[k + 2].guard) {
+                  prog[k + 2].guard = true;
+                  prog[k + 2].pguard = a.pdst;
+                }
+              }
             }
             a.passes = rng() % 16 == 0 ? 32 : 1 + rng() % 4;
             if (rng() % 6 == 0) a.mask = 0x0000ffffu;
@@ -3932,6 +4592,121 @@ void testControls() {
     EXPECT(caught, "the harness missed it");
     std::printf("  %-24s %s\n", name.c_str(), caught ? "caught" : "MISSED");
   }
+}
+
+/// C_RECONV (serial 5; OA rev 393, RA-16) joins exit's no-op path: a ROB
+/// entry complete at allocation, no RS entry, no rename, never issued,
+/// retired in order. The control treats it as a real op: it issues.
+void testReconv() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "reconv no-op (control)" : "reconv no-op";
+    Config c = baseConfig();
+    c.inject_reconv_real = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    Op r; r.k = kReconv; p.push_back(r);
+    Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
+    Op r2; r2.k = kReconv; p.push_back(r2);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    const unsigned issued = issueCount(e, 2) + issueCount(e, 4);
+    if (control) {
+      std::printf("  %-24s %s\n", "control reconv-issues", issued ? "caught" : "MISSED");
+      EXPECT(issued != 0, "a C_RECONV treated as a real op should issue");
+      continue;
+    }
+    EXPECT(issued == 0, "a C_RECONV issued %u times: it completes at allocation", issued);
+    EXPECT(issueCount(e, 1) == 1 && issueCount(e, 3) == 1, "the lane ops issued %u and %u times",
+           issueCount(e, 1), issueCount(e, 3));
+    const std::vector<uint64_t> &rt = e.w[0].retired;
+    bool order = rt.size() == 5;
+    for (size_t k = 0; order && k != rt.size(); ++k) order = rt[k] == k + 1;
+    EXPECT(order, "retired %zu uops, want all five in order", rt.size());
+  }
+}
+
+/// MA-5 (AR 345/347, OA-412): MIU holds a few credits per memop slot and
+/// returns each long after its memop. Select must grant a memop only on a
+/// credited pipe of its footprint, the lowest, so full-width loads spread
+/// past P0 once its credits are out, and nothing goes on an empty slot.
+/// The control grants as before MA-5, on the footprint's lowest pipe.
+void testMemopCredits() {
+  for (const bool sectioned : {true, false})
+    for (const bool control : {false, true}) {
+      g_test = control ? "memop credits (control)" : "memop credits";
+      Config c = baseConfig();
+      c.sectioned = sectioned;
+      c.inject_no_memop_credit = control;
+      Env e(c);
+      e.mcred_depth = 2;
+      e.mcred_ret = 40;
+      std::vector<Op> p;
+      for (unsigned k = 0; k != 12; ++k) {
+        Op ld; ld.k = kLoad; ld.dst = 1 + k % 8; ld.nsrc = 1; p.push_back(ld);
+      }
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      if (control) g_quiet = true;
+      const int saved = g_fail;
+      e.finish();
+      g_quiet = false;
+      const std::string mode = sectioned ? "sectioned" : "unsectioned";
+      if (control) {
+        g_fail = saved;
+        std::printf("  %-24s %s\n", ("control mcred-" + mode).c_str(), e.mcred_over ? "caught" : "MISSED");
+        EXPECT(e.mcred_over != 0, "%s: a select blind to MIU's credits should overrun a slot", mode.c_str());
+        continue;
+      }
+      EXPECT(e.mcred_over == 0, "%s: %u memops sent on a slot with no credit", mode.c_str(), e.mcred_over);
+      EXPECT(e.w[0].retired.size() == p.size(), "%s: retired %zu of %zu", mode.c_str(), e.w[0].retired.size(),
+             p.size());
+      if (sectioned)
+        EXPECT(e.mcred_sent[1] + e.mcred_sent[2] + e.mcred_sent[3] != 0,
+               "sectioned: every memop went on P0 (%u), none on the next credited pipe", e.mcred_sent[0]);
+    }
+}
+
+/// OI-133 (OA-17 at L1_WAKE 16): a producer cancelled and granted again at
+/// the same edge as a dependant granted on the ready bit its first issue
+/// woke. The hop must return the dependant (its stale grant) and the
+/// OA-17 check must not fire; without the co-grant term (the control) it
+/// confirms on a stale ready bit. The two random cases that found it, at
+/// the latencies that found them: L1_WAKE 16 and L1_CMPL 19, pinned here so
+/// a later L1_CMPL (RA-43's 18 moves both off the co-grant edge) cannot
+/// retire the control silently.
+void testCogrant() {
+  const char *cases[] = {"random seed 6 mode 6", "random seed 19 mode 7"};
+  static bool no_cogrant;
+  void (*const saved_hook)(Config &) = g_config_hook;
+  g_config_hook = [](Config &c) {
+    c.lat_l1_wake = 16;
+    c.lat_l1_cmpl = 19;
+    c.inject_no_cogrant = no_cogrant;
+  };
+  for (const bool control : {false, true}) {
+    no_cogrant = control;
+    const int saved = g_fail;
+    unsigned failed = 0;
+    for (const char *t : cases) {
+      g_random_only = t;
+      const int before = g_fail;
+      g_quiet = control;
+      testRandom(19);
+      g_quiet = false;
+      failed += g_fail != before;
+    }
+    g_random_only.clear();
+    if (control) {
+      g_fail = saved;
+      g_test = "control no-cogrant";
+      EXPECT(failed, "the harness missed it");
+      std::printf("  %-24s %s\n", "control no-cogrant", failed ? "caught" : "MISSED");
+    }
+  }
+  g_config_hook = saved_hook;
 }
 
 // ---- TI-21: a stalled warp, the swap, and the hole it leaves ------------------------
@@ -4155,6 +4930,68 @@ int stallHole(unsigned seeds, bool print, int only_fix = -1) {
   return fails;
 }
 
+/// RA-17's price (OA's rev 299): migration-heavy runs, TI-21's swap workload
+/// (8 warps, 4 resident and 4 parked, evict, 2% of loads to DRAM) on the
+/// sectioned select, with the lane ops of each program turned RCU-only at a
+/// given share (0: the sweep's own mix; the higher, the denser R). Each line
+/// is the mean over seeds of: today's model (rows on ports of their own),
+/// rows on R's ports with idle_r_k K, and the same with no force (K 0,
+/// unbounded: a migration waits as long as R stays busy). The price is
+/// against no force, all else the same; today's model, whose rows charge a
+/// PRF read port instead (TI-21), is beside it.
+void idleRPrice(unsigned seeds) {
+  const unsigned len = std::getenv("OOE_IDLE_R_LEN") ? unsigned(std::atoi(std::getenv("OOE_IDLE_R_LEN"))) : 1500;
+  struct R { double cycles = 0, mig = 0; uint64_t forced = 0, waits = 0, worst = 0, rgr = 0; unsigned swaps = 0, unfinished = 0; };
+  auto run = [&](unsigned dense, bool rports, unsigned K) {
+    R r;
+    for (unsigned seed = 1; seed <= seeds; ++seed) {
+      Config c = baseConfig();
+      c.sectioned = true;
+      c.decq = 13;
+      c.idle_r_k = K;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.mode = Env::kEvict;
+      e.swap.dram_pm = 20;
+      e.swap.r_ports = rports;
+      auto prog = [&] {
+        std::vector<Op> p = randomProgram(rng, len, true);
+        for (Op &o : p)
+          if (o.k == kLane && unsigned(rng() % 100) < dense) { o.k = kRcuOp; o.nsrc = 0; o.cross = false; }
+        return p;
+      };
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, prog());
+      for (unsigned i = 4; i != 8; ++i) e.park(i, prog());
+      while (!e.done() && e.t < 2000000) e.step();
+      r.unfinished += !e.done();
+      r.cycles += double(e.t);
+      r.swaps += e.swaps;
+      r.forced += e.core.counters["issue.idle_r"];
+      r.rgr += e.core.counters["issue.r"];
+      r.waits += e.xfer_waits;
+      r.worst = std::max(r.worst, e.xfer_max);
+    }
+    r.cycles /= seeds;
+    return r;
+  };
+  std::printf("| R-only share of lane ops | rows | K | cycles | vs no force | restores | R grants a cycle | forced idles | "
+              "of R's grants | row waits | longest migration | unfinished |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+  for (unsigned dense : {0u, 50u, 100u}) {
+    const R own = run(dense, false, 0), nf = run(dense, true, 0);
+    auto line = [&](const char *rows, unsigned K, const R &r) {
+      std::printf("| %u%% | %s | %u | %.0f | %+.2f%% | %u | %.3f | %llu | %.2f%% | %llu | %llu | %u |\n", dense, rows, K,
+                  r.cycles, 100.0 * (r.cycles / nf.cycles - 1.0), r.swaps, double(r.rgr) / (r.cycles * seeds),
+                  (unsigned long long)r.forced, 100.0 * double(r.forced) / double(std::max<uint64_t>(1, r.rgr)),
+                  (unsigned long long)r.waits, (unsigned long long)r.worst, r.unfinished);
+    };
+    line("own ports", 0, own);
+    for (unsigned K : {2u, 4u, 8u}) line("R's ports", K, run(dense, true, K));
+    line("R's ports, no force", 0, nf);
+  }
+}
+
 /// TI-21's workload (1): 8 warps, 4 resident and 4 parked, each a sweep
 /// program, 2% of loads missing to DRAM. Swap against swap-off (the parked
 /// warps enter as residents exit), per go form, with the swap count, the
@@ -4262,7 +5099,17 @@ void testSwap() {
         e.swap.mode = mode;
         e.swap.dram_pm = 40;
         e.replay_spread = 60;
-        for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+        // Warp 0's first load misses to DRAM with the longest fill, while
+        // every parked warp is ready, so each seed demotes whatever the
+        // core's timing (the random misses alone left seed 2 none under
+        // squash_act_lag 1).
+        for (unsigned i = 0; i != 4; ++i) {
+          std::vector<Op> p = randomProgram(rng, 200, true);
+          if (i == 0)
+            for (Op &o : p)
+              if (o.k == kLoad) { o.dram = true; o.fill = e.swap.dram_hi; break; }
+          e.launch(i, i, p);
+        }
         for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
         e.finish(200000);
         EXPECT(e.swaps > 0, "no swap");
@@ -4528,7 +5375,8 @@ void audit() {
                         "stall.gpr_buffer", "stall.gpr_empty", "stall.gpr_ceiling", "stall.gpr_floor",
                         "stall.pred_buffer", "stall.pred_empty", "stall.pred_floor_ceiling",
                         "stall.rob_full", "stall.rob_slot_held", "stall.rob_late_credit",
-                        "hold.chwidth", "hold.barrier", "hold.fault", "hold.inactive", "rename.full_width"};
+                        "hold.chwidth", "hold.barrier", "hold.fault", "hold.inactive", "rename.full_width",
+                        "issue.ret_hold", "issue.ret_hold_cancel", "issue.ret_hold_lost_slot"};
   auto run = [&](const Config &c) {
     R r;
     const char *as = std::getenv("AUDIT_SEEDS");   // the audit's runs (48 by default)
@@ -4546,12 +5394,21 @@ void audit() {
   };
   Config base = baseConfig();
   base.fits_stale = 6;
+  // AUDIT_RET_EVERY n: every n-th random branch a ret (testRetHold's mix);
+  // AUDIT_SECTIONED: the sectioned select, the RTL's (OA's rev 319 pricing).
+  if (const char *re = std::getenv("AUDIT_RET_EVERY")) g_random_ret_every = unsigned(std::atoi(re));
+  if (std::getenv("AUDIT_SECTIONED")) base.sectioned = true;
   if (const char *ac = std::getenv("AUDIT_CFG")) {   // a setting the audit runs under, as CCV_OOE_CONFIG (e.g. scarce names)
     const std::string e = base.apply(ac);
     if (!e.empty()) { std::fprintf(stderr, "%s\n", e.c_str()); return; }
   }
   const R d = run(base);
   std::printf("audit: the decided go (fits_stale 6), 48 seeds: %.0f cycles\n", d.cy);
+  if (std::getenv("AUDIT_BASE_ONLY")) {   // one setting's price: its cycles and counters alone
+    std::printf("audit: cycles %.2f\n", d.cy);
+    for (const char *k : keys) std::printf("audit:   %-28s %10.1f per run\n", k, d.n.at(k));
+    return;
+  }
   {
     // OI-74 (iii), OI-75 (b) and OI-76, OA's revs 216 and 219: rename's held
     // and name counts see frees three edges late, the pool's floors are owed
@@ -4795,6 +5652,29 @@ int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*c
 /// demotion, kill, restore, faults, squashes and the rest) with a hook on
 /// every core cycle, for the paths random traffic does not take. Returns
 /// the failure count.
+/// The unit test running, for a bench's diagnostics.
+const char *ooeTestName() { return g_test.c_str(); }
+/// The random tests with every third branch a ret (testRetHold's mix),
+/// hooked and configured by cfg: the benches of ret_hold's RTL (OA's rev
+/// 293), whose plain random traffic has no rets.
+int ooeTestRandomRetsHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_random_ret_every = 3;
+  const int f = ooeTestRandomHookedWith(seeds, hook, cfg);
+  g_random_ret_every = 0;
+  return f;
+}
+/// RA-17's idle-R test (testIdleR, no control) over seeds, hooked and
+/// configured by cfg: ooe_sched's idle-R force in test/ooe/trio_tb.cpp.
+int ooeTestIdleRHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_cycle_hook = hook;
+  g_config_hook = cfg;
+  testIdleR(false, seeds);
+  g_config_hook = nullptr;
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
+/// The random programs predict every branch (g_random_predict_all).
+void ooeTestPredictAll(bool on) { g_random_predict_all = on; }
 int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   g_cycle_hook = hook;
   testWakeTimes();
@@ -4811,6 +5691,8 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testRestore();
   testKill();
   testFault();
+  testMemFault(true); // ROB slice 4's MIU faults (OI-125), on every hooked bench
+  testSectionFaults();
   testBarrier();
   testChwidth();
   testWidthCodes();
@@ -4924,6 +5806,17 @@ int main(int argc, char **argv) {
     std::printf("ooe-test --atomic: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--idle-r") {   // RA-17's test alone
+    testIdleR();
+    std::printf("ooe-test --idle-r: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--r-class") {   // RA-29 (a)'s and (e)'s tests alone
+    testRClass();
+    testPredSources();
+    std::printf("ooe-test --r-class: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--audit") {
     audit();
     return g_fail ? 1 : 0;
@@ -4932,6 +5825,10 @@ int main(int argc, char **argv) {
     const char *only = std::getenv("OOE_TEST_HOLE_FIX");   // one fix's rows, by its index
     const int f = stallHole(seeds == 25 ? 48 : seeds, true, only ? std::atoi(only) : -1);
     std::printf("stall_hole: %d bound(s) missed by the decided go\n", f);
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--idle-r-price") {   // RA-17's price
+    idleRPrice(seeds == 25 ? 24 : seeds);
     return g_fail ? 1 : 0;
   }
   if (argc > 1 && std::string(argv[1]) == "--swap-sweep") {
@@ -4974,16 +5871,23 @@ int main(int argc, char **argv) {
   testSquashSaturated();
   testFinalBeforeProducer();
   testFloorCeiling();
+  testResolveLagRetire();
+  testRetHold();
+  testIdleR();
+  testRClass();
+  testPredSources();
   testCeilingGo();
   testDemote();
   testRestore();
   testKill();
   testFault();
+  testSectionFaults();
   testBarrier();
   testBarrierDemote();
   testBarrierTimer();
   testBarrierFault();
   testMemFault();
+  testMemFault(true);
   testChwidth();
   testChwidthMulti();
   testRet();
@@ -5014,12 +5918,33 @@ int main(int argc, char **argv) {
   testParkedLayout();
   testFinalExit();
   testCtaSlot();
+  testReleaseDrop();
   testLaneCtx();
+  testCallLink();
   testWidthFromTable();
   testMlcTrigger();
-  for (int k : {1, 2, 3, 4, 5}) {
+  {
+    // OI-90 (OA's rev 286): the hold, on the atom-early-wake storm.
+    unsigned over[2];
+    for (int off = 0; off != 2; ++off) {
+      const int saved = g_fail;
+      g_row_no_hold = off == 1;
+      g_row_over = 0;
+      testAtomicRandom(10, randomConfig, 2);
+      over[off] = g_row_over;
+      g_fail = saved;
+    }
+    g_row_no_hold = false;
+    g_test = "control row-no-hold";
+    EXPECT(over[0] == 0, "a row passed 3 dones in flight under the hold (%u times)", over[0]);
+    EXPECT(over[1] > 0, "the harness missed it");
+    std::printf("  row hold (OI-90): %u rows past 3 without the hold, %u with\n", over[1], over[0]);
+    std::printf("  %-24s %s\n", "control row-no-hold", over[1] && !over[0] ? "caught" : "MISSED");
+  }
+  for (int k : {1, 2, 3, 4, 5, 6}) {
     const char *name = k == 1 ? "control atom-off-head" : k == 2 ? "control atom-early-wake"
-                     : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split" : "control pair-split";
+                     : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split"
+                     : k == 5 ? "control pair-split" : "control cas-no-pd";
     const int saved = g_fail;
     testAtomicRandom(10, randomConfig, k);
     const bool caught = g_fail != saved;
@@ -5066,6 +5991,10 @@ int main(int argc, char **argv) {
     std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
   }
   testControls();
+  testCogrant();
+  testReconv();
+  testMemopCredits();
+  testL1NoHit();
   std::printf("ooe-test: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
   return g_fail ? 1 : 0;
 }

@@ -18,6 +18,10 @@ to where it ends:
   - valid and payload flow producer -> consumer, credit and stall back;
   - the flops passed on the way are the link's repeater stages, the same
     in every signal of a slot, each way;
+  - at a credit-on-receipt end (params/links.json; AR's rev 322) the block
+    drives no credit: the credit starts at the receiving end's boundary
+    valid flop, the last before the block's valid port, and runs from it,
+    through as many flops as the valid crossed, to the sender's credit port;
 
 and the resulting (channel, copy, slot) -> (producer, consumer, stages) map
 must equal the one ccv-skel --dump-wiring reports from the C++ skeleton.
@@ -122,6 +126,9 @@ def main():
     dump = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--wiring=")),
                 os.path.join(ROOT, "build", "wiring.txt"))
     ch, ninst = schema()
+    import ccv_links
+    ends, _ = ccv_links.schema_ends(ROOT)
+    cor = {"ccv_" + c for _, c in ccv_links.credit_on_receipt(sorted(ends), ends)}
     top_src = os.path.join(ROOT, "rtl", "top", "ccv_top.sv")
     with tempfile.TemporaryDirectory() as t:
         top_path = top_src
@@ -185,10 +192,16 @@ def main():
                 continue
             # Follow the data path: through flops, to the one endpoint.
             b, n, path_ok = b0, 0, True
+            branch = None
             while True:
                 sinks = [e for e in ends.get(b, []) if not e[2]]
                 nxt = by_d.get(b, [])
                 other = [l for l in loads.get(b, []) if l[0] not in flops]
+                if (co[3] == "valid" and co[0] in cor and len(sinks) == 1
+                        and len(nxt) == 1 and n > 0 and branch is None):
+                    # Credit on receipt: the boundary valid flop also loads
+                    # the credit stage. Followed below, from that flop.
+                    branch, nxt = nxt[0], []
                 if len(sinks) + len(nxt) != 1 or other:
                     errs.append("%s %s: %d endpoint(s), %d flop(s) and %d other load(s) at stage %d"
                                 % (who, co, len(sinks), len(nxt), len(other), n))
@@ -204,6 +217,34 @@ def main():
                 errs.append("misrouted: %s %s -> %s %s" % (who, co, lw, lco))
                 continue
             seen.add(co)
+            if co[3] == "valid" and co[0] in cor:
+                # The credit, from the boundary valid flop back to the sender.
+                cco = co[:3] + ("credit", 0)
+                if branch is None:
+                    errs.append("%s %s: credit on receipt, but no credit stage loads from "
+                                "the boundary valid flop" % (lw, co))
+                    continue
+                b2, n2 = branch, 1
+                while True:
+                    s2 = [e for e in ends.get(b2, []) if not e[2]]
+                    x2 = by_d.get(b2, [])
+                    o2 = [l for l in loads.get(b2, []) if l[0] not in flops]
+                    if len(s2) + len(x2) != 1 or o2:
+                        errs.append("%s %s: credit on receipt: %d endpoint(s), %d flop(s) and "
+                                    "%d other load(s) at stage %d" % (lw, cco, len(s2), len(x2),
+                                                                     len(o2), n2))
+                        break
+                    if s2:
+                        if s2[0][1] != cco or s2[0][0] != who:
+                            errs.append("misrouted: %s's credit on receipt %s -> %s %s"
+                                        % (lw, cco, s2[0][0], s2[0][1]))
+                        elif n2 != n:
+                            errs.append("%s: credit on receipt runs back through %d flop(s), "
+                                        "its valid forward through %d" % (cco[:3], n2, n))
+                        else:
+                            seen.add(cco)
+                        break
+                    b2, n2 = x2[0], n2 + 1
             chan, copy, slot, sig, _ = co
             if sig == "wake":
                 if wake.setdefault((chan, copy), (who, lw, n)) != (who, lw, n):

@@ -67,6 +67,16 @@ import json
 import os
 import sys
 import genout
+import hashlib
+
+
+def lead_tag(lead):
+    """A repeater unit's lead mask in its name: in hex up to 64 bits, past
+    that a 10-digit hash of it, since the name is a directory under build/
+    and a 1,114-bit mask in hex is longer than a file name may be."""
+    if lead.bit_length() <= 64:
+        return "%x" % lead
+    return "h" + hashlib.sha1(("%x" % lead).encode()).hexdigest()[:10]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOPDIR = os.path.join(ROOT, "rtl", "top")
@@ -181,8 +191,29 @@ def block_ports(btype, chans, ninst, common, nb):
             if c[side] != btype:
                 continue
             fwd = "output" if side == "src" else "input"
-            P += chan_ports(c, fwd, owns_copies(c, btype, ninst))
+            cp = chan_ports(c, fwd, owns_copies(c, btype, ninst))
+            if side == "dst" and (btype, c["name"][4:]) in cor_ends():
+                # Credit on receipt: the wrapper returns this end's credit
+                # from its boundary flop, and the block has no credit port.
+                cp = [p for p in cp if not (p[6] and p[6][3] == "credit")]
+            P += cp
     return P
+
+
+_COR = []
+
+
+def cor_ends():
+    """The credit-on-receipt ends (params/links.json "credit_on_receipt",
+    read by tools/ccv_links.py; AR's rev 322, RA-41), as (block type, channel
+    without ccv_): flopped destination ends whose boundary stage loads its
+    credit from its own valid flop, the block taking every message the
+    cycle it is presented. Such a block has no credit port on that end; its
+    wrapper has, driven by the repeater."""
+    if not _COR:
+        ends, _ = ccv_links.schema_ends(ROOT)
+        _COR.append(ccv_links.credit_on_receipt(sorted(ends), ends))
+    return _COR[0]
 
 
 def copy_sfx(c, copy):
@@ -429,6 +460,18 @@ def rpt_param(c, cp):
     return "RPT_" + (c["name"][4:] + copy_sfx(c, cp)).upper()
 
 
+# The ends built without a boundary flop (params/links.json "no_flop", read by
+# tools/ccv_links.py), as (block type, channel without ccv_); set by main().
+NO_FLOP = set()
+
+
+def bnd(t, c):
+    """The boundary flops block type t's end of channel c holds in its
+    wrapper's repeater: 1 by default, the block's own boundary register built
+    there (Daniel, 2026-11-05; AR's revs 285 and 287); 0 for a no-flop end."""
+    return 0 if (t, c["name"][4:]) in NO_FLOP else 1
+
+
 def ft_param(ci, o):
     """Feedthrough ordinal o's stage count: by ordinal, not copy, so two
     wrappers carrying different copies across themselves can be one template."""
@@ -488,22 +531,32 @@ def wrapper_plan(binst, cinst, ports, names, ft, reuse):
     return plan
 
 
-def rpt_inst(L, name, stages, c, src, dst):
+def rpt_inst(L, name, stages, c, src, dst, boundary=0, dst_end=False, cor=False):
     """One ccv_common_rpt for a channel instance. `src` and `dst` map a signal to
-    its per-slot net names (a function of slot and sig)."""
+    its per-slot net names (a function of slot and sig); `boundary` is the
+    end's boundary flops (bnd), 0 on a feedthrough; `dst_end` a destination
+    end's, whose boundary stage is its last (DST_END: which lead slice is the
+    block's to budget); `cor` a credit-on-receipt end's, whose boundary
+    stage returns the credit from its own valid flop, the block having no
+    credit port there (CREDIT_ON_RECEIPT; AR's rev 322)."""
     r = c["rate"]
     lead = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
             if c["lead_mask"] else "")
+    if boundary and dst_end and (c["lead_mask"] or cor):
+        lead += ", .DST_END(1'b1)"
+    if cor:
+        lead += ", .CREDIT_ON_RECEIPT(1'b1)"
     cat = lambda f, sig: "{%s}" % ", ".join(f(sl, sig) for sl in reversed(range(r)))
-    L.append("  ccv_common_rpt #(.STAGES(%s), .SLOTS(%d), .PAYLOAD_W(%d)%s) %s ("
-             % (stages, r, c["bits"], lead, name))
+    dcat = (lambda f, sig: "'0" if sig == "credit" else cat(f, sig)) if cor else cat
+    L.append("  ccv_common_rpt #(.STAGES(%s), .BOUNDARY(%d), .SLOTS(%d), .PAYLOAD_W(%d)%s) %s ("
+             % (stages, boundary, r, c["bits"], lead, name))
     L.append("    .clk(core_clk), .rst_n(rst_n),")
     L.append("    .src_valid(%s), .src_payload(%s)," % (cat(src, "valid"), cat(src, "payload")))
     L.append("    .src_wake(%s), .src_credit(%s), .src_stall(%s),"
              % (src(None, "wake"), cat(src, "credit"), cat(src, "stall")))
     L.append("    .dst_valid(%s), .dst_payload(%s)," % (cat(dst, "valid"), cat(dst, "payload")))
     L.append("    .dst_wake(%s), .dst_credit(%s), .dst_stall(%s)"
-             % (dst(None, "wake"), cat(dst, "credit"), cat(dst, "stall")))
+             % (dst(None, "wake"), dcat(dst, "credit"), cat(dst, "stall")))
     L.append("`ifdef CCV_TRACE")
     L.append("    , .src_tid(%s), .dst_tid(%s)" % (cat(src, "tid"), cat(dst, "tid")))
     L.append("`endif")
@@ -536,8 +589,10 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
     L.append("// HARDENING WRAPPER %s: ccv_%s and the sequential repeaters of its"
              % (mod, t))
     L.append("// channel ends -- the physical hierarchy (docs/physical.md, \"Wrappers")
-    L.append("// and links\"). Nothing but instances and nets, like the top. An end")
-    L.append("// whose link has no stages here is connected straight through.")
+    L.append("// and links\"). Nothing but instances and nets, like the top. Each end's")
+    L.append("// repeater holds the block's boundary flop (BOUNDARY 1) and its link's")
+    L.append("// stages; a no-flop end (params/links.json no_flop) whose link has no")
+    L.append("// stages here is connected straight through.")
     if baked is not None:
         L.append("//")
         L.append("// A HARD-REUSE TEMPLATE (params/links.json hard_reuse): its stages")
@@ -546,7 +601,7 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
         L += ["//   " + x for x in textwrap.wrap(", ".join(users), 66)]
     else:
         L.append("// Each end's stages are a parameter the top sets from params/links.json;")
-        L.append("// at 0 the end is wired straight through, with no repeater.")
+        L.append("// at 0 a no-flop end is wired straight through, with no repeater.")
     if fts:
         L.append("//")
         L.append("// FEEDTHROUGHS: channels routed across this wrapper, by ordinal,")
@@ -572,12 +627,21 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
             for dr, w, name, tr, _d, typ, _m in chan_ports(ci["chan"], fwd, [None]):
                 fps.append((tr, "%-6s %s%s%s" % (dr, decl(w, typ), ft_side(o, side), name)))
     L += ["  , " + x for tr, x in fps if not tr]
+    # A credit-on-receipt end's credit: the wrapper's port, the repeater's
+    # output; the block has none (cor_ends).
+    for x, side, cp in ends:
+        c = cinst[x]["chan"]
+        if side == "dst" and (t, c["name"][4:]) in cor_ends():
+            L += ["  , output logic %s" % port_nm(c, cp, sl, "credit")
+                  for sl in range(c["rate"])]
     L += guarded([x for x in fps if x[0]], lambda x: x)
     L.append(");")
     L.append("")
     if baked is not None:
-        # An end at 0 is wired straight through, so its count is no one's.
-        used = [p for p in params if baked[p] or p.startswith("FT")]
+        # An end wired straight through has a count that is no one's.
+        flopped = {rpt_param(cinst[x]["chan"], cp) for x, _, cp in ends
+                   if bnd(t, cinst[x]["chan"])}
+        used = [p for p in params if baked[p] or p.startswith("FT") or p in flopped]
         if used:
             L.append("  // This template's stages, fixed.")
             for p in used:
@@ -609,11 +673,16 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
         src, dst = (blk, out) if side == "src" else (out, blk)
         nm = c["name"][4:] + copy_sfx(c, cp)
         prm = rpt_param(c, cp)
-        L.append("  // %s, %s end" % (c["name"], "source" if side == "src" else "destination"))
-        if baked is not None and baked[prm] == 0:
+        b = bnd(t, c)
+        cor = side == "dst" and (t, c["name"][4:]) in cor_ends()
+        L.append("  // %s, %s end%s" % (c["name"], "source" if side == "src" else "destination",
+                                       ", credit on receipt (params/links.json credit_on_receipt)"
+                                       if cor else
+                                       "" if b else ", no-flop (params/links.json no_flop)"))
+        if baked is not None and baked[prm] + b == 0:
             wire_inst(L, c, src, dst)
-        elif baked is not None:
-            rpt_inst(L, "u_rpt_" + nm, prm, c, src, dst)
+        elif baked is not None or b:
+            rpt_inst(L, "u_rpt_" + nm, prm, c, src, dst, b, side == "dst", cor)
         else:
             L.append("  if (%s > 0) begin : g_rpt_%s" % (prm, nm))
             sub = []
@@ -812,6 +881,13 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports, reuse=()):
                 trconns.append((tr, ".%s(%s)" % (pname, ex)))
             else:
                 conns.append(".%s(%s)" % (pname, ex))
+        # A credit-on-receipt end's credit: the wrapper's own port (cor_ends).
+        for x, side, cp in block_ends(t, i, ports[t], cinst):
+            ci = cinst[x]
+            if side == "dst" and (t, ci["chan"]["name"][4:]) in cor_ends():
+                for sl in range(ci["chan"]["rate"]):
+                    conns.append(".%s(%s)" % (port_nm(ci["chan"], cp, sl, "credit"),
+                                              seg_net(ci, sl, "credit", nsegs(ci) - 1)))
         for o, (x, j) in enumerate(ft.get(k, [])):
             ci = cinst[x]
             for side, jj in (("i", j - 1), ("o", j)):
@@ -985,8 +1061,12 @@ def ext_ports(chans):
     return P
 
 
-def gen_shim(btype, P, own_ports=False):
-    """A block type whose behaviour is the C++ skeleton's, over DPI-C."""
+def gen_shim(btype, P, own_ports=False, shadow=False):
+    """A block type whose behaviour is the C++ skeleton's, over DPI-C.
+    shadow: module <btype>_dpi, the model shadowing the block's RTL
+    inside a wrapper that takes the block's name (RCU's, RI-42/44:
+    test/rcu/ccv_rcu_svh.sv). It registers as its parent's path, since the
+    host binds a shim to its block by the path's last name."""
     S = dpi_ports(P)
     O = [p for p in S if p[0] == "output"]
     sw = sum(p[1] for p in S)
@@ -994,7 +1074,7 @@ def gen_shim(btype, P, own_ports=False):
     ext = btype == "ext"
     # EXTERNAL is testbench, not a block, so its shim is named as one
     # (tb_ext, in test/top/) rather than in the design's namespace (OI-37).
-    mod = "tb_ext" if ext else "ccv_%s" % btype
+    mod = "tb_ext" if ext else ("%s_dpi" % btype if shadow else "ccv_%s" % btype)
     L = [BANNER]
     L.append("// SV-HOSTED C++ for %s: the C++ skeleton's %s, run through DPI-C" % (
         mod, "testbench end of EXTERNAL" if ext else "functional stub"))
@@ -1022,7 +1102,7 @@ def gen_shim(btype, P, own_ports=False):
                      lambda p: "%-6s %s%s" % (p[0], decl(p[1], p[5]), p[2]))
         L.append(");")
     else:
-        L.append("module ccv_%s (" % btype)
+        L.append("module %s (" % ("%s_dpi" % btype if shadow else "ccv_%s" % btype))
         L.append("  `include \"ccv_%s_ports.svh\"" % btype)
         L.append(");")
     if not ext:
@@ -1038,6 +1118,12 @@ def gen_shim(btype, P, own_ports=False):
     L.append("    input bit [%d:0] sample, output bit [%d:0] drive);" % (sw - 1, ow - 1))
     L.append("")
     L.append("  int h;")
+    if shadow:
+        L.append("  // The wrapper's path: this instance's, its last name dropped.")
+        L.append("  function automatic string parent_path(input string p);")
+        L.append("    for (int i = p.len() - 1; i >= 0; i--) if (p[i] == \".\") return p.substr(0, i - 1);")
+        L.append("    return p;")
+        L.append("  endfunction")
     L.append("  bit skew;              // negative control: one extra register")
     # The count starts in the initial block, not in its declaration: a
     # declared value that a process also assigns is PROCASSINIT under
@@ -1046,7 +1132,8 @@ def gen_shim(btype, P, own_ports=False):
     L.append("  bit [%d:0] drv, q, q2;" % (ow - 1))
     L.append("  initial begin")
     L.append("    cyc = 0;")
-    L.append("    h = ccv_dpi_register($sformatf(\"%m\"));")
+    L.append("    h = ccv_dpi_register(%s);" % (
+        "parent_path($sformatf(\"%m\"))" if shadow else "$sformatf(\"%m\")"))
     L.append("    skew = ccv_dpi_skew(h);")
     L.append("  end")
     if ext:
@@ -1230,32 +1317,49 @@ def rpt_units(binst, cinst, names, ports, ft, plan):
     seen = {}
     for k, (t, i) in enumerate(binst):
         _, vals, _ = plan[k]
-        where = [(x, cp, rpt_param(cinst[x]["chan"], cp)) for x, _, cp in
-                 block_ends(t, i, ports[t], cinst)]
-        where += [(x, None, ft_param(cinst[x], o)) for o, (x, _) in enumerate(ft.get(k, []))]
-        for x, cp, prm in where:
+        where = [(x, cp, rpt_param(cinst[x]["chan"], cp), bnd(t, cinst[x]["chan"]),
+                  side == "dst",
+                  side == "dst" and (t, cinst[x]["chan"]["name"][4:]) in cor_ends())
+                 for x, side, cp in block_ends(t, i, ports[t], cinst)]
+        where += [(x, None, ft_param(cinst[x], o), 0, False, False)
+                  for o, (x, _) in enumerate(ft.get(k, []))]
+        for x, cp, prm, b, dend, cor in where:
             st = vals[prm]
-            if not st:
+            if not st + b:
                 continue
             c = cinst[x]["chan"]
-            key = (st, c["rate"], c["bits"], c["lead_mask"])
+            # DST_END matters only where it moves the boundary's lead slice:
+            # a flopped destination end with link stages and a lead; and at
+            # a credit-on-receipt end, whose boundary stage it names.
+            co = int(bool(b and dend and cor))
+            de = int(bool(b and dend and (c["lead_mask"] or co)))
+            key = (st, b, de, co, c["rate"], c["bits"], c["lead_mask"])
             seen.setdefault(key, []).append("%s %s" % (names[k][2:], prm))
     units = []
-    for (st, r, w, lead), users in sorted(seen.items()):
+    for (st, b, de, co, r, w, lead), users in sorted(seen.items()):
         lit = "%d'h%x" % (w, lead)
+        extra = dict(({"DST_END": 1} if de else {}), **({"CREDIT_ON_RECEIPT": 1} if co else {}))
         units.append({
-            "name": "rpt_s%d_n%d_w%d_l%x" % (st, r, w, lead),
+            "name": "rpt_s%d%s%s%s_n%d_w%d_l%s" % (st, "_b%d" % b if b else "",
+                                                  "_dst" if de else "", "_cor" if co else "",
+                                                  r, w, lead_tag(lead)),
             "module": "ccv_common_rpt",
             "files": ["rtl/phys/ccv_common_rpt.sv"],
-            "params": {"STAGES": st, "SLOTS": r, "PAYLOAD_W": w, "LEAD_MASK": lit},
+            "params": dict({"STAGES": st, "BOUNDARY": b, "SLOTS": r, "PAYLOAD_W": w,
+                            "LEAD_MASK": lit}, **extra),
             "clock": "clk",
             "reset": "!rst_n",
             "instances": users,
             "bench": {
-                "build": ("verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style "
+                # The payload ports are S x W bits wide, past Verilator's
+                # default trace width on the widest channels, and check-cg
+                # reads them from the VCD.
+                "build": ("verilator --binary --timing --trace --trace-max-width %d "
+                          "-Wno-fatal -Wno-lint -Wno-style "
                           "-Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=%d "
-                          "-GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv "
-                          "rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv" % (st, r, w, lit)),
+                          "-GBOUNDARY=%d -GDST_END=%d%s -GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb "
+                          "rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv"
+                          % (max(4096, r * w), st, b, de, " -GCOR=1" if co else "", r, w, lit)),
                 "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
                 "scope": "tb_cg_rpt.dut"}})
     return json.dumps({
@@ -1272,6 +1376,11 @@ def main():
     ports = {b["name"]: block_ports(b["name"], chans, ninst, common, len(binst))
              for b in blocks}
     reuse = ccv_links.hard_reuse([b["name"] for b in blocks])
+    ends = {}
+    for t, i in binst:
+        for x, _, _ in block_ends(t, i, ports[t], cinst):
+            ends.setdefault(t, set()).add(cinst[x]["chan"]["name"][4:])
+    NO_FLOP.update(ccv_links.no_flop([b["name"] for b in blocks], ends))
     targets = [(os.path.join(TOPDIR, "ccv_top.sv"),
                 gen_top(d, binst, chans, cinst, ninst, common, ports, reuse)),
                (os.path.join(TBDIR, "tb_top.sv"),
@@ -1284,6 +1393,12 @@ def main():
                         gen_stub(t, ports[t])))
         targets.append((os.path.join(TOPDIR, "dpi", "ccv_%s.sv" % t),
                         gen_shim(t, ports[t])))
+    # RCU's model as the shadow of its RTL in the SV top (CCV_RCU_RTL,
+    # RI-44): outside dpi/, which the plain SV-hosted build globs.
+    # Named as RCU's sub-block (rcu_<name>, CCV-L28): after ccv_rcu only a
+    # wrapper's _w may follow.
+    targets.append((os.path.join(TOPDIR, "dpi-shadow", "rcu_dpi.sv"),
+                    gen_shim("rcu", ports["rcu"], shadow=True)))
     names = [inst_name(t, i, ninst[t]) for t, i in binst]
     ft = feedthroughs(binst, cinst)
     plan = wrapper_plan(binst, cinst, ports, names, ft, reuse)

@@ -36,20 +36,10 @@ mkdir -p "$B"
 
 # -- build ---------------------------------------------------------------
 # Block implementations, one list for both hosts (sim/skel/blocks.list).
-BLOCKS=$(grep -v '^#' sim/skel/blocks.list | sed "s|^|$R/|" | tr '\n' ' ')
 VCOMMON="--cc --exe --build -j 0 -Wno-fatal -Wno-TIMESCALEMOD -Irtl/include -Irtl/generated"
-if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_common_chk_bank \
-     --Mdir "$B/skel" -o ccv-skel \
-     -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
-     rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv \
-     rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv \
-     rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv \
-     rtl/if/ccv_common_chk_wake.sv \
-     rtl/generated/ccv_common_chk_bank.sv \
-     "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" \
-     "$R/sim/skel/exerciser.cpp" $BLOCKS \
-     "$R/sim/skel/oracle.cpp" "$R/sim/src/event.cpp" \
-     "$R/sim/dpi/ccv_event_dpi.cpp" >"$B/skel.log" 2>&1; then
+# tools/build-skel.sh (its log $B/skel.log), shared with check-kernel's
+# control builds.
+if ! tools/build-skel.sh "$B/skel"; then
   bad "skeleton builds" "$(grep -m1 -i error "$B/skel.log")"
   exit 1
 fi
@@ -63,6 +53,57 @@ if ! verilator $VCOMMON --top-module tb_layout_probe \
 fi
 SKEL="$B/skel/ccv-skel"
 say "skeleton builds (checker bank Verilated in)" "PASS"
+
+# -- a Receiver's credit timing, alone (sim/skel/channel_test.cpp) ---------
+# CreditAt::Pop credits a cycle after the pop, unchanged; CreditAt::Landing
+# in the landing cycle, as an RTL receiver's <ch>_v_q (RI-36 (2), RI-37 (0)),
+# with its controls (a late take counted; the modes distinguishable).
+if g++ -std=c++17 -O1 -I"$R/sim/skel" -o "$B/channel-test" "$R/sim/skel/channel_test.cpp" \
+     >"$B/channel-test.log" 2>&1 && "$B/channel-test" >>"$B/channel-test.log" 2>&1; then
+  say "Receiver credit: Pop at landing+1, Landing at landing" "PASS (controls caught)"
+else
+  bad "Receiver credit timing" "$(grep -m1 -E 'FAIL|error' "$B/channel-test.log")"
+fi
+
+# -- the array macros' cycle model (sim/skel/sram.h) ----------------------
+# AR's register rev 344, DA tab rev 123 and MA-16: alone, its contract and
+# controls (sram_test.cpp); then in lockstep with the macros' RTL views
+# (rtl/macro/, Verilated), every rdata compared before every edge on one
+# random stream, which must also catch each control: a write-before-read
+# register file (each of the two), an ignored wmask on the _be register file,
+# a byte mask on the plain one (Daniel, 2026-11-17: only the _be one has
+# byte enables), a 1rw read a cycle late and a cycle early,
+# and a 1rw ce two cycles running, which the RTL's own assertion must stop
+# by name (test/vl/vl_sram_tb.cpp).
+if g++ -std=c++17 -O1 -I"$R/sim/skel" -o "$B/sram-test" "$R/sim/skel/sram_test.cpp" \
+     >"$B/sram-test.log" 2>&1 && "$B/sram-test" >>"$B/sram-test.log" 2>&1; then
+  say "SRAM model alone: its contract" "PASS (controls wbr, nomask, mask, early, b2b caught)"
+else
+  bad "SRAM model alone" "$(grep -m1 -E 'FAIL|error' "$B/sram-test.log")"
+fi
+rm -rf "$B/vl-sram"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style \
+     -Irtl/include -CFLAGS "-std=c++17 -I$R/sim/skel" --top-module vl_sram_top \
+     --Mdir "$B/vl-sram" -o vl_sram rtl/ccv_assert_pkg.sv rtl/macro/ccv_common_sram_1rw.sv \
+     rtl/macro/ccv_common_rf_1r1w.sv rtl/macro/ccv_common_rf_1r1w_be.sv test/vl/vl_sram_top.sv "$R/test/vl/vl_sram_tb.cpp" \
+     >"$B/vl-sram.log" 2>&1; then
+  bad "SRAM model == RTL, cycle for cycle" "the lockstep does not build ($B/vl-sram.log)"
+elif ! out=$("$B/vl-sram/vl_sram" 100000 2>&1); then
+  bad "SRAM model == RTL, cycle for cycle" "$(echo "$out" | head -2 | tr '\n' ' ')"
+else
+  missed=""
+  for c in wbr wbr3 nomask mask late early; do
+    VL_CONTROL=$c "$B/vl-sram/vl_sram" 20000 >/dev/null 2>&1 && missed="$missed $c"
+  done
+  # The RTL's assertion stops the run (non-zero), so read its output whole.
+  b2b=$(VL_CONTROL=b2b "$B/vl-sram/vl_sram" 20000 2>&1 || true)
+  case "$b2b" in *"CCV sram_ce_every_other failed"*) ;; *) missed="$missed b2b" ;; esac
+  if [ -n "$missed" ]; then
+    bad "SRAM model == RTL, cycle for cycle" "control(s) not caught:$missed"
+  else
+    say "SRAM model == RTL, cycle for cycle" "PASS ($(echo "$out" | tail -1 | sed 's/^agree //'); wbr, wbr3, nomask, mask, late, early, b2b caught)"
+  fi
+fi
 
 # Keys are matched WHOLE -- preceded by a space or the line start. A bare
 # `violations=` also matches inside `class_violations=`, which comes first on
@@ -149,6 +190,7 @@ for seed in 1 2 3; do
   [ "$(field "$log" mismatches)" = "0" ] || why="$why; payload mismatches"
   [ "$(field "$log" overflows)" = "0" ]  || why="$why; receive overflow"
   [ "$(field "$log" credit_leaks)" = "0" ] || why="$why; $(field "$log" credit_leaks) credit(s) lost"
+  [ "$(field "$log" cor_late)" = "0" ] || why="$why; credit on receipt: $(field "$log" cor_late) landed message-cycle(s) not taken"
   [ "$(field "$log" credits_home)" = "$X_SLOTS" ] || why="$why; credits home on $(field "$log" credits_home) of $X_SLOTS slots"
   [ "$(field "$log" idle_slots)" = "0" ] || why="$why; $(field "$log" idle_slots) idle slot(s)"
   [ "$(field "$log" sent)" = "$(field "$log" received)" ] || why="$why; sent != received"
@@ -282,6 +324,35 @@ PY
   say "trace -> Perfetto JSON, one track per channel" "PASS ($tracks)"
 else
   bad "trace -> Perfetto JSON" "${tracks:-conversion failed} track(s)"
+fi
+
+# -- per-block port dumps (RA-34): one instance of every block type ---------
+# Named and sized as rtl/top/ports names them (tools/check-port-dump.py,
+# a separate rule from gen-top's), each slot balanced in a drained run; the
+# checker's selftest refuses a dropped, renamed, resized or extra port and a
+# credit short, and ccv-skel refuses an instance that does not exist.
+pd="$B/portdump"; rm -rf "$pd"; mkdir -p "$pd"
+insts=$(python3 - <<'PY'
+import re
+t = open("sim/generated/ccv_skel_wiring.h").read().split("kBlkInsts[] =")[1].split("};")[0]
+seen, out = {}, []
+for ty, ix in re.findall(r"Blk::(\w+), (\d+)", t):
+    seen.setdefault(ty, []).append(ix)
+for ty, ixs in seen.items():
+    out.append(ty.lower() if len(ixs) == 1 else "%s_%02d" % (ty.lower(), int(ixs[-1])))
+print(" ".join(out))
+PY
+)
+pok=1
+for i in $insts; do
+  "$SKEL" --cycles 80 --port-dump "$i=$pd/$i.vcd" >"$pd/$i.log" 2>&1 || { pok=0; pmiss="$i: ccv-skel rc=$?"; }
+done
+if [ $pok = 1 ] && python3 tools/check-port-dump.py "$pd"/*.vcd >"$pd/check.log" 2>&1 &&
+   python3 tools/check-port-dump.py --selftest "$pd/rcu.vcd" >"$pd/selftest.log" 2>&1 &&
+   ! "$SKEL" --cycles 10 --port-dump "no_such=$pd/x.vcd" >/dev/null 2>&1; then
+  say "port dumps == rtl/top/ports, every block" "PASS ($(echo $insts | wc -w) types; controls refused)"
+else
+  bad "port dumps == rtl/top/ports" "${pmiss:-$(grep -m2 -E 'FAIL|^  ' "$pd/check.log" "$pd/selftest.log" | tr '\n' ' ')}"
 fi
 
 exit $fail

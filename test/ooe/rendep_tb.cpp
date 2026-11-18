@@ -26,6 +26,9 @@
 // caught: no-map (ooe_prodmap takes no names, so every producer two groups
 // back or more goes missing), late-code (the model's codes taken as late)
 // and no-copy-src (a masked load's copy reads the wrong old destination).
+// Each port's timer kind and class (OA, re:OI-104) are compared with the
+// model's wakeKindClass for its entry; no-spec drops the speculative-wake
+// bit, so an L1-contracted load's main reads as a plain memop.
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: rendep_tb [seeds] | rendep_tb --cg <scenario> <vcd>
@@ -64,6 +67,7 @@ CgRun cg;
 struct Uop {
   Core::RatLog::Ren r;
   unsigned pm = 0, pc = 0;   // its main entry's port, its copy's
+  uint8_t kc[2] = {};        // its entries' {class, kind}, the model's wakeKindClass (OA, re:OI-104)
 };
 // A cycle: its group, the model's rows for the group's entries, and what
 // ooe_rs would mask.
@@ -143,6 +147,7 @@ void fail(const char *what, unsigned p, unsigned j, unsigned got, unsigned want)
 void driveDep(const Cyc *y) {
   dut->d_v_cq01h = dut->d_mem_cq01h = dut->d_cp_cq01h = dut->d_atom_cq01h = 0;
   dut->d_gwe_cq01h = dut->d_pwe_cq01h = dut->d_cguard_cq01h = dut->d_cnone_cq01h = dut->d_nob_cq01h = 0;
+  dut->d_spec_cq01h = 0;
   dut->d_gsv_cq01h = 0;
   dut->d_psv_cq01h = 0;
   clearAll(dut->d_gname_cq01h, A * LG);
@@ -179,6 +184,7 @@ void driveDep(const Cyc *y) {
     setField(dut->d_unit_cq01h, u * 3, 3, r.unit);
     setField(dut->d_pg_cq01h, u * 3, 3, r.pgroup);
     setBit(dut->d_nob_cq01h, u, r.nob);
+    setBit(dut->d_spec_cq01h, u, r.spec && control != "no-spec");
   }
 }
 
@@ -234,6 +240,8 @@ void compare(const Cyc &y, const Cyc *a) {
       ++rows;
       const bool prod = k == 1 || x.r.gwe || x.r.pwe;
       if (getBit(dut->row_prod_cq02h, p) != prod) fail("row_prod", p, 0, getBit(dut->row_prod_cq02h, p), prod);
+      const unsigned kc = getField(dut->akind_cq02h, p * 2, 2) | getField(dut->acls_cq02h, p * 3, 3) << 2;
+      if (kc != x.kc[k]) fail("kind and class", p, 0, kc, x.kc[k]);
       std::vector<uint8_t> want_row(N, 0), want_grp(P, 0), want_prv(P, 0);
       std::vector<uint8_t> code_row(N, 0), code_grp(P, 0), code_prv(P, 0);
       for (unsigned j = 0; j != N; ++j) {
@@ -330,6 +338,12 @@ void hook(const Core &c) {
     x.r = r;
     x.pm = r.mem ? A + mi++ : ri++;
     x.pc = r.copy != kNoEntry ? ri++ : 0;
+    for (unsigned k = 0; k != 2; ++k) {
+      const unsigned e = k == 0 ? r.main : r.copy;
+      if (e == kNoEntry) continue;
+      const auto kc = c.wakeKindClass(e);
+      x.kc[k] = uint8_t((kc.second << 2) | kc.first);
+    }
     if (x.pm < P) y.port_of[r.main] = x.pm;
     if (r.main < 64) { alloc_at[r.main] = cycles; alloc_name[r.main] = r.gname; }
     if (r.copy < 64) { alloc_at[r.copy] = cycles; alloc_name[r.copy] = r.gname; }

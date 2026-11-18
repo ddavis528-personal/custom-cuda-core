@@ -1,17 +1,19 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-10-30. Keep this current at every task's end; it is what
+Updated 2026-11-15. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
-- Worktree /home/user/ti-ret. Push only to `ccr-183cc441-doowtf` and
+- Push only to `ccr-183cc441-doowtf` and
   `claude/custom-cuda-core-infra-6msg93`, each after
   `git merge-base --is-ancestor origin/<b> HEAD`. No PRs. Never bare `git stash`.
 - Push with `CCV_PUSH_BRANCHES=ccr-183cc441-doowtf,claude/custom-cuda-core-infra-6msg93
-  tools/gate-push.sh` (regen+commit, clean gate, ancestry, push, clear build);
+  tools/gate-push.sh` (regen+commit, scoped gate by default, `--full` for a
+  gate-infrastructure change, ancestry, push, clear build but synth-cache);
   run it in the background and read its summary lines only.
-- Notices: hand the text to the `register-reader` subagent with prefix TI;
-  act on its digest. Gate red: `gate-triage` subagent.
+- Notices: hand the text to the `register-reader` subagent with prefix TI
+  (not loaded in this session: general-purpose, model sonnet, the file's
+  body as prompt); act on its digest. Gate red: `gate-triage` subagent.
 - Commits end with the Co-Authored-By and Claude-Session lines from the
   session's attribution reminder. No model ids in commits or artifacts.
 - Edits to OI's files (sim/ooe/*) follow OI-18: edit, then notify OI.
@@ -29,35 +31,91 @@ below); then `CCV_PUSH_BRANCHES=... tools/daily-sweep.sh` in the background
 few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 250, OA 279, IS 176, TI 266, OI 234 (FYI re:OI-85,
-re:OI-89; OI-89 closed), CP 143, DA 96. Latest TI open: TI-48.
-Pings 2026-10-30 sent to all five; all ponged ok.
+Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
+TI 441, RA 148, RI 82, OI 350, AR 356, OA 418, MA 57, IS 193, CP 157,
+DA 119, Conventions 19 (2026-11-15). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
-## State
-- Tip of both branches: 6ba08b1 (OI-85 row-indexed dones, OA rev 282).
-  Before it: 5fe7177 (W, IS-24/IS-25, TI-47 (a)). Last release 536a893.
-- Compiler pin d9ddd2c (source f5fa030; O-83, O-84).
-- Frame-interleave experiment done: coremark32 -7.1%, coremark128 -15.7%
-  at 64 KiB; at 512 KiB frames -16.9%, both fixes together -22.8%.
-- OI pushed 9c079f9 (ROB slice 1, check-cg scope fix + cg_fx_gen control):
-  review that check-cg patch when the sweep merges it.
+## Long runs
+Every long tool detaches itself and exits 5 (never 0) when it does (OA-414,
+518cb3c3). Wait with `tools/gate-wait.sh <job log>` as a background task,
+timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
+restart: rerun the job). Logs in /root/ccv-logs/.
 
-## Open work (most urgent first)
-1. TI-48 (open, TI rev 266): every agent writes its handoff. Once AR, OA,
-   OI, CP and IS have all answered, put `"autoCompactWindow": 400000` in
-   `.claude/settings.json` (DA, 2026-10-30). This session: /autocompact 500k.
-2. Usage (DA, 2026-10-30): scripts and subagents are in (CLAUDE.md, The gate;
-   Context and handoff). Still to propose: the sweep as its own cheaper
-   session; FYI notices not rung; weekly pings (register rows to OA/DA).
-3. AR-24 capacity sweep on CP-64's eight traces (#46): frames in place
-   only plus one interleaved equality check; 64 KiB at hit base 7 vs
-   512 KiB at bases 7/8/9. Needs CTA queueing past resident slots and
-   gen-oracle `-load`/init records. Scratch in /home/user/sweep.
-4. OI-86 (b), if DA takes it: RCU-only done at fixed slot
-   CCV_DONE_SLOTS-2 in the stub, plus the lead field.
-5. Barriers (TI-40): SYU stub, RAU alloc/exit, DEC bar rows (in progress).
-6. Held or pending: layernorm (held by AR rev 143); IS-20 narrow-source
-   control; IS-21 atomics; MIU .shared mod 2^32 and .global F-ADDR (CP-33,
-   O-75); csa DUAL=1 after OI; AR-24 follow-ups; gate kernels
-   coremark-derived-pl-fault and ld.pred.local (AR rev 171); DCU channel
-   rates from CCV_DCACHE_LOOKUPS.
+## State (2026-11-17)
+- Landed 11-15: bd1cc5a2 (SCOPED PASS 24/24 since e48fa517) on both working
+  branches: PF-47 (base 1: RCU_ADDR 1, L1_WAKE 13, L1_CMPL 14; ooe_wake defaults
+  13/15), CCV_P_TIMEOUT_UOP, RI's SFU pair, CCV_LAT_MIU_NOHIT_A2=2 (MA 56),
+  CCV_LAT_L1_NOHIT (AR 353/354; require NOHIT+2 <= L1_WAKE, OA 416).
+  TI row rev 439 rang OI, AR, MA, OA.
+- cm128 unbounded (AR 350/352) answered at TI rev 436: 73.6M cycles, holds
+  uop 8252, memop 19201 (< 20480).
+- Daily sweep conflicts were all .claude/handoff/RA.md: take RA's newest.
+- Worktree: /home/user/ti-sram. Backups to gate-scratch/TI-<name>, plain
+  push only. Disk: deleting other sessions' /tmp/tmp.* was denied; ask.
+
+## Open work (priority order)
+IN FLIGHT 11-17 (urgent first). LANDED: 117e8117 (pin timing, no SRAM byte
+enables; TI 473) and ddc700a1 (MACRO-1 size limits, waivers, 0-20% size
+penalty, per-block array efficiency; TI 477 rang MA, AR). Both working
+branches at ddc700a1. Worktree /home/user/ti-size is free.
+A. Task 28, array RAS (DA rulings TI 474-476, all rang MA AR OA): macros only
+   (flop arrays: scan). A common wrapper: BIST override + spare row outside
+   the macro + spare column above 8 KiB logical; NO ECC in it. BIST broadcast
+   groups of up to 32 KiB logical, groups in parallel (group/ID params; check
+   group sizes, chain completeness, tie-off only at the block wrapper). TI's
+   proposal: narrow req struct with a pattern, local compare, rsp flopped
+   chain, repair registers loaded by ID, req flopped per wrapper (CG-5 and NGD
+   clean). MACRO-1 size and efficiency on logical bits via DATA_W. ECC:
+   common SECDED enc/dec for architects (latency is theirs), static width
+   check, model single-flip injection + bin + control, DED unit test, MIU
+   stub hook (MA re RA 153).
+B. Task 30, AR 370 (DA rev 124) + MA-19 + IS 197: F-MACHINE code 10 in
+   CCV_W_FAULT_CAUSE; compiler pin to 103976f (ISA v1.9, O-86);
+   ccv_dcu_cru_err rate 1 (ue, ce_alert); CRU MACHINE_CHECK, kill all, every
+   live record F-MACHINE; ccv_common_err (counts, first-error log, ERR_CTRL
+   threshold + INJECT, track table, host-only) on the CSR star;
+   CCV_DCU_UE_TRACK 16. Note: MA's 224 "scan-only" track flops still owe CG.
+C. Task 31, AR 371: SPM banks ccv_common_rf_1r1w 1024x32 (4 KiB, no ECC);
+   stub sub-word RMW charged as a bank conflict; CCV_SPM_BANKS doc; check-ngd
+   on the 1024-word read (fallback 2 x 512).
+D. Task 29, AR 368: CCV_LAT_L1_ECC (1, MA's) into CCV_LAT_L1_CMPL derive
+   (14 to 15) + contract text; BLOCKED until OI's price and OA's ruling.
+E. Offer Daniel cost/bit instead of efficiency if wanted (TI chose bits/cost).
+
+No task carries a date (Daniel, 2026-11-16): everything is best effort, in
+priority order. A dependency is met by moving its task up, never by a due
+date. A date in another agent's row is read as a priority, not a deadline.
+0. LANDED 11-15: a5481843 (SCOPED PASS 24/24 since bd1cc5a2) on both working
+   branches: AR 356 (1) stub MIU MA-4 eligibility + early no-hit, OOE l1_nohit
+   on in the skeleton (OI's ooe_block.cpp), AR 359 (4) fix (TI's stub MIU: a
+   credit-late hit's cmpl could leave at the contract ahead of its data; fixes
+   5663e208 + 28f9ab48; cm128priv 64 KiB warm/perfect 0 CHECKs, was 672,
+   2,124,002 cycles), RI-54 merge + addr-late control, CCV_DCU_SETS 512,
+   DA 2026-11-15 budget rule docs. Landing row: see TI tab after rev 449.
+   NEXT (11-16): task 21 AR 362/MA 65 set_index/bank lead on ccv_miu_dcu_req +
+   page-offset require; task 19 RA 148; check-ngd 'by' enforcement of the
+   budget rule (unmeasured-parent modules, boundary ports/leads, boundary-
+   wired child pins), a negative control each; cover bin for the
+   credit-starved late hit. Daily sweep repo half: fresh worktree.
+0b. 11-16: RCU waivers signed (DA rev 122, Daniel in TI's session); RI's 05af449c landed as 93f0d75c (TI 451). OA 419 baseline line: OI carried it (0bd67c2b), nothing for TI. Promised to RI: RA 148, lane-op kill kernel (no dates: DA 2026-11-16).
+0c. LANDED 11-16: 1861cc51 (SCOPED PASS 24/24) on both working branches:
+   AR 362/364 (DCU_BANKS 8 on PA[9:7], BANK_AGE 16, W_DCU_SET, page require,
+   lead_set_index only; stub MIU drives, stub DCU checks, break dcu-set-lead),
+   RI-57 kill kernel rokilllane + bin kill_lane, and an OI-18 edit to
+   sim/ooe/ooe_core.cpp (epoch check before slot lookup). TI 457 rang RI, RA,
+   OI, AR, MA. Daily sweep 11-16 repo half running from /home/user/ti-sweep
+   (branch ti-sweep16; log job-daily-sweep-20261116-125856-*.log).
+   OI-157/IS OOM: check-cg holds change counts, not traces (b3e2305f = 804d1e6f
+   on ti-sweep16); LANDED: the 11-16 sweep's full gate passed on 804d1e6f,
+   pushed to both working branches and release (21d2fb26). TI 458-460. After it lands:
+   LANDED 7192d4fc: RI's b2748371 + no-dates CLAUDE.md (SCOPED PASS 4/24); TI 462 rang OI, IS; TI 463 rang RI.
+   LANDED 0b270eb3 (SCOPED PASS 24/24): task 22 macro library (every-other-cycle
+   sram_1rw, 2-cycle read; ccv_common_rf_1r1w); TI 464 rang MA.
+   NEXT, in priority order (no dates, DA 2026-11-16): check-ngd budget-rule 'by'
+   enforcement (unmeasured parent, block boundary ports/leads, boundary-wired child
+   pins; a control each); credit-starved late-hit cover bin; task 19 RA 148 (low
+   priority, post-sign-off); SFU kill variant.
+1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
+2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
+3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
+   ooe_rs from a flop. RI-21 (4): rcu_dec_pkg switch after sign-off.

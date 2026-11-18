@@ -10,7 +10,9 @@
 // valid bits to ooe_sched, and the matrix to ooe_wake's confirmation;
 // ooe_wake's lines, leads, issued bits, held misses and miss pulses to
 // ooe_sched, and its final bits, held misses and model-frame lead to
-// ooe_rs's confirmation. ooe_rs and ooe_wake share the completion channel,
+// ooe_rs's confirmation; ooe_rs's kind and class per entry, written at
+// allocation (OA, re:OI-104), to ooe_wake's timers. ooe_rs and ooe_wake
+// share the completion channel,
 // the registered squash's frees and its lead.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
@@ -23,6 +25,7 @@ module ooe_trio #(
   parameter int NC = 4,
   parameter int S  = 4,
   parameter int FB = 1,
+  parameter int IRK = 4,     // ooe_sched's idle-R run (RA-17)
   parameter logic [63:0] LAT  = 64'h0000_050c_0000_0703,
   parameter logic [63:0] FAST = 64'h0000_0000_0000_0400,
   parameter logic [23:0] PEN  = 24'h03_02_00,
@@ -31,6 +34,9 @@ module ooe_trio #(
   parameter int LAT_SPEC = 16,
   parameter int LAT_MISS = 19,
   parameter int CMPL_DLY = 1,
+  parameter int PW = 16,     // the payload's bits (RA-39 (c)): the bench's tag
+  parameter int LW = 12,     // the lead slice's bits (RA-31, OA's rev 343): another tag
+  parameter int K  = 9,
   localparam int P  = 2 * A,
   localparam int W  = $clog2(N),
   localparam int NM = N - NR,
@@ -55,9 +61,13 @@ module ooe_trio #(
   input  logic [NC*W-1:0]   cmpl_idx_cq00h,
   input  logic [NC-1:0]     hint_l_cq00h,
   input  logic [NC*W-1:0]   hint_idx_cq01h,
-  // The RS payload ooe_wake's timers read at a grant.
-  input  logic [2*N-1:0]    kind_cq01h,
-  input  logic [3*N-1:0]    cls_cq01h,
+  // Each port's kind and class with its row (ooe_rs writes them at
+  // allocation, OA re:OI-104), and the RS payload ooe_wake reads at a grant.
+  input  logic [2*P-1:0]    akind_cq01h,
+  input  logic [3*P-1:0]    acls_cq01h,
+  input  logic [P*PW-1:0]   pay_cq01h,
+  input  logic [P*LW-1:0]   lead_cq01h,
+  input  logic [P*K-1:0]    home_cq01h,
   input  logic [N-1:0]      prod_cq01h,
   // ooe_sched's other terms.
   input  logic [N*LS-1:0]   slot_cq02h,
@@ -69,6 +79,10 @@ module ooe_trio #(
   input  logic [N*N-1:0]    sdep_cq03h,
   input  logic [N*LS-1:0]   sslot_cq03h,
   input  logic [N*9-1:0]    res_cq03h,
+  input  logic [NR-1:0]     ret_cq03h,
+  input  logic [NR-1:0]     brk_cq03h,
+  input  logic              mig_cq02h,
+  input  logic [3:0]        cret_cq02h,    // MA-5: MIU credit returns, a lead
   input  logic [N-1:0]      chas_cq03h,
   input  logic [N*W-1:0]    cidx_cq03h,
   input  logic [NR*NR-1:0]  older_r_cq03h,
@@ -78,10 +92,16 @@ module ooe_trio #(
   // A negative control (trio_tb's TRIO_CONTROL): 0 none, 1 no-msd (the
   // held misses never reach ooe_sched), 2 no-miss-lead (no event lead),
   // 3 late-leads (the miss pulses and held misses a cycle late, as flops of
-  // their own would give them), 4 no-alloc-lead.
+  // their own would give them), 4 no-alloc-lead, 5 no-ret-hold (no ret
+  // reaches ooe_sched), 6 no-rep-lead (the bench's alone: it rewrites
+  // ooe_sched's ready register enable), 7 no-idle-r (no migration reaches
+  // ooe_sched, so RA-17's force never holds R).
   input  logic [2:0]        ctl,
   // What the bench compares.
   output logic [N-1:0]      grant_cq04h,
+  output logic [K-1:0]      iss_v_cq05h,
+  output logic [K*LW-1:0]   iss_lead_cq05h,
+  output logic [K*PW-1:0]   iss_pay_cq05h,
   output logic [P-1:0]      gnt_v_cq03h,
   output logic [P*W-1:0]    gnt_idx_cq03h,
   output logic [N-1:0]      valid_cq02h,
@@ -93,17 +113,21 @@ module ooe_trio #(
   output logic [N-1:0]      msd_cq02h
 );
   logic [N-1:0]      grant_w;
+  logic              gnt_l;    // ooe_sched's grant register's enable, ooe_rs's issue register's lead
   logic [2*N*N-1:0]  code;
   logic [N-1:0]      hcol;
   logic [4*N-1:0]    wtl;
   logic              wml;
   logic [N-1:0]      flt;
   logic [N-1:0]      prod_o;
+  logic [2*N-1:0]    kind_w;   // ooe_rs's stored kind and class, to ooe_wake (OA, re:OI-104)
+  logic [3*N-1:0]    cls_w;
   // ooe_wake takes the completion's payload a cycle after ooe_rs's stage
   // name for it; both are the channel's payload at the same edge.
-  ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC)) u_rs (
+  ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC), .PW(PW), .LW(LW), .K(K)) u_rs (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
     .req_l_cq00h(req_l_cq00h), .req_cq01h(req_cq01h), .row_prod_cq01h(row_prod_cq01h),
+    .akind_cq01h(akind_cq01h), .acls_cq01h(acls_cq01h),
     .row_dep_cq01h(row_dep_cq01h), .row_code_cq01h(row_code_cq01h),
     .grp_dep_cq01h(grp_dep_cq01h), .grp_code_cq01h(grp_code_cq01h),
     .prv_dep_cq01h(prv_dep_cq01h), .prv_code_cq01h(prv_code_cq01h),
@@ -111,11 +135,14 @@ module ooe_trio #(
     .wtl3_cq00h(flt), .fin_cq00h(fin_cq02h), .gnt_cq01h(grant_cq04h),
     .cmpl_l_cq00h(cmpl_l_cq00h), .cmpl_idx_cq00h(cmpl_idx_cq00h), .sq_l_cq00h(sq_l_cq00h),
     .gnt_v_cq03h(gnt_v_cq03h), .gnt_idx_cq03h(gnt_idx_cq03h), .valid_out_cq02h(valid_cq02h),
-    .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol));
+    .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol),
+    .kind_o_cq02h(kind_w), .cls_o_cq02h(cls_w),
+    .pay_cq01h(pay_cq01h), .lead_cq01h(lead_cq01h), .home_cq01h(home_cq01h), .gnt_l_cq01h(gnt_l),
+    .iss_v_cq03h(iss_v_cq05h), .iss_lead_cq03h(iss_lead_cq05h), .iss_pay_cq03h(iss_pay_cq05h));
   ooe_wake #(.N(N), .LAT(LAT), .FAST(FAST), .PEN(PEN), .NPEN(NPEN), .LAT_COPY(LAT_COPY),
              .LAT_SPEC(LAT_SPEC), .LAT_MISS(LAT_MISS), .CMPL_DLY(CMPL_DLY), .NC(NC)) u_wake (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
-    .grant_cq01h(grant_w), .kind_cq01h(kind_cq01h), .cls_cq01h(cls_cq01h), .prod_cq01h(prod_cq01h),
+    .grant_cq01h(grant_w), .kind_cq01h(kind_w), .cls_cq01h(cls_w), .prod_cq01h(prod_cq01h),
     .cmpl_l_cq00h(cmpl_l_cq00h), .cmpl_idx_cq01h(cmpl_idx_cq00h),
     .hint_l_cq00h(hint_l_cq00h), .hint_idx_cq01h(hint_idx_cq01h),
     .dep_cq01h(dep_cq02h), .sqf_cq01h(sqf_cq01h), .sq_l_cq00h(sq_l_cq00h),
@@ -124,6 +151,8 @@ module ooe_trio #(
   // The control's view of what reaches ooe_sched.
   logic [N-1:0] msd_q, mis_q, s_msd, s_mis;
   logic         s_wml, s_alloc;
+  logic [NR-1:0] s_ret;
+  logic          s_mig;
   always_ff @(posedge ooe_core_clk) begin
     msd_q <= msd_cq02h;
     mis_q <= miss_cq02h;
@@ -133,6 +162,8 @@ module ooe_trio #(
     s_mis   = ctl == 3'd3 ? mis_q : miss_cq02h;
     s_wml   = ctl == 3'd2 ? 1'b0 : wml;
     s_alloc = ctl == 3'd4 ? 1'b0 : alloc_cq02h;
+    s_ret   = ctl == 3'd5 ? '0 : ret_cq03h;
+    s_mig   = ctl == 3'd7 ? 1'b0 : mig_cq02h;
   end
   // V-65 (OA's response OI-45 (1)): ooe_sched's issued after an edge,
   // formed from its own replay rule, is ooe_rs's issued register after
@@ -150,7 +181,7 @@ module ooe_trio #(
   end
   `CCV_ASSERT(v65_issued, ctl != 3'd0 || ((ise_q ^ u_rs.iss_cq02h) & valid_cq02h & ~fre_q & ~gr_q) == '0)
   `CCV_ASSERT(v65_stale_grant, ctl != 3'd0 || (gr_q2 & u_rs.iss_cq02h & ~grant_cq04h) == '0)
-  ooe_sched #(.N(N), .NR(NR), .S(S), .FB(FB)) u_sched (
+  ooe_sched #(.N(N), .NR(NR), .S(S), .FB(FB), .IRK(IRK)) u_sched (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .wake_cq02h(wake_cq02h), .valid_cq02h(valid_cq02h),
     .iss_cq02h(iss_cq02h), .slot_cq02h(slot_cq02h), .active_cq02h(active_cq02h), .copy_cq02h(copy_cq02h),
@@ -159,7 +190,8 @@ module ooe_trio #(
     .vel_cq03h(vel_cq03h), .siss_cq03h(siss_cq03h), .sdep_cq03h(sdep_cq03h), .sslot_cq03h(sslot_cq03h),
     .res_cq03h(res_cq03h), .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h),
     .older_r_cq03h(older_r_cq03h), .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h),
-    .block_cq03h(block_cq03h), .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w));
+    .block_cq03h(block_cq03h), .ret_cq03h(s_ret), .brk_cq03h(brk_cq03h), .mig_cq02h(s_mig), .cret_cq02h(cret_cq02h),
+    .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w), .gnt_l_cq04h(gnt_l));
 endmodule
 `undef CCV_CLK
 `undef CCV_RST

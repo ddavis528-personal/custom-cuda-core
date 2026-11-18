@@ -63,6 +63,113 @@ else
   bad "links.json validator" "${missed# }"
 fi
 
+# no_flop, on a copy of the design's own file with one entry changed: each
+# refused by name. A DPI block's sending end off no_flop is a second register
+# in series, a link stage no derive counts (AR's rev 309 (1)). The first
+# case takes one sending end of a DPI block (ooe) off; rcu, whose top is RTL
+# since RI-33, may take its sending ends off, so it is not the case's block.
+refused=0; missed=""
+while IFS='|' read -r want edit; do
+  [ -z "$want" ] && continue
+  python3 - "$edit" >"$T/nf.json" <<'PY'
+import json, sys
+d = json.load(open("params/links.json"))
+exec(sys.argv[1], {"nf": d["no_flop"]})
+json.dump(d, sys.stdout)
+PY
+  if out=$(CCV_LINKS="$T/nf.json" python3 tools/gen-skel.py --check 2>&1); then
+    missed="$missed [accepted: $edit]"
+  elif ! grep -q -- "$want" <<<"$out"; then
+    missed="$missed [$want: $(grep -m1 -v problem <<<"$out" | xargs)]"
+  else
+    refused=$((refused + 1))
+  fi
+done <<'CASES'
+ooe is a DPI block, so its sending end of ooe_rcu_issue stays no_flop|nf[0]["block"].remove("ooe"); nf.append({"block": "ooe", "channels": "all", "except": ["ooe_rcu_issue"], "why": "x"})
+fet is a DPI block, so its sending end of|nf[0]["block"].remove("fet")
+says no why|nf[1].pop("why")
+has no end of channel 'fet_dec_instr'|nf[1]["channels"].append("fet_dec_instr")
+"except" goes only with channels "all"|nf[1]["except"] = ["ooe_rcu_map"]
+except: rcu has no end of channel 'fet_dec_instr'|nf[1]["channels"] = "all"; nf[1]["except"] = ["miu_rcu_data", "fet_dec_instr"]
+is already no_flop|nf.append({"block": "fet", "channels": ["fet_dec_instr"], "why": "x"})
+CASES
+if [ -z "$missed" ]; then
+  say "links.json: malformed no_flop refused" "PASS ($refused cases, each by name)"
+else
+  bad "links.json no_flop validator" "${missed# }"
+fi
+
+# credit_on_receipt (AR's rev 322, RA-41), on a copy of the design's own file
+# with one entry changed: each refused by name. On a zero-cycle end there is
+# no boundary flop to load the credit from; off its listed ends no schema
+# contract carries the receiving block's promise.
+refused=0; missed=""
+while IFS='|' read -r want edit; do
+  [ -z "$want" ] && continue
+  python3 - "$edit" >"$T/cor.json" <<'PY'
+import json, sys
+d = json.load(open("params/links.json"))
+exec(sys.argv[1], {"cor": d["credit_on_receipt"], "nf": d["no_flop"]})
+json.dump(d, sys.stdout)
+PY
+  if out=$(CCV_LINKS="$T/cor.json" python3 tools/gen-skel.py --check 2>&1); then
+    missed="$missed [accepted: $edit]"
+  elif ! grep -q -- "$want" <<<"$out"; then
+    missed="$missed [$want: $(grep -m1 -v problem <<<"$out" | xargs)]"
+  else
+    refused=$((refused + 1))
+  fi
+done <<'CASES'
+a zero-cycle end (no_flop)|cor.append({"end": "lane_rcu_res@rcu", "why": "x"})
+is not miu_rcu_data's destination|cor.append({"end": "miu_rcu_data@miu", "why": "x"})
+a zero-cycle end (no_flop)|cor.append({"end": "ooe_rcu_issue@rcu", "why": "x"})
+not listed: ccv_ooe_rcu_map carries no credit_on_receipt contract|nf[1]["channels"].remove("ooe_rcu_map"); cor.append({"end": "ooe_rcu_map@rcu", "why": "x"})
+listed twice|cor.append(dict(cor[0]))
+says no why|cor[0].pop("why")
+an end is '<channel>@<block type>'|cor.append({"end": "miu_rcu_data", "why": "x"})
+unknown key|cor[0]["when"] = "x"
+CASES
+if [ -z "$missed" ]; then
+  say "links.json: credit_on_receipt off its ends refused" "PASS ($refused cases, each by name)"
+else
+  bad "links.json credit_on_receipt validator" "${missed# }"
+fi
+
+# no_flop_port_budget (AR's rev 326), on a copy of the design's own file with
+# one entry changed: each refused by name. Only a no-flop receiving end whose
+# link takes no stage is held to its port budget; a flopped end's logic is
+# behind the wrapper's flop, and a sending end stays at 0 NGD.
+refused=0; missed=""
+while IFS='|' read -r want edit; do
+  [ -z "$want" ] && continue
+  python3 - "$edit" >"$T/pb.json" <<'PY'
+import json, sys
+d = json.load(open("params/links.json"))
+exec(sys.argv[1], {"pb": d["no_flop_port_budget"], "nf": d["no_flop"], "lk": d["links"]})
+json.dump(d, sys.stdout)
+PY
+  if out=$(CCV_LINKS="$T/pb.json" python3 tools/gen-skel.py --check 2>&1); then
+    missed="$missed [accepted: $edit]"
+  elif ! grep -q -- "$want" <<<"$out"; then
+    missed="$missed [$want: $(grep -m1 -v problem <<<"$out" | xargs)]"
+  else
+    refused=$((refused + 1))
+  fi
+done <<'CASES'
+a flopped end (not no_flop)|pb.append({"end": "miu_rcu_data@rcu", "why": "x"})
+is not lane_rcu_res's destination|pb.append({"end": "lane_rcu_res@lane", "why": "x"})
+an end is '<channel>@<block type>'|pb.append({"end": "nosuch_chan@rcu", "why": "x"})
+its link takes a repeater stage|lk.append({"channel": "lane_rcu_res", "route": "src:1 > dst:0"})
+listed twice|pb.append(dict(pb[0]))
+says no why|pb[0].pop("why")
+unknown key|pb[0]["when"] = "x"
+CASES
+if [ -z "$missed" ]; then
+  say "links.json: no_flop_port_budget off its ends refused" "PASS ($refused cases, each by name)"
+else
+  bad "links.json no_flop_port_budget validator" "${missed# }"
+fi
+
 # -- 2. a busy split, end to end -------------------------------------------------
 if ! command -v verilator >/dev/null 2>&1 || ! command -v yosys >/dev/null 2>&1; then
   say "split configuration" "SKIP -- needs verilator and yosys"
@@ -156,6 +263,8 @@ lat=$(sed -n 's/^static constexpr uint32_t kLatLane = \([0-9]*\);/\1/p' sim/gene
 [ -z "$why" ] && say "split: every kernel with OOE's bypass" "PASS (CCV_LAT_LANE $lat, still forwarded at 4; byp's $nb)" ||
   bad "split: kernels with OOE's bypass" "${why# }"
 
+# RCU's RTL included: it holds at every derived CCV_LAT_LANE (RI-49; RA's
+# rev 144), the split tree carrying miu_rcu_data@rcu's credit_on_receipt.
 ./tools/check-sv-hosted.sh >build/svh_suite.log 2>&1
 if grep -q "FAIL" build/svh_suite.log; then
   bad "split: SV-hosted == C++-hosted" "$(grep -m1 FAIL build/svh_suite.log | xargs)"

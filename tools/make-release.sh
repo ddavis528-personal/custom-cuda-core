@@ -43,6 +43,10 @@ for a in "$@"; do
     *) echo "usage: $0 [--branch=<name>] [--push] [--allow-unmerged=<b>,...]" >&2; exit 2 ;;
   esac
 done
+# A long run never runs under its caller (tools/detach.sh; DA, 2026-11-13):
+# it detaches and returns; tools/gate-wait.sh waits for it.
+. "$(dirname "$0")/detach.sh"; ccv_detach "$0" "$@"
+
 MAXFILE=$((5 * 1024 * 1024))       # no single artifact above 5 MB
 MAXTOTAL=$((25 * 1024 * 1024))     # nor all of release/ above 25 MB
 
@@ -68,7 +72,10 @@ git fetch -q origin 2>/dev/null || die "cannot fetch origin to check its branche
 UNMERGED=""
 for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
   b=${rb#origin/}
-  case "$b" in HEAD|origin|"$BRANCH") continue ;; esac
+  # gate-scratch/*: unverified commits and exports in transit, which the
+  # sweep never merges (OI-102; DA, 2026-11-01), so they never block one
+  # (OA, 2026-11-03).
+  case "$b" in HEAD|origin|"$BRANCH"|gate-scratch/*) continue ;; esac
   case ",$ALLOW," in *",$b,"*) continue ;; esac
   n=$(git rev-list --count "HEAD..$rb")
   [ "$n" -gt 0 ] && UNMERGED="$UNMERGED $b($n)"
@@ -90,6 +97,7 @@ if ! ./tools/verify.sh >"$VLOG" 2>&1; then
 fi
 GATE=$(grep -A1 '== result ==' "$VLOG" | tail -1 | xargs)
 [ "$GATE" = PASS ] || die "the gate's log has no PASS result (read: '$GATE'); no snapshot without its record"
+echo "make-release: gate PASS on $SHA7 (its log ships as release/verify.log)"
 
 # -- 2. the artifacts that are not already built by the gate ---------------
 # Every S1 kernel's trace and both Perfetto views, not only vadd's.
@@ -197,8 +205,22 @@ ver() { "$@" 2>&1 | head -1; }
 } >"$STAGE/SNAPSHOT.md"
 
 # -- 4. commit it on the release branch --------------------------------------
-PARENT=$(git rev-parse -q --verify "refs/heads/$BRANCH" ||
-         git rev-parse -q --verify "refs/remotes/origin/$BRANCH" || true)
+# The parent is the release branch as the remote holds it now, fetched
+# here, not before the gate: another agent's snapshot may have landed while
+# ours gated (OA-332, fe459dc then 70ccdf7). A local branch that only lags
+# the remote's is stale and passed over; one with snapshots the remote lacks
+# (a local-only run) stays the parent, so those are kept.
+git fetch -q origin "$BRANCH" 2>/dev/null || true
+LOCALREL=$(git rev-parse -q --verify "refs/heads/$BRANCH" || true)
+REMOTEREL=$(git rev-parse -q --verify "refs/remotes/origin/$BRANCH" || true)
+if [ -n "$REMOTEREL" ] && { [ -z "$LOCALREL" ] ||
+     ! git merge-base --is-ancestor "$REMOTEREL" "$LOCALREL"; }; then
+  [ -z "$LOCALREL" ] || git merge-base --is-ancestor "$LOCALREL" "$REMOTEREL" ||
+    die "local $BRANCH and origin/$BRANCH have diverged; reconcile them first"
+  PARENT=$REMOTEREL
+else
+  PARENT=$LOCALREL
+fi
 rm -rf "$WT"
 git worktree add --detach "$WT" "$SHA" >/dev/null 2>&1 || die "worktree failed"
 (

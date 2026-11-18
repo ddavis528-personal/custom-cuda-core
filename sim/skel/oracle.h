@@ -89,7 +89,11 @@ struct Record {
   unsigned predMask() const { return quals.empty() ? 0u : quals[0] & 15u; }
   /// The uops DEC issues for it: one per predicate of a transfer's mask,
   /// ascending (TI-36), else one.
+  /// A Format M atomic (O-72): DEC sends it as two decode slots, a pair
+  /// under one id (OI-80 (d), TI-39), which FET's credit gate counts.
+  bool atomic() const { return op.rfind("ATOM_", 0) == 0 || op.rfind("CAS_", 0) == 0; }
   unsigned uops() const {
+    if (atomic()) return 2;
     if (chwMulti()) return chwMask() ? unsigned(__builtin_popcount(chwMask())) : 1u;
     return predXfer() && predMask() ? unsigned(__builtin_popcount(predMask())) : 1u;
   }
@@ -150,6 +154,11 @@ struct Oracle {
   uint32_t final_pred[kArchPreds] = {};
   std::vector<std::pair<uint64_t, uint32_t>> final_mem;
   unsigned issue_groups = 0;
+  /// A run ccv-sim stopped at kernel.cfg's MAXSTEPS (PARTIAL=1, tools/gen-oracle.sh):
+  /// its final record is a placeholder, for a run bounded by --cycles well
+  /// short of the last record. Nothing is compared against it, and a warp
+  /// that exits on it fails (Kernel's end-of-run check).
+  bool partial = false;
   unsigned stalls = 0;   ///< barrier waits ccv-sim retried, dropped at load (TI-40)
   std::vector<Record::StallTry> tries;   ///< the tries since the last record, at load
 

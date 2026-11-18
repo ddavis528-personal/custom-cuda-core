@@ -38,11 +38,14 @@
 // is raised here for the select that reads it. Each timed threshold is the
 // model's latency less LEAD, at age 1 at the earliest (an assertion holds
 // every latency over LEAD). A completion moves a line no timer foresees, so
-// it comes with a hint exactly LEAD edges ahead on ccv_miu_ooe_cmpl (OA-23,
-// valid and RS index, its valid a cycle before, as the completion's): a
-// waiting timer's lead line times from its registered hint as a restart
-// times from its registered completion, and a spec timer with no hint by
-// its miss check, less LEAD, will miss, so its lead line drops then. The
+// it comes with a hint LEAD edges ahead on ccv_miu_ooe_cmpl (OA-23, valid
+// and RS index, its valid a cycle before, as the completion's). Under C9h
+// (OA rev 372) the hint is captured raw and acts a cycle after it lands
+// (the model's rx_lag 16): a waiting timer's lead line times from the
+// captured hint as a restart times from its registered completion; a spec
+// timer takes no hint (the model ignores one under LEAD + CMPL_DLY ahead),
+// and with none by its miss check, less LEAD, will miss, so its lead line
+// drops then. The
 // model-frame state (the full-latency line, fin, the miss check and the
 // held misses) is kept as it was: confirmation and the hop read it. A stop
 // cannot be foreseen, so a replayed producer's lead line drops with the
@@ -140,8 +143,8 @@ module ooe_wake #(
   parameter logic [23:0] PEN  = 24'h03_02_00,
   parameter int NPEN     = 3,
   parameter int LAT_COPY = 7,          // CCV_LAT_LANE
-  parameter int LAT_SPEC = 16,         // CCV_LAT_L1_WAKE
-  parameter int LAT_MISS = 19,         // payload stages + CCV_LAT_L1_CMPL
+  parameter int LAT_SPEC = 13,         // CCV_LAT_L1_WAKE
+  parameter int LAT_MISS = 15,         // payload stages + CCV_LAT_L1_CMPL
   parameter int CMPL_DLY = 1,          // CCV_LAT_L1_MISS_WAKE
   parameter int NC       = 4,          // completions a cycle (ccv_miu_ooe_cmpl's rate)
   parameter int LEAD     = 2,          // cycles the lines lead the model's wake (OA's response OI-45)
@@ -188,7 +191,8 @@ module ooe_wake #(
   localparam int FLA   = FLL + 1;       // a waiting timer was hinted: its lead line times from it
   localparam int FHNT  = FLA + 1;       // a spec timer was hinted: its L1 completion is coming
   localparam int FLM   = FHNT + 1;      // a spec timer's miss foreseen: its lead line is down
-  localparam int FAGE  = FLM + 1;       // AW
+  localparam int FNEW  = FLM + 1;       // granted at the last edge (confirmation's co-grant term, OI-133)
+  localparam int FAGE  = FNEW + 1;      // AW
   localparam int EW    = FAGE + AW;
   localparam int SW    = N * EW;
 
@@ -335,6 +339,7 @@ module ooe_wake #(
     n[FLA]        = fla;
     n[FHNT]       = fhnt;
     n[FLM]        = flm;
+    n[FNEW]       = grant;
     n[FAGE +: AW] = age;
     entry_next = n;
   endfunction
@@ -435,34 +440,55 @@ module ooe_wake #(
       for (int j = 0; j < N; j++)
         if (cv_cq01h[k] && cmpl_idx_cq01h[k * W +: W] == W'(j)) hit_cq01h[j] = 1'b1;
   end
-  // The completion hints (OA-23), as the completions: the valid flopped
-  // (hv), the payload decoded as it arrives (hnt) and registered (hm). A
-  // hint names a live timer: a stale one (its ROB entry squashed-pending)
-  // is dropped before it reaches this module.
-  logic [NC-1:0] hv_cq01h;
-  logic [N-1:0]  hnt_cq01h, hm_cq02h;
-  logic          hm_en_cq02h;
-  assign hm_en_cq02h = hv_cq01h != '0 || hm_cq02h != '0;
+  // The completion hints (OA-23). C9h (OA rev 372, DA 114; the model's
+  // rx_lag 16): the hint's end is a capture of the first kind, its valid
+  // flopped (hl) and its payload captured raw under it (hix), so a hint
+  // acts a cycle after it lands, from the capture (hm), a cycle ahead of
+  // its completion. That is in time for a waiting timer's lead line (it
+  // read the registered hint before), and too late for a spec timer's: a
+  // spec timer's lead line drops at its miss's lead as if unhinted (the
+  // model takes no hint under 2 cycles ahead), so hnt is none.
+  logic [NC-1:0]   hl_cq01h;
+  logic [NC*W-1:0] hix_cq02h;
+  logic [N-1:0]    hnt_cq01h, hm_cq02h;
+  logic            hix_en_cq01h;   // a hint's payload arrives now, or the last's valids clear
+  logic [NC-1:0]   hq_cq02h;       // the captured hint's lanes: hl, a cycle on
+  assign hnt_cq01h = '0;
+  // One gate for the capture and its lanes' valids: a hint's payload lands
+  // or the last one's valids clear. Alone, the payload would often be
+  // captured unchanged (first-fit allocation names the same entry hint
+  // after hint), under CG-3's 75%.
+  always_ff @(posedge ooe_core_clk)
+    if (hix_en_cq01h) hix_cq02h <= hint_idx_cq01h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h)          hq_cq02h <= '0;
+    else if (hix_en_cq01h) hq_cq02h <= hl_cq01h;
+  end
   always_comb begin
-    hnt_cq01h = '0;
+    hm_cq02h = '0;
     for (int k = 0; k < NC; k++)
       for (int j = 0; j < N; j++)
-        if (hv_cq01h[k] && hint_idx_cq01h[k * W +: W] == W'(j)) hnt_cq01h[j] = 1'b1;
+        if (hq_cq02h[k] && hix_cq02h[k * W +: W] == W'(j)) hm_cq02h[j] = 1'b1;
   end
+  assign hix_en_cq01h = hl_cq01h != '0 || hq_cq02h != '0;
 
   // -- Stops (OI-45) ---------------------------------------------------------
   // The cancel and confirmation over this module's state, as ooe_rs runs
   // them over its own: issued, the held misses, final and prod. The stops
   // land at this edge, with the grants of the cycle that reads the same
   // state, so this module's issued bits are ooe_rs's issued register.
-  logic [N-1:0] msh_cq02h, prd_cq02h, rep_cq02h, conf_cq02h, stop_cq02h;
+  // The entries granted at the last edge (FNEW), for confirmation's
+  // co-grant term (OI-133): an entry's grant clocks it, and its age, 1
+  // after a grant, clocks it again at the next edge to clear it.
+  logic [N-1:0] msh_cq02h, prd_cq02h, nw_cq02h, rep_cq02h, conf_cq02h, stop_cq02h;
   always_comb
     for (int j = 0; j < N; j++) begin
       msh_cq02h[j] = held_miss(st_cq02h[j * EW +: EW]);
       prd_cq02h[j] = st_cq02h[j * EW + FPROD];
+      nw_cq02h[j]  = st_cq02h[j * EW + FNEW];
     end
   ooe_confirm #(.N(N)) u_confirm (
-    .iss_cq01h(is_cq02h), .dep_cq01h(dep_cq01h), .msd_cq01h(msh_cq02h), .fin_cq01h(fn_cq02h),
+    .iss_cq01h(is_cq02h), .dep_cq01h(dep_cq01h), .msd_cq01h(msh_cq02h), .new_cq01h(nw_cq02h), .fin_cq01h(fn_cq02h),
     .prod_cq01h(prd_cq02h), .replay_cq01h(rep_cq02h), .conf_cq01h(conf_cq02h)
   );
   assign stop_cq02h = rep_cq02h | conf_cq02h | sqf_cq01h;
@@ -477,6 +503,7 @@ module ooe_wake #(
   // Every stop lands on a clocked entry: no stop is lost. A miss pulse
   // clears on its own: its timer is issued and below saturation.
   `CCV_ASSERT(stop_clocked, (stop_cq02h & is_cq02h & ~ent_en_cq02h) == '0)
+  `CCV_ASSERT(new_clocked, (nw_cq02h & ~ent_en_cq02h) == '0)
   `CCV_ASSERT(miss_clocked, (miss_cq02h & ~ent_en_cq02h) == '0)
   // A completion names an issued timer (the model's check too).
   `CCV_ASSERT(cmpl_issued, (hit_cq01h & ~is_cq02h) == '0)
@@ -504,7 +531,7 @@ module ooe_wake #(
   logic [N-1:0]   flt_nx_cq01h;
   logic           wml_nx_cq01h;
   always_comb begin
-    wml_nx_cq01h = hv_cq01h != '0;
+    wml_nx_cq01h = hl_cq01h != '0;
     for (int j = 0; j < N; j++) begin
       logic [EW-1:0] g;
       g = entry_next('0, 1'b1, kind_cq01h[j * 2 +: 2], cls_cq01h[j * 3 +: 3], prod_cq01h[j], 1'b0, 1'b0, 1'b0,
@@ -549,12 +576,12 @@ module ooe_wake #(
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       cv_cq01h    <= '0;
-      hv_cq01h    <= '0;
+      hl_cq01h    <= '0;
       sq_en_cq01h <= 1'b0;
       wml_cq02h   <= 1'b0;
     end else begin
       cv_cq01h    <= cmpl_l_cq00h;
-      hv_cq01h    <= hint_l_cq00h;
+      hl_cq01h    <= hint_l_cq00h;
       sq_en_cq01h <= sq_l_cq00h;
       wml_cq02h   <= wml_nx_cq01h;
     end
@@ -562,10 +589,6 @@ module ooe_wake #(
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h)   cm_cq02h <= '0;
     else if (cm_en_cq02h) cm_cq02h <= hit_cq01h;
-  end
-  always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h)   hm_cq02h <= '0;
-    else if (hm_en_cq02h) hm_cq02h <= hnt_cq01h;
   end
 
   for (genvar j = 0; j < N; j++) begin : g_ent

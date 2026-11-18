@@ -1,5 +1,7 @@
 //===-- machine.cpp - wiring --------------------------------------------===//
 #include "machine.h"
+#include "portdump.h"
+#include "ccv_params.h"
 
 #include <cstdio>
 
@@ -17,16 +19,30 @@ Machine::Machine(unsigned depth, const Factory &make) {
         for (uint32_t b = 0; b != cd.fields[f].width; ++b)
           lead.setBit(cd.fields[f].lsb + b, true);
     for (unsigned s = 0; s != cd.rate; ++s) {
-      slots_.emplace_back(cd.bits, lead, ci.stages);
+      slots_.emplace_back(cd.bits, lead, ci.pipe());
+      // Credit on receipt loads the receiving end's boundary stage, which
+      // tools/ccv_links.py guarantees is there.
+      slots_.back().cor = ci.cor && ci.bnd_rx;
       owner_[ci.slot_base + s] = &ci;
     }
   }
   // Senders and receivers hold references into slots_, so it must not
   // reallocate from here on.
-  // A repeated link's round trip is 2N longer, and so is its credit depth
-  // (docs/physical.md): the sender's credits and the receiver's buffer.
+  // A repeated link's round trip is 2(N + bnd_rx) longer, and so is its
+  // credit depth (docs/physical.md): the sender's credits and the
+  // receiver's buffer. A flopped receiving end counts as a stage here
+  // (rtStages): the blocks these hosts run register their own inputs and
+  // credit behind it (AR's rev 309 (2)). The receiver's buffer is that
+  // whole depth, so the valids in flight when it stalls, at most
+  // CCV_RESCUE_DEPTH + 2(N + bnd_rx), always land in it (overflows, 0).
+  // A credit-on-receipt end's boundary flop returns the credit itself, with
+  // no block register behind it, so rtStages() leaves its bnd_rx out: the
+  // loop is exact there, as for an RTL block (AR's rev 322).
   for (unsigned k = 0; k != kNumSlots; ++k) {
-    const unsigned d = depth + 2 * owner_[k]->stages;
+    // A channel whose slots hold more credits than the loop (schema
+    // credits_param; MA-5, AR rev 345) adds the difference.
+    const unsigned extra = kChans[owner_[k]->chan].credits - ccv::kCreditDepth;
+    const unsigned d = depth + extra + 2 * owner_[k]->rtStages();
     tx_.push_back(std::make_unique<Sender>(slots_[k], d));
     rx_.push_back(std::make_unique<Receiver>(slots_[k], d));
   }
@@ -55,6 +71,8 @@ Machine::Machine(unsigned depth, const Factory &make) {
 }
 
 void Machine::step(bool in_reset, const std::function<void()> &inject) {
+  if (dump)
+    dump->sample(*this, in_reset);   // the ports as this cycle starts
   for (Slot &s : slots_)
     s.begin();
   std::fill(fab_nxt_.begin(), fab_nxt_.end(), 0);   // a fabric is driven every cycle

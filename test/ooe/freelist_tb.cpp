@@ -50,7 +50,9 @@
 // caught: drop-free (frees never reach the RTL), extra-alloc (one more
 // request than the model made, in a cycle that has one), no-lead (a
 // free's lead is never driven, so the free bits are not clocked for it)
-// and wrong-owner (each entry is given the next slot as its owner).
+// wrong-owner (each entry is given the next slot as its owner) and
+// one-step (the model refills as before scan (a): its search and append
+// at one edge, so the registered candidates must differ).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: freelist_tb [seeds] | freelist_tb --cg <scenario> <vcd>
@@ -94,6 +96,11 @@ unsigned long long cycles = 0, allocs = 0, frees = 0, cores = 0, skipped = 0, mi
 #ifndef FL_NS
 #define FL_NS 0
 #endif
+// FL_FS free sources (the four per-warp ROBs, OA-24), ORed at the input:
+// each free goes to source entry mod FL_FS, the lead to a rotating one.
+#ifndef FL_FS
+#define FL_FS 1
+#endif
 constexpr unsigned NK = FL_NS ? 2 : 1;   // each slot's home candidates (cand_home)
 // The model's kind of slot s's home candidate k: one section at s, the pair at 2(s % 2).
 constexpr unsigned homeKind(unsigned s, unsigned k) { return k == 0 ? s % 4 : 4 + s % 2; }
@@ -120,6 +127,7 @@ template <typename T> bool getBit(const T &w, unsigned i) {
   if constexpr (sizeof(T) <= 8) return (w >> i) & 1u;
   else return (w[i / 32] >> (i % 32)) & 1u;
 }
+static bool g_one_step = false;   // FL_CONTROL=one-step
 template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
   unsigned v = 0;
   for (unsigned b = 0; b != n; ++b) v |= unsigned(getBit(w, lsb + b)) << b;
@@ -184,9 +192,9 @@ void hook(const Core &c) {
     dut->free_l_cq00h = 0;
     for (unsigned k = 0; k != FL_A * LS; ++k) setBit(dut->own_slot_cq01h, k, false);
     owner_of.assign(FL_N, -1);
-    for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
+    for (unsigned p = 0; p != FL_FS * FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
     if (FL_NS) {
-      for (unsigned b = 0; b != FL_N * FL_NS; ++b) setBit(dut->free_sec_cq01h, b, false);
+      for (unsigned b = 0; b != FL_FS * FL_N * FL_NS; ++b) setBit(dut->free_sec_cq01h, b, false);
       dut->sa_l_cq00h = 0;
       dut->rt_l_cq00h = 0;
       dut->sa_v_cq01h = 0;
@@ -246,6 +254,11 @@ void hook(const Core &c) {
     if (got != e.bptr[b]) fail("bank pointer differs", got, e.bptr[b]);
   }
   if (unsigned(dut->rot_cq02h) != e.rot) fail("bank order differs", unsigned(dut->rot_cq02h), e.rot);
+  for (unsigned b = 0; b != FL_K && b < e.cand.size(); ++b) {   // scan (a): each bank's registered candidate
+    const unsigned f = getField(dut->bcand_cq02h, b * (LM + 1), LM + 1);
+    const unsigned got = (f >> LM) ? (f & ((1u << LM) - 1u)) * FL_K + b : FL_N;
+    if (got != e.cand[b]) fail("bank candidate differs", got, e.cand[b]);
+  }
   if (unsigned(dut->transit_cq02h) != e.transit) fail("entries in transit differ", unsigned(dut->transit_cq02h), e.transit);
   if (unsigned(dut->avail_cq02h) != e.buf.size() - e.transit)
     fail("available count differs", unsigned(dut->avail_cq02h), unsigned(e.buf.size() - e.transit));
@@ -272,17 +285,18 @@ void hook(const Core &c) {
   const auto &al = prev_al;
   if (al.size() > FL_A) { fail("more allocations than ports", unsigned(al.size()), FL_A); desync = true; return; }
   const auto &fr = prev_fr;
-  dut->free_l_cq00h = FL_NS ? !c.cycleSecFrees().empty() && control != "no-lead" : lead(fv.cycleFrees());
+  const bool fl_lead = FL_NS ? !c.cycleSecFrees().empty() && control != "no-lead" : lead(fv.cycleFrees());
+  dut->free_l_cq00h = fl_lead ? 1u << (cycles % FL_FS) : 0u;
   unsigned req = unsigned(al.size());
   if (control == "extra-alloc" && req && req < FL_A) ++req;
   dut->alloc_req_cq01h = (1u << req) - 1u;
-  for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
+  for (unsigned p = 0; p != FL_FS * FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
   if (control != "drop-free" && !FL_NS)
-    for (unsigned p : fr) setBit(dut->free_mask_cq01h, p, true);
+    for (unsigned p : fr) setBit(dut->free_mask_cq01h, (p % FL_FS) * FL_N + p, true);
   if (FL_NS) {
     // The section side: this step's section frees, Rename 2's allocations
     // of the step before's grants, its returns, and the next step's lead.
-    for (unsigned b = 0; b != FL_N * FL_NS; ++b) setBit(dut->free_sec_cq01h, b, false);
+    for (unsigned b = 0; b != FL_FS * FL_N * FL_NS; ++b) setBit(dut->free_sec_cq01h, b, false);
     if (std::getenv("FL_DEBUG") && cycles >= 28 && cycles <= 32) {
       std::fprintf(stderr, "step %llu: fr", cycles);
       for (unsigned p : fr) std::fprintf(stderr, " %u", p);
@@ -299,7 +313,7 @@ void hook(const Core &c) {
     if (control != "drop-sec-free")
       for (const auto &f : prev_sfr)
         for (unsigned j = 0; j != FL_NS; ++j)
-          if ((f.sec >> j) & 1u) setBit(dut->free_sec_cq01h, f.row * FL_NS + j, true);
+          if ((f.sec >> j) & 1u) setBit(dut->free_sec_cq01h, (f.row % FL_FS) * FL_N * FL_NS + f.row * FL_NS + j, true);
     const auto &sa = control == "sa-early" ? prev_sa : prev2_sa;
     if (sa.size() > FL_A || prev_rt.size() > FL_A) {
       fail("more section allocations or returns than lanes", unsigned(prev2_sa.size()), FL_A);
@@ -379,7 +393,11 @@ int main(int argc, char **argv) {
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_freelist>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
+  // one-step: the model refills as before scan (a), searching and appending
+  // at one edge; the RTL's registered candidates must differ from it.
+  g_one_step = control == "one-step";
   const int model_fails = FL_NS ? cg.run(seeds, hook, nullptr, [](ccv::ooe::Config &k) {
+    if (g_one_step) k.fl_two_step = false;
     k.sectioned = true;
     k.cand = 2;
     k.cand_return = true;
@@ -387,7 +405,7 @@ int main(int argc, char **argv) {
     k.cand_lag = 2;
     k.ret_late = true;
     k.cand_home = true;
-  }) : cg.run(seeds, hook, nullptr);
+  }) : cg.run(seeds, hook, nullptr, [](ccv::ooe::Config &k) { if (g_one_step) k.fl_two_step = false; });
   cg.close();
   dut->final();
   std::printf("freelist_tb pool=%s%s control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu frees=%llu "

@@ -11,6 +11,7 @@
 #   the GPR rows with their sections and home candidates (OI-81, OI-82),
 #   and the predicates, in its buffered form (test/ooe/freelist_tb.cpp);
 # - ooe_age against the model's RS ages, live, for both RS classes
+# - ooe_cmcap (C9's capture of ccv_miu_ooe_cmpl for the ROB) against the model's completions, live
 #   (test/ooe/age_tb.cpp);
 # - ooe_decq against the model's decode queue, live (test/ooe/decq_tb.cpp);
 # - ooe_go, rename's go, against the model's go log, live (test/ooe/go_tb.cpp);
@@ -149,9 +150,9 @@ for cfg in "gpr 0 $phys 0" "gsec 0 $phys $ns" "pred 1 $preds 0"; do
   dir=build/ooe-rtl/freelist_$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-        --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" -GS="$fl_slots" -GNS="$sec" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
+        --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" -GS="$fl_slots" -GFS="$fl_slots" -GNS="$sec" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-        -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_S=$fl_slots -DFL_POOL=$pool -DFL_NS=$sec -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+        -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_S=$fl_slots -DFL_FS=$fl_slots -DFL_POOL=$pool -DFL_NS=$sec -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
         "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" \
         "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
     say "freelist $name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
@@ -161,8 +162,8 @@ for cfg in "gpr 0 $phys 0" "gsec 0 $phys $ns" "pred 1 $preds 0"; do
   else
     say "freelist $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  ctl="drop-free extra-alloc no-lead wrong-owner"
-  [ "$sec" != 0 ] && ctl="drop-sec-free sa-early no-lead"
+  ctl="drop-free extra-alloc no-lead wrong-owner one-step"
+  [ "$sec" != 0 ] && ctl="drop-sec-free sa-early no-lead one-step"
   for c in $ctl; do
     if FL_CONTROL=$c "$dir/freelist_tb" 3 >/dev/null 2>&1; then
       say "  control $c (freelist $name)" "MISSED"; fail=1
@@ -201,6 +202,35 @@ for cfg in "rcu 0 $n_rcu" "miu 1 $n_miu"; do
   done
 done
 
+# ooe_cmcap (C9: OA rev 372), driven with the model's completions as the ROB
+# takes them: each output its input a cycle later.
+nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
+cm_slots=$(sed -n 's/.*localparam int CCV_TIER1_WARPS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+cm_pw=$(sed -n 's/.*kWRobTag = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)
+dir=build/ooe-rtl/cmcap
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace -GNC="$nc" -GPW="$cm_pw" -GR="$cm_slots" --top-module ooe_cmcap --Mdir "$dir" -o cmcap_tb \
+      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DCM_NC=$nc -DCM_PW=$cm_pw -DCM_R=$cm_slots -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_cmcap.sv" "$PWD/test/ooe/cmcap_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "cmcap: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1
+else
+  if out=$("$dir/cmcap_tb" "$seeds" 2>&1); then
+    say "cmcap ($nc lanes, $cm_slots slices) == model, a cycle late" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+  else
+    say "cmcap == model, a cycle late" "FAIL"; echo "$out" | tail -8; fail=1
+  fi
+  for c in no-lead late-pay no-fault-lead; do
+    if CMCAP_CONTROL=$c "$dir/cmcap_tb" 3 >/dev/null 2>&1; then
+      say "  control $c (cmcap)" "MISSED"; fail=1
+    else
+      say "  control $c (cmcap)" "caught"
+    fi
+  done
+fi
+
 # ooe_decq, driven from the model's decode queue before every cycle. A
 # control may be caught by the RTL's own assertion before the comparison:
 # either fails the run.
@@ -223,7 +253,7 @@ if out=$("$dir/decq_tb" "$seeds" 2>&1); then
 else
   say "decq == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in drop-flush enq-swap no-enq-lead no-take-enable; do
+for c in drop-flush enq-swap no-enq-lead no-take-enable no-free-lag; do
   if DECQ_CONTROL=$c "$dir/decq_tb" 3 >/dev/null 2>&1; then
     say "  control $c (decq)" "MISSED"; fail=1
   else
@@ -256,6 +286,76 @@ for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shi
     say "  control $c (go)" "caught"
   fi
 done
+# Scarce names (144 rows, a ceiling of 24), where the names' pool binds and
+# the floor term less the go's own take (OI-114) decides takes, a cycle late
+# (OA's rev 369 (b)): the go reads the unmet on time, which holds the names
+# its last take wrote. Its control takes the go's own take in the split
+# cycle as well (the model's floor_take_lag 0); floor-held-off splits the
+# floor term again under an allowance that holds one (TI 360).
+if out=$(GO_NAMES=144,24 "$dir/go_tb" 5 2>&1); then
+  say "go == model, live, scarce names" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "go == model, live, scarce names" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in floor-take-now floor-held-off; do
+  if GO_NAMES=144,24 GO_CONTROL=$c "$dir/go_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (go, scarce)" "MISSED"; fail=1
+  else
+    say "  control $c (go, scarce)" "caught"
+  fi
+done
+
+# ooe_rob, the ROB (slices 1, 2 and 3, OI-85), driven from the model's ROB log
+# (Core::robLog) a model cycle behind, with retire_lag 1: its retirements,
+# resolutions and squashes, their leads and frees, the discard, the store
+# commits (slice 3, one a slot a cycle) and the room rename's go reads
+# compared exactly. A core stops at the first thing the
+# ROB does not build yet (a squash not a branch's, a fault, a retire port,
+# an atomic).
+dir=build/ooe-rtl/rob
+mkdir -p "$dir"
+rv() { sed -n "s/.*localparam int $1 = \([0-9]*\);.*/\1/p" rtl/generated/ccv_params_pkg.sv; }
+rob_p="S=$slots D=$(rv CCV_P_ROB_DEPTH) RP=$(rv CCV_RETIRE_PER_ROB) A=$width ND=7 NM=4 NK=$(rv CCV_P_BR_CKPTS) PCW=$(rv CCV_ADDR_BITS)"
+rob_p="$rob_p GW=$(( $(rv CCV_P_W_PHYS_REG) + $(rv CCV_W_PHYS_POS) )) GR=$(rv CCV_P_W_PHYS_REG) NG=$(rv CCV_P_PHYS_REGS)"
+rob_p="$rob_p NS=$(( 1 << $(rv CCV_W_PHYS_POS) )) PW=$(rv CCV_P_W_PHYS_PRED) NP=$(rv CCV_P_PRED_REGS) CW=$(rv CCV_W_FAULT_CAUSE)"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace $(for kv in $rob_p; do printf -- '-G%s ' "$kv"; done) --top-module ooe_rob_tb \
+      --Mdir "$dir" -o rob_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe $(for kv in $rob_p; do printf -- '-DRB_%s ' "$kv"; done) -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "rob: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/rob_tb" "$seeds" 2>&1) && grep -q "mismatches=0 model_failures=0" <<<"$out"; then
+  say "rob ($slots slots) == model, live" "PASS ($(grep '^rob_tb' <<<"$out" | sed 's/.*seeds=//'))"
+else
+  say "rob == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+# The random programs as drawn (slice 2): mispredicts, their squashes, held
+# entries and killed fills.
+if out=$(ROB_MISPREDICT=1 "$dir/rob_tb" "$seeds" 2>&1) && grep -q "mismatches=0 model_failures=0" <<<"$out"; then
+  say "rob == model, mispredicting" "PASS ($(grep '^rob_tb' <<<"$out" | sed 's/.*seeds=//'))"
+else
+  say "rob == model, mispredicting" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+# The controls run every seed the bench does: a control caught only by a
+# trace the first few seeds happen to draw stops being caught when the
+# traces move (no-copy, at CCV_P_DECQ 15: first caught at seed 6).
+for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
+         no-branch-lead no-miu no-store drop-killed-fill late-fill shared-ports store-shift no-fault fault-cause fault-any-port fault-port0 no-fault-lead fault-addr; do
+  if ROB_CONTROL=$c "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
+    say "  control $c (rob)" "MISSED"; fail=1
+  else
+    say "  control $c (rob)" "caught"
+  fi
+done
+# two-resolutions: two candidates in a cycle, forced; one_resolution itself
+# must catch it (no other check sees it first).
+if out=$(ROB_CONTROL=two-resolutions "$dir/rob_tb" 3 2>&1) || ! grep -q "one_resolution" <<<"$out"; then
+  say "  control two-resolutions (rob)" "MISSED"; fail=1
+else
+  say "  control two-resolutions (rob)" "caught"
+fi
 
 # ooe_wake, driven from the model's wake log after every cycle. Its
 # latencies, bypass points and penalties are the parameters'; the model's
@@ -306,7 +406,7 @@ if out=$("$dir/confirm_tb" "$seeds" 2>&1); then
 else
   say "confirm == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-msd msd-pulse no-fin no-dep; do
+for c in no-msd msd-pulse no-fin no-dep no-new; do
   if CONFIRM_CONTROL=$c "$dir/confirm_tb" 3 >/dev/null 2>&1; then
     say "  control $c (confirm)" "MISSED"; fail=1
   else
@@ -369,7 +469,7 @@ if out=$("$dir/rendep_tb" "$seeds" 2>&1); then
 else
   say "rendep == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-map late-code no-copy-src; do
+for c in no-map late-code no-copy-src no-spec; do
   if RD_CONTROL=$c "$dir/rendep_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rendep)" "MISSED"; fail=1
   else
@@ -408,6 +508,12 @@ for c in stale-live wrong-names; do
     say "  control $c (rnrs)" "MISSED (the assertion did not fire)"; fail=1
   fi
 done
+# no-spec loses the speculative-wake bit: the kind compare must catch it.
+if RNRS_CONTROL=no-spec "$dir/rnrs_tb" 3 >/dev/null 2>&1; then
+  say "  control no-spec (rnrs)" "MISSED"; fail=1
+else
+  say "  control no-spec (rnrs)" "caught"
+fi
 
 # ooe_rencred, the next value of rename's credit counters, driven from the
 # model's events after every cycle under the go they serve (fits_stale 6),
@@ -460,12 +566,16 @@ if out=$("$dir/rs_tb" "$seeds" 2>&1); then
 else
   say "rs == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-# no-msd runs the bench's seeds: a replay in ooe_rs only clears its issued
-# bit, and a replayed producer is not final until it reissues, so a lost
-# miss shows only where a non-producer would confirm early (3 seeds miss
-# it; a caught control stops at its first difference).
-for c in no-msd drop-squash-free drop-group drop-prv stale-live stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
-  cs=3; [ "$c" = no-msd ] && cs=$seeds
+# no-msd runs at least 200 seeds: a replay in ooe_rs only clears its
+# issued bit, and a replayed producer is not final until it reissues, so a
+# lost miss shows only where a non-producer would confirm early (3 seeds
+# miss it; at CCV_LAT_L1_WAKE 12 / CCV_LAT_L1_CMPL 14 the 31st seed was
+# the first to catch it, TI rev 288; under C9h, cmpl_split 9 and rx_lag 16
+# (OA 372), 105 seeds miss it and the free_led assertion catches it near
+# the 114th, cycle 380,760, OI-122; a caught control stops at its first
+# difference).
+for c in no-msd drop-squash-free drop-group drop-prv stale-live stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin no-kind; do
+  cs=3; [ "$c" = no-msd ] && cs=$(( seeds > 200 ? seeds : 200 ))
   if RS_CONTROL=$c "$dir/rs_tb" $cs >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1
   else
@@ -484,7 +594,7 @@ if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno
       --trace -DCCV_CHECK_RAT ${rat_g//,/ } --top-module ooe_rat_read --Mdir "$dir" -o rat_tb \
       -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 ${rat_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/test/ooe/ooe_ratread.sv" \
       "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
   say "rat: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
@@ -542,10 +652,10 @@ done
 # sectioned rows (NS 4, slice 6: the narrow allocator), its random cores
 # held to the decided form (its directed cores, timed for whole rows, are
 # the first build's).
-for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write" \
+for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write,no-spec" \
            "rename_ceil RENAME_FLOORS=4,8 0 -" \
-           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2" \
-           "rename_sec RENAME_SECTIONS=1 25 drop-free,no-lead,no-reads,no-merge,no-cw-write"; do
+           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2,unmet-now,no-last-take" \
+           "rename_sec RENAME_SECTIONS=1 25 drop-free,no-lead,no-reads,no-merge,no-cw-write,pend-follows"; do
   set -- $cfg
   name=$1 env=$2 nseeds=$3 ctls=$4
   [ "$nseeds" = 25 ] && nseeds=$seeds
@@ -603,7 +713,7 @@ fi
 # The controls run the bench's seeds: a bulk discard beside a candidate
 # memop (no-busy) is rare, and 3 seeds stopped reaching one when rename's
 # go changed (OA-21); a caught control stops at its first difference.
-for c in no-order no-conf no-busy; do
+for c in no-order no-conf no-busy no-hold no-cok; do
   if SELECT_CONTROL=$c "$dir/select_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (select)" "MISSED"; fail=1
   else
@@ -629,7 +739,7 @@ if ! verilator --cc --exe --build -j 0 -O2 --assert --public-flat-rw --trace -Wa
       --top-module ooe_trio --Mdir "$dir" -o trio_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
-      "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
+      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
       "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" \
       >"$dir/build.log" 2>&1; then
   say "trio: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
@@ -639,11 +749,22 @@ if out=$("$dir/trio_tb" "$seeds" 2>&1); then
 else
   say "rs + wake + sched assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-msd no-miss-lead late-leads no-alloc-lead; do
-  if TRIO_CONTROL=$c "$dir/trio_tb" 6 >/dev/null 2>&1; then
+# Every seed the bench runs, as rob's (no-rep-lead, at CCV_P_DECQ 15 and
+# with the ret hold cancelling after the pick, OA's rev 320: not caught in
+# the first 6).
+for c in no-msd no-miss-lead late-leads no-alloc-lead no-ret-hold no-rep-lead no-idle-r pay-port no-home pay-with-valid no-c9h; do
+  if TRIO_CONTROL=$c "$dir/trio_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (trio)" "MISSED"; fail=1
   else
     say "  control $c (trio)" "caught"
   fi
 done
+# no-force: the force register cleared, the migration lead kept; ooe_sched's
+# own idle_r assertion must fire, by name (RA-17).
+nf_out=$(TRIO_CONTROL=no-force "$dir/trio_tb" 6 2>&1)
+if grep -q 'CCV idle_r failed' <<<"$nf_out"; then
+  say "  control no-force (trio, idle_r assertion)" "caught"
+else
+  say "  control no-force (trio, idle_r assertion)" "MISSED"; fail=1
+fi
 exit $fail

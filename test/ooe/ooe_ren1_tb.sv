@@ -80,6 +80,8 @@ module ooe_ren1_tb #(
   logic [S*MW-1:0]   crat_cq02h;
   logic [S*C*MW-1:0] ckpt_cq02h;
   logic [R*4-1:0]    pw_dst;
+  logic [S*16*R-1:0] q_gkm;             // the pending group's writers, per slot and register (#35)
+  logic [S*4*R-1:0]  q_pkm;
   // ooe_rat's capture of the group before last (OI-83 (b)), into the reads.
   logic [R-1:0]      po_v, po_gwe, po_pwe;
   logic [R*LS-1:0]   po_slot;
@@ -101,6 +103,7 @@ module ooe_ren1_tb #(
   logic [S*R*4*R-1:0]  c_gw;
   logic [S*R*4*PW-1:0] c_pv;
   logic [S*R*4*R-1:0]  c_pw;
+  logic [S*R*4*R-1:0]  c_gk, c_pk;
   for (genvar s = 0; s < S; s++) begin : g_slot
     logic [R*3*4-1:0] src;
     logic [R*4-1:0]   dst;
@@ -121,10 +124,11 @@ module ooe_ren1_tb #(
       .h_pguard_cq01h(pguard), .h_pdst_cq01h(pdst), .h_pwe_cq01h(pwe), .h_pq_cq01h(pq),
       .po_v_cq02h(po_v), .po_slot_cq02h(po_slot), .po_dst_cq02h(po_dst), .po_gwe_cq02h(po_gwe),
       .po_gname_cq02h(po_gname), .po_pdst_cq02h(po_pdst), .po_pwe_cq02h(po_pwe), .po_pname_cq02h(po_pname),
-      .pw_v_cq01h(q_v), .pw_slot_cq01h(q_slot), .pw_dst_cq01h(q_dst), .pw_gwe_cq01h(q_gwe),
-      .pw_gname_cq01h(q_gname), .pw_pdst_cq01h(q_pdst), .pw_pwe_cq01h(q_pwe), .pw_pname_cq01h(q_pname),
-      .h_gv_cq01h(c_gv[s * R * 4 * GW +: R * 4 * GW]), .h_gw_cq01h(c_gw[s * R * 4 * R +: R * 4 * R]),
-      .h_pv_cq01h(c_pv[s * R * 4 * PW +: R * 4 * PW]), .h_pw_cq01h(c_pw[s * R * 4 * R +: R * 4 * R]));
+      .pw_v_cq01h(q_v), .pw_gkm_cq01h(q_gkm[s * 16 * R +: 16 * R]), .pw_pkm_cq01h(q_pkm[s * 4 * R +: 4 * R]),
+      .h_gv_cq01h(c_gv[s * R * 4 * GW +: R * 4 * GW]), .h_gk_cq01h(c_gk[s * R * 4 * R +: R * 4 * R]),
+      .h_gw_cq01h(c_gw[s * R * 4 * R +: R * 4 * R]),
+      .h_pv_cq01h(c_pv[s * R * 4 * PW +: R * 4 * PW]), .h_pk_cq01h(c_pk[s * R * 4 * R +: R * 4 * R]),
+      .h_pw_cq01h(c_pw[s * R * 4 * R +: R * 4 * R]));
   end
 
   logic [R-1:0]      l_v, l_gwe, l_pwe, l_br, l_x;
@@ -136,11 +140,16 @@ module ooe_ren1_tb #(
   logic [R*4*GW-1:0] l_g;
   logic [R*4*R-1:0]  l_gl, l_pl;
   logic [R*4*PW-1:0] l_p;
-  ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(1)) ooe_ren1 (
+  logic [R*4*R-1:0]  l_gk, l_pk;
+  logic [R*4-1:0]    l_gs, q_gs;
+  logic [S*16*R-1:0] l_gkm;
+  logic [S*4*R-1:0]  l_pkm;
+  ooe_ren1 #(.S(S), .R(R), .GW(GW), .GR(GR), .PW(PW), .LC(LC), .XW(1)) ooe_ren1 (
     .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0),
-    .c_gv_cq01h(c_gv), .c_gw_cq01h(c_gw), .c_pv_cq01h(c_pv), .c_pw_cq01h(c_pw), .lane_v_cq02h, .lane_c_cq02h,
+    .c_gv_cq01h(c_gv), .c_gk_cq01h(c_gk), .c_gw_cq01h(c_gw), .c_pv_cq01h(c_pv), .c_pk_cq01h(c_pk),
+    .c_pw_cq01h(c_pw), .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v, .l_slot, .l_dst, .l_gwe, .l_pdst, .l_pwe, .l_idx, .l_br, .l_ckpt, .l_g, .l_gl, .l_p, .l_pl,
-    .l_x);
+    .l_x, .l_gk, .l_pk, .l_gs, .l_gkm, .l_pkm);
 
   // The Rename 1 register (in ooe_rename, gated by the go's sel), with the
   // free lists' heads beside it.
@@ -148,7 +157,9 @@ module ooe_ren1_tb #(
   logic [R*GR-1:0]   q_galloc;
   logic [R*PW-1:0]   q_palloc;
   logic [R*4*GW-1:0] q_gv;
-  logic [R*4*R-1:0]  q_gl, q_pl;
+  logic [R*4*R-1:0]  q_gl, q_pl, q_gk, q_pk;
+  logic [R*GW-1:0]   pn_gname;          // the group before's names, as ooe_rename's Rename 2 register holds them
+  logic [R*PW-1:0]   pn_pname;
   logic [R*4*PW-1:0] q_pv;
   always_ff @(posedge ooe_core_clk)
     if (ooe_rst_r00h) q_v <= '0;
@@ -166,15 +177,26 @@ module ooe_ren1_tb #(
       q_gl     <= l_gl;
       q_pv     <= l_p;
       q_pl     <= l_pl;
+      q_gkm    <= l_gkm;
+      q_gk     <= l_gk;
+      q_gs     <= l_gs;
+      q_pk     <= l_pk;
+      if (q_v != '0) begin
+        pn_gname <= q_gname;
+        pn_pname <= q_pname;
+      end
+      q_pkm    <= l_pkm;
       q_galloc <= galloc_cq02h;
       q_palloc <= palloc_cq02h;
     end
   // Rename 2's first gates: the names bound.
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW)) ooe_ren1n (
     .q_idx_cq01h(q_idx), .q_galloc_cq01h(q_galloc), .q_palloc_cq01h(q_palloc), .q_g_cq01h(q_gv),
-    .q_gl_cq01h(q_gl), .q_p_cq01h(q_pv), .q_pl_cq01h(q_pl),
+    .q_gl_cq01h(q_gl), .q_p_cq01h(q_pv), .q_pl_cq01h(q_pl), .q_gk_cq01h(q_gk), .q_pk_cq01h(q_pk),
+    .pn_gname_cq01h(pn_gname), .pn_pname_cq01h(pn_pname), .q_gs_cq01h(q_gs),
     // Whole rows here (NS 0): rename_tb's sectioned build holds the narrow names.
-    .q_slot_cq01h('0), .q_gwe_cq01h('0), .q_na_cq01h('0), .q_nw_cq01h('0), .cand_v_cq01h('0),
+    .q_slot_cq01h('0), .q_gwe_cq01h('0), .q_na_cq01h('0), .q_nw_cq01h('0), .q_nal_cq01h('0),
+    .q_nhm_cq01h('0), .cand_v_cq01h('0),
     .cand_row_cq01h('0), .cand_same_cq01h('0),
     .n_gname(q_gname), .n_pname(q_pname), .n_g(q_g), .n_p(q_p),
     .n_sa_v(n_sa_v), .n_sa_row(n_sa_row), .n_sa_sec(n_sa_sec), .n_rt_v(n_rt_v), .n_rt_row(n_rt_row));

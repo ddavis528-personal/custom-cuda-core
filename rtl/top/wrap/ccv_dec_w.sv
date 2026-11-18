@@ -6,10 +6,12 @@
 
 // HARDENING WRAPPER ccv_dec_w: ccv_dec and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. An end
-// whose link has no stages here is connected straight through.
+// and links"). Nothing but instances and nets, like the top. Each end's
+// repeater holds the block's boundary flop (BOUNDARY 1) and its link's
+// stages; a no-flop end (params/links.json no_flop) whose link has no
+// stages here is connected straight through.
 // Each end's stages are a parameter the top sets from params/links.json;
-// at 0 the end is wired straight through, with no repeater.
+// at 0 a no-flop end is wired straight through, with no repeater.
 `include "ccv_interfaces.svh"
 
 module ccv_dec_w #(
@@ -185,9 +187,9 @@ module ccv_dec_w #(
 `endif
   );
 
-  // ccv_fet_dec_instr, destination end
+  // ccv_fet_dec_instr, destination end, no-flop (params/links.json no_flop)
   if (RPT_FET_DEC_INSTR > 0) begin : g_rpt_fet_dec_instr
-    ccv_common_rpt #(.STAGES(RPT_FET_DEC_INSTR), .SLOTS(8), .PAYLOAD_W(162)) u_rpt_fet_dec_instr (
+    ccv_common_rpt #(.STAGES(RPT_FET_DEC_INSTR), .BOUNDARY(0), .SLOTS(8), .PAYLOAD_W(162)) u_rpt_fet_dec_instr (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({fet_dec_instr_s7_valid, fet_dec_instr_s6_valid, fet_dec_instr_s5_valid, fet_dec_instr_s4_valid, fet_dec_instr_s3_valid, fet_dec_instr_s2_valid, fet_dec_instr_s1_valid, fet_dec_instr_s0_valid}), .src_payload({fet_dec_instr_s7_payload, fet_dec_instr_s6_payload, fet_dec_instr_s5_payload, fet_dec_instr_s4_payload, fet_dec_instr_s3_payload, fet_dec_instr_s2_payload, fet_dec_instr_s1_payload, fet_dec_instr_s0_payload}),
       .src_wake(fet_dec_instr_wake), .src_credit({fet_dec_instr_s7_credit, fet_dec_instr_s6_credit, fet_dec_instr_s5_credit, fet_dec_instr_s4_credit, fet_dec_instr_s3_credit, fet_dec_instr_s2_credit, fet_dec_instr_s1_credit, fet_dec_instr_s0_credit}), .src_stall({fet_dec_instr_s7_stall, fet_dec_instr_s6_stall, fet_dec_instr_s5_stall, fet_dec_instr_s4_stall, fet_dec_instr_s3_stall, fet_dec_instr_s2_stall, fet_dec_instr_s1_stall, fet_dec_instr_s0_stall}),
@@ -207,9 +209,9 @@ module ccv_dec_w #(
     assign {b_fet_dec_instr_s7_tid, b_fet_dec_instr_s6_tid, b_fet_dec_instr_s5_tid, b_fet_dec_instr_s4_tid, b_fet_dec_instr_s3_tid, b_fet_dec_instr_s2_tid, b_fet_dec_instr_s1_tid, b_fet_dec_instr_s0_tid} = {fet_dec_instr_s7_tid, fet_dec_instr_s6_tid, fet_dec_instr_s5_tid, fet_dec_instr_s4_tid, fet_dec_instr_s3_tid, fet_dec_instr_s2_tid, fet_dec_instr_s1_tid, fet_dec_instr_s0_tid};
 `endif
   end
-  // ccv_dec_ooe_uop, source end
+  // ccv_dec_ooe_uop, source end, no-flop (params/links.json no_flop)
   if (RPT_DEC_OOE_UOP > 0) begin : g_rpt_dec_ooe_uop
-    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(236)) u_rpt_dec_ooe_uop (
+    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .BOUNDARY(0), .SLOTS(6), .PAYLOAD_W(236)) u_rpt_dec_ooe_uop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_dec_ooe_uop_s5_valid, b_dec_ooe_uop_s4_valid, b_dec_ooe_uop_s3_valid, b_dec_ooe_uop_s2_valid, b_dec_ooe_uop_s1_valid, b_dec_ooe_uop_s0_valid}), .src_payload({b_dec_ooe_uop_s5_payload, b_dec_ooe_uop_s4_payload, b_dec_ooe_uop_s3_payload, b_dec_ooe_uop_s2_payload, b_dec_ooe_uop_s1_payload, b_dec_ooe_uop_s0_payload}),
       .src_wake(b_dec_ooe_uop_wake), .src_credit({b_dec_ooe_uop_s5_credit, b_dec_ooe_uop_s4_credit, b_dec_ooe_uop_s3_credit, b_dec_ooe_uop_s2_credit, b_dec_ooe_uop_s1_credit, b_dec_ooe_uop_s0_credit}), .src_stall({b_dec_ooe_uop_s5_stall, b_dec_ooe_uop_s4_stall, b_dec_ooe_uop_s3_stall, b_dec_ooe_uop_s2_stall, b_dec_ooe_uop_s1_stall, b_dec_ooe_uop_s0_stall}),

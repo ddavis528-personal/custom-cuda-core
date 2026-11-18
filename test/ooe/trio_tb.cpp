@@ -36,7 +36,23 @@
 // squash_ready_skipped counts the bits left out.
 //
 // Negative controls (TRIO_CONTROL, ooe_trio's ctl), ooe_sched's: no-msd,
-// no-miss-lead, late-leads, no-alloc-lead.
+// no-miss-lead, late-leads, no-alloc-lead, no-ret-hold (ooe_sched sees no
+// ret, so the ret hold, OA's rev 293, holds nothing), no-rep-lead (the
+// ready register's enable without its replay lead: the bench rewrites the
+// enable's flop, the lead being internal), no-idle-r (no migration
+// reaches ooe_sched, so RA-17's force never holds R), no-force (the bench
+// clears the force register after each edge, the lead kept: ooe_sched's
+// idle_r assertion must name it), no-c9h (the model's completions and hint
+// acting as they land, without C9h's capture: OA rev 372).
+//
+// ooe_sched's idle-R force (RA-17): the runs above have no migration
+// under idle_r_k, so testIdleR's (three warps keeping R busy beside warp
+// swaps) follows, the migration lead driven a cycle ahead from the
+// model's sel_mig; R must be forced idle some cycle.
+//
+// ooe_sched's ret hold: the random runs have no rets, so they are followed
+// by testRetHold's mix (every third branch a ret) under ret_hold and its
+// settings, which must hold some branch.
 //
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD ooe_sched's clock-gating unit measures (its scope is
@@ -63,6 +79,10 @@
 using ccv::ooe::Config;
 using ccv::ooe::Core;
 
+const char *ooeTestName();
+int ooeTestRandomRetsHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
+int ooeTestIdleRHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
+
 void trioConfig(Config &c) {
   c.fits_stale = 6;
   c.rs_same_edge = false;
@@ -71,9 +91,32 @@ void trioConfig(Config &c) {
   c.req_rows_late = true;
   c.miss_lead = true;
   c.ready_rep_late = true;
+  // no-c9h: the model without C9h (OA rev 372), its completions and hint
+  // acting as they land, against RTL built for C9h.
+  if (const char *s = std::getenv("TRIO_CONTROL"); s && std::string(s) == "no-c9h") c.cmpl_split = c.rx_lag = 0;
+}
+/// The ret hold's run (OA's rev 293): testRetHold's settings over the trio's.
+void trioRetConfig(Config &c) {
+  trioConfig(c);
+  c.resolve_lag = 1;
+  c.resolve_lag_ret_only = 1;
+  c.squash_act_lag = 1;
+  c.ret_hold = 2;   // OA's rev 320: a held win cancelled after the pick
+}
+/// RA-17's idle-R run: testIdleR's migrations over the trio's settings, at
+/// ooe_trio's IRK.
+void trioIdleRConfig(Config &c) {
+  trioConfig(c);
+  c.idle_r_k = 4;
 }
 
 namespace {
+#ifndef TR_LW
+#define TR_LW 12   // ooe_trio's LW: the lead tag's bits
+#endif
+#ifndef TR_PW
+#define TR_PW 16   // ooe_trio's PW: the payload tag's bits
+#endif
 constexpr unsigned N = TR_N, NR = TR_NR, NM = N - NR, A = TR_A, P = 2 * A, S = TR_S, L = Core::kWakeLines,
                    NC = TR_NC;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
@@ -83,6 +126,8 @@ std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_trio> dut;
 uint64_t current = 0;
 bool following = false;
+unsigned long long held = 0;                   // RCU entries the ret hold took (the model's)
+unsigned long long migs = 0, forced = 0;       // cycles a migration was in flight, and R forced idle (the model's)
 unsigned long long squash_ready_skipped = 0;   // ready bits of rows a squash frees next edge
 unsigned long long cycles = 0, cores = 0, skipped = 0, grants = 0, mismatches = 0, diverged = 0,
                    first_sum = 0, compared_cores = 0;
@@ -94,6 +139,15 @@ std::map<std::string, unsigned long long> first_kinds;   // each core's first mi
 int prev_rq[TR_N], prev_rd[TR_N], t_prev_req[TR_N], t_prev_ready[TR_N];
 unsigned long long grant_cores = 0, grant_first_sum = 0;
 unsigned long long core_cycle = 0;
+// The issue slots the last edge's issue register held, and their payloads:
+// the second payload register's, a cycle after its valid (OA's rev 343).
+unsigned prev_v = 0;
+uint16_t prev_pay[9] = {};
+// The payload (RA-39 (c)): each entry's tag and slot as its allocation
+// drove them, and the grant register the issue register reads.
+uint16_t tag_of[TR_N], home_of[TR_N], lead_of[TR_N];
+unsigned tag_next = 0;
+unsigned long long issued_slots = 0;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -116,12 +170,23 @@ template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
 }
 template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i != n; ++i) setBit(w, i, false); }
 
+// An entry's issue slot (ccv_ooe_rcu_issue's binding: S0-S3, P0-P3, R),
+// one-hot, from its footprint (ooe_select's res: S0-S3, R, P0-P3): its
+// lowest resource in the slot order.
+uint16_t homeSlot(unsigned res) {
+  for (unsigned k = 0; k != 4; ++k) if (res >> k & 1) return uint16_t(1u << k);
+  for (unsigned k = 0; k != 4; ++k) if (res >> (5 + k) & 1) return uint16_t(1u << (4 + k));
+  return res >> 4 & 1 ? uint16_t(1u << 8) : 0;
+}
+
 // One model cycle, all three benches' views of it.
 struct Snap {
   Core::WakeLog w;
   std::vector<unsigned> cidx;
   std::vector<uint8_t> valid, iss, prod, fin, sqf, dep, code, line, wtl, wnext, slot, copy, ready_q, req_q, v73;
   std::vector<uint64_t> age;
+  std::vector<uint8_t> akind, acls;   // each entry allocated this cycle: its timer's kind and class
+  std::vector<uint16_t> ahome;        // and its issue slot, one-hot (RA-39 (c)): its footprint's lowest resource
   uint64_t now = 0;   // the model's cycle
   bool stop_q = false;   // the model's stop lead register
   unsigned active = 0, ncmpl = 0;
@@ -130,6 +195,7 @@ struct Snap {
 Snap emptySnap() {
   Snap y;
   y.w.grant.assign(N, 0); y.w.kind.assign(N, 0); y.w.cls.assign(N, 0); y.w.rfree.assign(N, 0);
+  y.akind.assign(N, 0); y.acls.assign(N, 0); y.ahome.assign(N, 0);
   y.w.stop.assign(N, 0); y.w.cmpl.assign(N, 0); y.w.miss.assign(N, 0);
   y.valid.assign(N, 0); y.iss.assign(N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.sqf.assign(N, 0);
   y.dep.assign(N * N, 0); y.code.assign(N * N, 0); y.line.assign(N * L, 0); y.wtl.assign(N * L, 0);
@@ -143,6 +209,12 @@ Snap snapCycle(const Core &c) {
   y.now = c.now();
   y.stop_q = c.reqStopQ();
   y.codes = c.wakeLinesFit();
+  for (unsigned e : y.w.ralloc) {
+    const auto kc = c.wakeKindClass(e);
+    y.akind[e] = kc.first;
+    y.acls[e] = kc.second;
+    y.ahome[e] = homeSlot(c.rsRes(e));
+  }
   for (unsigned i = 0; i != N; ++i) {
     y.valid[i] = c.rsValid(i);
     y.iss[i] = c.rsIssued(i);
@@ -183,13 +255,31 @@ void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
   cg.dump();
+  // no-rep-lead: ooe_sched's ready register enable without its replay lead
+  // (the flop rewritten after the edge, from its other leads before it).
+  auto *r = dut->rootp;
+  const bool drop = control == 6 && r->ooe_trio__DOT__u_sched__DOT__rl_cq02h &&
+                    !(r->ooe_trio__DOT__u_sched__DOT__tl_cq02h || r->ooe_trio__DOT__u_sched__DOT__wml_cq02h ||
+                      r->ooe_trio__DOT__u_sched__DOT__alloc_cq02h || r->ooe_trio__DOT__u_sched__DOT__stop_cq02h);
   dut->ooe_core_clk = 1;
   dut->eval();
+  if (drop) {
+    r->ooe_trio__DOT__u_sched__DOT__ready_en_cq03h = 0;
+    dut->eval();
+  }
+  // no-force: ooe_sched's idle-R force register and select's per-entry
+  // copies of it (fcp) cleared after every edge, the migration lead kept,
+  // so its idle_r assertion must fire.
+  if (control == 8) {
+    r->ooe_trio__DOT__u_sched__DOT__force_cq04h = 0;
+    r->ooe_trio__DOT__u_sched__DOT__fcp_cq04h = 0;
+    dut->eval();
+  }
   cg.dump();
 }
 
 void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model) {
-  ++mismatches;
+  if (!mismatches++) std::fprintf(stderr, "first mismatch in %s (core %llu)\n", ooeTestName(), (unsigned long long)current);
   if (++kinds[what] <= 3)
     std::fprintf(stderr, "cycle %llu (core cycle %llu): %s (%u, %u: rtl %u, model %u)\n", cycles, core_cycle, what, a,
                  b, rtl, model);
@@ -244,6 +334,7 @@ void hook(const Core &c) {
     errs_seen = 0;
     ctx->assertOn(true);
     core_cycle = 0;
+    prev_v = 0;
     if (following) ++compared_cores;
     if (following && std::getenv("TRIO_FIRST")) std::fprintf(stderr, "compared core starts at cycle %llu\n", cycles + 1);
     clearAll(dut->req_cq01h, P);
@@ -322,12 +413,31 @@ void hook(const Core &c) {
   for (unsigned k = 0; k != tp2.cidx.size() && k != NC; ++k) setField(dut->hint_idx_cq01h, k * W, W, tp2.cidx[k]);
   dut->hint_l_cq00h = 0;
   for (unsigned k = 0; k != tp3.ncmpl && k != NC; ++k) dut->hint_l_cq00h |= 1u << k;
-  // -- ooe_wake's grant payload: the grants of t - 1 = a.
-  for (unsigned j = 0; j != N; ++j) {
-    setField(dut->kind_cq01h, j * 2, 2, a.w.kind[j]);
-    setField(dut->cls_cq01h, j * 3, 3, a.w.cls[j]);
-    setBit(dut->prod_cq01h, j, a.prod[j]);
-  }
+  // -- Each port's kind and class with its row (a's: ooe_rs writes them
+  // at this edge, OA re:OI-104), and ooe_wake's grant payload: the grants
+  // of t - 1 = a.
+  clearAll(dut->akind_cq01h, 2 * P);
+  clearAll(dut->acls_cq01h, 3 * P);
+  clearAll(dut->pay_cq01h, P * TR_PW);
+  clearAll(dut->lead_cq01h, P * TR_LW);
+  clearAll(dut->home_cq01h, P * 9);
+  for (unsigned p = 0; p != P; ++p)
+    if (entry_of[p] != N) {
+      const unsigned e = entry_of[p];
+      setField(dut->akind_cq01h, p * 2, 2, a.akind[e]);
+      setField(dut->acls_cq01h, p * 3, 3, a.acls[e]);
+      // Its payload, a tag of the bench's, and its slot. Control
+      // pay-port drives each RCU port's payload on its neighbour's port,
+      // no-home drives no slot: both must be caught.
+      tag_of[e] = uint16_t(++tag_next);
+      home_of[e] = a.ahome[e];
+      const unsigned pp = control == 9 && p < A ? (p ^ 1) : p;
+      setField(dut->pay_cq01h, pp * TR_PW, TR_PW, tag_of[e]);
+      lead_of[e] = uint16_t((tag_of[e] * 2654435761u >> 7) & ((1u << TR_LW) - 1));
+      setField(dut->lead_cq01h, pp * TR_LW, TR_LW, lead_of[e]);
+      if (control != 10) setField(dut->home_cq01h, p * 9, 9, home_of[e]);
+    }
+  for (unsigned j = 0; j != N; ++j) setBit(dut->prod_cq01h, j, a.prod[j]);
   // -- ooe_sched's outer terms for P = t: the payload, the allocation lead
   // (a row written at this edge: a's), and select's live terms.
   for (unsigned e = 0; e != N; ++e) {
@@ -343,8 +453,18 @@ void hook(const Core &c) {
     setBit(dut->siss_cq03h, e, v && sw.sel_iss[e]);
     for (unsigned j = 0; j != N; ++j) setBit(dut->sdep_cq03h, e * N + j, v && !sw.sel_conf[e] && j == e);
     setField(dut->sslot_cq03h, e * LS, LS, v ? sw.sel_slot[e] : 0);
-    setField(dut->res_cq03h, e * 9, 9, v ? sw.sel_res[e] : 0);
+    // An MIU-class row keeps its footprint until rewritten (ooe_rs frees a
+    // row a cycle after its grant; RS free lag 1): ooe_sched reads a
+    // granted memop's pipes from it the cycle after (MA-5's credits).
+    static std::vector<unsigned> res_h(N, 0);
+    if (v || e < NR) res_h[e] = v ? sw.sel_res[e] : 0;
+    setField(dut->res_cq03h, e * 9, 9, res_h[e]);
     setBit(dut->chas_cq03h, e, v && sw.sel_chas[e]);
+    if (e < NR) {
+      setBit(dut->ret_cq03h, e, v && sw.sel_ret[e]);
+      setBit(dut->brk_cq03h, e, v && sw.sel_brk[e]);
+      held += v && sw.sel_hold[e];
+    }
     setField(dut->cidx_cq03h, e * W, W, v ? sw.sel_cidx[e] : 0);
   }
   for (unsigned e = 0; e != NR; ++e)
@@ -352,8 +472,12 @@ void hook(const Core &c) {
   for (unsigned e = 0; e != NM; ++e)
     for (unsigned j = 0; j != NM; ++j) setBit(dut->older_m_cq03h, e * NM + j, t.age[NR + j] < t.age[NR + e]);
   dut->busy_cq03h = sw.sel_busy >> 5;
+  dut->cret_cq02h = tp1.w.sel_cret;  // MA-5's credit returns, a cycle ahead (a lead)
+  dut->mig_cq02h = tp1.w.sel_mig;   // RA-17's migration, a cycle ahead (a lead)
+  migs += sw.sel_mig;
+  forced += sw.sel_mig && ((sw.sel_busy >> 4) & 1u);
   dut->block_cq03h = sw.sel_block;
-  dut->ctl = control;
+  dut->ctl = control <= 7 ? control : 0;   // 8 is the bench's alone
   if (const char *tr = std::getenv("TRIO_ROWAT")) {
     // One row of ooe_sched's matrix inputs before this edge: "core,cycle,entry".
     unsigned long long cc = 0, cy = 0;
@@ -430,9 +554,40 @@ void hook(const Core &c) {
                         (unsigned long long)r->ooe_trio__DOT__ise_q,
                         (unsigned long long)r->ooe_trio__DOT__u_rs__DOT__iss_cq02h);
   }
+  uint64_t gr_before = 0;   // the grant register the issue register reads at this edge
+  for (unsigned e = 0; e != N; ++e) gr_before |= uint64_t(getBit(dut->grant_cq04h, e)) << e;
   tick();
-  // -- After the edge. ooe_sched: its grant register is the model's grants
-  // of t.
+  // -- After the edge. ooe_rs's issue register: slot k holds the entry of
+  // the last grant register whose slot is k, its valid with the lead slice
+  // its allocation drove (RA-31), and the rest of its payload (RA-39 (c))
+  // in the second register a cycle later (OA's rev 343, (A)). Control
+  // pay-with-valid holds the payload to its valid's cycle instead.
+  {
+    unsigned want_v = 0;
+    uint16_t want_pay[9] = {}, want_lead[9] = {};
+    for (unsigned e = 0; e != N; ++e)
+      if (gr_before >> e & 1)
+        for (unsigned k = 0; k != 9; ++k)
+          if (home_of[e] >> k & 1) { want_v |= 1u << k; want_pay[k] = tag_of[e]; want_lead[k] = lead_of[e]; }
+    const unsigned pv = control == 11 ? want_v : prev_v;
+    for (unsigned k = 0; k != 9; ++k) {
+      const bool gv = getBit(dut->iss_v_cq05h, k);
+      if (gv != bool(want_v >> k & 1)) fail("issue slot valid differs", k, 0, gv, want_v >> k & 1);
+      else if (gv) {
+        ++issued_slots;
+        const unsigned gl = unsigned(getField(dut->iss_lead_cq05h, k * TR_LW, TR_LW));
+        if (gl != want_lead[k]) fail("issue lead differs", k, 0, gl, want_lead[k]);
+      }
+      if (pv >> k & 1) {
+        const unsigned gp = unsigned(getField(dut->iss_pay_cq05h, k * TR_PW, TR_PW));
+        const unsigned wp = control == 11 ? want_pay[k] : prev_pay[k];
+        if (gp != wp) fail("issue payload differs", k, 0, gp, wp);
+      }
+    }
+    prev_v = want_v;
+    for (unsigned k = 0; k != 9; ++k) prev_pay[k] = want_pay[k];
+  }
+  // -- ooe_sched: its grant register is the model's grants of t.
   for (unsigned e = 0; e != N; ++e) {
     const bool want = e < sw.sel_grant.size() && sw.sel_grant[e], got = getBit(dut->grant_cq04h, e);
     grants += want;
@@ -444,7 +599,9 @@ void hook(const Core &c) {
         grant_diverged = true;
         ++grant_cores;
         grant_first_sum += core_cycle;
-        ctx->assertOn(false);
+        // no-force's divergence is the force's own cycle, a cycle before
+        // idle_r reads the run it leaves: its assertions stay on.
+        if (control != 8) ctx->assertOn(false);
         if (std::getenv("TRIO_FIRST")) {
           // Every entry select saw differently (before this edge: the
           // registers' values the bench read after the last one).
@@ -557,7 +714,10 @@ void hook(const Core &c) {
 int main(int argc, char **argv) {
   if (const char *c = std::getenv("TRIO_CONTROL")) {
     const std::string n = c;
-    control = n == "no-msd" ? 1 : n == "no-miss-lead" ? 2 : n == "late-leads" ? 3 : n == "no-alloc-lead" ? 4 : 0;
+    control = n == "no-msd" ? 1 : n == "no-miss-lead" ? 2 : n == "late-leads" ? 3 : n == "no-alloc-lead" ? 4
+            : n == "no-ret-hold" ? 5 : n == "no-rep-lead" ? 6 : n == "no-idle-r" ? 7 : n == "no-force" ? 8
+            : n == "pay-port" ? 9 : n == "no-home" ? 10 : n == "pay-with-valid" ? 11
+            : n == "no-c9h" ? 12 : 0;
     if (!control) { std::fprintf(stderr, "trio_tb: unknown control %s\n", c); return 2; }
   }
   const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
@@ -567,16 +727,21 @@ int main(int argc, char **argv) {
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_trio>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
-  const int model_fails = cg.run(seeds, nullptr, hook, trioConfig);
+  int model_fails = cg.run(seeds, nullptr, hook, trioConfig);
+  if (!cg.on()) model_fails += ooeTestRandomRetsHookedWith(std::max(2u, seeds / 4), hook, trioRetConfig);
+  if (!cg.on()) model_fails += ooeTestIdleRHookedWith(std::max(1u, seeds / 8), hook, trioIdleRConfig);
   cg.close();
   dut->final();
   for (const auto &k : kinds) std::fprintf(stderr, "  %-30s %llu\n", k.first.c_str(), k.second);
   for (const auto &k : first_kinds) std::fprintf(stderr, "  first: %-23s %llu\n", k.first.c_str(), k.second);
   std::printf("trio_tb seeds=%u cores=%llu compared=%llu cycles=%llu skipped=%llu grants=%llu "
-              "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f squash_ready_skipped=%llu mismatches=%llu model_failures=%d\n",
+              "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f squash_ready_skipped=%llu held=%llu migs=%llu forced=%llu issued_slots=%llu mismatches=%llu model_failures=%d\n",
               seeds, cores, compared_cores, cycles, skipped, grants, grant_cores,
-              grant_cores ? double(grant_first_sum) / double(grant_cores) : 0.0, squash_ready_skipped, mismatches, model_fails);
-  const int rc = mismatches || model_fails ? 1 : 0;
+              grant_cores ? double(grant_first_sum) / double(grant_cores) : 0.0, squash_ready_skipped, held, migs, forced, issued_slots, mismatches,
+              model_fails);
+  if (!cg.on() && !held) std::fprintf(stderr, "trio_tb: the ret hold never held an entry\n");
+  if (!cg.on() && !forced) std::fprintf(stderr, "trio_tb: the idle-R force never held R\n");
+  const int rc = mismatches || model_fails || (!cg.on() && (!held || !forced)) ? 1 : 0;
   dut.reset();
   ctx.reset();
   return rc;

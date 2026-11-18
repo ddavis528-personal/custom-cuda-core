@@ -15,7 +15,8 @@
 //
 // Narrow names (NS > 0; slice 6, OI-81 (ii) and OI-82, OA's revs 252-254).
 // A GPR writer's allocation width is its destination's code, 32 bits for
-// an atomic or under FR (AR-24's interim). A narrow one is placed at its old
+// an atomic or under ooe_rename's FR (AR-24's interim), formed there with
+// its home (#35). A narrow one is placed at its old
 // destination's position on a merge, else at its first narrow source's,
 // else at its slot's home (one section at the slot index, a pair at
 // 2(slot mod 2)); a source or old destination with an in-group writer is
@@ -35,7 +36,6 @@ module ooe_ren1n #(
   parameter int GR = 8,                  // a GPR free list entry: the row (CCV_P_W_PHYS_REG)
   parameter int PW = 6,                  // predicate name (CCV_P_W_PHYS_PRED)
   parameter int NS = 0,                  // sections a row: 4 the narrow names, 0 whole rows
-  parameter int FR = 0,                  // 1: every register a whole row (AR-24's interim, full_rows)
   parameter int S  = 4,                  // tier-1 slots (CCV_TIER1_WARPS)
   localparam int GP = GW - GR,           // a name's position bits
   localparam int LS = (S > 1) ? $clog2(S) : 1,
@@ -49,6 +49,16 @@ module ooe_ren1n #(
   input  logic [R*4*R-1:0]  q_gl_cq01h,     //   or its writer's lane
   input  logic [R*4*PW-1:0] q_p_cq01h,      // guard, old destination, q0, q1
   input  logic [R*4*R-1:0]  q_pl_cq01h,
+  // Each read's pending writer, the last port of the group before this one
+  // writing it, one-hot (the reads' values exclude it), and that group's
+  // new names, registered as Rename 2 bound them (#35).
+  input  logic [R*4*R-1:0]  q_gk_cq01h,
+  input  logic [R*4*R-1:0]  q_pk_cq01h,
+  input  logic [R*GW-1:0]   pn_gname_cq01h,
+  input  logic [R*PW-1:0]   pn_pname_cq01h,
+  // Each GPR read seen by narrow placement (ooe_ren1's, registered): no
+  // in-group or pending writer, not the zero row (#35).
+  input  logic [R*4-1:0]    q_gs_cq01h,
   // Narrow names (NS > 0; tie off when 0). Each lane's slot, whether it
   // writes a GPR, its attributes (bit 0 an atomic, 1-3 it reads src0..2,
   // 4 a merge), its width codes (src0..2, the destination's, the old
@@ -58,6 +68,11 @@ module ooe_ren1n #(
   input  logic [R-1:0]      q_gwe_cq01h,
   input  logic [R*5-1:0]    q_na_cq01h,
   input  logic [R*10-1:0]   q_nw_cq01h,
+  // Each lane's allocation width (0 a whole row: under FR, an atomic, or its
+  // destination's code) and its slot's home position at that width, formed
+  // before the register from fields Rename 1 has early (#35).
+  input  logic [R*2-1:0]    q_nal_cq01h,
+  input  logic [R*2-1:0]    q_nhm_cq01h,
   input  logic [S*2-1:0]    cand_v_cq01h,
   input  logic [S*2*GR-1:0] cand_row_cq01h,
   input  logic [S-1:0]      cand_same_cq01h,
@@ -97,34 +112,74 @@ module ooe_ren1n #(
     for (int k = 0; k < R; k++) v = v | ({GR{q_idx_cq01h[(l * 2 + 0) * R + k]}} & q_galloc_cq01h[k * GR +: GR]);
     fresh = v;
   endfunction
+  // A read's value: its pending writer's name where it has one, else the
+  // value the register holds.
+  function automatic logic [GW-1:0] gv(input int l, input int i);
+    logic [GW-1:0] n;
+    logic [R-1:0]  k;
+    k = q_gk_cq01h[(l * 4 + i) * R +: R];
+    n = '0;
+    for (int p = 0; p < R; p++) n = n | ({GW{k[p]}} & pn_gname_cq01h[p * GW +: GW]);
+    gv = k != '0 ? n : q_g_cq01h[(l * 4 + i) * GW +: GW];
+  endfunction
+  function automatic logic [PW-1:0] pv(input int l, input int i);
+    logic [PW-1:0] n;
+    logic [R-1:0]  k;
+    k = q_pk_cq01h[(l * 4 + i) * R +: R];
+    n = '0;
+    for (int p = 0; p < R; p++) n = n | ({PW{k[p]}} & pn_pname_cq01h[p * PW +: PW]);
+    pv = k != '0 ? n : q_p_cq01h[(l * 4 + i) * PW +: PW];
+  endfunction
+  logic [R*4*GW-1:0] rg;
+  logic [R*4*PW-1:0] rp;
+  always_comb
+    for (int l = 0; l < R; l++)
+      for (int i = 0; i < 4; i++) begin
+        rg[(l * 4 + i) * GW +: GW] = gv(l, i);
+        rp[(l * 4 + i) * PW +: PW] = pv(l, i);
+      end
+
   // Narrow placement, per lane, from the register alone: its allocation
   // width (0 for a whole row), position, whether it wants its slot's
   // candidate, and the candidate's kind.
   logic [R*2-1:0] nw_al, npos;
   logic [R-1:0]   nwant, nkind;
+  // Whether a position, at width w, is the lane's home: each read's compare
+  // is from the register alone, so nwant selects one bit rather than
+  // comparing the selected position (#35).
+  function automatic logic eqh(input logic [1:0] v, input logic [1:0] w, input logic [1:0] home);
+    eqh = (w == 2'd1) ? (v[1] == home[1] && !home[0]) : (v == home);
+  endfunction
   always_comb
     for (int l = 0; l < R; l++) begin
       logic [1:0]    w, p, home;
+      logic          peq;
       logic [LS-1:0] sl;
       sl    = q_slot_cq01h[l * LS +: LS];
-      w     = (FR != 0 || q_na_cq01h[l * 5]) ? 2'd0 : q_nw_cq01h[l * 10 + 6 +: 2];
-      home  = (w == 2'd1) ? {sl[0], 1'b0} : 2'(sl);
+      w     = q_nal_cq01h[l * 2 +: 2];
+      home  = q_nhm_cq01h[l * 2 +: 2];
       p     = home;
-      // The first narrow source with no in-group writer, nor the zero row.
+      peq   = eqh(home, w, home);
+      // The first narrow source placement sees (q_gs: no in-group or pending
+      // writer, nor the zero row; #35, cand_indep_pend in the model).
       for (int i = 2; i >= 0; i--)
-        if (q_na_cq01h[l * 5 + 1 + i] && q_gl_cq01h[(l * 4 + i) * R +: R] == '0 &&
-            q_g_cq01h[(l * 4 + i) * GW + GP +: GR] != '1 && q_nw_cq01h[l * 10 + i * 2 +: 2] != 2'd0)
-          p = q_g_cq01h[(l * 4 + i) * GW +: 2];
+        if (q_na_cq01h[l * 5 + 1 + i] && q_gs_cq01h[l * 4 + i] && q_nw_cq01h[l * 10 + i * 2 +: 2] != 2'd0)
+        begin
+          p   = q_g_cq01h[(l * 4 + i) * GW +: 2];
+          peq = eqh(q_g_cq01h[(l * 4 + i) * GW +: 2], w, home);
+        end
       // A merge keeps its old destination's position, at its width.
-      if (q_na_cq01h[l * 5 + 4] && q_gl_cq01h[(l * 4 + 3) * R +: R] == '0 &&
-          q_g_cq01h[(l * 4 + 3) * GW + GP +: GR] != '1 && q_nw_cq01h[l * 10 + 8 +: 2] == w)
-        p = q_g_cq01h[(l * 4 + 3) * GW +: 2];
+      if (q_na_cq01h[l * 5 + 4] && q_gs_cq01h[l * 4 + 3] && q_nw_cq01h[l * 10 + 8 +: 2] == w)
+      begin
+        p   = q_g_cq01h[(l * 4 + 3) * GW +: 2];
+        peq = eqh(q_g_cq01h[(l * 4 + 3) * GW +: 2], w, home);
+      end
       if (w == 2'd1) p[0] = 1'b0;
       if (w == 2'd0) p = 2'd0;
       nw_al[l * 2 +: 2] = w;
       npos[l * 2 +: 2]  = p;
       nkind[l]          = w == 2'd1;
-      nwant[l]          = NS != 0 && q_gwe_cq01h[l] && w != 2'd0 && p == home &&
+      nwant[l]          = NS != 0 && q_gwe_cq01h[l] && w != 2'd0 && peq &&
                           cand_v_cq01h[32'(sl) * 2 + (w == 2'd1)];
     end
   // A lane takes the candidate it wants unless an earlier lane of its slot
@@ -164,7 +219,7 @@ module ooe_ren1n #(
     m = q_gl_cq01h[(l * 4 + i) * R +: R];
     w = '0;
     for (int j = 0; j < R; j++) w = w | ({GW{m[j]}} & n_gname[j * GW +: GW]);
-    gread = m != '0 ? w : q_g_cq01h[(l * 4 + i) * GW +: GW];
+    gread = m != '0 ? w : rg[(l * 4 + i) * GW +: GW];
   endfunction
   function automatic logic [PW-1:0] pread(input int l, input int i);
     logic [PW-1:0] w;
@@ -172,7 +227,7 @@ module ooe_ren1n #(
     m = q_pl_cq01h[(l * 4 + i) * R +: R];
     w = '0;
     for (int j = 0; j < R; j++) w = w | ({PW{m[j]}} & n_pname[j * PW +: PW]);
-    pread = m != '0 ? w : q_p_cq01h[(l * 4 + i) * PW +: PW];
+    pread = m != '0 ? w : rp[(l * 4 + i) * PW +: PW];
   endfunction
   always_comb
     for (int l = 0; l < R; l++)

@@ -25,9 +25,36 @@
 #                            everything a run reads). Its result reads
 #                            "CACHED PASS", never "PASS": the gate for a push
 #                            is the default, every netlist built clean.
+#   tools/verify.sh --changed <base>
+#                            a working-branch push's gate (OI-95; DA,
+#                            2026-10-31): the build/synth-cache earlier runs
+#                            left (as --cached), and only the sections
+#                            tools/gate-scope.py names for the change since
+#                            <base>, with the ones they wait on; the
+#                            generators, the staleness check, the toolchain,
+#                            lint and the interface checks always. Its result
+#                            reads "SCOPED PASS", never "PASS". The daily
+#                            sweep's merge, every release and the nightly run
+#                            the default: every section, every netlist clean.
+#   tools/verify.sh --only a,b / --skip a,b
+#                            only these sections, or all but these (beside
+#                            --changed: within its scope). A section whose
+#                            `after` one is left out is refused. The result
+#                            reads "PARTIAL PASS": half of a gate split across
+#                            containers (OI-101; DA, 2026-11-01), which
+#                            tools/gate-combine.py joins for gate-push.
+#                            Every run writes build/verify/manifest.json: the
+#                            commit, its tree, each section's outcome and
+#                            log hash; tools/gate-export.sh packs it.
 #   CCV_JOBS=n               sections run n at a time after the generators
 #                            (default: every core; 1 is the serial gate).
 #                            Each section's log is build/verify/<job>.log.
+#   CCV_KEEP_BUILD=1         keep each section's build directory (owns,
+#                            below), which is otherwise removed once the
+#                            section passed and every section that reads it
+#                            is done (DA, 2026-11-09). A failed section's
+#                            stays. CCV_KEEP_UNIT_BUILD=1 keeps check-cg's
+#                            and check-ngd's per-unit work directories.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 # Every Yosys the gate runs, SymbiYosys's included, is the strict one: the
@@ -36,13 +63,27 @@ export PATH="$PWD/tools/shim:$PATH"
 
 FULL=0
 CACHED=0
-for a in "$@"; do
-  case "$a" in
-    --full)   FULL=1 ;;
-    --cached) CACHED=1 ;;
-    *) echo "usage: $0 [--full] [--cached]" >&2; exit 2 ;;
+BASE=""
+ONLY="" SKIP=""
+CCV_ARGS=("$@")
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --full)    FULL=1 ;;
+    --cached)  CACHED=1 ;;
+    --changed) [ $# -ge 2 ] || { echo "verify: --changed needs a base" >&2; exit 2; }
+               BASE=$2; CACHED=1; shift ;;
+    --only)    [ $# -ge 2 ] || { echo "verify: --only needs sections" >&2; exit 2; }
+               ONLY=$(echo "$2" | tr ',' ' '); shift ;;
+    --skip)    [ $# -ge 2 ] || { echo "verify: --skip needs sections" >&2; exit 2; }
+               SKIP=$(echo "$2" | tr ',' ' '); shift ;;
+    *) echo "usage: $0 [--full] [--cached] [--changed <base>] [--only a,b] [--skip a,b]" >&2; exit 2 ;;
   esac
+  shift
 done
+# A long run never runs under its caller (tools/detach.sh; DA, 2026-11-13):
+# it detaches and returns; tools/gate-wait.sh waits for it.
+. "$(dirname "$0")/detach.sh"; ccv_detach "$0" ${CCV_ARGS[@]+"${CCV_ARGS[@]}"}
+
 
 fail=0
 section() { printf '\n== %s ==\n' "$1"; }
@@ -105,6 +146,11 @@ run "generate payload spec" python3 tools/gen-payload-spec.py
 run "event schema stable"   python3 tools/gen-event-schema.py --check
 run "parameters stable"     python3 tools/gen-params.py --check
 run "derived params refuse drift" python3 tools/gen-params.py --selftest
+# The opcode table (RI-21 (4)): kOps for the skeleton and ccv_ops_pkg for
+# an RTL decode, from params/ops.json, whose rows are append-only.
+run "generate opcode table" python3 tools/gen-ops.py
+run "opcode table stable"   python3 tools/gen-ops.py --check
+run "opcode table refuses a moved row" python3 tools/gen-ops.py --selftest
 run "ISA-sourced params match the pinned ISA" python3 tools/check-isa-params.py
 run "ISA params that should fail do" python3 tools/check-isa-params.py --selftest
 run "interfaces stable"     python3 tools/gen-interfaces.py --check
@@ -121,6 +167,8 @@ run "generate trust report" python3 tools/gen-trust-report.py
 run "trust report stable"   python3 tools/gen-trust-report.py --check
 run "generate skel wiring"  python3 tools/gen-skel.py
 run "skel wiring stable"    python3 tools/gen-skel.py --check
+# Through stub.h, which needs the wiring: C++ and SV agree per opcode.
+run "opcode table: C++ and SV agree" python3 tools/gen-ops.py --crosscheck
 run "generate SV top"       python3 tools/gen-top.py
 run "SV top stable"         python3 tools/gen-top.py --check
 # The walkthrough can be checked whole only at the end, from the builds the
@@ -145,6 +193,8 @@ job_s1a() {
   # re-measure is --full, and runs in CI on a schedule.
   run "toolchain versions pinned" ./tools/check-toolchain.sh
   run "1a exit criteria" ./tools/check-1a.sh
+  # The long tools detach and gate-wait waits (DA, 2026-11-13), with controls.
+  run "long tools detach; gate-wait waits" ./tools/check-detach.sh
   if [ "$FULL" = "1" ]; then
     run "matrix unchanged since last measured" python3 tools/check-matrix-drift.py
   fi
@@ -173,6 +223,9 @@ job_s1d() {
 job_iface() {
   section "Interface checker convention"
   run "interface convention" ./tools/check-if.sh
+  # The gate's own joins, cheap, in a section every run takes (OI-95, OI-101).
+  run "gate scope map" python3 tools/gate-scope.py --selftest
+  run "split gate join" python3 tools/gate-combine.py --selftest
 }
 
 job_xprop() {
@@ -257,11 +310,40 @@ job_ooe_unit() {
   run "OOE unit tests" ./tools/check-ooe-unit.sh
 }
 
+job_rcu_unit() {
+  section "RCU model unit tests (sim/rcu/; RI-2)"
+  # The RCU model's own harness, and its named controls; the model is the
+  # kernels' default since RI's M0 (CCV_RCU_IMPL=stub selects the stub).
+  run "RCU unit tests" ./tools/check-rcu-unit.sh
+}
+
 job_ooe_rtl() {
   section "Stage 4c -- OOE RTL (rtl/ooe/)"
   # Each OOE RTL module in lockstep with the model code it implements, at the
   # parameters' sizes, with the harness's controls each caught.
   run "OOE RTL == model" ./test/ooe/run-rtl.sh
+}
+
+job_rcu_rtl() {
+  section "RCU RTL benches (RI's test/rcu/run-rtl.sh)"
+  # Each RCU RTL module under Verilator, assertions on, against its value
+  # model, at the units' sizes (the 32-row slice; --full's 192-row one stays
+  # RI's local loop), with each bench's named controls each caught.
+  run "RCU RTL benches" ./test/rcu/run-rtl.sh
+}
+
+job_rcu_ls() {
+  section "RCU block -- ccv_rcu in lock-step with the model (RI's test/rcu/run-lockstep.sh)"
+  # RI's block lock-step (RI-36, RI-37; it replaced TI's rcu_blk): every
+  # oracle kernel on the skeleton with the RCU model, its ports dumped and
+  # replayed into the assembled ccv_rcu under Verilator, assertions on, every
+  # output compared every cycle under its care masks, with RI's controls init
+  # and opnd caught; then TI's control corrupt-output (one compared output
+  # flipped at a cycle the clean replay matched, caught at that cycle and
+  # port). After the skeleton, whose binary writes the dumps, and check-kernel,
+  # whose oracles it runs; its own build in build/rcu-ls.
+  run "RCU block == model" ./test/rcu/run-lockstep.sh
+  run "RCU lock-step control corrupt-output" ./tools/rcu-ls-corrupt.py build/rcu-ls/k/vadd.vcd
 }
 
 job_top() {
@@ -338,7 +420,9 @@ job_vlint() {
                 rtl/if/ccv_common_chk_credit.sv:CCV_TRACE rtl/if/ccv_common_chk_atomic.sv: \
                 rtl/if/ccv_common_chk_lockstep.sv: rtl/if/ccv_common_chk_lockstep.sv:CCV_TRACE \
                 rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_outstanding.sv: rtl/if/ccv_common_chk_notice.sv: \
-                rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv:; do
+                rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv: \
+                rtl/macro/ccv_common_sram_1rw.sv: rtl/macro/ccv_common_rf_1r1w.sv: \
+                rtl/macro/ccv_common_rf_1r1w_be.sv:; do
       f=${spec%%:*}; def=${spec#*:}
       top=$(basename "$f" .sv)
       [ "$top" = "ccv_assert_smoke" ] && top=dut
@@ -367,24 +451,68 @@ job_vlint() {
 JOBS="${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)}"
 case "$JOBS" in ''|*[!0-9]*|0) echo "verify: CCV_JOBS must be a positive count"; exit 2 ;; esac
 # Print order. Each section's own comment says what it reads from.
-ORDER="s1a s1b s1c s1d iface xprop ctech cg ngd clockgate skel kernel ooe_unit ooe_rtl
-       top formal phys svh links walkthrough vlint"
+ORDER="s1a s1b s1c s1d iface xprop ctech cg ngd clockgate skel kernel ooe_unit rcu_unit ooe_rtl
+       rcu_rtl rcu_ls top formal phys svh links walkthrough vlint"
 # Start order: the longest chain first, then the longest jobs, then the rest.
-START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys iface xprop s1c s1b
-       s1d ooe_unit s1a clockgate walkthrough vlint"
+START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys rcu_rtl rcu_ls iface xprop s1c s1b
+       s1d ooe_unit rcu_unit s1a clockgate walkthrough vlint"
 declare -A after=(
   [kernel]="skel"          # the binary check-skel builds
   [top]="skel"             # its wiring dump
   [svh]="skel kernel"      # both, and the oracles check-kernel makes
   [links]="kernel"         # the oracles, copied into its split tree
+  [rcu_ls]="skel kernel"   # the binary that writes the port dumps, the oracles it runs
   [walkthrough]="skel kernel svh"
+)
+# The build directory each section alone writes, removed once it passed
+# and every job that names it in `after` is done (DA, 2026-11-09: a gate's
+# build/ peaked near 25 GB and twice filled the disk), unless
+# CCV_KEEP_BUILD=1; a failed section's stays, for its triage. Nothing after
+# the pool reads these (the walkthrough reads skel's, kernel's and svh's,
+# which are not here), nor does tools/gate-export.sh, which packs
+# build/verify and build/synth-cache, never removed here.
+declare -A owns=(
+  [cg]="build/cg"               # check-cg's units, structural reads, fixtures
+  [ngd]="build/ngd"             # check-ngd's, its structural reads too
+  [ooe_rtl]="build/ooe-rtl"
+  [rcu_rtl]="build/rcu-rtl"
+  [rcu_ls]="build/rcu-ls"
+  [links]="build/links_split"   # the split tree check-links copies
 )
 LOGS=build/verify
 rm -rf "$LOGS" && mkdir -p "$LOGS"
 # check-cg and check-ngd share their Yosys netlists through this cache, keyed
-# by everything a run reads. Cleared here unless --cached, so the gate for a
-# push synthesises each one itself (Daniel, 2026-10-21).
+# by everything a run reads, ABC's maps among them (OI-95). Cleared here
+# unless --cached or --changed, so the full gate (the daily sweep's merge,
+# every release, the nightly) synthesises each one itself (Daniel,
+# 2026-10-21); a working-branch push reuses it (DA, 2026-10-31).
 [ "$CACHED" = 1 ] || rm -rf build/synth-cache
+# Only a clean gate's unit times are work, not cache hits: check-cg and
+# check-ngd record them then, and queue their units slowest first by them
+# (DA, 2026-11-03).
+if [ "$CACHED" = 1 ]; then export CCV_CLEAN_GATE=0; else export CCV_CLEAN_GATE=1; fi
+# --changed: the sections the change needs, and the ones they wait on. The
+# walkthrough is built from skel, kernel and svh's runs: with any of them.
+SCOPE=""
+if [ -n "$BASE" ]; then
+  section "scope -- the sections the change since $BASE needs"
+  sc=$(python3 tools/gate-scope.py "$BASE") || { echo "verify: no scope against $BASE"; exit 2; }
+  echo "$sc" | sed 's/^/  /'
+  SCOPE=$(echo "$sc" | head -1)
+  if [ "$SCOPE" != ALL ]; then
+    case " $SCOPE " in *" skel "*|*" kernel "*|*" svh "*) SCOPE="$SCOPE walkthrough" ;; esac
+    while :; do
+      grown=$SCOPE
+      for j in $SCOPE; do
+        for d in ${after[$j]:-}; do
+          case " $grown " in *" $d "*) ;; *) grown="$grown $d" ;; esac
+        done
+      done
+      [ "$grown" = "$SCOPE" ] && break
+      SCOPE=$grown
+    done
+  fi
+fi
 for j in $ORDER; do
   case " $(echo $START) " in *" $j "*) ;; *) echo "verify: job $j is never started"; exit 2 ;; esac
   declare -F "job_$j" >/dev/null || { echo "verify: no job_$j"; exit 2; }
@@ -406,6 +534,22 @@ ready() {
   local d
   for d in ${after[$1]:-}; do [ "${state[$d]}" = done ] || return 1; done
 }
+declare -A cleaned=()
+# Each passed section's own directory whose readers (the jobs that name it
+# in `after`) are all done; a record of each in build/verify/cleaned.
+clean_done() {
+  [ "${CCV_KEEP_BUILD:-0}" = 0 ] || return 0
+  local k r
+  for k in "${!owns[@]}"; do
+    [ "${outcome[$k]:-}" = pass ] && [ -z "${cleaned[$k]:-}" ] || continue
+    for r in "${!after[@]}"; do
+      case " ${after[$r]} " in *" $k "*) [ "${state[$r]}" = done ] || continue 2 ;; esac
+    done
+    cleaned[$k]=1
+    rm -rf ${owns[$k]}
+    echo "$k: ${owns[$k]}" >>"$LOGS/cleaned"
+  done
+}
 next=($ORDER)
 flush() {
   while [ ${#next[@]} -gt 0 ] && [ "${state[${next[0]}]}" = done ]; do
@@ -414,6 +558,38 @@ flush() {
   done
 }
 for j in $START; do state[$j]=wait; done
+declare -A outcome=()
+nskip=0
+for j in $ONLY $SKIP; do
+  case " $(echo $ORDER) " in *" $j "*) ;; *) echo "verify: no section $j"; exit 2 ;; esac
+done
+if [ -n "$SCOPE" ] && [ "$SCOPE" != ALL ]; then
+  for j in $START; do
+    case " $SCOPE " in *" $j "*) continue ;; esac
+    state[$j]=done; outcome[$j]=scope; nskip=$((nskip + 1))
+    printf '\n== %s ==\n  SKIPPED -- not in the scope of the change since %s\n' "$j" "$BASE" >"$LOGS/$j.log"
+  done
+fi
+# --only / --skip: the sections another container runs (OI-101).
+if [ -n "$ONLY$SKIP" ]; then
+  for j in $START; do
+    [ "${state[$j]}" = wait ] || continue
+    keep=1
+    [ -n "$ONLY" ] && { case " $ONLY " in *" $j "*) ;; *) keep=0 ;; esac; }
+    case " $SKIP " in *" $j "*) keep=0 ;; esac
+    [ "$keep" = 1 ] && continue
+    state[$j]=done; outcome[$j]=elsewhere; nskip=$((nskip + 1))
+    printf '\n== %s ==\n  SKIPPED -- left to another run (--only/--skip)\n' "$j" >"$LOGS/$j.log"
+  done
+  for j in $START; do
+    [ "${state[$j]}" = wait ] || continue
+    for d in ${after[$j]:-}; do
+      [ "${outcome[$d]:-}" = elsewhere ] &&
+        { echo "verify: $j waits on $d, which --only/--skip leaves out"; exit 2; }
+    done
+  done
+fi
+flush
 while :; do
   for j in $START; do
     [ "${#job[@]}" -lt "$JOBS" ] || break
@@ -425,7 +601,8 @@ while :; do
   j=${job[$pid]}; unset "job[$pid]"
   state[$j]=done
   printf '  [%s: %ds]\n' "$j" $((SECONDS - ${t0[$j]})) >>"$LOGS/$j.log"
-  [ "$rc" = 0 ] || fail=1
+  [ "$rc" = 0 ] && outcome[$j]=pass || { outcome[$j]=fail; fail=1; }
+  clean_done
   flush
 done
 for j in $ORDER; do
@@ -456,8 +633,29 @@ cat <<'PENDING'
   Stage 4+ per-block cycle                          -- after the skeleton
 PENDING
 
+# The run's record, for tools/gate-combine.py: one commit, its tree, and each
+# section's outcome (pass, fail, scope: outside --changed's, elsewhere: left
+# to another run) with its log's hash.
+{
+  printf '{"commit": "%s", "tree": "%s", "dirty": %s, "base": "%s", "cached": %s, "sections": {' \
+    "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')" \
+    "$([ -n "$(git status --porcelain --untracked-files=no)" ] && echo true || echo false)" \
+    "$BASE" "$([ "$CACHED" = 1 ] && echo true || echo false)"
+  sep=""
+  for j in $ORDER; do
+    printf '%s"%s": {"outcome": "%s", "log": "%s"}' "$sep" "$j" "${outcome[$j]:-fail}" \
+      "$(sha256sum "$LOGS/$j.log" 2>/dev/null | cut -c1-64)"
+    sep=", "
+  done
+  printf '}}\n'
+} >"$LOGS/manifest.json"
+
 section "result"
-if [ "$fail" = "0" ] && [ "$CACHED" = 1 ]; then
+if [ "$fail" = "0" ] && [ -n "$ONLY$SKIP" ]; then
+  echo "  PARTIAL PASS -- $(( $(echo $ORDER | wc -w) - nskip )) of $(echo $ORDER | wc -w) sections${BASE:+, the change since $BASE}; half of a split gate, not a gate"
+elif [ "$fail" = "0" ] && [ -n "$BASE" ]; then
+  echo "  SCOPED PASS -- $(( $(echo $ORDER | wc -w) - nskip )) of $(echo $ORDER | wc -w) sections, the change since $BASE, netlists from build/synth-cache"
+elif [ "$fail" = "0" ] && [ "$CACHED" = 1 ]; then
   echo "  CACHED PASS -- netlists from build/synth-cache; not the gate for a push"
 elif [ "$fail" = "0" ]; then
   echo "  PASS"

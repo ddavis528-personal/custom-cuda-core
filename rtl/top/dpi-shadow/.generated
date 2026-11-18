@@ -1,0 +1,5 @@
+{
+ "gen-top": [
+  "rcu_dpi.sv"
+ ]
+}

@@ -14,7 +14,10 @@ by stage, every flop must be one of:
   - lead slice: taken in the same cycle as its valid, since a lead rides
     with valid. At the first stage that valid is the module's input, which
     may not reach a clock enable (CG-5): a plain flop, written every cycle.
-    At a later stage, an enable flop on the previous stage's valid flop;
+    At a later stage, an enable flop on the previous stage's valid flop.
+    A boundary stage that is the first (BOUNDARY 1 at a source end, or at
+    a destination end with no link stage) names it bnd_lead_q, which
+    check-cg charges to the block (DA tab rev 108); every other is lead_q;
   - valid, wake, credit, stall: one each per stage, reset by the module's
     flopped reset, no enable;
   - rst_n_q: the reset, flopped once (RST-1), a plain flop on rst_n.
@@ -29,23 +32,32 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIGS = [  # (stages, slots, width, lead mask, trace)
-    (1, 1, 8, 0x0, False),
-    (3, 1, 12, 0x0, True),
-    (2, 1, 20, 0xf, True),
-    (4, 1, 16, 0x0c1, False),
-    (2, 4, 10, 0x3, True),
+CONFIGS = [  # (stages, boundary, dst_end, slots, width, lead mask, trace)
+    (1, 0, 0, 1, 8, 0x0, False),
+    (3, 0, 0, 1, 12, 0x0, True),
+    (2, 0, 0, 1, 20, 0xf, True),
+    (4, 0, 0, 1, 16, 0x0c1, False),
+    (2, 0, 0, 4, 10, 0x3, True),
+    (0, 1, 0, 2, 12, 0x3, False),     # a flopped end alone: bnd_lead_q
+    (2, 1, 0, 1, 20, 0xf, True),      # source end: the boundary is first
+    (2, 1, 1, 1, 20, 0xf, True),      # destination end: the boundary is last
+    (0, 1, 1, 1, 16, 0x0c1, False),   # destination end, no link stage
 ]
 
 
-def netlist(path, stages, slots, width, lead, trace, tmp):
+def bnd_first(stages, boundary, dst_end):
+    """The repeater's BND_FIRST: its first stage is the boundary flop."""
+    return bool(boundary) and (not dst_end or stages == 0)
+
+
+def netlist(path, stages, boundary, dst_end, slots, width, lead, trace, tmp):
     out = os.path.join(tmp, "rpt.json")
     d = "-DCCV_TRACE " if trace else ""
     script = ("read_verilog -sv -formal %s-Irtl/include -Irtl/generated "
-              "rtl/ccv_assert_pkg.sv %s; chparam -set STAGES %d -set SLOTS %d "
-              "-set PAYLOAD_W %d -set LEAD_MASK %d ccv_common_rpt; hierarchy -top "
-              "ccv_common_rpt; proc; opt; write_json %s"
-              % (d, path, stages, slots, width, lead, out))
+              "rtl/ccv_assert_pkg.sv %s; chparam -set STAGES %d -set BOUNDARY %d "
+              "-set DST_END %d -set SLOTS %d -set PAYLOAD_W %d -set LEAD_MASK %d "
+              "ccv_common_rpt; hierarchy -top ccv_common_rpt; proc; opt; write_json %s"
+              % (d, path, stages, boundary, dst_end, slots, width, lead, out))
     r = subprocess.run(["yosys", "-q", "-p", script], cwd=ROOT,
                        capture_output=True, text=True)
     if r.returncode:
@@ -53,7 +65,9 @@ def netlist(path, stages, slots, width, lead, trace, tmp):
     return json.load(open(out))["modules"]["ccv_common_rpt"]
 
 
-def check(mod, stages, slots, width, lead, trace):
+def check(mod, stages, boundary, dst_end, slots, width, lead, trace):
+    first = bnd_first(stages, boundary, dst_end)
+    stages += boundary     # every stage, the boundary's with the link's
     # Every net name a bit carries, so a flop is named by what it drives.
     names = {}
     for n, v in mod["netnames"].items():
@@ -107,7 +121,12 @@ def check(mod, stages, slots, width, lead, trace):
             want = bit("g_stage[%d].valid_q" % k, j)
             why = "this stage's slot-%d valid (the previous cycle's)" % j
             mask = ~lead if reg == "pay_q" else -1
-        elif reg == "lead_q":
+        elif reg in ("lead_q", "bnd_lead_q"):
+            if (reg == "bnd_lead_q") != (k == 0 and first):
+                bad.append("%s: a %s lead register at stage %d; bnd_lead_q is the first "
+                           "stage's when it is the boundary flop, lead_q every other"
+                           % (net, "boundary" if reg == "bnd_lead_q" else "link", k))
+                continue
             want, why = valid_at(k, j), "the stage's slot-%d input valid (the same cycle's)" % j
             mask = lead
             if k == 0:
@@ -154,11 +173,12 @@ def main():
             path = a.split("=", 1)[1]
     fails = 0
     with tempfile.TemporaryDirectory() as tmp:
-        for stages, slots, width, lead, trace in CONFIGS:
-            bad = check(netlist(path, stages, slots, width, lead, trace, tmp),
-                        stages, slots, width, lead, trace)
-            tag = "STAGES=%d SLOTS=%d W=%d LEAD=%#x%s" % (
-                stages, slots, width, lead, " +trace" if trace else "")
+        for cfg in CONFIGS:
+            stages, boundary, dst_end, slots, width, lead, trace = cfg
+            bad = check(netlist(path, *cfg, tmp), *cfg)
+            tag = "STAGES=%d BOUNDARY=%d%s SLOTS=%d W=%d LEAD=%#x%s" % (
+                stages, boundary, " DST_END" if dst_end else "", slots, width, lead,
+                " +trace" if trace else "")
             if bad:
                 fails += 1
                 print("RPT_ENABLES %s: %d finding(s)" % (tag, len(bad)))

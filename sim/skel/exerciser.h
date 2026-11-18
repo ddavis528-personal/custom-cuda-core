@@ -60,8 +60,9 @@ struct ExerciseCfg {
 
 /// Stream of a message: its slot, its binding group, or its key value.
 uint64_t streamOf(const ChanDesc &cd, unsigned slot, uint64_t keyval);
+/// A field the slot does not carry (slot_fields) is zero.
 Bits expectedPayload(const ChanInst &ci, uint64_t stream, uint64_t seq,
-                     uint64_t keyval);
+                     uint64_t keyval, unsigned slot);
 uint64_t expectedTid(const ChanInst &ci, uint64_t stream, uint64_t seq);
 
 std::unique_ptr<Block> makeExerciser(int inst, const ExerciseCfg &cfg);
@@ -88,6 +89,10 @@ const std::vector<Launched> &launchedLog();
 /// Append to that log. The exerciser logs its own launches; S1's functional
 /// stubs call this so the same bank-vs-launch comparison covers them.
 void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid);
+/// Only a traced run reads the log (xferCheck), and it grows by every launch,
+/// ~7 a cycle: an untraced CoreMark ran out of memory on it (OI-92). Off by
+/// default; a host turns it on where it opens the trace.
+void setLogLaunches(bool on);
 
 /// The bank's EV_CH_XFER events in `trace` must carry exactly the payloads
 /// the senders launched: same channel, same bits 63:0, same trace identity,

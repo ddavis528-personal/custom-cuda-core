@@ -35,7 +35,15 @@
 // (a row's references to entries allocated in the same cycle never reach
 // the RTL), no-req-lead, no-sq-lead, no-cmpl-lead and no-fin (the leads,
 // and the final bits, never reach it). The rows' comparison holds column
-// clearing: a valid row that kept a freed entry's bit differs.
+// clearing: a valid row that kept a freed entry's bit differs. Every valid
+// entry's kind and class (ooe_wake's, OA re:OI-104) are compared with what
+// its allocation drove; control no-kind drives none, and must be caught.
+//
+// C9h (OA rev 372; the model's cmpl_split 8): an entry an L1 hit's
+// confirmation frees stays off rename's row mask, so a row allocated at
+// that edge may name it; ooe_rs clears the column at the next edge, the
+// hold's. Its column flag and the new rows' bits on it are not compared at
+// the free's edge (held_cols), and are at the next.
 //
 // The column flags (hcol_cq02h) are compared, every column after every
 // edge, with their definition kept here: set when a row naming the entry is
@@ -73,7 +81,10 @@ void rsConfig(Config &c) {
 }
 
 namespace {
-constexpr unsigned N = RS_N, NR = RS_NR, A = RS_A, P = 2 * A;
+#ifndef RS_PW
+#define RS_PW 1   // ooe_rs's PW as built (cg-build.sh builds the unit's 176)
+#endif
+constexpr unsigned N = RS_N, NR = RS_NR, A = RS_A, P = 2 * A, PW = RS_PW;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned W = bits(N);
 
@@ -82,19 +93,30 @@ std::unique_ptr<Vooe_rs> dut;
 std::string control;
 uint64_t current = 0;
 std::vector<uint8_t> hcol;        // the column flags' reference
+std::vector<uint8_t> kref;        // each entry's kind and class as allocated: the reference
+unsigned long long kinds = 0;     // valid entries whose kind and class were compared
 constexpr unsigned NCL = RS_NC;
 
 // A core cycle as the model ended it.
+// An entry's issue slot, one-hot, from its footprint (as trio_tb's).
+uint16_t homeSlot(unsigned res) {
+  for (unsigned k = 0; k != 4; ++k) if (res >> k & 1) return uint16_t(1u << k);
+  for (unsigned k = 0; k != 4; ++k) if (res >> (5 + k) & 1) return uint16_t(1u << (4 + k));
+  return res >> 4 & 1 ? uint16_t(1u << 8) : 0;
+}
+
 struct Snap {
   std::vector<unsigned> ralloc, cidx;   // allocations in order; the entries completing
-  std::vector<uint8_t> rfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
+  std::vector<uint8_t> rfree, hfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
+  std::vector<uint8_t> kc;              // each entry's {class, kind} as ooe_wake's timers take it
+  std::vector<uint16_t> home;           // and its issue slot, one-hot (RA-39 (c); trio_tb checks the payload)
   bool sq = false, cmpl = false, codes = false;
 };
 Snap empty() {
   Snap y;
-  y.rfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
+  y.rfree.assign(N, 0); y.hfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
   y.code.assign(N * N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.iss.assign(N, 0); y.wtl3.assign(N, 0);
-  y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0);
+  y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0); y.kc.assign(N, 0); y.home.assign(N, 0);
   return y;
 }
 Snap snapCycle(const Core &c) {
@@ -104,9 +126,15 @@ Snap snapCycle(const Core &c) {
   y.codes = c.wakeLinesFit();
   for (unsigned i = 0; i != N; ++i) {
     y.rfree[i] = w.rfree[i];
+    y.hfree[i] = i < w.hfree.size() && w.hfree[i];
     y.grant[i] = i < w.grant.size() && w.grant[i];
     y.valid[i] = c.rsValid(i);
     y.prod[i] = c.rsProduces(i);
+    if (c.rsValid(i)) {
+      const auto k = c.wakeKindClass(i);
+      y.kc[i] = uint8_t((k.second << 2) | k.first);
+      y.home[i] = homeSlot(c.rsRes(i));
+    }
     // Final as ooe_wake holds it in the cycle: an entry confirmed in it was.
     y.fin[i] = c.rsFinal(i) || (i < w.conf.size() && w.conf[i]);
     y.iss[i] = c.rsIssued(i);
@@ -129,7 +157,7 @@ Snap snapCycle(const Core &c) {
 std::vector<Snap> hist;           // the snapshots not yet driven, oldest first, and the one before
 unsigned long long prev = 0;   // cells on the group granted at the last edge (prv_dep)
 unsigned long long cycles = 0, cores = 0, allocs = 0, group = 0, frees = 0, reuse = 0, rows = 0, cells = 0,
-                   stale = 0, mismatches = 0;
+                   stale = 0, mismatches = 0, held_cols = 0;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -219,6 +247,7 @@ void hook(const Core &c) {
     current = c.serial();
     ++cores;
     hcol.assign(N, 0);
+    kref.assign(N, 0);
     clearAll(dut->req_cq01h, P);
     clearAll(dut->sqf_cq01h, N);
     clearAll(dut->msd_cq01h, N);
@@ -249,11 +278,30 @@ void hook(const Core &c) {
   clearAll(dut->prv_dep_cq01h, P * P);
   clearAll(dut->prv_code_cq01h, 2 * P * P);
   clearAll(dut->row_prod_cq01h, P);
+  clearAll(dut->akind_cq01h, 2 * P);
+  clearAll(dut->acls_cq01h, 3 * P);
+  clearAll(dut->home_cq01h, P * 9);
+  clearAll(dut->pay_cq01h, P * PW);
   for (unsigned p = 0; p != P; ++p) {
     const unsigned e = entry_of[p];
     if (e == N) continue;
     setBit(dut->req_cq01h, p, true);
     setBit(dut->row_prod_cq01h, p, y.prod[e]);
+    // Its kind and class with its row; control no-kind loses them.
+    kref[e] = y.kc[e];
+    for (unsigned b = 0; b != 9; ++b) setBit(dut->home_cq01h, p * 9 + b, (y.home[e] >> b) & 1u);
+    // A payload as an allocation's: its own bits, a mix of the allocation's
+    // count (trio_tb checks what is read; this bench clocks the store).
+    {
+      uint64_t x = 0x9e3779b97f4a7c15ull * (allocs + 1);
+      for (unsigned b = 0; b != PW; ++b) {
+        if (b % 64 == 0) { x ^= x >> 31; x *= 0xbf58476d1ce4e5b9ull; x ^= x >> 29; }
+        setBit(dut->pay_cq01h, p * PW + b, (x >> (b % 64)) & 1u);
+      }
+    }
+    const unsigned k = control == "no-kind" ? 0u : y.kc[e];
+    for (unsigned b = 0; b != 2; ++b) setBit(dut->akind_cq01h, p * 2 + b, (k >> b) & 1u);
+    for (unsigned b = 0; b != 3; ++b) setBit(dut->acls_cq01h, p * 3 + b, (k >> (2 + b)) & 1u);
     ++allocs;
     for (unsigned j = 0; j != N; ++j) {
       if (!y.dep[e * N + j]) continue;
@@ -327,6 +375,7 @@ void hook(const Core &c) {
   for (unsigned j = 0; j != N; ++j) {
     hcol[j] = ((hcol[j] && (!y.rfree[j] || control == "stale-hcol")) || named[j]) ? 1 : 0;
     const bool h = getBit(dut->hcol_cq02h, j);
+    if (y.hfree[j]) { ++held_cols; continue; }   // C9h: a row may name it until the next edge
     if (h != bool(hcol[j])) fail("column flag differs", j, 0, h, hcol[j]);
   }
   // After it: the valid bits and every valid row.
@@ -335,8 +384,12 @@ void hook(const Core &c) {
     if (v != bool(y.valid[i])) { fail("valid differs", i, 0, v, y.valid[i]); continue; }
     if (!v) continue;
     ++rows;
+    ++kinds;
+    const unsigned k = getField(dut->kind_o_cq02h, i * 2, 2) | getField(dut->cls_o_cq02h, i * 3, 3) << 2;
+    if (k != kref[i]) fail("kind and class differ", i, 0, k, kref[i]);
     for (unsigned j = 0; j != N; ++j) {
       const bool d = getBit(dut->dep_cq02h, i * N + j);
+      if (y.hfree[j] && port_of[i] >= 0) continue;   // C9h: cleared at the next edge, compared there
       if (d != bool(y.dep[i * N + j])) { fail("dependency bit differs", i, j, d, y.dep[i * N + j]); continue; }
       if (!d || !y.codes) continue;
       ++cells;
@@ -362,9 +415,9 @@ int main(int argc, char **argv) {
   cg.close();
   dut->final();
   std::printf("rs_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu in-group=%llu frees=%llu "
-              "same-edge=%llu rows=%llu cells=%llu stale=%llu mismatches=%llu model_failures=%d\n",
+              "same-edge=%llu rows=%llu cells=%llu stale=%llu kinds=%llu held-cols=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, group, frees, reuse,
-              rows, cells, stale, mismatches, model_fails);
+              rows, cells, stale, kinds, held_cols, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();

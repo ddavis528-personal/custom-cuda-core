@@ -3,6 +3,15 @@
     "A deliberately busy split for tools/check-links.sh: every feature of params/links.json at once, on channels the S1 kernels use. Never the design's configuration."
   ],
   "hard_reuse": ["lane"],
+  "no_flop": [
+    {"block": ["fet", "dec", "ooe", "lane", "miu", "spm", "dcu", "mlc", "rau", "syu", "pca", "cru", "exb"],
+     "channels": "all",
+     "why": "The design's own list (params/links.json): every block but rcu is a DPI host or stub, so its ends are no-flop and the split's stages alone are repeated, as in the design."},
+    {"block": "rcu",
+     "channels": ["lane_rcu_res", "ooe_rcu_issue", "ooe_rcu_map", "pca_rcu_mig", "rau_rcu_mig",
+                  "rcu_lane_ops", "rcu_miu_addr", "rcu_ooe_done", "rcu_pca_mig"],
+     "why": "The design's own rcu entry (params/links.json): ccv_rcu's top is RTL since RI-33, so \"all\" is refused (tools/ccv_links.py) and its no-flop ends are named; miu_rcu_data takes the boundary flop, as in the design."}
+  ],
   "links": [
     {"channel": "fet_dec_instr", "route": "src:1 > dst:1", "why": "split between both ends"},
     {"channel": "dec_ooe_uop", "route": "src:0 > miu:2 > dst:1", "why": "a feedthrough across MIU"},
@@ -13,5 +22,8 @@
     {"channel": "miu_rcu_data", "route": "src:3 > dst:0"},
     {"channel": "exb_ext_out", "route": "src:1 > dst:0", "why": "EXTERNAL end holds none"},
     {"channel": "ext_exb_in", "route": "src:0 > dst:1"}
+  ],
+  "credit_on_receipt": [
+    {"end": "miu_rcu_data@rcu", "why": "As params/links.json (AR's rev 322, RA-41): the design's own end, so the split tree keeps its contract (RI-49; RA's rev 144). Without it RCU's RTL, which has no credit port on this end, fails miu_rcu_data's fixed_latency_prompt here."}
   ]
 }

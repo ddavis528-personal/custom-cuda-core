@@ -101,6 +101,16 @@ module ooe_prodmap #(
   logic [A*LQ-1:0] pname_cq02h;
   logic [A*LP-1:0] pm_cq02h, pc_cq02h;
   logic [A*CW-1:0] cvc_cq02h;
+  // Each uop's ports one-hot as well (the fanout plan, OA rev 310): the
+  // entry it takes is an AND-OR of its port's one-hot and each port's
+  // decoded grant, with no index mux ahead of the entry compare.
+  logic [A*P-1:0]  pmh_cq02h, pch_cq02h;
+  function automatic logic [A*P-1:0] onehots(input logic [A*LP-1:0] x);
+    logic [A*P-1:0] r;
+    for (int u = 0; u < A; u++)
+      for (int q = 0; q < P; q++) r[u * P + q] = x[u * LP +: LP] == LP'(q);
+    onehots = r;
+  endfunction
   // Leads: grp_l, rename's Rename 2 valid flopped, is set when a group is
   // in Rename 3 now; grp_q, a cycle later, when its writes are.
   logic grp_l_cq01h, grp_q_cq02h;
@@ -128,17 +138,31 @@ module ooe_prodmap #(
       pname_cq02h <= pname_cq01h;
       pm_cq02h    <= pm_cq01h;
       pc_cq02h    <= pc_cq01h;
+      for (int u = 0; u < A; u++)
+        for (int q = 0; q < P; q++) begin
+          pmh_cq02h[u * P + q] <= pm_cq01h[u * LP +: LP] == LP'(q);
+          pch_cq02h[u * P + q] <= pc_cq01h[u * LP +: LP] == LP'(q);
+        end
       cvc_cq02h   <= cvc_cq01h;
     end
   end
 
-  // Each uop's entries, from the grant by its ports.
-  logic [A*W-1:0] em_cq02h, ec_cq02h;
+  // Each uop's entries, from the grant by its ports: one-hot over the
+  // entries (sm, sc), each port's grant decoded first.
+  logic [P*N-1:0] goh_cq02h;
+  logic [A*N-1:0] sm_cq02h, sc_cq02h;
   logic [A-1:0]   gm_ok_cq02h, gc_ok_cq02h;
   always_comb begin
+    for (int q = 0; q < P; q++)
+      for (int e = 0; e < N; e++) goh_cq02h[q * N + e] = gnt_idx_cq02h[q * W +: W] == W'(e);
+    {sm_cq02h, sc_cq02h} = '0;
+    for (int u = 0; u < A; u++)
+      for (int e = 0; e < N; e++)
+        for (int q = 0; q < P; q++) begin
+          sm_cq02h[u * N + e] = sm_cq02h[u * N + e] | (pmh_cq02h[u * P + q] & goh_cq02h[q * N + e]);
+          sc_cq02h[u * N + e] = sc_cq02h[u * N + e] | (pch_cq02h[u * P + q] & goh_cq02h[q * N + e]);
+        end
     for (int u = 0; u < A; u++) begin
-      em_cq02h[u * W +: W] = gnt_idx_cq02h[32'(pm_cq02h[u * LP +: LP]) * W +: W];
-      ec_cq02h[u * W +: W] = gnt_idx_cq02h[32'(pc_cq02h[u * LP +: LP]) * W +: W];
       gm_ok_cq02h[u]       = gnt_v_cq02h[pm_cq02h[u * LP +: LP]];
       gc_ok_cq02h[u]       = gnt_v_cq02h[pc_cq02h[u * LP +: LP]];
     end
@@ -149,6 +173,7 @@ module ooe_prodmap #(
     for (int u = 0; u < A; u++)
       port_bad_cq02h[u] = v_cq02h[u] && (!gm_ok_cq02h[u] || (cv_cq02h[u] && (!gc_ok_cq02h[u] ||
                                                                              32'(pc_cq02h[u * LP +: LP]) >= A)));
+  `CCV_ASSERT(port_onehot, grp_q_cq02h == 1'b0 || (pmh_cq02h == onehots(pm_cq02h) && pch_cq02h == onehots(pc_cq02h)))
   `CCV_ASSERT(granted, grp_q_cq02h == 1'b0 || port_bad_cq02h == '0)
 
   // -- Each RS entry's names, a gate a class ------------------------------------
@@ -171,7 +196,7 @@ module ooe_prodmap #(
     for (int u = 0; u < A; u++)
       if (v_cq02h[u]) begin
         for (int e = 0; e < N; e++) begin
-          if (em_cq02h[u * W +: W] == W'(e)) begin
+          if (sm_cq02h[u * N + e]) begin
             eg_nx_cq02h[e]               = gwe_cq02h[u];
             ec_nx_cq02h[e]               = 1'b0;
             egn_nx_cq02h[e * LG +: LG]   = gname_cq02h[u * LG +: LG];
@@ -179,7 +204,7 @@ module ooe_prodmap #(
             epn_nx_cq02h[e * LQ +: LQ]   = pname_cq02h[u * LQ +: LQ];
             ecv_nx_cq02h[e * CW +: CW]   = cvc_cq02h[u * CW +: CW];
           end
-          if (cv_cq02h[u] && ec_cq02h[u * W +: W] == W'(e)) begin
+          if (cv_cq02h[u] && sc_cq02h[u * N + e]) begin
             eg_nx_cq02h[e]               = gwe_cq02h[u];
             ec_nx_cq02h[e]               = 1'b1;
             egn_nx_cq02h[e * LG +: LG]   = gname_cq02h[u * LG +: LG];

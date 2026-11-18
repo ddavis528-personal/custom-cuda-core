@@ -1,0 +1,7 @@
+{
+  "module": "rcu_xbar",
+  "inner": true,
+  "by": "RI",
+  "date": "2026-11-04",
+  "why": "The R unit tab makes the crossbar a combinational inner helper of rcu_r (its A+1 compute, from rsrc_a's flops into rres_a1's), timed as its parent's logic; held alone to 16 until rcu_r instantiates it."
+}

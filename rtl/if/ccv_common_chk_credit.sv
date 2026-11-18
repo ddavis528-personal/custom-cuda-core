@@ -59,6 +59,12 @@ module ccv_common_chk_credit #(
   // the case -- it gates a lane before the operands it gates arrive. Zero on
   // every channel without lead fields, which makes the property vacuous.
   parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0,
+  // Payload bits this slot does not carry (schema slot_fields: a field
+  // defined only on some slots of a channel; AR rev 260). They are zero
+  // here, the lead ones in the valid cycle and the rest when the payload is
+  // due. Zero on every slot that carries all its channel's fields, which
+  // makes both properties vacuous.
+  parameter logic [PAYLOAD_W-1:0] ZERO_MASK = '0,
   // Sequential repeater stages between THIS checker and the sender
   // (rtl/phys/ccv_common_rpt.sv). Only the stall rule depends on where along a
   // repeated link the checker sits: a stall seen here reaches the sender
@@ -66,6 +72,13 @@ module ccv_common_chk_credit #(
   // long again to come back. 0 is the sender's own port, as on every
   // abutted link. ROUND_TRIP is the whole link's, wherever the checker is.
   parameter int SRC_STAGES = 0,
+  // The sender's end has its interface flop, the boundary stage
+  // (rtl/phys/ccv_common_rpt.sv BOUNDARY; params/links.json no_flop): a
+  // sender takes stall into its launch decision ahead of its first flop, so
+  // with that flop in its wrapper a stall stops it a cycle later (AR's rev
+  // 289, re:RI-11; proved in tools/check-formal.sh, built). 0 at a no-flop
+  // end, a DPI host's, as every end is until a block's RTL top takes them.
+  parameter int SRC_BOUNDARY = 0,
   // FIXED LATENCY (schema slot attribute fixed_latency, arch open A-47): the
   // receiver never stalls and returns every message's credit the cycle it
   // lands. OOE schedules wakeup from contracted latencies with no grant,
@@ -110,8 +123,9 @@ module ccv_common_chk_credit #(
   logic [CW-1:0]      tail;
   logic               valid_q;
   // The stall, as old as the first valid it can have suppressed: one cycle
-  // at the sender, 1 + 2 * SRC_STAGES at a point that far downstream.
-  localparam int SL = 1 + 2 * SRC_STAGES;
+  // at the sender, 1 + 2 * SRC_STAGES at a point that far downstream, and one
+  // more behind the sender's interface flop (SRC_BOUNDARY).
+  localparam int SL = 1 + SRC_BOUNDARY + 2 * SRC_STAGES;
   logic [SL-1:0]      stall_h;
 
   wire sent     = ch_valid;
@@ -275,6 +289,16 @@ module ccv_common_chk_credit #(
   wire [PAYLOAD_W-1:0] lead_bits = ch_payload & LEAD_MASK;
   `CCV_CONTRACT_M(MODE, lead_known_at_valid,
                   !ch_valid || `CCV_KNOWN(lead_bits))
+
+  // A field this slot does not carry is zero (ZERO_MASK): its lead bits in
+  // the valid cycle, the rest when the payload is due. Unknown bits are the
+  // two properties above's to name.
+  wire [PAYLOAD_W-1:0] absent_lead = ch_payload & ZERO_MASK & LEAD_MASK;
+  wire [PAYLOAD_W-1:0] absent_rest = ch_payload & ZERO_MASK & ~LEAD_MASK;
+  `CCV_CONTRACT_M(MODE, absent_lead_zero,
+                  !ch_valid || !(`CCV_KNOWN(absent_lead)) || absent_lead == '0)
+  `CCV_CONTRACT_M(MODE, absent_field_zero,
+                  !valid_q || !(`CCV_KNOWN(absent_rest)) || absent_rest == '0)
 
   // -- end of test: every message answered --------------------------------
   // A receiver that consumes two messages and returns one credit breaks no

@@ -1,0 +1,196 @@
+//===-- sram_test.cpp - the SRAM macros' cycle model, alone --------*- C++ -*-===//
+//
+// sram.h's three macros against their contract (rtl/macro/, AR's register
+// rev 344, DA tab rev 123, MA-16; byte enables, Daniel, 2026-11-17),
+// directed, cycle by cycle:
+//   1rw   a read's data appears two cycles after the edge that samples it
+//         (not one), and holds until the next read's; a write reads nothing,
+//         leaves rdata alone and replaces the whole word (no byte enables);
+//         !ce does nothing; ce every other cycle counts no violation
+//   rf    a read of the word written at the same edge returns the OLD word
+//         (read before write), the new one at the next read; a read and a
+//         write of different words in one cycle both happen; the plain rf
+//         writes whole words whatever wmask holds, the _be one only the
+//         bytes wmask selects.
+// Its controls, each of which must fail the property it guards:
+//   wbr      a write-before-read 1r1w (the write applied first): the
+//            same-edge read returns the new word
+//   nomask   the _be rf writes every byte whatever wmask says: a masked
+//            byte changes
+//   mask     the plain rf honours a byte mask: an unselected byte is kept
+//   early    rdata sampled a cycle early: the read's data is not there
+//   b2b      ce two cycles running: counted as a violation
+// The lockstep against the Verilated RTL is test/vl/vl_sram_tb.cpp.
+// Prints one line; exits 0 when every check and every control holds.
+//===----------------------------------------------------------------------===//
+#include "sram.h"
+
+#include <cstdio>
+
+using namespace ccv::skel;
+
+namespace {
+
+Bits word(uint32_t w, uint64_t v) {
+  Bits b(w);
+  b.set(0, w > 64 ? 64 : w, v);
+  if (w > 64) b.set(w - 32, 32, v >> 7);
+  return b;
+}
+Bits ones(uint32_t n) {
+  Bits b(n);
+  for (uint32_t i = 0; i != n; ++i) b.setBit(i, true);
+  return b;
+}
+
+// The 1r1w's edge, its write applied before its read: control wbr.
+void edgeWbr(Rf1r1w &m) {
+  const bool re = m.re;
+  m.re = false;
+  m.edge();
+  m.re = re;
+  const bool we = m.we;
+  m.we = false;
+  m.edge();
+  m.we = we;
+}
+
+} // namespace
+
+int main() {
+  int bad = 0, checks = 0;
+  auto expect = [&](bool c, const char *what) {
+    ++checks;
+    if (!c) {
+      std::printf("sram_test: FAIL %s\n", what);
+      ++bad;
+    }
+  };
+  const uint32_t W = 128, D = 8;
+
+  // -- 1rw: every other cycle, a read's data two edges on -----------------
+  {
+    Sram1rw m(W, D);
+    const Bits A = word(W, 0xa0a0a0a0a0a0a0a0ull), B = word(W, 0xb1b1b1b1b1b1b1b1ull);
+    // Cycle 0: write A at 3; cycle 1 idle; cycle 2: write B at 5; cycle 3 idle.
+    m.ce = m.we = true, m.addr = 3, m.wdata = A;
+    m.edge();
+    m.ce = false;
+    m.edge();
+    m.ce = true, m.addr = 5, m.wdata = B;
+    m.edge();
+    m.ce = false;
+    m.edge();
+    expect(!m.rdata().any(), "1rw: a write reads nothing");
+    // Cycle 4: read 3. Its data is there only after the edge after next.
+    m.ce = true, m.we = false, m.addr = 3;
+    const Bits before = m.rdata();
+    m.edge();
+    const Bits one = m.rdata();     // a cycle after the sampling edge
+    m.ce = false;
+    m.edge();
+    expect(before != A && one != A && m.rdata() == A,
+           "1rw: read data two cycles after the edge that samples it, not one");
+    // Control early: the same read sampled a cycle early misses its word.
+    expect(one != m.rdata(), "control early: data sampled a cycle early differs");
+    // Idle, then a write (not to 3): rdata holds through both.
+    m.addr = 5;
+    m.edge();
+    expect(m.rdata() == A, "1rw: !ce holds rdata");
+    m.ce = m.we = true, m.addr = 3, m.wdata = word(W, 0x5a);
+    m.edge();
+    m.ce = false;
+    m.edge();
+    expect(m.rdata() == A, "1rw: a write leaves rdata alone");
+    // Read 3 back: the whole word replaced.
+    m.ce = true, m.we = false;
+    m.edge();
+    m.ce = false;
+    m.edge();
+    expect(m.rdata() == word(W, 0x5a), "1rw: a write replaces the whole word");
+    // !ce with we: nothing written.
+    m.we = true, m.addr = 5, m.wdata = word(W, 0);
+    m.edge();
+    m.ce = true, m.we = false;
+    m.edge();
+    m.ce = false;
+    m.edge();
+    expect(m.rdata() == B, "1rw: !ce writes nothing");
+    expect(m.violations() == 0, "1rw: every other cycle counts no violation");
+    // Control b2b: ce two cycles running is counted, once per offending edge.
+    m.ce = true, m.we = false, m.addr = 3;
+    m.edge();
+    m.edge();
+    m.edge();
+    expect(m.violations() == 2, "control b2b: ce set two cycles running is a violation");
+  }
+
+  // -- rf_1r1w and rf_1r1w_be: read before write ------------------------------
+  for (int be = 0; be != 2; ++be)
+  for (int wbr = 0; wbr != 2; ++wbr) {
+    Rf1r1w m(W, D, be);
+    auto edge = [&] { wbr ? edgeWbr(m) : m.edge(); };
+    m.wmask = ones(W / 8);
+    m.we = true, m.waddr = 2, m.wdata = word(W, 0x1111);
+    edge();
+    // The same edge reads 2 and writes it: the old word comes back.
+    m.re = true, m.raddr = 2, m.we = true, m.waddr = 2, m.wdata = word(W, 0x2222);
+    edge();
+    const bool old = m.rdata() == word(W, 0x1111);
+    if (!wbr)
+      expect(old, "rf: a read of the word written at the same edge is the old word");
+    else
+      expect(!old, "control wbr: a write-before-read model returns the new word");
+    // The next read sees the write; a write elsewhere at the same edge.
+    m.we = true, m.waddr = 6, m.wdata = word(W, 0x6666);
+    edge();
+    if (!wbr) {
+      expect(m.rdata() == word(W, 0x2222), "rf: the next read sees the write");
+      m.we = false, m.raddr = 6;
+      edge();
+      expect(m.rdata() == word(W, 0x6666), "rf: a read and a write of different words");
+      m.re = false, m.raddr = 2;
+      edge();
+      expect(m.rdata() == word(W, 0x6666), "rf: no read holds rdata");
+    }
+  }
+
+  // -- byte enables: the _be rf's alone (Daniel, 2026-11-17) -----------------
+  {
+    Bits mask(W / 8);
+    mask.setBit(0, true), mask.setBit(W / 8 - 1, true);
+    const Bits A = word(W, 0xa0a0a0a0a0a0a0a0ull);
+    Bits want = A;
+    want.set(0, 8, 0), want.set(W - 8, 8, 0);
+    Bits got[2];
+    for (int be = 0; be != 2; ++be) {
+      Rf1r1w m(W, D, be);
+      m.wmask = ones(W / 8);
+      m.we = true, m.waddr = 4, m.wdata = A;
+      m.edge();
+      m.wmask = mask, m.wdata = word(W, 0);
+      m.edge();
+      m.we = false, m.re = true, m.raddr = 4;
+      m.edge();
+      if (be)
+        expect(m.rdata() == want, "rf_be: wmask writes only its bytes");
+      else
+        expect(m.rdata() == word(W, 0), "rf: a write replaces the whole word, wmask unread");
+      got[be] = m.rdata();
+    }
+    // Control nomask: the _be write with every byte written.
+    Bits all = A;
+    sram_detail::writeBytes(all, word(W, 0), ones(W / 8));
+    expect(all != want, "control nomask: ignoring wmask changes the word");
+    // Control mask: the same writes to a plain rf that honoured the mask
+    // (the _be model) read back otherwise.
+    expect(got[0] != got[1], "control mask: a byte-masked plain rf keeps a byte");
+  }
+
+  if (!bad)
+    std::printf("sram_test: 1rw every other cycle, read two cycles after, held, "
+                "whole words, no read on a write; rf_1r1w and _be read before write, "
+                "only _be byte-masked (%d checks); controls wbr, nomask, mask, early, b2b "
+                "caught\n", checks);
+  return bad ? 1 : 0;
+}

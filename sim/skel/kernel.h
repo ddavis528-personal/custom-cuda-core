@@ -29,6 +29,7 @@
 #include "oracle.h"
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -154,6 +155,13 @@ struct Kernel {
   std::map<uint64_t, uint8_t> mem;                 ///< testbench memory
   std::vector<std::array<uint32_t, kLanes>> gpr;   ///< RCU physical GPRs
   std::vector<uint32_t> pred;                      ///< RCU physical predicates
+  /// The RTL's register files, where RCU's RTL runs in the SV top
+  /// (CCV_RCU_RTL, RI-44): the end-of-run state is read from them, not from
+  /// the shadow model's gpr/pred. Unset, gprAt and predAt read gpr and pred.
+  std::function<uint32_t(unsigned, unsigned)> hw_gpr;
+  std::function<uint32_t(unsigned)> hw_pred;
+  uint32_t gprAt(unsigned row, unsigned l) const { return hw_gpr ? hw_gpr(row, l) : gpr[row][l]; }
+  uint32_t predAt(unsigned row) const { return hw_pred ? hw_pred(row) : pred[row]; }
   /// OOE's committed GPR map, by warp, which the final compare reads.
   std::vector<std::vector<unsigned>> rat;
   /// OOE's committed predicate map, by warp, which the final compare reads
@@ -180,6 +188,9 @@ struct Kernel {
   /// A kill RAU has broadcast and not seen through: the owners whose ack at
   /// its epoch has not come (kFabs kill_ack order), else 0.
   uint32_t kill_unacked = 0;
+  /// Lane results still to send, summed over the lanes: coverage only (the
+  /// kill_lane bin, RI-57), never read by a block to decide anything.
+  size_t lane_inflight = 0;
   /// A demoted warp, as the blocks that moved it saw it (TI-24). Observed for
   /// the check at the end, never read by a block: the resume PC RAU got, the
   /// rows RCU read out (each arch register's row name, in the map OOE sent),
@@ -234,9 +245,11 @@ struct Kernel {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line", "store_hit", "dcu_evict",
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
+      // MA-4's eligibility and the early no-hit (OA 410; AR 356).
+      "l1_inelig", "l1_nohit", "l1_nohit_drop",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
-      "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill",
+      "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill", "kill_lane",
       "slot_form", "window_fill", "dcu_lookups", "frame_lookups", "local_form",
       "pred_xfer", "pred_merge", "pred_copy", "crack_split",
       // Fences and barriers (IS-11, TI-40).
@@ -250,7 +263,15 @@ struct Kernel {
       // Decode-queue credits at FET (TI-46 (b)).
       "credit_wait", "credit_borrow", "held_ahead_wait",
       // O-83's private run through MIU (option W; DA tab rev 95).
-      "priv_form", "priv_fault"};
+      "priv_form", "priv_fault",
+      // O-72's atomics (IS-21; AR-21): the decode pair, the three steps,
+      // the passes and the holds between a pass's read and write.
+      "atomic_pair", "atomic", "atomic_repass", "atomic_write", "atomic_lane",
+      "atomic_acquire", "atomic_hold_wait",
+      // CAS (OI-127): its lane op on an active lane, and on a guarded-off one.
+      "cas_lane", "cas_lane_off",
+      // MIU's memop queue entries held on one slot, at most (MA-5).
+      "memop_entries_peak"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory

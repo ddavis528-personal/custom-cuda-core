@@ -20,7 +20,11 @@
 // request register holds it (not issued, its warp active, and a copy's
 // sources confirmed, as an earlier cycle ended), its ready register holds
 // it, its grant register does not (granted last cycle, not yet captured
-// as issued), and ooe_rs says it is valid and past rename's stages. A
+// as issued), and ooe_rs says it is valid and past rename's stages.
+// ooe_sched's ret hold (a branch or call the cycle after a ret's grant,
+// OA's rev 293) cancels a held entry's win after the pick (OA's rev 320,
+// sched (b)): its resource goes unused, and the hold's OR stays off the
+// request. A
 // memop also needs none of its pipes taken by a bulk discard (a discard
 // takes MIU pipes only, V-23), its sources confirmed, no bulk discard of
 // its warp this cycle, its copy (if it has one still in the RS) issued in
@@ -50,6 +54,8 @@ module ooe_select #(
   input  logic [N-1:0]       rq_cq03h,      // ooe_sched's request register
   input  logic [N-1:0]       ready_cq03h,   // its ready register
   input  logic [N-1:0]       gnt_cq03h,     // its grant register: granted last cycle
+  input  logic [NR-1:0]      hold_cq03h,    // its ret hold: RCU entries held this cycle
+  input  logic [NR-1:0]      rhold_cq03h,   // RA-17's force: RCU entries whose footprint has R held (a copy per entry: fanout)
   input  logic [N-1:0]       vel_cq03h,     // valid and past rename's stages (ooe_rs)
   input  logic [N-1:0]       iss_cq03h,     // issued (ooe_wake)
   input  logic [N*N-1:0]     dep_cq03h,     // row i, column j: i waits on j
@@ -61,6 +67,7 @@ module ooe_select #(
   input  logic [NM*NM-1:0]   older_m_cq03h, // the MIU class's
   input  logic [RM-1:0]      busy_cq03h,    // MIU pipes a bulk discard took (only P0, V-23)
   input  logic [S-1:0]       block_cq03h,   // slots with a bulk discard
+  input  logic [RM-1:0]      cok_cq03h,     // memop channel slots (P0-P3) with an MIU credit (MA-5)
   output logic [N-1:0]       cand_cq03h,    // requests this cycle
   output logic [N-1:0]       grant_cq03h,   // issues this cycle
   output logic [N-1:0]       lost_cq03h     // won a resource, lost another
@@ -70,12 +77,17 @@ module ooe_select #(
   logic [NR*RR-1:0] req_r;
   logic [NM*RM-1:0] req_m;
   logic [LS-1:0]    sl;
+  // A memop's copy is an RCU-class entry (A-38: the copy issues on RCU), so
+  // its index is below NR and the copy's issued bit is read from those.
+  localparam int CW = $clog2(NR);
+  logic [2**CW-1:0] iss_rc;
+  assign iss_rc = (2**CW)'(iss_cq03h[NR-1:0]);
 
   always_comb begin
     for (int e = 0; e < N; e++) begin
       sl          = slot_cq03h[e * LS +: LS];
       conf[e]     = dep_cq03h[e * N +: N] == '0;
-      copy_ok[e]  = !chas_cq03h[e] || iss_cq03h[cidx_cq03h[e * W +: W]];
+      copy_ok[e]  = !chas_cq03h[e] || iss_rc[cidx_cq03h[e * W +: CW]];
       order_ok[e] = 1'b1;
       if (e >= NR)
         for (int j = NR; j < N; j++)
@@ -83,9 +95,10 @@ module ooe_select #(
               slot_cq03h[j * LS +: LS] == sl)
             order_ok[e] = 1'b0;
       req[e] = rq_cq03h[e] && ready_cq03h[e] && !gnt_cq03h[e] && vel_cq03h[e];
+      if (e < NR) req[e] = req[e] && !(rhold_cq03h[e] && res_cq03h[e * 9 + 4]);
       if (e >= NR)
         req[e] = req[e] && (res_cq03h[e * 9 + RR +: RM] & busy_cq03h) == '0 && conf[e] && !block_cq03h[sl] &&
-                 copy_ok[e] && order_ok[e];
+                 (res_cq03h[e * 9 + RR +: RM] & cok_cq03h) != '0 && copy_ok[e] && order_ok[e];
     end
     for (int e = 0; e < NR; e++) req_r[e * RR +: RR] = req[e] ? res_cq03h[e * 9 +: RR] : '0;
     for (int e = 0; e < NM; e++) req_m[e * RM +: RM] = req[NR + e] ? res_cq03h[(NR + e) * 9 + RR +: RM] : '0;
@@ -95,8 +108,10 @@ module ooe_select #(
   logic [NR*RR-1:0] win_r;
   logic [NM*RM-1:0] win_m;
   logic [N-1:0]     fb;          // grants by the RCU class's section fallback
+  logic [NR-1:0]    win_e;       // the RCU class's wins, before the ret hold
+  assign grant_cq03h[NR-1:0] = win_e & ~hold_cq03h;
   ooe_pick #(.N(NR), .R(RR), .FB(FB)) pick_r (.req_cq03h(req_r), .older_cq03h(older_r_cq03h),
-                                     .issue_cq03h(grant_cq03h[NR-1:0]), .lost_cq03h(lost_cq03h[NR-1:0]),
+                                     .issue_cq03h(win_e), .lost_cq03h(lost_cq03h[NR-1:0]),
                                      .win_cq03h(win_r), .fb_cq03h(fb[NR-1:0]));
   ooe_pick #(.N(NM), .R(RM)) pick_m (.req_cq03h(req_m), .older_cq03h(older_m_cq03h),
                                      .issue_cq03h(grant_cq03h[N-1:NR]), .lost_cq03h(lost_cq03h[N-1:NR]),
