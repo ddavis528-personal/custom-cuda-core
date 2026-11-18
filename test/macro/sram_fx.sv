@@ -9,10 +9,11 @@
 // (CG-5), and c_q, a cycle later, is the command's valid beside the captured
 // op_q. Each command is one access to the register file and, on every
 // other command, one to the SRAM:
-//   1rw  (W x D, 64 Kibit by default), on a command whose ptr_q is odd, so
+//   1rw  (W x D, 64 Kibit by default: 512 words of 128 bits, within an
+//        SRAM's shape, MACRO-1, Daniel, 2026-11-17), on a command whose ptr_q is odd, so
 //        never two cycles running (consecutive commands count ptr_q up by
 //        one; DA tab rev 123): op_q[15] writes a whole word (an SRAM has no
-//        byte enables; Daniel, 2026-11-17), else reads, at op_q[6:0] +
+//        byte enables; Daniel, 2026-11-17), else reads, at op_q[AW-1:0] +
 //        ptr_q -- the index through an adder. Its read data comes back two
 //        cycles after (rv1_q, rv_q).
 //   rf   (W2 x D2), the register file with byte enables
@@ -49,8 +50,8 @@ module sram_fx #(
   parameter int DEEP_RD = 0,
   parameter int RST_CE = 0,
   parameter int FOLD_RD = 0,
-  parameter int W = 512,
-  parameter int D = 128,
+  parameter int W = 128,
+  parameter int D = 512,
   parameter int W2 = 64,
   parameter int D2 = 128
 ) (
