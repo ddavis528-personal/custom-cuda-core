@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
 - MA-6 RUNNING: rh-jobs/ma6/ma6.sh <commit> <tag> "<cm32 pts>" "<cm128 pts>" (worktree rh-ma6-<tag>, logs ~/ccv-logs/ma6/<tag>,
   cm128 serialized by flock rh-jobs/cm128.lock). Tag c94f (c94f0ae6) from 17:35Z: cm32 b.q16.fixed; cm128 b.q16.rot b.q12.fixed (~19:10Z).
-  Pending MA's new sha (p1_data_peak, p1_data_sum_peak): cm128 a.q8.rot b.q8.rot. Asked MA whether 1-3 rerun at new sha.
+  Pending MA's new sha (p1_data_peak, p1_data_sum_peak): cm128 a.q8.rot b.q8.rot. At new sha also cm128 b.q16.fixed (or b.q16.rot if c94f b.q16.rot beats MA-5 b.q16 5,141,670 by >0.1%); no other 1-3 reruns.
   Table: python3 rh-jobs/ma5/table.py <logdir> with a points file (write one per tag).
 - MA-5 DONE and SENT 17:32Z (all clean; b.q16 -1.11% vs a.q8, b not at knee at 8; a knee at 8). rh-ma4 dropped 17:33Z; logs kept.
   Was: MA-5 from 11:50Z at c94f0ae6 in rh-ma4: rh-jobs/ma5/ma5.sh (no arg), ~/ccv-logs/ma5. S1 b.q8.fixed/b.q8.rot;
