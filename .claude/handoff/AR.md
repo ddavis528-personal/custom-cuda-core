@@ -92,7 +92,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 382, OA 428, TI 480, RA 154, RI 90,
+- **Bookmarks** (revs read through): AR 383, OA 434, TI 480, RA 154, RI 90,
   IS 197, CP 160, OI 366, DA 125, MA 96, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -323,6 +323,8 @@ Credit rules (TI-49):
    - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
      TI does the bench configs (they need gen-oracle's LOAD) and the pin
      bump.
+0b. **AR 380 (.622154; rev 383; TI, OI, OA rung):** approved OA 432, lead_fields [warp_id, fetch_epoch] on ccv_dec_ooe_uop; DEC spec line added (pending TI). Owed: watch TI apply it, OI benches + late-lead control, DA ruling on lead form vs +0.95% cycle. Lanes: lane A relaunched 06:33Z after restart (cm128 h8/h9/h8wp3, rot, a); lane B done; cm128priv_b_q0 skipped (memory).
+
 0c. **AR 375 (.609311; TI rung) and AR 376 (.612527; MA rung), rev 376-378.**
    AR 375 answers TI-480 and TI-481.
    - p128b's perfect-fetch gap is the OOE window share at 3 or more warps
