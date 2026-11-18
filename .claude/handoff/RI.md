@@ -57,6 +57,11 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-21. DONE (2026-11-17) Daily sweep, PASS full, pushed 93bf1bb7 (ri-sweep17 in ri-wt): doowtf 38 (incl. TI rokilllane
+   1861cc51), miu-dcu-spec 25, 3868632d 42, 80102643 17, 57eff422 24, 9eb50716 7, c22116ce 9; no conflicts. First run
+   died on a full disk: deleted build/ in ri-wt3..14 (stale). Register: nothing for RI. RA 152 (no RCU macros), RA 153/154
+   (RCU takes the L1-ECC second data beat as is), AR 370/DA 124 machine check uses RAU's kill (TI's). Bookmarks: Conv 19
+   AR 372 OA 428 IS 197 TI 477 OI 366 CP 159 DA 124 RA 154 RI 90 MA 82. Waiting: RA's sign-off report, then Daniel.
 -20. DONE (2026-11-16 13:15) TI 457: rokilllane kill kernel at 1861cc51 (TI doowtf; NOT in ri-sweep16, whose full gate
    runs in ri-wt13, job-gate-push-20261116-103527-2546.log). Measured in ri-wt14 (detached 1861cc51, scratch): every
    CCV_RCU_KILL_DRAIN_CUT 0-15 passes on rokilllane (kill_lane 1) and rokill; cycles 1214->1206 by cut 8 then flat
