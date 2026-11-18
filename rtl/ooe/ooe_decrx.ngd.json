@@ -30,6 +30,24 @@
    "by": "OA",
    "date": "2026-11-18",
    "why": "OA 429 (re:OI-166): from ccv_rau_ooe_alloc's boundary receive flops, as enq_l, in NGD from the launching flop"
+  },
+  "arv_v_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-18",
+   "why": "OA 433 (re:OI-169; DA rev 127, AR 380): the slot's valid of ccv_dec_ooe_uop from OOE's boundary receive flops, as enq_l, in NGD from the launching flop; the lead-cycle read and compare held to the input side's 12 (AR 380 (4))"
+  },
+  "arv_warp_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-18",
+   "why": "OA 433 (re:OI-169; DA rev 127, AR 380): the lead warp_id of ccv_dec_ooe_uop from OOE's boundary receive flops, as enq_l, in NGD from the launching flop; the lead-cycle read and compare held to the input side's 12 (AR 380 (4))"
+  },
+  "arv_ep_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-18",
+   "why": "OA 433 (re:OI-169; DA rev 127, AR 380): the lead fetch_epoch of ccv_dec_ooe_uop from OOE's boundary receive flops, as enq_l, in NGD from the launching flop; the lead-cycle read and compare held to the input side's 12 (AR 380 (4))"
   }
  }
 }

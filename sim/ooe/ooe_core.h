@@ -516,7 +516,9 @@ struct Config {
   /// RI-11 pricing (OA rev 340): an interface flop in front of each OOE
   /// receiver that acts on its payload in its arrival cycle moves that act a
   /// cycle. Bits: 1 rau alloc, 2 rau demote, 4 syu release, 8 rcu done,
-  /// 16 cmpl hint, 32 miu cmpl, 64 dec uop (taken a cycle after it lands).
+  /// 16 cmpl hint, 32 miu cmpl. (64, dec uop taken a cycle after it lands,
+  /// is withdrawn: DA rev 127 chose the lead-field form, which adds no
+  /// cycle, so the model with no uop stage is the base; OA 433.)
   /// The message is taken as it lands (credits unchanged), its act deferred.
   /// 16 by default (C9h; OA rev 372, DA rev 114): the hint is captured raw
   /// and acts a cycle after it lands, as ooe_wake builds it.
