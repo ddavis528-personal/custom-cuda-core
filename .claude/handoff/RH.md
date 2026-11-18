@@ -68,6 +68,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
   Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
+- MA-7 RUNNING from 21:56Z: rh-jobs/ma7/ma7.sh 85045a15 8504 "" "<pts>" (2554709e + CCV_P1_DEFCAP; point suffix .gN=GAP .dN=DEFCAP),
+  logs ~/ccv-logs/ma7/8504, cm128 GAP=5: b.q16 d18, d8, d24, a.q16. ETA ~00:45Z. Table python3 rh-jobs/ma7/table.py ~/ccv-logs/ma7/8504
+  (+defcap). Check: if d18 looks odd, run uncapped b.q16.fixed.g5 (must = 5,165,866).
 - MA-6 DONE and SENT 21:53Z (all clean; 2554 reruns == MA-5; gap5: a.q8.rot +0.71%, b.q16 +0.47%; data_peak b 41-43/sum 270, a 18/109).
   Worktrees dropped; logs ~/ccv-logs/ma6/{c94f,2554} kept. Was: rh-jobs/ma6/ma6.sh <commit> <tag> "<cm32 pts>" "<cm128 pts>" (worktree rh-ma6-<tag>, logs ~/ccv-logs/ma6/<tag>,
   cm128 serialized by flock rh-jobs/cm128.lock). Tag c94f (c94f0ae6) from 17:35Z: cm32 b.q16.fixed; cm128 b.q16.rot b.q12.fixed (~19:10Z).
