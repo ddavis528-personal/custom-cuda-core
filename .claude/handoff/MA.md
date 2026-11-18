@@ -30,9 +30,9 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
   scratchpad script render.py (strips XML to `[id h=]` lines). Rebuild it if
   the scratchpad is gone.
 
-## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
+## Bookmarks (register revs)
 
-Conventions 19, AR 375, TI 479, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 89, DA 125.
+Conventions 19, AR 384 (AR 381), TI 480, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 97, DA 126.
 
 ## State, 2026-11-13
 
@@ -75,26 +75,28 @@ Conventions 19, AR 375, TI 479, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, M
 
 ## Open work, most urgent first
 
-- PHASE 1 SWEEPS (Daniel, DA rev 125: start all now, split MA/RH/AR). MA-21 (rev 86, Needs AR) is the plan.
-  STATUS: model landed and pushed (0f951e22 + regen + dd04f733, SCOPED PASS): sim/dcu/dcu_p1.cpp, runner
-  sim/dcu/p1-run.sh, CCV_DCU_IMPL=p1; knobs CCV_P1_STORE a|af|b, CCV_P1_ARB fixed|rot, CCV_P1_HASH,
-  CCV_DCU_BANK_AGE, CCV_P1_QDEPTH, CCV_P1_STRICT (pad 5), CCV_P1_REPASS 6. Grid cut by AR 373 to
-  (a),(af),(b) x QDEPTH 0/2 fixed, then rot on best two (send RH those 2 points; RH appends).
-  Split (AR 374, MA rev 88): AR runs strict-bound points (4 coremarks + stride, TI 479 benches on
-  gate-scratch/TI-stride; sgemm needs CCV_RCU_IMPL=stub); RH runs default-bound points + S1.
-  RH MA-1 baseline (stub): S1 55,572; cm32 2,575,410; cm128 5,461,519; cm32priv 2,081,906; cm128priv 2,983,133.
-  RH MA-2 S1: q0 +4.2% (57,93x), q2 55,658 (+0.15%) all variants; af==a; b cuts lookups 1313->1040; q p99.9 0.
-  RH benches running (~6 h, two lanes). Then: pick best two -> rot; BANK_AGE 8/16/32/64; hash off/on with
-  stride; size queue from p1_qNN p99.9; winner = cheapest within 0.2% of best cycles, tail tiebreak.
-  Write MA rows per result; fix age-owner text in both spec tabs when the queue lands. MA-22 (TI): map
-  sim/dcu/ in gate-scope.py (unmapped -> full gate).
-  MA: build closed-loop model CCV_DCU_IMPL=p1 (+MIU p1) in own files (sim/dcu, sim/miu; add to
-  sim/skel/blocks.list; select in makeKernelBlock like makeRcu), stubs stay the reference. Knobs: store
-  variant a/af/b (gap 4), arb fixed/rotating, queue depth 0/2/4/8, BANK_AGE, hash. Counters: late loads by
-  reason, re-passes p99/max, per-bank queue occupancy, age holds, fill-lookup collisions.
-  RH (session_01QPk2jvfKM1V5rRfip8FC86; MA now a sender per DA 125): job MA-1 = baseline at branch tip
-  (S1, cm32, cm128, cm32priv, cm128priv, cm128 squeezed 4x), logs ~/ccv-logs/ma1. Then MA's grids.
-  AR: open-loop screen of the 24-point grid, stride microbenchmark kernel, booking.
+- PHASE 1 SWEEPS (DA rev 125; plan MA-21). Model sim/dcu/dcu_p1.cpp, runner sim/dcu/p1-run.sh
+  <oracle dir> <out.tsv> [K=V]; small kernels in build/oracle (64). Knobs: CCV_P1_STORE a|af|b, CCV_P1_ARB
+  fixed|rot, CCV_P1_HASH, CCV_DCU_BANK_AGE, CCV_P1_QDEPTH, CCV_P1_STRICT (pad 5), CCV_P1_REPASS 6,
+  CCV_P1_WAYPRED 0|1..16 (fold bits), CCV_P1_WPSEL index|recent (a6c7de10, AR 381), CCV_P1_LDFIRST
+  (DA rev 126, loads-first). Fixes: 13e584e5 (pend_ guard), c94f0ae6 (born_ leak on (b) merge: bogus waits).
+  Pushed through c94f0ae6 (SCOPED PASS); a6c7de10 + this handoff in their own gate-push.
+  RH (session_01QPk2jvfKM1V5rRfip8FC86) MA-4 at c94f0ae6, cm32 / cm128: a.q2 2,664,173 / 5,455,658;
+  a.q4 -0.95% / -3.20%; a.q8 -1.19% / -4.69% (q still at cap 8); a.q16 cm32 -1.28% (max 8: depth >8 buys
+  ~0); b.q2 cm32 2,653,662, cm128 5,310,989 (MA-2 had 5,290,859: check vs RH's a.q2 control); b.q2.rot
+  cm128 5,278,683; b.q4 cm32 2,637,367, cm128 5,253,827. LDFIRST: a.q2 cm32 +2 cycles, b no change.
+  Pending from RH (cm128): a.q2.ldf, b.q2.ldf, a.q2 control, a.q16; then full table.
+  Leaning: queue depth 8 (price an entry: store data+mask), LDFIRST model-only, (b) store variant (AR
+  381 preview: b beats af everywhere, cm128 -1.64%); rot undecided. Then write MA rows, fix age-owner text
+  in both spec tabs. Next steps after: BANK_AGE 8/16/32/64; hash with stride (AR's step (ii) table).
+- MA-23 (DCU data array shape; MA rev 90-97): (A) parallel 8-way, hit 7, 512 tiny SRAMs w/ waivers; (B)
+  tag-then-data hit 9; (B)+(C2) way prediction in the payload cycle, hit 8 (mispredict 9), 2nd bank access.
+  AR 381 closed loop (h7 base / h8 / h9 / h8+wp3 index): cm32priv +1.00/+2.12/+1.00; cm32 ~0; cm128priv
+  +0.93/+0.90/+1.47 (6.44% wrong); cm128 +0.19/+0.09/+1.56 (1.69% wrong). Way-index pick is bad
+  (power-of-two per-warp buffers); offline: k5 index 1.48%/0.00%, k3 recent 0.79%/0.06%. AR runs h8 with
+  k3 recent, k5 index, k5 recent on a6c7de10. Recent needs true LRU (24 b/set vs 7 pLRU) + age compare in
+  11.88 NGD; k5 index = 512x40 RF. Expected ~+1.0% private, <=0.2% shared vs (A): over 0.5%, so Daniel
+  rules. Then DCU tab array text: data 8x512x137 per bank, tags 2x64x144 RF, predictor, pipeline.
 
 - MA-20 closed by AR 372 (MA rev 85 accepts): Phase 1 prices (1)+(3) together first (fixed vs rotating
   on re-pass tail; oldest-first only after A1 NGD check); queue head owns BANK_AGE, entries are deferred

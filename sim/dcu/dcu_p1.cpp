@@ -17,9 +17,11 @@
 // unlimited by default), CCV_P1_STRICT=1 (a hit that waited at its bank answers
 // CCV_P1_PAD = 5 cycles later still, past the stub's slack, so it loses the
 // contract as the spec says; 0 lets the stub's slack absorb short waits,
-// the optimistic bound), CCV_P1_WAYPRED = 0 | 3 | 4 (MA-23 (C2): fold bits of
+// the optimistic bound), CCV_P1_WAYPRED = 0 | 1..16 (MA-23 (C2): fold bits of
 // a per-way partial tag; a hit on a mispredicted way takes a second bank
 // access and answers 1 cycle late, or CCV_P1_PAD under STRICT),
+// CCV_P1_WPSEL = index | recent (among the ways whose fold matches, the
+// predictor picks the lowest way index, or the most recently used; AR 381),
 // CCV_P1_LDFIRST = 0 | 1 (a bank takes an on-time load before an on-time
 // store; the store waits as deferred work). Its measures
 // print as the P1 line (coverage p1_*).
@@ -56,6 +58,8 @@ public:
     store_ = st == "af" ? kStAF : st == "b" ? kStB : kStA;
     v = std::getenv("CCV_P1_ARB");
     rot_ = v && std::string(v) == "rot";
+    v = std::getenv("CCV_P1_WPSEL");
+    wprecent_ = v && std::string(v) == "recent";
     hash_ = envU("CCV_P1_HASH", 0) != 0;
     age_ = envU("CCV_DCU_BANK_AGE", ccv::prov::kDcuBankAge);
     gap_ = envU("CCV_P1_GAP", 4);
@@ -64,6 +68,7 @@ public:
     repass_ = envU("CCV_P1_REPASS", 6);
     pad_ = envU("CCV_P1_STRICT", 0) ? envU("CCV_P1_PAD", 5) : 0;
     wp_ = envU("CCV_P1_WAYPRED", 0);
+    if (wp_ > 16) wp_ = 16;
     ldfirst_ = envU("CCV_P1_LDFIRST", 0) != 0;
     banks_ = envU("CCV_DCU_BANKS", ccv::kDcuBanks);
     if (!banks_ || (banks_ & (banks_ - 1))) banks_ = ccv::kDcuBanks;
@@ -458,11 +463,14 @@ private:
   bool rot_ = false, hash_ = false;
   unsigned age_ = 16, gap_ = 4, dlat_ = 0, pad_ = 0, banks_ = 8, lb_ = 3;
   unsigned wp_ = 0;   ///< CCV_P1_WAYPRED: way-prediction fold bits, 0 off
+  bool wprecent_ = false;   ///< CCV_P1_WPSEL=recent: most recent fold match
   bool ldfirst_ = false;   ///< CCV_P1_LDFIRST: on-time loads beat on-time stores
 
   /// Way prediction (MA-23 (C2), AR 376-378): each way keeps a wp_-bit XOR
-  /// fold of its tag; the payload's PA fold picks the first valid way that
-  /// matches, and the data read starts on it. A hit whose predicted way is
+  /// fold of its tag; the payload's PA fold picks the valid way that matches
+  /// (the lowest way index, or under CCV_P1_WPSEL=recent the most recently
+  /// used: an age compare over L1's true LRU stamps), and the data read
+  /// starts on it. A hit whose predicted way is
   /// wrong re-reads on the full compare's way: one more bank access, and a
   /// hit one cycle past its contract (CCV_P1_STRICT: past the stub's slack).
   /// Returns the cycles the hit is delayed, 0 when predicted right.
@@ -475,11 +483,13 @@ private:
     };
     const Way *set = &l1_[size_t((pa / kLine) % sets_) * ways_];
     const uint64_t f = fold(pa);
+    const Way *pick = nullptr;
     for (unsigned i = 0; i != ways_; ++i)
       if (set[i].valid && fold(set[i].line) == f) {
-        if (set[i].line == pa) { k_.hit("p1_wp_right"); return 0; }
-        break;
+        if (!pick || (wprecent_ && set[i].used > pick->used)) pick = &set[i];
+        if (!wprecent_) break;
       }
+    if (pick && pick->line == pa) { k_.hit("p1_wp_right"); return 0; }
     k_.hit("p1_wp_wrong");
     bfree_[bankOf(pa)] += 2;
     return pad_ ? pad_ : 1;
