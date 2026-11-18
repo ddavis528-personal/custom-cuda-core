@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-18 00:30 UTC. Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
+Updated 2026-11-18 07:10 UTC. Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
@@ -19,7 +19,7 @@ Updated 2026-11-18 00:30 UTC. Survives a compaction. CLAUDE.md holds the repo's 
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-166. Pings Fridays.
+  Next free ID: OI-171. Pings Fridays.
 - A fresh worktree needs sim/generated: `python3 tools/gen-params.py; tools/gen-ops.py;
   tools/gen-interfaces.py` before sim/ooe/run-tests.sh (the 18 FAIL lines it prints are
   controls; the verdict is the "ooe-test:" line).
@@ -29,25 +29,23 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 369, OA 430, TI 479, AR 372, DA 124, MA 82, RA 154, RI 90, IS 197, CP 159.
+OI 374, OA 436, TI 479, AR 383, DA 127, MA 82, RA 154, RI 90, IS 197, CP 159.
 
 ## Trees and runs in flight
-- 5e1f3789 (LAT_MISS 16) pushed 11-18. /home/user/wt-61 (branch oi-af, unpushed): 9165f35c
-  rob_alloc_lag knob; 65d9b55e+b50beabf alloc flopped (OA 422); deb4265a ckpt frees a cycle
-  after resolution (OA 427 option 2: RTL frp/frv/cfl, model ckpt_free_lag, rob bench control
-  no-free-lag); 15ef1bd4 directed test control (Env junk_prog, miss_add). Model suite + rob bench
-  + 27 controls pass. 15ef1bd4 on gate-scratch/OI; RH asked to price A/B/C/D (defaults,
-  ckpt_free_lag, rob_alloc_lag, both) on S1, cm32-priv, cm128-priv vs 5e1f3789.
+- #61 push: /home/user/wt-61p branch oi-61p = origin tip 5e1f3789 + the #61 commits (no decrx):
+  rob_alloc_lag (OA 422), ckpt free lag (OA 427 opt 2), OA 431's cut (te_q flop, sqm fold),
+  caps NGD-1 28.5, al_n 26.6 (exact 28.48/26.58; dn_tag 25.1, fl_m 28.8 kept). gate-push from there.
+  wt-61 (oi-af) holds the same plus the withdrawn decrx flop commits; wt-61base to remove.
+- #58 lead form: /home/user/wt-58l branch oi-rxl, 942fa18e on oi-rx (the flop-form commits,
+  withdrawn by DA rev 127 / OA 433). Rebuild the push branch from origin without the flop form.
 
 ## Open work (most urgent first)
-1. #61 OA 427 option 2: built (see trees). NGD /root/ccv-logs/ngd-rob.log: frp (ck->registered
-   free) 28.84, ckf 21.7; +33 flops; CG pass (new gate 38 flops, enable 7.3, DCGE 100%). Other cones
-   over caps after step 2 (fka 30.1, sq_rt 29.9, fa_oh 29.9, run 29.4, fl_m NGD-3 29.3 vs 28.8; base
-   measured 28.8): need repipelining. On RH's price: write OI-166 to OA (NGD, flops, CG, price,
-   the over-cap cones), ring OA. <= +0.5% S1: ruled, land it; over: bring option 1 figures.
-2. #58 A-70 arrival epoch drop: PARKED on OA (OI-165, rev 369, OA rung). RTL has no warp-to-slot
-   table/per-warp epoch; proposed a DEC receiver module ahead of ooe_decq (decq unchanged).
+1. #61: gate-push oi-61p; on green, a landing row (OI-171) to OA with NGD 28.48 and the caps.
+2. #58 (DA rev 127 chose the lead form; AR 380 approved lead_fields [warp_id, fetch_epoch];
+   OA 433/434): on oi-rxl (rebased off the flop form): model rx_lag bit 64 withdrawn (default 16);
+   decrx.ngd.json lead-field inputs arrival 2 (as enq_l), held to 12 NGD (AR 380 (4)) - measure;
+   rtl/cg-waivers.json CG-5 "lead": true waiver of enq_slot (12 flops; RI-15 ruling + OA 434);
+   landing row confirms OOE's waived+allowance flops per instance stay within OOE's 2% (else to OA
+   first). Push only after TI's lead_fields schema change lands (merge it).
 3. #52/#53/#54/#51 NGD-to-25 refactors: PARKED on OA (notes scratchpad rob52b, go53, s54, rd51).
-4. #57 DA 111b: done. TI's coverage check (3e687018, check-ngd/check-cg) fails an instance with no
-   unit; scan (scratchpad/s54/cover.py) found none missing.
-5. Blocked/parked: #40, #42 (TI schema), #46 (lead set), #32 (optional fa index).
+4. Blocked/parked: #40, #42 (TI schema), #46 (lead set), #32 (optional fa index).
