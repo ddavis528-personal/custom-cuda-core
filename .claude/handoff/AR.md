@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 373 .604516, AR 374 .608275 (tab rev 375).
-  - **The next AR row inserts after .608275**, labelled AR 375.
+  - Latest rows: AR 380 .622154, AR 381 .623833 (tab rev 384).
+  - **The next AR row inserts after .623833**, labelled AR 382.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,15 +92,19 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 384, OA 434, TI 480, RA 154, RI 90,
-  IS 197, CP 160, OI 366, DA 125, MA 96, Conventions 19.
+- **Bookmarks** (revs read through): AR 384, OA 436, TI 481, RA 156, RI 91,
+  IS 197, CP 160, OI 374, DA 127, MA 97, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
-- **Last sweep 2026-11-16:** 7 branches merged (doowtf, miu-dcu-microarch-spec,
-  57eff422, 126afa13, 9eb50716, 3868632d, c22116ce); full gate PASS (about
-  4.5 h; ngd and cg take most of it); pushed de433e3b; session home matches.
+- **Last sweep 2026-11-18:** 9 branches merged (139 commits); first full gate
+  FAIL only because check-cg was OOM-killed (its python ~5 GB beside a cm128
+  sim ~6.5 GB); rerun alone PASS (~3.8 h); pushed f28a3f33. Session home
+  check exit 1 (settings.json keys autoCompactWindow/env/hooks differ, agents
+  not linked): asked Daniel to approve a reinstall.
+- **Never run a cm128-class sim beside a gate** (15 GB container): pause
+  /home/user/ar-work lanes before verify.sh.
 - **Insert a row:** update with ref {"object":"node","id":"bc521c46-9710"},
   engine "prose", container {"kind":"project","id":"JApHYjaUESeq8tsGMGXMU5"}.
   The payload is
@@ -323,7 +327,7 @@ Credit rules (TI-49):
    - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
      TI does the bench configs (they need gen-oracle's LOAD) and the pin
      bump.
-0a. **AR 381 (.623833; rev 384; MA rung):** MA-23 closed loop + CORRECTION (fold-3 99.13% assumed most-recent select; way-index select is 6.4% wrong on cm128priv). Asked MA for a select knob (index|recent) + k=5 in wayPredict; AR runs h8wp3/h8wp5 on cm128 + cm128priv once on MA branch. Offline replay: /home/user/ar-work/scripts/wpsim.py (files comma-joined, sets, folds). Results in ar-work/results/recovered-2026-11-18.md. Step (ii) full table (rot points) owed when lane A ends.
+0a. **AR 381 (.623833; rev 384; MA rung):** MA-23 closed loop + CORRECTION (fold-3 99.13% assumed most-recent select; way-index select is 6.4% wrong on cm128priv). Asked MA for a select knob (index|recent) + k=5 in wayPredict; AR runs h8wp3/h8wp5 on cm128 + cm128priv once on MA branch. Offline replay: /home/user/ar-work/scripts/wpsim.py (files comma-joined, sets, folds). Results in ar-work/results/recovered-2026-11-18.md. Lane A done (rot + a points). MA's a6c7de10 WPSEL knob landed; lane C (ar-work/laneC.sh, binary wtw8, hit 8) results so far: recent select k3/k5 = 0 wrong on cm32priv, cm32, cm128priv (cycles = h8 no-WP); k5 index cm32priv 5,234 wrong, cm128priv k3 index 26,096 wrong (+0.53%). Remaining: cm128priv h8wp5index, cm128 x3. Then tabulate and write AR 382 to MA (+DA): WPSEL table + full step (ii) table (pick b), notices, PF rows in perf-register (AR 373 (3)).
 0b. **AR 380 (.622154; rev 383; TI, OI, OA rung):** approved OA 432, lead_fields [warp_id, fetch_epoch] on ccv_dec_ooe_uop; DEC spec line added (pending TI). Owed: watch TI apply it, OI benches + late-lead control, DA ruling on lead form vs +0.95% cycle. Lanes: lane A relaunched 06:33Z after restart (cm128 h8/h9/h8wp3, rot, a); lane B done; cm128priv_b_q0 skipped (memory).
 
 0c. **AR 375 (.609311; TI rung) and AR 376 (.612527; MA rung), rev 376-378.**
