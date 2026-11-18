@@ -3,7 +3,7 @@
 // Spec: OA 428 (re:OI-165 (a)); ooe_decrx.sv says what holds the tables.
 //
 // An inner helper (ooe_decrx_keep.ngd.json): combinational, no flops, timed
-// in the module that takes the uop's valid. Each arriving uop is kept when
+// in ooe_decrx, which flops what it keeps (OA 429). Each arriving uop is kept when
 // its warp holds a slot (a slot's warp equals the uop's) and its
 // fetch_epoch is that slot's epoch, or the one or two after it when the
 // slot advances once or twice in this cycle (the ordering invariant, OA 428
