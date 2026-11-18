@@ -70,7 +70,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   rh-jobs/ma4/ma4.sh c94f0ae6, worktree rh-ma4, ~/ccv-logs/ma4/points = b.q0.fixed b.q2.fixed b.q2.rot b.q4.fixed
   a.q2.fixed.ldf b.q2.fixed.ldf a.q2.fixed (control: must match MA-3 a.q2.fixed). cm32 + cm128, S1. Benches wait for
   ma3.sh; ETA ~11:30Z. Sanity: b p1_wait_max <= a few hundred. Table: python3 rh-jobs/ma4/table.py.
-- MA-3 DONE and sent 05:46Z (a points, all clean; control == MA-2 exactly; q4 -1%/-3.2%, rot a wash). rh-ma3 kept until MA releases.
+- MA-3 DONE and sent 05:46Z (a points, all clean; control == MA-2 exactly; q4 -1%/-3.2%, rot a wash). rh-ma3 dropped 05:48Z for disk (rebuild from 13e584e5).
 - MA-2 DONE and sent 02:58Z 11-18 (30/30 clean): rh-jobs/ma2/ma2.sh, p1 at dd04f733 (gate-scratch/MA),
   worktree rh-ma2 dropped 03:07Z for disk (rebuild from dd04f733 if needed), ~/ccv-logs/ma2.
   Table via python3 rh-jobs/ma2/table.py [extra points]. q0 +35/42% on cm32/cm128 (repass); q2 at about stub level;
