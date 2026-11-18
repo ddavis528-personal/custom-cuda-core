@@ -566,6 +566,11 @@ private:
         defer(Acc::kStoreR, pa);
         ++held_[pa];
         k_.hit("p1_store_deferred");
+        // It leaves here, never served as a lookup: forget its first
+        // arrival, or a later request reusing its req_id inherits it (it
+        // would read as tens of thousands of cycles old, age at once and,
+        // under STRICT, answer late).
+        born_.erase(get(o.req, ch().miu_dcu, "req_id"));
         return;
       }
     }
