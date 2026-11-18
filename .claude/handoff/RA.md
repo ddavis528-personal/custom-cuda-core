@@ -338,7 +338,13 @@ Sign-off inputs in: TI 457 rokilllane kernel at 1861cc51; RI-58 M4 margin passes
 at every drain cut 0-15 (cut matters to 8); RI-59: the model drops a killed
 warp's entries at the kill (Core::kill), not by epoch -- check the spec says
 no epoch for the model.
-Bookmarks: OA 421, RA 151, RI 86, TI 456, AR 365, DA 123, OI 358, Conventions 19, CP 159, IS 194, MA 68.
+Sweep 11-17: nothing for RA; merged 183cc441 (62), 3868632d (43), 57eff422 (24), 80102643 (17),
+9eb50716 (7), c22116ce (9), miu-dcu-spec (15). DA 124 x2 (ECC machine-error system; SPM is RF), no RCU effect.
+RA 152 (MACRO-1: RCU has no macro), RA 153 (SECDED corrected 2nd miu_rcu_data write: RCU takes it, no change;
+conditions taken by MA 79 and OA 425), RA 154 (153 closed). WATCH: OA 424/426 moves CCV_LAT_L1_CMPL 14->15;
+when it lands, fix the Partition/Overview "L1_CMPL 14" text (RA rev 145 reapply note) and refresh snapshots.
+TI-461 (no dated tasks) and TI-467 (macro limits) are recorded only in the TI tab; asked Daniel.
+Bookmarks: OA 428, RA 154, RI 90, TI 477, AR 372, DA 124, OI 366, Conventions 19, CP 159, IS 197, MA 82.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
@@ -368,12 +374,14 @@ Kill: KILL_DRAIN = 2 + link(issue) + LAT_SFU + 1 + link(done) = 15; ack level + 
 Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42; notices sent.
 
 ## Open work, most urgent first
+- NO DATES (Daniel to RA 2026-11-17, TI 461, RA rev 155): no task, row or promise carries a due date;
+  work in priority order; meet a dependency by reordering. Dates below are history, not deadlines.
 - GATES: 518cb3c3 is merged (2026-11-15): launch gate-push, then tools/gate-wait.sh <job log> (exit 3 = rerun, 4 = killed).
 - RCU SIGN-OFF (RA rev 150): delta reconciliation DONE 2026-11-16 vs TI tip ccr-183cc441 (1861cc51):
   mechanisms all match; 13 stale-text edits applied (Done 51, Lane 19, Pipeline 34, Overview 80,
-  Partition 72), snapshots refreshed. Report sent to Daniel; WAITING on his sign-off (record it as an RA row
-  once given). Post-sign-off: TI half of RA 148 (stub addr from param, RTL refusal at base != 1); SFU-in-flight
-  kill kernel. TI-461 claims a DA no-dates ruling (not in DA tab yet); if confirmed, drop dates here.
+  Partition 72), snapshots refreshed (b054420f). Report sent; Daniel holds final sign-off until he has
+  reviewed it in detail (RA rev 155). Record his sign-off as an RA row once given. Post-sign-off: TI half of RA 148 (stub addr from param, RTL refusal at base != 1); SFU-in-flight
+  kill kernel.
 - PHASE 5 (rcu-impl.md): spec reconciled (RA rev 140/141); RI's rev 140 items closed (RA rev 142). Before DA
   sign-off: rev 143 CLOSED (TI 430); TI's kill kernel (lane op in flight); RI-47's three waivers (DA). Then OI on SFU class /
   ADDR_BASE. Reported to Daniel 2026-11-14.
@@ -461,7 +469,7 @@ Round 3 rows RA-18..RA-27 (rev 41) and RA-28 (AR), RA-29 (AR, TI, OA) at rev 42;
   rev 63 (after alignment the source = the written sections; per-lane merge only; input path 5 NGD). Waiting: TI (c)
   schema, OI lead NGD/CG. AR (d) agreed (rev 271). Fanout term now enforced in check-ngd (TI rev 299, DA 2026-11-04).
 - Sectioned lanes KEPT (Daniel 2026-11-03; OI-28..31); packed contiguous lanes = PF-50 (c7938fa).
-- Answers due: RA-16, RA-30, RA-36 (TI); RA-37/RA-38 AGREED by TI rev 290 (building: gate-scope + CLAUDE.md first, then makeRcu,
+- Answers awaited: RA-16, RA-30, RA-36 (TI); RA-37/RA-38 AGREED by TI rev 290 (building: gate-scope + CLAUDE.md first, then makeRcu,
   blocks.list, check-rcu-unit, job_rcu_rtl, CCV_RCU_RTL), impl pending; RA-35 (AR); RA-37 (OA: RI 31 only, roster commit bc1c2b4 named at rev 55); port-trace dump. Lead slice: AR agreed the interface (rev 267); waits on OI select NGD and TI schema. Daniel: review; collective fold 5->3 decision after Phase 1. Fold each answer into
   the spec tab it names (Overview's open-questions table lists where).
 - Spec tab reconciliation (rcu-arch.md section 5: per-block specs doc RCU tab
