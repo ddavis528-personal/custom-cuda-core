@@ -19,7 +19,9 @@
 // contract as the spec says; 0 lets the stub's slack absorb short waits,
 // the optimistic bound), CCV_P1_WAYPRED = 0 | 3 | 4 (MA-23 (C2): fold bits of
 // a per-way partial tag; a hit on a mispredicted way takes a second bank
-// access and answers 1 cycle late, or CCV_P1_PAD under STRICT). Its measures
+// access and answers 1 cycle late, or CCV_P1_PAD under STRICT),
+// CCV_P1_LDFIRST = 0 | 1 (a bank takes an on-time load before an on-time
+// store; the store waits as deferred work). Its measures
 // print as the P1 line (coverage p1_*).
 //
 // The banks' waiters are held without limit, so the occupancy histogram
@@ -62,6 +64,7 @@ public:
     repass_ = envU("CCV_P1_REPASS", 6);
     pad_ = envU("CCV_P1_STRICT", 0) ? envU("CCV_P1_PAD", 5) : 0;
     wp_ = envU("CCV_P1_WAYPRED", 0);
+    ldfirst_ = envU("CCV_P1_LDFIRST", 0) != 0;
     banks_ = envU("CCV_DCU_BANKS", ccv::kDcuBanks);
     if (!banks_ || (banks_ & (banks_ - 1))) banks_ = ccv::kDcuBanks;
     lb_ = unsigned(__builtin_ctz(banks_));
@@ -455,6 +458,7 @@ private:
   bool rot_ = false, hash_ = false;
   unsigned age_ = 16, gap_ = 4, dlat_ = 0, pad_ = 0, banks_ = 8, lb_ = 3;
   unsigned wp_ = 0;   ///< CCV_P1_WAYPRED: way-prediction fold bits, 0 off
+  bool ldfirst_ = false;   ///< CCV_P1_LDFIRST: on-time loads beat on-time stores
 
   /// Way prediction (MA-23 (C2), AR 376-378): each way keeps a wp_-bit XOR
   /// fold of its tag; the payload's PA fold picks the first valid way that
@@ -676,15 +680,25 @@ private:
         if (rot_ && n)
           for (unsigned i = 0; i != n; ++i)
             if (in[i].slot >= ptr_[b]) { start = i; break; }
-        for (unsigned t = 0; t != n && win == in.size(); ++t) {
-          const unsigned i = (start + t) % n;
-          const uint64_t pa = lineOf(in[i].req);
-          if (held(pa) || olderSameLine(b, pa)) continue;
-          bool earlier = false;
-          for (unsigned j = 0; j != i; ++j)
-            if (lineOf(in[j].req) == pa) earlier = true;
-          if (!earlier) win = i;
-        }
+        // CCV_P1_LDFIRST: a first pass takes only reads, so an on-time load
+        // beats an on-time store; the store waits as deferred work under the
+        // age bound. An earlier arrival of the same line still blocks a later
+        // one, so a load never passes an older store to its line.
+        for (unsigned pass = ldfirst_ ? 0 : 1; pass != 2 && win == in.size(); ++pass)
+          for (unsigned t = 0; t != n && win == in.size(); ++t) {
+            const unsigned i = (start + t) % n;
+            if (!pass && !isRead(unsigned(get(in[i].req, ch().miu_dcu, "coh_op")))) continue;
+            const uint64_t pa = lineOf(in[i].req);
+            if (held(pa) || olderSameLine(b, pa)) continue;
+            bool earlier = false;
+            for (unsigned j = 0; j != i; ++j)
+              if (lineOf(in[j].req) == pa) earlier = true;
+            if (!earlier) win = i;
+          }
+        // How often the rule decided: a load won while a store arrived too.
+        if (ldfirst_ && win != in.size())
+          for (const Op &e : in)
+            if (!isRead(unsigned(get(e.req, ch().miu_dcu, "coh_op")))) { k_.hit("p1_ldfirst"); break; }
       }
       if (bfree_[b] <= now_) {
         if (aged) {
