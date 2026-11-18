@@ -63,7 +63,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   `table.py A0 A0=~/ccv-logs/oi427 E=~/ccv-logs/oi428 --ctr=stall.decq,stall.decq_warp_max` (labels: A0 is OI's A).
   Ruling: S1 <= +0.5% -> OA, else DA. Do not drop rh-oi427b before 428 done.
 - OA-427 S1 + cm32priv A0/A/B SENT 05:40Z (B S1 +0.002%; A0 == A exactly). OA-428 S1 SENT 05:55Z: E +0.946% (DA rules); stall.decq* 0.
-  cm128priv for both now after MA-4 (~12:00-14:30Z); OI told.
+  cm128priv for both now after MA-4 (~12:00-14:30Z); OI told. OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
+- MA-4 early SENT 06:35Z: b wait_max fixed (198/588), b cycles unchanged (q0 identical, q2 -5). Next: a.q8 cm128 ~09:00Z.
 - OI OA-427 RUNNING from 05:05Z (OI-164 opt 2): rh-jobs/oi427/oi427.sh, worktrees rh-oi427 (15ef1bd4, A/B/C/D) and
   rh-oi427b (5e1f3789, A0; oracles symlinked from rh-oi427, inputs identical). ~/ccv-logs/oi427. S1 (ruling: B <= +0.5%) + cm32priv
   now; cm128priv waits for ma3/ma4. Send S1 early. Table: cycles, IPC, Δ% vs A; A0==A; branch.free_held/kept/withdrawn.
