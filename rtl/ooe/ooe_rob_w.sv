@@ -2164,12 +2164,18 @@ module ooe_rob_w #(
       sqm_nx_cq02h[s * D +: D] = pfx_cq02h[s * D +: D] | (aq_e_cq02h[s * D +: D] & {D{|cw_e_cq02h[s * D +: D]}});   // empty with no pick (OA 431)
       sq_rt_nx_cq02h[s]        = |(pick_cq02h[s * D +: D] & rt_e_cq02h[s * D +: D]);
     end
-  // Clocked on a superset of the candidates, without the held and squash
-  // terms (a pick is within the candidates, and a register loaded with no
-  // pick holds no squash), so the enable stays within CG-2's 8.
+  // Clocked on a superset of the picks, without the held and squash terms
+  // (a pick is within the candidates, and a register loaded with no pick
+  // holds no squash), so the enable stays within CG-2's 8: a candidate
+  // while some record of the slot is wrong or the bypassed done is (a pick
+  // is a wrong candidate, and its wrong bit is one of those), and the cycle
+  // after a pick, to clear. With no wrong outcome these registers, which
+  // change only on a pick, stay clocked off (CG-3; asserted below).
+  logic [S-1:0] rs_w_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
-      rs_en_cq02h[s] = (|cnx_cq02h[s * D +: D]) | rd_s_cq02h[s];
+      rs_w_cq02h[s]  = (|ow_w_cq02h[s * NK +: NK]) | (bo_v_cq02h & bo_wrong_cq02h);
+      rs_en_cq02h[s] = ((|cnx_cq02h[s * D +: D]) & rs_w_cq02h[s]) | rd_s_cq02h[s];
     end
   for (genvar gs = 0; gs < S; gs++) begin : g_res
     always_ff @(posedge ooe_core_clk) begin
@@ -2295,6 +2301,10 @@ module ooe_rob_w #(
     end
   `CCV_ASSERT(te_is_tail_past_alloc, te_bad_cq02h == '0)
   `CCV_ASSERT(sqm_only_with_pick, sqm_bad_cq02h == '0)
+  logic [S-1:0] pk_off_cq02h;
+  always_comb
+    for (int s = 0; s < S; s++) pk_off_cq02h[s] = (|pick_cq02h[s * D +: D]) && !rs_en_cq02h[s];
+  `CCV_ASSERT(pick_within_rs_en, pk_off_cq02h == '0)
   `CCV_ASSERT(unfilled_mask, ufq_cq02h == ufm_cq02h)
   `CCV_ASSERT(head_read_copies, hrg_cq02h == hoh_cq02h && hrn_cq02h == hoh_cq02h && hrp_cq02h == hoh_cq02h &&
               hrf_cq02h == hoh_cq02h)
