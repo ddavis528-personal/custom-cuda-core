@@ -1963,7 +1963,8 @@ module ooe_rob_w #(
   // only a branch's done is an outcome.
   logic            bo_v_cq02h, bo_taken_cq02h, bo_wrong_cq02h;
   logic [TW-1:0]   bo_tag_cq02h;
-  logic [S*D-1:0]  bo_oh_cq02h;                     // the last cycle's done's entry, one-hot (off the resolution's path)
+  logic [S*D-1:0]  bo_oh_cq02h;                     // the last done's entry bits, one-hot, its slot bits aside (off the resolution's path)
+  logic            bo_vw_cq02h, bo_vr_cq02h;        // the last cycle's done a branch of this slot's, wrong / right
   logic [LK-1:0]   bo_ck_cq02h;
   logic [31:0]     bo_mask_cq02h, bo_aux_cq02h;
   logic [LK-1:0]   bo_ck_nx_cq02h;
@@ -1990,23 +1991,28 @@ module ooe_rob_w #(
     end
   end
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) bo_v_cq02h <= 1'b0;
-    else          bo_v_cq02h <= dn_q_cq02h[BS] && bo_br_nx_cq02h;
+    if (rst_r01h) begin
+      bo_v_cq02h  <= 1'b0;
+      bo_vw_cq02h <= 1'b0;
+      bo_vr_cq02h <= 1'b0;
+    end else begin
+      bo_v_cq02h  <= dn_q_cq02h[BS] && bo_br_nx_cq02h;
+      bo_vw_cq02h <= dn_q_cq02h[BS] && bo_br_nx_cq02h && bo_wrong_nx_cq02h;
+      bo_vr_cq02h <= dn_q_cq02h[BS] && bo_br_nx_cq02h && !bo_wrong_nx_cq02h;
+    end
   end
-  logic bo_en_cq02h, boh_en_cq02h;
+  logic bo_en_cq02h;
   assign bo_en_cq02h = dn_q_cq02h[BS];
-  // The entry the last cycle's done names, one-hot, zero with no done, so
-  // the verdict's bypass reads one flop an entry. Its branch bit need not
-  // be folded in: the bypass reaches only cw_e and crt_e, which cand masks
-  // with br. Loaded on a done and cleared the cycle after one, an enable of
-  // its own flops that changes it nearly every time (CG-3; a fold of br had
-  // held it at zero over non-branch dones).
-  assign boh_en_cq02h = dn_q_cq02h[BS] | (|bo_oh_cq02h);
+  // The entry bits of the last done's tag, one-hot, loaded on every done
+  // and held between: a done of another slot's loads them too, so they
+  // change on nearly every enabled cycle (CG-3), and bo_vw / bo_vr, which
+  // hold this slot's branch done, qualify them. The verdict's bypass reads
+  // them beside the record's bit (wr_e), as deep from it as one mux.
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) bo_oh_cq02h <= '0;
-    else if (boh_en_cq02h)
+    else if (bo_en_cq02h)
       for (int e = 0; e < S * D; e++)
-        bo_oh_cq02h[e] <= dn_q_cq02h[BS] && dn_tag_cq02h[BS * TW +: TW] == TW'(WID * D + e);
+        bo_oh_cq02h[e] <= dn_tag_cq02h[BS * TW +: LD] == LD'(e % D);
   end
   always_ff @(posedge ooe_core_clk) begin
     if (bo_en_cq02h) begin
@@ -2085,7 +2091,10 @@ module ooe_rob_w #(
         for (int c = 0; c < NK; c++)
           wr_e_cq02h[s * D + i] = wr_e_cq02h[s * D + i] |
                                   (ck_cq02h[(s * D + i) * LK +: LK] == LK'(c) && out_cq02h[(s * NK + c) * OWD + OWD - 1]);
-        if (bo_oh_cq02h[s * D + i]) wr_e_cq02h[s * D + i] = bo_wrong_cq02h;
+        // The last cycle's branch done of this entry overrides it: wrong
+        // sets it, right clears it (S is 1, so the entry bits name it).
+        wr_e_cq02h[s * D + i] = wr_e_cq02h[s * D + i] ? !(bo_oh_cq02h[s * D + i] && bo_vr_cq02h)
+                                                      : (bo_oh_cq02h[s * D + i] && bo_vw_cq02h);
         cw_e_cq02h[s * D + i]  = cand_cq02h[s * D + i] & wr_e_cq02h[s * D + i];
         crt_e_cq02h[s * D + i] = cand_cq02h[s * D + i] & ~wr_e_cq02h[s * D + i];
       end
