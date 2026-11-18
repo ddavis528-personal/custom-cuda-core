@@ -250,6 +250,8 @@ private:
         arrive(Op{s, m.payload, m.tid});
       }
     while (!again_.empty() && again_.front().first <= now_) {
+      const uint64_t pl = lineOf(again_.front().second.req);
+      if (!--pend_[pl]) pend_.erase(pl);
       arrive(again_.front().second);
       again_.pop_front();
     }
@@ -450,6 +452,8 @@ private:
   unsigned age_ = 16, gap_ = 4, dlat_ = 0, pad_ = 0, banks_ = 8, lb_ = 3;
   unsigned qdepth_ = 1u << 30, repass_ = 6;
   std::deque<std::pair<uint64_t, Op>> again_;   ///< re-passes, by the cycle they return
+  std::map<uint64_t, unsigned> pend_;   ///< line -> lookups out on a re-pass
+  bool repassing(uint64_t line) const { return pend_.count(line) != 0; }
   /// A re-passed lookup's first arrival, by its MIU req_id, so its wait and
   /// the strict contract count from there.
   std::map<uint64_t, uint64_t> born_;
@@ -514,7 +518,12 @@ private:
     const unsigned co = unsigned(get(o.req, ch().miu_dcu, "coh_op"));
     if (store_ == kStB && !isRead(co) && k_.brk != "write-through") {
       Way &wy = way(pa);
-      if (wy.valid && wy.line == pa && wy.owned && !olderSameLine(bankOf(pa), pa) && !held(pa)) {
+      // A load of the line that lost its bank, waiting or out on a re-pass,
+      // keeps later stores to it from merging past it (else a store-hot
+      // line stays held and starves it).
+      bool contested = olderSameLine(bankOf(pa), pa) || held(pa) || repassing(pa);
+      for (const Op &e : arr_[bankOf(pa)]) contested |= lineOf(e.req) == pa;
+      if (wy.valid && wy.line == pa && wy.owned && !contested) {
         mergeInto(wy.data, o.req);
         wy.dirty = true;
         shadow(wy);
@@ -682,6 +691,7 @@ private:
           k_.hit("p1_repass");
           born_.emplace(get(o.req, ch().miu_dcu, "req_id"), now_);
           again_.push_back({now_ + repass_, o});
+          ++pend_[lineOf(o.req)];
         }
       }
       in.clear();
