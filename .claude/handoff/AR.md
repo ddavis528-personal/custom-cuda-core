@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 378, OA 428, TI 480, RA 154, RI 90,
-  IS 197, CP 160, OI 366, DA 125, MA 91, Conventions 19.
+- **Bookmarks** (revs read through): AR 382, OA 428, TI 480, RA 154, RI 90,
+  IS 197, CP 160, OI 366, DA 125, MA 96, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -281,14 +281,15 @@ Credit rules (TI-49):
      ar-work/rebuild2.sh (log rebuild.log) built wt7, wt8 and wt9:
      CCV_LAT_L1_HIT_BASE, HIT, WAKE and CMPL shifted +0/+1/+2 in params. HIT
      is build-time, not an env knob. Oracles are in ar-work/oracle (5.7 GB).
-     Lanes (ar-work/run.sh name:wl:store:q:arb:hit:wp; progress in
-     ar-work/runs/progress.log; tabulate with ar-work/tab.py):
-     - A (128-class, serial): cm128 af and b q2 h7; cm128priv b q2 h7;
-       cm128priv and cm128 af q2 at h8, h9 and h8wp3; rot b and af q2 on
-       both; cm128 a q2.
-     - B: cm32priv and cm32 b q2 h7; af q2 h8, h9 and h8wp3 on both;
-       cm32priv h7wp3; rot.
-     Control: cm32priv af q2 h7 must equal 2,088,721.
+     MA's c94f0ae6 (the born_ fix: a store merged at arrival left a stale
+     first-arrival time, so b's 63k tail and b's cycles were a measurement
+     bug; a and af never take that path) is built as ar-work/wtb7 (hit 7;
+     LDFIRST default 0). All (b) points run there (hit field "b7"). The (b)
+     logs from 258f642b are in runs/old (invalid). ar-work/lanes.sh holds
+     the lists (A is 128-class; B is 32-class and ends with cm128priv b_q0:
+     check memory before it overlaps a cm128). Its first point is a control:
+     cm32priv af q2 on wtb7 must equal 2,088,721.
+     Tabulate with ar-work/tab.py. Progress is in ar-work/runs/progress.log.
      sgemm is not on 258f642b (TI's 358ace66 has it); add it later.
      MA-23: AR 377 (VA = PA; the fold is over VA bits above the page), AR
      378 (rows .616053, .618036): (B)+(C2) at hit 8, linear about +0.614%
