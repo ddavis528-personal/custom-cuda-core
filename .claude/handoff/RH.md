@@ -58,6 +58,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-1 DONE and sent 19:41Z 11-17 (all clean): rh-jobs/ma1/ma1.sh at cc5f3f04, worktree dropped, ~/ccv-logs/ma1
   (KEEP: MA's reference for p1 deltas; rh-jobs/ma1/table.py writes s1-cycles.tsv and the table). Ways 8,
   defaults. No per-reason late bins at the stubs; the squeezed cm128 was dropped (AR 373).
+- MA-4 QUEUED/PREP from 03:55Z (Daniel asked MA for it): rh-jobs/ma4/ma4.sh dafb933f, worktree rh-ma4,
+  ~/ccv-logs/ma4. a.q2.fixed.ldf and b.q2.fixed.ldf (CCV_P1_LDFIRST=1), cm32 + cm128. Benches wait for ma3.sh.
+  Table: python3 rh-jobs/ma4/table.py (adds ldfirst, store_write). Compare with MA-3's a.q2.fixed and b.q2.fixed.
+- MA-3 NOTE 03:50Z: the 13e584e5 fix leaves b bit-identical to MA-2 (cm32 b.q0/b.q2). Told MA, who must pick
+  (a) finish, (b) drop the b points, or (c) stop. Running as (a) until MA answers.
 - MA-3 RUNNING from 03:06Z at 13e584e5 (MA's fix for the b-store starvation model bug; MA-2's b numbers are VOID, a/af stand):
   `setsid nohup rh-jobs/ma3/ma3.sh 13e584e5 >~/ccv-logs/ma3.nohup 2>&1 </dev/null &` (fetches gate-scratch/MA,
   worktree rh-ma3, ~/ccv-logs/ma3). Points st.qN.arb: b.q0/b.q2 fixed, a.q2/b.q2 rot, a.q4/b.q4 fixed, then the
