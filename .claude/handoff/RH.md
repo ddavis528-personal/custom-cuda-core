@@ -58,6 +58,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-1 DONE and sent 19:41Z 11-17 (all clean): rh-jobs/ma1/ma1.sh at cc5f3f04, worktree dropped, ~/ccv-logs/ma1
   (KEEP: MA's reference for p1 deltas; rh-jobs/ma1/table.py writes s1-cycles.tsv and the table). Ways 8,
   defaults. No per-reason late bins at the stubs; the squeezed cm128 was dropped (AR 373).
+- OI OA-427 RUNNING from 05:05Z (OI-164 opt 2): rh-jobs/oi427/oi427.sh, worktrees rh-oi427 (15ef1bd4, A/B/C/D) and
+  rh-oi427b (5e1f3789, A0; oracles symlinked from rh-oi427, inputs identical). ~/ccv-logs/oi427. S1 (ruling: B <= +0.5%) + cm32priv
+  now; cm128priv waits for ma3/ma4. Send S1 early. Table: cycles, IPC, Δ% vs A; A0==A; branch.free_held/kept/withdrawn.
 - MA-4 (replaces the dafb933f plan) at c94f0ae6 (MA's born_ measurement fix + way-pred/LDFIRST knobs, off by default):
   rh-jobs/ma4/ma4.sh c94f0ae6, worktree rh-ma4, ~/ccv-logs/ma4/points = b.q0.fixed b.q2.fixed b.q2.rot b.q4.fixed
   a.q2.fixed.ldf b.q2.fixed.ldf a.q2.fixed (control: must match MA-3 a.q2.fixed). cm32 + cm128, S1. Benches wait for
