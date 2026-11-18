@@ -4659,6 +4659,60 @@ void testRobAllocLag() {
   }
 }
 
+/// ckpt_free_lag (OA 427, re:OI-164): ooe_rob_w registers the frees and
+/// sends each checkpoint's a cycle later. Random mispredicting programs run
+/// clean at 0 and 1 (FET's V-46 checker sees no free of a dead checkpoint),
+/// with held frees under 1. The control keeps a younger branch's held free
+/// across an older branch's redirect, and FET must see it land late.
+void testCkptFreeLag() {
+  for (const unsigned lag : {0u, 1u}) {
+    uint64_t held = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed)
+      for (int mode = 0; mode != 8; mode += 3) {
+        g_test = "ckpt free lag " + std::to_string(lag) + " seed " + std::to_string(seed) + " mode " +
+                 std::to_string(mode);
+        Config c = randomConfig(seed, mode);
+        c.ckpt_free_lag = lag;
+        std::mt19937 rng(seed * 4 + unsigned(mode));
+        Env e(c, seed * 7 + unsigned(mode));
+        e.miss_pct = 30;
+        e.data_after_cmpl = c.cmpl_wake_delay;
+        const unsigned warps = 1 + seed % 4;
+        for (unsigned i = 0; i != warps; ++i)
+          e.launch(i * 5, i, randomProgram(rng, 150, true, seed % 2 == 1, (mode & 4) != 0));
+        e.finish();
+        EXPECT(e.errors.empty(), "%zu checker errors, first: %s", e.errors.size(),
+               e.errors.empty() ? "" : e.errors[0].c_str());
+        held += e.core.counters["branch.free_held"];
+      }
+    EXPECT(lag ? held > 0 : held == 0, "lag %u: %llu cycles with a held free", lag, (unsigned long long)held);
+  }
+  // The control: held frees survive a redirect of an older branch.
+  g_test = "ckpt free lag (control)";
+  unsigned caught = 0;
+  for (unsigned seed = 1; seed <= 12 && !caught; ++seed)
+    for (int mode = 0; mode != 8 && !caught; ++mode) {
+      Config c = randomConfig(seed, mode);
+      c.ckpt_free_lag = 1;
+      c.inject_free_held_kept = true;
+      std::mt19937 rng(seed * 4 + unsigned(mode));
+      Env e(c, seed * 7 + unsigned(mode));
+      e.miss_pct = 30;
+      e.data_after_cmpl = c.cmpl_wake_delay;
+      const unsigned warps = 1 + seed % 4;
+      for (unsigned i = 0; i != warps; ++i)
+        e.launch(i * 5, i, randomProgram(rng, 150, true, seed % 2 == 1, (mode & 4) != 0));
+      g_quiet = true;
+      const int before = g_fail;
+      e.finish();
+      g_quiet = false;
+      caught += g_fail != before || !e.errors.empty();
+      g_fail = before;
+    }
+  std::printf("  %-24s %s\n", "control free-held-kept", caught ? "caught" : "MISSED");
+  EXPECT(caught, "a held free kept across an older redirect should land on a dead checkpoint");
+}
+
 /// MA-5 (AR 345/347, OA-412): MIU holds a few credits per memop slot and
 /// returns each long after its memop. Select must grant a memop only on a
 /// credited pipe of its footprint, the lowest, so full-width loads spread
@@ -5904,6 +5958,7 @@ int main(int argc, char **argv) {
   testFloorCeiling();
   testResolveLagRetire();
   testRobAllocLag();
+  testCkptFreeLag();
   testRetHold();
   testIdleR();
   testRClass();

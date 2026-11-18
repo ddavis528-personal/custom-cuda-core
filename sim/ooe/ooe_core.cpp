@@ -35,7 +35,7 @@ std::string Config::apply(const std::string &spec) {
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
-      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"resolve_lag", &resolve_lag},
+      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"ckpt_free_lag", &ckpt_free_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
@@ -562,7 +562,7 @@ void Core::namePressureStats() {
 }
 
 bool Core::busy() const {
-  if (!decq_.empty() || !redirects_.empty() || free_mask_ || !restore_q_.empty() ||
+  if (!decq_.empty() || !redirects_.empty() || free_mask_ || free_held_ || !restore_q_.empty() ||
       !commits_.empty() || !discards_.empty() || !held_issues_.empty() ||
       !held_memops_.empty())
     return true;
@@ -2037,6 +2037,11 @@ void Core::atomCmpl(unsigned slot, unsigned idx, const Cmpl &c) {
 
 // ---- branches and squash (A-41, A-42, A-56, A-58) ------------------------------------
 
+void Core::withdrawFree(uint64_t m) {
+  free_mask_ &= ~m;
+  free_held_ &= ~m;
+}
+
 void Core::freeCkptsFrom(unsigned slot, unsigned idx) {
   // The branch at idx and every younger branch: OOE's RAT checkpoints. FET
   // frees its own on the redirect (A-56), so no free bit is sent for these,
@@ -2047,7 +2052,11 @@ void Core::freeCkptsFrom(unsigned slot, unsigned idx) {
     if (r.valid && r.ckpt_live) {
       s.ckpt[r.u.ckpt].live = false;
       r.ckpt_live = false;
-      free_mask_ &= ~(uint64_t(1) << (slot * cfg_.ckpts + r.u.ckpt));
+      withdrawFree(uint64_t(1) << (slot * cfg_.ckpts + r.u.ckpt));
+    } else if (r.valid && r.u.attr.branch && cfg_.ckpt_free_lag && !cfg_.inject_free_held_kept) {
+      // ckpt_free_lag: a younger branch resolved right a cycle ago has its
+      // free still held; FET frees it at this redirect, so it is withdrawn.
+      free_held_ &= ~(uint64_t(1) << (slot * cfg_.ckpts + r.u.ckpt));
     }
   }
 }
@@ -2074,7 +2083,7 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
                                     : !r.taken;
   roblog_.resolve.push_back({tagOf(slot, idx), right});
   if (right) {
-    roblog_.ckfree.push_back({slot, r.u.ckpt});
+    if (!cfg_.ckpt_free_lag) roblog_.ckfree.push_back({slot, r.u.ckpt});   // else as sent
     free_mask_ |= uint64_t(1) << (slot * cfg_.ckpts + r.u.ckpt);
     s.ckpt[r.u.ckpt].live = false;
     r.ckpt_live = false;
@@ -2083,6 +2092,7 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
   }
   count("branch.mispredict");
   ev("redirect", s.warp, tagOf(slot, idx), r.u.ckpt, r.u.tid);
+  free_pick_ |= uint64_t(1) << slot;
   const Ckpt cp = s.ckpt[r.u.ckpt];
   freeCkptsFrom(slot, idx);
   unsigned epoch = epoch_[s.warp];
@@ -2275,7 +2285,9 @@ void Core::squashDue() {
       if (r.valid && r.ckpt_live) {
         s.ckpt[r.u.ckpt].live = false;
         r.ckpt_live = false;
-        free_mask_ &= ~(uint64_t(1) << (si * cfg_.ckpts + r.u.ckpt));
+        withdrawFree(uint64_t(1) << (si * cfg_.ckpts + r.u.ckpt));
+      } else if (r.valid && r.u.attr.branch && cfg_.ckpt_free_lag && !cfg_.inject_free_held_kept) {
+        free_held_ &= ~(uint64_t(1) << (si * cfg_.ckpts + r.u.ckpt));   // as freeCkptsFrom's
       }
     }
     if (keep < 0) count("squash.due_branch_retired");
@@ -2519,7 +2531,7 @@ void Core::control() {
     // FET frees the warp's checkpoints itself at the epoch notice, so a
     // free resolved this cycle, which would land with it, is not sent
     // (ccv_ooe_fet_ckpt_free: freed exactly once; V-46).
-    free_mask_ &= ~(((uint64_t(1) << cfg_.ckpts) - 1) << (unsigned(si) * cfg_.ckpts));
+    withdrawFree(((uint64_t(1) << cfg_.ckpts) - 1) << (unsigned(si) * cfg_.ckpts));
     squashAfter(unsigned(si), -1, true, cfg_.replay_drain);
     s.rat = s.crat;
     s.prat = s.cprat;
@@ -2556,7 +2568,7 @@ void Core::control() {
       if (s.st == WarpState::kFree || !((kill_mask_ >> (s.warp % 32)) & 1u)) continue;
       for (unsigned c = 0; c != cfg_.ckpts; ++c) s.ckpt[c].live = false;
       for (unsigned k = 0; k != s.count; ++k) s.rob[(s.head + k) % cfg_.rob_depth].ckpt_live = false;
-      free_mask_ &= ~(((uint64_t(1) << cfg_.ckpts) - 1) << (si * cfg_.ckpts));   // as a demote's (V-46)
+      withdrawFree(((uint64_t(1) << cfg_.ckpts) - 1) << (si * cfg_.ckpts));   // as a demote's (V-46)
       squashAfter(si, -1, true);
       s.rat = s.crat;
       s.prat = s.cprat;
@@ -5074,9 +5086,25 @@ void Core::sendRedirect() {
       oev(OoeEv::kRedirectBusy, redirects_.front().warp, redirects_.size(), 0, redirects_.front().tid);
     }
   }
-  // Every checkpoint freed this cycle, in one message (A-56).
-  out.free_mask = free_mask_;
+  // Every checkpoint freed this cycle, in one message (A-56); under
+  // ckpt_free_lag, the ones freed a cycle earlier (OA 427).
+  if (cfg_.ckpt_free_lag) {
+    // A slot resolving a mispredict now keeps its held frees (each older
+    // than the branch: freeCkptsFrom dropped the younger) a cycle more.
+    uint64_t keep = 0;
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      if (free_pick_ >> si & 1) keep |= ((uint64_t(1) << cfg_.ckpts) - 1) << (si * cfg_.ckpts);
+    if (free_held_ & keep) count("branch.free_kept");
+    out.free_mask = free_held_ & ~keep;
+    free_held_ = (free_held_ & keep) | free_mask_;
+    if (free_mask_) count("branch.free_held");
+    for (unsigned b = 0; b != 64; ++b)
+      if (out.free_mask >> b & 1) roblog_.ckfree.push_back({b / cfg_.ckpts, b % cfg_.ckpts});
+  } else {
+    out.free_mask = free_mask_;
+  }
   free_mask_ = 0;
+  free_pick_ = 0;
 }
 
 // ---- invariants -----------------------------------------------------------------------------------

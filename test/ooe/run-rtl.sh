@@ -342,7 +342,7 @@ fi
 # trace the first few seeds happen to draw stops being caught when the
 # traces move (no-copy, at CCV_P_DECQ 15: first caught at seed 6).
 for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
-         no-branch-lead no-miu no-store drop-killed-fill late-fill shared-ports store-shift no-fault fault-cause fault-any-port fault-port0 no-fault-lead fault-addr no-alloc-lag; do
+         no-branch-lead no-miu no-store drop-killed-fill late-fill shared-ports store-shift no-fault fault-cause fault-any-port fault-port0 no-fault-lead fault-addr no-alloc-lag no-free-lag; do
   if ROB_CONTROL=$c "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else

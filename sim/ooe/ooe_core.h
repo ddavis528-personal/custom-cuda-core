@@ -464,6 +464,18 @@ struct Config {
   /// the cycle after its allocation, and the ROB's run register still
   /// counts the take, so the go's room is unchanged).
   unsigned rob_alloc_lag = 0;
+  /// OA 427 (re:OI-164): ooe_rob_w registers the entries a resolution frees
+  /// and takes each checkpoint's free from them a cycle later, so
+  /// ccv_ooe_fet_ckpt_free leaves a cycle later. 1 holds the free mask a
+  /// cycle; every withdrawal (a redirect's younger branches, a demotion, a
+  /// kill, a due squash) drops held frees too, so each is sent at most once
+  /// and never after the redirect that frees it at FET (V-46, A-58). A slot
+  /// that resolves a mispredict holds its frees one more cycle (ooe_rob_w
+  /// drops the younger ones a cycle after the pick, by its squash).
+  unsigned ckpt_free_lag = 0;
+  /// ckpt_free_lag's control: a redirect or a due squash leaves a younger
+  /// branch's held free in place, so it lands after the checkpoint died (V-46).
+  bool inject_free_held_kept = false;
   /// ROB slice 2's timing (OI-86): a branch's resolution (squash, RAT
   /// restore, redirect, checkpoint free) acts resolve_lag cycles after it
   /// completes, the redirect then leaving from flops (with DA, OA's rev
@@ -1715,6 +1727,7 @@ private:
   void freeGpr(unsigned slot, unsigned p);
   void freePred(unsigned slot, unsigned p);
   void freeCkptsFrom(unsigned slot, unsigned idx);
+  void withdrawFree(uint64_t m);   ///< drop frees not yet sent, held ones included
   void advanceEpoch(unsigned slot);
   void epochNotice(unsigned slot);
   void releaseSlot(unsigned slot);
@@ -2395,6 +2408,8 @@ private:
   // outbound queues on rate-limited channels
   std::deque<Redirect> redirects_;
   uint64_t free_mask_ = 0;
+  uint64_t free_held_ = 0;   ///< ckpt_free_lag: freed a cycle ago, sent this cycle
+  uint64_t free_pick_ = 0;   ///< ckpt_free_lag: slots that resolved a mispredict this cycle
   std::deque<Commit> commits_;
   std::deque<Memop> discards_;       ///< bulk discards, waiting for a slot
   // granted last cycle, in the payload-read stage (payload_stages = 1)
