@@ -3227,7 +3227,11 @@ def macro_selftest(expect):
     k = {x for x, _ in findings(rdeep, none)}
     expect("NGD-8 g_macro.u_sram.rdata" in k, "read data over the stage from a macro's rdata "
            "passed: %s" % findings(rdeep, none))
-    flops = macro_unit("fx_sram_flops", MACRO=0)
+    # The flop array keeps the wide shape (512 bits x 128 words, the same
+    # 64 Kibit): the shape limits are a macro's (MACRO-1), and its index
+    # fanout over 512 columns is what overruns the stage; 128 x 512 as
+    # flops lands at 24.7 NGD, too close to prove anything.
+    flops = macro_unit("fx_sram_flops", MACRO=0, W=512, D=128)
     flops.measure()
     k = {x for x, _ in findings(flops, none)}
     expect(flops.t.nflops >= 512 * 128 + 64 * 128 and "NGD-1" in k,
@@ -3315,7 +3319,10 @@ def macro_pin_selftest(expect, ok, none):
     expect(set(by) == set(want) and all(abs(by[n] - want[n]) < EPS for n in want),
            "sram_fx's macro pin times are not the knobs' and references': %s, want %s"
            % (sorted(by.items()), sorted(want.items())))
-    expect(by["g_macro.u_sram.addr"] - by["g_macro.u_rf.raddr"] == 2.0 and
+    # Each address setup less its own decode (the SRAM is deeper than the
+    # register file, so their decodes differ) leaves its margin: 6 and 4.
+    expect(abs((by["g_macro.u_sram.addr"] - macro_ref("dec", 1, FX_SRAM_D)) -
+               (by["g_macro.u_rf.raddr"] - macro_ref("dec", 1, 128)) - 2.0) < EPS and
            by["g_macro.u_sram.wdata"] == 8.0 and by["g_macro.u_rf.wdata"] == 6.0,
            "the SRAM's and the register file's knobs are not their own (DA, 2026-11-17: "
            "margins 6 and 4, data setups 8 and 6): %s" % sorted(by.items()))
