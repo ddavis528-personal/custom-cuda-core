@@ -72,6 +72,19 @@
         "NS": 4,
         "S": 4
       }
+    },
+    {
+      "name": "ooe_decrx_keep",
+      "module": "ooe_decrx_keep",
+      "files": [
+        "rtl/ooe/ooe_decrx_keep.sv"
+      ],
+      "params": {
+        "S": 4,
+        "E": 6,
+        "NW": 32,
+        "EP": 3
+      }
     }
   ]
 }

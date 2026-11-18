@@ -293,9 +293,11 @@ void Core::uop(const Uop &u) {
   // may have released the slot since, so the epoch is checked first.
   if (u.fetch_epoch != epoch_[u.warp % kWarpIds]) {
     ev("epoch_drop", u.warp, u.fetch_epoch, 0, u.tid);
+    rxlog_.arr.push_back({u.warp, u.fetch_epoch, -1, false});
     return;
   }
   const int si = slotOf(u.warp);
+  rxlog_.arr.push_back({u.warp, u.fetch_epoch, si, si >= 0});
   if (si < 0) { err("uop for warp %u, which holds no tier-1 slot", u.warp); return; }
   // V-36, an input assumption: only a fence (mem_op 0xE) carries an
   // ordering; DEC's output refuses any other (TI's a4fa218).
@@ -435,6 +437,7 @@ void Core::cycle(uint64_t now) {
     }
   }
   pfree_.clock();
+  rxlog_ = RxLog();
   decq_flushed_ = 0;
   decq_freed_prev_ = decq_freed_;
   decq_freed_ = 0;
@@ -2105,7 +2108,7 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
     s.rat = cp.gpr;
     s.prat = cp.pred;
     rlog_.restore.push_back({slot, r.u.ckpt});
-    advanceEpoch(slot);
+    advanceEpoch(slot, false);
     epoch = epoch_[s.warp];
   }
   Redirect rd;
@@ -2285,13 +2288,14 @@ void Core::squashDue() {
     s.rat = q.cp.gpr;
     s.prat = q.cp.pred;
     rlog_.restore.push_back({si, q.ckpt});
-    advanceEpoch(si);
+    advanceEpoch(si, false);
   }
 }
 
-void Core::advanceEpoch(unsigned slot) {
+void Core::advanceEpoch(unsigned slot, bool notice) {
   const unsigned w = slot_[slot].warp;
   epoch_[w] = (epoch_[w] + 1) % cfg_.epochs;
+  (notice ? rxlog_.adn : rxlog_.adv).push_back(slot);
 }
 
 void Core::epochNotice(unsigned slot) {
@@ -2352,6 +2356,7 @@ void Core::releaseSlot(unsigned slot) {
       err("RI-12: slot %u released with %u of warp %u's uops queued, its count %u", slot, q, s.warp, s.decq);
   }
   slot_of_[s.warp % kWarpIds] = -1;
+  rxlog_.rel |= 1u << slot;
   if (slot < squash_due_.size()) squash_due_[slot].on = false;
   rlog_.release |= 1u << slot;
   roblog_.release |= 1u << slot;
@@ -2383,6 +2388,7 @@ void Core::control() {
       s.ctaid = a.ctaid;
       s.warp_in_cta = a.warp_in_cta;
       slot_of_[a.warp % kWarpIds] = int(a.slot);
+      rxlog_.alloc.push_back({a.slot, a.warp});
       // The CTA's barrier count, at launch and at restore-allocate, since a
       // restored warp may land in another slot (OA's response IS-16).
       s.bar_count = a.barrier_count;
@@ -2526,7 +2532,7 @@ void Core::control() {
     rlog_.squash |= 1u << si;
     s.chwidth_hold = s.bar_hold = false;
     s.bar_retired = s.bar_long = s.bar_idle = false;
-    advanceEpoch(unsigned(si));
+    advanceEpoch(unsigned(si), true);
     epochNotice(unsigned(si));
     for (const auto &b : beats) {
       Redirect x;
@@ -2561,7 +2567,7 @@ void Core::control() {
       s.rat = s.crat;
       s.prat = s.cprat;
       rlog_.squash |= 1u << si;
-      advanceEpoch(si);
+      advanceEpoch(si, true);
       epochNotice(si);
       s.st = WarpState::kKilling;
       s.kill_epoch = kill_epoch_;
