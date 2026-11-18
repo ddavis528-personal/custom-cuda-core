@@ -67,7 +67,10 @@ struct Edge {
 };
 Edge pend;
 bool have_pend = false;
-uint32_t late_adv = 0, late_adn = 0;   // adv-late: the advances held for the next drive
+uint32_t late_adv = 0, late_adn = 0;
+// A kept uop held a cycle (OA 429's flop) whose slot flushes as it leaves.
+uint64_t held_flush = 0;
+std::vector<unsigned> prev_kept;   // the last drive's kept uops' slots   // adv-late: the advances held for the next drive
 unsigned long long cycles = 0, arrivals = 0, kept = 0, dropped = 0, advs = 0, doubles = 0, reloc = 0, rels = 0, allocs = 0, flushes = 0,
                    same_drive = 0, cores = 0, mismatches = 0, order_fails = 0;
 
@@ -140,6 +143,9 @@ void drive(const Edge &e, bool lead) {
     fail("a flush before its slot's advance", e.fl & ~(drv_adv | drv_adn | rel), drv_adv | drv_adn, adv | adn);
   }
   flushes += __builtin_popcount(e.fl);
+  for (unsigned s : prev_kept) held_flush += e.fl >> s & 1u;
+  prev_kept.clear();
+  for (const auto &a : e.log.arr) if (a.kept) prev_kept.push_back(unsigned(a.slot));
   dut->adv_cq01h = drv_adv;
   dut->kadv_cq01h = control == "no-adv-bypass" ? 0 : drv_adv;
   dut->adn_cq01h = drv_adn;
@@ -269,6 +275,7 @@ void pre(const Core &c) {
     current = c.serial();
     ++cores;
     late_adv = late_adn = 0;
+    prev_kept.clear();
     resetDut();
     // A null edge ahead of the core's first cycle carries the lead of its
     // launches.
@@ -303,9 +310,9 @@ int main(int argc, char **argv) {
   dut->final();
   std::printf("decrx_tb control=%s seeds=%u cores=%llu cycles=%llu arrivals=%llu kept=%llu dropped=%llu "
               "(no entry, no credit) advances=%llu (doubles=%llu) releases=%llu allocations=%llu (of a warp released beside it=%llu) flushes=%llu same-drive=%llu "
-              "order-fails=%llu mismatches=%llu model_failures=%d\n",
+              "order-fails=%llu held-across-flush=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, arrivals, kept, dropped, advs, doubles, rels,
-              allocs, reloc, flushes, same_drive, order_fails, mismatches, model_fails);
+              allocs, reloc, flushes, same_drive, order_fails, (unsigned long long)held_flush, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();
