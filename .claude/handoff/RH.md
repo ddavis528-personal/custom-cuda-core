@@ -58,10 +58,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-1 DONE and sent 19:41Z 11-17 (all clean): rh-jobs/ma1/ma1.sh at cc5f3f04, worktree dropped, ~/ccv-logs/ma1
   (KEEP: MA's reference for p1 deltas; rh-jobs/ma1/table.py writes s1-cycles.tsv and the table). Ways 8,
   defaults. No per-reason late bins at the stubs; the squeezed cm128 was dropped (AR 373).
-- MA-2 RUNNING from 19:41Z: rh-jobs/ma2/ma2.sh, p1 at dd04f733 (gate-scratch/MA), worktree rh-ma2,
-  ~/ccv-logs/ma2. 6 points STORE {a,af,b} x QDEPTH {0,2}, ARB fixed, WAYS 8, IMPL p1. S1 via
-  sim/dcu/p1-run.sh, then benches in 2 lanes (128-class one at a time). MA sends 2 rotating points
-  later: append them. Report P1 measures + p1_qNN summed, p99.9. Watcher bn5zm1zfe, fallback 20:33Z.
+- MA-2 DONE and sent 02:58Z 11-18 (30/30 clean): rh-jobs/ma2/ma2.sh, p1 at dd04f733 (gate-scratch/MA),
+  worktree rh-ma2 KEPT for MA's 2 rotating points (CCV_P1_ARB=rot; append them with the same build), ~/ccv-logs/ma2.
+  Table via python3 rh-jobs/ma2/table.py [extra points]. q0 +35/42% on cm32/cm128 (repass); q2 at about stub level;
+  b.q2 cm128 5,290,859, but b's wait_max is 70k-229k (fixed arb). A container restart at ~00:30Z killed 3 cm128 runs;
+  they were relaunched and rerun from scratch. After a restart: swapon /home/user/rh-swap.
 - OI OA-424 (CMPL 14 vs 15, TI-474) DONE and sent. The first c15 run was broken
   (stub MIU sent data with cmpl at due; logs in ~/ccv-logs/oi424/c15-v1). Rerun with OI's stub-MIU patch
   (rh-jobs/oi424/oi424b.sh) is clean: S1 +0.05%, cm32p -0.35%, cm128p +0.45% (reexec 8.0k -> 23.8k).
