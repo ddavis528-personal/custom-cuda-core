@@ -2284,7 +2284,7 @@ module ooe_rob_w #(
   logic [S-1:0] te_bad_cq02h, sqm_bad_cq02h;
   always_comb
     for (int s = 0; s < S; s++) begin
-      te_bad_cq02h[s]  = te_q_cq02h[s * D +: D] != rotl(toh_cq02h[s * D +: D], int'(al_r_cq02h[s * LA +: LA]));
+      te_bad_cq02h[s]  = te_q_cq02h[s * D +: D] != toh_eff_cq02h[s * D +: D];
       sqm_bad_cq02h[s] = !rd_s_cq02h[s] && sqm_cq02h[s * D +: D] != '0;
     end
   `CCV_ASSERT(te_is_tail_past_alloc, te_bad_cq02h == '0)
