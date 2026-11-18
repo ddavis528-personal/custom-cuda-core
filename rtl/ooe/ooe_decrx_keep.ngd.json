@@ -3,5 +3,5 @@
   "inner": true,
   "by": "OI",
   "date": "2026-11-18",
-  "why": "OA 428 (re:OI-165): the A-70 arrival compare, combinational. Each arriving uop against ooe_decrx's slot tables (warp, epoch, and the epoch after it for a same-cycle advance). Timed in the module that takes the uop's valid, since no module may carry the boundary flop's warp and epoch to an output."
+  "why": "OA 428 (re:OI-165): the A-70 arrival compare, combinational. Each arriving uop against ooe_decrx's slot tables (warp, epoch, and the epoch after it for a same-cycle advance). Timed in ooe_decrx, which flops what it keeps (OA 429, re:OI-166)."
 }
