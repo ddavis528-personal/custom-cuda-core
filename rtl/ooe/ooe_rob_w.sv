@@ -1910,6 +1910,7 @@ module ooe_rob_w #(
   // a done reads it no earlier than two cycles after the fill (asserted).
   localparam int RW = 1 + 1 + 32 + PCW + PCW + 16;   // ptaken, ret, gmask, pcn, tgt, pchi
   logic [A-1:0]      fp_v_cq02h;                    // the fill register: this slot's branch lane
+  logic [A-1:0]      fp_k_cq02h;                    //   and its fill was killed (applied a cycle later, off fl_m's path)
   logic [A*LK-1:0]   fp_ck_cq02h;
   logic [A*RW-1:0]   fp_rec_cq02h;
   logic              fp_q_cq02h;                    // the register holds a branch
@@ -1922,7 +1923,11 @@ module ooe_rob_w #(
   end
   always_ff @(posedge ooe_core_clk) begin
     if (fbr_en_cq02h) begin
-      fp_v_cq02h    <= fl_m_cq02h & fl_br_cq02h & ~fl_nop_cq02h & ~fk_cq02h;   // a killed fill writes no record
+      // A killed fill writes no record: the kill (fk, the rank's compare) is
+      // its own flop, applied where the record's write is formed from
+      // flops, so fl_m's path to fp_v is the AND alone.
+      fp_v_cq02h    <= fl_m_cq02h & fl_br_cq02h & ~fl_nop_cq02h;
+      fp_k_cq02h    <= fk_cq02h;
       fp_ck_cq02h   <= fl_ckpt_cq02h;
       for (int l = 0; l < A; l++)
         fp_rec_cq02h[l * RW +: RW] <= {fl_ptaken_cq02h[l], fl_ret_cq02h[l], fl_gmask_cq02h[l * 32 +: 32],
@@ -1937,7 +1942,7 @@ module ooe_rob_w #(
     rw_nx_cq02h = '0;
     for (int r = 0; r < S * NK; r++)
       for (int l = 0; l < A; l++)
-        if (fp_v_cq02h[l] && fp_ck_cq02h[l * LK +: LK] == LK'(r % NK)) begin   // S is 1: every record this slot's
+        if (fp_v_cq02h[l] && !fp_k_cq02h[l] && fp_ck_cq02h[l * LK +: LK] == LK'(r % NK)) begin   // S is 1: every record this slot's
           rw_en_cq02h[r] = fp_q_cq02h;
           rw_nx_cq02h[r * RW +: RW] = rw_nx_cq02h[r * RW +: RW] | fp_rec_cq02h[l * RW +: RW];
         end
@@ -2420,7 +2425,7 @@ module ooe_rob_w #(
     bo_early_cq02h = 1'b0;
     for (int l = 0; l < A; l++)
       // bo_br_nx is this slot's done, and fp_v holds only this slot's lanes.
-      if (dn_q_cq02h[BS] && bo_br_nx_cq02h && fp_q_cq02h && fp_v_cq02h[l] &&
+      if (dn_q_cq02h[BS] && bo_br_nx_cq02h && fp_q_cq02h && fp_v_cq02h[l] && !fp_k_cq02h[l] &&
           fp_ck_cq02h[l * LK +: LK] == bo_ck_nx_cq02h)
         bo_early_cq02h = 1'b1;
   end
