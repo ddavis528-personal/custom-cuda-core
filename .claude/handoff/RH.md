@@ -71,10 +71,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI OA-443 (re:OI-176) RUNNING from 09:28Z: rh-jobs/oi443/oi443.sh (resumable), worktree rh-oi443 at 14526054 (gate-scratch/OI),
   A slot_verdict_lag=0, B defaults (1). S1 + cm32priv + cm128priv (cm128 lock after AR). Table: python3 rh-jobs/oi427/table.py A
   A=~/ccv-logs/oi443 B=~/ccv-logs/oi443 --ctr=demote,kill,demote.refused. Ruling: S1 <= +0.5% OA absorbs, else DA. Send S1 early. ~10:45Z.
-- AR 386 QUEUED 06:35Z (AR is a regular sender; MA first): rh-jobs/ar386/ar386.sh (no args, resumable), worktree rh-ar386 at
-  a6c7de10 with L1 HIT_BASE/HIT/WAKE/CMPL +1 (hit 8) + 6 gens + check-skel + cm128 oracle (build/ar-oracle). Waits for MA-8 part 2's
-  .h1 cm128 then the cm128 lock: a.wp0 (WAYPRED=0), b.wp5recent (WAYPRED=5 WPSEL=recent); common STORE=af Q2 fixed STRICT=1 WAYS 8.
-  Send AR cycles/finished/check_failures each + p1_wp_right/wrong for b (AR's earlier (a) 5,634,717). ~09:45Z. Logs ~/ccv-logs/ar386.
+- AR 386 DONE+SENT 09:47Z: (a) wp0 and (b) wp5 recent both 5,634,717 (wp_wrong 0); (a) equals AR's earlier hit-7 figure exactly
+  (flagged; offered a hit-7 rerun). Worktree dropped; logs ~/ccv-logs/ar386.
 - MA-8 part 1 DONE+SENT 07:20Z (a8 -0.09% best but worst wait 117 vs 96; a32/a64 +1%). Part 2 DONE+SENT 08:12Z: HASH=1 +2.90% cm128
   (tail worse), S1 no kernel >1%; transp4 the only pow2-stride kernel, too light. No a16.h1 (outside ±0.2%). MA-8 DONE; worktree dropped;
   logs ~/ccv-logs/ma8/11dc (table1.md, table2.md).
