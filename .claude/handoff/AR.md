@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 388 .637277, AR 389 .638569 (tab rev 392).
-  - **The next AR row inserts after .638569**, labelled AR 390.
+  - Latest rows: AR 389 .638569, AR 390 .639607 (tab rev 393).
+  - **The next AR row inserts after .639607**, labelled AR 391.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 384, OA 441, TI 486, RA 156, RI 91,
-  IS 197, CP 160, OI 377, DA 127, MA 116, Conventions 19.
+- **Bookmarks** (revs read through): AR 384, OA 443, TI 486, RA 156, RI 91,
+  IS 197, CP 160, OI 377, DA 127, MA 118, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -327,6 +327,7 @@ Credit rules (TI-49):
    - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
      TI does the bench configs (they need gen-oracle's LOAD) and the pin
      bump.
+000000. **AR 390 (.639607, rev 393; MA+OA rung):** DI-2: agreed MA's default, a way mispredict (due+2, half-rate bank) takes the bank-conflict loser's path; TI-478 slot not stretched. Watch OA's concurrence. OA 443 said OOE neutral on TI-487; AR 389 (option 3) stands.
 00000. **AR 389 (.638569, rev 392; MA/TI/OA rung): FINAL on TI-487 = option (3)** (MC kill: RAU waits for no ack; model still requires the 7 non-MIU acks). AR 388 (option 1) crossed MA 114/OA 441, which had taken (3), and is withdrawn. RAU bullet restored (RAU tab rev 63, block .35164). DCU tab rev 53 says (3). Do NOT change again without a new fact. Kill races CLOSED (OA 438; TI 663bed37). MA .91357 took AR 386 defaults (5/recent) unless the cm128 run loses >0.2%. PATTERN (3 crossings on 11-19): crossings happen when agents answer within minutes; before ruling on another owner's block, read that owner's tab for a newer row on the same question, and once owners have adopted a ruling of yours, do not withdraw it for an equally correct alternative.
 0000. **AR 386 (.633499, rev 389; MA rung):** DA rev 128 closed MA-23 with (B) + way prediction as params; AR recommended defaults WAYPRED_BITS 5, SEL recent (recent = 0 wrong closed-loop on cm32priv/cm32/cm128priv at 3 and 5 bits). Confirm run: ar-work run2.sh coremark128_af_q2_fixed_h8wp5recent (wtw8); compare to cm128 h8 no-WP 5,634,717; if it disagrees, write a follow-up row. Container restarts every 20-90 min kill long runs: relaunch with setsid nohup ./run2.sh <point> after checking uptime. Remaining lane C index points dropped (not needed for defaults). Offline wpsim MRU is NOT the model's 'recent' (predicted 0.79% on cm128priv k3; model 0).
 000. **AR 384 (.631084, rev 387; TI+OA rung):** withdrew AR 383; adopted OA 436 for both kill races. (a) MIU keeps atomic pass state through A3, completes, releases hold; no OOE change. (b) FET clears a killed slot's checkpoints on OOE's epoch_only notice (A-58/A-60 ordering), V-46 no exception, FET kill_ack follows the notice (FET spec rev 49; asked OA to confirm that last point). Lesson: read the owner's latest row (OA) before ruling across a boundary. OA 437 (OA rev 439) crossed it, accepting AR 383; AR 385 (.632674, rev 388) made OA 436 final for both. Do not re-flip; answer OA only on a technical objection to OA 436. MA rev 105 followed OA 437 (MIU tab rev 141 = AR 383 form); AR asked MA by notice to restore rev 140 (OA 436 form). Check MIU tab returns to it. MA rev 106: MIU tab pending (rev 142) until AR+OA name one form in one row; MA leans OA 437; else Daniel. AR waits for OA's answer to AR 385; if OA prefers 437, accept it for (a) (owners of OOE+MIU agree), then one joint row; (b) FET spec rev 49 to follow whatever is agreed.
