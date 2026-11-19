@@ -15,7 +15,7 @@ module ooe_decrx_tb #(
 ) (
   input  logic             ooe_core_clk,
   input  logic             ooe_rst_r00h,
-  input  logic             ev_l_cq00h,
+  input  logic [S:0]       ev_l_cq00h,
   input  logic [S-1:0]     adv_cq01h,
   input  logic [S-1:0]     adn_cq01h,
   input  logic [S-1:0]     rel_cq01h,

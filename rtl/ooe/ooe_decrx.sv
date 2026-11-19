@@ -70,7 +70,8 @@ module ooe_decrx #(
 ) (
   input  logic             ooe_core_clk,
   input  logic             ooe_rst_r00h,
-  input  logic             ev_l_cq00h,     // an advance, release or allocation comes next cycle
+  input  logic [S:0]       ev_l_cq00h,     // an event comes next cycle, a lead per source (OA 447): slot s's
+                                           // ooe_rob_w (its rd_e: an advance), and ooe_slot (bit S)
   input  logic [S-1:0]     adv_cq01h,      // slot s's warp's epoch advances: a redirect
   input  logic [S-1:0]     adn_cq01h,      // and again: a demotion's or a kill's notice
   input  logic [S-1:0]     rel_cq01h,      // slot s is released
@@ -90,7 +91,7 @@ module ooe_decrx #(
   logic ev_q_cq01h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) ev_q_cq01h <= 1'b0;
-    else ev_q_cq01h <= ev_l_cq00h;
+    else ev_q_cq01h <= |ev_l_cq00h;
   end
   logic tb_en_cq01h;
   assign tb_en_cq01h = ev_q_cq01h;

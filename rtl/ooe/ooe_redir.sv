@@ -4,7 +4,7 @@
 //       every FET-bound channel but the decode-queue credit:
 //       ccv_ooe_fet_redirect, rate 1 (A-6), and ccv_ooe_fet_ckpt_free, the
 //       per-instance frees ORed and flopped (A-56), latency-matched with
-//       the redirect (A-58). OI-179 (proposed): the squash's advance,
+//       the redirect (A-58). OA 447 (re:OI-179): the squash's advance,
 //       flushes and RAT restore take ooe_rob_w's resolution flop directly;
 //       this module only sends to FET. 5a is the mispredict path; the
 //       epoch-only notices, the rewind beats (own_pc, held) and the landed
