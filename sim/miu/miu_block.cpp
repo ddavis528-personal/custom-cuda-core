@@ -919,8 +919,8 @@ private:
     auto a = addr_.find(tag);
     if (a == addr_.end()) return false;
     // A1 is once: a memop held at A2 tries again from its queue entry, and
-    // the bins A1 reaches count at its first try only.
-    const bool again = !tried_.insert(tag).second;
+    // a bin A1 reaches counts once a memop (tried_ marks it counted), on
+    // whichever try first reaches it.
     // A fence not yet complete holds its warp's younger memops (IS-11):
     // they issued after it, in program order per warp (OI-15).
     {
@@ -1048,7 +1048,7 @@ private:
     // window-from-base: a slot form's window taken from base_per_lane.
     if (win_miss_.count(tag)) j.hit = false;
     const bool from_win = slot && k_.brk != "window-from-base";
-    if (slot && !again) k_.hit("slot_form");
+    if (slot && tried_.insert(tag).second) k_.hit("slot_form");
     // O-69's address (IS-19): lane l's byte b of the warp's spill frame is
     // ((local_base + CCV_LANE_CONTEXTS) << 16) + (ctx << 22) + 128 (b / 4)
     // + 4l + b % 4, ctx the warp's hardware context, which MIU forms from
@@ -1126,7 +1126,7 @@ private:
           if (b < 0 || b >= L) pbad |= 1u << l;
           else j.addr[l] = cell(b, j.pxfer ? 0u : l);
         }
-        if (!again) k_.hit("priv_form");
+        if (tried_.insert(tag).second) k_.hit("priv_form");
       } else {
         for (unsigned l = 0; l != kLanes; ++l)
           if ((j.active >> l & 1u) && !local && (j.addr[l] >> 16 >> pk) == (W >> pk)) pbad |= 1u << l;
