@@ -82,7 +82,8 @@ Conventions 20, AR 390, TI 486, OA 442, IS 197, CP 160, OI 374, RA 156, RI 91, M
 - MI-2 (MA rev 119): confirmed MI's model walk with 3 levels (W_VA 64, page shift 16), identity
   translation, cold TLB per kernel. Page-table format is AR's (AR 391); IS owns the fault cause; PTE width and per-level latency are model params (MA rev 120).
 - BANK_AGE DONE (RH part 1; MA rev 124): default stays 16 (a8 -0.09%, worse worst wait; a32/a64 +1%). RH
-  part 2 HASH=1 at a8 running (cm128 ~08:05Z): bar 0.2% over hash off; if within +-0.2%, ask RH for a16.
+  HASH DONE (RH part 2; MA rev 125): stays 0; HASH=1 +2.90% on cm128 (tail piles on few banks).
+  Gap: no heavy pow2-stride DCU kernel in S1 (transp4 too short); hash stays a parameter only.
 - MI-3 (MA rev 123): a held load holds only itself; a pending fence holds its warp's younger memops.
   MIU tab rev 145 (snapshot refreshed). MI-2 closed (AR Common tab rev 8/9: 3 levels 6/13/13, VA[63:48]
   non-zero is F-ADDR).
