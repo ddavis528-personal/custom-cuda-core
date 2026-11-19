@@ -21,7 +21,7 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
 case "$unit" in
   ooe_wake)
     read -r g d < <(python3 test/ooe/wake-params.py)
-    vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/rtl/ooe/ooe_confirm.sv" \
+    vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/rtl/ooe/ooe_confirm.sv" \
       "$PWD/test/ooe/wake_tb.cpp" ;;
   ooe_age_rcu|ooe_age_miu)
     if [ "$unit" = ooe_age_rcu ]; then cls=0 na=$n_rcu; else cls=1 na=$n_miu; fi
@@ -80,8 +80,8 @@ case "$unit" in
     lmiss=$(echo "$d" | tr ',' '\n' | sed -n 's/-DWAKE_LAT_MISS=//p')
     vl ooe_trio "--public-flat-rw ${g//,/ } -GNR=$n_rcu -GA=$width -GS=$slots -GFB=$fb" \
       "-DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss" \
-      "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
-      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
+      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
+      "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
       "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" ;;
   ooe_prodmap)
     ng=$(( $(val CCV_P_PHYS_REGS) * 4 )) np=$(val CCV_P_PRED_REGS)

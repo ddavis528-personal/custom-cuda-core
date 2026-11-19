@@ -5,6 +5,7 @@
       "name": "ooe_wake",
       "module": "ooe_wake",
       "files": [
+        "rtl/generated/ccv_params_pkg.sv",
         "rtl/ooe/ooe_wake.sv",
         "rtl/ooe/ooe_confirm.sv"
       ],

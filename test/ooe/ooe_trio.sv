@@ -31,8 +31,8 @@ module ooe_trio #(
   parameter logic [23:0] PEN  = 24'h03_02_00,
   parameter int NPEN     = 3,
   parameter int LAT_COPY = 7,
-  parameter int LAT_SPEC = 16,
-  parameter int LAT_MISS = 19,
+  parameter int LAT_SPEC = ccv_prov_pkg::CCV_LAT_L1_WAKE,      // OA 444: from the parameters
+  parameter int LAT_MISS = 1 + ccv_prov_pkg::CCV_LAT_L1_CMPL,  // payload stage + CCV_LAT_L1_CMPL
   parameter int CMPL_DLY = 1,
   parameter int PW = 16,     // the payload's bits (RA-39 (c)): the bench's tag
   parameter int LW = 12,     // the lead slice's bits (RA-31, OA's rev 343): another tag
