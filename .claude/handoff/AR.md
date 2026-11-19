@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 385 .632674, AR 386 .633499 (tab rev 389).
-  - **The next AR row inserts after .633499**, labelled AR 387.
+  - Latest rows: AR 386 .633499, AR 387 .635322 (tab rev 390).
+  - **The next AR row inserts after .635322**, labelled AR 388.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,7 +92,7 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 384, OA 439, TI 485, RA 156, RI 91,
+- **Bookmarks** (revs read through): AR 384, OA 441, TI 486, RA 156, RI 91,
   IS 197, CP 160, OI 377, DA 127, MA 110, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
@@ -327,6 +327,7 @@ Credit rules (TI-49):
    - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
      TI does the bench configs (they need gen-oracle's LOAD) and the pin
      bump.
+00000. **AR 387 (.635322, rev 390; TI+MA rung):** TI-487 (machine-check kill never acks: DCU withholds a UE'd store-merge read, retired store never drains). Ruled option (3): RAU waits for no ack on an MC kill, launches nothing until reset (RAU spec rev 61, 'Machine check' bullet after 'Fatal fault'). Withhold stays (containment: merge would re-encode corrupt bytes under fresh ECC). Asked MA to align DCU tab wording. Kill races CLOSED: OA 438 confirmed OA 436 final; TI landed it (663bed37).
 0000. **AR 386 (.633499, rev 389; MA rung):** DA rev 128 closed MA-23 with (B) + way prediction as params; AR recommended defaults WAYPRED_BITS 5, SEL recent (recent = 0 wrong closed-loop on cm32priv/cm32/cm128priv at 3 and 5 bits). Confirm run: ar-work run2.sh coremark128_af_q2_fixed_h8wp5recent (wtw8); compare to cm128 h8 no-WP 5,634,717; if it disagrees, write a follow-up row. Container restarts every 20-90 min kill long runs: relaunch with setsid nohup ./run2.sh <point> after checking uptime. Remaining lane C index points dropped (not needed for defaults). Offline wpsim MRU is NOT the model's 'recent' (predicted 0.79% on cm128priv k3; model 0).
 000. **AR 384 (.631084, rev 387; TI+OA rung):** withdrew AR 383; adopted OA 436 for both kill races. (a) MIU keeps atomic pass state through A3, completes, releases hold; no OOE change. (b) FET clears a killed slot's checkpoints on OOE's epoch_only notice (A-58/A-60 ordering), V-46 no exception, FET kill_ack follows the notice (FET spec rev 49; asked OA to confirm that last point). Lesson: read the owner's latest row (OA) before ruling across a boundary. OA 437 (OA rev 439) crossed it, accepting AR 383; AR 385 (.632674, rev 388) made OA 436 final for both. Do not re-flip; answer OA only on a technical objection to OA 436. MA rev 105 followed OA 437 (MIU tab rev 141 = AR 383 form); AR asked MA by notice to restore rev 140 (OA 436 form). Check MIU tab returns to it. MA rev 106: MIU tab pending (rev 142) until AR+OA name one form in one row; MA leans OA 437; else Daniel. AR waits for OA's answer to AR 385; if OA prefers 437, accept it for (a) (owners of OOE+MIU agree), then one joint row; (b) FET spec rev 49 to follow whatever is agreed.
 00. **AR 382 (.626491, rev 385; MA rung):** agreed MA-24 (store (b), QDEPTH 16, DEFCAP 12) on 4 conditions: refusal signalling (encoding or TI field), same-line order, refused store re-presented first (BANK_AGE bound), coverage bin + control. Also carries the L1 ECC note (speculative+replay). MA accepted all 4 (MA rev 101): MIU-held per-bank credits, hard reservation 16 entries/12 data, DCU credit-return pulse vector = a TI field after MA prices it. Closed for AR. WPSEL results still owed in AR 383.
