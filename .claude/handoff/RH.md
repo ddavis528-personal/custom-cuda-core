@@ -68,6 +68,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
   Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
+- OI OA-447 (re:OI-179 (3)) RUNNING from 11:59Z: rh-jobs/oi447/oi447.sh (resumable), A=99ee28168b (rh-oi447a), B=582fedae14 (rh-oi447),
+  C=582f + redirect_send_lag=2; oracles shared (symlinked). S1 + cm32priv + cm128priv (cm128 lock). Table: python3 rh-jobs/oi427/table.py
+  A A=~/ccv-logs/oi447 B=... C=... --ctr=redirect.send_lagged; report Δ B vs A and C vs B (C vs B 0.5% S1). ~14:00Z.
+  Container restart ~11:58Z 11-19 (nothing was running).
 - OI OA-443 (re:OI-176) from 09:28Z: rh-jobs/oi443/oi443.sh (resumable), worktree rh-oi443 at 14526054 (gate-scratch/OI),
   A slot_verdict_lag=0, B defaults (1). S1 + cm32priv + cm128priv (cm128 lock after AR). Table: python3 rh-jobs/oi427/table.py A
   A=~/ccv-logs/oi443 B=~/ccv-logs/oi443 --ctr=demote,kill,demote.refused. DONE+SENT 10:35Z: B == A cycle-identical on all
