@@ -393,9 +393,15 @@ private:
       // behind a data-side one; the refill names the page (identity).
       Receiver::Msg m = take(c.fet_miu, 0);
       const uint64_t vpn = get(m.payload, c.fet_miu, "virtual_page");
-      fet_tid_.emplace(vpn, m.tid);
-      walk_tid_.emplace(vpn, m.tid);
-      walker_.request(vpn, miu::Walker::kItlb);
+      if (!tlb_on_) {
+        Bits r = msgOf(c.miu_fet);
+        put(r, c.miu_fet, "itlb_refill", vpn);
+        to_fet_.push_back({0, r, m.tid});
+      } else {
+        fet_tid_.emplace(vpn, m.tid);
+        walk_tid_.emplace(vpn, m.tid);
+        walker_.request(vpn, miu::Walker::kItlb);
+      }
     }
     if (has(c.rau_miu, 0)) {
       // A CTA's configuration: of it, F-RO's .const range (TI-26).
@@ -846,6 +852,14 @@ private:
   // at each kernel's start: the block is built per kernel. Translation is
   // the identity and a PTE's value is unused (AR 392), so a walk costs DCU
   // time and L1 capacity but never changes an address.
+  /// CCV_MIU_TLB=cold: the TLB and walker as the MIU tab has them, cold at
+  /// each kernel's start. Default warm: every page held, no walk, FET's
+  /// ITLB answered at once, as the stub: a cold start moves every kernel's
+  /// interleaving, which check-kernel's scenarios pin (open with MA).
+  const bool tlb_on_ = [] {
+    const char *v = std::getenv("CCV_MIU_TLB");
+    return v && std::strcmp(v, "cold") == 0;
+  }();
   miu::Tlb tlb_{miu::Pending::kTlbEntries};
   miu::Walker walker_{std::vector<unsigned>(std::begin(miu::Pending::kWalkBits),
                                             std::end(miu::Pending::kWalkBits)),
@@ -1301,6 +1315,42 @@ private:
     // And while an atomic's pass holds one of its lines (V-72). A store
     // waits at its drain.
     if (!j.store && held(j)) { k_.hit("atomic_hold_wait"); return false; }
+    // A2's TLB (MA-8), under CCV_MIU_TLB=cold: every page the active lanes
+    // touch must be held; a page that is not starts a walk and the memop
+    // waits in its queue entry (a contracted load loses its contract:
+    // start() sends its no-hit). Before any bin counts, so a retry counts
+    // nothing twice. A memop with a faulting lane (F-ADDR, the private
+    // run's) never walks: its fault comes first. No .global address may fall
+    // in the page tables (Common tab rev 9).
+    bool two_page = false;
+    if (tlb_on_ && j.global && j.active && !pbad) {
+      std::set<uint64_t> pages;
+      bool faults = false;
+      for (unsigned l = 0; l != kLanes; ++l)
+        if (j.active >> l & 1u) {
+          const uint64_t va = j.addr[l];
+          if (va >> ccv::kAddrBits) faults = true;
+          if (va >= miu::Pending::kWalkBase && va - miu::Pending::kWalkBase < walker_.span())
+            k_.fail("miu: rob tag %u lane %u's address %llx lies in the page tables", tag, l,
+                    (unsigned long long)va);
+          pages.insert(va >> 16);
+        }
+      bool missing = false;
+      if (!faults)
+        for (uint64_t vpn : pages)
+          if (!tlb_.holds(vpn)) {
+            missing = true;
+            walk_tid_.emplace(vpn, a->second.tid);
+            walker_.request(vpn, miu::Walker::kData);
+          }
+      if (missing) {
+        if (tlb_missed_.insert(tag).second) k_.hit("tlb_miss");
+        return false;
+      }
+      if (!faults) for (uint64_t vpn : pages) tlb_.lookup(vpn);
+      tlb_missed_.erase(tag);
+      two_page = !faults && pages.size() > 1;
+    }
     if (j.active & ~issue)
       k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
               tag, j.active & ~issue);
@@ -1340,36 +1390,6 @@ private:
         if ((j.active >> l & 1u) && (j.pxfer ? 4u : j.bytes) + j.addr[l] > size) sbad |= 1u << l;
     }
     const uint32_t fl = bad ? bad : sbad;
-    // A2's TLB (MA-8): every page the active lanes touch must be held; a
-    // page that is not starts a walk and the memop waits in its queue entry
-    // (a contracted load loses its contract: start() sends its no-hit). No
-    // .global address may fall in the page tables (Common tab rev 9).
-    bool two_page = false;
-    if (!fl && j.global && j.active) {
-      std::set<uint64_t> pages;
-      for (unsigned l = 0; l != kLanes; ++l)
-        if (j.active >> l & 1u) {
-          const uint64_t va = j.addr[l];
-          if (va >= miu::Pending::kWalkBase && va - miu::Pending::kWalkBase < walker_.span())
-            k_.fail("miu: rob tag %u lane %u's address %llx lies in the page tables", tag, l,
-                    (unsigned long long)va);
-          pages.insert(va >> 16);
-        }
-      bool missing = false;
-      for (uint64_t vpn : pages)
-        if (!tlb_.holds(vpn)) {
-          missing = true;
-          walk_tid_.emplace(vpn, a->second.tid);
-          walker_.request(vpn, miu::Walker::kData);
-        }
-      if (missing) {
-        if (tlb_missed_.insert(tag).second) k_.hit("tlb_miss");
-        return false;
-      }
-      for (uint64_t vpn : pages) tlb_.lookup(vpn);
-      tlb_missed_.erase(tag);
-      two_page = pages.size() > 1;
-    }
     const uint32_t ro = fl ? 0u : roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
     order_.erase(std::find(order_.begin(), order_.end(), tag));
     tried_.erase(tag);
