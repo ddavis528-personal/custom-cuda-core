@@ -54,7 +54,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    step 2 (891f5bb0: first pass at H+1 on footprint slots, slot-order bank losers, later
    passes on idle slots, per-warp drains, ld_pass_held), 4f30397b (formation bins once a memop).
    Loads hold on own-warp writes only (MA-11): tried any-warp for transp4, wrong, reverted.
-   Model check-kernel now fails only stub-timing-pinned checks (raised to TI as MI-4):
+   Model check-kernel now fails only stub-timing-pinned checks (MI-4, MI tab rev 5, rung to TI):
    vadd/ldpar ue_recover, privwin priv_form 10 vs 12 (stub counts per try: 50 per try,
    10 per memop), UE track-table-full (ldpar gets 1 clean UE), fet-reset-on-kill (ropediv),
    vadd4 replay drain (model 185 cycles vs 298: no mlc demotion), and transp4 demoted at
@@ -66,11 +66,12 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    Validate each with CCV_MIU_IMPL=model ./tools/check-kernel.sh (~30 min; never rebuild
    the skeleton while it runs: its control builds read the source).
 2. MI-1 rung to TI (MI tab rev 4, response row names 21274699). Await TI's hook.
-3. MI-3: MA rev 123 confirmed the per-load hold; close it in the MI tab.
+3. MI-3 closed (MI tab rev 5, response row). Await TI on MI-1 and MI-4.
 4. Phase 1b with DI's DCU model; agree landing order of bank credits / way mispredict (the
    conflict loser's path, due+2, as a miss) / withheld completion with DI in our tabs.
 5. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
 
 ## Pushed
-- ccr-58815650-0ch1hh at 21274699 (076d0b75 model, 7cfc15ec walker): SCOPED PASS. The remote
+- ccr-58815650-0ch1hh at 6b019dce (steps 1-2 merged from mi-dev): SCOPED PASS. Earlier
+  21274699 (076d0b75 model, 7cfc15ec walker). The remote
   branch was seeded with TI's gated 663bed37 so gate-push had a scoped base.
