@@ -47,6 +47,14 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - MI-2 needs a closing line in the MI tab (adopted) with the next MI tab write.
 
 ## Open work, most urgent first
+0. Restructure in worktree /home/user/mi-wt (branch mi-dev): step 1 (per-warp drain, kAnyWrite,
+   tried_ for A1 bins) and step 2 (first pass at H+1 on footprint slots, slot-order bank
+   losers, later passes on idle slots, ld_pass_held) applied. cm128 bounded no longer
+   starves (oldest memop 18831 vs stub 19148, watchdog 20480). Next: kernel suite triage
+   (ue_recover counts, UE track-table, machine-check controls, replay drain), remove the
+   TEMP CCV_MIU_DEBUG block, commit; then steps 3-6 (store MQ entry to drain + N_drain
+   guard; TLB+walker cold start + span assert; bank credits after MA-25; bins/controls).
+   mi-wt keeps TI's kernel.cpp/blocks.list hook skip-worktree: never commit them.
 1. MI-1 (MI tab rev 2) asks TI for makeMiu (CCV_MIU_IMPL=model), blocks.list lines,
    check-miu-unit, later the port-trace dump. NOT rung yet: ring TI when the sim/miu/
    commit it waits on is pushed and named in the MI tab.
