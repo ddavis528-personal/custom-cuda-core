@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=32 exported=2026-11-14 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 32 on 2026-11-14 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB tab=R_unit_and_crossbar rev=33 exported=2026-11-18 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV RCU Architecture*, tab *R unit and crossbar*, at revision 33 on 2026-11-18 ([live doc](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # R unit and crossbar
 
@@ -31,6 +31,8 @@ The R unit, `rcu_r`, executes one op a cycle from issue slot 8 in three stages: 
 - In each `rcu_bank_slice`: `rsrc`, R0 and R1 raw for its byte section of its 4 lanes, 2 × 4 × 8 = 64 flops (2,048 across the 32 slices, as before), enabled by the slice's R valid lead flop, rv\_cr02h (CG-5). `lead_src_used` is not used: a source the op does not read is read anyway, a small DCGE cost. R0 and R1 have no select flops (the RI-9 binary selects go: 16 ungated flops a slice, 512 in all).
 - Migration is unchanged: it uses R2 and RW only.
 - **The MIU write-through (RA-39, RA rev 70).** The slice compares the row from rrow\_cr02h with its own MW select flops (row, lane mask, section, valid; Register file tab, lead-loaded ports) and, on a match, substitutes per lane and section the MW write data already on its D inputs for the bank's read. That is the row as it will stand after T, so every source width and pos on it is right, and forwarding every MW write that lands in A is a correct superset of the L1-hit case. No compare of pos and no lead copies in `r`: the 180 MIU lead flops, 8 match flops and the \~10,000-cell post-alignment forward of the earlier form are gone.
+
+Under SECDED's late cancel (OA 424, RA 153) that hit data is speculative until its completion L1\_ECC later: on a non-zero syndrome OOE gets no completion, cancels and replays the consumers that read it, and the corrected beat rewrites the row; RCU forwards and writes as before, with no state.
 
 **Rejected: compute in A+2 and write in A+3.** It moves every R write a cycle later. Either `CCV_LAT_RCU` grows from 3 to 4, which slows every predicate and movi chain, or only collectives move, and their writes collide with the next cycle's RCU-only writes on RW. `ret`'s done payload would also move to A+3, colliding on slot 5 with a branch issued a cycle after it unless R holds for a cycle, which OOE's select would have to know.
 

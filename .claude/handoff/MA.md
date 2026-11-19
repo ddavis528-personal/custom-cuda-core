@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 388, TI 485, OA 440, IS 197, CP 160, OI 374, RA 156, RI 91, MA 110, DA 128.
+Conventions 20, AR 390, TI 486, OA 442, IS 197, CP 160, OI 374, RA 156, RI 91, MA 114, DA 128.
 
 ## State, 2026-11-13
 
@@ -75,6 +75,26 @@ Conventions 20, AR 388, TI 485, OA 440, IS 197, CP 160, OI 374, RA 156, RI 91, M
 
 ## Open work, most urgent first
 
+- MI and DI ARE RUNNING (MI session_01QPk2jzH1Gd3DcxK4F4pwCC, DI session_01QPk2jz5TVESyWMKVKjqqEA; their
+  roster commits arrive on their branches). Their tabs: MI c1311541-4219, DI 1ea5d5b3-6e9c (bookmarks MI 3, DI 2).
+- DI-2 SETTLED (AR 390, OA-442; MA rev 121): a way mispredict (due+2 earliest) takes the conflict loser's
+  path; TI-478 slot stays due+1. DCU tab rev 56, impl docs, snapshot updated.
+- MI-2 (MA rev 119): confirmed MI's model walk with 3 levels (W_VA 64, page shift 16), identity
+  translation, cold TLB per kernel. Page-table format is AR's (AR 391); IS owns the fault cause; PTE width and per-level latency are model params (MA rev 120).
+- BANK_AGE DONE (RH part 1; MA rev 124): default stays 16 (a8 -0.09%, worse worst wait; a32/a64 +1%). RH
+  HASH DONE (RH part 2; MA rev 125): stays 0; HASH=1 +2.90% on cm128 (tail piles on few banks).
+  Gap: no heavy pow2-stride DCU kernel in S1 (transp4 too short); hash stays a parameter only.
+- MI-6 DONE (MA rev 126): CCV_MIU_TLB=warm default through M0, cold opt-in with its own gated scenarios
+  (TI's); flip is phase 1a, first after M0 (miu-impl.md). Watch: TI picks up the cold scenarios.
+- MI-3 (MA rev 123): a held load holds only itself; a pending fence holds its warp's younger memops.
+  MIU tab rev 145 (snapshot refreshed). MI-2 closed (AR Common tab rev 8/9: 3 levels 6/13/13, VA[63:48]
+  non-zero is F-ADDR).
+- TI-487 SETTLED as (3) (AR 389 final, OA 441; MA rev 117): DCU withholds the fatal merge read; RAU's
+  machine-check kill waits on no ack from MIU (still requires the seven others). DCU tab rev 55;
+  dcu-impl.md bin added. TI lands it. (MA rev 117 says DCU rev 54; it is 55.) Bookmarks AR 392, MA 117.
+- MA-26 defaults: 5 bits + recent (AR 386, MA rev 112); DCU tab rev 52, impl docs and snapshot
+  updated (c0b8c899). AR's cm128 5/recent confirmation is still running: if it loses >0.2%, revisit.
+  MI/DI handoffs pushed (73928bba). OA added MI 39 / DI 43 to the sweep series.
 - MI/DI START (Daniel 2026-11-19: opens stay parameters; MA-23 ruled (B) + way prediction as a
   parameter, DA rev 128, MA-26 MA rev 109, MA-23 closed MA rev 110). Done: register tabs MI
   (c1311541-4219) and DI (1ea5d5b3-6e9c), each with Opens m8yvbw8rqgz.613 / Responses .675;
