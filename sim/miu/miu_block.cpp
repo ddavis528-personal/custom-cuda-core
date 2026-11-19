@@ -23,6 +23,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <tuple>
 #include <vector>
 
 namespace ccv {
@@ -47,7 +48,10 @@ private:
   /// address ends it with a replay completion (TI-21).
   struct Memop { unsigned slot; Bits msg; uint64_t at; uint64_t tid; bool discarded = false; };
   struct Addr { unsigned slot; Bits msg; uint64_t tid; };
-  struct LineReq { uint64_t line; Line data{}; std::array<bool, kLine> mask{}; uint16_t sub; };
+  struct LineReq {
+    uint64_t line; Line data{}; std::array<bool, kLine> mask{}; uint16_t sub;
+    bool sent = false;               ///< its request has gone to DCU
+  };
   struct Job {
     bool store = false;
     unsigned tag = 0, memop_slot = 0, addr_slot = 0, warp = 0;
@@ -59,6 +63,13 @@ private:
     std::array<uint64_t, kLanes> addr{};
     std::vector<LineReq> lines;
     unsigned next = 0, back = 0;     ///< lines requested / answered
+    /// The first pass (MA-4): each lane group's deduplicated leader line on
+    /// the group's slot of the footprint, (slot, index into lines), sent at
+    /// H+1. Empty for what has none (stores, atomics, SPM, drains).
+    std::vector<std::pair<unsigned, unsigned>> fp;
+    uint64_t h = 0;                  ///< its A1 cycle
+    uint64_t issue_at = 0;           ///< the memop's arrival, for the no-hit's cycle
+    bool first = false;              ///< its first pass is still to go
     std::map<uint64_t, Line> got;
     bool global = false;             ///< .global: the L1 contract applies
     bool hit = true;                 ///< every line hit in DCU
@@ -449,6 +460,7 @@ private:
                       w, k_.orcs[w].ctaid, b->second.first, cs);
           }
         }
+        tried_.erase(tag);   // a new memop under this tag forms again
         memop_[tag] = {s, m.payload, now_, m.tid};
         cmpl_row_[tag] = unsigned(get(m.payload, c.ooe_miu, "done_row"));   // OI-85
         order_.push_back(tag);
@@ -745,6 +757,7 @@ private:
           {mo.slot, replayMsg(tag, unsigned(get(mo.msg, c.ooe_miu, "rs_idx"))), mo.tid});
     k_.hit("replay");
     order_.erase(std::find(order_.begin(), order_.end(), tag));
+    tried_.erase(tag);
     memop_.erase(tag);
     win_miss_.erase(tag);
     lost_.erase(tag);
@@ -828,16 +841,27 @@ private:
   /// then the oldest memop whose address has arrived.
   void start() {
     const Ch &c = ch();
-    if (!committed_.empty()) {
-      if (inFlight(committed_.front(), false)) goto memops;
-      if (held(committed_.front())) { k_.hit("atomic_hold_wait"); goto memops; }
-      Job &cj = committed_.front();
-      // A predicate store drains as a read-merge-write of its word (MIU
-      // spec rev 25, O-63): its line read and held, then the merged word
-      // written. With no lane in its mask, nothing is read or written.
-      if (cj.pxfer) cj.rmw = 1;
-      if (!(cj.pxfer && cj.lines.empty())) launch(cj);
-      committed_.pop_front();
+    // The drain (MA-11): committed stores in commit order per warp, so each
+    // warp's oldest is the one that may go, the oldest of those first. One
+    // waits only while a write to one of its lines is in flight (DCU keeps
+    // a line's requests in order, and st.pred's read-merge-write keeps its
+    // line to itself) or an atomic's pass holds one; never for a read, so
+    // another warp's loads, which never wait (MA-11), cannot starve it.
+    {
+      std::set<unsigned> seen;
+      for (auto it = committed_.begin(); it != committed_.end(); ++it) {
+        if (!seen.insert(it->warp).second) continue;
+        if (inFlight(*it, kAnyWrite)) continue;
+        if (held(*it)) { k_.hit("atomic_hold_wait"); continue; }
+        Job cj = *it;
+        committed_.erase(it);
+        // A predicate store drains as a read-merge-write of its word (MIU
+        // spec rev 25, O-63): its line read and held, then the merged word
+        // written. With no lane in its mask, nothing is read or written.
+        if (cj.pxfer) cj.rmw = 1;
+        if (!(cj.pxfer && cj.lines.empty())) launch(cj);
+        break;
+      }
     }
   memops:
     // An atomic's write (AR-21) goes first, wherever it lies in order_ once
@@ -853,16 +877,30 @@ private:
     // A global load that waits at its A2 has lost the L1 contract for a
     // reason A2 knows, and says so early (MA-4's no-hit; MIU tab, ordering).
     const std::deque<unsigned> ready(order_);
-    for (unsigned t : ready)
-      if (addr_.count(t) && !tryStart(t) && memop_.count(t) && !lost_.count(t) && contracted(t)) {
-        lost_.insert(t);
-        k_.hit("l1_held_lost");
-        const Memop &mo = memop_[t];
-        noHit(mo, t, unsigned(get(mo.msg, c.ooe_miu, "rs_idx")), addr_[t].tid);
+    std::set<unsigned> held_warps;   // warps with an older load held at A2
+    for (unsigned t : ready) {
+      if (!addr_.count(t)) continue;
+      const bool ld = contracted(t);
+      const unsigned w = unsigned(get(memop_[t].msg, c.ooe_miu, "warp_id"));
+      const bool was_lost = lost_.count(t) != 0;
+      if (tryStart(t)) {
+        // MI-3: a younger load passing its warp's held one (MA rev 123).
+        if (ld && held_warps.count(w)) k_.hit("ld_pass_held");
+        continue;
       }
+      if (!memop_.count(t) || !ld) continue;
+      held_warps.insert(w);
+      if (was_lost) continue;
+      lost_.insert(t);
+      k_.hit("l1_held_lost");
+      const Memop &mo = memop_[t];
+      noHit(mo.at, mo.slot, t, unsigned(get(mo.msg, c.ooe_miu, "rs_idx")), addr_[t].tid);
+    }
   }
   /// Memops that waited at A2: started later, never as hits.
   std::set<unsigned> lost_;
+  /// Memops that have been through A1 and wait in the queue.
+  std::set<unsigned> tried_;
   /// Whether memop `t` is a load under the L1-hit contract: .global, not a
   /// store, an atomic or a fence.
   bool contracted(unsigned t) {
@@ -880,6 +918,9 @@ private:
     const Ch &c = ch();
     auto a = addr_.find(tag);
     if (a == addr_.end()) return false;
+    // A1 is once: a memop held at A2 tries again from its queue entry, and
+    // the bins A1 reaches count at its first try only.
+    const bool again = !tried_.insert(tag).second;
     // A fence not yet complete holds its warp's younger memops (IS-11):
     // they issued after it, in program order per warp (OI-15).
     {
@@ -910,8 +951,9 @@ private:
       for (const auto &f : fills_)
         if (f.second.cta == cta && f.second.line == line && f.second.gen == win_[cta].gen)
           return false;                                         // on its way
+      const uint32_t owned = firstPassSlots();
       for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s) {
-        if (!free(c.miu_dcu, s) || !ids_.any()) continue;
+        if ((owned >> s & 1u) || !free(c.miu_dcu, s) || !ids_.any()) continue;
         Bits r = msgOf(c.miu_dcu);
         const unsigned id = ids_.take();
         put(r, c.miu_dcu, "req_id", id);
@@ -949,6 +991,7 @@ private:
       f.tid = a->second.tid;
       to_ooe_.push_back({f.memop_slot, cmpl(f), f.tid});
       order_.erase(std::find(order_.begin(), order_.end(), tag));
+      tried_.erase(tag);
       memop_.erase(tag);
       addr_.erase(a);
       k_.hit("fence");
@@ -1005,7 +1048,7 @@ private:
     // window-from-base: a slot form's window taken from base_per_lane.
     if (win_miss_.count(tag)) j.hit = false;
     const bool from_win = slot && k_.brk != "window-from-base";
-    if (slot) k_.hit("slot_form");
+    if (slot && !again) k_.hit("slot_form");
     // O-69's address (IS-19): lane l's byte b of the warp's spill frame is
     // ((local_base + CCV_LANE_CONTEXTS) << 16) + (ctx << 22) + 128 (b / 4)
     // + 4l + b % 4, ctx the warp's hardware context, which MIU forms from
@@ -1083,7 +1126,7 @@ private:
           if (b < 0 || b >= L) pbad |= 1u << l;
           else j.addr[l] = cell(b, j.pxfer ? 0u : l);
         }
-        k_.hit("priv_form");
+        if (!again) k_.hit("priv_form");
       } else {
         for (unsigned l = 0; l != kLanes; ++l)
           if ((j.active >> l & 1u) && !local && (j.addr[l] >> 16 >> pk) == (W >> pk)) pbad |= 1u << l;
@@ -1129,9 +1172,10 @@ private:
         }
       }
     }
-    // A load waits, and every memop behind it, while a store's write to one
-    // of its lines is in flight: DCU would answer it from the line as it was.
-    if (!j.store && inFlight(j, true)) return false;
+    // A load waits, and every memop behind it, while a write of its warp to
+    // one of its lines is in flight (MA-11: own warp only; DCU keeps a
+    // line's requests in arrival order, so another warp's write needs none).
+    if (!j.store && inFlight(j, kOwnWrite)) return false;
     // It also waits while an OLDER store of its warp to one of its lines
     // has not committed (MIU's disambiguation, MIU spec): this MIU forwards
     // nothing, so the load reads the line once the store's write has
@@ -1186,6 +1230,7 @@ private:
     const uint32_t fl = bad ? bad : sbad;
     const uint32_t ro = fl ? 0u : roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
     order_.erase(std::find(order_.begin(), order_.end(), tag));
+    tried_.erase(tag);
     memop_.erase(tag);
     win_miss_.erase(tag);
     addr_.erase(a);
@@ -1225,12 +1270,14 @@ private:
       to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
       return true;
     }
+    j.issue_at = mo.at;
     if (lost_.erase(tag)) {
       // It waited at A2: the contract went then, with its no-hit (start()).
       j.hit = false;
       j.inelig = true;
     } else if (j.global && j.active) {
       eligibility(j, mo);
+      if (!j.inelig) planFirstPass(j, unsigned(get(mo.msg, c.ooe_miu, "pipes")));
     }
     launch(j);
     return true;
@@ -1278,14 +1325,14 @@ private:
     j.inelig = true;
     j.hit = false;
     k_.hit("l1_inelig");
-    noHit(mo, j.tag, j.rs_idx, j.tid);
+    noHit(mo.at, mo.slot, j.tag, j.rs_idx, j.tid);
   }
   /// The early no-hit (MA-4): payload at I + CCV_LAT_L1_NOHIT on the
   /// memop's slot of ccv_miu_ooe_cmpl_hint. no-nohit: none is sent.
-  void noHit(const Memop &mo, unsigned tag, unsigned rs_idx, uint64_t tid) {
+  void noHit(uint64_t mo_at, unsigned slot, unsigned tag, unsigned rs_idx, uint64_t tid) {
     const Ch &c = ch();
     if (k_.brk == "no-nohit") return;
-    const uint64_t issue = mo.at - crossing(c.ooe_miu);
+    const uint64_t issue = mo_at - crossing(c.ooe_miu);
     const uint64_t at = issue + ccv::prov::kLatL1Nohit - crossing(c.cmpl_hint);
     if (at <= now_) {   // MIU reached it too late to say so in time
       k_.hit("l1_nohit_drop");
@@ -1295,7 +1342,7 @@ private:
     put(m, c.cmpl_hint, "rs_idx", rs_idx);
     put(m, c.cmpl_hint, "rob_tag", tag);
     put(m, c.cmpl_hint, "no_hit", 1);
-    hints_.push_back({at, {mo.slot, m, tid}, true, tag});
+    hints_.push_back({at, {slot, m, tid}, true, tag});
   }
 
   /// A .shared access's passes (TI's rev 230): each active lane, in
@@ -1327,6 +1374,7 @@ private:
       }
     }
     j.next = j.back = unsigned(j.lines.size());
+    for (LineReq &l : j.lines) l.sent = true;
     if (j.passes.size() > 1) k_.hit("spm_conflict");
     k_.peak("spm_passes_peak", j.passes.size());
   }
@@ -1396,6 +1444,7 @@ private:
     j.tag = tag;
     j.tid = ad->second.tid;
     order_.erase(std::find(order_.begin(), order_.end(), tag));
+    tried_.erase(tag);
     memop_.erase(tag);
     addr_.erase(ad);
     j.memop_slot = mo.slot;
@@ -1464,7 +1513,53 @@ private:
 
   void launch(Job j) {
     j.serial = ++serial_;
+    j.h = now_;
+    j.first = !j.fp.empty();
     jobs_.push_back(std::move(j));
+  }
+
+  /// A contracted load's first pass (MA-4): its F pipes split the warp into
+  /// F groups of 32/F lanes, group g's lookup the line of its lowest active
+  /// lane, on the footprint's g-th slot; a leader equal to an earlier
+  /// group's is dropped, its slot idle. Eligibility already holds every
+  /// active lane to its leader's line, so the first pass covers the load.
+  void planFirstPass(Job &j, unsigned pipes) {
+    const unsigned f = pipes ? unsigned(__builtin_popcount(pipes)) : 1u;
+    const unsigned per = kLanes / f;
+    unsigned slot_bits = pipes ? pipes : 1u;
+    for (unsigned g = 0; g != f; ++g) {
+      const unsigned slot = unsigned(__builtin_ctz(slot_bits));
+      slot_bits &= slot_bits - 1;
+      const uint32_t grp = uint32_t((uint64_t(1) << per) - 1) << (g * per);
+      if (!(j.active & grp)) continue;
+      const uint64_t line = keyOf(j, unsigned(__builtin_ctz(j.active & grp)));
+      unsigned idx = 0;
+      while (idx != j.lines.size() && j.lines[idx].line != line) ++idx;
+      if (idx == j.lines.size()) idx = 0;   // one-line: every lane in line 0
+      bool dup = false;
+      for (const auto &e : j.fp) dup = dup || e.second == idx;
+      if (!dup) j.fp.push_back({slot, idx});
+    }
+  }
+
+  /// A contracted load that loses its first pass at A2 (a bank conflict in
+  /// slot order, no credit or req_id on its slot): a miss from here, said
+  /// early with the no-hit.
+  void loseFirstPass(Job &j, const char *why) {
+    k_.hit(why);
+    if (j.inelig) return;
+    j.inelig = true;
+    j.hit = false;
+    noHit(j.issue_at, j.memop_slot, j.tag, j.rs_idx, j.tid);
+  }
+
+  /// The slots this cycle's first passes own: none of them is idle.
+  uint32_t firstPassSlots() const {
+    uint32_t m = 0;
+    for (const Job &j : jobs_)
+      if (j.first && j.h + 1 == now_)
+        for (const auto &e : j.fp) m |= 1u << e.first;
+    return m;
   }
 
   /// Whether a store of load `j`'s warp that has not drained, older than
@@ -1490,13 +1585,13 @@ private:
     return false;
   }
 
-  /// Whether a job in flight, any or only a store's write, touches one of
-  /// `j`'s lines. A load asks only of its own warp's writes (MA-11: other
-  /// warps never wait); a drain asks of every job, as DCU's line order
-  /// would not keep a write behind a read already sent.
-  bool inFlight(const Job &j, bool stores_only) const {
+  /// Whether a job in flight of the kind asked touches one of `j`'s lines:
+  /// any job, a write of `j`'s warp (what a load waits for: MA-11, other
+  /// warps never wait), or any warp's write (what a drain waits for).
+  enum Flight { kAny, kOwnWrite, kAnyWrite };
+  bool inFlight(const Job &j, Flight k) const {
     for (const Job &f : jobs_)
-      if (!stores_only || (f.store && f.warp == j.warp))
+      if (k == kAny || (f.store && (k == kAnyWrite || f.warp == j.warp)))
         for (const LineReq &a : f.lines)
           for (const LineReq &b : j.lines)
             if (a.line == b.line) return true;
@@ -1597,23 +1692,23 @@ private:
   void advance() {
     const Ch &c = ch();
     const unsigned rate = kChans[c.miu_dcu].rate;
-    // Up to one line request per DCU slot per cycle, the oldest job's first,
-    // but a just-started one-line global load first of all (TI-440): its
-    // one lookup can still meet the L1 contract, which an older gather's
-    // remaining lines cannot.
+    // This cycle's first passes (MA-4), each on its own slot, in slot order:
+    // a lookup whose bank an earlier slot's took loses its first pass and
+    // its contract, never the earlier one's (DCU's 8 banks by [9:7]). Then
+    // every slot no first pass used carries later passes, drains and
+    // atomics' passes, the oldest job's first, one lookup a bank a cycle.
     bool want = false;
     for (const Job &j : jobs_) want = want || j.next != j.lines.size();
     if (want && !ids_.any()) k_.hit("dcu_id_wait");
-    std::vector<Job *> order;
-    for (Job &j : jobs_)
-      if (j.global && !j.store && j.lines.size() == 1 && j.next == 0) order.push_back(&j);
-    for (Job &j : jobs_)
-      if (std::find(order.begin(), order.end(), &j) == order.end()) order.push_back(&j);
-    unsigned s = 0;
-    for (Job *jp : order)
-    for (Job &job_ = *jp; s != rate && job_.next != job_.lines.size(); ++s) {
-      if (!can(c.miu_dcu, s) || !ids_.any()) continue;
-      const LineReq &lr = job_.lines[job_.next++];
+    uint32_t used = 0;
+    std::set<unsigned> banks;
+    auto bankOf = [](uint64_t line) { return unsigned((line / kLine) % ccv::kDcuBanks); };
+    auto request = [&](Job &job_, unsigned idx, unsigned s) {
+      LineReq &lr = job_.lines[idx];
+      lr.sent = true;
+      ++job_.next;
+      used |= 1u << s;
+      banks.insert(bankOf(lr.line));
       Bits r = msgOf(c.miu_dcu);
       const unsigned id = ids_.take();
       put(r, c.miu_dcu, "req_id", id);
@@ -1633,6 +1728,32 @@ private:
       outstanding_[id] = {job_.serial, lr.line};
       k_.hit("dcu_lookups");
       if (job_.frame) k_.hit("frame_lookups");
+    };
+    std::vector<std::tuple<unsigned, Job *, unsigned>> firsts;
+    for (Job &j : jobs_)
+      if (j.first && j.h + 1 <= now_) {
+        for (const auto &e : j.fp) firsts.push_back({e.first, &j, e.second});
+        j.first = false;
+      }
+    std::sort(firsts.begin(), firsts.end(),
+              [](const auto &x, const auto &y) { return std::get<0>(x) < std::get<0>(y); });
+    for (auto &[s, jp, idx] : firsts) {
+      Job &j = *jp;
+      if (j.h + 1 != now_) { loseFirstPass(j, "l1_first_late"); continue; }
+      if (banks.count(bankOf(j.lines[idx].line))) { loseFirstPass(j, "l1_bank_loser"); continue; }
+      if (!can(c.miu_dcu, s) || !ids_.any()) { loseFirstPass(j, "l1_first_held"); continue; }
+      request(j, idx, s);
+      k_.hit("l1_first_pass");
+    }
+    for (Job &j : jobs_) {
+      if (j.first || j.next == j.lines.size()) continue;
+      for (unsigned idx = 0; idx != j.lines.size(); ++idx) {
+        if (j.lines[idx].sent || banks.count(bankOf(j.lines[idx].line))) continue;
+        unsigned s = 0;
+        while (s != rate && ((used >> s & 1u) || !can(c.miu_dcu, s))) ++s;
+        if (s == rate || !ids_.any()) break;
+        request(j, idx, s);
+      }
     }
     // Up to one pass per SPM slot per cycle, likewise.
     const unsigned srate = kChans[c.miu_spm].rate;
@@ -1691,6 +1812,7 @@ private:
     k_.hit("pred_merge");
     j.rmw = 2;
     j.next = j.back = 0;
+    for (LineReq &l : j.lines) l.sent = false;
     j.got.clear();
   }
 
