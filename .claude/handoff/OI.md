@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-19 (#63 ooe_slot committed fd194677 on oi-slot in /home/user/wt-slot, OI-176 rung OA rev 380; #58 full gate-push in flight, job log /root/ccv-logs/job-gate-push-20261119-084344-5610.log). Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
+Updated 2026-11-19 (oi-slot in /home/user/wt-slot: ooe_slot fd194677/8501f587/14526054, OA 444 wake defaults 3ab00269, TI-485 kill bin ef015dab; #58 full gate-push in flight, job log /root/ccv-logs/job-gate-push-20261119-084344-5610.log). Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
@@ -33,7 +33,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 380, OA 445, TI 486, AR 386, DA 127, MA 97, RA 156, RI 91, IS 197, CP 160 (TI-482 rung separately: answer in #58's landing row).
+OI 380, OA 446, TI 486, AR 386, DA 128, MA 97, RA 156, RI 91, IS 197, CP 160 (TI-482 rung separately: answer in #58's landing row).
 
 ## Trees and runs in flight
 - #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
@@ -42,11 +42,12 @@ OI 380, OA 445, TI 486, AR 386, DA 127, MA 97, RA 156, RI 91, IS 197, CP 160 (TI
   withdrawn by DA rev 127 / OA 433). Rebuild the push branch from origin (now b91632b4) without the flop form.
 
 ## Open work (most urgent first)
-1. TI-485 kill races, settled OA 436 (final, OA 438): OOE unchanged (OI-173). Follow-ups: model bin
-   for a kill whose cycle withdrew a free + control (skip the kill's withdrawFree must fail);
-   ooe_redir (#65) masks ckf for a slot from its epoch_only notice, with a bench control.
-   OA 439: once TI lands L1_HIT 8 (DA 128): ooe_wake defaults LAT_SPEC 14, LAT_MISS 17 (cg-units
-   LAT_MISS 16 too), re-measure wake (#68). ooe_test.cpp pins at 1778 and 4802 are deliberate.
+1. TI-485 model bin + control DONE (ef015dab; Env::kill frees FET's ckpts at the kill's notice).
+   Left: ooe_redir (#65) masks ckf for a slot from its epoch_only notice, with a bench control.
+   OA 444 (DA 128): ooe_wake/ooe_trio LAT_SPEC/LAT_MISS default from ccv_prov_pkg (3ab00269;
+   NB those params live in ccv_prov_pkg, not ccv_params_pkg - that was the "Yosys" failure).
+   Wake bench, trio, check-cg/ngd ooe_wake+ooe_sched clean, values unchanged 13/16. Left: units at
+   both predictor settings once TI lands the predictor param; answer OA 444 in OI-177.
 2. #58 (DA rev 127 chose the lead form; AR 380 approved lead_fields [warp_id, fetch_epoch];
    OA 433/434): on oi-rxl (rebased off the flop form): model rx_lag bit 64 withdrawn (default 16);
    decrx.ngd.json lead-field inputs arrival 2 (as enq_l), held to 12 NGD (AR 380 (4)) - measure;
