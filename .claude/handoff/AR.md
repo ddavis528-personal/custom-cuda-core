@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 375, OA 428, TI 478, RA 154, RI 90,
-  IS 197, CP 159, OI 366, DA 125, MA 88, Conventions 19.
+- **Bookmarks** (revs read through): AR 384, OA 434, TI 480, RA 154, RI 90,
+  IS 197, CP 160, OI 366, DA 125, MA 96, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -250,6 +250,105 @@ Credit rules (TI-49):
      priv forms (32 runs; RH runs the defaults) plus step (iv)'s stride
      runs. Needs: p1 on a branch (none on any remote yet), its invocation,
      and MA's yes. One cm128 at a time (about 7 GB; disk had 15 GB free).
+   - TI 479: the stride benches are built on ti-stride (also
+     gate-scratch/TI-stride, not yet gated) at test/bench/{transpose,sgemm}-
+     n{256,512}; run one with tools/time-bench.sh <dir>. Cycles (stub FET /
+     perfect): transpose-n256 and n512 both 38649 / 37469 (428 DCU lookups,
+     identical as AR 373 predicted), sgemm-n256 189253 / 187537, sgemm-n512
+     374035 / 368223. sgemm FAILs on a false RCU lane-tid CHECK with SFU ops
+     (RI's fix); its numbers wait on it, and transpose's stand.
+   - MA rev 88 said yes to AR 374's split: AR runs every CCV_P1_STRICT=1
+     point on cm32, cm128, cm32priv and cm128priv plus the stride runs
+     (hash off and on at the winner, both bounds); RH runs the defaults and
+     S1. The model is dd04f733 (gate-scratch/MA), worktree /root/p1wt
+     (gens.sh, then check-skel). Env: CCV_DCU_WAYS=8 CCV_DCU_IMPL=p1
+     CCV_P1_STORE=a|af|b CCV_P1_QDEPTH=0|2 CCV_P1_ARB=fixed|rot
+     CCV_P1_STRICT=1 [CCV_P1_HASH=1]; ccv-skel --kernel <oracle> --cycles
+     2000000000. Read KERNEL (cycles, finished, check_failures), COVER
+     (l1_hit, l1_late, l1_inelig) and the P1 line. The runner is
+     /root/l1sweep/p1runs/run.sh <128|32> [arb], detached in two lanes
+     (cm128 one at a time); its progress is p1runs/progress.log. The
+     oracles are reused from ~/l1sweep/oracle{,p} (same pin). Next: the rot
+     points on the best two, then return one table to MA and book PF rows.
+     **2026-11-18 ~03:00Z: the container was replaced and /root was lost**
+     (/root/l1sweep: logs, scripts, ev traces, oracles, worktrees). Only
+     /home/user survives, so keep everything under /home/user/ar-work. The
+     numbers recovered from the transcript are in
+     ar-work/results/recovered-2026-11-18.md (17 strict, all 88 stride, the
+     p128b cuts, way prediction). The rebuild moved to MA's 258f642b
+     (gate-scratch/MA). It adds CCV_P1_WAYPRED=0|3|4, and 13e584e5 fixes
+     the (b) starvation: (a) and (af) are unchanged, (b) must be rerun.
+     ar-work/rebuild2.sh (log rebuild.log) built wt7, wt8 and wt9:
+     CCV_LAT_L1_HIT_BASE, HIT, WAKE and CMPL shifted +0/+1/+2 in params. HIT
+     is build-time, not an env knob. Oracles are in ar-work/oracle (5.7 GB).
+     MA's c94f0ae6 (the born_ fix: a store merged at arrival left a stale
+     first-arrival time, so b's 63k tail and b's cycles were a measurement
+     bug; a and af never take that path) is built as ar-work/wtb7 (hit 7;
+     LDFIRST default 0). All (b) points run there (hit field "b7"). The (b)
+     logs from 258f642b are in runs/old (invalid). ar-work/lanes.sh holds
+     the lists (A is 128-class; B is 32-class and ends with cm128priv b_q0:
+     check memory before it overlaps a cm128). Its first point is a control:
+     cm32priv af q2 on wtb7 must equal 2,088,721.
+     Tabulate with ar-work/tab.py. Progress is in ar-work/runs/progress.log.
+     sgemm is not on 258f642b (TI's 358ace66 has it); add it later.
+     MA-23: AR 377 (VA = PA; the fold is over VA bits above the page), AR
+     378 (rows .616053, .618036): (B)+(C2) at hit 8, linear about +0.614%
+     cm128 and +2.534% cm32 against (A), S1 flat; 3-bit fold. MA agrees
+     and recommends it to DA. These runs confirm it closed-loop; then
+     answer MA and DA in one row.
+     Old note: tabulate with `python3 /root/l1sweep/p1runs/tab.py` (gone). 13/24 were done at
+     21:11Z, all finished with check 0. (b) is cheapest on cycles everywhere,
+     but cm32 shared (b) q2 has wait max 63,472 (1,100 waits >= 64). A
+     suspected starvation, for MA in the table row: a lookup that re-passes
+     is not in bq_, so arrive()'s (b) fast path (olderSameLine) cannot see
+     it. A stream of stores to its line keeps held_ up, and the age bound
+     covers only bq_ waiters. Confirm with the q0 points.
+   - Stride runs: /root/stridewt is a local-only merge of dd04f733 (p1) and
+     gate-scratch/TI-stride e978faa2 (benches, colwalk at a293afe, the sgemm
+     RCU fix, L1_CMPL 15). Never push it. Prepared by
+     /root/l1sweep/stride-prep.sh (skeleton plus build/bench-oracle). Run
+     hash 0 and 1 at the winner, strict and default, on the same binary.
+     DONE 22:10Z: 88 runs (11 benches; b and af at q2 fixed; h0/h1; s0/s1),
+     all clean. Tabulate with `python3 /root/l1sweep/stride/tab.py`.
+     - transpose and colwalk issue only 428-529 lookups; hash moves their
+       cycles under 0.1%, but colwalk-p128b is +4.0% (s0) / +0.69% (s1).
+     - sgemm late 25% -> 5-6% with hash, yet cycles +0.9/+1.7% at s0.
+     - (b) wait max 2,434-2,484 on sgemm at h0, against af's 54-61.
+     - colwalk p16k/p32k take 2x cycles (131k vs 66k) whatever the hash:
+       not banks; L1 sets?
+   - Strict so far: q0 is out (cm32 shared +30%, 4.5M re-passes), and
+     cm128priv b_q0 wait max 1,019. Best two: b_q2 and af_q2. chain-rot.sh
+     runs them with rot (QS=2 STS="b af" run.sh L rot) after each lane's
+     "LANE L fixed DONE".
+   - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
+     TI does the bench configs (they need gen-oracle's LOAD) and the pin
+     bump.
+0a. **AR 381 (.623833; rev 384; MA rung):** MA-23 closed loop + CORRECTION (fold-3 99.13% assumed most-recent select; way-index select is 6.4% wrong on cm128priv). Asked MA for a select knob (index|recent) + k=5 in wayPredict; AR runs h8wp3/h8wp5 on cm128 + cm128priv once on MA branch. Offline replay: /home/user/ar-work/scripts/wpsim.py (files comma-joined, sets, folds). Results in ar-work/results/recovered-2026-11-18.md. Step (ii) full table (rot points) owed when lane A ends.
+0b. **AR 380 (.622154; rev 383; TI, OI, OA rung):** approved OA 432, lead_fields [warp_id, fetch_epoch] on ccv_dec_ooe_uop; DEC spec line added (pending TI). Owed: watch TI apply it, OI benches + late-lead control, DA ruling on lead form vs +0.95% cycle. Lanes: lane A relaunched 06:33Z after restart (cm128 h8/h9/h8wp3, rot, a); lane B done; cm128priv_b_q0 skipped (memory).
+
+0c. **AR 375 (.609311; TI rung) and AR 376 (.612527; MA rung), rev 376-378.**
+   AR 375 answers TI-480 and TI-481.
+   - p128b's perfect-fetch gap is the OOE window share at 3 or more warps
+     on a latency-bound kernel. No PF.
+   - Stride summary.
+   - AR's arrays (corrected at rev 377): SPM is legal. SYU arrived lanes
+     become 2 rf of 32 x 256 (contexts stay the rows; an exit reads row c at
+     every id). PCA rows become SRAM, 2 parity banks x 8 slices of 137 x 256
+     (238 rows used; padded over the 4 KiB minimum; a row a cycle for
+     MIGRATION_CYCLES 17). PCA divergence state becomes 5 rf of 28 x 212.
+     FET checkpoints stay flops.
+   - OWED: write these into the SYU and PCA spec tabs (specs doc SYU node
+     1f8b4472-68c1, PCA 94b3a0ea-7224). Size FET's I-cache, ITLB and
+     predictor, RAU's grid table and LANE's SFU tables within the limits.
+   AR 376 answers MA-23 (Needs MA, DA).
+   - (B) is PF-33's hit 9 (cm128 +1.03%, cm32 +4.94%).
+   - (C): an XOR-folded partial-tag predictor of 3 or 4 bits is right on
+     99.1-99.4% of cm128priv hits (MRU 18.6%). Cost about 1% of (B)'s.
+     It needs 16,384 predictor flops, and the folded bits either ride the
+     lead or the compare sits in front of the data address.
+   - A question to MA: can the tag read move into the lead cycle (B at +1)?
+   - AR's view (B)+(C); Daniel rules. AR confirms (C) closed-loop when MA's
+     knob lands.
 0b. **MA-20 bank scheduling: answered, AR 372 (.601453; notice to MA).**
    All three go into Phase 1, (1) fairness and (3) the conflict queue priced
    together first. The 729-cycle wait was deferred work behind loads, not

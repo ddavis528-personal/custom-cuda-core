@@ -25,8 +25,8 @@ every message.
 ## 1. The kernel, from the compiler
 
 `c[i] = a[i] + b[i]` for 32 threads. The core pins one compiler snapshot,
-`tools/compiler.lock`: the `release` branch at `a9241c2` (source
-`807056d`). The kernel is that snapshot's own hand-scheduled listing,
+`tools/compiler.lock`: the `release` branch at `a293afe` (source
+`b9ae2c9`). The kernel is that snapshot's own hand-scheduled listing,
 test/elementwise.s in the compiler repository, and `test/kernels/vadd/kernel.cfg`
 gives the launch block and memory it runs against.
 
@@ -514,4 +514,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 9d2a8b03266ae3a6 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 8177745850caeea4 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

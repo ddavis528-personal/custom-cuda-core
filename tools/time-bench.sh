@@ -35,8 +35,15 @@ CCV_ORACLE_DIR=build/bench-oracle tools/gen-oracle.sh "${benches[@]}" || exit 1
 # cleared must be caught. The gate's kernels execute none yet.
 for b in "${benches[@]}"; do
   o=(build/bench-oracle/"$(basename "$b")"/oracle*.jsonl)
-  tools/check-chwidth-converged.py "${o[@]}" || exit 1
-  tools/check-chwidth-converged.py --selftest "${o[@]}" || exit 1
+  chw=$(tools/check-chwidth-converged.py "${o[@]}") || { echo "$chw"; exit 1; }
+  echo "$chw"
+  # Its control needs a chwidth to clear a lane in: a bench that executes
+  # none (transpose, sgemm: AR 373) holds F-197 with nothing to catch.
+  if [[ $chw == "CHW 0 chwidth(s)"* ]]; then
+    echo "CHW selftest: $(basename "$b") executes no chwidth, nothing to control"
+  else
+    tools/check-chwidth-converged.py --selftest "${o[@]}" || exit 1
+  fi
 done
 mkdir -p build/bench
 fets=(stub perfect)
