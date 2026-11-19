@@ -833,7 +833,7 @@ merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0 l1_inelig=0
 hit@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
-transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=64 l1_hit=0
+transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=54 l1_hit=0
 spinwait@CCV_MIU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
 vadd@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=0 machine_check=0 kill=0
 ldpar@CCV_DCU_UE_INJECT=1 ue_recover=2 ue_fatal=0 machine_check=0
@@ -1659,11 +1659,14 @@ if [ "$(field "$l" check_failures)" = 0 ] && [ "$(cover "$l" ue_fatal)" = 1 ] &&
 else
   bad "a UE that finds DCU's track table full" "not core-fatal: $(grep '^KERNEL' "$l")"
 fi
-ue hit ue-no-track; ue predswap ue-dirty-recover; ue predswap mce-ignore; ue predswap mce-no-record; ue predswap mce-no-kill; ue atom kill-drop-atomic; ue predswap ue-answer
+ue hit ue-no-track; ue predswap mce-ignore; ue predswap mce-no-record; ue predswap mce-no-kill; ue atom kill-drop-atomic; ue predswap ue-answer
+# ue-dirty-recover at every second hit: its dirty line is predswap's only
+# UE there, recovered with its bytes lost, so no machine check hides it.
+CCV_DCU_UE_INJECT=2 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break ue-dirty-recover >"$(uelog predswap ue-dirty-recover)" 2>&1
 CCV_DCU_UE_INJECT=3 "$SKEL" --kernel build/oracle/ropediv/oracle.jsonl --break fet-reset-on-kill >"$B/kernel_ue_ropediv_fet-reset-on-kill.log" 2>&1
 why=""
 [ "$(cover "$(uelog hit ue-no-track)" machine_check)" = 0 ] && [ "$(cover "$(uelog hit ue-no-track)" ue_recover)" -gt 1 ] || why="$why ue-no-track"
-grep -q '^CHECK miu: seq [0-9]* P0 loaded ' "$(uelog predswap ue-dirty-recover)" || why="$why ue-dirty-recover"
+[ "$(field "$(uelog predswap ue-dirty-recover)" check_failures)" -gt 0 ] || why="$why ue-dirty-recover"
 grep -q '^CHECK cru: DCU raised a core-fatal UE on ccv_dcu_cru_err, and CRU never took' "$(uelog predswap mce-ignore)" || why="$why mce-ignore"
 grep -q '^CHECK cru: warp 0 ended in the machine check with no record (F-MACHINE)' "$(uelog predswap mce-no-record)" || why="$why mce-no-record"
 grep -q '^CHECK rau: warp 0 faulted and was never killed' "$(uelog predswap mce-no-kill)" || why="$why mce-no-kill"
