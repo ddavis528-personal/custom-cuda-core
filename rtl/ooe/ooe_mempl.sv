@@ -5,7 +5,7 @@
 //       channel from flops; the memop credits stay in ooe_sched. MA-5 (AR
 //       345/347, OA-412): a memop goes on the lowest credited slot of its
 //       footprint. A bulk discard (A-41, A-53, V-40) takes P0 for its
-//       cycle, every field but its tag, warp, CTA slot and tail zero.
+//       cycle, every field but its tag, warp and tail zero.
 //
 // The memop channel has a slot per MIU pipe, P0-P3. An MIU entry granted
 // at select is read out on its home, the lowest pipe of its footprint, as
@@ -16,8 +16,8 @@
 // every memop off P0 (ooe_sched's busy), so no slot takes two.
 //
 // As in ooe_rcupl, two registers: the slot's valid and its source, on the
-// grant register's lead or the discard's (each flopped here, CG-5) and
-// while a discard's valid is up, so it clears; and a cycle later the
+// grant register's lead or the discard's (each flopped here, CG-5),
+// cleared a cycle on behind a cycle with none; and a cycle later the
 // payload, from the late read of the source's entry (its ooe_ent_t, its
 // ooe_mem_t and its RS index) or the discard's fields.
 //
@@ -58,10 +58,10 @@ module ooe_mempl #(
   always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
 
   // The enables, from this module's own flops (CG-5): the grant
-  // register's lead, the discard's, and a discard's valid while it is up;
-  // the payload register's a cycle on.
+  // register's lead and the discard's; the payload register's a cycle on,
+  // which also clears the valids behind a cycle with none.
   logic gen_cq02h, den_cq02h, pay_en_cq03h, dq_cq03h;
-  logic en_cq03h;
+  logic ld_en_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       gen_cq02h    <= 1'b0;
@@ -70,10 +70,10 @@ module ooe_mempl #(
     end else begin
       gen_cq02h    <= gnt_l_cq01h;
       den_cq02h    <= dsc_l_cq01h;
-      pay_en_cq03h <= en_cq03h;
+      pay_en_cq03h <= ld_en_cq02h;
     end
   end
-  assign en_cq03h = gen_cq02h || den_cq02h || dq_cq03h;
+  assign ld_en_cq02h = gen_cq02h || den_cq02h;
 
   // Each home's pipe: the lowest of its footprint the flags allow. sel is
   // slot s's source home, one-hot.
@@ -99,7 +99,7 @@ module ooe_mempl #(
     for (int h = 0; h < NS; h++)
       bad_cq02h = bad_cq02h || (lv_cq02h[h] && (lfp_cq02h[h * NS +: NS] & cok_cq02h) == '0);
   end
-  `CCV_ASSERT(memop_slot, !en_cq03h || !bad_cq02h)
+  `CCV_ASSERT(memop_slot, !ld_en_cq02h || !bad_cq02h)
 
   // The valid register and each slot's source.
   logic [NS*NS-1:0] selq_cq03h;
@@ -107,13 +107,16 @@ module ooe_mempl #(
     if (rst_r01h) begin
       mv_cq03h <= '0;
       dq_cq03h <= 1'b0;
-    end else if (en_cq03h) begin
+    end else if (ld_en_cq02h) begin
       mv_cq03h <= v_cq02h;
       dq_cq03h <= dv_cq02h;
+    end else if (pay_en_cq03h) begin
+      mv_cq03h <= '0;
+      dq_cq03h <= 1'b0;
     end
   end
   always_ff @(posedge ooe_core_clk)
-    if (en_cq03h) selq_cq03h <= sel_cq02h;
+    if (ld_en_cq02h) selq_cq03h <= sel_cq02h;
 
   // The payload register: the source's fields, or the discard's on P0.
   for (genvar s = 0; s < NS; s++) begin : g_slot
@@ -147,6 +150,7 @@ module ooe_mempl #(
     logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]    mct_cq03h;
     logic [ccv_prelim_pkg::CCV_L_W_MEM_OP-1:0]    mop_cq03h;
     logic [OOE_PL_WCW-1:0]                        mcw_cq03h;
+    logic [OOE_PL_WPS-1:0]                        mdq_cq03h;
     logic [ccv_params_pkg::CCV_W_DISP-1:0]        mds_cq03h;
     logic                                         mse_cq03h;
     logic [ccv_params_pkg::CCV_L_W_SPACE-1:0]     msp_cq03h;
@@ -156,19 +160,28 @@ module ooe_mempl #(
     logic                                         mlf_cq03h;
     logic [1:0]                                   mxs_cq03h;
     logic                                         mxg_cq03h;
-    assign {mdr_cq03h, mdp_cq03h, mpp_cq03h, mct_cq03h, mop_cq03h, mcw_cq03h, mds_cq03h, mse_cq03h, msp_cq03h,
+    assign {mdr_cq03h, mdp_cq03h, mpp_cq03h, mct_cq03h, mop_cq03h, mcw_cq03h, mdq_cq03h, mds_cq03h, mse_cq03h, msp_cq03h,
             mor_cq03h, msf_cq03h, mas_cq03h, mlf_cq03h, mxs_cq03h, mxg_cq03h} = m_cq03h;
+    // The pipes: the data register's sections at its width (stub.h's
+    // maskOf: a 32-bit register spans four, 16-bit two, narrower one).
+    logic [OOE_PL_NS-1:0] mpi_cq03h;
+    always_comb begin
+      logic [2*OOE_PL_NS-1:0] span;
+      span = mcw_cq03h == '0 ? (2*OOE_PL_NS)'(4'hF) : mcw_cq03h == OOE_PL_WCW'(1) ? (2*OOE_PL_NS)'(4'h3)
+                                                                            : (2*OOE_PL_NS)'(4'h1);
+      span = span << mdq_cq03h;
+      mpi_cq03h = span[OOE_PL_NS-1:0];
+    end
     // The discard's (P0 only).
     logic [OOE_PL_WT-1:0]                       dtg_cq03h;
     logic [OOE_PL_WW-1:0]                       dwp_cq03h;
-    logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]  dct_cq03h;
     logic [ccv_prov_pkg::CCV_P_W_ROB_IDX-1:0]   dtl_cq03h;
     logic                                       d_cq03h;
     if (s == 0) begin : g_dsc
-      assign {dtg_cq03h, dwp_cq03h, dct_cq03h, dtl_cq03h} = pd_cq03h;
+      assign {dtg_cq03h, dwp_cq03h, dtl_cq03h} = pd_cq03h;
       assign d_cq03h = dq_cq03h;
     end else begin : g_ndsc
-      assign {dtg_cq03h, dwp_cq03h, dct_cq03h, dtl_cq03h} = '0;
+      assign {dtg_cq03h, dwp_cq03h, dtl_cq03h} = '0;
       assign d_cq03h = 1'b0;
     end
 
@@ -203,10 +216,10 @@ module ooe_mempl #(
         pp_cq04h <= d_cq03h ? '0 : mpp_cq03h;
         im_cq04h <= d_cq03h ? '0 : eim_cq03h;
         wp_cq04h <= d_cq03h ? dwp_cq03h : ewp_cq03h;
-        ct_cq04h <= d_cq03h ? dct_cq03h : mct_cq03h;
+        ct_cq04h <= d_cq03h ? '0 : mct_cq03h;
         op_cq04h <= d_cq03h ? '1 : mop_cq03h;
         cw_cq04h <= d_cq03h ? '0 : mcw_cq03h;
-        pi_cq04h <= d_cq03h ? '0 : efp_cq03h;
+        pi_cq04h <= d_cq03h ? '0 : mpi_cq03h;
         ds_cq04h <= d_cq03h ? (ccv_params_pkg::CCV_W_DISP)'(dtl_cq03h) : mds_cq03h;
         se_cq04h <= !d_cq03h && mse_cq03h;
         sp_cq04h <= d_cq03h ? '0 : msp_cq03h;

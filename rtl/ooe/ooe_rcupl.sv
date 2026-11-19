@@ -97,6 +97,7 @@ module ooe_rcupl #(
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) iss_v_cq03h <= '0;
     else if (iss_en_cq02h) iss_v_cq03h <= lv_cq02h | cv_cq02h;
+    else if (pay_en_cq03h) iss_v_cq03h <= '0;   // the cycle after a grant, with none behind it
   end
   always_ff @(posedge ooe_core_clk)
     if (iss_en_cq02h) begin

@@ -69,8 +69,11 @@ typedef struct packed {
 } ooe_ent_t;
 
 // An MIU entry's memop fields beside them (ccv_ooe_miu_memop). The
-  // memop's own destination, predicate and data width: an atomic's differ
-// from its RCU issue's (V-72).
+// memop's own destination, predicate and data width: an atomic's differ
+// from its RCU issue's (V-72). Its pipes are its data register's sections
+// at its width (AR-24 (d)), which are not its footprint where the data is
+// the zero register (the footprint then spans every pipe): so the entry
+// holds the data register's position, and ooe_mempl decodes the pipes.
 typedef struct packed {
   logic [OOE_PL_WR-1:0]                                 phys_dst;
   logic [OOE_PL_WPS-1:0]                                dst_pos;
@@ -78,6 +81,7 @@ typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]     cta_slot;
   logic [ccv_prelim_pkg::CCV_L_W_MEM_OP-1:0]     mem_op;
   logic [OOE_PL_WCW-1:0]                                chwidth;
+  logic [OOE_PL_WPS-1:0]                                data_pos;   // its data register's position: pipes from it at chwidth
   logic [ccv_params_pkg::CCV_W_DISP-1:0]         disp;
   logic                                          scale_en;
   logic [ccv_params_pkg::CCV_L_W_SPACE-1:0]      space;
@@ -89,12 +93,12 @@ typedef struct packed {
   logic                                          xfer_signed;
 } ooe_mem_t;
 
-// A bulk discard's fields (A-41, A-53): the branch's tag, the warp, its
-// CTA slot and the youngest index, every other field zero (V-40).
+// A bulk discard's fields (A-41, A-53): the branch's tag, the warp and the
+// youngest index; every other field is zero (V-40), its CTA slot too, as
+// the skeleton sends it (ooe_block.cpp).
 typedef struct packed {
   logic [OOE_PL_WT-1:0]                             rob_tag;
   logic [OOE_PL_WW-1:0]                             warp_id;
-  logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0] cta_slot;
   logic [ccv_prov_pkg::CCV_P_W_ROB_IDX-1:0]  tail;
 } ooe_dsc_t;
 
@@ -106,10 +110,9 @@ localparam int OOE_PL_EW = OOE_PL_WT + 2 + OOE_PL_WW + OOE_PL_WL + OOE_PL_NS + 3
     OOE_PL_WR + OOE_PL_WPS + 3 * OOE_PL_WPS + OOE_PL_WPP + 1 + OOE_PL_WBG + 3 * OOE_PL_WCW +
     OOE_PL_WCW + OOE_PL_WIM;
 localparam int OOE_PL_MW = OOE_PL_WR + OOE_PL_WPS + OOE_PL_WPP + ccv_prov_pkg::CCV_P_W_CTA_SLOT +
-    ccv_prelim_pkg::CCV_L_W_MEM_OP + OOE_PL_WCW + ccv_params_pkg::CCV_W_DISP + 1 +
+    ccv_prelim_pkg::CCV_L_W_MEM_OP + OOE_PL_WCW + OOE_PL_WPS + ccv_params_pkg::CCV_W_DISP + 1 +
     ccv_params_pkg::CCV_L_W_SPACE + ccv_params_pkg::CCV_L_W_ORDERING + 1 + 4 + 1 + 2 + 1;
-localparam int OOE_PL_DW = OOE_PL_WT + OOE_PL_WW + ccv_prov_pkg::CCV_P_W_CTA_SLOT +
-    ccv_prov_pkg::CCV_P_W_ROB_IDX;
+localparam int OOE_PL_DW = OOE_PL_WT + OOE_PL_WW + ccv_prov_pkg::CCV_P_W_ROB_IDX;
 // Two fields of ooe_ent_t others' slots read: the rob tag (its first)
 // and the footprint.
 localparam int OOE_PL_E_TAG_LSB = OOE_PL_EW - OOE_PL_WT;

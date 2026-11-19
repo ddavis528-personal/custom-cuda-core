@@ -6114,6 +6114,18 @@ int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_c
     testKill();
     testFinalExit();
     testAtomicKill();
+  } else if (scenario == "pl") {
+    // ooe_rcupl's and ooe_mempl's bench (test/ooe/pl_tb.cpp): the random
+    // tests, the atomics' (A1 and A3 memops, A2 on the lanes), MIU credits
+    // run dry (a memop above its home) and the squashes that send bulk
+    // discards (mispredicts, demotes, kills).
+    testRandom(seeds);
+    testAtomic();
+    testAtomicRandom(2, randomConfig);
+    testMemopCredits();
+    testDemote();
+    testKill();
+    testAtomicKill();
   } else if (scenario == "slot") {
     // ooe_slot's bench (test/ooe/slot_tb.cpp): the random tests, and the
     // directed ones that move a slot through every state: demotes (held at
