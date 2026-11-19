@@ -968,6 +968,7 @@ struct Commit {         ///< ccv_ooe_miu_retire
 };
 struct Redirect {       ///< ccv_ooe_fet_redirect
   uint64_t tid = 0;
+  uint64_t at = 0;      ///< the cycle it was queued (same-cycle redirects queue in slot order, OI-179)
   unsigned warp = 0, slot = 0, ckpt = 0, epoch = 0;
   uint32_t taken_mask = 0;
   uint64_t target_pc = 0;

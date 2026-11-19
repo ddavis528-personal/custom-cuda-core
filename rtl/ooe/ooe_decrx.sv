@@ -80,7 +80,9 @@ module ooe_decrx #(
   input  logic [E*LW-1:0]  arv_warp_cq01h, // its warp_id (a lead field)
   input  logic [E*EP-1:0]  arv_ep_cq01h,   // its fetch_epoch (a lead field)
   output logic [E-1:0]     enq_v_cq02h,    // port k's uop was kept: with its payload, at ooe_decq
-  output logic [E*LS-1:0]  enq_slot_cq02h  // its slot
+  output logic [E*LS-1:0]  enq_slot_cq02h, // its slot
+  output logic [S*LW-1:0]  sw_o_cq02h,     // each slot's warp, and the epoch after its warp's:
+  output logic [S*EP-1:0]  sn_o_cq02h      // ooe_redir reads a redirect's in its squash's cycle (OI-179)
 );
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
@@ -207,6 +209,16 @@ module ooe_decrx #(
       sni_cq02h <= sn_nx_cq01h;
       s2i_cq02h <= s2_nx_cq01h;
     end
+  // Their copies out (an output's register drives nothing else, each kept).
+  (* keep *) logic [S*LW-1:0] swo_cq02h;
+  (* keep *) logic [S*EP-1:0] sno_cq02h;
+  always_ff @(posedge ooe_core_clk)
+    if (tb_en_cq01h) begin
+      swo_cq02h <= sw_nx_cq01h;
+      sno_cq02h <= sn_nx_cq01h;
+    end
+  assign sw_o_cq02h = swo_cq02h;
+  assign sn_o_cq02h = sno_cq02h;
 
   // The arrivals, in their lead cycle: each compared (the inner helper), and
   // the verdict flopped on the edge the payload lands, ooe_decq's inputs

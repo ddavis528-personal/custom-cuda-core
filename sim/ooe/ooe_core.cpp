@@ -2148,7 +2148,17 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
   for (auto it = redirects_.begin(); it != redirects_.end();)
     if (it->slot == slot && !it->epoch_only) { it = redirects_.erase(it); count("redirect.superseded"); }
     else ++it;
-  redirects_.push_back(rd);
+  // A cycle's redirects queue in slot order, whatever order their
+  // completions came in (OI-179: ooe_redir's ties go to the lowest slot).
+  rd.at = now_;
+  auto pos = redirects_.end();
+  while (pos != redirects_.begin()) {
+    auto prev = std::prev(pos);
+    if (prev->at != now_ || prev->epoch_only || prev->slot < slot) break;
+    pos = prev;
+  }
+  if (pos != redirects_.end()) count("redirect.slot_order");
+  redirects_.insert(pos, rd);
 }
 
 void Core::releaseEntry(unsigned slot, unsigned idx) {
