@@ -47,7 +47,9 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Open work, most urgent first
 1. Model restructure to the spec's timing, in worktree /home/user/mi-wt on local branch mi-dev
-   (the MI-1 hook applied there uncommitted; scratchpad mi1-hook.patch; never commit it).
+   (the MI-1 hook applied there uncommitted and marked git update-index --skip-worktree on
+   sim/skel/{kernel.cpp,blocks.list}; scratchpad mi1-hook.patch; never commit it; clear the
+   flag with --no-skip-worktree before merging TI's hook).
    Step 1 (f167df9f, WIP): every memop starts at its address (A1/A2 at H), own-warp holds,
    fence holds its warp's younger memops, held load loses contract + no-hit (lost_). MI-3 asks
    MA to confirm. Next steps: (2) first pass at H+1 on the footprint's slots, cross-memop bank
