@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 388, TI 485, OA 440, IS 197, CP 160, OI 374, RA 156, RI 91, MA 110, DA 128.
+Conventions 20, AR 390, TI 486, OA 442, IS 197, CP 160, OI 374, RA 156, RI 91, MA 114, DA 128.
 
 ## State, 2026-11-13
 
@@ -75,6 +75,15 @@ Conventions 20, AR 388, TI 485, OA 440, IS 197, CP 160, OI 374, RA 156, RI 91, M
 
 ## Open work, most urgent first
 
+- TI-487 (a fatal UE on a retired store's dirty-line merge read hangs kill_ack). MA proposed (1),
+  OA 440 agreed; AR 387 prefers (3), the exception in RAU only (no ack wait after MACHINE_CHECK),
+  with DCU's withhold kept. MA rev 114 accepts (3) and asks OA to confirm. ONCE OA CONFIRMS: in the DCU
+  tab change "the kill ends it" to "the machine check ends it, with nothing waiting on the store"; add
+  a bin for a machine-check kill with a store waiting (control: a kill that waits on MIU's ack hangs)
+  to the impl docs; refresh the snapshot. Do not edit before OA agrees.
+- MA-26 defaults: 5 bits + recent (AR 386, MA rev 112); DCU tab rev 52, impl docs and snapshot
+  updated (c0b8c899). AR's cm128 5/recent confirmation is still running: if it loses >0.2%, revisit.
+  MI/DI handoffs pushed (73928bba). OA added MI 39 / DI 43 to the sweep series.
 - MI/DI START (Daniel 2026-11-19: opens stay parameters; MA-23 ruled (B) + way prediction as a
   parameter, DA rev 128, MA-26 MA rev 109, MA-23 closed MA rev 110). Done: register tabs MI
   (c1311541-4219) and DI (1ea5d5b3-6e9c), each with Opens m8yvbw8rqgz.613 / Responses .675;
