@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-19 (#61 pushed b91632b4, OI-175). Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
+Updated 2026-11-19 (#63 ooe_slot committed fd194677 on oi-slot in /home/user/wt-slot, OI-176 rung OA rev 380; #58 full gate-push in flight, job log /root/ccv-logs/job-gate-push-20261119-084344-5610.log). Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
@@ -33,7 +33,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 379, OA 443, TI 486, AR 386, DA 127, MA 97, RA 156, RI 91, IS 197, CP 160 (TI-482 rung separately: answer in #58's landing row).
+OI 380, OA 444, TI 486, AR 386, DA 127, MA 97, RA 156, RI 91, IS 197, CP 160 (TI-482 rung separately: answer in #58's landing row).
 
 ## Trees and runs in flight
 - #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
@@ -55,7 +55,10 @@ OI 379, OA 443, TI 486, AR 386, DA 127, MA 97, RA 156, RI 91, IS 197, CP 160 (TI
    first). Push only after TI's lead_fields schema change lands (merge it: 3eb6e8d0 is on
    ccr-183cc441-doowtf). RH OA 428 E (rx_lag=80) vs A0: S1 +0.946%, cm32priv +3.575%,
    cm128priv +1.118%, stall.decq 0: cite in the landing row.
-3. OA 435 module split (re:OI-171), in order: (1) ooe_slot #63, (2)(3) ooe_rcupl/ooe_mempl #64,
+3. #63 ooe_slot DONE locally (fd194677, oi-slot; bench 25 seeds 0 mismatch, 7 controls; CG pass; NGD f2f 19.2).
+   Push waits on OA's ooe_slot.ngd.json (OI-176: arrival 2 for al_*/dm_*/kill_mask/kill_ep; worst 18.9)
+   and on #58's gate. Rebase/merge oi-slot onto origin after #58 lands.
+   OA 435 module split (re:OI-171), in order: (1) ooe_slot #63, (2)(3) ooe_rcupl/ooe_mempl #64,
    (4) decq credit return + (5a) ooe_redir #65, (6) rob_w slice 5 syu_bar, (5b+7) epoch notices +
    slice 6, (8) rcu_map in ooe_rat, (9) rau_status, (10) cru_fault #66; then ccv_ooe top glue (no
    logic in ccv_ooe). Each lands with a bench vs model, a timing unit, controls, and a row
