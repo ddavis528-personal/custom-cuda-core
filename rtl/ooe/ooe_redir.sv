@@ -38,7 +38,7 @@
 // Local clock gating: the entries' order and valids on any waiting entry
 // or any slot's resolution lead (rd_e, ooe_rob_w's resolution enable a
 // cycle before rd_l, flopped here); each slot's warp and epoch on its own
-// lead's flop; each slot's payload on its own flop of rd_l; the channel's
+// lead's flop (its payload is ooe_rob_w's, held); the channel's
 // payload on its valid; the free mask on its valid. The reset is flopped
 // (RST-1).
 //===----------------------------------------------------------------------===//
@@ -154,57 +154,38 @@ module ooe_redir #(
     end
   end
 
-  // The send: the valid, which slot and whether it arrived in the pick's
-  // cycle (its payload then on ooe_rob_w's outputs, else in its entry).
-  logic [S-1:0] pk_cq04h, pn_cq04h;
+  // The send: the valid and which slot.
+  logic [S-1:0] pk_cq04h;
   logic         sd_en_cq03h;
   assign sd_en_cq03h = ord_en_cq03h || rdr_v_cq04h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       rdr_v_cq04h <= 1'b0;
       pk_cq04h    <= '0;
-      pn_cq04h    <= '0;
     end else if (sd_en_cq03h) begin
       rdr_v_cq04h <= |pick_cq03h;
       pk_cq04h    <= pick_cq03h;
-      pn_cq04h    <= pick_cq03h & nw_cq03h;
     end
   end
 
   // Each slot's warp and epoch, read in rd_l's cycle (before the advance),
-  // on its own resolution lead's flop; and its payload, on its own flop of
-  // rd_l, as it lands.
-  logic [S-1:0]       rq_cq04h;
+  // on its own resolution lead's flop. Its checkpoint, mask, target and stay
+  // need no entry here: ooe_rob_w's payload flops load on the same
+  // resolution and hold until the slot's next, which supersedes the entry.
   logic [S*WW-1:0]    ew_cq04h;
   logic [S*EP-1:0]    ee_cq04h;
-  logic [S*LK-1:0]    ek_cq05h;
-  logic [S*32-1:0]    et_cq05h;
-  logic [S*PCW-1:0]   eg_cq05h;
-  logic [S-1:0]       es_cq05h;
   for (genvar gs = 0; gs < S; gs++) begin : g_ent
-    logic id_en_cq03h, pl_en_cq04h;
+    logic id_en_cq03h;
     assign id_en_cq03h = re_q_cq03h[gs];
-    assign pl_en_cq04h = rq_cq04h[gs];
-    always_ff @(posedge ooe_core_clk) begin
-      if (rst_r01h) rq_cq04h[gs] <= 1'b0;
-      else if (id_en_cq03h || rq_cq04h[gs]) rq_cq04h[gs] <= rd_l_cq03h[gs];
-    end
     always_ff @(posedge ooe_core_clk)
       if (id_en_cq03h) begin   // rd_l a data select: the enable is this module's flop alone (CG-5)
         ew_cq04h[gs * WW +: WW] <= rd_l_cq03h[gs] ? wid_cq03h[gs * WW +: WW] : ew_cq04h[gs * WW +: WW];
         ee_cq04h[gs * EP +: EP] <= rd_l_cq03h[gs] ? ep1_cq03h[gs * EP +: EP] : ee_cq04h[gs * EP +: EP];
       end
-    always_ff @(posedge ooe_core_clk)
-      if (pl_en_cq04h) begin
-        ek_cq05h[gs * LK +: LK]   <= rd_ckpt_cq04h[gs * LK +: LK];
-        et_cq05h[gs * 32 +: 32]   <= rd_tmask_cq04h[gs * 32 +: 32];
-        eg_cq05h[gs * PCW +: PCW] <= rd_tgt_cq04h[gs * PCW +: PCW];
-        es_cq05h[gs]              <= rd_stay_cq04h[gs];
-      end
   end
 
-  // The channel's payload, on its valid: the picked slot's entry, its
-  // payload from ooe_rob_w's outputs when it arrived in the pick's cycle.
+  // The channel's payload, on its valid: the picked slot's entry and
+  // ooe_rob_w's held payload.
   logic              pl_en_cq04h;
   logic [WW-1:0]     ow_nx_cq04h;
   logic [LS-1:0]     ot_nx_cq04h;
@@ -222,10 +203,10 @@ module ooe_redir #(
         ow_nx_cq04h = ow_nx_cq04h | ew_cq04h[s * WW +: WW];
         ot_nx_cq04h = ot_nx_cq04h | LS'(s);
         oe_nx_cq04h = oe_nx_cq04h | ee_cq04h[s * EP +: EP];
-        ok_nx_cq04h = ok_nx_cq04h | (pn_cq04h[s] ? rd_ckpt_cq04h[s * LK +: LK] : ek_cq05h[s * LK +: LK]);
-        om_nx_cq04h = om_nx_cq04h | (pn_cq04h[s] ? rd_tmask_cq04h[s * 32 +: 32] : et_cq05h[s * 32 +: 32]);
-        og_nx_cq04h = og_nx_cq04h | (pn_cq04h[s] ? rd_tgt_cq04h[s * PCW +: PCW] : eg_cq05h[s * PCW +: PCW]);
-        os_nx_cq04h = os_nx_cq04h | (pn_cq04h[s] ? rd_stay_cq04h[s] : es_cq05h[s]);
+        ok_nx_cq04h = ok_nx_cq04h | rd_ckpt_cq04h[s * LK +: LK];
+        om_nx_cq04h = om_nx_cq04h | rd_tmask_cq04h[s * 32 +: 32];
+        og_nx_cq04h = og_nx_cq04h | rd_tgt_cq04h[s * PCW +: PCW];
+        os_nx_cq04h = os_nx_cq04h | rd_stay_cq04h[s];
       end
   end
   always_ff @(posedge ooe_core_clk)
