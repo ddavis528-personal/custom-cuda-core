@@ -561,6 +561,13 @@ struct Config {
   /// that fill arrives and a cycle more, its allocation's cycle + 3, the
   /// ROB dropping the fill by a kill count (the price of OA's rev 291 (4)).
   unsigned kill_free_lag = 0;
+  /// ooe_slot's verdicts (OA 443, re:OI-176): map, drained, kill_ack and a
+  /// kill's release come from flops a cycle after the inputs that decide
+  /// them, so each leaves this many cycles after the model decides it (the
+  /// decision itself, on that cycle's held and landed, is unchanged).
+  unsigned slot_verdict_lag = 1;
+  /// slot_verdict_lag's control: the verdicts leave at once whatever the lag.
+  bool inject_verdict_early = false;
   /// A squash that leaves the slot holding entries (squashed with an op in
   /// flight, this squash's or an earlier one's) registers a run of 0 for
   /// this many cycles from the squash's (the go reads that slot's run as 0):
@@ -2463,6 +2470,9 @@ private:
   // outbound queues on rate-limited channels
   std::deque<Redirect> redirects_;
   uint64_t free_mask_ = 0;
+  struct VerdictHold { uint64_t due; std::vector<RatMap> maps; std::vector<Drained> drained;
+                       std::vector<unsigned> acks; uint32_t release = 0; };
+  std::vector<VerdictHold> verdict_held_;   ///< slot_verdict_lag: decided, not yet out
   uint64_t free_held_ = 0;   ///< ckpt_free_lag: freed a cycle ago, sent this cycle
   uint64_t free_pick_ = 0;   ///< ckpt_free_lag: slots that resolved a mispredict this cycle
   std::deque<Commit> commits_;

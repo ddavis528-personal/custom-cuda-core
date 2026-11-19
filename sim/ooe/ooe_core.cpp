@@ -39,7 +39,7 @@ std::string Config::apply(const std::string &spec) {
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
-      {"held_room_lag", &held_room_lag}, {"kill_free_lag", &kill_free_lag},
+      {"held_room_lag", &held_room_lag}, {"kill_free_lag", &kill_free_lag}, {"slot_verdict_lag", &slot_verdict_lag},
       {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}, {"cmpl_split", &cmpl_split}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
@@ -56,7 +56,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"owed_lag", &owed_lag},
                                      {"names_pool_lag", &names_pool_lag},
                                      {"full_rows", &full_rows},
-                                     {"inject_partial_taken_ok", &inject_partial_taken_ok},
+                                     {"inject_partial_taken_ok", &inject_partial_taken_ok}, {"inject_verdict_early", &inject_verdict_early},
                                      {"inject_no_memop_credit", &inject_no_memop_credit},
                                      {"inject_ignore_nohit", &inject_ignore_nohit}};
   std::stringstream ss(spec);
@@ -2392,6 +2392,17 @@ void Core::releaseSlot(unsigned slot) {
 void Core::control() {
   SlotLog &sl = slotlog_;
   sl.ran = true;
+  // slot_verdict_lag (OA 443): the verdicts decided lag cycles ago go out
+  // now, a kill's release first, as ooe_slot's flops send them.
+  const size_t n_maps = out.maps.size(), n_drained = out.drained.size(), n_acks = out.kill_acks.size();
+  std::vector<VerdictHold> due_now;
+  for (auto it = verdict_held_.begin(); it != verdict_held_.end();)
+    if (it->due <= now_) { due_now.push_back(std::move(*it)); it = verdict_held_.erase(it); } else ++it;
+  for (const VerdictHold &v : due_now)
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      if ((v.release >> si) & 1u) releaseSlot(si);
+  sl.release = 0;   // logged at the decision, not here
+  uint32_t kill_release = 0;
   for (unsigned si = 0; si != slot_.size() && si != 8; ++si) {
     if (atomAtHead(si)) sl.ath |= 1u << si;
     if (slot_[si].exit_retired) sl.xr |= 1u << si;
@@ -2668,7 +2679,10 @@ void Core::control() {
     if (s.st == WarpState::kKilling) {
       killing = true;
       if (!held && landed) {
-        releaseSlot(si);
+        if (cfg_.slot_verdict_lag && !cfg_.inject_verdict_early) {
+          kill_release |= 1u << si;
+          sl.release |= 1u << si;   // stays killing until its release, next cycle's first act
+        } else releaseSlot(si);
       } else {
         kill_done = false;
       }
@@ -2679,6 +2693,7 @@ void Core::control() {
     const Slot &s = slot_[si];
     static const uint8_t code[] = {0, 1, 2, 3, 5, 6};
     sl.st[si] = s.st == WarpState::kDemoting && s.map_sent ? 4 : code[unsigned(s.st)];
+    if ((kill_release >> si) & 1u) sl.st[si] = 0;   // ooe_slot's EMPTY with its rel
     sl.warp[si] = s.warp;
     sl.ctaid[si] = s.ctaid;
     sl.wic[si] = s.warp_in_cta;
@@ -2687,6 +2702,24 @@ void Core::control() {
   }
   for (unsigned w : demotes_held_)
     if (slotOf(w) >= 0) sl.dmh |= 1u << slotOf(w);
+  {
+    VerdictHold v;
+    v.due = now_ + (cfg_.inject_verdict_early ? 0 : cfg_.slot_verdict_lag);
+    v.release = kill_release;
+    v.maps.assign(out.maps.begin() + n_maps, out.maps.end());
+    v.drained.assign(out.drained.begin() + n_drained, out.drained.end());
+    v.acks.assign(out.kill_acks.begin() + n_acks, out.kill_acks.end());
+    out.maps.resize(n_maps);
+    out.drained.resize(n_drained);
+    out.kill_acks.resize(n_acks);
+    if (v.due <= now_) due_now.push_back(std::move(v));
+    else verdict_held_.push_back(std::move(v));
+    for (VerdictHold &d : due_now) {
+      out.maps.insert(out.maps.end(), d.maps.begin(), d.maps.end());
+      out.drained.insert(out.drained.end(), d.drained.begin(), d.drained.end());
+      out.kill_acks.insert(out.kill_acks.end(), d.acks.begin(), d.acks.end());
+    }
+  }
 
   if (released_) {
     for (unsigned si = 0; si != slot_.size(); ++si) {

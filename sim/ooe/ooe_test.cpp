@@ -4737,6 +4737,89 @@ void testRobAllocLag() {
   }
 }
 
+/// slot_verdict_lag (OA 443, re:OI-176): ooe_slot sends map, drained and
+/// kill_ack, and releases a killed slot, from flops a cycle after it decides
+/// them. Directed: a kill naming nothing, a kill of a warp with loads out,
+/// and a demotion, each verdict's cycle at lag 1 exactly one past lag 0's.
+/// The control sends them at once under lag 1, and must match lag 0.
+struct VerdictTimes { uint64_t ack_none = 0, ack_kill = 0, map = 0, drained = 0; bool ok = true; };
+VerdictTimes slotVerdictRun(unsigned lag, bool early) {
+  VerdictTimes v;
+  {
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.slot_verdict_lag = lag;
+    c.inject_verdict_early = early;
+    Env e(c);
+    e.keep_log = true;
+    e.miss_extra = 50;
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 3; ++i) { Op ld; ld.k = kLoad; ld.dst = i; ld.nsrc = 1; p.push_back(ld); }
+    for (unsigned i = 0; i != 8; ++i) { Op a; a.k = kLane; a.dst = 4; a.src[0] = i % 3; a.nsrc = 1; p.push_back(a); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 20; ++k) e.step();
+    const uint64_t t0 = e.t;
+    e.core.kill(1u << 7, 1);   // warp 7: OOE holds none
+    for (unsigned k = 0; k != 10 && !v.ack_none; ++k) {
+      e.step();
+      for (unsigned a : e.log.back().kill_acks) if (a == 1) v.ack_none = e.t - t0;
+    }
+    e.core.kill(1u, 2);
+    for (unsigned k = 0; k != 300 && !v.ack_kill; ++k) {
+      e.step();
+      for (unsigned a : e.log.back().kill_acks) if (a == 2) v.ack_kill = e.t - t0;   // held by the loads, absolute
+    }
+    v.ok = v.ok && e.errors.empty() && e.core.freeGprs() == c.phys_regs;
+  }
+  {
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.slot_verdict_lag = lag;
+    c.inject_verdict_early = early;
+    Env e(c);
+    e.keep_log = true;
+    e.miss_extra = 30;
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 2; ++i) { Op ld; ld.k = kLoad; ld.dst = i; ld.nsrc = 1; p.push_back(ld); }
+    for (unsigned i = 0; i != 12; ++i) { Op a; a.k = kLane; a.dst = 4; a.src[0] = i % 2; a.nsrc = 1; p.push_back(a); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 10; ++k) e.step();
+    const uint64_t t0 = e.t;
+    e.core.demote(0);
+    for (unsigned k = 0; k != 300 && !v.drained; ++k) {
+      e.step();
+      if (!e.log.back().maps.empty() && !v.map) v.map = e.t - t0;
+      for (const Drained &d : e.log.back().drained) if (!d.refused) v.drained = e.t - t0;
+    }
+    v.ok = v.ok && e.errors.empty();
+  }
+  return v;
+}
+
+void testSlotVerdictLag() {
+  g_test = "slot verdict lag";
+  const VerdictTimes a = slotVerdictRun(0, false), b = slotVerdictRun(1, false), x = slotVerdictRun(1, true);
+  EXPECT(a.ok && b.ok, "checker errors at lag 0 (%d) or 1 (%d)", a.ok, b.ok);
+  EXPECT(a.ack_none && a.ack_kill && a.map && a.drained, "lag 0: ack_none %llu ack_kill %llu map %llu drained %llu",
+         (unsigned long long)a.ack_none, (unsigned long long)a.ack_kill, (unsigned long long)a.map,
+         (unsigned long long)a.drained);
+  auto plus1 = [](const VerdictTimes &p, const VerdictTimes &q) {
+    return q.ack_none == p.ack_none + 1 && q.ack_kill == p.ack_kill + 1 && q.map == p.map + 1 &&
+           q.drained == p.drained + 1;
+  };
+  EXPECT(plus1(a, b), "lag 1 vs 0: ack_none %llu/%llu ack_kill %llu/%llu map %llu/%llu drained %llu/%llu",
+         (unsigned long long)b.ack_none, (unsigned long long)a.ack_none, (unsigned long long)b.ack_kill,
+         (unsigned long long)a.ack_kill, (unsigned long long)b.map, (unsigned long long)a.map,
+         (unsigned long long)b.drained, (unsigned long long)a.drained);
+  EXPECT(!plus1(a, x), "control inject_verdict_early: verdicts still a cycle late");
+  std::printf("  slot verdict lag: ack_none %llu->%llu ack_kill %llu->%llu map %llu->%llu drained %llu->%llu; control %s\n",
+              (unsigned long long)a.ack_none, (unsigned long long)b.ack_none, (unsigned long long)a.ack_kill,
+              (unsigned long long)b.ack_kill, (unsigned long long)a.map, (unsigned long long)b.map,
+              (unsigned long long)a.drained, (unsigned long long)b.drained, plus1(a, x) ? "MISSED" : "caught");
+}
+
 /// ckpt_free_lag (OA 427, re:OI-164): ooe_rob_w registers the frees and
 /// sends each checkpoint's a cycle later. Random mispredicting programs run
 /// clean at 0 and 1 (FET's V-46 checker sees no free of a dead checkpoint),
@@ -6022,6 +6105,11 @@ int main(int argc, char **argv) {
     std::printf("ooe-test --atomic: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--slot-verdict-lag") {   // OA 443's test alone
+    testSlotVerdictLag();
+    std::printf("ooe-test --slot-verdict-lag: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--ckpt-free-lag") {   // OA 427's test alone
     testCkptFreeLag();
     std::printf("ooe-test --ckpt-free-lag: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
@@ -6095,6 +6183,7 @@ int main(int argc, char **argv) {
   testResolveLagRetire();
   testRobAllocLag();
   testCkptFreeLag();
+  testSlotVerdictLag();
   testRetHold();
   testIdleR();
   testRClass();
