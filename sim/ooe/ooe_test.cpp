@@ -308,6 +308,10 @@ struct Env {
   unsigned nohit_lat = ccv::prov::kLatL1Nohit;
   std::multimap<uint64_t, unsigned> nohits;  ///< no-hit hints due, by cycle: rob tag
   unsigned miss_extra = 25;          ///< past-L1 latency beyond CCV_LAT_L1_CMPL
+  unsigned miss_add = 0;             ///< a fixed latency added to every miss
+  /// A directed wrong path: when set, FET fetches these after a mispredict
+  /// instead of random junk (so a wrong path can hold a branch).
+  std::vector<Op> junk_prog;
   bool rcu_fast = false;             ///< dones earlier than the bound
   /// Load data past L1 becomes readable this many cycles after the
   /// completion lands (a longer ccv_miu_rcu_data link, in issue-time terms).
@@ -761,8 +765,8 @@ struct Env {
         Op o;
         bool corr = true;
         if (x.wrong) {
-          if (x.junk >= 12) break;
-          o = junkOp();
+          if (x.junk >= (junk_prog.empty() ? 12u : unsigned(junk_prog.size()))) break;
+          o = junk_prog.empty() ? junkOp() : junk_prog[x.junk];
           corr = false;
           ++x.junk;
         } else {
@@ -1044,7 +1048,7 @@ struct Env {
     c.rob_tag = m.rob_tag;
     c.row = m.row;   // MIU echoes the memop's row (OI-85)
     c.rs_idx = m.rs_idx;
-    const uint64_t when = cmplRoom(t + 4 + rnd(miss_extra));
+    const uint64_t when = cmplRoom(t + 4 + miss_add + rnd(miss_extra));
     const std::string who = "tid " + std::to_string(m.tid);
     if (m.mem_op == kMemOpAtomicRead) {
       if (a.hold) errors.push_back("V-69: " + who + " reads again before its pass's write");
@@ -1236,7 +1240,7 @@ struct Env {
     }
     if (o.k == kLoad && cfg.l1_spec) {
       bool hit = rnd(100) >= miss_pct;
-      when = cmplRoom(t + cfg.lat_l1_cmpl + (hit ? 0 : 1 + rnd(miss_extra)));
+      when = cmplRoom(t + cfg.lat_l1_cmpl + (hit ? 0 : 1 + miss_add + rnd(miss_extra)));
       // A hit the channel has no room for at the L1 contract completes
       // later, which is a miss.
       hit = hit && when == t + cfg.lat_l1_cmpl;
@@ -1254,7 +1258,7 @@ struct Env {
         landings.insert({rd, {m.pdst, m.tid}});
       }
     } else {
-      when = cmplRoom(t + 4 + rnd(miss_extra));
+      when = cmplRoom(t + 4 + miss_add + rnd(miss_extra));
       if (o.k == kLoad && gpr(m.pdst)) {
         const uint64_t rd = when + data_after_cmpl;
         gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
@@ -4628,6 +4632,119 @@ void testReconv() {
   }
 }
 
+/// rob_alloc_lag (OA 420 (4), OA 422): ooe_rob_w flops the allocation on
+/// arrival, so a no-op (complete at its allocation) reaches the head window
+/// a cycle later. No-ops at an empty ROB's head wait that cycle under 1 and
+/// never under 0, at retire_lag 0 and 1; all retire everything in order.
+void testRobAllocLag() {
+  for (const unsigned rl : {0u, 1u})
+  for (const unsigned lag : {0u, 1u}) {
+    char name[48];
+    std::snprintf(name, sizeof name, "rob alloc lag %u, retire_lag %u", lag, rl);
+    g_test = name;
+    Config c = baseConfig();
+    c.retire_lag = rl;
+    c.rob_alloc_lag = lag;
+    Env e(c);
+    std::vector<Op> p;
+    for (unsigned k = 0; k != 3; ++k) { Op r; r.k = kReconv; p.push_back(r); }
+    Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    Op r; r.k = kReconv; p.push_back(r);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    const unsigned waits = unsigned(e.core.counters["retire.alloc_lag_wait"]);
+    EXPECT(lag ? waits > 0 : waits == 0, "lag %u: %u no-op waits", lag, waits);
+    EXPECT(e.core.counters["errors"] == 0, "errors");
+    const std::vector<uint64_t> &rt = e.w[0].retired;
+    bool order = rt.size() == p.size();
+    for (size_t k = 0; order && k != rt.size(); ++k) order = rt[k] == k + 1;
+    EXPECT(order, "retired %zu uops, want all %zu in order", rt.size(), p.size());
+  }
+}
+
+/// ckpt_free_lag (OA 427, re:OI-164): ooe_rob_w registers the frees and
+/// sends each checkpoint's a cycle later. Random mispredicting programs run
+/// clean at 0 and 1 (FET's V-46 checker sees no free of a dead checkpoint),
+/// with held frees under 1. The control keeps a younger branch's held free
+/// across an older branch's redirect, and FET must see it land late.
+void testCkptFreeLag() {
+  for (const unsigned lag : {0u, 1u}) {
+    uint64_t held = 0, wd = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed)
+      for (int mode = 0; mode < 8; mode += 3) {
+        g_test = "ckpt free lag " + std::to_string(lag) + " seed " + std::to_string(seed) + " mode " +
+                 std::to_string(mode);
+        Config c = randomConfig(seed, mode);
+        c.ckpt_free_lag = lag;
+        std::mt19937 rng(seed * 4 + unsigned(mode));
+        Env e(c, seed * 7 + unsigned(mode));
+        e.miss_pct = 30;
+        e.data_after_cmpl = c.cmpl_wake_delay;
+        const unsigned warps = 1 + seed % 4;
+        for (unsigned i = 0; i != warps; ++i)
+          e.launch(i * 5, i, randomProgram(rng, 150, true, seed % 2 == 1, (mode & 4) != 0));
+        e.finish();
+        EXPECT(e.errors.empty(), "%zu checker errors, first: %s", e.errors.size(),
+               e.errors.empty() ? "" : e.errors[0].c_str());
+        held += e.core.counters["branch.free_held"];
+        wd += e.core.counters["branch.free_withdrawn"];
+      }
+    EXPECT(lag ? held > 0 : held == 0, "lag %u: %llu cycles with a held free", lag, (unsigned long long)held);
+    std::printf("  ckpt free lag %u: %llu held, %llu withdrawn\n", lag, (unsigned long long)held, (unsigned long long)wd);
+  }
+  // Directed: an older branch waits on a missed load and mispredicts; its
+  // wrong path holds a younger branch, behind a chain of k dependent ops,
+  // that resolves right. The miss latency slides the older a cycle at a
+  // time, so some pair puts the younger's resolution a cycle before the
+  // older's: its free is held at the redirect and must be withdrawn. The
+  // control keeps it, and FET sees a free of a checkpoint the redirect
+  // freed (V-46).
+  unsigned caught = 0;
+  for (const bool control : {false, true}) {
+    uint64_t wd = 0;
+    for (unsigned n = 0; n != 10 * 16; ++n) {
+      const unsigned k = n / 16, add = n % 16;
+      g_test = std::string("ckpt free lag directed") + (control ? " (control)" : "") + " k " + std::to_string(k) +
+               " add " + std::to_string(add);
+      Config c = baseConfig();
+      c.ckpt_free_lag = 1;
+      c.inject_free_held_kept = control;
+      Env e(c);
+      e.miss_pct = 100;
+      e.miss_extra = 1;              // rnd(1) is 0: the miss latency is fixed
+      e.miss_add = add;
+      for (unsigned j = 0; j != k; ++j) {
+        Op a; a.k = kLane; a.dst = 2; a.src[0] = 2; a.nsrc = 1; e.junk_prog.push_back(a);
+      }
+      Op s2; s2.k = kSetp; s2.pdst = 2; s2.src[0] = 2; s2.src[1] = 2; s2.nsrc = 2; e.junk_prog.push_back(s2);
+      Op b2; b2.k = kBranch; b2.pguard = 2; b2.taken = false; b2.pred_taken = false; e.junk_prog.push_back(b2);
+      std::vector<Op> p;
+      Op ld; ld.k = kLoad; ld.dst = 1; ld.src[0] = 0; ld.nsrc = 1; p.push_back(ld);
+      Op s1; s1.k = kSetp; s1.pdst = 1; s1.src[0] = 1; s1.src[1] = 1; s1.nsrc = 2; p.push_back(s1);
+      Op b1; b1.k = kBranch; b1.pguard = 1; b1.taken = true; b1.pred_taken = false; p.push_back(b1);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      if (control) g_quiet = true;
+      const int before = g_fail;
+      e.finish();
+      g_quiet = false;
+      wd += e.core.counters["branch.free_withdrawn"];
+      if (control) {
+        caught += g_fail != before || !e.errors.empty();
+        g_fail = before;
+        continue;
+      }
+      EXPECT(e.errors.empty(), "%zu checker errors, first: %s", e.errors.size(), e.errors.empty() ? "" : e.errors[0].c_str());
+    }
+    if (!control) EXPECT(wd > 0, "no pair held a younger free at an older redirect (none withdrawn)");
+    std::printf("  ckpt free lag directed%s: %llu withdrawn\n", control ? " (control)" : "", (unsigned long long)wd);
+  }
+  g_test = "ckpt free lag (control)";
+  std::printf("  %-24s %s\n", "control free-held-kept", caught ? "caught" : "MISSED");
+  EXPECT(caught, "a held free kept across an older redirect should land on a dead checkpoint");
+}
+
 /// MA-5 (AR 345/347, OA-412): MIU holds a few credits per memop slot and
 /// returns each long after its memop. Select must grant a memop only on a
 /// credited pipe of its footprint, the lowest, so full-width loads spread
@@ -5806,6 +5923,11 @@ int main(int argc, char **argv) {
     std::printf("ooe-test --atomic: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--ckpt-free-lag") {   // OA 427's test alone
+    testCkptFreeLag();
+    std::printf("ooe-test --ckpt-free-lag: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--idle-r") {   // RA-17's test alone
     testIdleR();
     std::printf("ooe-test --idle-r: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
@@ -5872,6 +5994,8 @@ int main(int argc, char **argv) {
   testFinalBeforeProducer();
   testFloorCeiling();
   testResolveLagRetire();
+  testRobAllocLag();
+  testCkptFreeLag();
   testRetHold();
   testIdleR();
   testRClass();
