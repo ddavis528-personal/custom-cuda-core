@@ -338,13 +338,14 @@ Sign-off inputs in: TI 457 rokilllane kernel at 1861cc51; RI-58 M4 margin passes
 at every drain cut 0-15 (cut matters to 8); RI-59: the model drops a killed
 warp's entries at the kill (Core::kill), not by epoch -- check the spec says
 no epoch for the model.
-Sweep 11-17: nothing for RA; merged 183cc441 (62), 3868632d (43), 57eff422 (24), 80102643 (17),
-9eb50716 (7), c22116ce (9), miu-dcu-spec (15). DA 124 x2 (ECC machine-error system; SPM is RF), no RCU effect.
-RA 152 (MACRO-1: RCU has no macro), RA 153 (SECDED corrected 2nd miu_rcu_data write: RCU takes it, no change;
-conditions taken by MA 79 and OA 425), RA 154 (153 closed). WATCH: OA 424/426 moves CCV_LAT_L1_CMPL 14->15;
-when it lands, fix the Partition/Overview "L1_CMPL 14" text (RA rev 145 reapply note) and refresh snapshots.
-TI-461 (no dated tasks) and TI-467 (macro limits) are recorded only in the TI tab; asked Daniel.
-Bookmarks: OA 428, RA 154, RI 90, TI 477, AR 372, DA 124, OI 366, Conventions 19, CP 159, IS 197, MA 82.
+Sweep 11-18: nothing for RA; merged 183cc441 (74), 57eff422 (25), c22116ce (17), 9eb50716 (11),
+80102643 (9), miu-dcu-spec (8), 888218a3 (2). RA 155 (Daniel: no dates; sign-off held for his review),
+RA 156 (macro shape limits: RCU has no macro). CCV_LAT_L1_CMPL 14->15 landed (TI 478, 9682b03a): spec
+updated (Overview 82, Partition 73, Lane 20, R unit 33: CMPL 15 and SECDED late-cancel lines), snapshots refreshed.
+Open elsewhere (not RA): DCU L1_HIT 7/8/9 menu (AR 376-381, MA-23) for DA; a hit of 8/9 moves
+ccv_miu_rcu_data timing, recheck the spec then. Snapshot export route: Docs create (object blob, engine blob,
+payload {from:{object:file,id:<tab id>},format:markdown}) per tab, then Artifact read with the asset id as path.
+Bookmarks: OA 436, RA 156, RI 91, TI 480, AR 384, DA 127, OI 374, Conventions 19, CP 160, IS 197, MA 97.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
