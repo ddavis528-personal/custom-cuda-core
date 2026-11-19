@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 19, AR 384 (AR 381), TI 483 (TI-484 answered), OA 436, IS 197, CP 160, OI 374, RA 156, RI 91, MA 99, DA 127.
+Conventions 19, AR 384 (AR 381), TI 483 (TI-484 answered), OA 436, IS 197, CP 160, OI 374, RA 156, RI 91, MA 100, DA 127.
 
 ## State, 2026-11-13
 
@@ -89,10 +89,15 @@ Conventions 19, AR 384 (AR 381), TI 483 (TI-484 answered), OA 436, IS 197, CP 16
   holds 2.5x the data (peaks per bank / summed: a.q8.rot 18/109, b.q16 43/264; ~1,152 b/entry; extra ~5%
   of L1 data bits, ~14% area-equiv as RF). Settled: LDFIRST model-only (neutral); rot not worth it at
   b.q16; knees (a) 8, (b) 12-16.
-  IN FLIGHT: RH MA-7 at 85045a15, cm128 gap 5: b.q16 DEFCAP 18 / 8 / 24, then a.q16. Decide: if
-  capped (b) at 18 keeps most of 1.19%, (b) wins at equal storage; else area-for-perf trade to Daniel.
-  Alternative to ask AR: MIU-held store data (pointer in the DCU entry). Then MA rows, age-owner text
-  in both spec tabs. Next: BANK_AGE 8/16/32/64; hash with stride.
+  MA-7 DONE -> MA-24 (MA rev 100; AR/TI notified): (b), QDEPTH 16, DEFCAP 12, GAP 5. cm128 gap 5 vs
+  uncapped b.q16 5,165,866: cap 24 +0.14, 18 -0.12, 12 -0.57 (5,136,180), 8/6 -0.26, 4 +0.84; a.q16
+  5,207,327, so cap 12 is -1.37% vs (a) with summed data peak 99 vs 115. Per-bank peak 14 (cap+2: direct
+  winners and fills are ungated) -> RTL sizes 14 or hard reservation. DEFCAP fix af726092 (=11dcec83 on
+  gate-scratch/MA): a store at the cap re-passes, data stays in MIU. Waiting: AR on re-pass contract, TI
+  on params. Spec tabs carry it (DCU rev 47 'Bank queue and deferred stores', MIU rev 138 'Stores DCU
+  turns away').
+  IN FLIGHT: RH at 11dcec83 on the decided config: BANK_AGE 8/16/32/64 (cm128 + 64 kernels), then
+  HASH 0/1 with stride-kernel callout.
 - TI-484 (MA rev 99): miu-impl.md must require MI's MIU to pass the CCV_MIU_ECC_INJECT runs (0767fe1c).
 - MA-23 (DCU data array shape; MA rev 90-97): (A) parallel 8-way, hit 7, 512 tiny SRAMs w/ waivers; (B)
   tag-then-data hit 9; (B)+(C2) way prediction in the payload cycle, hit 8 (mispredict 9), 2nd bank access.
