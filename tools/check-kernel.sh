@@ -133,6 +133,15 @@
 #                                                its step limit
 #   a uop of a stale fetch epoch is dropped   stale-epoch (loop): OOE drops
 #     before rename (A-70)                       it, and it never retires
+#   a clean line's UE is recovered, bounded   ue-no-track (hit): the hard
+#     by DCU's track table; a dirty line's,      error never ends the core;
+#     a hard one or a full table's ends the      ue-dirty-recover, mce-ignore,
+#     core: CRU's MACHINE_CHECK, RAU's kill,     mce-no-record, mce-no-kill
+#     F-MACHINE in every record (AR 370)         (predswap)
+#   an L1 hit with a syndrome sends its data   ecc-no-fix, ecc-cmpl-on-time
+#     on time, no completion then, its            (hit, CCV_MIU_ECC_INJECT=1):
+#     corrected data and completion later         stale reads; no-fix leaves
+#     (RA 153 (5), CCV_LAT_L1_ECC)                two registers wrong
 #   an L1 hit completes at the contract with  early-hit, late-hit-data,
 #     its data, and its dependants read it       no-rcu-bypass (hit, with
 #     (A-46, OI-5)                               l1_spec): V-44 or stale reads
@@ -823,6 +832,17 @@ mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0 l1_inelig=0
+hit@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
+transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=64 l1_hit=0
+spinwait@CCV_MIU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
+vadd@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=0 machine_check=0 kill=0
+ldpar@CCV_DCU_UE_INJECT=1 ue_recover=2 ue_fatal=0 machine_check=0
+hit@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=1 machine_check=1 kill=1
+predswap@CCV_DCU_UE_INJECT=1 ue_recover=0 ue_fatal=1 machine_check=1 kill=1
+atom@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1 kill=1
+cas@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1 kill=1
+atomf@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1 kill=1
+ropediv@CCV_DCU_UE_INJECT=3 ue_fatal=1 machine_check=1 kill=1 fet_kill_reset=1
 late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=3
 plog   merge=3
@@ -1580,6 +1600,74 @@ for brk in late-hit-data no-rcu-bypass; do
     bad "--break $brk" "$n stale reads (want 128): $(grep '^KERNEL' "$B/kernel_$brk.log")"
   fi
 done
+
+# An L1 hit's injected syndrome (RA 153 (5); SECDED on every SRAM, DA
+# rulings TI-474 to TI-476): CCV_MIU_ECC_INJECT=1 takes every hit as a
+# single-bit error, its data on time with a bit flipped and no completion
+# then (the miss indication), the corrected data and the completion later.
+# The bin table above runs hit, transp4 and spinwait so, clean. Its two
+# controls on hit: ecc-no-fix completes on time and never corrects (the
+# loads' dependants read the flipped bit and two registers end wrong);
+# ecc-cmpl-on-time completes on time but corrects later (every dependant
+# reads the flipped bit, yet the corrected beat leaves no register wrong).
+for brk in ecc-no-fix ecc-cmpl-on-time; do
+  CCV_MIU_ECC_INJECT=1 "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break "$brk" >"$B/kernel_$brk.log" 2>&1
+done
+n1=$(grep -c "^CHECK lane 0: seq [0-9]* operand 1 (R[0-9]*) 00000001, oracle 00000000" "$B/kernel_ecc-no-fix.log")
+n2=$(grep -c "^CHECK lane 0: seq [0-9]* operand 1 (R[0-9]*) 00000001, oracle 00000000" "$B/kernel_ecc-cmpl-on-time.log")
+if [ "$n1" -gt 0 ] && [ "$(field "$B/kernel_ecc-no-fix.log" gpr_mismatch)" = 2 ] &&
+   [ "$n2" = 5 ] && [ "$(field "$B/kernel_ecc-cmpl-on-time.log" check_failures)" = 5 ] &&
+   [ "$(field "$B/kernel_ecc-cmpl-on-time.log" gpr_mismatch)" = 0 ]; then
+  say "--break ecc-no-fix, ecc-cmpl-on-time: a syndrome's hit" "PASS ($n1 stale reads and 2 registers; 5 stale reads, registers corrected)"
+else
+  bad "--break ecc-no-fix / ecc-cmpl-on-time" "stale reads $n1 / $n2 (want >0 / 5): $(grep '^KERNEL' "$B/kernel_ecc-no-fix.log" "$B/kernel_ecc-cmpl-on-time.log" | tr '\n' ' ')"
+fi
+
+# The machine check (AR 370; DA rev 124; ISA v1.9 O-86). DCU's stub takes
+# every read hit as an uncorrectable error under CCV_DCU_UE_INJECT=1. The
+# bin table above: vadd and ldpar recover clean lines (invalidated,
+# refetched), the run exact; hit's second UE lands on a location already
+# recorded, a hard error, and predswap's on a dirty line, each core-fatal:
+# ccv_dcu_cru_err's ue, CRU's MACHINE_CHECK, RAU's kill of every context,
+# every live record F-MACHINE, the run held to its retire order. Here: a
+# full table is fatal too (ldpar's two clean UEs, CCV_DCU_UE_TRACK=1), and
+# the controls, each caught: ue-no-track (hit: every UE recovers, so the
+# hard error never ends the core), ue-dirty-recover (predswap: a dirty
+# line refetched loses its bytes), mce-ignore, mce-no-record, mce-no-kill
+# (predswap: CRU takes no machine check, writes no record, or never asks
+# RAU for the kill). atom and cas's machine checks land between an
+# atomic's read and write: MIU keeps the atomic's hold until its write and
+# completes every memop of a killed warp (OA 436, MA rev 104); their control
+# kill-drop-atomic drops the atomic at the kill, as before, and the kill
+# never completes. ropediv's (every third hit) lands with a checkpoint free
+# in flight: FET keeps a killed warp's checkpoints until OOE's epoch notice
+# (OA 436, FET spec rev 49), so the free finds its checkpoint live; its
+# control fet-reset-on-kill resets them at RAU's kill, as before.
+ue() { CCV_DCU_UE_INJECT=1 "$SKEL" --kernel "build/oracle/$1/oracle.jsonl" ${2:+--break "$2"} >"$B/kernel_ue_$1_${2:-none}.log" 2>&1; }
+uelog() { echo "$B/kernel_ue_$1_${2:-none}.log"; }
+CCV_DCU_UE_TRACK=1 ue ldpar
+l=$(uelog ldpar)
+if [ "$(field "$l" check_failures)" = 0 ] && [ "$(cover "$l" ue_fatal)" = 1 ] &&
+   [ "$(cover "$l" machine_check)" = 1 ] && grep -q '^UE dcu: core-fatal .*(table full)' "$l"; then
+  say "a UE that finds DCU's track table full is core-fatal" "PASS (ldpar, CCV_DCU_UE_TRACK=1)"
+else
+  bad "a UE that finds DCU's track table full" "not core-fatal: $(grep '^KERNEL' "$l")"
+fi
+ue hit ue-no-track; ue predswap ue-dirty-recover; ue predswap mce-ignore; ue predswap mce-no-record; ue predswap mce-no-kill; ue atom kill-drop-atomic
+CCV_DCU_UE_INJECT=3 "$SKEL" --kernel build/oracle/ropediv/oracle.jsonl --break fet-reset-on-kill >"$B/kernel_ue_ropediv_fet-reset-on-kill.log" 2>&1
+why=""
+[ "$(cover "$(uelog hit ue-no-track)" machine_check)" = 0 ] && [ "$(cover "$(uelog hit ue-no-track)" ue_recover)" -gt 1 ] || why="$why ue-no-track"
+grep -q '^CHECK miu: seq [0-9]* P0 loaded ' "$(uelog predswap ue-dirty-recover)" || why="$why ue-dirty-recover"
+grep -q '^CHECK cru: DCU raised a core-fatal UE on ccv_dcu_cru_err, and CRU never took' "$(uelog predswap mce-ignore)" || why="$why mce-ignore"
+grep -q '^CHECK cru: warp 0 ended in the machine check with no record (F-MACHINE)' "$(uelog predswap mce-no-record)" || why="$why mce-no-record"
+grep -q '^CHECK rau: warp 0 faulted and was never killed' "$(uelog predswap mce-no-kill)" || why="$why mce-no-kill"
+grep -q "^CHECK miu: rob tag [0-9]*'s atomic write has no read before it" "$(uelog atom kill-drop-atomic)" || why="$why kill-drop-atomic"
+grep -q '^CHECK fet: a free for tier-1 slot [0-9]* checkpoint [0-9]*, which is not live' "$(uelog ropediv fet-reset-on-kill)" || why="$why fet-reset-on-kill"
+if [ -z "$why" ]; then
+  say "--break ue-no-track, ue-dirty-recover, mce-*, kill-drop-atomic: the machine check" "PASS (7 controls caught)"
+else
+  bad "machine-check controls" "not caught:$why"
+fi
 
 # MIU echoes each memop's RS entry on its completion (OA-23),
 # so OOE wakes the entry the completion names with no lookup. An echo of the

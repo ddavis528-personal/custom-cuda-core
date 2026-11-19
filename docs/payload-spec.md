@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 55 channels
+# Payload specification — all 56 channels
 
-Every payload field has a width, so **every one of the 55
+Every payload field has a width, so **every one of the 56
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 15 | 40 |
+| All decided | 16 | 42 |
 | ⚠️ Some provisional | 27 | 147 |
 | ⛔ Some preliminary | 13 | 152 |
-| **Total** | **55** | **339** |
+| **Total** | **56** | **341** |
 
 ## What still has to be decided
 
@@ -343,6 +343,18 @@ syu → rau · rate 1 · control
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | **total** | | **5** | |
+
+### `ccv_dcu_cru_err`
+
+The machine-error report (AR 370, DA rev 124): DCU's sticky error levels, sent as a message each time either changes (so at most once for ue, which stays set until reset). ue: an uncorrectable error that is core-fatal -- one in a dirty L1 line, in a writeback's victim read or a fill, or a hard error (a second UE at a location already recorded in DCU's CCV_DCU_UE_TRACK table, or one that finds it full). CRU then latches MACHINE_CHECK, sends RAU its kill request for every grid (ccv_cru_rau_cfg kill_req, kill_grid all ones), and writes F-MACHINE (cause 10) into the first-fault record of every live context not yet written (ISA v1.9 O-86, the core-wide exception to §12.7). The access the UE hit gets no completion; RAU's kill ends it. A UE in a clean line is recovered inside DCU (the line invalidated and refetched as a miss) and is not reported here. ce_alert: the corrected-error count passed ccv_common_err's ERR_CTRL threshold, status only (no kill). One such channel per SRAM-bearing block, each to CRU, which ORs them; DCU's is the only one in v1 (SPM is register files, AR 371).
+
+dcu → cru · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `ue` | `1` | 1 | literal |
+| `ce_alert` | `1` | 1 | literal |
+| **total** | | **2** | |
 
 ## ⚠️ Carries a provisional width
 
@@ -1043,7 +1055,7 @@ exb → EXTERNAL · rate 1 · memory
 
 ### `ccv_cru_rau_cfg`
 
-Host-programmed policy (demotion threshold, progress threshold, launch enable) and the host's kill request with a grid selector. Both kill sources -- a fault from OOE, a request from the host -- land at RAU, the single issuer.
+Host-programmed policy (demotion threshold, progress threshold, launch enable) and the host's kill request with a grid selector. Every kill source -- a fault from OOE, a request from the host, CRU's machine check (AR 370) -- lands at RAU, the single issuer. kill_grid all ones selects every grid: CRU sends that on a machine check (ccv_dcu_cru_err's ue).
 
 cru → rau · rate 1 · control
 

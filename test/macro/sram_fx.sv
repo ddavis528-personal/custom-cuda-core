@@ -9,8 +9,9 @@
 // (CG-5), and c_q, a cycle later, is the command's valid beside the captured
 // op_q. Each command is one access to the register file and, on every
 // other command, one to the SRAM:
-//   1rw  (W x D, 64 Kibit by default: 512 words of 128 bits, within an
-//        SRAM's shape, MACRO-1, Daniel, 2026-11-17), on a command whose ptr_q is odd, so
+//   1rw  (W x D, 64 Kibit by default: 512 words of 128 bits, 120 data and
+//        8 SECDED (DW; DA ruling TI-474 (6)), within an SRAM's shape and,
+//        at 60 Kibit of data, its size; MACRO-1, Daniel, 2026-11-17), on a command whose ptr_q is odd, so
 //        never two cycles running (consecutive commands count ptr_q up by
 //        one; DA tab rev 123): op_q[15] writes a whole word (an SRAM has no
 //        byte enables; Daniel, 2026-11-17), else reads, at op_q[AW-1:0] +
@@ -51,6 +52,7 @@ module sram_fx #(
   parameter int RST_CE = 0,
   parameter int FOLD_RD = 0,
   parameter int W = 128,
+  parameter int DW = 120,      // the SRAM's data bits: 120 and SECDED's 8 make W
   parameter int D = 512,
   parameter int W2 = 64,
   parameter int D2 = 128
@@ -131,7 +133,7 @@ module sram_fx #(
   end
 
   if (MACRO != 0) begin : g_macro
-    ccv_common_sram_1rw #(.W(W), .D(D)) u_sram (
+    ccv_common_sram_1rw #(.W(W), .D(D), .DATA_W(DW)) u_sram (
       .clk, .ce, .we, .addr, .wdata, .rdata);
     ccv_common_rf_1r1w_be #(.W(W2), .D(D2)) u_rf (
       .clk, .re(re2), .raddr(raddr2), .rdata(rdata2),
