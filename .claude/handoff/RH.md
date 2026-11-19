@@ -64,7 +64,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   `table.py A0 A0=~/ccv-logs/oi427 E=~/ccv-logs/oi428 --ctr=stall.decq,stall.decq_warp_max` (labels: A0 is OI's A).
   Ruling: S1 <= +0.5% -> OA, else DA. Do not drop rh-oi427b before 428 done.
 - OA-427 S1 + cm32priv A0/A/B SENT 05:40Z (B S1 +0.002%; A0 == A exactly). OA-428 S1 SENT 05:55Z: E +0.946% (DA rules); stall.decq* 0.
-  OA-427 cm128priv DONE + full table SENT 13:33Z (B +0.420%, C 0, D=B, A0==A). OA-428 cm128priv E +1.118% SENT 13:46Z. Both DONE; worktrees rh-oi427/rh-oi427b dropped 13:47Z; logs ~/ccv-logs/oi427,oi428 kept until OI releases (+1 day). OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
+  OA-427 cm128priv DONE + full table SENT 13:33Z (B +0.420%, C 0, D=B, A0==A). OA-428 cm128priv E +1.118% SENT 13:46Z. Both DONE; worktrees rh-oi427/rh-oi427b dropped 13:47Z; logs ~/ccv-logs/oi427,oi428 REMOVED 11-19 22:15Z. OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
   Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
