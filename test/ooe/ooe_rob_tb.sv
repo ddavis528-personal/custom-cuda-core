@@ -30,7 +30,7 @@ module ooe_rob_tb #(
   parameter int CW = 4,
   parameter int VA = 64,
   parameter int BS = ND - 2,
-  parameter int PWV = 0,           // OI-184's lag-1 redirect: the payload with the valid
+  parameter int PWV = 1,           // OI-184's lag-1 redirect: the payload with the valid
   localparam int NSB = (NS > 0) ? NS : 1,
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LD = $clog2(D),

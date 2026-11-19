@@ -52,7 +52,7 @@ module ooe_redir #(
   parameter int VA  = 64,      // the channel's target_pc (CCV_W_VA)
   parameter int WW  = 5,       // a warp_id (CCV_W_WARP_ID)
   parameter int EP  = 3,       // a fetch epoch (CCV_P_W_FETCH_EPOCH)
-  parameter int PWV = 0,       // OI-184's lag-1 option: the payload leaves with the valid
+  parameter int PWV = 1,       // OI-184's lag-1 option: the payload leaves with the valid
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LK = (NK > 1) ? $clog2(NK) : 1
 ) (

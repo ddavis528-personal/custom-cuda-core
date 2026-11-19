@@ -125,7 +125,7 @@ void robConfig(Config &c) {
 namespace {
 constexpr unsigned NR = 4;
 #ifndef RB_PWV
-#define RB_PWV 0   // OI-184 lag-1 redirect form (ooe_redir PWV)
+#define RB_PWV 1   // OI-184 lag-1 redirect form (ooe_redir PWV)
 #endif
 constexpr unsigned S = RB_S, D = RB_D, RP = RB_RP, A = RB_A, ND = RB_ND, NM = RB_NM, GW = RB_GW, GR = RB_GR,
                    NG = RB_NG, PWV = RB_PWV, NS = RB_NS, PW = RB_PW, NP = RB_NP, NK = RB_NK, PCW = RB_PCW, CW = RB_CW, LB = 6, LT = 3,

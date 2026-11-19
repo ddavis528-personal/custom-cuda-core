@@ -99,7 +99,7 @@ module ooe_rob_w #(
   parameter int CW = 4,                  // a fault cause (CCV_W_FAULT_CAUSE)
   parameter int VA = 64,                 // a fault address (CCV_W_VA)
   parameter int BS = ND - 2,             // the done slot RCU-only ops complete on, branches among them (AR's RCU spec rev 14, OA rev 287)
-  parameter int PWV = 0,                 // the redirect's payload with its valid (OI-184's lag-1 option): rd_*_cq03h, not rd_*_cq04h
+  parameter int PWV = 1,                 // the redirect's payload with its valid (OI-184's lag-1 option): rd_*_cq03h, not rd_*_cq04h
   localparam int NSB = (NS > 0) ? NS : 1,
   localparam int S  = 1,                 // the slots this instance holds: its own
   localparam int LS = (SA > 1) ? $clog2(SA) : 1,
@@ -2538,7 +2538,7 @@ module ooe_rob_w #(
           if (bp_gd_cq02h[gp])            bp_gm_cq02h[gp * 32 +: 32] <= bo_mask_cq02h;
           if (bp_k_cq02h[gp * 2 +: 2] == 2'd2) bp_pm_cq02h[gp * 32 +: 32] <= bo_aux_cq02h;
         end
-        if (bset_cq02h && g1'(p) == bp_h_cq02h) bp_hl_cq02h[gp] <= bhl_cq02h;
+        if (bset_cq02h && 1'(gp) == bp_h_cq02h) bp_hl_cq02h[gp] <= bhl_cq02h;
       end
     end
   end
