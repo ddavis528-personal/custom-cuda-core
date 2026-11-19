@@ -81,6 +81,9 @@ Conventions 20, AR 390, TI 486, OA 442, IS 197, CP 160, OI 374, RA 156, RI 91, M
   path; TI-478 slot stays due+1. DCU tab rev 56, impl docs, snapshot updated.
 - MI-2 (MA rev 119): confirmed MI's model walk with 3 levels (W_VA 64, page shift 16), identity
   translation, cold TLB per kernel. Page-table format is AR's (AR 391); IS owns the fault cause; PTE width and per-level latency are model params (MA rev 120).
+- MI-3 (MA rev 123): a held load holds only itself; a pending fence holds its warp's younger memops.
+  MIU tab rev 145 (snapshot refreshed). MI-2 closed (AR Common tab rev 8/9: 3 levels 6/13/13, VA[63:48]
+  non-zero is F-ADDR).
 - TI-487 SETTLED as (3) (AR 389 final, OA 441; MA rev 117): DCU withholds the fatal merge read; RAU's
   machine-check kill waits on no ack from MIU (still requires the seven others). DCU tab rev 55;
   dcu-impl.md bin added. TI lands it. (MA rev 117 says DCU rev 54; it is 55.) Bookmarks AR 392, MA 117.
