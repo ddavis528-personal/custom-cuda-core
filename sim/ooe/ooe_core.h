@@ -478,6 +478,11 @@ struct Config {
   /// ckpt_free leave OOE this many cycles after the model's send, together
   /// (A-58). A delay line on both outputs; an epoch notice lands as late.
   unsigned redirect_send_lag = 0;
+  /// ROB slice 5 (rev 277 (c)): ooe_rob_w keeps each slot's barrier reports
+  /// (arrive, wait, exit) in a side buffer this deep, in program order,
+  /// popped at retire; a slot's next one holds rename while it is full.
+  /// 0 = unbounded (the reference).
+  unsigned bar_buf_depth = 0;
   /// redirect_send_lag's control: the free mask a cycle later than the
   /// redirects, out of A-58's latency match (V-46 must see it).
   bool inject_send_free_late = false;

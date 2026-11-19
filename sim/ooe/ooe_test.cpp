@@ -3235,6 +3235,36 @@ void testBarrier() {
 /// rev 164): its rewind beat sets rewind_held, and held_long for a 32-bit
 /// wait, at the PC past the wait, whether a younger uop waits in the
 /// decode queue or nothing does. The control beat-unheld drops the flag.
+/// ROB slice 5's barrier side buffer (bar_buf_depth): a slot's next barrier
+/// op (arrive, wait, exit) waits at rename while that many are unretired;
+/// the reports are the same, in the same order. Three arrives and the exit
+/// behind a long SFU op fill a depth of 2.
+void testBarBufDepth() {
+  g_test = "bar_buf_depth";
+  std::vector<std::vector<unsigned>> kinds;
+  for (const unsigned depth : {0u, 2u}) {
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.bar_buf_depth = depth;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kSfu; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    for (int k = 0; k != 3; ++k) { Op b; b.k = kBarrier; b.arrive = true; p.push_back(b); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    std::vector<unsigned> kk;
+    for (const Bar &b : barsOf(e)) kk.push_back(b.kind);
+    kinds.push_back(kk);
+    const unsigned long long st = e.core.counters["stall.bar_buf"];
+    std::printf("  bar_buf_depth %u: %zu reports, stall.bar_buf %llu\n", depth, kk.size(), st);
+    EXPECT(kk.size() == 4, "%zu reports, want 3 arrives and the exit", kk.size());
+    EXPECT(depth ? st != 0 : st == 0, "depth %u: stall.bar_buf %llu", depth, st);
+  }
+  EXPECT(kinds[0] == kinds[1], "the side buffer changed the reports");
+}
+
 void testBarrierDemote() {
   for (const bool control : {false, true}) {
     for (const bool tail : {true, false}) {
@@ -6368,6 +6398,7 @@ int main(int argc, char **argv) {
   testSectionFaults();
   testBarrier();
   testBarrierDemote();
+  testBarBufDepth();
   testBarrierTimer();
   testBarrierFault();
   testMemFault();

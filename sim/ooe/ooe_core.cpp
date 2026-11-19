@@ -35,7 +35,7 @@ std::string Config::apply(const std::string &spec) {
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
-      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"ckpt_free_lag", &ckpt_free_lag}, {"redirect_send_lag", &redirect_send_lag}, {"resolve_lag", &resolve_lag},
+      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"ckpt_free_lag", &ckpt_free_lag}, {"redirect_send_lag", &redirect_send_lag}, {"bar_buf_depth", &bar_buf_depth}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
@@ -4204,6 +4204,18 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       ren_tot_[2] + ngpr - sec[2] > cfg_.rename_width) {
     count("stall.rename_ports");
     return false;
+  }
+
+  // ROB slice 5: the barrier side buffer (bar_buf_depth). Every barrier op
+  // takes a place at rename, a faulting one too (the buffer cannot know).
+  auto barOp = [](const Uop &x) { return x.attr.serial == kSerBarrier || x.attr.serial == kSerArrive || x.shape.exit; };
+  if (cfg_.bar_buf_depth && barOp(u)) {
+    unsigned held = 0;
+    for (unsigned k = 0; k < s.count; ++k) {
+      const RobEntry &q = s.rob[(s.head + k) % cfg_.rob_depth];
+      if (q.valid && barOp(q.u)) ++held;
+    }
+    if (held >= cfg_.bar_buf_depth) { count("stall.bar_buf"); return false; }
   }
 
   // -- commit the rename ---------------------------------------------------------------
