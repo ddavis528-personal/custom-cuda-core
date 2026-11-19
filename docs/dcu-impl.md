@@ -122,6 +122,7 @@ DCU tab:
 | A UE in a clean line (injected) | recoveries; table entries in use | no refetch: the load hangs |
 | A second UE at a recorded row, and a UE with the table full | fatal errors, by cause | treating either as recoverable |
 | A UE in a dirty line | fatal errors; withheld reads | returning the line retires bad data |
+| A machine-check kill with a retired store's merge read withheld (TI-487) | kills completed with a store still held in MIU | a kill that waits on MIU's ack hangs |
 
 Errors are reached by injection: `CCV_MIU_ECC_INJECT` (TI-484) and whatever
 DCU-side injection DI asks TI for, as a DI row.
