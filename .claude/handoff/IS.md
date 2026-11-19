@@ -53,7 +53,7 @@ Register section 4 from the bookmarks below; merges in both repos under
 the rules above, gated; pings on Fridays; report in a few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 384, OA 436, IS 197, TI 480, OI 374, CP 160, DA 127, RA 156, RI 91, MA 97.
+Conventions 19, AR 384, OA 436, IS 198, TI 480, OI 374, CP 160, DA 127, RA 156, RI 91, MA 97.
 RA (RCU architect, tab 9851686b-2b0a, session session_01QPk2jzLmjd3MWXjayVUy9d;
 now in the roster). RI (RCU implementation/model, tab 8e4547bc-c469) is new.
 Pings: Friday 2026-10-30 to AR, OA, TI, OI, CP; all ponged. Pings Friday 2026-11-06 sent to AR, OA, TI, OI, CP, RA, RI, RH ; all eight ponged, checked 11-07 with notice.py check. Pings Friday 2026-11-13 sent to AR, OA, TI, OI, CP, RA, RI, MA, RH (MA now in roster, session_01QPk2jyUbWA7fW9YpUwqdxk); all nine ponged 11-13, each checked with notice.py check (Saturday check done). Next pings Friday 2026-11-20.
@@ -66,6 +66,7 @@ Installed 2026-10-31 with Daniel's approval: python3 tools/setup-session-home.py
 Daily sweep runs --check; on exit 1 ask Daniel again, never reinstall unasked.
 
 ## State
+- Answered re:AR-391 (IS rev 198): page-table misses use existing causes (F-ADDR no valid/permitted entry, F-RO read-only page, F-FETCH no code translation); format needs valid+writable only, no present/A/D bits (no replayable fault). Offered an editorial F-RO row wording if AR wants it.
 - Latest sweep: nothing for IS (DA 125-127: MIU/DCU P1 sweeps, loads-first, A-70 lead-field form; none ISA). Compiler FF ccr-ea1c4e17-tem30u +3, pushed b9ae2c9. Core merged 9 peer branches (157 commits); full gate. New rule (Daniel, CLAUDE.md): no dates on rows, handoff items or promises; priority order only.
 - 11-17 sweep: nothing for IS (MA 81 superseded by DA 124/AR 370; TI 476 BIST/macros ruling, not ISA). Compiler: no peer commits; 103976f (O-86) pushed. Core: merged ccr-183cc441-doowtf, ccr-57eff422-5tdecg, ccr-80102643-4n8bv4, ccr-9eb50716-lecnjf, ccr-c22116ce-1vzyjg, claude/miu-dcu-microarch-spec-664pgr; full gate run.
 - 11-17: O-86 done. AR-369 answered (IS rev 196); Daniel decided (DA rev 124, AR 370); O-86 written in ISA v1.9 (compiler 103976f, VERIFY PASS, pushed): F-MACHINE §12.3 (Execute or core-wide; v1 core-wide only), last in §12.5, §12.7 core-wide exception, host-only error state, §12.8. IS rev 197, notices AR, TI, OA, MA. TI landed code 10 (a102383b, TI-485); pin a293afe7 carries O-86. O-86 closed. Also DA rev 124: SPM arrays are RFs (AR 371), no ECC.
