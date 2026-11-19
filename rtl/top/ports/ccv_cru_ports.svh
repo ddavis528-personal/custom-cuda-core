@@ -35,6 +35,12 @@
   output logic ooe_cru_fault_credit,
   output logic ooe_cru_fault_stall,
   input  logic ooe_cru_fault_wake,
+  // dcu -> cru
+  input  logic dcu_cru_err_valid,
+  input  ccv_dcu_cru_err_t dcu_cru_err_payload,
+  output logic dcu_cru_err_credit,
+  output logic dcu_cru_err_stall,
+  input  logic dcu_cru_err_wake,
   // cru -> rau
   output logic cru_rau_cfg_valid,
   output ccv_cru_rau_cfg_t cru_rau_cfg_payload,
@@ -46,5 +52,6 @@
 `endif
 `ifdef CCV_TRACE
   , input  logic [63:0] ooe_cru_fault_tid
+  , input  logic [63:0] dcu_cru_err_tid
   , output logic [63:0] cru_rau_cfg_tid
 `endif

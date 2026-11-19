@@ -41,13 +41,28 @@
 // not flops: check-cg counts none of it. ce and we must come from the
 // parent's own flops (CG-5), as every enable does.
 //
+// SECDED (DA rulings TI-474 to TI-476, Daniel, 2026-11-17): every SRAM
+// holds SECDED ECC, its check bits in its word, the encode and decode the
+// block's own logic (rtl/common/ccv_common_secded_enc, _syn, _fix), never
+// this wrapper's. The word is W bits: DATA_W data bits in code words of
+// ECC_K data bits each, each with its check bits, so W = DATA_W + (DATA_W /
+// ECC_K) x R(ECC_K), R(k) = clog2(k + clog2(k) + 1) + 1 ((72,64), (137,128)).
+// The parameters only describe the word: check-ngd's MACRO-1 holds W to
+// them, and counts the size limit and the array efficiency on DATA_W x D
+// (TI-475 (2), TI-476 (2)), the shape limit on W.
+//
 // No reset: an SRAM has none. Its contents are unknown until written.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 
 module ccv_common_sram_1rw #(
-  parameter int W = 64,                       // bits per word
+  parameter int W = 72,                       // bits per word, check bits included
   parameter int D = 64,                       // words, 2 or more
+  // Read by check-ngd's MACRO-1 alone (see SECDED, above), not by the view.
+  /* verilator lint_off UNUSEDPARAM */
+  parameter int DATA_W = 64,                  // data bits per word (MACRO-1 counts these)
+  parameter int ECC_K = DATA_W,               // data bits per SECDED code word
+  /* verilator lint_on UNUSEDPARAM */
   localparam int AW = $clog2(D)
 ) (
   input  logic          clk,

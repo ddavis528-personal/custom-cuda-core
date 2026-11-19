@@ -1,0 +1,7 @@
+{
+  "module": "ccv_common_secded_enc",
+  "inner": true,
+  "by": "TI",
+  "date": "2026-11-18",
+  "why": "SECDED check bits of K data bits (DA rulings TI-474 to TI-476), combinational: R XOR trees over the data bits whose column has each bit. Its parent flops the check bits or writes them to an SRAM's wdata with the data; at K = 128, 14.5 NGD, so with the SRAM's data setup (CCV_NGD_SRAM_DATA_SETUP, 8) its input comes straight from flops. Timed in its parent."
+}
