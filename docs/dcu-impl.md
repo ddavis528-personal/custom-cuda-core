@@ -134,7 +134,7 @@ model builds with; a measurement moves a default, never the structure.
 | Item | Owner | Row | Default | Meanwhile |
 |---|---|---|---|---|
 | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, the two credit-return vectors (TI picks the channel) | TI | MA-25 | 16, 12 | named constants; wire the vectors when TI lands them |
-| `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYPRED_SEL`, and `CCV_LAT_L1_HIT` derived from them | TI; AR's runs set the defaults | MA-26, DA rev 128 | 5 bits, index, so L1_HIT 8 | build both pipelines; test bits 0 and 5, both selects |
+| `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYPRED_SEL`, and `CCV_LAT_L1_HIT` derived from them | TI; AR's runs set the defaults | MA-26, DA rev 128 | 5 bits, recent (AR 386, MA rev 112), so L1_HIT 8 | build both pipelines; test bits 0 and 5, both selects |
 | `CCV_DCU_BANK_AGE` | RH's sweep, then MA | MA-25 | 16 (sweep 8, 16, 32, 64) | read it from the parameters |
 | `CCV_DCU_BANK_HASH` (the within-page bank hash) | TI, RH's sweep | MA-20 | off | one bank function, so the hash changes one place |
 | `CCV_DCU_UE_TRACK` | landed | TI-485 | 16 | — |

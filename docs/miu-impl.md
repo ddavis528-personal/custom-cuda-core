@@ -262,7 +262,7 @@ None blocks the model.
 | Item | Owner | Row | Default, and what moves it | Meanwhile |
 |---|---|---|---|---|
 | The bank-credit parameters and the two credit-return vectors (DCU → MIU); TI picks the channel | TI | MA-25 | `CCV_DCU_BANK_QDEPTH` 16, `CCV_DCU_BANK_STDATA` 12 | build the counts behind named constants; wire the vectors when TI lands them |
-| Way prediction: `CCV_DCU_WAYPRED_BITS` (0 = off) and `CCV_DCU_WAYPRED_SEL` (index or recent); `CCV_LAT_L1_HIT` derived from them | TI | MA-26; DA rev 128 | 5 bits, index select, so L1_HIT 8; AR's runs set the defaults, never the structure | read `CCV_LAT_L1_HIT` from the parameters; test both 8 and 9 |
+| Way prediction: `CCV_DCU_WAYPRED_BITS` (0 = off) and `CCV_DCU_WAYPRED_SEL` (index or recent); `CCV_LAT_L1_HIT` derived from them | TI | MA-26; DA rev 128 | 5 bits, recent select (AR 386, MA rev 112), so L1_HIT 8; runs move the defaults, never the structure | read `CCV_LAT_L1_HIT` from the parameters; test both 8 and 9 |
 | A credit's return bound | RH's sweep, then MA | MA-25 | `CCV_DCU_BANK_AGE` 16 (sweep: 8, 16, 32, 64) | nothing waits: it is DCU's bound |
 | The within-page bank hash | TI (parameter), RH's sweep | MA-20 | `CCV_DCU_BANK_HASH` off | the bank of a line comes from one function, so the hash changes one place |
 | The ECC injection runs | TI | TI-484 | `CCV_MIU_ECC_INJECT` | develop the error paths under unit tests |
