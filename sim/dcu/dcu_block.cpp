@@ -126,10 +126,12 @@ private:
     const Ch &c = ch();
     std::vector<D::Req> in;
     // Requests whose payload lands now, in slot order, unless DCU holds the
-    // channel; a held one is taken the first cycle DCU accepts again.
+    // channel; a held one is taken the first cycle DCU accepts again. One a
+    // slot a cycle: a receiver returns one credit per pop a cycle, so two
+    // pops in a cycle lose one (channel.h, Receiver::pop).
     if (core_.accepting())
       for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
-        while (has(c.miu_dcu, s)) {
+        if (has(c.miu_dcu, s)) {
           Receiver::Msg m = take(c.miu_dcu, s);
           checkIndexLead(s, m.payload);
           in.push_back(decode(s, m));

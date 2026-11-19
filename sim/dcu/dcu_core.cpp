@@ -101,6 +101,16 @@ bool Core::fullLine(const Req &r, const std::string &brk) {
   return brk == "skip-read-partial" || r.mask.all();
 }
 
+/// Whether pa's line can be installed now: resident, or a way of its set
+/// that no pending write or deferred store holds.
+bool Core::canInstall(uint64_t pa) {
+  if (find(pa)) return true;
+  const Way *set = setOf(pa);
+  for (unsigned i = 0; i != c_.ways; ++i)
+    if (!set[i].valid || !held(set[i].line)) return true;
+  return false;
+}
+
 /// pa's line into its set: its own way if resident, else an invalid way,
 /// else the least recently used of the ways no pending write or store holds.
 /// A dirty victim is read from its bank (EvictR) and written back whole.
@@ -668,7 +678,20 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   ports_ = &p;
   notices_.clear();
   Out o;
-  if (fill) onFill(*fill);
+  // A fill waits in its fill buffer while every way of its set is held by a
+  // pending write or a deferred store (no victim yet); fills leave in order.
+  if (fill) fills_.push_back(*fill);
+  while (!fills_.empty()) {
+    auto it = miss_.find(fills_.front().id);
+    if (it != miss_.end() && it->second.k != MK::Evict && it->second.k != MK::WriteAck &&
+        !canInstall(it->second.line)) {
+      ++st_.fill_wait;
+      h_.hit("dcu_fill_victim_wait");
+      break;
+    }
+    onFill(fills_.front());
+    fills_.pop_front();
+  }
   for (const Req &r : in) arrive(r, t);
   schedule();
   // Stalled misses take freed buffers, oldest first; the channel holds
@@ -760,7 +783,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
 }
 
 bool Core::busy() const {
-  if (!ontime_.empty() || !miss_.empty() || !stalled_.empty() || !to_mlc_.empty() ||
+  if (!fills_.empty() || !ontime_.empty() || !miss_.empty() || !stalled_.empty() || !to_mlc_.empty() ||
       !timed_.empty() || !late_.empty() || !promised_.empty() || !wbq_.empty() ||
       (ue_raised_ && !ue_sent_))
     return true;

@@ -248,6 +248,8 @@ private:
   void mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t tid);
   void onFill(const Fill &f);
   Way *install(uint64_t pa, const Line &l, bool owned, bool dirty);
+  bool canInstall(uint64_t pa);
+  std::deque<Fill> fills_;   ///< fills landed, waiting for a victim
   static bool fullLine(const Req &r, const std::string &brk);
   void merge(Line &l, const Req &r) const;
 
