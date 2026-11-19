@@ -89,6 +89,12 @@
   input  logic dcu_mlc_probe_ack_credit,
   input  logic dcu_mlc_probe_ack_stall,
   output logic dcu_mlc_probe_ack_wake,
+  // dcu -> cru
+  output logic dcu_cru_err_valid,
+  output ccv_dcu_cru_err_t dcu_cru_err_payload,
+  input  logic dcu_cru_err_credit,
+  input  logic dcu_cru_err_stall,
+  output logic dcu_cru_err_wake,
   // dcu -> miu, slot 0 of 4
   output logic dcu_miu_fill_ntc_s0_valid,
   output ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s0_payload,
@@ -126,6 +132,7 @@
   , input  logic [63:0] mlc_dcu_rsp_tid
   , input  logic [63:0] mlc_dcu_probe_tid
   , output logic [63:0] dcu_mlc_probe_ack_tid
+  , output logic [63:0] dcu_cru_err_tid
   , output logic [63:0] dcu_miu_fill_ntc_s0_tid
   , output logic [63:0] dcu_miu_fill_ntc_s1_tid
   , output logic [63:0] dcu_miu_fill_ntc_s2_tid

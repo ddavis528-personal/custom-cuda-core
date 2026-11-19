@@ -1,0 +1,7 @@
+{
+  "module": "ccv_common_secded_fix",
+  "inner": true,
+  "by": "TI",
+  "date": "2026-11-18",
+  "why": "The decode's second half, combinational: from the syndrome, the corrected data and sec/ded. At K = 128, 15.4 NGD (syn to ded), 10.7 to q; data to q 3.1. The whole decode, syndrome and fix, is about 26-31 NGD at K = 128, so a parent flops the syndrome between the two halves (TI-475 (3): where the latency hides is the architect's). Timed in its parent."
+}

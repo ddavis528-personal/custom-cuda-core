@@ -67,6 +67,8 @@ struct Ch {
            pca_rcu = chanId("ccv_pca_rcu_mig"), pca_fet = chanId("ccv_pca_fet_mig"),
            // The replay drain (TI-21): a demoted warp's orphans are home.
            miu_ready = chanId("ccv_miu_rau_ready"),
+           // The machine check (AR 370): DCU's error levels, CRU's kill request.
+           dcu_cru_err = chanId("ccv_dcu_cru_err"), cru_rau_cfg = chanId("ccv_cru_rau_cfg"),
            // Barriers (TI-40): SYU's inputs and its three answers.
            rau_syu = chanId("ccv_rau_syu_alloc"), ooe_syu = chanId("ccv_ooe_syu_bar"),
            syu_ooe = chanId("ccv_syu_ooe_rel"), syu_fet = chanId("ccv_syu_fet_rel"),
@@ -134,7 +136,8 @@ enum : unsigned { kAllocFree = 0, kAllocLaunch = 1,      // rau_ooe_alloc.alloc_
                   kAllocRestoreAlloc = 2, kAllocRestoreActivate = 3 };
 enum : unsigned { kSpaceGlobal = 0, kSpaceShared = 1 }; // ooe_miu_memop.space
 enum : unsigned { kFaultNone = 0, kFaultFetch = 1,          // CCV_W_FAULT_CAUSE (ISA §12)
-                  kFaultIllegal = 2, kFaultAddr = 6, kFaultShared = 7, kFaultRo = 8 };
+                  kFaultIllegal = 2, kFaultAddr = 6, kFaultShared = 7, kFaultRo = 8,
+                  kFaultMachine = 10 };                     // F-MACHINE (O-86, AR 370)
 /// ccv_miu_spm_req's spm_op (CCV_L_W_SPM_OP, preliminary): a pass reads or
 /// writes its banks' words under byte_mask.
 enum : unsigned { kSpmRead = 0, kSpmWrite = 1 };

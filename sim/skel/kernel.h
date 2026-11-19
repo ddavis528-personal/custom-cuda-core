@@ -185,6 +185,10 @@ struct Kernel {
   struct FaultSeen { unsigned cause = 0; uint64_t pc = 0, addr = 0; uint32_t lanes = 0; };
   std::map<unsigned, FaultSeen> faults;
   std::set<unsigned> killed;                       ///< warps RAU's kill ended (V-24)
+  /// The machine check (AR 370): DCU raised a core-fatal UE (its injection,
+  /// CCV_DCU_UE_INJECT), and CRU took it (latched MACHINE_CHECK, asked RAU
+  /// to kill every grid, wrote F-MACHINE into every live record).
+  bool mce_raised = false, mce_taken = false;
   /// A kill RAU has broadcast and not seen through: the owners whose ack at
   /// its epoch has not come (kFabs kill_ack order), else 0.
   uint32_t kill_unacked = 0;
@@ -245,6 +249,11 @@ struct Kernel {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line", "store_hit", "dcu_evict",
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
+      // DCU's uncorrectable errors (AR 370): a clean line's recovered, a
+      // core-fatal one, and CRU's machine check.
+      "ue_recover", "ue_fatal", "machine_check",
+      // An L1 hit corrected after an injected syndrome (RA 153 (5)).
+      "l1_ecc_fix",
       // MA-4's eligibility and the early no-hit (OA 410; AR 356).
       "l1_inelig", "l1_nohit", "l1_nohit_drop",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
@@ -268,6 +277,10 @@ struct Kernel {
       // the passes and the holds between a pass's read and write.
       "atomic_pair", "atomic", "atomic_repass", "atomic_write", "atomic_lane",
       "atomic_acquire", "atomic_hold_wait",
+      // A killed warp's load completed by MIU at the kill (OA 436).
+      "kill_cmpl",
+      // FET's killed warp's checkpoints reset on OOE's epoch notice (OA 436).
+      "fet_kill_reset",
       // CAS (OI-127): its lane op on an active lane, and on a guarded-off one.
       "cas_lane", "cas_lane_off",
       // MIU's memop queue entries held on one slot, at most (MA-5).
