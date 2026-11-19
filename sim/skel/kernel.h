@@ -185,6 +185,10 @@ struct Kernel {
   struct FaultSeen { unsigned cause = 0; uint64_t pc = 0, addr = 0; uint32_t lanes = 0; };
   std::map<unsigned, FaultSeen> faults;
   std::set<unsigned> killed;                       ///< warps RAU's kill ended (V-24)
+  /// The machine check (AR 370): DCU raised a core-fatal UE (its injection,
+  /// CCV_DCU_UE_INJECT), and CRU took it (latched MACHINE_CHECK, asked RAU
+  /// to kill every grid, wrote F-MACHINE into every live record).
+  bool mce_raised = false, mce_taken = false;
   /// A kill RAU has broadcast and not seen through: the owners whose ack at
   /// its epoch has not come (kFabs kill_ack order), else 0.
   uint32_t kill_unacked = 0;
@@ -245,6 +249,9 @@ struct Kernel {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line", "store_hit", "dcu_evict",
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
+      // DCU's uncorrectable errors (AR 370): a clean line's recovered, a
+      // core-fatal one, and CRU's machine check.
+      "ue_recover", "ue_fatal", "machine_check",
       // An L1 hit corrected after an injected syndrome (RA 153 (5)).
       "l1_ecc_fix",
       // MA-4's eligibility and the early no-hit (OA 410; AR 356).

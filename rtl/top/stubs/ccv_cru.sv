@@ -50,6 +50,8 @@ module ccv_cru (
   assign csr_credit = '0;
   assign ooe_cru_fault_credit = '0;
   assign ooe_cru_fault_stall = '0;
+  assign dcu_cru_err_credit = '0;
+  assign dcu_cru_err_stall = '0;
   assign cru_rau_cfg_valid = '0;
   assign cru_rau_cfg_payload = '0;
   assign cru_rau_cfg_wake = '0;

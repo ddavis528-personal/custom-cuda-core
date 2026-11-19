@@ -231,6 +231,28 @@ else
   bad "injected L1 syndromes: the same KERNEL line" "differ, unclean or uncorrected:$diffs"
 fi
 
+# -- the machine check, both hosts (AR 370) -----------------------------------
+# DCU's injected uncorrectable errors (CCV_DCU_UE_INJECT=1): vadd recovers a
+# clean line; hit's hard error and predswap's dirty line end the core (CRU's
+# MACHINE_CHECK, RAU's kill, F-MACHINE in every record). Each must print the
+# same KERNEL and COVER lines on both hosts, clean, and so must the control
+# mce-ignore, which fails on both.
+diffs=""
+for spec in vadd hit predswap predswap:mce-ignore; do
+  IFS=: read -r k brk <<<"$spec"
+  a=$(CCV_DCU_UE_INJECT=1 cpp "$k" ${brk:+--break "$brk"} | grep -E '^(KERNEL|COVER) ')
+  s=$(CCV_DCU_UE_INJECT=1 svh "$k" ${brk:++ccv_break=$brk} | grep -E '^(KERNEL|COVER) ')
+  ue=$(grep '^COVER' <<<"$s" | tr ' ' '\n' | grep -cE '^ue_(recover|fatal)=[1-9]')
+  clean=$(grep '^KERNEL' <<<"$s" | grep -c ' gpr_mismatch=0 .*check_failures=0 ')
+  want=1; [ -n "$brk" ] && want=0
+  [ -n "$a" ] && [ "$a" = "$s" ] && [ "$ue" -gt 0 ] && [ "$clean" = "$want" ] || diffs="$diffs $spec"
+done
+if [ -z "$diffs" ]; then
+  say "machine check: the same KERNEL line" "PASS (vadd, hit, predswap clean; mce-ignore fails on both)"
+else
+  bad "machine check: the same KERNEL line" "differ, unclean or no UE:$diffs"
+fi
+
 # -- the partner: one block one cycle late must not compare equal ------------
 for inst in u_dec u_lane_05; do
   svh vadd "+ccv_trace=$B/svh_skew.ccvtrace" "+ccv_shim_delay=$inst" >"$B/svh_skew.log"

@@ -74,6 +74,13 @@ void Kernel::flushHeld() {
   for (const auto &h : held) {
     const uint32_t seq = uidSeq(h.first.second);
     if (parkedNow(seqWarp(seq)) && seqIndex(seq) >= nret[seqWarp(seq)]) continue;
+    // Likewise for a warp the machine check killed (AR 370): an instruction
+    // past what it retired never retires, and its operands (a load's data
+    // the kill dropped) are moot.
+    auto f = faults.find(seqWarp(seq));
+    if (killed.count(seqWarp(seq)) && f != faults.end() && f->second.cause == kFaultMachine &&
+        seqIndex(seq) >= nret[seqWarp(seq)])
+      continue;
     for (const std::string &m : h.second) fail("%s", m.c_str());
   }
   held.clear();
@@ -647,6 +654,55 @@ private:
       if (req.bit(mlsb + k)) l[k] = wd[k];
   }
 
+  /// An uncorrectable error on a read hit (AR 370 (3), (4); DA rev 124;
+  /// MA-19), injected: CCV_DCU_UE_INJECT=N takes every Nth read hit as a
+  /// double-bit error. The location is the array row the line occupies,
+  /// its set and way, never the line's address (a bad bit is physical).
+  /// A clean line at a location the table does not hold, with room in it,
+  /// is recovered: the location recorded, the line invalidated, the read
+  /// refetched as a miss (returns true). Anything else is core-fatal: a
+  /// dirty line (its bytes have no other copy), a second UE at a recorded
+  /// location (a hard error), or a full table. DCU raises ue on
+  /// ccv_dcu_cru_err; the stub still answers the read, its data unharmed,
+  /// since MIU cannot quiesce RAU's kill around a read DCU never answers
+  /// (the real MIU drops it on the kill), and returns false. Controls:
+  /// ue-no-track never records (every clean UE recovers, however often),
+  /// ue-dirty-recover recovers a dirty line too (its bytes are lost).
+  bool ueOnHit(const Op &o) {
+    if (!ue_every_ || ue_raised_ || ++ue_hits_ % ue_every_) return false;
+    const uint64_t pa = get(o.req, ch().miu_dcu, "phys_addr");
+    Way &w = way(pa);
+    const uint64_t loc = uint64_t(&w - l1_.data());   // set * ways + way
+    const bool hard = std::find(ue_track_.begin(), ue_track_.end(), loc) != ue_track_.end();
+    const bool full = ue_track_.size() >= ue_track_n_;
+    if ((!w.dirty || k_.brk == "ue-dirty-recover") &&
+        (k_.brk == "ue-no-track" || (!hard && !full))) {
+      if (k_.brk != "ue-no-track") ue_track_.push_back(loc);
+      w.valid = false;
+      k_.hit("ue_recover");
+      return true;
+    }
+    ue_raised_ = true;
+    k_.mce_raised = true;
+    k_.hit("ue_fatal");
+    std::fprintf(stderr, "UE dcu: core-fatal at set %llu way %llu (%s), line %llx\n",
+                 (unsigned long long)(loc / ways_), (unsigned long long)(loc % ways_),
+                 w.dirty ? "dirty" : hard ? "a recorded location" : "table full",
+                 (unsigned long long)pa);
+    return false;
+  }
+  const unsigned ue_every_ = [] {
+    const char *v = std::getenv("CCV_DCU_UE_INJECT");
+    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
+  }();
+  const size_t ue_track_n_ = [] {
+    const char *v = std::getenv("CCV_DCU_UE_TRACK");
+    return size_t(v && *v ? std::strtoul(v, nullptr, 10) : ccv::prov::kDcuUeTrack);
+  }();
+  unsigned ue_hits_ = 0;
+  std::vector<uint64_t> ue_track_;   ///< recorded locations, cleared only by reset
+  bool ue_raised_ = false, ue_sent_ = false;
+
   /// A response to MIU answers its request by MIU's own req_id.
   Bits rspFor(const Bits &req) {
     Bits r = msgOf(ch().dcu_miu);
@@ -708,7 +764,11 @@ private:
         checkIndexLead(s, m.payload);
         const Op o{s, m.payload, m.tid};
         const Line *l = readHit(m.payload);
-        if (l) {
+        if (l && ueOnHit(o)) {
+          // A clean line's UE, recovered: the line is gone, so the read
+          // waits its turn as a miss and refetches it.
+          q_.push_back(o);
+        } else if (l) {
           // A hit answered past a miss in flight or waiting (A-46).
           if (!miss_.empty() || !q_.empty()) k_.hit("hit_under_miss");
           hitRsp(o, *l);
@@ -870,6 +930,14 @@ private:
       } else {
         ++it;
       }
+    // The sticky ue level to CRU, sent once it rises (ccv_dcu_cru_err).
+    if (ue_raised_ && !ue_sent_ && can(c.dcu_cru_err, 0)) {
+      Bits e = msgOf(c.dcu_cru_err);
+      put(e, c.dcu_cru_err, "ue", 1);
+      put(e, c.dcu_cru_err, "ce_alert", 0);
+      send(c.dcu_cru_err, 0, e, makeUid(IdClass::kNone, 0));
+      ue_sent_ = true;
+    }
   }
   /// A refill is noticed (OA-23) if the notice's slot and a credit beyond
   /// those already promised are free; else it is sent as it can be.
@@ -893,7 +961,7 @@ private:
 
   bool busy() const override {
     return !q_.empty() || !miss_.empty() || !to_mlc_.empty() || !to_miu_.empty() ||
-           !promised_.empty();
+           !promised_.empty() || (ue_raised_ && !ue_sent_);
   }
 };
 
@@ -5453,9 +5521,26 @@ private:
   enum class Kill { kNone, kValid, kWait } kill_ = Kill::kNone;
   uint32_t kill_mask_ = 0, kill_acked_ = 0;
   unsigned kill_epoch_ = 0;
+  /// CRU's kill of every grid (AR 370's machine check, ccv_cru_rau_cfg
+  /// kill_req): no warp faulted, every valid context goes, and nothing
+  /// launches after it (the core is dead until the host resets it). One
+  /// that arrives during a fault's kill starts when that one completes.
+  bool mce_kill_ = false, mce_pending_ = false;
+  void cfg() {
+    const Ch &c = ch();
+    if (has(c.cru_rau_cfg, 0)) {
+      const Bits m = take(c.cru_rau_cfg, 0).payload;
+      if (get(m, c.cru_rau_cfg, "kill_req")) mce_pending_ = true;
+    }
+    if (mce_pending_ && kill_ == Kill::kNone) {
+      mce_pending_ = false;
+      mce_kill_ = true;
+      startKill(~0u);
+    }
+  }
   void startKill(unsigned faulted) {
     if (kill_ != Kill::kNone || k_.brk == "no-kill") return;
-    k_.snapshotFinal(faulted);   // its state at the fault, before OOE releases it
+    if (faulted != ~0u) k_.snapshotFinal(faulted);   // its state at the fault, before OOE releases it
     uint32_t mask = 0;
     for (const auto &s : slot_of_) mask |= 1u << (s.first & 31);
     for (unsigned w : parked_) mask |= 1u << (w & 31);
@@ -5657,8 +5742,9 @@ private:
     const Ch &c = ch();
     const uint64_t none = makeUid(IdClass::kNone, 0);
     status();
+    cfg();
     killStep();
-    if (kill_ != Kill::kNone) {
+    if (kill_ != Kill::kNone || mce_kill_) {
       // Nothing launches or moves meanwhile. Reports about warps being
       // killed (ready, drained, a migration's ack) are taken and dropped.
       if (has(c.miu_ready, 0)) take(c.miu_ready, 0);
@@ -5935,6 +6021,15 @@ private:
 /// (TI-26). CRU's record and the kill it leads to (RAU's kill_req) are the
 /// CRU session's to build; this stub checks the report against the fault
 /// ccv-sim ended the warp's run with: cause, pc, lanes and address.
+///
+/// The machine check (AR 370; DA rev 124; ISA v1.9 O-86): DCU's ue level on
+/// ccv_dcu_cru_err latches MACHINE_CHECK, sends RAU the kill of every grid
+/// (ccv_cru_rau_cfg: kill_req, kill_grid all ones), and writes F-MACHINE
+/// into the record of every live warp not yet written (no PC, lanes or
+/// address: not applicable). A record already written stays (first fault);
+/// a fault OOE reports after the machine check finds it written and is
+/// dropped. Controls: mce-ignore (CRU never takes the ue), mce-no-record
+/// (it writes no record), mce-no-kill (it never asks RAU for the kill).
 class Cru : public Stub {
 public:
   Cru(int inst, Kernel &k) : Stub(inst, k), chan_(chanId("ccv_ooe_cru_fault")) {}
@@ -5942,18 +6037,48 @@ public:
 
 private:
   const unsigned chan_;
+  bool mce_ = false, kill_sent_ = false;
+  void machineCheck() {
+    const Ch &c = ch();
+    if (has(c.dcu_cru_err, 0)) {
+      const Bits m = take(c.dcu_cru_err, 0).payload;
+      if (get(m, c.dcu_cru_err, "ue") && !mce_ && k_.brk != "mce-ignore") {
+        mce_ = true;
+        k_.mce_taken = true;
+        k_.hit("machine_check");
+        for (unsigned w = 0; w != k_.orcs.size(); ++w)
+          if (!k_.finals.count(w) && !k_.faults.count(w) && k_.brk != "mce-no-record") {
+            Kernel::FaultSeen f;
+            f.cause = kFaultMachine;
+            k_.faults[w] = f;
+          }
+      }
+    }
+    if (mce_ && !kill_sent_ && k_.brk != "mce-no-kill" && can(c.cru_rau_cfg, 0)) {
+      Bits r = msgOf(c.cru_rau_cfg);
+      put(r, c.cru_rau_cfg, "kill_req", 1);
+      put(r, c.cru_rau_cfg, "kill_grid", ~uint64_t(0));
+      send(c.cru_rau_cfg, 0, r, makeUid(IdClass::kNone, 0));
+      kill_sent_ = true;
+    }
+  }
   static unsigned code(const std::string &n) {
     static const char *const names[] = {"", "F-FETCH", "F-ILLEGAL", "F-WIDTH", "F-FORMAT",
-                                        "F-ALIGN", "F-ADDR", "F-SHARED", "F-RO", "F-BARRIER"};
+                                        "F-ALIGN", "F-ADDR", "F-SHARED", "F-RO", "F-BARRIER",
+                                        "F-MACHINE"};
     for (unsigned i = 1; i != sizeof names / sizeof *names; ++i)
       if (n == names[i]) return i;
     return 0;
   }
   void work() override {
+    machineCheck();
     if (!has(chan_, 0)) return;
     const Bits m = take(chan_, 0).payload;
     Kernel::FaultSeen f;
     const unsigned w = unsigned(get(m, chan_, "warp_id"));
+    // After the machine check every live record is written: a fault the
+    // kill overtook finds its record taken (first fault), and is dropped.
+    if (mce_ && k_.faults.count(w) && k_.faults[w].cause == kFaultMachine) return;
     f.cause = unsigned(get(m, chan_, "cause"));
     f.pc = get(m, chan_, "pc");
     f.lanes = uint32_t(get(m, chan_, "lane_mask"));
@@ -6271,7 +6396,13 @@ KernelReport compareFinal(Kernel &k) {
   // A warp the kill ended mid-run (V-24) has no final state to compare: it
   // is held only to its retire order, a prefix of ccv-sim's, below. A
   // faulted warp is compared as its fault left it.
-  auto cut = [&](unsigned w) { return k.killed.count(w) && !k.orcs[w].faults; };
+  // A warp the machine check killed (AR 370), its record F-MACHINE, is cut
+  // short too, whatever ccv-sim's run of it went on to do.
+  auto cut = [&](unsigned w) {
+    auto f = k.faults.find(w);
+    return k.killed.count(w) &&
+           (!k.orcs[w].faults || (f != k.faults.end() && f->second.cause == kFaultMachine));
+  };
   // The kill (V-24): every owner acked it at its epoch, and every warp that
   // faulted was killed.
   if (k.kill_unacked) {
@@ -6284,6 +6415,22 @@ KernelReport compareFinal(Kernel &k) {
   }
   for (const auto &f : k.faults)
     if (!k.killed.count(f.first)) k.fail("rau: warp %u faulted and was never killed", f.first);
+  // A core-fatal UE ends the core (AR 370 (4)): CRU took the machine check,
+  // and its kill took every warp that had not exited (the loop above holds
+  // each F-MACHINE record to a kill).
+  if (k.mce_raised && !k.mce_taken)
+    k.fail("cru: DCU raised a core-fatal UE on ccv_dcu_cru_err, and CRU never took the "
+           "machine check");
+  if (k.mce_taken) {
+    bool killed_any = false;
+    for (unsigned w : k.killed) {
+      killed_any = true;
+      auto f = k.faults.find(w);
+      if (f == k.faults.end())
+        k.fail("cru: warp %u ended in the machine check with no record (F-MACHINE)", w);
+    }
+    if (!killed_any) k.fail("rau: the machine check killed nothing");
+  }
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
     if (isParked(w) || cut(w)) continue;
     const Oracle &o = k.orcs[w];
@@ -6329,6 +6476,9 @@ KernelReport compareFinal(Kernel &k) {
       }
     }
   }
+  // A machine-checked core (AR 370) ends mid-run with no defined memory:
+  // the host resets it. Its warps were held to their retire order above.
+  if (!k.mce_taken) {
   // Memory: what each warp's run left changed from the memory they all began
   // with, together. Each CTA must write words of its own: two runs leaving
   // one word differently is a kernel that races, refused as a mismatch.
@@ -6363,6 +6513,7 @@ KernelReport compareFinal(Kernel &k) {
     if (v != w.second && r.mem_mismatch++ < 4)
       std::fprintf(stderr, "FINAL [%llx]: machine %08x, ccv-sim %08x\n",
                    (unsigned long long)w.first, v, w.second);
+  }
   }
   // Each warp retires its own instructions in its own order.
   unsigned groups = 0;

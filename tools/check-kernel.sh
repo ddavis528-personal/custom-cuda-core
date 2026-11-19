@@ -133,6 +133,11 @@
 #                                                its step limit
 #   a uop of a stale fetch epoch is dropped   stale-epoch (loop): OOE drops
 #     before rename (A-70)                       it, and it never retires
+#   a clean line's UE is recovered, bounded   ue-no-track (hit): the hard
+#     by DCU's track table; a dirty line's,      error never ends the core;
+#     a hard one or a full table's ends the      ue-dirty-recover, mce-ignore,
+#     core: CRU's MACHINE_CHECK, RAU's kill,     mce-no-record, mce-no-kill
+#     F-MACHINE in every record (AR 370)         (predswap)
 #   an L1 hit with a syndrome sends its data   ecc-no-fix, ecc-cmpl-on-time
 #     on time, no completion then, its            (hit, CCV_MIU_ECC_INJECT=1):
 #     corrected data and completion later         stale reads; no-fix leaves
@@ -830,6 +835,10 @@ hit    l1_hit=4 l1_late=0 l1_inelig=0
 hit@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
 transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=64 l1_hit=0
 spinwait@CCV_MIU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
+vadd@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=0 machine_check=0 kill=0
+ldpar@CCV_DCU_UE_INJECT=1 ue_recover=2 ue_fatal=0 machine_check=0
+hit@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=1 machine_check=1 kill=1
+predswap@CCV_DCU_UE_INJECT=1 ue_recover=0 ue_fatal=1 machine_check=1 kill=1
 late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=3
 plog   merge=3
@@ -1608,6 +1617,43 @@ if [ "$n1" -gt 0 ] && [ "$(field "$B/kernel_ecc-no-fix.log" gpr_mismatch)" = 2 ]
   say "--break ecc-no-fix, ecc-cmpl-on-time: a syndrome's hit" "PASS ($n1 stale reads and 2 registers; 5 stale reads, registers corrected)"
 else
   bad "--break ecc-no-fix / ecc-cmpl-on-time" "stale reads $n1 / $n2 (want >0 / 5): $(grep '^KERNEL' "$B/kernel_ecc-no-fix.log" "$B/kernel_ecc-cmpl-on-time.log" | tr '\n' ' ')"
+fi
+
+# The machine check (AR 370; DA rev 124; ISA v1.9 O-86). DCU's stub takes
+# every read hit as an uncorrectable error under CCV_DCU_UE_INJECT=1. The
+# bin table above: vadd and ldpar recover clean lines (invalidated,
+# refetched), the run exact; hit's second UE lands on a location already
+# recorded, a hard error, and predswap's on a dirty line, each core-fatal:
+# ccv_dcu_cru_err's ue, CRU's MACHINE_CHECK, RAU's kill of every context,
+# every live record F-MACHINE, the run held to its retire order. Here: a
+# full table is fatal too (ldpar's two clean UEs, CCV_DCU_UE_TRACK=1), and
+# the controls, each caught: ue-no-track (hit: every UE recovers, so the
+# hard error never ends the core), ue-dirty-recover (predswap: a dirty
+# line refetched loses its bytes), mce-ignore, mce-no-record, mce-no-kill
+# (predswap: CRU takes no machine check, writes no record, or never asks
+# RAU for the kill). The kill-race kernels (atom, atomf, cas, ropediv) are
+# not among these: TI-485.
+ue() { CCV_DCU_UE_INJECT=1 "$SKEL" --kernel "build/oracle/$1/oracle.jsonl" ${2:+--break "$2"} >"$B/kernel_ue_$1_${2:-none}.log" 2>&1; }
+uelog() { echo "$B/kernel_ue_$1_${2:-none}.log"; }
+CCV_DCU_UE_TRACK=1 ue ldpar
+l=$(uelog ldpar)
+if [ "$(field "$l" check_failures)" = 0 ] && [ "$(cover "$l" ue_fatal)" = 1 ] &&
+   [ "$(cover "$l" machine_check)" = 1 ] && grep -q '^UE dcu: core-fatal .*(table full)' "$l"; then
+  say "a UE that finds DCU's track table full is core-fatal" "PASS (ldpar, CCV_DCU_UE_TRACK=1)"
+else
+  bad "a UE that finds DCU's track table full" "not core-fatal: $(grep '^KERNEL' "$l")"
+fi
+ue hit ue-no-track; ue predswap ue-dirty-recover; ue predswap mce-ignore; ue predswap mce-no-record; ue predswap mce-no-kill
+why=""
+[ "$(cover "$(uelog hit ue-no-track)" machine_check)" = 0 ] && [ "$(cover "$(uelog hit ue-no-track)" ue_recover)" -gt 1 ] || why="$why ue-no-track"
+grep -q '^CHECK miu: seq [0-9]* P0 loaded ' "$(uelog predswap ue-dirty-recover)" || why="$why ue-dirty-recover"
+grep -q '^CHECK cru: DCU raised a core-fatal UE on ccv_dcu_cru_err, and CRU never took' "$(uelog predswap mce-ignore)" || why="$why mce-ignore"
+grep -q '^CHECK cru: warp 0 ended in the machine check with no record (F-MACHINE)' "$(uelog predswap mce-no-record)" || why="$why mce-no-record"
+grep -q '^CHECK rau: the machine check killed nothing' "$(uelog predswap mce-no-kill)" || why="$why mce-no-kill"
+if [ -z "$why" ]; then
+  say "--break ue-no-track, ue-dirty-recover, mce-*: the machine check" "PASS (5 controls caught)"
+else
+  bad "machine-check controls" "not caught:$why"
 fi
 
 # MIU echoes each memop's RS entry on its completion (OA-23),
