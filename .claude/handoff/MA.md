@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 19, AR 384 (AR 381), TI 483 (TI-484 answered), OA 436, IS 197, CP 160, OI 374, RA 156, RI 91, MA 100, DA 127.
+Conventions 19, AR 384 (AR 381), TI 483 (TI-484 answered), OA 436, IS 197, CP 160, OI 374, RA 156, RI 91, MA 108, DA 127. (AR 388, OA 440, TI 485 read for these rows only.)
 
 ## State, 2026-11-13
 
@@ -89,15 +89,21 @@ Conventions 19, AR 384 (AR 381), TI 483 (TI-484 answered), OA 436, IS 197, CP 16
   holds 2.5x the data (peaks per bank / summed: a.q8.rot 18/109, b.q16 43/264; ~1,152 b/entry; extra ~5%
   of L1 data bits, ~14% area-equiv as RF). Settled: LDFIRST model-only (neutral); rot not worth it at
   b.q16; knees (a) 8, (b) 12-16.
-  MA-7 DONE -> MA-24 (MA rev 100; AR/TI notified): (b), QDEPTH 16, DEFCAP 12, GAP 5. cm128 gap 5 vs
-  uncapped b.q16 5,165,866: cap 24 +0.14, 18 -0.12, 12 -0.57 (5,136,180), 8/6 -0.26, 4 +0.84; a.q16
-  5,207,327, so cap 12 is -1.37% vs (a) with summed data peak 99 vs 115. Per-bank peak 14 (cap+2: direct
-  winners and fills are ungated) -> RTL sizes 14 or hard reservation. DEFCAP fix af726092 (=11dcec83 on
-  gate-scratch/MA): a store at the cap re-passes, data stays in MIU. Waiting: AR on re-pass contract, TI
-  on params. Spec tabs carry it (DCU rev 47 'Bank queue and deferred stores', MIU rev 138 'Stores DCU
-  turns away').
-  IN FLIGHT: RH at 11dcec83 on the decided config: BANK_AGE 8/16/32/64 (cm128 + 64 kernels), then
-  HASH 0/1 with stride-kernel callout.
+  MA-7 DONE -> MA-24 (MA rev 100): (b), QDEPTH 16, GAP 5, store-data cap 12. cm128 gap 5 vs uncapped
+  b.q16 5,165,866: cap 24 +0.14, 18 -0.12, 12 -0.57 (5,136,180), 8/6 -0.26, 4 +0.84; a.q16 5,207,327.
+  AR 382 agreed on 4 conditions (signalling, order, progress, coverage); MA rev 101 answered: MIU-held
+  per-bank credits (hard reservation). Model CCV_P1_CREDIT (a6597228, pushed): cm128 5,130,918 (-0.10%
+  vs soft cap, -1.47% vs (a)), repass 0, store-data peak 12; S1 clean 55,693. Reproduced RH exactly
+  (5,136,180 from fetch) in worktree /home/user/wt-credit at 11dcec83 (oracle build/oracle-cm128;
+  run build/cr/run.sh; note bg-run.sh ran in place there, so launch long runs with setsid nohup).
+  MA-25 (MA rev 108, TI notified): params CCV_DCU_BANK_QDEPTH 16 / CCV_DCU_BANK_STDATA 12, two 8-bit
+  credit-return vectors DCU->MIU (TI picks channel). Spec tabs updated (DCU rev 48, MIU rev 144); rename
+  channel there once TI lands it.
+  IN FLIGHT: RH at 11dcec83 (soft cap DEFCAP 12): BANK_AGE 8/16/32/64 (cm128 + S1), then HASH 0/1
+  with stride-kernel callout; ETA part 1 ~07:30Z.
+- TI-485 kill races (settled, MA rev 107): OA 436 final (OA 438, AR 385): MIU completes every memop of a
+  killed warp, keeps an atomic's hold through A3 (more = 0), UE-withheld read completes with no data.
+  MIU tab rev 143. (MA flip-flopped on crossing rows; lesson: wait for AR and OA to agree before editing.)
 - TI-484 (MA rev 99): miu-impl.md must require MI's MIU to pass the CCV_MIU_ECC_INJECT runs (0767fe1c).
 - MA-23 (DCU data array shape; MA rev 90-97): (A) parallel 8-way, hit 7, 512 tiny SRAMs w/ waivers; (B)
   tag-then-data hit 9; (B)+(C2) way prediction in the payload cycle, hit 8 (mispredict 9), 2nd bank access.
