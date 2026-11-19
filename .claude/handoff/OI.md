@@ -19,7 +19,7 @@ Updated 2026-11-19 (oi-slot in /home/user/wt-slot: ooe_slot fd194677/8501f587/14
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-180 (OI-179 rung OA: redirect path, awaiting ruling). Pings Fridays.
+  Next free ID: OI-180 (OI-179 answered by OA 447). Pings Fridays.
 - DA 11-18 (chat): pause NGD-to-25 fixes until the ccv_ooe top is built (real budgets, no
   false paths); finish ALL modules first so the top is complete when built. OI may move
   internal budgets where a measured parent times the connection and they still converge.
@@ -33,7 +33,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 383, OA 448, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
+OI 383, OA 449, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
 
 ## Trees and runs in flight
 - #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
@@ -71,7 +71,7 @@ OI 383, OA 448, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (T
    forcing a few hundred demotes, slot_verdict_lag 0 vs 1). OA 446: OA declines (b), recommends (a) to DA (mempl waiver).
    #65 (4) decq credit return DONE locally (6fc15bec on oi-slot): ooe_decq output crd_cq02h[S*LC], per-slot frees
    registered beside frn; decq_tb checks per slot, control stale-credit-apart. check-cg/ngd for ooe_decq not yet run
-   (gate was busy). Next: #65 (5a) ooe_redir: b0117b45 (decrx sw_o/sn_o outputs, bench 25 seeds + 7 controls pass; model same-cycle redirects in slot order, ooe tests pass) and ooe_redir b0de1716: rob_w outputs rd_e_cq02h (rs_en) / ckf_l_cq02h (|frp); ooe_redir sits in ooe_rob_tb (u_redir) and rob_tb checks it vs core.out at +2 (25 seeds, 1206 redirects, 0 mismatches; controls redir-warp/epoch/ntm, rd-unled, ckf-unled); cg unit ooe_redir (scope u_redir). Left: check-cg/check-ngd ooe_redir + ooe_rob_w (after the gate; re_q/fl_q are 8 ungated flops - watch CG), landing row with budgets (re OI-179, which OA may still change).
+   (gate was busy). Next: #65 (5a) ooe_redir: b0117b45 (decrx sw_o/sn_o outputs, bench 25 seeds + 7 controls pass; model same-cycle redirects in slot order, ooe tests pass) and ooe_redir b0de1716: rob_w outputs rd_e_cq02h (rs_en) / ckf_l_cq02h (|frp); ooe_redir sits in ooe_rob_tb (u_redir) and rob_tb checks it vs core.out at +2 (25 seeds, 1206 redirects, 0 mismatches; controls redir-warp/epoch/ntm, rd-unled, ckf-unled); cg unit ooe_redir (scope u_redir). OA 447 (re:OI-179) ruled: rd_l plain wire to decrx adv/decq flush/RAT squash; rd_e is decrx's lead (decrx ev_l now [S:0] per source, 8948873d, bench 25 seeds + 7 controls); landing row (OI-180) must state OA 428's invariant (one wire, one cycle, three receivers) + joint-bench assertion plan, slot-order IPC, send+2 price (<=0.5% S1 absorbed, else cost of payload-with-valid to OA), decq check-cg/ngd, budgets proposed for rd_e (~6 NGD)/rd_l. Model knob redirect_send_lag + control inject_send_free_late (582fedae14). RH asked: A 99ee28168b, B 582fedae14, C 582fedae14 with CCV_OOE_CONFIG=redirect_send_lag=2 on S1/cm32priv/cm128priv - awaiting. Left: check-cg/check-ngd ooe_redir + ooe_rob_w + ooe_decrx + ooe_decq (after the gate; re_q/fl_q are 8 ungated flops - watch CG), landing row with budgets (re OI-179, which OA may still change).
    Lint in wt-slot shows 7 CCV-L23 in ooe_decrx/ooe_slot (lint passed on wt-sw's gate): recheck on oi-slot's gate.
    OA 435 module split (re:OI-171), in order: (1) ooe_slot #63, (2)(3) ooe_rcupl/ooe_mempl #64,
    (4) decq credit return + (5a) ooe_redir #65, (6) rob_w slice 5 syu_bar, (5b+7) epoch notices +
