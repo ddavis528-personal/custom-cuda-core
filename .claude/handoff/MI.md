@@ -30,7 +30,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 ## Register bookmarks
 - Session-start read: AR 392, OA 443, IS 197, TI 486, OI 378, CP 160, RA 156, RI 91, MA 117,
   MI 2 (MI-1 written), DI 1, DA 128, Conventions 20. Since: MA 122 (MI-2 settled, AR 390/391/392 read),
-  specs Common tab 9. Nothing had MI in Needs. MA-25 (QDEPTH/STDATA, credit
+  specs Common tab 9. MI tab now rev 4 (MI-2 closed, MI-3 raised, re:MI-1). Nothing had MI in Needs. MA-25 (QDEPTH/STDATA, credit
   vectors ent_ret/std_ret) and MA-26 (WAYPRED_BITS/SEL) await TI; TI-484 (ECC inject) landed 0767fe1c.
 
 ## Settled since the handoff (MA tab rev 119-122)
@@ -44,15 +44,25 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - AR 390 / OA-442: a way mispredict is NOT a late hit at due+1: it takes the bank-conflict
   loser's path, data due+2 at the earliest, answered as a miss. miu-impl.md updated (re-read
   its bins from MA's branch before building that bin).
-- MI-2 needs a closing line in the MI tab (adopted) with the next MI tab write.
 
 ## Open work, most urgent first
-1. MI-1 (MI tab rev 2) asks TI for makeMiu (CCV_MIU_IMPL=model), blocks.list lines,
-   check-miu-unit, later the port-trace dump. NOT rung yet: ring TI when the sim/miu/
-   commit it waits on is pushed and named in the MI tab.
-2. Phase 1 (M0): the model in sim/miu/ (core + block + unit tests), per miu-impl.md
-   section 5 obligations and coverage bins. Defaults while params are pending:
-   QDEPTH 16, STDATA 12, WAYPRED_BITS 5 (L1_HIT 8; also test 9), BANK_HASH off.
-3. Phase 1b with DI's DCU model; agree landing order of bank credits / late hit /
-   withheld completion with DI in our tabs.
-4. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
+1. Model restructure to the spec's timing, in worktree /home/user/mi-wt on local branch mi-dev
+   (the MI-1 hook applied there uncommitted; scratchpad mi1-hook.patch; never commit it).
+   Step 1 (f167df9f, WIP): every memop starts at its address (A1/A2 at H), own-warp holds,
+   fence holds its warp's younger memops, held load loses contract + no-hit (lost_). MI-3 asks
+   MA to confirm. Next steps: (2) first pass at H+1 on the footprint's slots, cross-memop bank
+   conflicts in slot order, later passes/drains/fills/walker on idle slots; (3) a store keeps
+   its MQ entry until it drains, drain on idle slots in commit order per warp, drain guard
+   N_drain=16 withholding one memop credit (channel already returns owed credits 1/slot/cycle);
+   (4) TLB + walker, cold per kernel; (5) bank credits once MA-25's channel exists; (6) bins,
+   stats, controls. Validate each with CCV_MIU_IMPL=model ./tools/check-kernel.sh (~6 min).
+2. MI-1 rung to TI (MI tab rev 4, response row names 21274699). Await TI's hook; until then the
+   model is not built by the gate.
+3. MI-3 (MA): per-load hold reading. Await.
+4. Phase 1b with DI's DCU model; agree landing order of bank credits / way mispredict (now the
+   conflict loser's path, due+2, as a miss) / withheld completion with DI in our tabs.
+5. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
+
+## Pushed
+- ccr-58815650-0ch1hh at 21274699 (076d0b75 model, 7cfc15ec walker): SCOPED PASS. The remote
+  branch was seeded with TI's gated 663bed37 so gate-push had a scoped base.
