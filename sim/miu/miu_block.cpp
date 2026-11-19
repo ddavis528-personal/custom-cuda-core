@@ -78,6 +78,7 @@ private:
     uint64_t serial = 0;             ///< names it to the DCU responses
     uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
     bool frame = false;              ///< its lanes span windows: O-30 frames (AR-23)
+    bool entry = false;              ///< a store holding its MQ entry until it drains
     /// MA-4's eligibility lost from the address alone (lane group, page,
     /// bank): never an L1 hit, and MIU says so early with a no-hit (AR 356).
     bool inelig = false;
@@ -486,8 +487,10 @@ private:
           continue;
         }
         if (get(m.payload, c.ooe_ret, "commit_or_discard")) {
-          if (k_.brk == "drop-store" && !dropped_) dropped_ = true;
+          if (k_.brk == "drop-store" && !dropped_) { dropped_ = true; storeGone(it->second); }
           else committed_.push_back(it->second);
+        } else {
+          storeGone(it->second);
         }
         stores_.erase(it);
       }
@@ -701,7 +704,10 @@ private:
         unsigned(m.get(field(c.ooe_miu, "disp").lsb, ccv::prov::kWRobIdx));
     k_.hit("bulk_discard");
     for (auto it = stores_.begin(); it != stores_.end();)
-      if (it->second.warp == w && inRange(it->first, branch, tail)) it = stores_.erase(it);
+      if (it->second.warp == w && inRange(it->first, branch, tail)) {
+        storeGone(it->second);
+        it = stores_.erase(it);
+      }
       else ++it;
     std::vector<unsigned> now;
     for (unsigned tag : order_) {
@@ -797,9 +803,41 @@ private:
       k_.fail("miu: a last completion on slot %u, which holds no memop entry", slot);
       return;
     }
+    if (keep_.erase(tid)) return;   // a store's entry stays until its drain
+    freeEntry(slot);
+  }
+  /// A memop's MQ entry freed, and its credit returned, unless a drain that
+  /// has waited past N_drain claims the credit (MIU tab, the drain): it is
+  /// withheld until that drain goes.
+  void freeEntry(unsigned slot) {
+    const Ch &c = ch();
+    if (!entries_[slot]) {
+      k_.fail("miu: an entry freed on slot %u, which holds none", slot);
+      return;
+    }
     --entries_[slot];
+    for (auto &g : guard_)
+      if (g.second < 0) {
+        g.second = int(slot);
+        k_.hit("drain_guard_withheld");
+        return;
+      }
     release(c.ooe_miu, slot);
   }
+  /// A store's entry, when its life ends: discarded, or drained.
+  void storeGone(const Job &j) {
+    if (!j.entry) return;
+    if (keep_.count(j.tid)) {
+      // Its completion has not left yet: that frees the entry instead.
+      keep_.erase(j.tid);
+      return;
+    }
+    freeEntry(j.memop_slot);
+  }
+  std::set<uint64_t> keep_;             ///< stores whose completion keeps the entry
+  std::map<unsigned, int> guard_;       ///< drain guard by store tag: withheld slot, -1 not yet
+  std::map<unsigned, uint64_t> head_at_;   ///< when a committed store became its warp's head
+  static constexpr uint64_t kNDrain = 16;   ///< N_drain (MIU tab)
   bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
 
@@ -848,11 +886,28 @@ private:
     // line to itself) or an atomic's pass holds one; never for a read, so
     // another warp's loads, which never wait (MA-11), cannot starve it.
     {
+      // A warp's head that has waited N_drain cycles withholds one memop
+      // credit until it goes (guard_), so stores cannot starve under
+      // full-rate issue.
       std::set<unsigned> seen;
       for (auto it = committed_.begin(); it != committed_.end(); ++it) {
         if (!seen.insert(it->warp).second) continue;
-        if (inFlight(*it, kAnyWrite)) continue;
-        if (held(*it)) { k_.hit("atomic_hold_wait"); continue; }
+        const uint64_t since = head_at_.emplace(it->tag, now_).first->second;
+        const bool waits = inFlight(*it, kAnyWrite) || held(*it);
+        if (waits) {
+          if (held(*it)) k_.hit("atomic_hold_wait");
+          if (now_ - since >= kNDrain && !guard_.count(it->tag)) {
+            guard_[it->tag] = -1;
+            k_.hit("drain_guard");
+          }
+          continue;
+        }
+        head_at_.erase(it->tag);
+        auto g = guard_.find(it->tag);
+        if (g != guard_.end()) {
+          if (g->second >= 0) release(c.ooe_miu, unsigned(g->second));
+          guard_.erase(g);
+        }
         Job cj = *it;
         committed_.erase(it);
         // A predicate store drains as a read-merge-write of its word (MIU
@@ -860,6 +915,7 @@ private:
         // written. With no lane in its mask, nothing is read or written.
         if (cj.pxfer) cj.rmw = 1;
         if (!(cj.pxfer && cj.lines.empty())) launch(cj);
+        else storeGone(cj);
         break;
       }
     }
@@ -1265,7 +1321,11 @@ private:
     }
     if (j.atom) { atomRead(j, am); return true; }
     if (j.store) {
-      // Translated and checked; the write waits for retirement.
+      // Translated and checked; the write waits for retirement. Its
+      // completion leaves now, but its MQ entry stays until it drains or
+      // is discarded (MIU tab: committed stores throttle new memops).
+      j.entry = true;
+      keep_.insert(j.tid);
       stores_[tag] = j;
       to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
       return true;
@@ -1570,6 +1630,9 @@ private:
   bool olderStore(const Job &j) const {
     const uint32_t ls = uidSeq(j.tid);
     auto overlaps = [&](const Job &st) {
+      // The wide bit: a store over more than 4 lines holds every younger
+      // load of its warp until it drains (MIU tab, ordering).
+      if (st.lines.size() > kWideLines) { k_.hit("st_wide_hold"); return true; }
       for (const LineReq &a : st.lines)
         for (const LineReq &b : j.lines)
           if (a.line == b.line) return true;
@@ -1589,7 +1652,10 @@ private:
   /// any job, a write of `j`'s warp (what a load waits for: MA-11, other
   /// warps never wait), or any warp's write (what a drain waits for).
   enum Flight { kAny, kOwnWrite, kAnyWrite };
+  static constexpr size_t kWideLines = 4;
   bool inFlight(const Job &j, Flight k) const {
+    for (const Job &f : jobs_)
+      if (k == kOwnWrite && f.store && f.warp == j.warp && f.lines.size() > kWideLines) return true;
     for (const Job &f : jobs_)
       if (k == kAny || (f.store && (k == kAnyWrite || f.warp == j.warp)))
         for (const LineReq &a : f.lines)
@@ -1782,6 +1848,7 @@ private:
       if (it->rmw == 1) { merge(*it); ++it; continue; }
       if (!it->store) complete(*it);
       else if (it->atom == 3) atomDone(*it);
+      else storeGone(*it);
       it = jobs_.erase(it);
     }
   }
