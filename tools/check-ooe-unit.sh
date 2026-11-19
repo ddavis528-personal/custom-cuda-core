@@ -28,7 +28,7 @@ for c in free-new shallow-cancel early-wake cmpl-wake-delay-ignored \
          no-sized-fault no-converged-fault pair-split partial-taken no-first-need in-group-follows pair-rounds \
          row-no-hold retire-unresolved no-ret-hold no-idle-r split-r-class pq-no-dep keep-released-uops no-call-link cas-no-pd no-cogrant reconv-issues \
          mcred-sectioned mcred-unsectioned ignore-nohit ignore-nohit-base5 \
-         nohit-wake-1 nohit-wake-1-base5 free-held-kept; do
+         nohit-wake-1 nohit-wake-1-base5 free-held-kept kill-free-kept send-free-late bar-pend-overwrite; do
   if grep -q "^  control $c  *caught$" "$log"; then
     say "control $c" "caught"
   else
@@ -36,7 +36,7 @@ for c in free-new shallow-cancel early-wake cmpl-wake-delay-ignored \
   fi
 done
 n=$(grep -c "^  control " "$log")
-if [ "$n" != 58 ]; then
-  say "control count" "$n, want 58 (add a new one to this list)"; fail=1
+if [ "$n" != 61 ]; then
+  say "control count" "$n, want 61 (add a new one to this list)"; fail=1
 fi
 exit $fail
