@@ -476,6 +476,10 @@ struct Config {
   /// ckpt_free_lag's control: a redirect or a due squash leaves a younger
   /// branch's held free in place, so it lands after the checkpoint died (V-46).
   bool inject_free_held_kept = false;
+  /// A kill's control (TI-485, OA 436): the kill leaves the killed slot's
+  /// unsent checkpoint frees in place, so they land after the kill's epoch
+  /// notice freed the warp's checkpoints in FET (V-46).
+  bool inject_kill_free_kept = false;
   /// ROB slice 2's timing (OI-86): a branch's resolution (squash, RAT
   /// restore, redirect, checkpoint free) acts resolve_lag cycles after it
   /// completes, the redirect then leaving from flops (with DA, OA's rev

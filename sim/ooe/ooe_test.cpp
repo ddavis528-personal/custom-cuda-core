@@ -344,6 +344,7 @@ struct Env {
     // least once (P applies), and the fill its demoting miss waits for.
     bool parked = false, restored = false, restoring = false;
     bool demoting = false;                  ///< demoted; FET resets it at the epoch notice
+    bool killed = false;                    ///< killed (Env::kill); FET frees its checkpoints at the notice
     uint64_t ready_at = 0, fill_at = 0;
     uint64_t abandon_at = 0;                ///< PF-23: its last abandoned load's own answer
     /// AR's rev 115: restored before its ready report (provisional); its P
@@ -828,12 +829,28 @@ struct Env {
     return nullptr;
   }
 
+  /// A kill as FET and the test see it: OOE is told, and FET stops the
+  /// killed warps' streams and frees their checkpoints at the notice.
+  void kill(uint32_t mask, unsigned epoch) {
+    core.kill(mask, epoch);
+    for (Warp &x : w)
+      if (mask >> (x.id % 32) & 1u) { x.killed = true; x.exited = true; }
+    for (auto it = fetched.begin(); it != fetched.end();)
+      it = mask >> (it->second.warp % 32) & 1u ? fetched.erase(it) : std::next(it);
+  }
+
   void fetApply() {
     for (auto it = redirects.begin(); it != redirects.end() && it->first <= t;) {
       const Redirect &r = it->second;
       Warp *x = warpOf(r.warp);
       if (r.epoch_only) {
         x->epoch = r.epoch;
+        if (x->killed && !r.rewind) {
+          // FET at a kill's epoch notice frees the warp's checkpoints itself
+          // (TI-485, OA 436): a free that lands after it is a dead one (V-46).
+          x->live = 0;
+          x->taken_order.clear();
+        }
         if (x->demoting && !r.rewind) {
           // FET at a demotion's epoch notice: the warp stops fetching, resets
           // its checkpoints, and resumes at its oldest unretired instruction
@@ -4902,6 +4919,56 @@ void testCkptFreeLag() {
   EXPECT(caught, "a held free kept across an older redirect should land on a dead checkpoint");
 }
 
+/// TI-485 (OA 436, OA 438): a kill withdraws the killed slot's checkpoint
+/// frees not yet sent, as a demote does: one resolved in the kill's cycle,
+/// or held under ckpt_free_lag, would land after the kill's epoch notice
+/// freed the warp's checkpoints in FET (V-46). A run of right-predicted
+/// branches is killed at every cycle of a window, at lag 0 and 1, so some
+/// kill lands on a free (the bin kill.free_withdrawn). The control keeps
+/// those frees, and FET must see a free of a dead checkpoint.
+void testKillFreeWithdrawn() {
+  unsigned caught = 0;
+  for (const bool control : {false, true})
+    for (const unsigned lag : {0u, 1u}) {
+      uint64_t wd = 0;
+      for (unsigned at = 4; at != 64; ++at) {
+        g_test = std::string("kill free withdrawn") + (control ? " (control)" : "") + " lag " + std::to_string(lag) +
+                 " at " + std::to_string(at);
+        Config c = baseConfig();
+        c.ckpt_free_lag = lag;
+        c.inject_kill_free_kept = control;
+        Env e(c);
+        std::vector<Op> p;
+        for (unsigned i = 0; i != 16; ++i) {
+          Op a; a.k = kLane; a.dst = 1 + i % 3; a.src[0] = 1 + (i + 2) % 3; a.nsrc = 1; p.push_back(a);
+          Op sp; sp.k = kSetp; sp.pdst = 1 + i % 2; sp.src[0] = a.dst; sp.src[1] = a.dst; sp.nsrc = 2; p.push_back(sp);
+          Op b; b.k = kBranch; b.pguard = sp.pdst; b.taken = false; b.pred_taken = false; p.push_back(b);
+        }
+        Op ex; ex.k = kExit; p.push_back(ex);
+        e.launch(0, 0, p);
+        if (control) g_quiet = true;
+        const int before = g_fail;
+        for (unsigned k = 0; k != at; ++k) e.step();
+        e.kill(1u, 1);
+        for (unsigned k = 0; k != 200; ++k) e.step();
+        g_quiet = false;
+        wd += e.core.counters["kill.free_withdrawn"];
+        if (control) {
+          for (const std::string &x : e.errors) caught += x.find("V-46") != std::string::npos;
+          g_fail = before;
+          continue;
+        }
+        EXPECT(e.errors.empty(), "%zu checker errors, first: %s", e.errors.size(), e.errors.empty() ? "" : e.errors[0].c_str());
+      }
+      if (!control) EXPECT(wd > 0, "lag %u: no kill landed on an unsent checkpoint free", lag);
+      std::printf("  kill free withdrawn lag %u%s: %llu kills withdrew a free\n", lag, control ? " (control)" : "",
+                  (unsigned long long)wd);
+    }
+  g_test = "kill free withdrawn (control)";
+  std::printf("  %-24s %s\n", "control kill-free-kept", caught ? "caught" : "MISSED");
+  EXPECT(caught, "a free kept across a kill should land on a dead checkpoint");
+}
+
 /// MA-5 (AR 345/347, OA-412): MIU holds a few credits per memop slot and
 /// returns each long after its memop. Select must grant a memop only on a
 /// credited pipe of its footprint, the lowest, so full-width loads spread
@@ -6110,6 +6177,11 @@ int main(int argc, char **argv) {
     std::printf("ooe-test --slot-verdict-lag: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--kill-free") {   // TI-485's kill bin alone
+    testKillFreeWithdrawn();
+    std::printf("ooe-test --kill-free: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--ckpt-free-lag") {   // OA 427's test alone
     testCkptFreeLag();
     std::printf("ooe-test --ckpt-free-lag: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
@@ -6184,6 +6256,7 @@ int main(int argc, char **argv) {
   testRobAllocLag();
   testCkptFreeLag();
   testSlotVerdictLag();
+  testKillFreeWithdrawn();
   testRetHold();
   testIdleR();
   testRClass();

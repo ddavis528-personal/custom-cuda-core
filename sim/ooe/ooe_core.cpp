@@ -57,6 +57,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"names_pool_lag", &names_pool_lag},
                                      {"full_rows", &full_rows},
                                      {"inject_partial_taken_ok", &inject_partial_taken_ok}, {"inject_verdict_early", &inject_verdict_early},
+                                     {"inject_kill_free_kept", &inject_kill_free_kept},
                                      {"inject_no_memop_credit", &inject_no_memop_credit},
                                      {"inject_ignore_nohit", &inject_ignore_nohit}};
   std::stringstream ss(spec);
@@ -2604,7 +2605,12 @@ void Core::control() {
       if (s.st == WarpState::kFree || !((kill_mask_ >> (s.warp % 32)) & 1u)) continue;
       for (unsigned c = 0; c != cfg_.ckpts; ++c) s.ckpt[c].live = false;
       for (unsigned k = 0; k != s.count; ++k) s.rob[(s.head + k) % cfg_.rob_depth].ckpt_live = false;
-      withdrawFree(((uint64_t(1) << cfg_.ckpts) - 1) << (si * cfg_.ckpts));   // as a demote's (V-46)
+      // As a demote's (V-46): a free resolved this cycle, or held under
+      // ckpt_free_lag, would land after FET freed the warp's checkpoints at
+      // the kill's notice (TI-485, OA 436).
+      const uint64_t km = ((uint64_t(1) << cfg_.ckpts) - 1) << (si * cfg_.ckpts);
+      if ((free_mask_ | free_held_) & km) count("kill.free_withdrawn");
+      if (!cfg_.inject_kill_free_kept) withdrawFree(km);
       squashAfter(si, -1, true);
       s.rat = s.crat;
       s.prat = s.cprat;
