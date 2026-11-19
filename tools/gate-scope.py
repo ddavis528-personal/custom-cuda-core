@@ -110,6 +110,10 @@ MAP = [
     # The hard macros' views: every RTL section, and check-skel's lockstep
     # of the SRAM model against them (test/vl/vl_sram_tb.cpp).
     ("rtl/macro/", RTL + ["skel"]),
+    # The SECDED encoder and decoder: every RTL section, and check-skel's
+    # lockstep of sim/skel/secded.h against them (test/vl/vl_secded_tb.cpp).
+    ("rtl/common/ccv_common_secded_", RTL + ["skel"]),
+    ("rtl/include/ccv_secded.svh", RTL + ["skel"]),
     ("rtl/", RTL),
     ("test/kernels/", ["kernel", "rcu_ls", "svh"]),
     ("test/ooe/", ["ooe_rtl", "cg", "ngd"]),
@@ -119,6 +123,7 @@ MAP = [
     ("test/macro/", ["cg", "ngd"]),
     # The SRAM model's lockstep against rtl/macro/ (check-skel).
     ("test/vl/vl_sram_", ["skel"]),
+    ("test/vl/vl_secded_", ["skel"]),
     ("test/ngd/", ["ngd"]),
     ("test/neg/", ["iface"]),
     ("test/formal/", ["formal"]),

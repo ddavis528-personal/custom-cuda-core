@@ -1513,6 +1513,21 @@
       ]
     },
     {
+      "name": "ccv_dcu_cru_err",
+      "src": "dcu",
+      "dst": "cru",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "ue",
+        "ce_alert"
+      ],
+      "doc": "The machine-error report (AR 370, DA rev 124): DCU's sticky error levels, sent as a message each time either changes (so at most once for ue, which stays set until reset). ue: an uncorrectable error that is core-fatal -- one in a dirty L1 line, in a writeback's victim read or a fill, or a hard error (a second UE at a location already recorded in DCU's CCV_DCU_UE_TRACK table, or one that finds it full). CRU then latches MACHINE_CHECK, sends RAU its kill request for every grid (ccv_cru_rau_cfg kill_req, kill_grid all ones), and writes F-MACHINE (cause 10) into the first-fault record of every live context not yet written (ISA v1.9 O-86, the core-wide exception to §12.7). The access the UE hit gets no completion; RAU's kill ends it. A UE in a clean line is recovered inside DCU (the line invalidated and refetched as a miss) and is not reported here. ce_alert: the corrected-error count passed ccv_common_err's ERR_CTRL threshold, status only (no kill). One such channel per SRAM-bearing block, each to CRU, which ORs them; DCU's is the only one in v1 (SPM is register files, AR 371).",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
       "name": "ccv_cru_rau_cfg",
       "src": "cru",
       "dst": "rau",
@@ -1525,7 +1540,7 @@
         "kill_req",
         "kill_grid"
       ],
-      "doc": "Host-programmed policy (demotion threshold, progress threshold, launch enable) and the host's kill request with a grid selector. Both kill sources -- a fault from OOE, a request from the host -- land at RAU, the single issuer.",
+      "doc": "Host-programmed policy (demotion threshold, progress threshold, launch enable) and the host's kill request with a grid selector. Every kill source -- a fault from OOE, a request from the host, CRU's machine check (AR 370) -- lands at RAU, the single issuer. kill_grid all ones selects every grid: CRU sends that on a machine check (ccv_dcu_cru_err's ue).",
       "id_classes": [
         "none"
       ]
@@ -1638,6 +1653,8 @@
   ],
   "field_widths": {
     "refused": "1",
+    "ue": "1",
+    "ce_alert": "1",
     "pca_place": "CCV_W_PCA_PLACE",
     "lane_pcs": "CCV_WARP_LANES*CCV_W_LANE_PC",
     "pc_upper": "CCV_W_PC_UPPER",
