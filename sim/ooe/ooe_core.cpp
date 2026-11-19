@@ -2768,7 +2768,12 @@ void Core::retire() {
     else f();
   };
   // bar_pend (OA 448 (2) B): send one pending report, rotating over slots.
+  // A slot's register frees only after the cycle it is picked: ooe_rob_w
+  // sees the picker's grant as an input, so the stop reads the register as
+  // the cycle started (bar_pv0).
+  uint64_t bar_pv0 = 0;
   if (cfg_.bar_pend) {
+    for (unsigned k = 0; k != slot_.size(); ++k) if (slot_[k].bar_pv) bar_pv0 |= uint64_t(1) << k;
     for (unsigned k = 0; k != slot_.size(); ++k) {
       const unsigned si = (rr_bar_ + k) % slot_.size();
       if (!slot_[si].bar_pv) continue;
@@ -2922,7 +2927,7 @@ void Core::retire() {
       const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
                            !r.fault && !r.u.cause;
       if (cfg_.bar_pend) {
-        if (bar_rep && ((s.bar_pv && !cfg_.inject_bar_pend_overwrite) || slot_bar)) { count("stall.bar_pend"); robStop("barrier pending"); break; }
+        if (bar_rep && ((((bar_pv0 >> si) & 1u) && !cfg_.inject_bar_pend_overwrite) || slot_bar)) { count("stall.bar_pend"); robStop("barrier pending"); break; }
       } else if (bar_rep && bars_picked) { count("stall.bar_port"); robStop("barrier port"); break; }
       if (bar_rep) {
         Bar b;

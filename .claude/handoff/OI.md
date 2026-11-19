@@ -78,7 +78,20 @@ OI 383, OA 449, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (T
    slice 6, (8) rcu_map in ooe_rat, (9) rau_status, (10) cru_fault #66; then ccv_ooe top glue (no
    logic in ccv_ooe). Each lands with a bench vs model, a timing unit, controls, and a row
    proposing port budgets with measured NGD.
-3b. #66 (6) slice 5 syu_bar: model knob bar_buf_depth (71feef7e, testBarBufDepth; on gate-scratch/OI); RH asked D0/D2/D3 on
+3a. #66 slice 5 (OA 448 ruled: barrier state in ooe_rob_w per slot; go takes the hold as its own input, ORed inside;
+   report pick (A) retire stop if caps hold else (B); depth 2 unless RH >0.5% vs unbounded -> 3; model counts as RTL).
+   DECIDED (B): (A) is structurally impossible: rob_w is one instance per slot, so a cross-slot pick in the window
+   would be a path through the parent. Model knob bar_pend (42e8ee74, 31bf4b1e + pv0 stop as the RTL): one pending
+   report per slot, a rotating pick a cycle; retire stops at a bar op while the register was full as the cycle
+   started (grant is an input to rob_w, so it frees the cycle after) or at a 2nd in a window; pending counts as
+   held for drain/exit/kill and holds its side-buffer place. RH asked P0/P1(bar_pend=1)/P2(+bar_buf_depth=2) at 31bf4b1e.
+   RTL plan: rob_w side buffer 2 places {v, rt(pending), idx LD, kind 2, bid 4, guarded, bhs(set the hold), long,
+   gm 32, guard 32 (dn BS mask), phase 32 (dn aux)}; new alloc inputs al_bar/al_bk/al_bid/al_bgd/al_bhs/al_bl [A];
+   hold state bar_hold/bar_retired/bar_long/bar_mask; held = bhs && hold && !retired; release input (syu_rel warp
+   matched upstream -> per-slot rel pulse); outputs: req (rt flop) + place0 fields from flops; per-slot hold out to
+   ooe_go. New module ooe_barpick: rotating pick over req & ~gnt_q, flops gnt_q (to rob_w as data: rt_en=rt, rt<=~gnt)
+   and the ccv_ooe_syu_bar report. rob_tb drives from RobLog (add bar fields to Alloc, report list), compares reports.
+3b. (older) #66 (6) slice 5 syu_bar: model knob bar_buf_depth (71feef7e, testBarBufDepth; on gate-scratch/OI); RH asked D0/D2/D3 on
    transpose-128, layernorm-128, cta-reduce-128, sgemm-128 + S1 (>0.5% on any -> depth 3). OI-180 asks OA: hold state
    in rob_w?, report pick as retire stop vs pending register, depth, rename hold timing. RTL waits on OA.
    #64 step 1 (local, uncommitted until trio passes): ooe_rs drops its issue registers, exports lv_cq02h/le_cq02h (LW)/
