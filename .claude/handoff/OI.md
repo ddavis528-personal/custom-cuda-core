@@ -42,7 +42,7 @@ OI 386, OA 449, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (T
   withdrawn by DA rev 127 / OA 433). Rebuild the push branch from origin (now b91632b4) without the flop form.
 
 ## Open work (most urgent first)
-0. TI-488: when oi-slot lands (3ab00269 package defaults), drop the two ooe_wake LAT_SPEC 14/LAT_MISS 17 lines TI pinned in test/ooe/cg-units.json. RH: keep rh-oi447/447a until DA rules on OI-182; others released. Owe RH a look at layernorm -6.1%/sgemm -1.2% under bar_pend (report reorder?).
+0. TI-488: when oi-slot lands (3ab00269 package defaults), drop the two ooe_wake LAT_SPEC 14/LAT_MISS 17 lines TI pinned in test/ooe/cg-units.json. RH: keep rh-oi447/447a until DA rules on OI-182; others released. Slice 5 gap: the random rob bench never squashes a barrier (bars_sq=0, a95 counter in rob_tb), so ooe_rob_w's bsq path is unexercised: add a directed kill behind a waiting guarded barrier. Owe RH a look at layernorm -6.1%/sgemm -1.2% under bar_pend (report reorder?).
 1. TI-485 model bin + control DONE (ef015dab; Env::kill frees FET's ckpts at the kill's notice).
    Left: ooe_redir (#65) masks ckf for a slot from its epoch_only notice, with a bench control.
    OA 444 (DA 128): ooe_wake/ooe_trio LAT_SPEC/LAT_MISS default from ccv_prov_pkg (3ab00269;
