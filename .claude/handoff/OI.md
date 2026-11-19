@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-19 (oi-slot in /home/user/wt-slot: ooe_slot fd194677/8501f587/14526054, OA 444 wake defaults 3ab00269, TI-485 kill bin ef015dab; #58 full gate-push in flight, job log /root/ccv-logs/job-gate-push-20261119-084344-5610.log). Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
+Updated 2026-11-19 late: #58 gate relaunched after a restart killed it: job /root/ccv-logs/job-gate-push-20261119-223543-1589.log in wt-sw at caddee11 (sweep re-merged; ccr-5e4d6c70 needed a single-base merge: git read-tree -m -u <newest base> HEAD B + git merge-index git-merge-one-file -a + MERGE_HEAD, since recursive ort exploded over 7 bases). Slice 5 committed c4bfdbec on oi-slot.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
@@ -19,7 +19,7 @@ Updated 2026-11-19 (oi-slot in /home/user/wt-slot: ooe_slot fd194677/8501f587/14
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-181 (OI-179 answered by OA 447; OI-180 rev 384 rung OA: slice 5 scope, 4 calls). Pings Fridays.
+  Next free ID: OI-183 (OI-181 slice 5 built re:OA 448, OI-182 redirect send+2 +1.42% S1 to DA; rev 386, rung OA). Pings Fridays.
 - DA 11-18 (chat): pause NGD-to-25 fixes until the ccv_ooe top is built (real budgets, no
   false paths); finish ALL modules first so the top is complete when built. OI may move
   internal budgets where a measured parent times the connection and they still converge.
@@ -33,7 +33,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 383, OA 449, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
+OI 386, OA 449, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
 
 ## Trees and runs in flight
 - #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
@@ -42,6 +42,7 @@ OI 383, OA 449, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (T
   withdrawn by DA rev 127 / OA 433). Rebuild the push branch from origin (now b91632b4) without the flop form.
 
 ## Open work (most urgent first)
+0. TI-488: when oi-slot lands (3ab00269 package defaults), drop the two ooe_wake LAT_SPEC 14/LAT_MISS 17 lines TI pinned in test/ooe/cg-units.json. RH: keep rh-oi447/447a until DA rules on OI-182; others released. Owe RH a look at layernorm -6.1%/sgemm -1.2% under bar_pend (report reorder?).
 1. TI-485 model bin + control DONE (ef015dab; Env::kill frees FET's ckpts at the kill's notice).
    Left: ooe_redir (#65) masks ckf for a slot from its epoch_only notice, with a bench control.
    OA 444 (DA 128): ooe_wake/ooe_trio LAT_SPEC/LAT_MISS default from ccv_prov_pkg (3ab00269;
