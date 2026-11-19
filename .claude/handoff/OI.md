@@ -33,7 +33,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 380, OA 446, TI 486, AR 386, DA 128, MA 97, RA 156, RI 91, IS 197, CP 160 (TI-482 rung separately: answer in #58's landing row).
+OI 381, OA 446, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
 
 ## Trees and runs in flight
 - #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
