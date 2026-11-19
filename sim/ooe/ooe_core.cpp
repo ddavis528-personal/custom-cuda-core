@@ -35,7 +35,7 @@ std::string Config::apply(const std::string &spec) {
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
-      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"ckpt_free_lag", &ckpt_free_lag}, {"redirect_send_lag", &redirect_send_lag}, {"bar_buf_depth", &bar_buf_depth}, {"resolve_lag", &resolve_lag},
+      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"ckpt_free_lag", &ckpt_free_lag}, {"redirect_send_lag", &redirect_send_lag}, {"bar_buf_depth", &bar_buf_depth}, {"bar_pend", &bar_pend}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
@@ -2644,6 +2644,7 @@ void Core::control() {
   for (unsigned si = 0; si != slot_.size(); ++si) {
     Slot &s = slot_[si];
     bool held = false;
+    if (s.bar_pv) held = true;   // bar_pend: a report not yet sent
     for (const RobEntry &r : s.rob)
       held = held || (r.valid && !(cfg_.inject_drain_early && s.st == WarpState::kDemoting && r.squashed &&
                                    r.is_load && r.at_miu && !r.miu_done));
@@ -2766,6 +2767,18 @@ void Core::retire() {
     if (cfg_.rob_retire_lag) ret_defer_.push_back(std::move(f));
     else f();
   };
+  // bar_pend (OA 448 (2) B): send one pending report, rotating over slots.
+  if (cfg_.bar_pend) {
+    for (unsigned k = 0; k != slot_.size(); ++k) {
+      const unsigned si = (rr_bar_ + k) % slot_.size();
+      if (!slot_[si].bar_pv) continue;
+      const Bar b = slot_[si].bar_pb;
+      slot_[si].bar_pv = false;
+      act([this, b] { out.bars.push_back(b); });
+      rr_bar_ = (si + 1) % slot_.size();
+      break;
+    }
+  }
   for (unsigned k = 0; k != slot_.size(); ++k) {
     const unsigned si = (rr_select_ + k) % slot_.size();
     Slot &s = slot_[si];
@@ -2782,6 +2795,7 @@ void Core::retire() {
       }
     }
     unsigned n = 0, slot_commits = 0;
+    bool slot_bar = false;   // bar_pend: a barrier op retired in this window
     bool after_branch = false;
     while (n != cfg_.retire_per_rob && s.count && !s.fault_stop) {
       RobEntry &r = s.rob[s.head];
@@ -2907,7 +2921,9 @@ void Core::retire() {
       // leaves before it retires, so no report is recalled.
       const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
                            !r.fault && !r.u.cause;
-      if (bar_rep && bars_picked) { count("stall.bar_port"); robStop("barrier port"); break; }
+      if (cfg_.bar_pend) {
+        if (bar_rep && ((s.bar_pv && !cfg_.inject_bar_pend_overwrite) || slot_bar)) { count("stall.bar_pend"); robStop("barrier pending"); break; }
+      } else if (bar_rep && bars_picked) { count("stall.bar_port"); robStop("barrier port"); break; }
       if (bar_rep) {
         Bar b;
         b.tid = r.u.tid;
@@ -2921,7 +2937,8 @@ void Core::retire() {
         b.phase_mask = b.kind == kBarWaitPhase ? r.bar_phase : 0;
         b.held = (b.kind == kBarWait || b.kind == kBarWaitPhase) && s.bar_hold && !s.bar_retired && r.u.all_waiting;
         ++bars_picked;
-        act([this, b] { out.bars.push_back(b); });
+        if (cfg_.bar_pend) { s.bar_pv = true; s.bar_pb = b; slot_bar = true; }
+        else act([this, b] { out.bars.push_back(b); });
         count(b.kind == kBarExit ? "bar.report.exit" : b.kind == kBarArrive ? "bar.report.arrive"
               : b.kind == kBarWaitPhase ? (b.held ? "bar.report.phase_held" : "bar.report.phase") : b.held ? "bar.report.wait_held" : "bar.report.wait");
         if (b.held) {

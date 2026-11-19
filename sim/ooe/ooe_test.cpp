@@ -3265,6 +3265,50 @@ void testBarBufDepth() {
   EXPECT(kinds[0] == kinds[1], "the side buffer changed the reports");
 }
 
+// OA 448 (2) B: a pending report register per slot, one picked a cycle,
+// rotating. The reports per warp must match the direct pick's, in order.
+void testBarPend() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "bar_pend (control)" : "bar_pend";
+    std::vector<std::vector<unsigned>> per[2];
+    unsigned long long st = 0;
+    for (const unsigned pend : {0u, 1u}) {
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.bar_pend = pend;
+      c.inject_bar_pend_overwrite = control && pend;
+      Env e(c);
+      e.keep_log = true;
+      if (control && pend) g_quiet = true;
+      for (unsigned w = 0; w != 3; ++w) {
+        std::vector<Op> p;
+        Op a; a.k = kSfu; a.dst = 1; a.nsrc = 1; p.push_back(a);
+        for (int k = 0; k != 3; ++k) { Op b; b.k = kBarrier; b.arrive = true; p.push_back(b); }
+        Op ex; ex.k = kExit; p.push_back(ex);
+        e.launch(w, w, p);
+      }
+      const int saved = g_fail;
+      e.finish();
+      if (control && pend) { g_quiet = false; g_fail = saved; }
+      per[pend].assign(3, {});
+      for (const Bar &b : barsOf(e)) if (b.warp < 3) per[pend][b.warp].push_back(b.kind);
+      if (pend) st = e.core.counters["stall.bar_pend"];
+    }
+    unsigned n0 = 0, n1 = 0;
+    for (unsigned w = 0; w != 3; ++w) { n0 += per[0][w].size(); n1 += per[1][w].size(); }
+    if (control) {
+      const bool caught = per[0] != per[1];
+      std::printf("  %-24s %s\n", "control bar-pend-overwrite", caught ? "caught" : "MISSED");
+      EXPECT(caught, "an overwritten pending report should lose a report");
+      continue;
+    }
+    std::printf("  bar_pend: %u reports (direct %u), stall.bar_pend %llu\n", n1, n0, st);
+    EXPECT(n0 == 12, "direct pick: %u reports, want 12", n0);
+    EXPECT(st != 0, "bar_pend never stopped retire");
+    EXPECT(per[0] == per[1], "bar_pend changed a warp's reports");
+  }
+}
+
 void testBarrierDemote() {
   for (const bool control : {false, true}) {
     for (const bool tail : {true, false}) {
@@ -6399,6 +6443,7 @@ int main(int argc, char **argv) {
   testBarrier();
   testBarrierDemote();
   testBarBufDepth();
+  testBarPend();
   testBarrierTimer();
   testBarrierFault();
   testMemFault();

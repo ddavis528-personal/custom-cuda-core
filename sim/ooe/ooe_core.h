@@ -483,9 +483,19 @@ struct Config {
   /// popped at retire; a slot's next one holds rename while it is full.
   /// 0 = unbounded (the reference).
   unsigned bar_buf_depth = 0;
+  /// OA 448 (2) option B: a one-place pending report register per slot,
+  /// loaded at retire; one register a cycle is picked in rotating order and
+  /// sent. A slot's retire stops at a barrier op while its register is still
+  /// full after this cycle's pick, or at a second one in one window. A
+  /// pending report holds the slot's drain, exit and kill like a held entry.
+  /// 0 = the direct pick (one report a cycle across slots at retire).
+  unsigned bar_pend = 0;
   /// redirect_send_lag's control: the free mask a cycle later than the
   /// redirects, out of A-58's latency match (V-46 must see it).
   bool inject_send_free_late = false;
+  /// bar_pend's control: a full pending register is overwritten at retire
+  /// (no stop), so a report is lost.
+  bool inject_bar_pend_overwrite = false;
   /// ckpt_free_lag's control: a redirect or a due squash leaves a younger
   /// branch's held free in place, so it lands after the checkpoint died (V-46).
   bool inject_free_held_kept = false;
@@ -1625,6 +1635,8 @@ private:
     /// retire, or a marked uop's that leaves nothing younger in the ROB,
     /// until the hold lifts or (unheld) the warp's next uop arrives.
     bool bar_idle = false, bar_idle_reported = false;
+    bool bar_pv = false;   ///< bar_pend: the pending report register is full
+    Bar bar_pb{};          ///< bar_pend: its report
     uint64_t bar_idle_since = 0;
     unsigned home_ctr = 0;                    ///< OA-14's rotating home position
     unsigned chwidth_rob = 0;                 ///< the holding instruction
@@ -2249,7 +2261,7 @@ private:
   uint8_t &cell(unsigned i, unsigned j) { return cell_[i * n_ + j]; }
   uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }
   uint64_t next_age_ = 0;
-  unsigned rr_rename_ = 0, rr_select_ = 0;
+  unsigned rr_rename_ = 0, rr_select_ = 0, rr_bar_ = 0;
 
   // producers of each physical register still in the RS (up to two: a
   // masked load and its copy), and whether its value has landed
