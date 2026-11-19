@@ -2516,7 +2516,7 @@ module ooe_rob_w #(
           if (bp_gd_cq02h[gp])            bp_gm_cq02h[gp * 32 +: 32] <= bo_mask_cq02h;
           if (bp_k_cq02h[gp * 2 +: 2] == 2'd2) bp_pm_cq02h[gp * 32 +: 32] <= bo_aux_cq02h;
         end
-        if (bset_cq02h && g1'(p) == bp_h_cq02h) bp_hl_cq02h[gp] <= bhl_cq02h;
+        if (bset_cq02h && 1'(gp) == bp_h_cq02h) bp_hl_cq02h[gp] <= bhl_cq02h;
       end
     end
   end
