@@ -1448,8 +1448,27 @@ bit, two registers end wrong) and `ecc-cmpl-on-time` (corrects later but
 completes on time: all five dependants read the bad bit). check-sv-hosted
 requires the same results on both hosts, the control's included.
 
-Still to come under the same rulings: the double-error test, which needs
-the machine-error path (AR 370); error injection in the SRAM model itself
+**Uncorrectable errors and the machine check** (AR 370; DA rev 124; ISA
+v1.9 O-86). A UE in a clean L1 line is recovered: DCU invalidates the line
+and refetches it as a miss, and records its location (bank, set and way: the
+array row, never the address) in a table of `CCV_DCU_UE_TRACK` entries
+(MA-19), cleared only by reset. Anything else is core-fatal: a UE in a dirty
+line, in a writeback's victim read or a fill, a second UE at a recorded
+location (a hard error), or one that finds the table full. DCU raises `ue` on
+`ccv_dcu_cru_err`; CRU latches MACHINE_CHECK, asks RAU (on
+`ccv_cru_rau_cfg`, `kill_grid` all ones) to kill every grid, and writes
+F-MACHINE (cause 10) into every live context's record not yet written. The
+skeleton's DCU stub takes every Nth read hit as a UE under
+`CCV_DCU_UE_INJECT=N` (`CCV_DCU_UE_TRACK` overrides the table's size);
+bins `ue_recover`, `ue_fatal`, `machine_check`. check-kernel runs vadd and
+ldpar (recovered, exact), hit (a hard error) and predswap (a dirty line),
+and ldpar with a one-entry table (full), with controls `ue-no-track`,
+`ue-dirty-recover`, `mce-ignore`, `mce-no-record` and `mce-no-kill`;
+check-sv-hosted requires the same on both hosts. A machine-checked run is
+held to its retire order; its memory and its unretired instructions' checks
+are moot.
+
+Still to come under the same rulings: `ccv_common_err` (AR 370 (6)); error injection in the SRAM model itself
 for a block model that keeps its arrays behind `Sram1rw`; the BIST
 override, the spare row and column repair in a common wrapper; and the BIST
 broadcast groups (TI-475 (1)).
