@@ -197,6 +197,7 @@ Each is in the spec; this list is where to find it.
 | The kill races: MIU completes every memop of a killed warp; an atomic keeps its state and hold through the A3 that OOE still sends, completing with more = 0 and releasing; a read DCU withholds as uncorrectable completes with no data | MIU tab, kill obligations; TI-485, OA 436 (final; OA 438, AR 385) |
 | ECC error injection: the model passes the `CCV_MIU_ECC_INJECT` runs TI adds (an injected correctable error is corrected and counted; an uncorrectable one follows MA-19) | TI-484; MA-19 |
 | RA's MIU conditions on the RCU write port and the write-through | RA 153 (RA tab); RCU lane and memory tab |
+| The TLB and walker (MI-2 as settled: a cold TLB each kernel; Common tab rev 9, AR 392). Through M0 the default is `CCV_MIU_TLB=warm`: every page is held and FET's ITLB answers at once, as in the stub. `CCV_MIU_TLB=cold` is the architected behaviour. Its own check-kernel scenarios (TI's) run in every gate with controls: a walk on the shared walker against the ITLB, the three dependent DCU lookups on idle slots, lanes across two pages, and F-ADDR before the walk. A walk's DCU reads count toward `CCV_DCU_UE_INJECT`. The M0 report states the cold cost (110 to 160 cycles a kernel, MI-6) | MIU tab, TLB and walker; MI-6, MA 126 |
 | The statistics the spec lists under the events table, per kernel | MIU tab, "Statistics the models report" (AR rev 344) |
 
 ### Coverage bins
@@ -251,6 +252,7 @@ sweeps and `gate-triage` for a red gate.
 |---|---|---|
 | 0, setup | section 8 | roster, session home, handoff, sweep task in place |
 | 1, the model (M0) | sim/miu/: the block at MIU's ports, its events, holds, stalls and idle, the obligations of section 5 | every kernel and control passes on both hosts with the model in place, every bin reached, statistics reported; cycles against the stub's. TI flips `makeMiu`'s default. **MA reads it** and folds anything the spec failed to say into it |
+| 1a, cold TLB | `CCV_MIU_TLB=cold` becomes the default (MI-6, MA 126) | the ~30 stub-pinned checks re-pinned under cold by TI; the seven controls MI-6 names fail again under cold (none dropped or weakened); the default flipped. The first item after M0 |
 | 1b, with DI's model | both models in place together | every kernel and control passes with both; the cross-block bins (credits, late hits, withheld completions, the refill notice) reached with real DCU timing on both sides |
 | 2 onward, the RTL | waits on MA's Phase 2 (partition, per-cycle tables, port budgets). MA writes those phases into this table when Phase 2 lands | per module: bench, check-cg, check-ngd; then the block, as a sum of parts; then SV-hosted equivalence |
 

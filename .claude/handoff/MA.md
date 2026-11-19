@@ -84,6 +84,8 @@ Conventions 20, AR 390, TI 486, OA 442, IS 197, CP 160, OI 374, RA 156, RI 91, M
 - BANK_AGE DONE (RH part 1; MA rev 124): default stays 16 (a8 -0.09%, worse worst wait; a32/a64 +1%). RH
   HASH DONE (RH part 2; MA rev 125): stays 0; HASH=1 +2.90% on cm128 (tail piles on few banks).
   Gap: no heavy pow2-stride DCU kernel in S1 (transp4 too short); hash stays a parameter only.
+- MI-6 DONE (MA rev 126): CCV_MIU_TLB=warm default through M0, cold opt-in with its own gated scenarios
+  (TI's); flip is phase 1a, first after M0 (miu-impl.md). Watch: TI picks up the cold scenarios.
 - MI-3 (MA rev 123): a held load holds only itself; a pending fence holds its warp's younger memops.
   MIU tab rev 145 (snapshot refreshed). MI-2 closed (AR Common tab rev 8/9: 3 levels 6/13/13, VA[63:48]
   non-zero is F-ADDR).
