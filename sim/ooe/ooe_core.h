@@ -1921,6 +1921,12 @@ public:
       unsigned cause = 0;
       uint32_t pclo = 0, egmask = 0;
       unsigned epchi = 0;
+      // Slice 5 (OA 448): a barrier report op (an arrive, wait or exit with
+      // no fault), its kind (0 arrive, 1 wait, 2 wait.phase, 3 exit), its
+      // barrier, whether its guard comes back on its done, and whether it
+      // sets the slot's hold (a converged wait).
+      bool bar = false, bgd = false, bhs = false;
+      unsigned bkind = 0, bid = 0;
     };
     struct Ret {
       unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
@@ -1963,6 +1969,11 @@ public:
     /// Slice 4: each fault taken at retire (slot, index, cause, pc, lanes).
     struct Fault { unsigned slot = 0, idx = 0, cause = 0; uint64_t pc = 0; uint32_t lanes = 0; uint64_t addr = 0; };
     std::vector<Fault> fault;
+    /// Slice 5: each barrier report sent this cycle (ccv_ooe_syu_bar), by
+    /// slot, and the slots SYU released (ccv_syu_ooe_rel, as it acts).
+    struct BarRep { unsigned slot = 0, kind = 0, bid = 0; uint32_t issue = 0, guard = 0, phase = 0; bool held = false; };
+    std::vector<BarRep> bar;
+    uint32_t bar_rel = 0;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;
   };
@@ -2262,6 +2273,9 @@ private:
   uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }
   uint64_t next_age_ = 0;
   unsigned rr_rename_ = 0, rr_select_ = 0, rr_bar_ = 0;
+  Bar bar_send_{};                 ///< bar_pend: last cycle's pick, sent this cycle
+  unsigned bar_send_slot_ = 0;
+  bool bar_send_v_ = false;
 
   // producers of each physical register still in the RS (up to two: a
   // masked load and its copy), and whether its value has landed

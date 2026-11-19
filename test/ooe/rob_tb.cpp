@@ -115,6 +115,11 @@ void robConfig(Config &c) {
   // later (held one more behind a pick); no-free-lag runs the model sending
   // them in the cycle they resolve, so a checkpoint is free a cycle early.
   c.ckpt_free_lag = ctl && std::string(ctl) == "no-free-lag" ? 0 : 1;
+  // Slice 5 (OA 448 (2) B): a retired barrier report waits in its slot for
+  // ooe_barpick; bar-overwrite runs the model without the stop behind it.
+  c.bar_pend = 1;
+  c.bar_buf_depth = 2;   // ooe_rob_w's side buffer (OA 448 (3))
+  c.inject_bar_pend_overwrite = ctl && std::string(ctl) == "bar-overwrite";
 }
 
 namespace {
@@ -134,7 +139,7 @@ uint64_t current = 0;
 bool live = false, stopped = false;
 unsigned long long cycles = 0, cores = 0, skipped = 0, stops = 0, retires = 0, allocs = 0, nops = 0, gfrees = 0,
                    pfrees = 0, events = 0, mismatches = 0, resolves = 0, redirects = 0, ckfrees = 0,
-                   squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0, commits = 0, faults = 0;
+                   bars_al = 0, bars_sent = 0, bars_held = 0, bars_kind[4] = {0, 0, 0, 0}, bars_gd = 0, squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0, commits = 0, faults = 0;
 bool rename_preds = true;
 std::map<std::string, unsigned long long> stop_why;
 
@@ -241,7 +246,10 @@ std::vector<int> doneSlots(const Core::RobLog &r) {
   bool br_seen = false;
   for (size_t k = 0; k != r.done.size(); ++k) {
     const unsigned t = r.done[k];
-    const bool br = t < S * D && br_of[t].br && (k >= r.dpay.size() || r.dpay[k].row == 0);
+    // A branch's outcome, or a barrier op's lanes (TI-40: a guarded one's
+    // guard, a wait.phase's phases), rides slot BS.
+    const bool br = t < S * D && (br_of[t].br || (br_of[t].bar && (br_of[t].bgd || br_of[t].bkind == 2))) &&
+                    (k >= r.dpay.size() || r.dpay[k].row == 0);
     if (br && !br_seen && control != "branch-off-slot") { sl[BS] = int(k); br_seen = true; }
     else { if (br && br_seen) ++br_two; rest.push_back(k); }
   }
@@ -333,6 +341,18 @@ void clearInputs() {
   clearAll(dut->al_pc_cq02h, S * A * 31);
   clearAll(dut->al_pchi_cq02h, S * A * 16);
   clearAll(dut->al_gm_cq02h, S * A * 32);
+  dut->al_bar_cq02h = 0;
+  dut->al_bgd_cq02h = 0;
+  dut->al_bhs_cq02h = 0;
+  clearAll(dut->al_bk_cq02h, S * A * 2);
+  clearAll(dut->al_bid_cq02h, S * A * 4);
+  dut->brl_cq02h = 0;
+  // Each slot's warp and CTA slot as ooe_slot holds them: a fixed value per
+  // slot, so a report from the wrong slot shows.
+  for (unsigned q = 0; q != S; ++q) {
+    setField(dut->bwarp_cq03h, q * 5, 5, (q * 7 + 3) % 32);
+    setField(dut->bcta_cq03h, q * 4, 4, (q * 5 + 1) % 16);
+  }
   dut->fl_l_cq01h = 0;
   dut->fl_brl_cq01h = 0;
   for (auto *p : {&dut->fl_v_cq02h, &dut->fl_nop_cq02h, &dut->fl_mem_cq02h, &dut->fl_gwe_cq02h, &dut->fl_pwe_cq02h,
@@ -498,6 +518,15 @@ void drive(const Cyc &c, const Cyc &nx) {
     setField(dut->al_pc_cq02h, al * 31, 31, a.pclo);
     setField(dut->al_pchi_cq02h, al * 16, 16, a.epchi);
     setField(dut->al_gm_cq02h, al * 32, 32, a.egmask);
+    // Slice 5: a barrier op's place in the side buffer, its kind and id,
+    // whether its guard's lanes come with its done, and whether it sets the
+    // rename hold.
+    setBit(dut->al_bar_cq02h, al, a.bar);
+    setField(dut->al_bk_cq02h, al * 2, 2, a.bkind ^ (control == "bar-kind" && a.bar ? 1u : 0u));
+    setField(dut->al_bid_cq02h, al * 4, 4, a.bid);
+    setBit(dut->al_bgd_cq02h, al, a.bgd);
+    setBit(dut->al_bhs_cq02h, al, a.bhs && control != "bar-no-hold");
+    bars_al += a.bar;
     br_of[a.slot * D + a.idx] = a;
     alloc_cyc[a.slot * D + a.idx] = c.n;
     ++n[a.slot];
@@ -505,6 +534,7 @@ void drive(const Cyc &c, const Cyc &nx) {
     nops += a.nop;
   }
   for (unsigned s = 0; s != S; ++s) setField(dut->al_n_cq02h, s * LA, LA, n[s]);
+  dut->brl_cq02h = r.bar_rel & ((1u << S) - 1);
   driveFills(r.alloc);
   // The RS's events, per entry.
   unsigned s, i;
@@ -854,6 +884,29 @@ void driveRedir(const Cyc *p1) {
   }
 }
 
+// ooe_barpick (slice 5): the report on ccv_ooe_syu_bar in the cycle the
+// model sends it (a pick from its flopped requests, sent from its register).
+void checkBar(const Cyc &c) {
+  const bool want = !c.r.bar.empty();
+  if (c.r.bar.size() > 1) fail("two barrier reports in a cycle", 0, 2, 1);
+  if (bool(dut->bar_v_cq04h) != want) { fail("barrier report valid differs", want ? c.r.bar[0].slot : 0, dut->bar_v_cq04h, want); return; }
+  if (!want) return;
+  const auto &b = c.r.bar[0];
+  ++bars_sent;
+  bars_held += b.held;
+  ++bars_kind[b.kind & 3];
+  bars_gd += b.guard != ~0u;
+  const unsigned q = b.slot;
+  if (dut->bar_warp_cq04h != (q * 7 + 3) % 32) fail("barrier report warp differs", q, dut->bar_warp_cq04h, (q * 7 + 3) % 32);
+  if (dut->bar_cta_cq04h != (q * 5 + 1) % 16) fail("barrier report cta slot differs", q, dut->bar_cta_cq04h, (q * 5 + 1) % 16);
+  if (dut->bar_kind_cq04h != b.kind) fail("barrier report kind differs", q, dut->bar_kind_cq04h, b.kind);
+  if (b.kind != 3 && dut->bar_bid_cq04h != b.bid) fail("barrier report id differs", q, dut->bar_bid_cq04h, b.bid);
+  if (uint32_t(dut->bar_im_cq04h) != b.issue) fail("barrier report issue mask differs", q, unsigned(dut->bar_im_cq04h), b.issue);
+  if (uint32_t(dut->bar_gm_cq04h) != b.guard) fail("barrier report guard mask differs", q, unsigned(dut->bar_gm_cq04h), b.guard);
+  if (uint32_t(dut->bar_pm_cq04h) != b.phase) fail("barrier report phase mask differs", q, unsigned(dut->bar_pm_cq04h), b.phase);
+  if (bool(dut->bar_held_cq04h) != b.held) fail("barrier report held differs", q, dut->bar_held_cq04h, b.held);
+}
+
 Cyc pend, prev, prev2;
 bool pending = false, have_prev = false, have_prev2 = false;
 
@@ -923,15 +976,17 @@ void hook(const Core &c) {
         for (unsigned x : pend.r.done) t += " d" + std::to_string(x);
         for (unsigned x : pend.r.cmpl) t += " c" + std::to_string(x);
         for (unsigned x : pend.r.owe) t += " o" + std::to_string(x);
-        if (!pend.run.empty())
-          t += " | run " + std::to_string(pend.run[0]) + "/" + std::to_string(int(pend.reach[0])) + " rtl " +
-               std::to_string(getField(dut->run_cq02h, 0, LB)) + "/" + std::to_string(getBit(dut->reach_cq02h, 0));
+        for (unsigned s = 0; s < pend.run.size(); ++s)
+          t += " | run" + std::to_string(s) + " " + std::to_string(pend.run[s]) + "/" + std::to_string(int(pend.reach[s])) + " rtl " +
+               std::to_string(getField(dut->run_cq02h, s * LB, LB)) + "/" + std::to_string(getBit(dut->reach_cq02h, s));
+        t += std::string(" bq ") + std::to_string(dut->bh_cq02h) + " " + ooeTestName();
         std::fprintf(stderr, "%s\n", t.c_str());
       }
     }
     check(pend, have_prev ? &prev : nullptr);
     checkRes(have_prev ? &prev : nullptr, have_prev2 ? &prev2 : nullptr);
     checkRedir(pend.n);
+    checkBar(pend);
     tick();
     act2 = act1;
     act1 = !pend.r.squash.empty() || !held.empty() || !pend.r.hrel.empty();
@@ -962,6 +1017,8 @@ int main(int argc, char **argv) {
   // The squash's controls need squashes.
   const bool sq_control = control == "no-miu" || control == "no-store" || control == "drop-killed-fill" ||
                           control.rfind("redir-", 0) == 0 || control == "rd-unled";   // ooe_redir's need redirects
+  // Slice 5: barriers among the random programs' ops.
+  ooeTestRandomBars(control == "no-bars" ? 0 : 4);
   ooeTestPredictAll(std::getenv("ROB_MISPREDICT") == nullptr && control != "right-always" && !sq_control);
   const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, robConfig)) +
                           cg.run(seeds, nullptr, hook, robConfig);
@@ -973,10 +1030,16 @@ int main(int argc, char **argv) {
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, nops, events, retires, gfrees,
               pfrees, resolves, redirects, ckfrees, stops, skipped, squashes, sq_ents, sq_held, sq_kills, hrels, discards,
               commits, faults, mismatches, model_fails);
+  std::printf("  ooe_barpick: barrier ops allocated=%llu reports=%llu (arrive %llu wait %llu phase %llu exit %llu) guarded=%llu held=%llu\n", bars_al, bars_sent, bars_kind[0], bars_kind[1], bars_kind[2], bars_kind[3], bars_gd, bars_held);
   std::printf("  ooe_redir: redirects=%llu (early behind a notice=%llu) ckpt-frees=%llu notice-drops=%llu\n", rdr_sent, rdr_early, ckf_sent, ntm_drops);
   if (br_two) std::printf("  cycles with two branch dones (RCU's one a cycle): %llu\n", br_two);
   for (const auto &kv : stop_why) std::printf("  stopped at %s: %llu\n", kv.first.c_str(), kv.second);
-  const int rc = mismatches || model_fails ? 1 : 0;
+  // Slice 5's bins: every report kind, guarded and held reports, sent
+  // through ooe_barpick (no-bars draws none, so it must fail here).
+  bool bins = bars_held && bars_gd;
+  for (unsigned k = 0; k != 4; ++k) bins = bins && bars_kind[k];
+  if (!cg.on() && !bins) std::printf("  ooe_barpick: a coverage bin is empty\n");
+  const int rc = mismatches || model_fails || (!cg.on() && !bins) ? 1 : 0;
   dut.reset();
   ctx.reset();
   return rc;

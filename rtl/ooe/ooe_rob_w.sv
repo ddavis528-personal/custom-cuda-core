@@ -124,6 +124,15 @@ module ooe_rob_w #(
   input  logic [S*A*31-1:0]   al_pc_cq02h,
   input  logic [S*A*16-1:0]   al_pchi_cq02h,
   input  logic [S*A*32-1:0]   al_gm_cq02h,
+  // Slice 5 (barriers, OA 448): per lane, a barrier report op (an arrive, a
+  // wait or an exit, with no fault), its kind (0 arrive, 1 wait, 2
+  // wait.phase, 3 exit), its barrier, whether its guard comes back on its
+  // done, and whether it sets the slot's hold (a converged wait).
+  input  logic [S*A-1:0]      al_bar_cq02h,
+  input  logic [S*A*2-1:0]    al_bk_cq02h,
+  input  logic [S*A*4-1:0]    al_bid_cq02h,
+  input  logic [S*A-1:0]      al_bgd_cq02h,
+  input  logic [S*A-1:0]      al_bhs_cq02h,
   // Rename 2's fills, per lane, in program order within each slot; the lead:
   // some fill next cycle.
   input  logic                fl_l_cq01h,
@@ -190,6 +199,12 @@ module ooe_rob_w #(
   input  logic [NM*CW-1:0]    cf_cause_cq02h,
   input  logic [NM*32-1:0]    cf_lanes_cq02h,
   input  logic [NM*VA-1:0]    cf_addr_cq02h,
+  // Slice 5: SYU's release of the slot's warp (ccv_syu_ooe_rel, matched to
+  // the slot upstream), and the report picker's grant of the slot's pending
+  // report (ooe_barpick). Both are data: the state they change is clocked
+  // on this module's own flops.
+  input  logic [S-1:0]        brl_cq02h,
+  input  logic [S-1:0]        bgn_cq02h,
   // A slot released (its ROB empty): its pointers return to 0. Its lead.
   input  logic [S-1:0]        rel_l_cq01h,
   // The retire decision, a cycle ahead of the retire-stage register: per
@@ -246,7 +261,17 @@ module ooe_rob_w #(
   output logic [S*CW-1:0]     ft_cause_cq03h,
   output logic [S*PCW-1:0]    ft_pc_cq03h,
   output logic [S*32-1:0]     ft_lanes_cq03h,
-  output logic [S*VA-1:0]     ft_addr_cq03h
+  output logic [S*VA-1:0]     ft_addr_cq03h,
+  // Barriers (slice 5): a report pending (the picker's request) and its
+  // fields, from the side buffer's oldest place; the slot's hold, for the go.
+  output logic [S-1:0]        bq_cq02h,
+  output logic [S*2-1:0]      bq_kind_cq02h,
+  output logic [S*4-1:0]      bq_bid_cq02h,
+  output logic [S*32-1:0]     bq_im_cq02h,
+  output logic [S*32-1:0]     bq_gm_cq02h,
+  output logic [S*32-1:0]     bq_pm_cq02h,
+  output logic [S-1:0]        bq_held_cq02h,
+  output logic [S-1:0]        bh_cq02h
 );
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) begin
@@ -340,6 +365,26 @@ module ooe_rob_w #(
   // group mask, written at allocation (OI-125 (5), (6)); per slot pc[47:32]
   // (OA 370), written at the slot's first allocation after a release.
   logic [S*D-1:0]      flt_cq02h;
+  // Slice 5: per entry, a barrier report op, written at allocation as flt
+  // is; ble reads the staged one while in flight (the window's stop).
+  logic [S*D-1:0]      bb_cq02h, ble_cq02h;
+  logic [S*RP-1:0]     wb_nx_cq02h;            // the next window's port k holds a barrier report op
+  // The side buffer (OA 448 (1), (3)): BD places a slot, in program order,
+  // one per barrier report op from its allocation to its report: its
+  // entry (one-hot and binary), kind, barrier, guard flag, hold flag, the
+  // issue, guard and phase masks; rt, retired and pending its report (the
+  // head place only); hl, the report's held. bp_h and bp_t: head and tail.
+  localparam int BD = 2;
+  logic [BD-1:0]      bp_v_cq02h, bp_rt_cq02h, bp_gd_cq02h, bp_hs_cq02h, bp_hl_cq02h;
+  logic [BD*D-1:0]    bp_oh_cq02h;
+  logic [BD*LD-1:0]   bp_ix_cq02h;
+  logic [BD*2-1:0]    bp_k_cq02h;
+  logic [BD*4-1:0]    bp_id_cq02h;
+  logic [BD*32-1:0]   bp_im_cq02h, bp_gm_cq02h, bp_pm_cq02h;
+  logic               bp_h_cq02h, bp_t_cq02h;
+  // The slot's hold (the model's bar_hold) and its wait reported held
+  // (bar_retired).
+  logic               bh_q_cq02h, br_q_cq02h;
   // And an MIU fault (OI-125): set by the entry's faulting completion,
   // cleared as it leaves. The entry never completes (cmn_e, the
   // completions without a fault, complete it), so the window stops at it
@@ -837,6 +882,9 @@ module ooe_rob_w #(
   // its entry's terms; per port, the slot its count shifts to it.
   localparam int W2 = 2 * RP;
   logic [D-1:0]    ek0_cq02h, ek1_cq02h, ek2_cq02h;
+  logic [W2-1:0]   sbb_cq02h;
+  logic [RP-1:0]   pbb_cq02h;
+  logic            bsn_cq02h, bst_cq02h, bsx_cq02h;
   logic [W2-1:0]   sna_cq02h, scm_cq02h, swo_cq02h, sok_cq02h, sbr_cq02h, ssv_cq02h, sgv_cq02h, sgf_cq02h, spv_cq02h, spf_cq02h;
   logic [RP:0]     wcn_cq02h;
   logic [RP-1:0]   pok_cq02h, pna_cq02h, pcm_cq02h, pwo_cq02h, pbr_cq02h, psv_cq02h, pgv_cq02h, pgf_cq02h, ppv_cq02h, ppf_cq02h;
@@ -869,7 +917,7 @@ module ooe_rob_w #(
     {hm_cq02h, xr_cq02h, wok_cq02h, wke_cq02h, gfe_v_cq02h, pfe_v_cq02h, wbk_cq02h, wpo_cq02h} = '0;
     {ek0_cq02h, ek1_cq02h, ek2_cq02h, hw_nx_cq02h, hkr_nx_cq02h} = '0;
     {sna_cq02h, scm_cq02h, swo_cq02h, sok_cq02h, sbr_cq02h, ssv_cq02h, sgv_cq02h, sgf_cq02h, spv_cq02h, spf_cq02h} = '0;
-    {wcn_cq02h, stk_cq02h} = '0;
+    {wcn_cq02h, stk_cq02h, sbb_cq02h, pbb_cq02h, bsn_cq02h, bst_cq02h, bsx_cq02h, wb_nx_cq02h} = '0;
     {pok_cq02h, pna_cq02h, pcm_cq02h, pwo_cq02h, pbr_cq02h, psv_cq02h, pgv_cq02h, pgf_cq02h, ppv_cq02h, ppf_cq02h} = '0;
     {th_nx_cq02h, tk_cq02h, ufm_nx_cq02h, ufl_cq02h} = '0;
     {yn_cq02h, yt_cq02h, yd_cq02h, ye_cq02h, yk_cq02h, yg_cq02h} = '0;
@@ -1181,6 +1229,8 @@ module ooe_rob_w #(
         sgf_cq02h[j] = |(ek2_cq02h & gfe_v_cq02h & gsn_cq02h[s * D +: D]);
         spv_cq02h[j] = |(ek2_cq02h & pfe_v_cq02h);
         spf_cq02h[j] = |(ek2_cq02h & pfe_v_cq02h & pfr_cq02h[s * D +: D]);
+        // Slice 5: a barrier report op, allocated or in flight.
+        sbb_cq02h[j] = |(ek2_cq02h & ble_cq02h[s * D +: D]);
       end
       // The window's count, one-hot (bit c: c retiring): w is a prefix.
       for (int c = 0; c < RP + 1; c++)
@@ -1199,6 +1249,7 @@ module ooe_rob_w #(
           pgf_cq02h[k] = pgf_cq02h[k] | (wcn_cq02h[c] & sgf_cq02h[c + k]);
           ppv_cq02h[k] = ppv_cq02h[k] | (wcn_cq02h[c] & spv_cq02h[c + k]);
           ppf_cq02h[k] = ppf_cq02h[k] | (wcn_cq02h[c] & spf_cq02h[c + k]);
+          pbb_cq02h[k] = pbb_cq02h[k] | (wcn_cq02h[c] & sbb_cq02h[c + k]);
         end
       for (int k = 0; k < RP; k++) begin
         // Two prefixes, so the dones' AND stays apart from the stops'. A
@@ -1209,6 +1260,14 @@ module ooe_rob_w #(
         coks_cq02h[s * RP + k]   = pcm_cq02h[k] & ~wbk_cq02h[s];
         cokp_cq02h[s * RP + k]   = cok_cq02h;
         wpo_cq02h[s * RP + k]    = pwo_cq02h[k];
+        // Slice 5 (OA 448 (2), option B): a barrier report op retires only
+        // into an empty pending place, as the cycle started (bp_rt, the
+        // picker's grant aside), and one a window; it stops the window.
+        bst_cq02h                = pbb_cq02h[k] && ((|bp_rt_cq02h) || bsn_cq02h);
+        bsn_cq02h                = bsn_cq02h | pbb_cq02h[k];
+        bsx_cq02h                = bsx_cq02h | bst_cq02h;
+        wns_cq02h                = wns_cq02h && !bst_cq02h;
+        wb_nx_cq02h[s * RP + k]  = pbb_cq02h[k];
         w_nx_cq02h[s * RP + k]   = (cok_cq02h | nak_cq02h) && wpr_cq02h && wns_cq02h;
         wpr_cq02h                = wpr_cq02h && (cok_cq02h | nak_cq02h);
         // Its entry's fields are a past occupant's: the commit reads none.
@@ -1242,6 +1301,14 @@ module ooe_rob_w #(
   // window) or a release, split by what each changes.
   logic [S-1:0] wt_cq02h;                      // an entry valid and not complete
   logic [S-1:0] ptr_en_cq02h, tl_en_cq02h, fp_en_cq02h, cm_en_cq02h, win_en_cq02h;
+  // A barrier stopped the window (its pending place full): the grant frees
+  // that place from the picker's flops, which no lead here sees, so the
+  // window looks again the cycle after every such stop (1 flop, ungated).
+  logic bsw_q_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) bsw_q_cq02h <= 1'b0;
+    else          bsw_q_cq02h <= bsx_cq02h;
+  end
   always_comb
     for (int s = 0; s < S; s++) begin
       wt_cq02h[s]     = |(v_cq02h[s * D +: D] & ~cmp_q_cq02h[s * D +: D]);
@@ -1257,7 +1324,7 @@ module ooe_rob_w #(
       cm_en_cq02h[s]  = (((|dn_q_cq02h) | (|cm_q_cq02h)) & wt_cq02h[s]) | ev_q_cq02h[s] |
                         (|w_cq02h[s * RP +: RP]) | (fl_q_cq02h & ~ufh_cq02h[s * NC]) | ar_q_cq02h[s] |
                         rd_s_cq02h[s] | (|hd_cq02h[s * D +: D]);
-      win_en_cq02h[s] = ptr_en_cq02h[s] | fp_en_cq02h[s] | cm_en_cq02h[s] | ft_q_cq02h[s];
+      win_en_cq02h[s] = ptr_en_cq02h[s] | fp_en_cq02h[s] | cm_en_cq02h[s] | ft_q_cq02h[s] | bsw_q_cq02h;
     end
   // te_q: the tail one-hot past the registered allocation (toh rotated by al_r), its
   // own flop so the squash read starts there (OA 431, re:OI-167). It moves only on an
@@ -1474,6 +1541,10 @@ module ooe_rob_w #(
   logic [S*A*CW-1:0] asc_cq02h;
   logic [S*A*31-1:0] asp_cq02h;
   logic [S*A*32-1:0] asg_cq02h;
+  logic [S*A-1:0]    asb_cq02h, asgd_cq02h, ashs_cq02h;   // slice 5's lanes
+  logic [S*A*2-1:0]  ask_cq02h;
+  logic [S*A*4-1:0]  asi_cq02h;
+  logic [S*D-1:0]    ab_d_cq02h;
   logic [S-1:0]      asl_en_cq02h;
   logic [S*D-1:0]    af_d_cq02h, fle_cq02h;  // fle: each entry's fault, the staged one while in flight
   logic [S*D*CW-1:0] ac_d_cq02h;
@@ -1481,13 +1552,14 @@ module ooe_rob_w #(
   logic [S*D*32-1:0] ag_d_cq02h;
   logic [D-1:0]      aw_cq02h;
   always_comb begin
-    {af_d_cq02h, ac_d_cq02h, ap_d_cq02h, ag_d_cq02h, aw_cq02h} = '0;
+    {af_d_cq02h, ac_d_cq02h, ap_d_cq02h, ag_d_cq02h, aw_cq02h, ab_d_cq02h} = '0;
     for (int s = 0; s < S; s++) begin
       asl_en_cq02h[s] = al_q_cq02h[s];
       for (int j = 0; j < A; j++) begin
         aw_cq02h = rotl(ast_cq02h[s * D +: D], j);
         for (int i = 0; i < D; i++) begin
           af_d_cq02h[s * D + i]               = af_d_cq02h[s * D + i] | (aw_cq02h[i] & asf_cq02h[s * A + j]);
+          ab_d_cq02h[s * D + i]               = ab_d_cq02h[s * D + i] | (aw_cq02h[i] & asb_cq02h[s * A + j]);
           ac_d_cq02h[(s * D + i) * CW +: CW]  = ac_d_cq02h[(s * D + i) * CW +: CW] | ({CW{aw_cq02h[i]}} & asc_cq02h[(s * A + j) * CW +: CW]);
           ap_d_cq02h[(s * D + i) * 31 +: 31]  = ap_d_cq02h[(s * D + i) * 31 +: 31] | ({31{aw_cq02h[i]}} & asp_cq02h[(s * A + j) * 31 +: 31]);
           ag_d_cq02h[(s * D + i) * 32 +: 32]  = ag_d_cq02h[(s * D + i) * 32 +: 32] | ({32{aw_cq02h[i]}} & asg_cq02h[(s * A + j) * 32 +: 32]);
@@ -1496,6 +1568,7 @@ module ooe_rob_w #(
     end
     ae_en_cq02h = as_q_cq02h;
     fle_cq02h   = (flt_cq02h & ~as_q_cq02h) | (as_q_cq02h & af_d_cq02h);
+    ble_cq02h   = (bb_cq02h & ~as_q_cq02h) | (as_q_cq02h & ab_d_cq02h);
   end
   for (genvar gs = 0; gs < S; gs++) begin : g_ast
     always_ff @(posedge ooe_core_clk) begin
@@ -1505,6 +1578,11 @@ module ooe_rob_w #(
         asc_cq02h[gs * A * CW +: A * CW]      <= al_cause_cq02h[gs * A * CW +: A * CW];
         asp_cq02h[gs * A * 31 +: A * 31]      <= al_pc_cq02h[gs * A * 31 +: A * 31];
         asg_cq02h[gs * A * 32 +: A * 32]      <= al_gm_cq02h[gs * A * 32 +: A * 32];
+        asb_cq02h[gs * A +: A]                <= al_bar_cq02h[gs * A +: A];
+        ask_cq02h[gs * A * 2 +: A * 2]        <= al_bk_cq02h[gs * A * 2 +: A * 2];
+        asi_cq02h[gs * A * 4 +: A * 4]        <= al_bid_cq02h[gs * A * 4 +: A * 4];
+        asgd_cq02h[gs * A +: A]               <= al_bgd_cq02h[gs * A +: A];
+        ashs_cq02h[gs * A +: A]               <= al_bhs_cq02h[gs * A +: A];
       end
     end
   end
@@ -1512,6 +1590,7 @@ module ooe_rob_w #(
     always_ff @(posedge ooe_core_clk) begin
       if (ae_en_cq02h[ge]) begin
         flt_cq02h[ge]               <= af_d_cq02h[ge];
+        bb_cq02h[ge]                <= ab_d_cq02h[ge];
         fc_cq02h[ge * CW +: CW]     <= ac_d_cq02h[ge * CW +: CW];
         pcl_cq02h[ge * 31 +: 31]    <= ap_d_cq02h[ge * 31 +: 31];
         gm_cq02h[ge * 32 +: 32]     <= ag_d_cq02h[ge * 32 +: 32];
@@ -2311,6 +2390,148 @@ module ooe_rob_w #(
     end
   end
 
+  // -- Barriers (slice 5, OA 448) --------------------------------------------------
+  // The side buffer takes each barrier report op as its allocation lands
+  // (the staged lanes, as the fault record's; a squash in that cycle drops
+  // it as it drops the allocation), in lane order into the tail places
+  // (rename's bar_buf_depth keeps one free: asserted). A guarded op's guard
+  // lanes and a wait.phase's phases come back on its done on slot BS (the
+  // done's branch_mask and aux, TI-40), a cycle later from the outcome
+  // register, matched to the place's entry in binary. As the window takes
+  // the op (it is the head place's: the buffer is in program order and the
+  // window takes one), the head place is retired, pending its report, and
+  // its held is fixed; the picker's grant then frees it (a cycle later than
+  // the model's pick frees its register, the model's bar_pend). A squash
+  // drops the places of the entries it takes; a release, all of them.
+  // The hold (the model's bar_hold) is set by a converged wait's allocation
+  // and cleared by SYU's release once that wait has reported held, by a
+  // squash of that wait, or by the slot's release.
+  // Slice 6 (demotion) adds the hold's demotion clear, bar_long and bar_mask.
+  logic            bo_d_cq02h;                       // a done on slot BS last cycle: the bo_* fields hold it
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) bo_d_cq02h <= 1'b0;
+    else          bo_d_cq02h <= dn_q_cq02h[BS];
+  end
+  logic            sb_en_cq02h, hb_en_cq02h, bset_cq02h, bhl_cq02h, bgo_cq02h;
+  logic [BD-1:0]   bwr_cq02h, bdn_cq02h, bsq_cq02h, bp_v_nx_cq02h, bp_rt_nx_cq02h;
+  logic [BD*A-1:0] bln_cq02h;                        // place p takes lane j
+  logic [D-1:0]    bw_cq02h;
+  logic [BD-1:0]   bwh_cq02h;                       // place p's write sets the hold
+  logic [LD-1:0]   bwx_cq02h;
+  logic            bc_cq02h, bh_nx_cq02h, br_nx_cq02h, bhs_set_cq02h, bhs_sq_cq02h;
+  always_comb begin
+    {bwr_cq02h, bdn_cq02h, bsq_cq02h, bln_cq02h, bc_cq02h, bhs_set_cq02h, bhs_sq_cq02h} = '0;
+    sb_en_cq02h = ar_q_cq02h[0] | (|bp_v_cq02h) | rel_q_cq02h[0];
+    hb_en_cq02h = ar_q_cq02h[0] | bh_q_cq02h | rel_q_cq02h[0];
+    for (int j = 0; j < A; j++)
+      if (asb_cq02h[j] && ar_q_cq02h[0] && !rd_t_cq02h[0]) begin
+        bln_cq02h[(bp_t_cq02h != bc_cq02h) ? A + j : j] = 1'b1;
+        bwr_cq02h[bp_t_cq02h != bc_cq02h] = 1'b1;
+        bhs_set_cq02h = bhs_set_cq02h | ashs_cq02h[j];
+        bc_cq02h = ~bc_cq02h;
+      end
+    for (int p = 0; p < BD; p++) begin
+      bdn_cq02h[p] = bo_d_cq02h && bp_v_cq02h[p] && bo_tag_cq02h[LD +: LS] == LS'(WID) &&
+                     bo_tag_cq02h[0 +: LD] == bp_ix_cq02h[p * LD +: LD];
+      bsq_cq02h[p] = rd_s_cq02h[0] && bp_v_cq02h[p] && |(bp_oh_cq02h[p * D +: D] & sqm_cq02h[0 +: D]);
+      bhs_sq_cq02h = bhs_sq_cq02h | (bsq_cq02h[p] & bp_hs_cq02h[p]);
+    end
+  end
+  always_comb begin
+    // The window takes the head place's op (bset), held if it set the hold
+    // and the hold stands unreported; the grant frees the head place. A
+    // no-op barrier retires as it arrives: its place is written in the same
+    // cycle, and its own write sets the hold it reports held.
+    bset_cq02h = win_en_cq02h[0] && |(w_nx_cq02h[0 +: RP] & wb_nx_cq02h[0 +: RP]);
+    bhl_cq02h  = bwr_cq02h[bp_h_cq02h] ? bwh_cq02h[bp_h_cq02h] : (bp_hs_cq02h[bp_h_cq02h] && bh_q_cq02h && !br_q_cq02h);
+    bgo_cq02h  = bgn_cq02h[0] && bp_rt_cq02h[bp_h_cq02h];
+    for (int p = 0; p < BD; p++) begin
+      bp_v_nx_cq02h[p]  = (bp_v_cq02h[p] && !bsq_cq02h[p] && !(bgo_cq02h && p == int'(bp_h_cq02h))) || bwr_cq02h[p];
+      bp_rt_nx_cq02h[p] = (bp_rt_cq02h[p] && !(bgo_cq02h && p == int'(bp_h_cq02h))) || (bset_cq02h && p == int'(bp_h_cq02h));
+    end
+    // The hold: set by its wait's allocation, cleared by the release of a
+    // held report, its wait's squash, or the slot's release.
+    bh_nx_cq02h = (bh_q_cq02h && !(brl_cq02h[0] && br_q_cq02h) && !bhs_sq_cq02h) || bhs_set_cq02h;
+    br_nx_cq02h = bh_nx_cq02h && ((br_q_cq02h && !bhs_set_cq02h) || (bset_cq02h && bhl_cq02h));
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h || rel_q_cq02h[0]) begin
+      bp_v_cq02h  <= '0;
+      bp_rt_cq02h <= '0;
+      bp_h_cq02h  <= 1'b0;
+      bp_t_cq02h  <= 1'b0;
+    end else if (sb_en_cq02h) begin
+      bp_v_cq02h  <= bp_v_nx_cq02h;
+      bp_rt_cq02h <= bp_rt_nx_cq02h;
+      bp_h_cq02h  <= bp_h_cq02h ^ bgo_cq02h;
+      // A squash takes the youngest places: the tail returns past them.
+      bp_t_cq02h  <= bp_t_cq02h ^ bc_cq02h ^ (^bsq_cq02h);   // never both in a cycle (rd_t drops the writes)
+    end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h || rel_q_cq02h[0]) begin
+      bh_q_cq02h <= 1'b0;
+      br_q_cq02h <= 1'b0;
+    end else if (hb_en_cq02h) begin
+      bh_q_cq02h <= bh_nx_cq02h;
+      br_q_cq02h <= br_nx_cq02h;
+    end
+  end
+  // Each place's fields: written as its op's allocation lands, the masks
+  // again as its done does, held as the window takes it.
+  for (genvar gp = 0; gp < BD; gp++) begin : g_bp
+    logic [D-1:0]  wo;
+    logic [LD-1:0] wx;
+    logic [1:0]    wk;
+    logic [3:0]    wi;
+    logic [31:0]   wm;
+    logic          wg, wh;
+    always_comb begin
+      {wo, wx, wk, wi, wm, wg, wh} = '0;
+      for (int j = 0; j < A; j++)
+        if (bln_cq02h[gp * A + j]) begin
+          wo = wo | rotl(ast_cq02h[0 +: D], j);
+          for (int i = 0; i < D; i++) if (|(rotl(ast_cq02h[0 +: D], j) & (D'(1) << i))) wx = wx | LD'(i);
+          wk = wk | ask_cq02h[j * 2 +: 2];
+          wi = wi | asi_cq02h[j * 4 +: 4];
+          wm = wm | asg_cq02h[j * 32 +: 32];
+          wg = wg | asgd_cq02h[j];
+          wh = wh | ashs_cq02h[j];
+        end
+    end
+    assign bwh_cq02h[gp] = wh;
+    always_ff @(posedge ooe_core_clk) begin
+      if (sb_en_cq02h) begin
+        if (bwr_cq02h[gp]) begin
+          bp_oh_cq02h[gp * D +: D]   <= wo;
+          bp_ix_cq02h[gp * LD +: LD] <= wx;
+          bp_k_cq02h[gp * 2 +: 2]    <= wk;
+          bp_id_cq02h[gp * 4 +: 4]   <= wi;
+          bp_im_cq02h[gp * 32 +: 32] <= wm;
+          bp_gd_cq02h[gp]            <= wg;
+          bp_hs_cq02h[gp]            <= wh;
+          bp_gm_cq02h[gp * 32 +: 32] <= '1;
+          bp_pm_cq02h[gp * 32 +: 32] <= '0;
+        end else if (bdn_cq02h[gp]) begin
+          if (bp_gd_cq02h[gp])            bp_gm_cq02h[gp * 32 +: 32] <= bo_mask_cq02h;
+          if (bp_k_cq02h[gp * 2 +: 2] == 2'd2) bp_pm_cq02h[gp * 32 +: 32] <= bo_aux_cq02h;
+        end
+        if (bset_cq02h && gp == int'(bp_h_cq02h)) bp_hl_cq02h[gp] <= bhl_cq02h;
+      end
+    end
+  end
+  // The picker's request and the report's fields, from the head place.
+  always_comb begin
+    bq_cq02h      = bp_rt_cq02h[bp_h_cq02h];
+    bq_kind_cq02h = bp_k_cq02h[bp_h_cq02h * 2 +: 2];
+    bq_bid_cq02h  = bp_id_cq02h[bp_h_cq02h * 4 +: 4];
+    bq_im_cq02h   = bp_im_cq02h[bp_h_cq02h * 32 +: 32];
+    bq_gm_cq02h   = bp_gm_cq02h[bp_h_cq02h * 32 +: 32];
+    bq_pm_cq02h   = bp_pm_cq02h[bp_h_cq02h * 32 +: 32];
+    bq_held_cq02h = bp_hl_cq02h[bp_h_cq02h];
+  end
+  assign bh_cq02h = bh_q_cq02h;
+
   // -- Checks -----------------------------------------------------------------------
   // V-58's count never underflows, and an entry retires with it at zero and
   // no done owed (OA's rev 277 (b)); a done names an entry that owes one.
@@ -2401,6 +2622,12 @@ module ooe_rob_w #(
   // A faulting entry never completes, so the window stops at it.
   `CCV_ASSERT(port_complete_is_entry, cokp_cq02h == coks_cq02h)
   `CCV_ASSERT(window_under_prefix, (w_nx_cq02h & ~wn_nx_cq02h & ~wpo_cq02h) == '0)
+  // Slice 5: a place is written only when free (rename's bar_buf_depth),
+  // the window takes a barrier op only from a valid head place, and a
+  // released slot holds no pending report (its drain waits for it).
+  `CCV_ASSERT(bar_place_free, (bwr_cq02h & bp_v_cq02h & ~bsq_cq02h) == '0)
+  `CCV_ASSERT(bar_take_head, !bset_cq02h || ((bp_v_cq02h[bp_h_cq02h] || bwr_cq02h[bp_h_cq02h]) && !bp_rt_cq02h[bp_h_cq02h]))
+  `CCV_ASSERT(bar_rel_empty, !(rel_q_cq02h[0] && |bp_rt_cq02h))
   `CCV_ASSERT(fault_never_done, ((fle_cq02h | mf_cq02h) & v_cq02h & cmp_old_cq02h) == '0)
   `CCV_ASSERT(pc_window, pcw_bad_cq02h == '0)
   `CCV_ASSERT(owed_no_underflow, ow_uf_cq02h == '0)
