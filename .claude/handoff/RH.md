@@ -68,6 +68,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
   Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
+- OI OA-443 (re:OI-176) RUNNING from 09:28Z: rh-jobs/oi443/oi443.sh (resumable), worktree rh-oi443 at 14526054 (gate-scratch/OI),
+  A slot_verdict_lag=0, B defaults (1). S1 + cm32priv + cm128priv (cm128 lock after AR). Table: python3 rh-jobs/oi427/table.py A
+  A=~/ccv-logs/oi443 B=~/ccv-logs/oi443 --ctr=demote,kill,demote.refused. Ruling: S1 <= +0.5% OA absorbs, else DA. Send S1 early. ~10:45Z.
 - AR 386 QUEUED 06:35Z (AR is a regular sender; MA first): rh-jobs/ar386/ar386.sh (no args, resumable), worktree rh-ar386 at
   a6c7de10 with L1 HIT_BASE/HIT/WAKE/CMPL +1 (hit 8) + 6 gens + check-skel + cm128 oracle (build/ar-oracle). Waits for MA-8 part 2's
   .h1 cm128 then the cm128 lock: a.wp0 (WAYPRED=0), b.wp5recent (WAYPRED=5 WPSEL=recent); common STORE=af Q2 fixed STRICT=1 WAYS 8.
