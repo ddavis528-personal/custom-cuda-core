@@ -243,6 +243,8 @@ public:
     q_.push_back({vpn, unsigned(src)});
   }
   bool busy() const { return busy_; }
+  /// The page the walk in flight is for (valid while busy()).
+  uint64_t curVpn() const { return cur_.vpn; }
   bool idle() const { return !busy_ && q_.empty(); }
 
   /// One cycle: a level's extra wait counts down, and the next walk starts

@@ -13,6 +13,7 @@
 // makeMiu, MI-1); the stub stays the default until M0.
 //===----------------------------------------------------------------------===//
 #include "stub.h"
+#include "miu_res.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -79,6 +80,7 @@ private:
     uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
     bool frame = false;              ///< its lanes span windows: O-30 frames (AR-23)
     bool entry = false;              ///< a store holding its MQ entry until it drains
+    bool walk = false;               ///< the walker's PTE read, not a memop
     /// MA-4's eligibility lost from the address alone (lane group, page,
     /// bank): never an L1 hit, and MIU says so early with a no-hit (AR 356).
     bool inelig = false;
@@ -234,7 +236,7 @@ private:
       for (const auto &o : outstanding_) waits |= o.second.first == j.serial;
       // A load whose completion a hint has promised (OA-23) keeps that
       // promise: it completes at its cycle, with its notice's keys.
-      if (j.store || j.atom || j.promised || !(mask >> (j.warp & 31) & 1u) || !waits) { ++it; continue; }
+      if (j.walk || j.store || j.atom || j.promised || !(mask >> (j.warp & 31) & 1u) || !waits) { ++it; continue; }
       for (auto o = outstanding_.begin(); o != outstanding_.end();)
         if (o->second.first == j.serial) {
           kill_drop_.insert(o->first);
@@ -321,7 +323,7 @@ private:
     if (o == outstanding_.end()) return;   // a notice names what DCU owes; nothing here to hint
     for (Job &j : jobs_) {
       if (j.serial != o->second.first) continue;
-      if (j.store || j.promised || j.next != j.lines.size() || j.back + 1 != j.lines.size())
+      if (j.walk || j.store || j.promised || j.next != j.lines.size() || j.back + 1 != j.lines.size())
         return;
       const uint64_t at = now_ + ccv::prov::kLatFillNotice + 1;
       const uint64_t h = at - ccv::kLatCmplHint - 1;
@@ -387,11 +389,13 @@ private:
       it = hints_.erase(it);
     }
     if (has(c.fet_miu, 0)) {
-      // Identity translation: the page table is not modelled yet.
+      // FET's ITLB miss: a walk on the shared walker (MA-8), which may wait
+      // behind a data-side one; the refill names the page (identity).
       Receiver::Msg m = take(c.fet_miu, 0);
-      Bits r = msgOf(c.miu_fet);
-      put(r, c.miu_fet, "itlb_refill", get(m.payload, c.fet_miu, "virtual_page"));
-      to_fet_.push_back({0, r, m.tid});
+      const uint64_t vpn = get(m.payload, c.fet_miu, "virtual_page");
+      fet_tid_.emplace(vpn, m.tid);
+      walk_tid_.emplace(vpn, m.tid);
+      walker_.request(vpn, miu::Walker::kItlb);
     }
     if (has(c.rau_miu, 0)) {
       // A CTA's configuration: of it, F-RO's .const range (TI-26).
@@ -579,6 +583,7 @@ private:
     // Every memop with its address starts (MA-4): misses and later passes
     // park in the memop queue, never in a pipe, so nothing caps the jobs in
     // flight but the queue's credits and DCU's req_ids.
+    walkCycle();
     start();
     advance();
     // A hit's data leaves at the contract's data cycle and its completion
@@ -722,7 +727,7 @@ private:
     for (unsigned tag : now) replay(tag, memop_[tag]);
     for (auto it = jobs_.begin(); it != jobs_.end();) {
       Job &j = *it;
-      if (j.store || j.atom || j.warp != w || j.promised || !inRange(j.tag, branch, tail)) { ++it; continue; }
+      if (j.walk || j.store || j.atom || j.warp != w || j.promised || !inRange(j.tag, branch, tail)) { ++it; continue; }
       for (auto o = outstanding_.begin(); o != outstanding_.end();)
         if (o->second.first == j.serial) {
           orphan_[o->first] = w;
@@ -835,9 +840,60 @@ private:
     freeEntry(j.memop_slot);
   }
   std::set<uint64_t> keep_;             ///< stores whose completion keeps the entry
+  // Translation (MIU tab, MA-8; Common tab rev 9): a 32-entry fully
+  // associative TLB looked up in A2 on the memop's pages, and one walker,
+  // shared with FET's ITLB, whose reads are DCU lookups on idle slots. Cold
+  // at each kernel's start: the block is built per kernel. Translation is
+  // the identity and a PTE's value is unused (AR 392), so a walk costs DCU
+  // time and L1 capacity but never changes an address.
+  miu::Tlb tlb_{miu::Pending::kTlbEntries};
+  miu::Walker walker_{std::vector<unsigned>(std::begin(miu::Pending::kWalkBits),
+                                            std::end(miu::Pending::kWalkBits)),
+                      miu::Pending::kWalkBase, 16, miu::Pending::kPteBytes,
+                      miu::Pending::kWalkExtra};
+  bool walk_out_ = false;               ///< the walker's read is a job in flight
+  std::map<uint64_t, uint64_t> walk_tid_;   ///< a page's walk, by the uid that asked first
+  std::map<uint64_t, uint64_t> fet_tid_;    ///< FET's ITLB requests waiting on a walk
+  std::set<unsigned> tlb_missed_;       ///< memops whose tlb_miss is counted
+  /// A walk done: the data TLB filled, FET's refill sent.
+  void walkDone() {
+    const Ch &c = ch();
+    const uint64_t vpn = walker_.doneVpn();
+    const unsigned src = walker_.doneSrc();
+    walk_tid_.erase(vpn);
+    k_.hit("tlb_walk");
+    if (src & miu::Walker::kData) tlb_.fill(vpn);
+    if (src & miu::Walker::kItlb) {
+      auto f = fet_tid_.find(vpn);
+      Bits r = msgOf(c.miu_fet);
+      put(r, c.miu_fet, "itlb_refill", vpn);
+      to_fet_.push_back({0, r, f == fet_tid_.end() ? 0 : f->second});
+      if (f != fet_tid_.end()) fet_tid_.erase(f);
+      k_.hit("itlb_walk");
+    }
+  }
+  /// One cycle of the walker: its read, once due, starts as a DCU lookup on
+  /// an idle slot (advance() sends it after the first passes).
+  void walkCycle() {
+    walker_.cycle();
+    uint64_t a = 0;
+    if (walk_out_ || !walker_.wantRead(a)) return;
+    Job w;
+    w.walk = true;
+    w.tag = ~0u;
+    w.warp = ~0u;
+    const auto t = walk_tid_.find(walker_.curVpn());
+    w.tid = t == walk_tid_.end() ? 0 : t->second;
+    LineReq lr{a / kLine * kLine};
+    lr.sub = 0;
+    w.lines.push_back(lr);
+    walker_.sent();
+    walk_out_ = true;
+    launch(w);
+  }
+
   std::map<unsigned, int> guard_;       ///< drain guard by store tag: withheld slot, -1 not yet
   std::map<unsigned, uint64_t> head_at_;   ///< when a committed store became its warp's head
-  static constexpr uint64_t kNDrain = 16;   ///< N_drain (MIU tab)
   bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
 
@@ -896,7 +952,7 @@ private:
         const bool waits = inFlight(*it, kAnyWrite) || held(*it);
         if (waits) {
           if (held(*it)) k_.hit("atomic_hold_wait");
-          if (now_ - since >= kNDrain && !guard_.count(it->tag)) {
+          if (now_ - since >= miu::Pending::kDrainWait && !guard_.count(it->tag)) {
             guard_[it->tag] = -1;
             k_.hit("drain_guard");
           }
@@ -1284,6 +1340,36 @@ private:
         if ((j.active >> l & 1u) && (j.pxfer ? 4u : j.bytes) + j.addr[l] > size) sbad |= 1u << l;
     }
     const uint32_t fl = bad ? bad : sbad;
+    // A2's TLB (MA-8): every page the active lanes touch must be held; a
+    // page that is not starts a walk and the memop waits in its queue entry
+    // (a contracted load loses its contract: start() sends its no-hit). No
+    // .global address may fall in the page tables (Common tab rev 9).
+    bool two_page = false;
+    if (!fl && j.global && j.active) {
+      std::set<uint64_t> pages;
+      for (unsigned l = 0; l != kLanes; ++l)
+        if (j.active >> l & 1u) {
+          const uint64_t va = j.addr[l];
+          if (va >= miu::Pending::kWalkBase && va - miu::Pending::kWalkBase < walker_.span())
+            k_.fail("miu: rob tag %u lane %u's address %llx lies in the page tables", tag, l,
+                    (unsigned long long)va);
+          pages.insert(va >> 16);
+        }
+      bool missing = false;
+      for (uint64_t vpn : pages)
+        if (!tlb_.holds(vpn)) {
+          missing = true;
+          walk_tid_.emplace(vpn, a->second.tid);
+          walker_.request(vpn, miu::Walker::kData);
+        }
+      if (missing) {
+        if (tlb_missed_.insert(tag).second) k_.hit("tlb_miss");
+        return false;
+      }
+      for (uint64_t vpn : pages) tlb_.lookup(vpn);
+      tlb_missed_.erase(tag);
+      two_page = pages.size() > 1;
+    }
     const uint32_t ro = fl ? 0u : roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
     order_.erase(std::find(order_.begin(), order_.end(), tag));
     tried_.erase(tag);
@@ -1337,6 +1423,8 @@ private:
       j.inelig = true;
     } else if (j.global && j.active) {
       eligibility(j, mo);
+      // Lanes over two pages leave the hit path (MIU tab, translation).
+      if (!j.inelig && two_page) loseFirstPass(j, "tlb_two_page");
       if (!j.inelig) planFirstPass(j, unsigned(get(mo.msg, c.ooe_miu, "pipes")));
     }
     launch(j);
@@ -1846,6 +1934,12 @@ private:
     for (auto it = jobs_.begin(); it != jobs_.end();) {
       if (it->back != it->lines.size() || it->pback != it->passes.size()) { ++it; continue; }
       if (it->rmw == 1) { merge(*it); ++it; continue; }
+      if (it->walk) {
+        walk_out_ = false;
+        if (walker_.got()) walkDone();
+        it = jobs_.erase(it);
+        continue;
+      }
       if (!it->store) complete(*it);
       else if (it->atom == 3) atomDone(*it);
       else storeGone(*it);
