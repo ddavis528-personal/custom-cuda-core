@@ -68,9 +68,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
   Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
-- OI OA-443 (re:OI-176) RUNNING from 09:28Z: rh-jobs/oi443/oi443.sh (resumable), worktree rh-oi443 at 14526054 (gate-scratch/OI),
+- OI OA-443 (re:OI-176) from 09:28Z: rh-jobs/oi443/oi443.sh (resumable), worktree rh-oi443 at 14526054 (gate-scratch/OI),
   A slot_verdict_lag=0, B defaults (1). S1 + cm32priv + cm128priv (cm128 lock after AR). Table: python3 rh-jobs/oi427/table.py A
-  A=~/ccv-logs/oi443 B=~/ccv-logs/oi443 --ctr=demote,kill,demote.refused. Ruling: S1 <= +0.5% OA absorbs, else DA. Send S1 early. ~10:45Z.
+  A=~/ccv-logs/oi443 B=~/ccv-logs/oi443 --ctr=demote,kill,demote.refused. DONE+SENT 10:35Z: B == A cycle-identical on all
+  (+0.000%); but demote=0/restored=0 on cm128priv (triggers fire 4,520) -> demote path unpriced, flagged. Keep rh-oi443 until OI releases.
 - AR 386 DONE+SENT 09:47Z: (a) wp0 and (b) wp5 recent both 5,634,717 (wp_wrong 0); (a) equals AR's earlier hit-7 figure exactly
   (flagged; offered a hit-7 rerun). Worktree dropped; logs ~/ccv-logs/ar386.
 - MA-8 part 1 DONE+SENT 07:20Z (a8 -0.09% best but worst wait 117 vs 96; a32/a64 +1%). Part 2 DONE+SENT 08:12Z: HASH=1 +2.90% cm128
