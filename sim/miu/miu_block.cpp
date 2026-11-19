@@ -354,6 +354,8 @@ private:
         bool refill = false, live = false;
         for (const Hint &h : hints_) refill = refill || (!h.no_hit && h.at == now_ && h.q.slot == it->q.slot);
         for (const Job &j : jobs_) live = live || (!j.store && j.tag == it->tag);
+        // Or still waiting at A2 (lost_), not yet started.
+        live = live || lost_.count(it->tag);
         if (refill || !live || !free(c.cmpl_hint, it->q.slot)) {
           k_.hit("l1_nohit_drop");
         } else {
@@ -559,7 +561,10 @@ private:
           }
       }
 
-    if (jobs_.size() < kMiuPipes) start();
+    // Every memop with its address starts (MA-4): misses and later passes
+    // park in the memop queue, never in a pipe, so nothing caps the jobs in
+    // flight but the queue's credits and DCU's req_ids.
+    start();
     advance();
     // A hit's data leaves at the contract's data cycle and its completion
     // CCV_LAT_L1_ECC cycles later (AR 368, OA 426: the syndrome stages), or
@@ -742,6 +747,7 @@ private:
     order_.erase(std::find(order_.begin(), order_.end(), tag));
     memop_.erase(tag);
     win_miss_.erase(tag);
+    lost_.erase(tag);
   }
 
   // The fault lead (OI-125; AR's rev 314, MIU spec rev 61): lead_fault is
@@ -823,8 +829,8 @@ private:
   void start() {
     const Ch &c = ch();
     if (!committed_.empty()) {
-      if (inFlight(committed_.front(), false)) return;
-      if (held(committed_.front())) { k_.hit("atomic_hold_wait"); return; }
+      if (inFlight(committed_.front(), false)) goto memops;
+      if (held(committed_.front())) { k_.hit("atomic_hold_wait"); goto memops; }
       Job &cj = committed_.front();
       // A predicate store drains as a read-merge-write of its word (MIU
       // spec rev 25, O-63): its line read and held, then the merged word
@@ -832,20 +838,61 @@ private:
       if (cj.pxfer) cj.rmw = 1;
       if (!(cj.pxfer && cj.lines.empty())) launch(cj);
       committed_.pop_front();
-      return;
     }
+  memops:
     // An atomic's write (AR-21) goes first, wherever it lies in order_ once
     // its data has come: its pass holds lines a memop ahead of it may wait
     // on, so it must never wait behind one.
     for (unsigned t : order_)
       if (addr_.count(t) && get(memop_[t].msg, c.ooe_miu, "mem_op") == kMemAtomicWrite) {
         atomWrite(t);
-        return;
+        break;
       }
-    if (order_.empty()) return;
-    const unsigned tag = order_.front();
+    // Every memop with its address, in issue order. tryStart() takes it out
+    // of order_ when it starts, so iterate a copy.
+    // A global load that waits at its A2 has lost the L1 contract for a
+    // reason A2 knows, and says so early (MA-4's no-hit; MIU tab, ordering).
+    const std::deque<unsigned> ready(order_);
+    for (unsigned t : ready)
+      if (addr_.count(t) && !tryStart(t) && memop_.count(t) && !lost_.count(t) && contracted(t)) {
+        lost_.insert(t);
+        k_.hit("l1_held_lost");
+        const Memop &mo = memop_[t];
+        noHit(mo, t, unsigned(get(mo.msg, c.ooe_miu, "rs_idx")), addr_[t].tid);
+      }
+  }
+  /// Memops that waited at A2: started later, never as hits.
+  std::set<unsigned> lost_;
+  /// Whether memop `t` is a load under the L1-hit contract: .global, not a
+  /// store, an atomic or a fence.
+  bool contracted(unsigned t) {
+    const Ch &c = ch();
+    const Bits &m = memop_[t].msg;
+    const unsigned op = unsigned(get(m, c.ooe_miu, "mem_op"));
+    return get(m, c.ooe_miu, "space") == kSpaceGlobal &&
+           (op == kMemLoad || op == kMemPredLoad);
+  }
+
+  /// One memop's A1/A2: its address, faults and eligibility, then its
+  /// lookups or its wait. False: it waits (a window fill, a fence, an older
+  /// store of its warp, an atomic's hold), and tries again next cycle.
+  bool tryStart(unsigned tag) {
+    const Ch &c = ch();
     auto a = addr_.find(tag);
-    if (a == addr_.end()) return;
+    if (a == addr_.end()) return false;
+    // A fence not yet complete holds its warp's younger memops (IS-11):
+    // they issued after it, in program order per warp (OI-15).
+    {
+      const unsigned w = unsigned(get(memop_[tag].msg, c.ooe_miu, "warp_id"));
+      for (unsigned t : order_) {
+        if (t == tag) break;
+        const Bits &om = memop_[t].msg;
+        if (get(om, c.ooe_miu, "mem_op") == kMemFence && unsigned(get(om, c.ooe_miu, "warp_id")) == w) {
+          k_.hit("fence_hold");
+          return false;
+        }
+      }
+    }
     const Memop &mo = memop_[tag];
     // The launch-slot form (TI-31): its window must be in the table. If not,
     // the memop waits, and every one behind it, while its line is read: an
@@ -862,7 +909,7 @@ private:
       win_miss_.insert(tag);
       for (const auto &f : fills_)
         if (f.second.cta == cta && f.second.line == line && f.second.gen == win_[cta].gen)
-          return;                                               // on its way
+          return false;                                         // on its way
       for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s) {
         if (!free(c.miu_dcu, s) || !ids_.any()) continue;
         Bits r = msgOf(c.miu_dcu);
@@ -878,7 +925,7 @@ private:
         k_.hit("dcu_lookups");
         break;
       }
-      return;
+      return false;
     }
     // A fence (IS-11): every older store of its warp written to DCU before
     // it completes, so what follows it, a barrier arrive among them (TI-40),
@@ -893,7 +940,7 @@ private:
       for (const auto &st : stores_) pending = pending || st.second.warp == w;
       for (const Job &cj : committed_) pending = pending || cj.warp == w;
       for (const Job &f : jobs_) pending = pending || (f.store && f.warp == w);
-      if (pending) { k_.hit("fence_wait"); return; }
+      if (pending) { k_.hit("fence_wait"); return false; }
       Job f;
       f.tag = tag;
       f.warp = w;
@@ -901,11 +948,11 @@ private:
       f.rs_idx = unsigned(get(mo.msg, c.ooe_miu, "rs_idx"));
       f.tid = a->second.tid;
       to_ooe_.push_back({f.memop_slot, cmpl(f), f.tid});
-      order_.pop_front();
+      order_.erase(std::find(order_.begin(), order_.end(), tag));
       memop_.erase(tag);
       addr_.erase(a);
       k_.hit("fence");
-      return;
+      return true;
     }
     Job j;
     j.tag = tag;
@@ -1084,7 +1131,7 @@ private:
     }
     // A load waits, and every memop behind it, while a store's write to one
     // of its lines is in flight: DCU would answer it from the line as it was.
-    if (!j.store && inFlight(j, true)) return;
+    if (!j.store && inFlight(j, true)) return false;
     // It also waits while an OLDER store of its warp to one of its lines
     // has not committed (MIU's disambiguation, MIU spec): this MIU forwards
     // nothing, so the load reads the line once the store's write has
@@ -1094,10 +1141,10 @@ private:
     // 1's store; AR's response TI-27 (d)).
     // no-st-wait: the load reads past the older store, and sees the flag
     // still clear.
-    if (!j.store && k_.brk != "no-st-wait" && olderStore(j)) { k_.hit("st_ld_wait"); return; }
+    if (!j.store && k_.brk != "no-st-wait" && olderStore(j)) { k_.hit("st_ld_wait"); return false; }
     // And while an atomic's pass holds one of its lines (V-72). A store
     // waits at its drain.
-    if (!j.store && held(j)) { k_.hit("atomic_hold_wait"); return; }
+    if (!j.store && held(j)) { k_.hit("atomic_hold_wait"); return false; }
     if (j.active & ~issue)
       k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
               tag, j.active & ~issue);
@@ -1138,7 +1185,7 @@ private:
     }
     const uint32_t fl = bad ? bad : sbad;
     const uint32_t ro = fl ? 0u : roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
-    order_.pop_front();
+    order_.erase(std::find(order_.begin(), order_.end(), tag));
     memop_.erase(tag);
     win_miss_.erase(tag);
     addr_.erase(a);
@@ -1156,7 +1203,7 @@ private:
       if (!j.store && j.due > now_) late_faults_.push_back({j.due, {j.memop_slot, m, j.tid}});
       else to_ooe_.push_back({j.memop_slot, m, j.tid});
       k_.hit(bad ? "addr_fault" : "shared_fault");
-      return;
+      return true;
     }
     if (ro) {
       // F-RO: the store has no effect on any lane, so nothing waits for
@@ -1169,17 +1216,24 @@ private:
       put(m, c.miu_ooe, "address", j.addr[__builtin_ctz(ro)]);
       to_ooe_.push_back({j.memop_slot, m, j.tid});
       k_.hit("ro_fault");
-      return;
+      return true;
     }
-    if (j.atom) { atomRead(j, am); return; }
+    if (j.atom) { atomRead(j, am); return true; }
     if (j.store) {
       // Translated and checked; the write waits for retirement.
       stores_[tag] = j;
       to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
-      return;
+      return true;
     }
-    if (j.global && j.active) eligibility(j, mo);
+    if (lost_.erase(tag)) {
+      // It waited at A2: the contract went then, with its no-hit (start()).
+      j.hit = false;
+      j.inelig = true;
+    } else if (j.global && j.active) {
+      eligibility(j, mo);
+    }
     launch(j);
+    return true;
   }
 
   /// MA-4's eligibility for the L1-hit contract (MIU tab, MA's Phase 1
@@ -1224,6 +1278,12 @@ private:
     j.inelig = true;
     j.hit = false;
     k_.hit("l1_inelig");
+    noHit(mo, j.tag, j.rs_idx, j.tid);
+  }
+  /// The early no-hit (MA-4): payload at I + CCV_LAT_L1_NOHIT on the
+  /// memop's slot of ccv_miu_ooe_cmpl_hint. no-nohit: none is sent.
+  void noHit(const Memop &mo, unsigned tag, unsigned rs_idx, uint64_t tid) {
+    const Ch &c = ch();
     if (k_.brk == "no-nohit") return;
     const uint64_t issue = mo.at - crossing(c.ooe_miu);
     const uint64_t at = issue + ccv::prov::kLatL1Nohit - crossing(c.cmpl_hint);
@@ -1232,10 +1292,10 @@ private:
       return;
     }
     Bits m = msgOf(c.cmpl_hint);
-    put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
-    put(m, c.cmpl_hint, "rob_tag", j.tag);
+    put(m, c.cmpl_hint, "rs_idx", rs_idx);
+    put(m, c.cmpl_hint, "rob_tag", tag);
     put(m, c.cmpl_hint, "no_hit", 1);
-    hints_.push_back({at, {j.memop_slot, m, j.tid}, true, j.tag});
+    hints_.push_back({at, {mo.slot, m, tid}, true, tag});
   }
 
   /// A .shared access's passes (TI's rev 230): each active lane, in
@@ -1407,25 +1467,36 @@ private:
     jobs_.push_back(std::move(j));
   }
 
-  /// Whether an uncommitted store older than load `j`, of its warp, touches
-  /// one of its lines.
+  /// Whether a store of load `j`'s warp that has not drained, older than
+  /// it, touches one of its lines (MIU tab, ordering: the compare of a
+  /// load's lines against the MQ's undrained stores of its warp). An
+  /// uncommitted store counts if it is older; a committed one always is.
+  /// Another warp's never does (MA-11).
   bool olderStore(const Job &j) const {
     const uint32_t ls = uidSeq(j.tid);
+    auto overlaps = [&](const Job &st) {
+      for (const LineReq &a : st.lines)
+        for (const LineReq &b : j.lines)
+          if (a.line == b.line) return true;
+      return false;
+    };
     for (const auto &st : stores_) {
       const uint32_t ss = uidSeq(st.second.tid);
       if (seqWarp(ss) != seqWarp(ls) || seqIndex(ss) >= seqIndex(ls)) continue;
-      for (const LineReq &a : st.second.lines)
-        for (const LineReq &b : j.lines)
-          if (a.line == b.line) return true;
+      if (overlaps(st.second)) return true;
     }
+    for (const Job &st : committed_)
+      if (st.warp == j.warp && overlaps(st)) return true;
     return false;
   }
 
   /// Whether a job in flight, any or only a store's write, touches one of
-  /// `j`'s lines.
+  /// `j`'s lines. A load asks only of its own warp's writes (MA-11: other
+  /// warps never wait); a drain asks of every job, as DCU's line order
+  /// would not keep a write behind a read already sent.
   bool inFlight(const Job &j, bool stores_only) const {
     for (const Job &f : jobs_)
-      if (!stores_only || f.store)
+      if (!stores_only || (f.store && f.warp == j.warp))
         for (const LineReq &a : f.lines)
           for (const LineReq &b : j.lines)
             if (a.line == b.line) return true;
