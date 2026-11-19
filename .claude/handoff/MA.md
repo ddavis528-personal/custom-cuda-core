@@ -77,12 +77,10 @@ Conventions 20, AR 390, TI 486, OA 442, IS 197, CP 160, OI 374, RA 156, RI 91, M
 
 - MI and DI ARE RUNNING (MI session_01QPk2jzH1Gd3DcxK4F4pwCC, DI session_01QPk2jz5TVESyWMKVKjqqEA; their
   roster commits arrive on their branches). Their tabs: MI c1311541-4219, DI 1ea5d5b3-6e9c (bookmarks MI 3, DI 2).
-- DI-2 (MA rev 118): under (C) a way mispredict answers at due+2, not due+1 (half-rate bank: re-read H+5,
-  data H+7); the DCU tab's "answers at 9" is wrong. DI models it as a conflict loser meanwhile. ASKED AR+OA:
-  stretch TI-478's late-hit slot to due+2, or the loser's path? After both agree: fix the DCU tab pipeline
-  (C) text, the MI/DI impl docs (late hit due+1 -> the answer), the snapshot.
+- DI-2 SETTLED (AR 390, OA-442; MA rev 121): a way mispredict (due+2 earliest) takes the conflict loser's
+  path; TI-478 slot stays due+1. DCU tab rev 56, impl docs, snapshot updated.
 - MI-2 (MA rev 119): confirmed MI's model walk with 3 levels (W_VA 64, page shift 16), identity
-  translation, cold TLB per kernel. Page-table format raised to AR as an open (no MMU owner).
+  translation, cold TLB per kernel. Page-table format is AR's (AR 391); IS owns the fault cause; PTE width and per-level latency are model params (MA rev 120).
 - TI-487 SETTLED as (3) (AR 389 final, OA 441; MA rev 117): DCU withholds the fatal merge read; RAU's
   machine-check kill waits on no ack from MIU (still requires the seven others). DCU tab rev 55;
   dcu-impl.md bin added. TI lands it. (MA rev 117 says DCU rev 54; it is 55.) Bookmarks AR 392, MA 117.

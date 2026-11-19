@@ -192,7 +192,7 @@ Each is in the spec; this list is where to find it.
 
 | Obligation | Spec, and the row |
 |---|---|
-| The L1-hit timing: data at `CCV_LAT_L1_HIT` from the address (8 with way prediction on, 9 off: derived from `CCV_DCU_WAYPRED_BITS`), the completion `CCV_LAT_L1_ECC` (1) later. A way mispredict is a late hit at due + 1; a withheld completion (non-zero syndrome) is taken by OOE as a miss | MIU tab, L1-hit budget; DCU tab, arrays and pipeline; TI-478, MA-26 |
+| The L1-hit timing: data at `CCV_LAT_L1_HIT` from the address (8 with way prediction on, 9 off: derived from `CCV_DCU_WAYPRED_BITS`), the completion `CCV_LAT_L1_ECC` (1) later. A way mispredict answers no earlier than due + 2 and takes the bank-conflict loser's path, answered later as a miss would be (DI-2; AR 390, OA-442); a withheld completion (non-zero syndrome) is taken by OOE as a miss | MIU tab, L1-hit budget; DCU tab, arrays and pipeline; TI-478, MA-26 |
 | **DCU bank credits (MA-25):** MIU holds per-bank credits, `CCV_DCU_BANK_QDEPTH` (16) lookup entries and `CCV_DCU_BANK_STDATA` (12) store-data entries, a hard reservation that counts every request sent to the bank. A request without its credit waits in MIU, oldest first; a held store blocks younger stores to its bank, and a held request blocks younger ones to its line. Credits return on two 8-bit per-bank vectors from DCU (entry and store data), each within `CCV_DCU_BANK_AGE` | MIU tab, "DCU bank credits"; DCU tab, the bank queue; MA-24, MA-25 |
 | The kill races: MIU completes every memop of a killed warp; an atomic keeps its state and hold through the A3 that OOE still sends, completing with more = 0 and releasing; a read DCU withholds as uncorrectable completes with no data | MIU tab, kill obligations; TI-485, OA 436 (final; OA 438, AR 385) |
 | ECC error injection: the model passes the `CCV_MIU_ECC_INJECT` runs TI adds (an injected correctable error is corrected and counted; an uncorrectable one follows MA-19) | TI-484; MA-19 |
@@ -210,7 +210,7 @@ copy. MA added these since that table was written, and folds them into it:
 |---|---|---|
 | A request held for a DCU bank credit, then sent (MA-25) | `credit_hold_then_sent`, per bank, loads and stores apart | a model that sends without a credit trips DCU's queue-overflow check; one that never releases hangs |
 | A store held behind an older held store to its bank | held stores | a younger store that overtakes fails the ordering check |
-| A late hit from a way mispredict (MA-26, `CCV_DCU_WAYPRED_BITS` > 0) | hits at due + 1 | data taken at due fails the oracle |
+| A way mispredict (MA-26, `CCV_DCU_WAYPRED_BITS` > 0), answered on the loser's path (DI-2) | mispredicted loads, answered as late, never contract-timed | data taken at due fails the oracle |
 | A withheld completion (ECC syndrome) taken as a miss | withheld completions | a completion sent anyway retires bad data |
 | Kill against an atomic between A2 and A3 | atomics completed with more = 0 | releasing at the kill leaves the A3 orphaned |
 | An uncorrectable read completed with no data | UE completions | a model that writes the data retires it |

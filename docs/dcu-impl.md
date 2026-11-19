@@ -90,7 +90,7 @@ inside DI's to organise, the swap boundary kept.
 
 | Obligation | Spec, and the row |
 |---|---|
-| **The hit pipeline at the spec's latency:** under (B) (`CCV_DCU_WAYPRED_BITS` = 0) the tags then the data, `CCV_LAT_L1_HIT` 9; under (C) (bits k > 0) the predicted way's data with the tags, `CCV_LAT_L1_HIT` 8, and a mispredict answers at due + 1 from a second bank access. `CCV_DCU_WAYPRED_SEL` picks among the ways whose fold matches: index (the lowest way) or recent (the most recently used; true LRU, so the tag word is 152 bits) | DCU tab, arrays and pipelines; MA-23, MA-26, DA rev 128; TI-478 |
+| **The hit pipeline at the spec's latency:** under (B) (`CCV_DCU_WAYPRED_BITS` = 0) the tags then the data, `CCV_LAT_L1_HIT` 9; under (C) (bits k > 0) the predicted way's data with the tags, `CCV_LAT_L1_HIT` 8, and a mispredict re-reads with a second bank access that obeys the half-rate rule, so it answers no earlier than due + 2, on the bank-conflict loser's path (DI-2; AR 390, OA-442). `CCV_DCU_WAYPRED_SEL` picks among the ways whose fold matches: index (the lowest way) or recent (the most recently used; true LRU, so the tag word is 152 bits) | DCU tab, arrays and pipelines; MA-23, MA-26, DA rev 128; TI-478 |
 | **Banks:** a bank takes one access every other cycle; same-cycle collisions go in slot order and the loser answers later as a miss would; a waiter that reaches `CCV_DCU_BANK_AGE` blocks new lookups and fills to its bank until served | DCU tab, ports; MA-7, AR 364 |
 | **The bank queue and its credits (MA-25):** up to `CCV_DCU_BANK_QDEPTH` (16) lookup entries and `CCV_DCU_BANK_STDATA` (12) store-data entries a bank, never more (MIU's credits guarantee it: flag an overflow as a failure); an entry credit returned when a lookup entry leaves, a store-data credit when a store's write leaves, at most one of each a bank a cycle, on the two per-bank vectors | DCU tab, bank queue; MA-24, MA-25 |
 | **Store hits, variant (b):** the store's read and its whole-line write wait in the bank's queue as deferred work under the age bound, holding the data and byte mask, read to write 5 cycles (SECDED's corrected read); D3 merges under the byte mask; the line is written whole and marked dirty | DCU tab, hit pipeline and bank queue; MA-17, MA-24; TI-466, TI-483 |
@@ -116,7 +116,7 @@ DCU tab:
 | A waiter at the age bound blocking its bank | age-bound blocks | bound ignored: a waiter starves under a stream of hits |
 | A full bank queue, entries and store data (MA-25) | cycles at QDEPTH, cycles at STDATA, credits returned per bank | an extra credit returned lets MIU overfill the queue, which the model flags |
 | A deferred store's read, gap and write | deferred stores; read-to-write cycles | a write before the gap merges stale data |
-| A way mispredict (k > 0) | second accesses; late hits at due + 1 | answering at due with the predicted way's data fails the oracle |
+| A way mispredict (k > 0) | second accesses; answers on the loser's path, at due + 2 or later | answering at due with the predicted way's data fails the oracle |
 | A fill held off a bank by lookups | fill-wait cycles | a fill written over a lookup's bank cycle |
 | A CE on a hit (injected) | corrected errors; withheld completions; corrected refills | completing anyway retires uncorrected data |
 | A UE in a clean line (injected) | recoveries; table entries in use | no refetch: the load hangs |
@@ -154,8 +154,8 @@ model builds with; a measurement moves a default, never the structure.
 - **Setup** is [`miu-impl.md`](miu-impl.md) section 8's, with your roster
   entry `DI`, your handoff `.claude/handoff/DI.md` and your sweep at minute
   43.
-- **MI** builds the MIU model beside yours. The bank credits, the late hit
-  at due + 1, the withheld completion and the UE-withheld read cross between
+- **MI** builds the MIU model beside yours. The bank credits, the mispredict
+  on the loser's path, the withheld completion and the UE-withheld read cross between
   the two models: agree in your tabs which lands first, so each model passes
   against the other's stub first and the other's model second.
 - **MA** answers every architecture question and folds each answer into the
