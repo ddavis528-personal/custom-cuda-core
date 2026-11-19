@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 19, AR 384 (AR 381), TI 483 (TI-484 answered), OA 436, IS 197, CP 160, OI 374, RA 156, RI 91, MA 108, DA 127. (AR 388, OA 440, TI 485 read for these rows only.)
+Conventions 20, AR 388, TI 485, OA 440, IS 197, CP 160, OI 374, RA 156, RI 91, MA 110, DA 128.
 
 ## State, 2026-11-13
 
@@ -75,6 +75,16 @@ Conventions 19, AR 384 (AR 381), TI 483 (TI-484 answered), OA 436, IS 197, CP 16
 
 ## Open work, most urgent first
 
+- MI/DI START (Daniel 2026-11-19: opens stay parameters; MA-23 ruled (B) + way prediction as a
+  parameter, DA rev 128, MA-26 MA rev 109, MA-23 closed MA rev 110). Done: register tabs MI
+  (c1311541-4219) and DI (1ea5d5b3-6e9c), each with Opens m8yvbw8rqgz.613 / Responses .675;
+  Conventions rows rev 20; roster MI/DI (session null); docs/miu-impl.md, docs/dcu-impl.md;
+  snapshots docs/design-snapshots/miu-spec.md (rev 144), dcu-spec.md (rev 50); CLAUDE.md pointer.
+  Sweep minutes MI 39, DI 43 (ask OA to add them to the register skill's series).
+  NEXT: Phase 2 (partition, per-cycle tables, port NGD budgets) for both blocks; fold the impl docs'
+  added bins into the MIU/DCU tabs' events tables; the DCU tab's ECC item still says
+  "CCV_LAT_L1_HIT (7)" (stale: 8/9 now) and L1_CMPL 15 needs re-deriving for 8/9 with TI;
+  refresh the two snapshots whenever a tab changes.
 - PHASE 1 SWEEPS (DA rev 125; plan MA-21). Model sim/dcu/dcu_p1.cpp, runner sim/dcu/p1-run.sh
   <oracle dir> <out.tsv> [K=V]; oracle build/oracle (gate cleanup deletes it: CCV_FOREGROUND=1
   tools/gen-oracle.sh). Knobs: STORE a|af|b, ARB fixed|rot, HASH, BANK_AGE, QDEPTH, STRICT/PAD, REPASS,
