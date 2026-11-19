@@ -1,0 +1,7 @@
+{
+  "module": "ccv_common_secded_syn",
+  "inner": true,
+  "by": "TI",
+  "date": "2026-11-18",
+  "why": "The decode's first half, combinational: the check bits recomputed XOR those stored. At K = 128, 15.4 NGD: after an SRAM's rdata (which launches at 16.3) it cannot share the read's stage, so a parent flops rdata, then the syndrome (or uses the data speculatively and replays on a nonzero flopped syndrome). Timed in its parent."
+}

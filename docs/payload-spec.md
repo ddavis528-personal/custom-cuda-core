@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 55 channels
+# Payload specification — all 56 channels
 
-Every payload field has a width, so **every one of the 55
+Every payload field has a width, so **every one of the 56
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 15 | 40 |
+| All decided | 16 | 42 |
 | ⚠️ Some provisional | 27 | 147 |
 | ⛔ Some preliminary | 13 | 152 |
-| **Total** | **55** | **339** |
+| **Total** | **56** | **341** |
 
 ## What still has to be decided
 
@@ -343,6 +343,18 @@ syu → rau · rate 1 · control
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | **total** | | **5** | |
+
+### `ccv_dcu_cru_err`
+
+The machine-error report (AR 370, DA rev 124): DCU's sticky error levels, sent as a message each time either changes (so at most once for ue, which stays set until reset). ue: an uncorrectable error that is core-fatal -- one in a dirty L1 line, in a writeback's victim read or a fill, or a hard error (a second UE at a location already recorded in DCU's CCV_DCU_UE_TRACK table, or one that finds it full). CRU then latches MACHINE_CHECK, sends RAU its kill request for every grid (ccv_cru_rau_cfg kill_req, kill_grid all ones), and writes F-MACHINE (cause 10) into the first-fault record of every live context not yet written (ISA v1.9 O-86, the core-wide exception to §12.7). The access the UE hit gets no completion; RAU's kill ends it. A UE in a clean line is recovered inside DCU (the line invalidated and refetched as a miss) and is not reported here. ce_alert: the corrected-error count passed ccv_common_err's ERR_CTRL threshold, status only (no kill). One such channel per SRAM-bearing block, each to CRU, which ORs them; DCU's is the only one in v1 (SPM is register files, AR 371).
+
+dcu → cru · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `ue` | `1` | 1 | literal |
+| `ce_alert` | `1` | 1 | literal |
+| **total** | | **2** | |
 
 ## ⚠️ Carries a provisional width
 
@@ -820,6 +832,8 @@ dec → ooe · rate 6 · instruction
 | `xfer_signed` | `1` | 1 | literal |
 | **total** | | **236** | ⛔ 37 preliminary, ⚠️ 37 provisional |
 
+Lead fields (driven with valid, a cycle ahead of the rest): `warp_id`, `fetch_epoch`.
+
 ### `ccv_ooe_rcu_issue`
 
 What the scheduler selected: physical register names (three sources; the guard predicate, in lead_guard_pred since RA's rev 109, and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. One slot per select resource (CCV_ISSUE_RESOURCES = 9): S0-S3, P0-P3, R; see SECTIONED LANES below. MERGE (A-33): with merge_en set (the issue mask is not full or the op is guarded), phys_old_dst is a fourth source, read at issue with the others and carried to the lane as merge_data, so it bypasses like any operand; the lane writes its inactive lanes from it. merge_en = 0 makes phys_old_dst don't-care. Predicates merge in RCU instead: at write-back RCU read-modify-writes the 32-bit row from phys_pred_old_dst (A-43). A masked load sends a second, copy-only op here, opcode CCV_OP_PRF_COPY = 0x1FF, with the load's rob_tag: it writes only the load's inactive lanes (GPR and predicate destination alike) and produces no done (A-38). ZERO-CYCLE END (RA-43, RA's rev 113, DA 115; AR's rev 329): RCU's end of this channel holds no boundary flop (bnd_rx 0, params/links.json no_flop_port_budget), so what RCU's logic reads before its first register comes from the lead fields, a cycle ahead (lead_why), and RCU returns the credit itself: this channel carries no credit_on_receipt contract (RA-43 (3)). Fixed latency: once RCU accepts an issue the result lands at the contracted latency, and there is no port grant (Q-51, A-28). ZERO REGISTERS (A-64): CCV_P_PHYS_ZERO and CCV_P_PRED_ZERO, one past each pool, read zero and are never written. A read of one needs no PRF port: RCU decodes the index and drives a constant, which matters because a launched warp's early reads all name them (A-73). A launched warp's sources, guard and old destinations may name them; phys_dst, phys_pred_dst and the destinations of every write never do. PREDICATE LOGIC (TI-1): pand, por and pxor read two predicates, and OOE renames them like any source, so imm carries their physical names, not DEC's qualifiers: [CCV_P_W_PHYS_PRED-1:0] the first source, [CCV_P_W_PHYS_PRED] its negate, then the second source and its negate, 2 (CCV_P_W_PHYS_PRED + 1) = 14 bits. RCU reads them as it reads the guard (lead_guard_pred), and on R they ride lead_rpsrc, with the rest of imm, a cycle ahead; R's payload carries no imm (RA-43, RA's rev 114 (2)). SECTIONED LANES (Daniel's responses OI-28 to OI-31, change doc 'Interface spec changes -- sectioned lanes', TI-9): a lane is four 8-bit sections and the PRF four section banks; a register name is a row (phys_src, phys_src2, phys_dst, phys_old_dst) plus a position (src_pos, dst_pos, old_dst_pos), each operand with its own width code (src_width; dst_width, which the merge source shares, being the same architectural register). footprint is the op's 4-bit mask: lane sections for an op on S0-S3 (the union of its operands' sections, widened to CCV_FOOT_MIN for its bypass_group; a non-contiguous mask is legal), MIU pipes for a memop on P0-P3, 0 on R. An op sits in its footprint's lowest slot; every other slot of its footprint carries cont = 1 and the same rob_tag, and nothing else but lead_cont, cont's copy. A memop takes P slots here, for RCU to read its operands at its width and position, as well as its pipe footprint on ccv_ooe_miu_memop. Co-issued footprints are disjoint (V-60), so at most one full-width lane op, one full-width memop and one RCU op issue in a cycle, and four 8-bit ops of each. The zero register is valid at any position. bypass_group rides with the op for the lanes' forwarding (OI-16). DONE_ROW (OI-85, OA's rev 282): which of the ROB entry's rows this issue is, 2 bits (0 the op itself, or an atomic's A1; 1 a masked load's copy; 2 an atomic's A2; 3 its A3), which RCU echoes on the op's done. The entry keeps a done bit per row and an owed mask, so two dones for one entry in one cycle set two bits, an OR with no adder; RCU never holds a done.
@@ -1041,7 +1055,7 @@ exb → EXTERNAL · rate 1 · memory
 
 ### `ccv_cru_rau_cfg`
 
-Host-programmed policy (demotion threshold, progress threshold, launch enable) and the host's kill request with a grid selector. Both kill sources -- a fault from OOE, a request from the host -- land at RAU, the single issuer.
+Host-programmed policy (demotion threshold, progress threshold, launch enable) and the host's kill request with a grid selector. Every kill source -- a fault from OOE, a request from the host, CRU's machine check (AR 370) -- lands at RAU, the single issuer. kill_grid all ones selects every grid: CRU sends that on a machine check (ccv_dcu_cru_err's ue).
 
 cru → rau · rate 1 · control
 

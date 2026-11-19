@@ -105,6 +105,35 @@ else
   fi
 fi
 
+# -- the arrays' SECDED code (sim/skel/secded.h; rtl/common/) -------------
+# DA rulings TI-474 to TI-476 (every SRAM holds SECDED ECC, its logic the
+# block's): the encoder and the decoder's two halves (syndrome, fix) at 37 and 128 data bits and the
+# C++ code on the same random words with none, one, two or three bits
+# flipped: check bits, q, sec, ded and syndrome agree, one error corrected
+# and two detected (test/vl/vl_secded_tb.cpp). Controls: the model's columns
+# swapped (col), one error's q not corrected (nocorr), two errors taken as
+# one (dedsec).
+rm -rf "$B/vl-secded"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style \
+     -Irtl/include -CFLAGS "-std=c++17 -I$R/sim/skel" --top-module vl_secded_top \
+     --Mdir "$B/vl-secded" -o vl_secded rtl/common/ccv_common_secded_enc.sv \
+     rtl/common/ccv_common_secded_syn.sv rtl/common/ccv_common_secded_fix.sv test/vl/vl_secded_top.sv "$R/test/vl/vl_secded_tb.cpp" \
+     >"$B/vl-secded.log" 2>&1; then
+  bad "SECDED model == RTL" "the lockstep does not build ($B/vl-secded.log)"
+elif ! out=$("$B/vl-secded/vl_secded" 100000 2>&1); then
+  bad "SECDED model == RTL" "$(echo "$out" | head -2 | tr '\n' ' ')"
+else
+  missed=""
+  for c in col nocorr dedsec; do
+    VL_CONTROL=$c "$B/vl-secded/vl_secded" 20000 >/dev/null 2>&1 && missed="$missed $c"
+  done
+  if [ -n "$missed" ]; then
+    bad "SECDED model == RTL" "control(s) not caught:$missed"
+  else
+    say "SECDED model == RTL, one corrected, two detected" "PASS ($(echo "$out" | tail -1 | sed 's/^agree //'); col, nocorr, dedsec caught)"
+  fi
+fi
+
 # Keys are matched WHOLE -- preceded by a space or the line start. A bare
 # `violations=` also matches inside `class_violations=`, which comes first on
 # the line, so a run with 186 checker violations read as 0: this gate would
