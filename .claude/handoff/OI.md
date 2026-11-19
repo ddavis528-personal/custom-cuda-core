@@ -71,7 +71,7 @@ OI 383, OA 448, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (T
    forcing a few hundred demotes, slot_verdict_lag 0 vs 1). OA 446: OA declines (b), recommends (a) to DA (mempl waiver).
    #65 (4) decq credit return DONE locally (6fc15bec on oi-slot): ooe_decq output crd_cq02h[S*LC], per-slot frees
    registered beside frn; decq_tb checks per slot, control stale-credit-apart. check-cg/ngd for ooe_decq not yet run
-   (gate was busy). Next: #65 (5a) ooe_redir: b0117b45 (decrx sw_o/sn_o outputs, bench 25 seeds + 7 controls pass; model same-cycle redirects in slot order, ooe tests pass) and the ooe_redir draft committed lint-clean. Left: rob_w outputs rd_e_cq02h/ckf_l_cq02h (rd_e waits on OA's OI-179 ruling), redir_tb vs model (+2 cycles), controls, cg/ngd unit, landing row.
+   (gate was busy). Next: #65 (5a) ooe_redir: b0117b45 (decrx sw_o/sn_o outputs, bench 25 seeds + 7 controls pass; model same-cycle redirects in slot order, ooe tests pass) and ooe_redir b0de1716: rob_w outputs rd_e_cq02h (rs_en) / ckf_l_cq02h (|frp); ooe_redir sits in ooe_rob_tb (u_redir) and rob_tb checks it vs core.out at +2 (25 seeds, 1206 redirects, 0 mismatches; controls redir-warp/epoch/ntm, rd-unled, ckf-unled); cg unit ooe_redir (scope u_redir). Left: check-cg/check-ngd ooe_redir + ooe_rob_w (after the gate; re_q/fl_q are 8 ungated flops - watch CG), landing row with budgets (re OI-179, which OA may still change).
    Lint in wt-slot shows 7 CCV-L23 in ooe_decrx/ooe_slot (lint passed on wt-sw's gate): recheck on oi-slot's gate.
    OA 435 module split (re:OI-171), in order: (1) ooe_slot #63, (2)(3) ooe_rcupl/ooe_mempl #64,
    (4) decq credit return + (5a) ooe_redir #65, (6) rob_w slice 5 syu_bar, (5b+7) epoch notices +
