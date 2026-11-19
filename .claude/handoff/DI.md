@@ -20,14 +20,21 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 - L = lead (valid) at DCU = H+2; P = payload lands (Stub::has) = H+3.
 - Response valid launches at P + (CCV_LAT_L1_HIT - 5): P+2 at 7, P+3 at 8 (C),
   P+4 at 9 (B). A mispredict (C) launches one cycle later.
-- Bank arbitration for the lead cycle L is decided in work(P) (lag 1):
-  only the index (bank) is used for it, so it is causal.
+- A lookup's data-bank access starts at D (P under A and C, P+1 under B) and
+  each bank is arbitrated in work(D) from what DCU holds then; the response
+  launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
-1. Phase 0: register sweep and bookmarks; DI-1 to TI (makeDcu value, blocks
-   list, check-dcu-unit, WAYPRED/QDEPTH/STDATA params, credit-return vectors);
-   sweep task at minute 43; session-home (ask Daniel).
-2. Model M0: core + block + unit tests; every kernel on both hosts; bins.
+1. Model M0: core, block, unit tests landed (c0d1d08b, 18 tests). Next: every
+   kernel with CCV_DCU_IMPL=model (local patch), both hosts; bins and
+   controls; cycles against the stub and p1.
+2. Session home: ask Daniel (writes /home/user/.claude).
+3. Gaps vs spec: probes (no MLC probe channel in the skeleton yet), CE
+   injection (needs a DCU-side knob: a DI row to TI), the 2-entry writeback
+   buffer's stall (now a bin), MA-25 vectors unwired (no channel yet).
 
-## Register bookmarks
-(set at first sweep)
+## Register bookmarks (2026-11-19 start)
+Conventions 20, DI 2, MI 1, MA 117, TI 486, DA 128. Others: outline + search DI.
+Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
+params, credit vectors), DI-2 (MA: (C) mispredict vs half-rate bank).
+Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
