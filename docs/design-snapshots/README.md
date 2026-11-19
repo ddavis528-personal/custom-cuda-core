@@ -14,6 +14,7 @@ it.** Never edit one by hand: refresh it.
 | [`ooe-diagrams.md`](ooe-diagrams.md) | the OOE doc's four diagrams, as text | hand-transcribed; see below |
 | [`ar-handoff.md`](ar-handoff.md) | [AR handoff — CCV top-level architecture](https://claude.ai/artifact/5vrJfQoctw1tnTcSVZCAvY) | **closed**: the top-level architect's handoff of 2026-10-18, kept as the state of the role at that date |
 | `rcu-arch-*.md` (10 files, one per tab: [overview](rcu-arch-overview.md), [conventions](rcu-arch-conventions.md), [pipeline](rcu-arch-pipeline.md), [register file](rcu-arch-register-file.md), [predicate file](rcu-arch-predicate-file.md), [R unit](rcu-arch-r-unit.md), [lane and memory](rcu-arch-lane-memory.md), [migration](rcu-arch-migration.md), [done, kill and reset](rcu-arch-done-kill-reset.md), [partition](rcu-arch-partition.md)) | [CCV RCU Architecture](https://claude.ai/artifact/4k7VrEKJG4KUgMYG1Qz8mB) | **living**: the RCU block architect's (RA's) RTL-depth spec |
+| [`miu-spec.md`](miu-spec.md), [`dcu-spec.md`](dcu-spec.md) | [CCV per-block architecture specs](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35), MIU and DCU tabs | **living**: the MIU and DCU architect's (MA's) spec, which MI and DI build against (`docs/miu-impl.md`, `docs/dcu-impl.md`) |
 
 Each snapshot starts with a header naming its source, tab, revision, export
 date and status; `tools/check-docs.sh` refuses one without it.
@@ -38,6 +39,7 @@ not snapshotted here.
 - **The RCU architecture doc** (RA's), whenever a tab changes, all ten tabs
   together, so the copies share one export date. The RCU implementation is
   built against these copies.
+- **The MIU and DCU tabs** (MA's), whenever either changes, both together, in the commit that carries what follows from it.
 - **The Review tab** no longer changes. `tools/check-docs.sh` still holds: every A-n from A-25 onward that the repo cites
   must be in `interface-review.md`. The check needs no access to the live
   doc.

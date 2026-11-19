@@ -64,8 +64,14 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   `table.py A0 A0=~/ccv-logs/oi427 E=~/ccv-logs/oi428 --ctr=stall.decq,stall.decq_warp_max` (labels: A0 is OI's A).
   Ruling: S1 <= +0.5% -> OA, else DA. Do not drop rh-oi427b before 428 done.
 - OA-427 S1 + cm32priv A0/A/B SENT 05:40Z (B S1 +0.002%; A0 == A exactly). OA-428 S1 SENT 05:55Z: E +0.946% (DA rules); stall.decq* 0.
-  cm128priv for both now after MA-4 (~12:00-14:30Z); OI told. OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
-- MA-4 early SENT 06:35Z: b wait_max fixed (198/588), b cycles unchanged (q0 identical, q2 -5). Next: a.q8 cm128 ~09:00Z.
+  cm128priv for both RUNNING from 11:32Z (427 ~3h, then 428 E); OI told. OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
+- MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
+  Table ~/ccv-logs/ma4/table.md. MA released rh-ma4 (keep logs) but MA-5 reuses it; drop after MA-5.
+  Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
+- MA-5 RUNNING from 11:50Z at c94f0ae6 in rh-ma4: rh-jobs/ma5/ma5.sh (no arg), ~/ccv-logs/ma5. S1 b.q8.fixed/b.q8.rot;
+  cm32 b.q8.fixed b.q8.rot a.q8.rot now; cm128 b.q8.fixed b.q8.rot a.q8.rot b.q16.fixed b.q6.fixed a.q6.fixed after OI's
+  oi427/428 exit (~15:30Z, ~38 min each, ~19:30Z). Send cm32+S1 early, cm128 1-3 ~17:30Z, all at end with q histogram:
+  python3 rh-jobs/ma5/table.py (histogram rows for q8/q16 points appended).
 - OI OA-427 RUNNING from 05:05Z (OI-164 opt 2): rh-jobs/oi427/oi427.sh, worktrees rh-oi427 (15ef1bd4, A/B/C/D) and
   rh-oi427b (5e1f3789, A0; oracles symlinked from rh-oi427, inputs identical). ~/ccv-logs/oi427. S1 (ruling: B <= +0.5%) + cm32priv
   now; cm128priv waits for ma3/ma4. Send S1 early. Table: cycles, IPC, Δ% vs A; A0==A; branch.free_held/kept/withdrawn.
