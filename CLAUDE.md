@@ -11,6 +11,9 @@ in both hosts since M0 (RA, 2026-11-04), and `CCV_RCU_IMPL=stub` selects the stu
 **An MIU and DCU architecture session (MA) starts at `docs/miu-arch.md`** (DA
 tab revs 117-118, 2026-11-10; MI and DI implement them); the skeleton's MIU and
 DCU stay the stubs until MA's Phase 1 resource model lands (miu-arch.md section 7).
+**An MIU model session (MI) starts at `docs/miu-impl.md`, a DCU model session
+(DI) at `docs/dcu-impl.md`** (MA, 2026-11-19; DA rev 128); the stubs stay the
+default in both hosts until each model passes M0.
 
 ## Sources of truth: edit these, never what is generated from them
 
