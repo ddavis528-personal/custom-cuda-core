@@ -75,13 +75,9 @@ Conventions 20, AR 390, TI 486, OA 442, IS 197, CP 160, OI 374, RA 156, RI 91, M
 
 ## Open work, most urgent first
 
-- TI-487 HOLD (kill_ack hang on a fatal UE'd merge read of a retired store). Sequence: MA (1), OA 440 (1),
-  AR 387 (3), MA 114 took (3), OA 441 confirmed (3), DCU tab rev 53 edited to (3) + dcu-impl bin; then
-  AR 388 crossed, back to (1) with conditions (fatal mark encoding on today's rsp fields or a TI field;
-  abandon on the mark only, write nothing, store leaves MIU before the ack). MA 116 asked AR to pick one
-  after reading MA 114/115 + OA 441; TI told to hold. If AR picks (1): rewrite the DCU tab machine-errors
-  sentence and the dcu-impl bin (bin fatal_store_abandoned, control: abandon on a CE), name the mark,
-  refresh the snapshot. If (3): nothing more. Bookmarks: AR 391, OA 443, MA 116.
+- TI-487 SETTLED as (3) (AR 389 final, OA 441; MA rev 117): DCU withholds the fatal merge read; RAU's
+  machine-check kill waits on no ack from MIU (still requires the seven others). DCU tab rev 55;
+  dcu-impl.md bin added. TI lands it. (MA rev 117 says DCU rev 54; it is 55.) Bookmarks AR 392, MA 117.
 - MA-26 defaults: 5 bits + recent (AR 386, MA rev 112); DCU tab rev 52, impl docs and snapshot
   updated (c0b8c899). AR's cm128 5/recent confirmation is still running: if it loses >0.2%, revisit.
   MI/DI handoffs pushed (73928bba). OA added MI 39 / DI 43 to the sweep series.
