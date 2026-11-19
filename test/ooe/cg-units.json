@@ -119,6 +119,31 @@
       }
     },
     {
+      "name": "ooe_slot",
+      "module": "ooe_slot",
+      "files": [
+        "rtl/ooe/ooe_slot.sv"
+      ],
+      "params": {
+        "S": 4,
+        "A": 4,
+        "D": 1,
+        "NW": 32,
+        "WC": 32,
+        "WI": 5,
+        "WB": 5,
+        "WT": 3,
+        "KE": 2
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_slot {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_slot_tb.u_sl"
+      }
+    },
+    {
       "name": "ooe_freelist_gpr",
       "module": "ooe_freelist",
       "files": [

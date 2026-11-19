@@ -4184,6 +4184,80 @@ void testRandom(unsigned seeds) {
   }
 }
 
+/// ooe_slot's bench only (test/ooe/slot_tb.cpp, scenario "slot"): four
+/// warps under random demotes, frees, relaunches and kills, so every slot
+/// state meets a kill (resident, demoting, draining, parked, killing again),
+/// kills name nothing OOE holds, and kills land beside frees and launches.
+/// The model's own errors fail it.
+[[maybe_unused]] void testSlotRandom(unsigned seeds) {
+  for (unsigned seed = 1; seed <= seeds; ++seed) {
+    g_test = "slot random seed " + std::to_string(seed);
+    Config c = baseConfig();
+    c.l1_spec = false;
+    std::mt19937 rng(seed * 13 + 1);
+    Env e(c, seed);
+    e.keep_log = true;
+    e.miss_extra = 20 + seed % 30;
+    // Per slot: 0 empty, 1 resident, 2 demoting (until drained), 3 parked,
+    // 4 killed (until the ack); and its warp.
+    unsigned st[4] = {}, warp[4] = {}, next_warp = 0, epoch = 0;
+    bool kill_open = false;
+    // FET stops fetching a warp once it is demoted or killed (the test
+    // drives no restore, so a demoted warp never runs again).
+    auto stop = [&](unsigned wp) {
+      for (auto &x : e.w) if (x.id == wp) x.exited = true;
+      for (auto it = e.fetched.begin(); it != e.fetched.end();)
+        it = it->second.warp == wp ? e.fetched.erase(it) : std::next(it);
+    };
+    auto launch = [&](unsigned s) {
+      // A warp_id comes round again: FET forgets its last run.
+      e.w.erase(std::remove_if(e.w.begin(), e.w.end(), [&](const Env::Warp &x) { return x.id == next_warp; }),
+                e.w.end());
+      warp[s] = next_warp;
+      next_warp = (next_warp + 1) % 24;
+      e.launch(warp[s], s, randomProgram(rng, 40 + rng() % 60, true));
+      st[s] = 1;
+    };
+    for (unsigned s = 0; s != 4; ++s) launch(s);
+    for (unsigned k = 0; k != 1500; ++k) {
+      e.step();
+      const Outputs &o = e.log.back();
+      for (const Drained &d : o.drained)
+        for (unsigned s = 0; s != 4; ++s)
+          if (st[s] == 2 && warp[s] == d.warp) st[s] = d.refused ? 1 : 3;
+      if (!o.kill_acks.empty()) {
+        kill_open = false;
+        for (unsigned s = 0; s != 4; ++s) if (st[s] == 4) st[s] = 0;
+      }
+      if (o.kill_acks.size() > 1) EXPECT(false, "%zu kill acks in a cycle", o.kill_acks.size());
+      e.log.clear();
+      const unsigned r = rng() % 64, s = rng() % 4;
+      if (r < 3 && st[s] == 1) {
+        e.core.demote(warp[s]);
+        stop(warp[s]);
+        st[s] = 2;
+      } else if (r < 6 && st[s] == 3) {
+        Alloc f; f.warp = warp[s]; f.slot = s; f.op = kAllocFree;
+        e.core.alloc(f);
+        st[s] = 0;
+      } else if (r < 9 && st[s] == 0 && !kill_open) {
+        launch(s);
+      } else if (r == 9 && !kill_open) {
+        // A kill of some slots' warps, now and then of none OOE holds.
+        uint32_t mask = rng() % 5 == 0 ? 1u << (24 + rng() % 8) : 0;
+        for (unsigned t = 0; t != 4; ++t)
+          if (st[t] && rng() % 2) mask |= 1u << warp[t];
+        epoch = (epoch + 1) % 4;
+        e.core.kill(mask, epoch);
+        for (unsigned t = 0; t != 4; ++t)
+          if (st[t] && (mask >> warp[t] & 1u)) { st[t] = 4; stop(warp[t]); }
+        kill_open = true;
+      }
+    }
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+}
+
 void testFixedWindowPreds() {
   // The S1 mode: predicates at fixed windows, ordered by OOE itself.
   for (unsigned seed = 1; seed <= 20; ++seed) {
@@ -5890,6 +5964,21 @@ int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_c
     testKill();
     testFinalExit();
     testAtomicKill();
+  } else if (scenario == "slot") {
+    // ooe_slot's bench (test/ooe/slot_tb.cpp): the random tests, and the
+    // directed ones that move a slot through every state: demotes (held at
+    // an atomic, refused after the exit), restores, kills, barriers.
+    testRandom(seeds);
+    testSwap();
+    testDemote();
+    testDemoteRefused();
+    testRestore();
+    testKill();
+    testFinalExit();
+    testAtomicKill();
+    testAtomicDemote();
+    testBarrierDemote();
+    testSlotRandom(seeds * 4);
   } else if (scenario == "idle") {
     for (int mode = 0; mode != 8; ++mode) {
       Env e(randomConfig(2, mode));

@@ -288,6 +288,33 @@ for c in adv-late late-lead no-adv-bypass no-double keep-stale no-ev-lead no-rel
   fi
 done
 
+# ooe_slot (OA 435 (1)): the tier-1 slots' residency, demotion and kill,
+# driven from the model's control-step log (Core::slotLog) every cycle. Its
+# allocation ports are per slot, as the model's launches are (ooe_decrx's
+# too); demotes come one a cycle, ccv_rau_ooe_demote's rate.
+dir=build/ooe-rtl/slot
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace -GS="$slots" -GA="$slots" -GD=1 --top-module ooe_slot_tb \
+      --Mdir "$dir" -o slot_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -DSL_S=$slots -DSL_A=$slots -DSL_D=1 -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_slot.sv" "$PWD/test/ooe/ooe_slot_tb.sv" "$PWD/test/ooe/slot_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "slot: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/slot_tb" "$seeds" 2>&1); then
+  say "slot ($slots slots) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "slot == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-ath no-xr no-held lnd-early no-kill-lead no-ev-lead no-free; do
+  if SLOT_CONTROL=$c "$dir/slot_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (slot)" "MISSED"; fail=1
+  else
+    say "  control $c (slot)" "caught"
+  fi
+done
+
 # ooe_go, rename's go, driven from the model's go log (Core::goLog) every
 # cycle a model cycle behind (its leads are the next cycle's log), its takes
 # and lanes compared exactly. Cores with other than its slots are skipped.

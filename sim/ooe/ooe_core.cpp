@@ -438,6 +438,7 @@ void Core::cycle(uint64_t now) {
   }
   pfree_.clock();
   rxlog_ = RxLog();
+  slotlog_ = SlotLog();
   decq_flushed_ = 0;
   decq_freed_prev_ = decq_freed_;
   decq_freed_ = 0;
@@ -2374,6 +2375,7 @@ void Core::releaseSlot(unsigned slot) {
   if (slot < squash_due_.size()) squash_due_[slot].on = false;
   rlog_.release |= 1u << slot;
   roblog_.release |= 1u << slot;
+  slotlog_.release |= 1u << slot;
   const unsigned keep_epoch_warp = s.warp;
   (void)keep_epoch_warp;    // the epoch is per warp_id and survives (A-74)
   Slot fresh;
@@ -2388,6 +2390,16 @@ void Core::releaseSlot(unsigned slot) {
 }
 
 void Core::control() {
+  SlotLog &sl = slotlog_;
+  sl.ran = true;
+  for (unsigned si = 0; si != slot_.size() && si != 8; ++si) {
+    if (atomAtHead(si)) sl.ath |= 1u << si;
+    if (slot_[si].exit_retired) sl.xr |= 1u << si;
+  }
+  for (const Alloc &a : allocs_)
+    sl.alloc.push_back({a.slot, unsigned(a.op), a.warp, uint32_t(a.ctaid), unsigned(a.warp_in_cta),
+                        unsigned(a.barrier_count), unsigned(a.cta_slot)});
+  sl.demote = demotes_;
   for (const Alloc &a : allocs_) {
     if (a.slot >= slot_.size()) { err("alloc names tier-1 slot %u", a.slot); continue; }
     Slot &s = slot_[a.slot];
@@ -2479,6 +2491,7 @@ void Core::control() {
       // Refused (OA's response TI-25 (2)): the exit has retired, so the warp
       // is finishing. No squash, no map, no rewind; exited frees the slot.
       out.drained.push_back({s.warp, 0, true});
+      sl.drained.push_back({s.warp, true});
       count("demote.refused");
       continue;
     }
@@ -2544,6 +2557,7 @@ void Core::control() {
     s.rat = s.crat;
     s.prat = s.cprat;
     rlog_.squash |= 1u << si;
+    sl.ntc |= 1u << si;
     s.chwidth_hold = s.bar_hold = false;
     s.bar_retired = s.bar_long = s.bar_idle = false;
     advanceEpoch(unsigned(si), true);
@@ -2571,6 +2585,9 @@ void Core::control() {
 
   if (kill_pending_) {
     kill_pending_ = false;
+    sl.kill = true;
+    sl.kill_mask = kill_mask_;
+    sl.kill_epoch = kill_epoch_;
     for (unsigned si = 0; si != slot_.size(); ++si) {
       Slot &s = slot_[si];
       if (s.st == WarpState::kFree || !((kill_mask_ >> (s.warp % 32)) & 1u)) continue;
@@ -2581,6 +2598,7 @@ void Core::control() {
       s.rat = s.crat;
       s.prat = s.cprat;
       rlog_.squash |= 1u << si;
+      sl.ntc |= 1u << si;
       advanceEpoch(si, true);
       epochNotice(si);
       s.st = WarpState::kKilling;
@@ -2590,7 +2608,7 @@ void Core::control() {
     // A kill naming nothing OOE holds is acked at once.
     bool any = false;
     for (const Slot &s : slot_) any = any || s.st == WarpState::kKilling;
-    if (!any) out.kill_acks.push_back(kill_epoch_);
+    if (!any) { out.kill_acks.push_back(kill_epoch_); sl.kill_ack = int(kill_epoch_); }
   }
 
   // Demotion and kill progress: wait for every outstanding memop and held
@@ -2604,6 +2622,8 @@ void Core::control() {
                                    r.is_load && r.at_miu && !r.miu_done));
     // The notice and every rewind beat have landed in FET (TI-24 (3)).
     const bool landed = s.notice_sent && !s.rewind_pending && now_ >= s.notice_lands;
+    if (held) sl.held |= 1u << si;
+    if (landed) sl.landed |= 1u << si;
     // exited (OA's rev 149): the exit retired, nothing held in the ROB, a
     // deferred free included, so no memop is out at MIU either.
     if (s.st == WarpState::kActive && s.exit_retired && !s.exited_sent && !held) {
@@ -2625,6 +2645,7 @@ void Core::control() {
         std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
         out.maps.push_back(m);
         s.map_sent = true;
+        sl.map |= 1u << si;
         // TI-25: the parked layout, one row per register (no merging), each
         // its position and committed width.
         Parked &pk = parked_[s.warp % kWarpIds];
@@ -2640,6 +2661,7 @@ void Core::control() {
         }
       } else {
         out.drained.push_back({s.warp, s.resume_pc});
+        sl.drained.push_back({s.warp, false});
         s.st = WarpState::kDrained;
       }
     }
@@ -2652,7 +2674,19 @@ void Core::control() {
       }
     }
   }
-  if (killing && kill_done) out.kill_acks.push_back(kill_epoch_);
+  if (killing && kill_done) { out.kill_acks.push_back(kill_epoch_); sl.kill_ack = int(kill_epoch_); }
+  for (unsigned si = 0; si != slot_.size() && si != 8; ++si) {
+    const Slot &s = slot_[si];
+    static const uint8_t code[] = {0, 1, 2, 3, 5, 6};
+    sl.st[si] = s.st == WarpState::kDemoting && s.map_sent ? 4 : code[unsigned(s.st)];
+    sl.warp[si] = s.warp;
+    sl.ctaid[si] = s.ctaid;
+    sl.wic[si] = s.warp_in_cta;
+    sl.barc[si] = s.bar_count;
+    sl.cta[si] = s.cta_slot;
+  }
+  for (unsigned w : demotes_held_)
+    if (slotOf(w) >= 0) sl.dmh |= 1u << slotOf(w);
 
   if (released_) {
     for (unsigned si = 0; si != slot_.size(); ++si) {

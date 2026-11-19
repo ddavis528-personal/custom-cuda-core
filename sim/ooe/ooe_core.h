@@ -2338,9 +2338,44 @@ public:
     std::vector<std::pair<unsigned, unsigned>> alloc;
   };
   const RxLog &rxLog() const { return rxlog_; }
+  /// ooe_slot's bench (test/ooe/slot_tb.cpp, OA 435 (1)): control()'s
+  /// inputs as it took them this cycle (allocations, the demote, the kill,
+  /// SYU's releases), each slot's conditions it read (held: a ROB entry
+  /// valid; landed: the notice and every rewind beat landed in FET; ath: an
+  /// atomic at the head; xr: the exit retired), what it did (epoch
+  /// notices, the demotion's map, drained messages, the kill ack, the RAT's
+  /// squash and release), the barrier wait's events from rename, retire and
+  /// a squash, a restore's map sent (restoreStep), and each slot's state
+  /// after control().
+  /// ooe_slot's reference (OA 435 (1)): a cycle's control step as the
+  /// model ran it. Its inputs: the allocations, the demotes, the kill, and
+  /// per slot the levels it read (held: an entry valid in the ROB at the
+  /// progress check; landed: the epoch notice and every beat in FET; ath:
+  /// an atomic at the head; xr: the exit retired). Its verdicts: the slots
+  /// squashed with an epoch notice (a demote or a kill), the maps sent, the
+  /// releases, the drained messages and the kill's ack. Then each slot as
+  /// control left it (Core::slotState's codes) with its identity.
+  struct SlotAlloc { unsigned slot, op, warp; uint32_t ctaid; unsigned wic, barc, cta; };
+  struct SlotDrained { unsigned warp; bool refused; };
+  struct SlotLog {
+    bool ran = false;
+    std::vector<SlotAlloc> alloc;
+    std::vector<unsigned> demote;          ///< new demotes, in order (held ones retry from the slot)
+    bool kill = false; uint32_t kill_mask = 0; unsigned kill_epoch = 0;
+    uint32_t held = 0, landed = 0, ath = 0, xr = 0;
+    uint32_t ntc = 0, map = 0, release = 0;
+    std::vector<SlotDrained> drained;
+    int kill_ack = -1;
+    uint8_t st[8] = {};                    ///< after control: slotState
+    uint32_t dmh = 0;                      ///< demotes held at an atomic, by slot
+    unsigned warp[8] = {}, wic[8] = {}, barc[8] = {}, cta[8] = {};
+    uint32_t ctaid[8] = {};
+  };
+  const SlotLog &slotLog() const { return slotlog_; }
   int slotOfWarp(unsigned warp) const { return slotOf(warp); }
 private:
   RxLog rxlog_;
+  SlotLog slotlog_;
 public:
   /// The first RCU-class entry index past the last; MIU entries follow.
   unsigned rsRcuEntries() const { return cfg_.rs_rcu; }
