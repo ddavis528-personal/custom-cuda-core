@@ -92,6 +92,12 @@ module ccv_dcu (
 `ifdef CCV_TRACE
   assign dcu_mlc_probe_ack_tid = '0;
 `endif
+  assign dcu_cru_err_valid = '0;
+  assign dcu_cru_err_payload = '0;
+  assign dcu_cru_err_wake = '0;
+`ifdef CCV_TRACE
+  assign dcu_cru_err_tid = '0;
+`endif
   assign dcu_miu_fill_ntc_s0_valid = '0;
   assign dcu_miu_fill_ntc_s0_payload = '0;
   assign dcu_miu_fill_ntc_s1_valid = '0;

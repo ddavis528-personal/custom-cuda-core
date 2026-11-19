@@ -1176,10 +1176,39 @@ _macro_ref = {}
 MACRO_SLICE = 8
 
 
+def macro_param(c, typ, name):
+    """A macro instance's integer parameter `name`, or the macro's default
+    where the instance leaves it (None if the macro has no such parameter,
+    or its default is another parameter's name, returned as that name)."""
+    v = c.get("parameters", {}).get(name)
+    if v is not None:
+        return int(v, 2) if isinstance(v, str) else int(v)
+    src = open(os.path.join(ROOT, "rtl", "macro", typ + ".sv")).read()
+    m = re.search(r"parameter\s+int\s+%s\s*=\s*(\w+)" % name, src)
+    if not m:
+        return None
+    return int(m.group(1)) if m.group(1).isdigit() else m.group(1)
+
+
+def secded_bits(k):
+    """SECDED check bits for k data bits (ccv_common_secded_enc's R)."""
+    return clog2(k + clog2(k) + 1) + 1
+
+
+def clog2(v):
+    r = 0
+    while (1 << r) < v:
+        r += 1
+    return r
+
+
 def macro_cells(d):
-    """{cell: (macro, W, D)} for every hard macro a Yosys JSON netlist
-    instantiates: W is its rdata's width, D its parameter, or the
-    macro's default where the instance leaves it."""
+    """{cell: (macro, W, D, DW, K)} for every hard macro a Yosys JSON
+    netlist instantiates: W is its rdata's width, D its parameter, or the
+    macro's default where the instance leaves it; DW the logical (data)
+    bits of a word and K the data bits of each SECDED code word, an SRAM's
+    DATA_W and ECC_K (DA rulings TI-474 to TI-476), a register file's W and
+    None (no ECC)."""
     out = {}
     for m in d["modules"].values():
         for cn, c in m.get("cells", {}).items():
@@ -1196,7 +1225,13 @@ def macro_cells(d):
                 depth = int(dp)
             else:
                 depth = int(dp, 2) if isinstance(dp, str) else int(dp)
-            out[cn] = (typ, len(c["connections"]["rdata"]), depth)
+            w = len(c["connections"]["rdata"])
+            dw, k = macro_param(c, typ, "DATA_W"), macro_param(c, typ, "ECC_K")
+            if dw is None:
+                dw, k = w, None
+            elif k == "DATA_W":
+                k = dw
+            out[cn] = (typ, w, depth, dw, k)
     return out
 
 
@@ -1240,6 +1275,13 @@ def macro_cost(typ, w, d):
     return pen, w * d * k * (1.0 + pen / 100.0)
 
 
+def macro_logical(macros):
+    """(macro, W, D) per instance, W its logical (data) bits (DA ruling
+    TI-476 (2)), from macro_cells' (macro, W, D, DW, K) or a plain
+    (macro, W, D)."""
+    return [(x[0], x[3] if len(x) > 3 else x[1], x[2]) for x in macros]
+
+
 def macro_efficiency(macros):
     """The array efficiency of a block (Daniel, 2026-11-17): one number for
     all its hard macros, register files and SRAMs together, the bits they
@@ -1247,7 +1289,9 @@ def macro_efficiency(macros):
     (macro_cost's weight): 1.0 for arrays all of 32 KiB SRAMs, less for
     smaller ones (0.83 at the smallest SRAM) and for register files (0.33
     at the largest, 0.22 with byte enables). `macros` is [(macro, W, D)],
-    one per instance. Returns (instances, bits, efficiency or None)."""
+    one per instance, W its logical bits (macro_logical). Returns
+    (instances, bits, efficiency or None)."""
+    macros = macro_logical(macros)
     bits = sum(w * d for _, w, d in macros)
     cost = sum(macro_cost(typ, w, d)[1] for typ, w, d in macros)
     return len(macros), bits, (bits / cost if cost else None)
@@ -1283,12 +1327,25 @@ def macro_size(insts, waivers):
             fails.append("MACRO-1 waiver %d (%s.%s) lacks %s" % (
                 i, x.get("module"), x.get("instance"), ", ".join(miss)))
             used.add(i)
-    for mod, inst, typ, w, d in sorted(set(insts)):
+    for x in sorted(set(insts)):
+        mod, inst, typ, w, d = x[:5]
+        dw, k = (x[5], x[6]) if len(x) > 5 else (w, None)
         kind = MACRO_KIND[typ]
         lo, hi = macro_size_limits(kind)
         mw, md = macro_shape_limits(kind)
-        nb = w * d / 8.0
+        nb = dw * d / 8.0
         why = []
+        if len(x) > 5 and kind == "SRAM":
+            ok = isinstance(k, int) and k >= 3 and dw % k == 0
+            want = dw + (dw // k) * secded_bits(k) if ok else None
+            if want != w:
+                fails.append(
+                    "MACRO-1 %s %s.%s: a %d-bit word is not %d data bits (DATA_W) with "
+                    "the SECDED check bits of %s-bit code words (ECC_K)%s: every SRAM holds "
+                    "SECDED ECC (DA ruling TI-474 (6)), its check bits in its word" % (
+                        typ, mod, inst, w, dw, k,
+                        ", %d bits" % want if want else ", which do not divide it"))
+                continue
         if not lo <= nb <= hi:
             why.append("%s the %d to %d bytes one %s instance may hold"
                        % ("under" if nb < lo else "over", lo, hi, kind))
@@ -1298,8 +1355,9 @@ def macro_size(insts, waivers):
             why.append("deeper than the %d words one %s instance may hold" % (md, kind))
         if not why:
             continue
-        what = "%s %s.%s, %d x %d bits (%g bytes), %s" % (typ, mod, inst, d, w, nb,
-                                                          "; ".join(why))
+        what = "%s %s.%s, %d x %d bits (%g bytes%s), %s" % (
+            typ, mod, inst, d, w, nb, ", %d data bits a word" % dw if dw != w else "",
+            "; ".join(why))
         hit = [i for i, x in enumerate(waivers)
                if (x.get("module"), x.get("instance"), x.get("macro"), x.get("W"), x.get("D"))
                == (mod, inst, typ, w, d)]
@@ -1323,10 +1381,10 @@ def macro_size(insts, waivers):
 
 
 def macro_insts(units):
-    """[(module, instance, macro, W, D)] for every hard macro the units'
-    netlists instantiate, at their parameters."""
-    return [(u.module, cell.lstrip("\\"), typ, w, d) for u in units
-            for cell, (typ, w, d) in (getattr(u.t, "macros", None) or {}).items()]
+    """[(module, instance, macro, W, D, DW, K)] for every hard macro the
+    units' netlists instantiate, at their parameters (macro_cells)."""
+    return [(u.module, cell.lstrip("\\")) + tuple(m) for u in units
+            for cell, m in (getattr(u.t, "macros", None) or {}).items()]
 
 
 def macro_size_selftest(expect, ok, small):
@@ -1344,7 +1402,7 @@ def macro_size_selftest(expect, ok, small):
            and any("u_rf" in f and "under" in f for f in fails),
            "MACRO-1: a 2 KiB SRAM and a 256-byte register file passed: %s" % fails)
     wv = [{"module": m, "instance": i, "macro": t, "W": w, "D": d, "why": "selftest",
-           "by": "TI", "date": "2026-11-17"} for m, i, t, w, d in sorted(set(si))]
+           "by": "TI", "date": "2026-11-17"} for m, i, t, w, d, *_ in sorted(set(si))]
     lines, fails = macro_size(si, wv)
     expect(not fails and len(lines) == 2 and all("awaiting" in l for l in lines),
            "MACRO-1: waivers of the small fixture did not excuse it, or were not listed as "
@@ -1360,6 +1418,41 @@ def macro_size_selftest(expect, ok, small):
     _, fails = macro_size(macro_insts([ok]), wv)
     expect(len(fails) == 2 and all("excuses nothing" in f for f in fails),
            "MACRO-1: waivers that excuse nothing were not refused: %s" % fails)
+    # SECDED in every SRAM (DA rulings TI-474 to TI-476): the fixture's
+    # SRAM is 120 data bits and 8 check bits; a word that is not DATA_W and
+    # its code words' check bits fails, with or without a size waiver; a
+    # code word that does not divide DATA_W fails; two (72,64) code words
+    # pass. The size counts data bits: a 2048 x 137 SRAM (128 data bits a
+    # word) is 32 KiB and passes, the same counted on its 137 bits is over.
+    sram = "ccv_common_sram_1rw"
+    got = [x for x in macro_insts([ok]) if x[2] == sram]
+    expect(len(got) == 1 and got[0][3:] == (128, 512, 120, 120),
+           "MACRO-1: the fixture's SRAM is not 512 x 128 bits, 120 of them data in one "
+           "code word: %s" % got)
+    bad = [("m", "e", sram, 128, 512, 128, 128), ("m", "k", sram, 137, 512, 128, 48),
+           ("m", "f", sram, 136, 512, 128, 128)]
+    _, fails = macro_size(bad, [])
+    expect(len(fails) == 3 and all("SECDED" in f for f in fails),
+           "MACRO-1: an SRAM word without its check bits, one whose code words do not "
+           "divide its data, and one a check bit short were not all refused: %s" % fails)
+    _, fails = macro_size(bad[:1], [{"module": "m", "instance": "e", "macro": sram, "W": 128,
+                                     "D": 512, "why": "selftest", "by": "TI",
+                                     "date": "2026-11-18"}])
+    expect(any("SECDED" in f for f in fails),
+           "MACRO-1: a size waiver excused an SRAM without its check bits: %s" % fails)
+    good = [("m", "one", sram, 137, 512, 128, 128), ("m", "s64", sram, 72, 4096, 64, 64),
+            ("m", "big", sram, 137, 2048, 128, 128)]
+    lines, fails = macro_size(good, [])
+    expect(not fails and not lines,
+           "MACRO-1: SRAMs of one (137,128) code word, (72,64) at 4096 words, and 2048 x "
+           "137 (32 KiB of data) failed: %s" % fails)
+    _, fails = macro_size([good[2][:5]], [])
+    expect(len(fails) == 1 and "over" in fails[0],
+           "MACRO-1: 2048 x 137 counted on all its bits did not go over 32 KiB: %s" % fails)
+    _, fails = macro_size([("m", "p", sram, 144, 512, 128, 64)], [])
+    expect(len(fails) == 1 and "wider" in fails[0] and "SECDED" not in fails[0],
+           "MACRO-1: two (72,64) code words, 144 bits, were not held to the 137-bit shape "
+           "alone: %s" % fails)
     # The efficiency line (Daniel, 2026-11-17): 0 at the largest, the full
     # penalty at the smallest, half way at the middle, more below, none above.
     full = float(cg.param("CCV_MACRO_SIZE_PENALTY_PCT"))
@@ -1475,7 +1568,7 @@ def macro_pin_times(t):
     for nm, (cell, typ, pin, dr) in t.cut.items():
         if cell not in t.macros or is_clock(pin):
             continue
-        mac, w, d = t.macros[cell]
+        mac, w, d = t.macros[cell][:3]
         setup, launch = macro_timing(mac, w, d)
         k = MACRO_KIND[mac]
         if dr != "input":
@@ -2400,10 +2493,12 @@ def main_check(only=None, seed=False):
     lines, more = macro_size(macro_insts(units), load(MACRO_WAIVERS, "waivers", []))
     for l in lines:
         print("  " + l)
-    for mod, inst, typ, w, d in sorted(set(macro_insts(units))):
-        pen, wt = macro_cost(typ, w, d)
-        print("  macro %s.%s: %s %d x %d bits, %g bytes, %.1f%% over its type's best per bit, "
-              "%.0f SRAM-bit equivalents" % (mod, inst, typ, d, w, w * d / 8.0, pen, wt))
+    for mod, inst, typ, w, d, dw, k in sorted(set(macro_insts(units))):
+        pen, wt = macro_cost(typ, dw, d)
+        print("  macro %s.%s: %s %d x %d bits%s, %g bytes, %.1f%% over its type's best per bit, "
+              "%.0f SRAM-bit equivalents" % (
+                  mod, inst, typ, d, w, " (%d data, SECDED per %d)" % (dw, k) if k else "",
+                  dw * d / 8.0, pen, wt))
     print("  macro sizes (MACRO-1): %d instance(s) at their units' parameters; RF %d to %d "
           "bytes, SRAM %d to %d" % ((len(set(macro_insts(units))),) + macro_size_limits("RF")
                                     + macro_size_limits("SRAM")))

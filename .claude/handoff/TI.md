@@ -32,8 +32,8 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 441, RA 148, RI 82, OI 350, AR 356, OA 418, MA 57, IS 193, CP 157,
-DA 119, Conventions 19 (2026-11-15). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
+TI 484, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
+JSON file). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
 Every long tool detaches itself and exits 5 (never 0) when it does (OA-414,
@@ -41,45 +41,59 @@ Every long tool detaches itself and exits 5 (never 0) when it does (OA-414,
 timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
 restart: rerun the job). Logs in /root/ccv-logs/.
 
-## State (2026-11-17)
-- Landed 11-15: bd1cc5a2 (SCOPED PASS 24/24 since e48fa517) on both working
-  branches: PF-47 (base 1: RCU_ADDR 1, L1_WAKE 13, L1_CMPL 14; ooe_wake defaults
-  13/15), CCV_P_TIMEOUT_UOP, RI's SFU pair, CCV_LAT_MIU_NOHIT_A2=2 (MA 56),
-  CCV_LAT_L1_NOHIT (AR 353/354; require NOHIT+2 <= L1_WAKE, OA 416).
-  TI row rev 439 rang OI, AR, MA, OA.
-- cm128 unbounded (AR 350/352) answered at TI rev 436: 73.6M cycles, holds
-  uop 8252, memop 19201 (< 20480).
-- Daily sweep conflicts were all .claude/handoff/RA.md: take RA's newest.
-- Worktree: /home/user/ti-sram. Backups to gate-scratch/TI-<name>, plain
-  push only. Disk: deleting other sessions' /tmp/tmp.* was denied; ask.
+## State (2026-11-18)
+- Both working branches at a102383b: AR 370 machine check (ccv_dcu_cru_err,
+  F-MACHINE 10, CCV_DCU_UE_TRACK 16, CRU MACHINE_CHECK + kill_req every grid,
+  RAU kill-all, DCU stub CCV_DCU_UE_INJECT; bins ue_recover/ue_fatal/
+  machine_check; controls ue-no-track, ue-dirty-recover, mce-ignore,
+  mce-no-record, mce-no-kill). Row TI-485 (rev 484) to AR MA IS OI OA, sent.
+  Open in it: kill races (atom/atomf/cas atomic write after kill; ropediv
+  ckpt free after kill) await OI/OA's call on which side fixes; those
+  kernels are out of the machine-check runs till then.
+- 0767fe1c: MIU stub injected L1 syndrome
+  (CCV_MIU_ECC_INJECT, bin l1_ecc_fix, controls ecc-no-fix/ecc-cmpl-on-time,
+  both hosts; RA 153 (5)); row TI-484 (rev 483) to RA, MA, OI, sent.
+- b407ff71 (SCOPED PASS 24/24): RAS phase 1,
+  SECDED enc/syn/fix (rtl/common inner helpers, K=128 units 14.5/15.4/15.4),
+  sim/skel/secded.h, check-skel lockstep + controls col/nocorr/dedsec; SRAM
+  DATA_W/ECC_K, MACRO-1 on data bits + check-bit width; ooe_wake LAT_MISS
+  override dropped (task 35). Row TI-483 (rev 482) to MA, AR, RA, OI, sent.
+- Both working branches at 36866ec7 (daily sweep 11-18, full gate PASS;
+  release 6a90f970, tag local only). It carries 3eb6e8d0 (AR 380 / OA 433:
+  warp_id + fetch_epoch lead on ccv_dec_ooe_uop, check-kernel uop-late-lead
+  control on lanectx), row TI-482 (rev 481) to OI, AR, OA, notices sent.
+  OA 434 ruled OI-170 option (a): a lead waiver for decrx enq_slot (OI writes it).
+- 358ace66: ti-stride (AR 373 (2) stride benches + LOAD key, pin a293afe7,
+  gate-scope sim/dcu + sim/miu, RI's 536c9210) and ti-shape (DA 2026-11-17
+  macro shape limits). Rows TI-480, TI-481.
+- Earlier landed: 9682b03a (AR 368 L1_ECC, TI 478), 117e8117, ddc700a1.
+- Daily sweeps 11-17 (release 2e2b5313) and 11-18 (6a90f970) done; its tag push is refused from
+  here, local only.
+- Disk: a gate failed on a full disk; cleared idle worktrees' synth-cache.
+  Scratchpad priv/ (4.3 GB) is unknown, left alone. Worktree ti-size is on
+  branch ti-next at 36866ec7; ti-bench is free.
+- Open small: task 35, drop the ooe_wake LAT_MISS 16 override in
+  test/ooe/cg-units.json once OI's 5e1f3789 (OI-163) is in the base.
+  AR may answer the colwalk-p128b anomaly (perfect fetch slower than stub).
 
 ## Open work (priority order)
-IN FLIGHT 11-17 (urgent first). LANDED: 117e8117 (pin timing, no SRAM byte
-enables; TI 473) and ddc700a1 (MACRO-1 size limits, waivers, 0-20% size
-penalty, per-block array efficiency; TI 477 rang MA, AR). Both working
-branches at ddc700a1. Worktree /home/user/ti-size is free.
-A. Task 28, array RAS (DA rulings TI 474-476, all rang MA AR OA): macros only
-   (flop arrays: scan). A common wrapper: BIST override + spare row outside
-   the macro + spare column above 8 KiB logical; NO ECC in it. BIST broadcast
-   groups of up to 32 KiB logical, groups in parallel (group/ID params; check
-   group sizes, chain completeness, tie-off only at the block wrapper). TI's
-   proposal: narrow req struct with a pattern, local compare, rsp flopped
-   chain, repair registers loaded by ID, req flopped per wrapper (CG-5 and NGD
-   clean). MACRO-1 size and efficiency on logical bits via DATA_W. ECC:
-   common SECDED enc/dec for architects (latency is theirs), static width
-   check, model single-flip injection + bin + control, DED unit test, MIU
-   stub hook (MA re RA 153).
-B. Task 30, AR 370 (DA rev 124) + MA-19 + IS 197: F-MACHINE code 10 in
-   CCV_W_FAULT_CAUSE; compiler pin to 103976f (ISA v1.9, O-86);
-   ccv_dcu_cru_err rate 1 (ue, ce_alert); CRU MACHINE_CHECK, kill all, every
-   live record F-MACHINE; ccv_common_err (counts, first-error log, ERR_CTRL
-   threshold + INJECT, track table, host-only) on the CSR star;
-   CCV_DCU_UE_TRACK 16. Note: MA's 224 "scan-only" track flops still owe CG.
+A. Task 28, array RAS (DA rulings TI 474-476): SECDED part landed
+   (b407ff71, TI-483); MIU stub injection landed (0767fe1c, TI-484). Left:
+   DED test (needs AR 370's machine-error path), Sram1rw injection when a
+   block model keeps arrays behind it; then the
+   common wrapper (BIST override + spare row outside the macro + spare
+   column above 8 KiB logical; macros only, flop arrays scan); BIST
+   broadcast groups of up to 32 KiB logical in parallel (group/ID params,
+   group-size and chain checks, tie-off only at the block wrapper).
+B. Task 30, AR 370: stubs, schema and params landed (a102383b, TI-485). Left:
+   ccv_common_err RTL (CE/UE counts saturating popcount up to 8 a cycle,
+   first-error log lowest bank + track-hit + overflow, ERR_CTRL CE threshold
+   -> ce_alert, INJECT 1/2 bits on next write to a named array, track table
+   readable, host-only on the CSR star; MA-19: 16 arrays, 9-bit row). MA's
+   224 "scan-only" track flops still owe CG.
 C. Task 31, AR 371: SPM banks ccv_common_rf_1r1w 1024x32 (4 KiB, no ECC);
    stub sub-word RMW charged as a bank conflict; CCV_SPM_BANKS doc; check-ngd
    on the 1024-word read (fallback 2 x 512).
-D. Task 29, AR 368: CCV_LAT_L1_ECC (1, MA's) into CCV_LAT_L1_CMPL derive
-   (14 to 15) + contract text; BLOCKED until OI's price and OA's ruling.
 E. Offer Daniel cost/bit instead of efficiency if wanted (TI chose bits/cost).
 
 No task carries a date (Daniel, 2026-11-16): everything is best effort, in
