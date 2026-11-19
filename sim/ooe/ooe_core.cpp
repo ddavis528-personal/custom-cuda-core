@@ -2143,7 +2143,7 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
     count("branch.ret_redirect");
   }
   rd.epoch = epoch;
-  roblog_.redirect.push_back({slot, rd.ckpt, rd.taken_mask, rd.target_pc, rd.stay});
+  roblog_.redirect.push_back({slot, rd.ckpt, rd.taken_mask, rd.target_pc, rd.stay, rd.warp, rd.epoch});
   // A queued redirect of this warp is for a branch this squash removed.
   for (auto it = redirects_.begin(); it != redirects_.end();)
     if (it->slot == slot && !it->epoch_only) { it = redirects_.erase(it); count("redirect.superseded"); }

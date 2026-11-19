@@ -1928,7 +1928,7 @@ public:
     std::vector<std::pair<unsigned, bool>> sq_ent;
     std::vector<unsigned> hrel;
     std::vector<std::pair<unsigned, unsigned>> ckfree;
-    struct Redir { unsigned slot = 0, ckpt = 0; uint32_t taken_mask = 0; uint64_t target = 0; bool stay = false; };
+    struct Redir { unsigned slot = 0, ckpt = 0; uint32_t taken_mask = 0; uint64_t target = 0; bool stay = false; unsigned warp = 0, epoch = 0; };
     std::vector<Redir> redirect;
     struct Discard { unsigned slot = 0, branch = 0, disp = 0; };
     std::vector<Discard> discard;

@@ -218,6 +218,11 @@ module ooe_rob_w #(
   // cycle, the redirect's lead; and the checkpoints right branches free.
   output logic [S-1:0]        rd_l_cq03h,
   output logic [S*NK-1:0]     ckf_cq03h,
+  // Their leads, for ooe_redir (OI-179): the resolution's enable, a superset
+  // of the cycles before rd_l rises; and a free pending, a superset of the
+  // cycles before ckf is nonzero.
+  output logic [S-1:0]        rd_e_cq02h,
+  output logic [S-1:0]        ckf_l_cq02h,
   // The redirect, a cycle after its lead: the checkpoint, the lanes that
   // took the branch, the target, a ret's stay.
   output logic [S*LK-1:0]     rd_ckpt_cq04h,
@@ -2232,6 +2237,8 @@ module ooe_rob_w #(
     end
   end
   assign rd_l_cq03h = rd_o_cq03h;
+  assign rd_e_cq02h = rs_en_cq02h;
+  always_comb for (int s = 0; s < S; s++) ckf_l_cq02h[s] = |frp_cq02h[s * D +: D];
   always_comb
     for (int s = 0; s < S; s++) rd_nx_cq02h[s] = rs_en_cq02h[s] ? |pick_cq02h[s * D +: D] : rd_s_cq02h[s];
   // The squash's bulk discard (A-41, A-53): when it takes a store at MIU
