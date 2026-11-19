@@ -19,7 +19,7 @@ Updated 2026-11-19 (oi-slot in /home/user/wt-slot: ooe_slot fd194677/8501f587/14
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-180 (OI-179 answered by OA 447). Pings Fridays.
+  Next free ID: OI-181 (OI-179 answered by OA 447; OI-180 rev 384 rung OA: slice 5 scope, 4 calls). Pings Fridays.
 - DA 11-18 (chat): pause NGD-to-25 fixes until the ccv_ooe top is built (real budgets, no
   false paths); finish ALL modules first so the top is complete when built. OI may move
   internal budgets where a measured parent times the connection and they still converge.
@@ -78,5 +78,11 @@ OI 383, OA 449, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (T
    slice 6, (8) rcu_map in ooe_rat, (9) rau_status, (10) cru_fault #66; then ccv_ooe top glue (no
    logic in ccv_ooe). Each lands with a bench vs model, a timing unit, controls, and a row
    proposing port budgets with measured NGD.
+3b. #66 (6) slice 5 syu_bar: model knob bar_buf_depth (71feef7e, testBarBufDepth; on gate-scratch/OI); RH asked D0/D2/D3 on
+   transpose-128, layernorm-128, cta-reduce-128, sgemm-128 + S1 (>0.5% on any -> depth 3). OI-180 asks OA: hold state
+   in rob_w?, report pick as retire stop vs pending register, depth, rename hold timing. RTL waits on OA.
+   #64 step 1 (local, uncommitted until trio passes): ooe_rs drops its issue registers, exports lv_cq02h/le_cq02h (LW)/
+   pe_cq03h (PW) for rcupl/mempl; ooe_trio.sv keeps bench-side copies of the old registers. Plan: rs store = ooe_ent_t
+   split lead (le) / rest (pe) with no duplication, + ooe_mem_t in pe, + RS index output for mempl; wiring at the top.
 4. #52/#53/#54/#51 NGD-to-25 refactors: PAUSED (DA 11-18) until the top exists.
 5. Blocked/parked: #40, #42 (TI schema), #46 (lead set), #32 (optional fa index).
