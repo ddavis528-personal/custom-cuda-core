@@ -839,6 +839,8 @@ vadd@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=0 machine_check=0 kill=0
 ldpar@CCV_DCU_UE_INJECT=1 ue_recover=2 ue_fatal=0 machine_check=0
 hit@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=1 machine_check=1 kill=1
 predswap@CCV_DCU_UE_INJECT=1 ue_recover=0 ue_fatal=1 machine_check=1 kill=1
+atom@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1 kill=1
+cas@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1 kill=1
 late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=3
 plog   merge=3
@@ -1631,8 +1633,11 @@ fi
 # hard error never ends the core), ue-dirty-recover (predswap: a dirty
 # line refetched loses its bytes), mce-ignore, mce-no-record, mce-no-kill
 # (predswap: CRU takes no machine check, writes no record, or never asks
-# RAU for the kill). The kill-race kernels (atom, atomf, cas, ropediv) are
-# not among these: TI-485.
+# RAU for the kill). atom and cas's machine checks land between an
+# atomic's read and write: MIU keeps the atomic's hold until its write and
+# completes every memop of a killed warp (OA 436, MA rev 104); their control
+# kill-drop-atomic drops the atomic at the kill, as before, and the kill
+# never completes. ropediv waits on the checkpoint-free race (TI-486 (b)).
 ue() { CCV_DCU_UE_INJECT=1 "$SKEL" --kernel "build/oracle/$1/oracle.jsonl" ${2:+--break "$2"} >"$B/kernel_ue_$1_${2:-none}.log" 2>&1; }
 uelog() { echo "$B/kernel_ue_$1_${2:-none}.log"; }
 CCV_DCU_UE_TRACK=1 ue ldpar
@@ -1643,15 +1648,16 @@ if [ "$(field "$l" check_failures)" = 0 ] && [ "$(cover "$l" ue_fatal)" = 1 ] &&
 else
   bad "a UE that finds DCU's track table full" "not core-fatal: $(grep '^KERNEL' "$l")"
 fi
-ue hit ue-no-track; ue predswap ue-dirty-recover; ue predswap mce-ignore; ue predswap mce-no-record; ue predswap mce-no-kill
+ue hit ue-no-track; ue predswap ue-dirty-recover; ue predswap mce-ignore; ue predswap mce-no-record; ue predswap mce-no-kill; ue atom kill-drop-atomic
 why=""
 [ "$(cover "$(uelog hit ue-no-track)" machine_check)" = 0 ] && [ "$(cover "$(uelog hit ue-no-track)" ue_recover)" -gt 1 ] || why="$why ue-no-track"
 grep -q '^CHECK miu: seq [0-9]* P0 loaded ' "$(uelog predswap ue-dirty-recover)" || why="$why ue-dirty-recover"
 grep -q '^CHECK cru: DCU raised a core-fatal UE on ccv_dcu_cru_err, and CRU never took' "$(uelog predswap mce-ignore)" || why="$why mce-ignore"
 grep -q '^CHECK cru: warp 0 ended in the machine check with no record (F-MACHINE)' "$(uelog predswap mce-no-record)" || why="$why mce-no-record"
-grep -q '^CHECK rau: the machine check killed nothing' "$(uelog predswap mce-no-kill)" || why="$why mce-no-kill"
+grep -q '^CHECK rau: warp 0 faulted and was never killed' "$(uelog predswap mce-no-kill)" || why="$why mce-no-kill"
+grep -q "^CHECK miu: rob tag [0-9]*'s atomic write has no read before it" "$(uelog atom kill-drop-atomic)" || why="$why kill-drop-atomic"
 if [ -z "$why" ]; then
-  say "--break ue-no-track, ue-dirty-recover, mce-*: the machine check" "PASS (5 controls caught)"
+  say "--break ue-no-track, ue-dirty-recover, mce-*, kill-drop-atomic: the machine check" "PASS (6 controls caught)"
 else
   bad "machine-check controls" "not caught:$why"
 fi

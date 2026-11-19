@@ -277,6 +277,8 @@ struct Kernel {
       // the passes and the holds between a pass's read and write.
       "atomic_pair", "atomic", "atomic_repass", "atomic_write", "atomic_lane",
       "atomic_acquire", "atomic_hold_wait",
+      // A killed warp's load completed by MIU at the kill (OA 436).
+      "kill_cmpl",
       // CAS (OI-127): its lane op on an active lane, and on a guarded-off one.
       "cas_lane", "cas_lane_off",
       // MIU's memop queue entries held on one slot, at most (MA-5).

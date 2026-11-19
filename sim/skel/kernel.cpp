@@ -663,13 +663,15 @@ private:
   /// refetched as a miss (returns true). Anything else is core-fatal: a
   /// dirty line (its bytes have no other copy), a second UE at a recorded
   /// location (a hard error), or a full table. DCU raises ue on
-  /// ccv_dcu_cru_err; the stub still answers the read, its data unharmed,
-  /// since MIU cannot quiesce RAU's kill around a read DCU never answers
-  /// (the real MIU drops it on the kill), and returns false. Controls:
+  /// ccv_dcu_cru_err (returns 2). The real DCU withholds that read; the stub
+  /// still answers it, its data unharmed: a committed store's merge read
+  /// withheld would never drain, and MIU's kill ack waits on retired stores
+  /// (TI-487 asks how a machine check meets that). A recovered UE returns
+  /// 1, none 0. Controls:
   /// ue-no-track never records (every clean UE recovers, however often),
   /// ue-dirty-recover recovers a dirty line too (its bytes are lost).
-  bool ueOnHit(const Op &o) {
-    if (!ue_every_ || ue_raised_ || ++ue_hits_ % ue_every_) return false;
+  int ueOnHit(const Op &o) {
+    if (!ue_every_ || ue_raised_ || ++ue_hits_ % ue_every_) return 0;
     const uint64_t pa = get(o.req, ch().miu_dcu, "phys_addr");
     Way &w = way(pa);
     const uint64_t loc = uint64_t(&w - l1_.data());   // set * ways + way
@@ -680,7 +682,7 @@ private:
       if (k_.brk != "ue-no-track") ue_track_.push_back(loc);
       w.valid = false;
       k_.hit("ue_recover");
-      return true;
+      return 1;
     }
     ue_raised_ = true;
     k_.mce_raised = true;
@@ -689,7 +691,7 @@ private:
                  (unsigned long long)(loc / ways_), (unsigned long long)(loc % ways_),
                  w.dirty ? "dirty" : hard ? "a recorded location" : "table full",
                  (unsigned long long)pa);
-    return false;
+    return 2;
   }
   const unsigned ue_every_ = [] {
     const char *v = std::getenv("CCV_DCU_UE_INJECT");
@@ -764,7 +766,8 @@ private:
         checkIndexLead(s, m.payload);
         const Op o{s, m.payload, m.tid};
         const Line *l = readHit(m.payload);
-        if (l && ueOnHit(o)) {
+        const int ue = l ? ueOnHit(o) : 0;
+        if (ue == 1) {
           // A clean line's UE, recovered: the line is gone, so the read
           // waits its turn as a miss and refetches it.
           q_.push_back(o);
@@ -1135,10 +1138,37 @@ private:
   }
   void onKill(uint32_t mask, unsigned) override {
     for (auto &t : win_) t.second.clear();
-    // A killed warp's atomic starts no further pass (OOE's kill_stops).
-    for (auto it = atom_.begin(); it != atom_.end();)
-      it = mask >> (it->second.warp & 31) & 1u ? atom_.erase(it) : std::next(it);
+    // OA 436 (TI-485 (5)(a), MA rev 104): MIU completes every memop of a
+    // killed warp. A killed warp's atomic keeps its pass and its hold until
+    // its write step, whose completion ends it (more 0) and lets the hold
+    // go (atomDone); none starts a further pass (OOE's kill_stops). A load
+    // still waiting on DCU completes now, with no data, and DCU's answer,
+    // if one comes, is dropped (kill_drop_): DCU withholds a read a
+    // core-fatal UE hit (AR 370). Control kill-drop-atomic: the kill drops
+    // the atomic, as before, and its write then finds no read.
+    if (k_.brk == "kill-drop-atomic")
+      for (auto it = atom_.begin(); it != atom_.end();)
+        it = mask >> (it->second.warp & 31) & 1u ? atom_.erase(it) : std::next(it);
+    killed_ |= mask;
+    for (auto it = jobs_.begin(); it != jobs_.end();) {
+      Job &j = *it;
+      bool waits = false;
+      for (const auto &o : outstanding_) waits |= o.second.first == j.serial;
+      if (j.store || j.atom || !(mask >> (j.warp & 31) & 1u) || !waits) { ++it; continue; }
+      for (auto o = outstanding_.begin(); o != outstanding_.end();)
+        if (o->second.first == j.serial) {
+          kill_drop_.insert(o->first);
+          o = outstanding_.erase(o);
+        } else {
+          ++o;
+        }
+      to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
+      k_.hit("kill_cmpl");
+      it = jobs_.erase(it);
+    }
   }
+  uint32_t killed_ = 0;                 ///< warps a kill has ended
+  std::set<unsigned> kill_drop_;        ///< req_ids whose answer a kill made moot
   /// An atomic in passes (AR-21, V-72), by rob tag: its lanes' addresses
   /// from its first read, the lanes still to run, this pass's, and the
   /// lines the pass holds from its read to its write's ack. Nothing else
@@ -1393,6 +1423,10 @@ private:
             fillWindows(t, fl->second.line,
                         getLine(m.payload, field(c.dcu_miu, "read_data").lsb));
           fills_.erase(fl);
+          ids_.release(id);
+          continue;
+        }
+        if (kill_drop_.erase(id)) {   // a killed warp's read, completed at the kill
           ids_.release(id);
           continue;
         }
@@ -2292,7 +2326,8 @@ private:
     if (st != atom_.end()) {
       st->second.left &= ~st->second.pass;
       st->second.held.clear();
-      more = st->second.left != 0;
+      // A killed warp's atomic ends with this write (OA 436): no more passes.
+      more = st->second.left != 0 && !(killed_ >> (st->second.warp & 31) & 1u);
       if (!more) atom_.erase(st);
     }
     put(m, c.miu_ooe, "more", more && k_.brk != "atom-no-more" ? 1 : 0);
@@ -6421,16 +6456,13 @@ KernelReport compareFinal(Kernel &k) {
   if (k.mce_raised && !k.mce_taken)
     k.fail("cru: DCU raised a core-fatal UE on ccv_dcu_cru_err, and CRU never took the "
            "machine check");
-  if (k.mce_taken) {
-    bool killed_any = false;
-    for (unsigned w : k.killed) {
-      killed_any = true;
-      auto f = k.faults.find(w);
-      if (f == k.faults.end())
+  // Every warp the machine check killed has its record; a warp that had
+  // exited before it has none and needs none, and one with a record but no
+  // kill is caught above.
+  if (k.mce_taken)
+    for (unsigned w : k.killed)
+      if (!k.faults.count(w))
         k.fail("cru: warp %u ended in the machine check with no record (F-MACHINE)", w);
-    }
-    if (!killed_any) k.fail("rau: the machine check killed nothing");
-  }
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
     if (isParked(w) || cut(w)) continue;
     const Oracle &o = k.orcs[w];
