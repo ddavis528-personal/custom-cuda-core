@@ -68,7 +68,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
   Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
-- OI OA-448 (2) bar_pend RUNNING from 12:20Z: rh-jobs/oi448/oi448b.sh, worktree rh-oi448b at 42e8ee74; P0 default (must = D0),
+- OI OA-448 (2) bar_pend RUNNING from 12:20Z: rh-jobs/oi448/oi448b.sh, worktree rh-oi448b at 31bf4b1e (OI 12:23Z correction, was 42e8ee74); P0 default (must = D0),
   P1 bar_pend=1, P2 bar_pend=1,bar_buf_depth=2; same set. Table python3 rh-jobs/oi448/table_b.py (bar_pend/bar_port/bar_buf). ~12:45Z.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
