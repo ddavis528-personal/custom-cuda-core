@@ -4232,6 +4232,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       const RobEntry &q = s.rob[(s.head + k) % cfg_.rob_depth];
       if (q.valid && barOp(q.u)) ++held;
     }
+    // bar_pend: a retired report not yet sent keeps its place (the RTL's
+    // pending report is the buffer's oldest place, marked retired).
+    if (s.bar_pv) ++held;
     if (held >= cfg_.bar_buf_depth) { count("stall.bar_buf"); return false; }
   }
 
