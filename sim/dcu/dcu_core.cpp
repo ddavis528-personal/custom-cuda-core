@@ -284,22 +284,28 @@ void Core::serveLook(const Req &r, uint64_t born) {
     if (!startMiss(r)) stalled_.push_back(r);
     return;
   }
-  unsigned extra = 0;
-  if (c_.wp_bits) {
+  if (c_.wp_bits && !r.reread) {
     if (predicted(r.pa)) {
       ++st_.wp_right;
       h_.hit("dcu_wp_right");
-    } else {
-      // A mispredict: the true way re-read, a second bank access, and the
-      // response a cycle past its due (TI-478; DI-2 asks how the half-rate
-      // bank allows it). wp-late-at-due answers at due with the wrong way's
-      // data, the control MIU's oracle must catch.
+    } else if (c_.brk != "wp-late-at-due") {
+      // A mispredict (DI-2; MA rev 121, AR 390, OA 442): the true way is
+      // re-read in a second, ordinary access, under the half-rate rule and
+      // the bank's queue, so it answers no earlier than due + 2, as a
+      // bank-conflict loser would. It keeps its queue entry until then.
+      // wp-late-at-due, the control, answers at due with the predicted way's
+      // line, which MIU's oracle must catch.
       ++st_.wp_wrong;
       h_.hit("dcu_wp_wrong");
-      if (c_.brk != "wp-late-at-due") {
-        extra = c_.wp_late;
-        bfree_[b] += c_.wp_late;
-      }
+      ++ent_used_[b];
+      --ent_owed_[b];
+      Req x = r;
+      x.reread = true;
+      bq_[b].push_back(Acc{Acc::Look, born, now_ + 2, r.pa, x, 0, {}});
+      return;
+    } else {
+      ++st_.wp_wrong;
+      h_.hit("dcu_wp_wrong");
     }
   }
   const int ue = ueOnHit(*w);
@@ -320,7 +326,8 @@ void Core::serveLook(const Req &r, uint64_t born) {
     for (unsigned i = 0; i != c_.ways; ++i)
       if (set[i].valid && set[i].line != r.pa) { s.line = set[i].data; break; }
   }
-  respond(now_ + launchOff() + extra, s);
+  if (r.reread) h_.hit("dcu_wp_reread");
+  respond(now_ + launchOff(), s);
 }
 
 void Core::serve(const Acc &a, uint64_t born) {

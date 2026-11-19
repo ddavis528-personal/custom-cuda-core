@@ -23,8 +23,10 @@
 //     tags and data read on the lead, D = P, launch D+2 (= H+5);
 //   - C, CCV_LAT_L1_HIT 8 (way prediction, CCV_DCU_WAYPRED_BITS k > 0): the
 //     predicted way's line read in the payload cycle, D = P, launch D+3
-//     (= H+6); a mispredict re-reads the true way and launches a cycle later
-//     (TI-478's due + 1; DI-2 asks whether the half-rate bank allows it);
+//     (= H+6); a mispredict re-reads the true way in a second, ordinary bank
+//     access under the half-rate rule and the queue, so it answers at due + 2
+//     at the earliest, as a bank-conflict loser does, not as a late hit
+//     (DI-2; MA rev 121, AR 390, OA 442; DCU tab rev 56);
 //   - B, CCV_LAT_L1_HIT 9 (tag then data): D = P+1, launch D+3 (= H+7).
 // A bank is single ported at half rate: an access holds it for D and D+1.
 // The bank of each cycle is arbitrated in that cycle, from what DCU holds
@@ -66,6 +68,7 @@ struct Req {
   Mask mask;         ///< a store's byte mask
   Line wdata{};      ///< a store's data
   uint64_t tid = 0;  ///< trace identity, carried to the response
+  bool reread = false;   ///< pipe C: the true way's read after a mispredict
 };
 
 /// A response launched on ccv_dcu_miu_rsp.
@@ -104,7 +107,6 @@ struct Config {
   unsigned lat_hit = ccv::prov::kLatL1Hit; ///< CCV_LAT_L1_HIT: picks pipe A, B or C
   unsigned wp_bits = 5;          ///< CCV_DCU_WAYPRED_BITS under pipe C (MA-26)
   bool wp_recent = true;         ///< CCV_DCU_WAYPRED_SEL: recent, else index
-  unsigned wp_late = 1;          ///< a mispredict's launch past its due (DI-2)
   unsigned gap = 5;              ///< a store hit's read to its write (MA-17, TI-483)
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)

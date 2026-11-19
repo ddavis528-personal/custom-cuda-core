@@ -314,7 +314,8 @@ int main(int argc, char **argv) {
 
   // Way prediction (pipe C): with two lines whose folds match in one set,
   // index selection predicts the lower way; a hit on the other is a
-  // mispredict, launched a cycle late with the right line. The control
+  // mispredict: a second bank access two cycles on, answered at due + 2 with
+  // the right line, as a bank-conflict loser (DI-2, AR 390). The control
   // answers at due with the predicted way's line.
   for (bool ctl : {false, true})
     test(ctl ? "wp-late-at-due-control" : "wp-mispredict", [&] {
@@ -335,7 +336,8 @@ int main(int argc, char **argv) {
                "the control answers at due with the wrong line");
         return;
       }
-      EXPECT(b.at(1) == P + 4, "mispredict at due + 1: P+%lld", (long long)(b.at(1) - P));
+      EXPECT(b.at(1) == P + 5, "mispredict at due + 2: P+%lld", (long long)(b.at(1) - P));
+      EXPECT(b.h.bins["dcu_wp_reread"] == 1, "one re-read");
       EXPECT(r && r->line[0] == pat(x, 0), "the true way's line");
       EXPECT(b.h.bins["dcu_wp_wrong"] == 1, "one mispredict");
     });

@@ -74,7 +74,6 @@ private:
     c.stdata = envU("CCV_DCU_BANK_STDATA", c.stdata);
     c.wp_bits = envU("CCV_DCU_WAYPRED_BITS", c.wp_bits);
     if (const char *v = std::getenv("CCV_DCU_WAYPRED_SEL")) c.wp_recent = std::string(v) != "index";
-    c.wp_late = envU("CCV_DCU_WP_LATE", c.wp_late);
     c.gap = envU("CCV_DCU_STORE_GAP", c.gap);
     c.hash = envU("CCV_DCU_BANK_HASH", 0) != 0;
     c.ue_every = envU("CCV_DCU_UE_INJECT", 0);
