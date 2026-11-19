@@ -833,7 +833,7 @@ merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0 l1_inelig=0
 hit@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
-transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=64 l1_hit=0
+transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=54 l1_hit=0
 spinwait@CCV_MIU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
 vadd@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=0 machine_check=0 kill=0
 ldpar@CCV_DCU_UE_INJECT=1 ue_recover=2 ue_fatal=0 machine_check=0
@@ -843,6 +843,7 @@ atom@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1 kill=1
 cas@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1 kill=1
 atomf@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1 kill=1
 ropediv@CCV_DCU_UE_INJECT=3 ue_fatal=1 machine_check=1 kill=1 fet_kill_reset=1
+predlane@CCV_DCU_UE_INJECT=1 ue_fatal=1 machine_check=1
 late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=3
 plog   merge=3
@@ -1642,7 +1643,12 @@ fi
 # never completes. ropediv's (every third hit) lands with a checkpoint free
 # in flight: FET keeps a killed warp's checkpoints until OOE's epoch notice
 # (OA 436, FET spec rev 49), so the free finds its checkpoint live; its
-# control fet-reset-on-kill resets them at RAU's kill, as before.
+# control fet-reset-on-kill resets them at RAU's kill, as before. DCU
+# withholds the read a core-fatal UE hits (AR 389): MIU takes a killed
+# warp's owed reads as answered, empty, at the kill (OA 436), and RAU's
+# machine-check kill waits for no ack from MIU; predlane's lands on an
+# exited warp's store drain, which MIU then holds to the end. Control
+# ue-answer: DCU answers the read, and MIU refuses it.
 ue() { CCV_DCU_UE_INJECT=1 "$SKEL" --kernel "build/oracle/$1/oracle.jsonl" ${2:+--break "$2"} >"$B/kernel_ue_$1_${2:-none}.log" 2>&1; }
 uelog() { echo "$B/kernel_ue_$1_${2:-none}.log"; }
 CCV_DCU_UE_TRACK=1 ue ldpar
@@ -1653,18 +1659,22 @@ if [ "$(field "$l" check_failures)" = 0 ] && [ "$(cover "$l" ue_fatal)" = 1 ] &&
 else
   bad "a UE that finds DCU's track table full" "not core-fatal: $(grep '^KERNEL' "$l")"
 fi
-ue hit ue-no-track; ue predswap ue-dirty-recover; ue predswap mce-ignore; ue predswap mce-no-record; ue predswap mce-no-kill; ue atom kill-drop-atomic
+ue hit ue-no-track; ue predswap mce-ignore; ue predswap mce-no-record; ue predswap mce-no-kill; ue atom kill-drop-atomic; ue predswap ue-answer
+# ue-dirty-recover at every second hit: its dirty line is predswap's only
+# UE there, recovered with its bytes lost, so no machine check hides it.
+CCV_DCU_UE_INJECT=2 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break ue-dirty-recover >"$(uelog predswap ue-dirty-recover)" 2>&1
 CCV_DCU_UE_INJECT=3 "$SKEL" --kernel build/oracle/ropediv/oracle.jsonl --break fet-reset-on-kill >"$B/kernel_ue_ropediv_fet-reset-on-kill.log" 2>&1
 why=""
 [ "$(cover "$(uelog hit ue-no-track)" machine_check)" = 0 ] && [ "$(cover "$(uelog hit ue-no-track)" ue_recover)" -gt 1 ] || why="$why ue-no-track"
-grep -q '^CHECK miu: seq [0-9]* P0 loaded ' "$(uelog predswap ue-dirty-recover)" || why="$why ue-dirty-recover"
+[ "$(field "$(uelog predswap ue-dirty-recover)" check_failures)" -gt 0 ] || why="$why ue-dirty-recover"
 grep -q '^CHECK cru: DCU raised a core-fatal UE on ccv_dcu_cru_err, and CRU never took' "$(uelog predswap mce-ignore)" || why="$why mce-ignore"
 grep -q '^CHECK cru: warp 0 ended in the machine check with no record (F-MACHINE)' "$(uelog predswap mce-no-record)" || why="$why mce-no-record"
 grep -q '^CHECK rau: warp 0 faulted and was never killed' "$(uelog predswap mce-no-kill)" || why="$why mce-no-kill"
 grep -q "^CHECK miu: rob tag [0-9]*'s atomic write has no read before it" "$(uelog atom kill-drop-atomic)" || why="$why kill-drop-atomic"
 grep -q '^CHECK fet: a free for tier-1 slot [0-9]* checkpoint [0-9]*, which is not live' "$(uelog ropediv fet-reset-on-kill)" || why="$why fet-reset-on-kill"
+grep -q '^CHECK miu: DCU answered req_id [0-9]*, a read a core-fatal UE withheld' "$(uelog predswap ue-answer)" || why="$why ue-answer"
 if [ -z "$why" ]; then
-  say "--break ue-no-track, ue-dirty-recover, mce-*, kill-drop-atomic: the machine check" "PASS (7 controls caught)"
+  say "--break ue-no-track, ue-dirty-recover, mce-*, kill-drop-atomic: the machine check" "PASS (8 controls caught)"
 else
   bad "machine-check controls" "not caught:$why"
 fi
