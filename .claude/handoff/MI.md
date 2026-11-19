@@ -47,31 +47,25 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Open work, most urgent first
 1. Model restructure to the spec's timing, in worktree /home/user/mi-wt on local branch mi-dev
-   (the MI-1 hook applied there uncommitted and marked git update-index --skip-worktree on
-   sim/skel/{kernel.cpp,blocks.list}; scratchpad mi1-hook.patch; never commit it; clear the
-   flag with --no-skip-worktree before merging TI's hook).
-   Done: step 1 (f167df9f: A1/A2 at H, own-warp holds, fence holds, held load's no-hit),
-   step 2 (891f5bb0: first pass at H+1 on footprint slots, slot-order bank losers, later
-   passes on idle slots, per-warp drains, ld_pass_held), 4f30397b (formation bins once a memop).
-   Loads hold on own-warp writes only (MA-11): tried any-warp for transp4, wrong, reverted.
-   Model check-kernel now fails only stub-timing-pinned checks (MI-4, MI tab rev 5, rung to TI):
-   vadd/ldpar ue_recover, privwin priv_form 10 vs 12 (stub counts per try: 50 per try,
-   10 per memop), UE track-table-full (ldpar gets 1 clean UE), fet-reset-on-kill (ropediv),
-   vadd4 replay drain (model 185 cycles vs 298: no mlc demotion), and transp4 demoted at
-   760, a real bug outside MIU (stub fails at demote 750/840/846/876/888 the same way: a
-   warp passes the barrier before two warps re-execute a discarded .shared store).
-   Next steps: (3) a store keeps its MQ entry until it drains, drain guard N_drain=16
-   withholding one memop credit; (4) TLB + walker, cold per kernel, span assert; (5) bank
-   credits once MA-25's channel exists; (6) bins, stats, controls (way mispredict path).
-   Validate each with CCV_MIU_IMPL=model ./tools/check-kernel.sh (~30 min; never rebuild
-   the skeleton while it runs: its control builds read the source).
+   (the MI-1 hook applied there uncommitted, git update-index --skip-worktree on
+   sim/skel/{kernel.cpp,blocks.list}; scratchpad mi1-hook-bound.patch, which also bounds the
+   testbench's slow regions below 1<<32 (MI-5 (1)); never commit it; --no-skip-worktree before
+   merging TI's hook). Pushed: steps 1-2 (6b019dce), step 3 (8e1792b6: store keeps MQ entry to
+   drain, drain guard on Pending::kDrainWait, wide bit), step 4 (2e1975e6: TLB in A2 + shared
+   walker, before any bin; cold only under CCV_MIU_TLB=cold, default warm as the stub).
+   Warm check-kernel fails only MI-4's stub-pinned set. Cold moves ~30 checks (MI-6 to MA).
+   Next: (5) bank credits once MA-25's channel exists; (6) bins/stats/controls (way
+   mispredict path, AR 390). Validate each with CCV_MIU_IMPL=model ./tools/check-kernel.sh
+   (~30 min, CCV_FOREGROUND=1; never rebuild the skeleton while it runs).
 2. MI-1 rung to TI (MI tab rev 4, response row names 21274699). Await TI's hook.
-3. MI-3 closed (MI tab rev 5, response row). Await TI on MI-1 and MI-4.
+3. MI-3 closed (rev 5). Rung and awaiting: TI on MI-1, MI-4 (stub-pinned checks, transp4
+   barrier bug), MI-5 (testbench bound, 14 bins for kernel.h, narrowadd bug); MA on MI-6
+   (cold TLB default at M0). MI tab at rev 6.
 4. Phase 1b with DI's DCU model; agree landing order of bank credits / way mispredict (the
    conflict loser's path, due+2, as a miss) / withheld completion with DI in our tabs.
 5. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
 
 ## Pushed
-- ccr-58815650-0ch1hh at 6b019dce (steps 1-2 merged from mi-dev): SCOPED PASS. Earlier
+- ccr-58815650-0ch1hh at 2e1975e6 (steps 1-4): SCOPED PASS. Earlier
   21274699 (076d0b75 model, 7cfc15ec walker). The remote
   branch was seeded with TI's gated 663bed37 so gate-push had a scoped base.
