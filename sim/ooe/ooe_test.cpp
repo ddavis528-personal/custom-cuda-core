@@ -4919,6 +4919,87 @@ void testCkptFreeLag() {
   EXPECT(caught, "a held free kept across an older redirect should land on a dead checkpoint");
 }
 
+/// redirect_send_lag (OA 447, re:OI-179 (3)): ooe_redir's two flops put
+/// the redirect and ckpt_free two cycles after the model's send, together
+/// (A-58). Random mispredicting programs run clean at 0 and 2, every
+/// redirect lagged at 2; the control sends the frees a cycle after the
+/// redirects, and FET's V-46 checker must see a free land on a checkpoint
+/// a redirect already freed.
+void testRedirectSendLag() {
+  for (const unsigned lag : {0u, 2u}) {
+    uint64_t lagged = 0, sent = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed)
+      for (int mode = 0; mode < 8; mode += 3) {
+        g_test = "redirect send lag " + std::to_string(lag) + " seed " + std::to_string(seed) + " mode " +
+                 std::to_string(mode);
+        Config c = randomConfig(seed, mode);
+        c.redirect_send_lag = lag;
+        c.ckpt_free_lag = 1;
+        std::mt19937 rng(seed * 4 + unsigned(mode));
+        Env e(c, seed * 7 + unsigned(mode));
+        e.keep_log = true;
+        e.miss_pct = 30;
+        e.data_after_cmpl = c.cmpl_wake_delay;
+        const unsigned warps = 1 + seed % 4;
+        for (unsigned i = 0; i != warps; ++i)
+          e.launch(i * 5, i, randomProgram(rng, 150, true, seed % 2 == 1, (mode & 4) != 0));
+        e.finish();
+        EXPECT(e.errors.empty(), "%zu checker errors, first: %s", e.errors.size(),
+               e.errors.empty() ? "" : e.errors[0].c_str());
+        lagged += e.core.counters["redirect.send_lagged"];
+        for (const Outputs &o : e.log) sent += !o.redirects.empty();
+      }
+    EXPECT(lag ? lagged > 0 && lagged == sent : lagged == 0, "lag %u: %llu of %llu redirect cycles lagged", lag,
+           (unsigned long long)lagged, (unsigned long long)sent);
+    std::printf("  redirect send lag %u: %llu redirect cycles, %llu lagged\n", lag, (unsigned long long)sent,
+                (unsigned long long)lagged);
+  }
+  // The control, on testCkptFreeLag's directed pairs: a younger branch
+  // resolves right as the miss latency slides an older mispredict past it,
+  // so some pair sends its free the cycle before the older's redirect, and
+  // a cycle late it lands on the checkpoint that redirect freed (V-46).
+  unsigned caught = 0;
+  for (const bool control : {false, true}) {
+    for (unsigned n = 0; n != 10 * 16; ++n) {
+      const unsigned k = n / 16, add = n % 16;
+      g_test = std::string("redirect send lag directed") + (control ? " (control)" : "") + " k " + std::to_string(k) +
+               " add " + std::to_string(add);
+      Config c = baseConfig();
+      c.ckpt_free_lag = 1;
+      c.redirect_send_lag = 2;
+      c.inject_send_free_late = control;
+      Env e(c);
+      e.miss_pct = 100;
+      e.miss_extra = 1;
+      e.miss_add = add;
+      for (unsigned j = 0; j != k; ++j) {
+        Op a; a.k = kLane; a.dst = 2; a.src[0] = 2; a.nsrc = 1; e.junk_prog.push_back(a);
+      }
+      Op s2; s2.k = kSetp; s2.pdst = 2; s2.src[0] = 2; s2.src[1] = 2; s2.nsrc = 2; e.junk_prog.push_back(s2);
+      Op b2; b2.k = kBranch; b2.pguard = 2; b2.taken = false; b2.pred_taken = false; e.junk_prog.push_back(b2);
+      std::vector<Op> p;
+      Op ld; ld.k = kLoad; ld.dst = 1; ld.src[0] = 0; ld.nsrc = 1; p.push_back(ld);
+      Op s1; s1.k = kSetp; s1.pdst = 1; s1.src[0] = 1; s1.src[1] = 1; s1.nsrc = 2; p.push_back(s1);
+      Op b1; b1.k = kBranch; b1.pguard = 1; b1.taken = true; b1.pred_taken = false; p.push_back(b1);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      if (control) g_quiet = true;
+      const int before = g_fail;
+      e.finish();
+      g_quiet = false;
+      if (control) {
+        caught += g_fail != before || !e.errors.empty();
+        g_fail = before;
+        continue;
+      }
+      EXPECT(e.errors.empty(), "%zu checker errors, first: %s", e.errors.size(), e.errors.empty() ? "" : e.errors[0].c_str());
+    }
+  }
+  g_test = "redirect send lag (control)";
+  std::printf("  %-24s %s (%u pairs)\n", "control send-free-late", caught ? "caught" : "MISSED", caught);
+  EXPECT(caught, "frees a cycle behind their redirects should land on a dead checkpoint");
+}
+
 /// TI-485 (OA 436, OA 438): a kill withdraws the killed slot's checkpoint
 /// frees not yet sent, as a demote does: one resolved in the kill's cycle,
 /// or held under ckpt_free_lag, would land after the kill's epoch notice
@@ -6194,6 +6275,11 @@ int main(int argc, char **argv) {
     std::printf("ooe-test --kill-free: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--redirect-send-lag") {   // OA 447's test alone
+    testRedirectSendLag();
+    std::printf("ooe-test --redirect-send-lag: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--ckpt-free-lag") {   // OA 427's test alone
     testCkptFreeLag();
     std::printf("ooe-test --ckpt-free-lag: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
@@ -6267,6 +6353,7 @@ int main(int argc, char **argv) {
   testResolveLagRetire();
   testRobAllocLag();
   testCkptFreeLag();
+  testRedirectSendLag();
   testSlotVerdictLag();
   testKillFreeWithdrawn();
   testRetHold();

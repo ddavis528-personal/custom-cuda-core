@@ -35,7 +35,7 @@ std::string Config::apply(const std::string &spec) {
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
-      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"ckpt_free_lag", &ckpt_free_lag}, {"resolve_lag", &resolve_lag},
+      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"ckpt_free_lag", &ckpt_free_lag}, {"redirect_send_lag", &redirect_send_lag}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
@@ -5169,7 +5169,7 @@ void Core::sendRedirect() {
     const int si = slotOf(r.warp);
     if (r.epoch_only && si >= 0) {
       slot_[si].notice_sent = true;
-      slot_[si].notice_lands = now_ + cfg_.redirect_lat;
+      slot_[si].notice_lands = now_ + cfg_.redirect_lat + cfg_.redirect_send_lag;
       if (r.rewind && slot_[si].rewind_pending) --slot_[si].rewind_pending;
     }
     if (!redirects_.empty()) {
@@ -5196,6 +5196,19 @@ void Core::sendRedirect() {
   }
   free_mask_ = 0;
   free_pick_ = 0;
+  // redirect_send_lag (OA 447): both channels leave that many cycles later.
+  if (cfg_.redirect_send_lag) {
+    send_line_.push_back({std::move(out.redirects), out.free_mask});
+    out.redirects.clear();
+    out.free_mask = 0;
+    if (send_line_.size() > cfg_.redirect_send_lag) {
+      out.redirects = std::move(send_line_.front().first);
+      out.free_mask = send_line_.front().second;
+      send_line_.pop_front();
+      if (!out.redirects.empty()) count("redirect.send_lagged");
+    }
+    if (cfg_.inject_send_free_late) std::swap(out.free_mask, send_free_late_);
+  }
 }
 
 // ---- invariants -----------------------------------------------------------------------------------

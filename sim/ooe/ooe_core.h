@@ -473,6 +473,14 @@ struct Config {
   /// that resolves a mispredict holds its frees one more cycle (ooe_rob_w
   /// drops the younger ones a cycle after the pick, by its squash).
   unsigned ckpt_free_lag = 0;
+  /// OA 447 (re:OI-179 (3)): ooe_redir registers the pick a cycle after
+  /// rob_w's rd_l and the payload a cycle after that, so the redirect and
+  /// ckpt_free leave OOE this many cycles after the model's send, together
+  /// (A-58). A delay line on both outputs; an epoch notice lands as late.
+  unsigned redirect_send_lag = 0;
+  /// redirect_send_lag's control: the free mask a cycle later than the
+  /// redirects, out of A-58's latency match (V-46 must see it).
+  bool inject_send_free_late = false;
   /// ckpt_free_lag's control: a redirect or a due squash leaves a younger
   /// branch's held free in place, so it lands after the checkpoint died (V-46).
   bool inject_free_held_kept = false;
@@ -2478,6 +2486,9 @@ private:
   struct VerdictHold { uint64_t due; std::vector<RatMap> maps; std::vector<Drained> drained;
                        std::vector<unsigned> acks; uint32_t release = 0; };
   std::vector<VerdictHold> verdict_held_;   ///< slot_verdict_lag: decided, not yet out
+  /// redirect_send_lag's line: each cycle's redirects and free mask, oldest first.
+  std::deque<std::pair<std::vector<Redirect>, uint64_t>> send_line_;
+  uint64_t send_free_late_ = 0;   ///< inject_send_free_late's extra cycle
   uint64_t free_held_ = 0;   ///< ckpt_free_lag: freed a cycle ago, sent this cycle
   uint64_t free_pick_ = 0;   ///< ckpt_free_lag: slots that resolved a mispredict this cycle
   std::deque<Commit> commits_;
