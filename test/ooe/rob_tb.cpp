@@ -139,7 +139,7 @@ uint64_t current = 0;
 bool live = false, stopped = false;
 unsigned long long cycles = 0, cores = 0, skipped = 0, stops = 0, retires = 0, allocs = 0, nops = 0, gfrees = 0,
                    pfrees = 0, events = 0, mismatches = 0, resolves = 0, redirects = 0, ckfrees = 0,
-                   bars_al = 0, bars_sent = 0, bars_held = 0, bars_kind[4] = {0, 0, 0, 0}, bars_gd = 0, squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0, commits = 0, faults = 0;
+                   bars_al = 0, bars_sent = 0, bars_held = 0, bars_kind[4] = {0, 0, 0, 0}, bars_gd = 0, bars_sq = 0, squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0, commits = 0, faults = 0;
 bool rename_preds = true;
 std::map<std::string, unsigned long long> stop_why;
 
@@ -309,6 +309,7 @@ void account(Cyc &c) {
     if (t >= S * D) continue;
     ++sq_ents;
     const Core::RobLog::Alloc &a = br_of[t];
+    bars_sq += a.bar;   // a squashed barrier frees its side buffer place (bsq)
     if (unfilledAt(t, q)) {
       if (e.second) fail("held entry not yet filled", t, 0, 1);
       unf[t] = 1;
@@ -1030,7 +1031,7 @@ int main(int argc, char **argv) {
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, nops, events, retires, gfrees,
               pfrees, resolves, redirects, ckfrees, stops, skipped, squashes, sq_ents, sq_held, sq_kills, hrels, discards,
               commits, faults, mismatches, model_fails);
-  std::printf("  ooe_barpick: barrier ops allocated=%llu reports=%llu (arrive %llu wait %llu phase %llu exit %llu) guarded=%llu held=%llu\n", bars_al, bars_sent, bars_kind[0], bars_kind[1], bars_kind[2], bars_kind[3], bars_gd, bars_held);
+  std::printf("  ooe_barpick: barrier ops allocated=%llu reports=%llu (arrive %llu wait %llu phase %llu exit %llu) guarded=%llu held=%llu squashed=%llu\n", bars_al, bars_sent, bars_kind[0], bars_kind[1], bars_kind[2], bars_kind[3], bars_gd, bars_held, bars_sq);
   std::printf("  ooe_redir: redirects=%llu (early behind a notice=%llu) ckpt-frees=%llu notice-drops=%llu\n", rdr_sent, rdr_early, ckf_sent, ntm_drops);
   if (br_two) std::printf("  cycles with two branch dones (RCU's one a cycle): %llu\n", br_two);
   for (const auto &kv : stop_why) std::printf("  stopped at %s: %llu\n", kv.first.c_str(), kv.second);
@@ -1038,6 +1039,9 @@ int main(int argc, char **argv) {
   // through ooe_barpick (no-bars draws none, so it must fail here).
   bool bins = bars_held && bars_gd;
   for (unsigned k = 0; k != 4; ++k) bins = bins && bars_kind[k];
+  // bars_sq is reported, not a bin: the random bench never squashes a
+  // barrier (each squash so far reached only ops younger than it), so the
+  // side buffer's squash path (bsq) wants a directed kill behind a barrier.
   if (!cg.on() && !bins) std::printf("  ooe_barpick: a coverage bin is empty\n");
   const int rc = mismatches || model_fails || (!cg.on() && !bins) ? 1 : 0;
   dut.reset();
