@@ -348,7 +348,14 @@ after rdata (rdata, syndrome) vs CCV_LAT_L1_ECC 1; if MA/AR raise L1_ECC to 2, L
 TI-484 (0767fe1c): RA 153 (5) met (CCV_MIU_ECC_INJECT, bin l1_ecc_fix, controls ecc-no-fix,
 ecc-cmpl-on-time, both hosts); double-error test waits on AR 370; real MIU owes the same runs (MA/MI). Snapshot export route: Docs create (object blob, engine blob,
 payload {from:{object:file,id:<tab id>},format:markdown}) per tab, then Artifact read with the asset id as path.
-Bookmarks: OA 436, RA 156, RI 91, TI 483, AR 384, DA 127, OI 374, Conventions 19, CP 160, IS 197, MA 97.
+Sweep 11-19: nothing for RA; merged 9eb50716 (39, with 888218a3), 57eff422 (20), c22116ce (18), 183cc441 (13,
+with infra), 58815650 (37), miu-dcu-spec (9), 80102643 (27). NOT merged: 5e4d6c70 (roster.json MI/DI session-id
+conflict, TI's file) and 3868632d (7 merge bases): RA 157, Needs TI. MERGE METHOD: ort's recursive merge-base
+build hangs on this criss-cross history (133k inner merges); merge fewest-merge-bases first, then
+`git merge -s resolve` under `timeout 600` (fails over 6 bases). DA 128: DCU tag-then-data with way prediction;
+CCV_LAT_L1_HIT 8 (9 with WAYPRED_BITS 0), L1_WAKE 14/15, L1_CMPL 16/17 once TI applies it (params still 7 on
+11-19): then update spec numbers (Partition 147, Overview 61/108) and snapshots; RCU timing is relative, no design change.
+Bookmarks: OA 446, RA 157, RI 91, TI 486, AR 395, DA 128, OI 380, Conventions 20, CP 160, IS 199, MA 127.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
