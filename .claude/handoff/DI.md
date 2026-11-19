@@ -25,16 +25,28 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
-1. Model M0: core, block, unit tests landed (c0d1d08b, 18 tests). Next: every
-   kernel with CCV_DCU_IMPL=model (local patch), both hosts; bins and
-   controls; cycles against the stub and p1.
-2. Session home: ask Daniel (writes /home/user/.claude).
-3. Gaps vs spec: probes (no MLC probe channel in the skeleton yet), CE
-   injection (needs a DCU-side knob: a DI row to TI), the 2-entry writeback
-   buffer's stall (now a bin), MA-25 vectors unwired (no channel yet).
+1. Model M0 status (pushed 26740eef, SCOPED PASS): 64/64 kernels == ccv-sim
+   with CCV_DCU_IMPL=model, +1.78% mean cycles vs the stub. check-kernel has
+   5 timing-only diffs (ldpar, transp4@ECC, late, stall bins; the
+   spm-shared-region control's pinned message): DI-3 asks TI for per-impl pins.
+   Waiting on DI-1 (hook, blocks.list, check-dcu-unit, params, credit vectors).
+2. Local hook patch for runs: scratchpad makedcu-local.patch (re-create from
+   DI-1's text if the scratchpad is gone); never commit it; revert before
+   gate-push. Sweep script: scratchpad sweep.sh.
+3. Next model work: dcu_miu_rsp credit waits (transp4: 8 hits waited for a
+   credit; check MIU stub's credit depth vs the 3-cycle launch); SV-hosted
+   run (tools/check-sv-hosted.sh) with the model; cycles vs CCV_DCU_IMPL=p1;
+   the M0 exit row (MA reads it).
+4. Gaps vs spec: probes (no MLC probe traffic in the skeleton), CE injection
+   on the DCU side (a DI row to TI), the 2-entry writeback buffer stall (a
+   bin now), MA-25 vectors computed but unwired.
+5. Session home: ask Daniel (writes /home/user/.claude).
+6. First push of a new session branch: create the remote branch at its base
+   commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks (2026-11-19 start)
-Conventions 20, DI 2, MI 1, MA 117, TI 486, DA 128. Others: outline + search DI.
+Conventions 20, DI 4, MI 1, MA 122, AR 395, OA 444, TI 486, DA 128. Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
-params, credit vectors), DI-2 (MA: (C) mispredict vs half-rate bank).
+params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
+MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
