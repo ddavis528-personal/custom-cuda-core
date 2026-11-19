@@ -32,7 +32,7 @@ few lines.
 
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 483, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
+TI 484, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
 JSON file). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
@@ -42,7 +42,15 @@ timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
 restart: rerun the job). Logs in /root/ccv-logs/.
 
 ## State (2026-11-18)
-- Both working branches at 0767fe1c: MIU stub injected L1 syndrome
+- Both working branches at a102383b: AR 370 machine check (ccv_dcu_cru_err,
+  F-MACHINE 10, CCV_DCU_UE_TRACK 16, CRU MACHINE_CHECK + kill_req every grid,
+  RAU kill-all, DCU stub CCV_DCU_UE_INJECT; bins ue_recover/ue_fatal/
+  machine_check; controls ue-no-track, ue-dirty-recover, mce-ignore,
+  mce-no-record, mce-no-kill). Row TI-485 (rev 484) to AR MA IS OI OA, sent.
+  Open in it: kill races (atom/atomf/cas atomic write after kill; ropediv
+  ckpt free after kill) await OI/OA's call on which side fixes; those
+  kernels are out of the machine-check runs till then.
+- 0767fe1c: MIU stub injected L1 syndrome
   (CCV_MIU_ECC_INJECT, bin l1_ecc_fix, controls ecc-no-fix/ecc-cmpl-on-time,
   both hosts; RA 153 (5)); row TI-484 (rev 483) to RA, MA, OI, sent.
 - b407ff71 (SCOPED PASS 24/24): RAS phase 1,
@@ -77,12 +85,12 @@ A. Task 28, array RAS (DA rulings TI 474-476): SECDED part landed
    column above 8 KiB logical; macros only, flop arrays scan); BIST
    broadcast groups of up to 32 KiB logical in parallel (group/ID params,
    group-size and chain checks, tie-off only at the block wrapper).
-B. Task 30, AR 370 (DA rev 124) + MA-19 + IS 197: F-MACHINE code 10 in
-   CCV_W_FAULT_CAUSE; pin is a293afe7 now (check it has ISA v1.9 O-86);
-   ccv_dcu_cru_err rate 1 (ue, ce_alert); CRU MACHINE_CHECK, kill all, every
-   live record F-MACHINE; ccv_common_err (counts, first-error log, ERR_CTRL
-   threshold + INJECT, track table, host-only) on the CSR star;
-   CCV_DCU_UE_TRACK 16. Note: MA's 224 "scan-only" track flops still owe CG.
+B. Task 30, AR 370: stubs, schema and params landed (a102383b, TI-485). Left:
+   ccv_common_err RTL (CE/UE counts saturating popcount up to 8 a cycle,
+   first-error log lowest bank + track-hit + overflow, ERR_CTRL CE threshold
+   -> ce_alert, INJECT 1/2 bits on next write to a named array, track table
+   readable, host-only on the CSR star; MA-19: 16 arrays, 9-bit row). MA's
+   224 "scan-only" track flops still owe CG.
 C. Task 31, AR 371: SPM banks ccv_common_rf_1r1w 1024x32 (4 KiB, no ECC);
    stub sub-word RMW charged as a bank conflict; CCV_SPM_BANKS doc; check-ngd
    on the 1024-word read (fallback 2 x 512).
