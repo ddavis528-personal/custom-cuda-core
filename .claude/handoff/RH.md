@@ -68,6 +68,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
   Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
+- MA-8 RUNNING from 04:25Z 11-19 (MA: MA-7 decided as MA-24 = b, q16, DEFCAP 12, GAP 5): rh-jobs/ma8/ma8.sh <sha> <tag> "<cm32>"
+  "<cm128>" "<S1>" (suffix .aN BANK_AGE, .hN HASH, plus .gN .dN), worktree rh-ma8-11dc, logs ~/ccv-logs/ma8/11dc.
+  Part 1: BANK_AGE 16 (ref, must = MA-7 d12 5,136,180), 8, 32, 64 on S1 + cm128 (~07:30Z). Part 2: HASH=1 at best age (or 16
+  if flat), S1 + cm128; HASH=0 is the part-1 row. Report: table per part (python3 rh-jobs/ma8/table.py <logdir>, adds wait_mean;
+  p1_wait_max = worst lookup wait) + knee; part 2: kernels moving >1% (python3 rh-jobs/ma8/s1diff.py <logdir> <ref> <pt>) and
+  whether each is a power-of-2-stride kernel; say if none in the set. MA wants no logs.
 - MA-7 DONE and SENT 04:20Z 11-19 (all clean): DEFCAP curve at 11dcec83 (b.q16, GAP=5, cm128): knee at 12 (5,136,180, -0.57% vs
   uncapped, -1.37% vs a.q16.g5, data_sum_peak 99 < a's 115); d8/d6 -0.26%; d4 +0.84% (= a). data_peak over cap +0..+5 as cap tightens.
   Worktrees dropped; logs ~/ccv-logs/ma7/{8504,11dc} kept (table.md). Scripts rh-jobs/ma7 (ma7.sh suffix .gN GAP .dN DEFCAP).
