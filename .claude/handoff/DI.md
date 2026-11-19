@@ -45,12 +45,13 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 4. Gaps vs spec: probes (no MLC probe traffic in the skeleton), CE injection
    on the DCU side (a DI row to TI), the 2-entry writeback buffer stall (a
    bin now), MA-25 vectors computed but unwired.
-5. Session home: ask Daniel (writes /home/user/.claude).
+5. Session home: installed (Daniel approved); `--check` matches. Recheck in
+   the daily sweep and after merges touching .claude/.
 6. First push of a new session branch: create the remote branch at its base
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks (2026-11-19 start)
-Conventions 20, DI 4, MI 9, MA 127, AR 395, OA 446, TI 486, DA 128
+Conventions 20, DI 5, MI 9, MA 127, AR 395, OA 446, TI 486, DA 128
 (sweep of 2026-11-19 10:43 UTC; OI 380, RA 156, RI 91, IS 199, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
