@@ -71,7 +71,8 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-7 RE-PLANNED 22:58Z (MA): DEFCAP at 85045a15 was broken (diverted stores held data) -> fixed in 11dcec83 (store re-passes at cap;
   p1_defcap_repass). Now: 85045a15 tag 8504: uncapped b.q16.fixed.g5 (must = 5,165,866) then a.q16.fixed.g5; 11dcec83 tag 11dc:
   b.q16.fixed.g5.d18 d12 d24 (~02:10Z). rh-jobs/ma7/ma7.sh <sha> <tag> "" "<pts>" (suffix .gN GAP, .dN DEFCAP), logs ~/ccv-logs/ma7/<tag>,
-  old d18/d8 in 8504/superseded. Table python3 rh-jobs/ma7/table.py <logdir> (+defcap, defcap_repass). Send each result as it lands.
+  old d18/d8 in 8504/superseded. Baseline == 5,165,866 and a.q16.g5 5,207,327 SENT; rh-ma7-8504 dropped. 11dc d18 SENT
+  (5,159,812, data_peak 19 > cap by 1, sum 144). Container restart ~00:40Z 11-19 killed d12: relaunched 00:46Z (d12, d24; ~01:58Z). Table python3 rh-jobs/ma7/table.py <logdir> (+defcap, defcap_repass). Send each result as it lands.
 - MA-6 DONE and SENT 21:53Z (all clean; 2554 reruns == MA-5; gap5: a.q8.rot +0.71%, b.q16 +0.47%; data_peak b 41-43/sum 270, a 18/109).
   Worktrees dropped; logs ~/ccv-logs/ma6/{c94f,2554} kept. Was: rh-jobs/ma6/ma6.sh <commit> <tag> "<cm32 pts>" "<cm128 pts>" (worktree rh-ma6-<tag>, logs ~/ccv-logs/ma6/<tag>,
   cm128 serialized by flock rh-jobs/cm128.lock). Tag c94f (c94f0ae6) from 17:35Z: cm32 b.q16.fixed; cm128 b.q16.rot b.q12.fixed (~19:10Z).
