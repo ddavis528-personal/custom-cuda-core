@@ -393,7 +393,8 @@ private:
       // behind a data-side one; the refill names the page (identity).
       Receiver::Msg m = take(c.fet_miu, 0);
       const uint64_t vpn = get(m.payload, c.fet_miu, "virtual_page");
-      if (!tlb_on_) {
+      // itlb-no-walk: FET's refill answered at once under a cold TLB.
+      if (!tlb_on_ || k_.brk == "itlb-no-walk") {
         Bits r = msgOf(c.miu_fet);
         put(r, c.miu_fet, "itlb_refill", vpn);
         to_fet_.push_back({0, r, m.tid});
@@ -892,6 +893,13 @@ private:
     walker_.cycle();
     uint64_t a = 0;
     if (walk_out_ || !walker_.wantRead(a)) return;
+    // walk-no-dcu: each level done without its read.
+    if (k_.brk == "walk-no-dcu") {
+      walker_.sent();
+      if (walker_.got()) walkDone();
+      return;
+    }
+    k_.hit("walk_reads");
     Job w;
     w.walk = true;
     w.tag = ~0u;
@@ -1336,9 +1344,14 @@ private:
           pages.insert(va >> 16);
         }
       bool missing = false;
-      if (!faults)
+      // walk-before-faddr: the fault's pages walked first, as if F-ADDR came
+      // after translation; a page past the 48-bit VA then reaches the walker.
+      if (!faults || k_.brk == "walk-before-faddr")
         for (uint64_t vpn : pages)
           if (!tlb_.holds(vpn)) {
+            if (vpn >> (ccv::kAddrBits - 16))
+              k_.fail("miu: rob tag %u walks page %llx, past the 48-bit VA (F-ADDR comes first)",
+                      tag, (unsigned long long)vpn);
             missing = true;
             walk_tid_.emplace(vpn, a->second.tid);
             walker_.request(vpn, miu::Walker::kData);
@@ -1348,8 +1361,11 @@ private:
         return false;
       }
       if (!faults) for (uint64_t vpn : pages) tlb_.lookup(vpn);
+      if (faults && k_.brk == "walk-before-faddr")
+        for (uint64_t vpn : pages) if (!tlb_.holds(vpn)) return false;
       tlb_missed_.erase(tag);
       two_page = !faults && pages.size() > 1;
+      if (two_page) k_.hit("tlb_two_page");
     }
     if (j.active & ~issue)
       k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
@@ -1444,7 +1460,8 @@ private:
     } else if (j.global && j.active) {
       eligibility(j, mo);
       // Lanes over two pages leave the hit path (MIU tab, translation).
-      if (!j.inelig && two_page) loseFirstPass(j, "tlb_two_page");
+      // two-page-hit: such a load keeps its contract.
+      if (!j.inelig && two_page && k_.brk != "two-page-hit") loseFirstPass(j, "tlb_two_page_lost");
       if (!j.inelig) planFirstPass(j, unsigned(get(mo.msg, c.ooe_miu, "pipes")));
     }
     launch(j);
