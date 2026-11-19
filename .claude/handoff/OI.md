@@ -19,7 +19,7 @@ Updated 2026-11-19 late: #58 gate relaunched after a restart killed it: job /roo
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-183 (OI-181 slice 5 built re:OA 448, OI-182 redirect send+2 +1.42% S1 to DA; rev 386, rung OA). Pings Fridays.
+  Next free ID: OI-184 (OI-181 slice 5 built re:OA 448; OI-182 redirect send+2 +1.42% S1; OI-183 rev 387: RTL redirect IS C (+2), OI builds the no-cycle rd_e-lead option per OA 449; rung OA). Pings Fridays.
 - DA 11-18 (chat): pause NGD-to-25 fixes until the ccv_ooe top is built (real budgets, no
   false paths); finish ALL modules first so the top is complete when built. OI may move
   internal budgets where a measured parent times the connection and they still converge.
@@ -33,7 +33,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 386, OA 449, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
+OI 387, OA 451, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
 
 ## Trees and runs in flight
 - #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
@@ -42,7 +42,8 @@ OI 386, OA 449, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (T
   withdrawn by DA rev 127 / OA 433). Rebuild the push branch from origin (now b91632b4) without the flop form.
 
 ## Open work (most urgent first)
-0. TI-488: when oi-slot lands (3ab00269 package defaults), drop the two ooe_wake LAT_SPEC 14/LAT_MISS 17 lines TI pinned in test/ooe/cg-units.json. RH: keep rh-oi447/447a until DA rules on OI-182; others released. Slice 5 gap: the random rob bench never squashes a barrier (bars_sq=0, a95 counter in rob_tb), so ooe_rob_w's bsq path is unexercised: add a directed kill behind a waiting guarded barrier. Owe RH a look at layernorm -6.1%/sgemm -1.2% under bar_pend (report reorder?).
+0. NEXT after the gate: (a) ooe_redir no-cycle option (OA 449): valid with rd_l's cycle from the rd_e lead, payload with it; rob_tb at model +0 (B), control = old +2 timing; check-ngd/cg ooe_redir; rob_w rd_e/rd_l budgets are OA's. (b) Explain layernorm -6.1%/sgemm -1.2% under bar_pend (OA 449 asks; RH cfgs in rh-oi448/build/cp62). (c) ooe_rob_w check-cg/ngd for slice 5.
+   TI-488: when oi-slot lands (3ab00269 package defaults), drop the two ooe_wake LAT_SPEC 14/LAT_MISS 17 lines TI pinned in test/ooe/cg-units.json. RH: keep rh-oi447/447a until DA rules on OI-182; others released. Slice 5 gap: the random rob bench never squashes a barrier (bars_sq=0, a95 counter in rob_tb), so ooe_rob_w's bsq path is unexercised: add a directed kill behind a waiting guarded barrier. Owe RH a look at layernorm -6.1%/sgemm -1.2% under bar_pend (report reorder?).
 1. TI-485 model bin + control DONE (ef015dab; Env::kill frees FET's ckpts at the kill's notice).
    Left: ooe_redir (#65) masks ckf for a slot from its epoch_only notice, with a bench control.
    OA 444 (DA 128): ooe_wake/ooe_trio LAT_SPEC/LAT_MISS default from ccv_prov_pkg (3ab00269;
