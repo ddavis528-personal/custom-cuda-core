@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-19 late: OI-185 written (redirect lag C vs D to DA). Gate bc4wkcjom running in wt-sw (d4c49c15), expected red on decrx lint; fixes on oi-slot 65354998.
+Updated 2026-11-19 late: OA-450 wants D measured (NGD/CG, no waiver); D tree wt-pwv (oi-pwv2). Gate bc4wkcjom in wt-sw expected red; oi-slot 6583cdbf carries the fixes.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
@@ -33,7 +33,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 388, OA 451, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
+OI 389, OA 452, TI 487, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
 
 ## Trees and runs in flight
 - #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
@@ -42,7 +42,7 @@ OI 388, OA 451, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (T
   withdrawn by DA rev 127 / OA 433). Rebuild the push branch from origin (now b91632b4) without the flop form.
 
 ## Open work (most urgent first)
-0. NEXT: gate bc4wkcjom (wt-sw d4c49c15) expected to FAIL 1d lint (decrx L23, fixed in oi-slot 65354998); then merge oi-slot 65354998 into sweep in wt-sw, regen, relaunch --full gate-push. oi-slot: 3cf129cb redir reads rob_w held payload (-4x82 flops), 65354998 lint fixes (whole-tree lint clean). run-rtl b53nfm6ap -> scratchpad/runrtl.log: check FAIL/MISSED. After gate: check-cg/ngd ooe_redir, rob_w slice 5, decq, decrx; TI-488 drop ooe_wake LAT pins. Await DA on OI-185 (lag 1 vs 2).
+0. NEXT: gate bc4wkcjom (wt-sw d4c49c15) expected red (decrx lint; and any oi-slot rob build bug). Then merge oi-slot (6583cdbf: lint fixes, bp_hl cast fix f3e47cf1, g_bp locals f-prefix, ooe_test bar_pend + check-ooe-unit 61 controls c0cf82ab) into the sweep in wt-sw, regen, relaunch --full gate-push. OA-450 (OA rev 452): OA recommends D to DA if ooe_rob_w and ooe_redir pass check-ngd/check-cg with no waiver and no cap rise; else back to DA, C stands. D measurement tree: /home/user/wt-pwv branch oi-pwv2 (oi-pwv + oi-slot, PWV=1 by default; rob_tb mispredict 1135 redirects 0 mismatches, all controls caught). After the gate: check-ngd/check-cg --unit ooe_rob_w (_1.._3) and ooe_redir in wt-pwv, one at a time; propose rd_*_cq03h budgets to OA with figures; answer OA-450 in a new OI row. bar-* controls on bar_pend: RTL rob_tb runs bar_pend=1 (all 4 caught, C and D); model testBarrier now runs both forms. run-rtl b53nfm6ap failed only at rob build (the g1'(p) bug, since fixed): rerun run-rtl on oi-slot after the gate. TI-488: drop ooe_wake LAT pins once oi-slot lands.
    TI-488: when oi-slot lands (3ab00269 package defaults), drop the two ooe_wake LAT_SPEC 14/LAT_MISS 17 lines TI pinned in test/ooe/cg-units.json. RH: keep rh-oi447/447a until DA rules on OI-182; others released. Slice 5 gap: the random rob bench never squashes a barrier (bars_sq=0, a95 counter in rob_tb), so ooe_rob_w's bsq path is unexercised: add a directed kill behind a waiting guarded barrier. Owe RH a look at layernorm -6.1%/sgemm -1.2% under bar_pend (report reorder?).
 1. TI-485 model bin + control DONE (ef015dab; Env::kill frees FET's ckpts at the kill's notice).
    Left: ooe_redir (#65) masks ckf for a slot from its epoch_only notice, with a bench control.
