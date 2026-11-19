@@ -279,6 +279,8 @@ struct Kernel {
       "atomic_acquire", "atomic_hold_wait",
       // A killed warp's load completed by MIU at the kill (OA 436).
       "kill_cmpl",
+      // FET's killed warp's checkpoints reset on OOE's epoch notice (OA 436).
+      "fet_kill_reset",
       // CAS (OI-127): its lane op on an active lane, and on a guarded-off one.
       "cas_lane", "cas_lane_off",
       // MIU's memop queue entries held on one slot, at most (MA-5).

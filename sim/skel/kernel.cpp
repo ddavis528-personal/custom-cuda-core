@@ -4658,15 +4658,24 @@ private:
     uint64_t br_next = 0;   ///< and the group's fall-through
   };
   std::map<unsigned, Warp> warps_;
-  /// A kill (V-24): the killed warps fetch no more, and leave their slots.
+  /// A kill (V-24): the killed warps fetch no more. Each keeps its tier-1
+  /// slot and its checkpoints until OOE's epoch notice for it, which
+  /// resets them (OA 436, AR 385; FET spec rev 49): a checkpoint free OOE
+  /// sent before that notice still finds its checkpoint live (V-46, no
+  /// exception), and FET acks the kill only once every killed warp's
+  /// notice is in. Control fet-reset-on-kill: the slot goes at the kill,
+  /// as before, and such a free finds nothing live.
   void onKill(uint32_t mask, unsigned) override {
     for (auto &w : warps_)
       if (mask >> (w.first & 31) & 1u) {
         w.second.stopped = true;
         w.second.await_redirect = false;
-        w.second.tier1 = kNoSlot;
+        if (k_.brk == "fet-reset-on-kill" || w.second.tier1 == kNoSlot) w.second.tier1 = kNoSlot;
+        else kill_wait_ |= 1u << (w.first & 31);
       }
   }
+  uint32_t kill_wait_ = 0;   ///< killed warps whose epoch notice FET awaits
+  bool killQuiet(uint32_t mask) const override { return !busy() && !(kill_wait_ & mask); }
   /// CCV_FAIR_N, which ccv-sim's -fairness must equal (gen-oracle). The N
   /// sweep sets both through CCV_FAIR_N; 0 is strict min-PC, the rule off.
   /// CCV_FET_PERFECT=1 (AR-24): perfect fetch. A branch every lane it
@@ -4813,6 +4822,13 @@ private:
       } else if (get(m.payload, c.ooe_fet, "epoch_only")) {
         epoch_[rw & 31] = fe;
         warps_[rw].stopped = true;
+        // A killed warp's notice: its slot and checkpoints reset now (OA 436).
+        if (kill_wait_ >> (rw & 31) & 1u) {
+          kill_wait_ &= ~(1u << (rw & 31));
+          warps_[rw].tier1 = kNoSlot;
+          warps_[rw].live = 0;
+          k_.hit("fet_kill_reset");
+        }
       } else {
         Warp &x = warps_[rw];
         const uint64_t tgt = get(m.payload, c.ooe_fet, "target_pc");
