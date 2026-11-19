@@ -29,8 +29,22 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Session-start read: AR 392, OA 443, IS 197, TI 486, OI 378, CP 160, RA 156, RI 91, MA 117,
-  MI 2 (MI-1 written), DI 1, DA 128, Conventions 20. Nothing had MI in Needs. MA-25 (QDEPTH/STDATA, credit
+  MI 2 (MI-1 written), DI 1, DA 128, Conventions 20. Since: MA 122 (MI-2 settled, AR 390/391/392 read),
+  specs Common tab 9. Nothing had MI in Needs. MA-25 (QDEPTH/STDATA, credit
   vectors ent_ret/std_ret) and MA-26 (WAYPRED_BITS/SEL) await TI; TI-484 (ECC inject) landed 0767fe1c.
+
+## Settled since the handoff (MA tab rev 119-122)
+- MI-2 settled (AR 392, Common tab rev 9): 64 KiB pages, 3 levels 6/13/13 (VA[47:42], [41:29],
+  [28:16]), 512 B root, 64 KiB nodes, 8 B PTE (V/W/X bits 0-2, PPN 47:16), leaf-only TLB,
+  identity translation, PTE value unused. Base is a CSR (CRU's, address TI's): model holds
+  Pending::kWalkBase and must assert no kernel address falls in Walker::span(). PTE width and
+  per-level extra latency are params (AR 391, extra 0). TLB cold at each kernel start.
+  .global with VA[63:48] set or < 0 is F-ADDR in A2 before any walk; .shared not translated.
+  Walk V=0: F-ADDR (data), store/atomic W=0: F-RO.
+- AR 390 / OA-442: a way mispredict is NOT a late hit at due+1: it takes the bank-conflict
+  loser's path, data due+2 at the earliest, answered as a miss. miu-impl.md updated (re-read
+  its bins from MA's branch before building that bin).
+- MI-2 needs a closing line in the MI tab (adopted) with the next MI tab write.
 
 ## Open work, most urgent first
 1. MI-1 (MI tab rev 2) asks TI for makeMiu (CCV_MIU_IMPL=model), blocks.list lines,

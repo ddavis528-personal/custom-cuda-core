@@ -12,8 +12,8 @@
 //                 entries and STDATA store-data entries a bank, reset full.
 //   Tlb           32 entries, fully associative, LRU (MA-8).
 //   Walker        one page-table walker shared with FET's ITLB (MA-8), one
-//                 walk at a time, each level one dependent DCU read (MI-2's
-//                 proposed default until MA answers).
+//                 walk at a time, each level one dependent DCU read, in the
+//                 Common tab's format (MI-2, AR 391, AR 392).
 //
 // Sizes are constructor arguments: the block passes the generated params
 // where they exist and the named defaults below where TI has not added
@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <utility>
 #include <vector>
 
 namespace ccv {
@@ -36,8 +37,12 @@ struct Pending {
   static constexpr unsigned kBankStdata = 12;   ///< CCV_DCU_BANK_STDATA (MA-25)
   static constexpr unsigned kWayPredBits = 5;   ///< CCV_DCU_WAYPRED_BITS (MA-26)
   static constexpr unsigned kTlbEntries = 32;   ///< MIU tab, Structures (MA-8)
-  static constexpr unsigned kWalkLevels = 2;    ///< MI-2's proposal
-  static constexpr uint64_t kWalkBase = uint64_t(0xF0) << 40;   ///< MI-2: a table region no kernel touches
+  static constexpr unsigned kWalkBits[3] = {6, 13, 13};   ///< Common tab rev 9 (AR 392), root first
+  static constexpr unsigned kPteBytes = 8;      ///< AR 391: a model parameter
+  static constexpr unsigned kWalkExtra = 0;     ///< AR 391: cycles a level adds past its read
+  /// The page-table base CSR's value (CRU's, its address TI's): a region no
+  /// kernel touches, which the block asserts (MI-2).
+  static constexpr uint64_t kWalkBase = uint64_t(0xF0) << 40;
   static constexpr unsigned kDrainWait = 16;    ///< N_drain (MA-11)
 };
 
@@ -191,16 +196,39 @@ private:
 };
 
 /// The page-table walker (MA-8): one, shared by the data side and FET's
-/// ITLB, one walk at a time, the oldest request first. A walk is `levels`
-/// dependent reads; the block sends each when wantRead() names it and a
-/// slot no first pass uses is free, and reports its answer with got().
-/// Requests for a page already waiting or walking merge.
+/// ITLB, one walk at a time, the oldest request first. The format is the
+/// specs doc's Common tab (AR 392, rev 9): 64 KiB pages, three levels
+/// indexed by VA[47:42], VA[41:29] and VA[28:16] (6, 13 and 13 bits), each
+/// level one dependent PTE read; a 512-byte root and 64 KiB nodes. The
+/// translation is the identity and the PTE's value is unused (MI-2), so the
+/// nodes sit where an identity table laid out from the base would put them:
+/// the root at the base, then every middle node, then every leaf node, each
+/// a 64 KiB page. The block sends each read when wantRead() names it on a
+/// slot no first pass uses, and reports its answer with got(). Requests for
+/// a page already waiting or walking merge.
 class Walker {
 public:
   enum Src : unsigned { kData = 1, kItlb = 2 };
 
-  Walker(unsigned levels, uint64_t base, unsigned page_shift)
-      : levels_(levels), base_(base), shift_(page_shift) {}
+  /// `bits`: each level's index width, root first. `extra`: cycles each
+  /// level waits past its read's answer (AR 391; 0, a level costs its read).
+  Walker(std::vector<unsigned> bits, uint64_t base, unsigned page_shift,
+         unsigned pte_bytes = 8, unsigned extra = 0)
+      : bits_(std::move(bits)), base_(base), shift_(page_shift), pte_(pte_bytes),
+        extra_(extra) {}
+
+  unsigned levels() const { return unsigned(bits_.size()); }
+  unsigned vpnBits() const {
+    unsigned n = 0;
+    for (unsigned b : bits_) n += b;
+    return n;
+  }
+  /// The bytes the tables span from the base: what no kernel may touch.
+  uint64_t span() const {
+    uint64_t nodes = 0, at = 1;
+    for (unsigned l = 0; l + 1 < bits_.size(); ++l) { at <<= bits_[l]; nodes += at; }
+    return (uint64_t(1) << shift_) * (1 + nodes);
+  }
 
   /// Ask for vpn's translation. A request for a page already queued or in
   /// walk adds its source and starts nothing new.
@@ -217,32 +245,48 @@ public:
   bool busy() const { return busy_; }
   bool idle() const { return !busy_ && q_.empty(); }
 
-  /// Start the next walk if none is in flight. Call once a cycle.
+  /// One cycle: a level's extra wait counts down, and the next walk starts
+  /// if none is in flight. Call once a cycle, before wantRead().
   void cycle() {
     if (busy_) ++busy_cycles_;
+    if (wait_) --wait_;
     if (busy_ || q_.empty()) return;
     cur_ = q_.front();
     q_.pop_front();
     busy_ = true;
     level_ = 0;
     sent_ = false;
+    wait_ = 0;
     ++walks_;
   }
-  /// The read the walk needs now, if one is due and not yet sent: the
-  /// 8-byte entry of this level's 16-bit index (MI-2's default format).
+  /// The read the walk needs now, if one is due and not yet sent: this
+  /// level's PTE in its node.
   bool wantRead(uint64_t &addr) const {
-    if (!busy_ || sent_) return false;
-    const unsigned bits = 16;
-    const unsigned at = shift_ + bits * (levels_ - 1 - level_);
-    const uint64_t idx = (cur_.vpn << shift_ >> at) & ((uint64_t(1) << bits) - 1);
-    addr = base_ + (uint64_t(level_) << 24) + idx * 8;
+    if (!busy_ || sent_ || wait_) return false;
+    addr = pteAddr(cur_.vpn, level_);
     return true;
   }
+  /// The PTE address of `vpn` at `level`, from the layout above.
+  uint64_t pteAddr(uint64_t vpn, unsigned level) const {
+    // The node: the root, else its index among this level's nodes, after
+    // every node of the levels above.
+    uint64_t node = 0, before = 1, at = 1;
+    unsigned used = 0;
+    for (unsigned l = 0; l < level; ++l) {
+      used += bits_[l];
+      at <<= bits_[l];
+      if (l + 1 < level) before += at;
+    }
+    if (level) node = before + (vpn >> (vpnBits() - used));
+    const unsigned below = vpnBits() - used - bits_[level];
+    const uint64_t idx = (vpn >> below) & ((uint64_t(1) << bits_[level]) - 1);
+    return base_ + (node << shift_) + idx * pte_;
+  }
   void sent() { sent_ = true; }
-  /// This level's read is back. True when the walk is done: done() names it.
+  /// This level's read is back. True when the walk is done: doneVpn() names it.
   bool got() {
     sent_ = false;
-    if (++level_ != levels_) return false;
+    if (++level_ != bits_.size()) { wait_ = extra_; return false; }
     busy_ = false;
     done_ = cur_;
     return true;
@@ -257,13 +301,13 @@ public:
 
 private:
   struct Req { uint64_t vpn = 0; unsigned src = 0; };
-  unsigned levels_;
+  std::vector<unsigned> bits_;
   uint64_t base_;
-  unsigned shift_;
+  unsigned shift_, pte_, extra_;
   std::deque<Req> q_;
   Req cur_, done_;
   bool busy_ = false, sent_ = false;
-  unsigned level_ = 0;
+  unsigned level_ = 0, wait_ = 0;
   uint64_t walks_ = 0, busy_cycles_ = 0, itlb_waits_ = 0;
 };
 

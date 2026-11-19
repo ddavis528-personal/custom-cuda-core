@@ -81,35 +81,59 @@ static void tlb() {
   CHECK(t.hits() == 1 && t.misses() == 4);
 }
 
-// MA-8 with MI-2's default: one walk at a time, oldest first, two dependent
-// reads, requests for one page merged, FET's wait behind a data walk counted.
+// MA-8 in the Common tab's format (AR 392): one walk at a time, oldest
+// first, three dependent PTE reads at 6/13/13 bits, requests for one page
+// merged, FET's wait behind a data walk counted, AR 391's extra latency.
 static void walker() {
-  Walker w(2, uint64_t(0xF0) << 40, 16);
+  const uint64_t base = uint64_t(0xF0) << 40, pg = uint64_t(1) << 16;
+  Walker w({6, 13, 13}, base, 16);
+  CHECK(w.levels() == 3 && w.vpnBits() == 32);
+  CHECK(w.span() == pg * (1 + 64 + 64 * 8192));
+  // VA 0x0000_8123_4567_0000: VPN 0x81234567; root idx VA[47:42] = 0x20,
+  // middle VA[41:29] = 0x91a, leaf VA[28:16] = 0x0567.
+  const uint64_t vpn = 0x81234567;
+  CHECK((vpn >> 26) == 0x20 && ((vpn >> 13) & 0x1fff) == 0x91a && (vpn & 0x1fff) == 0x567);
   uint64_t a = 0;
   CHECK(w.idle() && !w.wantRead(a));
-  w.request(0x12345, Walker::kData);
+  w.request(vpn, Walker::kData);
   w.request(0x777, Walker::kItlb);      // waits behind the data walk
-  w.request(0x12345, Walker::kItlb);    // merges into the queued data walk
+  w.request(vpn, Walker::kItlb);        // merges into the queued data walk
   w.cycle();
   CHECK(w.busy() && w.wantRead(a));
-  CHECK(a == (uint64_t(0xF0) << 40) + 0x0001 * 8);   // level 0: VPN bits [31:16]
+  CHECK(a == base + 0x20 * 8);          // the root: 64 entries at the base
   w.sent();
   CHECK(!w.wantRead(a));                // one read in flight at a time
   w.cycle();
-  CHECK(!w.got());                      // level 0 back: not done
+  CHECK(!w.got());                      // root back: not done
   CHECK(w.wantRead(a));
-  CHECK(a == (uint64_t(0xF0) << 40) + (uint64_t(1) << 24) + 0x2345 * 8);
+  CHECK(a == base + pg * (1 + 0x20) + 0x91a * 8);   // middle node 0x20
   w.sent();
-  CHECK(w.got());                       // level 1 back: done
-  CHECK(w.doneVpn() == 0x12345 && w.doneSrc() == (Walker::kData | Walker::kItlb));
+  CHECK(!w.got());
+  CHECK(w.wantRead(a));
+  CHECK(a == base + pg * (1 + 64 + ((vpn >> 13))) + 0x567 * 8);   // leaf node
+  CHECK(a < base + w.span());
+  w.sent();
+  CHECK(w.got());                       // leaf back: done
+  CHECK(w.doneVpn() == vpn && w.doneSrc() == (Walker::kData | Walker::kItlb));
   w.cycle();                            // the ITLB's walk starts next
   CHECK(w.busy() && w.walks() == 2);
-  w.sent();
-  w.got();
+  for (int l = 0; l != 2; ++l) { w.sent(); CHECK(!w.got()); }
   w.sent();
   CHECK(w.got() && w.doneVpn() == 0x777 && w.doneSrc() == Walker::kItlb);
   CHECK(w.itlbWaits() == 1);
   CHECK(w.idle());
+  // AR 391: an extra cycle a level holds the next read back that long.
+  Walker x({6, 13, 13}, base, 16, 8, 2);
+  x.request(1, Walker::kData);
+  x.cycle();
+  CHECK(x.wantRead(a));
+  x.sent();
+  CHECK(!x.got());
+  CHECK(!x.wantRead(a));                // waiting its extra cycles
+  x.cycle();
+  CHECK(!x.wantRead(a));
+  x.cycle();
+  CHECK(x.wantRead(a));
 }
 
 int main() {
