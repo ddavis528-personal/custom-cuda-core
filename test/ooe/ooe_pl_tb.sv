@@ -28,6 +28,7 @@ module ooe_pl_tb #(
   output logic [K-1:0]     iss_v_cq03h,
   output logic [K*IW-1:0]  iss_pay_cq04h,
   // ooe_mempl
+  input  logic             mgl_cq01h,
   input  logic             dsc_l_cq01h,
   input  logic [NS-1:0]    mlv_cq02h,
   input  logic [NS*NS-1:0] lfp_cq02h,
@@ -58,6 +59,6 @@ module ooe_pl_tb #(
   ooe_rcupl #(.NS(NS)) u_rcupl (
     .ooe_core_clk, .ooe_rst_r00h, .gnt_l_cq01h, .lv_cq02h, .le_cq02h, .pe_cq03h, .iss_v_cq03h, .iss_pay_cq04h);
   ooe_mempl #(.NS(NS)) u_mempl (
-    .ooe_core_clk, .ooe_rst_r00h, .gnt_l_cq01h, .dsc_l_cq01h, .lv_cq02h(mlv_cq02h), .lfp_cq02h, .cok_cq02h,
+    .ooe_core_clk, .ooe_rst_r00h, .mgl_cq01h, .dsc_l_cq01h, .lv_cq02h(mlv_cq02h), .lfp_cq02h, .cok_cq02h,
     .dv_cq02h, .pe_cq03h(mpe_cq03h), .pm_cq03h, .pi_cq03h, .pd_cq03h, .mv_cq03h, .mo_pay_cq04h);
 endmodule

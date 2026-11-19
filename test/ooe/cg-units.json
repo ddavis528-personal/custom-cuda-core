@@ -145,6 +145,40 @@
       }
     },
     {
+      "name": "ooe_rcupl",
+      "module": "ooe_rcupl",
+      "files": [
+        "rtl/ooe/ooe_rcupl.sv"
+      ],
+      "params": {
+        "NS": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rcupl {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_pl_tb.u_rcupl"
+      }
+    },
+    {
+      "name": "ooe_mempl",
+      "module": "ooe_mempl",
+      "files": [
+        "rtl/ooe/ooe_mempl.sv"
+      ],
+      "params": {
+        "NS": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_mempl {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_pl_tb.u_mempl"
+      }
+    },
+    {
       "name": "ooe_freelist_gpr",
       "module": "ooe_freelist",
       "files": [

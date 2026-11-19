@@ -29,8 +29,8 @@
 // select's grants or credits; others are skipped and counted.
 //
 // Negative controls (PL_CONTROL=<name>) must be caught: no-gnt-lead (the
-// grant register's lead never comes), no-dsc-lead (nor the discard's),
-// early-pe (the late read a cycle early: the grant's own cycle), no-cok
+// grant register's lead never comes), no-mem-lead (nor the memop grant's),
+// no-dsc-lead (nor the discard's), early-pe (the late read a cycle early: the grant's own cycle), no-cok
 // (every pipe credited) and no-fp (the lead read's footprint zero: no
 // continuations, every memop on P0).
 //
@@ -330,12 +330,16 @@ void fail(const char *what, unsigned slot, const char *field, uint64_t rtl, uint
 bool busy(const Cycle &c) {
   return !c.iss.empty() || std::any_of(c.mo.begin(), c.mo.end(), [](const Mo &m) { return m.x.mem_op != 0xF; });
 }
+bool hasMemop(const Cycle &c) {
+  return std::any_of(c.mo.begin(), c.mo.end(), [](const Mo &m) { return m.x.mem_op != 0xF; });
+}
 bool hasDsc(const Cycle &c) {
   return std::any_of(c.mo.begin(), c.mo.end(), [](const Mo &m) { return m.x.mem_op == 0xF; });
 }
 
 void clearInputs() {
   dut->gnt_l_cq01h = 0;
+  dut->mgl_cq01h = 0;
   dut->dsc_l_cq01h = 0;
   dut->lv_cq02h = 0;
   dut->mlv_cq02h = 0;
@@ -402,6 +406,7 @@ void drive(const Cycle &c, const Cycle *nx) {
   else driveLate(prev_cy, prev_home);
   // The next cycle's leads.
   dut->gnt_l_cq01h = nx && busy(*nx) && control != "no-gnt-lead";
+  dut->mgl_cq01h = nx && hasMemop(*nx) && control != "no-mem-lead";
   dut->dsc_l_cq01h = nx && hasDsc(*nx) && control != "no-dsc-lead";
   tick();
 

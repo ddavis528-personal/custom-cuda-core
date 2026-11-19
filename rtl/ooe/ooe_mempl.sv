@@ -16,9 +16,9 @@
 // every memop off P0 (ooe_sched's busy), so no slot takes two.
 //
 // As in ooe_rcupl, two registers: the slot's valid and its source, on the
-// grant register's lead or the discard's (each flopped here, CG-5),
-// cleared a cycle on behind a cycle with none; and a cycle later the
-// payload, from the late read of the source's entry (its ooe_ent_t, its
+// memop grant's lead or the discard's (each flopped here, CG-5),
+// cleared a cycle on behind a cycle with none; and a cycle later each
+// slot's payload, loaded only when the slot is valid, from the late read of the source's entry (its ooe_ent_t, its
 // ooe_mem_t and its RS index) or the discard's fields.
 //
 // The reference is the model's memops (Core's out.memops) formatted as
@@ -39,7 +39,7 @@ module ooe_mempl #(
 ) (
   input  logic             ooe_core_clk,
   input  logic             ooe_rst_r00h,
-  input  logic             gnt_l_cq01h,  // ooe_sched's grant register may change at the next edge
+  input  logic             mgl_cq01h,    // ooe_sched may grant a memop at the next edge (a lead; a superset will do)
   input  logic             dsc_l_cq01h,  // a bulk discard may take P0 at the next edge
   input  logic [NS-1:0]    lv_cq02h,     // P home h is a granted MIU entry's
   input  logic [NS*NS-1:0] lfp_cq02h,    // its footprint (the lead read)
@@ -57,9 +57,11 @@ module ooe_mempl #(
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
 
-  // The enables, from this module's own flops (CG-5): the grant
-  // register's lead and the discard's; the payload register's a cycle on,
-  // which also clears the valids behind a cycle with none.
+  // The enables, from this module's own flops (CG-5): the memop grant's
+  // lead and the discard's, and either a cycle on, which clears the
+  // valids behind a cycle with none. Only the memop grant's lead, not the
+  // grant register's: memops are a few of the grants, and the valids'
+  // gate would idle on the rest.
   logic gen_cq02h, den_cq02h, pay_en_cq03h, dq_cq03h;
   logic ld_en_cq02h;
   always_ff @(posedge ooe_core_clk) begin
@@ -68,7 +70,7 @@ module ooe_mempl #(
       den_cq02h    <= 1'b0;
       pay_en_cq03h <= 1'b0;
     end else begin
-      gen_cq02h    <= gnt_l_cq01h;
+      gen_cq02h    <= mgl_cq01h;
       den_cq02h    <= dsc_l_cq01h;
       pay_en_cq03h <= ld_en_cq02h;
     end
@@ -100,23 +102,30 @@ module ooe_mempl #(
       bad_cq02h = bad_cq02h || (lv_cq02h[h] && (lfp_cq02h[h * NS +: NS] & cok_cq02h) == '0);
   end
   `CCV_ASSERT(memop_slot, !ld_en_cq02h || !bad_cq02h)
+  // A granted memop came with its lead, and a discard with its own.
+  `CCV_ASSERT(memop_lead, rst_r01h || ((lv_cq02h == '0 || gen_cq02h) && (!dv_cq02h || den_cq02h)))
 
-  // The valid register and each slot's source.
+  // The valid register, each slot's source, and the payload's enable per
+  // slot (a copy of the valid: a register that drives an output starts no
+  // other path), all under one gate: loaded on a memop grant or a discard,
+  // cleared the cycle after one with none behind it.
+  logic             vld_en_cq02h;
   logic [NS*NS-1:0] selq_cq03h;
+  (* keep *) logic [NS-1:0] pv_cq03h;
+  assign vld_en_cq02h = ld_en_cq02h || pay_en_cq03h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
-      mv_cq03h <= '0;
-      dq_cq03h <= 1'b0;
-    end else if (ld_en_cq02h) begin
-      mv_cq03h <= v_cq02h;
-      dq_cq03h <= dv_cq02h;
-    end else if (pay_en_cq03h) begin
-      mv_cq03h <= '0;
-      dq_cq03h <= 1'b0;
+      mv_cq03h   <= '0;
+      pv_cq03h   <= '0;
+      dq_cq03h   <= 1'b0;
+      selq_cq03h <= '0;
+    end else if (vld_en_cq02h) begin
+      mv_cq03h   <= ld_en_cq02h ? v_cq02h : '0;
+      pv_cq03h   <= ld_en_cq02h ? v_cq02h : '0;
+      dq_cq03h   <= ld_en_cq02h && dv_cq02h;
+      selq_cq03h <= ld_en_cq02h ? sel_cq02h : '0;
     end
   end
-  always_ff @(posedge ooe_core_clk)
-    if (ld_en_cq02h) selq_cq03h <= sel_cq02h;
 
   // The payload register: the source's fields, or the discard's on P0.
   for (genvar s = 0; s < NS; s++) begin : g_slot
@@ -206,8 +215,11 @@ module ooe_mempl #(
     logic                                         lf_cq04h;
     logic [1:0]                                   xs_cq04h;
     logic                                         xg_cq04h;
+    // Loaded only when this slot carries a memop or the discard.
+    logic pl_en_cq03h;
+    assign pl_en_cq03h = pv_cq03h[s];
     always_ff @(posedge ooe_core_clk)
-      if (pay_en_cq03h) begin
+      if (pl_en_cq03h) begin
         tg_cq04h <= d_cq03h ? dtg_cq03h : etg_cq03h;
         rw_cq04h <= d_cq03h ? '0 : erw_cq03h;
         ri_cq04h <= d_cq03h ? '0 : i_cq03h;
