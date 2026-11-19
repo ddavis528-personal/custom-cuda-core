@@ -74,6 +74,8 @@ it.
 | PF-49 | A latch-based physical register file | RCU | deferred (DA, 2026-11-02) |
 | PF-50 | Packed contiguous lanes for narrow ops | OOE, LANE, RCU, MIU, schema | deferred (DA, 2026-11-03) |
 | PF-51 | L1 hit latency that follows the configured L1 size | DCU, MIU, OOE, params | deferred (DA, 2026-11-15) |
+| PF-52 | An L1 hit at 7 by reading every way in parallel | DCU, MIU, params | deferred (DA rev 128, 2026-11-19) |
+| PF-53 | Rotating bank arbitration in the DCU | DCU | deferred (MA-24, 2026-11-19) |
 
 ## Entries
 
@@ -1603,3 +1605,43 @@ it.
   512 KiB (MA rev 66). The alternative is worth building if 512 KiB needs a
   slower hit than 64 or 128 KiB would, and a product configuration ships
   below 512 KiB. Owner: MA; raised by Daniel.
+
+### PF-52 An L1 hit at 7 by reading every way in parallel
+
+- **Now:** the L1 hits at 8 (`CCV_LAT_L1_HIT`). The set index rides
+  `ccv_miu_dcu_req` as a lead field (option B), and DCU reads one predicted
+  way: a 5-bit fold of the tag, choosing the most recent matching way
+  (`CCV_DCU_WAYPRED_BITS` = 5, `CCV_DCU_WAYPRED_SEL` = recent; Daniel, DA
+  rev 128, closing MA-23; defaults from AR 386).
+- **Alternative:** read all 8 ways' data in parallel with the tags and select
+  after the compare, which saves the prediction and a cycle: hit 7.
+- **Cost:** eight 1,024-bit data reads per lookup instead of one, at four
+  lookups a cycle, and an 8:1 1,024-bit select after the tag compare on the
+  hit path. That is most of the L1's dynamic power, and a select the 25 NGD
+  stage may not hold at 512 KiB.
+- **Gain:** measured closed-loop on MA's p1 model (af, q2, fixed arbitration,
+  strict; AR 381, AR 386), hit 7 against hit 8: cm32priv 1.00%, cm128priv
+  0.93%, cm32 0.06%, cm128 0.19%. At the defaults the prediction itself costs
+  nothing: no wrong way on cm32priv, cm32, cm128priv or cm128 (cm128 by RH,
+  10,919,661 right and none wrong).
+- **Signal:** a workload with a private working set per warp that hits L1
+  (the private CoreMarks), where each hit cycle costs about 1%, is shipped
+  at a power budget with room for the parallel read. A way-prediction miss
+  rate above zero at the defaults (`p1_wp_wrong`) would also argue for it.
+  Owner: MA; decided by Daniel.
+
+### PF-53 Rotating bank arbitration in the DCU
+
+- **Now:** a cycle's lookups that collide on a bank go in fixed slot order
+  (`CCV_P1_ARB` = fixed), and a loser waits at most `CCV_DCU_BANK_AGE`
+  cycles (AR 364). Store variant (b), `QDEPTH` 16, `DEFCAP` 12 (MA-24).
+- **Alternative:** rotate the slot priority each cycle (`CCV_P1_ARB` = rot).
+- **Cost:** a rotating pointer per bank and a rotated priority encode, about
+  a 4:1 rotation on the four request slots.
+- **Gain:** none measured. Strict closed loop, hit 7, q2 (AR's step (ii)
+  runs, 2026-11-18): store (b) cm32priv and cm128priv equal; cm32 +0.03%
+  slower; cm128 +0.02% slower. Store (af) cm128 +0.41% slower.
+- **Signal:** a workload where one request slot's bank-age expirations, or
+  its wait (`wmax`), grow while the others' do not, which would show fixed
+  order starving a slot. Owner: MA.
+
