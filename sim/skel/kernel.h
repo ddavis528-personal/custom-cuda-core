@@ -189,6 +189,8 @@ struct Kernel {
   /// CCV_DCU_UE_INJECT), and CRU took it (latched MACHINE_CHECK, asked RAU
   /// to kill every grid, wrote F-MACHINE into every live record).
   bool mce_raised = false, mce_taken = false;
+  bool mce_done = false;                 ///< RAU's machine-check kill has its acks
+  std::set<unsigned> ue_withheld;        ///< req_ids DCU withheld for a core-fatal UE
   /// A kill RAU has broadcast and not seen through: the owners whose ack at
   /// its epoch has not come (kFabs kill_ack order), else 0.
   uint32_t kill_unacked = 0;
