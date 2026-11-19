@@ -33,7 +33,7 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 382, OA 446, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
+OI 382, OA 448, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
 
 ## Trees and runs in flight
 - #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
@@ -67,6 +67,8 @@ OI 382, OA 446, TI 486, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (T
    mempl's 21-flop valid/source gate 97%/67% (medium/high), over its allowance: (a) DA waiver or (b) slot-indexed
    late read; check-cg fails mempl until answered. Left for #64: integrate with ooe_rs/trio (export reads, rs_idx,
    mem fields, mgl_cq01h from ooe_sched; remove the issue regs; folds #40/#42/#46); run-rtl.sh entry with controls.
+   OA 445: verdict lag absorbed, push oi-slot when ready; optional non-gating RH run (cm128priv, CCV_RAU_DEMOTE
+   forcing a few hundred demotes, slot_verdict_lag 0 vs 1). OA 446: OA declines (b), recommends (a) to DA (mempl waiver).
    #65 (4) decq credit return DONE locally (6fc15bec on oi-slot): ooe_decq output crd_cq02h[S*LC], per-slot frees
    registered beside frn; decq_tb checks per slot, control stale-credit-apart. check-cg/ngd for ooe_decq not yet run
    (gate was busy). Next: #65 (5a) ooe_redir.
