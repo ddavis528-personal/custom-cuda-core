@@ -120,14 +120,14 @@ module ooe_slot #(
   end
 
   // The gate: a lead, a slot in progress, a held demote, or a pulse to drop.
-  logic [S-1:0] busy_cq01h;
+  logic [S-1:0] busy_cq02h;
   always_comb
     for (int s = 0; s < S; s++)
-      busy_cq01h[s] = stq_cq02h[s * 3 +: 3] == DEMOTING || stq_cq02h[s * 3 +: 3] == DRAINING ||
+      busy_cq02h[s] = stq_cq02h[s * 3 +: 3] == DEMOTING || stq_cq02h[s * 3 +: 3] == DRAINING ||
                       stq_cq02h[s * 3 +: 3] == KILLING || dmhq_cq02h[s] || ntc_cq02h[s] || map_cq02h[s] ||
                       rel_cq02h[s] || drn_cq02h[s];
   logic sl_en_cq01h;
-  assign sl_en_cq01h = ev_q_cq01h || kl_q_cq01h || busy_cq01h != '0;
+  assign sl_en_cq01h = ev_q_cq01h || kl_q_cq01h || busy_cq02h != '0;
 
   // The alloc decode: each slot's free, and its other allocation (a launch
   // or a restore), at most one of each a cycle (AND-OR): a free and the
@@ -294,7 +294,7 @@ module ooe_slot #(
   `CCV_ASSERT_KNOWN_IF(al_known, al_v_cq01h != '0, {al_slot_cq01h, al_op_cq01h, al_warp_cq01h})
   `CCV_ASSERT_KNOWN_IF(dm_known, dm_v_cq01h != '0, dm_warp_cq01h)
   `CCV_ASSERT_KNOWN_IF(kill_known, kl_q_cq01h, {kill_mask_cq01h, kill_ep_cq01h})
-  `CCV_ASSERT_KNOWN_IF(lvl_known, busy_cq01h != '0 || ev_q_cq01h || kl_q_cq01h,
+  `CCV_ASSERT_KNOWN_IF(lvl_known, busy_cq02h != '0 || ev_q_cq01h || kl_q_cq01h,
                        {held_cq01h, lnd_cq01h, ath_cq01h, xr_cq01h})
   // Every allocation and demote comes under its lead.
   `CCV_ASSERT(ev_led, (al_v_cq01h == '0 && dm_v_cq01h == '0) || ev_q_cq01h)

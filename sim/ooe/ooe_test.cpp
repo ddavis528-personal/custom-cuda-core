@@ -3157,11 +3157,18 @@ std::vector<Bar> barsOf(const Env &e) {
 /// ccv_syu_ooe_rel; a diverged one holds nothing (FET parks its lanes), nor
 /// does an arrive, whose guard lanes come back on its done. The control
 /// bar-no-hold drops the hold, so a younger uop issues before the release.
+/// Both report forms run (OA 450): direct, and bar_pend's held report and
+/// one-a-cycle send; the control counts as caught only if both catch it.
 void testBarrier() {
+  bool caught_all = true;
+  for (const unsigned pend : {0u, 1u})
   for (const bool control : {false, true}) {
-    g_test = control ? "barrier held (control)" : "barrier held";
+    g_test = control ? (pend ? "barrier held, bar_pend (control)" : "barrier held (control)")
+                     : (pend ? "barrier held, bar_pend" : "barrier held");
     Config c = baseConfig();
     c.l1_spec = false;
+    c.bar_pend = pend;
+    c.bar_buf_depth = pend ? 2 : 0;   // ooe_rob_w's side buffer with bar_pend (OA 448 (3))
     c.inject_bar_no_hold = control;
     Env e(c); e.auto_bar_release = false;   // directed: the test releases
     e.keep_log = true;
@@ -3177,7 +3184,8 @@ void testBarrier() {
     const bool younger = issueCount(e, 3) != 0;
     if (control) {
       const bool caught = younger || !held;
-      std::printf("  %-24s %s\n", "control bar-no-hold", caught ? "caught" : "MISSED");
+      caught_all = caught_all && caught;
+      if (pend) std::printf("  %-24s %s\n", "control bar-no-hold", caught_all ? "caught" : "MISSED");
       EXPECT(caught, "dropping the hold should let a younger uop issue");
       continue;
     }
@@ -5095,7 +5103,8 @@ void testRedirectSendLag() {
     }
   }
   g_test = "redirect send lag (control)";
-  std::printf("  %-24s %s (%u pairs)\n", "control send-free-late", caught ? "caught" : "MISSED", caught);
+  std::printf("  send-free-late: %u pairs caught\n", caught);
+  std::printf("  %-24s %s\n", "control send-free-late", caught ? "caught" : "MISSED");
   EXPECT(caught, "frees a cycle behind their redirects should land on a dead checkpoint");
 }
 

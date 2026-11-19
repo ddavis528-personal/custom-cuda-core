@@ -2468,8 +2468,8 @@ module ooe_rob_w #(
     bhl_cq02h  = bwr_cq02h[bp_h_cq02h] ? bwh_cq02h[bp_h_cq02h] : (bp_hs_cq02h[bp_h_cq02h] && bh_q_cq02h && !br_q_cq02h);
     bgo_cq02h  = bgn_cq02h[0] && bp_rt_cq02h[bp_h_cq02h];
     for (int p = 0; p < BD; p++) begin
-      bp_v_nx_cq02h[p]  = (bp_v_cq02h[p] && !bsq_cq02h[p] && !(bgo_cq02h && p == int'(bp_h_cq02h))) || bwr_cq02h[p];
-      bp_rt_nx_cq02h[p] = (bp_rt_cq02h[p] && !(bgo_cq02h && p == int'(bp_h_cq02h))) || (bset_cq02h && p == int'(bp_h_cq02h));
+      bp_v_nx_cq02h[p]  = (bp_v_cq02h[p] && !bsq_cq02h[p] && !(bgo_cq02h && 1'(p) == bp_h_cq02h)) || bwr_cq02h[p];
+      bp_rt_nx_cq02h[p] = (bp_rt_cq02h[p] && !(bgo_cq02h && 1'(p) == bp_h_cq02h)) || (bset_cq02h && 1'(p) == bp_h_cq02h);
     end
     // The hold: set by its wait's allocation, cleared by the release of a
     // held report, its wait's squash, or the slot's release.
@@ -2502,43 +2502,43 @@ module ooe_rob_w #(
   // Each place's fields: written as its op's allocation lands, the masks
   // again as its done does, held as the window takes it.
   for (genvar gp = 0; gp < BD; gp++) begin : g_bp
-    logic [D-1:0]  wo;
-    logic [LD-1:0] wx;
-    logic [1:0]    wk;
-    logic [3:0]    wi;
-    logic [31:0]   wm;
-    logic          wg, wh;
+    logic [D-1:0]  wo_cq02h;
+    logic [LD-1:0] wx_cq02h;
+    logic [1:0]    wk_cq02h;
+    logic [3:0]    wi_cq02h;
+    logic [31:0]   wm_cq02h;
+    logic          wg_cq02h, wh_cq02h;
     always_comb begin
-      {wo, wx, wk, wi, wm, wg, wh} = '0;
+      {wo_cq02h, wx_cq02h, wk_cq02h, wi_cq02h, wm_cq02h, wg_cq02h, wh_cq02h} = '0;
       for (int j = 0; j < A; j++)
         if (bln_cq02h[gp * A + j]) begin
-          wo = wo | rotl(ast_cq02h[0 +: D], j);
-          for (int i = 0; i < D; i++) if (|(rotl(ast_cq02h[0 +: D], j) & (D'(1) << i))) wx = wx | LD'(i);
-          wk = wk | ask_cq02h[j * 2 +: 2];
-          wi = wi | asi_cq02h[j * 4 +: 4];
-          wm = wm | asg_cq02h[j * 32 +: 32];
-          wg = wg | asgd_cq02h[j];
-          wh = wh | ashs_cq02h[j];
+          wo_cq02h = wo_cq02h | rotl(ast_cq02h[0 +: D], j);
+          for (int i = 0; i < D; i++) if (|(rotl(ast_cq02h[0 +: D], j) & (D'(1) << i))) wx_cq02h = wx_cq02h | LD'(i);
+          wk_cq02h = wk_cq02h | ask_cq02h[j * 2 +: 2];
+          wi_cq02h = wi_cq02h | asi_cq02h[j * 4 +: 4];
+          wm_cq02h = wm_cq02h | asg_cq02h[j * 32 +: 32];
+          wg_cq02h = wg_cq02h | asgd_cq02h[j];
+          wh_cq02h = wh_cq02h | ashs_cq02h[j];
         end
     end
-    assign bwh_cq02h[gp] = wh;
+    assign bwh_cq02h[gp] = wh_cq02h;
     always_ff @(posedge ooe_core_clk) begin
       if (sb_en_cq02h) begin
         if (bwr_cq02h[gp]) begin
-          bp_oh_cq02h[gp * D +: D]   <= wo;
-          bp_ix_cq02h[gp * LD +: LD] <= wx;
-          bp_k_cq02h[gp * 2 +: 2]    <= wk;
-          bp_id_cq02h[gp * 4 +: 4]   <= wi;
-          bp_im_cq02h[gp * 32 +: 32] <= wm;
-          bp_gd_cq02h[gp]            <= wg;
-          bp_hs_cq02h[gp]            <= wh;
+          bp_oh_cq02h[gp * D +: D]   <= wo_cq02h;
+          bp_ix_cq02h[gp * LD +: LD] <= wx_cq02h;
+          bp_k_cq02h[gp * 2 +: 2]    <= wk_cq02h;
+          bp_id_cq02h[gp * 4 +: 4]   <= wi_cq02h;
+          bp_im_cq02h[gp * 32 +: 32] <= wm_cq02h;
+          bp_gd_cq02h[gp]            <= wg_cq02h;
+          bp_hs_cq02h[gp]            <= wh_cq02h;
           bp_gm_cq02h[gp * 32 +: 32] <= '1;
           bp_pm_cq02h[gp * 32 +: 32] <= '0;
         end else if (bdn_cq02h[gp]) begin
           if (bp_gd_cq02h[gp])            bp_gm_cq02h[gp * 32 +: 32] <= bo_mask_cq02h;
           if (bp_k_cq02h[gp * 2 +: 2] == 2'd2) bp_pm_cq02h[gp * 32 +: 32] <= bo_aux_cq02h;
         end
-        if (bset_cq02h && gp == int'(bp_h_cq02h)) bp_hl_cq02h[gp] <= bhl_cq02h;
+        if (bset_cq02h && g1'(p) == bp_h_cq02h) bp_hl_cq02h[gp] <= bhl_cq02h;
       end
     end
   end
