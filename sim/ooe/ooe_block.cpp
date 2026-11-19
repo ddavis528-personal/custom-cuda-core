@@ -494,7 +494,6 @@ private:
         if (taken.count(s)) { held.insert(w); continue; }
         if (held.count(w) || oldest[w] != std::make_tuple(r->front().arrived, s, size_t(0)))
           continue;
-        if ((core_.config().rx_lag & 64) && r->front().arrived + 1 > now_) continue;
         if (best < 0 || r->front().arrived < when) { best = int(s); when = r->front().arrived; }
       }
       if (best < 0) return;

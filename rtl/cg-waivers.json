@@ -197,6 +197,17 @@
    "by": "OI (Daniel's ruling on RI-14)",
    "date": "2026-11-13",
    "credit": true
+  },
+  {
+   "module": "ooe_decrx",
+   "rule": "CG-1",
+   "target": "enq_slot_cq02h",
+   "max_flops": 12,
+   "measured_flops": 12,
+   "lead": true,
+   "by": "OI (OA 434; Daniel's ruling on RI-15, RA rev 87)",
+   "date": "2026-11-18",
+   "why": "decq's enq slot, flopped every cycle on the edge the uop's payload lands (2 bits a port, 6 ports at E=6, S=4). DA chose the lead-field form (DA rev 127; AR 380, OA 433): ooe_decrx computes the keep and its slot in the lead cycle from ccv_dec_ooe_uop's lead fields (warp_id, fetch_epoch) beside each slot's valid, so the verdict is an interface lead signal held for the payload's cycle. Nothing earlier names the arrival, so its only enable would be the lead valid, an input (CG-5); gated on it the 12 flops would see that valid's 50-55% activity. enq_v (6) and ev_q (1) fill the module's own allowance (7). Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109): module-level CG waivers for interface lead signals, each flop charged to the OOE block's per-instance 2% (OA 434, re:OI-170)."
   }
  ]
 }

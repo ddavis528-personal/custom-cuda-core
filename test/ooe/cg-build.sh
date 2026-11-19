@@ -42,6 +42,12 @@ case "$unit" in
     vl ooe_decq "-GS=$slots -GQ=$dq -GD=$dqw -GE=$uops -GR=$width -GP=16" \
       "-DDQ_S=$slots -DDQ_Q=$dq -DDQ_D=$dqw -DDQ_E=$uops -DDQ_R=$width" \
       "$PWD/rtl/ooe/ooe_decq.sv" "$PWD/test/ooe/decq_tb.cpp" ;;
+  ooe_decrx)
+    slots=$(val CCV_TIER1_WARPS) ep=$(val CCV_P_W_FETCH_EPOCH)
+    uops=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_dec_ooe_uop'))")
+    vl ooe_decrx_tb "-GS=$slots -GE=$uops -GNW=32 -GEP=$ep" "-DRX_S=$slots -DRX_E=$uops" \
+      "$PWD/rtl/ooe/ooe_decrx.sv" "$PWD/rtl/ooe/ooe_decrx_keep.sv" "$PWD/test/ooe/ooe_decrx_tb.sv" \
+      "$PWD/test/ooe/decrx_tb.cpp" ;;
   ooe_freelist_gpr|ooe_freelist_gsec|ooe_freelist_pred|ooe_freelist_gsec_fs1|ooe_freelist_pred_fs1)
     # _fs1: one free source, as ooe_rename instantiates them at its own unit's FS (TI 397, re:RI-25).
     fs=""; case $unit in *_fs1) fs=1 unit=${unit%_fs1} ;; esac

@@ -253,11 +253,38 @@ if out=$("$dir/decq_tb" "$seeds" 2>&1); then
 else
   say "decq == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in drop-flush enq-swap no-enq-lead no-take-enable no-free-lag; do
+for c in drop-flush enq-swap no-enq-lead no-take-enable no-free-lag keep-across-flush; do
   if DECQ_CONTROL=$c "$dir/decq_tb" 3 >/dev/null 2>&1; then
     say "  control $c (decq)" "MISSED"; fail=1
   else
     say "  control $c (decq)" "caught"
+  fi
+done
+
+# ooe_decrx (OA 428) and its arrival compare, ooe_decrx_keep, driven from
+# the model's arrival log (Core::rxLog) before every cycle.
+epbits=$(sed -n 's/.*localparam int CCV_P_W_FETCH_EPOCH = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+dir=build/ooe-rtl/decrx
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace -GS="$slots" -GE="$uops" -GNW=32 -GEP="$epbits" --top-module ooe_decrx_tb \
+      --Mdir "$dir" -o decrx_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DRX_S=$slots -DRX_E=$uops -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_decrx.sv" "$PWD/rtl/ooe/ooe_decrx_keep.sv" \
+      "$PWD/test/ooe/ooe_decrx_tb.sv" "$PWD/test/ooe/decrx_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "decrx: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/decrx_tb" "$seeds" 2>&1); then
+  say "decrx ($slots slots, $uops in, $epbits-bit epochs) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "decrx == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in adv-late late-lead no-adv-bypass no-double keep-stale no-ev-lead no-rel; do
+  if DECRX_CONTROL=$c "$dir/decrx_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (decrx)" "MISSED"; fail=1
+  else
+    say "  control $c (decrx)" "caught"
   fi
 done
 
