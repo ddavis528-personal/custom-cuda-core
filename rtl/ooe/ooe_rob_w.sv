@@ -2502,36 +2502,36 @@ module ooe_rob_w #(
   // Each place's fields: written as its op's allocation lands, the masks
   // again as its done does, held as the window takes it.
   for (genvar gp = 0; gp < BD; gp++) begin : g_bp
-    logic [D-1:0]  wo_cq02h;
-    logic [LD-1:0] wx_cq02h;
-    logic [1:0]    wk_cq02h;
-    logic [3:0]    wi_cq02h;
-    logic [31:0]   wm_cq02h;
-    logic          wg_cq02h, wh_cq02h;
+    logic [D-1:0]  fwo_cq02h;
+    logic [LD-1:0] fwx_cq02h;
+    logic [1:0]    fwk_cq02h;
+    logic [3:0]    fwi_cq02h;
+    logic [31:0]   fwm_cq02h;
+    logic          fwg_cq02h, fwh_cq02h;
     always_comb begin
-      {wo_cq02h, wx_cq02h, wk_cq02h, wi_cq02h, wm_cq02h, wg_cq02h, wh_cq02h} = '0;
+      {fwo_cq02h, fwx_cq02h, fwk_cq02h, fwi_cq02h, fwm_cq02h, fwg_cq02h, fwh_cq02h} = '0;
       for (int j = 0; j < A; j++)
         if (bln_cq02h[gp * A + j]) begin
-          wo_cq02h = wo_cq02h | rotl(ast_cq02h[0 +: D], j);
-          for (int i = 0; i < D; i++) if (|(rotl(ast_cq02h[0 +: D], j) & (D'(1) << i))) wx_cq02h = wx_cq02h | LD'(i);
-          wk_cq02h = wk_cq02h | ask_cq02h[j * 2 +: 2];
-          wi_cq02h = wi_cq02h | asi_cq02h[j * 4 +: 4];
-          wm_cq02h = wm_cq02h | asg_cq02h[j * 32 +: 32];
-          wg_cq02h = wg_cq02h | asgd_cq02h[j];
-          wh_cq02h = wh_cq02h | ashs_cq02h[j];
+          fwo_cq02h = fwo_cq02h | rotl(ast_cq02h[0 +: D], j);
+          for (int i = 0; i < D; i++) if (|(rotl(ast_cq02h[0 +: D], j) & (D'(1) << i))) fwx_cq02h = fwx_cq02h | LD'(i);
+          fwk_cq02h = fwk_cq02h | ask_cq02h[j * 2 +: 2];
+          fwi_cq02h = fwi_cq02h | asi_cq02h[j * 4 +: 4];
+          fwm_cq02h = fwm_cq02h | asg_cq02h[j * 32 +: 32];
+          fwg_cq02h = fwg_cq02h | asgd_cq02h[j];
+          fwh_cq02h = fwh_cq02h | ashs_cq02h[j];
         end
     end
-    assign bwh_cq02h[gp] = wh_cq02h;
+    assign bwh_cq02h[gp] = fwh_cq02h;
     always_ff @(posedge ooe_core_clk) begin
       if (sb_en_cq02h) begin
         if (bwr_cq02h[gp]) begin
-          bp_oh_cq02h[gp * D +: D]   <= wo_cq02h;
-          bp_ix_cq02h[gp * LD +: LD] <= wx_cq02h;
-          bp_k_cq02h[gp * 2 +: 2]    <= wk_cq02h;
-          bp_id_cq02h[gp * 4 +: 4]   <= wi_cq02h;
-          bp_im_cq02h[gp * 32 +: 32] <= wm_cq02h;
-          bp_gd_cq02h[gp]            <= wg_cq02h;
-          bp_hs_cq02h[gp]            <= wh_cq02h;
+          bp_oh_cq02h[gp * D +: D]   <= fwo_cq02h;
+          bp_ix_cq02h[gp * LD +: LD] <= fwx_cq02h;
+          bp_k_cq02h[gp * 2 +: 2]    <= fwk_cq02h;
+          bp_id_cq02h[gp * 4 +: 4]   <= fwi_cq02h;
+          bp_im_cq02h[gp * 32 +: 32] <= fwm_cq02h;
+          bp_gd_cq02h[gp]            <= fwg_cq02h;
+          bp_hs_cq02h[gp]            <= fwh_cq02h;
           bp_gm_cq02h[gp * 32 +: 32] <= '1;
           bp_pm_cq02h[gp * 32 +: 32] <= '0;
         end else if (bdn_cq02h[gp]) begin
