@@ -72,8 +72,9 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   a6c7de10 with L1 HIT_BASE/HIT/WAKE/CMPL +1 (hit 8) + 6 gens + check-skel + cm128 oracle (build/ar-oracle). Waits for MA-8 part 2's
   .h1 cm128 then the cm128 lock: a.wp0 (WAYPRED=0), b.wp5recent (WAYPRED=5 WPSEL=recent); common STORE=af Q2 fixed STRICT=1 WAYS 8.
   Send AR cycles/finished/check_failures each + p1_wp_right/wrong for b (AR's earlier (a) 5,634,717). ~09:45Z. Logs ~/ccv-logs/ar386.
-- MA-8 part 1 DONE+SENT 07:20Z (a8 -0.09% best but worst wait 117 vs 96; a32/a64 +1%). Part 2 RUNNING: a8.h1 S1+cm128
-  (~08:05Z); compare vs a8 row; table1.md saved. Offered a16.h1 if MA prefers.
+- MA-8 part 1 DONE+SENT 07:20Z (a8 -0.09% best but worst wait 117 vs 96; a32/a64 +1%). Part 2 DONE+SENT 08:12Z: HASH=1 +2.90% cm128
+  (tail worse), S1 no kernel >1%; transp4 the only pow2-stride kernel, too light. No a16.h1 (outside ±0.2%). MA-8 DONE; worktree dropped;
+  logs ~/ccv-logs/ma8/11dc (table1.md, table2.md).
 - MA-8 from 04:25Z 11-19 (MA: MA-7 decided as MA-24 = b, q16, DEFCAP 12, GAP 5): rh-jobs/ma8/ma8.sh <sha> <tag> "<cm32>"
   "<cm128>" "<S1>" (suffix .aN BANK_AGE, .hN HASH, plus .gN .dN), worktree rh-ma8-11dc, logs ~/ccv-logs/ma8/11dc.
   Part 1: BANK_AGE 16 (ref, must = MA-7 d12 5,136,180), 8, 32, 64 on S1 + cm128 (~07:30Z). Part 2: HASH=1 at best age (or 16
