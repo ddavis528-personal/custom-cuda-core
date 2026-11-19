@@ -68,6 +68,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
   Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
+- AR 386 QUEUED 06:35Z (AR is a regular sender; MA first): rh-jobs/ar386/ar386.sh (no args, resumable), worktree rh-ar386 at
+  a6c7de10 with L1 HIT_BASE/HIT/WAKE/CMPL +1 (hit 8) + 6 gens + check-skel + cm128 oracle (build/ar-oracle). Waits for MA-8 part 2's
+  .h1 cm128 then the cm128 lock: a.wp0 (WAYPRED=0), b.wp5recent (WAYPRED=5 WPSEL=recent); common STORE=af Q2 fixed STRICT=1 WAYS 8.
+  Send AR cycles/finished/check_failures each + p1_wp_right/wrong for b (AR's earlier (a) 5,634,717). ~09:45Z. Logs ~/ccv-logs/ar386.
 - MA-8 RUNNING from 04:25Z 11-19 (MA: MA-7 decided as MA-24 = b, q16, DEFCAP 12, GAP 5): rh-jobs/ma8/ma8.sh <sha> <tag> "<cm32>"
   "<cm128>" "<S1>" (suffix .aN BANK_AGE, .hN HASH, plus .gN .dN), worktree rh-ma8-11dc, logs ~/ccv-logs/ma8/11dc.
   Part 1: BANK_AGE 16 (ref, must = MA-7 d12 5,136,180), 8, 32, 64 on S1 + cm128 (~07:30Z). Part 2: HASH=1 at best age (or 16
