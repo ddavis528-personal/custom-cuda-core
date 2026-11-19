@@ -73,8 +73,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 382 .626491, AR 383 .629108 (tab rev 386).
-  - **The next AR row inserts after .629108**, labelled AR 384.
+  - Latest rows: AR 383 .629108, AR 384 .631084 (tab rev 387).
+  - **The next AR row inserts after .631084**, labelled AR 385.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -92,8 +92,8 @@ Credit rules (TI-49):
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
 
-- **Bookmarks** (revs read through): AR 384, OA 436, TI 484, RA 156, RI 91,
-  IS 197, CP 160, OI 374, DA 127, MA 103, Conventions 19.
+- **Bookmarks** (revs read through): AR 384, OA 438, TI 485, RA 156, RI 91,
+  IS 197, CP 160, OI 377, DA 127, MA 104, Conventions 19.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -327,10 +327,10 @@ Credit rules (TI-49):
    - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
      TI does the bench configs (they need gen-oracle's LOAD) and the pin
      bump.
-000. **AR 383 (.629108, rev 386; TI/OA/OI/MA rung):** TI-485 kill races. (b) ropediv ruled FET side: FET spec rev 48, Checkpoints paragraph (drop ckpt_free bits for a killed slot from kill_valid to next launch; V-46 elsewhere). (a) atomics: MA agreed (MA rev 102-103, MIU tab rev 139: MIU drops a killed epoch's write and releases the hold); OOE withholding the write is OA's call, a saving only. Watch OA.
+000. **AR 384 (.631084, rev 387; TI+OA rung):** withdrew AR 383; adopted OA 436 for both kill races. (a) MIU keeps atomic pass state through A3, completes, releases hold; no OOE change. (b) FET clears a killed slot's checkpoints on OOE's epoch_only notice (A-58/A-60 ordering), V-46 no exception, FET kill_ack follows the notice (FET spec rev 49; asked OA to confirm that last point). Lesson: read the owner's latest row (OA) before ruling across a boundary.
 00. **AR 382 (.626491, rev 385; MA rung):** agreed MA-24 (store (b), QDEPTH 16, DEFCAP 12) on 4 conditions: refusal signalling (encoding or TI field), same-line order, refused store re-presented first (BANK_AGE bound), coverage bin + control. Also carries the L1 ECC note (speculative+replay). MA accepted all 4 (MA rev 101): MIU-held per-bank credits, hard reservation 16 entries/12 data, DCU credit-return pulse vector = a TI field after MA prices it. Closed for AR. WPSEL results still owed in AR 383.
 0. **TI-483 (TI rev 482, read; no ask of AR):** SECDED enc/syn/fix landed (b407ff71). Decode cannot share the rdata stage: either 2 flops (rdata, syndrome) or speculative use + replay on nonzero syndrome. L1 choice is MA's (CCV_LAT_L1_ECC=1 today); fold into AR 382: MA-23 closed loop prices +1 hit cycle at ~+1.0% cm32priv/cm128priv, ~+0.1% shared, so 2 flops ~+2% private -> favour speculative+replay for L1. AR's own arrays (FET I-cache, SPM, LANE RF) need the same choice in the owed specs.
-0a. **AR 381 (.623833; rev 384; MA rung):** MA-23 closed loop + CORRECTION (fold-3 99.13% assumed most-recent select; way-index select is 6.4% wrong on cm128priv). Asked MA for a select knob (index|recent) + k=5 in wayPredict; AR runs h8wp3/h8wp5 on cm128 + cm128priv once on MA branch. Offline replay: /home/user/ar-work/scripts/wpsim.py (files comma-joined, sets, folds). Results in ar-work/results/recovered-2026-11-18.md. Lane A done (rot + a points). MA's a6c7de10 WPSEL knob landed; lane C (ar-work/laneC.sh, binary wtw8, hit 8) results so far: recent select k3/k5 = 0 wrong on cm32priv, cm32, cm128priv (cycles = h8 no-WP); k5 index cm32priv 5,234 wrong, cm128priv k3 index 26,096 wrong (+0.53%). Remaining: cm128priv h8wp5index, cm128 x3 (lane C relaunched after the 11-19 container restart). Then tabulate and write AR 384 to MA (+DA): WPSEL table + full step (ii) table (pick b), notices, PF rows in perf-register (AR 373 (3)).
+0a. **AR 381 (.623833; rev 384; MA rung):** MA-23 closed loop + CORRECTION (fold-3 99.13% assumed most-recent select; way-index select is 6.4% wrong on cm128priv). Asked MA for a select knob (index|recent) + k=5 in wayPredict; AR runs h8wp3/h8wp5 on cm128 + cm128priv once on MA branch. Offline replay: /home/user/ar-work/scripts/wpsim.py (files comma-joined, sets, folds). Results in ar-work/results/recovered-2026-11-18.md. Lane A done (rot + a points). MA's a6c7de10 WPSEL knob landed; lane C (ar-work/laneC.sh, binary wtw8, hit 8) results so far: recent select k3/k5 = 0 wrong on cm32priv, cm32, cm128priv (cycles = h8 no-WP); k5 index cm32priv 5,234 wrong, cm128priv k3 index 26,096 wrong (+0.53%). Remaining: cm128priv h8wp5index, cm128 x3 (lane C relaunched after the 11-19 container restart). Then tabulate and write AR 385 to MA (+DA): WPSEL table + full step (ii) table (pick b), notices, PF rows in perf-register (AR 373 (3)).
 0b. **AR 380 (.622154; rev 383; TI, OI, OA rung):** approved OA 432, lead_fields [warp_id, fetch_epoch] on ccv_dec_ooe_uop; DEC spec line added (pending TI). Owed: watch TI apply it, OI benches + late-lead control, DA ruling on lead form vs +0.95% cycle. Lanes: lane A relaunched 06:33Z after restart (cm128 h8/h9/h8wp3, rot, a); lane B done; cm128priv_b_q0 skipped (memory).
 
 0c. **AR 375 (.609311; TI rung) and AR 376 (.612527; MA rung), rev 376-378.**
