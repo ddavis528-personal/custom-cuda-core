@@ -30,6 +30,7 @@ module ooe_rob_tb #(
   parameter int CW = 4,
   parameter int VA = 64,
   parameter int BS = ND - 2,
+  parameter int PWV = 0,           // OI-184's lag-1 redirect: the payload with the valid
   localparam int NSB = (NS > 0) ? NS : 1,
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LD = $clog2(D),
@@ -154,6 +155,10 @@ module ooe_rob_tb #(
   output logic [S*32-1:0]         rd_tmask_cq04h,
   output logic [S*PCW-1:0]        rd_tgt_cq04h,
   output logic [S-1:0]            rd_stay_cq04h,
+  output logic [S*LK-1:0]         rd_ckpt_cq03h,   // PWV: the payload in rd_l's cycle
+  output logic [S*32-1:0]         rd_tmask_cq03h,
+  output logic [S*PCW-1:0]        rd_tgt_cq03h,
+  output logic [S-1:0]            rd_stay_cq03h,
   output logic [S-1:0]            dc_v_cq03h,
   output logic [S*LD-1:0]         dc_br_cq03h,
   output logic [S*LD-1:0]         dc_disp_cq03h,
@@ -180,7 +185,7 @@ module ooe_rob_tb #(
     // registers, done here by the bench, which stands in for it.
     logic [A-1:0] fl_m_w;
     always_comb for (int l = 0; l < A; l++) fl_m_w[l] = fl_v_cq02h[l] && fl_slot_cq02h[l * LS +: LS] == LS'(w);
-    ooe_rob_w #(.SA(S), .WID(w), .D(D), .RP(RP), .A(A), .ND(ND), .NM(NM), .GW(GW), .GR(GR), .NG(NG), .NS(NS), .PW(PW), .NP(NP), .LB(LB), .LT(LT), .NK(NK), .PCW(PCW), .CW(CW), .VA(VA), .BS(BS)) u_w (
+    ooe_rob_w #(.SA(S), .WID(w), .D(D), .RP(RP), .A(A), .ND(ND), .NM(NM), .GW(GW), .GR(GR), .NG(NG), .NS(NS), .PW(PW), .NP(NP), .LB(LB), .LT(LT), .NK(NK), .PCW(PCW), .CW(CW), .VA(VA), .BS(BS), .PWV(PWV)) u_w (
       .ooe_core_clk, .ooe_rst_r00h,
       .al_l_cq01h(al_l_cq01h[w * ($bits(al_l_cq01h) / S) +: $bits(al_l_cq01h) / S]),
       .al_n_cq02h(al_n_cq02h[w * ($bits(al_n_cq02h) / S) +: $bits(al_n_cq02h) / S]),
@@ -267,6 +272,10 @@ module ooe_rob_tb #(
       .rd_tmask_cq04h(rd_tmask_cq04h[w * ($bits(rd_tmask_cq04h) / S) +: $bits(rd_tmask_cq04h) / S]),
       .rd_tgt_cq04h(rd_tgt_cq04h[w * ($bits(rd_tgt_cq04h) / S) +: $bits(rd_tgt_cq04h) / S]),
       .rd_stay_cq04h(rd_stay_cq04h[w * ($bits(rd_stay_cq04h) / S) +: $bits(rd_stay_cq04h) / S]),
+      .rd_ckpt_cq03h(rd_ckpt_cq03h[w * ($bits(rd_ckpt_cq03h) / S) +: $bits(rd_ckpt_cq03h) / S]),
+      .rd_tmask_cq03h(rd_tmask_cq03h[w * ($bits(rd_tmask_cq03h) / S) +: $bits(rd_tmask_cq03h) / S]),
+      .rd_tgt_cq03h(rd_tgt_cq03h[w * ($bits(rd_tgt_cq03h) / S) +: $bits(rd_tgt_cq03h) / S]),
+      .rd_stay_cq03h(rd_stay_cq03h[w * ($bits(rd_stay_cq03h) / S) +: $bits(rd_stay_cq03h) / S]),
       .dc_v_cq03h(dc_v_cq03h[w * ($bits(dc_v_cq03h) / S) +: $bits(dc_v_cq03h) / S]),
       .dc_br_cq03h(dc_br_cq03h[w * ($bits(dc_br_cq03h) / S) +: $bits(dc_br_cq03h) / S]),
       .dc_disp_cq03h(dc_disp_cq03h[w * ($bits(dc_disp_cq03h) / S) +: $bits(dc_disp_cq03h) / S]),
@@ -287,9 +296,10 @@ module ooe_rob_tb #(
       .bh_cq02h(bh_cq02h[w])
     );
   end
-  ooe_redir #(.S(S), .NK(NK), .PCW(PCW), .VA(VA), .WW(5), .EP(3)) u_redir (
+  ooe_redir #(.S(S), .NK(NK), .PCW(PCW), .VA(VA), .WW(5), .EP(3), .PWV(PWV)) u_redir (
     .ooe_core_clk, .ooe_rst_r00h,
     .rd_e_cq02h(rde_w & ~{S{lead_off[0]}}), .rd_l_cq03h, .rd_ckpt_cq04h, .rd_tmask_cq04h, .rd_tgt_cq04h, .rd_stay_cq04h,
+    .rd_ckpt_cq03h, .rd_tmask_cq03h, .rd_tgt_cq03h, .rd_stay_cq03h,
     .ckf_l_cq02h(ckl_w & ~{S{lead_off[1]}}), .ckf_cq03h, .wid_cq03h, .ep1_cq03h, .ntm_cq03h,
     .rdr_v_cq04h, .rdr_warp_cq05h, .rdr_t1_cq05h, .rdr_ckpt_cq05h, .rdr_tmask_cq05h, .rdr_tgt_cq05h,
     .rdr_ep_cq05h, .rdr_eo_cq05h(rdr_zero_cq05h[0]), .rdr_rw_cq05h(rdr_zero_cq05h[1]),

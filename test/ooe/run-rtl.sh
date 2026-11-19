@@ -440,6 +440,32 @@ if out=$(ROB_CONTROL=two-resolutions "$dir/rob_tb" 3 2>&1) || ! grep -q "one_res
 else
   say "  control two-resolutions (rob)" "caught"
 fi
+# OI-184's lag-1 redirect option (ooe_rob_w and ooe_redir at PWV=1): the
+# payload leaves with the valid, two cycles after the model's send, as the
+# model's redirect_send_lag=1 lands it. pwv-late checks it as the two-cycle
+# form; the redirect and free controls run again on this form.
+dir=build/ooe-rtl/rob-pwv
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace $(for kv in $rob_p PWV=1; do printf -- '-G%s ' "$kv"; done) --top-module ooe_rob_tb \
+      --Mdir "$dir" -o rob_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe $(for kv in $rob_p PWV=1; do printf -- '-DRB_%s ' "$kv"; done) -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/rtl/ooe/ooe_redir.sv" "$PWD/rtl/ooe/ooe_barpick.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "rob (PWV): builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$(ROB_MISPREDICT=1 "$dir/rob_tb" "$seeds" 2>&1) && grep -q "mismatches=0 model_failures=0" <<<"$out"; then
+  say "rob (PWV) == model, mispredicting" "PASS ($(grep '^rob_tb' <<<"$out" | sed 's/.*seeds=//'))"
+else
+  say "rob (PWV) == model, mispredicting" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in pwv-late redir-warp redir-epoch redir-ntm rd-unled ckf-unled; do
+  if ROB_MISPREDICT=1 ROB_CONTROL=$c "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
+    say "  control $c (rob PWV)" "MISSED"; fail=1
+  else
+    say "  control $c (rob PWV)" "caught"
+  fi
+done
 
 # ooe_wake, driven from the model's wake log after every cycle. Its
 # latencies, bypass points and penalties are the parameters'; the model's

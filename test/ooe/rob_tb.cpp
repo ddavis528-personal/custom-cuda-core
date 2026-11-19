@@ -124,8 +124,11 @@ void robConfig(Config &c) {
 
 namespace {
 constexpr unsigned NR = 4;
+#ifndef RB_PWV
+#define RB_PWV 0   // OI-184 lag-1 redirect form (ooe_redir PWV)
+#endif
 constexpr unsigned S = RB_S, D = RB_D, RP = RB_RP, A = RB_A, ND = RB_ND, NM = RB_NM, GW = RB_GW, GR = RB_GR,
-                   NG = RB_NG, NS = RB_NS, PW = RB_PW, NP = RB_NP, NK = RB_NK, PCW = RB_PCW, CW = RB_CW, LB = 6, LT = 3,
+                   NG = RB_NG, PWV = RB_PWV, NS = RB_NS, PW = RB_PW, NP = RB_NP, NK = RB_NK, PCW = RB_PCW, CW = RB_CW, LB = 6, LT = 3,
                    BS = ND - 2;   // RCU-only ops' fixed done slot (AR's RCU spec rev 14, OA rev 287)
 constexpr unsigned NSB = NS ? NS : 1;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
@@ -655,16 +658,20 @@ void checkRes(const Cyc *p1, const Cyc *p2) {
     for (unsigned b = 0; b != S * NK; ++b)
       if (getBit(dut->ckf_cq03h, b) != bool(ck[b])) fail("checkpoint free differs", b, getBit(dut->ckf_cq03h, b), ck[b]);
   }
-  if (p2)
-    for (const auto &q : p2->r.redirect) {
+  // PWV (OI-184's lag-1 option): ooe_rob_w's payload in rd_l's cycle (p1).
+  const Cyc *pp = PWV ? p1 : p2;
+  if (pp)
+    for (const auto &q : pp->r.redirect) {
       if (q.slot >= S) continue;
       const unsigned s = q.slot;
-      if (getField(dut->rd_ckpt_cq04h, s * LK, LK) != q.ckpt) fail("redirect checkpoint differs", s, getField(dut->rd_ckpt_cq04h, s * LK, LK), q.ckpt);
-      if (uint32_t(getField64(dut->rd_tmask_cq04h, s * 32, 32)) != q.taken_mask)
-        fail("redirect taken mask differs", s, unsigned(getField64(dut->rd_tmask_cq04h, s * 32, 32)), q.taken_mask);
-      if (getField64(dut->rd_tgt_cq04h, s * PCW, PCW) != (q.target & PCM))
-        fail("redirect target differs", s, unsigned(getField64(dut->rd_tgt_cq04h, s * PCW, PCW)), unsigned(q.target));
-      if (getBit(dut->rd_stay_cq04h, s) != q.stay) fail("redirect stay differs", s, getBit(dut->rd_stay_cq04h, s), q.stay);
+      const unsigned ck = PWV ? getField(dut->rd_ckpt_cq03h, s * LK, LK) : getField(dut->rd_ckpt_cq04h, s * LK, LK);
+      const uint32_t tm = uint32_t(PWV ? getField64(dut->rd_tmask_cq03h, s * 32, 32) : getField64(dut->rd_tmask_cq04h, s * 32, 32));
+      const uint64_t tg = PWV ? getField64(dut->rd_tgt_cq03h, s * PCW, PCW) : getField64(dut->rd_tgt_cq04h, s * PCW, PCW);
+      const bool st = PWV ? getBit(dut->rd_stay_cq03h, s) : getBit(dut->rd_stay_cq04h, s);
+      if (ck != q.ckpt) fail("redirect checkpoint differs", s, ck, q.ckpt);
+      if (tm != q.taken_mask) fail("redirect taken mask differs", s, unsigned(tm), q.taken_mask);
+      if (tg != (q.target & PCM)) fail("redirect target differs", s, unsigned(tg), unsigned(q.target));
+      if (st != q.stay) fail("redirect stay differs", s, st, q.stay);
     }
 }
 
@@ -826,7 +833,7 @@ void redirExpect(const Cyc &c) {
   }
   if (c.fmask) fq.push_back({c.n, c.fmask});
 }
-void checkRedir(unsigned long long n) {
+void checkRedirPay() {
   if (rpay) {
     rpay = false;
     const ccv::ooe::Redirect &e = rexp;
@@ -839,6 +846,17 @@ void checkRedir(unsigned long long n) {
     if (getBit(dut->rdr_stay_cq05h, 0) != e.stay) fail("redirect stay differs", e.slot, getBit(dut->rdr_stay_cq05h, 0), e.stay);
     if (getField(dut->rdr_zero_cq05h, 0, 5) != 0) fail("redirect 5b flag set", e.slot, getField(dut->rdr_zero_cq05h, 0, 5), 0);
   }
+  if (fpay) {
+    fpay = false;
+    for (unsigned b = 0; b != S * NK; ++b)
+      if (getBit(dut->ckf_m_cq05h, b) != bool(fexp >> b & 1)) { fail("ckpt free mask differs", b, getBit(dut->ckf_m_cq05h, b), unsigned(fexp >> b & 1)); break; }
+  }
+}
+// PWV: the payload with its valid; else a cycle later. Control pwv-late:
+// the PWV form checked as the two-cycle one.
+void checkRedir(unsigned long long n) {
+  const bool same = PWV && control != "pwv-late";
+  if (!same) checkRedirPay();
   if (dut->rdr_v_cq04h) {
     if (rdq.empty()) fail("redirect not in the model", 0, 1, 0);
     else {
@@ -856,15 +874,11 @@ void checkRedir(unsigned long long n) {
     fail("redirect missing", rdq.front().r.slot, unsigned(n), unsigned(rdq.front().n + 2));
     rdq.pop_front();
   }
-  if (fpay) {
-    fpay = false;
-    for (unsigned b = 0; b != S * NK; ++b)
-      if (getBit(dut->ckf_m_cq05h, b) != bool(fexp >> b & 1)) { fail("ckpt free mask differs", b, getBit(dut->ckf_m_cq05h, b), unsigned(fexp >> b & 1)); break; }
-  }
   while (!fq.empty() && fq.front().first + 2 < n) { fail("ckpt free missing", 0, unsigned(n), unsigned(fq.front().first + 2)); fq.pop_front(); }
   const bool want = !fq.empty() && fq.front().first + 2 == n;
   if (bool(dut->ckf_v_cq04h) != want) fail("ckpt free valid differs", 0, dut->ckf_v_cq04h, want);
   if (want) { fexp = fq.front().second; fpay = true; fq.pop_front(); ++ckf_sent; }
+  if (same) checkRedirPay();
 }
 // Each slot's warp and next epoch as ooe_decrx holds them, read in rd_l's
 // cycle: the bench drives the resolving slots' from the model's log.

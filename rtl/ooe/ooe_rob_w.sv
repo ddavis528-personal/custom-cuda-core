@@ -99,6 +99,7 @@ module ooe_rob_w #(
   parameter int CW = 4,                  // a fault cause (CCV_W_FAULT_CAUSE)
   parameter int VA = 64,                 // a fault address (CCV_W_VA)
   parameter int BS = ND - 2,             // the done slot RCU-only ops complete on, branches among them (AR's RCU spec rev 14, OA rev 287)
+  parameter int PWV = 0,                 // the redirect's payload with its valid (OI-184's lag-1 option): rd_*_cq03h, not rd_*_cq04h
   localparam int NSB = (NS > 0) ? NS : 1,
   localparam int S  = 1,                 // the slots this instance holds: its own
   localparam int LS = (SA > 1) ? $clog2(SA) : 1,
@@ -244,6 +245,11 @@ module ooe_rob_w #(
   output logic [S*32-1:0]     rd_tmask_cq04h,
   output logic [S*PCW-1:0]    rd_tgt_cq04h,
   output logic [S-1:0]        rd_stay_cq04h,
+  // PWV: the same, in rd_l's cycle, for ooe_redir's send flop (0 otherwise).
+  output logic [S*LK-1:0]     rd_ckpt_cq03h,
+  output logic [S*32-1:0]     rd_tmask_cq03h,
+  output logic [S*PCW-1:0]    rd_tgt_cq03h,
+  output logic [S-1:0]        rd_stay_cq03h,
   // A squash's bulk discard (A-41, A-53), when it takes a store at MIU:
   // per slot, the branch's index and the youngest allocated entry's.
   output logic [S-1:0]        dc_v_cq03h,
@@ -2377,15 +2383,31 @@ module ooe_rob_w #(
       rd_tgt_nx_cq03h[s * PCW +: PCW]  = rec_rt(rp_rec_cq03h) ? {rec_ph(rp_rec_cq03h), rp_out_cq03h[31:0]}
                                        : rp_out_cq03h[64] ? rec_tg(rp_rec_cq03h) : rec_pn(rp_rec_cq03h);
     end
-  logic [S-1:0] rdp_en_cq03h;
-  assign rdp_en_cq03h = rd_q_cq03h;
-  for (genvar gs = 0; gs < S; gs++) begin : g_rdp
-    always_ff @(posedge ooe_core_clk) begin
-      if (rdp_en_cq03h[gs]) begin
-        rd_ckpt_cq04h[gs * LK +: LK]    <= rd_ckpt_nx_cq03h[gs * LK +: LK];
-        rd_tmask_cq04h[gs * 32 +: 32]   <= rd_tmask_nx_cq03h[gs * 32 +: 32];
-        rd_tgt_cq04h[gs * PCW +: PCW]   <= rd_tgt_nx_cq03h[gs * PCW +: PCW];
-        rd_stay_cq04h[gs]               <= rd_stay_nx_cq03h[gs];
+  if (PWV != 0) begin : g_rdpwv
+    // OI-184's lag-1 option: ooe_redir flops the payload with the valid.
+    assign rd_ckpt_cq03h  = rd_ckpt_nx_cq03h;
+    assign rd_tmask_cq03h = rd_tmask_nx_cq03h;
+    assign rd_tgt_cq03h   = rd_tgt_nx_cq03h;
+    assign rd_stay_cq03h  = rd_stay_nx_cq03h;
+    assign rd_ckpt_cq04h  = '0;
+    assign rd_tmask_cq04h = '0;
+    assign rd_tgt_cq04h   = '0;
+    assign rd_stay_cq04h  = '0;
+  end else begin : g_rdp
+    assign rd_ckpt_cq03h  = '0;
+    assign rd_tmask_cq03h = '0;
+    assign rd_tgt_cq03h   = '0;
+    assign rd_stay_cq03h  = '0;
+    logic [S-1:0] rdp_en_cq03h;
+    assign rdp_en_cq03h = rd_q_cq03h;
+    for (genvar gs = 0; gs < S; gs++) begin : g_s
+      always_ff @(posedge ooe_core_clk) begin
+        if (rdp_en_cq03h[gs]) begin
+          rd_ckpt_cq04h[gs * LK +: LK]    <= rd_ckpt_nx_cq03h[gs * LK +: LK];
+          rd_tmask_cq04h[gs * 32 +: 32]   <= rd_tmask_nx_cq03h[gs * 32 +: 32];
+          rd_tgt_cq04h[gs * PCW +: PCW]   <= rd_tgt_nx_cq03h[gs * PCW +: PCW];
+          rd_stay_cq04h[gs]               <= rd_stay_nx_cq03h[gs];
+        end
       end
     end
   end
