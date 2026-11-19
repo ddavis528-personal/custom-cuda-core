@@ -1154,7 +1154,9 @@ private:
       Job &j = *it;
       bool waits = false;
       for (const auto &o : outstanding_) waits |= o.second.first == j.serial;
-      if (j.store || j.atom || !(mask >> (j.warp & 31) & 1u) || !waits) { ++it; continue; }
+      // A load whose completion a hint has promised (OA-23) keeps that
+      // promise: it completes at its cycle, with its notice's keys.
+      if (j.store || j.atom || j.promised || !(mask >> (j.warp & 31) & 1u) || !waits) { ++it; continue; }
       for (auto o = outstanding_.begin(); o != outstanding_.end();)
         if (o->second.first == j.serial) {
           kill_drop_.insert(o->first);
