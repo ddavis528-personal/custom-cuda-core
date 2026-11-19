@@ -16,6 +16,7 @@
 
 module ccv_cru_w #(
   parameter int RPT_OOE_CRU_FAULT = 0,
+  parameter int RPT_DCU_CRU_ERR = 0,
   parameter int RPT_CRU_RAU_CFG = 0
 ) (
   `include "ccv_cru_ports.svh"
@@ -27,6 +28,11 @@ module ccv_cru_w #(
   logic b_ooe_cru_fault_credit;
   logic b_ooe_cru_fault_stall;
   logic b_ooe_cru_fault_wake;
+  logic b_dcu_cru_err_valid;
+  ccv_dcu_cru_err_t b_dcu_cru_err_payload;
+  logic b_dcu_cru_err_credit;
+  logic b_dcu_cru_err_stall;
+  logic b_dcu_cru_err_wake;
   logic b_cru_rau_cfg_valid;
   ccv_cru_rau_cfg_t b_cru_rau_cfg_payload;
   logic b_cru_rau_cfg_credit;
@@ -34,6 +40,7 @@ module ccv_cru_w #(
   logic b_cru_rau_cfg_wake;
 `ifdef CCV_TRACE
   logic [63:0] b_ooe_cru_fault_tid;
+  logic [63:0] b_dcu_cru_err_tid;
   logic [63:0] b_cru_rau_cfg_tid;
 `endif
 
@@ -51,6 +58,11 @@ module ccv_cru_w #(
     .ooe_cru_fault_credit(b_ooe_cru_fault_credit),
     .ooe_cru_fault_stall(b_ooe_cru_fault_stall),
     .ooe_cru_fault_wake(b_ooe_cru_fault_wake),
+    .dcu_cru_err_valid(b_dcu_cru_err_valid),
+    .dcu_cru_err_payload(b_dcu_cru_err_payload),
+    .dcu_cru_err_credit(b_dcu_cru_err_credit),
+    .dcu_cru_err_stall(b_dcu_cru_err_stall),
+    .dcu_cru_err_wake(b_dcu_cru_err_wake),
     .cru_rau_cfg_valid(b_cru_rau_cfg_valid),
     .cru_rau_cfg_payload(b_cru_rau_cfg_payload),
     .cru_rau_cfg_credit(b_cru_rau_cfg_credit),
@@ -61,6 +73,7 @@ module ccv_cru_w #(
 `endif
 `ifdef CCV_TRACE
     , .ooe_cru_fault_tid(b_ooe_cru_fault_tid)
+    , .dcu_cru_err_tid(b_dcu_cru_err_tid)
     , .cru_rau_cfg_tid(b_cru_rau_cfg_tid)
 `endif
   );
@@ -85,6 +98,28 @@ module ccv_cru_w #(
     assign {ooe_cru_fault_stall} = {b_ooe_cru_fault_stall};
 `ifdef CCV_TRACE
     assign {b_ooe_cru_fault_tid} = {ooe_cru_fault_tid};
+`endif
+  end
+  // ccv_dcu_cru_err, destination end, no-flop (params/links.json no_flop)
+  if (RPT_DCU_CRU_ERR > 0) begin : g_rpt_dcu_cru_err
+    ccv_common_rpt #(.STAGES(RPT_DCU_CRU_ERR), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(2)) u_rpt_dcu_cru_err (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({dcu_cru_err_valid}), .src_payload({dcu_cru_err_payload}),
+      .src_wake(dcu_cru_err_wake), .src_credit({dcu_cru_err_credit}), .src_stall({dcu_cru_err_stall}),
+      .dst_valid({b_dcu_cru_err_valid}), .dst_payload({b_dcu_cru_err_payload}),
+      .dst_wake(b_dcu_cru_err_wake), .dst_credit({b_dcu_cru_err_credit}), .dst_stall({b_dcu_cru_err_stall})
+`ifdef CCV_TRACE
+      , .src_tid({dcu_cru_err_tid}), .dst_tid({b_dcu_cru_err_tid})
+`endif
+    );
+  end else begin : g_wire_dcu_cru_err
+    assign {b_dcu_cru_err_valid} = {dcu_cru_err_valid};
+    assign {b_dcu_cru_err_payload} = {dcu_cru_err_payload};
+    assign b_dcu_cru_err_wake = dcu_cru_err_wake;
+    assign {dcu_cru_err_credit} = {b_dcu_cru_err_credit};
+    assign {dcu_cru_err_stall} = {b_dcu_cru_err_stall};
+`ifdef CCV_TRACE
+    assign {b_dcu_cru_err_tid} = {dcu_cru_err_tid};
 `endif
   end
   // ccv_cru_rau_cfg, source end, no-flop (params/links.json no_flop)
