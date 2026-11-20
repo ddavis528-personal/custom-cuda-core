@@ -105,8 +105,8 @@ struct Config {
   unsigned stdata = 12;                    ///< CCV_DCU_BANK_STDATA (MA-25; TI to land)
   bool credits_strict = false;   ///< an overflow fails (once MIU holds credits), else a bin
   unsigned lat_hit = ccv::prov::kLatL1Hit; ///< CCV_LAT_L1_HIT: picks pipe A, B or C
-  unsigned wp_bits = 5;          ///< CCV_DCU_WAYPRED_BITS under pipe C (MA-26)
-  bool wp_recent = true;         ///< CCV_DCU_WAYPRED_SEL: recent, else index
+  unsigned wp_bits = ccv::prov::kDcuWaypredBits;     ///< CCV_DCU_WAYPRED_BITS (MA-26)
+  bool wp_recent = ccv::prov::kDcuWaypredSel == 1;   ///< CCV_DCU_WAYPRED_SEL: 1 recent, 0 index
   unsigned gap = 5;              ///< a store hit's read to its write (MA-17, TI-483)
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)
@@ -145,6 +145,8 @@ struct Hooks {
   virtual void dirty(uint64_t line, const Line &l) { (void)line; (void)l; }
   virtual void clean(uint64_t line) { (void)line; }
   virtual void fatal() {}   ///< a core-fatal machine error (AR 370)
+  /// A read DCU withholds because a core-fatal UE hit it (AR 389, TI-487 (3)).
+  virtual void withheld(unsigned req_id) { (void)req_id; }
 };
 
 class Core {
