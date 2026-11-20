@@ -117,11 +117,11 @@ module ooe_ratmap #(
   logic [S*S-1:0] ag_cq02h, ag_nx_cq02h;
   assign nw_cq02h = mq_cq02h | rq_cq02h;
   // i older than j among the candidates.
-  logic rf;
+  logic rf_cq02h;
 `ifdef CCV_CHECK_RATMAP
-  assign rf = ctl_rfirst;
+  assign rf_cq02h = ctl_rfirst;
 `else
-  assign rf = 1'b0;
+  assign rf_cq02h = 1'b0;
 `endif
   function automatic logic older(input logic [S-1:0] w, input logic [S-1:0] r, input logic f,
                                  input logic [S*S-1:0] ag, input int i, input int j);
@@ -135,8 +135,8 @@ module ooe_ratmap #(
     for (int i = 0; i < S; i++) begin
       pick_cq02h[i] = cand_cq02h[i];
       for (int j = 0; j < S; j++)
-        if (j != i && cand_cq02h[j] && !older(pv_cq02h, rq_cq02h, rf, ag_cq02h, i, j)) pick_cq02h[i] = 1'b0;
-      for (int j = 0; j < S; j++) ag_nx_cq02h[i * S + j] = (j != i) && older(pv_cq02h, rq_cq02h, rf, ag_cq02h, i, j);
+        if (j != i && cand_cq02h[j] && !older(pv_cq02h, rq_cq02h, rf_cq02h, ag_cq02h, i, j)) pick_cq02h[i] = 1'b0;
+      for (int j = 0; j < S; j++) ag_nx_cq02h[i * S + j] = (j != i) && older(pv_cq02h, rq_cq02h, rf_cq02h, ag_cq02h, i, j);
     end
     pv_nx_cq02h = cand_cq02h & ~pick_cq02h;
     pd_nx_cq02h = (pd_cq02h & pv_cq02h) | rq_cq02h;
