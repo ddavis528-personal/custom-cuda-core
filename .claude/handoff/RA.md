@@ -354,8 +354,8 @@ conflict, TI's file) and 3868632d (7 merge bases): RA 157, Needs TI. MERGE METHO
 build hangs on this criss-cross history (133k inner merges); merge fewest-merge-bases first, then
 `git merge -s resolve` under `timeout 600` (fails over 6 bases). DA 128 applied (TI-488, 2d273c9a): L1_HIT 8, L1_WAKE 14, L1_CMPL 16; spec updated (Partition 75, Overview 84),
 snapshots refreshed 11-20. TI-490: after gate-wait says killed (exit 4), rerun the SAME command with CCV_RESUME=1
-(tool 6464a030, merge it first); a RESUMED PASS counts as the full clean gate per TI (Daniel in TI's session; no DA
-row yet, asked Daniel 11-20).
+(tool 6464a030, merge it first); a RESUMED PASS counts as the full clean gate (Daniel confirmed it to RA, 11-20).
+Sweep 11-20 gate: SCOPED PASS, pushed 1a0f3088. 80102643 (7 bases) timed out again; retry next sweep.
 Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti-mi9b, merged; resolve fallback is
 TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
 NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
