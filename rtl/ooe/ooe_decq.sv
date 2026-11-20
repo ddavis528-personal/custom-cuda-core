@@ -517,16 +517,14 @@ module ooe_decq #(
   end
   // c[n], n the thermometer th's count (0 to R): for R = 4 a balanced tree
   // of 2:1 selects (th[1]: n >= 2), else the one-hot AND-OR. One per width.
+  // The count's select is the one-hot AND-OR at every R, never the payloads'
+  // tree: the two agree only on a thermometer, so synthesis cannot share
+  // one decode between them, and the count does not carry the payload
+  // selects' fanout (deq_t's arrival 14 + 11.5 with it, NGD-3).
   function automatic logic [LC-1:0] thsel_c(input logic [(R+1)*LC-1:0] c, input logic [R-1:0] th);
-    if (R == 4) begin
-      thsel_c = th[1 % R] ? (th[3 % R] ? c[(4 % (R + 1)) * LC +: LC]
-                                       : th[2 % R] ? c[(3 % (R + 1)) * LC +: LC] : c[(2 % (R + 1)) * LC +: LC])
-                          : (th[0] ? c[(1 % (R + 1)) * LC +: LC] : c[0 +: LC]);
-    end else begin
-      thsel_c = '0;
-      for (int t = 0; t < R + 1; t++)
-        if ((t == 0 || th[(t + R - 1) % R]) && (t == R || !th[t % R])) thsel_c = thsel_c | c[t * LC +: LC];
-    end
+    thsel_c = '0;
+    for (int t = 0; t < R + 1; t++)
+      if ((t == 0 || th[(t + R - 1) % R]) && (t == R || !th[t % R])) thsel_c = thsel_c | c[t * LC +: LC];
   endfunction
   function automatic logic [1-1:0] thsel_v(input logic [(R+1)*1-1:0] c, input logic [R-1:0] th);
     if (R == 4) begin
@@ -562,11 +560,6 @@ module ooe_decq #(
     end
   endfunction
   logic [S*LC-1:0]      cnt_nx_cq01h;
-  // The take's copy for the count's select alone: shared with the payload
-  // selects, its decode carried their fanout into the count (deq_t's
-  // arrival 14 + 11.5, NGD-3); kept, so synthesis does not merge it back.
-  (* keep *) logic [S*R-1:0] deq_tc_cq01h;
-  assign deq_tc_cq01h = deq_t_cq01h;
   logic [S*H-1:0]       hv_nx_cq01h;
   logic [S*R*P-1:0]     hp_nx_cq01h;
   logic [S*NA*PA-1:0]   ha_nx_cq01h;
@@ -586,7 +579,7 @@ module ooe_decq #(
       begin
         logic [(R+1)*LC-1:0] cc;
         for (int t = 0; t < R + 1; t++) cc[t * LC +: LC] = (base - LC'(t)) & {LC{!fl_q_cq02h[s]}};
-        cnt_nx_cq01h[s * LC +: LC] = thsel_c(cc, deq_tc_cq01h[s * R +: R]);
+        cnt_nx_cq01h[s * LC +: LC] = thsel_c(cc, deq_t_cq01h[s * R +: R]);
       end
       for (int i = 0; i < H; i++) begin
         logic [R:0] cvv;
