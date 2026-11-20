@@ -73,7 +73,8 @@ private:
     c.qdepth = envU("CCV_DCU_BANK_QDEPTH", c.qdepth);
     c.stdata = envU("CCV_DCU_BANK_STDATA", c.stdata);
     c.wp_bits = envU("CCV_DCU_WAYPRED_BITS", c.wp_bits);
-    if (const char *v = std::getenv("CCV_DCU_WAYPRED_SEL")) c.wp_recent = std::string(v) != "index";
+    if (const char *v = std::getenv("CCV_DCU_WAYPRED_SEL"))
+      c.wp_recent = std::string(v) != "index" && std::string(v) != "0";
     c.gap = envU("CCV_DCU_STORE_GAP", c.gap);
     c.hash = envU("CCV_DCU_BANK_HASH", 0) != 0;
     c.ue_every = envU("CCV_DCU_UE_INJECT", 0);
@@ -91,6 +92,7 @@ private:
   }
   void clean(uint64_t line) override { k_.dcu_dirty.erase(line); }
   void fatal() override { k_.mce_raised = true; }
+  void withheld(unsigned id) override { k_.ue_withheld.insert(id); }
 
   /// AR 362: the lead's set index is a copy of the lookup's phys_addr bits,
   /// and DCU refuses one that differs, by name (--break dcu-set-lead).
