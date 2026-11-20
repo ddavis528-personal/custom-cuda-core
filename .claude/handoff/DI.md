@@ -38,10 +38,13 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 2. Local hook patch for runs: scratchpad makedcu-local.patch (re-create from
    DI-1's text if the scratchpad is gone); never commit it; revert before
    gate-push. Sweep script: scratchpad sweep.sh.
-3. Next model work: dcu_miu_rsp credit waits (transp4: 8 hits waited for a
-   credit; check MIU stub's credit depth vs the 3-cycle launch); SV-hosted
-   run (tools/check-sv-hosted.sh) with the model; cycles vs CCV_DCU_IMPL=p1;
-   the M0 exit row (MA reads it).
+3. Done at L1_HIT 8 (47e1d026, hook patch local): SV-hosted PASS with the
+   model; sweep 64/64 on stub/model/p1, model +1.91% vs stub, +1.65% vs p1
+   (rope max). Gap to p1 = p1's non-strict slack + its 2-cycle fill path.
+   DI-4 (MA): un-noticed refill floor, F+4 vs F+6 (model keeps F+6; F+4
+   is lines 559/639 of dcu_core.cpp: now_ + lat_notice - 1). rsp_credit_wait
+   is late responses waiting behind notice-reserved credits: legal, small.
+   Next: M0 exit row once DI-1/DI-3/DI-4 settle; check every bin reached.
 4. Gaps vs spec: probes (no MLC probe traffic in the skeleton), CE injection
    on the DCU side (a DI row to TI), the 2-entry writeback buffer stall (a
    bin now), MA-25 vectors computed but unwired.
@@ -53,9 +56,10 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks (2026-11-19 start)
-Conventions 20, DI 5, MI 9, MA 127, AR 395, OA 446, TI 489, DA 128
+Conventions 20, DI 6, MI 9, MA 127, AR 395, OA 446, TI 489, DA 128
 (sweep of 2026-11-19 10:43 UTC; OI 380, RA 156, RI 91, IS 199, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
-MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins).
+MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins), DI-4 (MA: refill floor;
+M0 progress figures).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
