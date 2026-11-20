@@ -803,6 +803,7 @@ cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 # kernel's bin of that name. A row is the implementation, the kernel as the
 # table below names it, and the bin's expectation. Their owners keep them:
 # the figures move with every timing change of the model.
+NOTICE_ON=$([ "${CCV_DCU_IMPL:-stub}" = model ] && echo CCV_DCU_NOTICE=1)
 IMPL_PINS="
 dcu=model ldpar l1_hit=2
 dcu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=51
@@ -833,6 +834,9 @@ while read -r k want; do
   # which MA-6's 64 ids leave unreached by any kernel).
   env=""; case "$k" in *@*) env=${k#*@}; k=${k%%@*} ;; esac
   log="$B/kernel_$k${env:+_${env##*=}}.log"
+  # The DCU model sends no refill notice by default (CCV_DCU_NOTICE=0, MA
+  # rev 129, DI-4): the kernels pinned on notices run with them on (DI-3).
+  case "$k" in vadd|mlp) env="$env $NOTICE_ON" ;; esac
   env $env "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
   why=""
   for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
@@ -2067,7 +2071,7 @@ fi
 for spec in late-refill:dcu_miu_fill_ntc:on_time notice-wrong-id:dcu_miu_fill_ntc:same_keys \
             late-cmpl:miu_ooe_cmpl_hint:on_time hint-wrong-tag:miu_ooe_cmpl_hint:same_keys; do
   brk=${spec%%:*}; rest=${spec#*:}; chan=${rest%%:*}; prop=${rest#*:}
-  "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break "$brk" >"$B/kernel_$brk.log" 2>&1
+  env $NOTICE_ON "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break "$brk" >"$B/kernel_$brk.log" 2>&1
   n=$(grep -c "u_${chan}_notice_s[0-9]*\.g_${prop}_as" "$B/kernel_$brk.log")
   if [ "$n" -gt 0 ]; then
     say "--break $brk: $chan $prop" "PASS ($n)"
@@ -2133,6 +2137,8 @@ done
 # discard. Exact at each depth; stall's drain carries the orphan going home.
 decq=$(python3 -c 'import json; print(next(p["value"] for p in json.load(open("params/ccv_params.json"))["params"] if p["name"] == "CCV_P_DECQ"))')
 v4orph=$([ "$decq" -le 13 ] && echo 1 || echo 0)
+# DI-3: the DCU model's timing leaves vadd4 one orphan at any depth.
+[ "${CCV_DCU_IMPL:-stub}" = model ] && v4orph=1
 w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
 w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=$v4orph ready=1 restored=1)
 if [ -z "$w$w2" ]; then
