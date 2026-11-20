@@ -29,7 +29,10 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 0. Last sweep merged 9 branches (a9077fc1, full PASS). MI's model is on
    ccr-58815650-0ch1hh (now merged here): its page walks issue DCU reads that
    count toward CCV_DCU_UE_INJECT; MI-4/MI-5 ask TI to pin UE checks per MIU impl.
-   Phase 1b: run DI's model against MI's once both hooks land.
+   Phase 1b: run DI's model against MI's (both hooks landed, cb8ca9be).
+   AR-394 asks: put S1 and cm32priv in that paired run. OA-454: with
+   NOTICE=0 the pair shows zero refill hints, every refill at F+6.
+   TI-495's pins come with ti-mi9/ti-mi9b (not on any branch yet).
 1. Model M0 status (pushed 26740eef, SCOPED PASS): 64/64 kernels == ccv-sim
    with CCV_DCU_IMPL=model, +1.78% mean cycles vs the stub. check-kernel has
    5 timing-only diffs (ldpar, transp4@ECC, late, stall bins; the
@@ -58,9 +61,9 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 7. First push of a new session branch: create the remote branch at its base
    commit first, or gate-push cannot fetch it.
 
-## Register bookmarks (2026-11-19 start)
-Conventions 20, DI 12, MI 16, MA 135, AR 395, OA 455, TI 497, DA 128
-(sweep of 2026-11-19 10:43 UTC; OI 380, RA 156, RI 91, IS 199, CP 160 by search). Others: outline + search DI.
+## Register bookmarks
+Conventions 20, DI 12, MI 16, MA 135, AR 400, OA 460, TI 498, DA 128
+(sweep of 2026-11-20 10:43 UTC; OI 395, RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
 MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins), DI-4 (MA: refill floor;
