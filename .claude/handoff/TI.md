@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-20. Keep this current at every task's end; it is what
+Updated 2026-11-20 (evening). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -47,20 +47,30 @@ Every long tool detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as
 a background task, timeout 7200000 (exit 3: rerun the wait; 4: rerun the job
 with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 
-## State (2026-11-20)
-- Landed e8d8864b (ti-mi9b): MI/DI model hooks, OI's straggler walk and
-  slotless-credit model, without OI's ungated OOE RTL (TI-498; OI-191 agreed).
-- 11-20 sweep: worktree /home/user/ti-size, log
-  /root/ccv-logs/job-daily-sweep-20261120-151044-15261.log (restart after
-  the hung merge; all branches merged by hand-finish at 082f174a + OA's).
-- ti-oo (/home/user/ti-oo, branch ti-oo from e8d8864b; on gate-scratch/TI):
-  16e4e009 (--break mig-before-credits registered), c8d19598 + 1f781123
-  (IMPL_PINS keyed on implementation sets, pair rows, vadd4 orphan and
-  straggler demote cycle via impl_pins; TI-504 to DI, MI), 7b0bbe2a (sweep
-  merge order + resolve fallback; TI-499 for RA), this handoff. NEXT: merge
-  the sweep's result into ti-oo, then gate-push; landing row to DI, MI, RA.
+## State (2026-11-20, evening)
+- Landed e8d8864b (ti-mi9b): MI/DI model hooks, OI's straggler walk.
+- 11-20 sweep: /home/user/ti-size, log
+  /root/ccv-logs/job-daily-sweep-20261120-165456-13572.log (release gate on
+  8c378e12). It carries daily-sweep.sh's merge fixes (41d39cf0, 93adeee1):
+  fewest merge bases first; a merge over CCV_SWEEP_MERGE_TIMEOUT retried with
+  -s resolve; past resolve's 8 trees, the branch's own commits picked and an
+  -s ours merge (AR's branch, 7 bases, needed it).
+- ti-wp (/home/user/ti-wp, branch ti-wp; backups on gate-scratch/TI-bank) is
+  the next gate-push, after merging the sweep's result: TI-504's IMPL_PINS
+  rows and mig-before-credits (from ti-oo), MA-25 (ccv_dcu_miu_cred, QDEPTH
+  16, STDATA 12, stub holds/returns, controls bank-credit-ignore,
+  dcu-extra-credit), MI-9 (3) waypred kernel + DI's wp-late-at-due fix,
+  MI-8 (+ccv_eot_mce on mce_taken; controls mce-no-exempt, miu-keep-credit),
+  MI-4 A2/A3 (provswap; fet-reset-on-kill per set via IMPL_PINS). Stub
+  check-kernel 365 PASS. Then: landing row to DI (DI-6 asked to be rung with
+  the branch), MI (MI-12 order items 2-5), MA (MA-25 spec tabs), RA (TI-499).
+- Known after landing: the MIU model (no credits spent until MI's step 5)
+  trips the stub DCU's bank bound on slotform/coremark128; pair clean.
+  MI-4's replay drain stall and vadd4 still need scenarios from MI.
 
 ## Open work (priority order)
+0. MI-12 order (Daniel via MI): MA-25, MI-9 (3), MI-8, MI-4 model-side,
+   MI-7 cold-TLB. First four in ti-wp; MI-7 next.
 1. Task 55: after OI's AR 397 / OA-460 fix (demoting warp keeps its tier-1
    slot) lands: check-kernel line for MI-11 (lnorm1 CCV_MIU_IMPL=model
    CCV_RAU_DEMOTE=mlc clean, parks>0, FET wait on).
