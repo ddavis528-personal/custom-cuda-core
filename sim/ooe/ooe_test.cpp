@@ -4313,12 +4313,11 @@ void testRandom(unsigned seeds) {
 /// state meets a kill (resident, demoting, draining, parked, killing again),
 /// kills name nothing OOE holds, and kills land beside frees and launches.
 /// The model's own errors fail it.
-[[maybe_unused]] void testSlotRandom(unsigned seeds, bool sectioned = false) {
+[[maybe_unused]] void testSlotRandom(unsigned seeds) {
   for (unsigned seed = 1; seed <= seeds; ++seed) {
-    g_test = std::string(sectioned ? "sectioned " : "") + "slot random seed " + std::to_string(seed);
+    g_test = "slot random seed " + std::to_string(seed);
     Config c = baseConfig();
     c.l1_spec = false;
-    c.sectioned = sectioned;
     std::mt19937 rng(seed * 13 + 1);
     Env e(c, seed);
     e.keep_log = true;
@@ -6332,20 +6331,6 @@ int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_c
     testAtomicDemote();
     testBarrierDemote();
     testSlotRandom(seeds * 4);
-  } else if (scenario == "ratmap") {
-    // ooe_ratmap's bench (test/ooe/ratmap_tb.cpp): slot's, with the parked
-    // layout's test and the slot random tests sectioned too, so maps carry
-    // positions and narrow widths.
-    testRandom(seeds);
-    testSwap();
-    testDemote();
-    testRestore();
-    testKill();
-    testAtomicDemote();
-    testBarrierDemote();
-    testParkedLayout();
-    testSlotRandom(seeds * 2);
-    testSlotRandom(seeds * 2, true);
   } else if (scenario == "idle") {
     for (int mode = 0; mode != 8; ++mode) {
       Env e(randomConfig(2, mode));

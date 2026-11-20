@@ -76,9 +76,6 @@ case "$unit" in
     read -r g d < <(python3 test/ooe/rat-params.py)
     vl ooe_rat_read "-DCCV_CHECK_RAT ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/test/ooe/ooe_ratread.sv" \
       "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
-  ooe_ratmap)
-    read -r g d < <(python3 test/ooe/ratmap-params.py)
-    vl ooe_ratmap "-DCCV_CHECK_RATMAP ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_ratmap.sv" "$PWD/test/ooe/ratmap_tb.cpp" ;;
   ooe_sched)
     # The assembled trio (test/ooe/trio_tb.cpp): ooe_sched's leads are ooe_wake's
     # and ooe_rs's, in their own frame.

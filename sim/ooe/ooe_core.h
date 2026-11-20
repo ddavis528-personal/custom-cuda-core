@@ -2423,9 +2423,6 @@ public:
     uint32_t ctaid[8] = {};
   };
   const SlotLog &slotLog() const { return slotlog_; }
-  /// The parked layout (TI-25), for test/ooe/ratmap_tb.cpp.
-  unsigned parkedPos(unsigned w, unsigned a) const { return parked_[w % kWarpIds].pos[a & 15]; }
-  unsigned parkedWidth(unsigned w, unsigned a) const { return parked_[w % kWarpIds].w[a & 15]; }
   int slotOfWarp(unsigned warp) const { return slotOf(warp); }
 private:
   RxLog rxlog_;
