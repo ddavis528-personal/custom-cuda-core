@@ -330,6 +330,20 @@ job_rcu_unit() {
   run "RCU unit tests" ./tools/check-rcu-unit.sh
 }
 
+job_miu_unit() {
+  section "MIU model unit tests (sim/miu/; MI-1)"
+  # MI's own harness; CCV_MIU_IMPL=model selects the model in both hosts,
+  # the stub staying the kernels' default until MI's M0.
+  run "MIU unit tests" ./tools/check-miu-unit.sh
+}
+
+job_dcu_unit() {
+  section "DCU model unit tests (sim/dcu/; DI-1)"
+  # DI's own harness; CCV_DCU_IMPL=model selects the model in both hosts,
+  # the stub staying the kernels' default until DI's M0.
+  run "DCU unit tests" ./tools/check-dcu-unit.sh
+}
+
 job_ooe_rtl() {
   section "Stage 4c -- OOE RTL (rtl/ooe/)"
   # Each OOE RTL module in lockstep with the model code it implements, at the
@@ -465,11 +479,11 @@ job_vlint() {
 JOBS="${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)}"
 case "$JOBS" in ''|*[!0-9]*|0) echo "verify: CCV_JOBS must be a positive count"; exit 2 ;; esac
 # Print order. Each section's own comment says what it reads from.
-ORDER="s1a s1b s1c s1d iface xprop ctech cg ngd clockgate skel kernel ooe_unit rcu_unit ooe_rtl
+ORDER="s1a s1b s1c s1d iface xprop ctech cg ngd clockgate skel kernel ooe_unit rcu_unit miu_unit dcu_unit ooe_rtl
        rcu_rtl rcu_ls top formal phys svh links walkthrough vlint"
 # Start order: the longest chain first, then the longest jobs, then the rest.
 START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys rcu_rtl rcu_ls iface xprop s1c s1b
-       s1d ooe_unit rcu_unit s1a clockgate walkthrough vlint"
+       s1d ooe_unit rcu_unit miu_unit dcu_unit s1a clockgate walkthrough vlint"
 declare -A after=(
   [kernel]="skel"          # the binary check-skel builds
   [top]="skel"             # its wiring dump
