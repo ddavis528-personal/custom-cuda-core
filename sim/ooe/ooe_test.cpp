@@ -3342,6 +3342,71 @@ void testBarPend() {
   }
 }
 
+/// AR 395 / OA 457: a straggler, a uop of the demotion's epoch arriving
+/// after the walk began, is walked on arrival: a beat for its lanes the walk
+/// had not covered, then dropped, its decode-queue slot (FET's credit) freed
+/// no earlier than decq_credit_delay after the beat leaves. With and
+/// without the streaming walk. Controls: no-straggler-walk (no beat, the
+/// lanes lost) and straggler-early-credit (freed before the beat leaves).
+/// Returns whether the case held.
+static bool stragglerCase(bool walk, unsigned delay, bool no_walk, bool early) {
+  Config c = baseConfig();
+  c.l1_spec = false;
+  c.demote_walk = walk;
+  c.decq_credit_delay = delay;
+  c.straggler_walk = !no_walk;
+  c.inject_straggler_early_credit = early;
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  Op a; a.k = kSfu; a.dst = 1; a.nsrc = 1; a.mask = 0x0000ffffu; p.push_back(a);
+  for (int k = 0; k != 4; ++k) { Op d; d.k = kLane; d.dst = 2 + k; d.nsrc = 1; d.src[0] = 1; d.mask = 0x0000ffffu; p.push_back(d); }
+  e.launch(0, 0, p);
+  for (unsigned k = 0; k != 12; ++k) e.step();
+  const unsigned old_epoch = e.warpOf(0)->epoch;
+  e.core.demote(0);
+  e.step();
+  e.step();
+  Op o; o.k = kLane; o.dst = 9; o.nsrc = 1; o.mask = 0xffff0000u;
+  const uint64_t tid = 0xfff0;
+  const unsigned q0 = e.core.decqOf(0);
+  e.core.uop(makeUop(o, 0, tid, old_epoch, 0));
+  const bool queued = e.core.decqOf(0) == q0 + 1;
+  int64_t beat = -1, freed = -1;
+  for (unsigned k = 0; k != 60; ++k) {
+    e.step();
+    for (const Redirect &r : e.log.back().redirects)
+      if (r.rewind && r.taken_mask == 0xffff0000u && beat < 0) beat = int64_t(e.t);
+    if (queued && freed < 0 && e.core.decqOf(0) == q0) freed = int64_t(e.t);
+  }
+  // e.t after a step is the cycle after the one that sent; the slot frees
+  // in the cycle whose step drops it.
+  const int64_t leave = beat + int64_t(c.redirect_send_lag);
+  const bool ok = queued && beat >= 0 && freed >= 0 && freed >= leave + int64_t(delay);
+  if (!no_walk && !early)
+    EXPECT(ok, "walk %d delay %u: queued %d, beat leaves %lld, freed %lld", walk, delay, queued,
+           (long long)leave, (long long)freed);
+  return ok;
+}
+
+void testStraggler() {
+  g_test = "straggler";
+  unsigned n = 0;
+  for (const bool walk : {false, true})
+    for (const unsigned delay : {0u, 3u}) n += stragglerCase(walk, delay, false, false);
+  std::printf("  straggler walk: %u of 4 cases beat, then free\n", n);
+  const int before = g_fail;
+  g_quiet = true;
+  const bool c1 = !stragglerCase(true, 3, true, false) && !stragglerCase(false, 3, true, false);
+  const bool c2 = !stragglerCase(true, 3, false, true) && !stragglerCase(false, 3, false, true);
+  g_quiet = false;
+  g_fail = before;
+  std::printf("  %-24s %s\n", "control no-straggler-walk", c1 ? "caught" : "MISSED");
+  EXPECT(c1, "an epoch-dropped straggler should lose its lanes' beat");
+  std::printf("  %-24s %s\n", "control straggler-early-credit", c2 ? "caught" : "MISSED");
+  EXPECT(c2, "a straggler freed before its beat leaves should fail");
+}
+
 void testBarrierDemote() {
   for (const bool control : {false, true}) {
     for (const bool tail : {true, false}) {
@@ -6550,6 +6615,7 @@ int main(int argc, char **argv) {
   testSectionFaults();
   testBarrier();
   testBarrierDemote();
+  testStraggler();
   testBarBufDepth();
   testBarPend();
   testBarrierTimer();

@@ -145,6 +145,7 @@ private:
   /// release) wait here, per warp_id, and go back on its next slot. Bounded
   /// by what a warp may have outstanding, which the return field holds.
   std::array<unsigned, ccv::kWarpContexts> cred_pend_{};
+  std::map<std::string, unsigned long long> strag_seen_;   ///< AR 395 bins
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
   int fault_ = optChan("ccv_ooe_cru_fault");
@@ -175,9 +176,10 @@ private:
     // TI-46 (b), DA tab rev 96: FET holds each warp's share as credits on
     // ccv_ooe_fet_decq_credit, so OOE refuses no uop for a per-warp reason.
     c.decq_warp_max = 0;
-    unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop;
+    unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop, credit_link = ccv::kLatHop;
     for (const ChanInst &ci : kChanInsts) {
       if (ci.chan == chanId("ccv_ooe_fet_redirect")) c.redirect_lat = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_ooe_fet_decq_credit")) credit_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
       if (ci.chan == chanId("ccv_ooe_rcu_issue")) c.issue_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
       if (ci.chan == chanId("ccv_rcu_ooe_done")) c.done_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
       if (ci.chan == chanId("ccv_miu_rcu_data")) data_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
@@ -194,6 +196,16 @@ private:
                    c.cmpl_wake_delay, want);
       std::abort();
     }
+    // AR 395 (2), OA 458: a walked uop's credit lands no earlier than its
+    // beat; OOE holds it past the beat's send by the redirect's crossing
+    // less the credit's (CCV_LAT_DECQ_CREDIT_DELAY on TI's ti-mi9 derives
+    // the same from params/links.json; read it from there once it lands).
+    c.decq_credit_delay = c.redirect_lat > credit_link ? c.redirect_lat - credit_link : 0;
+    // TI-493's controls: no-straggler-walk drops a demoted warp's straggler
+    // by its epoch, its lanes' beat lost; straggler-early-credit returns its
+    // credit before its beat leaves.
+    c.straggler_walk = k.brk != "no-straggler-walk";
+    c.inject_straggler_early_credit = k.brk == "straggler-early-credit";
     if (const char *s = std::getenv("CCV_OOE_CONFIG")) {
       const std::string e = c.apply(s);
       if (!e.empty()) {
@@ -913,6 +925,13 @@ private:
     takeUops();
     sendOutputs();
     credits();
+    // AR 395: a demoted warp's straggler walked on arrival, and one whose
+    // lanes no beat had named yet.
+    for (const char *n : {"demote.straggler", "demote.straggler_beat"})
+      if (const auto c = core_.counters.find(n); c != core_.counters.end() && c->second > strag_seen_[n]) {
+        strag_seen_[n] = c->second;
+        k_.hit(n[16] ? "decq_straggler_beat" : "decq_straggler");
+      }
     for (const ooe::Retired &r : core_.retired) {
       // An instruction retires with its last uop (TI-36's cracked ones).
       if (k_.lastUop(r.tid)) {
