@@ -487,8 +487,6 @@ a script is one. Its sections:
 - Stage 3 -- skeleton (S1: vadd)
 - Stage 4b -- OOE model unit tests (sim/ooe/)
 - RCU model unit tests (sim/rcu/; RI-2)
-- MIU model unit tests (sim/miu/; MI-1)
-- DCU model unit tests (sim/dcu/; DI-1)
 - Stage 4c -- OOE RTL (rtl/ooe/)
 - RCU RTL benches (RI's test/rcu/run-rtl.sh)
 - RCU block -- ccv_rcu in lock-step with the model (RI's test/rcu/run-lockstep.sh)
@@ -516,4 +514,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 3e36c044d3147608 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 379e75cc808a57f0 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
