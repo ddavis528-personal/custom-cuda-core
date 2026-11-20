@@ -473,6 +473,17 @@ struct Config {
   /// that resolves a mispredict holds its frees one more cycle (ooe_rob_w
   /// drops the younger ones a cycle after the pick, by its squash).
   unsigned ckpt_free_lag = 0;
+  /// OA 451 (re:OI-186; AR 393): the demotion's rewind walk as the RTL
+  /// streams it. demote_walk: ooe_rob_w walks the slot's ROB from the head,
+  /// an entry a cycle (each a cycle whether or not it covers new lanes),
+  /// then asks ooe_decq by a flopped request, which presents the warp's
+  /// uops an entry a cycle in queue order; an entry's beat may leave the
+  /// cycle after the walk reads it, and the warp's decode-queue uops are
+  /// held, never renamed, until the walk passes them, then flushed.
+  /// beat_merge 0: one beat per entry with new lanes, never merged by PC
+  /// (a lane still in at most one beat).
+  bool demote_walk = false;
+  bool beat_merge = true;
   /// OA 447 (re:OI-179 (3)): ooe_redir registers the pick a cycle after
   /// rob_w's rd_l and the payload a cycle after that, so the redirect and
   /// ckpt_free leave OOE this many cycles after the model's send, together
@@ -723,6 +734,9 @@ struct Config {
   /// wait.
   bool inject_bar_no_hold = false;
   bool inject_beat_unheld = false;
+  /// OA 451's control: rename takes (drops) a decode-queue uop the walk
+  /// still holds, so the walk would pass an entry already gone.
+  bool inject_walk_take_held = false;
   /// PF-23 (OA's rev 160, AR's rev 106): a demotion's discard takes its
   /// warp's outstanding loads, so drained waits for their replay
   /// completions, not their fills. Off: the drain waits for the fills.
@@ -817,6 +831,8 @@ struct UopShape {
 
 struct Uop {
   uint64_t tid = 0;
+  /// demote_walk: the cycle the demotion's walk passes it, held until then (0: not held).
+  uint64_t walk_pass = 0;
   unsigned warp = 0;
   uint64_t pc = 0;
   uint32_t group_mask = 0;
@@ -992,6 +1008,7 @@ struct Commit {         ///< ccv_ooe_miu_retire
 struct Redirect {       ///< ccv_ooe_fet_redirect
   uint64_t tid = 0;
   uint64_t at = 0;      ///< the cycle it was queued (same-cycle redirects queue in slot order, OI-179)
+  uint64_t ready = 0;   ///< demote_walk: a rewind beat leaves no earlier than this cycle
   unsigned warp = 0, slot = 0, ckpt = 0, epoch = 0;
   uint32_t taken_mask = 0;
   uint64_t target_pc = 0;
@@ -1650,6 +1667,7 @@ private:
     uint64_t notice_lands = 0;                ///< epoch notice in FET (A-74)
     bool notice_sent = false;
     unsigned rewind_pending = 0;              ///< a demotion's beats not yet sent (TI-24 (3))
+    unsigned walk_held = 0;                   ///< demote_walk: decode-queue uops the walk still holds
     bool exit_retired = false, exited_sent = false;   ///< OA's rev 149
     unsigned kill_epoch = 0;
     uint64_t resume_pc = 0;

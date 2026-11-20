@@ -5707,6 +5707,54 @@ void testSwap() {
   }
   std::printf("  %-24s %s\n", "control rewind-order", caught ? "caught" : "MISSED");
   EXPECT(caught, "beats youngest first should break the rewind check");
+  // OA 451 (re:OI-186; AR 393): the streaming walk, beats unmerged, under
+  // the same swaps; FET's rewind check holds a lane to one beat. Its
+  // control: rename drops a uop the walk still holds.
+  {
+    unsigned demotes = 0, flushed = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed) {
+      g_test = "swap, demote_walk beat_merge 0, seed " + std::to_string(seed);
+      Config c = baseConfig();
+      c.decq = 13;
+      c.demote_walk = true;
+      c.beat_merge = false;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.dram_pm = 40;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      e.finish(200000);
+      demotes += unsigned(e.core.counters["demote"]);
+      flushed += unsigned(e.core.counters["demote.walk_flushed"]);
+    }
+    g_test = "swap, demote_walk, seeds 1 to 6";
+    EXPECT(demotes > 0 && flushed > 0, "%u demotes, %u held uops flushed by the walk", demotes, flushed);
+    caught = 0;
+    for (unsigned seed = 1; seed <= 6 && !caught; ++seed) {
+      g_test = "swap (control walk-take-held)";
+      Config c = baseConfig();
+      c.decq = 13;
+      c.demote_walk = true;
+      c.beat_merge = false;
+      c.inject_walk_take_held = true;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.dram_pm = 40;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      g_quiet = true;
+      e.finish(200000);
+      g_quiet = false;
+      caught += g_fail != before;
+      g_fail = before;
+    }
+    std::printf("  %-24s %s\n", "control walk-take-held", caught ? "caught" : "MISSED");
+    EXPECT(caught, "a held uop taken before the walk passed it should fail");
+  }
   // PF-23's control: drained waits for no abandoned load's replay, so it
   // leaves a completion owed to a slot that is freed.
   caught = 0;
