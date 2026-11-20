@@ -562,6 +562,11 @@ module ooe_decq #(
     end
   endfunction
   logic [S*LC-1:0]      cnt_nx_cq01h;
+  // The take's copy for the count's select alone: shared with the payload
+  // selects, its decode carried their fanout into the count (deq_t's
+  // arrival 14 + 11.5, NGD-3); kept, so synthesis does not merge it back.
+  (* keep *) logic [S*R-1:0] deq_tc_cq01h;
+  assign deq_tc_cq01h = deq_t_cq01h;
   logic [S*H-1:0]       hv_nx_cq01h;
   logic [S*R*P-1:0]     hp_nx_cq01h;
   logic [S*NA*PA-1:0]   ha_nx_cq01h;
@@ -581,7 +586,7 @@ module ooe_decq #(
       begin
         logic [(R+1)*LC-1:0] cc;
         for (int t = 0; t < R + 1; t++) cc[t * LC +: LC] = (base - LC'(t)) & {LC{!fl_q_cq02h[s]}};
-        cnt_nx_cq01h[s * LC +: LC] = thsel_c(cc, deq_t_cq01h[s * R +: R]);
+        cnt_nx_cq01h[s * LC +: LC] = thsel_c(cc, deq_tc_cq01h[s * R +: R]);
       end
       for (int i = 0; i < H; i++) begin
         logic [R:0] cvv;
