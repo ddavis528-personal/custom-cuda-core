@@ -817,6 +817,14 @@ miu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=64
 miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=0
 miu=model ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1
 miu=model privwin priv_form=10
+dcu=model vadd4-swap orphan=1
+dcu=model,miu=model vadd fill_notice=4
+dcu=model,miu=model vadd cmpl_hint=4
+dcu=model,miu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=61
+dcu=model,miu=model ldpar l1_hit=1
+dcu=model,miu=model no-resource-cap v60=16
+dcu=model,miu=model vadd4-swap orphan=2
+dcu=model,miu=model lnorm1-straggler demote=342
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
   local key=$1 want=$2 impl k w bin out i ok
@@ -2108,21 +2116,24 @@ ok() {   # $1 log, then cover bins name=value; prints why not, or nothing
   done
   echo "${why# }"
 }
-# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332 (328 in OI's tree, whose timing differs)
+# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332
+# (328 in OI's tree, whose timing differs; 342 under both block models, DI's
+# re:TI-503, an IMPL_PINS row)
 # leaves a uop of the warp in DEC under rename backpressure past OOE's walk;
 # OOE walks it on arrival and beats its lanes, and FET migrates only once the
 # warp's credits are back to full (AR 395 (3)). no-straggler-walk drops it
 # unwalked, so its lanes keep FET's PC past it and lose those instructions.
+sdem=$(impl_pins lnorm1-straggler demote=332); sdem=${sdem#demote=}
 log="$B/kernel_lnorm1_straggler.log"
-CCV_RAU_DEMOTE=at:332 "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl >"$log" 2>&1
+CCV_RAU_DEMOTE=at:$sdem "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl >"$log" 2>&1
 w=$(ok "$log" decq_straggler_beat=1)
 if [ -z "$w" ]; then
-  say "lnorm1 demoted at 332: a straggler walked on arrival" "PASS (decq_straggler_beat=1)"
+  say "lnorm1 demoted at $sdem: a straggler walked on arrival" "PASS (decq_straggler_beat=1)"
 else
-  bad "lnorm1 demoted at 332, straggler walk" "$w"
+  bad "lnorm1 demoted at $sdem, straggler walk" "$w"
 fi
 log="$B/kernel_no-straggler-walk.log"
-CCV_RAU_DEMOTE=at:332 "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl --break no-straggler-walk \
+CCV_RAU_DEMOTE=at:$sdem "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl --break no-straggler-walk \
   --cycles 300000 >"$log" 2>&1
 if [ "$(field "$log" finished)" != 1 ] || [ "$(field "$log" gpr_mismatch)" != 0 ]; then
   say "--break no-straggler-walk: the straggler's lanes lose it" "PASS (finished=$(field "$log" finished) gpr_mismatch=$(field "$log" gpr_mismatch))"
@@ -2201,8 +2212,9 @@ done
 # discard. Exact at each depth; stall's drain carries the orphan going home.
 decq=$(python3 -c 'import json; print(next(p["value"] for p in json.load(open("params/ccv_params.json"))["params"] if p["name"] == "CCV_P_DECQ"))')
 v4orph=$([ "$decq" -le 13 ] && echo 1 || echo 0)
-# DI-3: the DCU model's timing leaves vadd4 one orphan at any depth.
-[ "${CCV_DCU_IMPL:-stub}" = model ] && v4orph=1
+# DI-3: the DCU model's timing leaves vadd4 one orphan at any depth, the
+# pair two (IMPL_PINS' vadd4-swap rows).
+v4orph=$(impl_pins vadd4-swap orphan=$v4orph); v4orph=${v4orph#orphan=}
 w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
 w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=$v4orph ready=1 restored=1)
 if [ -z "$w$w2" ]; then
