@@ -51,7 +51,6 @@ void (*g_random_config_hook)(Config &) = nullptr;
 /// block has no squash yet, test/ooe/rob_tb.cpp): the draws are the same,
 /// only the prediction is the outcome.
 bool g_random_predict_all = false;
-unsigned g_random_bar_pct = 0;    // random barrier ops, percent of the drawn ops (ROB slice 5's bench); held waits released
 unsigned g_random_ret_every = 0;   // every n-th random branch a ret (an RTL bench's ret_hold run)
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
@@ -304,8 +303,6 @@ struct Env {
   // contract knobs
   unsigned fetch_delay = 3;          ///< FET to OOE, so stale uops are in flight
   unsigned miss_pct = 0;             ///< loads that miss L1
-  bool auto_bar_release = g_random_bar_pct != 0;  ///< random barriers: SYU releases a held wait
-  std::multimap<uint64_t, unsigned> bar_rels;   ///< g_random_bar_pct: releases due, by cycle: warp
   bool nohit = false;                ///< OA 410: MIU sends a no-hit hint for each L1 miss
   /// Issue to the no-hit's payload landing (CCV_LAT_L1_NOHIT; AR 353).
   unsigned nohit_lat = ccv::prov::kLatL1Nohit;
@@ -1384,14 +1381,6 @@ struct Env {
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
     if (keep_log) log.push_back(o);
-    // The random barriers' SYU: a held wait's release a few cycles on.
-    if (auto_bar_release) {
-      for (const Bar &b : o.bars) if (b.held) bar_rels.emplace(t + 3 + rng() % 8, b.warp);
-      for (auto it = bar_rels.begin(); it != bar_rels.end() && it->first <= t;) {
-        core.barRelease(1u << (it->second % 32));
-        it = bar_rels.erase(it);
-      }
-    }
     // TI-34: every memop, barrier and fault carries RAU's CTA slot for its
     // warp, from OOE's per-slot register.
     auto ctaCheck = [&](const char *what, unsigned warp, unsigned slot) {
@@ -1580,20 +1569,6 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     if (o.k == kStore && width[o.src[0]] == 3) o.src[0] = r(4);
     o.w = width[o.dst];
     o.backward = o.k == kBranch && r(2) == 0;
-    // A bench's barriers (ROB slice 5): arrives and waits, guarded or not,
-    // converged (held) or not, and wait.phase; Env releases a held one.
-    if (g_random_bar_pct && r(100) < g_random_bar_pct) {
-      Op b;
-      b.k = kBarrier;
-      const unsigned v = r(6);
-      b.arrive = v < 2;
-      b.phase = v == 5;
-      b.aw = v == 2 || (v == 5 && r(2));
-      b.guard = (v == 1 || v == 4) ;
-      b.pguard = r(4);
-      b.lanes = uint32_t(rng());
-      o = b;
-    }
     p.push_back(o);
   }
   Op e;
@@ -3170,7 +3145,7 @@ void testBarrier() {
     c.bar_pend = pend;
     c.bar_buf_depth = pend ? 2 : 0;   // ooe_rob_w's side buffer with bar_pend (OA 448 (3))
     c.inject_bar_no_hold = control;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -3208,7 +3183,7 @@ void testBarrier() {
     g_test = "barrier diverged";
     Config c = baseConfig();
     c.l1_spec = false;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op b; b.k = kBarrier; b.aw = false; p.push_back(b);
@@ -3228,7 +3203,7 @@ void testBarrier() {
     g_test = "barrier arrive";
     Config c = baseConfig();
     c.l1_spec = false;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op b; b.k = kBarrier; b.arrive = true; b.guard = guarded; b.lanes = 0x00ff00ff; p.push_back(b);
@@ -3249,7 +3224,7 @@ void testBarrier() {
     g_test = "barrier wait.phase";
     Config c = baseConfig();
     c.l1_spec = false;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op b; b.k = kBarrier; b.phase = true; b.lanes = 0x5555aaaa; p.push_back(b);
@@ -3279,7 +3254,7 @@ void testBarBufDepth() {
     Config c = baseConfig();
     c.l1_spec = false;
     c.bar_buf_depth = depth;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op a; a.k = kSfu; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -3310,7 +3285,7 @@ void testBarPend() {
       c.l1_spec = false;
       c.bar_pend = pend;
       c.inject_bar_pend_overwrite = control && pend;
-      Env e(c); e.auto_bar_release = false;   // directed: the test releases
+      Env e(c);
       e.keep_log = true;
       if (control && pend) g_quiet = true;
       for (unsigned w = 0; w != 3; ++w) {
@@ -3349,7 +3324,7 @@ void testBarrierDemote() {
       Config c = baseConfig();
       c.l1_spec = false;
       c.inject_beat_unheld = control;
-      Env e(c); e.auto_bar_release = false;   // directed: the test releases
+      Env e(c);
       e.keep_log = true;
       std::vector<Op> p;
       Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -3400,7 +3375,7 @@ void testBarrierTimer() {
     Config c = baseConfig();
     c.l1_spec = false;
     c.demote_barrier = 30;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     std::vector<Op> p;
     Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
     if (mode == 0) { Op b; b.k = kBarrier; p.push_back(b); }
@@ -3428,7 +3403,7 @@ void testBarrierFault() {
       Config c = baseConfig();
       c.l1_spec = false;
       c.inject_no_bar_fault = control;
-      Env e(c); e.auto_bar_release = false;   // directed: the test releases
+      Env e(c);
       e.keep_log = true;
       std::vector<Op> p;
       Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -6287,7 +6262,6 @@ int ooeTestDirectedPrePostWith(void (*pre)(const Core &), void (*post)(const Cor
 /// failure count.
 /// Settings a bench holds each random test to, after the test's own.
 void ooeTestRandomOver(void (*cfg)(Config &)) { g_random_config_hook = cfg; }
-void ooeTestRandomBars(unsigned pct) { g_random_bar_pct = pct; }
 
 int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
                     void (*pre)(const Core &), void (*post)(const Core &), void (*cfg)(Config &)) {

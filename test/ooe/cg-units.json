@@ -583,26 +583,6 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "u_redir"
       }
-    },
-    {
-      "name": "ooe_barpick",
-      "module": "ooe_barpick",
-      "files": [
-        "rtl/ooe/ooe_barpick.sv"
-      ],
-      "params": {
-        "S": 4,
-        "WW": 5,
-        "WT": 4,
-        "WB": 4
-      },
-      "clock": "ooe_core_clk",
-      "reset": "ooe_rst_r00h",
-      "bench": {
-        "build": "test/ooe/cg-build.sh ooe_rob_w {dir}",
-        "run": "{dir}/tb --cg {scenario} {vcd}",
-        "scope": "u_barpick"
-      }
     }
   ]
 }
