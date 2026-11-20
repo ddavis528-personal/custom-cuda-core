@@ -20,7 +20,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
+- Last push: cae55e0c (2026-11-19 sweep, PASS full). Earlier: 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
   Before: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
   Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
@@ -57,6 +57,13 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-24. DONE (2026-11-19 sweep) PASS full, pushed cae55e0c (ri-sweep19 in ri-wt; two gates lost to container
+   restarts first). Merged: ccr-58815650 (MI) 63, ccr-5e4d6c70 (DI; roster.json conflict: both MI and DI rows kept,
+   each with its own session id; trust-report.md ours, generated), 9eb50716 27, miu-dcu-spec 9, 80102643 27,
+   c22116ce 18, 57eff422 20, 3868632d 10. Register: nothing for RI; Conv 20 adds MI and DI. TI-490 (rev 489, DA):
+   RESUMED PASS counts as full; after gate-wait says killed, rerun the same command with CCV_RESUME=1, once TI's
+   6464a030 is merged (next sweep). Bookmarks: Conv 20 AR 395 OA 446 IS 199 TI 489 OI 380 CP 160 DA 128 RA 156
+   RI 91 MA 127. Waiting: Daniel's sign-off.
 -23. DONE (2026-11-18) Daily sweep, PASS full, pushed 54347d2f (ri-sweep18 in ri-wt): c22116ce 92, 57eff422 24,
    9eb50716 11, 80102643 9, miu-dcu-spec 8; no conflicts. Register: nothing for RI. RA 155: RCU reconciled; RA's report
    is with Daniel, who holds final sign-off pending review. RA 156: no RCU macros. OA 434 cites RCU's lead waivers as
