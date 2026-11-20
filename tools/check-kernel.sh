@@ -2097,7 +2097,7 @@ ok() {   # $1 log, then cover bins name=value; prints why not, or nothing
   done
   echo "${why# }"
 }
-# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332 (OI measured 328 before TI's FET wait moved it 4)
+# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332 (328 in OI's tree, whose timing differs)
 # leaves a uop of the warp in DEC under rename backpressure past OOE's walk;
 # OOE walks it on arrival and beats its lanes, and FET migrates only once the
 # warp's credits are back to full (AR 395 (3)). no-straggler-walk drops it
