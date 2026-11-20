@@ -172,10 +172,12 @@ int main(int argc, char **argv) {
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 
-  // A miss: the read goes to MLC; the fill is noticed in its landing cycle F
+  // A miss, notices on: the read goes to MLC; the fill is noticed in its landing cycle F
   // and the refill launches at F + 1 + CCV_LAT_FILL_NOTICE (OA-23).
   test("miss-notice-refill", [] {
-    Bench b(cfg(9));
+    Config c = cfg(9);
+    c.notice = true;   // CCV_DCU_NOTICE=1: off by default (DI-4), kept working
+    Bench b(c);
     b.reqs[0].push_back(rd(2, 7, 0x2000));
     b.run(100);
     EXPECT(b.mlc.size() == 1 && b.mlc[0].second.op == MlcOp::Read, "one MLC read");
@@ -185,6 +187,21 @@ int main(int argc, char **argv) {
     EXPECT(b.at(7) == F + 1 + ccv::prov::kLatFillNotice, "refill at F+%lld",
            (long long)(b.at(7) - F));
     EXPECT(b.rsp(7) && !b.rsp(7)->hit && b.rsp(7)->mlc_miss, "a refill, not a hit");
+  });
+
+  // Un-noticed (CCV_DCU_NOTICE=0, the default), the refill answers at the floor: its valid
+  // at F + CCV_LAT_FILL_NOTICE, so it launches at F + 3 (DI-4, MA rev 129).
+  test("unnoticed-refill-floor", [] {
+    Config c = cfg(9);
+    c.notice = false;
+    Bench b(c);
+    b.reqs[0].push_back(rd(2, 7, 0x2000));
+    b.run(100);
+    EXPECT(b.mlc.size() == 1, "one MLC read");
+    const uint64_t F = b.mlc[0].first + b.mlc_lat;
+    EXPECT(b.notices.empty(), "no notice");
+    EXPECT(b.at(7) == F + ccv::prov::kLatFillNotice - 1, "refill at F+%lld, want F+%u",
+           (long long)(b.at(7) - F), ccv::prov::kLatFillNotice - 1);
   });
 
   // Two lookups due in one cycle to one bank: slot order; the loser waits in
