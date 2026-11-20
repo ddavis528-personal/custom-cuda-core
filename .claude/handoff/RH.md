@@ -73,6 +73,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
+- OI OA-451 RUNNING from 00:38Z 11-20: streaming demote walk, rh-jobs/oi451/oi451.sh (resumable), worktree rh-oi451 at b7b3ce5d;
+  A defaults, B demote_walk=1,beat_merge=0; S1+cm32p+cm128p; AF/BF = +demote_fallback/mlc_miss/barrier=8 on cm128p only. Table
+  python3 rh-jobs/oi451/table.py (demote, rewind_beats/walk_cycles hists, redirect_walk/busy, walk_flushed, decq_full). Ruling S1 <= 0.5%.
+  ~02:50Z. Keep rh-oi451 until OI reads. Container restarted ~00:37Z 11-20 (nothing running).
 - OI OA-449 DONE+SENT 22:52Z: why layernorm/sgemm gain under bar_pend: P0/P1 at c2adfe83 in rh-oi449 (rh-jobs/oi449/oi449.sh, diff.py ->
   ~/ccv-logs/oi449/diff.md). Same barriers/retired; layernorm rename.one_warp_short -234 (= -232 cyc), decq_full -480, credit_wait -614;
   sgemm hold.registered.barrier -244. No per-warp split in stats. rh-oi449 released and dropped 23:14Z (written up as OI-185); logs ~/ccv-logs/oi449 to drop 11-20 22:30Z.
