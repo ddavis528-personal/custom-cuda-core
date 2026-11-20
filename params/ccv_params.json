@@ -1075,7 +1075,7 @@
       "decided_at": "DA rev 128 (MA-23: arrays (B), tag then data, way prediction a parameter); MA-26, AR 386",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; MA-26",
       "derive": "9 - (CCV_DCU_WAYPRED_BITS > 0)",
-      "doc": "L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. DCU's data array is (B), tag then data (DA rev 128): 9 with no way prediction (CCV_DCU_WAYPRED_BITS 0), 8 with it, the predicted way read beside the tags. A mispredicted hit answers at 9, a cycle past the contract, as a late hit, and takes a second bank access (MA-26)."
+      "doc": "L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. DCU's data array is (B), tag then data (DA rev 128): 9 with no way prediction (CCV_DCU_WAYPRED_BITS 0), 8 with it, the predicted way read beside the tags. A mispredicted hit re-reads with a second bank access under the half-rate rule, on the bank-conflict loser's path: it answers no earlier than due + 2, and MIU takes it as a miss (MA-26; AR 390, OA-442; MI-9)."
     },
     {
       "name": "CCV_LAT_RCU",

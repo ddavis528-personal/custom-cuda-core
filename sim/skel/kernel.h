@@ -258,6 +258,13 @@ struct Kernel {
       "l1_ecc_fix",
       // MA-4's eligibility and the early no-hit (OA 410; AR 356).
       "l1_inelig", "l1_nohit", "l1_nohit_drop",
+      // The MIU model's own paths (MI-5 (2), MI-7, MI-9): its L1 first pass,
+      // holds, drain guard and TLB walks, a hint declined on a promised
+      // slot, and a hit DCU answered past the contract (taken as a miss).
+      "l1_first_pass", "l1_bank_loser", "l1_first_held", "l1_first_late", "l1_held_lost",
+      "ld_pass_held", "fence_hold", "drain_guard", "drain_guard_withheld", "st_wide_hold",
+      "tlb_miss", "tlb_walk", "itlb_walk", "tlb_two_page", "walk_reads", "tlb_two_page_lost",
+      "hint_slot_taken", "l1_dcu_late",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill", "kill_lane",

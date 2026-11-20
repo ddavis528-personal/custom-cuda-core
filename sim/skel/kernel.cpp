@@ -199,6 +199,10 @@ private:
   /// ready first.
   static constexpr uint64_t kMidBase = 0xA0000, kMidLatency = 250;
   static constexpr uint64_t kDeepBase = 0xC0000, kDeepLatency = 1000;
+  /// The slow regions end at kSlowEnd (MI-5 (1)): above it, the page tables
+  /// (0xF0 << 40) among them, every line is the placeholder DRAM's, so a
+  /// table walk pays kLatency a level, not kDeepLatency.
+  static constexpr uint64_t kSlowEnd = uint64_t(1) << 32;
   struct P { uint64_t due; Bits msg; uint64_t tid; bool first = true; };
   /// D beats, in the order they go: bursts by due cycle, each burst's beats
   /// together and one a cycle. Responses are matched by source, not order,
@@ -242,7 +246,8 @@ private:
           l[k] = it == k_.mem.end() ? 0 : it->second;
         }
         std::vector<P> burst;
-        const uint64_t due = now_ + (addr >= kDeepBase  ? kDeepLatency
+        const uint64_t due = now_ + (addr >= kSlowEnd ? kLatency
+                          : addr >= kDeepBase  ? kDeepLatency
                           : addr >= kMidBase ? kMidLatency
                           : addr >= kSlowBase ? kSlowLatency
                                               : kLatency);
@@ -1257,6 +1262,17 @@ private:
       if (h < now_ + 1 || !spare(c.cmpl_hint, ms) || !spare(c.miu_ooe, ms) ||
           !spare(c.miu_rcu, as))
         return;
+      // DCU may send CCV_DCACHE_LOOKUPS notices a cycle (MI-9): a promise
+      // whose hint, completion or data slot is already promised for that
+      // cycle is declined, and its load completes as a miss. The control
+      // --break hint-same-slot promises it anyway.
+      if (k_.brk != "hint-same-slot") {
+        bool taken = false;
+        for (const Hint &x : hints_) taken = taken || (!x.no_hit && x.at == h && x.q.slot == ms);
+        for (const Job &y : jobs_)
+          taken = taken || (y.promised == at && (y.memop_slot == ms || y.addr_slot == as));
+        if (taken) { k_.hit("hint_slot_taken"); return; }
+      }
       Bits m = msgOf(c.cmpl_hint);
       put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
       put(m, c.cmpl_hint, "rob_tag", k_.brk == "hint-wrong-tag" ? j.tag ^ 1u : j.tag);
