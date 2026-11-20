@@ -1,0 +1,11 @@
+{
+  "module": "ooe_redir",
+  "ports": {
+    "rd_e_cq02h": {
+      "arrival": 20.0,
+      "by": "OI",
+      "date": "2026-11-20",
+      "why": "OI under DA's allowance: ooe_rob_w's resolution enable, required there at 20.0 (ooe_rob_w.ngd.json), flopped here straight into re_q"
+    }
+  }
+}

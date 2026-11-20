@@ -2,7 +2,9 @@
 //
 // Bench harness only, never RTL: the two payload formatters as ooe_ent_t,
 // ooe_mem_t and ooe_dsc_t reach them, so test/ooe/pl_tb.cpp drives each
-// RS entry as it packs it and reads both channels. The widths the RTL sums
+// RS entry as it packs it (ooe_rs's entry flops and home one-hots, and
+// ooe_sched's grant register: each formatter's RS read is its own) and
+// reads both channels. The widths the RTL sums
 // (OOE_PL_*W, rtl/include/ooe_pl.svh) come out as constants, which the bench
 // holds to its own packing and to the generated channels' widths, and here
 // each is held to its struct's $bits.
@@ -10,6 +12,8 @@
 `include "ooe_pl.svh"
 module ooe_pl_tb #(
   parameter int NS  = 4,
+  parameter int N   = 45,
+  parameter int NR  = 30,
   localparam int K  = 2 * NS + 1,
   localparam int EW = OOE_PL_EW,
   localparam int MW = OOE_PL_MW,
@@ -20,21 +24,20 @@ module ooe_pl_tb #(
 ) (
   input  logic             ooe_core_clk,
   input  logic             ooe_rst_r00h,
+  // ooe_rs's entries and ooe_sched's grant register, both formatters'
+  input  logic [N-1:0]     gnt_cq01h,
+  input  logic [N*K-1:0]   hq_cq02h,
+  input  logic [N*EW-1:0]  lq_cq02h,
+  input  logic [N*EW-1:0]  pq_cq02h,
   // ooe_rcupl
   input  logic             gnt_l_cq01h,
-  input  logic [K-1:0]     lv_cq02h,
-  input  logic [K*EW-1:0]  le_cq02h,
-  input  logic [K*EW-1:0]  pe_cq03h,
   output logic [K-1:0]     iss_v_cq03h,
   output logic [K*IW-1:0]  iss_pay_cq04h,
   // ooe_mempl
   input  logic             mgl_cq01h,
   input  logic             dsc_l_cq01h,
-  input  logic [NS-1:0]    mlv_cq02h,
-  input  logic [NS*NS-1:0] lfp_cq02h,
   input  logic [NS-1:0]    cok_cq02h,
   input  logic             dv_cq02h,
-  input  logic [NS*EW-1:0] mpe_cq03h,
   input  logic [NS*MW-1:0] pm_cq03h,
   input  logic [NS*WI-1:0] pi_cq03h,
   input  logic [DW-1:0]    pd_cq03h,
@@ -56,9 +59,10 @@ module ooe_pl_tb #(
     if ($bits(ccv_ooe_miu_memop_t) != OW) $fatal(1, "OOE_PL_OW %0d, the channel %0d", OW, $bits(ccv_ooe_miu_memop_t));
   end
 
-  ooe_rcupl #(.NS(NS)) u_rcupl (
-    .ooe_core_clk, .ooe_rst_r00h, .gnt_l_cq01h, .lv_cq02h, .le_cq02h, .pe_cq03h, .iss_v_cq03h, .iss_pay_cq04h);
-  ooe_mempl #(.NS(NS)) u_mempl (
-    .ooe_core_clk, .ooe_rst_r00h, .mgl_cq01h, .dsc_l_cq01h, .lv_cq02h(mlv_cq02h), .lfp_cq02h, .cok_cq02h,
-    .dv_cq02h, .pe_cq03h(mpe_cq03h), .pm_cq03h, .pi_cq03h, .pd_cq03h, .mv_cq03h, .mo_pay_cq04h);
+  ooe_rcupl #(.NS(NS), .N(N), .NR(NR)) u_rcupl (
+    .ooe_core_clk, .ooe_rst_r00h, .gnt_l_cq01h, .gnt_cq01h, .hq_cq02h, .lq_cq02h, .pq_cq02h, .iss_v_cq03h,
+    .iss_pay_cq04h);
+  ooe_mempl #(.NS(NS), .N(N), .NR(NR)) u_mempl (
+    .ooe_core_clk, .ooe_rst_r00h, .mgl_cq01h, .dsc_l_cq01h, .gnt_cq01h, .hq_cq02h, .lq_cq02h, .pq_cq02h,
+    .cok_cq02h, .dv_cq02h, .pm_cq03h, .pi_cq03h, .pd_cq03h, .mv_cq03h, .mo_pay_cq04h);
 endmodule

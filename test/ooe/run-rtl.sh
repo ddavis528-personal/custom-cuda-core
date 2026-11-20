@@ -326,7 +326,7 @@ if ! python3 test/ooe/pl-fields.py "$dir/pl_fields.h" >"$dir/build.log" 2>&1 ||
       --trace -GNS="$secs" --top-module ooe_pl_tb \
       --Mdir "$dir" -o pl_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -I$PWD/$dir -DPL_NS=$secs -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_rcupl.sv" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_rsread.sv" "$PWD/rtl/ooe/ooe_rcupl.sv" \
       "$PWD/rtl/ooe/ooe_mempl.sv" "$PWD/test/ooe/ooe_pl_tb.sv" "$PWD/test/ooe/pl_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >>"$dir/build.log" 2>&1; then
   say "pl: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
@@ -336,7 +336,7 @@ if out=$("$dir/pl_tb" "$seeds" 2>&1); then
 else
   say "rcupl, mempl == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-gnt-lead no-mem-lead no-dsc-lead early-pe no-cok no-fp; do
+for c in no-gnt-lead no-mem-lead no-dsc-lead freed-entry no-cok no-fp; do
   if PL_CONTROL=$c "$dir/pl_tb" 3 >/dev/null 2>&1; then
     say "  control $c (pl)" "MISSED"; fail=1
   else
@@ -822,7 +822,7 @@ if ! verilator --cc --exe --build -j 0 -O2 --assert --public-flat-rw --trace -Wa
       -Wno-PINCONNECTEMPTY ${wake_g//,/ } -GNR="$n_rcu" -GA="$width" -GS="$slots" -GFB="$pick_fb" \
       --top-module ooe_trio --Mdir "$dir" -o trio_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_rsread.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
       "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
       "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" \
       >"$dir/build.log" 2>&1; then

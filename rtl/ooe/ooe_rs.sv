@@ -107,12 +107,13 @@ module ooe_rs #(
   input  logic [P*LW-1:0]  lead_cq01h,   // and its lead slice (RA-31's static fields)
   input  logic [P*K-1:0]   home_cq01h,
   input  logic             gnt_l_cq01h,  // ooe_sched's grant register may change at the next edge
-  // The reads ooe_rcupl and ooe_mempl register (OA 435 (2)(3)): slot k's
-  // granted entry, its lead slice through the grant register, and the
-  // rest through the grant register's late copy, a cycle on.
-  output logic [K-1:0]     lv_cq02h,     // slot k is a granted entry's home
-  output logic [K*LW-1:0]  le_cq02h,     // that entry's lead slice
-  output logic [K*PW-1:0]  pe_cq03h,     // and its payload, a cycle on
+  // The entries ooe_rcupl and ooe_mempl read (OA 435 (2)(3)), from this
+  // module's flops: each one's home slot, lead slice and payload. They read
+  // them through ooe_sched's grant register and their own late copy of it
+  // (ooe_rsread), beside their registers.
+  output logic [N*K-1:0]   hq_cq02h,     // entry e's home slot, one-hot
+  output logic [N*LW-1:0]  lq_cq02h,     // its lead slice
+  output logic [N*PW-1:0]  pq_cq02h,     // its payload
   output logic [P-1:0]     gnt_v_cq03h,  // port p was granted, at the last edge
   output logic [P*W-1:0]   gnt_idx_cq03h, // port p's entry
   output logic [N-1:0]     valid_out_cq02h, // the valid bits (a copy for the outputs)
@@ -618,9 +619,6 @@ module ooe_rs #(
     pw_en_cq02h = '0;
     for (int q = 0; q < P; q++) pw_en_cq02h = pw_en_cq02h | lgp_cq02h[q * N +: N];
   end
-  logic [N*PW-1:0] pq_cq02h;
-  logic [N*LW-1:0] lq_cq02h;
-  logic [N*K-1:0]  hq_cq02h;
   logic [N*PW-1:0] pd_cq02h;
   logic [N*LW-1:0] ld_cq02h;
   logic [N*K-1:0]  hd_cq02h;
@@ -643,44 +641,15 @@ module ooe_rs #(
         lq_cq02h[i * LW +: LW] <= ld_cq02h[i * LW +: LW];
         hq_cq02h[i * K +: K]   <= hd_cq02h[i * K +: K];
       end
-  // The payload read (OA's rev 343, (A)): slot k takes the granted entry
-  // whose slot is k, a one-hot AND-OR over its class. Its valid and lead
-  // slice are read through the grant register; the rest through a copy of
-  // the grant register a cycle late (gd), a cycle after its valid, as the
-  // channel's contract and CCV_LAT_HOP count it. The issue and payload
-  // registers that hold them are ooe_rcupl's and ooe_mempl's (OA 435 (2)
-  // and (3)); gd is clocked when ooe_sched's grant register was (its lead,
-  // flopped), so it clears with it.
+  // The read (OA's rev 343, (A)) is ooe_rcupl's and ooe_mempl's, through
+  // ooe_rsread beside their registers (OA 435 (2)(3)); these are the
+  // entries it reads. Its issue register's lead (the grant register's,
+  // flopped), for the checks below.
   logic iss_en_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (p_rst_r01h) iss_en_cq02h <= 1'b0;
     else          iss_en_cq02h <= gnt_l_cq01h;
   end
-  always_comb
-    for (int k = 0; k < K; k++) begin
-      lv_cq02h[k] = 1'b0;
-      le_cq02h[k * LW +: LW] = '0;
-      for (int e = 0; e < N; e++)
-        if (gnt_cq01h[e] && hq_cq02h[e * K + k]) begin
-          lv_cq02h[k] = 1'b1;
-          le_cq02h[k * LW +: LW] = le_cq02h[k * LW +: LW] | lq_cq02h[e * LW +: LW];
-        end
-    end
-  // The late grant (N flops on the grant register's lead). The store's
-  // entries gd reads are as they were when the grant register held them:
-  // pay_ready keeps every write off an entry the grant register holds.
-  logic [N-1:0] gd_cq03h;
-  always_ff @(posedge ooe_core_clk) begin
-    if (p_rst_r01h)        gd_cq03h <= '0;
-    else if (iss_en_cq02h) gd_cq03h <= gnt_cq01h;
-  end
-  always_comb
-    for (int k = 0; k < K; k++) begin
-      pe_cq03h[k * PW +: PW] = '0;
-      for (int e = 0; e < N; e++)
-        if (gd_cq03h[e] && hq_cq02h[e * K + k])
-          pe_cq03h[k * PW +: PW] = pe_cq03h[k * PW +: PW] | pq_cq02h[e * PW +: PW];
-    end
   // A grant the issue register takes never reads an entry whose payload
   // is still in its stage (the design's timing: select reads an entry no
   // sooner than the edge after its allocation, ooe_sched's request

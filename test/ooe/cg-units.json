@@ -150,6 +150,7 @@
       "name": "ooe_rcupl",
       "module": "ooe_rcupl",
       "files": [
+        "rtl/ooe/ooe_rsread.sv",
         "rtl/ooe/ooe_rcupl.sv"
       ],
       "params": {
@@ -167,6 +168,7 @@
       "name": "ooe_mempl",
       "module": "ooe_mempl",
       "files": [
+        "rtl/ooe/ooe_rsread.sv",
         "rtl/ooe/ooe_mempl.sv"
       ],
       "params": {

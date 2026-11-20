@@ -30,7 +30,7 @@
 //
 // Negative controls (PL_CONTROL=<name>) must be caught: no-gnt-lead (the
 // grant register's lead never comes), no-mem-lead (nor the memop grant's),
-// no-dsc-lead (nor the discard's), early-pe (the late read a cycle early: the grant's own cycle), no-cok
+// no-dsc-lead (nor the discard's), freed-entry (an entry rewritten before its late read), no-cok
 // (every pipe credited) and no-fp (the lead read's footprint zero: no
 // continuations, every memop on P0).
 //
@@ -60,6 +60,12 @@ using ccv::ooe::Memop;
 
 namespace {
 constexpr unsigned NS = PL_NS, K = 2 * NS + 1, kSlotP0 = NS, kSlotR = 2 * NS;
+// The RS's entries (ooe_pl_tb's N and NR): the RCU class [0, NR), the MIU
+// class [NR, N). Each cycle's issues take one of two banks of entries in
+// their class, by the cycle's parity, so the last cycle's stay as they were
+// for their late read.
+constexpr unsigned kN = ccv::prov::kRsRcu + ccv::prov::kRsMiu, kNR = ccv::prov::kRsRcu;
+static_assert(2 * (NS + 1) <= kNR && kNR + 2 * NS <= kN, "pl_tb: two banks of entries per class");
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
 
 const PlField &fld(const PlField *fs, size_t n, const char *name) {
@@ -310,7 +316,7 @@ bool prev_iv[K] = {}, prev_mv[NS] = {};
 Cycle prev_cy;   // its entries, for the late read
 std::vector<std::pair<unsigned, const Iss *>> prev_home;
 unsigned long long cycles = 0, cores = 0, skipped = 0, mismatches = 0, n_iss = 0, n_cont = 0, n_r = 0, n_mo = 0,
-                   n_up = 0, n_atom = 0, n_dsc = 0, n_unpaired = 0, n_clash = 0;
+                   n_up = 0, n_atom = 0, n_dsc = 0, n_unpaired = 0, n_clash = 0, n_alone = 0;
 
 void tick() {
   dut->ooe_core_clk = 0;
@@ -341,16 +347,24 @@ void clearInputs() {
   dut->gnt_l_cq01h = 0;
   dut->mgl_cq01h = 0;
   dut->dsc_l_cq01h = 0;
-  dut->lv_cq02h = 0;
-  dut->mlv_cq02h = 0;
+  dut->gnt_cq01h = 0;
   dut->dv_cq02h = 0;
   dut->cok_cq02h = 0xF;
-  dut->lfp_cq02h = 0;
 }
 
-/// Drives the late read of cycle c's entries (pe, pm, pi, pd).
+/// The entry home h's issue takes in bank b.
+unsigned slotEntry(unsigned h, unsigned b) {
+  if (h == kSlotR) return NS + b * (NS + 1);
+  if (h < kSlotP0) return h + b * (NS + 1);
+  return kNR + (h - kSlotP0) + b * NS;
+}
+template <typename T> void putZero(T &w, unsigned lsb, unsigned n) {
+  for (unsigned b = 0; b != n; ++b) setField(w, lsb + b, 1, 0);
+}
+
+/// Drives the late read of cycle c's memops (pm, pi, pd): the entries'
+/// own late read stays in ooe_rs's entry flops (pq).
 void driveLate(const Cycle &c, const std::vector<std::pair<unsigned, const Iss *>> &home) {
-  for (const auto &h : home) entryOf(*h.second, false).put(dut->pe_cq03h, h.first * dut->ew);
   for (const Mo &m : c.mo) {
     if (m.x.mem_op == 0xF) {
       dscOf(m.x).put(dut->pd_cq03h, 0);
@@ -360,7 +374,6 @@ void driveLate(const Cycle &c, const std::vector<std::pair<unsigned, const Iss *
       if (h.first >= kSlotP0 && h.first < kSlotR && h.second->x.rob_tag == m.x.rob_tag &&
           h.second->x.res == Issue::kMemop) {
         const unsigned p = h.first - kSlotP0;
-        entryOf(*h.second, false).put(dut->mpe_cq03h, p * dut->ew);
         memOf(m).put(dut->pm_cq03h, p * dut->mw);
         setField(dut->pi_cq03h, p * ccv::prov::kWRsIdx, ccv::prov::kWRsIdx, m.x.rs_idx);
       }
@@ -379,19 +392,25 @@ void drive(const Cycle &c, const Cycle *nx) {
     taken |= 1u << h;
     home.emplace_back(h, &i);
   }
-  // The lead read.
+  // The granted entries, in this cycle's bank: each one's home, its lead
+  // read (no-fp: its footprint zero there) and its late read. The last
+  // cycle's, in the other bank, stay for their late read, but under
+  // freed-entry, where they are cleared a cycle early.
+  const unsigned bank = cycles & 1u;
+  if (control == "freed-entry")
+    for (const auto &h : prev_home) putZero(dut->pq_cq02h, slotEntry(h.first, bank ^ 1u) * dut->ew, dut->ew);
   for (const auto &h : home) {
-    dut->lv_cq02h |= 1u << h.first;
-    entryOf(*h.second, control == "no-fp").put(dut->le_cq02h, h.first * dut->ew);
+    const unsigned e = slotEntry(h.first, bank);
+    dut->gnt_cq01h |= uint64_t(1) << e;
+    putZero(dut->hq_cq02h, e * K, K);
+    setField(dut->hq_cq02h, e * K + h.first, 1, 1);
+    entryOf(*h.second, control == "no-fp").put(dut->lq_cq02h, e * dut->ew);
+    entryOf(*h.second, false).put(dut->pq_cq02h, e * dut->ew);
     if (h.first >= kSlotP0 && h.first < kSlotR) {
-      const unsigned p = h.first - kSlotP0;
-      // An MIU entry's home is a memop home if a memop of its tag goes now.
+      // A memop entry's grant sends its memop now.
       bool memop = false;
       for (const Mo &m : c.mo) memop = memop || (m.x.mem_op != 0xF && m.x.rob_tag == h.second->x.rob_tag);
-      if (memop) {
-        dut->mlv_cq02h |= 1u << p;
-        setField(dut->lfp_cq02h, p * NS, NS, control == "no-fp" ? 0u : h.second->x.footprint);
-      }
+      n_alone += !memop;
     }
   }
   for (const Mo &m : c.mo) {
@@ -401,9 +420,8 @@ void drive(const Cycle &c, const Cycle *nx) {
     if (!paired) ++n_unpaired;
   }
   dut->cok_cq02h = control == "no-cok" ? 0xF : c.cok;
-  // The late read: the previous cycle's entries, or (early-pe) this one's.
-  if (control == "early-pe") driveLate(c, home);
-  else driveLate(prev_cy, prev_home);
+  // The memops' late read: the previous cycle's.
+  driveLate(prev_cy, prev_home);
   // The next cycle's leads.
   dut->gnt_l_cq01h = nx && busy(*nx) && control != "no-gnt-lead";
   dut->mgl_cq01h = nx && hasMemop(*nx) && control != "no-mem-lead";
@@ -582,12 +600,12 @@ int main(int argc, char **argv) {
   cg.close();
   dut->final();
   std::printf("pl_tb control=%s seeds=%u cores=%llu (skipped: unsectioned or a model control=%llu, two on a home=%llu) "
-              "cycles=%llu issues=%llu (on R %llu) continuations=%llu memops=%llu (atomic %llu, above home %llu, no P issue %llu) "
+              "cycles=%llu issues=%llu (on R %llu) continuations=%llu memops=%llu (atomic %llu, above home %llu, no P issue %llu, P issue no memop %llu) "
               "discards=%llu "
               "mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, skipped, n_clash, cycles, n_iss, n_r, n_cont,
-              n_mo, n_atom, n_up, n_unpaired, n_dsc, mismatches, model_fails);
-  const int rc = mismatches || model_fails || n_unpaired ? 1 : 0;
+              n_mo, n_atom, n_up, n_unpaired, n_alone, n_dsc, mismatches, model_fails);
+  const int rc = mismatches || model_fails || n_unpaired || n_alone ? 1 : 0;
   dut.reset();
   ctx.reset();
   return rc;

@@ -31,6 +31,9 @@
 `define CCV_RST rst_r01h
 module ooe_mempl #(
   parameter int NS  = 4,                 // MIU pipes (CCV_SECTIONS): P0..P(NS-1)
+  parameter int N   = 45,                // RS entries (CCV_P_RS_RCU + CCV_P_RS_MIU)
+  parameter int NR  = 30,                // the RCU class's, below the MIU class's
+  localparam int K  = 2 * NS + 1,        // ooe_rs's home slots: S0..S(NS-1), P0..P(NS-1), R
   localparam int EW = OOE_PL_EW,
   localparam int MW = OOE_PL_MW,
   localparam int DW = OOE_PL_DW,
@@ -41,11 +44,12 @@ module ooe_mempl #(
   input  logic             ooe_rst_r00h,
   input  logic             mgl_cq01h,    // ooe_sched may grant a memop at the next edge (a lead; a superset will do)
   input  logic             dsc_l_cq01h,  // a bulk discard may take P0 at the next edge
-  input  logic [NS-1:0]    lv_cq02h,     // P home h is a granted MIU entry's
-  input  logic [NS*NS-1:0] lfp_cq02h,    // its footprint (the lead read)
+  input  logic [N-1:0]     gnt_cq01h,    // ooe_sched's grant register
+  input  logic [N*K-1:0]   hq_cq02h,     // ooe_rs's entries: each one's home slot, one-hot
+  input  logic [N*EW-1:0]  lq_cq02h,     // its lead read (ooe_ent_t)
+  input  logic [N*EW-1:0]  pq_cq02h,     // its late read (ooe_ent_t)
   input  logic [NS-1:0]    cok_cq02h,    // the credit flags its grant read (ooe_sched's cokd)
   input  logic             dv_cq02h,     // a bulk discard takes P0
-  input  logic [NS*EW-1:0] pe_cq03h,     // each home's entry, the late read (ooe_ent_t)
   input  logic [NS*MW-1:0] pm_cq03h,     // its memop fields (ooe_mem_t)
   input  logic [NS*WI-1:0] pi_cq03h,     // its RS index
   input  logic [DW-1:0]    pd_cq03h,     // the discard's fields (ooe_dsc_t)
@@ -76,6 +80,27 @@ module ooe_mempl #(
     end
   end
   assign ld_en_cq02h = gen_cq02h || den_cq02h;
+
+  // The RS read (OA's rev 343, (A); ooe_rsread) over the MIU entries, P
+  // home h's granted entry: its footprint through the grant register (the
+  // lead read), the entry through gd, its copy a cycle on, clocked on the
+  // memop grant's lead (ooe_rs's pay_ready keeps the entry as it was).
+  logic [N*NS-1:0]  fq_cq02h;
+  logic [NS-1:0]    lv_cq02h, gv_cq03h;
+  logic [NS*NS-1:0] lfp_cq02h;
+  logic [NS*EW-1:0] pe_cq03h;
+  logic [N-1:NR]    gd_cq03h;
+  always_comb
+    for (int e = 0; e < N; e++) fq_cq02h[e * NS +: NS] = lq_cq02h[e * EW + OOE_PL_E_FP_LSB +: NS];
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h)       gd_cq03h <= '0;
+    else if (gen_cq02h) gd_cq03h <= gnt_cq01h[N-1:NR];
+  end
+  ooe_rsread #(.N(N), .K(K), .K0(NS), .KS(NS), .E0(NR), .E1(N), .W(NS)) u_l (
+    .g_cq01h(gnt_cq01h), .h_cq01h(hq_cq02h), .q_cq01h(fq_cq02h), .v_cq01h(lv_cq02h), .e_cq01h(lfp_cq02h));
+  ooe_rsread #(.N(N), .K(K), .K0(NS), .KS(NS), .E0(NR), .E1(N), .W(EW)) u_p (
+    .g_cq01h({gd_cq03h, {NR{1'b0}}}), .h_cq01h(hq_cq02h), .q_cq01h(pq_cq02h), .v_cq01h(gv_cq03h),
+    .e_cq01h(pe_cq03h));
 
   // Each home's pipe: the lowest of its footprint the flags allow. sel is
   // slot s's source home, one-hot.
@@ -126,6 +151,14 @@ module ooe_mempl #(
       selq_cq03h <= ld_en_cq02h ? sel_cq02h : '0;
     end
   end
+
+  // The late read finds every home the valid register took (pay_ready).
+  logic [NS-1:0] src_cq03h;
+  always_comb begin
+    src_cq03h = '0;
+    for (int s = 0; s < NS; s++) src_cq03h = src_cq03h | selq_cq03h[s * NS +: NS];
+  end
+  `CCV_ASSERT(late_read, (src_cq03h & ~gv_cq03h) == '0)
 
   // The payload register: the source's fields, or the discard's on P0.
   for (genvar s = 0; s < NS; s++) begin : g_slot

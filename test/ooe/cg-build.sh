@@ -57,7 +57,7 @@ case "$unit" in
     ns=$(val CCV_SECTIONS) adir=$(cd "$dir" && pwd)
     python3 test/ooe/pl-fields.py "$adir/pl_fields.h"
     vl ooe_pl_tb "-GNS=$ns" "-DPL_NS=$ns -I$adir" \
-      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_rcupl.sv" "$PWD/rtl/ooe/ooe_mempl.sv" \
+      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_rsread.sv" "$PWD/rtl/ooe/ooe_rcupl.sv" "$PWD/rtl/ooe/ooe_mempl.sv" \
       "$PWD/test/ooe/ooe_pl_tb.sv" "$PWD/test/ooe/pl_tb.cpp" ;;
   ooe_freelist_gpr|ooe_freelist_gsec|ooe_freelist_pred|ooe_freelist_gsec_fs1|ooe_freelist_pred_fs1)
     # _fs1: one free source, as ooe_rename instantiates them at its own unit's FS (TI 397, re:RI-25).
@@ -87,7 +87,7 @@ case "$unit" in
     lmiss=$(echo "$d" | tr ',' '\n' | sed -n 's/-DWAKE_LAT_MISS=//p')
     vl ooe_trio "--public-flat-rw ${g//,/ } -GNR=$n_rcu -GA=$width -GS=$slots -GFB=$fb" \
       "-DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss" \
-      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
+      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_rsread.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
       "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
       "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" ;;
   ooe_prodmap)

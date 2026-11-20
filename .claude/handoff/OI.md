@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-19 late: OA-450 wants D measured (NGD/CG, no waiver); D tree wt-pwv (oi-pwv2). Gate bc4wkcjom in wt-sw expected red; oi-slot 6583cdbf carries the fixes.
+Updated 2026-11-20: sweep gate a0cf7231 FAILED (ratmap L29, ooe_rs NGD-5 read feedthrough, decq deq_t 25.5, rob_w NGD-1/3/7, ratmap restore-first control). Fixing on oi-sw (wt-sw): 16d7393a holds ratmap off the sweep (stays on oi-5b; a later oi-5b merge will NOT re-add it: cherry-pick 2991258d+a7082aa8 back after DA rules OI-187). RS read moved into rcupl/mempl via inner helper ooe_rsread (uncommitted: pl/trio/rnrs benches pass, rcupl/mempl NGD clean at default 12); rob_w rd_e NGD-7 fixed by an OI budget pair (rob_w required 20 / new ooe_redir.ngd.json arrival 20). Left: ooe_rs NGD+CG, decq deq_t, rob_w NGD-1/3 (slice 5 regressions; measure), then --full gate-push. OA 451 walk: model shows 0 arrivals while held (5e9d1306 on oi-5b). #70: cm128priv share/credit CHECKs under CCV_RAU_DEMOTE (walk on or off), RH sending first CHECK lines.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
