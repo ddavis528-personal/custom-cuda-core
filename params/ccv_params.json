@@ -268,6 +268,22 @@
       "doc": "Entries in DCU's UE location table (AR 370 (3); DA rev 124: a clean line's uncorrectable error is recovered only a bounded number of times). Each holds a location: the array row a line occupied (bank, instance and row, MA-19's 13 bits), not the line's address, since a bad bit is physical. A clean line's first UE at a location is recovered (invalidated, refetched as a miss) and recorded; a second at a recorded location, or one that finds the table full, is a hard error, core-fatal on ccv_dcu_cru_err. Cleared only by reset; host-readable, so repair can map the rows out. MA's to size. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_UE_TRACK overrides it for a test of the full table."
     },
     {
+      "name": "CCV_DCU_WAYPRED_BITS",
+      "value": 5,
+      "status": "tunable",
+      "decided_at": "DA rev 128 (MA-23), MA-26; default AR 386 (5 unless AR's cm128 closed-loop run loses over 0.2% to none)",
+      "require": "CCV_DCU_WAYPRED_BITS <= 16",
+      "doc": "DCU's way predictor: the width of each way's partial-tag fold. 0 turns prediction off (the hit is then 9, CCV_LAT_L1_HIT_BASE), 1 to 16 on (the hit is 8). When on, a predictor register file of 64 x (8 x this) per bank (MA-26). The p1 model's CCV_P1_WAYPRED maps to it. MA's to move, AR's runs deciding."
+    },
+    {
+      "name": "CCV_DCU_WAYPRED_SEL",
+      "value": 1,
+      "status": "tunable",
+      "decided_at": "DA rev 128 (MA-23), MA-26; default recent, AR 386",
+      "require": "CCV_DCU_WAYPRED_SEL <= 1",
+      "doc": "How the way predictor chooses among the ways whose fold matches: 0 index (the lowest), 1 recent (the most recently used: true LRU in the tag word, 64 x 152 tag RFs against tree-PLRU's 64 x 144; an age compare of about 11.9 NGD). Read only when CCV_DCU_WAYPRED_BITS is not 0. The p1 model's WPSEL maps to it (MA-26, AR 386)."
+    },
+    {
       "name": "CCV_SPM_BYTES",
       "value": 131072,
       "status": "arch",
@@ -1054,11 +1070,12 @@
     },
     {
       "name": "CCV_LAT_L1_HIT_BASE",
-      "value": 7,
+      "value": 8,
       "status": "tunable",
-      "decided_at": "MIU per-block session",
-      "source": "OOE Stage 4 session (2026-10-02), interface change set",
-      "doc": "L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. An assumption until MIU's session confirms it."
+      "decided_at": "DA rev 128 (MA-23: arrays (B), tag then data, way prediction a parameter); MA-26, AR 386",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; MA-26",
+      "derive": "9 - (CCV_DCU_WAYPRED_BITS > 0)",
+      "doc": "L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. DCU's data array is (B), tag then data (DA rev 128): 9 with no way prediction (CCV_DCU_WAYPRED_BITS 0), 8 with it, the predicted way read beside the tags. A mispredicted hit answers at 9, a cycle past the contract, as a late hit, and takes a second bank access (MA-26)."
     },
     {
       "name": "CCV_LAT_RCU",
@@ -1282,7 +1299,7 @@
     },
     {
       "name": "CCV_LAT_L1_HIT",
-      "value": 7,
+      "value": 8,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-46, A-48; A-61",
@@ -1316,7 +1333,7 @@
     },
     {
       "name": "CCV_LAT_L1_WAKE",
-      "value": 13,
+      "value": 14,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -1334,7 +1351,7 @@
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 15,
+      "value": 16,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
