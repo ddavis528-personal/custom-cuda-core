@@ -51,6 +51,15 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   loser's path, data due+2 at the earliest, answered as a miss. miu-impl.md updated (re-read
   its bins from MA's branch before building that bin).
 
+- 2026-11-20: phase 1b first run. Local hook also selects DI's DCU model (CCV_DCU_IMPL=model:
+  makeDcuModel in kernel.cpp, dcu_core.cpp + dcu_block.cpp in blocks.list; scratchpad
+  re-saved). Both models, 64 kernels clean at WAYPRED_BITS 5/1/0 (L1 hit 8/9).
+  b196110b: one hint promise a slot a cycle (bin hint_slot_taken, control hint-same-slot), bin
+  l1_dcu_late. MI-9 rung to TI (rev 11): stub's latent hint bug, bins, a same-set kernel (no kernel
+  reaches dcu_wp_wrong: all lines within 64 KiB), L1_HIT_BASE doc. Re OA-453 (rev 12, OA rung):
+  notices off -> MIU sends no hint; hint controls need a CCV_DCU_NOTICE=1 scenario.
+  Bookmarks since: OA 455, MI 12.
+
 ## Open work, most urgent first
 1. Model restructure to the spec's timing, in worktree /home/user/mi-wt on local branch mi-dev
    (the MI-1 hook applied there uncommitted, git update-index --skip-worktree on
