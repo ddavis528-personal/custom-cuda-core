@@ -1372,7 +1372,7 @@
     "instr_uid": 0,
     "unit": "ccv_ooe_rau_status",
     "channel_id": 31,
-    "payload_lo": 2048,
+    "payload_lo": 2056,
     "payload_hi": 0
    }
   },

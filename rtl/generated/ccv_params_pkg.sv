@@ -500,6 +500,10 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: MA (MIU memop queue sizing), ruled by AR
   localparam int CCV_MEMOP_CREDITS = 10;
 
+  // Cycles OOE holds a walked uop's decode-queue credit past its rewind beat's send cycle, so the credit on ccv_ooe_fet_decq_credit lands at FET no earlier than the beat on ccv_ooe_fet_redirect (AR 395 (2)): the redirect crossing less the credit crossing, from params/links.json, when that is positive. FET migrates a demoted warp once its credits are back to full, so a credit that overtook its beat would let FET decide the lanes in no beat before the beat landed. 0 while the two crossings are equal. OOE's model and RTL read it.  Derived: = max(0, link_n('ooe_fet_redirect') + bnd_rx('ooe_fet_redirect') - link_n('ooe_fet_decq_credit') - bnd_rx('ooe_fet_decq_credit')).  Requires: link_n('ooe_fet_decq_credit') + bnd_rx('ooe_fet_decq_credit') + CCV_LAT_DECQ_CREDIT_DELAY >= link_n('ooe_fet_redirect') + bnd_rx('ooe_fet_redirect').
+  // PROVISIONAL -- decided by: generated
+  localparam int CCV_LAT_DECQ_CREDIT_DELAY = 0;
+
   // Width of the block clock gate's hysteresis thresholds, which are CSR fields (Q-47): up to 63 cycles. The thresholds are ccv_common_clk inputs; CCV_CG_HYST_QUIESCE and CCV_CG_HYST_STALL are their reset values.
   // PROVISIONAL -- decided by: the CSR map (Q-47)
   localparam int CCV_CG_HYST_W = 6;
@@ -596,7 +600,7 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: LANE per-block session; AR's revs 300 and 301 (re:RI-16)
   localparam int CCV_LAT_LANE_BASE = 7;
 
-  // L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. DCU's data array is (B), tag then data (DA rev 128): 9 with no way prediction (CCV_DCU_WAYPRED_BITS 0), 8 with it, the predicted way read beside the tags. A mispredicted hit answers at 9, a cycle past the contract, as a late hit, and takes a second bank access (MA-26).  Derived: = 9 - (CCV_DCU_WAYPRED_BITS > 0).
+  // L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. DCU's data array is (B), tag then data (DA rev 128): 9 with no way prediction (CCV_DCU_WAYPRED_BITS 0), 8 with it, the predicted way read beside the tags. A mispredicted hit re-reads with a second bank access under the half-rate rule, on the bank-conflict loser's path: it answers no earlier than due + 2, and MIU takes it as a miss (MA-26; AR 390, OA-442; MI-9).  Derived: = 9 - (CCV_DCU_WAYPRED_BITS > 0).
   // PROVISIONAL -- decided by: DA rev 128 (MA-23: arrays (B), tag then data, way prediction a parameter); MA-26, AR 386
   localparam int CCV_LAT_L1_HIT_BASE = 8;
 

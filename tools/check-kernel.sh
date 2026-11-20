@@ -798,13 +798,45 @@ fi
 # privwin's priv_form: 11 until OOE's C9h (OA's rev 372), 12 with it: one more
 # private memop re-executed, its formation counted again (TI's response OI-123).
 cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
+# Pins that hold only for the stubs' timing (DI-3, MI-4): under a block's
+# model (CCV_DCU_IMPL=model, CCV_MIU_IMPL=model) its row here replaces the
+# kernel's bin of that name. A row is the implementation, the kernel as the
+# table below names it, and the bin's expectation. Their owners keep them:
+# the figures move with every timing change of the model.
+NOTICE_ON=$([ "${CCV_DCU_IMPL:-stub}" = model ] && echo CCV_DCU_NOTICE=1)
+IMPL_PINS="
+dcu=model ldpar l1_hit=2
+dcu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=51
+dcu=model late l1_late=0
+dcu=model stall l1_late=0
+dcu=model privwin priv_form=13
+"
+impl_pins() {   # kernel key, its expectations: those under this run's models
+  local key=$1 want=$2 impl k w bin out
+  while read -r impl k w; do
+    [ -n "$impl" ] && [ "$k" = "$key" ] || continue
+    case "$impl" in
+      dcu=*) [ "${CCV_DCU_IMPL:-stub}" = "${impl#dcu=}" ] || continue ;;
+      miu=*) [ "${CCV_MIU_IMPL:-stub}" = "${impl#miu=}" ] || continue ;;
+      *) continue ;;
+    esac
+    bin=${w%%[=>]*}; out=""
+    for x in $want; do [ "${x%%[=>]*}" = "$bin" ] && out="$out $w" || out="$out $x"; done
+    want=${out# }
+  done <<<"$IMPL_PINS"
+  echo "$want"
+}
 while read -r k want; do
   [ -z "$k" ] && continue
+  want=$(impl_pins "$k" "$want")
   # k@VAR=N: the run under that environment, for a bin only a narrower
   # resource reaches (gather@CCV_MIU_DCU_IDS=16: MIU waits for a DCU id,
   # which MA-6's 64 ids leave unreached by any kernel).
   env=""; case "$k" in *@*) env=${k#*@}; k=${k%%@*} ;; esac
   log="$B/kernel_$k${env:+_${env##*=}}.log"
+  # The DCU model sends no refill notice by default (CCV_DCU_NOTICE=0, MA
+  # rev 129, DI-4): the kernels pinned on notices run with them on (DI-3).
+  case "$k" in vadd|mlp) env="$env $NOTICE_ON" ;; esac
   env $env "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
   why=""
   for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
@@ -991,7 +1023,9 @@ ctl() {   # control, what must show in its log
   fi
 }
 ctl spm-one-pass "^CHECK miu: seq 4 lane 0 loaded 0000001f, oracle 00000000"
-ctl spm-shared-region "^CHECK miu: seq 66 lane 0 loaded c0340000, oracle 408a0000"
+# Matched on its class, not its first line (DI-3): under the DCU model the
+# two CTAs' loads swap, so either value may be read first.
+ctl spm-shared-region "^CHECK miu: seq [0-9]* lane [0-9]* loaded \(c0340000, oracle 408a0000\|408a0000, oracle c0340000\)"
 ctl bar-park-off "^CHECK fet: warp 0 picks 10c6 for lanes ffff0000; ccv-sim issued 10dc for 0000ffff"
 if [ "$(cover "$B/kernel_spm-no-wait.log" spm_wait)" = 0 ]; then
   say "--break spm-no-wait: spmbank's spm_wait bin misses it" "PASS (spm_wait=0)"
@@ -1015,7 +1049,8 @@ CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.json
 # lat_class 4 (OI-145 (3), RI-52), warps 0, 1 and 2 are caught, warp 1 most
 # (139 of 246 refusals); warp 0 with PF-47 alone, warp 1 with the SFU class
 # alone, warp 3 from RA's rev 95 (LANE 7, SFU 12), warp 2 before.
-ctl held-over-r "^CHECK ooe: warp 1 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
+# On its class (DI-3): any held warp, any count past r.
+ctl held-over-r "^CHECK ooe: warp [0-9]* holds [0-9][0-9]* slots past its held wait, over r = 2 (TI-46 (b))"
 ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
 ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
 # A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every
@@ -2036,7 +2071,7 @@ fi
 for spec in late-refill:dcu_miu_fill_ntc:on_time notice-wrong-id:dcu_miu_fill_ntc:same_keys \
             late-cmpl:miu_ooe_cmpl_hint:on_time hint-wrong-tag:miu_ooe_cmpl_hint:same_keys; do
   brk=${spec%%:*}; rest=${spec#*:}; chan=${rest%%:*}; prop=${rest#*:}
-  "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break "$brk" >"$B/kernel_$brk.log" 2>&1
+  env $NOTICE_ON "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break "$brk" >"$B/kernel_$brk.log" 2>&1
   n=$(grep -c "u_${chan}_notice_s[0-9]*\.g_${prop}_as" "$B/kernel_$brk.log")
   if [ "$n" -gt 0 ]; then
     say "--break $brk: $chan $prop" "PASS ($n)"
@@ -2062,6 +2097,59 @@ ok() {   # $1 log, then cover bins name=value; prints why not, or nothing
   done
   echo "${why# }"
 }
+# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332 (328 in OI's tree, whose timing differs)
+# leaves a uop of the warp in DEC under rename backpressure past OOE's walk;
+# OOE walks it on arrival and beats its lanes, and FET migrates only once the
+# warp's credits are back to full (AR 395 (3)). no-straggler-walk drops it
+# unwalked, so its lanes keep FET's PC past it and lose those instructions.
+log="$B/kernel_lnorm1_straggler.log"
+CCV_RAU_DEMOTE=at:332 "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl >"$log" 2>&1
+w=$(ok "$log" decq_straggler_beat=1)
+if [ -z "$w" ]; then
+  say "lnorm1 demoted at 332: a straggler walked on arrival" "PASS (decq_straggler_beat=1)"
+else
+  bad "lnorm1 demoted at 332, straggler walk" "$w"
+fi
+log="$B/kernel_no-straggler-walk.log"
+CCV_RAU_DEMOTE=at:332 "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl --break no-straggler-walk \
+  --cycles 300000 >"$log" 2>&1
+if [ "$(field "$log" finished)" != 1 ] || [ "$(field "$log" gpr_mismatch)" != 0 ]; then
+  say "--break no-straggler-walk: the straggler's lanes lose it" "PASS (finished=$(field "$log" finished) gpr_mismatch=$(field "$log" gpr_mismatch))"
+else
+  bad "--break no-straggler-walk" "went unnoticed: $(grep '^KERNEL' "$log")"
+fi
+
+# Both block models with refill notices on (MA rev 134, re OA-453; MI-9):
+# the DCU model's default sends none, so OA-23's hint contract is held here.
+# vadd4 has DCU send two notices a cycle; the MIU model declines a second
+# promise on a slot taken that cycle (hint_slot_taken) and is otherwise
+# clean, and each control breaking a promise must be caught.
+MODELS="CCV_MIU_IMPL=model CCV_DCU_IMPL=model CCV_DCU_NOTICE=1"
+log="$B/kernel_vadd4_models.log"
+env $MODELS "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl >"$log" 2>&1
+w=$(ok "$log")
+hs=$(cover "$log" hint_slot_taken); ch=$(cover "$log" cmpl_hint)
+[ "${hs:-0}" -gt 0 ] || w="$w hint_slot_taken=${hs:-0} (want >0)"
+[ "${ch:-0}" -gt 0 ] || w="$w cmpl_hint=${ch:-0} (want >0)"
+if [ -z "$w" ]; then
+  say "vadd4, both models, notices on: == ccv-sim, hints held" "PASS (hint_slot_taken=$hs, cmpl_hint=$ch)"
+else
+  bad "vadd4, both models, notices on" "${w# }"
+fi
+for spec in late-refill:dcu_miu_fill_ntc:on_time notice-wrong-id:dcu_miu_fill_ntc:same_keys \
+            late-cmpl:miu_ooe_cmpl_hint:on_time hint-wrong-tag:miu_ooe_cmpl_hint:same_keys \
+            hint-same-slot:miu_ooe_cmpl_hint:; do
+  brk=${spec%%:*}; rest=${spec#*:}; chan=${rest%%:*}; prop=${rest#*:}
+  log="$B/kernel_${brk}_models.log"
+  env $MODELS "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break "$brk" >"$log" 2>&1
+  n=$(grep -c "u_${chan}_notice_s[0-9]*\.g_${prop:-[a-z_]*}_as" "$log")
+  f=$(field "$log" check_failures)
+  if [ "$n" -gt 0 ] || [ "${f:-0}" -gt 0 ]; then
+    say "--break $brk, both models: caught" "PASS ($n notice violations, ${f:-0} checks)"
+  else
+    bad "--break $brk, both models" "went unnoticed: $(grep '^KERNEL' "$log")"
+  fi
+done
 bad_k=""
 for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
   CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$B/kernel_${k}_swap.log" 2>&1
@@ -2102,6 +2190,8 @@ done
 # discard. Exact at each depth; stall's drain carries the orphan going home.
 decq=$(python3 -c 'import json; print(next(p["value"] for p in json.load(open("params/ccv_params.json"))["params"] if p["name"] == "CCV_P_DECQ"))')
 v4orph=$([ "$decq" -le 13 ] && echo 1 || echo 0)
+# DI-3: the DCU model's timing leaves vadd4 one orphan at any depth.
+[ "${CCV_DCU_IMPL:-stub}" = model ] && v4orph=1
 w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
 w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=$v4orph ready=1 restored=1)
 if [ -z "$w$w2" ]; then
