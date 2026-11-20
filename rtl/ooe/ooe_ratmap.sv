@@ -34,8 +34,9 @@
 // enable. A demotion's map writes it a cycle after its payload, from this
 // module's own register of the payload's position and width fields (the
 // zero register's position 0). A restore-allocate reads it through a
-// registered port: prl, its lead (a restore-allocate next cycle), then the
-// warp at prw; pk_* a cycle on.
+// registered port: prl, a restore-allocate, with its warp prw, both
+// flopped here (the read's mux is too deep for an input's budget); pk_* a
+// cycle on.
 //
 // Reset line (decision 6): the queue's valids, the pick's valid and the
 // parked write's valid reset; the payload, the parked layout and the read
@@ -84,9 +85,9 @@ module ooe_ratmap #(
   output logic [NG*PB-1:0]  map_pos_cq04h,
   output logic [NG*WB-1:0]  map_w_cq04h,
   output logic [NP*PW-1:0]  map_pred_cq04h,
-  // The parked layout's read: a restore-allocate next cycle, its warp.
+  // The parked layout's read: a restore-allocate and its warp.
   input  logic              prl_cq00h,
-  input  logic [LW-1:0]     prw_cq01h,
+  input  logic [LW-1:0]     prw_cq00h,
   output logic [NG*PB-1:0]  pk_pos_cq02h,
   output logic [NG*WB-1:0]  pk_w_cq02h
 `ifdef CCV_CHECK_RATMAP
@@ -144,7 +145,7 @@ module ooe_ratmap #(
   `CCV_ASSERT(pick_one_hot, $onehot0(pick_cq02h) && ((cand_cq02h == '0) == (pick_cq02h == '0)))
 
   (* keep *) logic         mv_cq03h;           // the channel's valid
-  (* keep *) logic         mi_cq03h;           // its copy: the payload's enable
+  (* keep *) logic         map_en_cq03h;           // its copy: the payload's enable
   logic [S-1:0] ms_cq03h;
   logic         md_cq03h;
   always_ff @(posedge ooe_core_clk) begin
@@ -152,12 +153,12 @@ module ooe_ratmap #(
       pv_cq02h <= '0;
       ag_cq02h <= '0;
       mv_cq03h <= 1'b0;
-      mi_cq03h <= 1'b0;
+      map_en_cq03h <= 1'b0;
     end else begin
       pv_cq02h <= pv_nx_cq02h;
       ag_cq02h <= ag_nx_cq02h;
       mv_cq03h <= |pick_cq02h;
-      mi_cq03h <= |pick_cq02h;
+      map_en_cq03h <= |pick_cq02h;
     end
   end
   // The direction of each waiting slot, and the pick's slot and direction:
@@ -194,7 +195,7 @@ module ooe_ratmap #(
     end
   end
   always_ff @(posedge ooe_core_clk) begin
-    if (mi_cq03h) begin
+    if (map_en_cq03h) begin
       map_warp_cq04h <= sel_w_cq03h;
       map_dir_cq04h  <= md_cq03h;
       map_gpr_cq04h  <= sel_row_cq03h;
@@ -212,7 +213,7 @@ module ooe_ratmap #(
   logic [LW-1:0] kw_w_cq04h;
   logic [KW-1:0] kw_d_cq04h;
   logic [KW-1:0] kd_cq03h;
-  assign kw_en_cq03h = mi_cq03h && !md_cq03h;
+  assign kw_en_cq03h = map_en_cq03h && !md_cq03h;
   always_comb
     for (int a = 0; a < NG; a++)
       kd_cq03h[a * (PB + WB) +: PB + WB] = {sel_cw_cq03h[a * WB +: WB], sel_pos_cq03h[a * PB +: PB]};
@@ -234,23 +235,27 @@ module ooe_ratmap #(
       if (pk_en_cq04h) pk_q[w] <= kw_d_cq04h;
     end
   end
-  // The read: prl's flop the enable, prw the address.
-  logic prl_cq01h;
+  // The read: prl's flop the enable, prw's the address.
+  logic          pkr_en_cq01h;
+  logic [LW-1:0] prw_cq01h;
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) prl_cq01h <= 1'b0;
-    else          prl_cq01h <= prl_cq00h;
+    if (rst_r01h) pkr_en_cq01h <= 1'b0;
+    else          pkr_en_cq01h <= prl_cq00h;
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    prw_cq01h <= prw_cq00h;                // read only with prl
   end
   logic [KW-1:0] rd_cq01h;
   assign rd_cq01h = pk_q[prw_cq01h];
   always_ff @(posedge ooe_core_clk) begin
-    if (prl_cq01h)
+    if (pkr_en_cq01h)
       for (int a = 0; a < NG; a++) begin
         pk_pos_cq02h[a * PB +: PB] <= rd_cq01h[a * (PB + WB) +: PB];
         pk_w_cq02h[a * WB +: WB]   <= rd_cq01h[a * (PB + WB) + PB +: WB];
       end
   end
   // A restore reads its warp long after its demotion wrote it.
-  `CCV_ASSERT(read_not_written, !(prl_cq01h && kv_cq04h && kw_w_cq04h == prw_cq01h))
+  `CCV_ASSERT(read_not_written, !(pkr_en_cq01h && kv_cq04h && kw_w_cq04h == prw_cq01h))
 `ifdef CCV_CHECK_RATMAP
   assign dbg_pk = pk_q[dbg_w];
 `endif

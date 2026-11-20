@@ -177,9 +177,8 @@ void hook(const Core &c) {
     }
     for (unsigned p = 0; p != NP; ++p) setField(dut->crat_cq02h, t * MW + NG * GW + p * PW, PW, c.cratPred(t, p));
   }
-  // A restore-allocate's read of the parked layout: led this cycle, its
-  // warp the next.
-  dut->prw_cq01h = read_warp >= 0 ? unsigned(read_warp) : 0;
+  // A restore-allocate's read of the parked layout, its warp beside it:
+  // the result after the next edge.
   const int was_read = read_warp;
   unsigned rd_pos[NG], rd_w[NG];
   for (unsigned r = 0; r != NG; ++r) rd_pos[r] = read_pos[r], rd_w[r] = read_w[r];
@@ -187,6 +186,7 @@ void hook(const Core &c) {
   for (const Core::SlotAlloc &a : sl.alloc)
     if (a.op == ccv::ooe::kAllocRestoreAlloc && written[a.warp % NW]) {
       if (control != "no-read-lead") dut->prl_cq00h = 1;
+      dut->prw_cq00h = a.warp % NW;
       read_warp = int(a.warp % NW);
       for (unsigned r = 0; r != NG; ++r) {
         read_pos[r] = scale == 1 ? c.parkedPos(a.warp, r) : 0;
@@ -221,7 +221,7 @@ void hook(const Core &c) {
   for (unsigned w : park_due) { checkParked(c, w); written[w] = true; }
   park_due.swap(park_next);
   park_next.clear();
-  // A read led last cycle, its warp this cycle: its result after this edge.
+  // A read driven last cycle: its result after this edge.
   if (was_read >= 0) {
     ++reads;
     for (unsigned r = 0; r != NG; ++r) {
