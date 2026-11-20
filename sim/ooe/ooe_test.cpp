@@ -5711,7 +5711,7 @@ void testSwap() {
   // the same swaps; FET's rewind check holds a lane to one beat. Its
   // control: rename drops a uop the walk still holds.
   {
-    unsigned demotes = 0, flushed = 0;
+    unsigned demotes = 0, flushed = 0, arrivals = 0;
     for (unsigned seed = 1; seed <= 6; ++seed) {
       g_test = "swap, demote_walk beat_merge 0, seed " + std::to_string(seed);
       Config c = baseConfig();
@@ -5728,9 +5728,12 @@ void testSwap() {
       e.finish(200000);
       demotes += unsigned(e.core.counters["demote"]);
       flushed += unsigned(e.core.counters["demote.walk_flushed"]);
+      arrivals += unsigned(e.core.counters["demote.walk_arrival"]);
     }
     g_test = "swap, demote_walk, seeds 1 to 6";
     EXPECT(demotes > 0 && flushed > 0, "%u demotes, %u held uops flushed by the walk", demotes, flushed);
+    std::printf("  %-24s %u demotes, %u held uops flushed, %u arrivals while held\n", "demote walk", demotes,
+                flushed, arrivals);
     caught = 0;
     for (unsigned seed = 1; seed <= 6 && !caught; ++seed) {
       g_test = "swap (control walk-take-held)";

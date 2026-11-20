@@ -315,6 +315,9 @@ void Core::uop(const Uop &u) {
   // ooe_decq applies a flush an edge late, dropping its slot's uops then:
   // none may arrive in the flush's cycle (OI-58).
   if ((decq_flushed_ >> si) & 1u) err("OI-58: uop seq %u arrived for slot %d in its decode-queue flush's cycle", uint32_t(u.tid), si);
+  // demote_walk (OA 451): ooe_decq holds the flush of the walked uops,
+  // dropping them at the walk's end; none arrives for the slot meanwhile.
+  if (slot_[si].walk_held) count("demote.walk_arrival");
   // A uop behind no hold stops the barrier timer: the warp is moving.
   if (!slot_[si].bar_hold) slot_[si].bar_idle = false;
   decq_.push_back(u);
