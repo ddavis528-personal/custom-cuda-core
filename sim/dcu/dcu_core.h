@@ -109,6 +109,7 @@ struct Config {
   bool wp_recent = ccv::prov::kDcuWaypredSel == 1;   ///< CCV_DCU_WAYPRED_SEL: 1 recent, 0 index
   unsigned gap = 5;              ///< a store hit's read to its write (MA-17, TI-483)
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
+  bool notice = false;           ///< refill notices: off by default, CCV_DCU_NOTICE=1 on (DI-4, MA rev 130)
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)
   unsigned ids = 1u << ccv::prov::kWReqDcuMlc;       ///< miss buffers: MLC req_ids
   unsigned wb = 2;               ///< the writeback buffer's entries
@@ -268,6 +269,9 @@ private:
   /// A refill's answer: noticed if its slot can take a notice and a credit
   /// beyond its promises, at a cycle not already promised; else sent as it can.
   void refill(const Rsp &r, const Ports &p);
+  /// An un-noticed answer to a fill whose payload landed now: its valid at
+  /// F + CCV_LAT_FILL_NOTICE (DI-4), so it launches a cycle earlier.
+  uint64_t floorAt() const { return now_ + c_.lat_notice - 1; }
   const Ports *ports_ = nullptr;
 
   // ---- machine errors (AR 370, MA-19) -------------------------------------
