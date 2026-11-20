@@ -107,7 +107,8 @@ Credit rules (TI-49):
 - **Sweep 2026-11-20 (10:03Z trigger):** merged 7 branches, 60 commits (p8esoz 29,
   1vzyjg 10, miu-dcu-microarch-spec 6, n6402z 5, doowtf 4, infra-6msg93 4,
   0ch1hh 2), no conflicts, regen clean; full gate PASS on 5f02cdfc (~3.8 h);
-  pushed. Session home still exit 1. Answered every agent's Friday ping.
+  pushed. Answered every agent's Friday ping. Session home INSTALLED with
+  Daniel's approval (2026-11-20); --check exit 0, handoff hook verified.
 - **Earlier 2026-11-20:** merged the 11-19 and 11-20 branches (OA.md
   conflict in 20cauz taken as ours, which held OA's newer 5de62e85); the gate
   was killed by container restarts four times, then RESUMED PASS (22 of 24
