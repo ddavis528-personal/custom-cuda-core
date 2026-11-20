@@ -123,7 +123,8 @@ background task: it ends with the job's result and exit status, or with
 `CCV_RESUME=1` (IS-27): verify.sh carries over the sections the killed run
 passed on the same commit, tree and arguments (`tools/gate-resume.py`), a
 full run keeps the synthesis cache only if its own clear began it, and the
-result reads `RESUMED PASS` with the count; the sweep then leaves branches
+result reads `RESUMED PASS` with the count, which counts as the full
+clean gate for a push, the sweep and a release (Daniel, 2026-11-20); the sweep then leaves branches
 that moved to the next sweep, as `--skip` would. While it
 waits the session is active, so the container stays. Calls between these
 tools, CI, and `CCV_FOREGROUND=1` run in place; `tools/check-detach.sh`
