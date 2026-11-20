@@ -119,7 +119,12 @@ older caller reading it as the gate's stops (OA-414). Then run
 `tools/gate-wait.sh [<job log>]` (default the newest) as the session's
 background task: it ends with the job's result and exit status, or with
 `waiting` (exit 3) before 2 hours, when you run it again at once, or
-`killed` (exit 4) after a restart, when you start the job again. While it
+`killed` (exit 4) after a restart, when you start the job again with
+`CCV_RESUME=1` (IS-27): verify.sh carries over the sections the killed run
+passed on the same commit, tree and arguments (`tools/gate-resume.py`), a
+full run keeps the synthesis cache only if its own clear began it, and the
+result reads `RESUMED PASS` with the count; the sweep then leaves branches
+that moved to the next sweep, as `--skip` would. While it
 waits the session is active, so the container stays. Calls between these
 tools, CI, and `CCV_FOREGROUND=1` run in place; `tools/check-detach.sh`
 holds it, with controls.

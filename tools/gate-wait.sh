@@ -11,7 +11,8 @@
 #            one, and the job's own exit status
 #   waiting  still running at CCV_WAIT_MAX: exit 3. Run this again, at once.
 #   killed   the job is gone with no exit status (a container restart): exit
-#            4. Start the job again.
+#            4. Start the job again with CCV_RESUME=1, which carries over the
+#            sections it passed if the commit and tree are unchanged (IS-27).
 set -uo pipefail
 LOGDIR=${CCV_LOGDIR:-$HOME/ccv-logs}
 log=${1:-$(ls -t "$LOGDIR"/job-*-2*.log 2>/dev/null | head -1)}
@@ -28,7 +29,7 @@ for _ in 1 2 3 4 5; do [ -n "$pid" ] && break; sleep 1
 while ! ended; do
   if [ -z "$pid" ] || ! alive "$pid"; then
     ended && break
-    echo "gate-wait: killed: pid ${pid:-?} is gone with no exit status (a restart?); log $log"
+    echo "gate-wait: killed: pid ${pid:-?} is gone with no exit status (a restart?); log $log; start it again with CCV_RESUME=1 to keep its passed sections"
     exit 4
   fi
   if [ $(( $(date +%s) - t0 )) -ge "$max" ]; then
