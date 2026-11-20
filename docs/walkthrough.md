@@ -217,18 +217,18 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/57 violations=0
-XFER events=660 launched=660 match=yes channels_seen=33
+KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/57 violations=0
+XFER events=669 launched=669 match=yes channels_seen=34
 ```
 
 Retired in order, every register, predicate and memory word equal to
-`ccv-sim`'s, and every one of the 660 messages
+`ccv-sim`'s, and every one of the 669 messages
 launched was seen by the checker bank, which reported nothing. The run
-touches 33/57 channel types. The rest are waiting for
+touches 34/57 channel types. The rest are waiting for
 kernels that need them:
 
 ```
-UNUSED ccv_ooe_fet_redirect ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_rau_pca_mig ccv_miu_rau_ready ccv_syu_ooe_rel ccv_syu_fet_rel ccv_syu_rau_ready ccv_ooe_cru_fault ccv_dcu_cru_err ccv_cru_rau_cfg ccv_dcu_miu_cred
+UNUSED ccv_ooe_fet_redirect ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_rau_pca_mig ccv_miu_rau_ready ccv_syu_ooe_rel ccv_syu_fet_rel ccv_syu_rau_ready ccv_ooe_cru_fault ccv_dcu_cru_err ccv_cru_rau_cfg
 ```
 
 ## 7. One instruction through the machine
@@ -383,8 +383,8 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/57 violations=0
-TRACES records=767/767 equal=yes byte_identical=no differing_cycles=0
+KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/57 violations=0
+TRACES records=776/776 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
