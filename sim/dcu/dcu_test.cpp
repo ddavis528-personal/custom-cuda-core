@@ -187,6 +187,21 @@ int main(int argc, char **argv) {
     EXPECT(b.rsp(7) && !b.rsp(7)->hit && b.rsp(7)->mlc_miss, "a refill, not a hit");
   });
 
+  // Un-noticed (CCV_DCU_NOTICE=0), the refill answers at the floor: its valid
+  // at F + CCV_LAT_FILL_NOTICE, so it launches at F + 3 (DI-4, MA rev 129).
+  test("unnoticed-refill-floor", [] {
+    Config c = cfg(9);
+    c.notice = false;
+    Bench b(c);
+    b.reqs[0].push_back(rd(2, 7, 0x2000));
+    b.run(100);
+    EXPECT(b.mlc.size() == 1, "one MLC read");
+    const uint64_t F = b.mlc[0].first + b.mlc_lat;
+    EXPECT(b.notices.empty(), "no notice");
+    EXPECT(b.at(7) == F + ccv::prov::kLatFillNotice - 1, "refill at F+%lld, want F+%u",
+           (long long)(b.at(7) - F), ccv::prov::kLatFillNotice - 1);
+  });
+
   // Two lookups due in one cycle to one bank: slot order; the loser waits in
   // the bank's queue and is served when the bank frees (2 cycles), late.
   test("bank-conflict-slot-order", [] {

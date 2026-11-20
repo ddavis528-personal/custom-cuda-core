@@ -79,6 +79,7 @@ private:
     c.hash = envU("CCV_DCU_BANK_HASH", 0) != 0;
     c.ue_every = envU("CCV_DCU_UE_INJECT", 0);
     c.ue_track = envU("CCV_DCU_UE_TRACK", c.ue_track);
+    c.notice = envU("CCV_DCU_NOTICE", 1) != 0;
     c.brk = k.brk;
     return c;
   }
