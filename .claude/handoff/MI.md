@@ -28,10 +28,14 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
-- Session-start read: AR 392, OA 443, IS 197, TI 486, OI 378, CP 160, RA 156, RI 91, MA 117,
-  MI 2 (MI-1 written), DI 1, DA 128, Conventions 20. Since: MA 122 (MI-2 settled, AR 390/391/392 read),
-  specs Common tab 9. MI tab now rev 4 (MI-2 closed, MI-3 raised, re:MI-1). Nothing had MI in Needs. MA-25 (QDEPTH/STDATA, credit
-  vectors ent_ret/std_ret) and MA-26 (WAYPRED_BITS/SEL) await TI (in flight on gate-scratch/TI-size); TI-484 (ECC inject) landed 0767fe1c.
+- Daily sweep 2026-11-19: AR 395, OA 446, IS 199, TI 487, OI 380, CP 160, RA 156, RI 91, MA 127,
+  MI 10, DI 4, DA 128, Conventions 20; specs MIU 145, Common 9, DCU 56. Only TI-488 named MI.
+- MA-26 landed (WAYPRED_BITS 5, SEL 1; L1_HIT 8, WAKE 14, CMPL 16). MA-25 (bank credits
+  ent_ret/std_ret, QDEPTH 16, STDATA 12) still pending at TI.
+- MA-127 answered (rev 9: full 64-bit fault address reaches the record). MI-7 (d) UE scenario
+  added (rev 8). MI-8 rung to TI (rev 10): under UE_INJECT=1 predlane/predmerge fail
+  quiesced_at_end on ooe_miu_memop (a store whose merge read was withheld never drains, so its
+  credit stays out, per spec); asked TI to exempt machine-checked runs with a control.
 
 ## Settled since the handoff (MA tab rev 119-122)
 - MI-2 settled (AR 392, Common tab rev 9): 64 KiB pages, 3 levels 6/13/13 (VA[47:42], [41:29],
@@ -46,6 +50,9 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   its bins from MA's branch before building that bin).
 
 ## Open work, most urgent first
+0. e6712d62 on mi-dev (TI-487 option (3) ported from the stub: kill answers outstanding reads
+   empty, moot jobs complete at promise, ue_withheld answer is a fail). Merge into
+   ccr-58815650-0ch1hh after the daily sweep's full gate, then scoped gate-push.
 1. Model restructure to the spec's timing, in worktree /home/user/mi-wt on local branch mi-dev
    (the MI-1 hook applied there uncommitted, git update-index --skip-worktree on
    sim/skel/{kernel.cpp,blocks.list}; scratchpad mi1-hook-bound.patch, which also bounds the
