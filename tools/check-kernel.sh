@@ -800,26 +800,37 @@ fi
 cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 # Pins that hold only for the stubs' timing (DI-3, MI-4): under a block's
 # model (CCV_DCU_IMPL=model, CCV_MIU_IMPL=model) its row here replaces the
-# kernel's bin of that name. A row is the implementation, the kernel as the
-# table below names it, and the bin's expectation. Their owners keep them:
-# the figures move with every timing change of the model.
+# kernel's bin of that name. A row is the implementations it holds under
+# (comma-joined, every one must be the run's: dcu=model,miu=model is the
+# pair; TI-500), the kernel as the table below names it, and the bin's
+# expectation; a later row wins, so the pair's rows come last. Their owners
+# keep them: the figures move with every timing change of the model.
 NOTICE_ON=$([ "${CCV_DCU_IMPL:-stub}" = model ] && echo CCV_DCU_NOTICE=1)
 IMPL_PINS="
 dcu=model ldpar l1_hit=2
-dcu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=51
+dcu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=57
 dcu=model late l1_late=0
 dcu=model stall l1_late=0
-dcu=model privwin priv_form=13
+dcu=model privwin priv_form=12
+dcu=model no-resource-cap v60=12
+miu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=64
+miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=0
+miu=model ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1
+miu=model privwin priv_form=10
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
-  local key=$1 want=$2 impl k w bin out
+  local key=$1 want=$2 impl k w bin out i ok
   while read -r impl k w; do
     [ -n "$impl" ] && [ "$k" = "$key" ] || continue
-    case "$impl" in
-      dcu=*) [ "${CCV_DCU_IMPL:-stub}" = "${impl#dcu=}" ] || continue ;;
-      miu=*) [ "${CCV_MIU_IMPL:-stub}" = "${impl#miu=}" ] || continue ;;
-      *) continue ;;
-    esac
+    ok=1
+    for i in ${impl//,/ }; do
+      case "$i" in
+        dcu=*) [ "${CCV_DCU_IMPL:-stub}" = "${i#dcu=}" ] || ok=0 ;;
+        miu=*) [ "${CCV_MIU_IMPL:-stub}" = "${i#miu=}" ] || ok=0 ;;
+        *) ok=0 ;;
+      esac
+    done
+    [ $ok = 1 ] || continue
     bin=${w%%[=>]*}; out=""
     for x in $want; do [ "${x%%[=>]*}" = "$bin" ] && out="$out $w" || out="$out $x"; done
     want=${out# }
@@ -2470,15 +2481,17 @@ fi
 # group already held, and RCU refuses every slot the two share: the lane
 # sections for one pair, the pipes for three more. (Two more until MIU was
 # pipelined, AR-19: vadd's memops now complete sooner, so a third pair is
-# ready to issue together. 12 slots then, 16 now.)
+# ready to issue together. 12 slots then, 16 now.) The DCU model's timing
+# leaves three pairs, 12 slots (DI-3): IMPL_PINS keys the count.
+nrc=$(impl_pins no-resource-cap v60=16); nrc=${nrc#v60=}
 "$SKEL" --kernel "$K" --break no-resource-cap >"$B/kernel_no-resource-cap.log" 2>&1
 log="$B/kernel_no-resource-cap.log"
 if grep -q "^CHECK rcu: V-60: seq 3's footprint 1111 overlaps seq 2's at S0" "$log" &&
    grep -q "^CHECK rcu: V-60: seq 6's footprint 1111 overlaps seq 4's at P0" "$log" &&
-   [ "$(grep -c "^CHECK rcu: V-60: " "$log")" = 16 ]; then
-  say "--break no-resource-cap: RCU refuses the overlap" "PASS (V-60: 4 pairs, 16 slots, sections and pipes)"
+   [ "$(grep -c "^CHECK rcu: V-60: " "$log")" = "$nrc" ]; then
+  say "--break no-resource-cap: RCU refuses the overlap" "PASS (V-60: $((nrc / 4)) pairs, $nrc slots, sections and pipes)"
 else
-  bad "--break no-resource-cap" "$(grep -c "^CHECK rcu: V-60: " "$log") overlaps refused (want 16): $(grep '^KERNEL' "$log")"
+  bad "--break no-resource-cap" "$(grep -c "^CHECK rcu: V-60: " "$log") overlaps refused (want $nrc): $(grep '^KERNEL' "$log")"
 fi
 # A register is a row and a position; a 32-bit one fills its row from 0.
 # OOE naming one at position 1 overruns the row: RCU refuses it, the lanes
