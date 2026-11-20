@@ -17,6 +17,13 @@
 # A merge whose only conflicts are generated files takes ours and lets regen
 # rewrite them; any other conflict aborts that merge and stops the sweep with
 # the files named, exit 3, for the session to resolve. Prints a few lines.
+#
+# Branches merge in order of fewest merge bases with the tip (RA, 2026-11-19;
+# TI-499). A branch with several bases can send the default strategy's
+# recursive virtual-ancestor build past half an hour (11-20: OA's branch, four
+# bases, 25 min and counting; resolve took 0.15 s). So each merge has
+# CCV_SWEEP_MERGE_TIMEOUT seconds (default 300); past it the attempt is
+# discarded and the merge retried with -s resolve, which takes one base.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ME=daily-sweep
@@ -42,7 +49,24 @@ clean_tree
 with_retry git fetch -q --prune origin || die "cannot fetch origin"
 WHEN=$(TZ=America/Los_Angeles date +'%Y-%m-%d, %H:%M')
 merged=""
-for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
+# Each candidate with its merge-base count, fewest first (ties by name).
+order=$(for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
+  echo "$(git merge-base --all HEAD "$rb" 2>/dev/null | wc -l) $rb"
+done | sort -k1,1n -k2,2 | awk '{print $2}')
+# One merge, at most CCV_SWEEP_MERGE_TIMEOUT seconds with the default
+# strategy, then with -s resolve. The tree was clean before it (clean_tree),
+# so a timed-out attempt is discarded with a hard reset to the tip.
+merge_one() {
+  local rb=$1 msg=$2 head st
+  head=$(git rev-parse HEAD)
+  timeout "${CCV_SWEEP_MERGE_TIMEOUT:-300}" git merge -q --no-ff --no-edit -m "$msg" "$rb" >/dev/null 2>&1
+  st=$?
+  [ $st = 124 ] || return $st
+  say "merging $rb took over ${CCV_SWEEP_MERGE_TIMEOUT:-300}s; retrying with -s resolve"
+  git merge --abort >/dev/null 2>&1; git reset -q --hard "$head"
+  git merge -q --no-ff --no-edit -s resolve -m "$msg" "$rb" >/dev/null 2>&1
+}
+for rb in $order; do
   b=${rb#origin/}
   # gate-scratch/*: unverified commits and exports in transit (DA, 2026-11-01).
   case "$b" in HEAD|origin|release|gate-scratch/*) continue ;; esac
@@ -52,7 +76,7 @@ for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); d
   if [ "${CCV_RESUME:-0}" = 1 ]; then
     SKIP="${SKIP:+$SKIP,}$b"; say "resume: $b moved ($n), left to the next sweep"; continue
   fi
-  if ! git merge -q --no-ff --no-edit -m "Merge $rb (daily sweep $WHEN)" "$rb" >/dev/null 2>&1; then
+  if ! merge_one "$rb" "Merge $rb (daily sweep $WHEN)"; then
     other=$(git diff --name-only --diff-filter=U | grep -Ev "$GENERATED" || true)
     if [ -n "$other" ]; then
       git merge --abort
