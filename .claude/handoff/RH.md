@@ -73,7 +73,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
-- OI OA-451 RUNNING from 00:38Z 11-20: streaming demote walk, rh-jobs/oi451/oi451.sh (resumable), worktree rh-oi451 at b7b3ce5d;
+- OI OA-451 RUNNING from 00:38Z 11-20: streaming demote walk, rh-jobs/oi451/oi451.sh (resumable), worktree rh-oi451 at 367bc942 (OI said 3e9bb31b, not on the branch; 367bc942 is the matching tip; was b7b3ce5d);
   A defaults, B demote_walk=1,beat_merge=0; S1+cm32p+cm128p; AF/BF = +demote_fallback/mlc_miss/barrier=8 on cm128p only. Table
   python3 rh-jobs/oi451/table.py (demote, rewind_beats/walk_cycles hists, redirect_walk/busy, walk_flushed, decq_full). Ruling S1 <= 0.5%.
   ~02:50Z. Keep rh-oi451 until OI reads. Container restarted ~00:37Z 11-20 (nothing running).
