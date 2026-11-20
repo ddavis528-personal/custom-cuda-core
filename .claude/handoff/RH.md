@@ -73,9 +73,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
-- OI OA-451 DONE+SENT 02:40Z 11-20: streaming demote walk at 367bc942 (rh-jobs/oi451, table.py). All A=B +0.000%, demote 0 everywhere,
-  even AF/BF (thresholds 8): triggers x82 (fallback 2,643->216,404) but RAU refuses all (no warp waits for a slot on 1 CTA x4 warps).
-  Walk unpriced; asked OI for an oversubscribed launch or RAU force knob. Keep rh-oi451 until OI answers.
+- OI OA-451 round 2 RUNNING from 02:37Z 11-20 at 367bc942 (rh-oi451 build reused): rh-jobs/oi451/oi451b.sh (resumable), logs ~/ccv-logs/oi451b,
+  table: python3 rh-jobs/oi451/table_b.py ~/ccv-logs/oi451b. Am/Bm CCV_RAU_DEMOTE=mlc; Af/Bf =fallback + demote_fallback/mlc_miss=150;
+  Af8/Bf8 (=8) auto if Af demote<50. S1-mlc SENT 02:40Z: Bm +0.066% (22 demotes, walk_cycles mean 15.2 max 37; only rope +38).
+  cm128 ~04:35Z; check trigger trig_01Eaa4FZNEQnmvgQ4pMKiU4a 04:45Z; watcher '[o]i451b.sh'. Round 1 (RAU off, demote 0) sent 02:40Z; .full freed.
+  Keep rh-oi451 until OI reads round 2.
 - OI OA-449 DONE+SENT 22:52Z: why layernorm/sgemm gain under bar_pend: P0/P1 at c2adfe83 in rh-oi449 (rh-jobs/oi449/oi449.sh, diff.py ->
   ~/ccv-logs/oi449/diff.md). Same barriers/retired; layernorm rename.one_warp_short -234 (= -232 cyc), decq_full -480, credit_wait -614;
   sgemm hold.registered.barrier -244. No per-warp split in stats. rh-oi449 released and dropped 23:14Z (written up as OI-185); logs ~/ccv-logs/oi449 to drop 11-20 22:30Z.
