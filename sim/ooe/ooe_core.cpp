@@ -2557,17 +2557,24 @@ void Core::control() {
         const RobEntry &r = s.rob[(s.head + k) % cfg_.rob_depth];
         if (r.valid && !r.squashed) take(r.u.pc, r.u.group_mask, r.u.tid, k);
       }
+      // ooe_decq has one walk port: a warp's decode-queue walk starts after
+      // its ROB walk's request and after the walk ahead of it ends; its
+      // uops are held to the walk's end, then flushed together.
+      uint64_t n = 0;
+      for (const Uop &u : decq_) n += u.warp == w;
+      const uint64_t d0 = n ? std::max<uint64_t>(s.count + 1, decq_walk_free_ > now_ ? decq_walk_free_ - now_ : 0) : 0;
       uint64_t i = 0;
       for (Uop &u : decq_)
-        if (u.warp == w) {
-          const uint64_t idx = s.count + 1 + i++;
-          take(u.pc, u.group_mask, u.tid, idx);
-          if (cfg_.demote_walk) {
-            u.walk_pass = now_ + 1 + idx;
+        if (u.warp == w) take(u.pc, u.group_mask, u.tid, d0 + i++);
+      walk_end = n ? d0 + n : s.count;
+      if (cfg_.demote_walk && n) {
+        decq_walk_free_ = now_ + walk_end;
+        for (Uop &u : decq_)
+          if (u.warp == w) {
+            u.walk_pass = now_ + walk_end;
             ++s.walk_held;
           }
-        }
-      walk_end = s.count + (i ? 1 + i : 0);
+      }
       // A warp held behind a retired converged wait (TI-40) with nothing
       // younger still names the lanes past the wait: one beat at the next
       // PC with the wait's lanes, so FET can step them back to it.

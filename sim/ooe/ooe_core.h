@@ -2534,6 +2534,7 @@ private:
 
   // outbound queues on rate-limited channels
   std::deque<Redirect> redirects_;
+  uint64_t decq_walk_free_ = 0;   ///< demote_walk: the cycle ooe_decq's walk port is free
   uint64_t free_mask_ = 0;
   struct VerdictHold { uint64_t due; std::vector<RatMap> maps; std::vector<Drained> drained;
                        std::vector<unsigned> acks; uint32_t release = 0; };
