@@ -21,7 +21,7 @@
     "deq_sel_cq01h"
    ],
    "enable_ngd": 4.2,
-   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 156): the group of each slot's take, count and valid bits (14 flops) is clocked by rename's per-slot take-enable, deq_sel_cq01h (a superset of its take, from rename's flops at 2.0 NGD, ooe_decq.ngd.json; the superset is asserted, deq_sel_covers), or the slot's own transit, arrival and flush flops. check-cg measures the cone at 2.0 to 2.2 NGD, 4.2 in all with the arrival, within CG-2's 8. One enable shared by the slots gave 61 to 71% DCGE; per slot, 90% and over. It replaces OI-58's \"some warp takes\" waiver of about 5 (deq_any_cq01h, dropped).",
+   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 156): the group of each slot's take, its kept copy for the count output (NGD-7), count base and valid bits (17 flops; 14 before the copy) is clocked by rename's per-slot take-enable, deq_sel_cq01h (a superset of its take, from rename's flops at 2.0 NGD, ooe_decq.ngd.json; the superset is asserted, deq_sel_covers), or the slot's own transit, arrival and flush flops. check-cg measures the cone at 2.0 to 2.2 NGD, 4.2 in all with the arrival, within CG-2's 8. One enable shared by the slots gave 61 to 71% DCGE; per slot, 90% and over. It replaces OI-58's \"some warp takes\" waiver of about 5 (deq_any_cq01h, dropped).",
    "by": "OI",
    "date": "2026-10-21"
   },
