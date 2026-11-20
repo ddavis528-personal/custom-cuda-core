@@ -352,10 +352,11 @@ Sweep 11-19: nothing for RA; merged 9eb50716 (39, with 888218a3), 57eff422 (20),
 with infra), 58815650 (37), miu-dcu-spec (9), 80102643 (27). NOT merged: 5e4d6c70 (roster.json MI/DI session-id
 conflict, TI's file) and 3868632d (7 merge bases): RA 157, Needs TI. MERGE METHOD: ort's recursive merge-base
 build hangs on this criss-cross history (133k inner merges); merge fewest-merge-bases first, then
-`git merge -s resolve` under `timeout 600` (fails over 6 bases). DA 128: DCU tag-then-data with way prediction;
-CCV_LAT_L1_HIT 8 (9 with WAYPRED_BITS 0), L1_WAKE 14/15, L1_CMPL 16/17 once TI applies it (params still 7 on
-11-19): then update spec numbers (Partition 147, Overview 61/108) and snapshots; RCU timing is relative, no design change.
-Bookmarks: OA 446, RA 157, RI 91, TI 486, AR 395, DA 128, OI 380, Conventions 20, CP 160, IS 199, MA 127.
+`git merge -s resolve` under `timeout 600` (fails over 6 bases). DA 128 applied (TI-488, 2d273c9a): L1_HIT 8, L1_WAKE 14, L1_CMPL 16; spec updated (Partition 75, Overview 84),
+snapshots refreshed 11-20. TI-490: after gate-wait says killed (exit 4), rerun the SAME command with CCV_RESUME=1
+(tool 6464a030, merge it first); a RESUMED PASS counts as the full clean gate per TI (Daniel in TI's session; no DA
+row yet, asked Daniel 11-20).
+Bookmarks: OA 446, RA 157, RI 91, TI 489, AR 395, DA 128, OI 380, Conventions 20, CP 160, IS 199, MA 127.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
