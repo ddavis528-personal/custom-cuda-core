@@ -64,13 +64,36 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   `table.py A0 A0=~/ccv-logs/oi427 E=~/ccv-logs/oi428 --ctr=stall.decq,stall.decq_warp_max` (labels: A0 is OI's A).
   Ruling: S1 <= +0.5% -> OA, else DA. Do not drop rh-oi427b before 428 done.
 - OA-427 S1 + cm32priv A0/A/B SENT 05:40Z (B S1 +0.002%; A0 == A exactly). OA-428 S1 SENT 05:55Z: E +0.946% (DA rules); stall.decq* 0.
-  OA-427 cm128priv DONE + full table SENT 13:33Z (B +0.420%, C 0, D=B, A0==A). OA-428 cm128priv E +1.118% SENT 13:46Z. Both DONE; worktrees rh-oi427/rh-oi427b dropped 13:47Z; logs ~/ccv-logs/oi427,oi428 kept until OI releases (+1 day). OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
+  OA-427 cm128priv DONE + full table SENT 13:33Z (B +0.420%, C 0, D=B, A0==A). OA-428 cm128priv E +1.118% SENT 13:46Z. Both DONE; worktrees rh-oi427/rh-oi427b dropped 13:47Z; logs ~/ccv-logs/oi427,oi428 REMOVED 11-19 22:15Z. OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
 - MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
   Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
   Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
-- OI OA-443 (re:OI-176) RUNNING from 09:28Z: rh-jobs/oi443/oi443.sh (resumable), worktree rh-oi443 at 14526054 (gate-scratch/OI),
+- OI OA-448 (2) bar_pend: final at c2adfe83 DONE+SENT 12:31Z (P1=P2 S1 +0.083%, kernels same as 31bf; bar_pend ~2x). 31bf run (logs oi448b-31bf) SENT 12:28Z (P1=P2: S1 +0.067%, layernorm -6.1%, sgemm -1.2%, cta-reduce +0.12%; P0=D0). Was: from 12:20Z: rh-jobs/oi448/oi448b.sh, worktree rh-oi448b at c2adfe83 (OI corrections: 42e8ee74 -> 31bf4b1e -> c2adfe83); P0 default (must = D0),
+  P1 bar_pend=1, P2 bar_pend=1,bar_buf_depth=2; same set. Table python3 rh-jobs/oi448/table_b.py (bar_pend/bar_port/bar_buf). ~12:45Z.
+- OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
+  (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
+  from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
+- OI OA-455 11-20, WAITING on OI's next commit. Round 2 at 33b2971c SENT 07:46Z: Bm chk 1 (AR 395); Ck and Dn chk 0 but can't fail.
+  Round 3 at 05ee3bdb (rh-oi455c, ~/ccv-logs/oi455c): built OK; Bm ran 49 min with no exit, STOPPED by RH ~08:34Z (OI: likely a hang, FET
+  waits on a credit OOE holds in cred_pend_); Cw dropped. OI will send a new commit with a run list. Keep rh-oi455c, rh-oi455 and rh-oi451
+  (oracle symlink source) until then. Fetch with plain git fetch origin gate-scratch/OI.
+- OI OA-451 rounds 2-3 DONE+SENT by 04:55Z 11-20 at 367bc942 (oi451b.sh, oi451c.sh, table_b.py; logs ~/ccv-logs/oi451b).
+  S1-mlc +0.066% clean; cm32priv-mlc Bm +0.147% clean (168 demotes); cm128priv all 4 runs have check failures (TI-46 (b) decq share,
+  fet tier-1 credit share) from cycle ~238k after the 123rd demote bounce. S1 under fallback=150: atom mem_mismatch 31 (Af and Bf).
+  OI owns the root cause; no cm128priv rerun until OI sends a fix commit. rh-oi451 is DIRTY by design: an uncommitted fail()-cycle
+  patch in sim/skel/kernel.cpp, built to build/skel-rh. NEVER commit it. Probe logs in oi451b/probe (t.bin trace, window.sorted;
+  rh70.full = #70 window prints, which confirmed OI's hypothesis: 3 late epoch-6 uops were dropped after the reseed, so credits peaked at 7+3; OI raised it as OI-188 for OA/TI; no 240,200 run needed; cm128 walk price waits on the fix commit). Patch also prints RH lines in 237140..238125.
+- OI OA-449 DONE+SENT 22:52Z: why layernorm/sgemm gain under bar_pend: P0/P1 at c2adfe83 in rh-oi449 (rh-jobs/oi449/oi449.sh, diff.py ->
+  ~/ccv-logs/oi449/diff.md). Same barriers/retired; layernorm rename.one_warp_short -234 (= -232 cyc), decq_full -480, credit_wait -614;
+  sgemm hold.registered.barrier -244. No per-warp split in stats. rh-oi449 released and dropped 23:14Z (written up as OI-185); logs ~/ccv-logs/oi449 to drop 11-20 22:30Z.
+- OI OA-447 (re:OI-179 (3)) RUNNING from 11:59Z: rh-jobs/oi447/oi447.sh (resumable), A=99ee28168b (rh-oi447a), B=582fedae14 (rh-oi447),
+  C=582f + redirect_send_lag=2; oracles shared (symlinked). S1 + cm32priv + cm128priv (cm128 lock). Table: python3 rh-jobs/oi427/table.py
+  A A=~/ccv-logs/oi447 B=... C=... --ctr=redirect.send_lagged; report Δ B vs A and C vs B (C vs B 0.5% S1). S1+cm32priv SENT 12:46Z: B=A exactly; C vs B S1 +1.420% (-> DA), cm32p +3.721%. cm128priv DONE+SENT 13:31Z: B=A, C +0.899%. OI 22:41Z: + D = redirect_send_lag=1 DONE+SENT 23:12Z: S1 +0.720%, cm32p +1.903%, cm128p +0.527% vs B (half of C; still > 0.5% -> DA). OI 22:19Z: rh-oi443/oi448/oi448b dropped; KEEP rh-oi447 + rh-oi447a until DA rules on redirect_send_lag. Logs kept (oi443, oi447, oi448, oi448b, oi448b-31bf) +1 day after release.
+  Container restart ~11:58Z 11-19 (nothing was running).
+- OI OA-443 (re:OI-176) from 09:28Z: rh-jobs/oi443/oi443.sh (resumable), worktree rh-oi443 at 14526054 (gate-scratch/OI),
   A slot_verdict_lag=0, B defaults (1). S1 + cm32priv + cm128priv (cm128 lock after AR). Table: python3 rh-jobs/oi427/table.py A
-  A=~/ccv-logs/oi443 B=~/ccv-logs/oi443 --ctr=demote,kill,demote.refused. Ruling: S1 <= +0.5% OA absorbs, else DA. Send S1 early. ~10:45Z.
+  A=~/ccv-logs/oi443 B=~/ccv-logs/oi443 --ctr=demote,kill,demote.refused. DONE+SENT 10:35Z: B == A cycle-identical on all
+  (+0.000%); but demote=0/restored=0 on cm128priv (triggers fire 4,520) -> demote path unpriced, flagged. Keep rh-oi443 until OI releases.
 - AR 386 DONE+SENT 09:47Z: (a) wp0 and (b) wp5 recent both 5,634,717 (wp_wrong 0); (a) equals AR's earlier hit-7 figure exactly
   (flagged; offered a hit-7 rerun). Worktree dropped; logs ~/ccv-logs/ar386.
 - MA-8 part 1 DONE+SENT 07:20Z (a8 -0.09% best but worst wait 117 vs 96; a32/a64 +1%). Part 2 DONE+SENT 08:12Z: HASH=1 +2.90% cm128
