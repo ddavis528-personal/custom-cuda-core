@@ -5064,8 +5064,9 @@ private:
         x.fair_ptr = unsigned(get(mm.payload, c.pca_fet, "fair_ptr"));
         x.fair_cnt = unsigned(get(mm.payload, c.pca_fet, "fair_cnt"));
         x.br_mask = 0;
-        // No reseed (OA 455 A): the credits it held in flight at demotion come
-        // back from OOE's pending-drop count once it holds a slot again. A
+        // No reseed (OA 455 A, OA 460): every credit it held in flight at
+        // demotion came home on its last slot, still bound to it, before the
+        // migration (AR 395 (3)), so its count is already full. A
         // demotion's rewind beat has cleared held-ahead (held-no-clear: kept).
         if (k_.brk != "held-no-clear") x.held = false;
         x.next = at;

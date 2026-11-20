@@ -495,6 +495,9 @@ struct Config {
   unsigned decq_credit_delay = 0;
   /// Control: a straggler is dropped, its credit returned, before its beat leaves.
   bool inject_straggler_early_credit = false;
+  /// Control (OA 460): the release ends the slot's binding to its warp, so a
+  /// straggler past it finds no slot, goes unwalked and its credit is lost.
+  bool inject_unbind_at_release = false;
   /// OA 447 (re:OI-179 (3)): ooe_redir registers the pick a cycle after
   /// rob_w's rd_l and the payload a cycle after that, so the redirect and
   /// ckpt_free leave OOE this many cycles after the model's send, together
@@ -1410,7 +1413,17 @@ public:
     return slot < slot_.size() && slot_[slot].st != WarpState::kFree ? int(slot_[slot].warp) : -1;
   }
   int tier1Of(unsigned warp) const { return slotOf(warp); }
-  unsigned decqOf(unsigned warp) const { const int s = slotOf(warp); return s < 0 ? 0 : slot_[s].decq; }
+  /// OA 460: the slot a warp's decode-queue credits return on: its own, or
+  /// the released one still bound to it (-1: none, a CHECK at the adapter).
+  int creditSlotOf(unsigned warp) const { const int s = slotOf(warp); return s >= 0 ? s : boundOf(warp); }
+  /// OA 460: a tier-1 slot's credited warp: its own, or the one it is still
+  /// bound to after a release (-1 if neither).
+  int creditWarpOfSlot(unsigned slot) const {
+    if (slot >= slot_.size()) return -1;
+    const Slot &s = slot_[slot];
+    return s.st != WarpState::kFree || s.bound ? int(s.warp) : -1;
+  }
+  unsigned decqOf(unsigned warp) const { const int s = creditSlotOf(warp); return s < 0 ? 0 : slot_[s].decq; }
   bool barHeld(unsigned warp) const { const int s = slotOf(warp); return s >= 0 && slot_[s].bar_hold; }
   bool decqOneInstr(unsigned warp) const {
     uint64_t seq = UINT64_MAX;
@@ -1689,6 +1702,10 @@ private:
     unsigned walk_epoch = 0;                  ///< the epoch the demotion ended
     uint32_t walk_covered = 0;                ///< lanes the walk's beats name
     std::map<uint64_t, uint64_t> walk_sent;   ///< beat id -> the cycle it leaves OOE
+    /// OA 460 (AR 397/399): a released slot stays bound to its last warp
+    /// (warp, and the walk above for a demotion) until a launch or restore
+    /// gives it to another, so a straggler is walked and credited here.
+    bool bound = false;
     bool exit_retired = false, exited_sent = false;   ///< OA's rev 149
     unsigned kill_epoch = 0;
     uint64_t resume_pc = 0;
@@ -1710,6 +1727,7 @@ private:
 
   // -- helpers ---------------------------------------------------------------------------
   int slotOf(unsigned warp) const;
+  int boundOf(unsigned warp) const;   ///< OA 460: a released slot still bound to warp, or -1
   RobEntry *byTag(unsigned tag, unsigned *slot = nullptr);
   unsigned tagOf(unsigned slot, unsigned idx) const {
     return slot << ccv::prov::kWRobIdx | idx;

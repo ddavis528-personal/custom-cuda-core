@@ -296,9 +296,9 @@ struct Kernel {
       "cas_lane", "cas_lane_off",
       // MIU's memop queue entries held on one slot, at most (MA-5).
       "memop_entries_peak",
-      // Decode-queue credits a warp's uops held when it lost its tier-1
-      // slot, kept by OOE until it holds one again (OA 455 A).
-      "decq_slotless_drop", "decq_credit_pend", "decq_straggler", "decq_straggler_beat"};
+      // A uop of a warp that lost its tier-1 slot, credited on the slot
+      // still bound to it until reassigned (OA 460; AR 397/399).
+      "decq_bound_uop", "decq_straggler", "decq_straggler_beat"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory

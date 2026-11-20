@@ -43,7 +43,7 @@ std::string Config::apply(const std::string &spec) {
       {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}, {"cmpl_split", &cmpl_split}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
-  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"demote_walk", &demote_walk}, {"beat_merge", &beat_merge}, {"straggler_walk", &straggler_walk}, {"inject_straggler_early_credit", &inject_straggler_early_credit}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
+  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"demote_walk", &demote_walk}, {"beat_merge", &beat_merge}, {"straggler_walk", &straggler_walk}, {"inject_straggler_early_credit", &inject_straggler_early_credit}, {"inject_unbind_at_release", &inject_unbind_at_release}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
@@ -249,6 +249,11 @@ void Core::err(const char *fmt, ...) {
 }
 
 int Core::slotOf(unsigned warp) const { return slot_of_[warp % kWarpIds]; }
+int Core::boundOf(unsigned warp) const {
+  for (unsigned i = 0; i != slot_.size(); ++i)
+    if (slot_[i].st == WarpState::kFree && slot_[i].bound && slot_[i].warp == warp) return int(i);
+  return -1;
+}
 
 Core::RobEntry *Core::byTag(unsigned tag, unsigned *slot) {
   const unsigned s = tag >> ccv::prov::kWRobIdx, i = tag & ((1u << ccv::prov::kWRobIdx) - 1);
@@ -291,7 +296,8 @@ void Core::noteRefused(unsigned warp) {
 /// lanes not yet covered, then held in the queue and dropped once the beat
 /// has left (its credit with the drop). Returns false for a plain epoch drop.
 bool Core::straggler(const Uop &u) {
-  const int si = slotOf(u.warp);
+  // OA 460: after the release, on the slot still bound to the warp.
+  const int si = creditSlotOf(u.warp);
   if (si < 0) return false;
   Slot &s = slot_[si];
   if (!s.walk_open || u.fetch_epoch != s.walk_epoch) return false;
@@ -2452,6 +2458,20 @@ void Core::releaseSlot(unsigned slot) {
   fresh.prat.fill(cfg_.pred_zero);
   fresh.cprat.fill(cfg_.pred_zero);
   fresh.held_gpr = pend;   // ret_late: its rows on their way back, until they join the pool
+  // OA 460 (AR 397/399): the slot stays bound to the warp until a launch or
+  // restore gives it to another (or the warp takes a slot again): FET
+  // credits it to the warp until then, so a straggler of a demotion is
+  // walked here and its credit returned on this slot, no earlier than its
+  // beat. Only the binding and the walk stay; the ROB, queue and RF went.
+  if (!cfg_.inject_unbind_at_release) {
+    fresh.warp = s.warp;
+    fresh.bound = true;
+    fresh.walk_open = s.walk_open;
+    fresh.walk_epoch = s.walk_epoch;
+    fresh.walk_covered = s.walk_covered;
+    fresh.walk_sent = std::move(s.walk_sent);
+    fresh.rewind_pending = s.rewind_pending;
+  }
   s = fresh;
 }
 
@@ -2487,6 +2507,15 @@ void Core::control() {
         err("alloc op %u for slot %u, which holds warp %u", a.op, a.slot, s.warp);
         break;
       }
+      // OA 460: the binding ends here. Every credit of the warp it held is
+      // home first (FET migrates on full credits, and PCA's done precedes
+      // the reassignment), so nothing of it is still held on the slot.
+      if (s.bound && s.walk_held)
+        err("OA 460: slot %u reassigned to warp %u holding %u of warp %u's walked uops", a.slot, a.warp, s.walk_held,
+            s.warp);
+      for (unsigned i = 0; i != slot_.size(); ++i)
+        if (slot_[i].bound && slot_[i].warp == a.warp) slot_[i].bound = slot_[i].walk_open = false;
+      s.bound = s.walk_open = false;
       s.warp = a.warp;
       s.ctaid = a.ctaid;
       s.warp_in_cta = a.warp_in_cta;

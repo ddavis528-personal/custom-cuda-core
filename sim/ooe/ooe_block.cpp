@@ -144,7 +144,6 @@ private:
   /// arriving after its release, or the slot's queue dropped at the
   /// release) wait here, per warp_id, and go back on its next slot. Bounded
   /// by what a warp may have outstanding, which the return field holds.
-  std::array<unsigned, ccv::kWarpContexts> cred_pend_{};
   std::map<std::string, unsigned long long> strag_seen_;   ///< AR 395 bins
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
@@ -206,6 +205,7 @@ private:
     // credit before its beat leaves.
     c.straggler_walk = k.brk != "no-straggler-walk";
     c.inject_straggler_early_credit = k.brk == "straggler-early-credit";
+    c.inject_unbind_at_release = k.brk == "unbind-at-release";
     if (const char *s = std::getenv("CCV_OOE_CONFIG")) {
       const std::string e = c.apply(s);
       if (!e.empty()) {
@@ -528,13 +528,18 @@ private:
         continue;
       }
       taken.insert(unsigned(best));
-      if (const int ts = core_.tier1Of(w); ts >= 0 && size_t(ts) < cred_in_.size()) ++cred_in_[ts];
-      else if (k_.brk != "slotless-drop-lost") {
-        // Slotless: the core drops it (a stale epoch) or reports it; its
-        // credit waits for the warp's next slot (OA 455).
-        ++cred_pend_[w % cred_pend_.size()];
-        k_.hit("decq_slotless_drop");
-      }
+      // OA 460 (AR 397/399): its credit returns on the warp's slot, or on
+      // the released one still bound to it until a launch or restore gives
+      // it to another. A uop of a warp bound to no slot is an error: FET
+      // sends nothing between a demotion's notice and the restore, and the
+      // slot moves only once every credit is home (OA 455 A's pending
+      // counter, now this CHECK). Under unbind-at-release it is lost.
+      if (const int ts = core_.creditSlotOf(w); ts >= 0 && size_t(ts) < cred_in_.size()) {
+        ++cred_in_[ts];
+        if (core_.tier1Of(w) < 0) k_.hit("decq_bound_uop");
+      } else if (k_.brk != "unbind-at-release")
+        k_.fail("ooe: warp %u's uop seq %u arrives bound to no tier-1 slot (OA 460)", w,
+                unsigned(uidSeq(r->front().tid)));
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
   }
@@ -868,29 +873,21 @@ private:
   /// its r slots past the wait (OA's rev 267 (ii)).
   void credits() {
     for (unsigned t = 0; t != cred_warp_.size(); ++t) {
-      const int w = core_.warpOfSlot(t);
+      const int w = core_.creditWarpOfSlot(t);
       const unsigned occ = w < 0 ? 0 : core_.decqOf(unsigned(w));
       unsigned back;
       if (w < 0 || w != cred_warp_[t]) {
-        // The warp leaving: what it took in and has not returned (its renames
-        // since the last return, and its queue dropped at the release) waits
-        // for its next slot (OA 455).
-        if (const int o = cred_warp_[t]; o >= 0) {
-          unsigned &p = cred_pend_[unsigned(o) % cred_pend_.size()];
-          p += cred_prev_[t] + cred_in_[t];
-          if (p >= 1u << ccv::prov::kWDecqCredit)
-            k_.fail("ooe: warp %d's pending decode-queue credits reach %u, past credit_count's %u bits (OA 455)", o, p,
-                    ccv::prov::kWDecqCredit);
-          if (p) k_.hit("decq_credit_pend");
-        }
-        // A slot newly given a warp starts from what it holds now, and
-        // returns what the warp's credits waited for.
+        // OA 460: the slot changes hands only with every credit of the warp
+        // that held it home (FET migrates on full credits, PCA's done
+        // precedes the reassignment); the binding kept it until now.
+        if (const int o = cred_warp_[t]; o >= 0 && cred_prev_[t] + cred_in_[t] && k_.brk != "unbind-at-release")
+          k_.fail("ooe: slot %u leaves warp %d with %u decode-queue credits not returned (OA 460)", t, o,
+                  cred_prev_[t] + cred_in_[t]);
+        // A slot newly given a warp starts from what it holds now.
         cred_warp_[t] = w;
         cred_prev_[t] = occ;
         cred_in_[t] = 0;
-        if (w < 0) continue;
-        back = cred_pend_[unsigned(w) % cred_pend_.size()];
-        cred_pend_[unsigned(w) % cred_pend_.size()] = 0;
+        continue;
       } else {
         back = cred_prev_[t] + cred_in_[t] - occ;
         cred_prev_[t] = occ;
