@@ -73,11 +73,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
-- OI OA-455 rounds 2-3 RUNNING 11-20. Round 2 at 33b2971c in rh-oi455 (oi455b.sh, ~/ccv-logs/oi455b): Bm SENT 06:49Z (finished, chk 1: AR 395
-  "slot 0 released holding warp 0's walked uop seq 17547, its credit not returned"; slotless_drop 6, credit_pend 5, straggler 1102, straggler_beat 0).
-  Ck and Dn were relaunched after a restart at 06:48Z, ~07:45Z. Dn's straggler_beat 0 means it can't fail. Round 3: Bm (demote_walk=1) at 05ee3bdb
-  (33b2971c + TI's ti-mi9) in rh-oi455c (oi455c.sh, ~/ccv-logs/oi455c); it builds now and runs after Dn under cm128.lock, ~08:20Z; report whether it builds.
-  Check trigger trig_014P1A4TNek9Kk2dD929Mco9 08:35Z. Keep rh-oi451 (oracle symlink source). Fetch with plain git fetch origin gate-scratch/OI.
+- OI OA-455 11-20. Round 2 at 33b2971c DONE+SENT 07:46Z: Bm chk 1 (AR 395); Ck and Dn chk 0 but can't fail (Ck slotless_drop 0, Dn straggler 0).
+  Round 3 at 05ee3bdb (33b2971c + TI's ti-mi9) in rh-oi455c, logs ~/ccv-logs/oi455c: built OK; Bm (demote_walk=1, oi455c.sh) ~08:15Z, then Cw
+  (demote_walk=1 --break slotless-drop-lost, oi455d.sh, queued on cm128.lock) ~08:45Z. Cw is "caught" only if slotless_drop > 0 and it fails.
+  Check trigger trig_014P1A4TNek9Kk2dD929Mco9 09:05Z. Keep rh-oi451 (oracle symlink source). Fetch with plain git fetch origin gate-scratch/OI.
 - OI OA-451 rounds 2-3 DONE+SENT by 04:55Z 11-20 at 367bc942 (oi451b.sh, oi451c.sh, table_b.py; logs ~/ccv-logs/oi451b).
   S1-mlc +0.066% clean; cm32priv-mlc Bm +0.147% clean (168 demotes); cm128priv all 4 runs have check failures (TI-46 (b) decq share,
   fet tier-1 credit share) from cycle ~238k after the 123rd demote bounce. S1 under fallback=150: atom mem_mismatch 31 (Af and Bf).
