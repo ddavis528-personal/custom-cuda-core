@@ -1,178 +1,107 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-17 (#52 e6 PUSHED a5dc7eed. OA 421 adopted retire pick (b) on S1 +0.16%; cm32 +0.50%/cm128 +0.92% to DA, OA recommends accept. OI-160 (rev 364): cost all retire pick (alloc flop 0 in model); probe scratchpad/rpprobe rp_probe2.sv: 17.0 NGD f2f, 18.1 from dn_q (run2.py breaks down by endpoint). Pending: RH's answer on coremark-derived-priv (asked 11-17) -> short OI row; DA's answer -> build (b) in ooe_rob_w. check-cg OOM: CCV_JOBS=2. OI bookmark 364, OA 423)
-survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
+Updated 2026-11-20 (3): oi-sw (wt-sw) local commits: f19c3844 (RS read into rcupl/mempl), b2a90773 (cg trace width), 03bb7a85 (decq: count base registered, take subtracted after the edge from kept tkc; deq_t 24.9, flop-flop 24.1, cnt out 10.2; NGD clean; OI-65 waiver text 14->17 flops), c192bdd2 (#70 OA 455 A: OOE per-warp cred_pend_, FET restore reseed removed [TI's line, tell TI in OI-189], bins decq_slotless_drop/decq_credit_pend in kernel.h [TI's], control slotless-drop-lost; 64 kernels pass under mlc, bins 0 locally; sent to RH on gate-scratch/OI for cm128priv walk on/off + control). Next #69: rob_w NGD-1/3 regressions (measuring, scratchpad ngd-robw.log), rerun pl bench, then --full gate-push. Then OI-189 row (OA 455 answer + RH trace), RTL pending counter beside ooe_decrx, check-kernel bin+control (needs a kernel that reaches it; TI owns tools/).
+
+Updated 2026-11-20 (4): #69 in wt-sw: slice-5 hold revert STAGED, uncommitted (rob_w/barpick/ooe_core etc. back to before c4bfdbec; rob_tb.cpp at c4bfdbec^); run-rtl all benches running (scratchpad runrtl.log, task b53mhlxs9). Then: commit it, remeasure check-ngd --unit ooe_rob_w (lower/remove caps that pass), --full gate-push. #70: straggler walk DONE in model on oi-5b (wt-5b): fd32a5be (= c192bdd2 cherry-pick), 33b2971c (stragglers held to beat send + decq_credit_delay; delay derived in ooe_block from links until TI's CCV_LAT_DECQ_CREDIT_DELAY lands on origin; breaks no-straggler-walk / straggler-early-credit / slotless-drop-lost registered in sim/skel/main.cpp [TI's]; bins decq_straggler(_beat) in kernel.h [TI's]; check-ooe-unit 64 controls). Kernel pair: lnorm1 CCV_RAU_DEMOTE=at:328 PASS, --break no-straggler-walk finished=0 gpr_mismatch=288. OI-189 written (rev 393), rung TI/OA/AR. Landing: cherry-pick b7b3ce5d 367bc942 5e9d1306(model part) 33b2971c onto oi-sw AFTER the #69 gate (oi-5b also holds slice 5, never merge it whole), then gate with TI's ti-mi9 FET wait (TI to push it). Next RTL: pending-drop counter in credit-return formatter + straggler hold in ooe_decq.
+
+Updated 2026-11-20 (5): #69: slice-5 hold committed b9869cf1, run-rtl clean, ooe_rob_w remeasured (NGD-1 28.5, fl_m 28.8, al_n 26.4, dn_tag 25.0 raw ~25.0x): al_n cap 26.6->26.5 committed 6b5789f0. --full gate-push on 6b5789f0 running from wt-sw: job log /root/ccv-logs/job-gate-push-20261120-071116-165.log (verify-6b5789f0-20261120-0711.log); relaunched once after a container restart; re-arm tools/gate-wait.sh on it. After it: today's sweep merge (fetch, merge every remote branch ahead incl. TI cb8ca9be MI-1/DI-1 hooks) + --full gate. #70: 05ee3bdb = oi-mi9 (wt-5b) = 33b2971c + TI ti-mi9 29267873, on gate-scratch/OI (OI-190). RH Bm on 33b2971c: 1 AR 395 CHECK (expected without FET wait); Ck/Dn on cm128priv cannot fail (bins 0). RH Bm on 05ee3bdb (demote_walk=1) did not exit in 49 min, stopped: suspect FET full-credit wait (warps_[w].credits < kDecqWarpMax, ti-mi9) vs ooe_block cred_pend_ (returned only at the warp's next slot). NEXT after the gate: reproduce on a small kernel (lnorm1 at:328, demote_walk=1) in wt-5b, fix, send RH the commit + runs (Bm, Cw = demote_walk=1 --break slotless-drop-lost). OI-191: TI gates ti-mi9b default config only, no demote_walk=1 kernel until the fix (TI-499: tell TI which pair to pin). TI-498: my scratch RTL failed ooe_ratmap pk_q CCV-L29 + decrx lock-step 2 drops (oi-5b, mine to fix). RH holds rh-oi455c/455/451. Next free OI-192. Pings sent Fri 11-20 to AR OA IS TI CP RA RI MA RH; pongs ok from AR CP TI IS RA MA RH; OA, RI pending (check Saturday).
 
 ## Working rules
-- The user is DA (Daniel). Standing order: continue OOE RTL until blocked; no need to ask
-  for a go unless at a key decision point. Long performance runs go to RH
-  (session_01QPk2jvfKM1V5rRfip8FC86).
-- Gates (TI rev 418): launch `setsid nohup <gate> > log 2>&1 < /dev/null &`, never as a harness background
-  task (2 h kill); wait in-turn on the log or `while kill -0 <pid>`. Until TI's self-detaching tools land.
-- Push only with `CCV_PUSH_BRANCHES=ccr-57eff422-5tdecg tools/gate-push.sh` (--full for a
-  sweep merge), run detached (setsid nohup script), result to a log a wait loop watches.
-  A manual git push is refused ("CI Bypass"). Never push red. No PRs. One gate or heavy
-  job at a time; no CoreMark beside it; never pgrep/pkill -f; don't edit a tree while a
-  gate or check runs in it. Watch free disk (a full disk stalled a gate 11-06).
-- Owners: OA the microarchitecture and port budgets; DA waivers and
-  anything over OA's 0.5%; TI schema/, params/, tools/ (OI carries a tools
-  fix only when TI says so, as OI-89). Never weaken a negative control.
-- Commits end with the Co-Authored-By and Claude-Session lines; no model
-  ids in commits or artifacts.
-- Register: write only the OI tab (node 384bc26c-cef6, table
-  m8yvbw8rqgz.11664, rows: title, date, summary ending "Needs: X",
-  detail). Notices via `.claude/skills/register/notice.py` and
-  send_message. Pings weekly, Fridays (TI-49, DA).
-- Trees: the container was replaced on 11-03 (scratchpad, ~/ccv-logs and every
-  worktree lost; unpushed commits went with them). Work in the main checkout
-  /home/user/custom-cuda-core; send an unpushed commit to gate-scratch/OI
-  (`tools/gate-scratch.sh send-commit OI`) before a long gate. Disk is a fixed
-  allowance (~39 GB): delete build dirs you no longer need; a gate's build is ~15 GB.
+- The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
+  decision points. Long performance runs go to RH (session_01QPk2jvfKM1V5rRfip8FC86).
+- Push only with `CCV_JOBS=2 CCV_PUSH_BRANCHES=ccr-57eff422-5tdecg tools/gate-push.sh` (--full
+  for a sweep merge). It self-detaches (exit 5, prints the job log); then run
+  `tools/gate-wait.sh <job log>` as a background task (timeout 7200000): exit 3 rerun the wait,
+  exit 4 relaunch. A detached gate survives a container restart (11-17): re-arm the wait.
+  Never push manually or red. No PRs. One gate or heavy job (check-ngd, CoreMark) at a time.
+  Never pgrep/pkill -f; never TaskStop bg-run/gate-wait; don't edit a tree a gate runs in.
+  CCV_JOBS=2: check-cg OOMs at more (OI-157).
+- Owners: OA the microarchitecture and port budgets; DA waivers and anything over OA's 0.5%;
+  TI schema/, params/, tools/. Never weaken a negative control; ratchets and caps only fall.
+- Commits end with Co-Authored-By and Claude-Session lines; no model ids anywhere pushed.
+- Register: write only the OI tab (node 384bc26c-cef6, table m8yvbw8rqgz.11664, rows: title,
+  date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
+  Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
+  "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
+  Next free ID: OI-189 (OI-188 rev 392: #70 root cause, FET restore reseed vs in-flight pre-demote uops; options A/B to OA+TI, rung both; RH keeps rh-oi451 till fix. OI-187 ratmap table rule. Before: OI-185 OI-185 rev 389: lag-2 C S1 +1.42% vs lag-1 D +0.72%, both to DA; D built on branch oi-pwv 82b0fdd7 (PWV param; ports would rename cq04h + TI lead-field change if adopted); OA 449 explained; rung OA; RH told release rh-oi449, keep 447/447a till DA). Pings Fridays.
+- DA 11-18 (chat): pause NGD-to-25 fixes until the ccv_ooe top is built (real budgets, no
+  false paths); finish ALL modules first so the top is complete when built. OI may move
+  internal budgets where a measured parent times the connection and they still converge.
+  Caps still only fall: a gate failing an existing cap is fixed, not re-capped upward.
+- A fresh worktree needs sim/generated: `python3 tools/gen-params.py; tools/gen-ops.py;
+  tools/gen-interfaces.py` before sim/ooe/run-tests.sh (the 18 FAIL lines it prints are
+  controls; the verdict is the "ooe-test:" line).
 
 ## Daily sweep (scheduled task trig_01RHTzEomNoTP7mgfQxaNkmm)
-Read every tab since the bookmarks; merge every remote branch that is
-ahead (not release) into wt, gate, push; pongs; pings on Fridays only;
-`tools/setup-session-home.py --check` (TI-50; on a mismatch ask DA to
-approve the install again, never reinstall unasked).
-- Session settings installed 2026-10-31, 11-03 and 11-06 (350k window; DA approved each): /home/user/.claude.
-  The compact hook prints THIS checkout's .claude/handoff/OI.md: keep
-  /home/user/custom-cuda-core's copy current, not only the branch's.
+Read every tab since the bookmarks; merge every remote branch ahead (not release,
+gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-Conventions 19, AR 365, RA 151, IS 195, TI 462, OA 422, OI 362, CP 159, DA 123, RI 86, MA 68
-(11-16: DA via TI-461: no dated tasks, best effort in priority order, reorder for deps. OI-156 confirmed TI 457's Core::uop edit; #58 = RTL OOE epoch drop at the boundary capture. OI-157 check-cg OOM -> TI 458/462 fixed. IS 195: same OOM, FYI.)
-(sweep 11-15: merged ccr-80102643 18, miu-dcu-microarch-spec 17, 126afa13 8, 9eb50716 4, c22116ce 1;
-pushed 28d4ca0c (full PASS); settings check OK. TI 444 (cc OI): cm128priv 128 operand CHECKs at default DCU
-(seq 180579 R14, 500455 R2), TI isolating with stub RCU/OOE; OI acts only if it lands on OOE. sweep 11-14: merged 183cc441 66, 9eb50716 25, 126afa13 2, 888218a3 1, c22116ce 1, miu-dcu-spec 1; pushed 613b7f6c (full PASS).
-Pongs to Friday's pings: all OK. TI 518cb3c3 (detached tool exits 5) not yet in OI's branch: merge it next.
-AR 349 (Needs TI, MA): coremark128 operand mismatch lane 0 seq 917 + dec_ooe_uop response_within_n; not OI's yet. sweep 11-13 (late, by hand): merged 8 branches incl. TI a46afef7 (MEMOP_CREDITS, no_hit, gate detach:
-use tools/bg-run.sh / gate-wait.sh now), pushed in a2c1513a. Pongs 11-13: all 8 OK. Pings sent 11-13 15:20 UTC to AR OA IS TI CP RA RI RH; check pongs Sat. sweep 11-12, nothing for OI; merged 126afa13 5, 183cc441 3, 3868632d 4, 888218a3 5, 9eb50716 6, c22116ce 1. Sweep 11-10; AR closed OI-136; DA 117-119: MIU next, MA/MI/DI). Earlier: OI-136 (rev 337, Needs AR, RI): aborted sweep merges AR 80102643
-(perf-register.md) and RI 888218a3 (cg-waivers.json, rcu_dec_pkg.sv, perf-register.md); rung both.
-OA-399 leaves a LANE 8/SFU 13 rerun "if OI has not run 8/13": check against RI-11/OI-115. AR 314/OA 377: lead_fault = status==1, per slot; OI builds the capture
-once TI's schema row lands. Pings 11-06: all OK. Settings: after TI's 350k merge `--check` may
-differ; if so ask DA to approve `python3 tools/setup-session-home.py`.
+OI 395, OA 460, TI 498, AR 400, DA 128, MA 135, RA 157, RI 91, IS 201, CP 160, MI 16, DI 12, Conventions 20 (11-20 sweep; DA/CP/IS/RA/MI/DI read only by rev).
 
-## Tools (scratchpad, not in the repo)
-- fo/path.py / path3.py: `START=<input> python3 fo/path3.py ir|rr <abc-*.blif>` traces the
-  deepest path with fanout (3 decimals). Find a unit's blif by grepping a port name in
-  build/synth-cache/abc-*.blif. check-ngd --unit returns rc 0 even over caps: compare by hand.
-- check-ngd caps (rtl/ngd-ratchet.json "fanout") are strict (EPS 0.005); ABC remaps the
-  whole unit on any change (untouched cones move +-0.3..1.7). Try equivalent forms.
+## Trees and runs in flight
+- #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
+  wt-61p (oi-61p) can go once #58's branch is rebuilt from origin.
+- #58 lead form: /home/user/wt-58l branch oi-rxl, 942fa18e on oi-rx (the flop-form commits,
+  withdrawn by DA rev 127 / OA 433). Rebuild the push branch from origin (now b91632b4) without the flop form.
 
-## Open work (most urgent first; DA approved this order 11-07)
--12. #52 REFACTOR (TOP PRIORITY, DA): wt-s54 branch oi-rw (local only), experiments on b1570e4d, each bench+controls PASS.
-   WID 3 NGD-1 / al_n / dn_tag / fl_m / cm_tag: pushed caps 30.1/29.2/26.3/29.3/-.
-   e1 cdb5d3ae hwc per group (NWG4 NWS2): 29.2/29.1/26.9/28.7. e2 bf4bed96 kcd/kce copies + NWS1: 29.5/29.8.
-   e3 fax binary fault entry: 28.7/29.6/26.9/29.3/25.4(new!). e4 0fdf9627 NWS2: 28.7. e5 NWG3, hoh+hr copies load
-   hw_nx, w_h/nret_h/hoh_nx gone: 28.5/29.8/26.9/29.3/25.4. e6 window reads wbk (retiring wrong cand), not pfx: 28.9
-   (cm_tag gone; ck->ckfa_s/sq_rt/ckf 28.8 = the pick itself). ABC noise ~+-0.4 between runs.
-   Remaining families: window loop wwc->hw_nx->w (28.5-28.9), ck->pick prefix (28.8), md->gfree 27.7, lke->rc 27.8,
-   inputs al_n 29.6, fl_m 29.3, dn_tag 26.9 (endpoint w_nx fanout). Caps only fall: no experiment pushable as is.
-   Tools: scratchpad/rob52b/bench2.sh, check-ngd --unit ooe_rob_w_3 with CCV_KEEP_UNIT_BUILD=1, scratchpad/fo/p4.py.
--11. #52 ooe_rob_w WAITS ON OA (OI-152, OI rev 355, OA rung): committed locally 6c5cc570 on branch oi-52 in
-   /home/user/wt-s54 (base 4a24bf67; patch in scratchpad/rob52b). fl_m from Rename 2 replaces fl_slot (OA 418 (B));
-   landed count rewritten (lk from kc flops, nfr = nfe with a squash as none arriving; nlg/nle/nk gone);
-   cmt_tag now resets (CG replay at WID>0); units ooe_rob_w_1..3 (DA: WID stays a param). Bench + 24 controls
-   pass; CG passes on all 4 units. NGD (rob_w/_1/_2/_3): NGD-1 29.1/29.1/29.1/30.1 (cap 29.6), al_n 29.1,
-   dn_tag 26.2/25.7/26.0/26.2, fl_m 29.3/28.7/28.7/29.3, fl_v 7.0 (drop cap). Asked OA: (1) fl_m cap key
-   (baseline line in rtl/ngd-fanout-baseline.json is TI's: propose 31.7, cap 29.3, drop fl_slot/fl_v);
-   (2) WID 3 NGD-1 30.1 = ABC remap of the untouched retire window (w_h -> hoh_nx -> w): cap 30.1 or park;
-   (3) dn_tag via TI's repeater, cm_tag via cmcap at 0 NGD (DA 114). On a ruling: edit ngd-ratchet.json
-   caps, merge origin, gate-push. Bookmarks: OA 420, TI 445, DA 120. Next free OI-153.
--10. #54 ooe_sched PARKED like #51/#53 (scratchpad/s54/NOTES.md, fcp-split.patch; worktree /home/user/wt-s54):
-   ooe_pick alone (flopped) is 20.1 with FB=1, 10.4 without: res/vel (arrival 4) cannot reach 25 inside.
-   fcp_cq04h's 30 copies merge into one flop (same D): a register per entry takes NGD-1 26.6 -> 25.4 but res
-   28.9 -> 29.5 (over cap). Needs OA: res/vel arrival, the fallback moved, or a registered R bit (input contract).
--9. #53 ooe_go PARKED like #51 (scratchpad/go53/NOTES.md, e1e2.patch, e3.patch): internal rewrites give
-   ha -1.1 at best, hv/px/pl stay 27.5-28.3 (ABC remap moves others +-1). Needs OA: decq/rename
-   registering nwh / px thermometer / run needs, or the arrival 2 on those ports. Asked DA 11-15.
--8. #56 CLOSED (OI 351): RH's base-5 run clean; seq 179681's held mismatch was a cancelled spec issue
-   reissued correctly (Kernel::failHeld drops it). Worktree /home/user/wt-dbg355 can go.
--7. DA 11-13 approved, after #39: #51 ooe_rendep to 25 (gsn_cq01h 28.5, psn_cq01h 28.8); #52 ooe_rob_w
-   (NGD-1 29.6, al_n 29.2, dn_tag 26.3, fl_slot 28.6, fl_v 29.5); #53 ooe_go (NGD-1 26.1, ha 27.9, hv 28.9,
-   pl 27.2, px 28.0, reach 25.3, wt 25.0; leave port-budget caps under 25); #54 ooe_sched (NGD-1 26.7,
-   cidx 25.6, res 29.0, vel 28.2). Order: #51-#54 next, then DA 111b, #32 (optional).
-   #51 PARKED 11-14 (tree back at HEAD): 3 flat rewrites, none reach 19 internal (gsn/psn arrive 6).
-   v1 flat masks: gsn 21.1 psn 22.7 (benches pass); v2 G-2 name muxed per entry: rows fixed but
-   grp_code 21.4/21.0 and gnt_idx/gnt_v 25.8/25.3 (regress); v3 A/B factoring, grant last: gsn 21.6
-   psn 23.7 and Verilator emits broken C++ (rnrs build). Floor: name fanout ~4 + compare ~6 + 16..144-term
-   masked OR ~6..10. Files + logs: scratchpad/rd51/. Next lever needs OA: gsn/psn arrival 6 (rev 194).
-   #52 try 1 11-14 (reverted): window terms per retire-count candidate from hoh flops, count picks last
-   (benches pass): flop-flop 29.5->31.1 (fa_oh remapped), dn_tag 26.2->29.4, fl_v 29.5->31.2. scratchpad/rob52/.
-   #55 done 11-15 (AR 353/354, MA 56, OA 416, TI 438/439): merged TI bd1cc5a2 (PF-47 + CCV_LAT_L1_NOHIT
-   9 at base 1); testL1NoHit sends at Env::nohit_lat (the param), wake-17 pin gone, runs at base 1 and
-   base 5 (17/13); new controls ignore-nohit-base5, nohit-wake-1(-base5) (at WAKE-1 the child issues
-   twice, no replay counted); margin 2 holds in the model. check-ooe-unit count 57 (tools/: tell TI).
-   Bookmarks since: TI 439, OA 418, MA 56, AR 354, RI 82 (RI-53: SFU pair 9f513f3b; merge at sweep).
-   Blocked: #40/#42 (TI schema), #46 (lead set), l1_nohit price (MA stub sends no no-hits),
-   cand_indep_pend price (OI-143 rev 344: needs sectioned on).
-   Gate note: the first a2c1513a gate was OOM-killed in cg (check-cg python 4.6 GB beside ngd's ABC);
-   the identical rerun passed. If it recurs, rerun with fewer CCV_JOBS and raise a TI row.
--6. SFU class (3 ops RCP_U32/RSQRT_F32/RCP_F32_P, RA 146): OOE needs no code (OI-146). TI c27ff714 + RI
-   ri-sfuclass (30e363cc) are on branches; RI gates the pair (RI-52) and waits on OI's go: trial both merged
-   in a scratch worktree (OOE benches, check-kernel, check-sv-hosted), then an OI row with go, ring RI+TI.
-   ADDR_BASE: AR 351 = 1 (L1_WAKE 13, CMPL 14); TI reapplies with OI's ooe_wake fix (1f7c64273183 + b23bbd80,
-   on origin since 11-03, OI-147); then S1+floors (TI's rerun per OI-145). no-rep-lead control may miss at
-   base 1 (TI rev 298): if TI rings, make trio_tb reach a lone replay lead.
--5b. #38 DONE (29ee4ffd): flop-flop 24.8, req_cq01h 23.0 (cap removed), prv_dep_cq01h 25.04 (cap 25.1; tried
-   pvc pre-fold and class restriction, both worse/neutral). #39 DONE: ooe_ratread moved to test/ (8c4a4dce).
-   Earlier #38 step 68686b28: flop-flop 24.3, prv_dep_cq01h 25.1 (cap 25.2), req_cq01h 26.3 (cap 26.4).
-   Lesson: pass {P{1'b1}}, never an unsized '1, as a function argument (Yosys sized it 1 bit; CG replay caught it).
-   Left: req fans to ~340 loads (g, g1-g3, nt, ny); needs a structural change. Was: flop-flop 28.7, prv_dep 26.4, req 28.4.
-   Worst cone starts at the head pointer hh_cq02h[2] and fans to hm_cq02h (45 endpoints), gnt_v, lgv and gnt_idx.
-   Trace it with path3 rr on the blif that holds prv_dep_cq01h (pass the absolute path).
--5. #49 MA-5 model (TI rev 414 asked it): Core::memopCredits() from the block each cycle (Stub::credits on
-   ooe_miu P0-P3); select grants a memop only on a credited pipe, sends on the lowest; discards wait for P0's.
-   inject_no_memop_credit control, ooe_test testMemopCredits (Env mcred_depth). Opt-in: unit/RTL benches unchanged.
-   RTL next, once TI's 0da78445 (gate-scratch/TI-ma, CCV_MEMOP_CREDITS 10) lands: ooe_select cok input
-   (proto scratchpad wt-sel, lost on container loss), select_tb/trio_tb drive cok from a new wlog_ sel_cok; tune
-   cidx/sdep/chas remap. PUSHED dca29edc (SCOPED PASS); OI-140 (OI rev 341, Needs TI) rung TI: merge before ti-ma.
--4. OA 410 (OA rev 413, task #50): model knob l1_nohit beside l1_spec (no_hit[1] on cmpl_hint, valid I+12/payload I+13,
-   clear spec wake by I+14, deps wake cmpl+1; refill hint wins), negative control ignoring no-hit; RH prices.
-   Needs TI's field; stub sends none until MA Phase 1. AR 345/347 final (346 withdrawn): credits per memop CHANNEL slot P0-P3, 10 each, send on lowest credited
-   slot of footprint (OA-412, MA rev 44). OI-139 (rev 340, Needs OA, AR; rung both) supersedes OI-138: worst path unchanged.
-   OI-138 (rev 339, Needs MA, rung session_01QPk2jyUbWA7fW9YpUwqdxk, not in roster): credit gate 0 NGD (proto scratchpad/wt-sel).
--3. OA-409 (OA rev 412, re:MA-5): IF memop credits become queue entries, ooe_select gates each P grant on that slot's credit; build it and measure grant NGD then. Waits on MA's decision.
-   Sweep 11-12 pushed ae8a6bdf (full PASS). RH CoreMark for OI-137 due ~07:00 UTC 11-13. Pong to OA sent 11-13.
--2. #35 ooe_rename PUSHED d86e3a14 (full PASS, with the 11-10 sweep merge of 183cc441/126afa13/80102643/9eb50716):
-   flop-flop 24.73, one cap left (q_pname_cq03h 3.32). Model knob cand_indep_pend (on). OI-137 (rev 338, Needs OA)
-   rung OA; RH asked to price on vs off (U/G/L 192/160/128, CoreMark, S1). On RH's table: add to OI-137. OA-407 (OA rev 411): accepted if on/off within 0.5% on S1, cm32, cm128; over goes to DA. RH started 13:33 (S1 first, CoreMark ~8.5 h).
-   Asked DA (no answer yet) whether to add tasks for rendep/rob_w/go/sched to 25 after #39.
-   LESSON: the container is reclaimed when a turn ends, killing detached gates (3 lost 11-10). Run the gate
-   detached AND stay in the turn: `timeout 590 bash -c "until grep -q '^EXIT' $L; do sleep 20; done"` loops.
--1. #34 ooe_rob_w PUSHED 4dfd22cc (full PASS, with the 11-09 sweep merge): hrb binary head, uft
-   thermometer, w_h head window copy; caps NGD-1 29.6, al_n 29.2, dn_tag 26.3, fl_slot 28.6, fl_v 29.5
-   (measured 29.54/29.12/26.22/28.50/29.49). CG passes within allowance (win_en group 37-39%, pch 0%).
-   Next: #35 ooe_rename, then #38, #39, DA 111b, #32. ccv_ooe.ngd.json withdrawn (1bc1e268) until ccv_ooe is RTL.
-0. #33 PUSHED (5eb3acb8, SCOPED PASS 23/23, with TI 21b4b80 merged); OI-135 closed at OI rev 334.
-   Lesson: any load on ren1's l_x/l_v/tk_* remaps ooe_rename's q_gv cone (+0.5); take from c_xl per class.
-1. #26 OI-134: RH 95bf04d: U160 -2.22% vs G160, U128 -2.16%, L160 +1.87%, L128 -2.07%, U192 = G192.
-   Local commits f4d5ee10 (model unmet_reg=1 + ur register) and 68817c46 (c_dst cap 27.5, DA's ruling
-   11-08; recover <=26.9 in #35), backed up at gate-scratch/OI. First gate FAILED CG-3: ur_g/ur_p
-   51-63% DCGE. Uncommitted rework: per-slot enable (occupancy changed / frees / own take, held at 0 and at
-   the LU ceiling via top_of; ur_oc per slot, reset 1 because occ rises at reset release with no lead).
-   v6 (global ur_o) 50-60%; v7 (per-slot ur_o, +3 CG-1 flops, likely over 35.5 allowance) being measured
-   (scratchpad run7.sh -> rn7.log, cg7.log). If v7 clears CG-3 but not the budget, ask DA: allowance
-   waiver (4 flops) vs CG-3 waiver (44 flops). On green: OI row (Needs: TI, OA), ring both.
-1b. RI-26 (DA 116: 13 RCU / 0 OOE; OA 401/402): add iss_lead_cq03h {"required":0.0,by OA,2026-11-09}
-   to rtl/ooe/ooe_rs.ngd.json (no carries); ccv_ooe.ngd.json keys ooe_rcu_issue_payload.{lead_opcode,
-   lead_done_row,lead_pred_we,lead_phys_dst} required 0.0 once TI's ti-lead (4d6065fd) lands and ccv_ooe
-   is RTL. Then OI row re:RI-26, FYI, rings no one.
-1c. TI 397 re:RI-25 (RST-2 landed, TI ea8ae6f1): ooe_rename's u_gfree/u_pfree run at FS=1 but the
-   ooe_freelist units are FS=4: add FS=1 units (cg-units, ngd units), merge TI's branch; answer in OI tab.
-2. #42 OA-387 lead move: blocked on TI's schema row (RA 114).
-3. #40 OA 382: RTL issue payload, A2's RS row carries pd, pred_we, ppold; cas-no-pd in RTL.
-4. NGD fanout ratchets: ooe_rob_w (#34, lower caps; measured 29.8), ooe_rename (#35, 30.58 now; caps c_dst
-   26.9 at 26.82, po_dst 27.5 at 27.50), ooe_rs (#38), ooe_ratread last (#39).
-5. DA 111b / OA 364: a unit per OOE module per instantiated param set.
-6. Optional #32 (OA 381): fa one-hot -> 5-bit index in ooe_rob_w.
-- scratchpad/check-ngd3.py regenerated 11-08 from tools/check-ngd.py (CCV_ROOT env picks the tree).
-
-## Done 11-07
-- ROB slice 4 pushed adfa301 (SCOPED PASS 20/22); OI-128 row rev 322/323, OA accepted at 381.
-
-## Done 11-06
-- Slice 3 (memop commit, OA rev 362) pushed e491f22 (SCOPED PASS 22/22). Final fix: the
-  zero-owed term as a match, dn_row 26.04 -> 25.7 under its 26.0 cap.
-- OI-115 written (rev 306): RI-11 package for DA (C9 S1 +0.444%, cm128 -0.45%, cm32 -0.08%;
-  flopped ~+1.95%; R49 +0.276%; C8 0).
+## Open work (most urgent first)
+0. NEXT: gate bc4wkcjom (wt-sw d4c49c15) expected red (decrx lint; and any oi-slot rob build bug). Then merge oi-slot (6583cdbf: lint fixes, bp_hl cast fix f3e47cf1, g_bp locals f-prefix, ooe_test bar_pend + check-ooe-unit 61 controls c0cf82ab) into the sweep in wt-sw, regen, relaunch --full gate-push. OA-450 (OA rev 452): OA recommends D to DA if ooe_rob_w and ooe_redir pass check-ngd/check-cg with no waiver and no cap rise; else back to DA, C stands. D measurement tree: /home/user/wt-pwv branch oi-pwv2 (oi-pwv + oi-slot, PWV=1 by default; rob_tb mispredict 1135 redirects 0 mismatches, all controls caught). After the gate: check-ngd/check-cg --unit ooe_rob_w (_1.._3) and ooe_redir in wt-pwv, one at a time; propose rd_*_cq03h budgets to OA with figures; answer OA-450 in a new OI row. bar-* controls on bar_pend: RTL rob_tb runs bar_pend=1 (all 4 caught, C and D); model testBarrier now runs both forms. run-rtl b53nfm6ap failed only at rob build (the g1'(p) bug, since fixed): rerun run-rtl on oi-slot after the gate. TI-488: drop ooe_wake LAT pins once oi-slot lands.
+   TI-488: when oi-slot lands (3ab00269 package defaults), drop the two ooe_wake LAT_SPEC 14/LAT_MISS 17 lines TI pinned in test/ooe/cg-units.json. RH: keep rh-oi447/447a until DA rules on OI-182; others released. Slice 5 gap: the random rob bench never squashes a barrier (bars_sq=0, a95 counter in rob_tb), so ooe_rob_w's bsq path is unexercised: add a directed kill behind a waiting guarded barrier. Owe RH a look at layernorm -6.1%/sgemm -1.2% under bar_pend (report reorder?).
+1. TI-485 model bin + control DONE (ef015dab; Env::kill frees FET's ckpts at the kill's notice).
+   Left: ooe_redir (#65) masks ckf for a slot from its epoch_only notice, with a bench control.
+   OA 444 (DA 128): ooe_wake/ooe_trio LAT_SPEC/LAT_MISS default from ccv_prov_pkg (3ab00269;
+   NB those params live in ccv_prov_pkg, not ccv_params_pkg - that was the "Yosys" failure).
+   Wake bench, trio, check-cg/ngd ooe_wake+ooe_sched clean, values unchanged 13/16. Left: units at
+   both predictor settings once TI lands the predictor param; answer OA 444 in OI-177.
+2. #58 (DA rev 127 chose the lead form; AR 380 approved lead_fields [warp_id, fetch_epoch];
+   OA 433/434): on oi-rxl (rebased off the flop form): model rx_lag bit 64 withdrawn (default 16);
+   decrx.ngd.json lead-field inputs arrival 2 (as enq_l), held to 12 NGD (AR 380 (4)) - measure;
+   rtl/cg-waivers.json CG-5 "lead": true waiver of enq_slot (12 flops; RI-15 ruling + OA 434);
+   landing row confirms OOE's waived+allowance flops per instance stay within OOE's 2% (else to OA
+   first). Push only after TI's lead_fields schema change lands (merge it: 3eb6e8d0 is on
+   ccr-183cc441-doowtf). RH OA 428 E (rx_lag=80) vs A0: S1 +0.946%, cm32priv +3.575%,
+   cm128priv +1.118%, stall.decq 0: cite in the landing row.
+3. #63 ooe_slot DONE locally (fd194677, oi-slot; bench 25 seeds 0 mismatch, 7 controls; CG pass; NGD f2f 19.2).
+   OA 443 set budgets (arrival 2, by OA): ngd.json committed 8501f587, check-ngd passes. OA's dm_* caveat
+   (ooe_rob_w flop-out 2.0) is moot: dm_* comes from ccv_rau_ooe_demote's boundary flops; say so in the row.
+   OA 443 (2): model slot_verdict_lag (default 1) + testSlotVerdictLag/control 14526054, sent to RH on
+   gate-scratch/OI (A lag 0 vs B default; S1/cm32priv/cm128priv). On the price: write the OI row re:OA 443
+   (<=0.5% S1: OA absorbs; else the no-cycle option's cone depth/CG). Push waits on that and #58's gate. Rebase/merge oi-slot onto origin after #58 lands.
+   #64 ooe_rcupl/ooe_mempl DONE locally (c0584545, 8937a239, c56f9ddb on oi-slot): bench test/ooe/pl_tb.cpp
+   (scenario pl, 25 seeds 0 mismatches, 6 controls), cg units added, NGD within 12. OI-178 (rev 382) rung OA:
+   mempl's 21-flop valid/source gate 97%/67% (medium/high), over its allowance: (a) DA waiver or (b) slot-indexed
+   late read; check-cg fails mempl until answered. Left for #64: integrate with ooe_rs/trio (export reads, rs_idx,
+   mem fields, mgl_cq01h from ooe_sched; remove the issue regs; folds #40/#42/#46); run-rtl.sh entry with controls.
+   OA 445: verdict lag absorbed, push oi-slot when ready; optional non-gating RH run (cm128priv, CCV_RAU_DEMOTE
+   forcing a few hundred demotes, slot_verdict_lag 0 vs 1). OA 446: OA declines (b), recommends (a) to DA (mempl waiver).
+   #65 (4) decq credit return DONE locally (6fc15bec on oi-slot): ooe_decq output crd_cq02h[S*LC], per-slot frees
+   registered beside frn; decq_tb checks per slot, control stale-credit-apart. check-cg/ngd for ooe_decq not yet run
+   (gate was busy). Next: #65 (5a) ooe_redir: b0117b45 (decrx sw_o/sn_o outputs, bench 25 seeds + 7 controls pass; model same-cycle redirects in slot order, ooe tests pass) and ooe_redir b0de1716: rob_w outputs rd_e_cq02h (rs_en) / ckf_l_cq02h (|frp); ooe_redir sits in ooe_rob_tb (u_redir) and rob_tb checks it vs core.out at +2 (25 seeds, 1206 redirects, 0 mismatches; controls redir-warp/epoch/ntm, rd-unled, ckf-unled); cg unit ooe_redir (scope u_redir). OA 447 (re:OI-179) ruled: rd_l plain wire to decrx adv/decq flush/RAT squash; rd_e is decrx's lead (decrx ev_l now [S:0] per source, 8948873d, bench 25 seeds + 7 controls); landing row (OI-180) must state OA 428's invariant (one wire, one cycle, three receivers) + joint-bench assertion plan, slot-order IPC, send+2 price (<=0.5% S1 absorbed, else cost of payload-with-valid to OA), decq check-cg/ngd, budgets proposed for rd_e (~6 NGD)/rd_l. Model knob redirect_send_lag + control inject_send_free_late (582fedae14). RH asked: A 99ee28168b, B 582fedae14, C 582fedae14 with CCV_OOE_CONFIG=redirect_send_lag=2 on S1/cm32priv/cm128priv - awaiting. Left: check-cg/check-ngd ooe_redir + ooe_rob_w + ooe_decrx + ooe_decq (after the gate; re_q/fl_q are 8 ungated flops - watch CG), landing row with budgets (re OI-179, which OA may still change).
+   Lint in wt-slot shows 7 CCV-L23 in ooe_decrx/ooe_slot (lint passed on wt-sw's gate): recheck on oi-slot's gate.
+   OA 435 module split (re:OI-171), in order: (1) ooe_slot #63, (2)(3) ooe_rcupl/ooe_mempl #64,
+   (4) decq credit return + (5a) ooe_redir #65, (6) rob_w slice 5 syu_bar, (5b+7) epoch notices +
+   slice 6, (8) rcu_map in ooe_rat, (9) rau_status, (10) cru_fault #66; then ccv_ooe top glue (no
+   logic in ccv_ooe). Each lands with a bench vs model, a timing unit, controls, and a row
+   proposing port budgets with measured NGD.
+3a. #66 slice 5 (OA 448 ruled: barrier state in ooe_rob_w per slot; go takes the hold as its own input, ORed inside;
+   report pick (A) retire stop if caps hold else (B); depth 2 unless RH >0.5% vs unbounded -> 3; model counts as RTL).
+   DECIDED (B): (A) is structurally impossible: rob_w is one instance per slot, so a cross-slot pick in the window
+   would be a path through the parent. Model knob bar_pend (42e8ee74, 31bf4b1e + pv0 stop as the RTL): one pending
+   report per slot, a rotating pick a cycle; retire stops at a bar op while the register was full as the cycle
+   started (grant is an input to rob_w, so it frees the cycle after) or at a 2nd in a window; pending counts as
+   held for drain/exit/kill and holds its side-buffer place. RH asked P0/P1(bar_pend=1)/P2(+bar_buf_depth=2) at 31bf4b1e.
+   RTL plan: rob_w side buffer 2 places {v, rt(pending), idx LD, kind 2, bid 4, guarded, bhs(set the hold), long,
+   gm 32, guard 32 (dn BS mask), phase 32 (dn aux)}; new alloc inputs al_bar/al_bk/al_bid/al_bgd/al_bhs/al_bl [A];
+   hold state bar_hold/bar_retired/bar_long/bar_mask; held = bhs && hold && !retired; release input (syu_rel warp
+   matched upstream -> per-slot rel pulse); outputs: req (rt flop) + place0 fields from flops; per-slot hold out to
+   ooe_go. New module ooe_barpick: rotating pick over req & ~gnt_q, flops gnt_q (to rob_w as data: rt_en=rt, rt<=~gnt)
+   and the ccv_ooe_syu_bar report. rob_tb drives from RobLog (add bar fields to Alloc, report list), compares reports.
+3b. (older) #66 (6) slice 5 syu_bar: model knob bar_buf_depth (71feef7e, testBarBufDepth; on gate-scratch/OI); RH asked D0/D2/D3 on
+   transpose-128, layernorm-128, cta-reduce-128, sgemm-128 + S1 (>0.5% on any -> depth 3). OI-180 asks OA: hold state
+   in rob_w?, report pick as retire stop vs pending register, depth, rename hold timing. RTL waits on OA.
+   #64 step 1 (local, uncommitted until trio passes): ooe_rs drops its issue registers, exports lv_cq02h/le_cq02h (LW)/
+   pe_cq03h (PW) for rcupl/mempl; ooe_trio.sv keeps bench-side copies of the old registers. Plan: rs store = ooe_ent_t
+   split lead (le) / rest (pe) with no duplication, + ooe_mem_t in pe, + RS index output for mempl; wiring at the top.
+4. #52/#53/#54/#51 NGD-to-25 refactors: PAUSED (DA 11-18) until the top exists.
+5. Blocked/parked: #40, #42 (TI schema), #46 (lead set), #32 (optional fa index).
