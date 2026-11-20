@@ -353,6 +353,23 @@ int main(int argc, char **argv) {
     EXPECT(b.h.bins["ue_recover"] == 1 && b.rsp(1) && !b.rsp(1)->hit, "recovered as a miss");
   });
 
+  // A UE in a dirty line is core-fatal: DCU withholds the read (AR 389,
+  // TI-487 (3)) and raises ue; the control ue-answer answers it anyway.
+  for (bool ctl : {false, true})
+    test(ctl ? "ue-answer-control" : "ue-dirty-withheld", [&] {
+      Config c = cfg(8);
+      c.ue_every = 1;
+      if (ctl) c.brk = "ue-answer";
+      Bench b(c);
+      b.reqs[0] = {st(0, 1, 0x8000, 3, 0x5a)};   // owned and dirty
+      b.run(80);
+      b.reqs[b.t] = {rd(0, 2, 0x8000)};
+      b.run(b.t + 40);
+      EXPECT(b.h.bins["ue_fatal"] == 1, "core-fatal");
+      if (ctl) EXPECT(b.rsp(2) != nullptr, "the control answers the withheld read");
+      else EXPECT(b.rsp(2) == nullptr, "the read is withheld");
+    });
+
   if (g_fail) std::fprintf(stderr, "dcu-test: %d failure(s)\n", g_fail);
   else std::printf("dcu-test: all passed\n");
   return g_fail ? 1 : 0;

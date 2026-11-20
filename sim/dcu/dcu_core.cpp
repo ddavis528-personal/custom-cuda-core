@@ -323,6 +323,13 @@ void Core::serveLook(const Req &r, uint64_t born) {
     if (!startMiss(r)) stalled_.push_back(r);
     return;
   }
+  if (ue == 2) {
+    // Core-fatal (AR 370 (4), AR 389, TI-487 (3)): DCU withholds the read.
+    // MIU completes it on the machine-check kill, with no data. ue-answer,
+    // the control, answers it anyway, and MIU must refuse the answer.
+    h_.withheld(r.req_id);
+    if (c_.brk != "ue-answer") return;
+  }
   touch(*w);
   ++st_.hits;
   if (!miss_.empty()) h_.hit("hit_under_miss");
