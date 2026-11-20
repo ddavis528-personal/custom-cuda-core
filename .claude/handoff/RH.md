@@ -78,7 +78,7 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   fet tier-1 credit share) from cycle ~238k after the 123rd demote bounce. S1 under fallback=150: atom mem_mismatch 31 (Af and Bf).
   OI owns the root cause; no cm128priv rerun until OI sends a fix commit. rh-oi451 is DIRTY by design: an uncommitted fail()-cycle
   patch in sim/skel/kernel.cpp, built to build/skel-rh. NEVER commit it. Probe logs in oi451b/probe (t.bin trace, window.sorted;
-  rh70.full = #70 window prints, which confirmed OI's hypothesis: 3 late epoch-6 uops were dropped after the reseed, so credits peaked at 7+3). Patch also prints RH lines in 237140..238125.
+  rh70.full = #70 window prints, which confirmed OI's hypothesis: 3 late epoch-6 uops were dropped after the reseed, so credits peaked at 7+3; OI raised it as OI-188 for OA/TI; no 240,200 run needed; cm128 walk price waits on the fix commit). Patch also prints RH lines in 237140..238125.
 - OI OA-449 DONE+SENT 22:52Z: why layernorm/sgemm gain under bar_pend: P0/P1 at c2adfe83 in rh-oi449 (rh-jobs/oi449/oi449.sh, diff.py ->
   ~/ccv-logs/oi449/diff.md). Same barriers/retired; layernorm rename.one_warp_short -234 (= -232 cyc), decq_full -480, credit_wait -614;
   sgemm hold.registered.barrier -244. No per-warp split in stats. rh-oi449 released and dropped 23:14Z (written up as OI-185); logs ~/ccv-logs/oi449 to drop 11-20 22:30Z.
