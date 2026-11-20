@@ -15,6 +15,10 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 - DI-1 landed (TI-497, cb8ca9be, merged here): CCV_DCU_IMPL=model and
   check-dcu-unit are real; the local hook patch is retired.
 - No dates on tasks; no model identifiers in anything pushed.
+- Merge a blocker the moment it lands on a working branch, never waiting
+  for the daily sweep (Daniel). DI-6 asks TI and MI to move DCU's M0
+  blockers up. Hourly check: scheduled task trig_01BqmRibVjxu6zui4nfhhFzo
+  (:32 each hour); delete it once DI-6 is met.
 
 ## Timing frame (DCU-local; checked against the MIU tab's L1-hit budget)
 - L = lead (valid) at DCU = H+2; P = payload lands (Stub::has) = H+3.
@@ -58,7 +62,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 16, MI 17, MA 135, AR 400, OA 460, TI 504, DA 128
+Conventions 20, DI 17, MI 17, MA 135, AR 400, OA 460, TI 504, DA 128
 (sweep of 2026-11-20 10:43 UTC; OI 395, RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
