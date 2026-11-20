@@ -212,6 +212,9 @@
 #   a way mispredict is answered late, on    wp-late-at-due (waypred, both
 #     the bank loser's path, as a miss          models): the predicted way's
 #     (MA-26, AR 390; MI-9 (3))                 line, refused by MIU's oracle
+#   a machine-checked run is not held to    mce-no-exempt (predlane, MIU
+#     quiesced_at_end, every other run is      model): it fires; miu-keep-
+#     (MI-8; AR 387, AR 389)                   credit (vadd): it fires
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -2172,6 +2175,37 @@ if [ "$n" -gt 0 ] && [ "$(field "$log" gpr_mismatch)" != 0 ]; then
   say "--break wp-late-at-due, both models: refused" "PASS (waypred, $n lanes, gpr_mismatch=$(field "$log" gpr_mismatch))"
 else
   bad "--break wp-late-at-due, both models" "the other way's line went unnoticed: $(grep '^KERNEL' "$log")"
+fi
+# MI-8: a run whose CRU took the machine check (AR 370) is not asked
+# quiesced_at_end: its core is dead, and a committed store whose merge read DCU
+# withheld never drains (AR 387, AR 389), so under the MIU model its queue
+# entry's memop credit stays out. predlane and predmerge at
+# CCV_DCU_UE_INJECT=1 end clean under the MIU model; mce-no-exempt asks the
+# check of predlane anyway and it must fire; miu-keep-credit keeps one memop
+# credit in a run with no machine check, and the check must still fire there.
+for k in predlane predmerge; do
+  log="$B/kernel_${k}_mce_miu.log"
+  CCV_MIU_IMPL=model CCV_DCU_UE_INJECT=1 "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+  w=$(ok "$log" machine_check=1)
+  if [ -z "$w" ] && ! grep -q 'quiesced_at_end failed' "$log"; then
+    say "$k, MIU model, machine-checked: not asked" "PASS (machine_check=1, violations=0)"
+  else
+    bad "$k, MIU model, machine-checked" "${w:-quiesced_at_end asked}"
+  fi
+done
+log="$B/kernel_mce-no-exempt.log"
+CCV_MIU_IMPL=model CCV_DCU_UE_INJECT=1 "$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break mce-no-exempt >"$log" 2>&1
+if grep -q 'CCV quiesced_at_end failed' "$log" && [ "$(field "$log" violations)" = 1 ]; then
+  say "--break mce-no-exempt: the store's credit is out" "PASS (predlane, MIU model)"
+else
+  bad "--break mce-no-exempt" "quiesced_at_end did not fire: $(grep '^KERNEL' "$log")"
+fi
+log="$B/kernel_miu-keep-credit.log"
+"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break miu-keep-credit >"$log" 2>&1
+if grep -q 'CCV quiesced_at_end failed' "$log" && [ "$(field "$log" violations)" = 1 ]; then
+  say "--break miu-keep-credit: a run with no machine check is still asked" "PASS (vadd)"
+else
+  bad "--break miu-keep-credit" "a kept credit went unnoticed: $(grep '^KERNEL' "$log")"
 fi
 # --break bank-credit-ignore: MIU sends without its credits; at one
 # store-data credit a bank, gather's stores meet in a bank, and DCU must

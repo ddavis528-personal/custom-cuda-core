@@ -1845,8 +1845,12 @@ private:
       return;
     }
     --entries_[slot];
+    // miu-keep-credit (MI-8's control): the first memop's credit is never
+    // given back, a leak no check but the checkers' quiesced_at_end sees.
+    if (k_.brk == "miu-keep-credit" && !kept_) { kept_ = true; return; }
     release(c.ooe_miu, slot);
   }
+  bool kept_ = false;
   bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
 
