@@ -6,6 +6,12 @@
       "by": "OI",
       "date": "2026-11-20",
       "why": "OI under DA's allowance: ooe_rob_w's resolution enable, required there at 20.0 (ooe_rob_w.ngd.json), flopped here straight into re_q"
+    },
+    "rd_l_cq03h": {
+      "arrival": 1.0,
+      "by": "OI",
+      "date": "2026-11-20",
+      "why": "OI under DA's allowance: ooe_rob_w's squash lead comes straight from its kept flop rd_o_cq03h (ooe_rob_w.ngd.json, required 1.0); it reaches each entry's capture enable (the CG-5 waiver on ee_cq04h, enable_ngd within 8)"
     }
   }
 }

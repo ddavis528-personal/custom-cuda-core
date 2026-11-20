@@ -222,6 +222,12 @@
       "by": "OI",
       "date": "2026-11-20",
       "why": "OI under DA's allowance (internal budgets that converge): the resolution's enable is ooe_redir's lead, flopped there straight (re_q, ooe_redir.sv: 0 NGD to its flop, arrival 20.0), so 20 + 0 converges within 25; the registers it starts from (cmp_q, br, rsv, rd_s) reach flops inside at 18.9 at most, and copies for the output would cost about 3 x S x D flops"
+    },
+    "rd_l_cq03h": {
+      "required": 1.0,
+      "by": "OI",
+      "date": "2026-11-20",
+      "why": "OI under DA's allowance: the squash lead is ooe_redir's capture enable (arrival 1.0 there, ooe_redir.ngd.json; its CG-5 waiver on ee_cq04h), so it comes straight from the kept copy rd_o_cq03h (NGD-7)"
     }
   }
 }

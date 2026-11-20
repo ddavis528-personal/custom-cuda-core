@@ -2138,6 +2138,9 @@ module ooe_rob_w #(
   // position free, or taken by an allocation not yet filled).
   logic [S*D-1:0]  frp_cq02h, frp_nx_cq02h, fre_cq02h;
   logic [S-1:0]    frv_cq02h, cfl_cq02h, frp_en_cq02h, ap_cq02h;
+  // frp's nonzero, its own register (ooe_redir's ckf_l lead): an output's
+  // register drives nothing else.
+  (* keep *) logic [S-1:0] fpo_cq02h;
   logic [S*NK-1:0] ckf_nx_cq02h;
   logic [D-1:0]    ckm_cq02h;
   always_comb begin
@@ -2160,6 +2163,7 @@ module ooe_rob_w #(
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
         frp_cq02h[gs * D +: D]   <= '0;
+        fpo_cq02h[gs]            <= 1'b0;
         frv_cq02h[gs]            <= 1'b0;
         cfl_cq02h[gs]            <= 1'b0;
         ckf_cq03h[gs * NK +: NK] <= '0;
@@ -2168,6 +2172,7 @@ module ooe_rob_w #(
         frv_cq02h[gs]            <= |cnx_cq02h[gs * D +: D];   // a pick is a candidate
         cfl_cq02h[gs]            <= frv_cq02h[gs];
         ckf_cq03h[gs * NK +: NK] <= ckf_nx_cq02h[gs * NK +: NK];
+        fpo_cq02h[gs]            <= |frp_nx_cq02h[gs * D +: D];
       end
     end
   end
@@ -2238,7 +2243,7 @@ module ooe_rob_w #(
   end
   assign rd_l_cq03h = rd_o_cq03h;
   assign rd_e_cq02h = rs_en_cq02h;
-  always_comb for (int s = 0; s < S; s++) ckf_l_cq02h[s] = |frp_cq02h[s * D +: D];
+  assign ckf_l_cq02h = fpo_cq02h;
   always_comb
     for (int s = 0; s < S; s++) rd_nx_cq02h[s] = rs_en_cq02h[s] ? |pick_cq02h[s * D +: D] : rd_s_cq02h[s];
   // The squash's bulk discard (A-41, A-53): when it takes a store at MIU

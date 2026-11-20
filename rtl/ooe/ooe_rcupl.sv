@@ -123,10 +123,12 @@ module ooe_rcupl #(
   // slot.
   logic [K-1:0]    own_cq03h;
   logic [K*NS-1:0] csq_cq03h;
+  // Its enable: a grant, or the cycle after one (cleared, with none behind it).
+  logic ivq_en_cq02h;
+  assign ivq_en_cq02h = iss_en_cq02h || pay_en_cq03h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) iss_v_cq03h <= '0;
-    else if (iss_en_cq02h) iss_v_cq03h <= lv_cq02h | cv_cq02h;
-    else if (pay_en_cq03h) iss_v_cq03h <= '0;   // the cycle after a grant, with none behind it
+    else if (ivq_en_cq02h) iss_v_cq03h <= iss_en_cq02h ? (lv_cq02h | cv_cq02h) : '0;
   end
   always_ff @(posedge ooe_core_clk)
     if (iss_en_cq02h) begin

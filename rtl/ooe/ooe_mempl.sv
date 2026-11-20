@@ -84,7 +84,8 @@ module ooe_mempl #(
   // The RS read (OA's rev 343, (A); ooe_rsread) over the MIU entries, P
   // home h's granted entry: its footprint through the grant register (the
   // lead read), the entry through gd, its copy a cycle on, clocked on the
-  // memop grant's lead (ooe_rs's pay_ready keeps the entry as it was).
+  // memop grant's lead (ooe_rs's pay_ready keeps the entry as it was),
+  // loaded under the valid register's gate below.
   logic [N*NS-1:0]  fq_cq02h;
   logic [NS-1:0]    lv_cq02h, gv_cq03h;
   logic [NS*NS-1:0] lfp_cq02h;
@@ -92,10 +93,6 @@ module ooe_mempl #(
   logic [N-1:NR]    gd_cq03h;
   always_comb
     for (int e = 0; e < N; e++) fq_cq02h[e * NS +: NS] = lq_cq02h[e * EW + OOE_PL_E_FP_LSB +: NS];
-  always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h)       gd_cq03h <= '0;
-    else if (gen_cq02h) gd_cq03h <= gnt_cq01h[N-1:NR];
-  end
   ooe_rsread #(.N(N), .K(K), .K0(NS), .KS(NS), .E0(NR), .E1(N), .W(NS)) u_l (
     .g_cq01h(gnt_cq01h), .h_cq01h(hq_cq02h), .q_cq01h(fq_cq02h), .v_cq01h(lv_cq02h), .e_cq01h(lfp_cq02h));
   ooe_rsread #(.N(N), .K(K), .K0(NS), .KS(NS), .E0(NR), .E1(N), .W(EW)) u_p (
@@ -144,11 +141,15 @@ module ooe_mempl #(
       pv_cq03h   <= '0;
       dq_cq03h   <= 1'b0;
       selq_cq03h <= '0;
+      gd_cq03h   <= '0;
     end else if (vld_en_cq02h) begin
       mv_cq03h   <= ld_en_cq02h ? v_cq02h : '0;
       pv_cq03h   <= ld_en_cq02h ? v_cq02h : '0;
       dq_cq03h   <= ld_en_cq02h && dv_cq02h;
       selq_cq03h <= ld_en_cq02h ? sel_cq02h : '0;
+      // The grant, unconditionally: read only through a home the valid
+      // register took, which a discard or a clear never does.
+      gd_cq03h   <= gnt_cq01h[N-1:NR];
     end
   end
 

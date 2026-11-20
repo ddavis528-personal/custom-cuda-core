@@ -44,6 +44,22 @@
       }
     },
     {
+      "name": "ooe_rsread",
+      "module": "ooe_rsread",
+      "files": [
+        "rtl/ooe/ooe_rsread.sv"
+      ],
+      "params": {
+        "N": 45,
+        "K": 9,
+        "K0": 4,
+        "KS": 4,
+        "E0": 30,
+        "E1": 45,
+        "W": 4
+      }
+    },
+    {
       "name": "ooe_ren1",
       "module": "ooe_ren1",
       "files": [

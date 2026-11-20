@@ -101,19 +101,22 @@ module ooe_redir #(
   `CCV_ASSERT_KNOWN(ckf_known, ckf_cq03h)
   `CCV_ASSERT_KNOWN(ntm_known, ntm_cq03h)
 
-  // The leads, flopped: each slot's resolution enable and free lead.
-  logic [S-1:0] re_q_cq03h, fl_q_cq03h;
+  // The leads, flopped, written every cycle (CG-5's lead capture, within the
+  // module's allowance): each slot's resolution enable, and one flop for the
+  // frees' lead (only its OR is used).
+  logic [S-1:0] re_q_cq03h;
+  logic         fl_q_cq03h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       re_q_cq03h <= '0;
-      fl_q_cq03h <= '0;
+      fl_q_cq03h <= 1'b0;
     end else begin
       re_q_cq03h <= rd_e_cq02h;
-      fl_q_cq03h <= ckf_l_cq02h;
+      fl_q_cq03h <= |ckf_l_cq02h;
     end
   end
   `CCV_ASSERT(rd_led, (rd_l_cq03h & ~re_q_cq03h) == '0)
-  `CCV_ASSERT(ckf_led, (|ckf_cq03h) == 1'b0 || |fl_q_cq03h)
+  `CCV_ASSERT(ckf_led, (|ckf_cq03h) == 1'b0 || fl_q_cq03h)
 
   // The entries: valid (waiting), and the age order between slots
   // (ag[i * S + j]: i's entry is older than j's).
@@ -142,27 +145,21 @@ module ooe_redir #(
   end
   `CCV_ASSERT(pick_one_hot, $onehot0(pick_cq03h) && ((cand_cq03h == '0) == (pick_cq03h == '0)))
 
-  logic ord_en_cq03h;
-  assign ord_en_cq03h = (|pv_cq03h) || (|re_q_cq03h);
-  always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) begin
-      pv_cq03h <= '0;
-      ag_cq03h <= '0;
-    end else if (ord_en_cq03h) begin
-      pv_cq03h <= pv_nx_cq03h;
-      ag_cq03h <= ag_nx_cq03h;
-    end
-  end
-
-  // The send: the valid and which slot.
+  // The order and the send (the valid and which slot) share one gate: while
+  // nothing waits or arrives, the next order is the idle one and the send
+  // clears, so the send's own valid only widens it to clear itself.
   logic [S-1:0] pk_cq04h;
-  logic         sd_en_cq03h;
-  assign sd_en_cq03h = ord_en_cq03h || rdr_v_cq04h;
+  logic         ord_en_cq03h;
+  assign ord_en_cq03h = (|pv_cq03h) || (|re_q_cq03h) || rdr_v_cq04h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
+      pv_cq03h    <= '0;
+      ag_cq03h    <= '0;
       rdr_v_cq04h <= 1'b0;
       pk_cq04h    <= '0;
-    end else if (sd_en_cq03h) begin
+    end else if (ord_en_cq03h) begin
+      pv_cq03h    <= pv_nx_cq03h;
+      ag_cq03h    <= ag_nx_cq03h;
       rdr_v_cq04h <= |pick_cq03h;
       pk_cq04h    <= pick_cq03h;
     end
@@ -233,15 +230,17 @@ module ooe_redir #(
   always_comb
     for (int s = 0; s < S; s++)
       fm_nx_cq03h[s * NK +: NK] = ckf_cq03h[s * NK +: NK] & {NK{~ntm_cq03h[s]}};
-  assign fv_en_cq03h = (|fl_q_cq03h) || ckf_v_cq04h;
+  assign fv_en_cq03h = fl_q_cq03h || ckf_v_cq04h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) ckf_v_cq04h <= 1'b0;
     else if (fv_en_cq03h) ckf_v_cq04h <= |fm_nx_cq03h;
   end
   always_ff @(posedge ooe_core_clk)
     if (fv_en_cq03h) fq_cq04h <= fm_nx_cq03h;
+  logic ckm_en_cq04h;
+  assign ckm_en_cq04h = ckf_v_cq04h;
   always_ff @(posedge ooe_core_clk)
-    if (ckf_v_cq04h) ckf_m_cq05h <= fq_cq04h;
+    if (ckm_en_cq04h) ckf_m_cq05h <= fq_cq04h;
 
 endmodule
 `undef CCV_CLK
