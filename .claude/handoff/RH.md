@@ -73,10 +73,16 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
-- OI OA-451 RUNNING from 00:38Z 11-20: streaming demote walk, rh-jobs/oi451/oi451.sh (resumable), worktree rh-oi451 at 367bc942 (OI said 3e9bb31b, not on the branch; 367bc942 is the matching tip; was b7b3ce5d);
-  A defaults, B demote_walk=1,beat_merge=0; S1+cm32p+cm128p; AF/BF = +demote_fallback/mlc_miss/barrier=8 on cm128p only. Table
-  python3 rh-jobs/oi451/table.py (demote, rewind_beats/walk_cycles hists, redirect_walk/busy, walk_flushed, decq_full). Ruling S1 <= 0.5%.
-  ~02:50Z. Keep rh-oi451 until OI reads. Container restarted ~00:37Z 11-20 (nothing running).
+- OI OA-455 11-20, WAITING on OI's next commit. Round 2 at 33b2971c SENT 07:46Z: Bm chk 1 (AR 395); Ck and Dn chk 0 but can't fail.
+  Round 3 at 05ee3bdb (rh-oi455c, ~/ccv-logs/oi455c): built OK; Bm ran 49 min with no exit, STOPPED by RH ~08:34Z (OI: likely a hang, FET
+  waits on a credit OOE holds in cred_pend_); Cw dropped. OI will send a new commit with a run list. Keep rh-oi455c, rh-oi455 and rh-oi451
+  (oracle symlink source) until then. Fetch with plain git fetch origin gate-scratch/OI.
+- OI OA-451 rounds 2-3 DONE+SENT by 04:55Z 11-20 at 367bc942 (oi451b.sh, oi451c.sh, table_b.py; logs ~/ccv-logs/oi451b).
+  S1-mlc +0.066% clean; cm32priv-mlc Bm +0.147% clean (168 demotes); cm128priv all 4 runs have check failures (TI-46 (b) decq share,
+  fet tier-1 credit share) from cycle ~238k after the 123rd demote bounce. S1 under fallback=150: atom mem_mismatch 31 (Af and Bf).
+  OI owns the root cause; no cm128priv rerun until OI sends a fix commit. rh-oi451 is DIRTY by design: an uncommitted fail()-cycle
+  patch in sim/skel/kernel.cpp, built to build/skel-rh. NEVER commit it. Probe logs in oi451b/probe (t.bin trace, window.sorted;
+  rh70.full = #70 window prints, which confirmed OI's hypothesis: 3 late epoch-6 uops were dropped after the reseed, so credits peaked at 7+3; OI raised it as OI-188 for OA/TI; no 240,200 run needed; cm128 walk price waits on the fix commit). Patch also prints RH lines in 237140..238125.
 - OI OA-449 DONE+SENT 22:52Z: why layernorm/sgemm gain under bar_pend: P0/P1 at c2adfe83 in rh-oi449 (rh-jobs/oi449/oi449.sh, diff.py ->
   ~/ccv-logs/oi449/diff.md). Same barriers/retired; layernorm rename.one_warp_short -234 (= -232 cyc), decq_full -480, credit_wait -614;
   sgemm hold.registered.barrier -244. No per-warp split in stats. rh-oi449 released and dropped 23:14Z (written up as OI-185); logs ~/ccv-logs/oi449 to drop 11-20 22:30Z.
