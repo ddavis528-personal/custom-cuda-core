@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 395, TI 489, OA 446, IS 199, CP 160, OI 380, RA 156, RI 91, MA 132, DA 128, MI 9, DI 8, AR 398, OA 455.
+Conventions 20, AR 395, TI 489, OA 446, IS 199, CP 160, OI 380, RA 156, RI 91, MA 134, DA 128, MI 12, DI 8, AR 398, OA 456.
 
 ## State, 2026-11-13
 
@@ -90,7 +90,9 @@ Conventions 20, AR 395, TI 489, OA 446, IS 199, CP 160, OI 380, RA 156, RI 91, M
   its notice lands (F+6). DI measured notices off -0.43% (31 faster, 2 slower). MA rev 130: CCV_DCU_NOTICE=0
   default, channel kept (valid low). AR 394 agreed (+ S1/cm32priv rerun, MA 131). OA 453 agreed on a condition
   that misread the hint; MA 132 restates it (off: zero refill hints, F+6; on: OA-23 controls). WAITING OA's
-  accept, then edit DCU tab (notices off, floor F+4/F+6, unhinted refill). Phase 2: earlier notice, MLC
+  accept: done (OA 454); DCU tab rev 59 corrected, snapshot + dcu-impl pushed 99341c99 (MA 133). MI bench
+  met (MI rev 12); TI asked for a gated CCV_DCU_NOTICE=1 scenario (MA 134). WAITING DI: F+6 completions with
+  notices off, and S1/cm32priv rerun; then DI-4 closes for MA. Phase 2: earlier notice, MLC
   tag-lookup first, lead field only if it can't reach F+4; skip under 0.5% on S1.
 - MA rev 127: IS re VA[63:48], no change (MI confirmed full 64-bit fault address). MA rev 128: TI-488
   accepted; interim ooe_wake LAT_MISS 17 pin vs L1_CMPL 16 is OA's/OI's. TI-490 (DA): RESUMED PASS counts
