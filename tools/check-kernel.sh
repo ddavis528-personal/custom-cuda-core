@@ -2097,6 +2097,37 @@ ok() {   # $1 log, then cover bins name=value; prints why not, or nothing
   done
   echo "${why# }"
 }
+# Both block models with refill notices on (MA rev 134, re OA-453; MI-9):
+# the DCU model's default sends none, so OA-23's hint contract is held here.
+# vadd4 has DCU send two notices a cycle; the MIU model declines a second
+# promise on a slot taken that cycle (hint_slot_taken) and is otherwise
+# clean, and each control breaking a promise must be caught.
+MODELS="CCV_MIU_IMPL=model CCV_DCU_IMPL=model CCV_DCU_NOTICE=1"
+log="$B/kernel_vadd4_models.log"
+env $MODELS "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl >"$log" 2>&1
+w=$(ok "$log")
+hs=$(cover "$log" hint_slot_taken); ch=$(cover "$log" cmpl_hint)
+[ "${hs:-0}" -gt 0 ] || w="$w hint_slot_taken=${hs:-0} (want >0)"
+[ "${ch:-0}" -gt 0 ] || w="$w cmpl_hint=${ch:-0} (want >0)"
+if [ -z "$w" ]; then
+  say "vadd4, both models, notices on: == ccv-sim, hints held" "PASS (hint_slot_taken=$hs, cmpl_hint=$ch)"
+else
+  bad "vadd4, both models, notices on" "${w# }"
+fi
+for spec in late-refill:dcu_miu_fill_ntc:on_time notice-wrong-id:dcu_miu_fill_ntc:same_keys \
+            late-cmpl:miu_ooe_cmpl_hint:on_time hint-wrong-tag:miu_ooe_cmpl_hint:same_keys \
+            hint-same-slot:miu_ooe_cmpl_hint:; do
+  brk=${spec%%:*}; rest=${spec#*:}; chan=${rest%%:*}; prop=${rest#*:}
+  log="$B/kernel_${brk}_models.log"
+  env $MODELS "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break "$brk" >"$log" 2>&1
+  n=$(grep -c "u_${chan}_notice_s[0-9]*\.g_${prop:-[a-z_]*}_as" "$log")
+  f=$(field "$log" check_failures)
+  if [ "$n" -gt 0 ] || [ "${f:-0}" -gt 0 ]; then
+    say "--break $brk, both models: caught" "PASS ($n notice violations, ${f:-0} checks)"
+  else
+    bad "--break $brk, both models" "went unnoticed: $(grep '^KERNEL' "$log")"
+  fi
+done
 bad_k=""
 for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
   CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$B/kernel_${k}_swap.log" 2>&1
