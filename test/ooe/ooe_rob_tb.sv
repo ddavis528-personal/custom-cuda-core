@@ -40,6 +40,23 @@ module ooe_rob_tb #(
 ) (
   input  logic                    ooe_core_clk,
   input  logic                    ooe_rst_r00h,
+  // ooe_redir's (OA 435 (5a)): each slot's warp and next epoch, as ooe_decrx
+  // flops them, and its epoch-only notice mask (5b; the bench drives them).
+  input  logic [S*5-1:0]          wid_cq03h,
+  input  logic [S*3-1:0]          ep1_cq03h,
+  input  logic [S-1:0]            ntm_cq03h,
+  input  logic [1:0]              lead_off,   // controls: [0] drops rd_e, [1] ckf_l
+  output logic                    rdr_v_cq04h,
+  output logic [4:0]              rdr_warp_cq05h,
+  output logic [LS-1:0]           rdr_t1_cq05h,
+  output logic [LK-1:0]           rdr_ckpt_cq05h,
+  output logic [31:0]             rdr_tmask_cq05h,
+  output logic [VA-1:0]           rdr_tgt_cq05h,
+  output logic [2:0]              rdr_ep_cq05h,
+  output logic [4:0]              rdr_zero_cq05h,
+  output logic                    rdr_stay_cq05h,
+  output logic                    ckf_v_cq04h,
+  output logic [S*NK-1:0]         ckf_m_cq05h,
   input  logic [S-1:0]            al_l_cq01h,
   input  logic [S*LA-1:0]         al_n_cq02h,
   input  logic [S*A-1:0]          al_nop_cq02h,
@@ -48,6 +65,27 @@ module ooe_rob_tb #(
   input  logic [S*A*31-1:0]       al_pc_cq02h,
   input  logic [S*A*16-1:0]       al_pchi_cq02h,
   input  logic [S*A*32-1:0]       al_gm_cq02h,
+  // Slice 5 (OA 448): each allocation lane's barrier op, and the
+  // releases SYU sends a held wait's slot (matched upstream); each slot's
+  // CTA slot as ooe_slot holds it.
+  input  logic [S*A-1:0]          al_bar_cq02h,
+  input  logic [S*A*2-1:0]        al_bk_cq02h,
+  input  logic [S*A*4-1:0]        al_bid_cq02h,
+  input  logic [S*A-1:0]          al_bgd_cq02h,
+  input  logic [S*A-1:0]          al_bhs_cq02h,
+  input  logic [S-1:0]            brl_cq02h,
+  input  logic [S*5-1:0]          bwarp_cq03h,
+  input  logic [S*4-1:0]          bcta_cq03h,
+  output logic [S-1:0]            bh_cq02h,
+  output logic                    bar_v_cq04h,
+  output logic [4:0]              bar_warp_cq04h,
+  output logic [3:0]              bar_cta_cq04h,
+  output logic [3:0]              bar_bid_cq04h,
+  output logic [1:0]              bar_kind_cq04h,
+  output logic [31:0]             bar_im_cq04h,
+  output logic [31:0]             bar_gm_cq04h,
+  output logic [31:0]             bar_pm_cq04h,
+  output logic                    bar_held_cq04h,
   input  logic                    fl_l_cq01h,
   input  logic                    fl_brl_cq01h,
   input  logic [A-1:0]            fl_v_cq02h,
@@ -131,6 +169,12 @@ module ooe_rob_tb #(
   logic [S-1:0]        gfl_w, pfl_w;
   logic [S*NG*NSB-1:0] gf_w;
   logic [S*NP-1:0]     pf_w;
+  logic [S-1:0]        rde_w, ckl_w;
+  // Slice 5: each instance's waiting report, and the picker's grants.
+  logic [S-1:0]        bq_w, bqh_w, bgn_w;
+  logic [S*2-1:0]      bqk_w;
+  logic [S*4-1:0]      bqi_w;
+  logic [S*32-1:0]     bqim_w, bqgm_w, bqpm_w;
   for (genvar w = 0; w < S; w++) begin : g_w
     // Rename 2's per-slot fill valids (OA 418, #52): the decode Rename 2
     // registers, done here by the bench, which stands in for it.
@@ -146,6 +190,11 @@ module ooe_rob_tb #(
       .al_pc_cq02h(al_pc_cq02h[w * ($bits(al_pc_cq02h) / S) +: $bits(al_pc_cq02h) / S]),
       .al_pchi_cq02h(al_pchi_cq02h[w * ($bits(al_pchi_cq02h) / S) +: $bits(al_pchi_cq02h) / S]),
       .al_gm_cq02h(al_gm_cq02h[w * ($bits(al_gm_cq02h) / S) +: $bits(al_gm_cq02h) / S]),
+      .al_bar_cq02h(al_bar_cq02h[w * ($bits(al_bar_cq02h) / S) +: $bits(al_bar_cq02h) / S]),
+      .al_bk_cq02h(al_bk_cq02h[w * ($bits(al_bk_cq02h) / S) +: $bits(al_bk_cq02h) / S]),
+      .al_bid_cq02h(al_bid_cq02h[w * ($bits(al_bid_cq02h) / S) +: $bits(al_bid_cq02h) / S]),
+      .al_bgd_cq02h(al_bgd_cq02h[w * ($bits(al_bgd_cq02h) / S) +: $bits(al_bgd_cq02h) / S]),
+      .al_bhs_cq02h(al_bhs_cq02h[w * ($bits(al_bhs_cq02h) / S) +: $bits(al_bhs_cq02h) / S]),
       .fl_l_cq01h,
       .fl_brl_cq01h,
       .fl_v_cq02h,
@@ -192,6 +241,8 @@ module ooe_rob_tb #(
       .cf_cause_cq02h,
       .cf_lanes_cq02h,
       .cf_addr_cq02h,
+      .brl_cq02h(brl_cq02h[w]),
+      .bgn_cq02h(bgn_w[w]),
       .rel_l_cq01h(rel_l_cq01h[w * ($bits(rel_l_cq01h) / S) +: $bits(rel_l_cq01h) / S]),
       .rgl_cq02h(rgl_cq02h[w * ($bits(rgl_cq02h) / S) +: $bits(rgl_cq02h) / S]),
       .rpl_cq02h(rpl_cq02h[w * ($bits(rpl_cq02h) / S) +: $bits(rpl_cq02h) / S]),
@@ -210,6 +261,8 @@ module ooe_rob_tb #(
       .ret_cq02h(ret_cq02h[w * ($bits(ret_cq02h) / S) +: $bits(ret_cq02h) / S]),
       .rd_l_cq03h(rd_l_cq03h[w * ($bits(rd_l_cq03h) / S) +: $bits(rd_l_cq03h) / S]),
       .ckf_cq03h(ckf_cq03h[w * ($bits(ckf_cq03h) / S) +: $bits(ckf_cq03h) / S]),
+      .rd_e_cq02h(rde_w[w]),
+      .ckf_l_cq02h(ckl_w[w]),
       .rd_ckpt_cq04h(rd_ckpt_cq04h[w * ($bits(rd_ckpt_cq04h) / S) +: $bits(rd_ckpt_cq04h) / S]),
       .rd_tmask_cq04h(rd_tmask_cq04h[w * ($bits(rd_tmask_cq04h) / S) +: $bits(rd_tmask_cq04h) / S]),
       .rd_tgt_cq04h(rd_tgt_cq04h[w * ($bits(rd_tgt_cq04h) / S) +: $bits(rd_tgt_cq04h) / S]),
@@ -223,9 +276,34 @@ module ooe_rob_tb #(
       .ft_cause_cq03h(ft_cause_cq03h[w * ($bits(ft_cause_cq03h) / S) +: $bits(ft_cause_cq03h) / S]),
       .ft_pc_cq03h(ft_pc_cq03h[w * ($bits(ft_pc_cq03h) / S) +: $bits(ft_pc_cq03h) / S]),
       .ft_lanes_cq03h(ft_lanes_cq03h[w * ($bits(ft_lanes_cq03h) / S) +: $bits(ft_lanes_cq03h) / S]),
-      .ft_addr_cq03h(ft_addr_cq03h[w * ($bits(ft_addr_cq03h) / S) +: $bits(ft_addr_cq03h) / S])
+      .ft_addr_cq03h(ft_addr_cq03h[w * ($bits(ft_addr_cq03h) / S) +: $bits(ft_addr_cq03h) / S]),
+      .bq_cq02h(bq_w[w]),
+      .bq_kind_cq02h(bqk_w[w * 2 +: 2]),
+      .bq_bid_cq02h(bqi_w[w * 4 +: 4]),
+      .bq_im_cq02h(bqim_w[w * 32 +: 32]),
+      .bq_gm_cq02h(bqgm_w[w * 32 +: 32]),
+      .bq_pm_cq02h(bqpm_w[w * 32 +: 32]),
+      .bq_held_cq02h(bqh_w[w]),
+      .bh_cq02h(bh_cq02h[w])
     );
   end
+  ooe_redir #(.S(S), .NK(NK), .PCW(PCW), .VA(VA), .WW(5), .EP(3)) u_redir (
+    .ooe_core_clk, .ooe_rst_r00h,
+    .rd_e_cq02h(rde_w & ~{S{lead_off[0]}}), .rd_l_cq03h, .rd_ckpt_cq04h, .rd_tmask_cq04h, .rd_tgt_cq04h, .rd_stay_cq04h,
+    .ckf_l_cq02h(ckl_w & ~{S{lead_off[1]}}), .ckf_cq03h, .wid_cq03h, .ep1_cq03h, .ntm_cq03h,
+    .rdr_v_cq04h, .rdr_warp_cq05h, .rdr_t1_cq05h, .rdr_ckpt_cq05h, .rdr_tmask_cq05h, .rdr_tgt_cq05h,
+    .rdr_ep_cq05h, .rdr_eo_cq05h(rdr_zero_cq05h[0]), .rdr_rw_cq05h(rdr_zero_cq05h[1]),
+    .rdr_rh_cq05h(rdr_zero_cq05h[2]), .rdr_hl_cq05h(rdr_zero_cq05h[3]), .rdr_own_cq05h(rdr_zero_cq05h[4]),
+    .rdr_stay_cq05h, .ckf_v_cq04h, .ckf_m_cq05h
+  );
+  ooe_barpick #(.S(S), .WW(5), .WT(4), .WB(4)) u_barpick (
+    .ooe_core_clk, .ooe_rst_r00h,
+    .bq_cq02h(bq_w), .bq_kind_cq03h(bqk_w), .bq_bid_cq03h(bqi_w), .bq_im_cq03h(bqim_w),
+    .bq_gm_cq03h(bqgm_w), .bq_pm_cq03h(bqpm_w), .bq_held_cq03h(bqh_w),
+    .warp_cq03h(bwarp_cq03h), .cta_cq03h(bcta_cq03h), .gn_cq03h(bgn_w),
+    .bar_v_cq04h, .bar_warp_cq04h, .bar_cta_cq04h, .bar_bid_cq04h, .bar_kind_cq04h,
+    .bar_im_cq04h, .bar_gm_cq04h, .bar_pm_cq04h, .bar_held_cq04h
+  );
   always_comb begin
     gfree_l_cq02h = |gfl_w;
     pfree_l_cq02h = |pfl_w;

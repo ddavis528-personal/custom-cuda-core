@@ -130,11 +130,16 @@ void fail(const char *what, unsigned where, unsigned rtl, unsigned model) {
                  model);
 }
 
-bool hasEvents(const Edge &e) {
-  return !e.log.adv.empty() || !e.log.adn.empty() || e.log.rel || !e.log.alloc.empty();
+// The leads per source (OA 447): slot s's ooe_rob_w for its advance (bit
+// s), ooe_slot for a notice's advance, a release or an allocation (bit S).
+uint32_t evLeads(const Edge &e) {
+  uint32_t m = 0;
+  for (unsigned s : e.log.adv) if (s < S) m |= 1u << s;
+  if (!e.log.adn.empty() || e.log.rel || !e.log.alloc.empty()) m |= 1u << S;
+  return m;
 }
 
-void drive(const Edge &e, const Edge *nx, bool lead) {
+void drive(const Edge &e, const Edge *nx, uint32_t lead) {
   ++cycles;
   uint32_t adv = 0, adn = 0;
   for (unsigned s : e.log.adv) {
@@ -181,8 +186,8 @@ void drive(const Edge &e, const Edge *nx, bool lead) {
     if (e.log.rel >> s & 1u) rel_warps |= 1u << getField(dut->sw_cq02h, s * LW, LW);   // the RTL's, before the edge
   // adv-late carries this drive's advances to the next, so it leads them
   // there: the control tests the ordering invariant, not the lead.
-  if (control == "adv-late" && (late_adv | late_adn)) lead = true;
-  dut->ev_l_cq00h = lead && control != "no-ev-lead";
+  if (control == "adv-late" && (late_adv | late_adn)) lead |= 1u << S;
+  dut->ev_l_cq00h = control == "no-ev-lead" ? 0 : lead;
   // The next edge's arrivals, in arrival order: their lead cycle is this
   // drive.
   static const std::vector<Core::RxArrival> none;
@@ -278,7 +283,7 @@ Edge cur;
 bool have_cur = false;
 
 void push(Edge &&e) {
-  if (have_pend) drive(pend, &e, hasEvents(e));
+  if (have_pend) drive(pend, &e, evLeads(e));
   pend = std::move(e);
   have_pend = true;
 }
@@ -305,7 +310,7 @@ void post(const Core &c) {
 void pre(const Core &c) {
   if (c.serial() != current) {
     if (have_cur) { push(std::move(cur)); have_cur = false; }
-    if (have_pend) { drive(pend, nullptr, false); have_pend = false; }
+    if (have_pend) { drive(pend, nullptr, 0); have_pend = false; }
     current = c.serial();
     ++cores;
     late_adv = late_adn = 0;
@@ -325,7 +330,7 @@ void pre(const Core &c) {
 
 void flushLast() {
   if (have_cur) { push(std::move(cur)); have_cur = false; }
-  if (have_pend) { drive(pend, nullptr, false); have_pend = false; }
+  if (have_pend) { drive(pend, nullptr, 0); have_pend = false; }
 }
 } // namespace
 

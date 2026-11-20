@@ -70,7 +70,8 @@ module ooe_decrx #(
 ) (
   input  logic             ooe_core_clk,
   input  logic             ooe_rst_r00h,
-  input  logic             ev_l_cq00h,     // an advance, release or allocation comes next cycle
+  input  logic [S:0]       ev_l_cq00h,     // an event comes next cycle, a lead per source (OA 447): slot s's
+                                           // ooe_rob_w (its rd_e: an advance), and ooe_slot (bit S)
   input  logic [S-1:0]     adv_cq01h,      // slot s's warp's epoch advances: a redirect
   input  logic [S-1:0]     adn_cq01h,      // and again: a demotion's or a kill's notice
   input  logic [S-1:0]     rel_cq01h,      // slot s is released
@@ -80,7 +81,9 @@ module ooe_decrx #(
   input  logic [E*LW-1:0]  arv_warp_cq01h, // its warp_id (a lead field)
   input  logic [E*EP-1:0]  arv_ep_cq01h,   // its fetch_epoch (a lead field)
   output logic [E-1:0]     enq_v_cq02h,    // port k's uop was kept: with its payload, at ooe_decq
-  output logic [E*LS-1:0]  enq_slot_cq02h  // its slot
+  output logic [E*LS-1:0]  enq_slot_cq02h, // its slot
+  output logic [S*LW-1:0]  sw_o_cq02h,     // each slot's warp, and the epoch after its warp's:
+  output logic [S*EP-1:0]  sn_o_cq02h      // ooe_redir reads a redirect's in its squash's cycle (OI-179)
 );
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
@@ -88,7 +91,7 @@ module ooe_decrx #(
   logic ev_q_cq01h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) ev_q_cq01h <= 1'b0;
-    else ev_q_cq01h <= ev_l_cq00h;
+    else ev_q_cq01h <= |ev_l_cq00h;
   end
   logic tb_en_cq01h;
   assign tb_en_cq01h = ev_q_cq01h;
@@ -149,32 +152,27 @@ module ooe_decrx #(
   // the slot releasing that warp in the same cycle (a free and the restore
   // of the same warp at one RAU decision), which the row takes only at the
   // edge.
-  // The same-cycle bypass, per allocating slot s: the epochs of the slot
-  // releasing its warp (at most one; an AND-OR).
-  logic [S-1:0] byp_cq01h;
-  logic [S*EP-1:0] b0_cq01h, b1_cq01h, b2_cq01h;
-  always_comb begin
-    byp_cq01h = '0;
-    b0_cq01h = '0;
-    b1_cq01h = '0;
-    b2_cq01h = '0;
-    for (int s = 0; s < S; s++)
-      for (int t = 0; t < S; t++)
-        if (rel_cq01h[t] && swi_cq02h[t * LW +: LW] == al_warp_cq01h[s * LW +: LW]) begin
-          byp_cq01h[s] = 1'b1;
-          b0_cq01h[s * EP +: EP] = b0_cq01h[s * EP +: EP] | sa_cq01h[t * EP +: EP];
-          b1_cq01h[s * EP +: EP] = b1_cq01h[s * EP +: EP] | sa1_cq01h[t * EP +: EP];
-          b2_cq01h[s * EP +: EP] = b2_cq01h[s * EP +: EP] | sa2_cq01h[t * EP +: EP];
-        end
-  end
-
   logic [S-1:0] sv_nx_cq01h;
   logic [S*LW-1:0] sw_nx_cq01h;
   logic [S*EP-1:0] se_nx_cq01h, sn_nx_cq01h, s2_nx_cq01h;
   always_comb begin
     for (int s = 0; s < S; s++) begin
-      logic [EP-1:0] row;
+      logic [EP-1:0] row, b0, b1, b2;
+      logic          byp;
       row = we_cq02h[al_warp_cq01h[s * LW +: LW] * EP +: EP];
+      // The same-cycle bypass: the epochs of the slot releasing this
+      // allocation's warp (at most one; an AND-OR), the table's D side.
+      byp = 1'b0;
+      b0  = '0;
+      b1  = '0;
+      b2  = '0;
+      for (int t = 0; t < S; t++)
+        if (rel_cq01h[t] && swi_cq02h[t * LW +: LW] == al_warp_cq01h[s * LW +: LW]) begin
+          byp = 1'b1;
+          b0  = b0 | sa_cq01h[t * EP +: EP];
+          b1  = b1 | sa1_cq01h[t * EP +: EP];
+          b2  = b2 | sa2_cq01h[t * EP +: EP];
+        end
       sv_nx_cq01h[s] = sv_cq02h[s] & ~rel_cq01h[s];
       // A held warp is an AND-OR on D, not an if, so it stays in the
       // tables' gate (5-flop fields would be gates under 8).
@@ -188,10 +186,10 @@ module ooe_decrx #(
         se_nx_cq01h[s * EP +: EP] = row;
         sn_nx_cq01h[s * EP +: EP] = row + EP'(1);
         s2_nx_cq01h[s * EP +: EP] = row + EP'(2);
-        if (byp_cq01h[s]) begin
-          se_nx_cq01h[s * EP +: EP] = b0_cq01h[s * EP +: EP];
-          sn_nx_cq01h[s * EP +: EP] = b1_cq01h[s * EP +: EP];
-          s2_nx_cq01h[s * EP +: EP] = b2_cq01h[s * EP +: EP];
+        if (byp) begin
+          se_nx_cq01h[s * EP +: EP] = b0;
+          sn_nx_cq01h[s * EP +: EP] = b1;
+          s2_nx_cq01h[s * EP +: EP] = b2;
         end
       end
     end
@@ -207,6 +205,16 @@ module ooe_decrx #(
       sni_cq02h <= sn_nx_cq01h;
       s2i_cq02h <= s2_nx_cq01h;
     end
+  // Their copies out (an output's register drives nothing else, each kept).
+  (* keep *) logic [S*LW-1:0] swo_cq02h;
+  (* keep *) logic [S*EP-1:0] sno_cq02h;
+  always_ff @(posedge ooe_core_clk)
+    if (tb_en_cq01h) begin
+      swo_cq02h <= sw_nx_cq01h;
+      sno_cq02h <= sn_nx_cq01h;
+    end
+  assign sw_o_cq02h = swo_cq02h;
+  assign sn_o_cq02h = sno_cq02h;
 
   // The arrivals, in their lead cycle: each compared (the inner helper), and
   // the verdict flopped on the edge the payload lands, ooe_decq's inputs
@@ -239,20 +247,22 @@ module ooe_decrx #(
   // An allocation takes a free slot (or one released in its cycle), for a
   // warp that holds no slot (or is released in the cycle) and is not
   // allocated twice.
-  logic [S-1:0] al_busy_cq01h, al_dup_cq01h;
+  logic [S-1:0] al_busy_cq02h, al_dup_cq02h;   // against the table
+  logic [S-1:0] al_two_cq01h;                  // two allocations of one warp
   always_comb
     for (int s = 0; s < S; s++) begin
-      al_busy_cq01h[s] = al_v_cq01h[s] && sv_cq02h[s] && !rel_cq01h[s];
-      al_dup_cq01h[s] = 1'b0;
+      al_busy_cq02h[s] = al_v_cq01h[s] && sv_cq02h[s] && !rel_cq01h[s];
+      al_dup_cq02h[s] = 1'b0;
+      al_two_cq01h[s] = 1'b0;
       for (int t = 0; t < S; t++) begin
         if (al_v_cq01h[s] && sv_cq02h[t] && !rel_cq01h[t] && al_warp_cq01h[s * LW +: LW] == swi_cq02h[t * LW +: LW])
-          al_dup_cq01h[s] = 1'b1;
+          al_dup_cq02h[s] = 1'b1;
         if (al_v_cq01h[s] && al_v_cq01h[t] && t != s && al_warp_cq01h[s * LW +: LW] == al_warp_cq01h[t * LW +: LW])
-          al_dup_cq01h[s] = 1'b1;
+          al_two_cq01h[s] = 1'b1;
       end
     end
-  `CCV_ASSERT(al_free_slot, al_busy_cq01h == '0)
-  `CCV_ASSERT(al_new_warp, al_dup_cq01h == '0)
+  `CCV_ASSERT(al_free_slot, al_busy_cq02h == '0)
+  `CCV_ASSERT(al_new_warp, al_dup_cq02h == '0 && al_two_cq01h == '0)
   `CCV_ASSERT(al_not_advanced, (al_v_cq01h & (adv_cq01h | adn_cq01h)) == '0)
 endmodule
 `undef CCV_CLK

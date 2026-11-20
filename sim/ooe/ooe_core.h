@@ -473,9 +473,36 @@ struct Config {
   /// that resolves a mispredict holds its frees one more cycle (ooe_rob_w
   /// drops the younger ones a cycle after the pick, by its squash).
   unsigned ckpt_free_lag = 0;
+  /// OA 447 (re:OI-179 (3)): ooe_redir registers the pick a cycle after
+  /// rob_w's rd_l and the payload a cycle after that, so the redirect and
+  /// ckpt_free leave OOE this many cycles after the model's send, together
+  /// (A-58). A delay line on both outputs; an epoch notice lands as late.
+  unsigned redirect_send_lag = 0;
+  /// ROB slice 5 (rev 277 (c)): ooe_rob_w keeps each slot's barrier reports
+  /// (arrive, wait, exit) in a side buffer this deep, in program order,
+  /// popped at retire; a slot's next one holds rename while it is full.
+  /// 0 = unbounded (the reference).
+  unsigned bar_buf_depth = 0;
+  /// OA 448 (2) option B: a one-place pending report register per slot,
+  /// loaded at retire; one register a cycle is picked in rotating order and
+  /// sent. A slot's retire stops at a barrier op while its register is still
+  /// full after this cycle's pick, or at a second one in one window. A
+  /// pending report holds the slot's drain, exit and kill like a held entry.
+  /// 0 = the direct pick (one report a cycle across slots at retire).
+  unsigned bar_pend = 0;
+  /// redirect_send_lag's control: the free mask a cycle later than the
+  /// redirects, out of A-58's latency match (V-46 must see it).
+  bool inject_send_free_late = false;
+  /// bar_pend's control: a full pending register is overwritten at retire
+  /// (no stop), so a report is lost.
+  bool inject_bar_pend_overwrite = false;
   /// ckpt_free_lag's control: a redirect or a due squash leaves a younger
   /// branch's held free in place, so it lands after the checkpoint died (V-46).
   bool inject_free_held_kept = false;
+  /// A kill's control (TI-485, OA 436): the kill leaves the killed slot's
+  /// unsent checkpoint frees in place, so they land after the kill's epoch
+  /// notice freed the warp's checkpoints in FET (V-46).
+  bool inject_kill_free_kept = false;
   /// ROB slice 2's timing (OI-86): a branch's resolution (squash, RAT
   /// restore, redirect, checkpoint free) acts resolve_lag cycles after it
   /// completes, the redirect then leaving from flops (with DA, OA's rev
@@ -561,6 +588,13 @@ struct Config {
   /// that fill arrives and a cycle more, its allocation's cycle + 3, the
   /// ROB dropping the fill by a kill count (the price of OA's rev 291 (4)).
   unsigned kill_free_lag = 0;
+  /// ooe_slot's verdicts (OA 443, re:OI-176): map, drained, kill_ack and a
+  /// kill's release come from flops a cycle after the inputs that decide
+  /// them, so each leaves this many cycles after the model decides it (the
+  /// decision itself, on that cycle's held and landed, is unchanged).
+  unsigned slot_verdict_lag = 1;
+  /// slot_verdict_lag's control: the verdicts leave at once whatever the lag.
+  bool inject_verdict_early = false;
   /// A squash that leaves the slot holding entries (squashed with an op in
   /// flight, this squash's or an earlier one's) registers a run of 0 for
   /// this many cycles from the squash's (the go reads that slot's run as 0):
@@ -957,6 +991,7 @@ struct Commit {         ///< ccv_ooe_miu_retire
 };
 struct Redirect {       ///< ccv_ooe_fet_redirect
   uint64_t tid = 0;
+  uint64_t at = 0;      ///< the cycle it was queued (same-cycle redirects queue in slot order, OI-179)
   unsigned warp = 0, slot = 0, ckpt = 0, epoch = 0;
   uint32_t taken_mask = 0;
   uint64_t target_pc = 0;
@@ -1600,6 +1635,8 @@ private:
     /// retire, or a marked uop's that leaves nothing younger in the ROB,
     /// until the hold lifts or (unheld) the warp's next uop arrives.
     bool bar_idle = false, bar_idle_reported = false;
+    bool bar_pv = false;   ///< bar_pend: the pending report register is full
+    Bar bar_pb{};          ///< bar_pend: its report
     uint64_t bar_idle_since = 0;
     unsigned home_ctr = 0;                    ///< OA-14's rotating home position
     unsigned chwidth_rob = 0;                 ///< the holding instruction
@@ -1884,6 +1921,12 @@ public:
       unsigned cause = 0;
       uint32_t pclo = 0, egmask = 0;
       unsigned epchi = 0;
+      // Slice 5 (OA 448): a barrier report op (an arrive, wait or exit with
+      // no fault), its kind (0 arrive, 1 wait, 2 wait.phase, 3 exit), its
+      // barrier, whether its guard comes back on its done, and whether it
+      // sets the slot's hold (a converged wait).
+      bool bar = false, bgd = false, bhs = false;
+      unsigned bkind = 0, bid = 0;
     };
     struct Ret {
       unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
@@ -1916,7 +1959,7 @@ public:
     std::vector<std::pair<unsigned, bool>> sq_ent;
     std::vector<unsigned> hrel;
     std::vector<std::pair<unsigned, unsigned>> ckfree;
-    struct Redir { unsigned slot = 0, ckpt = 0; uint32_t taken_mask = 0; uint64_t target = 0; bool stay = false; };
+    struct Redir { unsigned slot = 0, ckpt = 0; uint32_t taken_mask = 0; uint64_t target = 0; bool stay = false; unsigned warp = 0, epoch = 0; };
     std::vector<Redir> redirect;
     struct Discard { unsigned slot = 0, branch = 0, disp = 0; };
     std::vector<Discard> discard;
@@ -1926,6 +1969,11 @@ public:
     /// Slice 4: each fault taken at retire (slot, index, cause, pc, lanes).
     struct Fault { unsigned slot = 0, idx = 0, cause = 0; uint64_t pc = 0; uint32_t lanes = 0; uint64_t addr = 0; };
     std::vector<Fault> fault;
+    /// Slice 5: each barrier report sent this cycle (ccv_ooe_syu_bar), by
+    /// slot, and the slots SYU released (ccv_syu_ooe_rel, as it acts).
+    struct BarRep { unsigned slot = 0, kind = 0, bid = 0; uint32_t issue = 0, guard = 0, phase = 0; bool held = false; };
+    std::vector<BarRep> bar;
+    uint32_t bar_rel = 0;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;
   };
@@ -2224,7 +2272,10 @@ private:
   uint8_t &cell(unsigned i, unsigned j) { return cell_[i * n_ + j]; }
   uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }
   uint64_t next_age_ = 0;
-  unsigned rr_rename_ = 0, rr_select_ = 0;
+  unsigned rr_rename_ = 0, rr_select_ = 0, rr_bar_ = 0;
+  Bar bar_send_{};                 ///< bar_pend: last cycle's pick, sent this cycle
+  unsigned bar_send_slot_ = 0;
+  bool bar_send_v_ = false;
 
   // producers of each physical register still in the RS (up to two: a
   // masked load and its copy), and whether its value has landed
@@ -2338,9 +2389,44 @@ public:
     std::vector<std::pair<unsigned, unsigned>> alloc;
   };
   const RxLog &rxLog() const { return rxlog_; }
+  /// ooe_slot's bench (test/ooe/slot_tb.cpp, OA 435 (1)): control()'s
+  /// inputs as it took them this cycle (allocations, the demote, the kill,
+  /// SYU's releases), each slot's conditions it read (held: a ROB entry
+  /// valid; landed: the notice and every rewind beat landed in FET; ath: an
+  /// atomic at the head; xr: the exit retired), what it did (epoch
+  /// notices, the demotion's map, drained messages, the kill ack, the RAT's
+  /// squash and release), the barrier wait's events from rename, retire and
+  /// a squash, a restore's map sent (restoreStep), and each slot's state
+  /// after control().
+  /// ooe_slot's reference (OA 435 (1)): a cycle's control step as the
+  /// model ran it. Its inputs: the allocations, the demotes, the kill, and
+  /// per slot the levels it read (held: an entry valid in the ROB at the
+  /// progress check; landed: the epoch notice and every beat in FET; ath:
+  /// an atomic at the head; xr: the exit retired). Its verdicts: the slots
+  /// squashed with an epoch notice (a demote or a kill), the maps sent, the
+  /// releases, the drained messages and the kill's ack. Then each slot as
+  /// control left it (Core::slotState's codes) with its identity.
+  struct SlotAlloc { unsigned slot, op, warp; uint32_t ctaid; unsigned wic, barc, cta; };
+  struct SlotDrained { unsigned warp; bool refused; };
+  struct SlotLog {
+    bool ran = false;
+    std::vector<SlotAlloc> alloc;
+    std::vector<unsigned> demote;          ///< new demotes, in order (held ones retry from the slot)
+    bool kill = false; uint32_t kill_mask = 0; unsigned kill_epoch = 0;
+    uint32_t held = 0, landed = 0, ath = 0, xr = 0;
+    uint32_t ntc = 0, map = 0, release = 0;
+    std::vector<SlotDrained> drained;
+    int kill_ack = -1;
+    uint8_t st[8] = {};                    ///< after control: slotState
+    uint32_t dmh = 0;                      ///< demotes held at an atomic, by slot
+    unsigned warp[8] = {}, wic[8] = {}, barc[8] = {}, cta[8] = {};
+    uint32_t ctaid[8] = {};
+  };
+  const SlotLog &slotLog() const { return slotlog_; }
   int slotOfWarp(unsigned warp) const { return slotOf(warp); }
 private:
   RxLog rxlog_;
+  SlotLog slotlog_;
 public:
   /// The first RCU-class entry index past the last; MIU entries follow.
   unsigned rsRcuEntries() const { return cfg_.rs_rcu; }
@@ -2428,6 +2514,12 @@ private:
   // outbound queues on rate-limited channels
   std::deque<Redirect> redirects_;
   uint64_t free_mask_ = 0;
+  struct VerdictHold { uint64_t due; std::vector<RatMap> maps; std::vector<Drained> drained;
+                       std::vector<unsigned> acks; uint32_t release = 0; };
+  std::vector<VerdictHold> verdict_held_;   ///< slot_verdict_lag: decided, not yet out
+  /// redirect_send_lag's line: each cycle's redirects and free mask, oldest first.
+  std::deque<std::pair<std::vector<Redirect>, uint64_t>> send_line_;
+  uint64_t send_free_late_ = 0;   ///< inject_send_free_late's extra cycle
   uint64_t free_held_ = 0;   ///< ckpt_free_lag: freed a cycle ago, sent this cycle
   uint64_t free_pick_ = 0;   ///< ckpt_free_lag: slots that resolved a mispredict this cycle
   std::deque<Commit> commits_;

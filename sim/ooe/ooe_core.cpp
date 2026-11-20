@@ -35,11 +35,11 @@ std::string Config::apply(const std::string &spec) {
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"unmet_reg", &unmet_reg}, {"floor_take_lag", &floor_take_lag}, {"floor_held_gate", &floor_held_gate}, {"fault_head_only", &fault_head_only}, {"share_return", &share_return},
-      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"ckpt_free_lag", &ckpt_free_lag}, {"resolve_lag", &resolve_lag},
+      {"held_late", &held_late}, {"retire_lag", &retire_lag}, {"rob_retire_lag", &rob_retire_lag}, {"rob_alloc_lag", &rob_alloc_lag}, {"ckpt_free_lag", &ckpt_free_lag}, {"redirect_send_lag", &redirect_send_lag}, {"bar_buf_depth", &bar_buf_depth}, {"bar_pend", &bar_pend}, {"resolve_lag", &resolve_lag},
       {"defer_release_lag", &defer_release_lag}, {"squash_room_lag", &squash_room_lag},
       {"resolve_lag_wrong_only", &resolve_lag_wrong_only}, {"resolve_lag_ret_only", &resolve_lag_ret_only}, {"ret_hold", &ret_hold}, {"branch_ends_window", &branch_ends_window},
       {"release_names_lag", &release_names_lag}, {"squash_act_lag", &squash_act_lag},
-      {"held_room_lag", &held_room_lag}, {"kill_free_lag", &kill_free_lag},
+      {"held_room_lag", &held_room_lag}, {"kill_free_lag", &kill_free_lag}, {"slot_verdict_lag", &slot_verdict_lag},
       {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}, {"cmpl_split", &cmpl_split}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
@@ -56,7 +56,8 @@ std::string Config::apply(const std::string &spec) {
                                      {"owed_lag", &owed_lag},
                                      {"names_pool_lag", &names_pool_lag},
                                      {"full_rows", &full_rows},
-                                     {"inject_partial_taken_ok", &inject_partial_taken_ok},
+                                     {"inject_partial_taken_ok", &inject_partial_taken_ok}, {"inject_verdict_early", &inject_verdict_early},
+                                     {"inject_kill_free_kept", &inject_kill_free_kept},
                                      {"inject_no_memop_credit", &inject_no_memop_credit},
                                      {"inject_ignore_nohit", &inject_ignore_nohit}};
   std::stringstream ss(spec);
@@ -438,6 +439,7 @@ void Core::cycle(uint64_t now) {
   }
   pfree_.clock();
   rxlog_ = RxLog();
+  slotlog_ = SlotLog();
   decq_flushed_ = 0;
   decq_freed_prev_ = decq_freed_;
   decq_freed_ = 0;
@@ -2141,12 +2143,22 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
     count("branch.ret_redirect");
   }
   rd.epoch = epoch;
-  roblog_.redirect.push_back({slot, rd.ckpt, rd.taken_mask, rd.target_pc, rd.stay});
+  roblog_.redirect.push_back({slot, rd.ckpt, rd.taken_mask, rd.target_pc, rd.stay, rd.warp, rd.epoch});
   // A queued redirect of this warp is for a branch this squash removed.
   for (auto it = redirects_.begin(); it != redirects_.end();)
     if (it->slot == slot && !it->epoch_only) { it = redirects_.erase(it); count("redirect.superseded"); }
     else ++it;
-  redirects_.push_back(rd);
+  // A cycle's redirects queue in slot order, whatever order their
+  // completions came in (OI-179: ooe_redir's ties go to the lowest slot).
+  rd.at = now_;
+  auto pos = redirects_.end();
+  while (pos != redirects_.begin()) {
+    auto prev = std::prev(pos);
+    if (prev->at != now_ || prev->epoch_only || prev->slot < slot) break;
+    pos = prev;
+  }
+  if (pos != redirects_.end()) count("redirect.slot_order");
+  redirects_.insert(pos, rd);
 }
 
 void Core::releaseEntry(unsigned slot, unsigned idx) {
@@ -2374,6 +2386,7 @@ void Core::releaseSlot(unsigned slot) {
   if (slot < squash_due_.size()) squash_due_[slot].on = false;
   rlog_.release |= 1u << slot;
   roblog_.release |= 1u << slot;
+  slotlog_.release |= 1u << slot;
   const unsigned keep_epoch_warp = s.warp;
   (void)keep_epoch_warp;    // the epoch is per warp_id and survives (A-74)
   Slot fresh;
@@ -2388,6 +2401,27 @@ void Core::releaseSlot(unsigned slot) {
 }
 
 void Core::control() {
+  SlotLog &sl = slotlog_;
+  sl.ran = true;
+  // slot_verdict_lag (OA 443): the verdicts decided lag cycles ago go out
+  // now, a kill's release first, as ooe_slot's flops send them.
+  const size_t n_maps = out.maps.size(), n_drained = out.drained.size(), n_acks = out.kill_acks.size();
+  std::vector<VerdictHold> due_now;
+  for (auto it = verdict_held_.begin(); it != verdict_held_.end();)
+    if (it->due <= now_) { due_now.push_back(std::move(*it)); it = verdict_held_.erase(it); } else ++it;
+  for (const VerdictHold &v : due_now)
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      if ((v.release >> si) & 1u) releaseSlot(si);
+  sl.release = 0;   // logged at the decision, not here
+  uint32_t kill_release = 0;
+  for (unsigned si = 0; si != slot_.size() && si != 8; ++si) {
+    if (atomAtHead(si)) sl.ath |= 1u << si;
+    if (slot_[si].exit_retired) sl.xr |= 1u << si;
+  }
+  for (const Alloc &a : allocs_)
+    sl.alloc.push_back({a.slot, unsigned(a.op), a.warp, uint32_t(a.ctaid), unsigned(a.warp_in_cta),
+                        unsigned(a.barrier_count), unsigned(a.cta_slot)});
+  sl.demote = demotes_;
   for (const Alloc &a : allocs_) {
     if (a.slot >= slot_.size()) { err("alloc names tier-1 slot %u", a.slot); continue; }
     Slot &s = slot_[a.slot];
@@ -2479,6 +2513,7 @@ void Core::control() {
       // Refused (OA's response TI-25 (2)): the exit has retired, so the warp
       // is finishing. No squash, no map, no rewind; exited frees the slot.
       out.drained.push_back({s.warp, 0, true});
+      sl.drained.push_back({s.warp, true});
       count("demote.refused");
       continue;
     }
@@ -2544,6 +2579,7 @@ void Core::control() {
     s.rat = s.crat;
     s.prat = s.cprat;
     rlog_.squash |= 1u << si;
+    sl.ntc |= 1u << si;
     s.chwidth_hold = s.bar_hold = false;
     s.bar_retired = s.bar_long = s.bar_idle = false;
     advanceEpoch(unsigned(si), true);
@@ -2571,16 +2607,25 @@ void Core::control() {
 
   if (kill_pending_) {
     kill_pending_ = false;
+    sl.kill = true;
+    sl.kill_mask = kill_mask_;
+    sl.kill_epoch = kill_epoch_;
     for (unsigned si = 0; si != slot_.size(); ++si) {
       Slot &s = slot_[si];
       if (s.st == WarpState::kFree || !((kill_mask_ >> (s.warp % 32)) & 1u)) continue;
       for (unsigned c = 0; c != cfg_.ckpts; ++c) s.ckpt[c].live = false;
       for (unsigned k = 0; k != s.count; ++k) s.rob[(s.head + k) % cfg_.rob_depth].ckpt_live = false;
-      withdrawFree(((uint64_t(1) << cfg_.ckpts) - 1) << (si * cfg_.ckpts));   // as a demote's (V-46)
+      // As a demote's (V-46): a free resolved this cycle, or held under
+      // ckpt_free_lag, would land after FET freed the warp's checkpoints at
+      // the kill's notice (TI-485, OA 436).
+      const uint64_t km = ((uint64_t(1) << cfg_.ckpts) - 1) << (si * cfg_.ckpts);
+      if ((free_mask_ | free_held_) & km) count("kill.free_withdrawn");
+      if (!cfg_.inject_kill_free_kept) withdrawFree(km);
       squashAfter(si, -1, true);
       s.rat = s.crat;
       s.prat = s.cprat;
       rlog_.squash |= 1u << si;
+      sl.ntc |= 1u << si;
       advanceEpoch(si, true);
       epochNotice(si);
       s.st = WarpState::kKilling;
@@ -2590,7 +2635,7 @@ void Core::control() {
     // A kill naming nothing OOE holds is acked at once.
     bool any = false;
     for (const Slot &s : slot_) any = any || s.st == WarpState::kKilling;
-    if (!any) out.kill_acks.push_back(kill_epoch_);
+    if (!any) { out.kill_acks.push_back(kill_epoch_); sl.kill_ack = int(kill_epoch_); }
   }
 
   // Demotion and kill progress: wait for every outstanding memop and held
@@ -2599,11 +2644,14 @@ void Core::control() {
   for (unsigned si = 0; si != slot_.size(); ++si) {
     Slot &s = slot_[si];
     bool held = false;
+    if (s.bar_pv || (bar_send_v_ && bar_send_slot_ == si)) held = true;   // bar_pend: a report not yet sent
     for (const RobEntry &r : s.rob)
       held = held || (r.valid && !(cfg_.inject_drain_early && s.st == WarpState::kDemoting && r.squashed &&
                                    r.is_load && r.at_miu && !r.miu_done));
     // The notice and every rewind beat have landed in FET (TI-24 (3)).
     const bool landed = s.notice_sent && !s.rewind_pending && now_ >= s.notice_lands;
+    if (held) sl.held |= 1u << si;
+    if (landed) sl.landed |= 1u << si;
     // exited (OA's rev 149): the exit retired, nothing held in the ROB, a
     // deferred free included, so no memop is out at MIU either.
     if (s.st == WarpState::kActive && s.exit_retired && !s.exited_sent && !held) {
@@ -2625,6 +2673,7 @@ void Core::control() {
         std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
         out.maps.push_back(m);
         s.map_sent = true;
+        sl.map |= 1u << si;
         // TI-25: the parked layout, one row per register (no merging), each
         // its position and committed width.
         Parked &pk = parked_[s.warp % kWarpIds];
@@ -2640,24 +2689,60 @@ void Core::control() {
         }
       } else {
         out.drained.push_back({s.warp, s.resume_pc});
+        sl.drained.push_back({s.warp, false});
         s.st = WarpState::kDrained;
       }
     }
     if (s.st == WarpState::kKilling) {
       killing = true;
       if (!held && landed) {
-        releaseSlot(si);
+        if (cfg_.slot_verdict_lag && !cfg_.inject_verdict_early) {
+          kill_release |= 1u << si;
+          sl.release |= 1u << si;   // stays killing until its release, next cycle's first act
+        } else releaseSlot(si);
       } else {
         kill_done = false;
       }
     }
   }
-  if (killing && kill_done) out.kill_acks.push_back(kill_epoch_);
+  if (killing && kill_done) { out.kill_acks.push_back(kill_epoch_); sl.kill_ack = int(kill_epoch_); }
+  for (unsigned si = 0; si != slot_.size() && si != 8; ++si) {
+    const Slot &s = slot_[si];
+    static const uint8_t code[] = {0, 1, 2, 3, 5, 6};
+    sl.st[si] = s.st == WarpState::kDemoting && s.map_sent ? 4 : code[unsigned(s.st)];
+    if ((kill_release >> si) & 1u) sl.st[si] = 0;   // ooe_slot's EMPTY with its rel
+    sl.warp[si] = s.warp;
+    sl.ctaid[si] = s.ctaid;
+    sl.wic[si] = s.warp_in_cta;
+    sl.barc[si] = s.bar_count;
+    sl.cta[si] = s.cta_slot;
+  }
+  for (unsigned w : demotes_held_)
+    if (slotOf(w) >= 0) sl.dmh |= 1u << slotOf(w);
+  {
+    VerdictHold v;
+    v.due = now_ + (cfg_.inject_verdict_early ? 0 : cfg_.slot_verdict_lag);
+    v.release = kill_release;
+    v.maps.assign(out.maps.begin() + n_maps, out.maps.end());
+    v.drained.assign(out.drained.begin() + n_drained, out.drained.end());
+    v.acks.assign(out.kill_acks.begin() + n_acks, out.kill_acks.end());
+    out.maps.resize(n_maps);
+    out.drained.resize(n_drained);
+    out.kill_acks.resize(n_acks);
+    if (v.due <= now_) due_now.push_back(std::move(v));
+    else verdict_held_.push_back(std::move(v));
+    for (VerdictHold &d : due_now) {
+      out.maps.insert(out.maps.end(), d.maps.begin(), d.maps.end());
+      out.drained.insert(out.drained.end(), d.drained.begin(), d.drained.end());
+      out.kill_acks.insert(out.kill_acks.end(), d.acks.begin(), d.acks.end());
+    }
+  }
 
   if (released_) {
     for (unsigned si = 0; si != slot_.size(); ++si) {
       Slot &s = slot_[si];
       if (s.st == WarpState::kFree || !((released_ >> (s.warp % 32)) & 1u)) continue;
+      roblog_.bar_rel |= 1u << si;
       // ccv_syu_ooe_rel answers a held wait that has reported (TI-40); any
       // other is stale (a demotion took the hold first) and is dropped.
       if (s.bar_hold && s.bar_retired) {
@@ -2683,6 +2768,37 @@ void Core::retire() {
     if (cfg_.rob_retire_lag) ret_defer_.push_back(std::move(f));
     else f();
   };
+  // bar_pend (OA 448 (2) B): send one pending report, rotating over slots.
+  // A slot's register frees only after the cycle it is picked: ooe_rob_w
+  // sees the picker's grant as an input, so the stop reads the register as
+  // the cycle started (bar_pv0).
+  uint64_t bar_pv0 = 0;
+  // ooe_barpick flops the requests and picks from its own flops (nothing
+  // passes straight through it), so the report leaves from its register a
+  // cycle after the pick: last cycle's pick is sent now. ooe_rob_w frees the
+  // picked place only at the end of the pick's cycle, so the slot stops
+  // while its report is sent too.
+  if (cfg_.bar_pend) {
+    if (bar_send_v_) {
+      bar_pv0 |= uint64_t(1) << bar_send_slot_;
+      const Bar b = bar_send_;
+      const unsigned si = bar_send_slot_;
+      act([this, b] { out.bars.push_back(b); });
+      roblog_.bar.push_back({si, b.kind, b.barrier_id, b.issue_mask, b.guard_mask, b.phase_mask, b.held});
+      bar_send_v_ = false;
+    }
+    for (unsigned k = 0; k != slot_.size(); ++k) if (slot_[k].bar_pv) bar_pv0 |= uint64_t(1) << k;
+    for (unsigned k = 0; k != slot_.size(); ++k) {
+      const unsigned si = (rr_bar_ + k) % slot_.size();
+      if (!slot_[si].bar_pv) continue;
+      bar_send_ = slot_[si].bar_pb;
+      bar_send_slot_ = si;
+      bar_send_v_ = true;
+      slot_[si].bar_pv = false;
+      rr_bar_ = (si + 1) % slot_.size();
+      break;
+    }
+  }
   for (unsigned k = 0; k != slot_.size(); ++k) {
     const unsigned si = (rr_select_ + k) % slot_.size();
     Slot &s = slot_[si];
@@ -2699,6 +2815,7 @@ void Core::retire() {
       }
     }
     unsigned n = 0, slot_commits = 0;
+    bool slot_bar = false;   // bar_pend: a barrier op retired in this window
     bool after_branch = false;
     while (n != cfg_.retire_per_rob && s.count && !s.fault_stop) {
       RobEntry &r = s.rob[s.head];
@@ -2744,6 +2861,13 @@ void Core::retire() {
         ev("fault", s.warp, r.fault_cause, r.u.pc, r.u.tid);
         break;
       }
+      // A barrier report's stop comes before anything this entry's retire
+      // logs or sends (slice 5: the window stops at it).
+      const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
+                           !r.fault && !r.u.cause;
+      if (cfg_.bar_pend) {
+        if (bar_rep && ((((bar_pv0 >> si) & 1u) && !cfg_.inject_bar_pend_overwrite) || slot_bar)) { count("stall.bar_pend"); break; }   // ooe_rob_w builds it (slice 5)
+      } else if (bar_rep && bars_picked) { count("stall.bar_port"); robStop("barrier port"); break; }
       if (r.is_store && !r.committed) {
         if (ports == cfg_.retire_msgs) { count("stall.retire_port"); robStop("retire port"); break; }
         if (cfg_.commit_per_slot && slot_commits) { count("stall.commit_slot_port"); break; }
@@ -2822,9 +2946,6 @@ void Core::retire() {
       // Barrier reports at retire (TI-40, AR's revs 161-164): every arrive,
       // wait and exit, one a cycle (ccv_ooe_syu_bar is rate 1). Nothing
       // leaves before it retires, so no report is recalled.
-      const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
-                           !r.fault && !r.u.cause;
-      if (bar_rep && bars_picked) { count("stall.bar_port"); robStop("barrier port"); break; }
       if (bar_rep) {
         Bar b;
         b.tid = r.u.tid;
@@ -2838,7 +2959,11 @@ void Core::retire() {
         b.phase_mask = b.kind == kBarWaitPhase ? r.bar_phase : 0;
         b.held = (b.kind == kBarWait || b.kind == kBarWaitPhase) && s.bar_hold && !s.bar_retired && r.u.all_waiting;
         ++bars_picked;
-        act([this, b] { out.bars.push_back(b); });
+        if (cfg_.bar_pend) { s.bar_pv = true; s.bar_pb = b; slot_bar = true; }
+        else {
+          act([this, b] { out.bars.push_back(b); });
+          roblog_.bar.push_back({si, b.kind, b.barrier_id, b.issue_mask, b.guard_mask, b.phase_mask, b.held});
+        }
         count(b.kind == kBarExit ? "bar.report.exit" : b.kind == kBarArrive ? "bar.report.arrive"
               : b.kind == kBarWaitPhase ? (b.held ? "bar.report.phase_held" : "bar.report.phase") : b.held ? "bar.report.wait_held" : "bar.report.wait");
         if (b.held) {
@@ -4123,6 +4248,21 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     return false;
   }
 
+  // ROB slice 5: the barrier side buffer (bar_buf_depth). Every barrier op
+  // takes a place at rename, a faulting one too (the buffer cannot know).
+  auto barOp = [](const Uop &x) { return x.attr.serial == kSerBarrier || x.attr.serial == kSerArrive || x.shape.exit; };
+  if (cfg_.bar_buf_depth && barOp(u)) {
+    unsigned held = 0;
+    for (unsigned k = 0; k < s.count; ++k) {
+      const RobEntry &q = s.rob[(s.head + k) % cfg_.rob_depth];
+      if (q.valid && barOp(q.u)) ++held;
+    }
+    // bar_pend: a retired report not yet sent keeps its place (the RTL's
+    // pending report is the buffer's oldest place, marked retired).
+    if (s.bar_pv || (bar_send_v_ && bar_send_slot_ == si)) ++held;
+    if (held >= cfg_.bar_buf_depth) { count("stall.bar_buf"); return false; }
+  }
+
   // -- commit the rename ---------------------------------------------------------------
   const unsigned idx = s.tail;
   RobEntry &r = s.rob[idx];
@@ -4341,6 +4481,13 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     q.pclo = uint32_t((u.pc >> 1) & 0x7fffffffu);
     q.epchi = unsigned((u.pc >> 32) & 0xffffu);
     q.egmask = u.group_mask;
+    q.bar = (a.serial == kSerBarrier || a.serial == kSerArrive || u.shape.exit) && !r.fault && !u.cause;
+    if (q.bar) {
+      q.bkind = u.shape.exit ? kBarExit : a.serial == kSerArrive ? kBarArrive : u.shape.pdata ? kBarWaitPhase : kBarWait;
+      q.bid = u.shape.exit ? 0 : u.imm & 15u;
+      q.bgd = !u.shape.exit && u.shape.guard;
+      q.bhs = a.serial == kSerBarrier && !bar_fault && u.all_waiting && !cfg_.inject_bar_no_hold;
+    }
     roblog_.alloc.push_back(q);
     if (r.atomic) robStop("atomic");
   }
@@ -5086,7 +5233,7 @@ void Core::sendRedirect() {
     const int si = slotOf(r.warp);
     if (r.epoch_only && si >= 0) {
       slot_[si].notice_sent = true;
-      slot_[si].notice_lands = now_ + cfg_.redirect_lat;
+      slot_[si].notice_lands = now_ + cfg_.redirect_lat + cfg_.redirect_send_lag;
       if (r.rewind && slot_[si].rewind_pending) --slot_[si].rewind_pending;
     }
     if (!redirects_.empty()) {
@@ -5113,6 +5260,19 @@ void Core::sendRedirect() {
   }
   free_mask_ = 0;
   free_pick_ = 0;
+  // redirect_send_lag (OA 447): both channels leave that many cycles later.
+  if (cfg_.redirect_send_lag) {
+    send_line_.push_back({std::move(out.redirects), out.free_mask});
+    out.redirects.clear();
+    out.free_mask = 0;
+    if (send_line_.size() > cfg_.redirect_send_lag) {
+      out.redirects = std::move(send_line_.front().first);
+      out.free_mask = send_line_.front().second;
+      send_line_.pop_front();
+      if (!out.redirects.empty()) count("redirect.send_lagged");
+    }
+    if (cfg_.inject_send_free_late) std::swap(out.free_mask, send_free_late_);
+  }
 }
 
 // ---- invariants -----------------------------------------------------------------------------------

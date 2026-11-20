@@ -119,6 +119,8 @@ module ooe_decq #(
   output logic [S*R*P-1:0] head_pay_cq02h,   // the first R's payloads
   output logic [S*NA*PA-1:0] head_adm_cq02h, // the rest's admission bits
   output logic [LU-1:0]    used_cq02h,       // entries held: the credits out
+  output logic [S*LC-1:0]  crd_cq02h,        // entries each slot freed at the last edge: its credits
+                                             // back to FET (ccv_ooe_fet_credit's credit_count, TI-46)
   output logic [S-1:0]     arr_cq02h         // a slot took arrivals at the last edge: its heads re-form
                                              // at the next (rename's change lead, OA's rev 174)
 );
@@ -372,6 +374,15 @@ module ooe_decq #(
   // on the edge after one that freed entries (fr_q), so their credits
   // return then.
   logic [LU-1:0]   used_l_cq01h, frn_cq02h, frn_nx_cq01h;
+  // Each slot's frees at an edge, registered beside frn: its decode-queue
+  // credits back to FET per tier-1 slot (TI-46 (b); OA 435 (4)). A slot's
+  // whole count on its flush (its staged stale arrivals with it), else its
+  // take in transit. Straight from flops; with FL they show the cycle
+  // before the pool's count takes them.
+  logic [S*LC-1:0] crd_q_cq02h, crd_nx_cq01h;
+  always_comb
+    for (int s = 0; s < S; s++)
+      crd_nx_cq01h[s * LC +: LC] = fl_q_cq02h[s] ? st_cq02h[OCNT + s * LC +: LC] : LC'(tk_cq02h[s * LR +: LR]);
   logic            fr_q_cq02h, uo_en_cq01h;
   function automatic logic [LU-1:0] used_late(input logic [LU-1:0] u, input logic [E-1:0] ev,
                                               input logic [LU-1:0] fr);
@@ -602,6 +613,7 @@ module ooe_decq #(
   assign head_pay_cq02h = hp_o_cq02h;
   assign head_adm_cq02h = ha_o_cq02h;
   assign used_cq02h     = used_o_cq02h;
+  assign crd_cq02h      = crd_q_cq02h;
   assign arr_cq02h      = arr_q_cq02h;
   logic [LU-1:0] busy_n_cq02h;
   always_comb begin
@@ -610,6 +622,12 @@ module ooe_decq #(
     for (int r = 0; r < E; r++) busy_n_cq02h = busy_n_cq02h + LU'(sg_cq02h[GV + r]);
   end
   `CCV_ASSERT(used_is_busy, used_q_cq02h == busy_n_cq02h + (FL ? frn_cq02h : LU'(0)))
+  logic [LU-1:0] crd_n_cq02h;
+  always_comb begin
+    crd_n_cq02h = '0;
+    for (int s = 0; s < S; s++) crd_n_cq02h = crd_n_cq02h + LU'(crd_q_cq02h[s * LC +: LC]);
+  end
+  `CCV_ASSERT(credits_are_frees, !FL || crd_n_cq02h == frn_cq02h)
 
   // Local clock gating (docs/rtl-coding-style.md): the queue changes only on
   // an arrival, its take in transit or a flush, all its own flops. The
@@ -687,10 +705,11 @@ module ooe_decq #(
   end
 
   // The state under its own enable (its events: arrivals, a take in
-  // transit, a flush); the credit count, its copy out and the frees in
-  // their own gate, which with the free lag clocks the edge after a free
-  // too (fr_q), when the count takes it. fr_q and frn under it as well:
-  // when it is low, so are they and their inputs.
+  // transit, a flush); the credit count, its copy out, the frees and the
+  // per-slot credits in their own gate, which clocks the edge after a free
+  // too (fr_q), when the count takes it (with the free lag) and the
+  // per-slot credits clear. fr_q, frn and crd under it as well: when it is
+  // low, so are they and their inputs.
   // The state in two gates, by what changes each: the payloads and owners
   // on a placement (staged arrivals, sgv); the positions, busy bits and
   // counts on a placement, an arrival, a take in transit (its frees, and
@@ -698,7 +717,7 @@ module ooe_decq #(
   logic pl_en_cq01h, pb_en_cq01h;
   assign pl_en_cq01h = sgv_cq02h;
   assign pb_en_cq01h = sgv_cq02h || enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h;
-  assign uo_en_cq01h = enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h || (FL && fr_q_cq02h);
+  assign uo_en_cq01h = enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h || fr_q_cq02h;
   // The staging register and the ranks: on the arrival lead, or to clear
   // the staged arrivals (sgv: some arrival staged). The ranks are read only
   // when arrivals are staged, the edge after one on the lead; the staged
@@ -739,11 +758,13 @@ module ooe_decq #(
       used_q_cq02h <= '0;
       used_o_cq02h <= '0;
       frn_cq02h    <= '0;
+      crd_q_cq02h  <= '0;
       fr_q_cq02h   <= 1'b0;
     end else if (uo_en_cq01h) begin
       used_q_cq02h <= FL ? used_l_cq01h : used_nx_cq01h;
       used_o_cq02h <= FL ? used_l_cq01h : used_nx_cq01h;
       frn_cq02h    <= FL ? frn_nx_cq01h : '0;
+      crd_q_cq02h  <= crd_nx_cq01h;
       fr_q_cq02h   <= |tkv_cq02h || |fl_q_cq02h;
     end
   end

@@ -29,7 +29,9 @@
 // no-enq-lead (the arrival lead never reaches it), no-take-enable
 // (rename's "some warp takes" bit never reaches the take register) and
 // no-free-lag (the credits expected as if freed entries returned at once:
-// the RTL's free lag must show).
+// the RTL's free lag must show) and stale-credit-apart (the stale uops a
+// late flush drops expected back apart from their slot's credits: each
+// must return in its own slot's, with the flush's).
 //
 // A late flush drops the arrivals staged at its edge (OA 430, re:OI-168
 // (B)): in the stage, uops ooe_decrx kept a cycle earlier under the epoch
@@ -75,6 +77,7 @@ std::string control;
 uint64_t current = 0;    // the serial of the core being followed
 std::vector<std::vector<uint64_t>> was;   // each slot's queue, oldest first
 unsigned freeing = 0;   // entries the last edge registered to free at this one (decq_free_lag)
+std::vector<unsigned> freeing_s(S);   // and per slot: its credits back to FET at the next edge
 // An edge as the model made it: the queues before and after, the flushes.
 struct Edge {
   std::vector<std::vector<uint64_t>> was, now;
@@ -155,6 +158,7 @@ void drive(const Edge &e, bool lead, unsigned next_fresh) {
   dut->flush_cq01h = 0;
   unsigned held = 0;   // a flushed slot's entries, held until the flush applies
   unsigned in_transit = 0;   // the take registered at this edge, popped at the next
+  std::vector<unsigned> frees(S);   // per slot, held and in transit: its credits once they free
   for (unsigned s = 0; s != S; ++s) {
     size_t keep = 0;   // old uops still queued: a suffix of the old queue
     for (uint64_t x : e.now[s]) if (x < last) ++keep;
@@ -165,12 +169,17 @@ void drive(const Edge &e, bool lead, unsigned next_fresh) {
     const unsigned gone = unsigned(e.was[s].size() - keep);
     if (flushed) {
       ++flushes;
-      if (control != "drop-flush") { dut->flush_cq01h |= 1u << s; held += unsigned(e.was[s].size()); }
+      if (control != "drop-flush") {
+        dut->flush_cq01h |= 1u << s;
+        held += unsigned(e.was[s].size());
+        frees[s] += unsigned(e.was[s].size());
+      }
     } else {
       if (gone > R) fail("rename took more than its width", s, gone, R);
       setField(dut->deq_t_cq01h, s * R, R, (1u << gone) - 1);   // a thermometer
       taken += gone;
       in_transit += gone;
+      frees[s] += gone;
     }
   }
   // rename's "may take" bits: here exactly the slots it took from.
@@ -215,6 +224,7 @@ void drive(const Edge &e, bool lead, unsigned next_fresh) {
       ++in_slot;
       ++stale;
       if (control != "keep-across-flush") ++held;   // freed with the flush
+      if (control != "keep-across-flush" && control != "stale-credit-apart") ++frees[s];   // in its slot's
     }
   }
   if (control == "keep-across-flush" && e.fl) lead = true;
@@ -253,6 +263,13 @@ void drive(const Edge &e, bool lead, unsigned next_fresh) {
   // this edge (the last edge's take and flushes) hold a cycle more.
   const unsigned lag = (ccv::ooe::Config{}.decq_free_lag && control != "no-free-lag") ? freeing : 0;
   freeing = held + in_transit;
+  // Each slot's credits back to FET (TI-46 (b)): what it freed at this
+  // edge, registered there, so what the last drive held or had in transit.
+  for (unsigned s = 0; s != S; ++s) {
+    const unsigned got = getField(dut->crd_cq02h, s * LC, LC);
+    if (got != freeing_s[s]) fail("slot credits differ", s, got, freeing_s[s]);
+  }
+  freeing_s = frees;
   if (unsigned(dut->used_cq02h) != total + held + in_transit + lag)
     fail("credits differ", 0, unsigned(dut->used_cq02h), total + held + in_transit + lag);
 }
@@ -263,6 +280,7 @@ void hook(const Core &c) {
     ++cores;
     was.assign(S, {});
     freeing = 0;
+    std::fill(freeing_s.begin(), freeing_s.end(), 0u);
     have_pend = false;
     led = false;
     late_fl = 0;

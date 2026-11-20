@@ -5,6 +5,7 @@
       "name": "ooe_wake",
       "module": "ooe_wake",
       "files": [
+        "rtl/generated/ccv_params_pkg.sv",
         "rtl/ooe/ooe_wake.sv",
         "rtl/ooe/ooe_confirm.sv"
       ],
@@ -118,6 +119,65 @@
         "build": "test/ooe/cg-build.sh ooe_decrx {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "ooe_decrx_tb.u_rx"
+      }
+    },
+    {
+      "name": "ooe_slot",
+      "module": "ooe_slot",
+      "files": [
+        "rtl/ooe/ooe_slot.sv"
+      ],
+      "params": {
+        "S": 4,
+        "A": 4,
+        "D": 1,
+        "NW": 32,
+        "WC": 32,
+        "WI": 5,
+        "WB": 5,
+        "WT": 3,
+        "KE": 2
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_slot {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_slot_tb.u_sl"
+      }
+    },
+    {
+      "name": "ooe_rcupl",
+      "module": "ooe_rcupl",
+      "files": [
+        "rtl/ooe/ooe_rcupl.sv"
+      ],
+      "params": {
+        "NS": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rcupl {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_pl_tb.u_rcupl"
+      }
+    },
+    {
+      "name": "ooe_mempl",
+      "module": "ooe_mempl",
+      "files": [
+        "rtl/ooe/ooe_mempl.sv"
+      ],
+      "params": {
+        "NS": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_mempl {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_pl_tb.u_mempl"
       }
     },
     {
@@ -498,6 +558,48 @@
         "build": "test/ooe/cg-build.sh ooe_rob_w {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "g_w[3].u_w"
+      }
+    },
+    {
+      "name": "ooe_redir",
+      "module": "ooe_redir",
+      "files": [
+        "rtl/ooe/ooe_redir.sv"
+      ],
+      "params": {
+        "S": 4,
+        "NK": 4,
+        "PCW": 48,
+        "VA": 64,
+        "WW": 5,
+        "EP": 3
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rob_w {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "u_redir"
+      }
+    },
+    {
+      "name": "ooe_barpick",
+      "module": "ooe_barpick",
+      "files": [
+        "rtl/ooe/ooe_barpick.sv"
+      ],
+      "params": {
+        "S": 4,
+        "WW": 5,
+        "WT": 4,
+        "WB": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rob_w {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "u_barpick"
       }
     }
   ]
