@@ -12,8 +12,8 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 - Model layout (RCU pattern): `sim/dcu/dcu_core.{h,cpp}` (no skeleton
   deps, unit-tested by `sim/dcu/dcu_test.cpp`, `sim/dcu/run-tests.sh`),
   `sim/dcu/dcu_block.cpp` (ports only).
-- Until TI lands the makeDcu hook, kernel runs use a local, uncommitted
-  patch (scratchpad `makedcu-local.patch`): never commit it.
+- DI-1 landed (TI-497, cb8ca9be, merged here): CCV_DCU_IMPL=model and
+  check-dcu-unit are real; the local hook patch is retired.
 - No dates on tasks; no model identifiers in anything pushed.
 
 ## Timing frame (DCU-local; checked against the MIU tab's L1-hit budget)
@@ -35,9 +35,10 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    5 timing-only diffs (ldpar, transp4@ECC, late, stall bins; the
    spm-shared-region control's pinned message): DI-3 asks TI for per-impl pins.
    Waiting on DI-1 (hook, blocks.list, check-dcu-unit, params, credit vectors).
-2. Local hook patch for runs: scratchpad makedcu-local.patch (re-create from
-   DI-1's text if the scratchpad is gone); never commit it; revert before
-   gate-push. Sweep script: scratchpad sweep.sh.
+2. With the hook merged (cee1a266, pushed after a full-scope PASS):
+   check-kernel with the model fails 12 lines, all in TI-495 (IMPL_PINS,
+   NOTICE=1 controls, vadd4 orphan): rerun when TI-495 lands, then the M0
+   exit row. MI-10 withdrawn (MI's refusal is in e6712d62, not yet here).
 3. DI-4 closed (MA rev 135): notices off by default (4cf7c183, pushed);
    un-noticed refill at F+4 (92e6037e); CCV_DCU_NOTICE=1 keeps them.
    S1 off -0.43%; cm32priv off 2105390 / on 2105392 / stub 2095682.
@@ -58,7 +59,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks (2026-11-19 start)
-Conventions 20, DI 11, MI 12, MA 135, AR 395, OA 455, TI 495, DA 128
+Conventions 20, DI 12, MI 16, MA 135, AR 395, OA 455, TI 497, DA 128
 (sweep of 2026-11-19 10:43 UTC; OI 380, RA 156, RI 91, IS 199, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
