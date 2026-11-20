@@ -414,6 +414,9 @@ def selftest(d):
              ("link_n('miu_ooe_cmpl')", "links", 1, "CCV_LAT_L1_CMPL"),
              # OI-13: a slower data path makes a miss's dependant wait.
              ("link_n('miu_rcu_data')", "links", 3, "CCV_LAT_L1_MISS_WAKE"),
+             # AR 395 (2), OA-458: a credit crossing two stages faster than
+             # the redirect's needs OOE's delay to cover it.
+             ("link_n('ooe_fet_redirect')", "links", 2, "CCV_LAT_DECQ_CREDIT_DELAY"),
              ("CCV_P_RS_WARP_CAP", "value", 46, "CCV_P_RS_WARP_CAP"),
              # One past the queue's depth, whatever it is (OI-111).
              ("CCV_P_DECQ_WARP_MAX", "value",

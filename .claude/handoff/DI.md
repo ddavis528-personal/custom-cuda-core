@@ -38,21 +38,29 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 2. Local hook patch for runs: scratchpad makedcu-local.patch (re-create from
    DI-1's text if the scratchpad is gone); never commit it; revert before
    gate-push. Sweep script: scratchpad sweep.sh.
-3. Next model work: dcu_miu_rsp credit waits (transp4: 8 hits waited for a
-   credit; check MIU stub's credit depth vs the 3-cycle launch); SV-hosted
-   run (tools/check-sv-hosted.sh) with the model; cycles vs CCV_DCU_IMPL=p1;
-   the M0 exit row (MA reads it).
+3. DI-4 ruled (1) by MA rev 129 and implemented: un-noticed refill valid at
+   F+4 (floorAt()), noticed F+6; CCV_DCU_NOTICE=0 turns notices off.
+   Measured: notices off -0.43% vs on (31 faster, 2 slower); model +1.44%
+   vs stub, +1.18% vs p1. Asked MA: (a) drop notices, (b) notice earlier,
+   or keep on (default on). SV-hosted PASS with the model (before DI-4).
+   check-kernel: 7 timing-only lines now (DI-3, rev 8). rsp_credit_wait is
+   legal (late responses behind notice-reserved credits).
+   Next: M0 exit row once DI-1/DI-3/DI-4 settle; check every bin reached.
 4. Gaps vs spec: probes (no MLC probe traffic in the skeleton), CE injection
    on the DCU side (a DI row to TI), the 2-entry writeback buffer stall (a
    bin now), MA-25 vectors computed but unwired.
-5. Session home: ask Daniel (writes /home/user/.claude).
-6. First push of a new session branch: create the remote branch at its base
+5. Session home: installed (Daniel approved); `--check` matches. Recheck in
+   the daily sweep and after merges touching .claude/.
+6. A gate gate-wait reports killed: once TI's 6464a030 is merged, rerun the
+   same command with CCV_RESUME=1 (TI-490; RESUMED PASS counts as full).
+7. First push of a new session branch: create the remote branch at its base
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks (2026-11-19 start)
-Conventions 20, DI 4, MI 9, MA 127, AR 395, OA 446, TI 486, DA 128
+Conventions 20, DI 8, MI 9, MA 129, AR 395, OA 446, TI 489, DA 128
 (sweep of 2026-11-19 10:43 UTC; OI 380, RA 156, RI 91, IS 199, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
-MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins).
+MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins), DI-4 (MA: refill floor;
+M0 progress figures).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.

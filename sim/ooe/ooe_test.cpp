@@ -51,6 +51,7 @@ void (*g_random_config_hook)(Config &) = nullptr;
 /// block has no squash yet, test/ooe/rob_tb.cpp): the draws are the same,
 /// only the prediction is the outcome.
 bool g_random_predict_all = false;
+unsigned g_random_bar_pct = 0;    // random barrier ops, percent of the drawn ops (ROB slice 5's bench); held waits released
 unsigned g_random_ret_every = 0;   // every n-th random branch a ret (an RTL bench's ret_hold run)
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
@@ -303,6 +304,8 @@ struct Env {
   // contract knobs
   unsigned fetch_delay = 3;          ///< FET to OOE, so stale uops are in flight
   unsigned miss_pct = 0;             ///< loads that miss L1
+  bool auto_bar_release = g_random_bar_pct != 0;  ///< random barriers: SYU releases a held wait
+  std::multimap<uint64_t, unsigned> bar_rels;   ///< g_random_bar_pct: releases due, by cycle: warp
   bool nohit = false;                ///< OA 410: MIU sends a no-hit hint for each L1 miss
   /// Issue to the no-hit's payload landing (CCV_LAT_L1_NOHIT; AR 353).
   unsigned nohit_lat = ccv::prov::kLatL1Nohit;
@@ -344,6 +347,7 @@ struct Env {
     // least once (P applies), and the fill its demoting miss waits for.
     bool parked = false, restored = false, restoring = false;
     bool demoting = false;                  ///< demoted; FET resets it at the epoch notice
+    bool killed = false;                    ///< killed (Env::kill); FET frees its checkpoints at the notice
     uint64_t ready_at = 0, fill_at = 0;
     uint64_t abandon_at = 0;                ///< PF-23: its last abandoned load's own answer
     /// AR's rev 115: restored before its ready report (provisional); its P
@@ -828,12 +832,28 @@ struct Env {
     return nullptr;
   }
 
+  /// A kill as FET and the test see it: OOE is told, and FET stops the
+  /// killed warps' streams and frees their checkpoints at the notice.
+  void kill(uint32_t mask, unsigned epoch) {
+    core.kill(mask, epoch);
+    for (Warp &x : w)
+      if (mask >> (x.id % 32) & 1u) { x.killed = true; x.exited = true; }
+    for (auto it = fetched.begin(); it != fetched.end();)
+      it = mask >> (it->second.warp % 32) & 1u ? fetched.erase(it) : std::next(it);
+  }
+
   void fetApply() {
     for (auto it = redirects.begin(); it != redirects.end() && it->first <= t;) {
       const Redirect &r = it->second;
       Warp *x = warpOf(r.warp);
       if (r.epoch_only) {
         x->epoch = r.epoch;
+        if (x->killed && !r.rewind) {
+          // FET at a kill's epoch notice frees the warp's checkpoints itself
+          // (TI-485, OA 436): a free that lands after it is a dead one (V-46).
+          x->live = 0;
+          x->taken_order.clear();
+        }
         if (x->demoting && !r.rewind) {
           // FET at a demotion's epoch notice: the warp stops fetching, resets
           // its checkpoints, and resumes at its oldest unretired instruction
@@ -1364,6 +1384,14 @@ struct Env {
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
     if (keep_log) log.push_back(o);
+    // The random barriers' SYU: a held wait's release a few cycles on.
+    if (auto_bar_release) {
+      for (const Bar &b : o.bars) if (b.held) bar_rels.emplace(t + 3 + rng() % 8, b.warp);
+      for (auto it = bar_rels.begin(); it != bar_rels.end() && it->first <= t;) {
+        core.barRelease(1u << (it->second % 32));
+        it = bar_rels.erase(it);
+      }
+    }
     // TI-34: every memop, barrier and fault carries RAU's CTA slot for its
     // warp, from OOE's per-slot register.
     auto ctaCheck = [&](const char *what, unsigned warp, unsigned slot) {
@@ -1552,6 +1580,20 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     if (o.k == kStore && width[o.src[0]] == 3) o.src[0] = r(4);
     o.w = width[o.dst];
     o.backward = o.k == kBranch && r(2) == 0;
+    // A bench's barriers (ROB slice 5): arrives and waits, guarded or not,
+    // converged (held) or not, and wait.phase; Env releases a held one.
+    if (g_random_bar_pct && r(100) < g_random_bar_pct) {
+      Op b;
+      b.k = kBarrier;
+      const unsigned v = r(6);
+      b.arrive = v < 2;
+      b.phase = v == 5;
+      b.aw = v == 2 || (v == 5 && r(2));
+      b.guard = (v == 1 || v == 4) ;
+      b.pguard = r(4);
+      b.lanes = uint32_t(rng());
+      o = b;
+    }
     p.push_back(o);
   }
   Op e;
@@ -3115,13 +3157,20 @@ std::vector<Bar> barsOf(const Env &e) {
 /// ccv_syu_ooe_rel; a diverged one holds nothing (FET parks its lanes), nor
 /// does an arrive, whose guard lanes come back on its done. The control
 /// bar-no-hold drops the hold, so a younger uop issues before the release.
+/// Both report forms run (OA 450): direct, and bar_pend's held report and
+/// one-a-cycle send; the control counts as caught only if both catch it.
 void testBarrier() {
+  bool caught_all = true;
+  for (const unsigned pend : {0u, 1u})
   for (const bool control : {false, true}) {
-    g_test = control ? "barrier held (control)" : "barrier held";
+    g_test = control ? (pend ? "barrier held, bar_pend (control)" : "barrier held (control)")
+                     : (pend ? "barrier held, bar_pend" : "barrier held");
     Config c = baseConfig();
     c.l1_spec = false;
+    c.bar_pend = pend;
+    c.bar_buf_depth = pend ? 2 : 0;   // ooe_rob_w's side buffer with bar_pend (OA 448 (3))
     c.inject_bar_no_hold = control;
-    Env e(c);
+    Env e(c); e.auto_bar_release = false;   // directed: the test releases
     e.keep_log = true;
     std::vector<Op> p;
     Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -3135,7 +3184,8 @@ void testBarrier() {
     const bool younger = issueCount(e, 3) != 0;
     if (control) {
       const bool caught = younger || !held;
-      std::printf("  %-24s %s\n", "control bar-no-hold", caught ? "caught" : "MISSED");
+      caught_all = caught_all && caught;
+      if (pend) std::printf("  %-24s %s\n", "control bar-no-hold", caught_all ? "caught" : "MISSED");
       EXPECT(caught, "dropping the hold should let a younger uop issue");
       continue;
     }
@@ -3158,7 +3208,7 @@ void testBarrier() {
     g_test = "barrier diverged";
     Config c = baseConfig();
     c.l1_spec = false;
-    Env e(c);
+    Env e(c); e.auto_bar_release = false;   // directed: the test releases
     e.keep_log = true;
     std::vector<Op> p;
     Op b; b.k = kBarrier; b.aw = false; p.push_back(b);
@@ -3178,7 +3228,7 @@ void testBarrier() {
     g_test = "barrier arrive";
     Config c = baseConfig();
     c.l1_spec = false;
-    Env e(c);
+    Env e(c); e.auto_bar_release = false;   // directed: the test releases
     e.keep_log = true;
     std::vector<Op> p;
     Op b; b.k = kBarrier; b.arrive = true; b.guard = guarded; b.lanes = 0x00ff00ff; p.push_back(b);
@@ -3199,7 +3249,7 @@ void testBarrier() {
     g_test = "barrier wait.phase";
     Config c = baseConfig();
     c.l1_spec = false;
-    Env e(c);
+    Env e(c); e.auto_bar_release = false;   // directed: the test releases
     e.keep_log = true;
     std::vector<Op> p;
     Op b; b.k = kBarrier; b.phase = true; b.lanes = 0x5555aaaa; p.push_back(b);
@@ -3218,6 +3268,145 @@ void testBarrier() {
 /// rev 164): its rewind beat sets rewind_held, and held_long for a 32-bit
 /// wait, at the PC past the wait, whether a younger uop waits in the
 /// decode queue or nothing does. The control beat-unheld drops the flag.
+/// ROB slice 5's barrier side buffer (bar_buf_depth): a slot's next barrier
+/// op (arrive, wait, exit) waits at rename while that many are unretired;
+/// the reports are the same, in the same order. Three arrives and the exit
+/// behind a long SFU op fill a depth of 2.
+void testBarBufDepth() {
+  g_test = "bar_buf_depth";
+  std::vector<std::vector<unsigned>> kinds;
+  for (const unsigned depth : {0u, 2u}) {
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.bar_buf_depth = depth;
+    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kSfu; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    for (int k = 0; k != 3; ++k) { Op b; b.k = kBarrier; b.arrive = true; p.push_back(b); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    std::vector<unsigned> kk;
+    for (const Bar &b : barsOf(e)) kk.push_back(b.kind);
+    kinds.push_back(kk);
+    const unsigned long long st = e.core.counters["stall.bar_buf"];
+    std::printf("  bar_buf_depth %u: %zu reports, stall.bar_buf %llu\n", depth, kk.size(), st);
+    EXPECT(kk.size() == 4, "%zu reports, want 3 arrives and the exit", kk.size());
+    EXPECT(depth ? st != 0 : st == 0, "depth %u: stall.bar_buf %llu", depth, st);
+  }
+  EXPECT(kinds[0] == kinds[1], "the side buffer changed the reports");
+}
+
+// OA 448 (2) B: a pending report register per slot, one picked a cycle,
+// rotating. The reports per warp must match the direct pick's, in order.
+void testBarPend() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "bar_pend (control)" : "bar_pend";
+    std::vector<std::vector<unsigned>> per[2];
+    unsigned long long st = 0;
+    for (const unsigned pend : {0u, 1u}) {
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.bar_pend = pend;
+      c.inject_bar_pend_overwrite = control && pend;
+      Env e(c); e.auto_bar_release = false;   // directed: the test releases
+      e.keep_log = true;
+      if (control && pend) g_quiet = true;
+      for (unsigned w = 0; w != 3; ++w) {
+        std::vector<Op> p;
+        Op a; a.k = kSfu; a.dst = 1; a.nsrc = 1; p.push_back(a);
+        for (int k = 0; k != 3; ++k) { Op b; b.k = kBarrier; b.arrive = true; p.push_back(b); }
+        Op ex; ex.k = kExit; p.push_back(ex);
+        e.launch(w, w, p);
+      }
+      const int saved = g_fail;
+      e.finish();
+      if (control && pend) { g_quiet = false; g_fail = saved; }
+      per[pend].assign(3, {});
+      for (const Bar &b : barsOf(e)) if (b.warp < 3) per[pend][b.warp].push_back(b.kind);
+      if (pend) st = e.core.counters["stall.bar_pend"];
+    }
+    unsigned n0 = 0, n1 = 0;
+    for (unsigned w = 0; w != 3; ++w) { n0 += per[0][w].size(); n1 += per[1][w].size(); }
+    if (control) {
+      const bool caught = per[0] != per[1];
+      std::printf("  %-24s %s\n", "control bar-pend-overwrite", caught ? "caught" : "MISSED");
+      EXPECT(caught, "an overwritten pending report should lose a report");
+      continue;
+    }
+    std::printf("  bar_pend: %u reports (direct %u), stall.bar_pend %llu\n", n1, n0, st);
+    EXPECT(n0 == 12, "direct pick: %u reports, want 12", n0);
+    EXPECT(st != 0, "bar_pend never stopped retire");
+    EXPECT(per[0] == per[1], "bar_pend changed a warp's reports");
+  }
+}
+
+/// AR 395 / OA 457: a straggler, a uop of the demotion's epoch arriving
+/// after the walk began, is walked on arrival: a beat for its lanes the walk
+/// had not covered, then dropped, its decode-queue slot (FET's credit) freed
+/// no earlier than decq_credit_delay after the beat leaves. With and
+/// without the streaming walk. Controls: no-straggler-walk (no beat, the
+/// lanes lost) and straggler-early-credit (freed before the beat leaves).
+/// Returns whether the case held.
+static bool stragglerCase(bool walk, unsigned delay, bool no_walk, bool early) {
+  Config c = baseConfig();
+  c.l1_spec = false;
+  c.demote_walk = walk;
+  c.decq_credit_delay = delay;
+  c.straggler_walk = !no_walk;
+  c.inject_straggler_early_credit = early;
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  Op a; a.k = kSfu; a.dst = 1; a.nsrc = 1; a.mask = 0x0000ffffu; p.push_back(a);
+  for (int k = 0; k != 4; ++k) { Op d; d.k = kLane; d.dst = 2 + k; d.nsrc = 1; d.src[0] = 1; d.mask = 0x0000ffffu; p.push_back(d); }
+  e.launch(0, 0, p);
+  for (unsigned k = 0; k != 12; ++k) e.step();
+  const unsigned old_epoch = e.warpOf(0)->epoch;
+  e.core.demote(0);
+  e.step();
+  e.step();
+  Op o; o.k = kLane; o.dst = 9; o.nsrc = 1; o.mask = 0xffff0000u;
+  const uint64_t tid = 0xfff0;
+  const unsigned q0 = e.core.decqOf(0);
+  e.core.uop(makeUop(o, 0, tid, old_epoch, 0));
+  const bool queued = e.core.decqOf(0) == q0 + 1;
+  int64_t beat = -1, freed = -1;
+  for (unsigned k = 0; k != 60; ++k) {
+    e.step();
+    for (const Redirect &r : e.log.back().redirects)
+      if (r.rewind && r.taken_mask == 0xffff0000u && beat < 0) beat = int64_t(e.t);
+    if (queued && freed < 0 && e.core.decqOf(0) == q0) freed = int64_t(e.t);
+  }
+  // e.t after a step is the cycle after the one that sent; the slot frees
+  // in the cycle whose step drops it.
+  const int64_t leave = beat + int64_t(c.redirect_send_lag);
+  const bool ok = queued && beat >= 0 && freed >= 0 && freed >= leave + int64_t(delay);
+  if (!no_walk && !early)
+    EXPECT(ok, "walk %d delay %u: queued %d, beat leaves %lld, freed %lld", walk, delay, queued,
+           (long long)leave, (long long)freed);
+  return ok;
+}
+
+void testStraggler() {
+  g_test = "straggler";
+  unsigned n = 0;
+  for (const bool walk : {false, true})
+    for (const unsigned delay : {0u, 3u}) n += stragglerCase(walk, delay, false, false);
+  std::printf("  straggler walk: %u of 4 cases beat, then free\n", n);
+  const int before = g_fail;
+  g_quiet = true;
+  const bool c1 = !stragglerCase(true, 3, true, false) && !stragglerCase(false, 3, true, false);
+  const bool c2 = !stragglerCase(true, 3, false, true) && !stragglerCase(false, 3, false, true);
+  g_quiet = false;
+  g_fail = before;
+  std::printf("  %-24s %s\n", "control no-straggler-walk", c1 ? "caught" : "MISSED");
+  EXPECT(c1, "an epoch-dropped straggler should lose its lanes' beat");
+  std::printf("  %-24s %s\n", "control straggler-early-credit", c2 ? "caught" : "MISSED");
+  EXPECT(c2, "a straggler freed before its beat leaves should fail");
+}
+
 void testBarrierDemote() {
   for (const bool control : {false, true}) {
     for (const bool tail : {true, false}) {
@@ -3225,7 +3414,7 @@ void testBarrierDemote() {
       Config c = baseConfig();
       c.l1_spec = false;
       c.inject_beat_unheld = control;
-      Env e(c);
+      Env e(c); e.auto_bar_release = false;   // directed: the test releases
       e.keep_log = true;
       std::vector<Op> p;
       Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -3276,7 +3465,7 @@ void testBarrierTimer() {
     Config c = baseConfig();
     c.l1_spec = false;
     c.demote_barrier = 30;
-    Env e(c);
+    Env e(c); e.auto_bar_release = false;   // directed: the test releases
     std::vector<Op> p;
     Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
     if (mode == 0) { Op b; b.k = kBarrier; p.push_back(b); }
@@ -3304,7 +3493,7 @@ void testBarrierFault() {
       Config c = baseConfig();
       c.l1_spec = false;
       c.inject_no_bar_fault = control;
-      Env e(c);
+      Env e(c); e.auto_bar_release = false;   // directed: the test releases
       e.keep_log = true;
       std::vector<Op> p;
       Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -4184,6 +4373,81 @@ void testRandom(unsigned seeds) {
   }
 }
 
+/// ooe_slot's bench only (test/ooe/slot_tb.cpp, scenario "slot"): four
+/// warps under random demotes, frees, relaunches and kills, so every slot
+/// state meets a kill (resident, demoting, draining, parked, killing again),
+/// kills name nothing OOE holds, and kills land beside frees and launches.
+/// The model's own errors fail it.
+[[maybe_unused]] void testSlotRandom(unsigned seeds, bool sectioned = false) {
+  for (unsigned seed = 1; seed <= seeds; ++seed) {
+    g_test = std::string(sectioned ? "sectioned " : "") + "slot random seed " + std::to_string(seed);
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.sectioned = sectioned;
+    std::mt19937 rng(seed * 13 + 1);
+    Env e(c, seed);
+    e.keep_log = true;
+    e.miss_extra = 20 + seed % 30;
+    // Per slot: 0 empty, 1 resident, 2 demoting (until drained), 3 parked,
+    // 4 killed (until the ack); and its warp.
+    unsigned st[4] = {}, warp[4] = {}, next_warp = 0, epoch = 0;
+    bool kill_open = false;
+    // FET stops fetching a warp once it is demoted or killed (the test
+    // drives no restore, so a demoted warp never runs again).
+    auto stop = [&](unsigned wp) {
+      for (auto &x : e.w) if (x.id == wp) x.exited = true;
+      for (auto it = e.fetched.begin(); it != e.fetched.end();)
+        it = it->second.warp == wp ? e.fetched.erase(it) : std::next(it);
+    };
+    auto launch = [&](unsigned s) {
+      // A warp_id comes round again: FET forgets its last run.
+      e.w.erase(std::remove_if(e.w.begin(), e.w.end(), [&](const Env::Warp &x) { return x.id == next_warp; }),
+                e.w.end());
+      warp[s] = next_warp;
+      next_warp = (next_warp + 1) % 24;
+      e.launch(warp[s], s, randomProgram(rng, 40 + rng() % 60, true));
+      st[s] = 1;
+    };
+    for (unsigned s = 0; s != 4; ++s) launch(s);
+    for (unsigned k = 0; k != 1500; ++k) {
+      e.step();
+      const Outputs &o = e.log.back();
+      for (const Drained &d : o.drained)
+        for (unsigned s = 0; s != 4; ++s)
+          if (st[s] == 2 && warp[s] == d.warp) st[s] = d.refused ? 1 : 3;
+      if (!o.kill_acks.empty()) {
+        kill_open = false;
+        for (unsigned s = 0; s != 4; ++s) if (st[s] == 4) st[s] = 0;
+      }
+      if (o.kill_acks.size() > 1) EXPECT(false, "%zu kill acks in a cycle", o.kill_acks.size());
+      e.log.clear();
+      const unsigned r = rng() % 64, s = rng() % 4;
+      if (r < 3 && st[s] == 1) {
+        e.core.demote(warp[s]);
+        stop(warp[s]);
+        st[s] = 2;
+      } else if (r < 6 && st[s] == 3) {
+        Alloc f; f.warp = warp[s]; f.slot = s; f.op = kAllocFree;
+        e.core.alloc(f);
+        st[s] = 0;
+      } else if (r < 9 && st[s] == 0 && !kill_open) {
+        launch(s);
+      } else if (r == 9 && !kill_open) {
+        // A kill of some slots' warps, now and then of none OOE holds.
+        uint32_t mask = rng() % 5 == 0 ? 1u << (24 + rng() % 8) : 0;
+        for (unsigned t = 0; t != 4; ++t)
+          if (st[t] && rng() % 2) mask |= 1u << warp[t];
+        epoch = (epoch + 1) % 4;
+        e.core.kill(mask, epoch);
+        for (unsigned t = 0; t != 4; ++t)
+          if (st[t] && (mask >> warp[t] & 1u)) { st[t] = 4; stop(warp[t]); }
+        kill_open = true;
+      }
+    }
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+}
+
 void testFixedWindowPreds() {
   // The S1 mode: predicates at fixed windows, ordered by OOE itself.
   for (unsigned seed = 1; seed <= 20; ++seed) {
@@ -4663,6 +4927,89 @@ void testRobAllocLag() {
   }
 }
 
+/// slot_verdict_lag (OA 443, re:OI-176): ooe_slot sends map, drained and
+/// kill_ack, and releases a killed slot, from flops a cycle after it decides
+/// them. Directed: a kill naming nothing, a kill of a warp with loads out,
+/// and a demotion, each verdict's cycle at lag 1 exactly one past lag 0's.
+/// The control sends them at once under lag 1, and must match lag 0.
+struct VerdictTimes { uint64_t ack_none = 0, ack_kill = 0, map = 0, drained = 0; bool ok = true; };
+VerdictTimes slotVerdictRun(unsigned lag, bool early) {
+  VerdictTimes v;
+  {
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.slot_verdict_lag = lag;
+    c.inject_verdict_early = early;
+    Env e(c);
+    e.keep_log = true;
+    e.miss_extra = 50;
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 3; ++i) { Op ld; ld.k = kLoad; ld.dst = i; ld.nsrc = 1; p.push_back(ld); }
+    for (unsigned i = 0; i != 8; ++i) { Op a; a.k = kLane; a.dst = 4; a.src[0] = i % 3; a.nsrc = 1; p.push_back(a); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 20; ++k) e.step();
+    const uint64_t t0 = e.t;
+    e.core.kill(1u << 7, 1);   // warp 7: OOE holds none
+    for (unsigned k = 0; k != 10 && !v.ack_none; ++k) {
+      e.step();
+      for (unsigned a : e.log.back().kill_acks) if (a == 1) v.ack_none = e.t - t0;
+    }
+    e.core.kill(1u, 2);
+    for (unsigned k = 0; k != 300 && !v.ack_kill; ++k) {
+      e.step();
+      for (unsigned a : e.log.back().kill_acks) if (a == 2) v.ack_kill = e.t - t0;   // held by the loads, absolute
+    }
+    v.ok = v.ok && e.errors.empty() && e.core.freeGprs() == c.phys_regs;
+  }
+  {
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.slot_verdict_lag = lag;
+    c.inject_verdict_early = early;
+    Env e(c);
+    e.keep_log = true;
+    e.miss_extra = 30;
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 2; ++i) { Op ld; ld.k = kLoad; ld.dst = i; ld.nsrc = 1; p.push_back(ld); }
+    for (unsigned i = 0; i != 12; ++i) { Op a; a.k = kLane; a.dst = 4; a.src[0] = i % 2; a.nsrc = 1; p.push_back(a); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 10; ++k) e.step();
+    const uint64_t t0 = e.t;
+    e.core.demote(0);
+    for (unsigned k = 0; k != 300 && !v.drained; ++k) {
+      e.step();
+      if (!e.log.back().maps.empty() && !v.map) v.map = e.t - t0;
+      for (const Drained &d : e.log.back().drained) if (!d.refused) v.drained = e.t - t0;
+    }
+    v.ok = v.ok && e.errors.empty();
+  }
+  return v;
+}
+
+void testSlotVerdictLag() {
+  g_test = "slot verdict lag";
+  const VerdictTimes a = slotVerdictRun(0, false), b = slotVerdictRun(1, false), x = slotVerdictRun(1, true);
+  EXPECT(a.ok && b.ok, "checker errors at lag 0 (%d) or 1 (%d)", a.ok, b.ok);
+  EXPECT(a.ack_none && a.ack_kill && a.map && a.drained, "lag 0: ack_none %llu ack_kill %llu map %llu drained %llu",
+         (unsigned long long)a.ack_none, (unsigned long long)a.ack_kill, (unsigned long long)a.map,
+         (unsigned long long)a.drained);
+  auto plus1 = [](const VerdictTimes &p, const VerdictTimes &q) {
+    return q.ack_none == p.ack_none + 1 && q.ack_kill == p.ack_kill + 1 && q.map == p.map + 1 &&
+           q.drained == p.drained + 1;
+  };
+  EXPECT(plus1(a, b), "lag 1 vs 0: ack_none %llu/%llu ack_kill %llu/%llu map %llu/%llu drained %llu/%llu",
+         (unsigned long long)b.ack_none, (unsigned long long)a.ack_none, (unsigned long long)b.ack_kill,
+         (unsigned long long)a.ack_kill, (unsigned long long)b.map, (unsigned long long)a.map,
+         (unsigned long long)b.drained, (unsigned long long)a.drained);
+  EXPECT(!plus1(a, x), "control inject_verdict_early: verdicts still a cycle late");
+  std::printf("  slot verdict lag: ack_none %llu->%llu ack_kill %llu->%llu map %llu->%llu drained %llu->%llu; control %s\n",
+              (unsigned long long)a.ack_none, (unsigned long long)b.ack_none, (unsigned long long)a.ack_kill,
+              (unsigned long long)b.ack_kill, (unsigned long long)a.map, (unsigned long long)b.map,
+              (unsigned long long)a.drained, (unsigned long long)b.drained, plus1(a, x) ? "MISSED" : "caught");
+}
+
 /// ckpt_free_lag (OA 427, re:OI-164): ooe_rob_w registers the frees and
 /// sends each checkpoint's a cycle later. Random mispredicting programs run
 /// clean at 0 and 1 (FET's V-46 checker sees no free of a dead checkpoint),
@@ -4743,6 +5090,138 @@ void testCkptFreeLag() {
   g_test = "ckpt free lag (control)";
   std::printf("  %-24s %s\n", "control free-held-kept", caught ? "caught" : "MISSED");
   EXPECT(caught, "a held free kept across an older redirect should land on a dead checkpoint");
+}
+
+/// redirect_send_lag (OA 447, re:OI-179 (3)): ooe_redir's two flops put
+/// the redirect and ckpt_free two cycles after the model's send, together
+/// (A-58). Random mispredicting programs run clean at 0 and 2, every
+/// redirect lagged at 2; the control sends the frees a cycle after the
+/// redirects, and FET's V-46 checker must see a free land on a checkpoint
+/// a redirect already freed.
+void testRedirectSendLag() {
+  for (const unsigned lag : {0u, 2u}) {
+    uint64_t lagged = 0, sent = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed)
+      for (int mode = 0; mode < 8; mode += 3) {
+        g_test = "redirect send lag " + std::to_string(lag) + " seed " + std::to_string(seed) + " mode " +
+                 std::to_string(mode);
+        Config c = randomConfig(seed, mode);
+        c.redirect_send_lag = lag;
+        c.ckpt_free_lag = 1;
+        std::mt19937 rng(seed * 4 + unsigned(mode));
+        Env e(c, seed * 7 + unsigned(mode));
+        e.keep_log = true;
+        e.miss_pct = 30;
+        e.data_after_cmpl = c.cmpl_wake_delay;
+        const unsigned warps = 1 + seed % 4;
+        for (unsigned i = 0; i != warps; ++i)
+          e.launch(i * 5, i, randomProgram(rng, 150, true, seed % 2 == 1, (mode & 4) != 0));
+        e.finish();
+        EXPECT(e.errors.empty(), "%zu checker errors, first: %s", e.errors.size(),
+               e.errors.empty() ? "" : e.errors[0].c_str());
+        lagged += e.core.counters["redirect.send_lagged"];
+        for (const Outputs &o : e.log) sent += !o.redirects.empty();
+      }
+    EXPECT(lag ? lagged > 0 && lagged == sent : lagged == 0, "lag %u: %llu of %llu redirect cycles lagged", lag,
+           (unsigned long long)lagged, (unsigned long long)sent);
+    std::printf("  redirect send lag %u: %llu redirect cycles, %llu lagged\n", lag, (unsigned long long)sent,
+                (unsigned long long)lagged);
+  }
+  // The control, on testCkptFreeLag's directed pairs: a younger branch
+  // resolves right as the miss latency slides an older mispredict past it,
+  // so some pair sends its free the cycle before the older's redirect, and
+  // a cycle late it lands on the checkpoint that redirect freed (V-46).
+  unsigned caught = 0;
+  for (const bool control : {false, true}) {
+    for (unsigned n = 0; n != 10 * 16; ++n) {
+      const unsigned k = n / 16, add = n % 16;
+      g_test = std::string("redirect send lag directed") + (control ? " (control)" : "") + " k " + std::to_string(k) +
+               " add " + std::to_string(add);
+      Config c = baseConfig();
+      c.ckpt_free_lag = 1;
+      c.redirect_send_lag = 2;
+      c.inject_send_free_late = control;
+      Env e(c);
+      e.miss_pct = 100;
+      e.miss_extra = 1;
+      e.miss_add = add;
+      for (unsigned j = 0; j != k; ++j) {
+        Op a; a.k = kLane; a.dst = 2; a.src[0] = 2; a.nsrc = 1; e.junk_prog.push_back(a);
+      }
+      Op s2; s2.k = kSetp; s2.pdst = 2; s2.src[0] = 2; s2.src[1] = 2; s2.nsrc = 2; e.junk_prog.push_back(s2);
+      Op b2; b2.k = kBranch; b2.pguard = 2; b2.taken = false; b2.pred_taken = false; e.junk_prog.push_back(b2);
+      std::vector<Op> p;
+      Op ld; ld.k = kLoad; ld.dst = 1; ld.src[0] = 0; ld.nsrc = 1; p.push_back(ld);
+      Op s1; s1.k = kSetp; s1.pdst = 1; s1.src[0] = 1; s1.src[1] = 1; s1.nsrc = 2; p.push_back(s1);
+      Op b1; b1.k = kBranch; b1.pguard = 1; b1.taken = true; b1.pred_taken = false; p.push_back(b1);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      if (control) g_quiet = true;
+      const int before = g_fail;
+      e.finish();
+      g_quiet = false;
+      if (control) {
+        caught += g_fail != before || !e.errors.empty();
+        g_fail = before;
+        continue;
+      }
+      EXPECT(e.errors.empty(), "%zu checker errors, first: %s", e.errors.size(), e.errors.empty() ? "" : e.errors[0].c_str());
+    }
+  }
+  g_test = "redirect send lag (control)";
+  std::printf("  send-free-late: %u pairs caught\n", caught);
+  std::printf("  %-24s %s\n", "control send-free-late", caught ? "caught" : "MISSED");
+  EXPECT(caught, "frees a cycle behind their redirects should land on a dead checkpoint");
+}
+
+/// TI-485 (OA 436, OA 438): a kill withdraws the killed slot's checkpoint
+/// frees not yet sent, as a demote does: one resolved in the kill's cycle,
+/// or held under ckpt_free_lag, would land after the kill's epoch notice
+/// freed the warp's checkpoints in FET (V-46). A run of right-predicted
+/// branches is killed at every cycle of a window, at lag 0 and 1, so some
+/// kill lands on a free (the bin kill.free_withdrawn). The control keeps
+/// those frees, and FET must see a free of a dead checkpoint.
+void testKillFreeWithdrawn() {
+  unsigned caught = 0;
+  for (const bool control : {false, true})
+    for (const unsigned lag : {0u, 1u}) {
+      uint64_t wd = 0;
+      for (unsigned at = 4; at != 64; ++at) {
+        g_test = std::string("kill free withdrawn") + (control ? " (control)" : "") + " lag " + std::to_string(lag) +
+                 " at " + std::to_string(at);
+        Config c = baseConfig();
+        c.ckpt_free_lag = lag;
+        c.inject_kill_free_kept = control;
+        Env e(c);
+        std::vector<Op> p;
+        for (unsigned i = 0; i != 16; ++i) {
+          Op a; a.k = kLane; a.dst = 1 + i % 3; a.src[0] = 1 + (i + 2) % 3; a.nsrc = 1; p.push_back(a);
+          Op sp; sp.k = kSetp; sp.pdst = 1 + i % 2; sp.src[0] = a.dst; sp.src[1] = a.dst; sp.nsrc = 2; p.push_back(sp);
+          Op b; b.k = kBranch; b.pguard = sp.pdst; b.taken = false; b.pred_taken = false; p.push_back(b);
+        }
+        Op ex; ex.k = kExit; p.push_back(ex);
+        e.launch(0, 0, p);
+        if (control) g_quiet = true;
+        const int before = g_fail;
+        for (unsigned k = 0; k != at; ++k) e.step();
+        e.kill(1u, 1);
+        for (unsigned k = 0; k != 200; ++k) e.step();
+        g_quiet = false;
+        wd += e.core.counters["kill.free_withdrawn"];
+        if (control) {
+          for (const std::string &x : e.errors) caught += x.find("V-46") != std::string::npos;
+          g_fail = before;
+          continue;
+        }
+        EXPECT(e.errors.empty(), "%zu checker errors, first: %s", e.errors.size(), e.errors.empty() ? "" : e.errors[0].c_str());
+      }
+      if (!control) EXPECT(wd > 0, "lag %u: no kill landed on an unsent checkpoint free", lag);
+      std::printf("  kill free withdrawn lag %u%s: %llu kills withdrew a free\n", lag, control ? " (control)" : "",
+                  (unsigned long long)wd);
+    }
+  g_test = "kill free withdrawn (control)";
+  std::printf("  %-24s %s\n", "control kill-free-kept", caught ? "caught" : "MISSED");
+  EXPECT(caught, "a free kept across a kill should land on a dead checkpoint");
 }
 
 /// MA-5 (AR 345/347, OA-412): MIU holds a few credits per memop slot and
@@ -5293,6 +5772,57 @@ void testSwap() {
   }
   std::printf("  %-24s %s\n", "control rewind-order", caught ? "caught" : "MISSED");
   EXPECT(caught, "beats youngest first should break the rewind check");
+  // OA 451 (re:OI-186; AR 393): the streaming walk, beats unmerged, under
+  // the same swaps; FET's rewind check holds a lane to one beat. Its
+  // control: rename drops a uop the walk still holds.
+  {
+    unsigned demotes = 0, flushed = 0, arrivals = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed) {
+      g_test = "swap, demote_walk beat_merge 0, seed " + std::to_string(seed);
+      Config c = baseConfig();
+      c.decq = 13;
+      c.demote_walk = true;
+      c.beat_merge = false;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.dram_pm = 40;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      e.finish(200000);
+      demotes += unsigned(e.core.counters["demote"]);
+      flushed += unsigned(e.core.counters["demote.walk_flushed"]);
+      arrivals += unsigned(e.core.counters["demote.walk_arrival"]);
+    }
+    g_test = "swap, demote_walk, seeds 1 to 6";
+    EXPECT(demotes > 0 && flushed > 0, "%u demotes, %u held uops flushed by the walk", demotes, flushed);
+    std::printf("  %-24s %u demotes, %u held uops flushed, %u arrivals while held\n", "demote walk", demotes,
+                flushed, arrivals);
+    caught = 0;
+    for (unsigned seed = 1; seed <= 6 && !caught; ++seed) {
+      g_test = "swap (control walk-take-held)";
+      Config c = baseConfig();
+      c.decq = 13;
+      c.demote_walk = true;
+      c.beat_merge = false;
+      c.inject_walk_take_held = true;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.dram_pm = 40;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      g_quiet = true;
+      e.finish(200000);
+      g_quiet = false;
+      caught += g_fail != before;
+      g_fail = before;
+    }
+    std::printf("  %-24s %s\n", "control walk-take-held", caught ? "caught" : "MISSED");
+    EXPECT(caught, "a held uop taken before the walk passed it should fail");
+  }
   // PF-23's control: drained waits for no abandoned load's replay, so it
   // leaves a completion owed to a slot that is freed.
   caught = 0;
@@ -5874,13 +6404,72 @@ int ooeTestDirectedPrePostWith(void (*pre)(const Core &), void (*post)(const Cor
 /// failure count.
 /// Settings a bench holds each random test to, after the test's own.
 void ooeTestRandomOver(void (*cfg)(Config &)) { g_random_config_hook = cfg; }
+void ooeTestRandomBars(unsigned pct) { g_random_bar_pct = pct; }
 
 int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
                     void (*pre)(const Core &), void (*post)(const Core &), void (*cfg)(Config &)) {
   g_pre_cycle_hook = pre;
   g_cycle_hook = post;
   g_config_hook = cfg;
-  if (scenario == "idle") {
+  if (scenario == "rx") {
+    // ooe_decrx's bench (test/ooe/decrx_tb.cpp): the random tests, and the
+    // directed ones that release slots, demote, restore and kill, so a
+    // warp's epoch is saved at a release and loaded at its next allocation.
+    testRandom(seeds);
+    testSwap();
+    testDemote();
+    testKill();
+    testFinalExit();
+    testAtomicKill();
+  } else if (scenario == "pl") {
+    // ooe_rcupl's and ooe_mempl's bench (test/ooe/pl_tb.cpp): the random
+    // tests, the atomics' (A1 and A3 memops, A2 on the lanes), MIU credits
+    // run dry (a memop above its home) and the squashes that send bulk
+    // discards (mispredicts, demotes, kills).
+    testRandom(seeds);
+    testAtomic();
+    testAtomicRandom(2, randomConfig);
+    testMemopCredits();
+    testDemote();
+    testKill();
+    testAtomicKill();
+  } else if (scenario == "slot") {
+    // ooe_slot's bench (test/ooe/slot_tb.cpp): the random tests, and the
+    // directed ones that move a slot through every state: demotes (held at
+    // an atomic, refused after the exit), restores, kills, barriers.
+    testRandom(seeds);
+    testSwap();
+    testDemote();
+    testDemoteRefused();
+    testRestore();
+    testKill();
+    testFinalExit();
+    testAtomicKill();
+    testAtomicDemote();
+    testBarrierDemote();
+    // The reports (OA 435 (9), (10)): faults, the demotion triggers.
+    testFault();
+    testMemFault();
+    testAtomicFault();
+    testBarrierFault();
+    testMlcTrigger();
+    testBarrierTimer();
+    testSlotRandom(seeds * 4);
+  } else if (scenario == "ratmap") {
+    // ooe_ratmap's bench (test/ooe/ratmap_tb.cpp): slot's, with the parked
+    // layout's test and the slot random tests sectioned too, so maps carry
+    // positions and narrow widths.
+    testRandom(seeds);
+    testSwap();
+    testDemote();
+    testRestore();
+    testKill();
+    testAtomicDemote();
+    testBarrierDemote();
+    testParkedLayout();
+    testSlotRandom(seeds * 2);
+    testSlotRandom(seeds * 2, true);
+  } else if (scenario == "idle") {
     for (int mode = 0; mode != 8; ++mode) {
       Env e(randomConfig(2, mode));
       for (unsigned k = 0; k != idle_cycles; ++k) e.step();
@@ -5921,6 +6510,21 @@ int main(int argc, char **argv) {
     testAtomic();
     testAtomicRandom(2, randomConfig);
     std::printf("ooe-test --atomic: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--slot-verdict-lag") {   // OA 443's test alone
+    testSlotVerdictLag();
+    std::printf("ooe-test --slot-verdict-lag: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--kill-free") {   // TI-485's kill bin alone
+    testKillFreeWithdrawn();
+    std::printf("ooe-test --kill-free: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--redirect-send-lag") {   // OA 447's test alone
+    testRedirectSendLag();
+    std::printf("ooe-test --redirect-send-lag: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
   }
   if (argc > 1 && std::string(argv[1]) == "--ckpt-free-lag") {   // OA 427's test alone
@@ -5996,6 +6600,9 @@ int main(int argc, char **argv) {
   testResolveLagRetire();
   testRobAllocLag();
   testCkptFreeLag();
+  testRedirectSendLag();
+  testSlotVerdictLag();
+  testKillFreeWithdrawn();
   testRetHold();
   testIdleR();
   testRClass();
@@ -6008,6 +6615,9 @@ int main(int argc, char **argv) {
   testSectionFaults();
   testBarrier();
   testBarrierDemote();
+  testStraggler();
+  testBarBufDepth();
+  testBarPend();
   testBarrierTimer();
   testBarrierFault();
   testMemFault();
