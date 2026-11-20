@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 395, TI 489, OA 446, IS 199, CP 160, OI 380, RA 156, RI 91, MA 130, DA 128, MI 9, DI 8.
+Conventions 20, AR 395, TI 489, OA 446, IS 199, CP 160, OI 380, RA 156, RI 91, MA 132, DA 128, MI 9, DI 8, AR 398, OA 455.
 
 ## State, 2026-11-13
 
@@ -88,8 +88,10 @@ Conventions 20, AR 395, TI 489, OA 446, IS 199, CP 160, OI 380, RA 156, RI 91, M
   (TI's); flip is phase 1a, first after M0 (miu-impl.md). Watch: TI picks up the cold scenarios.
 - DI-4 RULED (MA rev 129): un-noticed refill at F+4 (floor from fill payload), noticed stays exactly 4 after
   its notice lands (F+6). DI measured notices off -0.43% (31 faster, 2 slower). MA rev 130: CCV_DCU_NOTICE=0
-  default, channel kept (valid low). WAITING AR+OA: agree DCU tab correction of 'Resolved: no noticed refill
-  pays it'; (b) earlier notice (lead field / MLC tag-lookup notice) for Phase 2 list.
+  default, channel kept (valid low). AR 394 agreed (+ S1/cm32priv rerun, MA 131). OA 453 agreed on a condition
+  that misread the hint; MA 132 restates it (off: zero refill hints, F+6; on: OA-23 controls). WAITING OA's
+  accept, then edit DCU tab (notices off, floor F+4/F+6, unhinted refill). Phase 2: earlier notice, MLC
+  tag-lookup first, lead field only if it can't reach F+4; skip under 0.5% on S1.
 - MA rev 127: IS re VA[63:48], no change (MI confirmed full 64-bit fault address). MA rev 128: TI-488
   accepted; interim ooe_wake LAT_MISS 17 pin vs L1_CMPL 16 is OA's/OI's. TI-490 (DA): RESUMED PASS counts
   as the full clean gate; after gate-wait says killed, rerun the same command with CCV_RESUME=1 (once
