@@ -20,6 +20,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   Name each commit for TI to merge in the MI tab.
 
 ## Working rules beyond CLAUDE.md
+- TI-490 (DA ruling): RESUMED PASS counts as the full clean gate; after gate-wait says killed,
+  rerun the same gate-push command with CCV_RESUME=1 (needs TI's 6464a030 merged in).
 - MI owns sim/miu/, rtl/miu/ (after MA's Phase 2), test/miu/. Never edit schema/, params/,
   tools/, rtl/top/, stubs (incl. class Miu in sim/skel/kernel.cpp), blocks.list: MI-n row,
   TI in Needs. Architecture questions: MI-n row, MA in Needs.
@@ -50,9 +52,6 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   its bins from MA's branch before building that bin).
 
 ## Open work, most urgent first
-0. e6712d62 on mi-dev (TI-487 option (3) ported from the stub: kill answers outstanding reads
-   empty, moot jobs complete at promise, ue_withheld answer is a fail). Merge into
-   ccr-58815650-0ch1hh after the daily sweep's full gate, then scoped gate-push.
 1. Model restructure to the spec's timing, in worktree /home/user/mi-wt on local branch mi-dev
    (the MI-1 hook applied there uncommitted, git update-index --skip-worktree on
    sim/skel/{kernel.cpp,blocks.list}; scratchpad mi1-hook-bound.patch, which also bounds the
@@ -78,6 +77,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 5. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
 
 ## Pushed
+- ccr-58815650-0ch1hh at eed37e0c: full PASS (daily sweep 2026-11-19 merges + e6712d62 TI-487 (3)).
 - ccr-58815650-0ch1hh at 53b98a2f (steps 1-4, cold controls e62b76e2): SCOPED PASS. Earlier
   21274699 (076d0b75 model, 7cfc15ec walker). The remote
   branch was seeded with TI's gated 663bed37 so gate-push had a scoped base.
