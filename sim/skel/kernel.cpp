@@ -5278,6 +5278,12 @@ private:
         if (pred_taken) k_.hit("fet_perfect_taken");
         if (perfect_ && mispredict) k_.hit("fet_perfect_split");
       }
+      // OA-455: nothing for a warp from its epoch notice (demote or kill)
+      // until its restore activates, so a uop sent before the notice is in
+      // the old epoch and dropped, and a restore needs no epoch advance.
+      if (warps_[w].stopped || warps_[w].restoring)
+        k_.fail("fet: warp %u sent seq %llu between its epoch notice and its restore", w,
+                (unsigned long long)r.seq);
       send(c.fet_dec, s, f, instrUid(warpSeq(w, r.seq)));
       if (!k_.fetched) { k_.fetched = true; k_.first_fetch = now_; }
       if (r.kind == "return") k_.hit("ret");
