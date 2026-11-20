@@ -138,6 +138,13 @@ private:
   }();
   std::array<unsigned, ccv::kTier1Warps> cred_prev_{}, cred_in_{};
   uint32_t cred_rel_ = 0;
+  /// OA 455 (A, re OI-188): FET's count is credits sent less returned, never
+  /// reseeded, so OOE returns one credit for every uop it consumes. Those of
+  /// a warp with no tier-1 slot to return them on (a uop of a stale epoch
+  /// arriving after its release, or the slot's queue dropped at the
+  /// release) wait here, per warp_id, and go back on its next slot. Bounded
+  /// by what a warp may have outstanding, which the return field holds.
+  std::array<unsigned, ccv::kWarpContexts> cred_pend_{};
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
   int fault_ = optChan("ccv_ooe_cru_fault");
@@ -510,6 +517,12 @@ private:
       }
       taken.insert(unsigned(best));
       if (const int ts = core_.tier1Of(w); ts >= 0 && size_t(ts) < cred_in_.size()) ++cred_in_[ts];
+      else if (k_.brk != "slotless-drop-lost") {
+        // Slotless: the core drops it (a stale epoch) or reports it; its
+        // credit waits for the warp's next slot (OA 455).
+        ++cred_pend_[w % cred_pend_.size()];
+        k_.hit("decq_slotless_drop");
+      }
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
   }
@@ -845,16 +858,32 @@ private:
     for (unsigned t = 0; t != cred_warp_.size(); ++t) {
       const int w = core_.warpOfSlot(t);
       const unsigned occ = w < 0 ? 0 : core_.decqOf(unsigned(w));
-      // A slot newly given a warp, or freed, starts from what it holds now.
+      unsigned back;
       if (w < 0 || w != cred_warp_[t]) {
+        // The warp leaving: what it took in and has not returned (its renames
+        // since the last return, and its queue dropped at the release) waits
+        // for its next slot (OA 455).
+        if (const int o = cred_warp_[t]; o >= 0) {
+          unsigned &p = cred_pend_[unsigned(o) % cred_pend_.size()];
+          p += cred_prev_[t] + cred_in_[t];
+          if (p >= 1u << ccv::prov::kWDecqCredit)
+            k_.fail("ooe: warp %d's pending decode-queue credits reach %u, past credit_count's %u bits (OA 455)", o, p,
+                    ccv::prov::kWDecqCredit);
+          if (p) k_.hit("decq_credit_pend");
+        }
+        // A slot newly given a warp starts from what it holds now, and
+        // returns what the warp's credits waited for.
         cred_warp_[t] = w;
         cred_prev_[t] = occ;
         cred_in_[t] = 0;
-        continue;
+        if (w < 0) continue;
+        back = cred_pend_[unsigned(w) % cred_pend_.size()];
+        cred_pend_[unsigned(w) % cred_pend_.size()] = 0;
+      } else {
+        back = cred_prev_[t] + cred_in_[t] - occ;
+        cred_prev_[t] = occ;
+        cred_in_[t] = 0;
       }
-      const unsigned back = cred_prev_[t] + cred_in_[t] - occ;
-      cred_prev_[t] = occ;
-      cred_in_[t] = 0;
       if (occ > ccv::prov::kDecqWarpMax && !core_.decqOneInstr(unsigned(w)))
         k_.fail("ooe: warp %d holds %u decode-queue slots, over its share outside a borrow (TI-46 (b))", w, occ);
       if (core_.barHeld(unsigned(w)) && occ > ccv::prov::kHeldAhead)
