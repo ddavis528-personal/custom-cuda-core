@@ -96,8 +96,11 @@ if ! ./tools/verify.sh >"$VLOG" 2>&1; then
   die "tools/verify.sh failed; no snapshot of a red tree (log: build/release-verify.log)"
 fi
 GATE=$(grep -A1 '== result ==' "$VLOG" | tail -1 | xargs)
-[ "$GATE" = PASS ] || die "the gate's log has no PASS result (read: '$GATE'); no snapshot without its record"
-echo "make-release: gate PASS on $SHA7 (its log ships as release/verify.log)"
+# A resumed gate (verify.sh --resume after a restart, IS-27) is every section
+# on this commit and tree, every netlist this gate's own: it reads RESUMED
+# PASS and names how many sections it carried over.
+case "$GATE" in PASS|"RESUMED PASS ("*) ;; *) false ;; esac || die "the gate's log has no PASS result (read: '$GATE'); no snapshot without its record"
+echo "make-release: gate $GATE on $SHA7 (its log ships as release/verify.log)"
 
 # -- 2. the artifacts that are not already built by the gate ---------------
 # Every S1 kernel's trace and both Perfetto views, not only vadd's.

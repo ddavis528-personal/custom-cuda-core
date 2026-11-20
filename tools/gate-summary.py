@@ -7,7 +7,7 @@ Prints the result, every section's time, and for each failing claim its line
 plus the last N lines (default 8) of any log it names in parentheses. A
 session reads this instead of the log itself, which runs to ~1,000 lines.
 Exit status: 0 for PASS, 1 for FAIL, 2 when the log has no result (the gate
-did not finish). With --scoped, a SCOPED PASS (verify.sh --changed) is 0
+did not finish); a RESUMED one reads as its plain form. With --scoped, a SCOPED PASS (verify.sh --changed) is 0
 too; without it, it is 1: only a push to a working branch takes one.
 """
 import re
@@ -54,5 +54,8 @@ if result is None:
     print("  last lines:")
     for l in lines[-tail:]:
         print("    " + l[:200])
-ok = result == "PASS" or (scoped and (result or "").startswith("SCOPED PASS"))
+# A resumed run (verify.sh --resume, IS-27) carried its earlier passed
+# sections over: "RESUMED PASS (...)" counts as its plain form.
+res = re.sub(r"^RESUMED ", "", result or "")
+ok = re.match(r"PASS( \(|$)", res) is not None or (scoped and res.startswith("SCOPED PASS"))
 sys.exit(0 if ok else 1 if result else 2)
