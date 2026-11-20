@@ -74,6 +74,7 @@ MAP = [
     ("tools/rcu-ls-corrupt.py", ["rcu_ls"]),
     # Not the gate's: the push, sweep and release scripts and the summary.
     ("tools/gate-combine.py", ["iface"]),         # its selftest runs there
+    ("tools/gate-resume.py", ["iface"]),          # so does its
     ("tools/gate-export.sh", []),
     ("tools/gate-scratch.sh", []),
     ("tools/gate-push.sh", []),

@@ -89,7 +89,7 @@ gate_ok() {
     # Here a PARTIAL PASS, half of the gate; the join decides.
     local sum; sum=$(python3 tools/gate-summary.py "$VLOG")
     echo "$sum"
-    case "$sum" in "gate: PARTIAL PASS"*) ;; *) return 1 ;; esac
+    case "$sum" in "gate: PARTIAL PASS"*|"gate: RESUMED PARTIAL PASS"*) ;; *) return 1 ;; esac
     python3 tools/gate-combine.py build/verify "${IMP_DIRS[@]}"
   else
     python3 tools/gate-summary.py "${SUM_ARGS[@]}" "$VLOG"
