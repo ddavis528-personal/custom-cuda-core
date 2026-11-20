@@ -2843,6 +2843,7 @@ void Core::retire() {
         Status st;
         st.warp = s.warp;
         st.fault_taken = true;
+        st.retired_since_restore = s.retired_since_restore;
         Fault f;
         f.tid = r.u.tid;
         f.warp = s.warp;
@@ -3011,7 +3012,8 @@ void Core::retire() {
       rt.ppnew = r.ppnew;
       retired.push_back(rt);
       ev("retire", s.warp, rt.rob_tag, r.u.group_mask, r.u.tid);
-      ++s.retired_since_restore;
+      // Saturating (CCV_W_RETIRED_CNT's contract), as ooe_slot counts.
+      if (s.retired_since_restore < (1u << ccv::kWRetiredCnt) - 1) ++s.retired_since_restore;
       act([this, si, idx] {
         slot_[si].rob[idx] = RobEntry();
         robFreed(si, idx, true);

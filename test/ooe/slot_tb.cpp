@@ -22,6 +22,17 @@
 // no-ev-lead (the event lead never reaches it) and no-free (a free never
 // reaches it).
 //
+// The reports (OA 435 (9), (10)): each cycle also drives what each slot
+// retired (Core::retired), its demotion triggers (the model's stalled
+// reports: two in a cycle are the MLC-miss trigger and then the
+// fallback's) and its fault with the record (Core::out.faults, held to the
+// release as ooe_rob_w holds it). Every report the model sends on
+// ccv_ooe_rau_status (exited too, which ooe_slot raises itself) and on
+// ccv_ooe_cru_fault must leave the RTL in the warp's order, with its
+// fields, within RPT_LAT cycles; across warps the order is free (RAU reads
+// none). Controls: no-rc (nothing retired reaches the counts), drop-ft (a
+// fault never reaches it) and ft-slot (a fault reaches the next slot).
+//
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: slot_tb [seeds] | slot_tb --cg <scenario> <vcd>
@@ -33,6 +44,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -83,6 +95,27 @@ template <typename T> uint64_t getField(const T &w, unsigned lsb, unsigned n) {
 
 CgRun cg;
 
+// The reports a cycle drives, beside its control-step log.
+struct Rpt {
+  unsigned rc[8] = {};
+  uint32_t tm = 0, tf = 0, tfm = 0, ft = 0;
+  unsigned cause[8] = {};
+  uint64_t pc[8] = {}, addr[8] = {};
+  uint32_t lanes[8] = {};
+};
+struct ExpS { unsigned ft, st, mlc, rsr, ex; unsigned long long at; };
+struct ExpF { unsigned cause; uint64_t pc, addr; uint32_t lanes; unsigned cta; unsigned long long at; };
+std::deque<ExpS> exp_s[32];
+std::deque<ExpF> exp_f[32];
+Rpt rpend, rcur;
+unsigned rec_cause[8] = {};
+uint64_t rec_pc[8] = {}, rec_addr[8] = {};
+uint32_t rec_lanes[8] = {};
+bool rs_pend = false, cf_pend = false;
+constexpr unsigned long long RPT_LAT = 4 * S + 8;
+unsigned long long st_msgs = 0, st_exited = 0, st_faults = 0, st_stalled = 0, st_two = 0, cf_msgs = 0, max_lat = 0,
+                   sat = 0;
+
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
@@ -98,6 +131,80 @@ void fail(const char *what, unsigned where, uint64_t rtl, uint64_t model) {
                  (unsigned long long)rtl, (unsigned long long)model);
 }
 
+// After an edge: the payload of last cycle's valid, then this cycle's valid.
+void sampleReports() {
+  if (rs_pend) {
+    const unsigned w = dut->rs_warp_cq04h;
+    if (exp_s[w].empty()) fail("a status report the model did not send", 0, w, 0);
+    else {
+      const ExpS e = exp_s[w].front();
+      exp_s[w].pop_front();
+      if (dut->rs_ft_cq04h != e.ft || dut->rs_st_cq04h != e.st || dut->rs_mlc_cq04h != e.mlc || dut->rs_ex_cq04h != e.ex)
+        fail("status report's flags differ (ft,ex,st,mlc)", w,
+             dut->rs_ft_cq04h * 1000 + dut->rs_ex_cq04h * 100 + dut->rs_st_cq04h * 10 + dut->rs_mlc_cq04h,
+             e.ft * 1000 + e.ex * 100 + e.st * 10 + e.mlc);
+      else if (dut->rs_rsr_cq04h != e.rsr) fail("retired_since_restore differs", w, dut->rs_rsr_cq04h, e.rsr);
+      max_lat = std::max(max_lat, cycles - e.at);
+      ++st_msgs;
+    }
+  }
+  if (cf_pend) {
+    const unsigned w = dut->cf_warp_cq04h;
+    if (exp_f[w].empty()) fail("a fault the model did not send", 0, w, 0);
+    else {
+      const ExpF e = exp_f[w].front();
+      exp_f[w].pop_front();
+      if (dut->cf_cause_cq04h != e.cause) fail("fault cause differs", w, dut->cf_cause_cq04h, e.cause);
+      else if (dut->cf_pc_cq04h != e.pc) fail("fault pc differs", w, dut->cf_pc_cq04h, e.pc);
+      else if (dut->cf_lanes_cq04h != e.lanes) fail("fault lanes differ", w, dut->cf_lanes_cq04h, e.lanes);
+      else if (dut->cf_addr_cq04h != e.addr) fail("fault address differs", w, dut->cf_addr_cq04h, e.addr);
+      else if (dut->cf_cta_cq04h != e.cta) fail("fault cta_slot differs", w, dut->cf_cta_cq04h, e.cta);
+      max_lat = std::max(max_lat, cycles - e.at);
+      ++cf_msgs;
+    }
+  }
+  rs_pend = dut->rs_v_cq03h;
+  cf_pend = dut->cf_v_cq03h;
+  for (unsigned w = 0; w != 32; ++w) {
+    if (!exp_s[w].empty() && cycles > exp_s[w].front().at + RPT_LAT) {
+      fail("a status report is late", w, cycles - exp_s[w].front().at, RPT_LAT);
+      exp_s[w].pop_front();
+    }
+    if (!exp_f[w].empty() && cycles > exp_f[w].front().at + RPT_LAT) {
+      fail("a fault report is late", w, cycles - exp_f[w].front().at, RPT_LAT);
+      exp_f[w].pop_front();
+    }
+  }
+}
+
+void driveReports(const Rpt &r) {
+  dut->rc_cq01h = 0;
+  dut->tm_cq01h = 0;
+  dut->tf_cq01h = 0;
+  dut->tfm_cq01h = 0;
+  dut->ft_v_cq01h = 0;
+  for (unsigned s = 0; s != S; ++s) {
+    setField(dut->rc_cq01h, s * 2, 2, control == "no-rc" ? 0 : r.rc[s]);
+    dut->tm_cq01h |= ((r.tm >> s) & 1u) << s;
+    dut->tf_cq01h |= ((r.tf >> s) & 1u) << s;
+    dut->tfm_cq01h |= ((r.tfm >> s) & 1u) << s;
+    if (((r.ft >> s) & 1u) && control != "drop-ft") {
+      const unsigned t = control == "ft-slot" ? (s + 1) % S : s;
+      dut->ft_v_cq01h |= 1u << t;
+      rec_cause[t] = r.cause[s];
+      rec_pc[t] = r.pc[s];
+      rec_addr[t] = r.addr[s];
+      rec_lanes[t] = r.lanes[s];
+    }
+  }
+  for (unsigned s = 0; s != S; ++s) {
+    setField(dut->ft_cause_cq01h, s * 4, 4, rec_cause[s]);
+    setField(dut->ft_pc_cq01h, s * 48, 48, rec_pc[s]);
+    setField(dut->ft_lanes_cq01h, s * 32, 32, rec_lanes[s]);
+    setField(dut->ft_addr_cq01h, s * 64, 64, rec_addr[s]);
+  }
+}
+
 bool hasEvents(const Core::SlotLog &e) {
   bool al = !e.alloc.empty();
   if (control == "no-free") {
@@ -107,8 +214,9 @@ bool hasEvents(const Core::SlotLog &e) {
   return al || !e.demote.empty();
 }
 
-void drive(const Core::SlotLog &e, const Core::SlotLog *nx) {
+void drive(const Core::SlotLog &e, const Core::SlotLog *nx, const Rpt &r) {
   ++cycles;
+  driveReports(r);
   // The inputs.
   if (e.alloc.size() > A || e.demote.size() > D) {
     fail("more allocations or demotes than ports", 0, e.alloc.size(), e.demote.size());
@@ -158,6 +266,7 @@ void drive(const Core::SlotLog &e, const Core::SlotLog *nx) {
   dut->ev_l_cq00h = nx && hasEvents(*nx) && control != "no-ev-lead";
   dut->kill_l_cq00h = nx && nx->kill && control != "no-kill-lead";
   tick();
+  sampleReports();
   // The verdicts.
   ntcs += __builtin_popcount(e.ntc);
   maps += __builtin_popcount(e.map);
@@ -212,39 +321,65 @@ void resetDut() {
   dut->lnd_cq01h = 0;
   dut->ath_cq01h = 0;
   dut->xr_cq01h = 0;
+  driveReports(Rpt());
   dut->ooe_rst_r00h = 1;
   tick();
   tick();
   dut->ooe_rst_r00h = 0;
   tick();
   exp_ack = false;
+  rs_pend = cf_pend = false;
 }
 
-void push(const Core::SlotLog &e) {
-  if (have_pend) drive(pend, &e);
+// A core's end: idle cycles until every report has left, then none may wait.
+void drainReports() {
+  const Rpt none;
+  for (unsigned i = 0; i != RPT_LAT + 4; ++i) {
+    ++cycles;
+    driveReports(none);
+    dut->ev_l_cq00h = dut->kill_l_cq00h = 0;
+    dut->al_v_cq01h = dut->dm_v_cq01h = 0;
+    dut->xr_cq01h = 0;
+    tick();
+    sampleReports();
+  }
+  for (unsigned w = 0; w != 32; ++w) {
+    if (!exp_s[w].empty()) fail("a status report never left", w, 0, exp_s[w].size());
+    if (!exp_f[w].empty()) fail("a fault report never left", w, 0, exp_f[w].size());
+    exp_s[w].clear();
+    exp_f[w].clear();
+  }
+}
+
+void push(const Core::SlotLog &e, const Rpt &r) {
+  if (have_pend) drive(pend, &e, rpend);
   if (skip_core) { have_pend = false; return; }
   pend = e;
+  rpend = r;
   have_pend = true;
 }
 
 void flushPend(const Core::SlotLog *nx) {
-  if (have_pend) { drive(pend, nx); have_pend = false; }
+  if (have_pend) { drive(pend, nx, rpend); have_pend = false; }
 }
 
 void pre(const Core &c) {
   if (c.serial() == current) return;
   flushPend(nullptr);
+  if (current && !skip_core) drainReports();
   current = c.serial();
   ++cores;
   // Cores the model runs with a control injected into its control step
   // (its own negative controls) and cores with other than S slots.
   const auto &cf = c.config();
-  skip_core = cf.slots != S || cf.inject_no_refuse || cf.inject_atom_demote_mid;
+  skip_core = cf.slots != S || cf.inject_no_refuse || cf.inject_atom_demote_mid || cf.inject_cta_slot_zero ||
+              cf.inject_fallback_claims_mlc;
   skipped += skip_core;
   if (skip_core) return;
   resetDut();
   // A null cycle ahead of the core's first carries the lead of its launches.
   pend = Core::SlotLog();
+  rpend = Rpt();
   have_pend = true;
 }
 
@@ -252,7 +387,40 @@ void post(const Core &c) {
   if (skip_core || c.serial() != current) return;
   const auto &l = c.slotLog();
   if (!l.ran) return;
-  push(l);
+  // The reports: driven with this log, expected from the cycle it drives
+  // (one behind the model's, as every verdict is).
+  Rpt r;
+  for (const auto &x : c.retired) {
+    const int s = c.slotOfWarp(x.warp);
+    if (s >= 0 && unsigned(s) < S) ++r.rc[s];
+  }
+  unsigned nst[8] = {};
+  for (const auto &x : c.out.status) {
+    const int s = c.slotOfWarp(x.warp);
+    const unsigned w = x.warp % 32;
+    exp_s[w].push_back({x.fault_taken, x.stalled, x.mlc_miss_seen, x.retired_since_restore, x.exited, cycles + 2});
+    sat += x.retired_since_restore == 255;
+    if (x.exited) { ++st_exited; continue; }
+    if (x.fault_taken) { ++st_faults; continue; }
+    if (s < 0 || unsigned(s) >= S) { fail("a stalled report for a warp no slot holds", 0, 0, x.warp); continue; }
+    ++st_stalled;
+    if (nst[s]++) { r.tm |= 1u << s; ++st_two; }   // two: the first was the MLC-miss trigger
+    r.tf |= 1u << s;
+    if (x.mlc_miss_seen) r.tfm |= 1u << s; else r.tfm &= ~(1u << s);
+  }
+  // Two stalled reports a cycle: tm the first (MLC), tf the second, whose
+  // mlc bit is the later one's (set above in order).
+  for (const auto &f : c.out.faults) {
+    const int s = c.slotOfWarp(f.warp);
+    if (s < 0 || unsigned(s) >= S) { fail("a fault for a warp no slot holds", 0, 0, f.warp); continue; }
+    r.ft |= 1u << s;
+    r.cause[s] = f.cause;
+    r.pc[s] = f.pc;
+    r.addr[s] = f.address;
+    r.lanes[s] = f.lane_mask;
+    exp_f[f.warp % 32].push_back({f.cause, f.pc, f.address, f.lane_mask, f.cta_slot, cycles + 2});
+  }
+  push(l, r);
 }
 } // namespace
 
@@ -272,10 +440,12 @@ int main(int argc, char **argv) {
   std::printf("slot_tb control=%s seeds=%u cores=%llu (skipped: other slots or a model control=%llu) cycles=%llu allocs=%llu/%llu/%llu/%llu "
               "(free/launch/ralloc/ract, max %llu a cycle) demotes=%llu (max %llu) refused=%llu held-at-atomic=%llu "
               "kills=%llu acks=%llu (naming none=%llu) notices=%llu maps=%llu drained=%llu releases=%llu "
-              "protocol-error cores left=%llu mismatches=%llu model_failures=%d\n",
+              "protocol-error cores left=%llu reports: status=%llu (exited %llu, faults %llu, stalled %llu, two a cycle %llu, "
+              "saturated %llu) cru_fault=%llu max latency %llu; mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, skipped, cycles, allocs[0], allocs[1], allocs[2],
               allocs[3], max_al, demotes, max_dm, refused, held_dm, kills, acks, acks_now, ntcs, maps, drains, rels,
-              proto_skipped, mismatches, model_fails);
+              proto_skipped, st_msgs, st_exited, st_faults, st_stalled, st_two, sat, cf_msgs, max_lat, mismatches,
+              model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();

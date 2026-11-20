@@ -6331,6 +6331,13 @@ int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_c
     testAtomicKill();
     testAtomicDemote();
     testBarrierDemote();
+    // The reports (OA 435 (9), (10)): faults, the demotion triggers.
+    testFault();
+    testMemFault();
+    testAtomicFault();
+    testBarrierFault();
+    testMlcTrigger();
+    testBarrierTimer();
     testSlotRandom(seeds * 4);
   } else if (scenario == "ratmap") {
     // ooe_ratmap's bench (test/ooe/ratmap_tb.cpp): slot's, with the parked

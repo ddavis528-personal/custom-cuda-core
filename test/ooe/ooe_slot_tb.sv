@@ -14,6 +14,12 @@ module ooe_slot_tb #(
   parameter int WB = 5,                  // barrier_count
   parameter int WT = 3,                  // cta_slot
   parameter int KE = 2,                  // kill_epoch
+  parameter int LT = 2,
+  parameter int RW = 8,
+  parameter int QD = 4,
+  parameter int CW = 4,
+  parameter int PCW = 48,
+  parameter int VA = 64,
   localparam int LS = $clog2(S),
   localparam int LW = $clog2(NW)
 ) (
@@ -37,6 +43,15 @@ module ooe_slot_tb #(
   input  logic [S-1:0]        lnd_cq01h,
   input  logic [S-1:0]        ath_cq01h,
   input  logic [S-1:0]        xr_cq01h,
+  input  logic [S*LT-1:0]     rc_cq01h,
+  input  logic [S-1:0]        tm_cq01h,
+  input  logic [S-1:0]        tf_cq01h,
+  input  logic [S-1:0]        tfm_cq01h,
+  input  logic [S-1:0]        ft_v_cq01h,
+  input  logic [S*CW-1:0]     ft_cause_cq01h,
+  input  logic [S*PCW-1:0]    ft_pc_cq01h,
+  input  logic [S*32-1:0]     ft_lanes_cq01h,
+  input  logic [S*VA-1:0]     ft_addr_cq01h,
   output logic [S*3-1:0]      st_cq02h,
   output logic [S*LW-1:0]     warp_cq02h,
   output logic [S*WC-1:0]     ctaid_cq02h,
@@ -50,9 +65,23 @@ module ooe_slot_tb #(
   output logic [S-1:0]        drn_ref_cq02h,
   output logic                kack_cq02h,
   output logic [KE-1:0]       kack_ep_cq02h,
+  output logic                rs_v_cq03h,
+  output logic [LW-1:0]       rs_warp_cq04h,
+  output logic                rs_ft_cq04h,
+  output logic                rs_st_cq04h,
+  output logic                rs_mlc_cq04h,
+  output logic [RW-1:0]       rs_rsr_cq04h,
+  output logic                rs_ex_cq04h,
+  output logic                cf_v_cq03h,
+  output logic [CW-1:0]       cf_cause_cq04h,
+  output logic [PCW-1:0]      cf_pc_cq04h,
+  output logic [31:0]         cf_lanes_cq04h,
+  output logic [VA-1:0]       cf_addr_cq04h,
+  output logic [WT-1:0]       cf_cta_cq04h,
+  output logic [LW-1:0]       cf_warp_cq04h,
   output logic [S-1:0]        dmh_cq02h
 );
-  ooe_slot #(.S(S), .A(A), .D(D), .NW(NW), .WC(WC), .WI(WI), .WB(WB), .WT(WT), .KE(KE)) u_sl (
-    .ooe_core_clk, .ooe_rst_r00h, .ev_l_cq00h, .kill_l_cq00h, .al_v_cq01h, .al_slot_cq01h, .al_op_cq01h, .al_warp_cq01h, .al_ctaid_cq01h, .al_wic_cq01h, .al_barc_cq01h, .al_cta_cq01h, .dm_v_cq01h, .dm_warp_cq01h, .kill_mask_cq01h, .kill_ep_cq01h, .held_cq01h, .lnd_cq01h, .ath_cq01h, .xr_cq01h, .st_cq02h, .warp_cq02h, .ctaid_cq02h, .wic_cq02h, .barc_cq02h, .cta_cq02h, .ntc_cq02h, .map_cq02h, .rel_cq02h, .drn_cq02h, .drn_ref_cq02h, .kack_cq02h, .kack_ep_cq02h);
+  ooe_slot #(.S(S), .A(A), .D(D), .NW(NW), .WC(WC), .WI(WI), .WB(WB), .WT(WT), .KE(KE), .LT(LT), .RW(RW), .QD(QD), .CW(CW), .PCW(PCW), .VA(VA)) u_sl (
+    .ooe_core_clk, .ooe_rst_r00h, .ev_l_cq00h, .kill_l_cq00h, .al_v_cq01h, .al_slot_cq01h, .al_op_cq01h, .al_warp_cq01h, .al_ctaid_cq01h, .al_wic_cq01h, .al_barc_cq01h, .al_cta_cq01h, .dm_v_cq01h, .dm_warp_cq01h, .kill_mask_cq01h, .kill_ep_cq01h, .held_cq01h, .lnd_cq01h, .ath_cq01h, .xr_cq01h, .st_cq02h, .warp_cq02h, .ctaid_cq02h, .wic_cq02h, .barc_cq02h, .cta_cq02h, .ntc_cq02h, .map_cq02h, .rel_cq02h, .drn_cq02h, .drn_ref_cq02h, .kack_cq02h, .kack_ep_cq02h, .rc_cq01h, .tm_cq01h, .tf_cq01h, .tfm_cq01h, .ft_v_cq01h, .ft_cause_cq01h, .ft_pc_cq01h, .ft_lanes_cq01h, .ft_addr_cq01h, .rs_v_cq03h, .rs_warp_cq04h, .rs_ft_cq04h, .rs_st_cq04h, .rs_mlc_cq04h, .rs_rsr_cq04h, .rs_ex_cq04h, .cf_v_cq03h, .cf_cause_cq04h, .cf_pc_cq04h, .cf_lanes_cq04h, .cf_addr_cq04h, .cf_cta_cq04h, .cf_warp_cq04h);
   assign dmh_cq02h = u_sl.dmhq_cq02h;
 endmodule
