@@ -333,6 +333,20 @@ private:
       if (h < now_ + 1 || !spare(c.cmpl_hint, ms) || !spare(c.miu_ooe, ms) ||
           !spare(c.miu_rcu, as))
         return;
+      // A slot carries one message a cycle: DCU may send up to
+      // CCV_DCACHE_LOOKUPS notices in one cycle, and a second promise on a
+      // slot already promised for that cycle (its hint, its completion or
+      // its data) could never be kept. It goes unhinted and completes as a
+      // miss; hint-same-slot, the control, promises it anyway.
+      if (k_.brk != "hint-same-slot") {
+        for (const Hint &o : hints_)
+          if (!o.no_hit && o.at == h && o.q.slot == ms) { k_.hit("hint_slot_taken"); return; }
+        for (const Job &o : jobs_)
+          if (o.promised == at && (o.memop_slot == ms || o.addr_slot == as)) {
+            k_.hit("hint_slot_taken");
+            return;
+          }
+      }
       Bits m = msgOf(c.cmpl_hint);
       put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
       put(m, c.cmpl_hint, "rob_tag", k_.brk == "hint-wrong-tag" ? j.tag ^ 1u : j.tag);
@@ -2107,7 +2121,14 @@ private:
         held_.push_back({job_.due + 1, {job_.addr_slot, d, job_.tid},
                          {job_.memop_slot, cmpl(job_), job_.tid}});
       } else {
-        if (job_.hit) k_.hit("l1_late");
+        // A hit DCU answered past the contract's data cycle: a way
+        // mispredict re-read on the bank-conflict loser's path, due + 2 at
+        // the earliest (DI-2; AR 390, OA-442), or any other late answer. MIU
+        // cannot tell which from its ports; either way it is a miss to OOE.
+        if (job_.hit) {
+          k_.hit("l1_late");
+          k_.hit("l1_dcu_late");
+        }
         to_rcu_.push_back({job_.addr_slot, d, job_.tid});
         // Past the data's cycle but not the completion's (CCV_LAT_L1_ECC
         // apart): the completion still goes past the contract, or OOE takes
