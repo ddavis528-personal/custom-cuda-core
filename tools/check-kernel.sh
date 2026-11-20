@@ -204,6 +204,11 @@
 #                                              and a fault with none
 #   a lookup's set index leads it, a copy     dcu-set-lead (hit): DCU
 #     of its PA bits (AR 362, AR 364)          refuses each
+#   MIU sends a lookup only with its bank's   bank-credit-ignore (gather,
+#     entry credit, a store with a store-        STDATA 1): DCU refuses each
+#     data credit too; DCU returns each on       bank past its credits;
+#     ccv_dcu_miu_cred (MA-25)                   dcu-extra-credit (vadd): MIU
+#                                                refuses a return it never spent
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -2116,6 +2121,51 @@ ok() {   # $1 log, then cover bins name=value; prints why not, or nothing
   done
   echo "${why# }"
 }
+# MA-25: DCU's per-bank credits. MIU holds CCV_DCU_BANK_QDEPTH entry credits
+# and CCV_DCU_BANK_STDATA store-data credits a bank, sends a lookup only with
+# its entry credit and a store only with both, and DCU returns them on
+# ccv_dcu_miu_cred as entries leave and writes finish. At the defaults no
+# kernel here holds, so the hold is driven small (both stubs, and the DCU
+# model, read the same overrides): every run == ccv-sim, a request held for a
+# credit later sent (credit_hold_then_sent), and every lookup's entry credit
+# home (dcu_ent_ret == dcu_lookups).
+bank_ok() {   # $1 label, $2 kernel, then env; one line each
+  local label=$1 k=$2 log w h e l; shift 2
+  log="$B/kernel_bank_$(printf %s "$label" | tr -c 'A-Za-z0-9' _).log"
+  env "$@" "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+  w=$(ok "$log"); h=$(cover "$log" credit_hold_then_sent); e=$(cover "$log" dcu_ent_ret); l=$(cover "$log" dcu_lookups)
+  [ "${h:-0}" -gt 0 ] || w="$w credit_hold_then_sent=${h:-0} (want >0)"
+  [ "${e:-x}" = "${l:-y}" ] || w="$w dcu_ent_ret=${e:-0} != dcu_lookups=${l:-0}"
+  if [ -z "$w" ]; then
+    say "$label: held, sent, == ccv-sim" "PASS ($k, $h held then sent, $e credits home)"
+  else
+    bad "$label" "${w# }"
+  fi
+}
+bank_ok "bank store-data credits 1" gather CCV_DCU_BANK_STDATA=1
+bank_ok "bank entry credits 2" transp4 CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+bank_ok "bank credits 2/1, DCU model" gather CCV_DCU_IMPL=model CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+# --break bank-credit-ignore: MIU sends without its credits; at one
+# store-data credit a bank, gather's stores meet in a bank, and DCU must
+# refuse every bank past its credits by name, and nothing else.
+log="$B/kernel_bank-credit-ignore.log"
+CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
+n=$(grep -c '^CHECK dcu: bank [0-9]* holds [0-9]* lookup entries and [0-9]* store-data entries, past its credits' "$log")
+if [ "$n" -gt 0 ] && [ "$(field "$log" check_failures)" = "$n" ]; then
+  say "--break bank-credit-ignore: DCU refuses each" "PASS (gather, $n over STDATA 1)"
+else
+  bad "--break bank-credit-ignore" "$n refused: $(grep '^KERNEL' "$log")"
+fi
+# --break dcu-extra-credit: DCU returns an entry credit MIU never spent, and
+# MIU refuses the return past its reset count by name.
+log="$B/kernel_dcu-extra-credit.log"
+"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
+if grep -q '^CHECK miu: DCU returned an entry credit for bank 0, which holds all 16 (MA-25)' "$log" &&
+   [ "$(field "$log" check_failures)" = 1 ]; then
+  say "--break dcu-extra-credit: MIU refuses it" "PASS (vadd, bank 0)"
+else
+  bad "--break dcu-extra-credit" "an unspent credit's return went unnoticed: $(grep '^KERNEL' "$log")"
+fi
 # A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332
 # (328 in OI's tree, whose timing differs; 342 under both block models, DI's
 # re:TI-503, an IMPL_PINS row)

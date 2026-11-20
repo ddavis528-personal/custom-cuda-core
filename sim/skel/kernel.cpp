@@ -525,6 +525,19 @@ inline uint64_t indexLeadSet(uint64_t pa) {
   return (pa >> 7) & ((uint64_t(1) << ccv::prov::kWDcuSet) - 1);
 }
 
+// MA-25: DCU's per-bank queue bounds, MIU's credits for them. A lookup's bank
+// is its line address's low clog2(CCV_DCU_BANKS) bits (AR 364). Both stubs
+// read the params as defaults and the environment's CCV_DCU_BANK_QDEPTH and
+// CCV_DCU_BANK_STDATA as overrides, the same in both, for a test of the hold.
+inline unsigned dcuBankOf(uint64_t pa) { return unsigned((pa / kLine) % ccv::kDcuBanks); }
+inline unsigned dcuBankEnv(const char *name, unsigned dflt) {
+  const char *v = std::getenv(name);
+  const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : dflt;
+  return n >= 1 ? n : dflt;
+}
+inline unsigned dcuBankQdepth() { return dcuBankEnv("CCV_DCU_BANK_QDEPTH", ccv::prov::kDcuBankQdepth); }
+inline unsigned dcuBankStdata() { return dcuBankEnv("CCV_DCU_BANK_STDATA", ccv::prov::kDcuBankStdata); }
+
 // ---- DCU: a small L1; a write is read-modify-write of the line ------------------
 //
 // dcu_mlc_req carries no byte mask, so a partial store cannot go below DCU
@@ -562,6 +575,72 @@ private:
   struct Promise { uint64_t at; Q q; uint64_t line; };
   std::deque<Promise> promised_;
   std::map<unsigned, unsigned> resv_;   ///< slot -> promises not yet sent
+
+  /// MA-25: each bank holds at most CCV_DCU_BANK_QDEPTH lookup entries and
+  /// CCV_DCU_BANK_STDATA store-data entries, which MIU's credits guarantee,
+  /// so DCU refuses a bank past either by name. An entry is held from
+  /// arrival until the request leaves the queue (answered, or gone to MLC);
+  /// a store's data until its write is done (merged into an owned line, or
+  /// MLC's answer to its acquire or write). Each leaving owes MIU a return
+  /// on ccv_dcu_miu_cred, at most one of each a bank a cycle.
+  const unsigned qdepth_ = dcuBankQdepth(), stdata_ = dcuBankStdata();
+  std::vector<unsigned> bent_ = std::vector<unsigned>(ccv::kDcuBanks),
+                        bstd_ = std::vector<unsigned>(ccv::kDcuBanks),
+                        oent_ = std::vector<unsigned>(ccv::kDcuBanks),
+                        ostd_ = std::vector<unsigned>(ccv::kDcuBanks);
+  bool extra_sent_ = false;
+  bool isStore(const Bits &req) const {
+    return unsigned(get(req, ch().miu_dcu, "coh_op")) == kCohWrite;
+  }
+  void admit(const Op &o) {
+    const unsigned b = dcuBankOf(get(o.req, ch().miu_dcu, "phys_addr"));
+    const bool st = isStore(o.req);
+    ++bent_[b];
+    if (st) ++bstd_[b];
+    if (bent_[b] > qdepth_ || bstd_[b] > stdata_)
+      k_.fail("dcu: bank %u holds %u lookup entries and %u store-data entries, past its "
+              "credits (CCV_DCU_BANK_QDEPTH %u, CCV_DCU_BANK_STDATA %u; MA-25)",
+              b, bent_[b], bstd_[b], qdepth_, stdata_);
+  }
+  /// The request left its bank's queue: its entry credit goes home.
+  void leaveQueue(const Op &o) {
+    const unsigned b = dcuBankOf(get(o.req, ch().miu_dcu, "phys_addr"));
+    if (bent_[b]) { --bent_[b]; ++oent_[b]; }
+  }
+  /// A store's write is done: its store-data credit goes home.
+  void writeDone(const Op &o) {
+    if (!isStore(o.req)) return;
+    const unsigned b = dcuBankOf(get(o.req, ch().miu_dcu, "phys_addr"));
+    if (bstd_[b]) { --bstd_[b]; ++ostd_[b]; }
+  }
+  /// The returns owed, one of each a bank a cycle. --break dcu-extra-credit
+  /// returns an entry credit MIU never spent, at its first chance, which MIU
+  /// must refuse by name.
+  void returnCredits() {
+    const Ch &c = ch();
+    uint64_t ent = 0, std = 0;
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+      if (oent_[b]) ent |= uint64_t(1) << b;
+      if (ostd_[b]) std |= uint64_t(1) << b;
+    }
+    const bool extra = k_.brk == "dcu-extra-credit" && !extra_sent_;
+    if (extra) ent |= 1;
+    if ((!ent && !std) || !can(c.dcu_cred, 0)) return;
+    Bits m = msgOf(c.dcu_cred);
+    put(m, c.dcu_cred, "ent_ret", ent);
+    put(m, c.dcu_cred, "std_ret", std);
+    send(c.dcu_cred, 0, m, makeUid(IdClass::kNone, 0));
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+      if (oent_[b]) { --oent_[b]; k_.hit("dcu_ent_ret"); }
+      if (ostd_[b]) { --ostd_[b]; k_.hit("dcu_std_ret"); }
+    }
+    if (extra) extra_sent_ = true;
+  }
+  bool owed() const {
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b)
+      if (oent_[b] || ostd_[b]) return true;
+    return false;
+  }
   /// A slot an ordinary response may use: a credit, and one more than its
   /// promises hold back.
   bool free(unsigned slot) {
@@ -767,6 +846,7 @@ private:
         Receiver::Msg m = take(c.miu_dcu, s);
         checkIndexLead(s, m.payload);
         const Op o{s, m.payload, m.tid};
+        admit(o);
         const Line *l = readHit(m.payload);
         const int ue = l ? ueOnHit(o) : 0;
         if (ue == 1) {
@@ -781,9 +861,11 @@ private:
           // store whose merge read this was never drains, and RAU's
           // machine-check kill waits for no ack from MIU. Control
           // ue-answer answers it, and MIU refuses the answer.
+          leaveQueue(o);
         } else if (l) {
           // A hit answered past a miss in flight or waiting (A-46).
           if (!miss_.empty() || !q_.empty()) k_.hit("hit_under_miss");
+          leaveQueue(o);
           hitRsp(o, *l);
         } else {
           q_.push_back(o);
@@ -831,10 +913,12 @@ private:
           Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
           mergeInto(l, x.op.req);
           install(x.line, l, true, true);
+          writeDone(x.op);
           to_miu_.push_back({x.op.slot, r, x.op.tid});   // the store's ack
         } else if (x.kind == kPerm) {
           // Ownership alone: the store wrote every byte.
           install(x.line, getLine(x.op.req, field(c.miu_dcu, "write_data").lsb), true, true);
+          writeDone(x.op);
           to_miu_.push_back({x.op.slot, r, x.op.tid});
         } else if (x.kind == kRmwRead) {
           Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
@@ -845,6 +929,7 @@ private:
           install(x.line, l);
           mlcReq(kCohWrite, x.line, &l, x.op, kAck);
         } else {
+          writeDone(x.op);
           to_miu_.push_back({x.op.slot, r, x.op.tid});   // the write's ack
         }
         }
@@ -877,6 +962,8 @@ private:
       if (owned_hit) {
         const Op o = *it;
         q_.erase(it);
+        leaveQueue(o);
+        writeDone(o);
         mergeInto(wy.data, o.req);
         wy.dirty = true;
         shadow(wy);
@@ -888,6 +975,7 @@ private:
       if (!l && k_.brk == "dcu-one-miss" && !miss_.empty()) break;   // a blocking DCU
       const Op o = *it;
       q_.erase(it);
+      leaveQueue(o);
       if (l) {
         hitRsp(o, *l);
       } else if (!rd && k_.brk == "write-through") {
@@ -951,6 +1039,7 @@ private:
       send(c.dcu_cru_err, 0, e, makeUid(IdClass::kNone, 0));
       ue_sent_ = true;
     }
+    returnCredits();
   }
   /// A refill is noticed (OA-23) if the notice's slot and a credit beyond
   /// those already promised are free; else it is sent as it can be.
@@ -974,7 +1063,7 @@ private:
 
   bool busy() const override {
     return !q_.empty() || !miss_.empty() || !to_mlc_.empty() || !to_miu_.empty() ||
-           !promised_.empty() || (ue_raised_ && !ue_sent_);
+           !promised_.empty() || (ue_raised_ && !ue_sent_) || owed();
   }
 };
 
@@ -1296,6 +1385,25 @@ private:
       armed_ = true;
       at_entry_ = k_.brk != "memop-credit-on-take";
       if (at_entry_) creditAtRelease(c.ooe_miu);
+    }
+    // DCU's credit returns (MA-25), taken the cycle they land.
+    while (has(c.dcu_cred, 0)) {
+      const Bits m = take(c.dcu_cred, 0).payload;
+      const uint64_t ent = get(m, c.dcu_cred, "ent_ret"), std = get(m, c.dcu_cred, "std_ret");
+      for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+        if (ent >> b & 1u) {
+          if (bent_[b] >= int(bqdepth_))
+            k_.fail("miu: DCU returned an entry credit for bank %u, which holds all %u (MA-25)",
+                    b, bqdepth_);
+          else ++bent_[b];
+        }
+        if (std >> b & 1u) {
+          if (bstd_[b] >= int(bstdata_))
+            k_.fail("miu: DCU returned a store-data credit for bank %u, which holds all %u (MA-25)",
+                    b, bstdata_);
+          else ++bstd_[b];
+        }
+      }
     }
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
       while (has(c.fill_ntc, s))
@@ -1742,6 +1850,25 @@ private:
   bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
 
+  /// DCU's per-bank credits (MA-25), reset full: a lookup goes only with its
+  /// bank's entry credit, a store only with that and a store-data credit,
+  /// spent at send and returned on ccv_dcu_miu_cred. A request without its
+  /// credits is held, oldest first: a held store blocks every younger store
+  /// to its bank, a held request every younger one to its line. --break
+  /// bank-credit-ignore sends without them (the counts go negative), which
+  /// DCU must refuse by name once a bank holds more than its credits.
+  const unsigned bqdepth_ = dcuBankQdepth(), bstdata_ = dcuBankStdata();
+  std::vector<int> bent_ = std::vector<int>(ccv::kDcuBanks, int(bqdepth_)),
+                   bstd_ = std::vector<int>(ccv::kDcuBanks, int(bstdata_));
+  std::set<std::pair<uint64_t, size_t>> bank_held_;   ///< (job serial, line) held for a credit
+  bool bankCan(unsigned b, bool store) const {
+    return k_.brk == "bank-credit-ignore" || (bent_[b] > 0 && (!store || bstd_[b] > 0));
+  }
+  void bankTake(unsigned b, bool store) {
+    --bent_[b];
+    if (store) --bstd_[b];
+  }
+
   /// AR 362: the lookup's set index leads it, from the formed address
   /// (the stub's line is its leader's); its bank is the index's low bits
   /// (AR 364). --break dcu-set-lead sends a wrong one, which DCU must refuse
@@ -1823,6 +1950,8 @@ private:
           return;                                               // on its way
       for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s) {
         if (!free(c.miu_dcu, s) || !ids_.any()) continue;
+        if (!bankCan(dcuBankOf(line), false)) { k_.hit("credit_hold"); break; }   // MA-25
+        bankTake(dcuBankOf(line), false);
         Bits r = msgOf(c.miu_dcu);
         const unsigned id = ids_.take();
         put(r, c.miu_dcu, "req_id", id);
@@ -2497,9 +2626,27 @@ private:
     for (Job &j : jobs_)
       if (std::find(order.begin(), order.end(), &j) == order.end()) order.push_back(&j);
     unsigned s = 0;
+    // MA-25: what this cycle's held requests block for younger ones.
+    std::set<uint64_t> held_lines;
+    std::set<unsigned> held_store_banks;
     for (Job *jp : order)
     for (Job &job_ = *jp; s != rate && job_.next != job_.lines.size(); ++s) {
       if (!can(c.miu_dcu, s) || !ids_.any()) continue;
+      {
+        const LineReq &pk = job_.lines[job_.next];
+        const bool st = job_.store && job_.rmw != 1;
+        const unsigned b = dcuBankOf(pk.line);
+        const std::pair<uint64_t, size_t> key{job_.serial, job_.next};
+        if (held_lines.count(pk.line) || (st && held_store_banks.count(b)) || !bankCan(b, st)) {
+          held_lines.insert(pk.line);
+          if (st) held_store_banks.insert(b);
+          bank_held_.insert(key);
+          k_.hit("credit_hold");
+          break;   // this job waits; a younger one may take the slot for another line or bank
+        }
+        if (bank_held_.erase(key)) k_.hit("credit_hold_then_sent");
+        bankTake(b, st);
+      }
       const LineReq &lr = job_.lines[job_.next++];
       Bits r = msgOf(c.miu_dcu);
       const unsigned id = ids_.take();

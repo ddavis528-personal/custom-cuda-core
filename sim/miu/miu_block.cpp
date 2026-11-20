@@ -371,6 +371,15 @@ private:
       at_entry_ = k_.brk != "memop-credit-on-take";
       if (at_entry_) creditAtRelease(c.ooe_miu);
     }
+    // MA-25: DCU's per-bank credit returns, taken the cycle they land
+    // (ccv_dcu_miu_cred is fixed latency). Landed by TI with the channel and
+    // counted here; MI's step 5 spends them (BankCredits) and holds a request
+    // without its credit (OI-18 rule: MI owns this file).
+    while (has(c.dcu_cred, 0)) {
+      const Bits m = take(c.dcu_cred, 0).payload;
+      cred_ret_ent_ += __builtin_popcountll(get(m, c.dcu_cred, "ent_ret"));
+      cred_ret_std_ += __builtin_popcountll(get(m, c.dcu_cred, "std_ret"));
+    }
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
       while (has(c.fill_ntc, s))
         notice(unsigned(get(take(c.fill_ntc, s).payload, c.fill_ntc, "req_id")));
@@ -2141,6 +2150,7 @@ private:
     }
   }
 
+  uint64_t cred_ret_ent_ = 0, cred_ret_std_ = 0;   ///< MA-25 returns taken (MI: step 5 spends them)
   bool busy() const override {
     return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||

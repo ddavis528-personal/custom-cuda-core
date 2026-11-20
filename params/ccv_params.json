@@ -245,6 +245,22 @@
       "doc": "DCU's age bound on hole-filling, in cycles: a lookup that lost its bank waits at most this long; once a waiter reaches it, its bank takes no new lookup or fill until that waiter is served."
     },
     {
+      "name": "CCV_DCU_BANK_QDEPTH",
+      "value": 16,
+      "status": "tunable",
+      "decided_at": "MA-25 (MA-24 under AR 382; Phase 1 cm128 at gap 5, 5,130,918 cycles with credits)",
+      "require": "CCV_DCU_BANK_QDEPTH >= 1",
+      "doc": "Lookup entries in each DCU bank's queue, and MIU's entry credits for that bank (MA-25): a hard reservation, so DCU never refuses a request and never holds more. MIU's counters reset full, a request to the bank spends one at send, and DCU returns one on ccv_dcu_miu_cred's ent_ret as an entry leaves the queue (answered, or gone to MLC as a miss; a fill uses its fill buffer, not an entry). The skeleton's stubs read it as their default, and the environment's CCV_DCU_BANK_QDEPTH overrides it in both for a test of the hold."
+    },
+    {
+      "name": "CCV_DCU_BANK_STDATA",
+      "value": 12,
+      "status": "tunable",
+      "decided_at": "MA-25 (MA-24 under AR 382): the store-data peak MA's Phase 1 cm128 held at 12 a bank",
+      "require": "(CCV_DCU_BANK_STDATA >= 1) * (CCV_DCU_BANK_STDATA <= CCV_DCU_BANK_QDEPTH) == 1",
+      "doc": "Store-data entries in each DCU bank, and MIU's store-data credits for that bank (MA-25): a store spends one beside its entry credit, and DCU returns it on ccv_dcu_miu_cred's std_ret once the store's write leaves (after its merge, which a miss waits for). No more than CCV_DCU_BANK_QDEPTH. The skeleton's stubs read it as their default, and the environment's CCV_DCU_BANK_STDATA overrides it in both."
+    },
+    {
       "name": "CCV_W_DCU_SET",
       "value": 9,
       "status": "tunable",
