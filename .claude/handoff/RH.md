@@ -73,10 +73,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
-- OI OA-455 fix check RUNNING from 05:36Z 11-20: c192bdd2 (gate-scratch/OI) in worktree rh-oi455, rh-jobs/oi455/oi455.sh (resumable),
-  logs ~/ccv-logs/oi455. cm128priv mlc Am / Bm (walk) / Ck (--break slotless-drop-lost, which must fail). Send per run: finished, chk, first CHECK,
-  COVER parked/decq_slotless_drop/decq_credit_pend/credit_wait, cycles. Expected done ~07:15Z; check trigger trig_01CJqdWdJ9925nNEHknKqqAe 07:27Z.
-  Then release rh-oi451. NOTE: tools/gate-scratch.sh fetch-commit DETACHES the checkout it runs in; restore the branch after it.
+- OI OA-455 fix check PARTIAL, SENT 06:10Z 11-20: c192bdd2 in rh-oi455 (rh-jobs/oi455/oi455.sh, ~/ccv-logs/oi455). cm128priv mlc Am CLEAN
+  (chk 0, 912 demotes, slotless_drop 0, credit_pend 2, 2,986,023 cycles). Bm impossible: c192bdd2 lacks the walk (base a7082aa8, not 367bc942).
+  Ck impossible: break name not in main.cpp's list. Waiting on OI for a commit carrying walk + registered break. Keep rh-oi451:
+  rh-oi455/build/bench-oracle symlinks into it. NOTE: tools/gate-scratch.sh fetch-commit DETACHES the checkout it runs in; restore the branch.
 - OI OA-451 rounds 2-3 DONE+SENT by 04:55Z 11-20 at 367bc942 (oi451b.sh, oi451c.sh, table_b.py; logs ~/ccv-logs/oi451b).
   S1-mlc +0.066% clean; cm32priv-mlc Bm +0.147% clean (168 demotes); cm128priv all 4 runs have check failures (TI-46 (b) decq share,
   fet tier-1 credit share) from cycle ~238k after the 123rd demote bounce. S1 under fallback=150: atom mem_mismatch 31 (Af and Bf).
