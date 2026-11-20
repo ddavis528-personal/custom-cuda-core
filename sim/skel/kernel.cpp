@@ -199,6 +199,10 @@ private:
   /// ready first.
   static constexpr uint64_t kMidBase = 0xA0000, kMidLatency = 250;
   static constexpr uint64_t kDeepBase = 0xC0000, kDeepLatency = 1000;
+  /// The slow regions end at kSlowEnd (MI-5 (1)): above it, the page tables
+  /// (0xF0 << 40) among them, every line is the placeholder DRAM's, so a
+  /// table walk pays kLatency a level, not kDeepLatency.
+  static constexpr uint64_t kSlowEnd = uint64_t(1) << 32;
   struct P { uint64_t due; Bits msg; uint64_t tid; bool first = true; };
   /// D beats, in the order they go: bursts by due cycle, each burst's beats
   /// together and one a cycle. Responses are matched by source, not order,
@@ -242,7 +246,8 @@ private:
           l[k] = it == k_.mem.end() ? 0 : it->second;
         }
         std::vector<P> burst;
-        const uint64_t due = now_ + (addr >= kDeepBase  ? kDeepLatency
+        const uint64_t due = now_ + (addr >= kSlowEnd ? kLatency
+                          : addr >= kDeepBase  ? kDeepLatency
                           : addr >= kMidBase ? kMidLatency
                           : addr >= kSlowBase ? kSlowLatency
                                               : kLatency);
@@ -663,11 +668,8 @@ private:
   /// refetched as a miss (returns true). Anything else is core-fatal: a
   /// dirty line (its bytes have no other copy), a second UE at a recorded
   /// location (a hard error), or a full table. DCU raises ue on
-  /// ccv_dcu_cru_err (returns 2). The real DCU withholds that read; the stub
-  /// still answers it, its data unharmed: a committed store's merge read
-  /// withheld would never drain, and MIU's kill ack waits on retired stores
-  /// (TI-487 asks how a machine check meets that). A recovered UE returns
-  /// 1, none 0. Controls:
+  /// ccv_dcu_cru_err and withholds the read (returns 2; AR 387, AR 389). A
+  /// recovered UE returns 1, none 0. Controls:
   /// ue-no-track never records (every clean UE recovers, however often),
   /// ue-dirty-recover recovers a dirty line too (its bytes are lost).
   int ueOnHit(const Op &o) {
@@ -771,6 +773,14 @@ private:
           // A clean line's UE, recovered: the line is gone, so the read
           // waits its turn as a miss and refetches it.
           q_.push_back(o);
+        } else if (ue == 2 &&
+                   (k_.ue_withheld.insert(unsigned(get(o.req, c.miu_dcu, "req_id"))), true) &&
+                   k_.brk != "ue-answer") {
+          // Core-fatal: DCU withholds the read (AR 370 (4), AR 387/389).
+          // MIU completes a load on the kill, with no data (OA 436); a
+          // store whose merge read this was never drains, and RAU's
+          // machine-check kill waits for no ack from MIU. Control
+          // ue-answer answers it, and MIU refuses the answer.
         } else if (l) {
           // A hit answered past a miss in flight or waiting (A-46).
           if (!miss_.empty() || !q_.empty()) k_.hit("hit_under_miss");
@@ -1013,6 +1023,7 @@ private:
     uint32_t pdata = 0;
     unsigned rmw = 0;                ///< a predicate store's drain: 1 reading, 2 writing
     unsigned atom = 0;               ///< an atomic's pass (AR-21): 1 its read, 3 its write
+    bool moot = false;               ///< a kill supplied lines DCU still owed: its data is moot
     /// .shared (TI's rev 230): SPM's, in passes of at most one word a bank,
     /// not DCU's lines. addr is the CTA-relative offset ccv-sim names, and
     /// paddr SPM's byte address. lines still name what it touches, keyed
@@ -1141,32 +1152,32 @@ private:
     // OA 436 (TI-485 (5)(a), MA rev 104): MIU completes every memop of a
     // killed warp. A killed warp's atomic keeps its pass and its hold until
     // its write step, whose completion ends it (more 0) and lets the hold
-    // go (atomDone); none starts a further pass (OOE's kill_stops). A load
-    // still waiting on DCU completes now, with no data, and DCU's answer,
-    // if one comes, is dropped (kill_drop_): DCU withholds a read a
-    // core-fatal UE hit (AR 370). Control kill-drop-atomic: the kill drops
-    // the atomic, as before, and its write then finds no read.
+    // go (atomDone); none starts a further pass (OOE's kill_stops).
+    // Control kill-drop-atomic: the kill drops the atomic, as before, and
+    // its write then finds no read.
     if (k_.brk == "kill-drop-atomic")
       for (auto it = atom_.begin(); it != atom_.end();)
         it = mask >> (it->second.warp & 31) & 1u ? atom_.erase(it) : std::next(it);
     killed_ |= mask;
-    for (auto it = jobs_.begin(); it != jobs_.end();) {
-      Job &j = *it;
-      bool waits = false;
-      for (const auto &o : outstanding_) waits |= o.second.first == j.serial;
-      // A load whose completion a hint has promised (OA-23) keeps that
-      // promise: it completes at its cycle, with its notice's keys.
-      if (j.store || j.atom || j.promised || !(mask >> (j.warp & 31) & 1u) || !waits) { ++it; continue; }
+    // A killed warp's read still owed by DCU is taken as answered now, with
+    // no data, and DCU's answer, if one comes, is dropped (kill_drop_):
+    // each job, load, store or atomic, then ends on its own path (a
+    // promised load at its promise), so MIU owes no killed warp anything.
+    // DCU withholds the read a core-fatal UE hit (AR 389), and this is how
+    // MIU completes it (OA 436).
+    for (Job &j : jobs_) {
+      if (!(mask >> (j.warp & 31) & 1u)) continue;
       for (auto o = outstanding_.begin(); o != outstanding_.end();)
         if (o->second.first == j.serial) {
           kill_drop_.insert(o->first);
+          j.got[o->second.second] = Line{};
+          ++j.back;
+          j.moot = true;
+          k_.hit("kill_cmpl");
           o = outstanding_.erase(o);
         } else {
           ++o;
         }
-      to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
-      k_.hit("kill_cmpl");
-      it = jobs_.erase(it);
     }
   }
   uint32_t killed_ = 0;                 ///< warps a kill has ended
@@ -1251,6 +1262,17 @@ private:
       if (h < now_ + 1 || !spare(c.cmpl_hint, ms) || !spare(c.miu_ooe, ms) ||
           !spare(c.miu_rcu, as))
         return;
+      // DCU may send CCV_DCACHE_LOOKUPS notices a cycle (MI-9): a promise
+      // whose hint, completion or data slot is already promised for that
+      // cycle is declined, and its load completes as a miss. The control
+      // --break hint-same-slot promises it anyway.
+      if (k_.brk != "hint-same-slot") {
+        bool taken = false;
+        for (const Hint &x : hints_) taken = taken || (!x.no_hit && x.at == h && x.q.slot == ms);
+        for (const Job &y : jobs_)
+          taken = taken || (y.promised == at && (y.memop_slot == ms || y.addr_slot == as));
+        if (taken) { k_.hit("hint_slot_taken"); return; }
+      }
       Bits m = msgOf(c.cmpl_hint);
       put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
       put(m, c.cmpl_hint, "rob_tag", k_.brk == "hint-wrong-tag" ? j.tag ^ 1u : j.tag);
@@ -1428,6 +1450,8 @@ private:
           ids_.release(id);
           continue;
         }
+        if (k_.ue_withheld.count(id))
+          k_.fail("miu: DCU answered req_id %u, a read a core-fatal UE withheld (AR 389)", id);
         if (kill_drop_.erase(id)) {   // a killed warp's read, completed at the kill
           ids_.release(id);
           continue;
@@ -2309,7 +2333,7 @@ private:
       // The new value against ccv-sim's write of this lane.
       if (r)
         for (const MemAcc &w : r->mem)
-          if (w.write && w.lane == l && w.val != v)
+          if (w.write && w.lane == l && w.val != v && !(killed_ >> (j.warp & 31) & 1u))
             k_.fail("miu: seq %llu lane %u atomic write %08x, oracle %08x",
                     (unsigned long long)r->seq, l, v, w.val);
     }
@@ -2521,6 +2545,8 @@ private:
       }
     for (auto it = jobs_.begin(); it != jobs_.end();) {
       if (it->back != it->lines.size() || it->pback != it->passes.size()) { ++it; continue; }
+      // A hinted load the kill supplied keeps its promise's cycle (OA-23).
+      if (it->moot && it->promised && now_ < it->promised) { ++it; continue; }
       if (it->rmw == 1) { merge(*it); ++it; continue; }
       if (!it->store) complete(*it);
       else if (it->atom == 3) atomDone(*it);
@@ -2571,7 +2597,9 @@ private:
       put(d, c.miu_rcu, "dst_width", job_.chw);
       put(d, c.miu_rcu, "phys_pred", job_.phys_pred);
       put(d, c.miu_rcu, "pred_we", 0);          // a load writes no predicate
-      const Record *r = rec(job_.tid, "miu");
+      // A killed warp's line the kill supplied holds no data: nothing to
+      // hold to ccv-sim's.
+      const Record *r = job_.moot ? nullptr : rec(job_.tid, "miu");
       if (job_.pxfer && job_.active) {
         // A predicate load (TI-36): its word is the predicate, lane i's bit
         // for lane i, written by RCU under active_mask (O-62), the copy op
@@ -4233,6 +4261,30 @@ public:
 
 private:
   std::deque<std::pair<Bits, uint64_t>> q_;
+  /// CCV_DEC_HOLD=<warp>:<seq>:<cycles> (AR 395's straggler): DEC holds that
+  /// uop, and everything behind it, the cycles given from its arrival at the
+  /// queue's head, as rename backpressure would; a demotion that lands
+  /// meanwhile leaves it in DEC past OOE's walk. A run mode, not a control:
+  /// the run must still match ccv-sim.
+  struct Hold { unsigned warp = ~0u; uint64_t seq = 0, cycles = 0, since = 0; bool on = false; };
+  Hold hold_ = [] {
+    Hold h;
+    if (const char *v = std::getenv("CCV_DEC_HOLD")) {
+      unsigned long long sq = 0, cy = 0;
+      if (std::sscanf(v, "%u:%llu:%llu", &h.warp, &sq, &cy) == 3) { h.seq = sq; h.cycles = cy; }
+      else h.warp = ~0u;
+    }
+    return h;
+  }();
+  bool holding(const std::pair<Bits, uint64_t> &u) {
+    if (hold_.warp == ~0u || unsigned(get(u.first, ch().dec_ooe, "warp_id")) != hold_.warp ||
+        uidSeq(u.second) != warpSeq(hold_.warp, hold_.seq))
+      return false;
+    if (!hold_.on) { hold_.on = true; hold_.since = now_; }
+    if (now_ - hold_.since >= hold_.cycles) { hold_.warp = ~0u; return false; }
+    k_.hit("dec_hold");
+    return true;
+  }
   /// A kill drops the killed warps' uops not yet sent to OOE (V-24).
   void onKill(uint32_t mask, unsigned) override {
     for (auto it = q_.begin(); it != q_.end();) {
@@ -4251,6 +4303,7 @@ private:
     // recover the order from (arrival, slot).
     for (unsigned s = 0; s != kChans[c.dec_ooe].rate && !q_.empty(); ++s) {
       if (!can(c.dec_ooe, s)) break;
+      if (holding(q_.front())) break;
       // An atomic's pair leaves together, in adjacent slots (TI-39: the
       // first comes with credit for its second, which follows it at once).
       const bool first = (get(q_.front().first, c.dec_ooe, "sched_attr") >> kAttrPairFirstBit) & 1u;
@@ -4768,6 +4821,7 @@ private:
   static constexpr unsigned kEpochs = 1u << ccv::prov::kWFetchEpoch;
   bool stale_next_ = false, stale_done_ = false;   ///< stale-epoch control
   std::deque<std::pair<Bits, uint64_t>> pca_q_;     ///< PCs out to PCA, with where it resumes
+  std::vector<unsigned> mig_wait_;                  ///< demotions waiting on full credits (AR 395)
 
   void work() override {
     const Ch &c = ch();
@@ -4903,54 +4957,70 @@ private:
         take_slot(x, unsigned(get(m, c.rau_fet_mig, "tier1_id")));
         x.restoring = true;
       } else {
-        Warp &x = warps_[w];
-        const auto &recs = k_.orcs[w].recs;
-        Bits g = msgOf(c.fet_pca);
-        put(g, c.fet_pca, "warp_id", w);
-        const FieldDesc &lp = field(c.fet_pca, "lane_pcs");
-        const unsigned lw = lp.width / kLanes;
-        uint64_t upper = 0;
-        for (unsigned l = 0; l != kLanes; ++l) {
-          uint64_t pc = recs.empty() ? 0 : recs.back().pc;
-          if (x.rewound >> l & 1u) {
-            pc = x.lane_pc[l];
-          } else {
-            for (size_t i = x.next; i < recs.size(); ++i)
-              if (recs[i].mask >> l & 1u) { pc = recs[i].pc; break; }
-          }
-          g.set(lp.lsb + l * lw, lw, pc >> 1);
-          upper = pc >> ccv::kWPcWindow;
+        // A demotion's migration (AR 395): FET sends its PCs to PCA, and
+        // decides the lanes no beat named, only once the warp's credits are
+        // back to full as well -- sent less returned is zero, so OOE has
+        // walked and dropped every uop FET sent it, stragglers held in DEC
+        // included. --break mig-before-credits sends on the migration alone.
+        mig_wait_.push_back(w);
+      }
+    }
+    for (auto mw = mig_wait_.begin(); mw != mig_wait_.end();) {
+      const unsigned w = *mw;
+      if (warps_[w].credits < int(ccv::prov::kDecqWarpMax) && k_.brk != "mig-before-credits") {
+        ++mw;
+        continue;
+      }
+      mw = mig_wait_.erase(mw);
+      {
+      Warp &x = warps_[w];
+      const auto &recs = k_.orcs[w].recs;
+      Bits g = msgOf(c.fet_pca);
+      put(g, c.fet_pca, "warp_id", w);
+      const FieldDesc &lp = field(c.fet_pca, "lane_pcs");
+      const unsigned lw = lp.width / kLanes;
+      uint64_t upper = 0;
+      for (unsigned l = 0; l != kLanes; ++l) {
+        uint64_t pc = recs.empty() ? 0 : recs.back().pc;
+        if (x.rewound >> l & 1u) {
+          pc = x.lane_pc[l];
+        } else {
+          for (size_t i = x.next; i < recs.size(); ++i)
+            if (recs[i].mask >> l & 1u) { pc = recs[i].pc; break; }
         }
-        put(g, c.fet_pca, "pc_upper", upper);
-        // The live lanes after the beats (AR's response TI-27 (b)): every lane
-        // a beat names is live again, which undoes an exit the squash took
-        // back. Exact by then, so held to the boundary's mask.
-        // beats-dead: FET keeps the lanes its fetched exits cleared.
-        const uint32_t live = x.lanes | (k_.brk == "beats-dead" ? 0u : x.rewound);
-        // The boundary by instruction: a cracked one's later uop (TI-36)
-        // names its instruction, which a restore runs again whole.
-        size_t bi = x.next;
-        if (x.boundary_tid)
-          for (size_t i = 0; i != recs.size(); ++i)
-            if (warpSeq(w, recs[i].seq) == uidSeq(x.boundary_tid)) { bi = i; break; }
-        if (bi < x.lanes_at.size() && live != x.lanes_at[bi])
-          k_.fail("fet: warp %u's live mask after the beats is %08x; at its boundary, %08x", w, live,
-                  x.lanes_at[bi]);
-        put(g, c.fet_pca, "live_mask", live);
-        // The fairness state (TI-27 (c)): FET cannot know the boundary's, so it
-        // keeps its pointer, moved on to a live lane, and saturates the
-        // counter, so lane r's group takes the first pick after the restore.
-        unsigned ptr = x.fair_ptr;
-        for (unsigned i = 0; live && !(live >> ptr & 1u) && i != kLanes; ++i) ptr = (ptr + 1) % kLanes;
-        put(g, c.fet_pca, "fair_ptr", ptr);
-        put(g, c.fet_pca, "fair_cnt", fair_n_);
-        k_.parked[w].rewound = x.rewound == ~0u;
-        if (k_.parked[w].rewound) k_.hit("rewound");
-        // The trace identity of where it resumes rides with the PCs to PCA,
-        // and back on a restore (trace-only).
-        const uint64_t at = x.boundary_tid ? x.boundary_tid
-                            : x.next < recs.size() ? instrUid(warpSeq(w, recs[x.next].seq)) : 0;
-        pca_q_.push_back({g, at});
+        g.set(lp.lsb + l * lw, lw, pc >> 1);
+        upper = pc >> ccv::kWPcWindow;
+      }
+      put(g, c.fet_pca, "pc_upper", upper);
+      // The live lanes after the beats (AR's response TI-27 (b)): every lane
+      // a beat names is live again, which undoes an exit the squash took
+      // back. Exact by then, so held to the boundary's mask.
+      // beats-dead: FET keeps the lanes its fetched exits cleared.
+      const uint32_t live = x.lanes | (k_.brk == "beats-dead" ? 0u : x.rewound);
+      // The boundary by instruction: a cracked one's later uop (TI-36)
+      // names its instruction, which a restore runs again whole.
+      size_t bi = x.next;
+      if (x.boundary_tid)
+        for (size_t i = 0; i != recs.size(); ++i)
+          if (warpSeq(w, recs[i].seq) == uidSeq(x.boundary_tid)) { bi = i; break; }
+      if (bi < x.lanes_at.size() && live != x.lanes_at[bi])
+        k_.fail("fet: warp %u's live mask after the beats is %08x; at its boundary, %08x", w, live,
+                x.lanes_at[bi]);
+      put(g, c.fet_pca, "live_mask", live);
+      // The fairness state (TI-27 (c)): FET cannot know the boundary's, so it
+      // keeps its pointer, moved on to a live lane, and saturates the
+      // counter, so lane r's group takes the first pick after the restore.
+      unsigned ptr = x.fair_ptr;
+      for (unsigned i = 0; live && !(live >> ptr & 1u) && i != kLanes; ++i) ptr = (ptr + 1) % kLanes;
+      put(g, c.fet_pca, "fair_ptr", ptr);
+      put(g, c.fet_pca, "fair_cnt", fair_n_);
+      k_.parked[w].rewound = x.rewound == ~0u;
+      if (k_.parked[w].rewound) k_.hit("rewound");
+      // The trace identity of where it resumes rides with the PCs to PCA,
+      // and back on a restore (trace-only).
+      const uint64_t at = x.boundary_tid ? x.boundary_tid
+                          : x.next < recs.size() ? instrUid(warpSeq(w, recs[x.next].seq)) : 0;
+      pca_q_.push_back({g, at});
       }
     }
     if (!pca_q_.empty() && can(c.fet_pca, 0)) {
@@ -5250,6 +5320,12 @@ private:
         if (pred_taken) k_.hit("fet_perfect_taken");
         if (perfect_ && mispredict) k_.hit("fet_perfect_split");
       }
+      // OA-455: nothing for a warp from its epoch notice (demote or kill)
+      // until its restore activates, so a uop sent before the notice is in
+      // the old epoch and dropped, and a restore needs no epoch advance.
+      if (warps_[w].stopped || warps_[w].restoring)
+        k_.fail("fet: warp %u sent seq %llu between its epoch notice and its restore", w,
+                (unsigned long long)r.seq);
       send(c.fet_dec, s, f, instrUid(warpSeq(w, r.seq)));
       if (!k_.fetched) { k_.fetched = true; k_.first_fetch = now_; }
       if (r.kind == "return") k_.hit("ret");
@@ -5623,8 +5699,17 @@ private:
     const FabDesc &acks = Stub::fab("kill_ack");
     for (unsigned i = 0; i != acks.nblks; ++i)
       if (fabIn("kill_ack", i) && fabIn("kill_ack_epoch", i) == kill_epoch_) kill_acked_ |= 1u << i;
-    k_.kill_unacked = ((1u << acks.nblks) - 1) & ~kill_acked_;
+    // A machine-check kill waits for no ack from MIU (AR 387, AR 389; RAU
+    // spec rev 63): a committed store whose merge read DCU withheld never
+    // drains, and the core is dead until the host resets it. The model
+    // still holds the other seven owners to theirs.
+    uint32_t need = (1u << acks.nblks) - 1;
+    if (mce_kill_)
+      for (unsigned i = 0; i != acks.nblks; ++i)
+        if (acks.blks[i] == Blk::MIU) need &= ~(1u << i);
+    k_.kill_unacked = need & ~kill_acked_;
     if (k_.kill_unacked) return;
+    if (mce_kill_) k_.mce_done = true;
     // Every owner has quiesced: the killed warps hold nothing anywhere.
     for (unsigned w = 0; w != 32; ++w) {
       if (!(kill_mask_ >> w & 1u)) continue;
@@ -6407,12 +6492,25 @@ static std::unique_ptr<Block> makeRcu(int inst, Kernel &k) {
 /// MA's Phase 1 DCU resource model (sim/dcu/dcu_p1.cpp; MA-21, DA rev 125):
 /// the stub's function with the banks' timing, for Phase 1's sweeps.
 /// CCV_DCU_IMPL=p1 selects it; the stub stays the default and the reference.
+/// DI's DCU model (sim/dcu/dcu_block.cpp, dcu_core.cpp; DI-1): CCV_DCU_IMPL=model.
 std::unique_ptr<Block> makeDcuP1(int inst, Kernel &k);
+std::unique_ptr<Block> makeDcuModel(int inst, Kernel &k);
 
 static std::unique_ptr<Block> makeDcu(int inst, Kernel &k) {
   const char *impl = std::getenv("CCV_DCU_IMPL");
   if (impl && std::string(impl) == "p1") return makeDcuP1(inst, k);
+  if (impl && std::string(impl) == "model") return makeDcuModel(inst, k);
   return std::make_unique<Dcu>(inst, k);
+}
+
+/// MI's MIU model (sim/miu/miu_block.cpp; MI-1). CCV_MIU_IMPL=model selects
+/// it; the stub stays the default and the reference until MI's M0.
+std::unique_ptr<Block> makeMiuModel(int inst, Kernel &k);
+
+static std::unique_ptr<Block> makeMiu(int inst, Kernel &k) {
+  const char *impl = std::getenv("CCV_MIU_IMPL");
+  if (impl && std::string(impl) == "model") return makeMiuModel(inst, k);
+  return std::make_unique<Miu>(inst, k);
 }
 
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
@@ -6423,7 +6521,7 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   case Blk::OOE:  return makeOoe(inst, k);          // ooe.cpp
   case Blk::RCU:  return makeRcu(inst, k);          // CCV_RCU_IMPL
   case Blk::LANE: return std::make_unique<Lane>(inst, k);
-  case Blk::MIU:  return std::make_unique<Miu>(inst, k);
+  case Blk::MIU:  return makeMiu(inst, k);          // CCV_MIU_IMPL
   case Blk::DCU:  return makeDcu(inst, k);          // CCV_DCU_IMPL
   case Blk::MLC:  return std::make_unique<Mlc>(inst, k);
   case Blk::EXB:  return std::make_unique<Exb>(inst, k);
@@ -6667,7 +6765,10 @@ bool KernelEnd::after(uint64_t c, Kernel &k, Machine &m) {
   bool in_flight = false;
   for (unsigned s = 0; s != kNumSlots && !in_flight; ++s)
     in_flight = m.tx(s).sent() != m.rx(s).received();
-  if (c >= kReset && k.exited() && k.busy == 0 && !in_flight) {
+  // A machine-checked core may end with MIU still holding a store whose
+  // merge read DCU withheld (AR 389: RAU waits for no ack from MIU on that
+  // kill): nothing is in flight, and the host resets the core.
+  if (c >= kReset && k.exited() && (k.busy == 0 || k.mce_done) && !in_flight) {
     if (!finished) finish = c;
     finished = true;
     ++quiet;

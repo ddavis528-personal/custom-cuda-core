@@ -17,11 +17,20 @@
 // unlimited by default), CCV_P1_STRICT=1 (a hit that waited at its bank answers
 // CCV_P1_PAD = 5 cycles later still, past the stub's slack, so it loses the
 // contract as the spec says; 0 lets the stub's slack absorb short waits,
-// the optimistic bound), CCV_P1_WAYPRED = 0 | 3 | 4 (MA-23 (C2): fold bits of
+// the optimistic bound), CCV_P1_WAYPRED = 0 | 1..16 (MA-23 (C2): fold bits of
 // a per-way partial tag; a hit on a mispredicted way takes a second bank
 // access and answers 1 cycle late, or CCV_P1_PAD under STRICT),
+// CCV_P1_WPSEL = index | recent (among the ways whose fold matches, the
+// predictor picks the lowest way index, or the most recently used; AR 381),
 // CCV_P1_LDFIRST = 0 | 1 (a bank takes an on-time load before an on-time
-// store; the store waits as deferred work). Its measures
+// store; the store waits as deferred work), CCV_P1_DEFCAP (under (b), a
+// bank holding this many entries with data takes a store as a lookup instead
+// of deferring it, and queues no store past it: the store re-passes and its
+// data stays in MIU; unlimited by default), CCV_P1_CREDIT=1 (MA-24 on AR
+// 382: MIU holds per-bank credits, QDEPTH entries and DEFCAP store-data
+// entries, a hard reservation that counts direct winners too; a request
+// without its credit waits in MIU, in order, and is sent CCV_P1_CRWAIT = 2
+// cycles after the credit returns at the earliest). Its measures
 // print as the P1 line (coverage p1_*).
 //
 // The banks' waiters are held without limit, so the occupancy histogram
@@ -56,6 +65,8 @@ public:
     store_ = st == "af" ? kStAF : st == "b" ? kStB : kStA;
     v = std::getenv("CCV_P1_ARB");
     rot_ = v && std::string(v) == "rot";
+    v = std::getenv("CCV_P1_WPSEL");
+    wprecent_ = v && std::string(v) == "recent";
     hash_ = envU("CCV_P1_HASH", 0) != 0;
     age_ = envU("CCV_DCU_BANK_AGE", ccv::prov::kDcuBankAge);
     gap_ = envU("CCV_P1_GAP", 4);
@@ -64,7 +75,11 @@ public:
     repass_ = envU("CCV_P1_REPASS", 6);
     pad_ = envU("CCV_P1_STRICT", 0) ? envU("CCV_P1_PAD", 5) : 0;
     wp_ = envU("CCV_P1_WAYPRED", 0);
+    if (wp_ > 16) wp_ = 16;
     ldfirst_ = envU("CCV_P1_LDFIRST", 0) != 0;
+    defcap_ = envU("CCV_P1_DEFCAP", 1u << 30);
+    credit_ = envU("CCV_P1_CREDIT", 0) != 0;
+    crwait_ = envU("CCV_P1_CRWAIT", 2);
     banks_ = envU("CCV_DCU_BANKS", ccv::kDcuBanks);
     if (!banks_ || (banks_ & (banks_ - 1))) banks_ = ccv::kDcuBanks;
     lb_ = unsigned(__builtin_ctz(banks_));
@@ -250,11 +265,12 @@ private:
 
   void work() override {
     const Ch &c = ch();
+    releaseCredits();   // older held requests take returned credits first
     for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
       while (has(c.miu_dcu, s)) {
         Receiver::Msg m = take(c.miu_dcu, s);
         checkIndexLead(s, m.payload);
-        arrive(Op{s, m.payload, m.tid});
+        offer(Op{s, m.payload, m.tid});
       }
     while (!again_.empty() && again_.front().first <= now_) {
       const uint64_t pl = lineOf(again_.front().second.req);
@@ -458,11 +474,88 @@ private:
   bool rot_ = false, hash_ = false;
   unsigned age_ = 16, gap_ = 4, dlat_ = 0, pad_ = 0, banks_ = 8, lb_ = 3;
   unsigned wp_ = 0;   ///< CCV_P1_WAYPRED: way-prediction fold bits, 0 off
+  bool wprecent_ = false;   ///< CCV_P1_WPSEL=recent: most recent fold match
   bool ldfirst_ = false;   ///< CCV_P1_LDFIRST: on-time loads beat on-time stores
+  unsigned defcap_ = 1u << 30;   ///< CCV_P1_DEFCAP: a bank's cap on entries holding data
+  bool credit_ = false;          ///< CCV_P1_CREDIT: MIU-held per-bank credits (MA-24)
+  unsigned crwait_ = 2;          ///< CCV_P1_CRWAIT: a held request's earliest send
+  /// Requests MIU holds for a credit, per bank, oldest first, with the
+  /// cycle each may first go.
+  std::vector<std::deque<std::pair<uint64_t, Op>>> cr_;
+  bool isStore(const Op &o) const {
+    return !isRead(unsigned(get(o.req, ch().miu_dcu, "coh_op")));
+  }
+  /// Entry credits in use: lookups waiting in the bank and this cycle's
+  /// arrivals. Store-data credits in use: a store's deferred read or write,
+  /// a store waiting as a lookup, and stores arriving this cycle.
+  size_t entriesUsed(unsigned b) const {
+    size_t n = arr_.size() > b ? arr_[b].size() : 0;
+    for (const Acc &a : bq_[b]) n += a.k == Acc::kLook;
+    return n;
+  }
+  size_t storeDataUsed(unsigned b) const {
+    size_t n = 0;
+    if (arr_.size() > b)
+      for (const Op &o : arr_[b]) n += isStore(o);
+    for (const Acc &a : bq_[b])
+      n += a.k == Acc::kStoreW || a.k == Acc::kStoreR || (a.k == Acc::kLook && isStore(a.op));
+    return n;
+  }
+  bool hasCredit(unsigned b, const Op &o) const {
+    return entriesUsed(b) < qdepth_ && (!isStore(o) || storeDataUsed(b) < defcap_);
+  }
+  /// MIU's send under CCV_P1_CREDIT: a request goes only with its credits
+  /// and only if nothing it must follow is held (an older held request to
+  /// its line, or for a store an older held store to its bank).
+  void offer(const Op &o) {
+    if (!credit_) { arrive(o); return; }
+    if (arr_.size() != banks_) arr_.resize(banks_);
+    if (cr_.size() != banks_) cr_.resize(banks_);
+    const uint64_t pa = lineOf(o.req);
+    const unsigned b = bankOf(pa);
+    bool follow = false;
+    for (const auto &h : cr_[b])
+      follow |= lineOf(h.second.req) == pa || (isStore(o) && isStore(h.second));
+    if (!follow && hasCredit(b, o)) { arrive(o); return; }
+    k_.hit(isStore(o) ? "p1_credit_hold_st" : "p1_credit_hold_ld");
+    born_.emplace(get(o.req, ch().miu_dcu, "req_id"), now_);
+    cr_[b].push_back({now_ + crwait_, o});
+  }
+  /// Held requests go oldest first as their credits come back. A store held
+  /// and then sent is the coverage point MA-24 (4) names.
+  void releaseCredits() {
+    if (!credit_ || cr_.size() != banks_) return;
+    if (arr_.size() != banks_) arr_.resize(banks_);
+    for (unsigned b = 0; b != banks_; ++b) {
+      std::deque<std::pair<uint64_t, Op>> &q = cr_[b];
+      std::vector<uint64_t> lines;
+      bool storeHeld = false;
+      for (size_t i = 0; i != q.size();) {
+        const Op &o = q[i].second;
+        const uint64_t pa = lineOf(o.req);
+        const bool blocked = std::find(lines.begin(), lines.end(), pa) != lines.end() ||
+                             (isStore(o) && storeHeld);
+        if (!blocked && q[i].first <= now_ && hasCredit(b, o)) {
+          if (isStore(o)) k_.hit("p1_credit_hold_then_sent");
+          const Op go = o;
+          q.erase(q.begin() + long(i));
+          arrive(go);
+          continue;
+        }
+        lines.push_back(pa);
+        storeHeld |= isStore(o);
+        ++i;
+      }
+      size_t sd = storeDataUsed(b);
+      k_.peak("p1_store_data_peak", sd);
+    }
+  }
 
   /// Way prediction (MA-23 (C2), AR 376-378): each way keeps a wp_-bit XOR
-  /// fold of its tag; the payload's PA fold picks the first valid way that
-  /// matches, and the data read starts on it. A hit whose predicted way is
+  /// fold of its tag; the payload's PA fold picks the valid way that matches
+  /// (the lowest way index, or under CCV_P1_WPSEL=recent the most recently
+  /// used: an age compare over L1's true LRU stamps), and the data read
+  /// starts on it. A hit whose predicted way is
   /// wrong re-reads on the full compare's way: one more bank access, and a
   /// hit one cycle past its contract (CCV_P1_STRICT: past the stub's slack).
   /// Returns the cycles the hit is delayed, 0 when predicted right.
@@ -475,11 +568,13 @@ private:
     };
     const Way *set = &l1_[size_t((pa / kLine) % sets_) * ways_];
     const uint64_t f = fold(pa);
+    const Way *pick = nullptr;
     for (unsigned i = 0; i != ways_; ++i)
       if (set[i].valid && fold(set[i].line) == f) {
-        if (set[i].line == pa) { k_.hit("p1_wp_right"); return 0; }
-        break;
+        if (!pick || (wprecent_ && set[i].used > pick->used)) pick = &set[i];
+        if (!wprecent_) break;
       }
+    if (pick && pick->line == pa) { k_.hit("p1_wp_right"); return 0; }
     k_.hit("p1_wp_wrong");
     bfree_[bankOf(pa)] += 2;
     return pad_ ? pad_ : 1;
@@ -531,6 +626,14 @@ private:
     defer(Acc::kStoreW, line, read_at + gap_);
     if (store_ != kStAF) ++held_[line];
   }
+  /// Entries of bank b that hold a line or a store's data and mask.
+  size_t dataHeld(unsigned b) const {
+    size_t n = 0;
+    for (const Acc &a : bq_[b])
+      n += a.k == Acc::kFillW || a.k == Acc::kStoreW || a.k == Acc::kStoreR ||
+           (a.k == Acc::kLook && !isRead(unsigned(get(a.op.req, ch().miu_dcu, "coh_op"))));
+    return n;
+  }
   bool held(uint64_t line) const {
     auto it = held_.find(line);
     return it != held_.end() && it->second;
@@ -557,6 +660,13 @@ private:
       // line stays held and starves it).
       bool contested = olderSameLine(bankOf(pa), pa) || held(pa) || repassing(pa);
       for (const Op &e : arr_[bankOf(pa)]) contested |= lineOf(e.req) == pa;
+      // CCV_P1_DEFCAP: a bank whose entries holding data are at the cap
+      // takes the store as a lookup instead (bounded storage, MA-6); it
+      // waits in the bank only below the cap, else re-passes (schedule()).
+      if (!credit_ && !contested && dataHeld(bankOf(pa)) >= defcap_) {
+        contested = true;
+        k_.hit("p1_defcap");
+      }
       if (wy.valid && wy.line == pa && wy.owned && !contested) {
         mergeInto(wy.data, o.req);
         wy.dirty = true;
@@ -667,6 +777,7 @@ private:
   }
   void schedule() {
     if (arr_.size() != banks_) arr_.resize(banks_);
+    size_t dsum = 0;
     for (unsigned b = 0; b != banks_; ++b) {
       std::vector<Op> &in = arr_[b];
       std::stable_sort(in.begin(), in.end(),
@@ -735,7 +846,13 @@ private:
       for (const Acc &a : bq_[b]) waiting += a.k == Acc::kLook;
       for (const Op &o : in) {
         k_.hit("p1_lost");
-        if (waiting < qdepth_) {
+        // CCV_P1_DEFCAP also bounds a store that waits as a lookup: it holds
+        // its data and mask here, so at the cap it re-passes and its data
+        // stays in MIU (RH on MA-7: else the cap never bounds data_peak).
+        const bool capped = !credit_ &&
+            !isRead(unsigned(get(o.req, ch().miu_dcu, "coh_op"))) && dataHeld(b) >= defcap_;
+        if (capped) k_.hit("p1_defcap_repass");
+        if (waiting < qdepth_ && !capped) {
           bq_[b].push_back({Acc::kLook, bornOf(o), now_, lineOf(o.req), o});
           ++waiting;
         } else {
@@ -750,12 +867,24 @@ private:
       for (const Acc &a : bq_[b]) looks += a.k == Acc::kLook;
       k_.hit(occBin(looks));
       k_.peak("p1_defer_peak", bq_[b].size());
+      // Entries that hold a line or a store's data and mask (MA-5 area): a
+      // fill or store write, a store's read, a store lookup; peak per bank,
+      // and summed over the banks each cycle.
+      const size_t data = dataHeld(b);
+      k_.peak("p1_data_peak", data);
+      dsum += data;
     }
+    k_.peak("p1_data_sum_peak", dsum);
   }
 
+  bool crBusy() const {
+    for (const auto &q : cr_)
+      if (!q.empty()) return true;
+    return false;
+  }
   bool busy() const override {
     if (!q_.empty() || !miss_.empty() || !to_mlc_.empty() || !to_miu_.empty() ||
-        !promised_.empty() || !timed_.empty() || !again_.empty())
+        !promised_.empty() || !timed_.empty() || !again_.empty() || crBusy())
       return true;
     for (const auto &q : bq_)
       if (!q.empty()) return true;

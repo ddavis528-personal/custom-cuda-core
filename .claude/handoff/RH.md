@@ -64,8 +64,58 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
   `table.py A0 A0=~/ccv-logs/oi427 E=~/ccv-logs/oi428 --ctr=stall.decq,stall.decq_warp_max` (labels: A0 is OI's A).
   Ruling: S1 <= +0.5% -> OA, else DA. Do not drop rh-oi427b before 428 done.
 - OA-427 S1 + cm32priv A0/A/B SENT 05:40Z (B S1 +0.002%; A0 == A exactly). OA-428 S1 SENT 05:55Z: E +0.946% (DA rules); stall.decq* 0.
-  cm128priv for both now after MA-4 (~12:00-14:30Z); OI told. OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
-- MA-4 early SENT 06:35Z: b wait_max fixed (198/588), b cycles unchanged (q0 identical, q2 -5). Next: a.q8 cm128 ~09:00Z.
+  OA-427 cm128priv DONE + full table SENT 13:33Z (B +0.420%, C 0, D=B, A0==A). OA-428 cm128priv E +1.118% SENT 13:46Z. Both DONE; worktrees rh-oi427/rh-oi427b dropped 13:47Z; logs ~/ccv-logs/oi427,oi428 REMOVED 11-19 22:15Z. OA-427 cm32priv all SENT (C=0, D=B). OA-428 cm32priv E +3.575% SENT.
+- MA-4 DONE and SENT 11:40Z (27/27 clean; control == MA-3 exactly; a.q8 cm128 -4.69% best, a.q16 +0.33% vs q8; ldf neutral).
+  Table ~/ccv-logs/ma4/table.md. rh-ma4 dropped after MA-5; logs kept.
+  Parser fix 11:50Z: p1_q09_15/p1_q16up were missed (a.q16 'max 8' wrong; corrected to MA). ma2-5 table.py fixed.
+- OI OA-448 (2) bar_pend: final at c2adfe83 DONE+SENT 12:31Z (P1=P2 S1 +0.083%, kernels same as 31bf; bar_pend ~2x). 31bf run (logs oi448b-31bf) SENT 12:28Z (P1=P2: S1 +0.067%, layernorm -6.1%, sgemm -1.2%, cta-reduce +0.12%; P0=D0). Was: from 12:20Z: rh-jobs/oi448/oi448b.sh, worktree rh-oi448b at c2adfe83 (OI corrections: 42e8ee74 -> 31bf4b1e -> c2adfe83); P0 default (must = D0),
+  P1 bar_pend=1, P2 bar_pend=1,bar_buf_depth=2; same set. Table python3 rh-jobs/oi448/table_b.py (bar_pend/bar_port/bar_buf). ~12:45Z.
+- OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
+  (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
+  from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
+- OI OA-451 RUNNING from 00:38Z 11-20: streaming demote walk, rh-jobs/oi451/oi451.sh (resumable), worktree rh-oi451 at 367bc942 (OI said 3e9bb31b, not on the branch; 367bc942 is the matching tip; was b7b3ce5d);
+  A defaults, B demote_walk=1,beat_merge=0; S1+cm32p+cm128p; AF/BF = +demote_fallback/mlc_miss/barrier=8 on cm128p only. Table
+  python3 rh-jobs/oi451/table.py (demote, rewind_beats/walk_cycles hists, redirect_walk/busy, walk_flushed, decq_full). Ruling S1 <= 0.5%.
+  ~02:50Z. Keep rh-oi451 until OI reads. Container restarted ~00:37Z 11-20 (nothing running).
+- OI OA-449 DONE+SENT 22:52Z: why layernorm/sgemm gain under bar_pend: P0/P1 at c2adfe83 in rh-oi449 (rh-jobs/oi449/oi449.sh, diff.py ->
+  ~/ccv-logs/oi449/diff.md). Same barriers/retired; layernorm rename.one_warp_short -234 (= -232 cyc), decq_full -480, credit_wait -614;
+  sgemm hold.registered.barrier -244. No per-warp split in stats. rh-oi449 released and dropped 23:14Z (written up as OI-185); logs ~/ccv-logs/oi449 to drop 11-20 22:30Z.
+- OI OA-447 (re:OI-179 (3)) RUNNING from 11:59Z: rh-jobs/oi447/oi447.sh (resumable), A=99ee28168b (rh-oi447a), B=582fedae14 (rh-oi447),
+  C=582f + redirect_send_lag=2; oracles shared (symlinked). S1 + cm32priv + cm128priv (cm128 lock). Table: python3 rh-jobs/oi427/table.py
+  A A=~/ccv-logs/oi447 B=... C=... --ctr=redirect.send_lagged; report Δ B vs A and C vs B (C vs B 0.5% S1). S1+cm32priv SENT 12:46Z: B=A exactly; C vs B S1 +1.420% (-> DA), cm32p +3.721%. cm128priv DONE+SENT 13:31Z: B=A, C +0.899%. OI 22:41Z: + D = redirect_send_lag=1 DONE+SENT 23:12Z: S1 +0.720%, cm32p +1.903%, cm128p +0.527% vs B (half of C; still > 0.5% -> DA). OI 22:19Z: rh-oi443/oi448/oi448b dropped; KEEP rh-oi447 + rh-oi447a until DA rules on redirect_send_lag. Logs kept (oi443, oi447, oi448, oi448b, oi448b-31bf) +1 day after release.
+  Container restart ~11:58Z 11-19 (nothing was running).
+- OI OA-443 (re:OI-176) from 09:28Z: rh-jobs/oi443/oi443.sh (resumable), worktree rh-oi443 at 14526054 (gate-scratch/OI),
+  A slot_verdict_lag=0, B defaults (1). S1 + cm32priv + cm128priv (cm128 lock after AR). Table: python3 rh-jobs/oi427/table.py A
+  A=~/ccv-logs/oi443 B=~/ccv-logs/oi443 --ctr=demote,kill,demote.refused. DONE+SENT 10:35Z: B == A cycle-identical on all
+  (+0.000%); but demote=0/restored=0 on cm128priv (triggers fire 4,520) -> demote path unpriced, flagged. Keep rh-oi443 until OI releases.
+- AR 386 DONE+SENT 09:47Z: (a) wp0 and (b) wp5 recent both 5,634,717 (wp_wrong 0); (a) equals AR's earlier hit-7 figure exactly
+  (flagged; offered a hit-7 rerun). Worktree dropped; logs ~/ccv-logs/ar386.
+- MA-8 part 1 DONE+SENT 07:20Z (a8 -0.09% best but worst wait 117 vs 96; a32/a64 +1%). Part 2 DONE+SENT 08:12Z: HASH=1 +2.90% cm128
+  (tail worse), S1 no kernel >1%; transp4 the only pow2-stride kernel, too light. No a16.h1 (outside ±0.2%). MA-8 DONE; worktree dropped;
+  logs ~/ccv-logs/ma8/11dc (table1.md, table2.md).
+- MA-8 from 04:25Z 11-19 (MA: MA-7 decided as MA-24 = b, q16, DEFCAP 12, GAP 5): rh-jobs/ma8/ma8.sh <sha> <tag> "<cm32>"
+  "<cm128>" "<S1>" (suffix .aN BANK_AGE, .hN HASH, plus .gN .dN), worktree rh-ma8-11dc, logs ~/ccv-logs/ma8/11dc.
+  Part 1: BANK_AGE 16 (ref, must = MA-7 d12 5,136,180), 8, 32, 64 on S1 + cm128 (~07:30Z). Part 2: HASH=1 at best age (or 16
+  if flat), S1 + cm128; HASH=0 is the part-1 row. Report: table per part (python3 rh-jobs/ma8/table.py <logdir>, adds wait_mean;
+  p1_wait_max = worst lookup wait) + knee; part 2: kernels moving >1% (python3 rh-jobs/ma8/s1diff.py <logdir> <ref> <pt>) and
+  whether each is a power-of-2-stride kernel; say if none in the set. MA wants no logs.
+- MA-7 DONE and SENT 04:20Z 11-19 (all clean): DEFCAP curve at 11dcec83 (b.q16, GAP=5, cm128): knee at 12 (5,136,180, -0.57% vs
+  uncapped, -1.37% vs a.q16.g5, data_sum_peak 99 < a's 115); d8/d6 -0.26%; d4 +0.84% (= a). data_peak over cap +0..+5 as cap tightens.
+  Worktrees dropped; logs ~/ccv-logs/ma7/{8504,11dc} kept (table.md). Scripts rh-jobs/ma7 (ma7.sh suffix .gN GAP .dN DEFCAP).
+- MA-6 DONE and SENT 21:53Z (all clean; 2554 reruns == MA-5; gap5: a.q8.rot +0.71%, b.q16 +0.47%; data_peak b 41-43/sum 270, a 18/109).
+  Worktrees dropped; logs ~/ccv-logs/ma6/{c94f,2554} kept. Was: rh-jobs/ma6/ma6.sh <commit> <tag> "<cm32 pts>" "<cm128 pts>" (worktree rh-ma6-<tag>, logs ~/ccv-logs/ma6/<tag>,
+  cm128 serialized by flock rh-jobs/cm128.lock). Tag c94f (c94f0ae6) from 17:35Z: cm32 b.q16.fixed; cm128 b.q16.rot b.q12.fixed (~19:10Z).
+  Tag 2554 (2554709e = c94f0ae6 + WPSEL knob + p1_data_peak/p1_data_sum_peak, launched 18:10Z): cm128 a.q8.rot b.q8.rot;
+  a.q8.rot/b.q8.rot == MA-5 (SENT). cand = b.q16.fixed (rot only -0.068%). +MA 20:16Z: gap-5 pair a.q8.rot.g5 b.q16.fixed.g5
+  via rh-jobs/ma6/ma6g.sh (CCV_P1_GAP=5; TI-483), ~22:05Z; send Δ vs gap 4. rh-ma6-c94f dropped.
+  rh-jobs/ma6/cand.sh queued the candidate there after c94f b.q16.rot (writes ~/ccv-logs/ma6/cand). Check cycles == MA-5.
+  Table: python3 rh-jobs/ma6/table.py ~/ccv-logs/ma6/<tag> (needs points file). At new sha also cm128 b.q16.fixed (or b.q16.rot if c94f b.q16.rot beats MA-5 b.q16 5,141,670 by >0.1%); no other 1-3 reruns.
+  Table: python3 rh-jobs/ma5/table.py <logdir> with a points file (write one per tag).
+- MA-5 DONE and SENT 17:32Z (all clean; b.q16 -1.11% vs a.q8, b not at knee at 8; a knee at 8). rh-ma4 dropped 17:33Z; logs kept.
+  Was: MA-5 from 11:50Z at c94f0ae6 in rh-ma4: rh-jobs/ma5/ma5.sh (no arg), ~/ccv-logs/ma5. S1 b.q8.fixed/b.q8.rot;
+  cm32 b.q8.fixed b.q8.rot a.q8.rot now; cm128 b.q8.fixed b.q8.rot a.q8.rot b.q16.fixed b.q6.fixed a.q6.fixed after OI's
+  oi428 exits (cm128 started 13:46Z, ~38 min each, ~17:35Z). Send cm32+S1 early, cm128 1-3 ~17:30Z, all at end with q histogram:
+  python3 rh-jobs/ma5/table.py (histogram rows for q8/q16 points appended).
 - OI OA-427 RUNNING from 05:05Z (OI-164 opt 2): rh-jobs/oi427/oi427.sh, worktrees rh-oi427 (15ef1bd4, A/B/C/D) and
   rh-oi427b (5e1f3789, A0; oracles symlinked from rh-oi427, inputs identical). ~/ccv-logs/oi427. S1 (ruling: B <= +0.5%) + cm32priv
   now; cm128priv waits for ma3/ma4. Send S1 early. Table: cycles, IPC, Δ% vs A; A0==A; branch.free_held/kept/withdrawn.
