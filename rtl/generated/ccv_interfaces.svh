@@ -33,7 +33,7 @@
 //   csr_credit       out  star      Credit return for the CSR channel.
 //   clk_gated        out  observe   CCV_CHECK only: the block's clock gate is closed this cycle.
 
-localparam int CCV_NUM_CHANNELS = 55;
+localparam int CCV_NUM_CHANNELS = 56;
 
 // fet -> dec, 8/cycle
 localparam int CCV_CH_FET_DEC_INSTR = 0;
@@ -137,14 +137,16 @@ localparam int CCV_CH_SYU_RAU_READY = 48;
 localparam int CCV_CH_RAU_SYU_ALLOC = 49;
 // ooe -> cru, 1/cycle
 localparam int CCV_CH_OOE_CRU_FAULT = 50;
+// dcu -> cru, 1/cycle
+localparam int CCV_CH_DCU_CRU_ERR = 51;
 // cru -> rau, 1/cycle
-localparam int CCV_CH_CRU_RAU_CFG = 51;
+localparam int CCV_CH_CRU_RAU_CFG = 52;
 // EXTERNAL -> exb, 1/cycle
-localparam int CCV_CH_EXT_EXB_IN = 52;
+localparam int CCV_CH_EXT_EXB_IN = 53;
 // dcu -> miu, 4/cycle
-localparam int CCV_CH_DCU_MIU_FILL_NTC = 53;
+localparam int CCV_CH_DCU_MIU_FILL_NTC = 54;
 // miu -> ooe, 4/cycle
-localparam int CCV_CH_MIU_OOE_CMPL_HINT = 54;
+localparam int CCV_CH_MIU_OOE_CMPL_HINT = 55;
 
 // Payload structs, for channels whose every field has a
 // decided width. A channel missing one generates no struct --
@@ -650,6 +652,11 @@ typedef struct packed {
 } ccv_ooe_cru_fault_t;
 
 typedef struct packed {
+  logic                                          ue;
+  logic                                          ce_alert;
+} ccv_dcu_cru_err_t;
+
+typedef struct packed {
   logic [ccv_params_pkg::CCV_W_CSR-1:0]          demotion_threshold;
   logic [ccv_params_pkg::CCV_W_CSR-1:0]          progress_threshold;
   logic                                          launch_enable;
@@ -672,8 +679,8 @@ typedef struct packed {
 } ccv_miu_ooe_cmpl_hint_t;
 
 // Ports per block, derived from the channel list.
-localparam int CCV_PORTS_CRU = 2;  // 1 in, 1 out
-localparam int CCV_PORTS_DCU = 7;  // 3 in, 4 out
+localparam int CCV_PORTS_CRU = 3;  // 2 in, 1 out
+localparam int CCV_PORTS_DCU = 8;  // 3 in, 5 out
 localparam int CCV_PORTS_DEC = 2;  // 1 in, 1 out
 localparam int CCV_PORTS_EXB = 4;  // 2 in, 2 out
 localparam int CCV_PORTS_FET = 13;  // 9 in, 4 out

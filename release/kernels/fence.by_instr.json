@@ -262,7 +262,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 52,
+    "channel_id": 53,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -278,7 +278,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 52,
+    "channel_id": 53,
     "payload_lo": 0,
     "payload_hi": 0
    }

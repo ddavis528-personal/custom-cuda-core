@@ -521,6 +521,10 @@ inline constexpr FieldDesc kF_ccv_ooe_cru_fault[] = {
   {"cta_slot", 5, 3, false},
   {"warp_id", 0, 5, false},
 };
+inline constexpr FieldDesc kF_ccv_dcu_cru_err[] = {
+  {"ue", 1, 1, false},
+  {"ce_alert", 0, 1, false},
+};
 inline constexpr FieldDesc kF_ccv_cru_rau_cfg[] = {
   {"demotion_threshold", 42, 32, false},
   {"progress_threshold", 10, 32, false},
@@ -592,12 +596,13 @@ inline constexpr ChanDesc kChans[] = {
   {48, "ccv_syu_rau_ready", Blk::SYU, Blk::RAU, 1, 5, 1, kF_ccv_syu_rau_ready, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
   {49, "ccv_rau_syu_alloc", Blk::RAU, Blk::SYU, 1, 58, 7, kF_ccv_rau_syu_alloc, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
   {50, "ccv_ooe_cru_fault", Blk::OOE, Blk::CRU, 1, 172, 6, kF_ccv_ooe_cru_fault, 1, false, 0, Order::kNone, -1, false, 2, -1, false, false, 4, 8192},
-  {51, "ccv_cru_rau_cfg", Blk::CRU, Blk::RAU, 1, 74, 5, kF_ccv_cru_rau_cfg, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
-  {52, "ccv_ext_exb_in", Blk::EXTERNAL, Blk::EXB, 1, 1176, 1, kF_ccv_ext_exb_in, 1, false, 0, Order::kNone, -1, false, 5, -1, false, false, 4, 8192},
-  {53, "ccv_dcu_miu_fill_ntc", Blk::DCU, Blk::MIU, 4, 6, 1, kF_ccv_dcu_miu_fill_ntc, 1, false, 0, Order::kNone, -1, false, 4, -1, true, false, 4, 8192},
-  {54, "ccv_miu_ooe_cmpl_hint", Blk::MIU, Blk::OOE, 4, 14, 3, kF_ccv_miu_ooe_cmpl_hint, 1, false, 0, Order::kNone, -1, false, 2, -1, true, false, 4, 8192},
+  {51, "ccv_dcu_cru_err", Blk::DCU, Blk::CRU, 1, 2, 2, kF_ccv_dcu_cru_err, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
+  {52, "ccv_cru_rau_cfg", Blk::CRU, Blk::RAU, 1, 74, 5, kF_ccv_cru_rau_cfg, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
+  {53, "ccv_ext_exb_in", Blk::EXTERNAL, Blk::EXB, 1, 1176, 1, kF_ccv_ext_exb_in, 1, false, 0, Order::kNone, -1, false, 5, -1, false, false, 4, 8192},
+  {54, "ccv_dcu_miu_fill_ntc", Blk::DCU, Blk::MIU, 4, 6, 1, kF_ccv_dcu_miu_fill_ntc, 1, false, 0, Order::kNone, -1, false, 4, -1, true, false, 4, 8192},
+  {55, "ccv_miu_ooe_cmpl_hint", Blk::MIU, Blk::OOE, 4, 14, 3, kF_ccv_miu_ooe_cmpl_hint, 1, false, 0, Order::kNone, -1, false, 2, -1, true, false, 4, 8192},
 };
-constexpr unsigned kNumChans = 55;
+constexpr unsigned kNumChans = 56;
 
 /// Block INSTANCES: 45 of them. A multi-instance type's copies
 /// are contiguous.
@@ -796,14 +801,15 @@ inline constexpr ChanInst kChanInsts[] = {
   {48, 0, 41, 40, 166, 69578, 0, 0, 0, 0, 0},
   {49, 0, 40, 41, 167, 69583, 0, 0, 0, 0, 0},
   {50, 0, 2, 43, 168, 69641, 0, 0, 0, 0, 0},
-  {51, 0, 43, 40, 169, 69813, 0, 0, 0, 0, 0},
-  {52, 0, -1, 44, 170, 69887, 0, 0, 0, 0, 0},
-  {53, 0, 38, 36, 171, 71063, 0, 0, 0, 0, 0},
-  {54, 0, 36, 2, 175, 71087, 0, 0, 0, 0, 0},
+  {51, 0, 38, 43, 169, 69813, 0, 0, 0, 0, 0},
+  {52, 0, 43, 40, 170, 69815, 0, 0, 0, 0, 0},
+  {53, 0, -1, 44, 171, 69889, 0, 0, 0, 0, 0},
+  {54, 0, 38, 36, 172, 71065, 0, 0, 0, 0, 0},
+  {55, 0, 36, 2, 176, 71089, 0, 0, 0, 0, 0},
 };
-constexpr unsigned kNumChanInsts = 117;
-constexpr unsigned kNumSlots = 179;
-constexpr uint64_t kPayloadBits = 71143;
+constexpr unsigned kNumChanInsts = 118;
+constexpr unsigned kNumSlots = 180;
+constexpr uint64_t kPayloadBits = 71145;
 
 /// Fabrics between blocks, outside the credit scheme (schema
 /// common_ports): a broadcast is driven by `end` and read by every

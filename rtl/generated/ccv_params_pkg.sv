@@ -346,7 +346,7 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (ports spec 2026-09-23)
   localparam int CCV_W_BAR_ID = 4;
 
-  // Fault cause, the ISA's set (v1.9 §12) in its table's order: 0 none, 1 F-FETCH, 2 F-ILLEGAL, 3 F-WIDTH, 4 F-FORMAT, 5 F-ALIGN, 6 F-ADDR, 7 F-SHARED, 8 F-RO, 9 F-BARRIER (O-59); 10-15 spare. The ISA names the causes and their priority; the codes are the schema owner's. Where each is known, by v1.9 §12's stages (OI's question on IS-16): A fetch fault rides DEC's uop to the ROB (ccv_fet_dec_instr), so ccv_dec_ooe_uop carries cause: 1 F-FETCH when FET flagged the instruction, else 2 F-ILLEGAL from DEC's check (AR's response IS-16: a field, not flags). F-WIDTH, F-FORMAT and F-BARRIER (3, 4, 9) are dispatch causes that need chwidth state or the barrier count, which only OOE holds, so OOE detects them itself. The execute causes are all memory causes, F-ALIGN, F-ADDR, F-SHARED and F-RO (5 to 8), and MIU's completion carries them: cause the highest-priority cause among its faulting lanes (§12.5), address the lowest faulting lane's effective address (§12.6). No v1.9 cause originates in RCU or a lane, so neither ccv_rcu_ooe_done nor ccv_lane_rcu_res carries a fault.
+  // Fault cause, the ISA's set (v1.9 §12) in its table's order: 0 none, 1 F-FETCH, 2 F-ILLEGAL, 3 F-WIDTH, 4 F-FORMAT, 5 F-ALIGN, 6 F-ADDR, 7 F-SHARED, 8 F-RO, 9 F-BARRIER (O-59), 10 F-MACHINE (O-86; AR 370: in v1 written only by CRU's machine check, core-wide, into every live context's record not yet written, its other fields not applicable); 11-15 spare. The ISA names the causes and their priority; the codes are the schema owner's. Where each is known, by v1.9 §12's stages (OI's question on IS-16): A fetch fault rides DEC's uop to the ROB (ccv_fet_dec_instr), so ccv_dec_ooe_uop carries cause: 1 F-FETCH when FET flagged the instruction, else 2 F-ILLEGAL from DEC's check (AR's response IS-16: a field, not flags). F-WIDTH, F-FORMAT and F-BARRIER (3, 4, 9) are dispatch causes that need chwidth state or the barrier count, which only OOE holds, so OOE detects them itself. The execute causes are all memory causes, F-ALIGN, F-ADDR, F-SHARED and F-RO (5 to 8), and MIU's completion carries them: cause the highest-priority cause among its faulting lanes (§12.5), address the lowest faulting lane's effective address (§12.6). No v1.9 cause originates in RCU or a lane, so neither ccv_rcu_ooe_done nor ccv_lane_rcu_res carries a fault.
   // decided at the block-level grill-me (ports spec 2026-09-23; ISA v1.9 §12 and IS-16 (2026-10-20))
   localparam int CCV_W_FAULT_CAUSE = 4;
 
@@ -455,6 +455,18 @@ package ccv_prov_pkg;
   // L1 data cache ways, least recently used replaced (MA-15, AR rev 344). The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_WAYS still overrides it (1 to 16) for a sweep or a kernel that needs evictions.
   // PROVISIONAL -- decided by: AR's L1 capacity sweep (MA-3 (a)); 8 ways since TI rev 234's sweep (AR rev 320)
   localparam int CCV_DCU_WAYS = 8;
+
+  // Entries in DCU's UE location table (AR 370 (3); DA rev 124: a clean line's uncorrectable error is recovered only a bounded number of times). Each holds a location: the array row a line occupied (bank, instance and row, MA-19's 13 bits), not the line's address, since a bad bit is physical. A clean line's first UE at a location is recovered (invalidated, refetched as a miss) and recorded; a second at a recorded location, or one that finds the table full, is a hard error, core-fatal on ccv_dcu_cru_err. Cleared only by reset; host-readable, so repair can map the rows out. MA's to size. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_UE_TRACK overrides it for a test of the full table.  Requires: CCV_DCU_UE_TRACK >= 1.
+  // PROVISIONAL -- decided by: MA-19 (re AR 370 (3), DA rev 124): one entry per spare row, 16 data instances
+  localparam int CCV_DCU_UE_TRACK = 16;
+
+  // DCU's way predictor: the width of each way's partial-tag fold. 0 turns prediction off (the hit is then 9, CCV_LAT_L1_HIT_BASE), 1 to 16 on (the hit is 8). When on, a predictor register file of 64 x (8 x this) per bank (MA-26). The p1 model's CCV_P1_WAYPRED maps to it. MA's to move, AR's runs deciding.  Requires: CCV_DCU_WAYPRED_BITS <= 16.
+  // PROVISIONAL -- decided by: DA rev 128 (MA-23), MA-26; default AR 386 (5 unless AR's cm128 closed-loop run loses over 0.2% to none)
+  localparam int CCV_DCU_WAYPRED_BITS = 5;
+
+  // How the way predictor chooses among the ways whose fold matches: 0 index (the lowest), 1 recent (the most recently used: true LRU in the tag word, 64 x 152 tag RFs against tree-PLRU's 64 x 144; an age compare of about 11.9 NGD). Read only when CCV_DCU_WAYPRED_BITS is not 0. The p1 model's WPSEL maps to it (MA-26, AR 386).  Requires: CCV_DCU_WAYPRED_SEL <= 1.
+  // PROVISIONAL -- decided by: DA rev 128 (MA-23), MA-26; default recent, AR 386
+  localparam int CCV_DCU_WAYPRED_SEL = 1;
 
   // Cycles before the CSR-programmable demotion fallback fires. MLC miss is the primary trigger; this is the backstop.
   // PROVISIONAL -- decided by: Stage 4b sweep
@@ -584,9 +596,9 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: LANE per-block session; AR's revs 300 and 301 (re:RI-16)
   localparam int CCV_LAT_LANE_BASE = 7;
 
-  // L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. An assumption until MIU's session confirms it.
-  // PROVISIONAL -- decided by: MIU per-block session
-  localparam int CCV_LAT_L1_HIT_BASE = 7;
+  // L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. DCU's data array is (B), tag then data (DA rev 128): 9 with no way prediction (CCV_DCU_WAYPRED_BITS 0), 8 with it, the predicted way read beside the tags. A mispredicted hit answers at 9, a cycle past the contract, as a late hit, and takes a second bank access (MA-26).  Derived: = 9 - (CCV_DCU_WAYPRED_BITS > 0).
+  // PROVISIONAL -- decided by: DA rev 128 (MA-23: arrays (B), tag then data, way prediction a parameter); MA-26, AR 386
+  localparam int CCV_LAT_L1_HIT_BASE = 8;
 
   // Contracted latency of an RCU-executed op. Crosses no link after acceptance: a dependant's issue crosses the same ccv_ooe_rcu_issue link, so that link cancels out of the schedule.  Derived: = CCV_LAT_RCU_BASE.
   // PROVISIONAL -- decided by: generated
@@ -674,7 +686,7 @@ package ccv_prov_pkg;
 
   // Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48) and each flopped receiving end's cycle (bnd_rx, AR's revs 300 and 301 (re:RI-16)). A hit's data leaves on ccv_miu_rcu_data at exactly this cycle and its completion on ccv_miu_ooe_cmpl CCV_LAT_L1_ECC cycles later: the data at L1_HIT, the completion at L1_HIT + L1_ECC (A-46, A-47 amended by AR 368); no completion then is the miss indication.  Derived: = CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + bnd_rx('miu_dcu_req') + link_n('dcu_miu_rsp') + bnd_rx('dcu_miu_rsp').
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_L1_HIT = 7;
+  localparam int CCV_LAT_L1_HIT = 8;
 
   // RCU's time from the issue's landing to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop, RCU's own time only. A boundary flop on the issue end would be the crossing's bnd_rx, counted in CCV_LAT_L1_WAKE and CCV_LAT_L1_CMPL, never in this base (AR's revs 300 and 301 (re:RI-16)); since RA-43 the end is zero-cycle, bnd_rx(ccv_ooe_rcu_issue) 0 (AR's rev 332). 1 is PF-47 (docs/perf-register.md), reapplied at AR's rev 351 and confirmed by RA's rev 145, which takes CCV_LAT_L1_WAKE to 13 and CCV_LAT_L1_CMPL to 14 (AR rev 301; 14 with RA-43, AR rev 332). It was 5, a placeholder (Daniel, 2026-10-08, register OA-5). Tunable: RCU's session confirms or moves it.
   // PROVISIONAL -- decided by: AR's rev 351 (PF-47 reapplied), RA's rev 145
@@ -686,7 +698,7 @@ package ccv_prov_pkg;
 
   // Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16)).  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue')).
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_L1_WAKE = 13;
+  localparam int CCV_LAT_L1_WAKE = 14;
 
   // The flopped syndrome stages between an L1 hit's data leaving MIU and its completion being decided (AR 368). A term of its own, not folded into CCV_LAT_L1_HIT_BASE, so the data's time and the completion's stay distinct; 0 if DCU ever checks before launch. The data lands at CCV_LAT_L1_HIT and is speculative until its completion; a load whose syndrome is non-zero gets no completion then (the miss indication) and its corrected data later. Tunable: MA's to move.  Requires: CCV_LAT_L1_ECC >= 0.
   // PROVISIONAL -- decided by: AR 368, OA 426 (priced by OI-162); MA's count
@@ -694,7 +706,7 @@ package ccv_prov_pkg;
 
   // Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then CCV_LAT_L1_ECC syndrome stages after the hit's data leaves (AR 368, OA 426: 14 to 15), then the completion's crossing back to OOE. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16)).  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_L1_ECC + CCV_LAT_HOP + link_n('miu_ooe_cmpl') + bnd_rx('miu_ooe_cmpl').
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_L1_CMPL = 15;
+  localparam int CCV_LAT_L1_CMPL = 16;
 
   // MIU's stages from holding both the memop and its address to the no-hit leaving on ccv_miu_ooe_cmpl_hint: the address stage's decision from the address alone (OA 410) and its output flop. 2 is the count that gave OA 410's I+13 at CCV_LAT_RCU_ADDR_BASE 5; confirmed by MA rev 56; provisional with MIU's Phase 1 model.
   // PROVISIONAL -- decided by: MA rev 56 (re:AR 353 (2))

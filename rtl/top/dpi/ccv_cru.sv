@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (380 bits,
+// At each edge of its clock: sample every channel signal (449 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (141 bits). Common-port outputs sit inactive, as in
+// what it drove (143 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_cru (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_cru(
     input int h, input longint cyc, input bit rst,
-    input bit [379:0] sample, output bit [140:0] drive);
+    input bit [448:0] sample, output bit [142:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [140:0] drv, q, q2;
+  bit [142:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -70,9 +70,10 @@ module ccv_cru (
   always @(posedge gclk) begin
     ccv_dpi_cycle_cru(h, cyc, !rst_n, {
       cru_rau_cfg_tid, cru_rau_cfg_stall, cru_rau_cfg_credit,
-      cru_rau_cfg_payload, cru_rau_cfg_valid, ooe_cru_fault_tid,
-      ooe_cru_fault_stall, ooe_cru_fault_credit, ooe_cru_fault_payload,
-      ooe_cru_fault_valid
+      cru_rau_cfg_payload, cru_rau_cfg_valid, dcu_cru_err_tid,
+      dcu_cru_err_stall, dcu_cru_err_credit, dcu_cru_err_payload,
+      dcu_cru_err_valid, ooe_cru_fault_tid, ooe_cru_fault_stall,
+      ooe_cru_fault_credit, ooe_cru_fault_payload, ooe_cru_fault_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -80,7 +81,8 @@ module ccv_cru (
   end
   assign {
     cru_rau_cfg_tid, cru_rau_cfg_payload, cru_rau_cfg_valid,
-    ooe_cru_fault_stall, ooe_cru_fault_credit
+    dcu_cru_err_stall, dcu_cru_err_credit, ooe_cru_fault_stall,
+    ooe_cru_fault_credit
   } = skew ? q2 : q;
 `endif
   assign csr_reqs = '0;

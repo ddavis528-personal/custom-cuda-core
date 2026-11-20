@@ -388,20 +388,23 @@ module tb_layout_probe (
   output logic [63:0] c50_f3,
   output logic [2:0] c50_f4,
   output logic [4:0] c50_f5,
-  input  logic [73:0] c51,
-  output logic [31:0] c51_f0,
-  output logic [31:0] c51_f1,
-  output logic c51_f2,
-  output logic c51_f3,
-  output logic [7:0] c51_f4,
-  input  logic [1175:0] c52,
-  output logic [1175:0] c52_f0,
-  input  logic [5:0] c53,
-  output logic [5:0] c53_f0,
-  input  logic [13:0] c54,
+  input  logic [1:0] c51,
+  output logic c51_f0,
+  output logic c51_f1,
+  input  logic [73:0] c52,
+  output logic [31:0] c52_f0,
+  output logic [31:0] c52_f1,
+  output logic c52_f2,
+  output logic c52_f3,
+  output logic [7:0] c52_f4,
+  input  logic [1175:0] c53,
+  output logic [1175:0] c53_f0,
+  input  logic [5:0] c54,
   output logic [5:0] c54_f0,
-  output logic [6:0] c54_f1,
-  output logic c54_f2
+  input  logic [13:0] c55,
+  output logic [5:0] c55_f0,
+  output logic [6:0] c55_f1,
+  output logic c55_f2
 );
   ccv_fet_dec_instr_t s0;
   assign s0 = c0;
@@ -834,22 +837,26 @@ module tb_layout_probe (
   assign c50_f3 = s50.address;
   assign c50_f4 = s50.cta_slot;
   assign c50_f5 = s50.warp_id;
-  ccv_cru_rau_cfg_t s51;
+  ccv_dcu_cru_err_t s51;
   assign s51 = c51;
-  assign c51_f0 = s51.demotion_threshold;
-  assign c51_f1 = s51.progress_threshold;
-  assign c51_f2 = s51.launch_enable;
-  assign c51_f3 = s51.kill_req;
-  assign c51_f4 = s51.kill_grid;
-  ccv_ext_exb_in_t s52;
+  assign c51_f0 = s51.ue;
+  assign c51_f1 = s51.ce_alert;
+  ccv_cru_rau_cfg_t s52;
   assign s52 = c52;
-  assign c52_f0 = s52.tl_in;
-  ccv_dcu_miu_fill_ntc_t s53;
+  assign c52_f0 = s52.demotion_threshold;
+  assign c52_f1 = s52.progress_threshold;
+  assign c52_f2 = s52.launch_enable;
+  assign c52_f3 = s52.kill_req;
+  assign c52_f4 = s52.kill_grid;
+  ccv_ext_exb_in_t s53;
   assign s53 = c53;
-  assign c53_f0 = s53.req_id;
-  ccv_miu_ooe_cmpl_hint_t s54;
+  assign c53_f0 = s53.tl_in;
+  ccv_dcu_miu_fill_ntc_t s54;
   assign s54 = c54;
-  assign c54_f0 = s54.rs_idx;
-  assign c54_f1 = s54.rob_tag;
-  assign c54_f2 = s54.no_hit;
+  assign c54_f0 = s54.req_id;
+  ccv_miu_ooe_cmpl_hint_t s55;
+  assign s55 = c55;
+  assign c55_f0 = s55.rs_idx;
+  assign c55_f1 = s55.rob_tag;
+  assign c55_f2 = s55.no_hit;
 endmodule

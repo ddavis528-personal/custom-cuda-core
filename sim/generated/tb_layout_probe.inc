@@ -593,34 +593,41 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_ooe_cru_fault", "warp_id", p.c50_f5, b, 0, 5);
   }
   {
-    const Bits b = randomBits(74, seed ^ 403869u);
+    const Bits b = randomBits(2, seed ^ 403869u);
     put(p.c51, b);
     p.eval();
-    bad += check("ccv_cru_rau_cfg", "demotion_threshold", p.c51_f0, b, 42, 32);
-    bad += check("ccv_cru_rau_cfg", "progress_threshold", p.c51_f1, b, 10, 32);
-    bad += check("ccv_cru_rau_cfg", "launch_enable", p.c51_f2, b, 9, 1);
-    bad += check("ccv_cru_rau_cfg", "kill_req", p.c51_f3, b, 8, 1);
-    bad += check("ccv_cru_rau_cfg", "kill_grid", p.c51_f4, b, 0, 8);
+    bad += check("ccv_dcu_cru_err", "ue", p.c51_f0, b, 1, 1);
+    bad += check("ccv_dcu_cru_err", "ce_alert", p.c51_f1, b, 0, 1);
   }
   {
-    const Bits b = randomBits(1176, seed ^ 411788u);
+    const Bits b = randomBits(74, seed ^ 411788u);
     put(p.c52, b);
     p.eval();
-    bad += check("ccv_ext_exb_in", "tl_in", p.c52_f0, b, 0, 1176);
+    bad += check("ccv_cru_rau_cfg", "demotion_threshold", p.c52_f0, b, 42, 32);
+    bad += check("ccv_cru_rau_cfg", "progress_threshold", p.c52_f1, b, 10, 32);
+    bad += check("ccv_cru_rau_cfg", "launch_enable", p.c52_f2, b, 9, 1);
+    bad += check("ccv_cru_rau_cfg", "kill_req", p.c52_f3, b, 8, 1);
+    bad += check("ccv_cru_rau_cfg", "kill_grid", p.c52_f4, b, 0, 8);
   }
   {
-    const Bits b = randomBits(6, seed ^ 419707u);
+    const Bits b = randomBits(1176, seed ^ 419707u);
     put(p.c53, b);
     p.eval();
-    bad += check("ccv_dcu_miu_fill_ntc", "req_id", p.c53_f0, b, 0, 6);
+    bad += check("ccv_ext_exb_in", "tl_in", p.c53_f0, b, 0, 1176);
   }
   {
-    const Bits b = randomBits(14, seed ^ 427626u);
+    const Bits b = randomBits(6, seed ^ 427626u);
     put(p.c54, b);
     p.eval();
-    bad += check("ccv_miu_ooe_cmpl_hint", "rs_idx", p.c54_f0, b, 8, 6);
-    bad += check("ccv_miu_ooe_cmpl_hint", "rob_tag", p.c54_f1, b, 1, 7);
-    bad += check("ccv_miu_ooe_cmpl_hint", "no_hit", p.c54_f2, b, 0, 1);
+    bad += check("ccv_dcu_miu_fill_ntc", "req_id", p.c54_f0, b, 0, 6);
+  }
+  {
+    const Bits b = randomBits(14, seed ^ 435545u);
+    put(p.c55, b);
+    p.eval();
+    bad += check("ccv_miu_ooe_cmpl_hint", "rs_idx", p.c55_f0, b, 8, 6);
+    bad += check("ccv_miu_ooe_cmpl_hint", "rob_tag", p.c55_f1, b, 1, 7);
+    bad += check("ccv_miu_ooe_cmpl_hint", "no_hit", p.c55_f2, b, 0, 1);
   }
   return bad;
 }
