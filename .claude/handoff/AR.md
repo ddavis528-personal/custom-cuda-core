@@ -107,6 +107,8 @@ Credit rules (TI-49):
   conflict in 20cauz taken as ours, which held OA's newer 5de62e85); the gate
   was killed by container restarts four times, then RESUMED PASS (22 of 24
   carried over) on adf157b0; pushed 308 commits. Session home still exit 1.
+  Friday pings sent 2026-11-20 to OA IS TI OI CP RA RI MA RH MI DI (roster
+  sessions); check the pongs at the 11-21 sweep.
 - **Sweep 2026-11-18:** 9 branches merged (139 commits); first full gate
   FAIL only because check-cg was OOM-killed (its python ~5 GB beside a cm128
   sim ~6.5 GB); rerun alone PASS (~3.8 h); pushed f28a3f33. Session home
