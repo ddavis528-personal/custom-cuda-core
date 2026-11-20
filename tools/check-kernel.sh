@@ -838,6 +838,8 @@ dcu=model,miu=model vadd4-swap orphan=2
 dcu=model,miu=model lnorm1-straggler demote=342
 dcu=model waypred dcu_wp_wrong=4
 dcu=model,miu=model waypred dcu_wp_wrong=4 l1_hit=0 l1_late=4
+miu=model fet-reset-on-kill scen=rope:11
+dcu=model,miu=model fet-reset-on-kill scen=rope:5
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
   local key=$1 want=$2 impl k w bin out i ok
@@ -1719,11 +1721,13 @@ fi
 # ue-answer: DCU answers the read, and MIU refuses it.
 ue() { CCV_DCU_UE_INJECT=1 "$SKEL" --kernel "build/oracle/$1/oracle.jsonl" ${2:+--break "$2"} >"$B/kernel_ue_$1_${2:-none}.log" 2>&1; }
 uelog() { echo "$B/kernel_ue_$1_${2:-none}.log"; }
-CCV_DCU_UE_TRACK=1 ue ldpar
-l=$(uelog ldpar)
+# provswap, not ldpar: its UE lands where the table is full under every
+# MIU and DCU implementation set (MI-4 (A2), MI rev 20).
+CCV_DCU_UE_TRACK=1 ue provswap
+l=$(uelog provswap)
 if [ "$(field "$l" check_failures)" = 0 ] && [ "$(cover "$l" ue_fatal)" = 1 ] &&
    [ "$(cover "$l" machine_check)" = 1 ] && grep -q '^UE dcu: core-fatal .*(table full)' "$l"; then
-  say "a UE that finds DCU's track table full is core-fatal" "PASS (ldpar, CCV_DCU_UE_TRACK=1)"
+  say "a UE that finds DCU's track table full is core-fatal" "PASS (provswap, CCV_DCU_UE_TRACK=1)"
 else
   bad "a UE that finds DCU's track table full" "not core-fatal: $(grep '^KERNEL' "$l")"
 fi
@@ -1731,7 +1735,11 @@ ue hit ue-no-track; ue predswap mce-ignore; ue predswap mce-no-record; ue predsw
 # ue-dirty-recover at every second hit: its dirty line is predswap's only
 # UE there, recovered with its bytes lost, so no machine check hides it.
 CCV_DCU_UE_INJECT=2 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break ue-dirty-recover >"$(uelog predswap ue-dirty-recover)" 2>&1
-CCV_DCU_UE_INJECT=3 "$SKEL" --kernel build/oracle/ropediv/oracle.jsonl --break fet-reset-on-kill >"$B/kernel_ue_ropediv_fet-reset-on-kill.log" 2>&1
+# fet-reset-on-kill needs a machine check with a checkpoint free in flight,
+# a moment each implementation set reaches at its own kernel and UE
+# (MI-4 (A3), MI rev 20): IMPL_PINS keys the scenario, kernel:inject.
+frk=$(impl_pins fet-reset-on-kill scen=ropediv:3); frk=${frk#scen=}
+CCV_DCU_UE_INJECT=${frk#*:} "$SKEL" --kernel "build/oracle/${frk%%:*}/oracle.jsonl" --break fet-reset-on-kill >"$(uelog "${frk%%:*}" fet-reset-on-kill)" 2>&1
 why=""
 [ "$(cover "$(uelog hit ue-no-track)" machine_check)" = 0 ] && [ "$(cover "$(uelog hit ue-no-track)" ue_recover)" -gt 1 ] || why="$why ue-no-track"
 [ "$(field "$(uelog predswap ue-dirty-recover)" check_failures)" -gt 0 ] || why="$why ue-dirty-recover"
@@ -1739,7 +1747,7 @@ grep -q '^CHECK cru: DCU raised a core-fatal UE on ccv_dcu_cru_err, and CRU neve
 grep -q '^CHECK cru: warp 0 ended in the machine check with no record (F-MACHINE)' "$(uelog predswap mce-no-record)" || why="$why mce-no-record"
 grep -q '^CHECK rau: warp 0 faulted and was never killed' "$(uelog predswap mce-no-kill)" || why="$why mce-no-kill"
 grep -q "^CHECK miu: rob tag [0-9]*'s atomic write has no read before it" "$(uelog atom kill-drop-atomic)" || why="$why kill-drop-atomic"
-grep -q '^CHECK fet: a free for tier-1 slot [0-9]* checkpoint [0-9]*, which is not live' "$(uelog ropediv fet-reset-on-kill)" || why="$why fet-reset-on-kill"
+grep -q '^CHECK fet: a free for tier-1 slot [0-9]* checkpoint [0-9]*, which is not live' "$(uelog "${frk%%:*}" fet-reset-on-kill)" || why="$why fet-reset-on-kill(${frk})"
 grep -q '^CHECK miu: DCU answered req_id [0-9]*, a read a core-fatal UE withheld' "$(uelog predswap ue-answer)" || why="$why ue-answer"
 if [ -z "$why" ]; then
   say "--break ue-no-track, ue-dirty-recover, mce-*, kill-drop-atomic: the machine check" "PASS (8 controls caught)"
@@ -2151,9 +2159,37 @@ bank_ok() {   # $1 label, $2 kernel, then env; one line each
     bad "$label" "${w# }"
   fi
 }
-bank_ok "bank store-data credits 1" gather CCV_DCU_BANK_STDATA=1
-bank_ok "bank entry credits 2" transp4 CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
-bank_ok "bank credits 2/1, DCU model" gather CCV_DCU_IMPL=model CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+# The holds and both controls are the stub MIU's: the MIU model takes the
+# returns but spends no credit yet (MI's step 5), so under it they are
+# skipped, by name.
+if [ "${CCV_MIU_IMPL:-stub}" = stub ]; then
+  bank_ok "bank store-data credits 1" gather CCV_DCU_BANK_STDATA=1
+  bank_ok "bank entry credits 2" transp4 CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+  bank_ok "bank credits 2/1, DCU model" gather CCV_DCU_IMPL=model CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+  # --break bank-credit-ignore: MIU sends without its credits; at one
+  # store-data credit a bank, gather's stores meet in a bank, and DCU must
+  # refuse every bank past its credits by name, and nothing else.
+  log="$B/kernel_bank-credit-ignore.log"
+  CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
+  n=$(grep -c '^CHECK dcu: bank [0-9]* holds [0-9]* lookup entries and [0-9]* store-data entries, past its credits' "$log")
+  if [ "$n" -gt 0 ] && [ "$(field "$log" check_failures)" = "$n" ]; then
+    say "--break bank-credit-ignore: DCU refuses each" "PASS (gather, $n over STDATA 1)"
+  else
+    bad "--break bank-credit-ignore" "$n refused: $(grep '^KERNEL' "$log")"
+  fi
+  # --break dcu-extra-credit: DCU returns an entry credit MIU never spent, and
+  # MIU refuses the return past its reset count by name.
+  log="$B/kernel_dcu-extra-credit.log"
+  "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
+  if grep -q '^CHECK miu: DCU returned an entry credit for bank 0, which holds all 16 (MA-25)' "$log" &&
+     [ "$(field "$log" check_failures)" = 1 ]; then
+    say "--break dcu-extra-credit: MIU refuses it" "PASS (vadd, bank 0)"
+  else
+    bad "--break dcu-extra-credit" "an unspent credit's return went unnoticed: $(grep '^KERNEL' "$log")"
+  fi
+else
+  say "bank credits: holds and controls" "SKIP (CCV_MIU_IMPL=$CCV_MIU_IMPL spends no credit yet)"
+fi
 # MI-9 (3): waypred puts two lines in L1 set 0 under tags whose folds agree
 # and re-reads them in turn, so the DCU model's recent-way predictor names the
 # other line's way each time (MA-26). Under both models every re-read is a
@@ -2200,33 +2236,16 @@ if grep -q 'CCV quiesced_at_end failed' "$log" && [ "$(field "$log" violations)"
 else
   bad "--break mce-no-exempt" "quiesced_at_end did not fire: $(grep '^KERNEL' "$log")"
 fi
-log="$B/kernel_miu-keep-credit.log"
-"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break miu-keep-credit >"$log" 2>&1
-if grep -q 'CCV quiesced_at_end failed' "$log" && [ "$(field "$log" violations)" = 1 ]; then
-  say "--break miu-keep-credit: a run with no machine check is still asked" "PASS (vadd)"
+if [ "${CCV_MIU_IMPL:-stub}" = stub ]; then   # the stub MIU's control
+  log="$B/kernel_miu-keep-credit.log"
+  "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break miu-keep-credit >"$log" 2>&1
+  if grep -q 'CCV quiesced_at_end failed' "$log" && [ "$(field "$log" violations)" = 1 ]; then
+    say "--break miu-keep-credit: a run with no machine check is still asked" "PASS (vadd)"
+  else
+    bad "--break miu-keep-credit" "a kept credit went unnoticed: $(grep '^KERNEL' "$log")"
+  fi
 else
-  bad "--break miu-keep-credit" "a kept credit went unnoticed: $(grep '^KERNEL' "$log")"
-fi
-# --break bank-credit-ignore: MIU sends without its credits; at one
-# store-data credit a bank, gather's stores meet in a bank, and DCU must
-# refuse every bank past its credits by name, and nothing else.
-log="$B/kernel_bank-credit-ignore.log"
-CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
-n=$(grep -c '^CHECK dcu: bank [0-9]* holds [0-9]* lookup entries and [0-9]* store-data entries, past its credits' "$log")
-if [ "$n" -gt 0 ] && [ "$(field "$log" check_failures)" = "$n" ]; then
-  say "--break bank-credit-ignore: DCU refuses each" "PASS (gather, $n over STDATA 1)"
-else
-  bad "--break bank-credit-ignore" "$n refused: $(grep '^KERNEL' "$log")"
-fi
-# --break dcu-extra-credit: DCU returns an entry credit MIU never spent, and
-# MIU refuses the return past its reset count by name.
-log="$B/kernel_dcu-extra-credit.log"
-"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
-if grep -q '^CHECK miu: DCU returned an entry credit for bank 0, which holds all 16 (MA-25)' "$log" &&
-   [ "$(field "$log" check_failures)" = 1 ]; then
-  say "--break dcu-extra-credit: MIU refuses it" "PASS (vadd, bank 0)"
-else
-  bad "--break dcu-extra-credit" "an unspent credit's return went unnoticed: $(grep '^KERNEL' "$log")"
+  say "--break miu-keep-credit" "SKIP (the stub MIU's control)"
 fi
 # A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332
 # (328 in OI's tree, whose timing differs; 342 under both block models, DI's

@@ -579,9 +579,10 @@ private:
   /// MA-25: each bank holds at most CCV_DCU_BANK_QDEPTH lookup entries and
   /// CCV_DCU_BANK_STDATA store-data entries, which MIU's credits guarantee,
   /// so DCU refuses a bank past either by name. An entry is held from
-  /// arrival until the request leaves the queue (answered, or gone to MLC);
-  /// a store's data until its write is done (merged into an owned line, or
-  /// MLC's answer to its acquire or write). Each leaving owes MIU a return
+  /// arrival until the request leaves the queue (answered, or gone to MLC),
+  /// and a store's data the same: merged into an owned line, or carried to
+  /// the miss buffer with its miss (a fill uses its own buffer, not these
+  /// entries), as the DCU model does. Each leaving owes MIU a return
   /// on ccv_dcu_miu_cred, at most one of each a bank a cycle.
   const unsigned qdepth_ = dcuBankQdepth(), stdata_ = dcuBankStdata();
   std::vector<unsigned> bent_ = std::vector<unsigned>(ccv::kDcuBanks),
@@ -913,12 +914,10 @@ private:
           Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
           mergeInto(l, x.op.req);
           install(x.line, l, true, true);
-          writeDone(x.op);
           to_miu_.push_back({x.op.slot, r, x.op.tid});   // the store's ack
         } else if (x.kind == kPerm) {
           // Ownership alone: the store wrote every byte.
           install(x.line, getLine(x.op.req, field(c.miu_dcu, "write_data").lsb), true, true);
-          writeDone(x.op);
           to_miu_.push_back({x.op.slot, r, x.op.tid});
         } else if (x.kind == kRmwRead) {
           Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
@@ -929,7 +928,6 @@ private:
           install(x.line, l);
           mlcReq(kCohWrite, x.line, &l, x.op, kAck);
         } else {
-          writeDone(x.op);
           to_miu_.push_back({x.op.slot, r, x.op.tid});   // the write's ack
         }
         }
@@ -976,6 +974,7 @@ private:
       const Op o = *it;
       q_.erase(it);
       leaveQueue(o);
+      writeDone(o);   // a store leaving for MLC takes its data to the miss buffer
       if (l) {
         hitRsp(o, *l);
       } else if (!rd && k_.brk == "write-through") {
