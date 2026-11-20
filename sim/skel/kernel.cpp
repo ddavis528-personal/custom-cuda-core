@@ -6428,12 +6428,25 @@ static std::unique_ptr<Block> makeRcu(int inst, Kernel &k) {
 /// MA's Phase 1 DCU resource model (sim/dcu/dcu_p1.cpp; MA-21, DA rev 125):
 /// the stub's function with the banks' timing, for Phase 1's sweeps.
 /// CCV_DCU_IMPL=p1 selects it; the stub stays the default and the reference.
+/// DI's DCU model (sim/dcu/dcu_block.cpp, dcu_core.cpp; DI-1): CCV_DCU_IMPL=model.
 std::unique_ptr<Block> makeDcuP1(int inst, Kernel &k);
+std::unique_ptr<Block> makeDcuModel(int inst, Kernel &k);
 
 static std::unique_ptr<Block> makeDcu(int inst, Kernel &k) {
   const char *impl = std::getenv("CCV_DCU_IMPL");
   if (impl && std::string(impl) == "p1") return makeDcuP1(inst, k);
+  if (impl && std::string(impl) == "model") return makeDcuModel(inst, k);
   return std::make_unique<Dcu>(inst, k);
+}
+
+/// MI's MIU model (sim/miu/miu_block.cpp; MI-1). CCV_MIU_IMPL=model selects
+/// it; the stub stays the default and the reference until MI's M0.
+std::unique_ptr<Block> makeMiuModel(int inst, Kernel &k);
+
+static std::unique_ptr<Block> makeMiu(int inst, Kernel &k) {
+  const char *impl = std::getenv("CCV_MIU_IMPL");
+  if (impl && std::string(impl) == "model") return makeMiuModel(inst, k);
+  return std::make_unique<Miu>(inst, k);
 }
 
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
@@ -6444,7 +6457,7 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   case Blk::OOE:  return makeOoe(inst, k);          // ooe.cpp
   case Blk::RCU:  return makeRcu(inst, k);          // CCV_RCU_IMPL
   case Blk::LANE: return std::make_unique<Lane>(inst, k);
-  case Blk::MIU:  return std::make_unique<Miu>(inst, k);
+  case Blk::MIU:  return makeMiu(inst, k);          // CCV_MIU_IMPL
   case Blk::DCU:  return makeDcu(inst, k);          // CCV_DCU_IMPL
   case Blk::MLC:  return std::make_unique<Mlc>(inst, k);
   case Blk::EXB:  return std::make_unique<Exb>(inst, k);

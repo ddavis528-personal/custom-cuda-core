@@ -74,6 +74,7 @@ MAP = [
     ("tools/rcu-ls-corrupt.py", ["rcu_ls"]),
     # Not the gate's: the push, sweep and release scripts and the summary.
     ("tools/gate-combine.py", ["iface"]),         # its selftest runs there
+    ("tools/gate-resume.py", ["iface"]),          # so does its
     ("tools/gate-export.sh", []),
     ("tools/gate-scratch.sh", []),
     ("tools/gate-push.sh", []),
@@ -95,8 +96,8 @@ MAP = [
     # SV top from blocks.list, selected by CCV_DCU_IMPL / CCV_MIU_IMPL, so the
     # kernels, the SV top, check-links' split tree and check-top's wiring
     # dump build them.
-    ("sim/dcu/", ["skel", "kernel", "svh", "links", "top"]),
-    ("sim/miu/", ["skel", "kernel", "svh", "links", "top"]),
+    ("sim/dcu/", ["skel", "kernel", "dcu_unit", "svh", "links", "top"]),
+    ("sim/miu/", ["skel", "kernel", "miu_unit", "svh", "links", "top"]),
     # The skeleton writes rcu_ls's port dumps (sim/skel/portdump.cpp).
     ("sim/skel/", ["skel", "kernel", "rcu_ls", "svh", "top"]),
     ("sim/", ALL),
