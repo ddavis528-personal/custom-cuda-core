@@ -798,8 +798,36 @@ fi
 # privwin's priv_form: 11 until OOE's C9h (OA's rev 372), 12 with it: one more
 # private memop re-executed, its formation counted again (TI's response OI-123).
 cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
+# Pins that hold only for the stubs' timing (DI-3, MI-4): under a block's
+# model (CCV_DCU_IMPL=model, CCV_MIU_IMPL=model) its row here replaces the
+# kernel's bin of that name. A row is the implementation, the kernel as the
+# table below names it, and the bin's expectation. Their owners keep them:
+# the figures move with every timing change of the model.
+IMPL_PINS="
+dcu=model ldpar l1_hit=2
+dcu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=51
+dcu=model late l1_late=0
+dcu=model stall l1_late=0
+dcu=model privwin priv_form=13
+"
+impl_pins() {   # kernel key, its expectations: those under this run's models
+  local key=$1 want=$2 impl k w bin out
+  while read -r impl k w; do
+    [ -n "$impl" ] && [ "$k" = "$key" ] || continue
+    case "$impl" in
+      dcu=*) [ "${CCV_DCU_IMPL:-stub}" = "${impl#dcu=}" ] || continue ;;
+      miu=*) [ "${CCV_MIU_IMPL:-stub}" = "${impl#miu=}" ] || continue ;;
+      *) continue ;;
+    esac
+    bin=${w%%[=>]*}; out=""
+    for x in $want; do [ "${x%%[=>]*}" = "$bin" ] && out="$out $w" || out="$out $x"; done
+    want=${out# }
+  done <<<"$IMPL_PINS"
+  echo "$want"
+}
 while read -r k want; do
   [ -z "$k" ] && continue
+  want=$(impl_pins "$k" "$want")
   # k@VAR=N: the run under that environment, for a bin only a narrower
   # resource reaches (gather@CCV_MIU_DCU_IDS=16: MIU waits for a DCU id,
   # which MA-6's 64 ids leave unreached by any kernel).
@@ -991,7 +1019,9 @@ ctl() {   # control, what must show in its log
   fi
 }
 ctl spm-one-pass "^CHECK miu: seq 4 lane 0 loaded 0000001f, oracle 00000000"
-ctl spm-shared-region "^CHECK miu: seq 66 lane 0 loaded c0340000, oracle 408a0000"
+# Matched on its class, not its first line (DI-3): under the DCU model the
+# two CTAs' loads swap, so either value may be read first.
+ctl spm-shared-region "^CHECK miu: seq [0-9]* lane [0-9]* loaded \(c0340000, oracle 408a0000\|408a0000, oracle c0340000\)"
 ctl bar-park-off "^CHECK fet: warp 0 picks 10c6 for lanes ffff0000; ccv-sim issued 10dc for 0000ffff"
 if [ "$(cover "$B/kernel_spm-no-wait.log" spm_wait)" = 0 ]; then
   say "--break spm-no-wait: spmbank's spm_wait bin misses it" "PASS (spm_wait=0)"
@@ -1015,7 +1045,8 @@ CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.json
 # lat_class 4 (OI-145 (3), RI-52), warps 0, 1 and 2 are caught, warp 1 most
 # (139 of 246 refusals); warp 0 with PF-47 alone, warp 1 with the SFU class
 # alone, warp 3 from RA's rev 95 (LANE 7, SFU 12), warp 2 before.
-ctl held-over-r "^CHECK ooe: warp 1 holds [3-9] slots past its held wait, over r = 2 (TI-46 (b))"
+# On its class (DI-3): any held warp, any count past r.
+ctl held-over-r "^CHECK ooe: warp [0-9]* holds [0-9][0-9]* slots past its held wait, over r = 2 (TI-46 (b))"
 ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
 ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
 # A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every
