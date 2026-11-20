@@ -556,7 +556,9 @@ void Core::onFill(const Fill &f) {
   Miss m = std::move(it->second);
   miss_.erase(it);
   free_ids_.insert(f.id);
-  const uint64_t at = now_ + 1 + c_.lat_notice;   // fill to response (the floor)
+  // The floor (DI-4, MA rev 129): an un-noticed answer's valid at F +
+  // CCV_LAT_FILL_NOTICE, F the fill's payload landing, so it launches a cycle before.
+  const uint64_t at = floorAt();
   switch (m.k) {
   case MK::Evict:
     wb_lines_.erase(m.line);
@@ -627,16 +629,17 @@ void Core::onFill(const Fill &f) {
 }
 
 /// OA-23: a refill noticed leaves exactly CCV_LAT_FILL_NOTICE after its
-/// notice's payload lands, its slot and credit reserved when the notice
-/// goes; it may slip never. Un-noticed, it goes at the floor if it can.
+/// notice's payload lands (valid at F+6), its slot and credit reserved when
+/// the notice goes; it may slip never. Un-noticed, it goes at the floor,
+/// valid at F+4, if it can (DI-4, MA rev 129).
 void Core::refill(const Rsp &r, const Ports &p) {
   const uint64_t at = now_ + 1 + c_.lat_notice + (c_.brk == "late-refill" ? 1 : 0);
   const unsigned s = r.slot;
-  const bool ok = p.ntc_can[s] && p.rsp_credits[s] > resv_[s] && !promise_at_.count({at, s}) &&
+  const bool ok = c_.notice && p.ntc_can[s] && p.rsp_credits[s] > resv_[s] && !promise_at_.count({at, s}) &&
                   std::none_of(notices_.begin(), notices_.end(),
                                [&](const Out::Notice &n) { return n.slot == s; });
   if (!ok) {
-    respond(now_ + 1 + c_.lat_notice, r);
+    respond(floorAt(), r);   // un-noticed: the floor, 2 cycles ahead of a noticed one
     return;
   }
   notices_.push_back({s, c_.brk == "notice-wrong-id" ? r.req_id ^ 1u : r.req_id, r.tid});

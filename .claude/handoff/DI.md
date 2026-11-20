@@ -38,10 +38,15 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 2. Local hook patch for runs: scratchpad makedcu-local.patch (re-create from
    DI-1's text if the scratchpad is gone); never commit it; revert before
    gate-push. Sweep script: scratchpad sweep.sh.
-3. Next model work: dcu_miu_rsp credit waits (transp4: 8 hits waited for a
-   credit; check MIU stub's credit depth vs the 3-cycle launch); SV-hosted
-   run (tools/check-sv-hosted.sh) with the model; cycles vs CCV_DCU_IMPL=p1;
-   the M0 exit row (MA reads it).
+3. DI-4 closed (MA rev 135): notices off by default (4cf7c183, pushed);
+   un-noticed refill at F+4 (92e6037e); CCV_DCU_NOTICE=1 keeps them.
+   S1 off -0.43%; cm32priv off 2105390 / on 2105392 / stub 2095682.
+   MI showed the same with its model (MI tab rev 12). TI-495 (on ti-mi9,
+   gating after the hooks): IMPL_PINS per CCV_DCU_IMPL, notice pins under
+   NOTICE=1, vadd4 orphan=1, class-matched controls. Answered with 4cf7c183.
+   SV-hosted PASS with the model. Next: when TI-495/DI-1 land, rerun
+   check-kernel with the model and write the M0 exit row (MA reads it);
+   check every bin reached; then phase 1b with MI's model.
 4. Gaps vs spec: probes (no MLC probe traffic in the skeleton), CE injection
    on the DCU side (a DI row to TI), the 2-entry writeback buffer stall (a
    bin now), MA-25 vectors computed but unwired.
@@ -53,9 +58,10 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks (2026-11-19 start)
-Conventions 20, DI 5, MI 9, MA 127, AR 395, OA 446, TI 489, DA 128
+Conventions 20, DI 11, MI 12, MA 135, AR 395, OA 455, TI 495, DA 128
 (sweep of 2026-11-19 10:43 UTC; OI 380, RA 156, RI 91, IS 199, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
-MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins).
+MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins), DI-4 (MA: refill floor;
+M0 progress figures).
 Sweep task trig_012HeCB5PRdC5uQzvjzTtU7g, 02:43 Pacific.
