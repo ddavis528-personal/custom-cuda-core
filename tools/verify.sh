@@ -46,6 +46,16 @@
 #                            Every run writes build/verify/manifest.json: the
 #                            commit, its tree, each section's outcome and
 #                            log hash; tools/gate-export.sh packs it.
+#   tools/verify.sh --resume (or CCV_RESUME=1, which the wrappers pass on)
+#                            after a restart killed a run (IS-27): the
+#                            sections that run passed are carried over, if
+#                            it ran the same commit and tree, committed,
+#                            with the same arguments; the rest run again.
+#                            A full run keeps build/synth-cache only if that
+#                            run's own clear made it (its .gate marker), so
+#                            every netlist is still this gate's own. Its
+#                            result reads "RESUMED PASS" (or RESUMED before
+#                            whatever it would read) and names the count.
 #   CCV_JOBS=n               sections run n at a time after the generators
 #                            (default: every core; 1 is the serial gate).
 #                            Each section's log is build/verify/<job>.log.
@@ -65,6 +75,7 @@ FULL=0
 CACHED=0
 BASE=""
 ONLY="" SKIP=""
+RESUME=${CCV_RESUME:-0}
 CCV_ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -76,7 +87,8 @@ while [ $# -gt 0 ]; do
                ONLY=$(echo "$2" | tr ',' ' '); shift ;;
     --skip)    [ $# -ge 2 ] || { echo "verify: --skip needs sections" >&2; exit 2; }
                SKIP=$(echo "$2" | tr ',' ' '); shift ;;
-    *) echo "usage: $0 [--full] [--cached] [--changed <base>] [--only a,b] [--skip a,b]" >&2; exit 2 ;;
+    --resume)  RESUME=1 ;;
+    *) echo "usage: $0 [--full] [--cached] [--changed <base>] [--only a,b] [--skip a,b] [--resume]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -226,6 +238,7 @@ job_iface() {
   # The gate's own joins, cheap, in a section every run takes (OI-95, OI-101).
   run "gate scope map" python3 tools/gate-scope.py --selftest
   run "split gate join" python3 tools/gate-combine.py --selftest
+  run "resumed gate carries only what passed on this tree" python3 tools/gate-resume.py --selftest
 }
 
 job_xprop() {
@@ -481,17 +494,46 @@ declare -A owns=(
   [links]="build/links_split"   # the split tree check-links copies
 )
 LOGS=build/verify
+# --resume (IS-27): an earlier run of this commit and tree, committed, with
+# these arguments, keeps its passed sections (build/verify/progress, one
+# line a finished section: name, outcome, its log's hash).
+RUNID="$(git rev-parse HEAD) $(git rev-parse 'HEAD^{tree}') $(echo "${CCV_ARGS[@]+${CCV_ARGS[@]}}" | tr ' ' '\n' | grep -vx -- --resume | tr '\n' ' ')"
+DIRTY=$([ -n "$(git status --porcelain --untracked-files=no)" ] && echo 1 || echo 0)
+PREV=build/verify.prev
+rm -rf "$PREV"
+CARRY=""
+if [ "$RESUME" = 1 ]; then
+  CARRY=$(python3 tools/gate-resume.py "$LOGS" "$RUNID" "$DIRTY" | tr '\n' ' ')
+  if [ -n "$CARRY" ]; then
+    mv "$LOGS" "$PREV"
+  else
+    echo "verify: --resume: no earlier run of this commit, tree and arguments to resume; a whole run"
+    RESUME=0
+  fi
+fi
 rm -rf "$LOGS" && mkdir -p "$LOGS"
+echo "$RUNID" >"$LOGS/runid"
 # check-cg and check-ngd share their Yosys netlists through this cache, keyed
 # by everything a run reads, ABC's maps among them (OI-95). Cleared here
 # unless --cached or --changed, so the full gate (the daily sweep's merge,
 # every release, the nightly) synthesises each one itself (Daniel,
 # 2026-10-21); a working-branch push reuses it (DA, 2026-10-31).
-[ "$CACHED" = 1 ] || rm -rf build/synth-cache
+# A resumed full run keeps the cache its own clear began (the .gate marker
+# names the commit and tree): those netlists are this gate's own.
+GATEMARK="$(git rev-parse HEAD) $(git rev-parse 'HEAD^{tree}')"
+KEPT=0
+if [ "$CACHED" = 0 ]; then
+  if [ "$RESUME" = 1 ] && [ "$(cat build/synth-cache/.gate 2>/dev/null)" = "$GATEMARK" ]; then
+    KEPT=1
+  else
+    rm -rf build/synth-cache && mkdir -p build/synth-cache && echo "$GATEMARK" >build/synth-cache/.gate
+  fi
+fi
 # Only a clean gate's unit times are work, not cache hits: check-cg and
 # check-ngd record them then, and queue their units slowest first by them
 # (DA, 2026-11-03).
-if [ "$CACHED" = 1 ]; then export CCV_CLEAN_GATE=0; else export CCV_CLEAN_GATE=1; fi
+# A resumed run's cache hits are not work either.
+if [ "$CACHED" = 1 ] || [ "$KEPT" = 1 ]; then export CCV_CLEAN_GATE=0; else export CCV_CLEAN_GATE=1; fi
 # --changed: the sections the change needs, and the ones they wait on. The
 # walkthrough is built from skel, kernel and svh's runs: with any of them.
 SCOPE=""
@@ -590,6 +632,23 @@ if [ -n "$ONLY$SKIP" ]; then
     done
   done
 fi
+# --resume: the earlier run's passed sections, each log checked against the
+# hash its run recorded, are carried over; every other section runs again,
+# from its own build directory cleared (a killed build may have left a
+# truncated file make would trust).
+nres=0
+if [ "$RESUME" = 1 ]; then
+  for j in $START; do
+    [ "${state[$j]}" = wait ] || continue
+    if case " $CARRY " in *" $j "*) true ;; *) false ;; esac; then
+      { cat "$PREV/$j.log"; echo "  [carried over by --resume: passed in an earlier run of this commit and tree]"; } >"$LOGS/$j.log"
+      state[$j]=done; outcome[$j]=pass; nres=$((nres + 1))
+      echo "$j pass $(sha256sum "$LOGS/$j.log" | cut -c1-64)" >>"$LOGS/progress"
+    elif [ -n "${owns[$j]:-}" ]; then
+      rm -rf ${owns[$j]}
+    fi
+  done
+fi
 flush
 while :; do
   for j in $START; do
@@ -603,6 +662,7 @@ while :; do
   state[$j]=done
   printf '  [%s: %ds]\n' "$j" $((SECONDS - ${t0[$j]})) >>"$LOGS/$j.log"
   [ "$rc" = 0 ] && outcome[$j]=pass || { outcome[$j]=fail; fail=1; }
+  echo "$j ${outcome[$j]} $(sha256sum "$LOGS/$j.log" | cut -c1-64)" >>"$LOGS/progress"
   clean_done
   flush
 done
@@ -652,14 +712,18 @@ PENDING
 } >"$LOGS/manifest.json"
 
 section "result"
+R=""
+[ "$nres" -gt 0 ] && R="RESUMED "
+RN=""
+[ "$nres" -gt 0 ] && RN=" ($nres of $(echo $ORDER | wc -w) sections carried over from an earlier run of this commit and tree)"
 if [ "$fail" = "0" ] && [ -n "$ONLY$SKIP" ]; then
-  echo "  PARTIAL PASS -- $(( $(echo $ORDER | wc -w) - nskip )) of $(echo $ORDER | wc -w) sections${BASE:+, the change since $BASE}; half of a split gate, not a gate"
+  echo "  ${R}PARTIAL PASS -- $(( $(echo $ORDER | wc -w) - nskip )) of $(echo $ORDER | wc -w) sections${BASE:+, the change since $BASE}; half of a split gate, not a gate$RN"
 elif [ "$fail" = "0" ] && [ -n "$BASE" ]; then
-  echo "  SCOPED PASS -- $(( $(echo $ORDER | wc -w) - nskip )) of $(echo $ORDER | wc -w) sections, the change since $BASE, netlists from build/synth-cache"
+  echo "  ${R}SCOPED PASS -- $(( $(echo $ORDER | wc -w) - nskip )) of $(echo $ORDER | wc -w) sections, the change since $BASE, netlists from build/synth-cache$RN"
 elif [ "$fail" = "0" ] && [ "$CACHED" = 1 ]; then
-  echo "  CACHED PASS -- netlists from build/synth-cache; not the gate for a push"
+  echo "  ${R}CACHED PASS -- netlists from build/synth-cache; not the gate for a push$RN"
 elif [ "$fail" = "0" ]; then
-  echo "  PASS"
+  echo "  ${R}PASS$RN"
 else
   echo "  FAIL"
 fi
