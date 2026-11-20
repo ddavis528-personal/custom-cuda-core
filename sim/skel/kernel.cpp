@@ -4261,6 +4261,30 @@ public:
 
 private:
   std::deque<std::pair<Bits, uint64_t>> q_;
+  /// CCV_DEC_HOLD=<warp>:<seq>:<cycles> (AR 395's straggler): DEC holds that
+  /// uop, and everything behind it, the cycles given from its arrival at the
+  /// queue's head, as rename backpressure would; a demotion that lands
+  /// meanwhile leaves it in DEC past OOE's walk. A run mode, not a control:
+  /// the run must still match ccv-sim.
+  struct Hold { unsigned warp = ~0u; uint64_t seq = 0, cycles = 0, since = 0; bool on = false; };
+  Hold hold_ = [] {
+    Hold h;
+    if (const char *v = std::getenv("CCV_DEC_HOLD")) {
+      unsigned long long sq = 0, cy = 0;
+      if (std::sscanf(v, "%u:%llu:%llu", &h.warp, &sq, &cy) == 3) { h.seq = sq; h.cycles = cy; }
+      else h.warp = ~0u;
+    }
+    return h;
+  }();
+  bool holding(const std::pair<Bits, uint64_t> &u) {
+    if (hold_.warp == ~0u || unsigned(get(u.first, ch().dec_ooe, "warp_id")) != hold_.warp ||
+        uidSeq(u.second) != warpSeq(hold_.warp, hold_.seq))
+      return false;
+    if (!hold_.on) { hold_.on = true; hold_.since = now_; }
+    if (now_ - hold_.since >= hold_.cycles) { hold_.warp = ~0u; return false; }
+    k_.hit("dec_hold");
+    return true;
+  }
   /// A kill drops the killed warps' uops not yet sent to OOE (V-24).
   void onKill(uint32_t mask, unsigned) override {
     for (auto it = q_.begin(); it != q_.end();) {
@@ -4279,6 +4303,7 @@ private:
     // recover the order from (arrival, slot).
     for (unsigned s = 0; s != kChans[c.dec_ooe].rate && !q_.empty(); ++s) {
       if (!can(c.dec_ooe, s)) break;
+      if (holding(q_.front())) break;
       // An atomic's pair leaves together, in adjacent slots (TI-39: the
       // first comes with credit for its second, which follows it at once).
       const bool first = (get(q_.front().first, c.dec_ooe, "sched_attr") >> kAttrPairFirstBit) & 1u;
@@ -4796,6 +4821,7 @@ private:
   static constexpr unsigned kEpochs = 1u << ccv::prov::kWFetchEpoch;
   bool stale_next_ = false, stale_done_ = false;   ///< stale-epoch control
   std::deque<std::pair<Bits, uint64_t>> pca_q_;     ///< PCs out to PCA, with where it resumes
+  std::vector<unsigned> mig_wait_;                  ///< demotions waiting on full credits (AR 395)
 
   void work() override {
     const Ch &c = ch();
@@ -4931,54 +4957,70 @@ private:
         take_slot(x, unsigned(get(m, c.rau_fet_mig, "tier1_id")));
         x.restoring = true;
       } else {
-        Warp &x = warps_[w];
-        const auto &recs = k_.orcs[w].recs;
-        Bits g = msgOf(c.fet_pca);
-        put(g, c.fet_pca, "warp_id", w);
-        const FieldDesc &lp = field(c.fet_pca, "lane_pcs");
-        const unsigned lw = lp.width / kLanes;
-        uint64_t upper = 0;
-        for (unsigned l = 0; l != kLanes; ++l) {
-          uint64_t pc = recs.empty() ? 0 : recs.back().pc;
-          if (x.rewound >> l & 1u) {
-            pc = x.lane_pc[l];
-          } else {
-            for (size_t i = x.next; i < recs.size(); ++i)
-              if (recs[i].mask >> l & 1u) { pc = recs[i].pc; break; }
-          }
-          g.set(lp.lsb + l * lw, lw, pc >> 1);
-          upper = pc >> ccv::kWPcWindow;
+        // A demotion's migration (AR 395): FET sends its PCs to PCA, and
+        // decides the lanes no beat named, only once the warp's credits are
+        // back to full as well -- sent less returned is zero, so OOE has
+        // walked and dropped every uop FET sent it, stragglers held in DEC
+        // included. --break mig-before-credits sends on the migration alone.
+        mig_wait_.push_back(w);
+      }
+    }
+    for (auto mw = mig_wait_.begin(); mw != mig_wait_.end();) {
+      const unsigned w = *mw;
+      if (warps_[w].credits < int(ccv::prov::kDecqWarpMax) && k_.brk != "mig-before-credits") {
+        ++mw;
+        continue;
+      }
+      mw = mig_wait_.erase(mw);
+      {
+      Warp &x = warps_[w];
+      const auto &recs = k_.orcs[w].recs;
+      Bits g = msgOf(c.fet_pca);
+      put(g, c.fet_pca, "warp_id", w);
+      const FieldDesc &lp = field(c.fet_pca, "lane_pcs");
+      const unsigned lw = lp.width / kLanes;
+      uint64_t upper = 0;
+      for (unsigned l = 0; l != kLanes; ++l) {
+        uint64_t pc = recs.empty() ? 0 : recs.back().pc;
+        if (x.rewound >> l & 1u) {
+          pc = x.lane_pc[l];
+        } else {
+          for (size_t i = x.next; i < recs.size(); ++i)
+            if (recs[i].mask >> l & 1u) { pc = recs[i].pc; break; }
         }
-        put(g, c.fet_pca, "pc_upper", upper);
-        // The live lanes after the beats (AR's response TI-27 (b)): every lane
-        // a beat names is live again, which undoes an exit the squash took
-        // back. Exact by then, so held to the boundary's mask.
-        // beats-dead: FET keeps the lanes its fetched exits cleared.
-        const uint32_t live = x.lanes | (k_.brk == "beats-dead" ? 0u : x.rewound);
-        // The boundary by instruction: a cracked one's later uop (TI-36)
-        // names its instruction, which a restore runs again whole.
-        size_t bi = x.next;
-        if (x.boundary_tid)
-          for (size_t i = 0; i != recs.size(); ++i)
-            if (warpSeq(w, recs[i].seq) == uidSeq(x.boundary_tid)) { bi = i; break; }
-        if (bi < x.lanes_at.size() && live != x.lanes_at[bi])
-          k_.fail("fet: warp %u's live mask after the beats is %08x; at its boundary, %08x", w, live,
-                  x.lanes_at[bi]);
-        put(g, c.fet_pca, "live_mask", live);
-        // The fairness state (TI-27 (c)): FET cannot know the boundary's, so it
-        // keeps its pointer, moved on to a live lane, and saturates the
-        // counter, so lane r's group takes the first pick after the restore.
-        unsigned ptr = x.fair_ptr;
-        for (unsigned i = 0; live && !(live >> ptr & 1u) && i != kLanes; ++i) ptr = (ptr + 1) % kLanes;
-        put(g, c.fet_pca, "fair_ptr", ptr);
-        put(g, c.fet_pca, "fair_cnt", fair_n_);
-        k_.parked[w].rewound = x.rewound == ~0u;
-        if (k_.parked[w].rewound) k_.hit("rewound");
-        // The trace identity of where it resumes rides with the PCs to PCA,
-        // and back on a restore (trace-only).
-        const uint64_t at = x.boundary_tid ? x.boundary_tid
-                            : x.next < recs.size() ? instrUid(warpSeq(w, recs[x.next].seq)) : 0;
-        pca_q_.push_back({g, at});
+        g.set(lp.lsb + l * lw, lw, pc >> 1);
+        upper = pc >> ccv::kWPcWindow;
+      }
+      put(g, c.fet_pca, "pc_upper", upper);
+      // The live lanes after the beats (AR's response TI-27 (b)): every lane
+      // a beat names is live again, which undoes an exit the squash took
+      // back. Exact by then, so held to the boundary's mask.
+      // beats-dead: FET keeps the lanes its fetched exits cleared.
+      const uint32_t live = x.lanes | (k_.brk == "beats-dead" ? 0u : x.rewound);
+      // The boundary by instruction: a cracked one's later uop (TI-36)
+      // names its instruction, which a restore runs again whole.
+      size_t bi = x.next;
+      if (x.boundary_tid)
+        for (size_t i = 0; i != recs.size(); ++i)
+          if (warpSeq(w, recs[i].seq) == uidSeq(x.boundary_tid)) { bi = i; break; }
+      if (bi < x.lanes_at.size() && live != x.lanes_at[bi])
+        k_.fail("fet: warp %u's live mask after the beats is %08x; at its boundary, %08x", w, live,
+                x.lanes_at[bi]);
+      put(g, c.fet_pca, "live_mask", live);
+      // The fairness state (TI-27 (c)): FET cannot know the boundary's, so it
+      // keeps its pointer, moved on to a live lane, and saturates the
+      // counter, so lane r's group takes the first pick after the restore.
+      unsigned ptr = x.fair_ptr;
+      for (unsigned i = 0; live && !(live >> ptr & 1u) && i != kLanes; ++i) ptr = (ptr + 1) % kLanes;
+      put(g, c.fet_pca, "fair_ptr", ptr);
+      put(g, c.fet_pca, "fair_cnt", fair_n_);
+      k_.parked[w].rewound = x.rewound == ~0u;
+      if (k_.parked[w].rewound) k_.hit("rewound");
+      // The trace identity of where it resumes rides with the PCs to PCA,
+      // and back on a restore (trace-only).
+      const uint64_t at = x.boundary_tid ? x.boundary_tid
+                          : x.next < recs.size() ? instrUid(warpSeq(w, recs[x.next].seq)) : 0;
+      pca_q_.push_back({g, at});
       }
     }
     if (!pca_q_.empty() && can(c.fet_pca, 0)) {
