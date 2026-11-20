@@ -73,9 +73,12 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
+- OI OA-449 DONE+SENT 22:52Z: why layernorm/sgemm gain under bar_pend: P0/P1 at c2adfe83 in rh-oi449 (rh-jobs/oi449/oi449.sh, diff.py ->
+  ~/ccv-logs/oi449/diff.md). Same barriers/retired; layernorm rename.one_warp_short -234 (= -232 cyc), decq_full -480, credit_wait -614;
+  sgemm hold.registered.barrier -244. No per-warp split in stats. rh-oi449 released and dropped 23:14Z (written up as OI-185); logs ~/ccv-logs/oi449 to drop 11-20 22:30Z.
 - OI OA-447 (re:OI-179 (3)) RUNNING from 11:59Z: rh-jobs/oi447/oi447.sh (resumable), A=99ee28168b (rh-oi447a), B=582fedae14 (rh-oi447),
   C=582f + redirect_send_lag=2; oracles shared (symlinked). S1 + cm32priv + cm128priv (cm128 lock). Table: python3 rh-jobs/oi427/table.py
-  A A=~/ccv-logs/oi447 B=... C=... --ctr=redirect.send_lagged; report Δ B vs A and C vs B (C vs B 0.5% S1). S1+cm32priv SENT 12:46Z: B=A exactly; C vs B S1 +1.420% (-> DA), cm32p +3.721%. cm128priv DONE+SENT 13:31Z: B=A, C +0.899%. OI 22:19Z: rh-oi443/oi448/oi448b dropped; KEEP rh-oi447 + rh-oi447a until DA rules on redirect_send_lag. Logs kept (oi443, oi447, oi448, oi448b, oi448b-31bf) +1 day after release.
+  A A=~/ccv-logs/oi447 B=... C=... --ctr=redirect.send_lagged; report Δ B vs A and C vs B (C vs B 0.5% S1). S1+cm32priv SENT 12:46Z: B=A exactly; C vs B S1 +1.420% (-> DA), cm32p +3.721%. cm128priv DONE+SENT 13:31Z: B=A, C +0.899%. OI 22:41Z: + D = redirect_send_lag=1 DONE+SENT 23:12Z: S1 +0.720%, cm32p +1.903%, cm128p +0.527% vs B (half of C; still > 0.5% -> DA). OI 22:19Z: rh-oi443/oi448/oi448b dropped; KEEP rh-oi447 + rh-oi447a until DA rules on redirect_send_lag. Logs kept (oi443, oi447, oi448, oi448b, oi448b-31bf) +1 day after release.
   Container restart ~11:58Z 11-19 (nothing was running).
 - OI OA-443 (re:OI-176) from 09:28Z: rh-jobs/oi443/oi443.sh (resumable), worktree rh-oi443 at 14526054 (gate-scratch/OI),
   A slot_verdict_lag=0, B defaults (1). S1 + cm32priv + cm128priv (cm128 lock after AR). Table: python3 rh-jobs/oi427/table.py A
