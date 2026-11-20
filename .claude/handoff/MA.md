@@ -32,7 +32,13 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 390, TI 486, OA 442, IS 197, CP 160, OI 374, RA 156, RI 91, MA 114, DA 128.
+Conventions 20, AR 400, TI 500, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 135, DA 128, MI 16, DI 12.
+Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
+
+- Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
+  MI ccr-58815650 2, RH ccr-c22116ce 9; pushed dbf69316, SCOPED PASS 26/26 (~4h40m, ngd/cg dominate).
+- TI-501: e8d8864b landed MA rev 134 notices-on scenario (vadd4, both models, CCV_DCU_NOTICE=1; five hint/notice
+  controls). Watch item on TI-495 closed; e8d8864b arrives with the next sweep.
 
 ## State, 2026-11-13
 
@@ -86,6 +92,22 @@ Conventions 20, AR 390, TI 486, OA 442, IS 197, CP 160, OI 374, RA 156, RI 91, M
   Gap: no heavy pow2-stride DCU kernel in S1 (transp4 too short); hash stays a parameter only.
 - MI-6 DONE (MA rev 126): CCV_MIU_TLB=warm default through M0, cold opt-in with its own gated scenarios
   (TI's); flip is phase 1a, first after M0 (miu-impl.md). Watch: TI picks up the cold scenarios.
+- DI-4 DONE (MA rev 129-135): un-noticed refill at F+4 (floor from fill payload), noticed stays exactly 4 after
+  its notice lands (F+6). DI measured notices off -0.43% (31 faster, 2 slower). MA rev 130: CCV_DCU_NOTICE=0
+  default, channel kept (valid low). AR 394 agreed (+ S1/cm32priv rerun, MA 131). OA 453 agreed on a condition
+  that misread the hint; MA 132 restates it (off: zero refill hints, F+6; on: OA-23 controls). WAITING OA's
+  accept: done (OA 454); DCU tab rev 59 corrected, snapshot + dcu-impl pushed 99341c99 (MA 133). MI bench
+  met (MI rev 12); TI asked for a gated CCV_DCU_NOTICE=1 scenario (MA 134). DI-4 CLOSED (MA 135; S1 -0.43%,
+  cm32priv off 2,105,390 vs on 2,105,392). Watch: TI's NOTICE=1 scenario. Phase 2: earlier notice, MLC
+  tag-lookup first, lead field only if it can't reach F+4; skip under 0.5% on S1.
+- MA rev 127: IS re VA[63:48], no change (MI confirmed full 64-bit fault address). MA rev 128: TI-488
+  accepted; interim ooe_wake LAT_MISS 17 pin vs L1_CMPL 16 is OA's/OI's. TI-490 (DA): RESUMED PASS counts
+  as the full clean gate; after gate-wait says killed, rerun the same command with CCV_RESUME=1 (once
+  6464a030 is in). DI-3 asks TI for per-impl pins (+1.78% vs stub).
+- Sweep 2026-11-20: ~196 commits merged (all remote branches but release/gate-scratch); two full gates
+  lost to restarts, pushed 30a71d7b on SCOPED PASS 24/24. Merge helper: scratchpad sweep-merge.sh (git
+  merge 90s; on a criss-cross stall, merge-tree each base, take fewest conflicts; generated files keep
+  HEAD; one-sided file changes take that side; else stop; commit-tree -S). Rebuild it if gone.
 - MI-3 (MA rev 123): a held load holds only itself; a pending fence holds its warp's younger memops.
   MIU tab rev 145 (snapshot refreshed). MI-2 closed (AR Common tab rev 8/9: 3 levels 6/13/13, VA[63:48]
   non-zero is F-ADDR).
