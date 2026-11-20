@@ -30,9 +30,13 @@ below); then `CCV_PUSH_BRANCHES=... tools/daily-sweep.sh` in the background
 (exit 3 = a real merge conflict to resolve); pings and pongs; report in a
 few lines.
 
+- Before editing a worktree, check no gate, check or sweep runs in it
+  (`ps aux | grep -E 'check-|gate-|verify|daily'`): three check runs were
+  spoiled on 11-19 by edits made under them.
+
 ## Register bookmarks (revs read through)
 Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 484, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
+TI 487, AR 395, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
 JSON file). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
 
 ## Long runs
@@ -42,6 +46,19 @@ timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
 restart: rerun the job). Logs in /root/ccv-logs/.
 
 ## State (2026-11-18)
+- Both working branches at 2d273c9a (11-19): MA-26 (WAYPRED_BITS 5, SEL 1
+  recent, L1 hit 8, wake 14, cmpl 16; ooe_wake LAT_SPEC 14 / LAT_MISS 17
+  pinned in test/ooe/cg-units.json until OA 439/444's package defaults);
+  TI-487 option (3) (DCU withholds; MIU answers a killed warp's owed reads
+  empty at the kill; RAU's mce kill needs no MIU ack; control ue-answer);
+  OA 436 kill races (MIU atomic hold to A3; FET resets on epoch notice);
+  OI's ccr-57eff422 merged. Rows TI-486..488 sent.
+- Queue, in order: MI-1 + DI-1 hooks (CCV_MIU_IMPL / CCV_DCU_IMPL=model,
+  blocks.list, check-miu-unit / check-dcu-unit) with MI-4 (A) and DI-3
+  per-impl pins (priv_form: stub per try, model per memop); MI-5 bins and
+  slow regions; MI-7 cold-TLB runs; MI-4 (B) demotion-vs-barrier bug
+  (transp4 CCV_RAU_CONCURRENT=1 at:750; narrowadd) likely TI's SYU/RAU;
+  MA-25 credits; ccv_common_err; RAS wrapper; AR 392 PT base CSR with Q-50.
 - Both working branches at a102383b: AR 370 machine check (ccv_dcu_cru_err,
   F-MACHINE 10, CCV_DCU_UE_TRACK 16, CRU MACHINE_CHECK + kill_req every grid,
   RAU kill-all, DCU stub CCV_DCU_UE_INJECT; bins ue_recover/ue_fatal/
