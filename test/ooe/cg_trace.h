@@ -35,13 +35,8 @@ struct Config;
 int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
                     void (*pre)(const ccv::ooe::Core &), void (*post)(const ccv::ooe::Core &),
                     void (*cfg)(ccv::ooe::Config &));
-// The model test running, for a bench's messages.
-const char *ooeTestName();
 // Settings a bench holds each random test to, after the test's own.
 void ooeTestRandomOver(void (*cfg)(ccv::ooe::Config &));
-// Random barrier ops at this percent of the random programs' ops, a held
-// wait released a few cycles after its report (ROB slice 5's bench).
-void ooeTestRandomBars(unsigned pct);
 
 struct CgRun {
   std::string scenario;               // empty: not a clock-gating run (high, the bench's seeds)

@@ -115,11 +115,6 @@ void robConfig(Config &c) {
   // later (held one more behind a pick); no-free-lag runs the model sending
   // them in the cycle they resolve, so a checkpoint is free a cycle early.
   c.ckpt_free_lag = ctl && std::string(ctl) == "no-free-lag" ? 0 : 1;
-  // Slice 5 (OA 448 (2) B): a retired barrier report waits in its slot for
-  // ooe_barpick; bar-overwrite runs the model without the stop behind it.
-  c.bar_pend = 1;
-  c.bar_buf_depth = 2;   // ooe_rob_w's side buffer (OA 448 (3))
-  c.inject_bar_pend_overwrite = ctl && std::string(ctl) == "bar-overwrite";
 }
 
 namespace {
@@ -139,7 +134,7 @@ uint64_t current = 0;
 bool live = false, stopped = false;
 unsigned long long cycles = 0, cores = 0, skipped = 0, stops = 0, retires = 0, allocs = 0, nops = 0, gfrees = 0,
                    pfrees = 0, events = 0, mismatches = 0, resolves = 0, redirects = 0, ckfrees = 0,
-                   bars_al = 0, bars_sent = 0, bars_held = 0, bars_kind[4] = {0, 0, 0, 0}, bars_gd = 0, bars_sq = 0, squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0, commits = 0, faults = 0;
+                   squashes = 0, sq_ents = 0, sq_held = 0, sq_kills = 0, hrels = 0, discards = 0, commits = 0, faults = 0;
 bool rename_preds = true;
 std::map<std::string, unsigned long long> stop_why;
 
@@ -205,8 +200,6 @@ void fail(const char *what, unsigned a, unsigned rtl, unsigned model) {
 // A cycle as the bench drives it: the model's log, and its go log's room.
 struct Cyc {
   Core::RobLog r;
-  std::vector<ccv::ooe::Redirect> sends;                 // the model's ccv_ooe_fet_redirect beats this cycle
-  uint64_t fmask = 0;                          // and its ccv_ooe_fet_ckpt_free mask
   unsigned long long n = 0;                    // the bench's cycle index
   std::vector<unsigned> run, ret;
   std::vector<uint8_t> reach;
@@ -246,10 +239,7 @@ std::vector<int> doneSlots(const Core::RobLog &r) {
   bool br_seen = false;
   for (size_t k = 0; k != r.done.size(); ++k) {
     const unsigned t = r.done[k];
-    // A branch's outcome, or a barrier op's lanes (TI-40: a guarded one's
-    // guard, a wait.phase's phases), rides slot BS.
-    const bool br = t < S * D && (br_of[t].br || (br_of[t].bar && (br_of[t].bgd || br_of[t].bkind == 2))) &&
-                    (k >= r.dpay.size() || r.dpay[k].row == 0);
+    const bool br = t < S * D && br_of[t].br && (k >= r.dpay.size() || r.dpay[k].row == 0);
     if (br && !br_seen && control != "branch-off-slot") { sl[BS] = int(k); br_seen = true; }
     else { if (br && br_seen) ++br_two; rest.push_back(k); }
   }
@@ -309,7 +299,6 @@ void account(Cyc &c) {
     if (t >= S * D) continue;
     ++sq_ents;
     const Core::RobLog::Alloc &a = br_of[t];
-    bars_sq += a.bar;   // a squashed barrier frees its side buffer place (bsq)
     if (unfilledAt(t, q)) {
       if (e.second) fail("held entry not yet filled", t, 0, 1);
       unf[t] = 1;
@@ -342,18 +331,6 @@ void clearInputs() {
   clearAll(dut->al_pc_cq02h, S * A * 31);
   clearAll(dut->al_pchi_cq02h, S * A * 16);
   clearAll(dut->al_gm_cq02h, S * A * 32);
-  dut->al_bar_cq02h = 0;
-  dut->al_bgd_cq02h = 0;
-  dut->al_bhs_cq02h = 0;
-  clearAll(dut->al_bk_cq02h, S * A * 2);
-  clearAll(dut->al_bid_cq02h, S * A * 4);
-  dut->brl_cq02h = 0;
-  // Each slot's warp and CTA slot as ooe_slot holds them: a fixed value per
-  // slot, so a report from the wrong slot shows.
-  for (unsigned q = 0; q != S; ++q) {
-    setField(dut->bwarp_cq03h, q * 5, 5, (q * 7 + 3) % 32);
-    setField(dut->bcta_cq03h, q * 4, 4, (q * 5 + 1) % 16);
-  }
   dut->fl_l_cq01h = 0;
   dut->fl_brl_cq01h = 0;
   for (auto *p : {&dut->fl_v_cq02h, &dut->fl_nop_cq02h, &dut->fl_mem_cq02h, &dut->fl_gwe_cq02h, &dut->fl_pwe_cq02h,
@@ -398,11 +375,8 @@ void clearInputs() {
   dut->rel_l_cq01h = 0;
 }
 
-void redirReset();
 void resetRtl() {
   clearInputs();
-  redirReset();
-  dut->lead_off = control == "rd-unled" ? 1 : control == "ckf-unled" ? 2 : 0;
   hist.clear();
   br_of.assign(S * D, Core::RobLog::Alloc());
   alloc_cyc.assign(S * D, 0);
@@ -519,15 +493,6 @@ void drive(const Cyc &c, const Cyc &nx) {
     setField(dut->al_pc_cq02h, al * 31, 31, a.pclo);
     setField(dut->al_pchi_cq02h, al * 16, 16, a.epchi);
     setField(dut->al_gm_cq02h, al * 32, 32, a.egmask);
-    // Slice 5: a barrier op's place in the side buffer, its kind and id,
-    // whether its guard's lanes come with its done, and whether it sets the
-    // rename hold.
-    setBit(dut->al_bar_cq02h, al, a.bar);
-    setField(dut->al_bk_cq02h, al * 2, 2, a.bkind ^ (control == "bar-kind" && a.bar ? 1u : 0u));
-    setField(dut->al_bid_cq02h, al * 4, 4, a.bid);
-    setBit(dut->al_bgd_cq02h, al, a.bgd);
-    setBit(dut->al_bhs_cq02h, al, a.bhs && control != "bar-no-hold");
-    bars_al += a.bar;
     br_of[a.slot * D + a.idx] = a;
     alloc_cyc[a.slot * D + a.idx] = c.n;
     ++n[a.slot];
@@ -535,7 +500,6 @@ void drive(const Cyc &c, const Cyc &nx) {
     nops += a.nop;
   }
   for (unsigned s = 0; s != S; ++s) setField(dut->al_n_cq02h, s * LA, LA, n[s]);
-  dut->brl_cq02h = r.bar_rel & ((1u << S) - 1);
   driveFills(r.alloc);
   // The RS's events, per entry.
   unsigned s, i;
@@ -807,107 +771,6 @@ void check(const Cyc &c, const Cyc *prev) {
   }
 }
 
-// ooe_redir (OA 435 (5a)): the channel to FET two cycles after the
-// model's send (OI-179): its valid from a flop a cycle after rd_l, the
-// payload a cycle later. The model's epoch-only beats (5b) are not ooe_redir's
-// yet: a redirect queued behind one leaves the RTL earlier, counted.
-struct ExpR { unsigned long long n = 0; ccv::ooe::Redirect r; };
-std::deque<ExpR> rdq;
-std::deque<std::pair<unsigned long long, uint64_t>> fq;
-bool rpay = false, fpay = false, eo_seen = false;
-ccv::ooe::Redirect rexp;
-uint64_t fexp = 0;
-unsigned long long last_eo = 0, rdr_sent = 0, rdr_early = 0, ckf_sent = 0, ntm_drops = 0;
-void redirReset() { rdq.clear(); fq.clear(); rpay = fpay = eo_seen = false; }
-void redirExpect(const Cyc &c) {
-  for (const auto &r : c.sends) {
-    if (r.epoch_only) { eo_seen = true; last_eo = c.n; continue; }
-    rdq.push_back({c.n, r});
-  }
-  if (c.fmask) fq.push_back({c.n, c.fmask});
-}
-void checkRedir(unsigned long long n) {
-  if (rpay) {
-    rpay = false;
-    const ccv::ooe::Redirect &e = rexp;
-    if (getField(dut->rdr_warp_cq05h, 0, 5) != e.warp) fail("redirect warp differs", e.slot, getField(dut->rdr_warp_cq05h, 0, 5), e.warp);
-    if (getField(dut->rdr_t1_cq05h, 0, LS) != e.slot) fail("redirect tier1 differs", e.slot, getField(dut->rdr_t1_cq05h, 0, LS), e.slot);
-    if (getField(dut->rdr_ckpt_cq05h, 0, LK) != e.ckpt) fail("redirect ckpt differs", e.slot, getField(dut->rdr_ckpt_cq05h, 0, LK), e.ckpt);
-    if (uint32_t(dut->rdr_tmask_cq05h) != e.taken_mask) fail("redirect tmask differs", e.slot, unsigned(dut->rdr_tmask_cq05h), e.taken_mask);
-    if (uint64_t(dut->rdr_tgt_cq05h) != (e.target_pc & PCM)) fail("redirect target_pc differs", e.slot, unsigned(dut->rdr_tgt_cq05h), unsigned(e.target_pc));
-    if (getField(dut->rdr_ep_cq05h, 0, 3) != e.epoch) fail("redirect epoch differs", e.slot, getField(dut->rdr_ep_cq05h, 0, 3), e.epoch);
-    if (getBit(dut->rdr_stay_cq05h, 0) != e.stay) fail("redirect stay differs", e.slot, getBit(dut->rdr_stay_cq05h, 0), e.stay);
-    if (getField(dut->rdr_zero_cq05h, 0, 5) != 0) fail("redirect 5b flag set", e.slot, getField(dut->rdr_zero_cq05h, 0, 5), 0);
-  }
-  if (dut->rdr_v_cq04h) {
-    if (rdq.empty()) fail("redirect not in the model", 0, 1, 0);
-    else {
-      const ExpR e = rdq.front();
-      rdq.pop_front();
-      if (e.n + 2 > n) {
-        if (eo_seen && last_eo + 16 >= n) ++rdr_early;
-        else fail("redirect early", e.r.slot, unsigned(n), unsigned(e.n + 2));
-      } else if (e.n + 2 < n) fail("redirect late", e.r.slot, unsigned(n), unsigned(e.n + 2));
-      rexp = e.r;
-      rpay = true;
-      ++rdr_sent;
-    }
-  } else if (!rdq.empty() && rdq.front().n + 2 <= n) {
-    fail("redirect missing", rdq.front().r.slot, unsigned(n), unsigned(rdq.front().n + 2));
-    rdq.pop_front();
-  }
-  if (fpay) {
-    fpay = false;
-    for (unsigned b = 0; b != S * NK; ++b)
-      if (getBit(dut->ckf_m_cq05h, b) != bool(fexp >> b & 1)) { fail("ckpt free mask differs", b, getBit(dut->ckf_m_cq05h, b), unsigned(fexp >> b & 1)); break; }
-  }
-  while (!fq.empty() && fq.front().first + 2 < n) { fail("ckpt free missing", 0, unsigned(n), unsigned(fq.front().first + 2)); fq.pop_front(); }
-  const bool want = !fq.empty() && fq.front().first + 2 == n;
-  if (bool(dut->ckf_v_cq04h) != want) fail("ckpt free valid differs", 0, dut->ckf_v_cq04h, want);
-  if (want) { fexp = fq.front().second; fpay = true; fq.pop_front(); ++ckf_sent; }
-}
-// Each slot's warp and next epoch as ooe_decrx holds them, read in rd_l's
-// cycle: the bench drives the resolving slots' from the model's log.
-void driveRedir(const Cyc *p1) {
-  dut->ntm_cq03h = 0;
-  if (!p1) return;
-  for (const auto &q : p1->r.redirect) {
-    if (q.slot >= S) continue;
-    const unsigned w = control == "redir-warp" ? (q.warp + 1) % 32 : q.warp;
-    const unsigned ep = control == "redir-epoch" ? (q.epoch + 7) % 8 : q.epoch;
-    setField(dut->wid_cq03h, q.slot * 5, 5, w);
-    setField(dut->ep1_cq03h, q.slot * 3, 3, ep);
-  }
-  // A notice's mask (5b) drops a slot's frees from its cycle (OA 438).
-  if (control == "redir-ntm" && !p1->r.ckfree.empty()) {
-    for (const auto &q : p1->r.ckfree) setBit(dut->ntm_cq03h, q.first, true);
-    ++ntm_drops;
-  }
-}
-
-// ooe_barpick (slice 5): the report on ccv_ooe_syu_bar in the cycle the
-// model sends it (a pick from its flopped requests, sent from its register).
-void checkBar(const Cyc &c) {
-  const bool want = !c.r.bar.empty();
-  if (c.r.bar.size() > 1) fail("two barrier reports in a cycle", 0, 2, 1);
-  if (bool(dut->bar_v_cq04h) != want) { fail("barrier report valid differs", want ? c.r.bar[0].slot : 0, dut->bar_v_cq04h, want); return; }
-  if (!want) return;
-  const auto &b = c.r.bar[0];
-  ++bars_sent;
-  bars_held += b.held;
-  ++bars_kind[b.kind & 3];
-  bars_gd += b.guard != ~0u;
-  const unsigned q = b.slot;
-  if (dut->bar_warp_cq04h != (q * 7 + 3) % 32) fail("barrier report warp differs", q, dut->bar_warp_cq04h, (q * 7 + 3) % 32);
-  if (dut->bar_cta_cq04h != (q * 5 + 1) % 16) fail("barrier report cta slot differs", q, dut->bar_cta_cq04h, (q * 5 + 1) % 16);
-  if (dut->bar_kind_cq04h != b.kind) fail("barrier report kind differs", q, dut->bar_kind_cq04h, b.kind);
-  if (b.kind != 3 && dut->bar_bid_cq04h != b.bid) fail("barrier report id differs", q, dut->bar_bid_cq04h, b.bid);
-  if (uint32_t(dut->bar_im_cq04h) != b.issue) fail("barrier report issue mask differs", q, unsigned(dut->bar_im_cq04h), b.issue);
-  if (uint32_t(dut->bar_gm_cq04h) != b.guard) fail("barrier report guard mask differs", q, unsigned(dut->bar_gm_cq04h), b.guard);
-  if (uint32_t(dut->bar_pm_cq04h) != b.phase) fail("barrier report phase mask differs", q, unsigned(dut->bar_pm_cq04h), b.phase);
-  if (bool(dut->bar_held_cq04h) != b.held) fail("barrier report held differs", q, dut->bar_held_cq04h, b.held);
-}
-
 Cyc pend, prev, prev2;
 bool pending = false, have_prev = false, have_prev2 = false;
 
@@ -930,8 +793,6 @@ void hook(const Core &c) {
   if (!live || stopped) return;
   Cyc now;
   now.r = c.robLog();
-  now.sends = c.out.redirects;
-  now.fmask = c.out.free_mask;
   if (g.valid && g.run.size() == S) {
     now.run = g.run;
     now.ret = g.ret;
@@ -960,9 +821,7 @@ void hook(const Core &c) {
     ++cycles;
     pend.n = cycles;
     account(pend);
-    redirExpect(pend);
     drive(pend, now);
-    driveRedir(have_prev ? &prev : nullptr);
     dut->eval();
     if (const char *w = std::getenv("ROB_TRACE")) {
       const unsigned long long lo = std::strtoull(w, nullptr, 10);
@@ -977,17 +836,14 @@ void hook(const Core &c) {
         for (unsigned x : pend.r.done) t += " d" + std::to_string(x);
         for (unsigned x : pend.r.cmpl) t += " c" + std::to_string(x);
         for (unsigned x : pend.r.owe) t += " o" + std::to_string(x);
-        for (unsigned s = 0; s < pend.run.size(); ++s)
-          t += " | run" + std::to_string(s) + " " + std::to_string(pend.run[s]) + "/" + std::to_string(int(pend.reach[s])) + " rtl " +
-               std::to_string(getField(dut->run_cq02h, s * LB, LB)) + "/" + std::to_string(getBit(dut->reach_cq02h, s));
-        t += std::string(" bq ") + std::to_string(dut->bh_cq02h) + " " + ooeTestName();
+        if (!pend.run.empty())
+          t += " | run " + std::to_string(pend.run[0]) + "/" + std::to_string(int(pend.reach[0])) + " rtl " +
+               std::to_string(getField(dut->run_cq02h, 0, LB)) + "/" + std::to_string(getBit(dut->reach_cq02h, 0));
         std::fprintf(stderr, "%s\n", t.c_str());
       }
     }
     check(pend, have_prev ? &prev : nullptr);
     checkRes(have_prev ? &prev : nullptr, have_prev2 ? &prev2 : nullptr);
-    checkRedir(pend.n);
-    checkBar(pend);
     tick();
     act2 = act1;
     act1 = !pend.r.squash.empty() || !held.empty() || !pend.r.hrel.empty();
@@ -1016,10 +872,7 @@ int main(int argc, char **argv) {
   // them as drawn, each core to its first squash, its redirect compared
   // drawn (right-always needs mispredicts to miss).
   // The squash's controls need squashes.
-  const bool sq_control = control == "no-miu" || control == "no-store" || control == "drop-killed-fill" ||
-                          control.rfind("redir-", 0) == 0 || control == "rd-unled";   // ooe_redir's need redirects
-  // Slice 5: barriers among the random programs' ops.
-  ooeTestRandomBars(control == "no-bars" ? 0 : 4);
+  const bool sq_control = control == "no-miu" || control == "no-store" || control == "drop-killed-fill";
   ooeTestPredictAll(std::getenv("ROB_MISPREDICT") == nullptr && control != "right-always" && !sq_control);
   const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, robConfig)) +
                           cg.run(seeds, nullptr, hook, robConfig);
@@ -1031,19 +884,9 @@ int main(int argc, char **argv) {
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, nops, events, retires, gfrees,
               pfrees, resolves, redirects, ckfrees, stops, skipped, squashes, sq_ents, sq_held, sq_kills, hrels, discards,
               commits, faults, mismatches, model_fails);
-  std::printf("  ooe_barpick: barrier ops allocated=%llu reports=%llu (arrive %llu wait %llu phase %llu exit %llu) guarded=%llu held=%llu squashed=%llu\n", bars_al, bars_sent, bars_kind[0], bars_kind[1], bars_kind[2], bars_kind[3], bars_gd, bars_held, bars_sq);
-  std::printf("  ooe_redir: redirects=%llu (early behind a notice=%llu) ckpt-frees=%llu notice-drops=%llu\n", rdr_sent, rdr_early, ckf_sent, ntm_drops);
   if (br_two) std::printf("  cycles with two branch dones (RCU's one a cycle): %llu\n", br_two);
   for (const auto &kv : stop_why) std::printf("  stopped at %s: %llu\n", kv.first.c_str(), kv.second);
-  // Slice 5's bins: every report kind, guarded and held reports, sent
-  // through ooe_barpick (no-bars draws none, so it must fail here).
-  bool bins = bars_held && bars_gd;
-  for (unsigned k = 0; k != 4; ++k) bins = bins && bars_kind[k];
-  // bars_sq is reported, not a bin: the random bench never squashes a
-  // barrier (each squash so far reached only ops younger than it), so the
-  // side buffer's squash path (bsq) wants a directed kill behind a barrier.
-  if (!cg.on() && !bins) std::printf("  ooe_barpick: a coverage bin is empty\n");
-  const int rc = mismatches || model_fails || (!cg.on() && !bins) ? 1 : 0;
+  const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();
   return rc;

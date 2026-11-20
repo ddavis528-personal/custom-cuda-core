@@ -31,8 +31,8 @@ module ooe_trio #(
   parameter logic [23:0] PEN  = 24'h03_02_00,
   parameter int NPEN     = 3,
   parameter int LAT_COPY = 7,
-  parameter int LAT_SPEC = ccv_prov_pkg::CCV_LAT_L1_WAKE,      // OA 444: from the parameters
-  parameter int LAT_MISS = 1 + ccv_prov_pkg::CCV_LAT_L1_CMPL,  // payload stage + CCV_LAT_L1_CMPL
+  parameter int LAT_SPEC = 16,
+  parameter int LAT_MISS = 19,
   parameter int CMPL_DLY = 1,
   parameter int PW = 16,     // the payload's bits (RA-39 (c)): the bench's tag
   parameter int LW = 12,     // the lead slice's bits (RA-31, OA's rev 343): another tag
@@ -138,28 +138,7 @@ module ooe_trio #(
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol),
     .kind_o_cq02h(kind_w), .cls_o_cq02h(cls_w),
     .pay_cq01h(pay_cq01h), .lead_cq01h(lead_cq01h), .home_cq01h(home_cq01h), .gnt_l_cq01h(gnt_l),
-    .lv_cq02h(rs_lv), .le_cq02h(rs_le), .pe_cq03h(rs_pe));
-  // The issue and payload registers ooe_rs held before OA 435 (2)(3) moved
-  // them to ooe_rcupl and ooe_mempl (pl_tb checks those): the bench keeps
-  // them here, clocked as they were, so the issue check stands as it was.
-  logic [K-1:0]    rs_lv;
-  logic [K*LW-1:0] rs_le;
-  logic [K*PW-1:0] rs_pe;
-  logic            rs_ien, rs_ien2, rs_rst;
-  always_ff @(posedge ooe_core_clk) rs_rst <= ooe_rst_r00h;
-  always_ff @(posedge ooe_core_clk) begin
-    if (rs_rst) begin
-      rs_ien  <= 1'b0;
-      rs_ien2 <= 1'b0;
-      iss_v_cq05h <= '0;
-    end else begin
-      rs_ien  <= gnt_l;
-      rs_ien2 <= rs_ien;
-      if (rs_ien) iss_v_cq05h <= rs_lv;
-    end
-    if (rs_ien)  iss_lead_cq05h <= rs_le;
-    if (rs_ien2) iss_pay_cq05h  <= rs_pe;
-  end
+    .iss_v_cq03h(iss_v_cq05h), .iss_lead_cq03h(iss_lead_cq05h), .iss_pay_cq03h(iss_pay_cq05h));
   ooe_wake #(.N(N), .LAT(LAT), .FAST(FAST), .PEN(PEN), .NPEN(NPEN), .LAT_COPY(LAT_COPY),
              .LAT_SPEC(LAT_SPEC), .LAT_MISS(LAT_MISS), .CMPL_DLY(CMPL_DLY), .NC(NC)) u_wake (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),

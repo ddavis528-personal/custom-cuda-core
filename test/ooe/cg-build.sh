@@ -21,7 +21,7 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
 case "$unit" in
   ooe_wake)
     read -r g d < <(python3 test/ooe/wake-params.py)
-    vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/rtl/ooe/ooe_confirm.sv" \
+    vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/rtl/ooe/ooe_confirm.sv" \
       "$PWD/test/ooe/wake_tb.cpp" ;;
   ooe_age_rcu|ooe_age_miu)
     if [ "$unit" = ooe_age_rcu ]; then cls=0 na=$n_rcu; else cls=1 na=$n_miu; fi
@@ -42,23 +42,6 @@ case "$unit" in
     vl ooe_decq "-GS=$slots -GQ=$dq -GD=$dqw -GE=$uops -GR=$width -GP=16" \
       "-DDQ_S=$slots -DDQ_Q=$dq -DDQ_D=$dqw -DDQ_E=$uops -DDQ_R=$width" \
       "$PWD/rtl/ooe/ooe_decq.sv" "$PWD/test/ooe/decq_tb.cpp" ;;
-  ooe_decrx)
-    slots=$(val CCV_TIER1_WARPS) ep=$(val CCV_P_W_FETCH_EPOCH)
-    uops=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_dec_ooe_uop'))")
-    vl ooe_decrx_tb "-GS=$slots -GE=$uops -GNW=32 -GEP=$ep" "-DRX_S=$slots -DRX_E=$uops" \
-      "$PWD/rtl/ooe/ooe_decrx.sv" "$PWD/rtl/ooe/ooe_decrx_keep.sv" "$PWD/test/ooe/ooe_decrx_tb.sv" \
-      "$PWD/test/ooe/decrx_tb.cpp" ;;
-  ooe_slot)
-    slots=$(val CCV_TIER1_WARPS)
-    vl ooe_slot_tb "-GS=$slots -GA=$slots -GD=1" "-DSL_S=$slots -DSL_A=$slots -DSL_D=1" \
-      "$PWD/rtl/ooe/ooe_slot.sv" "$PWD/test/ooe/ooe_slot_tb.sv" "$PWD/test/ooe/slot_tb.cpp" ;;
-  ooe_rcupl|ooe_mempl)
-    # One bench for both formatters (test/ooe/pl_tb.cpp), with the channels' layout from the schema.
-    ns=$(val CCV_SECTIONS) adir=$(cd "$dir" && pwd)
-    python3 test/ooe/pl-fields.py "$adir/pl_fields.h"
-    vl ooe_pl_tb "-GNS=$ns" "-DPL_NS=$ns -I$adir" \
-      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_rcupl.sv" "$PWD/rtl/ooe/ooe_mempl.sv" \
-      "$PWD/test/ooe/ooe_pl_tb.sv" "$PWD/test/ooe/pl_tb.cpp" ;;
   ooe_freelist_gpr|ooe_freelist_gsec|ooe_freelist_pred|ooe_freelist_gsec_fs1|ooe_freelist_pred_fs1)
     # _fs1: one free source, as ooe_rename instantiates them at its own unit's FS (TI 397, re:RI-25).
     fs=""; case $unit in *_fs1) fs=1 unit=${unit%_fs1} ;; esac
@@ -76,9 +59,6 @@ case "$unit" in
     read -r g d < <(python3 test/ooe/rat-params.py)
     vl ooe_rat_read "-DCCV_CHECK_RAT ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/test/ooe/ooe_ratread.sv" \
       "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
-  ooe_ratmap)
-    read -r g d < <(python3 test/ooe/ratmap-params.py)
-    vl ooe_ratmap "-DCCV_CHECK_RATMAP ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_ratmap.sv" "$PWD/test/ooe/ratmap_tb.cpp" ;;
   ooe_sched)
     # The assembled trio (test/ooe/trio_tb.cpp): ooe_sched's leads are ooe_wake's
     # and ooe_rs's, in their own frame.
@@ -90,8 +70,8 @@ case "$unit" in
     lmiss=$(echo "$d" | tr ',' '\n' | sed -n 's/-DWAKE_LAT_MISS=//p')
     vl ooe_trio "--public-flat-rw ${g//,/ } -GNR=$n_rcu -GA=$width -GS=$slots -GFB=$fb" \
       "-DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss" \
-      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
-      "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
+      "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
+      "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
       "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" ;;
   ooe_prodmap)
     ng=$(( $(val CCV_P_PHYS_REGS) * 4 )) np=$(val CCV_P_PRED_REGS)
@@ -123,7 +103,7 @@ case "$unit" in
     p="S=$(val CCV_TIER1_WARPS) D=$(val CCV_P_ROB_DEPTH) RP=$(val CCV_RETIRE_PER_ROB) A=$width ND=7 NM=4 NK=$(val CCV_P_BR_CKPTS) PCW=$(val CCV_ADDR_BITS) GW=$gw"
     p="$p GR=$(val CCV_P_W_PHYS_REG) NG=$(val CCV_P_PHYS_REGS) NS=$ns PW=$(val CCV_P_W_PHYS_PRED) NP=$(val CCV_P_PRED_REGS) CW=$(val CCV_W_FAULT_CAUSE)"
     vl ooe_rob_tb "$(for kv in $p; do printf -- '-G%s ' "$kv"; done)" "$(for kv in $p; do printf -- '-DRB_%s ' "$kv"; done)" \
-      "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/rtl/ooe/ooe_redir.sv" "$PWD/rtl/ooe/ooe_barpick.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" ;;
+      "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" ;;
   ooe_go)
     slots=$(val CCV_TIER1_WARPS)
     vl ooe_go "-GS=$slots -GR=$width" "-DGO_S=$slots -DGO_R=$width" \
