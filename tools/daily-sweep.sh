@@ -9,6 +9,11 @@
 # owner to settle) and lets the release through without them. The snapshot
 # is skipped when release's latest is already of this exact commit.
 #
+# Under CCV_RESUME=1 (a sweep a restart killed, IS-27), a branch that moved
+# since is left unmerged, as --skip would, so the tree is the one the killed
+# gate ran and verify.sh carries its passed sections over; the next sweep
+# takes those commits.
+#
 # A merge whose only conflicts are generated files takes ours and lets regen
 # rewrite them; any other conflict aborts that merge and stops the sweep with
 # the files named, exit 3, for the session to resolve. Prints a few lines.
@@ -25,6 +30,9 @@ for a in "$@"; do
     *) echo "usage: $0 [--branches=a,b] [--no-push] [--skip=b1,b2]" >&2; exit 2 ;;
   esac
 done
+# Without push branches the sweep would gate and then fail to push: say so
+# now, not after the gate.
+[ "$PUSH" = 1 ] && { branches >/dev/null || exit 2; }
 # A long run never runs under its caller (tools/detach.sh; DA, 2026-11-13):
 # it detaches and returns; tools/gate-wait.sh waits for it.
 . "$(dirname "$0")/detach.sh"; ccv_detach "$0" "$@"
@@ -41,6 +49,9 @@ for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); d
   case ",$SKIP," in *",$b,"*) continue ;; esac
   n=$(git rev-list --count "HEAD..$rb")
   [ "$n" -gt 0 ] || continue
+  if [ "${CCV_RESUME:-0}" = 1 ]; then
+    SKIP="${SKIP:+$SKIP,}$b"; say "resume: $b moved ($n), left to the next sweep"; continue
+  fi
   if ! git merge -q --no-ff --no-edit -m "Merge $rb (daily sweep $WHEN)" "$rb" >/dev/null 2>&1; then
     other=$(git diff --name-only --diff-filter=U | grep -Ev "$GENERATED" || true)
     if [ -n "$other" ]; then
