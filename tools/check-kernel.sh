@@ -2097,21 +2097,21 @@ ok() {   # $1 log, then cover bins name=value; prints why not, or nothing
   done
   echo "${why# }"
 }
-# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 328
+# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332 (OI measured 328 before TI's FET wait moved it 4)
 # leaves a uop of the warp in DEC under rename backpressure past OOE's walk;
 # OOE walks it on arrival and beats its lanes, and FET migrates only once the
 # warp's credits are back to full (AR 395 (3)). no-straggler-walk drops it
 # unwalked, so its lanes keep FET's PC past it and lose those instructions.
 log="$B/kernel_lnorm1_straggler.log"
-CCV_RAU_DEMOTE=at:328 "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl >"$log" 2>&1
+CCV_RAU_DEMOTE=at:332 "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl >"$log" 2>&1
 w=$(ok "$log" decq_straggler_beat=1)
 if [ -z "$w" ]; then
-  say "lnorm1 demoted at 328: a straggler walked on arrival" "PASS (decq_straggler_beat=1)"
+  say "lnorm1 demoted at 332: a straggler walked on arrival" "PASS (decq_straggler_beat=1)"
 else
-  bad "lnorm1 demoted at 328, straggler walk" "$w"
+  bad "lnorm1 demoted at 332, straggler walk" "$w"
 fi
 log="$B/kernel_no-straggler-walk.log"
-CCV_RAU_DEMOTE=at:328 "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl --break no-straggler-walk \
+CCV_RAU_DEMOTE=at:332 "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl --break no-straggler-walk \
   --cycles 300000 >"$log" 2>&1
 if [ "$(field "$log" finished)" != 1 ] || [ "$(field "$log" gpr_mismatch)" != 0 ]; then
   say "--break no-straggler-walk: the straggler's lanes lose it" "PASS (finished=$(field "$log" finished) gpr_mismatch=$(field "$log" gpr_mismatch))"
