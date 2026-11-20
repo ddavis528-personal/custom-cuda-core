@@ -221,6 +221,17 @@
    "why": "Each pending entry's warp and epoch, ee_cq04h and ew_cq04h (8 bits a slot, one gate a slot; 32 flops at S=4), capture the redirect's write id in the squash's own cycle: rd_l_cq03h, ooe_rob_w's squash lead, is the only signal that names the entry being written (OA 435 (5a)), and rd_e_cq02h a cycle earlier is a superset that gave the gate far below 75% DCGE. rd_l comes straight from ooe_rob_w's kept flop rd_o_cq03h (arrival 1.0, ooe_redir.ngd.json; required 1.0 in ooe_rob_w.ngd.json), and the cone is one AND with the slot's own flops, 2.7 NGD in all, within CG-2's 8. Staging the write a cycle (A/B) fails CG-3 instead: the bench drives wid/ep1 only on redirects. Approved by Daniel under his ruling on RI-15 (RA rev 87, DA rev 109): its flops count against the OOE block's 2%.",
    "by": "OI (DA approved; Daniel's ruling on RI-15)",
    "date": "2026-11-20"
+  },
+  {
+   "module": "ooe_decrx",
+   "rule": "CG-1",
+   "target": "enq_v_cq02h",
+   "max_flops": 6,
+   "measured_flops": 6,
+   "lead": true,
+   "by": "OI (DA approved; Daniel's ruling on RI-15)",
+   "date": "2026-11-20",
+   "why": "decq's enq valid, one bit a port (6 at E=6), flopped every cycle on the edge the uop's payload lands: the keep verdict computed in the lead cycle from ccv_dec_ooe_uop's lead fields, an interface lead signal like enq_slot beside it. Its only enable would be the lead valid, an input (CG-5). The flopped reset rst_r01h (RST-1) and ev_q take 2 of the module's 7, so enq_v no longer fits. Allowed by Daniel's ruling on RI-15 (module-level CG waivers for interface lead signals), approved by DA in chat 2026-11-20; its flops count against the OOE block's per-instance 2%."
   }
  ]
 }
