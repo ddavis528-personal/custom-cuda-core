@@ -330,6 +330,10 @@ void Core::serveLook(const Req &r, uint64_t born) {
     h_.withheld(r.req_id);
     if (c_.brk != "ue-answer") return;
   }
+  // Read before touch(): once touched, the line asked for is the set's most
+  // recent, and a recent-way predictor would always name it (TI, MI-9 (3):
+  // the control below never fired).
+  const bool wp_miss = c_.wp_bits && !predicted(r.pa);
   touch(*w);
   ++st_.hits;
   if (!miss_.empty()) h_.hit("hit_under_miss");
@@ -337,7 +341,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
   s.data = true;
   s.line = w->data;
   s.hit = true;
-  if (c_.brk == "wp-late-at-due" && c_.wp_bits && !predicted(r.pa)) {
+  if (c_.brk == "wp-late-at-due" && wp_miss) {
     // The predicted way's line, not the line asked for (the control).
     const Way *set = setOf(r.pa);
     for (unsigned i = 0; i != c_.ways; ++i)

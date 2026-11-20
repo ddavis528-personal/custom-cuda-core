@@ -209,6 +209,9 @@
 #     data credit too; DCU returns each on       bank past its credits;
 #     ccv_dcu_miu_cred (MA-25)                   dcu-extra-credit (vadd): MIU
 #                                                refuses a return it never spent
+#   a way mispredict is answered late, on    wp-late-at-due (waypred, both
+#     the bank loser's path, as a miss          models): the predicted way's
+#     (MA-26, AR 390; MI-9 (3))                 line, refused by MIU's oracle
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -830,6 +833,8 @@ dcu=model,miu=model ldpar l1_hit=1
 dcu=model,miu=model no-resource-cap v60=16
 dcu=model,miu=model vadd4-swap orphan=2
 dcu=model,miu=model lnorm1-straggler demote=342
+dcu=model waypred dcu_wp_wrong=4
+dcu=model,miu=model waypred dcu_wp_wrong=4 l1_hit=0 l1_late=4
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
   local key=$1 want=$2 impl k w bin out i ok
@@ -888,6 +893,7 @@ mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0 l1_inelig=0
+waypred l1_hit=4 l1_late=0 dcu_wp_wrong=0
 hit@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
 transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=54 l1_hit=0
 spinwait@CCV_MIU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
@@ -2145,6 +2151,28 @@ bank_ok() {   # $1 label, $2 kernel, then env; one line each
 bank_ok "bank store-data credits 1" gather CCV_DCU_BANK_STDATA=1
 bank_ok "bank entry credits 2" transp4 CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
 bank_ok "bank credits 2/1, DCU model" gather CCV_DCU_IMPL=model CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+# MI-9 (3): waypred puts two lines in L1 set 0 under tags whose folds agree
+# and re-reads them in turn, so the DCU model's recent-way predictor names the
+# other line's way each time (MA-26). Under both models every re-read is a
+# mispredict, answered on the bank loser's path (AR 390, OA-442) and taken by
+# MIU as a late hit (l1_dcu_late), == ccv-sim. DI's wp-late-at-due answers at
+# due with the predicted way's line instead, which MIU's oracle must refuse.
+log="$B/kernel_waypred_models.log"
+CCV_MIU_IMPL=model CCV_DCU_IMPL=model "$SKEL" --kernel build/oracle/waypred/oracle.jsonl >"$log" 2>&1
+w=$(ok "$log" dcu_wp_wrong=4 l1_dcu_late=4)
+if [ -z "$w" ]; then
+  say "waypred, both models: mispredicts, == ccv-sim" "PASS (dcu_wp_wrong=4, l1_dcu_late=4)"
+else
+  bad "waypred, both models" "$w"
+fi
+log="$B/kernel_wp-late-at-due_models.log"
+CCV_MIU_IMPL=model CCV_DCU_IMPL=model "$SKEL" --kernel build/oracle/waypred/oracle.jsonl --break wp-late-at-due >"$log" 2>&1
+n=$(grep -c '^CHECK miu: seq [0-9]* lane [0-9]* loaded ' "$log")
+if [ "$n" -gt 0 ] && [ "$(field "$log" gpr_mismatch)" != 0 ]; then
+  say "--break wp-late-at-due, both models: refused" "PASS (waypred, $n lanes, gpr_mismatch=$(field "$log" gpr_mismatch))"
+else
+  bad "--break wp-late-at-due, both models" "the other way's line went unnoticed: $(grep '^KERNEL' "$log")"
+fi
 # --break bank-credit-ignore: MIU sends without its credits; at one
 # store-data credit a bank, gather's stores meet in a bank, and DCU must
 # refuse every bank past its credits by name, and nothing else.

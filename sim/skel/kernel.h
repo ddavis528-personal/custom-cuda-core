@@ -265,6 +265,8 @@ struct Kernel {
       "ld_pass_held", "fence_hold", "drain_guard", "drain_guard_withheld", "st_wide_hold",
       "tlb_miss", "tlb_walk", "itlb_walk", "tlb_two_page", "walk_reads", "tlb_two_page_lost",
       "hint_slot_taken", "l1_dcu_late",
+      // The DCU model's way mispredicts (MA-26, AR 390; MI-9 (3)).
+      "dcu_wp_wrong",
       // A uop DEC held past a demotion's walk (AR 395).
       "dec_hold",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
