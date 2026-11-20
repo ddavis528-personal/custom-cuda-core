@@ -356,7 +356,11 @@ build hangs on this criss-cross history (133k inner merges); merge fewest-merge-
 snapshots refreshed 11-20. TI-490: after gate-wait says killed (exit 4), rerun the SAME command with CCV_RESUME=1
 (tool 6464a030, merge it first); a RESUMED PASS counts as the full clean gate per TI (Daniel in TI's session; no DA
 row yet, asked Daniel 11-20).
-Bookmarks: OA 446, RA 157, RI 91, TI 489, AR 395, DA 128, OI 380, Conventions 20, CP 160, IS 199, MA 127.
+Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti-mi9b, merged; resolve fallback is
+TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
+NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
+Merge script: scratchpad sweep-merge.sh (fewest bases first; ort at 1 base, resolve at 2-6, skip over 6).
+Bookmarks: OA 460, RA 157, RI 91, TI 498, AR 400, DA 128, OI 395, Conventions 20, CP 160, IS 201, MA 135, MI 16, DI 12.
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
