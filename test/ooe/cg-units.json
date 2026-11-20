@@ -583,6 +583,28 @@
       }
     },
     {
+      "name": "ooe_ratmap",
+      "module": "ooe_ratmap",
+      "files": [
+        "rtl/ooe/ooe_ratmap.sv"
+      ],
+      "params": {
+        "S": 4,
+        "GW": 10,
+        "PB": 2,
+        "PW": 6,
+        "WB": 2,
+        "LW": 5
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_ratmap {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_ratmap"
+      }
+    },
+    {
       "name": "ooe_barpick",
       "module": "ooe_barpick",
       "files": [
