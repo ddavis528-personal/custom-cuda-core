@@ -361,7 +361,10 @@ Sweep 11-20 (Friday): nothing for RA; TI-499 answered RA 157 (roster union on ti
 TI work). Merged 183cc441 (68), 3868632d (98), 58815650 (2), c22116ce (9), miu-dcu-spec (6), 5e4d6c70 (7, resolve).
 NOT merged: 80102643 (7 bases, ort timed out at 15 min). Pings: all 11 ponged ok (AR OA IS TI OI CP RI MA RH MI DI).
 Merge script: scratchpad sweep-merge.sh (fewest bases first; ort at 1 base, resolve at 2-6, skip over 6).
-Bookmarks: OA 460, RA 157, RI 91, TI 498, AR 400, DA 128, OI 395, Conventions 20, CP 160, IS 201, MA 135, MI 16, DI 12.
+Bookmarks: OA 466, RA 157, RI 91, TI 511, AR 406, DA 128, OI 399, Conventions 20, CP 160, IS 201, MA 145, MI 29, DI 29.
+Sweep 11-21: nothing for RA. MI-18/MA: new CCV_LAT_MIU_PAIR_LAG (3) derives from CCV_LAT_RCU_ADDR and the
+ooe_rcu_issue/rcu_miu_addr stages, so moving either moves it (require >= 1). Merged 183cc441, 58815650, 5e4d6c70,
+80102643; skipped ccr-57eff422 (OI's, real conflicts in OI files, AR 402: OI resolves).
 RI closed RI-4..6 (RI rev 3); RI-3 closes when TI marks the migration channels backpressured.
 
 ## Spec doc (RTL-depth spec COMPLETE, 2026-11-02; Daniel notified for review)
