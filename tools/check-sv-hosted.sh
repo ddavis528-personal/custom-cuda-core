@@ -232,13 +232,14 @@ else
 fi
 
 # -- the machine check, both hosts (AR 370) -----------------------------------
-# DCU's injected uncorrectable errors (CCV_DCU_UE_INJECT=1): vadd recovers a
-# clean line; hit's hard error and predswap's dirty line end the core (CRU's
+# DCU's injected uncorrectable errors (CCV_DCU_UE_INJECT=1): swap recovers a
+# clean line under every MIU and DCU (MI-14; vadd recovers none under the MIU
+# model, its lookups landing while the miss is open); hit's hard error and predswap's dirty line end the core (CRU's
 # MACHINE_CHECK, RAU's kill, F-MACHINE in every record). Each must print the
 # same KERNEL and COVER lines on both hosts, clean, and so must the control
 # mce-ignore, which fails on both.
 diffs=""
-for spec in vadd hit predswap predswap:mce-ignore; do
+for spec in swap hit predswap predswap:mce-ignore; do
   IFS=: read -r k brk <<<"$spec"
   a=$(CCV_DCU_UE_INJECT=1 cpp "$k" ${brk:+--break "$brk"} | grep -E '^(KERNEL|COVER) ')
   s=$(CCV_DCU_UE_INJECT=1 svh "$k" ${brk:++ccv_break=$brk} | grep -E '^(KERNEL|COVER) ')
@@ -248,7 +249,7 @@ for spec in vadd hit predswap predswap:mce-ignore; do
   [ -n "$a" ] && [ "$a" = "$s" ] && [ "$ue" -gt 0 ] && [ "$clean" = "$want" ] || diffs="$diffs $spec"
 done
 if [ -z "$diffs" ]; then
-  say "machine check: the same KERNEL line" "PASS (vadd, hit, predswap clean; mce-ignore fails on both)"
+  say "machine check: the same KERNEL line" "PASS (swap, hit, predswap clean; mce-ignore fails on both)"
 else
   bad "machine check: the same KERNEL line" "differ, unclean or no UE:$diffs"
 fi
