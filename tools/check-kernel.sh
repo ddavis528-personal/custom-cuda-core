@@ -215,6 +215,13 @@
 #   a machine-checked run is not held to    mce-no-exempt (predlane, MIU
 #     quiesced_at_end, every other run is      model): it fires; miu-keep-
 #     (MI-8; AR 387, AR 389)                   credit (vadd): it fires
+#   under the MIU model's cold TLB (MI-7)    walk-no-dcu (vadd): no walk
+#     a walk reads DCU once a level, FET's      read, and a UE no longer
+#     first fetch walks, a UE on a walk line    reaches one; itlb-no-walk
+#     recovers, and F-ADDR comes before any     (vadd): FET is answered at
+#     walk                                      once; walk-before-faddr
+#                                               (addrhigh, addrneg): MIU
+#                                               refuses the walk
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -834,12 +841,11 @@ dcu=model,miu=model vadd cmpl_hint=4
 dcu=model,miu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=61
 dcu=model,miu=model ldpar l1_hit=1
 dcu=model,miu=model no-resource-cap v60=16
-dcu=model,miu=model vadd4-swap orphan=2
 dcu=model,miu=model lnorm1-straggler demote=342
 dcu=model waypred dcu_wp_wrong=4
 dcu=model,miu=model waypred dcu_wp_wrong=4 l1_hit=0 l1_late=4
 miu=model fet-reset-on-kill scen=rope:11
-dcu=model,miu=model fet-reset-on-kill scen=rope:5
+dcu=model,miu=model fet-reset-on-kill scen=rope:12
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
   local key=$1 want=$2 impl k w bin out i ok p x hit
@@ -904,6 +910,7 @@ merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0 l1_inelig=0
 waypred l1_hit=4 l1_late=0 dcu_wp_wrong=0
+pgcross l1_inelig=1
 hit@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
 transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=54 l1_hit=0
 spinwait@CCV_MIU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
@@ -2164,37 +2171,38 @@ bank_ok() {   # $1 label, $2 kernel, then env; one line each
     bad "$label" "${w# }"
   fi
 }
-# The holds and both controls are the stub MIU's: the MIU model takes the
-# returns but spends no credit yet (MI's step 5), so under it they are
-# skipped, by name.
-if [ "${CCV_MIU_IMPL:-stub}" = stub ]; then
-  bank_ok "bank store-data credits 1" gather CCV_DCU_BANK_STDATA=1
-  bank_ok "bank entry credits 2" transp4 CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
-  bank_ok "bank credits 2/1, DCU model" gather CCV_DCU_IMPL=model CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+# The holds and both controls run under both MIUs, whichever the rest of
+# the run uses: the MIU model spends the credits too since MI's step 5
+# (d639adb2; MI-13).
+for m in stub model; do
+  bank_ok "bank store-data credits 1, $m MIU" gather CCV_MIU_IMPL=$m CCV_DCU_BANK_STDATA=1
+  bank_ok "bank entry credits 2, $m MIU" transp4 CCV_MIU_IMPL=$m CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+  bank_ok "bank credits 2/1, DCU model, $m MIU" gather CCV_MIU_IMPL=$m CCV_DCU_IMPL=model CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
   # --break bank-credit-ignore: MIU sends without its credits; at one
   # store-data credit a bank, gather's stores meet in a bank, and DCU must
   # refuse every bank past its credits by name, and nothing else.
-  log="$B/kernel_bank-credit-ignore.log"
-  CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
-  n=$(grep -c '^CHECK dcu: bank [0-9]* holds [0-9]* lookup entries and [0-9]* store-data entries, past its credits' "$log")
-  if [ "$n" -gt 0 ] && [ "$(field "$log" check_failures)" = "$n" ]; then
-    say "--break bank-credit-ignore: DCU refuses each" "PASS (gather, $n over STDATA 1)"
-  else
-    bad "--break bank-credit-ignore" "$n refused: $(grep '^KERNEL' "$log")"
-  fi
   # --break dcu-extra-credit: DCU returns an entry credit MIU never spent, and
-  # MIU refuses the return past its reset count by name.
-  log="$B/kernel_dcu-extra-credit.log"
-  "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
-  if grep -q '^CHECK miu: DCU returned an entry credit for bank 0, which holds all 16 (MA-25)' "$log" &&
-     [ "$(field "$log" check_failures)" = 1 ]; then
-    say "--break dcu-extra-credit: MIU refuses it" "PASS (vadd, bank 0)"
-  else
-    bad "--break dcu-extra-credit" "an unspent credit's return went unnoticed: $(grep '^KERNEL' "$log")"
-  fi
-else
-  say "bank credits: holds and controls" "SKIP (CCV_MIU_IMPL=$CCV_MIU_IMPL spends no credit yet)"
-fi
+  # MIU refuses the return past its reset count by name. Both run under each
+  # DCU, whichever the run uses: each DCU's refusal and break (DI-11).
+  for d in stub model; do
+    log="$B/kernel_bank-credit-ignore_${m}_$d.log"
+    CCV_MIU_IMPL=$m CCV_DCU_IMPL=$d CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
+    n=$(grep -c '^CHECK dcu: bank [0-9]* holds [0-9]* lookup entries and [0-9]* store-data entries, past its credits' "$log")
+    if [ "$n" -gt 0 ] && [ "$(field "$log" check_failures)" = "$n" ]; then
+      say "--break bank-credit-ignore, $m MIU, $d DCU: refused" "PASS (gather, $n over STDATA 1)"
+    else
+      bad "--break bank-credit-ignore, $m MIU, $d DCU" "$n refused: $(grep '^KERNEL' "$log")"
+    fi
+    log="$B/kernel_dcu-extra-credit_${m}_$d.log"
+    CCV_MIU_IMPL=$m CCV_DCU_IMPL=$d "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
+    if grep -q '^CHECK miu: DCU returned an entry credit for bank 0, which holds all 16 (MA-25)' "$log" &&
+       [ "$(field "$log" check_failures)" = 1 ]; then
+      say "--break dcu-extra-credit, $m MIU, $d DCU: refused" "PASS (vadd, bank 0)"
+    else
+      bad "--break dcu-extra-credit, $m MIU, $d DCU" "an unspent credit's return went unnoticed: $(grep '^KERNEL' "$log")"
+    fi
+  done
+done
 # MI-9 (3): waypred puts two lines in L1 set 0 under tags whose folds agree
 # and re-reads them in turn, so the DCU model's recent-way predictor names the
 # other line's way each time (MA-26). Under both models every re-read is a
@@ -2252,6 +2260,65 @@ if [ "${CCV_MIU_IMPL:-stub}" = stub ]; then   # the stub MIU's control
 else
   say "--break miu-keep-credit" "SKIP (the stub MIU's control)"
 fi
+# MI-7: the MIU model's cold TLB (CCV_MIU_TLB=cold; warm stays the default
+# through M0), run in every gate whichever MIU the rest of it runs. vadd walks
+# its pages with three DCU reads a level, and FET's first fetch walks the
+# ITLB; a UE on a walk line (CCV_DCU_UE_INJECT=5) recovers twice (MA-126
+# (3)). addrhigh and addrneg fault at F-ADDR before any walk. Controls:
+# walk-no-dcu (no walk read; the UE then reaches none), itlb-no-walk (FET
+# answered at once) and walk-before-faddr (the walker refuses a page past
+# the 48-bit VA). pgcross's load across two pages reaches the two-page
+# branch only already ineligible (MA-6 keeps a contracted load in one 64 KiB
+# page), so MI-7's two-page-hit control has no case (TI-508; dropped, MI and
+# MA). slotform's per-lane windows put a load over two pages.
+cold() { CCV_MIU_IMPL=model CCV_MIU_TLB=cold "$@"; }
+mi7() {   # $1 label, $2 log, then bins
+  local lab=$1 log=$2 w; shift 2
+  w=$(ok "$log" "$@")
+  if [ -z "$w" ]; then say "$lab" "PASS ($*)"; else bad "$lab" "$w"; fi
+}
+log="$B/kernel_vadd_cold.log"; cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$log" 2>&1
+tw=$(cover "$log" tlb_walk); wr=$(cover "$log" walk_reads)
+if [ "${tw:-0}" -gt 0 ] && [ "$wr" = $((3 * tw)) ]; then
+  mi7 "vadd, cold TLB: three walk reads a level" "$log" itlb_walk=1 tlb_walk=$tw walk_reads=$wr
+else
+  bad "vadd, cold TLB" "tlb_walk=$tw walk_reads=$wr, not 3 a walk"
+fi
+log="$B/kernel_walk-no-dcu.log"; cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break walk-no-dcu >"$log" 2>&1
+if [ "$(cover "$log" walk_reads)" = 0 ] && [ "$(cover "$log" tlb_walk)" -gt 0 ]; then
+  say "--break walk-no-dcu: the walk reads nothing" "PASS (vadd; walk_reads 0, not 3 a walk)"
+else
+  bad "--break walk-no-dcu" "walk_reads=$(cover "$log" walk_reads)"
+fi
+log="$B/kernel_itlb-no-walk.log"; cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break itlb-no-walk >"$log" 2>&1
+if [ "$(cover "$log" itlb_walk)" = 0 ]; then
+  say "--break itlb-no-walk: FET answered at once" "PASS (vadd; itlb_walk 0)"
+else
+  bad "--break itlb-no-walk" "itlb_walk=$(cover "$log" itlb_walk)"
+fi
+log="$B/kernel_vadd_cold_ue.log"; CCV_DCU_UE_INJECT=5 cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$log" 2>&1
+mi7 "vadd, cold TLB, UE on a walk line: recovered" "$log" ue_recover=2 ue_fatal=0
+log="$B/kernel_walk-no-dcu_ue.log"; CCV_DCU_UE_INJECT=5 cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break walk-no-dcu >"$log" 2>&1
+if [ "$(cover "$log" ue_recover)" = 0 ]; then
+  say "--break walk-no-dcu, UE 5: no walk line to recover" "PASS (vadd; ue_recover 0)"
+else
+  bad "--break walk-no-dcu, UE 5" "ue_recover=$(cover "$log" ue_recover)"
+fi
+for k in addrhigh addrneg; do
+  log="$B/kernel_${k}_cold.log"; cold "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+  mi7 "$k, cold TLB: F-ADDR before any walk" "$log" addr_fault=1
+  log="$B/kernel_${k}_walk-before-faddr.log"
+  cold "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --break walk-before-faddr >"$log" 2>&1
+  if grep -q 'past the 48-bit VA' "$log" && [ "$(field "$log" check_failures)" -gt 0 ]; then
+    say "--break walk-before-faddr: MIU refuses the walk" "PASS ($k, $(field "$log" check_failures) refused)"
+  else
+    bad "--break walk-before-faddr ($k)" "the walk past the VA went unnoticed: $(grep '^KERNEL' "$log")"
+  fi
+done
+log="$B/kernel_pgcross_cold.log"; cold "$SKEL" --kernel build/oracle/pgcross/oracle.jsonl >"$log" 2>&1
+mi7 "pgcross, cold TLB: two pages held, already ineligible" "$log" tlb_two_page=1 l1_inelig=1 tlb_two_page_lost=0
+log="$B/kernel_slotform_cold.log"; cold "$SKEL" --kernel build/oracle/slotform/oracle.jsonl >"$log" 2>&1
+mi7 "slotform, cold TLB: a load over two pages" "$log" tlb_two_page=2
 # A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332
 # (328 in OI's tree, whose timing differs; 342 under both block models, DI's
 # re:TI-503, an IMPL_PINS row)
