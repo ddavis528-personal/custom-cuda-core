@@ -65,14 +65,17 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    overlap only; CCV_MIU_DUP_IDEAL) + handoff, NOT pushed. 3224eaff on mi-dev is my local
    cherry-pick of all of DI's 8b6090d0: do NOT gate it (its ECC half waits on TI's re-pin, DI-16).
    Plan (DI-17, answered rev 31): when DI's notice says 7bf5073a (drop half alone) is on
-   ccr-5e4d6c70-n6402z, in the main checkout merge that branch and mi-dev AT a0afe9fc (not the tip; cherry-pick later handoff commits,
-   e.g. 55a0ecb5), then CCV_PUSH_BRANCHES=ccr-58815650-0ch1hh tools/gate-push.sh. Gate runs stubs only.
+   ccr-5e4d6c70-n6402z, in the main checkout merge that branch and mi-push (= a0afe9fc), then
+   cherry-pick -x every mi-dev commit after 3224eaff (handoffs, ead8f705 miu_pair, ...), then
+   CCV_PUSH_BRANCHES=ccr-58815650-0ch1hh tools/gate-push.sh. Gate runs stubs only.
    Pricing answered (rev 32, MA rung): S1 gap 0, cm32priv +0.008%, cm128priv -0.10%; spec kept.
    DI-18 settled (MA rev 148, MIU tab 153): MIU corrects a CE, completion withheld a cycle as a
    refill, nothing to DCU, req_id frees on its one response: the model already does this.
    MIU tab rev 150: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
    lands CCV_LAT_MIU_PAIR_LAG (3, >=1) after the memop; miu_pair loads A1 fields from MQ at H-1.
-1. RTL slice 1 (MA Phase 2, MIU tab rev 149/150): miu_cap done (pushed b04269bb). Next miu_pair
+1. RTL slice 1 (MA Phase 2, MIU tab rev 150): miu_cap pushed; miu_pair done on mi-dev (ead8f705:
+   ring of LAG rows, tags from memop arrival M=00, V 03, H 05; bench + controls arrival/lag; cg/ngd
+   clean; FW=96 placeholder until miu_mq's layout; LAG param until TI derives it). Next was miu_pair
    (+ miu_mq: A1 fields read at H-1; per lead pipe ring of {entry, valid} indexed by arrival
    counter bridging LAG=3, CCV_LAT_MIU_PAIR_LAG once TI derives it; fences pair on slot 0; bulk
    discards no address; memop ends no-flop). Then miu_agu8, miu_lead (ge1/ge2/used), miu_cred,
