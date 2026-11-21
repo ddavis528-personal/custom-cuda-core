@@ -200,6 +200,8 @@ void fail(const char *what, unsigned a, unsigned rtl, unsigned model) {
 // A cycle as the bench drives it: the model's log, and its go log's room.
 struct Cyc {
   Core::RobLog r;
+  std::vector<ccv::ooe::Redirect> sends;                 // the model's ccv_ooe_fet_redirect beats this cycle
+  uint64_t fmask = 0;                          // and its ccv_ooe_fet_ckpt_free mask
   unsigned long long n = 0;                    // the bench's cycle index
   std::vector<unsigned> run, ret;
   std::vector<uint8_t> reach;
@@ -375,8 +377,11 @@ void clearInputs() {
   dut->rel_l_cq01h = 0;
 }
 
+void redirReset();
 void resetRtl() {
   clearInputs();
+  redirReset();
+  dut->lead_off = control == "rd-unled" ? 1 : control == "ckf-unled" ? 2 : 0;
   hist.clear();
   br_of.assign(S * D, Core::RobLog::Alloc());
   alloc_cyc.assign(S * D, 0);
@@ -771,6 +776,84 @@ void check(const Cyc &c, const Cyc *prev) {
   }
 }
 
+// ooe_redir (OA 435 (5a)): the channel to FET two cycles after the
+// model's send (OI-179): its valid from a flop a cycle after rd_l, the
+// payload a cycle later. The model's epoch-only beats (5b) are not ooe_redir's
+// yet: a redirect queued behind one leaves the RTL earlier, counted.
+struct ExpR { unsigned long long n = 0; ccv::ooe::Redirect r; };
+std::deque<ExpR> rdq;
+std::deque<std::pair<unsigned long long, uint64_t>> fq;
+bool rpay = false, fpay = false, eo_seen = false;
+ccv::ooe::Redirect rexp;
+uint64_t fexp = 0;
+unsigned long long last_eo = 0, rdr_sent = 0, rdr_early = 0, ckf_sent = 0, ntm_drops = 0;
+void redirReset() { rdq.clear(); fq.clear(); rpay = fpay = eo_seen = false; }
+void redirExpect(const Cyc &c) {
+  for (const auto &r : c.sends) {
+    if (r.epoch_only) { eo_seen = true; last_eo = c.n; continue; }
+    rdq.push_back({c.n, r});
+  }
+  if (c.fmask) fq.push_back({c.n, c.fmask});
+}
+void checkRedir(unsigned long long n) {
+  if (rpay) {
+    rpay = false;
+    const ccv::ooe::Redirect &e = rexp;
+    if (getField(dut->rdr_warp_cq05h, 0, 5) != e.warp) fail("redirect warp differs", e.slot, getField(dut->rdr_warp_cq05h, 0, 5), e.warp);
+    if (getField(dut->rdr_t1_cq05h, 0, LS) != e.slot) fail("redirect tier1 differs", e.slot, getField(dut->rdr_t1_cq05h, 0, LS), e.slot);
+    if (getField(dut->rdr_ckpt_cq05h, 0, LK) != e.ckpt) fail("redirect ckpt differs", e.slot, getField(dut->rdr_ckpt_cq05h, 0, LK), e.ckpt);
+    if (uint32_t(dut->rdr_tmask_cq05h) != e.taken_mask) fail("redirect tmask differs", e.slot, unsigned(dut->rdr_tmask_cq05h), e.taken_mask);
+    if (uint64_t(dut->rdr_tgt_cq05h) != (e.target_pc & PCM)) fail("redirect target_pc differs", e.slot, unsigned(dut->rdr_tgt_cq05h), unsigned(e.target_pc));
+    if (getField(dut->rdr_ep_cq05h, 0, 3) != e.epoch) fail("redirect epoch differs", e.slot, getField(dut->rdr_ep_cq05h, 0, 3), e.epoch);
+    if (getBit(dut->rdr_stay_cq05h, 0) != e.stay) fail("redirect stay differs", e.slot, getBit(dut->rdr_stay_cq05h, 0), e.stay);
+    if (getField(dut->rdr_zero_cq05h, 0, 5) != 0) fail("redirect 5b flag set", e.slot, getField(dut->rdr_zero_cq05h, 0, 5), 0);
+  }
+  if (dut->rdr_v_cq04h) {
+    if (rdq.empty()) fail("redirect not in the model", 0, 1, 0);
+    else {
+      const ExpR e = rdq.front();
+      rdq.pop_front();
+      if (e.n + 2 > n) {
+        if (eo_seen && last_eo + 16 >= n) ++rdr_early;
+        else fail("redirect early", e.r.slot, unsigned(n), unsigned(e.n + 2));
+      } else if (e.n + 2 < n) fail("redirect late", e.r.slot, unsigned(n), unsigned(e.n + 2));
+      rexp = e.r;
+      rpay = true;
+      ++rdr_sent;
+    }
+  } else if (!rdq.empty() && rdq.front().n + 2 <= n) {
+    fail("redirect missing", rdq.front().r.slot, unsigned(n), unsigned(rdq.front().n + 2));
+    rdq.pop_front();
+  }
+  if (fpay) {
+    fpay = false;
+    for (unsigned b = 0; b != S * NK; ++b)
+      if (getBit(dut->ckf_m_cq05h, b) != bool(fexp >> b & 1)) { fail("ckpt free mask differs", b, getBit(dut->ckf_m_cq05h, b), unsigned(fexp >> b & 1)); break; }
+  }
+  while (!fq.empty() && fq.front().first + 2 < n) { fail("ckpt free missing", 0, unsigned(n), unsigned(fq.front().first + 2)); fq.pop_front(); }
+  const bool want = !fq.empty() && fq.front().first + 2 == n;
+  if (bool(dut->ckf_v_cq04h) != want) fail("ckpt free valid differs", 0, dut->ckf_v_cq04h, want);
+  if (want) { fexp = fq.front().second; fpay = true; fq.pop_front(); ++ckf_sent; }
+}
+// Each slot's warp and next epoch as ooe_decrx holds them, read in rd_l's
+// cycle: the bench drives the resolving slots' from the model's log.
+void driveRedir(const Cyc *p1) {
+  dut->ntm_cq03h = 0;
+  if (!p1) return;
+  for (const auto &q : p1->r.redirect) {
+    if (q.slot >= S) continue;
+    const unsigned w = control == "redir-warp" ? (q.warp + 1) % 32 : q.warp;
+    const unsigned ep = control == "redir-epoch" ? (q.epoch + 7) % 8 : q.epoch;
+    setField(dut->wid_cq03h, q.slot * 5, 5, w);
+    setField(dut->ep1_cq03h, q.slot * 3, 3, ep);
+  }
+  // A notice's mask (5b) drops a slot's frees from its cycle (OA 438).
+  if (control == "redir-ntm" && !p1->r.ckfree.empty()) {
+    for (const auto &q : p1->r.ckfree) setBit(dut->ntm_cq03h, q.first, true);
+    ++ntm_drops;
+  }
+}
+
 Cyc pend, prev, prev2;
 bool pending = false, have_prev = false, have_prev2 = false;
 
@@ -793,6 +876,8 @@ void hook(const Core &c) {
   if (!live || stopped) return;
   Cyc now;
   now.r = c.robLog();
+  now.sends = c.out.redirects;
+  now.fmask = c.out.free_mask;
   if (g.valid && g.run.size() == S) {
     now.run = g.run;
     now.ret = g.ret;
@@ -821,7 +906,9 @@ void hook(const Core &c) {
     ++cycles;
     pend.n = cycles;
     account(pend);
+    redirExpect(pend);
     drive(pend, now);
+    driveRedir(have_prev ? &prev : nullptr);
     dut->eval();
     if (const char *w = std::getenv("ROB_TRACE")) {
       const unsigned long long lo = std::strtoull(w, nullptr, 10);
@@ -844,6 +931,7 @@ void hook(const Core &c) {
     }
     check(pend, have_prev ? &prev : nullptr);
     checkRes(have_prev ? &prev : nullptr, have_prev2 ? &prev2 : nullptr);
+    checkRedir(pend.n);
     tick();
     act2 = act1;
     act1 = !pend.r.squash.empty() || !held.empty() || !pend.r.hrel.empty();
@@ -872,7 +960,8 @@ int main(int argc, char **argv) {
   // them as drawn, each core to its first squash, its redirect compared
   // drawn (right-always needs mispredicts to miss).
   // The squash's controls need squashes.
-  const bool sq_control = control == "no-miu" || control == "no-store" || control == "drop-killed-fill";
+  const bool sq_control = control == "no-miu" || control == "no-store" || control == "drop-killed-fill" ||
+                          control.rfind("redir-", 0) == 0 || control == "rd-unled";   // ooe_redir's need redirects
   ooeTestPredictAll(std::getenv("ROB_MISPREDICT") == nullptr && control != "right-always" && !sq_control);
   const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, robConfig)) +
                           cg.run(seeds, nullptr, hook, robConfig);
@@ -884,6 +973,7 @@ int main(int argc, char **argv) {
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, nops, events, retires, gfrees,
               pfrees, resolves, redirects, ckfrees, stops, skipped, squashes, sq_ents, sq_held, sq_kills, hrels, discards,
               commits, faults, mismatches, model_fails);
+  std::printf("  ooe_redir: redirects=%llu (early behind a notice=%llu) ckpt-frees=%llu notice-drops=%llu\n", rdr_sent, rdr_early, ckf_sent, ntm_drops);
   if (br_two) std::printf("  cycles with two branch dones (RCU's one a cycle): %llu\n", br_two);
   for (const auto &kv : stop_why) std::printf("  stopped at %s: %llu\n", kv.first.c_str(), kv.second);
   const int rc = mismatches || model_fails ? 1 : 0;

@@ -40,6 +40,23 @@ module ooe_rob_tb #(
 ) (
   input  logic                    ooe_core_clk,
   input  logic                    ooe_rst_r00h,
+  // ooe_redir's (OA 435 (5a)): each slot's warp and next epoch, as ooe_decrx
+  // flops them, and its epoch-only notice mask (5b; the bench drives them).
+  input  logic [S*5-1:0]          wid_cq03h,
+  input  logic [S*3-1:0]          ep1_cq03h,
+  input  logic [S-1:0]            ntm_cq03h,
+  input  logic [1:0]              lead_off,   // controls: [0] drops rd_e, [1] ckf_l
+  output logic                    rdr_v_cq04h,
+  output logic [4:0]              rdr_warp_cq05h,
+  output logic [LS-1:0]           rdr_t1_cq05h,
+  output logic [LK-1:0]           rdr_ckpt_cq05h,
+  output logic [31:0]             rdr_tmask_cq05h,
+  output logic [VA-1:0]           rdr_tgt_cq05h,
+  output logic [2:0]              rdr_ep_cq05h,
+  output logic [4:0]              rdr_zero_cq05h,
+  output logic                    rdr_stay_cq05h,
+  output logic                    ckf_v_cq04h,
+  output logic [S*NK-1:0]         ckf_m_cq05h,
   input  logic [S-1:0]            al_l_cq01h,
   input  logic [S*LA-1:0]         al_n_cq02h,
   input  logic [S*A-1:0]          al_nop_cq02h,
@@ -131,6 +148,7 @@ module ooe_rob_tb #(
   logic [S-1:0]        gfl_w, pfl_w;
   logic [S*NG*NSB-1:0] gf_w;
   logic [S*NP-1:0]     pf_w;
+  logic [S-1:0]        rde_w, ckl_w;
   for (genvar w = 0; w < S; w++) begin : g_w
     // Rename 2's per-slot fill valids (OA 418, #52): the decode Rename 2
     // registers, done here by the bench, which stands in for it.
@@ -210,6 +228,8 @@ module ooe_rob_tb #(
       .ret_cq02h(ret_cq02h[w * ($bits(ret_cq02h) / S) +: $bits(ret_cq02h) / S]),
       .rd_l_cq03h(rd_l_cq03h[w * ($bits(rd_l_cq03h) / S) +: $bits(rd_l_cq03h) / S]),
       .ckf_cq03h(ckf_cq03h[w * ($bits(ckf_cq03h) / S) +: $bits(ckf_cq03h) / S]),
+      .rd_e_cq02h(rde_w[w]),
+      .ckf_l_cq02h(ckl_w[w]),
       .rd_ckpt_cq04h(rd_ckpt_cq04h[w * ($bits(rd_ckpt_cq04h) / S) +: $bits(rd_ckpt_cq04h) / S]),
       .rd_tmask_cq04h(rd_tmask_cq04h[w * ($bits(rd_tmask_cq04h) / S) +: $bits(rd_tmask_cq04h) / S]),
       .rd_tgt_cq04h(rd_tgt_cq04h[w * ($bits(rd_tgt_cq04h) / S) +: $bits(rd_tgt_cq04h) / S]),
@@ -226,6 +246,15 @@ module ooe_rob_tb #(
       .ft_addr_cq03h(ft_addr_cq03h[w * ($bits(ft_addr_cq03h) / S) +: $bits(ft_addr_cq03h) / S])
     );
   end
+  ooe_redir #(.S(S), .NK(NK), .PCW(PCW), .VA(VA), .WW(5), .EP(3)) u_redir (
+    .ooe_core_clk, .ooe_rst_r00h,
+    .rd_e_cq02h(rde_w & ~{S{lead_off[0]}}), .rd_l_cq03h, .rd_ckpt_cq04h, .rd_tmask_cq04h, .rd_tgt_cq04h, .rd_stay_cq04h,
+    .ckf_l_cq02h(ckl_w & ~{S{lead_off[1]}}), .ckf_cq03h, .wid_cq03h, .ep1_cq03h, .ntm_cq03h,
+    .rdr_v_cq04h, .rdr_warp_cq05h, .rdr_t1_cq05h, .rdr_ckpt_cq05h, .rdr_tmask_cq05h, .rdr_tgt_cq05h,
+    .rdr_ep_cq05h, .rdr_eo_cq05h(rdr_zero_cq05h[0]), .rdr_rw_cq05h(rdr_zero_cq05h[1]),
+    .rdr_rh_cq05h(rdr_zero_cq05h[2]), .rdr_hl_cq05h(rdr_zero_cq05h[3]), .rdr_own_cq05h(rdr_zero_cq05h[4]),
+    .rdr_stay_cq05h, .ckf_v_cq04h, .ckf_m_cq05h
+  );
   always_comb begin
     gfree_l_cq02h = |gfl_w;
     pfree_l_cq02h = |pfl_w;
