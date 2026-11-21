@@ -40,7 +40,7 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 ## Register bookmarks
 /home/user/ti-register-bookmarks.json (outside the repo). 11-21: TI 505,
 MI 25, DI 22, OI 399, OA 465, MA 137; the rest as of the 11-20 sweep.
-Last row TI-511.
+Last row TI-512.
 
 ## Long runs
 Every long tool detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as
@@ -51,6 +51,8 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 - Landed d761c634 (ti-wp, SCOPED PASS on the 11-20 sweep 8c378e12): DI-6's
   pins, MA-25, MI-9 (3) waypred, MI-8, MI-4 A2/A3, TI-499's sweep fallback.
   TI-506 posted; DI, MI, MA, RA rung.
+- Landed 0ee1c423 (with DI's 9d251d57, strict DCU model): bank controls
+  under all four MIU x DCU sets (DI-11 (4); TI-512).
 - Landed 4f257a17 (with MI's 51cf5dd2): DI-10 pair pins (rope:12, vadd4
   pair row dropped); bank controls pinned to the stub DCU (pair runs had
   them on the model). TI-511 to DI, MI. Check pair runs before landing
