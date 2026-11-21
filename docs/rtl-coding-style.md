@@ -1436,9 +1436,12 @@ refused, a size waiver no excuse), one (137,128) code word, (72,64) at 4096
 words, a 2048 x 137 SRAM that is 32 KiB of data (passes; counted on all its
 bits, over), and two (72,64) code words held to the 137-bit shape.
 
-**Injection, MIU's side** (RA 153 (5)). The MIU stub takes every Nth L1
-hit that writes a register as a single-bit error when `CCV_MIU_ECC_INJECT=N`:
-its data leaves on time with a bit flipped (the speculative data), no
+**Injection, DCU's side** (RA 153 (5); MA-28 (c), AR 401, which retired
+MIU's `CCV_MIU_ECC_INJECT`). With `CCV_DCU_ECC_INJECT=N` the DCU stub flips
+one stored bit of every Nth hit's line under the check bits it carries on
+`ccv_dcu_miu_rsp` (`check_bits`, 8 a 64-bit word); the MIU stub computes the
+syndrome over every code word of the slot, corrects the line, and on a
+non-zero one its data leaves on time with a bit flipped (the speculative data), no
 completion at the contract (the miss indication, `CCV_LAT_L1_ECC`), and the
 corrected data and then the completion follow `CCV_LAT_L1_ECC` + 2 cycles
 after, as a miss's would. Coverage bin `l1_ecc_fix`. check-kernel runs hit,
