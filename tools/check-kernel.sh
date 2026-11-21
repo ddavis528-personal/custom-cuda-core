@@ -842,6 +842,7 @@ miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=0
 miu=model ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1
 miu=model privwin priv_form=10
 dcu=model vadd4-swap orphan=1
+miu=model vadd4-swap-miu impl=stub
 dcu=model,miu=model vadd fill_notice=4
 dcu=model,miu=model vadd cmpl_hint=4
 dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=61
@@ -2465,11 +2466,20 @@ decq=$(python3 -c 'import json; print(next(p["value"] for p in json.load(open("p
 v4orph=$([ "$decq" -le 13 ] && echo 1 || echo 0)
 # DI-3: the DCU model's timing leaves vadd4 one orphan at any depth, the
 # pair two (IMPL_PINS' vadd4-swap rows).
-v4orph=$(impl_pins vadd4-swap orphan=$v4orph); v4orph=${v4orph#orphan=}
+# MI-4 (A)(4), MI rev 33: the MIU model completes vadd4's one MLC miss
+# before RAU demotes the warp, so no drain happens under it; vadd4's half
+# runs on the stub MIU there (the vadd4-swap-miu row), stall's stays as run.
+v4miu=$(impl_pins vadd4-swap-miu impl=${CCV_MIU_IMPL:-stub}); v4miu=${v4miu#impl=}
+v4log="$B/kernel_vadd4_swap.log"
+if [ "$v4miu" != "${CCV_MIU_IMPL:-stub}" ]; then
+  v4log="$B/kernel_vadd4_swap_miu-$v4miu.log"
+  CCV_MIU_IMPL=$v4miu CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl >"$v4log" 2>&1
+fi
+v4orph=$(CCV_MIU_IMPL=$v4miu impl_pins vadd4-swap orphan=$v4orph); v4orph=${v4orph#orphan=}
 w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
-w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=$v4orph ready=1 restored=1)
+w2=$(ok "$v4log" bulk_discard=1 orphan=$v4orph ready=1 restored=1)
 if [ -z "$w$w2" ]; then
-  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits and orphan home; vadd4's $v4orph orphan(s) at decq $decq, then ready)"
+  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits and orphan home; vadd4's $v4orph orphan(s) at decq $decq on the $v4miu MIU, then ready)"
 else
   bad "replay drain" "stall: $w; vadd4: $w2"
 fi
