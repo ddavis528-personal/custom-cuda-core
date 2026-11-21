@@ -298,7 +298,9 @@ struct Kernel {
       "memop_entries_peak",
       // A demoted warp's straggler walked on arrival, and one whose lanes
       // no beat had named yet (AR 395).
-      "decq_straggler", "decq_straggler_beat"};
+      "decq_straggler", "decq_straggler_beat",
+      // Cycles FET held a demotion's migration for its credits (OA 463).
+      "mig_credit_wait"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory

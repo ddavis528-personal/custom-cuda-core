@@ -27,7 +27,7 @@ std::string Config::apply(const std::string &spec) {
       {"rs_warp_cap", &rs_warp_cap}, {"decq", &decq}, {"decq_warp_max", &decq_warp_max},
       {"phys_regs", &phys_regs}, {"pred_regs", &pred_regs},
       {"fl_buf", &fl_buf}, {"fl_banks", &fl_banks}, {"fl_free_lag", &fl_free_lag},
-      {"rs_free_lag", &rs_free_lag}, {"decq_free_lag", &decq_free_lag}, {"ren_floor", &ren_floor},
+      {"rs_free_lag", &rs_free_lag}, {"decq_free_lag", &decq_free_lag}, {"decq_credit_lag", &decq_credit_lag}, {"ren_floor", &ren_floor},
       {"ren_ceil", &ren_ceil}, {"pred_ren_floor", &pred_ren_floor},
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},

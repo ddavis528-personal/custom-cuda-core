@@ -138,6 +138,10 @@ private:
   }();
   std::array<unsigned, ccv::kTier1Warps> cred_prev_{}, cred_in_{};
   uint32_t cred_rel_ = 0;
+  /// OA 463 (re:OI-194): credits held decq_credit_lag cycles before they
+  /// leave, per slot: (cycle due, count, released).
+  struct CredDue { uint64_t at; unsigned n; bool rel; };
+  std::array<std::deque<CredDue>, ccv::kTier1Warps> cred_dly_{};
   /// OA 455 (A, re OI-188): FET's count is credits sent less returned, never
   /// reseeded, so OOE returns one credit for every uop it consumes. Those of
   /// a warp with no tier-1 slot to return them on (a uop of a stale epoch
@@ -882,10 +886,21 @@ private:
         if (const int o = cred_warp_[t]; o >= 0 && cred_prev_[t] + cred_in_[t])
           k_.fail("ooe: slot %u leaves warp %d with %u decode-queue credits not returned (OA 462)", t, o,
                   cred_prev_[t] + cred_in_[t]);
+        // OA 463: credits still in the return delay may outlive OOE's own
+        // release of the slot, never its next warp: FET's wait for full
+        // credits keeps the next one off it until they land.
+        if (w >= 0 && !cred_dly_[t].empty()) {
+          unsigned n = 0;
+          for (const CredDue &d : cred_dly_[t]) n += d.n;
+          k_.fail("ooe: slot %u goes to warp %d with %u decode-queue credits of warp %d still held in the return delay (OA 463)",
+                  t, w, n, cred_warp_[t]);
+          cred_dly_[t].clear();
+        }
         // A slot newly given a warp starts from what it holds now.
         cred_warp_[t] = w;
         cred_prev_[t] = occ;
         cred_in_[t] = 0;
+        sendDue(t);
         continue;
       } else {
         back = cred_prev_[t] + cred_in_[t] - occ;
@@ -898,14 +913,32 @@ private:
         k_.fail("ooe: warp %d holds %u slots past its held wait, over r = %u (TI-46 (b))", w, occ,
                 ccv::prov::kHeldAhead);
       const bool rel = cred_rel_ >> unsigned(w) & 1u;
-      if (cred_ < 0 || (!back && !rel)) continue;
-      Bits m = msgOf(unsigned(cred_));
-      put(m, unsigned(cred_), "tier1_id", t);
-      put(m, unsigned(cred_), "credit_count", back);
-      put(m, unsigned(cred_), "released", rel ? 1 : 0);
-      sendOn(unsigned(cred_), t, m, makeUid(IdClass::kNone, 0));
-      cred_rel_ &= ~(uint32_t(1) << unsigned(w));
+      if (cred_ >= 0 && (back || rel)) {
+        cred_dly_[t].push_back({now_ + core_.config().decq_credit_lag, back, rel});
+        cred_rel_ &= ~(uint32_t(1) << unsigned(w));
+      }
+      sendDue(t);
     }
+  }
+
+  /// Sends slot t's credits that are due, as one message (OA 463; at
+  /// decq_credit_lag 0 each leaves the cycle it was counted, as before).
+  void sendDue(unsigned t) {
+    unsigned n = 0;
+    bool rel = false, any = false;
+    while (!cred_dly_[t].empty() && cred_dly_[t].front().at <= now_) {
+      n += cred_dly_[t].front().n;
+      rel = rel || cred_dly_[t].front().rel;
+      any = true;
+      cred_dly_[t].pop_front();
+    }
+    if (!cred_dly_[t].empty()) core_.counters["decq.credit_lag_held"]++;
+    if (!any || cred_ < 0) return;
+    Bits m = msgOf(unsigned(cred_));
+    put(m, unsigned(cred_), "tier1_id", t);
+    put(m, unsigned(cred_), "credit_count", n);
+    put(m, unsigned(cred_), "released", rel ? 1 : 0);
+    sendOn(unsigned(cred_), t, m, makeUid(IdClass::kNone, 0));
   }
 
   void work() override {

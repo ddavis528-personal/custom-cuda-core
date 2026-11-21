@@ -493,6 +493,10 @@ struct Config {
   /// beat leaves (OA 458: kLatDecqCreditDelay). Off: an epoch drop, as before.
   bool straggler_walk = true;
   unsigned decq_credit_delay = 0;
+  /// OA 463 (re:OI-194): extra cycles OOE holds every decode-queue credit
+  /// before it leaves, so a demotion's migration waits on credits (FET's
+  /// AR 395 (3) wait binds). A scenario knob; 0 is the design.
+  unsigned decq_credit_lag = 0;
   /// Control: a straggler is dropped, its credit returned, before its beat leaves.
   bool inject_straggler_early_credit = false;
   /// A squash to retirement drops a due squash's epoch advance (OA 460 control).
