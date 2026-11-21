@@ -5118,6 +5118,7 @@ private:
     for (auto mw = mig_wait_.begin(); mw != mig_wait_.end();) {
       const unsigned w = *mw;
       if (warps_[w].credits < int(ccv::prov::kDecqWarpMax) && k_.brk != "mig-before-credits") {
+        k_.hit("mig_credit_wait");   // OA 463: a cycle the wait held the migration
         ++mw;
         continue;
       }

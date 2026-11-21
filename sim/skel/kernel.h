@@ -303,7 +303,9 @@ struct Kernel {
       "decq_straggler", "decq_straggler_beat",
       // DCU's per-bank credits (MA-25): a request MIU held for one, the same
       // request sent once it came, and DCU's returns of each kind.
-      "credit_hold", "credit_hold_then_sent", "dcu_ent_ret", "dcu_std_ret"};
+      "credit_hold", "credit_hold_then_sent", "dcu_ent_ret", "dcu_std_ret",
+      // Cycles FET held a demotion's migration for its credits (OA 463).
+      "mig_credit_wait"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory
