@@ -1,0 +1,199 @@
+//===-- miu_pair.sv - MIU address pairing: each address with its memop ----===//
+//
+// Spec: docs/design-snapshots/miu-spec.md (live: CCV per-block architecture
+//       specs, MIU tab, "MA's Phase 2", slice 1 (rev 150): H's definition,
+//       the stage table's H row, the module partition's miu_pair row; the
+//       credits paragraph's lead-pipe pairing, OA-412).
+//
+// A memop arrives on ccv_ooe_miu_memop on the lowest credited slot of its
+// footprint, and its one address message arrives on ccv_rcu_miu_addr on its
+// lead pipe's slot, ctz(pipes), CCV_LAT_MIU_PAIR_LAG cycles after it (the
+// address path minus the memop path, LAG here). Co-issued footprints are
+// disjoint (V-60), so two memops that arrive in one cycle never share a lead
+// pipe, and the address that lands on slot k at cycle V is the one of the
+// memop that arrived at V - LAG with lead pipe k: MIU pairs by arrival cycle
+// and lead pipe, never by rob_tag. A bulk discard (mem_op 0xF) has pipes 0
+// and sends no address (A-41), so it pairs with nothing. A fence's pipes are
+// its data register's, like any memop's, and it pairs the same way.
+//
+// Stages (tags _cmNNh), the memop's arrival M = 00:
+//   00 M      the memop's valid on slot j (mv), a cycle ahead of its payload
+//   01        the payload's pipes and the MQ entry miu_mq allocates it (me),
+//             written into row wp of a ring of LAG rows, one cell a slot
+//   03 V      M + LAG: the address's valid lands (miu_cap's av); row rp, the
+//             one written at M + 1, names each lead pipe's entry
+//   04 H-1    the entry read: re to miu_mq's read port, which answers the
+//             A1 memop fields (fld) this cycle
+//   05 H, A1  the slot's A1 fields, its entry and its valid, from flops
+// The tags take LAG at its value, 3; a ring row dwells LAG - 1 cycles between
+// its write (02) and its read (03), as any queue's entries do. miu_cap's
+// tags count from the same M (its V is 03, H 05).
+//
+// The ring is a queue indexed by two free-running counters a fixed distance
+// apart (wp writes, rp reads, rp = wp + 1 mod LAG), not a shift array: no
+// cell feeds another (CCV-L23). A cell is clocked only when its row is
+// written and it gains or loses a memop (CG-3), and every enable starts at
+// this module's flops (CG-5).
+//
+// Inputs from the memop channel are capture flops' (arrival 0). Every output
+// comes straight from a flop; re, also read inside, has a (* keep *) copy.
+//
+// The reference is the MIU model's pairing (sim/miu/miu_block.cpp pairs by
+// rob_tag; the two agree wherever the contract holds), and
+// test/miu/pair_tb.cpp holds this module to a value model of it.
+//===----------------------------------------------------------------------===//
+`include "ccv_assert.svh"
+`define CCV_CLK miu_core_clk
+`define CCV_RST rst_r01h
+module miu_pair #(
+  parameter  int NS  = ccv_params_pkg::CCV_MIU_PIPES,          // slots, 4
+  parameter  int LAG = 3,                                       // CCV_LAT_MIU_PAIR_LAG once TI derives it (MI-16)
+  parameter  int NE  = ccv_params_pkg::CCV_MIU_PIPES * ccv_prov_pkg::CCV_MEMOP_CREDITS,   // MQ entries, 40
+  parameter  int FW  = 96,                                      // A1 memop fields an entry answers, miu_mq's layout
+  localparam int EW  = $clog2(NE),
+  localparam int PW  = (LAG > 1) ? $clog2(LAG) : 1
+) (
+  input  logic             miu_core_clk,
+  input  logic             rst_n,
+  // ccv_ooe_miu_memop, slot j: its valid at M, the payload's pipes at M + 1,
+  // and the MQ entry miu_mq allocates the memop on slot j that cycle.
+  input  logic [NS-1:0]    mv_cm00h,
+  input  logic [NS*NS-1:0] mp_cm01h,     // slot j's pipes at [j*NS +: NS]
+  input  logic [NS*EW-1:0] me_cm01h,     // slot j's entry at [j*EW +: EW]
+  // miu_mq's read port, one an address slot: the entry, and its A1 fields.
+  output logic [NS*EW-1:0] re_cm04h,
+  input  logic [NS*FW-1:0] fld_cm04h,
+  // A1: address slot k's memop, held from H until the next pairing.
+  output logic [NS-1:0]    a1v_cm05h,
+  output logic [NS*FW-1:0] a1f_cm05h,
+  output logic [NS*EW-1:0] a1e_cm05h
+);
+
+  if (LAG < 2) begin : g_lag
+    // LAG 1 lands the address with the payload, before the ring holds it;
+    // the spec allows it (rev 150, at least 1), and a bypass around the ring
+    // would serve it. No configuration has it yet.
+    $error("miu_pair: LAG %0d needs a bypass around the ring", LAG);
+  end
+
+  // rst_n flopped before any use (RST-1), inverted after the flop.
+  logic rst_cr01h_n;
+  always_ff @(posedge miu_core_clk) begin
+    rst_cr01h_n <= rst_n;
+  end
+  wire rst_r01h = !rst_cr01h_n;
+
+  // ---- The memop's valid, a cycle on (CG-5) -------------------------------
+  logic [NS-1:0] mv_q_cm01h;
+  always_ff @(posedge miu_core_clk) begin
+    if (rst_r01h) mv_q_cm01h <= '0;
+    else          mv_q_cm01h <= mv_cm00h;
+  end
+
+  // ---- The ring: LAG rows, a cell an arrival slot -------------------------
+  // wp names the row written this cycle, rp the row written LAG - 1 cycles
+  // ago, whose memops' addresses land now. Each counter is its own
+  // register, at the stage that uses it.
+  logic [PW-1:0] wp_cm02h;
+  logic [PW-1:0] rp_cm03h;
+  always_ff @(posedge miu_core_clk) begin
+    if (rst_r01h) begin
+      wp_cm02h <= '0;
+      rp_cm03h <= PW'(1 % LAG);
+    end else begin
+      wp_cm02h <= (wp_cm02h == PW'(LAG - 1)) ? '0 : wp_cm02h + PW'(1);
+      rp_cm03h <= (rp_cm03h == PW'(LAG - 1)) ? '0 : rp_cm03h + PW'(1);
+    end
+  end
+
+  logic          cv_cm02h [LAG][NS];     // the cell holds a memop
+  logic [NS-1:0] cp_cm02h [LAG][NS];     // its pipes
+  logic [EW-1:0] ce_cm02h [LAG][NS];     // its MQ entry
+  for (genvar r = 0; r < LAG; r++) begin : g_row
+    for (genvar j = 0; j < NS; j++) begin : g_cell
+      // Clocked when its row is written and it gains a memop or loses the
+      // one it held, so every clocked cycle changes it.
+      wire cell_en_cm02h = (wp_cm02h == PW'(r)) & (mv_q_cm01h[j] | cv_cm02h[r][j]);
+      always_ff @(posedge miu_core_clk) begin
+        if (rst_r01h)           cv_cm02h[r][j] <= 1'b0;
+        else if (cell_en_cm02h) cv_cm02h[r][j] <= mv_q_cm01h[j];
+      end
+      always_ff @(posedge miu_core_clk) begin
+        if (cell_en_cm02h) begin
+          cp_cm02h[r][j] <= mp_cm01h[j*NS +: NS];
+          ce_cm02h[r][j] <= me_cm01h[j*EW +: EW];
+        end
+      end
+    end
+  end
+
+  // ---- V: each lead pipe's memop from row rp ------------------------------
+  // hit[k*NS + j]: slot j's memop leads on pipe k, its lowest pipe.
+  // Disjoint footprints make each k's hits one-hot.
+  logic [NS*NS-1:0] hit_cm03h;
+  logic [NS-1:0]    pv_d_cm03h;
+  logic [NS*EW-1:0] pe_d_cm03h;
+  always_comb begin
+    pe_d_cm03h = '0;
+    for (int k = 0; k < NS; k++) begin
+      for (int j = 0; j < NS; j++) begin
+        hit_cm03h[k*NS + j] = cv_cm02h[rp_cm03h][j] & cp_cm02h[rp_cm03h][j][k] &
+                              ~|(cp_cm02h[rp_cm03h][j] & ((NS'(1) << k) - NS'(1)));
+        pe_d_cm03h[k*EW +: EW] = pe_d_cm03h[k*EW +: EW] |
+                                 ({EW{hit_cm03h[k*NS + j]}} & ce_cm02h[rp_cm03h][j]);
+      end
+      pv_d_cm03h[k] = |hit_cm03h[k*NS +: NS];
+    end
+  end
+
+  // ---- H-1: the entry to read, one copy inside and one to the port --------
+  logic [NS-1:0] pv_q_cm04h;
+  always_ff @(posedge miu_core_clk) begin
+    if (rst_r01h) pv_q_cm04h <= '0;
+    else          pv_q_cm04h <= pv_d_cm03h;
+  end
+  // Clocked when row rp holds a memop (a bulk discard's cell too, rare):
+  // the row's valid bits alone, so the enable stays within 8 NGD (CG-2).
+  logic pe_en_cm03h;
+  always_comb begin
+    pe_en_cm03h = 1'b0;
+    for (int j = 0; j < NS; j++) pe_en_cm03h = pe_en_cm03h | cv_cm02h[rp_cm03h][j];
+  end
+  (* keep *) logic [NS*EW-1:0] pe_q_cm04h;
+  (* keep *) logic [NS*EW-1:0] peo_q_cm04h;
+  always_ff @(posedge miu_core_clk) begin
+    if (pe_en_cm03h) begin
+      pe_q_cm04h  <= pe_d_cm03h;
+      peo_q_cm04h <= pe_d_cm03h;
+    end
+  end
+  assign re_cm04h = peo_q_cm04h;
+
+  // ---- H: slot k's A1 fields, from the entry miu_mq read ------------------
+  // Each slot one clock gate: clocked when it pairs, and the cycle after its
+  // last pairing, to clear its valid (CG-4: no valid flop clocked idle).
+  logic [NS-1:0] a1v_q_cm05h;
+  for (genvar k = 0; k < NS; k++) begin : g_a1
+    // The fields are a guarded payload: read only under a1v, so a clearing
+    // cycle may load whatever miu_mq answers.
+    wire a1_en_cm04h = pv_q_cm04h[k] | a1v_q_cm05h[k];
+    logic [FW-1:0] a1f_q_cm05h;
+    logic [EW-1:0] a1e_q_cm05h;
+    always_ff @(posedge miu_core_clk) begin
+      if (rst_r01h)         a1v_q_cm05h[k] <= 1'b0;
+      else if (a1_en_cm04h) a1v_q_cm05h[k] <= pv_q_cm04h[k];
+    end
+    always_ff @(posedge miu_core_clk) begin
+      if (a1_en_cm04h) begin
+        a1f_q_cm05h <= fld_cm04h[k*FW +: FW];
+        a1e_q_cm05h <= pe_q_cm04h[k*EW +: EW];
+      end
+    end
+    assign a1f_cm05h[k*FW +: FW] = a1f_q_cm05h;
+    assign a1e_cm05h[k*EW +: EW] = a1e_q_cm05h;
+  end
+  assign a1v_cm05h = a1v_q_cm05h;
+
+endmodule
+`undef CCV_CLK
+`undef CCV_RST
