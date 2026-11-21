@@ -1,0 +1,47 @@
+{
+ "module": "ooe_slot",
+ "ports": {
+  "al_slot_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-19",
+   "why": "OA 443 (re:OI-176): from ccv_rau_ooe_alloc's boundary receive flops, as OA 429 for ooe_decrx, in NGD from the launching flop; provisional until ccv_ooe has a unit"
+  },
+  "al_v_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-19",
+   "why": "OA 443 (re:OI-176): from ccv_rau_ooe_alloc's boundary receive flops, as OA 429 for ooe_decrx, in NGD from the launching flop; provisional until ccv_ooe has a unit"
+  },
+  "al_op_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-19",
+   "why": "OA 443 (re:OI-176): from ccv_rau_ooe_alloc's boundary receive flops, as OA 429 for ooe_decrx, in NGD from the launching flop; provisional until ccv_ooe has a unit"
+  },
+  "dm_warp_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-19",
+   "why": "OA 443 (re:OI-176): from ccv_rau_ooe_demote's boundary receive flops, as OA 429 for ooe_decrx, in NGD from the launching flop; provisional until ccv_ooe has a unit"
+  },
+  "dm_v_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-19",
+   "why": "OA 443 (re:OI-176): from ccv_rau_ooe_demote's boundary receive flops, as OA 429 for ooe_decrx, in NGD from the launching flop; provisional until ccv_ooe has a unit"
+  },
+  "kill_mask_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-19",
+   "why": "OA 443 (re:OI-176): from the common kill port's (kill_warp_mask, kill_epoch) boundary receive flops, as OA 429 for ooe_decrx, in NGD from the launching flop; provisional until ccv_ooe has a unit"
+  },
+  "kill_ep_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-11-19",
+   "why": "OA 443 (re:OI-176): from the common kill port's (kill_warp_mask, kill_epoch) boundary receive flops, as OA 429 for ooe_decrx, in NGD from the launching flop; provisional until ccv_ooe has a unit"
+  }
+ }
+}
