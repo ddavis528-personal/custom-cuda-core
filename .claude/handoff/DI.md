@@ -29,24 +29,19 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
-0. M0 met (DI-8, sent to MA): 3a2703ef pushed, with TI-506/507 and MI's
-   d639adb2 merged. Against the MIU stub, check-kernel and check-sv-hosted
-   are clean under CCV_DCU_IMPL=model. Cycles: +1.69% over the stub (66
-   kernels), +0.74% over p1 on the 54 where p1 runs. p1 hangs on 12 kernels
-   because it sends no MA-25 credit returns (MA's file; asked in DI-8).
-   f92a89fc made the credits strict and holds a store miss's store-data
-   entry until the fill merges it (DCU spec).
-   Phase 1b: the pair passes check-kernel clean. check-sv-hosted: the vadd
-   machine check is MI's (it fails with the DCU stub too). lnorm1 SV vs C++
-   at cycle 81, and RCU RTL in the SV top (transp4, vadd4), fail only under
-   the pair. A rerun is in the scratch worktree
+0. Phase 1b met (DI-11, sent to MA and TI) at 9d251d57, pushed. Pair
+   (CCV_DCU_IMPL=model CCV_MIU_IMPL=model): check-kernel rc=0 (382 PASS),
+   check-sv-hosted rc=0. DCU model alone: 383 PASS. Cycles over 66 kernels:
+   pair +2.07% vs the stubs (max vadd4 +26.0%), DCU alone +1.69% (max
+   slotform +23.2%). DI-7, DI-9 and DI-10 are resolved (MI d639adb2 and
+   51cf5dd2, TI 4f257a17). Waiting on: TI for DI-11 (4), to run
+   bank-credit-ignore and dcu-extra-credit under the DCU model as well
+   (check-kernel.sh:2185, :2196 pin the stub DCU now); MA for DI-8 (3), p1
+   sends no MA-25 credit returns and hangs on 12 kernels.
+   Scratch worktree for tests (never push from it):
    /tmp/claude-0/-home-user/bfe83fc4-cb75-557c-bad7-b1316bec67fe/scratchpad/m0w
-   (logs one level up: m0-*.log, m0-s1.txt); never push from it. Then
-   write the phase 1b row.
-1. Phase 1b (DI-5; AR-394, OA-454): S1 pair +1.62% vs the stubs (worst
-   vadd4 +25.4%), DCU alone +1.27%. cm32priv: pair 2090969, DCU alone
-   2105390, stubs 2095682. With notices off, fill_notice=0 and cmpl_hint=0.
-   RTL waits on MA's Phase 2 (AR-394: a notice from MLC's tag lookup).
+1. Next: the spec gaps (item 4), then the RTL once MA's Phase 2 lands
+   (AR-394: a notice from MLC's tag lookup).
 2. DI-4 closed (MA rev 135): notices are off by default; an un-noticed
    refill lands at F+4, a noticed one at F+6. SV-hosted PASS with the model.
 3. Friday pings: all 11 agents answered. OI's and RH's rosters lack DI
@@ -62,7 +57,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 20, MI 17, MA 135, AR 400, OA 460, TI 504, DA 128
+Conventions 20, DI 24, MI 17, MA 135, AR 400, OA 460, TI 511, DA 128
 (sweep of 2026-11-20 10:43 UTC; OI 395, RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
