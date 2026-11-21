@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 406, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 147, DA 128, MI 30, DI 29.
+Conventions 20, AR 406, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 148, DA 128, MI 30, DI 33.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -83,6 +83,10 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- DI-18 DECIDED (MA rev 148): on a CE MIU corrects what it holds and redelivers as a refill; DCU counts,
+  rewrites, sends nothing more (amends MA-28 (c)'s replay half to TI-513 (2)). MIU tab rev 153, DCU tab
+  rev 65, dcu-impl.md row. Waiting on AR to amend AR 401 (3). Snapshots miu-spec/dcu-spec still at 150/64.
 
 - MI-19 (3) ANSWERED (MA rev 147; MIU tab rev 151 adds drop_line and drop_held to the drop causes;
   miu-spec snapshot not yet refreshed to 151). PRICING owed once MI's b1a85fa6 + 2d2259bf are on a
