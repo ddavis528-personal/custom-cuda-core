@@ -266,6 +266,9 @@ struct Kernel {
       "ld_pass_held", "fence_hold", "drain_guard", "drain_guard_withheld", "st_wide_hold",
       "tlb_miss", "tlb_walk", "itlb_walk", "tlb_two_page", "walk_reads", "tlb_two_page_lost",
       "hint_slot_taken", "l1_dcu_late",
+      // Lookups the MIU model launched and then dropped (drop on
+      // ccv_miu_dcu_req; MA-27, AR 400; MI-19), all and by cause.
+      "dcu_drops", "drop_tlb", "drop_fault", "drop_split", "drop_line", "drop_bank", "drop_dup", "drop_held",
       // The DCU model's way mispredicts (MA-26, AR 390; MI-9 (3)).
       "dcu_wp_wrong",
       // A uop DEC held past a demotion's walk (AR 395).
