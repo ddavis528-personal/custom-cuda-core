@@ -75,8 +75,10 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 399 .653325 (tab rev 403).
-  - **The next AR row inserts after .653325**, labelled AR 400.
+  - Latest row: AR 401 .655773 (tab rev 405).
+  - **The next AR row inserts after .655773**, labelled AR 402.
+  - A find-replace through the Docs update tool failed with a JSON parse error
+    four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -96,10 +98,11 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 403, OA 463, TI 501, RA 157, RI 91,
-  IS 201, CP 160, OI 395, DA 128, MA 135, DI 12, MI 18, Conventions 20.
-  (TI read to 501 and OA to 463 for TI-501/502.) Specs: FET
-  tab rev 54, DCU tab rev 59.
+- **Bookmarks** (revs read through): AR 405, OA 464, TI 511, MA 142, DI 26,
+  MI 27, RA 157, RI 91, IS 201, CP 160, OI 395, DA 128, Conventions 20. TI,
+  MA, DI and MI were read only for named rows past the last sweep's revs (TI
+  496, MA 135, DI 12, MI 18): the next sweep reads them from those. Specs:
+  FET tab rev 54, DCU tab rev 59.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
@@ -208,6 +211,26 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000c. **MA-27 drop field: AGREED (AR 400 .654054; MA, TI rung).** 1-bit payload
+   field drop on ccv_miu_dcu_req (valid at H+1 from A1; A2 decides drops at
+   H+1, payload lands H+2). Conditions: (1) DCU commits nothing on valid/lead
+   alone; (2) a dropped lookup's read raises no CE/UE/core-fatal (DI control);
+   (3) MA prices transient credits + MA-27 (2)'s A1 hold on S1/cm32priv/
+   cm128priv (Daniel's bar on the total; field does not wait); (4) bins by
+   cause + controls. TI applies the field. Waiting on: MA's price, TI landing.
+   DI-12 (MIU refunds a dropped credit at A2; ent_ret only for lookups that
+   entered the queue): MA ruled it (MA rev 143). AR 400/401 conditions are in
+   the MIU tab rev 148 and DCU tab rev 64; DI-13 closed (DI rev 27). Still
+   owed: MA's A1-hold price once MI's model has the hold; TI's two fields.
+000d. **MA-28 L1 hit ECC: AGREED (c) (AR 401 .655773; MA, DI, TI rung).**
+   128 check bits a slot on ccv_dcu_miu_rsp; MIU computes the syndrome in R2
+   (~15 NGD beside the lane extract) and withholds the completion; ECC stays 1.
+   (b) (1-bit channel) needs ECC 2, likely in Daniel's band. DI-13 read (b)
+   before MA's edit; answered for (c): same scope both sides (OR over every
+   code word of the slot's response; CHECK + control), CE/UE per AR 370,
+   correction replays under the original req_id with no new credit, MIU keeps
+   the id live. CCV_DCU_ECC_INJECT replaces MIU's knob. Waiting on: MA's tabs,
+   TI's field, DI/MI models.
 000b. **TI-502 credit deadlock: SETTLED (AR 397 .649791, AR 398 .652069,
    AR 399 .653325; OA 459/460/461).** FET's full-credit wait (AR 395 (3))
    stays; (b) drained+delay and (c) no wait refused. OOE keeps a demoting warp
@@ -217,7 +240,9 @@ Credit rules (TI-49):
    take_slot). OA 455 A's pending counter becomes a CHECK with a bin. OI
    builds to OA 460; MI reruns MI-11 (2) (lnorm1, CCV_MIU_IMPL=model
    CCV_RAU_DEMOTE=mlc). Rows crossed twice (397 vs 459, 398 vs 460); OA 461
-   says both forms are one rule. Nothing owed. LESSON: after ringing an owner
+   says both forms are one rule. OA 462 (rev 464): the root cause was a
+   lost epoch advance (OI-193, fixed); the binding is unreachable under 395 (3)
+   and is dropped for a CHECK; 395 (3) is the rule. Accepted, nothing owed. LESSON: after ringing an owner
    on its own block, wait for its row before writing another; a crossing
    costs two rows each side.
    TI-501 (e8d8864b, on doowtf/infra-6msg93, not in 5f02cdfc): FET's mig wait

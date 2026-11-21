@@ -32,13 +32,16 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 400, TI 500, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 135, DA 128, MI 16, DI 12.
+Conventions 20, AR 400, TI 507, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 143, DA 128, MI 27, DI 27; AR 405.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
   MI ccr-58815650 2, RH ccr-c22116ce 9; pushed dbf69316, SCOPED PASS 26/26 (~4h40m, ngd/cg dominate).
 - TI-501: e8d8864b landed MA rev 134 notices-on scenario (vadd4, both models, CCV_DCU_NOTICE=1; five hint/notice
   controls). Watch item on TI-495 closed; e8d8864b arrives with the next sweep.
+- TI-506: MA-25 landed (d761c634; ccv_dcu_miu_cred, QDEPTH 16, STDATA 12). Spec tabs name them (DCU rev 60,
+  MIU rev 146), snapshots 2c11d950, MA rev 136 closes MA-25.
+- TI-508: MA rev 137 drops MI-7 (c) two-page-hit (eligibility page = TLB page 16 by design; MI agreed rev 22).
 
 ## State, 2026-11-13
 
@@ -80,6 +83,19 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- MIU PHASE 2 IS FIRST (MI-15, MA rev 138; MI says at Daniel's request, no DA row found, order is MA's anyway).
+  Slice 1 (L1-hit path) LANDED: MIU tab rev 147 "MA's Phase 2" (stage table at L1_HIT 8, partition of 17
+  modules, port budgets), miu-impl.md module list + phase rows 2a-2d, snapshot. NEXT: notify MI once pushed;
+  then slice 2 (miss/refill: slot reservation, hint, MIU_FILL 2; multi-pass from MQ), slice 3 (stores, drain,
+  payload RF, st.pred, std credits), slice 4 (atomics, SPM, walker, faults, discard/replay/kill). Then DCU's.
+- MA-27/MA-28 DECIDED (AR 400/401; MA rev 143): drop bit (MIU refunds the credit at A2, DI-12; ent_ret only for
+  lookups that entered the queue) and (c) check bits on rsp, MIU syndrome in R2, ECC stays 1; req_id live until
+  completion delivered; CCV_DCU_ECC_INJECT replaces MIU's. TI applies fields. In MIU tab rev 148, DCU tab rev 64.
+  OWED: price the A1 hold (bank < CCV_DCACHE_LOOKUPS credits) on S1/cm32priv/cm128priv once MI's model has it.
+- DI-8 DONE (MA rev 142): p1 credit returns, d494cf9b pushed on SCOPED PASS 26/26.
+- OI's ccr-57eff422 (OOE RTL, 77 commits) conflicts in OI's own files: retry at the sweep; row naming OI if it
+  still conflicts.
 
 - MI and DI ARE RUNNING (MI session_01QPk2jzH1Gd3DcxK4F4pwCC, DI session_01QPk2jz5TVESyWMKVKjqqEA; their
   roster commits arrive on their branches). Their tabs: MI c1311541-4219, DI 1ea5d5b3-6e9c (bookmarks MI 3, DI 2).
