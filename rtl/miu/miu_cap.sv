@@ -8,7 +8,9 @@
 // is fixed-latency and MIU's end is abutted (link_n 0, bnd_rx 0): its valid
 // lands in V, a cycle ahead of the payload (no lead field), so the payload
 // is on the wire in V+1 and held from H = V+2, the cycle MIU's first
-// registers hold both the memop and its address (A-61).
+// registers hold both the memop and its address (A-61). Stage tags count
+// from the memop's arrival M = 00 (miu_pair's), so V = M + LAG = 03 (LAG 3),
+// the payload 04 and H 05.
 //
 // The valid is captured every cycle (v_q, CG-5: the payload's enable is this
 // module's own flop, never an input) and the payload is captured under it:
@@ -35,15 +37,15 @@ module miu_cap #(
   input  logic          miu_core_clk,
   input  logic          rst_n,
   // ccv_rcu_miu_addr_s<k>: the valid in V, the payload's fields in V+1.
-  input  logic          av_cm00h,       // rcu_miu_addr_s<k>_valid
-  input  logic [NL-1:0] am_cm01h,       // payload.active_mask
-  input  logic [WD-1:0] base_cm01h,     // payload.base_per_lane
-  input  logic [WD-1:0] idx_cm01h,      // payload.index_per_lane
+  input  logic          av_cm03h,       // rcu_miu_addr_s<k>_valid
+  input  logic [NL-1:0] am_cm04h,       // payload.active_mask
+  input  logic [WD-1:0] base_cm04h,     // payload.base_per_lane
+  input  logic [WD-1:0] idx_cm04h,      // payload.index_per_lane
   // The capture, held from H until the next message's.
-  output logic          v_cm01h,        // the valid, a cycle on: a payload lands this cycle
-  output logic [NL-1:0] am_cm02h,
-  output logic [WD-1:0] base_cm02h,
-  output logic [WD-1:0] idx_cm02h
+  output logic          v_cm04h,        // the valid, a cycle on: a payload lands this cycle
+  output logic [NL-1:0] am_cm05h,
+  output logic [WD-1:0] base_cm05h,
+  output logic [WD-1:0] idx_cm05h
 );
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
@@ -57,35 +59,35 @@ module miu_cap #(
   // Two copies, each (* keep *): one is the payload's enable inside, the
   // other drives the port (a register that drives an output is held on
   // every path it starts to that output's budget, 2026-10-19).
-  (* keep *) logic v_q_cm01h;
-  (* keep *) logic vo_q_cm01h;
+  (* keep *) logic v_q_cm04h;
+  (* keep *) logic vo_q_cm04h;
   always_ff @(posedge miu_core_clk) begin
     if (rst_r01h) begin
-      v_q_cm01h  <= 1'b0;
-      vo_q_cm01h <= 1'b0;
+      v_q_cm04h  <= 1'b0;
+      vo_q_cm04h <= 1'b0;
     end else begin
-      v_q_cm01h  <= av_cm00h;
-      vo_q_cm01h <= av_cm00h;
+      v_q_cm04h  <= av_cm03h;
+      vo_q_cm04h <= av_cm03h;
     end
   end
-  assign v_cm01h  = vo_q_cm01h;
+  assign v_cm04h  = vo_q_cm04h;
 
   // ---- The payload, under the valid a cycle on ---------------------------
   // A guarded payload: read only through the memop that owns it, so it is
   // written whenever its group is clocked and holds nothing of its own.
-  wire pay_en_cm01h = v_q_cm01h;
-  logic [NL-1:0] am_q_cm02h;
-  logic [WD-1:0] base_q_cm02h, idx_q_cm02h;
+  wire pay_en_cm04h = v_q_cm04h;
+  logic [NL-1:0] am_q_cm05h;
+  logic [WD-1:0] base_q_cm05h, idx_q_cm05h;
   always_ff @(posedge miu_core_clk) begin
-    if (pay_en_cm01h) begin
-      am_q_cm02h   <= am_cm01h;
-      base_q_cm02h <= base_cm01h;
-      idx_q_cm02h  <= idx_cm01h;
+    if (pay_en_cm04h) begin
+      am_q_cm05h   <= am_cm04h;
+      base_q_cm05h <= base_cm04h;
+      idx_q_cm05h  <= idx_cm04h;
     end
   end
-  assign am_cm02h   = am_q_cm02h;
-  assign base_cm02h = base_q_cm02h;
-  assign idx_cm02h  = idx_q_cm02h;
+  assign am_cm05h   = am_q_cm05h;
+  assign base_cm05h = base_q_cm05h;
+  assign idx_cm05h  = idx_q_cm05h;
 
 endmodule
 `undef CCV_CLK

@@ -20,6 +20,7 @@ so this is a build artifact rather than something to remember.
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
 | `rtl/include/ooe_pl.svh` | `CCV_L_W_MEM_OP`, `CCV_L_W_OPCODE`, `CCV_P_W_BYP_GROUP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_IMM`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_IDX`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
+| `rtl/miu/miu_pair.sv` | — | `CCV_LAT_MIU_PAIR_LAG`, `CCV_MEMOP_CREDITS` |
 | `rtl/ooe/ooe_mempl.sv` | `CCV_L_W_MEM_OP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_ROB_IDX`, `CCV_P_W_RS_IDX` |
 | `rtl/ooe/ooe_sched.sv` | — | `CCV_MEMOP_CREDITS` |
 | `rtl/ooe/ooe_wake.sv` | — | `CCV_LAT_L1_CMPL`, `CCV_LAT_L1_WAKE` |
