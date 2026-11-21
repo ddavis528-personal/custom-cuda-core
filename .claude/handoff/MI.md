@@ -33,7 +33,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Daily sweep 2026-11-20 (Fri): AR 400, OA 462, IS 201, TI 503, OI 395, CP 160, RA 157, RI 91,
   MA 135, MI 18, DI 13, DA 128, Conventions 20; specs MIU 145, Common 9, DCU 59.
   Weekly pings: all 11 ponged; OI's and RH's rosters predated cc8ed42d (MI unnamed) then.
-- Since: MI 23, TI 507, OA 464, DI 19, MA 137, OI 397 (others as above).
+- Since: MI 26, TI 509, OA 464, DI 21, MA 137, OI 397 (others as above).
 - MA-26 landed (WAYPRED_BITS 5, SEL 1; L1_HIT 8, WAKE 14, CMPL 16). MA-25 landed (TI's
   d761c634); the model spends the credits at d639adb2 (step 5).
 - MI-8 at TI: under UE_INJECT=1 predlane/predmerge fail quiesced_at_end on ooe_miu_memop. Per
@@ -75,7 +75,10 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    advance; fixed in OI's c461c1b0 (not on a remote yet). When it lands, rerun
    CCV_MIU_IMPL=model CCV_RAU_DEMOTE=mlc build/skel/ccv-skel --kernel build/oracle/lnorm1/oracle.jsonl
    and close MI-11 (2).
-3. DI (DI-7 answered rev 21): DI reruns slotform, movi-in-lane, coremark128 on d639adb2.
+3. DI-9 fixed: tryStart's mo/am references past their erase (use-after-free) are copies at
+   51cf5dd2 (pushed 7a4c2b43). ASan only sees it at -O0 (scratchpad build-skel-asan*.sh);
+   fixed model ASan-clean over 910 runs. DI asked (rev 26) to rerun the pair's check-sv-hosted
+   (lnorm1 / RCU RTL host diffs were this). MI-14 landed by TI (ec8f3422), MI-13 (56c7ce54).
 4. Awaiting TI: MI-4 (replay drain stall/vadd4), MI-8, MI-9 (3), MI-13; TI's 78e74f4e (MI-7
    a/b/d cold-TLB scenarios): run them with the model when merged. MI-7 (c) dropped (rev 22).
 5. Phase 1a: flip the TLB to cold (MI-6, MA-126) and re-pin ~30 checks; the M0 report states
@@ -83,6 +86,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 6. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
 
 ## Pushed
+- ccr-58815650-0ch1hh at 7a4c2b43 (51cf5dd2 DI-9 fix): SCOPED PASS.
 - ccr-58815650-0ch1hh at 5057ec50 (d639adb2 bank credits + TI's d761c634): SCOPED PASS.
 - ccr-58815650-0ch1hh at f79b74f1: full PASS (Fri sweep: merged ccr-3868632d 78,
   ccr-5e4d6c70 7, ccr-c22116ce 9, MA's branch 6; walkthrough conflict regenerated).
