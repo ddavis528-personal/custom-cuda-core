@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 406, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 145, DA 128, MI 29, DI 29.
+Conventions 20, AR 406, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 147, DA 128, MI 30, DI 29.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -83,6 +83,12 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- MI-19 (3) ANSWERED (MA rev 147; MIU tab rev 151 adds drop_line and drop_held to the drop causes;
+  miu-spec snapshot not yet refreshed to 151). PRICING owed once MI's b1a85fa6 + 2d2259bf are on a
+  remote: S1, cm32priv, cm128priv cycles and A1 holds, with CCV_MIU_DUP_IDEAL 0/1 (MI's model-only knob,
+  asked of MI). Over 1% gap on any -> MA specifies an A1 dedupe (base-register + immediate compare).
+  Also mark "TI applies the fields" as landed (TI-513 8ac4c441) in both spec tabs.
 
 - MIU PHASE 2 IS FIRST (MI-15, MA rev 138; MI says at Daniel's request, no DA row found, order is MA's anyway).
   Slice 1 (L1-hit path) LANDED: MIU tab rev 147 "MA's Phase 2" (stage table at L1_HIT 8, partition of 17
