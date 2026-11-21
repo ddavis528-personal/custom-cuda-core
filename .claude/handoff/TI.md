@@ -64,8 +64,8 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): first four landed (TI-506); MI-7 cold-TLB
    next (task 49), with its page-boundary kernel.
-1. Task 55: after OI's AR 397 / OA-460 fix (demoting warp keeps its tier-1
-   slot) lands: check-kernel line for MI-11 (lnorm1 CCV_MIU_IMPL=model
+1. Task 55: OI-193's fix (oi-71 c461c1b0; edits main.cpp, kernel.h,
+   kernel.cpp in TI's files) lands with OI's sweep merge. Then: check-kernel line for MI-11 (lnorm1 CCV_MIU_IMPL=model
    CCV_RAU_DEMOTE=mlc clean, parks>0, FET wait on).
 2. MI-4 (B) / task 47: demotion vs barrier (transp4 CCV_RAU_CONCURRENT=1
    at:750; narrowadd), likely TI's SYU/RAU stubs.
