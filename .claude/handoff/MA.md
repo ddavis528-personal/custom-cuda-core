@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 400, TI 507, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 143, DA 128, MI 27, DI 27; AR 405.
+Conventions 20, AR 406, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 147, DA 128, MI 30, DI 29.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -84,6 +84,12 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 
 ## Open work, most urgent first
 
+- MI-19 (3) ANSWERED (MA rev 147; MIU tab rev 151 adds drop_line and drop_held to the drop causes;
+  miu-spec snapshot not yet refreshed to 151). PRICING owed once MI's b1a85fa6 + 2d2259bf are on a
+  remote: S1, cm32priv, cm128priv cycles and A1 holds, with CCV_MIU_DUP_IDEAL 0/1 (MI's model-only knob,
+  asked of MI). Over 1% gap on any -> MA specifies an A1 dedupe (base-register + immediate compare).
+  Also mark "TI applies the fields" as landed (TI-513 8ac4c441) in both spec tabs.
+
 - MIU PHASE 2 IS FIRST (MI-15, MA rev 138; MI says at Daniel's request, no DA row found, order is MA's anyway).
   Slice 1 (L1-hit path) LANDED: MIU tab rev 147 "MA's Phase 2" (stage table at L1_HIT 8, partition of 17
   modules, port budgets), miu-impl.md module list + phase rows 2a-2d, snapshot. NEXT: notify MI once pushed;
@@ -94,9 +100,11 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
   completion delivered; CCV_DCU_ECC_INJECT replaces MIU's. TI applies fields. In MIU tab rev 148, DCU tab rev 64.
   OWED: price the A1 hold (bank < CCV_DCACHE_LOOKUPS credits) on S1/cm32priv/cm128priv once MI's model has it.
 - DI-8 DONE (MA rev 142): p1 credit returns, d494cf9b pushed on SCOPED PASS 26/26.
-- OI's ccr-57eff422 (OOE RTL, 77 commits) conflicts in OI's own files: retry at the sweep; row naming OI if it
-  still conflicts.
-
+- MI-17 (MA rev 144): A1 credit gate = used[b] ? ge2[b] : ge1[b] (cred flops ge1/ge2, lead flops used). MI-18
+  (MA rev 145): every MIU receiving end no-flop at RTL; CCV_LAT_MIU_PAIR_LAG = addr path - memop path (3), require
+  >= 1, TI derives. MIU tab rev 150, snapshot refreshed.
+- Sweep 2026-11-21: merged infra 16, MI ccr-58815650, DI ccr-5e4d6c70, AR ccr-80102643. NOT merged: OI's
+  ccr-57eff422 (conflicts in OI's files); AR 402 already asks OI to merge TI's branch in, so no MA row.
 - MI and DI ARE RUNNING (MI session_01QPk2jzH1Gd3DcxK4F4pwCC, DI session_01QPk2jz5TVESyWMKVKjqqEA; their
   roster commits arrive on their branches). Their tabs: MI c1311541-4219, DI 1ea5d5b3-6e9c (bookmarks MI 3, DI 2).
 - DI-2 SETTLED (AR 390, OA-442; MA rev 121): a way mispredict (due+2 earliest) takes the conflict loser's
