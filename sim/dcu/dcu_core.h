@@ -101,9 +101,9 @@ struct Config {
   unsigned sets = ccv::prov::kDcuSets, ways = ccv::prov::kDcuWays;
   unsigned banks = ccv::kDcuBanks;
   unsigned age = ccv::prov::kDcuBankAge;   ///< CCV_DCU_BANK_AGE
-  unsigned qdepth = 16;                    ///< CCV_DCU_BANK_QDEPTH (MA-25; TI to land)
-  unsigned stdata = 12;                    ///< CCV_DCU_BANK_STDATA (MA-25; TI to land)
-  bool credits_strict = false;   ///< an overflow fails (once MIU holds credits), else a bin
+  unsigned qdepth = 16;                    ///< CCV_DCU_BANK_QDEPTH (MA-25)
+  unsigned stdata = 12;                    ///< CCV_DCU_BANK_STDATA (MA-25)
+  bool credits_strict = true;    ///< an overflow fails (MIU holds credits since 92e3d2a2), else a bin
   unsigned lat_hit = ccv::prov::kLatL1Hit; ///< CCV_LAT_L1_HIT: picks pipe A, B or C
   unsigned wp_bits = ccv::prov::kDcuWaypredBits;     ///< CCV_DCU_WAYPRED_BITS (MA-26)
   bool wp_recent = ccv::prov::kDcuWaypredSel == 1;   ///< CCV_DCU_WAYPRED_SEL: 1 recent, 0 index
@@ -218,6 +218,7 @@ private:
   std::map<uint64_t, std::vector<Req>> ontime_;   ///< D -> lookups due then
   std::map<uint64_t, unsigned> held_;      ///< line -> its writes not yet done
   std::vector<unsigned> ent_owed_, std_owed_, ent_used_, std_used_;
+  std::vector<unsigned> seen_ent_, seen_std_;  ///< last cycle's counts, so an overflow is refused once
   void arrive(const Req &r, uint64_t t);
   void schedule();
   void claim(unsigned b);
@@ -226,7 +227,7 @@ private:
   void serve(const Acc &a, uint64_t born);
   void serveLook(const Req &r, uint64_t born);
   void entLeave(unsigned b) { ++ent_owed_[b]; --ent_used_[b]; }
-  void stdLeave(unsigned b) { ++std_owed_[b]; --std_used_[b]; }
+  void stdLeave(unsigned b);
   bool held(uint64_t line) const { auto it = held_.find(line); return it != held_.end() && it->second; }
   void hold(uint64_t line) { ++held_[line]; }
   void unhold(uint64_t line);

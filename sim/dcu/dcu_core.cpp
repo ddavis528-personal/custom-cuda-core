@@ -36,6 +36,8 @@ Core::Core(const Config &c, Hooks &h) : c_(c), h_(h) {
   ent_owed_.assign(c_.banks, 0);
   std_owed_.assign(c_.banks, 0);
   ent_used_.assign(c_.banks, 0);
+  seen_ent_.assign(c_.banks, 0);
+  seen_std_.assign(c_.banks, 0);
   std_used_.assign(c_.banks, 0);
   for (unsigned i = 0; i != c_.ids; ++i) free_ids_.insert(i);
 }
@@ -167,6 +169,17 @@ bool Core::needsMlc(const Req &r) const {
   return !w || !w->owned;
 }
 
+/// A store's write left: its store-data credit goes home (MA-25). Freeing an
+/// entry the bank does not hold is a model bug, refused by name.
+void Core::stdLeave(unsigned b) {
+  if (!std_used_[b]) {
+    h_.fail(fmt("dcu: bank %u frees a store-data entry it does not hold", b));
+    return;
+  }
+  ++std_owed_[b];
+  --std_used_[b];
+}
+
 void Core::arrive(const Req &r, uint64_t t) {
   const unsigned b = bankOf(r.pa);
   ++ent_used_[b];
@@ -176,8 +189,7 @@ void Core::arrive(const Req &r, uint64_t t) {
   // list (MA-12), so it is answered from the fill, in order.
   for (auto &m : miss_)
     if (m.second.line == r.pa && m.second.k != MK::Evict) {
-      entLeave(b);
-      if (r.op == Op::Store) stdLeave(b);
+      entLeave(b);   // its store data stays held until the fill merges it
       if (!startMiss(r)) stalled_.push_back(r);
       return;
     }
@@ -196,8 +208,9 @@ void Core::arrive(const Req &r, uint64_t t) {
   }
   // A store or atomic that needs MLC is known a miss from the tags (D2).
   if (r.op != Op::Read && needsMlc(r) && !wb_lines_.count(r.pa)) {
+    // The lookup entry leaves now; the store-data entry is held until the
+    // store's write leaves, when the fill merges it (DCU spec, MA-25).
     entLeave(b);
-    if (r.op == Op::Store) stdLeave(b);
     if (!startMiss(r)) stalled_.push_back(r);
     return;
   }
@@ -275,9 +288,10 @@ void Core::serveLook(const Req &r, uint64_t born) {
   Way *w = find(r.pa);
   if (r.op == Op::Store) {
     // A store that waited as a lookup (its line was being written back, or
-    // it lost its bank): an owned hit merges now; else it misses.
-    stdLeave(b);
+    // it lost its bank): an owned hit merges now; else it misses, and its
+    // store-data entry stays held until the fill merges it.
     if (w && w->owned && c_.brk != "write-through") {
+      stdLeave(b);
       merge(w->data, r);
       w->dirty = true;
       touch(*w);
@@ -532,6 +546,7 @@ bool Core::startMiss(const Req &r) {
       Way *w = find(r.pa);
       if (w) w->data = r.wdata;
       mlcReq(MlcOp::Write, r.pa, &r.wdata, id, r.tid);
+      stdLeave(bankOf(r.pa));   // the whole line's write leaves for MLC
       h_.hit("full_line");
     } else {
       miss_[id] = Miss{MK::RmwRead, r.pa, {r}, {}};
@@ -572,14 +587,14 @@ void Core::onFill(const Fill &f) {
     respond(at, rspFor(m.reqs.front()));
     for (size_t i = 1; i < m.reqs.size(); ++i) {   // merged behind it: look up again
       const unsigned b = bankOf(m.line);
-      ++ent_used_[b];
-      if (m.reqs[i].op == Op::Store) ++std_used_[b];
+      ++ent_used_[b];   // a store's data entry is still held from its arrival
       bq_[b].push_back(Acc{Acc::Look, now_, now_, m.line, m.reqs[i], 0, {}});
     }
     return;
   case MK::RmwRead: {
     Line l = f.line;
     merge(l, m.reqs.front());
+    stdLeave(bankOf(m.line));   // the partial store's write leaves with the merge
     install(m.line, l, false, false);
     hold(m.line);
     bq_[bankOf(m.line)].push_back(Acc{Acc::FillW, now_, now_, m.line, Req{}, f.id, {}});
@@ -609,6 +624,7 @@ void Core::onFill(const Fill &f) {
     Rsp s = rspFor(r);
     if (r.op == Op::Store) {
       merge(l, r);
+      stdLeave(b);   // its write leaves: the store-data credit goes home
       dirty = true;
       respond(at, s);   // the store's ack
       continue;
@@ -625,8 +641,7 @@ void Core::onFill(const Fill &f) {
   // What needed ownership a shared fill did not bring looks up again, in
   // order, after the fill's write.
   for (; i != m.reqs.size(); ++i) {
-    ++ent_used_[b];
-    if (m.reqs[i].op == Op::Store) ++std_used_[b];
+    ++ent_used_[b];   // a store's data entry is still held from its arrival
     h_.hit("dcu_merge_relook");
     bq_[b].push_back(Acc{Acc::Look, now_, now_, m.line, m.reqs[i], 0, {}});
   }
@@ -775,7 +790,12 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     size_t looks = ent_used_[b];
     if (looks >= c_.qdepth) { ++st_.at_qdepth; h_.hit("dcu_at_qdepth"); }
     if (std_used_[b] >= c_.stdata) { ++st_.at_stdata; h_.hit("dcu_at_stdata"); }
-    if (looks > c_.qdepth || std_used_[b] > c_.stdata) {
+    // Refused once per admission past a bound, as the stub does, not every
+    // cycle the bank stays over.
+    const bool rose = looks > seen_ent_[b] || std_used_[b] > seen_std_[b];
+    seen_ent_[b] = looks;
+    seen_std_[b] = std_used_[b];
+    if (rose && (looks > c_.qdepth || std_used_[b] > c_.stdata)) {
       if (c_.credits_strict)
         h_.fail(fmt("dcu: bank %llu holds %llu lookup entries and %llu store-data entries, past its credits (MA-25)",
                     b, looks, std_used_[b]));

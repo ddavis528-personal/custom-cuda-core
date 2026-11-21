@@ -196,6 +196,10 @@ private:
         if (cred_ent_[b]) ent |= uint64_t(1) << b;
         if (cred_std_[b]) std |= uint64_t(1) << b;
       }
+      // --break dcu-extra-credit: an entry credit on bank 0 that MIU never
+      // spent, at the first chance, which MIU must refuse by name (MA-25).
+      const bool extra = k_.brk == "dcu-extra-credit" && !extra_sent_;
+      if (extra) ent |= 1;
       if ((ent || std) && can(c.dcu_cred, 0)) {
         Bits b = msgOf(c.dcu_cred);
         put(b, c.dcu_cred, "ent_ret", ent);
@@ -205,6 +209,7 @@ private:
           if (cred_ent_[k]) --cred_ent_[k];
           if (cred_std_[k]) --cred_std_[k];
         }
+        if (extra) extra_sent_ = true;
       }
     }
     if (o.ue_raise || ue_owed_) {
@@ -219,6 +224,7 @@ private:
     }
   }
   bool ue_owed_ = false;
+  bool extra_sent_ = false;
   std::array<unsigned, ccv::kDcuBanks> cred_ent_{}, cred_std_{};
   bool credOwed() const {
     for (unsigned b = 0; b != ccv::kDcuBanks; ++b)
