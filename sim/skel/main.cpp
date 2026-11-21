@@ -324,7 +324,7 @@ int main(int argc, char **argv) {
                       brk == "slotless-drop-lost" || brk == "no-straggler-walk" || brk == "straggler-early-credit" ||
                       brk == "mig-before-credits" ||
                       brk == "bank-credit-ignore" || brk == "dcu-extra-credit" || brk == "fet-ignore-held" ||
-                      brk == "dcu-drop-answers" ||
+                      brk == "dcu-drop-answers" || brk == "dcu-ecc-recode" || brk == "dcu-drop-credit" ||
                       brk == "wp-late-at-due" || brk == "mce-no-exempt" || brk == "miu-keep-credit";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());

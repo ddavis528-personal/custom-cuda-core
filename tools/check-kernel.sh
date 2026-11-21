@@ -142,6 +142,9 @@
 #     on time, no completion then, its            (hit, CCV_DCU_ECC_INJECT=1):
 #     corrected data and completion later         stale reads; no-fix leaves
 #     (RA 153 (5), CCV_LAT_L1_ECC)                two registers wrong
+#   the DCU model's check bits are the line  dcu-ecc-recode (transp4, DCU
+#     as written, so MIU's syndrome sees a      model): no hit corrected,
+#     stored bit flipped (DI-16)                 stale reads
 #   an L1 hit completes at the contract with  early-hit, late-hit-data,
 #     its data, and its dependants read it       no-rcu-bypass (hit, with
 #     (A-46, OI-5)                               l1_spec): V-44 or stale reads
@@ -829,7 +832,7 @@ cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 NOTICE_ON=$([ "${CCV_DCU_IMPL:-stub}" = model ] && echo CCV_DCU_NOTICE=1)
 IMPL_PINS="
 dcu=model ldpar l1_hit=2
-dcu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=57
+dcu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=55
 dcu=model late l1_late=0
 dcu=model stall l1_late=0
 dcu=model privwin priv_form=12
@@ -1710,6 +1713,21 @@ if [ "$n1" -gt 0 ] && [ "$(field "$B/kernel_ecc-no-fix.log" gpr_mismatch)" = 2 ]
   say "--break ecc-no-fix, ecc-cmpl-on-time: a syndrome's hit" "PASS ($n1 stale reads and 2 registers; 5 stale reads, registers corrected)"
 else
   bad "--break ecc-no-fix / ecc-cmpl-on-time" "stale reads $n1 / $n2 (want >0 / 5): $(grep '^KERNEL' "$B/kernel_ecc-no-fix.log" "$B/kernel_ecc-cmpl-on-time.log" | tr '\n' ' ')"
+fi
+
+# The DCU model keeps the error in its arrays (DI-16): CCV_DCU_ECC_INJECT
+# flips a stored bit and the response carries the line's check bits as
+# written, so MIU's syndrome finds it. Its control, dcu-ecc-recode, sends
+# check bits recomputed over the bad line: MIU's syndrome misses it, no hit
+# is corrected and the loads' dependants read the flipped bit. Run under
+# the DCU model whatever the run's implementation set; the stub DCU has no
+# arrays to recode.
+CCV_DCU_IMPL=model CCV_DCU_ECC_INJECT=1 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --break dcu-ecc-recode >"$B/kernel_dcu-ecc-recode.log" 2>&1
+rf=$(cover "$B/kernel_dcu-ecc-recode.log" l1_ecc_fix); rc=$(field "$B/kernel_dcu-ecc-recode.log" check_failures)
+if [ "${rf:-x}" = 0 ] && [ "${rc:-0}" -gt 0 ]; then
+  say "--break dcu-ecc-recode, DCU model: MIU misses it" "PASS (transp4: l1_ecc_fix=0, check_failures=$rc)"
+else
+  bad "--break dcu-ecc-recode, DCU model" "l1_ecc_fix=${rf:-?} check_failures=${rc:-?} (want 0 / >0): $(grep '^KERNEL' "$B/kernel_dcu-ecc-recode.log")"
 fi
 
 # The machine check (AR 370; DA rev 124; ISA v1.9 O-86). DCU's stub takes
