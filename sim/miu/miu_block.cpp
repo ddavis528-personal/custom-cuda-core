@@ -393,6 +393,8 @@ private:
         }
       }
     }
+    for (unsigned b : a1_refund_) ++bent_[b];   // A2's drops a cycle ago (MA-27)
+    a1_refund_.clear();
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
       while (has(c.fill_ntc, s))
         notice(unsigned(get(take(c.fill_ntc, s).payload, c.fill_ntc, "req_id")));
@@ -727,6 +729,7 @@ private:
     drain(to_ooe_, c.miu_ooe);
     drain(to_dcu_, c.miu_dcu);
     drain(to_rau_, c.miu_ready);
+    a1GateFlop();
   }
 
   /// Whether rob_tag lies in a bulk discard's circular range (branch, tail]
@@ -1992,15 +1995,31 @@ private:
     for (auto &[s, jp, idx] : firsts) {
       Job &j = *jp;
       if (j.h + 1 != now_) { loseFirstPass(j, "l1_first_late"); continue; }
-      if (banks.count(bankOf(j.lines[idx].line))) { loseFirstPass(j, "l1_bank_loser"); continue; }
       const uint64_t fl = j.lines[idx].line;
-      if (older_held_lines.count(fl) || older_held_banks.count(bankOf(fl)) || !bankCan(bankOf(fl), false)) {
+      const unsigned fb = bankOf(fl);
+      // A1 (H): the gate on flops alone (a1Gate), and an older request held
+      // on the line or bank. A gate passed with no credit left is a spend
+      // past the count in RTL: reported, and held here.
+      if (a1Gate(fb) && !bankCan(fb, false) && !a1_short_++)
+        std::fprintf(stderr, "miu: A1 gate passed for bank %u with %d entry credits (cycle %llu)\n",
+                     fb, bent_[fb], (unsigned long long)now_);
+      if (older_held_lines.count(fl) || older_held_banks.count(fb) || !a1Gate(fb) || !bankCan(fb, false)) {
         bank_held_.insert({j.serial, idx});
         k_.hit("credit_hold");
         loseFirstPass(j, "l1_first_held");
         continue;
       }
       if (!can(c.miu_dcu, s) || !ids_.any()) { loseFirstPass(j, "l1_first_held"); continue; }
+      // A2 (H+1): the valid launched from A1 and spent its bank's credit;
+      // a bank-conflict loser is dropped (MA-27, AR 400) and miu_cred
+      // refunds the credit from A2's flopped drop a cycle on (a1_refund_).
+      a1_used_now_ |= 1u << fb;
+      if (banks.count(fb)) {
+        bankTake(fb, false);
+        a1_refund_.push_back(fb);
+        loseFirstPass(j, "l1_bank_loser");
+        continue;
+      }
       request(j, idx, s);
       k_.hit("l1_first_pass");
     }
@@ -2234,6 +2253,40 @@ private:
   void bankTake(unsigned b, bool store) {
     --bent_[b];
     if (store) --bstd_[b];
+  }
+  // The A1 gate on a first pass's bank (MA-27 (2), MI-17; MIU tab rev 149):
+  // A1 decides the valid that launches at H+1 from flops alone. miu_cred
+  // flops ge1[b] (count >= CCV_DCACHE_LOOKUPS) and ge2[b] (>= 2x) from its
+  // count net of every spend launched and every return that cycle; miu_lead
+  // flops used[b], a first pass it launched to bank b. A first pass that
+  // launches now was decided at A1 a cycle ago, reading the flops the cycle
+  // before that: ge from the counts after cycle now-2, used from cycle now-1
+  // (the launch the flops did not yet see). The gate is used ? ge2 : ge1;
+  // below it the load is held at A1 and loses its contract (l1_first_held,
+  // credit_hold), and goes in a later pass. A gate passed with no credit left
+  // would be a spend past the count in RTL; the model reports it on stderr.
+  // No kernel yet puts two first passes on one bank in a cycle (MI-9 (3)),
+  // so the gate's control waits for that kernel.
+  std::vector<uint8_t> ge1_a_ = std::vector<uint8_t>(ccv::kDcuBanks, 1),
+                       ge2_a_ = std::vector<uint8_t>(ccv::kDcuBanks, 1),
+                       ge1_b_ = std::vector<uint8_t>(ccv::kDcuBanks, 1),
+                       ge2_b_ = std::vector<uint8_t>(ccv::kDcuBanks, 1);
+  uint32_t a1_used_now_ = 0, a1_used_prev_ = 0;   // first passes launched, by bank
+  unsigned a1_short_ = 0;                          // gates passed with no credit
+  std::vector<unsigned> a1_refund_;                // dropped first passes' banks, refunded next cycle
+  bool a1Gate(unsigned b) const {
+    const bool used = a1_used_prev_ >> b & 1u;
+    return used ? ge2_b_[b] : ge1_b_[b];
+  }
+  void a1GateFlop() {
+    ge1_b_ = ge1_a_;
+    ge2_b_ = ge2_a_;
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+      ge1_a_[b] = bent_[b] >= int(ccv::prov::kDcacheLookups);
+      ge2_a_[b] = bent_[b] >= 2 * int(ccv::prov::kDcacheLookups);
+    }
+    a1_used_prev_ = a1_used_now_;
+    a1_used_now_ = 0;
   }
   bool busy() const override {
     return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
