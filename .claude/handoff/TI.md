@@ -39,7 +39,7 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 
 ## Register bookmarks
 /home/user/ti-register-bookmarks.json (outside the repo). 11-21: TI 505,
-MI 20, DI 17; the rest as of the 11-20 sweep. Last row TI-506.
+MI 20, DI 19; the rest as of the 11-20 sweep. Last row TI-507.
 
 ## Long runs
 Every long tool detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as
@@ -50,6 +50,8 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 - Landed d761c634 (ti-wp, SCOPED PASS on the 11-20 sweep 8c378e12): DI-6's
   pins, MA-25, MI-9 (3) waypred, MI-8, MI-4 A2/A3, TI-499's sweep fallback.
   TI-506 posted; DI, MI, MA, RA rung.
+- Landed 836d3f89: impl_pins substitutes every pinned bin (DI re:TI-506;
+  TI-507).
 - The 11-20 release is 078f102d; the remote refused its tag
   snapshot-2026-11-20-8c378e1 (local only, in /home/user/ti-size).
 - Disk: the first gate-push died of a full disk; freed ti-bench and ti-hooks
