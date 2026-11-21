@@ -43,7 +43,7 @@ std::string Config::apply(const std::string &spec) {
       {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}, {"cmpl_split", &cmpl_split}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
-  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"demote_walk", &demote_walk}, {"beat_merge", &beat_merge}, {"straggler_walk", &straggler_walk}, {"inject_straggler_early_credit", &inject_straggler_early_credit}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
+  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"demote_walk", &demote_walk}, {"beat_merge", &beat_merge}, {"straggler_walk", &straggler_walk}, {"inject_straggler_early_credit", &inject_straggler_early_credit}, {"inject_due_epoch_lost", &inject_due_epoch_lost}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
@@ -364,6 +364,12 @@ void Core::uop(const Uop &u) {
   // demote_walk (OA 451): ooe_decq holds the flush of the walked uops,
   // dropping them at the walk's end; none arrives for the slot meanwhile.
   if (slot_[si].walk_held) count("demote.walk_arrival");
+  // OA 460: FET fetches nothing for a warp past its demotion's notice, and
+  // the notice's epoch is new to it, so no uop of a demoting or drained
+  // slot carries the current epoch.
+  if (slot_[si].st == WarpState::kDemoting || slot_[si].st == WarpState::kDrained)
+    err("OA 460: warp %u's uop seq %u arrives in its demotion's own epoch %u: FET fetched past the notice", u.warp,
+        uint32_t(u.tid), u.fetch_epoch);
   // A uop behind no hold stops the barrier timer: the warp is moving.
   if (!slot_[si].bar_hold) slot_[si].bar_idle = false;
   decq_.push_back(u);
@@ -2233,7 +2239,19 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool dis
   if (!branch_squash_) robStop("squash");
   // A squash to retirement (a kill, a demotion, a due squash whose branch
   // has retired) takes any squash still due.
-  if (to_retirement && slot < squash_due_.size()) squash_due_[slot].on = false;
+  // Its redirect has already left, stamped with the epoch that squash was
+  // to advance to, so the advance is taken here too: a demotion's or a
+  // kill's notice then moves past it, and what FET fetched behind the
+  // redirect arrives in the epoch the demotion ended, walked as a straggler
+  // (OA 460). inject_due_epoch_lost: the advance is dropped with the squash,
+  // so the notice repeats the redirect's epoch.
+  if (to_retirement && slot < squash_due_.size() && squash_due_[slot].on) {
+    squash_due_[slot].on = false;
+    if (!cfg_.inject_due_epoch_lost) {
+      advanceEpoch(slot, false);
+      count("squash.due_epoch_taken");
+    }
+  }
   if (slot < audit_squash_.size()) audit_squash_[slot] = 1;
   if (squash_at_.size() != slot_.size()) squash_at_.assign(slot_.size(), 0);
   squash_at_[slot] = now_ + 1;

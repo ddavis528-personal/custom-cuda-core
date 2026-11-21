@@ -495,6 +495,8 @@ struct Config {
   unsigned decq_credit_delay = 0;
   /// Control: a straggler is dropped, its credit returned, before its beat leaves.
   bool inject_straggler_early_credit = false;
+  /// A squash to retirement drops a due squash's epoch advance (OA 460 control).
+  bool inject_due_epoch_lost = false;
   /// OA 447 (re:OI-179 (3)): ooe_redir registers the pick a cycle after
   /// rob_w's rd_l and the payload a cycle after that, so the redirect and
   /// ckpt_free leave OOE this many cycles after the model's send, together
