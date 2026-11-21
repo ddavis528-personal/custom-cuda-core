@@ -1,0 +1,7 @@
+{
+  "module": "ooe_rsread",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-11-20",
+  "why": "OA 435 (2)(3) put the issue and payload registers in ooe_rcupl and ooe_mempl; the RS read (OA's rev 343, (A)) is theirs, beside those registers, from ooe_rs's entry flops and ooe_sched's grant register (NGD-5: ooe_rs's read was input to output)."
+}
