@@ -111,7 +111,10 @@ void Kernel::checkParked(unsigned w) {
       if (d.pred) pwant[d.idx & 3] = d.p;
       else if (d.idx < kArchGprs) want[d.idx] = d.v;
     }
-  const uint64_t pc = n < o.recs.size() ? o.recs[n].pc : 0;
+  // A held warp's lanes step back to its retired wait, run again; OOE's
+  // resume_pc is still the one past it (TI-40, AR's rev 164).
+  const uint32_t rn = pk.held_wait ? n + 1 : n;
+  const uint64_t pc = rn < o.recs.size() ? o.recs[rn].pc : 0;
   if (pk.resume_pc != pc)
     fail("parked warp %u resumes at %llx; ccv-sim's next after %u retired is %llx", w,
          (unsigned long long)pk.resume_pc, n, (unsigned long long)pc);
@@ -5014,7 +5017,33 @@ private:
         // target_pc. A lane in no beat keeps FET's PC.
         Warp &x = warps_[rw];
         const uint32_t lanes = uint32_t(get(m.payload, c.ooe_fet, "taken_mask"));
-        const uint64_t pc = get(m.payload, c.ooe_fet, "target_pc");
+        uint64_t pc = get(m.payload, c.ooe_fet, "target_pc");
+        uint64_t btid = uidClass(m.tid) == IdClass::kInstr ? m.tid : 0;
+        // A held warp's beat (TI-40, AR's rev 164): its lanes step back
+        // over the converged wait, which retired, so the restored warp
+        // fetches the wait again and asks SYU again. Its record is the
+        // C_BAR_WAIT at that PC, the last one fetched.
+        // fet-ignore-held: the step-back skipped, the restored warp past its wait.
+        if (get(m.payload, c.ooe_fet, "rewind_held") && k_.brk != "fet-ignore-held") {
+          pc -= get(m.payload, c.ooe_fet, "held_long") ? 4 : 2;
+          const auto &recs = k_.orcs[rw].recs;
+          for (size_t i = std::min(x.next, recs.size()); i-- != 0;)
+            if (recs[i].op == "C_BAR_WAIT" && recs[i].pc == pc) {
+              btid = instrUid(warpSeq(rw, recs[i].seq));
+              break;
+            }
+          // The wait runs again, so it is not counted retired until it
+          // retires again (trace-only bookkeeping, for the checks).
+          for (size_t i = k_.retire_order.size(); btid && i-- != 0;)
+            if (seqWarp(uint32_t(k_.retire_order[i])) == (rw & 31)) {
+              if (k_.retire_order[i] == uidSeq(btid)) {
+                k_.retire_order.erase(k_.retire_order.begin() + long(i));
+                --k_.retired;
+                k_.parked[rw].held_wait = true;
+              }
+              break;
+            }
+        }
         for (unsigned l = 0; l != kLanes; ++l)
           if (lanes >> l & 1u) x.lane_pc[l] = pc;
         x.rewound |= lanes;
@@ -5022,9 +5051,8 @@ private:
         if (k_.brk != "held-no-clear") x.held = false;
         // The oldest beat's uop, on the trace sideband: where this stub's
         // oracle-ordered fetch resumes after a restore (trace-only).
-        if (uidClass(m.tid) == IdClass::kInstr &&
-            (!x.boundary_tid || seqIndex(uidSeq(m.tid)) < seqIndex(uidSeq(x.boundary_tid))))
-          x.boundary_tid = m.tid;
+        if (btid && (!x.boundary_tid || seqIndex(uidSeq(btid)) < seqIndex(uidSeq(x.boundary_tid))))
+          x.boundary_tid = btid;
       } else if (get(m.payload, c.ooe_fet, "epoch_only")) {
         epoch_[rw & 31] = fe;
         warps_[rw].stopped = true;
