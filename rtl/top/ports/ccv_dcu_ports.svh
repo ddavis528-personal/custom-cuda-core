@@ -115,7 +115,13 @@
   output ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s3_payload,
   input  logic dcu_miu_fill_ntc_s3_credit,
   input  logic dcu_miu_fill_ntc_s3_stall,
-  output logic dcu_miu_fill_ntc_wake
+  output logic dcu_miu_fill_ntc_wake,
+  // dcu -> miu
+  output logic dcu_miu_cred_valid,
+  output ccv_dcu_miu_cred_t dcu_miu_cred_payload,
+  input  logic dcu_miu_cred_credit,
+  input  logic dcu_miu_cred_stall,
+  output logic dcu_miu_cred_wake
 `ifdef CCV_CHECK
   , output logic clk_gated
 `endif
@@ -137,4 +143,5 @@
   , output logic [63:0] dcu_miu_fill_ntc_s1_tid
   , output logic [63:0] dcu_miu_fill_ntc_s2_tid
   , output logic [63:0] dcu_miu_fill_ntc_s3_tid
+  , output logic [63:0] dcu_miu_cred_tid
 `endif

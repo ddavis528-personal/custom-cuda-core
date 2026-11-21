@@ -183,6 +183,35 @@ private:
       send(c.dcu_mlc, 0, b,
            o.mlc->tid ? o.mlc->tid : makeUid(IdClass::kTxn, g_unowned_txn++));
     }
+    // MA-25's credit returns on ccv_dcu_miu_cred (TI, landing the channel):
+    // the core's two vectors, kept a count a bank while the channel cannot
+    // take them, so a return is never lost (OI-18 rule: DI owns this file).
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+      cred_ent_[b] += o.ent_ret >> b & 1u;
+      cred_std_[b] += o.std_ret >> b & 1u;
+    }
+    {
+      uint64_t ent = 0, std = 0;
+      for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+        if (cred_ent_[b]) ent |= uint64_t(1) << b;
+        if (cred_std_[b]) std |= uint64_t(1) << b;
+      }
+      // --break dcu-extra-credit: an entry credit on bank 0 that MIU never
+      // spent, at the first chance, which MIU must refuse by name (MA-25).
+      const bool extra = k_.brk == "dcu-extra-credit" && !extra_sent_;
+      if (extra) ent |= 1;
+      if ((ent || std) && can(c.dcu_cred, 0)) {
+        Bits b = msgOf(c.dcu_cred);
+        put(b, c.dcu_cred, "ent_ret", ent);
+        put(b, c.dcu_cred, "std_ret", std);
+        send(c.dcu_cred, 0, b, makeUid(IdClass::kNone, 0));
+        for (unsigned k = 0; k != ccv::kDcuBanks; ++k) {
+          if (cred_ent_[k]) --cred_ent_[k];
+          if (cred_std_[k]) --cred_std_[k];
+        }
+        if (extra) extra_sent_ = true;
+      }
+    }
     if (o.ue_raise || ue_owed_) {
       ue_owed_ = true;
       if (can(c.dcu_cru_err, 0)) {
@@ -195,7 +224,14 @@ private:
     }
   }
   bool ue_owed_ = false;
-  bool busy() const override { return core_.busy() || ue_owed_; }
+  bool extra_sent_ = false;
+  std::array<unsigned, ccv::kDcuBanks> cred_ent_{}, cred_std_{};
+  bool credOwed() const {
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b)
+      if (cred_ent_[b] || cred_std_[b]) return true;
+    return false;
+  }
+  bool busy() const override { return core_.busy() || ue_owed_ || credOwed(); }
 };
 
 } // namespace
