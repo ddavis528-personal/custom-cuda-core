@@ -31,7 +31,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-21 (Sat): AR 406, OA 466, IS 201, TI 511, OI 399, CP 160, RA 157, RI 91,
-  MA 145, MI 30, DI 29, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 512 (TI-513
+  MA 145, MI 35, DI 29, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 512 (TI-513
   notice: 8ac4c441 drop/check_bits/CCV_DCU_ECC_INJECT landed). Next pings: Friday.
 - Sweep merge d26849c3 (ccr-183cc441 25, ccr-5e4d6c70 20, ccr-80102643 4, mi-dev A1 hold
   b1a85fa6) under full gate-push (job-gate-push-20261121-104904-28964.log). OI's ccr-57eff422
@@ -61,18 +61,10 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   Bookmarks since: OA 455, MI 12.
 
 ## Open work, most urgent first
-0. MI-19: mi-dev holds 2d2259bf (drop bit, R2 syndrome) + a0afe9fc (drop_held = older-store
-   overlap only; CCV_MIU_DUP_IDEAL) + handoff, NOT pushed. 3224eaff on mi-dev is my local
-   cherry-pick of all of DI's 8b6090d0: do NOT gate it (its ECC half waits on TI's re-pin, DI-16).
-   Plan (DI-17, answered rev 31): when DI's notice says 7bf5073a (drop half alone) is on
-   ccr-5e4d6c70-n6402z, in the main checkout merge that branch and mi-push (= a0afe9fc), then
-   cherry-pick -x every mi-dev commit after 3224eaff (handoffs, ead8f705 miu_pair, ...), then
-   CCV_PUSH_BRANCHES=ccr-58815650-0ch1hh tools/gate-push.sh. Gate runs stubs only.
-   Pricing answered (rev 32, MA rung): S1 gap 0, cm32priv +0.008%, cm128priv -0.10%; spec kept.
-   DI-18 settled (MA rev 148, MIU tab 153): MIU corrects a CE, completion withheld a cycle as a
-   refill, nothing to DCU, req_id frees on its one response: the model already does this.
-   MIU tab rev 150: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
-   lands CCV_LAT_MIU_PAIR_LAG (3, >=1) after the memop; miu_pair loads A1 fields from MQ at H-1.
+0. MI-19 done: 2d2259bf + a0afe9fc + miu_pair pushed at 073943f3 over DI's 818285df (MI rev 35,
+   DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
+   MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
+   lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
 1. RTL slice 1 (MA Phase 2, MIU tab rev 150): miu_cap pushed; miu_pair done on mi-dev (ead8f705:
    ring of LAG rows, tags from memop arrival M=00, V 03, H 05; bench + controls arrival/lag; cg/ngd
    clean; FW=96 placeholder until miu_mq's layout; LAG param until TI derives it). Next was miu_pair
@@ -91,6 +83,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   rows of cells of paragraphs. Opens m8yvbw8rqgz.613 (6 cells), Responses m8yvbw8rqgz.675 (4).
 
 ## Pushed
+- ccr-58815650-0ch1hh at 073943f3: SCOPED PASS (mi-dev 6f7d98a4: MI-19 drop/syndrome, miu_pair
+  RTL, merged over DI 818285df and TI b8233a39).
 - ccr-58815650-0ch1hh at d26849c3: full PASS (sweep 2026-11-21: ccr-183cc441, ccr-5e4d6c70,
   ccr-80102643, mi-dev b1a85fa6 A1 hold).
 - ccr-58815650-0ch1hh at b04269bb (dd04003d miu_cap RTL, bench, units): SCOPED PASS.
