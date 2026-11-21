@@ -1352,8 +1352,9 @@ private:
     // A2 sets drop on those it finds a TLB miss, a fault, a page split, a
     // lane off its leader's line, a bank conflict or a duplicate leader on
     // (dropAll, planFirstPass). Only on the load's first A1 (lost_ marks a
-    // retry). Waits that hold the load before its translation (an older
-    // store, a write in flight, an atomic's hold, a fence) launch nothing.
+    // retry). Holds A1 knows from flopped state (a write in flight, an
+    // atomic's hold, a fence) launch nothing; an older store's overlap,
+    // found at A2, drops them (drop_held; MI-19 (3c), MA rev 147).
     std::vector<std::pair<unsigned, uint64_t>> leads;
     if (!j.store && !j.atom && j.global && j.active && contracted(tag) && !lost_.count(tag))
       leads = leadersOf(j, unsigned(get(memop_[tag].msg, c.ooe_miu, "pipes")));
@@ -1374,7 +1375,14 @@ private:
     // 1's store; AR's response TI-27 (d)).
     // no-st-wait: the load reads past the older store, and sees the flag
     // still clear.
-    if (!j.store && k_.brk != "no-st-wait" && olderStore(j)) { k_.hit("st_ld_wait"); return false; }
+    if (!j.store && k_.brk != "no-st-wait" && olderStore(j)) {
+      // Found at A2 from this load's address, after A1 launched its
+      // lookups: they drop (MI-19 (3c), MA rev 147). The holds above and
+      // below come from flopped state A1 reads, and launch nothing.
+      dropAll("drop_held");
+      k_.hit("st_ld_wait");
+      return false;
+    }
     // And while an atomic's pass holds one of its lines (V-72). A store
     // waits at its drain.
     if (!j.store && held(j)) { k_.hit("atomic_hold_wait"); return false; }
@@ -1803,7 +1811,7 @@ private:
       bool dup = false;
       for (const auto &e : j.fp) dup = dup || e.second == idx;
       if (!dup) j.fp.push_back({slot, idx});
-      else drops_.push_back({now_ + 1, slot, line, j.tid, "drop_dup"});   // MA-27: A2 drops it
+      else if (!dup_ideal_) drops_.push_back({now_ + 1, slot, line, j.tid, "drop_dup"});   // MA-27: A2 drops it
     }
   }
 
@@ -2037,8 +2045,7 @@ private:
       const unsigned fb = bankOf(d.line);
       if (older_held_lines.count(d.line) || older_held_banks.count(fb) || !a1Gate(fb) ||
           !bankCan(fb, false) || !can(c.miu_dcu, s) || (used >> s & 1u)) {
-        k_.hit("drop_held");
-        return;
+        return;   // held at A1: nothing launches
       }
       a1_used_now_ |= 1u << fb;
       bankTake(fb, false);
@@ -2344,6 +2351,14 @@ private:
   /// miu_cred refunds from A2's flopped drop a cycle on (a1_refund_).
   struct Drop { uint64_t at; unsigned slot; uint64_t line; uint64_t tid; const char *why; };
   std::vector<Drop> drops_;
+  /// CCV_MIU_DUP_IDEAL=1: a duplicate leader's valid never launches, an
+  /// oracle with no RTL meaning, to price an A1 dedupe (MI-19 (3a), MA rev
+  /// 147). 0, the default: A1 launches every group leader and A2 drops the
+  /// duplicates, as slice 1's RTL does.
+  const bool dup_ideal_ = [] {
+    const char *v = std::getenv("CCV_MIU_DUP_IDEAL");
+    return v && std::strtoul(v, nullptr, 0) != 0;
+  }();
   std::vector<unsigned> a1_refund_;                // dropped first passes' banks, refunded next cycle
   bool a1Gate(unsigned b) const {
     const bool used = a1_used_prev_ >> b & 1u;
