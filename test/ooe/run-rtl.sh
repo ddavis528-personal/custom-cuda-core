@@ -280,7 +280,7 @@ if out=$("$dir/decrx_tb" "$seeds" 2>&1); then
 else
   say "decrx == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in adv-late late-lead no-adv-bypass no-double keep-stale no-ev-lead no-rel; do
+for c in adv-late late-lead no-adv-bypass no-double keep-stale no-ev-lead no-rel no-walk; do
   if DECRX_CONTROL=$c "$dir/decrx_tb" 3 >/dev/null 2>&1; then
     say "  control $c (decrx)" "MISSED"; fail=1
   else
