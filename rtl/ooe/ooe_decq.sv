@@ -65,8 +65,15 @@
 // and applied an edge late (L4: fl_q), rename taking nothing from the slot
 // meanwhile (rename's rule, from its own copy of the registered squash: the
 // count and heads still show the old uops, and an assertion holds rename to
-// it); its entries' credits return that edge later. No uop arrives for a slot in its flush's cycle (an
-// assertion; the model's check too), so the late flush drops nothing new.
+// it); its entries' credits return that edge later. A uop arriving for a
+// slot in its flush's cycle was kept by ooe_decrx a cycle before, under the
+// epoch the flush ends, so the late flush drops it from the staging
+// register as well: it takes no entry, and its credit returns with the
+// flush's (OA 430, re:OI-168 (B)). The term is this module's own flops
+// (the staged slot one-hot and fl_q), at 0 NGD on the arrival's cone; the
+// benches check that every uop so dropped is stale (decrx_tb) and that the
+// credits balance (decq_tb). Uops arriving at the flush's own edge carry
+// the new epoch and stay.
 // Rename's take is registered (tk, OA-21, OA's response OI-58 V-75) and
 // popped at the next edge, so the queue is clocked on its own flops
 // alone; the take register is enabled by rename's "some warp takes" bit,
@@ -112,6 +119,8 @@ module ooe_decq #(
   output logic [S*R*P-1:0] head_pay_cq02h,   // the first R's payloads
   output logic [S*NA*PA-1:0] head_adm_cq02h, // the rest's admission bits
   output logic [LU-1:0]    used_cq02h,       // entries held: the credits out
+  output logic [S*LC-1:0]  crd_cq02h,        // entries each slot freed at the last edge: its credits
+                                             // back to FET (ccv_ooe_fet_credit's credit_count, TI-46)
   output logic [S-1:0]     arr_cq02h         // a slot took arrivals at the last edge: its heads re-form
                                              // at the next (rename's change lead, OA's rev 174)
 );
@@ -265,8 +274,8 @@ module ooe_decq #(
       dq    = dn[32'(ow) * LR +: LR];
       fr[e] = st[OBUSY + e] && (fl[ow] || LC'(ps) < LC'(dq));
     end
-    // Each staged arrival's position less its slot's dequeues now (no
-    // staged arrival's slot flushes now: an assertion).
+    // Each staged arrival's position less its slot's dequeues now (one
+    // whose slot flushes now is not in g: it takes no entry).
     // (Its slot's count less the slot's dequeues, per slot, picked by the
     // staged slot one-hot.)
     for (int r = 0; r < E; r++) begin
@@ -351,8 +360,9 @@ module ooe_decq #(
   logic            enq_en_cq01h;          // the arrival lead's flop
   logic [S-1:0]    arr_q_cq02h;           // a slot had arrivals at the last edge: its heads re-form
   logic [S-1:0]    tkv_cq02h;             // a slot's take in transit (rename took from it at the last edge)
-  logic [S*LR-1:0] tk_cq02h;              // rename's take registered: popped at the next edge
+  (* keep *) logic [S*LR-1:0] tk_cq02h;   // rename's take registered: popped at the next edge (kept beside tkc)
   logic [S*(R+1)-1:0] tko_cq02h;          // and one-hot (tko[s][t]: t uops)
+  (* keep *) logic [S*LR-1:0] tkc_cq02h;  // tk's copy for the count output alone (NGD-7)
   // The entries held, kept as state (the credits out): this edge's
   // arrivals less its frees, each slot's whole count on a flush, else its
   // take in transit. The same as the busy bits' count (an assertion).
@@ -365,6 +375,15 @@ module ooe_decq #(
   // on the edge after one that freed entries (fr_q), so their credits
   // return then.
   logic [LU-1:0]   used_l_cq01h, frn_cq02h, frn_nx_cq01h;
+  // Each slot's frees at an edge, registered beside frn: its decode-queue
+  // credits back to FET per tier-1 slot (TI-46 (b); OA 435 (4)). A slot's
+  // whole count on its flush (its staged stale arrivals with it), else its
+  // take in transit. Straight from flops; with FL they show the cycle
+  // before the pool's count takes them.
+  logic [S*LC-1:0] crd_q_cq02h, crd_nx_cq01h;
+  always_comb
+    for (int s = 0; s < S; s++)
+      crd_nx_cq01h[s * LC +: LC] = fl_q_cq02h[s] ? st_cq02h[OCNT + s * LC +: LC] : LC'(tk_cq02h[s * LR +: LR]);
   logic            fr_q_cq02h, uo_en_cq01h;
   function automatic logic [LU-1:0] used_late(input logic [LU-1:0] u, input logic [E-1:0] ev,
                                               input logic [LU-1:0] fr);
@@ -393,8 +412,8 @@ module ooe_decq #(
   assign used_nx_cq01h = used_next(used_q_cq02h, enq_v_cq01h, st_cq02h, tk_cq02h, fl_q_cq02h);
   assign fault_cq02h = faults(st_cq02h, sg_cq02h, enq_v_cq01h, enq_slot_cq01h, tk_cq02h, fl_q_cq02h);
 
-  // Every arrival was led; none arrives for a slot whose flush comes now;
-  // rename takes nothing from a slot whose flush is registered.
+  // Every arrival was led; rename takes nothing from a slot whose flush is
+  // registered.
   logic [S-1:0] enq_s_cq01h;
   always_comb begin
     enq_s_cq01h = '0;
@@ -423,7 +442,6 @@ module ooe_decq #(
   end
   `CCV_ASSERT(deq_thermometer, deq_th_cq01h)
   `CCV_ASSERT(enq_led, enq_v_cq01h == '0 || enq_en_cq01h)
-  `CCV_ASSERT(no_enq_at_flush, (enq_s_cq01h & flush_cq01h) == '0)
   `CCV_ASSERT(no_deq_while_flushing, (deq_s_cq01h & fl_q_cq02h) == '0)
   // rename's "may take" bits cover its takes (OA's response OI-65: a
   // superset, from rename's flops).
@@ -498,19 +516,6 @@ module ooe_decq #(
           end
       end
   end
-  // c[n], n the thermometer th's count (0 to R): for R = 4 a balanced tree
-  // of 2:1 selects (th[1]: n >= 2), else the one-hot AND-OR. One per width.
-  function automatic logic [LC-1:0] thsel_c(input logic [(R+1)*LC-1:0] c, input logic [R-1:0] th);
-    if (R == 4) begin
-      thsel_c = th[1 % R] ? (th[3 % R] ? c[(4 % (R + 1)) * LC +: LC]
-                                       : th[2 % R] ? c[(3 % (R + 1)) * LC +: LC] : c[(2 % (R + 1)) * LC +: LC])
-                          : (th[0] ? c[(1 % (R + 1)) * LC +: LC] : c[0 +: LC]);
-    end else begin
-      thsel_c = '0;
-      for (int t = 0; t < R + 1; t++)
-        if ((t == 0 || th[(t + R - 1) % R]) && (t == R || !th[t % R])) thsel_c = thsel_c | c[t * LC +: LC];
-    end
-  endfunction
   function automatic logic [1-1:0] thsel_v(input logic [(R+1)*1-1:0] c, input logic [R-1:0] th);
     if (R == 4) begin
       thsel_v = th[1 % R] ? (th[3 % R] ? c[(4 % (R + 1)) * 1 +: 1]
@@ -544,7 +549,7 @@ module ooe_decq #(
         if ((t == 0 || th[(t + R - 1) % R]) && (t == R || !th[t % R])) thsel_a = thsel_a | c[t * PA +: PA];
     end
   endfunction
-  logic [S*LC-1:0]      cnt_nx_cq01h;
+  logic [S*LC-1:0]      bs_nx_cq01h;
   logic [S*H-1:0]       hv_nx_cq01h;
   logic [S*R*P-1:0]     hp_nx_cq01h;
   logic [S*NA*PA-1:0]   ha_nx_cq01h;
@@ -553,19 +558,16 @@ module ooe_decq #(
     ha_nx_cq01h = '0;
     hv_nx_cq01h = '0;
     for (int s = 0; s < S; s++) begin
-      // The count less the take in transit, early; the take arriving now
-      // picks which of its R + 1 values to subtract, one-hot.
-      logic [LC-1:0] base;
-      base = st_cq02h[OCNT + s * LC +: LC] - LC'(tk_cq02h[s * LR +: LR]);
-      // The take arriving now (a thermometer) picks among R + 1 values each:
-      // a balanced tree of 2:1 selects on its bits (thsel), no decode ahead
-      // of it. A flushed slot shows nothing (its mask on the early side);
-      // the payloads are read only through their valids, so unmasked.
-      begin
-        logic [(R+1)*LC-1:0] cc;
-        for (int t = 0; t < R + 1; t++) cc[t * LC +: LC] = (base - LC'(t)) & {LC{!fl_q_cq02h[s]}};
-        cnt_nx_cq01h[s * LC +: LC] = thsel_c(cc, deq_t_cq01h[s * R +: R]);
-      end
+      // The count less the take in transit, registered; the take arriving
+      // now is subtracted after the edge, from its registered one-hot
+      // (cnt_cq02h below), so deq_t's late arrival reaches no count
+      // (NGD-3: deq_t at 14). A flushed slot shows nothing (its mask on
+      // the early side); the payloads are read only through their valids,
+      // so unmasked. The take (a thermometer) picks the heads' values
+      // among R + 1 each: a balanced tree of 2:1 selects on its bits
+      // (thsel), no decode ahead of it.
+      bs_nx_cq01h[s * LC +: LC] = (st_cq02h[OCNT + s * LC +: LC] - LC'(tk_cq02h[s * LR +: LR]))
+                                  & {LC{!fl_q_cq02h[s]}};
       for (int i = 0; i < H; i++) begin
         logic [R:0] cvv;
         for (int t = 0; t < R + 1; t++) cvv[t] = cv_cq02h[s * NCAND + t + i] && !fl_q_cq02h[s];
@@ -582,7 +584,7 @@ module ooe_decq #(
       end
     end
   end
-  logic [S*LC-1:0]       cnt_o_cq02h;
+  logic [S*LC-1:0]       bs_o_cq02h;
   logic [S*H-1:0]        hv_o_cq02h;
   logic [S*R*P-1:0]      hp_o_cq02h;
   logic [S*NA*PA-1:0]    ha_o_cq02h;
@@ -590,12 +592,15 @@ module ooe_decq #(
   // edge, and rename (ooe_go) need not block it a second cycle.
   always_comb
     for (int s = 0; s < S; s++) begin
-      cnt_cq02h[s * LC +: LC]  = cnt_o_cq02h[s * LC +: LC] & {LC{~fl_o_cq02h[s]}};
+      // The count: the registered base less the registered take.
+      cnt_cq02h[s * LC +: LC]  = (bs_o_cq02h[s * LC +: LC] - LC'(tkc_cq02h[s * LR +: LR]))
+                                 & {LC{~fl_o_cq02h[s]}};
       head_v_cq02h[s * H +: H] = hv_o_cq02h[s * H +: H] & {H{~fl_o_cq02h[s]}};
     end
   assign head_pay_cq02h = hp_o_cq02h;
   assign head_adm_cq02h = ha_o_cq02h;
   assign used_cq02h     = used_o_cq02h;
+  assign crd_cq02h      = crd_q_cq02h;
   assign arr_cq02h      = arr_q_cq02h;
   logic [LU-1:0] busy_n_cq02h;
   always_comb begin
@@ -604,6 +609,12 @@ module ooe_decq #(
     for (int r = 0; r < E; r++) busy_n_cq02h = busy_n_cq02h + LU'(sg_cq02h[GV + r]);
   end
   `CCV_ASSERT(used_is_busy, used_q_cq02h == busy_n_cq02h + (FL ? frn_cq02h : LU'(0)))
+  logic [LU-1:0] crd_n_cq02h;
+  always_comb begin
+    crd_n_cq02h = '0;
+    for (int s = 0; s < S; s++) crd_n_cq02h = crd_n_cq02h + LU'(crd_q_cq02h[s * LC +: LC]);
+  end
+  `CCV_ASSERT(credits_are_frees, !FL || crd_n_cq02h == frn_cq02h)
 
   // Local clock gating (docs/rtl-coding-style.md): the queue changes only on
   // an arrival, its take in transit or a flush, all its own flops. The
@@ -626,10 +637,22 @@ module ooe_decq #(
   always_comb
     for (int s = 0; s < S; s++)
       pay_en_cq01h[s] = deq_sel_cq01h[s] || arr_q_cq02h[s] || fl_q_cq02h[s];
-  assign nx_cq01h      = next_state(st_cq02h, sg_cq02h, rq_cq02h, enq_v_cq01h, enq_slot_cq01h, tk_cq02h,
+  // The staged arrivals that take their entries: not those whose slot's
+  // late flush applies now (OA 430 (B)), which were kept under the epoch
+  // the flush ends. From flops alone: the staged slot one-hot and fl_q.
+  logic [E-1:0]  sgd_cq02h;               // staged, and dropped by its slot's flush
+  logic [GW-1:0] gk_cq02h;                // the staging register less them
+  always_comb begin
+    gk_cq02h = sg_cq02h;
+    for (int r = 0; r < E; r++) begin
+      sgd_cq02h[r]     = sg_cq02h[GV + r] && (sg_cq02h[GSO + r * S +: S] & fl_q_cq02h) != '0;
+      gk_cq02h[GV + r] = sg_cq02h[GV + r] && !sgd_cq02h[r];
+    end
+  end
+  assign nx_cq01h      = next_state(st_cq02h, gk_cq02h, rq_cq02h, enq_v_cq01h, enq_slot_cq01h, tk_cq02h,
                                     fl_q_cq02h);
   assign sg_nx_cq01h   = pack(enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h);
-  assign rq_nx_cq01h   = rank_next(st_cq02h, sg_cq02h[GV +: E], rq_cq02h);
+  assign rq_nx_cq01h   = rank_next(st_cq02h, gk_cq02h[GV +: E], rq_cq02h);
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       fl_q_cq02h   <= '0;
@@ -651,12 +674,14 @@ module ooe_decq #(
       if (rst_r01h) begin
         tk_cq02h[s * LR +: LR]    <= '0;
         tko_cq02h[s * (R + 1) +: R + 1] <= (R + 1)'(1);
-        cnt_o_cq02h[s * LC +: LC] <= '0;
+        tkc_cq02h[s * LR +: LR]   <= '0;
+        bs_o_cq02h[s * LC +: LC]  <= '0;
         hv_o_cq02h[s * H +: H]    <= '0;
       end else if (out_en_cq01h[s]) begin
         tk_cq02h[s * LR +: LR]    <= deq_n_cq01h[s * LR +: LR];
         tko_cq02h[s * (R + 1) +: R + 1] <= deq_k_cq01h[s * (R + 1) +: R + 1];
-        cnt_o_cq02h[s * LC +: LC] <= cnt_nx_cq01h[s * LC +: LC];
+        tkc_cq02h[s * LR +: LR]   <= deq_n_cq01h[s * LR +: LR];
+        bs_o_cq02h[s * LC +: LC]  <= bs_nx_cq01h[s * LC +: LC];
         hv_o_cq02h[s * H +: H]    <= hv_nx_cq01h[s * H +: H];
       end
     end
@@ -669,10 +694,11 @@ module ooe_decq #(
   end
 
   // The state under its own enable (its events: arrivals, a take in
-  // transit, a flush); the credit count, its copy out and the frees in
-  // their own gate, which with the free lag clocks the edge after a free
-  // too (fr_q), when the count takes it. fr_q and frn under it as well:
-  // when it is low, so are they and their inputs.
+  // transit, a flush); the credit count, its copy out, the frees and the
+  // per-slot credits in their own gate, which clocks the edge after a free
+  // too (fr_q), when the count takes it (with the free lag) and the
+  // per-slot credits clear. fr_q, frn and crd under it as well: when it is
+  // low, so are they and their inputs.
   // The state in two gates, by what changes each: the payloads and owners
   // on a placement (staged arrivals, sgv); the positions, busy bits and
   // counts on a placement, an arrival, a take in transit (its frees, and
@@ -680,7 +706,7 @@ module ooe_decq #(
   logic pl_en_cq01h, pb_en_cq01h;
   assign pl_en_cq01h = sgv_cq02h;
   assign pb_en_cq01h = sgv_cq02h || enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h;
-  assign uo_en_cq01h = enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h || (FL && fr_q_cq02h);
+  assign uo_en_cq01h = enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h || fr_q_cq02h;
   // The staging register and the ranks: on the arrival lead, or to clear
   // the staged arrivals (sgv: some arrival staged). The ranks are read only
   // when arrivals are staged, the edge after one on the lead; the staged
@@ -708,14 +734,6 @@ module ooe_decq #(
     for (int e = 0; e < Q; e++) rq_any_cq02h = rq_any_cq02h | rq_cq02h[e * E +: E];
   end
   `CCV_ASSERT(staged_finds_entry, (sg_cq02h[GV +: E] & ~rq_any_cq02h) == '0)
-  // No staged arrival's slot flushes as it takes its entry: it arrived in
-  // its flush's cycle (no_enq_at_flush).
-  logic [S-1:0] sg_s_cq02h;
-  always_comb begin
-    sg_s_cq02h = '0;
-    for (int r = 0; r < E; r++) if (sg_cq02h[GV + r]) sg_s_cq02h[sg_cq02h[GSL + r * LS +: LS]] = 1'b1;
-  end
-  `CCV_ASSERT(no_staged_flush, (sg_s_cq02h & fl_q_cq02h) == '0)
   // The reset state: busy bits and counts cleared, and the positions with
   // them (one gate); the payloads and owners are payload, guarded by busy.
   always_ff @(posedge ooe_core_clk)
@@ -729,11 +747,13 @@ module ooe_decq #(
       used_q_cq02h <= '0;
       used_o_cq02h <= '0;
       frn_cq02h    <= '0;
+      crd_q_cq02h  <= '0;
       fr_q_cq02h   <= 1'b0;
     end else if (uo_en_cq01h) begin
       used_q_cq02h <= FL ? used_l_cq01h : used_nx_cq01h;
       used_o_cq02h <= FL ? used_l_cq01h : used_nx_cq01h;
       frn_cq02h    <= FL ? frn_nx_cq01h : '0;
+      crd_q_cq02h  <= crd_nx_cq01h;
       fr_q_cq02h   <= |tkv_cq02h || |fl_q_cq02h;
     end
   end

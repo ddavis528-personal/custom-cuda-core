@@ -321,7 +321,7 @@ int main(int argc, char **argv) {
                       brk == "pmov-negate" || brk == "pmov-ps1" ||
                       brk == "lead-src2-copy" || brk == "lead-sec-superset" || brk == "lead-sec-cont" ||
                       // decode-queue credits across a demotion (OA 455 A; AR 395, TI-493)
-                      brk == "slotless-drop-lost" || brk == "no-straggler-walk" || brk == "straggler-early-credit" ||
+                      brk == "due-epoch-lost" || brk == "no-straggler-walk" || brk == "straggler-early-credit" ||
                       brk == "mig-before-credits" ||
                       brk == "bank-credit-ignore" || brk == "dcu-extra-credit" || brk == "dcu-drop-answers" ||
                       brk == "wp-late-at-due" || brk == "mce-no-exempt" || brk == "miu-keep-credit";

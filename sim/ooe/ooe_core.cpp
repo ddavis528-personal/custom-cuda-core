@@ -27,7 +27,7 @@ std::string Config::apply(const std::string &spec) {
       {"rs_warp_cap", &rs_warp_cap}, {"decq", &decq}, {"decq_warp_max", &decq_warp_max},
       {"phys_regs", &phys_regs}, {"pred_regs", &pred_regs},
       {"fl_buf", &fl_buf}, {"fl_banks", &fl_banks}, {"fl_free_lag", &fl_free_lag},
-      {"rs_free_lag", &rs_free_lag}, {"decq_free_lag", &decq_free_lag}, {"ren_floor", &ren_floor},
+      {"rs_free_lag", &rs_free_lag}, {"decq_free_lag", &decq_free_lag}, {"decq_credit_lag", &decq_credit_lag}, {"ren_floor", &ren_floor},
       {"ren_ceil", &ren_ceil}, {"pred_ren_floor", &pred_ren_floor},
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
@@ -43,7 +43,7 @@ std::string Config::apply(const std::string &spec) {
       {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}, {"cmpl_split", &cmpl_split}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
-  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"demote_walk", &demote_walk}, {"beat_merge", &beat_merge}, {"straggler_walk", &straggler_walk}, {"inject_straggler_early_credit", &inject_straggler_early_credit}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
+  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"demote_walk", &demote_walk}, {"beat_merge", &beat_merge}, {"straggler_walk", &straggler_walk}, {"inject_straggler_early_credit", &inject_straggler_early_credit}, {"inject_due_epoch_lost", &inject_due_epoch_lost}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
@@ -364,6 +364,12 @@ void Core::uop(const Uop &u) {
   // demote_walk (OA 451): ooe_decq holds the flush of the walked uops,
   // dropping them at the walk's end; none arrives for the slot meanwhile.
   if (slot_[si].walk_held) count("demote.walk_arrival");
+  // OA 460: FET fetches nothing for a warp past its demotion's notice, and
+  // the notice's epoch is new to it, so no uop of a demoting or drained
+  // slot carries the current epoch.
+  if (slot_[si].st == WarpState::kDemoting || slot_[si].st == WarpState::kDrained)
+    err("OA 460: warp %u's uop seq %u arrives in its demotion's own epoch %u: FET fetched past the notice", u.warp,
+        uint32_t(u.tid), u.fetch_epoch);
   // A uop behind no hold stops the barrier timer: the warp is moving.
   if (!slot_[si].bar_hold) slot_[si].bar_idle = false;
   decq_.push_back(u);
@@ -2233,7 +2239,19 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool dis
   if (!branch_squash_) robStop("squash");
   // A squash to retirement (a kill, a demotion, a due squash whose branch
   // has retired) takes any squash still due.
-  if (to_retirement && slot < squash_due_.size()) squash_due_[slot].on = false;
+  // Its redirect has already left, stamped with the epoch that squash was
+  // to advance to, so the advance is taken here too: a demotion's or a
+  // kill's notice then moves past it, and what FET fetched behind the
+  // redirect arrives in the epoch the demotion ended, walked as a straggler
+  // (OA 460). inject_due_epoch_lost: the advance is dropped with the squash,
+  // so the notice repeats the redirect's epoch.
+  if (to_retirement && slot < squash_due_.size() && squash_due_[slot].on) {
+    squash_due_[slot].on = false;
+    if (!cfg_.inject_due_epoch_lost) {
+      advanceEpoch(slot, false);
+      count("squash.due_epoch_taken");
+    }
+  }
   if (slot < audit_squash_.size()) audit_squash_[slot] = 1;
   if (squash_at_.size() != slot_.size()) squash_at_.assign(slot_.size(), 0);
   squash_at_[slot] = now_ + 1;
@@ -2770,7 +2788,7 @@ void Core::control() {
   for (unsigned si = 0; si != slot_.size(); ++si) {
     Slot &s = slot_[si];
     bool held = false;
-    if (s.bar_pv || (bar_send_v_ && bar_send_slot_ == si)) held = true;   // bar_pend: a report not yet sent
+    if (s.bar_pv) held = true;   // bar_pend: a report not yet sent
     for (const RobEntry &r : s.rob)
       held = held || (r.valid && !(cfg_.inject_drain_early && s.st == WarpState::kDemoting && r.squashed &&
                                    r.is_load && r.at_miu && !r.miu_done));
@@ -2869,7 +2887,6 @@ void Core::control() {
     for (unsigned si = 0; si != slot_.size(); ++si) {
       Slot &s = slot_[si];
       if (s.st == WarpState::kFree || !((released_ >> (s.warp % 32)) & 1u)) continue;
-      roblog_.bar_rel |= 1u << si;
       // ccv_syu_ooe_rel answers a held wait that has reported (TI-40); any
       // other is stale (a demotion took the hold first) and is dropped.
       if (s.bar_hold && s.bar_retired) {
@@ -2900,28 +2917,14 @@ void Core::retire() {
   // sees the picker's grant as an input, so the stop reads the register as
   // the cycle started (bar_pv0).
   uint64_t bar_pv0 = 0;
-  // ooe_barpick flops the requests and picks from its own flops (nothing
-  // passes straight through it), so the report leaves from its register a
-  // cycle after the pick: last cycle's pick is sent now. ooe_rob_w frees the
-  // picked place only at the end of the pick's cycle, so the slot stops
-  // while its report is sent too.
   if (cfg_.bar_pend) {
-    if (bar_send_v_) {
-      bar_pv0 |= uint64_t(1) << bar_send_slot_;
-      const Bar b = bar_send_;
-      const unsigned si = bar_send_slot_;
-      act([this, b] { out.bars.push_back(b); });
-      roblog_.bar.push_back({si, b.kind, b.barrier_id, b.issue_mask, b.guard_mask, b.phase_mask, b.held});
-      bar_send_v_ = false;
-    }
     for (unsigned k = 0; k != slot_.size(); ++k) if (slot_[k].bar_pv) bar_pv0 |= uint64_t(1) << k;
     for (unsigned k = 0; k != slot_.size(); ++k) {
       const unsigned si = (rr_bar_ + k) % slot_.size();
       if (!slot_[si].bar_pv) continue;
-      bar_send_ = slot_[si].bar_pb;
-      bar_send_slot_ = si;
-      bar_send_v_ = true;
+      const Bar b = slot_[si].bar_pb;
       slot_[si].bar_pv = false;
+      act([this, b] { out.bars.push_back(b); });
       rr_bar_ = (si + 1) % slot_.size();
       break;
     }
@@ -2989,13 +2992,6 @@ void Core::retire() {
         ev("fault", s.warp, r.fault_cause, r.u.pc, r.u.tid);
         break;
       }
-      // A barrier report's stop comes before anything this entry's retire
-      // logs or sends (slice 5: the window stops at it).
-      const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
-                           !r.fault && !r.u.cause;
-      if (cfg_.bar_pend) {
-        if (bar_rep && ((((bar_pv0 >> si) & 1u) && !cfg_.inject_bar_pend_overwrite) || slot_bar)) { count("stall.bar_pend"); break; }   // ooe_rob_w builds it (slice 5)
-      } else if (bar_rep && bars_picked) { count("stall.bar_port"); robStop("barrier port"); break; }
       if (r.is_store && !r.committed) {
         if (ports == cfg_.retire_msgs) { count("stall.retire_port"); robStop("retire port"); break; }
         if (cfg_.commit_per_slot && slot_commits) { count("stall.commit_slot_port"); break; }
@@ -3074,6 +3070,11 @@ void Core::retire() {
       // Barrier reports at retire (TI-40, AR's revs 161-164): every arrive,
       // wait and exit, one a cycle (ccv_ooe_syu_bar is rate 1). Nothing
       // leaves before it retires, so no report is recalled.
+      const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
+                           !r.fault && !r.u.cause;
+      if (cfg_.bar_pend) {
+        if (bar_rep && ((((bar_pv0 >> si) & 1u) && !cfg_.inject_bar_pend_overwrite) || slot_bar)) { count("stall.bar_pend"); robStop("barrier pending"); break; }
+      } else if (bar_rep && bars_picked) { count("stall.bar_port"); robStop("barrier port"); break; }
       if (bar_rep) {
         Bar b;
         b.tid = r.u.tid;
@@ -3088,10 +3089,7 @@ void Core::retire() {
         b.held = (b.kind == kBarWait || b.kind == kBarWaitPhase) && s.bar_hold && !s.bar_retired && r.u.all_waiting;
         ++bars_picked;
         if (cfg_.bar_pend) { s.bar_pv = true; s.bar_pb = b; slot_bar = true; }
-        else {
-          act([this, b] { out.bars.push_back(b); });
-          roblog_.bar.push_back({si, b.kind, b.barrier_id, b.issue_mask, b.guard_mask, b.phase_mask, b.held});
-        }
+        else act([this, b] { out.bars.push_back(b); });
         count(b.kind == kBarExit ? "bar.report.exit" : b.kind == kBarArrive ? "bar.report.arrive"
               : b.kind == kBarWaitPhase ? (b.held ? "bar.report.phase_held" : "bar.report.phase") : b.held ? "bar.report.wait_held" : "bar.report.wait");
         if (b.held) {
@@ -4388,7 +4386,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     }
     // bar_pend: a retired report not yet sent keeps its place (the RTL's
     // pending report is the buffer's oldest place, marked retired).
-    if (s.bar_pv || (bar_send_v_ && bar_send_slot_ == si)) ++held;
+    if (s.bar_pv) ++held;
     if (held >= cfg_.bar_buf_depth) { count("stall.bar_buf"); return false; }
   }
 
@@ -4610,13 +4608,6 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     q.pclo = uint32_t((u.pc >> 1) & 0x7fffffffu);
     q.epchi = unsigned((u.pc >> 32) & 0xffffu);
     q.egmask = u.group_mask;
-    q.bar = (a.serial == kSerBarrier || a.serial == kSerArrive || u.shape.exit) && !r.fault && !u.cause;
-    if (q.bar) {
-      q.bkind = u.shape.exit ? kBarExit : a.serial == kSerArrive ? kBarArrive : u.shape.pdata ? kBarWaitPhase : kBarWait;
-      q.bid = u.shape.exit ? 0 : u.imm & 15u;
-      q.bgd = !u.shape.exit && u.shape.guard;
-      q.bhs = a.serial == kSerBarrier && !bar_fault && u.all_waiting && !cfg_.inject_bar_no_hold;
-    }
     roblog_.alloc.push_back(q);
     if (r.atomic) robStop("atomic");
   }

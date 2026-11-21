@@ -493,8 +493,14 @@ struct Config {
   /// beat leaves (OA 458: kLatDecqCreditDelay). Off: an epoch drop, as before.
   bool straggler_walk = true;
   unsigned decq_credit_delay = 0;
+  /// OA 463 (re:OI-194): extra cycles OOE holds every decode-queue credit
+  /// before it leaves, so a demotion's migration waits on credits (FET's
+  /// AR 395 (3) wait binds). A scenario knob; 0 is the design.
+  unsigned decq_credit_lag = 0;
   /// Control: a straggler is dropped, its credit returned, before its beat leaves.
   bool inject_straggler_early_credit = false;
+  /// A squash to retirement drops a due squash's epoch advance (OA 460 control).
+  bool inject_due_epoch_lost = false;
   /// OA 447 (re:OI-179 (3)): ooe_redir registers the pick a cycle after
   /// rob_w's rd_l and the payload a cycle after that, so the redirect and
   /// ckpt_free leave OOE this many cycles after the model's send, together
@@ -1960,12 +1966,6 @@ public:
       unsigned cause = 0;
       uint32_t pclo = 0, egmask = 0;
       unsigned epchi = 0;
-      // Slice 5 (OA 448): a barrier report op (an arrive, wait or exit with
-      // no fault), its kind (0 arrive, 1 wait, 2 wait.phase, 3 exit), its
-      // barrier, whether its guard comes back on its done, and whether it
-      // sets the slot's hold (a converged wait).
-      bool bar = false, bgd = false, bhs = false;
-      unsigned bkind = 0, bid = 0;
     };
     struct Ret {
       unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
@@ -2008,11 +2008,6 @@ public:
     /// Slice 4: each fault taken at retire (slot, index, cause, pc, lanes).
     struct Fault { unsigned slot = 0, idx = 0, cause = 0; uint64_t pc = 0; uint32_t lanes = 0; uint64_t addr = 0; };
     std::vector<Fault> fault;
-    /// Slice 5: each barrier report sent this cycle (ccv_ooe_syu_bar), by
-    /// slot, and the slots SYU released (ccv_syu_ooe_rel, as it acts).
-    struct BarRep { unsigned slot = 0, kind = 0, bid = 0; uint32_t issue = 0, guard = 0, phase = 0; bool held = false; };
-    std::vector<BarRep> bar;
-    uint32_t bar_rel = 0;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;
   };
@@ -2312,9 +2307,6 @@ private:
   uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }
   uint64_t next_age_ = 0;
   unsigned rr_rename_ = 0, rr_select_ = 0, rr_bar_ = 0;
-  Bar bar_send_{};                 ///< bar_pend: last cycle's pick, sent this cycle
-  unsigned bar_send_slot_ = 0;
-  bool bar_send_v_ = false;
 
   // producers of each physical register still in the RS (up to two: a
   // masked load and its copy), and whether its value has landed
@@ -2462,9 +2454,6 @@ public:
     uint32_t ctaid[8] = {};
   };
   const SlotLog &slotLog() const { return slotlog_; }
-  /// The parked layout (TI-25), for test/ooe/ratmap_tb.cpp.
-  unsigned parkedPos(unsigned w, unsigned a) const { return parked_[w % kWarpIds].pos[a & 15]; }
-  unsigned parkedWidth(unsigned w, unsigned a) const { return parked_[w % kWarpIds].w[a & 15]; }
   int slotOfWarp(unsigned warp) const { return slotOf(warp); }
 private:
   RxLog rxlog_;
