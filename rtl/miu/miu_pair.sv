@@ -25,7 +25,7 @@
 //   04 H-1    the entry read: re to miu_mq's read port, which answers the
 //             A1 memop fields (fld) this cycle
 //   05 H, A1  the slot's A1 fields, its entry and its valid, from flops
-// The tags take LAG at its value, 3; a ring row dwells LAG - 1 cycles between
+// The tags take LAG (CCV_LAT_MIU_PAIR_LAG, TI-514) at its value, 3; a ring row dwells LAG - 1 cycles between
 // its write (02) and its read (03), as any queue's entries do. miu_cap's
 // tags count from the same M (its V is 03, H 05).
 //
@@ -47,7 +47,7 @@
 `define CCV_RST rst_r01h
 module miu_pair #(
   parameter  int NS  = ccv_params_pkg::CCV_MIU_PIPES,          // slots, 4
-  parameter  int LAG = 3,                                       // CCV_LAT_MIU_PAIR_LAG once TI derives it (MI-16)
+  parameter  int LAG = ccv_prov_pkg::CCV_LAT_MIU_PAIR_LAG,     // 3 (MI-18, TI-514)
   parameter  int NE  = ccv_params_pkg::CCV_MIU_PIPES * ccv_prov_pkg::CCV_MEMOP_CREDITS,   // MQ entries, 40
   parameter  int FW  = 96,                                      // A1 memop fields an entry answers, miu_mq's layout
   localparam int EW  = $clog2(NE),
