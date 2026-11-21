@@ -219,6 +219,14 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
     if (end.after(c, k, m)) break;
   }
   g_dump.close();
+  // MI-8: a run whose CRU took the machine check ends with a dead core, its
+  // withheld store's queue entry and credit out by rule (AR 387, AR 389), so
+  // the checkers' quiesced_at_end is not asked of it (+ccv_eot_mce). Control
+  // mce-no-exempt asks it anyway: such a run must fail it.
+  if (k.mce_taken && brk != "mce-no-exempt") {
+    static const char *mce_arg[] = {"+ccv_eot_mce"};
+    ctx.commandArgsAdd(1, mce_arg);
+  }
   bank.final();
   ccv::traceWriter().close();
   printKernelReport(k, m, end, ctx.errorCount());
@@ -290,7 +298,7 @@ int main(int argc, char **argv) {
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "cta-per-warp" || brk == "cta-shared" || brk == "no-wait-mark" || brk == "bar-own-warp" || brk == "bar-no-exit" ||
                       brk == "bar-full-last" || brk == "addr-wrap" ||
-                      brk == "conflate-pred" || brk == "late-lead" || brk == "uop-late-lead" || brk == "cor-late" || brk == "cor-drop" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "ecc-no-fix" || brk == "ue-no-track" || brk == "ue-dirty-recover" || brk == "mce-ignore" || brk == "mce-no-record" || brk == "mce-no-kill" || brk == "kill-drop-atomic" || brk == "fet-reset-on-kill" || brk == "ue-answer" || brk == "ecc-cmpl-on-time" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "no-nohit" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
+                      brk == "conflate-pred" || brk == "late-lead" || brk == "uop-late-lead" || brk == "cor-late" || brk == "cor-drop" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "ecc-no-fix" || brk == "ue-no-track" || brk == "ue-dirty-recover" || brk == "mce-ignore" || brk == "mce-no-record" || brk == "mce-no-kill" || brk == "kill-drop-atomic" || brk == "fet-reset-on-kill" || brk == "ue-answer" || brk == "ecc-cmpl-on-time" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "hint-same-slot" || brk == "walk-no-dcu" || brk == "itlb-no-walk" || brk == "walk-before-faddr" || brk == "two-page-hit" || brk == "no-nohit" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
                       brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
                       brk == "ignore-mask" || brk == "skip-read-partial" ||
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
@@ -311,7 +319,12 @@ int main(int argc, char **argv) {
                       brk == "nop-real-op" ||
                       // register pmov's negate (OA's rev 396)
                       brk == "pmov-negate" || brk == "pmov-ps1" ||
-                      brk == "lead-src2-copy" || brk == "lead-sec-superset" || brk == "lead-sec-cont";
+                      brk == "lead-src2-copy" || brk == "lead-sec-superset" || brk == "lead-sec-cont" ||
+                      // decode-queue credits across a demotion (OA 455 A; AR 395, TI-493)
+                      brk == "slotless-drop-lost" || brk == "no-straggler-walk" || brk == "straggler-early-credit" ||
+                      brk == "mig-before-credits" ||
+                      brk == "bank-credit-ignore" || brk == "dcu-extra-credit" ||
+                      brk == "wp-late-at-due" || brk == "mce-no-exempt" || brk == "miu-keep-credit";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;
@@ -363,7 +376,7 @@ int main(int argc, char **argv) {
   // (the checkers' quiesced_at_end). Runs cut off mid-traffic -- the wiring
   // controls -- are not asked.
   std::vector<const char *> args(argv, argv + argc);
-  if (brk == "none" || brk == "double-pop")
+  if (brk == "none" || brk == "double-pop" || brk == "mce-no-exempt" || brk == "miu-keep-credit")
     args.push_back("+ccv_eot_quiesce");
   ctx->commandArgs(int(args.size()), args.data());
   // Count violations and keep going, rather than stopping at the first: a

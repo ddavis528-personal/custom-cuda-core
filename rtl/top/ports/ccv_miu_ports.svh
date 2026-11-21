@@ -262,6 +262,12 @@
   output logic dcu_miu_fill_ntc_s3_credit,
   output logic dcu_miu_fill_ntc_s3_stall,
   input  logic dcu_miu_fill_ntc_wake,
+  // dcu -> miu
+  input  logic dcu_miu_cred_valid,
+  input  ccv_dcu_miu_cred_t dcu_miu_cred_payload,
+  output logic dcu_miu_cred_credit,
+  output logic dcu_miu_cred_stall,
+  input  logic dcu_miu_cred_wake,
   // miu -> ooe, slot 0 of 4
   output logic miu_ooe_cmpl_hint_s0_valid,
   output ccv_miu_ooe_cmpl_hint_t miu_ooe_cmpl_hint_s0_payload,
@@ -331,6 +337,7 @@
   , input  logic [63:0] dcu_miu_fill_ntc_s1_tid
   , input  logic [63:0] dcu_miu_fill_ntc_s2_tid
   , input  logic [63:0] dcu_miu_fill_ntc_s3_tid
+  , input  logic [63:0] dcu_miu_cred_tid
   , output logic [63:0] miu_ooe_cmpl_hint_s0_tid
   , output logic [63:0] miu_ooe_cmpl_hint_s1_tid
   , output logic [63:0] miu_ooe_cmpl_hint_s2_tid
