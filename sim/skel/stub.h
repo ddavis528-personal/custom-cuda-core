@@ -11,6 +11,7 @@
 #define CCV_SKEL_STUB_H
 
 #include "kernel.h"
+#include "secded.h"
 
 #include "ccv/event.h"
 #include "ccv_params.h"
@@ -119,6 +120,40 @@ inline Line getLine(const Bits &b, uint32_t lsb) {
   Line l;
   for (unsigned k = 0; k != kLine; ++k) l[k] = uint8_t(b.get(lsb + 8 * k, 8));
   return l;
+}
+
+// ---- L1 check bits on ccv_dcu_miu_rsp (MA-28 (c), AR 401) ---------------------
+// The stored (72,64) SECDED check bits of each 64-bit word of the slot's line,
+// 8 a word, the code rtl/common's SECDED computes (secded.h).
+inline const Secded &secded64() { static const Secded s(64); return s; }
+constexpr unsigned kLineWords = kLine / 8;
+inline uint64_t lineWord(const Line &l, unsigned w) {
+  uint64_t v = 0;
+  for (unsigned b = 0; b != 8; ++b) v |= uint64_t(l[8 * w + b]) << (8 * b);
+  return v;
+}
+/// DCU's side: the check bits of the line it sends.
+inline void putCheckBits(Bits &r, uint32_t lsb, const Line &l) {
+  for (unsigned w = 0; w != kLineWords; ++w) {
+    Bits d(64);
+    d.set(0, 64, lineWord(l, w));
+    r.set(lsb + 8 * w, 8, secded64().encode(d));
+  }
+}
+/// MIU's side (R2): every word corrected by its check bits; true when any
+/// word's syndrome is non-zero, the OR over the slot's code words.
+inline bool fixLine(Line &l, const Bits &r, uint32_t lsb) {
+  bool any = false;
+  for (unsigned w = 0; w != kLineWords; ++w) {
+    Bits d(64);
+    d.set(0, 64, lineWord(l, w));
+    const Secded::Result x = secded64().decode(d, uint32_t(r.get(lsb + 8 * w, 8)));
+    if (!x.syn) continue;
+    any = true;
+    const uint64_t v = x.q.get(0, 64);
+    for (unsigned b = 0; b != 8; ++b) l[8 * w + b] = uint8_t(v >> (8 * b));
+  }
+  return any;
 }
 
 // ---- S1 wire conventions (docs/skeleton.md lists them) ------------------------

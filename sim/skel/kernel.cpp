@@ -172,6 +172,7 @@ void getBeat(const Bits &b, uint32_t lsb, Line &l, unsigned beat) {
 }
 
 
+
 // ---- testbench memory: the far end of EXTERNAL ---------------------------------
 
 class Testbench : public Stub {
@@ -787,6 +788,26 @@ private:
   std::vector<uint64_t> ue_track_;   ///< recorded locations, cleared only by reset
   bool ue_raised_ = false, ue_sent_ = false;
 
+  /// A response as it leaves: the stored check bits of its line (MA-28 (c),
+  /// AR 401), and CCV_DCU_ECC_INJECT=N's single stored-bit error in every
+  /// Nth hit, under the check bits of the bit as written, so MIU's syndrome
+  /// finds it (the knob that replaced MIU's CCV_MIU_ECC_INJECT). 0: none.
+  Bits seal(Bits r) {
+    const Ch &c = ch();
+    const uint32_t lsb = field(c.dcu_miu, "read_data").lsb;
+    Line l = getLine(r, lsb);
+    putCheckBits(r, field(c.dcu_miu, "check_bits").lsb, l);
+    if (ecc_every_ && get(r, c.dcu_miu, "hit") && ++ecc_hits_ % ecc_every_ == 0) {
+      l[0] ^= 1u;
+      putLine(r, lsb, l);
+    }
+    return r;
+  }
+  const unsigned ecc_every_ = [] {
+    const char *v = std::getenv("CCV_DCU_ECC_INJECT");
+    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
+  }();
+  unsigned ecc_hits_ = 0;
   /// A response to MIU answers its request by MIU's own req_id.
   Bits rspFor(const Bits &req) {
     Bits r = msgOf(ch().dcu_miu);
@@ -845,6 +866,10 @@ private:
     for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
       while (has(c.miu_dcu, s)) {
         Receiver::Msg m = take(c.miu_dcu, s);
+        // A dropped lookup (MA-27, AR 400): no read, no state, no queue
+        // entry, no credit return (MIU refunds its own, DI-12), no answer.
+        // dcu-drop-answers serves it anyway, and MIU refuses the answer.
+        if (get(m.payload, c.miu_dcu, "drop") && k_.brk != "dcu-drop-answers") continue;
         checkIndexLead(s, m.payload);
         const Op o{s, m.payload, m.tid};
         admit(o);
@@ -1018,14 +1043,14 @@ private:
         k_.fail("dcu: the refill promised on slot %u at cycle %llu has no credit",
                 it->q.slot, (unsigned long long)now_);
       else
-        send(c.dcu_miu, it->q.slot, it->q.msg, it->q.tid);
+        send(c.dcu_miu, it->q.slot, seal(it->q.msg), it->q.tid);
       --resv_[it->q.slot];
       busy_lines_.erase(it->line);
       it = promised_.erase(it);
     }
     for (auto it = to_miu_.begin(); it != to_miu_.end();)
       if (free(it->slot)) {
-        send(c.dcu_miu, it->slot, it->msg, it->tid);
+        send(c.dcu_miu, it->slot, seal(it->msg), it->tid);
         it = to_miu_.erase(it);
       } else {
         ++it;
@@ -1082,6 +1107,7 @@ private:
   struct LineReq { uint64_t line; Line data{}; std::array<bool, kLine> mask{}; uint16_t sub; };
   struct Job {
     bool store = false;
+    bool ecc = false;   ///< a line came with a non-zero syndrome (AR 401)
     unsigned tag = 0, memop_slot = 0, addr_slot = 0, warp = 0;
     unsigned phys_dst = 0, phys_pred = 0;   ///< echoed on miu_rcu_data
     unsigned rs_idx = 0;                    ///< echoed on miu_ooe_cmpl (OA-23)
@@ -1144,21 +1170,15 @@ private:
     return r && uidSub(tid) < r->mem.size() ? &r->mem[uidSub(tid)] : nullptr;
   }
   /// A hit's completion and data, held for the contract cycle.
-  struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
+  struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; bool ecc = false; };
   std::vector<Timed> held_;   ///< ineligible loads' completions, held past the contract (MA-4)
-  /// An L1 hit's injected syndrome (RA 153 (5), MA's re: SECDED on every
-  /// SRAM, DA rulings TI-474 to TI-476): CCV_MIU_ECC_INJECT=N takes every
-  /// Nth hit that writes a register as a single-bit error the syndrome
-  /// stages find. Its data leaves on time with one bit flipped, as the
+  /// An L1 hit whose line came with a non-zero syndrome (RA 153 (5); MA-28
+  /// (c), AR 401: DCU's CCV_DCU_ECC_INJECT, MIU's R2 syndrome over every code
+  /// word of the slot). Its data leaves on time with one bit flipped, as the
   /// speculative data would; no completion at the contract (the miss
   /// indication, CCV_LAT_L1_ECC's contract); the corrected data and then
   /// the completion CCV_LAT_L1_ECC + 2 cycles after the data, as a miss's
-  /// would come (held_, data before completion). 0, the default: none.
-  const unsigned ecc_every_ = [] {
-    const char *v = std::getenv("CCV_MIU_ECC_INJECT");
-    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
-  }();
-  unsigned ecc_hits_ = 0;
+  /// would come (held_, data before completion).
   /// Corrected beats alone (the controls), each at its cycle.
   std::vector<std::pair<uint64_t, Q>> ecc_beats_;
   std::deque<Timed> timed_;
@@ -1550,9 +1570,9 @@ private:
         if (fl != fills_.end()) {
           // A window fill: every slot its line holds (TI-31).
           Windows &t = win_[fl->second.cta];
-          if (t.gen == fl->second.gen)
-            fillWindows(t, fl->second.line,
-                        getLine(m.payload, field(c.dcu_miu, "read_data").lsb));
+          Line ln = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+          fixLine(ln, m.payload, field(c.dcu_miu, "check_bits").lsb);
+          if (t.gen == fl->second.gen) fillWindows(t, fl->second.line, ln);
           fills_.erase(fl);
           ids_.release(id);
           continue;
@@ -1582,7 +1602,9 @@ private:
         ids_.release(id);
         for (Job &j : jobs_)
           if (j.serial == serial) {
-            j.got[line] = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+            Line ln = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+            if (fixLine(ln, m.payload, field(c.dcu_miu, "check_bits").lsb)) j.ecc = true;
+            j.got[line] = ln;
             if (!get(m.payload, c.dcu_miu, "hit")) j.hit = false;
             if (get(m.payload, c.dcu_miu, "mlc_miss")) j.mlc_miss = true;
             ++j.back;
@@ -1641,7 +1663,7 @@ private:
       constexpr uint64_t kEcc = ccv::prov::kLatL1Ecc;
       if (t.at == now_ && free(c.miu_rcu, t.data.slot) &&
           (kEcc != 0 || free(c.miu_ooe, t.cmpl.slot))) {
-        const bool ecc = eccInject(t.data);
+        const bool ecc = eccInject(t);
         if (ecc) {
           // The speculative data, one bit wrong, on time; the corrected
           // beat and its completion as a miss's (held_). The controls:
@@ -1819,15 +1841,9 @@ private:
   /// exactly one (ccv_miu_ooe), so it frees the memop's queue entry, and so
   /// its credit (MA-5). An atomic's more = 1 is not a second completion of
   /// this memop: OOE re-issues the steps as new memops (AR-21).
-  /// Whether this hit's data takes an injected syndrome (ecc_every_): a
-  /// load that writes a register, one hit in ecc_every_.
-  bool eccInject(const Q &d) {
-    const Ch &c = ch();
-    if (!ecc_every_ || !uint32_t(get(d.msg, c.miu_rcu, "active_mask")) ||
-        unsigned(get(d.msg, c.miu_rcu, "phys_dst")) == ccv::prov::kPhysZero)
-      return false;
-    return ++ecc_hits_ % ecc_every_ == 0;
-  }
+  /// Whether this hit takes the syndrome's path: its line came with a
+  /// non-zero syndrome, so its completion is withheld (AR 401).
+  bool eccInject(const Timed &t) const { return t.ecc; }
   /// One bit of the lowest active lane's data flipped: what a single-bit
   /// error in the array leaves in the speculative data.
   void flipLoadBit(Bits &m) {
@@ -2813,7 +2829,7 @@ private:
         // Queued for the data's cycle, CCV_LAT_L1_ECC ahead of the
         // completion's contract (AR 368).
         timed_.push_back({job_.due - ccv::prov::kLatL1Ecc, {job_.addr_slot, d, job_.tid},
-                          {job_.memop_slot, cmpl(job_), job_.tid}});
+                          {job_.memop_slot, cmpl(job_), job_.tid}, false, job_.ecc});
       } else if (job_.inelig && now_ <= job_.due) {
         // An ineligible load completes past the contract's cycle, never on
         // or before it (MA-4: no completion at H+7; A-46, V-44).
