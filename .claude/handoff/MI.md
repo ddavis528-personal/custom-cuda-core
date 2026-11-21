@@ -30,16 +30,14 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
-- Daily sweep 2026-11-20 (Fri): AR 400, OA 462, IS 201, TI 503, OI 395, CP 160, RA 157, RI 91,
-  MA 135, MI 18, DI 13, DA 128, Conventions 20; specs MIU 145, Common 9, DCU 59.
-  Weekly pings: all 11 ponged; OI's and RH's rosters predated cc8ed42d (MI unnamed) then.
-- Since: MI 27, TI 510, MA 140, OA 464, DI 21, MA 137, OI 397 (others as above).
-- MA-26 landed (WAYPRED_BITS 5, SEL 1; L1_HIT 8, WAKE 14, CMPL 16). MA-25 landed (TI's
-  d761c634); the model spends the credits at d639adb2 (step 5).
+- Daily sweep 2026-11-21 (Sat): AR 406, OA 466, IS 201, TI 511, OI 399, CP 160, RA 157, RI 91,
+  MA 145, MI 30, DI 29, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 512 (TI-513
+  notice: 8ac4c441 drop/check_bits/CCV_DCU_ECC_INJECT landed). Next pings: Friday.
+- Sweep merge d26849c3 (ccr-183cc441 25, ccr-5e4d6c70 20, ccr-80102643 4, mi-dev A1 hold
+  b1a85fa6) under full gate-push (job-gate-push-20261121-104904-28964.log). OI's ccr-57eff422
+  conflicts in OI's OOE files: left to OI (AR 402); not merged.
 - MI-8 at TI: under UE_INJECT=1 predlane/predmerge fail quiesced_at_end on ooe_miu_memop. Per
-  AR 387/389 (RAU spec rev 63) a store whose merge read was withheld never drains, so its MQ
-  entry's credit stays out; TI's KernelEnd already allows it. Ask: exempt mce runs with a control.
-  DI-5 (C) was the same thing; answered re DI-5 (rev 17): nothing to change in MIU or DCU.
+  AR 387/389 a store whose merge read was withheld never drains; ask: exempt mce runs.
 
 ## Settled since the handoff (MA tab rev 119-122)
 - MI-2 settled (AR 392, Common tab rev 9): 64 KiB pages, 3 levels 6/13/13 (VA[47:42], [41:29],
@@ -63,36 +61,32 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   Bookmarks since: OA 455, MI 12.
 
 ## Open work, most urgent first
-1. Model work in worktree /home/user/mi-wt, branch mi-dev = pushed tip (d639adb2 + regen 5057ec50).
-   No local patch. Steps 1-5 pushed (TLB/walker, store drain, drain guard, bank credits).
-   Next: (6) way-mispredict path (AR 390: the bank loser's path, due+2, as a miss) once TI's
-   same-set kernel exists (MI-9 (3)). MI-13 (rev 23, TI rung): drop check-kernel's skip of the
-   bank-credit holds/controls under CCV_MIU_IMPL=model. MI-12 (rev 19): asked TI/OI to move
-   our blockers up their order (Daniel's request).
-   Validate: CCV_FOREGROUND=1 CCV_MIU_IMPL=model ./tools/check-kernel.sh (~30 min). It fails only
-   lnorm1 under demotion (item 2) and the replay drain's stall/vadd4 (MI-4, TI's).
-2. MI-11 (2): lnorm1 under CCV_RAU_DEMOTE=mlc. Root cause per OI-193: OOE lost an epoch
-   advance; fixed in OI's c461c1b0 (not on a remote yet). When it lands, rerun
-   CCV_MIU_IMPL=model CCV_RAU_DEMOTE=mlc build/skel/ccv-skel --kernel build/oracle/lnorm1/oracle.jsonl
-   and close MI-11 (2).
-3. DI-9 fixed: tryStart's mo/am references past their erase (use-after-free) are copies at
-   51cf5dd2 (pushed 7a4c2b43). ASan only sees it at -O0 (scratchpad build-skel-asan*.sh);
-   fixed model ASan-clean over 910 runs. DI asked (rev 26) to rerun the pair's check-sv-hosted
-   (lnorm1 / RCU RTL host diffs were this). MI-14 landed by TI (ec8f3422), MI-13 (56c7ce54).
-4. Awaiting TI: MI-4 (replay drain stall/vadd4), MI-8, MI-9 (3), MI-13; TI's 78e74f4e (MI-7
-   a/b/d cold-TLB scenarios): run them with the model when merged. MI-7 (c) dropped (rev 22).
-5. Phase 1a: flip the TLB to cold (MI-6, MA-126) and re-pin ~30 checks; the M0 report states
-   the cold cost, 110-160 cycles a kernel. Phase 1b with DI's DCU: clean on 64 kernels.
-6. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
-   MI-15 (rev 27, MA rung, Daniel's request): Phase 2 to the top of MA's order; a first slice
-   (L1-hit path) is enough to start modules. MA accepted (MA rev 138): Phase 2 first, slice 1
-   = L1-hit path, later slices each with a notice. Slice 1 raised, both pending AR, model
-   changes once they land: MA-27 (rev 139) a drop bit on ccv_miu_dcu_req for A2's lookup
-   losses (H+1 valid binds) and a first pass takes CCV_DCACHE_LOOKUPS bank entry credits at
-   A1; MA-28 (rev 140) a DCU->MIU hit-ECC-error bit a cycle after the response, the model's
-   in-MIU ECC injection moving to DCU's side.
+0. MI-19 (rev 30, rung DI/TI/MA): 2d2259bf on mi-dev (worktree /home/user/mi-wt), NOT pushed:
+   drop bit (A2 drops: tlb, fault, split, line, bank, dup; H+1, req_id 0, credit refunded) and
+   R2 syndrome from check_bits (fixLine; CCV_MIU_ECC_INJECT gone). Stub DCU: 66/66 clean
+   (warm, cold TLB, DCU_ECC_INJECT=1); pins hit 4, transp4 64, spinwait 46. Blocked: DI's DCU
+   model returns ent_ret for drops (30/66 fail) -> wait for DI-14 on a remote, merge it into
+   mi-dev, rerun both DCUs (scratchpad runall.sh <tag> [env]), then gate-push. Bins need TI
+   (kernel.h): local measuring patch adds them to kCoverBins after l1_bank_loser; revert after.
+   MA asked: dup drops 1056 vs first passes 463; drop_line cause; pre-translation waits.
+   Then tell MA the A1 hold (b1a85fa6) is pushed (response already written, rev 30).
+1. RTL slice 1 (MA Phase 2, MIU tab rev 149/150): miu_cap done (pushed b04269bb). Next miu_pair
+   (+ miu_mq: A1 fields read at H-1; per lead pipe ring of {entry, valid} indexed by arrival
+   counter bridging LAG=3, CCV_LAT_MIU_PAIR_LAG once TI derives it; fences pair on slot 0; bulk
+   discards no address; memop ends no-flop). Then miu_agu8, miu_lead (ge1/ge2/used), miu_cred,
+   miu_tlb, miu_grp, miu_a2 (drop), miu_ids, miu_hitq, miu_rsp, miu_rcap, miu_ext, miu_ecc
+   (syndrome R2, budget 17), miu_out, ccv_miu top. MI-16: TI wires the MIU RTL job.
+   RTL lessons: CCV-L23 forbids a self-feeding param shift array (use a counter-indexed ring);
+   tags _cmNNh; RST-1 flop; CG-5 enables from own flops; (* keep *) output copies.
+2. MI-11 (2): lnorm1 under CCV_RAU_DEMOTE=mlc once OI's c461c1b0 lands (AR 399).
+3. Way-mispredict path (AR 390) once TI's same-set kernel exists (MI-9 (3)).
+4. Awaiting TI: MI-4, MI-8, MI-9 (3), MI-13. Phase 1a cold TLB flip (MI-6). M0 report.
+- Docs write grammar: update ref node c1311541-4219, container project JApHYjaUESeq8tsGMGXMU5,
+  engine prose, ops insert target {kind:blocks, ids:[table]} side end, source as blocks inline
+  rows of cells of paragraphs. Opens m8yvbw8rqgz.613 (6 cells), Responses m8yvbw8rqgz.675 (4).
 
 ## Pushed
+- ccr-58815650-0ch1hh at b04269bb (dd04003d miu_cap RTL, bench, units): SCOPED PASS.
 - ccr-58815650-0ch1hh at 7a4c2b43 (51cf5dd2 DI-9 fix): SCOPED PASS.
 - ccr-58815650-0ch1hh at 5057ec50 (d639adb2 bank credits + TI's d761c634): SCOPED PASS.
 - ccr-58815650-0ch1hh at f79b74f1: full PASS (Fri sweep: merged ccr-3868632d 78,
