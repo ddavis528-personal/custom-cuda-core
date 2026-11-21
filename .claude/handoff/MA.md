@@ -32,13 +32,15 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 400, TI 500, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 135, DA 128, MI 16, DI 12.
+Conventions 20, AR 400, TI 505, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 136, DA 128, MI 16, DI 12.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
   MI ccr-58815650 2, RH ccr-c22116ce 9; pushed dbf69316, SCOPED PASS 26/26 (~4h40m, ngd/cg dominate).
 - TI-501: e8d8864b landed MA rev 134 notices-on scenario (vadd4, both models, CCV_DCU_NOTICE=1; five hint/notice
   controls). Watch item on TI-495 closed; e8d8864b arrives with the next sweep.
+- TI-506: MA-25 landed (d761c634; ccv_dcu_miu_cred, QDEPTH 16, STDATA 12). Spec tabs name them (DCU rev 60,
+  MIU rev 146), snapshots 2c11d950, MA rev 136 closes MA-25.
 
 ## State, 2026-11-13
 
