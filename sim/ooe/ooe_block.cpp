@@ -206,6 +206,7 @@ private:
     c.straggler_walk = k.brk != "no-straggler-walk";
     c.inject_straggler_early_credit = k.brk == "straggler-early-credit";
     c.inject_unbind_at_release = k.brk == "unbind-at-release";
+    c.inject_due_epoch_lost = k.brk == "due-epoch-lost";
     if (const char *s = std::getenv("CCV_OOE_CONFIG")) {
       const std::string e = c.apply(s);
       if (!e.empty()) {

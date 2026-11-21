@@ -2738,6 +2738,8 @@ void testLdLocal() {
 /// after a demotion's squash, in the new epoch, while the warp sits
 /// drained, are dropped when RAU frees the slot; none outlives it, and
 /// the release checks that none is queued. The control keeps them.
+/// Under OA 460 such an arrival is itself an error (FET stops at the
+/// notice), which the test expects twice; the drop stays the defence.
 bool releaseDrop(bool control) {
   Config c = baseConfig();
   c.l1_spec = false;
@@ -2763,12 +2765,22 @@ bool releaseDrop(bool control) {
   e.core.alloc(f);
   for (unsigned k = 0; k != 10; ++k) e.step();
   const uint64_t drops = e.core.counters["decq.release_drop"] - drops0;
-  const bool ok = drained && drops == 2 && e.errors.empty() && e.core.counters["errors"] == 0;
+  // OA 460: since a demotion's notice carries an epoch new to FET, these
+  // two arrivals are themselves illegal and the core names each; the
+  // release still drops them (RI-12's defence). Any other error fails.
+  unsigned oa460 = 0;
+  std::vector<std::string> other;
+  for (const std::string &x : e.errors)
+    if (x.rfind("OA 460:", 0) == 0) ++oa460;
+    else other.push_back(x);
+  const bool ok = drained && drops == 2 && oa460 == 2 && other.empty() &&
+                  e.core.counters["errors"] == e.errors.size();
   if (!control) {
     g_test = "release drops the warp's queued uops (RI-12)";
     EXPECT(drained, "the demotion never drained");
     EXPECT(drops == 2, "%llu uops dropped at the release, want 2", (unsigned long long)drops);
-    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+    EXPECT(oa460 == 2, "%u OA 460 arrival errors, want 2", oa460);
+    for (const std::string &x : other) EXPECT(false, "%s", x.c_str());
   }
   return ok;
 }
