@@ -33,8 +33,9 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Daily sweep 2026-11-20 (Fri): AR 400, OA 462, IS 201, TI 503, OI 395, CP 160, RA 157, RI 91,
   MA 135, MI 18, DI 13, DA 128, Conventions 20; specs MIU 145, Common 9, DCU 59.
   Weekly pings: all 11 ponged; OI's and RH's rosters predated cc8ed42d (MI unnamed) then.
-- MA-26 landed (WAYPRED_BITS 5, SEL 1; L1_HIT 8, WAKE 14, CMPL 16). MA-25 (bank credits
-  ent_ret/std_ret, QDEPTH 16, STDATA 12) still pending at TI.
+- Since: MI 23, TI 507, OA 464, DI 19, MA 137, OI 397 (others as above).
+- MA-26 landed (WAYPRED_BITS 5, SEL 1; L1_HIT 8, WAKE 14, CMPL 16). MA-25 landed (TI's
+  d761c634); the model spends the credits at d639adb2 (step 5).
 - MI-8 at TI: under UE_INJECT=1 predlane/predmerge fail quiesced_at_end on ooe_miu_memop. Per
   AR 387/389 (RAU spec rev 63) a store whose merge read was withheld never drains, so its MQ
   entry's credit stays out; TI's KernelEnd already allows it. Ask: exempt mce runs with a control.
@@ -62,26 +63,27 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   Bookmarks since: OA 455, MI 12.
 
 ## Open work, most urgent first
-1. Model work in worktree /home/user/mi-wt, local branch mi-dev, now at 3b3f4252 = TI's
-   e8d8864b merged; NO local hook any more (every bin, break, the 1<<32 bound and the DCU-model
-   selection are upstream). Steps 1-4 pushed (TLB/walker, store drain, drain guard). Next:
-   (5) bank credits once MA-25's channel exists; (6) way-mispredict path (AR 390: the bank
-   loser's path, due+2, as a miss) once TI's same-set kernel exists (MI-9 (3)).
-   Validate: CCV_FOREGROUND=1 CCV_MIU_IMPL=model ./tools/check-kernel.sh (~30 min).
-   On e8d8864b it fails only: the 4 miu=model pins (TI-503 put them in IMPL_PINS, c8d19598,
-   with TI's next push), MI-4's set, MI-8, and MI-11 (2) below.
-2. MI-11 (2): lnorm1 under CCV_RAU_DEMOTE=mlc never parks (decq credits 5/7 at FET's
-   migration wait). TI-502: deadlock of OA 455 A vs AR 395 (3); not MIU. AR 397 (OA-460): a
-   demoting warp stays bound to its tier-1 slot until reassigned; OI builds it. Then rerun:
+1. Model work in worktree /home/user/mi-wt, branch mi-dev = pushed tip (d639adb2 + regen 5057ec50).
+   No local patch. Steps 1-5 pushed (TLB/walker, store drain, drain guard, bank credits).
+   Next: (6) way-mispredict path (AR 390: the bank loser's path, due+2, as a miss) once TI's
+   same-set kernel exists (MI-9 (3)). MI-13 (rev 23, TI rung): drop check-kernel's skip of the
+   bank-credit holds/controls under CCV_MIU_IMPL=model. MI-12 (rev 19): asked TI/OI to move
+   our blockers up their order (Daniel's request).
+   Validate: CCV_FOREGROUND=1 CCV_MIU_IMPL=model ./tools/check-kernel.sh (~30 min). It fails only
+   lnorm1 under demotion (item 2) and the replay drain's stall/vadd4 (MI-4, TI's).
+2. MI-11 (2): lnorm1 under CCV_RAU_DEMOTE=mlc. Root cause per OI-193: OOE lost an epoch
+   advance; fixed in OI's c461c1b0 (not on a remote yet). When it lands, rerun
    CCV_MIU_IMPL=model CCV_RAU_DEMOTE=mlc build/skel/ccv-skel --kernel build/oracle/lnorm1/oracle.jsonl
-3. Awaiting TI: MI-4 (stub-pinned checks), MI-5 (3), MI-7 (cold-TLB kernels), MI-8, MI-9 (3)
-   (a same-set kernel to reach dcu_wp_wrong). MI-1 closed (rev 14). MI-10 withdrawn (rev 16).
-   Measured pins: scratchpad miu-model-pins.md (may be lost; the pins are in MI-11 too).
-4. Phase 1a: flip the TLB to cold (MI-6, MA-126) and re-pin ~30 checks; the M0 report states
+   and close MI-11 (2).
+3. DI (DI-7 answered rev 21): DI reruns slotform, movi-in-lane, coremark128 on d639adb2.
+4. Awaiting TI: MI-4 (replay drain stall/vadd4), MI-8, MI-9 (3), MI-13; TI's 78e74f4e (MI-7
+   a/b/d cold-TLB scenarios): run them with the model when merged. MI-7 (c) dropped (rev 22).
+5. Phase 1a: flip the TLB to cold (MI-6, MA-126) and re-pin ~30 checks; the M0 report states
    the cold cost, 110-160 cycles a kernel. Phase 1b with DI's DCU: clean on 64 kernels.
-5. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
+6. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
 
 ## Pushed
+- ccr-58815650-0ch1hh at 5057ec50 (d639adb2 bank credits + TI's d761c634): SCOPED PASS.
 - ccr-58815650-0ch1hh at f79b74f1: full PASS (Fri sweep: merged ccr-3868632d 78,
   ccr-5e4d6c70 7, ccr-c22116ce 9, MA's branch 6; walkthrough conflict regenerated).
 - ccr-58815650-0ch1hh at eed37e0c: full PASS (daily sweep 2026-11-19 merges + e6712d62 TI-487 (3)).
