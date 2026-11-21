@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 17 | 44 |
-| ⚠️ Some provisional | 27 | 147 |
-| ⛔ Some preliminary | 13 | 152 |
-| **Total** | **57** | **343** |
+| ⚠️ Some provisional | 27 | 148 |
+| ⛔ Some preliminary | 13 | 153 |
+| **Total** | **57** | **345** |
 
 ## What still has to be decided
 
@@ -358,7 +358,7 @@ dcu → cru · rate 1 · control
 
 ### `ccv_dcu_miu_cred`
 
-DCU's per-bank credit returns to MIU (MA-25; MA-24 under AR 382): ent_ret, a bit a bank, a lookup entry left that bank's queue; std_ret, a bit a bank, a store's data left after its write. MIU holds per bank CCV_DCU_BANK_QDEPTH entry credits and CCV_DCU_BANK_STDATA store-data credits, reset full: it sends a lookup only with its bank's entry credit and a store only with both, spending them at send, and holds a request without them (a held store blocks every younger store to its bank, a held request every younger one to its line). A bank serves one access every other cycle, so it returns at most one of each a cycle and a bit is enough. DCU sends whenever either vector is non-zero, so nothing queues. Every set bit returns a credit MIU spent: one that would take a counter past its reset value is refused by name, and DCU refuses a bank holding more than either count. Flops capturing these pulses at MIU are a credit waiver ("credit": true, DA's ruling on RI-14), counted in MIU's 2%.
+DCU's per-bank credit returns to MIU (MA-25; MA-24 under AR 382): ent_ret, a bit a bank, a lookup entry left that bank's queue (it returns only lookups that entered DCU's queue: a dropped lookup allocates none, and MIU refunds its credit into its own bank counter when A2 sets drop; DI-12, MA rev 143); std_ret, a bit a bank, a store's data left after its write. MIU holds per bank CCV_DCU_BANK_QDEPTH entry credits and CCV_DCU_BANK_STDATA store-data credits, reset full: it sends a lookup only with its bank's entry credit and a store only with both, spending them at send, and holds a request without them (a held store blocks every younger store to its bank, a held request every younger one to its line). A bank serves one access every other cycle, so it returns at most one of each a cycle and a bit is enough. DCU sends whenever either vector is non-zero, so nothing queues. Every set bit returns a credit MIU spent: one that would take a counter past its reset value is refused by name, and DCU refuses a bank holding more than either count. Flops capturing these pulses at MIU are a credit waiver ("credit": true, DA's ruling on RI-14), counted in MIU's 2%.
 
 dcu → miu · rate 1 · memory
 
@@ -546,7 +546,7 @@ spm → miu · rate 4 · memory
 
 ### `ccv_dcu_miu_rsp`
 
-Cache read data, hit indication and whether ownership was granted, and mlc_miss: the fill that served this access missed in MLC (ccv_mlc_dcu_rsp.miss, passed through). MIU reports it on ccv_miu_ooe_cmpl, since an MLC miss is the primary demotion trigger; without this field the signal stopped at DCU (arch open A-9).
+Cache read data, hit indication and whether ownership was granted, and mlc_miss: the fill that served this access missed in MLC (ccv_mlc_dcu_rsp.miss, passed through). MIU reports it on ccv_miu_ooe_cmpl, since an MLC miss is the primary demotion trigger; without this field the signal stopped at DCU (arch open A-9). check_bits: the stored (72,64) SECDED check bits of every code word the slot's read_data carries, 8 a 64-bit word, 128 a slot (MA-28 (c), AR 401). MIU's R2 computes the syndrome beside the lane extract, the OR over every code word the slot carries (the bank read, leader and followers alike), flops a non-zero flag and withholds that slot's completion; the corrected data returns under the original req_id with no new entry credit, and MIU keeps the req_id live until a completion is delivered, not withheld. CCV_LAT_L1_ECC stays 1. DCU's CCV_DCU_ECC_INJECT flips a stored bit to reach it (MIU's CCV_MIU_ECC_INJECT is retired).
 
 dcu → miu · rate 4 · memory
 
@@ -557,7 +557,8 @@ dcu → miu · rate 4 · memory
 | `hit` | `1` | 1 | literal |
 | `ownership_granted` | `1` | 1 | literal |
 | `mlc_miss` | `1` | 1 | literal |
-| **total** | | **1033** | ⚠️ 6 provisional |
+| `check_bits` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
+| **total** | | **1161** | ⚠️ 6 provisional |
 
 ### `ccv_mlc_dcu_rsp`
 
@@ -991,7 +992,8 @@ miu → dcu · rate 4 · memory
 | `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
 | `lead_set_index` | `CCV_W_DCU_SET` | 9 ⚠️ | CCV_W_DCU_SET (tunable) |
-| **total** | | **1223** | ⛔ 4 preliminary, ⚠️ 63 provisional |
+| `drop` | `1` | 1 | literal |
+| **total** | | **1224** | ⛔ 4 preliminary, ⚠️ 63 provisional |
 
 Lead fields (driven with valid, a cycle ahead of the rest): `lead_set_index`.
 
