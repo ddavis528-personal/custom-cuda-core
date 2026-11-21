@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 396 .649039 (tab rev 400).
-  - **The next AR row inserts after .649039**, labelled AR 397.
+  - Latest row: AR 399 .653325 (tab rev 403).
+  - **The next AR row inserts after .653325**, labelled AR 400.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -96,14 +96,20 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 400, OA 459, TI 492, RA 156, RI 91,
-  IS 199, CP 160, OI 393, DA 128, MA 133, DI 8, Conventions 20. Specs: FET
+- **Bookmarks** (revs read through): AR 403, OA 463, TI 501, RA 157, RI 91,
+  IS 201, CP 160, OI 395, DA 128, MA 135, DI 12, MI 18, Conventions 20.
+  (TI read to 501 and OA to 463 for TI-501/502.) Specs: FET
   tab rev 54, DCU tab rev 59.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
-- **Last sweep 2026-11-20:** merged the 11-19 and 11-20 branches (OA.md
+- **Sweep 2026-11-20 (10:03Z trigger):** merged 7 branches, 60 commits (p8esoz 29,
+  1vzyjg 10, miu-dcu-microarch-spec 6, n6402z 5, doowtf 4, infra-6msg93 4,
+  0ch1hh 2), no conflicts, regen clean; full gate PASS on 5f02cdfc (~3.8 h);
+  pushed. Answered every agent's Friday ping. Session home INSTALLED with
+  Daniel's approval (2026-11-20); --check exit 0, handoff hook verified.
+- **Earlier 2026-11-20:** merged the 11-19 and 11-20 branches (OA.md
   conflict in 20cauz taken as ours, which held OA's newer 5de62e85); the gate
   was killed by container restarts four times, then RESUMED PASS (22 of 24
   carried over) on adf157b0; pushed 308 commits. Session home still exit 1.
@@ -202,6 +208,20 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000b. **TI-502 credit deadlock: SETTLED (AR 397 .649791, AR 398 .652069,
+   AR 399 .653325; OA 459/460/461).** FET's full-credit wait (AR 395 (3))
+   stays; (b) drained+delay and (c) no wait refused. OOE keeps a demoting warp
+   bound to its tier-1 slot until a launch/restore gives the slot to another
+   warp; stragglers in that window are walked, their credits returned on that
+   slot no earlier than their beats (FET credits a slot to its last warp until
+   take_slot). OA 455 A's pending counter becomes a CHECK with a bin. OI
+   builds to OA 460; MI reruns MI-11 (2) (lnorm1, CCV_MIU_IMPL=model
+   CCV_RAU_DEMOTE=mlc). Rows crossed twice (397 vs 459, 398 vs 460); OA 461
+   says both forms are one rule. Nothing owed. LESSON: after ringing an owner
+   on its own block, wait for its row before writing another; a crossing
+   costs two rows each side.
+   TI-501 (e8d8864b, on doowtf/infra-6msg93, not in 5f02cdfc): FET's mig wait
+   matches AR 395 (3) with --break mig-before-credits; arrives next sweep.
 000a. **AR 393-396 (11-19/20): rewind contract and DCU notices, CLOSED.**
    - Rewind (AR 393 amended by AR 395; OA-457 adopted 395, OA-456 crossed and
      is superseded): at most one rewind beat per ROB/decq entry with new lanes,

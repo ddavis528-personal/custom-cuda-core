@@ -1,6 +1,6 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-18 20:00 UTC. Survives a compaction. CLAUDE.md holds the repo's rules; this holds OI's.
+Updated 2026-11-20: gate b6r8fl7rt (wt-sw a0cf7231 = oi-sw + oi-slot + oi-5b, --full, job log /root/ccv-logs/job-gate-push-20261120-001254-205.log) WILL be red on lint: ooe_ratmap pk_q untagged (OI-187, rev 391, rung OA+TI). Let it finish for the other sections.
 
 ## Working rules
 - The user is DA (Daniel). Standing order: continue OOE RTL until blocked; ask only at key
@@ -19,7 +19,7 @@ Updated 2026-11-18 20:00 UTC. Survives a compaction. CLAUDE.md holds the repo's 
   date, summary ending "Needs: X", detail). No dates on rows or promises (DA 11-16).
   Notices: `python3 .claude/skills/register/notice.py compose ...`, send_message priority
   "later". OA session_01TbX2MyX6quhjarDR7J2bMR, TI session_01J4Yp3xeV6DJtgCtcoqVsAq.
-  Next free ID: OI-172 (the #61 landing row). Pings Fridays.
+  Next free ID: OI-188 (OI-187 rev 391 ratmap table L23) (OI-185 rev 389: lag-2 C S1 +1.42% vs lag-1 D +0.72%, both to DA; D built on branch oi-pwv 82b0fdd7 (PWV param; ports would rename cq04h + TI lead-field change if adopted); OA 449 explained; rung OA; RH told release rh-oi449, keep 447/447a till DA). Pings Fridays.
 - DA 11-18 (chat): pause NGD-to-25 fixes until the ccv_ooe top is built (real budgets, no
   false paths); finish ALL modules first so the top is complete when built. OI may move
   internal budgets where a measured parent times the connection and they still converge.
@@ -33,22 +33,27 @@ Read every tab since the bookmarks; merge every remote branch ahead (not release
 gate-scratch/*), gate --full, push; pongs; pings Fridays; `tools/setup-session-home.py --check`.
 
 ## Register bookmarks (revs read through)
-OI 375, OA 437, TI 480, AR 384, DA 127, MA 97, RA 156, RI 91, IS 197, CP 160 (TI-482 rung separately: answer in #58's landing row).
+OI 389, OA 452, TI 487, AR 395, DA 128, MA 127, RA 156, RI 91, IS 199, CP 160 (TI-482 rung separately: answer in #58's landing row).
 
 ## Trees and runs in flight
-- #61 push: /home/user/wt-61p branch oi-61p = origin 5e1f3789 + #61 commits, tip 2e80c608 (local).
-  Gate f25a85da FAILED: CG budget (fixed by 2e80c608: bo_oh = entry bits on every done, qualified
-  by flops bo_vw/bo_vr; budget 155/170.5, bench 26 controls) and NGD: fl_m 29.3 > cap 28.8
-  (units 0,1,3), NGD-1 28.5 at cap (29.2/29.0 on _1/_2 in the gate). Bisect of 4ef48b45 (passed)
-  .. 6c984007 on unit 0 running in /home/user/wt-bis (log scratchpad/af/bis.log); fix the commit
-  that raised fl_m/NGD-1, re-measure ALL 4 units (_1.._3 vary), then gate-push. rm wt-bis, wt-61base.
+- #61 DONE: pushed b91632b4 to ccr-57eff422-5tdecg (SCOPED PASS), OI-175 rung OA+TI.
+  wt-61p (oi-61p) can go once #58's branch is rebuilt from origin.
 - #58 lead form: /home/user/wt-58l branch oi-rxl, 942fa18e on oi-rx (the flop-form commits,
-  withdrawn by DA rev 127 / OA 433). Rebuild the push branch from origin without the flop form.
+  withdrawn by DA rev 127 / OA 433). Rebuild the push branch from origin (now b91632b4) without the flop form.
 
 ## Open work (most urgent first)
-1. #61: gate-push oi-61p; on green, OI-172 to OA (ring OA; ring TI for check-ooe-unit 58): NGD 28.48,
-   caps, CG fixes, RH OA 427: ckpt_free_lag S1 +0.002% cm32priv +0.087% cm128priv +0.420%,
-   rob_alloc_lag 0 everywhere. Then rm wt-61base.
+0d. TI-490 (DA): RESUMED PASS counts as full clean gate; on gate-wait 'killed', rerun same command with CCV_RESUME=1 (after merging TI 6464a030).
+0c. OA-452 (rev 454) re OI-187: declared table is a new L23 exception -> DA rules (OA recommends: array only, writer's tag kept, index at reader's stage, no-same-cycle assertion, fixtures; TI lint). KEEP ooe_ratmap OFF swept branches until then: rebuild the sweep without fc78f1a8/ratmap commits after gate b6r8fl7rt. RH OA 451 run 1: all +0.000% but 0 demotes (RAU stub demotes only under CCV_RAU_DEMOTE). Rerun asked: cm128priv A/B under RAU_DEMOTE=mlc and =fallback(+thresholds 150), S1 under mlc.
+0b. OI-186 RULED (OA 451 rev 453/454; AR 393 rev 396): streaming walk C, unmerged beats (a lane in at most one beat; FET asserts). Model knobs demote_walk/beat_merge done (b7b3ce5d, 367bc942: decq walks serialized on one port, held uops flushed together at walk end, drained waits; control walk-take-held caught). RH asked to price A default vs B demote_walk=1,beat_merge=0 on S1/cm32priv/cm128priv + forced-demote cm128priv, on gate-scratch/OI 367bc942 (two corrections sent; the right hash is 367bc942). OA rules <=0.5% S1, else DA. Then flip both hosts' defaults (OA 451 (c)); TI rewords ccv_ooe_fet_redirect REWIND ("at most one beat per ROB or decode-queue entry with new lanes, a lane in no two beats") with the flip. Uncommitted in wt-5b: counter demote.walk_arrival + test print -- rerun run-tests AFTER the gate (no compiles beside a gate: an OOM 11-20 killed the gate's cc1plus): if arrivals while held are 0, the RTL decq can assert none and flush the slot whole at walk end; else per-entry held bits. RTL to build: decq walk port (from decq flops: pc_lo, mask, valid, last; flopped request from rob_w after its ROB walk; budgets out 6 NGD, in 2.0; hold the slot's flush till the walk ends; assertion + control that a held entry is taken), rob_w ROB walk (covered reg, pointer, beat reg per slot). Answer OA 451 in an OI row with the price.
+0a. NOW (11-20): oi-5b in /home/user/wt-5b: 0ff0b4fd ooe_slot rau_status+cru_fault (OA 435 (9)(10); bench 0 mismatches, 2044 reports, 7 faults; controls no-rc/drop-ft/ft-slot caught; model count saturates, fault status carries count; ooe tests pass), fc78f1a8 ratmap rf tagged. Left on slot: check-ngd/check-cg --unit ooe_slot (after the gate; one heavy job at a time), then the (9)/(10) landing row (report latency: input flop + queue, max 5 cycles in bench; round robin over slots, per-warp order) + note to TI: RAU stub's progress guard (kernel.cpp:5527, retired_ < p_base_+8) never clears if p_base>=248 under the 8-bit saturating count. ratmap pk_q (32x64 b, 256 B < RF 512 B min, so flops) needs OI-187's ruling (declared table): until then oi-5b can't push; when the gate ends, triage the rest, fix, and relaunch only once OI-187 is ruled or ratmap is held out of the sweep (ask DA if it drags).
+0. OLDER NEXT: gate bc4wkcjom (wt-sw d4c49c15) expected red (decrx lint; and any oi-slot rob build bug). Then merge oi-slot (6583cdbf: lint fixes, bp_hl cast fix f3e47cf1, g_bp locals f-prefix, ooe_test bar_pend + check-ooe-unit 61 controls c0cf82ab) into the sweep in wt-sw, regen, relaunch --full gate-push. OA-450 (OA rev 452): OA recommends D to DA if ooe_rob_w and ooe_redir pass check-ngd/check-cg with no waiver and no cap rise; else back to DA, C stands. D measurement tree: /home/user/wt-pwv branch oi-pwv2 (oi-pwv + oi-slot, PWV=1 by default; rob_tb mispredict 1135 redirects 0 mismatches, all controls caught). After the gate: check-ngd/check-cg --unit ooe_rob_w (_1.._3) and ooe_redir in wt-pwv, one at a time; propose rd_*_cq03h budgets to OA with figures; answer OA-450 in a new OI row. bar-* controls on bar_pend: RTL rob_tb runs bar_pend=1 (all 4 caught, C and D); model testBarrier now runs both forms. run-rtl b53nfm6ap failed only at rob build (the g1'(p) bug, since fixed): rerun run-rtl on oi-slot after the gate. TI-488: drop ooe_wake LAT pins once oi-slot lands.
+   TI-488: when oi-slot lands (3ab00269 package defaults), drop the two ooe_wake LAT_SPEC 14/LAT_MISS 17 lines TI pinned in test/ooe/cg-units.json. RH: keep rh-oi447/447a until DA rules on OI-182; others released. Slice 5 gap: the random rob bench never squashes a barrier (bars_sq=0, a95 counter in rob_tb), so ooe_rob_w's bsq path is unexercised: add a directed kill behind a waiting guarded barrier. Owe RH a look at layernorm -6.1%/sgemm -1.2% under bar_pend (report reorder?).
+1. TI-485 model bin + control DONE (ef015dab; Env::kill frees FET's ckpts at the kill's notice).
+   Left: ooe_redir (#65) masks ckf for a slot from its epoch_only notice, with a bench control.
+   OA 444 (DA 128): ooe_wake/ooe_trio LAT_SPEC/LAT_MISS default from ccv_prov_pkg (3ab00269;
+   NB those params live in ccv_prov_pkg, not ccv_params_pkg - that was the "Yosys" failure).
+   Wake bench, trio, check-cg/ngd ooe_wake+ooe_sched clean, values unchanged 13/16. Left: units at
+   both predictor settings once TI lands the predictor param; answer OA 444 in OI-177.
 2. #58 (DA rev 127 chose the lead form; AR 380 approved lead_fields [warp_id, fetch_epoch];
    OA 433/434): on oi-rxl (rebased off the flop form): model rx_lag bit 64 withdrawn (default 16);
    decrx.ngd.json lead-field inputs arrival 2 (as enq_l), held to 12 NGD (AR 380 (4)) - measure;
@@ -57,10 +62,46 @@ OI 375, OA 437, TI 480, AR 384, DA 127, MA 97, RA 156, RI 91, IS 197, CP 160 (TI
    first). Push only after TI's lead_fields schema change lands (merge it: 3eb6e8d0 is on
    ccr-183cc441-doowtf). RH OA 428 E (rx_lag=80) vs A0: S1 +0.946%, cm32priv +3.575%,
    cm128priv +1.118%, stall.decq 0: cite in the landing row.
-3. OA 435 module split (re:OI-171), in order: (1) ooe_slot #63, (2)(3) ooe_rcupl/ooe_mempl #64,
+3. #63 ooe_slot DONE locally (fd194677, oi-slot; bench 25 seeds 0 mismatch, 7 controls; CG pass; NGD f2f 19.2).
+   OA 443 set budgets (arrival 2, by OA): ngd.json committed 8501f587, check-ngd passes. OA's dm_* caveat
+   (ooe_rob_w flop-out 2.0) is moot: dm_* comes from ccv_rau_ooe_demote's boundary flops; say so in the row.
+   OA 443 (2): model slot_verdict_lag (default 1) + testSlotVerdictLag/control 14526054, sent to RH on
+   gate-scratch/OI (A lag 0 vs B default; S1/cm32priv/cm128priv). On the price: write the OI row re:OA 443
+   (<=0.5% S1: OA absorbs; else the no-cycle option's cone depth/CG). Push waits on that and #58's gate. Rebase/merge oi-slot onto origin after #58 lands.
+   #64 ooe_rcupl/ooe_mempl DONE locally (c0584545, 8937a239, c56f9ddb on oi-slot): bench test/ooe/pl_tb.cpp
+   (scenario pl, 25 seeds 0 mismatches, 6 controls), cg units added, NGD within 12. OI-178 (rev 382) rung OA:
+   mempl's 21-flop valid/source gate 97%/67% (medium/high), over its allowance: (a) DA waiver or (b) slot-indexed
+   late read; check-cg fails mempl until answered. Left for #64: integrate with ooe_rs/trio (export reads, rs_idx,
+   mem fields, mgl_cq01h from ooe_sched; remove the issue regs; folds #40/#42/#46); run-rtl.sh entry with controls.
+   OA 445: verdict lag absorbed, push oi-slot when ready; optional non-gating RH run (cm128priv, CCV_RAU_DEMOTE
+   forcing a few hundred demotes, slot_verdict_lag 0 vs 1). OA 446: OA declines (b), recommends (a) to DA (mempl waiver).
+   #65 (4) decq credit return DONE locally (6fc15bec on oi-slot): ooe_decq output crd_cq02h[S*LC], per-slot frees
+   registered beside frn; decq_tb checks per slot, control stale-credit-apart. check-cg/ngd for ooe_decq not yet run
+   (gate was busy). Next: #65 (5a) ooe_redir: b0117b45 (decrx sw_o/sn_o outputs, bench 25 seeds + 7 controls pass; model same-cycle redirects in slot order, ooe tests pass) and ooe_redir b0de1716: rob_w outputs rd_e_cq02h (rs_en) / ckf_l_cq02h (|frp); ooe_redir sits in ooe_rob_tb (u_redir) and rob_tb checks it vs core.out at +2 (25 seeds, 1206 redirects, 0 mismatches; controls redir-warp/epoch/ntm, rd-unled, ckf-unled); cg unit ooe_redir (scope u_redir). OA 447 (re:OI-179) ruled: rd_l plain wire to decrx adv/decq flush/RAT squash; rd_e is decrx's lead (decrx ev_l now [S:0] per source, 8948873d, bench 25 seeds + 7 controls); landing row (OI-180) must state OA 428's invariant (one wire, one cycle, three receivers) + joint-bench assertion plan, slot-order IPC, send+2 price (<=0.5% S1 absorbed, else cost of payload-with-valid to OA), decq check-cg/ngd, budgets proposed for rd_e (~6 NGD)/rd_l. Model knob redirect_send_lag + control inject_send_free_late (582fedae14). RH asked: A 99ee28168b, B 582fedae14, C 582fedae14 with CCV_OOE_CONFIG=redirect_send_lag=2 on S1/cm32priv/cm128priv - awaiting. Left: check-cg/check-ngd ooe_redir + ooe_rob_w + ooe_decrx + ooe_decq (after the gate; re_q/fl_q are 8 ungated flops - watch CG), landing row with budgets (re OI-179, which OA may still change).
+   Lint in wt-slot shows 7 CCV-L23 in ooe_decrx/ooe_slot (lint passed on wt-sw's gate): recheck on oi-slot's gate.
+   OA 435 module split (re:OI-171), in order: (1) ooe_slot #63, (2)(3) ooe_rcupl/ooe_mempl #64,
    (4) decq credit return + (5a) ooe_redir #65, (6) rob_w slice 5 syu_bar, (5b+7) epoch notices +
    slice 6, (8) rcu_map in ooe_rat, (9) rau_status, (10) cru_fault #66; then ccv_ooe top glue (no
    logic in ccv_ooe). Each lands with a bench vs model, a timing unit, controls, and a row
    proposing port budgets with measured NGD.
+3a. #66 slice 5 (OA 448 ruled: barrier state in ooe_rob_w per slot; go takes the hold as its own input, ORed inside;
+   report pick (A) retire stop if caps hold else (B); depth 2 unless RH >0.5% vs unbounded -> 3; model counts as RTL).
+   DECIDED (B): (A) is structurally impossible: rob_w is one instance per slot, so a cross-slot pick in the window
+   would be a path through the parent. Model knob bar_pend (42e8ee74, 31bf4b1e + pv0 stop as the RTL): one pending
+   report per slot, a rotating pick a cycle; retire stops at a bar op while the register was full as the cycle
+   started (grant is an input to rob_w, so it frees the cycle after) or at a 2nd in a window; pending counts as
+   held for drain/exit/kill and holds its side-buffer place. RH asked P0/P1(bar_pend=1)/P2(+bar_buf_depth=2) at 31bf4b1e.
+   RTL plan: rob_w side buffer 2 places {v, rt(pending), idx LD, kind 2, bid 4, guarded, bhs(set the hold), long,
+   gm 32, guard 32 (dn BS mask), phase 32 (dn aux)}; new alloc inputs al_bar/al_bk/al_bid/al_bgd/al_bhs/al_bl [A];
+   hold state bar_hold/bar_retired/bar_long/bar_mask; held = bhs && hold && !retired; release input (syu_rel warp
+   matched upstream -> per-slot rel pulse); outputs: req (rt flop) + place0 fields from flops; per-slot hold out to
+   ooe_go. New module ooe_barpick: rotating pick over req & ~gnt_q, flops gnt_q (to rob_w as data: rt_en=rt, rt<=~gnt)
+   and the ccv_ooe_syu_bar report. rob_tb drives from RobLog (add bar fields to Alloc, report list), compares reports.
+3b. (older) #66 (6) slice 5 syu_bar: model knob bar_buf_depth (71feef7e, testBarBufDepth; on gate-scratch/OI); RH asked D0/D2/D3 on
+   transpose-128, layernorm-128, cta-reduce-128, sgemm-128 + S1 (>0.5% on any -> depth 3). OI-180 asks OA: hold state
+   in rob_w?, report pick as retire stop vs pending register, depth, rename hold timing. RTL waits on OA.
+   #64 step 1 (local, uncommitted until trio passes): ooe_rs drops its issue registers, exports lv_cq02h/le_cq02h (LW)/
+   pe_cq03h (PW) for rcupl/mempl; ooe_trio.sv keeps bench-side copies of the old registers. Plan: rs store = ooe_ent_t
+   split lead (le) / rest (pe) with no duplication, + ooe_mem_t in pe, + RS index output for mempl; wiring at the top.
 4. #52/#53/#54/#51 NGD-to-25 refactors: PAUSED (DA 11-18) until the top exists.
 5. Blocked/parked: #40, #42 (TI schema), #46 (lead set), #32 (optional fa index).

@@ -15,6 +15,9 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 - DI-1 landed (TI-497, cb8ca9be, merged here): CCV_DCU_IMPL=model and
   check-dcu-unit are real; the local hook patch is retired.
 - No dates on tasks; no model identifiers in anything pushed.
+- Merge a blocker the moment it lands on a working branch, never waiting
+  for the daily sweep (Daniel). Ask its owner to move it up (a DI row and a
+  notice), and set an hourly check while it is pending.
 
 ## Timing frame (DCU-local; checked against the MIU tab's L1-hit budget)
 - L = lead (valid) at DCU = H+2; P = payload lands (Stub::has) = H+3.
@@ -26,28 +29,28 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
-0. Last sweep merged 9 branches (a9077fc1, full PASS). MI's model is on
-   ccr-58815650-0ch1hh (now merged here): its page walks issue DCU reads that
-   count toward CCV_DCU_UE_INJECT; MI-4/MI-5 ask TI to pin UE checks per MIU impl.
-   Phase 1b: run DI's model against MI's once both hooks land.
-1. Model M0 status (pushed 26740eef, SCOPED PASS): 64/64 kernels == ccv-sim
-   with CCV_DCU_IMPL=model, +1.78% mean cycles vs the stub. check-kernel has
-   5 timing-only diffs (ldpar, transp4@ECC, late, stall bins; the
-   spm-shared-region control's pinned message): DI-3 asks TI for per-impl pins.
-   Waiting on DI-1 (hook, blocks.list, check-dcu-unit, params, credit vectors).
-2. With the hook merged (cee1a266, pushed after a full-scope PASS):
-   check-kernel with the model fails 12 lines, all in TI-495 (IMPL_PINS,
-   NOTICE=1 controls, vadd4 orphan): rerun when TI-495 lands, then the M0
-   exit row. MI-10 withdrawn (MI's refusal is in e6712d62, not yet here).
-3. DI-4 closed (MA rev 135): notices off by default (4cf7c183, pushed);
-   un-noticed refill at F+4 (92e6037e); CCV_DCU_NOTICE=1 keeps them.
-   S1 off -0.43%; cm32priv off 2105390 / on 2105392 / stub 2095682.
-   MI showed the same with its model (MI tab rev 12). TI-495 (on ti-mi9,
-   gating after the hooks): IMPL_PINS per CCV_DCU_IMPL, notice pins under
-   NOTICE=1, vadd4 orphan=1, class-matched controls. Answered with 4cf7c183.
-   SV-hosted PASS with the model. Next: when TI-495/DI-1 land, rerun
-   check-kernel with the model and write the M0 exit row (MA reads it);
-   check every bin reached; then phase 1b with MI's model.
+0. M0 met (DI-8, sent to MA): 3a2703ef pushed, with TI-506/507 and MI's
+   d639adb2 merged. Against the MIU stub, check-kernel and check-sv-hosted
+   are clean under CCV_DCU_IMPL=model. Cycles: +1.69% over the stub (66
+   kernels), +0.74% over p1 on the 54 where p1 runs. p1 hangs on 12 kernels
+   because it sends no MA-25 credit returns (MA's file; asked in DI-8).
+   f92a89fc made the credits strict and holds a store miss's store-data
+   entry until the fill merges it (DCU spec).
+   Phase 1b: the pair passes check-kernel clean. check-sv-hosted: the vadd
+   machine check is MI's (it fails with the DCU stub too). lnorm1 SV vs C++
+   at cycle 81, and RCU RTL in the SV top (transp4, vadd4), fail only under
+   the pair. A rerun is in the scratch worktree
+   /tmp/claude-0/-home-user/bfe83fc4-cb75-557c-bad7-b1316bec67fe/scratchpad/m0w
+   (logs one level up: m0-*.log, m0-s1.txt); never push from it. Then
+   write the phase 1b row.
+1. Phase 1b (DI-5; AR-394, OA-454): S1 pair +1.62% vs the stubs (worst
+   vadd4 +25.4%), DCU alone +1.27%. cm32priv: pair 2090969, DCU alone
+   2105390, stubs 2095682. With notices off, fill_notice=0 and cmpl_hint=0.
+   RTL waits on MA's Phase 2 (AR-394: a notice from MLC's tag lookup).
+2. DI-4 closed (MA rev 135): notices are off by default; an un-noticed
+   refill lands at F+4, a noticed one at F+6. SV-hosted PASS with the model.
+3. Friday pings: all 11 agents answered. OI's and RH's rosters lack DI
+   (sender=stale); they fix it at their session start.
 4. Gaps vs spec: probes (no MLC probe traffic in the skeleton), CE injection
    on the DCU side (a DI row to TI), the 2-entry writeback buffer stall (a
    bin now), MA-25 vectors computed but unwired.
@@ -58,9 +61,9 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 7. First push of a new session branch: create the remote branch at its base
    commit first, or gate-push cannot fetch it.
 
-## Register bookmarks (2026-11-19 start)
-Conventions 20, DI 12, MI 16, MA 135, AR 395, OA 455, TI 497, DA 128
-(sweep of 2026-11-19 10:43 UTC; OI 380, RA 156, RI 91, IS 199, CP 160 by search). Others: outline + search DI.
+## Register bookmarks
+Conventions 20, DI 20, MI 17, MA 135, AR 400, OA 460, TI 504, DA 128
+(sweep of 2026-11-20 10:43 UTC; OI 395, RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
 MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins), DI-4 (MA: refill floor;
