@@ -98,10 +98,11 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 405, OA 464, TI 511, MA 142, DI 26, MI 27, RA 157, RI 91,
-  IS 201, CP 160, OI 395, DA 128, MA 135, DI 12, MI 18, Conventions 20.
-  (TI read to 501 and OA to 463 for TI-501/502.) Specs: FET
-  tab rev 54, DCU tab rev 59.
+- **Bookmarks** (revs read through): AR 405, OA 464, TI 511, MA 142, DI 26,
+  MI 27, RA 157, RI 91, IS 201, CP 160, OI 395, DA 128, Conventions 20. TI,
+  MA, DI and MI were read only for named rows past the last sweep's revs (TI
+  496, MA 135, DI 12, MI 18): the next sweep reads them from those. Specs:
+  FET tab rev 54, DCU tab rev 59.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
