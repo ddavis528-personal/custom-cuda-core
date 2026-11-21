@@ -1108,7 +1108,7 @@ private:
         }
       }
     }
-    const Memop &mo = memop_[tag];
+    const Memop mo = memop_[tag];   // a copy: memop_[tag] is erased below (DI-9)
     // The launch-slot form (TI-31): its window must be in the table. If not,
     // the memop waits, and every one behind it, while its line is read: an
     // L1 miss, never a hit (AR's response). no-window-fill: the table is
@@ -1204,7 +1204,7 @@ private:
     // late cannot be a hit, and one whose address came early is not early.
     j.due = mo.at + ccv::prov::kLatL1Cmpl - crossing(c.ooe_miu) - crossing(c.miu_ooe) -
             (k_.brk == "early-hit" ? 1 : 0);
-    const Bits &am = a->second.msg;
+    const Bits am = a->second.msg;   // a copy: addr_ is erased below (DI-9)
     // Two DIFFERENT masks: the issue mask from OOE, and active = issue AND
     // guard from RCU. They differ for any predicated op, correctly; what
     // must hold is that no lane is active outside the issue group.
