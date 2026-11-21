@@ -2181,25 +2181,27 @@ for m in stub model; do
   # --break bank-credit-ignore: MIU sends without its credits; at one
   # store-data credit a bank, gather's stores meet in a bank, and DCU must
   # refuse every bank past its credits by name, and nothing else.
-  log="$B/kernel_bank-credit-ignore_$m.log"
-  CCV_MIU_IMPL=$m CCV_DCU_IMPL=stub CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
-  n=$(grep -c '^CHECK dcu: bank [0-9]* holds [0-9]* lookup entries and [0-9]* store-data entries, past its credits' "$log")
-  if [ "$n" -gt 0 ] && [ "$(field "$log" check_failures)" = "$n" ]; then
-    say "--break bank-credit-ignore, $m MIU: DCU refuses each" "PASS (gather, $n over STDATA 1)"
-  else
-    bad "--break bank-credit-ignore, $m MIU" "$n refused: $(grep '^KERNEL' "$log")"
-  fi
   # --break dcu-extra-credit: DCU returns an entry credit MIU never spent, and
-  # MIU refuses the return past its reset count by name. Both controls are
-  # the stub DCU's (its refusal, its break), whichever DCU the run uses.
-  log="$B/kernel_dcu-extra-credit_$m.log"
-  CCV_MIU_IMPL=$m CCV_DCU_IMPL=stub "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
-  if grep -q '^CHECK miu: DCU returned an entry credit for bank 0, which holds all 16 (MA-25)' "$log" &&
-     [ "$(field "$log" check_failures)" = 1 ]; then
-    say "--break dcu-extra-credit, $m MIU: MIU refuses it" "PASS (vadd, bank 0)"
-  else
-    bad "--break dcu-extra-credit, $m MIU" "an unspent credit's return went unnoticed: $(grep '^KERNEL' "$log")"
-  fi
+  # MIU refuses the return past its reset count by name. Both run under each
+  # DCU, whichever the run uses: each DCU's refusal and break (DI-11).
+  for d in stub model; do
+    log="$B/kernel_bank-credit-ignore_${m}_$d.log"
+    CCV_MIU_IMPL=$m CCV_DCU_IMPL=$d CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
+    n=$(grep -c '^CHECK dcu: bank [0-9]* holds [0-9]* lookup entries and [0-9]* store-data entries, past its credits' "$log")
+    if [ "$n" -gt 0 ] && [ "$(field "$log" check_failures)" = "$n" ]; then
+      say "--break bank-credit-ignore, $m MIU, $d DCU: refused" "PASS (gather, $n over STDATA 1)"
+    else
+      bad "--break bank-credit-ignore, $m MIU, $d DCU" "$n refused: $(grep '^KERNEL' "$log")"
+    fi
+    log="$B/kernel_dcu-extra-credit_${m}_$d.log"
+    CCV_MIU_IMPL=$m CCV_DCU_IMPL=$d "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
+    if grep -q '^CHECK miu: DCU returned an entry credit for bank 0, which holds all 16 (MA-25)' "$log" &&
+       [ "$(field "$log" check_failures)" = 1 ]; then
+      say "--break dcu-extra-credit, $m MIU, $d DCU: refused" "PASS (vadd, bank 0)"
+    else
+      bad "--break dcu-extra-credit, $m MIU, $d DCU" "an unspent credit's return went unnoticed: $(grep '^KERNEL' "$log")"
+    fi
+  done
 done
 # MI-9 (3): waypred puts two lines in L1 set 0 under tags whose folds agree
 # and re-reads them in turn, so the DCU model's recent-way predictor names the
