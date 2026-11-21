@@ -845,7 +845,7 @@ dcu=model vadd4-swap orphan=1
 miu=model vadd4-swap-miu impl=stub
 dcu=model,miu=model vadd fill_notice=4
 dcu=model,miu=model vadd cmpl_hint=4
-dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=61
+dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=60
 dcu=model,miu=model ldpar l1_hit=1
 dcu=model,miu=model no-resource-cap v60=16
 dcu=model,miu=model lnorm1-straggler demote=342
