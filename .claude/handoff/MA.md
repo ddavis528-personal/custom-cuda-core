@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 400, TI 507, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 137, DA 128, MI 22, DI 12.
+Conventions 20, AR 400, TI 507, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 142, DA 128, MI 27, DI 23.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -83,6 +83,19 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- MIU PHASE 2 IS FIRST (MI-15, MA rev 138; MI says at Daniel's request, no DA row found, order is MA's anyway).
+  Slice 1 (L1-hit path) LANDED: MIU tab rev 147 "MA's Phase 2" (stage table at L1_HIT 8, partition of 17
+  modules, port budgets), miu-impl.md module list + phase rows 2a-2d, snapshot. NEXT: notify MI once pushed;
+  then slice 2 (miss/refill: slot reservation, hint, MIU_FILL 2; multi-pass from MQ), slice 3 (stores, drain,
+  payload RF, st.pred, std credits), slice 4 (atomics, SPM, walker, faults, discard/replay/kill). Then DCU's.
+- MA-27 OPEN (rev 139, Needs AR TI DI MI): drop bit on ccv_miu_dcu_req; the H+1 valid binds, A2 decides drops.
+  A1 credit gate: bank's count after spends >= CCV_DCACHE_LOOKUPS.
+- MA-28 OPEN (rev 140-141): DCU syndrome can't reach MIU in time. Proposed (c): 128 check bits/slot on rsp, MIU
+  computes the syndrome in R2 (ECC stays 1); fallback (b) a 1-bit ecc channel at ECC=2.
+- DI-8 DONE (MA rev 142): p1 credit returns, d494cf9b pushed on SCOPED PASS 26/26.
+- OI's ccr-57eff422 (OOE RTL, 77 commits) conflicts in OI's own files: retry at the sweep; row naming OI if it
+  still conflicts.
 
 - MI and DI ARE RUNNING (MI session_01QPk2jzH1Gd3DcxK4F4pwCC, DI session_01QPk2jz5TVESyWMKVKjqqEA; their
   roster commits arrive on their branches). Their tabs: MI c1311541-4219, DI 1ea5d5b3-6e9c (bookmarks MI 3, DI 2).

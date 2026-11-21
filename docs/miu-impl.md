@@ -129,10 +129,26 @@ until they exist (the docs check holds every code path to the tree).
   - listed in `sim/skel/blocks.list`, so both hosts build it.
     `tools/gate-scope.py` already maps sim/miu/ to the sections that build
     it.
-- **RTL modules, units and port budgets wait on Phase 2.** When it lands, the
-  MIU tab gets a partition table (modules, flops, units), per-cycle stage
-  tables and a port NGD budget table, and this section gets the module list,
-  as `rcu-impl.md`'s does. Until then, nothing in rtl/miu/. The rules that
+- **RTL modules: Phase 2 slice 1, the L1-hit path, has landed** (MIU tab rev
+  147, section "MA's Phase 2"; MI-15). `rtl/miu/`, named and partitioned
+  exactly as the tab's module table:
+  - `ccv_miu`, the top: `ccv_common_clk`, children and wires only, keeping
+    the generated stub's name and ports (`rtl/top/stubs/ccv_miu.sv`);
+  - A1: `miu_cap` ×4, `miu_pair`, `miu_agu8` ×16 (slot × lane octet),
+    `miu_lead`, `miu_cred`;
+  - A2: `miu_tlb`, `miu_grp` ×4 (combinational), `miu_a2`, `miu_ids`,
+    `miu_mq`;
+  - R1 and R2: `miu_hitq`, `miu_rsp`, `miu_rcap` ×4, `miu_ext` ×16,
+    `miu_ecc` ×4, `miu_out`.
+
+  Two parts wait on rows with AR: `miu_a2`'s drop bit on `ccv_miu_dcu_req`
+  (MA-27) and `miu_ecc` with the check bits on `ccv_dcu_miu_rsp` (MA-28).
+  Build the rest now. The miss and refill path, stores and the drain,
+  atomics, SPM, the walker, faults, discard, replay and kill come as further
+  slices, each announced by a notice, and may add modules or ports to these.
+  The units follow `rcu-impl.md`'s pattern: a reduced unit for loops and a
+  full-size unit for the exit, sizes as module parameters, heavy units
+  listed. The rules that
   will bind it are CLAUDE.md's and [`rtl-coding-style.md`](rtl-coding-style.md):
   25 NGD flop to flop with the fanout term, 12 per port side unless budgeted,
   local clock gating (CG-5, RST-1, DCGE ≥ 75%), stage tags, the Yosys shim,
@@ -254,7 +270,11 @@ sweeps and `gate-triage` for a red gate.
 | 1, the model (M0) | sim/miu/: the block at MIU's ports, its events, holds, stalls and idle, the obligations of section 5 | every kernel and control passes on both hosts with the model in place, every bin reached, statistics reported; cycles against the stub's. TI flips `makeMiu`'s default. **MA reads it** and folds anything the spec failed to say into it |
 | 1a, cold TLB | `CCV_MIU_TLB=cold` becomes the default (MI-6, MA 126) | the ~30 stub-pinned checks re-pinned under cold by TI; the seven controls MI-6 names fail again under cold (none dropped or weakened); the default flipped. The first item after M0 |
 | 1b, with DI's model | both models in place together | every kernel and control passes with both; the cross-block bins (credits, late hits, withheld completions, the refill notice) reached with real DCU timing on both sides |
-| 2 onward, the RTL | waits on MA's Phase 2 (partition, per-cycle tables, port budgets). MA writes those phases into this table when Phase 2 lands | per module: bench, check-cg, check-ngd; then the block, as a sum of parts; then SV-hosted equivalence |
+| 2a, the A1 modules | `miu_cap`, `miu_pair`, `miu_agu8`, `miu_lead`, `miu_cred` (MIU tab, Phase 2 slice 1) | per module: a bench against the model's A1 (lane VAs, leaders, set index, credit gate), check-cg and check-ngd at the tab's budgets |
+| 2b, the A2 modules | `miu_tlb`, `miu_grp`, `miu_a2` (drop once MA-27 closes), `miu_ids`, `miu_mq`'s hit-path ports | the same, against the model's eligibility, no-hit and req payload |
+| 2c, the return | `miu_hitq`, `miu_rsp`, `miu_rcap`, `miu_ext`, `miu_out`, and `miu_ecc` once MA-28 closes | the same, against the model's data and completion at H+8 and H+9 |
+| 2d, the L1-hit block | `ccv_miu` from slice 1's modules, the rest still the model's | the block as a sum of parts (check-cg's 2%, check-ngd level by level); an L1-hit kernel lock-stepped against the model in the SV top. **MA reads it** |
+| 3 onward, the other paths | each slice MA lands (miss and refill, stores and the drain, atomics, SPM, the walker, faults, discard, replay and kill) | per module as above; then the whole block, then SV-hosted equivalence on every kernel and control |
 
 ## 7. What MI waits on
 
@@ -270,7 +290,8 @@ None blocks the model.
 | The ECC injection runs | TI | TI-484 | `CCV_MIU_ECC_INJECT` | develop the error paths under unit tests |
 | The `makeMiu` hook, sim/miu/*.cpp in blocks.list, the `check-miu-unit` job, the lock-step job | TI | an MI row with TI in Needs, your first | — | develop the model under its unit tests |
 | The ccv-skel port-trace dump for MIU | TI | as RA-34 for the RCU | — | directed stimulus |
-| Phase 2: module partition, per-cycle tables, port NGD budgets | MA | MA's plan, [`miu-arch.md`](miu-arch.md) section 7 | — | the model; nothing in rtl/miu/ |
+| Phase 2, the slices after the L1-hit path | MA | MI-15; MIU tab, "MA's Phase 2" | slice 1 landed (tab rev 147) | slice 1's modules |
+| The lookup drop bit, and the hit's ECC check bits | AR, then TI | MA-27, MA-28 | not yet in the schema | every slice 1 module but `miu_a2`'s drop and `miu_ecc` |
 
 ## 8. Getting the session set up (first hour)
 
