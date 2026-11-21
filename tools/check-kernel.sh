@@ -842,7 +842,7 @@ miu=model fet-reset-on-kill scen=rope:11
 dcu=model,miu=model fet-reset-on-kill scen=rope:5
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
-  local key=$1 want=$2 impl k w bin out i ok
+  local key=$1 want=$2 impl k w bin out i ok p x hit
   while read -r impl k w; do
     [ -n "$impl" ] && [ "$k" = "$key" ] || continue
     ok=1
@@ -854,9 +854,14 @@ impl_pins() {   # kernel key, its expectations: those under this run's models
       esac
     done
     [ $ok = 1 ] || continue
-    bin=${w%%[=>]*}; out=""
-    for x in $want; do [ "${x%%[=>]*}" = "$bin" ] && out="$out $w" || out="$out $x"; done
-    want=${out# }
+    for p in $w; do   # each pin replaces its own bin (DI, re:TI-506)
+      bin=${p%%[=>]*}; out=""; hit=0
+      for x in $want; do
+        if [ "${x%%[=>]*}" = "$bin" ]; then out="$out $p"; hit=1; else out="$out $x"; fi
+      done
+      [ $hit = 1 ] || out="$out $p"
+      want=${out# }
+    done
   done <<<"$IMPL_PINS"
   echo "$want"
 }
