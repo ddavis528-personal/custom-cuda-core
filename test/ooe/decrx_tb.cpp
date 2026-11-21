@@ -334,6 +334,12 @@ void flushLast() {
 }
 } // namespace
 
+// ooe_decrx does not yet keep a demoted warp's stragglers for the walk (AR
+// 395, OA 457: a uop of the demotion's epoch, held in ooe_decq until the
+// walk passes it), so the model runs without it here; the walk's RTL brings
+// it back (OI handoff, #71).
+static void rxConfig(ccv::ooe::Config &c) { c.straggler_walk = false; }
+
 int main(int argc, char **argv) {
   const unsigned seeds = argc > 1 && argv[1][0] != '-' ? unsigned(std::atoi(argv[1])) : 25;
   if (const char *c = std::getenv("DECRX_CONTROL")) control = c;
@@ -343,7 +349,7 @@ int main(int argc, char **argv) {
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_decrx_tb>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
-  const int model_fails = cg.on() ? cg.run(seeds, pre, post) : ooeTestScenario("rx", seeds, 0, pre, post, nullptr);
+  const int model_fails = cg.on() ? cg.run(seeds, pre, post, rxConfig) : ooeTestScenario("rx", seeds, 0, pre, post, rxConfig);
   flushLast();
   cg.close();
   dut->final();

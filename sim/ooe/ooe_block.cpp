@@ -539,8 +539,14 @@ private:
       // (3)), so none is ever owed to a slot past its release. This CHECK
       // replaces OA 455 A's pending counter; --break mig-before-credits
       // (FET migrating on the migration alone) must trip it.
-      if (const int ts = core_.tier1Of(w); ts >= 0 && size_t(ts) < cred_in_.size())
+      // A killed warp's uop still on the link from DEC (RI-57, rokilllane on
+      // test/phys/links_split.json) may land after the kill released its
+      // slot: the model drops it by epoch, and FET owes the dead warp no
+      // credit, so it is no break of the full-credit wait.
+      if (const int ts = core_.tier1Of(w); ts >= 0 && size_t(ts) < cred_in_.size()) {
         ++cred_in_[ts];
+      } else if ((killed_ >> (w % 32)) & 1u)
+        k_.hit("decq_killed_late");
       else
         k_.fail("ooe: warp %u's uop seq %u arrives holding no tier-1 slot (OA 462)", w,
                 unsigned(uidSeq(r->front().tid)));
@@ -807,6 +813,7 @@ private:
   /// The kill (V-24): the model takes it, and acks once quiesced.
   void onKill(uint32_t mask, unsigned epoch) override {
     core_.kill(mask, epoch);
+    killed_ |= mask;
     kill_live_ = true;
     kill_acked_ = false;
     kill_epoch_ = epoch;
@@ -814,6 +821,7 @@ private:
   bool killQuiet(uint32_t) const override { return kill_acked_; }
   bool kill_live_ = false, kill_acked_ = false;
   unsigned kill_epoch_ = 0;
+  uint32_t killed_ = 0;   ///< warp_ids a kill named, until each holds a slot again
   struct Held { unsigned chan; Bits msg; uint64_t tid = 0; };   ///< tid: the fault's instruction
   std::deque<Held> held_;   ///< status, maps and drained reports, in order
 
@@ -898,6 +906,7 @@ private:
         }
         // A slot newly given a warp starts from what it holds now.
         cred_warp_[t] = w;
+        if (w >= 0) killed_ &= ~(1u << (unsigned(w) % 32));   // launched again
         cred_prev_[t] = occ;
         cred_in_[t] = 0;
         sendDue(t);

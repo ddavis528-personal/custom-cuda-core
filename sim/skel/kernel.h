@@ -305,7 +305,9 @@ struct Kernel {
       // request sent once it came, and DCU's returns of each kind.
       "credit_hold", "credit_hold_then_sent", "dcu_ent_ret", "dcu_std_ret",
       // Cycles FET held a demotion's migration for its credits (OA 463).
-      "mig_credit_wait"};
+      "mig_credit_wait",
+      // A killed warp's uop landing after its slot's release (RI-57, OA 462).
+      "decq_killed_late"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory
