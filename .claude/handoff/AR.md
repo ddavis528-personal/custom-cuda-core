@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-17 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-20 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -43,7 +43,9 @@ file holds AR's.
 - verify.sh detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as a
   background task, timeout 7200000.
   - exit 3: still running, run gate-wait again at once;
-  - exit 4: killed, start the job again.
+  - exit 4 (killed) or a container restart: `CCV_RESUME=1 ./tools/verify.sh`
+    (IS-27); it carries over the sections passed on the same commit and tree.
+    RESUMED PASS counts as the full clean gate (DA via TI-490).
 - A full gate takes about 4 h (ngd and cg about 3.7 h each in parallel).
   If one dies, split it: `verify.sh --only cg`, then `gate-export.sh`, then
   `gate-push.sh --full --branches=<ours> --import=<tgz>`.
@@ -73,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 391 .640639, AR 392 .641950 (tab rev 395).
-  - **The next AR row inserts after .641950**, labelled AR 393.
+  - Latest row: AR 399 .653325 (tab rev 403).
+  - **The next AR row inserts after .653325**, labelled AR 400.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -91,14 +93,29 @@ Credit rules (TI-49):
   | CP | 099ebfed-9eea |
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
+  | MI | c1311541-4219 |
+  | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 384, OA 444, TI 486, RA 156, RI 91,
-  IS 198, CP 160, OI 377, DA 127, MA 122, Conventions 19.
+- **Bookmarks** (revs read through): AR 403, OA 463, TI 501, RA 157, RI 91,
+  IS 201, CP 160, OI 395, DA 128, MA 135, DI 12, MI 18, Conventions 20.
+  (TI read to 501 and OA to 463 for TI-501/502.) Specs: FET
+  tab rev 54, DCU tab rev 59.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
-- **Last sweep 2026-11-18:** 9 branches merged (139 commits); first full gate
+- **Sweep 2026-11-20 (10:03Z trigger):** merged 7 branches, 60 commits (p8esoz 29,
+  1vzyjg 10, miu-dcu-microarch-spec 6, n6402z 5, doowtf 4, infra-6msg93 4,
+  0ch1hh 2), no conflicts, regen clean; full gate PASS on 5f02cdfc (~3.8 h);
+  pushed. Answered every agent's Friday ping. Session home INSTALLED with
+  Daniel's approval (2026-11-20); --check exit 0, handoff hook verified.
+- **Earlier 2026-11-20:** merged the 11-19 and 11-20 branches (OA.md
+  conflict in 20cauz taken as ours, which held OA's newer 5de62e85); the gate
+  was killed by container restarts four times, then RESUMED PASS (22 of 24
+  carried over) on adf157b0; pushed 308 commits. Session home still exit 1.
+  Friday pings sent 2026-11-20 to OA IS TI OI CP RA RI MA RH MI DI (roster
+  sessions). All 11 pongs passed check (none owed).
+- **Sweep 2026-11-18:** 9 branches merged (139 commits); first full gate
   FAIL only because check-cg was OOM-killed (its python ~5 GB beside a cm128
   sim ~6.5 GB); rerun alone PASS (~3.8 h); pushed f28a3f33. Session home
   check exit 1 (settings.json keys autoCompactWindow/env/hooks differ, agents
@@ -138,6 +155,8 @@ Credit rules (TI-49):
   | RA | session_01QPk2jzLmjd3MWXjayVUy9d |
   | RI | session_01QPk2jvvXPLs4m8ZQbSk1g6 |
   | RH | session_01QPk2jvfKM1V5rRfip8FC86 |
+  | MI | session_01QPk2jzH1Gd3DcxK4F4pwCC |
+  | DI | session_01QPk2jz5TVESyWMKVKjqqEA |
 
   RH is DA's run helper. It has no register tab and reports by message.
   Daniel says AR may use RH for runs when it is idle.
@@ -189,6 +208,34 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000b. **TI-502 credit deadlock: SETTLED (AR 397 .649791, AR 398 .652069,
+   AR 399 .653325; OA 459/460/461).** FET's full-credit wait (AR 395 (3))
+   stays; (b) drained+delay and (c) no wait refused. OOE keeps a demoting warp
+   bound to its tier-1 slot until a launch/restore gives the slot to another
+   warp; stragglers in that window are walked, their credits returned on that
+   slot no earlier than their beats (FET credits a slot to its last warp until
+   take_slot). OA 455 A's pending counter becomes a CHECK with a bin. OI
+   builds to OA 460; MI reruns MI-11 (2) (lnorm1, CCV_MIU_IMPL=model
+   CCV_RAU_DEMOTE=mlc). Rows crossed twice (397 vs 459, 398 vs 460); OA 461
+   says both forms are one rule. Nothing owed. LESSON: after ringing an owner
+   on its own block, wait for its row before writing another; a crossing
+   costs two rows each side.
+   TI-501 (e8d8864b, on doowtf/infra-6msg93, not in 5f02cdfc): FET's mig wait
+   matches AR 395 (3) with --break mig-before-credits; arrives next sweep.
+000a. **AR 393-396 (11-19/20): rewind contract and DCU notices, CLOSED.**
+   - Rewind (AR 393 amended by AR 395; OA-457 adopted 395, OA-456 crossed and
+     is superseded): at most one rewind beat per ROB/decq entry with new lanes,
+     no lane in two beats (FET asserts); beats one a cycle, applied on landing;
+     held-ahead clear and credit return on the first beat only. The drain rests
+     on conservation, not CCV_DRAIN_WAIT: OOE walks stragglers on arrival; each
+     walked uop's credit reaches FET no earlier than its beat; FET sends
+     ccv_fet_pca_mig and decides unnamed lanes only on ccv_rau_fet_mig AND the
+     warp's credits full. FET tab rev 54 says so. Implemented by TI-493
+     (b818bca1, ti-mi9) and OI (33b2971c, oi-5b). Do not re-rule.
+   - DCU refill notices (AR 394, OA-453, DCU tab rev 59): CCV_DCU_NOTICE=0 by
+     default, channel ccv_dcu_miu_fill_ntc kept; off measured -0.43% mean over
+     64 kernels. Phase 2 prefers an MLC tag-lookup notice to a lead field.
+   - DI-4 closed. Nothing owed.
 00. **Machine-error system: DECIDED (DA rev 124; AR 370, row .596551,
    tab rev 372; notices to MA, IS, TI).** Daniel answered AR 369 (a)-(d):
    core-fatal yes; clean-line refetch "only if we keep track of how many

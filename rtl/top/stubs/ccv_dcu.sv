@@ -119,5 +119,11 @@ module ccv_dcu (
 `ifdef CCV_TRACE
   assign dcu_miu_fill_ntc_s3_tid = '0;
 `endif
+  assign dcu_miu_cred_valid = '0;
+  assign dcu_miu_cred_payload = '0;
+  assign dcu_miu_cred_wake = '0;
+`ifdef CCV_TRACE
+  assign dcu_miu_cred_tid = '0;
+`endif
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

@@ -19,10 +19,7 @@ so this is a build artifact rather than something to remember.
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
-| `rtl/include/ooe_pl.svh` | `CCV_L_W_MEM_OP`, `CCV_L_W_OPCODE`, `CCV_P_W_BYP_GROUP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_IMM`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_IDX`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
-| `rtl/ooe/ooe_mempl.sv` | `CCV_L_W_MEM_OP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_ROB_IDX`, `CCV_P_W_RS_IDX` |
 | `rtl/ooe/ooe_sched.sv` | — | `CCV_MEMOP_CREDITS` |
-| `rtl/ooe/ooe_wake.sv` | — | `CCV_LAT_L1_CMPL`, `CCV_LAT_L1_WAKE` |
 | `rtl/rcu/ccv_rcu.sv` | `CCV_L_OPERANDS_PER_LANE`, `CCV_L_W_OPCODE` | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W`, `CCV_P_W_LANE_BYP_SEL`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
 | `rtl/rcu/rcu_bank_slice.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO` |
 | `rtl/rcu/rcu_isd.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_W_PHYS_REG` |
@@ -61,7 +58,7 @@ so this is a build artifact rather than something to remember.
 | `rtl/top/stubs/ccv_rcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_spm.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_syu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
-| `sim/dcu/dcu_block.cpp` | — | `CCV_DCU_BANK_AGE`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYPRED_SEL`, `CCV_DCU_WAYS` |
+| `sim/dcu/dcu_block.cpp` | — | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYPRED_SEL`, `CCV_DCU_WAYS` |
 | `sim/dcu/dcu_core.cpp` | — | `CCV_DCU_WAYPRED_BITS`, `CCV_LAT_L1_HIT` |
 | `sim/dcu/dcu_core.h` | — | — |
 | `sim/dcu/dcu_p1.cpp` | — | `CCV_DCU_BANK_AGE`, `CCV_DCU_SETS`, `CCV_DCU_WAYS` |
@@ -75,7 +72,7 @@ so this is a build artifact rather than something to remember.
 | `sim/rcu/rcu_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/rcu/rcu_core.h` | — | `CCV_LAT_RCU`, `CCV_LAT_RCU_KILL_DRAIN` |
 | `sim/rcu/rcu_test.cpp` | — | `CCV_LAT_LANE_BYP`, `CCV_LAT_RCU_ADDR`, `CCV_LAT_RCU_KILL_DRAIN` |
-| `sim/skel/kernel.cpp` | — | `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA` |
+| `sim/skel/kernel.cpp` | — | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA` |
 | `sim/skel/ooe.cpp` | — | `CCV_DONE_SLOT_RCU` |
 | `sim/skel/portdump.cpp` | — | `CCV_P_PHYS_REGS` |
 | `sim/skel/stub.h` | — | — |
@@ -83,9 +80,6 @@ so this is a build artifact rather than something to remember.
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
-| `test/ooe/ooe_pl_tb.sv` | — | `CCV_P_W_RS_IDX` |
-| `test/ooe/ooe_trio.sv` | — | `CCV_LAT_L1_CMPL`, `CCV_LAT_L1_WAKE` |
-| `test/ooe/pl_tb.cpp` | — | — |
 | `test/phys/tb_seq_rpt.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/rcu/ccv_rcu_svh.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO`, `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO` |
 | `test/rcu/kill_tb.cpp` | — | — |
@@ -100,7 +94,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **13 of 56 channels** carry at least one
+appear above. **13 of 57 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |

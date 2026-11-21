@@ -128,7 +128,7 @@ lists every such module.
 
 ## 4. The partition
 
-14 block types, 45 instances, 56 channel types
+14 block types, 45 instances, 57 channel types
 (2 of them to and from the testbench's `EXTERNAL`). Every channel is
 point to point, credited, and declared in `schema/interfaces.json`, which is
 the only place a channel is defined.
@@ -148,7 +148,7 @@ every channel for 2000 cycles, through the same wiring and the same checker
 bank:
 
 ```
-SKEL cycles=2000 blocks=45 chan_types=56 chan_insts=118 slots=180 sent=223273 received=223273 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 cor_late=0 credits_home=180 idle_slots=0 violations=0
+SKEL cycles=2000 blocks=45 chan_types=57 chan_insts=119 slots=181 sent=224570 received=224570 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 cor_late=0 credits_home=181 idle_slots=0 violations=0
 ```
 
 ## 5. One channel, from the schema down
@@ -217,14 +217,14 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/56 violations=0
-XFER events=660 launched=660 match=yes channels_seen=33
+KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/57 violations=0
+XFER events=668 launched=668 match=yes channels_seen=34
 ```
 
 Retired in order, every register, predicate and memory word equal to
-`ccv-sim`'s, and every one of the 660 messages
+`ccv-sim`'s, and every one of the 668 messages
 launched was seen by the checker bank, which reported nothing. The run
-touches 33/56 channel types. The rest are waiting for
+touches 34/57 channel types. The rest are waiting for
 kernels that need them:
 
 ```
@@ -383,8 +383,8 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=33/56 violations=0
-TRACES records=767/767 equal=yes byte_identical=no differing_cycles=0
+KERNEL name=vadd finished=1 cycles=158 from_fetch=127 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 cor_late=0 channels_used=34/57 violations=0
+TRACES records=775/775 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -399,8 +399,8 @@ SV top under `CCV_CHECK`.
 
 | Checker | In the bank | Judges |
 |---|---|---|
-| `ccv_common_chk_credit` | 180 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
-| `ccv_common_chk_wake` | 118 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
+| `ccv_common_chk_credit` | 181 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
+| `ccv_common_chk_wake` | 119 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
 | `ccv_common_chk_atomic` | 16 | a channel's slots that must move together |
 | `ccv_common_chk_notice` | 8 | a notice and the message it promises, slot by slot |
 | `ccv_common_chk_binding` | 2 | a slot's group key stays bound |
@@ -428,12 +428,12 @@ check:
 
 ```
 [20000] %Error: ccv_common_chk_credit.sv:317: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
-SKEL cycles=2000 blocks=45 chan_types=56 chan_insts=118 slots=180 sent=212175 received=212175 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=54 cor_late=0 credits_home=162 idle_slots=0 violations=26
+SKEL cycles=2000 blocks=45 chan_types=57 chan_insts=119 slots=181 sent=213620 received=213620 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=54 cor_late=0 credits_home=163 idle_slots=0 violations=37
 ```
 
 The C++ receivers count the same leak from their side:
 `credit_leaks=54`, and only
-162 of 180 slots have all
+163 of 181 slots have all
 their credits home at the end.
 
 ## 10. Proved, for all time
@@ -487,6 +487,8 @@ a script is one. Its sections:
 - Stage 3 -- skeleton (S1: vadd)
 - Stage 4b -- OOE model unit tests (sim/ooe/)
 - RCU model unit tests (sim/rcu/; RI-2)
+- MIU model unit tests (sim/miu/; MI-1)
+- DCU model unit tests (sim/dcu/; DI-1)
 - Stage 4c -- OOE RTL (rtl/ooe/)
 - RCU RTL benches (RI's test/rcu/run-rtl.sh)
 - RCU block -- ccv_rcu in lock-step with the model (RI's test/rcu/run-lockstep.sh)
@@ -514,4 +516,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 379e75cc808a57f0 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 5ea1818878732052 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

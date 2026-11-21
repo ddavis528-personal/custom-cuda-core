@@ -258,6 +258,17 @@ struct Kernel {
       "l1_ecc_fix",
       // MA-4's eligibility and the early no-hit (OA 410; AR 356).
       "l1_inelig", "l1_nohit", "l1_nohit_drop",
+      // The MIU model's own paths (MI-5 (2), MI-7, MI-9): its L1 first pass,
+      // holds, drain guard and TLB walks, a hint declined on a promised
+      // slot, and a hit DCU answered past the contract (taken as a miss).
+      "l1_first_pass", "l1_bank_loser", "l1_first_held", "l1_first_late", "l1_held_lost",
+      "ld_pass_held", "fence_hold", "drain_guard", "drain_guard_withheld", "st_wide_hold",
+      "tlb_miss", "tlb_walk", "itlb_walk", "tlb_two_page", "walk_reads", "tlb_two_page_lost",
+      "hint_slot_taken", "l1_dcu_late",
+      // The DCU model's way mispredicts (MA-26, AR 390; MI-9 (3)).
+      "dcu_wp_wrong",
+      // A uop DEC held past a demotion's walk (AR 395).
+      "dec_hold",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill", "kill_lane",
@@ -289,7 +300,10 @@ struct Kernel {
       "memop_entries_peak",
       // Decode-queue credits a warp's uops held when it lost its tier-1
       // slot, kept by OOE until it holds one again (OA 455 A).
-      "decq_slotless_drop", "decq_credit_pend"};
+      "decq_slotless_drop", "decq_credit_pend", "decq_straggler", "decq_straggler_beat",
+      // DCU's per-bank credits (MA-25): a request MIU held for one, the same
+      // request sent once it came, and DCU's returns of each kind.
+      "credit_hold", "credit_hold_then_sent", "dcu_ent_ret", "dcu_std_ret"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory

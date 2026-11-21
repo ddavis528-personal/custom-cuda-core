@@ -78,6 +78,7 @@ private:
     uint64_t due = 0;                ///< a global load's L1-contract cycle
     uint64_t serial = 0;             ///< names it to the DCU responses
     uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
+    bool moot = false;               ///< a kill supplied lines DCU still owed: its data is moot
     bool frame = false;              ///< its lanes span windows: O-30 frames (AR-23)
     bool entry = false;              ///< a store holding its MQ entry until it drains
     bool walk = false;               ///< the walker's PTE read, not a memop
@@ -221,32 +222,33 @@ private:
     // OA 436 (TI-485 (5)(a), MA rev 104): MIU completes every memop of a
     // killed warp. A killed warp's atomic keeps its pass and its hold until
     // its write step, whose completion ends it (more 0) and lets the hold
-    // go (atomDone); none starts a further pass (OOE's kill_stops). A load
-    // still waiting on DCU completes now, with no data, and DCU's answer,
-    // if one comes, is dropped (kill_drop_): DCU withholds a read a
-    // core-fatal UE hit (AR 370). Control kill-drop-atomic: the kill drops
-    // the atomic, as before, and its write then finds no read.
+    // go (atomDone); none starts a further pass (OOE's kill_stops).
+    // Control kill-drop-atomic: the kill drops the atomic, as before, and
+    // its write then finds no read.
     if (k_.brk == "kill-drop-atomic")
       for (auto it = atom_.begin(); it != atom_.end();)
         it = mask >> (it->second.warp & 31) & 1u ? atom_.erase(it) : std::next(it);
     killed_ |= mask;
-    for (auto it = jobs_.begin(); it != jobs_.end();) {
-      Job &j = *it;
-      bool waits = false;
-      for (const auto &o : outstanding_) waits |= o.second.first == j.serial;
-      // A load whose completion a hint has promised (OA-23) keeps that
-      // promise: it completes at its cycle, with its notice's keys.
-      if (j.walk || j.store || j.atom || j.promised || !(mask >> (j.warp & 31) & 1u) || !waits) { ++it; continue; }
+    // A killed warp's read still owed by DCU is taken as answered now, with
+    // no data, and DCU's answer, if one comes, is dropped (kill_drop_):
+    // each job, load, store or atomic, then ends on its own path (a
+    // promised load at its promise), so MIU owes no killed warp anything.
+    // DCU withholds the read a core-fatal UE hit (AR 389), and this is how
+    // MIU completes it (OA 436; TI-487 option (3)). A walk belongs to no
+    // warp and runs on.
+    for (Job &j : jobs_) {
+      if (j.walk || !(mask >> (j.warp & 31) & 1u)) continue;
       for (auto o = outstanding_.begin(); o != outstanding_.end();)
         if (o->second.first == j.serial) {
           kill_drop_.insert(o->first);
+          j.got[o->second.second] = Line{};
+          ++j.back;
+          j.moot = true;
+          k_.hit("kill_cmpl");
           o = outstanding_.erase(o);
         } else {
           ++o;
         }
-      to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
-      k_.hit("kill_cmpl");
-      it = jobs_.erase(it);
     }
   }
   uint32_t killed_ = 0;                 ///< warps a kill has ended
@@ -331,6 +333,20 @@ private:
       if (h < now_ + 1 || !spare(c.cmpl_hint, ms) || !spare(c.miu_ooe, ms) ||
           !spare(c.miu_rcu, as))
         return;
+      // A slot carries one message a cycle: DCU may send up to
+      // CCV_DCACHE_LOOKUPS notices in one cycle, and a second promise on a
+      // slot already promised for that cycle (its hint, its completion or
+      // its data) could never be kept. It goes unhinted and completes as a
+      // miss; hint-same-slot, the control, promises it anyway.
+      if (k_.brk != "hint-same-slot") {
+        for (const Hint &o : hints_)
+          if (!o.no_hit && o.at == h && o.q.slot == ms) { k_.hit("hint_slot_taken"); return; }
+        for (const Job &o : jobs_)
+          if (o.promised == at && (o.memop_slot == ms || o.addr_slot == as)) {
+            k_.hit("hint_slot_taken");
+            return;
+          }
+      }
       Bits m = msgOf(c.cmpl_hint);
       put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
       put(m, c.cmpl_hint, "rob_tag", k_.brk == "hint-wrong-tag" ? j.tag ^ 1u : j.tag);
@@ -354,6 +370,15 @@ private:
       armed_ = true;
       at_entry_ = k_.brk != "memop-credit-on-take";
       if (at_entry_) creditAtRelease(c.ooe_miu);
+    }
+    // MA-25: DCU's per-bank credit returns, taken the cycle they land
+    // (ccv_dcu_miu_cred is fixed latency). Landed by TI with the channel and
+    // counted here; MI's step 5 spends them (BankCredits) and holds a request
+    // without its credit (OI-18 rule: MI owns this file).
+    while (has(c.dcu_cred, 0)) {
+      const Bits m = take(c.dcu_cred, 0).payload;
+      cred_ret_ent_ += __builtin_popcountll(get(m, c.dcu_cred, "ent_ret"));
+      cred_ret_std_ += __builtin_popcountll(get(m, c.dcu_cred, "std_ret"));
     }
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
       while (has(c.fill_ntc, s))
@@ -522,6 +547,8 @@ private:
           ids_.release(id);
           continue;
         }
+        if (k_.ue_withheld.count(id))
+          k_.fail("miu: DCU answered req_id %u, a read a core-fatal UE withheld (AR 389)", id);
         if (kill_drop_.erase(id)) {   // a killed warp's read, completed at the kill
           ids_.release(id);
           continue;
@@ -1669,7 +1696,7 @@ private:
       // The new value against ccv-sim's write of this lane.
       if (r)
         for (const MemAcc &w : r->mem)
-          if (w.write && w.lane == l && w.val != v)
+          if (w.write && w.lane == l && w.val != v && !(killed_ >> (j.warp & 31) & 1u))
             k_.fail("miu: seq %llu lane %u atomic write %08x, oracle %08x",
                     (unsigned long long)r->seq, l, v, w.val);
     }
@@ -1970,6 +1997,8 @@ private:
       }
     for (auto it = jobs_.begin(); it != jobs_.end();) {
       if (it->back != it->lines.size() || it->pback != it->passes.size()) { ++it; continue; }
+      // A hinted load the kill supplied keeps its promise's cycle (OA-23).
+      if (it->moot && it->promised && now_ < it->promised) { ++it; continue; }
       if (it->rmw == 1) { merge(*it); ++it; continue; }
       if (it->walk) {
         walk_out_ = false;
@@ -2028,7 +2057,9 @@ private:
       put(d, c.miu_rcu, "dst_width", job_.chw);
       put(d, c.miu_rcu, "phys_pred", job_.phys_pred);
       put(d, c.miu_rcu, "pred_we", 0);          // a load writes no predicate
-      const Record *r = rec(job_.tid, "miu");
+      // A killed warp's line the kill supplied holds no data: nothing to
+      // hold to ccv-sim's.
+      const Record *r = job_.moot ? nullptr : rec(job_.tid, "miu");
       if (job_.pxfer && job_.active) {
         // A predicate load (TI-36): its word is the predicate, lane i's bit
         // for lane i, written by RCU under active_mask (O-62), the copy op
@@ -2099,7 +2130,14 @@ private:
         held_.push_back({job_.due + 1, {job_.addr_slot, d, job_.tid},
                          {job_.memop_slot, cmpl(job_), job_.tid}});
       } else {
-        if (job_.hit) k_.hit("l1_late");
+        // A hit DCU answered past the contract's data cycle: a way
+        // mispredict re-read on the bank-conflict loser's path, due + 2 at
+        // the earliest (DI-2; AR 390, OA-442), or any other late answer. MIU
+        // cannot tell which from its ports; either way it is a miss to OOE.
+        if (job_.hit) {
+          k_.hit("l1_late");
+          k_.hit("l1_dcu_late");
+        }
         to_rcu_.push_back({job_.addr_slot, d, job_.tid});
         // Past the data's cycle but not the completion's (CCV_LAT_L1_ECC
         // apart): the completion still goes past the contract, or OOE takes
@@ -2112,6 +2150,7 @@ private:
     }
   }
 
+  uint64_t cred_ret_ent_ = 0, cred_ret_std_ = 0;   ///< MA-25 returns taken (MI: step 5 spends them)
   bool busy() const override {
     return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||

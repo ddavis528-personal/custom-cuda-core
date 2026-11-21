@@ -22,7 +22,8 @@ module ccv_dcu_w #(
   parameter int RPT_MLC_DCU_PROBE = 0,
   parameter int RPT_DCU_MLC_PROBE_ACK = 0,
   parameter int RPT_DCU_CRU_ERR = 0,
-  parameter int RPT_DCU_MIU_FILL_NTC = 0
+  parameter int RPT_DCU_MIU_FILL_NTC = 0,
+  parameter int RPT_DCU_MIU_CRED = 0
 ) (
   `include "ccv_dcu_ports.svh"
 );
@@ -104,6 +105,11 @@ module ccv_dcu_w #(
   logic b_dcu_miu_fill_ntc_s3_credit;
   logic b_dcu_miu_fill_ntc_s3_stall;
   logic b_dcu_miu_fill_ntc_wake;
+  logic b_dcu_miu_cred_valid;
+  ccv_dcu_miu_cred_t b_dcu_miu_cred_payload;
+  logic b_dcu_miu_cred_credit;
+  logic b_dcu_miu_cred_stall;
+  logic b_dcu_miu_cred_wake;
 `ifdef CCV_TRACE
   logic [63:0] b_miu_dcu_req_s0_tid;
   logic [63:0] b_miu_dcu_req_s1_tid;
@@ -122,6 +128,7 @@ module ccv_dcu_w #(
   logic [63:0] b_dcu_miu_fill_ntc_s1_tid;
   logic [63:0] b_dcu_miu_fill_ntc_s2_tid;
   logic [63:0] b_dcu_miu_fill_ntc_s3_tid;
+  logic [63:0] b_dcu_miu_cred_tid;
 `endif
 
   ccv_dcu u_blk (
@@ -205,7 +212,12 @@ module ccv_dcu_w #(
     .dcu_miu_fill_ntc_s3_payload(b_dcu_miu_fill_ntc_s3_payload),
     .dcu_miu_fill_ntc_s3_credit(b_dcu_miu_fill_ntc_s3_credit),
     .dcu_miu_fill_ntc_s3_stall(b_dcu_miu_fill_ntc_s3_stall),
-    .dcu_miu_fill_ntc_wake(b_dcu_miu_fill_ntc_wake)
+    .dcu_miu_fill_ntc_wake(b_dcu_miu_fill_ntc_wake),
+    .dcu_miu_cred_valid(b_dcu_miu_cred_valid),
+    .dcu_miu_cred_payload(b_dcu_miu_cred_payload),
+    .dcu_miu_cred_credit(b_dcu_miu_cred_credit),
+    .dcu_miu_cred_stall(b_dcu_miu_cred_stall),
+    .dcu_miu_cred_wake(b_dcu_miu_cred_wake)
 `ifdef CCV_CHECK
     , .clk_gated(clk_gated)
 `endif
@@ -227,6 +239,7 @@ module ccv_dcu_w #(
     , .dcu_miu_fill_ntc_s1_tid(b_dcu_miu_fill_ntc_s1_tid)
     , .dcu_miu_fill_ntc_s2_tid(b_dcu_miu_fill_ntc_s2_tid)
     , .dcu_miu_fill_ntc_s3_tid(b_dcu_miu_fill_ntc_s3_tid)
+    , .dcu_miu_cred_tid(b_dcu_miu_cred_tid)
 `endif
   );
 
@@ -404,6 +417,28 @@ module ccv_dcu_w #(
     assign {b_dcu_miu_fill_ntc_s3_stall, b_dcu_miu_fill_ntc_s2_stall, b_dcu_miu_fill_ntc_s1_stall, b_dcu_miu_fill_ntc_s0_stall} = {dcu_miu_fill_ntc_s3_stall, dcu_miu_fill_ntc_s2_stall, dcu_miu_fill_ntc_s1_stall, dcu_miu_fill_ntc_s0_stall};
 `ifdef CCV_TRACE
     assign {dcu_miu_fill_ntc_s3_tid, dcu_miu_fill_ntc_s2_tid, dcu_miu_fill_ntc_s1_tid, dcu_miu_fill_ntc_s0_tid} = {b_dcu_miu_fill_ntc_s3_tid, b_dcu_miu_fill_ntc_s2_tid, b_dcu_miu_fill_ntc_s1_tid, b_dcu_miu_fill_ntc_s0_tid};
+`endif
+  end
+  // ccv_dcu_miu_cred, source end, no-flop (params/links.json no_flop)
+  if (RPT_DCU_MIU_CRED > 0) begin : g_rpt_dcu_miu_cred
+    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_CRED), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(16)) u_rpt_dcu_miu_cred (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_dcu_miu_cred_valid}), .src_payload({b_dcu_miu_cred_payload}),
+      .src_wake(b_dcu_miu_cred_wake), .src_credit({b_dcu_miu_cred_credit}), .src_stall({b_dcu_miu_cred_stall}),
+      .dst_valid({dcu_miu_cred_valid}), .dst_payload({dcu_miu_cred_payload}),
+      .dst_wake(dcu_miu_cred_wake), .dst_credit({dcu_miu_cred_credit}), .dst_stall({dcu_miu_cred_stall})
+`ifdef CCV_TRACE
+      , .src_tid({b_dcu_miu_cred_tid}), .dst_tid({dcu_miu_cred_tid})
+`endif
+    );
+  end else begin : g_wire_dcu_miu_cred
+    assign {dcu_miu_cred_valid} = {b_dcu_miu_cred_valid};
+    assign {dcu_miu_cred_payload} = {b_dcu_miu_cred_payload};
+    assign dcu_miu_cred_wake = b_dcu_miu_cred_wake;
+    assign {b_dcu_miu_cred_credit} = {dcu_miu_cred_credit};
+    assign {b_dcu_miu_cred_stall} = {dcu_miu_cred_stall};
+`ifdef CCV_TRACE
+    assign {dcu_miu_cred_tid} = {b_dcu_miu_cred_tid};
 `endif
   end
 endmodule

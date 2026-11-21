@@ -43,7 +43,7 @@ std::string Config::apply(const std::string &spec) {
       {"squash_held_room_lag", &squash_held_room_lag}, {"rx_lag", &rx_lag}, {"cmpl_split", &cmpl_split}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
-  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
+  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"demote_walk", &demote_walk}, {"beat_merge", &beat_merge}, {"straggler_walk", &straggler_walk}, {"inject_straggler_early_credit", &inject_straggler_early_credit}, {"l1_spec", &l1_spec}, {"l1_nohit", &l1_nohit},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
@@ -286,6 +286,51 @@ void Core::noteRefused(unsigned warp) {
       cfg_.decq_warp_max ? cfg_.decq_warp_max : cfg_.decq);
 }
 
+/// AR 395 / OA 457: a uop of a demoted warp's last epoch arriving after its
+/// walk began is walked on arrival: read by ooe_decq's walk port, a beat for
+/// lanes not yet covered, then held in the queue and dropped once the beat
+/// has left (its credit with the drop). Returns false for a plain epoch drop.
+bool Core::straggler(const Uop &u) {
+  const int si = slotOf(u.warp);
+  if (si < 0) return false;
+  Slot &s = slot_[si];
+  if (!s.walk_open || u.fetch_epoch != s.walk_epoch) return false;
+  rxlog_.arr.push_back({u.warp, u.fetch_epoch, si, true});
+  // In this cycle's queue from the next: the walk port reads it then, or
+  // once the walk ahead of it ends.
+  uint64_t rd = now_ + 1;
+  if (cfg_.demote_walk) {
+    rd = std::max(rd, decq_walk_free_);
+    decq_walk_free_ = rd + 1;
+  }
+  Uop h = u;
+  h.walk_pass = rd + 1;
+  h.walk_id = 0;
+  if (const uint32_t m = u.group_mask & ~s.walk_covered) {
+    s.walk_covered |= m;
+    Redirect x;
+    x.warp = s.warp;
+    x.slot = unsigned(si);
+    x.epoch = epoch_[s.warp % kWarpIds];
+    x.epoch_only = x.rewind = true;
+    x.taken_mask = m;
+    x.target_pc = u.pc;
+    x.tid = u.tid;
+    x.ready = cfg_.demote_walk ? rd + 1 : 0;
+    x.walk_id = h.walk_id = next_walk_id_++;
+    redirects_.push_back(x);
+    ++s.rewind_pending;
+    count("demote.straggler_beat");
+  }
+  count("demote.straggler");
+  ev("straggler", u.warp, u.fetch_epoch, 0, u.tid);
+  decq_.push_back(h);
+  decq_seq_.push_back(next_decq_seq_++);
+  ++s.decq;
+  ++s.walk_held;
+  return true;
+}
+
 /// Into the decode queue, after this cycle's rename: renamed from the next.
 void Core::uop(const Uop &u) {
   // A uop fetched before its warp's last epoch change is wrong-path (A-70).
@@ -293,6 +338,7 @@ void Core::uop(const Uop &u) {
   // on test/phys/links_split.json): OOE advanced the epoch at the kill and
   // may have released the slot since, so the epoch is checked first.
   if (u.fetch_epoch != epoch_[u.warp % kWarpIds]) {
+    if (straggler(u)) return;
     ev("epoch_drop", u.warp, u.fetch_epoch, 0, u.tid);
     rxlog_.arr.push_back({u.warp, u.fetch_epoch, -1, false});
     return;
@@ -315,6 +361,9 @@ void Core::uop(const Uop &u) {
   // ooe_decq applies a flush an edge late, dropping its slot's uops then:
   // none may arrive in the flush's cycle (OI-58).
   if ((decq_flushed_ >> si) & 1u) err("OI-58: uop seq %u arrived for slot %d in its decode-queue flush's cycle", uint32_t(u.tid), si);
+  // demote_walk (OA 451): ooe_decq holds the flush of the walked uops,
+  // dropping them at the walk's end; none arrives for the slot meanwhile.
+  if (slot_[si].walk_held) count("demote.walk_arrival");
   // A uop behind no hold stops the barrier timer: the warp is moving.
   if (!slot_[si].bar_hold) slot_[si].bar_idle = false;
   decq_.push_back(u);
@@ -2270,7 +2319,7 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool dis
   // caller advances it, so drop them now and free the space.
   decq_flushed_ |= 1u << slot;
   for (auto it = decq_.begin(); it != decq_.end();)
-    if (it->warp == s.warp) {
+    if (it->warp == s.warp && !it->walk_pass) {
       decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
       ++decq_freed_;
       ++decq_flush_now_;
@@ -2362,6 +2411,12 @@ void Core::releaseSlot(unsigned slot) {
   // its restore refetches from the resume PC. ooe_decq frees the slot's
   // entries at the free as at a flush (the free's cycle takes no uop for
   // the slot: its warp holds none).
+  // AR 395 (3): FET migrates only on full credits, so no walked uop is still
+  // held at the release: its credit would not have returned.
+  for (const Uop &u : decq_)
+    if (u.warp == s.warp && u.walk_pass)
+      err("AR 395: slot %u released holding warp %u's walked uop seq %u, its credit not returned", slot, s.warp,
+          uint32_t(u.tid));
   if (!cfg_.inject_keep_released_uops) {
     decq_flushed_ |= 1u << slot;
     for (auto it = decq_.begin(); it != decq_.end();)
@@ -2534,29 +2589,58 @@ void Core::control() {
     // Each beat carries, on the trace sideband, the identity of the uop
     // that opened it (its oldest): trace-only, for a trace-driven FET to
     // find its place in the oracle's order (TI).
-    struct Beat { uint64_t pc; uint32_t mask; uint64_t tid; };
+    // demote_walk (OA 451): the walk reads ROB entry k in cycle k after the
+    // demote and, by a flopped request once it ends, the warp's i-th
+    // decode-queue uop in cycle count + 1 + i; a beat leaves no earlier
+    // than the cycle after its entry is read. beat_merge 0: a beat per
+    // entry with new lanes (AR 393).
+    struct Beat { uint64_t pc; uint32_t mask; uint64_t tid; uint64_t ready; uint64_t id; };
     std::vector<Beat> beats;
+    uint64_t walk_end = 0;
+    uint32_t covered = 0;
     {
-      uint32_t covered = 0;
-      auto take = [&](uint64_t pc, uint32_t mask, uint64_t tid) {
+      // Returns the id of the beat that carries the entry's new lanes (0: none).
+      auto take = [&](uint64_t pc, uint32_t mask, uint64_t tid, uint64_t idx) -> uint64_t {
         const uint32_t m = mask & ~covered;
-        if (!m) return;
+        if (!m) return 0;
         covered |= m;
-        for (auto &b : beats)
-          if (b.pc == pc) { b.mask |= m; return; }
-        beats.push_back({pc, m, tid});
+        if (cfg_.beat_merge)
+          for (auto &b : beats)
+            if (b.pc == pc) { b.mask |= m; return b.id; }
+        beats.push_back({pc, m, tid, cfg_.demote_walk ? now_ + 1 + idx : 0, next_walk_id_++});
+        return beats.back().id;
       };
       for (unsigned k = 0; k != s.count; ++k) {
         const RobEntry &r = s.rob[(s.head + k) % cfg_.rob_depth];
-        if (r.valid && !r.squashed) take(r.u.pc, r.u.group_mask, r.u.tid);
+        if (r.valid && !r.squashed) take(r.u.pc, r.u.group_mask, r.u.tid, k);
       }
-      for (const Uop &u : decq_)
-        if (u.warp == w) take(u.pc, u.group_mask, u.tid);
+      // ooe_decq has one walk port: a warp's decode-queue walk starts after
+      // its ROB walk's request and after the walk ahead of it ends; its
+      // uops are held to the walk's end, then flushed together.
+      uint64_t n = 0;
+      for (const Uop &u : decq_) n += u.warp == w;
+      const uint64_t d0 = n ? std::max<uint64_t>(s.count + 1, decq_walk_free_ > now_ ? decq_walk_free_ - now_ : 0) : 0;
+      uint64_t i = 0;
+      for (Uop &u : decq_)
+        if (u.warp == w) u.walk_id = take(u.pc, u.group_mask, u.tid, d0 + i++);
+      walk_end = n ? d0 + n : s.count;
+      // AR 395 (2): without the streaming walk, the queued uops are still
+      // held until their beats leave (straggler_walk), so no credit of the
+      // warp lands at FET ahead of the beat that names its lanes.
+      if ((cfg_.demote_walk || cfg_.straggler_walk) && n) {
+        if (cfg_.demote_walk) decq_walk_free_ = now_ + walk_end;
+        for (Uop &u : decq_)
+          if (u.warp == w) {
+            u.walk_pass = now_ + (cfg_.demote_walk ? walk_end : 1);
+            ++s.walk_held;
+          }
+      }
       // A warp held behind a retired converged wait (TI-40) with nothing
       // younger still names the lanes past the wait: one beat at the next
       // PC with the wait's lanes, so FET can step them back to it.
-      if (s.bar_hold && s.bar_retired && beats.empty()) take(s.next_pc, s.bar_mask, 0);
+      if (s.bar_hold && s.bar_retired && beats.empty()) take(s.next_pc, s.bar_mask, 0, 0);
     }
+    if (cfg_.demote_walk) ++histograms["demote.walk_cycles"][walk_end];
     // own_pc (AR's rev 176): with nothing unretired, FET's own PC is the
     // one past the wait, so the RTL stores no PC for this beat.
     bool own_pc = false;
@@ -2593,14 +2677,21 @@ void Core::control() {
       x.taken_mask = b.mask;
       x.target_pc = b.pc;
       x.tid = b.tid;
+      x.ready = b.ready;
       x.rewind_held = held && !cfg_.inject_beat_unheld;
       x.held_long = x.rewind_held && held_long;
       x.own_pc = x.rewind_held && own_pc;
+      x.walk_id = b.id;
       redirects_.push_back(x);
       ++s.rewind_pending;
     }
     s.st = WarpState::kDemoting;
     s.map_sent = false;
+    // AR 395: the walk stays open for the warp's stragglers, which carry the
+    // epoch the demotion ended, until the slot is released.
+    s.walk_open = cfg_.straggler_walk;
+    s.walk_epoch = (epoch_[s.warp % kWarpIds] + cfg_.epochs - 1) % cfg_.epochs;
+    s.walk_covered = covered;
     count("demote");
   }
   demotes_.clear();
@@ -2629,6 +2720,7 @@ void Core::control() {
       advanceEpoch(si, true);
       epochNotice(si);
       s.st = WarpState::kKilling;
+      s.walk_open = false;   // a kill drops its stragglers by epoch
       s.kill_epoch = kill_epoch_;
       count("kill");
     }
@@ -2636,6 +2728,40 @@ void Core::control() {
     bool any = false;
     for (const Slot &s : slot_) any = any || s.st == WarpState::kKilling;
     if (!any) { out.kill_acks.push_back(kill_epoch_); sl.kill_ack = int(kill_epoch_); }
+  }
+
+  // demote_walk (OA 451): a held decode-queue uop is flushed once the walk
+  // has passed it; every one the walk held must still be there.
+  // AR 395 (2): and no earlier than decq_credit_delay after the beat that
+  // carries its lanes leaves, so its credit lands no earlier than the beat.
+  {
+    for (unsigned si = 0; si != slot_.size(); ++si) {
+      Slot &s = slot_[si];
+      if (!s.walk_held) continue;
+      unsigned left = 0;
+      for (auto it = decq_.begin(); it != decq_.end();)
+        if (it->warp == s.warp && it->walk_pass) {
+          bool wait = now_ < it->walk_pass;
+          if (it->walk_id && !cfg_.inject_straggler_early_credit) {
+            const auto b = s.walk_sent.find(it->walk_id);
+            wait = wait || b == s.walk_sent.end() || now_ < b->second + cfg_.decq_credit_delay;
+          }
+          if (wait) { ++left; ++it; continue; }
+          decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+          ++decq_freed_;
+          ++decq_flush_now_;
+          it = decq_.erase(it);
+          --s.decq;
+          --s.walk_held;
+          count("demote.walk_flushed");
+          ev("epoch_drop", s.warp);
+        } else ++it;
+      if (s.walk_held != left) {
+        err("OA 451: warp %u lost %u held decode-queue uop(s) before the walk passed them", s.warp,
+            s.walk_held - left);
+        s.walk_held = left;
+      }
+    }
   }
 
   // Demotion and kill progress: wait for every outstanding memop and held
@@ -2648,6 +2774,7 @@ void Core::control() {
     for (const RobEntry &r : s.rob)
       held = held || (r.valid && !(cfg_.inject_drain_early && s.st == WarpState::kDemoting && r.squashed &&
                                    r.is_load && r.at_miu && !r.miu_done));
+    held = held || s.walk_held;
     // The notice and every rewind beat have landed in FET (TI-24 (3)).
     const bool landed = s.notice_sent && !s.rewind_pending && now_ >= s.notice_lands;
     if (held) sl.held |= 1u << si;
@@ -2828,6 +2955,7 @@ void Core::retire() {
         Status st;
         st.warp = s.warp;
         st.fault_taken = true;
+        st.retired_since_restore = s.retired_since_restore;
         Fault f;
         f.tid = r.u.tid;
         f.warp = s.warp;
@@ -2991,7 +3119,8 @@ void Core::retire() {
       rt.ppnew = r.ppnew;
       retired.push_back(rt);
       ev("retire", s.warp, rt.rob_tag, r.u.group_mask, r.u.tid);
-      ++s.retired_since_restore;
+      // Saturating (CCV_W_RETIRED_CNT's contract), as ooe_slot counts.
+      if (s.retired_since_restore < (1u << ccv::kWRetiredCnt) - 1) ++s.retired_since_restore;
       act([this, si, idx] {
         slot_[si].rob[idx] = RobEntry();
         robFreed(si, idx, true);
@@ -4983,6 +5112,12 @@ void Core::rename() {
     }
     auto it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
     if (it == decq_.end()) return 0;
+    // demote_walk (OA 451): a uop the demotion's walk holds is never taken;
+    // the demote blocks the warp at the queue's head until the walk passes.
+    if (it->walk_pass) {
+      if (!cfg_.inject_walk_take_held) return 0;
+      it->walk_pass = 0;   // taken below as stale; the walk loses it
+    }
     // fits_stale: a uop that arrived after the last cycle's start is not in
     // the fits yet.
     const bool young = cfg_.fits_stale && decq_seq_[size_t(it - decq_.begin())] >= decq_seq_prev_;
@@ -5199,15 +5334,27 @@ void Core::rename() {
 
 void Core::sendRedirect() {
   // Rate 1 (A-6): one redirect or epoch notice a cycle, oldest first.
-  if (!redirects_.empty()) {
-    const Redirect r = redirects_.front();
-    redirects_.pop_front();
+  // demote_walk: the first redirect whose beat the walk has read, none of
+  // its own slot's ahead of it (a slot's beats leave in walk order).
+  auto pick = redirects_.begin();
+  if (cfg_.demote_walk) {
+    uint32_t ahead = 0;
+    for (; pick != redirects_.end(); ++pick) {
+      if (pick->ready <= now_ && !((ahead >> pick->slot) & 1u)) break;
+      ahead |= 1u << pick->slot;
+    }
+    if (pick == redirects_.end() && !redirects_.empty()) count("stall.redirect_walk");
+  }
+  if (pick != redirects_.end()) {
+    const Redirect r = *pick;
+    redirects_.erase(pick);
     out.redirects.push_back(r);
     const int si = slotOf(r.warp);
     if (r.epoch_only && si >= 0) {
       slot_[si].notice_sent = true;
       slot_[si].notice_lands = now_ + cfg_.redirect_lat + cfg_.redirect_send_lag;
       if (r.rewind && slot_[si].rewind_pending) --slot_[si].rewind_pending;
+      if (r.walk_id) slot_[si].walk_sent[r.walk_id] = now_ + cfg_.redirect_send_lag;
     }
     if (!redirects_.empty()) {
       count("stall.redirect_busy", redirects_.size());

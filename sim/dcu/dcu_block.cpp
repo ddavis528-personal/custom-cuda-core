@@ -73,11 +73,13 @@ private:
     c.qdepth = envU("CCV_DCU_BANK_QDEPTH", c.qdepth);
     c.stdata = envU("CCV_DCU_BANK_STDATA", c.stdata);
     c.wp_bits = envU("CCV_DCU_WAYPRED_BITS", c.wp_bits);
-    if (const char *v = std::getenv("CCV_DCU_WAYPRED_SEL")) c.wp_recent = std::string(v) != "index";
+    if (const char *v = std::getenv("CCV_DCU_WAYPRED_SEL"))
+      c.wp_recent = std::string(v) != "index" && std::string(v) != "0";
     c.gap = envU("CCV_DCU_STORE_GAP", c.gap);
     c.hash = envU("CCV_DCU_BANK_HASH", 0) != 0;
     c.ue_every = envU("CCV_DCU_UE_INJECT", 0);
     c.ue_track = envU("CCV_DCU_UE_TRACK", c.ue_track);
+    c.notice = envU("CCV_DCU_NOTICE", c.notice) != 0;
     c.brk = k.brk;
     return c;
   }
@@ -91,6 +93,7 @@ private:
   }
   void clean(uint64_t line) override { k_.dcu_dirty.erase(line); }
   void fatal() override { k_.mce_raised = true; }
+  void withheld(unsigned id) override { k_.ue_withheld.insert(id); }
 
   /// AR 362: the lead's set index is a copy of the lookup's phys_addr bits,
   /// and DCU refuses one that differs, by name (--break dcu-set-lead).
@@ -180,6 +183,30 @@ private:
       send(c.dcu_mlc, 0, b,
            o.mlc->tid ? o.mlc->tid : makeUid(IdClass::kTxn, g_unowned_txn++));
     }
+    // MA-25's credit returns on ccv_dcu_miu_cred (TI, landing the channel):
+    // the core's two vectors, kept a count a bank while the channel cannot
+    // take them, so a return is never lost (OI-18 rule: DI owns this file).
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+      cred_ent_[b] += o.ent_ret >> b & 1u;
+      cred_std_[b] += o.std_ret >> b & 1u;
+    }
+    {
+      uint64_t ent = 0, std = 0;
+      for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+        if (cred_ent_[b]) ent |= uint64_t(1) << b;
+        if (cred_std_[b]) std |= uint64_t(1) << b;
+      }
+      if ((ent || std) && can(c.dcu_cred, 0)) {
+        Bits b = msgOf(c.dcu_cred);
+        put(b, c.dcu_cred, "ent_ret", ent);
+        put(b, c.dcu_cred, "std_ret", std);
+        send(c.dcu_cred, 0, b, makeUid(IdClass::kNone, 0));
+        for (unsigned k = 0; k != ccv::kDcuBanks; ++k) {
+          if (cred_ent_[k]) --cred_ent_[k];
+          if (cred_std_[k]) --cred_std_[k];
+        }
+      }
+    }
     if (o.ue_raise || ue_owed_) {
       ue_owed_ = true;
       if (can(c.dcu_cru_err, 0)) {
@@ -192,7 +219,13 @@ private:
     }
   }
   bool ue_owed_ = false;
-  bool busy() const override { return core_.busy() || ue_owed_; }
+  std::array<unsigned, ccv::kDcuBanks> cred_ent_{}, cred_std_{};
+  bool credOwed() const {
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b)
+      if (cred_ent_[b] || cred_std_[b]) return true;
+    return false;
+  }
+  bool busy() const override { return core_.busy() || ue_owed_ || credOwed(); }
 };
 
 } // namespace
