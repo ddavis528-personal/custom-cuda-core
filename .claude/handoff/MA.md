@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 406, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 145, DA 128, MI 29, DI 29.
+Conventions 20, AR 407, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 149, DA 128, MI 32, DI 33.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -84,6 +84,13 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 
 ## Open work, most urgent first
 
+- DI-18 DECIDED (MA rev 148): on a CE MIU corrects what it holds and redelivers as a refill; DCU counts,
+  rewrites, sends nothing more (amends MA-28 (c)'s replay half to TI-513 (2)). MIU tab rev 153, DCU tab
+  rev 65, dcu-impl.md row. Snapshots refreshed.
+
+- MA-27 FULLY CLOSED (MA rev 149, AR notified): A1 hold 0 at defaults on S1/cm32priv/cm128priv; dup drops
+  <=0.008% (MI a0afe9fc, CCV_MIU_DUP_IDEAL pricing aid). MIU tab rev 154. "TI landed the fields" marked; snapshots refreshed at 155/65.
+- DI-18 also: AR-403 amended AR 401 to MIU-corrects (AR rev 407).
 - MIU PHASE 2 IS FIRST (MI-15, MA rev 138; MI says at Daniel's request, no DA row found, order is MA's anyway).
   Slice 1 (L1-hit path) LANDED: MIU tab rev 147 "MA's Phase 2" (stage table at L1_HIT 8, partition of 17
   modules, port budgets), miu-impl.md module list + phase rows 2a-2d, snapshot. NEXT: notify MI once pushed;
