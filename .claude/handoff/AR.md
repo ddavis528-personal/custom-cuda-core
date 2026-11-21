@@ -75,8 +75,10 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 399 .653325 (tab rev 403).
-  - **The next AR row inserts after .653325**, labelled AR 400.
+  - Latest row: AR 400 .654054 (tab rev 404).
+  - **The next AR row inserts after .654054**, labelled AR 401.
+  - A find-replace through the Docs update tool failed with a JSON parse error
+    four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -96,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 403, OA 463, TI 501, RA 157, RI 91,
+- **Bookmarks** (revs read through): AR 404, OA 464, TI 501, MA 139, RA 157, RI 91,
   IS 201, CP 160, OI 395, DA 128, MA 135, DI 12, MI 18, Conventions 20.
   (TI read to 501 and OA to 463 for TI-501/502.) Specs: FET
   tab rev 54, DCU tab rev 59.
@@ -208,6 +210,13 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000c. **MA-27 drop field: AGREED (AR 400 .654054; MA, TI rung).** 1-bit payload
+   field drop on ccv_miu_dcu_req (valid at H+1 from A1; A2 decides drops at
+   H+1, payload lands H+2). Conditions: (1) DCU commits nothing on valid/lead
+   alone; (2) a dropped lookup's read raises no CE/UE/core-fatal (DI control);
+   (3) MA prices transient credits + MA-27 (2)'s A1 hold on S1/cm32priv/
+   cm128priv (Daniel's bar on the total; field does not wait); (4) bins by
+   cause + controls. TI applies the field. Waiting on: MA's price, TI landing.
 000b. **TI-502 credit deadlock: SETTLED (AR 397 .649791, AR 398 .652069,
    AR 399 .653325; OA 459/460/461).** FET's full-credit wait (AR 395 (3))
    stays; (b) drained+delay and (c) no wait refused. OOE keeps a demoting warp
