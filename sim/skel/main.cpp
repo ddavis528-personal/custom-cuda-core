@@ -219,6 +219,14 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
     if (end.after(c, k, m)) break;
   }
   g_dump.close();
+  // MI-8: a run whose CRU took the machine check ends with a dead core, its
+  // withheld store's queue entry and credit out by rule (AR 387, AR 389), so
+  // the checkers' quiesced_at_end is not asked of it (+ccv_eot_mce). Control
+  // mce-no-exempt asks it anyway: such a run must fail it.
+  if (k.mce_taken && brk != "mce-no-exempt") {
+    static const char *mce_arg[] = {"+ccv_eot_mce"};
+    ctx.commandArgsAdd(1, mce_arg);
+  }
   bank.final();
   ccv::traceWriter().close();
   printKernelReport(k, m, end, ctx.errorCount());
@@ -313,7 +321,10 @@ int main(int argc, char **argv) {
                       brk == "pmov-negate" || brk == "pmov-ps1" ||
                       brk == "lead-src2-copy" || brk == "lead-sec-superset" || brk == "lead-sec-cont" ||
                       // decode-queue credits across a demotion (OA 455 A; AR 395, TI-493)
-                      brk == "slotless-drop-lost" || brk == "no-straggler-walk" || brk == "straggler-early-credit";
+                      brk == "slotless-drop-lost" || brk == "no-straggler-walk" || brk == "straggler-early-credit" ||
+                      brk == "mig-before-credits" ||
+                      brk == "bank-credit-ignore" || brk == "dcu-extra-credit" ||
+                      brk == "wp-late-at-due" || brk == "mce-no-exempt" || brk == "miu-keep-credit";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;
@@ -365,7 +376,7 @@ int main(int argc, char **argv) {
   // (the checkers' quiesced_at_end). Runs cut off mid-traffic -- the wiring
   // controls -- are not asked.
   std::vector<const char *> args(argv, argv + argc);
-  if (brk == "none" || brk == "double-pop")
+  if (brk == "none" || brk == "double-pop" || brk == "mce-no-exempt" || brk == "miu-keep-credit")
     args.push_back("+ccv_eot_quiesce");
   ctx->commandArgs(int(args.size()), args.data());
   // Count violations and keep going, rather than stopping at the first: a

@@ -58,6 +58,8 @@ struct Ch {
            // Notices (OA-23): each promises its partner's valid on the same
            // slot a fixed lead after the notice lands.
            fill_ntc = chanId("ccv_dcu_miu_fill_ntc"), cmpl_hint = chanId("ccv_miu_ooe_cmpl_hint"),
+           // DCU's per-bank credit returns (MA-25).
+           dcu_cred = chanId("ccv_dcu_miu_cred"),
            // Demotion and migration (TI-24).
            ooe_status = chanId("ccv_ooe_rau_status"), rau_demote = chanId("ccv_rau_ooe_demote"),
            ooe_drained = chanId("ccv_ooe_rau_drained"), ooe_map = chanId("ccv_ooe_rcu_map"),

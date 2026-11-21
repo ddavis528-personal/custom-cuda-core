@@ -1593,6 +1593,27 @@
       "notice_of_why": "OA-23: MIU must know a refill's arrival CCV_LAT_CMPL_HINT + CCV_LAT_MIU_FILL cycles ahead to hint OOE's completion 2 cycles ahead of its valid; AR's response TI-23 chose a notice channel over a second valid in the slot"
     },
     {
+      "name": "ccv_dcu_miu_cred",
+      "src": "dcu",
+      "dst": "miu",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "ent_ret",
+        "std_ret"
+      ],
+      "slot_attrs": {
+        "fixed_latency": true
+      },
+      "slot_attrs_why": {
+        "fixed_latency": "MA-25: a return is a count MIU adds the cycle it lands; a stalled return would hold a credit back from a request already waiting for it, and nothing queues behind it to take its place"
+      },
+      "doc": "DCU's per-bank credit returns to MIU (MA-25; MA-24 under AR 382): ent_ret, a bit a bank, a lookup entry left that bank's queue; std_ret, a bit a bank, a store's data left after its write. MIU holds per bank CCV_DCU_BANK_QDEPTH entry credits and CCV_DCU_BANK_STDATA store-data credits, reset full: it sends a lookup only with its bank's entry credit and a store only with both, spending them at send, and holds a request without them (a held store blocks every younger store to its bank, a held request every younger one to its line). A bank serves one access every other cycle, so it returns at most one of each a cycle and a bit is enough. DCU sends whenever either vector is non-zero, so nothing queues. Every set bit returns a credit MIU spent: one that would take a counter past its reset value is refused by name, and DCU refuses a bank holding more than either count. Flops capturing these pulses at MIU are a credit waiver (\"credit\": true, DA's ruling on RI-14), counted in MIU's 2%.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
       "name": "ccv_miu_ooe_cmpl_hint",
       "src": "miu",
       "dst": "ooe",
@@ -1652,6 +1673,8 @@
     "instead, so the ask to each per-block session is a specific short list."
   ],
   "field_widths": {
+    "ent_ret": "CCV_DCU_BANKS",
+    "std_ret": "CCV_DCU_BANKS",
     "refused": "1",
     "ue": "1",
     "ce_alert": "1",
