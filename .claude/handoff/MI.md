@@ -33,7 +33,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Daily sweep 2026-11-20 (Fri): AR 400, OA 462, IS 201, TI 503, OI 395, CP 160, RA 157, RI 91,
   MA 135, MI 18, DI 13, DA 128, Conventions 20; specs MIU 145, Common 9, DCU 59.
   Weekly pings: all 11 ponged; OI's and RH's rosters predated cc8ed42d (MI unnamed) then.
-- Since: MI 23, TI 507, OA 464, DI 19, MA 137, OI 397 (others as above).
+- Since: MI 25, TI 508, OA 464, DI 20, MA 137, OI 397 (others as above).
 - MA-26 landed (WAYPRED_BITS 5, SEL 1; L1_HIT 8, WAKE 14, CMPL 16). MA-25 landed (TI's
   d761c634); the model spends the credits at d639adb2 (step 5).
 - MI-8 at TI: under UE_INJECT=1 predlane/predmerge fail quiesced_at_end on ooe_miu_memop. Per
@@ -75,7 +75,11 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    advance; fixed in OI's c461c1b0 (not on a remote yet). When it lands, rerun
    CCV_MIU_IMPL=model CCV_RAU_DEMOTE=mlc build/skel/ccv-skel --kernel build/oracle/lnorm1/oracle.jsonl
    and close MI-11 (2).
-3. DI (DI-7 answered rev 21): DI reruns slotform, movi-in-lane, coremark128 on d639adb2.
+3. DI-8 (DI rev 20): pair check-kernel clean with d639adb2. check-sv-hosted under the MIU
+   model: vadd machine-check line = kernel choice (vadd recovers no UE under the model, hosts
+   agree) -> MI-14 (rev 25, TI rung): use swap or ldpar. lnorm1 SV==C++ (cycle 81) and RCU RTL
+   (transp4, vadd4) fail only with both models; DI is placing them; take them if MIU's.
+   MI-13 landed by TI (56c7ce54, TI-509), closed rev 24.
 4. Awaiting TI: MI-4 (replay drain stall/vadd4), MI-8, MI-9 (3), MI-13; TI's 78e74f4e (MI-7
    a/b/d cold-TLB scenarios): run them with the model when merged. MI-7 (c) dropped (rev 22).
 5. Phase 1a: flip the TLB to cold (MI-6, MA-126) and re-pin ~30 checks; the M0 report states
