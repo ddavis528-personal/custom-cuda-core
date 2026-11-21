@@ -208,6 +208,7 @@ struct Kernel {
     std::map<unsigned, std::array<uint32_t, kLanes>> rows;  ///< PCA's, by mig_row
     std::array<uint64_t, kLanes> lane_pc{};                 ///< PCA's, from FET (IS-17)
     bool rewound = false;                                   ///< FET had OOE's beats
+    bool held_wait = false;                                 ///< a beat stepped back over its retired wait (TI-40)
     bool done = false;                                      ///< PCA acked it
     bool restored = false;                                  ///< and it came back
   };
