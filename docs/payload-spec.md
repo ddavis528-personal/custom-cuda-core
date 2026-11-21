@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 56 channels
+# Payload specification — all 57 channels
 
-Every payload field has a width, so **every one of the 56
+Every payload field has a width, so **every one of the 57
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 16 | 42 |
+| All decided | 17 | 44 |
 | ⚠️ Some provisional | 27 | 147 |
 | ⛔ Some preliminary | 13 | 152 |
-| **Total** | **56** | **341** |
+| **Total** | **57** | **343** |
 
 ## What still has to be decided
 
@@ -355,6 +355,18 @@ dcu → cru · rate 1 · control
 | `ue` | `1` | 1 | literal |
 | `ce_alert` | `1` | 1 | literal |
 | **total** | | **2** | |
+
+### `ccv_dcu_miu_cred`
+
+DCU's per-bank credit returns to MIU (MA-25; MA-24 under AR 382): ent_ret, a bit a bank, a lookup entry left that bank's queue; std_ret, a bit a bank, a store's data left after its write. MIU holds per bank CCV_DCU_BANK_QDEPTH entry credits and CCV_DCU_BANK_STDATA store-data credits, reset full: it sends a lookup only with its bank's entry credit and a store only with both, spending them at send, and holds a request without them (a held store blocks every younger store to its bank, a held request every younger one to its line). A bank serves one access every other cycle, so it returns at most one of each a cycle and a bit is enough. DCU sends whenever either vector is non-zero, so nothing queues. Every set bit returns a credit MIU spent: one that would take a counter past its reset value is refused by name, and DCU refuses a bank holding more than either count. Flops capturing these pulses at MIU are a credit waiver ("credit": true, DA's ruling on RI-14), counted in MIU's 2%.
+
+dcu → miu · rate 1 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `ent_ret` | `CCV_DCU_BANKS` | 8 | CCV_DCU_BANKS (arch) |
+| `std_ret` | `CCV_DCU_BANKS` | 8 | CCV_DCU_BANKS (arch) |
+| **total** | | **16** | |
 
 ## ⚠️ Carries a provisional width
 

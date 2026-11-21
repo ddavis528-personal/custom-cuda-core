@@ -39,6 +39,7 @@
 // what it takes either way.
 //===----------------------------------------------------------------------===//
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <deque>
 #include <map>
@@ -263,13 +264,84 @@ private:
               (unsigned long long)pa, (unsigned long long)set);
   }
 
+  // MA-25's credit returns on ccv_dcu_miu_cred (DI-8: without them the MIU
+  // stub's per-bank credits run dry). Banks here are MIU's (CCV_DCU_BANKS,
+  // line-address low bits), whatever CCV_P1_HASH does inside p1. An entry
+  // credit goes home once its request no longer waits in a bank queue (p1's
+  // entry, the one MA-24's sweep sized QDEPTH from), a store-data credit once
+  // no deferred read, write or store lookup holds its data. At most one of
+  // each a bank a cycle.
+  std::array<uint64_t, ccv::kDcuBanks> rcv_ent_{}, rcv_std_{}, ret_ent_{}, ret_std_{};
+  static unsigned miuBank(uint64_t pa) { return unsigned((pa / kLine) % ccv::kDcuBanks); }
+  /// A store spends a store-data credit (MIU: a store but an atomic's RMW;
+  /// DCU: coh_op Write), as the stub DCU counts it.
+  static bool isWrite(const Bits &req) {
+    return unsigned(get(req, ch().miu_dcu, "coh_op")) == kCohWrite;
+  }
+  void heldPerMiuBank(std::array<uint64_t, ccv::kDcuBanks> &ent,
+                      std::array<uint64_t, ccv::kDcuBanks> &std) const {
+    ent.fill(0);
+    std.fill(0);
+    auto hold = [&](const Op &o) {
+      const unsigned b = miuBank(lineOf(o.req));
+      ++ent[b];
+      if (isWrite(o.req)) ++std[b];
+    };
+    for (const auto &in : arr_)
+      for (const Op &o : in) hold(o);
+    for (const auto &q : cr_)
+      for (const auto &h : q) hold(h.second);
+    for (const auto &a : again_) hold(a.second);
+    // A store's miss holds its data until the fill merges it (MA-25).
+    // (A victim's writeback carries no request of MIU's: its req is empty.)
+    for (const auto &x : miss_)
+      if (x.second.op.req.size() && isWrite(x.second.op.req)) ++std[miuBank(x.second.line)];
+    for (const auto &q : bq_)
+      for (const Acc &a : q) {
+        if (a.k == Acc::kLook) hold(a.op);
+        else if (a.k == Acc::kStoreW || a.k == Acc::kStoreR) ++std[miuBank(a.line)];
+      }
+  }
+  bool credOwed() const {
+    std::array<uint64_t, ccv::kDcuBanks> he, hs;
+    heldPerMiuBank(he, hs);
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b)
+      if (rcv_ent_[b] - ret_ent_[b] > he[b] || rcv_std_[b] - ret_std_[b] > hs[b]) return true;
+    return false;
+  }
+  void returnCredits() {
+    const Ch &c = ch();
+    std::array<uint64_t, ccv::kDcuBanks> he, hs;
+    heldPerMiuBank(he, hs);
+    uint64_t ent = 0, std = 0;
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+      if (rcv_ent_[b] - ret_ent_[b] > he[b]) ent |= uint64_t(1) << b;
+      if (rcv_std_[b] - ret_std_[b] > hs[b]) std |= uint64_t(1) << b;
+    }
+    if ((!ent && !std) || !can(c.dcu_cred, 0)) return;
+    Bits m = msgOf(c.dcu_cred);
+    put(m, c.dcu_cred, "ent_ret", ent);
+    put(m, c.dcu_cred, "std_ret", std);
+    send(c.dcu_cred, 0, m, makeUid(IdClass::kNone, 0));
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+      if (ent >> b & 1) { ++ret_ent_[b]; k_.hit("dcu_ent_ret"); }
+      if (std >> b & 1) { ++ret_std_[b]; k_.hit("dcu_std_ret"); }
+    }
+  }
+
   void work() override {
     const Ch &c = ch();
+    returnCredits();    // what last cycle let go
     releaseCredits();   // older held requests take returned credits first
     for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
       while (has(c.miu_dcu, s)) {
         Receiver::Msg m = take(c.miu_dcu, s);
         checkIndexLead(s, m.payload);
+        {
+          const unsigned b = miuBank(get(m.payload, c.miu_dcu, "phys_addr"));
+          ++rcv_ent_[b];
+          if (isWrite(m.payload)) ++rcv_std_[b];
+        }
         offer(Op{s, m.payload, m.tid});
       }
     while (!again_.empty() && again_.front().first <= now_) {
@@ -884,7 +956,8 @@ private:
   }
   bool busy() const override {
     if (!q_.empty() || !miss_.empty() || !to_mlc_.empty() || !to_miu_.empty() ||
-        !promised_.empty() || !timed_.empty() || !again_.empty() || crBusy())
+        !promised_.empty() || !timed_.empty() || !again_.empty() || crBusy() ||
+        credOwed())
       return true;
     for (const auto &q : bq_)
       if (!q.empty()) return true;

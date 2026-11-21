@@ -622,12 +622,19 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_dcu_miu_fill_ntc", "req_id", p.c54_f0, b, 0, 6);
   }
   {
-    const Bits b = randomBits(14, seed ^ 435545u);
+    const Bits b = randomBits(16, seed ^ 435545u);
     put(p.c55, b);
     p.eval();
-    bad += check("ccv_miu_ooe_cmpl_hint", "rs_idx", p.c55_f0, b, 8, 6);
-    bad += check("ccv_miu_ooe_cmpl_hint", "rob_tag", p.c55_f1, b, 1, 7);
-    bad += check("ccv_miu_ooe_cmpl_hint", "no_hit", p.c55_f2, b, 0, 1);
+    bad += check("ccv_dcu_miu_cred", "ent_ret", p.c55_f0, b, 8, 8);
+    bad += check("ccv_dcu_miu_cred", "std_ret", p.c55_f1, b, 0, 8);
+  }
+  {
+    const Bits b = randomBits(14, seed ^ 443464u);
+    put(p.c56, b);
+    p.eval();
+    bad += check("ccv_miu_ooe_cmpl_hint", "rs_idx", p.c56_f0, b, 8, 6);
+    bad += check("ccv_miu_ooe_cmpl_hint", "rob_tag", p.c56_f1, b, 1, 7);
+    bad += check("ccv_miu_ooe_cmpl_hint", "no_hit", p.c56_f2, b, 0, 1);
   }
   return bad;
 }

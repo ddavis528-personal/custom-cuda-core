@@ -16,9 +16,8 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   check-dcu-unit are real; the local hook patch is retired.
 - No dates on tasks; no model identifiers in anything pushed.
 - Merge a blocker the moment it lands on a working branch, never waiting
-  for the daily sweep (Daniel). DI-6 asks TI and MI to move DCU's M0
-  blockers up. Hourly check: scheduled task trig_01BqmRibVjxu6zui4nfhhFzo
-  (:32 each hour); delete it once DI-6 is met.
+  for the daily sweep (Daniel). Ask its owner to move it up (a DI row and a
+  notice), and set an hourly check while it is pending.
 
 ## Timing frame (DCU-local; checked against the MIU tab's L1-hit budget)
 - L = lead (valid) at DCU = H+2; P = payload lands (Stub::has) = H+3.
@@ -30,23 +29,25 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
-0. 6d65b57a pushed (RESUMED PASS, full): the sweep's 9 merges, MI's
-   967914ff and TI's e8d8864b are on the branch.
-   With TI's c8d19598 (not yet on a branch here; tried in the scratch
-   worktree /tmp/claude-0/-home-user/bfe83fc4-cb75-557c-bad7-b1316bec67fe/scratchpad/p1b,
-   never push it), CCV_DCU_IMPL=model check-kernel is clean (rc=0).
-   The pair (dcu=model,miu=model) fails 10 lines. TI-504 says 1f781123 has
-   them: 5 IMPL_PINS rows, vadd4 orphan=2, and straggler demotion at:342
-   keyed through impl_pins. The other 3 lines are MI's own model: predlane
-   (MI-8, by design; TI owes the quiesced_at_end exemption), a UE with
-   the track table full not being core-fatal, and fet-reset-on-kill not caught.
-   Next: once c8d19598 and 1f781123 are on a branch, merge them, rerun
-   check-kernel (model, then pair) and write the M0 exit row for MA:
-   check-kernel clean, every bin reached, SV-hosted PASS, S1 and cm32priv.
-1. Phase 1b (DI-5; AR-394, OA-454): S1 pair +1.62% vs the stubs (worst
-   vadd4 +25.4%), DCU alone +1.27%. cm32priv: pair 2090969, DCU alone
-   2105390, stubs 2095682. With notices off, fill_notice=0 and cmpl_hint=0.
-   RTL waits on MA's Phase 2 (AR-394: a notice from MLC's tag lookup).
+0. Next model work, blocked on TI (DI-14, asked to move up): MA-27 drop
+   bit on ccv_miu_dcu_req; MA-28 (c) (72,64) check bits on ccv_dcu_miu_rsp
+   (128/slot); CCV_DCU_ECC_INJECT. Spec: DCU tab rev 64, AR 401, AR 404.
+   DCU on drop: no state, no read, no response, no queue entry, no ent_ret
+   (MIU refunds its own credit; DI-12 closed). DCU sends stored check bits,
+   computes the same syndrome (OR over every code word the response
+   carries); CE: correct, count, rewrite (holds bank like RMW), corrected
+   data via fill path under the original req_id, no new credit. UE: clean
+   line invalidate+refetch (CCV_DCU_UE_TRACK), dirty line core-fatal on
+   ccv_dcu_cru_err, no response. Controls: ECC inject, narrowed scope on one
+   side (hang or caught), UE on a dropped lookup (no MACHINE_CHECK), DCU
+   returning a dropped lookup's credit (must fail).
+   Merge TI's fields the moment they land on ccr-183cc441-doowtf.
+1. Phase 1b met (DI-11) at 9d251d57. TI made the bank controls run under
+   all four MIU x DCU sets (TI-512, 0ee1c423); MA's p1 now returns credits
+   (d494cf9b) and runs all 66 kernels; model +0.56% over p1. Both merged,
+   pushed at 2529d430. Then: the spec gaps (item 4), RTL once MA's Phase 2
+   lands (AR-394). Scratch worktree for tests (never push from it):
+   /tmp/claude-0/-home-user/bfe83fc4-cb75-557c-bad7-b1316bec67fe/scratchpad/m0w
 2. DI-4 closed (MA rev 135): notices are off by default; an un-noticed
    refill lands at F+4, a noticed one at F+6. SV-hosted PASS with the model.
 3. Friday pings: all 11 agents answered. OI's and RH's rosters lack DI
@@ -62,7 +63,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 17, MI 17, MA 135, AR 400, OA 460, TI 504, DA 128
+Conventions 20, DI 29, MI 17, MA 143, AR 405, OA 460, TI 512, DA 128
 (sweep of 2026-11-20 10:43 UTC; OI 395, RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;

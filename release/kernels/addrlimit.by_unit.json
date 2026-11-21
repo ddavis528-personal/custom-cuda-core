@@ -247,6 +247,15 @@
    "name": "thread_name",
    "ph": "M",
    "pid": 3,
+   "tid": 55,
+   "args": {
+    "name": "ccv_dcu_miu_cred"
+   }
+  },
+  {
+   "name": "thread_name",
+   "ph": "M",
+   "pid": 3,
    "tid": 19,
    "args": {
     "name": "ccv_mlc_dcu_rsp"
@@ -1424,6 +1433,22 @@
    "cat": "load_bearing",
    "ph": "i",
    "s": "t",
+   "ts": 57,
+   "pid": 3,
+   "tid": 55,
+   "args": {
+    "instr_uid": 0,
+    "unit": "ccv_dcu_miu_cred",
+    "channel_id": 55,
+    "payload_lo": 32896,
+    "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
    "ts": 59,
    "pid": 3,
    "tid": 26,
@@ -1536,6 +1561,6 @@
  "ccv": {
   "schema_version": 2,
   "schema_hash": "2e08856f4ac360b5",
-  "events": 78
+  "events": 79
  }
 }

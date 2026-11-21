@@ -33,7 +33,7 @@
 //   csr_credit       out  star      Credit return for the CSR channel.
 //   clk_gated        out  observe   CCV_CHECK only: the block's clock gate is closed this cycle.
 
-localparam int CCV_NUM_CHANNELS = 56;
+localparam int CCV_NUM_CHANNELS = 57;
 
 // fet -> dec, 8/cycle
 localparam int CCV_CH_FET_DEC_INSTR = 0;
@@ -145,8 +145,10 @@ localparam int CCV_CH_CRU_RAU_CFG = 52;
 localparam int CCV_CH_EXT_EXB_IN = 53;
 // dcu -> miu, 4/cycle
 localparam int CCV_CH_DCU_MIU_FILL_NTC = 54;
+// dcu -> miu, 1/cycle
+localparam int CCV_CH_DCU_MIU_CRED = 55;
 // miu -> ooe, 4/cycle
-localparam int CCV_CH_MIU_OOE_CMPL_HINT = 55;
+localparam int CCV_CH_MIU_OOE_CMPL_HINT = 56;
 
 // Payload structs, for channels whose every field has a
 // decided width. A channel missing one generates no struct --
@@ -673,6 +675,11 @@ typedef struct packed {
 } ccv_dcu_miu_fill_ntc_t;
 
 typedef struct packed {
+  logic [ccv_params_pkg::CCV_DCU_BANKS-1:0]      ent_ret;
+  logic [ccv_params_pkg::CCV_DCU_BANKS-1:0]      std_ret;
+} ccv_dcu_miu_cred_t;
+
+typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_RS_IDX-1:0]       rs_idx;
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
   logic                                          no_hit;
@@ -680,12 +687,12 @@ typedef struct packed {
 
 // Ports per block, derived from the channel list.
 localparam int CCV_PORTS_CRU = 3;  // 2 in, 1 out
-localparam int CCV_PORTS_DCU = 8;  // 3 in, 5 out
+localparam int CCV_PORTS_DCU = 9;  // 3 in, 6 out
 localparam int CCV_PORTS_DEC = 2;  // 1 in, 1 out
 localparam int CCV_PORTS_EXB = 4;  // 2 in, 2 out
 localparam int CCV_PORTS_FET = 13;  // 9 in, 4 out
 localparam int CCV_PORTS_LANE = 2;  // 1 in, 1 out
-localparam int CCV_PORTS_MIU = 15;  // 8 in, 7 out
+localparam int CCV_PORTS_MIU = 16;  // 9 in, 7 out
 localparam int CCV_PORTS_MLC = 8;  // 4 in, 4 out
 localparam int CCV_PORTS_OOE = 18;  // 7 in, 11 out
 localparam int CCV_PORTS_PCA = 6;  // 3 in, 3 out

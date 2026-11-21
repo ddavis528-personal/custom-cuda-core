@@ -124,9 +124,11 @@ enum Channel : uint16_t {
   CH_EXT_EXB_IN = 53,
   /// dcu -> miu, 4/cycle
   CH_DCU_MIU_FILL_NTC = 54,
+  /// dcu -> miu, 1/cycle
+  CH_DCU_MIU_CRED = 55,
   /// miu -> ooe, 4/cycle
-  CH_MIU_OOE_CMPL_HINT = 55,
-  kChannelCount = 56,
+  CH_MIU_OOE_CMPL_HINT = 56,
+  kChannelCount = 57,
 };
 
 struct ChannelInfo {
@@ -193,18 +195,19 @@ inline const ChannelInfo &channelInfo(Channel c) {
       {"ccv_cru_rau_cfg", "cru", "rau", 1},
       {"ccv_ext_exb_in", "EXTERNAL", "exb", 1},
       {"ccv_dcu_miu_fill_ntc", "dcu", "miu", 4},
+      {"ccv_dcu_miu_cred", "dcu", "miu", 1},
       {"ccv_miu_ooe_cmpl_hint", "miu", "ooe", 4},
   };
   return kInfo[static_cast<unsigned>(c)];
 }
 
 static constexpr unsigned kPortsCru = 3;  // 2 in, 1 out
-static constexpr unsigned kPortsDcu = 8;  // 3 in, 5 out
+static constexpr unsigned kPortsDcu = 9;  // 3 in, 6 out
 static constexpr unsigned kPortsDec = 2;  // 1 in, 1 out
 static constexpr unsigned kPortsExb = 4;  // 2 in, 2 out
 static constexpr unsigned kPortsFet = 13;  // 9 in, 4 out
 static constexpr unsigned kPortsLane = 2;  // 1 in, 1 out
-static constexpr unsigned kPortsMiu = 15;  // 8 in, 7 out
+static constexpr unsigned kPortsMiu = 16;  // 9 in, 7 out
 static constexpr unsigned kPortsMlc = 8;  // 4 in, 4 out
 static constexpr unsigned kPortsOoe = 18;  // 7 in, 11 out
 static constexpr unsigned kPortsPca = 6;  // 3 in, 3 out

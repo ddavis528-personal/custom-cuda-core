@@ -401,10 +401,13 @@ module tb_layout_probe (
   output logic [1175:0] c53_f0,
   input  logic [5:0] c54,
   output logic [5:0] c54_f0,
-  input  logic [13:0] c55,
-  output logic [5:0] c55_f0,
-  output logic [6:0] c55_f1,
-  output logic c55_f2
+  input  logic [15:0] c55,
+  output logic [7:0] c55_f0,
+  output logic [7:0] c55_f1,
+  input  logic [13:0] c56,
+  output logic [5:0] c56_f0,
+  output logic [6:0] c56_f1,
+  output logic c56_f2
 );
   ccv_fet_dec_instr_t s0;
   assign s0 = c0;
@@ -854,9 +857,13 @@ module tb_layout_probe (
   ccv_dcu_miu_fill_ntc_t s54;
   assign s54 = c54;
   assign c54_f0 = s54.req_id;
-  ccv_miu_ooe_cmpl_hint_t s55;
+  ccv_dcu_miu_cred_t s55;
   assign s55 = c55;
-  assign c55_f0 = s55.rs_idx;
-  assign c55_f1 = s55.rob_tag;
-  assign c55_f2 = s55.no_hit;
+  assign c55_f0 = s55.ent_ret;
+  assign c55_f1 = s55.std_ret;
+  ccv_miu_ooe_cmpl_hint_t s56;
+  assign s56 = c56;
+  assign c56_f0 = s56.rs_idx;
+  assign c56_f1 = s56.rob_tag;
+  assign c56_f2 = s56.no_hit;
 endmodule

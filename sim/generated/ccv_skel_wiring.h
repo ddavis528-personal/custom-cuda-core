@@ -538,6 +538,10 @@ inline constexpr FieldDesc kF_ccv_ext_exb_in[] = {
 inline constexpr FieldDesc kF_ccv_dcu_miu_fill_ntc[] = {
   {"req_id", 0, 6, false},
 };
+inline constexpr FieldDesc kF_ccv_dcu_miu_cred[] = {
+  {"ent_ret", 8, 8, false},
+  {"std_ret", 0, 8, false},
+};
 inline constexpr FieldDesc kF_ccv_miu_ooe_cmpl_hint[] = {
   {"rs_idx", 8, 6, false},
   {"rob_tag", 1, 7, false},
@@ -600,9 +604,10 @@ inline constexpr ChanDesc kChans[] = {
   {52, "ccv_cru_rau_cfg", Blk::CRU, Blk::RAU, 1, 74, 5, kF_ccv_cru_rau_cfg, 1, false, 0, Order::kNone, -1, false, 1, -1, false, false, 4, 8192},
   {53, "ccv_ext_exb_in", Blk::EXTERNAL, Blk::EXB, 1, 1176, 1, kF_ccv_ext_exb_in, 1, false, 0, Order::kNone, -1, false, 5, -1, false, false, 4, 8192},
   {54, "ccv_dcu_miu_fill_ntc", Blk::DCU, Blk::MIU, 4, 6, 1, kF_ccv_dcu_miu_fill_ntc, 1, false, 0, Order::kNone, -1, false, 4, -1, true, false, 4, 8192},
-  {55, "ccv_miu_ooe_cmpl_hint", Blk::MIU, Blk::OOE, 4, 14, 3, kF_ccv_miu_ooe_cmpl_hint, 1, false, 0, Order::kNone, -1, false, 2, -1, true, false, 4, 8192},
+  {55, "ccv_dcu_miu_cred", Blk::DCU, Blk::MIU, 1, 16, 2, kF_ccv_dcu_miu_cred, 1, false, 0, Order::kNone, -1, false, 1, -1, true, false, 4, 8192},
+  {56, "ccv_miu_ooe_cmpl_hint", Blk::MIU, Blk::OOE, 4, 14, 3, kF_ccv_miu_ooe_cmpl_hint, 1, false, 0, Order::kNone, -1, false, 2, -1, true, false, 4, 8192},
 };
-constexpr unsigned kNumChans = 56;
+constexpr unsigned kNumChans = 57;
 
 /// Block INSTANCES: 45 of them. A multi-instance type's copies
 /// are contiguous.
@@ -805,11 +810,12 @@ inline constexpr ChanInst kChanInsts[] = {
   {52, 0, 43, 40, 170, 69815, 0, 0, 0, 0, 0},
   {53, 0, -1, 44, 171, 69889, 0, 0, 0, 0, 0},
   {54, 0, 38, 36, 172, 71065, 0, 0, 0, 0, 0},
-  {55, 0, 36, 2, 176, 71089, 0, 0, 0, 0, 0},
+  {55, 0, 38, 36, 176, 71089, 0, 0, 0, 0, 0},
+  {56, 0, 36, 2, 177, 71105, 0, 0, 0, 0, 0},
 };
-constexpr unsigned kNumChanInsts = 118;
-constexpr unsigned kNumSlots = 180;
-constexpr uint64_t kPayloadBits = 71145;
+constexpr unsigned kNumChanInsts = 119;
+constexpr unsigned kNumSlots = 181;
+constexpr uint64_t kPayloadBits = 71161;
 
 /// Fabrics between blocks, outside the credit scheme (schema
 /// common_ports): a broadcast is driven by `end` and read by every

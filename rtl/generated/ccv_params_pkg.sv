@@ -448,6 +448,14 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: MA rev 68 (MA-16, AR 364): a start; MA's Phase 1 model sets it against AR's 729-cycle starvation case
   localparam int CCV_DCU_BANK_AGE = 16;
 
+  // Lookup entries in each DCU bank's queue, and MIU's entry credits for that bank (MA-25): a hard reservation, so DCU never refuses a request and never holds more. MIU's counters reset full, a request to the bank spends one at send, and DCU returns one on ccv_dcu_miu_cred's ent_ret as an entry leaves the queue (answered, or gone to MLC as a miss; a fill uses its fill buffer, not an entry). The skeleton's stubs read it as their default, and the environment's CCV_DCU_BANK_QDEPTH overrides it in both for a test of the hold.  Requires: CCV_DCU_BANK_QDEPTH >= 1.
+  // PROVISIONAL -- decided by: MA-25 (MA-24 under AR 382; Phase 1 cm128 at gap 5, 5,130,918 cycles with credits)
+  localparam int CCV_DCU_BANK_QDEPTH = 16;
+
+  // Store-data entries in each DCU bank, and MIU's store-data credits for that bank (MA-25): a store spends one beside its entry credit, and DCU returns it on ccv_dcu_miu_cred's std_ret once the store's write leaves (after its merge, which a miss waits for). No more than CCV_DCU_BANK_QDEPTH. The skeleton's stubs read it as their default, and the environment's CCV_DCU_BANK_STDATA overrides it in both.  Requires: (CCV_DCU_BANK_STDATA >= 1) * (CCV_DCU_BANK_STDATA <= CCV_DCU_BANK_QDEPTH) == 1.
+  // PROVISIONAL -- decided by: MA-25 (MA-24 under AR 382): the store-data peak MA's Phase 1 cm128 held at 12 a bank
+  localparam int CCV_DCU_BANK_STDATA = 12;
+
   // ccv_miu_dcu_req's lead set_index: a lookup's set, physical address bits [log2 CCV_P_LINE_BYTES + this - 1 : log2 CCV_P_LINE_BYTES], [15:7] at 512 sets. A sweep's smaller CCV_DCU_SETS override uses its low bits. Its low clog2(CCV_DCU_BANKS) bits are the lookup's bank (AR 364).  Derived: = clog2(CCV_DCU_SETS).
   // PROVISIONAL -- decided by: AR 362 (4), MA rev 65: follows CCV_DCU_SETS
   localparam int CCV_W_DCU_SET = 9;
