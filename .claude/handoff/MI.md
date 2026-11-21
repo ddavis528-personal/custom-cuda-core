@@ -65,8 +65,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    overlap only; CCV_MIU_DUP_IDEAL) + handoff, NOT pushed. 3224eaff on mi-dev is my local
    cherry-pick of all of DI's 8b6090d0: do NOT gate it (its ECC half waits on TI's re-pin, DI-16).
    Plan (DI-17, answered rev 31): when DI's notice says 7bf5073a (drop half alone) is on
-   ccr-5e4d6c70-n6402z, in the main checkout merge that branch and mi-dev AT a0afe9fc (not the
-   tip), then CCV_PUSH_BRANCHES=ccr-58815650-0ch1hh tools/gate-push.sh. Gate runs stubs only.
+   ccr-5e4d6c70-n6402z, in the main checkout merge that branch and mi-dev AT a0afe9fc (not the tip; cherry-pick later handoff commits,
+   e.g. 55a0ecb5), then CCV_PUSH_BRANCHES=ccr-58815650-0ch1hh tools/gate-push.sh. Gate runs stubs only.
    Pricing answered (rev 32, MA rung): S1 gap 0, cm32priv +0.008%, cm128priv -0.10%; spec kept.
    DI-18 settled (MA rev 148, MIU tab 153): MIU corrects a CE, completion withheld a cycle as a
    refill, nothing to DCU, req_id frees on its one response: the model already does this.
