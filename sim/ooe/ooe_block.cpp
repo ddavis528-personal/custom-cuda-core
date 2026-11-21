@@ -138,6 +138,14 @@ private:
   }();
   std::array<unsigned, ccv::kTier1Warps> cred_prev_{}, cred_in_{};
   uint32_t cred_rel_ = 0;
+  /// OA 455 (A, re OI-188): FET's count is credits sent less returned, never
+  /// reseeded, so OOE returns one credit for every uop it consumes. Those of
+  /// a warp with no tier-1 slot to return them on (a uop of a stale epoch
+  /// arriving after its release, or the slot's queue dropped at the
+  /// release) wait here, per warp_id, and go back on its next slot. Bounded
+  /// by what a warp may have outstanding, which the return field holds.
+  std::array<unsigned, ccv::kWarpContexts> cred_pend_{};
+  std::map<std::string, unsigned long long> strag_seen_;   ///< AR 395 bins
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
   int fault_ = optChan("ccv_ooe_cru_fault");
@@ -168,9 +176,10 @@ private:
     // TI-46 (b), DA tab rev 96: FET holds each warp's share as credits on
     // ccv_ooe_fet_decq_credit, so OOE refuses no uop for a per-warp reason.
     c.decq_warp_max = 0;
-    unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop;
+    unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop, credit_link = ccv::kLatHop;
     for (const ChanInst &ci : kChanInsts) {
       if (ci.chan == chanId("ccv_ooe_fet_redirect")) c.redirect_lat = ccv::kLatHop + ci.stages + ci.bnd_rx;
+      if (ci.chan == chanId("ccv_ooe_fet_decq_credit")) credit_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
       if (ci.chan == chanId("ccv_ooe_rcu_issue")) c.issue_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
       if (ci.chan == chanId("ccv_rcu_ooe_done")) c.done_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
       if (ci.chan == chanId("ccv_miu_rcu_data")) data_link = ccv::kLatHop + ci.stages + ci.bnd_rx;
@@ -187,6 +196,16 @@ private:
                    c.cmpl_wake_delay, want);
       std::abort();
     }
+    // AR 395 (2), OA 458: a walked uop's credit lands no earlier than its
+    // beat; OOE holds it past the beat's send by the redirect's crossing
+    // less the credit's (CCV_LAT_DECQ_CREDIT_DELAY on TI's ti-mi9 derives
+    // the same from params/links.json; read it from there once it lands).
+    c.decq_credit_delay = c.redirect_lat > credit_link ? c.redirect_lat - credit_link : 0;
+    // TI-493's controls: no-straggler-walk drops a demoted warp's straggler
+    // by its epoch, its lanes' beat lost; straggler-early-credit returns its
+    // credit before its beat leaves.
+    c.straggler_walk = k.brk != "no-straggler-walk";
+    c.inject_straggler_early_credit = k.brk == "straggler-early-credit";
     if (const char *s = std::getenv("CCV_OOE_CONFIG")) {
       const std::string e = c.apply(s);
       if (!e.empty()) {
@@ -494,7 +513,6 @@ private:
         if (taken.count(s)) { held.insert(w); continue; }
         if (held.count(w) || oldest[w] != std::make_tuple(r->front().arrived, s, size_t(0)))
           continue;
-        if ((core_.config().rx_lag & 64) && r->front().arrived + 1 > now_) continue;
         if (best < 0 || r->front().arrived < when) { best = int(s); when = r->front().arrived; }
       }
       if (best < 0) return;
@@ -511,6 +529,12 @@ private:
       }
       taken.insert(unsigned(best));
       if (const int ts = core_.tier1Of(w); ts >= 0 && size_t(ts) < cred_in_.size()) ++cred_in_[ts];
+      else if (k_.brk != "slotless-drop-lost") {
+        // Slotless: the core drops it (a stale epoch) or reports it; its
+        // credit waits for the warp's next slot (OA 455).
+        ++cred_pend_[w % cred_pend_.size()];
+        k_.hit("decq_slotless_drop");
+      }
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
   }
@@ -846,16 +870,32 @@ private:
     for (unsigned t = 0; t != cred_warp_.size(); ++t) {
       const int w = core_.warpOfSlot(t);
       const unsigned occ = w < 0 ? 0 : core_.decqOf(unsigned(w));
-      // A slot newly given a warp, or freed, starts from what it holds now.
+      unsigned back;
       if (w < 0 || w != cred_warp_[t]) {
+        // The warp leaving: what it took in and has not returned (its renames
+        // since the last return, and its queue dropped at the release) waits
+        // for its next slot (OA 455).
+        if (const int o = cred_warp_[t]; o >= 0) {
+          unsigned &p = cred_pend_[unsigned(o) % cred_pend_.size()];
+          p += cred_prev_[t] + cred_in_[t];
+          if (p >= 1u << ccv::prov::kWDecqCredit)
+            k_.fail("ooe: warp %d's pending decode-queue credits reach %u, past credit_count's %u bits (OA 455)", o, p,
+                    ccv::prov::kWDecqCredit);
+          if (p) k_.hit("decq_credit_pend");
+        }
+        // A slot newly given a warp starts from what it holds now, and
+        // returns what the warp's credits waited for.
         cred_warp_[t] = w;
         cred_prev_[t] = occ;
         cred_in_[t] = 0;
-        continue;
+        if (w < 0) continue;
+        back = cred_pend_[unsigned(w) % cred_pend_.size()];
+        cred_pend_[unsigned(w) % cred_pend_.size()] = 0;
+      } else {
+        back = cred_prev_[t] + cred_in_[t] - occ;
+        cred_prev_[t] = occ;
+        cred_in_[t] = 0;
       }
-      const unsigned back = cred_prev_[t] + cred_in_[t] - occ;
-      cred_prev_[t] = occ;
-      cred_in_[t] = 0;
       if (occ > ccv::prov::kDecqWarpMax && !core_.decqOneInstr(unsigned(w)))
         k_.fail("ooe: warp %d holds %u decode-queue slots, over its share outside a borrow (TI-46 (b))", w, occ);
       if (core_.barHeld(unsigned(w)) && occ > ccv::prov::kHeldAhead)
@@ -885,6 +925,13 @@ private:
     takeUops();
     sendOutputs();
     credits();
+    // AR 395: a demoted warp's straggler walked on arrival, and one whose
+    // lanes no beat had named yet.
+    for (const char *n : {"demote.straggler", "demote.straggler_beat"})
+      if (const auto c = core_.counters.find(n); c != core_.counters.end() && c->second > strag_seen_[n]) {
+        strag_seen_[n] = c->second;
+        k_.hit(n[16] ? "decq_straggler_beat" : "decq_straggler");
+      }
     for (const ooe::Retired &r : core_.retired) {
       // An instruction retires with its last uop (TI-36's cracked ones).
       if (k_.lastUop(r.tid)) {

@@ -30,14 +30,16 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
-- Daily sweep 2026-11-19: AR 395, OA 446, IS 199, TI 487, OI 380, CP 160, RA 156, RI 91, MA 127,
-  MI 10, DI 4, DA 128, Conventions 20; specs MIU 145, Common 9, DCU 56. Only TI-488 named MI.
-- MA-26 landed (WAYPRED_BITS 5, SEL 1; L1_HIT 8, WAKE 14, CMPL 16). MA-25 (bank credits
-  ent_ret/std_ret, QDEPTH 16, STDATA 12) still pending at TI.
-- MA-127 answered (rev 9: full 64-bit fault address reaches the record). MI-7 (d) UE scenario
-  added (rev 8). MI-8 rung to TI (rev 10): under UE_INJECT=1 predlane/predmerge fail
-  quiesced_at_end on ooe_miu_memop (a store whose merge read was withheld never drains, so its
-  credit stays out, per spec); asked TI to exempt machine-checked runs with a control.
+- Daily sweep 2026-11-20 (Fri): AR 400, OA 462, IS 201, TI 503, OI 395, CP 160, RA 157, RI 91,
+  MA 135, MI 18, DI 13, DA 128, Conventions 20; specs MIU 145, Common 9, DCU 59.
+  Weekly pings: all 11 ponged; OI's and RH's rosters predated cc8ed42d (MI unnamed) then.
+- Since: MI 26, TI 509, OA 464, DI 21, MA 137, OI 397 (others as above).
+- MA-26 landed (WAYPRED_BITS 5, SEL 1; L1_HIT 8, WAKE 14, CMPL 16). MA-25 landed (TI's
+  d761c634); the model spends the credits at d639adb2 (step 5).
+- MI-8 at TI: under UE_INJECT=1 predlane/predmerge fail quiesced_at_end on ooe_miu_memop. Per
+  AR 387/389 (RAU spec rev 63) a store whose merge read was withheld never drains, so its MQ
+  entry's credit stays out; TI's KernelEnd already allows it. Ask: exempt mce runs with a control.
+  DI-5 (C) was the same thing; answered re DI-5 (rev 17): nothing to change in MIU or DCU.
 
 ## Settled since the handoff (MA tab rev 119-122)
 - MI-2 settled (AR 392, Common tab rev 9): 64 KiB pages, 3 levels 6/13/13 (VA[47:42], [41:29],
@@ -61,31 +63,33 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   Bookmarks since: OA 455, MI 12.
 
 ## Open work, most urgent first
-1. Model restructure to the spec's timing, in worktree /home/user/mi-wt on local branch mi-dev
-   (the MI-1 hook applied there uncommitted, git update-index --skip-worktree on
-   sim/skel/{kernel.cpp,blocks.list}; scratchpad mi1-hook-bound.patch, which also bounds the
-   testbench's slow regions below 1<<32 (MI-5 (1)); never commit it; --no-skip-worktree before
-   merging TI's hook). Pushed: steps 1-2 (6b019dce), step 3 (8e1792b6: store keeps MQ entry to
-   drain, drain guard on Pending::kDrainWait, wide bit), step 4 (2e1975e6: TLB in A2 + shared
-   walker, before any bin; cold only under CCV_MIU_TLB=cold, default warm as the stub).
-   Warm check-kernel fails only MI-4's stub-pinned set. Cold moves ~30 checks (MI-6 to MA).
-   e62b76e2: cold controls (walk_reads, tlb_two_page_lost; breaks walk-no-dcu, itlb-no-walk,
-   walk-before-faddr, two-page-hit, registered only in local main.cpp). MA-126 accepted (MI tab
-   rev 7-8): warm default through M0; cold scenarios (a-d, incl. UE inject: walk reads already
-   count) proposed to TI as MI-7; phase 1a's first item is the flip to cold (re-pin ~30 checks);
-   the M0 report states the cold cost, 110-160 cycles a kernel.
-   Next: (5) bank credits once MA-25's channel exists; (6) bins/stats/controls (way
-   mispredict path, AR 390). Validate each with CCV_MIU_IMPL=model ./tools/check-kernel.sh
-   (~30 min, CCV_FOREGROUND=1; never rebuild the skeleton while it runs).
-2. MI-1 rung to TI (MI tab rev 4, response row names 21274699). Await TI's hook.
-3. MI-3 closed (rev 5). Rung and awaiting: TI on MI-1, MI-4 (stub-pinned checks, transp4
-   barrier bug), MI-5 (testbench bound, 14 bins for kernel.h, narrowadd bug); MA on MI-6
-   (cold TLB default at M0). MI tab at rev 8 (MI-7 rung to TI).
-4. Phase 1b with DI's DCU model; agree landing order of bank credits / way mispredict (the
-   conflict loser's path, due+2, as a miss) / withheld completion with DI in our tabs.
-5. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
+1. Model work in worktree /home/user/mi-wt, branch mi-dev = pushed tip (d639adb2 + regen 5057ec50).
+   No local patch. Steps 1-5 pushed (TLB/walker, store drain, drain guard, bank credits).
+   Next: (6) way-mispredict path (AR 390: the bank loser's path, due+2, as a miss) once TI's
+   same-set kernel exists (MI-9 (3)). MI-13 (rev 23, TI rung): drop check-kernel's skip of the
+   bank-credit holds/controls under CCV_MIU_IMPL=model. MI-12 (rev 19): asked TI/OI to move
+   our blockers up their order (Daniel's request).
+   Validate: CCV_FOREGROUND=1 CCV_MIU_IMPL=model ./tools/check-kernel.sh (~30 min). It fails only
+   lnorm1 under demotion (item 2) and the replay drain's stall/vadd4 (MI-4, TI's).
+2. MI-11 (2): lnorm1 under CCV_RAU_DEMOTE=mlc. Root cause per OI-193: OOE lost an epoch
+   advance; fixed in OI's c461c1b0 (not on a remote yet). When it lands, rerun
+   CCV_MIU_IMPL=model CCV_RAU_DEMOTE=mlc build/skel/ccv-skel --kernel build/oracle/lnorm1/oracle.jsonl
+   and close MI-11 (2).
+3. DI-9 fixed: tryStart's mo/am references past their erase (use-after-free) are copies at
+   51cf5dd2 (pushed 7a4c2b43). ASan only sees it at -O0 (scratchpad build-skel-asan*.sh);
+   fixed model ASan-clean over 910 runs. DI asked (rev 26) to rerun the pair's check-sv-hosted
+   (lnorm1 / RCU RTL host diffs were this). MI-14 landed by TI (ec8f3422), MI-13 (56c7ce54).
+4. Awaiting TI: MI-4 (replay drain stall/vadd4), MI-8, MI-9 (3), MI-13; TI's 78e74f4e (MI-7
+   a/b/d cold-TLB scenarios): run them with the model when merged. MI-7 (c) dropped (rev 22).
+5. Phase 1a: flip the TLB to cold (MI-6, MA-126) and re-pin ~30 checks; the M0 report states
+   the cold cost, 110-160 cycles a kernel. Phase 1b with DI's DCU: clean on 64 kernels.
+6. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
 
 ## Pushed
+- ccr-58815650-0ch1hh at 7a4c2b43 (51cf5dd2 DI-9 fix): SCOPED PASS.
+- ccr-58815650-0ch1hh at 5057ec50 (d639adb2 bank credits + TI's d761c634): SCOPED PASS.
+- ccr-58815650-0ch1hh at f79b74f1: full PASS (Fri sweep: merged ccr-3868632d 78,
+  ccr-5e4d6c70 7, ccr-c22116ce 9, MA's branch 6; walkthrough conflict regenerated).
 - ccr-58815650-0ch1hh at eed37e0c: full PASS (daily sweep 2026-11-19 merges + e6712d62 TI-487 (3)).
 - ccr-58815650-0ch1hh at 53b98a2f (steps 1-4, cold controls e62b76e2): SCOPED PASS. Earlier
   21274699 (076d0b75 model, 7cfc15ec walker). The remote

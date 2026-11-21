@@ -93,6 +93,14 @@ package ccv_assert_pkg;
   //
   //     <sim> +ccv_eot_quiesce      nothing may be outstanding at the end
   //
+  //     <sim> +ccv_eot_mce         ...unless the core took a machine check
+  //
+  // A machine-checked core is dead until the host resets it (AR 370 (4)): a
+  // committed store whose merge read DCU withheld never drains, and RAU's
+  // kill waits for no ack from MIU (AR 387, AR 389), so its queue entry, and
+  // the credit standing for it, stay out (MI-8). The harness adds
+  // +ccv_eot_mce before the checkers' final blocks, only for a run whose CRU
+  // took the machine check; this is first asked there, so it sees it.
   // Never under formal: there is no end of test there, and the proofs state
   // what quiescence stands in for (tools/check-formal.sh).
   function automatic bit eot_quiesce();
@@ -100,12 +108,12 @@ package ccv_assert_pkg;
     eot_quiesce = 1'b0;
 `elsif VERILATOR
     if (!eq_known) begin
-      eq_val = $test$plusargs("ccv_eot_quiesce");
+      eq_val = $test$plusargs("ccv_eot_quiesce") && !$test$plusargs("ccv_eot_mce");
       eq_known = 1'b1;
     end
     eot_quiesce = eq_val;
 `else
-    eot_quiesce = $test$plusargs("ccv_eot_quiesce");
+    eot_quiesce = $test$plusargs("ccv_eot_quiesce") && !$test$plusargs("ccv_eot_mce");
 `endif
   endfunction
 

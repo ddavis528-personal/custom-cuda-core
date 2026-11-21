@@ -12,16 +12,16 @@ multi-instance endpoint (LANE has 32).
 
 | Channel types | Rate | Instances each | Slots |
 |---|---|---|---|
-| 38 | 1 | 1 | 38 |
+| 39 | 1 | 1 | 39 |
 | 2 | 1 | 32 | 64 |
 | 12 | 4 | 1 | 48 |
 | 1 | 6 | 1 | 6 |
 | 1 | 7 | 1 | 7 |
 | 1 | 8 | 1 | 8 |
 | 1 | 9 | 1 | 9 |
-| **56** | | | **180** |
+| **57** | | | **181** |
 
-56 channel types; **118 channel instances** (54 types at one instance, plus 2 at 32 each); **180 slots**, one `ccv_common_chk_credit` each.
+57 channel types; **119 channel instances** (55 types at one instance, plus 2 at 32 each); **181 slots**, one `ccv_common_chk_credit` each.
 
 The terms that matter most are the ones multiplied by 32: a rate wrong by one on either lane channel moves the total by 32 and every run stays clean.
 
@@ -86,4 +86,5 @@ Slot attributes apply to rate > 1 only; lockstep to channels replicated across a
 | 52 | `ccv_cru_rau_cfg` | 1 × 1 | 1 | — | — | — | — | *false* | none |
 | 53 | `ccv_ext_exb_in` | 1 × 1 | 1 | — | — | — | — | *false* | txn, none |
 | 54 | `ccv_dcu_miu_fill_ntc` | 4 × 1 | 4 | *partial* | *free* | **none** — each notice names its refill by req_id, and its slot is its refill's | — | **true** — the promise counts cycles from the notice's landing, which means something only if MIU takes every notice the cycle it lands | txn |
-| 55 | `ccv_miu_ooe_cmpl_hint` | 4 × 1 | 4 | *partial* | *free* | **none** — each hint names its completion by rob_tag, and its slot is its completion's | — | **true** — the promise counts cycles from the hint's landing, which means something only if OOE takes every hint the cycle it lands | instr |
+| 55 | `ccv_dcu_miu_cred` | 1 × 1 | 1 | — | — | — | — | **true** — MA-25: a return is a count MIU adds the cycle it lands; a stalled return would hold a credit back from a request already waiting for it, and nothing queues behind it to take its place | none |
+| 56 | `ccv_miu_ooe_cmpl_hint` | 4 × 1 | 4 | *partial* | *free* | **none** — each hint names its completion by rob_tag, and its slot is its completion's | — | **true** — the promise counts cycles from the hint's landing, which means something only if OOE takes every hint the cycle it lands | instr |
