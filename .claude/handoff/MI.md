@@ -33,7 +33,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Daily sweep 2026-11-20 (Fri): AR 400, OA 462, IS 201, TI 503, OI 395, CP 160, RA 157, RI 91,
   MA 135, MI 18, DI 13, DA 128, Conventions 20; specs MIU 145, Common 9, DCU 59.
   Weekly pings: all 11 ponged; OI's and RH's rosters predated cc8ed42d (MI unnamed) then.
-- Since: MI 27, TI 510, OA 464, DI 21, MA 137, OI 397 (others as above).
+- Since: MI 27, TI 510, MA 140, OA 464, DI 21, MA 137, OI 397 (others as above).
 - MA-26 landed (WAYPRED_BITS 5, SEL 1; L1_HIT 8, WAKE 14, CMPL 16). MA-25 landed (TI's
   d761c634); the model spends the credits at d639adb2 (step 5).
 - MI-8 at TI: under UE_INJECT=1 predlane/predmerge fail quiesced_at_end on ooe_miu_memop. Per
@@ -85,7 +85,12 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    the cold cost, 110-160 cycles a kernel. Phase 1b with DI's DCU: clean on 64 kernels.
 6. RTL waits on MA's Phase 2 (partition, stage tables, port budgets). Nothing in rtl/miu/.
    MI-15 (rev 27, MA rung, Daniel's request): Phase 2 to the top of MA's order; a first slice
-   (L1-hit path) is enough to start modules.
+   (L1-hit path) is enough to start modules. MA accepted (MA rev 138): Phase 2 first, slice 1
+   = L1-hit path, later slices each with a notice. Slice 1 raised, both pending AR, model
+   changes once they land: MA-27 (rev 139) a drop bit on ccv_miu_dcu_req for A2's lookup
+   losses (H+1 valid binds) and a first pass takes CCV_DCACHE_LOOKUPS bank entry credits at
+   A1; MA-28 (rev 140) a DCU->MIU hit-ECC-error bit a cycle after the response, the model's
+   in-MIU ECC injection moving to DCU's side.
 
 ## Pushed
 - ccr-58815650-0ch1hh at 7a4c2b43 (51cf5dd2 DI-9 fix): SCOPED PASS.
