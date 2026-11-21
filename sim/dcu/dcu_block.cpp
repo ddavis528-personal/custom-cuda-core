@@ -166,6 +166,15 @@ private:
       Bits b = msgOf(c.dcu_miu);
       put(b, c.dcu_miu, "req_id", r.req_id);
       if (r.data) putLine(b, field(c.dcu_miu, "read_data").lsb, r.line);
+      // MA-28 (c), AR 401: the line's stored check bits; CCV_DCU_ECC_INJECT=N
+      // flips one stored bit of every Nth hit under them (TI's interim, as
+      // the DCU stub does, until DI's model injects in its arrays).
+      Line ln = getLine(b, field(c.dcu_miu, "read_data").lsb);
+      putCheckBits(b, field(c.dcu_miu, "check_bits").lsb, ln);
+      if (r.data && r.hit && ecc_every_ && ++ecc_hits_ % ecc_every_ == 0) {
+        ln[0] ^= 1u;
+        putLine(b, field(c.dcu_miu, "read_data").lsb, ln);
+      }
       put(b, c.dcu_miu, "hit", r.hit);
       put(b, c.dcu_miu, "mlc_miss", r.mlc_miss);
       send(c.dcu_miu, r.slot, b, r.tid);
@@ -224,6 +233,11 @@ private:
     }
   }
   bool ue_owed_ = false;
+  const unsigned ecc_every_ = [] {
+    const char *v = std::getenv("CCV_DCU_ECC_INJECT");
+    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
+  }();
+  unsigned ecc_hits_ = 0;
   bool extra_sent_ = false;
   std::array<unsigned, ccv::kDcuBanks> cred_ent_{}, cred_std_{};
   bool credOwed() const {

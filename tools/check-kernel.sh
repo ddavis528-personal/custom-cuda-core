@@ -139,7 +139,7 @@
 #     core: CRU's MACHINE_CHECK, RAU's kill,     mce-no-record, mce-no-kill
 #     F-MACHINE in every record (AR 370)         (predswap)
 #   an L1 hit with a syndrome sends its data   ecc-no-fix, ecc-cmpl-on-time
-#     on time, no completion then, its            (hit, CCV_MIU_ECC_INJECT=1):
+#     on time, no completion then, its            (hit, CCV_DCU_ECC_INJECT=1):
 #     corrected data and completion later         stale reads; no-fix leaves
 #     (RA 153 (5), CCV_LAT_L1_ECC)                two registers wrong
 #   an L1 hit completes at the contract with  early-hit, late-hit-data,
@@ -829,19 +829,19 @@ cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 NOTICE_ON=$([ "${CCV_DCU_IMPL:-stub}" = model ] && echo CCV_DCU_NOTICE=1)
 IMPL_PINS="
 dcu=model ldpar l1_hit=2
-dcu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=57
+dcu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=57
 dcu=model late l1_late=0
 dcu=model stall l1_late=0
 dcu=model privwin priv_form=12
 dcu=model no-resource-cap v60=12
-miu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=64
+miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=64
 miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=0
 miu=model ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1
 miu=model privwin priv_form=10
 dcu=model vadd4-swap orphan=1
 dcu=model,miu=model vadd fill_notice=4
 dcu=model,miu=model vadd cmpl_hint=4
-dcu=model,miu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=61
+dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=61
 dcu=model,miu=model ldpar l1_hit=1
 dcu=model,miu=model no-resource-cap v60=16
 dcu=model,miu=model lnorm1-straggler demote=342
@@ -917,9 +917,9 @@ vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0 l1_inelig=0
 waypred l1_hit=4 l1_late=0 dcu_wp_wrong=0
 pgcross l1_inelig=1
-hit@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
-transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=54 l1_hit=0
-spinwait@CCV_MIU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
+hit@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
+transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=54 l1_hit=0
+spinwait@CCV_DCU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
 vadd@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=0 machine_check=0 kill=0
 ldpar@CCV_DCU_UE_INJECT=1 ue_recover=2 ue_fatal=0 machine_check=0
 hit@CCV_DCU_UE_INJECT=1 ue_recover=1 ue_fatal=1 machine_check=1 kill=1
@@ -1691,7 +1691,7 @@ for brk in late-hit-data no-rcu-bypass; do
 done
 
 # An L1 hit's injected syndrome (RA 153 (5); SECDED on every SRAM, DA
-# rulings TI-474 to TI-476): CCV_MIU_ECC_INJECT=1 takes every hit as a
+# rulings TI-474 to TI-476): CCV_DCU_ECC_INJECT=1 takes every hit as a
 # single-bit error, its data on time with a bit flipped and no completion
 # then (the miss indication), the corrected data and the completion later.
 # The bin table above runs hit, transp4 and spinwait so, clean. Its two
@@ -1700,7 +1700,7 @@ done
 # ecc-cmpl-on-time completes on time but corrects later (every dependant
 # reads the flipped bit, yet the corrected beat leaves no register wrong).
 for brk in ecc-no-fix ecc-cmpl-on-time; do
-  CCV_MIU_ECC_INJECT=1 "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break "$brk" >"$B/kernel_$brk.log" 2>&1
+  CCV_DCU_ECC_INJECT=1 "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break "$brk" >"$B/kernel_$brk.log" 2>&1
 done
 n1=$(grep -c "^CHECK lane 0: seq [0-9]* operand 1 (R[0-9]*) 00000001, oracle 00000000" "$B/kernel_ecc-no-fix.log")
 n2=$(grep -c "^CHECK lane 0: seq [0-9]* operand 1 (R[0-9]*) 00000001, oracle 00000000" "$B/kernel_ecc-cmpl-on-time.log")
