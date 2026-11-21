@@ -217,7 +217,9 @@ Credit rules (TI-49):
    take_slot). OA 455 A's pending counter becomes a CHECK with a bin. OI
    builds to OA 460; MI reruns MI-11 (2) (lnorm1, CCV_MIU_IMPL=model
    CCV_RAU_DEMOTE=mlc). Rows crossed twice (397 vs 459, 398 vs 460); OA 461
-   says both forms are one rule. Nothing owed. LESSON: after ringing an owner
+   says both forms are one rule. OA 462 (rev 464): the root cause was a
+   lost epoch advance (OI-193, fixed); the binding is unreachable under 395 (3)
+   and is dropped for a CHECK; 395 (3) is the rule. Accepted, nothing owed. LESSON: after ringing an owner
    on its own block, wait for its row before writing another; a crossing
    costs two rows each side.
    TI-501 (e8d8864b, on doowtf/infra-6msg93, not in 5f02cdfc): FET's mig wait
