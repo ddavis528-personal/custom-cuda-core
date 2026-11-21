@@ -61,15 +61,17 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   Bookmarks since: OA 455, MI 12.
 
 ## Open work, most urgent first
-0. MI-19 (rev 30, rung DI/TI/MA): 2d2259bf on mi-dev (worktree /home/user/mi-wt), NOT pushed:
-   drop bit (A2 drops: tlb, fault, split, line, bank, dup; H+1, req_id 0, credit refunded) and
-   R2 syndrome from check_bits (fixLine; CCV_MIU_ECC_INJECT gone). Stub DCU: 66/66 clean
-   (warm, cold TLB, DCU_ECC_INJECT=1); pins hit 4, transp4 64, spinwait 46. Blocked: DI's DCU
-   model returns ent_ret for drops (30/66 fail) -> wait for DI-14 on a remote, merge it into
-   mi-dev, rerun both DCUs (scratchpad runall.sh <tag> [env]), then gate-push. Bins need TI
-   (kernel.h): local measuring patch adds them to kCoverBins after l1_bank_loser; revert after.
-   MA asked: dup drops 1056 vs first passes 463; drop_line cause; pre-translation waits.
-   Then tell MA the A1 hold (b1a85fa6) is pushed (response already written, rev 30).
+0. MI-19: mi-dev holds 2d2259bf (drop bit, R2 syndrome) + a0afe9fc (drop_held = older-store
+   overlap only; CCV_MIU_DUP_IDEAL) + handoff, NOT pushed. 3224eaff on mi-dev is my local
+   cherry-pick of all of DI's 8b6090d0: do NOT gate it (its ECC half waits on TI's re-pin, DI-16).
+   Plan (DI-17, answered rev 31): when DI's notice says 7bf5073a (drop half alone) is on
+   ccr-5e4d6c70-n6402z, in the main checkout merge that branch and mi-dev AT a0afe9fc (not the
+   tip), then CCV_PUSH_BRANCHES=ccr-58815650-0ch1hh tools/gate-push.sh. Gate runs stubs only.
+   Pricing answered (rev 32, MA rung): S1 gap 0, cm32priv +0.008%, cm128priv -0.10%; spec kept.
+   DI-18 settled (MA rev 148, MIU tab 153): MIU corrects a CE, completion withheld a cycle as a
+   refill, nothing to DCU, req_id frees on its one response: the model already does this.
+   MIU tab rev 150: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
+   lands CCV_LAT_MIU_PAIR_LAG (3, >=1) after the memop; miu_pair loads A1 fields from MQ at H-1.
 1. RTL slice 1 (MA Phase 2, MIU tab rev 149/150): miu_cap done (pushed b04269bb). Next miu_pair
    (+ miu_mq: A1 fields read at H-1; per lead pipe ring of {entry, valid} indexed by arrival
    counter bridging LAG=3, CCV_LAT_MIU_PAIR_LAG once TI derives it; fences pair on slot 0; bulk
@@ -86,6 +88,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   rows of cells of paragraphs. Opens m8yvbw8rqgz.613 (6 cells), Responses m8yvbw8rqgz.675 (4).
 
 ## Pushed
+- ccr-58815650-0ch1hh at d26849c3: full PASS (sweep 2026-11-21: ccr-183cc441, ccr-5e4d6c70,
+  ccr-80102643, mi-dev b1a85fa6 A1 hold).
 - ccr-58815650-0ch1hh at b04269bb (dd04003d miu_cap RTL, bench, units): SCOPED PASS.
 - ccr-58815650-0ch1hh at 7a4c2b43 (51cf5dd2 DI-9 fix): SCOPED PASS.
 - ccr-58815650-0ch1hh at 5057ec50 (d639adb2 bank credits + TI's d761c634): SCOPED PASS.
