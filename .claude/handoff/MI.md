@@ -31,7 +31,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-21 (Sat): AR 406, OA 466, IS 201, TI 511, OI 399, CP 160, RA 157, RI 91,
-  MA 145, MI 35, DI 29, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 512 (TI-513
+  MA 145, MI 35, DI 34, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 512 (TI-513
   notice: 8ac4c441 drop/check_bits/CCV_DCU_ECC_INJECT landed). Next pings: Friday.
 - Sweep merge d26849c3 (ccr-183cc441 25, ccr-5e4d6c70 20, ccr-80102643 4, mi-dev A1 hold
   b1a85fa6) under full gate-push (job-gate-push-20261121-104904-28964.log). OI's ccr-57eff422
