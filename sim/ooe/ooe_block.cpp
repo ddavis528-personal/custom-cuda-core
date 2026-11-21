@@ -205,7 +205,6 @@ private:
     // credit before its beat leaves.
     c.straggler_walk = k.brk != "no-straggler-walk";
     c.inject_straggler_early_credit = k.brk == "straggler-early-credit";
-    c.inject_unbind_at_release = k.brk == "unbind-at-release";
     c.inject_due_epoch_lost = k.brk == "due-epoch-lost";
     if (const char *s = std::getenv("CCV_OOE_CONFIG")) {
       const std::string e = c.apply(s);
@@ -529,17 +528,17 @@ private:
         continue;
       }
       taken.insert(unsigned(best));
-      // OA 460 (AR 397/399): its credit returns on the warp's slot, or on
-      // the released one still bound to it until a launch or restore gives
-      // it to another. A uop of a warp bound to no slot is an error: FET
-      // sends nothing between a demotion's notice and the restore, and the
-      // slot moves only once every credit is home (OA 455 A's pending
-      // counter, now this CHECK). Under unbind-at-release it is lost.
-      if (const int ts = core_.creditSlotOf(w); ts >= 0 && size_t(ts) < cred_in_.size()) {
+      // OA 462 (re:OI-193): its credit returns on the warp's own slot. A uop
+      // of a warp_id holding no tier-1 slot (a released slot's, or one never
+      // allocated) is an error: FET sends nothing between a demotion's
+      // notice and the restore, and migrates only on full credits (AR 395
+      // (3)), so none is ever owed to a slot past its release. This CHECK
+      // replaces OA 455 A's pending counter; --break mig-before-credits
+      // (FET migrating on the migration alone) must trip it.
+      if (const int ts = core_.tier1Of(w); ts >= 0 && size_t(ts) < cred_in_.size())
         ++cred_in_[ts];
-        if (core_.tier1Of(w) < 0) k_.hit("decq_bound_uop");
-      } else if (k_.brk != "unbind-at-release")
-        k_.fail("ooe: warp %u's uop seq %u arrives bound to no tier-1 slot (OA 460)", w,
+      else
+        k_.fail("ooe: warp %u's uop seq %u arrives holding no tier-1 slot (OA 462)", w,
                 unsigned(uidSeq(r->front().tid)));
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
@@ -874,15 +873,14 @@ private:
   /// its r slots past the wait (OA's rev 267 (ii)).
   void credits() {
     for (unsigned t = 0; t != cred_warp_.size(); ++t) {
-      const int w = core_.creditWarpOfSlot(t);
+      const int w = core_.warpOfSlot(t);
       const unsigned occ = w < 0 ? 0 : core_.decqOf(unsigned(w));
       unsigned back;
       if (w < 0 || w != cred_warp_[t]) {
-        // OA 460: the slot changes hands only with every credit of the warp
-        // that held it home (FET migrates on full credits, PCA's done
-        // precedes the reassignment); the binding kept it until now.
-        if (const int o = cred_warp_[t]; o >= 0 && cred_prev_[t] + cred_in_[t] && k_.brk != "unbind-at-release")
-          k_.fail("ooe: slot %u leaves warp %d with %u decode-queue credits not returned (OA 460)", t, o,
+        // OA 462: a warp leaves its slot only with every credit home (FET
+        // migrates on full credits, AR 395 (3)); none waits for a next slot.
+        if (const int o = cred_warp_[t]; o >= 0 && cred_prev_[t] + cred_in_[t])
+          k_.fail("ooe: slot %u leaves warp %d with %u decode-queue credits not returned (OA 462)", t, o,
                   cred_prev_[t] + cred_in_[t]);
         // A slot newly given a warp starts from what it holds now.
         cred_warp_[t] = w;
