@@ -58,12 +58,12 @@ so this is a build artifact rather than something to remember.
 | `rtl/top/stubs/ccv_rcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_spm.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_syu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
-| `sim/dcu/dcu_block.cpp` | — | `CCV_DCU_BANK_AGE`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYPRED_SEL`, `CCV_DCU_WAYS` |
+| `sim/dcu/dcu_block.cpp` | — | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYPRED_SEL`, `CCV_DCU_WAYS` |
 | `sim/dcu/dcu_core.cpp` | — | `CCV_DCU_WAYPRED_BITS`, `CCV_LAT_L1_HIT` |
 | `sim/dcu/dcu_core.h` | — | — |
 | `sim/dcu/dcu_p1.cpp` | — | `CCV_DCU_BANK_AGE`, `CCV_DCU_SETS`, `CCV_DCU_WAYS` |
 | `sim/dcu/dcu_test.cpp` | — | — |
-| `sim/miu/miu_block.cpp` | — | — |
+| `sim/miu/miu_block.cpp` | — | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA` |
 | `sim/ooe/ooe_block.cpp` | — | `CCV_DONE_SLOT_RCU`, `CCV_LAT_L1_MISS_WAKE` |
 | `sim/ooe/ooe_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_BR_CKPTS`, `CCV_P_W_FETCH_EPOCH` |
 | `sim/ooe/ooe_core.h` | — | — |
@@ -72,7 +72,7 @@ so this is a build artifact rather than something to remember.
 | `sim/rcu/rcu_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/rcu/rcu_core.h` | — | `CCV_LAT_RCU`, `CCV_LAT_RCU_KILL_DRAIN` |
 | `sim/rcu/rcu_test.cpp` | — | `CCV_LAT_LANE_BYP`, `CCV_LAT_RCU_ADDR`, `CCV_LAT_RCU_KILL_DRAIN` |
-| `sim/skel/kernel.cpp` | — | `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA` |
+| `sim/skel/kernel.cpp` | — | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, `CCV_DCU_SETS`, `CCV_DCU_UE_TRACK`, `CCV_DCU_WAYS`, `CCV_FAIR_N`, `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_LAT_SFU`, `CCV_P_MAX_CTA` |
 | `sim/skel/ooe.cpp` | — | `CCV_DONE_SLOT_RCU` |
 | `sim/skel/portdump.cpp` | — | `CCV_P_PHYS_REGS` |
 | `sim/skel/stub.h` | — | — |
@@ -94,7 +94,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **13 of 56 channels** carry at least one
+appear above. **13 of 57 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
