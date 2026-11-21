@@ -39,7 +39,8 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 
 ## Register bookmarks
 /home/user/ti-register-bookmarks.json (outside the repo). 11-21: TI 505,
-MI 20, DI 19; the rest as of the 11-20 sweep. Last row TI-507.
+MI 23, DI 19, OI 399, OA 465, MA 137; the rest as of the 11-20 sweep.
+Last row TI-509.
 
 ## Long runs
 Every long tool detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as
@@ -50,6 +51,12 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 - Landed d761c634 (ti-wp, SCOPED PASS on the 11-20 sweep 8c378e12): DI-6's
   pins, MA-25, MI-9 (3) waypred, MI-8, MI-4 A2/A3, TI-499's sweep fallback.
   TI-506 posted; DI, MI, MA, RA rung.
+- Landed 56c7ce54 (with MI's d639adb2): bank credits under both MIUs
+  (MI-13), slotform cold (task 56 done); TI-509 to MI. two-page-hit dropped
+  (MI, MA).
+- Landed 78e74f4e: MI-7 (a)(b)(d) cold-TLB section + pgcross kernel; TI-508
+  asks MI/MA whether to drop two-page-hit (no case: a two-page load is
+  ineligible first). Task 56: slotform cold line after MI's d639adb2.
 - Landed 836d3f89: impl_pins substitutes every pinned bin (DI re:TI-506;
   TI-507).
 - The 11-20 release is 078f102d; the remote refused its tag
@@ -62,10 +69,10 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
   MI-4's replay drain stall and vadd4 still need scenarios from MI.
 
 ## Open work (priority order)
-0. MI-12 order (Daniel via MI): first four landed (TI-506); MI-7 cold-TLB
-   next (task 49), with its page-boundary kernel.
-1. Task 55: OI-193's fix (oi-71 c461c1b0; edits main.cpp, kernel.h,
-   kernel.cpp in TI's files) lands with OI's sweep merge. Then: check-kernel line for MI-11 (lnorm1 CCV_MIU_IMPL=model
+0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).
+1. Task 55: OI-193/195's fix and decq_credit_lag knob (oi-sw 0fc3dc5a)
+   land with OI's sweep merge. Then: lag 512 --cycles 200000 pass
+   (mig_credit_wait>0) and mig-before-credits CHECK; due-epoch-lost; and check-kernel line for MI-11 (lnorm1 CCV_MIU_IMPL=model
    CCV_RAU_DEMOTE=mlc clean, parks>0, FET wait on). OA 462: binding dropped;
    once OI shows the released-slot CHECK catches it, --break
    mig-before-credits becomes the full-credit wait's control line.
