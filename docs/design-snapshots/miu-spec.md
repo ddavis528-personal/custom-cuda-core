@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=MIU rev=147 exported=2026-11-21 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *MIU*, at revision 147 on 2026-11-21 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=MIU rev=148 exported=2026-11-21 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *MIU*, at revision 148 on 2026-11-21 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # MIU — memory interface unit
 
@@ -265,7 +265,7 @@ Each event is a coverage bin in the C++ model, reached by a gate kernel or by di
 
 ## MA's Phase 2: microarchitecture and module partition
 
-**Status: slice 1, the L1-hit path, MA's (2026-11-21, MI-15).** The miss and refill path, stores and the drain, atomics, SPM, the walker, faults, discard, replay and kill follow as further slices, each announced to MI by a notice. Inside MIU the partition and its port budgets are MA's to decide. Two parts touch DCU's interface and are pending AR: the lookup drop bit (MA-27) and the hit's ECC check (MA-28). The modules they touch are marked below; MI may start every other module now.
+**Status: slice 1, the L1-hit path, MA's (2026-11-21, MI-15).** The miss and refill path, stores and the drain, atomics, SPM, the walker, faults, discard, replay and kill follow as further slices, each announced to MI by a notice. Inside MIU the partition and its port budgets are MA's to decide. Two parts touch DCU's interface, and AR agreed both (AR 400, AR 401; MA rev 143); TI applies the fields. MA-27 is the lookup drop bit. MA-28 is the hit's ECC check in MIU, option (c).
 
 ### Stages of an L1 hit at `CCV_LAT_L1_HIT` = 8 (way prediction on)
 
@@ -324,7 +324,9 @@ Arrival is the depth before the port, and the module's own share is what is left
 | miu\_ecc non-zero flag | out | 17 | about 15 for the (72,64) syndrome tree, 1 for the fanout term, 1 to spare |
 | miu\_out inputs from miu\_ecc | in | arrival 17 | 8 left: OR over a memop's up to 4 slots, AND with R1's flop, the output flop's keep copy |
 
-Until MA-27 and MA-28 close, miu\_a2's drop and miu\_ecc's module are the parts that may change. Everything else above is decided.
+**The drop (MA-27; AR 400, DI-12).** A first-pass valid at H+1 is decided from A1 alone: a global load on that footprint slot whose bank has at least CCV\_DCACHE\_LOOKUPS entry credits after this cycle's spends. A bank below that holds the load at A1, which loses the contract through A2's no-hit. The valid spends its bank's entry credit. A2 sets drop on a TLB miss, a fault, a page split, a bank-conflict loser or a duplicate leader line. miu\_cred then refunds that credit from miu\_a2's flopped drop, and DCU never returns it: ent\_ret returns only lookups that entered DCU's queue. A dropped lookup gets no req\_id and no response, and its line goes out again from the MQ in a later pass. Bins: a drop for each cause. Controls: dcu-drop-answers, and a DCU that keeps a dropped lookup's credit; both must fail. Price: MA prices the A1 hold on S1, cm32priv and cm128priv on MI's model.
+
+**The hit's ECC check (MA-28 (c); AR 401).** ccv\_dcu\_miu\_rsp carries the stored (72,64) check bits of every code word in a slot's line, 128 bits a slot. miu\_ecc computes the syndrome in R2, and its flag is the OR over every code word the slot carries. A memop's completion is withheld if any of its slots' flags is set, so `CCV_LAT_L1_ECC` stays 1. DCU computes the same syndrome over the same scope and answers exactly those slots: on a CE it corrects, counts and rewrites the line, then returns the corrected data through the fill path under the original req\_id, with no new entry credit. So MIU keeps a req\_id live until its completion is delivered, not just until it is withheld. A UE follows AR 370; on a core-fatal path no response comes, and MI-8's quiescence exemption (AR 389) covers the id. The models check that the withheld slots equal DCU's corrected slots. Controls: ecc-err-ignored, and a narrowed scope on one side (it must hang or be caught). The injection is DCU's CCV\_DCU\_ECC\_INJECT, which flips a stored bit; MIU's knob goes.
 
 ## From the repository, as of Stage 3
 

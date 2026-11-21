@@ -124,7 +124,7 @@ DCU tab:
 | A UE in a dirty line | fatal errors; withheld reads | returning the line retires bad data |
 | A machine-check kill with a retired store's merge read withheld (TI-487) | kills completed with a store still held in MIU | a kill that waits on MIU's ack hangs |
 
-Errors are reached by injection: `CCV_MIU_ECC_INJECT` (TI-484) and whatever
+Errors are reached by injection: `CCV_DCU_ECC_INJECT` (TI-484; AR 401 moved it from MIU's `CCV_MIU_ECC_INJECT`) and whatever
 DCU-side injection DI asks TI for, as a DI row.
 
 ## 4. What DI waits on

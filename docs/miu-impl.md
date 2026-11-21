@@ -130,7 +130,7 @@ until they exist (the docs check holds every code path to the tree).
     `tools/gate-scope.py` already maps sim/miu/ to the sections that build
     it.
 - **RTL modules: Phase 2 slice 1, the L1-hit path, has landed** (MIU tab rev
-  147, section "MA's Phase 2"; MI-15). `rtl/miu/`, named and partitioned
+  148, section "MA's Phase 2"; MI-15). rtl/miu/, named and partitioned
   exactly as the tab's module table:
   - `ccv_miu`, the top: `ccv_common_clk`, children and wires only, keeping
     the generated stub's name and ports (`rtl/top/stubs/ccv_miu.sv`);
@@ -141,9 +141,13 @@ until they exist (the docs check holds every code path to the tree).
   - R1 and R2: `miu_hitq`, `miu_rsp`, `miu_rcap` ×4, `miu_ext` ×16,
     `miu_ecc` ×4, `miu_out`.
 
-  Two parts wait on rows with AR: `miu_a2`'s drop bit on `ccv_miu_dcu_req`
-  (MA-27) and `miu_ecc` with the check bits on `ccv_dcu_miu_rsp` (MA-28).
-  Build the rest now. The miss and refill path, stores and the drain,
+  AR agreed the two interface parts (AR 400, AR 401; MA rev 143), and TI
+  applies them: `miu_a2`'s drop bit on `ccv_miu_dcu_req`, with MIU refunding
+  a dropped lookup's credit (MA-27, DI-12), and `miu_ecc` with the check
+  bits on `ccv_dcu_miu_rsp` (MA-28 (c)). The model drops what A2 loses,
+  holds a load at A1 when its bank lacks `CCV_DCACHE_LOOKUPS` credits, checks
+  the syndrome itself and keeps a req_id live until its completion is
+  delivered (MIU tab, Phase 2). The miss and refill path, stores and the drain,
   atomics, SPM, the walker, faults, discard, replay and kill come as further
   slices, each announced by a notice, and may add modules or ports to these.
   The units follow `rcu-impl.md`'s pattern: a reduced unit for loops and a
@@ -211,7 +215,7 @@ Each is in the spec; this list is where to find it.
 | The L1-hit timing: data at `CCV_LAT_L1_HIT` from the address (8 with way prediction on, 9 off: derived from `CCV_DCU_WAYPRED_BITS`), the completion `CCV_LAT_L1_ECC` (1) later. A way mispredict answers no earlier than due + 2 and takes the bank-conflict loser's path, answered later as a miss would be (DI-2; AR 390, OA-442); a withheld completion (non-zero syndrome) is taken by OOE as a miss | MIU tab, L1-hit budget; DCU tab, arrays and pipeline; TI-478, MA-26 |
 | **DCU bank credits (MA-25):** MIU holds per-bank credits, `CCV_DCU_BANK_QDEPTH` (16) lookup entries and `CCV_DCU_BANK_STDATA` (12) store-data entries, a hard reservation that counts every request sent to the bank. A request without its credit waits in MIU, oldest first; a held store blocks younger stores to its bank, and a held request blocks younger ones to its line. Credits return on two 8-bit per-bank vectors from DCU (entry and store data), each within `CCV_DCU_BANK_AGE` | MIU tab, "DCU bank credits"; DCU tab, the bank queue; MA-24, MA-25 |
 | The kill races: MIU completes every memop of a killed warp; an atomic keeps its state and hold through the A3 that OOE still sends, completing with more = 0 and releasing; a read DCU withholds as uncorrectable completes with no data | MIU tab, kill obligations; TI-485, OA 436 (final; OA 438, AR 385) |
-| ECC error injection: the model passes the `CCV_MIU_ECC_INJECT` runs TI adds (an injected correctable error is corrected and counted; an uncorrectable one follows MA-19) | TI-484; MA-19 |
+| ECC error injection: the model passes the `CCV_DCU_ECC_INJECT` runs TI adds (DCU flips a stored bit; MIU's own syndrome over the rsp check bits withholds the completion, MA-28 (c)) (an injected correctable error is corrected and counted; an uncorrectable one follows MA-19) | TI-484; MA-19 |
 | RA's MIU conditions on the RCU write port and the write-through | RA 153 (RA tab); RCU lane and memory tab |
 | The TLB and walker (MI-2 as settled: a cold TLB each kernel; Common tab rev 9, AR 392). Through M0 the default is `CCV_MIU_TLB=warm`: every page is held and FET's ITLB answers at once, as in the stub. `CCV_MIU_TLB=cold` is the architected behaviour. Its own check-kernel scenarios (TI's) run in every gate with controls: a walk on the shared walker against the ITLB, the three dependent DCU lookups on idle slots, lanes across two pages, and F-ADDR before the walk. A walk's DCU reads count toward `CCV_DCU_UE_INJECT`. The M0 report states the cold cost (110 to 160 cycles a kernel, MI-6) | MIU tab, TLB and walker; MI-6, MA 126 |
 | The statistics the spec lists under the events table, per kernel | MIU tab, "Statistics the models report" (AR rev 344) |
@@ -271,8 +275,8 @@ sweeps and `gate-triage` for a red gate.
 | 1a, cold TLB | `CCV_MIU_TLB=cold` becomes the default (MI-6, MA 126) | the ~30 stub-pinned checks re-pinned under cold by TI; the seven controls MI-6 names fail again under cold (none dropped or weakened); the default flipped. The first item after M0 |
 | 1b, with DI's model | both models in place together | every kernel and control passes with both; the cross-block bins (credits, late hits, withheld completions, the refill notice) reached with real DCU timing on both sides |
 | 2a, the A1 modules | `miu_cap`, `miu_pair`, `miu_agu8`, `miu_lead`, `miu_cred` (MIU tab, Phase 2 slice 1) | per module: a bench against the model's A1 (lane VAs, leaders, set index, credit gate), check-cg and check-ngd at the tab's budgets |
-| 2b, the A2 modules | `miu_tlb`, `miu_grp`, `miu_a2` (drop once MA-27 closes), `miu_ids`, `miu_mq`'s hit-path ports | the same, against the model's eligibility, no-hit and req payload |
-| 2c, the return | `miu_hitq`, `miu_rsp`, `miu_rcap`, `miu_ext`, `miu_out`, and `miu_ecc` once MA-28 closes | the same, against the model's data and completion at H+8 and H+9 |
+| 2b, the A2 modules | `miu_tlb`, `miu_grp`, `miu_a2` (drop, MA-27), `miu_ids`, `miu_mq`'s hit-path ports | the same, against the model's eligibility, no-hit and req payload |
+| 2c, the return | `miu_hitq`, `miu_rsp`, `miu_rcap`, `miu_ext`, `miu_out`, and `miu_ecc` (MA-28 (c)) | the same, against the model's data and completion at H+8 and H+9 |
 | 2d, the L1-hit block | `ccv_miu` from slice 1's modules, the rest still the model's | the block as a sum of parts (check-cg's 2%, check-ngd level by level); an L1-hit kernel lock-stepped against the model in the SV top. **MA reads it** |
 | 3 onward, the other paths | each slice MA lands (miss and refill, stores and the drain, atomics, SPM, the walker, faults, discard, replay and kill) | per module as above; then the whole block, then SV-hosted equivalence on every kernel and control |
 
@@ -287,11 +291,11 @@ None blocks the model.
 | Way prediction: `CCV_DCU_WAYPRED_BITS` (0 = off) and `CCV_DCU_WAYPRED_SEL` (index or recent); `CCV_LAT_L1_HIT` derived from them | TI | MA-26; DA rev 128 | 5 bits, recent select (AR 386, MA rev 112), so L1_HIT 8; runs move the defaults, never the structure | read `CCV_LAT_L1_HIT` from the parameters; test both 8 and 9 |
 | A credit's return bound | RH's sweep, then MA | MA-25 | `CCV_DCU_BANK_AGE` 16 (sweep: 8, 16, 32, 64) | nothing waits: it is DCU's bound |
 | The within-page bank hash | TI (parameter), RH's sweep | MA-20 | `CCV_DCU_BANK_HASH` off | the bank of a line comes from one function, so the hash changes one place |
-| The ECC injection runs | TI | TI-484 | `CCV_MIU_ECC_INJECT` | develop the error paths under unit tests |
+| The ECC injection runs | TI | TI-484, AR 401 | `CCV_DCU_ECC_INJECT` (replaces `CCV_MIU_ECC_INJECT`) | develop the error paths under unit tests |
 | The `makeMiu` hook, sim/miu/*.cpp in blocks.list, the `check-miu-unit` job, the lock-step job | TI | an MI row with TI in Needs, your first | — | develop the model under its unit tests |
 | The ccv-skel port-trace dump for MIU | TI | as RA-34 for the RCU | — | directed stimulus |
 | Phase 2, the slices after the L1-hit path | MA | MI-15; MIU tab, "MA's Phase 2" | slice 1 landed (tab rev 147) | slice 1's modules |
-| The lookup drop bit, and the hit's ECC check bits | AR, then TI | MA-27, MA-28 | not yet in the schema | every slice 1 module but `miu_a2`'s drop and `miu_ecc` |
+| The lookup drop bit, the rsp check bits, `CCV_DCU_ECC_INJECT` | TI | MA-27, MA-28 (AR 400, 401; MA rev 143) | agreed, not yet in the schema | build behind named fields; wire when TI lands them |
 
 ## 8. Getting the session set up (first hour)
 

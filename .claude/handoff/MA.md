@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 400, TI 507, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 142, DA 128, MI 27, DI 23.
+Conventions 20, AR 400, TI 507, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 143, DA 128, MI 27, DI 27; AR 405.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -89,10 +89,10 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
   modules, port budgets), miu-impl.md module list + phase rows 2a-2d, snapshot. NEXT: notify MI once pushed;
   then slice 2 (miss/refill: slot reservation, hint, MIU_FILL 2; multi-pass from MQ), slice 3 (stores, drain,
   payload RF, st.pred, std credits), slice 4 (atomics, SPM, walker, faults, discard/replay/kill). Then DCU's.
-- MA-27 OPEN (rev 139, Needs AR TI DI MI): drop bit on ccv_miu_dcu_req; the H+1 valid binds, A2 decides drops.
-  A1 credit gate: bank's count after spends >= CCV_DCACHE_LOOKUPS.
-- MA-28 OPEN (rev 140-141): DCU syndrome can't reach MIU in time. Proposed (c): 128 check bits/slot on rsp, MIU
-  computes the syndrome in R2 (ECC stays 1); fallback (b) a 1-bit ecc channel at ECC=2.
+- MA-27/MA-28 DECIDED (AR 400/401; MA rev 143): drop bit (MIU refunds the credit at A2, DI-12; ent_ret only for
+  lookups that entered the queue) and (c) check bits on rsp, MIU syndrome in R2, ECC stays 1; req_id live until
+  completion delivered; CCV_DCU_ECC_INJECT replaces MIU's. TI applies fields. In MIU tab rev 148, DCU tab rev 64.
+  OWED: price the A1 hold (bank < CCV_DCACHE_LOOKUPS credits) on S1/cm32priv/cm128priv once MI's model has it.
 - DI-8 DONE (MA rev 142): p1 credit returns, d494cf9b pushed on SCOPED PASS 26/26.
 - OI's ccr-57eff422 (OOE RTL, 77 commits) conflicts in OI's own files: retry at the sweep; row naming OI if it
   still conflicts.
