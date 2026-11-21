@@ -215,6 +215,13 @@
 #   a machine-checked run is not held to    mce-no-exempt (predlane, MIU
 #     quiesced_at_end, every other run is      model): it fires; miu-keep-
 #     (MI-8; AR 387, AR 389)                   credit (vadd): it fires
+#   under the MIU model's cold TLB (MI-7)    walk-no-dcu (vadd): no walk
+#     a walk reads DCU once a level, FET's      read, and a UE no longer
+#     first fetch walks, a UE on a walk line    reaches one; itlb-no-walk
+#     recovers, and F-ADDR comes before any     (vadd): FET is answered at
+#     walk                                      once; walk-before-faddr
+#                                               (addrhigh, addrneg): MIU
+#                                               refuses the walk
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -904,6 +911,7 @@ merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0 l1_inelig=0
 waypred l1_hit=4 l1_late=0 dcu_wp_wrong=0
+pgcross l1_inelig=1
 hit@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=4 l1_hit=0
 transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=54 l1_hit=0
 spinwait@CCV_MIU_ECC_INJECT=1 l1_ecc_fix>0 l1_hit=0
@@ -2252,6 +2260,63 @@ if [ "${CCV_MIU_IMPL:-stub}" = stub ]; then   # the stub MIU's control
 else
   say "--break miu-keep-credit" "SKIP (the stub MIU's control)"
 fi
+# MI-7: the MIU model's cold TLB (CCV_MIU_TLB=cold; warm stays the default
+# through M0), run in every gate whichever MIU the rest of it runs. vadd walks
+# its pages with three DCU reads a level, and FET's first fetch walks the
+# ITLB; a UE on a walk line (CCV_DCU_UE_INJECT=5) recovers twice (MA-126
+# (3)). addrhigh and addrneg fault at F-ADDR before any walk. Controls:
+# walk-no-dcu (no walk read; the UE then reaches none), itlb-no-walk (FET
+# answered at once) and walk-before-faddr (the walker refuses a page past
+# the 48-bit VA). pgcross's load across two pages reaches the two-page
+# branch only already ineligible (MA-6 keeps a contracted load in one 64 KiB
+# page), so MI-7's two-page-hit control has no case (TI-508); slotform's
+# tlb_two_page joins once the MIU model spends MA-25's credits (MI step 5).
+cold() { CCV_MIU_IMPL=model CCV_MIU_TLB=cold "$@"; }
+mi7() {   # $1 label, $2 log, then bins
+  local lab=$1 log=$2 w; shift 2
+  w=$(ok "$log" "$@")
+  if [ -z "$w" ]; then say "$lab" "PASS ($*)"; else bad "$lab" "$w"; fi
+}
+log="$B/kernel_vadd_cold.log"; cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$log" 2>&1
+tw=$(cover "$log" tlb_walk); wr=$(cover "$log" walk_reads)
+if [ "${tw:-0}" -gt 0 ] && [ "$wr" = $((3 * tw)) ]; then
+  mi7 "vadd, cold TLB: three walk reads a level" "$log" itlb_walk=1 tlb_walk=$tw walk_reads=$wr
+else
+  bad "vadd, cold TLB" "tlb_walk=$tw walk_reads=$wr, not 3 a walk"
+fi
+log="$B/kernel_walk-no-dcu.log"; cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break walk-no-dcu >"$log" 2>&1
+if [ "$(cover "$log" walk_reads)" = 0 ] && [ "$(cover "$log" tlb_walk)" -gt 0 ]; then
+  say "--break walk-no-dcu: the walk reads nothing" "PASS (vadd; walk_reads 0, not 3 a walk)"
+else
+  bad "--break walk-no-dcu" "walk_reads=$(cover "$log" walk_reads)"
+fi
+log="$B/kernel_itlb-no-walk.log"; cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break itlb-no-walk >"$log" 2>&1
+if [ "$(cover "$log" itlb_walk)" = 0 ]; then
+  say "--break itlb-no-walk: FET answered at once" "PASS (vadd; itlb_walk 0)"
+else
+  bad "--break itlb-no-walk" "itlb_walk=$(cover "$log" itlb_walk)"
+fi
+log="$B/kernel_vadd_cold_ue.log"; CCV_DCU_UE_INJECT=5 cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl >"$log" 2>&1
+mi7 "vadd, cold TLB, UE on a walk line: recovered" "$log" ue_recover=2 ue_fatal=0
+log="$B/kernel_walk-no-dcu_ue.log"; CCV_DCU_UE_INJECT=5 cold "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break walk-no-dcu >"$log" 2>&1
+if [ "$(cover "$log" ue_recover)" = 0 ]; then
+  say "--break walk-no-dcu, UE 5: no walk line to recover" "PASS (vadd; ue_recover 0)"
+else
+  bad "--break walk-no-dcu, UE 5" "ue_recover=$(cover "$log" ue_recover)"
+fi
+for k in addrhigh addrneg; do
+  log="$B/kernel_${k}_cold.log"; cold "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+  mi7 "$k, cold TLB: F-ADDR before any walk" "$log" addr_fault=1
+  log="$B/kernel_${k}_walk-before-faddr.log"
+  cold "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --break walk-before-faddr >"$log" 2>&1
+  if grep -q 'past the 48-bit VA' "$log" && [ "$(field "$log" check_failures)" -gt 0 ]; then
+    say "--break walk-before-faddr: MIU refuses the walk" "PASS ($k, $(field "$log" check_failures) refused)"
+  else
+    bad "--break walk-before-faddr ($k)" "the walk past the VA went unnoticed: $(grep '^KERNEL' "$log")"
+  fi
+done
+log="$B/kernel_pgcross_cold.log"; cold "$SKEL" --kernel build/oracle/pgcross/oracle.jsonl >"$log" 2>&1
+mi7 "pgcross, cold TLB: two pages held, already ineligible" "$log" tlb_two_page=1 l1_inelig=1 tlb_two_page_lost=0
 # A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332
 # (328 in OI's tree, whose timing differs; 342 under both block models, DI's
 # re:TI-503, an IMPL_PINS row)
