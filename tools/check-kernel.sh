@@ -2172,37 +2172,35 @@ bank_ok() {   # $1 label, $2 kernel, then env; one line each
     bad "$label" "${w# }"
   fi
 }
-# The holds and both controls are the stub MIU's: the MIU model takes the
-# returns but spends no credit yet (MI's step 5), so under it they are
-# skipped, by name.
-if [ "${CCV_MIU_IMPL:-stub}" = stub ]; then
-  bank_ok "bank store-data credits 1" gather CCV_DCU_BANK_STDATA=1
-  bank_ok "bank entry credits 2" transp4 CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
-  bank_ok "bank credits 2/1, DCU model" gather CCV_DCU_IMPL=model CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+# The holds and both controls run under both MIUs, whichever the rest of
+# the run uses: the MIU model spends the credits too since MI's step 5
+# (d639adb2; MI-13).
+for m in stub model; do
+  bank_ok "bank store-data credits 1, $m MIU" gather CCV_MIU_IMPL=$m CCV_DCU_BANK_STDATA=1
+  bank_ok "bank entry credits 2, $m MIU" transp4 CCV_MIU_IMPL=$m CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
+  bank_ok "bank credits 2/1, DCU model, $m MIU" gather CCV_MIU_IMPL=$m CCV_DCU_IMPL=model CCV_DCU_BANK_QDEPTH=2 CCV_DCU_BANK_STDATA=1
   # --break bank-credit-ignore: MIU sends without its credits; at one
   # store-data credit a bank, gather's stores meet in a bank, and DCU must
   # refuse every bank past its credits by name, and nothing else.
-  log="$B/kernel_bank-credit-ignore.log"
-  CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
+  log="$B/kernel_bank-credit-ignore_$m.log"
+  CCV_MIU_IMPL=$m CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
   n=$(grep -c '^CHECK dcu: bank [0-9]* holds [0-9]* lookup entries and [0-9]* store-data entries, past its credits' "$log")
   if [ "$n" -gt 0 ] && [ "$(field "$log" check_failures)" = "$n" ]; then
-    say "--break bank-credit-ignore: DCU refuses each" "PASS (gather, $n over STDATA 1)"
+    say "--break bank-credit-ignore, $m MIU: DCU refuses each" "PASS (gather, $n over STDATA 1)"
   else
-    bad "--break bank-credit-ignore" "$n refused: $(grep '^KERNEL' "$log")"
+    bad "--break bank-credit-ignore, $m MIU" "$n refused: $(grep '^KERNEL' "$log")"
   fi
   # --break dcu-extra-credit: DCU returns an entry credit MIU never spent, and
   # MIU refuses the return past its reset count by name.
-  log="$B/kernel_dcu-extra-credit.log"
-  "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
+  log="$B/kernel_dcu-extra-credit_$m.log"
+  CCV_MIU_IMPL=$m "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
   if grep -q '^CHECK miu: DCU returned an entry credit for bank 0, which holds all 16 (MA-25)' "$log" &&
      [ "$(field "$log" check_failures)" = 1 ]; then
-    say "--break dcu-extra-credit: MIU refuses it" "PASS (vadd, bank 0)"
+    say "--break dcu-extra-credit, $m MIU: MIU refuses it" "PASS (vadd, bank 0)"
   else
-    bad "--break dcu-extra-credit" "an unspent credit's return went unnoticed: $(grep '^KERNEL' "$log")"
+    bad "--break dcu-extra-credit, $m MIU" "an unspent credit's return went unnoticed: $(grep '^KERNEL' "$log")"
   fi
-else
-  say "bank credits: holds and controls" "SKIP (CCV_MIU_IMPL=$CCV_MIU_IMPL spends no credit yet)"
-fi
+done
 # MI-9 (3): waypred puts two lines in L1 set 0 under tags whose folds agree
 # and re-reads them in turn, so the DCU model's recent-way predictor names the
 # other line's way each time (MA-26). Under both models every re-read is a
@@ -2269,8 +2267,8 @@ fi
 # answered at once) and walk-before-faddr (the walker refuses a page past
 # the 48-bit VA). pgcross's load across two pages reaches the two-page
 # branch only already ineligible (MA-6 keeps a contracted load in one 64 KiB
-# page), so MI-7's two-page-hit control has no case (TI-508); slotform's
-# tlb_two_page joins once the MIU model spends MA-25's credits (MI step 5).
+# page), so MI-7's two-page-hit control has no case (TI-508; dropped, MI and
+# MA). slotform's per-lane windows put a load over two pages.
 cold() { CCV_MIU_IMPL=model CCV_MIU_TLB=cold "$@"; }
 mi7() {   # $1 label, $2 log, then bins
   local lab=$1 log=$2 w; shift 2
@@ -2317,6 +2315,8 @@ for k in addrhigh addrneg; do
 done
 log="$B/kernel_pgcross_cold.log"; cold "$SKEL" --kernel build/oracle/pgcross/oracle.jsonl >"$log" 2>&1
 mi7 "pgcross, cold TLB: two pages held, already ineligible" "$log" tlb_two_page=1 l1_inelig=1 tlb_two_page_lost=0
+log="$B/kernel_slotform_cold.log"; cold "$SKEL" --kernel build/oracle/slotform/oracle.jsonl >"$log" 2>&1
+mi7 "slotform, cold TLB: a load over two pages" "$log" tlb_two_page=2
 # A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332
 # (328 in OI's tree, whose timing differs; 342 under both block models, DI's
 # re:TI-503, an IMPL_PINS row)
