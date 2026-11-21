@@ -67,11 +67,7 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
    CCV_RAU_DEMOTE=mlc clean, parks>0, FET wait on).
 2. MI-4 (B) / task 47: demotion vs barrier (transp4 CCV_RAU_CONCURRENT=1
    at:750; narrowadd), likely TI's SYU/RAU stubs.
-3. MI-8: quiescence exemption for a machine-checked run, with a control.
-4. MA-25: DCU per-bank credits (BANK_QDEPTH 16, BANK_STDATA 12, two 8-bit
-   credit-return vectors), stubs, bin, control.
-5. Task 51: MI-9 (3) way-mispredict kernel + MI-7 page-boundary kernel;
-   MI-5 bins/slow regions; MI-7 cold-TLB runs.
+3. Task 51 rest: MI-7 page-boundary kernel; MI-5 bins/slow regions.
 6. AR 370 ccv_common_err RTL; task 28 RAS wrapper (BIST override, spare
    row/column, broadcast groups); AR 371 SPM banks; AR 392 PT base CSR
    with Q-50; AR 393; OI-187 / OA-452.
