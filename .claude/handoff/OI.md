@@ -1,5 +1,11 @@
 # OI handoff (OOE model and RTL)
 
+Updated 2026-11-21 (2), MOST CURRENT, read first:
+- GATE IN FLIGHT: wt-sw (oi-sw) 0fc3dc5a --full gate-push, job log /root/ccv-logs/job-gate-push-20261121-015307-29710.log (gate-wait exit 3 rerun; exit 4 relaunch with CCV_RESUME=1). Holds the sweep merge of every remote branch + oi-71 (#71 epoch fix, OA 462, OA 463 knob 1e212fd8) + handoff. Don't edit wt-sw while it runs.
+- OA 463 (option b) DONE in model: decq_credit_lag knob, CHECK on slot's next warp with held credits, FET bin mig_credit_wait. lnorm1 mlc lag 512 --cycles 200000 passes (wait 1381), break mig-before-credits = 2 CHECKs; caught from 448, wait binds from 8. OI-195 (rev 399) written, OA + TI rung. TI to add the check-kernel pair.
+- Merge workaround (4 criss-cross bases): git merge-tree --write-tree --merge-base=<one base> HEAD <theirs>; merge -s ours --no-commit; read-tree -u --reset <tree>; per conflict: HEAD==base -> theirs, theirs==base -> ours, else by hand.
+- NEXT after green: price S1/cm32priv/cm128priv via RH (#71); ooe_decrx bench control (mask adv_cq01h when adn_cq01h; epoch compare must fail) in check-ooe-unit; OA 435 items 6 (+ rob_w rd_e demote/kill assertion), 5b+7, 8, 9, 10 (0ff0b4fd on oi-5b), then ccv_ooe top glue. Next free OI-196. Bookmarks: OA 465, AR 403, MI 18, TI 503. MI session_01QPk2jzH1Gd3DcxK4F4pwCC (not in roster).
+
 Updated 2026-11-20 (5), MOST CURRENT, read first:
 - GATE IN FLIGHT: wt-sw f45e1314 scoped gate-push (job log /root/ccv-logs/job-gate-push-20261120-195053-27168.log; gate-wait exit 3 rerun, exit 4 relaunch CCV_RESUME=1). The --full gate on ee4dc573 failed only CG-1 ooe_decrx enq_v_cq02h (rst_r01h+ev_q+enq_v = 8 > 7); f45e1314 adds the DA-approved CG-1 lead waiver (enq_v, 6 flops). ee4dc573 = rcupl/mempl/redir/rob_w CG+NGD fixes, ooe_rsread unit, redir CG-5 lead waiver on ee_cq04h. OI-192 (rev 396) answered MI-12: #71 is first after the gate.
 - After green: sweep merge (fetch; TI e8d8864b on ccr-183cc441-doowtf carries my model commits + CCV_LAT_DECQ_CREDIT_DELAY; handoff commit 22bd09fa in custom-cuda-core), --full gate-push.
