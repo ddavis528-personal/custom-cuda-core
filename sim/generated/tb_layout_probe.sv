@@ -211,7 +211,7 @@ module tb_layout_probe (
   output logic [4:0] c15_f0,
   output logic [1023:0] c15_f1,
   output logic [5:0] c15_f2,
-  input  logic [1222:0] c16,
+  input  logic [1223:0] c16,
   output logic [5:0] c16_f0,
   output logic [47:0] c16_f1,
   output logic [2:0] c16_f2,
@@ -220,12 +220,14 @@ module tb_layout_probe (
   output logic [1023:0] c16_f5,
   output logic [127:0] c16_f6,
   output logic [8:0] c16_f7,
-  input  logic [1032:0] c17,
+  output logic c16_f8,
+  input  logic [1160:0] c17,
   output logic [5:0] c17_f0,
   output logic [1023:0] c17_f1,
   output logic c17_f2,
   output logic c17_f3,
   output logic c17_f4,
+  output logic [127:0] c17_f5,
   input  logic [1081:0] c18,
   output logic [3:0] c18_f0,
   output logic [47:0] c18_f1,
@@ -638,6 +640,7 @@ module tb_layout_probe (
   assign c16_f5 = s16.write_data;
   assign c16_f6 = s16.byte_mask;
   assign c16_f7 = s16.lead_set_index;
+  assign c16_f8 = s16.drop;
   ccv_dcu_miu_rsp_t s17;
   assign s17 = c17;
   assign c17_f0 = s17.req_id;
@@ -645,6 +648,7 @@ module tb_layout_probe (
   assign c17_f2 = s17.hit;
   assign c17_f3 = s17.ownership_granted;
   assign c17_f4 = s17.mlc_miss;
+  assign c17_f5 = s17.check_bits;
   ccv_dcu_mlc_req_t s18;
   assign s18 = c18;
   assign c18_f0 = s18.req_id;

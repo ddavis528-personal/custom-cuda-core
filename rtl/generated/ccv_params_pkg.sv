@@ -712,6 +712,10 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_L1_WAKE = 14;
 
+  // Cycles from MIU holding a memop's payload (ccv_ooe_miu_memop) to holding its address payload (ccv_rcu_miu_addr): the address path less the memop path, the two terms of the max in CCV_LAT_L1_WAKE's derive. miu_pair loads the A1 memop fields from the MQ entry at H-1, so it must be at least 1 (a lag of 0 would need the memop captured straight into A1). miu_pair takes it as a module parameter defaulting to this value (MI-18).  Derived: = (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) - (CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop')).  Requires: CCV_LAT_MIU_PAIR_LAG >= 1.
+  // PROVISIONAL -- decided by: generated
+  localparam int CCV_LAT_MIU_PAIR_LAG = 3;
+
   // The flopped syndrome stages between an L1 hit's data leaving MIU and its completion being decided (AR 368). A term of its own, not folded into CCV_LAT_L1_HIT_BASE, so the data's time and the completion's stay distinct; 0 if DCU ever checks before launch. The data lands at CCV_LAT_L1_HIT and is speculative until its completion; a load whose syndrome is non-zero gets no completion then (the miss indication) and its corrected data later. Tunable: MA's to move.  Requires: CCV_LAT_L1_ECC >= 0.
   // PROVISIONAL -- decided by: AR 368, OA 426 (priced by OI-162); MA's count
   localparam int CCV_LAT_L1_ECC = 1;

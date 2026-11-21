@@ -276,27 +276,29 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_spm_miu_rsp", "conflict_serialization", p.c15_f2, b, 0, 6);
   }
   {
-    const Bits b = randomBits(1223, seed ^ 126704u);
+    const Bits b = randomBits(1224, seed ^ 126704u);
     put(p.c16, b);
     p.eval();
-    bad += check("ccv_miu_dcu_req", "req_id", p.c16_f0, b, 1217, 6);
-    bad += check("ccv_miu_dcu_req", "phys_addr", p.c16_f1, b, 1169, 48);
-    bad += check("ccv_miu_dcu_req", "size", p.c16_f2, b, 1166, 3);
-    bad += check("ccv_miu_dcu_req", "coh_op", p.c16_f3, b, 1162, 4);
-    bad += check("ccv_miu_dcu_req", "exclusive_req", p.c16_f4, b, 1161, 1);
-    bad += check("ccv_miu_dcu_req", "write_data", p.c16_f5, b, 137, 1024);
-    bad += check("ccv_miu_dcu_req", "byte_mask", p.c16_f6, b, 9, 128);
-    bad += check("ccv_miu_dcu_req", "lead_set_index", p.c16_f7, b, 0, 9);
+    bad += check("ccv_miu_dcu_req", "req_id", p.c16_f0, b, 1218, 6);
+    bad += check("ccv_miu_dcu_req", "phys_addr", p.c16_f1, b, 1170, 48);
+    bad += check("ccv_miu_dcu_req", "size", p.c16_f2, b, 1167, 3);
+    bad += check("ccv_miu_dcu_req", "coh_op", p.c16_f3, b, 1163, 4);
+    bad += check("ccv_miu_dcu_req", "exclusive_req", p.c16_f4, b, 1162, 1);
+    bad += check("ccv_miu_dcu_req", "write_data", p.c16_f5, b, 138, 1024);
+    bad += check("ccv_miu_dcu_req", "byte_mask", p.c16_f6, b, 10, 128);
+    bad += check("ccv_miu_dcu_req", "lead_set_index", p.c16_f7, b, 1, 9);
+    bad += check("ccv_miu_dcu_req", "drop", p.c16_f8, b, 0, 1);
   }
   {
-    const Bits b = randomBits(1033, seed ^ 134623u);
+    const Bits b = randomBits(1161, seed ^ 134623u);
     put(p.c17, b);
     p.eval();
-    bad += check("ccv_dcu_miu_rsp", "req_id", p.c17_f0, b, 1027, 6);
-    bad += check("ccv_dcu_miu_rsp", "read_data", p.c17_f1, b, 3, 1024);
-    bad += check("ccv_dcu_miu_rsp", "hit", p.c17_f2, b, 2, 1);
-    bad += check("ccv_dcu_miu_rsp", "ownership_granted", p.c17_f3, b, 1, 1);
-    bad += check("ccv_dcu_miu_rsp", "mlc_miss", p.c17_f4, b, 0, 1);
+    bad += check("ccv_dcu_miu_rsp", "req_id", p.c17_f0, b, 1155, 6);
+    bad += check("ccv_dcu_miu_rsp", "read_data", p.c17_f1, b, 131, 1024);
+    bad += check("ccv_dcu_miu_rsp", "hit", p.c17_f2, b, 130, 1);
+    bad += check("ccv_dcu_miu_rsp", "ownership_granted", p.c17_f3, b, 129, 1);
+    bad += check("ccv_dcu_miu_rsp", "mlc_miss", p.c17_f4, b, 128, 1);
+    bad += check("ccv_dcu_miu_rsp", "check_bits", p.c17_f5, b, 0, 128);
   }
   {
     const Bits b = randomBits(1082, seed ^ 142542u);
