@@ -16,9 +16,8 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   check-dcu-unit are real; the local hook patch is retired.
 - No dates on tasks; no model identifiers in anything pushed.
 - Merge a blocker the moment it lands on a working branch, never waiting
-  for the daily sweep (Daniel). DI-6 asks TI and MI to move DCU's M0
-  blockers up. Hourly check: scheduled task trig_01BqmRibVjxu6zui4nfhhFzo
-  (:32 each hour); delete it once DI-6 is met.
+  for the daily sweep (Daniel). Ask its owner to move it up (a DI row and a
+  notice), and set an hourly check while it is pending.
 
 ## Timing frame (DCU-local; checked against the MIU tab's L1-hit budget)
 - L = lead (valid) at DCU = H+2; P = payload lands (Stub::has) = H+3.
@@ -30,19 +29,20 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
-0. 6d65b57a pushed (RESUMED PASS, full): the sweep's 9 merges, MI's
-   967914ff and TI's e8d8864b are on the branch.
-   With TI's c8d19598 (not yet on a branch here; tried in the scratch
-   worktree /tmp/claude-0/-home-user/bfe83fc4-cb75-557c-bad7-b1316bec67fe/scratchpad/p1b,
-   never push it), CCV_DCU_IMPL=model check-kernel is clean (rc=0).
-   The pair (dcu=model,miu=model) fails 10 lines. TI-504 says 1f781123 has
-   them: 5 IMPL_PINS rows, vadd4 orphan=2, and straggler demotion at:342
-   keyed through impl_pins. The other 3 lines are MI's own model: predlane
-   (MI-8, by design; TI owes the quiesced_at_end exemption), a UE with
-   the track table full not being core-fatal, and fet-reset-on-kill not caught.
-   Next: once c8d19598 and 1f781123 are on a branch, merge them, rerun
-   check-kernel (model, then pair) and write the M0 exit row for MA:
-   check-kernel clean, every bin reached, SV-hosted PASS, S1 and cm32priv.
+0. M0 met (DI-8, sent to MA): 3a2703ef pushed, with TI-506/507 and MI's
+   d639adb2 merged. Against the MIU stub, check-kernel and check-sv-hosted
+   are clean under CCV_DCU_IMPL=model. Cycles: +1.69% over the stub (66
+   kernels), +0.74% over p1 on the 54 where p1 runs. p1 hangs on 12 kernels
+   because it sends no MA-25 credit returns (MA's file; asked in DI-8).
+   f92a89fc made the credits strict and holds a store miss's store-data
+   entry until the fill merges it (DCU spec).
+   Phase 1b: the pair passes check-kernel clean. check-sv-hosted: the vadd
+   machine check is MI's (it fails with the DCU stub too). lnorm1 SV vs C++
+   at cycle 81, and RCU RTL in the SV top (transp4, vadd4), fail only under
+   the pair. A rerun is in the scratch worktree
+   /tmp/claude-0/-home-user/bfe83fc4-cb75-557c-bad7-b1316bec67fe/scratchpad/m0w
+   (logs one level up: m0-*.log, m0-s1.txt); never push from it. Then
+   write the phase 1b row.
 1. Phase 1b (DI-5; AR-394, OA-454): S1 pair +1.62% vs the stubs (worst
    vadd4 +25.4%), DCU alone +1.27%. cm32priv: pair 2090969, DCU alone
    2105390, stubs 2095682. With notices off, fill_notice=0 and cmpl_hint=0.
@@ -62,7 +62,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 17, MI 17, MA 135, AR 400, OA 460, TI 504, DA 128
+Conventions 20, DI 20, MI 17, MA 135, AR 400, OA 460, TI 504, DA 128
 (sweep of 2026-11-20 10:43 UTC; OI 395, RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
