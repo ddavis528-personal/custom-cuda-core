@@ -2,6 +2,7 @@
 
 Updated 2026-11-21 (4), MOST CURRENT, read first:
 - 893f2eed PUSHED (full gate PASS): OA 462 kill exemption (decq_killed_late), decrx bench at straggler_walk=0 until #71 RTL. OI-196 (rev 400) answered AR-402 + DI-15 (re-sweep 893f2eed), both rung (DI session_01QPk2jz5TVESyWMKVKjqqEA, not in roster).
+- 969b3267 full gate PASSED but push failed (proxy down after container restart). Re-merged 10 more branches (incl. TI 655286d1, TI-514) -> d516e866, --full gate-push again.
 - Daily sweep 11-21 merge on oi-sw 80944e42: TI doowtf 32, MI 0ch1hh 4, DI n6402z 14 (criss-cross: merge-tree with one base; 4 non-OI files took theirs), AR 4n8bv4 4, MA miu-dcu-spec 9. --full gate-push on it (see job log in ~/ccv-logs, newest gate-push).
 - Pongs: OA and RI never answered Friday's pings (reported 11-21). Settings check matches. Bookmarks: OA 466, AR 406, MI 29, TI 511, RA 157, RI 91, MA 145, DI 30, IS 201, CP 160, DA 128, Conventions 20. Next free OI-197.
 - NEXT: #71 RTL (ooe_decrx/ooe_decq keep a demoted warp's stragglers for the walk; then drop rxConfig in test/ooe/decrx_tb.cpp); MI-12 waits on it. Then decrx control (mask adv_cq01h when adn_cq01h), RH pricing, OA 435 items.
