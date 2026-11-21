@@ -39,8 +39,8 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 
 ## Register bookmarks
 /home/user/ti-register-bookmarks.json (outside the repo). 11-21: TI 505,
-MI 23, DI 19, OI 399, OA 465, MA 137; the rest as of the 11-20 sweep.
-Last row TI-509.
+MI 25, DI 21, OI 399, OA 465, MA 137; the rest as of the 11-20 sweep.
+Last row TI-510.
 
 ## Long runs
 Every long tool detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as
@@ -51,6 +51,9 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 - Landed d761c634 (ti-wp, SCOPED PASS on the 11-20 sweep 8c378e12): DI-6's
   pins, MA-25, MI-9 (3) waypred, MI-8, MI-4 A2/A3, TI-499's sweep fallback.
   TI-506 posted; DI, MI, MA, RA rung.
+- Landed ec8f3422: check-sv-hosted machine check on swap (MI-14; TI-510 to
+  MI, DI). DI-9: the pair's SV-host drift is a use-after-free in MI's
+  miu_block.cpp (MI's fix).
 - Landed 56c7ce54 (with MI's d639adb2): bank credits under both MIUs
   (MI-13), slotform cold (task 56 done); TI-509 to MI. two-page-hit dropped
   (MI, MA).
