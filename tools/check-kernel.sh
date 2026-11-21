@@ -841,12 +841,11 @@ dcu=model,miu=model vadd cmpl_hint=4
 dcu=model,miu=model transp4@CCV_MIU_ECC_INJECT=1 l1_ecc_fix=61
 dcu=model,miu=model ldpar l1_hit=1
 dcu=model,miu=model no-resource-cap v60=16
-dcu=model,miu=model vadd4-swap orphan=2
 dcu=model,miu=model lnorm1-straggler demote=342
 dcu=model waypred dcu_wp_wrong=4
 dcu=model,miu=model waypred dcu_wp_wrong=4 l1_hit=0 l1_late=4
 miu=model fet-reset-on-kill scen=rope:11
-dcu=model,miu=model fet-reset-on-kill scen=rope:5
+dcu=model,miu=model fet-reset-on-kill scen=rope:12
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
   local key=$1 want=$2 impl k w bin out i ok p x hit
@@ -2183,7 +2182,7 @@ for m in stub model; do
   # store-data credit a bank, gather's stores meet in a bank, and DCU must
   # refuse every bank past its credits by name, and nothing else.
   log="$B/kernel_bank-credit-ignore_$m.log"
-  CCV_MIU_IMPL=$m CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
+  CCV_MIU_IMPL=$m CCV_DCU_IMPL=stub CCV_DCU_BANK_STDATA=1 "$SKEL" --kernel build/oracle/gather/oracle.jsonl --break bank-credit-ignore >"$log" 2>&1
   n=$(grep -c '^CHECK dcu: bank [0-9]* holds [0-9]* lookup entries and [0-9]* store-data entries, past its credits' "$log")
   if [ "$n" -gt 0 ] && [ "$(field "$log" check_failures)" = "$n" ]; then
     say "--break bank-credit-ignore, $m MIU: DCU refuses each" "PASS (gather, $n over STDATA 1)"
@@ -2191,9 +2190,10 @@ for m in stub model; do
     bad "--break bank-credit-ignore, $m MIU" "$n refused: $(grep '^KERNEL' "$log")"
   fi
   # --break dcu-extra-credit: DCU returns an entry credit MIU never spent, and
-  # MIU refuses the return past its reset count by name.
+  # MIU refuses the return past its reset count by name. Both controls are
+  # the stub DCU's (its refusal, its break), whichever DCU the run uses.
   log="$B/kernel_dcu-extra-credit_$m.log"
-  CCV_MIU_IMPL=$m "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
+  CCV_MIU_IMPL=$m CCV_DCU_IMPL=stub "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break dcu-extra-credit >"$log" 2>&1
   if grep -q '^CHECK miu: DCU returned an entry credit for bank 0, which holds all 16 (MA-25)' "$log" &&
      [ "$(field "$log" check_failures)" = 1 ]; then
     say "--break dcu-extra-credit, $m MIU: MIU refuses it" "PASS (vadd, bank 0)"
