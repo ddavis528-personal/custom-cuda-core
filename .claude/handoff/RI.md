@@ -20,7 +20,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 5d1b634d (2026-11-20 sweep, PASS full). Earlier: cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
+- Last push: 769e4ca6 (2026-11-21 sweep, PASS full). Earlier: 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
   Before: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
   Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
@@ -57,6 +57,13 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-26. DONE (2026-11-21 sweep) PASS full, pushed 769e4ca6 (ri-sweep21 in ri-wt). Merged: c22116ce 1, infra 209,
+   miu-dcu-spec 15+5 (resolve), 58815650 (MI) 2+2, 5e4d6c70 (DI) 4 (resolve), 80102643 4; no conflicts.
+   SKIPPED 57eff422 (20): conflicts in OI/TI files (OI.md, rtl/ooe/*, sim/ooe, sim/skel/kernel.h, test/ooe,
+   cg-waivers) - AR 402 raised it, OI resolves; merge in a later sweep once resolved, no RI row.
+   Register: nothing for RI (MA-18 MIU no-flop receivers, no RCU change; DI-8/9 RCU-RTL diff was MIU bug fixed
+   51cf5dd2; TI-502/OA 462-464 OOE demotion credit). Fri pongs all 11 OK. Bookmarks: Conv 20 AR 406 OA 466
+   IS 201 TI 511 OI 399 CP 160 DA 128 RA 157 RI 91 MA 145 MI 29 DI 29. Still open: Daniel's RCU sign-off (RA 155).
 -25. DONE (2026-11-20 sweep) PASS full, pushed 5d1b634d (ri-sweep20 in ri-wt). Merged: c22116ce 29, 126afa13 ~9,
    3868632d (TI, has 6464a030 resume) 113 via -s resolve, 80102643 28, doowtf 4, miu-dcu-spec 6, 58815650 (MI) 2+1,
    5e4d6c70 (DI) 7; no conflicts. Merges are slow (2-7 merge bases): run them detached with a per-merge timeout;
