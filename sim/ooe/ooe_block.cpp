@@ -138,13 +138,16 @@ private:
   }();
   std::array<unsigned, ccv::kTier1Warps> cred_prev_{}, cred_in_{};
   uint32_t cred_rel_ = 0;
+  /// OA 463 (re:OI-194): credits held decq_credit_lag cycles before they
+  /// leave, per slot: (cycle due, count, released).
+  struct CredDue { uint64_t at; unsigned n; bool rel; };
+  std::array<std::deque<CredDue>, ccv::kTier1Warps> cred_dly_{};
   /// OA 455 (A, re OI-188): FET's count is credits sent less returned, never
   /// reseeded, so OOE returns one credit for every uop it consumes. Those of
   /// a warp with no tier-1 slot to return them on (a uop of a stale epoch
   /// arriving after its release, or the slot's queue dropped at the
   /// release) wait here, per warp_id, and go back on its next slot. Bounded
   /// by what a warp may have outstanding, which the return field holds.
-  std::array<unsigned, ccv::kWarpContexts> cred_pend_{};
   std::map<std::string, unsigned long long> strag_seen_;   ///< AR 395 bins
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
@@ -206,6 +209,7 @@ private:
     // credit before its beat leaves.
     c.straggler_walk = k.brk != "no-straggler-walk";
     c.inject_straggler_early_credit = k.brk == "straggler-early-credit";
+    c.inject_due_epoch_lost = k.brk == "due-epoch-lost";
     if (const char *s = std::getenv("CCV_OOE_CONFIG")) {
       const std::string e = c.apply(s);
       if (!e.empty()) {
@@ -528,13 +532,24 @@ private:
         continue;
       }
       taken.insert(unsigned(best));
-      if (const int ts = core_.tier1Of(w); ts >= 0 && size_t(ts) < cred_in_.size()) ++cred_in_[ts];
-      else if (k_.brk != "slotless-drop-lost") {
-        // Slotless: the core drops it (a stale epoch) or reports it; its
-        // credit waits for the warp's next slot (OA 455).
-        ++cred_pend_[w % cred_pend_.size()];
-        k_.hit("decq_slotless_drop");
-      }
+      // OA 462 (re:OI-193): its credit returns on the warp's own slot. A uop
+      // of a warp_id holding no tier-1 slot (a released slot's, or one never
+      // allocated) is an error: FET sends nothing between a demotion's
+      // notice and the restore, and migrates only on full credits (AR 395
+      // (3)), so none is ever owed to a slot past its release. This CHECK
+      // replaces OA 455 A's pending counter; --break mig-before-credits
+      // (FET migrating on the migration alone) must trip it.
+      // A killed warp's uop still on the link from DEC (RI-57, rokilllane on
+      // test/phys/links_split.json) may land after the kill released its
+      // slot: the model drops it by epoch, and FET owes the dead warp no
+      // credit, so it is no break of the full-credit wait.
+      if (const int ts = core_.tier1Of(w); ts >= 0 && size_t(ts) < cred_in_.size()) {
+        ++cred_in_[ts];
+      } else if ((killed_ >> (w % 32)) & 1u)
+        k_.hit("decq_killed_late");
+      else
+        k_.fail("ooe: warp %u's uop seq %u arrives holding no tier-1 slot (OA 462)", w,
+                unsigned(uidSeq(r->front().tid)));
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
   }
@@ -798,6 +813,7 @@ private:
   /// The kill (V-24): the model takes it, and acks once quiesced.
   void onKill(uint32_t mask, unsigned epoch) override {
     core_.kill(mask, epoch);
+    killed_ |= mask;
     kill_live_ = true;
     kill_acked_ = false;
     kill_epoch_ = epoch;
@@ -805,6 +821,7 @@ private:
   bool killQuiet(uint32_t) const override { return kill_acked_; }
   bool kill_live_ = false, kill_acked_ = false;
   unsigned kill_epoch_ = 0;
+  uint32_t killed_ = 0;   ///< warp_ids a kill named, until each holds a slot again
   struct Held { unsigned chan; Bits msg; uint64_t tid = 0; };   ///< tid: the fault's instruction
   std::deque<Held> held_;   ///< status, maps and drained reports, in order
 
@@ -872,25 +889,28 @@ private:
       const unsigned occ = w < 0 ? 0 : core_.decqOf(unsigned(w));
       unsigned back;
       if (w < 0 || w != cred_warp_[t]) {
-        // The warp leaving: what it took in and has not returned (its renames
-        // since the last return, and its queue dropped at the release) waits
-        // for its next slot (OA 455).
-        if (const int o = cred_warp_[t]; o >= 0) {
-          unsigned &p = cred_pend_[unsigned(o) % cred_pend_.size()];
-          p += cred_prev_[t] + cred_in_[t];
-          if (p >= 1u << ccv::prov::kWDecqCredit)
-            k_.fail("ooe: warp %d's pending decode-queue credits reach %u, past credit_count's %u bits (OA 455)", o, p,
-                    ccv::prov::kWDecqCredit);
-          if (p) k_.hit("decq_credit_pend");
+        // OA 462: a warp leaves its slot only with every credit home (FET
+        // migrates on full credits, AR 395 (3)); none waits for a next slot.
+        if (const int o = cred_warp_[t]; o >= 0 && cred_prev_[t] + cred_in_[t])
+          k_.fail("ooe: slot %u leaves warp %d with %u decode-queue credits not returned (OA 462)", t, o,
+                  cred_prev_[t] + cred_in_[t]);
+        // OA 463: credits still in the return delay may outlive OOE's own
+        // release of the slot, never its next warp: FET's wait for full
+        // credits keeps the next one off it until they land.
+        if (w >= 0 && !cred_dly_[t].empty()) {
+          unsigned n = 0;
+          for (const CredDue &d : cred_dly_[t]) n += d.n;
+          k_.fail("ooe: slot %u goes to warp %d with %u decode-queue credits of warp %d still held in the return delay (OA 463)",
+                  t, w, n, cred_warp_[t]);
+          cred_dly_[t].clear();
         }
-        // A slot newly given a warp starts from what it holds now, and
-        // returns what the warp's credits waited for.
+        // A slot newly given a warp starts from what it holds now.
         cred_warp_[t] = w;
+        if (w >= 0) killed_ &= ~(1u << (unsigned(w) % 32));   // launched again
         cred_prev_[t] = occ;
         cred_in_[t] = 0;
-        if (w < 0) continue;
-        back = cred_pend_[unsigned(w) % cred_pend_.size()];
-        cred_pend_[unsigned(w) % cred_pend_.size()] = 0;
+        sendDue(t);
+        continue;
       } else {
         back = cred_prev_[t] + cred_in_[t] - occ;
         cred_prev_[t] = occ;
@@ -902,14 +922,32 @@ private:
         k_.fail("ooe: warp %d holds %u slots past its held wait, over r = %u (TI-46 (b))", w, occ,
                 ccv::prov::kHeldAhead);
       const bool rel = cred_rel_ >> unsigned(w) & 1u;
-      if (cred_ < 0 || (!back && !rel)) continue;
-      Bits m = msgOf(unsigned(cred_));
-      put(m, unsigned(cred_), "tier1_id", t);
-      put(m, unsigned(cred_), "credit_count", back);
-      put(m, unsigned(cred_), "released", rel ? 1 : 0);
-      sendOn(unsigned(cred_), t, m, makeUid(IdClass::kNone, 0));
-      cred_rel_ &= ~(uint32_t(1) << unsigned(w));
+      if (cred_ >= 0 && (back || rel)) {
+        cred_dly_[t].push_back({now_ + core_.config().decq_credit_lag, back, rel});
+        cred_rel_ &= ~(uint32_t(1) << unsigned(w));
+      }
+      sendDue(t);
     }
+  }
+
+  /// Sends slot t's credits that are due, as one message (OA 463; at
+  /// decq_credit_lag 0 each leaves the cycle it was counted, as before).
+  void sendDue(unsigned t) {
+    unsigned n = 0;
+    bool rel = false, any = false;
+    while (!cred_dly_[t].empty() && cred_dly_[t].front().at <= now_) {
+      n += cred_dly_[t].front().n;
+      rel = rel || cred_dly_[t].front().rel;
+      any = true;
+      cred_dly_[t].pop_front();
+    }
+    if (!cred_dly_[t].empty()) core_.counters["decq.credit_lag_held"]++;
+    if (!any || cred_ < 0) return;
+    Bits m = msgOf(unsigned(cred_));
+    put(m, unsigned(cred_), "tier1_id", t);
+    put(m, unsigned(cred_), "credit_count", n);
+    put(m, unsigned(cred_), "released", rel ? 1 : 0);
+    sendOn(unsigned(cred_), t, m, makeUid(IdClass::kNone, 0));
   }
 
   void work() override {

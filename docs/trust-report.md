@@ -19,7 +19,10 @@ so this is a build artifact rather than something to remember.
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
+| `rtl/include/ooe_pl.svh` | `CCV_L_W_MEM_OP`, `CCV_L_W_OPCODE`, `CCV_P_W_BYP_GROUP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_IMM`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_IDX`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
+| `rtl/ooe/ooe_mempl.sv` | `CCV_L_W_MEM_OP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_ROB_IDX`, `CCV_P_W_RS_IDX` |
 | `rtl/ooe/ooe_sched.sv` | — | `CCV_MEMOP_CREDITS` |
+| `rtl/ooe/ooe_wake.sv` | — | `CCV_LAT_L1_CMPL`, `CCV_LAT_L1_WAKE` |
 | `rtl/rcu/ccv_rcu.sv` | `CCV_L_OPERANDS_PER_LANE`, `CCV_L_W_OPCODE` | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W`, `CCV_P_W_LANE_BYP_SEL`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG` |
 | `rtl/rcu/rcu_bank_slice.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO` |
 | `rtl/rcu/rcu_isd.sv` | — | `CCV_P_PHYS_ZERO`, `CCV_P_W_PHYS_REG` |
@@ -80,6 +83,9 @@ so this is a build artifact rather than something to remember.
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
+| `test/ooe/ooe_pl_tb.sv` | — | `CCV_P_W_RS_IDX` |
+| `test/ooe/ooe_trio.sv` | — | `CCV_LAT_L1_CMPL`, `CCV_LAT_L1_WAKE` |
+| `test/ooe/pl_tb.cpp` | — | — |
 | `test/phys/tb_seq_rpt.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/rcu/ccv_rcu_svh.sv` | — | `CCV_P_PHYS_REGS`, `CCV_P_PHYS_ZERO`, `CCV_P_PRED_REGS`, `CCV_P_PRED_ZERO` |
 | `test/rcu/kill_tb.cpp` | — | — |
