@@ -219,7 +219,9 @@ Credit rules (TI-49):
    cm128priv (Daniel's bar on the total; field does not wait); (4) bins by
    cause + controls. TI applies the field. Waiting on: MA's price, TI landing.
    DI-12 (MIU refunds a dropped credit at A2; ent_ret only for lookups that
-   entered the queue): AR no objection, makes (3)'s credit price moot; MA rules.
+   entered the queue): MA ruled it (MA rev 143). AR 400/401 conditions are in
+   the MIU tab rev 148 and DCU tab rev 64; DI-13 closed (DI rev 27). Still
+   owed: MA's A1-hold price once MI's model has the hold; TI's two fields.
 000d. **MA-28 L1 hit ECC: AGREED (c) (AR 401 .655773; MA, DI, TI rung).**
    128 check bits a slot on ccv_dcu_miu_rsp; MIU computes the syndrome in R2
    (~15 NGD beside the lane extract) and withholds the completion; ECC stays 1.
