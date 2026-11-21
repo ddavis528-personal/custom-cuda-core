@@ -20,7 +20,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: cae55e0c (2026-11-19 sweep, PASS full). Earlier: 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
+- Last push: 5d1b634d (2026-11-20 sweep, PASS full). Earlier: cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
   Before: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
   Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
@@ -57,6 +57,14 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-25. DONE (2026-11-20 sweep) PASS full, pushed 5d1b634d (ri-sweep20 in ri-wt). Merged: c22116ce 29, 126afa13 ~9,
+   3868632d (TI, has 6464a030 resume) 113 via -s resolve, 80102643 28, doowtf 4, miu-dcu-spec 6, 58815650 (MI) 2+1,
+   5e4d6c70 (DI) 7; no conflicts. Merges are slow (2-7 merge bases): run them detached with a per-merge timeout;
+   -s resolve fails past 6 bases ("cannot read more than 8 trees"), so let ort run. From now on, a killed gate
+   reruns the same command with CCV_RESUME=1 (TI-490/IS-27). Register: nothing for RI; MI's transp4 demotion bug
+   routed to the demotion/barrier owner, not RI. Fri pings 2026-11-20: pongs ok from all 11 (AR OA IS TI OI CP RA
+   MA RH MI DI); answered 10 pings (all me=ok). Bookmarks: Conv 20 AR 400 OA 460 IS 201 TI 498 OI 395 CP 160 DA 128
+   RA 157 RI 91 MA 135 MI 16 DI 12. Waiting: Daniel's sign-off.
 -24. DONE (2026-11-19 sweep) PASS full, pushed cae55e0c (ri-sweep19 in ri-wt; two gates lost to container
    restarts first). Merged: ccr-58815650 (MI) 63, ccr-5e4d6c70 (DI; roster.json conflict: both MI and DI rows kept,
    each with its own session id; trust-report.md ours, generated), 9eb50716 27, miu-dcu-spec 9, 80102643 27,

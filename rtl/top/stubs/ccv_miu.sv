@@ -197,6 +197,8 @@ module ccv_miu (
   assign dcu_miu_fill_ntc_s2_stall = '0;
   assign dcu_miu_fill_ntc_s3_credit = '0;
   assign dcu_miu_fill_ntc_s3_stall = '0;
+  assign dcu_miu_cred_credit = '0;
+  assign dcu_miu_cred_stall = '0;
   assign miu_ooe_cmpl_hint_s0_valid = '0;
   assign miu_ooe_cmpl_hint_s0_payload = '0;
   assign miu_ooe_cmpl_hint_s1_valid = '0;
