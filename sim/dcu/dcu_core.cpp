@@ -141,6 +141,8 @@ Core::Way *Core::install(uint64_t pa, const Line &l, bool owned, bool dirty) {
     }
   }
   w->valid = true;
+  w->flip = -1;   // a fill writes good check bits
+  w->ecc_wr = false;
   w->line = pa;
   w->data = l;
   w->owned = owned;
@@ -254,6 +256,7 @@ bool Core::eligible(unsigned b, size_t i) const {
   case Acc::EvictR:
     return true;
   case Acc::StoreW:
+  case Acc::EccW:
     return true;
   }
   return true;
@@ -292,6 +295,8 @@ void Core::serveLook(const Req &r, uint64_t born) {
     // store-data entry stays held until the fill merges it.
     if (w && w->owned && c_.brk != "write-through") {
       stdLeave(b);
+      w->flip = -1;   // the RMW's read corrects, its write is good (MA-28 (c))
+      w->ecc_wr = false;
       merge(w->data, r);
       w->dirty = true;
       touch(*w);
@@ -354,8 +359,10 @@ void Core::serveLook(const Req &r, uint64_t born) {
   Rsp s = rspFor(r);
   s.data = true;
   s.line = w->data;
+  s.flip = eccOnHit(*w, r);
   s.hit = true;
   if (c_.brk == "wp-late-at-due" && wp_miss) {
+    s.flip = -1;
     // The predicted way's line, not the line asked for (the control).
     const Way *set = setOf(r.pa);
     for (unsigned i = 0; i != c_.ways; ++i)
@@ -380,6 +387,8 @@ void Core::serve(const Acc &a, uint64_t born) {
       h_.fail(fmt("dcu: a deferred store's line %llx left L1 before its read", a.line));
       break;
     }
+    w->flip = -1;   // the RMW's read corrects, its write is good (MA-28 (c))
+    w->ecc_wr = false;
     merge(w->data, a.req);
     w->dirty = true;
     touch(*w);
@@ -401,6 +410,18 @@ void Core::serve(const Acc &a, uint64_t born) {
     unhold(a.line);
     h_.hit("dcu_fill_write");
     break;
+  case Acc::EccW: {
+    // The corrected line goes back (MA-28 (c)): the stored bit is good again.
+    Way *w = find(a.line);
+    if (!w || !w->ecc_wr) {
+      h_.hit("dcu_ecc_write_moot");   // the line left, or an RMW rewrote it
+      break;
+    }
+    w->flip = -1;
+    w->ecc_wr = false;
+    h_.hit("dcu_ecc_write");
+    break;
+  }
   case Acc::EvictR:
     wbq_.push_back({a.line, a.data});
     h_.hit("dcu_evict_read");
@@ -667,6 +688,33 @@ void Core::refill(const Rsp &r, const Ports &p) {
   ++resv_[s];
   ++st_.notices;
   h_.hit("fill_notice");
+}
+
+// ---- ECC on a read hit (MA-28 (c), AR 401; CCV_DCU_ECC_INJECT) -------------
+/// Every Nth read hit flips one stored data bit of its line, under the check
+/// bits of the line as written (the knob that replaced MIU's
+/// CCV_MIU_ECC_INJECT; the count is the DCU stub's). The read carries it to
+/// MIU, which finds it by the syndrome and withholds the completion; DCU's
+/// own syndrome, over the same words (the slot's read), finds it too:
+/// it counts the CE and queues the corrected line's rewrite `gap` cycles on,
+/// a bank write like a store's RMW. It does not hold the line: a read before
+/// the rewrite finds the same bit and is corrected the same way, so nothing
+/// waits on it, and a rewrite whose line has left (a fill wrote good bits)
+/// is dropped. The check bits are the block's: dcu-ecc-recode, the
+/// control, codes the bad line, so MIU's syndrome is zero and the oracle
+/// must catch the bad data.
+int Core::eccOnHit(Way &w, const Req &r) {
+  if (c_.ecc_every && w.flip < 0 && ++ecc_hits_ % c_.ecc_every == 0)
+    w.flip = int((ecc_hits_ / c_.ecc_every * 67) % (kLineBytes * 8));
+  if (w.flip < 0) return -1;
+  ++st_.ce;
+  h_.hit("dcu_ce");
+  if (!w.ecc_wr) {
+    w.ecc_wr = true;
+    const unsigned b = bankOf(r.pa);
+    bq_[b].push_back(Acc{Acc::EccW, now_, now_ + c_.gap, r.pa, r, 0, {}});
+  }
+  return w.flip;
 }
 
 // ---- machine errors (AR 370, MA-19; the stub's injection, CCV_DCU_UE_INJECT) --
