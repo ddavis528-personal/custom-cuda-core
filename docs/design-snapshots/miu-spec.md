@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=MIU rev=161 exported=2026-11-22 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *MIU*, at revision 161 on 2026-11-22 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=MIU rev=162 exported=2026-11-22 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *MIU*, at revision 162 on 2026-11-22 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # MIU — memory interface unit
 
@@ -294,7 +294,7 @@ Modules live in rtl/miu/. Each size is a module parameter defaulting to `ccv_par
 | miu\_agu8 | 16, slot s × lane octet u | A1 | 8 lanes: 3-input sum with the window level, F-ALIGN; flops 8 VAs and 8 align faults | 400 |
 | miu\_lead | 1 | A1 | 16 leader adders (4 a slot) on operands muxed by lane position; routing to lookup slots by footprint; set index, bank, credit gate; the req valid and lead flops | 1,000 |
 | miu\_cred | 1 | A1 | per-bank entry and store-data counters (MA-25), spent at the valid, returned from `ccv_dcu_miu_cred`; the per-bank gate flop (count after this cycle's spends ≥ `CCV_DCACHE_LOOKUPS`) | 120 |
-| miu\_tlb | 1 | A2 | 32-entry fully associative TLB, 4 read ports; each entry also keeps fold(PFN), CCV\_DCU\_WAYPRED\_BITS bits from the shared wayfold helper, written at the fill and read beside the ppn, which miu\_a2 sends as the req payload's pa\_fold at 0 NGD of fold logic (MA-30, AR 405; the line tag PA\[47:16\] is the PFN at CCV\_L\_PAGE\_SHIFT 16); the walker's fill port in slice 2 | 2,130 |
+| miu\_tlb | 1 | A2 | 32-entry fully associative TLB, 4 read ports; each entry also keeps fold(PFN), CCV\_DCU\_WAYPRED\_BITS bits from the shared wayfold helper, written at the fill and read beside the ppn, which miu\_a2 sends as the req payload's pa\_fold at 0 NGD of fold logic (MA-30, AR 405, TI-518 landed; the line tag PA\[47:16\] is the PFN at CCV\_L\_PAGE\_SHIFT 16); the walker's fill port in slice 2 | 2,130 |
 | miu\_grp | 4, one per address slot | A2 | combinational: each active lane's line against its group leader's line, and the page check; eligibility out | 0 |
 | miu\_a2 | 1 | A2 | dedupe, bank conflict, faults, PA, drop (MA-27), req payload flops, no-hit flops, MQ writes | 900 |
 | miu\_ids | 1 | A2, R1 | the 64 DCU req\_ids: free list with 4 preselected ids flopped a cycle ahead; id to entry table | 450 |
