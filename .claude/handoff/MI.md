@@ -31,7 +31,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-21 (Sat): AR 406, OA 466, IS 201, TI 511, OI 399, CP 160, RA 157, RI 91,
-  MA 145, MI 35, DI 34, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 512 (TI-513
+  MA 145, MI 35, DI 35, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 512 (TI-513
   notice: 8ac4c441 drop/check_bits/CCV_DCU_ECC_INJECT landed). Next pings: Friday.
 - Sweep merge d26849c3 (ccr-183cc441 25, ccr-5e4d6c70 20, ccr-80102643 4, mi-dev A1 hold
   b1a85fa6) under full gate-push (job-gate-push-20261121-104904-28964.log). OI's ccr-57eff422
@@ -65,7 +65,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
    MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
-1. RTL slice 1 (MA Phase 2, MIU tab rev 150): miu_cap pushed; miu_pair done on mi-dev (ead8f705:
+1. RTL slice 1 (MA Phase 2, MIU tab rev 150; DI-20: MA takes DCU slice 1 before MIU slices 2-4, slice 1 unaffected): miu_cap pushed; miu_pair done on mi-dev (ead8f705:
    ring of LAG rows, tags from memop arrival M=00, V 03, H 05; bench + controls arrival/lag; cg/ngd
    clean; FW=96 placeholder until miu_mq's layout; LAG param until TI derives it). Next was miu_pair
    (+ miu_mq: A1 fields read at H-1; per lead pipe ring of {entry, valid} indexed by arrival
