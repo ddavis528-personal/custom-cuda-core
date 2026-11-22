@@ -12,6 +12,7 @@
 
 #include "kernel.h"
 #include "secded.h"
+#include "wayfold.h"
 
 #include "ccv/event.h"
 #include "ccv_params.h"
@@ -156,6 +157,21 @@ inline bool fixLine(Line &l, const Bits &r, uint32_t lsb) {
   }
   return any;
 }
+
+// ---- The way predictor's fold (MA-30, AR 405 (3)) -------------------------------
+// wayfold.h's fold of PA[47:16], k = CCV_DCU_WAYPRED_BITS (the environment's
+// overrides it, the same on both sides); 0 when off. The tag starts above the
+// set index at its built size.
+static_assert(kWayFoldLo == 7 + ccv::prov::kWDcuSet, "the fold's tag is above the set index");
+static_assert(kWayFoldLo + kWayFoldW == ccv::prov::kWPa, "the fold's tag ends at the PA's top");
+inline unsigned wayPredBits() {
+  static const unsigned k = [] {
+    const char *v = std::getenv("CCV_DCU_WAYPRED_BITS");
+    return v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : unsigned(ccv::prov::kDcuWaypredBits);
+  }();
+  return k;
+}
+inline unsigned paFold(uint64_t pa) { return wayFold(pa, wayPredBits()); }
 
 // ---- S1 wire conventions (docs/skeleton.md lists them) ------------------------
 //

@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 17 | 44 |
 | ⚠️ Some provisional | 27 | 148 |
-| ⛔ Some preliminary | 13 | 153 |
-| **Total** | **57** | **345** |
+| ⛔ Some preliminary | 13 | 154 |
+| **Total** | **57** | **346** |
 
 ## What still has to be decided
 
@@ -978,7 +978,7 @@ miu → spm · rate 4 · memory
 
 ### `ccv_miu_dcu_req`
 
-Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index leads it by a cycle (AR 362, AR 364).
+Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index leads it by a cycle (AR 362, AR 364). pa_fold (MA-30, AR 405): the way predictor's CCV_DCU_WAYPRED_BITS-bit XOR fold of phys_addr's tag, PA[47:16] (the PFN), in k-bit chunks from bit 16 up, the last zero-extended: the one fold MIU and DCU share (sim/skel/wayfold.h, rtl/common/ccv_common_wayfold.sv, held together by check-skel). MIU keeps it beside each TLB entry's PFN, written at the fill, so A2 sends it at 0 NGD; DCU compares it with its flopped folds at H+3 and reads the lowest matching way, since it cannot fold the PA itself in H+3 within 25 NGD. A payload field, not a lead; unread when prediction is off (CCV_DCU_WAYPRED_BITS 0, the field then 1 bit). The DCU stub refuses a fold that is not its own of phys_addr, by name (miu-fold-flip).
 
 miu → dcu · rate 4 · memory
 
@@ -993,7 +993,8 @@ miu → dcu · rate 4 · memory
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
 | `lead_set_index` | `CCV_W_DCU_SET` | 9 ⚠️ | CCV_W_DCU_SET (tunable) |
 | `drop` | `1` | 1 | literal |
-| **total** | | **1224** | ⛔ 4 preliminary, ⚠️ 63 provisional |
+| `pa_fold` | `CCV_W_PA_FOLD` | 4 ⚠️ | CCV_W_PA_FOLD (tunable) |
+| **total** | | **1228** | ⛔ 4 preliminary, ⚠️ 67 provisional |
 
 Lead fields (driven with valid, a cycle ahead of the rest): `lead_set_index`.
 
