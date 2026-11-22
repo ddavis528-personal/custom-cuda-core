@@ -231,69 +231,57 @@ module ooe_redir #(
       rdr_stay_cq05h  <= os_nx_cq04h;
     end
   end else begin : g_f1
-  // OI-184's lag-1 option: each slot's whole redirect is taken in rd_l's
-  // cycle, on its own resolution lead's flop, and the channel's payload is
-  // picked in that cycle and flopped beside the valid, so it leaves with
-  // it: an arriving slot's from the ports, a waiting one's from its entry.
-  logic [S*WW-1:0]    fw_cq04h;
-  logic [S*EP-1:0]    fe_cq04h;
-  logic [S*LK-1:0]    fk_cq04h;
-  logic [S*32-1:0]    ft_cq04h;
-  logic [S*PCW-1:0]   fg_cq04h;
-  logic [S-1:0]       fs_cq04h;
-  for (genvar gs = 0; gs < S; gs++) begin : g_ent
-    logic id_en_cq03h;
-    assign id_en_cq03h = re_q_cq03h[gs];
-    always_ff @(posedge ooe_core_clk)
-      if (id_en_cq03h) begin   // rd_l a data select: the enable is this module's flop alone (CG-5)
-        fw_cq04h[gs * WW +: WW]   <= rd_l_cq03h[gs] ? wid_cq03h[gs * WW +: WW]      : fw_cq04h[gs * WW +: WW];
-        fe_cq04h[gs * EP +: EP]   <= rd_l_cq03h[gs] ? ep1_cq03h[gs * EP +: EP]      : fe_cq04h[gs * EP +: EP];
-        fk_cq04h[gs * LK +: LK]   <= rd_l_cq03h[gs] ? rd_ckpt_cq03h[gs * LK +: LK]  : fk_cq04h[gs * LK +: LK];
-        ft_cq04h[gs * 32 +: 32]   <= rd_l_cq03h[gs] ? rd_tmask_cq03h[gs * 32 +: 32] : ft_cq04h[gs * 32 +: 32];
-        fg_cq04h[gs * PCW +: PCW] <= rd_l_cq03h[gs] ? rd_tgt_cq03h[gs * PCW +: PCW] : fg_cq04h[gs * PCW +: PCW];
-        fs_cq04h[gs]              <= rd_l_cq03h[gs] ? rd_stay_cq03h[gs]             : fs_cq04h[gs];
-      end
-  end
-  logic [WW-1:0]     qw_nx_cq03h, qw_cq04h;
-  logic [LS-1:0]     qt_nx_cq03h, qt_cq04h;
-  logic [LK-1:0]     qk_nx_cq03h, qk_cq04h;
-  logic [31:0]       qm_nx_cq03h, qm_cq04h;
-  logic [PCW-1:0]    qg_nx_cq03h, qg_cq04h;
-  logic [EP-1:0]     qe_nx_cq03h, qe_cq04h;
-  logic              qs_nx_cq03h, qs_cq04h;
-  always_comb begin
-    qw_nx_cq03h = '0; qt_nx_cq03h = '0; qk_nx_cq03h = '0; qm_nx_cq03h = '0;
-    qg_nx_cq03h = '0; qe_nx_cq03h = '0; qs_nx_cq03h = 1'b0;
+  // OI-184's lag-1 option (DA 130): each slot's whole redirect is taken in
+  // rd_l's cycle into its word of a table, on its own resolution lead's
+  // flop, and the channel's payload is picked in that cycle and flopped
+  // beside the valid, so it leaves with it: an arriving slot's from the
+  // ports, a waiting one's from its word (CCV-L23's declared table, by OA;
+  // a word is never read in the cycle it is written: an arriving slot's
+  // payload is the ports').
+  localparam int FW = WW + EP + LK + 32 + PCW + 1;
+  logic [S*FW-1:0] ar_cq03h;
+  always_comb
     for (int s = 0; s < S; s++)
-      if (pick_cq03h[s]) begin
-        qt_nx_cq03h = qt_nx_cq03h | LS'(s);
-        qw_nx_cq03h = qw_nx_cq03h | (nw_cq03h[s] ? wid_cq03h[s * WW +: WW]      : fw_cq04h[s * WW +: WW]);
-        qe_nx_cq03h = qe_nx_cq03h | (nw_cq03h[s] ? ep1_cq03h[s * EP +: EP]      : fe_cq04h[s * EP +: EP]);
-        qk_nx_cq03h = qk_nx_cq03h | (nw_cq03h[s] ? rd_ckpt_cq03h[s * LK +: LK]  : fk_cq04h[s * LK +: LK]);
-        qm_nx_cq03h = qm_nx_cq03h | (nw_cq03h[s] ? rd_tmask_cq03h[s * 32 +: 32] : ft_cq04h[s * 32 +: 32]);
-        qg_nx_cq03h = qg_nx_cq03h | (nw_cq03h[s] ? rd_tgt_cq03h[s * PCW +: PCW] : fg_cq04h[s * PCW +: PCW]);
-        qs_nx_cq03h = qs_nx_cq03h | (nw_cq03h[s] ? rd_stay_cq03h[s]             : fs_cq04h[s]);
-      end
+      ar_cq03h[s * FW +: FW] = {wid_cq03h[s * WW +: WW], ep1_cq03h[s * EP +: EP], rd_ckpt_cq03h[s * LK +: LK],
+                                rd_tmask_cq03h[s * 32 +: 32], rd_tgt_cq03h[s * PCW +: PCW], rd_stay_cq03h[s]};
+  logic [FW-1:0] ft_cq04h [S];
+  logic [S-1:0]  fw_en_cq03h;
+  for (genvar gs = 0; gs < S; gs++) begin : g_ent
+    assign fw_en_cq03h[gs] = re_q_cq03h[gs];
+    always_ff @(posedge ooe_core_clk)
+      if (fw_en_cq03h[gs])   // rd_l a data select: the enable is this module's flop alone (CG-5)
+        ft_cq04h[gs] <= rd_l_cq03h[gs] ? ar_cq03h[gs * FW +: FW] : ft_cq04h[gs];
   end
+  // The pick's slot, and whether its payload is the ports' (it arrives now)
+  // or its word's (it waited).
+  logic [LS-1:0] pi_cq03h;
+  logic          pn_cq03h;
+  always_comb begin
+    pi_cq03h = '0;
+    for (int s = 0; s < S; s++)
+      if (pick_cq03h[s]) pi_cq03h = pi_cq03h | LS'(s);
+  end
+  assign pn_cq03h = |(pick_cq03h & nw_cq03h);
+  `CCV_ASSERT(ft_read_not_written, !((|pick_cq03h) && !pn_cq03h && fw_en_cq03h[pi_cq03h] && rd_l_cq03h[pi_cq03h]))
+  logic [FW-1:0] ps_cq03h, q_nx_cq03h, q_cq04h;
+  always_comb begin
+    ps_cq03h = '0;
+    for (int s = 0; s < S; s++)
+      if (pick_cq03h[s]) ps_cq03h = ps_cq03h | ar_cq03h[s * FW +: FW];
+  end
+  assign q_nx_cq03h = pn_cq03h ? ps_cq03h : ft_cq04h[pi_cq03h];
   logic qp_en_cq03h;
-  assign qp_en_cq03h = ord_en_cq03h;   // a pick needs a waiting entry or a lead
+  assign qp_en_cq03h = (|pv_cq03h) || (|re_q_cq03h);   // a pick needs a waiting entry or a lead
+  logic [LS-1:0] qt_cq04h;
   always_ff @(posedge ooe_core_clk)
     if (qp_en_cq03h) begin
-      qw_cq04h <= qw_nx_cq03h;
-      qt_cq04h <= qt_nx_cq03h;
-      qk_cq04h <= qk_nx_cq03h;
-      qm_cq04h <= qm_nx_cq03h;
-      qg_cq04h <= qg_nx_cq03h;
-      qe_cq04h <= qe_nx_cq03h;
-      qs_cq04h <= qs_nx_cq03h;
+      q_cq04h  <= q_nx_cq03h;
+      qt_cq04h <= pi_cq03h;
     end
-  assign rdr_warp_cq05h  = qw_cq04h;
-  assign rdr_t1_cq05h    = qt_cq04h;
-  assign rdr_ckpt_cq05h  = qk_cq04h;
-  assign rdr_tmask_cq05h = qm_cq04h;
-  assign rdr_tgt_cq05h   = VA'(qg_cq04h);
-  assign rdr_ep_cq05h    = qe_cq04h;
-  assign rdr_stay_cq05h  = qs_cq04h;
+  assign {rdr_warp_cq05h, rdr_ep_cq05h, rdr_ckpt_cq05h, rdr_tmask_cq05h} = q_cq04h[FW-1 -: WW + EP + LK + 32];
+  assign rdr_tgt_cq05h  = VA'(q_cq04h[1 +: PCW]);
+  assign rdr_stay_cq05h = q_cq04h[0];
+  assign rdr_t1_cq05h   = qt_cq04h;
   end
   // The epoch-only fields: 5b's.
   assign rdr_eo_cq05h  = 1'b0;
