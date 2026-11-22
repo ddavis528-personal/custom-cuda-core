@@ -482,8 +482,11 @@ struct Config {
   /// held, never renamed, until the walk passes them, then flushed.
   /// beat_merge 0: one beat per entry with new lanes, never merged by PC
   /// (a lane still in at most one beat).
-  bool demote_walk = false;
-  bool beat_merge = true;
+  /// The default since OA 466 (OA 451/465): RH priced it at a5d5cb83, mlc,
+  /// S1 +0.072%, cm32priv +0.149%, cm128priv -0.038%, all clean; the RTL
+  /// builds this walk (ooe_rob_w's demotion beats, ooe_decq's walk port).
+  bool demote_walk = true;
+  bool beat_merge = false;
   /// AR 395 / OA 457: the walk stays open for a demoted warp until its slot
   /// is released (FET migrates only on full credits, so every uop it sent
   /// has arrived). A uop of the demotion's epoch arriving after the walk
