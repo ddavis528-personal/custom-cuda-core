@@ -2418,6 +2418,10 @@ public:
     std::vector<unsigned> adv, adn;
     uint32_t rel = 0;
     std::vector<std::pair<unsigned, unsigned>> alloc;
+    /// Slots whose epoch notice this cycle is a demotion's that opens its
+    /// straggler walk (AR 395; ooe_decrx's wo): a notice not named here
+    /// (a kill's) closes the slot's walk.
+    uint32_t wopen = 0;
   };
   const RxLog &rxLog() const { return rxlog_; }
   /// ooe_slot's bench (test/ooe/slot_tb.cpp, OA 435 (1)): control()'s
@@ -2455,6 +2459,10 @@ public:
   };
   const SlotLog &slotLog() const { return slotlog_; }
   int slotOfWarp(unsigned warp) const { return slotOf(warp); }
+  /// ooe_decrx's walk table (AR 395): whether slot s's straggler walk is
+  /// open, and the epoch its stragglers carry.
+  bool walkOpen(unsigned s) const { return s < slot_.size() && slot_[s].walk_open; }
+  unsigned walkEpoch(unsigned s) const { return s < slot_.size() ? slot_[s].walk_epoch : 0; }
 private:
   RxLog rxlog_;
   SlotLog slotlog_;
