@@ -30,10 +30,15 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
-- Daily sweep 2026-11-21 (Sat): AR 406, OA 466, IS 201, TI 511, OI 399, CP 160, RA 157, RI 91,
-  MA 155, MI 35, DI 35, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 516 (TI-517: MA-29 landed bc9d61ff on TI's ccr-183cc441, K=128 in stub.h's
-  putCheckBits/fixLine; the model calls those, no model change, pair 390 PASS; TI-516: DI-19 landed e7c3b10f with MI 073943f3; TI-513
-  notice: 8ac4c441 drop/check_bits/CCV_DCU_ECC_INJECT landed). Next pings: Friday.
+- Daily sweep 2026-11-22 (Sun): AR 409, OA 468, IS 201, TI 516, OI 401, CP 160, RA 157, RI 91,
+  MA 157, MI 35, DI 41, DA 131, Conventions 20; specs MIU 161, Common 9, DCU 84. Next pings: Friday.
+  AR 403/404: MIU corrects CE (syndrome R2, completion withheld 1, fix in the stage after on flopped
+  data+syndrome, K=128); UE on a clean line: DCU refetches under the same req_id, MIU keeps it live.
+  AR 405 / DCU tab 84: mispredict = late answer at due+2 under the original req_id, no credit;
+  pa_fold = XOR of PA[47:16] 4-bit chunks (wayfold helper, DI-24 asks TI); control miu-fold-flip.
+- Sweep 2026-11-22 merge (gate-push --full, job-gate-push-20261122-104808-444.log): ccr-183cc441 54,
+  ccr-5e4d6c70 10, ccr-80102643 10 (MA.md conflict: kept MA's newer f9fb834e), ccr-9eb50716 5,
+  ccr-c22116ce 2, MA's spec branch 3, ccr-57eff422 17 (OI's; clean now).
 - Sweep merge d26849c3 (ccr-183cc441 25, ccr-5e4d6c70 20, ccr-80102643 4, mi-dev A1 hold
   b1a85fa6) under full gate-push (job-gate-push-20261121-104904-28964.log). OI's ccr-57eff422
   conflicts in OI's OOE files: left to OI (AR 402); not merged.
