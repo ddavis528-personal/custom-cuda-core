@@ -1,5 +1,5 @@
 {
-  "_comment": "Timing units for the common combinational modules (rtl/common/), for tools/check-ngd.py: one module at one parameterisation each. ccv_common_csa is an inner helper, timed in its parents; held alone, NGD-6's 16 caps it, so its unit is 6 operands (3 compressor levels and the add, TI's response OI-76); ooe_freelist's instance times the 16-group form. The SECDED helpers (ccv_common_secded_enc, _syn, _fix; DA rulings TI-474 to TI-476) are inner helpers too, each at K = 128, the widest SRAM word (MACRO-1), within the 16 alone.",
+  "_comment": "Timing units for the common combinational modules (rtl/common/), for tools/check-ngd.py: one module at one parameterisation each. ccv_common_csa is an inner helper, timed in its parents; held alone, NGD-6's 16 caps it, so its unit is 6 operands (3 compressor levels and the add, TI's response OI-76); ooe_freelist's instance times the 16-group form. The SECDED helpers (ccv_common_secded_enc, _syn, _fix; DA rulings TI-474 to TI-476) are inner helpers too, each at K = 128, the widest SRAM word (MACRO-1), within the 16 alone. ccv_common_wayfold (MA-30, AR 405) is an inner helper as well, at K = 4, W = 32.",
   "units": [
     {
       "name": "ccv_common_csa",
@@ -40,6 +40,17 @@
       ],
       "params": {
         "K": 128
+      }
+    },
+    {
+      "name": "ccv_common_wayfold",
+      "module": "ccv_common_wayfold",
+      "files": [
+        "rtl/common/ccv_common_wayfold.sv"
+      ],
+      "params": {
+        "K": 4,
+        "W": 32
       }
     }
   ]

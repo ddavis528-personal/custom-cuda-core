@@ -171,7 +171,8 @@ independent slots, each its own credited link.
     "write_data",
     "byte_mask",
     "lead_set_index",
-    "drop"
+    "drop",
+    "pa_fold"
   ]
 }
 ```
@@ -190,6 +191,7 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_DATA/8-1:0]       byte_mask;
   logic [ccv_prov_pkg::CCV_W_DCU_SET-1:0]        lead_set_index;  // LEAD
   logic                                          drop;
+  logic [ccv_prov_pkg::CCV_W_PA_FOLD-1:0]        pa_fold;
 } ccv_miu_dcu_req_t;
 ```
 
@@ -337,7 +339,7 @@ otherwise:
     .core_clk(core_clk),
     .rst_n(rst_n),
     ...
-    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1224), .LEAD_MASK(1224'h3fe)) u_rpt_miu_dcu_req (
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1228), .LEAD_MASK(1228'h3fe0)) u_rpt_miu_dcu_req (
       .clk(core_clk), .rst_n(rst_n),
     ...
 ```
@@ -412,9 +414,9 @@ SV top under `CCV_CHECK`.
 One of them: slot 0 of the channel from section 5.
 
 ```systemverilog
-  ccv_common_chk_credit #(.PAYLOAD_W(1224), .CHANNEL(16), .LEAD_MASK(1224'h3fe), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1228), .CHANNEL(16), .LEAD_MASK(1228'h3fe0), .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[128]), .ch_credit(credit[128]), .ch_stall(stall[128]),
-    .ch_payload(payload[48768:47545])
+    .ch_payload(payload[48772:47545])
 `ifdef CCV_TRACE
     , .ch_tid(tid[8255:8192])
 `endif
@@ -493,6 +495,8 @@ a script is one. Its sections:
 - DCU model unit tests (sim/dcu/; DI-1)
 - Stage 4c -- OOE RTL (rtl/ooe/)
 - RCU RTL benches (RI's test/rcu/run-rtl.sh)
+- MIU RTL benches (MI's test/miu/run-rtl.sh; MI-16)
+- DCU RTL benches (DI's test/dcu/run-rtl.sh; DI-24 (4), DI-27)
 - RCU block -- ccv_rcu in lock-step with the model (RI's test/rcu/run-lockstep.sh)
 - SV top -- rtl/top/ (generated, tracked)
 - Formal proofs -- one credited link, and the block clock gate
@@ -518,4 +522,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: 087ee3298927cc17 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 21e51644d5a45893 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 #include "stub.h"
 #include "dcu_core.h"
+#include "wayfold.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -83,6 +84,10 @@ private:
     c.ue_track = envU("CCV_DCU_UE_TRACK", c.ue_track);
     c.ecc_every = envU("CCV_DCU_ECC_INJECT", 0);
     c.notice = envU("CCV_DCU_NOTICE", c.notice) != 0;
+    // Under MI's MIU model, MIU's A2 drops every other slot on a bank
+    // (MA-27), so two lookups due in one bank in one cycle never happen
+    // (DI-25 (4), MA rev 156). The stub sends them; the loser path stays.
+    if (const char *v = std::getenv("CCV_MIU_IMPL")) c.no_cycle_conflict = std::string(v) == "model";
     c.brk = k.brk;
     return c;
   }
@@ -109,6 +114,14 @@ private:
       k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
               s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
               (unsigned long long)pa, (unsigned long long)set);
+    // TI-518, AR 405 (3): MIU's pa_fold is DCU's own fold of phys_addr
+    // whenever the predictor is on (--break miu-fold-flip), as the stub's.
+    const unsigned k = core_.config().wp_bits;
+    const uint64_t pf = get(req, c.miu_dcu, "pa_fold");
+    if (k && !core_.config().wp_mru && pf != ccv::skel::wayFold(pa, k))
+      k_.fail("dcu: slot %u req_id %u pa_fold %llx is not its phys_addr %llx's fold %x",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)pf,
+              (unsigned long long)pa, ccv::skel::wayFold(pa, k));
   }
 
   D::Req decode(unsigned s, const Receiver::Msg &m) {
