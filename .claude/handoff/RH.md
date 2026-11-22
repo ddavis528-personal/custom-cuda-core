@@ -73,6 +73,10 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds RH's.
 - OI bar_buf_depth pricing DONE+SENT 12:16Z (D2/D3 = D0 exactly, bar_buf 0; depth 1 control binds). Was: from 12:12Z: rh-jobs/oi448/oi448.sh (resumable), worktree rh-oi448 at 71feef7e; D0/D2/D3
   (bar_buf_depth 0/2/3); S1 + CP-62 kernels transpose-128, layernorm-128, cta-reduce-128, sgemm-128 as CTA 0 of 4 warps (cfgs built
   from launch.txt into build/cp62). Table: python3 rh-jobs/oi448/table.py. Threshold 0.5% on any of the 4 -> depth 3. ~12:45Z.
+- OI OA-466 RUNNING from 02:18Z 11-22: demote_walk default flip at a5d5cb83 (origin/ccr-57eff422-5tdecg) in rh-oi466, rh-jobs/oi466/oi466.sh
+  (resumable), logs ~/ccv-logs/oi466. All CCV_RAU_DEMOTE=mlc; A defaults, B beat_merge=0,demote_walk=1. cm128priv B first (--cycles 4M); STOP and send
+  the CHECK or stop cycle if it is not clean. Else cm128 A, S1 A/B (66 kernels; oracles regenerated), cm32 A/B. Send per kernel: cycles A/B, Δ, demotes,
+  walk mean/max. Check trigger trig_01NGDNLgTuoqaVxm4pgovYeP 03:39Z. rh-oi455 and rh-oi455c DROPPED 02:17Z 11-22 (superseded); logs kept.
 - OI OA-455 11-20, WAITING on OI's next commit. Round 2 at 33b2971c SENT 07:46Z: Bm chk 1 (AR 395); Ck and Dn chk 0 but can't fail.
   Round 3 at 05ee3bdb (rh-oi455c, ~/ccv-logs/oi455c): built OK; Bm ran 49 min with no exit, STOPPED by RH ~08:34Z (OI: likely a hang, FET
   waits on a credit OOE holds in cred_pend_); Cw dropped. OI will send a new commit with a run list. Keep rh-oi455c, rh-oi455 and rh-oi451
