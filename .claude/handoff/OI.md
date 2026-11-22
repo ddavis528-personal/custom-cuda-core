@@ -1,6 +1,13 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-21 (5), MOST CURRENT, read first:
+Updated 2026-11-22, MOST CURRENT, read first:
+- PUSHED 0d54027a (sweep merge 11-22, full gate PASS, then RESUMED PASS push): dc2c3697 model defaults demote_walk=1/beat_merge=0 (OA 466; RH: S1 +0.072%, cm32priv +0.149%, cm128priv -0.038%), c69ee1a3 check-kernel provswap CCV_RAU_CONCURRENT=1 (TI confirmed, TI-520), all remote branches incl. TI 63579fce (CCV-L23 table form).
+- OI-198 (rev 402) recorded the flip + re-pin. Next free OI-199. RH told rh-oi466 can go.
+- Merge lesson: AR's sweep branch had 7 merge bases and ort hung >90 min; merged with git merge-tree --write-tree --merge-base=<best single base>, then commit-tree with both parents. A detached gate that outlives a container restart keeps the old git proxy port and cannot push: relaunch with CCV_RESUME=1 (carries every passed section).
+- NEXT: #74 OA 467/DA 131: rtl/ooe/ooe_ratmap.feedback.json table entry (by OA), no-same-cycle assertion + failing control, landing row for OA to sign, then drop the sweep hold on ooe_ratmap (16d7393a). Then #73 (DA 130 PWV), #71 (OA 465 decq walk), #72 deferred.
+- Bookmarks 11-22: OA 469, AR 409, MI 35, TI 518, RA 157, RI 91, MA 157, DI 41, IS 201, CP 160, DA 131, Conventions 20.
+
+Updated 2026-11-21 (5), earlier:
 - 8d8577b5 PUSHED (sweep merges, full gate PASS). Bookmarks now TI 513, DI 32 (others as below). Next free OI-197.
 - a5d5cb83 on wt-sw (ccr-57eff422-5tdecg): ooe_decrx straggler keep (#71): wo_cq01h in, per-slot walk bit wq + epoch wep, wo_o out for ooe_decq; model RxLog::wopen + walkOpen/walkEpoch; decrx_tb at model default straggler_walk (rxConfig dropped), walk-held=109 at 25 seeds, 0 mismatches, 8 controls caught (new no-walk). NGD wo_cq01h 10.0, CG clean. PUSHED (SCOPED PASS).
 - OI-197 (rev 401) raised to OA, rung: decq hold needs the demote_walk=1 walk port (OA 451); proposal per-entry held + beat-pending bits; ANSWERED by OA-465 (OA rev 467): RTL targets demote_walk=1 (benches/kernels with OOE RTL run at it; model default stays 0 until RH prices the flip, <=0.5% S1 OA flips, else DA). decq per-entry held + beat-pending accepted (group free rejected): held on flush of a wo_o slot; one oldest-first walk port on rob_w's flopped request; beat-pending set at read, cleared by beat-sent pulse (tag = entry index); free at read + beat left + decq_credit_delay, credit with free; stragglers enter held. Bits in each entry's gated row, enables from decq flops (CG-5); beat-sent capture outside rules -> credit waiver to DA. Controls: (a) free before beat leaves, (b) held entry issued, (c) no-hold (flush drops held). decq bench vs model at demote_walk=1, 0 mismatches. Build rob_w demotion-walk beats (OA 435 (6)) with it; report NGD/CG in landing row. MI-12 can proceed. Next free OI-198.
