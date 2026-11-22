@@ -216,6 +216,18 @@
       "by": "OA",
       "date": "2026-10-30",
       "why": "OA's rev 279 (b) (re:OI-85, OA tab): at the measured arrival, 2, in NGD from the launching flop: Rename 2's register Carried to ooe_rob_w port by port (OA-24, DA rev 104: one instance a warp), for OA's re-sign."
+    },
+    "rd_e_cq02h": {
+      "required": 20.0,
+      "by": "OI",
+      "date": "2026-11-20",
+      "why": "OI under DA's allowance (internal budgets that converge): the resolution's enable is ooe_redir's lead, flopped there straight (re_q, ooe_redir.sv: 0 NGD to its flop, arrival 20.0), so 20 + 0 converges within 25; the registers it starts from (cmp_q, br, rsv, rd_s) reach flops inside at 18.9 at most, and copies for the output would cost about 3 x S x D flops"
+    },
+    "rd_l_cq03h": {
+      "required": 1.0,
+      "by": "OI",
+      "date": "2026-11-20",
+      "why": "OI under DA's allowance: the squash lead is ooe_redir's capture enable (arrival 1.0 there, ooe_redir.ngd.json; its CG-5 waiver on ee_cq04h), so it comes straight from the kept copy rd_o_cq03h (NGD-7)"
     }
   }
 }
