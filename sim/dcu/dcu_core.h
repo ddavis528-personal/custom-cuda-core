@@ -77,6 +77,9 @@ struct Rsp {
   bool data = false;   ///< read_data carries a line
   Line line{};
   bool hit = false, mlc_miss = false;
+  /// The stored bit in error under `line` (MA-28 (c), AR 401), or -1: the
+  /// block sends the check bits of `line` as written and this bit flipped.
+  int flip = -1;
   uint64_t tid = 0;
 };
 
@@ -116,6 +119,7 @@ struct Config {
   bool hash = false;             ///< CCV_DCU_BANK_HASH (MA-20), off
   unsigned ue_every = 0;         ///< CCV_DCU_UE_INJECT: every Nth read hit a UE
   unsigned ue_track = ccv::prov::kDcuUeTrack;   ///< CCV_DCU_UE_TRACK
+  unsigned ecc_every = 0;        ///< CCV_DCU_ECC_INJECT: a stored bit of every Nth read hit flipped
   std::string brk = "none";      ///< the run's negative control (--break)
 };
 
@@ -178,7 +182,7 @@ public:
     uint64_t lookups = 0, hits = 0, misses = 0, merged = 0, losers = 0, waited = 0,
              age_blocks = 0, wp_wrong = 0, wp_right = 0, store_def = 0, rd_wr_cycles = 0,
              fill_wait = 0, fills = 0, evicts = 0, notices = 0, held_cycles = 0,
-             rsp_credit_wait = 0, at_qdepth = 0, at_stdata = 0, idle = 0;
+             rsp_credit_wait = 0, at_qdepth = 0, at_stdata = 0, idle = 0, ce = 0;
   };
   const Stats &stats() const { return st_; }
 
@@ -192,6 +196,8 @@ private:
   // ---- the arrays: tags, state, LRU, data -----------------------------------
   struct Way {
     bool valid = false, owned = false, dirty = false;
+    int flip = -1;     ///< a stored data bit in error (CCV_DCU_ECC_INJECT), or -1
+    bool ecc_wr = false;   ///< its corrected line's rewrite is queued
     uint64_t line = 0, used = 0;
     Line data{};
   };
@@ -207,7 +213,7 @@ private:
 
   // ---- the banks and their queues (MA-7, MA-24, MA-25, AR 364) -------------
   struct Acc {
-    enum K { Look, StoreR, StoreW, FillW, EvictR } k;
+    enum K { Look, StoreR, StoreW, FillW, EvictR, EccW } k;
     uint64_t born, ready, line;
     Req req;           ///< Look, StoreR
     unsigned fb = 0;   ///< FillW: its fill buffer
@@ -279,6 +285,10 @@ private:
   unsigned ue_hits_ = 0;
   std::vector<uint64_t> ue_loc_;
   bool ue_raised_ = false, ue_sent_ = false;
+  unsigned ecc_hits_ = 0;
+  /// A read hit's SECDED check (MA-28 (c), AR 401): the injection, and on a
+  /// non-zero syndrome the correction's rewrite, queued like an RMW's write.
+  int eccOnHit(Way &w, const Req &r);
   int ueOnHit(Way &w);
 };
 
