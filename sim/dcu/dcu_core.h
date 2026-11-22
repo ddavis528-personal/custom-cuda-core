@@ -81,6 +81,10 @@ struct Rsp {
   /// block sends the check bits of `line` as written and this bit flipped.
   int flip = -1;
   uint64_t tid = 0;
+  /// A late answer read from a bank (a queue waiter or a re-read): it takes
+  /// any free slot, lowest bank first, and holds its bank until it leaves
+  /// (slice 1, response slots); -1 for a contracted answer, on its own slot.
+  int bank = -1;
 };
 
 /// A request launched on ccv_dcu_mlc_req.
@@ -118,6 +122,7 @@ struct Config {
   unsigned ids = 1u << ccv::prov::kWReqDcuMlc;       ///< miss buffers: MLC req_ids
   unsigned wb = 2;               ///< the writeback buffer's entries
   bool hash = false;             ///< CCV_DCU_BANK_HASH (MA-20), off
+  bool no_cycle_conflict = false;///< refuse two lookups due in one bank in one cycle (MIU model: DI-25 (4))
   unsigned ue_every = 0;         ///< CCV_DCU_UE_INJECT: every Nth read hit a UE
   unsigned ue_track = ccv::prov::kDcuUeTrack;   ///< CCV_DCU_UE_TRACK
   unsigned ecc_every = 0;        ///< CCV_DCU_ECC_INJECT: a stored bit of every Nth read hit flipped

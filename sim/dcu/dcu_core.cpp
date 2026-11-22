@@ -436,6 +436,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
       if (set[i].valid && set[i].line != r.pa) { s.line = set[i].data; break; }
   }
   if (r.reread) h_.hit("dcu_wp_reread");
+  if ((late || r.reread) && c_.brk != "late-own-slot") s.bank = int(b);
   respond(now_ + launchOff(), s);
 }
 
@@ -534,6 +535,15 @@ void Core::schedule() {
     for (const Req &r : due)
       if (bankOf(r.pa) == b) in.push_back(r);
     std::stable_sort(in.begin(), in.end(), [](const Req &x, const Req &y) { return x.slot < y.slot; });
+    // Two lookups due in one bank in one cycle: the stub MIU sends them, but
+    // MIU's A2 drops all but the lowest slot (MA-27), so under the MIU model
+    // this never happens (the CHECK; DI-25 (4), MA rev 156).
+    if (in.size() > 1) {
+      h_.hit("dcu_cycle_conflict", in.size() - 1);
+      if (c_.no_cycle_conflict)
+        h_.fail(fmt("dcu: %llu lookups due in bank %llu at cycle %llu; MIU's A2 drops all but one (MA-27)",
+                    in.size(), b, now_));
+    }
     size_t old = bq_[b].size();
     for (size_t i = 0; i != bq_[b].size(); ++i)
       if (eligible(b, i)) { old = i; break; }
@@ -942,9 +952,23 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   }
   for (auto it = timed_.begin(); it != timed_.end() && it->first <= t; it = timed_.erase(it))
     late_.push_back(it->second);
+  // Contracted answers (and the miss path's) on their own slot first; then
+  // late bank answers, lowest bank first, each on the lowest free slot. One
+  // that finds none keeps its word and holds its bank (slice 1, response
+  // slots): the bank takes no access next cycle.
+  std::stable_sort(late_.begin(), late_.end(), [](const Rsp &x, const Rsp &y) {
+    return (x.bank >= 0) < (y.bank >= 0) || (x.bank >= 0 && y.bank >= 0 && x.bank < y.bank);
+  });
   for (auto it = late_.begin(); it != late_.end();) {
-    const unsigned s = it->slot;
-    if (!used[s] && p.rsp_can[s] && cr[s] > resv_[s]) {
+    int s = -1;
+    if (it->bank < 0) {
+      if (!used[it->slot] && p.rsp_can[it->slot] && cr[it->slot] > resv_[it->slot]) s = int(it->slot);
+    } else {
+      for (unsigned k = 0; k != kSlots && s < 0; ++k)
+        if (!used[k] && p.rsp_can[k] && cr[k] > resv_[k]) s = int(k);
+    }
+    if (s >= 0) {
+      it->slot = unsigned(s);
       o.rsps.push_back(*it);
       used[s] = true;
       --cr[s];
@@ -952,6 +976,10 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     } else {
       ++st_.rsp_credit_wait;
       h_.hit("dcu_rsp_wait");
+      if (it->bank >= 0) {
+        h_.hit("dcu_late_holds_bank");
+        bfree_[unsigned(it->bank)] = std::max(bfree_[unsigned(it->bank)], t + 1);
+      }
       ++it;
     }
   }

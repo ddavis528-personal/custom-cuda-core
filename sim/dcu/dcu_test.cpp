@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 #include "dcu_core.h"
 
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -64,6 +65,7 @@ struct Bench {
   bool auto_mlc = true;
   unsigned mlc_lat = 20;
   std::vector<Req> held;   ///< requests the core did not accept yet
+  std::array<bool, kSlots> can{{true, true, true, true}};   ///< each rsp slot's rsp_can
   explicit Bench(Config c) : core(c, h) {}
 
   void run(uint64_t until) {
@@ -77,7 +79,7 @@ struct Bench {
       if (fi != fills.end()) f = fi->second;
       Ports p;
       for (unsigned s = 0; s != kSlots; ++s) {
-        p.rsp_can[s] = true;
+        p.rsp_can[s] = can[s];
         p.rsp_credits[s] = 8;
         p.ntc_can[s] = true;
       }
@@ -515,6 +517,46 @@ int main(int argc, char **argv) {
       const uint64_t want = P + 3 + (ctl ? 2 : 1);
       if (ctl) EXPECT(b.at(2) != P + 3 + 1, "the control reads on no match: the hit waits two cycles");
       else EXPECT(b.at(2) == want, "the hit waits one cycle, at P+%lld", (long long)(b.at(2) - P));
+    });
+
+  // Two lookups due in one bank in one cycle: counted (the stub MIU sends
+  // them), and refused under the MIU model, whose A2 drops all but one
+  // (DI-25 (4), MA rev 156).
+  for (bool strict : {false, true})
+    test(strict ? "cycle-conflict-refused" : "cycle-conflict-counted", [&] {
+      Config c = cfg(9);
+      c.no_cycle_conflict = strict;
+      Bench b(c);
+      warm(b, bank0(1), 60);
+      warm(b, bank0(2), 61);
+      b.reqs[b.t] = {rd(0, 1, bank0(1)), rd(1, 2, bank0(2))};
+      b.run(b.t + 40);
+      EXPECT(b.h.bins["dcu_cycle_conflict"] == 1, "one conflict counted");
+      EXPECT(b.h.fails.empty() != strict, "refused only under the MIU model");
+    });
+
+  // A late answer takes any free response slot (slice 1, response slots;
+  // MIU matches by req_id). Two lookups in one bank in one cycle: slot 1's
+  // loses and answers late; with slot 1 closed it goes out on slot 0. The
+  // control late-own-slot keeps it on slot 1, where it never leaves.
+  for (bool ctl : {false, true})
+    test(ctl ? "late-any-slot-control" : "late-any-slot", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "late-own-slot";
+      Bench b(c);
+      warm(b, bank0(1), 60);
+      warm(b, bank0(2), 61);
+      b.can[1] = false;
+      b.reqs[b.t] = {rd(0, 1, bank0(1)), rd(1, 2, bank0(2))};
+      b.run(b.t + 40);
+      if (ctl) {
+        EXPECT(b.rsp(2) == nullptr, "the control holds the answer on its own slot");
+        EXPECT(b.h.bins["dcu_late_holds_bank"] == 0, "a late-own-slot answer is not a bank answer");
+        return;
+      }
+      EXPECT(b.rsp(1) && b.rsp(1)->slot == 0, "the winner on its own slot");
+      EXPECT(b.rsp(2) && b.rsp(2)->slot == 0, "the loser on slot 0, the free one");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 
   if (g_fail) std::fprintf(stderr, "dcu-test: %d failure(s)\n", g_fail);
