@@ -98,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 408, OA 466, TI 512, MA 151, DI 33,
+- **Bookmarks** (revs read through): AR 408, OA 466, TI 512, MA 152, DI 33,
   MI 29, RA 157, RI 91, IS 201, CP 160, OI 400, DA 128, Conventions 20. TI,
   MA, DI, MI and OI were read only for named rows past the last sweep's revs
   (TI 496, MA 135, DI 12, MI 18, OI 395): the next sweep reads them from
@@ -232,8 +232,9 @@ Credit rules (TI-49):
    by AR.
    MA-29 (AR 404, 11-22): agreed, check_bits 72 a slot, (137,128), forced by
    Daniel's MACRO-1; fix in the stage after R2's syndrome (15.4 + 10.7 NGD
-   > 25); ECC stays 1. Asked MA whether the 512x137 instances column-interleave
-   against adjacent-cell MBUs (not blocking). TI applies CCV_DCU_ECC_K.
+   > 25); ECC stays 1. MBU question answered (MA rev 152): column mux >= 4
+   in the 512x137 instance, a DCU instance requirement; closed. TI applies
+   CCV_DCU_ECC_K.
 000b. **TI-502 credit deadlock: SETTLED (AR 397 .649791, AR 398 .652069,
    AR 399 .653325; OA 459/460/461).** FET's full-credit wait (AR 395 (3))
    stays; (b) drained+delay and (c) no wait refused. OOE keeps a demoting warp
