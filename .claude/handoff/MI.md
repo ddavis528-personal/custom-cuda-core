@@ -71,16 +71,20 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
    MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
-1. RTL slice 1 (MA Phase 2, MIU tab rev 150; DI-20: MA takes DCU slice 1 before MIU slices 2-4, slice 1 unaffected): miu_cap pushed; miu_pair done on mi-dev (ead8f705:
-   ring of LAG rows, tags from memop arrival M=00, V 03, H 05; bench + controls arrival/lag; cg/ngd
-   clean; FW=96 placeholder until miu_mq's layout; LAG param until TI derives it). Next was miu_pair
-   (+ miu_mq: A1 fields read at H-1; per lead pipe ring of {entry, valid} indexed by arrival
-   counter bridging LAG=3, CCV_LAT_MIU_PAIR_LAG once TI derives it; fences pair on slot 0; bulk
-   discards no address; memop ends no-flop). Then miu_agu8, miu_lead (ge1/ge2/used), miu_cred,
-   miu_tlb, miu_grp, miu_a2 (drop), miu_ids, miu_hitq, miu_rsp, miu_rcap, miu_ext, miu_ecc
-   (syndrome R2, budget 17), miu_out, ccv_miu top. MI-16 closed (TI ad27ff81, job_miu_rtl runs run-rtl.sh; MI rev 36).
+1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq e5d50b8b
+   (gate-push in flight, job-gate-push-20261122-214752-4435.log). miu_mq: 40 entries by arrival
+   slot, psel one-hot + pre keep copy (me), rel decoded before its flop, dis (mem_op 0xF) muxes
+   last; cg 5136/5205 gated, ngd 23.6/11.2. miu_pair reads mqa_cm02h (A1 view, FW 63) at H-1;
+   miu_pkg dropped (Yosys refuses pkg->pkg refs; mq_tb static_asserts the layout). Lines, lane map,
+   lost flag in miu_mq come with miu_a2. Next: miu_agu8, miu_lead (ge1/ge2/used), miu_cred,
+   miu_tlb (ccv_common_wayfold, pa_fold), miu_grp, miu_a2 (drop), miu_ids, miu_hitq, miu_rsp,
+   miu_rcap, miu_ext, miu_ecc (K=128, syndrome R2, budget 17), miu_out, ccv_miu top. Then model
+   checks: UE on a clean line keeps req_id live (AR 403); mispredict late answer at due+2.
    RTL lessons: CCV-L23 forbids a self-feeding param shift array (use a counter-indexed ring);
-   tags _cmNNh; RST-1 flop; CG-5 enables from own flops; (* keep *) output copies.
+   a comb net read by more than its own state's flops must go inline in always_ff; CCV-L04 reads
+   `<=` in always_comb as nonblocking; no package-to-package params; one assert label per module
+   (fold generate checks into vectors); tags _cmNNh; RST-1 flop; CG-5; (* keep *) output copies;
+   a payload no-flop end: compute next state both ways, mux by it last.
 1b. MA-29 done by TI (bc9d61ff): merge it in the next sweep; miu_ecc RTL syndrome at K=128.
 1c. MA-30 agreed (AR 405, MIU tab rev 161): each miu_tlb entry keeps fold(PFN) (k=4), written at
    the TLB fill; miu_a2 sends it as pa_fold in the req payload; control miu-fold-flip must fail.
