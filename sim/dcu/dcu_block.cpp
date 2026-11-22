@@ -83,6 +83,10 @@ private:
     c.ue_track = envU("CCV_DCU_UE_TRACK", c.ue_track);
     c.ecc_every = envU("CCV_DCU_ECC_INJECT", 0);
     c.notice = envU("CCV_DCU_NOTICE", c.notice) != 0;
+    // Under MI's MIU model, MIU's A2 drops every other slot on a bank
+    // (MA-27), so two lookups due in one bank in one cycle never happen
+    // (DI-25 (4), MA rev 156). The stub sends them; the loser path stays.
+    if (const char *v = std::getenv("CCV_MIU_IMPL")) c.no_cycle_conflict = std::string(v) == "model";
     c.brk = k.brk;
     return c;
   }

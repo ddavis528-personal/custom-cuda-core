@@ -238,6 +238,22 @@
       "doc": "L1 data banks, each a half-rate 1RW SRAM (DA rev 123), 64 KiB each at 512 KiB: four lookups a cycle need at least 8. A lookup's bank is its line address's low clog2(CCV_DCU_BANKS) bits, [9:7] at 8, which are the set index's low bits, so ccv_miu_dcu_req's lead_set_index carries it and no bank field is sent (AR 364). Both counts are powers of two and the banks no more than the sets. MA-4's L1-hit eligibility refuses a group whose leaders' lookups meet in one bank."
     },
     {
+      "name": "CCV_DCU_ECC_K",
+      "value": 128,
+      "status": "arch",
+      "source": "MA-29 (MA rev 151), AR 404 (AR rev 408); MACRO-1 (DA, 2026-11-17)",
+      "require": "(CCV_DCU_ECC_K >= 3) * ((CCV_W_DATA // CCV_DCU_ECC_K) * CCV_DCU_ECC_K == CCV_W_DATA) * ((CCV_DCU_ECC_K // 8) * 8 == CCV_DCU_ECC_K) == 1",
+      "doc": "Data bits of one L1 SECDED code word: (137,128) words, since MACRO-1 caps an SRAM word at 137 bits and fails two (72,64) words at 144 (AR 404 (1)). A slot's read_data on ccv_dcu_miu_rsp is CCV_W_DATA / this many code words, each a whole number of bytes."
+    },
+    {
+      "name": "CCV_DCU_ECC_CHECK_W",
+      "value": 72,
+      "status": "arch",
+      "source": "MA-29, AR 404",
+      "derive": "(CCV_W_DATA // CCV_DCU_ECC_K) * (clog2(CCV_DCU_ECC_K + clog2(CCV_DCU_ECC_K) + 1) + 1)",
+      "doc": "ccv_dcu_miu_rsp's check_bits a slot: (CCV_W_DATA / CCV_DCU_ECC_K) x R(K), R(k) = clog2(k + clog2(k) + 1) + 1 check bits a code word (SEC plus the overall parity), 9 at K = 128, 72 a slot (MA-29, AR 404; AR 401's 128 retired)."
+    },
+    {
       "name": "CCV_DCU_BANK_AGE",
       "value": 16,
       "status": "tunable",
