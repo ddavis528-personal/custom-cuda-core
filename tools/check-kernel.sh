@@ -1731,6 +1731,30 @@ else
   bad "--break dcu-ecc-recode, DCU model" "l1_ecc_fix=${rf:-?} check_failures=${rc:-?} (want 0 / >0): $(grep '^KERNEL' "$B/kernel_dcu-ecc-recode.log")"
 fi
 
+# Dropped lookups (MA-27, AR 400; DI-19 (b)). The MIU model launches a
+# lookup and drops it at A2 (vadd: 21 duplicate-leader drops); DCU answers
+# nothing and returns no credit for it, and MIU refunds the entry credit
+# itself. Run under the MIU model whatever the run's set, since the stub
+# MIU sends no drops. Controls: dcu-drop-answers serves a drop as a lookup
+# (both DCUs), and MIU refuses the answer as one to no outstanding request;
+# dcu-drop-credit returns an entry credit for it (the DCU model only), and
+# MIU refuses the credit past the bank's count.
+dl() { CCV_MIU_IMPL=model CCV_DCU_IMPL=$1 "$SKEL" --kernel build/oracle/vadd/oracle.jsonl ${2:+--break "$2"} >"$B/kernel_drop_$1_${2:-none}.log" 2>&1; echo "$B/kernel_drop_$1_${2:-none}.log"; }
+why=""; nd=""
+for d in stub model; do
+  l=$(dl $d); n=$(cover "$l" dcu_drops); nd="$nd $d:${n:-?}"
+  [ "${n:-0}" -gt 0 ] && [ -z "$(ok "$l")" ] || why="$why clean-$d(dcu_drops=${n:-?} $(ok "$l"))"
+  l=$(dl $d dcu-drop-answers)
+  [ "$(grep -c '^CHECK miu: a DCU response for req_id [0-9]*, which is not outstanding' "$l")" -gt 0 ] || why="$why dcu-drop-answers-$d"
+done
+l=$(dl model dcu-drop-credit)
+[ "$(grep -c '^CHECK miu: DCU returned an entry credit for bank [0-9]*, which holds all' "$l")" -gt 0 ] || why="$why dcu-drop-credit-model"
+if [ -z "$why" ]; then
+  say "drops: MIU model's drops unanswered; --break dcu-drop-answers, dcu-drop-credit caught" "PASS (vadd drops by DCU:$nd)"
+else
+  bad "dropped lookups" "$why"
+fi
+
 # The machine check (AR 370; DA rev 124; ISA v1.9 O-86). DCU's stub takes
 # every read hit as an uncorrectable error under CCV_DCU_UE_INJECT=1. The
 # bin table above: vadd and ldpar recover clean lines (invalidated,
