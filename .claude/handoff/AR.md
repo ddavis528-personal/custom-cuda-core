@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 404 .660807 (tab rev 408).
-  - **The next AR row inserts after .660807**, labelled AR 405.
+  - Latest row: AR 405 .662302 (tab rev 409).
+  - **The next AR row inserts after .662302**, labelled AR 406.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 408, OA 466, TI 512, MA 152, DI 33,
+- **Bookmarks** (revs read through): AR 409, OA 466, TI 512, MA 154, DI 33,
   MI 29, RA 157, RI 91, IS 201, CP 160, OI 400, DA 128, Conventions 20. TI,
   MA, DI, MI and OI were read only for named rows past the last sweep's revs
   (TI 496, MA 135, DI 12, MI 18, OI 395): the next sweep reads them from
@@ -217,6 +217,14 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000e. **MA-30 way predictor (AR 405 .662302, 11-22; MA, TI rung).** Agreed
+   k=4 fold table (16,384 flops in dcu_bctl), pa_fold on ccv_miu_dcu_req,
+   HIT 8. Price vs k=5: S1 -0.02, cm32priv -0.17, cm128priv +0.30%; vs B9
+   (no predictor, HIT 9) about -1.1/-1.0/-0.6%. Under Daniel's bar (S1).
+   Asked MA for: mispredict handling across the boundary (alias hit never
+   completes; what rsp carries; re-access path/cycles), one fold helper both
+   sides with a CHECK, controls, bins. Waiting on MA's row; don't write
+   another until it comes (crossing rule).
 000c. **MA-27/MA-28 (AR 400, 401, 403): CLOSED.** Drop field on
    ccv_miu_dcu_req and 128 check bits a slot on ccv_dcu_miu_rsp landed in
    TI-513 (8ac4c441), with CCV_DCU_ECC_INJECT; MA rev 146 accepted. MA rev 149
