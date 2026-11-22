@@ -142,6 +142,9 @@
 #     on time, no completion then, its            (hit, CCV_DCU_ECC_INJECT=1):
 #     corrected data and completion later         stale reads; no-fix leaves
 #     (RA 153 (5), CCV_LAT_L1_ECC)                two registers wrong
+#   the DCU model's check bits are the line  dcu-ecc-recode (transp4, DCU
+#     as written, so MIU's syndrome sees a      model): no hit corrected,
+#     stored bit flipped (DI-16)                 stale reads
 #   an L1 hit completes at the contract with  early-hit, late-hit-data,
 #     its data, and its dependants read it       no-rcu-bypass (hit, with
 #     (A-46, OI-5)                               l1_spec): V-44 or stale reads
@@ -222,6 +225,9 @@
 #     walk                                      once; walk-before-faddr
 #                                               (addrhigh, addrneg): MIU
 #                                               refuses the walk
+#   a warp demoted while held at its wait    fet-ignore-held (transp4,
+#     steps back to the wait and asks again     CCV_RAU_CONCURRENT=1): it
+#     (MI-4 (B); TI-40)                         reads unmade stores
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
@@ -826,7 +832,7 @@ cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 NOTICE_ON=$([ "${CCV_DCU_IMPL:-stub}" = model ] && echo CCV_DCU_NOTICE=1)
 IMPL_PINS="
 dcu=model ldpar l1_hit=2
-dcu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=57
+dcu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=55
 dcu=model late l1_late=0
 dcu=model stall l1_late=0
 dcu=model privwin priv_form=12
@@ -836,16 +842,20 @@ miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=0
 miu=model ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1
 miu=model privwin priv_form=10
 dcu=model vadd4-swap orphan=1
+miu=model vadd4-swap-miu impl=stub
 dcu=model,miu=model vadd fill_notice=4
 dcu=model,miu=model vadd cmpl_hint=4
-dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=61
+dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=60
 dcu=model,miu=model ldpar l1_hit=1
 dcu=model,miu=model no-resource-cap v60=16
 dcu=model,miu=model lnorm1-straggler demote=342
 dcu=model waypred dcu_wp_wrong=4
 dcu=model,miu=model waypred dcu_wp_wrong=4 l1_hit=0 l1_late=4
 miu=model fet-reset-on-kill scen=rope:11
+miu=model held-wait demote=776
+dcu=model held-wait demote=776
 dcu=model,miu=model fet-reset-on-kill scen=rope:12
+dcu=model,miu=model held-wait demote=754
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
   local key=$1 want=$2 impl k w bin out i ok p x hit
@@ -1706,6 +1716,45 @@ else
   bad "--break ecc-no-fix / ecc-cmpl-on-time" "stale reads $n1 / $n2 (want >0 / 5): $(grep '^KERNEL' "$B/kernel_ecc-no-fix.log" "$B/kernel_ecc-cmpl-on-time.log" | tr '\n' ' ')"
 fi
 
+# The DCU model keeps the error in its arrays (DI-16): CCV_DCU_ECC_INJECT
+# flips a stored bit and the response carries the line's check bits as
+# written, so MIU's syndrome finds it. Its control, dcu-ecc-recode, sends
+# check bits recomputed over the bad line: MIU's syndrome misses it, no hit
+# is corrected and the loads' dependants read the flipped bit. Run under
+# the DCU model whatever the run's implementation set; the stub DCU has no
+# arrays to recode.
+CCV_DCU_IMPL=model CCV_DCU_ECC_INJECT=1 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --break dcu-ecc-recode >"$B/kernel_dcu-ecc-recode.log" 2>&1
+rf=$(cover "$B/kernel_dcu-ecc-recode.log" l1_ecc_fix); rc=$(field "$B/kernel_dcu-ecc-recode.log" check_failures)
+if [ "${rf:-x}" = 0 ] && [ "${rc:-0}" -gt 0 ]; then
+  say "--break dcu-ecc-recode, DCU model: MIU misses it" "PASS (transp4: l1_ecc_fix=0, check_failures=$rc)"
+else
+  bad "--break dcu-ecc-recode, DCU model" "l1_ecc_fix=${rf:-?} check_failures=${rc:-?} (want 0 / >0): $(grep '^KERNEL' "$B/kernel_dcu-ecc-recode.log")"
+fi
+
+# Dropped lookups (MA-27, AR 400; DI-19 (b)). The MIU model launches a
+# lookup and drops it at A2 (vadd: 21 duplicate-leader drops); DCU answers
+# nothing and returns no credit for it, and MIU refunds the entry credit
+# itself. Run under the MIU model whatever the run's set, since the stub
+# MIU sends no drops. Controls: dcu-drop-answers serves a drop as a lookup
+# (both DCUs), and MIU refuses the answer as one to no outstanding request;
+# dcu-drop-credit returns an entry credit for it (the DCU model only), and
+# MIU refuses the credit past the bank's count.
+dl() { CCV_MIU_IMPL=model CCV_DCU_IMPL=$1 "$SKEL" --kernel build/oracle/vadd/oracle.jsonl ${2:+--break "$2"} >"$B/kernel_drop_$1_${2:-none}.log" 2>&1; echo "$B/kernel_drop_$1_${2:-none}.log"; }
+why=""; nd=""
+for d in stub model; do
+  l=$(dl $d); n=$(cover "$l" dcu_drops); nd="$nd $d:${n:-?}"
+  [ "${n:-0}" -gt 0 ] && [ -z "$(ok "$l")" ] || why="$why clean-$d(dcu_drops=${n:-?} $(ok "$l"))"
+  l=$(dl $d dcu-drop-answers)
+  [ "$(grep -c '^CHECK miu: a DCU response for req_id [0-9]*, which is not outstanding' "$l")" -gt 0 ] || why="$why dcu-drop-answers-$d"
+done
+l=$(dl model dcu-drop-credit)
+[ "$(grep -c '^CHECK miu: DCU returned an entry credit for bank [0-9]*, which holds all' "$l")" -gt 0 ] || why="$why dcu-drop-credit-model"
+if [ -z "$why" ]; then
+  say "drops: MIU model's drops unanswered; --break dcu-drop-answers, dcu-drop-credit caught" "PASS (vadd drops by DCU:$nd)"
+else
+  bad "dropped lookups" "$why"
+fi
+
 # The machine check (AR 370; DA rev 124; ISA v1.9 O-86). DCU's stub takes
 # every read hit as an uncorrectable error under CCV_DCU_UE_INJECT=1. The
 # bin table above: vadd and ldpar recover clean lines (invalidated,
@@ -2319,6 +2368,30 @@ log="$B/kernel_pgcross_cold.log"; cold "$SKEL" --kernel build/oracle/pgcross/ora
 mi7 "pgcross, cold TLB: two pages held, already ineligible" "$log" tlb_two_page=1 l1_inelig=1 tlb_two_page_lost=0
 log="$B/kernel_slotform_cold.log"; cold "$SKEL" --kernel build/oracle/slotform/oracle.jsonl >"$log" 2>&1
 mi7 "slotform, cold TLB: a load over two pages" "$log" tlb_two_page=2
+# A demotion of a warp OOE holds behind a converged wait (MI-4 (B); TI-40,
+# AR's rev 164): the wait retired, so its rewind beat sets rewind_held and
+# FET steps the lanes back over it (held_long), and the restored warp
+# fetches the wait and asks SYU again. transp4 under CCV_RAU_CONCURRENT=1,
+# demoted while warp 1 is held at its barrier, ends == ccv-sim; the control
+# fet-ignore-held resumes the warp past its wait, and its LD_SHARED reads
+# the other warps' stores before they are made (the cycle is per
+# implementation set, an IMPL_PINS row).
+hw=$(impl_pins held-wait demote=758); hw=${hw#demote=}
+log="$B/kernel_transp4_held_wait.log"
+CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:$hw "$SKEL" --kernel build/oracle/transp4/oracle.jsonl >"$log" 2>&1
+w=$(ok "$log")
+if [ -z "$w" ]; then
+  say "transp4 demoted at $hw, a warp held at its wait" "PASS (restored to its wait, == ccv-sim)"
+else
+  bad "transp4 demoted at $hw, a warp held at its wait" "$w"
+fi
+log="$B/kernel_fet-ignore-held.log"
+CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:$hw "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --break fet-ignore-held >"$log" 2>&1
+if [ "$(field "$log" mem_mismatch)" -gt 0 ] 2>/dev/null; then
+  say "--break fet-ignore-held: past its wait" "PASS (transp4, mem_mismatch=$(field "$log" mem_mismatch))"
+else
+  bad "--break fet-ignore-held" "the warp resumed past its wait unnoticed: $(grep '^KERNEL' "$log")"
+fi
 # A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 332
 # (328 in OI's tree, whose timing differs; 342 under both block models, DI's
 # re:TI-503, an IMPL_PINS row)
@@ -2417,11 +2490,20 @@ decq=$(python3 -c 'import json; print(next(p["value"] for p in json.load(open("p
 v4orph=$([ "$decq" -le 13 ] && echo 1 || echo 0)
 # DI-3: the DCU model's timing leaves vadd4 one orphan at any depth, the
 # pair two (IMPL_PINS' vadd4-swap rows).
-v4orph=$(impl_pins vadd4-swap orphan=$v4orph); v4orph=${v4orph#orphan=}
+# MI-4 (A)(4), MI rev 33: the MIU model completes vadd4's one MLC miss
+# before RAU demotes the warp, so no drain happens under it; vadd4's half
+# runs on the stub MIU there (the vadd4-swap-miu row), stall's stays as run.
+v4miu=$(impl_pins vadd4-swap-miu impl=${CCV_MIU_IMPL:-stub}); v4miu=${v4miu#impl=}
+v4log="$B/kernel_vadd4_swap.log"
+if [ "$v4miu" != "${CCV_MIU_IMPL:-stub}" ]; then
+  v4log="$B/kernel_vadd4_swap_miu-$v4miu.log"
+  CCV_MIU_IMPL=$v4miu CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl >"$v4log" 2>&1
+fi
+v4orph=$(CCV_MIU_IMPL=$v4miu impl_pins vadd4-swap orphan=$v4orph); v4orph=${v4orph#orphan=}
 w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
-w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=$v4orph ready=1 restored=1)
+w2=$(ok "$v4log" bulk_discard=1 orphan=$v4orph ready=1 restored=1)
 if [ -z "$w$w2" ]; then
-  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits and orphan home; vadd4's $v4orph orphan(s) at decq $decq, then ready)"
+  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits and orphan home; vadd4's $v4orph orphan(s) at decq $decq on the $v4miu MIU, then ready)"
 else
   bad "replay drain" "stall: $w; vadd4: $w2"
 fi

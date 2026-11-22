@@ -79,6 +79,7 @@ private:
     c.hash = envU("CCV_DCU_BANK_HASH", 0) != 0;
     c.ue_every = envU("CCV_DCU_UE_INJECT", 0);
     c.ue_track = envU("CCV_DCU_UE_TRACK", c.ue_track);
+    c.ecc_every = envU("CCV_DCU_ECC_INJECT", 0);
     c.notice = envU("CCV_DCU_NOTICE", c.notice) != 0;
     c.brk = k.brk;
     return c;
@@ -136,6 +137,18 @@ private:
       for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
         if (has(c.miu_dcu, s)) {
           Receiver::Msg m = take(c.miu_dcu, s);
+          if (get(m.payload, c.miu_dcu, "drop")) {
+            // A dropped lookup (MA-27, AR 400, AR 404): DCU reads nothing,
+            // changes nothing, queues nothing, raises no CE, UE or core-fatal
+            // and answers nothing; MIU refunds its entry credit itself
+            // (DI-12). Controls: dcu-drop-answers serves it as a lookup, and
+            // dcu-drop-credit returns an entry credit for it, which MIU must
+            // refuse past its reset count.
+            k_.hit("dcu_drop");
+            if (k_.brk == "dcu-drop-credit")
+              ++cred_ent_[core_.bankOf(get(m.payload, c.miu_dcu, "phys_addr"))];
+            if (k_.brk != "dcu-drop-answers") continue;
+          }
           checkIndexLead(s, m.payload);
           in.push_back(decode(s, m));
         }
@@ -166,15 +179,15 @@ private:
       Bits b = msgOf(c.dcu_miu);
       put(b, c.dcu_miu, "req_id", r.req_id);
       if (r.data) putLine(b, field(c.dcu_miu, "read_data").lsb, r.line);
-      // MA-28 (c), AR 401: the line's stored check bits; CCV_DCU_ECC_INJECT=N
-      // flips one stored bit of every Nth hit under them (TI's interim, as
-      // the DCU stub does, until DI's model injects in its arrays).
+      // MA-28 (c), AR 401: the stored check bits of the line as written, and
+      // the stored bit in error the core's arrays hold (CCV_DCU_ECC_INJECT)
+      // flipped under them, as the data array reads it. dcu-ecc-recode, the
+      // control, codes the bad line instead, so MIU's syndrome misses it.
       Line ln = getLine(b, field(c.dcu_miu, "read_data").lsb);
-      putCheckBits(b, field(c.dcu_miu, "check_bits").lsb, ln);
-      if (r.data && r.hit && ecc_every_ && ++ecc_hits_ % ecc_every_ == 0) {
-        ln[0] ^= 1u;
-        putLine(b, field(c.dcu_miu, "read_data").lsb, ln);
-      }
+      if (r.flip >= 0) ln[unsigned(r.flip) / 8] ^= uint8_t(1u << (r.flip % 8));
+      putCheckBits(b, field(c.dcu_miu, "check_bits").lsb,
+                   k_.brk == "dcu-ecc-recode" ? ln : getLine(b, field(c.dcu_miu, "read_data").lsb));
+      putLine(b, field(c.dcu_miu, "read_data").lsb, ln);
       put(b, c.dcu_miu, "hit", r.hit);
       put(b, c.dcu_miu, "mlc_miss", r.mlc_miss);
       send(c.dcu_miu, r.slot, b, r.tid);
@@ -233,11 +246,6 @@ private:
     }
   }
   bool ue_owed_ = false;
-  const unsigned ecc_every_ = [] {
-    const char *v = std::getenv("CCV_DCU_ECC_INJECT");
-    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
-  }();
-  unsigned ecc_hits_ = 0;
   bool extra_sent_ = false;
   std::array<unsigned, ccv::kDcuBanks> cred_ent_{}, cred_std_{};
   bool credOwed() const {
