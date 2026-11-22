@@ -27,12 +27,16 @@
 //   02     the entry's payload held (mq), read by miu_pair at 04 and by R1;
 //          the credit returns (cr), one a slot a cycle, any excess owed to
 //          the next cycles
-// The free state and the preselected entry (fr, pre) are queue state at
-// 01; the payload array is the queue's, written at 01 and tagged 02.
+// The free state and the preselected entry (fr, psel, pre) are queue state
+// at 01; the payload array is the queue's, written at 01 and tagged 02. The
+// free ports are decoded to an entry's bit before their flop (rel), and the
+// payload's mem_op (a bulk discard) chooses last between next states
+// computed both ways from flops, so the payload's no-flop end reaches state
+// through a compare and a mux.
 //
 // Inputs are capture flops' or no-flop ends (arrival 0); every enable comes
-// from this module's own flops (CG-5): the memop's valid and the free ports
-// are flopped first. Every output comes straight from a flop.
+// from this module's own flops (CG-5): the memop's valid and the freed
+// entries are flopped first. Every output comes straight from a flop.
 //
 // The reference is the MIU model (sim/miu/miu_block.cpp: an entry per memop
 // from arrival to freeEntry, the credit on its arrival slot, a bulk
@@ -40,7 +44,6 @@
 // module to a value model of it.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
-`include "ccv_interfaces.svh"
 `define CCV_CLK miu_core_clk
 `define CCV_RST rst_r01h
 module miu_mq #(
@@ -49,9 +52,23 @@ module miu_mq #(
   parameter  int NF = ccv_params_pkg::CCV_MIU_PIPES,          // free ports, 4
   localparam int NE = NS * NC,                                 // entries, 40
   localparam int EW = $clog2(NE),
-  localparam int PL = $bits(ccv_ooe_miu_memop_t),              // payload, 126
-  localparam int HW = miu_pkg::HI_W,
-  localparam int AW = miu_pkg::A1_W,
+  // The memop payload (ccv_ooe_miu_memop_t, packed, its first field the
+  // most significant), seen as two views of the same flops: HI, the echo
+  // R1 reads (rob_tag, done_row, rs_idx, phys_dst, dst_pos, phys_pred,
+  // issue_mask), the top HW bits; and A1, what miu_pair reads (warp_id down
+  // to xfer_signed), the bottom AW bits. test/miu/mq_tb.cpp holds these
+  // to the generated layout (sim/generated/ccv_skel_wiring.h).
+  localparam int HW = ccv_prov_pkg::CCV_P_W_ROB_TAG + 2 + ccv_prov_pkg::CCV_P_W_RS_IDX +
+                      ccv_prov_pkg::CCV_P_W_PHYS_REG + ccv_params_pkg::CCV_W_PHYS_POS +
+                      ccv_prov_pkg::CCV_P_W_PHYS_PRED + ccv_params_pkg::CCV_W_LANE_MASK,   // 63
+  // mem_op's LSB in A1: below it chwidth, pipes, disp, scale_en, space,
+  // ordering, slot_form, arg_slot (4), local_form, xfer_size (2), xfer_signed.
+  localparam int MOP = ccv_params_pkg::CCV_W_CHWIDTH + ccv_params_pkg::CCV_MIU_PIPES +
+                       ccv_params_pkg::CCV_W_DISP + 1 + ccv_params_pkg::CCV_L_W_SPACE +
+                       ccv_params_pkg::CCV_L_W_ORDERING + 1 + 4 + 1 + 2 + 1,              // 51
+  localparam int MW = ccv_prelim_pkg::CCV_L_W_MEM_OP,
+  localparam int AW = MOP + MW + ccv_prov_pkg::CCV_P_W_CTA_SLOT + ccv_params_pkg::CCV_W_WARP_ID,  // 63
+  localparam int PL = HW + AW,                                                          // 126
   localparam int OW = $clog2(NC + 1) + 1                       // credits owed a slot
 ) (
   input  logic             miu_core_clk,
@@ -64,16 +81,12 @@ module miu_mq #(
   input  logic [NF*EW-1:0] fe_cm00h,     // port p's at [p*EW +: EW]
   // The entry each slot's memop takes, with its payload (miu_pair).
   output logic [NS*EW-1:0] me_cm01h,     // slot j's at [j*EW +: EW]
-  // The held payloads, entry e's at [e*W +: W] of each view (miu_pkg).
+  // The held payloads, entry e's at [e*W +: W] of each view.
   output logic [NE*AW-1:0] a1_cm02h,
   output logic [NE*HW-1:0] hi_cm02h,
   // ccv_ooe_miu_memop's credit return, a pulse a slot.
   output logic [NS-1:0]    cr_cm02h
 );
-
-  if (HW + AW != PL) begin : g_layout
-    $error("miu_mq: miu_pkg's views (%0d + %0d) are not the memop payload (%0d)", HW, AW, PL);
-  end
 
   // rst_n flopped before any use (RST-1), inverted after the flop.
   logic rst_cr01h_n;
@@ -82,74 +95,82 @@ module miu_mq #(
   end
   wire rst_r01h = !rst_cr01h_n;
 
-  // ---- The memop's valid and the free ports, a cycle on (CG-5) -----------
-  logic [NS-1:0]    mv_q_cm01h;
-  logic [NF-1:0]    fv_q_cm01h;
-  logic [NF*EW-1:0] fe_q_cm01h;
+  // ---- The memop's valid and the freed entries, a cycle on (CG-5) --------
+  // The free ports are decoded to one bit an entry before the flop: rel[e],
+  // entry e is freed now.
+  logic [NS-1:0] mv_q_cm01h;
+  logic [NE-1:0] rel_cm00h, rel_cm01h;
+  always_comb begin
+    rel_cm00h = '0;
+    for (int e = 0; e < NE; e++)
+      for (int p = 0; p < NF; p++)
+        rel_cm00h[e] = rel_cm00h[e] | (fv_cm00h[p] & (fe_cm00h[p*EW +: EW] == EW'(e)));
+  end
   always_ff @(posedge miu_core_clk) begin
     if (rst_r01h) begin
       mv_q_cm01h <= '0;
-      fv_q_cm01h <= '0;
+      rel_cm01h  <= '0;
     end else begin
       mv_q_cm01h <= mv_cm00h;
-      fv_q_cm01h <= fv_cm00h;
+      rel_cm01h  <= rel_cm00h;
     end
-  end
-  // The entry is data under its valid; no reset.
-  always_ff @(posedge miu_core_clk) begin
-    fe_q_cm01h <= fe_cm00h;
   end
 
   // A bulk discard on slot j (its mem_op on the wire now) takes no entry.
+  // The payload's only path to state: everything it steers is computed both
+  // ways from flops and chosen by it last.
   logic [NS-1:0] dis_cm01h;
   always_comb begin
     for (int j = 0; j < NS; j++)
       dis_cm01h[j] = mv_q_cm01h[j] &
-                     (pay_cm01h[j*PL + miu_pkg::A1_MEM_OP +: ccv_prelim_pkg::CCV_L_W_MEM_OP] ==
-                      miu_pkg::MEM_OP_DISCARD);
+                     (pay_cm01h[j*PL + MOP +: MW] == {MW{1'b1}});   // 0xF
   end
 
   // ---- Each slot's free entries and its preselected one ------------------
   // fr[j][l]: slot j's entry j*NC + l is free. pre[j]: the entry its next
-  // memop takes, the lowest free one, chosen a cycle ahead from flops.
-  logic [NC-1:0]  fr_cm01h  [NS];
-  logic [EW-1:0]  pre_cm01h [NS];
-  logic [NS-1:0]  tk_cm01h;               // slot j's memop takes pre[j]
-  logic [NC-1:0]  rel_cm01h [NS];         // slot j's entries freed now
-  logic [NS-1:0]  fhit_cm01h;             // a free port names one of slot j's
+  // memop takes, the lowest free one, chosen a cycle ahead from flops, held
+  // one-hot (psel) for the queue and encoded (pre) for miu_pair: two
+  // registers, each (* keep *), so the output's copy starts no inner path.
+  logic [NC-1:0] fr_cm01h   [NS];
+  logic [NC-1:0] psel_cm01h [NS];
+  logic [EW-1:0] pre_cm01h  [NS];
   for (genvar j = 0; j < NS; j++) begin : g_slot
+    wire [NC-1:0] relj_cm01h = rel_cm01h[j*NC +: NC];
+    // The next free set and its lowest entry, with no take (n) and with the
+    // memop's take (t); the payload chooses.
+    logic [NC-1:0] frnn_cm01h, frnt_cm01h, psnn_cm01h, psnt_cm01h;
+    logic [EW-1:0] prnn_cm01h, prnt_cm01h;
     always_comb begin
-      rel_cm01h[j] = '0;
-      for (int p = 0; p < NF; p++)
-        for (int l = 0; l < NC; l++)
-          if (fv_q_cm01h[p] && fe_q_cm01h[p*EW +: EW] == EW'(j*NC + l)) rel_cm01h[j][l] = 1'b1;
-      fhit_cm01h[j] = |rel_cm01h[j];
-      tk_cm01h[j]   = mv_q_cm01h[j] & ~dis_cm01h[j];
-    end
-    // The next free set, and its lowest entry.
-    logic [NC-1:0] frn_cm01h;
-    logic [EW-1:0] pren_cm01h;
-    always_comb begin
-      frn_cm01h = fr_cm01h[j] | rel_cm01h[j];
-      for (int l = 0; l < NC; l++)
-        if (tk_cm01h[j] && pre_cm01h[j] == EW'(j*NC + l)) frn_cm01h[l] = 1'b0;
-      pren_cm01h = EW'(j*NC);
-      for (int l = NC - 1; l >= 0; l--)
-        if (frn_cm01h[l]) pren_cm01h = EW'(j*NC + l);
+      frnn_cm01h = fr_cm01h[j] | relj_cm01h;
+      frnt_cm01h = (fr_cm01h[j] & ~psel_cm01h[j]) | relj_cm01h;
+      psnn_cm01h = frnn_cm01h & ~(frnn_cm01h - NC'(1));      // lowest set bit
+      psnt_cm01h = frnt_cm01h & ~(frnt_cm01h - NC'(1));
+      prnn_cm01h = '0;                                      // 0 when full
+      prnt_cm01h = '0;
+      for (int l = 0; l < NC; l++) begin
+        if (psnn_cm01h[l]) prnn_cm01h = prnn_cm01h | EW'(j*NC + l);
+        if (psnt_cm01h[l]) prnt_cm01h = prnt_cm01h | EW'(j*NC + l);
+      end
     end
     // Clocked when the slot takes a memop or frees an entry: the free set
     // changes then, but for a bulk discard alone (rare).
-    wire fr_en_cm01h = mv_q_cm01h[j] | fhit_cm01h[j];
+    wire fr_en_cm01h = mv_q_cm01h[j] | (|relj_cm01h);
+    (* keep *) logic [NC-1:0] ps_q_cm01h;
+    (* keep *) logic [EW-1:0] pr_q_cm01h;
     always_ff @(posedge miu_core_clk) begin
       if (rst_r01h) begin
-        fr_cm01h[j]  <= '1;
-        pre_cm01h[j] <= EW'(j*NC);
+        fr_cm01h[j] <= '1;
+        ps_q_cm01h  <= NC'(1);
+        pr_q_cm01h  <= EW'(j*NC);
       end else if (fr_en_cm01h) begin
-        fr_cm01h[j]  <= frn_cm01h;
-        pre_cm01h[j] <= pren_cm01h;
+        fr_cm01h[j] <= (mv_q_cm01h[j] & ~dis_cm01h[j]) ? frnt_cm01h : frnn_cm01h;
+        ps_q_cm01h  <= (mv_q_cm01h[j] & ~dis_cm01h[j]) ? psnt_cm01h : psnn_cm01h;
+        pr_q_cm01h  <= (mv_q_cm01h[j] & ~dis_cm01h[j]) ? prnt_cm01h : prnn_cm01h;
       end
     end
-    assign me_cm01h[j*EW +: EW] = pre_cm01h[j];
+    assign psel_cm01h[j] = ps_q_cm01h;
+    assign pre_cm01h[j]  = pr_q_cm01h;
+    assign me_cm01h[j*EW +: EW] = pr_q_cm01h;
   end
 
   // ---- The payloads -------------------------------------------------------
@@ -158,7 +179,8 @@ module miu_mq #(
   logic [PL-1:0] mq_cm02h [NE];
   for (genvar e = 0; e < NE; e++) begin : g_ent
     localparam int J = e / NC;
-    wire wr_en_cm01h = mv_q_cm01h[J] & (pre_cm01h[J] == EW'(e));
+    localparam int L = e % NC;
+    wire wr_en_cm01h = mv_q_cm01h[J] & psel_cm01h[J][L];
     always_ff @(posedge miu_core_clk) begin
       if (wr_en_cm01h) mq_cm02h[e] <= pay_cm01h[J*PL +: PL];
     end
@@ -169,15 +191,16 @@ module miu_mq #(
   // ---- The credits ---------------------------------------------------------
   // Slot j returns a credit for each entry of its freed and each bulk
   // discard it took, one a cycle; the excess waits in ow[j] (at most NC:
-  // OOE holds no more of the slot's credits than that).
+  // OOE holds no more of the slot's credits than that). With s = ow + the
+  // entries freed, the next count is s with a discard (its credit and this
+  // cycle's pulse cancel) and s - 1, floored at 0, without.
   logic [NS-1:0] cr_q_cm02h;
   logic [OW-1:0] ow_cm02h [NS];
   for (genvar j = 0; j < NS; j++) begin : g_cred
-    // Returns this cycle: the slot's freed entries and its bulk discard.
-    logic [OW-1:0] ret_cm01h;
+    logic [OW-1:0] c_cm01h;                 // the slot's entries freed now
     always_comb begin
-      ret_cm01h = OW'(dis_cm01h[j]);
-      for (int l = 0; l < NC; l++) ret_cm01h = ret_cm01h + OW'(rel_cm01h[j][l]);
+      c_cm01h = '0;
+      for (int l = 0; l < NC; l++) c_cm01h = c_cm01h + OW'(rel_cm01h[j*NC + l]);
     end
     // Pulses and a rare count: outside the gates, within the allowance.
     // Each reads the slot's owed count, state of its own stage.
@@ -186,27 +209,36 @@ module miu_mq #(
         cr_q_cm02h[j] <= 1'b0;
         ow_cm02h[j]   <= '0;
       end else begin
-        cr_q_cm02h[j] <= (ow_cm02h[j] != '0) | (ret_cm01h != '0);
-        ow_cm02h[j]   <= (ow_cm02h[j] + ret_cm01h != '0) ? ow_cm02h[j] + ret_cm01h - OW'(1) : '0;
+        cr_q_cm02h[j] <= (ow_cm02h[j] != '0) | (c_cm01h != '0) | dis_cm01h[j];
+        ow_cm02h[j]   <= dis_cm01h[j] ? ow_cm02h[j] + c_cm01h :
+                         (ow_cm02h[j] + c_cm01h != '0) ? ow_cm02h[j] + c_cm01h - OW'(1) : '0;
       end
     end
   end
   assign cr_cm02h = cr_q_cm02h;
 
   // ---- Checks ---------------------------------------------------------------
-  for (genvar j = 0; j < NS; j++) begin : g_chk
-    // A memop finds its slot's preselected entry free (its credit).
-    logic pre_free_cm01h;
-    always_comb begin
-      pre_free_cm01h = 1'b0;
+  // Per slot, folded into one property each (one label a module):
+  //   a memop finds its slot's preselected entry free (its credit);
+  //   a free port names a held entry;
+  //   the credits owed stay within the slot's credits.
+  //   the one-hot and the encoded preselection agree.
+  logic [NS-1:0] take_ok_cm01h, free_ok_cm01h, owed_ok_cm02h, pre_ok_cm01h;
+  always_comb begin
+    for (int j = 0; j < NS; j++) begin
+      take_ok_cm01h[j] = !(mv_q_cm01h[j] & ~dis_cm01h[j]) ||
+                         ((psel_cm01h[j] & fr_cm01h[j]) != '0);
+      pre_ok_cm01h[j] = psel_cm01h[j] == '0;              // full
       for (int l = 0; l < NC; l++)
-        if (pre_cm01h[j] == EW'(j*NC + l)) pre_free_cm01h = fr_cm01h[j][l];
+        if (psel_cm01h[j] == NC'(1) << l && pre_cm01h[j] == EW'(j*NC + l)) pre_ok_cm01h[j] = 1'b1;
+      free_ok_cm01h[j] = (rel_cm01h[j*NC +: NC] & fr_cm01h[j]) == '0;
+      owed_ok_cm02h[j] = ow_cm02h[j] < OW'(NC + 1);
     end
-    `CCV_ASSERT(mq_take_free, !tk_cm01h[j] || pre_free_cm01h)
-    // A free port names a held entry.
-    `CCV_ASSERT(mq_free_held, (rel_cm01h[j] & fr_cm01h[j]) == '0)
-    `CCV_ASSERT(mq_owed_bound, ow_cm02h[j] <= OW'(NC))
   end
+  `CCV_ASSERT(mq_take_free, &take_ok_cm01h)
+  `CCV_ASSERT(mq_free_held, &free_ok_cm01h)
+  `CCV_ASSERT(mq_owed_bound, &owed_ok_cm02h)
+  `CCV_ASSERT(mq_pre_onehot, &pre_ok_cm01h)
 
 endmodule
 `undef CCV_CLK

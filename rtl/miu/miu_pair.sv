@@ -51,7 +51,13 @@ module miu_pair #(
   parameter  int NS  = ccv_params_pkg::CCV_MIU_PIPES,          // slots, 4
   parameter  int LAG = ccv_prov_pkg::CCV_LAT_MIU_PAIR_LAG,     // 3 (MI-18, TI-514)
   parameter  int NE  = ccv_params_pkg::CCV_MIU_PIPES * ccv_prov_pkg::CCV_MEMOP_CREDITS,   // MQ entries, 40
-  parameter  int FW  = miu_pkg::A1_W,                           // an entry's A1 view, miu_mq's (miu_pkg), 63
+  // An entry's A1 view, miu_mq's AW: warp_id, cta_slot, mem_op, chwidth,
+  // pipes, disp, scale_en, space, ordering, slot_form, arg_slot (4),
+  // local_form, xfer_size (2), xfer_signed. 63.
+  parameter  int FW  = ccv_params_pkg::CCV_W_WARP_ID + ccv_prov_pkg::CCV_P_W_CTA_SLOT +
+                       ccv_prelim_pkg::CCV_L_W_MEM_OP + ccv_params_pkg::CCV_W_CHWIDTH +
+                       ccv_params_pkg::CCV_MIU_PIPES + ccv_params_pkg::CCV_W_DISP + 1 +
+                       ccv_params_pkg::CCV_L_W_SPACE + ccv_params_pkg::CCV_L_W_ORDERING + 1 + 4 + 1 + 2 + 1,
   localparam int EW  = $clog2(NE),
   localparam int PW  = (LAG > 1) ? $clog2(LAG) : 1
 ) (

@@ -10,7 +10,7 @@
 // value model of slice 1's MQ:
 //   - me: the entry each slot's memop takes is its slot's lowest free one
 //     (slot j owns entries j*NC .. j*NC + NC - 1);
-//   - every held entry's two views (A1 and HI, miu_pkg) are its payload,
+//   - every held entry's two views (A1 and HI, miu_mq's) are its payload,
 //     from the cycle after it is written until it is freed;
 //   - cr: a credit on the entry's slot for each freed entry and each bulk
 //     discard, one a cycle a slot, the excess on the following cycles.
@@ -18,10 +18,11 @@
 // (tools/check-cg.py): idle is reset and no memop; medium memops on about a
 // third of the cycles; high nearly every cycle; the payload's wires change
 // only with a memop. --control slot models a freed entry's credit returned
-// on the next slot, and --control discard a bulk discard taking an entry;
-// each must fail.
+// on the next slot, and --control discard a bulk discard's credit kept as
+// if it took an entry; each must fail.
 //===----------------------------------------------------------------------===//
 #include "Vmiu_mq.h"
+#include "ccv_skel_wiring.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 
@@ -40,7 +41,23 @@ namespace {
 
 constexpr unsigned kNS = 4, kNC = 10, kNE = kNS * kNC, kNF = 4, kEW = 6;
 constexpr unsigned kAW = 63, kHW = 63, kPL = kAW + kHW;
-constexpr unsigned kMemOpLsb = 51;   // miu_pkg::A1_MEM_OP
+constexpr unsigned kMemOpLsb = 51;   // miu_mq's MOP
+
+/// miu_mq's views against the generated payload layout: HI is rob_tag down
+/// to issue_mask, A1 warp_id down to xfer_signed. A schema change that
+/// moves a field fails this build, not a run.
+constexpr unsigned lsbOf(const char *name) {
+  for (const auto &f : ccv::skel::kF_ccv_ooe_miu_memop) {
+    const char *a = f.name, *b = name;
+    while (*a && *a == *b) ++a, ++b;
+    if (*a == *b) return f.lsb;
+  }
+  return ~0u;
+}
+static_assert(lsbOf("issue_mask") == kAW, "miu_mq's A1 view is not the payload's low fields");
+static_assert(lsbOf("mem_op") == kMemOpLsb, "mem_op moved in the memop payload");
+static_assert(lsbOf("warp_id") + 5 == kAW && lsbOf("xfer_signed") == 0, "A1 view's ends moved");
+static_assert(lsbOf("rob_tag") + 7 == kPL, "the memop payload is not 126 bits");
 
 int g_argc;
 char **g_argv;
@@ -135,8 +152,7 @@ struct Bench {
             std::mt19937_64 &r) {
     // me now names the entry each of last cycle's memops takes.
     for (const Memop &m : prev_m) {
-      const bool takes = !m.pay.discard() || control == "discard";
-      if (!takes) continue;
+      if (m.pay.discard()) continue;
       ++checked;
       const unsigned me = (dut->me_cm01h >> (m.slot * kEW)) & ((1u << kEW) - 1);
       if (me != lowest(m.slot)) bad("me", me, lowest(m.slot));
@@ -170,8 +186,10 @@ struct Bench {
     // The model takes last cycle's memops and frees now.
     unsigned ret[kNS] = {};
     for (const Memop &m : prev_m) {
-      if (m.pay.discard() && control != "discard") {
-        ++ret[m.slot];
+      if (m.pay.discard()) {
+        // --control discard: the discard taken as a memop, its credit not
+        // returned until an entry it never held frees (expectation only).
+        if (control != "discard") ++ret[m.slot];
         continue;
       }
       const unsigned e = lowest(m.slot);
