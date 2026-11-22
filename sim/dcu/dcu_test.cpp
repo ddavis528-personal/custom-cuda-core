@@ -387,6 +387,31 @@ int main(int argc, char **argv) {
       else EXPECT(b.rsp(2) == nullptr, "the read is withheld");
     });
 
+  // ECC (MA-28 (c), AR 401): an injected stored-bit error reaches MIU on the
+  // read (its check bits are the block's), DCU counts the CE and rewrites the
+  // corrected line `gap` cycles on; a read before the rewrite is not held
+  // and finds the same bit (MIU corrects it the same way).
+  test("ecc-ce-rewrite", [] {
+    Config c = cfg(9);
+    c.ecc_every = 1;
+    Bench b(c);
+    warm(b, 0x7000);
+    const uint64_t t0 = b.t;
+    b.reqs[t0] = {rd(0, 1, 0x7000)};
+    b.reqs[t0 + 1] = {rd(1, 2, 0x7000)};
+    b.run(t0 + 60);
+    const auto *r1 = b.rsp(1), *r2 = b.rsp(2);
+    EXPECT(r1 && r1->hit && r1->flip >= 0, "the first read carries the stored bit in error");
+    EXPECT(b.h.bins["dcu_ce"] >= 1 && b.h.bins["dcu_ecc_write"] >= 1, "a CE counted and rewritten");
+    EXPECT(r2 && r2->hit, "the second read hits");
+    uint64_t t1 = 0, t2 = 0;
+    for (const auto &l : b.rsps) {
+      if (l.r.req_id == 1) t1 = l.t;
+      if (l.r.req_id == 2) t2 = l.t;
+    }
+    EXPECT(t2 < t1 + c.gap && r2->flip == r1->flip, "the second read does not wait, and sees the same bit");
+  });
+
   if (g_fail) std::fprintf(stderr, "dcu-test: %d failure(s)\n", g_fail);
   else std::printf("dcu-test: all passed\n");
   return g_fail ? 1 : 0;
