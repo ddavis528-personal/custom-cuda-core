@@ -17,6 +17,6 @@ case "$unit" in
   miu_cap)
     vl miu_cap "" "" "$PWD/rtl/miu/miu_cap.sv" "$PWD/test/miu/cap_tb.cpp" ;;
   miu_pair)
-    vl miu_pair "" "" "$PWD/rtl/miu/miu_pair.sv" "$PWD/test/miu/pair_tb.cpp" ;;
+    vl miu_pair "" "" "$PWD/rtl/miu/miu_pkg.sv" "$PWD/rtl/miu/miu_pair.sv" "$PWD/test/miu/pair_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

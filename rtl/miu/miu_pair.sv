@@ -22,8 +22,8 @@
 //             written into row wp of a ring of LAG rows, one cell a slot
 //   03 V      M + LAG: the address's valid lands (miu_cap's av); row rp, the
 //             one written at M + 1, names each lead pipe's entry
-//   04 H-1    the entry read: re to miu_mq's read port, which answers the
-//             A1 memop fields (fld) this cycle
+//   04 H-1    the entry read: a 40:1 read of miu_mq's held A1 view (a1_cm02h,
+//             its flops) by the entry, into this module's A1 flops
 //   05 H, A1  the slot's A1 fields, its entry and its valid, from flops
 // The tags take LAG (CCV_LAT_MIU_PAIR_LAG, TI-514) at its value, 3; a ring row dwells LAG - 1 cycles between
 // its write (02) and its read (03), as any queue's entries do. miu_cap's
@@ -35,8 +35,10 @@
 // written and it gains or loses a memop (CG-3), and every enable starts at
 // this module's flops (CG-5).
 //
-// Inputs from the memop channel are capture flops' (arrival 0). Every output
-// comes straight from a flop; re, also read inside, has a (* keep *) copy.
+// Inputs from the memop channel are capture flops' (arrival 0), and miu_mq's
+// view is its flops (arrival 0): the read mux is this module's, ahead of its
+// own flops, so nothing runs through miu_mq input to output. Every output
+// comes straight from a flop.
 //
 // The reference is the MIU model's pairing (sim/miu/miu_block.cpp pairs by
 // rob_tag; the two agree wherever the contract holds), and
@@ -49,7 +51,7 @@ module miu_pair #(
   parameter  int NS  = ccv_params_pkg::CCV_MIU_PIPES,          // slots, 4
   parameter  int LAG = ccv_prov_pkg::CCV_LAT_MIU_PAIR_LAG,     // 3 (MI-18, TI-514)
   parameter  int NE  = ccv_params_pkg::CCV_MIU_PIPES * ccv_prov_pkg::CCV_MEMOP_CREDITS,   // MQ entries, 40
-  parameter  int FW  = 96,                                      // A1 memop fields an entry answers, miu_mq's layout
+  parameter  int FW  = miu_pkg::A1_W,                           // an entry's A1 view, miu_mq's (miu_pkg), 63
   localparam int EW  = $clog2(NE),
   localparam int PW  = (LAG > 1) ? $clog2(LAG) : 1
 ) (
@@ -60,9 +62,8 @@ module miu_pair #(
   input  logic [NS-1:0]    mv_cm00h,
   input  logic [NS*NS-1:0] mp_cm01h,     // slot j's pipes at [j*NS +: NS]
   input  logic [NS*EW-1:0] me_cm01h,     // slot j's entry at [j*EW +: EW]
-  // miu_mq's read port, one an address slot: the entry, and its A1 fields.
-  output logic [NS*EW-1:0] re_cm04h,
-  input  logic [NS*FW-1:0] fld_cm04h,
+  // miu_mq's held A1 view, entry e's at [e*FW +: FW].
+  input  logic [NE*FW-1:0] mqa_cm02h,
   // A1: address slot k's memop, held from H until the next pairing.
   output logic [NS-1:0]    a1v_cm05h,
   output logic [NS*FW-1:0] a1f_cm05h,
@@ -146,7 +147,7 @@ module miu_pair #(
     end
   end
 
-  // ---- H-1: the entry to read, one copy inside and one to the port --------
+  // ---- H-1: the entry to read --------------------------------------------
   logic [NS-1:0] pv_q_cm04h;
   always_ff @(posedge miu_core_clk) begin
     if (rst_r01h) pv_q_cm04h <= '0;
@@ -159,15 +160,20 @@ module miu_pair #(
     pe_en_cm03h = 1'b0;
     for (int j = 0; j < NS; j++) pe_en_cm03h = pe_en_cm03h | cv_cm02h[rp_cm03h][j];
   end
-  (* keep *) logic [NS*EW-1:0] pe_q_cm04h;
-  (* keep *) logic [NS*EW-1:0] peo_q_cm04h;
+  logic [NS*EW-1:0] pe_q_cm04h;
   always_ff @(posedge miu_core_clk) begin
-    if (pe_en_cm03h) begin
-      pe_q_cm04h  <= pe_d_cm03h;
-      peo_q_cm04h <= pe_d_cm03h;
-    end
+    if (pe_en_cm03h) pe_q_cm04h <= pe_d_cm03h;
   end
-  assign re_cm04h = peo_q_cm04h;
+
+  // Each slot's read of miu_mq's view: the entry's one-hot, AND-OR over 40.
+  logic [NS*FW-1:0] fld_cm04h;
+  always_comb begin
+    fld_cm04h = '0;
+    for (int k = 0; k < NS; k++)
+      for (int e = 0; e < NE; e++)
+        fld_cm04h[k*FW +: FW] = fld_cm04h[k*FW +: FW] |
+            ({FW{pe_q_cm04h[k*EW +: EW] == EW'(e)}} & mqa_cm02h[e*FW +: FW]);
+  end
 
   // ---- H: slot k's A1 fields, from the entry miu_mq read ------------------
   // Each slot one clock gate: clocked when it pairs, and the cycle after its
