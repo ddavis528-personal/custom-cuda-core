@@ -98,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 409, OA 466, TI 512, MA 154, DI 33,
+- **Bookmarks** (revs read through): AR 409, OA 466, TI 512, MA 155, DI 33,
   MI 29, RA 157, RI 91, IS 201, CP 160, OI 400, DA 128, Conventions 20. TI,
   MA, DI, MI and OI were read only for named rows past the last sweep's revs
   (TI 496, MA 135, DI 12, MI 18, OI 395): the next sweep reads them from
@@ -221,10 +221,12 @@ Credit rules (TI-49):
    k=4 fold table (16,384 flops in dcu_bctl), pa_fold on ccv_miu_dcu_req,
    HIT 8. Price vs k=5: S1 -0.02, cm32priv -0.17, cm128priv +0.30%; vs B9
    (no predictor, HIT 9) about -1.1/-1.0/-0.6%. Under Daniel's bar (S1).
-   Asked MA for: mispredict handling across the boundary (alias hit never
-   completes; what rsp carries; re-access path/cycles), one fold helper both
-   sides with a CHECK, controls, bins. Waiting on MA's row; don't write
-   another until it comes (crossing rule).
+   MA took the conditions (MA rev 155; DCU tab rev 82, MIU tab rev 161): an
+   alias mispredict sends nothing at the hit slot (miss indication) and
+   re-reads at H+5 on the loser's path, no new field; the table has a valid
+   bit (no match = miss, no read); the fold is PA[47:16] XOR-chunked, i.e.
+   the PFN (64 sets x 8 banks x 128 B = 64 KiB a way), so MIU's TLB holds it;
+   CHECK, controls and bins stated. CLOSED; nothing owed.
 000c. **MA-27/MA-28 (AR 400, 401, 403): CLOSED.** Drop field on
    ccv_miu_dcu_req and 128 check bits a slot on ccv_dcu_miu_rsp landed in
    TI-513 (8ac4c441), with CCV_DCU_ECC_INJECT; MA rev 146 accepted. MA rev 149
