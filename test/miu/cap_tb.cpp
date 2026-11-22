@@ -3,7 +3,7 @@
 // Drives one address slot as RCU does: the valid in V, the payload's fields
 // in V+1 (no lead field), and noise on the payload wires in every other
 // cycle (random mode), which the module must not keep. Checks, every cycle,
-// the valid a cycle on (v_cm01h) and the held capture (active_mask,
+// the valid a cycle on (v_cm04h) and the held capture (active_mask,
 // base_per_lane, index_per_lane) against a value model: the payload of the
 // last message, from the edge after its V+1 (H) until the next message's.
 // Messages come back to back as well as spread, so a capture under a
@@ -77,7 +77,7 @@ struct Bench {
   }
   void reset() {
     dut->rst_n = 0;
-    dut->av_cm00h = 0;
+    dut->av_cm03h = 0;
     for (unsigned i = 0; i < 4; ++i) edge();
     dut->rst_n = 1;
     edge();   // the flopped reset releases a cycle on (RST-1)
@@ -85,11 +85,11 @@ struct Bench {
   // One cycle: valid v on the wire, payload wires w; then the edge, then
   // the checks of what the edge captured.
   void step(bool v, const Msg &w) {
-    dut->av_cm00h = v;
-    dut->am_cm01h = w.am;
+    dut->av_cm03h = v;
+    dut->am_cm04h = w.am;
     for (unsigned i = 0; i < kWW; ++i) {
-      dut->base_cm01h[i] = w.base[i];
-      dut->idx_cm01h[i] = w.idx[i];
+      dut->base_cm04h[i] = w.base[i];
+      dut->idx_cm04h[i] = w.idx[i];
     }
     edge();
     // The value model: the payload is on the wire in V+1 (early: in V).
@@ -103,18 +103,18 @@ struct Bench {
       cov_noise += std::memcmp(&w, &want, sizeof w) != 0;
     }
     ++checked;
-    if (bool(dut->v_cm01h) != v && ++fails <= 20)
-      std::fprintf(stderr, "cap: cycle %llu: v_cm01h %d, want %d\n", (unsigned long long)cyc,
-                   int(dut->v_cm01h), int(v));
+    if (bool(dut->v_cm04h) != v && ++fails <= 20)
+      std::fprintf(stderr, "cap: cycle %llu: v_cm04h %d, want %d\n", (unsigned long long)cyc,
+                   int(dut->v_cm04h), int(v));
     vprev = v;
     if (!known) return;
     ++checked;
-    bool ok = dut->am_cm02h == want.am;
+    bool ok = dut->am_cm05h == want.am;
     for (unsigned i = 0; i < kWW; ++i)
-      ok = ok && dut->base_cm02h[i] == want.base[i] && dut->idx_cm02h[i] == want.idx[i];
+      ok = ok && dut->base_cm05h[i] == want.base[i] && dut->idx_cm05h[i] == want.idx[i];
     if (!ok && ++fails <= 20)
       std::fprintf(stderr, "cap: cycle %llu: capture differs (active_mask %08x, want %08x)\n",
-                   (unsigned long long)cyc, unsigned(dut->am_cm02h), want.am);
+                   (unsigned long long)cyc, unsigned(dut->am_cm05h), want.am);
   }
 };
 
