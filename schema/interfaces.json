@@ -879,12 +879,13 @@
         "exclusive_req",
         "write_data",
         "byte_mask",
-        "lead_set_index"
+        "lead_set_index",
+        "drop"
       ],
       "lead_fields": [
         "lead_set_index"
       ],
-      "lead_why": "The L1 index lead (AR 362 Strawman B, AR 364, MA revs 64-68; DA rev 121): DCU starts its array read, speculatively, at H+2, a cycle before the PA's payload lands at H+3, which keeps CCV_LAT_L1_HIT at 7 at 512 KiB. On every slot that carries a lookup, lead_set_index is the lookup's set, physical address bits [log2 CCV_P_LINE_BYTES + CCV_W_DCU_SET - 1 : log2 CCV_P_LINE_BYTES] ([15:7] at 512 sets); its low clog2(CCV_DCU_BANKS) bits are the lookup's bank ([9:7], 8 half-rate banks, DA rev 123), so no bank field is sent (AR 364). It is page offset, the same in the VA and the PA, since a way fits in a page (CCV_DCU_SETS's require, AR 362 (1)), so MIU sends it from the address A1 finally forms for the slot's group leader, chosen by lane position, never by an address compare (AR 362 (2)). It launches with the slot's valid at H+1, from MIU's own flops (CG-5; the flop that also feeds A2 has a (* keep *) copy for the output, AR 362 (5)), a cycle ahead of the payload. COPY: the payload keeps the full phys_addr, which the tag compare uses, and the lead equals its bits, bit for bit; the DCU stub refuses a lead that differs, by name. DCU changes no state, LRU included, on the lead alone: a lookup the payload drops (a fault, a TLB miss, a page split or a bank conflict found at A2) leaves the arrays as they were, and a store writes on the PA-verified lookup (AR 362 (3)). MLC's probes and fills reach the arrays on their own payloads, unchanged (AR 362 (6)). DCU's capture flops, 9 a slot and 36 in all, are a lead waiver (\"lead\": true) counted in DCU's 2% (AR 362 (5), MA rev 68; DA's ruling on RI-15).",
+      "lead_why": "The L1 index lead (AR 362 Strawman B, AR 364, MA revs 64-68; DA rev 121): DCU starts its array read, speculatively, at H+2, a cycle before the PA's payload lands at H+3, which keeps CCV_LAT_L1_HIT at 7 at 512 KiB. On every slot that carries a lookup, lead_set_index is the lookup's set, physical address bits [log2 CCV_P_LINE_BYTES + CCV_W_DCU_SET - 1 : log2 CCV_P_LINE_BYTES] ([15:7] at 512 sets); its low clog2(CCV_DCU_BANKS) bits are the lookup's bank ([9:7], 8 half-rate banks, DA rev 123), so no bank field is sent (AR 364). It is page offset, the same in the VA and the PA, since a way fits in a page (CCV_DCU_SETS's require, AR 362 (1)), so MIU sends it from the address A1 finally forms for the slot's group leader, chosen by lane position, never by an address compare (AR 362 (2)). It launches with the slot's valid at H+1, from MIU's own flops (CG-5; the flop that also feeds A2 has a (* keep *) copy for the output, AR 362 (5)), a cycle ahead of the payload. COPY: the payload keeps the full phys_addr, which the tag compare uses, and the lead equals its bits, bit for bit; the DCU stub refuses a lead that differs, by name. DCU commits nothing on the valid and the lead alone: LRU, way-predictor training, MSHR or fill allocation and every counter wait for the payload, and a store writes on the PA-verified lookup (AR 362 (3), AR 400 (1)). A lookup whose payload sets drop (A2 found a TLB miss, a fault, a page split, a bank loser or a duplicate; MA-27, AR 400) leaves the arrays as they were: DCU reads no data on it, changes no state (LRU and way prediction included), allocates no queue entry, raises no CE count, no UE refetch entry and no core-fatal, and sends no response; its req_id is don't-care, MIU allocates no id for it, and MIU refunds its bank entry credit itself at A2 (DI-12, MA rev 143). The DCU stub refuses a dropped lookup that changes state or answers (dcu-drop-answers). MLC's probes and fills reach the arrays on their own payloads, unchanged (AR 362 (6)). DCU's capture flops, 9 a slot and 36 in all, are a lead waiver (\"lead\": true) counted in DCU's 2% (AR 362 (5), MA rev 68; DA's ruling on RI-15).",
       "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index leads it by a cycle (AR 362, AR 364).",
       "id_classes": [
         "txn"
@@ -905,9 +906,10 @@
         "read_data",
         "hit",
         "ownership_granted",
-        "mlc_miss"
+        "mlc_miss",
+        "check_bits"
       ],
-      "doc": "Cache read data, hit indication and whether ownership was granted, and mlc_miss: the fill that served this access missed in MLC (ccv_mlc_dcu_rsp.miss, passed through). MIU reports it on ccv_miu_ooe_cmpl, since an MLC miss is the primary demotion trigger; without this field the signal stopped at DCU (arch open A-9).",
+      "doc": "Cache read data, hit indication and whether ownership was granted, and mlc_miss: the fill that served this access missed in MLC (ccv_mlc_dcu_rsp.miss, passed through). MIU reports it on ccv_miu_ooe_cmpl, since an MLC miss is the primary demotion trigger; without this field the signal stopped at DCU (arch open A-9). check_bits: the stored (137,128) SECDED check bits of every code word the slot's read_data carries, 9 a 128-bit word (CCV_DCU_ECC_K), 72 a slot (CCV_DCU_ECC_CHECK_W; MA-29, AR 404, amending MA-28 (c) and AR 401's 128). MIU's R2 computes the syndrome beside the lane extract, the OR over every code word the slot carries (the bank read, leader and followers alike), flops a non-zero flag and withholds that slot's completion; the corrected data returns under the original req_id with no new entry credit, and MIU keeps the req_id live until a completion is delivered, not withheld. CCV_LAT_L1_ECC stays 1. DCU's CCV_DCU_ECC_INJECT flips a stored bit to reach it (MIU's CCV_MIU_ECC_INJECT is retired).",
       "id_classes": [
         "txn"
       ],
@@ -1608,7 +1610,7 @@
       "slot_attrs_why": {
         "fixed_latency": "MA-25: a return is a count MIU adds the cycle it lands; a stalled return would hold a credit back from a request already waiting for it, and nothing queues behind it to take its place"
       },
-      "doc": "DCU's per-bank credit returns to MIU (MA-25; MA-24 under AR 382): ent_ret, a bit a bank, a lookup entry left that bank's queue; std_ret, a bit a bank, a store's data left after its write. MIU holds per bank CCV_DCU_BANK_QDEPTH entry credits and CCV_DCU_BANK_STDATA store-data credits, reset full: it sends a lookup only with its bank's entry credit and a store only with both, spending them at send, and holds a request without them (a held store blocks every younger store to its bank, a held request every younger one to its line). A bank serves one access every other cycle, so it returns at most one of each a cycle and a bit is enough. DCU sends whenever either vector is non-zero, so nothing queues. Every set bit returns a credit MIU spent: one that would take a counter past its reset value is refused by name, and DCU refuses a bank holding more than either count. Flops capturing these pulses at MIU are a credit waiver (\"credit\": true, DA's ruling on RI-14), counted in MIU's 2%.",
+      "doc": "DCU's per-bank credit returns to MIU (MA-25; MA-24 under AR 382): ent_ret, a bit a bank, a lookup entry left that bank's queue (it returns only lookups that entered DCU's queue: a dropped lookup allocates none, and MIU refunds its credit into its own bank counter when A2 sets drop; DI-12, MA rev 143); std_ret, a bit a bank, a store's data left after its write. MIU holds per bank CCV_DCU_BANK_QDEPTH entry credits and CCV_DCU_BANK_STDATA store-data credits, reset full: it sends a lookup only with its bank's entry credit and a store only with both, spending them at send, and holds a request without them (a held store blocks every younger store to its bank, a held request every younger one to its line). A bank serves one access every other cycle, so it returns at most one of each a cycle and a bit is enough. DCU sends whenever either vector is non-zero, so nothing queues. Every set bit returns a credit MIU spent: one that would take a counter past its reset value is refused by name, and DCU refuses a bank holding more than either count. Flops capturing these pulses at MIU are a credit waiver (\"credit\": true, DA's ruling on RI-14), counted in MIU's 2%.",
       "id_classes": [
         "none"
       ]
@@ -1715,6 +1717,7 @@
     "load_data": "CCV_W_DATA",
     "write_data": "CCV_W_DATA",
     "read_data": "CCV_W_DATA",
+    "check_bits": "CCV_DCU_ECC_CHECK_W",
     "result": "CCV_W_LANE_DATA",
     "base_per_lane": "CCV_W_DATA",
     "address": "CCV_W_VA",
@@ -1799,6 +1802,7 @@
     "lead_br_taken": "1",
     "lead_fault": "1",
     "lead_set_index": "CCV_W_DCU_SET",
+    "drop": "1",
     "lead_br_mask": "CCV_W_LANE_MASK",
     "target_pc": "CCV_W_VA",
     "fetch_epoch": "CCV_P_W_FETCH_EPOCH",

@@ -238,6 +238,22 @@
       "doc": "L1 data banks, each a half-rate 1RW SRAM (DA rev 123), 64 KiB each at 512 KiB: four lookups a cycle need at least 8. A lookup's bank is its line address's low clog2(CCV_DCU_BANKS) bits, [9:7] at 8, which are the set index's low bits, so ccv_miu_dcu_req's lead_set_index carries it and no bank field is sent (AR 364). Both counts are powers of two and the banks no more than the sets. MA-4's L1-hit eligibility refuses a group whose leaders' lookups meet in one bank."
     },
     {
+      "name": "CCV_DCU_ECC_K",
+      "value": 128,
+      "status": "arch",
+      "source": "MA-29 (MA rev 151), AR 404 (AR rev 408); MACRO-1 (DA, 2026-11-17)",
+      "require": "(CCV_DCU_ECC_K >= 3) * ((CCV_W_DATA // CCV_DCU_ECC_K) * CCV_DCU_ECC_K == CCV_W_DATA) * ((CCV_DCU_ECC_K // 8) * 8 == CCV_DCU_ECC_K) == 1",
+      "doc": "Data bits of one L1 SECDED code word: (137,128) words, since MACRO-1 caps an SRAM word at 137 bits and fails two (72,64) words at 144 (AR 404 (1)). A slot's read_data on ccv_dcu_miu_rsp is CCV_W_DATA / this many code words, each a whole number of bytes."
+    },
+    {
+      "name": "CCV_DCU_ECC_CHECK_W",
+      "value": 72,
+      "status": "arch",
+      "source": "MA-29, AR 404",
+      "derive": "(CCV_W_DATA // CCV_DCU_ECC_K) * (clog2(CCV_DCU_ECC_K + clog2(CCV_DCU_ECC_K) + 1) + 1)",
+      "doc": "ccv_dcu_miu_rsp's check_bits a slot: (CCV_W_DATA / CCV_DCU_ECC_K) x R(K), R(k) = clog2(k + clog2(k) + 1) + 1 check bits a code word (SEC plus the overall parity), 9 at K = 128, 72 a slot (MA-29, AR 404; AR 401's 128 retired)."
+    },
+    {
       "name": "CCV_DCU_BANK_AGE",
       "value": 16,
       "status": "tunable",
@@ -1365,6 +1381,16 @@
       "source": "OOE session follow-up (2026-10-02), A-61",
       "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue'))",
       "doc": "Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16))."
+    },
+    {
+      "name": "CCV_LAT_MIU_PAIR_LAG",
+      "value": 3,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "MI-18, MA's response (MA rev 145)",
+      "derive": "(CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) - (CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'))",
+      "require": "CCV_LAT_MIU_PAIR_LAG >= 1",
+      "doc": "Cycles from MIU holding a memop's payload (ccv_ooe_miu_memop) to holding its address payload (ccv_rcu_miu_addr): the address path less the memop path, the two terms of the max in CCV_LAT_L1_WAKE's derive. miu_pair loads the A1 memop fields from the MQ entry at H-1, so it must be at least 1 (a lag of 0 would need the memop captured straight into A1). miu_pair takes it as a module parameter defaulting to this value (MI-18)."
     },
     {
       "name": "CCV_LAT_L1_ECC",

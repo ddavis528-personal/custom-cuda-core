@@ -29,7 +29,20 @@
 // no-enq-lead (the arrival lead never reaches it), no-take-enable
 // (rename's "some warp takes" bit never reaches the take register) and
 // no-free-lag (the credits expected as if freed entries returned at once:
-// the RTL's free lag must show).
+// the RTL's free lag must show) and stale-credit-apart (the stale uops a
+// late flush drops expected back apart from their slot's credits: each
+// must return in its own slot's, with the flush's).
+//
+// A late flush drops the arrivals staged at its edge (OA 430, re:OI-168
+// (B)): in the stage, uops ooe_decrx kept a cycle earlier under the epoch
+// the flush ends. The model's queue never holds them, so the bench makes
+// them: in every drive that flushes a slot, a stale uop for that slot on
+// each spare port, within DEC's credits and the slot's room. They must
+// never show, and their credits return with the flush's (the credit
+// check). Control keep-across-flush delivers them a drive late, after the
+// flush applied, where ooe_decq rightly keeps them as new-epoch arrivals:
+// the bench must see them. (ooe_decrx's bench checks that every uop so
+// dropped is stale.)
 //
 // Rename's take is registered and popped at the next edge (OA-21): the
 // outputs read past it at once, and its entries hold their credits that
@@ -64,6 +77,7 @@ std::string control;
 uint64_t current = 0;    // the serial of the core being followed
 std::vector<std::vector<uint64_t>> was;   // each slot's queue, oldest first
 unsigned freeing = 0;   // entries the last edge registered to free at this one (decq_free_lag)
+std::vector<unsigned> freeing_s(S);   // and per slot: its credits back to FET at the next edge
 // An edge as the model made it: the queues before and after, the flushes.
 struct Edge {
   std::vector<std::vector<uint64_t>> was, now;
@@ -71,7 +85,10 @@ struct Edge {
 };
 Edge pend;                                // the edge the RTL takes next
 bool have_pend = false;
-unsigned long long cycles = 0, arrivals = 0, taken = 0, flushes = 0, heads = 0, full = 0, cores = 0, mismatches = 0;
+unsigned long long cycles = 0, arrivals = 0, taken = 0, flushes = 0, heads = 0, full = 0, cores = 0, mismatches = 0,
+                   stale = 0;
+bool led = false;          // the last drive raised the arrival lead
+uint32_t late_fl = 0;      // keep-across-flush: the last drive's flushed slots
 
 template <typename T> void setField(T &w, unsigned lsb, unsigned n, uint64_t v) {
   for (unsigned b = 0; b != n; ++b) {
@@ -132,7 +149,7 @@ std::vector<std::pair<uint64_t, unsigned>> freshOf(const Edge &e) {
   return fresh;
 }
 
-void drive(const Edge &e, bool lead) {
+void drive(const Edge &e, bool lead, unsigned next_fresh) {
   ++cycles;
   // The edge: dequeues, flushes, arrivals.
   uint64_t last = 0;
@@ -141,6 +158,7 @@ void drive(const Edge &e, bool lead) {
   dut->flush_cq01h = 0;
   unsigned held = 0;   // a flushed slot's entries, held until the flush applies
   unsigned in_transit = 0;   // the take registered at this edge, popped at the next
+  std::vector<unsigned> frees(S);   // per slot, held and in transit: its credits once they free
   for (unsigned s = 0; s != S; ++s) {
     size_t keep = 0;   // old uops still queued: a suffix of the old queue
     for (uint64_t x : e.now[s]) if (x < last) ++keep;
@@ -151,12 +169,17 @@ void drive(const Edge &e, bool lead) {
     const unsigned gone = unsigned(e.was[s].size() - keep);
     if (flushed) {
       ++flushes;
-      if (control != "drop-flush") { dut->flush_cq01h |= 1u << s; held += unsigned(e.was[s].size()); }
+      if (control != "drop-flush") {
+        dut->flush_cq01h |= 1u << s;
+        held += unsigned(e.was[s].size());
+        frees[s] += unsigned(e.was[s].size());
+      }
     } else {
       if (gone > R) fail("rename took more than its width", s, gone, R);
       setField(dut->deq_t_cq01h, s * R, R, (1u << gone) - 1);   // a thermometer
       taken += gone;
       in_transit += gone;
+      frees[s] += gone;
     }
   }
   // rename's "may take" bits: here exactly the slots it took from.
@@ -177,7 +200,36 @@ void drive(const Edge &e, bool lead) {
     setField(dut->enq_pay_cq01h, k * P, P, fresh[k].first & 0xffffu);
   }
   arrivals += fresh.size();
+  // The stale arrivals: one per spare port for each slot flushed now (or,
+  // under keep-across-flush, for each slot flushed at the last drive),
+  // within the credits and the slot's room (its old uops and a take in
+  // transit at most R). They hold their entries through the next edge, so
+  // the credits must cover that edge's arrivals too: the model sent those
+  // against credits that never held a stale uop.
+  const uint32_t stale_fl = control == "keep-across-flush" ? late_fl : e.fl;
+  late_fl = e.fl;
+  unsigned used = unsigned(dut->used_cq02h) + unsigned(fresh.size());
+  unsigned port = unsigned(fresh.size());
+  for (unsigned s = 0; s != S && led; ++s) {
+    if (!(stale_fl >> s & 1u)) continue;
+    unsigned in_slot = 0;
+    for (const auto &f : fresh) in_slot += f.second == s;
+    const unsigned held_s = control == "keep-across-flush" ? 0u : unsigned(e.was[s].size()) + R;
+    while (port != E && used + next_fresh < DQ_Q && held_s + in_slot < DQ_D) {
+      dut->enq_v_cq01h |= 1u << port;
+      setField(dut->enq_slot_cq01h, port * LS, LS, s);
+      setField(dut->enq_pay_cq01h, port * P, P, 0xdead);
+      ++port;
+      ++used;
+      ++in_slot;
+      ++stale;
+      if (control != "keep-across-flush") ++held;   // freed with the flush
+      if (control != "keep-across-flush" && control != "stale-credit-apart") ++frees[s];   // in its slot's
+    }
+  }
+  if (control == "keep-across-flush" && e.fl) lead = true;
   dut->enq_l_cq00h = lead && control != "no-enq-lead";
+  led = dut->enq_l_cq00h;
   tick();
   // After the edge, what rename sees (OA's response OI-65): each slot's
   // uops past rename's take, not the ones arriving at this edge (they show
@@ -211,6 +263,13 @@ void drive(const Edge &e, bool lead) {
   // this edge (the last edge's take and flushes) hold a cycle more.
   const unsigned lag = (ccv::ooe::Config{}.decq_free_lag && control != "no-free-lag") ? freeing : 0;
   freeing = held + in_transit;
+  // Each slot's credits back to FET (TI-46 (b)): what it freed at this
+  // edge, registered there, so what the last drive held or had in transit.
+  for (unsigned s = 0; s != S; ++s) {
+    const unsigned got = getField(dut->crd_cq02h, s * LC, LC);
+    if (got != freeing_s[s]) fail("slot credits differ", s, got, freeing_s[s]);
+  }
+  freeing_s = frees;
   if (unsigned(dut->used_cq02h) != total + held + in_transit + lag)
     fail("credits differ", 0, unsigned(dut->used_cq02h), total + held + in_transit + lag);
 }
@@ -221,7 +280,10 @@ void hook(const Core &c) {
     ++cores;
     was.assign(S, {});
     freeing = 0;
+    std::fill(freeing_s.begin(), freeing_s.end(), 0u);
     have_pend = false;
+    led = false;
+    late_fl = 0;
     dut->enq_v_cq01h = 0;
     dut->deq_t_cq01h = 0;
     dut->deq_sel_cq01h = 0;
@@ -237,7 +299,8 @@ void hook(const Core &c) {
   e.now = bySlot(c);
   e.fl = c.decqFlushed();
   was = e.now;
-  if (have_pend) drive(pend, !freshOf(e).empty());
+  // The lead covers this edge's arrivals and the stale ones a flush brings.
+  if (have_pend) drive(pend, !freshOf(e).empty() || e.fl, unsigned(freshOf(e).size()));
   else if (!freshOf(e).empty()) fail("arrivals in a core's first cycle, with no lead", 0, 0, 0);
   pend = std::move(e);
   have_pend = true;
@@ -257,9 +320,9 @@ int main(int argc, char **argv) {
   cg.close();
   dut->final();
   std::printf("decq_tb control=%s seeds=%u cores=%llu cycles=%llu arrivals=%llu taken=%llu flushes=%llu "
-              "heads=%llu pool-full=%llu mismatches=%llu model_failures=%d\n",
+              "heads=%llu pool-full=%llu stale-dropped=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, arrivals, taken, flushes, heads, full,
-              mismatches, model_fails);
+              stale, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();

@@ -143,8 +143,11 @@ module ooe_wake #(
   parameter logic [23:0] PEN  = 24'h03_02_00,
   parameter int NPEN     = 3,
   parameter int LAT_COPY = 7,          // CCV_LAT_LANE
-  parameter int LAT_SPEC = 13,         // CCV_LAT_L1_WAKE
-  parameter int LAT_MISS = 16,         // payload stages + CCV_LAT_L1_CMPL
+  // From the parameters, so the way predictor's setting (DA 128) reaches
+  // them through regen (OA 444): LAT_MISS is OOE's one payload stage (the
+  // model's payload_stages) plus CCV_LAT_L1_CMPL.
+  parameter int LAT_SPEC = ccv_prov_pkg::CCV_LAT_L1_WAKE,
+  parameter int LAT_MISS = 1 + ccv_prov_pkg::CCV_LAT_L1_CMPL,
   parameter int CMPL_DLY = 1,          // CCV_LAT_L1_MISS_WAKE
   parameter int NC       = 4,          // completions a cycle (ccv_miu_ooe_cmpl's rate)
   parameter int LEAD     = 2,          // cycles the lines lead the model's wake (OA's response OI-45)
@@ -512,7 +515,7 @@ module ooe_wake #(
   // each latency at least LEAD + 1.
   function automatic logic lead_ok();
     logic ok;
-    ok = 32'(LAT_COPY) > LEAD && 32'(LAT_SPEC) > LEAD && 32'(LAT_MISS) > LEAD;
+    ok = 32'(LAT_COPY) > LEAD;   // LAT_SPEC and LAT_MISS below: Yosys reads no package in a function
     for (int c = 0; c < 8; c++) begin
       if (LAT[c * 8 +: 8] != 8'd0 && 32'(LAT[c * 8 +: 8]) <= LEAD) ok = 1'b0;
       if (FAST[c * 8 +: 8] != 8'd0)
@@ -520,7 +523,7 @@ module ooe_wake #(
     end
     lead_ok = ok;
   endfunction
-  localparam logic LEAD_OK = lead_ok();
+  localparam logic LEAD_OK = lead_ok() && 32'(LAT_SPEC) > LEAD && 32'(LAT_MISS) > LEAD;
   `CCV_ASSERT(lead_latencies, LEAD_OK)
 
   // The leads' next values. A grant's timer starts at age 1 (its state

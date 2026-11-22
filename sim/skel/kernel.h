@@ -208,6 +208,7 @@ struct Kernel {
     std::map<unsigned, std::array<uint32_t, kLanes>> rows;  ///< PCA's, by mig_row
     std::array<uint64_t, kLanes> lane_pc{};                 ///< PCA's, from FET (IS-17)
     bool rewound = false;                                   ///< FET had OOE's beats
+    bool held_wait = false;                                 ///< a beat stepped back over its retired wait (TI-40)
     bool done = false;                                      ///< PCA acked it
     bool restored = false;                                  ///< and it came back
   };
@@ -265,6 +266,9 @@ struct Kernel {
       "ld_pass_held", "fence_hold", "drain_guard", "drain_guard_withheld", "st_wide_hold",
       "tlb_miss", "tlb_walk", "itlb_walk", "tlb_two_page", "walk_reads", "tlb_two_page_lost",
       "hint_slot_taken", "l1_dcu_late",
+      // Lookups the MIU model launched and then dropped (drop on
+      // ccv_miu_dcu_req; MA-27, AR 400; MI-19), all and by cause.
+      "dcu_drops", "drop_tlb", "drop_fault", "drop_split", "drop_line", "drop_bank", "drop_dup", "drop_held",
       // The DCU model's way mispredicts (MA-26, AR 390; MI-9 (3)).
       "dcu_wp_wrong",
       // A uop DEC held past a demotion's walk (AR 395).
@@ -298,12 +302,16 @@ struct Kernel {
       "cas_lane", "cas_lane_off",
       // MIU's memop queue entries held on one slot, at most (MA-5).
       "memop_entries_peak",
-      // Decode-queue credits a warp's uops held when it lost its tier-1
-      // slot, kept by OOE until it holds one again (OA 455 A).
-      "decq_slotless_drop", "decq_credit_pend", "decq_straggler", "decq_straggler_beat",
+      // A demoted warp's straggler walked on arrival, and one whose lanes
+      // no beat had named yet (AR 395).
+      "decq_straggler", "decq_straggler_beat",
       // DCU's per-bank credits (MA-25): a request MIU held for one, the same
       // request sent once it came, and DCU's returns of each kind.
-      "credit_hold", "credit_hold_then_sent", "dcu_ent_ret", "dcu_std_ret"};
+      "credit_hold", "credit_hold_then_sent", "dcu_ent_ret", "dcu_std_ret",
+      // Cycles FET held a demotion's migration for its credits (OA 463).
+      "mig_credit_wait",
+      // A killed warp's uop landing after its slot's release (RI-57, OA 462).
+      "decq_killed_late"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory
