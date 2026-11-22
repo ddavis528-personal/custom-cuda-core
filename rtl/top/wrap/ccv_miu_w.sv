@@ -757,7 +757,7 @@ module ccv_miu_w #(
   end
   // ccv_dcu_miu_rsp, destination end, no-flop (params/links.json no_flop)
   if (RPT_DCU_MIU_RSP > 0) begin : g_rpt_dcu_miu_rsp
-    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_RSP), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1161)) u_rpt_dcu_miu_rsp (
+    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_RSP), .BOUNDARY(0), .SLOTS(4), .PAYLOAD_W(1105)) u_rpt_dcu_miu_rsp (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dcu_miu_rsp_s3_valid, dcu_miu_rsp_s2_valid, dcu_miu_rsp_s1_valid, dcu_miu_rsp_s0_valid}), .src_payload({dcu_miu_rsp_s3_payload, dcu_miu_rsp_s2_payload, dcu_miu_rsp_s1_payload, dcu_miu_rsp_s0_payload}),
       .src_wake(dcu_miu_rsp_wake), .src_credit({dcu_miu_rsp_s3_credit, dcu_miu_rsp_s2_credit, dcu_miu_rsp_s1_credit, dcu_miu_rsp_s0_credit}), .src_stall({dcu_miu_rsp_s3_stall, dcu_miu_rsp_s2_stall, dcu_miu_rsp_s1_stall, dcu_miu_rsp_s0_stall}),
