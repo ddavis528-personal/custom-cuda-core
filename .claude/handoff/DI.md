@@ -32,7 +32,8 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 -1. Phase 2a slice 1 RTL pushed at 3b6b66f2 (full PASS): dcu_cap, dcu_btag,
    dcu_bctl (k=4 after TI-518; budgets by MA rev 157, DI-26 closed).
    DI-27 (rev 44) to TI: TI-518 done in the model; DI-24 (4) run-rtl.sh and
-   cg-units.json are in, TI to add the DCU RTL gate section. MA's DI-26
+   cg-units.json are in; TI added the dcu_rtl gate section (TI-521, 8e784c88,
+   merged at 6da84ccf; DI-27 closed, DI-29). MA's DI-26
    follow-ups done at e68a9ddf (DI-28, rev 45): PLRU at D+3 for every hit,
    dcu_ent_owed_max. Next: slice 2 from MA.
 0. MA-27/28 (c) built and landed: drop discard and ECC in the arrays
@@ -66,7 +67,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 45, MI 35, MA 157, AR 409, OA 468, TI 517, OI 401, DA 131
+Conventions 20, DI 47, MI 35, MA 157, AR 409, OA 468, TI 519, OI 401, DA 131
 (sweep of 2026-11-22; RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
