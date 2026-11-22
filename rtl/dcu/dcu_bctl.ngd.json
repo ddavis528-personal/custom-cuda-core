@@ -1,0 +1,179 @@
+{
+  "module": "dcu_bctl",
+  "ports": {
+    "rv_cc01h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "lsb_cc01h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "rid_cc02h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "fold_cc02h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "drop_cc02h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "lsi_cc02h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "hit_cc04h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "way_cc04h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "fxv_cc03h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "fxw_cc04h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "fxa_cc04h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "fwe_cc00h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "fws_cc01h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "fwy_cc01h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "fwf_cc01h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "pvs_cc04h": {
+      "arrival": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "sa_cc04h": {
+      "required": 9.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "ce_cc04h": {
+      "required": 4.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "we_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "fxg_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "av_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "arid_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "aslot_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "alate_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "mv_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "mrid_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "mslot_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "ent_ret_cc04h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    },
+    "pvw_cc05h": {
+      "required": 0.0,
+      "by": "DRAFT",
+      "date": "2026-11-22",
+      "why": "draft"
+    }
+  }
+}

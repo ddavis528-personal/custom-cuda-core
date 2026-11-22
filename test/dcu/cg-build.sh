@@ -19,5 +19,7 @@ case "$unit" in
   dcu_btag)
     vl dcu_btag "" "" "$PWD/rtl/macro/ccv_common_rf_1r1w.sv" "$PWD/rtl/dcu/dcu_btag.sv" \
       "$PWD/test/dcu/btag_tb.cpp" ;;
+  dcu_bctl)
+    vl dcu_bctl "" "" "$PWD/rtl/dcu/dcu_bctl.sv" "$PWD/test/dcu/bctl_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac
