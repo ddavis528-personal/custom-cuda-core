@@ -2709,6 +2709,7 @@ void Core::control() {
     // epoch the demotion ended, until the slot is released.
     s.walk_open = cfg_.straggler_walk;
     s.walk_epoch = (epoch_[s.warp % kWarpIds] + cfg_.epochs - 1) % cfg_.epochs;
+    if (s.walk_open) rxlog_.wopen |= 1u << si;
     s.walk_covered = covered;
     count("demote");
   }
