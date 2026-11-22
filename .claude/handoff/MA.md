@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 409, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 155, DA 128, MI 32, DI 38.
+Conventions 20, AR 409, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 156, DA 128, MI 32, DI 40.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -84,6 +84,9 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 
 ## Open work, most urgent first
 
+- DI-25 ANSWERED (MA rev 156): dcu_btag's own flopped pick from channel leads confirmed (DCU tab rev 83; snapshot
+  still 82, refresh with the next batch); slice 2: tag-RF fill is RMW in the bank's free gap (RF stays 1r1w,
+  forwarding covers same-set writes); model keeps the stub's same-cycle loser with a zero CHECK under MIU=model.
 - MA-30 AGREED (AR 405, rev 409) with conditions, answered MA rev 155, DCU tab rev 82, MIU tab rev 161 (pushed with
   snapshots): mispredict = no contracted slot, re-read H+5, late at due+2 (no rsp field); fold table has a valid
   bit (2,560 flops/bank), no match = miss, no read; fold = XOR of PA[47:16] k-chunks (= PFN), kept in miu_tlb
