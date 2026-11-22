@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 407, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 149, DA 128, MI 32, DI 33.
+Conventions 20, AR 407, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 151, DA 128, MI 32, DI 35.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -83,6 +83,17 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
   background limit or via tools/bg-run.sh with the max timeout.
 
 ## Open work, most urgent first
+
+- DCU PHASE 2 SLICE 1 IS FIRST (DI-20, MA rev 150; Daniel to DI: DCU must not wait for MIU; no DA row).
+  Draft: scratchpad dcu-slice1.md (stage table D0-D5 at HIT 8, 10 modules, port budgets). Findings:
+  (1) MA-29 raised (rev 151; AR to agree, TI apply): MACRO-1 caps SRAM word at 137 -> (137,128) code,
+  check_bits 72 not 128; DCU tab ECC bullet's (72,64)/512x576 text is wrong, fix on landing.
+  (2) Fold way predictor can't address SRAM at H+3 (RF launch 12.6 + SRAM addr setup 13.1 > 25):
+  proposal MRU way from tree-PLRU bits held in flops (PLRU moves out of the tag RF; RF word 140).
+  A subagent is pricing MRU-only vs fold on DI's model (S1/cm32priv/cm128priv) in a scratch worktree.
+  Then: raise MA-30 (WAYPRED_BITS/SEL -> on/off; TI), land the section in DCU tab, dcu-impl.md rows,
+  snapshot, notify DI. Slice 2 owes: UE recovery's second response under the same req_id (MIU keeps
+  the id on ded) - a rule for both tabs.
 
 - DI-18 DECIDED (MA rev 148): on a CE MIU corrects what it holds and redelivers as a refill; DCU counts,
   rewrites, sends nothing more (amends MA-28 (c)'s replay half to TI-513 (2)). MIU tab rev 153, DCU tab
