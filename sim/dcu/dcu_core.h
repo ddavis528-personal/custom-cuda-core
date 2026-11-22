@@ -110,6 +110,7 @@ struct Config {
   unsigned lat_hit = ccv::prov::kLatL1Hit; ///< CCV_LAT_L1_HIT: picks pipe A, B or C
   unsigned wp_bits = ccv::prov::kDcuWaypredBits;     ///< CCV_DCU_WAYPRED_BITS (MA-26)
   bool wp_recent = ccv::prov::kDcuWaypredSel == 1;   ///< CCV_DCU_WAYPRED_SEL: 1 recent, 0 index
+  bool wp_mru = false;   ///< CCV_DCU_WAYPRED_SEL=mru: the set's MRU way, no tag fold (MA-29, pricing)
   unsigned gap = 5;              ///< a store hit's read to its write (MA-17, TI-483)
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
   bool notice = false;           ///< refill notices: off by default, CCV_DCU_NOTICE=1 on (DI-4, MA rev 130)
