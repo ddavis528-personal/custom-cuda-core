@@ -18,6 +18,7 @@ module ooe_decrx_tb #(
   input  logic [S:0]       ev_l_cq00h,
   input  logic [S-1:0]     adv_cq01h,
   input  logic [S-1:0]     adn_cq01h,
+  input  logic [S-1:0]     wo_cq01h,
   input  logic [S-1:0]     rel_cq01h,
   input  logic [S-1:0]     al_v_cq01h,
   input  logic [S*LW-1:0]  al_warp_cq01h,
@@ -30,15 +31,18 @@ module ooe_decrx_tb #(
   output logic [S*LW-1:0]  sw_cq02h,
   output logic [S*EP-1:0]  se_cq02h,
   output logic [S*EP-1:0]  sn_cq02h,
-  output logic [S*EP-1:0]  s2_cq02h
+  output logic [S*EP-1:0]  s2_cq02h,
+  output logic [S-1:0]     wo_cq02h,
+  output logic [S*EP-1:0]  wep_cq02h
 );
   ooe_decrx #(.S(S), .E(E), .NW(NW), .EP(EP)) u_rx (
-    .ooe_core_clk, .ooe_rst_r00h, .ev_l_cq00h, .adv_cq01h, .adn_cq01h, .rel_cq01h,
+    .ooe_core_clk, .ooe_rst_r00h, .ev_l_cq00h, .adv_cq01h, .adn_cq01h, .wo_cq01h, .rel_cq01h,
     .al_v_cq01h, .al_warp_cq01h, .arv_v_cq01h, .arv_warp_cq01h, .arv_ep_cq01h,
-    .enq_v_cq02h, .enq_slot_cq02h, .sw_o_cq02h(sw_cq02h), .sn_o_cq02h(sn_cq02h));
+    .enq_v_cq02h, .enq_slot_cq02h, .sw_o_cq02h(sw_cq02h), .sn_o_cq02h(sn_cq02h), .wo_o_cq02h(wo_cq02h));
   // The warp and the epoch after it are the module's outputs (ooe_redir's
   // reads, OI-179), so the bench checks them there.
   assign sv_cq02h = u_rx.sv_cq02h;
   assign se_cq02h = u_rx.sei_cq02h;
   assign s2_cq02h = u_rx.s2i_cq02h;
+  assign wep_cq02h = u_rx.wep_cq02h;
 endmodule
