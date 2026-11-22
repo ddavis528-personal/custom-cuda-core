@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 407, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 151, DA 128, MI 32, DI 35.
+Conventions 20, AR 408, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 152, DA 128, MI 32, DI 37.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -90,7 +90,13 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
   check_bits 72 not 128; DCU tab ECC bullet's (72,64)/512x576 text is wrong, fix on landing.
   (2) Fold way predictor can't address SRAM at H+3 (RF launch 12.6 + SRAM addr setup 13.1 > 25):
   proposal MRU way from tree-PLRU bits held in flops (PLRU moves out of the tag RF; RF word 140).
-  A subagent is pricing MRU-only vs fold on DI's model (S1/cm32priv/cm128priv) in a scratch worktree.
+  PRICED (DI model @4fb5ec42, HIT 8): fold5 recent S1 59,698 / cm32p 2,105,423 / cm128p 3,065,265; MRU-only
+  +3.42% / +0.03% / +2.37% (cm128p 88% mispredict; localsp 2,187->4,236 from 4 mispredicts, odd); fold5 index
+  0.00 / +0.009 / -0.46%. MRU rejected. Plan: fold table in FLOPS (k x 8 x 512) read at H+2, PA fold sent by
+  MIU in the payload (A2 has ~4 NGD), SEL=index: ~22.5 NGD to SRAM addr. Second run pricing k=2..5 index vs
+  HIT 9 (no pred) from DI's ccr-5e4d6c70-n6402z. DI-22: DI's model has SEL=mru (42b8458b).
+  DI-21 (slice 2): writeback-buffer-full case unspecified; answer with slice 2. AR-404 agreed MA-29;
+  (4) answered rev 152 (column mux >= 4). MIU tab rev 158 has 72 check bits.
   Then: raise MA-30 (WAYPRED_BITS/SEL -> on/off; TI), land the section in DCU tab, dcu-impl.md rows,
   snapshot, notify DI. Slice 2 owes: UE recovery's second response under the same req_id (MIU keeps
   the id on ded) - a rule for both tabs.
