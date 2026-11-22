@@ -80,9 +80,15 @@ unsigned Core::fold(uint64_t pa) const {
 
 /// Pipe C's predictor (MA-23 (C), MA-26): among the valid ways whose fold
 /// matches pa's, CCV_DCU_WAYPRED_SEL picks the lowest way (index) or the most
-/// recently used (recent, true LRU). Read before the hit touches LRU.
+/// recently used (recent, true LRU); mru (MA-29) ignores the fold and picks
+/// the set's most recently used valid way. Read before the hit touches LRU.
 bool Core::predicted(uint64_t pa) {
   const Way *s = setOf(pa), *pick = nullptr;
+  if (c_.wp_mru) {   // MA-29's candidate: the set's most recently used valid way, by LRU state alone
+    for (unsigned i = 0; i != c_.ways; ++i)
+      if (s[i].valid && (!pick || s[i].used > pick->used)) pick = &s[i];
+    return pick && pick->line == pa;
+  }
   const unsigned f = fold(pa);
   for (unsigned i = 0; i != c_.ways; ++i)
     if (s[i].valid && fold(s[i].line) == f) {
