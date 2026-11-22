@@ -4,6 +4,9 @@
 # the sizes its units use. One PASS line each; any failure fails the run.
 #   dcu_cap: test/dcu/cap_tb.cpp, one request slot's capture, and its control
 #            early (the payload taken with its valid), which must fail
+#   dcu_btag: test/dcu/btag_tb.cpp, one bank's tag RFs and compare, and its
+#            controls highest (the highest slot picked) and wbr (a same-edge
+#            write seen by the read), which must fail
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/dcu-rtl; mkdir -p "$B"
@@ -33,4 +36,7 @@ control() {   # unit, control: the bench must fail with mismatches
 }
 bench dcu_cap test/dcu/cg-build.sh dcu_cap "$B/dcu_cap" -- "$B/dcu_cap/tb"
 control dcu_cap early
+bench dcu_btag test/dcu/cg-build.sh dcu_btag "$B/dcu_btag" -- "$B/dcu_btag/tb"
+control dcu_btag highest
+control dcu_btag wbr
 exit $fail

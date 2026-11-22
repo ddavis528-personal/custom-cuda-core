@@ -16,5 +16,8 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
 case "$unit" in
   dcu_cap)
     vl dcu_cap "" "" "$PWD/rtl/dcu/dcu_cap.sv" "$PWD/test/dcu/cap_tb.cpp" ;;
+  dcu_btag)
+    vl dcu_btag "" "" "$PWD/rtl/macro/ccv_common_rf_1r1w.sv" "$PWD/rtl/dcu/dcu_btag.sv" \
+      "$PWD/test/dcu/btag_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

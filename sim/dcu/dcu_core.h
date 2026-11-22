@@ -183,7 +183,7 @@ public:
     uint64_t lookups = 0, hits = 0, misses = 0, merged = 0, losers = 0, waited = 0,
              age_blocks = 0, wp_wrong = 0, wp_right = 0, store_def = 0, rd_wr_cycles = 0,
              fill_wait = 0, fills = 0, evicts = 0, notices = 0, held_cycles = 0,
-             rsp_credit_wait = 0, at_qdepth = 0, at_stdata = 0, idle = 0, ce = 0;
+             rsp_credit_wait = 0, at_qdepth = 0, at_stdata = 0, idle = 0, ce = 0, ce_full = 0;
   };
   const Stats &stats() const { return st_; }
 
@@ -207,14 +207,27 @@ private:
   Way *find(uint64_t pa);
   const Way *find(uint64_t pa) const;
   Way *setOf(uint64_t pa) { return &l1_[size_t((pa / kLineBytes) % c_.sets) * c_.ways]; }
-  void touch(Way &w) { w.used = ++tick_; }
+  /// Each set's tree-PLRU bits (MA-30: ways - 1 of them, 7 at 8 ways, in
+  /// dcu_bctl's flops). Node n's children are 2n+1 and 2n+2; a bit points at
+  /// the half the next victim comes from, and a touch points it away.
+  std::vector<uint8_t> plru_;
+  void touch(Way &w) {
+    w.used = ++tick_;
+    const size_t i = size_t(&w - l1_.data());
+    plruTouch(i / c_.ways, unsigned(i % c_.ways));
+  }
+  void plruTouch(size_t set, unsigned way);
+  unsigned plruVictim(size_t set) const;
   unsigned fold(uint64_t pa) const;
   /// Pipe C: the predicted way of pa's set is its own (true) or another.
   bool predicted(uint64_t pa);
+  /// Whether any valid way of pa's set has pa's fold (slice 1: no match is
+  /// a miss with no data read).
+  bool foldMatch(uint64_t pa);
 
   // ---- the banks and their queues (MA-7, MA-24, MA-25, AR 364) -------------
   struct Acc {
-    enum K { Look, StoreR, StoreW, FillW, EvictR, EccW } k;
+    enum K { Look, StoreR, StoreW, FillW, EvictR, EccR, EccW } k;
     uint64_t born, ready, line;
     Req req;           ///< Look, StoreR
     unsigned fb = 0;   ///< FillW: its fill buffer
@@ -287,6 +300,13 @@ private:
   std::vector<uint64_t> ue_loc_;
   bool ue_raised_ = false, ue_sent_ = false;
   unsigned ecc_hits_ = 0;
+  /// dcu_fix (slice 1, DI-18): one rewrite in flight (its read, then its
+  /// write 5 cycles on) and one pending, block-wide; the front is in flight.
+  std::deque<uint64_t> fix_;
+  static constexpr uint64_t kFixRdWr = 5;   ///< read to write (fix, flop, encode, flop)
+  static constexpr uint64_t kFixStart = 5;  ///< the CE's read access to its rewrite's read request (D1 to past D5)
+  void fixStart(uint64_t ready);
+  void fixDone();
   /// A read hit's SECDED check (MA-28 (c), AR 401): the injection, and on a
   /// non-zero syndrome the correction's rewrite, queued like an RMW's write.
   int eccOnHit(Way &w, const Req &r);

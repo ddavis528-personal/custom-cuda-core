@@ -31,6 +31,7 @@ Core::Core(const Config &c, Hooks &h) : c_(c), h_(h) {
   if (!c_.banks || (c_.banks & (c_.banks - 1)) || c_.sets % c_.banks)
     h_.fail(fmt("dcu: %llu banks do not divide %llu sets", c_.banks, c_.sets));
   l1_.assign(size_t(c_.sets) * c_.ways, Way{});
+  plru_.assign(size_t(c_.sets) * (c_.ways > 1 ? c_.ways - 1 : 0), 0);
   bfree_.assign(c_.banks, 0);
   bq_.resize(c_.banks);
   ent_owed_.assign(c_.banks, 0);
@@ -98,6 +99,14 @@ bool Core::predicted(uint64_t pa) {
   return pick && pick->line == pa;
 }
 
+bool Core::foldMatch(uint64_t pa) {
+  const Way *s = setOf(pa);
+  const unsigned f = fold(pa);
+  for (unsigned i = 0; i != c_.ways; ++i)
+    if (s[i].valid && fold(s[i].line) == f) return true;
+  return false;
+}
+
 void Core::merge(Line &l, const Req &r) const {
   for (unsigned k = 0; k != kLineBytes; ++k)
     if (r.mask[k]) l[k] = r.wdata[k];
@@ -119,17 +128,50 @@ bool Core::canInstall(uint64_t pa) {
   return false;
 }
 
-/// pa's line into its set: its own way if resident, else an invalid way,
-/// else the least recently used of the ways no pending write or store holds.
+// Tree-PLRU over a power-of-two number of ways (MA-30). Bit 0 sends the
+// victim left (lower ways), 1 right.
+void Core::plruTouch(size_t set, unsigned way) {
+  if (c_.ways < 2) return;
+  uint8_t *b = &plru_[set * (c_.ways - 1)];
+  unsigned n = 0;
+  for (unsigned half = c_.ways / 2, lo = 0; half; half /= 2) {
+    const bool right = way >= lo + half;
+    b[n] = !right;   // point away from the way just used
+    if (right) lo += half;
+    n = 2 * n + 1 + right;
+  }
+}
+
+unsigned Core::plruVictim(size_t set) const {
+  if (c_.ways < 2) return 0;
+  const uint8_t *b = &plru_[set * (c_.ways - 1)];
+  unsigned n = 0, lo = 0;
+  for (unsigned half = c_.ways / 2; half; half /= 2) {
+    const bool right = b[n];
+    if (right) lo += half;
+    n = 2 * n + 1 + right;
+  }
+  return lo;
+}
+
+/// pa's line into its set: its own way if resident, else the lowest invalid
+/// way, else the tree-PLRU victim (MA-30); if a pending write or store holds
+/// that one, the lowest way none holds (slice 2 sets the held case).
 /// A dirty victim is read from its bank (EvictR) and written back whole.
 Core::Way *Core::install(uint64_t pa, const Line &l, bool owned, bool dirty) {
   Way *w = find(pa);
   if (!w) {
     Way *s = setOf(pa);
-    for (unsigned i = 0; i != c_.ways; ++i) {
-      if (held(s[i].line) && s[i].valid) continue;
-      if (!w || (w->valid && (!s[i].valid || s[i].used < w->used))) w = &s[i];
-      if (!w->valid) break;
+    for (unsigned i = 0; i != c_.ways && !w; ++i)
+      if (!s[i].valid) w = &s[i];
+    if (!w) {
+      Way *v = &s[plruVictim(size_t(s - l1_.data()) / c_.ways)];
+      if (!held(v->line)) w = v;
+      else {
+        h_.hit("dcu_plru_held");
+        for (unsigned i = 0; i != c_.ways && !w; ++i)
+          if (!held(s[i].line)) w = &s[i];
+      }
     }
     if (!w) {
       h_.fail(fmt("dcu: every way of line %llx's set is held: no victim", pa));
@@ -262,6 +304,7 @@ bool Core::eligible(unsigned b, size_t i) const {
   case Acc::EvictR:
     return true;
   case Acc::StoreW:
+  case Acc::EccR:
   case Acc::EccW:
     return true;
   }
@@ -315,6 +358,22 @@ void Core::serveLook(const Req &r, uint64_t born) {
     return;
   }
   const bool hit = w && (r.op == Op::Read || w->owned);
+  // Pipe C's fold compare (slice 1, MA-30): a lookup whose fold matches no
+  // valid way of its set is a miss that reads nothing (dcu_bctl clears the
+  // SRAM ce at D1, so the bank's next cycle is free); a fold match on a
+  // miss reads the predicted way's word and discards it. A tag hit always
+  // has a fold match (the CHECK).
+  const bool fm = c_.wp_bits && !r.reread && !c_.wp_mru && foldMatch(r.pa);
+  if (c_.wp_bits && !r.reread && !c_.wp_mru) {
+    if (hit && !fm) h_.fail(fmt("dcu: a tag hit on line %llx without a fold match", r.pa));
+    if (!hit && fm) {
+      h_.hit("dcu_wp_fold_miss");
+      h_.hit("dcu_wp_reaccess_cycles", 2);
+    } else if (!hit) {
+      h_.hit("dcu_wp_nomatch_miss");
+      if (bfree_[b] == now_ + 2 && c_.brk != "wp-nomatch-reads") bfree_[b] = now_ + 1;
+    }
+  }
   if (!hit) {
     if (!startMiss(r)) stalled_.push_back(r);
     return;
@@ -332,6 +391,8 @@ void Core::serveLook(const Req &r, uint64_t born) {
       // line, which MIU's oracle must catch.
       ++st_.wp_wrong;
       h_.hit("dcu_wp_wrong");
+      if (!c_.wp_mru) h_.hit("dcu_wp_alias");   // another valid way shares its fold
+      h_.hit("dcu_wp_reaccess_cycles", 2);
       ++ent_used_[b];
       --ent_owed_[b];
       Req x = r;
@@ -416,16 +477,33 @@ void Core::serve(const Acc &a, uint64_t born) {
     unhold(a.line);
     h_.hit("dcu_fill_write");
     break;
+  case Acc::EccR: {
+    // dcu_fix's read of the line in error (slice 1): corrected, flopped,
+    // encoded, flopped, then written kFixRdWr cycles on. A rewrite whose
+    // line has left (a fill wrote good bits) or that an RMW rewrote is moot.
+    Way *w = find(a.line);
+    if (!w || !w->ecc_wr) {
+      h_.hit("dcu_ecc_write_moot");
+      fixDone();
+      break;
+    }
+    h_.hit("dcu_ecc_read");
+    bq_[b].push_back(Acc{Acc::EccW, now_, now_ + kFixRdWr, a.line, a.req, 0, {}});
+    break;
+  }
   case Acc::EccW: {
     // The corrected line goes back (MA-28 (c)): the stored bit is good again.
+    if (now_ - a.born < kFixRdWr)
+      h_.fail(fmt("dcu: CE rewrite written %llu cycles after its read, under %llu", now_ - a.born, kFixRdWr));
     Way *w = find(a.line);
     if (!w || !w->ecc_wr) {
       h_.hit("dcu_ecc_write_moot");   // the line left, or an RMW rewrote it
-      break;
+    } else {
+      w->flip = -1;
+      w->ecc_wr = false;
+      h_.hit("dcu_ecc_write");
     }
-    w->flip = -1;
-    w->ecc_wr = false;
-    h_.hit("dcu_ecc_write");
+    fixDone();
     break;
   }
   case Acc::EvictR:
@@ -435,12 +513,15 @@ void Core::serve(const Acc &a, uint64_t born) {
   }
 }
 
-/// Each bank, each cycle it is free, takes: the oldest eligible waiter once
-/// it has waited CCV_DCU_BANK_AGE (it blocks new lookups and fills until
-/// served; AR 364), else the first lookup due now in slot order (MA-7), else
-/// the oldest eligible waiter (a fill writes only in a cycle with no lookup
-/// to its bank: AR's MA-7 ask). Lookups due now that do not win wait in the
-/// bank's queue and answer later, as a miss would.
+/// Each bank, each cycle it is free, takes, in slice 1's order (DCU tab,
+/// bank arbitration): a mispredict's re-read; the oldest eligible waiter
+/// once it has waited CCV_DCU_BANK_AGE (it blocks new lookups and fills until
+/// served; AR 364); dcu_fix's CE rewrite read or write; the first lookup due
+/// now in slot order (MA-7); else the oldest eligible waiter (a fill writes
+/// only in a cycle with no lookup to its bank: AR's MA-7 ask). Lookups due
+/// now that do not win wait in the bank's queue and answer later, as a miss
+/// would. bank-order-flat, the control, drops the re-read's and the
+/// rewrite's precedence.
 void Core::schedule() {
   std::vector<Req> due;
   auto it = ontime_.find(now_);
@@ -458,6 +539,14 @@ void Core::schedule() {
       if (eligible(b, i)) { old = i; break; }
     const bool aged = old != bq_[b].size() && now_ - bq_[b][old].born >= c_.age &&
                       c_.brk != "bank-age-ignored";
+    // The re-read and the CE rewrite, which go ahead of new lookups.
+    const bool flat = c_.brk == "bank-order-flat";
+    size_t rr = bq_[b].size(), fx = bq_[b].size();
+    for (size_t i = 0; i != bq_[b].size() && !flat; ++i) {
+      const Acc &x = bq_[b][i];
+      if (rr == bq_[b].size() && x.k == Acc::Look && x.req.reread && eligible(b, i)) rr = i;
+      if (fx == bq_[b].size() && (x.k == Acc::EccR || x.k == Acc::EccW) && eligible(b, i)) fx = i;
+    }
     size_t win = in.size();
     for (size_t i = 0; i != in.size() && win == in.size(); ++i) {
       const uint64_t l = in[i].pa;
@@ -470,7 +559,14 @@ void Core::schedule() {
       fill_waits |= bq_[b][i].k == Acc::FillW && eligible(b, i);
     const bool both = c_.brk == "bank-both-granted";
     if (bfree_[b] <= now_ || (both && win != in.size())) {
-      if (aged) {
+      if (rr != bq_[b].size() || (!aged && fx != bq_[b].size())) {
+        const size_t i = rr != bq_[b].size() ? rr : fx;
+        if (!in.empty()) h_.hit(rr != bq_[b].size() ? "dcu_reread_block" : "dcu_fix_block");
+        const Acc a = bq_[b][i];
+        bq_[b].erase(bq_[b].begin() + long(i));
+        claim(b);
+        serve(a, a.born);
+      } else if (aged) {
         if (!in.empty() || fill_waits) {
           ++st_.age_blocks;
           h_.hit("dcu_age_block");
@@ -716,11 +812,35 @@ int Core::eccOnHit(Way &w, const Req &r) {
   ++st_.ce;
   h_.hit("dcu_ce");
   if (!w.ecc_wr) {
-    w.ecc_wr = true;
-    const unsigned b = bankOf(r.pa);
-    bq_[b].push_back(Acc{Acc::EccW, now_, now_ + c_.gap, r.pa, r, 0, {}});
+    if (fix_.size() >= 2 && c_.brk != "ce-rewrite-unbounded") {
+      // dcu_fix holds one rewrite and one pending: this CE is counted and
+      // not rewritten; the line is corrected again on its next read.
+      ++st_.ce_full;
+      h_.hit("ce_rewrite_full");
+    } else {
+      w.ecc_wr = true;
+      fix_.push_back(r.pa);
+      if (fix_.size() > 2) h_.fail(fmt("dcu: %zu CE rewrites held, dcu_fix holds 2", fix_.size()));
+      if (fix_.size() == 1) fixStart(now_ + kFixStart);
+    }
   }
   return w.flip;
+}
+
+/// dcu_fix's front rewrite asks its bank for the read.
+void Core::fixStart(uint64_t ready) {
+  const uint64_t l = fix_.front();
+  bq_[bankOf(l)].push_back(Acc{Acc::EccR, now_, ready, l, Req{}, 0, {}});
+}
+
+/// The front rewrite is written (or moot): the pending one starts.
+void Core::fixDone() {
+  if (fix_.empty()) {
+    h_.fail("dcu: a CE rewrite finished that dcu_fix did not hold");
+    return;
+  }
+  fix_.pop_front();
+  if (!fix_.empty()) fixStart(now_ + 1);
 }
 
 // ---- machine errors (AR 370, MA-19; the stub's injection, CCV_DCU_UE_INJECT) --
