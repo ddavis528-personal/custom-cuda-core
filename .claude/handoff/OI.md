@@ -1,5 +1,12 @@
 # OI handoff (OOE model and RTL)
 
+Updated 2026-11-21 (4), MOST CURRENT, read first:
+- 893f2eed PUSHED (full gate PASS): OA 462 kill exemption (decq_killed_late), decrx bench at straggler_walk=0 until #71 RTL. OI-196 (rev 400) answered AR-402 + DI-15 (re-sweep 893f2eed), both rung (DI session_01QPk2jz5TVESyWMKVKjqqEA, not in roster).
+- 969b3267 full gate PASSED but push failed (proxy down after container restart). Re-merged 10 more branches (incl. TI 655286d1, TI-514) -> d516e866, --full gate-push again.
+- Daily sweep 11-21 merge on oi-sw 80944e42: TI doowtf 32, MI 0ch1hh 4, DI n6402z 14 (criss-cross: merge-tree with one base; 4 non-OI files took theirs), AR 4n8bv4 4, MA miu-dcu-spec 9. --full gate-push on it (see job log in ~/ccv-logs, newest gate-push).
+- Pongs: OA and RI never answered Friday's pings (reported 11-21). Settings check matches. Bookmarks: OA 466, AR 406, MI 29, TI 511, RA 157, RI 91, MA 145, DI 30, IS 201, CP 160, DA 128, Conventions 20. Next free OI-197.
+- NEXT: #71 RTL (ooe_decrx/ooe_decq keep a demoted warp's stragglers for the walk; then drop rxConfig in test/ooe/decrx_tb.cpp); MI-12 waits on it. Then decrx control (mask adv_cq01h when adn_cq01h), RH pricing, OA 435 items.
+
 Updated 2026-11-21 (3), MOST CURRENT, read first:
 - Full gate on 0fc3dc5a was RED (nothing pushed): (1) split links, rokilllane: OA 462 CHECK fired on a killed warp's uop landing after the kill released its slot -> adapter exempts warp_ids a kill named until relaunched (bin decq_killed_late); all split kernels clean both configs. (2) decrx == model: TI-landed straggler walk (74089cbb) is not in ooe_decrx RTL -> decrx_tb runs model with straggler_walk=0 (25 seeds 0 mismatches, 7 controls caught). Fix commit 763138e3 on oi-sw; handoff commits merged. Re-gate --full next.
 - OPEN (#71 RTL): ooe_decrx/ooe_decq must keep a demoted warp's stragglers for the walk (AR 395/OA 457), then drop rxConfig from test/ooe/decrx_tb.cpp.

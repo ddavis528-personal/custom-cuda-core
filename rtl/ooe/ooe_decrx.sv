@@ -44,6 +44,17 @@
 // take effect from the next cycle; no uop of their warp arrives in their
 // cycle (assertions).
 //
+// A demotion's straggler walk (AR 395 / OA 457, #71): a demoting slot's
+// notice opens its walk (wo, from ooe_slot), and until the slot is
+// released or a kill's notice closes it, a uop of the warp carrying the
+// epoch the demotion ended (the walk epoch, the slot's epoch before the
+// notice's advance) is kept too: a straggler, which ooe_decq holds until
+// the beat that names its lanes has left. No uop of the current epoch
+// arrives for a demoting slot (OA 460: FET fetches nothing past the
+// notice), so every uop kept for a slot whose walk is open is a straggler,
+// and ooe_decq reads that from the slot's walk bit (wo_o), not a flag per
+// port. The walk bit and epoch are table flops, in the tables' gate.
+//
 // The reference is the model's arrival check (Core::uop) and its slot and
 // epoch tables: test/ooe/decrx_tb.cpp drives this module and the helper with
 // the live model's arrivals, dropped ones included, and its events, and
@@ -74,6 +85,7 @@ module ooe_decrx #(
                                            // ooe_rob_w (its rd_e: an advance), and ooe_slot (bit S)
   input  logic [S-1:0]     adv_cq01h,      // slot s's warp's epoch advances: a redirect
   input  logic [S-1:0]     adn_cq01h,      // and again: a demotion's or a kill's notice
+  input  logic [S-1:0]     wo_cq01h,       // slot s's notice is a demotion's: its straggler walk opens
   input  logic [S-1:0]     rel_cq01h,      // slot s is released
   input  logic [S-1:0]     al_v_cq01h,     // a warp takes slot s (launch or restore)
   input  logic [S*LW-1:0]  al_warp_cq01h,  // the warp
@@ -83,7 +95,8 @@ module ooe_decrx #(
   output logic [E-1:0]     enq_v_cq02h,    // port k's uop was kept: with its payload, at ooe_decq
   output logic [E*LS-1:0]  enq_slot_cq02h, // its slot
   output logic [S*LW-1:0]  sw_o_cq02h,     // each slot's warp, and the epoch after its warp's:
-  output logic [S*EP-1:0]  sn_o_cq02h      // ooe_redir reads a redirect's in its squash's cycle (OI-179)
+  output logic [S*EP-1:0]  sn_o_cq02h,     // ooe_redir reads a redirect's in its squash's cycle (OI-179)
+  output logic [S-1:0]     wo_o_cq02h      // slot s's straggler walk is open: its kept uops are stragglers
 );
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
@@ -205,16 +218,43 @@ module ooe_decrx #(
       sni_cq02h <= sn_nx_cq01h;
       s2i_cq02h <= s2_nx_cq01h;
     end
+  // Each slot's straggler walk: open from a demotion's notice until a kill's
+  // notice or the slot's release (an allocation finds it closed), and the
+  // epoch its stragglers carry, the slot's before the notice: its epoch if
+  // the notice advances it alone, the one after if a redirect advances it
+  // too. An AND-OR on D, in the tables' gate.
+  logic [S-1:0]    wq_cq02h, wq_nx_cq01h;
+  logic [S*EP-1:0] wep_cq02h, wep_nx_cq01h;
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      logic [EP-1:0] wd;
+      wd = adv_cq01h[s] ? sni_cq02h[s * EP +: EP] : sei_cq02h[s * EP +: EP];
+      wq_nx_cq01h[s] = wo_cq01h[s] | (wq_cq02h[s] & ~adn_cq01h[s] & ~rel_cq01h[s] & ~al_v_cq01h[s]);
+      wep_nx_cq01h[s * EP +: EP] = ({EP{wo_cq01h[s]}} & wd) | ({EP{!wo_cq01h[s]}} & wep_cq02h[s * EP +: EP]);
+    end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) wq_cq02h <= '0;
+    else if (tb_en_cq01h) wq_cq02h <= wq_nx_cq01h;
+  end
+  always_ff @(posedge ooe_core_clk)
+    if (tb_en_cq01h) wep_cq02h <= wep_nx_cq01h;
+
   // Their copies out (an output's register drives nothing else, each kept).
   (* keep *) logic [S*LW-1:0] swo_cq02h;
   (* keep *) logic [S*EP-1:0] sno_cq02h;
+  (* keep *) logic [S-1:0]    woo_cq02h;
   always_ff @(posedge ooe_core_clk)
     if (tb_en_cq01h) begin
       swo_cq02h <= sw_nx_cq01h;
       sno_cq02h <= sn_nx_cq01h;
     end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) woo_cq02h <= '0;
+    else if (tb_en_cq01h) woo_cq02h <= wq_nx_cq01h;
+  end
   assign sw_o_cq02h = swo_cq02h;
   assign sn_o_cq02h = sno_cq02h;
+  assign wo_o_cq02h = woo_cq02h;
 
   // The arrivals, in their lead cycle: each compared (the inner helper), and
   // the verdict flopped on the edge the payload lands, ooe_decq's inputs
@@ -222,8 +262,8 @@ module ooe_decrx #(
   logic [E-1:0]    kv_cq01h;
   logic [E*LS-1:0] ks_cq01h;
   ooe_decrx_keep #(.S(S), .E(E), .NW(NW), .EP(EP)) u_keep (
-    .arv_v_cq01h, .arv_warp_cq01h, .arv_ep_cq01h, .adv_cq01h, .adn_cq01h,
-    .sv_cq02h, .sw_cq02h(swi_cq02h), .se_cq02h(sei_cq02h), .sn_cq02h(sni_cq02h), .s2_cq02h(s2i_cq02h),
+    .arv_v_cq01h, .arv_warp_cq01h, .arv_ep_cq01h, .adv_cq01h, .adn_cq01h, .wo_cq01h,
+    .wq_cq02h, .wep_cq02h, .sv_cq02h, .sw_cq02h(swi_cq02h), .se_cq02h(sei_cq02h), .sn_cq02h(sni_cq02h), .s2_cq02h(s2i_cq02h),
     .enq_v_cq01h(kv_cq01h), .enq_slot_cq01h(ks_cq01h));
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) enq_v_cq02h <= '0;
@@ -235,12 +275,16 @@ module ooe_decrx #(
   `CCV_ASSERT_KNOWN(ev_l_known, ev_l_cq00h)
   `CCV_ASSERT_KNOWN(adv_known, adv_cq01h)
   `CCV_ASSERT_KNOWN(adn_known, adn_cq01h)
+  `CCV_ASSERT_KNOWN(wo_known, wo_cq01h)
+  // A walk opens at a demotion's notice, on a slot whose walk is closed.
+  `CCV_ASSERT(wo_on_notice, (wo_cq01h & ~adn_cq01h) == '0)
+  `CCV_ASSERT(wo_once, (wo_cq01h & wq_cq02h) == '0)
   `CCV_ASSERT_KNOWN(rel_known, rel_cq01h)
   `CCV_ASSERT_KNOWN(al_v_known, al_v_cq01h)
   `CCV_ASSERT_KNOWN_IF(al_known, al_v_cq01h != '0, al_warp_cq01h)
   `CCV_ASSERT_KNOWN(arv_v_known, arv_v_cq01h)
   // Every event comes under its lead.
-  `CCV_ASSERT(ev_led, (adv_cq01h == '0 && adn_cq01h == '0 && rel_cq01h == '0 && al_v_cq01h == '0) || ev_q_cq01h)
+  `CCV_ASSERT(ev_led, (adv_cq01h == '0 && adn_cq01h == '0 && wo_cq01h == '0 && rel_cq01h == '0 && al_v_cq01h == '0) || ev_q_cq01h)
   // An advance or a release names a slot that holds a warp.
   `CCV_ASSERT_READ_VALID(adv_resident, (adv_cq01h | adn_cq01h) != '0, ((adv_cq01h | adn_cq01h) & ~sv_cq02h) == '0)
   `CCV_ASSERT_READ_VALID(rel_resident, rel_cq01h != '0, (rel_cq01h & ~sv_cq02h) == '0)
