@@ -959,7 +959,7 @@ private:
   void putIndexLead(Bits &r, uint64_t pa) {
     put(r, ch().miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
     // MA-30, AR 405: A2's fold of the lookup's PA (TI's hook; MI's to own).
-    put(r, ch().miu_dcu, "pa_fold", paFold(pa) ^ (k_.brk == "dcu-pa-fold" ? 1u : 0u));
+    put(r, ch().miu_dcu, "pa_fold", paFold(pa) ^ (k_.brk == "miu-fold-flip" ? 1u : 0u));
   }
 
   Bits withLead(Bits m) {

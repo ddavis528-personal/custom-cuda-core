@@ -978,7 +978,7 @@ miu → spm · rate 4 · memory
 
 ### `ccv_miu_dcu_req`
 
-Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index leads it by a cycle (AR 362, AR 364). pa_fold (MA-30, AR 405): the way predictor's CCV_DCU_WAYPRED_BITS-bit XOR fold of phys_addr's tag, the bits above the set index, computed by MIU in A2 with the one fold function DCU's table write uses (paFold, sim/skel/stub.h); DCU compares it with its flopped folds at H+3 and reads the lowest matching way, since it cannot fold the PA itself in H+3 within 25 NGD. A payload field, not a lead; unread when prediction is off (CCV_DCU_WAYPRED_BITS 0, the field then 1 bit). The DCU stub refuses a fold that is not its own of phys_addr, by name (dcu-pa-fold).
+Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index leads it by a cycle (AR 362, AR 364). pa_fold (MA-30, AR 405): the way predictor's CCV_DCU_WAYPRED_BITS-bit XOR fold of phys_addr's tag, PA[47:16] (the PFN), in k-bit chunks from bit 16 up, the last zero-extended: the one fold MIU and DCU share (sim/skel/wayfold.h, rtl/common/ccv_common_wayfold.sv, held together by check-skel). MIU keeps it beside each TLB entry's PFN, written at the fill, so A2 sends it at 0 NGD; DCU compares it with its flopped folds at H+3 and reads the lowest matching way, since it cannot fold the PA itself in H+3 within 25 NGD. A payload field, not a lead; unread when prediction is off (CCV_DCU_WAYPRED_BITS 0, the field then 1 bit). The DCU stub refuses a fold that is not its own of phys_addr, by name (miu-fold-flip).
 
 miu → dcu · rate 4 · memory
 

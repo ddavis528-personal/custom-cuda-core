@@ -12,6 +12,7 @@
 
 #include "kernel.h"
 #include "secded.h"
+#include "wayfold.h"
 
 #include "ccv/event.h"
 #include "ccv_params.h"
@@ -158,11 +159,11 @@ inline bool fixLine(Line &l, const Bits &r, uint32_t lsb) {
 }
 
 // ---- The way predictor's fold (MA-30, AR 405 (3)) -------------------------------
-// The one function MIU's A2 (ccv_miu_dcu_req's pa_fold) and DCU's fold-table
-// write share: the XOR fold, k bits at a time, of the line's tag, phys_addr
-// above the set index at its built size (CCV_W_DCU_SET; a sweep's smaller
-// CCV_DCU_SETS still folds above the full index), k = CCV_DCU_WAYPRED_BITS
-// (the environment's overrides it, the same on both sides); 0 when off.
+// wayfold.h's fold of PA[47:16], k = CCV_DCU_WAYPRED_BITS (the environment's
+// overrides it, the same on both sides); 0 when off. The tag starts above the
+// set index at its built size.
+static_assert(kWayFoldLo == 7 + ccv::prov::kWDcuSet, "the fold's tag is above the set index");
+static_assert(kWayFoldLo + kWayFoldW == ccv::prov::kWPa, "the fold's tag ends at the PA's top");
 inline unsigned wayPredBits() {
   static const unsigned k = [] {
     const char *v = std::getenv("CCV_DCU_WAYPRED_BITS");
@@ -170,12 +171,7 @@ inline unsigned wayPredBits() {
   }();
   return k;
 }
-inline unsigned paFold(uint64_t pa, unsigned k = wayPredBits()) {
-  if (!k) return 0;
-  uint64_t t = pa >> (7 + ccv::prov::kWDcuSet), f = 0;
-  for (; t; t >>= k) f ^= t & ((uint64_t(1) << k) - 1);
-  return unsigned(f);
-}
+inline unsigned paFold(uint64_t pa) { return wayFold(pa, wayPredBits()); }
 
 // ---- S1 wire conventions (docs/skeleton.md lists them) ------------------------
 //
