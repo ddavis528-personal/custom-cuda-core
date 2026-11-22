@@ -1,0 +1,11 @@
+{
+  "_comment": "CCV-L23's declared table (DA rev 131, OA 452) for reference_table.sv, a compliant fixture in ooe_ratmap's shape.",
+  "table": {
+    "park_cy04h": {
+      "readers": ["rd_cy01h"],
+      "by": "OA",
+      "date": "2026-11-22",
+      "why": "a parked table read by a restore long after its write, as ooe_ratmap's (OA 452)"
+    }
+  }
+}

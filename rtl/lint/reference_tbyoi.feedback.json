@@ -1,0 +1,13 @@
+{
+  "_comment": "bad_table.sv's reference_tbyoi (check-1d): refused.",
+  "table": {
+    "opark_cy04h": {
+      "readers": [
+        "ord_cy01h"
+      ],
+      "by": "OI",
+      "date": "2026-11-22",
+      "why": "tbyoi control"
+    }
+  }
+}
