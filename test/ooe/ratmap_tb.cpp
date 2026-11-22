@@ -26,8 +26,10 @@
 // Negative controls (RATMAP_CONTROL=<name>) perturb the driving and must be
 // caught: wrong-slot (a demotion's request on the next slot), cw-shift
 // (each slot's widths from the next slot), no-read-lead (a
-// restore-allocate's read is not led) and restore-first (ooe_ratmap's
-// ctl_rfirst: among requests arriving together, a restore's is older).
+// restore-allocate's read is not led), restore-first (ooe_ratmap's
+// ctl_rfirst: among requests arriving together, a restore's is older) and
+// read-at-write (a read of a warp while its parked write is in flight:
+// read_not_written, the declared table's assertion, must fire).
 //
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
@@ -193,6 +195,15 @@ void hook(const Core &c) {
         read_w[r] = c.parkedWidth(a.warp, r);
       }
     }
+  // read-at-write: read a warp while its demotion's parked write is in
+  // flight (its payload out last edge, or its write landing at this one),
+  // which read_not_written refuses (CCV-L23's declared table).
+  if (control == "read-at-write") {
+    int w = -1;
+    if (!park_due.empty()) w = int(park_due.front());
+    else if (exp_v && exp_m.direction == 0) w = int(exp_m.warp % NW);
+    if (w >= 0) { dut->prl_cq00h = 1; dut->prw_cq00h = unsigned(w); }
+  }
   // The queue sends its oldest.
   const bool send = !fifo.empty();
   ccv::ooe::RatMap sent;

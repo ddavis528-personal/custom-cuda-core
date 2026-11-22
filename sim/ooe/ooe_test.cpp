@@ -2903,6 +2903,46 @@ void testRestore() {
   EXPECT(refused, "a restore-activate before the map was accepted");
 }
 
+/// A demotion's map and a restore's in the same cycle, on two slots: warp 5
+/// demotes from slot 1 while warp 0 restores into slot 0, the restore's
+/// acceptance swept against the demotion until both maps leave together.
+/// ooe_ratmap's bench takes it for its restore-first control (a restore's
+/// request older than a demotion's arriving beside it), which the random
+/// tests no longer reach since a demoting warp keeps its slot (OA 460).
+[[maybe_unused]] void testRestoreBesideDemote() {
+  g_test = "restore beside demote";
+  bool together = false;
+  for (unsigned d = 0; d != 60 && !together; ++d) {
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::mt19937 rng(7);
+    e.launch(5, 1, randomProgram(rng, 80, false));
+    for (unsigned k = 0; k != 6; ++k) e.step();
+    e.core.demote(5);
+    for (auto &x : e.w) if (x.id == 5) x.exited = true;
+    for (auto it = e.fetched.begin(); it != e.fetched.end();)
+      it = it->second.warp == 5 ? e.fetched.erase(it) : std::next(it);
+    for (unsigned k = 0; k != 200 && !together; ++k) {
+      if (k == d) {
+        Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc; ra.cta_slot = Env::ctaSlotOf(0);
+        e.core.alloc(ra);
+      }
+      e.step();
+      bool dm = false, rm = false;
+      for (const RatMap &m : e.log.back().maps) (m.direction ? rm : dm) = true;
+      together = dm && rm;
+      e.log.clear();
+    }
+    // Run on, so a bench sees both maps leave its queue.
+    if (together)
+      for (unsigned k = 0; k != 20; ++k) { e.step(); e.log.clear(); }
+    for (const std::string &x : e.errors) EXPECT(false, "offset %u: %s", d, x.c_str());
+  }
+  EXPECT(together, "no restore offset put a restore's map beside a demotion's");
+}
+
 /// A consumer final long before its producer: an SFU op of 30 cycles,
 /// bypassed to a lane op that issues at 9 and is final at 16, then waits on
 /// its row until the SFU op confirms. ooe_rs leads that confirmation from
@@ -6453,6 +6493,7 @@ int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_c
     testAtomicDemote();
     testBarrierDemote();
     testParkedLayout();
+    testRestoreBesideDemote();
     testSlotRandom(seeds * 2);
     testSlotRandom(seeds * 2, true);
   } else if (scenario == "idle") {

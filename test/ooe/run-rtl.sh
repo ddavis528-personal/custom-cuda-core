@@ -715,7 +715,7 @@ if out=$("$dir/ratmap_tb" "$seeds" 2>&1); then
 else
   say "ratmap == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in wrong-slot cw-shift no-read-lead restore-first; do
+for c in wrong-slot cw-shift no-read-lead restore-first read-at-write; do
   if RATMAP_CONTROL=$c "$dir/ratmap_tb" 3 >/dev/null 2>&1; then
     say "  control $c (ratmap)" "MISSED"; fail=1
   else

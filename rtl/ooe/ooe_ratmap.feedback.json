@@ -1,0 +1,11 @@
+{
+  "_comment": "CCV-L23's declared table (DA rev 131, OA 452, OI-187) for ooe_ratmap.sv: the parked layout, written by a demotion and read by a restore-allocate long after.",
+  "table": {
+    "pk_cq05h": {
+      "readers": ["rd_cq01h"],
+      "by": "OA",
+      "date": "2026-11-22",
+      "why": "ooe_ratmap's parked table (32 x 64): a demotion parks a warp's positions and widths, written from the cq04h write register; a restore-allocate reads them through prw_cq01h, its own stage, long after. Neither a loop's back edge nor a later copy on the reader's pipeline (OA 452). Signed by OA in OI's landing row."
+    }
+  }
+}
