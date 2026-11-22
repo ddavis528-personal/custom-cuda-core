@@ -38,9 +38,9 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 4-base branch hung 25 min; resolve took 0.15 s).
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). 11-22: TI 518,
-OI 402, AR 409, MA 157, MI 35, DI 41; the rest as of the 11-22 sweep.
-Last row TI-520. Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). 11-22: TI 519,
+OI 402, AR 409, MA 157, MI 35, DI 44; the rest as of the 11-22 sweep.
+Last row TI-521. Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -50,6 +50,10 @@ a background task, timeout 7200000 (exit 3: rerun the wait; 4: rerun the job
 with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 
 ## State (2026-11-22)
+- Landed 8e784c88 (SCOPED PASS 28/28): verify.sh sections dcu_rtl and
+  miu_rtl (DI's/MI's run-rtl.sh), gate-scope maps test/dcu, test/miu;
+  DI's DCU paths from 3b6b66f2 taken by checkout (merge: too many bases).
+  TI-521 to DI, MI (DI asked to check nothing missing).
 - 11-22 sweep landed 8ca2bf1b on both branches (full clean gate); release
   041c6c62, tag snapshot-2026-11-22-8ca2bf1 refused (local only). It merged
   MA's spec branch, AR's ccr-80102643-4n8bv4 (by hand: main.cpp --break
@@ -85,10 +89,8 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
    parked R2 upper half lost (MI-5). Then the pair dcu-drop-credit /
    dcu-drop-answers controls once MI's drop sender lands.
 3. Task 51 rest: MI-7 page-boundary kernel; MI-5 bins/slow regions.
-4. DI-24 (4): DCU RTL gate section once DI pushes test/dcu/run-rtl.sh
-   and test/dcu/cg-units.json; MI-16: MIU RTL section likewise.
-5. DI-23: stub MIU st_ld_wait ~2,048-cycle hold (kernel.cpp olderStore).
-6. AR 370 ccv_common_err RTL; task 28 RAS wrapper (BIST override, spare
+4. DI-23: stub MIU st_ld_wait ~2,048-cycle hold (kernel.cpp olderStore).
+5. AR 370 ccv_common_err RTL; task 28 RAS wrapper (BIST override, spare
    row/column, broadcast groups); AR 371 SPM banks; AR 392 PT base CSR
    with Q-50; AR 393; OI-187.
-7. Low: RA re:RI-46 (3) SFU kill variant; RA 148 (post-sign-off).
+6. Low: RA re:RI-46 (3) SFU kill variant; RA 148 (post-sign-off).
