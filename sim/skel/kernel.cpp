@@ -861,7 +861,13 @@ private:
     if (ls != set)
       k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
               s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
-              (unsigned long long)pa, (unsigned long long)set);
+              (unsigned long long)pa, (unsigned long long)set);    // MA-30, AR 405 (3): MIU's pa_fold is DCU's own fold of phys_addr,
+    // whenever the predictor is on (--break miu-fold-flip).
+    const uint64_t pf = get(req, c.miu_dcu, "pa_fold");
+    if (wayPredBits() && pf != paFold(pa))
+      k_.fail("dcu: slot %u req_id %u pa_fold %llx is not its phys_addr %llx's fold %x",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)pf,
+              (unsigned long long)pa, paFold(pa));
   }
 
   void work() override {
@@ -1894,9 +1900,12 @@ private:
   /// AR 362: the lookup's set index leads it, from the formed address
   /// (the stub's line is its leader's); its bank is the index's low bits
   /// (AR 364). --break dcu-set-lead sends a wrong one, which DCU must refuse
-  /// by name.
+  /// by name. With it, the payload's pa_fold, A2's fold of the same address
+  /// (MA-30, AR 405); --break miu-fold-flip flips its low bit, which DCU must
+  /// refuse by name too.
   void putIndexLead(Bits &r, uint64_t pa) {
     put(r, ch().miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
+    put(r, ch().miu_dcu, "pa_fold", paFold(pa) ^ (k_.brk == "miu-fold-flip" ? 1u : 0u));
   }
 
   Bits withLead(Bits m) {

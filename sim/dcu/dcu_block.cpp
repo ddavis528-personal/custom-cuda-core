@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 #include "stub.h"
 #include "dcu_core.h"
+#include "wayfold.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -113,6 +114,14 @@ private:
       k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
               s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
               (unsigned long long)pa, (unsigned long long)set);
+    // TI-518, AR 405 (3): MIU's pa_fold is DCU's own fold of phys_addr
+    // whenever the predictor is on (--break miu-fold-flip), as the stub's.
+    const unsigned k = core_.config().wp_bits;
+    const uint64_t pf = get(req, c.miu_dcu, "pa_fold");
+    if (k && !core_.config().wp_mru && pf != ccv::skel::wayFold(pa, k))
+      k_.fail("dcu: slot %u req_id %u pa_fold %llx is not its phys_addr %llx's fold %x",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)pf,
+              (unsigned long long)pa, ccv::skel::wayFold(pa, k));
   }
 
   D::Req decode(unsigned s, const Receiver::Msg &m) {

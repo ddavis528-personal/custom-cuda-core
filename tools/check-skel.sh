@@ -134,6 +134,32 @@ else
   fi
 fi
 
+# -- the way predictor's fold (sim/skel/wayfold.h; rtl/common/) ---------------
+# MA-30, AR 405 and MA's response (MA tab rev 155): one fold of PA[47:16],
+# MIU's TLB and DCU's fold table alike. The RTL at K = 4 and 5 (a last
+# chunk zero-extended) and the C++ fold on random PAs and every one-hot tag
+# agree (test/vl/vl_wayfold_tb.cpp). Controls: the C++ fold from PA bit 15
+# (lo), K = 5's last chunk dropped (nozext).
+rm -rf "$B/vl-wayfold"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wno-fatal -Wno-lint -Wno-style \
+     -CFLAGS "-std=c++17 -I$R/sim/skel" --top-module vl_wayfold_top \
+     --Mdir "$B/vl-wayfold" -o vl_wayfold rtl/common/ccv_common_wayfold.sv \
+     test/vl/vl_wayfold_top.sv "$R/test/vl/vl_wayfold_tb.cpp" >"$B/vl-wayfold.log" 2>&1; then
+  bad "way fold model == RTL" "the lockstep does not build ($B/vl-wayfold.log)"
+elif ! out=$("$B/vl-wayfold/vl_wayfold" 100000 2>&1); then
+  bad "way fold model == RTL" "$(echo "$out" | head -2 | tr '\n' ' ')"
+else
+  missed=""
+  for c in lo nozext; do
+    VL_CONTROL=$c "$B/vl-wayfold/vl_wayfold" 20000 >/dev/null 2>&1 && missed="$missed $c"
+  done
+  if [ -n "$missed" ]; then
+    bad "way fold model == RTL" "control(s) not caught:$missed"
+  else
+    say "way fold model == RTL (PA[47:16], K = 4, 5)" "PASS ($(echo "$out" | tail -1 | sed 's/^agree //'); lo, nozext caught)"
+  fi
+fi
+
 # Keys are matched WHOLE -- preceded by a space or the line start. A bare
 # `violations=` also matches inside `class_violations=`, which comes first on
 # the line, so a run with 186 checker violations read as 0: this gate would

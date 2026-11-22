@@ -4,6 +4,7 @@
 // spec; the comments cite the rows that decide each rule.
 //===----------------------------------------------------------------------===//
 #include "dcu_core.h"
+#include "../skel/wayfold.h"   // the one fold MIU and DCU share (AR 405 (3)); header only
 
 #include <algorithm>
 #include <cstdio>
@@ -72,23 +73,25 @@ unsigned Core::bankOf(uint64_t pa) const {
   return unsigned(b);
 }
 
-/// A k-bit XOR fold of the tag (the line address above the set index).
-unsigned Core::fold(uint64_t pa) const {
-  uint64_t t = pa / kLineBytes / c_.sets, f = 0;
-  for (; t; t >>= c_.wp_bits) f ^= t & ((1u << c_.wp_bits) - 1);
-  return unsigned(f);
-}
+/// The way predictor's fold of pa's tag, PA[47:16] in k-bit chunks XORed:
+/// MIU's pa_fold and the fold table's entry, one function (TI-518, AR 405 (3)).
+unsigned Core::fold(uint64_t pa) const { return ccv::skel::wayFold(pa, c_.wp_bits); }
 
 /// Pipe C's predictor (MA-23 (C), MA-26): among the valid ways whose fold
 /// matches pa's, CCV_DCU_WAYPRED_SEL picks the lowest way (index) or the most
 /// recently used (recent, true LRU); mru (MA-29) ignores the fold and picks
 /// the set's most recently used valid way. Read before the hit touches LRU.
 bool Core::predicted(uint64_t pa) {
+  const Way *p = predictedWay(pa);
+  return p && p->line == pa;
+}
+
+const Core::Way *Core::predictedWay(uint64_t pa) {
   const Way *s = setOf(pa), *pick = nullptr;
   if (c_.wp_mru) {   // MA-29's candidate: the set's most recently used valid way, by LRU state alone
     for (unsigned i = 0; i != c_.ways; ++i)
       if (s[i].valid && (!pick || s[i].used > pick->used)) pick = &s[i];
-    return pick && pick->line == pa;
+    return pick;
   }
   const unsigned f = fold(pa);
   for (unsigned i = 0; i != c_.ways; ++i)
@@ -96,7 +99,7 @@ bool Core::predicted(uint64_t pa) {
       if (!pick || (c_.wp_recent && s[i].used > pick->used)) pick = &s[i];
       if (!c_.wp_recent) break;
     }
-  return pick && pick->line == pa;
+  return pick;
 }
 
 bool Core::foldMatch(uint64_t pa) {
@@ -382,13 +385,14 @@ void Core::serveLook(const Req &r, uint64_t born) {
     if (predicted(r.pa)) {
       ++st_.wp_right;
       h_.hit("dcu_wp_right");
-    } else if (c_.brk != "wp-late-at-due") {
+    } else if (!noCompare()) {
       // A mispredict (DI-2; MA rev 121, AR 390, OA 442): the true way is
       // re-read in a second, ordinary access, under the half-rate rule and
       // the bank's queue, so it answers no earlier than due + 2, as a
       // bank-conflict loser would. It keeps its queue entry until then.
-      // wp-late-at-due, the control, answers at due with the predicted way's
-      // line, which MIU's oracle must catch.
+      // wp-late-at-due (dcu-wp-nocompare, AR 405's name for it), the control,
+      // answers at due with the predicted way's line, which the oracle must
+      // catch.
       ++st_.wp_wrong;
       h_.hit("dcu_wp_wrong");
       if (!c_.wp_mru) h_.hit("dcu_wp_alias");   // another valid way shares its fold
@@ -428,12 +432,13 @@ void Core::serveLook(const Req &r, uint64_t born) {
   s.line = w->data;
   s.flip = eccOnHit(*w, r);
   s.hit = true;
-  if (c_.brk == "wp-late-at-due" && wp_miss) {
+  if (noCompare() && wp_miss) {
     s.flip = -1;
-    // The predicted way's line, not the line asked for (the control).
-    const Way *set = setOf(r.pa);
-    for (unsigned i = 0; i != c_.ways; ++i)
-      if (set[i].valid && set[i].line != r.pa) { s.line = set[i].data; break; }
+    // The predicted way's line, not the line asked for (the control): the
+    // picked way's data completed without the tag compare. With no fold
+    // match there is no predicted way, and the lookup is a miss above.
+    const Way *p = predictedWay(r.pa);
+    if (p) s.line = p->data;
   }
   if (r.reread) h_.hit("dcu_wp_reread");
   if ((late || r.reread) && c_.brk != "late-own-slot") s.bank = int(b);

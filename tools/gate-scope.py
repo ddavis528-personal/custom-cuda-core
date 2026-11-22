@@ -115,6 +115,9 @@ MAP = [
     # lockstep of sim/skel/secded.h against them (test/vl/vl_secded_tb.cpp).
     ("rtl/common/ccv_common_secded_", RTL + ["skel"]),
     ("rtl/include/ccv_secded.svh", RTL + ["skel"]),
+    # The way predictor's fold (MA-30, AR 405): every RTL section, and
+    # check-skel's lockstep of sim/skel/wayfold.h against it.
+    ("rtl/common/ccv_common_wayfold", RTL + ["skel"]),
     ("rtl/", RTL),
     ("test/kernels/", ["kernel", "rcu_ls", "svh"]),
     ("test/ooe/", ["ooe_rtl", "cg", "ngd"]),
@@ -125,6 +128,7 @@ MAP = [
     # The SRAM model's lockstep against rtl/macro/ (check-skel).
     ("test/vl/vl_sram_", ["skel"]),
     ("test/vl/vl_secded_", ["skel"]),
+    ("test/vl/vl_wayfold_", ["skel"]),
     ("test/ngd/", ["ngd"]),
     ("test/neg/", ["iface"]),
     ("test/formal/", ["formal"]),
