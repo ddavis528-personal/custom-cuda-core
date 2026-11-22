@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=MIU rev=155 exported=2026-11-21 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *MIU*, at revision 155 on 2026-11-21 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=MIU rev=161 exported=2026-11-22 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *MIU*, at revision 161 on 2026-11-22 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # MIU — memory interface unit
 
@@ -294,7 +294,7 @@ Modules live in rtl/miu/. Each size is a module parameter defaulting to `ccv_par
 | miu\_agu8 | 16, slot s × lane octet u | A1 | 8 lanes: 3-input sum with the window level, F-ALIGN; flops 8 VAs and 8 align faults | 400 |
 | miu\_lead | 1 | A1 | 16 leader adders (4 a slot) on operands muxed by lane position; routing to lookup slots by footprint; set index, bank, credit gate; the req valid and lead flops | 1,000 |
 | miu\_cred | 1 | A1 | per-bank entry and store-data counters (MA-25), spent at the valid, returned from `ccv_dcu_miu_cred`; the per-bank gate flop (count after this cycle's spends ≥ `CCV_DCACHE_LOOKUPS`) | 120 |
-| miu\_tlb | 1 | A2 | 32-entry fully associative TLB, 4 read ports; the walker's fill port in slice 2 | 2,000 |
+| miu\_tlb | 1 | A2 | 32-entry fully associative TLB, 4 read ports; each entry also keeps fold(PFN), CCV\_DCU\_WAYPRED\_BITS bits from the shared wayfold helper, written at the fill and read beside the ppn, which miu\_a2 sends as the req payload's pa\_fold at 0 NGD of fold logic (MA-30, AR 405; the line tag PA\[47:16\] is the PFN at CCV\_L\_PAGE\_SHIFT 16); the walker's fill port in slice 2 | 2,130 |
 | miu\_grp | 4, one per address slot | A2 | combinational: each active lane's line against its group leader's line, and the page check; eligibility out | 0 |
 | miu\_a2 | 1 | A2 | dedupe, bank conflict, faults, PA, drop (MA-27), req payload flops, no-hit flops, MQ writes | 900 |
 | miu\_ids | 1 | A2, R1 | the 64 DCU req\_ids: free list with 4 preselected ids flopped a cycle ahead; id to entry table | 450 |
@@ -303,7 +303,7 @@ Modules live in rtl/miu/. Each size is a module parameter defaulting to `ccv_par
 | miu\_rsp | 1 | R1 | data valid, lead fields of `ccv_miu_rcu_data`, per-lane selects, completion state | 1,400 |
 | miu\_rcap | 4, one per rsp slot | R2 | `ccv_dcu_miu_rsp`'s payload capture (read\_data, hit, req\_id, and MA-28's check bits) | 1,170 |
 | miu\_ext | 16, data slot s × lane octet u | R2 | 8 lanes: word select over F lines, byte align, sized fill; flops 8 lanes of `load_data` | 260 |
-| miu\_ecc | 4, one per rsp slot | R2 | (72,64) syndrome over the slot's line, non-zero flag out (MA-28 (c), pending) | 0 |
+| miu\_ecc | 4, one per rsp slot | R2 | (137,128) syndrome over the slot's line, 8 code words (MA-29), non-zero flag out (MA-28 (c), pending) | 0 |
 | miu\_out | 1 | R2 | the completion valid (gated by the syndrome) and the completion payload flops | 500 |
 
 ### Port NGD budgets (slice 1)
@@ -315,18 +315,18 @@ Arrival is the depth before the port, and the module's own share is what is left
 | every input from `ccv_rcu_miu_addr`, `ccv_dcu_miu_rsp` and `ccv_dcu_miu_cred` | in | arrival 0 | interface capture flops; MIU's ends stay at 0 NGD (A-61, RI-11) |
 | miu\_cap, miu\_pair, miu\_rcap, miu\_lead, miu\_a2, miu\_rsp, miu\_out, miu\_ids, miu\_hitq outputs | out | 0 | straight from flops; a flop that also feeds logic inside has a `(* keep *)` copy for the port |
 | miu\_agu8 inputs, miu\_lead inputs | in | arrival 0 | from miu\_cap and miu\_pair flops; the adders take the whole 25 (about 18 for the sum, 2 for the window level, 4 for the leader's operand mux) |
-| miu\_tlb hit, ppn, perms | out | 12 | VPN fanout to 32 entries (1.4), a 32-bit compare (about 7), a 32:1 one-hot of PPNs (about 4) |
+| miu\_tlb hit, ppn, fold, perms | out | 12 | VPN fanout to 32 entries (1.4), a 32-bit compare (about 7), a 32:1 one-hot of PPNs (about 4) |
 | miu\_a2 inputs from miu\_tlb | in | arrival 12 | 13 left: PA, faults, drop, the payload flop |
 | miu\_grp eligibility | out | 12 | the leader line's fanout to 32 lanes (1.4), a 41-bit compare (about 7), a 32-lane AND (about 3) |
 | miu\_a2 inputs from miu\_grp | in | arrival 12 | 13 left: the no-hit OR and its flop |
 | miu\_ext read\_data inputs | in | arrival 1 | read\_data's fanout to 16 miu\_ext instances (one inverter stage) |
 | miu\_ecc read\_data inputs | in | arrival 1 | the same fanout |
-| miu\_ecc non-zero flag | out | 17 | about 15 for the (72,64) syndrome tree, 1 for the fanout term, 1 to spare |
+| miu\_ecc non-zero flag | out | 17 | 15.4 for the (137,128) syndrome tree (MA-29), 1 for the fanout term, 1 to spare |
 | miu\_out inputs from miu\_ecc | in | arrival 17 | 8 left: OR over a memop's up to 4 slots, AND with R1's flop, the output flop's keep copy |
 
 **The drop (MA-27; AR 400, DI-12).** A first-pass valid at H+1 is decided from A1 alone: a global load on that footprint slot whose bank has at least CCV\_DCACHE\_LOOKUPS entry credits after this cycle's spends. A bank below that holds the load at A1, which loses the contract through A2's no-hit. The gate (MI-17, MA rev 144): miu\_cred flops ge1\[b\] (count >= CCV\_DCACHE\_LOOKUPS) and ge2\[b\] (count >= 2 x CCV\_DCACHE\_LOOKUPS) from its count net of every spend already launched and every refund. miu\_lead's own flop used\[b\] marks a launch to bank b this cycle, which miu\_cred has not counted yet. A1 gates on used\[b\] ? ge2\[b\] : ge1\[b\], one mux on flops. The valid spends its bank's entry credit. A2 sets drop on a TLB miss, a fault, a page split, a bank-conflict loser, a duplicate leader line (A1 has no line compare; MI-19 (3)), a lane off its leader's line (drop\_line, which drops all of the load's lookups) or an older-store overlap found at A2 (drop\_held; a hold A1 knows from flopped state, a fence, an atomic hold or a write in flight, launches no valid at all). miu\_cred then refunds that credit from miu\_a2's flopped drop, and DCU never returns it: ent\_ret returns only lookups that entered DCU's queue. A dropped lookup gets no req\_id and no response, and its line goes out again from the MQ in a later pass. Bins: a drop for each cause. Controls: dcu-drop-answers, and a DCU that keeps a dropped lookup's credit; both must fail. Price (MA rev 149): the A1 hold fires 0 times on S1, cm32priv and cm128priv at defaults, and the duplicate drops cost at most 0.008% against an ideal A1 dedupe, so A1 has no line compare.
 
-**The hit's ECC check (MA-28 (c); AR 401).** ccv\_dcu\_miu\_rsp carries the stored (72,64) check bits of every code word in a slot's line, 128 bits a slot. miu\_ecc computes the syndrome in R2, and its flag is the OR over every code word the slot carries. A memop's completion is withheld if any of its slots' flags is set, so `CCV_LAT_L1_ECC` stays 1. On a CE MIU corrects the slot's data itself from the response and check bits it holds, and delivers the corrected data and the completion to the withheld slots as a refill delivery (MA rev 148, DI-18; TI-513 (2)). DCU sends nothing more: it computes the same syndrome over the same scope, counts the CE and rewrites the line, and its req\_id frees with its one response as usual. A UE follows AR 370; on a core-fatal path no response comes, and MI-8's quiescence exemption (AR 389) covers the id. The models check that the withheld slots equal the slots DCU counts. Controls: ecc-err-ignored, and a narrowed scope on one side (it must hang or be caught). The injection is DCU's CCV\_DCU\_ECC\_INJECT, which flips a stored bit; MIU's knob goes.
+**The hit's ECC check (MA-28 (c); AR 401).** ccv\_dcu\_miu\_rsp carries the stored (137,128) check bits of every code word in a slot's line, 72 bits a slot (MA-29, AR-404; MACRO-1's 137-bit word). miu\_ecc computes the syndrome in R2, and its flag is the OR over every code word the slot carries. A memop's completion is withheld if any of its slots' flags is set, so `CCV_LAT_L1_ECC` stays 1. On a CE MIU corrects the slot's data itself from the response and check bits it holds, and delivers the corrected data and the completion to the withheld slots as a refill delivery (MA rev 148, DI-18; TI-513 (2)). DCU sends nothing more: it computes the same syndrome over the same scope, counts the CE and rewrites the line, and its req\_id frees with its one response as usual. A UE follows AR 370; on a core-fatal path no response comes, and MI-8's quiescence exemption (AR 389) covers the id. The models check that the withheld slots equal the slots DCU counts. Controls: ecc-err-ignored, and a narrowed scope on one side (it must hang or be caught). The injection is DCU's CCV\_DCU\_ECC\_INJECT, which flips a stored bit; MIU's knob goes.
 
 ## From the repository, as of Stage 3
 
