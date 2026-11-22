@@ -276,18 +276,19 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_spm_miu_rsp", "conflict_serialization", p.c15_f2, b, 0, 6);
   }
   {
-    const Bits b = randomBits(1224, seed ^ 126704u);
+    const Bits b = randomBits(1228, seed ^ 126704u);
     put(p.c16, b);
     p.eval();
-    bad += check("ccv_miu_dcu_req", "req_id", p.c16_f0, b, 1218, 6);
-    bad += check("ccv_miu_dcu_req", "phys_addr", p.c16_f1, b, 1170, 48);
-    bad += check("ccv_miu_dcu_req", "size", p.c16_f2, b, 1167, 3);
-    bad += check("ccv_miu_dcu_req", "coh_op", p.c16_f3, b, 1163, 4);
-    bad += check("ccv_miu_dcu_req", "exclusive_req", p.c16_f4, b, 1162, 1);
-    bad += check("ccv_miu_dcu_req", "write_data", p.c16_f5, b, 138, 1024);
-    bad += check("ccv_miu_dcu_req", "byte_mask", p.c16_f6, b, 10, 128);
-    bad += check("ccv_miu_dcu_req", "lead_set_index", p.c16_f7, b, 1, 9);
-    bad += check("ccv_miu_dcu_req", "drop", p.c16_f8, b, 0, 1);
+    bad += check("ccv_miu_dcu_req", "req_id", p.c16_f0, b, 1222, 6);
+    bad += check("ccv_miu_dcu_req", "phys_addr", p.c16_f1, b, 1174, 48);
+    bad += check("ccv_miu_dcu_req", "size", p.c16_f2, b, 1171, 3);
+    bad += check("ccv_miu_dcu_req", "coh_op", p.c16_f3, b, 1167, 4);
+    bad += check("ccv_miu_dcu_req", "exclusive_req", p.c16_f4, b, 1166, 1);
+    bad += check("ccv_miu_dcu_req", "write_data", p.c16_f5, b, 142, 1024);
+    bad += check("ccv_miu_dcu_req", "byte_mask", p.c16_f6, b, 14, 128);
+    bad += check("ccv_miu_dcu_req", "lead_set_index", p.c16_f7, b, 5, 9);
+    bad += check("ccv_miu_dcu_req", "drop", p.c16_f8, b, 4, 1);
+    bad += check("ccv_miu_dcu_req", "pa_fold", p.c16_f9, b, 0, 4);
   }
   {
     const Bits b = randomBits(1105, seed ^ 134623u);

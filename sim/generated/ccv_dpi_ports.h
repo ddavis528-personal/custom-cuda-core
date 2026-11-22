@@ -1105,19 +1105,19 @@ inline constexpr DpiPort kDpiPorts_miu[] = {
   {15, -1, 2, DpiSig::TID, 64, false},  // spm_miu_rsp_s2_tid
   {15, -1, 3, DpiSig::TID, 64, false},  // spm_miu_rsp_s3_tid
   {16, -1, 0, DpiSig::VALID, 1, true},  // miu_dcu_req_s0_valid
-  {16, -1, 0, DpiSig::PAYLOAD, 1224, true},  // miu_dcu_req_s0_payload
+  {16, -1, 0, DpiSig::PAYLOAD, 1228, true},  // miu_dcu_req_s0_payload
   {16, -1, 0, DpiSig::CREDIT, 1, false},  // miu_dcu_req_s0_credit
   {16, -1, 0, DpiSig::STALL, 1, false},  // miu_dcu_req_s0_stall
   {16, -1, 1, DpiSig::VALID, 1, true},  // miu_dcu_req_s1_valid
-  {16, -1, 1, DpiSig::PAYLOAD, 1224, true},  // miu_dcu_req_s1_payload
+  {16, -1, 1, DpiSig::PAYLOAD, 1228, true},  // miu_dcu_req_s1_payload
   {16, -1, 1, DpiSig::CREDIT, 1, false},  // miu_dcu_req_s1_credit
   {16, -1, 1, DpiSig::STALL, 1, false},  // miu_dcu_req_s1_stall
   {16, -1, 2, DpiSig::VALID, 1, true},  // miu_dcu_req_s2_valid
-  {16, -1, 2, DpiSig::PAYLOAD, 1224, true},  // miu_dcu_req_s2_payload
+  {16, -1, 2, DpiSig::PAYLOAD, 1228, true},  // miu_dcu_req_s2_payload
   {16, -1, 2, DpiSig::CREDIT, 1, false},  // miu_dcu_req_s2_credit
   {16, -1, 2, DpiSig::STALL, 1, false},  // miu_dcu_req_s2_stall
   {16, -1, 3, DpiSig::VALID, 1, true},  // miu_dcu_req_s3_valid
-  {16, -1, 3, DpiSig::PAYLOAD, 1224, true},  // miu_dcu_req_s3_payload
+  {16, -1, 3, DpiSig::PAYLOAD, 1228, true},  // miu_dcu_req_s3_payload
   {16, -1, 3, DpiSig::CREDIT, 1, false},  // miu_dcu_req_s3_credit
   {16, -1, 3, DpiSig::STALL, 1, false},  // miu_dcu_req_s3_stall
   {16, -1, 0, DpiSig::TID, 64, true},  // miu_dcu_req_s0_tid
@@ -1259,19 +1259,19 @@ inline constexpr DpiPort kDpiPorts_spm[] = {
 };
 inline constexpr DpiPort kDpiPorts_dcu[] = {
   {16, -1, 0, DpiSig::VALID, 1, false},  // miu_dcu_req_s0_valid
-  {16, -1, 0, DpiSig::PAYLOAD, 1224, false},  // miu_dcu_req_s0_payload
+  {16, -1, 0, DpiSig::PAYLOAD, 1228, false},  // miu_dcu_req_s0_payload
   {16, -1, 0, DpiSig::CREDIT, 1, true},  // miu_dcu_req_s0_credit
   {16, -1, 0, DpiSig::STALL, 1, true},  // miu_dcu_req_s0_stall
   {16, -1, 1, DpiSig::VALID, 1, false},  // miu_dcu_req_s1_valid
-  {16, -1, 1, DpiSig::PAYLOAD, 1224, false},  // miu_dcu_req_s1_payload
+  {16, -1, 1, DpiSig::PAYLOAD, 1228, false},  // miu_dcu_req_s1_payload
   {16, -1, 1, DpiSig::CREDIT, 1, true},  // miu_dcu_req_s1_credit
   {16, -1, 1, DpiSig::STALL, 1, true},  // miu_dcu_req_s1_stall
   {16, -1, 2, DpiSig::VALID, 1, false},  // miu_dcu_req_s2_valid
-  {16, -1, 2, DpiSig::PAYLOAD, 1224, false},  // miu_dcu_req_s2_payload
+  {16, -1, 2, DpiSig::PAYLOAD, 1228, false},  // miu_dcu_req_s2_payload
   {16, -1, 2, DpiSig::CREDIT, 1, true},  // miu_dcu_req_s2_credit
   {16, -1, 2, DpiSig::STALL, 1, true},  // miu_dcu_req_s2_stall
   {16, -1, 3, DpiSig::VALID, 1, false},  // miu_dcu_req_s3_valid
-  {16, -1, 3, DpiSig::PAYLOAD, 1224, false},  // miu_dcu_req_s3_payload
+  {16, -1, 3, DpiSig::PAYLOAD, 1228, false},  // miu_dcu_req_s3_payload
   {16, -1, 3, DpiSig::CREDIT, 1, true},  // miu_dcu_req_s3_credit
   {16, -1, 3, DpiSig::STALL, 1, true},  // miu_dcu_req_s3_stall
   {16, -1, 0, DpiSig::TID, 64, false},  // miu_dcu_req_s0_tid
@@ -1595,9 +1595,9 @@ inline constexpr DpiType kDpiTypes[] = {
   {"ooe", kDpiPorts_ooe, 265, 10185, 5768},
   {"rcu", kDpiPorts_rcu, 461, 42097, 28190},
   {"lane", kDpiPorts_lane, 10, 551, 140},
-  {"miu", kDpiPorts_miu, 250, 41107, 17360},
+  {"miu", kDpiPorts_miu, 250, 41123, 17376},
   {"spm", kDpiPorts_spm, 45, 10630, 4411},
-  {"dcu", kDpiPorts_dcu, 90, 13754, 7363},
+  {"dcu", kDpiPorts_dcu, 90, 13770, 7363},
   {"mlc", kDpiPorts_mlc, 40, 6974, 3465},
   {"rau", kDpiPorts_rau, 75, 1805, 1197},
   {"syu", kDpiPorts_syu, 30, 589, 249},

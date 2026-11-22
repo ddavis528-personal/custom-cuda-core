@@ -416,6 +416,7 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_DATA/8-1:0]       byte_mask;
   logic [ccv_prov_pkg::CCV_W_DCU_SET-1:0]        lead_set_index;  // LEAD
   logic                                          drop;
+  logic [ccv_prov_pkg::CCV_W_PA_FOLD-1:0]        pa_fold;
 } ccv_miu_dcu_req_t;
 
 typedef struct packed {

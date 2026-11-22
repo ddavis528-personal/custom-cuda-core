@@ -476,13 +476,17 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: MA-19 (re AR 370 (3), DA rev 124): one entry per spare row, 16 data instances
   localparam int CCV_DCU_UE_TRACK = 16;
 
-  // DCU's way predictor: the width of each way's partial-tag fold. 0 turns prediction off (the hit is then 9, CCV_LAT_L1_HIT_BASE), 1 to 16 on (the hit is 8). When on, a predictor register file of 64 x (8 x this) per bank (MA-26). The p1 model's CCV_P1_WAYPRED maps to it. MA's to move, AR's runs deciding.  Requires: CCV_DCU_WAYPRED_BITS <= 16.
-  // PROVISIONAL -- decided by: DA rev 128 (MA-23), MA-26; default AR 386 (5 unless AR's cm128 closed-loop run loses over 0.2% to none)
-  localparam int CCV_DCU_WAYPRED_BITS = 5;
+  // DCU's way predictor: the width of each way's partial-tag fold, the XOR fold of the line's tag, PA[47:16], in its k-bit chunks (sim/skel/wayfold.h and rtl/common/ccv_common_wayfold.sv, the one fold MIU's TLB and DCU's table write share; AR 405 (3)). 0 turns prediction off (the hit is then 9, CCV_LAT_L1_HIT_BASE), 1 to 16 on (the hit is 8). When on, the fold table is flops in dcu_bctl, not a register file: 64 sets x 8 ways x this a bank, 16,384 flops at 4, written only on a fill or eviction (MA-30). MIU sends the lookup's fold as ccv_miu_dcu_req's pa_fold, since DCU cannot fold the PA itself in H+3 within 25 NGD. The p1 model's CCV_P1_WAYPRED maps to it. MA's to move, AR's runs deciding.  Requires: CCV_DCU_WAYPRED_BITS <= 16.
+  // PROVISIONAL -- decided by: DA rev 128 (MA-23), MA-26; MA-30 (MA rev 154), AR 405 (AR rev 409): 4, within 0.3% of 5 on cm128priv for 4,096 fewer flops; 3 not taken
+  localparam int CCV_DCU_WAYPRED_BITS = 4;
 
-  // How the way predictor chooses among the ways whose fold matches: 0 index (the lowest), 1 recent (the most recently used: true LRU in the tag word, 64 x 152 tag RFs against tree-PLRU's 64 x 144; an age compare of about 11.9 NGD). Read only when CCV_DCU_WAYPRED_BITS is not 0. The p1 model's WPSEL maps to it (MA-26, AR 386).  Requires: CCV_DCU_WAYPRED_SEL <= 1.
-  // PROVISIONAL -- decided by: DA rev 128 (MA-23), MA-26; default recent, AR 386
-  localparam int CCV_DCU_WAYPRED_SEL = 1;
+  // How the way predictor chooses among the ways whose fold matches: 0 index (the lowest matching way), 1 recent (the most recently used). 0 since MA-30 and AR 405: the tag RF keeps no LRU and PLRU moved to dcu_bctl's flops, so recent is dropped and stays only for the models' sweeps. Read only when CCV_DCU_WAYPRED_BITS is not 0. The p1 model's WPSEL maps to it (MA-26, AR 386).  Requires: CCV_DCU_WAYPRED_SEL <= 1.
+  // PROVISIONAL -- decided by: DA rev 128 (MA-23), MA-26; MA-30, AR 405: index (recent dropped)
+  localparam int CCV_DCU_WAYPRED_SEL = 0;
+
+  // ccv_miu_dcu_req's pa_fold width (MA-30, AR 405): CCV_DCU_WAYPRED_BITS, kept at 1 bit, unread, when prediction is off.  Derived: = max(1, CCV_DCU_WAYPRED_BITS).
+  // PROVISIONAL -- decided by: with CCV_DCU_WAYPRED_BITS
+  localparam int CCV_W_PA_FOLD = 4;
 
   // Cycles before the CSR-programmable demotion fallback fires. MLC miss is the primary trigger; this is the backstop.
   // PROVISIONAL -- decided by: Stage 4b sweep

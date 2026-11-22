@@ -1,0 +1,13 @@
+{
+  "_comment": "bad_table.sv's reference_tbadtag (check-1d): refused.",
+  "table": {
+    "bpark_cy05h": {
+      "readers": [
+        "brd_cy01h"
+      ],
+      "by": "OA",
+      "date": "2026-11-22",
+      "why": "tbadtag control"
+    }
+  }
+}
