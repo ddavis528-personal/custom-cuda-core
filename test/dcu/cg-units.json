@@ -1,0 +1,21 @@
+{
+ "_comment": "Clock-gating and logic-depth units for DI's DCU RTL (tools/check-cg.py, tools/check-ngd.py; docs/rtl-coding-style.md, 'Local clock gating' and 'Logic depth'; the partition is MA's Phase 2 slice 1, DCU tab rev 82). Each bench is the module's value-model bench (test/dcu/*_tb.cpp) in its --cg mode, built by test/dcu/cg-build.sh at the unit's parameters: idle is reset and then no work, medium work on about a third of the cycles, high work nearly every cycle. dcu_cap is one request slot's ccv_miu_dcu_req capture at its one size.",
+ "units": [
+  {
+   "name": "dcu_cap",
+   "module": "dcu_cap",
+   "files": [
+    "rtl/generated/ccv_params_pkg.sv",
+    "rtl/dcu/dcu_cap.sv"
+   ],
+   "params": {},
+   "clock": "dcu_core_clk",
+   "reset": "!rst_n",
+   "bench": {
+    "build": "test/dcu/cg-build.sh dcu_cap {dir}",
+    "run": "{dir}/tb --cg {scenario} {vcd}",
+    "scope": "dcu_cap"
+   }
+  }
+ ]
+}
