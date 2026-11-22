@@ -41,10 +41,17 @@
 // advancing in its drive has its slot's old and advanced epochs swapped,
 // so the RTL decides as a compare without the bypass would: it keeps the
 // old epoch's uops the model drops), no-double (a notice beside a redirect on one slot advances it
-// once), keep-stale (a dropped uop reaches the ports with its warp's live
+// once), no-double-adv (the same from the redirect's side: a redirect
+// beside a notice is masked, so the slot takes the notice's single advance,
+// not s2), keep-stale (a dropped uop reaches the ports with its warp's live
 // epoch, so it must be kept: the bench expects the model's drop),
-// no-ev-lead (the event lead never reaches it) and no-rel (a release never
-// reaches it).
+// no-ev-lead (the event lead never reaches it), no-rel (a release never
+// reaches it) and no-walk (a demotion's notice never opens its straggler
+// walk: the stragglers the model keeps for it are dropped, AR 395).
+//
+// The straggler walk (AR 395, #71): a demotion's notice opens the slot's
+// walk (wo, from the model's log), and every resident slot's walk bit and,
+// while open, its epoch are compared after each edge.
 //
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
@@ -78,17 +85,20 @@ struct Edge {
   uint32_t fl = 0;
   bool sv[S] = {};
   unsigned sw[S] = {}, se[S] = {};
+  bool wo[S] = {};
+  unsigned wep[S] = {};
 };
 Edge pend;
 bool have_pend = false;
-uint32_t late_adv = 0, late_adn = 0;
+uint32_t late_adv = 0, late_adn = 0, late_wo = 0;
 // A stale uop kept in its lead cycle whose slot flushes as it reaches
 // ooe_decq: dropped there (OA 430). A right-path one so dropped fails.
-uint64_t held_flush = 0, right_path = 0;
+uint64_t held_flush = 0, right_path = 0, walk_held = 0;
 // late-lead: the last drive's lead fields, per port.
 unsigned last_warp[E] = {}, last_ep[E] = {};
 unsigned long long cycles = 0, arrivals = 0, kept = 0, dropped = 0, advs = 0, doubles = 0, reloc = 0, rels = 0, allocs = 0, flushes = 0,
-                   same_drive = 0, cores = 0, mismatches = 0, order_fails = 0;
+                   same_drive = 0, cores = 0, mismatches = 0, order_fails = 0,
+                   walks_open = 0;
 
 template <typename T> void setField(T &w, unsigned lsb, unsigned n, uint64_t v) {
   for (unsigned b = 0; b != n; ++b) {
@@ -153,8 +163,14 @@ void drive(const Edge &e, const Edge *nx, uint32_t lead) {
   advs += e.log.adv.size() + e.log.adn.size();
   doubles += __builtin_popcount(adv & adn);
   uint32_t drv_adv = adv, drv_adn = adn;
-  if (control == "adv-late") { drv_adv = late_adv; late_adv = adv; drv_adn = late_adn; late_adn = adn; }
+  uint32_t drv_wo = control == "no-walk" ? 0 : e.log.wopen;
+  if (e.log.wopen & ~adn) fail("a walk opened without its notice", e.log.wopen & ~adn, 0, adn);
+  if (control == "adv-late") {
+    drv_adv = late_adv; late_adv = adv; drv_adn = late_adn; late_adn = adn;
+    const uint32_t w = drv_wo; drv_wo = late_wo; late_wo = w;
+  }
   if (control == "no-double") drv_adn &= ~drv_adv;
+  if (control == "no-double-adv") drv_adv &= ~drv_adn;
   const uint32_t rel = control == "no-rel" ? 0 : e.log.rel;
   rels += __builtin_popcount(e.log.rel);
   // OA 428's ordering invariant: a flushed slot's advance (or its release)
@@ -166,6 +182,7 @@ void drive(const Edge &e, const Edge *nx, uint32_t lead) {
   flushes += __builtin_popcount(e.fl);
   dut->adv_cq01h = drv_adv;
   dut->adn_cq01h = drv_adn;
+  dut->wo_cq01h = drv_wo & drv_adn;
   dut->rel_cq01h = rel;
   dut->al_v_cq01h = 0;
   uint32_t al_warps = 0;
@@ -237,7 +254,14 @@ void drive(const Edge &e, const Edge *nx, uint32_t lead) {
       const unsigned g = getField(dut->enq_slot_cq02h, k * LS, LS);
       if (a.kept && g != unsigned(a.slot)) { fail("kept slot differs", k, g, unsigned(a.slot)); continue; }
       const bool gfl = nfl >> g & 1u;
-      if (a.kept && gfl) { ++right_path; fail("a right-path uop dropped by ooe_decq's late flush", k, g, a.warp); }
+      // A demotion's flush holds its slot's uops for the walk (AR 395, OA
+      // 451): when the event that flushes the slot opens its walk, ooe_decq
+      // reads the walk bit (wo_o, set at the same edge its late flush
+      // lands) and holds the slot's uops, so a uop kept in that flush's
+      // cycle is held, not dropped. ooe_decq's walk is to be built (#71).
+      const bool opens = nx && (nx->log.wopen >> g & 1u);
+      if (a.kept && gfl && opens) ++walk_held;
+      else if (a.kept && gfl) { ++right_path; fail("a right-path uop dropped by ooe_decq's late flush", k, g, a.warp); }
       else if (!a.kept && gfl) ++held_flush;
       else if (!a.kept) fail("a dropped uop kept, its slot not flushed", k, g, a.warp);
     }
@@ -258,6 +282,13 @@ void drive(const Edge &e, const Edge *nx, uint32_t lead) {
     if (sn != ((e.se[s] + 1) & ((1u << EP) - 1))) fail("slot next epoch differs", s, sn, (e.se[s] + 1) & 7u);
     const unsigned s2 = getField(dut->s2_cq02h, s * EP, EP);
     if (s2 != ((e.se[s] + 2) & ((1u << EP) - 1))) fail("slot second epoch differs", s, s2, (e.se[s] + 2) & 7u);
+    const bool wo = dut->wo_cq02h >> s & 1u;
+    if (wo != e.wo[s]) { fail("slot walk differs", s, wo, e.wo[s]); continue; }
+    if (wo) {
+      walks_open += 1;
+      const unsigned wep = getField(dut->wep_cq02h, s * EP, EP);
+      if (wep != e.wep[s]) fail("slot walk epoch differs", s, wep, e.wep[s]);
+    }
   }
 }
 
@@ -265,6 +296,7 @@ void resetDut() {
   dut->ev_l_cq00h = 0;
   dut->adv_cq01h = 0;
   dut->adn_cq01h = 0;
+  dut->wo_cq01h = 0;
   dut->rel_cq01h = 0;
   dut->al_v_cq01h = 0;
   dut->arv_v_cq01h = 0;
@@ -303,6 +335,8 @@ void post(const Core &c) {
     cur.sv[s] = true;
     cur.sw[s] = w;
     cur.se[s] = c.epoch(w);
+    cur.wo[s] = c.walkOpen(unsigned(s));
+    cur.wep[s] = c.walkEpoch(unsigned(s));
   }
   have_cur = true;
 }
@@ -313,7 +347,7 @@ void pre(const Core &c) {
     if (have_pend) { drive(pend, nullptr, 0); have_pend = false; }
     current = c.serial();
     ++cores;
-    late_adv = late_adn = 0;
+    late_adv = late_adn = late_wo = 0;
     for (unsigned k = 0; k != E; ++k) last_warp[k] = last_ep[k] = 0;
     resetDut();
     // A null edge ahead of the core's first cycle carries the lead of its
@@ -349,9 +383,9 @@ int main(int argc, char **argv) {
   dut->final();
   std::printf("decrx_tb control=%s seeds=%u cores=%llu cycles=%llu arrivals=%llu kept=%llu dropped=%llu "
               "(no entry, no credit) advances=%llu (doubles=%llu) releases=%llu allocations=%llu (of a warp released beside it=%llu) flushes=%llu same-drive=%llu "
-              "order-fails=%llu flush-dropped=%llu right-path-dropped=%llu mismatches=%llu model_failures=%d\n",
+              "walk-slot-cycles=%llu walk-held=%llu order-fails=%llu flush-dropped=%llu right-path-dropped=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, arrivals, kept, dropped, advs, doubles, rels,
-              allocs, reloc, flushes, same_drive, order_fails, (unsigned long long)held_flush, (unsigned long long)right_path, mismatches, model_fails);
+              allocs, reloc, flushes, same_drive, walks_open, (unsigned long long)walk_held, order_fails, (unsigned long long)held_flush, (unsigned long long)right_path, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();

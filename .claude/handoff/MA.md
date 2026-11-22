@@ -30,9 +30,18 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
   scratchpad script render.py (strips XML to `[id h=]` lines). Rebuild it if
   the scratchpad is gone.
 
-## Bookmarks (register revs, 2026-11-13 10:40 UTC sweep)
+## Bookmarks (register revs)
 
-Conventions 19, AR 375, TI 479, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, MA 89, DA 125.
+Conventions 20, AR 409, TI 516, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 157, DA 128, MI 32, DI 41.
+Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
+
+- Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
+  MI ccr-58815650 2, RH ccr-c22116ce 9; pushed dbf69316, SCOPED PASS 26/26 (~4h40m, ngd/cg dominate).
+- TI-501: e8d8864b landed MA rev 134 notices-on scenario (vadd4, both models, CCV_DCU_NOTICE=1; five hint/notice
+  controls). Watch item on TI-495 closed; e8d8864b arrives with the next sweep.
+- TI-506: MA-25 landed (d761c634; ccv_dcu_miu_cred, QDEPTH 16, STDATA 12). Spec tabs name them (DCU rev 60,
+  MIU rev 146), snapshots 2c11d950, MA rev 136 closes MA-25.
+- TI-508: MA rev 137 drops MI-7 (c) two-page-hit (eligibility page = TLB page 16 by design; MI agreed rev 22).
 
 ## State, 2026-11-13
 
@@ -75,26 +84,137 @@ Conventions 19, AR 375, TI 479, OA 428, IS 197, CP 159, OI 366, RA 154, RI 90, M
 
 ## Open work, most urgent first
 
-- PHASE 1 SWEEPS (Daniel, DA rev 125: start all now, split MA/RH/AR). MA-21 (rev 86, Needs AR) is the plan.
-  STATUS: model landed and pushed (0f951e22 + regen + dd04f733, SCOPED PASS): sim/dcu/dcu_p1.cpp, runner
-  sim/dcu/p1-run.sh, CCV_DCU_IMPL=p1; knobs CCV_P1_STORE a|af|b, CCV_P1_ARB fixed|rot, CCV_P1_HASH,
-  CCV_DCU_BANK_AGE, CCV_P1_QDEPTH, CCV_P1_STRICT (pad 5), CCV_P1_REPASS 6. Grid cut by AR 373 to
-  (a),(af),(b) x QDEPTH 0/2 fixed, then rot on best two (send RH those 2 points; RH appends).
-  Split (AR 374, MA rev 88): AR runs strict-bound points (4 coremarks + stride, TI 479 benches on
-  gate-scratch/TI-stride; sgemm needs CCV_RCU_IMPL=stub); RH runs default-bound points + S1.
-  RH MA-1 baseline (stub): S1 55,572; cm32 2,575,410; cm128 5,461,519; cm32priv 2,081,906; cm128priv 2,983,133.
-  RH MA-2 S1: q0 +4.2% (57,93x), q2 55,658 (+0.15%) all variants; af==a; b cuts lookups 1313->1040; q p99.9 0.
-  RH benches running (~6 h, two lanes). Then: pick best two -> rot; BANK_AGE 8/16/32/64; hash off/on with
-  stride; size queue from p1_qNN p99.9; winner = cheapest within 0.2% of best cycles, tail tiebreak.
-  Write MA rows per result; fix age-owner text in both spec tabs when the queue lands. MA-22 (TI): map
-  sim/dcu/ in gate-scope.py (unmapped -> full gate).
-  MA: build closed-loop model CCV_DCU_IMPL=p1 (+MIU p1) in own files (sim/dcu, sim/miu; add to
-  sim/skel/blocks.list; select in makeKernelBlock like makeRcu), stubs stay the reference. Knobs: store
-  variant a/af/b (gap 4), arb fixed/rotating, queue depth 0/2/4/8, BANK_AGE, hash. Counters: late loads by
-  reason, re-passes p99/max, per-bank queue occupancy, age holds, fill-lookup collisions.
-  RH (session_01QPk2jvfKM1V5rRfip8FC86; MA now a sender per DA 125): job MA-1 = baseline at branch tip
-  (S1, cm32, cm128, cm32priv, cm128priv, cm128 squeezed 4x), logs ~/ccv-logs/ma1. Then MA's grids.
-  AR: open-loop screen of the 24-point grid, stride microbenchmark kernel, booking.
+- DI-26 ANSWERED (MA rev 157): dcu_bctl budgets set in the row (inputs arrival 0, sa req 9, ce req 4, other outs 0);
+  DI writes dcu_bctl.ngd.json with by "MA (MA rev 157, DI-26)"; partition changes (a)-(f) confirmed; DCU tab rev 84
+  (snapshot at 82: refresh with next batch). Slice 2 owes store-to-load order in the bank queue (DI-26 (f)).
+- TI-517 landed MA-29 (bc9d61ff, TI rev 516): mark landed in the tabs with the next batch.
+- DI-25 ANSWERED (MA rev 156): dcu_btag's own flopped pick from channel leads confirmed (DCU tab rev 83; snapshot
+  still 82, refresh with the next batch); slice 2: tag-RF fill is RMW in the bank's free gap (RF stays 1r1w,
+  forwarding covers same-set writes); model keeps the stub's same-cycle loser with a zero CHECK under MIU=model.
+- MA-30 AGREED (AR 405, rev 409) with conditions, answered MA rev 155, DCU tab rev 82, MIU tab rev 161 (pushed with
+  snapshots): mispredict = no contracted slot, re-read H+5, late at due+2 (no rsp field); fold table has a valid
+  bit (2,560 flops/bank), no match = miss, no read; fold = XOR of PA[47:16] k-chunks (= PFN), kept in miu_tlb
+  entries; TI asked for sim/skel/wayfold.h + rtl/common/ccv_common_wayfold.sv; CHECKs, controls
+  dcu-wp-nocompare and miu-fold-flip, bins. Waiting: TI lands pa_fold, params, helper.
+- DCU PHASE 2 SLICE 1 LANDED (DI-20): DCU tab rev 73 ("MA's Phase 2" section; Phase 1 arrays bullet and ECC
+  bullet fixed to (137,128), 512x137, 72 check bits, 140-bit tag word, fold in flops). dcu-impl.md: status,
+  RTL modules and phases 2a-2d, waits row. Snapshot dcu-spec.md at rev 73. Draft: scratchpad dcu-slice1.md.
+  MA-30 RAISED (rev 153; AR to agree, TI apply, MI/DI FYI, all notified): fold table k=4 in dcu_bctl flops
+  (64x8x4 a bank), MIU sends pa_fold (k bits) in ccv_miu_dcu_req payload from A2, SEL=index, HIT 8.
+  Params asked: WAYPRED_BITS 5->4, SEL 1->0. Pricing (both models, 42b8458b): k5 S1 59,592 / cm32p 2,099,633 /
+  cm128p 2,606,850; k4 -0.02/-0.17/+0.30%; k3 -0.02/-0.40/+0.65%; k2 +3.47% cm128; B9 (HIT 9) +1.11/+0.79/+0.88%.
+  Answered DI-23 (rev 154). WHEN AR AGREES: MIU tab A2 gets pa_fold (fold of line PA tag bits), notify MI;
+  mark MA-30 agreed in DCU tab text ("AR to agree" in status line, LRU para, arrays bullet defaults).
+  DI-21 (slice 2): writeback-buffer-full case; answer with slice 2. Slice 2 owes: UE recovery's second
+  response under the same req_id (MIU keeps the id on ded), a rule for both tabs; column repair and BIST
+  groups for the 8 KiB data instances (TI-475), promised in the DCU ECC bullet.
+
+- DI-18 DECIDED (MA rev 148): on a CE MIU corrects what it holds and redelivers as a refill; DCU counts,
+  rewrites, sends nothing more (amends MA-28 (c)'s replay half to TI-513 (2)). MIU tab rev 153, DCU tab
+  rev 65, dcu-impl.md row. Snapshots refreshed.
+
+- MA-27 FULLY CLOSED (MA rev 149, AR notified): A1 hold 0 at defaults on S1/cm32priv/cm128priv; dup drops
+  <=0.008% (MI a0afe9fc, CCV_MIU_DUP_IDEAL pricing aid). MIU tab rev 154. "TI landed the fields" marked; snapshots refreshed at 155/65.
+- DI-18 also: AR-403 amended AR 401 to MIU-corrects (AR rev 407).
+- MIU PHASE 2 IS FIRST (MI-15, MA rev 138; MI says at Daniel's request, no DA row found, order is MA's anyway).
+  Slice 1 (L1-hit path) LANDED: MIU tab rev 147 "MA's Phase 2" (stage table at L1_HIT 8, partition of 17
+  modules, port budgets), miu-impl.md module list + phase rows 2a-2d, snapshot. NEXT: notify MI once pushed;
+  then slice 2 (miss/refill: slot reservation, hint, MIU_FILL 2; multi-pass from MQ), slice 3 (stores, drain,
+  payload RF, st.pred, std credits), slice 4 (atomics, SPM, walker, faults, discard/replay/kill). Then DCU's.
+- MA-27/MA-28 DECIDED (AR 400/401; MA rev 143): drop bit (MIU refunds the credit at A2, DI-12; ent_ret only for
+  lookups that entered the queue) and (c) check bits on rsp, MIU syndrome in R2, ECC stays 1; req_id live until
+  completion delivered; CCV_DCU_ECC_INJECT replaces MIU's. TI applies fields. In MIU tab rev 148, DCU tab rev 64.
+  OWED: price the A1 hold (bank < CCV_DCACHE_LOOKUPS credits) on S1/cm32priv/cm128priv once MI's model has it.
+- DI-8 DONE (MA rev 142): p1 credit returns, d494cf9b pushed on SCOPED PASS 26/26.
+- MI-17 (MA rev 144): A1 credit gate = used[b] ? ge2[b] : ge1[b] (cred flops ge1/ge2, lead flops used). MI-18
+  (MA rev 145): every MIU receiving end no-flop at RTL; CCV_LAT_MIU_PAIR_LAG = addr path - memop path (3), require
+  >= 1, TI derives. MIU tab rev 150, snapshot refreshed.
+- Sweep 2026-11-21: merged infra 16, MI ccr-58815650, DI ccr-5e4d6c70, AR ccr-80102643. NOT merged: OI's
+  ccr-57eff422 (conflicts in OI's files); AR 402 already asks OI to merge TI's branch in, so no MA row.
+- MI and DI ARE RUNNING (MI session_01QPk2jzH1Gd3DcxK4F4pwCC, DI session_01QPk2jz5TVESyWMKVKjqqEA; their
+  roster commits arrive on their branches). Their tabs: MI c1311541-4219, DI 1ea5d5b3-6e9c (bookmarks MI 3, DI 2).
+- DI-2 SETTLED (AR 390, OA-442; MA rev 121): a way mispredict (due+2 earliest) takes the conflict loser's
+  path; TI-478 slot stays due+1. DCU tab rev 56, impl docs, snapshot updated.
+- MI-2 (MA rev 119): confirmed MI's model walk with 3 levels (W_VA 64, page shift 16), identity
+  translation, cold TLB per kernel. Page-table format is AR's (AR 391); IS owns the fault cause; PTE width and per-level latency are model params (MA rev 120).
+- BANK_AGE DONE (RH part 1; MA rev 124): default stays 16 (a8 -0.09%, worse worst wait; a32/a64 +1%). RH
+  HASH DONE (RH part 2; MA rev 125): stays 0; HASH=1 +2.90% on cm128 (tail piles on few banks).
+  Gap: no heavy pow2-stride DCU kernel in S1 (transp4 too short); hash stays a parameter only.
+- MI-6 DONE (MA rev 126): CCV_MIU_TLB=warm default through M0, cold opt-in with its own gated scenarios
+  (TI's); flip is phase 1a, first after M0 (miu-impl.md). Watch: TI picks up the cold scenarios.
+- DI-4 DONE (MA rev 129-135): un-noticed refill at F+4 (floor from fill payload), noticed stays exactly 4 after
+  its notice lands (F+6). DI measured notices off -0.43% (31 faster, 2 slower). MA rev 130: CCV_DCU_NOTICE=0
+  default, channel kept (valid low). AR 394 agreed (+ S1/cm32priv rerun, MA 131). OA 453 agreed on a condition
+  that misread the hint; MA 132 restates it (off: zero refill hints, F+6; on: OA-23 controls). WAITING OA's
+  accept: done (OA 454); DCU tab rev 59 corrected, snapshot + dcu-impl pushed 99341c99 (MA 133). MI bench
+  met (MI rev 12); TI asked for a gated CCV_DCU_NOTICE=1 scenario (MA 134). DI-4 CLOSED (MA 135; S1 -0.43%,
+  cm32priv off 2,105,390 vs on 2,105,392). Watch: TI's NOTICE=1 scenario. Phase 2: earlier notice, MLC
+  tag-lookup first, lead field only if it can't reach F+4; skip under 0.5% on S1.
+- MA rev 127: IS re VA[63:48], no change (MI confirmed full 64-bit fault address). MA rev 128: TI-488
+  accepted; interim ooe_wake LAT_MISS 17 pin vs L1_CMPL 16 is OA's/OI's. TI-490 (DA): RESUMED PASS counts
+  as the full clean gate; after gate-wait says killed, rerun the same command with CCV_RESUME=1 (once
+  6464a030 is in). DI-3 asks TI for per-impl pins (+1.78% vs stub).
+- Sweep 2026-11-20: ~196 commits merged (all remote branches but release/gate-scratch); two full gates
+  lost to restarts, pushed 30a71d7b on SCOPED PASS 24/24. Merge helper: scratchpad sweep-merge.sh (git
+  merge 90s; on a criss-cross stall, merge-tree each base, take fewest conflicts; generated files keep
+  HEAD; one-sided file changes take that side; else stop; commit-tree -S). Rebuild it if gone.
+- MI-3 (MA rev 123): a held load holds only itself; a pending fence holds its warp's younger memops.
+  MIU tab rev 145 (snapshot refreshed). MI-2 closed (AR Common tab rev 8/9: 3 levels 6/13/13, VA[63:48]
+  non-zero is F-ADDR).
+- TI-487 SETTLED as (3) (AR 389 final, OA 441; MA rev 117): DCU withholds the fatal merge read; RAU's
+  machine-check kill waits on no ack from MIU (still requires the seven others). DCU tab rev 55;
+  dcu-impl.md bin added. TI lands it. (MA rev 117 says DCU rev 54; it is 55.) Bookmarks AR 392, MA 117.
+- MA-26 defaults: 5 bits + recent (AR 386, MA rev 112); DCU tab rev 52, impl docs and snapshot
+  updated (c0b8c899). AR's cm128 5/recent confirmation is still running: if it loses >0.2%, revisit.
+  MI/DI handoffs pushed (73928bba). OA added MI 39 / DI 43 to the sweep series.
+- MI/DI START (Daniel 2026-11-19: opens stay parameters; MA-23 ruled (B) + way prediction as a
+  parameter, DA rev 128, MA-26 MA rev 109, MA-23 closed MA rev 110). Done: register tabs MI
+  (c1311541-4219) and DI (1ea5d5b3-6e9c), each with Opens m8yvbw8rqgz.613 / Responses .675;
+  Conventions rows rev 20; roster MI/DI (session null); docs/miu-impl.md, docs/dcu-impl.md;
+  snapshots docs/design-snapshots/miu-spec.md (rev 144), dcu-spec.md (rev 50); CLAUDE.md pointer.
+  Sweep minutes MI 39, DI 43 (ask OA to add them to the register skill's series).
+  NEXT: Phase 2 (partition, per-cycle tables, port NGD budgets) for both blocks; fold the impl docs'
+  added bins into the MIU/DCU tabs' events tables; the DCU tab's ECC item still says
+  "CCV_LAT_L1_HIT (7)" (stale: 8/9 now) and L1_CMPL 15 needs re-deriving for 8/9 with TI;
+  refresh the two snapshots whenever a tab changes.
+- PHASE 1 SWEEPS (DA rev 125; plan MA-21). Model sim/dcu/dcu_p1.cpp, runner sim/dcu/p1-run.sh
+  <oracle dir> <out.tsv> [K=V]; oracle build/oracle (gate cleanup deletes it: CCV_FOREGROUND=1
+  tools/gen-oracle.sh). Knobs: STORE a|af|b, ARB fixed|rot, HASH, BANK_AGE, QDEPTH, STRICT/PAD, REPASS,
+  GAP (default 4), DLAT, WAYPRED 1..16 + WPSEL index|recent, LDFIRST, DEFCAP (b3c74623: (b) defers no
+  more than N data-holding entries per bank). Counters p1_data_peak / p1_data_sum_peak (acc4479a).
+  BASELINE MOVED with the 11-18 sweep merge (stub S1 55,572 -> 56,933): give RH pre-merge shas for
+  comparability. gate-scratch/MA = 85045a15 (pre-merge base + counters + DEFCAP).
+  Results cm128 gap 4: a.q2 5,455,658, a.q8 5,199,588, a.q8.rot 5,191,161, a.q16 5,216,535; b.q2
+  5,310,989, b.q8 5,189,898, b.q12 5,154,723, b.q16 5,141,670, b.q16.rot 5,138,164. cm32 flat at q8+.
+  SECDED (TI-483, b407ff71; MA rev 98): store corrected read syn+fix 30.8 NGD = 2 stages, so GAP 5.
+  Gap 5: a.q8.rot 5,227,944 (+0.71%), b.q16 5,165,866 (+0.47%): b.q16 leads a.q8.rot by 1.19% but
+  holds 2.5x the data (peaks per bank / summed: a.q8.rot 18/109, b.q16 43/264; ~1,152 b/entry; extra ~5%
+  of L1 data bits, ~14% area-equiv as RF). Settled: LDFIRST model-only (neutral); rot not worth it at
+  b.q16; knees (a) 8, (b) 12-16.
+  MA-7 DONE -> MA-24 (MA rev 100): (b), QDEPTH 16, GAP 5, store-data cap 12. cm128 gap 5 vs uncapped
+  b.q16 5,165,866: cap 24 +0.14, 18 -0.12, 12 -0.57 (5,136,180), 8/6 -0.26, 4 +0.84; a.q16 5,207,327.
+  AR 382 agreed on 4 conditions (signalling, order, progress, coverage); MA rev 101 answered: MIU-held
+  per-bank credits (hard reservation). Model CCV_P1_CREDIT (a6597228, pushed): cm128 5,130,918 (-0.10%
+  vs soft cap, -1.47% vs (a)), repass 0, store-data peak 12; S1 clean 55,693. Reproduced RH exactly
+  (5,136,180 from fetch) in worktree /home/user/wt-credit at 11dcec83 (oracle build/oracle-cm128;
+  run build/cr/run.sh; note bg-run.sh ran in place there, so launch long runs with setsid nohup).
+  MA-25 (MA rev 108, TI notified): params CCV_DCU_BANK_QDEPTH 16 / CCV_DCU_BANK_STDATA 12, two 8-bit
+  credit-return vectors DCU->MIU (TI picks channel). Spec tabs updated (DCU rev 48, MIU rev 144); rename
+  channel there once TI lands it.
+  IN FLIGHT: RH at 11dcec83 (soft cap DEFCAP 12): BANK_AGE 8/16/32/64 (cm128 + S1), then HASH 0/1
+  with stride-kernel callout; ETA part 1 ~07:30Z.
+- TI-485 kill races (settled, MA rev 107): OA 436 final (OA 438, AR 385): MIU completes every memop of a
+  killed warp, keeps an atomic's hold through A3 (more = 0), UE-withheld read completes with no data.
+  MIU tab rev 143. (MA flip-flopped on crossing rows; lesson: wait for AR and OA to agree before editing.)
+- TI-484 (MA rev 99): miu-impl.md must require MI's MIU to pass the CCV_MIU_ECC_INJECT runs (0767fe1c).
+- MA-23 (DCU data array shape; MA rev 90-97): (A) parallel 8-way, hit 7, 512 tiny SRAMs w/ waivers; (B)
+  tag-then-data hit 9; (B)+(C2) way prediction in the payload cycle, hit 8 (mispredict 9), 2nd bank access.
+  AR 381 closed loop (h7 base / h8 / h9 / h8+wp3 index): cm32priv +1.00/+2.12/+1.00; cm32 ~0; cm128priv
+  +0.93/+0.90/+1.47 (6.44% wrong); cm128 +0.19/+0.09/+1.56 (1.69% wrong). Way-index pick is bad
+  (power-of-two per-warp buffers); offline: k5 index 1.48%/0.00%, k3 recent 0.79%/0.06%. AR runs h8 with
+  k3 recent, k5 index, k5 recent on a6c7de10. Recent needs true LRU (24 b/set vs 7 pLRU) + age compare in
+  11.88 NGD; k5 index = 512x40 RF. Expected ~+1.0% private, <=0.2% shared vs (A): over 0.5%, so Daniel
+  rules. Then DCU tab array text: data 8x512x137 per bank, tags 2x64x144 RF, predictor, pipeline.
 
 - MA-20 closed by AR 372 (MA rev 85 accepts): Phase 1 prices (1)+(3) together first (fixed vs rotating
   on re-pass tail; oldest-first only after A1 NGD check); queue head owns BANK_AGE, entries are deferred

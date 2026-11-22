@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# MI's MIU RTL benches under Verilator, assertions on (docs/miu-impl.md; MA's
+# Phase 2, MIU tab rev 147): each module against its value model, at the
+# sizes its units use. One PASS line each; any failure fails the run.
+#   miu_cap: test/miu/cap_tb.cpp, one address slot's capture, and its
+#            control early (the payload taken with its valid), which must fail
+#   miu_pair: test/miu/pair_tb.cpp, each address paired with its memop by
+#            arrival cycle and lead pipe, and its controls arrival (paired on
+#            the arrival slot) and lag (a cycle late), each of which must fail
+set -uo pipefail
+cd "$(dirname "$0")/../.."
+B=build/miu-rtl; mkdir -p "$B"
+fail=0
+say() { printf '  %-52s %s\n' "$1" "$2"; }
+bench() {   # name, build command..., then the run's argv after --
+  local name=$1; shift
+  local build=() run=()
+  while [ "$1" != -- ]; do build+=("$1"); shift; done; shift; run=("$@")
+  if ! "${build[@]}" >"$B/$name.build.log" 2>&1; then
+    say "$name" "FAIL (build; $B/$name.build.log)"; fail=1; return
+  fi
+  if "${run[@]}" >"$B/$name.log" 2>&1 && grep -q ": PASS$" "$B/$name.log"; then
+    say "$name" "PASS ($(grep -o '[0-9]* values checked' "$B/$name.log" | head -1))"
+  else
+    say "$name" "FAIL ($B/$name.log)"; tail -5 "$B/$name.log" | sed 's/^/    /'; fail=1
+  fi
+}
+control() {   # unit, control: the bench must fail with mismatches
+  local u=$1 c=$2
+  if [ -x "$B/$u/tb" ] && ! "$B/$u/tb" --control "$c" >"$B/$u.$c.log" 2>&1 &&
+     grep -q "control $c: .* [1-9][0-9]* mismatches: FAIL$" "$B/$u.$c.log"; then
+    say "$u control $c" "caught"
+  else
+    say "$u control $c" "NOT CAUGHT ($B/$u.$c.log)"; fail=1
+  fi
+}
+bench miu_cap test/miu/cg-build.sh miu_cap "$B/miu_cap" -- "$B/miu_cap/tb"
+control miu_cap early
+bench miu_pair test/miu/cg-build.sh miu_pair "$B/miu_pair" -- "$B/miu_pair/tb"
+control miu_pair arrival
+control miu_pair lag
+exit $fail

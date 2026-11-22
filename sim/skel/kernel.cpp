@@ -111,7 +111,10 @@ void Kernel::checkParked(unsigned w) {
       if (d.pred) pwant[d.idx & 3] = d.p;
       else if (d.idx < kArchGprs) want[d.idx] = d.v;
     }
-  const uint64_t pc = n < o.recs.size() ? o.recs[n].pc : 0;
+  // A held warp's lanes step back to its retired wait, run again; OOE's
+  // resume_pc is still the one past it (TI-40, AR's rev 164).
+  const uint32_t rn = pk.held_wait ? n + 1 : n;
+  const uint64_t pc = rn < o.recs.size() ? o.recs[rn].pc : 0;
   if (pk.resume_pc != pc)
     fail("parked warp %u resumes at %llx; ccv-sim's next after %u retired is %llx", w,
          (unsigned long long)pk.resume_pc, n, (unsigned long long)pc);
@@ -172,6 +175,7 @@ void getBeat(const Bits &b, uint32_t lsb, Line &l, unsigned beat) {
 }
 
 
+
 // ---- testbench memory: the far end of EXTERNAL ---------------------------------
 
 class Testbench : public Stub {
@@ -199,6 +203,10 @@ private:
   /// ready first.
   static constexpr uint64_t kMidBase = 0xA0000, kMidLatency = 250;
   static constexpr uint64_t kDeepBase = 0xC0000, kDeepLatency = 1000;
+  /// The slow regions end at kSlowEnd (MI-5 (1)): above it, the page tables
+  /// (0xF0 << 40) among them, every line is the placeholder DRAM's, so a
+  /// table walk pays kLatency a level, not kDeepLatency.
+  static constexpr uint64_t kSlowEnd = uint64_t(1) << 32;
   struct P { uint64_t due; Bits msg; uint64_t tid; bool first = true; };
   /// D beats, in the order they go: bursts by due cycle, each burst's beats
   /// together and one a cycle. Responses are matched by source, not order,
@@ -242,7 +250,8 @@ private:
           l[k] = it == k_.mem.end() ? 0 : it->second;
         }
         std::vector<P> burst;
-        const uint64_t due = now_ + (addr >= kDeepBase  ? kDeepLatency
+        const uint64_t due = now_ + (addr >= kSlowEnd ? kLatency
+                          : addr >= kDeepBase  ? kDeepLatency
                           : addr >= kMidBase ? kMidLatency
                           : addr >= kSlowBase ? kSlowLatency
                                               : kLatency);
@@ -520,6 +529,19 @@ inline uint64_t indexLeadSet(uint64_t pa) {
   return (pa >> 7) & ((uint64_t(1) << ccv::prov::kWDcuSet) - 1);
 }
 
+// MA-25: DCU's per-bank queue bounds, MIU's credits for them. A lookup's bank
+// is its line address's low clog2(CCV_DCU_BANKS) bits (AR 364). Both stubs
+// read the params as defaults and the environment's CCV_DCU_BANK_QDEPTH and
+// CCV_DCU_BANK_STDATA as overrides, the same in both, for a test of the hold.
+inline unsigned dcuBankOf(uint64_t pa) { return unsigned((pa / kLine) % ccv::kDcuBanks); }
+inline unsigned dcuBankEnv(const char *name, unsigned dflt) {
+  const char *v = std::getenv(name);
+  const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : dflt;
+  return n >= 1 ? n : dflt;
+}
+inline unsigned dcuBankQdepth() { return dcuBankEnv("CCV_DCU_BANK_QDEPTH", ccv::prov::kDcuBankQdepth); }
+inline unsigned dcuBankStdata() { return dcuBankEnv("CCV_DCU_BANK_STDATA", ccv::prov::kDcuBankStdata); }
+
 // ---- DCU: a small L1; a write is read-modify-write of the line ------------------
 //
 // dcu_mlc_req carries no byte mask, so a partial store cannot go below DCU
@@ -557,6 +579,73 @@ private:
   struct Promise { uint64_t at; Q q; uint64_t line; };
   std::deque<Promise> promised_;
   std::map<unsigned, unsigned> resv_;   ///< slot -> promises not yet sent
+
+  /// MA-25: each bank holds at most CCV_DCU_BANK_QDEPTH lookup entries and
+  /// CCV_DCU_BANK_STDATA store-data entries, which MIU's credits guarantee,
+  /// so DCU refuses a bank past either by name. An entry is held from
+  /// arrival until the request leaves the queue (answered, or gone to MLC),
+  /// and a store's data the same: merged into an owned line, or carried to
+  /// the miss buffer with its miss (a fill uses its own buffer, not these
+  /// entries), as the DCU model does. Each leaving owes MIU a return
+  /// on ccv_dcu_miu_cred, at most one of each a bank a cycle.
+  const unsigned qdepth_ = dcuBankQdepth(), stdata_ = dcuBankStdata();
+  std::vector<unsigned> bent_ = std::vector<unsigned>(ccv::kDcuBanks),
+                        bstd_ = std::vector<unsigned>(ccv::kDcuBanks),
+                        oent_ = std::vector<unsigned>(ccv::kDcuBanks),
+                        ostd_ = std::vector<unsigned>(ccv::kDcuBanks);
+  bool extra_sent_ = false;
+  bool isStore(const Bits &req) const {
+    return unsigned(get(req, ch().miu_dcu, "coh_op")) == kCohWrite;
+  }
+  void admit(const Op &o) {
+    const unsigned b = dcuBankOf(get(o.req, ch().miu_dcu, "phys_addr"));
+    const bool st = isStore(o.req);
+    ++bent_[b];
+    if (st) ++bstd_[b];
+    if (bent_[b] > qdepth_ || bstd_[b] > stdata_)
+      k_.fail("dcu: bank %u holds %u lookup entries and %u store-data entries, past its "
+              "credits (CCV_DCU_BANK_QDEPTH %u, CCV_DCU_BANK_STDATA %u; MA-25)",
+              b, bent_[b], bstd_[b], qdepth_, stdata_);
+  }
+  /// The request left its bank's queue: its entry credit goes home.
+  void leaveQueue(const Op &o) {
+    const unsigned b = dcuBankOf(get(o.req, ch().miu_dcu, "phys_addr"));
+    if (bent_[b]) { --bent_[b]; ++oent_[b]; }
+  }
+  /// A store's write is done: its store-data credit goes home.
+  void writeDone(const Op &o) {
+    if (!isStore(o.req)) return;
+    const unsigned b = dcuBankOf(get(o.req, ch().miu_dcu, "phys_addr"));
+    if (bstd_[b]) { --bstd_[b]; ++ostd_[b]; }
+  }
+  /// The returns owed, one of each a bank a cycle. --break dcu-extra-credit
+  /// returns an entry credit MIU never spent, at its first chance, which MIU
+  /// must refuse by name.
+  void returnCredits() {
+    const Ch &c = ch();
+    uint64_t ent = 0, std = 0;
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+      if (oent_[b]) ent |= uint64_t(1) << b;
+      if (ostd_[b]) std |= uint64_t(1) << b;
+    }
+    const bool extra = k_.brk == "dcu-extra-credit" && !extra_sent_;
+    if (extra) ent |= 1;
+    if ((!ent && !std) || !can(c.dcu_cred, 0)) return;
+    Bits m = msgOf(c.dcu_cred);
+    put(m, c.dcu_cred, "ent_ret", ent);
+    put(m, c.dcu_cred, "std_ret", std);
+    send(c.dcu_cred, 0, m, makeUid(IdClass::kNone, 0));
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+      if (oent_[b]) { --oent_[b]; k_.hit("dcu_ent_ret"); }
+      if (ostd_[b]) { --ostd_[b]; k_.hit("dcu_std_ret"); }
+    }
+    if (extra) extra_sent_ = true;
+  }
+  bool owed() const {
+    for (unsigned b = 0; b != ccv::kDcuBanks; ++b)
+      if (oent_[b] || ostd_[b]) return true;
+    return false;
+  }
   /// A slot an ordinary response may use: a credit, and one more than its
   /// promises hold back.
   bool free(unsigned slot) {
@@ -663,11 +752,8 @@ private:
   /// refetched as a miss (returns true). Anything else is core-fatal: a
   /// dirty line (its bytes have no other copy), a second UE at a recorded
   /// location (a hard error), or a full table. DCU raises ue on
-  /// ccv_dcu_cru_err (returns 2). The real DCU withholds that read; the stub
-  /// still answers it, its data unharmed: a committed store's merge read
-  /// withheld would never drain, and MIU's kill ack waits on retired stores
-  /// (TI-487 asks how a machine check meets that). A recovered UE returns
-  /// 1, none 0. Controls:
+  /// ccv_dcu_cru_err and withholds the read (returns 2; AR 387, AR 389). A
+  /// recovered UE returns 1, none 0. Controls:
   /// ue-no-track never records (every clean UE recovers, however often),
   /// ue-dirty-recover recovers a dirty line too (its bytes are lost).
   int ueOnHit(const Op &o) {
@@ -705,6 +791,26 @@ private:
   std::vector<uint64_t> ue_track_;   ///< recorded locations, cleared only by reset
   bool ue_raised_ = false, ue_sent_ = false;
 
+  /// A response as it leaves: the stored check bits of its line (MA-28 (c),
+  /// AR 401), and CCV_DCU_ECC_INJECT=N's single stored-bit error in every
+  /// Nth hit, under the check bits of the bit as written, so MIU's syndrome
+  /// finds it (the knob that replaced MIU's CCV_MIU_ECC_INJECT). 0: none.
+  Bits seal(Bits r) {
+    const Ch &c = ch();
+    const uint32_t lsb = field(c.dcu_miu, "read_data").lsb;
+    Line l = getLine(r, lsb);
+    putCheckBits(r, field(c.dcu_miu, "check_bits").lsb, l);
+    if (ecc_every_ && get(r, c.dcu_miu, "hit") && ++ecc_hits_ % ecc_every_ == 0) {
+      l[0] ^= 1u;
+      putLine(r, lsb, l);
+    }
+    return r;
+  }
+  const unsigned ecc_every_ = [] {
+    const char *v = std::getenv("CCV_DCU_ECC_INJECT");
+    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
+  }();
+  unsigned ecc_hits_ = 0;
   /// A response to MIU answers its request by MIU's own req_id.
   Bits rspFor(const Bits &req) {
     Bits r = msgOf(ch().dcu_miu);
@@ -755,7 +861,13 @@ private:
     if (ls != set)
       k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
               s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
-              (unsigned long long)pa, (unsigned long long)set);
+              (unsigned long long)pa, (unsigned long long)set);    // MA-30, AR 405 (3): MIU's pa_fold is DCU's own fold of phys_addr,
+    // whenever the predictor is on (--break miu-fold-flip).
+    const uint64_t pf = get(req, c.miu_dcu, "pa_fold");
+    if (wayPredBits() && pf != paFold(pa))
+      k_.fail("dcu: slot %u req_id %u pa_fold %llx is not its phys_addr %llx's fold %x",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)pf,
+              (unsigned long long)pa, paFold(pa));
   }
 
   void work() override {
@@ -763,17 +875,32 @@ private:
     for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
       while (has(c.miu_dcu, s)) {
         Receiver::Msg m = take(c.miu_dcu, s);
+        // A dropped lookup (MA-27, AR 400): no read, no state, no queue
+        // entry, no credit return (MIU refunds its own, DI-12), no answer.
+        // dcu-drop-answers serves it anyway, and MIU refuses the answer.
+        if (get(m.payload, c.miu_dcu, "drop") && k_.brk != "dcu-drop-answers") continue;
         checkIndexLead(s, m.payload);
         const Op o{s, m.payload, m.tid};
+        admit(o);
         const Line *l = readHit(m.payload);
         const int ue = l ? ueOnHit(o) : 0;
         if (ue == 1) {
           // A clean line's UE, recovered: the line is gone, so the read
           // waits its turn as a miss and refetches it.
           q_.push_back(o);
+        } else if (ue == 2 &&
+                   (k_.ue_withheld.insert(unsigned(get(o.req, c.miu_dcu, "req_id"))), true) &&
+                   k_.brk != "ue-answer") {
+          // Core-fatal: DCU withholds the read (AR 370 (4), AR 387/389).
+          // MIU completes a load on the kill, with no data (OA 436); a
+          // store whose merge read this was never drains, and RAU's
+          // machine-check kill waits for no ack from MIU. Control
+          // ue-answer answers it, and MIU refuses the answer.
+          leaveQueue(o);
         } else if (l) {
           // A hit answered past a miss in flight or waiting (A-46).
           if (!miss_.empty() || !q_.empty()) k_.hit("hit_under_miss");
+          leaveQueue(o);
           hitRsp(o, *l);
         } else {
           q_.push_back(o);
@@ -867,6 +994,8 @@ private:
       if (owned_hit) {
         const Op o = *it;
         q_.erase(it);
+        leaveQueue(o);
+        writeDone(o);
         mergeInto(wy.data, o.req);
         wy.dirty = true;
         shadow(wy);
@@ -878,6 +1007,8 @@ private:
       if (!l && k_.brk == "dcu-one-miss" && !miss_.empty()) break;   // a blocking DCU
       const Op o = *it;
       q_.erase(it);
+      leaveQueue(o);
+      writeDone(o);   // a store leaving for MLC takes its data to the miss buffer
       if (l) {
         hitRsp(o, *l);
       } else if (!rd && k_.brk == "write-through") {
@@ -921,14 +1052,14 @@ private:
         k_.fail("dcu: the refill promised on slot %u at cycle %llu has no credit",
                 it->q.slot, (unsigned long long)now_);
       else
-        send(c.dcu_miu, it->q.slot, it->q.msg, it->q.tid);
+        send(c.dcu_miu, it->q.slot, seal(it->q.msg), it->q.tid);
       --resv_[it->q.slot];
       busy_lines_.erase(it->line);
       it = promised_.erase(it);
     }
     for (auto it = to_miu_.begin(); it != to_miu_.end();)
       if (free(it->slot)) {
-        send(c.dcu_miu, it->slot, it->msg, it->tid);
+        send(c.dcu_miu, it->slot, seal(it->msg), it->tid);
         it = to_miu_.erase(it);
       } else {
         ++it;
@@ -941,6 +1072,7 @@ private:
       send(c.dcu_cru_err, 0, e, makeUid(IdClass::kNone, 0));
       ue_sent_ = true;
     }
+    returnCredits();
   }
   /// A refill is noticed (OA-23) if the notice's slot and a credit beyond
   /// those already promised are free; else it is sent as it can be.
@@ -964,7 +1096,7 @@ private:
 
   bool busy() const override {
     return !q_.empty() || !miss_.empty() || !to_mlc_.empty() || !to_miu_.empty() ||
-           !promised_.empty() || (ue_raised_ && !ue_sent_);
+           !promised_.empty() || (ue_raised_ && !ue_sent_) || owed();
   }
 };
 
@@ -984,6 +1116,7 @@ private:
   struct LineReq { uint64_t line; Line data{}; std::array<bool, kLine> mask{}; uint16_t sub; };
   struct Job {
     bool store = false;
+    bool ecc = false;   ///< a line came with a non-zero syndrome (AR 401)
     unsigned tag = 0, memop_slot = 0, addr_slot = 0, warp = 0;
     unsigned phys_dst = 0, phys_pred = 0;   ///< echoed on miu_rcu_data
     unsigned rs_idx = 0;                    ///< echoed on miu_ooe_cmpl (OA-23)
@@ -1013,6 +1146,7 @@ private:
     uint32_t pdata = 0;
     unsigned rmw = 0;                ///< a predicate store's drain: 1 reading, 2 writing
     unsigned atom = 0;               ///< an atomic's pass (AR-21): 1 its read, 3 its write
+    bool moot = false;               ///< a kill supplied lines DCU still owed: its data is moot
     /// .shared (TI's rev 230): SPM's, in passes of at most one word a bank,
     /// not DCU's lines. addr is the CTA-relative offset ccv-sim names, and
     /// paddr SPM's byte address. lines still name what it touches, keyed
@@ -1045,21 +1179,15 @@ private:
     return r && uidSub(tid) < r->mem.size() ? &r->mem[uidSub(tid)] : nullptr;
   }
   /// A hit's completion and data, held for the contract cycle.
-  struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
+  struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; bool ecc = false; };
   std::vector<Timed> held_;   ///< ineligible loads' completions, held past the contract (MA-4)
-  /// An L1 hit's injected syndrome (RA 153 (5), MA's re: SECDED on every
-  /// SRAM, DA rulings TI-474 to TI-476): CCV_MIU_ECC_INJECT=N takes every
-  /// Nth hit that writes a register as a single-bit error the syndrome
-  /// stages find. Its data leaves on time with one bit flipped, as the
+  /// An L1 hit whose line came with a non-zero syndrome (RA 153 (5); MA-28
+  /// (c), AR 401: DCU's CCV_DCU_ECC_INJECT, MIU's R2 syndrome over every code
+  /// word of the slot). Its data leaves on time with one bit flipped, as the
   /// speculative data would; no completion at the contract (the miss
   /// indication, CCV_LAT_L1_ECC's contract); the corrected data and then
   /// the completion CCV_LAT_L1_ECC + 2 cycles after the data, as a miss's
-  /// would come (held_, data before completion). 0, the default: none.
-  const unsigned ecc_every_ = [] {
-    const char *v = std::getenv("CCV_MIU_ECC_INJECT");
-    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
-  }();
-  unsigned ecc_hits_ = 0;
+  /// would come (held_, data before completion).
   /// Corrected beats alone (the controls), each at its cycle.
   std::vector<std::pair<uint64_t, Q>> ecc_beats_;
   std::deque<Timed> timed_;
@@ -1141,32 +1269,32 @@ private:
     // OA 436 (TI-485 (5)(a), MA rev 104): MIU completes every memop of a
     // killed warp. A killed warp's atomic keeps its pass and its hold until
     // its write step, whose completion ends it (more 0) and lets the hold
-    // go (atomDone); none starts a further pass (OOE's kill_stops). A load
-    // still waiting on DCU completes now, with no data, and DCU's answer,
-    // if one comes, is dropped (kill_drop_): DCU withholds a read a
-    // core-fatal UE hit (AR 370). Control kill-drop-atomic: the kill drops
-    // the atomic, as before, and its write then finds no read.
+    // go (atomDone); none starts a further pass (OOE's kill_stops).
+    // Control kill-drop-atomic: the kill drops the atomic, as before, and
+    // its write then finds no read.
     if (k_.brk == "kill-drop-atomic")
       for (auto it = atom_.begin(); it != atom_.end();)
         it = mask >> (it->second.warp & 31) & 1u ? atom_.erase(it) : std::next(it);
     killed_ |= mask;
-    for (auto it = jobs_.begin(); it != jobs_.end();) {
-      Job &j = *it;
-      bool waits = false;
-      for (const auto &o : outstanding_) waits |= o.second.first == j.serial;
-      // A load whose completion a hint has promised (OA-23) keeps that
-      // promise: it completes at its cycle, with its notice's keys.
-      if (j.store || j.atom || j.promised || !(mask >> (j.warp & 31) & 1u) || !waits) { ++it; continue; }
+    // A killed warp's read still owed by DCU is taken as answered now, with
+    // no data, and DCU's answer, if one comes, is dropped (kill_drop_):
+    // each job, load, store or atomic, then ends on its own path (a
+    // promised load at its promise), so MIU owes no killed warp anything.
+    // DCU withholds the read a core-fatal UE hit (AR 389), and this is how
+    // MIU completes it (OA 436).
+    for (Job &j : jobs_) {
+      if (!(mask >> (j.warp & 31) & 1u)) continue;
       for (auto o = outstanding_.begin(); o != outstanding_.end();)
         if (o->second.first == j.serial) {
           kill_drop_.insert(o->first);
+          j.got[o->second.second] = Line{};
+          ++j.back;
+          j.moot = true;
+          k_.hit("kill_cmpl");
           o = outstanding_.erase(o);
         } else {
           ++o;
         }
-      to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
-      k_.hit("kill_cmpl");
-      it = jobs_.erase(it);
     }
   }
   uint32_t killed_ = 0;                 ///< warps a kill has ended
@@ -1251,6 +1379,17 @@ private:
       if (h < now_ + 1 || !spare(c.cmpl_hint, ms) || !spare(c.miu_ooe, ms) ||
           !spare(c.miu_rcu, as))
         return;
+      // DCU may send CCV_DCACHE_LOOKUPS notices a cycle (MI-9): a promise
+      // whose hint, completion or data slot is already promised for that
+      // cycle is declined, and its load completes as a miss. The control
+      // --break hint-same-slot promises it anyway.
+      if (k_.brk != "hint-same-slot") {
+        bool taken = false;
+        for (const Hint &x : hints_) taken = taken || (!x.no_hit && x.at == h && x.q.slot == ms);
+        for (const Job &y : jobs_)
+          taken = taken || (y.promised == at && (y.memop_slot == ms || y.addr_slot == as));
+        if (taken) { k_.hit("hint_slot_taken"); return; }
+      }
       Bits m = msgOf(c.cmpl_hint);
       put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
       put(m, c.cmpl_hint, "rob_tag", k_.brk == "hint-wrong-tag" ? j.tag ^ 1u : j.tag);
@@ -1274,6 +1413,25 @@ private:
       armed_ = true;
       at_entry_ = k_.brk != "memop-credit-on-take";
       if (at_entry_) creditAtRelease(c.ooe_miu);
+    }
+    // DCU's credit returns (MA-25), taken the cycle they land.
+    while (has(c.dcu_cred, 0)) {
+      const Bits m = take(c.dcu_cred, 0).payload;
+      const uint64_t ent = get(m, c.dcu_cred, "ent_ret"), std = get(m, c.dcu_cred, "std_ret");
+      for (unsigned b = 0; b != ccv::kDcuBanks; ++b) {
+        if (ent >> b & 1u) {
+          if (bent_[b] >= int(bqdepth_))
+            k_.fail("miu: DCU returned an entry credit for bank %u, which holds all %u (MA-25)",
+                    b, bqdepth_);
+          else ++bent_[b];
+        }
+        if (std >> b & 1u) {
+          if (bstd_[b] >= int(bstdata_))
+            k_.fail("miu: DCU returned a store-data credit for bank %u, which holds all %u (MA-25)",
+                    b, bstdata_);
+          else ++bstd_[b];
+        }
+      }
     }
     for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
       while (has(c.fill_ntc, s))
@@ -1421,13 +1579,15 @@ private:
         if (fl != fills_.end()) {
           // A window fill: every slot its line holds (TI-31).
           Windows &t = win_[fl->second.cta];
-          if (t.gen == fl->second.gen)
-            fillWindows(t, fl->second.line,
-                        getLine(m.payload, field(c.dcu_miu, "read_data").lsb));
+          Line ln = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+          fixLine(ln, m.payload, field(c.dcu_miu, "check_bits").lsb);
+          if (t.gen == fl->second.gen) fillWindows(t, fl->second.line, ln);
           fills_.erase(fl);
           ids_.release(id);
           continue;
         }
+        if (k_.ue_withheld.count(id))
+          k_.fail("miu: DCU answered req_id %u, a read a core-fatal UE withheld (AR 389)", id);
         if (kill_drop_.erase(id)) {   // a killed warp's read, completed at the kill
           ids_.release(id);
           continue;
@@ -1451,7 +1611,9 @@ private:
         ids_.release(id);
         for (Job &j : jobs_)
           if (j.serial == serial) {
-            j.got[line] = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+            Line ln = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+            if (fixLine(ln, m.payload, field(c.dcu_miu, "check_bits").lsb)) j.ecc = true;
+            j.got[line] = ln;
             if (!get(m.payload, c.dcu_miu, "hit")) j.hit = false;
             if (get(m.payload, c.dcu_miu, "mlc_miss")) j.mlc_miss = true;
             ++j.back;
@@ -1510,7 +1672,7 @@ private:
       constexpr uint64_t kEcc = ccv::prov::kLatL1Ecc;
       if (t.at == now_ && free(c.miu_rcu, t.data.slot) &&
           (kEcc != 0 || free(c.miu_ooe, t.cmpl.slot))) {
-        const bool ecc = eccInject(t.data);
+        const bool ecc = eccInject(t);
         if (ecc) {
           // The speculative data, one bit wrong, on time; the corrected
           // beat and its completion as a miss's (held_). The controls:
@@ -1688,15 +1850,9 @@ private:
   /// exactly one (ccv_miu_ooe), so it frees the memop's queue entry, and so
   /// its credit (MA-5). An atomic's more = 1 is not a second completion of
   /// this memop: OOE re-issues the steps as new memops (AR-21).
-  /// Whether this hit's data takes an injected syndrome (ecc_every_): a
-  /// load that writes a register, one hit in ecc_every_.
-  bool eccInject(const Q &d) {
-    const Ch &c = ch();
-    if (!ecc_every_ || !uint32_t(get(d.msg, c.miu_rcu, "active_mask")) ||
-        unsigned(get(d.msg, c.miu_rcu, "phys_dst")) == ccv::prov::kPhysZero)
-      return false;
-    return ++ecc_hits_ % ecc_every_ == 0;
-  }
+  /// Whether this hit takes the syndrome's path: its line came with a
+  /// non-zero syndrome, so its completion is withheld (AR 401).
+  bool eccInject(const Timed &t) const { return t.ecc; }
   /// One bit of the lowest active lane's data flipped: what a single-bit
   /// error in the array leaves in the speculative data.
   void flipLoadBit(Bits &m) {
@@ -1713,17 +1869,43 @@ private:
       return;
     }
     --entries_[slot];
+    // miu-keep-credit (MI-8's control): the first memop's credit is never
+    // given back, a leak no check but the checkers' quiesced_at_end sees.
+    if (k_.brk == "miu-keep-credit" && !kept_) { kept_ = true; return; }
     release(c.ooe_miu, slot);
   }
+  bool kept_ = false;
   bool armed_ = false, at_entry_ = false;
   std::array<unsigned, 8> entries_{};   ///< queue entries held, by memop slot
+
+  /// DCU's per-bank credits (MA-25), reset full: a lookup goes only with its
+  /// bank's entry credit, a store only with that and a store-data credit,
+  /// spent at send and returned on ccv_dcu_miu_cred. A request without its
+  /// credits is held, oldest first: a held store blocks every younger store
+  /// to its bank, a held request every younger one to its line. --break
+  /// bank-credit-ignore sends without them (the counts go negative), which
+  /// DCU must refuse by name once a bank holds more than its credits.
+  const unsigned bqdepth_ = dcuBankQdepth(), bstdata_ = dcuBankStdata();
+  std::vector<int> bent_ = std::vector<int>(ccv::kDcuBanks, int(bqdepth_)),
+                   bstd_ = std::vector<int>(ccv::kDcuBanks, int(bstdata_));
+  std::set<std::pair<uint64_t, size_t>> bank_held_;   ///< (job serial, line) held for a credit
+  bool bankCan(unsigned b, bool store) const {
+    return k_.brk == "bank-credit-ignore" || (bent_[b] > 0 && (!store || bstd_[b] > 0));
+  }
+  void bankTake(unsigned b, bool store) {
+    --bent_[b];
+    if (store) --bstd_[b];
+  }
 
   /// AR 362: the lookup's set index leads it, from the formed address
   /// (the stub's line is its leader's); its bank is the index's low bits
   /// (AR 364). --break dcu-set-lead sends a wrong one, which DCU must refuse
-  /// by name.
+  /// by name. With it, the payload's pa_fold, A2's fold of the same address
+  /// (MA-30, AR 405); --break miu-fold-flip flips its low bit, which DCU must
+  /// refuse by name too.
   void putIndexLead(Bits &r, uint64_t pa) {
     put(r, ch().miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
+    put(r, ch().miu_dcu, "pa_fold", paFold(pa) ^ (k_.brk == "miu-fold-flip" ? 1u : 0u));
   }
 
   Bits withLead(Bits m) {
@@ -1799,6 +1981,8 @@ private:
           return;                                               // on its way
       for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s) {
         if (!free(c.miu_dcu, s) || !ids_.any()) continue;
+        if (!bankCan(dcuBankOf(line), false)) { k_.hit("credit_hold"); break; }   // MA-25
+        bankTake(dcuBankOf(line), false);
         Bits r = msgOf(c.miu_dcu);
         const unsigned id = ids_.take();
         put(r, c.miu_dcu, "req_id", id);
@@ -2309,7 +2493,7 @@ private:
       // The new value against ccv-sim's write of this lane.
       if (r)
         for (const MemAcc &w : r->mem)
-          if (w.write && w.lane == l && w.val != v)
+          if (w.write && w.lane == l && w.val != v && !(killed_ >> (j.warp & 31) & 1u))
             k_.fail("miu: seq %llu lane %u atomic write %08x, oracle %08x",
                     (unsigned long long)r->seq, l, v, w.val);
     }
@@ -2473,9 +2657,27 @@ private:
     for (Job &j : jobs_)
       if (std::find(order.begin(), order.end(), &j) == order.end()) order.push_back(&j);
     unsigned s = 0;
+    // MA-25: what this cycle's held requests block for younger ones.
+    std::set<uint64_t> held_lines;
+    std::set<unsigned> held_store_banks;
     for (Job *jp : order)
     for (Job &job_ = *jp; s != rate && job_.next != job_.lines.size(); ++s) {
       if (!can(c.miu_dcu, s) || !ids_.any()) continue;
+      {
+        const LineReq &pk = job_.lines[job_.next];
+        const bool st = job_.store && job_.rmw != 1;
+        const unsigned b = dcuBankOf(pk.line);
+        const std::pair<uint64_t, size_t> key{job_.serial, job_.next};
+        if (held_lines.count(pk.line) || (st && held_store_banks.count(b)) || !bankCan(b, st)) {
+          held_lines.insert(pk.line);
+          if (st) held_store_banks.insert(b);
+          bank_held_.insert(key);
+          k_.hit("credit_hold");
+          break;   // this job waits; a younger one may take the slot for another line or bank
+        }
+        if (bank_held_.erase(key)) k_.hit("credit_hold_then_sent");
+        bankTake(b, st);
+      }
       const LineReq &lr = job_.lines[job_.next++];
       Bits r = msgOf(c.miu_dcu);
       const unsigned id = ids_.take();
@@ -2521,6 +2723,8 @@ private:
       }
     for (auto it = jobs_.begin(); it != jobs_.end();) {
       if (it->back != it->lines.size() || it->pback != it->passes.size()) { ++it; continue; }
+      // A hinted load the kill supplied keeps its promise's cycle (OA-23).
+      if (it->moot && it->promised && now_ < it->promised) { ++it; continue; }
       if (it->rmw == 1) { merge(*it); ++it; continue; }
       if (!it->store) complete(*it);
       else if (it->atom == 3) atomDone(*it);
@@ -2571,7 +2775,9 @@ private:
       put(d, c.miu_rcu, "dst_width", job_.chw);
       put(d, c.miu_rcu, "phys_pred", job_.phys_pred);
       put(d, c.miu_rcu, "pred_we", 0);          // a load writes no predicate
-      const Record *r = rec(job_.tid, "miu");
+      // A killed warp's line the kill supplied holds no data: nothing to
+      // hold to ccv-sim's.
+      const Record *r = job_.moot ? nullptr : rec(job_.tid, "miu");
       if (job_.pxfer && job_.active) {
         // A predicate load (TI-36): its word is the predicate, lane i's bit
         // for lane i, written by RCU under active_mask (O-62), the copy op
@@ -2635,7 +2841,7 @@ private:
         // Queued for the data's cycle, CCV_LAT_L1_ECC ahead of the
         // completion's contract (AR 368).
         timed_.push_back({job_.due - ccv::prov::kLatL1Ecc, {job_.addr_slot, d, job_.tid},
-                          {job_.memop_slot, cmpl(job_), job_.tid}});
+                          {job_.memop_slot, cmpl(job_), job_.tid}, false, job_.ecc});
       } else if (job_.inelig && now_ <= job_.due) {
         // An ineligible load completes past the contract's cycle, never on
         // or before it (MA-4: no completion at H+7; A-46, V-44).
@@ -4233,6 +4439,30 @@ public:
 
 private:
   std::deque<std::pair<Bits, uint64_t>> q_;
+  /// CCV_DEC_HOLD=<warp>:<seq>:<cycles> (AR 395's straggler): DEC holds that
+  /// uop, and everything behind it, the cycles given from its arrival at the
+  /// queue's head, as rename backpressure would; a demotion that lands
+  /// meanwhile leaves it in DEC past OOE's walk. A run mode, not a control:
+  /// the run must still match ccv-sim.
+  struct Hold { unsigned warp = ~0u; uint64_t seq = 0, cycles = 0, since = 0; bool on = false; };
+  Hold hold_ = [] {
+    Hold h;
+    if (const char *v = std::getenv("CCV_DEC_HOLD")) {
+      unsigned long long sq = 0, cy = 0;
+      if (std::sscanf(v, "%u:%llu:%llu", &h.warp, &sq, &cy) == 3) { h.seq = sq; h.cycles = cy; }
+      else h.warp = ~0u;
+    }
+    return h;
+  }();
+  bool holding(const std::pair<Bits, uint64_t> &u) {
+    if (hold_.warp == ~0u || unsigned(get(u.first, ch().dec_ooe, "warp_id")) != hold_.warp ||
+        uidSeq(u.second) != warpSeq(hold_.warp, hold_.seq))
+      return false;
+    if (!hold_.on) { hold_.on = true; hold_.since = now_; }
+    if (now_ - hold_.since >= hold_.cycles) { hold_.warp = ~0u; return false; }
+    k_.hit("dec_hold");
+    return true;
+  }
   /// A kill drops the killed warps' uops not yet sent to OOE (V-24).
   void onKill(uint32_t mask, unsigned) override {
     for (auto it = q_.begin(); it != q_.end();) {
@@ -4251,6 +4481,7 @@ private:
     // recover the order from (arrival, slot).
     for (unsigned s = 0; s != kChans[c.dec_ooe].rate && !q_.empty(); ++s) {
       if (!can(c.dec_ooe, s)) break;
+      if (holding(q_.front())) break;
       // An atomic's pair leaves together, in adjacent slots (TI-39: the
       // first comes with credit for its second, which follows it at once).
       const bool first = (get(q_.front().first, c.dec_ooe, "sched_attr") >> kAttrPairFirstBit) & 1u;
@@ -4768,6 +4999,7 @@ private:
   static constexpr unsigned kEpochs = 1u << ccv::prov::kWFetchEpoch;
   bool stale_next_ = false, stale_done_ = false;   ///< stale-epoch control
   std::deque<std::pair<Bits, uint64_t>> pca_q_;     ///< PCs out to PCA, with where it resumes
+  std::vector<unsigned> mig_wait_;                  ///< demotions waiting on full credits (AR 395)
 
   void work() override {
     const Ch &c = ch();
@@ -4810,7 +5042,33 @@ private:
         // target_pc. A lane in no beat keeps FET's PC.
         Warp &x = warps_[rw];
         const uint32_t lanes = uint32_t(get(m.payload, c.ooe_fet, "taken_mask"));
-        const uint64_t pc = get(m.payload, c.ooe_fet, "target_pc");
+        uint64_t pc = get(m.payload, c.ooe_fet, "target_pc");
+        uint64_t btid = uidClass(m.tid) == IdClass::kInstr ? m.tid : 0;
+        // A held warp's beat (TI-40, AR's rev 164): its lanes step back
+        // over the converged wait, which retired, so the restored warp
+        // fetches the wait again and asks SYU again. Its record is the
+        // C_BAR_WAIT at that PC, the last one fetched.
+        // fet-ignore-held: the step-back skipped, the restored warp past its wait.
+        if (get(m.payload, c.ooe_fet, "rewind_held") && k_.brk != "fet-ignore-held") {
+          pc -= get(m.payload, c.ooe_fet, "held_long") ? 4 : 2;
+          const auto &recs = k_.orcs[rw].recs;
+          for (size_t i = std::min(x.next, recs.size()); i-- != 0;)
+            if (recs[i].op == "C_BAR_WAIT" && recs[i].pc == pc) {
+              btid = instrUid(warpSeq(rw, recs[i].seq));
+              break;
+            }
+          // The wait runs again, so it is not counted retired until it
+          // retires again (trace-only bookkeeping, for the checks).
+          for (size_t i = k_.retire_order.size(); btid && i-- != 0;)
+            if (seqWarp(uint32_t(k_.retire_order[i])) == (rw & 31)) {
+              if (k_.retire_order[i] == uidSeq(btid)) {
+                k_.retire_order.erase(k_.retire_order.begin() + long(i));
+                --k_.retired;
+                k_.parked[rw].held_wait = true;
+              }
+              break;
+            }
+        }
         for (unsigned l = 0; l != kLanes; ++l)
           if (lanes >> l & 1u) x.lane_pc[l] = pc;
         x.rewound |= lanes;
@@ -4818,9 +5076,8 @@ private:
         if (k_.brk != "held-no-clear") x.held = false;
         // The oldest beat's uop, on the trace sideband: where this stub's
         // oracle-ordered fetch resumes after a restore (trace-only).
-        if (uidClass(m.tid) == IdClass::kInstr &&
-            (!x.boundary_tid || seqIndex(uidSeq(m.tid)) < seqIndex(uidSeq(x.boundary_tid))))
-          x.boundary_tid = m.tid;
+        if (btid && (!x.boundary_tid || seqIndex(uidSeq(btid)) < seqIndex(uidSeq(x.boundary_tid))))
+          x.boundary_tid = btid;
       } else if (get(m.payload, c.ooe_fet, "epoch_only")) {
         epoch_[rw & 31] = fe;
         warps_[rw].stopped = true;
@@ -4903,54 +5160,71 @@ private:
         take_slot(x, unsigned(get(m, c.rau_fet_mig, "tier1_id")));
         x.restoring = true;
       } else {
-        Warp &x = warps_[w];
-        const auto &recs = k_.orcs[w].recs;
-        Bits g = msgOf(c.fet_pca);
-        put(g, c.fet_pca, "warp_id", w);
-        const FieldDesc &lp = field(c.fet_pca, "lane_pcs");
-        const unsigned lw = lp.width / kLanes;
-        uint64_t upper = 0;
-        for (unsigned l = 0; l != kLanes; ++l) {
-          uint64_t pc = recs.empty() ? 0 : recs.back().pc;
-          if (x.rewound >> l & 1u) {
-            pc = x.lane_pc[l];
-          } else {
-            for (size_t i = x.next; i < recs.size(); ++i)
-              if (recs[i].mask >> l & 1u) { pc = recs[i].pc; break; }
-          }
-          g.set(lp.lsb + l * lw, lw, pc >> 1);
-          upper = pc >> ccv::kWPcWindow;
+        // A demotion's migration (AR 395): FET sends its PCs to PCA, and
+        // decides the lanes no beat named, only once the warp's credits are
+        // back to full as well -- sent less returned is zero, so OOE has
+        // walked and dropped every uop FET sent it, stragglers held in DEC
+        // included. --break mig-before-credits sends on the migration alone.
+        mig_wait_.push_back(w);
+      }
+    }
+    for (auto mw = mig_wait_.begin(); mw != mig_wait_.end();) {
+      const unsigned w = *mw;
+      if (warps_[w].credits < int(ccv::prov::kDecqWarpMax) && k_.brk != "mig-before-credits") {
+        k_.hit("mig_credit_wait");   // OA 463: a cycle the wait held the migration
+        ++mw;
+        continue;
+      }
+      mw = mig_wait_.erase(mw);
+      {
+      Warp &x = warps_[w];
+      const auto &recs = k_.orcs[w].recs;
+      Bits g = msgOf(c.fet_pca);
+      put(g, c.fet_pca, "warp_id", w);
+      const FieldDesc &lp = field(c.fet_pca, "lane_pcs");
+      const unsigned lw = lp.width / kLanes;
+      uint64_t upper = 0;
+      for (unsigned l = 0; l != kLanes; ++l) {
+        uint64_t pc = recs.empty() ? 0 : recs.back().pc;
+        if (x.rewound >> l & 1u) {
+          pc = x.lane_pc[l];
+        } else {
+          for (size_t i = x.next; i < recs.size(); ++i)
+            if (recs[i].mask >> l & 1u) { pc = recs[i].pc; break; }
         }
-        put(g, c.fet_pca, "pc_upper", upper);
-        // The live lanes after the beats (AR's response TI-27 (b)): every lane
-        // a beat names is live again, which undoes an exit the squash took
-        // back. Exact by then, so held to the boundary's mask.
-        // beats-dead: FET keeps the lanes its fetched exits cleared.
-        const uint32_t live = x.lanes | (k_.brk == "beats-dead" ? 0u : x.rewound);
-        // The boundary by instruction: a cracked one's later uop (TI-36)
-        // names its instruction, which a restore runs again whole.
-        size_t bi = x.next;
-        if (x.boundary_tid)
-          for (size_t i = 0; i != recs.size(); ++i)
-            if (warpSeq(w, recs[i].seq) == uidSeq(x.boundary_tid)) { bi = i; break; }
-        if (bi < x.lanes_at.size() && live != x.lanes_at[bi])
-          k_.fail("fet: warp %u's live mask after the beats is %08x; at its boundary, %08x", w, live,
-                  x.lanes_at[bi]);
-        put(g, c.fet_pca, "live_mask", live);
-        // The fairness state (TI-27 (c)): FET cannot know the boundary's, so it
-        // keeps its pointer, moved on to a live lane, and saturates the
-        // counter, so lane r's group takes the first pick after the restore.
-        unsigned ptr = x.fair_ptr;
-        for (unsigned i = 0; live && !(live >> ptr & 1u) && i != kLanes; ++i) ptr = (ptr + 1) % kLanes;
-        put(g, c.fet_pca, "fair_ptr", ptr);
-        put(g, c.fet_pca, "fair_cnt", fair_n_);
-        k_.parked[w].rewound = x.rewound == ~0u;
-        if (k_.parked[w].rewound) k_.hit("rewound");
-        // The trace identity of where it resumes rides with the PCs to PCA,
-        // and back on a restore (trace-only).
-        const uint64_t at = x.boundary_tid ? x.boundary_tid
-                            : x.next < recs.size() ? instrUid(warpSeq(w, recs[x.next].seq)) : 0;
-        pca_q_.push_back({g, at});
+        g.set(lp.lsb + l * lw, lw, pc >> 1);
+        upper = pc >> ccv::kWPcWindow;
+      }
+      put(g, c.fet_pca, "pc_upper", upper);
+      // The live lanes after the beats (AR's response TI-27 (b)): every lane
+      // a beat names is live again, which undoes an exit the squash took
+      // back. Exact by then, so held to the boundary's mask.
+      // beats-dead: FET keeps the lanes its fetched exits cleared.
+      const uint32_t live = x.lanes | (k_.brk == "beats-dead" ? 0u : x.rewound);
+      // The boundary by instruction: a cracked one's later uop (TI-36)
+      // names its instruction, which a restore runs again whole.
+      size_t bi = x.next;
+      if (x.boundary_tid)
+        for (size_t i = 0; i != recs.size(); ++i)
+          if (warpSeq(w, recs[i].seq) == uidSeq(x.boundary_tid)) { bi = i; break; }
+      if (bi < x.lanes_at.size() && live != x.lanes_at[bi])
+        k_.fail("fet: warp %u's live mask after the beats is %08x; at its boundary, %08x", w, live,
+                x.lanes_at[bi]);
+      put(g, c.fet_pca, "live_mask", live);
+      // The fairness state (TI-27 (c)): FET cannot know the boundary's, so it
+      // keeps its pointer, moved on to a live lane, and saturates the
+      // counter, so lane r's group takes the first pick after the restore.
+      unsigned ptr = x.fair_ptr;
+      for (unsigned i = 0; live && !(live >> ptr & 1u) && i != kLanes; ++i) ptr = (ptr + 1) % kLanes;
+      put(g, c.fet_pca, "fair_ptr", ptr);
+      put(g, c.fet_pca, "fair_cnt", fair_n_);
+      k_.parked[w].rewound = x.rewound == ~0u;
+      if (k_.parked[w].rewound) k_.hit("rewound");
+      // The trace identity of where it resumes rides with the PCs to PCA,
+      // and back on a restore (trace-only).
+      const uint64_t at = x.boundary_tid ? x.boundary_tid
+                          : x.next < recs.size() ? instrUid(warpSeq(w, recs[x.next].seq)) : 0;
+      pca_q_.push_back({g, at});
       }
     }
     if (!pca_q_.empty() && can(c.fet_pca, 0)) {
@@ -4994,9 +5268,10 @@ private:
         x.fair_ptr = unsigned(get(mm.payload, c.pca_fet, "fair_ptr"));
         x.fair_cnt = unsigned(get(mm.payload, c.pca_fet, "fair_cnt"));
         x.br_mask = 0;
-        // Restored to a slot whose queue holds nothing of it (TI-46 (b)); a
+        // No reseed (OA 455 A, OA 462): every credit it held in flight at
+        // demotion came home on its last slot before the migration (AR 395
+        // (3)), so its count is already full. A
         // demotion's rewind beat has cleared held-ahead (held-no-clear: kept).
-        x.credits = int(ccv::prov::kDecqWarpMax);
         if (k_.brk != "held-no-clear") x.held = false;
         x.next = at;
         x.launched = true;
@@ -5250,6 +5525,12 @@ private:
         if (pred_taken) k_.hit("fet_perfect_taken");
         if (perfect_ && mispredict) k_.hit("fet_perfect_split");
       }
+      // OA-455: nothing for a warp from its epoch notice (demote or kill)
+      // until its restore activates, so a uop sent before the notice is in
+      // the old epoch and dropped, and a restore needs no epoch advance.
+      if (warps_[w].stopped || warps_[w].restoring)
+        k_.fail("fet: warp %u sent seq %llu between its epoch notice and its restore", w,
+                (unsigned long long)r.seq);
       send(c.fet_dec, s, f, instrUid(warpSeq(w, r.seq)));
       if (!k_.fetched) { k_.fetched = true; k_.first_fetch = now_; }
       if (r.kind == "return") k_.hit("ret");
@@ -5623,8 +5904,17 @@ private:
     const FabDesc &acks = Stub::fab("kill_ack");
     for (unsigned i = 0; i != acks.nblks; ++i)
       if (fabIn("kill_ack", i) && fabIn("kill_ack_epoch", i) == kill_epoch_) kill_acked_ |= 1u << i;
-    k_.kill_unacked = ((1u << acks.nblks) - 1) & ~kill_acked_;
+    // A machine-check kill waits for no ack from MIU (AR 387, AR 389; RAU
+    // spec rev 63): a committed store whose merge read DCU withheld never
+    // drains, and the core is dead until the host resets it. The model
+    // still holds the other seven owners to theirs.
+    uint32_t need = (1u << acks.nblks) - 1;
+    if (mce_kill_)
+      for (unsigned i = 0; i != acks.nblks; ++i)
+        if (acks.blks[i] == Blk::MIU) need &= ~(1u << i);
+    k_.kill_unacked = need & ~kill_acked_;
     if (k_.kill_unacked) return;
+    if (mce_kill_) k_.mce_done = true;
     // Every owner has quiesced: the killed warps hold nothing anywhere.
     for (unsigned w = 0; w != 32; ++w) {
       if (!(kill_mask_ >> w & 1u)) continue;
@@ -6407,12 +6697,25 @@ static std::unique_ptr<Block> makeRcu(int inst, Kernel &k) {
 /// MA's Phase 1 DCU resource model (sim/dcu/dcu_p1.cpp; MA-21, DA rev 125):
 /// the stub's function with the banks' timing, for Phase 1's sweeps.
 /// CCV_DCU_IMPL=p1 selects it; the stub stays the default and the reference.
+/// DI's DCU model (sim/dcu/dcu_block.cpp, dcu_core.cpp; DI-1): CCV_DCU_IMPL=model.
 std::unique_ptr<Block> makeDcuP1(int inst, Kernel &k);
+std::unique_ptr<Block> makeDcuModel(int inst, Kernel &k);
 
 static std::unique_ptr<Block> makeDcu(int inst, Kernel &k) {
   const char *impl = std::getenv("CCV_DCU_IMPL");
   if (impl && std::string(impl) == "p1") return makeDcuP1(inst, k);
+  if (impl && std::string(impl) == "model") return makeDcuModel(inst, k);
   return std::make_unique<Dcu>(inst, k);
+}
+
+/// MI's MIU model (sim/miu/miu_block.cpp; MI-1). CCV_MIU_IMPL=model selects
+/// it; the stub stays the default and the reference until MI's M0.
+std::unique_ptr<Block> makeMiuModel(int inst, Kernel &k);
+
+static std::unique_ptr<Block> makeMiu(int inst, Kernel &k) {
+  const char *impl = std::getenv("CCV_MIU_IMPL");
+  if (impl && std::string(impl) == "model") return makeMiuModel(inst, k);
+  return std::make_unique<Miu>(inst, k);
 }
 
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
@@ -6423,7 +6726,7 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   case Blk::OOE:  return makeOoe(inst, k);          // ooe.cpp
   case Blk::RCU:  return makeRcu(inst, k);          // CCV_RCU_IMPL
   case Blk::LANE: return std::make_unique<Lane>(inst, k);
-  case Blk::MIU:  return std::make_unique<Miu>(inst, k);
+  case Blk::MIU:  return makeMiu(inst, k);          // CCV_MIU_IMPL
   case Blk::DCU:  return makeDcu(inst, k);          // CCV_DCU_IMPL
   case Blk::MLC:  return std::make_unique<Mlc>(inst, k);
   case Blk::EXB:  return std::make_unique<Exb>(inst, k);
@@ -6667,7 +6970,10 @@ bool KernelEnd::after(uint64_t c, Kernel &k, Machine &m) {
   bool in_flight = false;
   for (unsigned s = 0; s != kNumSlots && !in_flight; ++s)
     in_flight = m.tx(s).sent() != m.rx(s).received();
-  if (c >= kReset && k.exited() && k.busy == 0 && !in_flight) {
+  // A machine-checked core may end with MIU still holding a store whose
+  // merge read DCU withheld (AR 389: RAU waits for no ack from MIU on that
+  // kill): nothing is in flight, and the host resets the core.
+  if (c >= kReset && k.exited() && (k.busy == 0 || k.mce_done) && !in_flight) {
     if (!finished) finish = c;
     finished = true;
     ++quiet;

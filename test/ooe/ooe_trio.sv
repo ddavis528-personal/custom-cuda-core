@@ -138,28 +138,40 @@ module ooe_trio #(
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol),
     .kind_o_cq02h(kind_w), .cls_o_cq02h(cls_w),
     .pay_cq01h(pay_cq01h), .lead_cq01h(lead_cq01h), .home_cq01h(home_cq01h), .gnt_l_cq01h(gnt_l),
-    .lv_cq02h(rs_lv), .le_cq02h(rs_le), .pe_cq03h(rs_pe));
-  // The issue and payload registers ooe_rs held before OA 435 (2)(3) moved
-  // them to ooe_rcupl and ooe_mempl (pl_tb checks those): the bench keeps
-  // them here, clocked as they were, so the issue check stands as it was.
-  logic [K-1:0]    rs_lv;
+    .hq_cq02h(rs_hq), .lq_cq02h(rs_lq), .pq_cq02h(rs_pq));
+  // The RS read and the issue and payload registers, ooe_rcupl's and
+  // ooe_mempl's since OA 435 (2)(3) (pl_tb checks those): the bench keeps
+  // them here, the read through ooe_rsread and the registers clocked as
+  // they were, so the issue check stands as it was.
+  logic [N*K-1:0]  rs_hq;
+  logic [N*LW-1:0] rs_lq;
+  logic [N*PW-1:0] rs_pq;
+  logic [N-1:0]    rs_gd;
+  logic [K-1:0]    rs_lv, rs_pv;
   logic [K*LW-1:0] rs_le;
   logic [K*PW-1:0] rs_pe;
   logic            rs_ien, rs_ien2, rs_rst;
+  ooe_rsread #(.N(N), .K(K), .K0(0), .KS(K), .E0(0), .E1(N), .W(LW)) u_rd_l (
+    .g_cq01h(grant_cq04h), .h_cq01h(rs_hq), .q_cq01h(rs_lq), .v_cq01h(rs_lv), .e_cq01h(rs_le));
+  ooe_rsread #(.N(N), .K(K), .K0(0), .KS(K), .E0(0), .E1(N), .W(PW)) u_rd_p (
+    .g_cq01h(rs_gd), .h_cq01h(rs_hq), .q_cq01h(rs_pq), .v_cq01h(rs_pv), .e_cq01h(rs_pe));
   always_ff @(posedge ooe_core_clk) rs_rst <= ooe_rst_r00h;
   always_ff @(posedge ooe_core_clk) begin
     if (rs_rst) begin
       rs_ien  <= 1'b0;
       rs_ien2 <= 1'b0;
       iss_v_cq05h <= '0;
+      rs_gd <= '0;
     end else begin
       rs_ien  <= gnt_l;
       rs_ien2 <= rs_ien;
       if (rs_ien) iss_v_cq05h <= rs_lv;
+      if (rs_ien) rs_gd <= grant_cq04h;
     end
     if (rs_ien)  iss_lead_cq05h <= rs_le;
     if (rs_ien2) iss_pay_cq05h  <= rs_pe;
   end
+  `CCV_ASSERT(trio_late_read, !rs_ien2 || rs_pv == iss_v_cq05h)
   ooe_wake #(.N(N), .LAT(LAT), .FAST(FAST), .PEN(PEN), .NPEN(NPEN), .LAT_COPY(LAT_COPY),
              .LAT_SPEC(LAT_SPEC), .LAT_MISS(LAT_MISS), .CMPL_DLY(CMPL_DLY), .NC(NC)) u_wake (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),

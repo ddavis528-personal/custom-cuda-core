@@ -36,6 +36,8 @@
 `define CCV_RST rst_r01h
 module ooe_rcupl #(
   parameter int NS  = 4,                 // sections (CCV_SECTIONS): S and P slots each
+  parameter int N   = 45,                // RS entries (CCV_P_RS_RCU + CCV_P_RS_MIU)
+  parameter int NR  = 30,                // the RCU class's, below the MIU class's
   localparam int K  = 2 * NS + 1,        // issue slots: S0..S(NS-1), P0..P(NS-1), R
   localparam int EW = OOE_PL_EW,
   localparam int IW = OOE_PL_IW
@@ -43,9 +45,10 @@ module ooe_rcupl #(
   input  logic            ooe_core_clk,
   input  logic            ooe_rst_r00h,
   input  logic            gnt_l_cq01h,   // ooe_sched's grant register may change at the next edge
-  input  logic [K-1:0]    lv_cq02h,      // slot k is a granted entry's home
-  input  logic [K*EW-1:0] le_cq02h,      // that entry, through the grant register (ooe_ent_t)
-  input  logic [K*EW-1:0] pe_cq03h,      // and through its late copy, a cycle on
+  input  logic [N-1:0]    gnt_cq01h,     // ooe_sched's grant register
+  input  logic [N*K-1:0]  hq_cq02h,      // ooe_rs's entries: each one's home slot, one-hot
+  input  logic [N*EW-1:0] lq_cq02h,      // its lead read (ooe_ent_t)
+  input  logic [N*EW-1:0] pq_cq02h,      // its late read (ooe_ent_t)
   output logic [K-1:0]    iss_v_cq03h,   // ccv_ooe_rcu_issue's valid per slot
   output logic [K*IW-1:0] iss_pay_cq04h  // its payload: the lead fields with the valid, the rest a cycle on
 );
@@ -66,6 +69,32 @@ module ooe_rcupl #(
       iss_en_cq02h <= gnt_l_cq01h;
       pay_en_cq03h <= iss_en_cq02h;
     end
+  end
+
+  // The RS read (OA's rev 343, (A); ooe_rsread): slot k's granted entry,
+  // through the grant register (the lead read) and through its late copy,
+  // gd, a cycle on (the rest), each over its slot's class: S and R the RCU
+  // entries, P the MIU entries. gd is clocked on the grant register's lead,
+  // so it clears with it; ooe_rs's pay_ready keeps every write off an entry
+  // the grant register holds, so the late read sees it as it was.
+  logic [N-1:0]    gd_cq03h;
+  logic [K-1:0]    lv_cq02h, pv_cq03h;
+  logic [K*EW-1:0] le_cq02h, pe_cq03h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h)          gd_cq03h <= '0;
+    else if (iss_en_cq02h) gd_cq03h <= gnt_cq01h;
+  end
+  for (genvar c = 0; c < 3; c++) begin : g_rd
+    localparam int K0 = c == 0 ? 0 : c == 1 ? NS : 2 * NS;
+    localparam int KS = c == 2 ? 1 : NS;
+    localparam int E0 = c == 1 ? NR : 0;
+    localparam int E1 = c == 1 ? N : NR;
+    ooe_rsread #(.N(N), .K(K), .K0(K0), .KS(KS), .E0(E0), .E1(E1), .W(EW)) u_l (
+      .g_cq01h(gnt_cq01h), .h_cq01h(hq_cq02h), .q_cq01h(lq_cq02h),
+      .v_cq01h(lv_cq02h[K0 +: KS]), .e_cq01h(le_cq02h[K0 * EW +: KS * EW]));
+    ooe_rsread #(.N(N), .K(K), .K0(K0), .KS(KS), .E0(E0), .E1(E1), .W(EW)) u_p (
+      .g_cq01h(gd_cq03h), .h_cq01h(hq_cq02h), .q_cq01h(pq_cq02h),
+      .v_cq01h(pv_cq03h[K0 +: KS]), .e_cq01h(pe_cq03h[K0 * EW +: KS * EW]));
   end
 
   // A continuation on slot k: a lead below it in its group whose footprint
@@ -94,16 +123,20 @@ module ooe_rcupl #(
   // slot.
   logic [K-1:0]    own_cq03h;
   logic [K*NS-1:0] csq_cq03h;
+  // Its enable: a grant, or the cycle after one (cleared, with none behind it).
+  logic ivq_en_cq02h;
+  assign ivq_en_cq02h = iss_en_cq02h || pay_en_cq03h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) iss_v_cq03h <= '0;
-    else if (iss_en_cq02h) iss_v_cq03h <= lv_cq02h | cv_cq02h;
-    else if (pay_en_cq03h) iss_v_cq03h <= '0;   // the cycle after a grant, with none behind it
+    else if (ivq_en_cq02h) iss_v_cq03h <= iss_en_cq02h ? (lv_cq02h | cv_cq02h) : '0;
   end
   always_ff @(posedge ooe_core_clk)
     if (iss_en_cq02h) begin
       own_cq03h <= lv_cq02h;
       csq_cq03h <= cs_cq02h;
     end
+  // The late read finds the lead read's entries (pay_ready).
+  `CCV_ASSERT(late_read, !pay_en_cq03h || pv_cq03h == own_cq03h)
 
   for (genvar k = 0; k < K; k++) begin : g_slot
     localparam bit IS_S = k < NS;

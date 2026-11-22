@@ -1,0 +1,13 @@
+{
+  "_comment": "bad_table.sv's reference_tnoassert (check-1d): refused.",
+  "table": {
+    "apark_cy04h": {
+      "readers": [
+        "ard_cy01h"
+      ],
+      "by": "OA",
+      "date": "2026-11-22",
+      "why": "tnoassert control"
+    }
+  }
+}

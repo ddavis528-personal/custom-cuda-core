@@ -238,11 +238,43 @@
       "doc": "L1 data banks, each a half-rate 1RW SRAM (DA rev 123), 64 KiB each at 512 KiB: four lookups a cycle need at least 8. A lookup's bank is its line address's low clog2(CCV_DCU_BANKS) bits, [9:7] at 8, which are the set index's low bits, so ccv_miu_dcu_req's lead_set_index carries it and no bank field is sent (AR 364). Both counts are powers of two and the banks no more than the sets. MA-4's L1-hit eligibility refuses a group whose leaders' lookups meet in one bank."
     },
     {
+      "name": "CCV_DCU_ECC_K",
+      "value": 128,
+      "status": "arch",
+      "source": "MA-29 (MA rev 151), AR 404 (AR rev 408); MACRO-1 (DA, 2026-11-17)",
+      "require": "(CCV_DCU_ECC_K >= 3) * ((CCV_W_DATA // CCV_DCU_ECC_K) * CCV_DCU_ECC_K == CCV_W_DATA) * ((CCV_DCU_ECC_K // 8) * 8 == CCV_DCU_ECC_K) == 1",
+      "doc": "Data bits of one L1 SECDED code word: (137,128) words, since MACRO-1 caps an SRAM word at 137 bits and fails two (72,64) words at 144 (AR 404 (1)). A slot's read_data on ccv_dcu_miu_rsp is CCV_W_DATA / this many code words, each a whole number of bytes."
+    },
+    {
+      "name": "CCV_DCU_ECC_CHECK_W",
+      "value": 72,
+      "status": "arch",
+      "source": "MA-29, AR 404",
+      "derive": "(CCV_W_DATA // CCV_DCU_ECC_K) * (clog2(CCV_DCU_ECC_K + clog2(CCV_DCU_ECC_K) + 1) + 1)",
+      "doc": "ccv_dcu_miu_rsp's check_bits a slot: (CCV_W_DATA / CCV_DCU_ECC_K) x R(K), R(k) = clog2(k + clog2(k) + 1) + 1 check bits a code word (SEC plus the overall parity), 9 at K = 128, 72 a slot (MA-29, AR 404; AR 401's 128 retired)."
+    },
+    {
       "name": "CCV_DCU_BANK_AGE",
       "value": 16,
       "status": "tunable",
       "decided_at": "MA rev 68 (MA-16, AR 364): a start; MA's Phase 1 model sets it against AR's 729-cycle starvation case",
       "doc": "DCU's age bound on hole-filling, in cycles: a lookup that lost its bank waits at most this long; once a waiter reaches it, its bank takes no new lookup or fill until that waiter is served."
+    },
+    {
+      "name": "CCV_DCU_BANK_QDEPTH",
+      "value": 16,
+      "status": "tunable",
+      "decided_at": "MA-25 (MA-24 under AR 382; Phase 1 cm128 at gap 5, 5,130,918 cycles with credits)",
+      "require": "CCV_DCU_BANK_QDEPTH >= 1",
+      "doc": "Lookup entries in each DCU bank's queue, and MIU's entry credits for that bank (MA-25): a hard reservation, so DCU never refuses a request and never holds more. MIU's counters reset full, a request to the bank spends one at send, and DCU returns one on ccv_dcu_miu_cred's ent_ret as an entry leaves the queue (answered, or gone to MLC as a miss; a fill uses its fill buffer, not an entry). The skeleton's stubs read it as their default, and the environment's CCV_DCU_BANK_QDEPTH overrides it in both for a test of the hold."
+    },
+    {
+      "name": "CCV_DCU_BANK_STDATA",
+      "value": 12,
+      "status": "tunable",
+      "decided_at": "MA-25 (MA-24 under AR 382): the store-data peak MA's Phase 1 cm128 held at 12 a bank",
+      "require": "(CCV_DCU_BANK_STDATA >= 1) * (CCV_DCU_BANK_STDATA <= CCV_DCU_BANK_QDEPTH) == 1",
+      "doc": "Store-data entries in each DCU bank, and MIU's store-data credits for that bank (MA-25): a store spends one beside its entry credit, and DCU returns it on ccv_dcu_miu_cred's std_ret once the store's write leaves (after its merge, which a miss waits for). No more than CCV_DCU_BANK_QDEPTH. The skeleton's stubs read it as their default, and the environment's CCV_DCU_BANK_STDATA overrides it in both."
     },
     {
       "name": "CCV_W_DCU_SET",
@@ -266,6 +298,30 @@
       "decided_at": "MA-19 (re AR 370 (3), DA rev 124): one entry per spare row, 16 data instances",
       "require": "CCV_DCU_UE_TRACK >= 1",
       "doc": "Entries in DCU's UE location table (AR 370 (3); DA rev 124: a clean line's uncorrectable error is recovered only a bounded number of times). Each holds a location: the array row a line occupied (bank, instance and row, MA-19's 13 bits), not the line's address, since a bad bit is physical. A clean line's first UE at a location is recovered (invalidated, refetched as a miss) and recorded; a second at a recorded location, or one that finds the table full, is a hard error, core-fatal on ccv_dcu_cru_err. Cleared only by reset; host-readable, so repair can map the rows out. MA's to size. The skeleton's DCU stub reads it as its default, and the environment's CCV_DCU_UE_TRACK overrides it for a test of the full table."
+    },
+    {
+      "name": "CCV_DCU_WAYPRED_BITS",
+      "value": 4,
+      "status": "tunable",
+      "decided_at": "DA rev 128 (MA-23), MA-26; MA-30 (MA rev 154), AR 405 (AR rev 409): 4, within 0.3% of 5 on cm128priv for 4,096 fewer flops; 3 not taken",
+      "require": "CCV_DCU_WAYPRED_BITS <= 16",
+      "doc": "DCU's way predictor: the width of each way's partial-tag fold, the XOR fold of the line's tag, PA[47:16], in its k-bit chunks (sim/skel/wayfold.h and rtl/common/ccv_common_wayfold.sv, the one fold MIU's TLB and DCU's table write share; AR 405 (3)). 0 turns prediction off (the hit is then 9, CCV_LAT_L1_HIT_BASE), 1 to 16 on (the hit is 8). When on, the fold table is flops in dcu_bctl, not a register file: 64 sets x 8 ways x this a bank, 16,384 flops at 4, written only on a fill or eviction (MA-30). MIU sends the lookup's fold as ccv_miu_dcu_req's pa_fold, since DCU cannot fold the PA itself in H+3 within 25 NGD. The p1 model's CCV_P1_WAYPRED maps to it. MA's to move, AR's runs deciding."
+    },
+    {
+      "name": "CCV_DCU_WAYPRED_SEL",
+      "value": 0,
+      "status": "tunable",
+      "decided_at": "DA rev 128 (MA-23), MA-26; MA-30, AR 405: index (recent dropped)",
+      "require": "CCV_DCU_WAYPRED_SEL <= 1",
+      "doc": "How the way predictor chooses among the ways whose fold matches: 0 index (the lowest matching way), 1 recent (the most recently used). 0 since MA-30 and AR 405: the tag RF keeps no LRU and PLRU moved to dcu_bctl's flops, so recent is dropped and stays only for the models' sweeps. Read only when CCV_DCU_WAYPRED_BITS is not 0. The p1 model's WPSEL maps to it (MA-26, AR 386)."
+    },
+    {
+      "name": "CCV_W_PA_FOLD",
+      "value": 4,
+      "status": "tunable",
+      "decided_at": "with CCV_DCU_WAYPRED_BITS",
+      "derive": "max(1, CCV_DCU_WAYPRED_BITS)",
+      "doc": "ccv_miu_dcu_req's pa_fold width (MA-30, AR 405): CCV_DCU_WAYPRED_BITS, kept at 1 bit, unread, when prediction is off."
     },
     {
       "name": "CCV_SPM_BYTES",
@@ -845,6 +901,16 @@
       "source": "ports spec 2026-09-23; AR's rev 289 (re:RI-11), 2 to 3"
     },
     {
+      "name": "CCV_LAT_DECQ_CREDIT_DELAY",
+      "value": 0,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "AR 395 (2), OA-458 (re:TI-493)",
+      "derive": "max(0, link_n('ooe_fet_redirect') + bnd_rx('ooe_fet_redirect') - link_n('ooe_fet_decq_credit') - bnd_rx('ooe_fet_decq_credit'))",
+      "require": "link_n('ooe_fet_decq_credit') + bnd_rx('ooe_fet_decq_credit') + CCV_LAT_DECQ_CREDIT_DELAY >= link_n('ooe_fet_redirect') + bnd_rx('ooe_fet_redirect')",
+      "doc": "Cycles OOE holds a walked uop's decode-queue credit past its rewind beat's send cycle, so the credit on ccv_ooe_fet_decq_credit lands at FET no earlier than the beat on ccv_ooe_fet_redirect (AR 395 (2)): the redirect crossing less the credit crossing, from params/links.json, when that is positive. FET migrates a demoted warp once its credits are back to full, so a credit that overtook its beat would let FET decide the lanes in no beat before the beat landed. 0 while the two crossings are equal. OOE's model and RTL read it."
+    },
+    {
       "name": "CCV_WAKE_LAT",
       "value": 4,
       "status": "arch",
@@ -1054,11 +1120,12 @@
     },
     {
       "name": "CCV_LAT_L1_HIT_BASE",
-      "value": 7,
+      "value": 8,
       "status": "tunable",
-      "decided_at": "MIU per-block session",
-      "source": "OOE Stage 4 session (2026-10-02), interface change set",
-      "doc": "L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. An assumption until MIU's session confirms it."
+      "decided_at": "DA rev 128 (MA-23: arrays (B), tag then data, way prediction a parameter); MA-26, AR 386",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; MA-26",
+      "derive": "9 - (CCV_DCU_WAYPRED_BITS > 0)",
+      "doc": "L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. DCU's data array is (B), tag then data (DA rev 128): 9 with no way prediction (CCV_DCU_WAYPRED_BITS 0), 8 with it, the predicted way read beside the tags. A mispredicted hit re-reads with a second bank access under the half-rate rule, on the bank-conflict loser's path: it answers no earlier than due + 2, and MIU takes it as a miss (MA-26; AR 390, OA-442; MI-9)."
     },
     {
       "name": "CCV_LAT_RCU",
@@ -1282,7 +1349,7 @@
     },
     {
       "name": "CCV_LAT_L1_HIT",
-      "value": 7,
+      "value": 8,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE Stage 4 session (2026-10-02), interface change set; A-46, A-48; A-61",
@@ -1316,12 +1383,22 @@
     },
     {
       "name": "CCV_LAT_L1_WAKE",
-      "value": 13,
+      "value": 14,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
       "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') + bnd_rx('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue'))",
       "doc": "Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels. Each crossing is CCV_LAT_HOP + link_n + bnd_rx (AR's revs 300 and 301 (re:RI-16))."
+    },
+    {
+      "name": "CCV_LAT_MIU_PAIR_LAG",
+      "value": 3,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "MI-18, MA's response (MA rev 145)",
+      "derive": "(CCV_LAT_HOP + link_n('ooe_rcu_issue') + bnd_rx('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr') + bnd_rx('rcu_miu_addr')) - (CCV_LAT_HOP + link_n('ooe_miu_memop') + bnd_rx('ooe_miu_memop'))",
+      "require": "CCV_LAT_MIU_PAIR_LAG >= 1",
+      "doc": "Cycles from MIU holding a memop's payload (ccv_ooe_miu_memop) to holding its address payload (ccv_rcu_miu_addr): the address path less the memop path, the two terms of the max in CCV_LAT_L1_WAKE's derive. miu_pair loads the A1 memop fields from the MQ entry at H-1, so it must be at least 1 (a lag of 0 would need the memop captured straight into A1). miu_pair takes it as a module parameter defaulting to this value (MI-18)."
     },
     {
       "name": "CCV_LAT_L1_ECC",
@@ -1334,7 +1411,7 @@
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 15,
+      "value": 16,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",

@@ -280,7 +280,7 @@ if out=$("$dir/decrx_tb" "$seeds" 2>&1); then
 else
   say "decrx == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in adv-late late-lead no-adv-bypass no-double keep-stale no-ev-lead no-rel; do
+for c in adv-late late-lead no-adv-bypass no-double no-double-adv keep-stale no-ev-lead no-rel no-walk; do
   if DECRX_CONTROL=$c "$dir/decrx_tb" 3 >/dev/null 2>&1; then
     say "  control $c (decrx)" "MISSED"; fail=1
   else
@@ -326,7 +326,7 @@ if ! python3 test/ooe/pl-fields.py "$dir/pl_fields.h" >"$dir/build.log" 2>&1 ||
       --trace -GNS="$secs" --top-module ooe_pl_tb \
       --Mdir "$dir" -o pl_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -I$PWD/$dir -DPL_NS=$secs -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_rcupl.sv" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_rsread.sv" "$PWD/rtl/ooe/ooe_rcupl.sv" \
       "$PWD/rtl/ooe/ooe_mempl.sv" "$PWD/test/ooe/ooe_pl_tb.sv" "$PWD/test/ooe/pl_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >>"$dir/build.log" 2>&1; then
   say "pl: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
@@ -336,7 +336,7 @@ if out=$("$dir/pl_tb" "$seeds" 2>&1); then
 else
   say "rcupl, mempl == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-gnt-lead no-mem-lead no-dsc-lead early-pe no-cok no-fp; do
+for c in no-gnt-lead no-mem-lead no-dsc-lead freed-entry no-cok no-fp; do
   if PL_CONTROL=$c "$dir/pl_tb" 3 >/dev/null 2>&1; then
     say "  control $c (pl)" "MISSED"; fail=1
   else
@@ -405,7 +405,7 @@ if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno
       --trace $(for kv in $rob_p; do printf -- '-G%s ' "$kv"; done) --top-module ooe_rob_tb \
       --Mdir "$dir" -o rob_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe $(for kv in $rob_p; do printf -- '-DRB_%s ' "$kv"; done) -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/rtl/ooe/ooe_redir.sv" "$PWD/rtl/ooe/ooe_barpick.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/rtl/ooe/ooe_redir.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
   say "rob: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi
@@ -426,7 +426,7 @@ fi
 # traces move (no-copy, at CCV_P_DECQ 15: first caught at seed 6).
 for c in drop-free no-copy no-lead fill-order nop-real two-in-a-cycle wrong-row flip-taken right-always branch-off-slot \
          no-branch-lead no-miu no-store drop-killed-fill late-fill shared-ports store-shift no-fault fault-cause fault-any-port fault-port0 no-fault-lead fault-addr no-alloc-lag no-free-lag \
-         redir-warp redir-epoch redir-ntm rd-unled ckf-unled bar-kind bar-no-hold bar-overwrite no-bars; do
+         redir-warp redir-epoch redir-ntm rd-unled ckf-unled; do
   if ROB_CONTROL=$c "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (rob)" "MISSED"; fail=1
   else
@@ -440,30 +440,36 @@ if out=$(ROB_CONTROL=two-resolutions "$dir/rob_tb" 3 2>&1) || ! grep -q "one_res
 else
   say "  control two-resolutions (rob)" "caught"
 fi
-# OI-184's lag-1 redirect option (ooe_rob_w and ooe_redir at PWV=1): the
-# payload leaves with the valid, two cycles after the model's send, as the
-# model's redirect_send_lag=1 lands it. pwv-late checks it as the two-cycle
-# form; the redirect and free controls run again on this form.
-dir=build/ooe-rtl/rob-pwv
+# OI-184's lag-1 redirect option, the default (PWV=1, DA 130): the payload
+# leaves with the valid, two cycles after the model's send. pwv-late checks
+# it as the two-cycle form.
+if ROB_MISPREDICT=1 ROB_CONTROL=pwv-late "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
+  say "  control pwv-late (rob)" "MISSED"; fail=1
+else
+  say "  control pwv-late (rob)" "caught"
+fi
+# The two-cycle form (PWV=0), kept as an option: its own build, with the
+# redirect and free controls.
+dir=build/ooe-rtl/rob-pwv0
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      --trace $(for kv in $rob_p PWV=1; do printf -- '-G%s ' "$kv"; done) --top-module ooe_rob_tb \
+      --trace $(for kv in $rob_p PWV=0; do printf -- '-G%s ' "$kv"; done) --top-module ooe_rob_tb \
       --Mdir "$dir" -o rob_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-      -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe $(for kv in $rob_p PWV=1; do printf -- '-DRB_%s ' "$kv"; done) -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/rtl/ooe/ooe_redir.sv" "$PWD/rtl/ooe/ooe_barpick.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" \
+      -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe $(for kv in $rob_p PWV=0; do printf -- '-DRB_%s ' "$kv"; done) -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rob_w.sv" "$PWD/rtl/ooe/ooe_redir.sv" "$PWD/test/ooe/ooe_rob_tb.sv" "$PWD/test/ooe/rob_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
-  say "rob (PWV): builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+  say "rob (PWV=0): builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi
 if out=$(ROB_MISPREDICT=1 "$dir/rob_tb" "$seeds" 2>&1) && grep -q "mismatches=0 model_failures=0" <<<"$out"; then
-  say "rob (PWV) == model, mispredicting" "PASS ($(grep '^rob_tb' <<<"$out" | sed 's/.*seeds=//'))"
+  say "rob (PWV=0) == model, mispredicting" "PASS ($(grep '^rob_tb' <<<"$out" | sed 's/.*seeds=//'))"
 else
-  say "rob (PWV) == model, mispredicting" "FAIL"; echo "$out" | tail -8; fail=1
+  say "rob (PWV=0) == model, mispredicting" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in pwv-late redir-warp redir-epoch redir-ntm rd-unled ckf-unled; do
+for c in redir-warp redir-epoch redir-ntm rd-unled ckf-unled; do
   if ROB_MISPREDICT=1 ROB_CONTROL=$c "$dir/rob_tb" "$seeds" >/dev/null 2>&1; then
-    say "  control $c (rob PWV)" "MISSED"; fail=1
+    say "  control $c (rob PWV=0)" "MISSED"; fail=1
   else
-    say "  control $c (rob PWV)" "caught"
+    say "  control $c (rob PWV=0)" "caught"
   fi
 done
 
@@ -848,7 +854,7 @@ if ! verilator --cc --exe --build -j 0 -O2 --assert --public-flat-rw --trace -Wa
       -Wno-PINCONNECTEMPTY ${wake_g//,/ } -GNR="$n_rcu" -GA="$width" -GS="$slots" -GFB="$pick_fb" \
       --top-module ooe_trio --Mdir "$dir" -o trio_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/generated/ccv_params_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_rsread.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
       "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
       "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" \
       >"$dir/build.log" 2>&1; then

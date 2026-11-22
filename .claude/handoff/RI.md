@@ -20,7 +20,7 @@ docs/rcu-impl.md (RA's handoff, section 1). Spec: docs/design-snapshots/rcu-arch
 - Work trees: /home/user/ri-wt2 (ri-asm2, assembly), ri-wt4 (ri-sweep, pushed); compiler repo read only.
 - Push: tools/gate-push.sh with CCV_PUSH_BRANCHES=ccr-888218a3-20cauz. Merge commits only.
   No PRs. No model ids in commits/code. Name commits for TI to merge in the RI tab.
-- Last push: 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
+- Last push: 769e4ca6 (2026-11-21 sweep, PASS full). Earlier: 5d1b634d (11-20 sweep); cae55e0c (11-19 sweep); 05af449c (2026-11-15, SCOPED PASS 21/24, ri-signoff in ri-wt12): waivers signed + rcu-exit.md.
   Before: ce5f44dd (2026-11-15, PASS full, ri-sweep15 in ri-wt12): sweep + address from param (RI-54).
   Before: 9f513f3b (2026-11-14, SCOPED PASS 24/24, ri-sfuclass in ri-wt10): SFU pair (TI 996866d1+c27ff714,
   RI decode/dec_pkg/lanes_lockstep sfusec) on sweep 4be9f37b. Before: 7e10e72f (2026-11-13, SCOPED PASS 15/24, ri-svh in ri-wt9): SV top with RTL, Q-53, timing. Before: c64b7417, then 8fcec64b (2026-11-10, SPLIT PASS 23/23, chain-ri17b, branch ri-asm4 in ri-wt7): ccv_rcu.sv
@@ -57,6 +57,37 @@ DA 114/115 bar for zero-cycle rx ends (S1 gain): <=0.2% stays flopped; 0.2-0.5% 
 architect may approve only if the end meets module NGD without the flop; can't meet 12 NGD -> Daniel.
 
 ## Open work, most urgent first
+-26. DONE (2026-11-21 sweep) PASS full, pushed 769e4ca6 (ri-sweep21 in ri-wt). Merged: c22116ce 1, infra 209,
+   miu-dcu-spec 15+5 (resolve), 58815650 (MI) 2+2, 5e4d6c70 (DI) 4 (resolve), 80102643 4; no conflicts.
+   SKIPPED 57eff422 (20): conflicts in OI/TI files (OI.md, rtl/ooe/*, sim/ooe, sim/skel/kernel.h, test/ooe,
+   cg-waivers) - AR 402 raised it, OI resolves; merge in a later sweep once resolved, no RI row.
+   Register: nothing for RI (MA-18 MIU no-flop receivers, no RCU change; DI-8/9 RCU-RTL diff was MIU bug fixed
+   51cf5dd2; TI-502/OA 462-464 OOE demotion credit). Fri pongs all 11 OK. Bookmarks: Conv 20 AR 406 OA 466
+   IS 201 TI 511 OI 399 CP 160 DA 128 RA 157 RI 91 MA 145 MI 29 DI 29. Still open: Daniel's RCU sign-off (RA 155).
+-25. DONE (2026-11-20 sweep) PASS full, pushed 5d1b634d (ri-sweep20 in ri-wt). Merged: c22116ce 29, 126afa13 ~9,
+   3868632d (TI, has 6464a030 resume) 113 via -s resolve, 80102643 28, doowtf 4, miu-dcu-spec 6, 58815650 (MI) 2+1,
+   5e4d6c70 (DI) 7; no conflicts. Merges are slow (2-7 merge bases): run them detached with a per-merge timeout;
+   -s resolve fails past 6 bases ("cannot read more than 8 trees"), so let ort run. From now on, a killed gate
+   reruns the same command with CCV_RESUME=1 (TI-490/IS-27). Register: nothing for RI; MI's transp4 demotion bug
+   routed to the demotion/barrier owner, not RI. Fri pings 2026-11-20: pongs ok from all 11 (AR OA IS TI OI CP RA
+   MA RH MI DI); answered 10 pings (all me=ok). Bookmarks: Conv 20 AR 400 OA 460 IS 201 TI 498 OI 395 CP 160 DA 128
+   RA 157 RI 91 MA 135 MI 16 DI 12. Waiting: Daniel's sign-off.
+-24. DONE (2026-11-19 sweep) PASS full, pushed cae55e0c (ri-sweep19 in ri-wt; two gates lost to container
+   restarts first). Merged: ccr-58815650 (MI) 63, ccr-5e4d6c70 (DI; roster.json conflict: both MI and DI rows kept,
+   each with its own session id; trust-report.md ours, generated), 9eb50716 27, miu-dcu-spec 9, 80102643 27,
+   c22116ce 18, 57eff422 20, 3868632d 10. Register: nothing for RI; Conv 20 adds MI and DI. TI-490 (rev 489, DA):
+   RESUMED PASS counts as full; after gate-wait says killed, rerun the same command with CCV_RESUME=1, once TI's
+   6464a030 is merged (next sweep). Bookmarks: Conv 20 AR 395 OA 446 IS 199 TI 489 OI 380 CP 160 DA 128 RA 156
+   RI 91 MA 127. Waiting: Daniel's sign-off.
+-23. DONE (2026-11-18) Daily sweep, PASS full, pushed 54347d2f (ri-sweep18 in ri-wt): c22116ce 92, 57eff422 24,
+   9eb50716 11, 80102643 9, miu-dcu-spec 8; no conflicts. Register: nothing for RI. RA 155: RCU reconciled; RA's report
+   is with Daniel, who holds final sign-off pending review. RA 156: no RCU macros. OA 434 cites RCU's lead waivers as
+   precedent. Bookmarks: Conv 19 AR 384 OA 436 IS 197 TI 480 OI 374 CP 160 DA 127 RA 156 RI 91 MA 97.
+   Waiting: Daniel's sign-off.
+-22. DONE (2026-11-17) TI-479: lane-tid check fired falsely on SFU-only answers (sgemm, stride benches). Fix 536c9210
+   (ri-sfutid in ri-wt; core marks LaneMsg lane/sfu, block keeps sfu_tid_ at kSfuW), SCOPED PASS 10/24, pushed. Benches
+   on gate-scratch/TI-stride in ri-wt15 (scratch, detached): sgemm-n256/n512 + transpose-n256 PASS, cycles unchanged.
+   RI-62 (rev 91); TI 480: merged as 358ace66, sgemm passes. Bookmarks RI 91, TI 480.
 -21. DONE (2026-11-17) Daily sweep, PASS full, pushed 93bf1bb7 (ri-sweep17 in ri-wt): doowtf 38 (incl. TI rokilllane
    1861cc51), miu-dcu-spec 25, 3868632d 42, 80102643 17, 57eff422 24, 9eb50716 7, c22116ce 9; no conflicts. First run
    died on a full disk: deleted build/ in ri-wt3..14 (stale). Register: nothing for RI. RA 152 (no RCU macros), RA 153/154

@@ -1,5 +1,5 @@
 {
-  "_comment": "Clock-gating units for OI's OOE RTL (tools/check-cg.py; docs/rtl-coding-style.md, 'Local clock gating'). Each bench is the module's live-model bench (test/ooe/*_tb.cpp) in its --cg mode (test/ooe/cg_trace.h), built by test/ooe/cg-build.sh at the parameters test/ooe/run-rtl.sh uses: idle is reset and then no work, medium the model's traffic with two idle cycles after each model cycle, high the model's traffic every cycle. The RS sizes here are rtl/generated/ccv_params_pkg.sv's (45 entries, 30 RCU); ooe_wake's latencies are its defaults, which are the parameters' values (LAT_MISS 16, payload stages + CCV_LAT_L1_CMPL, since AR 368 and OI's 5e1f3789); the replay refuses a unit whose parameters drift from its bench's. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
+  "_comment": "Clock-gating units for OI's OOE RTL (tools/check-cg.py; docs/rtl-coding-style.md, 'Local clock gating'). Each bench is the module's live-model bench (test/ooe/*_tb.cpp) in its --cg mode (test/ooe/cg_trace.h), built by test/ooe/cg-build.sh at the parameters test/ooe/run-rtl.sh uses: idle is reset and then no work, medium the model's traffic with two idle cycles after each model cycle, high the model's traffic every cycle. The RS sizes here are rtl/generated/ccv_params_pkg.sv's (45 entries, 30 RCU); ooe_wake's latencies are its defaults, which are the parameters' values, but for LAT_SPEC and LAT_MISS, set here to test/ooe/wake-params.py's (CCV_LAT_L1_WAKE 14 and payload stages + CCV_LAT_L1_CMPL 17 since the L1 hit went to 8, DA rev 128, MA-26) until OI moves its defaults; the replay refuses a unit whose parameters drift from its bench's. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
   "units": [
     {
       "name": "ooe_wake",
@@ -10,7 +10,9 @@
         "rtl/ooe/ooe_confirm.sv"
       ],
       "params": {
-        "N": 45
+        "N": 45,
+        "LAT_SPEC": 14,
+        "LAT_MISS": 17
       },
       "clock": "ooe_core_clk",
       "reset": "ooe_rst_r00h",
@@ -148,6 +150,7 @@
       "name": "ooe_rcupl",
       "module": "ooe_rcupl",
       "files": [
+        "rtl/ooe/ooe_rsread.sv",
         "rtl/ooe/ooe_rcupl.sv"
       ],
       "params": {
@@ -165,6 +168,7 @@
       "name": "ooe_mempl",
       "module": "ooe_mempl",
       "files": [
+        "rtl/ooe/ooe_rsread.sv",
         "rtl/ooe/ooe_mempl.sv"
       ],
       "params": {
@@ -578,26 +582,6 @@
         "build": "test/ooe/cg-build.sh ooe_rob_w {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "u_redir"
-      }
-    },
-    {
-      "name": "ooe_barpick",
-      "module": "ooe_barpick",
-      "files": [
-        "rtl/ooe/ooe_barpick.sv"
-      ],
-      "params": {
-        "S": 4,
-        "WW": 5,
-        "WT": 4,
-        "WB": 4
-      },
-      "clock": "ooe_core_clk",
-      "reset": "ooe_rst_r00h",
-      "bench": {
-        "build": "test/ooe/cg-build.sh ooe_rob_w {dir}",
-        "run": "{dir}/tb --cg {scenario} {vcd}",
-        "scope": "u_barpick"
       }
     }
   ]

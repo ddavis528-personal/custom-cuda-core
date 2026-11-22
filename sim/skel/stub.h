@@ -11,6 +11,8 @@
 #define CCV_SKEL_STUB_H
 
 #include "kernel.h"
+#include "secded.h"
+#include "wayfold.h"
 
 #include "ccv/event.h"
 #include "ccv_params.h"
@@ -58,6 +60,8 @@ struct Ch {
            // Notices (OA-23): each promises its partner's valid on the same
            // slot a fixed lead after the notice lands.
            fill_ntc = chanId("ccv_dcu_miu_fill_ntc"), cmpl_hint = chanId("ccv_miu_ooe_cmpl_hint"),
+           // DCU's per-bank credit returns (MA-25).
+           dcu_cred = chanId("ccv_dcu_miu_cred"),
            // Demotion and migration (TI-24).
            ooe_status = chanId("ccv_ooe_rau_status"), rau_demote = chanId("ccv_rau_ooe_demote"),
            ooe_drained = chanId("ccv_ooe_rau_drained"), ooe_map = chanId("ccv_ooe_rcu_map"),
@@ -118,6 +122,56 @@ inline Line getLine(const Bits &b, uint32_t lsb) {
   for (unsigned k = 0; k != kLine; ++k) l[k] = uint8_t(b.get(lsb + 8 * k, 8));
   return l;
 }
+
+// ---- L1 check bits on ccv_dcu_miu_rsp (MA-28 (c), AR 401; MA-29, AR 404) ------
+// The stored SECDED check bits of each CCV_DCU_ECC_K-bit code word of the
+// slot's line, (137,128) at K = 128: 9 a word, 72 a slot
+// (CCV_DCU_ECC_CHECK_W), the code rtl/common's SECDED computes (secded.h).
+constexpr unsigned kEccK = ccv::kDcuEccK;                 // data bits a code word
+constexpr unsigned kEccBytes = kEccK / 8;
+constexpr unsigned kLineWords = kLine / kEccBytes;        // code words a slot
+inline const Secded &secdedL1() { static const Secded s(kEccK); return s; }
+inline unsigned eccR() { return secdedL1().checkBits(); }
+static_assert(kLine * 8 % kEccK == 0 && kEccK % 8 == 0, "CCV_DCU_ECC_K");
+inline Bits lineWord(const Line &l, unsigned w) {
+  Bits d(kEccK);
+  for (unsigned b = 0; b != kEccBytes; ++b) d.set(8 * b, 8, l[kEccBytes * w + b]);
+  return d;
+}
+/// DCU's side: the check bits of the line it sends.
+inline void putCheckBits(Bits &r, uint32_t lsb, const Line &l) {
+  assert(kLineWords * eccR() == ccv::kDcuEccCheckW);
+  for (unsigned w = 0; w != kLineWords; ++w)
+    r.set(lsb + eccR() * w, eccR(), secdedL1().encode(lineWord(l, w)));
+}
+/// MIU's side (R2): every word corrected by its check bits; true when any
+/// word's syndrome is non-zero, the OR over the slot's code words.
+inline bool fixLine(Line &l, const Bits &r, uint32_t lsb) {
+  bool any = false;
+  for (unsigned w = 0; w != kLineWords; ++w) {
+    const Secded::Result x =
+        secdedL1().decode(lineWord(l, w), uint32_t(r.get(lsb + eccR() * w, eccR())));
+    if (!x.syn) continue;
+    any = true;
+    for (unsigned b = 0; b != kEccBytes; ++b) l[kEccBytes * w + b] = uint8_t(x.q.get(8 * b, 8));
+  }
+  return any;
+}
+
+// ---- The way predictor's fold (MA-30, AR 405 (3)) -------------------------------
+// wayfold.h's fold of PA[47:16], k = CCV_DCU_WAYPRED_BITS (the environment's
+// overrides it, the same on both sides); 0 when off. The tag starts above the
+// set index at its built size.
+static_assert(kWayFoldLo == 7 + ccv::prov::kWDcuSet, "the fold's tag is above the set index");
+static_assert(kWayFoldLo + kWayFoldW == ccv::prov::kWPa, "the fold's tag ends at the PA's top");
+inline unsigned wayPredBits() {
+  static const unsigned k = [] {
+    const char *v = std::getenv("CCV_DCU_WAYPRED_BITS");
+    return v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : unsigned(ccv::prov::kDcuWaypredBits);
+  }();
+  return k;
+}
+inline unsigned paFold(uint64_t pa) { return wayFold(pa, wayPredBits()); }
 
 // ---- S1 wire conventions (docs/skeleton.md lists them) ------------------------
 //

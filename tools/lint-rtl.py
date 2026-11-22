@@ -269,12 +269,60 @@ IDENT_RE = re.compile(r"\b[a-z]\w*\b")
 
 
 def feedback_decls(dirpath, module):
-    """(path, reads, bypass) from <module>.feedback.json."""
+    """(path, reads, bypass, table) from <module>.feedback.json."""
     p = os.path.join(dirpath, module + ".feedback.json")
     if not os.path.exists(p):
-        return None, {}, {}
+        return None, {}, {}, {}
     d = json.load(open(p))
-    return os.path.relpath(p, ROOT), d.get("reads", {}), d.get("bypass", {})
+    return (os.path.relpath(p, ROOT), d.get("reads", {}), d.get("bypass", {}),
+            d.get("table", {}))
+
+
+# CCV-L23's declared table (DA rev 131, OA 452 with its seven conditions;
+# OI-187): an array written at its writer's stage and read long after, through
+# an index at the reader's own stage, as ooe_ratmap's parked table is (a
+# demotion parks a word, a restore reads it). The read counts at the reader's
+# stage, as a bypass read does. Declared in <module>.feedback.json:
+# {"table": {"<array>": {"readers": ["<reader>", ...], "by", "date", "why"}}}.
+ASSERT_RE = re.compile(r"(?:`CCV_ASSERT(?:_AT)?|\bassert\s+property|\bassert)\s*\(")
+
+
+def array_decl(body, name):
+    """(words, decl text) for name's declaration in a module body: words is its
+    unpacked dimension's count (None for a plain register or vector)."""
+    m = re.search(r"\b(?:logic|reg|bit)\b[^;]*?\b%s\b\s*(\[[^\]]*\])?[^;]*;" % re.escape(name), body)
+    if not m:
+        return None, None
+    if not m.group(1):
+        return None, m.group(0)
+    dim = m.group(1)[1:-1]
+    r = re.fullmatch(r"\s*(\d+)\s*:\s*(\d+)\s*", dim)
+    if r:
+        return abs(int(r.group(1)) - int(r.group(2))) + 1, m.group(0)
+    r = re.fullmatch(r"\s*(\d+)\s*", dim)
+    return (int(r.group(1)) if r else 2), m.group(0)
+
+
+def index_reads(text, name):
+    """The index expressions name is read through in text, and whether every
+    read of it is indexed."""
+    idx, bare = [], False
+    for m in re.finditer(r"\b%s\b" % re.escape(name), text):
+        nxt = text[m.end():]
+        if re.match(r"\s*\[", nxt):
+            j = m.end() + nxt.index("[")
+            depth = 0
+            for k in range(j, len(text)):
+                if text[k] == "[":
+                    depth += 1
+                elif text[k] == "]":
+                    depth -= 1
+                    if not depth:
+                        idx.append(text[j + 1:k])
+                        break
+        else:
+            bare = True
+    return idx, bare
 
 
 def data_graph(src):
@@ -1354,7 +1402,132 @@ def check_file(path, rel):
         ddeps = data_graph(src)
         byp_ok = {}
         for s0, e0, n, ln0 in spans:
-            fp, decl, byp = feedback_decls(os.path.dirname(path), n)
+            fp, decl, byp, tbl = feedback_decls(os.path.dirname(path), n)
+            body = src[s0:e0]
+            # A declared table (DA rev 131, OA 452): verified against all seven
+            # conditions, the timing's (6) being check-ngd's, which measures
+            # the read whatever the tags say, and the fixtures' (7) check-1d's.
+            for arr, d in sorted(tbl.items()):
+                readers = d.get("readers", [])
+                why = None
+                sa = stage_of(arr)
+                words, dtext = array_decl(body, arr)
+                if d.get("by") not in FEEDBACK_BY:              # (1)
+                    why = ("not an architect's (by %r, not one of %s): each is reviewed "
+                           "alone before it is listed" % (d.get("by"), ", ".join(FEEDBACK_BY)))
+                elif not isinstance(readers, list) or not readers:
+                    why = "it names no reader: write \"readers\": [\"<reader>\", ...]"
+                elif dtext is None:
+                    why = "%s is not declared in %s" % (arr, n)
+                elif words is None or words < 2:                # (2)
+                    why = ("%s is not an array: a table is an unpacked dimension of 2 or "
+                           "more words, read only through an index, never a plain register"
+                           % arr)
+                elif sa is None:
+                    why = "%s carries no stage tag: a table keeps its writer's" % arr
+                if why:
+                    add("CCV-L23", ln0, "%s: table %s is refused: %s" % (fp, arr, why))
+                    continue
+                # (2) read only through an index; (3) written only in an
+                # always_ff, under an enable, one stage past its write data,
+                # index and enable.
+                wr, rd_bare = [], False
+                for kind, clk, b, bl, bpos in always_blocks(body):
+                    regions = cond_regions(b)
+                    for apos, lhs, op, rhs in assignments(b):
+                        if lhs != arr:
+                            continue
+                        lidx = re.match(r"\s*%s\s*\[([^\]]*)\]" % re.escape(arr), b[apos:])
+                        conds = [c for a0, a1, c in regions if a0 <= apos < a1]
+                        wr.append((kind, rhs, lidx.group(1) if lidx else "", conds))
+                for m in re.finditer(r"\bassign\s+[^;]+;", body):
+                    for _, lhs, _, _ in assignments(m.group(0)[len("assign"):]):
+                        if lhs == arr:
+                            wr.append(("assign", "", "", []))
+                if not wr:
+                    why = "%s is never written" % arr
+                elif any(k != "ff" for k, _, _, _ in wr):
+                    why = "%s is written outside an always_ff" % arr
+                elif any(not c for _, _, _, c in wr):
+                    why = "%s is written without an enable: write it only under an if" % arr
+                else:
+                    ins = [stage_of(w)[2] for k, rhs, li, c in wr
+                           for w in re.findall(r"[a-z]\w*", " ".join([rhs, li] + c))
+                           if stage_of(w) and stage_of(w)[1] != "r" and w != arr]
+                    if not ins:
+                        why = "%s's writes read no tagged signal, so its tag is no writer's" % arr
+                    elif sa[2] != max(ins) + 1:
+                        why = ("%s is tagged stage %02d, but its writes' data, index and enable "
+                               "reach stage %02d: a table keeps its writer's tag, one past it"
+                               % (arr, sa[2], max(ins)))
+                outside = re.sub(r"\b%s\s*\[[^\]]*\]\s*(<=|=)(?!=)" % re.escape(arr), "", body)
+                if not why and index_reads(outside, arr)[1]:
+                    why = "%s is read whole somewhere: a table is read only through an index" % arr
+                if why:
+                    add("CCV-L23", ln0, "%s: table %s is refused: %s" % (fp, arr, why))
+                    continue
+                # (1) every reader reads it; (4) through an index at its own stage.
+                wen = set(w for _, _, _, c in wr for w in IDENT_RE.findall(" ".join(c)))
+                ridx = set()
+                okr = []
+                for reader in readers:
+                    sr = stage_of(reader)
+                    if arr not in graph[0].get(reader, ()):
+                        add("CCV-L23", ln0, "%s: table %s lists reader %s, which does not read "
+                            "it: remove it (a stale reader is refused)" % (fp, arr, reader))
+                        continue
+                    if sr is None:
+                        add("CCV-L23", ln0, "%s: table %s's reader %s carries no stage tag"
+                            % (fp, arr, reader))
+                        continue
+                    seqr = reader in graph[1]
+                    at = sr[2] - 1 if seqr else sr[2]
+                    exprs = []
+                    for kind, clk, b, bl, bpos in always_blocks(body):
+                        for apos, lhs, op, rhs in assignments(b):
+                            if lhs == reader:
+                                exprs += index_reads(rhs, arr)[0]
+                    for m in re.finditer(r"\bassign\s+[^;]+;", body):
+                        for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
+                            if lhs == reader:
+                                exprs += index_reads(rhs, arr)[0]
+                    bad_ix = None
+                    for e in exprs:
+                        ridx.update(re.findall(r"[a-z]\w*", e))
+                    for e in exprs or [""]:
+                        ws = [w for w in re.findall(r"[a-z]\w*", e)]
+                        tags = [stage_of(w) for w in ws]
+                        if not ws or any(t is None for t in tags):
+                            bad_ix = "its index %r is not a tagged register" % e.strip()
+                        elif max(t[2] for t in tags) != at or \
+                                not any(w in graph[1] or (stage_of(w)[2] == at) for w in ws):
+                            bad_ix = ("its index %r is at stage %02d, not the reader's own "
+                                      "(%02d%s)" % (e.strip(), max(t[2] for t in tags), at,
+                                                    ", its D side" if seqr else ""))
+                        if bad_ix:
+                            break
+                    if bad_ix:
+                        add("CCV-L23", ln0, "%s: table %s's read by %s is refused: %s"
+                            % (fp, arr, reader, bad_ix))
+                        continue
+                    okr.append(reader)
+                # (5) an assertion naming the write enable and the read.
+                named = False
+                for m in ASSERT_RE.finditer(body):
+                    txt = balanced(body, m.end() - 1)[0]
+                    ids = set(IDENT_RE.findall(txt))
+                    if ids & wen and (arr in ids or ids & ridx):
+                        named = True
+                        break
+                if not named:
+                    add("CCV-L23", ln0,
+                        "%s: table %s is refused: %s holds no assertion naming its write "
+                        "enable (%s) and its read, that a word is never read in the cycle it "
+                        "is written (a same-cycle forward is a bypass, declared as one)"
+                        % (fp, arr, n, ", ".join(sorted(wen)) or "none"))
+                    continue
+                for reader in okr:
+                    fb_ok.setdefault(reader, set()).add(arr)
             # A declared bypass (DA, 2026-10-23; OI-72 (A)): a reader at stage
             # N that reads a later pipeline copy of its own stage's register,
             # a bypass mux around a table written late. Each is reviewed, and

@@ -74,6 +74,7 @@ MAP = [
     ("tools/rcu-ls-corrupt.py", ["rcu_ls"]),
     # Not the gate's: the push, sweep and release scripts and the summary.
     ("tools/gate-combine.py", ["iface"]),         # its selftest runs there
+    ("tools/gate-resume.py", ["iface"]),          # so does its
     ("tools/gate-export.sh", []),
     ("tools/gate-scratch.sh", []),
     ("tools/gate-push.sh", []),
@@ -95,8 +96,8 @@ MAP = [
     # SV top from blocks.list, selected by CCV_DCU_IMPL / CCV_MIU_IMPL, so the
     # kernels, the SV top, check-links' split tree and check-top's wiring
     # dump build them.
-    ("sim/dcu/", ["skel", "kernel", "svh", "links", "top"]),
-    ("sim/miu/", ["skel", "kernel", "svh", "links", "top"]),
+    ("sim/dcu/", ["skel", "kernel", "dcu_unit", "svh", "links", "top"]),
+    ("sim/miu/", ["skel", "kernel", "miu_unit", "svh", "links", "top"]),
     # The skeleton writes rcu_ls's port dumps (sim/skel/portdump.cpp).
     ("sim/skel/", ["skel", "kernel", "rcu_ls", "svh", "top"]),
     ("sim/", ALL),
@@ -114,6 +115,9 @@ MAP = [
     # lockstep of sim/skel/secded.h against them (test/vl/vl_secded_tb.cpp).
     ("rtl/common/ccv_common_secded_", RTL + ["skel"]),
     ("rtl/include/ccv_secded.svh", RTL + ["skel"]),
+    # The way predictor's fold (MA-30, AR 405): every RTL section, and
+    # check-skel's lockstep of sim/skel/wayfold.h against it.
+    ("rtl/common/ccv_common_wayfold", RTL + ["skel"]),
     ("rtl/", RTL),
     ("test/kernels/", ["kernel", "rcu_ls", "svh"]),
     ("test/ooe/", ["ooe_rtl", "cg", "ngd"]),
@@ -124,6 +128,7 @@ MAP = [
     # The SRAM model's lockstep against rtl/macro/ (check-skel).
     ("test/vl/vl_sram_", ["skel"]),
     ("test/vl/vl_secded_", ["skel"]),
+    ("test/vl/vl_wayfold_", ["skel"]),
     ("test/ngd/", ["ngd"]),
     ("test/neg/", ["iface"]),
     ("test/formal/", ["formal"]),

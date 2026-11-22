@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-17 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-22 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -43,7 +43,9 @@ file holds AR's.
 - verify.sh detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as a
   background task, timeout 7200000.
   - exit 3: still running, run gate-wait again at once;
-  - exit 4: killed, start the job again.
+  - exit 4 (killed) or a container restart: `CCV_RESUME=1 ./tools/verify.sh`
+    (IS-27); it carries over the sections passed on the same commit and tree.
+    RESUMED PASS counts as the full clean gate (DA via TI-490).
 - A full gate takes about 4 h (ngd and cg about 3.7 h each in parallel).
   If one dies, split it: `verify.sh --only cg`, then `gate-export.sh`, then
   `gate-push.sh --full --branches=<ours> --import=<tgz>`.
@@ -73,8 +75,10 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest rows: AR 373 .604516, AR 374 .608275 (tab rev 375).
-  - **The next AR row inserts after .608275**, labelled AR 375.
+  - Latest row: AR 405 .662302 (tab rev 409).
+  - **The next AR row inserts after .662302**, labelled AR 406.
+  - A find-replace through the Docs update tool failed with a JSON parse error
+    four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
     (read for its id and h; ifHash and ifRev both required).
 - **Other tabs:**
@@ -91,16 +95,48 @@ Credit rules (TI-49):
   | CP | 099ebfed-9eea |
   | MA | 1f971016-3f72 |
   | Conventions | 55232329-ff5c |
+  | MI | c1311541-4219 |
+  | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 384, OA 434, TI 480, RA 154, RI 90,
-  IS 197, CP 160, OI 366, DA 125, MA 96, Conventions 19.
+- **Bookmarks** (revs read through): AR 409, OA 468, TI 517, MA 157, DI 41,
+  MI 35, RA 157, RI 91, IS 201, CP 160, OI 401, DA 131, Conventions 20 (full
+  sweep read 11-22; TI 517 read only for TI-518). Specs: FET tab rev 54, DCU
+  tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
-- **Last sweep 2026-11-16:** 7 branches merged (doowtf, miu-dcu-microarch-spec,
-  57eff422, 126afa13, 9eb50716, 3868632d, c22116ce); full gate PASS (about
-  4.5 h; ngd and cg take most of it); pushed de433e3b; session home matches.
+- **Sweep 2026-11-22 (Sunday, no pings):** register: nothing for AR; DA
+  129-131 recorded by OA in Daniel's session (ooe_mempl 21-flop CG waiver;
+  OOE redirect lag option D; CCV-L23 "table" form with OA's 7 conditions).
+  Merged clcw9s 7, doowtf 73, 5tdecg 17, n6402z 10, lecnjf 5, 1vzyjg 2,
+  664pgr 3; no conflicts; regen clean; full gate PASS on 4bc5e708 (~2.7 h);
+  pushed 124. Session home --check exit 0. TI-518 (63579fce, MA-30 landed:
+  pa_fold, one fold both sides, CHECK) arrives next sweep.
+- **Sweep 2026-11-21 (10:03Z trigger):** pass 1 merged doowtf 214, n6402z
+  19, 0ch1hh 2; 5tdecg conflicted in OI's files, aborted, AR 402 to OI. Full
+  gate PASS on 6ba64602; pushed 238. OI fixed 5tdecg (893f2eed, OI-196);
+  pass 2 merged 5tdecg 40, doowtf 2 (TI-513), 0ch1hh 2, 664pgr 6; gate PASS
+  on 435b229e (~3.8 h); pushed 54. New work on 9 branches since: next sweep.
+  Session home --check exit 0. Saturday pongs: all 11-20 pongs were in.
+- **Sweep 2026-11-20 (10:03Z trigger):** merged 7 branches, 60 commits (p8esoz 29,
+  1vzyjg 10, miu-dcu-microarch-spec 6, n6402z 5, doowtf 4, infra-6msg93 4,
+  0ch1hh 2), no conflicts, regen clean; full gate PASS on 5f02cdfc (~3.8 h);
+  pushed. Answered every agent's Friday ping. Session home INSTALLED with
+  Daniel's approval (2026-11-20); --check exit 0, handoff hook verified.
+- **Earlier 2026-11-20:** merged the 11-19 and 11-20 branches (OA.md
+  conflict in 20cauz taken as ours, which held OA's newer 5de62e85); the gate
+  was killed by container restarts four times, then RESUMED PASS (22 of 24
+  carried over) on adf157b0; pushed 308 commits. Session home still exit 1.
+  Friday pings sent 2026-11-20 to OA IS TI OI CP RA RI MA RH MI DI (roster
+  sessions). All 11 pongs passed check (none owed).
+- **Sweep 2026-11-18:** 9 branches merged (139 commits); first full gate
+  FAIL only because check-cg was OOM-killed (its python ~5 GB beside a cm128
+  sim ~6.5 GB); rerun alone PASS (~3.8 h); pushed f28a3f33. Session home
+  check exit 1 (settings.json keys autoCompactWindow/env/hooks differ, agents
+  not linked): asked Daniel to approve a reinstall.
+- **Never run a cm128-class sim beside a gate** (15 GB container): pause
+  /home/user/ar-work lanes before verify.sh.
 - **Insert a row:** update with ref {"object":"node","id":"bc521c46-9710"},
   engine "prose", container {"kind":"project","id":"JApHYjaUESeq8tsGMGXMU5"}.
   The payload is
@@ -134,6 +170,8 @@ Credit rules (TI-49):
   | RA | session_01QPk2jzLmjd3MWXjayVUy9d |
   | RI | session_01QPk2jvvXPLs4m8ZQbSk1g6 |
   | RH | session_01QPk2jvfKM1V5rRfip8FC86 |
+  | MI | session_01QPk2jzH1Gd3DcxK4F4pwCC |
+  | DI | session_01QPk2jz5TVESyWMKVKjqqEA |
 
   RH is DA's run helper. It has no register tab and reports by message.
   Daniel says AR may use RH for runs when it is idle.
@@ -185,6 +223,64 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000e. **MA-30 way predictor (AR 405 .662302, 11-22; MA, TI rung).** Agreed
+   k=4 fold table (16,384 flops in dcu_bctl), pa_fold on ccv_miu_dcu_req,
+   HIT 8. Price vs k=5: S1 -0.02, cm32priv -0.17, cm128priv +0.30%; vs B9
+   (no predictor, HIT 9) about -1.1/-1.0/-0.6%. Under Daniel's bar (S1).
+   MA took the conditions (MA rev 155; DCU tab rev 82, MIU tab rev 161): an
+   alias mispredict sends nothing at the hit slot (miss indication) and
+   re-reads at H+5 on the loser's path, no new field; the table has a valid
+   bit (no match = miss, no read); the fold is PA[47:16] XOR-chunked, i.e.
+   the PFN (64 sets x 8 banks x 128 B = 64 KiB a way), so MIU's TLB holds it;
+   CHECK, controls and bins stated. CLOSED; nothing owed.
+000c. **MA-27/MA-28 (AR 400, 401, 403): CLOSED.** Drop field on
+   ccv_miu_dcu_req and 128 check bits a slot on ccv_dcu_miu_rsp landed in
+   TI-513 (8ac4c441), with CCV_DCU_ECC_INJECT; MA rev 146 accepted. MA rev 149
+   priced AR 400 (3): the A1 hold fires 0 times on S1/cm32priv/cm128priv,
+   drops cost <=0.008%; MA-27 closed. DI-18 (AR 403, MA rev 148 crossed and
+   agrees): on a CE MIU corrects from the check bits and delivers the
+   corrected data as a later ccv_miu_rcu_data write (AR 368 (2)), then the
+   completion; DCU counts and rewrites in place and sends nothing more; a UE
+   stays AR 370's (clean line refetched under the original req_id, MIU keeps
+   it live). Added control: MIU withholds but delivers the data uncorrected.
+   Still on others: DI's interim injection hook, MI's syndrome/drop model,
+   MA's docs naming CCV_MIU_ECC_INJECT, TI's CCV_LAT_MIU_PAIR_LAG. Nothing owed
+   by AR.
+   MA-29 (AR 404, 11-22): agreed, check_bits 72 a slot, (137,128), forced by
+   Daniel's MACRO-1; fix in the stage after R2's syndrome (15.4 + 10.7 NGD
+   > 25); ECC stays 1. MBU question answered (MA rev 152): column mux >= 4
+   in the 512x137 instance, a DCU instance requirement; closed. TI landed
+   it (TI-517, bc9d61ff: CCV_DCU_ECC_K=128, CCV_DCU_ECC_CHECK_W).
+000b. **TI-502 credit deadlock: SETTLED (AR 397 .649791, AR 398 .652069,
+   AR 399 .653325; OA 459/460/461).** FET's full-credit wait (AR 395 (3))
+   stays; (b) drained+delay and (c) no wait refused. OOE keeps a demoting warp
+   bound to its tier-1 slot until a launch/restore gives the slot to another
+   warp; stragglers in that window are walked, their credits returned on that
+   slot no earlier than their beats (FET credits a slot to its last warp until
+   take_slot). OA 455 A's pending counter becomes a CHECK with a bin. OI
+   builds to OA 460; MI reruns MI-11 (2) (lnorm1, CCV_MIU_IMPL=model
+   CCV_RAU_DEMOTE=mlc). Rows crossed twice (397 vs 459, 398 vs 460); OA 461
+   says both forms are one rule. OA 462 (rev 464): the root cause was a
+   lost epoch advance (OI-193, fixed); the binding is unreachable under 395 (3)
+   and is dropped for a CHECK; 395 (3) is the rule. Accepted, nothing owed. LESSON: after ringing an owner
+   on its own block, wait for its row before writing another; a crossing
+   costs two rows each side.
+   TI-501 (e8d8864b, on doowtf/infra-6msg93, not in 5f02cdfc): FET's mig wait
+   matches AR 395 (3) with --break mig-before-credits; arrives next sweep.
+000a. **AR 393-396 (11-19/20): rewind contract and DCU notices, CLOSED.**
+   - Rewind (AR 393 amended by AR 395; OA-457 adopted 395, OA-456 crossed and
+     is superseded): at most one rewind beat per ROB/decq entry with new lanes,
+     no lane in two beats (FET asserts); beats one a cycle, applied on landing;
+     held-ahead clear and credit return on the first beat only. The drain rests
+     on conservation, not CCV_DRAIN_WAIT: OOE walks stragglers on arrival; each
+     walked uop's credit reaches FET no earlier than its beat; FET sends
+     ccv_fet_pca_mig and decides unnamed lanes only on ccv_rau_fet_mig AND the
+     warp's credits full. FET tab rev 54 says so. Implemented by TI-493
+     (b818bca1, ti-mi9) and OI (33b2971c, oi-5b). Do not re-rule.
+   - DCU refill notices (AR 394, OA-453, DCU tab rev 59): CCV_DCU_NOTICE=0 by
+     default, channel ccv_dcu_miu_fill_ntc kept; off measured -0.43% mean over
+     64 kernels. Phase 2 prefers an MLC tag-lookup notice to a lead field.
+   - DI-4 closed. Nothing owed.
 00. **Machine-error system: DECIDED (DA rev 124; AR 370, row .596551,
    tab rev 372; notices to MA, IS, TI).** Daniel answered AR 369 (a)-(d):
    core-fatal yes; clean-line refetch "only if we keep track of how many
@@ -323,7 +419,14 @@ Credit rules (TI-49):
    - CP-84: colwalk-p1k to p32k and p128b are in compiler release a293afe;
      TI does the bench configs (they need gen-oracle's LOAD) and the pin
      bump.
-0a. **AR 381 (.623833; rev 384; MA rung):** MA-23 closed loop + CORRECTION (fold-3 99.13% assumed most-recent select; way-index select is 6.4% wrong on cm128priv). Asked MA for a select knob (index|recent) + k=5 in wayPredict; AR runs h8wp3/h8wp5 on cm128 + cm128priv once on MA branch. Offline replay: /home/user/ar-work/scripts/wpsim.py (files comma-joined, sets, folds). Results in ar-work/results/recovered-2026-11-18.md. Step (ii) full table (rot points) owed when lane A ends.
+0000000. **AR 391/392 (.640639/.641950; MA, IS, TI rung): page-table format DONE** (specs doc Common tab rev 8, 'Page tables' after 'Machine parameters'; paragraph .7244 + list .7628): 3 levels VA[47:42]/[41:29]/[28:16], 64 KiB nodes, 8-byte PTE V/W/X bits 0-2, PPN bits 47:16; F-ADDR/F-RO/F-FETCH per IS rev 198 (no ISA change). TI owes the page-table base CSR (with Q-50). MA asked VA[63:48]: Common tab rev 9 states ISA v1.9 §5.1 (.global outside [0,2^48) = F-ADDR before any walk). MA took the format (MA rev 122).
+000000. **AR 390 (.639607, rev 393; MA+OA rung):** DI-2: agreed MA's default, a way mispredict (due+2, half-rate bank) takes the bank-conflict loser's path; TI-478 slot not stretched. OA 442 AGREED (closed). OA 443 said OOE neutral on TI-487; AR 389 (option 3) stands.
+00000. **AR 389 (.638569, rev 392; MA/TI/OA rung): FINAL on TI-487 = option (3)** (MC kill: RAU waits for no ack; model still requires the 7 non-MIU acks). AR 388 (option 1) crossed MA 114/OA 441, which had taken (3), and is withdrawn. RAU bullet restored (RAU tab rev 63, block .35164). DCU tab rev 53 says (3). Do NOT change again without a new fact. Kill races CLOSED (OA 438; TI 663bed37). MA .91357 took AR 386 defaults (5/recent) unless the cm128 run loses >0.2%. PATTERN (3 crossings on 11-19): crossings happen when agents answer within minutes; before ruling on another owner's block, read that owner's tab for a newer row on the same question, and once owners have adopted a ruling of yours, do not withdraw it for an equally correct alternative.
+0000. **AR 386 (.633499, rev 389; MA rung):** DA rev 128 closed MA-23 with (B) + way prediction as params; AR recommended defaults WAYPRED_BITS 5, SEL recent (recent = 0 wrong closed-loop on cm32priv/cm32/cm128priv at 3 and 5 bits). CONFIRMED by RH: cm128 h8 5/recent = 5,634,717 = no-WP, 0 wrong of 10.9M; defaults stand, closed. Container restarts every 20-90 min kill long runs: relaunch with setsid nohup ./run2.sh <point> after checking uptime. Remaining lane C index points dropped (not needed for defaults). Offline wpsim MRU is NOT the model's 'recent' (predicted 0.79% on cm128priv k3; model 0).
+000. **AR 384 (.631084, rev 387; TI+OA rung):** withdrew AR 383; adopted OA 436 for both kill races. (a) MIU keeps atomic pass state through A3, completes, releases hold; no OOE change. (b) FET clears a killed slot's checkpoints on OOE's epoch_only notice (A-58/A-60 ordering), V-46 no exception, FET kill_ack follows the notice (FET spec rev 49; asked OA to confirm that last point). Lesson: read the owner's latest row (OA) before ruling across a boundary. OA 437 (OA rev 439) crossed it, accepting AR 383; AR 385 (.632674, rev 388) made OA 436 final for both. Do not re-flip; answer OA only on a technical objection to OA 436. MA rev 105 followed OA 437 (MIU tab rev 141 = AR 383 form); AR asked MA by notice to restore rev 140 (OA 436 form). Check MIU tab returns to it. MA rev 106: MIU tab pending (rev 142) until AR+OA name one form in one row; MA leans OA 437; else Daniel. AR waits for OA's answer to AR 385; if OA prefers 437, accept it for (a) (owners of OOE+MIU agree), then one joint row; (b) FET spec rev 49 to follow whatever is agreed.
+00. **AR 382 (.626491, rev 385; MA rung):** agreed MA-24 (store (b), QDEPTH 16, DEFCAP 12) on 4 conditions: refusal signalling (encoding or TI field), same-line order, refused store re-presented first (BANK_AGE bound), coverage bin + control. Also carries the L1 ECC note (speculative+replay). MA accepted all 4 (MA rev 101): MIU-held per-bank credits, hard reservation 16 entries/12 data, DCU credit-return pulse vector = a TI field after MA prices it. Closed for AR. WPSEL results still owed in AR 383.
+0. **TI-483 (TI rev 482, read; no ask of AR):** SECDED enc/syn/fix landed (b407ff71). Decode cannot share the rdata stage: either 2 flops (rdata, syndrome) or speculative use + replay on nonzero syndrome. L1 choice is MA's (CCV_LAT_L1_ECC=1 today); fold into AR 382: MA-23 closed loop prices +1 hit cycle at ~+1.0% cm32priv/cm128priv, ~+0.1% shared, so 2 flops ~+2% private -> favour speculative+replay for L1. AR's own arrays (FET I-cache, SPM, LANE RF) need the same choice in the owed specs.
+0a. **AR 381 (.623833; rev 384; MA rung):** MA-23 closed loop + CORRECTION (fold-3 99.13% assumed most-recent select; way-index select is 6.4% wrong on cm128priv). Asked MA for a select knob (index|recent) + k=5 in wayPredict; AR runs h8wp3/h8wp5 on cm128 + cm128priv once on MA branch. Offline replay: /home/user/ar-work/scripts/wpsim.py (files comma-joined, sets, folds). Results in ar-work/results/recovered-2026-11-18.md. Lane A done (rot + a points). MA's a6c7de10 WPSEL knob landed; lane C (ar-work/laneC.sh, binary wtw8, hit 8) results so far: recent select k3/k5 = 0 wrong on cm32priv, cm32, cm128priv (cycles = h8 no-WP); k5 index cm32priv 5,234 wrong, cm128priv k3 index 26,096 wrong (+0.53%). Remaining: cm128priv h8wp5index, cm128 x3 (lane C relaunched after the 11-19 container restart). Defaults sent in AR 386; PF-52 (parallel-way hit 7) and PF-53 (rotating arbitration) booked, closing AR 373 (3) to MA (+DA): WPSEL table + full step (ii) table (pick b), notices, PF rows in perf-register (AR 373 (3)).
 0b. **AR 380 (.622154; rev 383; TI, OI, OA rung):** approved OA 432, lead_fields [warp_id, fetch_epoch] on ccv_dec_ooe_uop; DEC spec line added (pending TI). Owed: watch TI apply it, OI benches + late-lead control, DA ruling on lead form vs +0.95% cycle. Lanes: lane A relaunched 06:33Z after restart (cm128 h8/h9/h8wp3, rot, a); lane B done; cm128priv_b_q0 skipped (memory).
 
 0c. **AR 375 (.609311; TI rung) and AR 376 (.612527; MA rung), rev 376-378.**

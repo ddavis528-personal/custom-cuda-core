@@ -473,6 +473,37 @@ struct Config {
   /// that resolves a mispredict holds its frees one more cycle (ooe_rob_w
   /// drops the younger ones a cycle after the pick, by its squash).
   unsigned ckpt_free_lag = 0;
+  /// OA 451 (re:OI-186; AR 393): the demotion's rewind walk as the RTL
+  /// streams it. demote_walk: ooe_rob_w walks the slot's ROB from the head,
+  /// an entry a cycle (each a cycle whether or not it covers new lanes),
+  /// then asks ooe_decq by a flopped request, which presents the warp's
+  /// uops an entry a cycle in queue order; an entry's beat may leave the
+  /// cycle after the walk reads it, and the warp's decode-queue uops are
+  /// held, never renamed, until the walk passes them, then flushed.
+  /// beat_merge 0: one beat per entry with new lanes, never merged by PC
+  /// (a lane still in at most one beat).
+  /// The default since OA 466 (OA 451/465): RH priced it at a5d5cb83, mlc,
+  /// S1 +0.072%, cm32priv +0.149%, cm128priv -0.038%, all clean; the RTL
+  /// builds this walk (ooe_rob_w's demotion beats, ooe_decq's walk port).
+  bool demote_walk = true;
+  bool beat_merge = false;
+  /// AR 395 / OA 457: the walk stays open for a demoted warp until its slot
+  /// is released (FET migrates only on full credits, so every uop it sent
+  /// has arrived). A uop of the demotion's epoch arriving after the walk
+  /// began (a straggler) is walked on arrival against the covered lanes,
+  /// sends a beat if it has new ones, and is held in the decode queue, its
+  /// credit returned only once dropped: decq_credit_delay cycles after its
+  /// beat leaves (OA 458: kLatDecqCreditDelay). Off: an epoch drop, as before.
+  bool straggler_walk = true;
+  unsigned decq_credit_delay = 0;
+  /// OA 463 (re:OI-194): extra cycles OOE holds every decode-queue credit
+  /// before it leaves, so a demotion's migration waits on credits (FET's
+  /// AR 395 (3) wait binds). A scenario knob; 0 is the design.
+  unsigned decq_credit_lag = 0;
+  /// Control: a straggler is dropped, its credit returned, before its beat leaves.
+  bool inject_straggler_early_credit = false;
+  /// A squash to retirement drops a due squash's epoch advance (OA 460 control).
+  bool inject_due_epoch_lost = false;
   /// OA 447 (re:OI-179 (3)): ooe_redir registers the pick a cycle after
   /// rob_w's rd_l and the payload a cycle after that, so the redirect and
   /// ckpt_free leave OOE this many cycles after the model's send, together
@@ -723,6 +754,9 @@ struct Config {
   /// wait.
   bool inject_bar_no_hold = false;
   bool inject_beat_unheld = false;
+  /// OA 451's control: rename takes (drops) a decode-queue uop the walk
+  /// still holds, so the walk would pass an entry already gone.
+  bool inject_walk_take_held = false;
   /// PF-23 (OA's rev 160, AR's rev 106): a demotion's discard takes its
   /// warp's outstanding loads, so drained waits for their replay
   /// completions, not their fills. Off: the drain waits for the fills.
@@ -817,6 +851,11 @@ struct UopShape {
 
 struct Uop {
   uint64_t tid = 0;
+  /// demote_walk: the cycle the demotion's walk passes it, held until then (0: not held).
+  uint64_t walk_pass = 0;
+  /// The rewind beat that carries its lanes (0: none); a held uop is
+  /// dropped no earlier than decq_credit_delay after that beat leaves.
+  uint64_t walk_id = 0;
   unsigned warp = 0;
   uint64_t pc = 0;
   uint32_t group_mask = 0;
@@ -992,6 +1031,8 @@ struct Commit {         ///< ccv_ooe_miu_retire
 struct Redirect {       ///< ccv_ooe_fet_redirect
   uint64_t tid = 0;
   uint64_t at = 0;      ///< the cycle it was queued (same-cycle redirects queue in slot order, OI-179)
+  uint64_t ready = 0;   ///< demote_walk: a rewind beat leaves no earlier than this cycle
+  uint64_t walk_id = 0; ///< a rewind beat's id, for the held uops whose credit waits on it (model only)
   unsigned warp = 0, slot = 0, ckpt = 0, epoch = 0;
   uint32_t taken_mask = 0;
   uint64_t target_pc = 0;
@@ -1406,6 +1447,7 @@ public:
   /// environment that launched the warp says which lanes will exit.
   void expectLanes(unsigned warp, uint32_t lanes) { launch_lanes_[warp % kWarpIds] = lanes; }
   void uop(const Uop &u);
+  bool straggler(const Uop &u);   ///< AR 395: a demoted warp's late uop, walked on arrival
   void done(const Done &d);
   void cmpl(const Cmpl &c);
   /// OA-23's completion hint: the completion for rob_tag comes two cycles
@@ -1650,6 +1692,12 @@ private:
     uint64_t notice_lands = 0;                ///< epoch notice in FET (A-74)
     bool notice_sent = false;
     unsigned rewind_pending = 0;              ///< a demotion's beats not yet sent (TI-24 (3))
+    unsigned walk_held = 0;                   ///< demote_walk: decode-queue uops the walk still holds
+    /// AR 395: the demotion's walk, open to stragglers until the release.
+    bool walk_open = false;
+    unsigned walk_epoch = 0;                  ///< the epoch the demotion ended
+    uint32_t walk_covered = 0;                ///< lanes the walk's beats name
+    std::map<uint64_t, uint64_t> walk_sent;   ///< beat id -> the cycle it leaves OOE
     bool exit_retired = false, exited_sent = false;   ///< OA's rev 149
     unsigned kill_epoch = 0;
     uint64_t resume_pc = 0;
@@ -1921,12 +1969,6 @@ public:
       unsigned cause = 0;
       uint32_t pclo = 0, egmask = 0;
       unsigned epchi = 0;
-      // Slice 5 (OA 448): a barrier report op (an arrive, wait or exit with
-      // no fault), its kind (0 arrive, 1 wait, 2 wait.phase, 3 exit), its
-      // barrier, whether its guard comes back on its done, and whether it
-      // sets the slot's hold (a converged wait).
-      bool bar = false, bgd = false, bhs = false;
-      unsigned bkind = 0, bid = 0;
     };
     struct Ret {
       unsigned slot = 0, idx = 0, dst = 0, gname = 0, gold = 0, gsec = 0, pdst = 0, pname = 0, pold = 0;
@@ -1969,11 +2011,6 @@ public:
     /// Slice 4: each fault taken at retire (slot, index, cause, pc, lanes).
     struct Fault { unsigned slot = 0, idx = 0, cause = 0; uint64_t pc = 0; uint32_t lanes = 0; uint64_t addr = 0; };
     std::vector<Fault> fault;
-    /// Slice 5: each barrier report sent this cycle (ccv_ooe_syu_bar), by
-    /// slot, and the slots SYU released (ccv_syu_ooe_rel, as it acts).
-    struct BarRep { unsigned slot = 0, kind = 0, bid = 0; uint32_t issue = 0, guard = 0, phase = 0; bool held = false; };
-    std::vector<BarRep> bar;
-    uint32_t bar_rel = 0;
     uint32_t release = 0;         ///< slots released (their ROBs empty)
     const char *stop = nullptr;
   };
@@ -2273,9 +2310,6 @@ private:
   uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }
   uint64_t next_age_ = 0;
   unsigned rr_rename_ = 0, rr_select_ = 0, rr_bar_ = 0;
-  Bar bar_send_{};                 ///< bar_pend: last cycle's pick, sent this cycle
-  unsigned bar_send_slot_ = 0;
-  bool bar_send_v_ = false;
 
   // producers of each physical register still in the RS (up to two: a
   // masked load and its copy), and whether its value has landed
@@ -2387,6 +2421,10 @@ public:
     std::vector<unsigned> adv, adn;
     uint32_t rel = 0;
     std::vector<std::pair<unsigned, unsigned>> alloc;
+    /// Slots whose epoch notice this cycle is a demotion's that opens its
+    /// straggler walk (AR 395; ooe_decrx's wo): a notice not named here
+    /// (a kill's) closes the slot's walk.
+    uint32_t wopen = 0;
   };
   const RxLog &rxLog() const { return rxlog_; }
   /// ooe_slot's bench (test/ooe/slot_tb.cpp, OA 435 (1)): control()'s
@@ -2424,6 +2462,10 @@ public:
   };
   const SlotLog &slotLog() const { return slotlog_; }
   int slotOfWarp(unsigned warp) const { return slotOf(warp); }
+  /// ooe_decrx's walk table (AR 395): whether slot s's straggler walk is
+  /// open, and the epoch its stragglers carry.
+  bool walkOpen(unsigned s) const { return s < slot_.size() && slot_[s].walk_open; }
+  unsigned walkEpoch(unsigned s) const { return s < slot_.size() ? slot_[s].walk_epoch : 0; }
 private:
   RxLog rxlog_;
   SlotLog slotlog_;
@@ -2513,6 +2555,8 @@ private:
 
   // outbound queues on rate-limited channels
   std::deque<Redirect> redirects_;
+  uint64_t next_walk_id_ = 1;      ///< AR 395: rewind beat ids
+  uint64_t decq_walk_free_ = 0;   ///< demote_walk: the cycle ooe_decq's walk port is free
   uint64_t free_mask_ = 0;
   struct VerdictHold { uint64_t due; std::vector<RatMap> maps; std::vector<Drained> drained;
                        std::vector<unsigned> acks; uint32_t release = 0; };

@@ -414,6 +414,9 @@ def selftest(d):
              ("link_n('miu_ooe_cmpl')", "links", 1, "CCV_LAT_L1_CMPL"),
              # OI-13: a slower data path makes a miss's dependant wait.
              ("link_n('miu_rcu_data')", "links", 3, "CCV_LAT_L1_MISS_WAKE"),
+             # AR 395 (2), OA-458: a credit crossing two stages faster than
+             # the redirect's needs OOE's delay to cover it.
+             ("link_n('ooe_fet_redirect')", "links", 2, "CCV_LAT_DECQ_CREDIT_DELAY"),
              ("CCV_P_RS_WARP_CAP", "value", 46, "CCV_P_RS_WARP_CAP"),
              # One past the queue's depth, whatever it is (OI-111).
              ("CCV_P_DECQ_WARP_MAX", "value",
@@ -548,17 +551,21 @@ def selftest(d):
     # AR 368 (OA 426): the completion lands CCV_LAT_L1_ECC after the data,
     # so each pinned completion below moves by it, and only by it.
     ecc = next(p["value"] for p in d["params"] if p["name"] == "CCV_LAT_L1_ECC")
+    # DA rev 128 (MA-26): the pinned figures were taken at an L1 hit base of
+    # 7; the wake and the completion each move by the base's change, and
+    # only by it (8 with way prediction, 9 without).
+    dh = next(p["value"] for p in d["params"] if p["name"] == "CCV_LAT_L1_HIT_BASE") - 7
     if links.get("bnd_rx:ooe_rcu_issue") == 0 and not any(
             v for k, v in links.items() if not k.startswith("bnd_rx:")):
         for got, want, what in (
-                (l1(base=5), (17, 18 + ecc), "base 5, the issue's end zero-cycle (RA-43)"),
-                (l1(base=5, lk=flop), (17, 19 + ecc), "base 5, the issue's end flopped"),
-                (l1(base=1), (13, 14 + ecc), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), zero-cycle"),
-                (l1(base=1, lk=flop), (13, 15 + ecc), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), flopped"),
+                (l1(base=5), (17 + dh, 18 + dh + ecc), "base 5, the issue's end zero-cycle (RA-43)"),
+                (l1(base=5, lk=flop), (17 + dh, 19 + dh + ecc), "base 5, the issue's end flopped"),
+                (l1(base=1), (13 + dh, 14 + dh + ecc), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), zero-cycle"),
+                (l1(base=1, lk=flop), (13 + dh, 15 + dh + ecc), "PF-47 (CCV_LAT_RCU_ADDR_BASE 1), flopped"),
                 (l1(base=5, addr_derive="CCV_LAT_RCU_ADDR_BASE + bnd_rx('ooe_rcu_issue')", lk=flop),
-                 (18, 20 + ecc), "base 5, the issue flop counted twice (the control)")):
+                 (18 + dh, 20 + dh + ecc), "base 5, the issue flop counted twice (the control)")):
             if got != want:
-                missed.append("L1_WAKE/L1_CMPL at %s: %s, want %s (AR's revs 301, 329; AR 368)"
+                missed.append("L1_WAKE/L1_CMPL at %s: %s, want %s (AR's revs 301, 329; AR 368; MA-26)"
                               % (what, got, want))
         # AR 353: the no-hit moves with the address, OA 410's I+13 at base 5
         # and 9 at PF-47's base 1, and it never lands with the wake.

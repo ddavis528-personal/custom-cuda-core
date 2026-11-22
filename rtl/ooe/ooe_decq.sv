@@ -360,8 +360,9 @@ module ooe_decq #(
   logic            enq_en_cq01h;          // the arrival lead's flop
   logic [S-1:0]    arr_q_cq02h;           // a slot had arrivals at the last edge: its heads re-form
   logic [S-1:0]    tkv_cq02h;             // a slot's take in transit (rename took from it at the last edge)
-  logic [S*LR-1:0] tk_cq02h;              // rename's take registered: popped at the next edge
+  (* keep *) logic [S*LR-1:0] tk_cq02h;   // rename's take registered: popped at the next edge (kept beside tkc)
   logic [S*(R+1)-1:0] tko_cq02h;          // and one-hot (tko[s][t]: t uops)
+  (* keep *) logic [S*LR-1:0] tkc_cq02h;  // tk's copy for the count output alone (NGD-7)
   // The entries held, kept as state (the credits out): this edge's
   // arrivals less its frees, each slot's whole count on a flush, else its
   // take in transit. The same as the busy bits' count (an assertion).
@@ -515,19 +516,6 @@ module ooe_decq #(
           end
       end
   end
-  // c[n], n the thermometer th's count (0 to R): for R = 4 a balanced tree
-  // of 2:1 selects (th[1]: n >= 2), else the one-hot AND-OR. One per width.
-  function automatic logic [LC-1:0] thsel_c(input logic [(R+1)*LC-1:0] c, input logic [R-1:0] th);
-    if (R == 4) begin
-      thsel_c = th[1 % R] ? (th[3 % R] ? c[(4 % (R + 1)) * LC +: LC]
-                                       : th[2 % R] ? c[(3 % (R + 1)) * LC +: LC] : c[(2 % (R + 1)) * LC +: LC])
-                          : (th[0] ? c[(1 % (R + 1)) * LC +: LC] : c[0 +: LC]);
-    end else begin
-      thsel_c = '0;
-      for (int t = 0; t < R + 1; t++)
-        if ((t == 0 || th[(t + R - 1) % R]) && (t == R || !th[t % R])) thsel_c = thsel_c | c[t * LC +: LC];
-    end
-  endfunction
   function automatic logic [1-1:0] thsel_v(input logic [(R+1)*1-1:0] c, input logic [R-1:0] th);
     if (R == 4) begin
       thsel_v = th[1 % R] ? (th[3 % R] ? c[(4 % (R + 1)) * 1 +: 1]
@@ -561,7 +549,7 @@ module ooe_decq #(
         if ((t == 0 || th[(t + R - 1) % R]) && (t == R || !th[t % R])) thsel_a = thsel_a | c[t * PA +: PA];
     end
   endfunction
-  logic [S*LC-1:0]      cnt_nx_cq01h;
+  logic [S*LC-1:0]      bs_nx_cq01h;
   logic [S*H-1:0]       hv_nx_cq01h;
   logic [S*R*P-1:0]     hp_nx_cq01h;
   logic [S*NA*PA-1:0]   ha_nx_cq01h;
@@ -570,19 +558,16 @@ module ooe_decq #(
     ha_nx_cq01h = '0;
     hv_nx_cq01h = '0;
     for (int s = 0; s < S; s++) begin
-      // The count less the take in transit, early; the take arriving now
-      // picks which of its R + 1 values to subtract, one-hot.
-      logic [LC-1:0] base;
-      base = st_cq02h[OCNT + s * LC +: LC] - LC'(tk_cq02h[s * LR +: LR]);
-      // The take arriving now (a thermometer) picks among R + 1 values each:
-      // a balanced tree of 2:1 selects on its bits (thsel), no decode ahead
-      // of it. A flushed slot shows nothing (its mask on the early side);
-      // the payloads are read only through their valids, so unmasked.
-      begin
-        logic [(R+1)*LC-1:0] cc;
-        for (int t = 0; t < R + 1; t++) cc[t * LC +: LC] = (base - LC'(t)) & {LC{!fl_q_cq02h[s]}};
-        cnt_nx_cq01h[s * LC +: LC] = thsel_c(cc, deq_t_cq01h[s * R +: R]);
-      end
+      // The count less the take in transit, registered; the take arriving
+      // now is subtracted after the edge, from its registered one-hot
+      // (cnt_cq02h below), so deq_t's late arrival reaches no count
+      // (NGD-3: deq_t at 14). A flushed slot shows nothing (its mask on
+      // the early side); the payloads are read only through their valids,
+      // so unmasked. The take (a thermometer) picks the heads' values
+      // among R + 1 each: a balanced tree of 2:1 selects on its bits
+      // (thsel), no decode ahead of it.
+      bs_nx_cq01h[s * LC +: LC] = (st_cq02h[OCNT + s * LC +: LC] - LC'(tk_cq02h[s * LR +: LR]))
+                                  & {LC{!fl_q_cq02h[s]}};
       for (int i = 0; i < H; i++) begin
         logic [R:0] cvv;
         for (int t = 0; t < R + 1; t++) cvv[t] = cv_cq02h[s * NCAND + t + i] && !fl_q_cq02h[s];
@@ -599,7 +584,7 @@ module ooe_decq #(
       end
     end
   end
-  logic [S*LC-1:0]       cnt_o_cq02h;
+  logic [S*LC-1:0]       bs_o_cq02h;
   logic [S*H-1:0]        hv_o_cq02h;
   logic [S*R*P-1:0]      hp_o_cq02h;
   logic [S*NA*PA-1:0]    ha_o_cq02h;
@@ -607,7 +592,9 @@ module ooe_decq #(
   // edge, and rename (ooe_go) need not block it a second cycle.
   always_comb
     for (int s = 0; s < S; s++) begin
-      cnt_cq02h[s * LC +: LC]  = cnt_o_cq02h[s * LC +: LC] & {LC{~fl_o_cq02h[s]}};
+      // The count: the registered base less the registered take.
+      cnt_cq02h[s * LC +: LC]  = (bs_o_cq02h[s * LC +: LC] - LC'(tkc_cq02h[s * LR +: LR]))
+                                 & {LC{~fl_o_cq02h[s]}};
       head_v_cq02h[s * H +: H] = hv_o_cq02h[s * H +: H] & {H{~fl_o_cq02h[s]}};
     end
   assign head_pay_cq02h = hp_o_cq02h;
@@ -687,12 +674,14 @@ module ooe_decq #(
       if (rst_r01h) begin
         tk_cq02h[s * LR +: LR]    <= '0;
         tko_cq02h[s * (R + 1) +: R + 1] <= (R + 1)'(1);
-        cnt_o_cq02h[s * LC +: LC] <= '0;
+        tkc_cq02h[s * LR +: LR]   <= '0;
+        bs_o_cq02h[s * LC +: LC]  <= '0;
         hv_o_cq02h[s * H +: H]    <= '0;
       end else if (out_en_cq01h[s]) begin
         tk_cq02h[s * LR +: LR]    <= deq_n_cq01h[s * LR +: LR];
         tko_cq02h[s * (R + 1) +: R + 1] <= deq_k_cq01h[s * (R + 1) +: R + 1];
-        cnt_o_cq02h[s * LC +: LC] <= cnt_nx_cq01h[s * LC +: LC];
+        tkc_cq02h[s * LR +: LR]   <= deq_n_cq01h[s * LR +: LR];
+        bs_o_cq02h[s * LC +: LC]  <= bs_nx_cq01h[s * LC +: LC];
         hv_o_cq02h[s * H +: H]    <= hv_nx_cq01h[s * H +: H];
       end
     end

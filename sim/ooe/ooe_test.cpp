@@ -51,7 +51,6 @@ void (*g_random_config_hook)(Config &) = nullptr;
 /// block has no squash yet, test/ooe/rob_tb.cpp): the draws are the same,
 /// only the prediction is the outcome.
 bool g_random_predict_all = false;
-unsigned g_random_bar_pct = 0;    // random barrier ops, percent of the drawn ops (ROB slice 5's bench); held waits released
 unsigned g_random_ret_every = 0;   // every n-th random branch a ret (an RTL bench's ret_hold run)
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
@@ -304,8 +303,6 @@ struct Env {
   // contract knobs
   unsigned fetch_delay = 3;          ///< FET to OOE, so stale uops are in flight
   unsigned miss_pct = 0;             ///< loads that miss L1
-  bool auto_bar_release = g_random_bar_pct != 0;  ///< random barriers: SYU releases a held wait
-  std::multimap<uint64_t, unsigned> bar_rels;   ///< g_random_bar_pct: releases due, by cycle: warp
   bool nohit = false;                ///< OA 410: MIU sends a no-hit hint for each L1 miss
   /// Issue to the no-hit's payload landing (CCV_LAT_L1_NOHIT; AR 353).
   unsigned nohit_lat = ccv::prov::kLatL1Nohit;
@@ -1384,14 +1381,6 @@ struct Env {
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
     if (keep_log) log.push_back(o);
-    // The random barriers' SYU: a held wait's release a few cycles on.
-    if (auto_bar_release) {
-      for (const Bar &b : o.bars) if (b.held) bar_rels.emplace(t + 3 + rng() % 8, b.warp);
-      for (auto it = bar_rels.begin(); it != bar_rels.end() && it->first <= t;) {
-        core.barRelease(1u << (it->second % 32));
-        it = bar_rels.erase(it);
-      }
-    }
     // TI-34: every memop, barrier and fault carries RAU's CTA slot for its
     // warp, from OOE's per-slot register.
     auto ctaCheck = [&](const char *what, unsigned warp, unsigned slot) {
@@ -1580,20 +1569,6 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     if (o.k == kStore && width[o.src[0]] == 3) o.src[0] = r(4);
     o.w = width[o.dst];
     o.backward = o.k == kBranch && r(2) == 0;
-    // A bench's barriers (ROB slice 5): arrives and waits, guarded or not,
-    // converged (held) or not, and wait.phase; Env releases a held one.
-    if (g_random_bar_pct && r(100) < g_random_bar_pct) {
-      Op b;
-      b.k = kBarrier;
-      const unsigned v = r(6);
-      b.arrive = v < 2;
-      b.phase = v == 5;
-      b.aw = v == 2 || (v == 5 && r(2));
-      b.guard = (v == 1 || v == 4) ;
-      b.pguard = r(4);
-      b.lanes = uint32_t(rng());
-      o = b;
-    }
     p.push_back(o);
   }
   Op e;
@@ -2738,6 +2713,8 @@ void testLdLocal() {
 /// after a demotion's squash, in the new epoch, while the warp sits
 /// drained, are dropped when RAU frees the slot; none outlives it, and
 /// the release checks that none is queued. The control keeps them.
+/// Under OA 460 such an arrival is itself an error (FET stops at the
+/// notice), which the test expects twice; the drop stays the defence.
 bool releaseDrop(bool control) {
   Config c = baseConfig();
   c.l1_spec = false;
@@ -2763,12 +2740,22 @@ bool releaseDrop(bool control) {
   e.core.alloc(f);
   for (unsigned k = 0; k != 10; ++k) e.step();
   const uint64_t drops = e.core.counters["decq.release_drop"] - drops0;
-  const bool ok = drained && drops == 2 && e.errors.empty() && e.core.counters["errors"] == 0;
+  // OA 460: since a demotion's notice carries an epoch new to FET, these
+  // two arrivals are themselves illegal and the core names each; the
+  // release still drops them (RI-12's defence). Any other error fails.
+  unsigned oa460 = 0;
+  std::vector<std::string> other;
+  for (const std::string &x : e.errors)
+    if (x.rfind("OA 460:", 0) == 0) ++oa460;
+    else other.push_back(x);
+  const bool ok = drained && drops == 2 && oa460 == 2 && other.empty() &&
+                  e.core.counters["errors"] == e.errors.size();
   if (!control) {
     g_test = "release drops the warp's queued uops (RI-12)";
     EXPECT(drained, "the demotion never drained");
     EXPECT(drops == 2, "%llu uops dropped at the release, want 2", (unsigned long long)drops);
-    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+    EXPECT(oa460 == 2, "%u OA 460 arrival errors, want 2", oa460);
+    for (const std::string &x : other) EXPECT(false, "%s", x.c_str());
   }
   return ok;
 }
@@ -3170,7 +3157,7 @@ void testBarrier() {
     c.bar_pend = pend;
     c.bar_buf_depth = pend ? 2 : 0;   // ooe_rob_w's side buffer with bar_pend (OA 448 (3))
     c.inject_bar_no_hold = control;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -3208,7 +3195,7 @@ void testBarrier() {
     g_test = "barrier diverged";
     Config c = baseConfig();
     c.l1_spec = false;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op b; b.k = kBarrier; b.aw = false; p.push_back(b);
@@ -3228,7 +3215,7 @@ void testBarrier() {
     g_test = "barrier arrive";
     Config c = baseConfig();
     c.l1_spec = false;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op b; b.k = kBarrier; b.arrive = true; b.guard = guarded; b.lanes = 0x00ff00ff; p.push_back(b);
@@ -3249,7 +3236,7 @@ void testBarrier() {
     g_test = "barrier wait.phase";
     Config c = baseConfig();
     c.l1_spec = false;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op b; b.k = kBarrier; b.phase = true; b.lanes = 0x5555aaaa; p.push_back(b);
@@ -3279,7 +3266,7 @@ void testBarBufDepth() {
     Config c = baseConfig();
     c.l1_spec = false;
     c.bar_buf_depth = depth;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     e.keep_log = true;
     std::vector<Op> p;
     Op a; a.k = kSfu; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -3310,7 +3297,7 @@ void testBarPend() {
       c.l1_spec = false;
       c.bar_pend = pend;
       c.inject_bar_pend_overwrite = control && pend;
-      Env e(c); e.auto_bar_release = false;   // directed: the test releases
+      Env e(c);
       e.keep_log = true;
       if (control && pend) g_quiet = true;
       for (unsigned w = 0; w != 3; ++w) {
@@ -3342,6 +3329,71 @@ void testBarPend() {
   }
 }
 
+/// AR 395 / OA 457: a straggler, a uop of the demotion's epoch arriving
+/// after the walk began, is walked on arrival: a beat for its lanes the walk
+/// had not covered, then dropped, its decode-queue slot (FET's credit) freed
+/// no earlier than decq_credit_delay after the beat leaves. With and
+/// without the streaming walk. Controls: no-straggler-walk (no beat, the
+/// lanes lost) and straggler-early-credit (freed before the beat leaves).
+/// Returns whether the case held.
+static bool stragglerCase(bool walk, unsigned delay, bool no_walk, bool early) {
+  Config c = baseConfig();
+  c.l1_spec = false;
+  c.demote_walk = walk;
+  c.decq_credit_delay = delay;
+  c.straggler_walk = !no_walk;
+  c.inject_straggler_early_credit = early;
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  Op a; a.k = kSfu; a.dst = 1; a.nsrc = 1; a.mask = 0x0000ffffu; p.push_back(a);
+  for (int k = 0; k != 4; ++k) { Op d; d.k = kLane; d.dst = 2 + k; d.nsrc = 1; d.src[0] = 1; d.mask = 0x0000ffffu; p.push_back(d); }
+  e.launch(0, 0, p);
+  for (unsigned k = 0; k != 12; ++k) e.step();
+  const unsigned old_epoch = e.warpOf(0)->epoch;
+  e.core.demote(0);
+  e.step();
+  e.step();
+  Op o; o.k = kLane; o.dst = 9; o.nsrc = 1; o.mask = 0xffff0000u;
+  const uint64_t tid = 0xfff0;
+  const unsigned q0 = e.core.decqOf(0);
+  e.core.uop(makeUop(o, 0, tid, old_epoch, 0));
+  const bool queued = e.core.decqOf(0) == q0 + 1;
+  int64_t beat = -1, freed = -1;
+  for (unsigned k = 0; k != 60; ++k) {
+    e.step();
+    for (const Redirect &r : e.log.back().redirects)
+      if (r.rewind && r.taken_mask == 0xffff0000u && beat < 0) beat = int64_t(e.t);
+    if (queued && freed < 0 && e.core.decqOf(0) == q0) freed = int64_t(e.t);
+  }
+  // e.t after a step is the cycle after the one that sent; the slot frees
+  // in the cycle whose step drops it.
+  const int64_t leave = beat + int64_t(c.redirect_send_lag);
+  const bool ok = queued && beat >= 0 && freed >= 0 && freed >= leave + int64_t(delay);
+  if (!no_walk && !early)
+    EXPECT(ok, "walk %d delay %u: queued %d, beat leaves %lld, freed %lld", walk, delay, queued,
+           (long long)leave, (long long)freed);
+  return ok;
+}
+
+void testStraggler() {
+  g_test = "straggler";
+  unsigned n = 0;
+  for (const bool walk : {false, true})
+    for (const unsigned delay : {0u, 3u}) n += stragglerCase(walk, delay, false, false);
+  std::printf("  straggler walk: %u of 4 cases beat, then free\n", n);
+  const int before = g_fail;
+  g_quiet = true;
+  const bool c1 = !stragglerCase(true, 3, true, false) && !stragglerCase(false, 3, true, false);
+  const bool c2 = !stragglerCase(true, 3, false, true) && !stragglerCase(false, 3, false, true);
+  g_quiet = false;
+  g_fail = before;
+  std::printf("  %-24s %s\n", "control no-straggler-walk", c1 ? "caught" : "MISSED");
+  EXPECT(c1, "an epoch-dropped straggler should lose its lanes' beat");
+  std::printf("  %-24s %s\n", "control straggler-early-credit", c2 ? "caught" : "MISSED");
+  EXPECT(c2, "a straggler freed before its beat leaves should fail");
+}
+
 void testBarrierDemote() {
   for (const bool control : {false, true}) {
     for (const bool tail : {true, false}) {
@@ -3349,7 +3401,7 @@ void testBarrierDemote() {
       Config c = baseConfig();
       c.l1_spec = false;
       c.inject_beat_unheld = control;
-      Env e(c); e.auto_bar_release = false;   // directed: the test releases
+      Env e(c);
       e.keep_log = true;
       std::vector<Op> p;
       Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -3400,7 +3452,7 @@ void testBarrierTimer() {
     Config c = baseConfig();
     c.l1_spec = false;
     c.demote_barrier = 30;
-    Env e(c); e.auto_bar_release = false;   // directed: the test releases
+    Env e(c);
     std::vector<Op> p;
     Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
     if (mode == 0) { Op b; b.k = kBarrier; p.push_back(b); }
@@ -3428,7 +3480,7 @@ void testBarrierFault() {
       Config c = baseConfig();
       c.l1_spec = false;
       c.inject_no_bar_fault = control;
-      Env e(c); e.auto_bar_release = false;   // directed: the test releases
+      Env e(c);
       e.keep_log = true;
       std::vector<Op> p;
       Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
@@ -5706,6 +5758,57 @@ void testSwap() {
   }
   std::printf("  %-24s %s\n", "control rewind-order", caught ? "caught" : "MISSED");
   EXPECT(caught, "beats youngest first should break the rewind check");
+  // OA 451 (re:OI-186; AR 393): the streaming walk, beats unmerged, under
+  // the same swaps; FET's rewind check holds a lane to one beat. Its
+  // control: rename drops a uop the walk still holds.
+  {
+    unsigned demotes = 0, flushed = 0, arrivals = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed) {
+      g_test = "swap, demote_walk beat_merge 0, seed " + std::to_string(seed);
+      Config c = baseConfig();
+      c.decq = 13;
+      c.demote_walk = true;
+      c.beat_merge = false;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.dram_pm = 40;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      e.finish(200000);
+      demotes += unsigned(e.core.counters["demote"]);
+      flushed += unsigned(e.core.counters["demote.walk_flushed"]);
+      arrivals += unsigned(e.core.counters["demote.walk_arrival"]);
+    }
+    g_test = "swap, demote_walk, seeds 1 to 6";
+    EXPECT(demotes > 0 && flushed > 0, "%u demotes, %u held uops flushed by the walk", demotes, flushed);
+    std::printf("  %-24s %u demotes, %u held uops flushed, %u arrivals while held\n", "demote walk", demotes,
+                flushed, arrivals);
+    caught = 0;
+    for (unsigned seed = 1; seed <= 6 && !caught; ++seed) {
+      g_test = "swap (control walk-take-held)";
+      Config c = baseConfig();
+      c.decq = 13;
+      c.demote_walk = true;
+      c.beat_merge = false;
+      c.inject_walk_take_held = true;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.dram_pm = 40;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      g_quiet = true;
+      e.finish(200000);
+      g_quiet = false;
+      caught += g_fail != before;
+      g_fail = before;
+    }
+    std::printf("  %-24s %s\n", "control walk-take-held", caught ? "caught" : "MISSED");
+    EXPECT(caught, "a held uop taken before the walk passed it should fail");
+  }
   // PF-23's control: drained waits for no abandoned load's replay, so it
   // leaves a completion owed to a slot that is freed.
   caught = 0;
@@ -6287,7 +6390,6 @@ int ooeTestDirectedPrePostWith(void (*pre)(const Core &), void (*post)(const Cor
 /// failure count.
 /// Settings a bench holds each random test to, after the test's own.
 void ooeTestRandomOver(void (*cfg)(Config &)) { g_random_config_hook = cfg; }
-void ooeTestRandomBars(unsigned pct) { g_random_bar_pct = pct; }
 
 int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
                     void (*pre)(const Core &), void (*post)(const Core &), void (*cfg)(Config &)) {
@@ -6330,6 +6432,13 @@ int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_c
     testAtomicKill();
     testAtomicDemote();
     testBarrierDemote();
+    // The reports (OA 435 (9), (10)): faults, the demotion triggers.
+    testFault();
+    testMemFault();
+    testAtomicFault();
+    testBarrierFault();
+    testMlcTrigger();
+    testBarrierTimer();
     testSlotRandom(seeds * 4);
   } else if (scenario == "idle") {
     for (int mode = 0; mode != 8; ++mode) {
@@ -6477,6 +6586,7 @@ int main(int argc, char **argv) {
   testSectionFaults();
   testBarrier();
   testBarrierDemote();
+  testStraggler();
   testBarBufDepth();
   testBarPend();
   testBarrierTimer();

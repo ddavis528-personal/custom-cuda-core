@@ -1,135 +1,114 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-15. Keep this current at every task's end; it is what
+Updated 2026-11-21 (evening). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
 - Push only to `ccr-183cc441-doowtf` and
-  `claude/custom-cuda-core-infra-6msg93`, each after
-  `git merge-base --is-ancestor origin/<b> HEAD`. No PRs. Never bare `git stash`.
-- Push with `CCV_PUSH_BRANCHES=ccr-183cc441-doowtf,claude/custom-cuda-core-infra-6msg93
-  tools/gate-push.sh` (regen+commit, scoped gate by default, `--full` for a
-  gate-infrastructure change, ancestry, push, clear build but synth-cache);
-  run it in the background and read its summary lines only.
-- Notices: hand the text to the `register-reader` subagent with prefix TI
-  (not loaded in this session: general-purpose, model sonnet, the file's
-  body as prompt); act on its digest. Gate red: `gate-triage` subagent.
+  `claude/custom-cuda-core-infra-6msg93`, only through
+  `CCV_PUSH_BRANCHES=ccr-183cc441-doowtf,claude/custom-cuda-core-infra-6msg93
+  tools/gate-push.sh` or `tools/daily-sweep.sh` with the same env (ALWAYS set
+  it for the sweep). No PRs, no force-push of a working branch, never ungated.
+  Ungated backup: `git push -qf origin HEAD:refs/heads/gate-scratch/TI`.
+- Never bare `git stash`. Never edit a worktree while a gate, check or sweep
+  runs in it (`ps aux | grep -E 'check-|gate-|verify|daily'`). One heavy job
+  at a time (15 GB container).
+- Never merge another agent's gate-scratch branch wholesale (OI's ungated RTL
+  broke ti-mi9, 11-20): take only the commits or paths needed.
+- Deleting other agents' /tmp/tmp.* was denied by the auto-mode classifier:
+  don't work around it; ask Daniel if space is needed. Scratchpad priv/ is
+  unknown: leave it.
 - Commits end with the Co-Authored-By and Claude-Session lines from the
   session's attribution reminder. No model ids in commits or artifacts.
 - Edits to OI's files (sim/ooe/*) follow OI-18: edit, then notify OI.
+- Record a DA decision only on Daniel's word or a DA-tab entry.
 - Register: write only the TI tab (node e8b1d9d9-df9b; responses table
-  m8yvbw8rqgz.217, opens table m8yvbw8rqgz.122). Notices via
-  `.claude/skills/register/notice.py`, `send_message` priority "later".
-  Never answer a notice with a notice unless the row needs that agent.
-- Long runs go in the background, writing logs to files; read summaries,
-  not whole logs.
+  m8yvbw8rqgz.217). Writes need container {"kind":"project","id":
+  "JApHYjaUESeq8tsGMGXMU5"}. Notices via `.claude/skills/register/notice.py
+  compose`, `send_message` priority "later". Pongs: `notice.py pong --me TI`.
+- Notices' rows: `register-reader` subagent; gate red: `gate-triage`.
 
 ## Daily sweep (scheduled task trig_01A8r3ENUjnLyTaNUcc23ZbF, 02:11 PT)
-Register section 4 (read through `register-reader` from the bookmarks
-below); then `CCV_PUSH_BRANCHES=... tools/daily-sweep.sh` in the background
-(exit 3 = a real merge conflict to resolve); pings and pongs; report in a
-few lines.
+Register section 4 from the bookmarks; then the repo half (daily-sweep.sh,
+detached; wait with gate-wait). Exit 3 = a real conflict to resolve.
+Since 7b0bbe2a (ti-oo, not yet landed) the sweep merges fewest merge bases
+first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
+`-s resolve`. Until it lands: a merge hung for minutes = kill the sweep,
+`git merge -s resolve` that branch by hand, rerun the sweep (11-20: OA's
+4-base branch hung 25 min; resolve took 0.15 s).
 
-## Register bookmarks (revs read through)
-Full bookmarks: /home/user/ti-register-bookmarks.json (outside the repo).
-TI 484, AR 384, OA 436, DA 127, MA 97, RI 91, CP 160, OI 374 (others per the
-JSON file). MA is session_01QPk2jyUbWA7fW9YpUwqdxk.
+## Register bookmarks
+/home/user/ti-register-bookmarks.json (outside the repo). 11-21: TI 514,
+MI 34, MA 148, DI 31, OI 399, OA 466, AR 406; the rest as of the 11-21 sweep.
+Last row TI-515. Row insert payload: ops insert, target {"kind":"blocks",
+"ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
+"inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
 ## Long runs
-Every long tool detaches itself and exits 5 (never 0) when it does (OA-414,
-518cb3c3). Wait with `tools/gate-wait.sh <job log>` as a background task,
-timeout 7200000 (exit 3 = still running: rerun at once; 4 = killed by a
-restart: rerun the job). Logs in /root/ccv-logs/.
+Every long tool detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as
+a background task, timeout 7200000 (exit 3: rerun the wait; 4: rerun the job
+with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 
-## State (2026-11-18)
-- Both working branches at a102383b: AR 370 machine check (ccv_dcu_cru_err,
-  F-MACHINE 10, CCV_DCU_UE_TRACK 16, CRU MACHINE_CHECK + kill_req every grid,
-  RAU kill-all, DCU stub CCV_DCU_UE_INJECT; bins ue_recover/ue_fatal/
-  machine_check; controls ue-no-track, ue-dirty-recover, mce-ignore,
-  mce-no-record, mce-no-kill). Row TI-485 (rev 484) to AR MA IS OI OA, sent.
-  Open in it: kill races (atom/atomf/cas atomic write after kill; ropediv
-  ckpt free after kill) await OI/OA's call on which side fixes; those
-  kernels are out of the machine-check runs till then.
-- 0767fe1c: MIU stub injected L1 syndrome
-  (CCV_MIU_ECC_INJECT, bin l1_ecc_fix, controls ecc-no-fix/ecc-cmpl-on-time,
-  both hosts; RA 153 (5)); row TI-484 (rev 483) to RA, MA, OI, sent.
-- b407ff71 (SCOPED PASS 24/24): RAS phase 1,
-  SECDED enc/syn/fix (rtl/common inner helpers, K=128 units 14.5/15.4/15.4),
-  sim/skel/secded.h, check-skel lockstep + controls col/nocorr/dedsec; SRAM
-  DATA_W/ECC_K, MACRO-1 on data bits + check-bit width; ooe_wake LAT_MISS
-  override dropped (task 35). Row TI-483 (rev 482) to MA, AR, RA, OI, sent.
-- Both working branches at 36866ec7 (daily sweep 11-18, full gate PASS;
-  release 6a90f970, tag local only). It carries 3eb6e8d0 (AR 380 / OA 433:
-  warp_id + fetch_epoch lead on ccv_dec_ooe_uop, check-kernel uop-late-lead
-  control on lanectx), row TI-482 (rev 481) to OI, AR, OA, notices sent.
-  OA 434 ruled OI-170 option (a): a lead waiver for decrx enq_slot (OI writes it).
-- 358ace66: ti-stride (AR 373 (2) stride benches + LOAD key, pin a293afe7,
-  gate-scope sim/dcu + sim/miu, RI's 536c9210) and ti-shape (DA 2026-11-17
-  macro shape limits). Rows TI-480, TI-481.
-- Earlier landed: 9682b03a (AR 368 L1_ECC, TI 478), 117e8117, ddc700a1.
-- Daily sweeps 11-17 (release 2e2b5313) and 11-18 (6a90f970) done; its tag push is refused from
-  here, local only.
-- Disk: a gate failed on a full disk; cleared idle worktrees' synth-cache.
-  Scratchpad priv/ (4.3 GB) is unknown, left alone. Worktree ti-size is on
-  branch ti-next at 36866ec7; ti-bench is free.
-- Open small: task 35, drop the ooe_wake LAT_MISS 16 override in
-  test/ooe/cg-units.json once OI's 5e1f3789 (OI-163) is in the base.
-  AR may answer the colwalk-p128b anomaly (perfect fetch slower than stub).
+## State (2026-11-21, evening)
+- 11-21 sweep landed b681ce3d (9 branches incl. OI's ccr-57eff422-5tdecg,
+  40 commits) on both branches; release ad18fd95, tag refused (local only).
+  Its first full gate lost check-cg to the container OOM (python 4.65 GB
+  beside ngd's yosys); CCV_RESUME=1 reran cg alone and passed. If cg OOMs
+  again, find the unit (likely ooe_wake/ooe_go/ooe_rsread) and add it to
+  tools/heavy-units.json. DI's and MI's branches moved: next sweep.
+- Landed b8233a39: DI's 8b6090d0 cherry-picked (DCU model drops + ECC in
+  arrays), dcu=model transp4 l1_ecc_fix=55, dcu-ecc-recode control,
+  MI-19 (2) drop bins, vadd4 replay drain on the stub MIU under miu=model
+  (MI-4 (A)(4)). TI-515 to DI, MI. MIU-model ECC rows fail until MI's
+  2d2259bf (pushes with DI's 7bf5073a); MI sees 388 PASS with it.
+- Landed 655286d1: MI-4 (B) fixed (FET stub ignored rewind_held; held
+  warp's rewind steps back over its retired barrier wait), MI-18's
+  CCV_LAT_MIU_PAIR_LAG=3, the 8ac4c441 interface change (drop,
+  check_bits; DI-18: MIU corrects, DCU never replays). TI-514.
+- /home/user/ti-ret is gone; the sweep ran from /home/user/ti-drop.
+- Landed d761c634 (ti-wp, SCOPED PASS on the 11-20 sweep 8c378e12): DI-6's
+  pins, MA-25, MI-9 (3) waypred, MI-8, MI-4 A2/A3, TI-499's sweep fallback.
+  TI-506 posted; DI, MI, MA, RA rung.
+- Landed 0ee1c423 (with DI's 9d251d57, strict DCU model): bank controls
+  under all four MIU x DCU sets (DI-11 (4); TI-512).
+- Landed 4f257a17 (with MI's 51cf5dd2): DI-10 pair pins (rope:12, vadd4
+  pair row dropped); bank controls pinned to the stub DCU (pair runs had
+  them on the model). TI-511 to DI, MI. Check pair runs before landing
+  anything that touches the bank or IMPL_PINS sections.
+- Landed ec8f3422: check-sv-hosted machine check on swap (MI-14; TI-510 to
+  MI, DI). DI-9: the pair's SV-host drift is a use-after-free in MI's
+  miu_block.cpp (MI's fix).
+- Landed 56c7ce54 (with MI's d639adb2): bank credits under both MIUs
+  (MI-13), slotform cold (task 56 done); TI-509 to MI. two-page-hit dropped
+  (MI, MA).
+- Landed 78e74f4e: MI-7 (a)(b)(d) cold-TLB section + pgcross kernel; TI-508
+  asks MI/MA whether to drop two-page-hit (no case: a two-page load is
+  ineligible first). Task 56: slotform cold line after MI's d639adb2.
+- Landed 836d3f89: impl_pins substitutes every pinned bin (DI re:TI-506;
+  TI-507).
+- The 11-20 release is 078f102d; the remote refused its tag
+  snapshot-2026-11-20-8c378e1 (local only, in /home/user/ti-size).
+- Disk: the first gate-push died of a full disk; freed ti-bench and ti-hooks
+  synth caches and old scratch dirs (13 GB free). scratchpad priv/ (4.3 GB)
+  and ~/.cache/ccache (5.1 GB) untouched: ask Daniel before clearing.
+- Known: the MIU model (no credits spent until MI's step 5) trips the stub
+  DCU's bank bound on slotform/coremark128; those lines are stub-MIU only.
+  MI-4's replay drain stall and vadd4 still need scenarios from MI.
 
 ## Open work (priority order)
-A. Task 28, array RAS (DA rulings TI 474-476): SECDED part landed
-   (b407ff71, TI-483); MIU stub injection landed (0767fe1c, TI-484). Left:
-   DED test (needs AR 370's machine-error path), Sram1rw injection when a
-   block model keeps arrays behind it; then the
-   common wrapper (BIST override + spare row outside the macro + spare
-   column above 8 KiB logical; macros only, flop arrays scan); BIST
-   broadcast groups of up to 32 KiB logical in parallel (group/ID params,
-   group-size and chain checks, tie-off only at the block wrapper).
-B. Task 30, AR 370: stubs, schema and params landed (a102383b, TI-485). Left:
-   ccv_common_err RTL (CE/UE counts saturating popcount up to 8 a cycle,
-   first-error log lowest bank + track-hit + overflow, ERR_CTRL CE threshold
-   -> ce_alert, INJECT 1/2 bits on next write to a named array, track table
-   readable, host-only on the CSR star; MA-19: 16 arrays, 9-bit row). MA's
-   224 "scan-only" track flops still owe CG.
-C. Task 31, AR 371: SPM banks ccv_common_rf_1r1w 1024x32 (4 KiB, no ECC);
-   stub sub-word RMW charged as a bank conflict; CCV_SPM_BANKS doc; check-ngd
-   on the 1024-word read (fallback 2 x 512).
-E. Offer Daniel cost/bit instead of efficiency if wanted (TI chose bits/cost).
-
-No task carries a date (Daniel, 2026-11-16): everything is best effort, in
-priority order. A dependency is met by moving its task up, never by a due
-date. A date in another agent's row is read as a priority, not a deadline.
-0. LANDED 11-15: a5481843 (SCOPED PASS 24/24 since bd1cc5a2) on both working
-   branches: AR 356 (1) stub MIU MA-4 eligibility + early no-hit, OOE l1_nohit
-   on in the skeleton (OI's ooe_block.cpp), AR 359 (4) fix (TI's stub MIU: a
-   credit-late hit's cmpl could leave at the contract ahead of its data; fixes
-   5663e208 + 28f9ab48; cm128priv 64 KiB warm/perfect 0 CHECKs, was 672,
-   2,124,002 cycles), RI-54 merge + addr-late control, CCV_DCU_SETS 512,
-   DA 2026-11-15 budget rule docs. Landing row: see TI tab after rev 449.
-   NEXT (11-16): task 21 AR 362/MA 65 set_index/bank lead on ccv_miu_dcu_req +
-   page-offset require; task 19 RA 148; check-ngd 'by' enforcement of the
-   budget rule (unmeasured-parent modules, boundary ports/leads, boundary-
-   wired child pins), a negative control each; cover bin for the
-   credit-starved late hit. Daily sweep repo half: fresh worktree.
-0b. 11-16: RCU waivers signed (DA rev 122, Daniel in TI's session); RI's 05af449c landed as 93f0d75c (TI 451). OA 419 baseline line: OI carried it (0bd67c2b), nothing for TI. Promised to RI: RA 148, lane-op kill kernel (no dates: DA 2026-11-16).
-0c. LANDED 11-16: 1861cc51 (SCOPED PASS 24/24) on both working branches:
-   AR 362/364 (DCU_BANKS 8 on PA[9:7], BANK_AGE 16, W_DCU_SET, page require,
-   lead_set_index only; stub MIU drives, stub DCU checks, break dcu-set-lead),
-   RI-57 kill kernel rokilllane + bin kill_lane, and an OI-18 edit to
-   sim/ooe/ooe_core.cpp (epoch check before slot lookup). TI 457 rang RI, RA,
-   OI, AR, MA. Daily sweep 11-16 repo half running from /home/user/ti-sweep
-   (branch ti-sweep16; log job-daily-sweep-20261116-125856-*.log).
-   OI-157/IS OOM: check-cg holds change counts, not traces (b3e2305f = 804d1e6f
-   on ti-sweep16); LANDED: the 11-16 sweep's full gate passed on 804d1e6f,
-   pushed to both working branches and release (21d2fb26). TI 458-460. After it lands:
-   LANDED 7192d4fc: RI's b2748371 + no-dates CLAUDE.md (SCOPED PASS 4/24); TI 462 rang OI, IS; TI 463 rang RI.
-   LANDED 0b270eb3 (SCOPED PASS 24/24): task 22 macro library (every-other-cycle
-   sram_1rw, 2-cycle read; ccv_common_rf_1r1w); TI 464 rang MA.
-   NEXT, in priority order (no dates, DA 2026-11-16): check-ngd budget-rule 'by'
-   enforcement (unmeasured parent, block boundary ports/leads, boundary-wired child
-   pins; a control each); credit-starved late-hit cover bin; task 19 RA 148 (low
-   priority, post-sign-off); SFU kill variant.
-1. OI-149 done (58d758ce). AR re-books PF-47/PF-33 from AR 356 (1)'s runs.
-2. RA re:RI-46 (3): kill kernel with an SFU op in flight at the kill.
-3. OA 413: when ooe_sched gets a parent, its check-ngd proves chas leaves
-   ooe_rs from a flop. RI-21 (4): rcu_dec_pkg switch after sign-off.
+0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).
+1. Task 55: OI-193/195's fix and decq_credit_lag knob (oi-sw 0fc3dc5a)
+   land with OI's sweep merge. Then: lag 512 --cycles 200000 pass
+   (mig_credit_wait>0) and mig-before-credits CHECK; due-epoch-lost; and check-kernel line for MI-11 (lnorm1 CCV_MIU_IMPL=model
+   CCV_RAU_DEMOTE=mlc clean, parks>0, FET wait on). OA 462: binding dropped;
+   once OI shows the released-slot CHECK catches it, --break
+   mig-before-credits becomes the full-credit wait's control line.
+2. Task 59: demotion restore hang (transp4 CCV_RAU_CONCURRENT=1 at:286
+   and later: demoted warps never restored) and narrowadd at:100-126 PCA
+   parked R2 upper half lost (MI-5). Then the pair dcu-drop-credit /
+   dcu-drop-answers controls once MI's drop sender lands.
+3. Task 51 rest: MI-7 page-boundary kernel; MI-5 bins/slow regions.
+6. AR 370 ccv_common_err RTL; task 28 RAS wrapper (BIST override, spare
+   row/column, broadcast groups); AR 371 SPM banks; AR 392 PT base CSR
+   with Q-50; AR 393; OI-187 / OA-452.
+7. Low: RA re:RI-46 (3) SFU kill variant; RA 148 (post-sign-off).
