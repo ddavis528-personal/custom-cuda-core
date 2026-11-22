@@ -36,7 +36,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   data+syndrome, K=128); UE on a clean line: DCU refetches under the same req_id, MIU keeps it live.
   AR 405 / DCU tab 84: mispredict = late answer at due+2 under the original req_id, no credit;
   pa_fold = XOR of PA[47:16] 4-bit chunks (wayfold helper, DI-24 asks TI); control miu-fold-flip.
-- Sweep 2026-11-22 merge (gate-push --full, job-gate-push-20261122-104808-444.log): ccr-183cc441 54,
+- Sweep 2026-11-22 merge, pushed at 8170fdcf full PASS (gate-push --full, job-gate-push-20261122-104808-444.log): ccr-183cc441 54,
   ccr-5e4d6c70 10, ccr-80102643 10 (MA.md conflict: kept MA's newer f9fb834e), ccr-9eb50716 5,
   ccr-c22116ce 2, MA's spec branch 3, ccr-57eff422 17 (OI's; clean now).
 - Sweep merge d26849c3 (ccr-183cc441 25, ccr-5e4d6c70 20, ccr-80102643 4, mi-dev A1 hold
