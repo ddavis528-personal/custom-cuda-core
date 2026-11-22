@@ -30,8 +30,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
-- Daily sweep 2026-11-22 (Sun): AR 409, OA 468, IS 201, TI 517, OI 401, CP 160, RA 157, RI 91,
-  MA 157, MI 35, DI 41, DA 131, Conventions 20; specs MIU 161, Common 9, DCU 84. Next pings: Friday.
+- Daily sweep 2026-11-22 (Sun): AR 409, OA 468, IS 201, TI 519, OI 401, CP 160, RA 157, RI 91,
+  MA 157, MI 36, DI 41, DA 131, Conventions 20; specs MIU 161, Common 9, DCU 84. Next pings: Friday.
   AR 403/404: MIU corrects CE (syndrome R2, completion withheld 1, fix in the stage after on flopped
   data+syndrome, K=128); UE on a clean line: DCU refetches under the same req_id, MIU keeps it live.
   AR 405 / DCU tab 84: mispredict = late answer at due+2 under the original req_id, no credit;
@@ -78,7 +78,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    counter bridging LAG=3, CCV_LAT_MIU_PAIR_LAG once TI derives it; fences pair on slot 0; bulk
    discards no address; memop ends no-flop). Then miu_agu8, miu_lead (ge1/ge2/used), miu_cred,
    miu_tlb, miu_grp, miu_a2 (drop), miu_ids, miu_hitq, miu_rsp, miu_rcap, miu_ext, miu_ecc
-   (syndrome R2, budget 17), miu_out, ccv_miu top. MI-16: TI wires the MIU RTL job.
+   (syndrome R2, budget 17), miu_out, ccv_miu top. MI-16 closed (TI ad27ff81, job_miu_rtl runs run-rtl.sh; MI rev 36).
    RTL lessons: CCV-L23 forbids a self-feeding param shift array (use a counter-indexed ring);
    tags _cmNNh; RST-1 flop; CG-5 enables from own flops; (* keep *) output copies.
 1b. MA-29 done by TI (bc9d61ff): merge it in the next sweep; miu_ecc RTL syndrome at K=128.
