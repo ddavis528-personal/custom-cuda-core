@@ -4,7 +4,8 @@ Updated 2026-11-22, MOST CURRENT, read first:
 - PUSHED 0d54027a (sweep merge 11-22, full gate PASS, then RESUMED PASS push): dc2c3697 model defaults demote_walk=1/beat_merge=0 (OA 466; RH: S1 +0.072%, cm32priv +0.149%, cm128priv -0.038%), c69ee1a3 check-kernel provswap CCV_RAU_CONCURRENT=1 (TI confirmed, TI-520), all remote branches incl. TI 63579fce (CCV-L23 table form).
 - OI-198 (rev 402) recorded the flip + re-pin. Next free OI-199. RH told rh-oi466 can go.
 - Merge lesson: AR's sweep branch had 7 merge bases and ort hung >90 min; merged with git merge-tree --write-tree --merge-base=<best single base>, then commit-tree with both parents. A detached gate that outlives a container restart keeps the old git proxy port and cannot push: relaunch with CCV_RESUME=1 (carries every passed section).
-- NEXT: #74 OA 467/DA 131: rtl/ooe/ooe_ratmap.feedback.json table entry (by OA), no-same-cycle assertion + failing control, landing row for OA to sign, then drop the sweep hold on ooe_ratmap (16d7393a). Then #73 (DA 130 PWV), #71 (OA 465 decq walk), #72 deferred.
+- #74 BUILT on local branch oi-ratmap (dd296f15 on 61e3d035, the hold's revert), NOT pushed: OI-199 (rev 403) asks OA to sign the table entry; on OA's sign, merge oi-ratmap into oi-sw and gate-push. Lint clean, bench 0 mismatches, 5 controls caught (read-at-write new; restore-first revived via testRestoreBesideDemote), CG 35 ungated of 2438 (1.4%), NGD 13.6. Next free OI-200.
+- WAS: #74 OA 467/DA 131: rtl/ooe/ooe_ratmap.feedback.json table entry (by OA), no-same-cycle assertion + failing control, landing row for OA to sign, then drop the sweep hold on ooe_ratmap (16d7393a). Then #73 (DA 130 PWV), #71 (OA 465 decq walk), #72 deferred.
 - Bookmarks 11-22: OA 469, AR 409, MI 35, TI 518, RA 157, RI 91, MA 157, DI 41, IS 201, CP 160, DA 131, Conventions 20.
 
 Updated 2026-11-21 (5), earlier:
