@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 408, TI 511, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 154, DA 128, MI 32, DI 38.
+Conventions 20, AR 409, TI 516, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 157, DA 128, MI 32, DI 41.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -84,6 +84,18 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 
 ## Open work, most urgent first
 
+- DI-26 ANSWERED (MA rev 157): dcu_bctl budgets set in the row (inputs arrival 0, sa req 9, ce req 4, other outs 0);
+  DI writes dcu_bctl.ngd.json with by "MA (MA rev 157, DI-26)"; partition changes (a)-(f) confirmed; DCU tab rev 84
+  (snapshot at 82: refresh with next batch). Slice 2 owes store-to-load order in the bank queue (DI-26 (f)).
+- TI-517 landed MA-29 (bc9d61ff, TI rev 516): mark landed in the tabs with the next batch.
+- DI-25 ANSWERED (MA rev 156): dcu_btag's own flopped pick from channel leads confirmed (DCU tab rev 83; snapshot
+  still 82, refresh with the next batch); slice 2: tag-RF fill is RMW in the bank's free gap (RF stays 1r1w,
+  forwarding covers same-set writes); model keeps the stub's same-cycle loser with a zero CHECK under MIU=model.
+- MA-30 AGREED (AR 405, rev 409) with conditions, answered MA rev 155, DCU tab rev 82, MIU tab rev 161 (pushed with
+  snapshots): mispredict = no contracted slot, re-read H+5, late at due+2 (no rsp field); fold table has a valid
+  bit (2,560 flops/bank), no match = miss, no read; fold = XOR of PA[47:16] k-chunks (= PFN), kept in miu_tlb
+  entries; TI asked for sim/skel/wayfold.h + rtl/common/ccv_common_wayfold.sv; CHECKs, controls
+  dcu-wp-nocompare and miu-fold-flip, bins. Waiting: TI lands pa_fold, params, helper.
 - DCU PHASE 2 SLICE 1 LANDED (DI-20): DCU tab rev 73 ("MA's Phase 2" section; Phase 1 arrays bullet and ECC
   bullet fixed to (137,128), 512x137, 72 check bits, 140-bit tag word, fold in flops). dcu-impl.md: status,
   RTL modules and phases 2a-2d, waits row. Snapshot dcu-spec.md at rev 73. Draft: scratchpad dcu-slice1.md.
