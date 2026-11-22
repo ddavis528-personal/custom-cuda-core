@@ -3,7 +3,9 @@
 Updated 2026-11-21 (5), MOST CURRENT, read first:
 - 8d8577b5 PUSHED (sweep merges, full gate PASS). Bookmarks now TI 513, DI 32 (others as below). Next free OI-197.
 - a5d5cb83 on wt-sw (ccr-57eff422-5tdecg): ooe_decrx straggler keep (#71): wo_cq01h in, per-slot walk bit wq + epoch wep, wo_o out for ooe_decq; model RxLog::wopen + walkOpen/walkEpoch; decrx_tb at model default straggler_walk (rxConfig dropped), walk-held=109 at 25 seeds, 0 mismatches, 8 controls caught (new no-walk). NGD wo_cq01h 10.0, CG clean. PUSHED (SCOPED PASS).
-- NEXT #71: ooe_decq holds a walk-open slot's uops on the demotion flush (reads wo_o), frees after beat + credit delay; beats from rob_w demotion walk (OA 435 item 6); ooe_slot drives wo; OI row on scope (MI-12 waits). Then decrx control mask adv when adn; RH pricing; OA 435 items.
+- OI-197 (rev 401) raised to OA, rung: decq hold needs the demote_walk=1 walk port (OA 451); proposal per-entry held + beat-pending bits; WAIT for OA's call before building decq hold / rob_w item 6. Next free OI-198.
+- ec2ed823 (local, unpushed): decrx control no-double-adv (caught). Rides the next gate-push.
+- NEXT #71 (after OA answers OI-197): ooe_decq holds a walk-open slot's uops on the demotion flush (reads wo_o), frees after beat + credit delay; beats from rob_w demotion walk (OA 435 item 6); ooe_slot drives wo; OI row on scope (MI-12 waits). Then decrx control mask adv when adn; RH pricing; OA 435 items.
 
 Updated 2026-11-21 (4), MOST CURRENT, read first:
 - 893f2eed PUSHED (full gate PASS): OA 462 kill exemption (decq_killed_late), decrx bench at straggler_walk=0 until #71 RTL. OI-196 (rev 400) answered AR-402 + DI-15 (re-sweep 893f2eed), both rung (DI session_01QPk2jz5TVESyWMKVKjqqEA, not in roster).
