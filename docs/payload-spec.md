@@ -546,7 +546,7 @@ spm → miu · rate 4 · memory
 
 ### `ccv_dcu_miu_rsp`
 
-Cache read data, hit indication and whether ownership was granted, and mlc_miss: the fill that served this access missed in MLC (ccv_mlc_dcu_rsp.miss, passed through). MIU reports it on ccv_miu_ooe_cmpl, since an MLC miss is the primary demotion trigger; without this field the signal stopped at DCU (arch open A-9). check_bits: the stored (72,64) SECDED check bits of every code word the slot's read_data carries, 8 a 64-bit word, 128 a slot (MA-28 (c), AR 401). MIU's R2 computes the syndrome beside the lane extract, the OR over every code word the slot carries (the bank read, leader and followers alike), flops a non-zero flag and withholds that slot's completion; the corrected data returns under the original req_id with no new entry credit, and MIU keeps the req_id live until a completion is delivered, not withheld. CCV_LAT_L1_ECC stays 1. DCU's CCV_DCU_ECC_INJECT flips a stored bit to reach it (MIU's CCV_MIU_ECC_INJECT is retired).
+Cache read data, hit indication and whether ownership was granted, and mlc_miss: the fill that served this access missed in MLC (ccv_mlc_dcu_rsp.miss, passed through). MIU reports it on ccv_miu_ooe_cmpl, since an MLC miss is the primary demotion trigger; without this field the signal stopped at DCU (arch open A-9). check_bits: the stored (137,128) SECDED check bits of every code word the slot's read_data carries, 9 a 128-bit word (CCV_DCU_ECC_K), 72 a slot (CCV_DCU_ECC_CHECK_W; MA-29, AR 404, amending MA-28 (c) and AR 401's 128). MIU's R2 computes the syndrome beside the lane extract, the OR over every code word the slot carries (the bank read, leader and followers alike), flops a non-zero flag and withholds that slot's completion; the corrected data returns under the original req_id with no new entry credit, and MIU keeps the req_id live until a completion is delivered, not withheld. CCV_LAT_L1_ECC stays 1. DCU's CCV_DCU_ECC_INJECT flips a stored bit to reach it (MIU's CCV_MIU_ECC_INJECT is retired).
 
 dcu → miu · rate 4 · memory
 
@@ -557,8 +557,8 @@ dcu → miu · rate 4 · memory
 | `hit` | `1` | 1 | literal |
 | `ownership_granted` | `1` | 1 | literal |
 | `mlc_miss` | `1` | 1 | literal |
-| `check_bits` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
-| **total** | | **1161** | ⚠️ 6 provisional |
+| `check_bits` | `CCV_DCU_ECC_CHECK_W` | 72 | CCV_DCU_ECC_CHECK_W (arch) |
+| **total** | | **1105** | ⚠️ 6 provisional |
 
 ### `ccv_mlc_dcu_rsp`
 

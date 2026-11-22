@@ -359,6 +359,28 @@ int main(int argc, char **argv) {
       EXPECT(b.h.bins["dcu_wp_wrong"] == 1, "one mispredict");
     });
 
+  // MA-29's candidate predictor (CCV_DCU_WAYPRED_SEL=mru): the set's most
+  // recently used valid way, by LRU state alone. Two lines of one set, x the
+  // more recent: a read of a mispredicts (due + 2); a read of a again hits at
+  // due, since its first read made it the most recent.
+  test("wp-mru", [&] {
+    Config c = cfg(8);
+    c.wp_mru = true;
+    Bench b(c);
+    const uint64_t a = uint64_t(1) * c.sets * kLineBytes, x = uint64_t(2) * c.sets * kLineBytes;
+    warm(b, a, 60);
+    warm(b, x, 61);
+    uint64_t P = b.t;
+    b.reqs[P] = {rd(0, 1, a)};
+    b.run(P + 20);
+    EXPECT(b.at(1) == P + 5 && b.h.bins["dcu_wp_wrong"] == 1, "a, not the MRU way: mispredict at due + 2");
+    EXPECT(b.rsp(1) && b.rsp(1)->line[0] == pat(a, 0), "a's line");
+    P = b.t;
+    b.reqs[P] = {rd(0, 2, a)};
+    b.run(P + 20);
+    EXPECT(b.at(2) == P + 3 && b.h.bins["dcu_wp_wrong"] == 1, "a, now the MRU way: hit at due");
+  });
+
   // A UE in a clean line is recovered: invalidated, refetched as a miss.
   test("ue-clean-recover", [] {
     Config c = cfg(9);

@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 400, TI 507, OA 460, IS 201, CP 160, OI 395, RA 157, RI 91, MA 143, DA 128, MI 27, DI 27; AR 405.
+Conventions 20, AR 409, TI 516, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 157, DA 128, MI 32, DI 41.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -84,6 +84,38 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 
 ## Open work, most urgent first
 
+- DI-26 ANSWERED (MA rev 157): dcu_bctl budgets set in the row (inputs arrival 0, sa req 9, ce req 4, other outs 0);
+  DI writes dcu_bctl.ngd.json with by "MA (MA rev 157, DI-26)"; partition changes (a)-(f) confirmed; DCU tab rev 84
+  (snapshot at 82: refresh with next batch). Slice 2 owes store-to-load order in the bank queue (DI-26 (f)).
+- TI-517 landed MA-29 (bc9d61ff, TI rev 516): mark landed in the tabs with the next batch.
+- DI-25 ANSWERED (MA rev 156): dcu_btag's own flopped pick from channel leads confirmed (DCU tab rev 83; snapshot
+  still 82, refresh with the next batch); slice 2: tag-RF fill is RMW in the bank's free gap (RF stays 1r1w,
+  forwarding covers same-set writes); model keeps the stub's same-cycle loser with a zero CHECK under MIU=model.
+- MA-30 AGREED (AR 405, rev 409) with conditions, answered MA rev 155, DCU tab rev 82, MIU tab rev 161 (pushed with
+  snapshots): mispredict = no contracted slot, re-read H+5, late at due+2 (no rsp field); fold table has a valid
+  bit (2,560 flops/bank), no match = miss, no read; fold = XOR of PA[47:16] k-chunks (= PFN), kept in miu_tlb
+  entries; TI asked for sim/skel/wayfold.h + rtl/common/ccv_common_wayfold.sv; CHECKs, controls
+  dcu-wp-nocompare and miu-fold-flip, bins. Waiting: TI lands pa_fold, params, helper.
+- DCU PHASE 2 SLICE 1 LANDED (DI-20): DCU tab rev 73 ("MA's Phase 2" section; Phase 1 arrays bullet and ECC
+  bullet fixed to (137,128), 512x137, 72 check bits, 140-bit tag word, fold in flops). dcu-impl.md: status,
+  RTL modules and phases 2a-2d, waits row. Snapshot dcu-spec.md at rev 73. Draft: scratchpad dcu-slice1.md.
+  MA-30 RAISED (rev 153; AR to agree, TI apply, MI/DI FYI, all notified): fold table k=4 in dcu_bctl flops
+  (64x8x4 a bank), MIU sends pa_fold (k bits) in ccv_miu_dcu_req payload from A2, SEL=index, HIT 8.
+  Params asked: WAYPRED_BITS 5->4, SEL 1->0. Pricing (both models, 42b8458b): k5 S1 59,592 / cm32p 2,099,633 /
+  cm128p 2,606,850; k4 -0.02/-0.17/+0.30%; k3 -0.02/-0.40/+0.65%; k2 +3.47% cm128; B9 (HIT 9) +1.11/+0.79/+0.88%.
+  Answered DI-23 (rev 154). WHEN AR AGREES: MIU tab A2 gets pa_fold (fold of line PA tag bits), notify MI;
+  mark MA-30 agreed in DCU tab text ("AR to agree" in status line, LRU para, arrays bullet defaults).
+  DI-21 (slice 2): writeback-buffer-full case; answer with slice 2. Slice 2 owes: UE recovery's second
+  response under the same req_id (MIU keeps the id on ded), a rule for both tabs; column repair and BIST
+  groups for the 8 KiB data instances (TI-475), promised in the DCU ECC bullet.
+
+- DI-18 DECIDED (MA rev 148): on a CE MIU corrects what it holds and redelivers as a refill; DCU counts,
+  rewrites, sends nothing more (amends MA-28 (c)'s replay half to TI-513 (2)). MIU tab rev 153, DCU tab
+  rev 65, dcu-impl.md row. Snapshots refreshed.
+
+- MA-27 FULLY CLOSED (MA rev 149, AR notified): A1 hold 0 at defaults on S1/cm32priv/cm128priv; dup drops
+  <=0.008% (MI a0afe9fc, CCV_MIU_DUP_IDEAL pricing aid). MIU tab rev 154. "TI landed the fields" marked; snapshots refreshed at 155/65.
+- DI-18 also: AR-403 amended AR 401 to MIU-corrects (AR rev 407).
 - MIU PHASE 2 IS FIRST (MI-15, MA rev 138; MI says at Daniel's request, no DA row found, order is MA's anyway).
   Slice 1 (L1-hit path) LANDED: MIU tab rev 147 "MA's Phase 2" (stage table at L1_HIT 8, partition of 17
   modules, port budgets), miu-impl.md module list + phase rows 2a-2d, snapshot. NEXT: notify MI once pushed;
@@ -94,9 +126,11 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
   completion delivered; CCV_DCU_ECC_INJECT replaces MIU's. TI applies fields. In MIU tab rev 148, DCU tab rev 64.
   OWED: price the A1 hold (bank < CCV_DCACHE_LOOKUPS credits) on S1/cm32priv/cm128priv once MI's model has it.
 - DI-8 DONE (MA rev 142): p1 credit returns, d494cf9b pushed on SCOPED PASS 26/26.
-- OI's ccr-57eff422 (OOE RTL, 77 commits) conflicts in OI's own files: retry at the sweep; row naming OI if it
-  still conflicts.
-
+- MI-17 (MA rev 144): A1 credit gate = used[b] ? ge2[b] : ge1[b] (cred flops ge1/ge2, lead flops used). MI-18
+  (MA rev 145): every MIU receiving end no-flop at RTL; CCV_LAT_MIU_PAIR_LAG = addr path - memop path (3), require
+  >= 1, TI derives. MIU tab rev 150, snapshot refreshed.
+- Sweep 2026-11-21: merged infra 16, MI ccr-58815650, DI ccr-5e4d6c70, AR ccr-80102643. NOT merged: OI's
+  ccr-57eff422 (conflicts in OI's files); AR 402 already asks OI to merge TI's branch in, so no MA row.
 - MI and DI ARE RUNNING (MI session_01QPk2jzH1Gd3DcxK4F4pwCC, DI session_01QPk2jz5TVESyWMKVKjqqEA; their
   roster commits arrive on their branches). Their tabs: MI c1311541-4219, DI 1ea5d5b3-6e9c (bookmarks MI 3, DI 2).
 - DI-2 SETTLED (AR 390, OA-442; MA rev 121): a way mispredict (due+2 earliest) takes the conflict loser's

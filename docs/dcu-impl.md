@@ -15,10 +15,11 @@ This file holds what differs.
 **Status (2026-11-19).** MA's Phase 1 architecture is decided (DCU tab of the
 per-block specs, rev 50; MIU tab rev 144). The arrays and the hit pipeline
 are option (B), tag then data, with way prediction (C) as a parameter
-(Daniel, DA rev 128, closing MA-23; MA-26). **Phase 2 is not done:** no module
-partition, per-cycle stage table or port NGD budget yet. DI starts with the
-model; the RTL phases wait on Phase 2. Everything still open is a parameter
-with a default (section 4).
+(Daniel, DA rev 128, closing MA-23; MA-26). **Phase 2 slice 1, the L1-hit
+path, has landed** (DCU tab rev 82, section "MA's Phase 2"; DI-20): the
+module partition, the per-cycle stage table and the port NGD budgets of the
+hit path (section 5). The miss path and the rest follow as further slices.
+Everything still open is a parameter with a default (section 4).
 
 Paths under rtl/dcu/ and test/dcu/ are written plain, not as code, until
 they exist.
@@ -90,11 +91,11 @@ inside DI's to organise, the swap boundary kept.
 
 | Obligation | Spec, and the row |
 |---|---|
-| **The hit pipeline at the spec's latency:** under (B) (`CCV_DCU_WAYPRED_BITS` = 0) the tags then the data, `CCV_LAT_L1_HIT` 9; under (C) (bits k > 0) the predicted way's data with the tags, `CCV_LAT_L1_HIT` 8, and a mispredict re-reads with a second bank access that obeys the half-rate rule, so it answers no earlier than due + 2, on the bank-conflict loser's path (DI-2; AR 390, OA-442). `CCV_DCU_WAYPRED_SEL` picks among the ways whose fold matches: index (the lowest way) or recent (the most recently used; true LRU, so the tag word is 152 bits) | DCU tab, arrays and pipelines; MA-23, MA-26, DA rev 128; TI-478 |
+| **The hit pipeline at the spec's latency:** under (B) (`CCV_DCU_WAYPRED_BITS` = 0) the tags then the data, `CCV_LAT_L1_HIT` 9; under (C) (bits k > 0) the predicted way's data with the tags, `CCV_LAT_L1_HIT` 8, and a mispredict re-reads with a second bank access that obeys the half-rate rule, so it answers no earlier than due + 2, on the bank-conflict loser's path (DI-2; AR 390, OA-442). The prediction is the lowest way whose fold matches the request's PA fold (`CCV_DCU_WAYPRED_SEL` index); the fold table is in flops and the PLRU bits too, so a hit never writes the tag RF; once TI lands `pa_fold` on `ccv_miu_dcu_req`, the fold comes from MIU's payload (MA-30). Only valid ways match (a valid bit beside each fold), so no match is a miss and reads nothing; a hit in a way other than the picked one sends nothing at the hit slot and re-reads at H+5, a late answer at due + 2; a fold match on a miss discards its word. One fold function, PA[47:16] XOR-chunked, from the shared wayfold helper; CHECKs: `pa_fold` equals DCU's fold of the PA on every lookup not dropped, and no tag hit without a fold match (AR 405) | DCU tab, arrays and pipelines, Phase 2 slice 1; MA-23, MA-26, MA-30, AR 405, DA rev 128; TI-478 |
 | **Banks:** a bank takes one access every other cycle; same-cycle collisions go in slot order and the loser answers later as a miss would; a waiter that reaches `CCV_DCU_BANK_AGE` blocks new lookups and fills to its bank until served | DCU tab, ports; MA-7, AR 364 |
 | **The bank queue and its credits (MA-25):** up to `CCV_DCU_BANK_QDEPTH` (16) lookup entries and `CCV_DCU_BANK_STDATA` (12) store-data entries a bank, never more (MIU's credits guarantee it: flag an overflow as a failure); an entry credit returned when a lookup entry leaves, a store-data credit when a store's write leaves, at most one of each a bank a cycle, on the two per-bank vectors | DCU tab, bank queue; MA-24, MA-25 |
 | **Store hits, variant (b):** the store's read and its whole-line write wait in the bank's queue as deferred work under the age bound, holding the data and byte mask, read to write 5 cycles (SECDED's corrected read); D3 merges under the byte mask; the line is written whole and marked dirty | DCU tab, hit pipeline and bank queue; MA-17, MA-24; TI-466, TI-483 |
-| **ECC (TI-474, TI-475):** a hit's data leaves uncorrected at `CCV_LAT_L1_HIT`; the completion `CCV_LAT_L1_ECC` later; a non-zero syndrome withholds the completion (OOE takes a miss), and DCU corrects, rewrites the line and returns the corrected data through the fill path | DCU tab, ECC; AR-368, OA-424, RA 153 |
+| **ECC (TI-474, TI-475):** a hit's data leaves uncorrected at `CCV_LAT_L1_HIT`; the completion `CCV_LAT_L1_ECC` later; a non-zero syndrome withholds the completion (OOE takes a miss), MIU corrects the data it holds and delivers it as a refill, and DCU counts the CE and rewrites the line, sending nothing more (MA rev 148, DI-18) | DCU tab, ECC; AR-368, OA-424, RA 153 |
 | **Machine errors (MA-19, AR 370):** a CE is counted and never faults; a UE in a clean line is recovered (invalidate, refetch as a miss, record it in the `CCV_DCU_UE_TRACK` (16) table); a second UE at a recorded location, or one that finds the table full, is core-fatal; a UE in a dirty line is fatal, and the real DCU withholds the read so MIU completes it with no data | DCU tab, machine errors; MA-19; TI-476; TI-485 |
 | **Miss buffers, holding and fills:** 16 buffers of a line and up to 4 merged requests; hold `ccv_miu_dcu_req` only when every buffer is in use or a line's merge list is full; a fill writes its bank only in a cycle with no lookup to it and answers its merged requests from its own data; a notice is a promise, its response exactly `CCV_LAT_FILL_NOTICE` later, its slot reserved when it is sent; notices off by default (`CCV_DCU_NOTICE` = 0, the channel's valid held low): an un-noticed refill answers at F+4 from its fill's payload, a noticed one at F+6; the bench shows no refill hint and F+6 completions with notices off, and OA-23's hint controls caught with them on | DCU tab, miss buffers, fill path, contracts; MA-12, TI-22, OA-23; DI-4, AR 394, OA 453-454 |
 | **Eviction and probes:** LRU over 8 ways; a dirty victim leaves whole from the 2-entry writeback buffer, which a probe also searches; probes on the fifth tag port never cancel a promised response | DCU tab, eviction, probes; TI-36 |
@@ -117,6 +118,7 @@ DCU tab:
 | A full bank queue, entries and store data (MA-25) | cycles at QDEPTH, cycles at STDATA, credits returned per bank | an extra credit returned lets MIU overfill the queue, which the model flags |
 | A deferred store's read, gap and write | deferred stores; read-to-write cycles | a write before the gap merges stale data |
 | A way mispredict (k > 0) | second accesses; answers on the loser's path, at due + 2 or later | answering at due with the predicted way's data fails the oracle |
+| Fold aliasing and fold misses (MA-30, AR 405) | alias mispredicts; fold-match misses; no-match misses (reads saved); re-access cycles | dcu-wp-nocompare (the picked way's data completed without the tag compare) and miu-fold-flip (one bit of MIU's `pa_fold` flipped) must each be caught |
 | A fill held off a bank by lookups | fill-wait cycles | a fill written over a lookup's bank cycle |
 | A CE on a hit (injected) | corrected errors; withheld completions; corrected refills | completing anyway retires uncorrected data |
 | A UE in a clean line (injected) | recoveries; table entries in use | no refetch: the load hangs |
@@ -135,13 +137,13 @@ model builds with; a measurement moves a default, never the structure.
 | Item | Owner | Row | Default | Meanwhile |
 |---|---|---|---|---|
 | `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_BANK_STDATA`, the two credit-return vectors (TI picks the channel) | TI | MA-25 | 16, 12 | named constants; wire the vectors when TI lands them |
-| `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYPRED_SEL`, and `CCV_LAT_L1_HIT` derived from them | TI; AR's runs set the defaults | MA-26, DA rev 128 | 5 bits, recent (AR 386, MA rev 112), so L1_HIT 8 | build both pipelines; test bits 0 and 5, both selects |
+| `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYPRED_SEL`, and `CCV_LAT_L1_HIT` derived from them; `pa_fold` on `ccv_miu_dcu_req` | TI | MA-26, MA-30, AR 405, DA rev 128 | 4 bits, index (MA-30, AR 405; 5 and recent until TI lands it), so L1_HIT 8 | build both pipelines; test bits 0 and 4; compute the fold from the PA until the field and TI's wayfold helper land |
 | `CCV_DCU_BANK_AGE` | RH's sweep, then MA | MA-25 | 16 (sweep 8, 16, 32, 64) | read it from the parameters |
 | `CCV_DCU_BANK_HASH` (the within-page bank hash) | TI, RH's sweep | MA-20 | off | one bank function, so the hash changes one place |
 | `CCV_DCU_UE_TRACK` | landed | TI-485 | 16 | — |
 | The SRAM wrapper's BIST style and `ccv_common_err` (the error-event sink) | TI | TI-474, TI-475 | tied off | the model needs neither; the RTL waits |
 | `makeDcu` selecting DI's model (TI adds a value beside `p1`; the stub stays the default until M0), the files in blocks.list, a `check-dcu-unit` job, the lock-step job | TI | a DI row with TI in Needs, your first | — | unit tests |
-| Phase 2: module partition, per-cycle tables, port NGD budgets | MA | [`miu-arch.md`](miu-arch.md) section 7 | — | the model; nothing in rtl/dcu/ |
+| Phase 2, the slices after the L1-hit path (miss buffers, fills, eviction and writeback, stores and the merge, probes, UE recovery) | MA | DI-20; DCU tab, "MA's Phase 2" | slice 1 landed (tab rev 73) | slice 1's modules |
 
 ## 5. Build order, setup and the others
 
@@ -149,8 +151,24 @@ model builds with; a measurement moves a default, never the structure.
   phase 1 the model (M0) against the MIU stub, every kernel and control on
   both hosts, every bin reached, cycles against the stub's and against
   `CCV_DCU_IMPL=p1`'s (the second should agree to within what `dcu_p1.cpp`
-  leaves out); phase 1b with MI's model; then the RTL once Phase 2 lands.
+  leaves out); phase 1b with MI's model; then the RTL, in the phases below.
   **MA reads each exit row.**
+- **RTL modules: Phase 2 slice 1, the L1-hit path** (DCU tab rev 82,
+  section "MA's Phase 2"; DI-20). rtl/dcu/, named and partitioned exactly
+  as the tab's module table: `ccv_dcu`, the top (`ccv_common_clk`, children
+  and wires only, the generated stub's name and ports); `dcu_cap` ×4,
+  `dcu_btag` ×8, `dcu_bctl` ×8, `dcu_bdat` ×8, `dcu_rarb`, `dcu_rslot` ×4,
+  `dcu_fix`, `dcu_err`, `dcu_wake`. Each port's budget is the tab's port NGD
+  table, transcribed into `<module>.ngd.json` with `"by": "MA"`. Later
+  slices may add modules or ports to these.
+
+| Phase | Build | Exit, and who reads the row |
+|---|---|---|
+| 2a, lookup | `dcu_cap`, `dcu_btag`, `dcu_bctl` (arbitration, queue, PLRU and fold flops, drop) | per module: a bench against the model's D0 to D2 (tag result, predicted way, mispredict, queue, `ent_ret`), check-cg and check-ngd at the tab's budgets |
+| 2b, data and return | `dcu_bdat`, `dcu_rarb`, `dcu_rslot`, `dcu_err` | the same, against the model's response at H+6 and H+7 and its CE and UE events |
+| 2c, the CE rewrite and wake | `dcu_fix`, `dcu_wake` | the same, against the model's rewrite (read to write 5 cycles, `ce_rewrite_full`) and wakes |
+| 2d, the L1-hit block | `ccv_dcu` from slice 1's modules, the rest still the model's | the block as a sum of parts (check-cg's 2%, check-ngd level by level); an L1-hit kernel lock-stepped against the model in the SV top. **MA reads it** |
+| 3 onward, the other paths | each slice MA lands | per module as above; then the whole block, then SV-hosted equivalence on every kernel and control |
 - **Setup** is [`miu-impl.md`](miu-impl.md) section 8's, with your roster
   entry `DI`, your handoff `.claude/handoff/DI.md` and your sweep at minute
   43.
