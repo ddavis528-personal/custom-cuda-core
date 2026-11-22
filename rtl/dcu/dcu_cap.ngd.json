@@ -1,0 +1,101 @@
+{
+  "module": "dcu_cap",
+  "ports": {
+    "rv_cc01h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req: interface capture flops, DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0)."
+    },
+    "lsi_cc01h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req: interface capture flops, DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0)."
+    },
+    "rid_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req: interface capture flops, DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0)."
+    },
+    "pa_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req: interface capture flops, DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0)."
+    },
+    "fold_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req: interface capture flops, DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0)."
+    },
+    "drop_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req: interface capture flops, DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0)."
+    },
+    "coh_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req: interface capture flops, DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0)."
+    },
+    "excl_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req: interface capture flops, DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0)."
+    },
+    "v_cc02h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's dcu_cap outputs row, 0); the valid's port flop is a (* keep *) copy of the payload's enable."
+    },
+    "lsi_cc02h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's dcu_cap outputs row, 0); the valid's port flop is a (* keep *) copy of the payload's enable."
+    },
+    "rid_cc03h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's dcu_cap outputs row, 0); the valid's port flop is a (* keep *) copy of the payload's enable."
+    },
+    "pa_cc03h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's dcu_cap outputs row, 0); the valid's port flop is a (* keep *) copy of the payload's enable."
+    },
+    "fold_cc03h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's dcu_cap outputs row, 0); the valid's port flop is a (* keep *) copy of the payload's enable."
+    },
+    "drop_cc03h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's dcu_cap outputs row, 0); the valid's port flop is a (* keep *) copy of the payload's enable."
+    },
+    "coh_cc03h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's dcu_cap outputs row, 0); the valid's port flop is a (* keep *) copy of the payload's enable."
+    },
+    "excl_cc03h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's dcu_cap outputs row, 0); the valid's port flop is a (* keep *) copy of the payload's enable."
+    }
+  }
+}

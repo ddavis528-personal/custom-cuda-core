@@ -232,6 +232,17 @@
    "by": "OI (DA approved; Daniel's ruling on RI-15)",
    "date": "2026-11-20",
    "why": "decq's enq valid, one bit a port (6 at E=6), flopped every cycle on the edge the uop's payload lands: the keep verdict computed in the lead cycle from ccv_dec_ooe_uop's lead fields, an interface lead signal like enq_slot beside it. Its only enable would be the lead valid, an input (CG-5). The flopped reset rst_r01h (RST-1) and ev_q take 2 of the module's 7, so enq_v no longer fits. Allowed by Daniel's ruling on RI-15 (module-level CG waivers for interface lead signals), approved by DA in chat 2026-11-20; its flops count against the OOE block's per-instance 2%."
+  },
+  {
+   "module": "dcu_cap",
+   "rule": "CG-1",
+   "target": "lsi_q_cc02h",
+   "max_flops": 9,
+   "measured_flops": 9,
+   "lead": true,
+   "by": "DI (MA's Phase 2 slice 1, DCU tab rev 82: dcu_cap's row; Daniel's ruling on RI-15, RA rev 87)",
+   "date": "2026-11-22",
+   "why": "ccv_miu_dcu_req's lead field lead_set_index, flopped every cycle beside the slot's valid (9 bits, one slot; 4 instances). It is held at D0 = H+2 for the bank's tag read and arbitration, and nothing earlier names the lookup, so its only enable would be the valid on the wire, an input (CG-5). check-cg measures it at 0% idle, 26% medium and 90% high activity. rst_cr01h_n, v_q_cc02h and vo_q_cc02h (3) sit within the module's own allowance (7 of 70 flops). Allowed by Daniel's ruling on RI-15 (RA rev 87, DA rev 109): module-level CG waivers for interface lead signals, each flop charged to the DCU block's per-instance 2%, as MA's partition plans (a lead: true waiver against the block's 2%)."
   }
  ]
 }
