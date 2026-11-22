@@ -851,8 +851,8 @@ dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=60
 dcu=model,miu=model ldpar l1_hit=1
 dcu=model,miu=model no-resource-cap v60=16
 dcu=model,miu=model lnorm1-straggler demote=342
-dcu=model waypred dcu_wp_wrong=4
-dcu=model,miu=model waypred dcu_wp_wrong=4 l1_hit=0 l1_late=4
+dcu=model waypred dcu_wp_wrong=2
+dcu=model,miu=model waypred dcu_wp_wrong=2 l1_hit=2 l1_late=2
 miu=model fet-reset-on-kill scen=rope:11
 miu=model held-wait demote=776
 dcu=model held-wait demote=776
@@ -2270,16 +2270,16 @@ for m in stub model; do
   done
 done
 # MI-9 (3): waypred puts two lines in L1 set 0 under tags whose folds agree
-# and re-reads them in turn, so the DCU model's recent-way predictor names the
-# other line's way each time (MA-26). Under both models every re-read is a
+# and re-reads them in turn; the DCU model's predictor names the lowest
+# matching way (MA-30, AR 405), a's, so each of b's two re-reads is a
 # mispredict, answered on the bank loser's path (AR 390, OA-442) and taken by
 # MIU as a late hit (l1_dcu_late), == ccv-sim. DI's wp-late-at-due answers at
 # due with the predicted way's line instead, which MIU's oracle must refuse.
 log="$B/kernel_waypred_models.log"
 CCV_MIU_IMPL=model CCV_DCU_IMPL=model "$SKEL" --kernel build/oracle/waypred/oracle.jsonl >"$log" 2>&1
-w=$(ok "$log" dcu_wp_wrong=4 l1_dcu_late=4)
+w=$(ok "$log" dcu_wp_wrong=2 l1_dcu_late=2)
 if [ -z "$w" ]; then
-  say "waypred, both models: mispredicts, == ccv-sim" "PASS (dcu_wp_wrong=4, l1_dcu_late=4)"
+  say "waypred, both models: mispredicts, == ccv-sim" "PASS (dcu_wp_wrong=2, l1_dcu_late=2)"
 else
   bad "waypred, both models" "$w"
 fi
