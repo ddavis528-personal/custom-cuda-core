@@ -30,7 +30,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
-- Daily sweep 2026-11-22 (Sun): AR 409, OA 468, IS 201, TI 516, OI 401, CP 160, RA 157, RI 91,
+- Daily sweep 2026-11-22 (Sun): AR 409, OA 468, IS 201, TI 517, OI 401, CP 160, RA 157, RI 91,
   MA 157, MI 35, DI 41, DA 131, Conventions 20; specs MIU 161, Common 9, DCU 84. Next pings: Friday.
   AR 403/404: MIU corrects CE (syndrome R2, completion withheld 1, fix in the stage after on flopped
   data+syndrome, K=128); UE on a clean line: DCU refetches under the same req_id, MIU keeps it live.
@@ -84,7 +84,9 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 1b. MA-29 done by TI (bc9d61ff): merge it in the next sweep; miu_ecc RTL syndrome at K=128.
 1c. MA-30 agreed (AR 405, MIU tab rev 161): each miu_tlb entry keeps fold(PFN) (k=4), written at
    the TLB fill; miu_a2 sends it as pa_fold in the req payload; control miu-fold-flip must fail.
-   Model + miu_tlb/miu_a2 RTL once TI's schema adds pa_fold.
+   TI-518: pa_fold landed (912a155b, 458ddda3 on ccr-183cc441, after the 11-22 sweep merge):
+   wayfold.h + rtl/common/ccv_common_wayfold.sv; TI's put in putIndexLead (miu-fold-flip) is
+   mine now. Merge next sweep; miu_tlb keeps fold(PFN) per entry via ccv_common_wayfold.
 2. MI-11 (2): lnorm1 under CCV_RAU_DEMOTE=mlc once OI's c461c1b0 lands (AR 399).
 3. Way-mispredict path (AR 390) once TI's same-set kernel exists (MI-9 (3)).
 4. Awaiting TI: MI-4, MI-8, MI-9 (3), MI-13. Phase 1a cold TLB flip (MI-6). M0 report.
