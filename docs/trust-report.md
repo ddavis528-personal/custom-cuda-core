@@ -84,6 +84,7 @@ so this is a build artifact rather than something to remember.
 | `sim/skel/portdump.cpp` | — | `CCV_P_PHYS_REGS` |
 | `sim/skel/stub.h` | — | `CCV_DCU_WAYPRED_BITS` |
 | `test/cg/tb_cg_clk.sv` | — | `CCV_CG_HYST_W` |
+| `test/dcu/bctl_tb.cpp` | — | — |
 | `test/dcu/cap_tb.cpp` | — | — |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
