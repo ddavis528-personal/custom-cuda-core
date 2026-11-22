@@ -207,6 +207,8 @@
 #                                              and a fault with none
 #   a lookup's set index leads it, a copy     dcu-set-lead (hit): DCU
 #     of its PA bits (AR 362, AR 364)          refuses each
+#   a lookup's pa_fold is its PA's way-      dcu-pa-fold (hit): DCU
+#     predictor fold (MA-30, AR 405)           refuses each, both MIUs
 #   MIU sends a lookup only with its bank's   bank-credit-ignore (gather,
 #     entry credit, a store with a store-        STDATA 1): DCU refuses each
 #     data credit too; DCU returns each on       bank past its credits;
@@ -1441,6 +1443,21 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_dcu-set-lead.log" check_failures)" = 
 else
   bad "--break dcu-set-lead" "$n refused: $(grep '^KERNEL' "$B/kernel_dcu-set-lead.log")"
 fi
+# MA-30, AR 405 (3): ccv_miu_dcu_req's pa_fold is the lookup's PA folded by
+# the one function both sides share (paFold); dcu-pa-fold flips its low bit
+# on every lookup, under the stub MIU and the MIU model, and the DCU stub
+# must refuse each by name, and nothing else.
+for m in stub model; do
+  l="$B/kernel_dcu-pa-fold_$m.log"
+  CCV_MIU_IMPL=$m CCV_DCU_IMPL=stub "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break dcu-pa-fold >"$l" 2>&1
+  n=$(grep -c "^CHECK dcu: slot [0-9]* req_id [0-9]* pa_fold " "$l")
+  if [ "$n" -gt 0 ] && [ "$(field "$l" check_failures)" = "$n" ] &&
+     [ "$(field "$l" dcu_lookups)" = "$n" ]; then
+    say "--break dcu-pa-fold, $m MIU: DCU refuses each wrong fold" "PASS ($n lookups)"
+  else
+    bad "--break dcu-pa-fold, $m MIU" "$n refused: $(grep '^KERNEL' "$l")"
+  fi
+done
 # F-ADDR (O-75; CP-34's kernels): a .global address is the exact sum, and
 # one outside [0, 2^48) faults. Taken modulo 2^48, addrhigh's lanes 16-31
 # store at the bottom of memory and lanes 0-15 land too, and addrneg's load

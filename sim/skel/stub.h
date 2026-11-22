@@ -157,6 +157,26 @@ inline bool fixLine(Line &l, const Bits &r, uint32_t lsb) {
   return any;
 }
 
+// ---- The way predictor's fold (MA-30, AR 405 (3)) -------------------------------
+// The one function MIU's A2 (ccv_miu_dcu_req's pa_fold) and DCU's fold-table
+// write share: the XOR fold, k bits at a time, of the line's tag, phys_addr
+// above the set index at its built size (CCV_W_DCU_SET; a sweep's smaller
+// CCV_DCU_SETS still folds above the full index), k = CCV_DCU_WAYPRED_BITS
+// (the environment's overrides it, the same on both sides); 0 when off.
+inline unsigned wayPredBits() {
+  static const unsigned k = [] {
+    const char *v = std::getenv("CCV_DCU_WAYPRED_BITS");
+    return v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : unsigned(ccv::prov::kDcuWaypredBits);
+  }();
+  return k;
+}
+inline unsigned paFold(uint64_t pa, unsigned k = wayPredBits()) {
+  if (!k) return 0;
+  uint64_t t = pa >> (7 + ccv::prov::kWDcuSet), f = 0;
+  for (; t; t >>= k) f ^= t & ((uint64_t(1) << k) - 1);
+  return unsigned(f);
+}
+
 // ---- S1 wire conventions (docs/skeleton.md lists them) ------------------------
 //
 // Placeholders for encodings the payload spec leaves to the owning block.
