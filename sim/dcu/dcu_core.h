@@ -163,6 +163,7 @@ struct Hooks {
 class Core {
 public:
   Core(const Config &c, Hooks &h);
+  const Config &config() const { return c_; }
 
   /// May the block take new requests this cycle? False while a missing
   /// request waits for a miss buffer, or for room in its line's merge list:
@@ -224,6 +225,12 @@ private:
   void plruTouch(size_t set, unsigned way);
   unsigned plruVictim(size_t set) const;
   unsigned fold(uint64_t pa) const;
+  /// The way the predictor names for pa (nullptr with no fold match);
+  /// read before the hit touches LRU.
+  const Way *predictedWay(uint64_t pa);
+  /// The control that completes a mispredict at due with the predicted way's
+  /// line: wp-late-at-due, or dcu-wp-nocompare (AR 405, TI-518).
+  bool noCompare() const { return c_.brk == "wp-late-at-due" || c_.brk == "dcu-wp-nocompare"; }
   /// Pipe C: the predicted way of pa's set is its own (true) or another.
   bool predicted(uint64_t pa);
   /// Whether any valid way of pa's set has pa's fold (slice 1: no match is

@@ -30,6 +30,7 @@
 #include "Vdcu_bctl.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
+#include "../../sim/generated/ccv_params.h"   // CCV_DCU_WAYPRED_BITS, the fold width
 
 #include <array>
 #include <cstdint>
@@ -44,7 +45,7 @@
 
 namespace {
 
-constexpr unsigned kSlots = 4, kNB = 3, kWS = 9, kWays = 8, kWI = 6, kWF = 5, kWR = kWS - kNB;
+constexpr unsigned kSlots = 4, kNB = 3, kWS = 9, kWays = 8, kWI = 6, kWF = ccv::prov::kDcuWaypredBits, kWR = kWS - kNB;
 constexpr unsigned kSets = 1u << kWR, kQD = 16, kAge = 16, kBank = 0, kWWY = 3, kLines = 24;
 
 uint64_t g_seed = 0x5eed;
@@ -88,7 +89,8 @@ struct Bench {
 
   // The bench's tags and folds: per set, each way's line (-1 invalid).
   std::array<std::array<int, kWays>, kSets> tags{};
-  static unsigned foldOf(unsigned line, unsigned set) { return (line * 7 + set) % 6; }
+  static unsigned foldOf(unsigned line, unsigned set) { return (line * 7 + set) % 6; }   // < 2^kWF
+  static_assert(kWF >= 3, "the bench's folds take 3 bits");
 
   // The model.
   std::vector<Look> L;   // by D0 cycle
@@ -244,7 +246,7 @@ struct Bench {
     uint32_t rid = 0, fold = 0, drop = 0;
     for (unsigned s = 0; s < kSlots; ++s) {
       uint32_t r = rnd ? g.below(64) : lastRid >> (s * kWI) & 63,
-               f = rnd ? g.below(32) : lastFold >> (s * kWF) & 31, d = rnd ? g.below(2) : 0;
+               f = rnd ? g.below(1u << kWF) : lastFold >> (s * kWF) & ((1u << kWF) - 1), d = rnd ? g.below(2) : 0;
       if (l0.valid && l0.slot == s) { r = l0.rid; f = l0.fold; d = l0.drop; }
       rid |= r << (s * kWI);
       fold |= f << (s * kWF);

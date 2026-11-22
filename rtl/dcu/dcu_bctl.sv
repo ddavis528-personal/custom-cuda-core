@@ -290,8 +290,12 @@ module dcu_bctl #(
       for (int j = 0; j < w; j++) lowest[w] = lowest[w] && !m[j];
     end
   endfunction
+  // The predicted way: the lowest matching way's index, a priority encoder.
   logic [WWY-1:0] pw_cc04h;
-  assign pw_cc04h = enc(lowest(fmo_q_cc04h));
+  always_comb begin
+    pw_cc04h = '0;
+    for (int w = WAYS - 1; w >= 0; w--) if (fmo_q_cc04h[w]) pw_cc04h = WWY'(w);
+  end
 
   // The lookup a cycle on (D2): its req_id, slot, set and predicted way.
   logic lc_en_cc03h;
@@ -693,8 +697,12 @@ module dcu_bctl #(
 
   // ---- the outputs ----------------------------------------------------------
   // The SRAM: a new lookup's {set, predicted way}, else the flopped access.
-  assign sa_cc04h      = gno_q_cc04h ? {set_q_cc03h, pw_cc04h} :
-                         gxo_q_cc04h ? fa_q_cc04h : gro_q_cc04h ? ra_q_cc04h : ga_q_cc04h;
+  // The grants are one-hot (at most one of new, fix, re-read, waiter), so the
+  // select is an AND-OR; with none, ce is low and sa is unread.
+  assign sa_cc04h      = ({set_q_cc03h, pw_cc04h} & {(WR+WWY){gno_q_cc04h}}) |
+                         (fa_q_cc04h & {(WR+WWY){gxo_q_cc04h}}) |
+                         (ra_q_cc04h & {(WR+WWY){gro_q_cc04h}}) |
+                         (ga_q_cc04h & {(WR+WWY){gqo_q_cc04h}});
   assign ce_cc04h      = (gnc_q_cc04h && !dropo_q_cc03h && amo_q_cc04h) || ceo_q_cc04h;
   assign we_cc04h      = gw_q_cc04h;
   assign fxg_cc04h     = gxg_q_cc04h;
