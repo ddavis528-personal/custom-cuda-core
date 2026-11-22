@@ -29,19 +29,16 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
-0. Next model work, blocked on TI (DI-14, asked to move up): MA-27 drop
-   bit on ccv_miu_dcu_req; MA-28 (c) (72,64) check bits on ccv_dcu_miu_rsp
-   (128/slot); CCV_DCU_ECC_INJECT. Spec: DCU tab rev 64, AR 401, AR 404.
-   DCU on drop: no state, no read, no response, no queue entry, no ent_ret
-   (MIU refunds its own credit; DI-12 closed). DCU sends stored check bits,
-   computes the same syndrome (OR over every code word the response
-   carries); CE: correct, count, rewrite (holds bank like RMW), corrected
-   data via fill path under the original req_id, no new credit. UE: clean
-   line invalidate+refetch (CCV_DCU_UE_TRACK), dirty line core-fatal on
-   ccv_dcu_cru_err, no response. Controls: ECC inject, narrowed scope on one
-   side (hang or caught), UE on a dropped lookup (no MACHINE_CHECK), DCU
-   returning a dropped lookup's credit (must fail).
-   Merge TI's fields the moment they land on ccr-183cc441-doowtf.
+0. MA-27/28 (c) built and landed: drop discard and ECC in the arrays
+   (8b6090d0, cherry-picked by TI as part of doowtf b8233a39; transp4 pin 55,
+   dcu-ecc-recode control). Merged here; once pushed, notify MI (MI-19 (1),
+   DI-17): MI pushes its syndrome/drop sender 2d2259bf on top, then merge it
+   and run the pair check-kernel plus dcu-drop-credit/dcu-drop-answers under
+   dcu=model miu=model (ask TI to add them, DI-16 (c)). 7bf5073a (drop only,
+   scratch) is superseded: do not use. DI-18 decided (AR-403, MA rev 148):
+   MIU corrects a CE; DCU counts, rewrites, sends nothing more. Next: UE path
+   (AR 370: clean line invalidate+refetch, dirty core-fatal) when TI adds UE
+   injection; then spec gaps (item 4).
 1. Phase 1b met (DI-11) at 9d251d57. TI made the bank controls run under
    all four MIU x DCU sets (TI-512, 0ee1c423); MA's p1 now returns credits
    (d494cf9b) and runs all 66 kernels; model +0.56% over p1. Both merged,
@@ -63,7 +60,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 29, MI 17, MA 143, AR 405, OA 460, TI 512, DA 128
+Conventions 20, DI 33, MI 30, MA 148, AR 407, OA 466, TI 515, OI 400, DA 128
 (sweep of 2026-11-20 10:43 UTC; OI 395, RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;

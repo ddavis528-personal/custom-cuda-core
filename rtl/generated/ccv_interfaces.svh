@@ -424,7 +424,7 @@ typedef struct packed {
   logic                                          hit;
   logic                                          ownership_granted;
   logic                                          mlc_miss;
-  logic [ccv_params_pkg::CCV_W_DATA/8-1:0]       check_bits;
+  logic [ccv_params_pkg::CCV_DCU_ECC_CHECK_W-1:0] check_bits;
 } ccv_dcu_miu_rsp_t;
 
 typedef struct packed {

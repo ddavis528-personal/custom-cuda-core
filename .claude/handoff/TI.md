@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-20 (evening). Keep this current at every task's end; it is what
+Updated 2026-11-21 (evening). Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -38,16 +38,34 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 4-base branch hung 25 min; resolve took 0.15 s).
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). 11-21: TI 505,
-MI 25, DI 22, OI 399, OA 465, MA 137; the rest as of the 11-20 sweep.
-Last row TI-512.
+/home/user/ti-register-bookmarks.json (outside the repo). 11-21: TI 514,
+MI 34, MA 148, DI 31, OI 399, OA 466, AR 406; the rest as of the 11-21 sweep.
+Last row TI-515. Row insert payload: ops insert, target {"kind":"blocks",
+"ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
+"inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
 ## Long runs
 Every long tool detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as
 a background task, timeout 7200000 (exit 3: rerun the wait; 4: rerun the job
 with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 
-## State (2026-11-21)
+## State (2026-11-21, evening)
+- 11-21 sweep landed b681ce3d (9 branches incl. OI's ccr-57eff422-5tdecg,
+  40 commits) on both branches; release ad18fd95, tag refused (local only).
+  Its first full gate lost check-cg to the container OOM (python 4.65 GB
+  beside ngd's yosys); CCV_RESUME=1 reran cg alone and passed. If cg OOMs
+  again, find the unit (likely ooe_wake/ooe_go/ooe_rsread) and add it to
+  tools/heavy-units.json. DI's and MI's branches moved: next sweep.
+- Landed b8233a39: DI's 8b6090d0 cherry-picked (DCU model drops + ECC in
+  arrays), dcu=model transp4 l1_ecc_fix=55, dcu-ecc-recode control,
+  MI-19 (2) drop bins, vadd4 replay drain on the stub MIU under miu=model
+  (MI-4 (A)(4)). TI-515 to DI, MI. MIU-model ECC rows fail until MI's
+  2d2259bf (pushes with DI's 7bf5073a); MI sees 388 PASS with it.
+- Landed 655286d1: MI-4 (B) fixed (FET stub ignored rewind_held; held
+  warp's rewind steps back over its retired barrier wait), MI-18's
+  CCV_LAT_MIU_PAIR_LAG=3, the 8ac4c441 interface change (drop,
+  check_bits; DI-18: MIU corrects, DCU never replays). TI-514.
+- /home/user/ti-ret is gone; the sweep ran from /home/user/ti-drop.
 - Landed d761c634 (ti-wp, SCOPED PASS on the 11-20 sweep 8c378e12): DI-6's
   pins, MA-25, MI-9 (3) waypred, MI-8, MI-4 A2/A3, TI-499's sweep fallback.
   TI-506 posted; DI, MI, MA, RA rung.
@@ -85,8 +103,10 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
    CCV_RAU_DEMOTE=mlc clean, parks>0, FET wait on). OA 462: binding dropped;
    once OI shows the released-slot CHECK catches it, --break
    mig-before-credits becomes the full-credit wait's control line.
-2. MI-4 (B) / task 47: demotion vs barrier (transp4 CCV_RAU_CONCURRENT=1
-   at:750; narrowadd), likely TI's SYU/RAU stubs.
+2. Task 59: demotion restore hang (transp4 CCV_RAU_CONCURRENT=1 at:286
+   and later: demoted warps never restored) and narrowadd at:100-126 PCA
+   parked R2 upper half lost (MI-5). Then the pair dcu-drop-credit /
+   dcu-drop-answers controls once MI's drop sender lands.
 3. Task 51 rest: MI-7 page-boundary kernel; MI-5 bins/slow regions.
 6. AR 370 ccv_common_err RTL; task 28 RAS wrapper (BIST override, spare
    row/column, broadcast groups); AR 371 SPM banks; AR 392 PT base CSR

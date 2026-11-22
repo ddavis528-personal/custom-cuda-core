@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-20 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-21 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 401 .655773 (tab rev 405).
-  - **The next AR row inserts after .655773**, labelled AR 402.
+  - Latest row: AR 405 .662302 (tab rev 409).
+  - **The next AR row inserts after .662302**, labelled AR 406.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,15 +98,21 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 405, OA 464, TI 511, MA 142, DI 26,
-  MI 27, RA 157, RI 91, IS 201, CP 160, OI 395, DA 128, Conventions 20. TI,
-  MA, DI and MI were read only for named rows past the last sweep's revs (TI
-  496, MA 135, DI 12, MI 18): the next sweep reads them from those. Specs:
-  FET tab rev 54, DCU tab rev 59.
+- **Bookmarks** (revs read through): AR 409, OA 466, TI 516, MA 155, DI 33,
+  MI 29, RA 157, RI 91, IS 201, CP 160, OI 400, DA 128, Conventions 20. TI,
+  MA, DI, MI and OI were read only for named rows past the last sweep's revs
+  (TI 496, MA 135, DI 12, MI 18, OI 395): the next sweep reads them from
+  those. Specs: FET tab rev 54, DCU tab rev 64, MIU tab rev 148.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
+- **Sweep 2026-11-21 (10:03Z trigger):** pass 1 merged doowtf 214, n6402z
+  19, 0ch1hh 2; 5tdecg conflicted in OI's files, aborted, AR 402 to OI. Full
+  gate PASS on 6ba64602; pushed 238. OI fixed 5tdecg (893f2eed, OI-196);
+  pass 2 merged 5tdecg 40, doowtf 2 (TI-513), 0ch1hh 2, 664pgr 6; gate PASS
+  on 435b229e (~3.8 h); pushed 54. New work on 9 branches since: next sweep.
+  Session home --check exit 0. Saturday pongs: all 11-20 pongs were in.
 - **Sweep 2026-11-20 (10:03Z trigger):** merged 7 branches, 60 commits (p8esoz 29,
   1vzyjg 10, miu-dcu-microarch-spec 6, n6402z 5, doowtf 4, infra-6msg93 4,
   0ch1hh 2), no conflicts, regen clean; full gate PASS on 5f02cdfc (~3.8 h);
@@ -211,26 +217,34 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
-000c. **MA-27 drop field: AGREED (AR 400 .654054; MA, TI rung).** 1-bit payload
-   field drop on ccv_miu_dcu_req (valid at H+1 from A1; A2 decides drops at
-   H+1, payload lands H+2). Conditions: (1) DCU commits nothing on valid/lead
-   alone; (2) a dropped lookup's read raises no CE/UE/core-fatal (DI control);
-   (3) MA prices transient credits + MA-27 (2)'s A1 hold on S1/cm32priv/
-   cm128priv (Daniel's bar on the total; field does not wait); (4) bins by
-   cause + controls. TI applies the field. Waiting on: MA's price, TI landing.
-   DI-12 (MIU refunds a dropped credit at A2; ent_ret only for lookups that
-   entered the queue): MA ruled it (MA rev 143). AR 400/401 conditions are in
-   the MIU tab rev 148 and DCU tab rev 64; DI-13 closed (DI rev 27). Still
-   owed: MA's A1-hold price once MI's model has the hold; TI's two fields.
-000d. **MA-28 L1 hit ECC: AGREED (c) (AR 401 .655773; MA, DI, TI rung).**
-   128 check bits a slot on ccv_dcu_miu_rsp; MIU computes the syndrome in R2
-   (~15 NGD beside the lane extract) and withholds the completion; ECC stays 1.
-   (b) (1-bit channel) needs ECC 2, likely in Daniel's band. DI-13 read (b)
-   before MA's edit; answered for (c): same scope both sides (OR over every
-   code word of the slot's response; CHECK + control), CE/UE per AR 370,
-   correction replays under the original req_id with no new credit, MIU keeps
-   the id live. CCV_DCU_ECC_INJECT replaces MIU's knob. Waiting on: MA's tabs,
-   TI's field, DI/MI models.
+000e. **MA-30 way predictor (AR 405 .662302, 11-22; MA, TI rung).** Agreed
+   k=4 fold table (16,384 flops in dcu_bctl), pa_fold on ccv_miu_dcu_req,
+   HIT 8. Price vs k=5: S1 -0.02, cm32priv -0.17, cm128priv +0.30%; vs B9
+   (no predictor, HIT 9) about -1.1/-1.0/-0.6%. Under Daniel's bar (S1).
+   MA took the conditions (MA rev 155; DCU tab rev 82, MIU tab rev 161): an
+   alias mispredict sends nothing at the hit slot (miss indication) and
+   re-reads at H+5 on the loser's path, no new field; the table has a valid
+   bit (no match = miss, no read); the fold is PA[47:16] XOR-chunked, i.e.
+   the PFN (64 sets x 8 banks x 128 B = 64 KiB a way), so MIU's TLB holds it;
+   CHECK, controls and bins stated. CLOSED; nothing owed.
+000c. **MA-27/MA-28 (AR 400, 401, 403): CLOSED.** Drop field on
+   ccv_miu_dcu_req and 128 check bits a slot on ccv_dcu_miu_rsp landed in
+   TI-513 (8ac4c441), with CCV_DCU_ECC_INJECT; MA rev 146 accepted. MA rev 149
+   priced AR 400 (3): the A1 hold fires 0 times on S1/cm32priv/cm128priv,
+   drops cost <=0.008%; MA-27 closed. DI-18 (AR 403, MA rev 148 crossed and
+   agrees): on a CE MIU corrects from the check bits and delivers the
+   corrected data as a later ccv_miu_rcu_data write (AR 368 (2)), then the
+   completion; DCU counts and rewrites in place and sends nothing more; a UE
+   stays AR 370's (clean line refetched under the original req_id, MIU keeps
+   it live). Added control: MIU withholds but delivers the data uncorrected.
+   Still on others: DI's interim injection hook, MI's syndrome/drop model,
+   MA's docs naming CCV_MIU_ECC_INJECT, TI's CCV_LAT_MIU_PAIR_LAG. Nothing owed
+   by AR.
+   MA-29 (AR 404, 11-22): agreed, check_bits 72 a slot, (137,128), forced by
+   Daniel's MACRO-1; fix in the stage after R2's syndrome (15.4 + 10.7 NGD
+   > 25); ECC stays 1. MBU question answered (MA rev 152): column mux >= 4
+   in the 512x137 instance, a DCU instance requirement; closed. TI landed
+   it (TI-517, bc9d61ff: CCV_DCU_ECC_K=128, CCV_DCU_ECC_CHECK_W).
 000b. **TI-502 credit deadlock: SETTLED (AR 397 .649791, AR 398 .652069,
    AR 399 .653325; OA 459/460/461).** FET's full-credit wait (AR 395 (3))
    stays; (b) drained+delay and (c) no wait refused. OOE keeps a demoting warp

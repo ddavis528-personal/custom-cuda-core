@@ -100,6 +100,14 @@ static constexpr uint32_t kTlbXlatPerCycle = 4;
 /// decided at the block-level grill-me (AR 364, MA-16 (MA rev 68; DA rev 123))
 static constexpr uint32_t kDcuBanks = 8;
 
+/// Data bits of one L1 SECDED code word: (137,128) words, since MACRO-1 caps an SRAM word at 137 bits and fails two (72,64) words at 144 (AR 404 (1)). A slot's read_data on ccv_dcu_miu_rsp is CCV_W_DATA / this many code words, each a whole number of bytes.  Requires: (CCV_DCU_ECC_K >= 3) * ((CCV_W_DATA // CCV_DCU_ECC_K) * CCV_DCU_ECC_K == CCV_W_DATA) * ((CCV_DCU_ECC_K // 8) * 8 == CCV_DCU_ECC_K) == 1.
+/// decided at the block-level grill-me (MA-29 (MA rev 151), AR 404 (AR rev 408); MACRO-1 (DA, 2026-11-17))
+static constexpr uint32_t kDcuEccK = 128;
+
+/// ccv_dcu_miu_rsp's check_bits a slot: (CCV_W_DATA / CCV_DCU_ECC_K) x R(K), R(k) = clog2(k + clog2(k) + 1) + 1 check bits a code word (SEC plus the overall parity), 9 at K = 128, 72 a slot (MA-29, AR 404; AR 401's 128 retired).  Derived: = (CCV_W_DATA // CCV_DCU_ECC_K) * (clog2(CCV_DCU_ECC_K + clog2(CCV_DCU_ECC_K) + 1) + 1).
+/// decided at the block-level grill-me (MA-29, AR 404)
+static constexpr uint32_t kDcuEccCheckW = 72;
+
 /// Scratchpad capacity, 128 KB.
 /// decided at the block-level grill-me (grill-me 2026-09-23)
 static constexpr uint32_t kSpmBytes = 131072;

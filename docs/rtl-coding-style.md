@@ -1439,7 +1439,8 @@ bits, over), and two (72,64) code words held to the 137-bit shape.
 **Injection, DCU's side** (RA 153 (5); MA-28 (c), AR 401, which retired
 MIU's `CCV_MIU_ECC_INJECT`). With `CCV_DCU_ECC_INJECT=N` the DCU stub flips
 one stored bit of every Nth hit's line under the check bits it carries on
-`ccv_dcu_miu_rsp` (`check_bits`, 8 a 64-bit word); the MIU stub computes the
+`ccv_dcu_miu_rsp` (`check_bits`, 9 a 128-bit word, 72 a slot: `CCV_DCU_ECC_K`,
+`CCV_DCU_ECC_CHECK_W`; MA-29, AR 404); the MIU stub computes the
 syndrome over every code word of the slot, corrects the line, and on a
 non-zero one its data leaves on time with a bit flipped (the speculative data), no
 completion at the contract (the miss indication, `CCV_LAT_L1_ECC`), and the

@@ -4,6 +4,9 @@
 # sizes its units use. One PASS line each; any failure fails the run.
 #   miu_cap: test/miu/cap_tb.cpp, one address slot's capture, and its
 #            control early (the payload taken with its valid), which must fail
+#   miu_pair: test/miu/pair_tb.cpp, each address paired with its memop by
+#            arrival cycle and lead pipe, and its controls arrival (paired on
+#            the arrival slot) and lag (a cycle late), each of which must fail
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/miu-rtl; mkdir -p "$B"
@@ -33,4 +36,7 @@ control() {   # unit, control: the bench must fail with mismatches
 }
 bench miu_cap test/miu/cg-build.sh miu_cap "$B/miu_cap" -- "$B/miu_cap/tb"
 control miu_cap early
+bench miu_pair test/miu/cg-build.sh miu_pair "$B/miu_pair" -- "$B/miu_pair/tb"
+control miu_pair arrival
+control miu_pair lag
 exit $fail
