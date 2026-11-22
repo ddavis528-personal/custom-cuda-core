@@ -31,7 +31,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-21 (Sat): AR 406, OA 466, IS 201, TI 511, OI 399, CP 160, RA 157, RI 91,
-  MA 155, MI 35, DI 35, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 515 (TI-516: DI-19 landed e7c3b10f with MI 073943f3; TI-513
+  MA 155, MI 35, DI 35, DA 128, Conventions 20; specs MIU 150, Common 9, DCU 64. TI 516 (TI-517: MA-29 landed bc9d61ff on TI's ccr-183cc441, K=128 in stub.h's
+  putCheckBits/fixLine; the model calls those, no model change, pair 390 PASS; TI-516: DI-19 landed e7c3b10f with MI 073943f3; TI-513
   notice: 8ac4c441 drop/check_bits/CCV_DCU_ECC_INJECT landed). Next pings: Friday.
 - Sweep merge d26849c3 (ccr-183cc441 25, ccr-5e4d6c70 20, ccr-80102643 4, mi-dev A1 hold
   b1a85fa6) under full gate-push (job-gate-push-20261121-104904-28964.log). OI's ccr-57eff422
@@ -75,8 +76,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    (syndrome R2, budget 17), miu_out, ccv_miu top. MI-16: TI wires the MIU RTL job.
    RTL lessons: CCV-L23 forbids a self-feeding param shift array (use a counter-indexed ring);
    tags _cmNNh; RST-1 flop; CG-5 enables from own flops; (* keep *) output copies.
-1b. MA-29 (pending AR): data code (137,128), check_bits 72 a slot, miu_ecc syndrome at K=128
-   (15.4 NGD of 17). Change the model's ECC (R2 syndrome width) once TI lands it.
+1b. MA-29 done by TI (bc9d61ff): merge it in the next sweep; miu_ecc RTL syndrome at K=128.
 1c. MA-30 agreed (AR 405, MIU tab rev 161): each miu_tlb entry keeps fold(PFN) (k=4), written at
    the TLB fill; miu_a2 sends it as pa_fold in the req payload; control miu-fold-flip must fail.
    Model + miu_tlb/miu_a2 RTL once TI's schema adds pa_fold.
