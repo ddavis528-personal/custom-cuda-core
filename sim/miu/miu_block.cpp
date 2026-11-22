@@ -55,6 +55,7 @@ private:
   };
   struct Job {
     bool store = false;
+    bool ecc = false;   ///< a line came with a non-zero syndrome (R2; MA-28 (c), AR 401)
     unsigned tag = 0, memop_slot = 0, addr_slot = 0, warp = 0;
     unsigned phys_dst = 0, phys_pred = 0;   ///< echoed on miu_rcu_data
     unsigned rs_idx = 0;                    ///< echoed on miu_ooe_cmpl (OA-23)
@@ -126,21 +127,16 @@ private:
     return r && uidSub(tid) < r->mem.size() ? &r->mem[uidSub(tid)] : nullptr;
   }
   /// A hit's completion and data, held for the contract cycle.
-  struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
+  struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; bool ecc = false; };
   std::vector<Timed> held_;   ///< ineligible loads' completions, held past the contract (MA-4)
-  /// An L1 hit's injected syndrome (RA 153 (5), MA's re: SECDED on every
-  /// SRAM, DA rulings TI-474 to TI-476): CCV_MIU_ECC_INJECT=N takes every
-  /// Nth hit that writes a register as a single-bit error the syndrome
-  /// stages find. Its data leaves on time with one bit flipped, as the
-  /// speculative data would; no completion at the contract (the miss
-  /// indication, CCV_LAT_L1_ECC's contract); the corrected data and then
-  /// the completion CCV_LAT_L1_ECC + 2 cycles after the data, as a miss's
-  /// would come (held_, data before completion). 0, the default: none.
-  const unsigned ecc_every_ = [] {
-    const char *v = std::getenv("CCV_MIU_ECC_INJECT");
-    return v ? unsigned(std::strtoul(v, nullptr, 0)) : 0u;
-  }();
-  unsigned ecc_hits_ = 0;
+  /// An L1 hit whose line came with a non-zero syndrome (RA 153 (5); MA-28
+  /// (c), AR 401): R2 computes it from ccv_dcu_miu_rsp's check_bits, the OR
+  /// over every code word the slot carries (fixLine, which also corrects
+  /// the line); DCU's CCV_DCU_ECC_INJECT reaches it. Its data leaves on time
+  /// with one bit flipped, as the speculative data would; no completion at
+  /// the contract (the miss indication, CCV_LAT_L1_ECC's contract); the
+  /// corrected data and then the completion CCV_LAT_L1_ECC + 2 cycles after
+  /// the data, as a miss's would come (held_, data before completion).
   /// Corrected beats alone (the controls), each at its cycle.
   std::vector<std::pair<uint64_t, Q>> ecc_beats_;
   std::deque<Timed> timed_;
@@ -555,9 +551,9 @@ private:
         if (fl != fills_.end()) {
           // A window fill: every slot its line holds (TI-31).
           Windows &t = win_[fl->second.cta];
-          if (t.gen == fl->second.gen)
-            fillWindows(t, fl->second.line,
-                        getLine(m.payload, field(c.dcu_miu, "read_data").lsb));
+          Line ln = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+          fixLine(ln, m.payload, field(c.dcu_miu, "check_bits").lsb);
+          if (t.gen == fl->second.gen) fillWindows(t, fl->second.line, ln);
           fills_.erase(fl);
           ids_.release(id);
           continue;
@@ -587,7 +583,10 @@ private:
         ids_.release(id);
         for (Job &j : jobs_)
           if (j.serial == serial) {
-            j.got[line] = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+            // R2: the syndrome over the slot's code words, the line corrected.
+            Line ln = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+            if (fixLine(ln, m.payload, field(c.dcu_miu, "check_bits").lsb)) j.ecc = true;
+            j.got[line] = ln;
             if (!get(m.payload, c.dcu_miu, "hit")) j.hit = false;
             if (get(m.payload, c.dcu_miu, "mlc_miss")) j.mlc_miss = true;
             ++j.back;
@@ -650,7 +649,7 @@ private:
       constexpr uint64_t kEcc = ccv::prov::kLatL1Ecc;
       if (t.at == now_ && free(c.miu_rcu, t.data.slot) &&
           (kEcc != 0 || free(c.miu_ooe, t.cmpl.slot))) {
-        const bool ecc = eccInject(t.data);
+        const bool ecc = t.ecc;
         if (ecc) {
           // The speculative data, one bit wrong, on time; the corrected
           // beat and its completion as a miss's (held_). The controls:
@@ -834,15 +833,6 @@ private:
   /// exactly one (ccv_miu_ooe), so it frees the memop's queue entry, and so
   /// its credit (MA-5). An atomic's more = 1 is not a second completion of
   /// this memop: OOE re-issues the steps as new memops (AR-21).
-  /// Whether this hit's data takes an injected syndrome (ecc_every_): a
-  /// load that writes a register, one hit in ecc_every_.
-  bool eccInject(const Q &d) {
-    const Ch &c = ch();
-    if (!ecc_every_ || !uint32_t(get(d.msg, c.miu_rcu, "active_mask")) ||
-        unsigned(get(d.msg, c.miu_rcu, "phys_dst")) == ccv::prov::kPhysZero)
-      return false;
-    return ++ecc_hits_ % ecc_every_ == 0;
-  }
   /// One bit of the lowest active lane's data flipped: what a single-bit
   /// error in the array leaves in the speculative data.
   void flipLoadBit(Bits &m) {
@@ -968,6 +958,8 @@ private:
   /// by name.
   void putIndexLead(Bits &r, uint64_t pa) {
     put(r, ch().miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
+    // MA-30, AR 405: A2's fold of the lookup's PA (TI's hook; MI's to own).
+    put(r, ch().miu_dcu, "pa_fold", paFold(pa) ^ (k_.brk == "miu-fold-flip" ? 1u : 0u));
   }
 
   Bits withLead(Bits m) {
@@ -1357,10 +1349,25 @@ private:
         }
       }
     }
+    // MA-27 (AR 400): A1 launches a contracted load's leader lookups, one a
+    // group on the footprint's slots, before A2 knows whether they stand;
+    // A2 sets drop on those it finds a TLB miss, a fault, a page split, a
+    // lane off its leader's line, a bank conflict or a duplicate leader on
+    // (dropAll, planFirstPass). Only on the load's first A1 (lost_ marks a
+    // retry). Holds A1 knows from flopped state (a write in flight, an
+    // atomic's hold, a fence) launch nothing; an older store's overlap,
+    // found at A2, drops them (drop_held; MI-19 (3c), MA rev 147).
+    std::vector<std::pair<unsigned, uint64_t>> leads;
+    if (!j.store && !j.atom && j.global && j.active && contracted(tag) && !lost_.count(tag))
+      leads = leadersOf(j, unsigned(get(memop_[tag].msg, c.ooe_miu, "pipes")));
+    auto dropAll = [&](const char *why) {
+      for (const auto &[s, line] : leads) drops_.push_back({now_ + 1, s, line, j.tid, why});
+      leads.clear();
+    };
     // A load waits, and every memop behind it, while a write of its warp to
     // one of its lines is in flight (MA-11: own warp only; DCU keeps a
     // line's requests in arrival order, so another warp's write needs none).
-    if (!j.store && inFlight(j, kOwnWrite)) return false;
+    if (!j.store && inFlight(j, kOwnWrite)) return false;   // (MI-19: no drop launched)
     // It also waits while an OLDER store of its warp to one of its lines
     // has not committed (MIU's disambiguation, MIU spec): this MIU forwards
     // nothing, so the load reads the line once the store's write has
@@ -1370,7 +1377,14 @@ private:
     // 1's store; AR's response TI-27 (d)).
     // no-st-wait: the load reads past the older store, and sees the flag
     // still clear.
-    if (!j.store && k_.brk != "no-st-wait" && olderStore(j)) { k_.hit("st_ld_wait"); return false; }
+    if (!j.store && k_.brk != "no-st-wait" && olderStore(j)) {
+      // Found at A2 from this load's address, after A1 launched its
+      // lookups: they drop (MI-19 (3c), MA rev 147). The holds above and
+      // below come from flopped state A1 reads, and launch nothing.
+      dropAll("drop_held");
+      k_.hit("st_ld_wait");
+      return false;
+    }
     // And while an atomic's pass holds one of its lines (V-72). A store
     // waits at its drain.
     if (!j.store && held(j)) { k_.hit("atomic_hold_wait"); return false; }
@@ -1409,6 +1423,7 @@ private:
           }
       if (missing) {
         if (tlb_missed_.insert(tag).second) k_.hit("tlb_miss");
+        dropAll("drop_tlb");
         return false;
       }
       if (!faults) for (uint64_t vpn : pages) tlb_.lookup(vpn);
@@ -1464,6 +1479,7 @@ private:
     win_miss_.erase(tag);
     addr_.erase(a);
     if (fl) {
+      dropAll("drop_fault");
       // As F-RO's: no lane has any effect, and the completion is the fault,
       // with the lowest faulting lane's address in full (section 12.6).
       Bits m = cmpl(j);
@@ -1509,10 +1525,14 @@ private:
       j.hit = false;
       j.inelig = true;
     } else if (j.global && j.active) {
-      eligibility(j, mo);
+      const char *why = eligibility(j, mo);
+      if (why) dropAll(why);
       // Lanes over two pages leave the hit path (MIU tab, translation).
       // two-page-hit: such a load keeps its contract.
-      if (!j.inelig && two_page && k_.brk != "two-page-hit") loseFirstPass(j, "tlb_two_page_lost");
+      if (!j.inelig && two_page && k_.brk != "two-page-hit") {
+        loseFirstPass(j, "tlb_two_page_lost");
+        dropAll("drop_split");
+      }
       if (!j.inelig) planFirstPass(j, unsigned(get(mo.msg, c.ooe_miu, "pipes")));
     }
     launch(j);
@@ -1530,38 +1550,56 @@ private:
   /// on ccv_miu_ooe_cmpl_hint, payload at I + CCV_LAT_L1_NOHIT, on the
   /// memop's slot (OA 410, MA 56). no-nohit: none is sent, so l1_nohit is
   /// never reached.
-  void eligibility(Job &j, const Memop &mo) {
+  const char *eligibility(Job &j, const Memop &mo) {
     const Ch &c = ch();
     const unsigned pipes = unsigned(get(mo.msg, c.ooe_miu, "pipes"));
     const unsigned f = pipes ? unsigned(__builtin_popcount(pipes)) : 1u;
     const unsigned per = kLanes / f;
     const uint64_t page = j.addr[__builtin_ctz(j.active)] >> ccv::kLPageShift;
     std::vector<uint64_t> leads;
-    bool ok = true;
+    const char *why = nullptr;   // the drop's cause, the first found
     for (unsigned g = 0; g != f; ++g) {
       bool have = false;
       uint64_t lead = 0;
       for (unsigned l = g * per; l != (g + 1) * per; ++l) {
         if (!(j.active >> l & 1u)) continue;
         const uint64_t line = keyOf(j, l);
-        if (j.addr[l] >> ccv::kLPageShift != page) ok = false;
+        if (j.addr[l] >> ccv::kLPageShift != page && !why) why = "drop_split";
         if (!have) {
           have = true;
           lead = line;
           if (std::find(leads.begin(), leads.end(), line) == leads.end()) leads.push_back(line);
-        } else if (line != lead) {
-          ok = false;
+        } else if (line != lead && !why) {
+          why = "drop_line";
         }
       }
     }
     for (size_t a = 0; a != leads.size(); ++a)
       for (size_t b = a + 1; b != leads.size(); ++b)
-        if ((leads[a] / kLine) % ccv::kDcuBanks == (leads[b] / kLine) % ccv::kDcuBanks) ok = false;
-    if (ok) return;
+        if ((leads[a] / kLine) % ccv::kDcuBanks == (leads[b] / kLine) % ccv::kDcuBanks && !why)
+          why = "drop_bank";
+    if (!why) return nullptr;
     j.inelig = true;
     j.hit = false;
     k_.hit("l1_inelig");
     noHit(mo.at, mo.slot, j.tag, j.rs_idx, j.tid);
+    return why;
+  }
+  /// Every group's leader lookup A1 launches for a contracted load (MA-4's
+  /// first pass, before A2 deduplicates or drops any): (slot, line) for
+  /// each group with an active lane, its lowest one's line.
+  std::vector<std::pair<unsigned, uint64_t>> leadersOf(const Job &j, unsigned pipes) const {
+    std::vector<std::pair<unsigned, uint64_t>> v;
+    const unsigned f = pipes ? unsigned(__builtin_popcount(pipes)) : 1u;
+    const unsigned per = kLanes / f;
+    unsigned slot_bits = pipes ? pipes : 1u;
+    for (unsigned g = 0; g != f; ++g) {
+      const unsigned slot = unsigned(__builtin_ctz(slot_bits));
+      slot_bits &= slot_bits - 1;
+      const uint32_t grp = uint32_t((uint64_t(1) << per) - 1) << (g * per);
+      if (j.active & grp) v.push_back({slot, keyOf(j, unsigned(__builtin_ctz(j.active & grp)))});
+    }
+    return v;
   }
   /// The early no-hit (MA-4): payload at I + CCV_LAT_L1_NOHIT on the
   /// memop's slot of ccv_miu_ooe_cmpl_hint. no-nohit: none is sent.
@@ -1775,6 +1813,7 @@ private:
       bool dup = false;
       for (const auto &e : j.fp) dup = dup || e.second == idx;
       if (!dup) j.fp.push_back({slot, idx});
+      else if (!dup_ideal_) drops_.push_back({now_ + 1, slot, line, j.tid, "drop_dup"});   // MA-27: A2 drops it
     }
   }
 
@@ -1795,6 +1834,8 @@ private:
     for (const Job &j : jobs_)
       if (j.first && j.h + 1 == now_)
         for (const auto &e : j.fp) m |= 1u << e.first;
+    for (const Drop &d : drops_)
+      if (d.at == now_) m |= 1u << d.slot;
     return m;
   }
 
@@ -1978,8 +2019,12 @@ private:
         for (const auto &e : j.fp) firsts.push_back({e.first, &j, e.second});
         j.first = false;
       }
-    std::sort(firsts.begin(), firsts.end(),
-              [](const auto &x, const auto &y) { return std::get<0>(x) < std::get<0>(y); });
+    // A2's drops of lookups A1 launched last cycle (MA-27) take their slots
+    // in the same order: a null job.
+    for (size_t d = 0; d != drops_.size(); ++d)
+      if (drops_[d].at == now_) firsts.push_back({drops_[d].slot, nullptr, unsigned(d)});
+    std::stable_sort(firsts.begin(), firsts.end(),
+                     [](const auto &x, const auto &y) { return std::get<0>(x) < std::get<0>(y); });
     // MA-25: a line an older request is held on for a credit, and a bank an
     // older store is held on, block younger requests; first passes are the
     // youngest of all. A first pass without its bank's entry credit loses
@@ -1992,7 +2037,35 @@ private:
           older_held_lines.insert(j.lines[idx].line);
           older_held_banks.insert(bankOf(j.lines[idx].line));
         }
+    // A dropped lookup (MA-27, AR 400): the valid and lead A1 launched, the
+    // payload with drop set; no req_id (don't-care, 0), no data. Its valid
+    // spent its bank's entry credit and miu_cred refunds it a cycle on. A1's
+    // gate and holds apply as to any first pass: held, nothing launches.
+    // dcu-drop-answers (the DCU stub's control) answers it, and the answer
+    // is refused as a response to no outstanding request.
+    auto sendDrop = [&](unsigned s, const Drop &d) {
+      const unsigned fb = bankOf(d.line);
+      if (older_held_lines.count(d.line) || older_held_banks.count(fb) || !a1Gate(fb) ||
+          !bankCan(fb, false) || !can(c.miu_dcu, s) || (used >> s & 1u)) {
+        return;   // held at A1: nothing launches
+      }
+      a1_used_now_ |= 1u << fb;
+      bankTake(fb, false);
+      a1_refund_.push_back(fb);
+      used |= 1u << s;
+      Bits r = msgOf(c.miu_dcu);
+      put(r, c.miu_dcu, "req_id", 0);
+      put(r, c.miu_dcu, "phys_addr", d.line);
+      putIndexLead(r, d.line);
+      put(r, c.miu_dcu, "size", kSizeLine);
+      put(r, c.miu_dcu, "coh_op", kCohRead);
+      put(r, c.miu_dcu, "drop", 1);
+      send(c.miu_dcu, s, r, makeUid(IdClass::kTxn, uidSeq(d.tid), uint16_t(0xff00u | s), /*owned=*/true));
+      k_.hit(d.why);
+      k_.hit("dcu_drops");
+    };
     for (auto &[s, jp, idx] : firsts) {
+      if (!jp) { sendDrop(s, drops_[idx]); continue; }
       Job &j = *jp;
       if (j.h + 1 != now_) { loseFirstPass(j, "l1_first_late"); continue; }
       const uint64_t fl = j.lines[idx].line;
@@ -2013,16 +2086,18 @@ private:
       // A2 (H+1): the valid launched from A1 and spent its bank's credit;
       // a bank-conflict loser is dropped (MA-27, AR 400) and miu_cred
       // refunds the credit from A2's flopped drop a cycle on (a1_refund_).
-      a1_used_now_ |= 1u << fb;
       if (banks.count(fb)) {
-        bankTake(fb, false);
-        a1_refund_.push_back(fb);
         loseFirstPass(j, "l1_bank_loser");
+        sendDrop(s, {now_, s, fl, j.tid, "drop_bank"});
         continue;
       }
+      a1_used_now_ |= 1u << fb;
       request(j, idx, s);
       k_.hit("l1_first_pass");
     }
+    drops_.erase(std::remove_if(drops_.begin(), drops_.end(),
+                                [&](const Drop &d) { return d.at <= now_; }),
+                 drops_.end());
     // Later passes, oldest job first: what a held request blocks is built
     // as the walk goes, so it blocks only younger ones, never itself.
     std::set<uint64_t> held_lines;
@@ -2196,7 +2271,7 @@ private:
         // Queued for the data's cycle, CCV_LAT_L1_ECC ahead of the
         // completion's contract (AR 368).
         timed_.push_back({job_.due - ccv::prov::kLatL1Ecc, {job_.addr_slot, d, job_.tid},
-                          {job_.memop_slot, cmpl(job_), job_.tid}});
+                          {job_.memop_slot, cmpl(job_), job_.tid}, false, job_.ecc});
       } else if (job_.inelig && now_ <= job_.due) {
         // An ineligible load completes past the contract's cycle, never on
         // or before it (MA-4: no completion at H+7; A-46, V-44).
@@ -2273,6 +2348,19 @@ private:
                        ge2_b_ = std::vector<uint8_t>(ccv::kDcuBanks, 1);
   uint32_t a1_used_now_ = 0, a1_used_prev_ = 0;   // first passes launched, by bank
   unsigned a1_short_ = 0;                          // gates passed with no credit
+  /// A lookup A1 launched and A2 drops (MA-27, AR 400): on the wire at H+1
+  /// with drop set, on its slot, spending its bank's entry credit, which
+  /// miu_cred refunds from A2's flopped drop a cycle on (a1_refund_).
+  struct Drop { uint64_t at; unsigned slot; uint64_t line; uint64_t tid; const char *why; };
+  std::vector<Drop> drops_;
+  /// CCV_MIU_DUP_IDEAL=1: a duplicate leader's valid never launches, an
+  /// oracle with no RTL meaning, to price an A1 dedupe (MI-19 (3a), MA rev
+  /// 147). 0, the default: A1 launches every group leader and A2 drops the
+  /// duplicates, as slice 1's RTL does.
+  const bool dup_ideal_ = [] {
+    const char *v = std::getenv("CCV_MIU_DUP_IDEAL");
+    return v && std::strtoul(v, nullptr, 0) != 0;
+  }();
   std::vector<unsigned> a1_refund_;                // dropped first passes' banks, refunded next cycle
   bool a1Gate(unsigned b) const {
     const bool used = a1_used_prev_ >> b & 1u;
@@ -2289,7 +2377,7 @@ private:
     a1_used_now_ = 0;
   }
   bool busy() const override {
-    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return !jobs_.empty() || !drops_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||

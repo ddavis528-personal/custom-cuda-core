@@ -238,6 +238,22 @@
       "doc": "L1 data banks, each a half-rate 1RW SRAM (DA rev 123), 64 KiB each at 512 KiB: four lookups a cycle need at least 8. A lookup's bank is its line address's low clog2(CCV_DCU_BANKS) bits, [9:7] at 8, which are the set index's low bits, so ccv_miu_dcu_req's lead_set_index carries it and no bank field is sent (AR 364). Both counts are powers of two and the banks no more than the sets. MA-4's L1-hit eligibility refuses a group whose leaders' lookups meet in one bank."
     },
     {
+      "name": "CCV_DCU_ECC_K",
+      "value": 128,
+      "status": "arch",
+      "source": "MA-29 (MA rev 151), AR 404 (AR rev 408); MACRO-1 (DA, 2026-11-17)",
+      "require": "(CCV_DCU_ECC_K >= 3) * ((CCV_W_DATA // CCV_DCU_ECC_K) * CCV_DCU_ECC_K == CCV_W_DATA) * ((CCV_DCU_ECC_K // 8) * 8 == CCV_DCU_ECC_K) == 1",
+      "doc": "Data bits of one L1 SECDED code word: (137,128) words, since MACRO-1 caps an SRAM word at 137 bits and fails two (72,64) words at 144 (AR 404 (1)). A slot's read_data on ccv_dcu_miu_rsp is CCV_W_DATA / this many code words, each a whole number of bytes."
+    },
+    {
+      "name": "CCV_DCU_ECC_CHECK_W",
+      "value": 72,
+      "status": "arch",
+      "source": "MA-29, AR 404",
+      "derive": "(CCV_W_DATA // CCV_DCU_ECC_K) * (clog2(CCV_DCU_ECC_K + clog2(CCV_DCU_ECC_K) + 1) + 1)",
+      "doc": "ccv_dcu_miu_rsp's check_bits a slot: (CCV_W_DATA / CCV_DCU_ECC_K) x R(K), R(k) = clog2(k + clog2(k) + 1) + 1 check bits a code word (SEC plus the overall parity), 9 at K = 128, 72 a slot (MA-29, AR 404; AR 401's 128 retired)."
+    },
+    {
       "name": "CCV_DCU_BANK_AGE",
       "value": 16,
       "status": "tunable",
@@ -285,19 +301,27 @@
     },
     {
       "name": "CCV_DCU_WAYPRED_BITS",
-      "value": 5,
+      "value": 4,
       "status": "tunable",
-      "decided_at": "DA rev 128 (MA-23), MA-26; default AR 386 (5 unless AR's cm128 closed-loop run loses over 0.2% to none)",
+      "decided_at": "DA rev 128 (MA-23), MA-26; MA-30 (MA rev 154), AR 405 (AR rev 409): 4, within 0.3% of 5 on cm128priv for 4,096 fewer flops; 3 not taken",
       "require": "CCV_DCU_WAYPRED_BITS <= 16",
-      "doc": "DCU's way predictor: the width of each way's partial-tag fold. 0 turns prediction off (the hit is then 9, CCV_LAT_L1_HIT_BASE), 1 to 16 on (the hit is 8). When on, a predictor register file of 64 x (8 x this) per bank (MA-26). The p1 model's CCV_P1_WAYPRED maps to it. MA's to move, AR's runs deciding."
+      "doc": "DCU's way predictor: the width of each way's partial-tag fold, the XOR fold of the line's tag, PA[47:16], in its k-bit chunks (sim/skel/wayfold.h and rtl/common/ccv_common_wayfold.sv, the one fold MIU's TLB and DCU's table write share; AR 405 (3)). 0 turns prediction off (the hit is then 9, CCV_LAT_L1_HIT_BASE), 1 to 16 on (the hit is 8). When on, the fold table is flops in dcu_bctl, not a register file: 64 sets x 8 ways x this a bank, 16,384 flops at 4, written only on a fill or eviction (MA-30). MIU sends the lookup's fold as ccv_miu_dcu_req's pa_fold, since DCU cannot fold the PA itself in H+3 within 25 NGD. The p1 model's CCV_P1_WAYPRED maps to it. MA's to move, AR's runs deciding."
     },
     {
       "name": "CCV_DCU_WAYPRED_SEL",
-      "value": 1,
+      "value": 0,
       "status": "tunable",
-      "decided_at": "DA rev 128 (MA-23), MA-26; default recent, AR 386",
+      "decided_at": "DA rev 128 (MA-23), MA-26; MA-30, AR 405: index (recent dropped)",
       "require": "CCV_DCU_WAYPRED_SEL <= 1",
-      "doc": "How the way predictor chooses among the ways whose fold matches: 0 index (the lowest), 1 recent (the most recently used: true LRU in the tag word, 64 x 152 tag RFs against tree-PLRU's 64 x 144; an age compare of about 11.9 NGD). Read only when CCV_DCU_WAYPRED_BITS is not 0. The p1 model's WPSEL maps to it (MA-26, AR 386)."
+      "doc": "How the way predictor chooses among the ways whose fold matches: 0 index (the lowest matching way), 1 recent (the most recently used). 0 since MA-30 and AR 405: the tag RF keeps no LRU and PLRU moved to dcu_bctl's flops, so recent is dropped and stays only for the models' sweeps. Read only when CCV_DCU_WAYPRED_BITS is not 0. The p1 model's WPSEL maps to it (MA-26, AR 386)."
+    },
+    {
+      "name": "CCV_W_PA_FOLD",
+      "value": 4,
+      "status": "tunable",
+      "decided_at": "with CCV_DCU_WAYPRED_BITS",
+      "derive": "max(1, CCV_DCU_WAYPRED_BITS)",
+      "doc": "ccv_miu_dcu_req's pa_fold width (MA-30, AR 405): CCV_DCU_WAYPRED_BITS, kept at 1 bit, unread, when prediction is off."
     },
     {
       "name": "CCV_SPM_BYTES",

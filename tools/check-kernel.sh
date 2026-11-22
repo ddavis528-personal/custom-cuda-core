@@ -207,6 +207,8 @@
 #                                              and a fault with none
 #   a lookup's set index leads it, a copy     dcu-set-lead (hit): DCU
 #     of its PA bits (AR 362, AR 364)          refuses each
+#   a lookup's pa_fold is its PA's way-      miu-fold-flip (hit): DCU
+#     predictor fold (MA-30, AR 405)           refuses each, both MIUs
 #   MIU sends a lookup only with its bank's   bank-credit-ignore (gather,
 #     entry credit, a store with a store-        STDATA 1): DCU refuses each
 #     data credit too; DCU returns each on       bank past its credits;
@@ -845,12 +847,12 @@ dcu=model vadd4-swap orphan=1
 miu=model vadd4-swap-miu impl=stub
 dcu=model,miu=model vadd fill_notice=4
 dcu=model,miu=model vadd cmpl_hint=4
-dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=61
+dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=60
 dcu=model,miu=model ldpar l1_hit=1
 dcu=model,miu=model no-resource-cap v60=16
 dcu=model,miu=model lnorm1-straggler demote=342
-dcu=model waypred dcu_wp_wrong=4
-dcu=model,miu=model waypred dcu_wp_wrong=4 l1_hit=0 l1_late=4
+dcu=model waypred dcu_wp_wrong=2
+dcu=model,miu=model waypred dcu_wp_wrong=2 l1_hit=2 l1_late=2
 miu=model fet-reset-on-kill scen=rope:11
 miu=model held-wait demote=776
 dcu=model held-wait demote=776
@@ -1441,6 +1443,21 @@ if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_dcu-set-lead.log" check_failures)" = 
 else
   bad "--break dcu-set-lead" "$n refused: $(grep '^KERNEL' "$B/kernel_dcu-set-lead.log")"
 fi
+# MA-30, AR 405 (3): ccv_miu_dcu_req's pa_fold is the lookup's PA folded by
+# the one function both sides share (paFold); miu-fold-flip flips its low bit
+# on every lookup, under the stub MIU and the MIU model, and the DCU stub
+# must refuse each by name, and nothing else.
+for m in stub model; do
+  l="$B/kernel_miu-fold-flip_$m.log"
+  CCV_MIU_IMPL=$m CCV_DCU_IMPL=stub "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break miu-fold-flip >"$l" 2>&1
+  n=$(grep -c "^CHECK dcu: slot [0-9]* req_id [0-9]* pa_fold " "$l")
+  if [ "$n" -gt 0 ] && [ "$(field "$l" check_failures)" = "$n" ] &&
+     [ "$(field "$l" dcu_lookups)" = "$n" ]; then
+    say "--break miu-fold-flip, $m MIU: DCU refuses each wrong fold" "PASS ($n lookups)"
+  else
+    bad "--break miu-fold-flip, $m MIU" "$n refused: $(grep '^KERNEL' "$l")"
+  fi
+done
 # F-ADDR (O-75; CP-34's kernels): a .global address is the exact sum, and
 # one outside [0, 2^48) faults. Taken modulo 2^48, addrhigh's lanes 16-31
 # store at the bottom of memory and lanes 0-15 land too, and addrneg's load
@@ -1729,6 +1746,30 @@ if [ "${rf:-x}" = 0 ] && [ "${rc:-0}" -gt 0 ]; then
   say "--break dcu-ecc-recode, DCU model: MIU misses it" "PASS (transp4: l1_ecc_fix=0, check_failures=$rc)"
 else
   bad "--break dcu-ecc-recode, DCU model" "l1_ecc_fix=${rf:-?} check_failures=${rc:-?} (want 0 / >0): $(grep '^KERNEL' "$B/kernel_dcu-ecc-recode.log")"
+fi
+
+# Dropped lookups (MA-27, AR 400; DI-19 (b)). The MIU model launches a
+# lookup and drops it at A2 (vadd: 21 duplicate-leader drops); DCU answers
+# nothing and returns no credit for it, and MIU refunds the entry credit
+# itself. Run under the MIU model whatever the run's set, since the stub
+# MIU sends no drops. Controls: dcu-drop-answers serves a drop as a lookup
+# (both DCUs), and MIU refuses the answer as one to no outstanding request;
+# dcu-drop-credit returns an entry credit for it (the DCU model only), and
+# MIU refuses the credit past the bank's count.
+dl() { CCV_MIU_IMPL=model CCV_DCU_IMPL=$1 "$SKEL" --kernel build/oracle/vadd/oracle.jsonl ${2:+--break "$2"} >"$B/kernel_drop_$1_${2:-none}.log" 2>&1; echo "$B/kernel_drop_$1_${2:-none}.log"; }
+why=""; nd=""
+for d in stub model; do
+  l=$(dl $d); n=$(cover "$l" dcu_drops); nd="$nd $d:${n:-?}"
+  [ "${n:-0}" -gt 0 ] && [ -z "$(ok "$l")" ] || why="$why clean-$d(dcu_drops=${n:-?} $(ok "$l"))"
+  l=$(dl $d dcu-drop-answers)
+  [ "$(grep -c '^CHECK miu: a DCU response for req_id [0-9]*, which is not outstanding' "$l")" -gt 0 ] || why="$why dcu-drop-answers-$d"
+done
+l=$(dl model dcu-drop-credit)
+[ "$(grep -c '^CHECK miu: DCU returned an entry credit for bank [0-9]*, which holds all' "$l")" -gt 0 ] || why="$why dcu-drop-credit-model"
+if [ -z "$why" ]; then
+  say "drops: MIU model's drops unanswered; --break dcu-drop-answers, dcu-drop-credit caught" "PASS (vadd drops by DCU:$nd)"
+else
+  bad "dropped lookups" "$why"
 fi
 
 # The machine check (AR 370; DA rev 124; ISA v1.9 O-86). DCU's stub takes
@@ -2229,16 +2270,16 @@ for m in stub model; do
   done
 done
 # MI-9 (3): waypred puts two lines in L1 set 0 under tags whose folds agree
-# and re-reads them in turn, so the DCU model's recent-way predictor names the
-# other line's way each time (MA-26). Under both models every re-read is a
+# and re-reads them in turn; the DCU model's predictor names the lowest
+# matching way (MA-30, AR 405), a's, so each of b's two re-reads is a
 # mispredict, answered on the bank loser's path (AR 390, OA-442) and taken by
 # MIU as a late hit (l1_dcu_late), == ccv-sim. DI's wp-late-at-due answers at
 # due with the predicted way's line instead, which MIU's oracle must refuse.
 log="$B/kernel_waypred_models.log"
 CCV_MIU_IMPL=model CCV_DCU_IMPL=model "$SKEL" --kernel build/oracle/waypred/oracle.jsonl >"$log" 2>&1
-w=$(ok "$log" dcu_wp_wrong=4 l1_dcu_late=4)
+w=$(ok "$log" dcu_wp_wrong=2 l1_dcu_late=2)
 if [ -z "$w" ]; then
-  say "waypred, both models: mispredicts, == ccv-sim" "PASS (dcu_wp_wrong=4, l1_dcu_late=4)"
+  say "waypred, both models: mispredicts, == ccv-sim" "PASS (dcu_wp_wrong=2, l1_dcu_late=2)"
 else
   bad "waypred, both models" "$w"
 fi

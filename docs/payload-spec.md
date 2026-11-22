@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 17 | 44 |
 | ⚠️ Some provisional | 27 | 148 |
-| ⛔ Some preliminary | 13 | 153 |
-| **Total** | **57** | **345** |
+| ⛔ Some preliminary | 13 | 154 |
+| **Total** | **57** | **346** |
 
 ## What still has to be decided
 
@@ -546,7 +546,7 @@ spm → miu · rate 4 · memory
 
 ### `ccv_dcu_miu_rsp`
 
-Cache read data, hit indication and whether ownership was granted, and mlc_miss: the fill that served this access missed in MLC (ccv_mlc_dcu_rsp.miss, passed through). MIU reports it on ccv_miu_ooe_cmpl, since an MLC miss is the primary demotion trigger; without this field the signal stopped at DCU (arch open A-9). check_bits: the stored (72,64) SECDED check bits of every code word the slot's read_data carries, 8 a 64-bit word, 128 a slot (MA-28 (c), AR 401). MIU's R2 computes the syndrome beside the lane extract, the OR over every code word the slot carries (the bank read, leader and followers alike), flops a non-zero flag and withholds that slot's completion; the corrected data returns under the original req_id with no new entry credit, and MIU keeps the req_id live until a completion is delivered, not withheld. CCV_LAT_L1_ECC stays 1. DCU's CCV_DCU_ECC_INJECT flips a stored bit to reach it (MIU's CCV_MIU_ECC_INJECT is retired).
+Cache read data, hit indication and whether ownership was granted, and mlc_miss: the fill that served this access missed in MLC (ccv_mlc_dcu_rsp.miss, passed through). MIU reports it on ccv_miu_ooe_cmpl, since an MLC miss is the primary demotion trigger; without this field the signal stopped at DCU (arch open A-9). check_bits: the stored (137,128) SECDED check bits of every code word the slot's read_data carries, 9 a 128-bit word (CCV_DCU_ECC_K), 72 a slot (CCV_DCU_ECC_CHECK_W; MA-29, AR 404, amending MA-28 (c) and AR 401's 128). MIU's R2 computes the syndrome beside the lane extract, the OR over every code word the slot carries (the bank read, leader and followers alike), flops a non-zero flag and withholds that slot's completion; the corrected data returns under the original req_id with no new entry credit, and MIU keeps the req_id live until a completion is delivered, not withheld. CCV_LAT_L1_ECC stays 1. DCU's CCV_DCU_ECC_INJECT flips a stored bit to reach it (MIU's CCV_MIU_ECC_INJECT is retired).
 
 dcu → miu · rate 4 · memory
 
@@ -557,8 +557,8 @@ dcu → miu · rate 4 · memory
 | `hit` | `1` | 1 | literal |
 | `ownership_granted` | `1` | 1 | literal |
 | `mlc_miss` | `1` | 1 | literal |
-| `check_bits` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
-| **total** | | **1161** | ⚠️ 6 provisional |
+| `check_bits` | `CCV_DCU_ECC_CHECK_W` | 72 | CCV_DCU_ECC_CHECK_W (arch) |
+| **total** | | **1105** | ⚠️ 6 provisional |
 
 ### `ccv_mlc_dcu_rsp`
 
@@ -978,7 +978,7 @@ miu → spm · rate 4 · memory
 
 ### `ccv_miu_dcu_req`
 
-Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index leads it by a cycle (AR 362, AR 364).
+Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index leads it by a cycle (AR 362, AR 364). pa_fold (MA-30, AR 405): the way predictor's CCV_DCU_WAYPRED_BITS-bit XOR fold of phys_addr's tag, PA[47:16] (the PFN), in k-bit chunks from bit 16 up, the last zero-extended: the one fold MIU and DCU share (sim/skel/wayfold.h, rtl/common/ccv_common_wayfold.sv, held together by check-skel). MIU keeps it beside each TLB entry's PFN, written at the fill, so A2 sends it at 0 NGD; DCU compares it with its flopped folds at H+3 and reads the lowest matching way, since it cannot fold the PA itself in H+3 within 25 NGD. A payload field, not a lead; unread when prediction is off (CCV_DCU_WAYPRED_BITS 0, the field then 1 bit). The DCU stub refuses a fold that is not its own of phys_addr, by name (miu-fold-flip).
 
 miu → dcu · rate 4 · memory
 
@@ -993,7 +993,8 @@ miu → dcu · rate 4 · memory
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
 | `lead_set_index` | `CCV_W_DCU_SET` | 9 ⚠️ | CCV_W_DCU_SET (tunable) |
 | `drop` | `1` | 1 | literal |
-| **total** | | **1224** | ⛔ 4 preliminary, ⚠️ 63 provisional |
+| `pa_fold` | `CCV_W_PA_FOLD` | 4 ⚠️ | CCV_W_PA_FOLD (tunable) |
+| **total** | | **1228** | ⛔ 4 preliminary, ⚠️ 67 provisional |
 
 Lead fields (driven with valid, a cycle ahead of the rest): `lead_set_index`.
 
