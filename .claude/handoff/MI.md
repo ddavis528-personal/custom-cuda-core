@@ -73,7 +73,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
 0a. UE two answers: model done 012519d8 (mi-dev, unpushed; 66 kernels clean both DCUs). MI-20 to TI
    (rev 38, rung; DI rung): bin ue_second_answer, control ue-close-first (whitelist-only until DCU
-   sends the first answer), MIU stub's part. Gate in flight on 512d2315 (miu_mq + miu_pair budget
+   sends the first answer), MIU stub's part. TI did MI-20 (TI-528, a3d17bb2 on
+   gate-scratch/TI-mi20, lands after TI's sweep): merge it, check ue-close-first, close MI-20. Gate in flight on 512d2315 (miu_mq + miu_pair budget
    fix a2c9d3e2; first gate failed: miu_pair 9 ungated > 8.98): job-gate-push-20261123-010405-22813.
    Push 012519d8 with the next gate.
 1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq e5d50b8b, a2c9d3e2.
