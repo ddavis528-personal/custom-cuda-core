@@ -2480,6 +2480,26 @@ for spec in late-refill:dcu_miu_fill_ntc:on_time:vadd4 notice-wrong-id:dcu_miu_f
     bad "--break $brk, both models" "went unnoticed on ${ks//,/ and }"
   fi
 done
+# DCU model slice 2 (DI-32; DCU spec tab rev 104): miss buffers, fills,
+# eviction and writeback, each broken on a kernel that reaches it. The
+# model must be caught every time: a CHECK, a mismatch, a violation or a
+# run that does not finish. dcu-miss-reorder needs notices on (both
+# models); dcu-wb-drop is drop-writeback's spec name. dcu-fill-nostale and
+# dcu-wb-store reach no kernel here: DI's unit tests hold them
+# (sim/dcu/dcu_test.cpp).
+for spec in dcu-fill-early:vadd4:dcu dcu-mshr-nomerge:lnorm1:dcu dcu-miss-reorder:vadd4:models \
+            dcu-wb-early:slotform:dcu dcu-wb-refetch:slotform:dcu dcu-wb-drop:slotform:dcu; do
+  brk=${spec%%:*}; rest=${spec#*:}; k=${rest%%:*}; set=${rest#*:}
+  envs="CCV_DCU_IMPL=model"; [ "$set" = models ] && envs=$MODELS
+  log="$B/kernel_${brk}_dcu.log"
+  env $envs "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --break "$brk" >"$log" 2>&1
+  why=$(ok "$log")
+  if [ -n "$why" ]; then
+    say "--break $brk ($k, DCU model): caught" "PASS ($why)"
+  else
+    bad "--break $brk ($k, DCU model)" "went unnoticed: $(grep '^KERNEL' "$log")"
+  fi
+done
 bad_k=""
 for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
   CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$B/kernel_${k}_swap.log" 2>&1
