@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 409 .668434 (tab rev 413).
-  - **The next AR row inserts after .668434**, labelled AR 410.
+  - Latest row: AR 410 .670198 (tab rev 414).
+  - **The next AR row inserts after .670198**, labelled AR 411.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 413, OA 474, TI 517, MA 157, DI 41,
+- **Bookmarks** (revs read through): AR 414, OA 474, TI 517, MA 157, DI 41,
   MI 35, RA 157, RI 91, IS 201, CP 160, OI 401, DA 131, Conventions 20 (full
   sweep read 11-22; TI 517 read only for TI-518). Specs: FET tab rev 54, DCU
   tab rev 82, MIU tab rev 161.
@@ -223,6 +223,17 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000h. **TI-531 testbench slow region (AR 410 .670198, 11-23; TI rung).**
+   coremark128's data (0x110000+) sat in the stub's 1000-cycle region
+   (kDeepBase 0xC0000 to 4 GB), meant only for Daniel's stall kernel
+   (2026-10-21, "no other kernel reaches it"). Ruled (1): kSlowEnd 1 MiB,
+   stress via explicit CCV_TB_LATENCY, plus (2): CCV_P_TIMEOUT_MEMOP derived
+   (queue depth x lines/memop / fills in flight x worst latency) with a
+   require. TI first reports which perf kernels had data >= 0xC0000, with
+   cycles before and after; AR then re-baselines docs/perf-register.md.
+   Re-run only decisions near Daniel's bar on moved kernels (MA-30
+   cm128priv +0.30%). OWED TO DANIEL: the real external DRAM latency for
+   timed runs (placeholder is 10 cycles); ask him in the next report.
 000g. **TI-527 probe ack (AR 409 .668434, 11-23; TI, MA rung).** ack=1 iff
    dirty_data carries the line (DI's reading); one ack per probe, its valid
    the acknowledgement; a dirty line reaches MLC exactly once (ack or
