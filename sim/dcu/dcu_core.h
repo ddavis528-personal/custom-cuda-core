@@ -122,6 +122,10 @@ struct Config {
   bool wp_recent = ccv::prov::kDcuWaypredSel == 1;   ///< CCV_DCU_WAYPRED_SEL: 1 recent, 0 index
   bool wp_mru = false;   ///< CCV_DCU_WAYPRED_SEL=mru: the set's MRU way, no tag fold (MA-29, pricing)
   unsigned gap = 5;              ///< a store hit's read to its write (MA-17, TI-483)
+  /// Test knob (DI-38, TI-530): MLC's writeback acknowledgement takes
+  /// effect this many cycles after it lands, so its line stays in the
+  /// writeback buffer longer and a refetch meets it (CCV_DCU_WB_ACK_DELAY).
+  unsigned wb_ack_delay = 0;
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
   bool notice = false;           ///< refill notices: off by default, CCV_DCU_NOTICE=1 on (DI-4, MA rev 130)
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)
@@ -316,6 +320,8 @@ private:
   void serve(const Acc &a, uint64_t born);
   void serveLook(const Req &r, uint64_t born);
   void entLeave(unsigned b) { ++ent_owed_[b]; --ent_used_[b]; }
+  std::multimap<uint64_t, unsigned> wb_ack_due_;   ///< wb_ack_delay: cycle -> the acked id
+  void wbAcked(unsigned id);
   /// The RTL's credit timing (DI-36): an entry leaves at its D2 hit or its
   /// placement (D3), not its access; the return goes out from cycle t.
   void entLeaveAt(unsigned b, uint64_t t) { ent_due_.emplace(t, b); }

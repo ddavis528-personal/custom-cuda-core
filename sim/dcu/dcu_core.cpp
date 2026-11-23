@@ -45,6 +45,7 @@ Core::Core(const Config &c, Hooks &h) : c_(c), h_(h) {
   std_owed_.assign(c_.banks, 0);
   ent_used_.assign(c_.banks, 0);
   ent_due_.clear();
+  wb_ack_due_.clear();
   seen_ent_.assign(c_.banks, 0);
   seen_std_.assign(c_.banks, 0);
   std_used_.assign(c_.banks, 0);
@@ -960,6 +961,16 @@ void Core::retryWaits() {
   }
 }
 
+/// A writeback's acknowledgement takes effect: its line leaves the
+/// writeback buffer and its entry frees.
+void Core::wbAcked(unsigned id) {
+  auto it = miss_.find(id);
+  if (it == miss_.end()) return;
+  wb_lines_.erase(it->second.line);
+  it->second.acked = true;
+  maybeFree(id);
+}
+
 void Core::freeId(unsigned id) {
   free_ids_.insert(id);
   freed_.insert(id);
@@ -1114,9 +1125,8 @@ void Core::onFill(const Fill &f) {
     ++fill_release_;
     if (!m.written || std::find(wbsend_.begin(), wbsend_.end(), f.id) != wbsend_.end())
       h_.fail(fmt("dcu: MLC acknowledged req_id %llu, a writeback not yet sent", f.id));
-    wb_lines_.erase(m.line);
-    m.acked = true;
-    maybeFree(f.id);
+    if (c_.wb_ack_delay) wb_ack_due_.emplace(now_ + c_.wb_ack_delay, f.id);
+    else wbAcked(f.id);
     return;
   case MK::WriteAck: {
     Miss w = std::move(m);
@@ -1596,6 +1606,10 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     if (miss_.at(vpend_[k]).f_at < now_ && pickVictim(vpend_[k])) vpend_.erase(vpend_.begin() + long(k));
     else ++k;
   }
+  while (!wb_ack_due_.empty() && wb_ack_due_.begin()->first <= now_) {
+    wbAcked(wb_ack_due_.begin()->second);
+    wb_ack_due_.erase(wb_ack_due_.begin());
+  }
   if (fill) onFill(*fill);
   // Probes (part 4): a landed one takes its buffer; those waiting on a
   // fill's write look again once it is done.
@@ -1812,7 +1826,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
 bool Core::busy() const {
   if (!vpend_.empty() || !wbsend_.empty() || !ontime_.empty() || !miss_.empty() || !to_mlc_.empty() ||
       !timed_.empty() || !late_.empty() || !promised_.empty() ||
-      !ent_due_.empty() || (ue_raised_ && !ue_sent_))
+      !ent_due_.empty() || !wb_ack_due_.empty() || (ue_raised_ && !ue_sent_))
     return true;
   for (const auto &q : bq_)
     if (!q.empty()) return true;
