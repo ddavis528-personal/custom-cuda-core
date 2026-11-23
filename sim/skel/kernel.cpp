@@ -118,12 +118,22 @@ void Kernel::checkParked(unsigned w) {
   if (pk.resume_pc != pc)
     fail("parked warp %u resumes at %llx; ccv-sim's next after %u retired is %llx", w,
          (unsigned long long)pk.resume_pc, n, (unsigned long long)pc);
+  // Each register compared within the width ccv-sim gives it after the n
+  // retired (O-38; OI-200, OA 469): above a narrow element the row is zero,
+  // while ccv-sim keeps the bits the slice last held. The width is ccv-sim's,
+  // never the one OOE's map reports, so a wrong width cannot hide a value.
+  // parked-full-width: every register at 32 bits, as before.
+  const uint32_t widths = n < o.recs.size() ? o.recs[n].widths
+                          : o.recs.empty()  ? 0u
+                                            : o.recs.back().widths;
   unsigned bad = 0;
   for (unsigned a = 0; a != kArchGprs; ++a) {
     auto row = pk.rows.find(a);   // one row per register, Ra as row a (TI-25 (1))
+    const uint32_t em =
+        brk == "parked-full-width" ? ~0u : elemMask(widths >> (2 * a) & 3u);
     for (unsigned l = 0; l != kLanes; ++l) {
       const uint32_t got = row == pk.rows.end() ? 0xbad0bad0u : row->second[l];
-      if (got != want[a][l] && bad++ < 4)
+      if ((got & em) != (want[a][l] & em) && bad++ < 4)
         fail("parked warp %u R%u lane %u: PCA %08x, ccv-sim %08x", w, a, l, got, want[a][l]);
     }
   }
