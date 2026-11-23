@@ -845,9 +845,21 @@ void Core::missOrWait(const Req &r, uint64_t d2) {
 
 /// Waiting misses retry on the MSHR's one retry port (spec DCU tab rev
 /// 110): each bank offers its oldest waiter, and the oldest of those by
-/// age takes the port, ahead of every new miss. A line its fill has since
+/// age takes the port, ahead of every new miss. Age is the RTL's (DI-35):
+/// a 10-bit stamp of when the waiter became its bank's head, compared
+/// modulo 2^10, ties to the lowest bank; a retry that waits again is
+/// stamped anew (MA's rule), so no offered stamp ages past half the range. A line its fill has since
 /// written is a hit: it looks up again in its own bank (a late answer),
 /// with no retry. Leaving the queue returns its entry credit.
+namespace {
+constexpr uint64_t kStampBits = 10;   // the RTL's retry stamp (DI-35)
+/// a strictly older than b, by the RTL's stamps modulo 2^kStampBits.
+bool older(uint64_t a, uint64_t b) {
+  const uint64_t m = (uint64_t(1) << kStampBits) - 1, d = (b - a) & m;
+  return d != 0 && d <= (m >> 1);
+}
+}  // namespace
+
 void Core::retryWaits() {
   int pb = -1;
   size_t pi = 0;
@@ -855,6 +867,10 @@ void Core::retryWaits() {
     for (size_t i = 0; i != bq_[b].size(); ++i) {
       Acc &a = bq_[b][i];
       if (a.k != Acc::MissW) continue;
+      if (!a.headed) {   // the bank's head from now: stamped (DI-35)
+        a.headed = true;
+        a.stamp = now_;
+      }
       h_.hit("dcu_miss_wait_cycles");
       if (a.ready > now_) break;
       const Req &r = a.req;
@@ -865,7 +881,7 @@ void Core::retryWaits() {
         h_.hit("dcu_miss_wait_relook");
         break;
       }
-      if (pb < 0 || a.born < bq_[unsigned(pb)][pi].born) {
+      if (pb < 0 || older(a.stamp, bq_[unsigned(pb)][pi].stamp)) {
         pb = int(b);
         pi = i;
       }
@@ -880,6 +896,9 @@ void Core::retryWaits() {
     bq_[b].erase(bq_[b].begin() + long(pi));
     entLeave(b);
     h_.hit("dcu_miss_wait_done");
+  } else {
+    bq_[b][pi].stamp = now_;   // waits again: stamped anew (DI-35)
+    h_.hit("dcu_miss_wait_again");
   }
 }
 

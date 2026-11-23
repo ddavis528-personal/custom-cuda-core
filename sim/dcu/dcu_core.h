@@ -287,6 +287,8 @@ private:
     Line data{};       ///< EvictR: the victim
     int tway = -1;     ///< Look: the way its tag result named, a hit (tag-stale marking)
     bool stale = false;   ///< Look: a fill wrote that way since: it reads its tags again
+    uint64_t stamp = 0;   ///< MissW: when it became its bank's head, or last waited again (the retry pick's age; DI-35)
+    bool headed = false;  ///< MissW: it has been its bank's head (stamped then)
   };
   std::vector<uint64_t> bfree_;            ///< the first cycle each bank is free
   std::vector<std::deque<Acc>> bq_;        ///< deferred work, oldest first
