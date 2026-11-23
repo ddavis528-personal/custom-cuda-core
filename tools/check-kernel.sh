@@ -2569,10 +2569,15 @@ fi
 # warp 0, restored on a 1,000-cycle line, demotes again when warp 1's
 # 250-cycle line lands first. OOE's thresholds are raised for provswap (a
 # model setting), so only those two lines trigger, not the cold misses.
+# CCV_RAU_CONCURRENT=1 since the walk became the default (demote_walk=1,
+# OA 466): warp 0's walked demotion is still in flight when warp 1's
+# trigger comes at cycle 351, and a one-at-a-time RAU declines it, so the
+# scenario never forms; overlapped, the counts are the same at either
+# walk setting.
 CCV_RAU_READY=0 CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/stall/oracle.jsonl \
   >"$B/kernel_stall_prov.log" 2>&1
 w=$(ok "$B/kernel_stall_prov.log" provisional=1 prov_demote=0)
-pv() { CCV_RAU_READY=0 CCV_OOE_CONFIG=demote_mlc_miss=150,demote_fallback=150 CCV_RAU_DEMOTE=mlc "$SKEL" \
+pv() { CCV_RAU_CONCURRENT=1 CCV_RAU_READY=0 CCV_OOE_CONFIG=demote_mlc_miss=150,demote_fallback=150 CCV_RAU_DEMOTE=mlc "$SKEL" \
          --kernel build/oracle/provswap/oracle.jsonl "$@"; }
 pv >"$B/kernel_provswap_prov.log" 2>&1
 w2=$(ok "$B/kernel_provswap_prov.log" provisional=2 prov_demote=1 restored=3)

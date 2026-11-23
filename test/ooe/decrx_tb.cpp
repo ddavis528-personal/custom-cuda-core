@@ -41,7 +41,9 @@
 // advancing in its drive has its slot's old and advanced epochs swapped,
 // so the RTL decides as a compare without the bypass would: it keeps the
 // old epoch's uops the model drops), no-double (a notice beside a redirect on one slot advances it
-// once), keep-stale (a dropped uop reaches the ports with its warp's live
+// once), no-double-adv (the same from the redirect's side: a redirect
+// beside a notice is masked, so the slot takes the notice's single advance,
+// not s2), keep-stale (a dropped uop reaches the ports with its warp's live
 // epoch, so it must be kept: the bench expects the model's drop),
 // no-ev-lead (the event lead never reaches it), no-rel (a release never
 // reaches it) and no-walk (a demotion's notice never opens its straggler
@@ -168,6 +170,7 @@ void drive(const Edge &e, const Edge *nx, uint32_t lead) {
     const uint32_t w = drv_wo; drv_wo = late_wo; late_wo = w;
   }
   if (control == "no-double") drv_adn &= ~drv_adv;
+  if (control == "no-double-adv") drv_adv &= ~drv_adn;
   const uint32_t rel = control == "no-rel" ? 0 : e.log.rel;
   rels += __builtin_popcount(e.log.rel);
   // OA 428's ordering invariant: a flushed slot's advance (or its release)

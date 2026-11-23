@@ -81,6 +81,10 @@ struct Rsp {
   /// block sends the check bits of `line` as written and this bit flipped.
   int flip = -1;
   uint64_t tid = 0;
+  /// A late answer read from a bank (a queue waiter or a re-read): it takes
+  /// any free slot, lowest bank first, and holds its bank until it leaves
+  /// (slice 1, response slots); -1 for a contracted answer, on its own slot.
+  int bank = -1;
 };
 
 /// A request launched on ccv_dcu_mlc_req.
@@ -118,6 +122,7 @@ struct Config {
   unsigned ids = 1u << ccv::prov::kWReqDcuMlc;       ///< miss buffers: MLC req_ids
   unsigned wb = 2;               ///< the writeback buffer's entries
   bool hash = false;             ///< CCV_DCU_BANK_HASH (MA-20), off
+  bool no_cycle_conflict = false;///< refuse two lookups due in one bank in one cycle (MIU model: DI-25 (4))
   unsigned ue_every = 0;         ///< CCV_DCU_UE_INJECT: every Nth read hit a UE
   unsigned ue_track = ccv::prov::kDcuUeTrack;   ///< CCV_DCU_UE_TRACK
   unsigned ecc_every = 0;        ///< CCV_DCU_ECC_INJECT: a stored bit of every Nth read hit flipped
@@ -158,6 +163,7 @@ struct Hooks {
 class Core {
 public:
   Core(const Config &c, Hooks &h);
+  const Config &config() const { return c_; }
 
   /// May the block take new requests this cycle? False while a missing
   /// request waits for a miss buffer, or for room in its line's merge list:
@@ -176,6 +182,8 @@ public:
   unsigned bankOf(uint64_t pa) const;
   /// The line's way, or -1 (tests).
   int wayOf(uint64_t pa) const;
+  /// pa's set's PLRU victim way (tests).
+  unsigned victimWay(uint64_t pa) const { return plruVictim(size_t((pa / kLineBytes) % c_.sets)); }
   bool dirtyLine(uint64_t pa) const;
   bool ownedLine(uint64_t pa) const;
 
@@ -183,7 +191,7 @@ public:
     uint64_t lookups = 0, hits = 0, misses = 0, merged = 0, losers = 0, waited = 0,
              age_blocks = 0, wp_wrong = 0, wp_right = 0, store_def = 0, rd_wr_cycles = 0,
              fill_wait = 0, fills = 0, evicts = 0, notices = 0, held_cycles = 0,
-             rsp_credit_wait = 0, at_qdepth = 0, at_stdata = 0, idle = 0, ce = 0;
+             rsp_credit_wait = 0, at_qdepth = 0, at_stdata = 0, idle = 0, ce = 0, ce_full = 0;
   };
   const Stats &stats() const { return st_; }
 
@@ -207,14 +215,42 @@ private:
   Way *find(uint64_t pa);
   const Way *find(uint64_t pa) const;
   Way *setOf(uint64_t pa) { return &l1_[size_t((pa / kLineBytes) % c_.sets) * c_.ways]; }
-  void touch(Way &w) { w.used = ++tick_; }
+  /// Each set's tree-PLRU bits (MA-30: ways - 1 of them, 7 at 8 ways, in
+  /// dcu_bctl's flops). Node n's children are 2n+1 and 2n+2; a bit points at
+  /// the half the next victim comes from, and a touch points it away.
+  std::vector<uint8_t> plru_;
+  void touch(Way &w) {
+    w.used = ++tick_;
+    const size_t i = size_t(&w - l1_.data());
+    plruTouch(i / c_.ways, unsigned(i % c_.ways));
+  }
+  void plruTouch(size_t set, unsigned way);
+  /// A lookup's hit touches its way a cycle after its D2 (D + 3), winner or
+  /// bank-conflict loser alike, and only then (dcu_bctl: pu_q, MA's DI-26
+  /// answer): a queued serve and a mispredict's re-read touch nothing more.
+  /// Kept by way, as the RTL's update is: (cycle, way index). Only the PLRU
+  /// bits wait: a way's recency (`used`, the wp-mru predictor's) moves at
+  /// serve, as before.
+  std::multimap<uint64_t, size_t> touch_at_;
+  void touchLater(const Way &w) { touch_at_.emplace(now_ + 3, size_t(&w - l1_.data())); }
+  void plruTouchWay(size_t i) { plruTouch(i / c_.ways, unsigned(i % c_.ways)); }
+  unsigned plruVictim(size_t set) const;
   unsigned fold(uint64_t pa) const;
+  /// The way the predictor names for pa (nullptr with no fold match);
+  /// read before the hit touches LRU.
+  const Way *predictedWay(uint64_t pa);
+  /// The control that completes a mispredict at due with the predicted way's
+  /// line: wp-late-at-due, or dcu-wp-nocompare (AR 405, TI-518).
+  bool noCompare() const { return c_.brk == "wp-late-at-due" || c_.brk == "dcu-wp-nocompare"; }
   /// Pipe C: the predicted way of pa's set is its own (true) or another.
   bool predicted(uint64_t pa);
+  /// Whether any valid way of pa's set has pa's fold (slice 1: no match is
+  /// a miss with no data read).
+  bool foldMatch(uint64_t pa);
 
   // ---- the banks and their queues (MA-7, MA-24, MA-25, AR 364) -------------
   struct Acc {
-    enum K { Look, StoreR, StoreW, FillW, EvictR, EccW } k;
+    enum K { Look, StoreR, StoreW, FillW, EvictR, EccR, EccW } k;
     uint64_t born, ready, line;
     Req req;           ///< Look, StoreR
     unsigned fb = 0;   ///< FillW: its fill buffer
@@ -287,6 +323,13 @@ private:
   std::vector<uint64_t> ue_loc_;
   bool ue_raised_ = false, ue_sent_ = false;
   unsigned ecc_hits_ = 0;
+  /// dcu_fix (slice 1, DI-18): one rewrite in flight (its read, then its
+  /// write 5 cycles on) and one pending, block-wide; the front is in flight.
+  std::deque<uint64_t> fix_;
+  static constexpr uint64_t kFixRdWr = 5;   ///< read to write (fix, flop, encode, flop)
+  static constexpr uint64_t kFixStart = 5;  ///< the CE's read access to its rewrite's read request (D1 to past D5)
+  void fixStart(uint64_t ready);
+  void fixDone();
   /// A read hit's SECDED check (MA-28 (c), AR 401): the injection, and on a
   /// non-zero syndrome the correction's rewrite, queued like an RMW's write.
   int eccOnHit(Way &w, const Req &r);

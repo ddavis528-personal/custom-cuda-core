@@ -4,6 +4,7 @@
 // spec; the comments cite the rows that decide each rule.
 //===----------------------------------------------------------------------===//
 #include "dcu_core.h"
+#include "../skel/wayfold.h"   // the one fold MIU and DCU share (AR 405 (3)); header only
 
 #include <algorithm>
 #include <cstdio>
@@ -31,6 +32,7 @@ Core::Core(const Config &c, Hooks &h) : c_(c), h_(h) {
   if (!c_.banks || (c_.banks & (c_.banks - 1)) || c_.sets % c_.banks)
     h_.fail(fmt("dcu: %llu banks do not divide %llu sets", c_.banks, c_.sets));
   l1_.assign(size_t(c_.sets) * c_.ways, Way{});
+  plru_.assign(size_t(c_.sets) * (c_.ways > 1 ? c_.ways - 1 : 0), 0);
   bfree_.assign(c_.banks, 0);
   bq_.resize(c_.banks);
   ent_owed_.assign(c_.banks, 0);
@@ -71,23 +73,25 @@ unsigned Core::bankOf(uint64_t pa) const {
   return unsigned(b);
 }
 
-/// A k-bit XOR fold of the tag (the line address above the set index).
-unsigned Core::fold(uint64_t pa) const {
-  uint64_t t = pa / kLineBytes / c_.sets, f = 0;
-  for (; t; t >>= c_.wp_bits) f ^= t & ((1u << c_.wp_bits) - 1);
-  return unsigned(f);
-}
+/// The way predictor's fold of pa's tag, PA[47:16] in k-bit chunks XORed:
+/// MIU's pa_fold and the fold table's entry, one function (TI-518, AR 405 (3)).
+unsigned Core::fold(uint64_t pa) const { return ccv::skel::wayFold(pa, c_.wp_bits); }
 
 /// Pipe C's predictor (MA-23 (C), MA-26): among the valid ways whose fold
 /// matches pa's, CCV_DCU_WAYPRED_SEL picks the lowest way (index) or the most
 /// recently used (recent, true LRU); mru (MA-29) ignores the fold and picks
 /// the set's most recently used valid way. Read before the hit touches LRU.
 bool Core::predicted(uint64_t pa) {
+  const Way *p = predictedWay(pa);
+  return p && p->line == pa;
+}
+
+const Core::Way *Core::predictedWay(uint64_t pa) {
   const Way *s = setOf(pa), *pick = nullptr;
   if (c_.wp_mru) {   // MA-29's candidate: the set's most recently used valid way, by LRU state alone
     for (unsigned i = 0; i != c_.ways; ++i)
       if (s[i].valid && (!pick || s[i].used > pick->used)) pick = &s[i];
-    return pick && pick->line == pa;
+    return pick;
   }
   const unsigned f = fold(pa);
   for (unsigned i = 0; i != c_.ways; ++i)
@@ -95,7 +99,15 @@ bool Core::predicted(uint64_t pa) {
       if (!pick || (c_.wp_recent && s[i].used > pick->used)) pick = &s[i];
       if (!c_.wp_recent) break;
     }
-  return pick && pick->line == pa;
+  return pick;
+}
+
+bool Core::foldMatch(uint64_t pa) {
+  const Way *s = setOf(pa);
+  const unsigned f = fold(pa);
+  for (unsigned i = 0; i != c_.ways; ++i)
+    if (s[i].valid && fold(s[i].line) == f) return true;
+  return false;
 }
 
 void Core::merge(Line &l, const Req &r) const {
@@ -119,17 +131,50 @@ bool Core::canInstall(uint64_t pa) {
   return false;
 }
 
-/// pa's line into its set: its own way if resident, else an invalid way,
-/// else the least recently used of the ways no pending write or store holds.
+// Tree-PLRU over a power-of-two number of ways (MA-30). Bit 0 sends the
+// victim left (lower ways), 1 right.
+void Core::plruTouch(size_t set, unsigned way) {
+  if (c_.ways < 2) return;
+  uint8_t *b = &plru_[set * (c_.ways - 1)];
+  unsigned n = 0;
+  for (unsigned half = c_.ways / 2, lo = 0; half; half /= 2) {
+    const bool right = way >= lo + half;
+    b[n] = !right;   // point away from the way just used
+    if (right) lo += half;
+    n = 2 * n + 1 + right;
+  }
+}
+
+unsigned Core::plruVictim(size_t set) const {
+  if (c_.ways < 2) return 0;
+  const uint8_t *b = &plru_[set * (c_.ways - 1)];
+  unsigned n = 0, lo = 0;
+  for (unsigned half = c_.ways / 2; half; half /= 2) {
+    const bool right = b[n];
+    if (right) lo += half;
+    n = 2 * n + 1 + right;
+  }
+  return lo;
+}
+
+/// pa's line into its set: its own way if resident, else the lowest invalid
+/// way, else the tree-PLRU victim (MA-30); if a pending write or store holds
+/// that one, the lowest way none holds (slice 2 sets the held case).
 /// A dirty victim is read from its bank (EvictR) and written back whole.
 Core::Way *Core::install(uint64_t pa, const Line &l, bool owned, bool dirty) {
   Way *w = find(pa);
   if (!w) {
     Way *s = setOf(pa);
-    for (unsigned i = 0; i != c_.ways; ++i) {
-      if (held(s[i].line) && s[i].valid) continue;
-      if (!w || (w->valid && (!s[i].valid || s[i].used < w->used))) w = &s[i];
-      if (!w->valid) break;
+    for (unsigned i = 0; i != c_.ways && !w; ++i)
+      if (!s[i].valid) w = &s[i];
+    if (!w) {
+      Way *v = &s[plruVictim(size_t(s - l1_.data()) / c_.ways)];
+      if (!held(v->line)) w = v;
+      else {
+        h_.hit("dcu_plru_held");
+        for (unsigned i = 0; i != c_.ways && !w; ++i)
+          if (!held(s[i].line)) w = &s[i];
+      }
     }
     if (!w) {
       h_.fail(fmt("dcu: every way of line %llx's set is held: no victim", pa));
@@ -262,6 +307,7 @@ bool Core::eligible(unsigned b, size_t i) const {
   case Acc::EvictR:
     return true;
   case Acc::StoreW:
+  case Acc::EccR:
   case Acc::EccW:
     return true;
   }
@@ -315,6 +361,22 @@ void Core::serveLook(const Req &r, uint64_t born) {
     return;
   }
   const bool hit = w && (r.op == Op::Read || w->owned);
+  // Pipe C's fold compare (slice 1, MA-30): a lookup whose fold matches no
+  // valid way of its set is a miss that reads nothing (dcu_bctl clears the
+  // SRAM ce at D1, so the bank's next cycle is free); a fold match on a
+  // miss reads the predicted way's word and discards it. A tag hit always
+  // has a fold match (the CHECK).
+  const bool fm = c_.wp_bits && !r.reread && !c_.wp_mru && foldMatch(r.pa);
+  if (c_.wp_bits && !r.reread && !c_.wp_mru) {
+    if (hit && !fm) h_.fail(fmt("dcu: a tag hit on line %llx without a fold match", r.pa));
+    if (!hit && fm) {
+      h_.hit("dcu_wp_fold_miss");
+      h_.hit("dcu_wp_reaccess_cycles", 2);
+    } else if (!hit) {
+      h_.hit("dcu_wp_nomatch_miss");
+      if (bfree_[b] == now_ + 2 && c_.brk != "wp-nomatch-reads") bfree_[b] = now_ + 1;
+    }
+  }
   if (!hit) {
     if (!startMiss(r)) stalled_.push_back(r);
     return;
@@ -323,15 +385,18 @@ void Core::serveLook(const Req &r, uint64_t born) {
     if (predicted(r.pa)) {
       ++st_.wp_right;
       h_.hit("dcu_wp_right");
-    } else if (c_.brk != "wp-late-at-due") {
+    } else if (!noCompare()) {
       // A mispredict (DI-2; MA rev 121, AR 390, OA 442): the true way is
       // re-read in a second, ordinary access, under the half-rate rule and
       // the bank's queue, so it answers no earlier than due + 2, as a
       // bank-conflict loser would. It keeps its queue entry until then.
-      // wp-late-at-due, the control, answers at due with the predicted way's
-      // line, which MIU's oracle must catch.
+      // wp-late-at-due (dcu-wp-nocompare, AR 405's name for it), the control,
+      // answers at due with the predicted way's line, which the oracle must
+      // catch.
       ++st_.wp_wrong;
       h_.hit("dcu_wp_wrong");
+      if (!c_.wp_mru) h_.hit("dcu_wp_alias");   // another valid way shares its fold
+      h_.hit("dcu_wp_reaccess_cycles", 2);
       ++ent_used_[b];
       --ent_owed_[b];
       Req x = r;
@@ -359,7 +424,15 @@ void Core::serveLook(const Req &r, uint64_t born) {
   // recent, and a recent-way predictor would always name it (TI, MI-9 (3):
   // the control below never fired).
   const bool wp_miss = c_.wp_bits && !predicted(r.pa);
-  touch(*w);
+  // A granted lookup's touch, at D + 3 (a loser's was set when it lost;
+  // a re-read's with its first access). plru-at-serve, the control, touches
+  // now, at serve, as the model did before slice 1.
+  if (c_.brk == "plru-at-serve") {
+    touch(*w);
+  } else {
+    w->used = ++tick_;
+    if (!late && !r.reread) touchLater(*w);
+  }
   ++st_.hits;
   if (!miss_.empty()) h_.hit("hit_under_miss");
   Rsp s = rspFor(r);
@@ -367,14 +440,16 @@ void Core::serveLook(const Req &r, uint64_t born) {
   s.line = w->data;
   s.flip = eccOnHit(*w, r);
   s.hit = true;
-  if (c_.brk == "wp-late-at-due" && wp_miss) {
+  if (noCompare() && wp_miss) {
     s.flip = -1;
-    // The predicted way's line, not the line asked for (the control).
-    const Way *set = setOf(r.pa);
-    for (unsigned i = 0; i != c_.ways; ++i)
-      if (set[i].valid && set[i].line != r.pa) { s.line = set[i].data; break; }
+    // The predicted way's line, not the line asked for (the control): the
+    // picked way's data completed without the tag compare. With no fold
+    // match there is no predicted way, and the lookup is a miss above.
+    const Way *p = predictedWay(r.pa);
+    if (p) s.line = p->data;
   }
   if (r.reread) h_.hit("dcu_wp_reread");
+  if ((late || r.reread) && c_.brk != "late-own-slot") s.bank = int(b);
   respond(now_ + launchOff(), s);
 }
 
@@ -416,16 +491,33 @@ void Core::serve(const Acc &a, uint64_t born) {
     unhold(a.line);
     h_.hit("dcu_fill_write");
     break;
+  case Acc::EccR: {
+    // dcu_fix's read of the line in error (slice 1): corrected, flopped,
+    // encoded, flopped, then written kFixRdWr cycles on. A rewrite whose
+    // line has left (a fill wrote good bits) or that an RMW rewrote is moot.
+    Way *w = find(a.line);
+    if (!w || !w->ecc_wr) {
+      h_.hit("dcu_ecc_write_moot");
+      fixDone();
+      break;
+    }
+    h_.hit("dcu_ecc_read");
+    bq_[b].push_back(Acc{Acc::EccW, now_, now_ + kFixRdWr, a.line, a.req, 0, {}});
+    break;
+  }
   case Acc::EccW: {
     // The corrected line goes back (MA-28 (c)): the stored bit is good again.
+    if (now_ - a.born < kFixRdWr)
+      h_.fail(fmt("dcu: CE rewrite written %llu cycles after its read, under %llu", now_ - a.born, kFixRdWr));
     Way *w = find(a.line);
     if (!w || !w->ecc_wr) {
       h_.hit("dcu_ecc_write_moot");   // the line left, or an RMW rewrote it
-      break;
+    } else {
+      w->flip = -1;
+      w->ecc_wr = false;
+      h_.hit("dcu_ecc_write");
     }
-    w->flip = -1;
-    w->ecc_wr = false;
-    h_.hit("dcu_ecc_write");
+    fixDone();
     break;
   }
   case Acc::EvictR:
@@ -435,12 +527,15 @@ void Core::serve(const Acc &a, uint64_t born) {
   }
 }
 
-/// Each bank, each cycle it is free, takes: the oldest eligible waiter once
-/// it has waited CCV_DCU_BANK_AGE (it blocks new lookups and fills until
-/// served; AR 364), else the first lookup due now in slot order (MA-7), else
-/// the oldest eligible waiter (a fill writes only in a cycle with no lookup
-/// to its bank: AR's MA-7 ask). Lookups due now that do not win wait in the
-/// bank's queue and answer later, as a miss would.
+/// Each bank, each cycle it is free, takes, in slice 1's order (DCU tab,
+/// bank arbitration): a mispredict's re-read; the oldest eligible waiter
+/// once it has waited CCV_DCU_BANK_AGE (it blocks new lookups and fills until
+/// served; AR 364); dcu_fix's CE rewrite read or write; the first lookup due
+/// now in slot order (MA-7); else the oldest eligible waiter (a fill writes
+/// only in a cycle with no lookup to its bank: AR's MA-7 ask). Lookups due
+/// now that do not win wait in the bank's queue and answer later, as a miss
+/// would. bank-order-flat, the control, drops the re-read's and the
+/// rewrite's precedence.
 void Core::schedule() {
   std::vector<Req> due;
   auto it = ontime_.find(now_);
@@ -453,11 +548,28 @@ void Core::schedule() {
     for (const Req &r : due)
       if (bankOf(r.pa) == b) in.push_back(r);
     std::stable_sort(in.begin(), in.end(), [](const Req &x, const Req &y) { return x.slot < y.slot; });
+    // Two lookups due in one bank in one cycle: the stub MIU sends them, but
+    // MIU's A2 drops all but the lowest slot (MA-27), so under the MIU model
+    // this never happens (the CHECK; DI-25 (4), MA rev 156).
+    if (in.size() > 1) {
+      h_.hit("dcu_cycle_conflict", in.size() - 1);
+      if (c_.no_cycle_conflict)
+        h_.fail(fmt("dcu: %llu lookups due in bank %llu at cycle %llu; MIU's A2 drops all but one (MA-27)",
+                    in.size(), b, now_));
+    }
     size_t old = bq_[b].size();
     for (size_t i = 0; i != bq_[b].size(); ++i)
       if (eligible(b, i)) { old = i; break; }
     const bool aged = old != bq_[b].size() && now_ - bq_[b][old].born >= c_.age &&
                       c_.brk != "bank-age-ignored";
+    // The re-read and the CE rewrite, which go ahead of new lookups.
+    const bool flat = c_.brk == "bank-order-flat";
+    size_t rr = bq_[b].size(), fx = bq_[b].size();
+    for (size_t i = 0; i != bq_[b].size() && !flat; ++i) {
+      const Acc &x = bq_[b][i];
+      if (rr == bq_[b].size() && x.k == Acc::Look && x.req.reread && eligible(b, i)) rr = i;
+      if (fx == bq_[b].size() && (x.k == Acc::EccR || x.k == Acc::EccW) && eligible(b, i)) fx = i;
+    }
     size_t win = in.size();
     for (size_t i = 0; i != in.size() && win == in.size(); ++i) {
       const uint64_t l = in[i].pa;
@@ -470,7 +582,14 @@ void Core::schedule() {
       fill_waits |= bq_[b][i].k == Acc::FillW && eligible(b, i);
     const bool both = c_.brk == "bank-both-granted";
     if (bfree_[b] <= now_ || (both && win != in.size())) {
-      if (aged) {
+      if (rr != bq_[b].size() || (!aged && fx != bq_[b].size())) {
+        const size_t i = rr != bq_[b].size() ? rr : fx;
+        if (!in.empty()) h_.hit(rr != bq_[b].size() ? "dcu_reread_block" : "dcu_fix_block");
+        const Acc a = bq_[b][i];
+        bq_[b].erase(bq_[b].begin() + long(i));
+        claim(b);
+        serve(a, a.born);
+      } else if (aged) {
         if (!in.empty() || fill_waits) {
           ++st_.age_blocks;
           h_.hit("dcu_age_block");
@@ -511,6 +630,12 @@ void Core::schedule() {
       h_.hit(r.slot == 0 ? "dcu_bank_loser_s0" : r.slot == 1 ? "dcu_bank_loser_s1"
              : r.slot == 2 ? "dcu_bank_loser_s2" : "dcu_bank_loser_s3");
       bq_[b].push_back(Acc{Acc::Look, now_ - dOff(), now_, r.pa, r, 0, {}});
+      // Its tag result is known at its D2: a hit touches at D + 3 (dcu_bctl
+      // updates PLRU for every hit, a loser included; MA's DI-26 answer).
+      if (c_.brk != "plru-at-serve" && r.op != Op::Store) {
+        const Way *w = find(r.pa);
+        if (w && (r.op == Op::Read || w->owned)) touchLater(*w);
+      }
     }
   }
 }
@@ -716,11 +841,35 @@ int Core::eccOnHit(Way &w, const Req &r) {
   ++st_.ce;
   h_.hit("dcu_ce");
   if (!w.ecc_wr) {
-    w.ecc_wr = true;
-    const unsigned b = bankOf(r.pa);
-    bq_[b].push_back(Acc{Acc::EccW, now_, now_ + c_.gap, r.pa, r, 0, {}});
+    if (fix_.size() >= 2 && c_.brk != "ce-rewrite-unbounded") {
+      // dcu_fix holds one rewrite and one pending: this CE is counted and
+      // not rewritten; the line is corrected again on its next read.
+      ++st_.ce_full;
+      h_.hit("ce_rewrite_full");
+    } else {
+      w.ecc_wr = true;
+      fix_.push_back(r.pa);
+      if (fix_.size() > 2) h_.fail(fmt("dcu: %zu CE rewrites held, dcu_fix holds 2", fix_.size()));
+      if (fix_.size() == 1) fixStart(now_ + kFixStart);
+    }
   }
   return w.flip;
+}
+
+/// dcu_fix's front rewrite asks its bank for the read.
+void Core::fixStart(uint64_t ready) {
+  const uint64_t l = fix_.front();
+  bq_[bankOf(l)].push_back(Acc{Acc::EccR, now_, ready, l, Req{}, 0, {}});
+}
+
+/// The front rewrite is written (or moot): the pending one starts.
+void Core::fixDone() {
+  if (fix_.empty()) {
+    h_.fail("dcu: a CE rewrite finished that dcu_fix did not hold");
+    return;
+  }
+  fix_.pop_front();
+  if (!fix_.empty()) fixStart(now_ + 1);
 }
 
 // ---- machine errors (AR 370, MA-19; the stub's injection, CCV_DCU_UE_INJECT) --
@@ -761,6 +910,9 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   ports_ = &p;
   notices_.clear();
   Out o;
+  // Hits' PLRU touches due now (D + 3), before this cycle's victim picks.
+  for (auto it = touch_at_.begin(); it != touch_at_.end() && it->first <= now_; it = touch_at_.erase(it))
+    plruTouchWay(it->second);
   // A fill waits in its fill buffer while every way of its set is held by a
   // pending write or a deferred store (no victim yet); fills leave in order.
   if (fill) fills_.push_back(*fill);
@@ -822,9 +974,23 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   }
   for (auto it = timed_.begin(); it != timed_.end() && it->first <= t; it = timed_.erase(it))
     late_.push_back(it->second);
+  // Contracted answers (and the miss path's) on their own slot first; then
+  // late bank answers, lowest bank first, each on the lowest free slot. One
+  // that finds none keeps its word and holds its bank (slice 1, response
+  // slots): the bank takes no access next cycle.
+  std::stable_sort(late_.begin(), late_.end(), [](const Rsp &x, const Rsp &y) {
+    return (x.bank >= 0) < (y.bank >= 0) || (x.bank >= 0 && y.bank >= 0 && x.bank < y.bank);
+  });
   for (auto it = late_.begin(); it != late_.end();) {
-    const unsigned s = it->slot;
-    if (!used[s] && p.rsp_can[s] && cr[s] > resv_[s]) {
+    int s = -1;
+    if (it->bank < 0) {
+      if (!used[it->slot] && p.rsp_can[it->slot] && cr[it->slot] > resv_[it->slot]) s = int(it->slot);
+    } else {
+      for (unsigned k = 0; k != kSlots && s < 0; ++k)
+        if (!used[k] && p.rsp_can[k] && cr[k] > resv_[k]) s = int(k);
+    }
+    if (s >= 0) {
+      it->slot = unsigned(s);
       o.rsps.push_back(*it);
       used[s] = true;
       --cr[s];
@@ -832,12 +998,17 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     } else {
       ++st_.rsp_credit_wait;
       h_.hit("dcu_rsp_wait");
+      if (it->bank >= 0) {
+        h_.hit("dcu_late_holds_bank");
+        bfree_[unsigned(it->bank)] = std::max(bfree_[unsigned(it->bank)], t + 1);
+      }
       ++it;
     }
   }
   o.notices = notices_;
   // MA-25's credit returns: at most one of each a bank a cycle.
   for (unsigned b = 0; b != c_.banks; ++b) {
+    h_.peak("dcu_ent_owed_max", ent_owed_[b]);   // dcu_bctl's owed counter (MA's DI-26 answer)
     if (ent_owed_[b]) { --ent_owed_[b]; o.ent_ret |= uint8_t(1u << b); h_.hit("dcu_ent_ret"); }
     if (std_owed_[b]) { --std_owed_[b]; o.std_ret |= uint8_t(1u << b); h_.hit("dcu_std_ret"); }
     // The queue's bounds, which MIU's credits keep (MA-25).

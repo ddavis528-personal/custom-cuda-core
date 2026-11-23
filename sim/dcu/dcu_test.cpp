@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 #include "dcu_core.h"
 
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -64,6 +65,7 @@ struct Bench {
   bool auto_mlc = true;
   unsigned mlc_lat = 20;
   std::vector<Req> held;   ///< requests the core did not accept yet
+  std::array<bool, kSlots> can{{true, true, true, true}};   ///< each rsp slot's rsp_can
   explicit Bench(Config c) : core(c, h) {}
 
   void run(uint64_t until) {
@@ -77,7 +79,7 @@ struct Bench {
       if (fi != fills.end()) f = fi->second;
       Ports p;
       for (unsigned s = 0; s != kSlots; ++s) {
-        p.rsp_can[s] = true;
+        p.rsp_can[s] = can[s];
         p.rsp_credits[s] = 8;
         p.ntc_can[s] = true;
       }
@@ -313,6 +315,59 @@ int main(int argc, char **argv) {
     EXPECT(b.rsp(16) != nullptr, "the 17th answered");
   });
 
+  // Replacement is tree-PLRU (MA-30), not true LRU. Ways 0-7 of one set fill
+  // in order (the lowest invalid way first) and are read in order; then way
+  // 0 is read again. PLRU's victim is way 4 (line 4); true LRU's would be
+  // line 1. A ninth line of the set then evicts line 4, and line 1 still hits.
+  test("plru-victim", [] {
+    Bench b(cfg(9));
+    const uint64_t stride = uint64_t(Config{}.sets) * kLineBytes;
+    for (unsigned i = 0; i != 8; ++i) warm(b, 0x40000 + i * stride, 60 + i);
+    b.reqs[b.t].push_back(rd(0, 1, 0x40000));
+    b.run(b.t + 30);
+    b.reqs[b.t].push_back(rd(0, 2, 0x40000 + 8 * stride));
+    b.run(b.t + 60);
+    b.reqs[b.t].push_back(rd(0, 3, 0x40000 + 1 * stride));
+    b.run(b.t + 60);
+    b.reqs[b.t].push_back(rd(0, 4, 0x40000 + 4 * stride));
+    b.run(b.t + 60);
+    EXPECT(b.rsp(1) && b.rsp(1)->hit, "line 0 hits");
+    EXPECT(b.rsp(2) && !b.rsp(2)->hit, "line 8 misses");
+    EXPECT(b.rsp(3) && b.rsp(3)->hit, "line 1 still hits (true LRU would have evicted it)");
+    EXPECT(b.rsp(4) && !b.rsp(4)->hit, "line 4 was PLRU's victim");
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+  });
+
+  // A hit touches PLRU a cycle after its D2 (D + 3), a bank-conflict loser
+  // included, and only then (dcu_bctl's pu_q; MA's DI-26 answer). After
+  // ways 0-7 fill and are read in order the victim is way 0; three reads of
+  // the set in one cycle (one bank: two lose) touch ways 0, 4 and 2, each
+  // moving the victim (to 4, 2, then 6). All three touch at the winner's
+  // D + 3, so the victim moves once, 0 to 6. plru-at-serve, the control,
+  // touches at serve: the winner at D, the losers as each is served.
+  for (bool ctl : {false, true}) {
+    test(ctl ? "plru-at-serve-control" : "plru-touch-at-d3", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "plru-at-serve";
+      Bench b(c);
+      const uint64_t stride = uint64_t(Config{}.sets) * kLineBytes, base = 0x40000;
+      for (unsigned i = 0; i != 8; ++i) warm(b, base + i * stride, 60 + i);
+      const unsigned v0 = b.core.victimWay(base);
+      b.reqs[b.t] = {rd(0, 1, base), rd(1, 2, base + 4 * stride), rd(2, 3, base + 2 * stride)};
+      std::vector<unsigned> moves;
+      unsigned v = v0;
+      for (uint64_t end = b.t + 40; b.t < end;) {
+        b.run(b.t + 1);
+        const unsigned n = b.core.victimWay(base);
+        if (n != v) moves.push_back(n);
+        v = n;
+      }
+      const bool ok = v0 == 0 && moves.size() == 1 && moves[0] == 6;
+      EXPECT(b.rsp(1) && b.rsp(2) && b.rsp(3) && b.rsp(3)->hit, "all three hit");
+      EXPECT(ctl ? !ok : ok, "victim %u, then %zu moves (last %u)", v0, moves.size(), moves.empty() ? 99u : moves.back());
+    });
+  }
+
   // Eviction: a dirty victim is read from its bank and written back whole.
   test("evict-writeback", [] {
     Config c = cfg(9);
@@ -433,6 +488,106 @@ int main(int argc, char **argv) {
     }
     EXPECT(t2 < t1 + c.gap && r2->flip == r1->flip, "the second read does not wait, and sees the same bit");
   });
+
+  // dcu_fix (slice 1): one rewrite in flight and one pending. Three CEs in
+  // one cycle, in three banks: two are rewritten, read then written 5 cycles
+  // later, and the third is counted (ce_rewrite_full) and not rewritten. The
+  // control ce-rewrite-unbounded takes all three, which the model refuses.
+  for (bool ctl : {false, true})
+    test(ctl ? "ecc-ce-rewrite-full-control" : "ecc-ce-rewrite-full", [&] {
+      Config c = cfg(9);
+      c.ecc_every = 1;
+      if (ctl) c.brk = "ce-rewrite-unbounded";
+      Bench b(c);
+      for (unsigned k = 0; k != 3; ++k) warm(b, 0x10000 + k * kLineBytes, 60 + k);
+      const uint64_t t0 = b.t;
+      b.reqs[t0] = {rd(0, 1, 0x10000), rd(1, 2, 0x10000 + kLineBytes), rd(2, 3, 0x10000 + 2 * kLineBytes)};
+      b.run(t0 + 80);
+      if (ctl) {
+        EXPECT(!b.h.fails.empty(), "the model refuses a third rewrite held");
+        return;
+      }
+      EXPECT(b.h.bins["dcu_ce"] == 3, "three CEs counted, got %llu", (unsigned long long)b.h.bins["dcu_ce"]);
+      EXPECT(b.h.bins["ce_rewrite_full"] == 1, "one CE found dcu_fix full");
+      EXPECT(b.h.bins["dcu_ecc_read"] == 2 && b.h.bins["dcu_ecc_write"] == 2, "two rewrites, read and written");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
+  // Pipe C's fold compare (slice 1). Two lines of one set whose folds are
+  // equal: the second's first read is a fold-match miss (it reads, and
+  // discards); once both are resident, the second (the higher way) is an
+  // alias mispredict, re-read at due + 2. A line of no matching fold misses
+  // with no read, so its bank serves the next lookup a cycle later, not two.
+  test("wp-fold-bins", [] {
+    Config c = cfg(8);
+    c.wp_recent = false;   // slice 1's SEL 0, the lowest matching way (TI's params change pending, DI-24)
+    const unsigned k = c.wp_bits;
+    Bench b(c);
+    const uint64_t a = 0x50000, alias = a ^ ((uint64_t(1) | uint64_t(1) << k) << 16);
+    warm(b, a, 60);
+    warm(b, alias, 61);
+    EXPECT(b.h.bins["dcu_wp_fold_miss"] == 1, "the alias's miss matched a's fold");
+    const uint64_t P = b.t;
+    b.reqs[P] = {rd(0, 1, alias)};
+    b.run(P + 30);
+    EXPECT(b.h.bins["dcu_wp_alias"] == 1, "an alias mispredict");
+    EXPECT(b.at(1) == P + 3 + 2, "the alias answers at due + 2, at P+%lld", (long long)(b.at(1) - P));
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+  });
+  for (bool ctl : {false, true})
+    test(ctl ? "wp-nomatch-noread-control" : "wp-nomatch-noread", [&] {
+      Config c = cfg(8);
+      if (ctl) c.brk = "wp-nomatch-reads";
+      Bench b(c);
+      warm(b, bank0(1), 60);
+      const uint64_t P = b.t;
+      b.reqs[P] = {rd(0, 1, bank0(2)), rd(1, 2, bank0(1))};   // one bank: a no-match miss, then a hit
+      b.run(P + 60);
+      EXPECT(b.h.bins["dcu_wp_nomatch_miss"] >= 1, "a no-match miss");
+      const uint64_t want = P + 3 + (ctl ? 2 : 1);
+      if (ctl) EXPECT(b.at(2) != P + 3 + 1, "the control reads on no match: the hit waits two cycles");
+      else EXPECT(b.at(2) == want, "the hit waits one cycle, at P+%lld", (long long)(b.at(2) - P));
+    });
+
+  // Two lookups due in one bank in one cycle: counted (the stub MIU sends
+  // them), and refused under the MIU model, whose A2 drops all but one
+  // (DI-25 (4), MA rev 156).
+  for (bool strict : {false, true})
+    test(strict ? "cycle-conflict-refused" : "cycle-conflict-counted", [&] {
+      Config c = cfg(9);
+      c.no_cycle_conflict = strict;
+      Bench b(c);
+      warm(b, bank0(1), 60);
+      warm(b, bank0(2), 61);
+      b.reqs[b.t] = {rd(0, 1, bank0(1)), rd(1, 2, bank0(2))};
+      b.run(b.t + 40);
+      EXPECT(b.h.bins["dcu_cycle_conflict"] == 1, "one conflict counted");
+      EXPECT(b.h.fails.empty() != strict, "refused only under the MIU model");
+    });
+
+  // A late answer takes any free response slot (slice 1, response slots;
+  // MIU matches by req_id). Two lookups in one bank in one cycle: slot 1's
+  // loses and answers late; with slot 1 closed it goes out on slot 0. The
+  // control late-own-slot keeps it on slot 1, where it never leaves.
+  for (bool ctl : {false, true})
+    test(ctl ? "late-any-slot-control" : "late-any-slot", [&] {
+      Config c = cfg(9);
+      if (ctl) c.brk = "late-own-slot";
+      Bench b(c);
+      warm(b, bank0(1), 60);
+      warm(b, bank0(2), 61);
+      b.can[1] = false;
+      b.reqs[b.t] = {rd(0, 1, bank0(1)), rd(1, 2, bank0(2))};
+      b.run(b.t + 40);
+      if (ctl) {
+        EXPECT(b.rsp(2) == nullptr, "the control holds the answer on its own slot");
+        EXPECT(b.h.bins["dcu_late_holds_bank"] == 0, "a late-own-slot answer is not a bank answer");
+        return;
+      }
+      EXPECT(b.rsp(1) && b.rsp(1)->slot == 0, "the winner on its own slot");
+      EXPECT(b.rsp(2) && b.rsp(2)->slot == 0, "the loser on slot 0, the free one");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
 
   if (g_fail) std::fprintf(stderr, "dcu-test: %d failure(s)\n", g_fail);
   else std::printf("dcu-test: all passed\n");
