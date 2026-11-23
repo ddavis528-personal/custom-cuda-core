@@ -43,6 +43,16 @@ Core::Core(const Config &c, Hooks &h) : c_(c), h_(h) {
   seen_std_.assign(c_.banks, 0);
   std_used_.assign(c_.banks, 0);
   for (unsigned i = 0; i != c_.ids; ++i) free_ids_.insert(i);
+  {
+    std::vector<unsigned> all(free_ids_.begin(), free_ids_.end());
+    const std::vector<unsigned> o = offerOrder(all);
+    std::set<unsigned> out(o.begin(), o.end());
+    for (unsigned p = 0; p != kNfIds && p != o.size(); ++p) nf_[p] = o[p];
+    std::vector<unsigned> rest;
+    for (unsigned i : all)
+      if (!out.count(i)) rest.push_back(i);
+    pk_ = offerOrder(rest);
+  }
 }
 
 // ---- the arrays -------------------------------------------------------------
@@ -816,11 +826,14 @@ void Core::missOrWait(const Req &r, uint64_t d2) {
     break;
   }
   const char *why = "dcu_miss_wait_order";
-  if (!waits) {
+  const unsigned port = r.slot + 1;
+  if (port >= kNfIds) h_.fail(fmt("dcu: slot %u has no MSHR port", r.slot));
+  if (waits) nf_pq_ |= 1u << port;   // it presents its request and waits
+  else {
     for (const Acc &x : bq_[b])
       if (x.k == Acc::MissW && x.line == r.pa)
         h_.fail(fmt("dcu: a miss to line %llx passed a waiting one", r.pa));
-    if (startMiss(r, d2, &why)) return;
+    if (startMiss(r, d2, port, &why)) return;
   }
   // CHECK: a line's misses never pass a waiting one (slice 2, part 1).
   ++ent_used_[b];   // its entry credit stays out until it leaves the queue
@@ -830,17 +843,21 @@ void Core::missOrWait(const Req &r, uint64_t d2) {
   bq_[b].push_back(Acc{Acc::MissW, now_, now_ + 1, r.pa, r, 0, {}});
 }
 
-/// Each bank's oldest waiting miss retries, one a cycle, ahead of the
-/// bank's new misses. A line its fill has since written is a hit: it looks
-/// up again (a late answer). Leaving the queue returns its entry credit.
+/// Waiting misses retry on the MSHR's one retry port (spec DCU tab rev
+/// 110): each bank offers its oldest waiter, and the oldest of those by
+/// age takes the port, ahead of every new miss. A line its fill has since
+/// written is a hit: it looks up again in its own bank (a late answer),
+/// with no retry. Leaving the queue returns its entry credit.
 void Core::retryWaits() {
+  int pb = -1;
+  size_t pi = 0;
   for (unsigned b = 0; b != c_.banks; ++b) {
     for (size_t i = 0; i != bq_[b].size(); ++i) {
       Acc &a = bq_[b][i];
       if (a.k != Acc::MissW) continue;
       h_.hit("dcu_miss_wait_cycles");
       if (a.ready > now_) break;
-      const Req r = a.req;
+      const Req &r = a.req;
       const Way *w = find(r.pa);
       if (r.op == Op::Store && rsvDirty(w)) break;   // until its fill's write
       if (w && (r.op == Op::Read || w->owned)) {
@@ -848,24 +865,81 @@ void Core::retryWaits() {
         h_.hit("dcu_miss_wait_relook");
         break;
       }
-      const char *why = nullptr;
-      if (startMiss(r, now_, &why)) {   // its retry is its D2
-        bq_[b].erase(bq_[b].begin() + long(i));
-        entLeave(b);
-        h_.hit("dcu_miss_wait_done");
+      if (pb < 0 || a.born < bq_[unsigned(pb)][pi].born) {
+        pb = int(b);
+        pi = i;
       }
-      break;   // one a bank a cycle, oldest first
+      break;   // a bank offers its oldest
     }
   }
+  if (pb < 0) return;
+  const unsigned b = unsigned(pb);
+  const Req r = bq_[b][pi].req;
+  const char *why = nullptr;
+  if (startMiss(r, now_, 0, &why)) {   // its retry is its D2, on port 0
+    bq_[b].erase(bq_[b].begin() + long(pi));
+    entLeave(b);
+    h_.hit("dcu_miss_wait_done");
+  }
+}
+
+void Core::freeId(unsigned id) {
+  free_ids_.insert(id);
+  freed_.insert(id);
+}
+
+/// The RTL's pick order of the free ids (ascending): lowest, highest,
+/// second lowest, second highest, third lowest, as many as there are.
+std::vector<unsigned> Core::offerOrder(const std::vector<unsigned> &av) {
+  static const size_t pick[kNfIds][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}, {0, 2}};   // {from the top, index}
+  std::vector<unsigned> o;
+  const size_t n = av.size();
+  for (size_t i = 0; i != kNfIds && i != n; ++i)
+    o.push_back(pick[i][0] ? av[n - 1 - pick[i][1]] : av[pick[i][1]]);
+  return o;
+}
+
+/// The next cycle's offers and picks, under the RTL's enable: a request,
+/// a free, or a pick for a port with none. (The RTL also refreshes on a
+/// lookup that sent nothing to the MSHR; that changes only which free ids
+/// are picked, never how many.)
+void Core::nfNext() {
+  bool hole = false;
+  for (const auto &o : nf_) hole = hole || !o;
+  if (nf_pq_ || !freed_.empty() || (!pk_.empty() && hole)) {
+    std::set<unsigned> out(pk_.begin(), pk_.end());
+    for (const auto &o : nf_)
+      if (o) out.insert(*o);
+    std::vector<unsigned> av;
+    for (unsigned i = 0; i != c_.ids; ++i)
+      if (((free_ids_.count(i) && !ua_.count(i)) || freed_.count(i)) && !out.count(i)) av.push_back(i);
+    std::set<unsigned> ua;
+    size_t j = 0;
+    bool left = false;
+    for (unsigned p = 0; p != kNfIds; ++p) {
+      const bool req = (nf_pq_ >> p) & 1;
+      if (req && nf_[p]) ua.insert(*nf_[p]);
+      if (req || !nf_[p]) nf_[p] = j < pk_.size() ? std::optional<unsigned>(pk_[j++]) : std::nullopt;
+      left = left || !nf_[p];
+    }
+    if (nf_pq_ && left) h_.hit("dcu_mshr_id_skipped");
+    pk_ = offerOrder(av);
+    ua_ = std::move(ua);
+  } else {
+    ua_.clear();
+  }
+  nf_pq_ = 0;
+  freed_.clear();
 }
 
 /// A missing request: into its line's buffer's merge list if one is in
 /// flight and has room, else a buffer of its own if one is free (with
 /// dcu-one-miss, only when none is). False: it stalls, and so does the
 /// channel (accepting()).
-bool Core::startMiss(const Req &r, uint64_t d2, const char **why) {
+bool Core::startMiss(const Req &r, uint64_t d2, unsigned port, const char **why) {
   const char *dummy;
   if (!why) why = &dummy;
+  nf_pq_ |= 1u << port;   // every request takes its port's offer
   for (auto &m : miss_)
     if (m.second.line == r.pa && m.second.k != MK::Evict && c_.brk != "dcu-mshr-nomerge") {
       if (m.second.filled) {   // filled, not yet written (slice 2, part 1)
@@ -886,7 +960,7 @@ bool Core::startMiss(const Req &r, uint64_t d2, const char **why) {
     *why = "dcu_miss_wait_wb";
     return false;
   }
-  if (free_ids_.empty()) {
+  if (!nf_[port]) {   // no id offered to its port
     *why = "dcu_miss_wait_entry";
     return false;
   }
@@ -901,8 +975,8 @@ bool Core::startMiss(const Req &r, uint64_t d2, const char **why) {
   for (auto &m : miss_)
     if (m.second.line == r.pa)
       h_.fail(fmt("dcu: a second miss buffer entry for line %llx", r.pa));
-  const unsigned id = *free_ids_.begin();
-  free_ids_.erase(free_ids_.begin());
+  const unsigned id = *nf_[port];
+  if (!free_ids_.erase(id)) h_.fail(fmt("dcu: miss buffer id %u offered while in use", id));
   ++st_.misses;
   h_.peak("dcu_mshr_max", miss_.size() + 1);
   if (r.op == Op::Read) {
@@ -970,7 +1044,7 @@ void Core::onFill(const Fill &f) {
   case MK::WriteAck: {
     Miss w = std::move(m);
     miss_.erase(it);
-    free_ids_.insert(f.id);
+    freeId(f.id);
     ++fill_release_;
     respond(at, rspFor(w.reqs.front()));
     for (size_t i = 1; i < w.reqs.size(); ++i) {   // merged behind it: look up again
@@ -983,7 +1057,7 @@ void Core::onFill(const Fill &f) {
   case MK::RmwRead: {
     Miss w = std::move(m);
     miss_.erase(it);
-    free_ids_.insert(f.id);
+    freeId(f.id);
     ++fill_release_;
     Line l = f.line;
     merge(l, w.reqs.front());
@@ -991,8 +1065,11 @@ void Core::onFill(const Fill &f) {
     install(w.line, l, false, false);
     hold(w.line);
     bq_[bankOf(w.line)].push_back(Acc{Acc::FillW, now_, now_, w.line, Req{}, ~0u, {}});
-    const unsigned id = *free_ids_.begin();
+    const unsigned id = *free_ids_.begin();   // write-through only: no port
     free_ids_.erase(free_ids_.begin());
+    for (auto &o : nf_)
+      if (o && *o == id) o.reset();
+    pk_.erase(std::remove(pk_.begin(), pk_.end(), id), pk_.end());
     miss_[id] = newMiss(MK::WriteAck, w.line, std::move(w.reqs), l);
     mlcReq(MlcOp::Write, w.line, &l, id, miss_[id].reqs.front().tid, now_);
     return;
@@ -1199,7 +1276,7 @@ void Core::maybeFree(unsigned id) {
   const bool done = m.k == MK::Evict ? m.acked && !m.fb : m.written && !m.fb;
   if (done) {
     miss_.erase(it);
-    free_ids_.insert(id);
+    freeId(id);
   }
 }
 
@@ -1314,14 +1391,32 @@ int Core::ueOnHit(Way &w) {
 /// filled acks at once (DCU does not hold the line; waiting could deadlock
 /// against an MLC holding the grant for the ack); one filled and not written,
 /// or a reserved dirty victim, waits for the fill's write; one in writeback
-/// acks with no data, since the writeback carries the line. Else it looks
-/// up, a queue entry of its bank.
+/// acks with no data, since the writeback carries the line, unless the
+/// writeback has not launched: then the probe takes the line from its
+/// buffer with the data, and the writeback is cancelled, so the line reaches
+/// MLC once (AR-409, DCU tab rev 108; dcu-prb-double, the control, sends it
+/// too). Its buffer and entry free when the ack launches, and misses to the
+/// line wait until then. Else it looks up, a queue entry of its bank.
 void Core::probeStart(unsigned id) {
   PrbBuf &x = prb_.at(id);
   const uint64_t pa = x.p.pa;
   for (const auto &m : miss_) {
     if (m.second.line != pa) continue;
-    if (m.second.k == MK::Evict) return probeDone(id, "dcu_prb_ack_wb");
+    if (m.second.k == MK::Evict) {
+      auto q = std::find(wbsend_.begin(), wbsend_.end(), m.first);
+      if (q != wbsend_.end()) {
+        if (c_.brk != "dcu-prb-double") wbsend_.erase(q);
+        Miss &w = miss_.at(m.first);
+        w.pcancel = true;
+        x.dirty = x.wb = true;
+        x.wbid = int(m.first);
+        x.ack.data = true;
+        x.ack.line = w.wb;
+        h_.clean(pa);   // its line leaves with the ack
+        h_.hit("dcu_prb_wb_cancel");
+      }
+      return probeDone(id, "dcu_prb_ack_wb");
+    }
     if (m.second.filled && !m.second.written) {
       x.s = PrbBuf::WaitW;
       x.wfid = int(m.first);
@@ -1455,22 +1550,29 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   if (p.mlc_can && !wbsend_.empty()) {
     const unsigned id = wbsend_.front();
     wbsend_.pop_front();
-    Miss &m = miss_.at(id);
-    --wb_used_;
-    h_.clean(m.line);
-    if (c_.brk == "drop-writeback" || c_.brk == "dcu-wb-drop") {
-      wb_lines_.erase(m.line);
-      m.acked = true;
-      maybeFree(id);
-    } else {
-      MlcReq q;
-      q.id = id;
-      q.pa = m.line;
-      q.op = MlcOp::Write;
-      q.data = true;
-      q.line = m.wb;
-      o.mlc = q;
-      h_.hit("dcu_wb_sent");
+    // CHECK (part 4): a writeback a probe took is never sent too
+    // (dcu-prb-double; its entry may have freed with the probe's ack).
+    auto mi = miss_.find(id);
+    if (mi == miss_.end() || mi->second.pcancel)
+      h_.fail(fmt("dcu: writeback of entry %llu sent after a probe took it", id));
+    if (mi != miss_.end()) {
+      Miss &m = mi->second;
+      --wb_used_;
+      h_.clean(m.line);
+      if (c_.brk == "drop-writeback" || c_.brk == "dcu-wb-drop") {
+        wb_lines_.erase(m.line);
+        m.acked = true;
+        maybeFree(id);
+      } else {
+        MlcReq q;
+        q.id = id;
+        q.pa = m.line;
+        q.op = MlcOp::Write;
+        q.data = true;
+        q.line = m.wb;
+        o.mlc = q;
+        h_.hit("dcu_wb_sent");
+      }
     }
   } else if (!to_mlc_.empty() && p.mlc_can && to_mlc_.front().first < t) {
     // The oldest unsent miss, its valid no earlier than D2 + 1 (H+5 for a
@@ -1488,6 +1590,12 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     if (x.dirty != x.ack.data)
       h_.fail(fmt("dcu: probe %llu acked ", id) + (x.ack.data ? "with data for a clean line" : "without data for a dirty line"));
     if (x.wb) --wb_used_;
+    if (x.wbid >= 0 && miss_.count(unsigned(x.wbid))) {   // the cancelled writeback's entry
+      Miss &w = miss_.at(unsigned(x.wbid));
+      wb_lines_.erase(w.line);
+      w.acked = true;
+      maybeFree(unsigned(x.wbid));
+    }
     o.prb_ack = x.ack;
     prb_.erase(id);
   }
@@ -1610,6 +1718,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     h_.hit("dcu_idle_cycles");
   }
   o.fill_release = fill_release_;
+  nfNext();
   return o;
 }
 
