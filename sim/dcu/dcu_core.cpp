@@ -1291,7 +1291,7 @@ bool Core::pickVictim(unsigned id) {
   m.way = int(w - l1_.data());
   touch(*w);
   const unsigned b = bankOf(m.line);
-  const uint64_t ready = m.f_at + 3 + (m.kst ? m.kst + 2 : 0);   // encode F+1, or F+k+3 (part 3)
+  const uint64_t ready = m.f_at + 2 + c_.victim_at + (m.kst ? m.kst + 2 : 0);   // encode F+1, or F+k+3 (part 3)
   if (w->valid && w->line != m.line) {
     h_.hit("dcu_evict");
     ++st_.evicts;
@@ -1338,7 +1338,7 @@ void Core::fillWrite(unsigned id) {
   unhold(m.line);
   m.written = true;
   h_.hit("dcu_fill_write");
-  h_.hit("dcu_fill_write_wait", now_ - (m.f_at + 3));
+  h_.hit("dcu_fill_write_wait", now_ - (m.f_at + 2 + c_.victim_at));
   const unsigned b = bankOf(m.line);
   for (Req r : m.relook) {
     r.ent_gone = true;   // its entry credit went back when it merged; its store data stays
@@ -1616,7 +1616,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   // Victims for the fills that landed before now (F+1), oldest first; a
   // fill whose set has no free way waits in its buffer (its credit held).
   for (size_t k = 0; k != vpend_.size();) {
-    if (miss_.at(vpend_[k]).f_at < now_ && pickVictim(vpend_[k])) vpend_.erase(vpend_.begin() + long(k));
+    if (miss_.at(vpend_[k]).f_at + c_.victim_at <= now_ && pickVictim(vpend_[k])) vpend_.erase(vpend_.begin() + long(k));
     else ++k;
   }
   while (!wb_ack_due_.empty() && wb_ack_due_.begin()->first <= now_) {

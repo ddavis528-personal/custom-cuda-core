@@ -99,6 +99,14 @@ struct Model {
             uint64_t flist, const std::array<std::optional<unsigned>, kBanks> &wd,
             const std::array<unsigned, kNfb> &atk) {
     const unsigned take = fv_q ? fsel : 0;
+    // The write request's payload at F+2 (DI-39): the buffer captured last
+    // cycle and its ownership.
+    wv = newq != 0;
+    for (unsigned i = 0; i < kNfb; ++i)
+      if (newq >> i & 1) {
+        wb = i;
+        wown = b[i].own;
+      }
     unsigned wdone = 0;
     for (const auto &w : wd)
       if (w) wdone |= 1u << *w;
@@ -143,12 +151,6 @@ struct Model {
       }
       x.busy = ((x.busy || (take >> i & 1)) && !f);
     }
-    unsigned tidx = 0;
-    for (unsigned i = 0; i < kNfb; ++i)
-      if (fsel >> i & 1) tidx = i;
-    wv = fv_q;
-    wb = tidx;
-    wown = fown;
     newq = take;
     if (take) ++fills;
     if (fv_q && fv) ++b2b;
@@ -241,11 +243,10 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
   for (uint64_t c = 0; c < n; ++c) {
     // ---- Outputs of this cycle against the model ----------------------------
     auto &d = *b.dut;
-    b.expect(bool(d.wv_cc05h) == m.wv, "wv");
     if (m.wv) {
-      b.expect(d.wb_cc05h == m.wb, "write request's buffer " + std::to_string(d.wb_cc05h) +
+      b.expect(d.wb_cc06h == m.wb, "write request's buffer " + std::to_string(d.wb_cc06h) +
                                        " want " + std::to_string(m.wb));
-      b.expect(bool(d.wown_cc05h) == m.wown, "write request's ownership");
+      b.expect(bool(d.wown_cc06h) == m.wown, "write request's ownership");
     }
     b.expect(bool(d.crv_cc06h) == m.crv, "credit back");
     b.expect(bool(d.xv_cc06h) == m.xv, "entry free");
@@ -301,8 +302,11 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       frid = pay->rid;
       fown = pay->own;
       fmiss = pay->miss;
-    } else {
-      for (auto &w : fdata) w = uint32_t(r());   // noise: no fill
+    } else if (rnd) {
+      // Noise with no fill, in the random runs only: a clock-gating
+      // scenario holds its inputs still between fills (CG-3 orders the
+      // scenarios by input activity).
+      for (auto &w : fdata) w = uint32_t(r());
       frid = below(16);
       fown = r() & 1;
       fmiss = r() & 1;

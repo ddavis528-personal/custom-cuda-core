@@ -13,13 +13,16 @@
 //        line, req_id, ownership and miss. dcu_mshr reads the entry by the
 //        same req_id, wired to it straight from the channel port.
 //   F+1  the buffer's 8 code words are encoded (8 ccv_common_secded_enc,
-//        K = 128) through a one-hot select of the buffer just captured, and
-//        the 72 check bits flopped. dcu_mshr's entry read (the answer count
-//        and merge list) is captured for the buffer. The write request
-//        launches from flops (DI-39): the fill's valid, its buffer and its
-//        state (ownership), beside dcu_mshr's line and fold flops; dcu_bctl
-//        decodes its bank and picks the victim in F+1.
-//   F+2  the buffer's list, count, check bits and data are dcu_rarb's and
+//        K = 128) from a staging copy of the line captured at F beside the
+//        buffer (the buffer's own flops drive bdata, NGD-7), and the 72
+//        check bits flopped. dcu_mshr's entry read (the answer count and
+//        merge list) is captured for the buffer. dcu_mshr launches the
+//        write request's lead from its F read (DI-39, MA rev 177): the
+//        valid and the bank, one hot.
+//   F+2  the write request's payload, from flops: the buffer and its state
+//        (ownership) here, the line and fold in dcu_mshr; dcu_bctl picks
+//        the victim, and the write waits in its queue from F+4. The
+//        buffer's list, count, check bits and data are dcu_rarb's and
 //        dcu_rslot's, from flops.
 //   W    a bank writes the buffer (wdv, wdb: dcu_bctl's flops); it is written.
 //   free a buffer written whose answers have all left frees, one a cycle,
@@ -34,8 +37,9 @@
 // a merged request the fill cannot answer (back to its bank's queue).
 //
 // Clock gating: a buffer's data, req_id, ownership and miss behind its own
-// capture (the flopped valid and its chosen buffer); its check bits, count
-// and list behind the capture a cycle on. The control (busy, written, the
+// capture (the flopped valid and its chosen buffer), the staging line behind
+// the flopped valid; its check bits, count and list behind the capture a
+// cycle on, and the write request's payload behind any capture a cycle on. The control (busy, written, the
 // counts owed as they fall, the pick, the pulses) is written every cycle,
 // within the module's 2%.
 //
@@ -76,9 +80,8 @@ module dcu_fill #(
   input  logic [WLC-1:0]         fcnt_cc05h,
   input  logic [LD*WLE-1:0]      flist_cc05h,
   // F+1: the write request (DI-39), beside dcu_mshr's line and fold.
-  output logic                   wv_cc05h,
-  output logic [WFB-1:0]         wb_cc05h,
-  output logic                   wown_cc05h,
+  output logic [WFB-1:0]         wb_cc06h,
+  output logic                   wown_cc06h,
   // W: each bank's write of a buffer, from dcu_bctl's flops.
   input  logic [NBK-1:0]         wdv_cc05h,
   input  logic [NBK*WFB-1:0]     wdb_cc05h,
@@ -139,38 +142,44 @@ module dcu_fill #(
       end
     end
   end
+  // The staging line for the encoders, behind the flopped valid.
+  logic [LB-1:0] ed_q_cc05h;
+  logic          ed_en_cc04h;
+  assign ed_en_cc04h = fv_q_cc04h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (ed_en_cc04h) ed_q_cc05h <= fdata_cc04h;
+  end
 
   // ---- F+1: encode, the entry's list, the write request --------------------
   logic [NFB-1:0] new_q_cc05h;          // the buffer captured last cycle, one hot
-  logic           wv_q_cc05h;
-  logic [WFB-1:0] wb_q_cc05h;
-  logic           wown_q_cc05h;
-  logic [WFB-1:0] tidx_cc04h;
-  always_comb begin
-    tidx_cc04h = '0;
-    for (int b = 0; b < NFB; b++)
-      if (fsel_q_cc04h[b]) tidx_cc04h = WFB'(b);
-  end
   always_ff @(posedge dcu_core_clk) begin
     new_q_cc05h  <= rst_r01h ? '0 : take_cc04h;
-    wv_q_cc05h   <= !rst_r01h && fv_q_cc04h;
-    wb_q_cc05h   <= tidx_cc04h;
-    wown_q_cc05h <= fown_cc04h;
   end
-  assign wv_cc05h   = wv_q_cc05h;
-  assign wb_cc05h   = wb_q_cc05h;
-  assign wown_cc05h = wown_q_cc05h;
 
-  logic [LB-1:0] nd_cc05h;              // the new buffer's line, one-hot AND-OR
+  // ---- F+2: the write request's payload (DI-39) -----------------------------
+  logic [WFB-1:0] nidx_cc05h;
   always_comb begin
-    nd_cc05h = '0;
+    nidx_cc05h = '0;
     for (int b = 0; b < NFB; b++)
-      nd_cc05h = nd_cc05h | (bd_q_cc05h[b] & {LB{new_q_cc05h[b]}});
+      if (new_q_cc05h[b]) nidx_cc05h = WFB'(b);
   end
+  logic [WFB-1:0] wb_q_cc06h;
+  logic           wown_q_cc06h;
+  logic           w_en_cc05h;
+  assign w_en_cc05h = |new_q_cc05h;
+  always_ff @(posedge dcu_core_clk) begin
+    if (w_en_cc05h) begin
+      wb_q_cc06h   <= nidx_cc05h;
+      wown_q_cc06h <= |(bown_q_cc05h & new_q_cc05h);
+    end
+  end
+  assign wb_cc06h   = wb_q_cc06h;
+  assign wown_cc06h = wown_q_cc06h;
+
   logic [CW-1:0] nchk_cc05h;
   for (genvar w = 0; w < NW; w++) begin : g_enc
     ccv_common_secded_enc #(.K(KW)) u_enc (
-      .data(nd_cc05h[w*KW +: KW]),
+      .data(ed_q_cc05h[w*KW +: KW]),
       .chk (nchk_cc05h[w*R +: R])
     );
   end

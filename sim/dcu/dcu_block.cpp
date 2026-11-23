@@ -75,6 +75,7 @@ private:
     // TI-530 (2)): with the ack taking effect at once the refetch window
     // closes and the control goes unnoticed; 0 is the RTL's timing.
     c.wb_ack_delay = envU("CCV_DCU_WB_ACK_DELAY", 8);
+    c.victim_at = envU("CCV_DCU_VICTIM_AT", c.victim_at);
     c.qdepth = envU("CCV_DCU_BANK_QDEPTH", c.qdepth);
     c.stdata = envU("CCV_DCU_BANK_STDATA", c.stdata);
     c.wp_bits = envU("CCV_DCU_WAYPRED_BITS", c.wp_bits);
