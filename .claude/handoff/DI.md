@@ -34,7 +34,9 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    4 credits, 2 entries, yield-once; controls port_nowait, always_yield,
    credit_plus, rel_at_grant; bench, NGD, CG pass. Blocked on: TI's
    two-writer CCV-L23 form (OA 479 -> DA) for 5 lines, MA-32 (16943021, only on
-   gate-scratch/TI-ma32), MA's sign-off (DI-47, rev 85, notice sent). When they
+   gate-scratch/TI-ma32). MA CONFIRMED 4 credits / 2 entries (MA rev 194,
+   DCU tab rev 126; overflow control 5 credits = ours); MA signs the port-level
+   L23 entry when TI's form lands: send MA its text then. When they
    land: merge, copy bctl.sv, test/dcu/{bctl_tb.cpp,cg-build.sh,run-rtl.sh},
    sim/dcu/{dcu_core.h,.cpp,dcu_test.cpp} from m0w (NOT its *.ngd.json), add
    the port-level feedback entry (MA signs), gate-push.
