@@ -29,6 +29,20 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
+-3. RTL slice 2 part 1, dcu_mshr (task #7). Pushed a6b8a4eb (model parts
+   1-4, SCOPED PASS; gate-push needs CCV_PUSH_BRANCHES=ccr-5e4d6c70-n6402z
+   or it pushes nothing). v1 failed depth (92 NGD) and CG-4; v2 (ports, not
+   banks: retry port + 4 slot ports; per-port ids from nf picked a cycle
+   ahead; D3 wide writes from per-port records, D2 forwards from them;
+   AND-OR mask writes for ctl flops and the FIFO, as bctl's fold rows; whole
+   D2 loop tagged stage 05) is in the scratch worktree m0w: bench 5 seeds
+   PASS, controls nomerge/order caught, lint clean; check-ngd/check-cg
+   results in scratchpad mshr_ngd2.log / mshr_cg2.log. Plan:
+   scratchpad/mshr-plan.md. DI-34 (rev 58) asks MA to accept the 4
+   deviations; Q(3) (waiter payload home) still open. TODO after: move the
+   C++ model's id choice to the RTL's rule (dcu_core.cpp, startMiss), copy
+   m0w's dcu_mshr.sv, .ngd.json, mshr_tb.cpp, cg-units/cg-build/run-rtl
+   edits into the main checkout, commit, gate-push. Then dcu_fill.
 -2. SLICE 2 parts 1+2 landed (DCU tab rev 89 "Slice 2, part 1: miss buffers
    and fills", rev 91 "part 2: eviction and writeback"; spec doc
    DJeg9Hh8rkPDecq4hrAz35, DCU tab node c18a112b-d2c6; MA rev 159-160, answers
