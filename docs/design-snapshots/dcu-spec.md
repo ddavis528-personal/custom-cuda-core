@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=DCU rev=87 exported=2026-11-22 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *DCU*, at revision 87 on 2026-11-22 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=DCU rev=89 exported=2026-11-23 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *DCU*, at revision 89 on 2026-11-23 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # DCU — L1 data cache
 
@@ -123,7 +123,7 @@ Why: the channels were already shaped for it, with ownership grants, a writeback
 
 ## MA's Phase 2: microarchitecture and module partition
 
-**Status: slice 1, the L1-hit path, MA's (2026-11-22, DI-20).** Miss buffers, fills, eviction, writeback, stores and their merge, probes and UE recovery follow as slice 2, announced to DI by a notice. Inside DCU the partition and its port budgets are MA's to decide. It meets MIU's slice 1 (the MIU tab) at `ccv_miu_dcu_req` and `ccv_dcu_miu_rsp`. Two findings change Phase 1 text: the data code is (137,128), so `check_bits` is 72 bits a slot (MA-29, AR-404 agreed; TI-517 landed); and the way predictor's fold table moves from a register file into flops, with MIU sending the line PA's fold in the payload (MA-30, AR 405 agreed; TI-518 landed pa\_fold, the defaults and the shared wayfold helper), since a fold read from a register file cannot address the SRAM in the payload cycle under the macro timing (NGD-8).
+**Status: slice 1, the L1-hit path, MA's (2026-11-22, DI-20).** Slice 2 follows in parts (DI-30): part 1, miss buffers and fills, is below; eviction and writeback, stores and their merge, probes and UE recovery follow, each announced to DI by a notice. Inside DCU the partition and its port budgets are MA's to decide. It meets MIU's slice 1 (the MIU tab) at `ccv_miu_dcu_req` and `ccv_dcu_miu_rsp`. Two findings change Phase 1 text: the data code is (137,128), so `check_bits` is 72 bits a slot (MA-29, AR-404 agreed; TI-517 landed); and the way predictor's fold table moves from a register file into flops, with MIU sending the line PA's fold in the payload (MA-30, AR 405 agreed; TI-518 landed pa\_fold, the defaults and the shared wayfold helper), since a fold read from a register file cannot address the SRAM in the payload cycle under the macro timing (NGD-8).
 
 **Macro timing at DCU's shapes** (check-ngd's `macro_timing`, NGD-8). Data SRAM, 512 x 137: address setup 13.1 NGD, `rdata` launch 18.1. Tag register file, 64 x 140: address setup 8.7, `rdata` launch 12.6. A fold table in a register file, read at H+2 and compared with the payload's PA fold at H+3, takes 12.6 + about 6 for the compare and pick + 13.1, over 25 before any fanout. So the table is held in flops: read on the lead at H+2 through a 64:1 select and flopped, its folds are ready at 0 NGD at H+3. The PA fold itself comes from MIU (computed in its A2), since folding the PA in DCU's H+3 would also pass 25.
 
@@ -190,3 +190,127 @@ Arrival is the depth before the port. A port not listed keeps the default, 12 a 
 **The drop (MA-27).** On drop DCU's dcu\_bctl clears the SRAM `ce` for the lookup in the payload cycle, so the bank reads nothing, and the access cycle it would have taken is free again. The tag RF read on the lead happened, as every lead's does; it changes no state. A dropped lookup takes no queue entry, updates no PLRU bit, returns no credit and sends no response, and no syndrome is computed for it, since no data was read.
 
 **ECC (MA-28 (c), DI-18, MA-29).** The syndrome is DCU's own, from the flop behind the macro, over the same scope as MIU's: every code word of the line the response carries. A non-zero syndrome on a response's line is a CE or UE that MIU will see too; DCU counts it and the models check the two sets agree. A CE asks dcu\_fix for a rewrite. A UE is recovered or fatal by AR 370, in slice 2.
+
+### Slice 2, part 1: miss buffers and fills
+
+**Status: MA's (DI-30).** This part covers a miss from the cycle its tags say so to its fill's write and answers. It covers loads, merging, the request to MLC, the fill's capture, encode, victim choice, tag and data write, and the answers. Eviction and writeback (with DI-21), stores and their merge, probes, and UE recovery's second response follow as parts 2 to 4. Where this part leaves a hook for them, it says so. Nothing here crosses a block: `ccv_dcu_mlc_req`, `ccv_mlc_dcu_rsp` and `ccv_dcu_miu_rsp` are used as the schema has them, and 4 fill buffers are `ccv_mlc_dcu_rsp`'s `CCV_CREDIT_DEPTH` credits.
+
+**Miss buffers (dcu\_mshr).** There are 16 entries, one per `ccv_dcu_mlc_req` req\_id (`CCV_P_W_REQ_DCU_MLC` = 4), and an entry's index is its MLC req\_id. Each entry holds:
+
+- valid, state (unsent, sent, filled) and kind (the coh\_op it sent)
+- the line PA\[47:7\] and its bank, set and fold
+- a merge list of up to 4 MIU requests in arrival order, each with req\_id, op, exclusive, and a store-data index (4 bits, the bank's store-data entry that holds a store's bytes until the fill merges them; part 3)
+- its age order among unsent entries
+
+That is about 110 flops an entry, 1,760 in all.
+
+An entry stays valid from allocation until its fill has written the bank and every merged request has been answered. Only then is its req\_id free again. A line is in at most one valid entry.
+
+**Allocation and merge, at D2 (H+4).** dcu\_btag's flopped tag result says miss: either the fold matched no way, or the tag compare found none. DCU then compares the lookup's line PA, in dcu\_cap's payload flops, with the line of all 16 entries (4 slots × 16 × 41-bit equality, about 7 NGD with fanout). Up to 4 misses arrive a cycle, one per bank at most. Two lookups to one line share a bank, and MIU's A2 drops all but one of them (MA-27), so same-cycle misses never share a line or a set; a CHECK holds that. A miss then does one of three things:
+
+- **Merges** into its line's entry if the entry is unsent or sent and its list has room. A merged miss sends nothing to MLC.
+- **Allocates** the next free entry if its line has none and a free entry is left. The 4 next free ids are picked a cycle ahead, from flops.
+- **Waits.** It waits if its line's list is full, or its line's entry is filled but not yet written, or no entry is free, or its bank already holds a waiting miss. The miss takes an entry in its bank's queue, marked miss-wait, keeping the entry credit it holds. This is MA-12's hold: MIU's credits stop the channel, and the request is never refused.
+
+The last of those rules keeps every line's requests in arrival order, since one line is always one bank. A bank's miss waiters retry oldest first, one a cycle, ahead of that bank's new misses, whenever an entry or a list place frees.
+
+A lookup's entry credit returns on `ent_ret` when it merges or allocates, or, if it waited, when it leaves the queue for an entry (slice 1's rule).
+
+**The request to MLC.** `ccv_dcu_mlc_req` is rate 1. In its D2, a miss that allocates is picked straight away if no older entry is unsent and the channel holds a credit, so the request's valid launches at H+5. Otherwise the oldest unsent entry goes, one a cycle. The payload follows a cycle after the valid, from flops. It carries:
+
+- req\_id, the entry index
+- the line PA
+- coh\_op: a load miss reads shared; a store or an atomic acquires (part 3)
+- core\_id
+- writeback\_data, unused until part 2
+
+Part 2 sets a writeback's place in this order.
+
+**Fill buffers (dcu\_fill).** There are 4 fill buffers, matching `ccv_mlc_dcu_rsp`'s 4 credits. Each holds the fill's 1,024 data bits, its 72 encoded check bits, req\_id, ownership, miss, and its answers still owed. That is about 1,120 flops a buffer, 4,480 in all. A fill buffer's credit returns when its line is written and its last answer has left. The receiving end is no-flop: the payload lands at 0 NGD into the free buffer named a cycle ahead.
+
+**Stages of a fill.** F is the cycle the fill's payload lands; its valid landed at F-1.
+
+| Cycle | Work | Modules |
+| --- | --- | --- |
+| F-1 | The fill's valid lands and is flopped. The free buffer it will take was chosen from flops | dcu\_fill |
+| F | The payload is captured into that buffer. Its req\_id, from the wires at arrival 0, reads its miss buffer entry (a 16:1 select, about 5 NGD), and the entry's line, bank, set, fold and merge list are flopped in dcu\_mshr for the buffer | dcu\_fill, dcu\_mshr |
+| F+1 | The buffer's 8 code words are encoded (8 `ccv_common_secded_enc`, K = 128, 14.5 NGD) and the 72 check bits flopped. Part 3 merges a store's bytes into the data first: only the stores ahead of the list's first load, so that no load sees a younger store. The fill asks its bank to write (a lead, `flv`, then the payload: set, fold, tag, state, buffer index), as dcu\_fix asks for a rewrite. The bank picks the victim way: the lowest invalid way, else the tree-PLRU victim, skipping a way that another fill's write still reserves or that a pending store write holds. It reserves that way and marks it most recently used | dcu\_fill, dcu\_bctl |
+| F+2 | dcu\_rarb gives slots to the fill's answers: one per merged load, as late answers (below). Each answer's buffer select is flopped. The bank may take the write for any access cycle from F+3 on | dcu\_rarb, dcu\_bctl |
+| F+3 | The answers' valids launch, and each slot routes its buffer's data and check bits into its payload flops. At the earliest, W = F+3 is the bank's data write: `ce` and `we`, with {set, way} as the address and wdata from the buffer | dcu\_rslot, dcu\_bctl, dcu\_bdat |
+| F+4 | The answers' payloads launch, so each valid is at MIU at F+4: the floor, `CCV_LAT_FILL_NOTICE` from F (DI-4) | dcu\_rslot |
+
+A fill's answer carries:
+
+- req\_id: the merged request's
+- read\_data and check\_bits: the buffer's line and its encoded bits, so MIU's R2 finds a zero syndrome
+- hit = 0
+- ownership\_granted and mlc\_miss: the fill's ownership and miss
+
+A noticed answer (CCV\_DCU\_NOTICE = 1) is sent its notice at F, and dcu\_rarb reserves its slot at F+6 then (slice 1's reservation rule).
+
+**The fill's write.** A fill's write takes only a bank access cycle with no lookup (AR's MA-7 ask). It is a queue waiter under `CCV_DCU_BANK_AGE`: once it has waited that long, its bank takes no new lookup until the write is done. In one cycle W it writes three things together:
+
+- The data: the 8 instances, at {set within the bank, way}, from the buffer.
+- The fold table: the way's fold and valid set, in flops.
+- The tag RF: the way's tag, state and clean dirty bit. A tag RF word holds four ways, so the write is DI-25's read-modify-write. The word is read in a cycle when no lead names the bank, merged with the new tag, and written at W. The read waits for that free cycle under the same age bound. A lookup that reads the word between the read and W is forwarded the new tag (slice 1's forwarding).
+
+The victim's line is gone at W. If it was dirty, its writeback read must come first (part 2), and the bank orders the write behind that read.
+
+**Lookups whose tags went stale.** A lookup whose tag result names the (set, way) a fill writes, and whose data read would come at or after W, would read the new line under the old tag. dcu\_bctl compares the fill's (set, way) with its queue and pipeline carry (9-bit equality, 16 + 2 compares). Each match is marked tag-stale. It reads its tags again in a free RF cycle before its data read. If it now misses, it goes to the miss buffers as any miss. Part 2's eviction marks lookups the same way.
+
+**Answer slots.** Late answers take the slots left after the contracted first-pass hits, in this order:
+
+1. a bank's late answer that has waited `CCV_DCU_BANK_AGE`
+2. fill answers, oldest fill first
+3. the banks' other late answers, lowest bank first
+
+A fill answer that finds no slot waits in its buffer. dcu\_rslot's route grows from 8:1 to 12:1, the 8 banks' flops behind the macro and the 4 fill buffers, one-hot from dcu\_rarb's flops.
+
+**Merged requests the fill cannot answer.** Merged requests that need ownership a shared fill did not bring go back into their bank's queue in list order after the fill's write, and look up again. So does a store merged behind a load (part 3).
+
+**Module partition (slice 2, part 1).** Two modules are added; four grow.
+
+| Module | Instances | Contents | Flops, about |
+| --- | --- | --- | --- |
+| dcu\_mshr | 1 | the 16 entries; the 4 × 16 line compares; merge, allocate and wait; the next 4 free ids; the unsent age order and the MLC request pick; `ccv_dcu_mlc_req`'s valid and payload flops; the entry read by a fill's req\_id | 1,760 plus the request's 1,120 |
+| dcu\_fill | 1 | `ccv_mlc_dcu_rsp`'s capture into the 4 buffers; the 8 encoders; the bank write request (flv, payload); answers owed; the credits back to MLC | 4,500 |
+| dcu\_bctl | grows | the fill's write as a queue waiter; victim choice, reservation and MRU; tag-stale marking; miss-wait entries and their retry; the wdata select | – |
+| dcu\_btag | grows | the RF's read-modify-write port for a fill's tag write, and its forward | – |
+| dcu\_rarb | grows | fill answers as a late source, oldest first, with the age rule above | – |
+| dcu\_rslot | grows | the 12:1 route | – |
+
+**Port NGD budgets (slice 2, part 1).** As in slice 1, every output launches from a flop (budget 0), and every input from a flop or a channel arrives at 0, unless listed here.
+
+| Module and port | Side | Budget | Why |
+| --- | --- | --- | --- |
+| dcu\_fill inputs from `ccv_mlc_dcu_rsp` | in | arrival 0 | no-flop end; the payload into the chosen buffer, and req\_id into the entry read (5) and its flop |
+| dcu\_mshr entry read address (`ccv_mlc_dcu_rsp` req\_id) | in | arrival 0 | wired from the channel port in ccv\_dcu, not through dcu\_fill (no feedthrough); the 16:1 select (5) to dcu\_mshr's own flops, which dcu\_fill reads at F+1 |
+| dcu\_mshr inputs from dcu\_btag and dcu\_cap | in | arrival 0 | flops; the line compare (7), the merge or allocate decision (4) and the write enable fanout (3): 14 |
+| dcu\_bdat `wdata` | in | arrival 0 | a 5:1 one-hot select (dcu\_fix and the 4 fill buffers; part 3 adds the store writer) from dcu\_bctl's flops (3), fanout to 8 instances (1.4), data setup 8: 12.4 |
+| dcu\_rslot inputs from dcu\_fill | in | arrival 0 | flops; the 12:1 AND-OR (4) and the select's fanout over 1,103 bits (about 5): 9 |
+
+**Bins, CHECKs and controls.**
+
+- **Bins:**
+  - misses
+  - merged (and merges that later needed a re-look)
+  - allocations sent straight from D2
+  - miss-wait cycles by cause: no entry, list full, filled not written, or bank order
+  - maximum entries in use
+  - maximum fill buffers in use
+  - fill answers that waited for a slot
+  - fill writes that waited for a bank, and those that reached the age bound
+  - tag-stale re-looks
+  - victims that were invalid, PLRU, or skipped for a reservation
+- **CHECKs:**
+  - no two valid entries hold one line
+  - MLC answers only an id in flight
+  - every merged request is answered exactly once, from its own fill or by its re-look
+  - no fill answer's valid reaches MIU before F+4, and a noticed one comes exactly `CCV_LAT_FILL_NOTICE` after its notice
+  - a tag compare finds at most one hit in a set
+  - a lookup never reads data under a tag a fill has since replaced
+- **Controls (must fail):**
+  - dcu-mshr-nomerge: a second miss to a line allocates its own entry, so the line lands in two ways
+  - dcu-fill-nostale: tag-stale marking off, so a lookup reads the fill's line under the victim's tag
+  - dcu-fill-early: answers at F+3
+  - dcu-miss-reorder: a bank's new miss passes its waiting one to the same line
