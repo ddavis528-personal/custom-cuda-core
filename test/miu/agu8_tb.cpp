@@ -56,11 +56,11 @@ struct Op {
 
 struct Want {
   uint64_t va[kNL] = {};
-  uint32_t fal = 0, fad = 0;
-  bool ilv = false;
+  uint32_t fal = 0;
+  bool ilv = false, loc = false;
 };
 
-enum class Ctl { none, xfer, sext, lane0, nohi1 };
+enum class Ctl { none, xfer, sext, lane0, noshift };
 
 Want model(const Op &o, Ctl ctl) {
   Want w;
@@ -70,41 +70,23 @@ Want model(const Op &o, Ctl ctl) {
   const unsigned sh = o.scale_en ? (nb == 4 ? 2u : nb == 2 ? 1u : 0u) : 0u;
   const int64_t d = ctl == Ctl::sext ? int64_t(o.disp)
                                      : int64_t(uint64_t(o.disp) << (64 - kDW)) >> (64 - kDW);
-  // The model's forms (sim/miu/miu_block.cpp, the AGU): O-45's window as
-  // the base, O-69's local address, O-83's decision on lane d and its cell.
-  const uint64_t ctx = (uint64_t(kCore) << 5) | o.warp;
+  // O-83's decision on lane d (sim/miu/miu_block.cpp): rbase(d) >> k == W >> k,
+  // d the issue mask's lowest lane. lane0: ccv-sim's priv-lane0 control.
   const uint64_t W = o.lbase + 3 * kLC;
   const unsigned dl = ctl == Ctl::lane0 ? 0u : o.issue ? unsigned(__builtin_ctz(o.issue)) : 0u;
-  const bool dec = o.issue && (uint64_t(o.bw[dl]) >> kPK) == (W >> kPK);
-  w.ilv = o.elig && dec;
-  auto rOf = [&](uint64_t base, unsigned s) {
-    uint64_t r = (base << 16) + (ctx << s);
-    if (ctl == Ctl::nohi1) {
-      // R's high part without hi + 1: the carry out of lo8 lost.
-      const uint64_t bh = (base << 16) >> kNN, lo = (r >> kNN) & 0xff;
-      if (lo < (bh & 0xff)) r -= 1ull << (kNN + 8);
-    }
-    return r;
-  };
+  w.ilv = o.elig && o.issue && (uint64_t(o.bw[dl]) >> kPK) == (W >> kPK);
+  w.loc = o.local;
   for (unsigned l = 0; l < kNL; ++l) {
-    const unsigned gl = 8 * o.oct + l;
+    // MI-25 (D): A1 is the ordinary sum S over the slot form's window or the
+    // lane's rbase; the forms are A2's, by wiring on S. noshift: S taken
+    // without rbase's << 16, which b = S - (W << 16) needs.
     const uint64_t bs = o.slot ? o.win : o.base[l];
-    const int64_t b = o.shared ? int64_t(bs) : int64_t(uint64_t(bs) << 16);
-    const int64_t s = b + (int64_t(o.idx[l]) << sh) + d;
-    uint64_t a = uint64_t(s);
-    if (o.local) {
-      const uint64_t bb = uint64_t(d);
-      a = rOf(o.lbase + kLC, 22) + 128 * (bb / 4) + 4 * gl + bb % 4;
-    } else if (w.ilv) {
-      const int64_t bb = ((int64_t(o.base[l]) - int64_t(W)) << 16) + (int64_t(o.idx[l]) << sh) + d;
-      if (bb < 0 || bb >= int64_t(kL)) {
-        if (o.am >> l & 1u) w.fad |= 1u << l;
-      } else {
-        a = rOf(W + kPW, 21 + kPK) + 128 * uint64_t(bb / 4) + 4 * gl + uint64_t(bb % 4);
-      }
-    }
+    const int64_t b = o.shared || ctl == Ctl::noshift ? int64_t(bs) : int64_t(uint64_t(bs) << 16);
+    const uint64_t a = uint64_t(b + (int64_t(o.idx[l]) << sh) + d);
     w.va[l] = a & kVMask;
-    const bool mis = (nb == 4 && (a & 3)) || (nb == 2 && (a & 1));
+    // F-ALIGN on the address's two low bits: S's, or disp's for the local form.
+    const uint64_t lo = o.local ? uint64_t(d) : a;
+    const bool mis = (nb == 4 && (lo & 3)) || (nb == 2 && (lo & 1));
     if ((o.am >> l & 1u) && mis) w.fal |= 1u << l;
   }
   return w;
@@ -180,26 +162,11 @@ struct Bench {
     dut->b2_cm05h = nb == 2;
     // miu_form's flops: the forms, W >> k, R(ctx)'s region bits and ctx,
     // and lane d's one-hot; every lane's base.
-    dut->oct_cm05h = o.oct;
     dut->win_cm05h = o.win;
+    dut->sl_cm05h = o.slot;
     dut->fs_cm05h = (o.elig << 2) | (o.local << 1) | o.slot;
     const uint64_t W = o.lbase + 3 * kLC;
     dut->wh_cm05h = uint32_t(W >> kPK);
-    dut->mw_cm05h = (0 - W) & 7u;   // -W's low bits (MWL 3)
-    const uint64_t rb = o.local ? o.lbase + kLC : W + kPW;
-    const uint64_t bh = rb >> kBL, hi = (bh >> 8) & ((1ull << kHH) - 1);
-    const uint64_t ctxv = (uint64_t(kCore) << 5) | o.warp;
-    uint64_t rk[2] = {0, 0};   // {ctx, hi + 1, hi, lo8, bl}, 61 bits
-    auto put = [&](unsigned at, unsigned n, uint64_t v) {
-      for (unsigned i = 0; i < n; ++i)
-        if (v >> i & 1u) rk[(at + i) / 64] |= 1ull << ((at + i) % 64);
-    };
-    put(0, kBL, rb & ((1u << kBL) - 1));
-    put(kBL, 8, bh & 0xff);
-    put(kBL + 8, kHH, hi);
-    put(kBL + 8 + kHH, kHH, (hi + 1) & ((1ull << kHH) - 1));
-    put(kBL + 8 + 2 * kHH, kCXW, ctxv);
-    dut->rk_cm05h = rk[0];
     dut->dh_cm05h = o.issue & (~o.issue + 1);
     for (unsigned i = 0; i < kLanes; ++i) dut->bw_cm05h[i] = o.bw[i];
     edge();
@@ -218,22 +185,25 @@ struct Bench {
       cov_slot += o.slot;
       cov_local += o.local;
       cov_ilv += w0.ilv;
-      cov_fad += w0.fad != 0;
+      for (unsigned l = 0; l < kNL && w0.ilv; ++l)   // an interleaved lane off W's block
+        cov_fad += (w0.va[l] >> (16 + kPK)) != ((o.lbase + 3 * kLC) >> kPK);
       cov_dhi += w0.ilv && __builtin_ctz(o.issue) >= 8;   // lane d outside octet 0
-      cov_carry += (w0.ilv || o.local) && model(o, Ctl::nohi1).va[0] != w0.va[0];
+      for (unsigned l = 0; l < kNL && w0.ilv; ++l)   // in W's block from an rbase != W
+        cov_carry += o.base[l] != uint32_t(o.lbase + 3 * kLC) &&
+                     (w0.va[l] >> (16 + kPK)) == ((o.lbase + 3 * kLC) >> kPK);
     } else if (known) {
       ++cov_noise;
     }
     vprev = v;
     if (!known) return;
     ++checked;
-    bool ok = dut->fal_cm06h == want.fal && dut->fad_cm06h == want.fad &&
-              bool(dut->ilv_cm06h) == want.ilv;
-    if (dut->fad_cm06h != want.fad || bool(dut->ilv_cm06h) != want.ilv)
+    bool ok = dut->fal_cm06h == want.fal && bool(dut->ilv_cm06h) == want.ilv &&
+              bool(dut->loc_cm06h) == want.loc;
+    if (bool(dut->ilv_cm06h) != want.ilv || bool(dut->loc_cm06h) != want.loc)
       if (fails < 20)
-        std::fprintf(stderr, "agu8: cycle %llu: fad %02x ilv %u, want %02x %u\n",
-                     (unsigned long long)cyc, unsigned(dut->fad_cm06h), unsigned(dut->ilv_cm06h),
-                     want.fad, unsigned(want.ilv));
+        std::fprintf(stderr, "agu8: cycle %llu: ilv %u loc %u, want %u %u\n",
+                     (unsigned long long)cyc, unsigned(dut->ilv_cm06h), unsigned(dut->loc_cm06h),
+                     unsigned(want.ilv), unsigned(want.loc));
     for (unsigned l = 0; l < kNL; ++l) {
       const unsigned bit = l * kVW;
       uint64_t got = 0;
@@ -361,7 +331,7 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
     std::fprintf(stderr,
                  "agu8: coverage: negative %u, past 2^48 %u, align faults %u, shared %u, "
                  "back to back %u, noise %u, slot %u, local %u, interleaved %u, F-ADDR %u, "
-                 "lane d past 7 %u, R carry %u\n",
+                 "lane d past 7 %u, in W's block from rbase != W %u\n",
                  b.cov_neg, b.cov_hi, b.cov_fal, b.cov_shared, b.cov_b2b, b.cov_noise,
                  b.cov_slot, b.cov_local, b.cov_ilv, b.cov_fad, b.cov_dhi, b.cov_carry);
     ++b.fails;
@@ -369,7 +339,7 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
   const char *cn = ctl == Ctl::xfer    ? " control xfer:"
                    : ctl == Ctl::sext  ? " control sext:"
                    : ctl == Ctl::lane0 ? " control lane0:"
-                   : ctl == Ctl::nohi1 ? " control nohi1:"
+                   : ctl == Ctl::noshift ? " control noshift:"
                                        : ":";
   std::printf("agu8%s %s: %llu cycles, %u values checked, %u mismatches: %s\n", cn,
               rnd ? "random" : scenario.c_str(), (unsigned long long)b.cyc, b.checked, b.fails,
@@ -390,7 +360,7 @@ int main(int argc, char **argv) {
       if (!std::strcmp(argv[i + 1], "xfer")) ctl = Ctl::xfer;
       else if (!std::strcmp(argv[i + 1], "sext")) ctl = Ctl::sext;
       else if (!std::strcmp(argv[i + 1], "lane0")) ctl = Ctl::lane0;
-      else if (!std::strcmp(argv[i + 1], "nohi1")) ctl = Ctl::nohi1;
+      else if (!std::strcmp(argv[i + 1], "noshift")) ctl = Ctl::noshift;
       else {
         std::fprintf(stderr, "agu8: unknown control %s\n", argv[i + 1]);
         return 2;

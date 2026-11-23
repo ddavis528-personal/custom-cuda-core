@@ -83,7 +83,6 @@ struct Entry {
 struct Want {
   uint32_t win[kNS] = {};
   uint32_t wv = 0, fs[kNS] = {}, wh[kNS] = {}, dh[kNS] = {};
-  uint64_t mw[kNS] = {};
   uint64_t rk[kNS] = {};   // {ctx, hi + 1, hi, lo8, bl}
 };
 
@@ -98,7 +97,6 @@ Want model(const Table &t, const Entry *e, Ctl ctl) {
     const bool elig = !x.shared && !x.sf && !x.lf && (W >> 32) == 0;
     w.fs[k] = (elig << 2) | (x.lf << 1) | x.sf;
     w.wh[k] = uint32_t(bitsOf(W, kPK, kWHW));
-    w.mw[k] = (0 - W) & 7u;   // -W's low bits (MWL 3)
     const uint64_t ctx = ctl == Ctl::noctx ? 0 : (uint64_t(kCore) << kWIW) | x.warp;
     const uint64_t base = x.lf ? c.lbase + kLC : W + kPW;
     // The region's bits, split at the narrow sum: bl below it, then lo8,
@@ -323,11 +321,13 @@ struct Bench {
                      (unsigned long long)exp);
     };
     for (unsigned k = 0; k < kNS; ++k) {
-      chk("win", k, dut->win_cm05h[k], want.win[k]);
+      for (unsigned u = 0; u < 4; ++u) {   // each octet's copy
+        chk("win", k, dut->win_cm05h[k * 4 + u], want.win[k]);
+        chk("sl", k, dut->sl_cm05h >> (k * 4 + u) & 1u, want.fs[k] & 1u);
+      }
       chk("wv", k, dut->wv_cm05h >> k & 1u, want.wv >> k & 1u);
       chk("fs", k, dut->fs_cm05h >> (3 * k) & 7u, want.fs[k]);
       chk("wh", k, getBits(dut->wh_cm05h.data(), k * kWHW, kWHW), want.wh[k]);
-      chk("mw", k, getBits(&dut->mw_cm05h, k * 3, 3), want.mw[k]);
       chk("rk", k, getBits(dut->rk_cm05h.data(), k * kRK, kRK), want.rk[k]);
       chk("dh", k, dut->dh_cm05h[k], want.dh[k]);
     }
