@@ -13,6 +13,8 @@ namespace ccv {
 namespace dcu {
 
 namespace {
+/// A waiting miss's next MSHR decision: the RTL's offer, grant and retry (DI-36).
+constexpr uint64_t kRetryLag = 5;
 std::string fmt(const char *f, unsigned long long a = 0, unsigned long long b = 0,
                 unsigned long long c = 0) {
   char buf[256];
@@ -842,7 +844,10 @@ void Core::missOrWait(const Req &r, uint64_t d2) {
   // Its entry credit stays out until it leaves the queue.
   h_.hit(why);
   h_.hit("dcu_miss_wait");
-  bq_[b].push_back(Acc{Acc::MissW, now_, now_ + 1, r.pa, r, 0, {}});
+  // The RTL's retry (DI-35, DI-36): the wait is known at D3 (d2 + 1), the
+  // head is offered a cycle on, granted the next, and the retry's D2 (its
+  // MSHR decision) comes two cycles after the grant: d2 + 5 at the earliest.
+  bq_[b].push_back(Acc{Acc::MissW, now_, d2 + kRetryLag, r.pa, r, 0, {}});
 }
 
 /// Waiting misses retry on the MSHR's one retry port (spec DCU tab rev
@@ -900,6 +905,8 @@ void Core::retryWaits() {
     h_.hit("dcu_miss_wait_done");
   } else {
     bq_[b][pi].stamp = now_;   // waits again: stamped anew (DI-35)
+    // Its outcome at R+3, re-offered at R+4, its next D2 at R+7: now + 5.
+    bq_[b][pi].ready = now_ + kRetryLag;
     h_.hit("dcu_miss_wait_again");
   }
 }
