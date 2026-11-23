@@ -29,6 +29,13 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
+-7. Gate-push of the sweep merge (MI 18, AR 6, OA 3, MA 3 commits) with
+   3f8e66c3 (UE first answer, TI-528/MI-20), c4061f75 (dcu_mshr CG-3: the
+   records ride the outcome gate) and the host default
+   CCV_DCU_WB_ACK_DELAY=8 (dcu-wb-refetch reachable until TI moves the
+   line; then back to 0). On push: post the tip in DI-38 (TI-530), tell
+   TI/MI the UE first answer is in (ue_second_answer 2,1,1 on
+   ldpar/vadd/hit, ue-close-first caught), close DI-34 (MA rev 168).
 -6. IN FLIGHT: gate-push of a2b4d5c4 (dcu_mshr send record CG fix, credit
    floor; job log /root/ccv-logs/job-gate-push-20261123-055701-29983.log;
    wait with tools/gate-wait.sh <log>). When it passes: cherry-pick m0w's
@@ -200,8 +207,8 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 54, MI 35, MA 163, AR 409, OA 468, TI 519, OI 401, DA 131
-(sweep of 2026-11-22; RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
+Conventions 20, DI 69, MI 39, MA 173, AR 414, OA 474, TI 529, OI 405, DA 131
+(sweep of 2026-11-23; RA 158, RI 91, IS 201, CP 160). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
 MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins), DI-4 (MA: refill floor;
