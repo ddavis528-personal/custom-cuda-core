@@ -69,6 +69,7 @@ struct Req {
   Line wdata{};      ///< a store's data
   uint64_t tid = 0;  ///< trace identity, carried to the response
   bool reread = false;   ///< pipe C: the true way's read after a mispredict
+  bool ent_gone = false; ///< its entry credit went back already (a re-read, a relook)
   uint64_t born_p = 0;   ///< a store hit's P, its identity in stp_ (model only)
 };
 
@@ -81,6 +82,10 @@ struct Rsp {
   /// The stored bit in error under `line` (MA-28 (c), AR 401), or -1: the
   /// block sends the check bits of `line` as written and this bit flipped.
   int flip = -1;
+  /// A second stored bit in error, or -1: with `flip`, a double-bit syndrome
+  /// in one word, a recovered UE's first answer (part 4; TI-528, MI-20).
+  int flip2 = -1;
+  bool ue_first = false;   ///< a recovered UE's first answer; the fill's is its second
   uint64_t tid = 0;
   /// A late answer read from a bank (a queue waiter or a re-read): it takes
   /// any free slot, lowest bank first, and holds its bank until it leaves
@@ -121,6 +126,10 @@ struct Config {
   bool wp_recent = ccv::prov::kDcuWaypredSel == 1;   ///< CCV_DCU_WAYPRED_SEL: 1 recent, 0 index
   bool wp_mru = false;   ///< CCV_DCU_WAYPRED_SEL=mru: the set's MRU way, no tag fold (MA-29, pricing)
   unsigned gap = 5;              ///< a store hit's read to its write (MA-17, TI-483)
+  /// Test knob (DI-38, TI-530): MLC's writeback acknowledgement takes
+  /// effect this many cycles after it lands, so its line stays in the
+  /// writeback buffer longer and a refetch meets it (CCV_DCU_WB_ACK_DELAY).
+  unsigned wb_ack_delay = 0;
   unsigned lat_notice = ccv::prov::kLatFillNotice;   ///< CCV_LAT_FILL_NOTICE
   bool notice = false;           ///< refill notices: off by default, CCV_DCU_NOTICE=1 on (DI-4, MA rev 130)
   unsigned merge = 4;            ///< requests a miss buffer holds (MA-12)
@@ -287,6 +296,8 @@ private:
     Line data{};       ///< EvictR: the victim
     int tway = -1;     ///< Look: the way its tag result named, a hit (tag-stale marking)
     bool stale = false;   ///< Look: a fill wrote that way since: it reads its tags again
+    uint64_t stamp = 0;   ///< MissW: when it became its bank's head, or last waited again (the retry pick's age; DI-35)
+    bool headed = false;  ///< MissW: it has been its bank's head (stamped then)
   };
   std::vector<uint64_t> bfree_;            ///< the first cycle each bank is free
   std::vector<std::deque<Acc>> bq_;        ///< deferred work, oldest first
@@ -313,6 +324,13 @@ private:
   void serve(const Acc &a, uint64_t born);
   void serveLook(const Req &r, uint64_t born);
   void entLeave(unsigned b) { ++ent_owed_[b]; --ent_used_[b]; }
+  std::multimap<uint64_t, unsigned> wb_ack_due_;   ///< wb_ack_delay: cycle -> the acked id
+  void wbAcked(unsigned id);
+  /// The RTL's credit timing (DI-36): an entry leaves at its D2 hit or its
+  /// placement (D3), not its access; the return goes out from cycle t.
+  void entLeaveAt(unsigned b, uint64_t t) { ent_due_.emplace(t, b); }
+  void entLeave(unsigned b, const Req &r, uint64_t t) { if (!r.ent_gone) entLeaveAt(b, t); }
+  std::multimap<uint64_t, unsigned> ent_due_;
   void stdLeave(unsigned b);
   bool held(uint64_t line) const { auto it = held_.find(line); return it != held_.end() && it->second; }
   void hold(uint64_t line) { ++held_[line]; }
@@ -338,6 +356,7 @@ private:
     bool vdirty = false, vread = false, acked = false;
     std::vector<Req> relook; ///< merged requests that look up again after W
     unsigned kst = 0;        ///< stores merged into the fill buffer (part 3)
+    bool pcancel = false;    ///< a probe took its unlaunched writeback (part 4, AR-409)
   };
   static Miss newMiss(MK k, uint64_t line, std::vector<Req> reqs, const Line &wb) {
     Miss m;
@@ -349,6 +368,23 @@ private:
   }
   std::map<unsigned, Miss> miss_;
   std::set<unsigned> free_ids_;
+  /// Miss buffer ids are offered a cycle ahead (spec DCU tab rev 110; the
+  /// RTL's rule, rtl/dcu/dcu_mshr.sv): each MSHR port (0 the retry, 1 + slot
+  /// a slot's new miss) holds an offer, the id it allocates. A requesting
+  /// port's offer is taken whatever it did; it, and a port with none, takes
+  /// the next of last cycle's picks in port order. Picks (lowest, highest,
+  /// second lowest, second highest, third lowest) come from the free ids,
+  /// one freed now too, less the offers, the picks and the offers taken
+  /// last cycle; so an id freed or left unused is offered two cycles on.
+  static constexpr unsigned kNfIds = 5;   ///< MSHR ports
+  std::array<std::optional<unsigned>, kNfIds> nf_;
+  std::vector<unsigned> pk_;
+  std::set<unsigned> ua_;      ///< offers taken last cycle
+  std::set<unsigned> freed_;   ///< ids freed this cycle
+  unsigned nf_pq_ = 0;         ///< this cycle's requesting ports (a mask)
+  void nfNext();
+  void freeId(unsigned id);
+  static std::vector<unsigned> offerOrder(const std::vector<unsigned> &av);
   std::deque<std::pair<uint64_t, MlcReq>> to_mlc_;   ///< (its D2, the request), oldest first
   std::set<uint64_t> wb_lines_;        ///< lines written back, not yet acked
   unsigned wb_used_ = 0;               ///< writeback buffers: victim read, request not yet launched
@@ -360,7 +396,7 @@ private:
   void answered(unsigned id);          ///< one of its answers launched
   void maybeFree(unsigned id);
   /// Merge or allocate; false (and why) if the miss must wait.
-  bool startMiss(const Req &r, uint64_t d2, const char **why = nullptr);
+  bool startMiss(const Req &r, uint64_t d2, unsigned port, const char **why = nullptr);
   /// A miss whose entry credit has gone home: merge or allocate now, or wait
   /// in its bank's queue (MissW), taking the credit back until it leaves.
   void missOrWait(const Req &r, uint64_t d2);
@@ -411,6 +447,7 @@ private:
     int wfid = -1;          ///< WaitW: the entry whose fill write it waits for
     bool dirty = false;     ///< the line was dirty: the ack must carry it
     bool wb = false;        ///< its data holds a writeback buffer until the ack
+    int wbid = -1;          ///< the writeback it cancelled, freed with the ack
     ProbeAck ack;
   };
   std::map<unsigned, PrbBuf> prb_;

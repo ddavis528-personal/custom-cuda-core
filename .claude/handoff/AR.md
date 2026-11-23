@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-22 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-23 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 405 .662302 (tab rev 409).
-  - **The next AR row inserts after .662302**, labelled AR 406.
+  - Latest row: AR 414 .678467 (tab rev 418).
+  - **The next AR row inserts after .678467**, labelled AR 415.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -85,7 +85,7 @@ Credit rules (TI-49):
 
   | Tab | Node |
   |---|---|
-  | DA | d5076b00-ef1b (table .231) |
+  | DA | d5076b00-ef1b (table .231; 4 cells Re/Date/Impl/Response, no ID; last row .133923, rev 132) |
   | TI | e8b1d9d9-df9b |
   | OA | 4c6a3151-83eb |
   | OI | 384bc26c-cef6 |
@@ -98,14 +98,21 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 409, OA 468, TI 517, MA 157, DI 41,
-  MI 35, RA 157, RI 91, IS 201, CP 160, OI 401, DA 131, Conventions 20 (full
-  sweep read 11-22; TI 517 read only for TI-518). Specs: FET tab rev 54, DCU
-  tab rev 82, MIU tab rev 161.
+- **Bookmarks** (revs read through): AR 418, OA 475, TI 535, MA 178, DI 69,
+  MI 38, RA 158, RI 91, IS 201, CP 160, OI 405, DA 132, Conventions 20 (full
+  sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
+  Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
+- **Sweep 2026-11-23 (Monday, no pings):** register: nothing new for AR in
+  the sweep read; MA rev 173 prefers AR 410 (1), fills term = DCU's 16 MLC
+  req_ids. Merged clcw9s 7, doowtf 155, 0ch1hh 18, n6402z 8, lecnjf 3,
+  664pgr 3; no conflicts. doowtf and 0ch1hh take ~28 min each to merge
+  (criss-cross merge bases): run merges and gate-waits as background tasks
+  with timeout 7200000. Gate PASS on cb7fa8e7 (ngd 10550 s, cg 9680 s);
+  pushed 193 commits; session home matches.
 - **Sweep 2026-11-22 (Sunday, no pings):** register: nothing for AR; DA
   129-131 recorded by OA in Daniel's session (ooe_mempl 21-flop CG waiver;
   OOE redirect lag option D; CCV-L23 "table" form with OA's 7 conditions).
@@ -223,6 +230,82 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000k. **MLC hit max (AR 413 .676576, 11-23; OA, TI, MA rung), re: MA rev
+   178 (d).** HIT_MAX's (2^W_REQ_DCU_MLC - 1) term (AR's TI-24 (5)) counted
+   DCU's in-flight misses as a port queue; it becomes 2**W_REQ_FET_MLC (4),
+   HIT_MAX 39 -> 28, so MA's 8-bit DCU->MLC ids leave THRESHOLD_MLC=50
+   standing. TI edits the derive and doc; OA decides on a re-sweep at the
+   read class. AR fixes PF-39's wording at the re-baseline. MA rev 178:
+   ~1,030-cycle RT -> ~130 lines; candidates 160/192 (DCU MSHR 160, bank
+   queues 24, an MIU park table, 8-bit ids), measured in Phase 1 after
+   ti-tblat. TI-534: AR 412 (1) on ti-tblat 4dc0dc41 (seed 1,
+   tb_overtaken bin); (2)/(3) next; one before/after table on landing.
+   TI-535: (2) on ti-tblat 290a158d. OA-475: THRESHOLD_MLC re-swept
+   35/50/75/100 at the read/swap classes and S1 once MA's Phase 1 sizes are
+   in the stub; 50 stands; OI adds a false-demotion split now. AR 414
+   (.678467): accepted, but an S1 cost of 0.2-0.5% goes to Daniel (OA had
+   written <=0.5%).
+   OPEN WITH DANIEL: who owns MLC's spec (MLC->EXB ids for the read class).
+000j. **Testbench latency (DA row .133923, AR 412 .673737, 11-23; TI, MA
+   rung).** Daniel: default 20 +/-5 (seeded draw keyed by CCV_TB_SEED and
+   arrival order; CCV_TB_JITTER half-width; slow regions stay fixed); a swap
+   class (CCV_TB_LATENCY=1000, >4 warps, demotion/restore/refill bins,
+   control at 20); a read class at the true latency 1000 cycles with target
+   16 B/cycle = 125 lines in flight (Daniel chose both). HEAD caps: DCU->MLC
+   16 ids (8x short), MIU->DCU and MLC->EXB 64 (2x), MIU memop queue 40 (~3x).
+   OWED BY AR: a PF row for the read target; raise MLC->EXB's owner with
+   Daniel (no session owns MLC); re-baseline perf-register once on ti-tblat
+   and the 20 default together. MA sizes MIU/DCU (Phase 1 model).
+   The DRAM-latency question to Daniel is ANSWERED.
+000i0. MI-21 (MA rev 176, FYI): O-83's one-sum form (AR revs 211-219) was
+   ~32 NGD in A1; MA added a second 22-bit adder per lane (MIU tab rev 165).
+   MA's block; nothing owed.
+000i. **TI-532 / AR 411 .672138 (11-23; TI, MA rung): re-baseline
+   perf-register when ti-tblat lands (OWED BY AR).** TI-532: fix 8daf7a2c on
+   gate-scratch/TI-tblat, lands after the FILL_AGE gate; MEMOP timeout
+   ceil(10x32/16)x2048 = 40,960 (checked). Deltas: colwalk/transpose/sgemm
+   -84..-97%, cm1priv -10.8%, cm32priv -11.2%, cmpl32priv -2.3%, cm128priv
+   -23.0%; S1 kernels unchanged. The 1000-cycle region dates from the 11-13
+   merge 0a9a8e90 (f67bb983 only capped it), so every coremark -priv figure
+   in perf-register from 11-13 on carries it (L1 capacity AR rev 344, hit
+   latency AR rev 363, MA-30, DI-23). Re-baseline: mark each affected entry,
+   replace a table only where a re-run exists; cycles from TI's landing row
+   if FILL_AGE moved them, else TI-532's. MA (revs 174-175) re-runs the
+   MA-30 grid, L1 capacity and hit latency in one batch after landing; a row
+   to AR only if a step falls under 0.5% or a ranking flips.
+000h. **TI-531 testbench slow region (AR 410 .670198, 11-23; TI rung).**
+   coremark128's data (0x110000+) sat in the stub's 1000-cycle region
+   (kDeepBase 0xC0000 to 4 GB), meant only for Daniel's stall kernel
+   (2026-10-21, "no other kernel reaches it"). Ruled (1): kSlowEnd 1 MiB,
+   stress via explicit CCV_TB_LATENCY, plus (2): CCV_P_TIMEOUT_MEMOP derived
+   (queue depth x lines/memop / fills in flight x worst latency) with a
+   require. TI first reports which perf kernels had data >= 0xC0000, with
+   cycles before and after; AR then re-baselines docs/perf-register.md.
+   Re-run only decisions near Daniel's bar on moved kernels (MA-30
+   cm128priv +0.30%). Daniel's DRAM-latency answer: see 000j.
+000g. **TI-527 probe ack (AR 409 .668434, 11-23; TI, MA rung).** ack=1 iff
+   dirty_data carries the line (DI's reading); one ack per probe, its valid
+   the acknowledgement; a dirty line reaches MLC exactly once (ack or
+   writeback); a writeback-buffer hit answers ack=1 and cancels that
+   writeback; already sent -> ack=0. MLC-stub CHECK, controls, bins. MA
+   agreed (MA rev 165; DCU tab rev 107: same-cycle compare vs the request
+   pick, probe wins). CLOSED; TI writes the doc text.
+000f. **OA 469 pc_kept on ccv_ooe_rau_drained (AR 406 .664201, 11-23; TI, RA,
+   OA rung).** Confirmed; PC-on-alloc stays rejected. pc_kept=1 iff nothing
+   retired since the slot's alloc (launch/restore-alloc) and nothing in
+   ROB/decq (held stragglers incl.); RAU resumes at its alloc PC. Exactness
+   rests on "arch PC moves only at retire" (FET's predictor leaves start_pc
+   without a ROB redirect, so OA's fetch argument was not the reason). (3)
+   went to RA by mistake (RA is RCU's architect; RAU's spec is AR's, TI
+   builds the stub). AR 407 .665996 rules it: no new RAU register; launch
+   uses the grid start_pc, a provisional restore the parked record's
+   resume_pc, kept valid to the next drained (masked write on pc_kept=1);
+   non-provisional restores can't hit pc_kept (RAU's retired_ < p_base_+P
+   guard). Stub's demote() must stop clearing parked[w].resume_pc. TI
+   applies; nothing owed. LESSON: RA = RCU architect, not RAU.
+   AR 408 .667395: took OA 471's 'iff' (pc_kept = !rsa, no retire since
+   alloc; ROB/decq term dropped, per OA 470's RTL); OA 472 crossed, answered
+   by AR 407. Final text for TI: AR 406 (1) as amended + AR 407 (5). CLOSED.
 000e. **MA-30 way predictor (AR 405 .662302, 11-22; MA, TI rung).** Agreed
    k=4 fold table (16,384 flops in dcu_bctl), pa_fold on ccv_miu_dcu_req,
    HIT 8. Price vs k=5: S1 -0.02, cm32priv -0.17, cm128priv +0.30%; vs B9

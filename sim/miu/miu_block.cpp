@@ -249,6 +249,19 @@ private:
   }
   uint32_t killed_ = 0;                 ///< warps a kill has ended
   std::set<unsigned> kill_drop_;        ///< req_ids whose answer a kill made moot
+  /// req_ids whose first answer carried a UE (a double-bit syndrome on any
+  /// word): kept live for DCU's second answer from the refetch (AR 370; MIU
+  /// tab rev 163, ECC; DCU tab slice 2 part 4).
+  std::set<unsigned> ue_first_;
+  /// True when any word of the answer's line has a double-bit syndrome. No
+  /// ue field rides dcu_miu_rsp: R2's syndrome is the only mark.
+  static bool lineUe(const Bits &payload, uint32_t data_lsb, uint32_t chk_lsb) {
+    const Line ln = getLine(payload, data_lsb);
+    for (unsigned w = 0; w != kLineWords; ++w)
+      if (secdedL1().decode(lineWord(ln, w), uint32_t(payload.get(chk_lsb + eccR() * w, eccR()))).ded)
+        return true;
+    return false;
+  }
   /// An atomic in passes (AR-21, V-72), by rob tag: its lanes' addresses
   /// from its first read, the lanes still to run, this pass's, and the
   /// lines the pass holds from its read to its write's ack. Nothing else
@@ -547,6 +560,21 @@ private:
         // Matched by req_id, not by slot or arrival order: DCU may answer
         // four outstanding requests in any order.
         const unsigned id = unsigned(get(m.payload, c.dcu_miu, "req_id"));
+        // A recovered UE is answered twice under one req_id. The first
+        // answer's syndrome withholds the completion and the id stays live,
+        // whatever owns it (a job, a window fill, a kill's drop, an orphan);
+        // the second, from DCU's fill, is taken as the id's one answer.
+        const bool ue = lineUe(m.payload, field(c.dcu_miu, "read_data").lsb,
+                               field(c.dcu_miu, "check_bits").lsb);
+        if (ue_first_.erase(id)) {
+          if (ue || get(m.payload, c.dcu_miu, "hit"))
+            k_.fail("miu: req_id %u's second answer after a UE is not a fill's (hit %u, UE %u; AR 370)",
+                    id, unsigned(get(m.payload, c.dcu_miu, "hit")), unsigned(ue));
+          k_.hit("ue_second_answer");
+        } else if (ue && k_.brk != "ue-close-first") {
+          ue_first_.insert(id);
+          continue;
+        }
         auto fl = fills_.find(id);
         if (fl != fills_.end()) {
           // A window fill: every slot its line holds (TI-31).
@@ -2378,7 +2406,7 @@ private:
   }
   bool busy() const override {
     return !jobs_.empty() || !drops_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
-           !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
+           !hints_.empty() || !orphan_.empty() || !to_rau_.empty() || !ue_first_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
            !to_dcu_.empty() || !to_fet_.empty();

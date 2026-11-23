@@ -69,6 +69,7 @@ struct Bench {
   /// Answer MLC's requests itself, `mlc_lat` cycles after launch.
   bool auto_mlc = true;
   unsigned mlc_lat = 20;
+  bool mlc_block = false;   ///< hold ccv_dcu_mlc_req's credit back
   std::vector<Req> held;   ///< requests the core did not accept yet
   std::array<bool, kSlots> can{{true, true, true, true}};   ///< each rsp slot's rsp_can
   explicit Bench(Config c) : core(c, h) {}
@@ -88,7 +89,7 @@ struct Bench {
         p.rsp_credits[s] = 8;
         p.ntc_can[s] = true;
       }
-      p.mlc_can = true;
+      p.mlc_can = !mlc_block;
       std::optional<Probe> pr;
       auto pi = probes.find(t);
       if (pi != probes.end()) pr = pi->second;
@@ -121,6 +122,12 @@ struct Bench {
     for (const Launch &l : rsps)
       if (l.r.req_id == id) return &l.r;
     return nullptr;
+  }
+  const Rsp *rspLast(unsigned id) const {
+    const Rsp *p = nullptr;
+    for (const Launch &l : rsps)
+      if (l.r.req_id == id) p = &l.r;
+    return p;
   }
 };
 
@@ -464,7 +471,12 @@ int main(int argc, char **argv) {
     warm(b, 0x7000);
     b.reqs[b.t] = {rd(0, 1, 0x7000)};
     b.run(b.t + 80);
-    EXPECT(b.h.bins["ue_recover"] == 1 && b.rsp(1) && !b.rsp(1)->hit, "recovered as a miss");
+    // The first answer carries a double-bit syndrome (TI-528); the second,
+    // the refetch's, is a clean miss.
+    EXPECT(b.rsp(1) && b.rsp(1)->ue_first && b.rsp(1)->flip >= 0 && b.rsp(1)->flip2 >= 0,
+           "first answer: a double-bit syndrome");
+    EXPECT(b.h.bins["ue_recover"] == 1 && b.rspLast(1) && !b.rspLast(1)->hit && b.rspLast(1)->flip < 0 &&
+               b.rspLast(1)->flip2 < 0, "recovered as a miss");
   });
 
   // A UE in a dirty line is core-fatal: DCU withholds the read (AR 389,
@@ -998,6 +1010,44 @@ int main(int argc, char **argv) {
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 
+  // A probe of a line whose dirty victim's writeback has not launched takes
+  // the line from its buffer, with the data, and cancels the writeback, so
+  // the line reaches MLC once (AR-409, rev 108); a miss to it then fetches
+  // it again. dcu-prb-double sends the writeback too, refused.
+  for (bool ctl : {false, true})
+    test(ctl ? "dcu-prb-double-control" : "probe-cancels-writeback", [&] {
+      Config c = cfg(9);
+      c.ways = 1;
+      if (ctl) c.brk = "dcu-prb-double";
+      Bench b(c);
+      b.reqs[0] = {st(0, 1, 0x6000, 0, 0x11)};
+      b.run(60);
+      const uint64_t y = 0x6000 + uint64_t(c.sets) * kLineBytes;   // same set
+      b.reqs[60] = {rd(0, 2, y)};
+      while (b.t < 200 && (b.mlc.empty() || b.mlc.back().second.pa != y)) b.run(b.t + 1);
+      b.mlc_block = true;   // the victim's writeback waits for a credit
+      b.run(b.t + 60);
+      EXPECT(b.h.bins["dcu_evict_read"] == 1, "the victim was read");
+      const size_t sent = b.mlc.size();
+      b.probes[b.t] = Probe{0, 0x6000, true};
+      b.run(b.t + 20);
+      b.mlc_block = false;
+      b.run(b.t + 40);
+      if (ctl) {
+        EXPECT(refused(b, "sent after a probe took it"), "the control is refused");
+        return;
+      }
+      EXPECT(b.acks.size() == 1 && b.acks[0].second.data && b.acks[0].second.line[0] == 0x11,
+             "the ack carries the dirty line");
+      EXPECT(b.h.bins["dcu_prb_wb_cancel"] == 1, "the writeback cancelled");
+      for (size_t i = sent; i < b.mlc.size(); ++i)
+        EXPECT(b.mlc[i].second.pa != 0x6000, "no writeback of the probed line");
+      b.reqs[b.t] = {rd(0, 3, 0x6000)};
+      b.run(b.t + 80);
+      EXPECT(b.rsp(3) && !b.rsp(3)->hit, "the line is fetched again");
+      EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
+    });
+
   // dcu-prb-nodirty acks a dirty line without its data, refused.
   test("dcu-prb-nodirty-control", [&] {
     Config c = cfg(9);
@@ -1046,7 +1096,8 @@ int main(int argc, char **argv) {
         EXPECT(!b.h.fails.empty(), "the control is refused");
         return;
       }
-      EXPECT(b.rsp(1) && b.rsp(1)->fid >= 0, "answered from a fill");
+      EXPECT(b.rsp(1) && b.rsp(1)->ue_first, "first answer before the fill");
+      EXPECT(b.rspLast(1) && b.rspLast(1)->fid >= 0, "answered from a fill");
       EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
     });
 

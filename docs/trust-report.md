@@ -18,12 +18,14 @@ so this is a build artifact rather than something to remember.
 | File | Preliminary | Provisional |
 |---|---|---|
 | `rtl/clk/ccv_common_clk.sv` | — | `CCV_CG_HYST_W` |
-| `rtl/dcu/dcu_bctl.sv` | — | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYS`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
+| `rtl/dcu/dcu_bctl.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_BANK_AGE`, `CCV_DCU_BANK_QDEPTH`, `CCV_DCU_WAYPRED_BITS`, `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_btag.sv` | — | `CCV_DCU_WAYS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_W_DCU_SET` |
 | `rtl/dcu/dcu_cap.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_MIU_DCU`, `CCV_W_DCU_SET` |
+| `rtl/dcu/dcu_mshr.sv` | `CCV_L_W_COH_OP` | `CCV_DCU_WAYPRED_BITS`, `CCV_P_CORE_ID`, `CCV_P_LINE_BYTES`, `CCV_P_W_PA`, `CCV_P_W_REQ_DCU_MLC`, `CCV_P_W_REQ_MIU_DCU` |
 | `rtl/if/ccv_common_chk_credit.sv` | — | `CCV_P_TIMEOUT_N` |
 | `rtl/include/ooe_pl.svh` | `CCV_L_W_MEM_OP`, `CCV_L_W_OPCODE`, `CCV_P_W_BYP_GROUP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_IMM`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_IDX`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
-| `rtl/miu/miu_pair.sv` | — | `CCV_LAT_MIU_PAIR_LAG`, `CCV_MEMOP_CREDITS` |
+| `rtl/miu/miu_mq.sv` | `CCV_L_W_MEM_OP` | `CCV_MEMOP_CREDITS`, `CCV_P_W_CTA_SLOT`, `CCV_P_W_PHYS_PRED`, `CCV_P_W_PHYS_REG`, `CCV_P_W_ROB_TAG`, `CCV_P_W_RS_IDX` |
+| `rtl/miu/miu_pair.sv` | `CCV_L_W_MEM_OP` | `CCV_LAT_MIU_PAIR_LAG`, `CCV_MEMOP_CREDITS`, `CCV_P_W_CTA_SLOT` |
 | `rtl/ooe/ooe_mempl.sv` | `CCV_L_W_MEM_OP` | `CCV_P_W_CTA_SLOT`, `CCV_P_W_ROB_IDX`, `CCV_P_W_RS_IDX` |
 | `rtl/ooe/ooe_sched.sv` | — | `CCV_MEMOP_CREDITS` |
 | `rtl/ooe/ooe_wake.sv` | — | `CCV_LAT_L1_CMPL`, `CCV_LAT_L1_WAKE` |
