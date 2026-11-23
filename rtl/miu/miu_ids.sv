@@ -23,23 +23,27 @@
 // new pick; else keep). An id released this cycle is free from the next.
 //
 // The id-to-entry table: at the take, row id gets the lookup's MQ entry
-// (te[k]). At R1 a response's req_id (qid, from miu_rcap's capture) reads
-// its row into a flop (qe), the cycle after; the same response releases its
-// id (rl), unless it is a recovered UE's first answer, whose id stays live
-// for the second (AR 370; the releaser decides).
+// (te[k]). At R2 a response's req_id (qid, miu_rcap's capture) reads its
+// row into a flop (qe), and this module holds the id. A cycle on, rl frees
+// the held id, unless the response was a recovered UE's first answer, whose
+// id stays live for the second (AR 370; the releaser decides, once the
+// syndrome's flag is flopped). So no release carries an id: it names a read.
 //
 // Stage tags: A2 is 06. The free vector, the preselected ids, the table,
 // the held drops and this module's own leads are its state, one stage, 06,
 // as a queue's entries are (CCV-L23's own-stage state); the drops (A2's flop
-// a cycle on), the releases and the reads arrive at 06 too, numbered back
-// from their effect, as miu_cred's refunds are.
+// a cycle on) and the releases arrive at 06 too, numbered back from their
+// effect, as miu_cred's refunds are. A read is numbered back from the free
+// vector its release changes: the read 05, its flops (the entry out, the id
+// held) 06.
 //
 // Clock gating (CG-5): the takes, drops, releases and reads are inputs, so
 // no enable sees them. This module flops its own leads: a lookup in A1
 // (lv, a take may follow), a take (a drop may follow) and a response
-// captured (rs, releases and reads follow); every gate opens on those.
+// captured (rs: reads follow, then releases); every gate opens on those.
 //
-// Inputs are other MIU modules' flops (arrival 0, miu_ids.ngd.json), and
+// Inputs are other MIU modules' flops: qid from miu_rcap's at arrival 0
+// (miu_ids.ngd.json, MI-28), the rest at the default, and
 // every output comes straight from a flop (MIU tab, Port NGD budgets).
 //
 // The reference is the MIU model's IdPool (sim/skel/stub.h) and its uses in
@@ -73,15 +77,16 @@ module miu_ids #(
   // A2: slot k's preselected id and whether it holds one.
   output logic [NS*IW-1:0] pid_cm06h,
   output logic [NS-1:0]    pv_cm06h,
-  // A response is captured: its releases and reads come next cycle.
-  input  logic             rs_cm05h,
-  // Releases: id rid[j] is free from the next cycle.
-  input  logic [NR-1:0]    rl_cm06h,
-  input  logic [NR*IW-1:0] rid_cm06h,
-  // Reads: id qid[j]'s entry, flopped.
-  input  logic [NR-1:0]    qv_cm06h,
-  input  logic [NR*IW-1:0] qid_cm06h,
-  output logic [NR*EW-1:0] qe_cm07h
+  // A response is captured: its reads come next cycle.
+  input  logic             rs_cm04h,
+  // Reads: rsp slot j's req_id qid[j] (miu_rcap's capture) reads its entry,
+  // flopped; the id is held here too, for the release.
+  input  logic [NR-1:0]    qv_cm05h,
+  input  logic [NR*IW-1:0] qid_cm05h,
+  output logic [NR*EW-1:0] qe_cm06h,
+  // Releases, a cycle after the read: rl[j] frees the id read last cycle on
+  // read port j, free from the next cycle.
+  input  logic [NR-1:0]    rl_cm06h
 );
 
   if (NI % NS != 0 || QN < 2) begin : g_chk
@@ -97,22 +102,26 @@ module miu_ids #(
 
   // ---- This module's own record of what may change (CG-5) ----------------
   // lv_q[k]: slot k had a lookup in A1 last cycle, so it may take now; rs_q:
-  // a response was captured last cycle, so ids may be released and read now.
+  // a response was captured last cycle, so ids are read now; rd_q: ids were
+  // read last cycle, so they may be released now.
   // Every enable below comes from these flops, never from the take or the
   // release on the wire, which only select data.
   logic [NS-1:0] lv_q_cm06h;
-  logic          rs_q_cm06h;
+  logic          rs_q_cm05h;
+  logic          rd_q_cm06h;
   logic          ch_q_cm06h;           // a release or a drop freed an id last cycle
   logic          tl_q_cm06h;           // a take last cycle (a drop may follow)
   always_ff @(posedge miu_core_clk) begin
     if (rst_r01h) begin
       lv_q_cm06h <= '0;
-      rs_q_cm06h <= 1'b0;
+      rs_q_cm05h <= 1'b0;
+      rd_q_cm06h <= 1'b0;
       ch_q_cm06h <= 1'b1;
       tl_q_cm06h <= 1'b0;
     end else begin
       lv_q_cm06h <= lv_cm05h;
-      rs_q_cm06h <= rs_cm05h;
+      rs_q_cm05h <= rs_cm04h;
+      rd_q_cm06h <= rs_q_cm05h;
       ch_q_cm06h <= (|rl_cm06h) || (|dqv_q_cm06h);
       tl_q_cm06h <= |tk_cm06h;
     end
@@ -125,12 +134,15 @@ module miu_ids #(
   (* keep *) logic [NS-1:0]    pv_q_cm06h, pvo_q_cm06h;
   (* keep *) logic [NS*QW-1:0] pq_q_cm06h, pqo_q_cm06h;
 
+  // The ids read last cycle (written with the entries read, below).
+  logic [NR*IW-1:0] qi_q_cm06h;
+
   // The releases, decoded.
   logic [NI-1:0] rl_oh_cm06h;
   always_comb begin
     rl_oh_cm06h = '0;
     for (int j = 0; j < NR; j++)
-      if (rl_cm06h[j]) rl_oh_cm06h[rid_cm06h[j*IW +: IW]] = 1'b1;
+      if (rl_cm06h[j]) rl_oh_cm06h[qi_q_cm06h[j*IW +: IW]] = 1'b1;
   end
 
   // The id each slot took last cycle, for a drop to give back.
@@ -190,7 +202,7 @@ module miu_ids #(
 
   // The free vector changes on a take or a release; the picks on a take, or
   // while a quarter holds no id and a release may have refilled it.
-  wire fr_en_cm06h = (|(lv_q_cm06h & pv_q_cm06h)) || rs_q_cm06h || (|dqv_q_cm06h) || rst_r01h;
+  wire fr_en_cm06h = (|(lv_q_cm06h & pv_q_cm06h)) || rd_q_cm06h || (|dqv_q_cm06h) || rst_r01h;
   always_ff @(posedge miu_core_clk) begin
     if (fr_en_cm06h) begin
       if (rst_r01h) fr_q_cm06h <= '1;
@@ -242,26 +254,31 @@ module miu_ids #(
       if (tb_en_cm06h) tb_q_cm06h[k*QN*EW +: QN*EW] <= tb_d_cm06h;
     end
   end
-  logic [NR*EW-1:0] qe_d_cm06h;
+  logic [NR*EW-1:0] qe_d_cm05h;
   always_comb
     for (int j = 0; j < NR; j++)
-      qe_d_cm06h[j*EW +: EW] = tb_q_cm06h[qid_cm06h[j*IW +: IW]*EW +: EW];
-  wire qe_en_cm06h = rs_q_cm06h;
-  logic [NR*EW-1:0] qe_q_cm07h;
+      qe_d_cm05h[j*EW +: EW] = tb_q_cm06h[qid_cm05h[j*IW +: IW]*EW +: EW];
+  // The entries read and the ids, one gate.
+  wire qe_en_cm05h = rs_q_cm05h;
+  logic [NR*EW-1:0] qe_q_cm06h;
   always_ff @(posedge miu_core_clk) begin
-    if (qe_en_cm06h) qe_q_cm07h <= qe_d_cm06h;
+    if (qe_en_cm05h) begin
+      qe_q_cm06h <= qe_d_cm05h;
+      qi_q_cm06h <= qid_cm05h;
+    end
   end
-  assign qe_cm07h = qe_q_cm07h;
+  assign qe_cm06h = qe_q_cm06h;
 
   // ---- Checks --------------------------------------------------------------
   // A take holds its id; a release frees one held.
   logic [NR-1:0] rl_free_cm06h;        // a release of an id already free
   always_comb
     for (int j = 0; j < NR; j++)
-      rl_free_cm06h[j] = rl_cm06h[j] && fr_q_cm06h[rid_cm06h[j*IW +: IW]];
+      rl_free_cm06h[j] = rl_cm06h[j] && fr_q_cm06h[qi_q_cm06h[j*IW +: IW]];
   `CCV_ASSERT(tk_held, (tk_cm06h & ~(pv_q_cm06h & lv_q_cm06h)) == '0)
   `CCV_ASSERT(dp_take, tl_q_cm06h || dp_cm06h == '0)
-  `CCV_ASSERT(rs_lead, rs_q_cm06h || (rl_cm06h == '0 && qv_cm06h == '0))
+  `CCV_ASSERT(rs_lead, rs_q_cm05h || qv_cm05h == '0)
+  `CCV_ASSERT(rl_read, rd_q_cm06h || rl_cm06h == '0)
   `CCV_ASSERT(rl_live, rl_free_cm06h == '0)
 
 endmodule

@@ -3,17 +3,19 @@
 // Plays miu_lead, miu_a2 and the response side around miu_ids. A lookup in
 // A1 on slot k (the lead lv) may take slot k's preselected id the next cycle
 // (only when it holds one) for a random MQ entry, and A2 drops one take in
-// eight a cycle later (dp), its id free two cycles on. A captured response (the lead rs) releases up to
-// four held ids and reads up to four through the id-to-entry table the next
-// cycle.
+// eight a cycle later (dp), its id free two cycles on. A captured response
+// (the lead rs) reads up to four distinct held ids through the id-to-entry
+// table the next cycle (miu_rcap's req_ids), and a cycle after that each
+// read's id is released, seven in eight (the rest a recovered UE's first
+// answer, kept live for a later read).
 // Checks, every cycle, each slot's preselected id and its valid against a
 // value model of miu_ids's scheme (64 ids in quarters of 16, slot k on
 // quarter k; the next pick the lowest free id of the quarter but the one
 // preselected; an id released free from the next cycle, a dropped one a
-// cycle later), and
-// each read's entry, a cycle on, against the entry its id was taken for.
-// The module's assertions (a take holds an id and was led; a release frees
-// one held; a drop follows a take) fail the run if they fire.
+// cycle later), and each read's entry, a cycle on, against the entry its id
+// was taken for. The module's assertions (a take holds an id and was led; a
+// read was led; a release follows a read and frees an id held; a drop
+// follows a take) fail the run if they fire.
 // --cg <idle|medium|high> <vcd> runs one clock-gating scenario
 // (tools/check-cg.py): idle is reset and nothing; medium takes on about a
 // third of the cycles; high nearly every cycle.
@@ -89,11 +91,11 @@ struct Bench {
   }
   void quiet() {
     dut->lv_cm05h = 0;
-    dut->rs_cm05h = 0;
+    dut->rs_cm04h = 0;
     dut->tk_cm06h = 0;
     dut->dp_cm06h = 0;
     dut->rl_cm06h = 0;
-    dut->qv_cm06h = 0;
+    dut->qv_cm05h = 0;
   }
   void reset() {
     dut->rst_n = 0;
@@ -150,6 +152,7 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
   unsigned dp = 0;   // drops due now, of the ids taken last cycle
   unsigned dpid[kNS] = {};
   std::vector<unsigned> dpend;   // ids dropped last cycle, freed at this edge
+  unsigned rdid[kNR] = {};       // the ids read last cycle
   for (unsigned i = 0; i < n; ++i) {
     // The DUT's picks now, against the model's.
     ++b.checked;
@@ -169,7 +172,7 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
     if (rd_prev)
       for (unsigned j = 0; j < kNR; ++j)
         if (want_qv[j]) {
-          const unsigned got = b.dut->qe_cm07h >> (j * kEW) & 63u;
+          const unsigned got = b.dut->qe_cm06h >> (j * kEW) & 63u;
           if (got != want_qe[j]) {
             ok = false;
             if (b.fails < 20)
@@ -203,59 +206,55 @@ int run(const std::string &scenario, const char *vcd, Ctl ctl) {
         b.cov_low += b.pq[k] == 0;
         if (g.below(8) == 0) dpn |= 1u << k;   // A2 drops it
       }
-    // Held ids, before this cycle's takes, but one dropped now or to be.
+    // Held ids, before this cycle's takes, but one dropped now or to be, and
+    // one read last cycle (its release, or not, is now).
     bool doomed[kNI] = {};
     for (unsigned k = 0; k < kNS; ++k)
       if (dp >> k & 1u) doomed[dpid[k]] = true;
     for (unsigned id : dpend) doomed[id] = true;
-    std::vector<unsigned> held;
-    for (unsigned id = 0; id < kNI; ++id)
-      if (!b.free_[id] && !doomed[id]) held.push_back(id);
-    // Releases: distinct held ids.
+    for (unsigned j = 0; j < kNR; ++j)
+      if (want_qv[j]) doomed[rdid[j]] = true;
+    // Releases: of last cycle's reads, seven in eight (the rest a recovered
+    // UE's first answer, whose id stays live for a later read).
     bool rel[kNI] = {};
-    uint32_t rlw = 0, ridw = 0;
-    unsigned nrel = 0;
-    // Given a response (led last cycle): the first release always, if any
-    // id is held, the others at random.
-    const unsigned rp = rnd ? ((i / 200) % 2 ? 3 : 8) : 6;
-    for (unsigned j = 0; j < kNR && rs && !held.empty(); ++j) {
-      if (j && g.below(10) >= rp) continue;
-      const unsigned x = g.below(unsigned(held.size()));
-      const unsigned id = held[x];
-      held.erase(held.begin() + x);
-      rel[id] = true;
-      rlw |= 1u << j;
-      setBits(ridw, j * kIW, kIW, id);
-      ++nrel;
-    }
-    b.cov_rel4 += nrel == kNR;
-    // Reads: held ids (a released one is still readable this cycle).
+    uint32_t rlw = 0;
+    for (unsigned j = 0; j < kNR; ++j)
+      if (want_qv[j] && g.below(8) != 0) {
+        rel[rdid[j]] = true;
+        rlw |= 1u << j;
+      }
+    b.cov_rel4 += rlw == (1u << kNR) - 1u;
+    // Reads, given a response (led last cycle): distinct held ids, the first
+    // slot always, if any id is held, the others at random.
+    const unsigned rp = rnd ? ((i / 200) % 2 ? 3 : 9) : 6;
+    std::vector<unsigned> h;
+    for (unsigned id = 0; id < kNI; ++id)
+      if (!b.free_[id] && !doomed[id]) h.push_back(id);
     uint32_t qvw = 0, qidw = 0;
     bool rd = false;
     for (unsigned j = 0; j < kNR; ++j) {
       want_qv[j] = false;
-      std::vector<unsigned> h;
-      for (unsigned id = 0; id < kNI; ++id)
-        if (!b.free_[id] && !doomed[id]) h.push_back(id);
       if (!rs || h.empty() || (j && g.below(10) >= rp)) continue;
-      const unsigned id = h[g.below(unsigned(h.size()))];
+      const unsigned x = g.below(unsigned(h.size()));
+      const unsigned id = h[x];
+      h.erase(h.begin() + x);
       qvw |= 1u << j;
       setBits(qidw, j * kIW, kIW, id);
       want_qv[j] = true;
       want_qe[j] = b.ent[id];
+      rdid[j] = id;
       ++b.cov_read[id / kQN];
       rd = true;
     }
     // Drive and clock.
     b.dut->lv_cm05h = lvn;
-    b.dut->rs_cm05h = rsn;
+    b.dut->rs_cm04h = rsn;
     b.dut->tk_cm06h = tkw;
     b.dut->dp_cm06h = dp;
     b.dut->te_cm06h = tew;
     b.dut->rl_cm06h = rlw;
-    b.dut->rid_cm06h = ridw;
-    b.dut->qv_cm06h = qvw;
-    b.dut->qid_cm06h = qidw;
+    b.dut->qv_cm05h = qvw;
+    b.dut->qid_cm05h = qidw;
     b.edge();
     // The model at the edge.
     bool was_empty[kNS];
