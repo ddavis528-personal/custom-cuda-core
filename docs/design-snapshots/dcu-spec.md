@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=DCU rev=115 exported=2026-11-23 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *DCU*, at revision 115 on 2026-11-23 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=DCU rev=120 exported=2026-11-23 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *DCU*, at revision 120 on 2026-11-23 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # DCU — L1 data cache
 
@@ -234,7 +234,7 @@ Part 2 sets a writeback's place in this order.
 | --- | --- | --- |
 | F-1 | The fill's valid lands and is flopped. The free buffer it will take was chosen from flops | dcu\_fill |
 | F | The payload is captured into that buffer. Its req\_id, from the wires at arrival 0, reads its miss buffer entry (a 16:1 select, about 5 NGD), and the entry's line, bank, set, fold and merge list are flopped in dcu\_mshr for the buffer | dcu\_fill, dcu\_mshr |
-| F+1 | The buffer's 8 code words are encoded (8 `ccv_common_secded_enc`, K = 128, 14.5 NGD) and the 72 check bits flopped. Part 3 merges a store's bytes into the data first: only the stores ahead of the list's first load, so that no load sees a younger store. The fill asks its bank to write (a lead, `flv`, then the payload: set, fold, tag, state, buffer index), as dcu\_fix asks for a rewrite. The bank picks the victim way: the lowest invalid way, else the tree-PLRU victim, skipping a way that another fill's write still reserves or that a pending store write holds. It reserves that way and marks it most recently used | dcu\_fill, dcu\_bctl |
+| F+1 | The buffer's 8 code words are encoded (8 `ccv_common_secded_enc`, K = 128, 14.5 NGD) and the 72 check bits flopped. Part 3 merges a store's bytes into the data first: only the stores ahead of the list's first load, so that no load sees a younger store. The fill asks its bank to write (a lead, `flv`, then the payload: set, fold, tag, state, buffer index), as dcu\_fix asks for a rewrite. The lead is dcu\_mshr's own flop of its F read: the fill's valid with the bank one-hot, about 2 NGD on the 16:1 select. The payload follows at F+2 from flops, line PA, set and fold from dcu\_mshr and buffer index and state from dcu\_fill. The bank captures it under its flopped lead, and the write is its queue waiter from F+4 (MA, DI-39: one cycle with no lead would enable bctl's reservation flops from an input, CG-5). At F+2 the bank picks the victim way: the lowest invalid way, else the tree-PLRU victim, skipping a way that another fill's write still reserves or that a pending store write holds. It reserves that way and marks it most recently used | dcu\_fill, dcu\_bctl |
 | F+2 | dcu\_rarb gives slots to the fill's answers: one per merged load, as late answers (below). Each answer's buffer select is flopped. The bank may take the write for any access cycle from F+3 on | dcu\_rarb, dcu\_bctl |
 | F+3 | The answers' valids launch, and each slot routes its buffer's data and check bits into its payload flops. At the earliest, W = F+3 is the bank's data write: `ce` and `we`, with {set, way} as the address and wdata from the buffer | dcu\_rslot, dcu\_bctl, dcu\_bdat |
 | F+4 | The answers' payloads launch, so each valid is at MIU at F+4: the floor, `CCV_LAT_FILL_NOTICE` from F (DI-4) | dcu\_rslot |
@@ -317,7 +317,7 @@ A fill answer that finds no slot waits in its buffer. dcu\_rslot's route grows f
 
 ### Slice 2, part 2: eviction and writeback
 
-**Status: MA's (DI-30, answers DI-21).** This part covers a fill's victim, from its choice at F+1 to MLC's acknowledgement of its writeback. A probe's invalidation and any clean-eviction notice to MLC are part 4's.
+**Status: MA's (DI-30, answers DI-21).** This part covers a fill's victim, from its choice at F+2 to MLC's acknowledgement of its writeback. A probe's invalidation and any clean-eviction notice to MLC are part 4's.
 
 **A clean victim** leaves with no read and no message. The fill's write at W replaces it.
 
@@ -337,7 +337,7 @@ On the victim read, a CE is corrected in the route and counted, with no rewrite,
 
 **From victim choice to W, the victim's way is reserved.** It stays reserved until the fill's write (part 1). A load may still hit it: if its data read comes before W it reads the victim's line, and after W part 1's tag-stale rule makes it look up again. A store that hits a reserved dirty victim waits in its bank's queue as miss-wait, and looks up again after W. So no store writes a line whose read has already gone to the writeback buffer (part 3 holds the store side to this).
 
-**DI-21, both writeback buffers in use.** The dirty victim is still chosen at F+1, but its read waits in its bank's queue until a buffer frees, and the fill's write waits behind it. The fill buffer, and with it its credit on `ccv_mlc_dcu_rsp`, stays held, so MLC is backpressured, and nothing else waits. Nothing deadlocks: a writeback buffer frees when its request's payload launches, which needs only a credit on `ccv_dcu_mlc_req`. A clean victim chosen instead when the buffers are full is not taken. It would add a second victim rule for a case the bins should show is rare. Bin: `dcu_wb_full`, cycles a victim read waited for a buffer.
+**DI-21, both writeback buffers in use.** The dirty victim is still chosen at F+2, but its read waits in its bank's queue until a buffer frees, and the fill's write waits behind it. The fill buffer, and with it its credit on `ccv_mlc_dcu_rsp`, stays held, so MLC is backpressured, and nothing else waits. Nothing deadlocks: a writeback buffer frees when its request's payload launches, which needs only a credit on `ccv_dcu_mlc_req`. A clean victim chosen instead when the buffers are full is not taken. It would add a second victim rule for a case the bins should show is rare. Bin: `dcu_wb_full`, cycles a victim read waited for a buffer.
 
 **The writeback request.** It goes on `ccv_dcu_mlc_req` with:
 
