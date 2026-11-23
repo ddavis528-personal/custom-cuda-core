@@ -64,8 +64,9 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    (kRetryLag) done, uncommitted until check-kernel reruns; (3) a cause-2
    (filled) waiter must look up again after its fill's write, never
    allocate anew (increment B: btag re-read; tag-stale).
--4b. MERGE TI's ba085cda (ccr-183cc441-doowtf; TI-529) right after gate
-   a2b4d5c4 pushes, with m0w's commits; one gate for all.
+-4b. a2b4d5c4 pushed (SCOPED PASS). ba085cda (TI-529) merged as b11e15bb;
+   m0w's commits cherry-picked on it (tip 109f34e0); gate-push running.
+   On push: post the tip in DI-38 for TI (TI-530 re-pins with it).
 -4c. DI-37 DONE in model (dcbdd930): held fill K=4, CHECK K+gap+1 (MA rev
    115 amended), bins dcu_fill_wait_{victim,store,late}_max, control
    dcu-fill-unheld (needs TI whitelist; proved locally: 11 CHECKs). RTL:
@@ -75,8 +76,8 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
 -4d. DI-38 (tab rev 68) to TI: whitelist + line for dcu-fill-unheld;
    dcu-wb-refetch kernel control unreachable under RTL credit timing (unit
    test covers); deny-ownership predswap req_id pin; IMPL_PINS transp4 33,
-   slotform 49; coremark128 memop hold is a shared stall (stub 18762, RTL
-   retry lag pushes 22679 > 20480). Tell TI which commit carries the model.
+   slotform 49; knob CCV_DCU_WB_ACK_DELAY=32 (fbec626b). TI-531: cm128 memop
+   hold is TI's testbench memory map, line kept until AR rules. Tell TI which commit carries the model.
 -4. DI-34: MA rev 167/168 accepted all; close the row once bctl growth
    lands. DI-35 (bctl retry): MA rev 169 / DCU tab rev 112 accepted:
    (1) dcu_mshr picks the oldest of 8 bank offers (valid + 10-bit stamp,
