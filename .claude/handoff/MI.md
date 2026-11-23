@@ -71,6 +71,10 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
    MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
+0a. UE two-answer path in the model, NEXT (DI-33 (d) answered MI rev 37, DI rung): first answer
+   with a UE syndrome drops data, keeps req_id + memop live, no completion; second answer completes
+   with hit 0, no new credit/req_id (MIU tab rev 163). fixLine only flags any syndrome: separate
+   CE/UE via secdedL1().decode in the model. Bin ue_second_answer, control ue-close-first. Ring DI.
 1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq e5d50b8b
    (gate-push in flight, job-gate-push-20261122-214752-4435.log). miu_mq: 40 entries by arrival
    slot, psel one-hot + pre keep copy (me), rel decoded before its flop, dis (mem_op 0xF) muxes
