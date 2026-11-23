@@ -305,7 +305,7 @@ int main(int argc, char **argv) {
                       brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
                       brk == "memop-credit-on-take" ||
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
-                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-fault-replay" || brk == "lead-fault-drop" || brk == "dcu-set-lead" || brk == "miu-fold-flip" || brk == "dcu-wp-nocompare" || brk == "lead-src-clear" || brk == "lead-copy-corrupt" || brk == "lead-guard-corrupt" || brk == "lead-src-corrupt" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
+                      brk == "priv-lane0" || brk == "priv-no-ctx" || brk == "done-row" || brk == "rcu-done-pool" || brk == "lead-corrupt" || brk == "lead-fault-replay" || brk == "lead-fault-drop" || brk == "dcu-set-lead" || brk == "miu-fold-flip" || brk == "dcu-wp-nocompare" || brk == "dcu-fill-early" || brk == "dcu-fill-nostale" || brk == "dcu-mshr-nomerge" || brk == "dcu-miss-reorder" || brk == "dcu-wb-early" || brk == "dcu-wb-refetch" || brk == "dcu-wb-drop" || brk == "dcu-wb-store" || brk == "lead-src-clear" || brk == "lead-copy-corrupt" || brk == "lead-guard-corrupt" || brk == "lead-src-corrupt" || brk == "pmov-all-lanes" || brk == "slot-field-aux" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
                       brk == "xfer-unsigned" || brk == "xfer-ignored" || brk == "chw-mark-always" ||
                       brk == "ret-no-stay" || brk == "pred-taken-any" || brk == "ret-held-by-lanes" ||
