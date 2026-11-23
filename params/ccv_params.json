@@ -378,11 +378,11 @@
     },
     {
       "name": "CCV_LAT_MLC_HIT_MAX",
-      "value": 39,
+      "value": 28,
       "status": "provisional",
-      "derive": "2 * CCV_LAT_HOP + CCV_LAT_MLC_PIPE + (2 ** CCV_P_W_REQ_DCU_MLC - 1) + CCV_LAT_FILL_NOTICE + CCV_LAT_MIU_FILL + CCV_LAT_HOP",
-      "source": "AR's response TI-24 (5) (2026-10-21)",
-      "doc": "MLC's worst hit, counted from the L1 miss to OOE holding the completion: DCU to MLC and back, MLC's pipe, the queue at MLC's rate-1 request port behind every other miss DCU can have in flight, the refill's notice and MIU's pass-through, and the completion's hop. A load that missed L1 and still blocks its warp's ROB head past CCV_DEMOTION_THRESHOLD_MLC, which must exceed this, has missed MLC or is queued as long; either is worth a swap, and nothing shorter is demoted by that trigger (CCV_TIER1_WARPS: true misses only).",
+      "derive": "2 * CCV_LAT_HOP + CCV_LAT_MLC_PIPE + 2 ** CCV_P_W_REQ_FET_MLC + CCV_LAT_FILL_NOTICE + CCV_LAT_MIU_FILL + CCV_LAT_HOP",
+      "source": "AR's response TI-24 (5) (2026-10-21); queue term AR 413 (re:MA rev 178 (d)), 39 -> 28",
+      "doc": "MLC's worst hit, counted from the L1 miss to OOE holding the completion: DCU to MLC and back, MLC's pipe, the queue at MLC's rate-1 request port behind FET's ifills, the other requester at MLC's pick (DCU's own misses in flight are past the port, in MLC's pipe or at EXB, not queued at it; AR 413), the refill's notice and MIU's pass-through, and the completion's hop. A load that missed L1 and still blocks its warp's ROB head past CCV_DEMOTION_THRESHOLD_MLC, which must exceed this, has missed MLC or is queued as long; either is worth a swap, and nothing shorter is demoted by that trigger (CCV_TIER1_WARPS: true misses only).",
       "decided_at": "with CCV_LAT_MLC_PIPE"
     },
     {
