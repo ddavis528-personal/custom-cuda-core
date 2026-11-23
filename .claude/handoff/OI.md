@@ -1,6 +1,16 @@
 # OI handoff (OOE model and RTL)
 
-Updated 2026-11-22, MOST CURRENT, read first:
+Updated 2026-11-22 (2), MOST CURRENT:
+- #74 GATE RED: check-cg CG-1 ooe_ratmap.sv:264 kv_cq05h (kw_w_cq05h in the reset block without an enable). Fix ready: scratchpad/kv5.py <tree> (kw_w_cq05h own block, enable kw5_en_cq04h=kv_cq04h). After the gate ends: apply in wt-sw, local check-cg on ooe_ratmap units + ratmap bench, commit, gate-push again.
+- TI-526: pc_kept applied by TI (7beb7cab on gate-scratch/TI-export, schema + RAU stub). OI builds model on it; TI adds at:11 lines in one gate with our branch; TI asks for a pc_kept_restore kernel/cycle (none known yet).
+- #75 pc_kept (OA 469 accepted; OI-201 rev 405 proposes ooe_slot home, Needs OA): model after the gate in a fresh worktree off oi-sw: clear next_pc validity at kAllocLaunch/kAllocRestoreAlloc, pc_kept = !rsa ALONE (OA 470: no retire => oldest uop is at RAU's PC; no dq/held inputs); model asserts resume_pc==RAU PC when !rsa; control pc-kept-lost; RTL in ooe_slot (default budgets) with a control breaking rsa's clear at restore; port field after TI's schema row. Next free OI-202.
+- TI-523 answered in OI-200 (OI rev 404; next free OI-201), rung TI+OA. (1) drained resume_pc 0 before first fetch: OOE has no PC; proposed drained.pc_kept bit (alt: PC on alloc). On OA/TI's call: model field, clear next_pc at alloc (also stale across slot reuse), control pc-kept-lost. (2) narrowadd R2: not OOE; TI's checkParked should mask to the parked width.
+- ratmap.log at 20:18 showed restore-first MISSED, but that predates dd296f15 (20:28); the gate covers it. robpwv.log (37 caught) predates 0e9c0703: rerun.
+- #74: OA signed (OA 468). oi-ratmap merged into oi-sw (c4446c3f, lint 0); gate-push RUNNING (job-gate-push-20261122-204332-2011.log; gate-wait bg). On push: OI row closing OI-199 (FYI, no ring).
+- #73 (DA 130 PWV) in /home/user/wt-pwv, branch oi-pwv2 (0e9c0703): merged oi-sw (slice 5 stays held there); PWV=0 = oi-sw's form; PWV=1 default, waiting redirects now a declared table ft_cq04h (rtl/ooe/ooe_redir.feedback.json, by OA, UNSIGNED). Bench before the table: both forms 0 mismatches, 37 controls caught (scratchpad rob.sh). Rerun bench after the gate.
+  Left lint: PWV form's rdr_*_cq05h / ckf_m_cq05h ports leave from cq04h flops. Plan: measure check-ngd + check-cg (ooe_redir, ooe_rob_w _1.._3) one at a time; if clean (no waiver, no cap rise) drop PWV=0, rename ports cq04h, TI row (payload into valid's cycle) + OA row (sign table, rd_*_cq03h budgets), model redirect_send_lag=1 default; else figures to DA via OA (C stands). Bar controls wait for slice 5's return.
+
+Updated 2026-11-22, earlier:
 - PUSHED 0d54027a (sweep merge 11-22, full gate PASS, then RESUMED PASS push): dc2c3697 model defaults demote_walk=1/beat_merge=0 (OA 466; RH: S1 +0.072%, cm32priv +0.149%, cm128priv -0.038%), c69ee1a3 check-kernel provswap CCV_RAU_CONCURRENT=1 (TI confirmed, TI-520), all remote branches incl. TI 63579fce (CCV-L23 table form).
 - OI-198 (rev 402) recorded the flip + re-pin. Next free OI-199. RH told rh-oi466 can go.
 - Merge lesson: AR's sweep branch had 7 merge bases and ort hung >90 min; merged with git merge-tree --write-tree --merge-base=<best single base>, then commit-tree with both parents. A detached gate that outlives a container restart keeps the old git proxy port and cannot push: relaunch with CCV_RESUME=1 (carries every passed section).
