@@ -12,7 +12,9 @@ file holds AR's.
 - AR owns:
   - the architecture docs and the partition spec;
   - the per-block specs for blocks without a session (RAU, PCA, FET, LANE,
-    DEC, SYU, SPM; MIU and DCU are MA's since DA 118);
+    DEC, SYU, SPM; MIU and DCU are MA's since DA 118), and MLC's (and the
+    MLC/EXB params) until Daniel creates an MLC agent (DA row .135300,
+    2026-11-23);
   - the AR register tab and docs/perf-register.md (PF-30 on);
   - Q-42 (full abutment);
   - reading traces.
@@ -85,7 +87,7 @@ Credit rules (TI-49):
 
   | Tab | Node |
   |---|---|
-  | DA | d5076b00-ef1b (table .231; 4 cells Re/Date/Impl/Response, no ID; last row .133923, rev 132) |
+  | DA | d5076b00-ef1b (table .231; 4 cells Re/Date/Impl/Response, no ID; last row .135300, rev 133) |
   | TI | e8b1d9d9-df9b |
   | OA | 4c6a3151-83eb |
   | OI | 384bc26c-cef6 |
@@ -99,7 +101,7 @@ Credit rules (TI-49):
   | DI | 1ea5d5b3-6e9c |
 
 - **Bookmarks** (revs read through): AR 421, OA 475, TI 545 (rev 544), MA 178, DI 69,
-  MI 38, RA 159, RI 91, IS 201, CP 160, OI 405, DA 132, Conventions 20 (full
+  MI 38, RA 159, RI 91, IS 201, CP 160, OI 405, DA 133, Conventions 20 (full
   sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
@@ -265,7 +267,7 @@ Credit rules (TI-49):
    (.684284): the control is both thresholds raised over the latency
    (bins empty, class fails); W_REQ_MLC_EXB 6 -> 8 (not 7: 128 < MA's ~130
    lines, shared with ifills and writebacks), provisional.
-   OPEN WITH DANIEL: who owns MLC's spec (MLC->EXB ids for the read class).
+   MLC's spec is AR's (DA row .135300); W_REQ_MLC_EXB 8 stands as its owner's.
 000j. **Testbench latency (DA row .133923, AR 412 .673737, 11-23; TI, MA
    rung).** Daniel: default 20 +/-5 (seeded draw keyed by CCV_TB_SEED and
    arrival order; CCV_TB_JITTER half-width; slow regions stay fixed); a swap
