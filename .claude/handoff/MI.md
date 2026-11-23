@@ -35,6 +35,9 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
   MI rev 39: 012519d8 pushed, DI may send the UE first answer (DI, TI rung). TI-522: measure waypred
   deltas with CCV_MIU_IMPL=model + CCV_MLC_WARM=1. AR 410/TI-531: P_TIMEOUT_MEMOP becomes derived.
+  TI-532 (FYI, rev 530): ti-tblat 8daf7a2c ends the tb slow region at 1 MiB; kernels with data >= 0xC0000
+  drop (localsp 2144->164, privwin, waypred...). When it lands, recheck MI's IMPL_PINS (privwin priv_form=10)
+  and any waypred/localsp numbers taken before.
   AR 403/404: MIU corrects CE (syndrome R2, completion withheld 1, fix in the stage after on flopped
   data+syndrome, K=128); UE on a clean line: DCU refetches under the same req_id, MIU keeps it live.
   AR 405 / DCU tab 84: mispredict = late answer at due+2 under the original req_id, no credit;
