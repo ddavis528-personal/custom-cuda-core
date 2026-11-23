@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=DCU rev=113 exported=2026-11-23 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *DCU*, at revision 113 on 2026-11-23 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=DCU rev=115 exported=2026-11-23 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *DCU*, at revision 115 on 2026-11-23 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # DCU — L1 data cache
 
@@ -248,7 +248,7 @@ A fill's answer carries:
 
 A noticed answer (CCV\_DCU\_NOTICE = 1) is sent its notice at F, and dcu\_rarb reserves its slot at F+6 then (slice 1's reservation rule).
 
-**The fill's write.** A fill's write takes only a bank access cycle with no lookup (AR's MA-7 ask). It is a queue waiter under `CCV_DCU_BANK_AGE`: once it has waited that long, its bank takes no new lookup until the write is done. In one cycle W it writes three things together:
+**The fill's write.** A fill's write takes only a bank access cycle with no lookup (AR's MA-7 ask). It is a queue waiter under `CCV_DCU_BANK_AGE`: once it has waited that long, its bank takes no new lookup until the write is done. A fill holds a credit on ccv\_mlc\_dcu\_rsp until its buffer frees, so its write has a shorter bound of its own (DI-37): once a ready fill write (or its victim's read) has waited CCV\_DCU\_FILL\_AGE (4) cycles, it takes its bank's next free access cycle ahead of new lookups and of queued store reads, and a new lookup that loses goes to the queue as a bank-conflict loser. Only two things stay ahead of it: a store write already booked (its merged line sits in dcu\_bstm's flops and writes at its booked cycle), and an older queued store to the same (set, way) (same-line order). A store read granted at ready + K − 1 books its write at ready + K + gap − 1, so the write lands within K + gap + 1 cycles of being ready (10; DI-37). Three rarer waits fall outside that bound and are held only by the channel's own response check: an older store to the victim's (set, way), which suspends the hold until it passes (the age is kept, not cleared); a late answer that holds its bank while it waits for a response slot; and a fill behind its victim's read waiting for a writeback buffer (DI-21). Each has a bin of its longest wait. In one cycle W it writes three things together:
 
 - The data: the 8 instances, at {set within the bank, way}, from the buffer.
 - The fold table: the way's fold and valid set, in flops.
