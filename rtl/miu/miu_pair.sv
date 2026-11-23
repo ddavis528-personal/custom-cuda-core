@@ -154,22 +154,29 @@ module miu_pair #(
   end
 
   // ---- H-1: the entry to read --------------------------------------------
-  logic [NS-1:0] pv_q_cm04h;
-  always_ff @(posedge miu_core_clk) begin
-    if (rst_r01h) pv_q_cm04h <= '0;
-    else          pv_q_cm04h <= pv_d_cm03h;
-  end
-  // Clocked when row rp holds a memop (a bulk discard's cell too, rare):
-  // the row's valid bits alone, so the enable stays within 8 NGD (CG-2).
+  // Clocked when row rp holds a memop (a bulk discard's cell too, rare): the
+  // row's valid bits alone, so the enable stays within 8 NGD (CG-2). The
+  // held pairing is current only in the cycle after: pnew says so, one
+  // ungated flop where four would be.
   logic pe_en_cm03h;
   always_comb begin
     pe_en_cm03h = 1'b0;
     for (int j = 0; j < NS; j++) pe_en_cm03h = pe_en_cm03h | cv_cm02h[rp_cm03h][j];
   end
+  logic             pnew_q_cm04h;
+  logic [NS-1:0]    pvh_q_cm04h;
   logic [NS*EW-1:0] pe_q_cm04h;
   always_ff @(posedge miu_core_clk) begin
-    if (pe_en_cm03h) pe_q_cm04h <= pe_d_cm03h;
+    if (rst_r01h) pnew_q_cm04h <= 1'b0;
+    else          pnew_q_cm04h <= pe_en_cm03h;
   end
+  always_ff @(posedge miu_core_clk) begin
+    if (pe_en_cm03h) begin
+      pvh_q_cm04h <= pv_d_cm03h;
+      pe_q_cm04h  <= pe_d_cm03h;
+    end
+  end
+  wire [NS-1:0] pv_q_cm04h = pvh_q_cm04h & {NS{pnew_q_cm04h}};
 
   // Each slot's read of miu_mq's view: the entry's one-hot, AND-OR over 40.
   logic [NS*FW-1:0] fld_cm04h;
