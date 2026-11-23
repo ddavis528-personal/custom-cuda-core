@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 413 .676576 (tab rev 417).
-  - **The next AR row inserts after .676576**, labelled AR 414.
+  - Latest row: AR 414 .678467 (tab rev 418).
+  - **The next AR row inserts after .678467**, labelled AR 415.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 417, OA 474, TI 534, MA 178, DI 69,
+- **Bookmarks** (revs read through): AR 418, OA 475, TI 535, MA 178, DI 69,
   MI 38, RA 158, RI 91, IS 201, CP 160, OI 405, DA 132, Conventions 20 (full
   sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
@@ -240,6 +240,11 @@ Credit rules (TI-49):
    queues 24, an MIU park table, 8-bit ids), measured in Phase 1 after
    ti-tblat. TI-534: AR 412 (1) on ti-tblat 4dc0dc41 (seed 1,
    tb_overtaken bin); (2)/(3) next; one before/after table on landing.
+   TI-535: (2) on ti-tblat 290a158d. OA-475: THRESHOLD_MLC re-swept
+   35/50/75/100 at the read/swap classes and S1 once MA's Phase 1 sizes are
+   in the stub; 50 stands; OI adds a false-demotion split now. AR 414
+   (.678467): accepted, but an S1 cost of 0.2-0.5% goes to Daniel (OA had
+   written <=0.5%).
    OPEN WITH DANIEL: who owns MLC's spec (MLC->EXB ids for the read class).
 000j. **Testbench latency (DA row .133923, AR 412 .673737, 11-23; TI, MA
    rung).** Daniel: default 20 +/-5 (seeded draw keyed by CCV_TB_SEED and
