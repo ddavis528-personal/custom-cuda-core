@@ -21,5 +21,7 @@ case "$unit" in
       "$PWD/test/dcu/btag_tb.cpp" ;;
   dcu_bctl)
     vl dcu_bctl "" "" "$PWD/rtl/dcu/dcu_bctl.sv" "$PWD/test/dcu/bctl_tb.cpp" ;;
+  dcu_mshr)
+    vl dcu_mshr "" "" "$PWD/rtl/dcu/dcu_mshr.sv" "$PWD/test/dcu/mshr_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac
