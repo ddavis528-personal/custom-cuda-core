@@ -71,13 +71,12 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    DI notified). mi-push branch obsolete. DI-18 settled (model already corrects CE as a refill).
    MIU tab rev 150/153: H = first MIU flops hold memop+address; every MIU receiver no-flop; address
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
-0a. UE two answers: model done 012519d8 (mi-dev, unpushed; 66 kernels clean both DCUs). MI-20 to TI
-   (rev 38, rung; DI rung): bin ue_second_answer, control ue-close-first (whitelist-only until DCU
-   sends the first answer), MIU stub's part. TI did MI-20 (TI-528, a3d17bb2 on
-   gate-scratch/TI-mi20, lands after TI's sweep): merge it, check ue-close-first, close MI-20. Gate in flight on 512d2315 (miu_mq + miu_pair budget
-   fix a2c9d3e2; first gate failed: miu_pair 9 ungated > 8.98): job-gate-push-20261123-010405-22813.
-   Push 012519d8 with the next gate.
-1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq e5d50b8b, a2c9d3e2.
+0a. UE two answers: model pushed at df60fee4 (SCOPED PASS). TI-529 (ba085cda, MI-20 + DI-33 (a)(b),
+   pc_kept on rau_drained) merged into mi-dev 059cb0b5 + regen; not pushed (next sweep's full gate).
+   Checked: neither DCU sends a UE first answer yet (DI-33 (d)), so ue_second_answer = 0 and
+   ue-close-first is vacuous on vadd/ldpar UE_INJECT=1. Close MI-20 once DI's first answer lands
+   and ue-close-first fails.
+1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq pushed at 512d2315 (SCOPED PASS).
    check-cg --unit exit 0 does not apply the module budget: read the ungated count vs 2%. miu_mq: 40 entries by arrival
    slot, psel one-hot + pre keep copy (me), rel decoded before its flop, dis (mem_op 0xF) muxes
    last; cg 5136/5205 gated, ngd 23.6/11.2. miu_pair reads mqa_cm02h (A1 view, FW 63) at H-1;
