@@ -12,6 +12,9 @@
 #            controls xfer (O-80's size ignored) and sext (disp unsigned)
 #   miu_cred: test/miu/cred_tb.cpp, DCU bank credits and the A1 gate,
 #            controls early (a return counted as it lands) and norefund
+#   miu_form: test/miu/form_tb.cpp, the slot, local and private forms'
+#            state and H flops (MI-21, MI-23 (b)), controls lane0 (lane d
+#            taken as 0), nohi1 (R(ctx)'s hi + 1 not kept) and noctx
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/miu-rtl; mkdir -p "$B"
@@ -53,4 +56,8 @@ control miu_agu8 sext
 bench miu_cred test/miu/cg-build.sh miu_cred "$B/miu_cred" -- "$B/miu_cred/tb"
 control miu_cred early
 control miu_cred norefund
+bench miu_form test/miu/cg-build.sh miu_form "$B/miu_form" -- "$B/miu_form/tb"
+control miu_form lane0
+control miu_form nohi1
+control miu_form noctx
 exit $fail
