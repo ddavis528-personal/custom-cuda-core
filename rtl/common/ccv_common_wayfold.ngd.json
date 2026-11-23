@@ -1,0 +1,7 @@
+{
+  "module": "ccv_common_wayfold",
+  "inner": true,
+  "by": "TI",
+  "date": "2026-11-22",
+  "why": "The way predictor's fold (MA-30, AR 405): an XOR tree of 8 chunks a bit at K = 4, W = 32, 3 levels. MIU computes it at its TLB fill and keeps it beside the PFN, so A2 adds 0 NGD; DCU at its fold-table write. Timed in its parent."
+}

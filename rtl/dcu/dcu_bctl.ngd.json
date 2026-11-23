@@ -1,0 +1,179 @@
+{
+  "module": "dcu_bctl",
+  "ports": {
+    "rv_cc01h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "lsb_cc01h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "rid_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "fold_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "drop_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "lsi_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "hit_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "way_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "fxv_cc03h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "fxw_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "fxa_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "fwe_cc00h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "fws_cc01h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "fwy_cc01h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "fwf_cc01h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "pvs_cc04h": {
+      "arrival": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "An input arrives at 0: the channel's leads and payload straight from the abutted link's wires (bnd_rx 0), hit/way from dcu_btag's flops, fxv/fxw/fxa from dcu_fix's flops, the fold write and PLRU read from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "sa_cc04h": {
+      "required": 9.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 9, pairing with dcu_bdat's address arrival 9: 9 + 1.4 fanout + 13.1 setup = 23.5 (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "ce_cc04h": {
+      "required": 4.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 4, pairing with dcu_bdat's ce arrival 4 (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "we_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "fxg_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "av_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "arid_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "aslot_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "alate_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "mv_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "mrid_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "mslot_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "ent_ret_cc04h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    },
+    "pvw_cc05h": {
+      "required": 0.0,
+      "by": "MA (MA rev 157, DI-26)",
+      "date": "2026-11-22",
+      "why": "Required 0: straight from flops (MA's DI-26 response; DCU tab rev 84)."
+    }
+  }
+}

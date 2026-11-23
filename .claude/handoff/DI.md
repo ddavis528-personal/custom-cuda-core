@@ -29,6 +29,67 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
+-2. SLICE 2 parts 1+2 landed (DCU tab rev 89 "Slice 2, part 1: miss buffers
+   and fills", rev 91 "part 2: eviction and writeback"; spec doc
+   DJeg9Hh8rkPDecq4hrAz35, DCU tab node c18a112b-d2c6; MA rev 159-160, answers
+   DI-21). Parts 3 (stores) and 4 (probes, UE) follow with notices. Plan:
+   MODEL FIRST (task #6), then RTL (task #7). Model gaps found:
+   (1) MSHR freed at fill receipt -> keep until W and all answers; wait cause
+       filled-not-written; at W a dirty victim turns the entry into the
+       writeback's (kind wb, unsent) until MLC's ack (ack: no fill buffer,
+       credit at once, entry freed F+1).
+   (2) install at fill -> victim chosen+reserved+MRU at F+1, line written at W
+       (>= F+3 clean, >= F+5 dirty: victim read first, 2 cycles ahead), a
+       queue waiter under BANK_AGE; tag-stale re-look for lookups reading
+       after W; stores hitting a reserved dirty victim wait (miss-wait).
+   (3) channel stall (stalled_/accepting) -> per-bank miss-wait in the bank
+       queue holding the entry credit; a bank's waiters retry oldest first
+       ahead of new misses; a new miss waits if its bank has a waiter.
+   (4) MLC fill credit at take -> creditAtRelease on ccv_mlc_dcu_rsp: 4 fill
+       buffers, credit back when written and last answer left. 2 wb buffers;
+       wb full: victim read waits, fill buffer (credit) held (DI-21).
+   (5) MLC req order: writebacks oldest first, then oldest unsent miss;
+       straight-from-D2 (valid H+5) only when neither waits.
+   (6) late answer slots: aged bank answer > fill answers oldest first >
+       other late lowest bank; fill answers take any slot.
+   NOW: parts 1-4 all in the model (part 3 701c7fdc, part 4 + probe
+   channels via chanId 8d5bcf64; unpushed). Push waits on DI-32 (TI:
+   whitelist + hint_slot_taken from mload; check scheduled
+   trig_01D5k3kYXAaxxiZBffJ2UTGZ). DI-33 (rev 54, TI+MI): part 3-4
+   controls (dcu-st-shared on narrowadd, dcu-st-dirty on rope; the rest
+   whitelist-only), Ch probe handles, MLC-stub probe injection, UE
+   first-answer support. On TI's fix: merge, check-kernel
+   (CCV_DCU_IMPL=model; never rebuild build/skel during it), gate-push.
+   Then RTL (task #7). Kernel run on part 4: ~/ck5.out.
+   OLDER STATUS: stages A-D committed (f84e9924, 8b01a601; unpushed). Unit
+   tests pass with every part 1-2 control refused. Stage A kernels 393/393;
+   A-C kernels fail only "vadd4, both models, notices on" (hint_slot_taken=0,
+   MIU-side coverage: needs two notices a cycle on one MIU slot) + its
+   hint-same-slot control; rerun on D pending (~/ck-kernel3.log). Next:
+   triage that, tabulate new bins over the kernels, a DI row to TI for the
+   kernel-level controls (drop-writeback already there), then part 3.
+   Transcriptions: scratchpad dcu-slice2-p12.md and dcu-slice2-p34.md.
+   Parts 3 (stores, rev 94) and 4 (probes, UE 2nd answer, repair/BIST, rev
+   96) also landed: transcription in scratchpad dcu-slice2-p34.md (rebuild it
+   with an agent if the scratchpad is gone). Part 3 changes slice 1: tag RF
+   word 136 bits (no dirty), dirty bits in dcu_bctl flops (512/bank), same
+   (set,way) store ordering in the queue, store hit ack on own slot hit=1
+   no data, read->write 5, <=2 stores/bank in flight, dcu_bdat wdata 6:1.
+   New modules dcu_bstd, dcu_bstm (8 each), dcu_prb. DI-31 closed (rev 52):
+   MA fixed the stale 140-bit passages (DCU tab rev 104).
+   Controls: dcu-mshr-nomerge, dcu-fill-nostale, dcu-fill-early,
+   dcu-miss-reorder, dcu-wb-drop (= drop-writeback), dcu-wb-early,
+   dcu-wb-refetch, dcu-wb-store; part 3 dcu-st-noorder, -mergeall,
+   -shared, -dirty; part 4 dcu-ue-noanswer, -stale, dcu-prb-nostore,
+   -nodirty, -stale. Bins/CHECKs per the tab. Kernel-level controls go in
+   TI's check-kernel.sh: ask TI with a DI row once the model has them.
+-1. Phase 2a slice 1 RTL pushed at 3b6b66f2 (full PASS): dcu_cap, dcu_btag,
+   dcu_bctl (k=4 after TI-518; budgets by MA rev 157, DI-26 closed).
+   DI-27 (rev 44) to TI: TI-518 done in the model; DI-24 (4) run-rtl.sh and
+   cg-units.json are in; TI added the dcu_rtl gate section (TI-521, 8e784c88,
+   merged at 6da84ccf; DI-27 closed, DI-29). MA's DI-26
+   follow-ups done at e68a9ddf (DI-28, rev 45): PLRU at D+3 for every hit,
+   dcu_ent_owed_max. Next: slice 2 from MA.
 0. MA-27/28 (c) built and landed: drop discard and ECC in the arrays
    (8b6090d0, cherry-picked by TI as part of doowtf b8233a39; transp4 pin 55,
    dcu-ecc-recode control). Merged here; once pushed, notify MI (MI-19 (1),
@@ -60,8 +121,8 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 33, MI 30, MA 148, AR 407, OA 466, TI 515, OI 400, DA 128
-(sweep of 2026-11-20 10:43 UTC; OI 395, RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
+Conventions 20, DI 54, MI 35, MA 163, AR 409, OA 468, TI 519, OI 401, DA 131
+(sweep of 2026-11-22; RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
 MA rev 121, 0a96bc26), DI-3 (TI: per-impl check-kernel pins), DI-4 (MA: refill floor;

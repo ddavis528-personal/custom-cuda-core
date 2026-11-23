@@ -1,0 +1,14 @@
+{
+  "_comment": "bad_table.sv's reference_tnoread (check-1d): refused.",
+  "table": {
+    "npark_cy04h": {
+      "readers": [
+        "nrd_cy01h",
+        "nrd_out_cy02h"
+      ],
+      "by": "OA",
+      "date": "2026-11-22",
+      "why": "tnoread control"
+    }
+  }
+}

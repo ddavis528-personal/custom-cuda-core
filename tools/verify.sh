@@ -359,6 +359,21 @@ job_rcu_rtl() {
   run "RCU RTL benches" ./test/rcu/run-rtl.sh
 }
 
+job_miu_rtl() {
+  section "MIU RTL benches (MI's test/miu/run-rtl.sh; MI-16)"
+  # Each MIU RTL module under Verilator, assertions on, against its value
+  # model at its units' sizes, with each bench's named controls each caught.
+  run "MIU RTL benches" ./test/miu/run-rtl.sh
+}
+
+job_dcu_rtl() {
+  section "DCU RTL benches (DI's test/dcu/run-rtl.sh; DI-24 (4), DI-27)"
+  # Each DCU RTL module under Verilator, assertions on, against its value
+  # model at its units' sizes (dcu_bctl at three seeds), with each bench's
+  # named controls each caught.
+  run "DCU RTL benches" ./test/dcu/run-rtl.sh
+}
+
 job_rcu_ls() {
   section "RCU block -- ccv_rcu in lock-step with the model (RI's test/rcu/run-lockstep.sh)"
   # RI's block lock-step (RI-36, RI-37; it replaced TI's rcu_blk): every
@@ -480,9 +495,9 @@ JOBS="${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)}"
 case "$JOBS" in ''|*[!0-9]*|0) echo "verify: CCV_JOBS must be a positive count"; exit 2 ;; esac
 # Print order. Each section's own comment says what it reads from.
 ORDER="s1a s1b s1c s1d iface xprop ctech cg ngd clockgate skel kernel ooe_unit rcu_unit miu_unit dcu_unit ooe_rtl
-       rcu_rtl rcu_ls top formal phys svh links walkthrough vlint"
+       rcu_rtl miu_rtl dcu_rtl rcu_ls top formal phys svh links walkthrough vlint"
 # Start order: the longest chain first, then the longest jobs, then the rest.
-START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys rcu_rtl rcu_ls iface xprop s1c s1b
+START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys rcu_rtl rcu_ls dcu_rtl miu_rtl iface xprop s1c s1b
        s1d ooe_unit rcu_unit miu_unit dcu_unit s1a clockgate walkthrough vlint"
 declare -A after=(
   [kernel]="skel"          # the binary check-skel builds
@@ -504,6 +519,8 @@ declare -A owns=(
   [ngd]="build/ngd"             # check-ngd's, its structural reads too
   [ooe_rtl]="build/ooe-rtl"
   [rcu_rtl]="build/rcu-rtl"
+  [miu_rtl]="build/miu-rtl"
+  [dcu_rtl]="build/dcu-rtl"
   [rcu_ls]="build/rcu-ls"
   [links]="build/links_split"   # the split tree check-links copies
 )
