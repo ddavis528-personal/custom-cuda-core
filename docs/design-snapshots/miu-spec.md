@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=MIU rev=165 exported=2026-11-23 status=living -->
-> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *MIU*, at revision 165 on 2026-11-23 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 tab=MIU rev=169 exported=2026-11-23 status=living -->
+> **Snapshot: do not edit.** Exported from *CCV per-block architecture specs*, tab *MIU*, at revision 169 on 2026-11-23 ([live doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # MIU — memory interface unit
 
@@ -291,6 +291,7 @@ Modules live in rtl/miu/. Each size is a module parameter defaulting to `ccv_par
 | ccv\_miu | 1 | – | the top: `ccv_common_clk`, children and wires only; the generated stub's name and ports | 0 |
 | miu\_cap | 4, one per address slot | H | `ccv_rcu_miu_addr`'s capture: active\_mask, base and index per lane (store\_data goes to slice 2's payload RF). Flops only, enabled from the pairing flop | 2,080 |
 | miu\_pair | 1 | H−1 | pairs each arriving address with its MQ entry by arrival cycle and lead pipe; holds the 4 slots' A1 memop fields (form, scale, disp, W, chwidth, footprint, warp, entry) | 400 |
+| miu\_form | 1 | H−1 | the slot and local forms (MI-21, MI-22): the window table (8 CTA slots × 16 windows, a 32-bit word and a valid each), written from ccv\_rau\_miu\_cta's capture flops a cycle after they capture (clear the slot's 16 valids; local\_base + CCV\_LANE\_CONTEXTS, W >> k, W's k low bits), from miu\_rsp's window fill and from the kill clear; per address slot, its own 40:1 read of miu\_mq's issue\_mask by the paired entry, the issue mask's lowest lane d, and the 128:1 window read. Flops per slot at H: win, wv, fsel {slot, local, eligible}, wh, wl, rx, dh, with win and fsel's slot bit as one (\* keep \*) copy per lane octet | 4,600 |
 | miu\_agu8 | 16, slot s × lane octet u | A1 | 8 lanes: 3-input sum with the window level, F-ALIGN; flops 8 VAs and 8 align faults | 400 |
 | miu\_lead | 1 | A1 | 16 leader adders (4 a slot) on operands muxed by lane position; routing to lookup slots by footprint; set index, bank, credit gate; the req valid and lead flops | 1,000 |
 | miu\_cred | 1 | A1 | per-bank entry and store-data counters (MA-25), spent at the valid, returned from `ccv_dcu_miu_cred`; the per-bank gate flop (count after this cycle's spends ≥ `CCV_DCACHE_LOOKUPS`) | 120 |
@@ -313,8 +314,11 @@ Arrival is the depth before the port, and the module's own share is what is left
 | Module and port | Side | Budget | Why |
 | --- | --- | --- | --- |
 | every input from `ccv_rcu_miu_addr`, `ccv_dcu_miu_rsp` and `ccv_dcu_miu_cred` | in | arrival 0 | interface capture flops; MIU's ends stay at 0 NGD (A-61, RI-11) |
-| miu\_cap, miu\_pair, miu\_rcap, miu\_lead, miu\_a2, miu\_rsp, miu\_out, miu\_ids, miu\_hitq outputs | out | 0 | straight from flops; a flop that also feeds logic inside has a `(* keep *)` copy for the port |
+| miu\_cap, miu\_pair, miu\_form, miu\_rcap, miu\_lead, miu\_a2, miu\_rsp, miu\_out, miu\_ids, miu\_hitq outputs, miu\_mq issue\_mask | out | 0 | straight from flops; a flop that also feeds logic inside has a `(* keep *)` copy for the port |
 | miu\_agu8 inputs, miu\_lead inputs | in | arrival 0 | from miu\_cap and miu\_pair flops; the adders take the whole 25 (about 18 for the sum, 2 for the window level, 4 for the leader's operand mux) |
+| miu\_form inputs from miu\_pair, miu\_mq and miu\_rsp | in | arrival 0 | from flops: miu\_pair's pe and pv from (\* keep \*) copies of its pairing flops, miu\_mq's A1 view and its new issue\_mask output (40 × 32 bits), miu\_rsp's window fill; miu\_form's 25 hold the 40:1 issue\_mask read (about 6), the lowest lane (about 5) and the 128:1 window read (about 8), fanout terms included |
+| miu\_form inputs from ccv\_rau\_miu\_cta | in | arrival 0 | interface capture flops (A-61, RI-11); the table write and its add are the next cycle's logic, behind the captured valid |
+| miu\_agu8 inputs from miu\_form | in | arrival 0 | win and fsel's slot bit from per-octet (\* keep \*) copies; the slot form's 2:1 base mux before the ordinary adder adds 1 to the adder's 25 (MI-22: 23.3 measured, about 24.3), fanout terms included |
 | miu\_tlb hit, ppn, fold, perms | out | 12 | VPN fanout to 32 entries (1.4), a 32-bit compare (about 7), a 32:1 one-hot of PPNs (about 4) |
 | miu\_a2 inputs from miu\_tlb | in | arrival 12 | 13 left: PA, faults, drop, the payload flop |
 | miu\_grp eligibility | out | 12 | the leader line's fanout to 32 lanes (1.4), a 41-bit compare (about 7), a 32-lane AND (about 3) |
@@ -323,6 +327,8 @@ Arrival is the depth before the port, and the module's own share is what is left
 | miu\_ecc read\_data inputs | in | arrival 1 | the same fanout |
 | miu\_ecc non-zero flag | out | 17 | 15.4 for the (137,128) syndrome tree (MA-29), 1 for the fanout term, 1 to spare |
 | miu\_out inputs from miu\_ecc | in | arrival 17 | 8 left: OR over a memop's up to 4 slots, AND with R1's flop, the output flop's keep copy |
+
+The slot form's base mux sits in miu\_agu8, before the ordinary adder, on miu\_form's per-octet win and select copies; not in miu\_cap, whose capture end stays at 0 NGD and which would need win a cycle before miu\_form has it (MI-22, MA rev 185).
 
 **The drop (MA-27; AR 400, DI-12).** A first-pass valid at H+1 is decided from A1 alone: a global load on that footprint slot whose bank has at least CCV\_DCACHE\_LOOKUPS entry credits after this cycle's spends. A bank below that holds the load at A1, which loses the contract through A2's no-hit. The gate (MI-17, MA rev 144): miu\_cred flops ge1\[b\] (count >= CCV\_DCACHE\_LOOKUPS) and ge2\[b\] (count >= 2 x CCV\_DCACHE\_LOOKUPS) from its count net of every spend already launched and every refund. miu\_lead's own flop used\[b\] marks a launch to bank b this cycle, which miu\_cred has not counted yet. A1 gates on used\[b\] ? ge2\[b\] : ge1\[b\], one mux on flops. The valid spends its bank's entry credit. A2 sets drop on a TLB miss, a fault, a page split, a bank-conflict loser, a duplicate leader line (A1 has no line compare; MI-19 (3)), a lane off its leader's line (drop\_line, which drops all of the load's lookups) or an older-store overlap found at A2 (drop\_held; a hold A1 knows from flopped state, a fence, an atomic hold or a write in flight, launches no valid at all). miu\_cred then refunds that credit from miu\_a2's flopped drop, and DCU never returns it: ent\_ret returns only lookups that entered DCU's queue. A dropped lookup gets no req\_id and no response, and its line goes out again from the MQ in a later pass. Bins: a drop for each cause. Controls: dcu-drop-answers, and a DCU that keeps a dropped lookup's credit; both must fail. Price (MA rev 149): the A1 hold fires 0 times on S1, cm32priv and cm128priv at defaults, and the duplicate drops cost at most 0.008% against an ideal A1 dedupe, so A1 has no line compare.
 

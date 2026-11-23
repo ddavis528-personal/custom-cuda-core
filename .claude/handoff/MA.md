@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 417, TI 539, OA 479, IS 201, CP 160, OI 405, RA 158, RI 91, MA 183, DA 132, MI 41, DI 78.
+Conventions 20, AR 417, TI 539, OA 479, IS 201, CP 160, OI 405, RA 158, RI 91, MA 185, DA 132, MI 44, DI 79.
 - Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
   MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
   merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
@@ -105,6 +105,8 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - DI-41 (MA rev 181): DI renames bctl fill budget keys to cc03h under rev 180 grant; CCV-L23 for fold table's 2nd writer: MA asks OA for (a) declared loops or (b) lint 2nd write port; (c) rejected (false-miss window under MA-30). Waiting OA. Bookmark DI 77.
 - OA-479: OA recommends to Daniel a narrow two-writer CCV-L23 table form; if adopted, MA signs DCU's fold-table declaration (condition 1). Watch DA tab. Bookmark OA 479.
 - DI-42 SPECIFIED (MA rev 182-183, DCU tab rev 121): fold-table margin (OA-479 (b), DA adopted) held by re-read not bypass: margin lookups take mispredict re-read (late, due+2; CHECK<=2), colliding fill re-snapshot (CHECK<=2); bins, control dcu-ft-margin. DCU snapshot due at rev 121. Bookmark DI 78, OA 479.
+- DI-43 (MA rev 184, DCU tab rev 122): fill re-snapshot rule: slot w/o way, one snapshot/cycle oldest-first outside margin, reservation held until write visible (closes grant-cycle gap; bctl_one_fill_per_way + control), wait CHECK <= 2*(slots-1)+1; DI to confirm < 32 with DI-37 bound. Bookmark DI 79. DCU snapshot rev 122.
+- MI-22 ANSWERED (MA rev 185, MIU tab rev 169): miu_form ports confirmed; ccv_rau_miu_cta captured in flops first (A-61), write next cycle; kill-clear source for MI to name; slot-form base mux in miu_agu8 (23.3+1) on per-octet keep copies of win/select, not miu_cap; if agu8 >25 MI reports, mux stays, MA re-decides. Watch MI's measurement. MIU snapshot rev 169.
 - DI-39 ANSWERED (MA rev 177, DCU tab 116-120): fill keeps lead-then-payload (one-cycle form = enable from input, CG-5):
   lead F+1 from dcu_mshr's F read (valid + bank one-hot), payload F+2 (mshr + fill flops), victim F+2, write waiter from F+4.
   DI prices model pickVictim F+2 after ti-tblat; >=0.5% -> earlier lead on MLC rsp with req_id (schema row).
