@@ -66,15 +66,17 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    allocate anew (increment B: btag re-read; tag-stale).
 -4b. MERGE TI's ba085cda (ccr-183cc441-doowtf; TI-529) right after gate
    a2b4d5c4 pushes, with m0w's commits; one gate for all.
--4c. DI-37 (fill write starves under a store stream; MA rev 171: (a)
-   K=4) built in m0w, UNCOMMITTED: hf in schedule(), kFillHold, CHECK at
-   K+gap+1 (asked MA, tab rev 67, to amend K+5 -> K+gap+1). RTL: dcu_bctl
-   fill arbitration to follow. NOTE check-kernel does NOT rebuild skel:
-   run tools/check-skel.sh first (earlier "same as base" runs were stale).
-   Real base in scratchpad/m0base (d2d298a2), runs kern-B.log vs kern-N.log.
-   Findings: retry lag 5 (DI-36) costs coremark128 ~10% and pushes its
-   memop hold 19756 -> 22679 (> 20480 watchdog); the stall (memops held
-   ~1500..24000) is shared by the stub DCU (18762): not DCU's; tell TI.
+-4c. DI-37 DONE in model (dcbdd930): held fill K=4, CHECK K+gap+1 (MA rev
+   115 amended), bins dcu_fill_wait_{victim,store,late}_max, control
+   dcu-fill-unheld (needs TI whitelist; proved locally: 11 CHECKs). RTL:
+   build the same rule into dcu_bctl's fill arbitration with dcu_fill.
+   check-kernel does NOT rebuild skel: run tools/check-skel.sh first.
+   Real base worktree scratchpad/m0base (d2d298a2); kern-B.log vs kern-N.log.
+-4d. DI-38 (tab rev 68) to TI: whitelist + line for dcu-fill-unheld;
+   dcu-wb-refetch kernel control unreachable under RTL credit timing (unit
+   test covers); deny-ownership predswap req_id pin; IMPL_PINS transp4 33,
+   slotform 49; coremark128 memop hold is a shared stall (stub 18762, RTL
+   retry lag pushes 22679 > 20480). Tell TI which commit carries the model.
 -4. DI-34: MA rev 167/168 accepted all; close the row once bctl growth
    lands. DI-35 (bctl retry): MA rev 169 / DCU tab rev 112 accepted:
    (1) dcu_mshr picks the oldest of 8 bank offers (valid + 10-bit stamp,
