@@ -52,7 +52,16 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
        straight-from-D2 (valid H+5) only when neither waits.
    (6) late answer slots: aged bank answer > fill answers oldest first >
        other late lowest bank; fill answers take any slot.
-   STATUS: stages A-D committed (f84e9924, 8b01a601; unpushed). Unit
+   NOW: parts 1-4 all in the model (part 3 701c7fdc, part 4 + probe
+   channels via chanId 8d5bcf64; unpushed). Push waits on DI-32 (TI:
+   whitelist + hint_slot_taken from mload; check scheduled
+   trig_01D5k3kYXAaxxiZBffJ2UTGZ). DI-33 (rev 54, TI+MI): part 3-4
+   controls (dcu-st-shared on narrowadd, dcu-st-dirty on rope; the rest
+   whitelist-only), Ch probe handles, MLC-stub probe injection, UE
+   first-answer support. On TI's fix: merge, check-kernel
+   (CCV_DCU_IMPL=model; never rebuild build/skel during it), gate-push.
+   Then RTL (task #7). Kernel run on part 4: ~/ck5.out.
+   OLDER STATUS: stages A-D committed (f84e9924, 8b01a601; unpushed). Unit
    tests pass with every part 1-2 control refused. Stage A kernels 393/393;
    A-C kernels fail only "vadd4, both models, notices on" (hint_slot_taken=0,
    MIU-side coverage: needs two notices a cycle on one MIU slot) + its
@@ -112,7 +121,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 52, MI 35, MA 163, AR 409, OA 468, TI 519, OI 401, DA 131
+Conventions 20, DI 54, MI 35, MA 163, AR 409, OA 468, TI 519, OI 401, DA 131
 (sweep of 2026-11-22; RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
