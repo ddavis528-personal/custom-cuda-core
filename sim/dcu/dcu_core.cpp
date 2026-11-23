@@ -39,6 +39,7 @@ Core::Core(const Config &c, Hooks &h) : c_(c), h_(h) {
   ent_owed_.assign(c_.banks, 0);
   std_owed_.assign(c_.banks, 0);
   ent_used_.assign(c_.banks, 0);
+  ent_due_.clear();
   seen_ent_.assign(c_.banks, 0);
   seen_std_.assign(c_.banks, 0);
   std_used_.assign(c_.banks, 0);
@@ -243,8 +244,7 @@ void Core::arrive(const Req &r, uint64_t t) {
   // list (MA-12), so it is answered from the fill, in order.
   for (auto &m : miss_)
     if (m.second.line == r.pa && m.second.k != MK::Evict) {
-      entLeave(b);   // its store data stays held until the fill merges it
-      missOrWait(r, t + 1);
+      missOrWait(r, t + 1);   // its store data stays held until the fill merges it
       return;
     }
   // A store hit to an owned line, variant (b) (MA-17, MA-24): its read and
@@ -275,9 +275,9 @@ void Core::arrive(const Req &r, uint64_t t) {
   }
   // A store or atomic that needs MLC is known a miss from the tags (D2).
   if (r.op != Op::Read && needsMlc(r) && !wb_lines_.count(r.pa)) {
-    // The lookup entry leaves now; the store-data entry is held until the
-    // store's write leaves, when the fill merges it (DCU spec, MA-25).
-    entLeave(b);
+    // The lookup entry leaves at its placement; the store-data entry is
+    // held until the store's write leaves, when the fill merges it (DCU
+    // spec, MA-25).
     missOrWait(r, t + 1);
     return;
   }
@@ -375,17 +375,17 @@ void Core::unhold(uint64_t line) {
 
 void Core::serveLook(const Req &r, uint64_t born) {
   const unsigned b = bankOf(r.pa);
-  entLeave(b);
   const unsigned late = unsigned(now_ - born - dOff());   // cycles past its D
+  // Its entry credit (DI-36): a waiter's goes back at its access, a granted
+  // lookup's at its D2 hit, a miss's at its placement (missOrWait).
+  const uint64_t hit_ret = late ? now_ : now_ + 1;
   if (late) {
     ++st_.waited;
     h_.peak("dcu_wait_max", late);
   }
   Way *w = stale_way_ ? stale_way_ : find(r.pa);
   stale_way_ = nullptr;
-  if (r.op == Op::Store && rsvDirty(w)) {
-    ++ent_used_[b];   // back in its queue: its entry credit stays out
-    --ent_owed_[b];
+  if (r.op == Op::Store && rsvDirty(w)) {   // back in its queue, its credit out
     h_.hit("dcu_store_rsv_wait");
     h_.hit("dcu_miss_wait");
     bq_[b].push_back(Acc{Acc::MissW, born, now_ + 1, r.pa, r, 0, {}});
@@ -397,6 +397,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
     // store-data entry stays held until the fill merges it.
     if (w && w->owned && c_.brk != "write-through") {
       stdLeave(b);
+      entLeave(b, r, hit_ret);
       // CHECK (slice 2, part 2): no store writes a reserved victim whose read
       // has gone to the writeback buffer (dcu-wb-store, the control).
       if (w->rsv >= 0 && miss_.count(unsigned(w->rsv)) && miss_.at(unsigned(w->rsv)).vread &&
@@ -467,10 +468,10 @@ void Core::serveLook(const Req &r, uint64_t born) {
       h_.hit("dcu_wp_wrong");
       if (!c_.wp_mru) h_.hit("dcu_wp_alias");   // another valid way shares its fold
       h_.hit("dcu_wp_reaccess_cycles", 2);
-      ++ent_used_[b];
-      --ent_owed_[b];
+      entLeave(b, r, now_ + 1);   // its hit at D2 frees its entry (dcu_bctl)
       Req x = r;
       x.reread = true;
+      x.ent_gone = true;
       bq_[b].push_back(Acc{Acc::Look, born, now_ + 2, r.pa, x, 0, {}});
       bq_[b].back().tway = int(w - l1_.data());
       return;
@@ -488,14 +489,13 @@ void Core::serveLook(const Req &r, uint64_t born) {
     if (c_.brk == "dcu-ue-noanswer") return;
     if (c_.brk == "dcu-ue-stale") {
       w->valid = true;
-      ++ent_used_[b];
-      --ent_owed_[b];
       bq_[b].push_back(Acc{Acc::Look, born, now_ + 2, r.pa, r, 0, {}});
       return;
     }
     missOrWait(r, now_ - dOff() + 1);
     return;
   }
+  entLeave(b, r, hit_ret);
   if (ue == 2) {
     // Core-fatal (AR 370 (4), AR 389, TI-487 (3)): DCU withholds the read.
     // MIU completes it on the machine-check kill, with no data. ue-answer,
@@ -833,11 +833,13 @@ void Core::missOrWait(const Req &r, uint64_t d2) {
     for (const Acc &x : bq_[b])
       if (x.k == Acc::MissW && x.line == r.pa)
         h_.fail(fmt("dcu: a miss to line %llx passed a waiting one", r.pa));
-    if (startMiss(r, d2, port, &why)) return;
+    if (startMiss(r, d2, port, &why)) {
+      entLeave(b, r, d2 + 1);   // placed: it leaves at D3 (dcu_bctl)
+      return;
+    }
   }
   // CHECK: a line's misses never pass a waiting one (slice 2, part 1).
-  ++ent_used_[b];   // its entry credit stays out until it leaves the queue
-  --ent_owed_[b];
+  // Its entry credit stays out until it leaves the queue.
   h_.hit(why);
   h_.hit("dcu_miss_wait");
   bq_[b].push_back(Acc{Acc::MissW, now_, now_ + 1, r.pa, r, 0, {}});
@@ -894,7 +896,7 @@ void Core::retryWaits() {
   const char *why = nullptr;
   if (startMiss(r, now_, 0, &why)) {   // its retry is its D2, on port 0
     bq_[b].erase(bq_[b].begin() + long(pi));
-    entLeave(b);
+    entLeave(b, r, now_ + 1);   // placed at its D3
     h_.hit("dcu_miss_wait_done");
   } else {
     bq_[b][pi].stamp = now_;   // waits again: stamped anew (DI-35)
@@ -1068,8 +1070,11 @@ void Core::onFill(const Fill &f) {
     respond(at, rspFor(w.reqs.front()));
     for (size_t i = 1; i < w.reqs.size(); ++i) {   // merged behind it: look up again
       const unsigned b = bankOf(w.line);
-      ++ent_used_[b];   // a store's data entry is still held from its arrival
-      bq_[b].push_back(Acc{Acc::Look, now_, now_, w.line, w.reqs[i], 0, {}});
+      // Its entry credit went back when it merged; a store's data entry is
+      // still held from its arrival.
+      Req x = w.reqs[i];
+      x.ent_gone = true;
+      bq_[b].push_back(Acc{Acc::Look, now_, now_, w.line, x, 0, {}});
     }
     return;
   }
@@ -1256,8 +1261,8 @@ void Core::fillWrite(unsigned id) {
   h_.hit("dcu_fill_write");
   h_.hit("dcu_fill_write_wait", now_ - (m.f_at + 3));
   const unsigned b = bankOf(m.line);
-  for (const Req &r : m.relook) {
-    ++ent_used_[b];   // a store's data entry is still held from its arrival
+  for (Req r : m.relook) {
+    r.ent_gone = true;   // its entry credit went back when it merged; its store data stays
     h_.hit("dcu_merge_relook");
     if (r.op == Op::Store) h_.hit("dcu_st_relook");
     bq_[b].push_back(Acc{Acc::Look, now_, now_, m.line, r, 0, {}});
@@ -1705,6 +1710,10 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     }
   o.notices = notices_;
   // MA-25's credit returns: at most one of each a bank a cycle.
+  while (!ent_due_.empty() && ent_due_.begin()->first <= t) {
+    entLeave(ent_due_.begin()->second);
+    ent_due_.erase(ent_due_.begin());
+  }
   for (unsigned b = 0; b != c_.banks; ++b) {
     h_.peak("dcu_ent_owed_max", ent_owed_[b]);   // dcu_bctl's owed counter (MA's DI-26 answer)
     if (ent_owed_[b]) { --ent_owed_[b]; o.ent_ret |= uint8_t(1u << b); h_.hit("dcu_ent_ret"); }
@@ -1744,7 +1753,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
 bool Core::busy() const {
   if (!vpend_.empty() || !wbsend_.empty() || !ontime_.empty() || !miss_.empty() || !to_mlc_.empty() ||
       !timed_.empty() || !late_.empty() || !promised_.empty() ||
-      (ue_raised_ && !ue_sent_))
+      !ent_due_.empty() || (ue_raised_ && !ue_sent_))
     return true;
   for (const auto &q : bq_)
     if (!q.empty()) return true;
