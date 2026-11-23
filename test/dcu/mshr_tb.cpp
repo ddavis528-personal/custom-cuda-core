@@ -17,7 +17,9 @@
 // --cg <idle|medium|high> <vcd> runs one clock-gating scenario
 // (tools/check-cg.py). --control nomerge models a second miss to a line
 // allocating its own entry (dcu-mshr-nomerge), and --control order a new
-// miss passing a waiting one of its bank (dcu-miss-reorder); both must fail.
+// miss passing a waiting one of its bank (dcu-miss-reorder), and --control
+// credit a send gate that ignores last cycle's send (MA's condition on the
+// credit counted a cycle late); each must fail.
 //===----------------------------------------------------------------------===//
 #include "Vdcu_mshr.h"
 #include "verilated.h"
@@ -83,9 +85,12 @@ struct Out {
 struct Model {
   std::array<Entry, kNe> e{};
   std::deque<unsigned> fifo;
-  unsigned cr = kCr;
+  int cr = kCr;
+  bool sentPrev = false;   // last cycle's send (--control credit's stale count)
+  bool crNeg = false;      // credits went negative (the RTL's mshr_credit_floor)
+  unsigned crStalls = 0;   // a send held for credits (coverage)
   std::array<bool, kBanks> owPrev{};
-  bool nomerge = false, noorder = false;
+  bool nomerge = false, noorder = false, stale = false;
   // Coverage.
   unsigned merges = 0, allocs = 0, straight = 0, queued = 0, reads = 0, frees = 0, skipped = 0;
   std::array<unsigned, 4> waits{};
@@ -154,8 +159,13 @@ struct Model {
         sp = int(p);
         break;
       }
-    const bool str = sp >= 0 && !une && cr > 0;
-    if (cr > 0 && (une || str)) o.send = une ? fifo.front() : aid[unsigned(sp)];
+    // The gate sees the credits less this cycle's send: --control credit
+    // reads the count before last cycle's send left it (the RTL's cr_q
+    // without the subtraction of mvi_q), so it may send past zero.
+    const int crg = cr + (stale && sentPrev ? 1 : 0);
+    const bool str = sp >= 0 && !une && crg > 0;
+    if (crg <= 0 && (une || sp >= 0)) ++crStalls;
+    if (crg > 0 && (une || str)) o.send = une ? fifo.front() : aid[unsigned(sp)];
     // The fill's read, from the cycle's start.
     if (fill) {
       o.snap = e[*fill];
@@ -226,6 +236,8 @@ struct Model {
       ++frees;
     }
     cr = cr - (o.send ? 1 : 0) + (credit ? 1 : 0);
+    if (cr < 0) crNeg = true;
+    sentPrev = o.send.has_value();
     for (unsigned b = 0; b < kBanks; ++b) owPrev[b] = o.ov[b] && o.ow[b];
     return o;
   }
@@ -319,6 +331,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
   Model m;
   m.nomerge = ctl == "nomerge";
   m.noorder = ctl == "order";
+  m.stale = ctl == "credit";
   b.reset();
   const bool rnd = scenario.empty();
   const unsigned n = rnd ? 60000 : scenario == "idle" ? 3000 : 4000;
@@ -451,6 +464,7 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     // The model's cycle, then the edge, then the checks.
     std::optional<unsigned> freeApply = freeNow;   // a free lands a cycle after its pin
     const Out o = m.step(pq, pres, fillNow, freeApply, creditPrev);
+    b.expect(!m.crNeg, "credits never negative (reference)");
     if (fillNow) fillPend[*fillNow] = false;
     if (freeApply) freePend[*freeApply] = false;
     creditPrev = credit;
@@ -515,12 +529,12 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
     look1 = look0;
   }
   if (rnd && (!m.merges || !m.allocs || !m.straight || !m.queued || !m.reads || !m.frees ||
-              !m.waits[0] || !m.waits[1] || !m.waits[2] || !m.waits[3] || !cov_retry_placed)) {
+              !m.waits[0] || !m.waits[1] || !m.waits[2] || !m.waits[3] || !cov_retry_placed || !m.crStalls)) {
     std::fprintf(stderr,
                  "mshr: coverage: merges %u allocs %u straight %u queued %u reads %u frees %u "
-                 "waits %u/%u/%u/%u retries placed %u\n",
+                 "waits %u/%u/%u/%u retries placed %u credit stalls %u\n",
                  m.merges, m.allocs, m.straight, m.queued, m.reads, m.frees, m.waits[0], m.waits[1],
-                 m.waits[2], m.waits[3], cov_retry_placed);
+                 m.waits[2], m.waits[3], cov_retry_placed, m.crStalls);
     if (ctl.empty()) ++b.fails;
   }
   const std::string tag = ctl.empty() ? ":" : " control " + ctl + ":";
@@ -542,7 +556,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i + 1 < argc; ++i) {
     if (!std::strcmp(argv[i], "--control")) {
       ctl = argv[i + 1];
-      if (ctl != "nomerge" && ctl != "order") {
+      if (ctl != "nomerge" && ctl != "order" && ctl != "credit") {
         std::fprintf(stderr, "mshr: unknown control %s\n", ctl.c_str());
         return 2;
       }

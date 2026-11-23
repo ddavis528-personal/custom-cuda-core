@@ -264,6 +264,7 @@ module dcu_mshr #(
   (* keep *) logic mvi_q_cc05h;               // its copy, for the rest
   logic [NE-1:0]  soh_q_cc05h;                // the entry sent from the queue (one-hot)
   logic [NP-1:0]  sport_q_cc05h;              // or the port sent straight (one-hot)
+  logic           stq_q_cc05h;                // the last send went straight
 
   // The outcome, and a copy of the waits for the bank order (an output's
   // register drives nothing else).
@@ -375,8 +376,10 @@ module dcu_mshr #(
   logic [WE-1:0] sidx_cc05h;
   logic [NE-1:0] sohx_cc05h;
   logic [NP-1:0] rcq_cc05h;                   // last cycle's allocations to queue
+  logic [NE-1:0] sohm_cc05h;                  // soh_q, unless the send went straight
   always_comb begin
-    sohx_cc05h = soh_q_cc05h;
+    sohm_cc05h = soh_q_cc05h & ~{NE{stq_q_cc05h}};
+    sohx_cc05h = sohm_cc05h;
     for (int r = 0; r < NP; r++)
       if (sport_q_cc05h[r]) sohx_cc05h = sohx_cc05h | rcio_q_cc05h[r];
     sidx_cc05h = '0;
@@ -391,10 +394,11 @@ module dcu_mshr #(
   logic [NE-1:0] sio_cc05h;
   // An entry is unsent once written (D3), less the one whose valid launched
   // last cycle: it turns sent only now.
-  logic [NE-1:0] un_cc05h, uo_cc05h;
+  logic [NE-1:0] un_cc05h, uo_cc05h, usv_cc05h;
   always_comb begin
+    for (int e = 0; e < NE; e++) usv_cc05h[e] = est_q_cc05h[e] == ST_UNSENT;
     for (int e = 0; e < NE; e++)
-      un_cc05h[e] = ev_q_cc05h[e] && est_q_cc05h[e] == ST_UNSENT &&
+      un_cc05h[e] = ev_q_cc05h[e] && usv_cc05h[e] &&
                     !(mvi_q_cc05h && sohx_cc05h[e]);
     for (int e = 0; e < NE; e++) begin
       uo_cc05h[e] = un_cc05h[e];
@@ -711,13 +715,26 @@ module dcu_mshr #(
       mvi_q_cc05h <= snd_cc05h;
     end
   end
-  logic sd_en_cc05h;
-  assign sd_en_cc05h = pres_cc04h || une_cc05h;
+  // The send record. soh is read only behind mvi_q (the cycle after a
+  // send) and masked by stq (sohm), so it is written only when a send
+  // from the queue may happen: a credit is left and an entry is unsent
+  // (counting last cycle's, a superset) or a record waits to be queued. A
+  // straight send leaves it as it was, and stq masks it then. sport is
+  // also read by rcq (not behind mvi_q).
+  logic sd_en_cc05h, sp_en_cc05h, unq_cc05h;
+  assign unq_cc05h    = |(ev_q_cc05h & usv_cc05h) || rqa_cc05h;
+  assign sd_en_cc05h = crok_cc05h && unq_cc05h;
+  assign sp_en_cc05h = pres_cc04h || une_cc05h;
   always_ff @(posedge dcu_core_clk) begin
-    if (sd_en_cc05h) begin
-      soh_q_cc05h   <= str_cc05h ? '0 : sio_cc05h;
-      sport_q_cc05h <= str_cc05h ? fa_cc05h : '0;
-    end
+    if (sd_en_cc05h) soh_q_cc05h <= sio_cc05h;
+  end
+  always_ff @(posedge dcu_core_clk) begin
+    if (sp_en_cc05h) sport_q_cc05h <= str_cc05h ? fa_cc05h : '0;
+  end
+  // The mask of soh, one flop (|sport would put an OR on the send's loop).
+  always_ff @(posedge dcu_core_clk) begin
+    if (rst_r01h) stq_q_cc05h <= 1'b0;
+    else          stq_q_cc05h <= str_cc05h;
   end
   assign mv_cc05h = mv_q_cc05h;
 
@@ -733,7 +750,7 @@ module dcu_mshr #(
     mpan_cc05h = '0;
     mcon_cc05h = '0;
     for (int e = 0; e < NE; e++)
-      if (soh_q_cc05h[e]) begin
+      if (sohm_cc05h[e]) begin
         mpan_cc05h = mpan_cc05h | epa_q_cc05h[e];
         mcon_cc05h = mcon_cc05h | ecoh_q_cc05h[e];
       end
@@ -822,6 +839,8 @@ module dcu_mshr #(
   `CCV_ASSERT(mshr_free_filled, !xv_q_cc05h ||
               (ev_q_cc05h[xid_q_cc05h] && est_q_cc05h[xid_q_cc05h] == ST_FILLED))
   `CCV_ASSERT(mshr_credit, cr_q_cc05h <= WCR'(NCR))
+  // Credits never go negative: last cycle's send is in mvi_q, not yet in cr_q.
+  `CCV_ASSERT(mshr_credit_floor, cr_q_cc05h >= WCR'(mvi_q_cc05h))
 
 endmodule
 `undef CCV_CLK

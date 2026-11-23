@@ -13,7 +13,7 @@
 #            and nofree (a dropped access keeps its entry), which must fail
 #   dcu_mshr: test/dcu/mshr_tb.cpp, the miss buffers (merge, allocate, wait,
 #            bank order, the request to MLC, a fill's entry read), and its
-#            controls nomerge (dcu-mshr-nomerge) and order (dcu-miss-reorder),
+#            controls nomerge (dcu-mshr-nomerge), order (dcu-miss-reorder) and credit,
 #            which must fail
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -57,4 +57,5 @@ for seed in 1 2 3; do
 done
 control dcu_mshr nomerge
 control dcu_mshr order
+control dcu_mshr credit
 exit $fail
