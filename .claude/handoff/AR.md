@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 414 .678467 (tab rev 418).
-  - **The next AR row inserts after .678467**, labelled AR 415.
+  - Latest row: AR 416 .682467 (tab rev 420).
+  - **The next AR row inserts after .682467**, labelled AR 417.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,8 +98,8 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 418, OA 475, TI 535, MA 178, DI 69,
-  MI 38, RA 158, RI 91, IS 201, CP 160, OI 405, DA 132, Conventions 20 (full
+- **Bookmarks** (revs read through): AR 420, OA 475, TI 540 (rev 539), MA 178, DI 69,
+  MI 38, RA 159, RI 91, IS 201, CP 160, OI 405, DA 132, Conventions 20 (full
   sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
@@ -230,6 +230,21 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000l. **Common credit RTL modules (TI-537/539/540, Daniel to TI: "a common
+   RTL module ... for the block interfaces"). AR 415 (.679095): at a flopped
+   end (BOUNDARY 1, the RTL default) cr_src is the counter and go only, and
+   cr_dst drives the credit from logic; their own valid/payload/credit flops
+   exist only at no_flop ends; a generated FLOPPED and DEPTH per end; one
+   module-level credit:true waiver. (5) the credit/stall -> cr_go -> valid
+   port path: Daniel ruled option A in TI's session (a named exception
+   timed as the pair of port budgets, only through cr_go, never NGD-5; TI
+   writes it into rtl-coding-style and check-ngd, with a control). AR 416
+   (.682467) on v2 (cr_cnt/cr_go/cr_src/cr_dst): confirmed; REG and LATE
+   need 4+2N+1, so the avail form is declared per end in links.json and
+   DEPTH, the checkers and AVAIL derive from it; COMB with SPEND_W>1 refused;
+   waiver max_flops = the largest instance (MIU 8); lead:true only at
+   FLOPPED=0. RA-159 confirmed with five RCU corrections, taken. TI builds
+   after the ti-tblat landing.
 000k. **MLC hit max (AR 413 .676576, 11-23; OA, TI, MA rung), re: MA rev
    178 (d).** HIT_MAX's (2^W_REQ_DCU_MLC - 1) term (AR's TI-24 (5)) counted
    DCU's in-flight misses as a port queue; it becomes 2**W_REQ_FET_MLC (4),
