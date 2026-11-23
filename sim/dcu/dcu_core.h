@@ -85,6 +85,10 @@ struct Rsp {
   /// any free slot, lowest bank first, and holds its bank until it leaves
   /// (slice 1, response slots); -1 for a contracted answer, on its own slot.
   int bank = -1;
+  /// A fill's answer (slice 2, part 1): its miss buffer entry, which stays
+  /// valid until every answer has left; -1 for any other.
+  int fid = -1;
+  uint64_t born = 0;   ///< the cycle it was owed (a late answer's age)
 };
 
 /// A request launched on ccv_dcu_mlc_req.
@@ -144,6 +148,10 @@ struct Out {
   std::optional<MlcReq> mlc;
   bool ue_raise = false;           ///< ccv_dcu_cru_err's sticky ue, launched now
   uint8_t ent_ret = 0, std_ret = 0;///< MA-25's credit-return vectors, a bit a bank
+  /// Fill buffers freed now (slice 2, part 1): each returns its
+  /// ccv_mlc_dcu_rsp credit (written and every answer gone; an
+  /// acknowledgement's at once).
+  unsigned fill_release = 0;
 };
 
 struct Hooks {
@@ -168,7 +176,9 @@ public:
   /// May the block take new requests this cycle? False while a missing
   /// request waits for a miss buffer, or for room in its line's merge list:
   /// the hold TI-22 and MA-12 allow, and the only one.
-  bool accepting() const { return stalled_.empty(); }
+  /// DCU never refuses the channel (MA-12): a miss with no entry waits in
+  /// its bank's queue on its entry credit (slice 2, part 1).
+  bool accepting() const { return true; }
   /// One cycle: `in` the requests whose payload lands now, in slot order;
   /// `fill` MLC's response landing now.
   Out cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill> &fill,
@@ -209,6 +219,7 @@ private:
     bool ecc_wr = false;   ///< its corrected line's rewrite is queued
     uint64_t line = 0, used = 0;
     Line data{};
+    int rsv = -1;   ///< the fill entry that chose it as victim, until its write (W)
   };
   std::vector<Way> l1_;
   uint64_t tick_ = 0;
@@ -250,7 +261,7 @@ private:
 
   // ---- the banks and their queues (MA-7, MA-24, MA-25, AR 364) -------------
   struct Acc {
-    enum K { Look, StoreR, StoreW, FillW, EvictR, EccR, EccW } k;
+    enum K { Look, StoreR, StoreW, FillW, EvictR, EccR, EccW, MissW } k;
     uint64_t born, ready, line;
     Req req;           ///< Look, StoreR
     unsigned fb = 0;   ///< FillW: its fill buffer
@@ -282,21 +293,49 @@ private:
     uint64_t line;
     std::vector<Req> reqs;   ///< the primary first, then merged, in order
     Line wb{};               ///< Evict, RmwRead's write: the line out
+    // Slice 2, parts 1-2: a fill held in its fill buffer from F until its
+    // write (W) and its last answer; then, for a dirty victim, the entry
+    // turns into the victim's writeback until MLC acknowledges it.
+    bool filled = false, written = false, fb = false;
+    uint64_t f_at = 0;       ///< F: the fill's payload landed
+    unsigned owed = 0;       ///< answers not yet launched
+    int way = -1;            ///< the way chosen at F+1 (index into l1_)
+    Line fl{};               ///< the fill buffer's line
+    bool fown = false, fdirty = false;
+    uint64_t vline = 0;      ///< the dirty victim's line, written back at W
+    bool vdirty = false, vread = false, acked = false;
+    std::vector<Req> relook; ///< merged requests that look up again after W
   };
+  static Miss newMiss(MK k, uint64_t line, std::vector<Req> reqs, const Line &wb) {
+    Miss m;
+    m.k = k;
+    m.line = line;
+    m.reqs = std::move(reqs);
+    m.wb = wb;
+    return m;
+  }
   std::map<unsigned, Miss> miss_;
   std::set<unsigned> free_ids_;
-  std::deque<Req> stalled_;            ///< missing requests with no buffer yet
   std::deque<MlcReq> to_mlc_;
-  std::deque<std::pair<uint64_t, Line>> wbq_;   ///< victims read, waiting for an id
   std::set<uint64_t> wb_lines_;        ///< lines written back, not yet acked
-  unsigned wb_pending_ = 0;            ///< victims booked (EvictR queued, or in wbq_)
-  bool startMiss(const Req &r);        ///< false: no buffer, the request stalls
+  unsigned wb_used_ = 0;               ///< writeback buffers: victim read, request not yet launched
+  std::deque<unsigned> wbsend_;        ///< writeback entries unsent, oldest first
+  std::deque<unsigned> vpend_;         ///< fills whose victim is not chosen yet
+  unsigned fill_release_ = 0;          ///< this cycle's freed fill buffers
+  bool pickVictim(unsigned id);        ///< F+1: choose, reserve and touch; false if none
+  void fillWrite(unsigned id);         ///< W
+  void answered(unsigned id);          ///< one of its answers launched
+  void maybeFree(unsigned id);
+  /// Merge or allocate; false (and why) if the miss must wait.
+  bool startMiss(const Req &r, const char **why = nullptr);
+  /// A miss whose entry credit has gone home: merge or allocate now, or wait
+  /// in its bank's queue (MissW), taking the credit back until it leaves.
+  void missOrWait(const Req &r);
+  void retryWaits();                   ///< each bank's oldest waiting miss, one a cycle
   bool needsMlc(const Req &r) const;
   void mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t tid);
   void onFill(const Fill &f);
   Way *install(uint64_t pa, const Line &l, bool owned, bool dirty);
-  bool canInstall(uint64_t pa);
-  std::deque<Fill> fills_;   ///< fills landed, waiting for a victim
   static bool fullLine(const Req &r, const std::string &brk);
   void merge(Line &l, const Req &r) const;
 

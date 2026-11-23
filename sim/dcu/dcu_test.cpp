@@ -293,26 +293,30 @@ int main(int argc, char **argv) {
     EXPECT(b.h.bins["dcu_merged"] == 1, "one merged");
   });
 
-  // Holding (TI-22, MA-12): a fifth request to a line whose merge list is
-  // full, and a miss with every buffer in use, stall the channel.
-  test("hold-merge-full", [] {
+  // Waiting (MA-12; slice 2, part 1): a fifth request to a line whose merge
+  // list is full, and a miss with every entry in use, wait in their bank's
+  // queue as miss-wait, keeping their entry credit; the channel is never
+  // held. Each is answered once its fill is written or an entry frees.
+  test("wait-merge-full", [] {
     Bench b(cfg(9));
     b.mlc_lat = 40;
     for (unsigned k = 0; k != 6; ++k) b.reqs[k] = {rd(k % 4, k, 0x5000)};
-    b.run(5);
-    b.run(10);
-    EXPECT(!b.core.accepting(), "held with the merge list full");
+    b.run(15);
+    EXPECT(b.core.accepting() && b.h.bins["dcu_miss_wait_list"], "waits with the merge list full, channel open");
     b.run(150);
-    EXPECT(b.core.accepting() && b.rsp(5), "released after the fill");
+    EXPECT(b.rsp(4) && b.rsp(5), "both answered after the fill");
+    EXPECT(b.mlc.size() == 1, "one MLC request: the waiters hit the written line, not %zu", b.mlc.size());
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
   });
-  test("hold-buffers-full", [] {
+  test("wait-entries-full", [] {
     Bench b(cfg(9));
     b.mlc_lat = 60;
     for (unsigned k = 0; k != 17; ++k) b.reqs[k] = {rd(0, k, 0x10000 + uint64_t(k) * 0x80000)};
     b.run(45);
-    EXPECT(!b.core.accepting() && b.h.bins["dcu_buffers_full"], "held with 16 buffers in use");
+    EXPECT(b.core.accepting() && b.h.bins["dcu_miss_wait_entry"], "waits with 16 entries in use, channel open");
     b.run(200);
     EXPECT(b.rsp(16) != nullptr, "the 17th answered");
+    EXPECT(b.h.fails.empty(), "%s", b.h.fails.empty() ? "" : b.h.fails[0].c_str());
   });
 
   // Replacement is tree-PLRU (MA-30), not true LRU. Ways 0-7 of one set fill

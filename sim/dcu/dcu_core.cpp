@@ -121,16 +121,6 @@ bool Core::fullLine(const Req &r, const std::string &brk) {
   return brk == "skip-read-partial" || r.mask.all();
 }
 
-/// Whether pa's line can be installed now: resident, or a way of its set
-/// that no pending write or deferred store holds.
-bool Core::canInstall(uint64_t pa) {
-  if (find(pa)) return true;
-  const Way *set = setOf(pa);
-  for (unsigned i = 0; i != c_.ways; ++i)
-    if (!set[i].valid || !held(set[i].line)) return true;
-  return false;
-}
-
 // Tree-PLRU over a power-of-two number of ways (MA-30). Bit 0 sends the
 // victim left (lower ways), 1 right.
 void Core::plruTouch(size_t set, unsigned way) {
@@ -180,16 +170,8 @@ Core::Way *Core::install(uint64_t pa, const Line &l, bool owned, bool dirty) {
       h_.fail(fmt("dcu: every way of line %llx's set is held: no victim", pa));
       w = s;
     }
-    if (w->valid && w->dirty) {
-      h_.hit("dcu_evict");
-      ++st_.evicts;
-      if (wb_pending_ >= c_.wb) h_.hit("dcu_wb_full");
-      ++wb_pending_;
-      wb_lines_.insert(w->line);
-      const unsigned b = bankOf(w->line);
-      Acc a{Acc::EvictR, now_, now_, w->line, Req{}, 0, w->data};
-      bq_[b].push_back(a);
-    }
+    if (w->valid && w->dirty)   // only write-through's RMW installs here, and it dirties nothing
+      h_.fail(fmt("dcu: write-through's install of line %llx found a dirty victim", pa));
   }
   w->valid = true;
   w->flip = -1;   // a fill writes good check bits
@@ -243,7 +225,7 @@ void Core::arrive(const Req &r, uint64_t t) {
   for (auto &m : miss_)
     if (m.second.line == r.pa && m.second.k != MK::Evict) {
       entLeave(b);   // its store data stays held until the fill merges it
-      if (!startMiss(r)) stalled_.push_back(r);
+      missOrWait(r);
       return;
     }
   // A store hit to an owned line, variant (b) (MA-17, MA-24): its read and
@@ -264,7 +246,7 @@ void Core::arrive(const Req &r, uint64_t t) {
     // The lookup entry leaves now; the store-data entry is held until the
     // store's write leaves, when the fill merges it (DCU spec, MA-25).
     entLeave(b);
-    if (!startMiss(r)) stalled_.push_back(r);
+    missOrWait(r);
     return;
   }
   ontime_[t + dOff()].push_back(r);
@@ -301,15 +283,18 @@ bool Core::eligible(unsigned b, size_t i) const {
     return h <= reads;
   }
   case Acc::FillW:
+    if (c_.brk == "dcu-wb-early") return true;
     for (size_t j = 0; j != i; ++j)
-      if (bq_[b][j].k == Acc::EvictR) return false;
+      if (bq_[b][j].k == Acc::EvictR && bq_[b][j].fb == a.fb) return false;
     return true;
   case Acc::EvictR:
-    return true;
+    return wb_used_ < c_.wb;   // DI-21: waits for a writeback buffer
   case Acc::StoreW:
   case Acc::EccR:
   case Acc::EccW:
     return true;
+  case Acc::MissW:
+    return false;   // no bank access: retryWaits() takes it
   }
   return true;
 }
@@ -357,7 +342,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
       h_.hit("store_hit");
       return;
     }
-    if (!startMiss(r)) stalled_.push_back(r);
+    missOrWait(r);
     return;
   }
   const bool hit = w && (r.op == Op::Read || w->owned);
@@ -378,7 +363,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
     }
   }
   if (!hit) {
-    if (!startMiss(r)) stalled_.push_back(r);
+    missOrWait(r);
     return;
   }
   if (c_.wp_bits && !r.reread) {
@@ -410,7 +395,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
   }
   const int ue = ueOnHit(*w);
   if (ue == 1) {   // recovered: the line is gone, the read refetches it
-    if (!startMiss(r)) stalled_.push_back(r);
+    missOrWait(r);
     return;
   }
   if (ue == 2) {
@@ -450,6 +435,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
   }
   if (r.reread) h_.hit("dcu_wp_reread");
   if ((late || r.reread) && c_.brk != "late-own-slot") s.bank = int(b);
+  s.born = born + dOff();   // its D: a late answer's age counts from there
   respond(now_ + launchOff(), s);
 }
 
@@ -488,8 +474,12 @@ void Core::serve(const Acc &a, uint64_t born) {
     if (now_ - a.born < c_.gap) h_.fail(fmt("dcu: store write %llu cycles after its read, under the gap %llu (TI-483)", now_ - a.born, c_.gap));
     break;
   case Acc::FillW:
-    unhold(a.line);
-    h_.hit("dcu_fill_write");
+    if (a.fb == ~0u) {   // write-through's RMW fill (installed at F)
+      unhold(a.line);
+      h_.hit("dcu_fill_write");
+    } else {
+      fillWrite(a.fb);
+    }
     break;
   case Acc::EccR: {
     // dcu_fix's read of the line in error (slice 1): corrected, flopped,
@@ -520,10 +510,23 @@ void Core::serve(const Acc &a, uint64_t born) {
     fixDone();
     break;
   }
-  case Acc::EvictR:
-    wbq_.push_back({a.line, a.data});
-    h_.hit("dcu_evict_read");
+  case Acc::MissW:
+    h_.fail("dcu: a waiting miss was served as a bank access");
     break;
+  case Acc::EvictR: {
+    // The dirty victim's read (slice 2, part 2) into a writeback buffer;
+    // its fill's write takes the bank's next access, 2 cycles on.
+    Miss &m = miss_.at(a.fb);
+    m.wb = l1_[size_t(m.way)].data;
+    m.vread = true;
+    ++wb_used_;
+    h_.peak("dcu_wb_max", wb_used_);
+    h_.hit("dcu_evict_read");
+    for (Acc &x : bq_[b])
+      if (x.k == Acc::FillW && x.fb == a.fb) x.ready = std::max(x.ready, now_ + 2);
+    h_.hit("dcu_fill_wait_victim");
+    break;
+  }
   }
 }
 
@@ -655,15 +658,79 @@ void Core::mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t ti
   to_mlc_.push_back(m);
 }
 
+/// Slice 2, part 1: a miss merges or allocates at D2; else it takes an
+/// entry in its bank's queue, marked miss-wait, keeping its entry credit
+/// (MA-12's hold: MIU's credits stop the channel, nothing is refused). A
+/// miss also waits while its bank already holds a waiting one, so a line's
+/// requests stay in arrival order (one line is one bank); dcu-miss-reorder,
+/// the control, lets a new miss pass a waiting one of its line.
+void Core::missOrWait(const Req &r) {
+  const unsigned b = bankOf(r.pa);
+  bool waits = false;
+  for (const Acc &x : bq_[b]) {
+    if (x.k != Acc::MissW) continue;
+    if (c_.brk == "dcu-miss-reorder" && x.line != r.pa) continue;
+    waits = true;
+    break;
+  }
+  const char *why = "dcu_miss_wait_order";
+  if (!waits) {
+    for (const Acc &x : bq_[b])
+      if (x.k == Acc::MissW && x.line == r.pa)
+        h_.fail(fmt("dcu: a miss to line %llx passed a waiting one", r.pa));
+    if (startMiss(r, &why)) return;
+  }
+  // CHECK: a line's misses never pass a waiting one (slice 2, part 1).
+  ++ent_used_[b];   // its entry credit stays out until it leaves the queue
+  --ent_owed_[b];
+  h_.hit(why);
+  h_.hit("dcu_miss_wait");
+  bq_[b].push_back(Acc{Acc::MissW, now_, now_ + 1, r.pa, r, 0, {}});
+}
+
+/// Each bank's oldest waiting miss retries, one a cycle, ahead of the
+/// bank's new misses. A line its fill has since written is a hit: it looks
+/// up again (a late answer). Leaving the queue returns its entry credit.
+void Core::retryWaits() {
+  for (unsigned b = 0; b != c_.banks; ++b) {
+    for (size_t i = 0; i != bq_[b].size(); ++i) {
+      Acc &a = bq_[b][i];
+      if (a.k != Acc::MissW) continue;
+      h_.hit("dcu_miss_wait_cycles");
+      if (a.ready > now_) break;
+      const Req r = a.req;
+      const Way *w = find(r.pa);
+      if (w && (r.op == Op::Read || w->owned)) {
+        a.k = Acc::Look;   // keeps its place and its credit: served as a waiter
+        h_.hit("dcu_miss_wait_relook");
+        break;
+      }
+      const char *why = nullptr;
+      if (startMiss(r, &why)) {
+        bq_[b].erase(bq_[b].begin() + long(i));
+        entLeave(b);
+        h_.hit("dcu_miss_wait_done");
+      }
+      break;   // one a bank a cycle, oldest first
+    }
+  }
+}
+
 /// A missing request: into its line's buffer's merge list if one is in
 /// flight and has room, else a buffer of its own if one is free (with
 /// dcu-one-miss, only when none is). False: it stalls, and so does the
 /// channel (accepting()).
-bool Core::startMiss(const Req &r) {
+bool Core::startMiss(const Req &r, const char **why) {
+  const char *dummy;
+  if (!why) why = &dummy;
   for (auto &m : miss_)
-    if (m.second.line == r.pa && m.second.k != MK::Evict) {
+    if (m.second.line == r.pa && m.second.k != MK::Evict && c_.brk != "dcu-mshr-nomerge") {
+      if (m.second.filled) {   // filled, not yet written (slice 2, part 1)
+        *why = "dcu_miss_wait_filled";
+        return false;
+      }
       if (m.second.reqs.size() >= c_.merge) {
-        h_.hit("dcu_merge_full");
+        *why = "dcu_miss_wait_list";
         return false;
       }
       m.second.reqs.push_back(r);
@@ -671,89 +738,117 @@ bool Core::startMiss(const Req &r) {
       h_.hit("dcu_merged");
       return true;
     }
-  if (wb_lines_.count(r.pa)) return false;   // its writeback first
+  // Its writeback first (part 2): the line comes back after MLC's ack.
+  if (wb_lines_.count(r.pa) && c_.brk != "dcu-wb-refetch") {
+    *why = "dcu_miss_wait_wb";
+    return false;
+  }
   if (free_ids_.empty()) {
-    h_.hit("dcu_buffers_full");
+    *why = "dcu_miss_wait_entry";
     return false;
   }
   if (c_.brk == "dcu-one-miss")
     for (auto &m : miss_)
-      if (m.second.k != MK::Evict) return false;
+      if (m.second.k != MK::Evict) {
+        *why = "dcu_miss_wait_entry";
+        return false;
+      }
+  // CHECKs (slice 2): no two valid entries hold one line, and a line is
+  // never fetched while its writeback awaits MLC's acknowledgement.
+  for (auto &m : miss_)
+    if (m.second.line == r.pa)
+      h_.fail(fmt("dcu: a second miss buffer entry for line %llx", r.pa));
   const unsigned id = *free_ids_.begin();
   free_ids_.erase(free_ids_.begin());
   ++st_.misses;
   if (r.op == Op::Read) {
-    miss_[id] = Miss{MK::Fill, r.pa, {r}, {}};
+    miss_[id] = newMiss(MK::Fill, r.pa, {r}, {});
     mlcReq(MlcOp::Read, r.pa, nullptr, id, r.tid);
     h_.hit("l1_miss");
   } else if (r.op == Op::AtomRead) {
-    miss_[id] = Miss{MK::AcqData, r.pa, {r}, {}};
+    miss_[id] = newMiss(MK::AcqData, r.pa, {r}, {});
     mlcReq(MlcOp::AcquireData, r.pa, nullptr, id, r.tid);
     h_.hit("l1_miss");
     h_.hit("atomic_acquire");
   } else if (c_.brk == "write-through") {
     // The policy before rev 8: every store a read-merge-write in MLC.
     if (fullLine(r, c_.brk)) {
-      miss_[id] = Miss{MK::WriteAck, r.pa, {r}, r.wdata};
+      miss_[id] = newMiss(MK::WriteAck, r.pa, {r}, r.wdata);
       Way *w = find(r.pa);
       if (w) w->data = r.wdata;
       mlcReq(MlcOp::Write, r.pa, &r.wdata, id, r.tid);
       stdLeave(bankOf(r.pa));   // the whole line's write leaves for MLC
       h_.hit("full_line");
     } else {
-      miss_[id] = Miss{MK::RmwRead, r.pa, {r}, {}};
+      miss_[id] = newMiss(MK::RmwRead, r.pa, {r}, {});
       mlcReq(MlcOp::Read, r.pa, nullptr, id, r.tid);
     }
   } else if (fullLine(r, c_.brk)) {
-    miss_[id] = Miss{MK::AcqPerm, r.pa, {r}, {}};
+    miss_[id] = newMiss(MK::AcqPerm, r.pa, {r}, {});
     mlcReq(MlcOp::AcquirePerm, r.pa, nullptr, id, r.tid);
     h_.hit("full_line");
   } else {
-    miss_[id] = Miss{MK::AcqData, r.pa, {r}, {}};
+    miss_[id] = newMiss(MK::AcqData, r.pa, {r}, {});
     mlcReq(MlcOp::AcquireData, r.pa, nullptr, id, r.tid);
     h_.hit("l1_miss");
   }
   return true;
 }
 
-/// A fill or grant: answer its requests from its own data, in order, and
-/// write the line into its bank when the bank has no lookup (FillW).
+/// A fill, a grant or a writeback's acknowledgement (slice 2, parts 1-2).
+/// A fill lands in its fill buffer at F and answers its merged requests from
+/// it (valid at F + CCV_LAT_FILL_NOTICE at the earliest); its victim is
+/// chosen at F+1, and its bank write (W) takes a free access from F+3 on,
+/// behind a dirty victim's read. Its entry stays valid until W and its last
+/// answer; then a dirty victim's writeback takes the entry over.
 void Core::onFill(const Fill &f) {
   auto it = miss_.find(f.id);
-  if (it == miss_.end()) {
+  if (it == miss_.end() || (it->second.filled && it->second.k != MK::Evict)) {
     h_.fail(fmt("dcu: MLC answered req_id %llu, which is not outstanding", f.id));
+    ++fill_release_;
     return;
   }
-  Miss m = std::move(it->second);
-  miss_.erase(it);
-  free_ids_.insert(f.id);
-  // The floor (DI-4, MA rev 129): an un-noticed answer's valid at F +
-  // CCV_LAT_FILL_NOTICE, F the fill's payload landing, so it launches a cycle before.
-  const uint64_t at = floorAt();
+  Miss &m = it->second;
+  const uint64_t at = floorAt() - (c_.brk == "dcu-fill-early" ? 1 : 0);
   switch (m.k) {
   case MK::Evict:
+    // MLC's acknowledgement: no fill buffer, the credit back at once, and
+    // the entry free (CHECK: it names a writeback whose request has gone).
+    ++fill_release_;
+    if (!m.written || std::find(wbsend_.begin(), wbsend_.end(), f.id) != wbsend_.end())
+      h_.fail(fmt("dcu: MLC acknowledged req_id %llu, a writeback not yet sent", f.id));
     wb_lines_.erase(m.line);
-    --wb_pending_;
+    m.acked = true;
+    maybeFree(f.id);
     return;
-  case MK::WriteAck:
-    respond(at, rspFor(m.reqs.front()));
-    for (size_t i = 1; i < m.reqs.size(); ++i) {   // merged behind it: look up again
-      const unsigned b = bankOf(m.line);
+  case MK::WriteAck: {
+    Miss w = std::move(m);
+    miss_.erase(it);
+    free_ids_.insert(f.id);
+    ++fill_release_;
+    respond(at, rspFor(w.reqs.front()));
+    for (size_t i = 1; i < w.reqs.size(); ++i) {   // merged behind it: look up again
+      const unsigned b = bankOf(w.line);
       ++ent_used_[b];   // a store's data entry is still held from its arrival
-      bq_[b].push_back(Acc{Acc::Look, now_, now_, m.line, m.reqs[i], 0, {}});
+      bq_[b].push_back(Acc{Acc::Look, now_, now_, w.line, w.reqs[i], 0, {}});
     }
     return;
+  }
   case MK::RmwRead: {
+    Miss w = std::move(m);
+    miss_.erase(it);
+    free_ids_.insert(f.id);
+    ++fill_release_;
     Line l = f.line;
-    merge(l, m.reqs.front());
-    stdLeave(bankOf(m.line));   // the partial store's write leaves with the merge
-    install(m.line, l, false, false);
-    hold(m.line);
-    bq_[bankOf(m.line)].push_back(Acc{Acc::FillW, now_, now_, m.line, Req{}, f.id, {}});
+    merge(l, w.reqs.front());
+    stdLeave(bankOf(w.line));   // the partial store's write leaves with the merge
+    install(w.line, l, false, false);
+    hold(w.line);
+    bq_[bankOf(w.line)].push_back(Acc{Acc::FillW, now_, now_, w.line, Req{}, ~0u, {}});
     const unsigned id = *free_ids_.begin();
     free_ids_.erase(free_ids_.begin());
-    miss_[id] = Miss{MK::WriteAck, m.line, std::move(m.reqs), l};
-    mlcReq(MlcOp::Write, m.line, &l, id, miss_[id].reqs.front().tid);
+    miss_[id] = newMiss(MK::WriteAck, w.line, std::move(w.reqs), l);
+    mlcReq(MlcOp::Write, w.line, &l, id, miss_[id].reqs.front().tid);
     return;
   }
   default:
@@ -766,6 +861,8 @@ void Core::onFill(const Fill &f) {
                 m.line, f.id));
     return;
   }
+  m.filled = m.fb = true;
+  m.f_at = now_;
   Line l = m.k == MK::AcqPerm ? m.reqs.front().wdata : f.line;
   bool dirty = false;
   const unsigned b = bankOf(m.line);
@@ -774,6 +871,9 @@ void Core::onFill(const Fill &f) {
     const Req &r = m.reqs[i];
     if (r.op != Op::Read && !want_own) break;   // needs ownership: re-looks up
     Rsp s = rspFor(r);
+    s.fid = int(f.id);
+    s.born = now_;
+    ++m.owed;
     if (r.op == Op::Store) {
       merge(l, r);
       stdLeave(b);   // its write leaves: the store-data credit goes home
@@ -787,15 +887,133 @@ void Core::onFill(const Fill &f) {
     if (r.op == Op::Read) refill(s, *ports_);
     else respond(at, s);
   }
-  install(m.line, l, want_own, dirty);
-  hold(m.line);
-  bq_[b].push_back(Acc{Acc::FillW, now_, now_, m.line, Req{}, f.id, {}});
   // What needed ownership a shared fill did not bring looks up again, in
-  // order, after the fill's write.
-  for (; i != m.reqs.size(); ++i) {
+  // order, after the fill's write (W).
+  for (; i != m.reqs.size(); ++i) m.relook.push_back(m.reqs[i]);
+  m.fl = l;
+  m.fown = want_own;
+  m.fdirty = dirty;
+  hold(m.line);   // lookups of its line queued behind the write
+  vpend_.push_back(f.id);
+  h_.peak("dcu_fill_max", size_t(std::count_if(miss_.begin(), miss_.end(),
+                                                [](const auto &x) { return x.second.fb; })));
+}
+
+/// F+1 (slice 2, part 1): the fill's way. Its line's own way if resident (an
+/// upgrade), else the lowest invalid way, else the tree-PLRU victim,
+/// skipping a way another fill reserves or a pending write holds. Reserved
+/// until W and marked most recently used. A dirty victim is read first
+/// (part 2), no earlier than F+3; the fill's write follows it.
+bool Core::pickVictim(unsigned id) {
+  Miss &m = miss_.at(id);
+  Way *s = setOf(m.line);
+  auto free_way = [&](const Way &x) { return x.rsv < 0 && !(x.valid && held(x.line)); };
+  Way *w = find(m.line);
+  if (w && w->rsv >= 0) w = nullptr;
+  if (!w)
+    for (unsigned k = 0; k != c_.ways && !w; ++k)
+      if (!s[k].valid && s[k].rsv < 0) w = &s[k];
+  bool plru = false;
+  if (!w) {
+    Way *v = &s[plruVictim(size_t(s - l1_.data()) / c_.ways)];
+    if (free_way(*v)) {
+      w = v;
+      plru = true;
+    } else {
+      h_.hit("dcu_victim_skipped");
+      h_.hit("dcu_plru_held");
+      for (unsigned k = 0; k != c_.ways && !w; ++k)
+        if (free_way(s[k])) w = &s[k];
+    }
+  }
+  if (!w) {
+    h_.hit("dcu_fill_victim_wait");
+    return false;
+  }
+  if (!w->valid) h_.hit("dcu_victim_invalid");
+  else if (plru) h_.hit("dcu_victim_plru");
+  w->rsv = int(id);
+  m.way = int(w - l1_.data());
+  touch(*w);
+  const unsigned b = bankOf(m.line);
+  const uint64_t ready = m.f_at + 3;
+  if (w->valid && w->line != m.line) {
+    h_.hit("dcu_evict");
+    ++st_.evicts;
+    if (w->dirty) {
+      h_.hit("dcu_evict_dirty");
+      m.vdirty = true;
+      m.vline = w->line;
+      bq_[b].push_back(Acc{Acc::EvictR, now_, ready, w->line, Req{}, id, {}});
+    } else {
+      h_.hit("dcu_evict_clean");
+    }
+  }
+  bq_[b].push_back(Acc{Acc::FillW, now_, ready, m.line, Req{}, id, {}});
+  return true;
+}
+
+/// W: the fill's line, tags and fold go into its reserved way together. A
+/// dirty victim's entry becomes its writeback (part 2); requests that need
+/// ownership the fill did not bring look up again now.
+void Core::fillWrite(unsigned id) {
+  Miss &m = miss_.at(id);
+  Way &w = l1_[size_t(m.way)];
+  if (m.vdirty && !m.vread)
+    h_.fail(fmt("dcu: the fill of line %llx wrote over dirty victim %llx before its read", m.line, m.vline));
+  w.valid = true;
+  w.flip = -1;   // a fill writes good check bits
+  w.ecc_wr = false;
+  w.line = m.line;
+  w.data = m.fl;
+  w.owned = m.fown;
+  w.dirty = m.fdirty;
+  w.rsv = -1;
+  if (m.fdirty) h_.dirty(m.line, m.fl);
+  unhold(m.line);
+  m.written = true;
+  h_.hit("dcu_fill_write");
+  h_.hit("dcu_fill_write_wait", now_ - (m.f_at + 3));
+  const unsigned b = bankOf(m.line);
+  for (const Req &r : m.relook) {
     ++ent_used_[b];   // a store's data entry is still held from its arrival
     h_.hit("dcu_merge_relook");
-    bq_[b].push_back(Acc{Acc::Look, now_, now_, m.line, m.reqs[i], 0, {}});
+    bq_[b].push_back(Acc{Acc::Look, now_, now_, m.line, r, 0, {}});
+  }
+  m.relook.clear();
+  if (m.vdirty) {
+    m.k = MK::Evict;
+    m.line = m.vline;
+    wb_lines_.insert(m.vline);
+    wbsend_.push_back(id);
+  }
+  maybeFree(id);
+}
+
+void Core::answered(unsigned id) {
+  auto it = miss_.find(id);
+  if (it == miss_.end() || !it->second.owed) {
+    h_.fail(fmt("dcu: a fill answer for entry %llu, which owes none", id));
+    return;
+  }
+  --it->second.owed;
+  maybeFree(id);
+}
+
+/// A fill buffer frees once written and answered (its credit home); the
+/// entry once its fill is written and answered, or, as a writeback, once
+/// MLC has acknowledged it.
+void Core::maybeFree(unsigned id) {
+  auto it = miss_.find(id);
+  Miss &m = it->second;
+  if (m.fb && m.written && !m.owed) {
+    m.fb = false;
+    ++fill_release_;
+  }
+  const bool done = m.k == MK::Evict ? m.acked && !m.fb : m.written && !m.fb;
+  if (done) {
+    miss_.erase(it);
+    free_ids_.insert(id);
   }
 }
 
@@ -913,45 +1131,42 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   // Hits' PLRU touches due now (D + 3), before this cycle's victim picks.
   for (auto it = touch_at_.begin(); it != touch_at_.end() && it->first <= now_; it = touch_at_.erase(it))
     plruTouchWay(it->second);
-  // A fill waits in its fill buffer while every way of its set is held by a
-  // pending write or a deferred store (no victim yet); fills leave in order.
-  if (fill) fills_.push_back(*fill);
-  while (!fills_.empty()) {
-    auto it = miss_.find(fills_.front().id);
-    if (it != miss_.end() && it->second.k != MK::Evict && it->second.k != MK::WriteAck &&
-        !canInstall(it->second.line)) {
-      ++st_.fill_wait;
-      h_.hit("dcu_fill_victim_wait");
-      break;
-    }
-    onFill(fills_.front());
-    fills_.pop_front();
+  fill_release_ = 0;
+  // Victims for the fills that landed before now (F+1), oldest first; a
+  // fill whose set has no free way waits in its buffer (its credit held).
+  for (size_t k = 0; k != vpend_.size();) {
+    if (miss_.at(vpend_[k]).f_at < now_ && pickVictim(vpend_[k])) vpend_.erase(vpend_.begin() + long(k));
+    else ++k;
   }
+  if (fill) onFill(*fill);
+  retryWaits();
   for (const Req &r : in) arrive(r, t);
   schedule();
-  // Stalled misses take freed buffers, oldest first; the channel holds
-  // while any waits.
-  while (!stalled_.empty() && startMiss(stalled_.front())) stalled_.pop_front();
-  if (!stalled_.empty()) {
-    ++st_.held_cycles;
-    h_.hit("dcu_hold_cycles");
-  }
-  // Victims read from their banks leave on a req_id of their own.
-  while (!wbq_.empty() && !free_ids_.empty()) {
-    const auto v = wbq_.front();
-    wbq_.pop_front();
-    h_.clean(v.first);
-    if (c_.brk == "drop-writeback") {
-      wb_lines_.erase(v.first);
-      --wb_pending_;
-      continue;
+  // ccv_dcu_mlc_req, one a cycle (slice 2, part 2): writebacks first,
+  // oldest first, each on its fill's entry (it frees a writeback buffer, so
+  // lets a fill write); then misses. drop-writeback (dcu-wb-drop), the
+  // control, never sends a dirty victim's line.
+  if (p.mlc_can && !wbsend_.empty()) {
+    const unsigned id = wbsend_.front();
+    wbsend_.pop_front();
+    Miss &m = miss_.at(id);
+    --wb_used_;
+    h_.clean(m.line);
+    if (c_.brk == "drop-writeback" || c_.brk == "dcu-wb-drop") {
+      wb_lines_.erase(m.line);
+      m.acked = true;
+      maybeFree(id);
+    } else {
+      MlcReq q;
+      q.id = id;
+      q.pa = m.line;
+      q.op = MlcOp::Write;
+      q.data = true;
+      q.line = m.wb;
+      o.mlc = q;
+      h_.hit("dcu_wb_sent");
     }
-    const unsigned id = *free_ids_.begin();
-    free_ids_.erase(free_ids_.begin());
-    miss_[id] = Miss{MK::Evict, v.first, {}, v.second};
-    mlcReq(MlcOp::Write, v.first, &v.second, id, 0);
-  }
-  if (!to_mlc_.empty() && p.mlc_can) {
+  } else if (!to_mlc_.empty() && p.mlc_can) {
     o.mlc = to_mlc_.front();
     to_mlc_.pop_front();
   }
@@ -978,12 +1193,25 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   // late bank answers, lowest bank first, each on the lowest free slot. One
   // that finds none keeps its word and holds its bank (slice 1, response
   // slots): the bank takes no access next cycle.
-  std::stable_sort(late_.begin(), late_.end(), [](const Rsp &x, const Rsp &y) {
-    return (x.bank >= 0) < (y.bank >= 0) || (x.bank >= 0 && y.bank >= 0 && x.bank < y.bank);
+  // Slice 2, part 1's order for the late ones: a bank's late answer that
+  // has waited CCV_DCU_BANK_AGE, then fill answers oldest first, then the
+  // banks' other late answers, lowest bank first. Fill answers, like bank
+  // ones, take any free slot.
+  auto rank = [&](const Rsp &x) {
+    if (x.bank < 0 && x.fid < 0) return 0;
+    if (x.bank >= 0 && t - x.born >= c_.age) return 1;
+    return x.fid >= 0 ? 2 : 3;
+  };
+  std::stable_sort(late_.begin(), late_.end(), [&](const Rsp &x, const Rsp &y) {
+    const int a = rank(x), b = rank(y);
+    if (a != b) return a < b;
+    if (a == 2) return x.born < y.born;
+    if (a == 3 || a == 1) return x.bank < y.bank;
+    return false;
   });
   for (auto it = late_.begin(); it != late_.end();) {
     int s = -1;
-    if (it->bank < 0) {
+    if (it->bank < 0 && it->fid < 0) {
       if (!used[it->slot] && p.rsp_can[it->slot] && cr[it->slot] > resv_[it->slot]) s = int(it->slot);
     } else {
       for (unsigned k = 0; k != kSlots && s < 0; ++k)
@@ -1005,6 +1233,9 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
       ++it;
     }
   }
+  // Fill answers that launched: their entries owe one fewer.
+  for (const Rsp &r : o.rsps)
+    if (r.fid >= 0) answered(unsigned(r.fid));
   o.notices = notices_;
   // MA-25's credit returns: at most one of each a bank a cycle.
   for (unsigned b = 0; b != c_.banks; ++b) {
@@ -1038,12 +1269,13 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     ++st_.idle;
     h_.hit("dcu_idle_cycles");
   }
+  o.fill_release = fill_release_;
   return o;
 }
 
 bool Core::busy() const {
-  if (!fills_.empty() || !ontime_.empty() || !miss_.empty() || !stalled_.empty() || !to_mlc_.empty() ||
-      !timed_.empty() || !late_.empty() || !promised_.empty() || !wbq_.empty() ||
+  if (!vpend_.empty() || !wbsend_.empty() || !ontime_.empty() || !miss_.empty() || !to_mlc_.empty() ||
+      !timed_.empty() || !late_.empty() || !promised_.empty() ||
       (ue_raised_ && !ue_sent_))
     return true;
   for (const auto &q : bq_)

@@ -143,6 +143,13 @@ private:
 
   void work() override {
     const Ch &c = ch();
+    // Slice 2, part 1: a fill's ccv_mlc_dcu_rsp credit is its fill buffer,
+    // home when the line is written and its last answer has left (an
+    // acknowledgement's at once).
+    if (!armed_) {
+      armed_ = true;
+      creditAtRelease(c.mlc_dcu);
+    }
     std::vector<D::Req> in;
     // Requests whose payload lands now, in slot order, unless DCU holds the
     // channel; a held one is taken the first cycle DCU accepts again. One a
@@ -185,6 +192,7 @@ private:
     }
     p.mlc_can = can(c.dcu_mlc, 0);
     const D::Out o = core_.cycle(now_, in, fill, p);
+    for (unsigned k = 0; k != o.fill_release; ++k) release(c.mlc_dcu, 0);
     for (const auto &n : o.notices) {
       Bits b = msgOf(c.fill_ntc);
       put(b, c.fill_ntc, "req_id", n.req_id);
@@ -261,6 +269,7 @@ private:
     }
   }
   bool ue_owed_ = false;
+  bool armed_ = false;
   bool extra_sent_ = false;
   std::array<unsigned, ccv::kDcuBanks> cred_ent_{}, cred_std_{};
   bool credOwed() const {
