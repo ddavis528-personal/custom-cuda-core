@@ -29,22 +29,32 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
--4. dcu_mshr v17 MEETS depth (24.4 flop-flop, 22.5 in) and CG (53 flops
-   outside vs ~57 allowance: rcal/rcmg 10, soh/sport 21 (CG-2 9.1 NGD
-   enable, 50%), cr 3, xid 4, 15 single every-cycle flops) in m0w; backups
-   scratchpad/wip-mshr-v3/dcu_mshr.v17.sv, mshr_tb.v17.cpp. Bench seeds 1-6
-   PASS, nomerge/order controls fail as required, lint clean. Id rule now:
-   ONE OFFER PER PORT (nfoh_q[p], one-hot, zero when none); a requesting
-   port's offer goes to ua; it and any port with none takes the next of
-   last cycle's picks in port order (rank over qf = pq | !nfv); picks
-   (lowest, highest, 2nd lowest, 2nd highest, 3rd lowest; zero past the
-   prefix) from free - offers - picks - ua; enable rst|pres|xv|(pick made
-   & a port empty); reset offers {0,15,1,14,2}, picks {3,13,4,12,5}.
-   Credits count a send a cycle late (crok = cr > mvi_q). Bench CG
-   scenarios rest the payload inputs when idle. NEXT: mirror this id rule
-   in dcu_core.cpp (nfNext/startMiss, uncommitted retry change there too),
-   unit tests, copy m0w files to main (dcu_mshr.sv, .ngd.json, mshr_tb.cpp,
-   cg-units/cg-build/run-rtl entries), commit, gate-push; DI-34 follow-up.
+-5. GATE f05aca24 FAILED on CG only: dcu_mshr soh/sport group (21 flops,
+   CG-2 enable 9.1 NGD, CG-3 50%) is NOT auto-waived (42 others already use
+   the 57 allowance). v18 in m0w (backup wip-mshr-v3/v18pre.sv = before):
+   soh_q gets its own enable crok && (|(ev&unsent) || rqa || |pq) (read
+   only behind mvi_q), sport_q keeps pres||une (5 flops, small group).
+   Also in m0w, not yet in main: assert mshr_credit_floor (cr_q >= mvi_q),
+   bench reference credits>=0 check, credit-stall coverage, --control
+   credit (run-rtl.sh). When check-cg/ngd pass: copy dcu_mshr.sv,
+   mshr_tb.cpp, run-rtl.sh to main, commit, gate-push (the 7 local commits
+   still unpushed).
+-4. DI-34: MA rev 167/168 accepted all; close the row once bctl growth
+   lands. DI-35 (bctl retry): MA rev 169 / DCU tab rev 112 accepted:
+   (1) dcu_mshr picks the oldest of 8 bank offers (valid + 10-bit stamp,
+   mod-2^10 compare, ties lowest bank), flops it as rtv and returns a
+   one-hot grant; picked bank's payload 8:1 from bctl output flops at D2
+   (mshr retry port grows to 8 offers + 8 x ~60-bit payloads + grant out).
+   (2) a bank offers its oldest waiter from the cycle after it waited, no
+   new offer while its retry's outcome is pending; a WAIT-AGAIN RE-STAMPS
+   the head with the current count (MA's change; mirror in the model:
+   born = now on a failed retry). (3) granted bank reads mshr's D3
+   outcome: placed leaves + ent_ret; a bank with a waiter or pending retry
+   queues its own new miss itself (never retry + new miss in one cycle).
+   Spec digest of bctl slice 2 (rev 111): scratchpad/dcu.txt lines 2-142;
+   entry fields ~75 flops (req_id 6, slot 2, PA 41, fold 4, op 2, excl 1,
+   std 4, tag result ~5, age 5, mw 1, cause 2, stale 1); fill write as a
+   queue waiter; victim choice/reserve/MRU; tag-stale (set,way) compares.
 -3. RTL slice 2 part 1, dcu_mshr (task #7). Pushed a6b8a4eb (model parts
    1-4, SCOPED PASS; gate-push needs CCV_PUSH_BRANCHES=ccr-5e4d6c70-n6402z
    or it pushes nothing). v1 failed depth (92 NGD) and CG-4; v2 (ports, not
