@@ -32,7 +32,10 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 413, TI 517, OA 468, IS 201, CP 160, OI 401, RA 157, RI 91, MA 169, DA 131, MI 35, DI 63.
+Conventions 20, AR 415, TI 530, OA 474, IS 201, CP 160, OI 405, RA 158, RI 91, MA 173, DA 131, MI 41, DI 74.
+- Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
+  MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
+  merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -90,6 +93,19 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - Sweep 2026-11-22 merged 11 branches (AR's 80102643 by commit-tree: 5 merge bases hung the recursive merge),
   full PASS, pushed. TI-517 landed MA-29 (bc9d61ff), TI-518 landed MA-30 (63579fce); both marked in the tabs.
   Snapshots refreshed: dcu-spec rev 87, miu-spec rev 162. Next: DCU slice 2, then MIU slices 2-4.
+- DI-39 ANSWERED (MA rev 177, DCU tab 116-120): fill keeps lead-then-payload (one-cycle form = enable from input, CG-5):
+  lead F+1 from dcu_mshr's F read (valid + bank one-hot), payload F+2 (mshr + fill flops), victim F+2, write waiter from F+4.
+  DI prices model pickVictim F+2 after ti-tblat; >=0.5% -> earlier lead on MLC rsp with req_id (schema row).
+- MI-21 DECIDED (MA rev 176, MIU tab rev 165): miu_form owns form state (H-1 beside miu_pair; forms within slice 1, before M0);
+  O-83 by two sums per lane, interleaved adder narrow (log2(32L)=22 bits, R(ctx) wiring), decision ~8 NGD selects after adders;
+  (b)/(c) out. AR told FYI (amends AR revs 211-219 'no new adder'). Watch MI's NGD and gate count; power gating if needed.
+- DI-34 closed by DI (d400b928: bctl growth 518fe798, mshr CG c4061f75).
+- Sweep 2026-11-23 pushed ef87bf44, full PASS (ngd 3h23m, cg 3h04m).
+- AFTER ti-tblat LANDS (TI-532/AR 411, MA rev 174-175): re-run MA-30 grid (k5/4/3/2, B9; S1, cm32p, cm128p) plus L1 capacity (AR rev 344)
+  and hit-latency (AR rev 363) steps on the fixed testbench; k=4 stays meanwhile; row to AR only if a step < 0.5% or ranking flips.
+- DI-36 answered (every lookup gets a queue entry, D1 write, miss-wait at D3). DI-37 answered + amended (fill write waits <= CCV_DCU_FILL_AGE=4; bound K+gap+1=10; MA rev 172, DCU tab 115); TI asked for the param (require FILL_AGE < BANK_AGE): open.
+- TI-531 answered (MA rev 173): committed-stores-first stays; MA prefers slow region ends at 1 MiB. AR 410 ruled that way (1)-(5); DRAM latency 10 is a placeholder Daniel sets.
+- Open, not MA's: MI-20 (UE two answers; TI), DI-38 (check-kernel under model; TI; (5) cm128 memop hold 22679 vs 20480 watchdog, AR 410 makes watchdog derived).
 - DI-34 closed from MA side (MA rev 167-168: update 2 conditions; Q(3) option a). DI-35 answered (MA rev 169; DCU tab 112-113): retry pick accepted, wait-again re-stamps head.
 - AR-409 agreed (MA rev 165; DCU tab 107-109: probe takes unlaunched wb buffer line, ack=1, cancels). DI-34 v2 deviations (i)-(iv) accepted with conditions (MA rev 166, DCU tab 110).
 - DI-34 ANSWERED (MA rev 164, DCU tab rev 106): mshr D2 PA staged, D3 writes with forwarding; waiter payload in every bctl queue entry (~75 flops, 1,200/bank). DI notified.
