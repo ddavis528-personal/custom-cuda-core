@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 415, TI 530, OA 474, IS 201, CP 160, OI 405, RA 158, RI 91, MA 173, DA 131, MI 38, DI 69.
+Conventions 20, AR 415, TI 530, OA 474, IS 201, CP 160, OI 405, RA 158, RI 91, MA 173, DA 131, MI 41, DI 73.
 - Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
   MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
   merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
@@ -93,6 +93,10 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - Sweep 2026-11-22 merged 11 branches (AR's 80102643 by commit-tree: 5 merge bases hung the recursive merge),
   full PASS, pushed. TI-517 landed MA-29 (bc9d61ff), TI-518 landed MA-30 (63579fce); both marked in the tabs.
   Snapshots refreshed: dcu-spec rev 87, miu-spec rev 162. Next: DCU slice 2, then MIU slices 2-4.
+- MI-21 DECIDED (MA rev 176, MIU tab rev 165): miu_form owns form state (H-1 beside miu_pair; forms within slice 1, before M0);
+  O-83 by two sums per lane, interleaved adder narrow (log2(32L)=22 bits, R(ctx) wiring), decision ~8 NGD selects after adders;
+  (b)/(c) out. AR told FYI (amends AR revs 211-219 'no new adder'). Watch MI's NGD and gate count; power gating if needed.
+- DI-34 closed by DI (d400b928: bctl growth 518fe798, mshr CG c4061f75).
 - Sweep 2026-11-23 pushed ef87bf44, full PASS (ngd 3h23m, cg 3h04m).
 - AFTER ti-tblat LANDS (TI-532/AR 411, MA rev 174-175): re-run MA-30 grid (k5/4/3/2, B9; S1, cm32p, cm128p) plus L1 capacity (AR rev 344)
   and hit-latency (AR rev 363) steps on the fixed testbench; k=4 stays meanwhile; row to AR only if a step < 0.5% or ranking flips.
