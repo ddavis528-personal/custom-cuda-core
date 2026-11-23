@@ -30,8 +30,14 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 - Ring a notice only for a row that asks something of its receiver (register skill).
 
 ## Register bookmarks
-- Daily sweep 2026-11-22 (Sun): AR 409, OA 468, IS 201, TI 519, OI 401, CP 160, RA 157, RI 91,
-  MA 157, MI 36, DI 41, DA 131, Conventions 20; specs MIU 161, Common 9, DCU 84. Next pings: Friday.
+- Daily sweep 2026-11-23 (Mon): AR 414, OA 474, IS 201, TI 529 (TI-531), OI 405, CP 160, RA 158, RI 91,
+  MA 173, MI 39, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
+  MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
+  MI rev 39: 012519d8 pushed, DI may send the UE first answer (DI, TI rung). TI-522: measure waypred
+  deltas with CCV_MIU_IMPL=model + CCV_MLC_WARM=1. AR 410/TI-531: P_TIMEOUT_MEMOP becomes derived.
+  TI-532 (FYI, rev 530): ti-tblat 8daf7a2c ends the tb slow region at 1 MiB; kernels with data >= 0xC0000
+  drop (localsp 2144->164, privwin, waypred...). When it lands, recheck MI's IMPL_PINS (privwin priv_form=10)
+  and any waypred/localsp numbers taken before.
   AR 403/404: MIU corrects CE (syndrome R2, completion withheld 1, fix in the stage after on flopped
   data+syndrome, K=128); UE on a clean line: DCU refetches under the same req_id, MIU keeps it live.
   AR 405 / DCU tab 84: mispredict = late answer at due+2 under the original req_id, no credit;
@@ -105,6 +111,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
   rows of cells of paragraphs. Opens m8yvbw8rqgz.613 (6 cells), Responses m8yvbw8rqgz.675 (4).
 
 ## Pushed
+- ccr-58815650-0ch1hh at 1f9ce5c5: full PASS (sweep 2026-11-23: mi-dev 136 incl. TI ba085cda,
+  ccr-5e4d6c70 8, ccr-80102643 6, ccr-9eb50716 3, MA's spec branch 3).
 - ccr-58815650-0ch1hh at 073943f3: SCOPED PASS (mi-dev 6f7d98a4: MI-19 drop/syndrome, miu_pair
   RTL, merged over DI 818285df and TI b8233a39).
 - ccr-58815650-0ch1hh at d26849c3: full PASS (sweep 2026-11-21: ccr-183cc441, ccr-5e4d6c70,
