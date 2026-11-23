@@ -313,7 +313,7 @@ module ccv_rau_w #(
   end
   // ccv_ooe_rau_drained, destination end, no-flop (params/links.json no_flop)
   if (RPT_OOE_RAU_DRAINED > 0) begin : g_rpt_ooe_rau_drained
-    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_DRAINED), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(71)) u_rpt_ooe_rau_drained (
+    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_DRAINED), .BOUNDARY(0), .SLOTS(1), .PAYLOAD_W(72)) u_rpt_ooe_rau_drained (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_rau_drained_valid}), .src_payload({ooe_rau_drained_payload}),
       .src_wake(ooe_rau_drained_wake), .src_credit({ooe_rau_drained_credit}), .src_stall({ooe_rau_drained_stall}),

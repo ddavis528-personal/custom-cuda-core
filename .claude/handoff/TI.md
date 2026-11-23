@@ -1,6 +1,6 @@
 # TI handoff (top-level implementation)
 
-Updated 2026-11-21 (evening). Keep this current at every task's end; it is what
+Updated 2026-11-22. Keep this current at every task's end; it is what
 survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 
 ## Working rules
@@ -38,9 +38,9 @@ first and retries a merge past CCV_SWEEP_MERGE_TIMEOUT (300 s) with
 4-base branch hung 25 min; resolve took 0.15 s).
 
 ## Register bookmarks
-/home/user/ti-register-bookmarks.json (outside the repo). 11-21: TI 514,
-MI 34, MA 148, DI 31, OI 399, OA 466, AR 406; the rest as of the 11-21 sweep.
-Last row TI-515. Row insert payload: ops insert, target {"kind":"blocks",
+/home/user/ti-register-bookmarks.json (outside the repo). 11-23: TI 520,
+OI 402, AR 409, MA 157, MI 35, DI 46, MI 36; the rest as of the 11-22 sweep.
+Last row TI-522. Row insert payload: ops insert, target {"kind":"blocks",
 "ids":["m8yvbw8rqgz.217"]}, side end, source {"as":"blocks","from":{"kind":
 "inline","content":[tableRow of 4 tableCells, each a paragraph of text]}}.
 
@@ -49,51 +49,36 @@ Every long tool detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as
 a background task, timeout 7200000 (exit 3: rerun the wait; 4: rerun the job
 with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 
-## State (2026-11-21, evening)
-- 11-21 sweep landed b681ce3d (9 branches incl. OI's ccr-57eff422-5tdecg,
-  40 commits) on both branches; release ad18fd95, tag refused (local only).
-  Its first full gate lost check-cg to the container OOM (python 4.65 GB
-  beside ngd's yosys); CCV_RESUME=1 reran cg alone and passed. If cg OOMs
-  again, find the unit (likely ooe_wake/ooe_go/ooe_rsread) and add it to
-  tools/heavy-units.json. DI's and MI's branches moved: next sweep.
-- Landed b8233a39: DI's 8b6090d0 cherry-picked (DCU model drops + ECC in
-  arrays), dcu=model transp4 l1_ecc_fix=55, dcu-ecc-recode control,
-  MI-19 (2) drop bins, vadd4 replay drain on the stub MIU under miu=model
-  (MI-4 (A)(4)). TI-515 to DI, MI. MIU-model ECC rows fail until MI's
-  2d2259bf (pushes with DI's 7bf5073a); MI sees 388 PASS with it.
-- Landed 655286d1: MI-4 (B) fixed (FET stub ignored rewind_held; held
-  warp's rewind steps back over its retired barrier wait), MI-18's
-  CCV_LAT_MIU_PAIR_LAG=3, the 8ac4c441 interface change (drop,
-  check_bits; DI-18: MIU corrects, DCU never replays). TI-514.
-- /home/user/ti-ret is gone; the sweep ran from /home/user/ti-drop.
-- Landed d761c634 (ti-wp, SCOPED PASS on the 11-20 sweep 8c378e12): DI-6's
-  pins, MA-25, MI-9 (3) waypred, MI-8, MI-4 A2/A3, TI-499's sweep fallback.
-  TI-506 posted; DI, MI, MA, RA rung.
-- Landed 0ee1c423 (with DI's 9d251d57, strict DCU model): bank controls
-  under all four MIU x DCU sets (DI-11 (4); TI-512).
-- Landed 4f257a17 (with MI's 51cf5dd2): DI-10 pair pins (rope:12, vadd4
-  pair row dropped); bank controls pinned to the stub DCU (pair runs had
-  them on the model). TI-511 to DI, MI. Check pair runs before landing
-  anything that touches the bank or IMPL_PINS sections.
-- Landed ec8f3422: check-sv-hosted machine check on swap (MI-14; TI-510 to
-  MI, DI). DI-9: the pair's SV-host drift is a use-after-free in MI's
-  miu_block.cpp (MI's fix).
-- Landed 56c7ce54 (with MI's d639adb2): bank credits under both MIUs
-  (MI-13), slotform cold (task 56 done); TI-509 to MI. two-page-hit dropped
-  (MI, MA).
-- Landed 78e74f4e: MI-7 (a)(b)(d) cold-TLB section + pgcross kernel; TI-508
-  asks MI/MA whether to drop two-page-hit (no case: a two-page load is
-  ineligible first). Task 56: slotform cold line after MI's d639adb2.
-- Landed 836d3f89: impl_pins substitutes every pinned bin (DI re:TI-506;
-  TI-507).
-- The 11-20 release is 078f102d; the remote refused its tag
-  snapshot-2026-11-20-8c378e1 (local only, in /home/user/ti-size).
-- Disk: the first gate-push died of a full disk; freed ti-bench and ti-hooks
-  synth caches and old scratch dirs (13 GB free). scratchpad priv/ (4.3 GB)
-  and ~/.cache/ccache (5.1 GB) untouched: ask Daniel before clearing.
-- Known: the MIU model (no credits spent until MI's step 5) trips the stub
-  DCU's bank bound on slotform/coremark128; those lines are stub-MIU only.
-  MI-4's replay drain stall and vadd4 still need scenarios from MI.
+## State (2026-11-23)
+- DI-23 answered (TI-522, no code change): localsp mru doubling is the
+  stub MIU's MA-14 cross-warp head-of-line block behind a pred-store RMW
+  through the cacheless MLC stub (2 x ~1,000-cycle trips); MIU model shows
+  mru +3 cycles. Stub stays the functional reference (MA-14).
+- Landed 8e784c88 (SCOPED PASS 28/28): verify.sh sections dcu_rtl and
+  miu_rtl (DI's/MI's run-rtl.sh), gate-scope maps test/dcu, test/miu;
+  DI's DCU paths from 3b6b66f2 taken by checkout (merge: too many bases).
+  TI-521 to DI, MI (DI asked to check nothing missing).
+- 11-22 sweep landed 8ca2bf1b on both branches (full clean gate); release
+  041c6c62, tag snapshot-2026-11-22-8ca2bf1 refused (local only). It merged
+  MA's spec branch, AR's ccr-80102643-4n8bv4 (by hand: main.cpp --break
+  list conflict, HEAD's side a superset) and OI's ccr-57eff422-5tdecg (17).
+  OI's c69ee1a3 (provswap CCV_RAU_CONCURRENT=1, confirmed TI-520) and
+  dc2c3697 (demote_walk=1 default, OA 466) came after: next sweep.
+  /home/user/ti-ret is gone; sweep from /home/user/ti-l23.
+- Landed 63579fce (SCOPED PASS): MA-30 pa_fold (CCV_W_PA_FOLD), waypred
+  bits 4 / sel index, sim/skel/wayfold.h + rtl/common/ccv_common_wayfold.sv
+  lockstep, miu-fold-flip control, dcu-wp-nocompare registered, MI's
+  putIndexLead one-liner (MI owns it), waypred retarget; CCV-L23 table form
+  (DA rev 131) with check-1d fixtures. TI-518 (MA AR MI DI), TI-519 (OI OA).
+- Landed bc9d61ff: MA-29 check_bits 72 (CCV_DCU_ECC_K=128). TI-517.
+- Gate times: a scoped gate touching params now takes ~7 h (cg 3.4 h, ngd
+  3.7 h, mostly heavy-unit serialisation); plan pushes around it.
+- Disk: scratchpad priv/ and ~/.cache/ccache untouched: ask Daniel before
+  clearing. Worktrees ti-ecc72, ti-fold, ti-drop are landed and clean:
+  their build/ dirs may go.
+- Known: MIU-model rows on bank bounds are stub-MIU only (slotform,
+  coremark128). AR 405 leaves MA to state the mispredict path; a DCU
+  response field for it would be a new TI row.
 
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).
@@ -108,7 +93,7 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
    parked R2 upper half lost (MI-5). Then the pair dcu-drop-credit /
    dcu-drop-answers controls once MI's drop sender lands.
 3. Task 51 rest: MI-7 page-boundary kernel; MI-5 bins/slow regions.
-6. AR 370 ccv_common_err RTL; task 28 RAS wrapper (BIST override, spare
+4. AR 370 ccv_common_err RTL; task 28 RAS wrapper (BIST override, spare
    row/column, broadcast groups); AR 371 SPM banks; AR 392 PT base CSR
-   with Q-50; AR 393; OI-187 / OA-452.
-7. Low: RA re:RI-46 (3) SFU kill variant; RA 148 (post-sign-off).
+   with Q-50; AR 393; OI-187.
+5. Low: RA re:RI-46 (3) SFU kill variant; RA 148 (post-sign-off).
