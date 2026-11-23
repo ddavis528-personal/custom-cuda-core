@@ -1,6 +1,6 @@
 # AR handoff (top-level architect)
 
-Updated 2026-11-22 (trimmed from 65 KB; the full history before the trim is
+Updated 2026-11-23 (trimmed from 65 KB; the full history before the trim is
 `git show 60bceb62:.claude/handoff/AR.md`, and the register is the record).
 Keep this current at every task's end. CLAUDE.md holds the repo's rules; this
 file holds AR's.
@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 410 .670198 (tab rev 414).
-  - **The next AR row inserts after .670198**, labelled AR 411.
+  - Latest row: AR 411 .672138 (tab rev 415).
+  - **The next AR row inserts after .672138**, labelled AR 412.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,14 +98,21 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 414, OA 474, TI 517, MA 157, DI 41,
-  MI 35, RA 157, RI 91, IS 201, CP 160, OI 401, DA 131, Conventions 20 (full
-  sweep read 11-22; TI 517 read only for TI-518). Specs: FET tab rev 54, DCU
-  tab rev 82, MIU tab rev 161.
+- **Bookmarks** (revs read through): AR 415, OA 474, TI 532, MA 175, DI 69,
+  MI 38, RA 158, RI 91, IS 201, CP 160, OI 405, DA 131, Conventions 20 (full
+  sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
+  Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
 - **No dated tasks** (DA, in TI's session, TI 461): work is best effort in
   priority order; a dependency is met by reordering, never a due date. No date
   on a row, a handoff item or a promise; an old row's date is its priority.
   Dates here record when something happened, never when it is due.
+- **Sweep 2026-11-23 (Monday, no pings):** register: nothing new for AR in
+  the sweep read; MA rev 173 prefers AR 410 (1), fills term = DCU's 16 MLC
+  req_ids. Merged clcw9s 7, doowtf 155, 0ch1hh 18, n6402z 8, lecnjf 3,
+  664pgr 3; no conflicts. doowtf and 0ch1hh take ~28 min each to merge
+  (criss-cross merge bases): run merges and gate-waits as background tasks
+  with timeout 7200000. Gate PASS on cb7fa8e7 (ngd 10550 s, cg 9680 s);
+  pushed 193 commits; session home matches.
 - **Sweep 2026-11-22 (Sunday, no pings):** register: nothing for AR; DA
   129-131 recorded by OA in Daniel's session (ooe_mempl 21-flop CG waiver;
   OOE redirect lag option D; CCV-L23 "table" form with OA's 7 conditions).
@@ -223,6 +230,19 @@ Credit rules (TI-49):
 - DCU 64 sets now (512 on ti-nohit). CCV_L_PAGE_SHIFT 16.
 
 ## Open work (most urgent first)
+000i. **TI-532 / AR 411 .672138 (11-23; TI, MA rung): re-baseline
+   perf-register when ti-tblat lands (OWED BY AR).** TI-532: fix 8daf7a2c on
+   gate-scratch/TI-tblat, lands after the FILL_AGE gate; MEMOP timeout
+   ceil(10x32/16)x2048 = 40,960 (checked). Deltas: colwalk/transpose/sgemm
+   -84..-97%, cm1priv -10.8%, cm32priv -11.2%, cmpl32priv -2.3%, cm128priv
+   -23.0%; S1 kernels unchanged. The 1000-cycle region dates from the 11-13
+   merge 0a9a8e90 (f67bb983 only capped it), so every coremark -priv figure
+   in perf-register from 11-13 on carries it (L1 capacity AR rev 344, hit
+   latency AR rev 363, MA-30, DI-23). Re-baseline: mark each affected entry,
+   replace a table only where a re-run exists; cycles from TI's landing row
+   if FILL_AGE moved them, else TI-532's. MA (revs 174-175) re-runs the
+   MA-30 grid, L1 capacity and hit latency in one batch after landing; a row
+   to AR only if a step falls under 0.5% or a ranking flips.
 000h. **TI-531 testbench slow region (AR 410 .670198, 11-23; TI rung).**
    coremark128's data (0x110000+) sat in the stub's 1000-cycle region
    (kDeepBase 0xC0000 to 4 GB), meant only for Daniel's stall kernel
