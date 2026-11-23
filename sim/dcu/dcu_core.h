@@ -69,6 +69,7 @@ struct Req {
   Line wdata{};      ///< a store's data
   uint64_t tid = 0;  ///< trace identity, carried to the response
   bool reread = false;   ///< pipe C: the true way's read after a mispredict
+  bool ent_gone = false; ///< its entry credit went back already (a re-read, a relook)
   uint64_t born_p = 0;   ///< a store hit's P, its identity in stp_ (model only)
 };
 
@@ -315,6 +316,11 @@ private:
   void serve(const Acc &a, uint64_t born);
   void serveLook(const Req &r, uint64_t born);
   void entLeave(unsigned b) { ++ent_owed_[b]; --ent_used_[b]; }
+  /// The RTL's credit timing (DI-36): an entry leaves at its D2 hit or its
+  /// placement (D3), not its access; the return goes out from cycle t.
+  void entLeaveAt(unsigned b, uint64_t t) { ent_due_.emplace(t, b); }
+  void entLeave(unsigned b, const Req &r, uint64_t t) { if (!r.ent_gone) entLeaveAt(b, t); }
+  std::multimap<uint64_t, unsigned> ent_due_;
   void stdLeave(unsigned b);
   bool held(uint64_t line) const { auto it = held_.find(line); return it != held_.end() && it->second; }
   void hold(uint64_t line) { ++held_[line]; }
