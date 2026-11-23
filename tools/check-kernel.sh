@@ -2414,15 +2414,16 @@ if [ "$(field "$log" mem_mismatch)" -gt 0 ] 2>/dev/null; then
 else
   bad "--break fet-ignore-held" "the warp resumed past its wait unnoticed: $(grep '^KERNEL' "$log")"
 fi
-# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 326
-# (332 before the testbench's 20+-5, DA rev 132)
+# A demotion's straggler (AR 395 (1), OI-189): lnorm1 demoted at cycle 368
+# (332 before the testbench's 20+-5, DA rev 132; 324-329 also walk it, but
+# there no-straggler-walk diverges only in memory)
 # (328 in OI's tree, whose timing differs; 342 under both block models, DI's
 # re:TI-503, an IMPL_PINS row)
 # leaves a uop of the warp in DEC under rename backpressure past OOE's walk;
 # OOE walks it on arrival and beats its lanes, and FET migrates only once the
 # warp's credits are back to full (AR 395 (3)). no-straggler-walk drops it
 # unwalked, so its lanes keep FET's PC past it and lose those instructions.
-sdem=$(impl_pins lnorm1-straggler demote=326); sdem=${sdem#demote=}
+sdem=$(impl_pins lnorm1-straggler demote=368); sdem=${sdem#demote=}
 log="$B/kernel_lnorm1_straggler.log"
 CCV_RAU_DEMOTE=at:$sdem "$SKEL" --kernel build/oracle/lnorm1/oracle.jsonl >"$log" 2>&1
 w=$(ok "$log" decq_straggler_beat=1)
