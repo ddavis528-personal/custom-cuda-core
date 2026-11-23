@@ -1,0 +1,13 @@
+{
+  "_comment": "bad_table.sv's reference_tmisidx (check-1d): refused.",
+  "table": {
+    "mpark_cy04h": {
+      "readers": [
+        "mrd_cy01h"
+      ],
+      "by": "OA",
+      "date": "2026-11-22",
+      "why": "tmisidx control"
+    }
+  }
+}

@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 409, TI 516, OA 466, IS 201, CP 160, OI 399, RA 157, RI 91, MA 157, DA 128, MI 32, DI 41.
+Conventions 20, AR 409, TI 517, OA 468, IS 201, CP 160, OI 401, RA 157, RI 91, MA 162, DA 131, MI 35, DI 49.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -87,9 +87,23 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - DI-26 ANSWERED (MA rev 157): dcu_bctl budgets set in the row (inputs arrival 0, sa req 9, ce req 4, other outs 0);
   DI writes dcu_bctl.ngd.json with by "MA (MA rev 157, DI-26)"; partition changes (a)-(f) confirmed; DCU tab rev 84
   (snapshot at 82: refresh with next batch). Slice 2 owes store-to-load order in the bank queue (DI-26 (f)).
-- TI-517 landed MA-29 (bc9d61ff, TI rev 516): mark landed in the tabs with the next batch.
-- DI-25 ANSWERED (MA rev 156): dcu_btag's own flopped pick from channel leads confirmed (DCU tab rev 83; snapshot
-  still 82, refresh with the next batch); slice 2: tag-RF fill is RMW in the bank's free gap (RF stays 1r1w,
+- Sweep 2026-11-22 merged 11 branches (AR's 80102643 by commit-tree: 5 merge bases hung the recursive merge),
+  full PASS, pushed. TI-517 landed MA-29 (bc9d61ff), TI-518 landed MA-30 (63579fce); both marked in the tabs.
+  Snapshots refreshed: dcu-spec rev 87, miu-spec rev 162. Next: DCU slice 2, then MIU slices 2-4.
+- DCU SLICE 2 COMPLETE (MA revs 159-162, DCU tab revs 89-96, MIU tab rev 163 UE rule; DI and MI notified;
+  snapshots dcu 96 / miu 163; dcu-impl 3a-3d). Part 2 eviction/wb (fill's own entry reused for writeback, 2 wb
+  buffers, DI-21 answered), part 3 stores (std RF 4x16x256 a bank + masks in flops per MACRO-1; dirty bits to
+  flops, tag RF 136 bits; store-hit ack at contracted cycle; fill merges only stores ahead of first load),
+  part 4 probes (4 buffers, RMW tag lookup), UE second answer both tabs, TI-475 repair/BIST groups.
+  NEXT: MIU slices 2-4; then TI's cold-TLB scenarios; fold the coverage bins into the tabs.
+- (history) DI-30: DCU slice 2 first, in parts. PART 1 LANDED (DCU tab rev 89, MA rev 159, DI
+  notified; snapshot rev 89; dcu-impl phase 3a): dcu_mshr 16 (merge 4, miss-wait in bank queue = MA-12 hold, bank
+  order rule), MLC req at H+5 from D2, dcu_fill 4 FBs (F capture, F+1 encode + victim, F+4 answers), write at W
+  under BANK_AGE with tag RF RMW, tag-stale re-looks, late order aged-bank > fills > banks. NEXT: part 2 eviction
+  and writeback (DI-21; dirty victim read before W; writeback's place in the MLC request order), then part 3
+  stores (std index in merge list; merge only stores ahead of first load), part 4 probes, UE second response,
+  then TI-475 column repair/BIST groups. DI-28 (PLRU D+3, owed max bin) FYI only.
+- DI-25 ANSWERED (MA rev 156): dcu_btag's own flopped pick from channel leads confirmed (DCU tab rev 83); slice 2: tag-RF fill is RMW in the bank's free gap (RF stays 1r1w,
   forwarding covers same-set writes); model keeps the stub's same-cycle loser with a zero CHECK under MIU=model.
 - MA-30 AGREED (AR 405, rev 409) with conditions, answered MA rev 155, DCU tab rev 82, MIU tab rev 161 (pushed with
   snapshots): mispredict = no contracted slot, re-read H+5, late at due+2 (no rsp field); fold table has a valid

@@ -538,6 +538,41 @@ earlier is still its own stage (`reference_loop.sv`'s `hit2_cy02h`).
 of another pipeline's register, and one declared two stages ahead where the
 tags give one, are refused.
 
+**A declared table** (DA rev 131, 2026-11-22: "Adopt the table form with all
+seven conditions"; OA 452, OI-187). An array written at its writer's stage
+and read long after, through an index at the reader's own stage, fits
+neither form above: `ooe_ratmap`'s parked table (32 x 64, written cq04h,
+read cq01h) is parked by a demotion and read by a restore, neither a loop's
+back edge nor a later copy on the reader's pipeline. It is declared in the
+same file: `{"table": {"<array>": {"readers": ["<reader>", ...], "by",
+"date", "why"}}}`. Its reads count at the reader's stage, as a bypass read
+does, and the lint refuses the declaration, leaving the stage skip reported,
+unless all seven hold:
+
+1. `by` is an architect, each declaration reviewed alone, and each listed
+   reader reads the array (a stale one is refused).
+2. The array is an array: an unpacked dimension of 2 or more words, read
+   only through an index. A plain register can never be declared, so the
+   form cannot hide a scalar stage skip.
+3. The array keeps its writer's tag: tagged one past its write data's
+   latest stage (its data, index and enable), by the plain arithmetic, and
+   written only in an `always_ff` under an enable.
+4. The index the reader uses is tagged, at the reader's own stage (or, for
+   a register reading it, its D side). The read counts at the reader's
+   stage; the reader's other inputs stay held to the arithmetic.
+5. The module holds an assertion naming the write enable and the read (the
+   array or the reader's index), that a word is never read in the cycle it
+   is written, or a cycle after if the write is flopped: any same-cycle
+   forward is a bypass and is declared as one. The block's bench runs it,
+   and a control that breaks it fails (the module owner's).
+6. Timing is not exempt: check-ngd measures the read path whatever the tags
+   say.
+7. `tools/check-1d.sh` holds it: `rtl/lint/reference_table.sv`, ooe_ratmap's
+   shape, passes; `bad_table.sv`'s declared scalar, index a stage early,
+   array tagged past its writer, reader that does not read, declaration by
+   OI and module with no assertion are refused, and the shape undeclared is
+   refused by the arithmetic.
+
 ### CCV-L22 — a block runs on its own gated clock
 
 No `always_ff @(posedge core_clk)` inside a block, except the wake detector.

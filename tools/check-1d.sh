@@ -35,6 +35,7 @@ python3 tools/lint-rtl.py --schema=rtl/lint/bad_interfaces.json \
 python3 tools/lint-rtl.py rtl/lint/bad_xprop.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_naming.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_feedback.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_table.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -145,13 +146,14 @@ gfail=0
 for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/ccv_reference_w.sv rtl/lint/reference_gated_enable.sv \
          rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv \
-         rtl/lint/reference_feedback.sv rtl/lint/reference_loop.sv; do
+         rtl/lint/reference_feedback.sv rtl/lint/reference_loop.sv \
+         rtl/lint/reference_table.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (8 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (9 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -195,6 +197,29 @@ a bypass whose source is off the reader's path|offp_cy02h's declared bypass of o
 ...and its stage skip reported|offp_cy02h is at stage 02 but combinational logic over stage(s) 02,03
 a bypass at an offset the tags do not give|wofs_cy02h (stage 02) reads w2_cy03h (stage 03), 1 stage(s) ahead, but its bypass is declared 2 ahead
 a stage-03 read in an if's condition|cnd_cy02h is at stage 02 but combinational logic over stage(s) 02,03
+WANT
+
+# CCV-L23's declared table (DA rev 131, OA 452's seven conditions):
+# reference_table.sv, ooe_ratmap's shape, passes (above). bad_table.sv's
+# are refused, one condition each: a declared scalar, an index not at the
+# reader's stage, a table whose tag is not its writer's, a reader that does
+# not read it, a declaration not an architect's, and a module with no
+# assertion; and the shape undeclared, whose read the arithmetic refuses.
+while IFS='|' read -r what want; do
+  if grep -qF "$want" "$TMP/bad.log"; then
+    say "CCV-L23 table refused: $what" "PASS"
+  else
+    bad "CCV-L23 table refused: $what" "no finding: $want"
+  fi
+done <<'WANT'
+a declared scalar|table spark_cy04h is refused: spark_cy04h is not an array
+an index not at the reader's stage|table mpark_cy04h's read by mrd_cy01h is refused: its index 'mri_in_cy00h' is at stage 00, not the reader's own (01)
+a tag not its writer's|table bpark_cy05h is refused: bpark_cy05h is tagged stage 05, but its writes' data, index and enable reach stage 03
+a reader that does not read|table npark_cy04h lists reader nrd_out_cy02h, which does not read it
+not an architect's|table opark_cy04h is refused: not an architect's (by 'OI'
+no assertion|table apark_cy04h is refused: reference_tnoassert holds no assertion naming its write enable
+...and each refused read's stage skip reported|ord_cy01h is at stage 01 but combinational logic over stage(s) 01,04 gives 04
+undeclared, the arithmetic refuses it|urd_cy01h is at stage 01 but combinational logic over stage(s) 01,04 gives 04
 WANT
 
 # CCV-L29 (DA, 2026-10-23): an untagged net at module level and one in a

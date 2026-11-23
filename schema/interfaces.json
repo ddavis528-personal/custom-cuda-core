@@ -880,13 +880,14 @@
         "write_data",
         "byte_mask",
         "lead_set_index",
-        "drop"
+        "drop",
+        "pa_fold"
       ],
       "lead_fields": [
         "lead_set_index"
       ],
       "lead_why": "The L1 index lead (AR 362 Strawman B, AR 364, MA revs 64-68; DA rev 121): DCU starts its array read, speculatively, at H+2, a cycle before the PA's payload lands at H+3, which keeps CCV_LAT_L1_HIT at 7 at 512 KiB. On every slot that carries a lookup, lead_set_index is the lookup's set, physical address bits [log2 CCV_P_LINE_BYTES + CCV_W_DCU_SET - 1 : log2 CCV_P_LINE_BYTES] ([15:7] at 512 sets); its low clog2(CCV_DCU_BANKS) bits are the lookup's bank ([9:7], 8 half-rate banks, DA rev 123), so no bank field is sent (AR 364). It is page offset, the same in the VA and the PA, since a way fits in a page (CCV_DCU_SETS's require, AR 362 (1)), so MIU sends it from the address A1 finally forms for the slot's group leader, chosen by lane position, never by an address compare (AR 362 (2)). It launches with the slot's valid at H+1, from MIU's own flops (CG-5; the flop that also feeds A2 has a (* keep *) copy for the output, AR 362 (5)), a cycle ahead of the payload. COPY: the payload keeps the full phys_addr, which the tag compare uses, and the lead equals its bits, bit for bit; the DCU stub refuses a lead that differs, by name. DCU commits nothing on the valid and the lead alone: LRU, way-predictor training, MSHR or fill allocation and every counter wait for the payload, and a store writes on the PA-verified lookup (AR 362 (3), AR 400 (1)). A lookup whose payload sets drop (A2 found a TLB miss, a fault, a page split, a bank loser or a duplicate; MA-27, AR 400) leaves the arrays as they were: DCU reads no data on it, changes no state (LRU and way prediction included), allocates no queue entry, raises no CE count, no UE refetch entry and no core-fatal, and sends no response; its req_id is don't-care, MIU allocates no id for it, and MIU refunds its bank entry credit itself at A2 (DI-12, MA rev 143). The DCU stub refuses a dropped lookup that changes state or answers (dcu-drop-answers). MLC's probes and fills reach the arrays on their own payloads, unchanged (AR 362 (6)). DCU's capture flops, 9 a slot and 36 in all, are a lead waiver (\"lead\": true) counted in DCU's 2% (AR 362 (5), MA rev 68; DA's ruling on RI-15).",
-      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index leads it by a cycle (AR 362, AR 364).",
+      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask; the lookup's set index leads it by a cycle (AR 362, AR 364). pa_fold (MA-30, AR 405): the way predictor's CCV_DCU_WAYPRED_BITS-bit XOR fold of phys_addr's tag, PA[47:16] (the PFN), in k-bit chunks from bit 16 up, the last zero-extended: the one fold MIU and DCU share (sim/skel/wayfold.h, rtl/common/ccv_common_wayfold.sv, held together by check-skel). MIU keeps it beside each TLB entry's PFN, written at the fill, so A2 sends it at 0 NGD; DCU compares it with its flopped folds at H+3 and reads the lowest matching way, since it cannot fold the PA itself in H+3 within 25 NGD. A payload field, not a lead; unread when prediction is off (CCV_DCU_WAYPRED_BITS 0, the field then 1 bit). The DCU stub refuses a fold that is not its own of phys_addr, by name (miu-fold-flip).",
       "id_classes": [
         "txn"
       ],
@@ -1216,9 +1217,10 @@
         "warp_id",
         "resume_pc",
         "arch_state_ready",
-        "refused"
+        "refused",
+        "pc_kept"
       ],
-      "doc": "Confirmation that only architectural state remains, with the resume PC. Migration may begin. OOE sends it only once the epoch notice it sent for the demotion (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET, at its send cycle plus that channel's fixed latency, the same rule as its kill_ack. The guarantee that a restored warp is never fetched under an epoch older than OOE's (V-57) is then explicit rather than resting on the migration handshake's length. Every demote gets exactly one drained. REFUSED (OA's response TI-25 (2)): a demote that lands after the warp's exit has retired is refused, with no squash, no map and no rewind beats, and drained carries refused = 1; RAU cancels the demotion (no migration commands), and exited frees the slot as for any finishing warp. A demote that lands before the exit retires is an ordinary demotion, and the squash takes the exit with it.",
+      "doc": "Confirmation that only architectural state remains, with the resume PC. Migration may begin. OOE sends it only once the epoch notice it sent for the demotion (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET, at its send cycle plus that channel's fixed latency, the same rule as its kill_ack. The guarantee that a restored warp is never fetched under an epoch older than OOE's (V-57) is then explicit rather than resting on the migration handshake's length. Every demote gets exactly one drained. REFUSED (OA's response TI-25 (2)): a demote that lands after the warp's exit has retired is refused, with no squash, no map and no rewind beats, and drained carries refused = 1; RAU cancels the demotion (no migration commands), and exited frees the slot as for any finishing warp. A demote that lands before the exit retires is an ordinary demotion, and the squash takes the exit with it. PC_KEPT (OA 469, AR 406, AR 408): pc_kept = 1 iff no instruction of the warp has retired since its tier-1 slot was allocated (launch or restore-alloc). resume_pc is then don't-care, and RAU resumes the warp at the PC it allocated the slot with: the launch start_pc, or the resume_pc it restored, which RAU's parked record keeps valid from the restore to the warp's next drained (AR 407; RAU keeps no PC register of its own). Otherwise pc_kept = 0 and resume_pc is as before. With refused = 1, pc_kept is don't-care. The architectural PC moves only when an instruction retires, so with nothing retired since the alloc it is still the alloc PC (AR 406 (2)). The models CHECK that on pc_kept = 1 the oracle's architectural PC equals the PC RAU resumes at.",
       "id_classes": [
         "none"
       ]
@@ -1678,6 +1680,7 @@
     "ent_ret": "CCV_DCU_BANKS",
     "std_ret": "CCV_DCU_BANKS",
     "refused": "1",
+    "pc_kept": "1",
     "ue": "1",
     "ce_alert": "1",
     "pca_place": "CCV_W_PCA_PLACE",
@@ -1803,6 +1806,7 @@
     "lead_fault": "1",
     "lead_set_index": "CCV_W_DCU_SET",
     "drop": "1",
+    "pa_fold": "CCV_W_PA_FOLD",
     "lead_br_mask": "CCV_W_LANE_MASK",
     "target_pc": "CCV_W_VA",
     "fetch_epoch": "CCV_P_W_FETCH_EPOCH",
