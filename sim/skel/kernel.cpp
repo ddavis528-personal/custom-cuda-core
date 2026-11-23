@@ -118,12 +118,22 @@ void Kernel::checkParked(unsigned w) {
   if (pk.resume_pc != pc)
     fail("parked warp %u resumes at %llx; ccv-sim's next after %u retired is %llx", w,
          (unsigned long long)pk.resume_pc, n, (unsigned long long)pc);
+  // Each register compared within the width ccv-sim gives it after the n
+  // retired (O-38; OI-200, OA 469): above a narrow element the row is zero,
+  // while ccv-sim keeps the bits the slice last held. The width is ccv-sim's,
+  // never the one OOE's map reports, so a wrong width cannot hide a value.
+  // parked-full-width: every register at 32 bits, as before.
+  const uint32_t widths = n < o.recs.size() ? o.recs[n].widths
+                          : o.recs.empty()  ? 0u
+                                            : o.recs.back().widths;
   unsigned bad = 0;
   for (unsigned a = 0; a != kArchGprs; ++a) {
     auto row = pk.rows.find(a);   // one row per register, Ra as row a (TI-25 (1))
+    const uint32_t em =
+        brk == "parked-full-width" ? ~0u : elemMask(widths >> (2 * a) & 3u);
     for (unsigned l = 0; l != kLanes; ++l) {
       const uint32_t got = row == pk.rows.end() ? 0xbad0bad0u : row->second[l];
-      if (got != want[a][l] && bad++ < 4)
+      if ((got & em) != (want[a][l] & em) && bad++ < 4)
         fail("parked warp %u R%u lane %u: PCA %08x, ccv-sim %08x", w, a, l, got, want[a][l]);
     }
   }
@@ -861,7 +871,13 @@ private:
     if (ls != set)
       k_.fail("dcu: slot %u req_id %u lead_set_index %llx is not its phys_addr %llx's set %llx",
               s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)ls,
-              (unsigned long long)pa, (unsigned long long)set);
+              (unsigned long long)pa, (unsigned long long)set);    // MA-30, AR 405 (3): MIU's pa_fold is DCU's own fold of phys_addr,
+    // whenever the predictor is on (--break miu-fold-flip).
+    const uint64_t pf = get(req, c.miu_dcu, "pa_fold");
+    if (wayPredBits() && pf != paFold(pa))
+      k_.fail("dcu: slot %u req_id %u pa_fold %llx is not its phys_addr %llx's fold %x",
+              s, unsigned(get(req, c.miu_dcu, "req_id")), (unsigned long long)pf,
+              (unsigned long long)pa, paFold(pa));
   }
 
   void work() override {
@@ -1318,6 +1334,7 @@ private:
   }
   std::deque<unsigned> order_;               ///< memops, as OOE issued them
   std::map<unsigned, Job> stores_;           ///< awaiting commit, by rob tag
+  std::set<unsigned> ue_pending_;             ///< req_ids past a UE's first answer (MI-20)
   std::deque<Job> committed_;
   /// A load's fault, held to its L1 contract cycle (V-44).
   std::vector<std::pair<uint64_t, Q>> late_faults_;
@@ -1569,6 +1586,26 @@ private:
         // Matched by req_id, not by slot or arrival order: DCU may answer
         // four outstanding requests in any order.
         const unsigned id = unsigned(get(m.payload, c.dcu_miu, "req_id"));
+        // A recovered UE's two answers under one req_id (MI-20; MIU spec rev
+        // 163, ECC; DCU slice 2 part 4): a first answer whose line has a
+        // double-bit syndrome on any word is no answer. Its completion is
+        // withheld and the id stays live, whatever owns it, while DCU
+        // invalidates and refetches; the second answer, a miss with a clean
+        // line, is the id's one answer. ue-close-first: the first is taken
+        // as the answer, so the second finds its id not outstanding.
+        {
+          const Line raw = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+          const uint32_t cb = field(c.dcu_miu, "check_bits").lsb;
+          if (ue_pending_.count(id)) {
+            if (get(m.payload, c.dcu_miu, "hit") || !lineClean(raw, m.payload, cb))
+              k_.fail("miu: req_id %u's second answer after a UE is not a clean miss", id);
+            ue_pending_.erase(id);
+            k_.hit("ue_second_answer");
+          } else if (lineUe(raw, m.payload, cb) && k_.brk != "ue-close-first") {
+            ue_pending_.insert(id);
+            continue;
+          }
+        }
         auto fl = fills_.find(id);
         if (fl != fills_.end()) {
           // A window fill: every slot its line holds (TI-31).
@@ -1894,9 +1931,12 @@ private:
   /// AR 362: the lookup's set index leads it, from the formed address
   /// (the stub's line is its leader's); its bank is the index's low bits
   /// (AR 364). --break dcu-set-lead sends a wrong one, which DCU must refuse
-  /// by name.
+  /// by name. With it, the payload's pa_fold, A2's fold of the same address
+  /// (MA-30, AR 405); --break miu-fold-flip flips its low bit, which DCU must
+  /// refuse by name too.
   void putIndexLead(Bits &r, uint64_t pa) {
     put(r, ch().miu_dcu, "lead_set_index", indexLeadSet(pa) ^ (k_.brk == "dcu-set-lead" ? 1u : 0u));
+    put(r, ch().miu_dcu, "pa_fold", paFold(pa) ^ (k_.brk == "miu-fold-flip" ? 1u : 0u));
   }
 
   Bits withLead(Bits m) {
@@ -2853,7 +2893,7 @@ private:
   }
 
   bool busy() const override {
-    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return !jobs_.empty() || !late_faults_.empty() || !held_.empty() || !ecc_beats_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() || !ue_pending_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
            !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
@@ -5951,7 +5991,12 @@ private:
     ready_.erase(w);   // the demotion's own discard reports it again
     syu_ready_.erase(w);
     syuOp(kSyuDemote, w);   // SYU answers its waits to RAU from now (TI-40)
+    // The parked record starts afresh, but keeps its PC: a restored warp's
+    // resume_pc stays valid to its next drained, which may say pc_kept
+    // (AR 407 (3)).
+    const uint64_t kept_pc = k_.parked.count(w) ? k_.parked[w].resume_pc : 0;
     k_.parked[w] = Kernel::Parked();
+    k_.parked[w].resume_pc = kept_pc;
     Bits d = msgOf(c.rau_demote);
     put(d, c.rau_demote, "warp_id", w);
     put(d, c.rau_demote, "squash_to_retirement", 1);
@@ -5976,7 +6021,22 @@ private:
     }
     if (exited_.count(w))
       k_.fail("rau: warp %u drained after its exit retired, where OOE refuses (TI-25)", w);
-    k_.parked[w].resume_pc = get(m, c.ooe_drained, "resume_pc");
+    // pc_kept (AR 406, AR 408): nothing of the warp retired since its slot
+    // was allocated, so drained's resume_pc is don't-care and RAU resumes it
+    // at the PC it allocated the slot with: the grid's start_pc after a
+    // launch, the restored resume_pc after a restore (AR 407). The parked
+    // check then holds that PC to ccv-sim's. rau-pc-from-drained: RAU takes
+    // drained's resume_pc anyway.
+    if (get(m, c.ooe_drained, "pc_kept") && k_.brk != "rau-pc-from-drained") {
+      if (restored_.count(w)) {
+        k_.hit("pc_kept_restore");   // the record's PC, left as it was
+      } else {
+        k_.parked[w].resume_pc = k_.orcs[w].code_base + k_.orcs[0].entry;
+        k_.hit("pc_kept_launch");
+      }
+    } else {
+      k_.parked[w].resume_pc = get(m, c.ooe_drained, "resume_pc");
+    }
     if (places_.empty()) {
       k_.fail("rau: warp %u drained, and PCA has no free place", w);
     } else {

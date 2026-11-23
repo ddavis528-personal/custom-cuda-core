@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALL = "ALL"
 ALWAYS = ["s1a", "s1d", "iface", "vlint"]
 # Every section that reads RTL, its benches or its synthesis flow.
-RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "rcu_rtl", "rcu_ls",
+RTL = ["s1b", "xprop", "ctech", "cg", "ngd", "clockgate", "ooe_rtl", "rcu_rtl", "miu_rtl", "dcu_rtl", "rcu_ls",
        "top", "formal", "phys", "svh", "links"]
 # The sections that read RI's RCU RTL and its benches (RI-10; rcu_rtl, RI's
 # re:TI-371: test/rcu/run-rtl.sh), and, since RI's assembled ccv_rcu (RI-33)
@@ -115,16 +115,24 @@ MAP = [
     # lockstep of sim/skel/secded.h against them (test/vl/vl_secded_tb.cpp).
     ("rtl/common/ccv_common_secded_", RTL + ["skel"]),
     ("rtl/include/ccv_secded.svh", RTL + ["skel"]),
+    # The way predictor's fold (MA-30, AR 405): every RTL section, and
+    # check-skel's lockstep of sim/skel/wayfold.h against it.
+    ("rtl/common/ccv_common_wayfold", RTL + ["skel"]),
     ("rtl/", RTL),
     ("test/kernels/", ["kernel", "rcu_ls", "svh"]),
     ("test/ooe/", ["ooe_rtl", "cg", "ngd"]),
     ("test/rcu/", RCU_RTL),
+    # MI's and DI's RTL benches (MI-16; DI-24 (4)) and the units check-cg and
+    # check-ngd measure from the same directories.
+    ("test/miu/", ["miu_rtl", "cg", "ngd"]),
+    ("test/dcu/", ["dcu_rtl", "cg", "ngd"]),
     ("test/cg/", ["cg"]),
     # The hard macros' fixture (AR's register rev 344): both selftests'.
     ("test/macro/", ["cg", "ngd"]),
     # The SRAM model's lockstep against rtl/macro/ (check-skel).
     ("test/vl/vl_sram_", ["skel"]),
     ("test/vl/vl_secded_", ["skel"]),
+    ("test/vl/vl_wayfold_", ["skel"]),
     ("test/ngd/", ["ngd"]),
     ("test/neg/", ["iface"]),
     ("test/formal/", ["formal"]),
@@ -261,6 +269,15 @@ def selftest():
                "an RCU RTL change skips a section that reads %s: %s" % (x, s))
     s, _ = scope(["test/rcu/r_tb.cpp"])
     expect(s != ALL and "rcu_rtl" in s, "an RCU bench change skips the benches: %s" % s)
+    for blk in ("miu", "dcu"):
+        for p in ("rtl/%s/%s_cap.sv" % (blk, blk), "test/%s/cap_tb.cpp" % blk,
+                  "test/%s/cg-units.json" % blk):
+            s, _ = scope([p])
+            expect(s != ALL and {blk + "_rtl", "cg", "ngd"} <= set(s),
+                   "%s skips the %s RTL benches or check-cg/check-ngd: %s" % (p, blk.upper(), s))
+        s, _ = scope(["test/%s/run-rtl.sh" % blk])
+        expect(s != ALL and "ooe_rtl" not in s and "rcu_rtl" not in s,
+               "a %s bench change runs other blocks' benches: %s" % (blk.upper(), s))
     # The block's lock-step job (RI's, adopted for rcu_blk; RI-36, RI-37):
     # the RTL, the model, the skeleton that dumps its ports, the kernels it
     # runs, the port list and packages it reads, its scripts and TI's control

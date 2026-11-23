@@ -1,0 +1,13 @@
+{
+  "_comment": "bad_table.sv's reference_tscalar (check-1d): refused.",
+  "table": {
+    "spark_cy04h": {
+      "readers": [
+        "srd_cy01h"
+      ],
+      "by": "OA",
+      "date": "2026-11-22",
+      "why": "tscalar control"
+    }
+  }
+}
