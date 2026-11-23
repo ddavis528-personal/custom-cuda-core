@@ -10,6 +10,8 @@
 #   miu_mq: test/miu/mq_tb.cpp, the memop queue, controls slot and discard
 #   miu_agu8: test/miu/agu8_tb.cpp, one lane octet's A1 sums and F-ALIGN,
 #            controls xfer (O-80's size ignored) and sext (disp unsigned)
+#   miu_cred: test/miu/cred_tb.cpp, DCU bank credits and the A1 gate,
+#            controls early (a return counted as it lands) and norefund
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 B=build/miu-rtl; mkdir -p "$B"
@@ -48,4 +50,7 @@ control miu_mq discard
 bench miu_agu8 test/miu/cg-build.sh miu_agu8 "$B/miu_agu8" -- "$B/miu_agu8/tb"
 control miu_agu8 xfer
 control miu_agu8 sext
+bench miu_cred test/miu/cg-build.sh miu_cred "$B/miu_cred" -- "$B/miu_cred/tb"
+control miu_cred early
+control miu_cred norefund
 exit $fail
