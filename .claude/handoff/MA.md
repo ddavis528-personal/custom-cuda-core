@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 409, TI 517, OA 468, IS 201, CP 160, OI 401, RA 157, RI 91, MA 157, DA 131, MI 35, DI 41.
+Conventions 20, AR 409, TI 517, OA 468, IS 201, CP 160, OI 401, RA 157, RI 91, MA 159, DA 131, MI 35, DI 49.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -90,6 +90,13 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - Sweep 2026-11-22 merged 11 branches (AR's 80102643 by commit-tree: 5 merge bases hung the recursive merge),
   full PASS, pushed. TI-517 landed MA-29 (bc9d61ff), TI-518 landed MA-30 (63579fce); both marked in the tabs.
   Snapshots refreshed: dcu-spec rev 87, miu-spec rev 162. Next: DCU slice 2, then MIU slices 2-4.
+- DI-30 (Daniel's priority, via DI): DCU slice 2 first, in parts. PART 1 LANDED (DCU tab rev 89, MA rev 159, DI
+  notified; snapshot rev 89; dcu-impl phase 3a): dcu_mshr 16 (merge 4, miss-wait in bank queue = MA-12 hold, bank
+  order rule), MLC req at H+5 from D2, dcu_fill 4 FBs (F capture, F+1 encode + victim, F+4 answers), write at W
+  under BANK_AGE with tag RF RMW, tag-stale re-looks, late order aged-bank > fills > banks. NEXT: part 2 eviction
+  and writeback (DI-21; dirty victim read before W; writeback's place in the MLC request order), then part 3
+  stores (std index in merge list; merge only stores ahead of first load), part 4 probes, UE second response,
+  then TI-475 column repair/BIST groups. DI-28 (PLRU D+3, owed max bin) FYI only.
 - DI-25 ANSWERED (MA rev 156): dcu_btag's own flopped pick from channel leads confirmed (DCU tab rev 83); slice 2: tag-RF fill is RMW in the bank's free gap (RF stays 1r1w,
   forwarding covers same-set writes); model keeps the stub's same-cycle loser with a zero CHECK under MIU=model.
 - MA-30 AGREED (AR 405, rev 409) with conditions, answered MA rev 155, DCU tab rev 82, MIU tab rev 161 (pushed with
