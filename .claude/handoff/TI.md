@@ -48,6 +48,10 @@ Last row TI-529. Row insert payload: ops insert, target {"kind":"blocks",
 Every long tool detaches and exits 5. Wait with `tools/gate-wait.sh <log>` as
 a background task, timeout 7200000 (exit 3: rerun the wait; 4: rerun the job
 with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
+Never run skeleton measurements beside a gate: on 11-23 a coremark run
+(2.7 GB) beside check-cg (5.4 GB) OOM-killed the cg job and lost a 7 h gate.
+bg-run dies with its 30-min wrapper; a measurement runs `setsid nohup` with a
+background `while pgrep` wait.
 
 ## State (2026-11-23)
 - Landed ba085cda (SCOPED PASS 28/28) on both branches: DI's slice 2
@@ -72,6 +76,19 @@ with CCV_RESUME=1; RESUMED PASS counts as the full gate, Daniel 11-20).
 - Known: MIU-model rows on bank bounds are stub-MIU only (slotform,
   coremark128). AR 405 leaves MA to state the mispredict path; a DCU
   response field for it would be a new TI row.
+
+## In flight (11-23)
+- ti-fold fc32593d: CCV_DCU_FILL_AGE=4 (MA re:DI-37, task 71). Gate OOM-killed
+  (my measurement beside it); rerun gate-push once measurements end, then row
+  to MA, DI.
+- ti-drop branch ti-tblat 8daf7a2c (gate-scratch/TI-tblat): AR-410, kSlowEnd
+  1 MiB, CCV_TB_LATENCY, derived CCV_P_TIMEOUT_MEMOP 40960; cm128 bounded line
+  at CCV_TB_LATENCY=1000. Before/after table in scratchpad tblat-measure.tsv
+  (coremarkpl32priv before must be re-run: OOM). Then: row to AR (cc MA, DI,
+  MI), full check-kernel on ti-tblat (localsp/privwin/slotform/waypred moved:
+  re-pin expectations), merge onto FILL_AGE tip, gate-push.
+- 11-23 daily sweep repo half not run yet: after the FILL_AGE gate.
+- TI-530 (DI-38 1-4: lands with DI's tip), TI-531 (cm128 root cause, AR-410).
 
 ## Open work (priority order)
 0. MI-12 order (Daniel via MI): all done (TI-506, 508, 509).
