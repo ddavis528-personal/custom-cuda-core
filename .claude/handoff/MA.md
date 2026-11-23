@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 417, TI 539, OA 479, IS 201, CP 160, OI 405, RA 158, RI 91, MA 185, DA 132, MI 44, DI 79.
+Conventions 20, AR 417, TI 539, OA 479, IS 201, CP 160, OI 405, RA 158, RI 91, MA 186, DA 132, MI 47, DI 79.
 - Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
   MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
   merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
@@ -106,6 +106,7 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - OA-479: OA recommends to Daniel a narrow two-writer CCV-L23 table form; if adopted, MA signs DCU's fold-table declaration (condition 1). Watch DA tab. Bookmark OA 479.
 - DI-42 SPECIFIED (MA rev 182-183, DCU tab rev 121): fold-table margin (OA-479 (b), DA adopted) held by re-read not bypass: margin lookups take mispredict re-read (late, due+2; CHECK<=2), colliding fill re-snapshot (CHECK<=2); bins, control dcu-ft-margin. DCU snapshot due at rev 121. Bookmark DI 78, OA 479.
 - DI-43 (MA rev 184, DCU tab rev 122): fill re-snapshot rule: slot w/o way, one snapshot/cycle oldest-first outside margin, reservation held until write visible (closes grant-cycle gap; bctl_one_fill_per_way + control), wait CHECK <= 2*(slots-1)+1; DI to confirm < 32 with DI-37 bound. Bookmark DI 79. DCU snapshot rev 122.
+- MI-23 ANSWERED (MA rev 186): not (a) -- O-69/O-83 natural alignments contradict under W = local_base+3LC (checked PW 1,2,4). (b) cheap form: B_lo 4th narrow operand; per CTA/region store f (ctxw bits), U, U+1 at table write; H-1 f+ctx cin 0/1 selects U/U+1 (~10 NGD), both R_hi flopped at H; ~900 flops (miu_form 5,500). MIU tab rev 171. TODO: tell IS (low priority) that ISA "forms R(ctx) by wiring" (O-69, sec 5.9) does not hold; formula unchanged. Bookmark MI 47, MA 186. MI withdrew MI-23 at rev 47 building (b) "R_hi, R_hi+1 per CTA" -- crossed with MA 186; check MI handles ctx (per warp) via the f+ctx add. MIU snapshot rev 171.
 - MI-22 ANSWERED (MA rev 185, MIU tab rev 169): miu_form ports confirmed; ccv_rau_miu_cta captured in flops first (A-61), write next cycle; kill-clear source for MI to name; slot-form base mux in miu_agu8 (23.3+1) on per-octet keep copies of win/select, not miu_cap; if agu8 >25 MI reports, mux stays, MA re-decides. Watch MI's measurement. MIU snapshot rev 169.
 - DI-39 ANSWERED (MA rev 177, DCU tab 116-120): fill keeps lead-then-payload (one-cycle form = enable from input, CG-5):
   lead F+1 from dcu_mshr's F read (valid + bank one-hot), payload F+2 (mshr + fill flops), victim F+2, write waiter from F+4.
