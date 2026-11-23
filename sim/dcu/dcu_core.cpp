@@ -15,6 +15,9 @@ namespace dcu {
 namespace {
 /// A waiting miss's next MSHR decision: the RTL's offer, grant and retry (DI-36).
 constexpr uint64_t kRetryLag = 5;
+/// DI-37 (MA, DCU tab rev 114): K, the cycles a ready fill write waits
+/// before it beats new lookups; it writes within K + 5 of ready.
+constexpr uint64_t kFillHold = 4;
 std::string fmt(const char *f, unsigned long long a = 0, unsigned long long b = 0,
                 unsigned long long c = 0) {
   char buf[256];
@@ -610,6 +613,12 @@ void Core::serve(const Acc &a, uint64_t born) {
       h_.hit("dcu_fill_write");
     } else {
       if (now_ - a.born >= c_.age) h_.hit("dcu_fill_write_aged");
+      // CHECK (DI-37): a fill writes within K + gap + 1 of ready (a store
+      // write booked just before its hold began can still go first), so its
+      // buffer's ccv_mlc_dcu_rsp credit returns inside the channel's bound.
+      if (now_ > a.ready + kFillHold + c_.gap + 1)
+        h_.fail(fmt("dcu: fill buffer %llu wrote its line %llu cycles after ready (DI-37: K + gap + 1)", a.fb,
+                    now_ - a.ready));
       fillWrite(a.fb);
     }
     break;
@@ -723,6 +732,39 @@ void Core::schedule() {
     bool fill_waits = false;
     for (size_t i = 0; i != bq_[b].size(); ++i)
       fill_waits |= bq_[b][i].k == Acc::FillW && eligible(b, i);
+    // A held fill (DI-37, MA's ruling, DCU tab rev 114): a fill write ready
+    // K cycles takes the bank ahead of new lookups and queued work, but not
+    // a booked store write (served above) nor an older store to its set
+    // (the victim's (set, way)); so it writes within K + 5 of ready and the
+    // fill buffer's ccv_mlc_dcu_rsp credit comes back inside its bound.
+    // dcu-fill-unheld, the control, keeps the old order, and the CHECK in
+    // serve() must catch the late write.
+    size_t hf = bq_[b].size();
+    for (size_t i = 0; i != bq_[b].size() && hf == bq_[b].size() && !flat; ++i) {
+      const Acc &x = bq_[b][i];
+      if (x.k != Acc::FillW || now_ < x.ready + kFillHold || c_.brk == "dcu-fill-unheld") continue;
+      // DI-37's unbounded terms (MA, DCU tab rev 115) rely on the channel's
+      // 32-cycle check, each with its longest wait: a fill behind its
+      // victim's read (no writeback buffer), behind an older store to its
+      // victim (the hold suspended, its age kept), or in a bank a late
+      // answer holds (in the response loop).
+      if (!eligible(b, i)) {
+        h_.peak("dcu_fill_wait_victim_max", now_ - x.ready);
+        continue;
+      }
+      // Its (set, way): the way its buffer reserved, whose line an older
+      // store may still be reading or writing.
+      const Way *set = setOf(x.line);
+      uint64_t vl = ~uint64_t(0);
+      for (unsigned k = 0; k != c_.ways; ++k)
+        if (set[k].valid && set[k].rsv == int(x.fb)) vl = set[k].line;
+      bool st = false;
+      for (size_t j = 0; j != i; ++j)
+        st |= (bq_[b][j].k == Acc::StoreR || bq_[b][j].k == Acc::StoreW) &&
+              (bq_[b][j].line == vl || bq_[b][j].line == x.line);
+      if (!st) hf = i;
+      else h_.peak("dcu_fill_wait_store_max", now_ - x.ready);
+    }
     const bool both = c_.brk == "bank-both-granted";
     // A store's booked write takes the bank now; an access now would still
     // be busy at a write booked next cycle.
@@ -735,7 +777,14 @@ void Core::schedule() {
     }
     const bool next_booked = book_[b].count(now_ + 1) != 0;
     if ((bfree_[b] <= now_ && !next_booked) || (both && win != in.size())) {
-      if (rr != bq_[b].size() || (!aged && fx != bq_[b].size())) {
+      if (hf != bq_[b].size()) {
+        if (!in.empty()) h_.hit("dcu_fill_held_block");
+        h_.hit("dcu_fill_held");
+        const Acc a = bq_[b][hf];
+        bq_[b].erase(bq_[b].begin() + long(hf));
+        claim(b);
+        serve(a, a.born);
+      } else if (rr != bq_[b].size() || (!aged && fx != bq_[b].size())) {
         const size_t i = rr != bq_[b].size() ? rr : fx;
         if (!in.empty()) h_.hit(rr != bq_[b].size() ? "dcu_reread_block" : "dcu_fix_block");
         const Acc a = bq_[b][i];
@@ -1689,6 +1738,9 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
       if (it->fid >= 0) h_.hit("dcu_fill_rsp_wait");
       if (it->bank >= 0) {
         h_.hit("dcu_late_holds_bank");
+        for (const Acc &x : bq_[unsigned(it->bank)])
+          if (x.k == Acc::FillW && t >= x.ready + kFillHold)
+            h_.peak("dcu_fill_wait_late_max", t - x.ready);
         bfree_[unsigned(it->bank)] = std::max(bfree_[unsigned(it->bank)], t + 1);
       }
       ++it;
