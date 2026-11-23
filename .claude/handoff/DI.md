@@ -52,9 +52,23 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
        straight-from-D2 (valid H+5) only when neither waits.
    (6) late answer slots: aged bank answer > fill answers oldest first >
        other late lowest bank; fill answers take any slot.
+   STATUS: stages A-C (items 1-4, 6) committed f84e9924 (WIP, unpushed),
+   unit tests pass; stage A kernel run done/pending; stage D next (H+5
+   check, bins, controls' unit tests, tag-stale, reserved-victim stores).
+   Parts 3 (stores, rev 94) and 4 (probes, UE 2nd answer, repair/BIST, rev
+   96) also landed: transcription in scratchpad dcu-slice2-p34.md (rebuild it
+   with an agent if the scratchpad is gone). Part 3 changes slice 1: tag RF
+   word 136 bits (no dirty), dirty bits in dcu_bctl flops (512/bank), same
+   (set,way) store ordering in the queue, store hit ack on own slot hit=1
+   no data, read->write 5, <=2 stores/bank in flight, dcu_bdat wdata 6:1.
+   New modules dcu_bstd, dcu_bstm (8 each), dcu_prb. DI-31 (rev 51): asked
+   MA to fix stale 140-bit passages; part 3 wins meanwhile.
    Controls: dcu-mshr-nomerge, dcu-fill-nostale, dcu-fill-early,
    dcu-miss-reorder, dcu-wb-drop (= drop-writeback), dcu-wb-early,
-   dcu-wb-refetch, dcu-wb-store. Bins/CHECKs per the tab.
+   dcu-wb-refetch, dcu-wb-store; part 3 dcu-st-noorder, -mergeall,
+   -shared, -dirty; part 4 dcu-ue-noanswer, -stale, dcu-prb-nostore,
+   -nodirty, -stale. Bins/CHECKs per the tab. Kernel-level controls go in
+   TI's check-kernel.sh: ask TI with a DI row once the model has them.
 -1. Phase 2a slice 1 RTL pushed at 3b6b66f2 (full PASS): dcu_cap, dcu_btag,
    dcu_bctl (k=4 after TI-518; budgets by MA rev 157, DI-26 closed).
    DI-27 (rev 44) to TI: TI-518 done in the model; DI-24 (4) run-rtl.sh and
@@ -93,7 +107,7 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    commit first, or gate-push cannot fetch it.
 
 ## Register bookmarks
-Conventions 20, DI 47, MI 35, MA 157, AR 409, OA 468, TI 519, OI 401, DA 131
+Conventions 20, DI 51, MI 35, MA 162, AR 409, OA 468, TI 519, OI 401, DA 131
 (sweep of 2026-11-22; RA 157, RI 91, IS 201, CP 160 by search). Others: outline + search DI.
 Rows: DI-1 (TI: makeDcu 'model', blocks.list, check-dcu-unit, MA-25/26
 params, credit vectors), DI-2 (agreed: mispredict = loser path, due+2;
