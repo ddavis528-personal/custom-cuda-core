@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 417, TI 535, OA 475, IS 201, CP 160, OI 405, RA 158, RI 91, MA 179, DA 132, MI 41, DI 75.
+Conventions 20, AR 417, TI 539, OA 479, IS 201, CP 160, OI 405, RA 158, RI 91, MA 183, DA 132, MI 41, DI 78.
 - Sweep 2026-11-23: nothing in Needs MA. Merged TI infra 153, AR ccr-80102643 6, OA ccr-9eb50716 3, DI ccr-5e4d6c70 8,
   MI ccr-58815650 18 (single base 8e784c88 by merge-tree/commit-tree: ort recursion over 6-7 bases ran >30 min;
   merge TI's single-base branch first, then the rest drop to 1-2 bases). DCU snapshot rev 115.
@@ -99,6 +99,12 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - AR 413 (AR rev 417): (d) resolved, MLC_HIT_MAX's queue term becomes FET's 4 ifill ids (HIT_MAX 28); 8-bit DCU->MLC ids leave THRESHOLD_MLC=50 standing. Bookmark AR 417.
 - OA-475 (OA rev 475): THRESHOLD_MLC re-sweep (35/50/75/100) waits on MA's read-path sizes being in the stub -> after MA-31, ask TI to carry the sizes into the stub and notify OA.
 - TI-537 (DA: common RTL credit modules in rtl/common by TI) confirmed with corrections (MA rev 179): cr_dst rel_n count (MIU REL_MAX 3), land+release per message (mlc_dcu_rsp), cr_src LATE_COUNT (dcu_mshr MLC req); CG-5 note. MI/DI migrate once it lands. Bookmark TI 535.
+- TI-539: TI-537 v2 took all three corrections + CG-5 waiver once on cr_cnt. Bookmark TI 537.
+- DI-40 GRANTED (MA rev 180): dcu_bctl fill ports arrival 0 / outputs required 0, dcu_mshr fill outputs required 0, dcu_fill fwb/state required 0; DI writes the files by 'MA (MA rev 180, DI-40)'. Bookmark DI 76.
+- TI-541 (DA via AR 415 (5)): option A, named exception: credit/stall -> cr_go -> same channel's valid at a flopped sending end is timed as the port-budget pair, never NGD-5; depths stay 4+2N. Applies to MIU/DCU senders (MI/DI). Bookmark TI 539.
+- DI-41 (MA rev 181): DI renames bctl fill budget keys to cc03h under rev 180 grant; CCV-L23 for fold table's 2nd writer: MA asks OA for (a) declared loops or (b) lint 2nd write port; (c) rejected (false-miss window under MA-30). Waiting OA. Bookmark DI 77.
+- OA-479: OA recommends to Daniel a narrow two-writer CCV-L23 table form; if adopted, MA signs DCU's fold-table declaration (condition 1). Watch DA tab. Bookmark OA 479.
+- DI-42 SPECIFIED (MA rev 182-183, DCU tab rev 121): fold-table margin (OA-479 (b), DA adopted) held by re-read not bypass: margin lookups take mispredict re-read (late, due+2; CHECK<=2), colliding fill re-snapshot (CHECK<=2); bins, control dcu-ft-margin. DCU snapshot due at rev 121. Bookmark DI 78, OA 479.
 - DI-39 ANSWERED (MA rev 177, DCU tab 116-120): fill keeps lead-then-payload (one-cycle form = enable from input, CG-5):
   lead F+1 from dcu_mshr's F read (valid + bank one-hot), payload F+2 (mshr + fill flops), victim F+2, write waiter from F+4.
   DI prices model pickVictim F+2 after ti-tblat; >=0.5% -> earlier lead on MLC rsp with req_id (schema row).
