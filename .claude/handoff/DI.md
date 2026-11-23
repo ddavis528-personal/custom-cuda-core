@@ -66,11 +66,15 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    allocate anew (increment B: btag re-read; tag-stale).
 -4b. MERGE TI's ba085cda (ccr-183cc441-doowtf; TI-529) right after gate
    a2b4d5c4 pushes, with m0w's commits; one gate for all.
--4c. check-kernel under CCV_DCU_IMPL=model fails 5 lines AT BASE too (not
-   in the gate): transp4 l1_ecc_fix 33 (pin 55), slotform dcu_evict 49
-   (pin 32), coremark128 watchdog (mlc_dcu_rsp response_within_n),
-   --break deny-ownership, dcu-wb-refetch control unnoticed. A subagent
-   is root-causing cm128; pins are TI's IMPL_PINS (ask TI to move).
+-4c. DI-37 (fill write starves under a store stream; MA rev 171: (a)
+   K=4) built in m0w, UNCOMMITTED: hf in schedule(), kFillHold, CHECK at
+   K+gap+1 (asked MA, tab rev 67, to amend K+5 -> K+gap+1). RTL: dcu_bctl
+   fill arbitration to follow. NOTE check-kernel does NOT rebuild skel:
+   run tools/check-skel.sh first (earlier "same as base" runs were stale).
+   Real base in scratchpad/m0base (d2d298a2), runs kern-B.log vs kern-N.log.
+   Findings: retry lag 5 (DI-36) costs coremark128 ~10% and pushes its
+   memop hold 19756 -> 22679 (> 20480 watchdog); the stall (memops held
+   ~1500..24000) is shared by the stub DCU (18762): not DCU's; tell TI.
 -4. DI-34: MA rev 167/168 accepted all; close the row once bctl growth
    lands. DI-35 (bctl retry): MA rev 169 / DCU tab rev 112 accepted:
    (1) dcu_mshr picks the oldest of 8 bank offers (valid + 10-bit stamp,
