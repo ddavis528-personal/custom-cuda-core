@@ -59,12 +59,18 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
    bctl flops, hit from btag flops: the D2=H+4 hand-off). Benches: bctl
    (--control order new), mshr; depth bctl 24.3, CG 68/94 loose.
    TELL MA (DI-36 update): D1 not D0; the dv/hit hand-off; ports.
-   MODEL FOLLOW-UPS (keep C++ in sync): (1) ent_ret timing of a granted
-   lookup now at its D2 hit or placement, not its access; (2) retry timing
-   RTL: wait known at D3, offer D3+1, grant +1, its D2 at R+2, outcome
-   R+3, re-offer R+4 (model retries at D2+1 instantly); (3) a cause-2
+   MODEL FOLLOW-UPS: (1) done a03d2345 (credits at D2 hit / D3
+   placement; relook and re-read no second credit); (2) retry lag 5
+   (kRetryLag) done, uncommitted until check-kernel reruns; (3) a cause-2
    (filled) waiter must look up again after its fill's write, never
    allocate anew (increment B: btag re-read; tag-stale).
+-4b. MERGE TI's ba085cda (ccr-183cc441-doowtf; TI-529) right after gate
+   a2b4d5c4 pushes, with m0w's commits; one gate for all.
+-4c. check-kernel under CCV_DCU_IMPL=model fails 5 lines AT BASE too (not
+   in the gate): transp4 l1_ecc_fix 33 (pin 55), slotform dcu_evict 49
+   (pin 32), coremark128 watchdog (mlc_dcu_rsp response_within_n),
+   --break deny-ownership, dcu-wb-refetch control unnoticed. A subagent
+   is root-causing cm128; pins are TI's IMPL_PINS (ask TI to move).
 -4. DI-34: MA rev 167/168 accepted all; close the row once bctl growth
    lands. DI-35 (bctl retry): MA rev 169 / DCU tab rev 112 accepted:
    (1) dcu_mshr picks the oldest of 8 bank offers (valid + 10-bit stamp,
