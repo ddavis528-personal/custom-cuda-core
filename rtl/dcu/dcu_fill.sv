@@ -1,5 +1,10 @@
 //===-- dcu_fill.sv - DCU fill buffers: capture, encode, answers owed, free -===//
 //
+// Spec: docs/design-snapshots/dcu-spec.md (live: CCV per-block architecture
+//       specs, DCU tab, "MA's Phase 2", slice 2, part 1 (rev 89): "Fill
+//       buffers (dcu_fill)" and "Stages of a fill"; MA rev 177 on DI-39 for
+//       the write request).
+//
 // MA's slice 2, part 1 (DCU tab rev 89, "Fill buffers (dcu_fill)" and
 // "Stages of a fill"; DI-39 for the write request). Four fill buffers, one
 // per credit of ccv_mlc_dcu_rsp, each holding a fill's 1,024 data bits, its
@@ -110,19 +115,19 @@ module dcu_fill #(
 
   // ---- F-1: the valid, and the buffer it takes ----------------------------
   logic             fv_q_cc04h;
-  logic [NFB-1:0]   fsel_q_cc04h;      // the lowest free buffer, one hot
+  logic [NFB-1:0]   fsel_q_cc05h;      // the lowest free buffer, one hot
   logic [NFB-1:0]   busy_q_cc05h;
-  logic [NFB-1:0]   take_cc04h, free_cc05h, busyn_cc05h, fseln_cc05h;
+  logic [NFB-1:0]   take_cc05h, free_cc05h, busyn_cc05h, fseln_cc05h;
   always_comb begin
-    take_cc04h  = fv_q_cc04h ? fsel_q_cc04h : '0;
-    busyn_cc05h = (busy_q_cc05h | take_cc04h) & ~free_cc05h;
+    take_cc05h  = fv_q_cc04h ? fsel_q_cc05h : '0;
+    busyn_cc05h = (busy_q_cc05h | take_cc05h) & ~free_cc05h;
     fseln_cc05h = '0;
     for (int b = NFB - 1; b >= 0; b--)
       if (!busyn_cc05h[b]) fseln_cc05h = NFB'(1) << b;
   end
   always_ff @(posedge dcu_core_clk) begin
     fv_q_cc04h   <= !rst_r01h && fv_cc03h;
-    fsel_q_cc04h <= rst_r01h ? NFB'(1) : fseln_cc05h;
+    fsel_q_cc05h <= rst_r01h ? NFB'(1) : fseln_cc05h;
     busy_q_cc05h <= rst_r01h ? '0 : busyn_cc05h;
   end
 
@@ -132,7 +137,7 @@ module dcu_fill #(
   logic [NFB-1:0] bown_q_cc05h, bmiss_q_cc05h;
   for (genvar b = 0; b < NFB; b++) begin : g_cap
     logic cap_en_cc04h;
-    assign cap_en_cc04h = take_cc04h[b];
+    assign cap_en_cc04h = take_cc05h[b];
     always_ff @(posedge dcu_core_clk) begin
       if (cap_en_cc04h) begin
         bd_q_cc05h[b]    <= fdata_cc04h;
@@ -153,7 +158,7 @@ module dcu_fill #(
   // ---- F+1: encode, the entry's list, the write request --------------------
   logic [NFB-1:0] new_q_cc05h;          // the buffer captured last cycle, one hot
   always_ff @(posedge dcu_core_clk) begin
-    new_q_cc05h  <= rst_r01h ? '0 : take_cc04h;
+    new_q_cc05h  <= rst_r01h ? '0 : take_cc05h;
   end
 
   // ---- F+2: the write request's payload (DI-39) -----------------------------
@@ -257,11 +262,11 @@ module dcu_fill #(
     for (int b = 0; b < NFB; b++) begin
       wr_ok_cc05h = wr_ok_cc05h && (!wdone_cc05h[b] ||
                                     (busy_q_cc05h[b] && lst_q_cc05h[b] && !wrt_q_cc05h[b]));
-      tk_ok_cc05h = tk_ok_cc05h && atk_cc05h[b*WLC +: WLC] <= cnt_q_cc05h[b] &&
+      tk_ok_cc05h = tk_ok_cc05h && cnt_q_cc05h[b] >= atk_cc05h[b*WLC +: WLC] &&
                     (atk_cc05h[b*WLC +: WLC] == '0 || lst_q_cc05h[b]);
     end
   end
-  `CCV_ASSERT(fill_buffer_free, !fv_q_cc04h || !(|(fsel_q_cc04h & busy_q_cc05h)) && |fsel_q_cc04h)
+  `CCV_ASSERT(fill_buffer_free, !fv_q_cc04h || !(|(fsel_q_cc05h & busy_q_cc05h)) && |fsel_q_cc05h)
   `CCV_ASSERT(fill_write_once, wr_ok_cc05h)
   `CCV_ASSERT(fill_answers_owed, tk_ok_cc05h)
 
