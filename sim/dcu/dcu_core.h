@@ -266,6 +266,8 @@ private:
     Req req;           ///< Look, StoreR
     unsigned fb = 0;   ///< FillW: its fill buffer
     Line data{};       ///< EvictR: the victim
+    int tway = -1;     ///< Look: the way its tag result named, a hit (tag-stale marking)
+    bool stale = false;   ///< Look: a fill wrote that way since: it reads its tags again
   };
   std::vector<uint64_t> bfree_;            ///< the first cycle each bank is free
   std::vector<std::deque<Acc>> bq_;        ///< deferred work, oldest first
@@ -316,7 +318,7 @@ private:
   }
   std::map<unsigned, Miss> miss_;
   std::set<unsigned> free_ids_;
-  std::deque<MlcReq> to_mlc_;
+  std::deque<std::pair<uint64_t, MlcReq>> to_mlc_;   ///< (its D2, the request), oldest first
   std::set<uint64_t> wb_lines_;        ///< lines written back, not yet acked
   unsigned wb_used_ = 0;               ///< writeback buffers: victim read, request not yet launched
   std::deque<unsigned> wbsend_;        ///< writeback entries unsent, oldest first
@@ -327,13 +329,19 @@ private:
   void answered(unsigned id);          ///< one of its answers launched
   void maybeFree(unsigned id);
   /// Merge or allocate; false (and why) if the miss must wait.
-  bool startMiss(const Req &r, const char **why = nullptr);
+  bool startMiss(const Req &r, uint64_t d2, const char **why = nullptr);
   /// A miss whose entry credit has gone home: merge or allocate now, or wait
   /// in its bank's queue (MissW), taking the credit back until it leaves.
-  void missOrWait(const Req &r);
+  void missOrWait(const Req &r, uint64_t d2);
   void retryWaits();                   ///< each bank's oldest waiting miss, one a cycle
   bool needsMlc(const Req &r) const;
-  void mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t tid);
+  /// A dirty victim a fill has reserved (slice 2, part 2): its stores wait.
+  bool rsvDirty(const Way *w) const;
+  /// A line whose writeback awaits MLC's ack: its lookups wait (part 2);
+  /// dcu-wb-refetch, the control, lets them miss and fetch it again.
+  bool inWb(uint64_t line) const { return wb_lines_.count(line) && c_.brk != "dcu-wb-refetch"; }
+  Way *stale_way_ = nullptr;   ///< dcu-fill-nostale: the way a stale lookup reads
+  void mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t tid, uint64_t d2);
   void onFill(const Fill &f);
   Way *install(uint64_t pa, const Line &l, bool owned, bool dirty);
   static bool fullLine(const Req &r, const std::string &brk);

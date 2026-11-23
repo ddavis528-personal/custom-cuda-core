@@ -215,6 +215,12 @@ void Core::stdLeave(unsigned b) {
   --std_used_[b];
 }
 
+bool Core::rsvDirty(const Way *w) const {
+  if (!w || w->rsv < 0 || !w->dirty || c_.brk == "dcu-wb-store") return false;
+  auto it = miss_.find(unsigned(w->rsv));
+  return it != miss_.end() && it->second.line != w->line;
+}
+
 void Core::arrive(const Req &r, uint64_t t) {
   const unsigned b = bankOf(r.pa);
   ++ent_used_[b];
@@ -225,12 +231,21 @@ void Core::arrive(const Req &r, uint64_t t) {
   for (auto &m : miss_)
     if (m.second.line == r.pa && m.second.k != MK::Evict) {
       entLeave(b);   // its store data stays held until the fill merges it
-      missOrWait(r);
+      missOrWait(r, t + 1);
       return;
     }
   // A store hit to an owned line, variant (b) (MA-17, MA-24): its read and
   // its whole-line write wait in the bank's queue as deferred work, holding
   // its data and mask; MIU's ack leaves on the hit's cycle.
+  if (r.op == Op::Store && !needsMlc(r) && !wb_lines_.count(r.pa) && rsvDirty(find(r.pa))) {
+    // A store hitting a reserved dirty victim (slice 2, part 2) waits in its
+    // bank's queue as miss-wait, its credits held, and looks up again after
+    // the fill's write; dcu-wb-store, the control, lets it write.
+    h_.hit("dcu_store_rsv_wait");
+    h_.hit("dcu_miss_wait");
+    bq_[b].push_back(Acc{Acc::MissW, t, t + 1, r.pa, r, 0, {}});
+    return;
+  }
   if (r.op == Op::Store && !needsMlc(r) && !wb_lines_.count(r.pa)) {
     Acc a{Acc::StoreR, t, t, r.pa, r, 0, {}};
     bq_[b].push_back(a);
@@ -246,7 +261,7 @@ void Core::arrive(const Req &r, uint64_t t) {
     // The lookup entry leaves now; the store-data entry is held until the
     // store's write leaves, when the fill merges it (DCU spec, MA-25).
     entLeave(b);
-    missOrWait(r);
+    missOrWait(r, t + 1);
     return;
   }
   ontime_[t + dOff()].push_back(r);
@@ -272,7 +287,7 @@ bool Core::eligible(unsigned b, size_t i) const {
   switch (a.k) {
   case Acc::Look:
   case Acc::StoreR: {
-    if (olderLook(b, i, a.line) || wb_lines_.count(a.line)) return false;
+    if (olderLook(b, i, a.line) || inWb(a.line)) return false;
     // A store read holds its own line from arrival: only another's write
     // blocks it, which its hold count shows as more than the store reads
     // queued for the line.
@@ -325,13 +340,27 @@ void Core::serveLook(const Req &r, uint64_t born) {
     ++st_.waited;
     h_.peak("dcu_wait_max", late);
   }
-  Way *w = find(r.pa);
+  Way *w = stale_way_ ? stale_way_ : find(r.pa);
+  stale_way_ = nullptr;
+  if (r.op == Op::Store && rsvDirty(w)) {
+    ++ent_used_[b];   // back in its queue: its entry credit stays out
+    --ent_owed_[b];
+    h_.hit("dcu_store_rsv_wait");
+    h_.hit("dcu_miss_wait");
+    bq_[b].push_back(Acc{Acc::MissW, born, now_ + 1, r.pa, r, 0, {}});
+    return;
+  }
   if (r.op == Op::Store) {
     // A store that waited as a lookup (its line was being written back, or
     // it lost its bank): an owned hit merges now; else it misses, and its
     // store-data entry stays held until the fill merges it.
     if (w && w->owned && c_.brk != "write-through") {
       stdLeave(b);
+      // CHECK (slice 2, part 2): no store writes a reserved victim whose read
+      // has gone to the writeback buffer (dcu-wb-store, the control).
+      if (w->rsv >= 0 && miss_.count(unsigned(w->rsv)) && miss_.at(unsigned(w->rsv)).vread &&
+          miss_.at(unsigned(w->rsv)).line != w->line)
+        h_.fail(fmt("dcu: a store wrote line %llx after its victim read", w->line));
       w->flip = -1;   // the RMW's read corrects, its write is good (MA-28 (c))
       w->ecc_wr = false;
       merge(w->data, r);
@@ -342,7 +371,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
       h_.hit("store_hit");
       return;
     }
-    missOrWait(r);
+    missOrWait(r, now_ - dOff() + 1);
     return;
   }
   const bool hit = w && (r.op == Op::Read || w->owned);
@@ -363,7 +392,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
     }
   }
   if (!hit) {
-    missOrWait(r);
+    missOrWait(r, now_ - dOff() + 1);
     return;
   }
   if (c_.wp_bits && !r.reread) {
@@ -387,6 +416,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
       Req x = r;
       x.reread = true;
       bq_[b].push_back(Acc{Acc::Look, born, now_ + 2, r.pa, x, 0, {}});
+      bq_[b].back().tway = int(w - l1_.data());
       return;
     } else {
       ++st_.wp_wrong;
@@ -395,7 +425,7 @@ void Core::serveLook(const Req &r, uint64_t born) {
   }
   const int ue = ueOnHit(*w);
   if (ue == 1) {   // recovered: the line is gone, the read refetches it
-    missOrWait(r);
+    missOrWait(r, now_ - dOff() + 1);
     return;
   }
   if (ue == 2) {
@@ -443,6 +473,13 @@ void Core::serve(const Acc &a, uint64_t born) {
   const unsigned b = bankOf(a.line);
   switch (a.k) {
   case Acc::Look:
+    if (a.stale) {
+      // Its tags read again in a free RF cycle before its data read: the
+      // model's lookup re-finds its line. dcu-fill-nostale, the control,
+      // reads the way its first tag result named, now the fill's line.
+      if (c_.brk == "dcu-fill-nostale") stale_way_ = &l1_[size_t(a.tway)];
+      else h_.hit("dcu_tag_stale_relook");
+    }
     serveLook(a.req, born);
     break;
   case Acc::StoreR: {
@@ -454,6 +491,11 @@ void Core::serve(const Acc &a, uint64_t born) {
       h_.fail(fmt("dcu: a deferred store's line %llx left L1 before its read", a.line));
       break;
     }
+    // CHECK (slice 2, part 2): no store writes a reserved victim whose read
+    // has gone to the writeback buffer (dcu-wb-store, the control).
+    if (w->rsv >= 0 && miss_.count(unsigned(w->rsv)) && miss_.at(unsigned(w->rsv)).vread &&
+        miss_.at(unsigned(w->rsv)).line != w->line)
+      h_.fail(fmt("dcu: a store wrote line %llx after its victim read", w->line));
     w->flip = -1;   // the RMW's read corrects, its write is good (MA-28 (c))
     w->ecc_wr = false;
     merge(w->data, a.req);
@@ -478,6 +520,7 @@ void Core::serve(const Acc &a, uint64_t born) {
       unhold(a.line);
       h_.hit("dcu_fill_write");
     } else {
+      if (now_ - a.born >= c_.age) h_.hit("dcu_fill_write_aged");
       fillWrite(a.fb);
     }
     break;
@@ -518,6 +561,7 @@ void Core::serve(const Acc &a, uint64_t born) {
     // its fill's write takes the bank's next access, 2 cycles on.
     Miss &m = miss_.at(a.fb);
     m.wb = l1_[size_t(m.way)].data;
+    if (l1_[size_t(m.way)].flip >= 0) h_.hit("dcu_evict_read_ce");
     m.vread = true;
     ++wb_used_;
     h_.peak("dcu_wb_max", wb_used_);
@@ -578,7 +622,7 @@ void Core::schedule() {
       const uint64_t l = in[i].pa;
       bool earlier = false;
       for (size_t j = 0; j != i; ++j) earlier |= in[j].pa == l;
-      if (!earlier && !held(l) && !olderLook(b, bq_[b].size(), l) && !wb_lines_.count(l)) win = i;
+      if (!earlier && !held(l) && !olderLook(b, bq_[b].size(), l) && !inWb(l)) win = i;
     }
     bool fill_waits = false;
     for (size_t i = 0; i != bq_[b].size(); ++i)
@@ -628,11 +672,14 @@ void Core::schedule() {
       h_.hit("dcu_fill_wait");
     }
     for (const Req &r : in) {
+      if (inWb(r.pa)) h_.hit("dcu_miss_wait_wb");   // its line's writeback awaits MLC's ack
       ++st_.losers;
       h_.hit("dcu_bank_loser");
       h_.hit(r.slot == 0 ? "dcu_bank_loser_s0" : r.slot == 1 ? "dcu_bank_loser_s1"
              : r.slot == 2 ? "dcu_bank_loser_s2" : "dcu_bank_loser_s3");
       bq_[b].push_back(Acc{Acc::Look, now_ - dOff(), now_, r.pa, r, 0, {}});
+      if (const Way *tw = find(r.pa))
+        if (r.op == Op::Read || tw->owned) bq_[b].back().tway = int(tw - l1_.data());
       // Its tag result is known at its D2: a hit touches at D + 3 (dcu_bctl
       // updates PLRU for every hit, a loser included; MA's DI-26 answer).
       if (c_.brk != "plru-at-serve" && r.op != Op::Store) {
@@ -645,7 +692,7 @@ void Core::schedule() {
 
 // ---- the miss path ------------------------------------------------------------
 
-void Core::mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t tid) {
+void Core::mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t tid, uint64_t d2) {
   MlcReq m;
   m.id = id;
   m.pa = pa;
@@ -655,7 +702,7 @@ void Core::mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t ti
     m.data = true;
     m.line = *d;
   }
-  to_mlc_.push_back(m);
+  to_mlc_.push_back({d2, m});
 }
 
 /// Slice 2, part 1: a miss merges or allocates at D2; else it takes an
@@ -664,12 +711,12 @@ void Core::mlcReq(MlcOp op, uint64_t pa, const Line *d, unsigned id, uint64_t ti
 /// miss also waits while its bank already holds a waiting one, so a line's
 /// requests stay in arrival order (one line is one bank); dcu-miss-reorder,
 /// the control, lets a new miss pass a waiting one of its line.
-void Core::missOrWait(const Req &r) {
+void Core::missOrWait(const Req &r, uint64_t d2) {
   const unsigned b = bankOf(r.pa);
   bool waits = false;
   for (const Acc &x : bq_[b]) {
     if (x.k != Acc::MissW) continue;
-    if (c_.brk == "dcu-miss-reorder" && x.line != r.pa) continue;
+    if (c_.brk == "dcu-miss-reorder" && x.line == r.pa) continue;
     waits = true;
     break;
   }
@@ -678,7 +725,7 @@ void Core::missOrWait(const Req &r) {
     for (const Acc &x : bq_[b])
       if (x.k == Acc::MissW && x.line == r.pa)
         h_.fail(fmt("dcu: a miss to line %llx passed a waiting one", r.pa));
-    if (startMiss(r, &why)) return;
+    if (startMiss(r, d2, &why)) return;
   }
   // CHECK: a line's misses never pass a waiting one (slice 2, part 1).
   ++ent_used_[b];   // its entry credit stays out until it leaves the queue
@@ -700,13 +747,14 @@ void Core::retryWaits() {
       if (a.ready > now_) break;
       const Req r = a.req;
       const Way *w = find(r.pa);
+      if (r.op == Op::Store && rsvDirty(w)) break;   // until its fill's write
       if (w && (r.op == Op::Read || w->owned)) {
         a.k = Acc::Look;   // keeps its place and its credit: served as a waiter
         h_.hit("dcu_miss_wait_relook");
         break;
       }
       const char *why = nullptr;
-      if (startMiss(r, &why)) {
+      if (startMiss(r, now_, &why)) {   // its retry is its D2
         bq_[b].erase(bq_[b].begin() + long(i));
         entLeave(b);
         h_.hit("dcu_miss_wait_done");
@@ -720,7 +768,7 @@ void Core::retryWaits() {
 /// flight and has room, else a buffer of its own if one is free (with
 /// dcu-one-miss, only when none is). False: it stalls, and so does the
 /// channel (accepting()).
-bool Core::startMiss(const Req &r, const char **why) {
+bool Core::startMiss(const Req &r, uint64_t d2, const char **why) {
   const char *dummy;
   if (!why) why = &dummy;
   for (auto &m : miss_)
@@ -761,13 +809,14 @@ bool Core::startMiss(const Req &r, const char **why) {
   const unsigned id = *free_ids_.begin();
   free_ids_.erase(free_ids_.begin());
   ++st_.misses;
+  h_.peak("dcu_mshr_max", miss_.size() + 1);
   if (r.op == Op::Read) {
     miss_[id] = newMiss(MK::Fill, r.pa, {r}, {});
-    mlcReq(MlcOp::Read, r.pa, nullptr, id, r.tid);
+    mlcReq(MlcOp::Read, r.pa, nullptr, id, r.tid, d2);
     h_.hit("l1_miss");
   } else if (r.op == Op::AtomRead) {
     miss_[id] = newMiss(MK::AcqData, r.pa, {r}, {});
-    mlcReq(MlcOp::AcquireData, r.pa, nullptr, id, r.tid);
+    mlcReq(MlcOp::AcquireData, r.pa, nullptr, id, r.tid, d2);
     h_.hit("l1_miss");
     h_.hit("atomic_acquire");
   } else if (c_.brk == "write-through") {
@@ -776,20 +825,20 @@ bool Core::startMiss(const Req &r, const char **why) {
       miss_[id] = newMiss(MK::WriteAck, r.pa, {r}, r.wdata);
       Way *w = find(r.pa);
       if (w) w->data = r.wdata;
-      mlcReq(MlcOp::Write, r.pa, &r.wdata, id, r.tid);
+      mlcReq(MlcOp::Write, r.pa, &r.wdata, id, r.tid, d2);
       stdLeave(bankOf(r.pa));   // the whole line's write leaves for MLC
       h_.hit("full_line");
     } else {
       miss_[id] = newMiss(MK::RmwRead, r.pa, {r}, {});
-      mlcReq(MlcOp::Read, r.pa, nullptr, id, r.tid);
+      mlcReq(MlcOp::Read, r.pa, nullptr, id, r.tid, d2);
     }
   } else if (fullLine(r, c_.brk)) {
     miss_[id] = newMiss(MK::AcqPerm, r.pa, {r}, {});
-    mlcReq(MlcOp::AcquirePerm, r.pa, nullptr, id, r.tid);
+    mlcReq(MlcOp::AcquirePerm, r.pa, nullptr, id, r.tid, d2);
     h_.hit("full_line");
   } else {
     miss_[id] = newMiss(MK::AcqData, r.pa, {r}, {});
-    mlcReq(MlcOp::AcquireData, r.pa, nullptr, id, r.tid);
+    mlcReq(MlcOp::AcquireData, r.pa, nullptr, id, r.tid, d2);
     h_.hit("l1_miss");
   }
   return true;
@@ -848,7 +897,7 @@ void Core::onFill(const Fill &f) {
     const unsigned id = *free_ids_.begin();
     free_ids_.erase(free_ids_.begin());
     miss_[id] = newMiss(MK::WriteAck, w.line, std::move(w.reqs), l);
-    mlcReq(MlcOp::Write, w.line, &l, id, miss_[id].reqs.front().tid);
+    mlcReq(MlcOp::Write, w.line, &l, id, miss_[id].reqs.front().tid, now_);
     return;
   }
   default:
@@ -950,6 +999,8 @@ bool Core::pickVictim(unsigned id) {
     }
   }
   bq_[b].push_back(Acc{Acc::FillW, now_, ready, m.line, Req{}, id, {}});
+  // dcu-wb-early, the control: the fill's write ahead of its victim's read.
+  if (c_.brk == "dcu-wb-early" && m.vdirty) std::swap(bq_[b][bq_[b].size() - 1], bq_[b][bq_[b].size() - 2]);
   return true;
 }
 
@@ -969,6 +1020,13 @@ void Core::fillWrite(unsigned id) {
   w.owned = m.fown;
   w.dirty = m.fdirty;
   w.rsv = -1;
+  // Tag-stale marking (slice 2, part 1): a queued lookup whose tag result
+  // named this way would read the fill's line under its old tag.
+  for (Acc &x : bq_[bankOf(m.line)])
+    if (x.k == Acc::Look && x.tway == m.way && x.line != m.line && !x.stale) {
+      x.stale = true;
+      h_.hit("dcu_tag_stale");
+    }
   if (m.fdirty) h_.dirty(m.line, m.fl);
   unhold(m.line);
   m.written = true;
@@ -1028,7 +1086,8 @@ void Core::refill(const Rsp &r, const Ports &p) {
                   std::none_of(notices_.begin(), notices_.end(),
                                [&](const Out::Notice &n) { return n.slot == s; });
   if (!ok) {
-    respond(floorAt(), r);   // un-noticed: the floor, 2 cycles ahead of a noticed one
+    // Un-noticed: the floor, 2 cycles ahead of a noticed one.
+    respond(floorAt() - (c_.brk == "dcu-fill-early" ? 1 : 0), r);
     return;
   }
   notices_.push_back({s, c_.brk == "notice-wrong-id" ? r.req_id ^ 1u : r.req_id, r.tid});
@@ -1140,6 +1199,13 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   }
   if (fill) onFill(*fill);
   retryWaits();
+  // dcu_wb_full (DI-21): cycles a victim read waited for a writeback buffer.
+  if (wb_used_ >= c_.wb) {
+    bool waits = false;
+    for (const auto &q : bq_)
+      for (const Acc &x : q) waits |= x.k == Acc::EvictR && x.ready <= now_;
+    if (waits) h_.hit("dcu_wb_full");
+  }
   for (const Req &r : in) arrive(r, t);
   schedule();
   // ccv_dcu_mlc_req, one a cycle (slice 2, part 2): writebacks first,
@@ -1166,8 +1232,11 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
       o.mlc = q;
       h_.hit("dcu_wb_sent");
     }
-  } else if (!to_mlc_.empty() && p.mlc_can) {
-    o.mlc = to_mlc_.front();
+  } else if (!to_mlc_.empty() && p.mlc_can && to_mlc_.front().first < t) {
+    // The oldest unsent miss, its valid no earlier than D2 + 1 (H+5 for a
+    // lookup's own D2): straight from D2 when nothing older waits.
+    if (to_mlc_.front().first + 1 == t) h_.hit("dcu_mlc_straight");
+    o.mlc = to_mlc_.front().second;
     to_mlc_.pop_front();
   }
   // Responses: promised refills first (a promise never slips), then those
@@ -1226,6 +1295,7 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     } else {
       ++st_.rsp_credit_wait;
       h_.hit("dcu_rsp_wait");
+      if (it->fid >= 0) h_.hit("dcu_fill_rsp_wait");
       if (it->bank >= 0) {
         h_.hit("dcu_late_holds_bank");
         bfree_[unsigned(it->bank)] = std::max(bfree_[unsigned(it->bank)], t + 1);
@@ -1234,8 +1304,14 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     }
   }
   // Fill answers that launched: their entries owe one fewer.
+  // CHECK (slice 2, part 1): no fill answer's valid reaches MIU before
+  // F+4, so none launches before F+3 (dcu-fill-early, the control).
   for (const Rsp &r : o.rsps)
-    if (r.fid >= 0) answered(unsigned(r.fid));
+    if (r.fid >= 0) {
+      if (t + 1 < r.born + c_.lat_notice)
+        h_.fail(fmt("dcu: a fill answer launched at F+%llu", t - r.born));
+      answered(unsigned(r.fid));
+    }
   o.notices = notices_;
   // MA-25's credit returns: at most one of each a bank a cycle.
   for (unsigned b = 0; b != c_.banks; ++b) {
