@@ -1314,14 +1314,32 @@ int Core::ueOnHit(Way &w) {
 /// filled acks at once (DCU does not hold the line; waiting could deadlock
 /// against an MLC holding the grant for the ack); one filled and not written,
 /// or a reserved dirty victim, waits for the fill's write; one in writeback
-/// acks with no data, since the writeback carries the line. Else it looks
-/// up, a queue entry of its bank.
+/// acks with no data, since the writeback carries the line, unless the
+/// writeback has not launched: then the probe takes the line from its
+/// buffer with the data, and the writeback is cancelled, so the line reaches
+/// MLC once (AR-409, DCU tab rev 108; dcu-prb-double, the control, sends it
+/// too). Its buffer and entry free when the ack launches, and misses to the
+/// line wait until then. Else it looks up, a queue entry of its bank.
 void Core::probeStart(unsigned id) {
   PrbBuf &x = prb_.at(id);
   const uint64_t pa = x.p.pa;
   for (const auto &m : miss_) {
     if (m.second.line != pa) continue;
-    if (m.second.k == MK::Evict) return probeDone(id, "dcu_prb_ack_wb");
+    if (m.second.k == MK::Evict) {
+      auto q = std::find(wbsend_.begin(), wbsend_.end(), m.first);
+      if (q != wbsend_.end()) {
+        if (c_.brk != "dcu-prb-double") wbsend_.erase(q);
+        Miss &w = miss_.at(m.first);
+        w.pcancel = true;
+        x.dirty = x.wb = true;
+        x.wbid = int(m.first);
+        x.ack.data = true;
+        x.ack.line = w.wb;
+        h_.clean(pa);   // its line leaves with the ack
+        h_.hit("dcu_prb_wb_cancel");
+      }
+      return probeDone(id, "dcu_prb_ack_wb");
+    }
     if (m.second.filled && !m.second.written) {
       x.s = PrbBuf::WaitW;
       x.wfid = int(m.first);
@@ -1455,22 +1473,29 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
   if (p.mlc_can && !wbsend_.empty()) {
     const unsigned id = wbsend_.front();
     wbsend_.pop_front();
-    Miss &m = miss_.at(id);
-    --wb_used_;
-    h_.clean(m.line);
-    if (c_.brk == "drop-writeback" || c_.brk == "dcu-wb-drop") {
-      wb_lines_.erase(m.line);
-      m.acked = true;
-      maybeFree(id);
-    } else {
-      MlcReq q;
-      q.id = id;
-      q.pa = m.line;
-      q.op = MlcOp::Write;
-      q.data = true;
-      q.line = m.wb;
-      o.mlc = q;
-      h_.hit("dcu_wb_sent");
+    // CHECK (part 4): a writeback a probe took is never sent too
+    // (dcu-prb-double; its entry may have freed with the probe's ack).
+    auto mi = miss_.find(id);
+    if (mi == miss_.end() || mi->second.pcancel)
+      h_.fail(fmt("dcu: writeback of entry %llu sent after a probe took it", id));
+    if (mi != miss_.end()) {
+      Miss &m = mi->second;
+      --wb_used_;
+      h_.clean(m.line);
+      if (c_.brk == "drop-writeback" || c_.brk == "dcu-wb-drop") {
+        wb_lines_.erase(m.line);
+        m.acked = true;
+        maybeFree(id);
+      } else {
+        MlcReq q;
+        q.id = id;
+        q.pa = m.line;
+        q.op = MlcOp::Write;
+        q.data = true;
+        q.line = m.wb;
+        o.mlc = q;
+        h_.hit("dcu_wb_sent");
+      }
     }
   } else if (!to_mlc_.empty() && p.mlc_can && to_mlc_.front().first < t) {
     // The oldest unsent miss, its valid no earlier than D2 + 1 (H+5 for a
@@ -1488,6 +1513,12 @@ Out Core::cycle(uint64_t t, const std::vector<Req> &in, const std::optional<Fill
     if (x.dirty != x.ack.data)
       h_.fail(fmt("dcu: probe %llu acked ", id) + (x.ack.data ? "with data for a clean line" : "without data for a dirty line"));
     if (x.wb) --wb_used_;
+    if (x.wbid >= 0 && miss_.count(unsigned(x.wbid))) {   // the cancelled writeback's entry
+      Miss &w = miss_.at(unsigned(x.wbid));
+      wb_lines_.erase(w.line);
+      w.acked = true;
+      maybeFree(unsigned(x.wbid));
+    }
     o.prb_ack = x.ack;
     prb_.erase(id);
   }

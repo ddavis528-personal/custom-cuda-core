@@ -338,6 +338,7 @@ private:
     bool vdirty = false, vread = false, acked = false;
     std::vector<Req> relook; ///< merged requests that look up again after W
     unsigned kst = 0;        ///< stores merged into the fill buffer (part 3)
+    bool pcancel = false;    ///< a probe took its unlaunched writeback (part 4, AR-409)
   };
   static Miss newMiss(MK k, uint64_t line, std::vector<Req> reqs, const Line &wb) {
     Miss m;
@@ -411,6 +412,7 @@ private:
     int wfid = -1;          ///< WaitW: the entry whose fill write it waits for
     bool dirty = false;     ///< the line was dirty: the ack must carry it
     bool wb = false;        ///< its data holds a writeback buffer until the ack
+    int wbid = -1;          ///< the writeback it cancelled, freed with the ack
     ProbeAck ack;
   };
   std::map<unsigned, PrbBuf> prb_;
