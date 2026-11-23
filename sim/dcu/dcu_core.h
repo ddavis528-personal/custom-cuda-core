@@ -350,6 +350,23 @@ private:
   }
   std::map<unsigned, Miss> miss_;
   std::set<unsigned> free_ids_;
+  /// Miss buffer ids are offered a cycle ahead (spec DCU tab rev 110; the
+  /// RTL's rule, rtl/dcu/dcu_mshr.sv): each MSHR port (0 the retry, 1 + slot
+  /// a slot's new miss) holds an offer, the id it allocates. A requesting
+  /// port's offer is taken whatever it did; it, and a port with none, takes
+  /// the next of last cycle's picks in port order. Picks (lowest, highest,
+  /// second lowest, second highest, third lowest) come from the free ids,
+  /// one freed now too, less the offers, the picks and the offers taken
+  /// last cycle; so an id freed or left unused is offered two cycles on.
+  static constexpr unsigned kNfIds = 5;   ///< MSHR ports
+  std::array<std::optional<unsigned>, kNfIds> nf_;
+  std::vector<unsigned> pk_;
+  std::set<unsigned> ua_;      ///< offers taken last cycle
+  std::set<unsigned> freed_;   ///< ids freed this cycle
+  unsigned nf_pq_ = 0;         ///< this cycle's requesting ports (a mask)
+  void nfNext();
+  void freeId(unsigned id);
+  static std::vector<unsigned> offerOrder(const std::vector<unsigned> &av);
   std::deque<std::pair<uint64_t, MlcReq>> to_mlc_;   ///< (its D2, the request), oldest first
   std::set<uint64_t> wb_lines_;        ///< lines written back, not yet acked
   unsigned wb_used_ = 0;               ///< writeback buffers: victim read, request not yet launched
@@ -361,7 +378,7 @@ private:
   void answered(unsigned id);          ///< one of its answers launched
   void maybeFree(unsigned id);
   /// Merge or allocate; false (and why) if the miss must wait.
-  bool startMiss(const Req &r, uint64_t d2, const char **why = nullptr);
+  bool startMiss(const Req &r, uint64_t d2, unsigned port, const char **why = nullptr);
   /// A miss whose entry credit has gone home: merge or allocate now, or wait
   /// in its bank's queue (MissW), taking the credit back until it leaves.
   void missOrWait(const Req &r, uint64_t d2);
