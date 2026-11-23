@@ -227,8 +227,9 @@ Credit rules (TI-49):
    dirty_data carries the line (DI's reading); one ack per probe, its valid
    the acknowledgement; a dirty line reaches MLC exactly once (ack or
    writeback); a writeback-buffer hit answers ack=1 and cancels that
-   writeback; already sent -> ack=0. MLC-stub CHECK, controls, bins. MA owns
-   DCU's side and may overrule; wait for MA's row before writing more.
+   writeback; already sent -> ack=0. MLC-stub CHECK, controls, bins. MA
+   agreed (MA rev 165; DCU tab rev 107: same-cycle compare vs the request
+   pick, probe wins). CLOSED; TI writes the doc text.
 000f. **OA 469 pc_kept on ccv_ooe_rau_drained (AR 406 .664201, 11-23; TI, RA,
    OA rung).** Confirmed; PC-on-alloc stays rejected. pc_kept=1 iff nothing
    retired since the slot's alloc (launch/restore-alloc) and nothing in
