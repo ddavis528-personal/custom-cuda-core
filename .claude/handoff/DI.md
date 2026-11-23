@@ -29,16 +29,25 @@ Session `session_01QPk2jz5TVESyWMKVKjqqEA`, branch `ccr-5e4d6c70-n6402z`
   launches at D+2 (A) or D+3 (B, C).
 
 ## Open work, most urgent first
--5. GATE f05aca24 FAILED on CG only: dcu_mshr soh/sport group (21 flops,
-   CG-2 enable 9.1 NGD, CG-3 50%) is NOT auto-waived (42 others already use
-   the 57 allowance). v18 in m0w (backup wip-mshr-v3/v18pre.sv = before):
-   soh_q gets its own enable crok && (|(ev&unsent) || rqa || |pq) (read
-   only behind mvi_q), sport_q keeps pres||une (5 flops, small group).
-   Also in m0w, not yet in main: assert mshr_credit_floor (cr_q >= mvi_q),
-   bench reference credits>=0 check, credit-stall coverage, --control
-   credit (run-rtl.sh). When check-cg/ngd pass: copy dcu_mshr.sv,
-   mshr_tb.cpp, run-rtl.sh to main, commit, gate-push (the 7 local commits
-   still unpushed).
+-6. IN FLIGHT: gate-push of a2b4d5c4 (dcu_mshr send record CG fix, credit
+   floor; job log /root/ccv-logs/job-gate-push-20261123-055701-29983.log;
+   wait with tools/gate-wait.sh <log>). When it passes: cherry-pick m0w's
+   aa588624 (dcu_mshr retry port per DI-35: rov/rstp offers, rgv/rgb grant
+   from flops, payload captured at R+2 = D2; head stamps; depth 23.7, CG
+   ~53/58; model stamps; --control retry) and this handoff into main, then
+   gate-push again. m0w = detached worktree at aa588624 (stash holds old
+   leftovers, drop it).
+-5. NEXT: dcu_bctl slice 2. PLAN (tell MA as DI-36, informational): every
+   lookup the bank takes writes a queue entry at D0 from the channel wires
+   (its credit guarantees one; QDEPTH = entries = MIU credits, an entry
+   leaves when answered or gone to MLC, per params) holding the full
+   payload (PA[47:7] 41, req_id 6, slot 2, op 2, excl 1, fold 4, std 4,
+   tag result, miss-wait, cause, stale). The slice 1 queue held only
+   losers. A miss-wait marks its entry at D3 from dcu_mshr's outcome;
+   one 10-bit head stamp per bank; the offer (rov/rstp) and the head's
+   payload from flops; grant rgv/rgb in; outcome (ov/owait/owhy) at D3.
+   A bank with a waiter or a retry in flight keeps its new misses itself.
+   Then dcu_fill, btag/rarb/rslot growth, parts 2-4.
 -4. DI-34: MA rev 167/168 accepted all; close the row once bctl growth
    lands. DI-35 (bctl retry): MA rev 169 / DCU tab rev 112 accepted:
    (1) dcu_mshr picks the oldest of 8 bank offers (valid + 10-bit stamp,
