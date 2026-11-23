@@ -2534,9 +2534,11 @@ done
 # leaving the line clean (dcu-st-dirty). dcu-fill-nostale, dcu-wb-store,
 # dcu-st-noorder, dcu-st-mergeall, dcu-ue-* and dcu-prb-* reach no kernel
 # here (MIU holds a load behind its older store; no probe or UE injection
-# yet): DI's unit tests hold them (sim/dcu/dcu_test.cpp).
+# yet), nor does dcu-wb-refetch since the DCU model takes a loser's miss at
+# its D2 (DI-49): DI's unit tests hold them (sim/dcu/dcu_test.cpp;
+# dcu-wb-refetch-control).
 for spec in dcu-fill-early:vadd4:dcu dcu-mshr-nomerge:lnorm1:dcu dcu-miss-reorder:vadd4:models \
-            dcu-wb-early:slotform:dcu dcu-wb-refetch:slotform:dcu dcu-wb-drop:slotform:dcu \
+            dcu-wb-early:slotform:dcu dcu-wb-drop:slotform:dcu \
             dcu-st-shared:narrowadd:dcu dcu-st-dirty:rope:dcu; do
   brk=${spec%%:*}; rest=${spec#*:}; k=${rest%%:*}; set=${rest#*:}
   envs="CCV_DCU_IMPL=model"; [ "$set" = models ] && envs=$MODELS
