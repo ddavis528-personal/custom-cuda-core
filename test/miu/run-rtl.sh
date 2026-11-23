@@ -12,6 +12,8 @@
 #            O-83's decision (MI-25 (D)), controls xfer (O-80's size ignored),
 #            sext (disp unsigned), lane0 (lane d taken as 0) and noshift (b
 #            from the sum without rbase << 16)
+#   miu_ids: test/miu/ids_tb.cpp, the DCU req_ids: quarter picks, releases
+#     and the id-to-entry table,
 #   miu_cred: test/miu/cred_tb.cpp, DCU bank credits and the A1 gate,
 #            controls early (a return counted as it lands) and norefund
 #   miu_form: test/miu/form_tb.cpp, the slot, local and private forms'
@@ -66,4 +68,8 @@ control miu_form lane0
 control miu_form nohi1
 control miu_form noctx
 control miu_form cflat
+bench miu_ids test/miu/cg-build.sh miu_ids "$B/miu_ids" -- "$B/miu_ids/tb"
+control miu_ids noskip
+control miu_ids relnow
+control miu_ids nodrop
 exit $fail
