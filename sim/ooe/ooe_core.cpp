@@ -372,6 +372,10 @@ void Core::uop(const Uop &u) {
         uint32_t(u.tid), u.fetch_epoch);
   // A uop behind no hold stops the barrier timer: the warp is moving.
   if (!slot_[si].bar_hold) slot_[si].bar_idle = false;
+  if (!slot_[si].first_pc_valid) {
+    slot_[si].first_pc_valid = true;
+    slot_[si].first_pc = u.pc;
+  }
   decq_.push_back(u);
   decq_seq_.push_back(next_decq_seq_++);
   ++slot_[si].decq;
@@ -1883,6 +1887,14 @@ void Core::takeCompletions() {
         return;
       }
       r->miu_done = true;
+      // OA 475: the MLC trigger's split, by the completion's own mlc_miss.
+      // A false demotion is a hit (or an L1 miss MLC served) held past the
+      // threshold; a replay after a squash decides nothing.
+      if (r->mlc_trig && c.status != kCmplReplay) {
+        count(c.mlc_miss || cfg_.inject_mlc_split_all_miss ? "demote_trigger.mlc_miss.true_miss"
+                                                            : "demote_trigger.mlc_miss.false_hit");
+        r->mlc_trig = false;
+      }
       if (r->atomic) { atomCmpl(s, idx, c); return; }
       if (c.more) err("V-72: a completion for rob tag %u, not an atomic's write, carries more", c.rob_tag);
     }
@@ -2516,6 +2528,12 @@ void Core::control() {
       // The CTA slot, held per tier-1 slot while resident (TI-34): it parks
       // at RAU, and restore-allocate carries it again.
       s.cta_slot = a.cta_slot;
+      // pc_kept (OA 469): nothing of this warp has retired here yet, and
+      // the slot's last next_pc was its previous warp's.
+      s.rsa = false;
+      s.alloc_restore = a.op == kAllocRestoreAlloc;
+      s.first_pc_valid = false;
+      s.next_pc = 0;
       // Every register 32 bits wide: at launch, and at restore-allocate
       // until the map carries the saved widths (A-64, OI-32).
       s.cw.fill(0);
@@ -2834,8 +2852,20 @@ void Core::control() {
             err("OI-57: warp %u's R%u parks at width %u, its committed width %u", s.warp, a, nameWidth(n), s.cw[a]);
         }
       } else {
-        out.drained.push_back({s.warp, s.resume_pc});
-        sl.drained.push_back({s.warp, false});
+        // pc_kept (AR 408, OA 470): nothing retired since the allocation,
+        // so RAU's PC stands; the PC this drain would send must be it, or
+        // there is none (no uop arrived).
+        const bool kept = !s.rsa;
+        if (kept) {
+          const bool any = s.count || std::any_of(decq_.begin(), decq_.end(),
+                                                  [&](const Uop &u) { return u.warp == s.warp; });
+          if (any && s.first_pc_valid && s.resume_pc != s.first_pc)
+            err("OA 470: warp %u drains with pc_kept, resume PC %#llx, but RAU's is %#llx", s.warp,
+                (unsigned long long)s.resume_pc, (unsigned long long)s.first_pc);
+          count(s.alloc_restore ? "drained.pc_kept_restore" : "drained.pc_kept_launch");
+        }
+        out.drained.push_back({s.warp, s.resume_pc, false, kept});
+        sl.drained.push_back({s.warp, false, kept});
         s.st = WarpState::kDrained;
       }
     }
@@ -3125,6 +3155,8 @@ void Core::retire() {
       }
       const uint64_t next = r.u.pc + 2 * (r.u.ilen + 1);
       s.next_pc = r.u.attr.branch && r.taken ? next + uint64_t(2 * int64_t(int32_t(r.u.imm))) : next;
+      if (!cfg_.inject_pc_kept_lost) s.rsa = true;
+      if (si < 8) slotlog_.ret |= 1u << si;
       Retired rt;
       rt.tid = r.u.tid;
       rt.warp = s.warp;
@@ -3185,6 +3217,7 @@ void Core::retire() {
       if (miss && stall > cfg_.demote_mlc_miss && !s.miss_reported) {
         out.status.push_back({s.warp, false, true, true, s.retired_since_restore});
         s.miss_reported = true;
+        s.rob[s.head].mlc_trig = true;
         count("demote_trigger.mlc_miss");
         oev(OoeEv::kDemoteTrigger, s.warp, 0, stall, h.u.tid);
       }
