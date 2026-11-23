@@ -1,0 +1,53 @@
+{
+  "module": "dcu_btag",
+  "ports": {
+    "rv_cc01h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req (the slot's valid and lead_set_index's bank bits, wired from the channel beside dcu_cap's): DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0). The pick it feeds is flopped here so the RFs' read enable comes from this module's own flops (CG-5)."
+    },
+    "lsb_cc01h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "An input from ccv_miu_dcu_req (the slot's valid and lead_set_index's bank bits, wired from the channel beside dcu_cap's): DCU's ends at 0 NGD (the tab's row 'every input from ccv_miu_dcu_req', arrival 0). The pick it feeds is flopped here so the RFs' read enable comes from this module's own flops (CG-5)."
+    },
+    "lsi_cc02h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "From dcu_cap's lead and payload flops (the tab's row 'dcu_btag, dcu_bctl inputs from dcu_cap': the RF read address 15.7 with setup, the compare 22.6 from rdata)."
+    },
+    "pa_cc03h": {
+      "arrival": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "From dcu_cap's lead and payload flops (the tab's row 'dcu_btag, dcu_bctl inputs from dcu_cap': the RF read address 15.7 with setup, the compare 22.6 from rdata)."
+    },
+    "hit_cc04h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's row for dcu_btag's outputs, 0)."
+    },
+    "way_cc04h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's row for dcu_btag's outputs, 0)."
+    },
+    "st_cc04h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's row for dcu_btag's outputs, 0)."
+    },
+    "dty_cc04h": {
+      "required": 0.0,
+      "by": "MA (DCU tab rev 82, MA's Phase 2 slice 1, port NGD budgets)",
+      "date": "2026-11-22",
+      "why": "Straight from a flop (the tab's row for dcu_btag's outputs, 0)."
+    }
+  }
+}

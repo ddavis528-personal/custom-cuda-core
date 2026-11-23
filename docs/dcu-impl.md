@@ -143,7 +143,7 @@ model builds with; a measurement moves a default, never the structure.
 | `CCV_DCU_UE_TRACK` | landed | TI-485 | 16 | — |
 | The SRAM wrapper's BIST style and `ccv_common_err` (the error-event sink) | TI | TI-474, TI-475 | tied off | the model needs neither; the RTL waits |
 | `makeDcu` selecting DI's model (TI adds a value beside `p1`; the stub stays the default until M0), the files in blocks.list, a `check-dcu-unit` job, the lock-step job | TI | a DI row with TI in Needs, your first | — | unit tests |
-| Phase 2, the slices after the L1-hit path (miss buffers, fills, eviction and writeback, stores and the merge, probes, UE recovery) | MA | DI-20; DCU tab, "MA's Phase 2" | slice 1 landed (tab rev 73) | slice 1's modules |
+| Phase 2, the slices after the L1-hit path (miss buffers, fills, eviction and writeback, stores and the merge, probes, UE recovery) | MA | DI-20, DI-30; DCU tab, "MA's Phase 2" | slice 1 landed (tab rev 82); slice 2 landed in four parts (tab revs 89 to 96): miss buffers and fills, eviction and writeback (DI-21), stores and the merge (DI-26 (f)), probes, UE recovery's second answer, repair and BIST groups (TI-475) | slice 1's modules, then each part's |
 
 ## 5. Build order, setup and the others
 
@@ -168,6 +168,10 @@ model builds with; a measurement moves a default, never the structure.
 | 2b, data and return | `dcu_bdat`, `dcu_rarb`, `dcu_rslot`, `dcu_err` | the same, against the model's response at H+6 and H+7 and its CE and UE events |
 | 2c, the CE rewrite and wake | `dcu_fix`, `dcu_wake` | the same, against the model's rewrite (read to write 5 cycles, `ce_rewrite_full`) and wakes |
 | 2d, the L1-hit block | `ccv_dcu` from slice 1's modules, the rest still the model's | the block as a sum of parts (check-cg's 2%, check-ngd level by level); an L1-hit kernel lock-stepped against the model in the SV top. **MA reads it** |
+| 3a, misses and fills | `dcu_mshr`, `dcu_fill`, and what part 1 grows in `dcu_bctl`, `dcu_btag`, `dcu_rarb`, `dcu_rslot` (DCU tab rev 89, "Slice 2, part 1") | per module against the model's miss path: merge or allocate or miss-wait at D2, the MLC request at H+5, a fill's answers at F+4, the write at W with tag-stale re-looks; the part's bins, CHECKs and its four controls |
+| 3b, eviction and writeback | `dcu_wb`, and what part 2 grows (DCU tab, "Slice 2, part 2") | against the model's victim read, writeback order and acknowledgement; part 2's controls |
+| 3c, stores | `dcu_bstd`, `dcu_bstm`, and what part 3 grows ("Slice 2, part 3") | against the model's store hits (ack at the contracted cycle, write at the gap), upgrades, fill merges and same-line order; part 3's controls |
+| 3d, probes and UE recovery | `dcu_prb`, and what part 4 grows ("Slice 2, part 4") | against the model's probe outcomes and UE second answers; part 4's controls; BIST and repair ports tied off |
 | 3 onward, the other paths | each slice MA lands | per module as above; then the whole block, then SV-hosted equivalence on every kernel and control |
 - **Setup** is [`miu-impl.md`](miu-impl.md) section 8's, with your roster
   entry `DI`, your handoff `.claude/handoff/DI.md` and your sweep at minute
