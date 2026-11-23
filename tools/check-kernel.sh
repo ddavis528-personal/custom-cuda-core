@@ -2484,11 +2484,15 @@ done
 # eviction and writeback, each broken on a kernel that reaches it. The
 # model must be caught every time: a CHECK, a mismatch, a violation or a
 # run that does not finish. dcu-miss-reorder needs notices on (both
-# models); dcu-wb-drop is drop-writeback's spec name. dcu-fill-nostale and
-# dcu-wb-store reach no kernel here: DI's unit tests hold them
-# (sim/dcu/dcu_test.cpp).
+# models); dcu-wb-drop is drop-writeback's spec name. Parts 3-4 (DI-33):
+# a store writing a line it does not own (dcu-st-shared) and a store hit
+# leaving the line clean (dcu-st-dirty). dcu-fill-nostale, dcu-wb-store,
+# dcu-st-noorder, dcu-st-mergeall, dcu-ue-* and dcu-prb-* reach no kernel
+# here (MIU holds a load behind its older store; no probe or UE injection
+# yet): DI's unit tests hold them (sim/dcu/dcu_test.cpp).
 for spec in dcu-fill-early:vadd4:dcu dcu-mshr-nomerge:lnorm1:dcu dcu-miss-reorder:vadd4:models \
-            dcu-wb-early:slotform:dcu dcu-wb-refetch:slotform:dcu dcu-wb-drop:slotform:dcu; do
+            dcu-wb-early:slotform:dcu dcu-wb-refetch:slotform:dcu dcu-wb-drop:slotform:dcu \
+            dcu-st-shared:narrowadd:dcu dcu-st-dirty:rope:dcu; do
   brk=${spec%%:*}; rest=${spec#*:}; k=${rest%%:*}; set=${rest#*:}
   envs="CCV_DCU_IMPL=model"; [ "$set" = models ] && envs=$MODELS
   log="$B/kernel_${brk}_dcu.log"
