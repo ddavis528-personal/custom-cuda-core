@@ -35,21 +35,31 @@
 
 namespace {
 
-constexpr unsigned kNS = 4, kLAG = 3, kNE = 40, kEW = 6, kFW = 96, kFWW = kFW / 32;
+constexpr unsigned kNS = 4, kLAG = 3, kNE = 40, kEW = 6, kFW = 63;
 
 int g_argc;
 char **g_argv;
 
-/// What miu_mq answers for entry e: kFW bits a hash of e.
-std::array<uint32_t, kFWW> fieldsOf(unsigned e) {
-  std::array<uint32_t, kFWW> f{};
+/// What miu_mq holds in entry e's A1 view: kFW bits, a hash of e.
+uint64_t fieldsOf(unsigned e) {
   uint64_t x = 0x9e3779b97f4a7c15ull * (e + 1);
-  for (unsigned i = 0; i < kFWW; ++i) {
-    x ^= x >> 29;
-    x *= 0xbf58476d1ce4e5b9ull;
-    f[i] = uint32_t(x >> 16);
+  x ^= x >> 29;
+  x *= 0xbf58476d1ce4e5b9ull;
+  x ^= x >> 32;
+  return x & ((1ull << kFW) - 1);
+}
+
+/// kFW bits at bit offset o of a Verilator wide signal, and their write.
+template <class W> uint64_t getBits(const W &w, unsigned o) {
+  uint64_t v = 0;
+  for (unsigned b = 0; b < kFW; ++b) v |= uint64_t((w[(o + b) / 32] >> ((o + b) % 32)) & 1) << b;
+  return v;
+}
+template <class W> void putBits(W &w, unsigned o, uint64_t v) {
+  for (unsigned b = 0; b < kFW; ++b) {
+    const unsigned i = (o + b) / 32, s = (o + b) % 32;
+    w[i] = (w[i] & ~(1u << s)) | (uint32_t((v >> b) & 1) << s);
   }
-  return f;
 }
 
 struct Memop {
@@ -95,8 +105,9 @@ struct Bench {
     eval();
     ++cyc;
   }
-  unsigned re(unsigned k) const { return (dut->re_cm04h >> (k * kEW)) & ((1u << kEW) - 1); }
   void reset() {
+    // miu_mq's held view: each entry's A1 fields, fixed for the run.
+    for (unsigned e = 0; e < kNE; ++e) putBits(dut->mqa_cm02h, e * kFW, fieldsOf(e));
     dut->rst_n = 0;
     dut->mv_cm00h = 0;
     for (unsigned i = 0; i < 4; ++i) edge();
@@ -121,33 +132,20 @@ struct Bench {
     dut->mv_cm00h = mv;
     dut->mp_cm01h = mp;
     dut->me_cm01h = me;
-    // miu_mq's read port answers the entry re names now.
-    for (unsigned k = 0; k < kNS; ++k) {
-      const auto f = fieldsOf(re(k));
-      for (unsigned i = 0; i < kFWW; ++i) dut->fld_cm04h[k * kFWW + i] = f[i];
-    }
     edge();
     hist.push_back(now);
     if (hist.size() > 8) hist.pop_front();
-    // Visible now: cycle c + 1, c the cycle just ended. re (stage 04)
-    // belongs to the memops whose valid was at M = c + 1 - 4, the A1 slot
-    // (stage 05) to M = c + 1 - 5. --control lag: a cycle later each.
+    // Visible now: cycle c + 1, c the cycle just ended. The A1 slot (stage
+    // 05) belongs to the memops whose valid was at M = c + 1 - 5. --control
+    // lag: a cycle later.
     const unsigned late = control == "lag" ? 1 : 0;
     const size_t n = hist.size();
     // hist.back() is cycle c; cycle c - d is hist[n - 1 - d].
     auto at = [&](unsigned d) -> const std::vector<Memop> * {
       return d < n ? &hist[n - 1 - d] : nullptr;
     };
-    const std::vector<Memop> *re_m = at(kLAG + late);       // M = c + 1 - (LAG + 1)
     const std::vector<Memop> *a1_m = at(kLAG + 1 + late);   // M = c + 1 - (LAG + 2)
     for (unsigned k = 0; k < kNS; ++k) {
-      if (re_m)
-        if (const Memop *m = pairOn(*re_m, k)) {
-          ++checked;
-          if (re(k) != m->entry && ++fails <= 20)
-            std::fprintf(stderr, "pair: cycle %llu: re[%u] %u, want %u\n",
-                         (unsigned long long)cyc, k, re(k), m->entry);
-        }
       const Memop *m = a1_m ? pairOn(*a1_m, k) : nullptr;
       ++checked;
       const bool v = (dut->a1v_cm05h >> k) & 1;
@@ -161,9 +159,7 @@ struct Bench {
       cov_b2b += prev_a1[k];
       ++checked;
       const unsigned e = (dut->a1e_cm05h >> (k * kEW)) & ((1u << kEW) - 1);
-      const auto f = fieldsOf(m->entry);
-      bool ok = e == m->entry;
-      for (unsigned i = 0; i < kFWW; ++i) ok = ok && dut->a1f_cm05h[k * kFWW + i] == f[i];
+      const bool ok = e == m->entry && getBits(dut->a1f_cm05h, k * kFW) == fieldsOf(m->entry);
       if (!ok && ++fails <= 20)
         std::fprintf(stderr, "pair: cycle %llu: slot %u's A1 entry %u, want %u%s\n",
                      (unsigned long long)cyc, k, e, m->entry, e == m->entry ? " (fields differ)" : "");
