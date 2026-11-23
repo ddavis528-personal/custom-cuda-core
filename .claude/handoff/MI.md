@@ -31,7 +31,7 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
 
 ## Register bookmarks
 - Daily sweep 2026-11-23 (Mon): AR 414, OA 474, IS 201, TI 529 (TI-531), OI 405, CP 160, RA 158, RI 91,
-  MA 173, MI 40, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
+  MA 173, MI 42, DI 69, DA 131, Conventions 20; specs MIU 163, Common 9, DCU 115 (spec content nodes:
   MIU aa7a288a-dae2, Common 55ddf104-fe08, DCU c18a112b-d2c6). Next pings: Friday.
   MI rev 39: 012519d8 pushed, DI may send the UE first answer (DI, TI rung). TI-522: measure waypred
   deltas with CCV_MIU_IMPL=model + CCV_MLC_WARM=1. AR 410/TI-531: P_TIMEOUT_MEMOP becomes derived.
@@ -79,6 +79,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
 0a. MI-20 CLOSED (MI rev 40, TI rung): DI's d400b928 sends the UE first answer; with DCU model, vadd/ldpar/hit
    hit ue_second_answer and ue-close-first is caught (1/3/7 CHECKs). TI adds the kernel lines.
+0c. TI-537 (DA via TI): one common RTL credit implementation (rtl/common, TI's); miu_cred keeps its counters
+   until it lands, then swaps. MI rev 42 told TI miu_cred's needs (TI rung).
 0b'. MI-21 DECIDED (MA rev 176, MIU tab rev 165; bookmarks MA 178, MIU 165): miu_form at H-1 beside miu_pair owns
    window table, local_base, W, R(ctx), written from ccv_rau_miu_cta (own enables); flops at H per slot: window word,
    local scalar into disp, R(ctx) bits, W high bits, form selects; one-hot of lane d flopped at H-1. Forms land in
