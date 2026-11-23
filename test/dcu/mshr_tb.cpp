@@ -1,8 +1,9 @@
 //===-- mshr_tb.cpp - dcu_mshr bench: miss buffers and the request to MLC --===//
 //
 // Drives dcu_mshr as its neighbours do: dcu_cap's lookups (the valid at D0,
-// the payload at D1), dcu_bctl's misses at D2 (one a bank, its slot naming
-// the staged payload) and its retries of each bank's miss-wait waiters (a
+// the payload at D1), dcu_bctl's lookups at D2 (dv, one a bank, its slot
+// naming the staged payload) with dcu_btag's hit (a miss is dv && !hit;
+// noise on banks with none), and its retries of each bank's miss-wait waiters (a
 // lead a cycle ahead, then the waiter's payload), dcu_fill's reads (the
 // fill's valid a cycle ahead, then its req_id) and frees, and MLC's credits.
 // The driver keeps each bank's waiters in order as dcu_bctl does, learning a
@@ -281,7 +282,8 @@ struct Bench {
   }
   void quiet() {
     dut->v_cc02h = 0;
-    dut->mv_cc04h = 0;
+    dut->dv_cc04h = 0;
+    dut->hit_cc04h = 0;
     dut->rov_cc02h = 0;
     dut->mcr_cc04h = 0;
     dut->fv_cc03h = 0;
@@ -421,8 +423,20 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       b.expect(c - q.stamp < 512, "an offered stamp under 512 cycles old (DI-35)");
       if (!pick || (!lowpick && older(q.stamp & kStampMask, waiters[*pick].front().stamp & kStampMask))) pick = bk;
     }
+    // dcu_btag's hit on every bank (noise where no lookup is presented).
+    d.hit_cc04h = rnd ? unsigned(g.below(256)) : 0;
     for (unsigned s = 0; s < kSlots; ++s) {
-      if (!look2[s] || g.below(10) < 4) continue;   // a hit: nothing for dcu_mshr
+      if (!look2[s]) continue;
+      const unsigned bk0 = unsigned(look2[s]->pa & 7);
+      if (g.below(10) < 4) {   // a hit: presented with its hit, or held behind a waiter
+        if (!(d.dv_cc04h >> bk0 & 1) && !rq[bk0] && waiters[bk0].empty() && !pendRetry[bk0] &&
+            !inflight[bk0]) {
+          d.dv_cc04h |= 1u << bk0;
+          d.hit_cc04h |= 1u << bk0;
+          setInt(d.mslot_cc04h, bk0 * 2, 2, s);
+        }
+        continue;
+      }
       Req q = *look2[s];
       q.seq = ++seqNo;
       const unsigned bk = unsigned(q.pa & 7);
@@ -435,7 +449,8 @@ int run(const std::string &scenario, const char *vcd, const std::string &ctl, ui
       rq[bk] = q;
       pq[s + 1] = q;
       isNew[bk] = true;
-      d.mv_cc04h |= 1u << bk;
+      d.dv_cc04h |= 1u << bk;
+      d.hit_cc04h &= ~(1u << bk);
       setInt(d.mslot_cc04h, bk * 2, 2, s);
     }
     bool pres = bool(pq[0]);

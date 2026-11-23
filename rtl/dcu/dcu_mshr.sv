@@ -103,8 +103,11 @@ module dcu_mshr #(
   input  logic [SLOTS*WF-1:0]    fold_cc03h,
   input  logic [SLOTS*WC-1:0]    coh_cc03h,
   input  logic [SLOTS-1:0]       excl_cc03h,
-  // D2: each bank's new miss, from dcu_bctl (its slot names the payload).
-  input  logic [NBK-1:0]         mv_cc04h,
+  // D2: each bank's lookup, from dcu_bctl's flops (its slot names the
+  // payload; none while the bank holds a miss-wait waiter), and its tag
+  // result from dcu_btag's: a miss is dv && !hit.
+  input  logic [NBK-1:0]         dv_cc04h,
+  input  logic [NBK-1:0]         hit_cc04h,
   input  logic [NBK*WSL-1:0]     mslot_cc04h,
   // The retry (DI-35): each bank's offer of its oldest miss-wait waiter
   // (valid and stamp) from dcu_bctl's flops; the oldest is granted a cycle
@@ -195,6 +198,10 @@ module dcu_mshr #(
       end
     end
   end
+
+  // Each bank's new miss at D2.
+  logic [NBK-1:0] mv_cc04h;
+  assign mv_cc04h = dv_cc04h & ~hit_cc04h;
 
   // ---- The retry's pick (DI-35) ------------------------------------------
   // The oldest offer by stamp, modulo 2^WTS (a stamp never ages past half
