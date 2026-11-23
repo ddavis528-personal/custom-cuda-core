@@ -75,8 +75,8 @@ Credit rules (TI-49):
 
 ## Register (doc JApHYjaUESeq8tsGMGXMU5)
 - **AR tab:** node bc521c46-9710, responses table m8yvbw8rqgz.2139.
-  - Latest row: AR 416 .682467 (tab rev 420).
-  - **The next AR row inserts after .682467**, labelled AR 417.
+  - Latest row: AR 417 .684284 (tab rev 421).
+  - **The next AR row inserts after .684284**, labelled AR 418.
   - A find-replace through the Docs update tool failed with a JSON parse error
     four times on 11-21; clarify in the notice instead of retrying.
   - A whole row can't be replaced; replace its last cell's paragraph
@@ -98,7 +98,7 @@ Credit rules (TI-49):
   | MI | c1311541-4219 |
   | DI | 1ea5d5b3-6e9c |
 
-- **Bookmarks** (revs read through): AR 420, OA 475, TI 540 (rev 539), MA 178, DI 69,
+- **Bookmarks** (revs read through): AR 421, OA 475, TI 545 (rev 544), MA 178, DI 69,
   MI 38, RA 159, RI 91, IS 201, CP 160, OI 405, DA 132, Conventions 20 (full
   sweep read 11-23; TI 532 and MA 175 read only for TI-532 / AR 411).
   Specs: FET tab rev 54, DCU tab rev 82, MIU tab rev 161.
@@ -260,6 +260,11 @@ Credit rules (TI-49):
    in the stub; 50 stands; OI adds a false-demotion split now. AR 414
    (.678467): accepted, but an S1 cost of 0.2-0.5% goes to Daniel (OA had
    written <=0.5%).
+   TI-545: swap class on new kernel vadd6 (5 demoted/restored at 1000,
+   slot_refill_parked); 20+-5 still demotes once (credit contention). AR 417
+   (.684284): the control is both thresholds raised over the latency
+   (bins empty, class fails); W_REQ_MLC_EXB 6 -> 8 (not 7: 128 < MA's ~130
+   lines, shared with ifills and writebacks), provisional.
    OPEN WITH DANIEL: who owns MLC's spec (MLC->EXB ids for the read class).
 000j. **Testbench latency (DA row .133923, AR 412 .673737, 11-23; TI, MA
    rung).** Daniel: default 20 +/-5 (seeded draw keyed by CCV_TB_SEED and
