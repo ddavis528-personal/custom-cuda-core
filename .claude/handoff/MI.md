@@ -79,7 +79,8 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    lost flag in miu_mq come with miu_a2. Next: miu_agu8, miu_lead (ge1/ge2/used), miu_cred,
    miu_tlb (ccv_common_wayfold, pa_fold), miu_grp, miu_a2 (drop), miu_ids, miu_hitq, miu_rsp,
    miu_rcap, miu_ext, miu_ecc (K=128, syndrome R2, budget 17), miu_out, ccv_miu top. Then model
-   checks: UE on a clean line keeps req_id live (AR 403); mispredict late answer at due+2.
+   checks: UE on a clean line keeps req_id live (AR 403; MIU tab rev 163 via MA notice re DI-30:
+   answered twice under one req_id, complete from DCU's refill, hit 0, no new credit); mispredict late answer at due+2.
    RTL lessons: CCV-L23 forbids a self-feeding param shift array (use a counter-indexed ring);
    a comb net read by more than its own state's flops must go inline in always_ff; CCV-L04 reads
    `<=` in always_comb as nonblocking; no package-to-package params; one assert label per module
