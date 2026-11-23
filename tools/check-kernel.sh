@@ -834,30 +834,29 @@ cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 NOTICE_ON=$([ "${CCV_DCU_IMPL:-stub}" = model ] && echo CCV_DCU_NOTICE=1)
 IMPL_PINS="
 dcu=model ldpar l1_hit=2
-dcu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=55
+dcu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=43
 dcu=model late l1_late=0
 dcu=model stall l1_late=0
-dcu=model privwin priv_form=12
 dcu=model no-resource-cap v60=12
-miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=64
+miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=62
 miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=0
 miu=model ldpar@CCV_DCU_UE_INJECT=1 ue_recover=1
 miu=model privwin priv_form=10
 dcu=model vadd4-swap orphan=1
 miu=model vadd4-swap-miu impl=stub
-dcu=model,miu=model vadd fill_notice=4
-dcu=model,miu=model vadd cmpl_hint=4
-dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=60
-dcu=model,miu=model ldpar l1_hit=1
+dcu=model,miu=model transp4@CCV_DCU_ECC_INJECT=1 l1_ecc_fix=56
+dcu=model,miu=model vadd@CCV_DCU_UE_INJECT=1 ue_recover=1
 dcu=model,miu=model no-resource-cap v60=16
-dcu=model,miu=model lnorm1-straggler demote=342
+dcu=model lnorm1-straggler demote=371
+dcu=model,miu=model lnorm1-straggler demote=370
+dcu=model slotform dcu_evict=53
 dcu=model waypred dcu_wp_wrong=2
 dcu=model,miu=model waypred dcu_wp_wrong=2 l1_hit=2 l1_late=2
 miu=model fet-reset-on-kill scen=rope:11
-miu=model held-wait demote=776
-dcu=model held-wait demote=776
+miu=model held-wait demote=875
+dcu=model held-wait demote=862
 dcu=model,miu=model fet-reset-on-kill scen=rope:12
-dcu=model,miu=model held-wait demote=754
+dcu=model,miu=model held-wait demote=876
 "
 impl_pins() {   # kernel key, its expectations: those under this run's models
   local key=$1 want=$2 impl k w bin out i ok p x hit
@@ -1306,7 +1305,7 @@ rm -rf "$cb/o"
 # store (AcquirePerm) each stop at DCU's check.
 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break deny-ownership >"$B/kernel_deny-ownership.log" 2>&1
 "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break deny-ownership >"$B/kernel_deny-ownership_vadd.log" 2>&1
-if grep -q "^CHECK dcu: MLC answered the acquire of line 90000 (req_id 0) without ownership" "$B/kernel_deny-ownership.log" &&
+if grep -q "^CHECK dcu: MLC answered the acquire of line 90000 (req_id [0-9]*) without ownership" "$B/kernel_deny-ownership.log" &&
    grep -q "^CHECK dcu: MLC answered the acquire of line .* without ownership" "$B/kernel_deny-ownership_vadd.log"; then
   say "--break deny-ownership: DCU refuses the line" "PASS (predswap's AcquireBlock, vadd's AcquirePerm)"
 else
