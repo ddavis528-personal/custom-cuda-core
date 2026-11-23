@@ -79,6 +79,12 @@ https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 wins. DCU tab: dcu-spec.md.
    lands CCV_LAT_MIU_PAIR_LAG (3) after the memop; miu_pair loads A1 fields from MQ at H-1.
 0a. MI-20 CLOSED (MI rev 40, TI rung): DI's d400b928 sends the UE first answer; with DCU model, vadd/ldpar/hit
    hit ue_second_answer and ue-close-first is caught (1/3/7 CHECKs). TI adds the kernel lines.
+0b. MI-21 (MI rev 41, MA rung): no module owns slot/local/priv form state (window table, local_base/W,
+   local scalar, R(ctx)); O-83 decision ahead of the CSA puts A1 at ~32 NGD. Options (a) two sums late
+   mux, proposal miu_form at H-1. miu_agu8 e0a29c01 (ordinary + sized forms) has ~1.7 NGD left for the
+   window carry-save level (deepest 23.3: shared 23.3, sh 22.8; sum 18.5 with explicit CSA + Kogge-Stone,
+   ABC's own adder gave 24). miu_pair now decodes the transfer a stage early (a1x {b2,b4,sh2,sh1}).
+   Gate on e0a29c01 merge: job-gate-push-20261123-160322-2277.log.
 1. RTL slice 1 (MA Phase 2, MIU tab rev 161): miu_cap pushed; miu_pair + miu_mq pushed at 512d2315 (SCOPED PASS).
    check-cg --unit exit 0 does not apply the module budget: read the ungated count vs 2%. miu_mq: 40 entries by arrival
    slot, psel one-hot + pre keep copy (me), rel decoded before its flop, dis (mem_op 0xF) muxes
