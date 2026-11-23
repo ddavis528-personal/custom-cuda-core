@@ -708,17 +708,10 @@ module dcu_mshr #(
   // ---- The records ----------------------------------------------------------
   // The decisions; then each port's id, hit entry and payload, under its own
   // request's lead (a slot's lookup or the retry's lead).
-  logic rc_en_cc05h;
-  assign rc_en_cc05h = rst_r01h || pres_cc04h || |rcal_q_cc05h || |rcmg_q_cc05h;
-  always_ff @(posedge dcu_core_clk) begin
-    if (rc_en_cc05h) begin
-      for (int p = 0; p < NP; p++) begin
-        rcal_q_cc05h[p]  <= !rst_r01h && al_cc05h[p];
-        rcalh_q_cc05h[p] <= !rst_r01h && al_cc05h[p];
-        rcmg_q_cc05h[p] <= !rst_r01h && mg_cc05h[p];
-      end
-    end
-  end
+  // The decision records share the outcome's gate (oc_en_cc05h, below): a
+  // retry that waits again changes only the outcome, and a record is set
+  // only with an outcome, so oany_q_cc05h clears it (CG-3; DI-35's retry
+  // lead opens the gate on every granted bank pick).
   logic [NP-1:0] rcp_en_cc04h;
   assign rcp_en_cc04h = {lv_q_cc04h, rl_q_cc04h};
   for (genvar p = 0; p < NP; p++) begin : g_rc
@@ -794,6 +787,11 @@ module dcu_mshr #(
       owi_q_cc05h  <= rst_r01h ? '0 : own_cc05h;
       oy_q_cc05h   <= oyn_cc05h;
       oany_q_cc05h <= !rst_r01h && |ovn_cc04h;
+      for (int p = 0; p < NP; p++) begin
+        rcal_q_cc05h[p]  <= !rst_r01h && al_cc05h[p];
+        rcalh_q_cc05h[p] <= !rst_r01h && al_cc05h[p];
+        rcmg_q_cc05h[p]  <= !rst_r01h && mg_cc05h[p];
+      end
     end
   end
   assign ov_cc05h    = ov_q_cc05h;
