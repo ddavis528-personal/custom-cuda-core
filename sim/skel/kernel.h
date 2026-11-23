@@ -277,6 +277,9 @@ struct Kernel {
       "dcu_wp_wrong",
       // A uop DEC held past a demotion's walk (AR 395).
       "dec_hold",
+      // A demoted warp's tier-1 slot refilled by a parked warp's restore (the
+      // swap class, AR 412 (2)).
+      "slot_refill_parked",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote", "pc_kept_launch", "pc_kept_restore",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill", "kill_lane",

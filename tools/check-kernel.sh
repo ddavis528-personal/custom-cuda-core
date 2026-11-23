@@ -943,6 +943,7 @@ ldpar  l1_hit=4 hit_under_miss=4
 mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
 vadd4  full_line=4 memop_entries_peak=10
+vadd6  full_line=6
 swap   slot_reuse=2
 provswap redirect>0 slot_reuse>0
 stall  l1_late>0
@@ -2232,6 +2233,31 @@ if [ "${tbo:-0}" -gt 0 ] 2>/dev/null && grep -q "^TESTBENCH latency=20 jitter=5 
   say "testbench 20+-5: answers reorder, and not at jitter 0" "PASS (transp4 tb_overtaken=$tbo; 0 at jitter 0)"
 else
   bad "testbench 20+-5: answers reorder, and not at jitter 0" "tb_overtaken=${tbo:-none} at 20+-5; jitter 0: ${w:-clean} $(grep -m1 '^TESTBENCH' "$B/kernel_transp4.log")"
+fi
+# The swap class (AR 412 (2)): more warps than tier-1 slots (vadd6, six
+# CTAs of a warp over CCV_TIER1_WARPS 4, nothing in the slow regions) at
+# CCV_TB_LATENCY=1000 under the MLC-miss trigger: it ends as ccv-sim does,
+# demotes on misses and restores every warp it parks, and a demoted warp's
+# tier-1 slot is refilled by a parked warp's restore (slot_refill_parked).
+# The control is the same run at the testbench's 20+-5: memop-credit
+# contention among six warps still demotes once there (seed 1; TI-545), so
+# the claim is that the long latency demotes more, and the control fails it.
+sl="$B/kernel_vadd6_swapclass.log"; sc="$B/kernel_vadd6_swapclass20.log"
+CCV_TB_LATENCY=1000 CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd6/oracle.jsonl --cycles 400000 >"$sl" 2>&1
+CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/vadd6/oracle.jsonl >"$sc" 2>&1
+swc() {   # $1 log, $2 baseline demotions: the class's claim, or why not
+  local d; d=$(cover "$1" demote)
+  local w; w=$(ok "$1" restored="$d" parked="$d")
+  [ "${d:-0}" -gt "${2:-0}" ] 2>/dev/null || w="$w demote=${d:-none} (not over ${2:-0})"
+  [ "$(cover "$1" slot_refill_parked)" -gt 0 ] 2>/dev/null || w="$w slot_refill_parked=$(cover "$1" slot_refill_parked)"
+  echo "${w# }"
+}
+d20=$(cover "$sc" demote)
+w=$(swc "$sl" "$d20"); wc=$(swc "$sc" "$d20")
+if [ -z "$w" ] && [ -n "$wc" ]; then
+  say "swap class: vadd6 at latency 1000" "PASS ($(cover "$sl" demote) demoted and restored, slot_refill_parked=$(cover "$sl" slot_refill_parked); at 20+-5 it fails: $wc)"
+else
+  bad "swap class: vadd6 at latency 1000" "${w:-clean}; control at 20+-5: ${wc:-passed, which it must not}"
 fi
 # MA-25: DCU's per-bank credits. MIU holds CCV_DCU_BANK_QDEPTH entry credits
 # and CCV_DCU_BANK_STDATA store-data credits a bank, sends a lookup only with

@@ -5751,6 +5751,7 @@ private:
   const bool swap_ = std::string(env("CCV_RAU_MODE", "evict")) == "swap";
 
   std::set<unsigned> free_;                  ///< tier-1 slots
+  std::set<unsigned> demoted_slot_;          ///< freed by a demotion, not yet refilled
   std::map<unsigned, unsigned> slot_of_;     ///< resident or moving warp -> its slot
   std::deque<unsigned> waiting_;             ///< warps not yet launched, in order
   std::deque<unsigned> parked_;              ///< in PCA, oldest first
@@ -5855,6 +5856,7 @@ private:
       free_.erase(free_.begin());
       waiting_.pop_front();
       slot_of_[w] = slot;
+      demoted_slot_.erase(slot);
       alloc_q_.push_back({allocMsg(w, slot, kAllocLaunch), int(w)});
       launch_q_.push_back({w, slot});
     }
@@ -5878,6 +5880,8 @@ private:
       p_base_[w] = retired_[w] = 0;   // OOE counts from the restore
       free_.erase(free_.begin());
       parked_.erase(p);
+      // A demoted warp's slot refilled by a parked warp (AR 412 (2)).
+      if (demoted_slot_.erase(slot)) k_.hit("slot_refill_parked");
       slot_of_[w] = slot;
       restore_busy_ = true;
       alloc_q_.push_back({allocMsg(w, slot, 2), -1});   // restore-allocate (A-64)
@@ -6159,6 +6163,7 @@ private:
         // not before (V-27), and the slot goes to the oldest ready warp.
         alloc_q_.push_back({allocMsg(w, slot_of_[w], kAllocFree), -1});
         free_.insert(slot_of_[w]);
+        demoted_slot_.insert(slot_of_[w]);
         slot_of_.erase(w);
         parked_.push_back(w);
         demoting_.erase(w);
