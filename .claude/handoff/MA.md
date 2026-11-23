@@ -32,7 +32,7 @@ in custom-cuda-core (and the same name in custom-cuda-complier, unused so far).
 
 ## Bookmarks (register revs)
 
-Conventions 20, AR 409, TI 517, OA 468, IS 201, CP 160, OI 401, RA 157, RI 91, MA 159, DA 131, MI 35, DI 49.
+Conventions 20, AR 409, TI 517, OA 468, IS 201, CP 160, OI 401, RA 157, RI 91, MA 162, DA 131, MI 35, DI 49.
 Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI DI; 11/11 pongs, all ok.
 
 - Sweep 2026-11-20: merged infra 35, IS ccr-3868632d 82, AR ccr-80102643 28 (single base), DI ccr-5e4d6c70 7,
@@ -90,7 +90,13 @@ Pings 2026-11-20 (Friday) to every roster session: AR OA IS TI OI CP RA RI RH MI
 - Sweep 2026-11-22 merged 11 branches (AR's 80102643 by commit-tree: 5 merge bases hung the recursive merge),
   full PASS, pushed. TI-517 landed MA-29 (bc9d61ff), TI-518 landed MA-30 (63579fce); both marked in the tabs.
   Snapshots refreshed: dcu-spec rev 87, miu-spec rev 162. Next: DCU slice 2, then MIU slices 2-4.
-- DI-30 (Daniel's priority, via DI): DCU slice 2 first, in parts. PART 1 LANDED (DCU tab rev 89, MA rev 159, DI
+- DCU SLICE 2 COMPLETE (MA revs 159-162, DCU tab revs 89-96, MIU tab rev 163 UE rule; DI and MI notified;
+  snapshots dcu 96 / miu 163; dcu-impl 3a-3d). Part 2 eviction/wb (fill's own entry reused for writeback, 2 wb
+  buffers, DI-21 answered), part 3 stores (std RF 4x16x256 a bank + masks in flops per MACRO-1; dirty bits to
+  flops, tag RF 136 bits; store-hit ack at contracted cycle; fill merges only stores ahead of first load),
+  part 4 probes (4 buffers, RMW tag lookup), UE second answer both tabs, TI-475 repair/BIST groups.
+  NEXT: MIU slices 2-4; then TI's cold-TLB scenarios; fold the coverage bins into the tabs.
+- (history) DI-30: DCU slice 2 first, in parts. PART 1 LANDED (DCU tab rev 89, MA rev 159, DI
   notified; snapshot rev 89; dcu-impl phase 3a): dcu_mshr 16 (merge 4, miss-wait in bank queue = MA-12 hold, bank
   order rule), MLC req at H+5 from D2, dcu_fill 4 FBs (F capture, F+1 encode + victim, F+4 answers), write at W
   under BANK_AGE with tag RF RMW, tag-stale re-looks, late order aged-bank > fills > banks. NEXT: part 2 eviction
